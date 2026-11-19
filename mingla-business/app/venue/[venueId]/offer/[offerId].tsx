@@ -10,6 +10,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EntryEditor } from "../../../../src/components/venue/features/offers/EntryEditor";
+import { PackageEditor } from "../../../../src/components/venue/features/offers/PackageEditor";
 import type { VenueModuleLeaveHandle } from "../../../../src/components/venue/venueLeaveContract";
 import { ConfirmDialog } from "../../../../src/components/ui/ConfirmDialog";
 import { color } from "../../../../src/constants/designSystem";
@@ -24,7 +25,9 @@ export default function VenueOfferEditorRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ venueId?: string | string[]; offerId?: string | string[] }>();
+  const params = useLocalSearchParams<{ venueId?: string | string[]; offerId?: string | string[]; kind?: string | string[] }>();
+  // #4490 P3 — `?kind=group_package` opens the group package editor.
+  const isPackage = paramValue(params.kind) === "group_package";
   const venueId = paramValue(params.venueId);
   const rawOffer = paramValue(params.offerId);
   const offerId = rawOffer === null || rawOffer === "new" ? null : rawOffer;
@@ -54,20 +57,38 @@ export default function VenueOfferEditorRoute(): React.ReactElement {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <EntryEditor
-        ref={editorRef}
-        brandId={venue?.brandId ?? null}
-        venueId={venueId}
-        venueName={venue?.name ?? "your venue"}
-        offerId={offerId}
-        onClose={() => {
-          if (editorRef.current?.isDirty() === true) {
-            setPending({ action: null });
-            return;
-          }
-          leave();
-        }}
-      />
+      {isPackage ? (
+        <PackageEditor
+          ref={editorRef}
+          brandId={venue?.brandId ?? null}
+          venueId={venueId}
+          venueName={venue?.name ?? "your venue"}
+          offerId={offerId}
+          onOpenPayments={venue?.brandId ? () => router.push(`/brand/${venue.brandId}/payments` as never) : undefined}
+          onClose={() => {
+            if (editorRef.current?.isDirty() === true) {
+              setPending({ action: null });
+              return;
+            }
+            leave();
+          }}
+        />
+      ) : (
+        <EntryEditor
+          ref={editorRef}
+          brandId={venue?.brandId ?? null}
+          venueId={venueId}
+          venueName={venue?.name ?? "your venue"}
+          offerId={offerId}
+          onClose={() => {
+            if (editorRef.current?.isDirty() === true) {
+              setPending({ action: null });
+              return;
+            }
+            leave();
+          }}
+        />
+      )}
       {pending !== null ? (
         <ConfirmDialog
           visible

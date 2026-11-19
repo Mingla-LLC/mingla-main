@@ -70,3 +70,21 @@ export function bookingSourceLabel(b: VenueDayBooking): string {
   if (b.source === "gate" || b.source === "gate_sale") return "Gate sale";
   return "Bought online";
 }
+
+// #4490 P3 — balances still to collect on a day (group package deposits).
+export function dayBalances(day: VenueDay, now: number = Date.now()): { count: number; owedMinor: number; overdue: number } {
+  const owing = day.bookings.filter((b) => b.state === "confirmed" && (b.balanceDueMinor ?? 0) > 0);
+  return {
+    count: owing.length,
+    owedMinor: owing.reduce((s, b) => s + (b.balanceDueMinor ?? 0), 0),
+    overdue: owing.filter((b) => b.balanceDueAt != null && Date.parse(b.balanceDueAt) < now).length,
+  };
+}
+
+/** The calendar day `delta` days from `date` ("YYYY-MM-DD"). */
+export function shiftDay(date: string, delta: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return date;
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}

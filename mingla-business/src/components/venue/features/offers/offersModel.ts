@@ -65,7 +65,7 @@ export interface NewOfferCard {
 
 export const NEW_OFFER_CARDS: readonly NewOfferCard[] = [
   { key: "entry", label: "Entry", helper: "Walk-in, day pass or timed session. Priced per guest.", icon: "ticket", built: true },
-  { key: "group_package", label: "Group package", helper: "A per-guest deal for groups, with extras included.", icon: "users", built: false },
+  { key: "group_package", label: "Group package", helper: "A per-guest deal for groups, with extras included.", icon: "users", built: true },
   { key: "private_hire", label: "Private hire", helper: "A space to themselves. By request, with a deposit.", icon: "shield", built: false },
   { key: "by_the_hour", label: "By the hour", helper: "A room, court, lane, table or desk.", icon: "clock", built: false },
   { key: "table_reservations", label: "Table reservations", helper: "A table at a time. Restaurants, bars, lounges.", icon: "calendar", built: true },
@@ -74,7 +74,7 @@ export const NEW_OFFER_CARDS: readonly NewOfferCard[] = [
 
 /** Why a card can't be picked yet (plain words, no dead tap). */
 export const COMING_SOON_REASON =
-  "Group packages, private hire, by the hour and memberships are coming soon. You'll sell them here once they're ready.";
+  "Private hire, by the hour and memberships are coming soon. You'll sell them here once they're ready.";
 
 // ---------------------------------------------------------------- money
 
@@ -460,6 +460,16 @@ export function optionSummary(option: VenuePriceOption, currency: string | null)
 /** Lowest price label for the list ("₦4,000 per guest", "from ₦4,000"). */
 export function priceColumn(offer: VenueOffer, currency: string | null): string {
   if (offer.options.length === 0) return "No price yet";
+  if (offer.kind === "group_package") {
+    const lowest = Math.min(...offer.options.map((o) => o.priceMinor));
+    const perGroup = offer.options.length === 1 && offer.options[0].unit === "booking";
+    const min = Math.min(...offer.options.map((o) => o.guestMin));
+    const max = Math.max(...offer.options.map((o) => o.guestMax));
+    const price = perGroup
+      ? `${money(lowest, currency)} a group`
+      : `${offer.options.length > 1 ? "from " : ""}${money(lowest, currency)} a guest`;
+    return `${price} · ${min}–${max} guests`;
+  }
   const prices = offer.options.map((o) => o.priceMinor);
   const lowest = Math.min(...prices);
   if (lowest === 0 && prices.every((p) => p === 0)) return "Free";
@@ -468,6 +478,12 @@ export function priceColumn(offer: VenueOffer, currency: string | null): string 
 }
 
 export function whenColumn(offer: VenueOffer): string {
+  if (offer.kind === "group_package") {
+    if (offer.startTimes.length === 0) return "No start times yet";
+    const days = weekdaysSummary(offer.schedule?.weekdays ?? [0, 1, 2, 3, 4, 5, 6]);
+    const hours = offer.durationMinutes !== null && offer.durationMinutes % 60 === 0 ? `${offer.durationMinutes / 60} h` : `${offer.durationMinutes ?? 0} min`;
+    return `${days} · starts ${offer.startTimes.join(", ")} · ${hours}`;
+  }
   const s = offer.schedule;
   if (s === null) return "No times yet";
   const days = weekdaysSummary(s.weekdays);
@@ -479,6 +495,11 @@ export function whenColumn(offer: VenueOffer): string {
 }
 
 export function kindLine(offer: VenueOffer): string {
+  if (offer.kind === "group_package") {
+    const min = offer.options.length > 0 ? Math.min(...offer.options.map((o) => o.guestMin)) : null;
+    const max = offer.options.length > 0 ? Math.max(...offer.options.map((o) => o.guestMax)) : null;
+    return `Group package${min !== null && max !== null ? ` · ${min}–${max} guests` : ""}${offer.deposit !== null && offer.deposit.kind !== "none" ? " · deposit" : ""}`;
+  }
   const style = offer.kind === "entry" ? entryStyleLabel(offer.entryStyle) : OFFER_KIND_LABEL[offer.kind];
   const id = offer.options.some((o) => o.eligibility !== null) ? " · ID checked at the gate" : "";
   return `${OFFER_KIND_LABEL[offer.kind]}${offer.kind === "entry" ? ` · ${style}` : ""}${id}`;
@@ -594,6 +615,56 @@ export function offerErrorCopy(code: string, detail: string | null = null): stri
       return "That didn't go through. Try again.";
     case "network":
       return "You're offline or the connection dropped. Your changes are still here, so try again.";
+    // #4490 P3 — group packages
+    case "inclusions_invalid":
+      return "Check what's included: each line needs words, and a question needs 2 to 10 options.";
+    case "inclusion_menu_item_not_found":
+      return "One of the menu items was removed. Pick it again from your menu.";
+    case "extras_invalid":
+      return "Check your extras: each needs a name and a price, and you can have up to 20.";
+    case "staff_role_label_invalid":
+      return "Name the staff role in 60 characters or fewer.";
+    case "deposit_invalid":
+      return "Check the deposit: 1% to 99%, or an amount, and when the rest is due.";
+    case "offer_kind_invalid":
+      return "That setting is for group packages only.";
+    case "option_unit_invalid":
+      return "Check how the price is charged.";
+    case "notice_invalid":
+      return "Pick how far ahead groups must book.";
+    case "pool_not_for_kind":
+      return "This kind of offer can't use the day limit.";
+    // #4490 P3 — bookings and money
+    case "offer_amount_over_balance":
+      return "That's more than they still owe. Lower the amount.";
+    case "offer_nothing_to_pay":
+      return "Nothing is owed on this booking.";
+    case "offer_reminder_too_soon":
+      return "A reminder went out in the last 10 minutes. Try again a little later.";
+    case "offer_guest_email_required":
+      return "This booking has no email, so a reminder can't be sent. Call or message the guest instead.";
+    case "offer_change_not_allowed":
+      return "This booking can't be changed that way.";
+    case "offer_change_too_late":
+      return "It's too late to change this booking.";
+    case "offer_change_nothing":
+      return "That's the same as the booking now. Change something first.";
+    case "offer_sold_out":
+      return "There isn't room for that many on that day.";
+    case "offer_window_unavailable":
+      return "That time is no longer available. Pick another.";
+    case "offer_guests_out_of_range":
+      return "That number of guests is outside this package's group size.";
+    case "offer_extra_unavailable":
+      return "That extra is no longer offered.";
+    case "offer_booking_not_found":
+      return "This booking was removed or isn't at this venue.";
+    case "offer_cancel_preview_invalid":
+      return "The refund changed. Check it again before you cancel.";
+    case "offer_amount_too_large":
+      return "This payment is too large to take in one go. Ask for a smaller deposit, or record it as paid to the venue.";
+    case "balance_link_unavailable":
+      return "This booking's pay link can't be shown here. Take the money at the door instead.";
     default:
       return "Couldn't save. Your changes are still here, so try again.";
   }

@@ -31,4 +31,11 @@ export const venueFeatureKeys = {
     ["venueCheckIns", brandId, venueId] as const,
   checkIns: (brandId: string, venueId: string, localDate: string): readonly string[] =>
     ["venueCheckIns", brandId, venueId, localDate] as const,
+  // #4490 P3 — one booking with its money, and what closing a day touches.
+  booking: (brandId: string, venueId: string, groupId: string): readonly string[] =>
+    ["venueBooking", brandId, venueId, groupId] as const,
+  dayClosureAll: (brandId: string, venueId: string): readonly string[] =>
+    ["venueDayClosure", brandId, venueId] as const,
+  dayClosure: (brandId: string, venueId: string, localDate: string): readonly string[] =>
+    ["venueDayClosure", brandId, venueId, localDate] as const,
 };

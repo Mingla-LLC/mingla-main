@@ -140,10 +140,12 @@ export interface EntryEditorProps {
   onClose: (result?: { published: boolean; name: string }) => void;
   /** Open Settings (VAT lives in Terms and tax; the Entry switch in features). */
   onOpenSettings?: () => void;
+  /** #4490 F4 — brand payments setup, offered when the brand can't take payments online. */
+  onOpenPayments?: () => void;
 }
 
 export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(function EntryEditor(
-  { brandId, venueId, venueName, offerId, onClose, onOpenSettings },
+  { brandId, venueId, venueName, offerId, onClose, onOpenSettings, onOpenPayments },
   ref,
 ): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
@@ -594,6 +596,8 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
           vatText={settings === null ? null : vatLine(settings.vatMode, settings.vatRateBps)}
           onGoTo={(id) => goTo(ENTRY_STEPS.findIndex((s) => s.id === id))}
           onOpenSettings={onOpenSettings}
+          paymentsOff={state?.canCollectOnline === false || (offer?.warnings ?? []).includes("online_payments_off")}
+          onOpenPayments={onOpenPayments}
         />
       ) : null}
       {errorBanner}
@@ -1076,6 +1080,8 @@ function ReviewStep({
   vatText,
   onGoTo,
   onOpenSettings,
+  paymentsOff = false,
+  onOpenPayments,
 }: {
   draft: EntryDraft;
   offer: VenueOffer | null;
@@ -1083,6 +1089,8 @@ function ReviewStep({
   vatText: string | null;
   onGoTo: (id: EntryStepId) => void;
   onOpenSettings?: () => void;
+  paymentsOff?: boolean;
+  onOpenPayments?: () => void;
 }): React.ReactElement {
   const reasons = offer?.readiness ?? [];
   const items = [
@@ -1148,6 +1156,15 @@ function ReviewStep({
           })}
         </View>
       )}
+      {paymentsOff ? (
+        <Banner
+          tone="warning"
+          title="Online payments aren't set up"
+          body="Guests can't pay online until your brand's payments are set up. You can still publish; guests see entry as sold at the gate only."
+          action={onOpenPayments !== undefined ? { label: "Set up payments", onPress: onOpenPayments, testID: "entry-review-payments" } : undefined}
+          testID="entry-review-payments-off"
+        />
+      ) : null}
       <View style={styles.reviewList} testID="entry-review-summary">
         {items.map((item) => (
           <View key={item.key} style={styles.reviewRow}>

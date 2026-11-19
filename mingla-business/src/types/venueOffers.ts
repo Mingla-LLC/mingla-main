@@ -12,7 +12,7 @@ export type VatMode = "included" | "added" | "none";
 export type BookingState = "active" | "paused";
 
 /** Offer kinds whose host editor has shipped (mirror of `issue_4490_built_offer_kinds()`). */
-export const BUILT_OFFER_KINDS: ReadonlySet<VenueOfferKind> = new Set<VenueOfferKind>(["entry"]);
+export const BUILT_OFFER_KINDS: ReadonlySet<VenueOfferKind> = new Set<VenueOfferKind>(["entry", "group_package"]);
 
 export interface BusyRule {
   weekdays: number[];
@@ -54,6 +54,39 @@ export interface DateChangeRule {
   allowedUntilMinutesBefore: number | null;
   feeBps: number | null;
   maxChanges: number | null;
+  /** #4490 P3 — guests and extras can change until this many minutes before (packages). */
+  guestChangeUntilMinutesBefore?: number | null;
+}
+
+// #4490 P3 — group packages: what's included, extras, deposit.
+export type InclusionKind = "item" | "menu_item" | "staff" | "perk" | "choice";
+
+export interface PackageInclusion {
+  kind: InclusionKind;
+  label: string;
+  /** "guest" = one each, "booking" = one for the group. */
+  qtyPer: "guest" | "booking" | null;
+  menuItemId: string | null;
+  /** Staff: one for every N guests. */
+  staffRatio: number | null;
+  /** Guests choose one (2..10 options). */
+  options: string[] | null;
+}
+
+export interface PackageExtra {
+  id: string;
+  name: string;
+  priceMinor: number;
+  per: "booking" | "guest";
+}
+
+export type DepositKind = "none" | "percent" | "fixed";
+
+export interface PackageDeposit {
+  kind: DepositKind;
+  /** Percent in basis points (5000 = 50%) or a fixed amount in minor units. */
+  value: number | null;
+  balanceDueDaysBefore: number | null;
 }
 
 export interface VenueOfferPolicy {
@@ -105,6 +138,18 @@ export interface VenueOffer {
   schedule: VenueOfferSchedule | null;
   /** Every reason it can't go live yet (empty = ready). */
   readiness: string[];
+  /** #4490 P3 — things to know that never block publishing (`online_payments_off`). */
+  warnings: string[];
+  /** #4490 P3 — false while the brand cannot take payments online. */
+  canCollectOnline: boolean;
+  inclusions: PackageInclusion[];
+  extras: PackageExtra[];
+  staffRoleLabel: string | null;
+  deposit: PackageDeposit | null;
+  payModes: Array<"deposit" | "full">;
+  durationMinutes: number | null;
+  /** Package start times, "HH:MM". */
+  startTimes: string[];
 }
 
 export interface VenueBookingSettings {
@@ -119,6 +164,8 @@ export interface VenueBookingSettings {
 
 export interface VenueOffersState {
   venueId: string;
+  /** #4490 P3 (F4) — the brand can take payments online right now. */
+  canCollectOnline: boolean;
   flags: { reads: boolean; writes: boolean };
   settings: VenueBookingSettings | null;
   pools: VenueCapacityPool[];
@@ -174,6 +221,12 @@ export interface VenueDayBooking {
   paymentCollection: string | null;
   admittedCount: number;
   createdAt: string;
+  /** #4490 P3 (optional so P2 readers and fixtures stay valid). */
+  offerKind?: VenueOfferKind | null;
+  offerName?: string | null;
+  startsAt?: string | null;
+  balanceDueMinor?: number;
+  balanceDueAt?: string | null;
 }
 
 export interface VenueDay {
@@ -206,6 +259,12 @@ export interface CheckInPass {
   source: string | null;
   time: string | null;
   lastAdmittedAt: string | null;
+  /** #4490 P3 — money still owed on the booking (0 when paid up). */
+  balanceDueMinor?: number;
+  totalDueMinor?: number;
+  currencyCode?: string | null;
+  /** The booking can take money at the door (confirmed). */
+  canTakePayment?: boolean;
 }
 
 export interface CheckInTicket {
@@ -264,4 +323,161 @@ export interface GateSaleResult {
   currencyCode: string | null;
   reference: string | null;
   payUrl: string | null;
+}
+
+// ------------------------------------------------- #4490 P3 booking detail
+
+export type OfflineMethod = "cash" | "transfer" | "card_at_venue" | "other";
+
+export interface BookingPaymentRow {
+  attemptId: string;
+  stage: string;
+  state: string;
+  amountMinor: number;
+  at: string | null;
+}
+
+export interface BookingVenuePaymentRow {
+  paymentId: string;
+  amountMinor: number;
+  method: string;
+  paidOn: string | null;
+  note: string | null;
+  at: string | null;
+}
+
+export interface BookingChangeRow {
+  changeId: string;
+  kind: string;
+  fromGuests: number | null;
+  toGuests: number | null;
+  fromDate: string | null;
+  toDate: string | null;
+  extras: Array<{ name: string; qty: number }>;
+  amountMinor: number;
+  feeMinor: number;
+  refundMinor: number;
+  by: string | null;
+  createdAt: string | null;
+}
+
+export interface BookingExtraRow {
+  id: string;
+  name: string;
+  per: "booking" | "guest";
+  qty: number;
+  amountMinor: number;
+  addedAt: string | null;
+}
+
+export interface BookingChangeRules {
+  moveUntil: string | null;
+  guestChangeUntil: string | null;
+  maxChanges: number | null;
+  changesUsed: number;
+  feeBps: number;
+  canMove: boolean;
+  canChangeGuests: boolean;
+  canAddExtras: boolean;
+}
+
+export interface VenueBookingLine {
+  lineId: string;
+  priceOptionId: string | null;
+  name: string;
+  guests: number;
+  bookedGuests: number;
+  unit: string | null;
+  state: string;
+}
+
+export interface VenueBookingDetail {
+  groupId: string;
+  reference: string;
+  state: string;
+  version: number;
+  offerKind: VenueOfferKind | null;
+  offer: { id: string | null; name: string };
+  guest: { name: string; email: string | null; phone: string | null };
+  window: { windowId: string | null; localDate: string; startsAt: string | null; endsAt: string | null } | null;
+  lines: VenueBookingLine[];
+  currencyCode: string;
+  totalMinor: number;
+  totalDueMinor: number;
+  paidMinor: number;
+  paidOnlineMinor: number;
+  paidAtVenueMinor: number;
+  refundedMinor: number;
+  balanceDueMinor: number;
+  balanceDueAt: string | null;
+  depositMinor: number | null;
+  taxMinor: number;
+  vatMode: VatMode | null;
+  paymentCollection: string | null;
+  bookingSource: string | null;
+  extras: BookingExtraRow[];
+  answers: Record<string, string>;
+  inclusions: Array<{ kind: string; label: string; staffRatio: number | null }>;
+  changes: BookingChangeRow[];
+  changeRules: BookingChangeRules | null;
+  payments: BookingPaymentRow[];
+  paidAtVenue: BookingVenuePaymentRow[];
+  history: Array<{ type: string; by: string | null; at: string | null }>;
+  canManageMoney: boolean;
+  canChange: boolean;
+  admittedCount: number;
+  admits: number;
+  createdAt: string | null;
+  timezone: string;
+  /** For moving the day: the public venue address of the offer. */
+  brandSlug: string | null;
+  venueSlug: string | null;
+}
+
+export type BookingChangeAction = "change_guests" | "move_date" | "add_extras";
+
+export interface BookingChangeSummary {
+  action: BookingChangeAction | string;
+  fromGuests: number | null;
+  toGuests: number | null;
+  fromDate: string | null;
+  toDate: string | null;
+  toStartsAt: string | null;
+  priceDeltaMinor: number;
+  taxDeltaMinor: number;
+  feeMinor: number;
+  amountMinor: number;
+  totalDueBeforeMinor: number;
+  totalDueAfterMinor: number;
+  paidMinor: number;
+  refundMinor: number;
+  balanceAfterMinor: number;
+  currencyCode: string;
+  groupVersion: number | null;
+  replayed: boolean;
+}
+
+export interface DayClosurePreview {
+  localDate: string;
+  count: number;
+  guests: number;
+  paidMinor: number;
+  bookings: Array<{
+    groupId: string;
+    reference: string;
+    state: string;
+    guestName: string;
+    guests: number;
+    offerName: string;
+    paidMinor: number;
+  }>;
+}
+
+export interface StaffCancelPreview {
+  previewIds: string[];
+  previewHash: string;
+  paidMinor: number;
+  refundMinor: number;
+  keepMinor: number;
+  currencyCode: string;
 }

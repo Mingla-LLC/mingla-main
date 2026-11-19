@@ -41,6 +41,7 @@ import { Tabs } from "../../../ui/Tabs";
 import type { VenueModuleLeaveHandle } from "../../venueLeaveContract";
 import { venueScrollBottomPad } from "../../venueShellScroll";
 import { EntryEditor } from "./EntryEditor";
+import { PackageEditor } from "./PackageEditor";
 import {
   COMING_SOON_REASON,
   NEW_OFFER_CARDS,
@@ -76,7 +77,7 @@ export interface VenueOffersModuleProps {
   initialOfferId?: string | null;
 }
 
-type Editing = { offerId: string | null } | null;
+type Editing = { offerId: string | null; kind: "entry" | "group_package" } | null;
 type Confirm = { action: "pause" | "archive"; offer: VenueOffer } | null;
 
 export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersModuleProps>(function VenueOffersModule(
@@ -98,7 +99,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const manageOffer = useManageVenueOffer(brandId, venueId);
 
   const [tab, setTab] = useState<KindTab>("all");
-  const [editing, setEditing] = useState<Editing>(initialOfferId !== null ? { offerId: initialOfferId } : null);
+  const [editing, setEditing] = useState<Editing>(initialOfferId !== null ? { offerId: initialOfferId, kind: "entry" } : null);
   const [picker, setPicker] = useState(false);
   const [menu, setMenu] = useState<{ offer: VenueOffer; anchor: MenuAnchor | null } | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
@@ -127,6 +128,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const offers = useMemo(() => state?.offers ?? [], [state?.offers]);
   const entryOn = featuresQuery.data?.features.entry.enabled === true;
   const tablesOn = featuresQuery.data?.features.table_reservations.enabled === true;
+  const packagesOn = featuresQuery.data?.features.group_packages.enabled === true;
   const canEdit = access.canEditSpaces;
   const soldToday = useMemo(() => {
     const map: Record<string, number> = {};
@@ -142,16 +144,23 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const visible = tab === "all" ? offers : offers.filter((o) => o.kind === tab);
 
   const openEditor = useCallback(
-    (offerId: string | null): void => {
+    (offerId: string | null, kind: "entry" | "group_package" = "entry"): void => {
       setPicker(false);
       if (Platform.OS !== "web" && venueId !== null) {
-        router.push(`/venue/${venueId}/offer/${offerId ?? "new"}?kind=entry` as never);
+        router.push(`/venue/${venueId}/offer/${offerId ?? "new"}?kind=${kind}` as never);
         return;
       }
-      setEditing({ offerId });
+      setEditing({ offerId, kind });
     },
     [router, venueId],
   );
+  const openOffer = useCallback(
+    (offer: VenueOffer): void => openEditor(offer.id, offer.kind === "group_package" ? "group_package" : "entry"),
+    [openEditor],
+  );
+  const openPayments = useCallback((): void => {
+    if (brandId !== null) router.push(`/brand/${brandId}/payments` as never);
+  }, [brandId, router]);
 
   const pickCard = useCallback(
     (card: NewOfferCard): void => {
@@ -160,12 +169,34 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
         openEditor(null);
         return;
       }
+      if (card.key === "group_package") {
+        if (packagesOn) {
+          openEditor(null, "group_package");
+          return;
+        }
+        // #4490 P3 — an owner or admin turns Group packages on as they pick it.
+        setFeatureError(null);
+        setFeature.mutate(
+          { key: "group_packages", enabled: true, cascade: true },
+          {
+            onSuccess: () => {
+              setToast("Group packages turned on");
+              openEditor(null, "group_package");
+            },
+            onError: () => {
+              setPicker(false);
+              setFeatureError("Couldn't turn on Group packages. Try again, or switch it on in Settings.");
+            },
+          },
+        );
+        return;
+      }
       if (card.key === "table_reservations") {
         setPicker(false);
         onOpenModule?.(tablesOn ? "reservations" : "settings");
       }
     },
-    [onOpenModule, openEditor, tablesOn],
+    [onOpenModule, openEditor, packagesOn, setFeature, tablesOn],
   );
 
   const runStatus = useCallback(
@@ -206,18 +237,36 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   if (editing !== null) {
     return (
       <View style={styles.editorHost} testID="venue-offers-editor">
-        <EntryEditor
-          ref={editorRef}
-          brandId={brandId}
-          venueId={venueId}
-          venueName={venueName}
-          offerId={editing.offerId}
-          onOpenSettings={onOpenModule !== undefined ? () => onOpenModule("settings") : undefined}
-          onClose={(result) => {
-            setEditing(null);
-            if (result?.published === true) setToast(`${result.name} is live`);
-          }}
-        />
+        {(editing.offerId !== null ? offers.find((o) => o.id === editing.offerId)?.kind ?? editing.kind : editing.kind) === "group_package" ? (
+          <PackageEditor
+            ref={editorRef}
+            brandId={brandId}
+            venueId={venueId}
+            venueName={venueName}
+            offerId={editing.offerId}
+            onOpenSettings={onOpenModule !== undefined ? () => onOpenModule("settings") : undefined}
+            onOpenPayments={openPayments}
+            onOpenMenu={onOpenModule !== undefined ? () => onOpenModule("menu") : undefined}
+            onClose={(result) => {
+              setEditing(null);
+              if (result?.published === true) setToast(`${result.name} is live`);
+            }}
+          />
+        ) : (
+          <EntryEditor
+            ref={editorRef}
+            brandId={brandId}
+            venueId={venueId}
+            venueName={venueName}
+            offerId={editing.offerId}
+            onOpenSettings={onOpenModule !== undefined ? () => onOpenModule("settings") : undefined}
+            onOpenPayments={openPayments}
+            onClose={(result) => {
+              setEditing(null);
+              if (result?.published === true) setToast(`${result.name} is live`);
+            }}
+          />
+        )}
         {toast !== null ? (
           <React.Suspense fallback={null}>
             <LazyToast visible kind="success" message={toast} onDismiss={() => setToast(null)} />
@@ -249,11 +298,20 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const cardGrid = (onPick: (card: NewOfferCard) => void): React.ReactElement => (
     <View style={[styles.cardGrid, isWideDesktop ? styles.cardGridWide : null]}>
       {NEW_OFFER_CARDS.map((card) => {
-        const disabled = !card.built || !canEdit || (card.key === "entry" && !entryOn);
+        const disabled =
+          !card.built ||
+          !canEdit ||
+          (card.key === "entry" && !entryOn) ||
+          (card.key === "group_package" && !packagesOn && !access.canSwitchFeatures) ||
+          (card.key === "group_package" && setFeature.isPending);
         const helper = !card.built
           ? "Coming soon"
           : card.key === "entry" && !entryOn
             ? `${card.helper} Turn on Entry first.`
+            : card.key === "group_package" && !packagesOn
+              ? access.canSwitchFeatures
+                ? `${card.helper} Picking it turns on Group packages.`
+                : `${card.helper} Ask a brand owner or admin to turn on Group packages.`
             : card.key === "table_reservations"
               ? `${card.helper} ${tablesOn ? "Opens Reservations." : "Switch it on in Settings."}`
               : card.helper;
@@ -291,6 +349,15 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           }
           action={access.canSwitchFeatures ? { label: setFeature.isPending ? "Turning on…" : "Turn on Entry", onPress: turnOnEntry, testID: "venue-offers-turn-on-entry" } : undefined}
           testID="venue-offers-entry-off"
+        />
+      ) : null}
+      {!state.canCollectOnline ? (
+        <Banner
+          tone="warning"
+          title="Online payments aren't set up"
+          body="Guests can't pay online for your offers until your brand's payments are set up. Your offers still show, as sold at the venue only."
+          action={brandId !== null ? { label: "Set up payments", onPress: openPayments, testID: "venue-offers-payments" } : undefined}
+          testID="venue-offers-payments-off"
         />
       ) : null}
       {featureError !== null ? <Text style={styles.error}>{featureError}</Text> : null}
@@ -332,7 +399,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           anchor={menu.anchor}
           title={menu.offer.name}
           items={[
-            { key: "edit", label: "Edit", icon: "edit", onPress: () => openEditor(menu.offer.id), testID: "venue-offer-menu-edit" },
+            { key: "edit", label: "Edit", icon: "edit", onPress: () => openOffer(menu.offer), testID: "venue-offer-menu-edit" },
             ...(menu.offer.status === "live"
               ? [{ key: "pause", label: "Pause", icon: "pause" as const, onPress: () => setConfirm({ action: "pause", offer: menu.offer }), testID: "venue-offer-menu-pause" }]
               : menu.offer.status === "paused"
@@ -438,7 +505,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           return (
             <View key={offer.id} style={[styles.row, index > 0 || isWideDesktop ? styles.rowBorder : null]}>
               <Pressable
-                onPress={() => (canEdit ? openEditor(offer.id) : undefined)}
+                onPress={() => (canEdit ? openOffer(offer) : undefined)}
                 disabled={!canEdit}
                 accessibilityRole="button"
                 accessibilityLabel={`${offer.name}, ${kindLine(offer)}, ${priceColumn(offer, currency)}, ${status.label}${canEdit ? ". Edit" : ""}`}
@@ -447,7 +514,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
               >
                 <View style={[styles.colName, styles.nameCell]}>
                   <View style={styles.iconTile}>
-                    <Icon name={offer.options.some((o) => o.eligibility !== null) ? "shield" : "ticket"} size={18} color={color.text2} />
+                    <Icon name={offer.kind === "group_package" ? "users" : offer.options.some((o) => o.eligibility !== null) ? "shield" : "ticket"} size={18} color={color.text2} />
                   </View>
                   <View style={styles.cellText}>
                     <Text style={styles.rowTitle} numberOfLines={1}>{offer.name}</Text>

@@ -4,8 +4,8 @@
  * is on sale today and today's bookings (online and at the gate) with their
  * state. Phone: rows plus a pinned Scan a pass. Refreshes every 30 seconds.
  */
-import React from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { color, space, type } from "../../../../constants/designSystem";
@@ -19,8 +19,12 @@ import { GlassCard } from "../../../ui/GlassCard";
 import { KpiTile } from "../../../ui/KpiTile";
 import { Pill } from "../../../ui/Pill";
 import { Skeleton } from "../../../ui/Skeleton";
+import { dayDateLabel } from "../../../ui/fieldModels";
+import { IconChrome } from "../../../ui/IconChrome";
+import { VenueBookingSheet } from "../bookings/VenueBookingSheet";
+import { clockIn } from "../bookings/bookingModel";
 import { entryStyleLabel, money } from "../offers/offersModel";
-import { bookingSourceLabel, bookingStateLabel, dayHeadline, dayNumbers } from "./todayModel";
+import { bookingSourceLabel, bookingStateLabel, dayBalances, dayHeadline, dayNumbers, shiftDay } from "./todayModel";
 
 export interface VenueTodayModuleProps {
   brandId: string | null;
@@ -32,7 +36,10 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule }: VenueTodayM
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
   const currency = useBrandCurrency(brandId);
-  const dayQuery = useVenueDay(brandId, venueId, null, { live: true });
+  // #4490 P3 — any day, not only today: a Saturday's group bookings and balances.
+  const [date, setDate] = useState<string | null>(null);
+  const dayQuery = useVenueDay(brandId, venueId, date, { live: date === null });
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const openScan = (): void => {
     if (Platform.OS !== "web" && venueId !== null) {
@@ -67,15 +74,42 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule }: VenueTodayM
   const n = dayNumbers(day);
   const cur = n.currencyCode ?? currency;
   const onSale = day.offers.filter((o) => o.status === "live" || o.status === "paused");
-  const bookings = [...day.bookings].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const bookings = [...day.bookings].sort((a, b) =>
+    (a.startsAt ?? a.createdAt).localeCompare(b.startsAt ?? b.createdAt),
+  );
+  const isToday = date === null;
+  const balances = dayBalances(day);
+  const dayNav = (
+    <View style={styles.dayNav}>
+      <IconChrome
+        icon="chevL"
+        size={36}
+        accessibilityLabel="Day before"
+        onPress={() => setDate(shiftDay(day.localDate, -1))}
+        testID="venue-today-prev"
+      />
+      <Text style={styles.dayNavLabel}>{isToday ? "Today" : dayDateLabel(day.localDate)}</Text>
+      <IconChrome
+        icon="chevR"
+        size={36}
+        accessibilityLabel="Next day"
+        onPress={() => setDate(shiftDay(day.localDate, 1))}
+        testID="venue-today-next"
+      />
+      {!isToday ? (
+        <Button label="Back to today" variant="ghost" size="sm" onPress={() => setDate(null)} testID="venue-today-reset" />
+      ) : null}
+    </View>
+  );
 
   return (
     <View style={styles.host} testID="venue-today-module">
       <View style={styles.header}>
         <View style={styles.headText}>
-          <Text style={styles.title} accessibilityRole="header">Today</Text>
+          <Text style={styles.title} accessibilityRole="header">{isToday ? "Today" : dayDateLabel(day.localDate)}</Text>
           <Text style={styles.meta}>{dayHeadline(day)}</Text>
         </View>
+        {dayNav}
         {isWideDesktop ? (
           <Button label="Open check-in" variant="primary" size="sm" leadingIcon="scan" onPress={() => onOpenModule?.("checkin")} testID="venue-today-open-checkin" />
         ) : null}
@@ -101,11 +135,20 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule }: VenueTodayM
           testID="venue-today-tile-walkins"
         />
         <KpiTile
-          label="Taken today"
+          label={isToday ? "Taken today" : "Booked"}
           value={money(n.takenMinor, cur)}
           sub={n.takenAtGateMinor > 0 ? `${money(n.takenAtGateMinor, cur)} at the gate` : "Online and at the gate"}
           style={styles.tile}
         />
+        {balances.count > 0 ? (
+          <KpiTile
+            label="Balances to collect"
+            value={money(balances.owedMinor, cur)}
+            sub={`${balances.count} ${balances.count === 1 ? "group" : "groups"}${balances.overdue > 0 ? ` · ${balances.overdue} overdue` : ""}`}
+            style={styles.tile}
+            testID="venue-today-tile-balances"
+          />
+        ) : null}
       </View>
 
       <GlassCard variant="base" padding={0} contentStyle={styles.listCard} testID="venue-today-on-sale">
@@ -129,31 +172,45 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule }: VenueTodayM
       </GlassCard>
 
       <GlassCard variant="base" padding={0} contentStyle={styles.listCard} testID="venue-today-bookings">
-        <Text style={styles.sectionLabel}>Bookings for today</Text>
+        <Text style={styles.sectionLabel}>{isToday ? "Bookings for today" : `Bookings for ${dayDateLabel(day.localDate)}`}</Text>
         {bookings.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Nothing booked today</Text>
-            <Text style={styles.meta}>Online bookings and gate sales for today show here.</Text>
+            <Text style={styles.emptyTitle}>{isToday ? "Nothing booked today" : "Nothing booked that day"}</Text>
+            <Text style={styles.meta}>Online bookings, group packages and gate sales show here.</Text>
           </View>
         ) : (
           bookings.map((b) => {
             const st = bookingStateLabel(b);
+            const start = clockIn(b.startsAt ?? null, day.timezone);
+            const owed = (b.balanceDueMinor ?? 0) > 0 && b.state === "confirmed";
+            const overdue = owed && b.balanceDueAt != null && Date.parse(b.balanceDueAt) < Date.now();
             return (
-              <View key={b.groupId} style={[styles.row, styles.rowBorder]}>
+              <Pressable
+                key={b.groupId}
+                onPress={() => setOpenGroup(b.groupId)}
+                accessibilityRole="button"
+                accessibilityLabel={`${b.guestName}, ${b.guests} guests, ${st.label}${owed ? `, ${money(b.balanceDueMinor ?? 0, b.currencyCode ?? cur)} still to pay` : ""}. Open booking`}
+                style={({ pressed }) => [styles.row, styles.rowBorder, pressed ? styles.pressed : null]}
+                testID={`venue-today-booking-${b.groupId}`}
+              >
+                {start !== null && b.offerKind === "group_package" ? <Text style={styles.time}>{start}</Text> : null}
                 <View style={styles.cellText}>
                   <Text style={styles.rowTitle} numberOfLines={1}>{b.guestName}</Text>
-                  <Text style={styles.meta} numberOfLines={1}>
+                  <Text style={styles.meta} numberOfLines={2}>
+                    {b.offerName ? `${b.offerName} · ` : ""}
                     {b.reference} · {bookingSourceLabel(b)} · {money(b.totalMinor, b.currencyCode ?? cur)}
+                    {owed ? ` · ${money(b.balanceDueMinor ?? 0, b.currencyCode ?? cur)} to pay` : ""}
                   </Text>
                 </View>
                 <Text style={styles.guests}>{b.guests}</Text>
-                <Pill variant={st.variant}>{st.label}</Pill>
-              </View>
+                {owed ? <Pill variant={overdue ? "error" : "warn"}>{overdue ? "Overdue" : "Balance due"}</Pill> : <Pill variant={st.variant}>{st.label}</Pill>}
+              </Pressable>
             );
           })
         )}
       </GlassCard>
 
+      <VenueBookingSheet brandId={brandId} venueId={venueId} groupId={openGroup} onClose={() => setOpenGroup(null)} />
       {!isWideDesktop ? (
         <View style={styles.pinned}>
           <Button label="Scan a pass" variant="primary" size="lg" fullWidth leadingIcon="scan" onPress={openScan} testID="venue-today-scan" />
@@ -184,4 +241,8 @@ const styles = StyleSheet.create({
   empty: { gap: space[1], paddingHorizontal: space[4], paddingBottom: space[4] },
   emptyTitle: { ...type.row, color: color.text1 },
   pinned: { paddingTop: space[2] },
+  pressed: { backgroundColor: color.fill.pressed },
+  time: { ...type.row, color: color.text1, fontVariant: ["tabular-nums"], minWidth: 48 },
+  dayNav: { flexDirection: "row", alignItems: "center", gap: space[1] },
+  dayNavLabel: { ...type.small, color: color.text1, minWidth: 96, textAlign: "center" },
 });

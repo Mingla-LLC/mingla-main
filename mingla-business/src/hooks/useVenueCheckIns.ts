@@ -58,7 +58,7 @@ function useInvalidateDoor(brandId: string | null, venueId: string | null): () =
 }
 
 export type DoorAction =
-  | { kind: "scan"; qrPayload: string; idChecked?: boolean }
+  | { kind: "scan"; qrPayload: string; idChecked?: boolean; admitCount?: number }
   | { kind: "admit"; passId: string; count?: number; idChecked?: boolean }
   | { kind: "undo"; logId: string };
 
@@ -71,7 +71,7 @@ export function useDoorAction(
     mutationFn: (action) => {
       if (venueId === null) throw new Error("venue_required");
       if (action.kind === "scan") {
-        return scanPass({ venueId, qrPayload: action.qrPayload, idChecked: action.idChecked });
+        return scanPass({ venueId, qrPayload: action.qrPayload, idChecked: action.idChecked, admitCount: action.admitCount });
       }
       if (action.kind === "admit") {
         return admitPass({ venueId, passId: action.passId, count: action.count, idChecked: action.idChecked });

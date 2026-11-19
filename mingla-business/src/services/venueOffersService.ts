@@ -36,6 +36,15 @@ import type {
   VenueOfferKind,
   VenueOffersState,
   VenuePriceOption,
+  BookingChangeAction,
+  BookingChangeSummary,
+  DayClosurePreview,
+  OfflineMethod,
+  PackageDeposit,
+  PackageExtra,
+  PackageInclusion,
+  StaffCancelPreview,
+  VenueBookingDetail,
 } from "../types/venueOffers";
 
 // ---------------------------------------------------------------------------
@@ -157,6 +166,41 @@ function mapStyle(v: unknown): EntryStyle | null {
   return s === "walk_in" || s === "day_pass" || s === "timed_session" ? s : null;
 }
 
+function mapInclusion(v: unknown): PackageInclusion {
+  const i = obj(v);
+  const kind = str(i.kind, "item");
+  const qty = str(i.qtyPer ?? i.qty_per);
+  return {
+    kind: kind === "menu_item" || kind === "staff" || kind === "perk" || kind === "choice" ? kind : "item",
+    label: str(i.label),
+    qtyPer: qty === "guest" || qty === "booking" ? qty : null,
+    menuItemId: strOrNull(i.menuItemId ?? i.menu_item_id),
+    staffRatio: numOrNull(i.staffRatio ?? i.staff_ratio),
+    options: Array.isArray(i.options) ? i.options.filter((x): x is string => typeof x === "string") : null,
+  };
+}
+
+function mapExtra(v: unknown): PackageExtra {
+  const e = obj(v);
+  return {
+    id: str(e.id),
+    name: str(e.name),
+    priceMinor: num(e.priceMinor ?? e.price_minor),
+    per: str(e.per) === "guest" ? "guest" : "booking",
+  };
+}
+
+function mapDeposit(v: unknown): PackageDeposit | null {
+  if (v === null || v === undefined) return null;
+  const d = obj(v);
+  const kind = str(d.kind, "none");
+  return {
+    kind: kind === "percent" || kind === "fixed" ? kind : "none",
+    value: numOrNull(d.value),
+    balanceDueDaysBefore: numOrNull(d.balanceDueDaysBefore),
+  };
+}
+
 export function mapOffer(v: unknown): VenueOffer {
   const o = obj(v);
   const policy = o.policy === null || o.policy === undefined ? null : obj(o.policy);
@@ -197,6 +241,7 @@ export function mapOffer(v: unknown): VenueOffer {
                     allowedUntilMinutesBefore: numOrNull(change.allowedUntilMinutesBefore),
                     feeBps: numOrNull(change.feeBps),
                     maxChanges: numOrNull(change.maxChanges),
+                    guestChangeUntilMinutesBefore: numOrNull(change.guestChangeUntilMinutesBefore),
                   },
           },
     schedule:
@@ -214,6 +259,15 @@ export function mapOffer(v: unknown): VenueOffer {
             endDate: strOrNull(schedule.endDate),
           },
     readiness: arr(o.readiness).filter((r): r is string => typeof r === "string"),
+    warnings: arr(o.warnings).filter((r): r is string => typeof r === "string"),
+    canCollectOnline: o.canCollectOnline !== false,
+    inclusions: arr(o.inclusions).map(mapInclusion).filter((i) => i.label.length > 0),
+    extras: arr(o.extras).map(mapExtra).filter((e) => e.id.length > 0),
+    staffRoleLabel: strOrNull(o.staffRoleLabel),
+    deposit: mapDeposit(o.deposit),
+    payModes: arr(o.payModes).filter((m): m is "deposit" | "full" => m === "deposit" || m === "full"),
+    durationMinutes: numOrNull(o.durationMinutes),
+    startTimes: arr(o.startTimes).filter((t): t is string => typeof t === "string" && /^\d{2}:\d{2}$/.test(t)),
   };
 }
 
@@ -237,6 +291,7 @@ export function mapOffersState(v: unknown): VenueOffersState {
   const flags = obj(s.flags);
   return {
     venueId: str(s.venueId),
+    canCollectOnline: s.canCollectOnline !== false,
     flags: { reads: flags.reads === true, writes: flags.writes === true },
     settings: mapBookingSettings(s.settings),
     pools: arr(s.pools).map(mapPool).filter((p) => !p.archived),
@@ -437,6 +492,11 @@ export function mapVenueDay(v: unknown): VenueDay {
         paymentCollection: strOrNull(r.paymentCollection),
         admittedCount: num(r.admittedCount),
         createdAt: str(r.createdAt),
+        offerKind: r.offerKind === undefined || r.offerKind === null ? null : mapKind(r.offerKind),
+        offerName: strOrNull(r.offerName),
+        startsAt: strOrNull(r.startsAt),
+        balanceDueMinor: num(r.balanceDueMinor),
+        balanceDueAt: strOrNull(r.balanceDueAt),
       };
     }),
   };
@@ -500,6 +560,10 @@ export function mapPass(v: unknown): CheckInPass {
     source: strOrNull(p.source),
     time: strOrNull(p.time),
     lastAdmittedAt: strOrNull(p.lastAdmittedAt),
+    balanceDueMinor: num(p.balanceDueMinor),
+    totalDueMinor: num(p.totalDueMinor),
+    currencyCode: strOrNull(p.currencyCode),
+    canTakePayment: p.canTakePayment === true,
   };
 }
 
@@ -560,6 +624,8 @@ export async function scanPass(input: {
   venueId: string;
   qrPayload: string;
   idChecked?: boolean;
+  /** #4490 P3 — how many of a group go in now (default: everyone left). */
+  admitCount?: number;
 }): Promise<ScanOutcome> {
   return mapScanOutcome(
     await checkIn<unknown>({
@@ -567,6 +633,7 @@ export async function scanPass(input: {
       venueId: input.venueId,
       qrPayload: input.qrPayload,
       idChecked: input.idChecked === true ? true : undefined,
+      admitCount: input.admitCount,
     }),
   );
 }
@@ -637,4 +704,328 @@ export function policyPayload(ladder: RefundRung[], change: DateChangeRule | nul
             ...(change.maxChanges !== null ? { maxChanges: change.maxChanges } : {}),
           },
   };
+}
+
+// ---------------------------------------------------------------------------
+// #4490 P3 — group packages (host editor)
+// ---------------------------------------------------------------------------
+
+export type ManagePackageAction = "set_package" | "set_payment" | "set_start_times" | "set_change_rules";
+
+export async function manageVenuePackage(input: {
+  venueId: string;
+  action: ManagePackageAction;
+  payload: Record<string, unknown>;
+  expectedVersion: number;
+}): Promise<VenueOffer> {
+  const { data, error } = await supabase.rpc("issue_4490_manage_package", {
+    p_action: input.action,
+    p_venue_id: input.venueId,
+    p_payload: input.payload,
+    p_expected_version: input.expectedVersion,
+    p_idempotency_key: `package-${input.action}-${randomId()}`,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapOffer(data);
+}
+
+// ---------------------------------------------------------------------------
+// #4490 P3 — one booking with its money (host)
+// ---------------------------------------------------------------------------
+
+export function mapVenueBooking(v: unknown): VenueBookingDetail {
+  const b = obj(v);
+  const offer = obj(b.offer);
+  const guest = obj(b.guest);
+  const win = b.window === null || b.window === undefined ? null : obj(b.window);
+  const rules = b.changeRules === null || b.changeRules === undefined ? null : obj(b.changeRules);
+  const passes = arr(b.passes).map(obj);
+  const answers: Record<string, string> = {};
+  for (const [k, val] of Object.entries(obj(b.answers))) {
+    if (typeof val === "string") answers[k] = val;
+  }
+  const vat = str(b.vatMode);
+  return {
+    groupId: str(b.groupId),
+    reference: str(b.reference),
+    state: str(b.state),
+    version: num(b.version, 1),
+    offerKind: b.offerKind === undefined || b.offerKind === null ? null : mapKind(b.offerKind),
+    offer: { id: strOrNull(offer.id), name: str(offer.name) },
+    guest: { name: str(guest.name, "Guest"), email: strOrNull(guest.email), phone: strOrNull(guest.phone) },
+    window:
+      win === null
+        ? null
+        : {
+            windowId: strOrNull(win.windowId),
+            localDate: str(win.localDate),
+            startsAt: strOrNull(win.startsAt),
+            endsAt: strOrNull(win.endsAt),
+          },
+    lines: arr(b.lines).map((l) => {
+      const r = obj(l);
+      return {
+        lineId: str(r.lineId),
+        priceOptionId: strOrNull(r.priceOptionId),
+        name: str(r.name),
+        guests: num(r.guests),
+        bookedGuests: num(r.bookedGuests, num(r.guests)),
+        unit: strOrNull(r.unit),
+        state: str(r.state),
+      };
+    }),
+    currencyCode: str(b.currencyCode, "NGN"),
+    totalMinor: num(b.totalMinor),
+    totalDueMinor: num(b.totalDueMinor, num(b.totalMinor)),
+    paidMinor: num(b.paidMinor),
+    paidOnlineMinor: num(b.paidOnlineMinor, num(b.paidMinor)),
+    paidAtVenueMinor: num(b.paidAtVenueMinor),
+    refundedMinor: num(b.refundedMinor),
+    balanceDueMinor: num(b.balanceDueMinor),
+    balanceDueAt: strOrNull(b.balanceDueAt),
+    depositMinor: numOrNull(b.depositMinor),
+    taxMinor: num(b.taxMinor),
+    vatMode: vat === "added" || vat === "included" || vat === "none" ? vat : null,
+    paymentCollection: strOrNull(b.paymentCollection),
+    bookingSource: strOrNull(b.bookingSource),
+    extras: arr(b.extras).map((x) => {
+      const e = obj(x);
+      return {
+        id: str(e.id),
+        name: str(e.name),
+        per: str(e.per) === "guest" ? ("guest" as const) : ("booking" as const),
+        qty: num(e.qty, 1),
+        amountMinor: num(e.amountMinor),
+        addedAt: strOrNull(e.addedAt),
+      };
+    }),
+    answers,
+    inclusions: arr(b.inclusions).map((x) => {
+      const i = obj(x);
+      return { kind: str(i.kind, "item"), label: str(i.label), staffRatio: numOrNull(i.staffRatio) };
+    }),
+    changes: arr(b.changes).map((x) => {
+      const c = obj(x);
+      return {
+        changeId: str(c.changeId),
+        kind: str(c.kind),
+        fromGuests: numOrNull(c.fromGuests),
+        toGuests: numOrNull(c.toGuests),
+        fromDate: strOrNull(c.fromDate),
+        toDate: strOrNull(c.toDate),
+        extras: arr(c.extras).map((e) => ({ name: str(obj(e).name), qty: num(obj(e).qty, 1) })),
+        amountMinor: num(c.amountMinor),
+        feeMinor: num(c.feeMinor),
+        refundMinor: num(c.refundMinor),
+        by: strOrNull(c.by),
+        createdAt: strOrNull(c.createdAt),
+      };
+    }),
+    changeRules:
+      rules === null
+        ? null
+        : {
+            moveUntil: strOrNull(rules.moveUntil),
+            guestChangeUntil: strOrNull(rules.guestChangeUntil),
+            maxChanges: numOrNull(rules.maxChanges),
+            changesUsed: num(rules.changesUsed),
+            feeBps: num(rules.feeBps),
+            canMove: rules.canMove === true,
+            canChangeGuests: rules.canChangeGuests === true,
+            canAddExtras: rules.canAddExtras === true,
+          },
+    payments: arr(b.payments).map((x) => {
+      const p = obj(x);
+      return { attemptId: str(p.attemptId), stage: str(p.stage), state: str(p.state), amountMinor: num(p.amountMinor), at: strOrNull(p.at) };
+    }),
+    paidAtVenue: arr(b.paidAtVenue).map((x) => {
+      const p = obj(x);
+      return {
+        paymentId: str(p.paymentId),
+        amountMinor: num(p.amountMinor),
+        method: str(p.method),
+        paidOn: strOrNull(p.paidOn),
+        note: strOrNull(p.note),
+        at: strOrNull(p.at),
+      };
+    }),
+    history: arr(b.history).map((x) => {
+      const h = obj(x);
+      return { type: str(h.type), by: strOrNull(h.by), at: strOrNull(h.at) };
+    }),
+    canManageMoney: b.canManageMoney === true,
+    canChange: b.canChange === true,
+    admittedCount: passes.reduce((n, p) => n + num(p.admittedCount), 0),
+    admits: passes.reduce((n, p) => n + num(p.admits), 0),
+    createdAt: strOrNull(b.createdAt),
+    timezone: str(obj(b.venue).timezone, "Africa/Lagos"),
+    brandSlug: strOrNull(obj(b.venue).brandSlug),
+    venueSlug: strOrNull(obj(b.venue).slug),
+  };
+}
+
+export async function fetchVenueBooking(groupId: string): Promise<VenueBookingDetail> {
+  const { data, error } = await supabase.rpc("issue_4490_get_booking", { p_group_id: groupId });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapVenueBooking(data);
+}
+
+export function mapChangeSummary(v: unknown): BookingChangeSummary {
+  const c = obj(v);
+  return {
+    action: str(c.action),
+    fromGuests: numOrNull(c.fromGuests),
+    toGuests: numOrNull(c.toGuests),
+    fromDate: strOrNull(c.fromDate),
+    toDate: strOrNull(c.toDate),
+    toStartsAt: strOrNull(c.toStartsAt),
+    priceDeltaMinor: num(c.priceDeltaMinor),
+    taxDeltaMinor: num(c.taxDeltaMinor),
+    feeMinor: num(c.feeMinor),
+    amountMinor: num(c.amountMinor),
+    totalDueBeforeMinor: num(c.totalDueBeforeMinor),
+    totalDueAfterMinor: num(c.totalDueAfterMinor),
+    paidMinor: num(c.paidMinor),
+    refundMinor: num(c.refundMinor),
+    balanceAfterMinor: num(c.balanceAfterMinor),
+    currencyCode: str(c.currencyCode, "NGN"),
+    groupVersion: numOrNull(c.groupVersion),
+    replayed: c.replayed === true,
+  };
+}
+
+export async function changeVenueBooking(input: {
+  groupId: string;
+  action: BookingChangeAction;
+  payload: Record<string, unknown>;
+  preview: boolean;
+  expectedVersion?: number | null;
+}): Promise<BookingChangeSummary> {
+  const { data, error } = await supabase.rpc("issue_4490_change_booking", {
+    p_group_id: input.groupId,
+    p_action: input.action,
+    p_payload: input.payload,
+    p_preview: input.preview,
+    p_expected_version: input.preview ? null : (input.expectedVersion ?? null),
+    p_idempotency_key: input.preview ? null : `booking-change-${randomId()}`,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapChangeSummary(data);
+}
+
+export async function recordOfflinePayment(input: {
+  groupId: string;
+  amountMinor: number;
+  method: OfflineMethod;
+  paidOn: string | null;
+  note: string | null;
+}): Promise<{ balanceMinor: number }> {
+  const { data, error } = await supabase.rpc("issue_4490_record_offline_payment", {
+    p_group_id: input.groupId,
+    p_amount_minor: input.amountMinor,
+    p_method: input.method,
+    p_paid_on: input.paidOn,
+    p_note: input.note,
+    p_idempotency_key: `offline-payment-${randomId()}`,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return { balanceMinor: num(obj(data).balanceMinor) };
+}
+
+export async function sendBookingReminder(groupId: string): Promise<{ sent: boolean; balanceMinor: number }> {
+  const { data, error } = await supabase.rpc("issue_4490_send_booking_reminder", {
+    p_group_id: groupId,
+    p_idempotency_key: `booking-reminder-${randomId()}`,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  const d = obj(data);
+  return { sent: d.sent !== false, balanceMinor: num(d.balanceMinor) };
+}
+
+export async function fetchDayClosurePreview(venueId: string, localDate: string): Promise<DayClosurePreview> {
+  const { data, error } = await supabase.rpc("issue_4490_preview_day_closure", {
+    p_venue_id: venueId,
+    p_local_date: localDate,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  const d = obj(data);
+  return {
+    localDate: str(d.localDate, localDate),
+    count: num(d.count),
+    guests: num(d.guests),
+    paidMinor: num(d.paidMinor),
+    bookings: arr(d.bookings).map((x) => {
+      const r = obj(x);
+      return {
+        groupId: str(r.groupId),
+        reference: str(r.reference),
+        state: str(r.state),
+        guestName: str(r.guestName, "Guest"),
+        guests: num(r.guests),
+        offerName: str(r.offerName),
+        paidMinor: num(r.paidMinor),
+      };
+    }),
+  };
+}
+
+function mapStaffCancelPreview(v: unknown): StaffCancelPreview {
+  const d = obj(v);
+  return {
+    previewIds: arr(d.previewIds).filter((x): x is string => typeof x === "string"),
+    previewHash: str(d.previewHash),
+    paidMinor: num(d.paidMinor),
+    refundMinor: num(d.refundMinor),
+    keepMinor: num(d.keepMinor),
+    currencyCode: str(d.currencyCode, "NGN"),
+  };
+}
+
+export async function staffCancelPreview(groupId: string): Promise<StaffCancelPreview> {
+  const { data, error } = await supabase.rpc("issue_4490_cancel_preview", { p_group_id: groupId });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapStaffCancelPreview(data);
+}
+
+export async function staffCancelBooking(input: {
+  preview: StaffCancelPreview;
+  reason: string;
+}): Promise<{ refundMinor: number }> {
+  const { data, error } = await supabase.rpc("issue_4490_cancel", {
+    p_preview_ids: input.preview.previewIds,
+    p_preview_hash: input.preview.previewHash,
+    p_idempotency_key: `staff-cancel-${randomId()}`,
+    p_reason: input.reason,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return { refundMinor: num(obj(data).refundMinor) };
+}
+
+// Door money (edge `venue-check-in`).
+export async function takeBalanceAtDoor(input: {
+  venueId: string;
+  groupId: string;
+  amountMinor: number;
+  method: OfflineMethod;
+}): Promise<{ balanceMinor: number }> {
+  const data = obj(
+    await checkIn<unknown>({
+      action: "take_balance",
+      venueId: input.venueId,
+      groupId: input.groupId,
+      amountMinor: input.amountMinor,
+      method: input.method,
+      idempotencyKey: `door-balance-${randomId()}`,
+    }),
+  );
+  return { balanceMinor: num(data.balanceMinor) };
+}
+
+export async function balancePayLink(input: { venueId: string; groupId: string }): Promise<{
+  payUrl: string;
+  balanceMinor: number;
+  currencyCode: string | null;
+}> {
+  const data = obj(await checkIn<unknown>({ action: "balance_link", venueId: input.venueId, groupId: input.groupId }));
+  return { payUrl: str(data.payUrl), balanceMinor: num(data.balanceMinor), currencyCode: strOrNull(data.currencyCode) };
 }

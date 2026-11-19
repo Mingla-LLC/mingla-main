@@ -16,6 +16,10 @@ export interface VenueEditAccess {
   canEditSpaces: boolean;
   canSwitchFeatures: boolean;
   canEditWeeklyHours: boolean;
+  /** #4490 P3 — take money, mark as paid (rank >= finance_manager or venue.manage_money). */
+  canManageMoney: boolean;
+  /** #4490 P3 — change guests, move a day, cancel (rank >= event_manager or venue.manage_bookings). */
+  canManageBookings: boolean;
 }
 
 export function useVenueEditAccess(brandId: string | null, venueId: string | null): VenueEditAccess {
@@ -23,8 +27,11 @@ export function useVenueEditAccess(brandId: string | null, venueId: string | nul
   const access = useMyVenueAccess(venueId);
   const scopedOffers =
     access.data?.scoped === true && access.data.capabilities.includes("venue.manage_offers");
+  const caps = access.data?.scoped === true ? access.data.capabilities : [];
   return {
     resolved: access.isFetched,
+    canManageMoney: rank >= BRAND_ROLE_RANK.finance_manager || caps.includes("venue.manage_money"),
+    canManageBookings: rank >= BRAND_ROLE_RANK.event_manager || caps.includes("venue.manage_bookings"),
     canEditSpaces: rank >= BRAND_ROLE_RANK.event_manager || scopedOffers,
     canSwitchFeatures: rank >= BRAND_ROLE_RANK.brand_admin,
     canEditWeeklyHours: rank >= BRAND_ROLE_RANK.brand_admin,

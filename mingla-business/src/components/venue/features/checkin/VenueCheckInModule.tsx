@@ -21,6 +21,7 @@ import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
 import { useDoorAction, useVenueCheckIns } from "../../../../hooks/useVenueCheckIns";
 import { useVenueDay } from "../../../../hooks/useVenueDay";
 import { useVenueOffers } from "../../../../hooks/useVenueOffers";
+import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
 import type { CheckInPass, CheckInTicket, ScanOutcome, VenueOffer } from "../../../../types/venueOffers";
 import { Banner } from "../../../ui/Banner";
@@ -40,6 +41,9 @@ import { dayHeadline } from "../today/todayModel";
 import { ScanCamera, scanCameraSupported } from "./ScanCamera";
 import { checkInResultView, doorErrorCopy, matchTypedCode, type CheckInAction } from "./venueCheckInResult";
 import { VenueGateSale } from "./VenueGateSale";
+import { VenueGroupCheckIn, needsGroupStep, passIdFromCode } from "./VenueGroupCheckIn";
+import { VenueBookingSheet } from "../bookings/VenueBookingSheet";
+import { money } from "../offers/offersModel";
 
 const LazyToast = React.lazy(async () => {
   const mod = await import("../../../ui/Toast");
@@ -66,6 +70,7 @@ function timeOf(iso: string | null, timezone?: string): string | null {
 
 function passStatus(p: CheckInPass, timezone: string): { label: string; variant: "ok" | "warn" | "info" | "muted" | "error" } {
   if (p.status !== "valid") return { label: "Cancelled", variant: "error" };
+  if ((p.balanceDueMinor ?? 0) > 0 && p.admittedCount < p.admits) return { label: "Balance due", variant: "warn" };
   if (p.admittedCount >= p.admits) return { label: `In · ${timeOf(p.lastAdmittedAt, timezone) ?? "today"}`, variant: "ok" };
   if (p.admittedCount > 0) return { label: `${p.admittedCount} of ${p.admits} in`, variant: "info" };
   if (p.idCheckLabel !== null) return { label: "Check ID", variant: "warn" };
@@ -85,6 +90,10 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const dayQuery = useVenueDay(brandId, venueId, null, { live: true });
   const offersQuery = useVenueOffers(brandId, venueId);
   const door = useDoorAction(brandId, venueId);
+  const access = useVenueEditAccess(brandId, venueId);
+  // #4490 P3 — a group, or a booking that still owes money, gets a step before going in.
+  const [groupStep, setGroupStep] = useState<{ passId: string; qr: string | null } | null>(null);
+  const [openBooking, setOpenBooking] = useState<string | null>(null);
 
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -175,10 +184,20 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
       }
       setCode("");
       if (match.kind === "qr") {
+        const id = passIdFromCode(match.payload);
+        const known = id === null ? undefined : (list?.passes ?? []).find((p) => p.passId === id);
+        if (known !== undefined && needsGroupStep(known)) {
+          setGroupStep({ passId: known.passId, qr: match.payload });
+          return;
+        }
         setLastQr(match.payload);
         runDoor({ kind: "scan", qrPayload: match.payload });
       } else {
         setLastQr(null);
+        if (needsGroupStep(match.pass)) {
+          setGroupStep({ passId: match.pass.passId, qr: null });
+          return;
+        }
         runDoor({ kind: "admit", passId: match.pass.passId });
       }
     },
@@ -223,6 +242,14 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
     (pass: CheckInPass): void => {
       setRowError(null);
       setLastQr(null);
+      if (needsGroupStep(pass)) {
+        setOutcome(null);
+        setScanError(null);
+        setCameraOn(false);
+        setGroupStep({ passId: pass.passId, qr: null });
+        setScanOpen(true);
+        return;
+      }
       runDoor({ kind: "admit", passId: pass.passId }, (o) => {
         if (o.result === "admitted") setToast(`${pass.holderName} checked in`);
         else setScanOpen(true);
@@ -278,14 +305,45 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
             ? "Sell walk-in entry"
             : "Close";
   const toneColor = view === null ? color.text3 : view.tone === "success" ? color.success : view.tone === "warning" ? color.warning : view.tone === "danger" ? color.danger : color.text3;
+  const groupPass = groupStep === null ? null : list.passes.find((p) => p.passId === groupStep.passId) ?? null;
   const scanBody = (
     <View style={styles.scanBody} testID="venue-checkin-scan">
-      {view === null ? (
+      {view === null && groupPass !== null && groupStep !== null ? (
+        <VenueGroupCheckIn
+          pass={groupPass}
+          brandId={brandId}
+          venueId={venueId}
+          currency={currency}
+          canManageMoney={access.canManageMoney}
+          admitting={door.isPending}
+          onAdmit={(count) => {
+            const step = groupStep;
+            if (step.qr !== null) {
+              setLastQr(step.qr);
+              runDoor({ kind: "scan", qrPayload: step.qr, admitCount: count }, () => setGroupStep(null));
+            } else {
+              runDoor({ kind: "admit", passId: groupPass.passId, count }, () => setGroupStep(null));
+            }
+          }}
+          onOpenBooking={(groupId) => setOpenBooking(groupId)}
+          onClose={() => {
+            setGroupStep(null);
+            setScanOpen(false);
+          }}
+          onToast={setToast}
+        />
+      ) : view === null ? (
         <>
           {cameraOn ? (
             <ScanCamera
-              active={scanOpen && view === null}
+              active={scanOpen && view === null && groupStep === null}
               onCode={(payload) => {
+                const id = passIdFromCode(payload);
+                const known = id === null ? undefined : (list?.passes ?? []).find((p) => p.passId === id);
+                if (known !== undefined && needsGroupStep(known)) {
+                  setGroupStep({ passId: known.passId, qr: payload });
+                  return;
+                }
                 setLastQr(payload);
                 runDoor({ kind: "scan", qrPayload: payload });
               }}
@@ -403,6 +461,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
                   {p.reference !== null ? ` · ${p.reference}` : ""}
                   {p.source === "gate" || p.source === "gate_sale" ? " · gate sale" : ""}
                   {p.idCheckLabel !== null ? ` · ${p.idCheckLabel}` : ""}
+                  {(p.balanceDueMinor ?? 0) > 0 ? ` · Balance due ${money(p.balanceDueMinor ?? 0, p.currencyCode ?? currency)}` : ""}
                 </Text>
               </View>
               <Text style={styles.guests}>
@@ -411,7 +470,13 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
               {isWideDesktop ? <Pill variant={st.variant}>{st.label}</Pill> : null}
               {canAdmit ? (
                 <Button
-                  label={p.idCheckLabel !== null && p.admittedCount === 0 ? "Check ID" : "Check in"}
+                  label={
+                    (p.balanceDueMinor ?? 0) > 0
+                      ? `Take ${money(p.balanceDueMinor ?? 0, p.currencyCode ?? currency)}`
+                      : p.idCheckLabel !== null && p.admittedCount === 0
+                        ? "Check ID"
+                        : "Check in"
+                  }
                   variant="secondary"
                   size="sm"
                   onPress={() => admitRow(p)}
@@ -488,6 +553,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
           setScanOpen(false);
           setOutcome(null);
           setCameraOn(false);
+          setGroupStep(null);
         }}
         snapPoint={0.85}
         presentation={isWideDesktop ? "panel" : undefined}
@@ -495,11 +561,12 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
       >
         <View style={styles.sheetBody}>
           <PickerSheetHead
-            title="Scan a pass"
+            title={groupStep !== null ? "Check in a group" : "Scan a pass"}
             onClose={() => {
               setScanOpen(false);
               setOutcome(null);
               setCameraOn(false);
+              setGroupStep(null);
             }}
             plain={isWideDesktop}
             testID="venue-checkin-scan-head"
@@ -509,6 +576,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
           </ScrollView>
         </View>
       </Sheet>
+      <VenueBookingSheet brandId={brandId} venueId={venueId} groupId={openBooking} onClose={() => setOpenBooking(null)} />
       <VenueGateSale
         visible={sale.open}
         onClose={() => setSale({ open: false, offerId: null })}

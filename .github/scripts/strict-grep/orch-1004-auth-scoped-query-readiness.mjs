@@ -218,6 +218,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useVenueOffers.ts",
   "useVenueDay.ts",
   "useVenueCheckIns.ts",
+  // ── #4490 P3 — one booking with its money and the day-closure preview
+  //    (issue_4490_get_booking / preview_day_closure read auth.uid()). Both
+  //    fold isAuthReady into enabled.
+  "useVenueBooking.ts",
   // ── #1792 (#1767 Phase 3b) — waiter mode. The pad reads the venue's own
   //    menus/menu_items/menu_modifier_groups and the open-tab summaries, all
   //    brand-member-RLS-gated. A pre-auth fire caches an RLS-empty 200, which a

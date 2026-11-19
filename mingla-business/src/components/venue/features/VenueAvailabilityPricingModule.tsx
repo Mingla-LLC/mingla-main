@@ -32,6 +32,11 @@ import {
 } from "../../../hooks/useVenueSpecialDays";
 import { VenueFeatureError, type VenueSpecialDay } from "../../../services/venueFeaturesService";
 import { DayLimitsSection } from "./offers/DayLimitsSection";
+import { fetchDayClosurePreview, toVenueOfferError } from "../../../services/venueOffersService";
+import type { DayClosurePreview } from "../../../types/venueOffers";
+import { VenueBookingSheet } from "./bookings/VenueBookingSheet";
+import { money, offerErrorCopy } from "./offers/offersModel";
+import { useBrandCurrency } from "../../../hooks/useBrandCurrency";
 import { useVenueSuiteStore } from "../../../store/venueSuiteStore";
 import type { BrandHourEntry } from "../../../types/brand";
 import {
@@ -120,6 +125,12 @@ export const VenueAvailabilityPricingModule = forwardRef<
   const [toast, setToast] = useState<string | null>(null);
   const [leave, setLeave] = useState<{ proceed: () => void; restore?: () => void } | null>(null);
   const today = localIsoDate();
+  // #4490 P3 (`av-close`) — closing a day with bookings on it says who is booked first.
+  const currency = useBrandCurrency(brandId);
+  const [closeCheck, setCloseCheck] = useState<{ input: SpecialDayDraft; preview: DayClosurePreview } | null>(null);
+  const [closingBusy, setClosingBusy] = useState(false);
+  const [closedDay, setClosedDay] = useState<DayClosurePreview | null>(null);
+  const [openBooking, setOpenBooking] = useState<string | null>(null);
 
   useEffect(() => {
     if (serverHours === null) return;
@@ -209,8 +220,8 @@ export const VenueAvailabilityPricingModule = forwardRef<
 
   const specialDays = useMemo(() => specialQuery.data ?? [], [specialQuery.data]);
 
-  const handleSaveSpecial = useCallback(
-    (input: SpecialDayDraft): void => {
+  const saveSpecialNow = useCallback(
+    (input: SpecialDayDraft, preview: DayClosurePreview | null): void => {
       setSheetError(null);
       manageSpecial.mutate(
         {
@@ -223,13 +234,44 @@ export const VenueAvailabilityPricingModule = forwardRef<
         {
           onSuccess: () => {
             setSheet({ open: false });
+            setCloseCheck(null);
             setToast(input.isClosed ? `Closed ${shortDateLabel(input.localDate)}` : "Special day saved");
+            if (input.isClosed && preview !== null && preview.count > 0) setClosedDay(preview);
           },
-          onError: (error) => setSheetError(errorCopy("special_day", error)),
+          onError: (error) => {
+            setCloseCheck(null);
+            setSheetError(errorCopy("special_day", error));
+          },
         },
       );
     },
     [manageSpecial],
+  );
+  const handleSaveSpecial = useCallback(
+    (input: SpecialDayDraft): void => {
+      if (!input.isClosed || venueId === null) {
+        saveSpecialNow(input, null);
+        return;
+      }
+      // Who is already booked that day? The host sees it before closing.
+      setSheetError(null);
+      setClosingBusy(true);
+      fetchDayClosurePreview(venueId, input.localDate)
+        .then((preview) => {
+          if (preview.count === 0) {
+            saveSpecialNow(input, preview);
+            return;
+          }
+          setSheet({ open: false });
+          setCloseCheck({ input, preview });
+        })
+        .catch((error: unknown) => {
+          const err = toVenueOfferError(error);
+          setSheetError(`Couldn't check the bookings on that day. ${offerErrorCopy(err.code, err.detail)}`);
+        })
+        .finally(() => setClosingBusy(false));
+    },
+    [saveSpecialNow, venueId],
   );
   const handleClearSpecial = useCallback((): void => {
     if (!sheet.open || sheet.day === null) return;
@@ -388,6 +430,35 @@ export const VenueAvailabilityPricingModule = forwardRef<
       <Text style={styles.title} accessibilityRole="header">Availability & pricing</Text>
       {hoursSection}
       {specialSection}
+      {closedDay !== null ? (
+        <GlassCard variant="base" padding={space[4]} contentStyle={styles.card} testID="av-closed-bookings">
+          <View style={styles.cardHead}>
+            <Text style={styles.cardTitle} accessibilityRole="header">Booked on {shortDateLabel(closedDay.localDate)}</Text>
+            <Button label="Done" variant="ghost" size="sm" onPress={() => setClosedDay(null)} />
+          </View>
+          <Text style={styles.cardBody}>
+            Closing didn&apos;t cancel these. Open each one to move it to another day or cancel it with a full refund.
+          </Text>
+          {closedDay.bookings.map((b) => (
+            <Pressable
+              key={b.groupId}
+              onPress={() => setOpenBooking(b.groupId)}
+              accessibilityRole="button"
+              accessibilityLabel={`${b.guestName}, ${b.guests} guests, ${b.offerName}. Open booking`}
+              style={({ pressed }) => [styles.dayRow, pressed && styles.pressed]}
+              testID={`av-closed-booking-${b.groupId}`}
+            >
+              <View style={styles.dayText}>
+                <Text style={styles.dayTitle}>{b.guestName} · {b.guests} {b.guests === 1 ? "guest" : "guests"}</Text>
+                <Text style={styles.cardBody}>
+                  {b.offerName} · {b.reference}
+                  {b.paidMinor > 0 ? ` · paid ${money(b.paidMinor, currency)}` : ""}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </GlassCard>
+      ) : null}
       {/* #4490 P2-4 — a different limit (or no entry) on one date. */}
       <DayLimitsSection brandId={brandId} venueId={venueId} canEdit={canEditSpecial} today={today} />
       {showTableTimes ? (
@@ -403,7 +474,7 @@ export const VenueAvailabilityPricingModule = forwardRef<
         day={sheet.open ? sheet.day : null}
         mode={sheet.open ? sheet.mode : "special"}
         today={today}
-        saving={manageSpecial.isPending}
+        saving={manageSpecial.isPending || closingBusy}
         error={sheetError}
         onSave={handleSaveSpecial}
         onClear={handleClearSpecial}
@@ -446,6 +517,22 @@ export const VenueAvailabilityPricingModule = forwardRef<
           />
         </React.Suspense>
       ) : null}
+      {closeCheck !== null ? (
+        <React.Suspense fallback={null}>
+          <LazyConfirmDialog
+            visible
+            title={`Close ${longDateLabel(closeCheck.input.localDate)}?`}
+            description={`${closeCheck.preview.count} ${closeCheck.preview.count === 1 ? "booking" : "bookings"} (${closeCheck.preview.guests} ${closeCheck.preview.guests === 1 ? "guest" : "guests"}) ${closeCheck.preview.count === 1 ? "is" : "are"} booked that day${closeCheck.preview.paidMinor > 0 ? `, ${money(closeCheck.preview.paidMinor, currency)} paid` : ""}. Closing stops new bookings but doesn't cancel these: after closing, move each to another day or cancel it with their money back.`}
+            confirmLabel="Close the day"
+            cancelLabel="Keep it open"
+            confirmLoading={manageSpecial.isPending}
+            onClose={() => setCloseCheck(null)}
+            onConfirm={() => saveSpecialNow(closeCheck.input, closeCheck.preview)}
+            testID="av-close-confirm"
+          />
+        </React.Suspense>
+      ) : null}
+      <VenueBookingSheet brandId={brandId} venueId={venueId} groupId={openBooking} onClose={() => setOpenBooking(null)} />
       {toast !== null ? (
         <React.Suspense fallback={null}>
           <LazyToast visible kind="success" message={toast} onDismiss={() => setToast(null)} testID="av-toast" />
@@ -454,6 +541,13 @@ export const VenueAvailabilityPricingModule = forwardRef<
     </View>
   );
 });
+
+/** "Thursday 25 December". */
+function longDateLabel(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(d);
+}
 
 const styles = StyleSheet.create({
   host: { gap: space[4], paddingHorizontal: space[4], paddingTop: space[4] },

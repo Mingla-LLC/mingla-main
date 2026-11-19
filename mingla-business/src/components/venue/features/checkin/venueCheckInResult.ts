@@ -249,3 +249,17 @@ export function matchTypedCode(raw: string, passes: readonly CheckInPass[]): { k
   return { kind: "qr", payload: text };
 }
 
+
+// #4490 P3 — groups and money owed at the door.
+/** The pass id inside a scanned pass code (`mingla:v1:vpass:<id>:sig:…`). */
+export function passIdFromCode(payload: string): string | null {
+  const m = /^mingla:v\d+:vpass:([0-9a-f-]{36}):/i.exec(payload.trim());
+  return m === null ? null : m[1].toLowerCase();
+}
+
+/** A group pass, or anything that still owes money, gets the step before going in. */
+export function needsGroupStep(pass: CheckInPass): boolean {
+  if (pass.status !== "valid") return false;
+  if ((pass.balanceDueMinor ?? 0) > 0) return true;
+  return pass.offerKind === "group_package" && pass.admits - pass.admittedCount > 1;
+}
