@@ -630,7 +630,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 P6-1: memberships migration + pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 fix round 1: past-midnight service windows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 fix round 1: features at create, presets, restore, member payments, hours flag, collected today; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "48a78e90e9860a961d78c1667bddedc9aa685d148094897a65a77ae4f00defe2";
+// issue #4490 fix round 2: copy an offer as a draft, runs until, schedule saves keep selling; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "b64160a9bff5c3b35c6e88dd5aff3778f6801bf0b4dd91b9ac5704d1287245cd";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

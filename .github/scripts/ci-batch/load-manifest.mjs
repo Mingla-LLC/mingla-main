@@ -375,7 +375,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 P6-1: memberships migration + pg17 suite registered; re-sealed.
 // issue #4490 fix round 1: past-midnight service windows; re-sealed; re-sealed.
 // issue #4490 fix round 1: features at create, presets, restore, member payments, hours flag, collected today; re-sealed; re-sealed.
-export const BOOTSTRAP_SHA256 = "7b6741aa5f8afce560145b426f99f053be145d0cc5c12229a717661c4524ccb3";
+// issue #4490 fix round 2: copy an offer as a draft, runs until, schedule saves keep selling; re-sealed.
+export const BOOTSTRAP_SHA256 = "a90b5d6780e17355ad686ef67509bbab1947d915ad48cc8c1e3efbe6c8a4615d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
