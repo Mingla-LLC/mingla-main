@@ -98,7 +98,11 @@ export function PublishSection({ variant, onFix }: {
   // #4453 — Draft sections block a publish (UNREVIEWED_SECTIONS), which Core
   // only reports as "Publishing failed": wait for them here and say so.
   const unreviewed = unreviewedSectionCount(useReviewStatus(site.id).data);
-  const readyToPublish = validation.data !== undefined && blocker === null && (!firstPublish || checksRan) && unreviewed === 0;
+  // #4453 — Publish sends the revision this check read. While it reloads
+  // (right after "Mark all as reviewed" saves a new revision) the old one is
+  // still on screen, so Publish waits for the fresh one (Young and Stamped's
+  // first publish was refused this way).
+  const readyToPublish = validation.data !== undefined && !validation.isFetching && blocker === null && (!firstPublish || checksRan) && unreviewed === 0;
   // #2830 — a finding names a page; Fix opens that page in the editor.
   const setupPages = useSitePages(site.id, variant === "setup");
 
