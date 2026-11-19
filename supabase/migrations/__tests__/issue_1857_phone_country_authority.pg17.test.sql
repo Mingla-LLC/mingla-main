@@ -79,9 +79,11 @@ BEGIN
     -- the server plus-one limit, own/duplicate/listed/released refusals, the
     -- 24-hour inviter cap, and guest rows kept across a re-submit; the wave A
     -- rework adds friend guests by account, signed-out caps per address,
-    -- per-number holds and willText. The #1857 phone authority lines are
-    -- unchanged.
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '689f9d2293918d99c38daa159aefcb80'),
+    -- per-number holds and willText. The second rework gives a signed-out
+    -- caller one refusal code and no account or reason, locks each guest
+    -- number before counting it, and holds texts past the signed-out daily
+    -- ceiling. The #1857 phone authority lines are unchanged.
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'dd21c0689c3b1f47123166b1c192ca9a'),
     -- #4063 last-writes this wrapper so approved RSVPs receive only a pass,
     -- while pending/other outcomes retain acknowledgement delivery.
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),
