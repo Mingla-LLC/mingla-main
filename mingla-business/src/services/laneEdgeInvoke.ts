@@ -22,7 +22,7 @@
  * exactly as before.
  */
 import { BusinessAuthNotReadyError } from "../utils/authReadiness";
-import { laneEdgeEndpoint, supabase } from "./supabase";
+import { laneEdgeEndpoint, supabase, supabaseFetch } from "./supabase";
 
 export const SESSION_ACQUIRE_TIMEOUT_MS = 2_000;
 /** A held token is reused while it has at least this long left. */
@@ -134,7 +134,8 @@ export const invokeLaneFunction = async <T>(
   const token = accessToken ?? await resolveLaneAccessToken();
   let response: Response;
   try {
-    response = await fetch(`${endpoint.functionsUrl}/${name}`, {
+    // #4518 — same second road as the client (never replays this POST).
+    response = await supabaseFetch(`${endpoint.functionsUrl}/${name}`, {
       method: "POST",
       headers: {
         ...endpoint.headers,

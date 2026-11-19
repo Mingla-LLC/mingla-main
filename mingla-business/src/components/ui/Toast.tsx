@@ -45,7 +45,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { Gesture } from "react-native-gesture-handler";
 
-import { color, radius, shadow, size, space, type } from "../../constants/designSystem";
+import { radius, shadow, size, space, type } from "../../constants/designSystem";
+import { color, themed, themedStyles } from "../../theme/surfaceTokens";
 
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
@@ -97,12 +98,12 @@ interface KindTokens {
   iconFg: string;
 }
 
-const KIND_TOKENS: Record<ToastKind, KindTokens> = {
+const kindTokens = themed((): Record<ToastKind, KindTokens> => ({
   success: { icon: "check", iconBg: color.success, iconFg: color.ink },
   info: { icon: "bell", iconBg: color.fill.step, iconFg: color.text1 },
   warn: { icon: "flag", iconBg: color.warning, iconFg: color.ink },
   error: { icon: "close", iconBg: color.danger, iconFg: color.onDanger },
-};
+}));
 
 /**
  * Toast registers itself in the store while visible and renders nothing (or
@@ -340,7 +341,7 @@ interface ToastCardProps {
 }
 
 const ToastCard: React.FC<ToastCardProps> = ({ entry, onPressIn, onPressOut, onHoverIn, onHoverOut }) => {
-  const tokens = KIND_TOKENS[entry.kind];
+  const tokens = kindTokens()[entry.kind];
   const { action, onDismiss } = entry;
   // #4453: on web a "button" role draws a <button>, and the action and close
   // buttons inside it are <button>s too ("<button> cannot be a descendant of
@@ -398,7 +399,7 @@ const ToastCard: React.FC<ToastCardProps> = ({ entry, onPressIn, onPressOut, onH
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   inlineRoot: {
     position: "absolute",
     top: space[10],
@@ -466,6 +467,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     backgroundColor: color.fill.tile,
   },
-});
+}));
 
 export default Toast;

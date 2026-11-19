@@ -36,7 +36,8 @@
 
 import React from "react";
 
-import { radius, color } from "../../constants/designSystem";
+import { radius } from "../../constants/designSystem";
+import { color, themed } from "../../theme/surfaceTokens";
 
 export type WebDateTimeInputType = "date" | "time" | "datetime-local";
 
@@ -71,7 +72,7 @@ export const WEB_DATETIME_INPUT_TESTID = "web-native-datetime-input";
 // hiding — this input IS the affordance the user clicks. `colorScheme: dark`
 // makes the browser render the native calendar/clock popup and its indicator
 // glyph light-on-dark to match the app.
-const BASE_STYLE: React.CSSProperties = {
+const baseStyle = themed((): React.CSSProperties => ({
   boxSizing: "border-box",
   width: "100%",
   height: 48,
@@ -85,7 +86,7 @@ const BASE_STYLE: React.CSSProperties = {
   color: color.text1,
   fontSize: 16,
   colorScheme: "dark",
-};
+}));
 
 export function WebDateTimeInput({
   type,
@@ -99,8 +100,8 @@ export function WebDateTimeInput({
   testID,
 }: WebDateTimeInputProps): React.ReactElement {
   const style: React.CSSProperties = hasError
-    ? { ...BASE_STYLE, borderColor: color.danger }
-    : BASE_STYLE;
+    ? { ...baseStyle(), borderColor: color.danger }
+    : baseStyle();
 
   return (
     <input

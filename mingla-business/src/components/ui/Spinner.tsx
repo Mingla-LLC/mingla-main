@@ -19,7 +19,7 @@ import Animated, {
 } from "react-native-reanimated";
 import Svg, { Circle } from "react-native-svg";
 
-import { color as colorTokens } from "../../constants/designSystem";
+import { color as colorTokens, themedStyles } from "../../theme/surfaceTokens";
 
 export type SpinnerSize = 24 | 36 | 48;
 
@@ -98,11 +98,11 @@ export const Spinner: React.FC<SpinnerProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   fill: {
     width: "100%",
     height: "100%",
   },
-});
+}));
 
 export default Spinner;
