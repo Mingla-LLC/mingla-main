@@ -110,8 +110,9 @@ export async function resolveBrandRank(
     const timeout = new Promise<null>((resolve) => {
       timer = setTimeout(() => resolve(null), ROLE_LOOKUP_BUDGET_MS);
     });
-    const result = await Promise.race([lookup, timeout]);
-    if (timer !== undefined) clearTimeout(timer);
+    const result = await Promise.race([lookup, timeout]).finally(() => {
+      if (timer !== undefined) clearTimeout(timer);
+    });
     if (result === null) return null;
     return result.role !== null ? BRAND_ROLE_RANK[result.role] : NO_MEMBERSHIP_RANK;
   } catch {

@@ -18,7 +18,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal as RNModal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import type { PressableStateCallbackType, TextInput } from "react-native";
+import type { TextInput } from "react-native";
 import { useRouter } from "expo-router";
 
 import { color, radius, shadow, space, type } from "../../constants/designSystem";
@@ -257,6 +257,7 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
         }}
         onPress={() => pick(brand)}
         onFocus={() => setActiveIndex(index)}
+        onHoverIn={() => setActiveIndex(index)}
         accessibilityRole="menuitem"
         accessibilityLabel={
           isCurrent ? `${brand.displayName}, the brand you are in` : `Switch to ${brand.displayName}`
@@ -264,32 +265,30 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
         accessibilityState={{ selected: isCurrent }}
         testID={`workspace-brand-row-${brand.id}`}
       >
-        {(state: PressableStateCallbackType & { hovered?: boolean }) => (
-          <View
-            style={[
-              styles.row,
-              isCurrent ? styles.rowCurrent : null,
-              state.hovered || state.pressed || activeIndex === index ? styles.rowActive : null,
-            ]}
-          >
-            <BrandMark brand={brand} size={32} testID={`workspace-brand-mark-${brand.id}`} />
-            <View style={styles.rowText}>
-              <Text style={styles.rowName} numberOfLines={2}>
-                {brand.displayName}
+        <View
+          style={[
+            styles.row,
+            isCurrent ? styles.rowCurrent : null,
+            activeIndex === index ? styles.rowActive : null,
+          ]}
+        >
+          <BrandMark brand={brand} size={32} testID={`workspace-brand-mark-${brand.id}`} />
+          <View style={styles.rowText}>
+            <Text style={styles.rowName} numberOfLines={2}>
+              {brand.displayName}
+            </Text>
+            {subline !== null ? (
+              <Text style={styles.rowSub} numberOfLines={1}>
+                {subline}
               </Text>
-              {subline !== null ? (
-                <Text style={styles.rowSub} numberOfLines={1}>
-                  {subline}
-                </Text>
-              ) : null}
-            </View>
-            {isCurrent ? (
-              <View style={styles.tick} testID={`workspace-brand-tick-${brand.id}`}>
-                <Icon name="check" size={14} color={color.ink} />
-              </View>
             ) : null}
           </View>
-        )}
+          {isCurrent ? (
+            <View style={styles.tick} testID={`workspace-brand-tick-${brand.id}`}>
+              <Icon name="check" size={14} color={color.ink} />
+            </View>
+          ) : null}
+        </View>
       </Pressable>
     );
   };
@@ -357,25 +356,19 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
               }}
               onPress={action.onPress}
               onFocus={() => setActiveIndex(index)}
+              onHoverIn={() => setActiveIndex(index)}
               accessibilityRole="menuitem"
               accessibilityLabel={action.label}
               testID={`workspace-brand-${action.key}`}
             >
-              {(state: PressableStateCallbackType & { hovered?: boolean }) => (
-                <View
-                  style={[
-                    styles.footerRow,
-                    state.hovered || state.pressed || activeIndex === index ? styles.rowActive : null,
-                  ]}
-                >
-                  <View style={styles.footerIcon}>
-                    <Icon name={action.icon} size={16} color={color.text1} />
-                  </View>
-                  <Text style={styles.footerLabel} numberOfLines={1}>
-                    {action.label}
-                  </Text>
+              <View style={[styles.footerRow, activeIndex === index ? styles.rowActive : null]}>
+                <View style={styles.footerIcon}>
+                  <Icon name={action.icon} size={16} color={color.text1} />
                 </View>
-              )}
+                <Text style={styles.footerLabel} numberOfLines={1}>
+                  {action.label}
+                </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -445,7 +438,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   rowCurrent: { backgroundColor: color.card3 },
-  rowActive: { backgroundColor: color.fill.rowHover },
+  // Hover, keyboard focus and the arrow keys share one highlight.
+  rowActive: { backgroundColor: color.fill.pressed },
   rowText: { flex: 1, minWidth: 0 },
   rowName: { ...type.row, color: color.text1, fontWeight: "600" },
   rowSub: { ...type.caption, color: color.text3 },
