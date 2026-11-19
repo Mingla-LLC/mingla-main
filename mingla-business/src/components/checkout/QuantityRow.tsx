@@ -18,8 +18,8 @@ import {
   type QuantityRowTheme,
 } from "@mingla/offering-rendering";
 
-import { materials, space } from "../../constants/designSystem";
-import { color } from "./checkoutTheme";
+import { space } from "../../constants/designSystem";
+import { checkoutValue, color, materials } from "./checkoutTheme";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrency } from "../../utils/currency";
 
@@ -48,13 +48,13 @@ export interface QuantityRowProps {
   hideRemainingCount?: boolean;
 }
 
-const MINGLA_BUSINESS_THEME: QuantityRowTheme = {
+const businessTheme = checkoutValue((): QuantityRowTheme => ({
   accent: color.accent,
   textPrimary: color.text1,
   textSecondary: color.text2,
   textTertiary: color.text3,
   textQuaternary: color.text4,
-  stepperBg: materials.chrome.glassFill,
+  stepperBg: materials.control.solidFill,
   stepperBorder: color.lineStrong,
   semanticWarning: color.warning,
   semanticError: color.danger,
@@ -62,7 +62,7 @@ const MINGLA_BUSINESS_THEME: QuantityRowTheme = {
   saleBannerBorder: color.warning,
   soldOutBg: color.errorTint,
   soldOutBorder: color.errorLine,
-};
+}));
 
 interface BusinessCardWrapProps {
   children?: React.ReactNode;
@@ -127,7 +127,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
       CardComponent={BusinessCardWrap}
       renderPlusIcon={renderPlusIcon}
       formatCurrency={formatCurrency}
-      theme={MINGLA_BUSINESS_THEME}
+      theme={businessTheme()}
       onJoinWaitlist={onJoinWaitlist}
       installmentNote={installmentNote}
       hideRemainingCount={hideRemainingCount}

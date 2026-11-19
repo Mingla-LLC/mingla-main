@@ -141,6 +141,8 @@ const COMPILED_SRC: Record<string, string> = {
   // buyers' browsers never call Google) adds three rewrites before the SPA
   // catch-all. Their path-to-regexp 6 compiled forms (strict, "/" delimiter)
   // keep this oracle exhaustive; the catch-all literal below is unchanged.
+  // #4518 — the same-origin road to the database.
+  "/_sb/:path*": "^/_sb(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?$",
   "/gfonts/css2": "^/gfonts/css2$",
   "/gfonts/s/:path*": "^/gfonts/s(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?$",
   "/gfonts/l/:path*": "^/gfonts/l(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))?$",

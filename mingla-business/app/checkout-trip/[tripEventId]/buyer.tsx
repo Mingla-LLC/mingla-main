@@ -70,8 +70,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
-import { radius as radiusTokens, space, materials } from "../../../src/constants/designSystem";
-import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
+import { radius as radiusTokens, space } from "../../../src/constants/designSystem";
+import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";

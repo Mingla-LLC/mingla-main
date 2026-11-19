@@ -20,7 +20,8 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { color, radius as radiusTokens, shadow as shadowTokens } from "../../constants/designSystem";
+import { radius as radiusTokens, shadow as shadowTokens } from "../../constants/designSystem";
+import { color } from "../../theme/surfaceTokens";
 import { Material } from "./Material";
 import type { MaterialKind } from "./Material";
 

@@ -12,7 +12,8 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { color, space, type } from "../../constants/designSystem";
+import { space, type } from "../../constants/designSystem";
+import { color, themedStyles } from "../../theme/surfaceTokens";
 
 import { MarketingEmptyIllustration } from "../marketing/MarketingEmptyIllustration";
 import type { MarketingIllustrationKey } from "../marketing/MarketingEmptyIllustration";
@@ -99,7 +100,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     alignItems: "center",
     justifyContent: "center",
@@ -128,6 +129,6 @@ const styles = StyleSheet.create({
   ctaWrap: {
     marginTop: space[6] - space[1],
   },
-});
+}));
 
 export default EmptyState;

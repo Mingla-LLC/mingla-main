@@ -35,6 +35,7 @@
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
     { "source": "/auth/callback", "destination": "/auth/callback.html" },
     { "source": "/accept-brand-invitation", "destination": "/accept-brand-invitation-entry" },
+    { "source": "/_sb/:path*", "destination": "https://gqnoajqerqhnvulmnyvv.supabase.co/:path*" },
     { "source": "/gfonts/css2", "destination": "https://fonts.googleapis.com/css2" },
     { "source": "/gfonts/s/:path*", "destination": "https://fonts.gstatic.com/s/:path*" },
     { "source": "/gfonts/l/:path*", "destination": "https://fonts.gstatic.com/l/:path*" },
