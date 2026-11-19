@@ -252,6 +252,22 @@ export function phaseFromRead(read: LinkRead): LinkPhase {
   };
 }
 
+/**
+ * Answers typed on the page, kept across the one-time code step: when the
+ * 30-minute grant runs out mid-edit, Save asks for a new code, and after the
+ * re-read the typed answers come back (questions the live version no longer has
+ * drop). Never persisted; memory only.
+ */
+export interface LinkDraft {
+  formId: string;
+  answers: BrandAnswers;
+}
+
+export function withDraft(phase: LinkPhase, draft: LinkDraft | null): LinkPhase {
+  if (draft === null || phase.kind !== "open" || phase.form.formId !== draft.formId) return phase;
+  return { ...phase, answers: { ...phase.answers, ...answersForDefinition(phase.form.definition, draft.answers) } };
+}
+
 /** The page's state when the read failed (the exception message from PostgREST). */
 export function phaseFromReadError(message: string | null): LinkPhase {
   const code = (message ?? "").trim().split(/[\s:]/)[0] ?? "";
@@ -375,6 +391,31 @@ export function codeAfterVerify(
 }
 
 /** The personal token, read from the URL fragment only (`#t=…`). Never a query string. */
+/** The bits of `window` the token read needs (a fake in tests). */
+export interface LinkLocationHost {
+  location: { pathname: string; search: string; hash: string };
+  history: { state: unknown; replaceState: (state: unknown, unused: string, url: string) => void };
+}
+
+let heldToken: { path: string; token: string } | null = null;
+
+/**
+ * Read the personal token from the URL fragment once, keep it in memory, and
+ * remove the fragment from the address bar (history.replaceState) so it cannot
+ * reach error reports, breadcrumbs or a copied URL. A later read on the same
+ * path (a re-mount) gets the held token.
+ */
+export function takeLinkToken(host: LinkLocationHost): string | null {
+  const path = host.location.pathname;
+  const fromHash = tokenFromHash(host.location.hash);
+  if (fromHash !== null) {
+    heldToken = { path, token: fromHash };
+    host.history.replaceState(host.history.state, "", `${path}${host.location.search}`);
+    return fromHash;
+  }
+  return heldToken !== null && heldToken.path === path ? heldToken.token : null;
+}
+
 export function tokenFromHash(hash: string | null | undefined): string | null {
   const raw = (hash ?? "").replace(/^#/, "");
   for (const part of raw.split("&")) {

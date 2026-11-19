@@ -17,9 +17,13 @@ import {
   phaseFromReadError,
   savedPhase,
   submitOutcome,
+  takeLinkToken,
   tokenFromHash,
+  withDraft,
 } from "../brandFormLinkModel";
 import { LINK_COPY } from "../brandFormLinkCopy";
+import * as fs from "fs";
+import * as path from "path";
 
 const TOKEN = "a".repeat(64);
 const def = {
@@ -171,5 +175,88 @@ describe("parsing a read", () => {
       response: { id: "r1", answers: { q3: 4, q1: "yes", q4: ["a", 2] }, editCount: 1 },
     });
     expect(withNumber?.response?.answers).toEqual({ q3: "4", q1: "yes", q4: ["a"] });
+  });
+});
+
+// Fix wave (review finding 4): the token leaves the address bar once read, so it
+// cannot reach error reports or breadcrumbs; it stays in memory for the page.
+// FAILS-ON-REVERT: not calling replaceState leaves "#t=" in the URL.
+describe("the fragment is removed after the token is read", () => {
+  const host = (pathname: string, hash: string) => {
+    const calls: string[] = [];
+    const h = {
+      location: { pathname, search: "?utm=x", hash },
+      history: {
+        state: { k: 1 },
+        replaceState: (_s: unknown, _u: string, url: string) => {
+          calls.push(url);
+          h.location.hash = "";
+        },
+      },
+    };
+    return { h, calls };
+  };
+
+  it("reads the token, then replaces the URL without the fragment", () => {
+    const { h, calls } = host("/form/f1", `#t=${TOKEN}`);
+    expect(takeLinkToken(h)).toBe(TOKEN);
+    expect(calls).toEqual(["/form/f1?utm=x"]);
+    expect(h.location.hash).toBe("");
+    // A re-mount on the same page still has the token (memory only).
+    expect(takeLinkToken(h)).toBe(TOKEN);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("another page never gets the held token", () => {
+    const { h } = host("/form/other", "");
+    expect(takeLinkToken(h)).toBeNull();
+  });
+});
+
+// Fix wave (review finding 3): the typed answers survive the code step when the
+// 30-minute grant runs out mid-edit.
+// FAILS-ON-REVERT: re-reading after the code without the draft drops "Juggle".
+describe("typed answers survive a new one-time code", () => {
+  const saved = read({ state: "answered", answered: true,
+    response: { id: "r1", versionId: "v2", isCurrentVersion: true, editCount: 1, updatedAt: "2026-11-19T10:00:00Z",
+      answers: { q1: "yes", q2: "Sing" } } });
+
+  it("after verify, the re-read form shows what the guest typed, not the saved answer", () => {
+    const p = withDraft(phaseFromRead(saved), { formId: "f1", answers: { q1: "yes", q2: "Juggle", gone: "x" } });
+    expect(p.kind).toBe("open");
+    if (p.kind !== "open") return;
+    expect(p.answers).toEqual({ q1: "yes", q2: "Juggle" });
+    expect(p.editCount).toBe(1);
+  });
+
+  it("no draft, another form, or a non-open state is left alone", () => {
+    expect(withDraft(phaseFromRead(saved), null)).toEqual(phaseFromRead(saved));
+    expect(withDraft(phaseFromRead(saved), { formId: "f9", answers: { q2: "X" } })).toEqual(phaseFromRead(saved));
+    const code = phaseFromRead(read({ state: "code_required", answered: true }));
+    expect(withDraft(code, { formId: "f1", answers: { q2: "X" } })).toEqual(code);
+  });
+});
+
+// Fix wave (findings 3 and 4): the screen wires the draft and the fragment read,
+// and Sentry scrubs any "#t=" token from events and breadcrumbs.
+describe("wiring", () => {
+  const root = path.join(__dirname, "../../../../..");
+  it("the link screen keeps the draft across the code step and strips the fragment", () => {
+    const src = fs.readFileSync(path.join(root, "src/components/forms/link/BrandFormLinkScreen.tsx"), "utf8");
+    expect(src).toMatch(/case "code":\s*\n\s*draft\.current = \{ formId: current\.form\.formId, answers: current\.answers \}/);
+    expect(src).toContain("withDraft(phaseFromRead(read), draft.current)");
+    expect(src).toContain("takeLinkToken(window)");
+    expect(src).not.toContain("tokenFromHash(window.location.hash)");
+  });
+
+  it("Sentry scrubs a form link token from events and breadcrumbs", () => {
+    const src = fs.readFileSync(path.join(root, "app/_layout.tsx"), "utf8");
+    expect(src).toContain("beforeSend: scrubEvent,");
+    expect(src).toContain("beforeBreadcrumb: scrubCrumb,");
+    const literal = /const FORM_LINK_TOKEN = \/(.+)\/g;/.exec(src);
+    expect(literal).not.toBeNull();
+    const re = new RegExp(literal?.[1] ?? "^$", "g");
+    expect(`https://host.usemingla.com/form/f1#t=${TOKEN}`.replace(re, "$1[redacted]"))
+      .toBe("https://host.usemingla.com/form/f1#t=[redacted]");
   });
 });

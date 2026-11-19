@@ -15,7 +15,7 @@
  * load failed and save failed (each with a retry; answers stay on screen).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BrandAnswers, BrandHeaderData } from "@mingla/form-rendering";
@@ -37,12 +37,14 @@ import {
   codeAfterSend,
   codeAfterVerify,
   emptyCode,
+  type LinkDraft,
   type LinkPhase,
   phaseFromRead,
   phaseFromReadError,
   savedPhase,
   submitOutcome,
-  tokenFromHash,
+  takeLinkToken,
+  withDraft,
 } from "./brandFormLinkModel";
 
 const owner = () => import("../../checkout/intake/formRenderingPrimitives");
@@ -52,10 +54,14 @@ const loadHeaderFromServer = () => owner().then((m) => m.brandHeaderFromServer);
 
 const EMPTY_HEADER: BrandHeaderData = { displayName: "", photo: null, coverUrl: null, accent: null, coverHue: 25 };
 
-/** The fragment token on web; native has no fragment link today (the app route is a later wave). */
+/**
+ * The fragment token on web, read once and then removed from the address bar
+ * (kept in memory only); native has no fragment link today (the app route is a
+ * later wave).
+ */
 function readToken(): string | null {
   if (Platform.OS !== "web" || typeof window === "undefined") return null;
-  return tokenFromHash(window.location.hash);
+  return takeLinkToken(window);
 }
 
 export interface BrandFormLinkScreenProps {
@@ -70,6 +76,8 @@ export default function BrandFormLinkScreen({ formId }: BrandFormLinkScreenProps
   const [header, setHeader] = useState<BrandHeaderData>(EMPTY_HEADER);
   const [missing, setMissing] = useState<boolean>(false);
   const [codeText, setCodeText] = useState<string>("");
+  // Typed answers waiting for a new one-time code (the grant ran out mid-edit).
+  const draft = useRef<LinkDraft | null>(null);
 
   const load = useCallback(
     async (challenge: string | null): Promise<void> => {
@@ -82,7 +90,9 @@ export default function BrandFormLinkScreen({ formId }: BrandFormLinkScreenProps
         const read = await readLinkForm({ formId, token, challengeId: challenge });
         const toHeader = await loadHeaderFromServer();
         setHeader(toHeader(read.brand ?? null));
-        setPhase(phaseFromRead(read));
+        const next = withDraft(phaseFromRead(read), draft.current);
+        if (next.kind === "open") draft.current = null;
+        setPhase(next);
       } catch (e) {
         setPhase(phaseFromReadError(e instanceof BrandFormLinkError ? e.code : null));
       }
@@ -125,6 +135,7 @@ export default function BrandFormLinkScreen({ formId }: BrandFormLinkScreenProps
         void load(challengeId);
         return;
       case "code":
+        draft.current = { formId: current.form.formId, answers: current.answers };
         setPhase({
           kind: "code",
           reason: "answered",
