@@ -136,6 +136,9 @@ import {
   responsiveSpacing,
 } from '../constants/designSystem'
 import { ms } from '../utils/responsive'
+import { noteSourceHints, recordJourneyMark } from '../services/peopleJourneyService'
+import { recordSignupSourceFromOnboarding } from '../services/signupSourceHints'
+import { explorerAnalyticsOptedOut } from '../services/analyticsOptOut'
 
 // [ORCH-1028 Part-2 R-2] The former module-scope `Dimensions.get('window')` capture was
 // removed: it never updated on rotation / Android fold / split-view (SPEC §0.9). All
@@ -973,6 +976,31 @@ const OnboardingFlow = ({
       prevSubStepRef.current = navState.subStep
     }
   }, [navState.step, navState.subStep])
+
+  // ── #4226 People journey: record every onboarding step as it is shown, the
+  // first one included (the server keeps the furthest). Key = the sub-step name.
+  // Once the person moves past the first screen, record how they arrived.
+  // Fire-and-forget: tracking never blocks the flow.
+  const journeyViewsRef = useRef(0)
+  const ticketLinkSignup = onboardingMode === 'ticket_first'
+  const collabInviteSignup =
+    (liftedPendingInvites?.length ?? 0) > 0 || liftedTripChatClaims.length > 0
+  useEffect(() => {
+    if (!user?.id) return
+    recordJourneyMark('explorer_onboarding', navState.step, navState.subStep)
+    journeyViewsRef.current += 1
+    if (journeyViewsRef.current === 2) {
+      void recordSignupSourceFromOnboarding({
+        userId: user.id,
+        ticketLink: ticketLinkSignup,
+        collabInvite: collabInviteSignup,
+        optedOut: explorerAnalyticsOptedOut(),
+      })
+    }
+  }, [user?.id, navState.step, navState.subStep]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    noteSourceHints({ ticketLink: ticketLinkSignup, collabInvite: collabInviteSignup })
+  }, [ticketLinkSignup, collabInviteSignup])
 
   // ─── Stable Refs (prevent stale closures in timeouts) ───
   const goNextRef = useRef(goNext)

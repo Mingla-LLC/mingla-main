@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4226_people_journey.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4226-people-journey-explorer",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}
