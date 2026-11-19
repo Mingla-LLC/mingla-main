@@ -21,6 +21,13 @@
 --   select regexp_replace(phone_e164,'\D','','g'), count(*)
 --     from public.verified_phone_identities group by 1 having count(*) > 1;
 --
+-- ROLLBACK (R-7): nothing here changes a table or a row. To roll back,
+-- re-apply the previous definitions: biz_resolve_verified_user from
+-- 20261016000001_orch_1163_event_rsvp_guests.sql (its last writer before this
+-- file) and submit_event_rsvp from 20271215004063 lines 500-772, with their
+-- grants (service_role only). If 20281119014508 has also run, roll that back
+-- first (its own note): it re-creates submit_event_rsvp on top of this one.
+--
 -- MINGLA-INVARIANT lives beside its test:
 --   supabase/migrations/__tests__/issue_4508_guest_phone_match.implementor.pg17.test.sql
 
