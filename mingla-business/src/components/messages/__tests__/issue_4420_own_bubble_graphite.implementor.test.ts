@@ -68,3 +68,14 @@ describe("#4420 D4 Media is Team-only", () => {
     expect((route.match(/\{mediaShown \? \(/g) ?? []).length).toBe(2);
   });
 });
+
+describe("#4420 D5 narrow header subtitle", () => {
+  test("phones and narrow web use the short subtitle on both sides", () => {
+    const route = source("app/messages/[conversationId].tsx");
+    expect(route).toContain('t(narrowHeader ? "messages.subtitle_guests_short" : "messages.subtitle_guests")');
+    expect(route).toContain('narrowHeader ? t("messages.subtitle_team_short")');
+    const english = JSON.parse(source("src/i18n/locales/en/brandMessages.json")) as { messages: Record<string, string> };
+    expect(english.messages.subtitle_guests_short).toBe("Guests room");
+    expect(english.messages.subtitle_team_short).toBe("Team chat · private");
+  });
+});

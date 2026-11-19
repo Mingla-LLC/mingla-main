@@ -1057,9 +1057,14 @@ function BrandGroupThreadScreen({
   const memberCount = group?.member_count ?? members.length;
   const teamSubtitle = typingText ?? (brandGroupHeaderSubtitle(members, user?.id ?? null) || (group ? `${memberCount} teammates` : "Official Brand group"));
   // #4420: the header says which side is showing.
+  // #4420 D5: on phones and narrow web the subtitle is the short form, so it
+  // is never cut mid-word ("Guests room", "Team chat · private").
+  const narrowHeader = !showRail;
   const subtitle = side === "guests"
-    ? t("messages.subtitle_guests")
-    : hasSwitcher && !typingText ? t("messages.subtitle_team", { who: teamSubtitle }) : teamSubtitle;
+    ? t(narrowHeader ? "messages.subtitle_guests_short" : "messages.subtitle_guests")
+    : hasSwitcher && !typingText
+      ? narrowHeader ? t("messages.subtitle_team_short") : t("messages.subtitle_team", { who: teamSubtitle })
+      : teamSubtitle;
   const openPlan = planBrandId
     ? (): void => {
       if (showRail) {
