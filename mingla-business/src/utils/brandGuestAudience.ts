@@ -80,3 +80,13 @@ export function guestModeConfirmCopy(t: MessagesTranslator, toBroadcast: boolean
 export function guestModeLine(t: MessagesTranslator, broadcast: boolean, brand: string): string {
   return broadcast ? t("messages.mode_line_broadcast", { brand }) : t("messages.mode_line_open");
 }
+
+/**
+ * #4420 I2 — with the soft keyboard up on a phone, the Guests side drops its
+ * long audience band and the mode explainer so messages keep their room; the
+ * compact "To N guests · as <Brand>" chip and the blue composer stay, so the
+ * Guests side is still unmistakable. Desktop has no soft keyboard (height 0).
+ */
+export function compactGuestsChrome(keyboardHeight: number): boolean {
+  return keyboardHeight > 0;
+}

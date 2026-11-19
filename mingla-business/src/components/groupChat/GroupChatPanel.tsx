@@ -64,6 +64,7 @@ import {
   guestSendA11y,
   guestSendLabel,
   guestWho,
+  compactGuestsChrome,
 } from "../../utils/brandGuestAudience";
 import { showsJumpToLatest } from "../../utils/brandThreadHistory";
 import {
@@ -302,9 +303,12 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
   const sendDisabled = composer.trim().length === 0 || sending || conversationId === null;
   const audience = guestAudienceLine(t, guestCount, brandName, broadcastOnly);
 
+  // #4420 I2: keyboard up on a phone → the long band and the explainer go.
+  const compactChrome = compactGuestsChrome(keyboardHeight);
   // #4420: the Guests band and the Broadcast / Open chat switch (SC-14).
   const guestsBand = chat.conversation !== null ? (
     <>
+      {compactChrome ? null : (
       <View style={styles.band} accessibilityRole="text" testID="brand-guests-band">
         <Icon name="megaphone" size={16} color={color.infoText} />
         <Text style={styles.bandText}>
@@ -313,6 +317,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
             : t("messages.band", { who: guestWho(t, guestCount), brand: brandName })}
         </Text>
       </View>
+      )}
       <View style={styles.modeBar}>
         <View accessibilityRole="radiogroup" accessibilityLabel={t("messages.mode_a11y")} style={styles.modeSeg}>
           {([true, false] as const).map((value) => {
@@ -334,7 +339,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
             );
           })}
         </View>
-        <Text style={styles.modeLine}>{guestModeLine(t, broadcastOnly, brandName)}</Text>
+        {compactChrome ? null : <Text style={styles.modeLine}>{guestModeLine(t, broadcastOnly, brandName)}</Text>}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("messages.manage_a11y")}

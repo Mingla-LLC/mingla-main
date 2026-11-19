@@ -98,3 +98,20 @@ describe("#4420 Messages words go through the locale files", () => {
     expect(source("src/i18n/index.ts")).not.toContain("brandMessages");
   });
 });
+
+describe("#4420 I2 Guests chrome folds while the phone keyboard is up", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { compactGuestsChrome } = require("../brandGuestAudience") as typeof import("../brandGuestAudience");
+  test("keyboard up → compact; down (or desktop, height 0) → full", () => {
+    expect(compactGuestsChrome(336)).toBe(true);
+    expect(compactGuestsChrome(0)).toBe(false);
+  });
+  test("the band and the explainer hide; the chip, switch and blue composer stay", () => {
+    const panel = source("src/components/groupChat/GroupChatPanel.tsx");
+    expect(panel).toContain("const compactChrome = compactGuestsChrome(keyboardHeight);");
+    expect(panel).toMatch(/\{compactChrome \? null : \(\s*<View style=\{styles\.band\}/);
+    expect(panel).toContain("{compactChrome ? null : <Text style={styles.modeLine}>");
+    expect(panel).not.toMatch(/compactChrome \? null : [^\n]*brand-guests-audience/);
+    expect(panel).toContain('testID="brand-guests-audience"');
+  });
+});
