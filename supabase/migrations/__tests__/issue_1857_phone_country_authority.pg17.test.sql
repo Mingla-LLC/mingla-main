@@ -88,7 +88,10 @@ BEGIN
     -- [TEST-MOD-APPROVED #4490] #4490 P5 last-writes both: the guest writer takes
     -- an optional table pick / seating area (two trailing defaulted args) under a
     -- venue table lock; the phone-country validation and grants are unchanged.
-    ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)', 'acafb078d798e7ef08656b92f9c90035'),
+    -- [TEST-MOD-APPROVED #4490] fix round 1 (20280809224490) last-writes the guest
+    -- writer: the slot is checked on its service day (a past-midnight time belongs
+    -- to the evening before); phone-country validation and grants are unchanged.
+    ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)', '08b6c5359374f58132eeff46dbd7f1cd'),
     ('public.pg_finalize_guest_reservation(uuid,text)', '277c7c86ee9d901dbbddf1c3991727f0'),
     -- 20270327001773_issue_1773_reservation_stay_ingest.sql is the legitimate current last writer of these two definitions.
     ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)', 'eddd993b656af66cd75f588a5df64b5f'),
