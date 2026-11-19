@@ -631,7 +631,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 fix round 1: past-midnight service windows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 fix round 1: features at create, presets, restore, member payments, hours flag, collected today; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 fix round 2: copy an offer as a draft, runs until, schedule saves keep selling; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b64160a9bff5c3b35c6e88dd5aff3778f6801bf0b4dd91b9ac5704d1287245cd";
+// issue #4490 fix round 3: an event takes its space, combinations, calendar part in use; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "14535d7deb38750f401ceb4a98651426a173ed7f24d0bfb4343cf22a241dc1ac";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

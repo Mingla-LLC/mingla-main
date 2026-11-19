@@ -376,7 +376,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 fix round 1: past-midnight service windows; re-sealed; re-sealed.
 // issue #4490 fix round 1: features at create, presets, restore, member payments, hours flag, collected today; re-sealed; re-sealed.
 // issue #4490 fix round 2: copy an offer as a draft, runs until, schedule saves keep selling; re-sealed.
-export const BOOTSTRAP_SHA256 = "a90b5d6780e17355ad686ef67509bbab1947d915ad48cc8c1e3efbe6c8a4615d";
+// issue #4490 fix round 3: an event takes its space, combinations, calendar part in use; re-sealed.
+export const BOOTSTRAP_SHA256 = "754ae7bacd7165cda5be2d9b7a1068aa9a78a6d1f841f58b43d142bfc5c4bbcf";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
