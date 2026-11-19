@@ -99,8 +99,8 @@ export const RULES = [
   // (Behaviour: mingla-business/src/config/__tests__/issue_4453_above_brand_screens.implementor.test.ts.)
   { file: HOST_SHELL, why: "the desktop top bar shows the brand switcher on brand screens only", ok: has('<TopBar leftKind={aboveBrand ? "none" : "brand"} onBrandTap={onBrandTap} />') },
   { file: HOST_SHELL, why: "above-brand is decided from the route", ok: has("aboveBrand={isAboveBrandScreen(pathname)}") },
-  { file: HOST_SHELL, why: "the phone strip is web-only, phone-width, signed-in, and steps aside for a screen with its own switcher", ok: has('const phoneBrandId = Platform.OS === "web" && !isWideDesktop && user != null && !screenOwnsSwitcher') },
-  { file: HOST_SHELL, why: "the phone strip is the brand switcher", ok: has('<WorkspaceBrandSwitcher brandId={phoneBrandId} compact testID="host-phone-brand-switcher" />') },
+  { file: HOST_SHELL, why: "the phone strip is web-only, phone-width, signed-in, and steps aside for a screen with its own switcher", ok: (src) => src.includes('const phoneBrand = Platform.OS === "web" && !isWideDesktop && user != null && !screenOwnsSwitcher') && src.includes("? phoneBrandStrip(pathname, workspaceRoute.routeBrandId, mode)") },
+  { file: HOST_SHELL, why: "the phone strip is the brand switcher", ok: has('<WorkspaceBrandSwitcher brandId={phoneBrand.brandId} compact testID="host-phone-brand-switcher" />') },
   { file: HOST_SHELL, why: "the phone strip sits above the screen", ok: (src) => src.includes('testID="host-phone-brand-strip"') && src.indexOf('testID="host-phone-brand-strip"') < src.indexOf("<View style={styles.stack}>{children}</View>") },
   { file: WORKSPACE_SHELL, why: "the Website workspace tells the shell it carries the switcher on phones", ok: has("useOwnPhoneBrandSwitcher(phone);") },
   { file: ACCOUNT, why: "Account has no brand switcher at the top", ok: (src) => /<TopBar\s+leftKind="none"/.test(src) && !/<TopBar\s+leftKind="brand"/.test(src) },

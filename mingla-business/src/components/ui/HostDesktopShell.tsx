@@ -33,7 +33,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useWorkspaceBrandRouteSync } from "../../hooks/useWorkspaceBrandRouteSync";
-import { brandIdFromRoute, isAboveBrandScreen, phoneBrandStripFor, type WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
+import { brandIdFromRoute, isAboveBrandScreen, phoneBrandStrip, type WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
 import { WorkspaceBrandSwitcher } from "../brand/WorkspaceBrandSwitcher";
 import { WorkspaceRouteContext, type WorkspaceRoute } from "../brand/workspaceBrandContext";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
@@ -118,13 +118,13 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   const rail = mode === "rail";
   const inset = active ? (rail || collapsed ? DESKTOP_RAIL_WIDTH : DESKTOP_SIDEBAR_WIDTH) : 0;
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  // #4453 — phones and narrow web: a brand's own screens (/brand/<id>/...) open under a back bar
-  // that names the screen, not the brand. The brand being edited is named above it, and is the
+  // #4453 — phones and narrow web: a brand's own screens (/brand/<id>/...) and one item of a brand
+  // (a trip, an event, a listing...) open under a back bar that names the screen, not the brand. The brand being edited is named above it, and is the
   // switcher. (The Website workspace has it in its own bar and says so; desktop has the top bar;
   // native keeps its headers.)
   const screenOwnsSwitcher = useScreenOwnsBrandSwitcher();
-  const phoneBrandId = Platform.OS === "web" && !isWideDesktop && user != null && !screenOwnsSwitcher
-    ? phoneBrandStripFor(pathname, workspaceRoute.routeBrandId)
+  const phoneBrand = Platform.OS === "web" && !isWideDesktop && user != null && !screenOwnsSwitcher
+    ? phoneBrandStrip(pathname, workspaceRoute.routeBrandId, mode)
     : null;
 
   useEffect(() => {
@@ -142,9 +142,9 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
     <HostShellInsetContext.Provider value={active}>
       <View style={[styles.host, active ? [styles.canvas, { paddingLeft: inset + DESKTOP_BEZEL_MARGIN }] : null]}>
         {active ? <ShellTopBar onBrandTap={() => setSwitcherOpen(true)} aboveBrand={isAboveBrandScreen(pathname)} /> : null}
-        {phoneBrandId !== null ? (
+        {phoneBrand !== null ? (
           <View style={styles.phoneBrand} testID="host-phone-brand-strip">
-            <WorkspaceBrandSwitcher brandId={phoneBrandId} compact testID="host-phone-brand-switcher" />
+            <WorkspaceBrandSwitcher brandId={phoneBrand.brandId} compact testID="host-phone-brand-switcher" />
           </View>
         ) : null}
         <View style={styles.stack}>{children}</View>

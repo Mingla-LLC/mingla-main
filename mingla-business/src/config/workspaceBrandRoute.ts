@@ -94,6 +94,8 @@ export function isAboveBrandScreen(pathname: string | null | undefined): boolean
   const segments = workspacePathSegments(pathname);
   const head = segments[0] ?? "";
   if (head === "brand") return segments[1] === "new";
+  // The person's own Ari settings (the Ari tab itself follows the brand).
+  if (head === "ari") return segments[1] === "settings";
   // A screen that names its brand in the address (Tap to Pay under Account) is that brand's.
   if (head === "account" && segments[1] === "tap-to-pay") return false;
   return ABOVE_BRAND_SCREENS.has(head);
@@ -111,4 +113,31 @@ export function phoneBrandStripFor(pathname: string | null | undefined, routeBra
   if (segments[0] !== "brand" || routeBrandId === null || segments[1] === "new") return null;
   if (segments[2] === "website" && segments[3] === "preview") return null;
   return routeBrandId;
+}
+
+/** The phone strip names the route's brand, or follows the current brand. */
+export type PhoneBrandStrip = { brandId: string | undefined };
+
+/**
+ * On a phone, whether the shell names the brand above this screen, and which.
+ *
+ * - A brand's own screen (`/brand/<id>/...`): that brand.
+ * - One item of a brand outside the tabs (one trip, event, RSVP, experience,
+ *   listing, insight, conversation): the current brand, which is the item's.
+ *   These are exactly the screens the desktop shell puts its top bar on
+ *   (`shellMode` "sidebar" or "rail"), so phone and desktop agree.
+ * - Tabs draw their own top bar; public, sign-in and full-screen tool routes
+ *   ("none") and screens above brand level show no brand.
+ */
+export function phoneBrandStrip(
+  pathname: string | null | undefined,
+  routeBrandId: string | null,
+  shellMode: "tabs" | "sidebar" | "rail" | "none",
+): PhoneBrandStrip | null {
+  const own = phoneBrandStripFor(pathname, routeBrandId);
+  if (own !== null) return { brandId: own };
+  if (workspacePathSegments(pathname)[0] === "brand") return null;
+  if (shellMode !== "sidebar" && shellMode !== "rail") return null;
+  if (isAboveBrandScreen(pathname)) return null;
+  return { brandId: routeBrandId ?? undefined };
 }

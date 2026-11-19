@@ -90,7 +90,7 @@ jest.mock("../../../ui/Toast", () => {
   const { Pressable, Text, View } = jest.requireActual("react-native");
   return {
     Toast: ({ visible, message, action }: { visible: boolean; message: string; action?: { label: string; onPress: () => void } }) => (visible ? (
-      <View testID="toast"><Text testID="toast-text">{message}</Text>{action ? <Pressable testID="toast-action" onPress={action.onPress}><Text>{action.label}</Text></Pressable> : null}</View>
+      <View testID="toast"><Text testID="toast-text">{message}</Text>{action ? <Pressable testID="toast-action" accessibilityLabel={action.label} onPress={action.onPress}><Text>{action.label}</Text></Pressable> : null}</View>
     ) : null),
   };
 });

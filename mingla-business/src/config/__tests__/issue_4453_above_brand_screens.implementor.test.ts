@@ -4,12 +4,14 @@
  * (How the shell, the workspace and Account are wired to this is a source rule:
  * .github/scripts/strict-grep/issue-4453-sites-host-wiring.mjs.)
  */
-import { isAboveBrandScreen, phoneBrandStripFor } from "../workspaceBrandRoute";
+import { hostDesktopShellModeFor } from "../../components/ui/hostDesktopShellRoutes";
+import { isAboveBrandScreen, phoneBrandStrip, phoneBrandStripFor } from "../workspaceBrandRoute";
+import { sameScreenForBrand } from "../workspaceBrandRoutes";
 
 describe("screens above brand level", () => {
   it.each([
     "/account", "/(tabs)/account", "/account/edit-profile", "/notifications", "/support", "/support/ticket-1",
-    "/recent", "/partner", "/promoting", "/brand/new",
+    "/recent", "/partner", "/promoting", "/brand/new", "/ari/settings",
   ])("%s shows no brand name", (path) => {
     expect(isAboveBrandScreen(path)).toBe(true);
   });
@@ -36,5 +38,42 @@ describe("on a phone, a brand's own screens name the brand at the top", () => {
     expect(phoneBrandStripFor("/account", null)).toBeNull();
     expect(phoneBrandStripFor("/marketing/ads", null)).toBeNull();
     expect(phoneBrandStripFor("/ari", "b1")).toBeNull();
+  });
+});
+
+describe("on a phone, one item of a brand names the brand too, and switching opens the other brand's list", () => {
+  const strip = (path: string, tabs = false) =>
+    phoneBrandStrip(path, null, hostDesktopShellModeFor(path, tabs ? ["(tabs)"] : [path.split("/")[1] ?? ""], null));
+
+  it.each([
+    ["/trip/t1", "/(tabs)/hub/trips"],
+    ["/trip/t1/travelers", "/(tabs)/hub/trips"],
+    ["/event/e1", "/(tabs)/hub/events"],
+    ["/event/e1/orders/o1", "/(tabs)/hub/events"],
+    ["/event/e1/guests", "/(tabs)/hub/events"],
+    ["/rsvp/r1", "/(tabs)/hub/events"],
+    ["/experience/x1", "/(tabs)/hub/experiences"],
+    ["/venue/v1", "/(tabs)/hub/listing"],
+    ["/insights/i1", "/(tabs)/analytics"],
+  ])("%s shows the current brand and switches to %s", (path, list) => {
+    expect(strip(path)).toEqual({ brandId: undefined });
+    expect(sameScreenForBrand(path, {}, "b1", "b2")).toBe(list);
+  });
+
+  it("a brand's own screen names the route's brand", () => {
+    expect(phoneBrandStrip("/brand/b1/team", "b1", "sidebar")).toEqual({ brandId: "b1" });
+    expect(phoneBrandStrip("/brand/b1/website/preview", "b1", "none")).toBeNull();
+  });
+
+  it.each(["/home", "/marketing/ads", "/hub/trips"])("tab screen %s keeps its own top bar (no second switcher)", (path) => {
+    expect(strip(path, true)).toBeNull();
+  });
+
+  it.each([
+    "/account", "/account/edit-profile", "/notifications", "/support/inbox", "/brand/new", "/ari/settings",
+    "/auth", "/e/brand/event", "/t/brand/trip", "/checkout/e1", "/pay/tok", "/event/e1/door", "/event/e1/scanner",
+    "/event/create", "/trip/create", "/trip/t1/edit",
+  ])("%s shows no brand strip", (path) => {
+    expect(strip(path)).toBeNull();
   });
 });
