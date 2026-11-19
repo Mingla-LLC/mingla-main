@@ -301,6 +301,9 @@ interface RsvpPartyPassRow {
   invite_status?: string | null;
   invite_link?: string | null;
   phone_last4?: string | null;
+  // issue #4508 C2 — the host's "Bring someone too" setting, on the viewer's
+  // own pass rows only.
+  guests_can_bring?: boolean | null;
 }
 
 /** issue #4508 1.24 — one person the inviter brought, as the pass sheet shows them. */
@@ -318,6 +321,11 @@ export interface RsvpPartyDetails {
   credentials: RsvpPassCredential[];
   /** Guests of the caller's own RSVP (the primary's view only). */
   guests: RsvpPartyGuestStatus[];
+  /**
+   * issue #4508 2.5 / C2 — the host lets a claimed guest bring one more
+   * person. Read from the viewer's own pass row; false when absent.
+   */
+  guestsCanBring: boolean;
 }
 
 const INVITE_STATUSES = new Set(["sent", "sending", "failed", "not_texted"]);
@@ -349,6 +357,9 @@ export const mapRsvpPartyRows = (rows: unknown): RsvpPartyDetails => {
           ? row.phone_last4
           : null,
       })),
+    guestsCanBring: list.some(
+      (row) => row.entity_type === "guest" && row.guests_can_bring === true,
+    ),
   };
 };
 
@@ -366,21 +377,6 @@ export const fetchRsvpPartyPasses = async (
   rsvpId: string,
 ): Promise<RsvpPassCredential[]> =>
   (await fetchRsvpPartyDetails(rsvpId)).credentials;
-
-/**
- * issue #4508 2.5 — whether a claimed guest may bring someone too. Read
- * straight from the event; anything unreadable is "no" (the button stays
- * hidden rather than leading to a refusal).
- */
-export const fetchRsvpGuestsCanBring = async (eventId: string): Promise<boolean> => {
-  const { data, error } = await supabase
-    .from("events")
-    .select("rsvp_guests_can_bring")
-    .eq("id", eventId)
-    .maybeSingle();
-  if (error !== null || data === null) return false;
-  return (data as { rsvp_guests_can_bring?: boolean | null }).rsvp_guests_can_bring === true;
-};
 
 export type RsvpGuestBringResult =
   | { ok: true; guestId: string | null; inviteUrl: string | null }

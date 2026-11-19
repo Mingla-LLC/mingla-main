@@ -320,17 +320,15 @@ export type RsvpGuestPayload =
 
 /**
  * Number guests send `{ phone, phoneCountryIso }` only (no name, no email:
- * 1.1). A friend picked from the list has no number on this device and sends
- * `{ userId }`.
- * [TRANSITIONAL] `{ userId }` guests are not yet accepted by
- * public-submit-rsvp (wave A contract has no user-id guest); surfaces keep the
- * friends route off until it is. Exit: the server accepts `{ userId }`.
+ * 1.1). A friend picked from the list sends `{ userId }` alone (contract v2,
+ * C1): the server checks the friendship and resolves their proven number,
+ * which this device never sees.
  */
 export const buildGuestPayload = (party: ReadonlyArray<RsvpPartyGuest>): RsvpGuestPayload[] =>
   party.map((g) =>
-    g.phone !== null
-      ? { phone: g.phone, phoneCountryIso: g.phoneCountryIso }
-      : { userId: g.userId as string },
+    g.source === "friend" && g.userId !== null
+      ? { userId: g.userId }
+      : { phone: g.phone as string, phoneCountryIso: g.phoneCountryIso },
   );
 
 /** Confirm dialog row: name when known, else the number (1.7). */
@@ -348,6 +346,7 @@ export const rsvpGuestErrorMessage = (code: string): string | null => {
   if (code.includes("rsvp_guest_duplicate")) return "You've added the same person twice. Remove one and try again.";
   if (code.includes("rsvp_guest_already_listed")) return "Someone you're bringing is already on the list. Remove them and try again.";
   if (code.includes("rsvp_guest_released")) return "Someone you're bringing can't be invited to this event. Remove them and try again.";
+  if (code.includes("rsvp_guest_not_friend")) return "You can only add people from your friends list. Add them by phone number instead.";
   if (code.includes("rsvp_guest_daily_cap")) return "You've invited a lot of numbers today. Try again tomorrow, or RSVP just for yourself.";
   if (code.includes("rsvp_guest_phone_invalid")) return "One of the numbers you added isn't valid. Remove it and add it again.";
   if (code.includes("rsvp_guest_phone_country_invalid")) return "One of the numbers you added isn't valid. Remove it and add it again.";
@@ -396,6 +395,13 @@ export interface RsvpSubmittedGuest {
   claimed: boolean;
   inviteUrl: string | null;
   inviteCode: string | null;
+  /**
+   * C3 — false when the server knows now that this guest will never be
+   * texted (no number, the number opted out, or it had its guest invites
+   * for today). Sending is asynchronous, so true means "on its way", not
+   * "delivered".
+   */
+  willText: boolean;
 }
 
 export const submittedGuestLabel = (g: RsvpSubmittedGuest): string =>
@@ -411,7 +417,7 @@ export const submittedGuestStatus = (
 ): string => {
   if (g.claimed) return "Has their pass";
   if (rsvpStatus !== "going") return "We'll text them once you're in";
-  if (g.inviteUrl === null) return "We couldn't text this number";
+  if (!g.willText || g.inviteUrl === null) return "We couldn't text this number";
   return g.onMingla ? "Text on its way, and a note in their app" : "Text on its way";
 };
 
@@ -429,5 +435,7 @@ export const parseSubmittedGuests = (value: unknown): RsvpSubmittedGuest[] => {
       claimed: v.claimed === true,
       inviteUrl: str(v.inviteUrl),
       inviteCode: str(v.inviteCode),
+      // Older servers send no willText; their guests were all texted.
+      willText: v.willText !== false,
     }));
 };

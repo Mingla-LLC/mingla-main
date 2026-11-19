@@ -247,3 +247,39 @@ Deno.test("I-1 submit response guests are parsed defensively and a missing link 
   assertEquals(submittedGuestStatus(parsed[1], "going"), "We couldn't text this number");
   assertEquals(submittedGuestStatus(parsed[0], "pending"), "We'll text them once you're in");
 });
+
+// ── contract v2 (#4508 wave A rework) ──
+Deno.test("C1 payload: a friend picked from the list is sent as { userId } alone; a typed number as { phone }", () => {
+  const friend = friendGuest({
+    userId: "u-fay",
+    displayName: "Fay Ford",
+    username: "fay",
+    avatarUrl: null,
+    closeFriend: true,
+  } as Parameters<typeof friendGuest>[0]);
+  const typed = addableFromPreview(preview("+15551234567", [], ON_ADA));
+  assert(typed !== null);
+  const party = addPartyGuest(addPartyGuest([], friend, 3), typed, 3);
+  assertEquals(buildGuestPayload(party), [
+    { userId: "u-fay" },
+    { phone: "+15551234567", phoneCountryIso: "US" },
+  ]);
+  // A typed number that matched an account still goes as the number.
+  assert(!("userId" in buildGuestPayload(party)[1]));
+  assertEquals(
+    rsvpGuestErrorMessage("rsvp_guest_not_friend"),
+    "You can only add people from your friends list. Add them by phone number instead.",
+  );
+});
+
+Deno.test("C3 status: a guest the server will not text reads \"We couldn't text this number\" at once", () => {
+  const parsed = parseSubmittedGuests([
+    { guestId: "g1", phoneLast4: null, onMingla: true, displayName: "Fin", claimed: false, inviteUrl: "https://usemingla.com/c/X", inviteCode: "X", willText: false, notTextedReason: "no_phone" },
+    { guestId: "g2", phoneLast4: "1111", onMingla: false, displayName: null, claimed: false, inviteUrl: "https://usemingla.com/c/Y", inviteCode: "Y", willText: true },
+    { guestId: "g3", phoneLast4: "2222", onMingla: false, displayName: null, claimed: false, inviteUrl: "https://usemingla.com/c/Z", inviteCode: "Z" },
+  ]);
+  assertEquals(submittedGuestStatus(parsed[0], "going"), "We couldn't text this number");
+  assertEquals(submittedGuestStatus(parsed[1], "going"), "Text on its way");
+  // An older server sends no willText: still "on its way", never invented as failed.
+  assertEquals(submittedGuestStatus(parsed[2], "going"), "Text on its way");
+});

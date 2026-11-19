@@ -14,6 +14,8 @@ export interface RsvpGuestLanding {
     venueLine: string | null
     brandName: string | null
     eventUrl: string | null
+    /** #4508 C5: the public event cover; null for a private event or none. */
+    coverImageUrl: string | null
   } | null
   appLink: { oneLink: string; appScheme: string } | null
 }
@@ -69,6 +71,12 @@ async function invoke(
 const text = (value: unknown): string | null =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 
+// Only an https image URL is ever put in an <img>.
+const httpsUrl = (value: unknown): string | null => {
+  const url = text(value)
+  return url !== null && /^https:\/\/[^\s"'<>]+$/.test(url) ? url : null
+}
+
 export function parseRsvpGuestLanding(body: Record<string, unknown>): RsvpGuestResolveResult {
   if (body.ok !== true) return { kind: 'error' }
   const status = text(body.status)
@@ -99,6 +107,7 @@ export function parseRsvpGuestLanding(body: Record<string, unknown>): RsvpGuestR
               venueLine: text(event.venueLine),
               brandName: text(event.brandName),
               eventUrl: text(event.eventUrl),
+              coverImageUrl: httpsUrl(event.coverImageUrl),
             },
       appLink:
         appLink !== null && typeof appLink.oneLink === 'string' && typeof appLink.appScheme === 'string'

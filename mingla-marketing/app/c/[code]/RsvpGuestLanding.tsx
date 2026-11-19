@@ -84,6 +84,16 @@ export function RsvpGuestLanding({
 
   const eventCard = guest.event ? (
     <div className="mt-6 rounded-[20px] border border-white/12 bg-white/[0.04] p-5 text-left">
+      {guest.event.coverImageUrl ? (
+        // #4508 C5 — the public event cover, portrait like every cover.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={guest.event.coverImageUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="mb-4 aspect-[4/5] w-full rounded-[14px] object-cover"
+        />
+      ) : null}
       <p className="text-lg font-bold text-white">{guest.event.title}</p>
       {when ? <p className="mt-1 text-sm text-white/70">{when}</p> : null}
       {guest.event.venueLine ? <p className="text-sm text-white/70">{guest.event.venueLine}</p> : null}

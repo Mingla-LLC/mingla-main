@@ -30,7 +30,6 @@ import * as Sharing from "expo-sharing";
 import { Icon } from "../ui/Icon";
 import type { ConsumerRsvpRow } from "../../services/calendarService";
 import {
-  fetchRsvpGuestsCanBring,
   fetchRsvpPartyDetails,
   fetchRsvpPassPdf,
   submitDeckRsvp,
@@ -137,6 +136,9 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
         const party = details.credentials;
         setCredentials(party);
         setPartyGuests(details.guests);
+        // issue #4508 2.5 / C2 — only a claimed guest, only when the host
+        // allows it; read from the guest's own pass row.
+        setCanBring(isGuest && row.guestId !== null && details.guestsCanBring);
         if (party.length === 0) {
           setPartyError("This RSVP pass is no longer active.");
           return;
@@ -148,28 +150,17 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
       .catch(() => {
         setCredentials([]);
         setPartyGuests([]);
+        setCanBring(false);
         setPartyError("Couldn't verify this RSVP pass.");
       })
       .finally(() => setPartyLoading(false));
-  }, [fallbackCredential, isPending, row.rsvpId, visible]);
-
-  // issue #4508 2.5 — only a claimed guest, and only when the host allows it.
-  useEffect(() => {
-    if (!visible || !isGuest || row.guestId === null || isPending) {
-      setCanBring(false);
-      return;
-    }
-    let cancelled = false;
-    void fetchRsvpGuestsCanBring(row.eventId).then((allowed) => {
-      if (!cancelled) setCanBring(allowed);
-    });
-    return () => { cancelled = true; };
-  }, [visible, isGuest, row.guestId, row.eventId, isPending]);
+  }, [fallbackCredential, isGuest, isPending, row.guestId, row.rsvpId, visible]);
 
   useEffect(() => {
     if (!visible) return;
     setCredentials([]);
     setPartyGuests([]);
+    setCanBring(false);
     setSelectedEntityId(row.guestId ?? row.rsvpId);
     loadParty();
   }, [fallbackCredential, loadParty, row.guestId, row.rsvpId, visible]);

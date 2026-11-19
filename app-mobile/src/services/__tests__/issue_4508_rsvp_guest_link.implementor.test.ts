@@ -187,3 +187,23 @@ Deno.test("S-5 Who's going shows Brought by only when the server row carries it 
   const sheet = await src("components/EventGuestListSheet.tsx");
   assert(/typeof guest\.broughtByName === "string"/.test(sheet));
 });
+
+// ── contract v2 (#4508 wave A rework) ──
+Deno.test("C1 the friends route is on: friends picked from the list are sent by account", async () => {
+  const screen = await src("screens/Event/ConsumerEventDetailScreen.tsx");
+  assert(/const RSVP_FRIEND_GUESTS_SERVER_READY = true;/.test(screen), "the friends route is switched on");
+});
+
+Deno.test("C2 Bring someone too reads the host setting from the guest's own pass row", async () => {
+  const deck = await src("services/rsvpDeckService.ts");
+  assert(!/\.from\("events"\)\s*\.select\("rsvp_guests_can_bring"\)/.test(deck), "no direct events read");
+  assert(/row\.guests_can_bring === true/.test(deck), "read from fetch_user_rsvp_party_passes");
+  const sheet = await src("components/activity/RsvpPassSheet.tsx");
+  assert(/setCanBring\(isGuest && row\.guestId !== null && details\.guestsCanBring\)/.test(sheet));
+  assert(!/fetchRsvpGuestsCanBring/.test(sheet));
+});
+
+Deno.test("C4 Who's going shows +N guests from unclaimedGuestCount", async () => {
+  const sheet = await src("components/EventGuestListSheet.tsx");
+  assert(/guest\.unclaimedGuestCount/.test(sheet) && /\+\$\{unclaimed\} \$\{unclaimed === 1 \? "guest" : "guests"\}/.test(sheet));
+});

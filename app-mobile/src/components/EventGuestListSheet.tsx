@@ -707,7 +707,16 @@ export function EventGuestListSheet({
       // copy distinct from #871's party-size fact so private and unlinked rows
       // retain their established hierarchy.
       const city = item.isNamed ? cityFor(guest.location) : null;
-      const party = `party of ${guest.partySize}`;
+      // #4508 D-2.4 — "+N guests": the inviter's plus-ones who have not
+      // claimed yet (already counted in partySize, never named).
+      const unclaimed =
+        typeof guest.unclaimedGuestCount === "number" && guest.unclaimedGuestCount > 0
+          ? Math.floor(guest.unclaimedGuestCount)
+          : 0;
+      const party =
+        unclaimed > 0
+          ? `party of ${guest.partySize} · +${unclaimed} ${unclaimed === 1 ? "guest" : "guests"}`
+          : `party of ${guest.partySize}`;
       // #4508 2.4 — "Brought by {name}" only when the server row carries it.
       const broughtBy =
         item.isNamed && typeof guest.broughtByName === "string" && guest.broughtByName.trim().length > 0

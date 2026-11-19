@@ -48,4 +48,18 @@ const released = parseRsvpGuestLanding({ ok: true, status: 'released' })
 assert.equal(released.kind, 'guest')
 assert.equal(released.guest.appLink, null)
 
+// C5: the public cover is shown; anything that is not an https URL is dropped.
+const withCover = parseRsvpGuestLanding({
+  ok: true, status: 'open', inviterName: 'Ada O.',
+  event: { title: 'Rooftop Sessions', coverImageUrl: 'https://cdn.example.test/cover.jpg' },
+})
+assert.equal(withCover.guest.event.coverImageUrl, 'https://cdn.example.test/cover.jpg')
+const badCover = parseRsvpGuestLanding({
+  ok: true, status: 'open', inviterName: 'Ada O.',
+  event: { title: 'X', coverImageUrl: 'javascript:alert(1)' },
+})
+assert.equal(badCover.guest.event.coverImageUrl, null)
+assert.equal(open.guest.event.coverImageUrl, null)
+assert.match(landing, /guest\.event\.coverImageUrl \? \(/)
+
 console.log('issue-4508 RSVP guest landing: PASS')

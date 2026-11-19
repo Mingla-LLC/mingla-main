@@ -359,8 +359,9 @@ const openMapsForTarget = (
 const copyAddressForTarget = (text: string): Promise<void> =>
   copyAddressText(text);
 
-// issue #4508 — see rsvpFriendGuestsReady below.
-const RSVP_FRIEND_GUESTS_SERVER_READY = false;
+// issue #4508 — public-submit-rsvp accepts a friend picked from the list as
+// { userId } (contract v2, C1), so the friends route is on.
+const RSVP_FRIEND_GUESTS_SERVER_READY = true;
 
 export default function ConsumerEventDetailScreen({
   seed: seedProp = null,
@@ -1033,10 +1034,8 @@ export default function ConsumerEventDetailScreen({
     [seed],
   );
   // issue #4508 1.4 — "Or from your friends" reads the already-loaded circle
-  // (no network call per keystroke). Friends and close friends only.
-  // [TRANSITIONAL] off until public-submit-rsvp accepts a friend guest without
-  // a number ({ userId }); the wave A contract requires a phone per guest, and
-  // a friend's number is never on this device. Exit: that contract lands.
+  // (no network call per keystroke). Friends and close friends only. A picked
+  // friend is sent as { userId }; the server resolves their number.
   const rsvpFriendGuestsReady = RSVP_FRIEND_GUESTS_SERVER_READY;
   const rsvpCircle = useUserCircle(
     rsvpFriendGuestsReady && user !== null ? user.id : null,
