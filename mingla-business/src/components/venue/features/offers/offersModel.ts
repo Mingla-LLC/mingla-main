@@ -39,8 +39,8 @@ export const OFFER_KIND_LABEL: Readonly<Record<VenueOfferKind, string>> = {
   by_the_hour: "By the hour",
 };
 
-export const OFFER_STATUS: Readonly<Record<VenueOfferStatus, { label: string; variant: "live" | "draft" | "warn" | "muted" }>> = {
-  live: { label: "Live", variant: "live" },
+export const OFFER_STATUS: Readonly<Record<VenueOfferStatus, { label: string; variant: "ok" | "draft" | "warn" | "muted" }>> = {
+  live: { label: "Live", variant: "ok" },
   draft: { label: "Draft", variant: "draft" },
   paused: { label: "Paused", variant: "warn" },
   archived: { label: "Archived", variant: "muted" },

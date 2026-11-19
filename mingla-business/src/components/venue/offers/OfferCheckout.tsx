@@ -46,7 +46,9 @@ import {
   holdSecondsLeft,
   holdUntilText,
   idCheckNote,
+  orderLinesByOptions,
   summaryLines,
+  venueAddressLine,
   venueOfferErrorCopy,
   windowText,
   type EntryBooking,
@@ -349,7 +351,7 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
       <Text style={[styles.venueName, themeBoldFace(theme), { color: palette.primaryText }]}>{venueName}</Text>
       {offer?.venue.address ? (
         <Text style={[styles.small, { color: palette.secondaryText }]}>
-          {[offer.venue.address, offer.venue.city].filter(Boolean).join(", ")}
+          {venueAddressLine(offer.venue.address, offer.venue.city)}
         </Text>
       ) : null}
       {offer !== null ? (
@@ -366,7 +368,7 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
         <EntrySummaryRows
           palette={palette}
           theme={theme}
-          lines={summaryLines(held.booking.lines, {
+          lines={summaryLines(orderLinesByOptions(held.booking.lines, offer?.options.map((o) => o.id) ?? []), {
             currencyCode: held.booking.currencyCode,
             exponent: offer?.exponent ?? 2,
             taxMinor: held.booking.taxMinor,

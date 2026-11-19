@@ -26,6 +26,7 @@ import { color, radius, space, type } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Icon } from "./Icon";
+import { PickerSheetHead } from "./PickerSheetHead";
 import { Sheet } from "./Sheet";
 import { normalizeTime24, timeOptions } from "./fieldModels";
 
@@ -154,7 +155,7 @@ export function TimeField({
         presentation={isWideDesktop ? "modal" : undefined}
       >
         <View style={styles.sheetBody}>
-          <Text style={styles.sheetTitle}>{label}</Text>
+          <PickerSheetHead title={label} onClose={() => setOpen(false)} testID={testID !== undefined ? `${testID}-head` : undefined} />
           <ScrollView
             ref={listRef}
             style={styles.scroll}
@@ -225,7 +226,6 @@ const styles = StyleSheet.create({
   pressed: { backgroundColor: color.fill.tile },
   error: { ...type.caption, color: color.errorText },
   sheetBody: { flex: 1, paddingHorizontal: space[4], paddingTop: space[2], gap: space[2] },
-  sheetTitle: { ...type.h2, color: color.text1 },
   scroll: { flex: 1 },
   list: { gap: space[1], paddingBottom: space[6] },
   option: {

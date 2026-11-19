@@ -100,7 +100,6 @@ import {
 import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
 import {
   OFFERING_PREMIUM_HEADER_ROW,
-  premiumDesktopBarDockStyle,
 } from "@mingla/offering-rendering/offeringFrameMetrics";
 import {
   OfferingFactRows,
@@ -2493,7 +2492,10 @@ export const PublicVenueScreen = ({
         testID="issue-2729-reserve-bar"
         style={
           isDesktop
-            ? premiumDesktopBarDockStyle(22 + insets.bottom)
+            ? // #4490 H1: in the flyer column, under Share and Directions. A
+              // `position: fixed` dock sat inside the scroll container's transform,
+              // so it scrolled with the page and ended up over the cover photo.
+              styles.flyerBar
             : [
                 styles.reserveBarWrap,
                 Platform.OS === "web"
@@ -2559,6 +2561,7 @@ export const PublicVenueScreen = ({
   // Share and Directions as ghost pills under the flyer; the identity, the
   // host row and the facts read in the right column; Reserve is the bar.
   const desktopFlyerActions = isDesktop ? (
+    <>
     <View style={styles.flyerActions} testID="issue-4420-venue-flyer-actions">
       <Pressable
         onPress={onShare}
@@ -2590,6 +2593,8 @@ export const PublicVenueScreen = ({
         </Pressable>
       ) : null}
     </View>
+    {!hasHostActionBar ? reserveBar : null}
+    </>
   ) : null;
 
   // ── #1561 the gallery becomes the hero ────────────────────────────────────
@@ -2865,7 +2870,7 @@ export const PublicVenueScreen = ({
         testID="orch-1255-public-venue"
       >
         {bodyContent}
-        {Platform.OS === "web" && !hasHostActionBar && reserveBar !== null ? (
+        {Platform.OS === "web" && !isDesktop && !hasHostActionBar && reserveBar !== null ? (
           <React.Fragment key="issue-2729-web-phone-action">
             {reserveBar}
           </React.Fragment>
@@ -2930,6 +2935,7 @@ const styles = StyleSheet.create({
   hostAvatarText: { fontSize: 15, fontWeight: "700" },
   // #4420 — Share and Directions under the desktop flyer, 50% each.
   flyerActions: { flexDirection: "row", gap: 10 },
+  flyerBar: { width: "100%" },
   flyerPill: {
     flex: 1,
     minHeight: 44,

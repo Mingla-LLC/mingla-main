@@ -32,6 +32,7 @@ import { Input } from "../../../ui/Input";
 import { KpiTile } from "../../../ui/KpiTile";
 import { Segmented } from "../../../ui/Pill";
 import { Pill } from "../../../ui/Pill";
+import { PickerSheetHead } from "../../../ui/PickerSheetHead";
 import { Sheet } from "../../../ui/Sheet";
 import { Skeleton } from "../../../ui/Skeleton";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
@@ -63,9 +64,9 @@ function timeOf(iso: string | null, timezone?: string): string | null {
   }
 }
 
-function passStatus(p: CheckInPass, timezone: string): { label: string; variant: "live" | "warn" | "info" | "muted" | "error" } {
+function passStatus(p: CheckInPass, timezone: string): { label: string; variant: "ok" | "warn" | "info" | "muted" | "error" } {
   if (p.status !== "valid") return { label: "Cancelled", variant: "error" };
-  if (p.admittedCount >= p.admits) return { label: `In · ${timeOf(p.lastAdmittedAt, timezone) ?? "today"}`, variant: "live" };
+  if (p.admittedCount >= p.admits) return { label: `In · ${timeOf(p.lastAdmittedAt, timezone) ?? "today"}`, variant: "ok" };
   if (p.admittedCount > 0) return { label: `${p.admittedCount} of ${p.admits} in`, variant: "info" };
   if (p.idCheckLabel !== null) return { label: "Check ID", variant: "warn" };
   return { label: "To arrive", variant: "muted" };
@@ -386,7 +387,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
                   </Text>
                 </View>
                 <Text style={styles.guests}>{t.admits}</Text>
-                <Pill variant={inNow ? "live" : "muted"}>{inNow ? "In" : "Scan ticket"}</Pill>
+                <Pill variant={inNow ? "ok" : "muted"}>{inNow ? "In" : "Scan ticket"}</Pill>
               </View>
             );
           }
@@ -493,7 +494,19 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         testID="venue-checkin-scan-sheet"
       >
         <View style={styles.sheetBody}>
-          <Text style={styles.sheetTitle} accessibilityRole="header">Scan a pass</Text>
+          {isWideDesktop ? (
+            <Text style={styles.sheetTitle} accessibilityRole="header">Scan a pass</Text>
+          ) : (
+            <PickerSheetHead
+              title="Scan a pass"
+              onClose={() => {
+                setScanOpen(false);
+                setOutcome(null);
+                setCameraOn(false);
+              }}
+              testID="venue-checkin-scan-head"
+            />
+          )}
           <ScrollView style={styles.grow} contentContainerStyle={styles.sheetScroll} keyboardShouldPersistTaps="handled">
             {scanBody}
           </ScrollView>

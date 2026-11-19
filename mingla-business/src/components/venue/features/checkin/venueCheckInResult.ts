@@ -67,6 +67,23 @@ export function checkInResultView(outcome: ScanOutcome): CheckInResultView {
     }
     case "id_required": {
       const label = pass?.idCheckLabel ?? "a valid ID";
+      const idGuests = pass?.idCheckCount ?? 0;
+      const party = pass?.admits ?? 0;
+      if (idGuests > 0 && party > idGuests) {
+        // A mixed party: only some of the guests are on the price that needs an ID.
+        const rest = party - idGuests;
+        return {
+          state: "needs_id",
+          tone: "warning",
+          title: "Check ID first",
+          subject,
+          body: `Ask ${idGuests} of ${party} guests for ${label}. If they have no ID, ${
+            idGuests === 1 ? "sell that guest a walk-in ticket" : "sell those guests walk-in tickets"
+          } instead of using this price. The other ${rest} ${rest === 1 ? "guest keeps" : "guests keep"} their entry.`,
+          primary: "id_seen",
+          secondary: "sell_walk_in",
+        };
+      }
       return {
         state: "needs_id",
         tone: "warning",

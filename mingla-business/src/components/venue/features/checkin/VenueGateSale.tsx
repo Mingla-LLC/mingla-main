@@ -16,6 +16,7 @@ import { color, space, type } from "../../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
 import { useSellAtGate } from "../../../../hooks/useVenueCheckIns";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
+import { copyPublicUrl } from "../../../../utils/sharePublicUrl";
 import type { GateMethod, GateSaleResult, VenueBookingSettings, VenueOffer } from "../../../../types/venueOffers";
 import { randomId } from "../../../../utils/randomId";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
@@ -83,6 +84,7 @@ export function VenueGateSale({
   const [error, setError] = useState<string | null>(null);
   const [payUrl, setPayUrl] = useState<string | null>(null);
   const [payTotal, setPayTotal] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   // One key per attempt: a double tap replays, a new sale gets a new key.
   const [attemptKey, setAttemptKey] = useState(() => `gate-${randomId()}`);
 
@@ -96,6 +98,7 @@ export function VenueGateSale({
     setError(null);
     setPayUrl(null);
     setPayTotal(null);
+    setCopyState("idle");
     setAttemptKey(`gate-${randomId()}`);
     // Reset only when the sheet opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -171,7 +174,27 @@ export function VenueGateSale({
       <Text style={styles.title}>Ask them to scan this</Text>
       <Text style={styles.meta}>They pay {payTotal} on their phone. Their pass appears once it&apos;s paid; scan it to check them in.</Text>
       <VenuePayQr url={payUrlProof} size={Math.min(240, Math.round(height * 0.3))} testID="gate-sale-qr" />
-      <Text style={styles.hint} selectable numberOfLines={2}>{payUrlProof.split("#")[0]}</Text>
+      <Button
+        label={copyState === "copied" ? "Link copied" : "Copy link"}
+        variant="secondary"
+        size="md"
+        leadingIcon={copyState === "copied" ? "check" : "copy"}
+        onPress={() => {
+          copyPublicUrl(payUrlProof).then(
+            () => setCopyState("copied"),
+            () => setCopyState("failed"),
+          );
+        }}
+        testID="gate-sale-copy-link"
+      />
+      {copyState === "failed" ? (
+        <Text style={styles.error} accessibilityLiveRegion="polite">Couldn&apos;t copy the link. Let them scan the code instead.</Text>
+      ) : (
+        <Text style={styles.hint} accessibilityLiveRegion="polite">
+          {copyState === "copied" ? "Send it by message. It opens their pass and payment." : "Or send the link by message."}
+        </Text>
+      )}
+      <Text style={styles.linkText} selectable numberOfLines={1}>{payUrlProof.split("#")[0]}</Text>
     </View>
   ) : (
     <View style={styles.body}>
@@ -335,6 +358,8 @@ const styles = StyleSheet.create({
   label: { ...type.small, color: color.text2 },
   meta: { ...type.small, color: color.text2, textAlign: "left" },
   hint: { ...type.caption, color: color.text3 },
+  error: { ...type.caption, color: color.errorText },
+  linkText: { ...type.caption, color: color.text4, textAlign: "center" },
   field: { gap: space[1] },
   methods: { gap: space[2] },
   footer: { flexDirection: "row", gap: space[2], paddingTop: space[3], paddingHorizontal: space[1] },

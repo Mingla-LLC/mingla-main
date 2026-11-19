@@ -137,7 +137,7 @@ export function parseEntryOfferDetail(raw: unknown): EntryOfferDetail | null {
     entryStyle:
       style === "walk_in" || style === "day_pass" || style === "timed_session" ? style : null,
     options,
-    policyText: asText(policy?.text),
+    policyText: policyWords(policy),
     refundLadder: ladder,
     currencyCode,
     exponent: asInt(raw.minorUnitExponent) ?? 2,
@@ -601,7 +601,9 @@ export function parseEntryQuote(raw: unknown): EntryQuote | null {
     currencyCode,
     subtotalMinor: asMinor(raw.subtotalMinor) ?? 0,
     feeMinor: asMinor(raw.feeMinor) ?? 0,
-    taxMinor: asMinor(raw.taxMinor) ?? 0,
+    // With VAT included in the price the server reports the tax as 0 and the
+    // amount inside `vat.amountMinor`; the summary needs the amount to say "Includes VAT".
+    taxMinor: Math.max(asMinor(raw.taxMinor) ?? 0, mode === "none" ? 0 : (asMinor(vat.amountMinor) ?? 0)),
     totalMinor,
     expiresAt: asText(raw.expiresAt),
     vatMode: mode,
@@ -617,7 +619,7 @@ export function parseEntryQuote(raw: unknown): EntryQuote | null {
             endsAt: asText(win.endsAt) ?? "",
           },
     lines,
-    policyText: policy === null ? null : asText(policy.text),
+    policyText: policy === null ? null : policyWords(policy),
   };
 }
 
@@ -840,10 +842,103 @@ export function parseEntryBooking(raw: unknown): EntryBooking | null {
             endsAt: asText(win.endsAt) ?? "",
           },
     lines: quoteLike?.lines ?? [],
-    policyText: asText(policy.text),
+    policyText: policyWords(policy),
     vatMode,
     passes,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Refund words: the SAME sentence the Host reads in the editor's review.
+// ---------------------------------------------------------------------------
+
+function minutesBeforeWords(minutes: number): string {
+  if (minutes <= 0) return "until it starts";
+  if (minutes % 1440 === 0) {
+    const d = minutes / 1440;
+    return d === 1 ? "24 hours before" : `${d} days before`;
+  }
+  if (minutes % 60 === 0) {
+    const h = minutes / 60;
+    return h === 1 ? "1 hour before" : `${h} hours before`;
+  }
+  return `${minutes} min before`;
+}
+
+/** "Full refund up to 24 hours before, then 50% back until it starts" - or "No refunds". */
+export function refundLadderWords(ladder: readonly EntryRefundRung[]): string {
+  if (ladder.length === 0) return "No refunds";
+  return [...ladder]
+    .sort((a, b) => b.minMinutesBefore - a.minMinutesBefore)
+    .map((rung) => {
+      const pct =
+        rung.refundBps >= 10000 ? "Full refund" : rung.refundBps <= 0 ? "No refund" : `${rung.refundBps / 100}% back`;
+      return rung.minMinutesBefore <= 0 ? `${pct} until it starts` : `${pct} up to ${minutesBeforeWords(rung.minMinutesBefore)}`;
+    })
+    .join(", then ");
+}
+
+/**
+ * The refund terms as a guest reads them. Built from the ladder when the server
+ * sent one; otherwise the server's own sentence is made readable ("1 day(s)"
+ * becomes "24 hours", "up to the start" becomes "until it starts").
+ */
+export function policyWords(policy: Record<string, unknown> | null): string | null {
+  if (policy === null) return null;
+  const rawLadder = Array.isArray(policy.refundLadder) ? (policy.refundLadder as unknown[]) : null;
+  if (rawLadder !== null) {
+    const ladder: EntryRefundRung[] = [];
+    let complete = true;
+    for (const rung of rawLadder) {
+      // The offer reads camelCase; a booking's snapshot keeps the stored snake_case.
+      const minutes = isJson(rung) ? asInt(rung.minMinutesBefore ?? rung.min_minutes_before) : null;
+      const bps = isJson(rung) ? asInt(rung.refundBps ?? rung.refund_bps) : null;
+      if (minutes === null || bps === null) complete = false;
+      else ladder.push({ minMinutesBefore: minutes, refundBps: bps });
+    }
+    if (complete) return refundLadderWords(ladder);
+  }
+  const text = asText(policy.text);
+  if (text === null) return null;
+  return text
+    .replace(/\b1 day\(s\) before/g, "24 hours before")
+    .replace(/\b(\d+) day\(s\) before/g, "$1 days before")
+    .replace(/\b1 hour\(s\) before/g, "1 hour before")
+    .replace(/\b(\d+) hour\(s\) before/g, "$1 hours before")
+    .replace(/ up to the start\b/g, " until it starts")
+    .replace(/(\d+)% refund/g, "$1% back")
+    .replace(/\.\s+(?=\S)/g, ", then ")
+    .replace(/\.$/, "");
+}
+
+/**
+ * Booking lines in the offer's own price order (the order checkout shows). The
+ * server lists a booking's lines by when they were written, which is not the
+ * offer's order; unknown ids keep their place after the known ones.
+ */
+export function orderLinesByOptions<T extends { priceOptionId: string }>(
+  lines: readonly T[],
+  optionIds: readonly string[],
+): T[] {
+  if (optionIds.length === 0) return [...lines];
+  const rank = (id: string): number => {
+    const at = optionIds.indexOf(id);
+    return at === -1 ? optionIds.length : at;
+  };
+  return lines
+    .map((line, index) => ({ line, index }))
+    .sort((a, b) => rank(a.line.priceOptionId) - rank(b.line.priceOptionId) || a.index - b.index)
+    .map((entry) => entry.line);
+}
+
+/** "12 Ikorodu Rd, Lagos, Nigeria" - the city is added only when the address does not already name it. */
+export function venueAddressLine(address: string | null, city: string | null): string | null {
+  const a = address?.trim() ?? "";
+  const c = city?.trim() ?? "";
+  if (a.length === 0) return c.length > 0 ? c : null;
+  if (c.length === 0) return a;
+  const parts = a.split(",").map((part) => part.trim().toLowerCase());
+  return parts.includes(c.toLowerCase()) || a.toLowerCase().includes(c.toLowerCase()) ? a : `${a}, ${c}`;
 }
 
 /** The currency's minor-unit exponent (NGN 2, JPY 0); 2 when unknown. */

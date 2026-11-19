@@ -47,6 +47,9 @@ export function useVenueListings(
     queryKey: enabled ? venueListingKeys.byBrand(brandId) : DISABLED_LIST_KEY,
     enabled,
     staleTime: 15_000,
+    // #4490 I1: Admin verifying a venue changes its status elsewhere; the "In review"
+    // pill must clear when the host comes back to this tab, without a reload.
+    refetchOnWindowFocus: "always",
     queryFn: () =>
       enabled ? fetchVenueListings(brandId) : Promise.resolve([]),
   });
@@ -63,6 +66,9 @@ export function useVenueListing(
       : (["venueListings", "detail", "disabled"] as const),
     enabled,
     staleTime: 15_000,
+    // #4490 I1: Admin verifying a venue changes its status elsewhere; the "In review"
+    // pill must clear when the host comes back to this tab, without a reload.
+    refetchOnWindowFocus: "always",
     queryFn: () =>
       enabled ? fetchVenueListing(venueId) : Promise.resolve(null),
   });

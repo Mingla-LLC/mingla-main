@@ -54,6 +54,8 @@ import { Input } from "../../../ui/Input";
 import { NumberStepper } from "../../../ui/NumberStepper";
 import { OptionCard } from "../../../ui/OptionCard";
 import { SelectSheet } from "../../../ui/SelectSheet";
+import { useScrollToTopOnChange } from "../../../ui/useScrollToTopOnChange";
+import { revealFocusedFieldWithin } from "../../offers/revealFocusedField";
 import { Skeleton } from "../../../ui/Skeleton";
 import { Stepper, StepperFooter, type StepperStep } from "../../../ui/Stepper";
 import { TimeField } from "../../../ui/TimeField";
@@ -155,6 +157,8 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
   const [draft, setDraft] = useState<EntryDraft | null>(null);
   const [base, setBase] = useState<EntryDraft | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
+  // #4490 F3: every step opens at the top, never part-way down where the last one was.
+  const scrollRef = useScrollToTopOnChange(stepIndex);
   const [furthest, setFurthest] = useState(offerId === null ? 0 : ENTRY_STEPS.length - 1);
   const [showErrors, setShowErrors] = useState<Partial<Record<EntryStepId, boolean>>>({});
   const [saving, setSaving] = useState(false);
@@ -542,7 +546,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
     ) : null;
 
   const form = (
-    <View style={styles.form}>
+    <View style={styles.form} ref={revealFocusedFieldWithin}>
       {step.id === "basics" ? <BasicsStep draft={draft} patch={patch} showErrors={stepErrors} disabled={saving} /> : null}
       {step.id === "prices" ? (
         <PricesStep
@@ -637,7 +641,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
               testID="entry-editor-steps"
             />
           </View>
-          <ScrollView style={styles.wideScroll} contentContainerStyle={styles.wideScrollContent} keyboardShouldPersistTaps="handled">
+          <ScrollView ref={scrollRef} style={styles.wideScroll} contentContainerStyle={styles.wideScrollContent} keyboardShouldPersistTaps="handled" testID="entry-editor-scroll">
             {form}
           </ScrollView>
           {showPreview ? preview : null}
@@ -660,7 +664,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
         sheetTitle="Steps"
         testID="entry-editor-steps"
       />
-      <ScrollView style={styles.phoneScroll} contentContainerStyle={styles.phoneScrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} style={styles.phoneScroll} contentContainerStyle={styles.phoneScrollContent} keyboardShouldPersistTaps="handled" testID="entry-editor-scroll">
         {form}
       </ScrollView>
       {footer}
@@ -788,7 +792,7 @@ function PricesStep({
         <View style={styles.noteRow}>
           <Text style={styles.hint}>{vatText}. VAT is set for the whole venue in Settings › Terms and tax.</Text>
           {onOpenSettings !== undefined ? (
-            <Button label="Open Settings" variant="ghost" size="sm" onPress={onOpenSettings} testID="entry-open-terms" />
+            <Button label="Open Terms and tax" variant="secondary" size="md" onPress={onOpenSettings} testID="entry-open-terms" />
           ) : null}
         </View>
       ) : null}
@@ -1075,7 +1079,7 @@ function ReviewStep({
                     onPress={() => onGoTo(line.step as EntryStepId)}
                   />
                 ) : r === "feature_off" && onOpenSettings !== undefined ? (
-                  <Button label="Open Settings" variant="secondary" size="sm" onPress={onOpenSettings} />
+                  <Button label="Open Settings" variant="secondary" size="md" onPress={onOpenSettings} />
                 ) : null}
               </View>
             );

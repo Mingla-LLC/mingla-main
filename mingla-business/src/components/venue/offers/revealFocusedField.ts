@@ -26,3 +26,14 @@ export function revealFocusedField(): void {
     window.setTimeout(() => viewport.removeEventListener("resize", onResize), 1500);
   }
 }
+
+/**
+ * #4490 - callback ref for the container of a long form: any field focused
+ * inside it is scrolled above the phone keyboard and any pinned bar (web only;
+ * native uses SmartScrollView). One place, so a screen cannot forget it.
+ */
+export function revealFocusedFieldWithin(node: unknown): void {
+  const el = node as { addEventListener?: (t: string, l: () => void) => void } | null;
+  if (el === null || typeof el.addEventListener !== "function") return;
+  el.addEventListener("focusin", revealFocusedField);
+}

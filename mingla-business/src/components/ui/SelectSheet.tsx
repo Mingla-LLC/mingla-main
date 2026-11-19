@@ -11,6 +11,7 @@ import { color, radius, space, type } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Icon } from "./Icon";
+import { PickerSheetHead } from "./PickerSheetHead";
 import { Sheet } from "./Sheet";
 import type { SelectOption } from "./fieldModels";
 
@@ -62,7 +63,7 @@ export function SelectSheet<T extends string | number>({
         testID={testID !== undefined ? `${testID}-sheet` : undefined}
       >
         <View style={styles.sheetBody}>
-          <Text style={styles.sheetTitle}>{label}</Text>
+          <PickerSheetHead title={label} onClose={() => setOpen(false)} testID={testID !== undefined ? `${testID}-head` : undefined} />
           <ScrollView style={styles.scroll} contentContainerStyle={styles.list}>
             {options.map((option) => {
               const on = option.value === value;
@@ -111,7 +112,6 @@ const styles = StyleSheet.create({
   value: { ...type.body, color: color.text1, flexShrink: 1 },
   placeholder: { ...type.body, color: color.text4, flexShrink: 1 },
   sheetBody: { flex: 1, paddingHorizontal: space[4], paddingTop: space[2], gap: space[2] },
-  sheetTitle: { ...type.h2, color: color.text1 },
   scroll: { flex: 1 },
   list: { gap: space[1], paddingBottom: space[6] },
   option: {

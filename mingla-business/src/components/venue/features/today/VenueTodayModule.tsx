@@ -122,7 +122,7 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule }: VenueTodayM
                   {o.held > 0 ? ` · ${o.held} paying now` : ""}
                 </Text>
               </View>
-              <Pill variant={o.status === "live" ? "live" : "warn"}>{o.status === "live" ? "On sale" : "Paused"}</Pill>
+              <Pill variant={o.status === "live" ? "ok" : "warn"}>{o.status === "live" ? "On sale" : "Paused"}</Pill>
             </View>
           ))
         )}

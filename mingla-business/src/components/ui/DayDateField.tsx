@@ -16,6 +16,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { color, materials, radius, space, type } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Icon } from "./Icon";
+import { PickerSheetHead } from "./PickerSheetHead";
 import { Sheet } from "./Sheet";
 import {
   dayDateLabel,
@@ -159,6 +160,7 @@ export function DayDateField({
         presentation={isWideDesktop ? "modal" : undefined}
       >
         <View style={styles.sheetBody}>
+          <PickerSheetHead title={label} onClose={() => setOpen(false)} testID={testID !== undefined ? `${testID}-head` : undefined} />
           <View style={styles.monthRow}>
             <Pressable
               onPress={() => canGoBack && setMonth((m) => shiftMonth(m.year, m.month1, -1))}

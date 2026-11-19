@@ -56,11 +56,11 @@ export function dayHeadline(day: VenueDay): string {
   return `${date} · ${n.inNow} in`;
 }
 
-export function bookingStateLabel(b: VenueDayBooking): { label: string; variant: "live" | "warn" | "info" | "muted" | "error" } {
+export function bookingStateLabel(b: VenueDayBooking): { label: string; variant: "ok" | "warn" | "info" | "muted" | "error" } {
   if (b.state === "cancelled") return { label: "Cancelled", variant: "error" };
   if (b.state === "instant_payment_pending") return { label: "Not paid yet", variant: "warn" };
   if (b.state === "reconciliation_required") return { label: "Checking payment", variant: "warn" };
-  if (b.guests > 0 && b.admittedCount >= b.guests) return { label: "In", variant: "live" };
+  if (b.guests > 0 && b.admittedCount >= b.guests) return { label: "In", variant: "ok" };
   if (b.admittedCount > 0) return { label: `${b.admittedCount} of ${b.guests} in`, variant: "info" };
   return { label: "To arrive", variant: "muted" };
 }

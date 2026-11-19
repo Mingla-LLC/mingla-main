@@ -51,7 +51,9 @@ import {
   passIdLine,
   passWindowLine,
   refundPreviewWords,
+  orderLinesByOptions,
   summaryLines,
+  venueAddressLine,
   venueOfferErrorCopy,
   visitViewFor,
   type EntryBooking,
@@ -212,6 +214,30 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
   const exponent = currencyExponent(booking?.currencyCode ?? "NGN");
   const money = (minor: number): string => formatVenueMoney(minor, booking?.currencyCode ?? "NGN", exponent);
 
+  // #4490 H5: the booking lists its lines by when they were written; show them in the
+  // offer's own price order, the order checkout showed. Best effort: if the offer
+  // cannot be read, the order from the booking stays.
+  const [optionOrder, setOptionOrder] = useState<readonly string[]>([]);
+  const orderBrandSlug = booking?.venue.brandSlug ?? null;
+  const orderVenueSlug = booking?.venue.slug ?? null;
+  const orderOfferId = booking?.offer.id ?? null;
+  const hasManyLines = (booking?.lines.length ?? 0) > 1;
+  useEffect(() => {
+    if (!hasManyLines || orderBrandSlug === null || orderVenueSlug === null || orderOfferId === null) return undefined;
+    let stopped = false;
+    venueOfferGuestService
+      .offer({ brandSlug: orderBrandSlug, venueSlug: orderVenueSlug, offeringId: orderOfferId })
+      .then(
+        (detail) => {
+          if (!stopped) setOptionOrder(detail.options.map((o) => o.id));
+        },
+        () => undefined,
+      );
+    return () => {
+      stopped = true;
+    };
+  }, [hasManyLines, orderBrandSlug, orderVenueSlug, orderOfferId]);
+
   const view = booking === null ? null : visitViewFor(booking, now);
   useEffect(() => {
     if (view?.kind !== "pay") return undefined;
@@ -337,7 +363,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
 
   const openDirections = (): void => {
     if (booking === null) return;
-    const label = [booking.venue.name, booking.venue.address, booking.venue.city].filter(Boolean).join(", ");
+    const label = [booking.venue.name, venueAddressLine(booking.venue.address, booking.venue.city)].filter(Boolean).join(", ");
     openMapsTarget(
       {
         label,
@@ -360,7 +386,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
         title: `${booking.offer.name} at ${booking.venue.name}`,
         startMs,
         endMs,
-        location: [booking.venue.address, booking.venue.city].filter(Boolean).join(", ") || null,
+        location: venueAddressLine(booking.venue.address, booking.venue.city),
         url: null,
         details: `Booking ${booking.reference}. Show your pass at the gate.`,
       },
@@ -457,7 +483,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
       <EntrySummaryRows
         palette={palette}
         theme={theme}
-        lines={summaryLines(booking.lines, {
+        lines={summaryLines(orderLinesByOptions(booking.lines, optionOrder), {
           currencyCode: booking.currencyCode,
           exponent,
           taxMinor: booking.taxMinor,

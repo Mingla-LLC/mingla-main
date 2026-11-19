@@ -288,7 +288,12 @@ describe("issue #1380 public venue Reserve CTA", () => {
     // is gone: desktop shows the SAME gated glass bar, docked in the flyer
     // column. One CTA, one visibility contract, at every width.
     expect(page).toContain("const reserveBar =\n    showReserveBar ? (");
-    expect(page).toContain("premiumDesktopBarDockStyle(22 + insets.bottom)");
+    // [TEST-MOD-APPROVED #4490 H1] — the bar is in the flyer column under Share and
+    // Directions, not a `position: fixed` dock: the fixed dock sat inside the scroll
+    // container's transform, scrolled with the page and covered the cover photo.
+    expect(page).toContain("? // #4490 H1");
+    expect(page).toContain("styles.flyerBar");
+    expect(page).not.toContain("premiumDesktopBarDockStyle(22 + insets.bottom)");
     expect(page).toContain(
       "normalizedReservationUiState.reservationSheetOpen\n            ? null\n            : reservationsBlock",
     );
