@@ -17,7 +17,6 @@ import {
   radius,
   space,
   websitePaneMaxWidth,
-  websitePreviewWidth,
   websiteRailWidth,
 } from "../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
@@ -28,7 +27,6 @@ import {
   PREVIEW_PURPOSE,
   routeToRender,
   sectionInNav,
-  sectionShowsPreview,
   showsPublishStep,
   SECTION_LABELS,
   websiteNavGroups,
@@ -65,32 +63,25 @@ import { LockBanner } from "./LockBanner";
 import { ScrollView } from "../../../wrappers/SmartScrollView";
 import { usePreviewDevicePreference } from "./preview/usePreviewDevicePreference";
 import { OverviewSection } from "./sections/OverviewSection";
-import { PagesSection } from "./sections/PagesSection";
-import { DesignSection } from "./sections/DesignSection";
-import { CollectionSection } from "./sections/CollectionSection";
-import { DestinationEditor } from "./sections/DestinationEditor";
-import { StoryEditor } from "./sections/StoryEditor";
-import { ReviewEditor } from "./sections/ReviewEditor";
-import { PastTripsSection } from "./sections/PastTripsSection";
-import { PublishSection } from "./sections/PublishSection";
-import { AddressesSection } from "./sections/AddressesSection";
-import { SettingsSection } from "./sections/SettingsSection";
 import { WebsiteSetupScreen } from "../setup/WebsiteSetupScreen";
 import { isSetupReturn } from "../../../utils/brandEditReturn";
+import { WorkspaceShell } from "./workspace/WorkspaceShell";
 
 // #4453 — Ari's page plan sheet (web) loads through this chunk; see
 // components/ari/LazySitePagePlanSheet.web.tsx.
 export { SitePagePlanSheet } from "../../ari/SitePagePlanSheet";
 
-const HEARTBEAT_MS = 120_000;
 const STUDIO_RESULTS = new Set<StudioReturnResult>(["exchange_expired", "session_expired", "preview_expired", "preview_publish"]);
 
 /**
- * #2829 W9r (DESIGN_SPEC §1) — the ONE Website section: a left navigation
- * and the chosen section beside it (desktop, with the draft preview on the
- * right where it helps), or a list you drill into (phones and tablets).
- * Every Website address renders here (old addresses redirect); nothing opens
- * a separate stack screen, so the owner never loses their place.
+ * #2829 W9r / #4453 — every Website address renders here (old addresses
+ * redirect), so the owner never loses their place:
+ *  - a site that exists opens in the Website workspace (workspace/WorkspaceShell);
+ *  - Website setup is its own screen (setup/WebsiteSetupScreen);
+ *  - a brand with no site yet, a draft still being created, and a site that
+ *    could not be loaded get the small shell below: the Overview (what to do
+ *    next), a loading state, or "try again". No section of an existing site
+ *    is drawn by that shell any more.
  */
 export default function WebsiteApp({ brandId, segments, search }: {
   brandId: string;
@@ -109,6 +100,21 @@ export default function WebsiteApp({ brandId, segments, search }: {
   // Core said this member gets nothing here (or the brand has no website access).
   if (canCheckAvailability && websiteAvailable === false) {
     return <Redirect href={`/brand/${safeBrandId}` as never} />;
+  }
+  // The check itself failed (the service is down or not answering): say so, with a way forward.
+  if (controller.availabilityDown) {
+    return (
+      <SafeScreen style={{ backgroundColor: color.canvas }}>
+        <View style={styles.loadingShell}>
+          <Card style={styles.center} testID="website-unreachable">
+            <WebsiteIcon name="alert" size={28} color={ui.t2} />
+            <CardTitle style={styles.centerTitle}>Mingla’s website service isn’t answering</CardTitle>
+            <Body style={styles.centerBody}>Your live website isn’t affected. Check your connection and try again in a moment.</Body>
+            <WButton label="Try again" variant="primary" onPress={controller.retryAvailability} loading={controller.availability.isFetching} testID="website-unreachable-retry" />
+          </Card>
+        </View>
+      </SafeScreen>
+    );
   }
   if (websiteAvailable !== true) {
     return (
@@ -186,10 +192,10 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
 
   const [designDirty, setDesignDirty] = useState(false);
   const [tokenDeclarations, setTokenDeclarations] = useState<readonly string[] | null>(null);
-  const [pendingRoute, setPendingRoute] = useState<Exclude<WebsiteRoute, { kind: "redirect" }> | null>(null);
   const [previewSheet, setPreviewSheet] = useState(false);
-  const [stickyBar, setStickyBar] = useState<StickyBar | null>(null);
-  const [topbarSave, setTopbarSave] = useState<TopbarSave | null>(null);
+  // Only the workspace's editors use a sticky bar or a top-bar Save; it supplies its own.
+  const setStickyBar = useCallback((_bar: StickyBar | null) => undefined, []);
+  const setTopbarSave = useCallback((_save: TopbarSave | null) => undefined, []);
   const headingRef = useRef<Text | null>(null);
 
   const { preference, setPreference } = usePreviewDevicePreference(controller.user?.id ?? null, isWideDesktop, (message) => toast(message, "warn"));
@@ -200,16 +206,12 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
   // banner and dialog word a nameless holder themselves.
   const holderName = lockState?.holderName ?? null;
   const canManage = plan.data?.canManage === true;
+  // #2830 — the setup screen owns its own heartbeat (a heartbeat creates the
+  // plan row its first state keys on, and an idle tab must not keep the lock).
+  // #4453 — a site that exists is edited in the workspace, which holds the
+  // lock itself. Nothing in this shell holds it.
   const heartbeatRef = useRef(heartbeat.mutate);
   heartbeatRef.current = heartbeat.mutate;
-  useEffect(() => {
-    // #2830 — the setup screen owns its own heartbeat: a heartbeat creates the
-    // plan row its first state keys on, and an idle tab must not keep the lock.
-    if (!canManage || section !== "design") return undefined;
-    heartbeatRef.current();
-    const timer = setInterval(() => heartbeatRef.current(), HEARTBEAT_MS);
-    return () => clearInterval(timer);
-  }, [canManage, section]);
   const [confirmTakeOver, setConfirmTakeOver] = useState(false);
 
   const designKey = plan.data?.site?.designKey ?? null;
@@ -255,17 +257,13 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
       toast("Available once your draft exists");
       return;
     }
-    if (designDirty && section === "design" && target !== "design") {
-      setPendingRoute(next);
-      return;
-    }
     // Phone: "Overview" is a section of its own (the root is the list).
     if (phone && next.kind === "section" && next.section === "overview") {
       router.push(`/brand/${brandId}/website/overview` as never);
       return;
     }
     navigate(next);
-  }, [brandId, designDirty, hasSite, navigate, phone, router, section, toast]);
+  }, [brandId, hasSite, navigate, phone, router, section, toast]);
 
   const back = useCallback(() => {
     if (route.kind === "editor") {
@@ -370,30 +368,12 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
           <WButton label="Back to website setup" size="sm" onPress={() => router.replace(setupBack as never)} testID="website-back-to-setup" />
         </View>
       ) : null}
-      <SectionContent route={shown} section={shown.kind === "section" || shown.kind === "editor" ? shown.section : section} />
+      <SectionContent section={shown.kind === "section" && shown.section === "plan" ? "plan" : "overview"} />
     </>
   );
-  const showSide = !phone && hasSite && route.kind === "section" && sectionShowsPreview(section);
   const statusChip = <SiteStatusChip controller={controller} />;
   const dialogs = (
     <>
-      <ConfirmDialog
-        visible={pendingRoute !== null}
-        onClose={() => setPendingRoute(null)}
-        onConfirm={() => {
-          const next = pendingRoute;
-          setPendingRoute(null);
-          setDesignDirty(false);
-          setTokenDeclarations(null);
-          if (next) navigate(next);
-        }}
-        title="Leave without saving?"
-        description="Your design changes will be lost."
-        confirmLabel="Leave"
-        cancelLabel="Keep editing"
-        destructive
-        testID="design-leave-confirm"
-      />
       <ConfirmDialog
         visible={confirmTakeOver}
         onClose={() => setConfirmTakeOver(false)}
@@ -416,6 +396,28 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
         onDismiss={() => setToastState(null)}
         testID="website-toast"
       />
+      {/*
+        The draft full screen on phones and native ("Open the draft full
+        screen" in the workspace's more menu, "Preview" on the phone status
+        card). It lives with the dialogs so every shell that can ask for it,
+        the workspace included, can show it.
+      */}
+      <Modal visible={previewSheet} animationType="slide" onRequestClose={() => setPreviewSheet(false)} presentationStyle="fullScreen">
+        <SafeScreen style={{ backgroundColor: color.ink }}>
+          <FullScreenPreviewBar brandName={brandName} onClose={() => setPreviewSheet(false)} canShare={controller.capabilities.canPublish} shareReady={grantState.kind === "ready"} />
+          <View style={styles.fullBody}>
+            <SitePreviewPanel
+              grant={grantState}
+              preference={preference}
+              onPreference={setPreference}
+              purpose={PREVIEW_PURPOSE[section] ?? "Your draft"}
+              tokenDeclarations={tokenDeclarations}
+              onOpenFullScreen={openFullScreenPreview}
+              variant="full"
+            />
+          </View>
+        </SafeScreen>
+      </Modal>
     </>
   );
 
@@ -431,6 +433,31 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
         />
         {dialogs}
       </WebsiteProvider>
+    );
+  }
+
+  /*
+   * #4453 — a site that exists opens in the ONE Website workspace (left panel
+   * Ari · Edit · Design, the live draft, one Publish). Every old address lands
+   * in it (sites/workspaceRoute.ts). The shells below remain for a brand with
+   * no site yet, a draft still being created, and a site that failed to load.
+   */
+  if (hasSite && !controller.site.isError && controller.publicationCacheChecked && shown.kind !== "preview" && shown.kind !== "setup") {
+    const inNav = new Set<string>(groups.flatMap((group) => group.items.map((entry) => entry.key)));
+    const contentDetails = (["destinations", "stories", "reviews", "past"] as const).filter((key) => inNav.has(key));
+    return (
+      <WorkspaceShell
+        // One workspace per website: switching brand builds a new one. The one left behind sends
+        // any words still being typed to ITS website as it goes (its autosave is bound to that site).
+        key={siteId ?? "none"}
+        base={value}
+        route={shown}
+        search={search}
+        segments={segments}
+        contentDetails={contentDetails}
+        dialogs={dialogs}
+        offlineDevice={controller.notice?.kind === "offline"}
+      />
     );
   }
 
@@ -457,21 +484,7 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
               <ScrollView style={styles.pane} contentContainerStyle={styles.paneContent} keyboardShouldPersistTaps="handled">
                 <View style={styles.paneInner}>{content}</View>
               </ScrollView>
-              {showSide ? (
-                <ScrollView style={styles.side} contentContainerStyle={styles.sideContent} accessibilityLabel="Draft preview">
-                  <SitePreviewPanel
-                    grant={grantState}
-                    preference={preference}
-                    onPreference={setPreference}
-                    purpose={PREVIEW_PURPOSE[section] ?? "Your draft"}
-                    unsaved={section === "design" && designDirty}
-                    tokenDeclarations={section === "design" ? tokenDeclarations : null}
-                    onOpenFullScreen={openFullScreenPreview}
-                  />
-                </ScrollView>
-              ) : null}
             </View>
-            {stickyBar ? <StickyBarView bar={stickyBar} /> : null}
           </View>
           {dialogs}
         </SafeScreen>
@@ -481,21 +494,16 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
 
   // ── Phone and tablet ──────────────────────────────────────────────────
   const atRoot = segments.filter(Boolean).length === 0;
-  const editorTitle = route.kind === "editor" ? (route.entryId === "new" ? "New" : "Edit") : null;
-  const phoneTitle = editorTitle ?? (section === "design" ? "Website design" : SECTION_LABELS[section]);
-  const showPreviewPill = !atRoot && route.kind === "section" && hasSite && sectionShowsPreview(section) && section !== "overview";
+  const phoneTitle = SECTION_LABELS[section];
   return (
     <WebsiteProvider value={value}>
       <SafeScreen style={{ backgroundColor: color.canvas }}>
         <View style={styles.phoneTopbar}>
           <BackButton
-            label={atRoot ? "Back to Brand profile" : route.kind === "editor" ? `Back to ${SECTION_LABELS[section]}` : "Back to Website"}
+            label={atRoot ? "Back to Brand profile" : "Back to Website"}
             onPress={atRoot ? () => (router.canGoBack() ? router.back() : router.replace(`/brand/${brandId}` as never)) : back}
           />
           <Text style={styles.topTitle} role="heading" aria-level={1} numberOfLines={1}>{atRoot ? "Website" : phoneTitle}</Text>
-          {topbarSave && route.kind === "editor" ? (
-            <WButton label={topbarSave.label} variant="primary" size="sm" onPress={topbarSave.onPress} loading={topbarSave.loading} disabled={topbarSave.disabled} testID={topbarSave.testID} />
-          ) : null}
         </View>
         {atRoot ? (
           <ScrollView contentContainerStyle={styles.phoneList} keyboardShouldPersistTaps="handled">
@@ -507,79 +515,28 @@ function WorkspaceBody({ brandId, route, section, segments, search, controller }
             <View style={styles.phoneInner}>{content}</View>
           </ScrollView>
         )}
-        {showPreviewPill && !previewSheet ? (
-          <View style={styles.previewPill}>
-            <WButton label="Preview" icon="eye" variant="primary" onPress={() => setPreviewSheet(true)} testID="phone-preview-pill" />
-          </View>
-        ) : null}
-        {stickyBar && route.kind !== "editor" ? <StickyBarView bar={stickyBar} phone /> : null}
-        <Modal visible={previewSheet} animationType="slide" onRequestClose={() => setPreviewSheet(false)} presentationStyle="fullScreen">
-          <SafeScreen style={{ backgroundColor: color.ink }}>
-            <FullScreenPreviewBar brandName={brandName} onClose={() => setPreviewSheet(false)} canShare={controller.capabilities.canPublish} shareReady={grantState.kind === "ready"} />
-            <View style={styles.fullBody}>
-              <SitePreviewPanel
-                grant={grantState}
-                preference={preference}
-                onPreference={setPreference}
-                purpose={PREVIEW_PURPOSE[section] ?? "Your draft"}
-                unsaved={section === "design" && designDirty}
-                tokenDeclarations={section === "design" ? tokenDeclarations : null}
-                onOpenFullScreen={openFullScreenPreview}
-                variant="full"
-              />
-            </View>
-          </SafeScreen>
-        </Modal>
         {dialogs}
       </SafeScreen>
     </WebsiteProvider>
   );
 }
 
-function SectionContent({ route, section }: { route: Exclude<WebsiteRoute, { kind: "redirect" }>; section: WebsiteSection }): React.ReactElement {
+/**
+ * What the small shell shows: loading, "try again", or the Overview (a brand
+ * with no site yet, or a draft still being created). A site that exists never
+ * reaches this: it opens in the workspace.
+ */
+function SectionContent({ section }: { section: WebsiteSection }): React.ReactElement {
   const { controller, lock } = useWebsite();
   if (controller.site.isLoading || (controller.site.data && !controller.publicationCacheChecked)) return <LoadingPane />;
   if (controller.site.isError) return <LoadError />;
-  const banners = (
+  return (
     <>
       <NoticeBanner />
-      {lock.heldByOther && ["overview", "pages", "design", "plan", "destinations", "stories", "reviews"].includes(section) ? <LockBanner section={section} /> : null}
+      {lock.heldByOther ? <LockBanner section={section === "plan" ? "plan" : "overview"} /> : null}
+      {/* #2830 — Website setup is its own screen; its old address redirects there. */}
+      {section === "plan" ? <LoadingPane /> : <OverviewSection />}
     </>
-  );
-  if (route.kind === "editor") {
-    // An editor is read-only while a teammate holds the lock: say so here too.
-    const editor = route.section === "destinations"
-      ? <DestinationEditor entryId={route.entryId} />
-      : route.section === "stories" ? <StoryEditor entryId={route.entryId} /> : <ReviewEditor entryId={route.entryId} />;
-    return <>{banners}{editor}</>;
-  }
-  const body = (() => {
-    switch (section) {
-      case "overview": return <OverviewSection />;
-      case "pages": return <PagesSection />;
-      case "design": return <DesignSection />;
-      case "destinations": return <CollectionSection section="destinations" />;
-      case "stories": return <CollectionSection section="stories" />;
-      case "reviews": return <CollectionSection section="reviews" />;
-      case "past": return <PastTripsSection />;
-      case "publish": return <PublishSection />;
-      case "addresses": return <AddressesSection />;
-      // #2830 — Website setup is its own screen; the address redirects there.
-      case "plan": return <LoadingPane />;
-      case "settings": return <SettingsSection />;
-    }
-  })();
-  return <>{banners}{body}</>;
-}
-
-function StickyBarView({ bar, phone }: { bar: StickyBar; phone?: boolean }): React.ReactElement {
-  return (
-    <View style={[styles.sticky, phone ? styles.stickyPhone : null]} role="region" accessibilityLabel={bar.text} testID="website-sticky-bar">
-      <Text style={styles.stickyText}>{bar.text}</Text>
-      {bar.actions.map((action) => (
-        <WButton key={action.label} label={action.label} variant={action.variant} onPress={action.onPress} loading={action.loading} disabled={action.disabled} testID={action.testID} />
-      ))}
-    </View>
   );
 }
 
@@ -790,12 +747,7 @@ const styles = StyleSheet.create({
   pane: { flex: 1, minWidth: 0 },
   paneContent: { paddingTop: space[6], paddingHorizontal: space[7], paddingBottom: 96 },
   paneInner: { maxWidth: websitePaneMaxWidth, width: "100%" },
-  side: { width: websitePreviewWidth, flexGrow: 0, flexShrink: 0, borderLeftWidth: 1, borderLeftColor: ui.cardBorder, backgroundColor: color.canvas },
-  sideContent: { padding: space[4] },
   phoneTopbar: { height: 56, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
-  sticky: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 12, paddingHorizontal: 24, borderTopWidth: 1, borderTopColor: ui.border2, backgroundColor: color.canvas },
-  stickyPhone: { paddingHorizontal: 16, paddingBottom: 20, flexWrap: "wrap" },
-  stickyText: { flex: 1, minWidth: 140, fontSize: 13, color: ui.t2 },
   phoneList: { paddingBottom: 24 },
   phonePane: { padding: space[4], paddingBottom: 140, alignItems: "center" },
   phoneInner: { width: "100%", maxWidth: 720 },
@@ -812,7 +764,6 @@ const styles = StyleSheet.create({
   phoneRowDivider: { borderTopWidth: 1, borderTopColor: ui.cardBorder },
   phoneRowLabel: { flex: 1, fontSize: 15, color: ui.t1 },
   phoneRowMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
-  previewPill: { position: "absolute", right: 16, bottom: 32 },
   fullBody: { flex: 1, padding: 16 },
   center: { alignItems: "center", paddingVertical: 40, paddingHorizontal: 24, gap: 10 },
   centerTitle: { textAlign: "center" },

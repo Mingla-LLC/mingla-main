@@ -185,7 +185,9 @@ describe("#4255 W5 top bar: the Mingla team M", () => {
   test("on a 320pt phone the brand name truncates instead of pushing the icons off", () => {
     // #4389: the brand chip moved out of TopBar into the shared BrandChip.
     const source = fs.readFileSync(path.resolve(__dirname, "../../ui/BrandChip.tsx"), "utf8");
-    expect(fs.readFileSync(path.resolve(__dirname, "../../ui/TopBar.tsx"), "utf8")).toContain("<BrandChip ");
+    // #4453: the top bar mounts the chip through the WorkspaceBrandSwitcher.
+    expect(fs.readFileSync(path.resolve(__dirname, "../../ui/TopBar.tsx"), "utf8")).toContain("<WorkspaceBrandSwitcher ");
+    expect(fs.readFileSync(path.resolve(__dirname, "../../brand/WorkspaceBrandSwitcher.tsx"), "utf8")).toMatch(/<BrandChip\s/);
     expect(source).toMatch(/brandLabel: \{\n\s+flexShrink: 1,/);
     expect(source).toMatch(/brandRow: \{[^}]*minWidth: 0,/);
   });

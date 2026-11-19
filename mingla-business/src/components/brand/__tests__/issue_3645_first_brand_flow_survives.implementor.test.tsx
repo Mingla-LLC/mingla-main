@@ -68,6 +68,9 @@ const mockFlowLifecycle = { mounts: 0, unmounts: 0 };
 const mockPush = jest.fn();
 const mockClose = jest.fn();
 
+// #4453 integration: the sheet's module also carries the desktop brand menu
+// (one on-demand chunk for both). This test is about the sheet only.
+jest.mock("../WorkspaceBrandMenu", () => ({ WorkspaceBrandMenu: () => null }));
 jest.mock("expo-router", () => ({
   Redirect: () => null,
   useLocalSearchParams: () => ({}),

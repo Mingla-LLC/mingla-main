@@ -134,6 +134,7 @@ import {
   zoneLabel,
 } from "../../../utils/creatorProgramFormat";
 import { color, radius, space } from "../../../constants/designSystem";
+import { useUnsavedChangesGuard } from "../../../hooks/useUnsavedChangesGuard";
 
 type SheetKind =
   | null
@@ -661,6 +662,13 @@ export default function HostGigContract(): React.ReactElement {
         proposal.status === "open" &&
         typeof proposal.changes?.fee_minor !== "number",
     ) ?? null;
+  // #4453 — a settlement note written on the page (not in a sheet, which
+  // covers the switcher) and not yet sent holds a brand switch.
+  useUnsavedChangesGuard({
+    dirty: sheet === null && state === "disputed" && note.trim() !== "",
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
 
   return (
     <ProgramScreen

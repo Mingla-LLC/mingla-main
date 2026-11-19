@@ -25,6 +25,7 @@ import { handleSiteShareRoute } from "./siteShare.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ariFailureFrom, siteEvidence } from "./siteAri.ts";
 import { brandFlagOn, composeFacts, DESIGN_PASS_ACTIONS, liveFingerprints, planFormat } from "./designPass.ts";
 import { ARI_PAGE_ACTIONS } from "./ariPage.ts";
+import { WORKSPACE_ARI_ACTIONS } from "./siteWorkspace.ts";
 import { BOOKING_IDENTITY_CAPABILITY, bookingLockRefusal, publicationActionScope } from "./bookingLock.ts";
 import { unreviewedRefusal } from "./reviewGate.ts";
 
@@ -966,6 +967,8 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         payload.add_page = true;
         payload.review_drafts = true;
       }
+      // #4453 website workspace — a section Ari changes there always starts Draft, for the owner to read.
+      if (WORKSPACE_ARI_ACTIONS.has(action)) payload.review_drafts = true;
       const studio = await callCmsRaw(db.service, {
         siteId,
         operationId,

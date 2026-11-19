@@ -30,6 +30,7 @@ jest.mock("expo-router", () => ({
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: true }) }));
 jest.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" } }) }));
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({ useCurrentBrandRole: () => ({ rank: 60 }) }));
+jest.mock("../../../hooks/useItemRouteBrand", () => ({ useItemRouteBrand: () => ({ brandId: null, pending: false }) }));
 jest.mock("../../../store/currentBrandStore", () => ({
   useCurrentBrandStore: (sel: (s: { currentBrandId: string }) => unknown) => sel({ currentBrandId: "b1" }),
 }));

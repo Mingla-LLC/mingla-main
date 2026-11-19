@@ -113,9 +113,14 @@ $vacuity$;
 -- country_code) adds one writer: 44 -> 45.
 -- issue_4420_stay_other_contact_recovery.implementor.pg17 asserts the NULL
 -- country on its row.
+-- [TEST-MOD-APPROVED #4453] "Ready for review" on a website change request
+-- (issue_4453_website_request_ready; bell, push and email, an explicit NULL
+-- country_code: the category has no SMS channel) adds one writer: 45 -> 46.
+-- issue_4453_website_team_requests.implementor.pg17 asserts the NULL country
+-- on its rows.
 -- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
 --     the buyer venue-order receipt, 20 -> 22 for #4063 Wave 5, and
---     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271, and 42 -> 43 -> 44 for #4255, and 44 -> 45 for #4420.
+--     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271, and 42 -> 43 -> 44 for #4255, and 44 -> 45 for #4420, and 45 -> 46 for #4453.
 --     The floor is the number that ACTUALLY exists in the catalog, so a
 --     producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
@@ -126,9 +131,9 @@ DECLARE
   v_count integer;
 BEGIN
   SELECT count(*) INTO v_count FROM issue_1529_discovered_producers;
-  IF v_count < 45 THEN
+  IF v_count < 46 THEN
     RAISE EXCEPTION
-      'issue_1529_producer_floor_breached_expected_at_least_45_got_%', v_count;
+      'issue_1529_producer_floor_breached_expected_at_least_46_got_%', v_count;
   END IF;
 END;
 $ratchet$;
@@ -183,6 +188,8 @@ $ratchet$;
 --                                             in-app/push only, no SMS channel)
 --       issue_4420_stay_group_resend_link   → explicit NULL (#4420 email-only
 --                                             Stay booking link resend)
+--       issue_4453_website_request_ready    → explicit NULL (#4453 "Ready for
+--                                             review": bell, push, email; no SMS)
 --
 --     PUSH-ONLY — the #3872 notification producers write only in-app/push
 --     categories and deliberately do not carry an SMS country. They are still
@@ -236,7 +243,8 @@ DECLARE
     'issue_4271_door_pay_code_text_link',
     'team_chat_enqueue',
     'ops_due_digest',
-    'issue_4420_stay_group_resend_link'
+    'issue_4420_stay_group_resend_link',
+    'issue_4453_website_request_ready'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -380,7 +388,8 @@ DECLARE
     'issue_4271_door_pay_code_text_link',
     'team_chat_enqueue',
     'ops_due_digest',
-    'issue_4420_stay_group_resend_link'
+    'issue_4420_stay_group_resend_link',
+    'issue_4453_website_request_ready'
   ];
   v_missing text;
 BEGIN
