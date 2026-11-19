@@ -476,6 +476,33 @@ const TOOL_ARGS: Record<string, Json> = {
     why: "Owner answered",
     cites: CITES,
   },
+  // #4453 Website workspace — the snapshot, the one plan, the team request.
+  get_site_workspace: { brand_id: BRAND_ID, site_id: SITE_ID },
+  propose_site_change_set: {
+    brand_id: BRAND_ID,
+    site_id: SITE_ID,
+    request: "Shorten the welcome heading",
+    summary: "Shorten the welcome heading",
+    steps: [{
+      label: "Shorten the welcome heading",
+      why: "The owner asked",
+      cites: CITES,
+      step: {
+        op: "edit_section",
+        page_id: "page-home",
+        section_id: "section-hero",
+        edits: [{ key: "heading", value: "Small groups to Bali" }],
+      },
+    }],
+  },
+  propose_website_team_request: {
+    brand_id: BRAND_ID,
+    site_id: SITE_ID,
+    what: "A gift card page",
+    where: { page_path: "" },
+    why: "Guests ask for gift cards",
+    missing_capability: "The website cannot sell gift cards yet.",
+  },
 };
 
 async function captureToolError(
@@ -1111,6 +1138,26 @@ Deno.test({
         assert(args, `no adversarial args for ${tool.name}`);
         for (const [label, control] of answers) {
           await withFixture({ control }, async (client) => {
+            // #4453 Website workspace: a confirmed plan never throws for a
+            // step Core did not take. It answers which step stopped it, in
+            // plain words, and never claims it applied (build contract F).
+            if (tool.name === "propose_site_change_set") {
+              const result = await tool.executor(args, client, USER_ID, {
+                operationId: OPERATION_ID,
+              }) as {
+                status: string;
+                applied: unknown[];
+                failed?: { reason: string };
+              };
+              assertNotEquals(result.status, "applied", label);
+              assertEquals(result.applied, [], label);
+              assert(result.failed?.reason, `${label}: no reason`);
+              assert(
+                !/<html|[A-Z]{3,}_[A-Z_]{3,}/.test(result.failed.reason),
+                `${label} leaked: ${result.failed.reason}`,
+              );
+              return;
+            }
             const error = await captureToolError(() =>
               tool.executor(args, client, USER_ID, {
                 operationId: OPERATION_ID,
