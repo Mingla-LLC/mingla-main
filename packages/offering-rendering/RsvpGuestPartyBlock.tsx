@@ -29,6 +29,7 @@ import {
   addPartyGuest,
   addableFromPreview,
   friendChips,
+  formatPartyPhone,
   friendGuest,
   numberPreview,
   removePartyGuest,
@@ -42,8 +43,7 @@ import {
   type RsvpNumberPreview,
   type RsvpPartyGuest,
 } from "./rsvpGuestPartyModel";
-import { formatPartyPhone, partyGuestLabel } from "./rsvpGuestCopy";
-import type { RsvpPhoneFieldRenderer } from "./RsvpOfferingBody";
+import type { RsvpPhoneFieldRenderer } from "./rsvpPhoneFieldTypes";
 
 const DANGER = "#e5484d";
 
@@ -331,7 +331,7 @@ export const RsvpGuestPartyBlock: React.FC<RsvpGuestPartyBlockProps> = ({
 
       {/* The people added. */}
       {party.map((guest) => {
-        const title = partyGuestLabel(guest);
+        const title = guest.label;
         const line = guest.onMingla
           ? guest.source === "friend"
             ? rsvpFriendLine(guest.username)
@@ -533,7 +533,7 @@ export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
     p.setParty((current: RsvpPartyGuest[]) => addPartyGuest(current, addableGuest, p.max));
     clearGuestNumber();
     if (Platform.OS !== "web") {
-      AccessibilityInfo.announceForAccessibility?.(`${partyGuestLabel(addableGuest)} added.`);
+      AccessibilityInfo.announceForAccessibility?.(`${addableGuest.label} added.`);
     }
   };
   const addGuestFriend = (friend: RsvpFriendOption): void => {

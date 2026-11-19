@@ -131,7 +131,6 @@ import {
   RSVP_GUEST_GETS_TEXT_AND_PASS,
   buildGuestPayload,
   isCompleteE164,
-  partyGuestLabel,
   rsvpGoingButtonLabel,
 } from "./rsvpGuestCopy";
 import type {
@@ -276,42 +275,11 @@ export type ChipInResult = { kind: "paid" } | { kind: "redirecting" };
 // owns E.164 composition and passes the composed value back. When the prop is
 // absent (native surfaces today) the body renders the existing plain phone
 // field — ZERO regression.
-export interface RsvpPhoneFieldRenderArgs {
-  role: "primary" | "plus_one";
-  guestId: string | null;
-  index: number | null;
-  label: string;
-  testID: string;
-  /** ISO 3166-1 alpha-2 country code (controlled by the hook). */
-  countryCode: string | null;
-  /** Raw value as typed; canonical E.164 is owned separately. */
-  rawValue: string;
-  /** New country picked → surface passes the freshly-composed E.164 too. */
-  onChangeCountry: (isoCode: string, resolvedE164: string | null) => void;
-  /** Digits edited → surface passes the freshly-composed E.164 too. */
-  onChangeRawValue: (raw: string, resolvedE164: string | null) => void;
-  /** True when the composed value is present but not a valid phone number. */
-  invalid: boolean;
-  /** Brand palette so the injected field matches the themed RSVP form. */
-  palette: ThemePalette;
-  /** Disable while a submit is in flight. */
-  disabled: boolean;
-  required: boolean;
-  emptyRequired: boolean;
-  onBlur: () => void;
-  /**
-   * issue #4508 1.6 — true on a GUEST number: the field must not offer the
-   * device's own number (no telephoneNumber / tel autofill). Absent ⇒ false.
-   */
-  disableAutofill?: boolean;
-  /** issue #4508 1.2b — the keyboard's done key adds the number. */
-  onSubmitEditing?: () => void;
-  /** issue #4508 — the field's own error line; absent ⇒ the renderer's default. */
-  errorText?: string | null;
-}
-export type RsvpPhoneFieldRenderer = (
-  args: RsvpPhoneFieldRenderArgs,
-) => React.ReactNode;
+import type {
+  RsvpPhoneFieldRenderArgs,
+  RsvpPhoneFieldRenderer,
+} from "./rsvpPhoneFieldTypes";
+export type { RsvpPhoneFieldRenderArgs, RsvpPhoneFieldRenderer };
 
 /**
  * Pre-#4508 guest shape (name + email + phone). Kept exported for callers that
@@ -1402,7 +1370,7 @@ export const useRsvpOfferingState = (
             : result.approvalStatus === "pending"
               ? "pending"
               : "going",
-        plusGuests: guests.map((g) => ({ name: partyGuestLabel(g) })),
+        plusGuests: guests.map((g) => ({ name: g.label })),
         confirmationToken: result.confirmationToken,
         credentials: result.credentials ?? [],
         anonymousRecovery: result.anonymousRecovery ?? [],
@@ -1849,10 +1817,10 @@ export const useRsvpOfferingState = (
         brandDisplayName={brand?.displayName ?? "the host"}
         eventName={event.name.length > 0 ? event.name : "this event"}
         dateLine={event.dateLine}
-        plusGuests={guests.map((g) => ({ name: partyGuestLabel(g) }))}
+        plusGuests={guests.map((g) => ({ name: g.label }))}
         guestRows={guests.map((g) => ({
           key: g.key,
-          label: partyGuestLabel(g),
+          label: g.label,
           line: RSVP_GUEST_GETS_TEXT_AND_PASS,
         }))}
         submitting={submitting}

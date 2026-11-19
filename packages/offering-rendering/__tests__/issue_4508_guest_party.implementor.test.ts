@@ -29,10 +29,10 @@ import {
 import {
   buildGuestInviteMessage,
   buildGuestPayload,
-  parseSubmittedGuests,
   rsvpGoingButtonLabel,
   submittedGuestStatus,
 } from "../rsvpGuestParty.ts";
+import { parseSubmittedGuests } from "../rsvpGuestParse.ts";
 import { rsvpGuestErrorMessage } from "../rsvpGuestErrors.ts";
 
 const NOT_ON: RsvpGuestLookupResult = {
@@ -79,6 +79,16 @@ Deno.test("P-1 happy path: a number-only guest is sent as { phone, phoneCountryI
   const party = addPartyGuest([], guest, 3);
   assertEquals(buildGuestPayload(party), [{ phone: "+15551234567", phoneCountryIso: "US" }]);
   assertEquals(Object.keys(buildGuestPayload(party)[0]).sort(), ["phone", "phoneCountryIso"]);
+});
+
+Deno.test("P-1b label: a guest is labelled once when added, by name when known, else the grouped number", () => {
+  const byNumber = addableFromPreview(preview("+15551234567"));
+  assert(byNumber !== null);
+  assertEquals(byNumber.label, "+1 555 123 4567");
+  const named = addableFromPreview(preview("+15551234568", [], ON_ADA));
+  assert(named !== null);
+  assertEquals(named.label, "Ada Lovelace");
+  assertEquals(friendGuest(friends[0]).label, "Zoë Ámara");
 });
 
 Deno.test("P-2 preview: not on Mingla shows the number and the invite line; on Mingla shows the account name", () => {

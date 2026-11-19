@@ -6,7 +6,7 @@
 import {
   RSVP_GUEST_LIMIT_REACHED,
   RSVP_GUEST_OWN_NUMBER,
-} from "./rsvpGuestCopy";
+} from "./rsvpGuestCopy.ts";
 
 /** Server refusals of a guest → the line shown beside the form. */
 export const rsvpGuestErrorMessage = (code: string): string | null => {

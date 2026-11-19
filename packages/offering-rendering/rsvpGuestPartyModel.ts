@@ -17,30 +17,19 @@
  * and the reverse.
  */
 
+import type {
+  RsvpGuestPayload,
+  RsvpPartyGuest,
+  RsvpSubmittedGuest,
+} from "./rsvpGuestTypes.ts";
+export type { RsvpGuestPayload, RsvpPartyGuest, RsvpSubmittedGuest };
 import {
   RSVP_GUEST_GETS_TEXT_AND_PASS,
   RSVP_GUEST_LIMIT_REACHED,
   RSVP_GUEST_OWN_NUMBER,
-  digitsOf,
-  formatPartyPhone,
   isCompleteE164,
-} from "./rsvpGuestCopy";
+} from "./rsvpGuestCopy.ts";
 
-/** One person the inviter is bringing. */
-export interface RsvpPartyGuest {
-  /** Stable identity: `user:<id>` when the account is known, else `phone:<digits>`. */
-  key: string;
-  source: "number" | "friend";
-  /** E.164; null for a friend picked from the list (no number typed). */
-  phone: string | null;
-  phoneCountryIso: string | null;
-  /** The account, when known (friend pick, or a number the lookup matched). */
-  userId: string | null;
-  /** Only ever an account's name; signed-out inviters never learn it (1.8). */
-  displayName: string | null;
-  username: string | null;
-  onMingla: boolean;
-}
 
 /** A friend the signed-in inviter can pick (from `get_user_circle`). */
 export interface RsvpFriendOption {
@@ -151,6 +140,28 @@ export interface NumberPreviewInput {
     | { state: "failed" };
 }
 
+export const digitsOf = (phone: string): string => phone.replace(/\D/g, "");
+
+/** "+15551234567" → "+1 555 123 4567"-ish grouping for display only. */
+export const formatPartyPhone = (phone: string): string => {
+  const d = digitsOf(phone);
+  return d.length <= 4
+    ? phone
+    : `+${d.slice(0, -4).replace(/\B(?=(\d{3})+$)/g, " ")} ${d.slice(-4)}`;
+};
+
+/**
+ * The name a guest shows under in the confirm dialog and on the success card:
+ * the account's name when known, else the number (1.7). Set once when the guest
+ * is added (`label`), so the eager RSVP body never carries the formatter.
+ */
+export const partyGuestLabel = (g: Pick<RsvpPartyGuest, "displayName" | "phone">): string =>
+  g.displayName !== null && g.displayName.trim().length > 0
+    ? g.displayName.trim()
+    : g.phone !== null
+      ? formatPartyPhone(g.phone)
+      : "Guest";
+
 const numberGuest = (
   phone: string,
   iso: string | null,
@@ -166,6 +177,7 @@ const numberGuest = (
     displayName: user?.displayName ?? null,
     username: user?.username ?? null,
     onMingla: result?.onMingla === true,
+    label: partyGuestLabel({ displayName: user?.displayName ?? null, phone }),
   };
 };
 
@@ -232,6 +244,7 @@ export const friendGuest = (friend: RsvpFriendOption): RsvpPartyGuest => ({
   displayName: friend.displayName,
   username: friend.username,
   onMingla: true,
+  label: partyGuestLabel({ displayName: friend.displayName, phone: null }),
 });
 
 /** Add with the limit and de-duplication enforced in one place. */
@@ -301,10 +314,6 @@ export const friendChips = (
   return [...pool.filter((f) => f.closeFriend), ...pool.filter((f) => !f.closeFriend)].slice(0, 3);
 };
 
-// ── the submit payload (wave A contract §1) ──
-export type RsvpGuestPayload =
-  | { phone: string; phoneCountryIso: string | null }
-  | { userId: string };
 
 // ── "Send it yourself too" (1.15) and Nudge (1.24) ──
 export interface GuestInviteMessageInput {
@@ -318,21 +327,4 @@ export interface GuestInviteMessageInput {
 }
 
 
-/** Per-guest invite status on the success screen (1.14, 1.15). */
-export interface RsvpSubmittedGuest {
-  guestId: string | null;
-  phoneLast4: string | null;
-  onMingla: boolean;
-  displayName: string | null;
-  claimed: boolean;
-  inviteUrl: string | null;
-  inviteCode: string | null;
-  /**
-   * C3 — false when the server knows now that this guest will never be
-   * texted (no number, the number opted out, or it had its guest invites
-   * for today). Sending is asynchronous, so true means "on its way", not
-   * "delivered".
-   */
-  willText: boolean;
-}
 

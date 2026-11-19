@@ -14,7 +14,7 @@
 import type {
   GuestInviteMessageInput,
   RsvpSubmittedGuest,
-} from "./rsvpGuestPartyModel";
+} from "./rsvpGuestPartyModel.ts";
 
 // Types only (erased): the model's values must not ride along into this chunk.
 export type {
@@ -27,16 +27,12 @@ export type {
   RsvpNumberPreview,
   RsvpPartyGuest,
   RsvpSubmittedGuest,
-} from "./rsvpGuestPartyModel";
+} from "./rsvpGuestPartyModel.ts";
 export {
   buildGuestPayload,
-  digitsOf,
-  formatPartyPhone,
   isCompleteE164,
-  parseSubmittedGuests,
-  partyGuestLabel,
   rsvpGoingButtonLabel,
-} from "./rsvpGuestCopy";
+} from "./rsvpGuestCopy.ts";
 
 // "Send it yourself too" and the success card's per-guest status line. They sit
 // here because the success card and the guest block are separate on-demand
