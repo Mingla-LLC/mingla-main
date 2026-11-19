@@ -61,6 +61,31 @@ describe("#890 web Sentry shim (lazy @sentry/browser)", () => {
     expect(captureException(new Error("boom"))).toBe("evt_890");
   });
 
+  // #4514 fix wave (review finding 4): a guest form link token ("#t=" + 64 hex)
+  // never reaches an error report or a breadcrumb.
+  // FAILS-ON-REVERT: passing opts through without the scrub hooks leaves the token.
+  it("init() scrubs a form link token from events and breadcrumbs", async () => {
+    init({ dsn: DSN });
+    await flush();
+    const opts = mockInit.mock.calls[0][0] as {
+      beforeSend: (e: Record<string, unknown>) => Record<string, unknown>;
+      beforeBreadcrumb: (c: Record<string, unknown>) => Record<string, unknown>;
+    };
+    const tok = "ab".repeat(32);
+    const url = `https://host.usemingla.com/form/f1#t=${tok}`;
+    const event = opts.beforeSend({
+      request: { url },
+      transaction: `/form/f1#t=${tok}`,
+      breadcrumbs: [{ category: "navigation", data: { from: "/", to: url } }],
+    });
+    expect(JSON.stringify(event)).not.toContain(tok);
+    expect((event.request as { url: string }).url).toBe("https://host.usemingla.com/form/f1#t=[redacted]");
+    const crumb = opts.beforeBreadcrumb({ category: "fetch", message: `GET ${url}`, data: { url } });
+    expect(JSON.stringify(crumb)).not.toContain(tok);
+    // Anything else passes through untouched.
+    expect(opts.beforeBreadcrumb({ message: "#t=short", data: { n: 1 } })).toEqual({ message: "#t=short", data: { n: 1 } });
+  });
+
   it("init({}) with no DSN never loads the SDK (safe no-op)", async () => {
     init({});
     await flush();

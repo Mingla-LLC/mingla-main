@@ -160,31 +160,9 @@ const REFERRAL_CODE_KEY = "@mingla_referral_code";
 // without DSN is a no-op, not a runtime error. EXIT condition: operator
 // provisions DSN + sets EXPO_PUBLIC_SENTRY_DSN in .env / EAS Secrets.
 const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
-
-// #4514 — a guest form link carries its personal token in the fragment
-// (`/form/{id}#t=…`). The link page removes it after reading; this keeps any
-// copy out of error reports and navigation or request breadcrumbs.
-const FORM_LINK_TOKEN = /([#&]t=)[0-9a-f]{64}/g;
-const scrubFormToken = (v: unknown): unknown =>
-  typeof v === "string" ? v.replace(FORM_LINK_TOKEN, "$1[redacted]") : v;
-type ScrubCrumb = { message?: string; data?: { [key: string]: unknown } };
-function scrubCrumb<C extends ScrubCrumb>(crumb: C): C {
-  if (crumb.message !== undefined) crumb.message = scrubFormToken(crumb.message) as string;
-  if (crumb.data !== undefined) for (const k of Object.keys(crumb.data)) crumb.data[k] = scrubFormToken(crumb.data[k]);
-  return crumb;
-}
-function scrubEvent<E extends { request?: { url?: string }; transaction?: string; breadcrumbs?: ScrubCrumb[] }>(event: E): E {
-  if (event.request?.url !== undefined) event.request.url = scrubFormToken(event.request.url) as string;
-  if (event.transaction !== undefined) event.transaction = scrubFormToken(event.transaction) as string;
-  event.breadcrumbs?.forEach(scrubCrumb);
-  return event;
-}
-
 if (sentryDsn) {
   Sentry.init({
     dsn: sentryDsn,
-    beforeSend: scrubEvent,
-    beforeBreadcrumb: scrubCrumb,
     enableAutoSessionTracking: true,
     debug: __DEV__,
     environment: __DEV__

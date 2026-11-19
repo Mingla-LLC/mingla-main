@@ -268,6 +268,28 @@ export function withDraft(phase: LinkPhase, draft: LinkDraft | null): LinkPhase 
   return { ...phase, answers: { ...phase.answers, ...answersForDefinition(phase.form.definition, draft.answers) } };
 }
 
+type OpenPhase = Extract<LinkPhase, { kind: "open" }>;
+
+/** Save asked for a new code (the grant ran out): the code step, and the typed answers to keep. */
+export function codeStepKeepingAnswers(current: OpenPhase): { phase: LinkPhase; draft: LinkDraft } {
+  return {
+    phase: {
+      kind: "code",
+      reason: "answered",
+      formName: current.form.formName,
+      identity: current.form.identity,
+      code: emptyCode(),
+    },
+    draft: { formId: current.form.formId, answers: current.answers },
+  };
+}
+
+/** The page after a read: kept answers restored into the open form (then dropped), else kept for later. */
+export function phaseAfterRead(read: LinkRead, draft: LinkDraft | null): { phase: LinkPhase; draft: LinkDraft | null } {
+  const phase = withDraft(phaseFromRead(read), draft);
+  return { phase, draft: phase.kind === "open" ? null : draft };
+}
+
 /** The page's state when the read failed (the exception message from PostgREST). */
 export function phaseFromReadError(message: string | null): LinkPhase {
   const code = (message ?? "").trim().split(/[\s:]/)[0] ?? "";

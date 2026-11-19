@@ -36,15 +36,14 @@ import {
   type CodeStep,
   codeAfterSend,
   codeAfterVerify,
-  emptyCode,
+  codeStepKeepingAnswers,
   type LinkDraft,
   type LinkPhase,
-  phaseFromRead,
+  phaseAfterRead,
   phaseFromReadError,
   savedPhase,
   submitOutcome,
   takeLinkToken,
-  withDraft,
 } from "./brandFormLinkModel";
 
 const owner = () => import("../../checkout/intake/formRenderingPrimitives");
@@ -90,9 +89,9 @@ export default function BrandFormLinkScreen({ formId }: BrandFormLinkScreenProps
         const read = await readLinkForm({ formId, token, challengeId: challenge });
         const toHeader = await loadHeaderFromServer();
         setHeader(toHeader(read.brand ?? null));
-        const next = withDraft(phaseFromRead(read), draft.current);
-        if (next.kind === "open") draft.current = null;
-        setPhase(next);
+        const next = phaseAfterRead(read, draft.current);
+        draft.current = next.draft;
+        setPhase(next.phase);
       } catch (e) {
         setPhase(phaseFromReadError(e instanceof BrandFormLinkError ? e.code : null));
       }
@@ -134,16 +133,13 @@ export default function BrandFormLinkScreen({ formId }: BrandFormLinkScreenProps
       case "reload":
         void load(challengeId);
         return;
-      case "code":
-        draft.current = { formId: current.form.formId, answers: current.answers };
-        setPhase({
-          kind: "code",
-          reason: "answered",
-          formName: current.form.formName,
-          identity: current.form.identity,
-          code: emptyCode(),
-        });
+      case "code": {
+        // The 30-minute grant ran out mid-edit: ask for a new code, keep what was typed.
+        const step = codeStepKeepingAnswers(current);
+        draft.current = step.draft;
+        setPhase(step.phase);
         return;
+      }
       case "paused":
         setPhase({ kind: "paused" });
         return;

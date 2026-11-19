@@ -16,14 +16,14 @@ import {
   phaseFromRead,
   phaseFromReadError,
   savedPhase,
+  codeStepKeepingAnswers,
+  phaseAfterRead,
   submitOutcome,
   takeLinkToken,
   tokenFromHash,
   withDraft,
 } from "../brandFormLinkModel";
 import { LINK_COPY } from "../brandFormLinkCopy";
-import * as fs from "fs";
-import * as path from "path";
 
 const TOKEN = "a".repeat(64);
 const def = {
@@ -237,26 +237,25 @@ describe("typed answers survive a new one-time code", () => {
   });
 });
 
-// Fix wave (findings 3 and 4): the screen wires the draft and the fragment read,
-// and Sentry scrubs any "#t=" token from events and breadcrumbs.
-describe("wiring", () => {
-  const root = path.join(__dirname, "../../../../..");
-  it("the link screen keeps the draft across the code step and strips the fragment", () => {
-    const src = fs.readFileSync(path.join(root, "src/components/forms/link/BrandFormLinkScreen.tsx"), "utf8");
-    expect(src).toMatch(/case "code":\s*\n\s*draft\.current = \{ formId: current\.form\.formId, answers: current\.answers \}/);
-    expect(src).toContain("withDraft(phaseFromRead(read), draft.current)");
-    expect(src).toContain("takeLinkToken(window)");
-    expect(src).not.toContain("tokenFromHash(window.location.hash)");
-  });
-
-  it("Sentry scrubs a form link token from events and breadcrumbs", () => {
-    const src = fs.readFileSync(path.join(root, "app/_layout.tsx"), "utf8");
-    expect(src).toContain("beforeSend: scrubEvent,");
-    expect(src).toContain("beforeBreadcrumb: scrubCrumb,");
-    const literal = /const FORM_LINK_TOKEN = \/(.+)\/g;/.exec(src);
-    expect(literal).not.toBeNull();
-    const re = new RegExp(literal?.[1] ?? "^$", "g");
-    expect(`https://host.usemingla.com/form/f1#t=${TOKEN}`.replace(re, "$1[redacted]"))
-      .toBe("https://host.usemingla.com/form/f1#t=[redacted]");
+describe("the code step keeps the typed answers (the screen's flow)", () => {
+  it("Save -> code -> verify -> re-read: the typed answers are back and the draft is used up", () => {
+    const open = phaseFromRead(read({ state: "answered", answered: true,
+      response: { id: "r1", versionId: "v2", isCurrentVersion: true, editCount: 1, updatedAt: "2026-11-19T10:00:00Z",
+        answers: { q1: "yes", q2: "Sing" } } }));
+    if (open.kind !== "open") throw new Error("expected open");
+    const typed = { ...open, answers: { q1: "yes", q2: "Juggle" } };
+    const step = codeStepKeepingAnswers(typed);
+    expect(step.phase.kind).toBe("code");
+    if (step.phase.kind === "code") expect(step.phase.reason).toBe("answered");
+    // A failed verify reads code_required again: the draft is still kept.
+    const still = phaseAfterRead(read({ state: "code_required", answered: true }), step.draft);
+    expect(still.phase.kind).toBe("code");
+    expect(still.draft).toEqual(step.draft);
+    // The verified re-read returns the saved answer; the typed one wins and the draft is dropped.
+    const after = phaseAfterRead(read({ state: "answered", answered: true,
+      response: { id: "r1", versionId: "v2", isCurrentVersion: true, editCount: 1, updatedAt: "2026-11-19T10:00:00Z",
+        answers: { q1: "yes", q2: "Sing" } } }), still.draft);
+    expect(after.draft).toBeNull();
+    expect(after.phase.kind === "open" ? after.phase.answers : null).toEqual({ q1: "yes", q2: "Juggle" });
   });
 });
