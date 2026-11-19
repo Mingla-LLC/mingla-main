@@ -11,8 +11,11 @@
  * pinned composer stays in view (#4420 A2, SC-10). They are matched by the
  * testID react-native-web renders as `data-testid`.
  *
- * Read only by app/+html.tsx (the server-rendered document), never by the
- * client bundle.
+ * #4420 D1: Host web is a single-page export (app.json web.output "single"),
+ * so app/+html.tsx is never used. The CSS is installed at boot by the root
+ * layout (installWebDocumentCss, app/_layout.tsx), the same way the field
+ * focus rule is (fieldFocusCss.web.ts): one <style id="mingla-web-document-4420">
+ * in <head>. Native has no document, so the installer does nothing there.
  */
 import { color } from "../constants/designSystem";
 
@@ -28,4 +31,16 @@ export function webDocumentCss(): string {
     `html,body{background-color:${color.canvas};overscroll-behavior:none}`,
     `${contained}{overscroll-behavior:contain}`,
   ].join("\n");
+}
+
+export const WEB_DOCUMENT_STYLE_ID = "mingla-web-document-4420";
+
+/** Writes the document CSS into <head> once (web only; a no-op without a document). */
+export function installWebDocumentCss(): void {
+  const doc = (globalThis as { document?: Document }).document;
+  if (doc === undefined || doc.getElementById(WEB_DOCUMENT_STYLE_ID) !== null) return;
+  const style = doc.createElement("style");
+  style.id = WEB_DOCUMENT_STYLE_ID;
+  style.textContent = webDocumentCss();
+  doc.head.appendChild(style);
 }

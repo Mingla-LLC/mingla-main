@@ -10,7 +10,8 @@
  * scrolled away. Inside the shell the thread now fills its slot; phones keep
  * the visible-height pin (keyboard) capped clear of the privacy strip.
  *
- * FAILS ON REVERT: drop the canvas/overscroll CSS, the +html <style>, the
+ * FAILS ON REVERT: drop the canvas/overscroll CSS, the boot install in
+ * app/_layout.tsx (D1: +html.tsx is never used with single output), the
  * shell branch of messagesScreenWebSize, or put the window pin back in the
  * thread route, and the matching test fails.
  */
@@ -20,7 +21,7 @@ import { join } from "node:path";
 import { Platform } from "react-native";
 
 import { color } from "../../../constants/designSystem";
-import { webDocumentCss } from "../../../utils/webDocumentCss";
+import { installWebDocumentCss, WEB_DOCUMENT_STYLE_ID, webDocumentCss } from "../../../utils/webDocumentCss";
 import { messagesScreenWebSize } from "../webViewportPin";
 
 const source = (relative: string): string => readFileSync(join(process.cwd(), relative), "utf8");
@@ -44,10 +45,46 @@ describe("#4420 A1 the web document is the dark canvas (SC-11)", () => {
     expect(css).toMatch(/\[data-testid="brand-group-inbox-scroll"\]\{overscroll-behavior:contain\}/);
   });
 
-  test("+html.tsx writes the document CSS into <head>", () => {
-    const html = source("app/+html.tsx");
-    expect(html).toContain('import { webDocumentCss } from "../src/utils/webDocumentCss";');
-    expect(html).toContain("__html: webDocumentCss()");
+  test("D1: the style is injected into the running document at boot, once", () => {
+    // Host web is a single-page export, so app/+html.tsx never runs: the CSS
+    // must be installed by the app itself into the live document.
+    const appended: { id: string; textContent: string }[] = [];
+    const fakeDocument = {
+      getElementById: (id: string) => appended.find((node) => node.id === id) ?? null,
+      createElement: () => ({ id: "", textContent: "" }),
+      head: { appendChild: (node: { id: string; textContent: string }) => { appended.push(node); } },
+    };
+    const holder = globalThis as { document?: unknown };
+    const previous = holder.document;
+    holder.document = fakeDocument;
+    try {
+      installWebDocumentCss();
+      installWebDocumentCss();
+    } finally {
+      holder.document = previous;
+    }
+    expect(appended).toHaveLength(1);
+    expect(appended[0].id).toBe(WEB_DOCUMENT_STYLE_ID);
+    expect(appended[0].textContent).toContain(`html,body{background-color:${color.canvas};overscroll-behavior:none}`);
+  });
+
+  test("D1: the root layout installs it at module load (not the unused +html.tsx)", () => {
+    const layout = source("app/_layout.tsx");
+    expect(layout).toContain('import { installWebDocumentCss } from "../src/utils/webDocumentCss";');
+    expect(layout).toMatch(/^installWebDocumentCss\(\);$/m);
+    expect(source("app.json")).toContain('"output": "single"');
+    expect(source("app/+html.tsx")).not.toContain("webDocumentCss");
+  });
+
+  test("native: no document, nothing installed, no throw", () => {
+    const holder = globalThis as { document?: unknown };
+    const previous = holder.document;
+    holder.document = undefined;
+    try {
+      expect(() => installWebDocumentCss()).not.toThrow();
+    } finally {
+      holder.document = previous;
+    }
   });
 
   test("the scrollers carry the testIDs the CSS matches", () => {
