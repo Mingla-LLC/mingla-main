@@ -14,6 +14,8 @@ export type LivePreviewProps = {
   selectedId: string | null;
   onSelect: (sectionId: string) => void;
   onReady?: (pagePath: string) => void;
+  /** The page could not be rebuilt after a change: build the draft preview again. */
+  onRetry?: () => void;
   /** Desktop only: the small Ari card, drawn beside the selected section. */
   renderCard?: (() => React.ReactNode) | null;
   cardHeight?: number;

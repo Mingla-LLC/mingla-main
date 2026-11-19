@@ -213,6 +213,8 @@ export type SwapState = {
   /** Scroll to hand to the next frame when it swaps in (0 when the next frame shows another page). */
   scrollY: number;
   nextKey: number;
+  /** The newest draft did not load, so the frame on screen is an older one. */
+  stale?: boolean;
 };
 
 export const EMPTY_SWAP: SwapState = { shown: null, loading: null, scrollY: 0, nextKey: 1 };
@@ -221,7 +223,9 @@ export type SwapEvent =
   | { type: "url"; url: string | null; page?: string | null }
   | { type: "ready"; key: number }
   | { type: "scroll"; key: number; scrollY: number }
-  | { type: "timeout"; key: number };
+  | { type: "timeout"; key: number }
+  /** The next draft never loaded, while the page on screen is alive: keep that page, and say it is behind. */
+  | { type: "drop"; key: number };
 
 /**
  * A new draft address loads in a second, hidden frame and takes over only
@@ -243,8 +247,10 @@ export function swapReducer(state: SwapState, event: SwapEvent): SwapState {
       if (!state.loading || state.loading.key !== event.key) return state;
       // The same page rebuilt keeps the owner's place; another page starts at its top.
       const samePage = state.loading.page === (state.shown?.page ?? null);
-      return { ...state, shown: state.loading, loading: null, scrollY: samePage ? state.scrollY : 0 };
+      return { ...state, shown: state.loading, loading: null, scrollY: samePage ? state.scrollY : 0, stale: false };
     }
+    case "drop":
+      return state.loading && state.loading.key === event.key ? { ...state, loading: null, stale: true } : state;
     case "scroll":
       return state.shown?.key === event.key && state.scrollY !== event.scrollY ? { ...state, scrollY: event.scrollY } : state;
   }

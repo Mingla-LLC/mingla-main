@@ -1,10 +1,10 @@
 import React, { useCallback, useImperativeHandle, useRef, useState } from "react";
-import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { WebView } from "react-native-webview";
 import { color } from "../../../../constants/designSystem";
 import { previewDimensions, PREVIEW_DEVICE_LABELS } from "../../../../sites/previewDevice";
 import { nativeBridgeCall, stageFrame } from "../../../../sites/previewBridge";
-import { NO_PICK_LINE, usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
+import { NO_PICK_LINE, STALE_LINE, usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
 import type { LivePreviewProps } from "./LivePreview.types";
 
 /*
@@ -16,7 +16,7 @@ import type { LivePreviewProps } from "./LivePreview.types";
  * card as a sheet, so nothing is drawn over the page here.
  */
 export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(function LivePreview(props, ref) {
-  const { url, pageKey, preference, editMode, marks, tokenDeclarations, onSelect, onReady } = props;
+  const { url, pageKey, preference, editMode, marks, tokenDeclarations, onSelect, onReady, onRetry } = props;
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const views = useRef(new Map<number, { injectJavaScript: (script: string) => void }>());
   const device = previewDimensions(preference);
@@ -73,7 +73,17 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
           );
         })}
       </View>
-      {editMode && preview.noPick ? (
+      {preview.stale ? (
+        <View style={styles.stale} role="alert" testID="live-preview-stale">
+          <Text style={styles.staleText}>{STALE_LINE}</Text>
+          {onRetry ? (
+            <Pressable onPress={onRetry} accessibilityRole="button" accessibilityLabel="Try again: refresh this page" style={styles.staleButton} testID="live-preview-stale-retry">
+              <Text style={styles.staleButtonText}>Try again</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {editMode && preview.noPick && !preview.stale ? (
         <View style={styles.noPick} role="status" accessibilityLiveRegion="polite" testID="live-preview-no-pick">
           <Text style={styles.noPickText}>{NO_PICK_LINE}</Text>
         </View>
@@ -88,5 +98,9 @@ const styles = StyleSheet.create({
   web: { flex: 1, backgroundColor: color.paper },
   hidden: { opacity: 0 },
   noPick: { position: "absolute", left: 12, right: 12, bottom: 12, alignItems: "center", pointerEvents: "none" },
+  stale: { position: "absolute", left: 12, right: 12, bottom: 12, flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 12, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: color.card3 },
+  staleText: { flexShrink: 1, maxWidth: 520, fontSize: 13, lineHeight: 18, color: color.text1 },
+  staleButton: { minHeight: 44, minWidth: 44, justifyContent: "center", paddingHorizontal: 14, borderRadius: 999, backgroundColor: color.paper },
+  staleButtonText: { fontSize: 14, fontWeight: "600", color: color.ink },
   noPickText: { maxWidth: 520, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, overflow: "hidden", fontSize: 13, lineHeight: 18, color: color.text1, backgroundColor: color.card3, textAlign: "center" },
 });

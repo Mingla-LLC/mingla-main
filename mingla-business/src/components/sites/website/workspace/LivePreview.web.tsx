@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { color, scrim } from "../../../../constants/designSystem";
 import { previewDimensions, PREVIEW_DEVICE_LABELS } from "../../../../sites/previewDevice";
 import { ariCardPosition, messageFromFrame, scaleRect, sectionViewportRect, stageFrame, viewportRect } from "../../../../sites/previewBridge";
-import { NO_PICK_LINE, usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
+import { NO_PICK_LINE, STALE_LINE, usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
 import type { LivePreviewProps } from "./LivePreview.types";
 
 /*
@@ -20,7 +20,7 @@ function prefersReducedMotion(): boolean {
 }
 
 export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(function LivePreview(props, ref) {
-  const { url, pageKey, preference, editMode, marks, tokenDeclarations, selectedId, onSelect, onReady, renderCard, cardHeight } = props;
+  const { url, pageKey, preference, editMode, marks, tokenDeclarations, selectedId, onSelect, onReady, onRetry, renderCard, cardHeight } = props;
   const [stage, setStage] = useState({ width: 0, height: 0 });
   const frames = useRef(new Map<number, HTMLIFrameElement>());
   const device = previewDimensions(preference);
@@ -122,7 +122,17 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
           });
         })}
       </View>
-      {editMode && preview.noPick ? (
+      {preview.stale ? (
+        <View style={styles.stale} role="alert" testID="live-preview-stale">
+          <Text style={styles.staleText}>{STALE_LINE}</Text>
+          {onRetry ? (
+            <Pressable onPress={onRetry} role="button" accessibilityRole="button" accessibilityLabel="Try again: refresh this page" style={styles.staleButton} testID="live-preview-stale-retry">
+              <Text style={styles.staleButtonText}>Try again</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {editMode && preview.noPick && !preview.stale ? (
         <View style={styles.noPick} role="status" accessibilityLiveRegion="polite" testID="live-preview-no-pick">
           <Text style={styles.noPickText}>{NO_PICK_LINE}</Text>
         </View>
@@ -148,5 +158,9 @@ const styles = StyleSheet.create({
   } as object,
   card: { position: "absolute", zIndex: 5 },
   noPick: { position: "absolute", left: 12, right: 12, bottom: 12, zIndex: 4, alignItems: "center", pointerEvents: "none" },
+  stale: { position: "absolute", left: 12, right: 12, bottom: 12, zIndex: 4, alignSelf: "center", flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 12, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: color.card3 },
+  staleText: { flexShrink: 1, maxWidth: 520, fontSize: 13, lineHeight: 18, color: color.text1 },
+  staleButton: { minHeight: 44, minWidth: 44, justifyContent: "center", paddingHorizontal: 14, borderRadius: 999, backgroundColor: color.paper },
+  staleButtonText: { fontSize: 14, fontWeight: "600", color: color.ink },
   noPickText: { maxWidth: 520, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, overflow: "hidden", fontSize: 13, lineHeight: 18, color: color.text1, backgroundColor: color.card3, textAlign: "center" },
 });

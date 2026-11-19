@@ -35,6 +35,17 @@ const TOKENS_DEBOUNCE_MS = 150;
 const NUDGE_MS = 500;
 /** A page that has loaded and said nothing for this long is treated as one with no sections to pick. */
 const SILENT_AFTER_MS = 4_000;
+/**
+ * A rebuilt page takes over this long after it says it is ready. A design's
+ * entrance motion (a headline rising into place) starts when the page comes
+ * alive; shown at once, the words the owner was just reading would vanish
+ * and fade back in on every saved change. Another page is shown at once.
+ */
+export const SWAP_SETTLE_MS = 650;
+/** A rebuilt page that has not finished loading after this long is given up on (the page on screen stays). */
+const UNLOADED_AFTER_MS = 20_000;
+/** The plain line shown when the page on screen could not be rebuilt after a change. */
+export const STALE_LINE = "This page couldn’t refresh, so it may not show your latest change. Your changes are saved.";
 /** The plain line shown over the page when its sections cannot be picked there. */
 export const NO_PICK_LINE = "Sections can’t be picked on the page right now. Choose Edit to change them from the list.";
 /** How long a "show this section" waits for the page that holds it to load. */
@@ -61,6 +72,11 @@ export function usePreviewFrames(options: {
    * sections), or it has loaded and stayed silent. The Edit list still works.
    */
   noPick: boolean;
+  /**
+   * The page on screen is an older draft: the rebuilt one never loaded (the
+   * website service did not answer). The owner is told, and can try again.
+   */
+  stale: boolean;
   onMessage: (key: number, raw: unknown) => void;
   onLoaded: (key: number) => void;
   commands: PreviewCommands;
@@ -81,6 +97,8 @@ export function usePreviewFrames(options: {
   const readyFrames = useRef(new Map<number, readonly FrameSection[]>());
   /** The scroll a rebuilt frame takes over, sent once its bridge is listening. */
   const pendingRestore = useRef<{ key: number; scrollY: number } | null>(null);
+  /** Rebuilt frames already put in place while out of sight, with the scroll each was given. */
+  const presettled = useRef(new Map<number, number>());
   /** A section the workspace asked to show while its page was not on screen yet. */
   const wanted = useRef<{ id: string; at: number } | null>(null);
 
@@ -128,13 +146,30 @@ export function usePreviewFrames(options: {
     if (current.tokenDeclarations) current.send(key, { type: PREVIEW_TOKENS_MESSAGE, declarations: [...current.tokenDeclarations] });
   }, []);
 
-  // A frame that never speaks (an older preview build) still swaps in.
+  /**
+   * A hidden frame that stays silent. When the page on screen has never
+   * spoken either (an older preview build with no bridge), the new one is
+   * shown anyway. When the page on screen DOES speak, a silent rebuild is a
+   * page that did not load (the website service is not answering): it is
+   * dropped rather than shown as a blank page, and the owner is told.
+   */
+  const giveUp = useCallback((key: number, drop: boolean) => {
+    const state = swapRef.current;
+    if (state.loading?.key !== key || readyFrames.current.has(key)) return;
+    const shownSpeaks = state.shown !== null && readyFrames.current.has(state.shown.key);
+    if (!shownSpeaks) dispatch({ type: "timeout", key });
+    else if (drop) dispatch({ type: "drop", key });
+  }, []);
   const loadingKey = swap.loading?.key ?? null;
   useEffect(() => {
     if (loadingKey === null) return undefined;
-    const timer = setTimeout(() => dispatch({ type: "timeout", key: loadingKey }), SWAP_FALLBACK_MS);
-    return () => clearTimeout(timer);
-  }, [loadingKey]);
+    const timer = setTimeout(() => giveUp(loadingKey, false), SWAP_FALLBACK_MS);
+    const last = setTimeout(() => giveUp(loadingKey, true), UNLOADED_AFTER_MS);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(last);
+    };
+  }, [giveUp, loadingKey]);
   useEffect(() => () => {
     timers.current.forEach((timer) => clearTimeout(timer));
     timers.current.clear();
@@ -168,7 +203,10 @@ export function usePreviewFrames(options: {
     setSilent(false);
     if (replaced) {
       // The reducer already set this to 0 when the new frame shows another page.
-      pendingRestore.current = { key: shownKey, scrollY: swapRef.current.scrollY };
+      // A rebuilt page was put in place before it took over; it is moved again only if the owner scrolled meanwhile.
+      const given = presettled.current.get(shownKey);
+      presettled.current.clear();
+      if (given === undefined || given !== swapRef.current.scrollY) pendingRestore.current = { key: shownKey, scrollY: swapRef.current.scrollY };
       const known = readyFrames.current.get(shownKey);
       setBridged(known !== undefined);
       // Until the frame says otherwise it sits at its own top.
@@ -217,8 +255,25 @@ export function usePreviewFrames(options: {
       // frame itself (`rects`) once it has moved, never assumed here.
       setGeometry({ sections: message.sections, scrollY: message.scrollY });
       setBridged(true);
-      if (fromLoading) dispatch({ type: "ready", key });
-      else {
+      if (fromLoading) {
+        const samePage = state.loading?.page === (state.shown?.page ?? null);
+        const pendingSwap = timers.current.get(key);
+        if (pendingSwap) clearTimeout(pendingSwap);
+        timers.current.delete(key);
+        if (!samePage) dispatch({ type: "ready", key });
+        else if (!presettled.current.has(key)) {
+          // Out of sight: give it the state and its place now, so what comes
+          // into view there has finished arriving when it takes over.
+          sync(key);
+          pendingRestore.current = { key, scrollY: state.scrollY };
+          presettled.current.set(key, state.scrollY);
+          settle(key);
+          timers.current.set(key, setTimeout(() => {
+            timers.current.delete(key);
+            dispatch({ type: "ready", key });
+          }, SWAP_SETTLE_MS));
+        }
+      } else {
         sync(key);
         settle(key);
       }
@@ -273,10 +328,14 @@ export function usePreviewFrames(options: {
     latest.current.send(key, { type: PREVIEW_MODE, edit: latest.current.editMode });
     nudge(key);
     timers.current.set(key, setTimeout(() => {
-      timers.current.delete(key);
-      dispatch({ type: "timeout", key });
+      giveUp(key, false);
+      // Loaded, spoken to, and still silent: it is not a draft page.
+      timers.current.set(key, setTimeout(() => {
+        timers.current.delete(key);
+        giveUp(key, true);
+      }, SILENT_AFTER_MS - AFTER_LOAD_MS));
     }, AFTER_LOAD_MS));
-  }, [nudge, sync]);
+  }, [giveUp, nudge, sync]);
 
   const commands = useMemo<PreviewCommands>(() => ({
     post: (message) => {
@@ -294,5 +353,5 @@ export function usePreviewFrames(options: {
   }), []);
 
   const noPick = shownKey !== null && (silent || (bridged && geometry.sections.length === 0));
-  return { swap, geometry, bridged, noPick, onMessage, onLoaded, commands };
+  return { swap, geometry, bridged, noPick, stale: swap.stale === true && shownKey !== null, onMessage, onLoaded, commands };
 }

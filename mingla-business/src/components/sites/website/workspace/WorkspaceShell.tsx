@@ -401,6 +401,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
           tokenDeclarations={base.tokenDeclarations}
           selectedId={ws.cardFor}
           onSelect={(sectionId) => ws.select(sectionId, { card: true })}
+          onRetry={ws.retry}
           renderCard={!phone && card ? () => card : null}
         />
       )}

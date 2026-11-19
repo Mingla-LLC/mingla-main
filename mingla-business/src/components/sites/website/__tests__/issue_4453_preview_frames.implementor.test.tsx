@@ -82,6 +82,10 @@ describe("the live preview's frames", () => {
     expect(selected).toEqual([]);
     sent.length = 0;
     await act(async () => { api.onMessage(2, ready(0)); });
+    // Out of sight it is given the state and its place; it takes over a moment later, settled.
+    expect(api.swap.shown!.key).toBe(1);
+    expect(sent.filter((entry) => entry.message.type === "mingla:preview-restore-scroll")).toEqual([{ key: 2, message: { type: "mingla:preview-restore-scroll", scroll_y: 640 } }]);
+    await act(async () => { jest.advanceTimersByTime(700); });
     expect(api.swap.shown).toEqual({ key: 2, url: "https://x/2", page: "home" });
     expect(api.swap.loading).toBeNull();
     expect(types(2).slice(0, 2)).toEqual(["mingla:preview-mode", "mingla:preview-marks"]);
@@ -132,6 +136,7 @@ describe("the live preview's frames", () => {
     await act(async () => { tree.update(<Harness url="https://x/about-2" page="about" />); });
     sent.length = 0;
     await act(async () => { api.onMessage(3, ready(0)); });
+    await act(async () => { jest.advanceTimersByTime(700); });
     expect(sent.filter((entry) => entry.key === 3).map((entry) => entry.message)).toContainEqual({ type: "mingla:preview-restore-scroll", scroll_y: 480 });
     expect(types(3)).not.toContain("mingla:preview-scroll-to");
   });
@@ -147,6 +152,7 @@ describe("the live preview's frames", () => {
     await act(async () => { tree.update(<Harness url="https://x/2" />); });
     sent.length = 0;
     await act(async () => { api.onMessage(2, ready(0)); });
+    await act(async () => { jest.advanceTimersByTime(700); });
     expect(types(2)).toContain("mingla:preview-restore-scroll");
     expect(types(2)).not.toContain("mingla:preview-scroll-to");
   });
@@ -173,9 +179,82 @@ describe("the live preview's frames", () => {
     await act(async () => { api.onMessage(2, ready(0)); });
     // ...it is restored when the bridge speaks.
     expect(sent.filter((entry) => entry.key === 2).map((entry) => entry.message)).toContainEqual({ type: "mingla:preview-restore-scroll", scroll_y: 640 });
+  });
+
+  it("a rebuilt page takes over only once it has settled, already at the owner's place, and is moved again only if they scrolled meanwhile", async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<Harness url="https://x/1" page="home" />); });
+    await act(async () => { api.onMessage(1, ready(0)); });
+    await act(async () => { api.onMessage(1, { type: "mingla:preview-rects", sections: [], scroll_y: 500 }); });
+    await act(async () => { tree.update(<Harness url="https://x/2" page="home" />); });
+    sent.length = 0;
+    await act(async () => { api.onMessage(2, ready(0)); });
+    await act(async () => { jest.advanceTimersByTime(600); });
+    expect(api.swap.shown!.key).toBe(1);
+    await act(async () => { jest.advanceTimersByTime(100); });
+    expect(api.swap.shown!.key).toBe(2);
+    // Given its place once, before it showed: nothing jumps after it takes over.
+    expect(sent.filter((entry) => entry.message.type === "mingla:preview-restore-scroll")).toHaveLength(1);
+    // The owner scrolls while the next rebuild settles: it is moved to where they are now.
+    await act(async () => { tree.update(<Harness url="https://x/3" page="home" />); });
+    sent.length = 0;
+    await act(async () => { api.onMessage(3, ready(0)); });
+    await act(async () => { api.onMessage(2, { type: "mingla:preview-rects", sections: [], scroll_y: 900 }); });
+    await act(async () => { jest.advanceTimersByTime(700); });
+    expect(sent.filter((entry) => entry.key === 3 && entry.message.type === "mingla:preview-restore-scroll").map((entry) => entry.message)).toEqual([
+      { type: "mingla:preview-restore-scroll", scroll_y: 500 },
+      { type: "mingla:preview-restore-scroll", scroll_y: 900 },
+    ]);
+  });
+
+  it("a rebuilt page that never loads is not shown as a blank page: the page on screen stays, and the owner is told", async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<Harness url="https://x/1" />); });
+    // The page on screen speaks, so a silent rebuild is a page that did not load.
+    await act(async () => { api.onMessage(1, ready(0)); });
+    expect(api.stale).toBe(false);
+    await act(async () => { tree.update(<Harness url="https://x/2" />); });
+    // It "loads" (a browser error page also fires load) and stays silent.
+    await act(async () => { api.onLoaded(2); });
+    await act(async () => { jest.advanceTimersByTime(1300); });
+    expect(api.swap.shown!.key).toBe(1);
+    expect(api.stale).toBe(false);
+    await act(async () => { jest.advanceTimersByTime(2900); });
+    expect(api.swap.shown!.key).toBe(1);
+    expect(api.swap.loading).toBeNull();
+    expect(api.stale).toBe(true);
+    // Trying again loads a new address; when that one speaks it takes over and the note goes.
     await act(async () => { tree.update(<Harness url="https://x/3" />); });
-    await act(async () => { jest.advanceTimersByTime(6100); });
+    expect(api.stale).toBe(true);
+    await act(async () => { api.onMessage(3, ready(0)); });
+    await act(async () => { jest.advanceTimersByTime(700); });
     expect(api.swap.shown!.url).toBe("https://x/3");
+    expect(api.stale).toBe(false);
+  });
+
+  it("a rebuilt page that has not even loaded is waited for, then given up on", async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<Harness url="https://x/1" />); });
+    await act(async () => { api.onMessage(1, ready(0)); });
+    await act(async () => { tree.update(<Harness url="https://x/2" />); });
+    await act(async () => { jest.advanceTimersByTime(6100); });
+    // Slow, not dead: still waiting, nothing blank on screen.
+    expect(api.swap.shown!.key).toBe(1);
+    expect(api.swap.loading!.key).toBe(2);
+    expect(api.stale).toBe(false);
+    await act(async () => { jest.advanceTimersByTime(14000); });
+    expect(api.swap.shown!.key).toBe(1);
+    expect(api.swap.loading).toBeNull();
+    expect(api.stale).toBe(true);
+  });
+
+  it("with no bridge on either page (an older preview build) the rebuilt page still takes over after the fallback", async () => {
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<Harness url="https://x/1" />); });
+    await act(async () => { tree.update(<Harness url="https://x/2" />); });
+    await act(async () => { jest.advanceTimersByTime(6100); });
+    expect(api.swap.shown!.url).toBe("https://x/2");
+    expect(api.stale).toBe(false);
   });
 
   it("a page with no section list (an older preview build) or a silent page says sections can't be picked there", async () => {
