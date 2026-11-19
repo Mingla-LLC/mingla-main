@@ -91,6 +91,7 @@ import type { BrandStripeStatus } from "../../store/currentBrandStore";
 // #3372 — naira shows "₦", not "NGN", in the trip preview (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { useOfferingImageUri } from "@mingla/offering-rendering/useOfferingImageUri";
 
 export interface TripPreviewBrand {
   id: string;
@@ -592,6 +593,25 @@ const FoundationTripPreview: React.FC<{
 // LEGACY mode — the prior framed inline preview (wizard Step-5), unchanged.
 // =====================================================================
 
+// #4518 — one trip day picture on the picture road (one fallback).
+const DayMediaImage: React.FC<{ uri: string; accessibilityLabel: string }> = ({
+  uri,
+  accessibilityLabel,
+}) => {
+  const media = useOfferingImageUri(uri);
+  return (
+    <Image
+      source={{ uri: media.uri ?? uri }}
+      style={styles.legacyDayMediaTile}
+      resizeMode="cover"
+      accessibilityRole="image"
+      accessibilityLabel={accessibilityLabel}
+      onLoad={media.onLoad}
+      onError={media.onError}
+    />
+  );
+};
+
 const LegacyTripPreview: React.FC<{
   trip: Trip;
   brand: TripPreviewBrand;
@@ -781,12 +801,9 @@ const LegacyTripPreview: React.FC<{
                               ) : null}
                             </Pressable>
                           ) : (
-                            <Image
+                            <DayMediaImage
                               key={key}
-                              source={{ uri: m.url }}
-                              style={styles.legacyDayMediaTile}
-                              resizeMode="cover"
-                              accessibilityRole="image"
+                              uri={m.url}
                               accessibilityLabel={`Day ${day.ordinal} media ${mi + 1}, image`}
                             />
                           );

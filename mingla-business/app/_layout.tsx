@@ -144,6 +144,13 @@ import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
 import { syncBusinessMediaLanguage } from "../src/i18n";
 import { installFieldFocusCss } from "../src/components/ui/fieldFocusCss";
+// #4518 — buyer pictures take the second road on web (one fallback each).
+import { OfferingMediaRouteContext } from "@mingla/offering-rendering/offeringMediaRoute";
+import { buyerMediaRoute } from "../src/services/buyerMediaRoute";
+
+// Web only: native gets the package's pass-through default (no provider).
+const WEB_MEDIA_ROUTE =
+  Platform.OS === "web" && typeof window !== "undefined" ? buyerMediaRoute : null;
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a
@@ -1015,7 +1022,13 @@ export default function RootLayout(): React.ReactElement {
                     {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
                         every route (inside AuthProvider so identify works). */}
                     <PostHogAnalyticsProvider>
-                      <RootLayoutInner />
+                      {WEB_MEDIA_ROUTE !== null ? (
+                        <OfferingMediaRouteContext.Provider value={WEB_MEDIA_ROUTE}>
+                          <RootLayoutInner />
+                        </OfferingMediaRouteContext.Provider>
+                      ) : (
+                        <RootLayoutInner />
+                      )}
                     </PostHogAnalyticsProvider>
                     <KeyboardToolbarRoot />
                     <ConsentBanner />

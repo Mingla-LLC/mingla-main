@@ -25,6 +25,7 @@ import {
 import Svg, { Path } from "react-native-svg";
 
 import { EventCoverMedia } from "./EventCoverMedia";
+import { useOfferingImageUri } from "./useOfferingImageUri";
 import { type ThemePalette } from "./themePalette";
 
 import { pickGalleryLayout } from "./galleryLayout";
@@ -59,6 +60,27 @@ const SIZES = {
 const opaqueTileBg = (palette: ThemePalette): string =>
   Platform.select({ android: "#1A1A1C", default: palette.card }) ??
   palette.card;
+
+
+// issue #4518 — one gallery tile on the picture road (one fallback).
+const GalleryTileImage: React.FC<{
+  uri: string;
+  style: React.ComponentProps<typeof Image>["style"];
+  accessibilityLabel: string;
+}> = ({ uri, style, accessibilityLabel }) => {
+  const media = useOfferingImageUri(uri);
+  return (
+    <Image
+      source={{ uri: media.uri ?? uri }}
+      style={style}
+      resizeMode="cover"
+      accessibilityRole="image"
+      accessibilityLabel={accessibilityLabel}
+      onLoad={media.onLoad}
+      onError={media.onError}
+    />
+  );
+};
 
 export const CountAwareGallery: React.FC<CountAwareGalleryProps> = ({
   items,
@@ -119,12 +141,10 @@ export const CountAwareGallery: React.FC<CountAwareGalleryProps> = ({
       );
     }
     return (
-      <Image
+      <GalleryTileImage
         key={`item-${index}`}
-        source={{ uri: item.url }}
+        uri={item.url}
         style={tileBase}
-        resizeMode="cover"
-        accessibilityRole="image"
         accessibilityLabel={a11y}
       />
     );

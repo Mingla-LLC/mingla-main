@@ -35,6 +35,13 @@ export type {
   OfferingGlassMaterial,
   OfferingGlassBackdropProps,
 } from "./OfferingGlassContext";
+// issue #4518 — the host app's optional picture road (one fallback per image).
+export {
+  OfferingMediaRouteContext,
+  PASS_THROUGH_MEDIA_ROUTE,
+} from "./offeringMediaRoute";
+export type { OfferingMediaRoute } from "./offeringMediaRoute";
+export { useOfferingImageUri } from "./useOfferingImageUri";
 export { OfferingFactRows } from "./OfferingFactRows";
 export type {
   OfferingFact,
