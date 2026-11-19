@@ -30,10 +30,15 @@ import * as Sharing from "expo-sharing";
 import { Icon } from "../ui/Icon";
 import type { ConsumerRsvpRow } from "../../services/calendarService";
 import {
-  fetchRsvpPartyPasses,
+  fetchRsvpGuestsCanBring,
+  fetchRsvpPartyDetails,
   fetchRsvpPassPdf,
   submitDeckRsvp,
+  type RsvpPartyGuestStatus,
 } from "../../services/rsvpDeckService";
+// issue #4508 1.24 / 2.5 — the people you brought, Nudge, and Bring someone too.
+import { RsvpBringSomeone, RsvpPartyInvites } from "./RsvpPartyInvites";
+import { normalizeCityCountry } from "@mingla/offering-rendering/normalizeCityCountry";
 import type { RsvpPassCredential } from "@mingla/offering-rendering";
 import { useAppStore } from "../../store/appStore";
 import { toastManager } from "../ui/Toast";
@@ -111,6 +116,8 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
         }
       : null, [row.displayName, row.guestId, row.qrCode, row.rsvpId]);
   const [credentials, setCredentials] = useState<RsvpPassCredential[]>([]);
+  const [partyGuests, setPartyGuests] = useState<RsvpPartyGuestStatus[]>([]);
+  const [canBring, setCanBring] = useState(false);
 
   const pageWidth = Math.max(0, windowWidth - SHEET_HORIZONTAL_PADDING * 2);
   const qrSize = Math.max(160, Math.min(pageWidth - 32, 360));
@@ -125,9 +132,11 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
     if (!visible || !fallbackCredential || isPending) return;
     setPartyLoading(true);
     setPartyError(null);
-    void fetchRsvpPartyPasses(row.rsvpId)
-      .then((party) => {
+    void fetchRsvpPartyDetails(row.rsvpId)
+      .then((details) => {
+        const party = details.credentials;
         setCredentials(party);
+        setPartyGuests(details.guests);
         if (party.length === 0) {
           setPartyError("This RSVP pass is no longer active.");
           return;
@@ -138,14 +147,29 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
       })
       .catch(() => {
         setCredentials([]);
+        setPartyGuests([]);
         setPartyError("Couldn't verify this RSVP pass.");
       })
       .finally(() => setPartyLoading(false));
   }, [fallbackCredential, isPending, row.rsvpId, visible]);
 
+  // issue #4508 2.5 — only a claimed guest, and only when the host allows it.
+  useEffect(() => {
+    if (!visible || !isGuest || row.guestId === null || isPending) {
+      setCanBring(false);
+      return;
+    }
+    let cancelled = false;
+    void fetchRsvpGuestsCanBring(row.eventId).then((allowed) => {
+      if (!cancelled) setCanBring(allowed);
+    });
+    return () => { cancelled = true; };
+  }, [visible, isGuest, row.guestId, row.eventId, isPending]);
+
   useEffect(() => {
     if (!visible) return;
     setCredentials([]);
+    setPartyGuests([]);
     setSelectedEntityId(row.guestId ?? row.rsvpId);
     loadParty();
   }, [fallbackCredential, loadParty, row.guestId, row.rsvpId, visible]);
@@ -155,6 +179,13 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
     masterEndAtUtc: row.masterDateEndUtc,
     timezone: row.timezone,
   });
+  // issue #4508 — the ready-made message (city-level area only).
+  const inviteMessage = useMemo(() => ({
+    eventName: row.eventTitle,
+    dateLine,
+    area: row.venue.isOnline ? null : normalizeCityCountry(row.venue.locationText ?? null),
+    online: row.venue.isOnline,
+  }), [row.eventTitle, dateLine, row.venue.isOnline, row.venue.locationText]);
 
   /*
     #2468 — the local `buildMapsQueryUrl` is DELETED; this now goes through the
@@ -344,7 +375,7 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
         {partyError ? (
           <View style={styles.partyErrorRow}>
             <Text style={styles.partyError}>{partyError}</Text>
-            <Pressable onPress={loadParty} accessibilityRole="button">
+            <Pressable onPress={loadParty} accessibilityRole="button" accessibilityLabel="Try loading this pass again">
               <Text style={styles.partyRetry}>Try again</Text>
             </Pressable>
           </View>
@@ -430,6 +461,11 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
               <Text style={styles.cancelButtonLabel}>{sharing ? "Preparing…" : "Share"}</Text>
             </Pressable>
           </View>
+        ) : null}
+
+        {!isGuest ? <RsvpPartyInvites guests={partyGuests} message={inviteMessage} /> : null}
+        {isGuest && canBring && row.guestId !== null ? (
+          <RsvpBringSomeone guestId={row.guestId} message={inviteMessage} onAdded={loadParty} />
         ) : null}
 
         {isGuest ? (
