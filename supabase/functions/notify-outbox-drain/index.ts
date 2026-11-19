@@ -276,6 +276,19 @@ export async function resolveReservationConfirmationDispatch(
  * failure omits the link and the email still sends. The email goes only to
  * the booking's own guest email (the trigger addressed the row to it).
  */
+/**
+ * #4490 P3 fix: a "balance due" / "balance overdue" reminder read at send time
+ * shows nothing left to pay (the guest paid in between): skip it.
+ */
+export function venueBalanceAlreadyPaid(
+  categoryKey: string,
+  facts: Record<string, unknown>,
+): boolean {
+  return (categoryKey === "venue_balance_due" ||
+    categoryKey === "venue_balance_overdue") &&
+    facts.balance_minor === 0;
+}
+
 export async function resolveVenueBookingDispatch(
   // deno-lint-ignore no-explicit-any
   admin: any,
@@ -579,6 +592,19 @@ export async function processGenericOutcome(
       const venue = await resolveVenueBookingDispatch(admin, row);
       Object.assign(payload, venue.facts);
       venueVisitUrl = venue.visitUrl;
+      // #4490 P3 fix: a balance reminder whose balance was paid before it
+      // went out is not sent ("N0 is left to pay").
+      if (
+        venueBalanceAlreadyPaid(String(row.category_key ?? ""), venue.facts)
+      ) {
+        await admin.from("notification_outbox").update({
+          status: "done",
+          processed_at: new Date().toISOString(),
+          next_attempt_at: null,
+          last_error: "balance_already_paid",
+        }).eq("id", id);
+        return "done";
+      }
     }
     const deepLink = typeof payload.deep_link === "string"
       ? payload.deep_link
