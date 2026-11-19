@@ -24,18 +24,9 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useWorkspaceBrand } from "../../hooks/useWorkspaceBrand";
 import { BrandChip } from "../ui/BrandChip";
 import type { BrandMenuAnchor } from "./WorkspaceBrandMenu";
+import type { WorkspaceBrandSwitcherProps } from "./workspaceBrandContext";
 
-export interface WorkspaceBrandSwitcherProps {
-  /** The brand this screen edits. Omit on screens that follow the route or the current brand. */
-  brandId?: string;
-  /** A tight header: smaller mark, and the name shortens to the space it has. */
-  compact?: boolean;
-  /** The app top bar's own full switcher sheet. */
-  onOpenSheet?: () => void;
-  /** The host knows the current brand is still being resolved (issue #3345). */
-  brandLoading?: boolean;
-  testID?: string;
-}
+export type { WorkspaceBrandSwitcherProps } from "./workspaceBrandContext";
 
 // The menu loads through the brand sheet's module, not its own file: the two
 // share their search field, copy and switching rules, and Metro moves

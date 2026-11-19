@@ -104,7 +104,7 @@ export const RULES = [
   { file: HOST_SHELL, why: "the phone strip is web-only, phone-width, signed-in, and steps aside for a screen with its own switcher", ok: (src) => src.includes('const phoneBrand = Platform.OS === "web" && !isWideDesktop && user != null && !screenOwnsSwitcher') && src.includes("? phoneBrandStrip(pathname, workspaceRoute.routeBrandId, mode)") },
   { file: HOST_SHELL, why: "the phone strip is the brand switcher", ok: has('<WorkspaceBrandSwitcher brandId={phoneBrand.brandId} compact brandLoading={itemBrand.pending} testID="host-phone-brand-switcher" />') },
   { file: HOST_SHELL, why: "the phone strip sits above the screen", ok: (src) => src.includes('testID="host-phone-brand-strip"') && src.indexOf('testID="host-phone-brand-strip"') < src.indexOf("<View style={styles.stack}>{children}</View>") },
-  { file: HOST_SHELL, why: "one item's brand (a trip, an event, a listing) is the route's brand for the chrome", ok: has("routeBrandId: brandIdFromRoute(pathname, params) ?? itemBrand.brandId") },
+  { file: HOST_SHELL, why: "one item's brand (a trip, an event, a listing) is the route's brand for the chrome", ok: has("brandIdFromRoute(pathname, routeParams) ?? itemBrand.brandId") },
   { file: WORKSPACE_SHELL, why: "the Website workspace tells the shell it carries the switcher on phones", ok: has("useOwnPhoneBrandSwitcher(phone);") },
   // The brand chip is in every screen's import graph: loading it must not construct the query client
   // (the #1890, #3460 and #4304 Ari render suites mount the real screen with a partial react-query mock).
@@ -154,7 +154,7 @@ function selfTest() {
     [CONTENT_API, (s) => s.replace("const detail = refusalDetailFrom(body?.error);", "const detail = null;")],
     [HOST_SHELL, (s) => s.replace('leftKind={aboveBrand ? "none" : "brand"}', 'leftKind="brand"')],
     [HOST_SHELL, (s) => s.replace("user != null && !screenOwnsSwitcher", "user != null")],
-    [HOST_SHELL, (s) => s.replace("brandIdFromRoute(pathname, params) ?? itemBrand.brandId", "brandIdFromRoute(pathname, params)")],
+    [HOST_SHELL, (s) => s.replace("brandIdFromRoute(pathname, routeParams) ?? itemBrand.brandId", "brandIdFromRoute(pathname, routeParams)")],
     [WORKSPACE_SHELL, (s) => s.replace("useOwnPhoneBrandSwitcher(phone);", "")],
     [ACCOUNT, (s) => s.replace('leftKind="none"', 'leftKind="brand"')],
     [ARI_PANEL, (s) => s.replace("else submit(draftText);", "")],

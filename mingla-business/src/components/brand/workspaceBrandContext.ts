@@ -20,7 +20,19 @@ import type { ComponentType } from "react";
 import type { WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
 import type { PendingBrandSwitchHolder } from "../../hooks/pendingBrandSwitch";
 import type { Brand } from "../../types/brand";
-import type { WorkspaceBrandSwitcherProps } from "./WorkspaceBrandSwitcher";
+
+/** What a screen passes to the brand switcher. */
+export interface WorkspaceBrandSwitcherProps {
+  /** The brand this screen edits. Omit on screens that follow the route or the current brand. */
+  brandId?: string;
+  /** A tight header: smaller mark, and the name shortens to the space it has. */
+  compact?: boolean;
+  /** The app top bar's own full switcher sheet. */
+  onOpenSheet?: () => void;
+  /** The host knows the current brand is still being resolved (issue #3345). */
+  brandLoading?: boolean;
+  testID?: string;
+}
 
 /** The brand a chip shows when the screen names one; `pending` while it is being read. */
 export interface WorkspaceChipBrand {
