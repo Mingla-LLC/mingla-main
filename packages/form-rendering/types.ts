@@ -103,11 +103,21 @@ export interface FormRenderingTokens {
   type: { body: FormTextStyle; caption: FormTextStyle; small: FormTextStyle };
 }
 
+/** The host's cover drawing for the brand header (image, or its gradient fallback). */
+export interface FormBrandCoverProps {
+  uri: string | null;
+  hue: number;
+  accent: string | null;
+  height: number;
+}
+
 /** Everything visual the host app injects (C11). */
 export interface FormRenderingPrimitives {
   tokens: FormRenderingTokens;
   Icon: ComponentType<FormIconProps>;
   WebDateTimeInput: ComponentType<FormWebDateInputProps>;
+  /** Optional: the brand header's cover (absent: the image or a flat accent fill). */
+  BrandCover?: ComponentType<FormBrandCoverProps>;
 }
 
 /** The props a host's file upload renderer receives. */

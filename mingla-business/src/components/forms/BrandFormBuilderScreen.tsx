@@ -60,7 +60,7 @@ import { Switch } from "../ui/Switch";
 import type { IntakeSchemaBuilderProps } from "../trip/IntakeSchemaBuilder";
 import { BRAND_FORM_FEATURES } from "./brandFormBuilderKit";
 import { BrandFormPreview } from "./BrandFormPreview";
-import { brandFormHeaderData } from "./BrandFormHeader";
+import { brandFormHeaderData } from "../../utils/brandFormHeader";
 import { FORMS_COPY } from "./brandFormsCopy";
 import { FormsNotice } from "./FormsNotice";
 import { errorSentence, useFormsToast } from "./useFormsToast";

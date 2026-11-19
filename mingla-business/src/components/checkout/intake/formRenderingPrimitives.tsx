@@ -16,11 +16,17 @@
 import React from "react";
 import {
   IntakeFormRenderer,
+  BrandFormRenderer,
+  type BrandFormRendererProps,
+  BrandHeader,
+  type BrandHeaderProps,
+  type FormBrandCoverProps,
   type FormRenderingPrimitives,
   type IntakeFormRendererProps,
 } from "@mingla/form-rendering";
 
 import { color, radius, space, type } from "../../../constants/designSystem";
+import { EventCoverMedia } from "../../ui/EventCoverMedia";
 import { Icon } from "../../ui/Icon";
 import { WebDateTimeInput } from "../../ui/WebDateTimeInput";
 import {
@@ -28,11 +34,37 @@ import {
   type IntakeQuestionFileUploadProps,
 } from "./IntakeQuestionFileUpload";
 
+/** The brand header's cover: the host's cover media, or its hue gradient (§5.1). */
+const BusinessBrandCover: React.FC<FormBrandCoverProps> = ({ uri, hue, height }) => (
+  <EventCoverMedia
+    hue={hue}
+    mediaUrl={uri}
+    mediaType={uri === null ? null : "image"}
+    radius={0}
+    label=""
+    height={height}
+  />
+);
+
 export const businessFormPrimitives: FormRenderingPrimitives = {
   tokens: { color, radius, space, type },
   Icon,
   WebDateTimeInput,
+  BrandCover: BusinessBrandCover,
 };
+
+/** #4514 wave 3: the header fields of a server read, mapped for BrandHeader (link page). */
+export { brandHeaderFromServer } from "@mingla/form-rendering";
+
+/** #4514 wave 3: the brand form (show only if, the door line) with the business primitives. */
+export const BusinessBrandForm: React.FC<Omit<BrandFormRendererProps, "primitives">> = (props) => (
+  <BrandFormRenderer {...props} primitives={businessFormPrimitives} />
+);
+
+/** #4514 wave 3: the brand header (full or the 60 px strip) with the business primitives. */
+export const BusinessBrandHeader: React.FC<Omit<BrandHeaderProps, "primitives">> = (props) => (
+  <BrandHeader {...props} primitives={businessFormPrimitives} />
+);
 
 export interface BusinessIntakeFormProps
   extends Omit<IntakeFormRendererProps, "primitives" | "renderFileUpload"> {
