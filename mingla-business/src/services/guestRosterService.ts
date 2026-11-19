@@ -13,6 +13,12 @@ export interface GuestRosterListInput {
   sort: GuestRosterSort;
   cursor?: Record<string, unknown> | null;
   limit?: number;
+  /**
+   * issue #3281 — read each row's booked start(s). Only open-hours
+   * experiences have them, so the guests screen asks only for experiences
+   * (the roster refreshes every 15 s; ordinary events skip the read).
+   */
+  bookedStarts?: boolean;
 }
 
 export interface GuestRosterAccess {
@@ -62,8 +68,18 @@ export async function fetchGuestRoster(input: GuestRosterListInput): Promise<Gue
       ? error.message : "guest_roster_load_failed";
     throw new GuestRosterError(code, error.message);
   }
-  return asObject(data) as unknown as GuestRosterPage;
+  const page = asObject(data) as unknown as GuestRosterPage;
+  if (input.bookedStarts !== true) return page;
+  // issue #3281 — optional enrichment, loaded on demand (out of the shared web
+  // chunk); it never fails or blocks the roster.
+  try {
+    const { withBookedStarts } = await import("./guestRosterBookedStarts");
+    return await withBookedStarts(page, input.eventId);
+  } catch {
+    return page;
+  }
 }
+
 
 export async function fetchGuestRosterAccess(eventId: string): Promise<GuestRosterAccess> {
   const { data, error } = await supabase.rpc("biz_guest_roster_access", {
