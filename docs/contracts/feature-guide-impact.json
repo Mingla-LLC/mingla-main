@@ -823,7 +823,11 @@
         "supabase/functions/send-friend-accepted-notification/index.ts",
         "supabase/migrations/20280403034261_issue_4261_friend_share_and_group_links.sql",
         "supabase/migrations/20280403084261_issue_4261_friend_request_decline_fix.sql",
-        "app-mobile/src/components/profile/circle/YourCircleSection.tsx"
+        "app-mobile/src/components/profile/circle/YourCircleSection.tsx",
+        "app-mobile/src/components/connections/friendsSheetModel.ts",
+        "app-mobile/src/components/profile/circle/CircleAvatarTile.tsx",
+        "app-mobile/src/services/circleService.ts",
+        "app-mobile/src/types/circle.ts"
       ]
     },
     {
@@ -2633,7 +2637,29 @@
         "supabase/functions/rsvp-notify/eventUpdate.ts",
         "supabase/functions/rsvp-notify/index.ts",
         "supabase/migrations/20280705004422_issue_4422_transactional_delivery_truth.sql",
-        "supabase/migrations/20280705104422_issue_4422_rsvp_message_links.sql"
+        "supabase/migrations/20280705104422_issue_4422_rsvp_message_links.sql",
+        "app-mobile/app/event/[eventId].tsx",
+        "app-mobile/app/rsvp-guest/[code].tsx",
+        "app-mobile/src/components/activity/RsvpPartyInvites.tsx",
+        "app-mobile/src/components/rsvpGuest/RsvpGuestClaimScreen.tsx",
+        "app-mobile/src/services/pendingRsvpGuest.ts",
+        "app-mobile/src/services/rsvpDeckService.ts",
+        "app-mobile/src/services/rsvpGuestLinkService.ts",
+        "app-mobile/src/services/smartNotificationService.ts",
+        "app-mobile/src/utils/inviteNotTextedAlert.ts",
+        "app-mobile/src/utils/rsvpGuestClaim.ts",
+        "mingla-marketing/app/c/[code]/ClaimLinkClient.tsx",
+        "mingla-marketing/app/c/[code]/RsvpGuestLanding.tsx",
+        "mingla-marketing/lib/rsvp-guest-client.ts",
+        "supabase/functions/_shared/friendInviteLink.ts",
+        "supabase/functions/_shared/rsvpGuestName.ts",
+        "supabase/functions/_shared/rsvpInviterName.ts",
+        "supabase/functions/public-submit-rsvp/guestOps.ts",
+        "supabase/functions/public-submit-rsvp/guestPayload.ts",
+        "supabase/functions/rsvp-notify/friendGoingFailureAlert.ts",
+        "supabase/functions/rsvp-notify/guestInvite.ts",
+        "supabase/migrations/20281119004508_issue_4508_guest_phone_match.sql",
+        "supabase/migrations/20281119014508_issue_4508_bring_a_friend.sql"
       ]
     },
     {
@@ -3564,7 +3590,24 @@
         "mingla-business/src/components/rsvp/RsvpChipInBankChoiceDialog.tsx",
         "mingla-business/src/components/rsvp/RsvpGuestConsole.tsx",
         "mingla-business/src/components/rsvp/RsvpGuestDetailSheet.tsx",
-        "mingla-business/src/components/rsvp/RsvpStep5Setup.tsx"
+        "mingla-business/src/components/rsvp/RsvpStep5Setup.tsx",
+        "mingla-admin/src/lib/rsvpPlusGuests.js",
+        "mingla-business/src/hooks/useRsvpApprovals.ts",
+        "mingla-business/src/services/rsvpApprovals.ts",
+        "mingla-business/src/services/rsvpGuestLookup.ts",
+        "mingla-business/src/services/scanRsvpService.ts",
+        "mingla-business/src/utils/rsvpGuestDisplay.ts",
+        "packages/offering-rendering/RsvpGuestInvitesCard.tsx",
+        "packages/offering-rendering/RsvpGuestPartyBlock.tsx",
+        "packages/offering-rendering/inviteShare.ts",
+        "packages/offering-rendering/rsvpGuestCopy.ts",
+        "packages/offering-rendering/rsvpGuestErrors.ts",
+        "packages/offering-rendering/rsvpGuestParse.ts",
+        "packages/offering-rendering/rsvpGuestParty.ts",
+        "packages/offering-rendering/rsvpGuestPartyModel.ts",
+        "packages/offering-rendering/rsvpGuestTypes.ts",
+        "packages/offering-rendering/rsvpPhoneFieldTypes.ts",
+        "packages/offering-rendering/socialProofTypes.ts"
       ]
     },
     {

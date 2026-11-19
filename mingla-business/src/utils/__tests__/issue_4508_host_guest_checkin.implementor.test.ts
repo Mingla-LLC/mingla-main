@@ -1,3 +1,4 @@
+// @ts-nocheck - Deno-runnable test (Deno global and deno.land imports are not known to the app type check)
 /**
  * #4508 C7 / C8 (Host side): an unclaimed plus-one can be admitted by hand from
  * the guest sheet, shown as "Number ending NNNN" (never a full number), and the
