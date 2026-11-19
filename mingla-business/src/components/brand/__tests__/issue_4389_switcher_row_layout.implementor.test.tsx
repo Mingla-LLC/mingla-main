@@ -69,7 +69,7 @@ import { BrandSwitcherSheet } from "../BrandSwitcherSheet";
 
 interface Node { type: unknown; props: Record<string, unknown>; children: (Node | string)[]; parent: Node | null }
 const TestRenderer = require("react-test-renderer") as {
-  act: (cb: () => void) => void;
+  act: (cb: () => void | Promise<void>) => void | Promise<void>;
   create: (el: React.ReactElement) => { root: Node & { findAll: (p: (n: Node) => boolean) => Node[] }; unmount: () => void };
 };
 const textOf = (n: Node | string): string => (typeof n === "string" ? n : n.children.map(textOf).join(""));
@@ -130,7 +130,7 @@ describe("#4389 N3 — unfinished brand row", () => {
   // opened setup. The pill was nested in the switch target, on the row's
   // centre. It now sits inside the row BOX, beside (never inside) the switch
   // target, so any tap on the row switches and only the pill opens setup.
-  test("R2: Continue is inside the row box, beside the switch target; it opens setup; tapping the row switches (drafts included)", () => {
+  test("R2: Continue is inside the row box, beside the switch target; it opens setup; tapping the row switches (drafts included)", async () => {
     const tree = render();
     const row = rowOf(tree, "Tester US Brand");
     const cont = hosts(tree, "brand-switcher-continue-b-draft");
@@ -142,7 +142,11 @@ describe("#4389 N3 — unfinished brand row", () => {
     TestRenderer.act(() => (cont[0]!.props.onClick as (() => void) | undefined)?.() ?? (cont[0]!.props.onPress as (() => void) | undefined)?.());
     expect(mockPush).toHaveBeenCalledWith("/brand/b-draft/setup");
     expect(mockPick).not.toHaveBeenCalled();
-    TestRenderer.act(() => (row.props.onClick as (() => void) | undefined)?.() ?? (row.props.onPress as (() => void) | undefined)?.());
+    // #4453 — the pick lands once the switch has checked for unsaved work
+    // (async: a screen that saves by itself saves first), so await the tap.
+    await TestRenderer.act(async () => {
+      (row.props.onClick as (() => void) | undefined)?.() ?? (row.props.onPress as (() => void) | undefined)?.();
+    });
     expect(mockPick).toHaveBeenCalledTimes(1);
     expect(mockPick.mock.calls[0]![0]).toMatchObject({ id: "b-draft" });
     expect(mockPush).toHaveBeenCalledTimes(1);
