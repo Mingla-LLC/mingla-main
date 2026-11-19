@@ -127,15 +127,17 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
     setSwitcherOwners((count) => count + 1);
     return () => setSwitcherOwners((count) => count - 1);
   }, []);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  // The full brands sheet (create, continue setup), for a switcher menu's "Manage brands" on any width or platform.
+  const manageBrands = useCallback((): void => setSwitcherOpen(true), []);
   const workspaceRoute = useMemo<WorkspaceRoute>(
-    () => ({ pathname: pathname ?? null, params: routeParams, routeBrandId, brand: routeBrand, Switcher: WorkspaceBrandSwitcher, pendingSwitch, ownPhoneSwitcher }),
-    [ownPhoneSwitcher, pathname, routeBrand, routeBrandId, routeParams],
+    () => ({ pathname: pathname ?? null, params: routeParams, routeBrandId, brand: routeBrand, Switcher: WorkspaceBrandSwitcher, pendingSwitch, ownPhoneSwitcher, manageBrands }),
+    [manageBrands, ownPhoneSwitcher, pathname, routeBrand, routeBrandId, routeParams],
   );
   useWorkspaceBrandRouteSync(workspaceRoute.pathname, routeBrandId, pendingSwitch);
   const active = Platform.OS === "web" && isWideDesktop && user != null && (mode === "sidebar" || mode === "rail");
   const rail = mode === "rail";
   const inset = active ? (rail || collapsed ? DESKTOP_RAIL_WIDTH : DESKTOP_SIDEBAR_WIDTH) : 0;
-  const [switcherOpen, setSwitcherOpen] = useState(false);
   // #4453 — phones and narrow web: a brand's own screens (/brand/<id>/...) and one item of a brand
   // (a trip, an event, a listing...) open under a back bar that names the screen, not the brand. The brand being edited is named above it, and is the
   // switcher. (The Website workspace has it in its own bar and says so; desktop has the top bar;
@@ -154,6 +156,8 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     return prefetchBrandSwitcherOnIdle();
   }, [active]);
+  // The sheet belongs to the screen it was opened on: another screen (back, a link) starts without it.
+  useEffect(() => setSwitcherOpen(false), [pathname]);
 
   return (
     <WorkspaceRouteContext.Provider value={workspaceRoute}>
@@ -166,9 +170,10 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
           </View>
         ) : null}
         <View style={styles.stack}>{children}</View>
-        {active && switcherOpen ? (
+        {/* Desktop: beside the sidebar. Phones and native (opened from a menu's "Manage brands"): the whole screen. */}
+        {switcherOpen && user != null ? (
           <View
-            style={[styles.overlayLayer, { left: inset + DESKTOP_BEZEL_MARGIN }]}
+            style={[styles.overlayLayer, { left: active ? inset + DESKTOP_BEZEL_MARGIN : 0 }]}
             testID="host-shell-switcher-overlay"
           >
             <Suspense fallback={null}>

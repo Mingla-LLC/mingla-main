@@ -29,6 +29,12 @@ export interface WorkspaceBrandSwitcherProps {
   compact?: boolean;
   /** The app top bar's own full switcher sheet. */
   onOpenSheet?: () => void;
+  /**
+   * Opens the full brands sheet (create, continue setup) from inside the
+   * menu, as "Manage brands". Unlike `onOpenSheet` it never replaces the
+   * menu. Default: the shell's (`WorkspaceRoute.manageBrands`).
+   */
+  onManageBrands?: () => void;
   /** The host knows the current brand is still being resolved (issue #3345). */
   brandLoading?: boolean;
   testID?: string;
@@ -55,6 +61,12 @@ export interface WorkspaceRoute {
   Switcher?: ComponentType<WorkspaceBrandSwitcherProps>;
   /** A brand switch held until its route change lands; the shell settles it. */
   pendingSwitch?: PendingBrandSwitchHolder;
+  /**
+   * Opens the shell's full brands sheet. A switcher that was handed no sheet
+   * of its host's (the phone strip, the Website workspace's bar) offers it in
+   * its menu as "Manage brands".
+   */
+  manageBrands?: () => void;
   /** A screen whose own bar shows the switcher on phones calls this; the result releases it. */
   ownPhoneSwitcher?: () => () => void;
 }

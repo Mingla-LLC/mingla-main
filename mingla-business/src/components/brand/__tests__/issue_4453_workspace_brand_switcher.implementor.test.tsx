@@ -67,8 +67,9 @@ jest.mock("../../../config/queryClient", () => ({
         mockCacheListeners.add(listener);
         return () => mockCacheListeners.delete(listener);
       },
+      // Read through the query cache, as useWorkspaceBrand does.
+      findAll: () => (mockListsAnswered ? [{ state: { data: mockCached, status: "success", fetchStatus: "idle" } }] : []),
     }),
-    getQueriesData: () => (mockListsAnswered ? [[["brands", "list", "u"], mockCached]] : []),
   },
 }));
 jest.mock("../../../hooks/useBrandListShim", () => ({
@@ -165,8 +166,9 @@ async function mount(
   props: React.ComponentProps<typeof WorkspaceBrandSwitcher> = {},
   pathname: string | null = null,
   params: Record<string, string> = {},
+  shell: Partial<WorkspaceRoute> = {},
 ): Promise<Tree> {
-  const route: WorkspaceRoute = { pathname, params, routeBrandId: brandIdFromRoute(pathname, params) };
+  const route: WorkspaceRoute = { pathname, params, routeBrandId: brandIdFromRoute(pathname, params), ...shell };
   let tree: Tree | null = null;
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(
@@ -468,6 +470,64 @@ describe("#4453 opening the switcher", () => {
     await press(tree, "workspace-brand-switcher");
     expect(onOpenSheet).toHaveBeenCalledTimes(1);
     expect(hosts(tree, "workspace-brand-menu")).toHaveLength(0);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  // The phone sheet had no "Manage brands": on a phone-width screen whose
+  // switcher is this menu there was no way to the full brands sheet (continue
+  // setup, discard a draft). FAILS-ON-REVERT: pass the menu
+  // `onManageBrands` on desktop only again and the entry is gone.
+  test("phone: the sheet offers the shell's full brands sheet as Manage brands", async () => {
+    mockWide = false;
+    const manageBrands = jest.fn();
+    const tree = await mount({ brandId: GAMELAND.id, compact: true }, `/brand/${GAMELAND.id}/edit`, {}, { manageBrands });
+    await openMenu(tree);
+    expect(hosts(tree, "workspace-brand-sheet")).toHaveLength(1);
+    expect(labelled(tree)).toContain("Manage brands");
+    expect(labelled(tree)).toContain("Create a new brand");
+    // A full-height row of its own, like the other footer action.
+    const row = pressable(tree, "workspace-brand-manage");
+    const rowBox = (row as unknown as { findAll: (p: (n: Node) => boolean) => Node[] })
+      .findAll((n) => typeof n.type === "string" && n.props.style !== undefined)
+      .map((n) => StyleSheet.flatten(n.props.style as never) as { minHeight?: number })
+      .find((style) => typeof style.minHeight === "number");
+    expect(rowBox?.minHeight).toBeGreaterThanOrEqual(44);
+    expect(manageBrands).not.toHaveBeenCalled();
+    await press(tree, "workspace-brand-manage");
+    expect(manageBrands).toHaveBeenCalledTimes(1);
+    // The menu steps aside for the sheet it opened.
+    expect(hosts(tree, "workspace-brand-sheet")).toHaveLength(0);
+    expect(mockSwitch).not.toHaveBeenCalled();
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("phone: a host's own onManageBrands wins over the shell's; a top-bar sheet still opens directly", async () => {
+    mockWide = false;
+    const manageBrands = jest.fn();
+    const own = jest.fn();
+    const tree = await mount({ brandId: GAMELAND.id, onManageBrands: own }, null, {}, { manageBrands });
+    await openMenu(tree);
+    await press(tree, "workspace-brand-manage");
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(manageBrands).not.toHaveBeenCalled();
+    await TestRenderer.act(async () => tree.unmount());
+
+    const onOpenSheet = jest.fn();
+    const bar = await mount({ onOpenSheet }, "/home", {}, { manageBrands });
+    await TestRenderer.act(async () => {
+      (pressable(bar, "workspace-brand-switcher").props.onPress as () => void)();
+    });
+    expect(onOpenSheet).toHaveBeenCalledTimes(1);
+    expect(hosts(bar, "workspace-brand-menu")).toHaveLength(0);
+    await TestRenderer.act(async () => bar.unmount());
+  });
+
+  test("desktop, on a screen with no sheet of its own: Manage brands opens the shell's", async () => {
+    const manageBrands = jest.fn();
+    const tree = await mount({ brandId: GAMELAND.id }, null, {}, { manageBrands });
+    await openMenu(tree);
+    await press(tree, "workspace-brand-manage");
+    expect(manageBrands).toHaveBeenCalledTimes(1);
     await TestRenderer.act(async () => tree.unmount());
   });
 

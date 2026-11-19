@@ -61,8 +61,11 @@ jest.mock("../../../hooks/brandCache", () => ({
 }));
 jest.mock("../../../config/queryClient", () => ({
   queryClient: {
-    getQueryCache: () => ({ subscribe: () => () => undefined }),
-    getQueriesData: () => (mockListsAnswered ? [[["brands", "list", "u1"], mockCached]] : []),
+    // Read through the query cache, as useWorkspaceBrand does.
+    getQueryCache: () => ({
+      subscribe: () => () => undefined,
+      findAll: () => (mockListsAnswered ? [{ state: { data: mockCached, status: "success", fetchStatus: "idle" } }] : []),
+    }),
   },
 }));
 jest.mock("../DesktopSidebar", () => {

@@ -44,11 +44,21 @@ const noSubscription = (): (() => void) => () => undefined;
 const subscribeToBrandCache = (onChange: () => void): (() => void) =>
   brandCacheClient().getQueryCache().subscribe(onChange);
 
-/** Has any brand list answered yet? Then a missing brand is not "loading". */
+/**
+ * Has any brand list answered yet? Then a missing brand is not "loading".
+ * A list read that has given up (failed, and not being retried right now) has
+ * answered too: without that, a chip whose brand is only in a list that will
+ * not load stayed on its placeholder for good. It follows the current brand
+ * until a later read succeeds (the cache change is seen, and the brand shows).
+ */
 const brandListsAnswered = (): boolean =>
   brandCacheClient()
-    .getQueriesData<Brand[]>({ queryKey: brandKeys.lists() })
-    .some(([, brands]) => brands !== undefined);
+    .getQueryCache()
+    .findAll({ queryKey: brandKeys.lists() })
+    .some(
+      ({ state }) =>
+        state.data !== undefined || (state.status === "error" && state.fetchStatus === "idle"),
+    );
 
 /** The cache's answer for a brand a screen names; nothing is read (or subscribed to) unless `differs`. */
 function useCachedBrand(
