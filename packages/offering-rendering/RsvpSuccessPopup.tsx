@@ -25,6 +25,9 @@ import {
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
 import { accentFill, themeFontFace } from "./themeAccentStyle";
+import type { GuestInviteMessageInput, RsvpSubmittedGuest } from "./rsvpGuestParty";
+// issue #4508 1.15 — only a reply that brought someone pays for this card.
+const RsvpGuestInvitesCard = React.lazy(() => import("./RsvpGuestInvitesCard"));
 
 // Keep the sizeable SVG QR renderer out of the initial buyer-web bundle.
 // @ts-expect-error -- the host apps provide this workspace peer dependency.
@@ -57,6 +60,10 @@ export interface RsvpConfirmationDetails {
   confirmationToken: string | null;
   credentials: RsvpPassCredential[];
   anonymousRecovery: RsvpAnonymousRecovery[];
+  /** issue #4508 1.15 — each person brought, with the link their text carries. */
+  invites?: RsvpSubmittedGuest[];
+  /** issue #4508 1.15 — the message parts; each guest's link completes it. */
+  inviteMessage?: Omit<GuestInviteMessageInput, "link">;
 }
 
 export interface RsvpSuccessPopupProps {
@@ -88,6 +95,9 @@ export interface RsvpSuccessPopupProps {
     credential: RsvpPassCredential,
     recovery: RsvpAnonymousRecovery | null,
   ) => Promise<void>;
+  /** issue #4508 1.15 — host copy / share for "Send it yourself too". */
+  onCopyText?: (text: string) => void | Promise<void>;
+  onShareText?: (text: string) => void | Promise<void>;
 }
 
 const Row: React.FC<{
@@ -126,6 +136,8 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
     passPresentation = "qr",
     claim,
     renderClaimBody,
+    onCopyText,
+    onShareText,
   } = props;
   const boldFamily = boldFontFamily(theme);
   const boldFace = themeFontFace(boldFamily);
@@ -183,6 +195,21 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
       : details.status === "waitlisted"
         ? "A spot opened? We'll text and email you automatically."
         : null;
+  const invites = details.invites ?? [];
+  const invitesCard =
+    invites.length > 0 && details.inviteMessage !== undefined ? (
+      <Suspense fallback={null}>
+        <RsvpGuestInvitesCard
+          palette={palette}
+          boldFamily={boldFamily}
+          invites={invites}
+          rsvpStatus={details.status}
+          message={details.inviteMessage}
+          onCopyText={onCopyText}
+          onShareText={onShareText}
+        />
+      </Suspense>
+    ) : null;
 
   return (
     <Modal
@@ -290,6 +317,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                       {claimStatusLine}
                     </Text>
                   ) : null}
+                  {invitesCard}
                 </View>
               )
             ) : (
@@ -438,6 +466,8 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                     ) : null}
                   </View>
                 ) : null}
+
+                {invitesCard}
 
                 {showCalendarNudge ? (
                   <Text
