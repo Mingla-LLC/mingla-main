@@ -281,11 +281,9 @@ export function useAppState() {
     // #4347: also refresh on return to the foreground once the last live
     // fetch is over 24 h old, so converted prices never age out silently.
     const sub = AppState.addEventListener("change", (next) => {
-      if (next === "active") {
-        refreshRatesIfStale();
-        // #4226: retry install attribution that errored earlier (3 tries per session).
-        retryHeldInstallAttribution();
-      }
+      if (next === "active") refreshRatesIfStale();
+      // #4226: retry install attribution that errored earlier (3 tries per session).
+      if (next === "active") retryHeldInstallAttribution();
     });
     return () => sub.remove();
   }, []);
