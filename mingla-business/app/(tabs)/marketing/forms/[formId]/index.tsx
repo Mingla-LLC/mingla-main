@@ -4,7 +4,7 @@ import React, { Suspense } from "react";
 // Lazy: the builder, its preview and the question editor stay out of the
 // eager web bundle.
 const BrandFormBuilderScreen = React.lazy(async () => {
-  const mod = await import("../../../../../src/components/forms/BrandFormBuilderScreen");
+  const mod = await import("../../../../../src/components/forms/formsOwner");
   return { default: mod.BrandFormBuilderScreen };
 });
 

@@ -59,7 +59,7 @@ const EventTicketCheckoutAccessCard = React.lazy(() =>
 );
 // #4514 — the "Guest questions" row (after Cover on a live edit) loads on demand.
 const GuestQuestionsRow = React.lazy(() =>
-  import("../../../src/components/forms/GuestQuestionsRow").then((m) => ({
+  import("../../../src/components/forms/formsOwner").then((m) => ({
     default: m.GuestQuestionsRow,
   })),
 );

@@ -17,13 +17,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+
+// A form with text fields scrolls with the keyboard-aware wrapper (issue #1841 gate).
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import {
@@ -49,18 +51,18 @@ import {
   schemaToDefinition,
 } from "../../utils/brandFormDefinition";
 import { MIN_RANK } from "../../utils/permissionGates";
-import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { EmptyState } from "../ui/EmptyState";
 import { IconChrome } from "../ui/IconChrome";
 import { Pill, Segmented, type PillVariant } from "../ui/Pill";
 import { Switch } from "../ui/Switch";
-import { IntakeSchemaBuilder } from "../trip/IntakeSchemaBuilder";
-import { BRAND_FORM_FEATURES } from "../trip/intakeBuilderFeatures";
+import { LazyIntakeSchemaBuilder as IntakeSchemaBuilder } from "../trip/LazyIntakeSchemaBuilder";
+import { BRAND_FORM_FEATURES } from "./brandFormBuilderKit";
 import { BrandFormPreview } from "./BrandFormPreview";
 import { brandFormHeaderData } from "./BrandFormHeader";
 import { FORMS_COPY } from "./brandFormsCopy";
+import { FormsNotice } from "./FormsNotice";
 import { errorSentence, useFormsToast } from "./useFormsToast";
 
 const WIDE_BREAKPOINT = 1024;
@@ -357,14 +359,14 @@ export const BrandFormBuilderScreen: React.FC = () => {
     const editColumn = (
       <View style={styles.column}>
         {stale ? (
-          <Banner
+          <FormsNotice
             tone="warning"
             title={FORMS_COPY.staleBanner}
             action={{ label: FORMS_COPY.reload, onPress: handleReload }}
             testID="brand-form-stale-banner"
           />
         ) : null}
-        {closed ? <Banner tone="info" title={FORMS_COPY.closedBanner} testID="brand-form-closed-banner" /> : null}
+        {closed ? <FormsNotice tone="info" title={FORMS_COPY.closedBanner} testID="brand-form-closed-banner" /> : null}
         <IntakeSchemaBuilder
           schema={schema}
           activeTicketTypeId={form.id}

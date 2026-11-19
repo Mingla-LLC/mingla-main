@@ -69,7 +69,6 @@ import { useBusinessEventsForBrand } from "../../../src/hooks/useBusinessEvents"
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 // #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
 import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
-import { canReadGuestQuestions } from "../../../src/utils/guestQuestionsModel";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 // #3645 — a published RSVP can be returned to draft or cancelled. The dialogs
@@ -121,7 +120,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
     !currentBrandRole.isLoading &&
     !currentBrandRole.isError &&
     currentBrandRole.role !== null &&
-    canReadGuestQuestions(currentBrandRole.rank);
+    canPerformAction(currentBrandRole.rank, "READ_FORM_RESPONSES");
 
   // ----- Going-count source (SPEC F-2) -------------------------------
   // useManagedEventRoute → fetchBusinessEventById returns rsvpGoingCount: 0,

@@ -49,18 +49,10 @@ import {
 } from "../../services/intakeSchemaService";
 import { IntakeQuestionEditor } from "./IntakeQuestionEditor";
 import { IntakeTypePickerSheet } from "./IntakeTypePickerSheet";
-// #4514 — brand form additions to this ONE builder. The trip questions step
-// passes no `features` and keeps today's behaviour.
-import { IntakeQuestionBrandTags } from "./IntakeQuestionBrandTags";
+// #4514 — brand form additions to this ONE builder arrive as `features.kit`
+// (built by the brand form builder screen). The trip questions step passes no
+// features and imports none of it.
 import { TRIP_INTAKE_FEATURES, type IntakeBuilderFeatures } from "./intakeBuilderFeatures";
-import {
-  conditionSources as conditionSourcesFor,
-  dependentNumbers as dependentNumbersFor,
-  doorQuestionCount,
-  moveQuestion,
-  sanitizeShowIf,
-} from "../../utils/brandFormDefinition";
-import { FORMS_COPY } from "../forms/brandFormsCopy";
 
 export interface IntakeSchemaBuilderProps {
   /** Current schema for the active tier; null = no schema configured yet. */
@@ -112,6 +104,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
   doorNoticeAcked,
   onDoorNoticeAck,
 }) => {
+  const kit = features.kit;
   const [notice, setNotice] = useState<string | null>(null);
   const [localDoorAck, setLocalDoorAck] = useState<boolean>(false);
   const doorAck = doorNoticeAcked ?? localDoorAck;
@@ -202,18 +195,21 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
         );
       }
       // #4514 — a changed question may end a "Show only if" that used it.
-      const settled = features.conditions
-        ? sanitizeShowIf(nextQuestions)
-        : { questions: nextQuestions, cleared: [] as number[] };
+      const settled =
+        features.conditions && kit !== undefined
+          ? kit.sanitizeShowIf(nextQuestions)
+          : { questions: nextQuestions, cleared: [] as number[] };
       setNotice(
-        settled.cleared.length > 0 ? FORMS_COPY.conditionCleared(settled.cleared) : null,
+        settled.cleared.length > 0 && kit !== undefined
+          ? kit.conditionCleared(settled.cleared)
+          : null,
       );
       onSchemaChange(
         bumpSchemaVersion({ ...base, questions: settled.questions }),
       );
       setEditorState({ visible: false });
     },
-    [ensureSchema, onSchemaChange, features.conditions],
+    [ensureSchema, onSchemaChange, features.conditions, kit],
   );
 
   const handleEditorCancel = useCallback(() => {
@@ -226,8 +222,8 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
       if (schema === null) return;
       if (to < 0 || to >= schema.questions.length || from === to) return;
       // #4514 — a dependent question cannot move above its source.
-      if (features.conditions) {
-        const result = moveQuestion(schema.questions, from, to);
+      if (features.conditions && kit !== undefined) {
+        const result = kit.moveQuestion(schema.questions, from, to);
         if (!result.ok) {
           setNotice(result.message);
           return;
@@ -244,7 +240,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
         bumpSchemaVersion({ ...schema, questions: reordered }),
       );
     },
-    [schema, onSchemaChange, features.conditions],
+    [schema, onSchemaChange, features.conditions, kit],
   );
 
   // 2-tap remove with auto-disarm if planner taps elsewhere.
@@ -258,16 +254,19 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
       const next = schema.questions
         .filter((existing) => existing.id !== q.id)
         .map((existing, idx) => ({ ...existing, position: idx }));
-      const settled = features.conditions
-        ? sanitizeShowIf(next)
-        : { questions: next, cleared: [] as number[] };
+      const settled =
+        features.conditions && kit !== undefined
+          ? kit.sanitizeShowIf(next)
+          : { questions: next, cleared: [] as number[] };
       setNotice(
-        settled.cleared.length > 0 ? FORMS_COPY.conditionCleared(settled.cleared) : null,
+        settled.cleared.length > 0 && kit !== undefined
+          ? kit.conditionCleared(settled.cleared)
+          : null,
       );
       onSchemaChange(bumpSchemaVersion({ ...schema, questions: settled.questions }));
       setRemoveArmed({});
     },
-    [schema, removeArmed, onSchemaChange, features.conditions],
+    [schema, removeArmed, onSchemaChange, features.conditions, kit],
   );
 
   const handleRemoveCancel = useCallback(() => {
@@ -296,12 +295,13 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
     editingQuestion !== null
       ? questions.findIndex((q) => q.id === editingQuestion.id)
       : -1;
-  const editorSources = features.conditions
-    ? conditionSourcesFor(questions, editingIndex >= 0 ? editingIndex : null)
-    : [];
+  const editorSources =
+    features.conditions && kit !== undefined
+      ? kit.conditionSources(questions, editingIndex >= 0 ? editingIndex : null)
+      : [];
   const editorDependents =
-    features.conditions && editingQuestion !== null
-      ? dependentNumbersFor(questions, editingQuestion.id)
+    features.conditions && kit !== undefined && editingQuestion !== null
+      ? kit.dependentNumbers(questions, editingQuestion.id)
       : [];
 
   return (
@@ -324,16 +324,16 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
       ) : null}
 
       <Text style={styles.eyebrow}>
-        {features.variant === "brand_form"
-          ? FORMS_COPY.questionCount(questionCount).toUpperCase()
+        {features.variant === "brand_form" && kit !== undefined
+          ? kit.questionCount(questionCount).toUpperCase()
           : `INTAKE QUESTIONS (${questionCount})`}
       </Text>
 
       {questionCount === 0 ? (
-        features.variant === "brand_form" ? (
+        features.variant === "brand_form" && kit !== undefined ? (
           <View style={styles.emptyHintBlock}>
-            <Text style={styles.emptyHintTitle}>{FORMS_COPY.noQuestionsTitle}</Text>
-            <Text style={styles.emptyHint}>{FORMS_COPY.noQuestionsBody}</Text>
+            <Text style={styles.emptyHintTitle}>{kit?.noQuestionsTitle}</Text>
+            <Text style={styles.emptyHint}>{kit?.noQuestionsBody}</Text>
           </View>
         ) : (
         <Text style={styles.emptyHint}>
@@ -423,8 +423,8 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
                         ) : (
                           <Text style={styles.optionalText}>Optional</Text>
                         )}
-                        {features.door || features.conditions ? (
-                          <IntakeQuestionBrandTags question={item} questions={questions} />
+                        {kit !== undefined && (features.door || features.conditions) ? (
+                          <kit.QuestionTags question={item} questions={questions} />
                         ) : null}
                       </View>
                     </Pressable>
@@ -607,7 +607,7 @@ export const IntakeSchemaBuilder: React.FC<IntakeSchemaBuilderProps> = ({
           onSave={handleEditorSave}
           onCancel={handleEditorCancel}
           features={features}
-          otherDoorCount={doorQuestionCount(questions, editingQuestion?.id)}
+          otherDoorCount={kit !== undefined ? kit.doorQuestionCount(questions, editingQuestion?.id) : 0}
           conditionSources={editorSources}
           dependentNumbers={editorDependents}
           questionNumber={editingIndex >= 0 ? editingIndex + 1 : null}

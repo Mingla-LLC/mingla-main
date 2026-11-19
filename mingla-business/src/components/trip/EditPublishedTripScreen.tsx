@@ -212,7 +212,7 @@ const SECTIONS: readonly SectionConfig[] = [
 // #4514 — the "Guest questions" row (after Intake form, before Settings) loads
 // on demand, so it adds nothing to the eager web bundle.
 const GuestQuestionsRow = React.lazy(() =>
-  import("../forms/GuestQuestionsRow").then((m) => ({ default: m.GuestQuestionsRow })),
+  import("../forms/formsOwner").then((m) => ({ default: m.GuestQuestionsRow })),
 );
 
 const SAVE_PROCESSING_MS = 800;

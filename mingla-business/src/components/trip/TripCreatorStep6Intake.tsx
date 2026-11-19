@@ -34,7 +34,8 @@ import type { IntakeSchema } from "../../services/intakeSchemaService";
 import { createEmptyIntakeSchema } from "../../services/intakeSchemaService";
 import type { TripPricingTier } from "../../services/tripsService";
 import { IntakeQuestionPreview } from "./IntakeQuestionPreview";
-import { IntakeSchemaBuilder } from "./IntakeSchemaBuilder";
+// #4514 — one lazy owner for the builder (keeps it out of the eager Host web chunk).
+import { LazyIntakeSchemaBuilder as IntakeSchemaBuilder } from "./LazyIntakeSchemaBuilder";
 // #3372 — naira package prices show "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 

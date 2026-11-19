@@ -25,7 +25,8 @@ import {
   schemaToDefinition,
   BRAND_FORM_SCHEMA,
 } from "../brandFormDefinition";
-import { BRAND_FORM_FEATURES, TRIP_INTAKE_FEATURES } from "../../components/trip/intakeBuilderFeatures";
+import { TRIP_INTAKE_FEATURES } from "../../components/trip/intakeBuilderFeatures";
+import { BRAND_FORM_FEATURES } from "../../components/forms/brandFormBuilderKit";
 
 const q = (id: string, over: Partial<IntakeQuestion> = {}): IntakeQuestion => ({
   id,
@@ -186,6 +187,24 @@ describe("the trip builder keeps today's behaviour", () => {
       variant: "brand_form",
       optionMax: 80,
     });
+    expect(BRAND_FORM_FEATURES.kit).toBeDefined();
+    expect(TRIP_INTAKE_FEATURES.kit).toBeUndefined();
+  });
+
+  it("keeps the brand form modules out of the trip builder's imports (eager bundle)", () => {
+    const root = path.resolve(__dirname, "../../..");
+    for (const file of [
+      "src/components/trip/IntakeSchemaBuilder.tsx",
+      "src/components/trip/IntakeSchemaBuilder.web.tsx",
+      "src/components/trip/IntakeQuestionEditor.tsx",
+      "src/components/trip/IntakeQuestionEditor.web.tsx",
+      "src/components/trip/intakeBuilderFeatures.ts",
+    ]) {
+      const source = fs.readFileSync(path.join(root, file), "utf8");
+      // value imports only: `import type` is erased and costs nothing
+      const valueImport = /import\s+(?!type\b)[^;]*?from\s+"[^"]*(brandFormDefinition|brandFormsCopy|IntakeBrandFormFields|IntakeQuestionBrandTags|brandFormBuilderKit)"/;
+      expect(source).not.toMatch(valueImport);
+    }
   });
 
   const root = path.resolve(__dirname, "../../..");
@@ -211,7 +230,7 @@ describe("the trip builder keeps today's behaviour", () => {
 
   it("there is no second builder: the brand form screen mounts IntakeSchemaBuilder", () => {
     const screen = read("src/components/forms/BrandFormBuilderScreen.tsx");
-    expect(screen).toMatch(/import \{ IntakeSchemaBuilder \} from "\.\.\/trip\/IntakeSchemaBuilder"/);
+    expect(screen).toMatch(/LazyIntakeSchemaBuilder as IntakeSchemaBuilder/);
     expect(screen).toMatch(/features=\{BRAND_FORM_FEATURES\}/);
   });
 });

@@ -54,7 +54,8 @@ import {
 } from "../../hooks/useIntakeSchema";
 import type { TripPricingTier } from "../../services/tripsService";
 import { IntakeQuestionPreview } from "./IntakeQuestionPreview";
-import { IntakeSchemaBuilder } from "./IntakeSchemaBuilder";
+// #4514 — one lazy owner for the builder (keeps it out of the eager Host web chunk).
+import { LazyIntakeSchemaBuilder as IntakeSchemaBuilder } from "./LazyIntakeSchemaBuilder";
 
 const WIDE_BREAKPOINT_PT = 768;
 

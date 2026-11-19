@@ -16,7 +16,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 jest.mock("../../../utils/liveEventConverter", () => ({ convertDraftToLiveEvent: () => null }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 // [TEST-MOD #4514] the lazy "Guest questions" row is not under test here.
-jest.mock("../../forms/GuestQuestionsRow", () => ({ GuestQuestionsRow: () => null }));
+jest.mock("../../forms/formsOwner", () => ({ GuestQuestionsRow: () => null }));
 jest.mock("../../intel/TurnoutForecastCard", () => ({ TurnoutForecastCard: () => null }));
 jest.mock("../../intel/useTurnoutFocusTarget", () => ({ useTurnoutFocusTarget: () => false }));
 
@@ -112,7 +112,7 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     if (name.endsWith("/useEventDateKeys")) return { useEventDateKeys: () => ({ data: undefined }) }; // #3281 sold-date keys; unused by these hosts
     if (name.endsWith("/ticketDayScope")) return require("../../../utils/ticketDayScope"); // #3281 pure helpers
     const exportName = name.split("/").pop()!;
-    if (exportName === "GuestQuestionsRow") return { GuestQuestionsRow: () => null }; // [TEST-MOD #4514] the lazy Guest questions row is not under test here
+    if (exportName === "formsOwner") return { GuestQuestionsRow: () => null }; // [TEST-MOD #4514] the lazy Guest questions row is not under test here
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep7Preview|PublishErrorsSheet|ChangeSummaryModal|EditAfterPublishBanner|ThemeControlRow|ThemeSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
     // [TEST-MOD-APPROVED #1023] Harness registration only: hosts import the
     // on-intent wrapper, which exports the same ThemeSheet name.

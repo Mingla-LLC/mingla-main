@@ -30,10 +30,10 @@ import {
 } from "../../hooks/useBrandForms";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import type { BrandFormResponseRow } from "../../services/brandFormsService";
+import { exportFormAnswers } from "../../services/brandFormsExportService";
 import { answerText, subjectName, summarize, summaryDefinition } from "../../utils/brandFormResponses";
 import { canAttachGuestQuestions, type GuestQuestionsPageKind } from "../../utils/guestQuestionsModel";
 import { MIN_RANK } from "../../utils/permissionGates";
-import { Banner } from "../ui/Banner";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { EmptyState } from "../ui/EmptyState";
@@ -44,6 +44,7 @@ import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Tabs } from "../ui/Tabs";
 import { FORMS_COPY, modeLabel } from "./brandFormsCopy";
+import { FormsNotice } from "./FormsNotice";
 import { GuestQuestionsSheet } from "./GuestQuestionsSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
 
@@ -153,8 +154,7 @@ export const BrandFormResponsesScreen: React.FC = () => {
   const handleExport = useCallback((): void => {
     if (formId === null || eventId === null || detail.data === undefined || exporting) return;
     setExporting(true);
-    void import("../../services/brandFormsExportService")
-      .then((mod) => mod.exportFormAnswers({ formId, formName: detail.data?.form.name ?? "form", eventId }))
+    exportFormAnswers({ formId, formName: detail.data?.form.name ?? "form", eventId })
       .then((method) => {
         if (method !== "dismissed") show("success", FORMS_COPY.exportedToast);
       })
@@ -348,7 +348,7 @@ export const BrandFormResponsesScreen: React.FC = () => {
             <Button label={FORMS_COPY.reopen} variant="primary" size="sm" loading={reopen.isPending} disabled={reopen.isPending} onPress={handleReopen} testID="brand-form-reopen" />
           ) : null}
         </View>
-        {closed ? <Banner tone="info" title={FORMS_COPY.closedBanner} /> : null}
+        {closed ? <FormsNotice tone="info" title={FORMS_COPY.closedBanner} /> : null}
         {attachments.length > 1 ? (
           <View style={styles.chips} accessibilityRole="radiogroup" testID="brand-form-page-chips">
             <Chip label={FORMS_COPY.allPages} selected={eventId === null} onPress={() => setPickedEvent(null)} />

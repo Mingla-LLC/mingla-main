@@ -14,13 +14,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+
+// A form with text fields scrolls with the keyboard-aware wrapper (issue #1841 gate).
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import { useBrandFormsList, useCreateBrandForm, useReopenBrandForm } from "../../hooks/useBrandForms";
@@ -30,7 +32,6 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import type { BrandFormListItem, BrandFormStatus } from "../../services/brandFormsService";
 import { MIN_RANK } from "../../utils/permissionGates";
 import { BRAND_FORM_NAME_MAX, BRAND_FORM_NAME_MIN } from "../../utils/brandFormDefinition";
-import { useMarketingActionRegistrar } from "../marketing/MarketingActionContext";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { GlassCard } from "../ui/GlassCard";
@@ -153,7 +154,6 @@ export const BrandFormsListScreen: React.FC = () => {
   const create = useCreateBrandForm();
   const reopen = useReopenBrandForm();
   const { show, toast } = useFormsToast();
-  const register = useMarketingActionRegistrar();
 
   const [nameOpen, setNameOpen] = useState<boolean>(false);
   const [name, setName] = useState<string>("");
@@ -165,22 +165,15 @@ export const BrandFormsListScreen: React.FC = () => {
     setNameOpen(true);
   }, []);
 
-  // The Blast tab's one action ("Create a form") opens the name sheet here.
-  useEffect(
-    () =>
-      register({
-        id: "forms-create",
-        label: FORMS_COPY.createForm,
-        compactLabel: "New",
-        icon: "plus",
-        onPress: openCreate,
-      }),
-    [register, openCreate],
-  );
-
+  // The Blast shell's "Create a form" action opens this screen with
+  // ?action=create; open the name sheet once, then clear the param so the
+  // action works again next time.
   useEffect(() => {
-    if (params.action === "create") openCreate();
-  }, [params.action, openCreate]);
+    if (params.action === "create") {
+      openCreate();
+      router.setParams({ action: undefined } as never);
+    }
+  }, [params.action, openCreate, router]);
 
   const trimmed = name.trim();
   const nameValid = trimmed.length >= BRAND_FORM_NAME_MIN && trimmed.length <= BRAND_FORM_NAME_MAX;
@@ -270,9 +263,19 @@ export const BrandFormsListScreen: React.FC = () => {
     <View style={styles.host}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {items.length > 0 && canRead ? (
-          <Text style={styles.count} accessibilityRole="header">
-            {`${items.length} ${items.length === 1 ? "form" : "forms"}`}
-          </Text>
+          <View style={styles.headRow}>
+            <Text style={styles.count} accessibilityRole="header">
+              {`${items.length} ${items.length === 1 ? "form" : "forms"}`}
+            </Text>
+            <Button
+              label={FORMS_COPY.createForm}
+              variant="primary"
+              size="sm"
+              leadingIcon="plus"
+              onPress={openCreate}
+              testID="brand-forms-create"
+            />
+          </View>
         ) : null}
         {body}
       </ScrollView>
@@ -336,6 +339,7 @@ const styles = StyleSheet.create({
     gap: space[3],
   },
   center: { paddingVertical: space[8], alignItems: "center" },
+  headRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2] },
   count: { ...type.small, color: color.text2 },
   grid: { gap: space[3] },
   gridWide: { flexDirection: "row", flexWrap: "wrap" },

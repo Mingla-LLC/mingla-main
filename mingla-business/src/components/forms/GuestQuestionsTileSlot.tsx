@@ -8,7 +8,7 @@ import type { GuestQuestionsPageKind } from "../../utils/guestQuestionsModel";
 // eager Host web bundle gains only this declaration. While the chunk loads the
 // cell shows the labelled, disabled tile (a moment, never a dead tap).
 const LazyGuestQuestionsTile = React.lazy(async () => {
-  const mod = await import("./GuestQuestionsTile");
+  const mod = await import("./formsOwner");
   return { default: mod.GuestQuestionsTile };
 });
 

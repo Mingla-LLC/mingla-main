@@ -87,8 +87,8 @@ import {
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 // #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
+import { canPerformAction } from "../../../src/utils/permissionGates";
 import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
-import { canReadGuestQuestions } from "../../../src/utils/guestQuestionsModel";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 // ORCH-0873 [Tr3 Stage 2 UI] — Money tab data.
@@ -616,7 +616,7 @@ export default function TripDashboardRoute(): React.ReactElement {
     ...pick(["guests"]),
     // #4514 — "Guest questions": after Travelers, before Orders (marketing
     // manager and up; scanners never see it).
-    ...(canReadGuestQuestions(currentBrandRole.rank) && !currentBrandRole.isLoading && !currentBrandRole.isError && currentBrandRole.role !== null
+    ...(canPerformAction(currentBrandRole.rank, "READ_FORM_RESPONSES") && !currentBrandRole.isLoading && !currentBrandRole.isError && currentBrandRole.role !== null
       ? [
           {
             key: "guestQuestions",

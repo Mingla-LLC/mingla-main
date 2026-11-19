@@ -140,7 +140,7 @@ import { CreatorStep6SettingsLazy, RsvpStep5SetupLazy } from "./lazySettingsStep
 // #4514 — the "Guest questions" row (and its attach sheet) loads on demand, so
 // it adds nothing to the eager web bundle.
 const GuestQuestionsRow = React.lazy(() =>
-  import("../forms/GuestQuestionsRow").then((m) => ({ default: m.GuestQuestionsRow })),
+  import("../forms/formsOwner").then((m) => ({ default: m.GuestQuestionsRow })),
 );
 const EventTicketCheckoutAccessCard = React.lazy(() =>
   import("./EventTicketCheckoutAccessCard").then((m) => ({

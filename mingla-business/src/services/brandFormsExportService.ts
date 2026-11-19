@@ -5,6 +5,8 @@
  * the roster export (`brand-people-export`) does not take a form yet.
  */
 
+import { Platform, Share } from "react-native";
+
 import { fetchBrandFormExport, fetchBrandFormResponses } from "./brandFormsService";
 import { answersCsvFilename, buildAnswersCsv, subjectName } from "../utils/brandFormResponses";
 
@@ -34,7 +36,33 @@ export async function exportFormAnswers(input: {
     if (offset >= page.total) break;
   }
   const csv = buildAnswersCsv(feed, names);
-  const { exportCsvText } = await import("../utils/guestCsvExport");
-  const result = await exportCsvText(csv, answersCsvFilename(input.formName, new Date()), "Export answers");
-  return result.method;
+  return deliverCsv(csv, answersCsvFilename(input.formName, new Date()));
+}
+
+/**
+ * Hand the file to the host. Web downloads it; the apps open the share sheet
+ * with the CSV text. A small local delivery on purpose: the shared roster CSV
+ * helper pulls the whole orders and money graph into the eager Host web chunk
+ * as soon as a second lazy screen imports it (bundle budget, #4514).
+ * [TRANSITIONAL] Replaced when the roster export takes a form scope.
+ */
+async function deliverCsv(csv: string, filename: string): Promise<FormAnswersExportMethod> {
+  if (Platform.OS === "web") {
+    const g = globalThis as unknown as { Blob?: typeof Blob; URL?: typeof URL; document?: Document };
+    if (g.Blob === undefined || g.URL === undefined || g.document === undefined) {
+      throw new Error("Web download is not available in this browser.");
+    }
+    const url = g.URL.createObjectURL(new g.Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = g.document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    g.document.body.appendChild(anchor);
+    anchor.click();
+    g.document.body.removeChild(anchor);
+    g.URL.revokeObjectURL(url);
+    return "downloaded";
+  }
+  // SHARE-NON-CONTENT:file-export
+  const result = await Share.share({ message: csv, title: filename }, { dialogTitle: "Export answers", subject: filename });
+  return result.action === "sharedAction" ? "shared" : "dismissed";
 }

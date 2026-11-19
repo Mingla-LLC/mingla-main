@@ -75,8 +75,8 @@ import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 // #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
+import { canPerformAction } from "../../../src/utils/permissionGates";
 import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
-import { canReadGuestQuestions } from "../../../src/utils/guestQuestionsModel";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
@@ -483,7 +483,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     ...pick(["guests"]),
     // #4514 — "Guest questions": after Spots, before Orders (marketing manager
     // and up; scanners never see it).
-    ...(canReadGuestQuestions(currentBrandRole.rank) && !currentBrandRole.isLoading && !currentBrandRole.isError && currentBrandRole.role !== null
+    ...(canPerformAction(currentBrandRole.rank, "READ_FORM_RESPONSES") && !currentBrandRole.isLoading && !currentBrandRole.isError && currentBrandRole.role !== null
       ? [
           {
             key: "guestQuestions",

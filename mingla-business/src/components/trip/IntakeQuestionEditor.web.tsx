@@ -58,18 +58,10 @@ import {
 import { IntakeQuestionTypePill } from "./IntakeQuestionTypePill";
 import { IntakeRequiredToggle } from "./IntakeRequiredToggle";
 // #4514 — brand form additions to this ONE editor (help text, "Show only if",
-// "Show at the door"). The trip builder passes none of them and is unchanged.
-import { IntakeBrandFormFields, IntakeHelpTextField } from "./IntakeBrandFormFields";
-import { TRIP_INTAKE_FEATURES, type IntakeBuilderFeatures } from "./intakeBuilderFeatures";
-import {
-  addOptionTo,
-  dropBlankOptions,
-  isDoorType,
-  moveOptionIn,
-  removeOptionFrom,
-  withOptionIds,
-  type ConditionSource,
-} from "../../utils/brandFormDefinition";
+// "Show at the door") arrive as `features.kit`. The trip builder passes none of
+// them and is unchanged.
+import { TRIP_INTAKE_FEATURES, type IntakeBrandFormKit, type IntakeBuilderFeatures } from "./intakeBuilderFeatures";
+import type { ConditionSource } from "../../utils/brandFormDefinition";
 
 export interface IntakeQuestionEditorProps {
   /** Existing question to edit; null = new question with initialType. */
@@ -104,7 +96,9 @@ const seedDraft = (
     question !== null
       ? { ...question }
       : createBlankQuestion(initialType ?? "short_text", 0);
-  return features.conditions ? withOptionIds(base) : base;
+  return features.conditions && features.kit !== undefined
+    ? features.kit.withOptionIds(base)
+    : base;
 };
 
 const QUESTION_EDITOR_SHEET_HEIGHT = 720;
@@ -224,16 +218,18 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
           // #4514 — a condition stays; the door mark stays only where the new
           // type can show at the door.
           ...(prev.show_if !== undefined ? { show_if: prev.show_if } : {}),
-          ...(prev.show_at_door === true && isDoorType(nextType)
+          ...(prev.show_at_door === true && (features.kit?.isDoorType(nextType) === true)
             ? { show_at_door: true }
             : {}),
           ...(prev.show_at_door === true &&
-          isDoorType(nextType) &&
+          (features.kit?.isDoorType(nextType) === true) &&
           prev.door_label !== undefined
             ? { door_label: prev.door_label }
             : {}),
         };
-        return features.conditions ? withOptionIds(carried) : carried;
+        return features.conditions && features.kit !== undefined
+          ? features.kit.withOptionIds(carried)
+          : carried;
       });
       setPendingTypeSwitch(null);
     },
@@ -300,8 +296,8 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
     ) {
       // #4514 — brand forms keep each option's id in step with its label.
       cleaned =
-        features.variant === "brand_form"
-          ? dropBlankOptions(cleaned)
+        features.kit !== undefined
+          ? features.kit.dropBlankOptions(cleaned)
           : {
               ...cleaned,
               options: (cleaned.options ?? [])
@@ -320,7 +316,7 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
       }
     }
     if (features.door) {
-      if (cleaned.show_at_door !== true || !isDoorType(cleaned.type)) {
+      if (cleaned.show_at_door !== true || features.kit?.isDoorType(cleaned.type) !== true) {
         const { show_at_door: _d, door_label: _l, ...rest } = cleaned;
         void _d;
         void _l;
@@ -388,8 +384,8 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
           {labelLen} / {LABEL_MAX}
         </Text>
 
-        {features.helpText ? (
-          <IntakeHelpTextField draft={draft} setDraft={setDraft} />
+        {features.helpText && features.kit !== undefined ? (
+          <features.kit.HelpTextField draft={draft} setDraft={setDraft} />
         ) : null}
 
         {/* Type chip row */}
@@ -423,8 +419,8 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
           />
         </View>
 
-        {features.door || features.conditions ? (
-          <IntakeBrandFormFields
+        {features.kit !== undefined && (features.door || features.conditions) ? (
+          <features.kit.BrandFormFields
             draft={draft}
             setDraft={setDraft}
             features={features}
@@ -449,6 +445,7 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
               setDraft={setDraft}
               optionMax={features.optionMax}
               maxOptions={MAX_OPTIONS}
+              kit={features.kit}
             />
           )}
           {draft.type === "date" && <DateConfig />}
@@ -551,10 +548,12 @@ interface ChoiceConfigProps {
   /** #4514: longest option label (100 for trips, 80 for brand forms). */
   optionMax: number;
   maxOptions: number;
+  /** #4514: brand form option helpers (keep option ids with their labels). */
+  kit?: IntakeBrandFormKit;
 }
 
 /** §3.4.C — single_choice + multi_choice: 2-10 options, move up/down reorder. */
-const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft, optionMax, maxOptions }) => {
+const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft, optionMax, maxOptions, kit }) => {
   const options = draft.options ?? [];
 
   // Map options to {id, value} so each row has a stable key. Otherwise empty
@@ -582,21 +581,39 @@ const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft, optionMax,
 
   const removeOption = useCallback(
     (index: number) => {
-      setDraft((prev) => removeOptionFrom(prev, index, MIN_OPTIONS));
+      setDraft((prev) => {
+        if (kit !== undefined) return kit.removeOptionFrom(prev, index, MIN_OPTIONS);
+        const cur = prev.options ?? [];
+        if (cur.length <= MIN_OPTIONS) return prev;
+        return { ...prev, options: cur.filter((_, i) => i !== index) };
+      });
     },
-    [setDraft],
+    [setDraft, kit],
   );
 
   const addOption = useCallback(() => {
-    setDraft((prev) => addOptionTo(prev, maxOptions));
-  }, [setDraft, maxOptions]);
+    setDraft((prev) => {
+      if (kit !== undefined) return kit.addOptionTo(prev, maxOptions);
+      const cur = prev.options ?? [];
+      if (cur.length >= maxOptions) return prev;
+      return { ...prev, options: [...cur, ""] };
+    });
+  }, [setDraft, maxOptions, kit]);
 
   // Reorder by one place (web: buttons instead of drag and drop).
   const moveOption = useCallback(
     (from: number, to: number) => {
-      setDraft((prev) => moveOptionIn(prev, from, to));
+      setDraft((prev) => {
+        if (kit !== undefined) return kit.moveOptionIn(prev, from, to);
+        const cur = prev.options ?? [];
+        if (to < 0 || to >= cur.length || from === to) return prev;
+        const next = [...cur];
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        return { ...prev, options: next };
+      });
     },
-    [setDraft],
+    [setDraft, kit],
   );
 
   const canAdd = options.length < maxOptions;

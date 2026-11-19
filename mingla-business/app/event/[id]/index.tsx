@@ -66,7 +66,6 @@ import { TopBar } from "../../../src/components/ui/TopBar";
 import { ActionTile } from "../../../src/components/event/ActionTile";
 // #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
 import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
-import { canReadGuestQuestions } from "../../../src/utils/guestQuestionsModel";
 import { DesktopColumns } from "../../../src/components/ui/DesktopCanvas";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { EndSalesSheet } from "../../../src/components/event/EndSalesSheet";
@@ -1046,7 +1045,7 @@ export default function EventDetailScreen(): React.ReactElement {
                     !currentBrandRole.isLoading &&
                     !currentBrandRole.isError &&
                     currentBrandRole.role !== null &&
-                    canReadGuestQuestions(currentBrandRole.rank),
+                    canPerformAction(currentBrandRole.rank, "READ_FORM_RESPONSES"),
                   dates: event.whenMode === "multi_date",
                   doorSales: event.inPersonPaymentsEnabled === true,
                   brandPage: brand !== null,
