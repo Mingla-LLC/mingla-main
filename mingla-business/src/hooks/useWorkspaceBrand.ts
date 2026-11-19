@@ -14,10 +14,8 @@
 import { useCallback, useSyncExternalStore } from "react";
 
 import { useWorkspaceRoute } from "../components/brand/workspaceBrandContext";
-import { queryClient } from "../config/queryClient";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import type { Brand } from "../types/brand";
-import { getBrandFromCache } from "./brandCache";
 import { brandKeys } from "./brandKeys";
 import { useCurrentBrand } from "./useCurrentBrand";
 
@@ -30,13 +28,24 @@ export interface WorkspaceBrand {
   scoped: boolean;
 }
 
+// The brand chip is on every screen, and most screens follow the current brand and never look
+// in the cache. The app's query client (and the cache lookup built on it) is therefore reached
+// only when a screen names another brand, not when this file loads: a screen that mounts the chip
+// does not construct the client by importing it.
+const brandCacheClient = (): typeof import("../config/queryClient").queryClient =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  (require("../config/queryClient") as typeof import("../config/queryClient")).queryClient;
+const brandFromCache = (brandId: string | null): Brand | null =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  (require("./brandCache") as typeof import("./brandCache")).getBrandFromCache(brandId);
+
 const noSubscription = (): (() => void) => () => undefined;
 const subscribeToBrandCache = (onChange: () => void): (() => void) =>
-  queryClient.getQueryCache().subscribe(onChange);
+  brandCacheClient().getQueryCache().subscribe(onChange);
 
 /** Has any brand list answered yet? Then a missing brand is not "loading". */
 const brandListsAnswered = (): boolean =>
-  queryClient
+  brandCacheClient()
     .getQueriesData<Brand[]>({ queryKey: brandKeys.lists() })
     .some(([, brands]) => brands !== undefined);
 
@@ -51,7 +60,7 @@ export function useWorkspaceBrand(brandId?: string | null): WorkspaceBrand {
     scopedId !== null && scopedId !== currentBrandId && scopedId !== currentBrand?.id;
   const subscribe = differs ? subscribeToBrandCache : noSubscription;
   const readBrand = useCallback(
-    (): Brand | null => (differs ? getBrandFromCache(scopedId) : null),
+    (): Brand | null => (differs ? brandFromCache(scopedId) : null),
     [differs, scopedId],
   );
   const readAnswered = useCallback(
