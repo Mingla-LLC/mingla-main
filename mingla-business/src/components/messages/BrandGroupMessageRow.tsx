@@ -255,17 +255,18 @@ const styles = StyleSheet.create({
   bubbleLine: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: "100%", minWidth: 0 },
   bubbleLineMine: { flexDirection: "row-reverse" },
   bubble: { flexShrink: 1, minWidth: 0, paddingHorizontal: 14, paddingVertical: 9, gap: 6, borderWidth: 1, borderColor: "transparent" },
-  bubbleMine: { backgroundColor: brandGroupChat.mineBubble },
+  // #4420 D2: the selected graphite material with its rim, never an orange field.
+  bubbleMine: { backgroundColor: brandGroupChat.mineBubble, borderWidth: StyleSheet.hairlineWidth, borderColor: color.line, borderTopColor: color.lineStrong },
   bubbleOther: { backgroundColor: brandGroupChat.otherBubble },
   bubbleSelected: { borderColor: brandGroupChat.selected, borderWidth: 2 },
   bubbleHighlighted: { borderColor: brandGroupChat.accent, borderWidth: 2, shadowColor: brandGroupChat.accent, shadowOpacity: 0.45, shadowRadius: 8 },
   text: { color: brandGroupChat.otherText, fontSize: 15, lineHeight: 21 },
-  textMine: { color: brandGroupChat.mineText },
+  textMine: { color: brandGroupChat.mineBubbleText },
   // #4420 SC-15: links keep the bubble's text colour (contrast holds on both
   // bubbles) and are underlined and heavier, never an orange field.
   link: { color: brandGroupChat.otherText, textDecorationLine: "underline", fontWeight: "600" },
   mention: { color: brandGroupChat.mentionText, backgroundColor: brandGroupChat.mentionBg, fontWeight: "700", borderRadius: 4 },
-  mentionMine: { color: brandGroupChat.mineText, backgroundColor: brandGroupChat.mentionMineBg },
+  mentionMine: { color: brandGroupChat.mentionText, backgroundColor: brandGroupChat.mentionMineBg },
   quote: { flexDirection: "row", gap: 8, padding: 8, borderRadius: 10, backgroundColor: brandGroupChat.quoteBg },
   quoteMine: { backgroundColor: brandGroupChat.quoteMineBg },
   quoteBar: { width: 3, borderRadius: 2, backgroundColor: brandGroupChat.quoteBar },

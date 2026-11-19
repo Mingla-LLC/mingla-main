@@ -1330,7 +1330,7 @@ function BrandGroupThreadScreen({
                       onLongPress={openMenu}
                       style={isMedia ? styles.mediaBubble : styles.fileCard}
                     >
-                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={[styles.fileCardIcon, mine && styles.fileCardIconMine]}><Icon name="notebook" size={20} color={mine ? brandGroupChat.mineText : color.accent} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
+                      {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={[styles.fileCardIcon, mine && styles.fileCardIconMine]}><Icon name="notebook" size={20} color={mine ? brandGroupChat.mineBubbleText : color.accent} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
                     </Pressable>
                   ) : <BrandGroupMessageText content={message.content} mine={mine} mentionNames={mentionNames} onOpenLink={openLink} onLongPress={() => setMenuMessage(message)} />}
                 />
@@ -1738,10 +1738,10 @@ const styles = StyleSheet.create({
   systemLine: { alignItems: "center", paddingHorizontal: space[7], marginVertical: 8 },
   systemLineText: { color: brandGroupChat.textMuted, fontSize: 12, lineHeight: 17, textAlign: "center" },
   cardRow: { marginVertical: 8 },
-  messageTextMine: { color: brandGroupChat.mineText },
+  messageTextMine: { color: brandGroupChat.mineBubbleText },
   fileCard: { minWidth: 220, flexDirection: "row", alignItems: "center", gap: space[2] },
   fileCardIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tabOn },
-  fileCardIconMine: { backgroundColor: color.spinnerTrackOnPaper },
+  fileCardIconMine: { backgroundColor: color.fill.tabOn },
   fileCardCopy: { flex: 1, minWidth: 0 },
   fileName: { color: brandGroupChat.textPrimary, fontSize: 14, lineHeight: 18, fontWeight: "800" },
   fileMeta: { color: brandGroupChat.textMuted, fontSize: 11, marginTop: 3 },

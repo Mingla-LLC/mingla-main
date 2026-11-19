@@ -46,7 +46,7 @@ export function BrandGroupPendingUploadRow({
           </View>
         ) : (
           <View style={styles.fileLine}>
-            <View style={styles.fileIcon}><Icon name="notebook" size={20} color={brandGroupChat.mineText} /></View>
+            <View style={styles.fileIcon}><Icon name="notebook" size={20} color={brandGroupChat.mineBubbleText} /></View>
             <Text style={styles.fileName} numberOfLines={2}>{upload.name}</Text>
           </View>
         )}
@@ -80,12 +80,12 @@ const styles = StyleSheet.create({
   dim: { ...StyleSheet.absoluteFillObject, backgroundColor: scrim.modal },
   fileLine: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: 12, paddingTop: 10 },
   fileIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: color.spinnerTrackOnPaper },
-  fileName: { flex: 1, color: brandGroupChat.mineText, fontSize: 14, lineHeight: 18, fontWeight: "800" },
+  fileName: { flex: 1, color: brandGroupChat.mineBubbleText, fontSize: 14, lineHeight: 18, fontWeight: "800" },
   footer: { paddingHorizontal: 10, paddingVertical: 7, gap: 5 },
-  status: { color: brandGroupChat.mineText, fontSize: 11 },
+  status: { color: brandGroupChat.mineBubbleText, fontSize: 11 },
   statusFailed: { color: color.errorText },
   progressTrack: { height: 3, borderRadius: 2, overflow: "hidden", backgroundColor: color.spinnerTrackOnPaper },
-  progressFill: { height: 3, backgroundColor: brandGroupChat.mineText },
+  progressFill: { height: 3, backgroundColor: brandGroupChat.mineBubbleText },
   actions: { flexDirection: "row", gap: space[2] },
   action: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
   actionText: { color: color.text1, fontSize: 13, fontWeight: "800" },
