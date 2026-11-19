@@ -772,7 +772,11 @@ export function violations(files) {
     // availability answer (entitlement + live rank, pinned in the Core
     // migration below); an error or a "no" redirects out.
     "const availability = useBrandSiteAvailability(safeBrandId, canCheckAvailability);",
-    "const websiteAvailable: boolean | null = availability.isError\n    ? false",
+    // #4453 retarget: a "no" from Core still redirects out; a Core that cannot
+    // be reached shows "try again" on the Website screen instead of bouncing
+    // the owner to the brand page with no reason given.
+    "const websiteAvailable: boolean | null = availability.isError\n    ? (availabilityDown ? null : false)",
+    "const availabilityDown = availability.isError && !websiteRefusal(availability.error);",
     "const capabilities = capabilitiesFrom(availability.data);",
     "if (!capabilities.canCreate || provisionOperation === null) return;",
     "useBrandSitePreview",

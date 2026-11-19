@@ -2,9 +2,8 @@
  * #4453 Website workspace — a refused change says what was wrong. Core relays
  * the limit or the problems Studio found; the owner reads a plain sentence,
  * never a request field name, and never just "something needs fixing".
+ * (That every content call uses it is a wiring rule: issue-4453-sites-host-wiring.mjs.)
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { plainProblem, refusalDetailFrom, refusalSentence } from "../refusalCopy";
 
 describe("what Core relayed is read, bounded", () => {
@@ -70,14 +69,5 @@ describe("the owner's sentence", () => {
       expect(sentence).not.toMatch(/[A-Z]{3,}_|_|\[/);
       expect(sentence.length).toBeGreaterThan(0);
     }
-  });
-});
-
-describe("every content call uses it", () => {
-  const source = readFileSync(resolve(__dirname, "../contentApi.ts"), "utf8");
-  it("reads Core's detail before choosing the sentence", () => {
-    expect(source).toContain("const detail = refusalDetailFrom(body?.error);");
-    expect(source).toContain("refusalSentence(code, CONTENT_MESSAGES[code]!, detail)");
-    expect(source).toMatch(/code === "VALIDATION_FAILED"\) \{\s+const sentence = refusalSentence\(code, "", detail\);/);
   });
 });
