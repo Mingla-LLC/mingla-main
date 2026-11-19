@@ -366,7 +366,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 P3 booking access: migration 20280809124490 and its pg17 suite registered; re-sealed.
 // issue #4490 P3 collect online: migration 20280809134490 and its pg17 suite registered; re-sealed.
 // issue #4490 P3-1 packages and deposits: migration 20280809144490 and its pg17 suite registered; re-sealed.
-export const BOOTSTRAP_SHA256 = "01c5d9e7072f406d9147d57fa44e625b323a339010243f29b6f4c7cd8173831e";
+// #4490 P4-1 private hire registered; re-sealed.
+export const BOOTSTRAP_SHA256 = "375b9ed5b7067563edd347ad4876b9f4d78b1108d5f2ebc64ba73372f6bcd15d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
