@@ -31,8 +31,10 @@
 --   2.5  events.rsvp_guests_can_bring (default off) and rsvp_guest_bring.
 --   R5   (fix round 5) J also covers the ad audience's People arm; one place
 --        per person on the claim sweep and the anonymous-RSVP attach
---        (section 10c); old-contract guests whose number owner proves the
---        typed email are claimed at submit (submit_event_rsvp, transitional).
+--        (section 10c).
+--   R6   (fix round 6) no claim at submit for any payload shape: every
+--        matched plus-one, old-contract (name, email, number) or number-only,
+--        is unclaimed until they claim. Old apps' payloads are still accepted.
 --
 -- Application conflicts never raise 40001. Static SQL except where a column
 -- may be absent on the CI image. Re-created functions name their source.
@@ -1280,10 +1282,6 @@ DECLARE
   -- (public-submit-rsvp sends the notices and strips them from its answer).
   v_notices     jsonb := '[]'::jsonb;
   v_doomed uuid[] := '{}';
-  -- R5-3: the request is in the pre-#4508 contract (every guest {name,
-  -- email, phone}); see the legacy rule at the guest insert below.
-  v_legacy      boolean := false;
-  v_legacy_claim boolean;
 BEGIN
   -- 1. Load + gate the event (FOR UPDATE serializes concurrent submits).
   SELECT * INTO v_event FROM public.events WHERE id = p_event_id FOR UPDATE;
@@ -1402,7 +1400,6 @@ BEGIN
       p_guests := '[]'::jsonb;
     END IF;
     p_guests := COALESCE(p_guests, '[]'::jsonb);
-    v_legacy := p_user_id IS NOT NULL AND jsonb_array_length(p_guests) > 0;
     v_max_guests := CASE WHEN v_event.rsvp_allow_plus_ones
       THEN COALESCE(v_event.rsvp_plus_ones_max, 0) ELSE 0 END;
     IF jsonb_array_length(p_guests) > v_max_guests THEN
@@ -1442,7 +1439,6 @@ BEGIN
         END IF;
         v_seen_users := v_seen_users || v_friend;
         v_gphone := public.rsvp_account_proven_phone(v_friend);
-        v_legacy := false;
       ELSE
         IF NULLIF(btrim(COALESCE(v_guest->>'phone', '')), '') IS NULL THEN
           RAISE EXCEPTION 'rsvp_guest_contact_required';
@@ -1466,12 +1462,6 @@ BEGIN
           RAISE EXCEPTION 'rsvp_guest_phone_country_invalid' USING ERRCODE = '22023';
         END IF;
         v_gphone := btrim(v_guest->>'phone');
-        -- R5-3: one guest outside the old contract (number-only here, or a
-        -- friend pick above) makes the whole request a current-client one.
-        IF NULLIF(btrim(COALESCE(v_guest->>'name', '')), '') IS NULL
-           OR NULLIF(btrim(COALESCE(v_guest->>'email', '')), '') IS NULL THEN
-          v_legacy := false;
-        END IF;
       END IF;
 
       v_digits := CASE WHEN v_gphone IS NULL THEN NULL
@@ -1695,25 +1685,13 @@ BEGIN
          AND public.rsvp_number_on_event_list(p_event_id, v_digits, v_existing_id) THEN
         RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
       END IF;
-      v_legacy_claim := false;
       IF v_friend IS NOT NULL THEN
         v_match := v_friend;
       ELSE
-        -- #4508 0.2: never the primary's own account.
+        -- #4508 0.2: never the primary's own account. R6: the match is never
+        -- a claim, whatever the payload shape (old apps' name and email
+        -- included): every matched plus-one claims through their link.
         v_match := NULLIF(public.biz_resolve_verified_user(v_gemail, v_gphone), p_user_id);
-        -- R5-3 old Explorer apps (no claim screen). A guest sent in the
-        -- pre-#4508 contract (v_legacy: every guest of the request carries a
-        -- name, an email and a number, none is a friend pick) whose matched
-        -- account proves BOTH the number (the match above: phone decides,
-        -- P2-1) and the typed email (account_owns_contact) is claimed at
-        -- submit, as such a guest got their pass in the app before #4508.
-        -- An email never chooses the account: a typed email that is not the
-        -- number owner's, or a number nobody proved, stays claim-first.
-        -- [TRANSITIONAL] old Explorer apps without the claim screen - remove
-        -- once the Explorer minimum version (app version policy, enforce)
-        -- is the first #4508 release.
-        v_legacy_claim := v_legacy AND v_match IS NOT NULL AND v_gemail IS NOT NULL
-          AND public.account_owns_contact(v_match, v_gemail, NULL);
       END IF;
       IF v_match IS NOT NULL
          AND public.rsvp_user_on_event_list(p_event_id, v_match, v_existing_id) THEN
@@ -1734,10 +1712,9 @@ BEGIN
       END IF;
       v_new_count := v_new_count + 1;
       INSERT INTO public.event_rsvp_guests (rsvp_id, name, email, phone, phone_country_iso,
-        matched_user_id, invited_by_user_id, added_from_friend, sms_hold, claimed_at)
+        matched_user_id, invited_by_user_id, added_from_friend, sms_hold)
       VALUES (v_existing_id, v_gname, v_gemail, v_gphone, v_gphone_country_iso,
-        v_match, p_user_id, v_friend IS NOT NULL, v_hold,
-        CASE WHEN v_legacy_claim THEN now() END)
+        v_match, p_user_id, v_friend IS NOT NULL, v_hold)
       RETURNING id INTO v_guest_id;
       v_qr := NULL;
     END IF;
@@ -1823,7 +1800,7 @@ $$;
 
 COMMENT ON FUNCTION public.submit_event_rsvp(
   uuid, uuid, text, text, text, text, integer, jsonb, text, text
-) IS '#4063: an anonymous submission never changes an RSVP that already exists for that email. I-4063-RSVP-SUBMIT-GUARD. #4508: guests need a signed-in inviter (rsvp_guest_sign_in_required); number-only guests, server plus-one limit, own/duplicate/listed/released numbers refused, 20 guest numbers per inviter per 24h (serialized per inviter), guest rows kept across re-submits; an own RSVP replaces an unclaimed guest row of the same account; an old-contract guest (name, email and number) whose number owner also proves the email is claimed at submit (transitional, old Explorer apps).';
+) IS '#4063: an anonymous submission never changes an RSVP that already exists for that email. I-4063-RSVP-SUBMIT-GUARD. #4508: guests need a signed-in inviter (rsvp_guest_sign_in_required); number-only guests, server plus-one limit, own/duplicate/listed/released numbers refused, 20 guest numbers per inviter per 24h (serialized per inviter), guest rows kept across re-submits; an own RSVP replaces an unclaimed guest row of the same account; no guest is claimed at submit, whatever the payload shape (old apps'' name, email and number included).';
 
 REVOKE ALL ON FUNCTION public.submit_event_rsvp(
   uuid, uuid, text, text, text, text, integer, jsonb, text, text
@@ -2694,7 +2671,7 @@ GRANT EXECUTE ON FUNCTION public.fetch_user_rsvp_party_passes(uuid)
 
 -- host_list_rsvp_guests (20270204001447 lines 650-679): only plus_checkins
 -- changes: each guest adds invitedByName, claimed, onMingla and
--- broughtByGuestId. N-5: name is rsvp_guest_host_label (never the matched
+-- broughtByGuestId (R6: and checkedInByHand). N-5: name is rsvp_guest_host_label (never the matched
 -- account's name before the guest claims) and onMingla is true only for a
 -- claimed guest. Email columns may be empty for guests.
 -- Host console: preserve existing 18-column contract and append check-in truth.
@@ -2720,6 +2697,9 @@ BEGIN
     (SELECT count(*)::integer FROM public.event_rsvp_guests g WHERE g.rsvp_id=r.id AND g.checked_in_at IS NOT NULL),
     COALESCE((SELECT jsonb_agg(jsonb_build_object('id',g.id,'name',public.rsvp_guest_host_label(g.id),
       'checkedInAt',g.checked_in_at,'checkedInBy',g.checked_in_by,
+      -- R6 P3: a hand check-in ("Check in with {inviter}") reads "by hand".
+      'checkedInByHand',g.checked_in_at IS NOT NULL AND EXISTS (SELECT 1 FROM public.rsvp_scan_events s
+        WHERE s.guest_id=g.id AND s.outcome='success' AND s.metadata->>'source'='host-manual'),
       'invitedByName',(SELECT n.label FROM public.rsvp_guest_inviter_names(g.id) n),
       'claimed',g.claimed_at IS NOT NULL,
       'onMingla',g.claimed_at IS NOT NULL AND g.matched_user_id IS NOT NULL,

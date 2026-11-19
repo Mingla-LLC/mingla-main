@@ -88,11 +88,11 @@ BEGIN
     -- (2026-11-19): a plus-one needs a signed-in inviter (signed-out guests
     -- refused after the #1902 boundary), an own RSVP replaces an unclaimed
     -- guest row of the same account, the inviter's cap is serialized by a
-    -- lock, and removed claimed guests are listed for a notice. Fix round 5
-    -- (2026-11-19): a guest sent in the pre-#4508 contract whose number owner
-    -- also proves the typed email is claimed at submit (old Explorer apps).
+    -- lock, and removed claimed guests are listed for a notice. Fix round 6
+    -- (2026-11-19): round 5's claim at submit for old-contract guests is
+    -- removed; no guest is claimed at submit, whatever the payload shape.
     -- The #1857 phone authority lines are unchanged.
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '0f41aebe4306606a09132f10bf26791b'),
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'cb421fb4f9ca4980b9a67be01523c2e3'),
     -- #4063 last-writes this wrapper so approved RSVPs receive only a pass,
     -- while pending/other outcomes retain acknowledgement delivery.
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),

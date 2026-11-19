@@ -22,7 +22,7 @@
 -- MINGLA-INVARIANT: I-4508-ONE-PLACE-ON-CLAIM-PATHS | issue #4508 | the proven-contact claim sweep releases, never matches, a plus-one row of an account holding its own RSVP on the event; an anonymous own RSVP attached to an account releases its unclaimed plus-one row; a claimed guest pass keeps an anonymous own RSVP from being attached (sweep skips, claim link answers conflict, other writers get PT409); each release queues the inviter's notice once.
 -- MINGLA-INVARIANT: I-4508-GUEST-ACCOUNT-COLUMNS-CLOSED | issue #4508 | anon and authenticated cannot select event_rsvp_guests.matched_user_id or invited_by_user_id (column privileges); hosts and inviters read guests only through functions that apply the claim rule.
 -- MINGLA-INVARIANT: I-4508-UNCLAIMED-NOT-EXPOSED | issue #4508 | an unclaimed plus-one is in no brand ad audience (ad_list_audience_refresh guest arm, and its People arm: no person counts through an unclaimed plus-one link and no contact method that only an unclaimed plus-one gave the brand is used) and cannot read their own pass (fetch_user_rsvp_party_passes, fetch_user_going_rsvps); both follow the claim, and no one else's audience membership changes.
--- MINGLA-INVARIANT: I-4508-OLD-CONTRACT-CLAIM | issue #4508 | a plus-one sent in the pre-#4508 contract (every guest of the request has a name, an email and a number; no number-only guest and no friend pick) is claimed at submit only when the account its number matched also proves the typed email; an email never chooses the account, an unproved or another account's email stays claim-first, and a request that mixes in any current-contract guest is claim-first for every guest.
+-- MINGLA-INVARIANT: I-4508-NO-CLAIM-AT-SUBMIT | issue #4508 | submit_event_rsvp never claims a plus-one, whatever the payload shape: an old app's {name, email, phone} guest whose number and typed email the matched account both prove is still accepted, created, matched by number and queued its pass message, but stays unclaimed with no pass in that account until rsvp_guest_claim on the guest's link.
 -- MINGLA-INVARIANT: I-4508-HOST-SETTING-QUIET | issue #4508 | saving only "Guests can bring guests" on a published RSVP queues no rsvp_event_updated notice and changes nothing else; plus-ones off clears the setting for every writer of a published event (trigger), and rsvp_guest_bring refuses while plus-ones are off.
 -- MINGLA-INVARIANT: I-4508-PEOPLE-AFTER-CLAIM | issue #4508 | the brand's People (biz_resolve_brand_person_source, its derived worker entry and the conflict subject) never link or name a plus-one's matched account, nor import a friend pick's server-resolved number, until the pass is claimed; an unclaimed guest is imported exactly as an unmatched number-only guest, a claim (rsvp_guest_claim or a proven-number sweep) queues a re-ingest that links the claimer only, and a release retires the link.
 \set ON_ERROR_STOP on
@@ -836,6 +836,10 @@ BEGIN
     'C7: the host admits an unclaimed guest: ' || v_res::text);
   PERFORM pg_temp.ok(public.host_check_in_rsvp_guest(v_gid)->>'result' = 'duplicate',
     'C7: a second check-in is a duplicate');
+  -- R6 P3: the host's list says this check-in was by hand.
+  PERFORM pg_temp.ok((SELECT (h.plus_checkins->0->>'checkedInByHand')::boolean
+                        FROM public.host_list_rsvp_guests(v_evn) h WHERE h.user_id = v_inb),
+    'R6 P3: a hand check-in is listed as checkedInByHand');
   PERFORM pg_temp.as_user(v_str);
   v_err := pg_temp.err(format('SELECT public.host_check_in_rsvp_guest(%L)', v_gid));
   PERFORM pg_temp.ok(v_err = 'scanner_not_authorized', 'C7: a stranger cannot check guests in: ' || v_err);
@@ -2146,15 +2150,15 @@ $race$;
 --        seeded brand shows only the unclaimed plus-ones' rows change.
 --   R5-2 one place per person on the claim sweep and the anonymous-RSVP
 --        attach, in both orders; the inviter's notice is queued once.
---   R5-3 old Explorer apps: an old-contract guest whose number owner also
---        proves the typed email is claimed at submit; everything else stays
---        claim-first, a mixed request included.
+--   R6   (fix round 6) no claim at submit: an old app's name, email and
+--        number guest is accepted and messaged as before but stays unclaimed
+--        until the guest claims through their link.
 -- FAILS-ON-REVERT: drop the two People-arm lines from the J patch -> "R5-1:
 -- the diff is exactly" fails; drop the sweep guest-arm patch -> "R5-2 order
 -- 1" fails; drop the attach trigger -> "R5-2 order 2" fails; drop the RSVP-arm
--- or claim-link patch -> "R5-2 claimed pass" fails; drop v_legacy_claim ->
--- "R5-3 old contract" fails; treat every request as old-contract -> "R5-3
--- mixed" fails.
+-- or claim-link patch -> "R5-2 claimed pass" fails; claim any guest at submit
+-- (for example an old-contract guest whose account proves the typed email)
+-- -> "R6 old contract" fails.
 -- ===========================================================================
 BEGIN;
 -- The stock CI image has no auth.identities (GoTrue makes it); this block
@@ -2213,16 +2217,16 @@ DECLARE
   v_brand uuid := '45089000-0000-4000-8000-000000000002';
   v_ev    uuid := '45089000-0000-4000-8000-000000000003'; -- R5-1 ads
   v_ev2   uuid := '45089000-0000-4000-8000-000000000004'; -- R5-2
-  v_ev3   uuid := '45089000-0000-4000-8000-000000000005'; -- R5-3
+  v_ev3   uuid := '45089000-0000-4000-8000-000000000005'; -- R6
   v_ivy   uuid := '45089000-0000-4000-8000-000000000011'; -- inviter
   v_mo    uuid := '45089000-0000-4000-8000-000000000012'; -- RSVPs, no number of her own
   v_cal   uuid := '45089000-0000-4000-8000-000000000013'; -- claims
   v_pia   uuid := '45089000-0000-4000-8000-000000000014'; -- R5-2 order 1
   v_rae   uuid := '45089000-0000-4000-8000-000000000015'; -- R5-2 order 2 (unclaimed)
   v_quin  uuid := '45089000-0000-4000-8000-000000000016'; -- R5-2 claimed pass
-  v_lee   uuid := '45089000-0000-4000-8000-000000000017'; -- R5-3 proves number and email
-  v_max   uuid := '45089000-0000-4000-8000-000000000018'; -- R5-3 email unverified
-  v_fri   uuid := '45089000-0000-4000-8000-000000000019'; -- R5-3 Ivy's friend
+  v_lee   uuid := '45089000-0000-4000-8000-000000000017'; -- R6 proves number and email
+  v_max   uuid := '45089000-0000-4000-8000-000000000018'; -- R6 email unverified
+  v_fri   uuid := '45089000-0000-4000-8000-000000000019'; -- R6 Ivy's friend
   v_aud_new uuid;
   v_def_new text;
   v_def_old text;
@@ -2472,88 +2476,77 @@ BEGIN
     AND (length(v_def_new) - length(replace(v_def_new, 'g4508.claimed_at IS NOT NULL', ''))) / length('g4508.claimed_at IS NOT NULL') = 1,
     'R5-2: the patched claim link keeps the #4063 rules and carries its patch once');
 
-  -- ======================= R5-3 old Explorer apps =========================
-  -- Lee proved her number and her email (a verified email identity). Max
-  -- proved his number; his email identity is not verified.
+  -- ======================= R6 no claim at submit ===========================
+  -- Lee proved her number and her email (a verified email identity): the
+  -- strongest old-app case. Max proved his number only.
   INSERT INTO auth.identities(user_id, provider, identity_data) VALUES
     (v_lee, 'email', jsonb_build_object('email', 'lee-4508r5@example.test', 'email_verified', true)),
     (v_max, 'email', jsonb_build_object('email', 'max-4508r5@example.test', 'email_verified', false));
   INSERT INTO public.friends(user_id, friend_user_id, status) VALUES
     (v_ivy, v_fri, 'accepted'), (v_fri, v_ivy, 'accepted');
-  v_res := public.submit_event_rsvp(v_ev3, v_ivy, 'Ivy Ives', 'i4508r5-ivy@example.test',
+  -- An old app's request: every guest {name, email, phone}, through the
+  -- delivery wrapper production calls, with a pass pepper.
+  v_res := public.submit_event_rsvp_with_delivery(v_ev3, v_ivy, 'Ivy Ives', 'i4508r5-ivy@example.test',
     '+15550509100', 'going', 2, jsonb_build_array(
       jsonb_build_object('name', 'Lee Lund', 'email', 'lee-4508r5@example.test', 'phone', '+15550509700', 'phoneCountryIso', 'US'),
       jsonb_build_object('name', 'Max Mead', 'email', 'max-4508r5@example.test', 'phone', '+15550509800', 'phoneCountryIso', 'US')),
-    NULL, 'US');
+    'r6-test-pepper-0123456789abcdef0123456789', 'US');
   v_rsvp := (v_res->>'rsvpId')::uuid;
-  UPDATE public.event_rsvp_guests SET qr_code = 'mingla-rsvp:4508r5-' || right(phone, 3) WHERE rsvp_id = v_rsvp;
   SELECT id INTO v_gid FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550509700';
   SELECT id INTO v_gid2 FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550509800';
-  PERFORM pg_temp.ok((SELECT matched_user_id = v_lee AND claimed_at IS NOT NULL FROM public.event_rsvp_guests WHERE id = v_gid),
-    'R5-3 old contract: the number owner who proves the typed email is claimed at submit');
-  PERFORM pg_temp.ok((SELECT g->>'claimed' FROM jsonb_array_elements(v_res->'guests') g WHERE g->>'guestId' = v_gid::text) = 'true',
-    'R5-3 old contract: the submit answer says claimed');
-  PERFORM pg_temp.as_user(v_lee);
-  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.fetch_user_rsvp_party_passes(v_rsvp) WHERE entity_id = v_gid)
-    AND EXISTS (SELECT 1 FROM public.fetch_user_going_rsvps(v_lee) f WHERE f.qr_code = 'mingla-rsvp:4508r5-700'),
-    'R5-3 old contract: the pass is in her app with no claim (party passes, going list)');
-  PERFORM pg_temp.signed_out();
+  PERFORM pg_temp.ok(v_gid IS NOT NULL AND v_gid2 IS NOT NULL
+    AND (SELECT count(*) FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp) = 2,
+    'R6 old contract: the old app''s guests are accepted and created');
+  PERFORM pg_temp.ok((SELECT matched_user_id = v_lee AND claimed_at IS NULL AND name = 'Lee Lund'
+                        AND email = 'lee-4508r5@example.test' FROM public.event_rsvp_guests WHERE id = v_gid),
+    'R6 old contract: the account that proves the number and the typed email is matched, never claimed');
   PERFORM pg_temp.ok((SELECT matched_user_id = v_max AND claimed_at IS NULL FROM public.event_rsvp_guests WHERE id = v_gid2),
-    'R5-3 old contract: an unverified email leaves the guest claim-first');
-  PERFORM pg_temp.as_user(v_max);
-  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.fetch_user_rsvp_party_passes(v_rsvp))
-    AND NOT EXISTS (SELECT 1 FROM public.fetch_user_going_rsvps(v_max) f WHERE f.qr_code = 'mingla-rsvp:4508r5-800'),
-    'R5-3 old contract: no pass without the claim when the email is unverified');
-  PERFORM pg_temp.signed_out();
-  -- Another account's email beside the number: the number decides (P2-1),
-  -- and the guest stays claim-first; the email's owner gets nothing.
-  DELETE FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp;
-  v_res := public.submit_event_rsvp(v_ev3, v_ivy, 'Ivy Ives', 'i4508r5-ivy@example.test',
-    '+15550509100', 'going', 1, jsonb_build_array(
-      jsonb_build_object('name', 'Lee Lund', 'email', 'lee-4508r5@example.test', 'phone', '+15550509800')),
-    NULL, 'US');
-  PERFORM pg_temp.ok((SELECT matched_user_id = v_max AND claimed_at IS NULL FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp),
-    'R5-3 old contract: another account''s email never claims, and never chooses the account');
-  -- An email beside a number nobody proved: no match at all (P2-1).
-  v_res := public.submit_event_rsvp(v_ev3, v_ivy, 'Ivy Ives', 'i4508r5-ivy@example.test',
-    '+15550509100', 'going', 1, jsonb_build_array(
-      jsonb_build_object('name', 'Lee Lund', 'email', 'lee-4508r5@example.test', 'phone', '+15550509701')),
-    NULL, 'US');
-  PERFORM pg_temp.ok((SELECT matched_user_id IS NULL AND claimed_at IS NULL FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp),
-    'R5-3 old contract: an email beside an unproved number matches nobody');
-  -- Current contract (number only): claim first, no exceptions.
-  v_res := public.submit_event_rsvp(v_ev3, v_ivy, 'Ivy Ives', 'i4508r5-ivy@example.test',
-    '+15550509100', 'going', 1, '[{"phone":"+15550509700"}]'::jsonb, NULL, 'US');
-  PERFORM pg_temp.ok((SELECT matched_user_id = v_lee AND claimed_at IS NULL FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp),
-    'R5-3 current contract: a number-only guest must claim');
+    'R6 old contract: an unverified email is matched by number and unclaimed too');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'guests') g WHERE g->>'claimed' = 'true'),
+    'R6 old contract: the submit answer says no guest is claimed: ' || (v_res->'guests')::text);
   PERFORM pg_temp.as_user(v_lee);
-  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.fetch_user_rsvp_party_passes(v_rsvp)),
-    'R5-3 current contract: no pass before the claim');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.fetch_user_rsvp_party_passes(v_rsvp))
+    AND NOT EXISTS (SELECT 1 FROM public.fetch_user_going_rsvps(v_lee) f
+                     WHERE f.qr_code = (SELECT qr_code FROM public.event_rsvp_guests WHERE id = v_gid)),
+    'R6 old contract: no pass in her app before she claims');
   PERFORM pg_temp.signed_out();
-  -- Mixed: an old-contract guest in a request that also carries a number-only
-  -- guest, or a friend pick, is claim-first like the rest of the request.
-  DELETE FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp;
-  v_res := public.submit_event_rsvp(v_ev3, v_ivy, 'Ivy Ives', 'i4508r5-ivy@example.test',
-    '+15550509100', 'going', 2, jsonb_build_array(
-      jsonb_build_object('name', 'Lee Lund', 'email', 'lee-4508r5@example.test', 'phone', '+15550509700'),
-      jsonb_build_object('phone', '+15550509702')),
-    NULL, 'US');
-  PERFORM pg_temp.ok((SELECT matched_user_id = v_lee AND claimed_at IS NULL FROM public.event_rsvp_guests
-                       WHERE rsvp_id = v_rsvp AND phone = '+15550509700'),
-    'R5-3 mixed: name and email beside a number-only guest stay claim-first');
+  -- What she still gets: the pass message, queued as before, to the typed
+  -- email and the number (the email goes out with the guest's link).
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.rsvp_notifications n
+                       WHERE n.rsvp_id = v_rsvp AND n.template_key = 'rsvp_pass'
+                         AND n.payload->>'role' = 'guest' AND n.payload->>'guestId' = v_gid::text
+                         AND n.payload->>'recipientEmail' = 'lee-4508r5@example.test') = 1,
+    'R6 old contract: her pass message is queued with her typed email');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.rsvp_notification_deliveries d
+                       JOIN public.rsvp_notifications n ON n.id = d.notification_id
+                      WHERE n.payload->>'guestId' = v_gid::text AND d.channel = 'email')
+    AND EXISTS (SELECT 1 FROM public.rsvp_notification_deliveries d
+                       JOIN public.rsvp_notifications n ON n.id = d.notification_id
+                      WHERE n.payload->>'guestId' = v_gid::text AND d.channel = 'sms'),
+    'R6 old contract: the email and the text are both queued: ' || COALESCE((SELECT string_agg(d.channel, ',')
+       FROM public.rsvp_notification_deliveries d JOIN public.rsvp_notifications n ON n.id = d.notification_id
+      WHERE n.payload->>'guestId' = v_gid::text), 'none'));
+  -- The link both messages carry opens her invite, and claiming it works.
+  v_err := public.mint_claim_link('rsvp_guest', v_gid)->>'code';
+  PERFORM pg_temp.ok(public.rsvp_guest_resolve(v_err, NULL)->>'status' = 'open',
+    'R6 old contract: her link opens her invite');
+  v_res := public.rsvp_guest_claim(v_lee, v_err, NULL);
+  PERFORM pg_temp.ok(v_res->>'outcome' = 'claimed', 'R6 old contract: she claims with her link: ' || v_res::text);
+  PERFORM pg_temp.as_user(v_lee);
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.fetch_user_rsvp_party_passes(v_rsvp) WHERE entity_id = v_gid),
+    'R6 old contract: after the claim the pass is in her app');
+  PERFORM pg_temp.signed_out();
+  -- A request that mixes an old-contract guest with a number-only guest or a
+  -- friend pick is accepted the same way, every guest unclaimed.
   DELETE FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp;
   v_res := public.submit_event_rsvp(v_ev3, v_ivy, 'Ivy Ives', 'i4508r5-ivy@example.test',
     '+15550509100', 'going', 2, jsonb_build_array(
       jsonb_build_object('name', 'Lee Lund', 'email', 'lee-4508r5@example.test', 'phone', '+15550509700'),
       jsonb_build_object('userId', v_fri)),
     NULL, 'US');
-  PERFORM pg_temp.ok((SELECT matched_user_id = v_lee AND claimed_at IS NULL FROM public.event_rsvp_guests
-                       WHERE rsvp_id = v_rsvp AND phone = '+15550509700'),
-    'R5-3 mixed: name and email beside a friend pick stay claim-first');
-  PERFORM pg_temp.as_user(v_lee);
-  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.fetch_user_rsvp_party_passes(v_rsvp)),
-    'R5-3 mixed: no pass before the claim');
-  PERFORM pg_temp.signed_out();
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.event_rsvp_guests
+                       WHERE rsvp_id = v_rsvp AND claimed_at IS NULL AND matched_user_id IN (v_lee, v_fri)) = 2,
+    'R6 mixed: an old-contract guest beside a friend pick, both unclaimed');
 
   RAISE NOTICE '#4508 fix round 5: all cases passed';
 END
