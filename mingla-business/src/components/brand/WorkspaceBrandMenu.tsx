@@ -169,6 +169,9 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
     }
     const start = searchable ? -1 : Math.max(0, currentIndex);
     setActiveIndex(start);
+    // The popover takes keyboard focus. The phone sheet does not: focusing
+    // the search field there would raise the keyboard over the list.
+    if (!popover) return undefined;
     const timer = setTimeout(() => {
       if (searchable) (searchRef.current as Focusable)?.focus?.();
       else itemRefs.current[start]?.focus?.();

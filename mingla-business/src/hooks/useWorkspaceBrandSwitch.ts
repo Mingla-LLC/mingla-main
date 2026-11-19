@@ -130,19 +130,24 @@ export type WorkspaceBrandSwitchOutcome =
 export interface WorkspaceBrandSwitchOptions {
   /** The brand shown as current (a screen's own `brandId`), when not the route's. */
   fromBrandId?: string | null;
-  onDefaultBrandSaveError?: (message: string) => void;
+  /**
+   * The caller's own `usePickBrand(...)` (BrandSwitcherSheet reports a failed
+   * default-brand save to its host). Default: the hook's own, with no report.
+   */
+  pickBrand?: (brand: Brand) => void;
 }
 
 export function useWorkspaceBrandSwitch(
   options: WorkspaceBrandSwitchOptions = {},
 ): (brand: Brand) => Promise<WorkspaceBrandSwitchOutcome> {
-  const { fromBrandId, onDefaultBrandSaveError } = options;
+  const { fromBrandId } = options;
   const route = useWorkspaceRoute();
   const router = useRouter();
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
-  const pickBrand = usePickBrand(onDefaultBrandSaveError);
+  const ownPickBrand = usePickBrand();
+  const pickBrand = options.pickBrand ?? ownPickBrand;
   const { pathname, params, routeBrandId } = route;
 
   return useCallback(

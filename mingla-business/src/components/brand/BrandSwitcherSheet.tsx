@@ -11,6 +11,7 @@ import {
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
+import { usePickBrand } from "../../hooks/usePickBrand";
 // #4453 — a pick opens the same screen for the chosen brand.
 import { useWorkspaceBrandSwitch } from "../../hooks/useWorkspaceBrandSwitch";
 import { useWorkspaceRoute } from "./workspaceBrandContext";
@@ -68,7 +69,10 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const storeBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   // #4453 — on a route that names its brand, that brand is the ticked one.
   const currentBrandId = useWorkspaceRoute().routeBrandId ?? storeBrandId;
-  const switchTo = useWorkspaceBrandSwitch({ onDefaultBrandSaveError });
+  // The pick itself is still usePickBrand (select now, save as the default in
+  // the background); #4453 decides WHEN it lands and which screen opens.
+  const pickBrand = usePickBrand(onDefaultBrandSaveError);
+  const switchTo = useWorkspaceBrandSwitch({ pickBrand });
   // #4453 — a search field above 8 brands.
   const [query, setQuery] = useState("");
   const searchable = showsBrandSearch(brands.length);
