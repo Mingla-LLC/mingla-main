@@ -77,9 +77,11 @@ BEGIN
   FOR v_expected IN SELECT * FROM (VALUES
     -- #4508 last-writes submit_event_rsvp (20281119014508): number-only plus-ones,
     -- the server plus-one limit, own/duplicate/listed/released refusals, the
-    -- 24-hour inviter cap, and guest rows kept across a re-submit. The #1857
-    -- phone authority lines are unchanged.
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'ac1fe8db3a2151d6476844e67228af66'),
+    -- 24-hour inviter cap, and guest rows kept across a re-submit; the wave A
+    -- rework adds friend guests by account, signed-out caps per address,
+    -- per-number holds and willText. The #1857 phone authority lines are
+    -- unchanged.
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '689f9d2293918d99c38daa159aefcb80'),
     -- #4063 last-writes this wrapper so approved RSVPs receive only a pass,
     -- while pending/other outcomes retain acknowledgement delivery.
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),
