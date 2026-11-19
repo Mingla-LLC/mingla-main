@@ -228,7 +228,7 @@ describe("#4420 the Add to calendar chooser", () => {
     const action = readFileSync(path.join(__dirname, "../../../utils/offeringCalendarAction.ts"), "utf8");
     expect(action).not.toMatch(/new Blob|createObjectURL|\.download\s*=|offeringCalendarIcs/);
     const page = readFileSync(path.join(__dirname, "../PublicEventPage.tsx"), "utf8");
-    expect(page).toContain("useAddToCalendar(calendarEntry, calendarIcsUrl)");
+    expect(page).toContain("useAddToCalendar(calendarEntry, calendarIcsUrl, handleCalendarLoadError)");
     expect(page).not.toContain("addOfferingToCalendar(");
     expect((page.match(/onAddToCalendar=\{handleAddToCalendar\}/g) ?? []).length).toBeGreaterThanOrEqual(2);
     expect((page.match(/\{addToCalendarChooser\}/g) ?? []).length).toBe(2);

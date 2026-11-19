@@ -7,16 +7,19 @@
  *           to the tapped control on desktop. The chooser code loads on the
  *           first tap, not at boot (it is not on the eager boot payload).
  *
- * Anonymous-tolerant: never reads auth.
+ * Anonymous-tolerant: never reads auth. Kept tiny on purpose: this file is on
+ * the page's eager graph, so the chooser, the Sheet and every row live behind
+ * the on-intent import (the boot payload gate counts every eager byte).
  */
-import React, { useCallback, useMemo, useState } from "react";
-import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { ErrorBoundary } from "react-error-boundary";
-import type { FallbackProps } from "react-error-boundary";
+import React, { useCallback, useState } from "react";
+import { Platform } from "react-native";
 
-import type { OfferingCalendarEntry } from "@mingla/offering-rendering/offeringCalendar.cjs";
+import {
+  offeringGoogleCalendarUrl,
+  offeringOutlookCalendarUrl,
+  type OfferingCalendarEntry,
+} from "@mingla/offering-rendering/offeringCalendar.cjs";
 
-import { color, radius, space, type } from "../../constants/designSystem";
 import { addOfferingToCalendar } from "../../utils/offeringCalendarAction";
 import type { MenuAnchor } from "../ui/Menu";
 import type { AddToCalendarChooserProps } from "./AddToCalendarChooser";
@@ -40,28 +43,6 @@ export const readTriggerAnchor = (): MenuAnchor | null => {
   return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
 };
 
-// Shown only if the chooser's code could not be fetched (offline, a stale
-// deploy). Plain react-native pieces on purpose: this file is on the page's
-// eager graph, so it must not pull the Sheet or Button stacks in.
-const LoadFailed: React.FC<FallbackProps> = ({ resetErrorBoundary }) => (
-  <Modal visible transparent animationType="none" onRequestClose={resetErrorBoundary}>
-    <View style={styles.failedScrim}>
-      <View style={styles.failedCard} accessibilityRole="alert" testID="add-to-calendar-load-failed">
-        <Text style={styles.failedTitle}>Couldn&apos;t load calendar options</Text>
-        <Text style={styles.failedBody}>Check your connection and try again.</Text>
-        <Pressable
-          onPress={resetErrorBoundary}
-          accessibilityRole="button"
-          accessibilityLabel="Try again"
-          style={styles.failedButton}
-        >
-          <Text style={styles.failedButtonLabel}>Try again</Text>
-        </Pressable>
-      </View>
-    </View>
-  </Modal>
-);
-
 export interface UseAddToCalendar {
   open: () => void;
   chooser: React.ReactElement | null;
@@ -70,16 +51,12 @@ export interface UseAddToCalendar {
 export const useAddToCalendar = (
   entry: OfferingCalendarEntry | null,
   icsUrl: string | null,
+  /** The chooser's code could not be fetched (offline, a stale deploy): tell the person. */
+  onLoadError?: () => void,
 ): UseAddToCalendar => {
   const [visible, setVisible] = useState<boolean>(false);
   const [anchor, setAnchor] = useState<MenuAnchor | null>(null);
-  // A failed chunk load is cached by React.lazy for good, so a retry needs a
-  // fresh lazy component (same approach as RetryableLazyBoundary).
-  const [generation, setGeneration] = useState<number>(0);
-  const LazyChooser = useMemo(() => {
-    void generation;
-    return React.lazy(loadChooser);
-  }, [generation]);
+  const [Chooser, setChooser] = useState<React.ComponentType<AddToCalendarChooserProps> | null>(null);
 
   const open = useCallback((): void => {
     if (entry === null) return;
@@ -89,37 +66,32 @@ export const useAddToCalendar = (
     }
     setAnchor(readTriggerAnchor());
     setVisible(true);
-  }, [entry]);
+    if (Chooser === null) {
+      loadChooser().then(
+        (module) => setChooser(() => module.default),
+        (error: unknown) => {
+          console.warn("[addToCalendar] could not load the calendar options", error);
+          setVisible(false);
+          onLoadError?.();
+        },
+      );
+    }
+  }, [Chooser, entry, onLoadError]);
 
   const close = useCallback((): void => setVisible(false), []);
-  const retry = useCallback((): void => {
-    setVisible(false);
-    setGeneration((g) => g + 1);
-  }, []);
 
   const chooser =
-    Platform.OS === "web" && visible && entry !== null && icsUrl !== null ? (
-      <ErrorBoundary FallbackComponent={LoadFailed} onReset={retry}>
-        <React.Suspense fallback={null}>
-          {React.createElement<AddToCalendarChooserProps>(LazyChooser, {
-            visible,
-            onClose: close,
-            entry,
-            icsUrl,
-            anchor,
-          })}
-        </React.Suspense>
-      </ErrorBoundary>
-    ) : null;
+    Platform.OS === "web" && visible && Chooser !== null && entry !== null && icsUrl !== null
+      ? React.createElement<AddToCalendarChooserProps>(Chooser, {
+        visible,
+        onClose: close,
+        entry,
+        icsUrl,
+        googleUrl: offeringGoogleCalendarUrl(entry),
+        outlookUrl: offeringOutlookCalendarUrl(entry),
+        anchor,
+      })
+      : null;
 
   return { open, chooser };
 };
-
-const styles = StyleSheet.create({
-  failedScrim: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.5)", padding: space[4] },
-  failedCard: { width: "100%", maxWidth: 360, borderRadius: radius.md, backgroundColor: color.card2, padding: space[4], gap: space[3] },
-  failedTitle: { ...type.row, color: color.text1 },
-  failedBody: { ...type.small, color: color.text2 },
-  failedButton: { minHeight: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile },
-  failedButtonLabel: { ...type.row, color: color.text1 },
-});

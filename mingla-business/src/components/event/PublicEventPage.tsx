@@ -1887,8 +1887,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       return null;
     }
   }, [event.brandSlug, event.eventSlug]);
+  const handleCalendarLoadError = useCallback((): void => {
+    showToast("Couldn't load calendar options. Check your connection and try again.");
+  }, [showToast]);
   const { open: openAddToCalendar, chooser: addToCalendarChooser } =
-    useAddToCalendar(calendarEntry, calendarIcsUrl);
+    useAddToCalendar(calendarEntry, calendarIcsUrl, handleCalendarLoadError);
   const handleAddToCalendar =
     calendarEntry === null
       ? undefined

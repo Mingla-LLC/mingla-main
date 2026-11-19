@@ -27,11 +27,7 @@ import {
   type CalendarChooserModel,
   type CalendarOption,
 } from "@mingla/offering-rendering/calendarChooser";
-import {
-  offeringGoogleCalendarUrl,
-  offeringOutlookCalendarUrl,
-  type OfferingCalendarEntry,
-} from "@mingla/offering-rendering/offeringCalendar.cjs";
+import type { OfferingCalendarEntry } from "@mingla/offering-rendering/offeringCalendar.cjs";
 
 import { color, radius, shadow, space, type } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -45,6 +41,14 @@ export interface AddToCalendarChooserProps {
   entry: OfferingCalendarEntry;
   /** The absolute https address of this event's calendar.ics. */
   icsUrl: string;
+  /**
+   * Google and Outlook "add event" links, built by the page (the one owner is
+   * offeringCalendar.cjs). Passed in so this on-intent chunk imports no value
+   * from that module: sharing it with the page would hoist it into the eager
+   * boot chunk of every Host web page.
+   */
+  googleUrl: string;
+  outlookUrl: string;
   /** Page coordinates of the tapped trigger (web popover); null => sheet. */
   anchor: MenuAnchor | null;
   testID?: string;
@@ -116,6 +120,8 @@ export const AddToCalendarChooser: React.FC<AddToCalendarChooserProps> = ({
   onClose,
   entry,
   icsUrl,
+  googleUrl,
+  outlookUrl,
   anchor,
   testID = "add-to-calendar-chooser",
 }) => {
@@ -129,11 +135,11 @@ export const AddToCalendarChooser: React.FC<AddToCalendarChooserProps> = ({
       buildCalendarChooser({
         userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
         maxTouchPoints: typeof navigator === "undefined" ? 0 : navigator.maxTouchPoints ?? 0,
-        googleUrl: offeringGoogleCalendarUrl(entry),
-        outlookUrl: offeringOutlookCalendarUrl(entry),
+        googleUrl,
+        outlookUrl,
         icsUrl,
       }),
-    [entry, icsUrl],
+    [googleUrl, outlookUrl, icsUrl],
   );
 
   const close = (): void => {
