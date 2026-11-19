@@ -24,6 +24,7 @@ import {
   encryptionKeyFromEnv,
   fail,
   getObject,
+  isEphemeralObject,
   listBucket,
   postgresEnvFromUrl,
   requireUuid,
@@ -45,6 +46,12 @@ import {
   writePlainBundle,
   writeSafeResult,
 } from "./lib/sites-ops.mjs";
+
+/** Every object the backup keeps: a bucket's listing minus ephemeral style previews. */
+async function listBackedUpObjects(config, bucket, fetchImpl) {
+  return (await listBucket(config, bucket, fetchImpl))
+    .filter((object) => !isEphemeralObject(bucket, object.key));
+}
 
 const INVENTORY_SQL = String.raw`
 SELECT json_build_object(
@@ -549,7 +556,7 @@ export async function runBackup({
 
     const firstListings = new Map();
     for (const bucket of SITES_BUCKETS) {
-      firstListings.set(bucket, await listBucket(storageConfig, bucket, fetchImpl));
+      firstListings.set(bucket, await listBackedUpObjects(storageConfig, bucket, fetchImpl));
     }
     const downloaded = new Map();
     let index = 0;
@@ -573,7 +580,7 @@ export async function runBackup({
     }
     const secondListings = new Map();
     for (const bucket of SITES_BUCKETS) {
-      secondListings.set(bucket, await listBucket(storageConfig, bucket, fetchImpl));
+      secondListings.set(bucket, await listBackedUpObjects(storageConfig, bucket, fetchImpl));
       if (stableJson(secondListings.get(bucket)) !== stableJson(firstListings.get(bucket))) {
         fail("OBJECT_INVENTORY_CHANGED_DURING_BACKUP");
       }

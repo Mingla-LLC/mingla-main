@@ -18,6 +18,7 @@ import {
   classifyRecoveryFailure,
   decryptBundle,
   extractPlainBundle,
+  isEphemeralObject,
   isSharedObject,
   resolveObjectOwner,
   validateManifest,
@@ -713,4 +714,57 @@ test("#2830 the single-tenant guard sees the shapes it exists to catch", () => {
     "inventory.tenants[0]?.site_id !== siteId",
     "counts.site_ids.length !== 1 || counts.site_ids[0] !== siteId",
   ]) assert.notDeepEqual(singleTenantShapes(text), [], text);
+});
+
+// The 2026-11-19 backup failure: #4453 style previews live in the publication
+// bucket under `plan-previews/<brand id>/…` (a brand previews styles before it
+// has a site). They are ephemeral (refused after 24 h, at most 9 per brand), so
+// the backup skips them; anything else under plan-previews/ still fails closed.
+const BRAND = "a14c4f10-a6c6-4443-969c-bfa358b79883";
+const PREVIEW = `plan-previews/${BRAND}/plan-${"c".repeat(32)}/${"a".repeat(64)}.json`;
+const PREVIEW_INDEX = `plan-previews/${BRAND}/cache-${"d".repeat(64)}.json`;
+
+test("#4453 a style preview is ephemeral; nothing else under plan-previews/ is", () => {
+  assert.equal(isEphemeralObject("sites-publication-artifacts", PREVIEW), true);
+  assert.equal(isEphemeralObject("sites-publication-artifacts", PREVIEW_INDEX), true);
+  for (const [bucket, key] of [
+    ["sites-media-approved", PREVIEW],
+    ["sites-media-recovery", PREVIEW_INDEX],
+    ["sites-publication-artifacts", `plan-previews/${BRAND}/plan-${"c".repeat(31)}/${"a".repeat(64)}.json`],
+    ["sites-publication-artifacts", `plan-previews/${BRAND}/plan-${"C".repeat(32)}/${"a".repeat(64)}.json`],
+    ["sites-publication-artifacts", `plan-previews/${BRAND}/preview-${"c".repeat(32)}/${"a".repeat(64)}.json`],
+    ["sites-publication-artifacts", `plan-previews/${BRAND}/cache-${"d".repeat(63)}.json`],
+    ["sites-publication-artifacts", `plan-previews/${BRAND}/../cache-${"d".repeat(64)}.json`],
+    ["sites-publication-artifacts", `plan-previews/not-a-brand/cache-${"d".repeat(64)}.json`],
+    ["sites-publication-artifacts", `publications/${BRAND}/cache-${"d".repeat(64)}.json`],
+  ]) assert.equal(isEphemeralObject(bucket, key), false, `${bucket}/${key}`);
+});
+
+test("#4453 the backup skips style previews and still refuses any other unknown key", async () => {
+  const withPreviews = await backupScenario({
+    tweak: ({ objects }) => {
+      objects.buckets["sites-publication-artifacts"].set(PREVIEW, Buffer.from("{}"));
+      objects.buckets["sites-publication-artifacts"].set(PREVIEW_INDEX, Buffer.from("{}"));
+    },
+  });
+  try {
+    const result = await runBackup({ env: withPreviews.env, fetchImpl: withPreviews.fetchImpl, spawn: withPreviews.spawn, now: NOW });
+    const plain = join(withPreviews.root, "plain");
+    await decryptBundle(result.bundle_path, plain, Buffer.from(withPreviews.encryptionKey, "base64"));
+    const { manifest } = extractPlainBundle(plain, join(withPreviews.root, "extracted"), NOW);
+    assert.deepEqual(manifest.objects.filter((object) => object.key.startsWith("plan-previews/")), []);
+  } finally {
+    rmSync(withPreviews.root, { recursive: true, force: true });
+  }
+
+  const stray = await backupScenario({
+    tweak: ({ objects }) => {
+      objects.buckets["sites-publication-artifacts"].set(`plan-previews/${BRAND}/notes.json`, Buffer.from("{}"));
+    },
+  });
+  try {
+    await assert.rejects(() => runBackup({ env: stray.env, fetchImpl: stray.fetchImpl, spawn: stray.spawn, now: NOW }), /OBJECT_UNKNOWN_TENANT/);
+  } finally {
+    rmSync(stray.root, { recursive: true, force: true });
+  }
 });

@@ -826,6 +826,24 @@ export function isSharedObject(bucket, key) {
 }
 
 /**
+ * #4453 — a style preview (`plan-previews/<brand>/plan-<32 hex>/<sha256>.json`
+ * and its index `plan-previews/<brand>/cache-<sha256>.json`) in the publication
+ * bucket is ephemeral: composed from the brand's plan on demand, refused by the
+ * runtime after 24 h, at most 9 per brand, and keyed by brand, not by site (a
+ * brand previews styles before it has a site). It is not backed up or restored.
+ * Without this, the first backup after the first preview stopped with
+ * OBJECT_UNKNOWN_TENANT (2026-11-19). Anything else under plan-previews/ still
+ * fails closed.
+ */
+const PLAN_PREVIEW_KEY =
+  /^plan-previews\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(plan-[0-9a-f]{32}\/[0-9a-f]{64}|cache-[0-9a-f]{64})\.json$/;
+
+export function isEphemeralObject(bucket, key) {
+  return bucket === "sites-publication-artifacts" && typeof key === "string" &&
+    PLAN_PREVIEW_KEY.test(key);
+}
+
+/**
  * #2830 — which known tenant owns this stored object, read from its key alone.
  * A bucket holds every brand's objects, so an object is valid only if its key
  * names exactly one tenant in `tenants` and is well formed for that tenant. An
