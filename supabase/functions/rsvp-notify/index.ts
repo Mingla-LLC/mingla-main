@@ -27,6 +27,14 @@ import {
 import { purchaseEmailCopy } from "../_shared/email/purchaseCopy.ts";
 import { renderBuyerSms } from "../_shared/sms/buyerSms.ts";
 import { copyFor, type RsvpTemplateKey } from "./copy.ts";
+// Issue #4508 — a brought guest's invite, reminder and friend-is-going copy.
+import { mintClaimLink } from "../_shared/claimLink.ts";
+import {
+  buildFriendGoingCopy,
+  type GuestCopy,
+  parseGuestMessageContext,
+  resolveGuestMessage,
+} from "./guestInvite.ts";
 import { renderTransactionalEmail } from "../_shared/email/index.ts";
 import { eventUpdateReplyTo } from "../_shared/email/eventUpdatedEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
@@ -294,12 +302,42 @@ const ACKNOWLEDGEMENTS = {
   },
 } as const;
 
+/** Issue #4508 — a brought guest's invite or reminder (guestInvite.ts).
+ * "done" when the row was completed without a send. */
+async function prepareGuestMessage(
+  admin: AdminClient,
+  claim: Claim,
+  p: Record<string, unknown>,
+): Promise<{ copy: GuestCopy; link: string | null } | "done" | null> {
+  const decision = await resolveGuestMessage(
+    {
+      context: async (guestId) => {
+        const { data, error } = await admin.rpc("rsvp_guest_message_context", {
+          p_guest_id: guestId,
+        });
+        if (error) return "unavailable";
+        return parseGuestMessageContext(data) ?? "unavailable";
+      },
+      claimLink: (guestId) => mintClaimLink(admin, "rsvp_guest", guestId),
+    },
+    { template: claim.template_key, channel: claim.channel, payload: p },
+  );
+  if (decision.kind === "not_guest_row") return null;
+  if (decision.kind === "finish") {
+    await complete(admin, claim, decision.status, null, decision.code);
+    return "done";
+  }
+  return { copy: decision.copy, link: decision.link };
+}
+
 async function processClaim(
   admin: AdminClient,
   claim: Claim,
   loadNotice: NoticeLoader,
 ): Promise<void> {
   const p = claim.payload ?? {};
+  const guestMessage = await prepareGuestMessage(admin, claim, p);
+  if (guestMessage === "done") return;
   // Issue #3827 — a row that carries a notice id is rendered from the notice.
   // A buyer row with no notice has nothing truthful to say and is not sent.
   // Legacy `rsvp_event_updated` rows (no notice id) skip this block entirely.
@@ -605,7 +643,8 @@ async function processClaim(
   // recovery link, PDF and copy. New rows have the canonical event instant and
   // use the shared message with a stable claim link, the calendar file and
   // (#4422) the QR pass PDF.
-  const needsRecoveryLink = modernMessage === null &&
+  // #4508: a guest invite text carries the guest's claim link instead.
+  const needsRecoveryLink = guestMessage === null && modernMessage === null &&
     claim.template_key === "rsvp_pass" &&
     (claim.channel === "email" || claim.channel === "sms");
   const recoveryLink = needsRecoveryLink
@@ -632,9 +671,11 @@ async function processClaim(
         claim.template_key === "rsvp_event_updated"
     ? eventUrl ?? defaultLink
     : defaultLink;
-  const link = buyerLink?.url ?? update?.link ?? recoveryLink?.passUrl ??
-    authenticatedPassLink;
-  const copy = modernMessage
+  const link = guestMessage?.link ?? buyerLink?.url ?? update?.link ??
+    recoveryLink?.passUrl ?? authenticatedPassLink;
+  const copy = guestMessage
+    ? guestMessage.copy
+    : modernMessage
     ? {
       title: modernMessage.body.copy.subject,
       body: modernMessage.body.copy.promise,
@@ -691,7 +732,8 @@ async function processClaim(
         channel: claim.channel,
         user_id: userId,
         contact,
-        category_key: claim.template_key === "rsvp_pass"
+        category_key: claim.template_key === "rsvp_pass" ||
+            claim.template_key === "rsvp_guest_reminder"
           ? "rsvp_pass"
           : claim.template_key === "buyer_event_updated"
           ? "buyer_event_updated"
@@ -751,6 +793,70 @@ async function processClaim(
   }
 }
 
+/** Issue #4508 2.3 — "{Name} is going to {event}". Each notice is taken at
+ * most once in the database before it is sent, so a friend never gets two
+ * for one event; a failed send is logged, not retried. */
+async function sendFriendGoingNotices(admin: AdminClient): Promise<void> {
+  const { data, error } = await admin.rpc(
+    "issue_4508_take_friend_going_notices",
+    { p_limit: 50 },
+  );
+  if (error) {
+    console.error("[rsvp-notify] friend-going take failed", error.message);
+    return;
+  }
+  const rows = (Array.isArray(data) ? data : []) as Array<{
+    notice_id: string;
+    event_id: string;
+    friend_user_id: string;
+    actor_user_id: string;
+    actor_name: string | null;
+    event_title: string | null;
+    send: boolean;
+  }>;
+  for (const row of rows) {
+    if (row.send !== true) continue;
+    const copy = buildFriendGoingCopy({
+      actorName: row.actor_name,
+      eventTitle: row.event_title,
+    });
+    try {
+      const { error: sendError } = await admin.functions.invoke(
+        "notify-dispatch",
+        {
+          body: {
+            userId: row.friend_user_id,
+            type: "friend_going_to_event",
+            title: copy.title,
+            body: copy.body,
+            data: {
+              eventId: row.event_id,
+              actorUserId: row.actor_user_id,
+            },
+            deepLink: `mingla://event/${encodeURIComponent(row.event_id)}`,
+            relatedId: row.event_id,
+            relatedType: "event",
+            idempotencyKey: `friend_going:${row.event_id}:${row.friend_user_id}`,
+          },
+        },
+      );
+      if (sendError) {
+        console.error(
+          "[rsvp-notify] friend-going send failed",
+          row.notice_id,
+          sendError.message,
+        );
+      }
+    } catch (err) {
+      console.error(
+        "[rsvp-notify] friend-going send threw",
+        row.notice_id,
+        err instanceof Error ? err.message : "unknown",
+      );
+    }
+  }
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -780,6 +886,18 @@ serve(async (req: Request): Promise<Response> => {
   // does not have the function yet is "nothing to do".
   if (!notificationId) {
     await fanOutEventEditNotices(admin as unknown as NoticeAdminClient);
+    // Issue #4508 2.1 — queue the one reminder per unclaimed guest; the
+    // delivery rows are claimed below like any other RSVP row.
+    const { error: reminderError } = await admin.rpc(
+      "rsvp_enqueue_guest_reminders",
+      { p_limit: 200 },
+    );
+    if (reminderError) {
+      console.error(
+        "[rsvp-notify] guest reminder enqueue failed",
+        reminderError.message,
+      );
+    }
   }
   const { data, error } = await admin.rpc(
     "claim_rsvp_notification_deliveries",
@@ -809,6 +927,7 @@ serve(async (req: Request): Promise<Response> => {
   // worker reached on no channel and owes nothing more.
   if (!notificationId) {
     await alertUnreachedGuests(admin, "rsvp");
+    await sendFriendGoingNotices(admin);
   }
   return json(200, { ok: true, claimed: claims.length });
 });

@@ -94,6 +94,10 @@ function installFixture(scenario: () => Scenario, seen: Observed): () => void {
     if (url.origin === ORIGIN) {
       const leaf = url.pathname.split("/").at(-1) ?? "";
       const body = req.method === "GET" ? null : await req.json();
+      // #4508 — the tick also queues guest reminders and takes friend-going
+      // notices; nothing is due in these fixtures.
+      if (leaf === "rsvp_enqueue_guest_reminders") return jsonResponse(0);
+      if (leaf === "issue_4508_take_friend_going_notices") return jsonResponse([]);
       if (leaf === "claim_rsvp_notification_deliveries") {
         return jsonResponse([{
           delivery_id: "fixture-delivery",

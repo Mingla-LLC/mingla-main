@@ -390,6 +390,9 @@ const typeToPreference: Record<string, string> = {
   "calendar_reminder_tomorrow": "reminders",
   "calendar_reminder_today": "reminders",
   "visit_feedback_prompt": "reminders",
+  // #4508 2.3 — "{Name} is going to {event}", sent by rsvp-notify's tick.
+  // Its own column so it can be turned off on its own.
+  "friend_going_to_event": "friends_going",
 };
 
 type BusinessPreferenceType =
