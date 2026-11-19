@@ -18,6 +18,7 @@
 -- MINGLA-INVARIANT: I-4508-CEILING-ATOMIC-ALERT | issue #4508 | a signed-out submit with guests holds one transaction lock (45084, 0) while the signed-out text ceiling is counted, and the first ceiling hold of a UTC day records one row for a single ops alert, marked only after the alert went out.
 -- MINGLA-INVARIANT: I-4508-CHECKIN-CLAIMED-REFUSED | issue #4508 | host_check_in_rsvp_guest answers result claimed for a guest who has claimed the pass and checks nobody in (the pass is scanned instead).
 -- MINGLA-INVARIANT: I-4508-LEGACY-MATCH-IS-CLAIMED | issue #4508 | on its first apply the bring-a-friend migration sets claimed_at = created_at on every guest row already matched to an account, keeping those accounts in the brand Guest chat; a later apply never backfills, and removes from the Guest chat an account whose only claim to it is an unclaimed match.
+-- MINGLA-INVARIANT: I-4508-PEOPLE-AFTER-CLAIM | issue #4508 | the brand's People (biz_resolve_brand_person_source, its derived worker entry and the conflict subject) never link or name a plus-one's matched account, nor import a friend pick's server-resolved number, until the pass is claimed; an unclaimed guest is imported exactly as an unmatched number-only guest, a claim (rsvp_guest_claim or a proven-number sweep) queues a re-ingest that links the claimer only, and a release retires the link.
 \set ON_ERROR_STOP on
 \ir ../20281119004508_issue_4508_guest_phone_match.sql
 \ir ../20281119014508_issue_4508_bring_a_friend.sql
@@ -1345,6 +1346,216 @@ BEGIN
 END
 $rework3$;
 
+-- ===========================================================================
+-- S3 (#4508): the brand's People never carry an unclaimed plus-one's account.
+-- Until the guest claims, the import is the same as for an unmatched
+-- number-only guest (no account link, no account name, only the typed
+-- number); a friend picked from a list (whose number the server resolved) is
+-- not imported at all. The claim attaches the claimer's account, by
+-- rsvp_guest_claim or a proven-number claim sweep; release retires the link.
+-- Runs the ingest worker's entry point (biz_resolve_brand_person_source_derived).
+-- FAILS-ON-REVERT: read g.matched_user_id unmasked in the resolver and its
+-- derived entry -> "S3: an unclaimed matched plus-one has no account link"
+-- fails; read g.phone unmasked -> "S3: a friend pick is not imported" fails;
+-- drop the claim re-ingest trigger -> "S3: a claim queues a re-ingest" fails;
+-- drop the S3 attach in the resolver -> "S3: after the claim the person is
+-- linked to the claimer" fails; unmask the conflict subject -> "S3: the
+-- conflict subject of an unclaimed guest" fails.
+-- ===========================================================================
+DO $s3_people$
+DECLARE
+  v_own   uuid := '45086000-0000-4000-8000-000000000001';
+  v_brand uuid := '45086000-0000-4000-8000-000000000002';
+  v_ev    uuid := '45086000-0000-4000-8000-000000000003';
+  v_amy   uuid := '45086000-0000-4000-8000-000000000011'; -- signed-in inviter
+  v_kim   uuid := '45086000-0000-4000-8000-000000000012'; -- proves K, claims
+  v_lia   uuid := '45086000-0000-4000-8000-000000000013'; -- matched to M by a non-proving sweep
+  v_mo    uuid := '45086000-0000-4000-8000-000000000014'; -- proves M later, claims
+  v_fay   uuid := '45086000-0000-4000-8000-000000000015'; -- Amy's friend, picked from the list
+  v_nia   uuid := '45086000-0000-4000-8000-000000000016'; -- proves N, releases
+  v_oz    uuid := '45086000-0000-4000-8000-000000000017'; -- proves O later, claimed by a sweep
+  v_res jsonb;
+  v_rsvp uuid;
+  v_gk uuid; v_gm uuid; v_gf uuid; v_gn uuid; v_go uuid; v_gu uuid;
+  v_pk uuid; v_pu uuid;
+BEGIN
+  INSERT INTO auth.users(id, email) SELECT u, 'i4508p-' || right(u::text, 2) || '@example.test'
+    FROM unnest(ARRAY[v_own, v_amy, v_kim, v_lia, v_mo, v_fay, v_nia, v_oz]) u;
+  INSERT INTO public.profiles(id, email, display_name, first_name, last_name, phone)
+  SELECT u, 'i4508p-' || right(u::text, 2) || '@example.test', n, split_part(n, ' ', 1), split_part(n, ' ', 2), NULL
+    FROM (VALUES (v_amy, 'Amy Ames'), (v_kim, 'Kim Kerr'), (v_lia, 'Lia Lane'), (v_mo, 'Mo Moss'),
+                 (v_fay, 'Fay Ford'), (v_nia, 'Nia Nash'), (v_oz, 'Oz Orr')) x(u, n)
+  ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name,
+    first_name = EXCLUDED.first_name, last_name = EXCLUDED.last_name, phone = NULL;
+  INSERT INTO public.verified_phone_identities(user_id, phone_e164) VALUES
+    (v_amy, '+15550410100'), (v_kim, '+15550410200'), (v_fay, '+15550410500'), (v_nia, '+15550410600');
+  INSERT INTO public.friends(user_id, friend_user_id, status) VALUES
+    (v_amy, v_fay, 'accepted'), (v_fay, v_amy, 'accepted');
+  INSERT INTO public.creator_accounts(id, email) VALUES (v_own, 'i4508p-owner@example.test');
+  INSERT INTO public.brands(id, account_id, name, slug, payment_provider, pricing_region,
+    pricing_currency, default_currency, contact_email)
+  VALUES (v_brand, v_own, 'Issue 4508 People', 'issue-4508-people', 'stripe', 'US', 'USD', 'USD',
+    'host-4508p@example.test');
+  INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility,
+    timezone, currency, rsvp_capacity, rsvp_waitlist_enabled, rsvp_approval_mode,
+    rsvp_allow_plus_ones, rsvp_plus_ones_max, published_at)
+  VALUES (v_ev, v_brand, v_own, 'People Night', 'people-4508p', 'rsvp', 'scheduled', 'public',
+    'UTC', 'USD', NULL, false, 'auto', true, 6, now());
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master) VALUES
+    (v_ev, now() + interval '6 days', now() + interval '6 days 4 hours', 'UTC', true);
+
+  -- K matches Kim, F is a friend pick, N matches Nia, M / O / U match nobody yet.
+  v_res := public.submit_event_rsvp(v_ev, v_amy, 'Amy Ames', 'i4508p-11@example.test',
+    '+15550410100', 'going', 6,
+    jsonb_build_array(jsonb_build_object('phone', '+15550410200'), jsonb_build_object('phone', '+15550410400'),
+      jsonb_build_object('userId', v_fay), jsonb_build_object('phone', '+15550410600'),
+      jsonb_build_object('phone', '+15550410800'), jsonb_build_object('phone', '+15550410700')), NULL, 'US');
+  v_rsvp := (v_res->>'rsvpId')::uuid;
+  SELECT id INTO v_gk FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550410200';
+  SELECT id INTO v_gm FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550410400';
+  SELECT id INTO v_gf FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND added_from_friend;
+  SELECT id INTO v_gn FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550410600';
+  SELECT id INTO v_go FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550410800';
+  SELECT id INTO v_gu FROM public.event_rsvp_guests WHERE rsvp_id = v_rsvp AND phone = '+15550410700';
+  -- A sweep that matches M to an account that has NOT proved M (an email
+  -- match) is not a claim (P2-1).
+  UPDATE public.event_rsvp_guests SET matched_user_id = v_lia WHERE id = v_gm;
+  PERFORM pg_temp.ok(
+    (SELECT matched_user_id = v_kim AND claimed_at IS NULL FROM public.event_rsvp_guests WHERE id = v_gk)
+    AND (SELECT matched_user_id = v_lia AND claimed_at IS NULL FROM public.event_rsvp_guests WHERE id = v_gm)
+    AND (SELECT matched_user_id = v_fay AND claimed_at IS NULL AND phone = '+15550410500'
+           FROM public.event_rsvp_guests WHERE id = v_gf)
+    AND (SELECT matched_user_id = v_nia AND claimed_at IS NULL FROM public.event_rsvp_guests WHERE id = v_gn)
+    AND (SELECT matched_user_id IS NULL FROM public.event_rsvp_guests WHERE id IN (v_go, v_gu) LIMIT 1),
+    'fixture: K, M, F and N are matched and unclaimed; O and U are unmatched');
+
+  -- ---- before the claim -----------------------------------------------------
+  PERFORM public.biz_resolve_brand_person_source_derived('rsvp_plus_one', g)
+     FROM unnest(ARRAY[v_gk, v_gm, v_gf, v_gn, v_go, v_gu]) g;
+  SELECT l.brand_person_id INTO v_pk FROM public.brand_person_source_links l
+   WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_gk AND l.detached_at IS NULL;
+  SELECT l.brand_person_id INTO v_pu FROM public.brand_person_source_links l
+   WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_gu AND l.detached_at IS NULL;
+  PERFORM pg_temp.ok(v_pk IS NOT NULL AND v_pu IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM public.brand_people p
+                     WHERE p.brand_id = v_brand AND p.linked_user_id IN (v_kim, v_lia, v_mo, v_fay, v_nia, v_oz)),
+    'S3: an unclaimed matched plus-one has no account link');
+  PERFORM pg_temp.ok(
+    (SELECT p.linked_user_id IS NULL AND p.display_name = 'Guest' FROM public.brand_people p WHERE p.id = v_pk)
+    AND (SELECT array_agg(c.channel || ':' || c.normalized_value ORDER BY c.channel)
+           FROM public.brand_person_contact_methods c
+          WHERE c.brand_person_id = v_pk AND c.record_state = 'active') = ARRAY['phone:+15550410200']
+    AND (SELECT l.link_method FROM public.brand_person_source_links l
+          WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_gk AND l.detached_at IS NULL)
+      = (SELECT l.link_method FROM public.brand_person_source_links l
+          WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_gu AND l.detached_at IS NULL)
+    AND (SELECT p.linked_user_id IS NULL AND p.display_name = 'Guest' FROM public.brand_people p WHERE p.id = v_pu),
+    'S3: an unclaimed matched plus-one is imported exactly as an unmatched number-only guest');
+  PERFORM pg_temp.ok(NOT EXISTS (
+      SELECT 1 FROM public.brand_person_names n JOIN public.brand_people p ON p.id = n.brand_person_id
+       WHERE p.brand_id = v_brand
+         AND (n.normalized_name ~ '(kim|lia|mo|fay|nia|oz)' OR p.display_name ~ '(Kim|Lia|Mo|Fay|Nia|Oz)')),
+    'S3: no account name reaches the brand''s People before a claim');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.brand_person_source_links l
+                                  WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_gf)
+    AND NOT EXISTS (SELECT 1 FROM public.brand_person_contact_methods c
+                     WHERE c.brand_id = v_brand AND c.normalized_value = '+15550410500'),
+    'S3: a friend pick is not imported (its number was never typed) before the claim');
+  PERFORM pg_temp.ok(
+    (SELECT s->>'userId' IS NULL AND s->>'phone' = '+15550410200'
+       FROM public.biz_brand_person_conflict_subject('rsvp_plus_one', v_gk) s)
+    AND (SELECT s->>'userId' IS NULL AND s->>'phone' IS NULL
+           FROM public.biz_brand_person_conflict_subject('rsvp_plus_one', v_gf) s),
+    'S3: the conflict subject of an unclaimed guest carries no account and no resolved number');
+
+  -- ---- the claim (same account the number matched) ------------------------
+  PERFORM pg_temp.ok(public.rsvp_guest_claim(v_kim,
+      public.mint_claim_link('rsvp_guest', v_gk)->>'code', NULL)->>'outcome' = 'claimed',
+    'fixture: Kim claims');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.brand_person_ingest_outbox o
+      WHERE o.source_kind = 'rsvp_plus_one' AND o.source_id = v_gk AND o.operation = 'upsert'
+        AND o.status = 'pending'
+        AND o.revision_key = (SELECT md5('issue_4508_claim:' || g.id::text || ':' || g.claimed_at::text)
+                                FROM public.event_rsvp_guests g WHERE g.id = v_gk)),
+    'S3: a claim queues a re-ingest of the plus-one');
+  PERFORM public.biz_resolve_brand_person_source_derived('rsvp_plus_one', v_gk);
+  PERFORM pg_temp.ok(
+    (SELECT p.linked_user_id = v_kim FROM public.brand_people p
+      WHERE p.id = public.biz_brand_person_canonical((SELECT l.brand_person_id FROM public.brand_person_source_links l
+        WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_gk AND l.detached_at IS NULL))),
+    'S3: after the claim the person is linked to the claimer');
+  PERFORM pg_temp.ok((SELECT s->>'userId' = v_kim::text
+                        FROM public.biz_brand_person_conflict_subject('rsvp_plus_one', v_gk) s),
+    'S3: after the claim the conflict subject names the claimer');
+
+  -- ---- a claim by a different account than the one matched ----------------
+  INSERT INTO public.verified_phone_identities(user_id, phone_e164) VALUES (v_mo, '+15550410400');
+  PERFORM public.biz_resolve_brand_person_source_derived('rsvp_plus_one', v_gm);
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.brand_people p
+                                  WHERE p.brand_id = v_brand AND p.linked_user_id = v_lia),
+    'fixture: still no link to the account the sweep matched');
+  PERFORM pg_temp.ok(public.rsvp_guest_claim(v_mo,
+      public.mint_claim_link('rsvp_guest', v_gm)->>'code', NULL)->>'outcome' = 'claimed',
+    'fixture: Mo claims the row matched to Lia');
+  PERFORM public.biz_resolve_brand_person_source_derived('rsvp_plus_one', v_gm);
+  PERFORM pg_temp.ok(
+    (SELECT p.linked_user_id = v_mo FROM public.brand_people p
+      WHERE p.id = public.biz_brand_person_canonical((SELECT l.brand_person_id FROM public.brand_person_source_links l
+        WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_gm AND l.detached_at IS NULL)))
+    AND NOT EXISTS (SELECT 1 FROM public.brand_people p WHERE p.brand_id = v_brand AND p.linked_user_id = v_lia),
+    'S3: a claim by another account links the claimer only');
+
+  -- ---- a friend pick claims ------------------------------------------------
+  PERFORM pg_temp.ok(public.rsvp_guest_claim(v_fay,
+      public.mint_claim_link('rsvp_guest', v_gf)->>'code', NULL)->>'outcome' = 'claimed',
+    'fixture: Fay claims');
+  PERFORM public.biz_resolve_brand_person_source_derived('rsvp_plus_one', v_gf);
+  PERFORM pg_temp.ok(
+    (SELECT p.linked_user_id = v_fay FROM public.brand_people p
+      WHERE p.id = public.biz_brand_person_canonical((SELECT l.brand_person_id FROM public.brand_person_source_links l
+        WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_gf AND l.detached_at IS NULL))),
+    'S3: a friend pick is imported and linked once claimed');
+
+  -- ---- a proven-number claim sweep ------------------------------------------
+  INSERT INTO public.verified_phone_identities(user_id, phone_e164) VALUES (v_oz, '+15550410800');
+  UPDATE public.event_rsvp_guests SET matched_user_id = v_oz WHERE id = v_go AND matched_user_id IS NULL;
+  PERFORM pg_temp.ok((SELECT claimed_at IS NOT NULL FROM public.event_rsvp_guests WHERE id = v_go)
+    AND EXISTS (SELECT 1 FROM public.brand_person_ingest_outbox o
+                 WHERE o.source_kind = 'rsvp_plus_one' AND o.source_id = v_go AND o.status = 'pending'
+                   AND o.revision_key = (SELECT md5('issue_4508_claim:' || g.id::text || ':' || g.claimed_at::text)
+                                           FROM public.event_rsvp_guests g WHERE g.id = v_go)),
+    'S3: a claim sweep queues a re-ingest');
+  PERFORM public.biz_resolve_brand_person_source_derived('rsvp_plus_one', v_go);
+  PERFORM pg_temp.ok(
+    (SELECT p.linked_user_id = v_oz FROM public.brand_people p
+      WHERE p.id = public.biz_brand_person_canonical((SELECT l.brand_person_id FROM public.brand_person_source_links l
+        WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_go AND l.detached_at IS NULL))),
+    'S3: after a claim sweep the person is linked to the account that proved the number');
+
+  -- ---- release ("This isn't me") --------------------------------------------
+  PERFORM pg_temp.ok(public.rsvp_guest_release(public.mint_claim_link('rsvp_guest', v_gn)->>'code')->>'outcome' = 'released',
+    'fixture: N is released');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.brand_person_ingest_outbox o
+                              WHERE o.source_kind = 'rsvp_plus_one' AND o.source_id = v_gn
+                                AND o.operation = 'retire' AND o.status = 'pending'),
+    'S3: a release queues the retire, as today');
+  v_res := public.biz_resolve_brand_person_source_derived('rsvp_plus_one', v_gn);
+  PERFORM pg_temp.ok(v_res->>'linkOutcome' = 'retired'
+    AND NOT EXISTS (SELECT 1 FROM public.brand_person_source_links l
+                     WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = v_gn AND l.detached_at IS NULL)
+    AND NOT EXISTS (SELECT 1 FROM public.brand_people p WHERE p.brand_id = v_brand AND p.linked_user_id = v_nia),
+    'S3: a released guest''s link is retired and their account was never attached: ' || v_res::text);
+
+  PERFORM pg_temp.ok(NOT has_function_privilege('authenticated', 'public.tg_issue_4508_guest_claim_reingest()', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.tg_issue_4508_guest_claim_reingest()', 'EXECUTE')
+    AND (SELECT p.prosecdef AND p.proconfig @> ARRAY['search_path=public, pg_temp']
+           FROM pg_proc p WHERE p.oid = 'public.tg_issue_4508_guest_claim_reingest()'::regprocedure),
+    'S3: the re-ingest trigger function is definer-only with a fixed search_path');
+
+  RAISE NOTICE '#4508 brand People before the claim: all cases passed';
+END
+$s3_people$;
+
 ROLLBACK;
 
 -- ===========================================================================
@@ -1404,6 +1615,13 @@ BEGIN
       WHERE conversation_id = public.issue_4459_ensure_brand_guest_chat('45085000-0000-4000-8000-000000000002')
         AND user_id = '45085000-0000-4000-8000-000000000012'),
     'N-6: a legacy matched guest keeps their Guest chat place');
+  -- S3: a guest claimed by the backfill keeps their account in the brand's People.
+  PERFORM public.biz_resolve_brand_person_source_derived('rsvp_plus_one', '45085000-0000-4000-8000-000000000005');
+  PERFORM pg_temp.ok((SELECT p.linked_user_id = '45085000-0000-4000-8000-000000000012'
+                        FROM public.brand_person_source_links l JOIN public.brand_people p ON p.id = l.brand_person_id
+                       WHERE l.source_kind = 'rsvp_plus_one' AND l.source_id = '45085000-0000-4000-8000-000000000005'
+                         AND l.detached_at IS NULL),
+    'S3: a legacy matched guest (claimed by the backfill) stays linked in the brand''s People');
 END
 $n6$;
 -- A later apply: a member there only through an unclaimed match is removed,
