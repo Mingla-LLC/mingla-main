@@ -64,8 +64,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
-import { radius as radiusTokens, space, materials, edge } from "../../../src/constants/designSystem";
-import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
+import { radius as radiusTokens, space, edge } from "../../../src/constants/designSystem";
+import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
 import {

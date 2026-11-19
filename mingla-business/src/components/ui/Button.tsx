@@ -34,10 +34,8 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  color,
   durations,
   edge,
-  materials,
   motion,
   radius as radiusTokens,
   shadow as shadowTokens,
@@ -45,6 +43,7 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
+import { color, materials, themed } from "../../theme/surfaceTokens";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 // ORCH-1162 Bug 3 — pure WCAG-contrast helpers for the optional accentColor.
 import {
@@ -168,49 +167,53 @@ interface VariantTokens {
   shadow?: ViewStyle;
 }
 
-const PAPER: VariantTokens = {
-  background: color.paper,
-  hoverBackground: color.paperEnd,
-  text: color.ink,
-  shadow: shadowTokens.paper,
-};
-const CONTROL: VariantTokens = {
-  background: materials.control.solidFill,
-  hoverBackground: materials.selected.solidFill,
-  border: materials.control.rim.edge,
-  borderWidth: StyleSheet.hairlineWidth,
-  rim: materials.control.rim.top ?? undefined,
-  text: color.text1,
-};
-const QUIET: VariantTokens = {
-  background: color.fill.quiet,
-  hoverBackground: color.fill.quietHover,
-  text: color.text1,
-};
-const DANGER: VariantTokens = {
-  background: color.danger,
-  hoverBackground: color.dangerPressed,
-  text: color.onDanger,
-};
-const DANGER_TEXT: VariantTokens = {
-  background: color.fill.quiet,
-  hoverBackground: color.errorTint,
-  text: color.errorText,
-};
+// #4518 — built per active surface tokens, so a button inside a host-themed
+// checkout takes the host's colours and never a Graphite fill.
+const variantTokens = themed((): Record<ButtonVariantName, VariantTokens> => {
+  const PAPER: VariantTokens = {
+    background: color.paper,
+    hoverBackground: color.paperEnd,
+    text: color.ink,
+    shadow: shadowTokens.paper,
+  };
+  const CONTROL: VariantTokens = {
+    background: materials.control.solidFill,
+    hoverBackground: materials.selected.solidFill,
+    border: materials.control.rim.edge,
+    borderWidth: StyleSheet.hairlineWidth,
+    rim: materials.control.rim.top ?? undefined,
+    text: color.text1,
+  };
+  const QUIET: VariantTokens = {
+    background: color.fill.quiet,
+    hoverBackground: color.fill.quietHover,
+    text: color.text1,
+  };
+  const DANGER: VariantTokens = {
+    background: color.danger,
+    hoverBackground: color.dangerPressed,
+    text: color.onDanger,
+  };
+  const DANGER_TEXT: VariantTokens = {
+    background: color.fill.quiet,
+    hoverBackground: color.errorTint,
+    text: color.errorText,
+  };
 
-const VARIANT_TOKENS: Record<ButtonVariantName, VariantTokens> = {
-  primary: PAPER,
-  secondary: CONTROL,
-  ghost: QUIET,
-  destructive: DANGER,
-  // #3655 — the "moves you on" look (wizard Continue): Paper since #4420.
-  step: PAPER,
-  // #3655 — quiet remove look; solid destructive stays inside ConfirmDialog.
-  destructiveOutline: DANGER_TEXT,
-  quiet: QUIET,
-  danger: DANGER,
-  dangerText: DANGER_TEXT,
-};
+  return {
+    primary: PAPER,
+    secondary: CONTROL,
+    ghost: QUIET,
+    destructive: DANGER,
+    // #3655 — the "moves you on" look (wizard Continue): Paper since #4420.
+    step: PAPER,
+    // #3655 — quiet remove look; solid destructive stays inside ConfirmDialog.
+    destructiveOutline: DANGER_TEXT,
+    quiet: QUIET,
+    danger: DANGER,
+    dangerText: DANGER_TEXT,
+  };
+});
 
 const PRESS_TIMING = { duration: durations.fast } as const;
 
@@ -254,7 +257,7 @@ export const Button = forwardRef<
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
   const reduceMotion = useReducedMotion();
-  const tokens = VARIANT_TOKENS[variant];
+  const tokens = variantTokens()[variant];
   const interactive = !disabled && !loading;
 
   // ORCH-1162 Bug 3 — optional brand-accent override (primary variant only).

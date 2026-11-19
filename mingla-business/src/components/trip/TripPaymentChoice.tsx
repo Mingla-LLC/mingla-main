@@ -39,9 +39,9 @@ import {
 } from "react-native";
 
 import {
-  color,
   space,
 } from "../../constants/designSystem";
+import { color, themedStyles } from "../../theme/surfaceTokens";
 import type { ThemePalette } from "@mingla/offering-rendering";
 import { GlassCard } from "../ui/GlassCard";
 import { formatCurrency } from "../../utils/currency";
@@ -517,7 +517,7 @@ function formatScheduleDate(iso: string, isCalendarDate: boolean): string {
   }
 }
 
-const mock = StyleSheet.create({
+const mock = themedStyles(() => StyleSheet.create({
   card: {
     marginBottom: space[6],
     borderRadius: 20,
@@ -624,9 +624,9 @@ const mock = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
   },
-});
+}));
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   card: {
     marginBottom: space[6],
   },
@@ -718,6 +718,6 @@ const styles = StyleSheet.create({
     marginTop: space[4],
     width: "100%",
   },
-});
+}));
 
 export default TripPaymentChoice;

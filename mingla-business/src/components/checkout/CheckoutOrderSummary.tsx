@@ -21,8 +21,8 @@ import React from "react";
 import { Image, Platform, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { materials, radius, scrim, space } from "../../constants/designSystem";
-import { activeCheckoutPalette, checkoutStyles, color } from "./checkoutTheme";
+import { radius, scrim, space } from "../../constants/designSystem";
+import { activeCheckoutPalette, checkoutStyles, color, materials } from "./checkoutTheme";
 import { CheckoutCoverFallback } from "./CheckoutCoverFallback";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { formatCurrency } from "../../utils/currency";

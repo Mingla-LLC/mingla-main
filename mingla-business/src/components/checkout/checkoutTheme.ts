@@ -47,6 +47,15 @@ import {
 } from "@mingla/offering-rendering/themePalette";
 
 import { color as graphite } from "../../constants/designSystem";
+import {
+  color as surfaceColor,
+  materials as surfaceMaterials,
+  setActiveSurfaceTokens,
+  solidSurfaceMaterials,
+  themed,
+  themedStyles,
+  type SurfaceTokens,
+} from "../../theme/surfaceTokens";
 
 /** #4420 D-C1 — false puts every checkout back on Graphite. */
 export const CHECKOUT_USES_HOST_PALETTE = true;
@@ -153,8 +162,7 @@ export function resolveCheckoutPalette(input: {
 // ---- the one active palette ------------------------------------------------
 
 let activePalette: ThemePalette | null = null;
-let activeTokens: CheckoutColor = graphite;
-const tokenCache = new WeakMap<ThemePalette, CheckoutColor>();
+const tokenCache = new WeakMap<ThemePalette, SurfaceTokens>();
 
 /** The active palette (null = Graphite). */
 export const activeCheckoutPalette = (): ThemePalette | null => activePalette;
@@ -190,59 +198,63 @@ export const checkoutOnAccent = (): string =>
 /**
  * Called by a checkout layout during render, before its steps render, with
  * the offering's palette (or null while it loads / for Graphite).
+ *
+ * #4518 — this is the SINGLE WRITER of the app's surface tokens. It sets the
+ * text tokens and the surface materials together, from one palette, so the
+ * shared building blocks (cards, fields, buttons, the dock) can never paint a
+ * Graphite surface under host-coloured text again.
  */
 export function setActiveCheckoutPalette(palette: ThemePalette | null): void {
   activePalette = palette;
   if (palette === null) {
-    activeTokens = graphite;
+    setActiveSurfaceTokens(null);
     return;
   }
   const cached = tokenCache.get(palette);
   if (cached !== undefined) {
-    activeTokens = cached;
+    setActiveSurfaceTokens(cached);
     return;
   }
-  const tokens = checkoutColorFor(palette);
+  const tokens = checkoutSurfaceTokensFor(palette);
   tokenCache.set(palette, tokens);
-  activeTokens = tokens;
+  setActiveSurfaceTokens(tokens);
+}
+
+/** The host palette as one token set: text colours plus the surfaces under them. */
+export function checkoutSurfaceTokensFor(palette: ThemePalette): SurfaceTokens {
+  const tokens = checkoutColorFor(palette);
+  return {
+    color: tokens,
+    materials: solidSurfaceMaterials({
+      pane: tokens.card,
+      control: tokens.card2,
+      selected: tokens.card3,
+      chrome: tokens.canvas,
+      liquid: tokens.card2,
+      sheet: tokens.card,
+      edge: tokens.line,
+      edgeStrong: tokens.lineStrong,
+    }),
+  };
 }
 
 /** designSystem `color`'s shape, read against the active palette. */
-export const color: CheckoutColor = new Proxy({} as CheckoutColor, {
-  get: (_target, key: string | symbol) =>
-    (activeTokens as Record<string | symbol, unknown>)[key],
-  ownKeys: () => Reflect.ownKeys(activeTokens),
-  getOwnPropertyDescriptor: (_target, key) => {
-    const tokens = activeTokens as Record<string | symbol, unknown>;
-    return key in tokens
-      ? { configurable: true, enumerable: true, value: tokens[key] }
-      : undefined;
-  },
-});
+export const color: CheckoutColor = surfaceColor;
+
+/** designSystem `materials`' shape, read against the active palette (#4518). */
+export const materials = surfaceMaterials;
 
 /**
  * A module-scope stylesheet whose colours follow the active palette. The
  * factory runs once per palette (cached); reading a style key returns the
  * sheet for the palette that is active NOW.
  */
-export function checkoutStyles<T extends object>(factory: () => T): T {
-  const byTokens = new WeakMap<object, T>();
-  const current = (): T => {
-    const hit = byTokens.get(activeTokens);
-    if (hit !== undefined) return hit;
-    const built = factory();
-    byTokens.set(activeTokens, built);
-    return built;
-  };
-  return new Proxy({} as T, {
-    get: (_target, key: string | symbol) =>
-      (current() as Record<string | symbol, unknown>)[key],
-    ownKeys: () => Reflect.ownKeys(current()),
-    getOwnPropertyDescriptor: (_target, key) => {
-      const sheet = current() as Record<string | symbol, unknown>;
-      return key in sheet
-        ? { configurable: true, enumerable: true, value: sheet[key] }
-        : undefined;
-    },
-  });
-}
+export const checkoutStyles = themedStyles;
+
+/**
+ * #4518 — a module-scope VALUE (a colour record handed to a shared part) that
+ * follows the active palette. A plain `const X = { accent: color.accent }` is
+ * read once at import and freezes whichever palette was active then: that is
+ * how the ticket rows stayed white-on-dark on a light host page.
+ */
+export const checkoutValue = themed;
