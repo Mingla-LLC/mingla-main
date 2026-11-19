@@ -76,6 +76,21 @@ describe("issue #3645 — experienceHostPriceLabel", () => {
     expect(experienceHostPriceLabel(stale, fmt)).toBe("N3000");
   });
 
+  test("Kids 0 visible with the only paid option hidden is a dash, not the whole price", () => {
+    const hiddenPaid = exp({ ticket: opt(0), tickets: [opt(0), opt(500_000, true)] });
+    expect(experienceHostPriceLabel(hiddenPaid, fmt)).toBe("—");
+  });
+
+  test("with no whole price, a hidden priced option is never shown", () => {
+    const perStopHidden = exp({
+      pricingMode: "per_stop",
+      wholePriceCents: null,
+      ticket: opt(0),
+      tickets: [opt(0), opt(500_000, true)],
+    });
+    expect(experienceHostPriceLabel(perStopHidden, fmt)).toBe("—");
+  });
+
   test("no ticket at all is a dash", () => {
     expect(experienceHostPriceLabel(exp({ ticket: null, tickets: [] }), fmt)).toBe("—");
   });

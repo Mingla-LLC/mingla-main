@@ -9,7 +9,8 @@
  *   - whole price, when every visible paid option is that price;
  *   - else the lowest visible paid option, "From …" when the paid options
  *     differ (hidden options are not offered to buyers, so they do not count);
- *   - else (per-stop, no whole price) the first priced option.
+ *   - "—" when no visible option has a price: nothing paid is on sale, so no
+ *     price is shown (neither a hidden one nor a stale whole price).
  *
  * The buyer-facing label (packages/offering-rendering experiencePriceLabel)
  * is a separate, open product call (#3645).
@@ -40,17 +41,13 @@ export function experienceHostPriceLabel(
   const paid = options
     .filter((o) => o.isHidden !== true && o.priceCents > 0)
     .map((o) => o.priceCents);
+  if (paid.length === 0) return "—";
   const whole = exp.pricingMode === "whole" && (exp.wholePriceCents ?? 0) > 0
     ? (exp.wholePriceCents as number)
     : null;
   if (whole !== null && paid.every((cents) => cents === whole)) {
     return format(whole);
   }
-  if (paid.length > 0) {
-    const lowest = Math.min(...paid);
-    return new Set(paid).size > 1 ? `From ${format(lowest)}` : format(lowest);
-  }
-  if (whole !== null) return format(whole);
-  const priced = options.find((o) => o.priceCents > 0);
-  return priced !== undefined ? format(priced.priceCents) : "—";
+  const lowest = Math.min(...paid);
+  return new Set(paid).size > 1 ? `From ${format(lowest)}` : format(lowest);
 }
