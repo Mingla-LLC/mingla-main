@@ -522,6 +522,20 @@ describe("Edit mode", () => {
     expect(byId(root, "field-s1-heading")[0]!.props.value).toBe("A teammate's words");
   });
 
+  it("a change that does not save is taken off the screen even when the page cannot be read again", async () => {
+    const { root } = await open({ segments: ["pages"] });
+    const order = () => root.findAll((node) => typeof node.props.testID === "string" && /^section-row-/.test(node.props.testID) && typeof node.type === "string").map((node) => node.props.testID);
+    expect(order()).toEqual(["section-row-s1", "section-row-s2", "section-row-s3"]);
+    // The service stops answering: the move is refused and the page cannot be re-read either.
+    state.fail.move_section = { status: 503, code: "SERVICE_TEMPORARILY_UNAVAILABLE" };
+    state.fail.page_sections = { status: 503, code: "SERVICE_TEMPORARILY_UNAVAILABLE" };
+    await press(root, "section-down-s1");
+    await tick(100);
+    expect(words(root)).toContain("Move Top of the page wasn’t saved.");
+    expect(order()).toEqual(["section-row-s1", "section-row-s2", "section-row-s3"]);
+    expect(words(root)).toContain("Website · last change not saved");
+  });
+
   it("a refusal is said in the owner's words", async () => {
     const { root } = await open({ segments: ["pages"] });
     await press(root, "section-toggle-s1");

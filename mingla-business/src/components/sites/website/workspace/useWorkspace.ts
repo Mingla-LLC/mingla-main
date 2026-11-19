@@ -120,8 +120,18 @@ export function useWorkspace(input: {
   const shownText = useRef(new Map<string, string>());
 
   const sectionsKey = useCallback((id: string | null) => brandSiteKeys.pageSections(siteId, id), [siteId]);
+  /**
+   * Each page as it was before the changes still being saved were shown on it.
+   * A change that does not save is taken off the screen at once from here, even
+   * when the page cannot be read again (the service that refused is down).
+   */
+  const beforeUnsaved = useRef(new Map<string, PageSections>());
   const patchSections = useCallback((id: string, change: (list: WorkspaceSection[]) => WorkspaceSection[]) => {
-    client.setQueryData<PageSections>(sectionsKey(id), (current) => (current ? { ...current, sections: change(current.sections) } : current));
+    client.setQueryData<PageSections>(sectionsKey(id), (current) => {
+      if (!current) return current;
+      if (!beforeUnsaved.current.has(id)) beforeUnsaved.current.set(id, current);
+      return { ...current, sections: change(current.sections) };
+    });
   }, [client, sectionsKey]);
 
   /* ── Keeping the preview in step ───────────────────────────────────── */
@@ -201,9 +211,20 @@ export function useWorkspace(input: {
       onState: setSaveState,
       // Sections are not re-read after a save: what is on screen already matches,
       // and a re-read landing mid-typing would put older words back.
-      onSaved: () => live.current.afterChange(),
+      onSaved: () => {
+        // Everything shown is saved: what is on screen is the page again.
+        if (writerRef.current?.pending() === 0) beforeUnsaved.current.clear();
+        live.current.afterChange();
+      },
       onError: (error, job) => {
         // Put the page back to what the server holds: nothing optimistic survives a refusal.
+        // First to the page as it was before the unsaved changes (it may not be readable right now)...
+        const before = beforeUnsaved.current.get(job.pageId);
+        beforeUnsaved.current.delete(job.pageId);
+        if (before) {
+          client.setQueryData<PageSections>(sectionsKey(job.pageId), (current) => (current ? { ...before, page: { ...before.page, revision: current.page.revision } } : before));
+        }
+        // ...then to whatever the server says now.
         void client.invalidateQueries({ queryKey: sectionsKey(job.pageId) });
         void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "workspace") });
         live.current.afterChange();
