@@ -17945,6 +17945,7 @@
         "supabase/migrations/20281118004238_issue_4238_team_role_grants.sql",
         "supabase/migrations/20281118014238_issue_4238_ads_roles.sql",
         "supabase/migrations/20281118024226_issue_4226_people_journey.sql",
+        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19831,6 +19832,7 @@
         "supabase/migrations/20281118004238_issue_4238_team_role_grants.sql",
         "supabase/migrations/20281118014238_issue_4238_ads_roles.sql",
         "supabase/migrations/20281118024226_issue_4226_people_journey.sql",
+        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20448,6 +20450,8 @@
         "supabase/migrations/__tests__/issue_3645_pay_links.implementor.happy.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3645_payment_plus_24h.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3645_payment_plus_24h.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3645_payout_claim_snapshots.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3645_payout_claim_snapshots.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3645_payout_debt_returns.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3645_payout_debt_returns.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3645_payout_debt_returns_concurrency.pg17.test.sql",
@@ -25442,6 +25446,7 @@
         "supabase/migrations/20281118004238_issue_4238_team_role_grants.sql",
         "supabase/migrations/20281118014238_issue_4238_ads_roles.sql",
         "supabase/migrations/20281118024226_issue_4226_people_journey.sql",
+        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -26059,6 +26064,8 @@
         "supabase/migrations/__tests__/issue_3645_pay_links.implementor.happy.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3645_payment_plus_24h.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3645_payment_plus_24h.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3645_payout_claim_snapshots.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3645_payout_claim_snapshots.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3645_payout_debt_returns.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3645_payout_debt_returns.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3645_payout_debt_returns_concurrency.pg17.test.sql",
@@ -54483,5 +54490,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "508faabb87532809f965b44b2cbc0a68aff09a55fb7c63d7b5de506b7ec9313a"
+  "phase3eContractSha256": "5dc1e8ef9292817c7c4f73389b83af794a0353ecfacf8f6d9967f75e899a6db3"
 }

@@ -615,7 +615,8 @@ export function phase3dContractDigest(manifest) {
 // #3645 merge of main after #4238: kept main's two #4238 rows after 20280809003645; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
 // #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "508faabb87532809f965b44b2cbc0a68aff09a55fb7c63d7b5de506b7ec9313a";
+// #3645 bundle 2e-1: registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5dc1e8ef9292817c7c4f73389b83af794a0353ecfacf8f6d9967f75e899a6db3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
