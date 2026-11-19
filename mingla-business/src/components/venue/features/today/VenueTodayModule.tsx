@@ -161,7 +161,7 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule }: VenueTodayM
               <View style={styles.cellText}>
                 <Text style={styles.rowTitle}>{o.name}</Text>
                 <Text style={styles.meta}>
-                  {o.kind === "entry" ? entryStyleLabel(o.entryStyle) : "Offer"} · {o.sold} sold
+                  {o.kind === "entry" ? entryStyleLabel(o.entryStyle) : o.kind === "group_package" ? "Group package" : o.kind === "private_hire" ? "Private hire" : "Offer"} · {o.sold} sold
                   {o.held > 0 ? ` · ${o.held} paying now` : ""}
                 </Text>
               </View>

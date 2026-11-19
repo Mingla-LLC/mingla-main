@@ -37,6 +37,9 @@ export interface VenueGroupCheckInProps {
   onOpenBooking: (groupId: string) => void;
   onClose: () => void;
   onToast: (text: string) => void;
+  /** Re-read the door list (after the guest pays on their phone). */
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }
 
 export function VenueGroupCheckIn({
@@ -50,6 +53,8 @@ export function VenueGroupCheckIn({
   onOpenBooking,
   onClose,
   onToast,
+  onRefresh,
+  refreshing = false,
 }: VenueGroupCheckInProps): React.ReactElement {
   const cur = pass.currencyCode ?? currency;
   const balance = Math.max(0, pass.balanceDueMinor ?? 0);
@@ -130,6 +135,9 @@ export function VenueGroupCheckIn({
         <View style={styles.block} testID="venue-checkin-paylink">
           <VenuePayQr url={payUrl} size={200} testID="venue-checkin-paylink-qr" />
           <Text style={styles.meta}>They scan this with their phone camera and pay the {money(balance, cur)} there. Then check again.</Text>
+          {onRefresh !== undefined ? (
+            <Button label="Check again" variant="secondary" size="md" loading={refreshing} onPress={onRefresh} testID="venue-checkin-paylink-refresh" />
+          ) : null}
         </View>
       ) : null}
 

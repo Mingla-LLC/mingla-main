@@ -253,14 +253,21 @@ function BookingBody({ brandId, venueId, groupId, mode, setMode, onClose, onDone
         {overdue ? (
           <Banner tone="danger" title={due ?? "Balance overdue"} body="Send a reminder, or take the money when they arrive." testID="venue-booking-overdue" />
         ) : null}
-        <KeyValue items={facts} testID="venue-booking-facts" />
+        <View style={styles.facts} testID="venue-booking-facts">
+          {facts.map((f) => (
+            <View key={f.key} style={styles.factRow}>
+              <Text style={styles.factLabel}>{f.label}</Text>
+              <Text style={styles.factValue}>{f.value}</Text>
+            </View>
+          ))}
+        </View>
 
-        {b.extras.length > 0 || b.inclusions.length > 0 ? (
+        {b.extras.length > 0 || b.inclusions.some((i) => i.kind !== "choice") ? (
           <View style={styles.section}>
-            {b.inclusions.length > 0 ? (
+            {b.inclusions.some((i) => i.kind !== "choice") ? (
               <>
                 <Text style={styles.sectionLabel}>Included</Text>
-                <Text style={styles.meta}>{b.inclusions.map((i) => i.label).join(" · ")}</Text>
+                <Text style={styles.meta}>{b.inclusions.filter((i) => i.kind !== "choice").map((i) => i.label).join(" · ")}</Text>
               </>
             ) : null}
             {b.extras.length > 0 ? (
@@ -813,6 +820,10 @@ const styles = StyleSheet.create({
   grow: { flex: 1, minWidth: 0 },
   field: { gap: space[1] },
   pills: { flexDirection: "row", gap: space[2], flexWrap: "wrap" },
+  facts: { gap: space[2] },
+  factRow: { flexDirection: "row", gap: space[3], alignItems: "flex-start" },
+  factLabel: { ...type.small, color: color.text2, width: 110, flexShrink: 0 },
+  factValue: { ...type.small, color: color.text1, fontWeight: "600", flex: 1, minWidth: 0 },
   section: { gap: space[2], paddingTop: space[3], borderTopWidth: 1, borderTopColor: color.line },
   sectionLabel: { ...type.label, color: color.text3 },
   lineRow: { flexDirection: "row", gap: space[2], alignItems: "baseline" },

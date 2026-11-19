@@ -35,7 +35,7 @@ import {
 } from "../features/bookings/bookingModel";
 import { needsGroupStep, passIdFromCode } from "../features/checkin/venueCheckInResult";
 import { dayBalances, shiftDay } from "../features/today/todayModel";
-import { mapOffer, mapVenueBooking } from "../../../services/venueOffersService";
+import { mapOffer, mapPass, mapVenueBooking, mapVenueDay } from "../../../services/venueOffersService";
 import type { CheckInPass, VenueCapacityPool, VenueDay } from "../../../types/venueOffers";
 
 const POOL: VenueCapacityPool = {
@@ -341,5 +341,21 @@ describe("#4490 P3-2 the door and the day", () => {
     expect(dayBalances(day, Date.parse("2026-11-27T00:00:00Z"))).toEqual({ count: 1, owedMinor: 7_525_000, overdue: 1 });
     expect(shiftDay("2026-11-30", 1)).toBe("2026-12-01");
     expect(shiftDay("2026-03-01", -1)).toBe("2026-02-28");
+  });
+});
+
+describe("#4490 P3-2 gate sales are already paid", () => {
+  it("a cash or transfer gate sale never shows money to take (the server reports its total as owed)", () => {
+    const day = mapVenueDay({
+      localDate: "2026-11-19",
+      bookings: [
+        { groupId: "g", state: "confirmed", paymentCollection: "property", balanceDueMinor: 1_075_000 },
+        { groupId: "h", state: "confirmed", paymentCollection: "mingla", balanceDueMinor: 2_150_000 },
+      ],
+    });
+    expect(day.bookings.map((b) => b.balanceDueMinor)).toEqual([0, 2_150_000]);
+    expect(mapPass({ passId: "p", source: "gate", balanceDueMinor: 1_075_000 }).balanceDueMinor).toBe(0);
+    expect(mapPass({ passId: "p", source: "online", balanceDueMinor: 500 }).balanceDueMinor).toBe(500);
+    expect(mapVenueBooking({ ...BOOKING_WIRE, paymentCollection: "property" }).balanceDueMinor).toBe(0);
   });
 });

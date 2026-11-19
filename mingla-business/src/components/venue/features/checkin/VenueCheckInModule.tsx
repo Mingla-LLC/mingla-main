@@ -331,6 +331,8 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
             setScanOpen(false);
           }}
           onToast={setToast}
+          onRefresh={() => void listQuery.refetch()}
+          refreshing={listQuery.isFetching}
         />
       ) : view === null ? (
         <>

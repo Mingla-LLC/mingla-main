@@ -44,6 +44,11 @@ export interface SpecialDaySheetProps {
    * stops table bookings. Off: the copy says only "closed".
    */
   tableReservationsOn?: boolean;
+  /**
+   * #4490 P3 (`av-close`) — who is already booked that day, in words (or null
+   * when nobody is). Asked before the close confirm so it can say so.
+   */
+  bookingsOnDay?: (localDate: string) => Promise<string | null>;
 }
 
 export function SpecialDaySheet({
@@ -57,6 +62,7 @@ export function SpecialDaySheet({
   onClear,
   onClose,
   tableReservationsOn = false,
+  bookingsOnDay,
 }: SpecialDaySheetProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const baseline = useMemo<SpecialDayDraft>(
@@ -69,6 +75,8 @@ export function SpecialDaySheet({
   const [draft, setDraft] = useState<SpecialDayDraft>(baseline);
   const [showErrors, setShowErrors] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [closeNote, setCloseNote] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     if (!visible) {
@@ -91,7 +99,19 @@ export function SpecialDaySheet({
     setShowErrors(true);
     if (issue !== null) return;
     if (draft.isClosed && (day === null || !day.isClosed)) {
-      setConfirmClose(true);
+      if (bookingsOnDay === undefined) {
+        setCloseNote(null);
+        setConfirmClose(true);
+        return;
+      }
+      setChecking(true);
+      bookingsOnDay(draft.localDate)
+        .then((note) => setCloseNote(note))
+        .catch(() => setCloseNote("We couldn't check who is booked that day. Look in Today before you close it."))
+        .finally(() => {
+          setChecking(false);
+          setConfirmClose(true);
+        });
       return;
     }
     onSave(draft);
@@ -215,7 +235,7 @@ export function SpecialDaySheet({
               label={draft.isClosed ? "Close the day" : "Save"}
               variant="primary"
               size="md"
-              loading={saving}
+              loading={saving || checking}
               onPress={submit}
               testID="special-day-save"
             />
@@ -228,11 +248,11 @@ export function SpecialDaySheet({
             visible
             onClose={() => setConfirmClose(false)}
             title={`Close ${longDateLabel(draft.localDate)}?`}
-            description={
+            description={`${
               tableReservationsOn
                 ? `${closedDayCopy(true)} Table bookings already made stay booked, so contact those guests if you need to.`
                 : closedDayCopy(false)
-            }
+            }${closeNote !== null ? ` ${closeNote}` : ""}`}
             confirmLabel="Close the day"
             cancelLabel="Keep it open"
             destructive

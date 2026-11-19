@@ -495,7 +495,9 @@ export function mapVenueDay(v: unknown): VenueDay {
         offerKind: r.offerKind === undefined || r.offerKind === null ? null : mapKind(r.offerKind),
         offerName: strOrNull(r.offerName),
         startsAt: strOrNull(r.startsAt),
-        balanceDueMinor: num(r.balanceDueMinor),
+        // A gate sale paid by cash or transfer is settled at the door but carries no
+        // payment row, so the server reports its whole total as owed: it owes nothing.
+        balanceDueMinor: str(r.paymentCollection) === "property" ? 0 : num(r.balanceDueMinor),
         balanceDueAt: strOrNull(r.balanceDueAt),
       };
     }),
@@ -560,7 +562,8 @@ export function mapPass(v: unknown): CheckInPass {
     source: strOrNull(p.source),
     time: strOrNull(p.time),
     lastAdmittedAt: strOrNull(p.lastAdmittedAt),
-    balanceDueMinor: num(p.balanceDueMinor),
+    // Gate sales are paid at the door (see mapVenueDay): nothing to take again.
+    balanceDueMinor: str(p.source) === "gate" || str(p.source) === "gate_sale" ? 0 : num(p.balanceDueMinor),
     totalDueMinor: num(p.totalDueMinor),
     currencyCode: strOrNull(p.currencyCode),
     canTakePayment: p.canTakePayment === true,
@@ -781,7 +784,8 @@ export function mapVenueBooking(v: unknown): VenueBookingDetail {
     paidOnlineMinor: num(b.paidOnlineMinor, num(b.paidMinor)),
     paidAtVenueMinor: num(b.paidAtVenueMinor),
     refundedMinor: num(b.refundedMinor),
-    balanceDueMinor: num(b.balanceDueMinor),
+    // Gate sales are paid at the door (see mapVenueDay): nothing still to pay.
+    balanceDueMinor: str(b.paymentCollection) === "property" ? 0 : num(b.balanceDueMinor),
     balanceDueAt: strOrNull(b.balanceDueAt),
     depositMinor: numOrNull(b.depositMinor),
     taxMinor: num(b.taxMinor),
