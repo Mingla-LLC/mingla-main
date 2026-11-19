@@ -44,6 +44,14 @@ export type ArtifactPage = {
   collection?: CollectionKind;
   blocks: RestaurantBlock[];
   seo?: { title?: string; description?: string; noindex?: true };
+  /**
+   * #4453 website workspace — the Studio section id behind each block (same
+   * order and length as `blocks`; "" for one that cannot be selected). Set
+   * ONLY by the owner's private preview route, from the list Studio stores
+   * beside the preview artifact; it is never read from an artifact, so a
+   * public page, a share link and the plan preview never have it.
+   */
+  previewSectionIds?: readonly string[];
 };
 
 export type SiteNavItem = NavLink & { children?: NavLink[] };

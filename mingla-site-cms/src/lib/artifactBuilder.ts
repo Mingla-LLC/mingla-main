@@ -20,6 +20,7 @@ import { upgradeV1ToV2 } from "../contracts/generated/upgradeV1ToV2.ts";
 import { parseOfferingsFeed, type SiteOffering } from "../contracts/generated/offerings.ts";
 import { ATELIER, designFor, HERO_LAYOUTS_WITH_BOOKING, HERO_LAYOUTS_WITH_FACTS, variantAfterDesignSwitch, type DesignDefinition, type FooterVariant, type HeaderVariant } from "../contracts/generated/designs.ts";
 import { isBlockType } from "../contracts/generated/blocks.ts";
+import { PREVIEW_SECTION_ID_RE } from "../contracts/generated/previewSections.ts";
 import { resolveTokens } from "../contracts/generated/tokens.ts";
 import { resolveFontSlots } from "../contracts/generated/fontSlots.ts";
 import { catalogWeights } from "../contracts/generated/fontCatalog.ts";
@@ -204,6 +205,12 @@ export function storageCoverRenditionDeps(): CoverRenditionDeps {
 }
 
 /** #2829 W3 — what a build produced, and what Core must record about it. */
+/** #4453 website workspace — a Studio section's own id ("" when it has none or it is not a plain id). */
+function sectionIdOf(raw: unknown): string {
+  const value = (raw as { id?: unknown } | null | undefined)?.id;
+  return typeof value === "string" && PREVIEW_SECTION_ID_RE.test(value) ? value : "";
+}
+
 export type BuiltPublication = {
   artifact: ArtifactV2;
   serialized: string;
@@ -211,6 +218,15 @@ export type BuiltPublication = {
   artifactDigest: string;
   generation: { artifact_schema_version: 2; renderer_key: "sites-v2"; design_key: string; design_version: number };
   fontWarnings: FontWarning[];
+  /**
+   * #4453 website workspace (contract D) — for each page of the artifact, the
+   * Studio section id behind every block that survived the build, in the
+   * artifact's block order (same length as that page's `blocks`; "" for a
+   * section with no id). NEVER part of the artifact: the private preview
+   * stores it beside the artifact so the live draft can be clicked section by
+   * section; a publish ignores it, so published bytes do not change.
+   */
+  sectionIds: Array<{ path: string; ids: string[] }>;
 };
 
 /**
@@ -1245,12 +1261,21 @@ export async function buildPublicationArtifact(
   const renderedPages = (pagesResult.docs as AnyDoc[])
     .filter((page) => input.includeAriDrafts === true || !underAriDraft(pagePaths.get(String(page.id)) ?? ""))
     .map((page) => {
-      const rendered: AnyDoc[] = blocks(page.blocks || []).filter(Boolean) as AnyDoc[];
+      // #4453 website workspace — each surviving block keeps its Studio section id beside it (never in the artifact).
+      const sourceBlocks: AnyDoc[] = page.blocks || [];
+      const rendered: AnyDoc[] = [];
+      const renderedIds: string[] = [];
+      blocks(sourceBlocks).forEach((shaped, index) => {
+        if (!shaped) return;
+        rendered.push(shaped as AnyDoc);
+        renderedIds.push(sectionIdOf(sourceBlocks[index]));
+      });
       const isHome = isHomePage(page);
       return {
         page,
         path: pagePaths.get(String(page.id)) ?? "",
         rendered,
+        renderedIds,
         // #4453 milestone 7c (tester P3-2) — "Keep exploring" alone is not content: a page with nothing else never publishes enabled.
         enabled: isHome ? page.enabled === true : page.enabled === true && rendered.some((block) => block?.type !== "page_links"),
         ariDraft: page.ari_draft === true,
@@ -1364,8 +1389,13 @@ export async function buildPublicationArtifact(
     return { label: entry.label, href: entry.href, ...(description ? { description } : {}), ...(header ? { media_url: header.media_url } : {}) };
   };
   for (const entry of renderedPages) {
-    entry.rendered = entry.rendered.flatMap((block): AnyDoc[] => {
-      if (block?.type !== "page_links") return [block];
+    const keptIds: string[] = [];
+    entry.rendered = entry.rendered.flatMap((block, index): AnyDoc[] => {
+      const keep = (kept: AnyDoc): AnyDoc[] => {
+        keptIds.push(entry.renderedIds[index] ?? "");
+        return [kept];
+      };
+      if (block?.type !== "page_links") return keep(block);
       const others = menuPages.filter((candidate) => candidate.id !== String(entry.page.id));
       let picked = others.slice(0, 4);
       if (block.mode === "next") {
@@ -1373,8 +1403,9 @@ export async function buildPublicationArtifact(
         const ring = at < 0 ? others : [...menuPages.slice(at + 1), ...menuPages.slice(0, at)];
         picked = ring.slice(0, 3);
       }
-      return picked.length >= 2 ? [{ ...block, items: picked.map(pageCard) }] : [];
+      return picked.length >= 2 ? keep({ ...block, items: picked.map(pageCard) }) : [];
     });
+    entry.renderedIds = keptIds;
   }
 
   // #2829 — no address, no build: a site publishes only under the primary
@@ -1552,6 +1583,8 @@ export async function buildPublicationArtifact(
       blocks: Array.isArray(page.blocks) ? page.blocks as AnyDoc[] : [],
     })));
   }
+  // #4453 website workspace — beside the artifact, never inside it (see BuiltPublication.sectionIds).
+  const sectionIds = renderedPages.map(({ path, renderedIds }) => ({ path, ids: renderedIds }));
   const serialized = stable(artifact);
   // The public contract (assertArtifactV2) is enforced where it always was:
   // the runtime's candidate probe validates these exact bytes before Core
@@ -1568,6 +1601,7 @@ export async function buildPublicationArtifact(
       artifactDigest: digest,
       generation: { artifact_schema_version: 2, renderer_key: "sites-v2", design_key: design.key, design_version: design.version },
       fontWarnings: fonts.warnings,
+      sectionIds,
     };
   }
   await writeObject(
@@ -1586,6 +1620,7 @@ export async function buildPublicationArtifact(
     artifactDigest: digest,
     generation: { artifact_schema_version: 2, renderer_key: "sites-v2", design_key: design.key, design_version: design.version },
     fontWarnings: fonts.warnings,
+    sectionIds,
   };
 }
 
@@ -1779,5 +1814,7 @@ export async function buildRollbackPublicationArtifact(input: {
       ? { artifact_schema_version: 2 as const, renderer_key: "sites-v2" as const, design_key: design.key, design_version: design.version }
       : { artifact_schema_version: 1 as const, renderer_key: "restaurant-website-v1" as const, design_key: null, design_version: null },
     fontWarnings: [] as FontWarning[],
+    // A rollback copies an earlier publication: there is no draft section behind any block.
+    sectionIds: [],
   };
 }

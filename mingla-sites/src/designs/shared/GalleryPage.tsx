@@ -1,10 +1,11 @@
-import { Fragment, type ComponentType } from "react";
+import type { ComponentType } from "react";
 import { showsDraftHints } from "../../lib/previewPublication";
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import type { BlockType } from "../../contracts/generated/blocks.ts";
 import { isSafeHref } from "../../contracts/generated/safety.ts";
 import { compositionFooter, compositionHeader, type DesignDefinition } from "../../contracts/generated/designs.ts";
 import { pickVariant, type BlockVariantMap } from "../../components/v2/Blocks";
+import { PreviewSection } from "../../components/v2/PreviewSection";
 import { SiteRuntimeClient } from "../../components/SiteRuntimeClient";
 import { CollectionEntryView } from "../../components/v2/neutral/CollectionTemplates";
 import { headerCta, headerWordmark, homePage, hrefForPage, siteNavigation, type ArtifactPage } from "../../lib/pageRouting";
@@ -115,10 +116,13 @@ export function GalleryPage({ design, blocks, artifact, page, live, forms, entry
     const ctx: SharedContext = { artifact, page: current, live, forms, analytics, saveData, preview: showsDraftHints(artifact.publication_id) };
     // #4453 milestone 5 — the hand-off sheet and the sticky phone bar.
     booking = <PageBookingChrome ctx={ctx} />;
+    const marked = current.previewSectionIds !== undefined;
     content = current.blocks.map((raw, index) => {
       const block = raw as unknown as SharedBlock;
       const Variant = pickVariant(blocks, raw);
-      return Variant ? <Fragment key={`${block.type}-${index}`}><Variant block={block} index={index} ctx={ctx} /></Fragment> : null;
+      // #4453 website workspace — in the owner's private preview every block is findable (no visual change: PreviewSection).
+      if (marked) return <PreviewSection key={`${block.type}-${index}`} marked>{Variant ? <Variant block={block} index={index} ctx={ctx} /> : null}</PreviewSection>;
+      return Variant ? <PreviewSection key={`${block.type}-${index}`} marked={false}><Variant block={block} index={index} ctx={ctx} /></PreviewSection> : null;
     });
   }
   const path = current ? hrefForPage(current) : "/";
