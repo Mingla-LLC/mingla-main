@@ -25,6 +25,8 @@ import type {
 // issue #4508 — the pure guest model by subpath (no barrel, so partial jest
 // mocks of the barrel are unaffected).
 import { parseSubmittedGuests } from "@mingla/offering-rendering/rsvpGuestParse";
+// issue #4508 R1 — the server's refusal code, read from the Response body.
+import { readInvokeErrorCode } from "./invokeErrorCode";
 import {
   type RsvpGuestLookupResult,
   type RsvpGuestPayload,
@@ -158,29 +160,6 @@ export interface SubmitDeckRsvpResult {
   guests: RsvpSubmittedGuest[];
 }
 
-/** Pull the edge function's `{ error }` code out of a supabase invoke error. */
-const invokeErrorCode = (
-  error: { message?: string; context?: { body?: unknown } },
-  fallback: string,
-): string => {
-  let code = error.message ?? fallback;
-  const ctx = error.context;
-  if (ctx?.body !== undefined && ctx.body !== null) {
-    try {
-      const parsed =
-        typeof ctx.body === "string"
-          ? (JSON.parse(ctx.body) as { error?: string })
-          : (ctx.body as { error?: string });
-      if (typeof parsed.error === "string" && parsed.error.length > 0) {
-        code = parsed.error;
-      }
-    } catch {
-      // keep the fallback code
-    }
-  }
-  return code;
-};
-
 /**
  * issue #4508 1.2a — the live match under the RSVP guest number field
  * (public-submit-rsvp op `guest_lookup`). Signed in, so an account's name and
@@ -195,7 +174,7 @@ export const lookupRsvpGuest = async (
     body: { op: "guest_lookup", eventId, phone },
   });
   if (error !== null) {
-    throw new Error(invokeErrorCode(error as { message?: string; context?: { body?: unknown } }, "unavailable"));
+    throw new Error(await readInvokeErrorCode(error, "unavailable"));
   }
   return parseRsvpGuestLookup(data);
 };
@@ -256,9 +235,7 @@ export const submitDeckRsvp = async (
     },
   });
   if (error !== null) {
-    throw new Error(
-      invokeErrorCode(error as { message?: string; context?: { body?: unknown } }, "rsvp_write_failed"),
-    );
+    throw new Error(await readInvokeErrorCode(error, "rsvp_write_failed"));
   }
   const res = (data ?? {}) as {
     status?: "going" | "not_going" | "waitlisted" | "maybe";
@@ -404,7 +381,7 @@ export const bringRsvpGuest = async (
   if (error !== null) {
     return {
       ok: false,
-      code: invokeErrorCode(error as { message?: string; context?: { body?: unknown } }, "unavailable"),
+      code: await readInvokeErrorCode(error, "unavailable"),
     };
   }
   const row = (data ?? {}) as Record<string, unknown>;
@@ -417,24 +394,9 @@ export const bringRsvpGuest = async (
     : { ok: false, code: typeof row.error === "string" ? row.error : "unavailable" };
 };
 
-/** issue #4508 2.5 — guest_bring refusals in plain words. */
-export const rsvpGuestBringMessage = (code: string): string => {
-  if (code.includes("not_allowed")) return "This host isn't letting guests bring anyone.";
-  if (code.includes("already_brought")) return "You've already brought someone to this event.";
-  if (code.includes("rsvp_full")) return "This event is full, so there's no room for another guest.";
-  if (code.includes("not_your_pass") || code.includes("ineligible")) return "Only a guest with a claimed pass can bring someone.";
-  if (code.includes("rsvp_guest_own_number")) return "That's you. Enter a friend's number.";
-  if (code.includes("rsvp_guest_already_listed")) return "That person is already on the list.";
-  if (code.includes("rsvp_guest_released")) return "That number can't be invited to this event.";
-  if (code.includes("rsvp_guest_daily_cap")) return "You've invited a lot of numbers today. Try again tomorrow.";
-  if (code.includes("rsvp_guest_phone")) return "Enter a valid phone number.";
-  if (code.includes("rate_limited")) return "Too many tries in a row. Wait a minute, then try again.";
-  // #4508 T1: a session the server could not verify.
-  if (code.includes("rsvp_guest_sign_in_required")) return "Update or open the Mingla app to bring someone";
-  // #4508 P3: a server without bring-a-friend answers the op as an unknown payload.
-  if (code.includes("rsvp_payload_invalid")) return "Bringing someone isn't available yet. Try again soon.";
-  return "We couldn't add them just now. Try again.";
-};
+// issue #4508 2.5 — guest_bring refusals in plain words (a pure module, so
+// a Deno test can drive it with real error responses).
+export { rsvpGuestBringMessage } from "../utils/rsvpGuestBringCopy";
 
 const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
   const bytes = new Uint8Array(buffer);
