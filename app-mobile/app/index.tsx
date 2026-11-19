@@ -770,6 +770,25 @@ function AppContent() {
   const handleIncomingClaimCode = useCallback(
     (code: string): void => {
       void (async () => {
+        // #4508 1.16 — a /c/ code may be an RSVP guest link ("{Inviter} saved
+        // you a spot"). Ask claim-link first; any status but not_found opens
+        // the guest claim screen. A failed check falls through to the ticket
+        // claim path below, which reports its own failure.
+        try {
+          const { resolveRsvpGuestLink } = await import("../src/services/rsvpGuestLinkService");
+          const guest = await resolveRsvpGuestLink(code);
+          if (guest.status !== "not_found") {
+            const { rsvpGuestRoutePath } = await import("../src/utils/rsvpGuestClaim");
+            if (!userIdRef.current) {
+              const { setPendingRsvpGuest } = await import("../src/services/pendingRsvpGuest");
+              await setPendingRsvpGuest(code);
+            }
+            router.push(rsvpGuestRoutePath(code) as never);
+            return;
+          }
+        } catch (e) {
+          console.warn("[ClaimLink] RSVP guest check failed; trying the ticket claim", e);
+        }
         const generation = ++pendingClaimLoadGenerationRef.current;
         if (!userIdRef.current) setTicketClaimResolving(true);
         await savePendingClaimCode(code);
@@ -1630,6 +1649,25 @@ function AppContent() {
         console.warn('[DEEPLINK] Failed to parse deferred link:', e);
       }
     });
+  }, [isAuthenticated, isLoadingAuth, showOnboardingFlow]);
+
+  // #4508 1.16 — an RSVP guest code held through install, sign-up and
+  // onboarding reopens its claim screen once the person is in the app.
+  useEffect(() => {
+    if (!isAuthenticated || isLoadingAuth || showOnboardingFlow) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { takePendingRsvpGuest } = await import("../src/services/pendingRsvpGuest");
+        const { rsvpGuestRoutePath } = await import("../src/utils/rsvpGuestClaim");
+        const code = await takePendingRsvpGuest();
+        if (code !== null && !cancelled) router.push(rsvpGuestRoutePath(code) as never);
+      } catch (e) {
+        console.warn("[DEEPLINK] held RSVP guest link failed", e);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, isLoadingAuth, showOnboardingFlow]);
 
   // Get friends from useFriends hook for session creation
@@ -2659,6 +2697,26 @@ function AppContent() {
         case 'claim':
           handleIncomingClaimCode(dest.code);
           return;
+
+        case 'rsvp_guest': {
+          // #4508 1.16 — an RSVP guest link after install. Hold the code (it
+          // survives sign-up and onboarding) and open the claim screen, which
+          // shows the invite signed out and claims once signed in.
+          void (async () => {
+            try {
+              const { setPendingRsvpGuest } = await import("../src/services/pendingRsvpGuest");
+              const { rsvpGuestRoutePath } = await import("../src/utils/rsvpGuestClaim");
+              if (!userIdRef.current || !onboardedRef.current) {
+                await setPendingRsvpGuest(dest.code);
+                if (!userIdRef.current) return;
+              }
+              router.push(rsvpGuestRoutePath(dest.code) as never);
+            } catch (e) {
+              console.warn('[OneLink] rsvp_guest handling failed:', e);
+            }
+          })();
+          return;
+        }
 
         case 'friend_invite': {
           // Issue #4114 — a friend's text invite. Hold the token the way

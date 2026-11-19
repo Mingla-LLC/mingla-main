@@ -1,0 +1,153 @@
+// issue #4508 1.16-1.21 — the RSVP guest link in the app: deep-link parsing,
+// the OneLink after install, and every claim outcome mapped to a designed
+// screen with a way forward. Deno-runnable (all three modules are pure).
+//
+// FAILS-ON-REVERT: drop the rsvp_guest OneLink case -> L-2 fails; drop the
+// phone_unproved branch -> C-2 fails; let a resolved-but-claimed link read as
+// claimable -> R-2 fails.
+
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+
+import { parseDeepLink } from "../deepLinkService.ts";
+import { resolveOneLinkDestination } from "../oneLinkResolver.ts";
+import {
+  claimOutcomeScreen,
+  friendshipSentence,
+  inAppEventPath,
+  inviteMode,
+  normalizeRsvpGuestCode,
+  parseRsvpGuestClaim,
+  parseRsvpGuestResolve,
+  releaseOutcomeMessage,
+  resolvedInfoScreen,
+  rsvpGuestRoutePath,
+} from "../../utils/rsvpGuestClaim.ts";
+
+const OPEN = {
+  status: "open",
+  guestId: "g-1",
+  rsvpId: "r-1",
+  inviterName: "Ada O.",
+  inviterFirstName: "Ada",
+  inviterHasAccount: true,
+  phoneLast4: "4567",
+  claimedByViewer: false,
+  viewerCanClaim: false,
+  viewerIsInviter: false,
+  event: {
+    id: "e-1",
+    title: "Rooftop Sessions",
+    startsAt: "2028-11-22T20:00:00Z",
+    endsAt: null,
+    timezone: "Africa/Lagos",
+    venueLine: "Lagos",
+    brandName: "Sunset Club",
+    eventUrl: "https://host.usemingla.com/e/sunset/rooftop",
+  },
+};
+
+Deno.test("L-1 usemingla.com/c/<CODE> and the app scheme reach the claim handler", () => {
+  assertEquals(parseDeepLink("https://usemingla.com/c/ab12cd34ef"), { kind: "claim", code: "AB12CD34EF" });
+  assertEquals(parseDeepLink("com.mingla.app.v2://c/AB12CD34EF"), { kind: "claim", code: "AB12CD34EF" });
+  assertEquals(parseDeepLink("com.mingla.app.v2://rsvp-guest/ab12cd34ef"), {
+    kind: "route",
+    path: "/rsvp-guest/AB12CD34EF",
+  });
+  assertEquals(parseDeepLink("com.mingla.app.v2://rsvp-guest/AB12CD34EI"), null, "I is not in the claim alphabet");
+});
+
+Deno.test("L-2 deep_link_value=rsvp_guest after install carries the code, never a half-formed one", () => {
+  assertEquals(
+    resolveOneLinkDestination({ deep_link_value: "rsvp_guest", deep_link_sub1: "ab12cd34ef" }),
+    { kind: "rsvp_guest", code: "AB12CD34EF" },
+  );
+  assertEquals(resolveOneLinkDestination({ deep_link_value: "rsvp_guest", deep_link_sub1: "short" }), null);
+  assertEquals(resolveOneLinkDestination({ deep_link_value: "rsvp_guest", deep_link_sub1: "AB12CD34EU" }), null);
+});
+
+Deno.test("L-3 the friend-is-going push mingla://event/<id> opens that event", () => {
+  const id = "11111111-2222-4333-8444-555555555555";
+  assertEquals(parseDeepLink(`mingla://event/${id}`), { kind: "route", path: `/event/${id}` });
+  assertEquals(parseDeepLink("mingla://event/not-an-id"), { kind: "page", page: "home" });
+});
+
+Deno.test("L-4 codes and routes", () => {
+  assertEquals(normalizeRsvpGuestCode(" ab12cd34ef "), "AB12CD34EF");
+  assertEquals(normalizeRsvpGuestCode("AB12CD34E"), null);
+  assertEquals(normalizeRsvpGuestCode(42), null);
+  assertEquals(rsvpGuestRoutePath("AB12CD34EF"), "/rsvp-guest/AB12CD34EF");
+  assertEquals(inAppEventPath("https://host.usemingla.com/e/sunset/rooftop"), "/e/sunset/rooftop");
+  assertEquals(inAppEventPath("https://evil.example/e/a/b"), null);
+});
+
+Deno.test("R-1 open link: one tap when the account proved the number, confirm the number otherwise, sign in when signed out", () => {
+  const resolved = parseRsvpGuestResolve(OPEN);
+  assertEquals(resolvedInfoScreen(resolved), null);
+  assertEquals(inviteMode(resolved, false), "sign_in");
+  assertEquals(inviteMode(resolved, true), "confirm_number");
+  assertEquals(inviteMode({ ...resolved, viewerCanClaim: true }, true), "one_tap");
+  assertEquals(
+    friendshipSentence("Ada"),
+    "Getting your pass also makes you and Ada close friends on Mingla. You can change that anytime in Connections.",
+  );
+});
+
+Deno.test("R-2 every non-open link has a designed state with a way forward", () => {
+  const claimedOther = resolvedInfoScreen(parseRsvpGuestResolve({ ...OPEN, status: "claimed" }));
+  assert(claimedOther !== null && claimedOther.kind === "info");
+  assertEquals(resolvedInfoScreen(parseRsvpGuestResolve({ ...OPEN, status: "claimed", claimedByViewer: true })), {
+    kind: "claimed",
+    friendshipLine: null,
+  });
+  for (const status of ["released", "ended", "not_eligible", "not_found", "garbage"]) {
+    const screen = resolvedInfoScreen(parseRsvpGuestResolve({ ...OPEN, status }));
+    assert(screen !== null && screen.kind === "info", status);
+    assert(screen.kind === "info" && screen.title.length > 0 && screen.body.length > 0, status);
+  }
+  const inviter = resolvedInfoScreen(parseRsvpGuestResolve({ ...OPEN, viewerIsInviter: true }));
+  assert(inviter !== null && inviter.kind === "info");
+});
+
+Deno.test("C-1 claimed: the pass plus the friendship line", () => {
+  const screen = claimOutcomeScreen(
+    parseRsvpGuestClaim({ outcome: "claimed", guestId: "g-1", rsvpId: "r-1", friendship: "connected", closeFriend: true }),
+    "Ada",
+  );
+  assertEquals(screen, { kind: "claimed", friendshipLine: "You and Ada are now close friends on Mingla." });
+  assertEquals(claimOutcomeScreen(parseRsvpGuestClaim({ outcome: "claimed", friendship: "blocked" }), "Ada"), {
+    kind: "claimed",
+    friendshipLine: null,
+  });
+  assertEquals(claimOutcomeScreen(parseRsvpGuestClaim({ outcome: "already_claimed" }), "Ada").kind, "claimed");
+});
+
+Deno.test("C-2 phone_unproved asks the person to confirm the invited number with a code", () => {
+  const result = parseRsvpGuestClaim({ ok: false, outcome: "phone_unproved", phoneLast4: "4567" });
+  assertEquals(result.phoneLast4, "4567");
+  assertEquals(claimOutcomeScreen(result, "Ada"), { kind: "verify_number" });
+});
+
+Deno.test("C-3 every refusal is a designed screen; transport failures offer a retry", () => {
+  for (const outcome of ["claimed_by_other", "own_party", "already_on_list", "ineligible", "released", "not_found"]) {
+    const screen = claimOutcomeScreen(parseRsvpGuestClaim({ outcome }), "Ada");
+    assertEquals(screen.kind, "info", outcome);
+  }
+  assertEquals(claimOutcomeScreen(parseRsvpGuestClaim({ ok: false, error: "unauthorized" }, 401), "Ada"), {
+    kind: "invite",
+    mode: "sign_in",
+  });
+  for (const [body, status] of [[{ error: "conflict" }, 409], [{ error: "rate_limited" }, 429], [{}, null]] as const) {
+    const screen = claimOutcomeScreen(parseRsvpGuestClaim(body, status), "Ada");
+    assert(screen.kind === "info" && screen.primary === "retry");
+  }
+});
+
+Deno.test("C-4 This isn't me: released, already claimed, gone", () => {
+  assertEquals(releaseOutcomeMessage("released").title, "Thanks for letting us know");
+  assertEquals(releaseOutcomeMessage("already_released").title, "Thanks for letting us know");
+  assertEquals(releaseOutcomeMessage("already_claimed").title, "This pass is already claimed");
+  assertEquals(releaseOutcomeMessage("not_found").title, "This link doesn't work any more");
+});

@@ -270,10 +270,29 @@ export function parseDeepLink(url: string): Destination | null {
         return { kind: 'route', path: supportRoutePath(pathSegments[1] ?? null) };
 
       case 'c': {
+        // A /c/ code may be a ticket / pass claim or (#4508) an RSVP guest
+        // link; the shell's claim handler asks claim-link which one it is.
         const code = pathSegments[1]?.trim().toUpperCase();
         return code && /^[0-9A-Z]{10}$/.test(code)
           ? { kind: 'claim', code }
           : null;
+      }
+
+      // #4508 — `com.mingla.app.v2://rsvp-guest/<CODE>`: the guest claim screen.
+      case 'rsvp-guest': {
+        const code = pathSegments[1]?.trim().toUpperCase();
+        return code && /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{10}$/.test(code)
+          ? { kind: 'route', path: `/rsvp-guest/${code}` }
+          : null;
+      }
+
+      // #4508 2.3 — `mingla://event/<eventId>` (the friend-is-going push):
+      // open that event's page, where RSVP is one tap away.
+      case 'event': {
+        const eventId = pathSegments[1];
+        return eventId && PROGRAM_UUID.test(eventId)
+          ? { kind: 'route', path: `/event/${eventId.toLowerCase()}` }
+          : { kind: 'page', page: 'home' };
       }
 
       case 'calendar': {
