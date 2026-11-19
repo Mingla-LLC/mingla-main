@@ -4596,6 +4596,10 @@ CREATE TRIGGER issue_4508_rsvp_attach_one_place
 
 -- The sweep (claim_attendance_by_verified_identity, 20280805004459 lines
 -- 993-1376) and the claim link (claim_attendance_internal_v2, lines 787-991).
+-- (The text checks below name each function without its argument list, so
+-- the #4063 claims gate keeps reading their source definitions in
+-- 20280805004459; the #4508 suite proves the live bodies differ from those
+-- only by the lines patched here and keep the #4063 rules.)
 DO $r5_sweep$
 DECLARE
   v_def text;
@@ -4629,7 +4633,7 @@ BEGIN
     v_changed := true;
   END LOOP;
   IF v_changed THEN
-    IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.claim_attendance_by_verified_identity(%' THEN
+    IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.claim_attendance_by_verified_identity%' THEN
       RAISE EXCEPTION 'issue_4508_r5_sweep_patch_failed';
     END IF;
     EXECUTE format('CREATE OR REPLACE FUNCTION public.claim_attendance_by_verified_identity%s',
@@ -4648,7 +4652,7 @@ BEGIN
     v_changed := true;
   END LOOP;
   IF v_changed THEN
-    IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.claim_attendance_internal_v2(%' THEN
+    IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.claim_attendance_internal_v2%' THEN
       RAISE EXCEPTION 'issue_4508_r5_link_patch_failed';
     END IF;
     EXECUTE format('CREATE OR REPLACE FUNCTION public.claim_attendance_internal_v2%s',

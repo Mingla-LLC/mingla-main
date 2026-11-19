@@ -2459,6 +2459,18 @@ BEGIN
     AND NOT has_function_privilege('authenticated', 'public.issue_4508_release_for_own_place(uuid)', 'EXECUTE')
     AND NOT has_function_privilege('anon', 'public.issue_4508_sweep_guest_yields(uuid, uuid)', 'EXECUTE'),
     'R5-2: the queue and its functions are service-role only');
+  -- The patched #4459 bodies keep the #4063 claims rules (the #4063 gate reads
+  -- their source in 20280805004459): no claim-link or visibility read in the
+  -- sweep, and each patch is there exactly once.
+  v_def_new := pg_get_functiondef('public.claim_attendance_by_verified_identity(uuid)'::regprocedure);
+  PERFORM pg_temp.ok(v_def_new !~* 'claim_links' AND v_def_new !~* '\mvisibility\M'
+    AND (length(v_def_new) - length(replace(v_def_new, 'issue_4508_sweep_guest_yields', ''))) / length('issue_4508_sweep_guest_yields') = 1
+    AND (length(v_def_new) - length(replace(v_def_new, 'g4508.claimed_at IS NOT NULL', ''))) / length('g4508.claimed_at IS NOT NULL') = 1,
+    'R5-2: the patched sweep keeps the #4063 rules and carries each patch once');
+  v_def_new := pg_get_functiondef('public.claim_attendance_internal_v2(uuid,text,uuid,uuid,bytea,bytea)'::regprocedure);
+  PERFORM pg_temp.ok(v_def_new !~* '\mvisibility\M'
+    AND (length(v_def_new) - length(replace(v_def_new, 'g4508.claimed_at IS NOT NULL', ''))) / length('g4508.claimed_at IS NOT NULL') = 1,
+    'R5-2: the patched claim link keeps the #4063 rules and carries its patch once');
 
   -- ======================= R5-3 old Explorer apps =========================
   -- Lee proved her number and her email (a verified email identity). Max
