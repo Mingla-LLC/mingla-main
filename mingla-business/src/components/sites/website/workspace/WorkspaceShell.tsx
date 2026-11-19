@@ -103,6 +103,19 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
       : null;
   const ws = useWorkspace({ brandId, siteId, controller, target, targetKey: workspaceTargetKey(target), readOnlyReason, notify });
 
+  // A "didn't save" line belongs to that attempt: once the next change is on its way (or the
+  // owner tries the service again) it is stale, and a later success must not sit beside it.
+  const saveState = ws.saveState;
+  useEffect(() => {
+    if (saveState !== "waiting" && saveState !== "saving") return;
+    setToast((current) => (current && (current.kind === "error" || current.kind === "warn") ? null : current));
+  }, [saveState]);
+  const wsRetry = ws.retry;
+  const retry = useCallback(() => {
+    setToast((current) => (current && (current.kind === "error" || current.kind === "warn") ? null : current));
+    wsRetry();
+  }, [wsRetry]);
+
   /* ── The lock: hold it while the design is being worked on ─────────── */
   const heartbeat = useBrandSitePlanHeartbeat(brandId);
   const beat = useRef(heartbeat.mutate);
@@ -333,13 +346,13 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
       {offlineDevice ? (
         <View style={styles.banner}>
           <Banner tone="warn" icon="alert" title="You’re offline" body="You can look around. Changes are saved once you’re back online." testID="workspace-offline">
-            <WButton label="Try again" size="sm" onPress={ws.retry} testID="workspace-offline-retry" />
+            <WButton label="Try again" size="sm" onPress={retry} testID="workspace-offline-retry" />
           </Banner>
         </View>
       ) : ws.workspaceDown ? (
         <View style={styles.banner}>
           <Banner tone="err" icon="alert" title="Mingla’s website service isn’t answering" body="Your live website isn’t affected. Editing is paused until it’s back." alert testID="workspace-down">
-            <WButton label="Try again" size="sm" onPress={ws.retry} testID="workspace-down-retry" />
+            <WButton label="Try again" size="sm" onPress={retry} testID="workspace-down-retry" />
           </Banner>
         </View>
       ) : null}
@@ -372,7 +385,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
         <View style={styles.stageNote} testID="workspace-preview-error">
           <Text style={styles.stageTitle}>Your draft preview couldn’t be built</Text>
           <Text style={styles.stageBody}>Your live website isn’t affected. Your changes are still saved.</Text>
-          <WButton label="Try again" variant="primary" size="sm" onPress={ws.retry} testID="workspace-preview-retry" />
+          <WButton label="Try again" variant="primary" size="sm" onPress={retry} testID="workspace-preview-retry" />
         </View>
       ) : ws.page && !ws.pagePreviewable ? (
         <View style={styles.stageNote} testID="workspace-preview-off">
@@ -401,7 +414,7 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
           tokenDeclarations={base.tokenDeclarations}
           selectedId={ws.cardFor}
           onSelect={(sectionId) => ws.select(sectionId, { card: true })}
-          onRetry={ws.retry}
+          onRetry={retry}
           renderCard={!phone && card ? () => card : null}
         />
       )}

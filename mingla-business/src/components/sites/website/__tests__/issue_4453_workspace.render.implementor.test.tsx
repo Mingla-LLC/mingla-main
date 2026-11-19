@@ -545,6 +545,20 @@ describe("Edit mode", () => {
     expect(words(root)).toContain("That is too long for this spot. Shorten it a little.");
   });
 
+  it("a 'didn't save' line goes away once the next change is on its way", async () => {
+    const { root } = await open({ segments: ["pages"] });
+    await press(root, "section-toggle-s1");
+    state.fail.edit_section = { status: 422, code: "VALUE_TOO_LONG" };
+    await type(root, "field-s1-heading", "x".repeat(60));
+    await tick(800);
+    expect(words(root)).toContain("That is too long for this spot. Shorten it a little.");
+    state.fail = {};
+    await type(root, "field-s1-heading", "Shorter");
+    await tick(800);
+    expect(words(root)).not.toContain("That is too long for this spot.");
+    expect(words(root)).toContain("Website · saved");
+  });
+
   it("adds a section from the catalog, photo first when it needs one", async () => {
     const { root } = await open({ segments: ["pages"] });
     await press(root, "edit-add-section");
