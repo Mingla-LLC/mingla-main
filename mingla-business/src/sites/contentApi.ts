@@ -17,6 +17,7 @@ import {
   createBrandSiteOperationId,
   failureFromInvokeError,
   invokeBrandSiteControl,
+  SITES_REQUEST_TIMEOUT_MS,
 } from "../services/brandSitesService";
 import { brandSiteKeys } from "./brandSiteKeys";
 import { refusalDetailFrom, refusalSentence } from "./refusalCopy";
@@ -153,7 +154,7 @@ const CONTENT_MESSAGES: Readonly<Record<string, string>> = {
 async function contentCall<T>(siteId: string, action: string, args: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke<{ ok: boolean; data?: T; error?: unknown }>(
     "brand-site-control",
-    { body: { route: `/v1/sites/${siteId}/content`, method: "POST", action, operation_id: createBrandSiteOperationId(), args } },
+    { body: { route: `/v1/sites/${siteId}/content`, method: "POST", action, operation_id: createBrandSiteOperationId(), args }, timeout: SITES_REQUEST_TIMEOUT_MS },
   );
   if (error !== null) {
     const context = (error as { context?: { status?: unknown; json?: () => Promise<unknown>; clone?: () => { json: () => Promise<unknown> } } }).context;

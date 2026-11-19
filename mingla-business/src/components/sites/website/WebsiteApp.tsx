@@ -101,6 +101,21 @@ export default function WebsiteApp({ brandId, segments, search }: {
   if (canCheckAvailability && websiteAvailable === false) {
     return <Redirect href={`/brand/${safeBrandId}` as never} />;
   }
+  // The check itself failed (the service is down or not answering): say so, with a way forward.
+  if (controller.availabilityDown) {
+    return (
+      <SafeScreen style={{ backgroundColor: color.canvas }}>
+        <View style={styles.loadingShell}>
+          <Card style={styles.center} testID="website-unreachable">
+            <WebsiteIcon name="alert" size={28} color={ui.t2} />
+            <CardTitle style={styles.centerTitle}>Mingla’s website service isn’t answering</CardTitle>
+            <Body style={styles.centerBody}>Your live website isn’t affected. Check your connection and try again in a moment.</Body>
+            <WButton label="Try again" variant="primary" onPress={controller.retryAvailability} loading={controller.availability.isFetching} testID="website-unreachable-retry" />
+          </Card>
+        </View>
+      </SafeScreen>
+    );
+  }
   if (websiteAvailable !== true) {
     return (
       <SafeScreen style={{ backgroundColor: color.canvas }}>

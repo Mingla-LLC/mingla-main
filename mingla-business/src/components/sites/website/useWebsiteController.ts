@@ -86,6 +86,12 @@ export function noticeFor(error: unknown): WorkspaceNotice {
  * controls show (A5); provision and publication operations are durable and
  * tracked to their receipts (#3583, W9f); a refusal is always a notice.
  */
+const REFUSAL_CODES = new Set(["FORBIDDEN", "NOT_FOUND", "NOT_ENTITLED", "INVALID_STATE", "SESSION_EXPIRED"]);
+/** Core answered "no" (as opposed to not answering, or failing). */
+export function websiteRefusal(error: unknown): boolean {
+  return error instanceof BrandSitesError && REFUSAL_CODES.has(error.code);
+}
+
 export function useWebsiteController(safeBrandId: string, studioResult: StudioReturnResult | null, onPublishPanel: boolean) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -97,8 +103,12 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
   // #2829 (A5) — one owner for "what may this member do": Core's answer.
   const canCheckAvailability = globallyEnabled && safeBrandId.length > 0;
   const availability = useBrandSiteAvailability(safeBrandId, canCheckAvailability);
+  // Core REFUSED (no access, no website for this brand): that is an answer. Anything else that
+  // goes wrong (the service is down, slow or unreachable) is not: the member is told and can
+  // try again, never sent back to the brand's page as if they had no Website.
+  const availabilityDown = availability.isError && !websiteRefusal(availability.error);
   const websiteAvailable: boolean | null = availability.isError
-    ? false
+    ? (availabilityDown ? null : false)
     : availability.data === undefined
       ? null
       : availability.data.available;
@@ -517,6 +527,8 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
     globallyEnabled,
     canCheckAvailability,
     availability,
+    availabilityDown,
+    retryAvailability: () => { void availability.refetch(); },
     websiteAvailable,
     capabilities,
     brand,
