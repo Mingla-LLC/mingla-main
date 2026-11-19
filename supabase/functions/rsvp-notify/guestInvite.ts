@@ -29,14 +29,30 @@ export interface GuestMessageContext {
   eventStartAt?: string | null;
   eventTimezone?: string | null;
   inviterLabel?: string | null;
+  /** Never text this guest: no number, or the number's daily limit. */
+  smsHold?: string | null;
 }
 
 const INVITER_LIMIT = 24;
 
-/** "Ada O." made safe for one GSM-7 segment; "A friend" when unknown. */
+/**
+ * "Ada O." made safe for one GSM-7 segment; "A friend" when unknown. P2-2:
+ * whatever reaches a Mingla-branded text is letters, spaces, hyphens and
+ * apostrophes, plus one trailing last initial ("O."), at most 24 characters,
+ * so no link, number or markup can ride in a name (the database applies the
+ * same rule; this is the second line).
+ */
 export function inviterForText(label: string | null | undefined): string {
-  const clean = toGsm7Text(label ?? "");
-  const bounded = Array.from(clean).slice(0, INVITER_LIMIT).join("").trim();
+  const raw = toGsm7Text(label ?? "").trim();
+  const initial = /\s([A-Za-z])\.$/.exec(raw);
+  const head = (initial ? raw.slice(0, initial.index) : raw)
+    .replace(/[^\p{L} '\-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (head.length === 0) return "A friend";
+  const withInitial = initial ? `${head} ${initial[1].toUpperCase()}.` : head;
+  const bounded = Array.from(withInitial).slice(0, INVITER_LIMIT).join("")
+    .trim();
   return bounded.length > 0 ? bounded : "A friend";
 }
 
@@ -60,6 +76,7 @@ export function parseGuestMessageContext(
     eventStartAt: str(v.eventStartAt),
     eventTimezone: str(v.eventTimezone),
     inviterLabel: str(v.inviterLabel),
+    smsHold: str(v.smsHold),
   };
 }
 
@@ -187,6 +204,15 @@ export async function resolveGuestMessage(
       kind: "finish",
       status: "failed_terminal",
       code: "rsvp_guest_released",
+    };
+  }
+  // #4508: a guest with no number, or whose number already had its guest
+  // invites for the day, is never texted (in-app and push still go).
+  if (input.channel === "sms" && ctx.smsHold) {
+    return {
+      kind: "finish",
+      status: "failed_terminal",
+      code: "rsvp_guest_sms_held",
     };
   }
   if (isReminder && (ctx.claimed || !ctx.eligible)) {

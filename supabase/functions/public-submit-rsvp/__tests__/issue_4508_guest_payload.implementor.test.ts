@@ -4,7 +4,12 @@
 //
 // fails-on-revert: restoring the name+email requirement reds the number-only
 // case; dropping the signed-out strip reds the lookup case.
-import { digitsOf, mapGuestRpcError, parseGuests } from "../guestPayload.ts";
+import {
+  digitsOf,
+  mapGuestRpcError,
+  parseGuests,
+  rsvpClientKey,
+} from "../guestPayload.ts";
 import { type GuestOpsDeps, handleGuestOp } from "../guestOps.ts";
 
 const assert: (condition: unknown, message: string) => asserts condition = (
@@ -51,7 +56,6 @@ Deno.test("the old {name,email,phone} guest is still accepted", () => {
 
 Deno.test("refusals before the write", () => {
   const cases: Array<[unknown, unknown, string]> = [
-    [[{ phone: "+15550104501" }], 1, "rsvp_guest_own_number"],
     [
       [{ phone: "+15550104555" }, { phone: "+15550104555" }],
       2,
@@ -147,7 +151,7 @@ function opsDeps(userId: string | null, rpcResults: Record<string, unknown>) {
   return { deps, calls, drained };
 }
 
-Deno.test("guest_lookup: signed out gets yes/no only, rate-limited by IP", async () => {
+Deno.test("guest_lookup: signed out learns only valid, rate-limited by IP", async () => {
   const { deps, calls } = opsDeps(null, {
     rsvp_guest_lookup: {
       valid: true,
@@ -161,8 +165,8 @@ Deno.test("guest_lookup: signed out gets yes/no only, rate-limited by IP", async
     phone: "+15550104508",
   }, deps);
   assert(
-    r.status === 200 && r.body.onMingla === true && !("user" in r.body),
-    JSON.stringify(r),
+    r.status === 200 && JSON.stringify(r.body) === '{"valid":true}',
+    `P1-1: a signed-out caller learns only valid: ${JSON.stringify(r)}`,
   );
   assert(
     calls[0].args.p_scope_key === "rsvp_guest_lookup:ip:203.0.113.9",
@@ -245,5 +249,97 @@ Deno.test("guest_bring: signed in only; added drains and returns the invite link
   assert(
     own.status === 400 && own.body.error === "rsvp_guest_own_number",
     JSON.stringify(own),
+  );
+});
+
+// ---- Wave A rework -----------------------------------------------------------
+const FRIEND = "45080000-4444-4444-8444-444444444444";
+
+Deno.test("C1: a signed-in inviter may send a friend as {userId}", () => {
+  const r = parseGuests({
+    rawGuests: [{ userId: FRIEND }, { phone: "+15550104508" }],
+    rawPlusCount: 2,
+    rsvpStatus: "going",
+    primaryPhone: "+15550104501",
+    signedIn: true,
+  });
+  assert(
+    r.ok && JSON.stringify(r.guests[0]) === JSON.stringify({ userId: FRIEND }),
+    `the friend is passed by account only: ${JSON.stringify(r)}`,
+  );
+});
+
+Deno.test("C1: {userId} is refused signed out, mixed with a number, or twice", () => {
+  const cases: Array<[unknown, boolean, string]> = [
+    [[{ userId: FRIEND }], false, "rsvp_guest_keys_invalid"],
+    [
+      [{ userId: FRIEND, phone: "+15550104508" }],
+      true,
+      "rsvp_guest_keys_invalid",
+    ],
+    [[{ userId: "not-a-uuid" }], true, "rsvp_guest_keys_invalid"],
+    [
+      [{ userId: FRIEND }, { userId: FRIEND.toUpperCase() }],
+      true,
+      "rsvp_guest_duplicate",
+    ],
+  ];
+  for (const [rawGuests, signedIn, error] of cases) {
+    const r = parseGuests({
+      rawGuests,
+      rawPlusCount: (rawGuests as unknown[]).length,
+      rsvpStatus: "going",
+      primaryPhone: "+15550104501",
+      signedIn,
+    });
+    assert(!r.ok && r.error === error, `${error}: ${JSON.stringify(r)}`);
+  }
+  assert(
+    mapGuestRpcError("22023", "rsvp_guest_not_friend")?.status === 400,
+    "not a friend maps to a 400",
+  );
+});
+
+Deno.test("P3-6: the inviter's own number is left to the database (old apps re-send it)", () => {
+  const r = parseGuests({
+    rawGuests: [{ name: "Live Case", email: "a@b.co", phone: "+15550104501" }],
+    rawPlusCount: 1,
+    rsvpStatus: "going",
+    primaryPhone: "+15550104501",
+    signedIn: true,
+  });
+  assert(
+    r.ok,
+    `an unchanged party guest is not refused at the edge: ${JSON.stringify(r)}`,
+  );
+});
+
+Deno.test("P1-2: a signed-out inviter is keyed by a salted address hash", async () => {
+  const a = await rsvpClientKey("203.0.113.9");
+  const again = await rsvpClientKey("203.0.113.9");
+  const b = await rsvpClientKey("203.0.113.10");
+  assert(/^[0-9a-f]{64}$/.test(a), "the header the database accepts");
+  assert(
+    a === again && a !== b,
+    "stable per address, different across addresses",
+  );
+  assert(!a.includes("203"), "the raw address never leaves");
+});
+
+Deno.test("P1-2 / C3 wiring: the submit sends the client key and passes willText through", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(
+    /\.setHeader\("x-mingla-rsvp-client", inviterClient\)/.test(src) &&
+      /submit_event_rsvp_with_delivery/.test(src),
+    "the submit RPC carries the signed-out inviter's key header",
+  );
+  assert(
+    /willText: guest\.willText !== false/.test(src) &&
+      /notTextedReason: guest\.willText === false/.test(src),
+    "the response says which guests will not be texted",
+  );
+  assert(
+    /signedIn: userId !== null/.test(src),
+    "friends by account only when signed in",
   );
 });

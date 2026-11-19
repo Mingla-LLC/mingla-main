@@ -206,3 +206,91 @@ Deno.test("copy helpers and context parsing", () => {
     going.body,
   );
 });
+
+// ---- Wave A rework -----------------------------------------------------------
+Deno.test("P2-2: only letters reach a text as the inviter's name", () => {
+  const exact: Array<[string, string]> = [
+    ["Ada O.", "Ada O."],
+    ["!!! 123 ???", "A friend"],
+    ["Zoë D'Arcy-Lee K.", "Zoe D'Arcy-Lee K."], // GSM-7 folds the accent
+    ["Call 0800 555 now", "Call now"],
+  ];
+  for (const [input, want] of exact) {
+    const got = inviterForText(input);
+    assert(got === want, `${input} -> ${got}`);
+  }
+  for (
+    const input of [
+      "Ann <a href=x.co>visit evil.co</a>",
+      "https://evil.example/claim?x=1",
+      "Win \u00a3500 at 07700 900123",
+    ]
+  ) {
+    const got = inviterForText(input);
+    assert(!/[0-9:/<>@.?=]/.test(got), `no digits, links or markup: ${got}`);
+    assert(Array.from(got).length <= 24, `at most 24: ${got}`);
+  }
+});
+
+Deno.test("a held guest (no number, or the number's daily limit) is never texted", async () => {
+  for (const hold of ["no_phone", "number_limit"]) {
+    const sms = await resolveGuestMessage(deps(live({ smsHold: hold })).deps, {
+      template: "rsvp_pass",
+      channel: "sms",
+      payload: { role: "guest", guestId: GUEST_ID },
+    });
+    assert(
+      sms.kind === "finish" && sms.status === "failed_terminal" &&
+        sms.code === "rsvp_guest_sms_held",
+      `${hold}: ${JSON.stringify(sms)}`,
+    );
+    const push = await resolveGuestMessage(deps(live({ smsHold: hold })).deps, {
+      template: "rsvp_pass",
+      channel: "push",
+      payload: { role: "guest", guestId: GUEST_ID },
+    });
+    assert(
+      push.kind === "message",
+      `${hold}: push still goes: ${JSON.stringify(push)}`,
+    );
+  }
+  assert(
+    parseGuestMessageContext({ exists: true, smsHold: "number_limit" })
+      ?.smsHold ===
+      "number_limit",
+    "the hold is read from the database context",
+  );
+});
+
+Deno.test("S3: the reminder email to a guest with an email reads as a reminder with the claim link", async () => {
+  const r = await resolveGuestMessage(deps(live()).deps, {
+    template: "rsvp_guest_reminder",
+    channel: "email",
+    payload: { role: "guest", guestId: GUEST_ID },
+  });
+  assert(r.kind === "message", JSON.stringify(r));
+  assert(
+    r.kind === "message" &&
+      r.copy.title === "Your pass for Rooftop Night is waiting" &&
+      /saved you a spot/.test(r.copy.body) &&
+      r.link === `https://usemingla.com/c/${CODE}`,
+    `email copy and button: ${JSON.stringify(r)}`,
+  );
+  // The pass-message renderer (which would replace this copy) only runs for
+  // pass templates, never for the reminder.
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(
+    /const isPassTemplate = claim\.template_key === "rsvp_pass" \|\|\n\s+claim\.template_key === "rsvp_waitlist_promoted" \|\|\n\s+claim\.template_key === "rsvp_approved";/
+      .test(src) && /const canRenderV2 = isPassTemplate &&/.test(src),
+    "the reminder never takes the pass-message email",
+  );
+});
+
+Deno.test("P3-5: rsvp-notify reports friend-going enqueue failures", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(
+    /"issue_4508_take_friend_going_failures"/.test(src) &&
+      /friend-going enqueue failed/.test(src),
+    "each recorded failure is reported once",
+  );
+});

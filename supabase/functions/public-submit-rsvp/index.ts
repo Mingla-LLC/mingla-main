@@ -40,7 +40,11 @@ import {
   parseRsvpAdContext,
   scheduleRsvpAdConversion,
 } from "./rsvpAdConversion.ts";
-import { mapGuestRpcError, parseGuests } from "./guestPayload.ts";
+import {
+  mapGuestRpcError,
+  parseGuests,
+  rsvpClientKey,
+} from "./guestPayload.ts";
 import { handleGuestOp, isGuestOp } from "./guestOps.ts";
 
 const corsHeaders = {
@@ -312,6 +316,7 @@ serve(async (req: Request): Promise<Response> => {
     rawPlusCount: body.plusCount,
     rsvpStatus,
     primaryPhone: normalizedPhone,
+    signedIn: userId !== null,
   });
   if (!parsedGuests.ok) return json(400, { error: parsedGuests.error });
   const plusCount = parsedGuests.plusCount;
@@ -366,6 +371,10 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  // Issue #4508 P1-2: a signed-out inviter's guest-number caps are keyed by
+  // a salted hash of their network address (never the number they typed);
+  // the database reads it from this request header.
+  const inviterClient = await rsvpClientKey(ip);
   const { data, error } = await admin.rpc("submit_event_rsvp_with_delivery", {
     p_event_id: eventId,
     p_user_id: userId,
@@ -377,7 +386,7 @@ serve(async (req: Request): Promise<Response> => {
     p_guests: normalizedGuests,
     p_qr_token_pepper: qrPepper,
     p_guest_phone_country_iso: guestPhoneCountryIso,
-  });
+  }).setHeader("x-mingla-rsvp-client", inviterClient);
 
   if (error !== null) {
     switch (error.code) {
@@ -460,10 +469,13 @@ serve(async (req: Request): Promise<Response> => {
     confirmationToken?: string | null;
     guests?: Array<{
       guestId?: string;
-      phoneLast4?: string;
+      phoneLast4?: string | null;
       onMingla?: boolean;
       displayName?: string;
       claimed?: boolean;
+      addedFromFriend?: boolean;
+      willText?: boolean;
+      notTextedReason?: string | null;
     }>;
   };
 
@@ -549,6 +561,16 @@ serve(async (req: Request): Promise<Response> => {
       claimed: guest.claimed === true,
       inviteUrl: link?.url ?? null,
       inviteCode: link?.code ?? null,
+      // C1: a friend picked from the list; the server never returns their
+      // number or its last four.
+      addedFromFriend: guest.addedFromFriend === true,
+      // C3: sending is asynchronous, so no send status is claimed. A guest
+      // who will never be texted says so (no number, opted out, or the number
+      // had its guest invites for today); everyone else's text is on its way.
+      willText: guest.willText !== false,
+      notTextedReason: guest.willText === false
+        ? guest.notTextedReason ?? null
+        : null,
     });
   }
 

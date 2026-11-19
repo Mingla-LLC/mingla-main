@@ -795,6 +795,26 @@ async function processClaim(
  * most once in the database before it is sent, so a friend never gets two
  * for one event; a failed send is logged, not retried. */
 async function sendFriendGoingNotices(admin: AdminClient): Promise<void> {
+  // P3-5: an enqueue that failed inside the RSVP trigger is recorded there,
+  // never dropped; each is reported here once.
+  const { data: failures, error: failuresError } = await admin.rpc(
+    "issue_4508_take_friend_going_failures",
+    { p_limit: 50 },
+  );
+  if (failuresError) {
+    console.error(
+      "[rsvp-notify] friend-going failure read failed",
+      failuresError.message,
+    );
+  } else if (Array.isArray(failures) && failures.length > 0) {
+    console.error(
+      "[rsvp-notify] friend-going enqueue failed",
+      JSON.stringify(
+        (failures as Array<{ event_id: string | null; sql_state: string }>)
+          .map((f) => ({ eventId: f.event_id, sqlState: f.sql_state })),
+      ),
+    );
+  }
   const { data, error } = await admin.rpc(
     "issue_4508_take_friend_going_notices",
     { p_limit: 50 },

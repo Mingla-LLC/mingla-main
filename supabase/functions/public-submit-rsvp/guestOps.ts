@@ -2,8 +2,8 @@
 //
 //   {op:"guest_lookup", eventId, phone}  amendment 4: the live match under the
 //     number field. Anyone may call it; a signed-out caller learns only
-//     whether the number is on Mingla (never a name). Rate-limited per user
-//     (30/min) or per IP (15/min).
+//     whether the number is valid. Rate-limited per user (30/min) or per IP
+//     (15/min).
 //   {op:"guest_bring", guestId, phone, phoneCountryIso?}  2.5: a claimed
 //     guest brings one more person when the host allows it. Signed in only.
 
@@ -95,8 +95,11 @@ export async function handleGuestOp(
     });
     if (error) return { status: 503, body: { error: "unavailable" } };
     const result = objectResult(data);
-    // Defence in depth: a signed-out caller never receives an account.
-    if (deps.userId === null) delete result.user;
+    // P1-1, defence in depth: a signed-out caller learns only whether the
+    // number is valid (the database already answers nothing more).
+    if (deps.userId === null) {
+      return { status: 200, body: { valid: result.valid === true } };
+    }
     return { status: 200, body: result };
   }
 
