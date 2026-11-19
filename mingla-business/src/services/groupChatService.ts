@@ -163,10 +163,15 @@ export async function listMessages(
     )
     .eq("conversation_id", conversationId)
     .is("deleted_at", null)
-    .order("created_at", { ascending: true })
+    // #4420 P2-2: the NEWEST `limit` messages (newest first, then reversed
+    // below). Ascending + limit returned the OLDEST 80, so a busy room never
+    // showed its latest messages.
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(limit);
   if (error) return { messages: [], error: error.message };
-  const messages = (data ?? []) as EventGroupMessage[];
+  // Oldest first, as every caller expects (the panel appends new ones last).
+  const messages = ((data ?? []) as EventGroupMessage[]).slice().reverse();
   // #4459: a brand post stores no sender (guests never see which team member
   // wrote it); the team reads the author from brand_guest_post_authors.
   const brandIds = messages.filter((m) => m.sender_kind === "brand").map((m) => m.id);
