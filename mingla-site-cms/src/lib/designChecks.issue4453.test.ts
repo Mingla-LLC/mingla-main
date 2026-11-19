@@ -52,4 +52,15 @@ describe("#4453 truth check skips machine fields", () => {
     expect(messages).toContain("'2009'");
     expect(messages).not.toMatch(/'(?:11|13\.266|2026-11-18|22)'/);
   });
+
+  it("skips stored ids in list rows the catalogue does not name (Young and Stamped's Places grid)", () => {
+    const truth = truthOf([
+      { blockType: "destination_grid", heading: "Where we go", destinations: [
+        { id: "6740a1b2c3d4e5f600000021", destination: "36353b6d-f0d6-4ba6-945b-f07816f3a2cf" },
+        { id: "6740a1b2c3d4e5f600000022", destination: "ccdf3420-f7f9-4109-9756-23e94da1a552" },
+      ], review: stamp },
+    ]);
+    expect(truth.items).toEqual([]);
+    expect(truth.status).toBe("pass");
+  });
 });

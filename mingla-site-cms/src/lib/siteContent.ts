@@ -106,7 +106,11 @@ export function calendarDayOf(value: unknown): string | null {
   const time = typeof value === "string" || value instanceof Date ? new Date(value).getTime() : Number.NaN;
   if (!Number.isFinite(time)) return null;
   const day = 86_400_000;
-  return new Date(Math.round(time / day) * day).toISOString().slice(0, 10);
+  // Nearest UTC day, so a date saved at local midnight anywhere within ±12 h
+  // keeps its day. #4453 — exactly 12:00 UTC (Payload's day-only midday) is
+  // that same day: Math.round sent it to the next one, and Young and
+  // Stamped's reviews and story showed a day late.
+  return new Date(Math.ceil(time / day - 0.5) * day).toISOString().slice(0, 10);
 }
 
 function trimmed(value: unknown): string {
