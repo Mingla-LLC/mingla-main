@@ -89,6 +89,7 @@ const SAFE_CODES = [
   "offer_booking_not_found",
   "offer_hold_expired",
   "offer_payment_already_pending",
+  "offer_payment_already_paid",
   "offer_invalid_transition",
   "offer_bank_not_ready",
   "offer_cancel_too_late",
@@ -371,6 +372,70 @@ export function publicOfferDetail(
   };
 }
 
+type PaystackVerify = (reference: string) => Promise<Record<string, unknown>>;
+
+/**
+ * The booking's latest pending Paystack payment, asked about at the provider:
+ * "paid" (confirmed now through the webhook's finalize), "closed" (failed or
+ * left unpaid; marked failed so a new payment may start), "in_flight", or
+ * "none" (nothing we can settle here, e.g. a Stripe payment). A payment
+ * closed here that the guest still completes later is confirmed by the
+ * webhook as usual (or, when another payment already confirmed the booking,
+ * recorded as refund due).
+ */
+export async function settleEarlierPayment(
+  client: ServiceClient,
+  groupId: string,
+  deps: VenueOffersDeps,
+): Promise<"paid" | "closed" | "in_flight" | "none"> {
+  const { data: attempt } = await client.from("stay_payment_attempts")
+    .select("id, provider, provider_payment_ref, state")
+    .eq("group_id", groupId)
+    .eq("state", "pending")
+    .order("attempt_ordinal", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (
+    !attempt || attempt.provider !== "paystack" ||
+    typeof attempt.provider_payment_ref !== "string"
+  ) return "none";
+  const reference = String(attempt.provider_payment_ref);
+  const verify: PaystackVerify = deps.verifyPaystack ??
+    ((ref: string) => paystackVerifyTransaction(ref));
+  let verified: Record<string, unknown>;
+  try {
+    verified = await verify(reference);
+  } catch {
+    return "in_flight";
+  }
+  const status = String(verified.status ?? "").toLowerCase();
+  if (status === "success") {
+    try {
+      await (deps.confirmPaystack ?? handleStayPaystackChargeSuccess)(
+        client,
+        { reference },
+        `return:${reference}`,
+        (ref: string) =>
+          ref === reference ? Promise.resolve(verified) : verify(ref),
+      );
+      return "paid";
+    } catch {
+      return "in_flight";
+    }
+  }
+  if (["failed", "abandoned", "reversed"].includes(status)) {
+    await client.rpc("issue_1389_record_payment_create_failure", {
+      p_attempt_id: attempt.id,
+      p_failure_code: status === "abandoned"
+        ? "provider_abandoned"
+        : "provider_failed",
+      p_ambiguous: false,
+    });
+    return "closed";
+  }
+  return "in_flight";
+}
+
 export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
   const env = deps.env ?? ((name: string) => Deno.env.get(name));
   return async function handle(req: Request): Promise<Response> {
@@ -431,6 +496,8 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       if (error) return rpcFailure(error);
       const detail = publicOfferDetail(projection, page);
       if (detail === null) return json(404, { code: "offer_not_found" });
+      // "At the gate only": the venue cannot take this payment online today.
+      detail.canCollectOnline = listed.canCollectOnline !== false;
       return json(200, { kind: "success", data: detail });
     }
 
@@ -582,16 +649,25 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       ) {
         return json(400, { code: "invalid_request" });
       }
-      const { data: prepared, error } = await client.rpc(
-        "issue_4490_prepare_offer_payment",
-        {
+      const prepare = () =>
+        client.rpc("issue_4490_prepare_offer_payment", {
           p_group_id: groupId,
           p_token_hash: tokenHash,
           p_user_id: caller.userId,
           p_idempotency_key: key,
           p_expected_version: expectedVersion,
-        },
-      );
+        });
+      let { data: prepared, error } = await prepare();
+      if (error && safeCode(error) === "offer_payment_already_pending") {
+        // The guest left an earlier payment page without paying. Ask the
+        // provider about it: closed or abandoned -> close it and start a
+        // fresh payment; paid -> confirm it; still in flight -> say so.
+        const earlier = await settleEarlierPayment(client, groupId, deps);
+        if (earlier === "paid") {
+          return json(409, { code: "offer_payment_already_paid" });
+        }
+        if (earlier === "closed") ({ data: prepared, error } = await prepare());
+      }
       if (error) return rpcFailure(error);
       const callbackUrl = `${resolveReturnOrigin(env)}/visit/${groupId}?paid=1`;
       try {
@@ -702,7 +778,17 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
               outcome = "pending";
             }
           } else if (["failed", "abandoned", "reversed"].includes(status)) {
-            outcome = "failed";
+            // Nothing was taken: close this payment so the guest can pay
+            // again at once (a late success still confirms through the
+            // same finalize). "abandoned" = the page was left unpaid.
+            await client.rpc("issue_1389_record_payment_create_failure", {
+              p_attempt_id: attempt.id,
+              p_failure_code: status === "abandoned"
+                ? "provider_abandoned"
+                : "provider_failed",
+              p_ambiguous: false,
+            });
+            outcome = status === "abandoned" ? "not_paid" : "failed";
           } else {
             outcome = "pending";
           }

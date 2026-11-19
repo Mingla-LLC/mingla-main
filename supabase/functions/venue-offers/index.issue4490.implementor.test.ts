@@ -391,9 +391,15 @@ Deno.test("confirm_return verifies our own pending Paystack reference and confir
   assertEquals(confirmed, ["mingla_stay_abc|return:mingla_stay_abc"]);
 });
 
-Deno.test("confirm_return keeps polling while Paystack is still in flight, and says failed when abandoned", async () => {
+// TEST-MOD-APPROVED #4490: P3 closes a payment page left unpaid, so
+// "abandoned" now reads "not_paid" (pay again at once); "failed" stays failed.
+Deno.test("confirm_return keeps polling while Paystack is still in flight, and says not paid when abandoned", async () => {
   for (
-    const [status, outcome] of [["ongoing", "pending"], ["abandoned", "failed"]]
+    const [status, outcome] of [
+      ["ongoing", "pending"],
+      ["abandoned", "not_paid"],
+      ["failed", "failed"],
+    ]
   ) {
     resetVenueOffersRateLimitForTests();
     const handler = createVenueOffersHandler({
