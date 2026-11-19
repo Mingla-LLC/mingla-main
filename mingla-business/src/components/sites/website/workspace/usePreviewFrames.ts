@@ -91,6 +91,8 @@ export function usePreviewFrames(options: {
   const silentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef(options);
   latest.current = options;
+  const geometryRef = useRef(geometry);
+  geometryRef.current = geometry;
   const swapRef = useRef(swap);
   swapRef.current = swap;
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
@@ -281,7 +283,13 @@ export function usePreviewFrames(options: {
           // Out of sight: give it the state and its place now, so what comes
           // into view there has finished arriving when it takes over.
           sync(key);
-          pendingRestore.current = { key, scrollY: state.scrollY };
+          // The section the owner has open stays where it is on screen, even when the change
+          // moved it up or down the page (a section moved, one added or removed above it).
+          const anchorId = latest.current.marks.selected;
+          const was = anchorId ? geometryRef.current.sections.find((section) => section.id === anchorId) : undefined;
+          const now = anchorId ? message.sections.find((section) => section.id === anchorId) : undefined;
+          const anchored = was && now ? Math.max(0, Math.round(state.scrollY + (now.top - was.top))) : state.scrollY;
+          pendingRestore.current = { key, scrollY: anchored };
           presettled.current.set(key, state.scrollY);
           settle(key);
           // It takes over once its pictures are in too (or after a wait, if they are slow).

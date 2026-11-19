@@ -210,6 +210,23 @@ describe("the live preview's frames", () => {
     ]);
   });
 
+  it("the section the owner has open stays in place when the change moved it down the page", async () => {
+    const marks: PreviewMarks = { ...NO_MARKS, selected: "s2" };
+    let tree!: ReturnType<typeof create>;
+    await act(async () => { tree = create(<Harness url="https://x/1" page="home" marks={marks} />); });
+    await act(async () => { api.onMessage(1, ready(0)); });
+    // The owner is looking at s2 (top 400), 100px down the screen.
+    await act(async () => { api.onMessage(1, { type: "mingla:preview-rects", sections: [{ id: "s1", top: 0, height: 400 }, { id: "s2", top: 400, height: 300 }], scroll_y: 300 }); });
+    await act(async () => { tree.update(<Harness url="https://x/2" page="home" marks={marks} />); });
+    sent.length = 0;
+    // A section was added above it: s2 now starts at 900.
+    await act(async () => {
+      api.onMessage(2, { type: "mingla:preview-ready", page_path: "", sections: [{ id: "s1", type: "hero", top: 0, height: 400 }, { id: "new", type: "faq", top: 400, height: 500 }, { id: "s2", type: "faq", top: 900, height: 300 }], scroll_y: 0, doc_height: 2500 });
+    });
+    expect(sent.filter((entry) => entry.key === 2 && entry.message.type === "mingla:preview-restore-scroll").map((entry) => entry.message))
+      .toEqual([{ type: "mingla:preview-restore-scroll", scroll_y: 800 }]);
+  });
+
   it("a rebuilt page that is ready waits for its pictures before it takes over, but not for ever", async () => {
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<Harness url="https://x/1" page="home" />); });
