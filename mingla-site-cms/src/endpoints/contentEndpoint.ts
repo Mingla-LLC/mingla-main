@@ -1017,7 +1017,8 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
         overrideAccess: false,
         draft: true,
         depth: 0,
-        // #4453 — every page update must name the revision it was read at (Pages enforcePage), or it is a conflict.
+        // #4453 — the revision these sections were READ at. Left out, Payload fills in the current one, so a
+        // teammate's save between the read above and this write passed the conflict check and was overwritten.
         data: { blocks: page.blocks, revision: page.revision } as never,
       }) as unknown as AnyDoc;
       return { page_id: pageId, ...pageReviewSummary(Array.isArray(updated.blocks) ? updated.blocks as AnyDoc[] : []) };

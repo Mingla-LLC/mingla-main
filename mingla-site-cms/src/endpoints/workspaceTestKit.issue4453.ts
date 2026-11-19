@@ -137,7 +137,10 @@ export function makeStore() {
       if (id !== undefined && !targets.length) throw new Error("NOT_FOUND");
       let last: Doc | null = null;
       for (const original of targets) {
-        const next = await hooked(collection, input as Doc, structuredClone(original), req, "update");
+        // Payload fills every field the caller left out from the stored document BEFORE the collection hooks
+        // run (fields/hooks/beforeValidate: the fallback value), so a hook sees the whole document.
+        const { id: _id, createdAt: _created, updatedAt: _updated, ...existing } = structuredClone(original);
+        const next = await hooked(collection, { ...existing, ...(input as Doc) }, structuredClone(original), req, "update");
         Object.assign(original, shaped(collection, next), { updatedAt: stamp() });
         last = original;
       }
