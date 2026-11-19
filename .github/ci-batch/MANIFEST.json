@@ -1450,7 +1450,7 @@
         "mingla-business/src/components/ui/WebDateTimeInput.tsx",
         "mingla-business/src/components/event/CreatorStep2When.tsx",
         "mingla-business/src/components/event/MultiDateOverrideSheet.tsx",
-        "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx",
+        "packages/form-rendering/QuestionRenderers.tsx",
         "mingla-business/src/components/trip/PaymentPlanEditor.tsx",
         "mingla-business/src/components/trip/BookingDeadlinePicker.tsx",
         "mingla-business/src/components/marketing/ComposerStepWhen.tsx",

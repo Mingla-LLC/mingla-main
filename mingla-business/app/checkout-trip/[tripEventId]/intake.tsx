@@ -91,9 +91,12 @@ import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { Toast } from "../../../src/components/ui/Toast";
-import {
-  IntakeFormRenderer,
-} from "../../../src/components/checkout/intake/IntakeQuestionRenderers";
+// #4514 — the question renderers live in @mingla/form-rendering (C11); the
+// business app injects its own tokens, Icon and web date input, and keeps the
+// file upload question (its picker) here.
+import { IntakeFormRenderer } from "@mingla/form-rendering";
+import { businessFormPrimitives } from "../../../src/components/checkout/intake/formRenderingPrimitives";
+import { IntakeQuestionFileUpload } from "../../../src/components/checkout/intake/IntakeQuestionFileUpload";
 // issue #3351 [free trip intake loop] — this screen no longer decides its own
 // exit. It used to `router.replace` back to /buyer whenever the cart was free,
 // while /buyer pushed back here whenever a schema EXISTED, so a free trip with
@@ -646,8 +649,7 @@ export default function TripIntakeScreen(): React.ReactElement {
 
         <IntakeFormRenderer
           schema={activeTier.schema}
-          ticketTypeId={activeTier.ticketTypeId}
-          tierName={activeTier.tierName}
+          primitives={businessFormPrimitives}
           answers={activeAnswers}
           onAnswersChange={(next) => {
             setAnswersByTier((prev) => ({
@@ -658,11 +660,20 @@ export default function TripIntakeScreen(): React.ReactElement {
             if (showValidationBanner) setShowValidationBanner(false);
           }}
           validationErrors={activeValidationErrors}
-          onUpload={handleUploadForActiveTier}
-          onRemove={(claimId) => revokeIntakeFileClaim({
-            claimId,
-            uploadSessionId: intakeUploadSessionId,
-          })}
+          renderFileUpload={(fileProps) => (
+            <IntakeQuestionFileUpload
+              question={fileProps.question}
+              value={fileProps.value}
+              onChange={fileProps.onChange}
+              error={fileProps.error}
+              disabled={fileProps.disabled}
+              onUpload={handleUploadForActiveTier}
+              onRemove={(claimId) => revokeIntakeFileClaim({
+                claimId,
+                uploadSessionId: intakeUploadSessionId,
+              })}
+            />
+          )}
         />
       </ScrollView>
 
