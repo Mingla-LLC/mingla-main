@@ -97,11 +97,12 @@ export const RULES = [
   { file: CONTENT_API, why: "a change that did not pass its checks says what was wrong", ok: matches(/code === "VALIDATION_FAILED"\) \{\s+const sentence = refusalSentence\(code, "", detail\);/) },
   // The brand name tops every brand screen, once, and no screen above brand level.
   // (Behaviour: mingla-business/src/config/__tests__/issue_4453_above_brand_screens.implementor.test.ts.)
-  { file: HOST_SHELL, why: "the desktop top bar shows the brand switcher on brand screens only", ok: has('<TopBar leftKind={aboveBrand ? "none" : "brand"} onBrandTap={onBrandTap} />') },
+  { file: HOST_SHELL, why: "the desktop top bar shows the brand switcher on brand screens only", ok: has('<TopBar leftKind={aboveBrand ? "none" : "brand"} onBrandTap={onBrandTap} brandLoading={brandLoading} />') },
   { file: HOST_SHELL, why: "above-brand is decided from the route", ok: has("aboveBrand={isAboveBrandScreen(pathname)}") },
   { file: HOST_SHELL, why: "the phone strip is web-only, phone-width, signed-in, and steps aside for a screen with its own switcher", ok: (src) => src.includes('const phoneBrand = Platform.OS === "web" && !isWideDesktop && user != null && !screenOwnsSwitcher') && src.includes("? phoneBrandStrip(pathname, workspaceRoute.routeBrandId, mode)") },
-  { file: HOST_SHELL, why: "the phone strip is the brand switcher", ok: has('<WorkspaceBrandSwitcher brandId={phoneBrand.brandId} compact testID="host-phone-brand-switcher" />') },
+  { file: HOST_SHELL, why: "the phone strip is the brand switcher", ok: has('<WorkspaceBrandSwitcher brandId={phoneBrand.brandId} compact brandLoading={itemBrand.pending} testID="host-phone-brand-switcher" />') },
   { file: HOST_SHELL, why: "the phone strip sits above the screen", ok: (src) => src.includes('testID="host-phone-brand-strip"') && src.indexOf('testID="host-phone-brand-strip"') < src.indexOf("<View style={styles.stack}>{children}</View>") },
+  { file: HOST_SHELL, why: "one item's brand (a trip, an event, a listing) is the route's brand for the chrome", ok: has("routeBrandId: brandIdFromRoute(pathname, params) ?? itemBrand.brandId") },
   { file: WORKSPACE_SHELL, why: "the Website workspace tells the shell it carries the switcher on phones", ok: has("useOwnPhoneBrandSwitcher(phone);") },
   { file: ACCOUNT, why: "Account has no brand switcher at the top", ok: (src) => /<TopBar\s+leftKind="none"/.test(src) && !/<TopBar\s+leftKind="brand"/.test(src) },
   { file: ACCOUNT, why: "Account still opens the brands sheet from Your brands", ok: (src) => src.includes('testID="account-manage-brands"') && /<ListRow\s+onPress=\{handleOpenSwitcher\}\s+accessibilityLabel="Add or manage brands"/.test(src) },
@@ -147,6 +148,7 @@ function selfTest() {
     [CONTENT_API, (s) => s.replace("const detail = refusalDetailFrom(body?.error);", "const detail = null;")],
     [HOST_SHELL, (s) => s.replace('leftKind={aboveBrand ? "none" : "brand"}', 'leftKind="brand"')],
     [HOST_SHELL, (s) => s.replace("user != null && !screenOwnsSwitcher", "user != null")],
+    [HOST_SHELL, (s) => s.replace("brandIdFromRoute(pathname, params) ?? itemBrand.brandId", "brandIdFromRoute(pathname, params)")],
     [WORKSPACE_SHELL, (s) => s.replace("useOwnPhoneBrandSwitcher(phone);", "")],
     [ACCOUNT, (s) => s.replace('leftKind="none"', 'leftKind="brand"')],
   ];

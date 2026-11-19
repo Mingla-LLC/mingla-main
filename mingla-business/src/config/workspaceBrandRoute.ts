@@ -115,6 +115,30 @@ export function phoneBrandStripFor(pathname: string | null | undefined, routeBra
   return routeBrandId;
 }
 
+/** Where an item's brand is recorded: every event, RSVP, experience and trip is an `events` row. */
+export type ItemRouteRef = { table: "events" | "venue_listings"; id: string };
+
+const ITEM_TABLE: Readonly<Record<string, ItemRouteRef["table"]>> = {
+  event: "events",
+  rsvp: "events",
+  experience: "events",
+  trip: "events",
+  venue: "venue_listings",
+};
+const ITEM_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The item a screen is about (`/trip/<id>`, `/event/<id>/orders/...`), or null.
+ * Create flows and other fixed words (`/event/create`, `/rsvp/pass`) are not items.
+ */
+export function itemRouteRef(pathname: string | null | undefined): ItemRouteRef | null {
+  const segments = workspacePathSegments(pathname);
+  const table = ITEM_TABLE[segments[0] ?? ""];
+  const id = segments[1];
+  if (table === undefined || id === undefined || !ITEM_ID.test(id)) return null;
+  return { table, id: id.toLowerCase() };
+}
+
 /** The phone strip names the route's brand, or follows the current brand. */
 export type PhoneBrandStrip = { brandId: string | undefined };
 

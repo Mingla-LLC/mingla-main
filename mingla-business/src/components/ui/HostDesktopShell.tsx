@@ -32,8 +32,9 @@ import { isTabVisible } from "../../config/featureFlags";
 import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useItemRouteBrand } from "../../hooks/useItemRouteBrand";
 import { useWorkspaceBrandRouteSync } from "../../hooks/useWorkspaceBrandRouteSync";
-import { brandIdFromRoute, isAboveBrandScreen, phoneBrandStrip, type WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
+import { brandIdFromRoute, isAboveBrandScreen, itemRouteRef, phoneBrandStrip, type WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
 import { WorkspaceBrandSwitcher } from "../brand/WorkspaceBrandSwitcher";
 import { WorkspaceRouteContext, type WorkspaceRoute } from "../brand/workspaceBrandContext";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
@@ -90,9 +91,9 @@ const ShellSidebar: React.FC<{ rail: boolean }> = ({ rail }) => {
 
 // #4453 — the brand name sits at the top of every brand screen and of none above brand level
 // (Account, Notifications, Help, creating a brand): those are not about the brand last worked on.
-const ShellTopBar: React.FC<{ onBrandTap: () => void; aboveBrand: boolean }> = ({ onBrandTap, aboveBrand }) => (
+const ShellTopBar: React.FC<{ onBrandTap: () => void; aboveBrand: boolean; brandLoading: boolean }> = ({ onBrandTap, aboveBrand, brandLoading }) => (
   <View style={styles.topBar} testID="host-shell-topbar">
-    <TopBar leftKind={aboveBrand ? "none" : "brand"} onBrandTap={onBrandTap} />
+    <TopBar leftKind={aboveBrand ? "none" : "brand"} onBrandTap={onBrandTap} brandLoading={brandLoading} />
   </View>
 );
 
@@ -107,13 +108,18 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   // #4453 — the route, shared with every brand chip and switcher below. The
   // route's brand is resolved here, in the render of the route change itself.
   const paramsKey = JSON.stringify(globalParams ?? {});
-  const workspaceRoute = useMemo<WorkspaceRoute>(() => {
-    const params = JSON.parse(paramsKey) as WorkspaceRouteParams;
-    return { pathname: pathname ?? null, params, routeBrandId: brandIdFromRoute(pathname, params) };
-  }, [paramsKey, pathname]);
-  useWorkspaceBrandRouteSync(workspaceRoute.pathname, workspaceRoute.routeBrandId);
   const editMode = Array.isArray(editModeParam) ? editModeParam[0] : editModeParam;
   const mode = hostDesktopShellModeFor(pathname, segments as readonly string[], editMode ?? null);
+  // One trip, event or listing does not name its brand in the address: it is read once per item,
+  // so the chrome names the item's brand, not the brand last worked on. Host screens only (the
+  // ones the shell draws chrome for): a visitor's page never moves the host's brand.
+  const itemRef = useMemo(() => (mode === "sidebar" || mode === "rail" ? itemRouteRef(pathname) : null), [mode, pathname]);
+  const itemBrand = useItemRouteBrand(itemRef, user != null);
+  const workspaceRoute = useMemo<WorkspaceRoute>(() => {
+    const params = JSON.parse(paramsKey) as WorkspaceRouteParams;
+    return { pathname: pathname ?? null, params, routeBrandId: brandIdFromRoute(pathname, params) ?? itemBrand.brandId };
+  }, [itemBrand.brandId, paramsKey, pathname]);
+  useWorkspaceBrandRouteSync(workspaceRoute.pathname, workspaceRoute.routeBrandId);
   const active = Platform.OS === "web" && isWideDesktop && user != null && (mode === "sidebar" || mode === "rail");
   const rail = mode === "rail";
   const inset = active ? (rail || collapsed ? DESKTOP_RAIL_WIDTH : DESKTOP_SIDEBAR_WIDTH) : 0;
@@ -141,10 +147,10 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
     <WorkspaceRouteContext.Provider value={workspaceRoute}>
     <HostShellInsetContext.Provider value={active}>
       <View style={[styles.host, active ? [styles.canvas, { paddingLeft: inset + DESKTOP_BEZEL_MARGIN }] : null]}>
-        {active ? <ShellTopBar onBrandTap={() => setSwitcherOpen(true)} aboveBrand={isAboveBrandScreen(pathname)} /> : null}
+        {active ? <ShellTopBar onBrandTap={() => setSwitcherOpen(true)} aboveBrand={isAboveBrandScreen(pathname)} brandLoading={itemBrand.pending} /> : null}
         {phoneBrand !== null ? (
           <View style={styles.phoneBrand} testID="host-phone-brand-strip">
-            <WorkspaceBrandSwitcher brandId={phoneBrand.brandId} compact testID="host-phone-brand-switcher" />
+            <WorkspaceBrandSwitcher brandId={phoneBrand.brandId} compact brandLoading={itemBrand.pending} testID="host-phone-brand-switcher" />
           </View>
         ) : null}
         <View style={styles.stack}>{children}</View>

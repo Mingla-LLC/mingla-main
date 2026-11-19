@@ -5,7 +5,7 @@
  * .github/scripts/strict-grep/issue-4453-sites-host-wiring.mjs.)
  */
 import { hostDesktopShellModeFor } from "../../components/ui/hostDesktopShellRoutes";
-import { isAboveBrandScreen, phoneBrandStrip, phoneBrandStripFor } from "../workspaceBrandRoute";
+import { isAboveBrandScreen, itemRouteRef, phoneBrandStrip, phoneBrandStripFor } from "../workspaceBrandRoute";
 import { sameScreenForBrand } from "../workspaceBrandRoutes";
 
 describe("screens above brand level", () => {
@@ -75,5 +75,21 @@ describe("on a phone, one item of a brand names the brand too, and switching ope
     "/event/create", "/trip/create", "/trip/t1/edit",
   ])("%s shows no brand strip", (path) => {
     expect(strip(path)).toBeNull();
+  });
+});
+
+describe("which item a screen is about (its brand is read from that row)", () => {
+  const id = "a3e4756c-f273-47fc-bf73-2f8432217e3a";
+  it.each([
+    [`/trip/${id}`, "events"], [`/trip/${id}/travelers`, "events"], [`/event/${id}/orders/o1`, "events"],
+    [`/rsvp/${id}/guests`, "events"], [`/experience/${id}`, "events"], [`/venue/${id}`, "venue_listings"],
+  ])("%s", (path, table) => {
+    expect(itemRouteRef(path)).toEqual({ table, id });
+  });
+  it.each(["/event/create", "/trip/create", "/rsvp/pass", "/venue/deck-readiness", "/venue/create", `/brand/${id}`, "/home", `/insights/${id}`, null])("%s is not an item", (path) => {
+    expect(itemRouteRef(path)).toBeNull();
+  });
+  it("the strip names that brand once it is known", () => {
+    expect(phoneBrandStrip(`/trip/${id}`, "b9", "sidebar")).toEqual({ brandId: "b9" });
   });
 });

@@ -25,6 +25,8 @@ const LANTERN = { id: "brand-lantern", displayName: "Lantern Room" };
 let mockPathname = `/brand/${GAMELAND.id}/website`;
 let mockParams: Record<string, string> = { id: GAMELAND.id };
 let mockWide = true;
+let mockItemBrandId: string | null = null;
+const mockItemRefs: Array<{ table: string; id: string } | null> = [];
 let mockStoreBrandId: string | null = LANTERN.id;
 const mockSetCurrentBrandId = jest.fn((id: string | null) => {
   mockStoreBrandId = id;
@@ -38,6 +40,12 @@ jest.mock("expo-router", () => ({
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: mockWide }) }));
 jest.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" } }) }));
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({ useCurrentBrandRole: () => ({ rank: 60 }) }));
+jest.mock("../../../hooks/useItemRouteBrand", () => ({
+  useItemRouteBrand: (ref: { table: string; id: string } | null) => {
+    mockItemRefs.push(ref);
+    return { brandId: ref === null ? null : mockItemBrandId, pending: false };
+  },
+}));
 jest.mock("../../../hooks/useCurrentBrand", () => ({
   useCurrentBrand: () => (mockStoreBrandId === LANTERN.id ? LANTERN : mockStoreBrandId === GAMELAND.id ? GAMELAND : null),
 }));
@@ -105,6 +113,8 @@ beforeEach(() => {
   mockWide = true;
   mockStoreBrandId = LANTERN.id;
   mockSetCurrentBrandId.mockClear();
+  mockItemBrandId = null;
+  mockItemRefs.length = 0;
   seenRoute = null;
   (globalThis as { requestIdleCallback?: unknown }).requestIdleCallback = () => 0;
   (globalThis as { cancelIdleCallback?: unknown }).cancelIdleCallback = () => undefined;
@@ -158,6 +168,27 @@ describe("#4453 the shell hands the route's brand to the chrome", () => {
     mockParams = { brandId: GAMELAND.id };
     const tree = await mount();
     expect(seenRoute?.routeBrandId).toBeNull();
+    expect(mockSetCurrentBrandId).not.toHaveBeenCalled();
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("R6: one trip opened while another brand is current names the trip's brand, and makes it current", async () => {
+    mockPathname = "/trip/a3e4756c-f273-47fc-bf73-2f8432217e3a";
+    mockParams = { id: "a3e4756c-f273-47fc-bf73-2f8432217e3a" };
+    mockItemBrandId = GAMELAND.id;
+    const tree = await mount();
+    expect(mockItemRefs[0]).toEqual({ table: "events", id: "a3e4756c-f273-47fc-bf73-2f8432217e3a" });
+    expect(seenRoute?.routeBrandId).toBe(GAMELAND.id);
+    expect(mockSetCurrentBrandId).toHaveBeenCalledWith(GAMELAND.id);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("R7: a visitor's page is never looked up (no chrome, no brand moved)", async () => {
+    mockPathname = "/e/gameland/a3e4756c-f273-47fc-bf73-2f8432217e3a";
+    mockParams = {};
+    mockItemBrandId = GAMELAND.id;
+    const tree = await mount();
+    expect(mockItemRefs.every((ref) => ref === null)).toBe(true);
     expect(mockSetCurrentBrandId).not.toHaveBeenCalled();
     await TestRenderer.act(async () => tree.unmount());
   });
