@@ -416,6 +416,38 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
         rollbackSourcePublicationId: null,
       });
     },
+    /*
+     * #4453 workspace — Publish from the Publish panel. The draft is checked
+     * again at this moment and exactly that revision is sent, so a change made
+     * since the panel opened (a section read, an autosave) can never make the
+     * publish stale. Resolves with null when Core accepted it, else the reason.
+     */
+    publishChecked: async (): Promise<string | null> => {
+      const accountId = user?.id;
+      if (!accountId || !siteId) return "Sign in again to publish.";
+      if (publicationOperation) return "A publish is already running.";
+      try {
+        setNotice(null);
+        const fresh = await validateBrandSiteDraft({ brandId: safeBrandId, siteId });
+        queryClient.setQueryData(brandSiteKeys.siteData(siteId, "validation"), fresh);
+        await startPublication({
+          accountId,
+          brandId: safeBrandId,
+          siteId,
+          operationId: createBrandSiteOperationId(),
+          kind: "publish",
+          startedAt: Date.now(),
+          expectedRevision: fresh.home_revision,
+          sourceDigest: fresh.draft_digest,
+          rollbackSourcePublicationId: null,
+        });
+        return null;
+      } catch (error) {
+        const refused = noticeFor(error);
+        setNotice(refused);
+        return error instanceof BrandSitesError ? error.message : "Mingla couldn’t check your draft just now. Nothing was published.";
+      }
+    },
     rollback: (selectedVersion: BrandSiteVersion) => {
       const accountId = user?.id;
       if (!accountId || !siteId || publicationOperation) return;
