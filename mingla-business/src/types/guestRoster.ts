@@ -86,6 +86,12 @@ export interface GuestRosterRow {
   rsvpStatus: "going" | "not_going" | "waitlisted" | "maybe" | null;
   rsvpApprovalStatus: "pending" | "approved" | "denied" | null;
   orderIds: string[];
+  /**
+   * issue #3281 — the guest-chosen start(s) of this person's orders
+   * (orders.booked_start_at), distinct and in order; absent when none or
+   * when the read failed. Attached by guestRosterService.withBookedStarts.
+   */
+  bookedStarts?: string[];
   latestActivityAt: string;
   checkedIn: boolean;
   canRemind: boolean;

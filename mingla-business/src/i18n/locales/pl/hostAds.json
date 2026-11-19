@@ -410,7 +410,9 @@
         "label": "Filtruj reklamy",
         "all": "Wszystkie",
         "running": "Aktywne",
-        "ended": "Zakończone"
+        "ended": "Zakończone",
+        "review": "W weryfikacji",
+        "drafts": "Wersje robocze"
       },
       "credit": {
         "label": "Środki na reklamy",
@@ -471,7 +473,18 @@
         "colResults": "Wyniki",
         "colEach": "Za sztukę",
         "open": "Otwórz {{name}}",
-        "draftLine": "Zapisany szkic · wróć tam, gdzie skończyłeś"
+        "draftLine": "Zapisany szkic · wróć tam, gdzie skończyłeś",
+        "reviewLine": "Każda aplikacja najpierw sprawdza Twoją reklamę. Nic nie jest wydawane, dopóki się nie wyświetli.",
+        "appShowing": "{{app}}: wyświetlana",
+        "appChecking": "{{app}}: sprawdzanie",
+        "appNotApproved": "{{app}}: niezatwierdzona",
+        "deleteDraftA11y": "Usuń wersję roboczą {{name}}",
+        "deleteTitle": "Usunąć tę wersję roboczą?",
+        "deleteBody": "„{{name}}” zostanie usunięta na zawsze. Nic nie zostanie pobrane, a środki na reklamy pozostaną bez zmian.",
+        "deleteConfirm": "Usuń wersję roboczą",
+        "deleteKeep": "Zachowaj",
+        "draftDeleted": "Wersja robocza usunięta",
+        "deleteFailed": "Nie udało się usunąć wersji roboczej. Przeciągnij w dół, aby odświeżyć, i spróbuj ponownie."
       },
       "unit": {
         "sales": "bilety",
@@ -492,7 +505,8 @@
         "partRejected": "Aktywna · {{count}} niezatwierdzone",
         "draft": "Szkic",
         "attention": "Wymaga uwagi",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Aktywna · {{apps}} w weryfikacji"
       },
       "reason": {
         "soldOut": "Wyprzedane",

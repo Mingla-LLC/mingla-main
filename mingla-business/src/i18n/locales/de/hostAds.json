@@ -400,7 +400,9 @@
         "label": "Anzeigen filtern",
         "all": "Alle",
         "running": "Laufend",
-        "ended": "Beendet"
+        "ended": "Beendet",
+        "review": "In Prüfung",
+        "drafts": "Entwürfe"
       },
       "credit": {
         "label": "Anzeigenguthaben",
@@ -461,7 +463,18 @@
         "colResults": "Ergebnisse",
         "colEach": "Je",
         "open": "{{name}} öffnen",
-        "draftLine": "Entwurf gespeichert · mach dort weiter, wo du aufgehört hast"
+        "draftLine": "Entwurf gespeichert · mach dort weiter, wo du aufgehört hast",
+        "reviewLine": "Jede App prüft deine Anzeige zuerst. Bis sie ausgespielt wird, wird nichts ausgegeben.",
+        "appShowing": "{{app}}: wird gezeigt",
+        "appChecking": "{{app}}: wird geprüft",
+        "appNotApproved": "{{app}}: nicht genehmigt",
+        "deleteDraftA11y": "Entwurf {{name}} löschen",
+        "deleteTitle": "Diesen Entwurf löschen?",
+        "deleteBody": "„{{name}}“ wird endgültig gelöscht. Es wird nichts berechnet und dein Anzeigenguthaben bleibt unverändert.",
+        "deleteConfirm": "Entwurf löschen",
+        "deleteKeep": "Behalten",
+        "draftDeleted": "Entwurf gelöscht",
+        "deleteFailed": "Der Entwurf konnte nicht gelöscht werden. Zum Aktualisieren nach unten ziehen und erneut versuchen."
       },
       "unit": {
         "sales": "Tickets",
@@ -482,7 +495,8 @@
         "partRejected": "Läuft · {{count}} nicht freigegeben",
         "draft": "Entwurf",
         "attention": "Bitte ansehen",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Läuft · {{apps}} in Prüfung"
       },
       "reason": {
         "soldOut": "Ausverkauft",

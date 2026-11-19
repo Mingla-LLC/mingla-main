@@ -79,6 +79,7 @@ import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { offeringActivityFromOrders } from "../../../src/utils/offeringActivityFromOrders";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
+import { experienceHostPriceLabel } from "../../../src/utils/experienceHostPriceLabel";
 import { unpublishExperienceToDraft } from "../../../src/services/experienceDetailService";
 // #3645 — cancelling an experience goes through the same cancel function as an
 // event, so the same true wording applies.
@@ -384,12 +385,11 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
     }
   };
   const ticket = experience.ticket;
-  const priceLabel =
-    ticket === null
-      ? "—"
-      : ticket.isFree
-        ? "Free"
-        : formatCurrency(ticket.priceCents, experience.currency);
+  // #3645 / #3281 — the experience's price, not the first option's: a paid
+  // experience whose first option is free (Kids 0 beside Adult) is not "Free".
+  const priceLabel = experienceHostPriceLabel(experience, (cents) =>
+    formatCurrency(cents, experience.currency),
+  );
   const capacityLabel =
     ticket === null
       ? "—"

@@ -400,7 +400,9 @@
         "label": "Ṣàlẹ̀ àwọn ìpolówó",
         "all": "Gbogbo rẹ̀",
         "running": "Ń lọ lọ́wọ́",
-        "ended": "Ti parí"
+        "ended": "Ti parí",
+        "review": "Ní àyẹ̀wò",
+        "drafts": "Àwọn àkọsílẹ̀"
       },
       "credit": {
         "label": "Kírẹ́dìtì ìpolówó",
@@ -461,7 +463,18 @@
         "colResults": "Àbájáde",
         "colEach": "Ọ̀kọ̀ọ̀kan",
         "open": "Ṣí {{name}}",
-        "draftLine": "A ti fi àkọ̀pamọ́ pamọ́ · tẹ̀síwájú láti ibi tí o dé"
+        "draftLine": "A ti fi àkọ̀pamọ́ pamọ́ · tẹ̀síwájú láti ibi tí o dé",
+        "reviewLine": "Àpù kọ̀ọ̀kan máa ń kọ́kọ́ ṣàyẹ̀wò ìpolówó rẹ. Kò sí ohun tí a ná títí yóò fi hàn.",
+        "appShowing": "{{app}}: ń hàn",
+        "appChecking": "{{app}}: ń ṣàyẹ̀wò",
+        "appNotApproved": "{{app}}: kò fọwọ́ sí i",
+        "deleteDraftA11y": "Pa àkọsílẹ̀ {{name}} rẹ́",
+        "deleteTitle": "Ṣé kí a pa àkọsílẹ̀ yìí rẹ́?",
+        "deleteBody": "“{{name}}” yóò pòórá pátápátá. A kò ní gba owó kankan, owó ìpolówó rẹ yóò sì wà bí ó ti wà.",
+        "deleteConfirm": "Pa àkọsílẹ̀ rẹ́",
+        "deleteKeep": "Fi sílẹ̀",
+        "draftDeleted": "A ti pa àkọsílẹ̀ rẹ́",
+        "deleteFailed": "A kò lè pa àkọsílẹ̀ yìí rẹ́. Fà á sísàlẹ̀ láti ṣe àtúnṣe kí o sì tún gbìyànjú."
       },
       "unit": {
         "sales": "tíkẹ́ẹ̀tì",
@@ -482,7 +495,8 @@
         "partRejected": "Ń lọ lọ́wọ́ · {{count}} tí a kò fọwọ́ sí",
         "draft": "Àkọ̀pamọ́",
         "attention": "Ó nílò àyẹ̀wò",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Ń lọ · {{apps}} ní àyẹ̀wò"
       },
       "reason": {
         "soldOut": "Ti tà tán",

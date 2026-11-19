@@ -400,7 +400,9 @@
         "label": "Filtrar anuncios",
         "all": "Todos",
         "running": "Activos",
-        "ended": "Terminados"
+        "ended": "Terminados",
+        "review": "En revisión",
+        "drafts": "Borradores"
       },
       "credit": {
         "label": "Crédito para anuncios",
@@ -461,7 +463,18 @@
         "colResults": "Resultados",
         "colEach": "Cada uno",
         "open": "Abrir {{name}}",
-        "draftLine": "Borrador guardado · sigue donde lo dejaste"
+        "draftLine": "Borrador guardado · sigue donde lo dejaste",
+        "reviewLine": "Cada app revisa tu anuncio primero. No se gasta nada hasta que se muestre.",
+        "appShowing": "{{app}}: se muestra",
+        "appChecking": "{{app}}: en revisión",
+        "appNotApproved": "{{app}}: no aprobado",
+        "deleteDraftA11y": "Eliminar borrador {{name}}",
+        "deleteTitle": "¿Eliminar este borrador?",
+        "deleteBody": "«{{name}}» se eliminará para siempre. No se cobra nada y tu crédito de anuncios no cambia.",
+        "deleteConfirm": "Eliminar borrador",
+        "deleteKeep": "Conservar",
+        "draftDeleted": "Borrador eliminado",
+        "deleteFailed": "No se pudo eliminar el borrador. Desliza hacia abajo para actualizar e inténtalo de nuevo."
       },
       "unit": {
         "sales": "entradas",
@@ -482,7 +495,8 @@
         "partRejected": "Activo · {{count}} no aprobados",
         "draft": "Borrador",
         "attention": "Necesita revisión",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Activo · {{apps}} en revisión"
       },
       "reason": {
         "soldOut": "Agotado",

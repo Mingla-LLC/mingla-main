@@ -400,7 +400,9 @@
         "label": "Họrọ mgbasa ozi",
         "all": "Niile",
         "running": "Na-agba",
-        "ended": "Agwụla"
+        "ended": "Agwụla",
+        "review": "Na-enyocha",
+        "drafts": "Ihe edeturu"
       },
       "credit": {
         "label": "Kredit mgbasa ozi",
@@ -461,7 +463,18 @@
         "colResults": "Nsonaazụ",
         "colEach": "Nke ọ bụla",
         "open": "Mepee {{name}}",
-        "draftLine": "Echekwala ihe ndepụta · gaa n'ihu ebe ị kwụsịrị"
+        "draftLine": "Echekwala ihe ndepụta · gaa n'ihu ebe ị kwụsịrị",
+        "reviewLine": "Ngwa ọ bụla na-ebu ụzọ nyochaa mgbasa ozi gị. A naghị emefu ihe ọ bụla ruo mgbe o gosiri.",
+        "appShowing": "{{app}}: na-egosi",
+        "appChecking": "{{app}}: na-enyocha",
+        "appNotApproved": "{{app}}: anabataghị ya",
+        "deleteDraftA11y": "Hichapụ ihe edeturu {{name}}",
+        "deleteTitle": "Hichapụ ihe edeturu a?",
+        "deleteBody": "“{{name}}” ga-apụ kpamkpam. A gaghị ana ego ọ bụla, kredit mgbasa ozi gị ga-anọgide otu ahụ.",
+        "deleteConfirm": "Hichapụ ihe edeturu",
+        "deleteKeep": "Hapụ ya",
+        "draftDeleted": "Ehichapụla ihe edeturu",
+        "deleteFailed": "Enweghị ike ihichapụ ihe edeturu a. Dọda ala ka i mee ka ọ dị ọhụrụ wee nwaa ọzọ."
       },
       "unit": {
         "sales": "tiketi",
@@ -482,7 +495,8 @@
         "partRejected": "Na-agba · {{count}} anabataghị",
         "draft": "Ihe ndepụta",
         "attention": "Chọrọ nlele",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Na-agba · {{apps}} na-enyocha"
       },
       "reason": {
         "soldOut": "Erela niile",

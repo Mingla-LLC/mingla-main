@@ -47,6 +47,8 @@ export function useGuestRoster(input: {
   filter: GuestRosterFilter;
   search: string;
   sort: GuestRosterSort;
+  /** issue #3281 — read each row's booked start(s) (open-hours experiences). */
+  bookedStarts?: boolean;
 }) {
   const { isAuthReady, user } = useAuth();
   const queryClient = useQueryClient();
@@ -76,6 +78,7 @@ export function useGuestRoster(input: {
         search: input.search,
         sort: input.sort,
         cursor: pageParam,
+        bookedStarts: input.bookedStarts === true,
       });
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,

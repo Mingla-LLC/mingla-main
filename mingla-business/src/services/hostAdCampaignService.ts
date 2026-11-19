@@ -30,6 +30,8 @@ export type HostAdCampaign = {
   next_action: string;
   campaign_ids: string[];
   platforms: string[];
+  /** #4238: each app's own review of a launched ad (older servers omit it). */
+  app_reviews?: { platform: string; state: string }[];
   destination: { page_type: string | null; url: string | null };
   host_spend_equivalent_cents: number | null;
   spend_by_currency: { currency: string; spend_cents: number }[];
