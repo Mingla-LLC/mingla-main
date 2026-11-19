@@ -66,7 +66,8 @@ describe("META-ORCH-1104 Phase 2 — adversarial", () => {
   it("B. segmentation comes from the server, not the lying account_type guess", () => {
     const page = read("src/pages/PeoplePage.jsx");
     const svc = read("src/services/peopleService.js");
-    assert.match(svc, /p_segment: segment/);
+    // #4226 Phase 2: the one People filter decides who is in each tab.
+    assert.match(svc, /rpc\("admin_people_filter", \{ p_filters: filter \|\| \{\} \}/);
     for (const src of [page, svc]) {
       assert.doesNotMatch(src, /account_type/);
       assert.doesNotMatch(src, /\.from\(/);

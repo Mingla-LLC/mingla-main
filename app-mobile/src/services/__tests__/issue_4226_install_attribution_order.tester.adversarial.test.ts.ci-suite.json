@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4226_install_attribution_order.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4226-install-attribution-order-tester",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

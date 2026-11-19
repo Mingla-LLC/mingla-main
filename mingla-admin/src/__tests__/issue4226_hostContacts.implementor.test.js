@@ -18,13 +18,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  PEOPLE_TABS,
-  peopleTabFor,
-  peopleTabLabel,
   flattenPersonRow,
   appStatusLabel,
   consentBasisLabel,
 } from "../lib/peopleSegments.js";
+import { journeyTabFor, tabFilter } from "../lib/peopleFilter.js";
 import {
   APP_STATUS_OPTIONS,
   AUDIENCE_PRESETS,
@@ -46,12 +44,13 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
 
 describe("#4226 People: the host-contact tab", () => {
-  it("is a tab on the server segment, with the server count", () => {
-    const tab = peopleTabFor("host-contacts");
-    assert.equal(tab.segment, "host_contact_no_app");
-    assert.equal(tab.label, "Host contacts, no app");
-    assert.equal(peopleTabLabel(tab, { host_contact_no_app: 276 }), "Host contacts, no app · 276");
-    assert.equal(PEOPLE_TABS.filter((t) => t.segment === "host_contact_no_app").length, 1);
+  // #4226 Phase 2 (D10): host contacts with no account are the second part
+  // of the "No account yet" tab; the old address still lands there.
+  it("is the 'Host contact, never bought' part of the No account yet tab", () => {
+    const tab = journeyTabFor("host-contacts");
+    assert.equal(tab.id, "noaccount");
+    assert.equal(tab.stripLabels.no_account_contacts, "Host contact, never bought");
+    assert.deepEqual(tabFilter(tab, { strip: "no_account_contacts", filters: { city: "Lagos" } }), { track: "no_account_contacts", city: "Lagos" });
     assert.equal(appStatusLabel("host_contact_no_app"), "No app yet");
   });
 
@@ -78,19 +77,15 @@ describe("#4226 People: the host-contact tab", () => {
     assert.equal(consentBasisLabel("__proto__"), "");
   });
 
-  it("renders the agreed columns, marks folded rows, exports, opens no drawer", () => {
-    const page = read("pages/PeoplePage.jsx");
-    const block = page.slice(page.indexOf("const HOST_CONTACT_COLUMNS"), page.indexOf("const COLUMNS = {"));
-    for (const label of ["Name / email", "Added by", "City", "Country", "Emails OK", "Added"]) {
-      assert.match(block, new RegExp(`label: "${label}"`), `column ${label}`);
+  // #4226 Phase 2 (D10): the details panel shows who added them, which other
+  // brands have them, Emails OK and their place with its source.
+  it("opens a details panel with who added them, consent and place", () => {
+    const drawer = read("components/people/PersonDrawer.jsx");
+    for (const label of ["Added by", "In the contacts of", "Emails OK", "City", "Country", "Bought"]) {
+      assert.match(drawer, new RegExp(`\\["${label}"`), `detail ${label}`);
     }
-    assert.match(block, /key: "host_city", label: "City"/, "City is the host city, not the event city");
-    assert.match(page, /host_contact_no_app: HOST_CONTACT_COLUMNS/);
-    assert.match(page, /if \(segment === "host_contact_no_app"\) return CSV_HOST_CONTACTS;/);
-    assert.match(page, /\{ key: "host_city", label: "Host city" \}/);
-    assert.match(page, /row\.is_host_contact && row\.segment !== "host_contact_no_app"[\s\S]{0,80}>Host contact</);
-    assert.match(page, /onRowClick=\{noAccountTab \? undefined :/);
-    assert.match(page, /const noAccountTab = segment === "ticket_buyer_no_app" \|\| segment === "host_contact_no_app";/);
+    const filterLib = read("lib/peopleFilter.js");
+    assert.match(filterLib, /no_account_contact: \["details"\]/, "no-account people get the Details tab only");
   });
 });
 

@@ -13,7 +13,6 @@ import {
   supabase,
 } from "../lib/supabase";
 import { extractFunctionError } from "../lib/edgeFunctionError";
-import { escapeLike } from "../lib/formatters";
 import {
   ACTIVE_TICKET_CAP,
   ACTIVE_TICKET_STATUSES,
@@ -108,14 +107,14 @@ export async function listSupportTickets({ closedLimit = CLOSED_PAGE_SIZE } = {}
   };
 }
 
-/** Profiles (with segment) and every brand name, for the rows and filters. */
+/**
+ * Profiles (with segment) and every brand name, for the rows and filters.
+ * #4226 Phase 2: the segment is the People classifier's (admin_people_lookup),
+ * one owner with People and the person record.
+ */
 export async function loadInboxLookups(userIds) {
   const [profilePages, brands] = await Promise.all([
-    Promise.all(chunks(userIds).map((ids) =>
-      supabase
-        .from("profiles_with_segment")
-        .select("id, display_name, username, email, avatar_url, segment")
-        .in("id", ids))),
+    Promise.all(chunks(userIds).map((ids) => supabase.rpc("admin_people_lookup", { p_user_ids: ids, p_query: null }))),
     supabase.from("brands").select("id, name").is("deleted_at", null).order("name", { ascending: true }).limit(2000),
   ]);
   const profileRows = profilePages.flatMap((page) => unwrap(page, "Couldn't load people") || []);
@@ -260,13 +259,8 @@ export async function invokeSupportFunction(name, body) {
 export async function searchPeople(query) {
   const text = String(query || "").trim();
   if (text.length < 2) return [];
-  const like = `%${escapeLike(text)}%`;
   return unwrap(
-    await supabase
-      .from("profiles_with_segment")
-      .select("id, display_name, username, email, avatar_url, segment")
-      .or(`display_name.ilike.${like},username.ilike.${like},email.ilike.${like}`)
-      .limit(8),
+    await supabase.rpc("admin_people_lookup", { p_user_ids: null, p_query: text }),
     "Couldn't search people",
   ) || [];
 }

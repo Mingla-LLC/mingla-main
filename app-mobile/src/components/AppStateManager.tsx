@@ -22,6 +22,7 @@ export interface UserIdentity {
 import { savedCardsService } from "../services/savedCardsService";
 import { SessionService } from "../services/sessionService";
 import { preloadRates, refreshRatesIfStale } from "../services/currencyService";
+import { retryHeldInstallAttribution } from "../services/appsFlyerService";
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useQueryClient } from "@tanstack/react-query";
 import i18n from '../i18n';
@@ -281,6 +282,8 @@ export function useAppState() {
     // fetch is over 24 h old, so converted prices never age out silently.
     const sub = AppState.addEventListener("change", (next) => {
       if (next === "active") refreshRatesIfStale();
+      // #4226: retry install attribution that errored earlier (3 tries per session).
+      if (next === "active") retryHeldInstallAttribution();
     });
     return () => sub.remove();
   }, []);

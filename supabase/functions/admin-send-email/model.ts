@@ -119,8 +119,14 @@ export function snapshotAudience(
 }
 
 export interface AudienceDefinition {
-  /** #4452 A1.5: "leads" (a Leads list selection) and "lead_reply" (one lead). */
-  mode: "everyone" | "segment" | "person" | "leads" | "lead_reply";
+  /**
+   * #4452 A1.5: "leads" (a Leads list selection) and "lead_reply" (one lead).
+   * #4226 Phase 2: "people" — the People page's filter (admin_people_filter),
+   * so Email's matched count equals the People count for the same filter.
+   */
+  mode: "everyone" | "segment" | "person" | "leads" | "lead_reply" | "people";
+  /** #4226 Phase 2: the shared People filter (mode "people"). */
+  people?: Record<string, string>;
   profileId?: string;
   /** #4452: the Leads list selection (admin_lead_selection_create). */
   selectionId?: string;
@@ -415,6 +421,52 @@ export function documentPlainText(document: EmailContentBlock[]): string {
   }).filter(Boolean).join("\n\n");
 }
 
+/**
+ * #4226 Phase 2 — the People filter keys (one schema: admin_people_filter_check
+ * in migration 20281118024226 and mingla-admin/src/lib/peopleFilter.js). The
+ * database validates every value again; this rejects anything else early.
+ */
+export const PEOPLE_FILTER_KEYS = [
+  "track",
+  "explorer_stage",
+  "host_next_step",
+  "stopped_step",
+  "source",
+  "activity_status",
+  "country",
+  "city",
+  "payout_country",
+  "bank_connected",
+  "joined_window",
+  "joined_from",
+  "joined_to",
+  "brand_id",
+  "emails_ok",
+  "search",
+] as const;
+
+export function normalizePeopleFilter(input: unknown): Record<string, string> {
+  if (input === undefined || input === null) return {};
+  if (typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("audience_filter_invalid:people");
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (!(PEOPLE_FILTER_KEYS as readonly string[]).includes(key)) {
+      throw new Error(`audience_filter_invalid:${key}`);
+    }
+    if (value === null || value === undefined) continue;
+    if (typeof value !== "string" && typeof value !== "number") {
+      throw new Error(`audience_filter_invalid:${key}`);
+    }
+    const text = String(value).trim();
+    if (!text || text === "all") continue;
+    if (text.length > 200) throw new Error(`audience_filter_invalid:${key}`);
+    out[key] = text;
+  }
+  return out;
+}
+
 export function normalizeAudience(input: unknown): AudienceDefinition {
   if (!input || typeof input !== "object") {
     throw new Error("audience_mode_invalid");
@@ -448,6 +500,9 @@ export function normalizeAudience(input: unknown): AudienceDefinition {
       throw new Error(raw.mode === "leads" ? "lead_selection_invalid" : "lead_id_invalid");
     }
     return raw.mode === "leads" ? { mode: "leads", selectionId: id.toLowerCase() } : { mode: "lead_reply", leadId: id.toLowerCase() };
+  }
+  if (raw.mode === "people") {
+    return { mode: "people", people: normalizePeopleFilter(raw.people) };
   }
   if (raw.mode !== "segment") throw new Error("audience_mode_invalid");
   const source = raw.filters && typeof raw.filters === "object"
