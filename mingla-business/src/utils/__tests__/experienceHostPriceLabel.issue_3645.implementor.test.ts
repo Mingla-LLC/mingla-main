@@ -66,6 +66,16 @@ describe("issue #3645 — experienceHostPriceLabel", () => {
     expect(experienceHostPriceLabel(perStop, fmt)).toBe("N5000");
   });
 
+  test("paid with every option at 0 is a dash: no price is invented, never Free", () => {
+    const zero = exp({ wholePriceCents: 0, ticket: opt(0), tickets: [opt(0)] });
+    expect(experienceHostPriceLabel(zero, fmt)).toBe("—");
+  });
+
+  test("a whole price out of step with the only option shows the option's price (what checkout charges)", () => {
+    const stale = exp({ wholePriceCents: 500_000, ticket: opt(300_000), tickets: [opt(300_000)] });
+    expect(experienceHostPriceLabel(stale, fmt)).toBe("N3000");
+  });
+
   test("no ticket at all is a dash", () => {
     expect(experienceHostPriceLabel(exp({ ticket: null, tickets: [] }), fmt)).toBe("—");
   });

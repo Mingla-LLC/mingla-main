@@ -224,8 +224,14 @@ describe("#3281 GuestRosterExperience booked start", () => {
     const tree = renderIn("Africa/Lagos");
     const [line] = byTestID(tree, "guest-roster-booked-start");
     expect(line).toMatch(/^Booked for /);
-    expect(line).toMatch(/7:30/); // 18:30 UTC is 19:30 in Lagos
-    const row = tree.root.findByProps({ accessibilityLabel: "Nia Buyer, Bought ticket, Invited" });
+    // 18:30 UTC is 19:30 in Lagos (either clock, whatever the runner's locale).
+    expect(line).toMatch(/(7:30|19:30)/);
+    // Screen readers hear it: the row's label carries the booked line.
+    const [row] = tree.root.findAll((n: TestInstance) =>
+      typeof n.props.accessibilityLabel === "string" &&
+      n.props.accessibilityLabel === `Nia Buyer, Bought ticket, Invited, ${line}` &&
+      typeof n.props.onPress === "function");
+    expect(row).toBeDefined();
     act(() => row.props.onPress?.());
     expect(byTestID(tree, "guest-roster-detail-booked-start")).toEqual([line]);
   });
@@ -233,7 +239,17 @@ describe("#3281 GuestRosterExperience booked start", () => {
   test("several orders at different starts list each", () => {
     withStarts(["2026-11-14T18:30:00Z", "2026-11-15T09:00:00Z"]);
     const [line] = byTestID(renderIn("UTC"), "guest-roster-booked-start");
-    expect(line.split(" · ")).toHaveLength(2);
+    const parts = line.replace(/^Booked for /, "").split(" · ");
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toMatch(/14/);
+    expect(parts[1]).toMatch(/15/);
+  });
+
+  test("an unreadable start among several is left out, never shown wrong", () => {
+    withStarts(["not-a-date", "2026-11-15T09:00:00Z"]);
+    const [line] = byTestID(renderIn("UTC"), "guest-roster-booked-start");
+    expect(line.replace(/^Booked for /, "").split(" · ")).toHaveLength(1);
+    expect(line).toMatch(/15/);
   });
 
   test("no booked start shows no line", () => {
@@ -244,6 +260,20 @@ describe("#3281 GuestRosterExperience booked start", () => {
   test("an unknown zone shows UTC, never the phone's zone", () => {
     withStarts(["2026-11-14T18:30:00Z"]);
     const [line] = byTestID(renderIn(null), "guest-roster-booked-start");
-    expect(line).toMatch(/6:30/);
+    expect(line).toMatch(/(6:30|18:30)/);
+  });
+
+  test("the guests screen passes the event's zone and asks only for experiences", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path");
+    const screen = fs.readFileSync(
+      path.join(__dirname, "..", "app", "event", "[id]", "guests", "index.tsx"),
+      "utf8",
+    );
+    const roster = screen.slice(screen.indexOf("<GuestRosterExperience"), screen.indexOf("/>", screen.indexOf("<GuestRosterExperience")));
+    expect(roster).toContain("timeZone={event?.timezone ?? null}");
+    expect(roster).toContain('showBookedStarts={event?.event_type === "experience"}');
   });
 });

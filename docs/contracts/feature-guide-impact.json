@@ -1569,6 +1569,7 @@
         "mingla-business/src/components/guests/GuestDaySelector.tsx",
         "mingla-business/src/components/guests/GuestRosterExperience.tsx",
         "mingla-business/src/services/guestRosterService.ts",
+        "mingla-business/src/hooks/useGuestRoster.ts",
         "mingla-business/src/types/guestRoster.ts",
         "mingla-business/src/utils/guestCsvDayOrder.ts",
         "mingla-business/src/utils/guestCsvExport.ts",

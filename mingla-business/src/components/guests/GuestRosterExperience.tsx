@@ -159,7 +159,7 @@ const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionM
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: selectionMode ? selected : undefined, disabled: selectionMode && !row.canRemind && !row.canRetry }}
-      accessibilityLabel={`${row.displayName}, ${rosterPrimaryLabel(row)}${invitationLabel !== null ? `, ${invitationLabel}` : ""}`}
+      accessibilityLabel={`${row.displayName}, ${rosterPrimaryLabel(row)}${invitationLabel !== null ? `, ${invitationLabel}` : ""}${bookedLine !== null ? `, ${bookedLine}` : ""}`}
       onPress={onPress}
       style={({ pressed }) => [styles.rowPressable, pressed && styles.pressed]}
     >
@@ -296,6 +296,8 @@ export interface GuestRosterExperienceProps {
   onOpenPrivateLinks?: () => void;
   /** issue #3281 — the event's time zone for booked starts (UTC when unknown). */
   timeZone?: string | null;
+  /** issue #3281 — read and show booked starts (open-hours experiences). */
+  showBookedStarts?: boolean;
 }
 
 export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
@@ -307,6 +309,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   onAddGuests,
   onOpenPrivateLinks,
   timeZone,
+  showBookedStarts,
 }) => {
   const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
@@ -328,7 +331,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
     const timer = setTimeout(() => setDebouncedSearch(search.trim().length > 0 ? search : ""), 300);
     return () => clearTimeout(timer);
   }, [search]);
-  const query = useGuestRoster({ eventId, enabled: true, filter, search: debouncedSearch, sort });
+  const query = useGuestRoster({ eventId, enabled: true, filter, search: debouncedSearch, sort, bookedStarts: showBookedStarts === true });
   const data = query.data;
   const summary = data?.summary;
   // #3682 closeout — followers invited by account are listed in the card above

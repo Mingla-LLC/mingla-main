@@ -13,6 +13,12 @@ export interface GuestRosterListInput {
   sort: GuestRosterSort;
   cursor?: Record<string, unknown> | null;
   limit?: number;
+  /**
+   * issue #3281 — read each row's booked start(s). Only open-hours
+   * experiences have them, so the guests screen asks only for experiences
+   * (the roster refreshes every 15 s; ordinary events skip the read).
+   */
+  bookedStarts?: boolean;
 }
 
 export interface GuestRosterAccess {
@@ -63,7 +69,19 @@ export async function fetchGuestRoster(input: GuestRosterListInput): Promise<Gue
     throw new GuestRosterError(code, error.message);
   }
   const page = asObject(data) as unknown as GuestRosterPage;
-  return await withBookedStarts(page, input.eventId);
+  return input.bookedStarts === true ? await withBookedStarts(page, input.eventId) : page;
+}
+
+/**
+ * A failed booked-start read must be visible somewhere other than a missing
+ * line. The reporter loads only on this path, as refundPolicyWrites does, so
+ * the native Sentry SDK is not pulled into every screen that loads a roster.
+ */
+function reportBookedStartFailure(failure: unknown): void {
+  void import("../diagnostics/reportNonFatal").then(
+    ({ reportNonFatal }) => reportNonFatal("guestRosterBookedStarts", failure),
+    () => undefined,
+  );
 }
 
 /** Order ids per `.in()` request: keeps the GET URL short for a full page. */
@@ -88,6 +106,8 @@ export async function withBookedStarts(
   ];
   if (ids.length === 0) return page;
   const startById = new Map<string, string>();
+  // A failed batch stops the read and keeps what earlier batches found; it is
+  // reported, never thrown (the roster still shows, without that line).
   try {
     for (let i = 0; i < ids.length; i += BOOKED_START_BATCH) {
       const { data, error } = await supabase
@@ -95,15 +115,18 @@ export async function withBookedStarts(
         .select("id, booked_start_at")
         .in("id", ids.slice(i, i + BOOKED_START_BATCH))
         .eq("event_id", eventId);
-      if (error !== null) return page;
+      if (error !== null) {
+        reportBookedStartFailure(error);
+        break;
+      }
       for (const order of (data ?? []) as Array<{ id: string; booked_start_at: string | null }>) {
         if (typeof order.booked_start_at === "string" && order.booked_start_at.length > 0) {
           startById.set(order.id, order.booked_start_at);
         }
       }
     }
-  } catch {
-    return page;
+  } catch (thrown) {
+    reportBookedStartFailure(thrown);
   }
   if (startById.size === 0) return page;
   return {
