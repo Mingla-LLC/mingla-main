@@ -47,6 +47,7 @@ import { revealFocusedFieldWithin } from "../../offers/revealFocusedField";
 import type { VenueModuleLeaveHandle } from "../../venueLeaveContract";
 import {
   HOUR_BUFFER_OPTIONS,
+  HOUR_MOVE_CUTOFF_OPTIONS,
   HOUR_REFUND_PRESETS,
   RELEASE_OPTIONS,
   STEP_OPTIONS,
@@ -57,6 +58,7 @@ import {
   hourIssues,
   hourLadder,
   hourLengthPayload,
+  hourMoveRule,
   hourOptionPayload,
   hourPlacePayload,
   hourPriceFor,
@@ -173,8 +175,13 @@ export const HourEditor = forwardRef<VenueModuleLeaveHandle, HourEditorProps>(fu
     if (before === null || JSON.stringify(hourRulesPayload(before, id)) !== JSON.stringify(hourRulesPayload(draft, id))) {
       current = await manageVenueHour({ venueId, action: "set_rules", payload: hourRulesPayload(draft, id), expectedVersion: current.version });
     }
-    if (before === null || before.refundPreset !== draft.refundPreset || current.policy === null) {
-      current = await manageVenueOffer({ venueId, action: "set_policy", payload: { offerId: id, ...policyPayload(hourLadder(draft), null) }, expectedVersion: current.version });
+    if (
+      before === null ||
+      before.refundPreset !== draft.refundPreset ||
+      JSON.stringify(hourMoveRule(before)) !== JSON.stringify(hourMoveRule(draft)) ||
+      current.policy === null
+    ) {
+      current = await manageVenueOffer({ venueId, action: "set_policy", payload: { offerId: id, ...policyPayload(hourLadder(draft), hourMoveRule(draft)) }, expectedVersion: current.version });
     }
     setSavedOffer(current);
     const next = hourDraftFrom(current);
@@ -494,6 +501,27 @@ export const HourEditor = forwardRef<VenueModuleLeaveHandle, HourEditorProps>(fu
               />
             ))}
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>If a guest wants another time</Text>
+          <View style={styles.switchRow}>
+            <View style={styles.switchText}>
+              <Text style={styles.switchTitle}>Guests can move it themselves</Text>
+              <Text style={styles.hint}>From their booking page, to any free time. The price difference is shown first.</Text>
+            </View>
+            <BrandSwitch value={draft.moveOn} onValueChange={(moveOn) => patch({ moveOn })} accessibilityLabel="Guests can move it themselves" testID="hour-editor-move" />
+          </View>
+          {draft.moveOn ? (
+            <View style={styles.row2}>
+              <View style={styles.cell}>
+                <SelectSheet label="Up to" value={draft.moveCutoffMinutes} options={HOUR_MOVE_CUTOFF_OPTIONS} onChange={(moveCutoffMinutes) => patch({ moveCutoffMinutes })} testID="hour-editor-move-cutoff" />
+              </View>
+              <View style={styles.cell}>
+                <NumberStepper label="Times per booking" value={draft.maxMoves} min={1} max={5} onChange={(maxMoves) => patch({ maxMoves })} testID="hour-editor-move-times" />
+              </View>
+            </View>
+          ) : null}
         </View>
 
         {offer !== null && offer.readiness.length > 0 && !dirty ? (

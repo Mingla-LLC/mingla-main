@@ -37,6 +37,26 @@ export interface HourDraft {
   releaseMinutes: number;
   staffCanStart: boolean;
   refundPreset: HourRefundPreset;
+  /** #4490 P5 follow-up — guests may move the booking to another time themselves. */
+  moveOn: boolean;
+  /** Up to this many minutes before it starts. */
+  moveCutoffMinutes: number;
+  /** How many times one booking can move. */
+  maxMoves: number;
+}
+
+/** "Up to" choices for a guest moving a by-the-hour booking. */
+export const HOUR_MOVE_CUTOFF_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
+  { value: 60, label: "1 hour before" },
+  { value: 120, label: "2 hours before" },
+  { value: 6 * 60, label: "6 hours before" },
+  { value: 24 * 60, label: "24 hours before" },
+  { value: 48 * 60, label: "2 days before" },
+];
+
+/** The date-change rule the policy saves (null = guests can't move it). */
+export function hourMoveRule(d: Pick<HourDraft, "moveOn" | "moveCutoffMinutes" | "maxMoves">): { allowedUntilMinutesBefore: number; feeBps: number; maxChanges: number } | null {
+  return d.moveOn ? { allowedUntilMinutesBefore: d.moveCutoffMinutes, feeBps: 0, maxChanges: d.maxMoves } : null;
 }
 
 export type HourRefundPreset = "flexible" | "standard" | "strict";
@@ -155,6 +175,9 @@ export function hourDraftFrom(offer: VenueOffer | null): HourDraft {
     releaseMinutes: h?.noShowReleaseMinutes ?? 15,
     staffCanStart: h?.staffCanStart ?? false,
     refundPreset: preset,
+    moveOn: (offer?.policy?.dateChangeRule?.allowedUntilMinutesBefore ?? null) !== null,
+    moveCutoffMinutes: offer?.policy?.dateChangeRule?.allowedUntilMinutesBefore ?? 120,
+    maxMoves: offer?.policy?.dateChangeRule?.maxChanges ?? 1,
   };
 }
 

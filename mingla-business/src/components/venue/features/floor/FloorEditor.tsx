@@ -36,6 +36,7 @@ import {
   defaultTableSize,
   floorErrorCopy,
   freeSpot,
+  overlappingTables,
   LANDMARK_KINDS,
   LANDMARK_LABEL,
   moveBox,
@@ -298,8 +299,26 @@ export const FloorEditor = forwardRef<VenueModuleLeaveHandle, FloorEditorProps>(
     setSelectedId(null);
   };
 
+  // #4490 P5 follow-up — tables on top of each other are named and block saving.
+  const overlaps = overlappingTables(draft.places);
+  const overlapIds = new Set(overlaps.flat());
+  const overlapWords = overlaps
+    .slice(0, 3)
+    .map(([a, b]) => `${byId.get(a)?.name ?? "A table"} and ${byId.get(b)?.name ?? "another"}`)
+    .join("; ");
+
+  const overlapCount = overlaps.length;
+  useEffect(() => {
+    // Once the tables are apart, the "move them apart" refusal goes away.
+    if (overlapCount === 0) setError((e) => (e !== null && e.startsWith("Move ") ? null : e));
+  }, [overlapCount]);
+
   const doSave = async (): Promise<void> => {
     if (!canEdit || save.isPending || !dirty) return;
+    if (overlaps.length > 0) {
+      setError(`Move ${overlapWords} apart before saving: guests and staff couldn't tell them apart.`);
+      return;
+    }
     setError(null);
     const writes = changedPlaces(saved.places, draft.places).map((w) => ({ ...w, shape: byId.get(w.tableId)?.shape ?? w.shape }));
     const roomChanged = !sameRoom(saved.room, draft.room);
@@ -357,8 +376,8 @@ export const FloorEditor = forwardRef<VenueModuleLeaveHandle, FloorEditorProps>(
         shape: t.shape,
         box: p,
         seats: t.capacity,
-        word: seatsLine(t.capacity, t.minParty),
-        tone: "plain",
+        word: overlapIds.has(t.id) ? "Overlaps" : seatsLine(t.capacity, t.minParty),
+        tone: overlapIds.has(t.id) ? "pending" : "plain",
         accessibilityLabel: `${t.name}, ${SHAPE_LABEL[t.shape]}, ${seatsLine(t.capacity, t.minParty)}${extras.length > 0 ? `, ${extras.join(", ")}` : ""}`,
       };
     });
@@ -574,6 +593,14 @@ export const FloorEditor = forwardRef<VenueModuleLeaveHandle, FloorEditorProps>(
         />
       ) : error !== null ? (
         <Text style={styles.error} accessibilityRole="alert" testID="floor-error">{error}</Text>
+      ) : null}
+      {overlaps.length > 0 && canEdit ? (
+        <Banner
+          tone="warning"
+          title={overlaps.length === 1 ? "Two tables overlap" : `${overlaps.length} pairs of tables overlap`}
+          body={`${overlapWords}${overlaps.length > 3 ? " and more" : ""}. Drag one of each pair to a clear spot, then save.`}
+          testID="floor-overlap"
+        />
       ) : null}
       {unplaced.length > 0 && canEdit ? (
         <Banner

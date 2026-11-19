@@ -94,7 +94,7 @@ import { VenueOfferPassQr } from "./VenueOfferPassQr";
 import { PayModeChoice } from "./PayModeChoice";
 import { VisitBalanceCard, VisitChanges, VisitPackageFacts } from "./VisitPackageParts";
 import { HireFacts, HireStateMain, HireTracker } from "./VisitHireParts";
-import { parseHourFacts, releaseLine } from "./hourGuestModel";
+import { hourSummaryLabel, parseHourFacts, releaseLine } from "./hourGuestModel";
 
 const POLL_MS = 2000;
 const POLL_WINDOW_MS = 30_000;
@@ -539,15 +539,18 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
         <EntrySummaryRows
           palette={palette}
           theme={theme}
-          lines={summaryLines(orderLinesByOptions(booking.lines, optionOrder), {
-            currencyCode: booking.currencyCode,
-            exponent,
-            taxMinor: bookingVat(booking, offerVatRatePct).taxMinor,
-            feeMinor: booking.feeMinor,
-            totalMinor: booking.totalMinor,
-            vatMode: booking.vatMode,
-            vatRatePct: bookingVat(booking, offerVatRatePct).ratePct,
-          })}
+          lines={hourSummaryLabel(
+            summaryLines(orderLinesByOptions(booking.lines, optionOrder), {
+              currencyCode: booking.currencyCode,
+              exponent,
+              taxMinor: bookingVat(booking, offerVatRatePct).taxMinor,
+              feeMinor: booking.feeMinor,
+              totalMinor: booking.totalMinor,
+              vatMode: booking.vatMode,
+              vatRatePct: bookingVat(booking, offerVatRatePct).ratePct,
+            }),
+            hourFacts,
+          )}
         />
       )}
       {hourFacts !== null ? (
@@ -816,6 +819,11 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
             theme={theme}
             exponent={exponent}
             token={token ?? null}
+            hour={
+              hourFacts !== null && hourFacts.bookedFrom !== null && hourFacts.minutes !== null && !hourFacts.released
+                ? { startsAt: hourFacts.bookedFrom, minutes: hourFacts.minutes }
+                : null
+            }
             onChanged={(message) => {
               setChangeNote(message);
               setConfirm("idle");

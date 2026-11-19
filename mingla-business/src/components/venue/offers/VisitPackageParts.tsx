@@ -23,6 +23,7 @@ import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
 import {
   addDays,
   entryDateLabel,
+  venueClock,
   venueOfferErrorCopy,
   venueToday,
   type EntryBooking,
@@ -146,9 +147,16 @@ export function VisitChanges({
   exponent,
   token,
   onChanged,
-}: Common & { token: string | null; onChanged: (message: string) => void }): React.ReactElement | null {
+  hour = null,
+}: Common & {
+  token: string | null;
+  onChanged: (message: string) => void;
+  /** #4490 P5 follow-up — a by-the-hour booking moves to another start, keeping its length. */
+  hour?: { startsAt: string; minutes: number } | null;
+}): React.ReactElement | null {
   const [panel, setPanel] = useState<Panel>(null);
   const rules = pkg.changeRules;
+  const isHour = hour !== null;
   const isPackage = pkg.offerKind === "group_package";
   // #4490 P4 follow-up: a private hire changes guests within its place, and moves to another session.
   const isHire = pkg.offerKind === "private_hire";
@@ -184,7 +192,22 @@ export function VisitChanges({
   const offer = offerQuery.data ?? null;
   const hasExtras = (offer?.extras.length ?? 0) > 0;
 
-  const rows: Array<{ key: Panel; icon: IconName; label: string; detail: string; on: boolean; testID: string }> = [
+  const rows: Array<{ key: Panel; icon: IconName; label: string; detail: string; on: boolean; testID: string }> = isHour
+    ? [
+        {
+          key: "move",
+          icon: "clock",
+          label: "Move to another time",
+          detail: rules.canMove
+            ? `${moveUntil !== null ? `Until ${moveUntil}` : "If it's free"}${movesLeft !== null ? ` · ${movesLeft} ${movesLeft === 1 ? "move" : "moves"} left` : ""}`
+            : movesLeft === 0
+              ? "You've used your moves"
+              : moveUntil !== null ? `Could be moved until ${moveUntil}` : "This booking can't be moved online. Cancel it, or contact the venue.",
+          on: rules.canMove,
+          testID: "issue-4490-visit-move",
+        },
+      ]
+    : [
     {
       key: "guests",
       icon: "users",
@@ -211,7 +234,7 @@ export function VisitChanges({
       testID: "issue-4490-visit-move",
     },
   ];
-  if (isPackage && hasExtras) {
+  if (isPackage && hasExtras && !isHour) {
     rows.push({
       key: "extras",
       icon: "plus",
@@ -265,7 +288,21 @@ export function VisitChanges({
           }}
         />
       ) : null}
-      {panel === "move" && booking.offer.id !== null && isHire ? (
+      {panel === "move" && booking.offer.id !== null && hour !== null ? (
+        <HourMoveChange
+          booking={booking}
+          pkg={pkg}
+          palette={palette}
+          theme={theme}
+          exponent={exponent}
+          token={token}
+          hour={hour}
+          onDone={(m) => {
+            setPanel(null);
+            onChanged(m);
+          }}
+        />
+      ) : panel === "move" && booking.offer.id !== null && isHire ? (
         <HireMoveChange
           booking={booking}
           pkg={pkg}
@@ -516,6 +553,107 @@ function MoveChange({ booking, pkg, palette, theme, exponent, token, onDone }: C
         disabled={payload === null || c.summary === null}
         busy={c.applying}
         testID="issue-4490-visit-move-confirm"
+      />
+    </View>
+  );
+}
+
+/**
+ * #4490 P5 follow-up — move a by-the-hour booking to another start (same
+ * length): a day, then the starts that have that long free. The server makes
+ * the new time's window and prices the move first.
+ */
+function HourMoveChange({
+  booking,
+  palette,
+  theme,
+  exponent,
+  token,
+  hour,
+  onDone,
+}: Common & { token: string | null; hour: { startsAt: string; minutes: number }; onDone: (m: string) => void }): React.ReactElement {
+  const tz = booking.venue.timezone;
+  const from = useMemo(() => venueToday(new Date(), tz), [tz]);
+  const guests = booking.lines.reduce((n, l) => n + l.guests, 0);
+  const [date, setDate] = useState<string>(booking.window?.localDate ?? from);
+  const [startsAt, setStartsAt] = useState<string | null>(null);
+  const dayQuery = useQuery({
+    queryKey: ["venueOfferGuest", "hourMoveDay", booking.offer.id ?? "", date, guests],
+    staleTime: 30_000,
+    retry: 1,
+    queryFn: () => venueOfferGuestService.hourDay({ offeringId: booking.offer.id as string, date, guests }),
+  });
+  const starts = (dayQuery.data?.day.starts ?? []).filter((x) => x.startsAt !== hour.startsAt);
+  const payload =
+    startsAt === null || booking.offer.id === null ? null : { offeringId: booking.offer.id, startsAt, minutes: hour.minutes };
+  const c = useGuestChange(booking, token, "move_date", payload);
+  const tiles: OfferingDateTile[] = Array.from({ length: 21 }, (_, i) => {
+    const d = addDays(from, i);
+    return {
+      key: d,
+      top: i === 0 ? "Today" : new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`)),
+      big: String(Number(d.slice(8, 10))),
+      bottom: d === booking.window?.localDate ? "Booked" : MONTHS[Number(d.slice(5, 7)) - 1] ?? "",
+      selected: d === date,
+      accessibilityLabel: entryDateLabel(d),
+    };
+  });
+  const lengthWords = hour.minutes % 60 === 0 ? `${hour.minutes / 60} ${hour.minutes === 60 ? "hour" : "hours"}` : `${hour.minutes} minutes`;
+  const dayStatus = dayQuery.data?.day.status ?? null;
+  return (
+    <View style={styles.panel} testID="issue-4490-visit-hour-move-panel">
+      <Text style={[styles.small, { color: palette.secondaryText }]}>{`Same length (${lengthWords}). Pick a day, then a free start.`}</Text>
+      <OfferingDateStrip
+        palette={palette}
+        tiles={tiles}
+        onPress={(d) => {
+          setDate(d);
+          setStartsAt(null);
+        }}
+        fontFamily={themeBoldFace(theme).fontFamily}
+        accessibilityLabel="Choose the new day"
+        testID="issue-4490-visit-hour-move-day"
+      />
+      {dayQuery.isLoading ? (
+        <View style={[styles.stripSkeleton, { backgroundColor: palette.panel }]} accessibilityLabel="Loading times" />
+      ) : dayQuery.isError ? (
+        <EntryNote palette={palette} icon="flag" tone="error">We couldn&apos;t load the times. Pick the day again.</EntryNote>
+      ) : dayStatus !== "open" ? (
+        <Text style={[styles.small, { color: palette.secondaryText }]}>
+          {dayStatus === "closed" ? `Closed on ${entryDateLabel(date)}. Pick another day.` : `Not bookable on ${entryDateLabel(date)}. Pick another day.`}
+        </Text>
+      ) : starts.length === 0 ? (
+        <Text style={[styles.small, { color: palette.secondaryText }]}>{`Nothing free on ${entryDateLabel(date)}. Pick another day.`}</Text>
+      ) : (
+        <OfferingChipRow accessibilityLabel="Choose the new start time">
+          {starts.map((x) => {
+            const fits = x.maxMinutes >= hour.minutes && x.places > 0;
+            const label = venueClock(x.startsAt, tz) ?? x.startsAt.slice(11, 16);
+            return (
+              <OfferingChoiceChip
+                key={x.startsAt}
+                palette={palette}
+                label={label}
+                note={fits ? null : "Too short"}
+                selected={x.startsAt === startsAt}
+                disabled={!fits}
+                onPress={() => setStartsAt(x.startsAt)}
+                role="radio"
+                testID={`issue-4490-visit-hour-move-time-${label}`}
+              />
+            );
+          })}
+        </OfferingChipRow>
+      )}
+      <PreviewNote palette={palette} summary={c.summary} loading={c.loading} error={c.error} exponent={exponent} testID="issue-4490-visit-hour-move" />
+      <EntryButton
+        palette={palette}
+        theme={theme}
+        label={startsAt !== null ? `Move to ${entryDateLabel(date)}, ${venueClock(startsAt, tz) ?? ""}` : "Pick a new time"}
+        onPress={() => c.apply(() => onDone(startsAt !== null ? `Moved to ${entryDateLabel(date)}, ${venueClock(startsAt, tz) ?? ""}.` : "Moved."))}
+        disabled={payload === null || c.summary === null}
+        busy={c.applying}
+        testID="issue-4490-visit-hour-move-confirm"
       />
     </View>
   );

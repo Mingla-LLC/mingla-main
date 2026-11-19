@@ -327,6 +327,42 @@ export function changedPlaces(
   return out;
 }
 
+/** The box a table really covers once rotated (axis-aligned bounds). */
+export function coveredBounds(p: PlanBox): { left: number; top: number; right: number; bottom: number } {
+  const rad = (normaliseRotation(p.rotation) * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(rad));
+  const sin = Math.abs(Math.sin(rad));
+  const w = p.w * cos + p.h * sin;
+  const h = p.w * sin + p.h * cos;
+  const cx = p.x + p.w / 2;
+  const cy = p.y + p.h / 2;
+  return { left: cx - w / 2, top: cy - h / 2, right: cx + w / 2, bottom: cy + h / 2 };
+}
+
+/**
+ * #4490 P5 follow-up — tables drawn on top of each other. Two tables overlap
+ * when their covered areas cross by more than `tolerance` plan units each
+ * way (touching edges are fine: booths stand back to back). Pairs come back
+ * in a stable order; the editor names them and won't save until they part.
+ */
+export function overlappingTables(
+  places: Readonly<Record<string, PlanBox>>,
+  tolerance = 2,
+): Array<[string, string]> {
+  const ids = Object.keys(places).sort();
+  const out: Array<[string, string]> = [];
+  for (let i = 0; i < ids.length; i += 1) {
+    const a = coveredBounds(places[ids[i] as string] as PlanBox);
+    for (let j = i + 1; j < ids.length; j += 1) {
+      const b = coveredBounds(places[ids[j] as string] as PlanBox);
+      const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (overlapX > tolerance && overlapY > tolerance) out.push([ids[i] as string, ids[j] as string]);
+    }
+  }
+  return out;
+}
+
 export function sameRoom(a: FloorRoom, b: FloorRoom): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }

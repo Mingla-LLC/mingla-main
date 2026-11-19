@@ -232,7 +232,9 @@ export function VenueWaitlistModule({
                       <Text style={styles.notified}>
                         {w.offeredSlotAt != null
                           ? `Told a table is free at ${new Date(w.offeredSlotAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: venueTimeZone })}`
-                          : "Told their table is ready"}
+                          : w.notifiedAt != null
+                            ? `Told their table is ready at ${new Date(w.notifiedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: venueTimeZone })}`
+                            : "Told their table is ready"}
                       </Text>
                     ) : null}
                   </View>

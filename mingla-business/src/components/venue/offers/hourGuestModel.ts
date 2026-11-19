@@ -157,3 +157,23 @@ export function hourGuestErrorCopy(code: string): string | null {
       return null;
   }
 }
+
+/**
+ * #4490 P5 follow-up — a by-the-hour booking reads "2 hours · Boardroom",
+ * not "1 × Per hour" (its one line is the time, not a count of guests).
+ */
+export function hourSummaryLabel<T extends { label: string; total?: boolean; muted?: boolean }>(
+  lines: T[],
+  hour: { minutes: number | null; placeName: string | null } | null,
+): T[] {
+  if (hour === null || hour.minutes === null) return lines;
+  const m = hour.minutes;
+  const length = m % 60 === 0 ? `${m / 60} ${m === 60 ? "hour" : "hours"}` : m > 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} minutes`;
+  const label = [length, hour.placeName].filter((x): x is string => x !== null && x.length > 0).join(" · ");
+  let done = false;
+  return lines.map((l) => {
+    if (done || l.total === true || l.muted === true || /^(VAT|Booking fee|Includes VAT)/.test(l.label)) return l;
+    done = true;
+    return { ...l, label };
+  });
+}

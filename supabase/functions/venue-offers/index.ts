@@ -1219,7 +1219,7 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
 
     if (action === "change_preview" || action === "change") {
       const change = str(body.change);
-      const payload = body.payload;
+      let payload = body.payload;
       const preview = action === "change_preview";
       const key = str(body.idempotencyKey);
       const expectedVersion = body.expectedVersion;
@@ -1231,6 +1231,34 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
             Number(expectedVersion) < 1))
       ) {
         return json(400, { code: "invalid_request" });
+      }
+      // #4490 P5 follow-up (UI): a by-the-hour booking moves to a new start
+      // and length. Its own window is made first (as for a flexible quote);
+      // the database then checks the window belongs to the booking's offer.
+      if (
+        change === "move_date" && isJson(payload) && !payload.windowId &&
+        payload.startsAt !== undefined
+      ) {
+        const startsAt = str(payload.startsAt);
+        const minutes = payload.minutes;
+        const offeringId = str(payload.offeringId);
+        if (
+          !UUID.test(offeringId) || Number.isNaN(Date.parse(startsAt)) ||
+          !Number.isInteger(minutes) || (minutes as number) < 15 ||
+          (minutes as number) > 1440
+        ) {
+          return json(400, { code: "invalid_request" });
+        }
+        const { data: made, error: windowError } = await client.rpc(
+          "issue_4490_flexible_window",
+          {
+            p_offering_id: offeringId,
+            p_starts_at: new Date(startsAt).toISOString(),
+            p_minutes: minutes,
+          },
+        );
+        if (windowError) return rpcFailure(windowError);
+        payload = { windowId: String(made ?? "") };
       }
       const { data, error } = await client.rpc(
         "issue_4490_guest_change_booking",

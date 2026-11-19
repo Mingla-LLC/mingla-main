@@ -2532,6 +2532,7 @@ export default function ExpandedCardModal({
             brandId={venueReservable.brand_id}
             venueName={card.title}
             currency={venueReservable.currency}
+            partyMax={venueFeatures?.features.tables?.partyMax ?? null}
             onReserved={() => {
               Alert.alert(
                 "You're booked",
