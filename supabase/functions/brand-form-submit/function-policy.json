@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "brand-form-submit",
+  "verify_jwt": false,
+  "gateway_reason": "Public brand form answers (#4514): guests on buyer web and the link page are anonymous (a personal link token identifies them), an optional bearer identifies Explorer users; rate-limited per salted IP hash, service-role DB access only through brand_form_submit_core.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

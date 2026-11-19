@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-form-submit/issue_4514_brand_form_submit.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4514-brand-form-submit",
+  "profile": "deno-2-unit"
+}
