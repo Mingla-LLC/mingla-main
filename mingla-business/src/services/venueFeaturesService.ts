@@ -111,6 +111,8 @@ export interface SetVenueFeatureInput {
   cascade: boolean;
   expectedVersion?: number | null;
   spaceIds?: string[] | null;
+  /** #4490 P5 — the feature's whole settings object (null/undefined = keep). */
+  settings?: Record<string, unknown> | null;
 }
 
 export interface SetVenueFeatureResult {
@@ -124,7 +126,7 @@ export async function setVenueFeature(input: SetVenueFeatureInput): Promise<SetV
     p_key: input.key,
     p_enabled: input.enabled,
     p_space_ids: input.spaceIds ?? null,
-    p_settings: null,
+    p_settings: input.settings ?? null,
     p_expected_version: input.expectedVersion ?? null,
     p_idempotency_key: `feature-${randomId()}`,
     p_cascade: input.cascade,
@@ -218,6 +220,8 @@ export interface VenueSpace {
   capacitySeated: number | null;
   photos: string[];
   planShape: SpacePlanShape | null;
+  /** #4490 P5 — the floor plan's room (`plan_shape.room`), kept when the site plan saves. */
+  planRoom?: unknown;
   sortOrder: number;
   canBeHired: boolean;
   stepFree: boolean | null;
@@ -245,6 +249,8 @@ function mapPlanShape(value: unknown): SpacePlanShape | null {
   const w = numOrNull(v.w);
   const h = numOrNull(v.h);
   if (x === null || y === null || w === null || h === null) return null;
+  // #4490 P5 — a zero-size box only carries the floor plan's room: not on the site plan.
+  if (w <= 0 || h <= 0) return null;
   return { x, y, w, h };
 }
 
@@ -273,6 +279,10 @@ export function mapVenueSpace(json: unknown): VenueSpace {
     capacitySeated: numOrNull(r.capacity_seated),
     photos: photoUrls(r.photos),
     planShape: mapPlanShape(r.plan_shape),
+    planRoom:
+      r.plan_shape !== null && typeof r.plan_shape === "object"
+        ? ((r.plan_shape as Record<string, unknown>).room ?? null)
+        : null,
     sortOrder: typeof r.sort_order === "number" ? r.sort_order : 0,
     canBeHired: r.can_be_hired !== false,
     stepFree: typeof r.step_free === "boolean" ? r.step_free : null,

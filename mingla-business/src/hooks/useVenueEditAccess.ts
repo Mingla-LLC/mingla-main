@@ -20,6 +20,8 @@ export interface VenueEditAccess {
   canManageMoney: boolean;
   /** #4490 P3 — change guests, move a day, cancel (rank >= event_manager or venue.manage_bookings). */
   canManageBookings: boolean;
+  /** #4490 P5 — tables and the floor plan (rank >= event_manager or restaurant.manage_reservations). */
+  canManageTables: boolean;
 }
 
 export function useVenueEditAccess(brandId: string | null, venueId: string | null): VenueEditAccess {
@@ -35,5 +37,6 @@ export function useVenueEditAccess(brandId: string | null, venueId: string | nul
     canEditSpaces: rank >= BRAND_ROLE_RANK.event_manager || scopedOffers,
     canSwitchFeatures: rank >= BRAND_ROLE_RANK.brand_admin,
     canEditWeeklyHours: rank >= BRAND_ROLE_RANK.brand_admin,
+    canManageTables: rank >= BRAND_ROLE_RANK.event_manager || caps.includes("restaurant.manage_reservations"),
   };
 }

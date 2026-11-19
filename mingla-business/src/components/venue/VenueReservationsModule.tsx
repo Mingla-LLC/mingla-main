@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   findNodeHandle,
   Platform,
   SectionList,
@@ -40,6 +41,8 @@ import {
   useVenueReservations,
 } from "../../hooks/useVenueReservations";
 import { useVenueTables } from "../../hooks/useVenueTables";
+import { useVenueFeatures } from "../../hooks/useVenueFeatures";
+import { useBrandCurrency } from "../../hooks/useBrandCurrency";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -139,11 +142,19 @@ interface AgendaScrollFailure {
 
 const MAX_AGENDA_SCROLL_RETRIES = 2;
 
+// #4490 P5 — the live floor loads only when the Floor view is opened.
+const LazyVenueFloorLive = React.lazy(async () => {
+  const mod = await import("./features/floor/VenueFloorLive");
+  return { default: mod.VenueFloorLive };
+});
+
 export interface VenueReservationsModuleProps {
   brandId: string | null;
   venueId?: string | null;
   scrollBottomPad?: number;
   testID?: string;
+  /** #4490 P5 — "Edit layout" on the floor opens Spaces › Tables for that space. */
+  onEditFloor?: (spaceId: string) => void;
 }
 
 export function VenueReservationsModule({
@@ -151,6 +162,7 @@ export function VenueReservationsModule({
   venueId = null,
   scrollBottomPad = 0,
   testID,
+  onEditFloor,
 }: VenueReservationsModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
@@ -174,7 +186,11 @@ export function VenueReservationsModule({
   const [scope, setScope] = useState<ReservationStatusScope>("active");
   // #4420 (R8 P15) — List | Tables. Tables shows who holds each table at one
   // time on the selected day; `tableMinute` null = the opening default.
-  const [listView, setListView] = useState<"list" | "tables">("list");
+  const [listView, setListView] = useState<"list" | "tables" | "floor">("list");
+  // #4490 P5 — the live floor needs Floor plan on.
+  const featuresQuery = useVenueFeatures(brandId, venueId);
+  const floorOn = featuresQuery.data?.features.floor_plan.enabled === true;
+  const currency = useBrandCurrency(brandId);
   const [tableMinute, setTableMinute] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState<boolean>(false);
   const [selected, setSelected] = useState<Reservation | null>(null);
@@ -754,9 +770,10 @@ export function VenueReservationsModule({
       />
 
       <ReservationListTablesSwitch
-        value={listView}
+        value={listView === "floor" && !floorOn ? "list" : listView}
         onChange={setListView}
         full={!isWideDesktop}
+        showFloor={floorOn}
       />
 
       {timezoneDegraded ? (
@@ -788,7 +805,33 @@ export function VenueReservationsModule({
         </View>
       ) : null}
 
-      {listView === "tables" && !showInitialSkeleton && !hasBlockingError ? (
+      {listView === "floor" && floorOn ? (
+        <ScrollView
+          style={styles.scrollBody}
+          contentContainerStyle={[
+            styles.modeScrollContent,
+            { paddingBottom: space[6] + scrollBottomPad },
+          ]}
+          showsVerticalScrollIndicator={false}
+          testID="reservation-floor-scroll"
+        >
+          <React.Suspense fallback={<ActivityIndicator />}>
+          <LazyVenueFloorLive
+            brandId={brandId}
+            venueId={venueId}
+            dayKey={effectiveSelectedDay}
+            isToday={effectiveSelectedDay === todayKey}
+            timeZone={resolvedZone.timeZone}
+            currency={currency}
+            onOpenReservation={(id) => {
+              const found = reservations.find((r) => r.id === id);
+              if (found !== undefined) selectReservation(found);
+            }}
+            onEditLayout={onEditFloor}
+          />
+          </React.Suspense>
+        </ScrollView>
+      ) : listView === "tables" && !showInitialSkeleton && !hasBlockingError ? (
         <ScrollView
           style={styles.scrollBody}
           contentContainerStyle={[

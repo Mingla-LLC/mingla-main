@@ -34,6 +34,8 @@ export function filterVenueModulesForCapabilities(
   }
   if (capabilities.includes("restaurant.manage_reservations")) {
     allowed.add("tables");
+    // #4490 P5 — tables live under Spaces › Tables (tables only for this capability).
+    allowed.add("spaces");
     allowed.add("availability");
     allowed.add("reservations");
     allowed.add("waitlist");

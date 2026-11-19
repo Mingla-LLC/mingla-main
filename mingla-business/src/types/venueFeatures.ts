@@ -81,7 +81,12 @@ export const BUILT_FEATURES: ReadonlySet<VenueFeatureKey> = new Set<VenueFeature
   // P3: group packages; P4: private hire (requests, calendar).
   "group_packages",
   "private_hire",
+  // P5: by the hour, the floor plan, pick a table, minimum-spend tables.
+  "by_the_hour",
   "table_reservations",
+  "floor_plan",
+  "pick_a_table",
+  "min_spend_tables",
   "waitlist",
   "menu",
   "table_ordering",

@@ -12,7 +12,7 @@ export type VatMode = "included" | "added" | "none";
 export type BookingState = "active" | "paused";
 
 /** Offer kinds whose host editor has shipped (mirror of `issue_4490_built_offer_kinds()`). */
-export const BUILT_OFFER_KINDS: ReadonlySet<VenueOfferKind> = new Set<VenueOfferKind>(["entry", "group_package", "private_hire"]);
+export const BUILT_OFFER_KINDS: ReadonlySet<VenueOfferKind> = new Set<VenueOfferKind>(["entry", "group_package", "private_hire", "by_the_hour"]);
 
 export interface BusyRule {
   weekdays: number[];
@@ -154,6 +154,40 @@ export interface VenueOffer {
   confirmationMode: "request" | "instant";
   /** #4490 P4 — the private hire part (null for other kinds). */
   hire: HireTerms | null;
+  /** #4490 P5 — the by-the-hour part (null for other kinds). */
+  hour?: HourTerms | null;
+}
+
+// ------------------------------------------------------ #4490 P5 by the hour
+
+export interface HourPlace {
+  id: string;
+  name: string;
+  setting: string | null;
+  capacity: number;
+}
+
+export interface HourTerms {
+  /** "all" = every linked space at once; "any_one" = one free unit. */
+  allocation: "all" | "any_one";
+  places: HourPlace[];
+  hours: {
+    ruleId: string | null;
+    weekdays: number[];
+    startTime: string;
+    endTime: string;
+    pastMidnight: boolean;
+    startDate: string | null;
+    endDate: string | null;
+  } | null;
+  stepMinutes: number;
+  minMinutes: number | null;
+  maxMinutes: number | null;
+  pricePerHourMinor: number | null;
+  setupMinutes: number;
+  cleanupMinutes: number;
+  noShowReleaseMinutes: number | null;
+  staffCanStart: boolean;
 }
 
 // ------------------------------------------------------ #4490 P4 private hire

@@ -42,6 +42,7 @@ import type { VenueModuleLeaveHandle } from "../../venueLeaveContract";
 import { venueScrollBottomPad } from "../../venueShellScroll";
 import { EntryEditor } from "./EntryEditor";
 import { HireEditor } from "./HireEditor";
+import { HourEditor } from "./HourEditor";
 import { PackageEditor } from "./PackageEditor";
 import {
   COMING_SOON_REASON,
@@ -78,7 +79,7 @@ export interface VenueOffersModuleProps {
   initialOfferId?: string | null;
 }
 
-type EditorKind = "entry" | "group_package" | "private_hire";
+type EditorKind = "entry" | "group_package" | "private_hire" | "by_the_hour";
 type Editing = { offerId: string | null; kind: EditorKind } | null;
 type Confirm = { action: "pause" | "archive"; offer: VenueOffer } | null;
 
@@ -132,6 +133,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const tablesOn = featuresQuery.data?.features.table_reservations.enabled === true;
   const packagesOn = featuresQuery.data?.features.group_packages.enabled === true;
   const hireOn = featuresQuery.data?.features.private_hire.enabled === true;
+  const hourOn = featuresQuery.data?.features.by_the_hour.enabled === true;
   const activeSpaces = featuresQuery.data?.activeSpaceCount ?? 0;
   const canEdit = access.canEditSpaces;
   const soldToday = useMemo(() => {
@@ -160,7 +162,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   );
   const openOffer = useCallback(
     (offer: VenueOffer): void =>
-      openEditor(offer.id, offer.kind === "group_package" || offer.kind === "private_hire" ? offer.kind : "entry"),
+      openEditor(offer.id, offer.kind === "group_package" || offer.kind === "private_hire" || offer.kind === "by_the_hour" ? offer.kind : "entry"),
     [openEditor],
   );
   const openPayments = useCallback((): void => {
@@ -225,12 +227,34 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
         );
         return;
       }
+      // #4490 P5 — By the hour: an owner or admin turns it on as they pick it.
+      if (card.key === "by_the_hour") {
+        if (hourOn) {
+          openEditor(null, "by_the_hour");
+          return;
+        }
+        setFeatureError(null);
+        setFeature.mutate(
+          { key: "by_the_hour", enabled: true, cascade: true },
+          {
+            onSuccess: () => {
+              setToast("By the hour turned on");
+              openEditor(null, "by_the_hour");
+            },
+            onError: () => {
+              setPicker(false);
+              setFeatureError("Couldn't turn on By the hour. Try again, or switch it on in Settings.");
+            },
+          },
+        );
+        return;
+      }
       if (card.key === "table_reservations") {
         setPicker(false);
         onOpenModule?.(tablesOn ? "reservations" : "settings");
       }
     },
-    [activeSpaces, hireOn, onOpenModule, openEditor, packagesOn, setFeature, tablesOn],
+    [activeSpaces, hireOn, hourOn, onOpenModule, openEditor, packagesOn, setFeature, tablesOn],
   );
 
   const runStatus = useCallback(
@@ -271,7 +295,21 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   if (editing !== null) {
     return (
       <View style={styles.editorHost} testID="venue-offers-editor">
-        {(editing.offerId !== null ? offers.find((o) => o.id === editing.offerId)?.kind ?? editing.kind : editing.kind) === "private_hire" ? (
+        {(editing.offerId !== null ? offers.find((o) => o.id === editing.offerId)?.kind ?? editing.kind : editing.kind) === "by_the_hour" ? (
+          <HourEditor
+            ref={editorRef}
+            brandId={brandId}
+            venueId={venueId}
+            venueName={venueName}
+            offerId={editing.offerId}
+            onOpenSettings={onOpenModule !== undefined ? () => onOpenModule("settings") : undefined}
+            onOpenSpaces={onOpenModule !== undefined ? () => onOpenModule("spaces") : undefined}
+            onClose={(result) => {
+              setEditing(null);
+              if (result?.published === true) setToast(`${result.name} is live`);
+            }}
+          />
+        ) : (editing.offerId !== null ? offers.find((o) => o.id === editing.offerId)?.kind ?? editing.kind : editing.kind) === "private_hire" ? (
           <HireEditor
             ref={editorRef}
             brandId={brandId}
@@ -354,7 +392,9 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           (card.key === "group_package" && !packagesOn && !access.canSwitchFeatures) ||
           (card.key === "group_package" && setFeature.isPending) ||
           (card.key === "private_hire" && !hireOn && !access.canSwitchFeatures) ||
-          (card.key === "private_hire" && setFeature.isPending);
+          (card.key === "private_hire" && setFeature.isPending) ||
+          (card.key === "by_the_hour" && !hourOn && !access.canSwitchFeatures) ||
+          (card.key === "by_the_hour" && setFeature.isPending);
         const helper = !card.built
           ? "Coming soon"
           : card.key === "entry" && !entryOn
@@ -369,6 +409,10 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
                   ? `${card.helper} Add a space first: a hire takes a whole space.`
                   : `${card.helper} Picking it turns on Private hire.`
                 : `${card.helper} Ask a brand owner or admin to turn on Private hire.`
+            : card.key === "by_the_hour" && !hourOn
+              ? access.canSwitchFeatures
+                ? `${card.helper} Picking it turns on By the hour.`
+                : `${card.helper} Ask a brand owner or admin to turn on By the hour.`
             : card.key === "table_reservations"
               ? `${card.helper} ${tablesOn ? "Opens Reservations." : "Switch it on in Settings."}`
               : card.helper;

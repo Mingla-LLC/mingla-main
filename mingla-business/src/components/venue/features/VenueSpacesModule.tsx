@@ -7,7 +7,7 @@
  * (skeleton rows), error (Try again), empty (first space + one-tap starters),
  * saved (toast). Arranging the site plan is wide web only; phones keep the list.
  */
-import React, { useCallback, useMemo, useState } from "react";
+import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../../constants/designSystem";
@@ -40,6 +40,8 @@ import { SitePlan, SitePlanLegend } from "./SitePlan";
 import { SpaceEditorSheet } from "./SpaceEditorSheet";
 import { autoPlanShapes, changedShapes, spaceUsedFor } from "./spaceModel";
 import { VENUE_FEATURES_COPY, venueWriteErrorCopy } from "./venueFeaturesCopy";
+import { VenueTablesInSpaces } from "./floor/VenueTablesInSpaces";
+import type { VenueModuleLeaveHandle } from "../venueLeaveContract";
 
 const LazyToast = React.lazy(async () => {
   const mod = await import("../../ui/Toast");
@@ -60,13 +62,21 @@ function errorCopy(context: "space" | "combination", error: unknown): string {
 export interface VenueSpacesModuleProps {
   brandId: string | null;
   venueId: string | null;
+  /** #4490 P5 — `?module=tables` (and Spaces › Tables) opens the tables view. */
+  initialView?: "list" | "site" | "tables";
+  initialSpaceId?: string | null;
+  /** Settings (feature switches) — the tables view links there. */
+  onOpenSettings?: () => void;
 }
 
 type EditorState =
   | { open: false }
   | { open: true; space: VenueSpace | null; initialName: string };
 
-export function VenueSpacesModule({ brandId, venueId }: VenueSpacesModuleProps): React.ReactElement {
+export const VenueSpacesModule = forwardRef<VenueModuleLeaveHandle, VenueSpacesModuleProps>(function VenueSpacesModule(
+  { brandId, venueId, initialView, initialSpaceId = null, onOpenSettings },
+  ref,
+): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const spacesQuery = useVenueSpaces(brandId, venueId);
   const combosQuery = useVenueSpaceCombinations(brandId, venueId);
@@ -76,7 +86,23 @@ export function VenueSpacesModule({ brandId, venueId }: VenueSpacesModuleProps):
   const manageSpace = useManageVenueSpace(brandId, venueId);
   const manageCombo = useManageSpaceCombination(brandId, venueId);
 
-  const [view, setView] = useState<"list" | "site">("list");
+  // #4490 P5 — scoped reservations staff manage tables but not spaces: Tables first.
+  const [view, setView] = useState<"list" | "site" | "tables">(
+    initialView ?? (!access.canEditSpaces && access.canManageTables ? "tables" : "list"),
+  );
+  const tablesRef = useRef<VenueModuleLeaveHandle | null>(null);
+  useImperativeHandle(
+    ref,
+    (): VenueModuleLeaveHandle => ({
+      isDirty: () => tablesRef.current?.isDirty() ?? false,
+      changedLabels: () => tablesRef.current?.changedLabels() ?? [],
+      isValid: () => tablesRef.current?.isValid() ?? true,
+      save: async () => {
+        await tablesRef.current?.save();
+      },
+      discard: () => tablesRef.current?.discard(),
+    }),
+  );
   const [editor, setEditor] = useState<EditorState>({ open: false });
   const [editorError, setEditorError] = useState<string | null>(null);
   const [comboSheet, setComboSheet] = useState<{ open: boolean; combination: VenueSpaceCombination | null }>({
@@ -94,6 +120,8 @@ export function VenueSpacesModule({ brandId, venueId }: VenueSpacesModuleProps):
   const spaces = useMemo(() => spacesQuery.data ?? [], [spacesQuery.data]);
   const combinations = useMemo(() => combosQuery.data ?? [], [combosQuery.data]);
   const features = featuresQuery.data?.features ?? null;
+  // #4490 P5 (reconciliation 35) — tables live in spaces.
+  const showTablesView = features?.table_reservations.enabled === true || initialView === "tables" || view === "tables";
   const amenitiesLabel = venueQuery.data?.venueCategory === "play" ? "Games here" : "What's here";
   const canEdit = access.canEditSpaces;
 
@@ -224,7 +252,9 @@ export function VenueSpacesModule({ brandId, venueId }: VenueSpacesModuleProps):
     setArrangeError(null);
     try {
       for (const { space: target, shape } of changedShapes(spaces, arrangeShapes)) {
-        await updateVenueSpace(venueId, target.id, { plan_shape: shape }, target.version);
+        // #4490 P5 — keep the floor plan's room that lives beside the site rectangle.
+        const planShape = target.planRoom !== null && target.planRoom !== undefined ? { ...shape, room: target.planRoom } : shape;
+        await updateVenueSpace(venueId, target.id, { plan_shape: planShape }, target.version);
       }
       setArranging(false);
       setToast("Layout saved");
@@ -286,6 +316,7 @@ export function VenueSpacesModule({ brandId, venueId }: VenueSpacesModuleProps):
             options={[
               { key: "list", label: "List" },
               { key: "site", label: "Site plan" },
+              ...(showTablesView ? [{ key: "tables" as const, label: "Tables", testID: "venue-spaces-view-tables" }] : []),
             ]}
             value={view}
             onChange={(next) => {
@@ -298,7 +329,7 @@ export function VenueSpacesModule({ brandId, venueId }: VenueSpacesModuleProps):
           />
         ) : null}
       </View>
-      {canEdit && spaces.length > 0 ? (
+      {canEdit && spaces.length > 0 && view !== "tables" ? (
         <View style={styles.headerActions}>
           <Button
             label={VENUE_FEATURES_COPY.combineSpaces}
@@ -551,11 +582,25 @@ export function VenueSpacesModule({ brandId, venueId }: VenueSpacesModuleProps):
   return (
     <View style={styles.host} testID="venue-spaces-module">
       {header}
-      {view === "list" ? list : site}
+      {view === "tables" ? (
+        <VenueTablesInSpaces
+          ref={tablesRef}
+          brandId={brandId}
+          venueId={venueId}
+          initialSpaceId={initialSpaceId}
+          onOpenSettings={onOpenSettings}
+          onOpenSpacesList={() => setView("list")}
+          onToast={setToast}
+        />
+      ) : view === "list" ? (
+        list
+      ) : (
+        site
+      )}
       {sheets}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   host: { gap: space[4], paddingHorizontal: space[4], paddingTop: space[4] },

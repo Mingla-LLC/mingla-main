@@ -250,7 +250,8 @@ describe("the venue's day and the hub card", () => {
   it("E2: the hub card names the venue's switched-on features, not one switch", () => {
     // TEST-MOD-APPROVED #4490 P4 — group packages and private hire are built now, so they are named.
     expect(featureLine(new Set(["entry", "menu", "events_here", "stays", "group_packages"]))).toBe("Entry · Group packages · Menu · Events here");
-    expect(featureLine(new Set(["entry", "menu", "stays", "by_the_hour"]))).toBe("Entry · Menu");
+    // TEST-MOD-APPROVED #4490 P5-2 — by the hour is built now, so it is named; memberships (P6) still aren't.
+    expect(featureLine(new Set(["entry", "menu", "stays", "by_the_hour", "memberships"]))).toBe("Entry · By the hour · Menu");
     expect(featureLine(new Set(["table_reservations", "waitlist"]))).toBe("Table reservations · Waitlist");
     expect(featureLine(new Set())).toBeNull();
   });

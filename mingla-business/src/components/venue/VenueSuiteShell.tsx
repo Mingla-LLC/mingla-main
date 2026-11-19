@@ -110,6 +110,7 @@ import { deriveVenueRailModules } from "./venueRail";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   deriveVenueNav,
+  resolveTablesAlias,
   shouldLeaveHiddenModule,
   venueUsesSpaces,
   withVenueReviewsModule,
@@ -336,6 +337,12 @@ export function VenueSuiteShell({
   const availabilityRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
   const settingsRef = useRef<VenueSettingsLeaveHandle | null>(null);
   const offersRef = useRef<VenueModuleLeaveHandle | null>(null);
+  // #4490 P5 — Spaces holds the floor editor (unsaved layouts guard leaving).
+  const spacesRef = useRef<VenueModuleLeaveHandle | null>(null);
+  const [spacesView, setSpacesView] = useState<"list" | "site" | "tables" | undefined>(
+    initialModule === "tables" ? "tables" : undefined,
+  );
+  const [spacesSpaceId, setSpacesSpaceId] = useState<string | null>(null);
   const leaveHandlesRef = useRef<
     Partial<Record<VenueModule, VenueModuleLeaveHandle>>
   >({});
@@ -359,6 +366,7 @@ export function VenueSuiteShell({
       }
       if (module === "settings") return settingsRef.current;
       if (module === "offers") return offersRef.current;
+      if (module === "spaces") return spacesRef.current;
       return null;
     },
     [],
@@ -558,8 +566,20 @@ export function VenueSuiteShell({
   // #3389 — only once the features have loaded, so a `?module=tables` deep
   // link is not bounced on the loading frame of a venue that takes bookings.
   // #4490 — features, not the reservations toggle, decide (shouldLeaveHiddenModule).
+  // #4490 P5 (reconciliation 35) — `?module=tables` opens Spaces › Tables once
+  // tables live in spaces. Runs before the hidden-module bounce below.
+  const tablesAlias = featuresResolved
+    ? resolveTablesAlias({ activeModule, usesSpaces, visible: visibleModules })
+    : null;
+  useEffect(() => {
+    if (tablesAlias === null) return;
+    setSpacesView("tables");
+    setActiveModule(tablesAlias.module);
+  }, [tablesAlias]);
+
   useEffect(() => {
     if (venueAccess.scoped) return; // scoped staff fall to their first module below
+    if (tablesAlias !== null) return;
     if (
       shouldLeaveHiddenModule({
         activeModule,
@@ -569,7 +589,7 @@ export function VenueSuiteShell({
     ) {
       selectModule("overview");
     }
-  }, [activeModule, featuresResolved, selectModule, venueAccess.scoped, visibleModules]);
+  }, [activeModule, featuresResolved, selectModule, tablesAlias, venueAccess.scoped, visibleModules]);
 
   // #4420 — a `?module=reviews` link to a venue with no reviews panel (not
   // verified, or no place) lands on Overview instead of an empty module.
@@ -849,7 +869,15 @@ export function VenueSuiteShell({
             </View>
           }
         >
-          <LazyVenueSpacesModule brandId={brandId} venueId={venueId} />
+          <LazyVenueSpacesModule
+            key={`${spacesView ?? "spaces"}:${spacesSpaceId ?? ""}`}
+            ref={spacesRef}
+            brandId={brandId}
+            venueId={venueId}
+            initialView={spacesView}
+            initialSpaceId={spacesSpaceId}
+            onOpenSettings={visibleModules.includes("settings") ? () => selectModule("settings") : undefined}
+          />
         </React.Suspense>
       );
     }
@@ -899,6 +927,14 @@ export function VenueSuiteShell({
     // 2.1a — Tables + Availability LIVE. 2.1b — Reservations + Waitlist LIVE.
     // The whole booking band is now real operator UI (no ComingSoon left).
     if (activeModule === "tables") {
+      // #4490 P5 — wait for the features before choosing the old module or the alias.
+      if (!featuresResolved || tablesAlias !== null) {
+        return (
+          <View style={styles.lazyModuleFallback}>
+            <ActivityIndicator />
+          </View>
+        );
+      }
       return <VenueTablesModule brandId={brandId} venueId={venueId} />;
     }
     if (activeModule === "availability") {
@@ -947,6 +983,15 @@ export function VenueSuiteShell({
           brandId={brandId}
           venueId={venueId}
           scrollBottomPad={scrollBottomPad}
+          onEditFloor={
+            visibleModules.includes("spaces")
+              ? (spaceId) => {
+                  setSpacesView("tables");
+                  setSpacesSpaceId(spaceId);
+                  selectModule("spaces");
+                }
+              : undefined
+          }
         />
       );
     }

@@ -76,18 +76,18 @@ describe("feature layout — a venue with spaces", () => {
     const features = featureSetFrom({ menu: true, events_here: true });
     expect(deriveVenueNav({ features, activeSpaceCount: 0 })).toContain("spaces");
   });
-  it("keeps Tables, Reservations and Waitlist where they are when table reservations are on", () => {
+  it("keeps Reservations and Waitlist where they are; Tables live under Spaces (P5)", () => {
     const modules = deriveVenueNav({
       features: backfilledFeatureSet({ reservationsEnabled: true }),
       activeSpaceCount: 1,
     });
     // TEST-MOD-APPROVED #4490 — P2 ships Offers.
+    // TEST-MOD-APPROVED #4490 P5-2 — reconciliation 35: the Tables module moves under Spaces.
     expect(modules).toEqual([
       "overview",
       "offers",
       "spaces",
       "availability",
-      "tables",
       "reservations",
       "waitlist",
       "menu",
@@ -163,7 +163,21 @@ describe("dependencies (mirror of the server cascade)", () => {
   it("only built features are switchable here; stays never", () => {
     // TEST-MOD-APPROVED #4490 — P2 ships Entry.
     // TEST-MOD-APPROVED #4490 P4 — group packages (P3) and private hire (P4) are switchable.
-    expect(SWITCHABLE_FEATURES).toEqual(["entry", "group_packages", "private_hire", "table_reservations", "menu", "table_ordering", "events_here", "waitlist"]);
+    // TEST-MOD-APPROVED #4490 P5-2 — by the hour, floor plan, pick a table and minimum-spend tables ship.
+    expect(SWITCHABLE_FEATURES).toEqual([
+      "entry",
+      "group_packages",
+      "private_hire",
+      "by_the_hour",
+      "table_reservations",
+      "floor_plan",
+      "pick_a_table",
+      "menu",
+      "table_ordering",
+      "min_spend_tables",
+      "events_here",
+      "waitlist",
+    ]);
     expect(BUILT_FEATURES.has("stays")).toBe(true);
     expect(SWITCHABLE_FEATURES).not.toContain("stays");
   });
@@ -174,7 +188,8 @@ describe("dependencies (mirror of the server cascade)", () => {
     // TEST-MOD-APPROVED #4490 — P2 ships Entry.
     // TEST-MOD-APPROVED #4490 P4 — the play preset's packages and hire are built now.
     expect(builtPreset("play")).toEqual(["entry", "group_packages", "private_hire", "menu", "events_here"]);
-    expect(builtPreset("club")).toEqual(["entry", "table_reservations", "events_here"]);
+    // TEST-MOD-APPROVED #4490 P5-2 — minimum-spend tables are built now.
+    expect(builtPreset("club")).toEqual(["entry", "table_reservations", "min_spend_tables", "events_here"]);
     expect(builtPreset("stay")).toEqual([]);
   });
 });
@@ -196,9 +211,10 @@ describe("capabilities (#4188 scoped staff + venue.*)", () => {
     expect(filterVenueModulesForCapabilities(featureNav, true, ["venue.check_in"])).toEqual([]);
   });
   it("restaurant reservations staff keep exactly what they had", () => {
+    // TEST-MOD-APPROVED #4490 P5-2 — their tables now live under Spaces › Tables.
     expect(filterVenueModulesForCapabilities(featureNav, true, ["restaurant.manage_reservations"])).toEqual([
+      "spaces",
       "availability",
-      "tables",
       "reservations",
       "waitlist",
     ]);

@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EntryEditor } from "../../../../src/components/venue/features/offers/EntryEditor";
 import { HireEditor } from "../../../../src/components/venue/features/offers/HireEditor";
+import { HourEditor } from "../../../../src/components/venue/features/offers/HourEditor";
 import { PackageEditor } from "../../../../src/components/venue/features/offers/PackageEditor";
 import type { VenueModuleLeaveHandle } from "../../../../src/components/venue/venueLeaveContract";
 import { ConfirmDialog } from "../../../../src/components/ui/ConfirmDialog";
@@ -31,6 +32,8 @@ export default function VenueOfferEditorRoute(): React.ReactElement {
   const isPackage = paramValue(params.kind) === "group_package";
   // #4490 P4 — `?kind=private_hire` opens the private hire editor.
   const isHire = paramValue(params.kind) === "private_hire";
+  // #4490 P5 — `?kind=by_the_hour` opens the By the hour editor.
+  const isHour = paramValue(params.kind) === "by_the_hour";
   const venueId = paramValue(params.venueId);
   const rawOffer = paramValue(params.offerId);
   const offerId = rawOffer === null || rawOffer === "new" ? null : rawOffer;
@@ -60,7 +63,23 @@ export default function VenueOfferEditorRoute(): React.ReactElement {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      {isHire ? (
+      {isHour ? (
+        <HourEditor
+          ref={editorRef}
+          brandId={venue?.brandId ?? null}
+          venueId={venueId}
+          venueName={venue?.name ?? "your venue"}
+          offerId={offerId}
+          onOpenSpaces={venueId !== null ? () => router.push(`/venue/${venueId}?module=spaces` as never) : undefined}
+          onClose={() => {
+            if (editorRef.current?.isDirty() === true) {
+              setPending({ action: null });
+              return;
+            }
+            leave();
+          }}
+        />
+      ) : isHire ? (
         <HireEditor
           ref={editorRef}
           brandId={venue?.brandId ?? null}

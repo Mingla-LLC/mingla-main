@@ -436,6 +436,16 @@ export interface WaitlistEntry {
   convertedReservationId: string | null;
   consumerUserId: string | null;
   createdAt: string;
+  /** #4490 P5 — "guest" when the guest joined online (no account). */
+  source?: "staff" | "guest";
+  /** #4490 P5 — the day (and time range) a guest asked for. */
+  desiredDate?: string | null;
+  desiredFrom?: string | null;
+  desiredTo?: string | null;
+  /** #4490 P5 — the guest left the waitlist from their own page. */
+  leftByGuestAt?: string | null;
+  /** #4490 P5 — the time a freed table was offered to them. */
+  offeredSlotAt?: string | null;
 }
 
 /** Add-to-waitlist payload (direct RLS-gated insert). */

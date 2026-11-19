@@ -14,6 +14,7 @@ import { supabase } from "./supabase";
 import { randomId } from "../utils/randomId";
 import type {
   BusyRule,
+  HourTerms,
   CapacityOverride,
   CheckInList,
   CheckInPass,
@@ -285,12 +286,65 @@ export function mapOffer(v: unknown): VenueOffer {
     startTimes: arr(o.startTimes).filter((t): t is string => typeof t === "string" && /^\d{2}:\d{2}$/.test(t)),
     confirmationMode: str(o.confirmationMode) === "request" ? "request" : "instant",
     hire: o.hire === null || o.hire === undefined ? null : mapHireTerms(o.hire),
+    hour: o.hour === null || o.hour === undefined ? null : mapHourTerms(o.hour),
   };
 }
 
 // ---------------------------------------------------------------------------
 // #4490 P4 — private hire (offer part, requests, calendar, staff actions)
 // ---------------------------------------------------------------------------
+
+/** #4490 P5 — the by-the-hour part of an offer projection. */
+export function mapHourTerms(v: unknown): HourTerms {
+  const h = obj(v);
+  const hours = h.hours === null || h.hours === undefined ? null : obj(h.hours);
+  return {
+    allocation: str(h.allocation) === "any_one" ? "any_one" : "all",
+    places: arr(h.places).map((p) => {
+      const r = obj(p);
+      return { id: str(r.id), name: str(r.name), setting: strOrNull(r.setting), capacity: num(r.capacity) };
+    }),
+    hours:
+      hours === null || str(hours.startTime).length === 0
+        ? null
+        : {
+            ruleId: strOrNull(hours.ruleId),
+            weekdays: weekdays(hours.weekdays),
+            startTime: str(hours.startTime).slice(0, 5),
+            endTime: str(hours.endTime).slice(0, 5),
+            pastMidnight: hours.pastMidnight === true,
+            startDate: strOrNull(hours.startDate),
+            endDate: strOrNull(hours.endDate),
+          },
+    stepMinutes: num(h.stepMinutes, 60),
+    minMinutes: numOrNull(h.minMinutes),
+    maxMinutes: numOrNull(h.maxMinutes),
+    pricePerHourMinor: numOrNull(h.pricePerHourMinor),
+    setupMinutes: num(h.setupMinutes),
+    cleanupMinutes: num(h.cleanupMinutes),
+    noShowReleaseMinutes: numOrNull(h.noShowReleaseMinutes),
+    staffCanStart: h.staffCanStart === true,
+  };
+}
+
+export type ManageHourAction = "set_place" | "set_hours" | "set_length" | "set_rules";
+
+export async function manageVenueHour(input: {
+  venueId: string;
+  action: ManageHourAction;
+  payload: Record<string, unknown>;
+  expectedVersion: number;
+}): Promise<VenueOffer> {
+  const { data, error } = await supabase.rpc("issue_4490_manage_hour", {
+    p_action: input.action,
+    p_venue_id: input.venueId,
+    p_payload: input.payload,
+    p_expected_version: input.expectedVersion,
+    p_idempotency_key: `hour-${input.action}-${randomId()}`,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapOffer(data);
+}
 
 export function mapHireTerms(v: unknown): HireTerms {
   const h = obj(v);

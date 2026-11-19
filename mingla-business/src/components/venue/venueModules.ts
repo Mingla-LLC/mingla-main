@@ -371,7 +371,10 @@ export function venueUsesSpaces(input: VenueNavInput): boolean {
     featureOn(input.features, "entry") ||
     // P3/P4: group packages and private hire are sold from Offers too.
     featureOn(input.features, "group_packages") ||
-    featureOn(input.features, "private_hire")
+    featureOn(input.features, "private_hire") ||
+    // P5: by the hour sells from Offers; tables live in spaces.
+    featureOn(input.features, "by_the_hour") ||
+    featureOn(input.features, "floor_plan")
   );
 }
 
@@ -397,8 +400,9 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
           "requests",
           featureOn(features, "private_hire") || input.hasRequestOffers === true,
         ],
-        // P1–P4 keep the Tables module where it is today (conflict 35).
-        ["tables", tables],
+        // P5 (reconciliation 35): tables live under Spaces › Tables, so the
+        // Tables module leaves this layout; `?module=tables` is an alias that
+        // opens Spaces on its Tables view (see `resolveTablesAlias`).
         ["reservations", tables],
         ["waitlist", featureOn(features, "waitlist")],
         ["members", featureOn(features, "memberships")],
@@ -486,4 +490,19 @@ export function parseVenueItemParam(
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)
     ? trimmed.toLowerCase()
     : undefined;
+}
+
+/**
+ * #4490 P5 (reconciliation 35) — `?module=tables` once tables live in spaces.
+ * In the feature layout it opens Spaces › Tables; in the classic layout (a
+ * venue with no space yet) the old Tables module still answers.
+ */
+export function resolveTablesAlias(input: {
+  activeModule: VenueModule;
+  usesSpaces: boolean;
+  visible: readonly VenueModule[];
+}): { module: VenueModule; spacesView: "tables" | null } | null {
+  if (input.activeModule !== "tables" || !input.usesSpaces) return null;
+  if (!input.visible.includes("spaces")) return null;
+  return { module: "spaces", spacesView: "tables" };
 }

@@ -49,4 +49,10 @@ export const venueFeatureKeys = {
     ["venueCalendar", brandId, venueId, from, to] as const,
   nextFreeDates: (brandId: string, venueId: string, optionId: string, from: string): readonly string[] =>
     ["venueNextFreeDates", brandId, venueId, optionId, from] as const,
+  // #4490 P5 — tables in spaces and the floor plan (`at` = the floor's moment, "" = now).
+  floorAll: (brandId: string, venueId: string): readonly string[] => ["venueFloor", brandId, venueId] as const,
+  floor: (brandId: string, venueId: string, at: string): readonly string[] =>
+    ["venueFloor", brandId, venueId, at] as const,
+  tableSuggestions: (brandId: string, venueId: string, reservationId: string): readonly string[] =>
+    ["venueTableSuggestions", brandId, venueId, reservationId] as const,
 };

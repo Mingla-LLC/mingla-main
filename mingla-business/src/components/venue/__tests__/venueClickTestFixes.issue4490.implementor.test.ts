@@ -147,7 +147,8 @@ describe("D9 — the wizard's Features step", () => {
     expect(typeStartingFeatures("play")).toEqual(["entry", "group_packages", "private_hire", "menu", "events_here"]);
     const rows = wizardFeatureRows("play");
     expect(rows.usual).toEqual(["entry", "group_packages", "private_hire", "menu", "events_here"]);
-    expect(rows.more).toEqual(["table_reservations", "table_ordering", "waitlist"]);
+    // TEST-MOD-APPROVED #4490 P5-2 — by the hour, floor plan, pick a table and minimum-spend tables are built.
+    expect(rows.more).toEqual(["by_the_hour", "table_reservations", "floor_plan", "pick_a_table", "table_ordering", "min_spend_tables", "waitlist"]);
     let on = chosenStartingFeatures("play", null);
     on = toggleStartingFeature(on, "menu", false);
     on = toggleStartingFeature(on, "waitlist", true);
@@ -161,7 +162,8 @@ describe("D9 — the wizard's Features step", () => {
     expect(usualHeading("play")).toBe("Usual for play and games venues");
     // TEST-MOD-APPROVED #4490 — coworking starts with Entry (day passes) now.
     // TEST-MOD-APPROVED #4490 P4 — coworking also starts with private hire (meeting rooms) now it is built.
-    expect(typeStartingFeatures("coworking")).toEqual(["entry", "private_hire"]);
+    // TEST-MOD-APPROVED #4490 P5-2 — coworking starts with by the hour (meeting rooms) now it is built.
+    expect(typeStartingFeatures("coworking")).toEqual(["entry", "by_the_hour", "private_hire"]);
   });
 });
 

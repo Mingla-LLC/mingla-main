@@ -25,8 +25,15 @@ import {
   useConvertWaitlist,
   useMarkWaitlistLost,
   useNotifyWaitlist,
+  useOfferWaitlistTable,
   useVenueWaitlist,
 } from "../../hooks/useVenueWaitlist";
+import { useSetVenueFeature, useVenueFeatures } from "../../hooks/useVenueFeatures";
+import { useVenueEditAccess } from "../../hooks/useVenueEditAccess";
+import { useVenueAvailabilityConfig } from "../../hooks/useVenueAvailability";
+import { BrandSwitch } from "../ui/BrandSwitch";
+import { Pill } from "../ui/Pill";
+import { waitlistWantsLine } from "./features/floor/waitlistHostModel";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { Check, MessageSquare, X } from "lucide-react-native";
 import { Button } from "../ui/Button";
@@ -70,15 +77,46 @@ export function VenueWaitlistModule({
   const notify = useNotifyWaitlist(brandId, venueId);
   const convert = useConvertWaitlist(brandId, venueId);
   const markLost = useMarkWaitlistLost(brandId, venueId);
+  // #4490 P5 — guests join online; staff tell them a table is ready.
+  const offer = useOfferWaitlistTable(brandId, venueId);
+  const featuresQuery = useVenueFeatures(brandId, venueId);
+  const setFeature = useSetVenueFeature(brandId, venueId);
+  const access = useVenueEditAccess(brandId, venueId);
+  const waitlistFeature = featuresQuery.data?.features.waitlist ?? null;
+  const venueTimeZone = useVenueAvailabilityConfig(brandId, venueId).data?.ianaTimezone ?? undefined;
+  const guestJoinOn = waitlistFeature !== null && waitlistFeature.settings.guestJoin !== false;
+  const [settingError, setSettingError] = useState<string | null>(null);
+  const toggleGuestJoin = (next: boolean): void => {
+    if (waitlistFeature === null) return;
+    setSettingError(null);
+    setFeature.mutate(
+      {
+        key: "waitlist",
+        enabled: waitlistFeature.enabled,
+        cascade: false,
+        expectedVersion: waitlistFeature.version,
+        settings: { ...waitlistFeature.settings, guestJoin: next },
+      },
+      { onError: () => setSettingError("Couldn't change that. Try again.") },
+    );
+  };
 
   const [addOpen, setAddOpen] = useState<boolean>(false);
   const [converting, setConverting] = useState<WaitlistEntry | null>(null);
 
-  // The ACTIVE queue (waiting + notified), FIFO by created order.
+  // The ACTIVE queue (waiting + notified), FIFO by created order. #4490 P5 —
+  // a guest who asked for a later day sorts by that day.
   const queue = useMemo(
     () =>
+      (waitlistQuery.data ?? [])
+        .filter((w) => w.status === "waiting" || w.status === "notified")
+        .sort((a, b) => (a.desiredDate ?? "").localeCompare(b.desiredDate ?? "")),
+    [waitlistQuery.data],
+  );
+  const leftToday = useMemo(
+    () =>
       (waitlistQuery.data ?? []).filter(
-        (w) => w.status === "waiting" || w.status === "notified",
+        (w) => w.leftByGuestAt != null && Date.now() - Date.parse(w.leftByGuestAt) < 24 * 3600 * 1000,
       ),
     [waitlistQuery.data],
   );
@@ -124,6 +162,26 @@ export function VenueWaitlistModule({
         ) : null}
       </View>
 
+      {waitlistFeature !== null && waitlistFeature.enabled && access.canSwitchFeatures ? (
+        <View style={styles.settingRow}>
+          <View style={styles.headerText}>
+            <Text style={styles.guest}>Guests can join online</Text>
+            <Text style={styles.subtitle}>
+              {guestJoinOn
+                ? "Your booking page offers the waitlist when a time is full, with no account needed."
+                : "Only your staff add people to the waitlist."}
+            </Text>
+          </View>
+          <BrandSwitch
+            value={guestJoinOn}
+            onValueChange={toggleGuestJoin}
+            disabled={setFeature.isPending}
+            accessibilityLabel="Guests can join online"
+            testID="venue-waitlist-guest-join"
+          />
+        </View>
+      ) : null}
+      {settingError !== null ? <Text style={styles.errorNote}>{settingError}</Text> : null}
       {waitlistQuery.isLoading ? (
         <Text style={styles.helper}>Loading waitlist…</Text>
       ) : waitlistQuery.isError ? (
@@ -148,6 +206,8 @@ export function VenueWaitlistModule({
             if (w.quotedWaitMinutes != null) parts.push(`~${w.quotedWaitMinutes}m`);
             if (w.preferredZone != null) parts.push(ZONE_LABEL[w.preferredZone]);
             const notified = w.status === "notified";
+            const online = w.source === "guest";
+            const wants = waitlistWantsLine(w);
             return (
               <GlassCard
                 key={w.id}
@@ -162,8 +222,18 @@ export function VenueWaitlistModule({
                       {w.guestName ?? "Guest"}
                     </Text>
                     <Text style={styles.meta}>{parts.join(" · ")}</Text>
+                    {online || wants !== null ? (
+                      <View style={styles.tagRow}>
+                        {online ? <Pill variant="info">Joined online</Pill> : null}
+                        {wants !== null ? <Text style={styles.meta}>{wants}</Text> : null}
+                      </View>
+                    ) : null}
                     {notified ? (
-                      <Text style={styles.notified}>Notified ✓</Text>
+                      <Text style={styles.notified}>
+                        {w.offeredSlotAt != null
+                          ? `Told a table is free at ${new Date(w.offeredSlotAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: venueTimeZone })}`
+                          : "Told their table is ready"}
+                      </Text>
                     ) : null}
                   </View>
                 </View>
@@ -180,6 +250,19 @@ export function VenueWaitlistModule({
                       >
                         <MessageSquare size={15} color={color.text1} />
                         <Text style={styles.notifyLabel}>Notify</Text>
+                      </Pressable>
+                    ) : null}
+                    {!notified && (online || w.guestPhoneE164 == null) ? (
+                      <Pressable
+                        onPress={() => offer.mutate(w.id)}
+                        disabled={offer.isPending}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Tell ${w.guestName ?? "guest"} their table is ready`}
+                        style={styles.notifyBtn}
+                        testID={`venue-waitlist-ready-${w.id}`}
+                      >
+                        <MessageSquare size={15} color={color.text1} />
+                        <Text style={styles.notifyLabel}>Table ready</Text>
                       </Pressable>
                     ) : null}
                     <Pressable
@@ -217,6 +300,14 @@ export function VenueWaitlistModule({
         never rendered is still a silent failure — the same class as every other
         defect in this chain (#1518 -> #1529 -> #1537 -> #1541).
       */}
+      {offer.isError ? (
+        <Text style={styles.errorNote}>Couldn&apos;t tell them. Try again.</Text>
+      ) : null}
+      {leftToday.length > 0 ? (
+        <Text style={styles.helper} testID="venue-waitlist-left">
+          {`Left the waitlist today: ${leftToday.map((w) => w.guestName ?? "Guest").join(", ")}`}
+        </Text>
+      ) : null}
       {notify.isError ? (
         <Text style={styles.errorNote}>
           {isSmsMarketUnavailableError(notify.error)
@@ -327,7 +418,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: space[1],
-    height: size.btn.sm,
+    height: size.btn.md,
     paddingHorizontal: space[3],
     borderRadius: radius.full,
     borderWidth: 1,
@@ -342,7 +433,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: space[1],
-    height: size.btn.sm,
+    height: size.btn.md,
     paddingHorizontal: space[3],
     borderRadius: radius.full,
     borderWidth: 1,
@@ -354,13 +445,20 @@ const styles = StyleSheet.create({
     color: color.text1,
   },
   lostBtn: {
-    width: size.btn.sm,
-    height: size.btn.sm,
+    width: size.btn.md,
+    height: size.btn.md,
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: color.fill.inset,
   },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+    minHeight: 44,
+  },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2], marginTop: 2 },
   errorNote: {
     ...type.small,
     color: color.danger,
