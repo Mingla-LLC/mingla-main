@@ -1474,6 +1474,8 @@ async function ari(req: PayloadRequest): Promise<Response> {
           evidence: parseAriEvidence(body.evidence, brandId),
           designPass: parseSignedDesignPass(body.design_pass),
           addPage: body.add_page === true,
+          // #4453 website workspace — a repeated step (same operation id) answers with its first result.
+          operationId: typeof envelope.operation_id === "string" ? envelope.operation_id : null,
         });
         return json({ ok: true, data });
       } catch (error) {

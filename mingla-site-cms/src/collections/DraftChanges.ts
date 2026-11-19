@@ -50,5 +50,9 @@ export const DraftChanges: CollectionConfig = {
     { name: "merge_key", type: "text", maxLength: 200 },
     // The action that made the change (e.g. the design pass), so a later rule can find it.
     { name: "tool", type: "text", maxLength: 64 },
+    // Ari's executor names each step (Core's operation id) and may send it again after a timeout: a step
+    // that already ran answers with the result stored here instead of running twice.
+    { name: "operation_id", type: "text", maxLength: 36, index: true },
+    { name: "result", type: "json" },
   ],
 };

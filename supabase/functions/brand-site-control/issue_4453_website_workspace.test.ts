@@ -109,6 +109,7 @@ Deno.test("#4453 workspace: Studio's refusals reach the owner as plain sentences
   const changed = await refuse({ code: "CHANGED_SINCE", target: "page", page_id: PAGE }, "undo");
   assertEquals(changed, { status: 409, error: { code: "CHANGED_SINCE", message: WORKSPACE_MESSAGES.CHANGED_SINCE, retryable: false, target: "page", page_id: PAGE } });
   assertEquals((await refuse({ code: "SECTION_NOT_FOUND" })).status, 404);
+  assertEquals((await refuse({ code: "LIST_ROW_REQUIRED", list: "items", min: 1 })).error, { code: "LIST_ROW_REQUIRED", message: WORKSPACE_MESSAGES.LIST_ROW_REQUIRED, retryable: false, min: 1, list: "items" });
   assertEquals((await refuse({ code: "HOME_ALWAYS_ON" }, "set_page_enabled")).error.message, "Your home page is always on.");
   assertEquals((await refuse({ code: "MEDIA_PROCESSING" }, "set_section_media")).error.code, "MEDIA_PROCESSING");
   assertEquals((await refuse({ code: "MEDIA_WRONG_KIND" }, "set_section_media")).error.message, WORKSPACE_CONTENT_MEDIA_MESSAGES.MEDIA_WRONG_KIND);
@@ -155,6 +156,11 @@ Deno.test("#4453 workspace: Ari's refusals carry the field, its limit and the ne
   assertEquals([long.error.key, long.error.max], ["heading", 120]);
   const layout = (await ariFailureFrom({ error: { code: "LAYOUT_NOT_IN_DESIGN", variants: ["split"], layouts: ["split"] } }, 409).json()) as { error: Json };
   assertEquals([layout.error.variants, layout.error.layouts], [["split"], ["split"]]);
+  // A list refusal names the list and its limit; a step still running from an earlier try is retryable.
+  const full = (await ariFailureFrom({ error: { code: "LIST_LIMIT_REACHED", list: "items", max: 12 } }, 409).json()) as { error: Json };
+  assertEquals([full.error.list, full.error.max, full.error.retryable], ["items", 12, false]);
+  const running = (await ariFailureFrom({ error: { code: "STEP_IN_PROGRESS" } }, 409).json()) as { error: Json };
+  assertEquals([running.error.code, running.error.retryable], ["STEP_IN_PROGRESS", true]);
   // A colour that is not a colour never passes.
   assertEquals((workspaceDetail({ suggestions: [{ sentence: "x", foreground: "red; drop table", background: "#000000", nearest_readable: null }] }).suggestions as Json[])[0]!.foreground, null);
 });

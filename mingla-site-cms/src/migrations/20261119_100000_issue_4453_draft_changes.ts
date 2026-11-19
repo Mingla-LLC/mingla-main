@@ -30,6 +30,8 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
 	"state" "sites_cms"."enum_draft_changes_state" DEFAULT 'applied' NOT NULL,
 	"merge_key" varchar,
 	"tool" varchar,
+	"operation_id" varchar,
+	"result" jsonb,
 	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
 	"created_at" timestamp(3) with time zone DEFAULT now() NOT NULL
   );
@@ -39,6 +41,7 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   CREATE INDEX "draft_changes_tenant_idx" ON "sites_cms"."draft_changes" USING btree ("tenant_id");
   CREATE INDEX "draft_changes_group_id_idx" ON "sites_cms"."draft_changes" USING btree ("group_id");
   CREATE INDEX "draft_changes_seq_idx" ON "sites_cms"."draft_changes" USING btree ("seq");
+  CREATE INDEX "draft_changes_operation_id_idx" ON "sites_cms"."draft_changes" USING btree ("operation_id");
   CREATE INDEX "draft_changes_state_idx" ON "sites_cms"."draft_changes" USING btree ("state");
   CREATE INDEX "draft_changes_updated_at_idx" ON "sites_cms"."draft_changes" USING btree ("updated_at");
   CREATE INDEX "draft_changes_created_at_idx" ON "sites_cms"."draft_changes" USING btree ("created_at");

@@ -14,7 +14,7 @@ import { sitesJson } from "../_shared/sitesContracts.ts";
 import { BOOKING_IDENTITY_CAPABILITY, BOOKING_LOCK_REASONS } from "./bookingLock.ts";
 import { socialHandlesFrom } from "../_shared/siteContracts/safety.ts";
 import { ARI_PAGE_MESSAGES, type AriPageCode } from "../_shared/siteContracts/ariPage.ts";
-import { WORKSPACE_ARI_ACTIONS, WORKSPACE_MESSAGES, workspaceDetail, type WorkspaceCode } from "./siteWorkspace.ts";
+import { WORKSPACE_ARI_ACTIONS, WORKSPACE_ARI_ONLY_MESSAGES, WORKSPACE_MESSAGES, workspaceDetail, type WorkspaceCode } from "./siteWorkspace.ts";
 
 type JsonObject = Record<string, unknown>;
 type RpcResult = { data: unknown; error: { message: string } | null };
@@ -104,6 +104,7 @@ export type AriFailureCode =
   | AriPageCode
   // #4453 website workspace — one typed step, and undoing a change set.
   | WorkspaceCode
+  | keyof typeof WORKSPACE_ARI_ONLY_MESSAGES
   | "SERVICE_TEMPORARILY_UNAVAILABLE";
 
 export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
@@ -135,6 +136,7 @@ export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
   DESIGN_PASS_TRY_AGAIN: "Ari couldn't start the design pass just now and nothing was changed. Try again in a moment.",
   ...ARI_PAGE_MESSAGES,
   ...WORKSPACE_MESSAGES,
+  ...WORKSPACE_ARI_ONLY_MESSAGES,
   SERVICE_TEMPORARILY_UNAVAILABLE: "Website tools are temporarily unavailable. Please try again.",
 };
 
@@ -175,7 +177,7 @@ export function ariFailureFrom(body: JsonObject | null, status: number): Respons
     error: {
       code,
       message: ARI_FAILURE_MESSAGES[code],
-      retryable: code === "SERVICE_TEMPORARILY_UNAVAILABLE" || code === "DESIGN_PASS_TRY_AGAIN",
+      retryable: code === "SERVICE_TEMPORARILY_UNAVAILABLE" || code === "DESIGN_PASS_TRY_AGAIN" || code === "STEP_IN_PROGRESS",
       ...detail,
     },
   }, STATUS[code] ?? (status >= 500 && code === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : 409));

@@ -41,6 +41,8 @@ export type SectionContext = HistoryContext & {
   group: ChangeGroup;
   /** SITES_BOOKING_BLOCKS as Core signed it (the content route does not sign it: off). */
   bookingBlocks?: boolean;
+  /** Ari's step id (Core's operation id), kept on the history rows so a repeat is recognised. */
+  operationId?: string | null;
 };
 
 function refuse(code: string, extra: Record<string, unknown> = {}): never {
@@ -315,6 +317,129 @@ export function applyEdits(block: AnyDoc, edits: readonly SectionEdit[], actor: 
 }
 
 // ---------------------------------------------------------------------------
+// Lists: rows the owner may add, remove and reorder (questions, cards, steps).
+// ---------------------------------------------------------------------------
+
+/** Lists Mingla, the menu or the photo slots fill: their rows are never added or removed by hand. */
+const LISTS_NOT_BY_HAND: ReadonlySet<string> = new Set([
+  "offering_grid.offerings", "menu_board.sections", "menu_preview.sections", "page_links.items", "gallery.images",
+]);
+const ITEM_WORDS: Readonly<Record<string, string>> = {
+  "faq.items": "Question", "feature_cards.cards": "Card", "marquee.phrases": "Phrase", "team.members": "Person",
+  "facts_table.items": "Fact", "process_steps.items": "Step", "stats.items": "Number", "hours_location.hours": "Day",
+  "hero.heading_lines": "Line", "hero.fact_badges": "Fact", "testimonials.items": "Review",
+};
+
+export type SectionList = {
+  name: string;
+  label: string;
+  item_label: string;
+  min: number;
+  max: number;
+  count: number;
+  fields: { key: string; label: string; kind: SectionField["kind"]; max: number | null }[];
+};
+
+type ListRule = { name: string; label: string; min: number; max: number; inner: Map<string, TextSpec> };
+
+/** The lists of this section whose rows may be added, removed and moved by this actor. */
+function editableLists(block: AnyDoc, actor: SectionActor): ListRule[] {
+  const type = String(block.blockType ?? "");
+  if (!isBlockType(type)) return [];
+  const { lists } = sectionTextFields(type, actor);
+  const out: ListRule[] = [];
+  for (const [name, inner] of lists) {
+    const spec = (BLOCK_CATALOG[type].fields as Record<string, FieldSpec>)[name];
+    if (!spec || spec.kind !== "list" || LISTS_NOT_BY_HAND.has(`${type}.${name}`)) continue;
+    // Reviews picked from the reviews list are not typed rows.
+    if (type === "testimonials" && block.from_collection === true) continue;
+    // A row needs something only words can't give (a link, a Mingla record): it is not added by hand.
+    const needsMore = (Object.values(spec.item) as FieldSpec[]).some((child) => child.kind !== "text" && (child as { required?: boolean }).required === true);
+    if (needsMore) continue;
+    // A list the section can do without may be emptied; one it must have keeps its minimum.
+    out.push({ name, label: spec.label, min: spec.required ? spec.min : 0, max: spec.max, inner });
+  }
+  return out;
+}
+
+export function sectionLists(block: AnyDoc, actor: SectionActor): SectionList[] {
+  const type = String(block.blockType ?? "");
+  return editableLists(block, actor).map((rule) => ({
+    name: rule.name,
+    label: rule.label,
+    item_label: ITEM_WORDS[`${type}.${rule.name}`] ?? "Item",
+    min: rule.min,
+    max: rule.max,
+    count: Array.isArray(block[rule.name]) ? block[rule.name].length : 0,
+    fields: [...rule.inner].map(([key, spec]) => ({ key, label: spec.label, kind: fieldKind(spec), max: spec.max })),
+  }));
+}
+
+function parseListOps(value: unknown): AnyDoc[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 20 || value.some((op) => !op || typeof op !== "object" || Array.isArray(op))) {
+    refuse("VALIDATION_FAILED", { problems: ["list_ops must be a list of at most 20 changes"] });
+  }
+  return value as AnyDoc[];
+}
+
+/**
+ * Adds, removes and moves rows of a section's lists, on a copy. A new row gets
+ * the words it was given; a field it must have and was not given gets starter
+ * words (reported in `starters`, so Ari's step can refuse to leave them).
+ */
+export function applyListOps(block: AnyDoc, ops: readonly AnyDoc[], actor: SectionActor): { block: AnyDoc; texts: string[]; starters: string[] } {
+  const type = String(block.blockType ?? "");
+  const rules = new Map(editableLists(block, actor).map((rule) => [rule.name, rule]));
+  const next = structuredClone(block) as AnyDoc;
+  const texts: string[] = [];
+  const starters: string[] = [];
+  ops.forEach((op, n) => {
+    const rule = typeof op.list === "string" ? rules.get(op.list) : undefined;
+    if (!rule) refuse("LIST_NOT_EDITABLE", { list: typeof op.list === "string" ? op.list.slice(0, 60) : null });
+    const rows = Array.isArray(next[rule.name]) ? [...next[rule.name] as AnyDoc[]] : [];
+    const at = (value: unknown, upTo: number) => (Number.isInteger(value) && (value as number) >= 0 && (value as number) < upTo ? value as number : refuse("VALIDATION_FAILED", { problems: [`list_ops[${n}] names a row that is not in ${rule.name}`] }));
+    if (op.op === "add") {
+      if (rows.length >= rule.max) refuse("LIST_LIMIT_REACHED", { list: rule.name, max: rule.max });
+      const place = op.after_index === null || op.after_index === undefined ? 0 : at(op.after_index, rows.length) + 1;
+      const values = op.values === undefined || op.values === null ? {} : op.values;
+      if (typeof values !== "object" || Array.isArray(values)) refuse("VALIDATION_FAILED", { problems: [`list_ops[${n}].values`] });
+      const row: AnyDoc = { id: newRowId() };
+      for (const [field, raw] of Object.entries(values as AnyDoc)) {
+        const spec = rule.inner.get(field);
+        const key = `${rule.name}.${place}.${field}`;
+        if (!spec) refuse("FIELD_NOT_EDITABLE", { key });
+        if (typeof raw !== "string" || MARKUP.test(raw)) refuse("VALIDATION_FAILED", { key, problems: [`${key} must be plain text`] });
+        if (raw.length > spec.max) refuse("VALUE_TOO_LONG", { key, max: spec.max });
+        if (raw.trim()) {
+          row[field] = raw.replace(/\u0000/g, "");
+          texts.push(row[field]);
+        }
+      }
+      for (const [field, spec] of rule.inner) {
+        if (!spec.required || typeof row[field] === "string") continue;
+        row[field] = starterWords(type, `${rule.name}.${field}`);
+        starters.push(`${rule.name}.${place}.${field}`);
+      }
+      rows.splice(place, 0, row);
+    } else if (op.op === "remove") {
+      const index = at(op.index, rows.length);
+      if (rows.length - 1 < rule.min) refuse("LIST_ROW_REQUIRED", { list: rule.name, min: rule.min });
+      rows.splice(index, 1);
+    } else if (op.op === "move") {
+      const index = at(op.index, rows.length);
+      const to = at(op.to_index, rows.length);
+      const [moved] = rows.splice(index, 1);
+      rows.splice(to, 0, moved!);
+    } else {
+      refuse("VALIDATION_FAILED", { problems: [`list_ops[${n}].op must be add, remove or move`] });
+    }
+    next[rule.name] = rows;
+  });
+  return { block: next, texts, starters };
+}
+
+// ---------------------------------------------------------------------------
 // Photos and videos: where a section holds one, from the Studio block configs.
 // ---------------------------------------------------------------------------
 
@@ -458,6 +583,8 @@ export type Section = {
   review: { state: "draft" | "reviewed"; source: "ari" | "composer" | "person" | "team" } | null;
   feed: boolean;
   fields: SectionField[];
+  /** Lists whose rows can be added, removed and reordered (`list_ops` on edit_section). */
+  lists: SectionList[];
   media: SectionMediaSlot[];
   can_remove: boolean;
 };
@@ -481,6 +608,7 @@ export function describeSections(page: AnyDoc, design: DesignKey, actor: Section
       review,
       feed: sectionReadsFeed(block),
       fields: sectionFields(block, actor),
+      lists: sectionLists(block, actor),
       media: sectionMedia(block, thumbs),
       // The home page's cover is its first big picture: it stays (the cover screen changes it).
       can_remove: !(isHome(page) && index === firstHero),
@@ -664,7 +792,7 @@ async function recordPage(ctx: SectionContext, before: AnyDoc, after: AnyDoc, la
   await recordChanges(ctx, historyActor(ctx), [
     { target: "page", targetId: String(after.id ?? before.id), label, before: pageSnapshot(before), after: pageSnapshot(after), mergeKey },
     ...more,
-  ], ctx.group);
+  ], ctx.group, null, ctx.operationId ?? null);
 }
 
 export const pageAudit = (page: AnyDoc) => ({ action: "content.updated", collection: "pages", entry: String(page.id) });
@@ -683,9 +811,20 @@ export async function editSection(ctx: SectionContext, args: AnyDoc, check?: (bl
   const blocks = Array.isArray(page.blocks) ? [...page.blocks as AnyDoc[]] : [];
   const index = findSection(blocks, args.section_id);
   const edits = parseEdits(args.edits);
+  const listOps = parseListOps(args.list_ops);
   const layout = args.layout;
-  if (!edits.length && (layout === undefined || layout === null)) refuse("VALIDATION_FAILED", { problems: ["nothing to change"] });
-  const { block, texts } = applyEdits(blocks[index]!, edits, ctx.actor);
+  if (!edits.length && !listOps.length && (layout === undefined || layout === null)) refuse("VALIDATION_FAILED", { problems: ["nothing to change"] });
+  // Rows first, then words: an edit may address a row the same call just added.
+  const listed = applyListOps(blocks[index]!, listOps, ctx.actor);
+  const edited = applyEdits(listed.block, edits, ctx.actor);
+  const block = edited.block;
+  const texts = [...listed.texts, ...edited.texts];
+  if (ctx.actor === "ari") {
+    // Ari never leaves starter words behind: it writes every word a new row must have.
+    const written = new Set(edits.map((edit) => edit.key));
+    const missing = listed.starters.filter((key) => !written.has(key));
+    if (missing.length) refuse("VALIDATION_FAILED", { problems: missing.slice(0, 20).map((key) => `the new row needs words for ${key}`) });
+  }
   if (layout !== undefined && layout !== null) {
     const design = siteDesign(await currentSettings(ctx));
     const offered = layoutsFor(design, String(block.blockType)).map((entry) => entry.key);
@@ -696,9 +835,9 @@ export async function editSection(ctx: SectionContext, args: AnyDoc, check?: (bl
   blocks[index] = block;
   const label = sectionLabels(page.blocks as AnyDoc[])[index]!;
   const updated = await savePage(ctx, page, { blocks });
-  const typingOnly = edits.length > 0 && (layout === undefined || layout === null) && ctx.actor === "user";
+  const typingOnly = edits.length > 0 && !listOps.length && (layout === undefined || layout === null) && ctx.actor === "user";
   const mergeKey = typingOnly ? `edit:${page.id}:${args.section_id}:${edits.map((edit) => edit.key).sort().join(",")}`.slice(0, 200) : null;
-  await recordPage(ctx, page, updated, edits.length ? `Edit ${label}` : `Change the layout of ${label}`, mergeKey);
+  await recordPage(ctx, page, updated, edits.length || listOps.length ? `Edit ${label}` : `Change the layout of ${label}`, mergeKey);
   return done(updated, String(args.section_id), texts);
 }
 
@@ -851,7 +990,7 @@ export async function setMenuItems(ctx: SectionContext, args: AnyDoc): Promise<{
   const next = [...wanted.map((item) => ({ label: item.label, target_type: "page", page: item.id })), ...keep];
   if (next.length > MAX_NAV_ITEMS) refuse("VALIDATION_FAILED", { problems: [`the menu would hold more than ${MAX_NAV_ITEMS} items`] });
   const saved = await saveMenu(ctx, navigation, next);
-  await recordChanges(ctx, historyActor(ctx), [menuRow(navigation, saved, "Change the menu")], ctx.group);
+  await recordChanges(ctx, historyActor(ctx), [menuRow(navigation, saved, "Change the menu")], ctx.group, null, ctx.operationId ?? null);
   return { menu_revision: String(saved.updatedAt ?? ""), texts: wanted.map((item) => item.label) };
 }
 
@@ -937,7 +1076,7 @@ export async function setLook(ctx: SectionContext, args: AnyDoc): Promise<{ look
   }
   await recordChanges(ctx, historyActor(ctx), [
     { target: "look", targetId: null, label: changes.design !== undefined && changes.design !== settings.design ? "Change the style" : "Change the look", before: pickSnapshot(settings, LOOK_KEYS), after: pickSnapshot(updated, LOOK_KEYS) },
-  ], ctx.group);
+  ], ctx.group, null, ctx.operationId ?? null);
   const view = tokensView(updated);
   return { look_revision: view.revision, warnings: view.readability_warnings, design: view.design };
 }

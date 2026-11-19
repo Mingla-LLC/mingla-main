@@ -98,6 +98,8 @@ export type AriActionContext = {
   designPass?: SignedDesignPass | null;
   /** #4453 milestone 11 — Core signed SITES_ARI_ADD_PAGE on for this brand. */
   addPage?: boolean;
+  /** #4453 website workspace — the signed envelope's operation id (one per step; a repeat never applies twice). */
+  operationId?: string | null;
 };
 
 /** Validates the Core-signed evidence's shape (anything else is treated as no evidence). */
@@ -989,4 +991,5 @@ export const ARI_REFUSAL_CODES = new Set([
   "SECTION_NOT_FOUND", "FIELD_NOT_EDITABLE", "FIELD_REQUIRED", "VALUE_TOO_LONG", "LAYOUT_NOT_IN_DESIGN",
   "SECTION_TYPE_NOT_AVAILABLE", "SECTION_LIMIT_REACHED", "SECTION_CANNOT_BE_REMOVED", "HOME_ALWAYS_ON",
   "MEDIA_REQUIRED", "UNREADABLE_COLOURS", "CHANGED_SINCE", "NOTHING_TO_UNDO",
+  "LIST_NOT_EDITABLE", "LIST_LIMIT_REACHED", "LIST_ROW_REQUIRED", "STEP_IN_PROGRESS",
 ]);

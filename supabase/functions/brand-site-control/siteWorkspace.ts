@@ -45,6 +45,14 @@ export const WORKSPACE_MESSAGES = {
   NOTHING_TO_UNDO: "There's nothing to undo.",
   NOTHING_TO_REDO: "There's nothing to redo.",
   UNREADABLE_COLOURS: "Those colours would make some words hard to read.",
+  LIST_NOT_EDITABLE: "Rows can't be added or removed in that part of the section.",
+  LIST_LIMIT_REACHED: "That list is full. Remove a row before adding another.",
+  LIST_ROW_REQUIRED: "This section needs at least that many rows.",
+} as const;
+
+/** Ari's route only: the same step is still running from an earlier try (retryable; nothing is applied twice). */
+export const WORKSPACE_ARI_ONLY_MESSAGES = {
+  STEP_IN_PROGRESS: "That change is still being applied. Try again in a moment.",
 } as const;
 
 /** Refusals the Ari route already names; the content route learns them here, in the owner's words. */
@@ -72,6 +80,9 @@ export function workspaceDetail(error: JsonObject): JsonObject {
   const key = text(error.key, 120);
   if (key !== undefined) detail.key = key;
   if (typeof error.max === "number" && Number.isFinite(error.max)) detail.max = error.max;
+  if (typeof error.min === "number" && Number.isFinite(error.min)) detail.min = error.min;
+  const list = text(error.list, 60);
+  if (list !== undefined) detail.list = list;
   const layouts = texts(error.layouts, 20, 60);
   if (layouts) detail.layouts = layouts;
   const problems = texts(error.problems, 8, 300);

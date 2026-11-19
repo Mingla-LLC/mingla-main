@@ -2143,6 +2143,16 @@ export interface DraftChange {
   state: 'applied' | 'undone' | 'superseded';
   merge_key?: string | null;
   tool?: string | null;
+  operation_id?: string | null;
+  result?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -3364,6 +3374,8 @@ export interface DraftChangesSelect<T extends boolean = true> {
   state?: T;
   merge_key?: T;
   tool?: T;
+  operation_id?: T;
+  result?: T;
   updatedAt?: T;
   createdAt?: T;
 }

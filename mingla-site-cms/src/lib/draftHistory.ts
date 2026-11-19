@@ -160,6 +160,7 @@ export async function recordChanges(
   rows: readonly ChangeRow[],
   group: ChangeGroup = { groupId: null, groupLabel: null },
   tool: string | null = null,
+  operationId: string | null = null,
 ): Promise<string> {
   const groupId = group.groupId ?? crypto.randomUUID();
   const real = rows.filter((row) => !sameContent(row.before, row.after));
@@ -216,6 +217,7 @@ export async function recordChanges(
         state: "applied",
         merge_key: row.mergeKey ?? null,
         tool,
+        operation_id: operationId,
       } as never,
     });
   }

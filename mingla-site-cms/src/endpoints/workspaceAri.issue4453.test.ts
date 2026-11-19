@@ -9,9 +9,11 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const envelope = vi.hoisted(() => ({ operation_id: null as string | null }));
 vi.mock("../lib/gateway", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/gateway")>()),
-  verifyCoreRequest: vi.fn(async () => ({ site_id: "44530000-0000-4000-8000-00000000c001" })),
+  // Core signs the caller's operation id into the envelope (one per step).
+  verifyCoreRequest: vi.fn(async () => ({ site_id: "44530000-0000-4000-8000-00000000c001", ...(envelope.operation_id ? { operation_id: envelope.operation_id } : {}) })),
   callCore: vi.fn(async () => { throw new Error("the workspace never asks Core for anything"); }),
 }));
 vi.mock("../lib/config", () => ({ cmsConfig: () => ({ approvedBucket: "approved", artifactBucket: "artifacts" }) }));
@@ -56,6 +58,7 @@ const sectionId = (site: Site, pageId: string, type: string) => String(blocksOf(
 
 let site: Site;
 beforeEach(async () => {
+  envelope.operation_id = null;
   site = await seedSite();
 });
 
@@ -283,6 +286,102 @@ describe("#4453 apply_site_change", () => {
     expect([twice.status, twice.error.code]).toEqual([409, "REVISION_CONFLICT"]);
     expect(blocksOf(site, site.homeId)[0]!.heading).toBe("Lagos plays here");
     site.payload.update = update;
+  });
+});
+
+describe("#4453 apply_site_change runs once per operation id", () => {
+  const OP = "44530000-0000-4000-8000-0000000f0a01";
+  const addQuote = () => apply(site, { op: "add_section", page_id: site.aboutId, type: "pull_quote", after_section_id: null, edits: [{ key: "quote", value: "Play together." }] });
+
+  it("a repeat returns the first result and applies nothing: no second section, history row or log row", async () => {
+    envelope.operation_id = OP;
+    const first = await addQuote();
+    expect(first.status).toBe(200);
+    const snapshot = { blocks: structuredClone(blocksOf(site, site.aboutId)), revision: revisionOf(site, site.aboutId) };
+    expect(site.rows("draft-changes")).toHaveLength(1);
+    expect(site.rows("draft-changes")[0]).toMatchObject({ operation_id: OP, result: first.data });
+
+    const again = await addQuote();
+    expect(again.status).toBe(200);
+    expect(again.data).toEqual({ ...first.data, repeated: true });
+    expect(blocksOf(site, site.aboutId)).toEqual(snapshot.blocks);
+    expect(revisionOf(site, site.aboutId)).toBe(snapshot.revision);
+    expect(site.rows("draft-changes")).toHaveLength(1);
+    expect(site.rows("work-log")).toHaveLength(1);
+
+    // Another step (its own id) does apply.
+    envelope.operation_id = "44530000-0000-4000-8000-0000000f0a02";
+    expect((await addQuote()).status).toBe(200);
+    expect(blocksOf(site, site.aboutId).filter((block) => block.blockType === "pull_quote")).toHaveLength(2);
+    expect(site.rows("draft-changes")).toHaveLength(2);
+  });
+
+  it("a repeat while the first try is still running is refused (never a second copy); a refused first try can run again", async () => {
+    envelope.operation_id = OP;
+    const update = site.payload.update;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    site.payload.update = (async (args: Doc) => {
+      if (args.collection === "pages") await gate;
+      return update(args);
+    }) as typeof update;
+    const first = addQuote();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const second = await addQuote();
+    expect([second.status, second.error.code]).toEqual([409, "STEP_IN_PROGRESS"]);
+    release();
+    expect((await first).status).toBe(200);
+    site.payload.update = update;
+    expect(blocksOf(site, site.aboutId).filter((block) => block.blockType === "pull_quote")).toHaveLength(1);
+    expect(((await addQuote()).data as Doc).repeated).toBe(true);
+
+    // A first try that was refused left nothing behind: the same id runs once it is right.
+    envelope.operation_id = "44530000-0000-4000-8000-0000000f0a03";
+    const refused = await apply(site, { op: "add_section", page_id: site.aboutId, type: "pull_quote", after_section_id: null });
+    expect(refused.error.code).toBe("VALIDATION_FAILED");
+    expect(site.rows("gateway-nonces").filter((row) => String(row.nonce).startsWith("site-step:"))).toHaveLength(1);
+    expect((await addQuote()).status).toBe(200);
+    expect(blocksOf(site, site.aboutId).filter((block) => block.blockType === "pull_quote")).toHaveLength(2);
+  });
+});
+
+describe("#4453 the snapshot names every id the way a step names it", () => {
+  it("has draft_digest, and every id sits under id, page_id, section_id or media_id; a step built from it applies", async () => {
+    const { data } = await ari(site, "get_site_workspace");
+    expect(data.draft_digest).toMatch(/^[0-9a-f]{64}$/);
+    const idKeys = new Set<string>();
+    const walk = (value: unknown) => {
+      if (Array.isArray(value)) return value.forEach(walk);
+      if (!value || typeof value !== "object") return;
+      for (const [key, inner] of Object.entries(value as Doc)) {
+        if (key === "id" || key.endsWith("_id")) idKeys.add(key);
+        walk(inner);
+      }
+    };
+    walk(data);
+    expect([...idKeys].sort()).toEqual(["id", "media_id", "page_id"]);
+    // Pages and sections are `id`; a section's photo is `media_id`; a menu entry is `page_id`; the library's photos are `id`.
+    const page = (data.pages as Doc[])[0]!;
+    const section = (page.sections as Doc[])[2]!;
+    expect(section.lists).toEqual([{ name: "items", min: 1, max: expect.any(Number), count: 2, fields: ["question", "answer"] }]);
+    const applied = await apply(site, { op: "edit_section", page_id: page.id, section_id: section.id, list_ops: [{ list: "items", op: "add", after_index: 1, values: { question: "Can I bring friends too?", answer: "Yes, bring your squad." } }] });
+    expect(applied.status, JSON.stringify(applied.error)).toBe(200);
+    expect(blocksOf(site, site.homeId)[2]!.items).toHaveLength(3);
+    expect(blocksOf(site, site.homeId)[2]!.review).toMatchObject({ state: "draft", source: "ari" });
+  });
+
+  it("Ari's list steps: a new row needs its words and a source; remove and move need neither", async () => {
+    const faq = sectionId(site, site.homeId, "faq");
+    const step = (list_ops: Doc[], extra: Doc = {}) => apply(site, { op: "edit_section", page_id: site.homeId, section_id: faq, list_ops }, extra);
+    expect((await step([{ list: "items", op: "add", after_index: null }])).error).toMatchObject({ code: "VALIDATION_FAILED", problems: ["the new row needs words for items.0.question", "the new row needs words for items.0.answer"] });
+    expect((await step([{ list: "items", op: "add", after_index: null, values: { question: "Is it loud?", answer: "Yes." } }], { cites: [] })).error.code).toBe("CITATION_REQUIRED");
+    expect((await step([{ list: "items", op: "add", after_index: null, values: { question: "Is it the best in Africa?", answer: "Voted number 1 since 1999." } }])).error.code).toBe("CLAIM_NOT_BACKED");
+    expect((await step([{ list: "items", op: "move", index: 1, to_index: 0 }], { cites: [] })).status).toBe(200);
+    expect((await step([{ list: "items", op: "remove", index: 0 }], { cites: [] })).status).toBe(200);
+    expect((await step([{ list: "items", op: "remove", index: 0 }], { cites: [] })).error).toMatchObject({ code: "LIST_ROW_REQUIRED", list: "items", min: 1 });
+    // The top's fact badges are the owner's own Quick facts: not Ari's to add.
+    expect((await apply(site, { op: "edit_section", page_id: site.homeId, section_id: sectionId(site, site.homeId, "hero"), list_ops: [{ list: "fact_badges", op: "add", after_index: null, values: { big: "24", small: "consoles" } }] })).error.code).toBe("LIST_NOT_EDITABLE");
+    expect(blocksOf(site, site.homeId)[2]!.items.map((row: Doc) => row.question)).toEqual(["Can I bring friends?"]);
   });
 });
 

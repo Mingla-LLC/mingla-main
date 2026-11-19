@@ -126,6 +126,10 @@ export function makeStore() {
     },
     count: async ({ collection, where }: Doc) => ({ totalDocs: rows(collection).filter((doc) => matches(where, doc)).length }),
     create: async ({ collection, data: input, req }: Doc) => {
+      // The real `gateway-nonces.nonce` column is UNIQUE (Payload's shape for a Postgres 23505).
+      if (collection === "gateway-nonces" && rows(collection).some((row) => row.nonce === (input as Doc).nonce)) {
+        throw Object.assign(new Error("The following field is invalid: nonce"), { data: { errors: [{ path: "nonce", message: "Value must be unique" }] } });
+      }
       const next = await hooked(collection, input as Doc, undefined, req, "create");
       const at = stamp();
       const stored = shaped(collection, { ...next, id: (input as Doc).id ?? crypto.randomUUID(), createdAt: at, updatedAt: at });

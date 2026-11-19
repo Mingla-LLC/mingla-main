@@ -221,6 +221,78 @@ describe("#4453 edit_section", () => {
   });
 });
 
+describe("#4453 list rows: add, remove and move (list_ops)", () => {
+  const ops = (list_ops: Doc[], extra: Doc = {}) => call(site, "edit_section", {
+    page_id: site.homeId, expected_revision: revisionOf(site, site.homeId), section_id: blocksOf(site, site.homeId)[2]!.id, list_ops, ...extra,
+  });
+  const questions = () => blocksOf(site, site.homeId)[2]!.items.map((row: Doc) => row.question);
+
+  it("page_sections describes each list whose rows can change", async () => {
+    const rows = await sections(site, site.homeId);
+    expect(rows[2]!.lists).toEqual([{
+      name: "items", label: expect.any(String), item_label: "Question", min: 1, max: expect.any(Number), count: 2,
+      fields: [{ key: "question", label: "Question", kind: "multiline", max: 240 }, { key: "answer", label: "Answer", kind: "multiline", max: 1000 }],
+    }]);
+    // The top's headline lines can be added; its buttons need a link, so their rows are not added by hand.
+    expect((rows[0]!.lists as Doc[]).map((list) => list.name)).toEqual(["heading_lines", "fact_badges"]);
+    expect((rows[0]!.lists as Doc[])[0]).toMatchObject({ item_label: "Line", min: 0, count: 0 });
+    // Photos are changed through their photo spots, and a section Mingla fills has no rows to add.
+    expect(rows[4]!.lists).toEqual([]);
+    expect(rows[3]!.lists).toEqual([]);
+  });
+
+  it("adds a row with its words (or starter words), at the top or after a row", async () => {
+    const added = await ops([{ list: "items", op: "add", after_index: 0, values: { question: "Where do I park?", answer: "On the street outside." } }]);
+    expect(added.status, JSON.stringify(added.error)).toBe(200);
+    expect(added.data).toEqual({ page_revision: "2" });
+    expect(questions()).toEqual(["Can I bring friends?", "Where do I park?", "Is there food?"]);
+    expect(blocksOf(site, site.homeId)[2]!.items[1].id).toMatch(/^[0-9a-f]{24}$/);
+    // A person changed the section: reviewed, by them.
+    expect(blocksOf(site, site.homeId)[2]!.review).toMatchObject({ state: "reviewed", source: "person" });
+
+    await ops([{ list: "items", op: "add", after_index: null }]);
+    expect(blocksOf(site, site.homeId)[2]!.items[0]).toMatchObject({ question: "Add a question", answer: "Add the answer" });
+    // Rows first, then words: one call adds a row and writes into it.
+    await ops([{ list: "items", op: "add", after_index: 3 }], { edits: [{ key: "items.4.question", value: "Is it loud?" }] });
+    expect(questions()).toEqual(["Add a question", "Can I bring friends?", "Where do I park?", "Is there food?", "Is it loud?"]);
+  });
+
+  it("removes and moves rows, and all of it is one undoable change", async () => {
+    const before = structuredClone(blocksOf(site, site.homeId));
+    const done = await ops([{ list: "items", op: "add", after_index: 1, values: { question: "Third?", answer: "Yes." } }, { list: "items", op: "move", index: 2, to_index: 0 }, { list: "items", op: "remove", index: 1 }]);
+    expect(done.status).toBe(200);
+    expect(questions()).toEqual(["Third?", "Is there food?"]);
+    expect(site.rows("draft-changes")).toHaveLength(1);
+    expect(site.rows("draft-changes")[0]).toMatchObject({ label: "Edit Questions and answers", merge_key: null });
+    expect((await call(site, "undo")).status).toBe(200);
+    expect(blocksOf(site, site.homeId)).toEqual(before);
+  });
+
+  it("names each refusal: a list that is not edited by hand, a full list, the last row it must keep, a bad row or field", async () => {
+    for (const list of ["images", "ctas", "nope", 7]) {
+      const refused = await call(site, "edit_section", { page_id: site.homeId, expected_revision: "1", section_id: blocksOf(site, site.homeId)[list === "images" ? 4 : 0]!.id, list_ops: [{ list, op: "add", after_index: null }] });
+      expect(refused.error.code, String(list)).toBe("LIST_NOT_EDITABLE");
+    }
+    const grid = await call(site, "edit_section", { page_id: site.homeId, expected_revision: "1", section_id: blocksOf(site, site.homeId)[3]!.id, list_ops: [{ list: "offerings", op: "add", after_index: null }] });
+    expect(grid.error.code).toBe("LIST_NOT_EDITABLE");
+
+    const one = await ops([{ list: "items", op: "remove", index: 0 }, { list: "items", op: "remove", index: 0 }]);
+    expect(one.error).toMatchObject({ code: "LIST_ROW_REQUIRED", list: "items", min: 1 });
+    const max = (await sections(site, site.homeId))[2]!.lists[0].max as number;
+    pageOf(site, site.homeId).blocks[2].items = Array.from({ length: max }, (_, n) => ({ id: `row-${n}`, question: `Q${n}?`, answer: "A." }));
+    expect((await ops([{ list: "items", op: "add", after_index: null }])).error).toMatchObject({ code: "LIST_LIMIT_REACHED", list: "items", max });
+
+    pageOf(site, site.homeId).blocks[2].items.length = 2;
+    expect((await ops([{ list: "items", op: "add", after_index: null, values: { question: "x".repeat(241) } }])).error).toMatchObject({ code: "VALUE_TOO_LONG", max: 240 });
+    expect((await ops([{ list: "items", op: "add", after_index: null, values: { href: "/x" } }])).error.code).toBe("FIELD_NOT_EDITABLE");
+    expect((await ops([{ list: "items", op: "add", after_index: null, values: { question: "<i>x</i>" } }])).error.code).toBe("VALIDATION_FAILED");
+    for (const bad of [{ list: "items", op: "remove", index: 99 }, { list: "items", op: "move", index: 0, to_index: -1 }, { list: "items", op: "add", after_index: 99 }, { list: "items", op: "clear" }, "add"]) {
+      expect((await ops([bad as Doc])).error.code, JSON.stringify(bad)).toBe("VALIDATION_FAILED");
+    }
+    expect(revisionOf(site, site.homeId)).toBe("1");
+  });
+});
+
 describe("#4453 move, remove and add a section", () => {
   it("move_section puts a section at a new place and keeps every stamp", async () => {
     const faq = await section(site, site.homeId, "faq");
