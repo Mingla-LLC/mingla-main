@@ -98,6 +98,14 @@ function relationId(value: unknown): string | null {
  */
 const MACHINE_BLOCK_KEYS: ReadonlySet<string> = new Set(["blockType", "variant", "id", "blockName", "review", "media", "video", "poster"]);
 const MACHINE_KEY_RE = /(?:href|url|_id|variant|blockType|id)$/i;
+/**
+ * #4453 — a stored reference (a destination, testimonial or offering id)
+ * under a key the catalogue does not name is never copy. Young and Stamped's
+ * Places grid stores each destination as `{ destination: <uuid> }`, and 29
+ * fragments of those ids ("36353", "945") were flagged as claims Mingla
+ * cannot back.
+ */
+const UUID_VALUE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * The visitor-facing words of one block (or one list row). A field the block
@@ -110,7 +118,7 @@ function blockWords(value: AnyDoc, fields: Readonly<Record<string, FieldSpec>> |
   const loose = (inner: unknown, key: string): void => {
     if (MACHINE_BLOCK_KEYS.has(key)) return;
     if (typeof inner === "string") {
-      if (inner.trim() && !MACHINE_KEY_RE.test(key)) push(inner);
+      if (inner.trim() && !MACHINE_KEY_RE.test(key) && !UUID_VALUE_RE.test(inner.trim())) push(inner);
     } else if (Array.isArray(inner)) inner.forEach((row) => loose(row, key));
     else if (inner && typeof inner === "object") {
       if ((inner as AnyDoc).root) {

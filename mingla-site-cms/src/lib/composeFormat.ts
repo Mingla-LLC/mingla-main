@@ -508,6 +508,18 @@ function toPage(entry: FormatPage, blocks: ComposedBlock[], listing: boolean): C
   };
 }
 
+/** #4453 — the empty state of a ticked offering's page with nothing listed yet (fits trips, events and menus alike). */
+const WAITING_HEADING = "Be the first to hear";
+
+/** #4453 — the Contact page composed into an owner's existing, still-empty Contact. */
+const CONTACT_PAGE: FormatPage = {
+  key: "contact",
+  slug: "contact",
+  label: "Contact",
+  kind: "standard",
+  sections: [{ type: "contact_details" }, { type: "contact_form" }],
+};
+
 export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null {
   const mainAction = clean(input.plan.story?.main_action, 80);
   const formatPlan = { offerings_selected: input.plan.offerings_selected, main_action_page: mainActionPage(mainAction, input.plan.offerings_selected) };
@@ -528,6 +540,7 @@ export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null
   }
   const allEntries = [...primaryEntries, ...secondaryEntries.slice(0, 2)];
   const placedEntries: FormatPage[] = [];
+  const waiting = new Set<string>();
   for (const entry of allEntries) {
     // A secondary format's listing is judged in that format's own terms.
     const owner = secondaryEntries.includes(entry) ? secondary.find((other) => FORMAT_PAGE_SETS[other].includes(entry)) ?? format : format;
@@ -535,9 +548,26 @@ export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null
     if (pageHasContent(judge, entry)) {
       placedEntries.push(entry);
       ctx.placedSlugs.add(entry.slug);
+    } else if (entry.listing && entry.planned) {
+      // #4453 — "Each tick gets a page on your site, even before it has
+      // anything on it" (Host, What you'll offer). A ticked offering's listing
+      // page is always placed; with nothing listed yet it asks visitors to
+      // hear first. Leaving it out also kept Core's "Build your pages" from
+      // ever ticking (Young and Stamped ticks events with none on Mingla).
+      placedEntries.push(entry);
+      ctx.placedSlugs.add(entry.slug);
+      waiting.add(entry.key);
     } else {
       leftOut.push({ key: entry.key, reason: "NO_ELIGIBLE_SECTIONS" });
     }
+  }
+  // #4453 — an owner's existing Contact page that is still empty (or all
+  // Draft) is composed too, for formats whose page set has no Contact of its
+  // own (trips, events): contact details from Mingla and the contact form.
+  const contactPage = input.existing.find((page) => page.topLevel && page.slug === "contact");
+  if (contactPage && (contactPage.blockCount === 0 || contactPage.allDraft === true) && !placedEntries.some((entry) => entry.slug === "contact")) {
+    placedEntries.push(CONTACT_PAGE);
+    ctx.placedSlugs.add(CONTACT_PAGE.slug);
   }
 
   // ── Detail bases (v2.1 §1.2): a listing page is its kind's base only where it may be ──
@@ -585,7 +615,14 @@ export function composeFormatSite(input: ComposeV2Input): ComposeV2Result | null
   // ── The page set ────────────────────────────────────────────────────────
   const inner = placedEntries.map((entry) => {
     const owner = secondaryEntries.includes(entry) ? secondary.find((other) => FORMAT_PAGE_SETS[other].includes(entry)) ?? format : format;
-    return toPage(entry, placeSections({ ...ctx, format: owner }, entry.sections, entry.key), listingSlugs.has(entry.slug));
+    const blocks = placeSections({ ...ctx, format: owner }, entry.sections, entry.key);
+    if (waiting.has(entry.key) && !blocks.some((block) => block.blockType === "newsletter_signup")) {
+      const signUp: ComposedBlock = { blockType: "newsletter_signup", heading: WAITING_HEADING, button_label: "Sign up" };
+      const links = blocks.findIndex((block) => block.blockType === "page_links");
+      if (links < 0) blocks.push(signUp);
+      else blocks.splice(links, 0, signUp);
+    }
+    return toPage(entry, blocks, listingSlugs.has(entry.slug));
   });
   const pages = [home, ...inner];
 
