@@ -122,7 +122,9 @@ export function VenueBookingLookup() {
           <div className="text-sm">
             <div className="mb-1 font-semibold text-[var(--color-text-primary)]">Terms saved on the booking</div>
             <div className="text-[var(--color-text-secondary)]">
-              {snapshot?.policyText ?? booking.policy?.text ?? ladderWords(snapshot?.refundLadder ?? booking.policy?.refundLadder)}
+              {Array.isArray(snapshot?.refundLadder ?? booking.policy?.refundLadder)
+                ? ladderWords(snapshot?.refundLadder ?? booking.policy?.refundLadder)
+                : snapshot?.policyText ?? booking.policy?.text ?? "No terms saved"}
             </div>
           </div>
 

@@ -526,6 +526,9 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
           paidMinor={booking.paidMinor}
           balanceDueMinor={hire.balanceDueMinor}
           showMoney={booking.state !== "declined" && booking.state !== "request_expired"}
+          taxMinor={bookingVat(booking, offerVatRatePct).taxMinor}
+          vatMode={booking.vatMode}
+          bookedTotalMinor={booking.totalMinor}
         />
       ) : pkg.offerKind === "group_package" ? null : (
         <EntrySummaryRows

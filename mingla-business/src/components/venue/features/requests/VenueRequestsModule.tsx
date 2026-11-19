@@ -13,7 +13,7 @@
  * A held request says "On hold until <time>" and who is next; the host can
  * give more time or release it. Every refusal is plain words.
  */
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../../../constants/designSystem";
@@ -120,10 +120,16 @@ export function VenueRequestsModule({ brandId, venueId, onOpenModule, initialGro
     const r = all.find((x) => x.groupId === initialGroupId);
     if (r !== undefined) setTab(r.tab);
   }, [all, initialGroupId]);
+  // The request just answered stays open while the list catches up with its new tab.
+  const pinned = useRef<string | null>(null);
   // Wide web keeps one request open: the first of the tab when nothing is picked.
   useEffect(() => {
     if (!isWideDesktop) return;
-    if (selected !== null && rows.some((r) => r.groupId === selected)) return;
+    if (selected !== null && rows.some((r) => r.groupId === selected)) {
+      if (pinned.current === selected) pinned.current = null;
+      return;
+    }
+    if (pinned.current !== null && pinned.current === selected) return;
     setSelected(rows[0]?.groupId ?? null);
   }, [isWideDesktop, rows, selected]);
 
@@ -212,6 +218,7 @@ export function VenueRequestsModule({ brandId, venueId, onOpenModule, initialGro
         onDone={(text, nextTab) => {
           setToast(text);
           if (nextTab !== undefined) {
+            pinned.current = current.groupId;
             setTab(nextTab);
             setSelected(current.groupId);
           }
@@ -423,11 +430,18 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
   if (b !== undefined && b.hire !== null && preview !== null) {
     const h = b.hire;
     const base = quote?.baseMinor ?? h.hireMinor;
-    quoteRows.push({ key: "hire", label: `${h.placeName ?? "Hire"}${h.sessionLabel !== null ? ` · ${h.sessionLabel.toLowerCase()}` : ""}`, value: money(base, currency) });
-    if (h.extraGuests > 0) quoteRows.push({ key: "extra", label: `${h.extraGuests} extra guests`, value: money(h.extraGuestMinor, currency) });
-    if (h.overtimeHours > 0) quoteRows.push({ key: "over", label: `${h.overtimeHours} hours running over`, value: money(h.overtimeMinor, currency) });
-    if (preview.vatMinor > 0) quoteRows.push({ key: "vat", label: b.vatMode === "included" ? "Includes VAT" : "VAT", value: money(preview.vatMinor, currency) });
-    if (h.damageDepositMinor > 0) quoteRows.push({ key: "damage", label: "Refundable damage deposit", value: money(h.damageDepositMinor, currency) });
+    // Once approved with an edited price, the server keeps the change on top of the
+    // first quote: show the agreed price as one exact line (server total − damage deposit).
+    const agreed = !isPending && b.totalDueMinor !== b.totalMinor;
+    if (agreed) {
+      quoteRows.push({ key: "agreed", label: `${h.placeName ?? "Hire"} · agreed price${b.taxMinor > 0 ? " (with VAT)" : ""}`, value: money(b.totalDueMinor - h.damageDepositMinor, currency) });
+      if (h.damageDepositMinor > 0) quoteRows.push({ key: "damage", label: "Refundable damage deposit", value: money(h.damageDepositMinor, currency) });
+    }
+    if (!agreed) quoteRows.push({ key: "hire", label: `${h.placeName ?? "Hire"}${h.sessionLabel !== null ? ` · ${h.sessionLabel.toLowerCase()}` : ""}`, value: money(base, currency) });
+    if (!agreed && h.extraGuests > 0) quoteRows.push({ key: "extra", label: `${h.extraGuests} extra guests`, value: money(h.extraGuestMinor, currency) });
+    if (!agreed && h.overtimeHours > 0) quoteRows.push({ key: "over", label: `${h.overtimeHours} hours running over`, value: money(h.overtimeMinor, currency) });
+    if (!agreed && preview.vatMinor > 0) quoteRows.push({ key: "vat", label: b.vatMode === "included" ? "Includes VAT" : "VAT", value: money(preview.vatMinor, currency) });
+    if (!agreed && h.damageDepositMinor > 0) quoteRows.push({ key: "damage", label: "Refundable damage deposit", value: money(h.damageDepositMinor, currency) });
     quoteRows.push({ key: "total", label: "Total", value: money(isPending ? preview.totalMinor : b.totalDueMinor, currency), strong: true });
     const dep = isPending ? preview.depositMinor : b.depositMinor;
     if (dep !== null && dep < (isPending ? preview.totalMinor : b.totalDueMinor)) {
@@ -482,7 +496,11 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
         <Banner
           tone="info"
           title={`Next in line${r.queue !== null && r.queue.position > 1 ? ` (number ${r.queue.position})` : ""}`}
-          body={`${blocker?.guestName ?? "Someone"} has the space${blocker?.holdUntil ? ` until ${momentWords(blocker.holdUntil, timezone) ?? ""}` : ""}. If they don't pay, ${first} is offered it and you're told.`}
+          body={
+            r.placeStatus === "taken"
+              ? `${blocker?.guestName ?? "Someone"} has booked the space that day, so it won't free up by itself. Offer ${first} another date, or decline.`
+              : `${blocker?.guestName ?? "Someone"} has the space${blocker?.holdUntil ? ` until ${momentWords(blocker.holdUntil, timezone) ?? ""}` : ""}. If they don't pay, ${first} is offered it and you're told.`
+          }
           testID="venue-request-queued"
         />
       ) : null}
@@ -846,7 +864,7 @@ function QuoteSheet({
         />
         <Text style={styles.meta}>Lower it to take money off, or raise it to cover anything you add (food, drinks, staff).</Text>
         <View style={styles.field}>
-          <Text style={styles.factLabel}>Note to {first}</Text>
+          <Text style={styles.fieldLabel}>Note to {first}</Text>
           <Input
             value={note}
             onChangeText={(v) => setNote(v.slice(0, 500))}
@@ -941,7 +959,7 @@ function DeclineModal({
           <IconChrome icon="close" size={36} accessibilityLabel="Close" onPress={onClose} testID="venue-request-decline-close" />
         </View>
         <View style={styles.field}>
-          <Text style={styles.factLabel}>Why</Text>
+          <Text style={styles.fieldLabel}>Why</Text>
           <Input
             value={reason}
             onChangeText={(v) => setReason(v.slice(0, 500))}
@@ -951,7 +969,7 @@ function DeclineModal({
             testID="venue-request-decline-reason"
           />
         </View>
-        <Text style={styles.factLabel}>Offer other dates (up to 3)</Text>
+        <Text style={styles.fieldLabel}>Offer other dates (up to 3)</Text>
         {dates.map((d, i) => (
           <View key={`alt-${i}`} style={styles.inline}>
             <View style={styles.grow}>
@@ -1123,6 +1141,7 @@ const styles = StyleSheet.create({
   facts: { gap: space[2] },
   factRow: { flexDirection: "row", gap: space[3], flexWrap: "wrap" },
   factLabel: { ...type.small, color: color.text2, width: 110 },
+  fieldLabel: { ...type.small, color: color.text2 },
   factValue: { ...type.small, color: color.text1, flex: 1, minWidth: 160 },
   okText: { color: color.successText },
   warnText: { color: color.warningText },

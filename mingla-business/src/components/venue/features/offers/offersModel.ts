@@ -508,7 +508,9 @@ export function whenColumn(offer: VenueOffer): string {
 
 export function kindLine(offer: VenueOffer): string {
   if (offer.kind === "private_hire") {
-    const places = (offer.hire?.spaces.length ?? 0) + (offer.hire?.combinations.length ?? 0);
+    // The places the host priced (a combination counts once, not its parts).
+    const priced = new Set((offer.hire?.rows ?? []).map((r) => r.spaceId ?? r.combinationId ?? r.optionId)).size;
+    const places = priced > 0 ? priced : (offer.hire?.combinations.length ?? 0) + (offer.hire?.spaces.length ?? 0);
     return `Private hire · ${places} ${places === 1 ? "space" : "spaces"} · ${offer.confirmationMode === "request" ? "request first" : "book instantly"}`;
   }
   if (offer.kind === "group_package") {

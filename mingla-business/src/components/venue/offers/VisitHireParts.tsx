@@ -26,6 +26,15 @@ import {
 import { radius, space, type } from "../../../constants/designSystem";
 import { EntryButton, EntryNote } from "./EntryUi";
 
+/** "2 days 23 hours left", "5 h 12 min left", or the m:ss clock in the last hour. */
+export function leftWords(seconds: number): string {
+  if (seconds < 3600) return countdownText(seconds);
+  const hours = Math.floor(seconds / 3600);
+  if (hours < 48) return `${hours} h ${Math.floor((seconds % 3600) / 60)} min left`;
+  const days = Math.floor(hours / 24);
+  return `${days} days ${hours % 24} hours left`;
+}
+
 export function HireTracker({
   state,
   venueName,
@@ -113,7 +122,7 @@ export function HireStateMain(p: HireStateMainProps): React.ReactElement {
         <EntryNote palette={palette} icon="clock" tone="warning" testID="issue-4490-visit-hire-hold">
           <Text style={[styles.small, { color: tones.warning.text }]}>
             <Text style={themeBoldFace(theme)}>{`On hold until ${hireMoment(p.holdUntil, p.timeZone) ?? ""}`}</Text>
-            {` · ${countdownText(left)}`}
+            {` · ${leftWords(left)}`}
           </Text>
         </EntryNote>
       ) : null}
@@ -233,6 +242,9 @@ export function HireFacts({
   paidMinor,
   balanceDueMinor,
   showMoney,
+  taxMinor = 0,
+  vatMode = null,
+  bookedTotalMinor = null,
 }: {
   hire: HireBookingView;
   palette: ThemePalette;
@@ -242,6 +254,11 @@ export function HireFacts({
   paidMinor: number;
   balanceDueMinor: number;
   showMoney: boolean;
+  /** The server's VAT on the booking (added on top, or inside the price). */
+  taxMinor?: number;
+  vatMode?: "added" | "included" | "none" | null;
+  /** The total when booked; differs from `totalDueMinor` once the venue edited the price. */
+  bookedTotalMinor?: number | null;
 }): React.ReactElement {
   const money = (m: number): string => formatVenueMoney(m, currencyCode, exponent);
   const rows: Array<{ k: string; v: string; strong?: boolean }> = [
@@ -251,10 +268,22 @@ export function HireFacts({
     ...(hire.occasion !== null ? [{ k: "Occasion", v: hire.occasion }] : []),
     ...(hire.siteVisit ? [{ k: "Site visit", v: "You asked to see the space first" }] : []),
   ];
-  const moneyRows: Array<{ k: string; v: string; strong?: boolean }> = [
+  // The venue changed the price when it said yes: the server keeps the change on
+  // top of the first quote, so the agreed price is shown as one exact line.
+  const edited = bookedTotalMinor !== null && bookedTotalMinor !== totalDueMinor;
+  const moneyRows: Array<{ k: string; v: string; strong?: boolean }> = edited
+    ? [
+        { k: taxMinor > 0 ? "Agreed price (with VAT)" : "Agreed price", v: money(totalDueMinor - hire.damageDepositMinor) },
+        ...(hire.damageDepositMinor > 0 ? [{ k: "Refundable damage deposit", v: money(hire.damageDepositMinor) }] : []),
+        { k: "Total", v: money(totalDueMinor), strong: true },
+        ...(paidMinor > 0 ? [{ k: "Paid", v: money(paidMinor) }] : []),
+        ...(paidMinor > 0 && balanceDueMinor > 0 ? [{ k: "Still to pay", v: money(balanceDueMinor), strong: true }] : []),
+      ]
+    : [
     { k: "Hire", v: money(hire.hireMinor) },
     ...(hire.extraGuests > 0 ? [{ k: `${hire.extraGuests} extra guests`, v: money(hire.extraGuestMinor) }] : []),
     ...(hire.overtimeHours > 0 ? [{ k: `${hire.overtimeHours} extra hours`, v: money(hire.overtimeMinor) }] : []),
+    ...(taxMinor > 0 ? [{ k: vatMode === "included" ? "Includes VAT" : "VAT", v: money(taxMinor) }] : []),
     ...(hire.damageDepositMinor > 0 ? [{ k: "Refundable damage deposit", v: money(hire.damageDepositMinor) }] : []),
     { k: "Total", v: money(totalDueMinor), strong: true },
     ...(paidMinor > 0 ? [{ k: "Paid", v: money(paidMinor) }] : []),

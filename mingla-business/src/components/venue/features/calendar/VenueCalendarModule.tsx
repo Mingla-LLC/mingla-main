@@ -68,8 +68,8 @@ const LazyToast = React.lazy(async () => {
   return { default: mod.Toast };
 });
 
-const LABEL_COL = 168;
-const DAY_COL_MIN = 120;
+const LABEL_COL = 160;
+const DAY_COL_MIN = 96;
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export interface VenueCalendarModuleProps {
@@ -315,7 +315,9 @@ function WeekGrid({
   onOpen: (block: CalendarBlock, row: CalendarRow) => void;
   onPickDay: (date: string) => void;
 }): React.ReactElement {
-  const needsScroll = fit < LABEL_COL + days.length * DAY_COL_MIN + 120;
+  // Measure the grid's own box (the window is wider than the module beside the rail).
+  const [boxWidth, setBoxWidth] = useState<number>(fit);
+  const needsScroll = boxWidth < LABEL_COL + days.length * DAY_COL_MIN;
   const grid = (
     <View style={[styles.grid, needsScroll ? { width: LABEL_COL + days.length * DAY_COL_MIN } : null]} testID="venue-calendar-week">
       <View style={styles.gridRow}>
@@ -380,6 +382,7 @@ function WeekGrid({
   );
   return (
     <GlassCard variant="base" padding={0} contentStyle={styles.gridCard}>
+      <View onLayout={(e) => setBoxWidth(Math.round(e.nativeEvent.layout.width))}>
       {needsScroll ? (
         <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.hScroll}>
           {grid}
@@ -387,6 +390,7 @@ function WeekGrid({
       ) : (
         grid
       )}
+      </View>
     </GlassCard>
   );
 }
@@ -557,7 +561,7 @@ function BlockSheet({
           testID="venue-calendar-block-space"
         />
         <View style={styles.inlineRow}>
-          <View style={styles.grow}>
+          <View style={styles.dateCol}>
             <DayDateField
               label="From"
               value={draft.fromDate}
@@ -568,12 +572,12 @@ function BlockSheet({
               testID="venue-calendar-block-from-date"
             />
           </View>
-          <View style={styles.grow}>
+          <View style={styles.timeCol}>
             <TimeField label="At" value={draft.fromTime} onChangeValue={(fromTime) => set({ fromTime })} accessibilityLabel="Block from time" testID="venue-calendar-block-from-time" />
           </View>
         </View>
         <View style={styles.inlineRow}>
-          <View style={styles.grow}>
+          <View style={styles.dateCol}>
             <DayDateField
               label="Until"
               value={draft.toDate}
@@ -584,7 +588,7 @@ function BlockSheet({
               testID="venue-calendar-block-to-date"
             />
           </View>
-          <View style={styles.grow}>
+          <View style={styles.timeCol}>
             <TimeField label="At" value={draft.toTime} onChangeValue={(toTime) => set({ toTime })} accessibilityLabel="Block until time" testID="venue-calendar-block-to-time" />
           </View>
         </View>
@@ -675,6 +679,8 @@ const styles = StyleSheet.create({
   sheetFooter: { flexDirection: "row", justifyContent: "flex-end", gap: space[2], padding: space[4], borderTopWidth: 1, borderTopColor: color.line },
   inlineRow: { flexDirection: "row", gap: space[3], flexWrap: "wrap", alignItems: "flex-end" },
   grow: { flex: 1, minWidth: 140 },
+  dateCol: { flex: 1.7, minWidth: 190 },
+  timeCol: { flex: 1, minWidth: 110 },
   field: { gap: space[1] },
   label: { ...type.small, color: color.text2 },
 });

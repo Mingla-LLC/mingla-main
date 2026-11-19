@@ -1351,7 +1351,11 @@ export function mapVenueBooking(v: unknown): VenueBookingDetail {
     hire: mapHireBookingFacts(b.hire),
     requestDeadline: strOrNull(b.requestDeadline),
     paymentDeadline: strOrNull(b.paymentDeadline),
-    policyText: strOrNull(obj(b.policy).text),
+    // The saved terms say "30 day(s)"; read them as plain words.
+    policyText: (() => {
+      const t = strOrNull(obj(b.policy).text);
+      return t === null ? null : t.replace(/\b(\d+) day\(s\)/g, (_m, n: string) => (n === "1" ? "1 day" : `${n} days`));
+    })(),
   };
 }
 
