@@ -244,7 +244,7 @@ export function BrandGroupInboxList({
 
   if (!scrollable) return <View style={styles.list}>{body}</View>;
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} testID="brand-group-inbox-scroll">
       {body}
     </ScrollView>
   );

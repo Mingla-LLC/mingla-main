@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { webPrivacyMaxHeight } from "../../src/components/messages/webViewportPin";
+import { messagesScreenWebSize } from "../../src/components/messages/webViewportPin";
+import { HostShellInsetContext } from "../../src/components/ui/hostShellContext";
 import {
   ActivityIndicator,
   Modal,
@@ -178,6 +179,7 @@ function BrandGroupMessagesShell({ conversationId }: { conversationId: string | 
   const { user } = useAuth();
   const staff = useSupportStaff();
   const { groups, loading, error, refresh } = useBrandGroups();
+  const shellActive = React.useContext(HostShellInsetContext);
   if (!isWideDesktop) return <BrandGroupThreadScreen key={conversationId ?? "none"} />;
   const openGroup = (group: BrandGroupSummary): void => {
     if (group.conversation_id === conversationId) return;
@@ -192,9 +194,9 @@ function BrandGroupMessagesShell({ conversationId }: { conversationId: string | 
     <View
       style={[
         styles.desktopShell,
-        Platform.OS === "web" && windowHeight > 0 ? { height: windowHeight } : null,
-        // #4420: capped clear of the Privacy & ad choices strip.
-        webPrivacyMaxHeight(),
+        // #4420 A2: fills the desktop shell's slot under its top bar (a full
+        // window pin made #root scroll the composer away).
+        messagesScreenWebSize(windowHeight, shellActive),
       ]}
       testID="brand-group-desktop-shell"
     >
@@ -261,6 +263,7 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
   const queryClient = useQueryClient();
   const { t } = useBusinessMediaTranslation();
   const { isWideDesktop, width: layoutWidth } = useResponsiveLayout();
+  const shellActive = React.useContext(HostShellInsetContext);
   const showRail = isWideDesktop && (layoutWidth ?? 0) >= DETAILS_RAIL_MIN_WIDTH;
   // #4304 — on a phone, Plan and Media in the header are icon-only so the
   // group's name keeps its room (both carry an accessibility label).
@@ -799,11 +802,11 @@ function BrandGroupThreadScreen({ embedded = false }: { embedded?: boolean }): R
       edges={embedded ? [] : ["top"]}
       style={[
         styles.screen,
-        Platform.OS === "web" && windowHeight > 0
-          ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }
-          : null,
-        // #4420: capped clear of the Privacy & ad choices strip.
-        webPrivacyMaxHeight(),
+        // #4420 A2: embedded in the desktop page (or inside the desktop shell)
+        // the thread fills its pane; on phones it is pinned to the visible
+        // height, capped clear of the privacy strip, so the composer rides
+        // the keyboard.
+        messagesScreenWebSize(windowHeight, embedded || shellActive),
       ]}
       testID="brand-group-thread"
     >

@@ -1,6 +1,8 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import { type PropsWithChildren } from "react";
 
+import { webDocumentCss } from "../src/utils/webDocumentCss";
+
 // ORCH-0964: web-only HTML document for mingla-business.
 //
 // The public brand/event pages hard-crash the MOBILE browser renderer because
@@ -30,6 +32,8 @@ export default function Root({ children }: PropsWithChildren) {
         />
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: MOBILE_WEB_BLUR_KILL }} />
+        {/* #4420 A1: the page itself is the dark canvas and never bounces. */}
+        <style dangerouslySetInnerHTML={{ __html: webDocumentCss() }} />
       </head>
       <body>{children}</body>
     </html>
