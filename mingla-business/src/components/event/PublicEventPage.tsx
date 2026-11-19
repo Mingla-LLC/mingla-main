@@ -129,6 +129,13 @@ import {
   type GuestFunnelEntity,
 } from "../../services/guestFunnelLink";
 
+// #4518 — loaded on intent (a tap on "Join waitlist"), not at boot: the
+// sheet was in the eager shared chunk of every Host web page.
+const JoinWaitlistSheet = React.lazy(() =>
+  import("../waitlist/JoinWaitlistSheet").then((module) => ({
+    default: module.JoinWaitlistSheet,
+  })),
+);
 const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
 // issue #2135 [multi-date public day picker] — the multi-date leg: the
 // `event_dates` occurrence read plus the INLINE day rows. LAZY for the SAME
@@ -226,7 +233,6 @@ import { useThemeFont } from "../../theme/useThemeFont";
 
 import { ShareModal } from "../ui/ShareModal";
 import { Toast } from "../ui/Toast";
-import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
 import { themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { premiumDesktopBarDockStyle } from "@mingla/offering-rendering/offeringFrameMetrics";
 
@@ -2450,13 +2456,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       />
 
       {acquisitionState.kind === "current" && waitlistTicket !== null ? (
-        <JoinWaitlistSheet
-          visible
-          eventId={event.id}
-          ticket={waitlistTicket}
-          onClose={() => setWaitlistTicketId(null)}
-          currency={event.currency ?? null}
-        />
+        <React.Suspense fallback={null}>
+          <JoinWaitlistSheet
+            visible
+            eventId={event.id}
+            ticket={waitlistTicket}
+            onClose={() => setWaitlistTicketId(null)}
+            currency={event.currency ?? null}
+          />
+        </React.Suspense>
       ) : null}
 
       <View style={styles.toastWrap} pointerEvents="box-none">

@@ -23,7 +23,7 @@
  * @jest-environment node
  */
 
-type RpcResult = { data: unknown; error: { message: string } | null };
+type RpcResult = { data: unknown; error: { code?: string; message: string } | null };
 const mockRpc = jest.fn<Promise<RpcResult>, [string, Record<string, unknown>]>();
 
 jest.mock("../../services/supabase", () => ({
