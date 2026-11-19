@@ -252,6 +252,10 @@ async function pixelChecks(browser) {
     for (const [host, site] of Object.entries(sites)) {
       for (const path of previews[host].paths) {
         const label = `${width} ${site.design_key} /${path}`;
+        // One load to warm the browser's caches for this host (a first, cold load can lay out a
+        // scroll-snapping row differently from every later one, marked or not); it is not compared.
+        sectionsOn = false;
+        await page.goto(previewUrl(host, path), { waitUntil: "networkidle" });
         sectionsOn = true;
         const marked = await picture(page, previewUrl(host, path));
         sectionsOn = false;
