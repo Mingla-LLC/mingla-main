@@ -47,6 +47,8 @@ describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
     // TEST-MOD-APPROVED #4490 P4 — Requests (list + detail) and Calendar (week grid) own their scroll.
     expect(moduleSelfScrolls("requests")).toBe(true);
     expect(moduleSelfScrolls("calendar")).toBe(true);
+    // TEST-MOD-APPROVED #4490 P6-2 — Members owns its scroll (the plan editor pins Save / Publish).
+    expect(moduleSelfScrolls("members")).toBe(true);
     for (
       const m of ALL_MODULES.filter(
         (x) =>
@@ -56,7 +58,8 @@ describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
           x !== "settings" &&
           x !== "offers" &&
           x !== "requests" &&
-          x !== "calendar",
+          x !== "calendar" &&
+          x !== "members",
       )
     ) {
       expect(moduleSelfScrolls(m)).toBe(false);
