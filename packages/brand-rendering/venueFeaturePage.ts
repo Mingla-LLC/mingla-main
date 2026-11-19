@@ -157,6 +157,10 @@ export interface VenueFeatureTablesView {
   minSpendFromMinor: number | null;
   largePartyRequest: boolean | null;
   guestWaitlist: boolean | null;
+  /** #4490 P5 — "Tell me if a table opens" (a day and a time range). */
+  notifyMe?: boolean | null;
+  /** #4490 P5 — the spaces that have bookable tables (the "Where would you like to sit?" chips). */
+  seatingAreas?: Array<{ spaceId: string; name: string }>;
 }
 
 export interface PublicVenueFeaturesView {
@@ -390,6 +394,10 @@ export function parsePublicVenueFeatures(
             minSpendFromMinor: asInt(tables.minSpendFromMinor),
             largePartyRequest: asBoolOrNull(tables.largePartyRequest),
             guestWaitlist: asBoolOrNull(tables.guestWaitlist),
+            notifyMe: asBoolOrNull(tables.notifyMe),
+            seatingAreas: (Array.isArray(tables.seatingAreas) ? tables.seatingAreas : [])
+              .map((a) => (isRecord(a) && typeof a.spaceId === "string" && typeof a.name === "string" ? { spaceId: a.spaceId, name: a.name } : null))
+              .filter((a): a is { spaceId: string; name: string } => a !== null),
           },
     memberships:
       memberships !== null && asInt(memberships.fromMinor) !== null
@@ -693,6 +701,8 @@ export const BUILT_VENUE_TABS: ReadonlySet<PublicVenueTab> = new Set<PublicVenue
   "groups",
   // #4490 P4 — private hire.
   "hire",
+  // #4490 P5 — by the hour.
+  "by_the_hour",
   "whats_on",
   "menu",
   "reservations",

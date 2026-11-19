@@ -639,6 +639,11 @@ export interface PublicVenueScreenProps {
    */
   hireBody?: (context: PublicVenueEntrySlotContext) => BrandRenderingReactNode;
   /**
+   * #4490 P5 — the By the hour tab's flow (place, day, start, length, then
+   * checkout). Host-injected like `entryBody`; absent = a plain line.
+   */
+  hourBody?: (context: PublicVenueEntrySlotContext) => BrandRenderingReactNode;
+  /**
    * #4490 — a Host preview of a venue that is not public yet: every tab the
    * venue will have, with the booking button and event buttons disabled.
    */
@@ -1295,6 +1300,7 @@ export const PublicVenueScreen = ({
   entryBody,
   groupsBody,
   hireBody,
+  hourBody,
   preview = null,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
@@ -1770,7 +1776,9 @@ export const PublicVenueScreen = ({
       normalizedReservationUiState.activeTab === "rooms" ||
       normalizedReservationUiState.activeTab === "entry" ||
       normalizedReservationUiState.activeTab === "groups" ||
-      normalizedReservationUiState.activeTab === "hire") &&
+      normalizedReservationUiState.activeTab === "hire" ||
+      // #4490 P5 — the By the hour tab too.
+      normalizedReservationUiState.activeTab === "by_the_hour") &&
     !normalizedReservationUiState.reservationSheetOpen
       ? liveReservationBar
       : null;
@@ -2506,6 +2514,28 @@ export const PublicVenueScreen = ({
             </View>
           )
     : null;
+  // #4490 P5 — the By the hour tab, same rules as Entry.
+  const hourOffers = (featuresView?.offers ?? []).filter((o) => o.kind === "by_the_hour");
+  const hourBlock = page.tabs.includes("by_the_hour")
+    ? previewing
+      ? previewBookingNote
+      : hourBody !== undefined && page.currency !== null
+        ? hourBody({
+            ...themedSlotContext,
+            offers: hourOffers,
+            currencyCode: page.currency.code,
+            exponent: page.currency.exponent,
+            verb: "Book",
+            onBookingBarChange: setLiveReservationBar,
+          })
+        : (
+            <View style={styles.reservationState} testID="issue-4490-hour-not-online">
+              <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+                Booking by the hour isn&apos;t open online here yet. Contact the venue to book.
+              </Text>
+            </View>
+          )
+    : null;
   const whatsOnBlock =
     page.events.length > 0 && page.currency !== null ? (
       <VenueWhatsOnPane
@@ -2809,7 +2839,7 @@ export const PublicVenueScreen = ({
           : {
               tabs: page.tabs,
               labels: page.labels,
-              panes: { whats_on: whatsOnBlock, rooms: roomsBlock, entry: entryBlock, groups: groupsBlock, hire: hireBlock },
+              panes: { whats_on: whatsOnBlock, rooms: roomsBlock, entry: entryBlock, groups: groupsBlock, hire: hireBlock, by_the_hour: hourBlock },
             })}
         palette={palette}
         surface={surface}

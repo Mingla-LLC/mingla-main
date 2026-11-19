@@ -165,6 +165,7 @@ export function parseEntryOfferDetail(raw: unknown): EntryOfferDetail | null {
 export type EntryDayStatus =
   | "available"
   | "sold_out"
+  | "taken"
   | "gate_only"
   | "closed"
   | "too_soon"
@@ -185,6 +186,8 @@ export interface EntryDayRow {
 const DAY_STATUSES: ReadonlySet<string> = new Set([
   "available",
   "sold_out",
+  // #4490 P5 — a by-the-hour day with no free start left.
+  "taken",
   "gate_only",
   "closed",
   "too_soon",
@@ -346,6 +349,7 @@ export function tileStateFor(row: EntryDayRow | null): EntryTileState {
     case "available":
       return row.remaining <= FEW_LEFT ? "few_left" : "open";
     case "sold_out":
+    case "taken":
       return "full";
     case "gate_only":
       return "gate_only";
