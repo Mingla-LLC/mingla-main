@@ -228,7 +228,8 @@ export function parseSubmitRequest(
   if (r.expectedEditCount !== undefined && r.expectedEditCount !== null) {
     if (
       typeof r.expectedEditCount !== "number" ||
-      !Number.isInteger(r.expectedEditCount) || r.expectedEditCount < 0
+      !Number.isInteger(r.expectedEditCount) || r.expectedEditCount < 0 ||
+      r.expectedEditCount > 999_999_999
     ) {
       return null;
     }
@@ -290,10 +291,63 @@ export function corePayload(
   return { ...base, credential };
 }
 
-/** The code inside a PostgREST error message ('form_closed', 'form_changed', …). */
-export function coreErrorCode(message: string): BrandFormSubmitErrorCode {
+/**
+ * The code inside a PostgREST error message ('form_closed', 'form_changed', …).
+ * Bad input is a validation error, never a server error: any other failure whose
+ * SQLSTATE is a data exception (class 22, e.g. 22008 bad date, 22P02 bad text,
+ * 22P05 an untranslatable character) maps to form_answers_invalid.
+ */
+export function coreErrorCode(
+  message: string,
+  sqlstate?: string | null,
+): BrandFormSubmitErrorCode {
   const first = (message ?? "").trim().split(/[\s:]/)[0] ?? "";
-  return (BRAND_FORM_CORE_CODES as readonly string[]).includes(first)
-    ? (first as BrandFormSubmitErrorCode)
+  if ((BRAND_FORM_CORE_CODES as readonly string[]).includes(first)) {
+    return first as BrandFormSubmitErrorCode;
+  }
+  return typeof sqlstate === "string" && /^22[0-9A-Z]{3}$/.test(sqlstate)
+    ? "form_answers_invalid"
     : "server_error";
+}
+
+// A NUL, or half of a surrogate pair: PostgreSQL's jsonb refuses both (22P05),
+// so they are answered here as invalid input instead of reaching the database.
+const LONE_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const NUL = String.fromCharCode(0);
+function unstorableText(t: string): boolean {
+  return t.includes(NUL) || LONE_SURROGATE.test(t);
+}
+
+function storableScalar(v: unknown): boolean {
+  if (v === null || typeof v === "boolean") return true;
+  if (typeof v === "number") return Number.isFinite(v);
+  return typeof v === "string" && !unstorableText(v);
+}
+
+/**
+ * Per-question input errors the database could not even store: a NUL or a lone
+ * surrogate (in a key or a value), an object, or an array holding anything but
+ * scalars. Each is the contract's validation error (code "type"); everything
+ * else is validated by the SQL core against the stored version.
+ */
+export function unstorableAnswerErrors(
+  answers: BrandFormAnswers,
+): Array<{ questionId: string | null; code: string }> {
+  const out: Array<{ questionId: string | null; code: string }> = [];
+  for (
+    const [key, value] of Object.entries(answers as Record<string, unknown>)
+  ) {
+    const keyOk = !unstorableText(key);
+    const valueOk = Array.isArray(value)
+      ? value.every(storableScalar)
+      : storableScalar(value);
+    if (!keyOk || !valueOk) {
+      out.push({
+        questionId: keyOk ? key : null,
+        code: "type",
+      });
+    }
+  }
+  return out;
 }

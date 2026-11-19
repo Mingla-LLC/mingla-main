@@ -9,7 +9,8 @@
 // brand_form_submit_core and brand_form_submit_attempts. The logic and its order
 // of operations live in ./submit.ts.
 //
-// Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (platform). No new secret.
+// Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (platform; also the root the
+// address-hash salt is derived from, _shared/derivedSecret.ts). No new secret.
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -75,6 +76,7 @@ export function restSubmitDb(supabase: Client): BrandFormSubmitDb {
           ? {
             message: String(error.message ?? ""),
             details: error.details ?? null,
+            code: typeof error.code === "string" ? error.code : null,
           }
           : null,
       };

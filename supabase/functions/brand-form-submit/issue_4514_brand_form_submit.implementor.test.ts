@@ -95,6 +95,7 @@ async function run(
   const res = await handleBrandFormSubmit(req, {
     db: f.db,
     log: (l) => f.logs.push(l),
+    ipSalt: () => Promise.resolve("t".repeat(64)),
   });
   return { status: res.status, body: await res.json().catch(() => ({})) };
 }

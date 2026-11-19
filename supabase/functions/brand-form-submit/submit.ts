@@ -6,7 +6,15 @@
 //   · 4 JSON shape (400 bad_request) · 5 the database off switch (503 forms_paused)
 //   · 6 rate limit per salted IP hash, 20 / 10 min and 100 / 24 h over all forms
 //   (429, nothing written) · 7 who: a personal link token, else a signed-in user
-//   (401 sign_in_required) · 8 brand_form_submit_core (SQL) · 9 response.
+//   (401 sign_in_required) · 8 answers the database cannot store (NUL, a lone
+//   surrogate, nested values: 422 form_answers_invalid) · 9 brand_form_submit_core
+//   (SQL; a data exception it raises is 422 form_answers_invalid, never 500)
+//   · 10 response.
+//
+// The client address is read exactly as forms-submit reads it (the first
+// x-forwarded-for hop). Its salt is not a constant in the repo: it is derived from
+// the platform's service-role key with the shared #3201 derivation
+// (_shared/derivedSecret.ts), so no new secret or env var exists.
 //
 // Logs carry the outcome and the form id only: never a token, an answer or a contact.
 
@@ -21,10 +29,20 @@ import {
   coreErrorCode,
   corePayload,
   parseSubmitRequest,
+  unstorableAnswerErrors,
 } from "../_shared/brandFormsContract.ts";
+import {
+  deriveScopedSecret,
+  type ScopedSecretRootEnv,
+} from "../_shared/derivedSecret.ts";
 
-/** Domain-separated from the forms-submit limiter; the raw IP is never stored. */
-export const IP_SALT = "mingla-brand-forms";
+/** The derivation label for this limiter's salt (one label per purpose, #3201). */
+export const IP_SALT_LABEL = "brand-form-submit-ip-salt";
+
+/** The address-hash salt: derived from the platform service-role key, never stored. */
+export function defaultIpSalt(env?: ScopedSecretRootEnv): Promise<string> {
+  return deriveScopedSecret(IP_SALT_LABEL, env);
+}
 
 const PRODUCTION_ORIGIN = "https://host.usemingla.com";
 const PREVIEW_ORIGIN = /^https:\/\/mingla-business-[a-z0-9-]+\.vercel\.app$/;
@@ -33,6 +51,8 @@ const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1):[0-9]{2,5}$/;
 export interface CoreError {
   message: string;
   details?: string | null;
+  /** The SQLSTATE PostgREST reports (for example 22008). */
+  code?: string | null;
 }
 
 export interface BrandFormSubmitDb {
@@ -53,6 +73,8 @@ export interface BrandFormSubmitDb {
 export interface BrandFormSubmitDeps {
   db: BrandFormSubmitDb;
   log?: (line: string) => void;
+  /** The address-hash salt; defaults to the service-role-derived one. */
+  ipSalt?: () => Promise<string>;
 }
 
 export function corsFor(origin: string | null): Record<string, string> | null {
@@ -72,10 +94,11 @@ export function corsFor(origin: string | null): Record<string, string> | null {
   return null;
 }
 
-export async function hashIp(ip: string): Promise<string> {
+export async function hashIp(ip: string, salt: string): Promise<string> {
+  if (!salt) throw new Error("ip_salt_unavailable");
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    new TextEncoder().encode(`brand-forms:${ip}${IP_SALT}`),
+    new TextEncoder().encode(`brand-forms:${ip}${salt}`),
   );
   return Array.from(new Uint8Array(digest)).map((b) =>
     b.toString(16).padStart(2, "0")
@@ -120,9 +143,9 @@ function bearerOf(req: Request): string | null {
   return m ? m[1].trim() : null;
 }
 
-function clientIp(req: Request): string {
-  return req.headers.get("cf-connecting-ip")?.trim() ||
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+/** The same read as forms-submit: the first x-forwarded-for hop, else "unknown". */
+export function clientIp(req: Request): string {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     "unknown";
 }
 
@@ -166,7 +189,8 @@ export async function handleBrandFormSubmit(
   if (!body) return fail("bad_request", cors);
 
   try {
-    const ipHash = await hashIp(clientIp(req));
+    const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
+    const ipHash = await hashIp(clientIp(req), salt);
     // C8: the emergency off switch lives in the database.
     if (await deps.db.switchedOff()) {
       await deps.db.recordAttempt(ipHash, body.formId, "paused");
@@ -193,16 +217,26 @@ export async function handleBrandFormSubmit(
       await deps.db.recordAttempt(ipHash, body.formId, "rejected");
       return fail("sign_in_required", cors);
     }
+    const unstorable = unstorableAnswerErrors(body.answers);
+    if (unstorable.length > 0) {
+      await deps.db.recordAttempt(ipHash, body.formId, "rejected");
+      log(
+        `[brand-form-submit] refused code=form_answers_invalid form=${body.formId}`,
+      );
+      return fail("form_answers_invalid", cors, { errors: unstorable });
+    }
 
     const { data, error } = await deps.db.submitCore(payload);
     if (error) {
-      const code = coreErrorCode(error.message);
+      const code = coreErrorCode(error.message, error.code);
       await deps.db.recordAttempt(ipHash, body.formId, "rejected");
       log(`[brand-form-submit] refused code=${code} form=${body.formId}`);
       const detail = parseDetail(error.details);
       const extra: Partial<BrandFormSubmitError> = {};
-      if (code === "form_answers_invalid" && Array.isArray(detail)) {
-        extra.errors = detail as BrandFormSubmitError["errors"];
+      if (code === "form_answers_invalid") {
+        extra.errors = Array.isArray(detail)
+          ? detail as BrandFormSubmitError["errors"]
+          : [{ questionId: null, code: "type" }];
       }
       if (code === "form_changed" && detail && typeof detail === "object") {
         const v = (detail as Record<string, unknown>).versionId;
