@@ -3642,7 +3642,8 @@
         "mingla-business/src/components/trip/TripGuideEditor.tsx",
         "mingla-business/src/components/trip/TripGuideReviewSections.tsx",
         "mingla-business/src/components/trip/TripListCard.tsx",
-        "mingla-business/src/components/trip/TripManageMenu.tsx"
+        "mingla-business/src/components/trip/TripManageMenu.tsx",
+        "mingla-business/src/utils/tripWizardBrandSwitch.ts"
       ]
     },
     {
@@ -5191,7 +5192,8 @@
         "mingla-business/src/components/venue/WaitlistAddSheet.tsx",
         "mingla-business/src/components/venue/WaitlistConvertSheet.tsx",
         "mingla-business/src/components/venue/guestViewHostSession.ts",
-        "mingla-business/src/components/venue/venueRail.ts"
+        "mingla-business/src/components/venue/venueRail.ts",
+        "mingla-business/app/venue/deck-readiness.tsx"
       ]
     },
     {
