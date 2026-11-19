@@ -230,7 +230,8 @@ describe("the trip builder keeps today's behaviour", () => {
 
   it("there is no second builder: the brand form screen mounts IntakeSchemaBuilder", () => {
     const screen = read("src/components/forms/BrandFormBuilderScreen.tsx");
-    expect(screen).toMatch(/LazyIntakeSchemaBuilder as IntakeSchemaBuilder/);
+    expect(screen).toContain('import("../trip/IntakeSchemaBuilder")');
+    expect(screen).toMatch(/<IntakeSchemaBuilder\b/);
     expect(screen).toMatch(/features=\{BRAND_FORM_FEATURES\}/);
   });
 });

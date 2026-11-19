@@ -59,10 +59,9 @@ export function isMarketingDetailRoute(pathname: string): boolean {
   const lower = pathname.toLowerCase();
   return (
     /\/marketing\/campaigns\/(?!compose(?:\/|$))[^/?#]+/.test(lower) ||
-    /\/marketing\/templates\/[^/?#]+/.test(lower) ||
     // #4514 — the form builder and its Responses page are focused pages with
     // their own back header, so the section pills step aside there too.
-    /\/marketing\/forms\/[^/?#]+/.test(lower)
+    /\/marketing\/(?:templates|forms)\/[^/?#]+/.test(lower)
   );
 }
 

@@ -74,9 +74,8 @@ import { useCancelBusinessEvent } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
-// #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
 import { canPerformAction } from "../../../src/utils/permissionGates";
-import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
+import { ActionTile } from "../../../src/components/event/ActionTile";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
@@ -146,6 +145,19 @@ function HeroStatusPill({
   }
   return <Pill variant="draft">Past</Pill>;
 }
+
+// #4514 — the "Guest questions" tile, its data hook and the attach sheet load
+// on demand through the one forms owner, so none of it is in the eager Host
+// web bundle. While the chunk loads, the cell shows the labelled, disabled tile
+// (a moment, never a dead tap).
+const GuestQuestionsTile = React.lazy(() =>
+  import("../../../src/components/forms/formsOwner").then((m) => ({
+    default: m.GuestQuestionsTile,
+  })),
+);
+const guestQuestionsTileLoading = (
+  <ActionTile fill disabled icon="list" label="Guest questions" sub="Loading…" onPress={() => undefined} />
+);
 
 export default function ExperienceDashboardRoute(): React.ReactElement {
   const router = useRouter();
@@ -491,12 +503,14 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
             label: "Guest questions",
             onPress: () => undefined,
             node: (
-              <GuestQuestionsTileSlot
-                eventId={experience.id}
-                brandId={experience.brandId}
-                kind="experience"
-                testID="experience-tile-guest-questions"
-              />
+              <React.Suspense fallback={guestQuestionsTileLoading}>
+                <GuestQuestionsTile
+                  eventId={experience.id}
+                  brandId={experience.brandId}
+                  kind="experience"
+                  testID="experience-tile-guest-questions"
+                />
+              </React.Suspense>
             ),
           } satisfies OfferingTile,
         ]

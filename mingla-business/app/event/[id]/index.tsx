@@ -64,8 +64,6 @@ import { Toast } from "../../../src/components/ui/Toast";
 import { TopBar } from "../../../src/components/ui/TopBar";
 
 import { ActionTile } from "../../../src/components/event/ActionTile";
-// #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
-import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
 import { DesktopColumns } from "../../../src/components/ui/DesktopCanvas";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { EndSalesSheet } from "../../../src/components/event/EndSalesSheet";
@@ -157,6 +155,19 @@ const deriveScreenStatus = (event: LiveEvent): EventStatus => {
   const lifecycle = deriveLiveStatus(event, computeMasterStartAtUtc(event));
   return lifecycle === "cancelled" ? "past" : lifecycle;
 };
+
+// #4514 — the "Guest questions" tile, its data hook and the attach sheet load
+// on demand through the one forms owner, so none of it is in the eager Host
+// web bundle. While the chunk loads, the cell shows the labelled, disabled tile
+// (a moment, never a dead tap).
+const GuestQuestionsTile = React.lazy(() =>
+  import("../../../src/components/forms/formsOwner").then((m) => ({
+    default: m.GuestQuestionsTile,
+  })),
+);
+const guestQuestionsTileLoading = (
+  <ActionTile fill disabled icon="list" label="Guest questions" sub="Loading…" onPress={() => undefined} />
+);
 
 export default function EventDetailScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -1137,13 +1148,14 @@ export default function EventDetailScreen(): React.ReactElement {
                       );
                     case "guestQuestions":
                       return brand !== null ? (
-                        <GuestQuestionsTileSlot
-                          key={key}
-                          eventId={event.serverEventId ?? event.id}
-                          brandId={brand.id}
-                          kind="event"
-                          testID="event-tile-guest-questions"
-                        />
+                        <React.Suspense key={key} fallback={guestQuestionsTileLoading}>
+                          <GuestQuestionsTile
+                            eventId={event.serverEventId ?? event.id}
+                            brandId={brand.id}
+                            kind="event"
+                            testID="event-tile-guest-questions"
+                          />
+                        </React.Suspense>
                       ) : null;
                     case "orders":
                       return (

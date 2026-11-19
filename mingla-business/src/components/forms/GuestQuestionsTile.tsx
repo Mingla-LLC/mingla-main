@@ -11,7 +11,7 @@
  * for them to do and the cell stays empty.
  *
  * This file (the data hook, the sheet, the state rules) is loaded on demand by
- * GuestQuestionsTileSlot, so none of it is in the eager web bundle.
+ * each manage page through `formsOwner`, so none of it is in the eager web bundle.
  */
 
 import React, { useCallback, useState } from "react";

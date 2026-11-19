@@ -8,11 +8,10 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { IntakeFormRenderer, type FormAnswerValue } from "@mingla/form-rendering";
+import type { FormAnswerValue } from "@mingla/form-rendering";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
-import { businessFormPrimitives } from "../checkout/intake/formRenderingPrimitives";
 import type { BrandFormDefinition } from "../../utils/brandFormDefinition";
 import {
   ANSWERS_SEEN_LINE,
@@ -22,6 +21,14 @@ import {
 } from "../../utils/brandFormPreview";
 import { BrandFormHeader, type BrandFormHeaderData } from "./BrandFormHeader";
 import { FORMS_COPY } from "./brandFormsCopy";
+
+// The shared renderers load through their ONE lazy owner (also used by the trip
+// checkout questions screen), so they are never hoisted into the eager bundle.
+const BusinessIntakeForm = React.lazy(() =>
+  import("../checkout/intake/formRenderingPrimitives").then((m) => ({
+    default: m.BusinessIntakeForm,
+  })),
+);
 
 export interface BrandFormPreviewProps {
   definition: BrandFormDefinition;
@@ -63,12 +70,15 @@ export const BrandFormPreview: React.FC<BrandFormPreviewProps> = ({
           ) : null}
           {hasQuestions ? (
             <View accessibilityLiveRegion="polite">
-              <IntakeFormRenderer
-                schema={schema}
-                primitives={businessFormPrimitives}
-                answers={answers}
-                onAnswersChange={handleChange}
-              />
+              <React.Suspense
+                fallback={<Text style={styles.empty}>{FORMS_COPY.previewLoading}</Text>}
+              >
+                <BusinessIntakeForm
+                  schema={schema}
+                  answers={answers}
+                  onAnswersChange={handleChange}
+                />
+              </React.Suspense>
             </View>
           ) : (
             <Text style={styles.empty}>{FORMS_COPY.previewEmpty}</Text>

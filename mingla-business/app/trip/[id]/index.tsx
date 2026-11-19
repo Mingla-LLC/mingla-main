@@ -86,9 +86,8 @@ import {
 } from "../../../src/hooks/useTrips";
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
-// #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
 import { canPerformAction } from "../../../src/utils/permissionGates";
-import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
+import { ActionTile } from "../../../src/components/event/ActionTile";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 // ORCH-0873 [Tr3 Stage 2 UI] — Money tab data.
@@ -181,6 +180,19 @@ const TRIP_DRAFT_DELETE_DESCRIPTION =
 const TRIP_DRAFT_DELETE_HAS_BOOKINGS_COPY =
   "This trip has bookings, so it wasn't cancelled. Nothing was changed. Email support@usemingla.com for help.";
 const TRIP_CANCEL_ERROR = "Could not cancel trip. Try again.";
+
+// #4514 — the "Guest questions" tile, its data hook and the attach sheet load
+// on demand through the one forms owner, so none of it is in the eager Host
+// web bundle. While the chunk loads, the cell shows the labelled, disabled tile
+// (a moment, never a dead tap).
+const GuestQuestionsTile = React.lazy(() =>
+  import("../../../src/components/forms/formsOwner").then((m) => ({
+    default: m.GuestQuestionsTile,
+  })),
+);
+const guestQuestionsTileLoading = (
+  <ActionTile fill disabled icon="list" label="Guest questions" sub="Loading…" onPress={() => undefined} />
+);
 
 export default function TripDashboardRoute(): React.ReactElement {
   const router = useRouter();
@@ -624,12 +636,14 @@ export default function TripDashboardRoute(): React.ReactElement {
             label: "Guest questions",
             onPress: () => undefined,
             node: (
-              <GuestQuestionsTileSlot
-                eventId={trip.id}
-                brandId={trip.brandId}
-                kind="trip"
-                testID="trip-tile-guest-questions"
-              />
+              <React.Suspense fallback={guestQuestionsTileLoading}>
+                <GuestQuestionsTile
+                  eventId={trip.id}
+                  brandId={trip.brandId}
+                  kind="trip"
+                  testID="trip-tile-guest-questions"
+                />
+              </React.Suspense>
             ),
           } satisfies OfferingTile,
         ]

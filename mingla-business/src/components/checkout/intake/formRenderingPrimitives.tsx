@@ -3,15 +3,70 @@
  * `@mingla/form-rendering`. Nothing is copied into the package: the renderers
  * draw with these exact components and tokens, so any change to them (theme,
  * context-driven colours) reaches every question.
+ *
+ * This module is also the ONE lazy owner of the question renderers on Host
+ * web. The trip checkout questions screen and the brand form preview both
+ * reach the package through `import()` of THIS module, so the package, these
+ * primitives and the file upload question land in one async chunk. A static
+ * import from two lazy chunks would make Metro hoist the renderers (~13 KB raw)
+ * into the eager `__common` chunk every Host web visitor downloads first.
+ * Never import this module statically (`import type` is fine).
  */
+
+import React from "react";
+import {
+  IntakeFormRenderer,
+  type FormRenderingPrimitives,
+  type IntakeFormRendererProps,
+} from "@mingla/form-rendering";
 
 import { color, radius, space, type } from "../../../constants/designSystem";
 import { Icon } from "../../ui/Icon";
 import { WebDateTimeInput } from "../../ui/WebDateTimeInput";
-import type { FormRenderingPrimitives } from "@mingla/form-rendering";
+import {
+  IntakeQuestionFileUpload,
+  type IntakeQuestionFileUploadProps,
+} from "./IntakeQuestionFileUpload";
 
 export const businessFormPrimitives: FormRenderingPrimitives = {
   tokens: { color, radius, space, type },
   Icon,
   WebDateTimeInput,
 };
+
+export interface BusinessIntakeFormProps
+  extends Omit<IntakeFormRendererProps, "primitives" | "renderFileUpload"> {
+  /**
+   * File upload callbacks (trip checkout). Without them a file question is
+   * skipped, exactly as the package does when no `renderFileUpload` is given
+   * (the brand form preview).
+   */
+  fileUpload?: Pick<IntakeQuestionFileUploadProps, "onUpload" | "onRemove">;
+}
+
+/** The package renderer with the business primitives and file upload injected. */
+export const BusinessIntakeForm: React.FC<BusinessIntakeFormProps> = ({
+  fileUpload,
+  ...rendererProps
+}) => (
+  <IntakeFormRenderer
+    {...rendererProps}
+    primitives={businessFormPrimitives}
+    renderFileUpload={
+      fileUpload === undefined
+        ? undefined
+        : (fileProps) => (
+            <IntakeQuestionFileUpload
+              question={fileProps.question}
+              value={fileProps.value}
+              onChange={fileProps.onChange}
+              error={fileProps.error}
+              disabled={fileProps.disabled}
+              primitives={businessFormPrimitives}
+              onUpload={fileUpload.onUpload}
+              onRemove={fileUpload.onRemove}
+            />
+          )
+    }
+  />
+);

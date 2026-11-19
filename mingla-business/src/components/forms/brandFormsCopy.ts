@@ -58,6 +58,7 @@ export const FORMS_COPY = {
   maxQuestions: "20 questions is the most a form can have.",
   previewTitle: "What guests see",
   previewEmpty: "Questions appear here as you add them.",
+  previewLoading: "Loading the preview…",
   previewNote: "Preview only. Nothing is saved.",
   previewNeedsAnswers: "Answer the required questions",
   previewSend: "Send answers",

@@ -57,13 +57,27 @@ import { EmptyState } from "../ui/EmptyState";
 import { IconChrome } from "../ui/IconChrome";
 import { Pill, Segmented, type PillVariant } from "../ui/Pill";
 import { Switch } from "../ui/Switch";
-import { LazyIntakeSchemaBuilder as IntakeSchemaBuilder } from "../trip/LazyIntakeSchemaBuilder";
+import type { IntakeSchemaBuilderProps } from "../trip/IntakeSchemaBuilder";
 import { BRAND_FORM_FEATURES } from "./brandFormBuilderKit";
 import { BrandFormPreview } from "./BrandFormPreview";
 import { brandFormHeaderData } from "./BrandFormHeader";
 import { FORMS_COPY } from "./brandFormsCopy";
 import { FormsNotice } from "./FormsNotice";
 import { errorSentence, useFormsToast } from "./useFormsToast";
+
+// #4514 — the question builder (with its editor and type picker) loads on
+// demand. Trip create, trip edit and the brand form builder each declare this
+// `import()` of the same module, so the builder stays in ONE async chunk; a
+// shared static wrapper module would itself be hoisted into the eager
+// `__common` chunk every Host web visitor downloads first.
+const LazyBuilder = React.lazy(() =>
+  import("../trip/IntakeSchemaBuilder").then((m) => ({ default: m.IntakeSchemaBuilder })),
+);
+const IntakeSchemaBuilder = (props: IntakeSchemaBuilderProps): React.ReactElement => (
+  <React.Suspense fallback={null}>
+    <LazyBuilder {...props} />
+  </React.Suspense>
+);
 
 const WIDE_BREAKPOINT = 1024;
 

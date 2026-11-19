@@ -12,7 +12,7 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { IntakeQuestionShell } from "@mingla/form-rendering";
+import { IntakeQuestionShell, type FormRenderingPrimitives } from "@mingla/form-rendering";
 
 import { radius, color, space, type } from "../../../constants/designSystem";
 import { GlassCard } from "../../ui/GlassCard";
@@ -22,7 +22,6 @@ import type {
   IntakeQuestion,
 } from "../../../services/intakeSchemaService";
 import { IntakeFilePickerChooserSheet } from "./IntakeFilePickerChooserSheet";
-import { businessFormPrimitives } from "./formRenderingPrimitives";
 
 // ---------------------------------------------------------------------------
 // IntakeQuestionFileUpload
@@ -46,6 +45,12 @@ export interface IntakeQuestionFileUploadProps {
   /** Upload callback the route wires to intakeSchemaService.uploadIntakeFile. */
   onUpload: UploadIntakeFile;
   onRemove: (claimId: string) => Promise<void>;
+  /**
+   * The business primitives, passed in by the lazy owner
+   * (`formRenderingPrimitives.tsx`) that renders this question; a prop rather
+   * than an import so the owner and this file do not import each other.
+   */
+  primitives: FormRenderingPrimitives;
 }
 
 interface UploadingFile {
@@ -66,7 +71,7 @@ function formatBytes(n: number): string {
 
 export const IntakeQuestionFileUpload: React.FC<
   IntakeQuestionFileUploadProps
-> = ({ question, value, onChange, error, disabled = false, onUpload, onRemove }) => {
+> = ({ question, value, onChange, error, disabled = false, onUpload, onRemove, primitives }) => {
   const maxFiles = question.max_files ?? 1;
   const allowImages = question.allow_images !== false;
   const allowPdfs = question.allow_pdfs !== false;
@@ -199,7 +204,7 @@ export const IntakeQuestionFileUpload: React.FC<
   return (
     <IntakeQuestionShell
       question={question}
-      primitives={businessFormPrimitives}
+      primitives={primitives}
       error={error ?? removeError ?? undefined}
     >
       {totalCount === 0 ? (

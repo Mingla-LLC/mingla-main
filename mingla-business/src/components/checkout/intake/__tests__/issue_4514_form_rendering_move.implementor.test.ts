@@ -14,6 +14,8 @@ import path from "node:path";
 
 // The native date picker ships untranspiled ESM; the renderers only need it to resolve.
 jest.mock("@react-native-community/datetimepicker", () => ({ __esModule: true, default: () => null }));
+// The owner also renders the file upload question (native pickers); not under test here.
+jest.mock("../IntakeQuestionFileUpload", () => ({ IntakeQuestionFileUpload: () => null }));
 
 import {
   formStylesFor,
@@ -37,12 +39,48 @@ describe("#4514 — the renderers live in @mingla/form-rendering", () => {
     ).toBe(false);
   });
 
-  test("trip checkout imports the renderer from the package and injects the business primitives", () => {
+  test("trip checkout draws the package renderer through the one lazy owner, with the business primitives injected", () => {
     const src = read("mingla-business/app/checkout-trip/[tripEventId]/intake.tsx");
-    expect(src).toContain('import { IntakeFormRenderer } from "@mingla/form-rendering"');
-    expect(src).toContain("primitives={businessFormPrimitives}");
-    expect(src).toContain("renderFileUpload=");
+    // wave 2b: the screen loads the owner on demand (keeps the renderers out of
+    // the eager Host web bundle) and hands it the file upload callbacks.
+    expect(src).toContain('import("../../../src/components/checkout/intake/formRenderingPrimitives")');
+    expect(src).toContain("<BusinessIntakeForm");
+    expect(src).toContain("fileUpload={{");
     expect(src).not.toContain("IntakeQuestionRenderers");
+    // No static value import of the renderers or the owner from the screen.
+    expect(src).not.toMatch(/import\s+(?!type\b)[^;]*from\s+"@mingla\/form-rendering"/);
+    expect(src).not.toMatch(/import\s+(?!type\b)[^;]*from\s+"[^"]*formRenderingPrimitives"/);
+    const owner = read("mingla-business/src/components/checkout/intake/formRenderingPrimitives.tsx");
+    expect(owner).toMatch(/import\s*\{\s*IntakeFormRenderer,[^}]*\}\s*from\s*"@mingla\/form-rendering"/);
+    expect(owner).toContain("primitives={businessFormPrimitives}");
+    expect(owner).toContain("renderFileUpload=");
+  });
+
+  test("no Host module imports the renderers or their owner statically (they would be hoisted into the eager bundle)", () => {
+    const bizRoot = path.join(ROOT, "mingla-business");
+    const offenders: string[] = [];
+    const walk = (dir: string): void => {
+      for (const name of readdirSync(dir, { withFileTypes: true })) {
+        if (name.name === "node_modules" || name.name === "__tests__" || name.name.startsWith(".")) continue;
+        const full = path.join(dir, name.name);
+        if (name.isDirectory()) {
+          walk(full);
+          continue;
+        }
+        if (!/\.(ts|tsx)$/.test(name.name)) continue;
+        const rel = path.relative(bizRoot, full);
+        // The owner itself and the file upload question it renders are the chunk.
+        if (rel.endsWith("checkout/intake/formRenderingPrimitives.tsx")) continue;
+        if (rel.endsWith("checkout/intake/IntakeQuestionFileUpload.tsx")) continue;
+        const src = readFileSync(full, "utf8");
+        if (/import\s+(?!type\b)[^;]*?from\s+"(?:@mingla\/form-rendering|[^"]*\/formRenderingPrimitives|[^"]*\/IntakeQuestionFileUpload)"/.test(src)) {
+          offenders.push(rel);
+        }
+      }
+    };
+    walk(path.join(bizRoot, "app"));
+    walk(path.join(bizRoot, "src"));
+    expect(offenders).toEqual([]);
   });
 
   test("the package is props-only: no app source, no ui primitive copy, no file picker", () => {

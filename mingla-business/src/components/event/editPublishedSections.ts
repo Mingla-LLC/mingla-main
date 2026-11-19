@@ -62,12 +62,3 @@ export const RSVP_SECTIONS: readonly SectionConfig[] = [
 export const sectionsForMode = (
   rsvpMode: boolean,
 ): readonly SectionConfig[] => (rsvpMode ? RSVP_SECTIONS : SECTIONS);
-
-/**
- * #4514 — where the "Guest questions" row sits: right after "Tickets" on a
- * ticketed event (before Settings) and right after "RSVP" on an RSVP, the last
- * section. The row is not a draft section (it saves through its own RPC, not
- * "Save changes"), so it is not in the section lists above.
- */
-export const guestQuestionsAfterSection = (rsvpMode: boolean): SectionKey =>
-  rsvpMode ? "rsvp-setup" : "tickets";

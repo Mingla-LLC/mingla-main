@@ -91,12 +91,6 @@ import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Icon } from "../../../src/components/ui/Icon";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { Toast } from "../../../src/components/ui/Toast";
-// #4514 — the question renderers live in @mingla/form-rendering (C11); the
-// business app injects its own tokens, Icon and web date input, and keeps the
-// file upload question (its picker) here.
-import { IntakeFormRenderer } from "@mingla/form-rendering";
-import { businessFormPrimitives } from "../../../src/components/checkout/intake/formRenderingPrimitives";
-import { IntakeQuestionFileUpload } from "../../../src/components/checkout/intake/IntakeQuestionFileUpload";
 // issue #3351 [free trip intake loop] — this screen no longer decides its own
 // exit. It used to `router.replace` back to /buyer whenever the cart was free,
 // while /buyer pushed back here whenever a schema EXISTED, so a free trip with
@@ -137,6 +131,17 @@ const intakeDraftWithoutFiles = (
 function draftKey(eventId: string, ticketTypeId: string, buyerEmail: string): string {
   return `tr5_intake_draft_${eventId}_${ticketTypeId}_${buyerEmail.toLowerCase()}`;
 }
+
+// #4514 — the question renderers live in @mingla/form-rendering (C11); the
+// business app injects its own tokens, Icon and web date input, and keeps the
+// file upload question (its picker). They load on demand through ONE lazy
+// owner, shared with the brand form preview, so they stay out of the eager
+// Host web bundle (see formRenderingPrimitives.tsx).
+const BusinessIntakeForm = React.lazy(() =>
+  import("../../../src/components/checkout/intake/formRenderingPrimitives").then((m) => ({
+    default: m.BusinessIntakeForm,
+  })),
+);
 
 export default function TripIntakeScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -647,34 +652,34 @@ export default function TripIntakeScreen(): React.ReactElement {
           Fill in details for each traveler — one form per ticket.
         </Text>
 
-        <IntakeFormRenderer
-          schema={activeTier.schema}
-          primitives={businessFormPrimitives}
-          answers={activeAnswers}
-          onAnswersChange={(next) => {
-            setAnswersByTier((prev) => ({
-              ...prev,
-              [activeTier.ticketTypeId]: next,
-            }));
-            // Clear banner once buyer engages with the form again.
-            if (showValidationBanner) setShowValidationBanner(false);
-          }}
-          validationErrors={activeValidationErrors}
-          renderFileUpload={(fileProps) => (
-            <IntakeQuestionFileUpload
-              question={fileProps.question}
-              value={fileProps.value}
-              onChange={fileProps.onChange}
-              error={fileProps.error}
-              disabled={fileProps.disabled}
-              onUpload={handleUploadForActiveTier}
-              onRemove={(claimId) => revokeIntakeFileClaim({
+        <React.Suspense
+          fallback={
+            <View style={styles.loadingWrap} testID="intake-questions-loading">
+              <Text style={styles.loadingText}>Loading questions…</Text>
+            </View>
+          }
+        >
+          <BusinessIntakeForm
+            schema={activeTier.schema}
+            answers={activeAnswers}
+            onAnswersChange={(next) => {
+              setAnswersByTier((prev) => ({
+                ...prev,
+                [activeTier.ticketTypeId]: next,
+              }));
+              // Clear banner once buyer engages with the form again.
+              if (showValidationBanner) setShowValidationBanner(false);
+            }}
+            validationErrors={activeValidationErrors}
+            fileUpload={{
+              onUpload: handleUploadForActiveTier,
+              onRemove: (claimId) => revokeIntakeFileClaim({
                 claimId,
                 uploadSessionId: intakeUploadSessionId,
-              })}
-            />
-          )}
-        />
+              }),
+            }}
+          />
+        </React.Suspense>
       </ScrollView>
 
       {/* Sticky dock with Continue (and Back when multi-tier intermediate) */}

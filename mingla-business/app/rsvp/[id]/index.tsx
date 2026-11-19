@@ -67,8 +67,6 @@ import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArri
 import { LazyPublishedBanner } from "../../../src/components/offering/LazyPublishedBanner";
 import { useBusinessEventsForBrand } from "../../../src/hooks/useBusinessEvents";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
-// #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
-import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 // #3645 — a published RSVP can be returned to draft or cancelled. The dialogs
@@ -91,6 +89,19 @@ const deriveScreenStatus = (event: LiveEvent): EventStatus => {
 // headcount label (NOT "draft", which would read "Not published").
 const goingKindForStatus = (status: EventStatus): "live" | "past" =>
   status === "past" ? "past" : "live";
+
+// #4514 — the "Guest questions" tile, its data hook and the attach sheet load
+// on demand through the one forms owner, so none of it is in the eager Host
+// web bundle. While the chunk loads, the cell shows the labelled, disabled tile
+// (a moment, never a dead tap).
+const GuestQuestionsTile = React.lazy(() =>
+  import("../../../src/components/forms/formsOwner").then((m) => ({
+    default: m.GuestQuestionsTile,
+  })),
+);
+const guestQuestionsTileLoading = (
+  <ActionTile fill disabled icon="list" label="Guest questions" sub="Loading…" onPress={() => undefined} />
+);
 
 export default function RsvpDetailScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -516,12 +527,14 @@ export default function RsvpDetailScreen(): React.ReactElement {
                 fills the row's empty cell, so the first row keeps the locked
                 door order. */}
             {showGuestQuestions && brand !== null ? (
-              <GuestQuestionsTileSlot
-                eventId={event.serverEventId ?? event.id}
-                brandId={brand.id}
-                kind="rsvp"
-                testID="rsvp-tile-guest-questions"
-              />
+              <React.Suspense fallback={guestQuestionsTileLoading}>
+                <GuestQuestionsTile
+                  eventId={event.serverEventId ?? event.id}
+                  brandId={brand.id}
+                  kind="rsvp"
+                  testID="rsvp-tile-guest-questions"
+                />
+              </React.Suspense>
             ) : null}
             {promote.enabled ? (
               <ActionTile

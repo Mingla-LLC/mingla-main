@@ -54,8 +54,21 @@ import {
 } from "../../hooks/useIntakeSchema";
 import type { TripPricingTier } from "../../services/tripsService";
 import { IntakeQuestionPreview } from "./IntakeQuestionPreview";
-// #4514 — one lazy owner for the builder (keeps it out of the eager Host web chunk).
-import { LazyIntakeSchemaBuilder as IntakeSchemaBuilder } from "./LazyIntakeSchemaBuilder";
+import type { IntakeSchemaBuilderProps } from "./IntakeSchemaBuilder";
+
+// #4514 — the question builder (with its editor and type picker) loads on
+// demand. Trip create, trip edit and the brand form builder each declare this
+// `import()` of the same module, so the builder stays in ONE async chunk; a
+// shared static wrapper module would itself be hoisted into the eager
+// `__common` chunk every Host web visitor downloads first.
+const LazyBuilder = React.lazy(() =>
+  import("./IntakeSchemaBuilder").then((m) => ({ default: m.IntakeSchemaBuilder })),
+);
+const IntakeSchemaBuilder = (props: IntakeSchemaBuilderProps): React.ReactElement => (
+  <React.Suspense fallback={null}>
+    <LazyBuilder {...props} />
+  </React.Suspense>
+);
 
 const WIDE_BREAKPOINT_PT = 768;
 

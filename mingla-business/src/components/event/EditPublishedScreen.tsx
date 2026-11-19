@@ -142,6 +142,16 @@ import { CreatorStep6SettingsLazy, RsvpStep5SetupLazy } from "./lazySettingsStep
 const GuestQuestionsRow = React.lazy(() =>
   import("../forms/formsOwner").then((m) => ({ default: m.GuestQuestionsRow })),
 );
+
+/**
+ * #4514 — where the "Guest questions" row sits: right after "Tickets" on a
+ * ticketed event (before Settings) and right after "RSVP" on an RSVP, the last
+ * section. The row is not a draft section (it saves through its own RPC, not
+ * "Save changes"), so it is not in the section lists. Kept here, beside its
+ * only caller, so the shared section module (eager) does not grow.
+ */
+const guestQuestionsAfterSection = (rsvpMode: boolean): SectionKey =>
+  rsvpMode ? "rsvp-setup" : "tickets";
 const EventTicketCheckoutAccessCard = React.lazy(() =>
   import("./EventTicketCheckoutAccessCard").then((m) => ({
     default: m.EventTicketCheckoutAccessCard,
@@ -182,7 +192,6 @@ import type { NewTicketPreset } from "../../utils/ticketLinkEligibility";
 // react-native component. Re-exported below for back-compat.
 import {
   SECTIONS,
-  guestQuestionsAfterSection,
   sectionsForMode,
   type SectionConfig,
   type SectionKey,
