@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4238-ADS-LIST-REVIEW-DRAFTS | issue #4238 | the Host Ads list shows a launched ad as In review until an app shows it (and which app is still checking when only one is), has In review and Drafts tabs, and lets you delete your own saved draft after a confirmation.
+// MINGLA-INVARIANT: I-4238-ADS-LIST-REVIEW-DRAFTS | issue #4238 | the Host Ads list shows a launched ad as In review until an app shows it (and which app is still checking when only one is), has In review and saved-ad tabs, and lets you delete your own unfinished saved ad after a confirmation.
 /**
  * #4238 — Tinoe's Yard launch (19 Nov 2026). Seth: the list said "Running"
  * while both apps were still checking the ad, and drafts could not be
