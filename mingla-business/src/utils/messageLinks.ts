@@ -17,22 +17,40 @@ export type MessageLinkToken =
   | { type: "link"; text: string; url: string };
 
 const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s<>"']+/gi;
-const TRAILING_PUNCTUATION = /[.,!?;:'"]+$/;
+const TRAILING_PUNCTUATION = new Set([".", ",", "!", "?", ";", ":", "'", '"']);
+const CLOSING_PAIR: Record<string, string> = { ")": "(", "]": "[" };
 
+/**
+ * #4420 P2-1 — one pass: bracket counts are taken once and the end index walks
+ * back, so the trim is linear (it used to re-split the whole link for every
+ * trailing ")" or "]", worse than n^2 on a 4,000-char message).
+ * Drops trailing sentence punctuation, and a closing bracket only when it has
+ * no opening partner inside the link ("(see https://a.com)" keeps the ")" as
+ * text; "https://w.org/A_(b)" keeps it).
+ */
 function trimLinkEnd(raw: string): string {
-  let value = raw.replace(TRAILING_PUNCTUATION, "");
-  const pairs: [string, string][] = [["(", ")"], ["[", "]"]];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const [open, close] of pairs) {
-      if (value.endsWith(close) && value.split(close).length > value.split(open).length) {
-        value = value.slice(0, -1).replace(TRAILING_PUNCTUATION, "");
-        changed = true;
-      }
-    }
+  const open: Record<string, number> = { "(": 0, "[": 0 };
+  const close: Record<string, number> = { ")": 0, "]": 0 };
+  for (const char of raw) {
+    if (char in open) open[char] += 1;
+    else if (char in close) close[char] += 1;
   }
-  return value;
+  let end = raw.length;
+  while (end > 0) {
+    const char = raw[end - 1];
+    if (TRAILING_PUNCTUATION.has(char)) {
+      end -= 1;
+      continue;
+    }
+    const partner = CLOSING_PAIR[char];
+    if (partner !== undefined && close[char] > open[partner]) {
+      close[char] -= 1;
+      end -= 1;
+      continue;
+    }
+    break;
+  }
+  return raw.slice(0, end);
 }
 
 /** The url a link opens: a www. address gets https://. */

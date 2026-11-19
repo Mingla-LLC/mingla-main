@@ -170,18 +170,23 @@ describe("#4420 hostile link input (L-*)", () => {
     expect(links("[click](javascript:alert(1))")).toEqual([]);
   });
 
-  // KNOWN DEFECT (tester finding on #4420): trimLinkEnd re-splits the whole
-  // link once per trailing ")" or "]", so the cost grows faster than n^2
-  // (measured in node: 4,000 chars 176 ms, 16,000 chars 4 s, 100,000 chars
-  // 429 s). A guest message may be 4,000 chars (issue_4459_send_brand_guest_message),
-  // so one message can stall the Host app's JS thread on every render.
-  // `test.failing` keeps CI honest: it turns red the day the trim is made
-  // linear, and then must become a plain `test`.
-  test.failing("L-8 a 4,000-char link of closing brackets (the guest message cap) linkifies in under 50 ms", () => {
+  // Was a KNOWN DEFECT (tester finding on #4420): trimLinkEnd re-split the
+  // whole link once per trailing ")" or "]". Fixed (P2-1): one pass, linear.
+  test("L-8 a 4,000-char link of closing brackets (the guest message cap) linkifies in under 50 ms", () => {
     const input = "https://a.example/" + ")".repeat(4_000 - 18);
     const started = Date.now();
     linkifyMessageText(input);
     expect(Date.now() - started).toBeLessThan(50);
+  });
+
+  test("L-8b a 100k-char link of closing brackets and punctuation linkifies in under 500 ms, brackets stay text", () => {
+    const tail = ")]".repeat(25_000) + ".,".repeat(25_000);
+    const input = "https://a.example/" + tail;
+    const started = Date.now();
+    const tokens = linkifyMessageText(input);
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(tokens[0]).toMatchObject({ type: "link", url: "https://a.example/" });
+    expect(tokens.map((token) => token.text).join("")).toBe(input);
   });
 
   test.each([
