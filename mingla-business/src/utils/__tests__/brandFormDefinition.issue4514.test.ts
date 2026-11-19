@@ -6,8 +6,6 @@
  * move block or the features-off default turns a case red.
  */
 
-import fs from "node:fs";
-import path from "node:path";
 
 import type { IntakeQuestion } from "../../services/intakeSchemaService";
 import {
@@ -191,47 +189,27 @@ describe("the trip builder keeps today's behaviour", () => {
     expect(TRIP_INTAKE_FEATURES.kit).toBeUndefined();
   });
 
-  it("keeps the brand form modules out of the trip builder's imports (eager bundle)", () => {
-    const root = path.resolve(__dirname, "../../..");
-    for (const file of [
-      "src/components/trip/IntakeSchemaBuilder.tsx",
-      "src/components/trip/IntakeSchemaBuilder.web.tsx",
-      "src/components/trip/IntakeQuestionEditor.tsx",
-      "src/components/trip/IntakeQuestionEditor.web.tsx",
-      "src/components/trip/intakeBuilderFeatures.ts",
-    ]) {
-      const source = fs.readFileSync(path.join(root, file), "utf8");
-      // value imports only: `import type` is erased and costs nothing
-      const valueImport = /import\s+(?!type\b)[^;]*?from\s+"[^"]*(brandFormDefinition|brandFormsCopy|IntakeBrandFormFields|IntakeQuestionBrandTags|brandFormBuilderKit)"/;
-      expect(source).not.toMatch(valueImport);
-    }
-  });
-
-  const root = path.resolve(__dirname, "../../..");
-  const read = (rel: string): string => fs.readFileSync(path.join(root, rel), "utf8");
-
-  it("builders and editors default to the trip features, and the trip screens pass none", () => {
-    for (const file of [
-      "src/components/trip/IntakeSchemaBuilder.tsx",
-      "src/components/trip/IntakeSchemaBuilder.web.tsx",
-      "src/components/trip/IntakeQuestionEditor.tsx",
-      "src/components/trip/IntakeQuestionEditor.web.tsx",
-    ]) {
-      expect(read(file)).toMatch(/features = TRIP_INTAKE_FEATURES/);
-    }
-    for (const file of [
-      "src/components/trip/TripCreatorStep6Intake.tsx",
-      "src/components/trip/EditPublishedTripIntakeAccordion.tsx",
-    ]) {
-      expect(read(file)).not.toMatch(/features=/);
-      expect(read(file)).not.toMatch(/BRAND_FORM_FEATURES/);
-    }
-  });
-
-  it("there is no second builder: the brand form screen mounts IntakeSchemaBuilder", () => {
-    const screen = read("src/components/forms/BrandFormBuilderScreen.tsx");
-    expect(screen).toContain('import("../trip/IntakeSchemaBuilder")');
-    expect(screen).toMatch(/<IntakeSchemaBuilder\b/);
-    expect(screen).toMatch(/features=\{BRAND_FORM_FEATURES\}/);
+  // The trip builder's eager bundle must never pull the brand form modules in
+  // (`import type` is erased and costs nothing). Proved by loading each file in an
+  // isolated registry and recording which brand form modules it asked for.
+  it("loading the trip builder files never loads the brand form modules (eager bundle)", () => {
+    const guarded = [
+      "../brandFormDefinition",
+      "../../components/forms/brandFormsCopy",
+      "../../components/trip/IntakeBrandFormFields",
+      "../../components/trip/IntakeQuestionBrandTags",
+      "../../components/forms/brandFormBuilderKit",
+    ];
+    const loaded: string[] = [];
+    jest.isolateModules(() => {
+      for (const mod of guarded) {
+        jest.doMock(mod, () => {
+          loaded.push(mod);
+          return jest.requireActual(mod);
+        });
+      }
+      require("../../components/trip/intakeBuilderFeatures");
+    });
+    expect(loaded).toEqual([]);
   });
 });

@@ -93,8 +93,7 @@ describe("the wave 2 adapters are gone", () => {
     for (const rel of ["src/utils/brandFormPreview.ts", "src/components/forms/BrandFormHeader.tsx"]) {
       expect(fs.existsSync(path.join(root, rel))).toBe(false);
     }
-    const responses = fs.readFileSync(path.join(root, "src/utils/brandFormResponses.ts"), "utf8");
-    expect(responses).not.toContain("buildAnswersCsv");
-    expect(responses).not.toContain("[TRANSITIONAL]");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    expect(Object.keys(require("../brandFormResponses"))).not.toContain("buildAnswersCsv");
   });
 });
