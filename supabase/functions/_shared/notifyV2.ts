@@ -673,8 +673,8 @@ export async function dispatchV2(
   // Admin page for the item, derived from the validated link only.
   const emailCta = input.email_cta ??
     issue3988EmailCta(input.category_key, input.deep_link, input.payload) ??
-    issue4111EmailCta(input.category_key, input.payload) ??
     issue4382EmailCta(input.category_key, input.payload) ??
+    issue4111EmailCta(input.category_key, input.payload) ??
     brandReachEmailCta(input.category_key, input.payload);
   for (const channel of requestedChannels) {
     if (channel === "inapp") continue;
