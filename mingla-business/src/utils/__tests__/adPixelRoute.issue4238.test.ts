@@ -59,6 +59,7 @@ describe("#4238 W2-4 isAdPixelRoute", () => {
     const excluded = PUBLIC_BUYER_ROUTE_PREFIXES.filter(
       (prefix) => !pixel.includes(prefix),
     );
-    expect([...excluded].sort()).toEqual(["/booking/", "/m/", "/pay/", "/refund/", "/stay/pay/"]);
+    // TEST-MOD-APPROVED #4490: /visit/ (a token-opened booking page) is not a shopping page either.
+    expect([...excluded].sort()).toEqual(["/booking/", "/m/", "/pay/", "/refund/", "/stay/pay/", "/visit/"]);
   });
 });

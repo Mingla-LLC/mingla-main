@@ -520,3 +520,93 @@ Deno.test("a provider refusal (4xx) is a plain failure, not an ambiguous payment
   assertEquals(failure.params.p_ambiguous, false);
   assertEquals(failure.params.p_failure_code, "provider_create_refused");
 });
+
+Deno.test("offer: answers only for an offer the public venue page lists, and only its public fields", async () => {
+  resetVenueOffersRateLimitForTests();
+  const calls: Call[] = [];
+  const page = {
+    currencyCode: "NGN",
+    minorUnitExponent: 2,
+    vat: { mode: "added", ratePct: 7.5 },
+    venue: {
+      id: "v",
+      name: "Gameland QA",
+      slug: "gamelandqa",
+      brand_slug: "qa",
+      iana_timezone: "Africa/Lagos",
+    },
+    offers: [{ id: OFFER, kind: "entry" }],
+  };
+  const handler = createVenueOffersHandler({
+    env: env({}),
+    client: fakeClient(calls, {
+      pg_public_venue_page: () => ({ data: page, error: null }),
+      issue_4490_offer_projection: () => ({
+        data: {
+          id: OFFER,
+          kind: "entry",
+          status: "live",
+          name: "Entry",
+          pool: { dailyLimit: 400 },
+          readiness: [],
+          options: [{
+            id: OPTION,
+            name: "Walk-in",
+            unit: "guest",
+            guestMin: 1,
+            guestMax: 20,
+            priceMinor: 500000,
+            priceVersionId: "secret-version",
+            eligibility: { label: "Student ID", checkAtGate: true },
+          }],
+          policy: {
+            cancellationPolicy: "Full refund up to 1 day(s) before.",
+            refundLadder: [{ minMinutesBefore: 1440, refundBps: 10000 }],
+            operatorCancelRefundBps: 10000,
+          },
+        },
+        error: null,
+      }),
+    }),
+  });
+  const ok = await handler(req({
+    action: "offer",
+    offeringId: OFFER,
+    brandSlug: "qa",
+    venueSlug: "gamelandqa",
+  }, ANON_JWT));
+  assertEquals(ok.status, 200);
+  const body = await ok.json();
+  assertEquals(body.data.options[0].name, "Walk-in");
+  assertEquals(body.data.options[0].eligibility, { label: "Student ID" });
+  assertEquals(body.data.venue.timezone, "Africa/Lagos");
+  assertEquals(body.data.vat.mode, "added");
+  const text = JSON.stringify(body);
+  assertFalse(text.includes("secret-version"), "no price version ids");
+  assertFalse(text.includes("dailyLimit"), "no pool");
+  assertFalse(text.includes("operatorCancelRefundBps"), "no operator rate");
+  assertFalse(text.includes("readiness"), "no host readiness");
+
+  const unlisted = await handler(req({
+    action: "offer",
+    offeringId: GROUP,
+    brandSlug: "qa",
+    venueSlug: "gamelandqa",
+  }, ANON_JWT));
+  assertEquals(unlisted.status, 404);
+  assertEquals((await unlisted.json()).code, "offer_not_found");
+  assertFalse(
+    calls.some((c) =>
+      c.name === "issue_4490_offer_projection" &&
+      c.params.p_offering_id === GROUP
+    ),
+    "an offer the page does not list is never projected",
+  );
+  const bad = await handler(req({
+    action: "offer",
+    offeringId: OFFER,
+    brandSlug: "../x",
+    venueSlug: "gamelandqa",
+  }, ANON_JWT));
+  assertEquals(bad.status, 400);
+});

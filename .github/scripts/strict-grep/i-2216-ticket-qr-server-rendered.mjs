@@ -50,9 +50,14 @@ const GATE_QR_IMPORT_ALLOWLIST = new Set([
 // #4490 — VenuePayQr encodes a /visit/<groupId>#t= pay link only (one held
 // walk-in booking the guest pays on their phone, proven by toVenuePayUrl),
 // never a pass credential: the pass is issued only after payment.
+// #4490 P2 — VenueOfferPassQr renders a VENUE pass (`mingla:v1:vpass:` only,
+// refused otherwise) on /visit/<groupId>, opened with the booking's own token:
+// reconciliation rulings 3 and 15 (buying and the pass never need an account
+// on web; one QR for the party). Not an event-ticket credential.
 const PAY_LINK_QR_ALLOWLIST = new Set([
   "mingla-business/src/components/door/DoorPayQr.tsx",
   "mingla-business/src/components/venue/features/checkin/VenuePayQr.tsx",
+  "mingla-business/src/components/venue/offers/VenueOfferPassQr.tsx",
 ]);
 
 const stripComments = (source) =>

@@ -2062,8 +2062,10 @@ export default function ExpandedCardModal({
                       style={pinnedPrimaryStyles.button}
                       activeOpacity={0.85}
                       onPress={() => {
-                        router.push(deckCta.path as never);
-                        onClose();
+                        // #4490 P2 — the buyer web page in the in-app browser:
+                        // the app has no native entry flow yet (no dead tab).
+                        setBrowserUrl(deckCta.webUrl);
+                        setBrowserTitle(t(`cards:${deckCta.labelKey}`, { defaultValue: deckCta.fallbackLabel }));
                       }}
                       accessibilityRole="button"
                       accessibilityLabel={t('cards:sheet.open_venue_a11y', {

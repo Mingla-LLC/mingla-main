@@ -36,6 +36,10 @@ import {
 // #3392 — the booking confirmation email's "Manage or cancel" button. Accepted
 // only from the service role, for that category, for that reservation.
 import { trustedReservationManageCta } from "../_shared/venueReservationManageLink.ts";
+import {
+  resolveVenueVisitOrigin,
+  trustedVenueVisitCta,
+} from "../_shared/venueOfferVisitLink.ts";
 // #4111 — consent provenance for the automatic transactional consent row.
 import { transactionalConsentSourceForCategory } from "../_shared/issue4111EnquiryNotifications.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
@@ -685,7 +689,18 @@ serve(async (req) => {
           categoryKey: payload.category_key,
           payload: (payload.payload ?? {}) as Record<string, unknown>,
           manageUrl: payload.reservation_manage_url,
-        }),
+        }) ??
+          // #4490 — a venue booking's private "See your pass" link.
+          trustedVenueVisitCta({
+            serviceCaller: isExactServiceBearer(
+              authHeader,
+              SUPABASE_SERVICE_ROLE_KEY,
+            ),
+            categoryKey: payload.category_key,
+            payload: (payload.payload ?? {}) as Record<string, unknown>,
+            visitUrl: payload.venue_visit_url,
+            origin: resolveVenueVisitOrigin((name) => Deno.env.get(name)),
+          }),
       };
       if (!v2Input.idempotency_key) {
         return jsonResponse({

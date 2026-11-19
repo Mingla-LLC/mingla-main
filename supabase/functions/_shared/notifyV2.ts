@@ -176,6 +176,11 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     stay_refund_state: ["stay_group_id", "venue_id", "refund_record_id"],
     stay_reconciliation_attention: ["stay_group_id", "venue_id"],
     stay_reservation_reminder: ["stay_group_id", "venue_id"],
+    // #4490 — venue bookings (entry passes): opaque ids only; the private
+    // booking link never enters a push payload.
+    venue_booking_confirmed: ["venue_group_id", "venue_id"],
+    venue_booking_cancelled: ["venue_group_id", "venue_id"],
+    venue_refund_state: ["venue_group_id", "venue_id"],
     // #3682 wave 2 — Explorer routes these to the brand / offering page from
     // the public slugs; the receive reason is not personal data.
     brand_offering_invite: ["brand_slug", "event_slug", "reason"],

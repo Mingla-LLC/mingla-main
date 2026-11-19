@@ -93,6 +93,22 @@ describe('#4490 deck place sheet main button', () => {
     expect(model.lead?.tab).toBe('entry');
   });
 
+  test('D-3b P2: Entry is built, so a Gameland-like venue gets Buy entry, opening the buyer web page', () => {
+    const p = place(['entry', 'events_here'], {
+      offers: [{ id: 'o1', kind: 'entry', name: 'Walk-in', fromMinor: 400000, entryStyle: 'walk_in', unit: 'guest', confirmationMode: 'instant' }],
+    });
+    expect(deckVenueCta({ place: p, reservable: NOT_READY })).toEqual({
+      kind: 'venue',
+      tab: 'entry',
+      path: '/b/gameland/v/lagos?tab=entry',
+      webUrl: 'https://host.usemingla.com/b/gameland/v/lagos?tab=entry',
+      labelKey: 'sheet.buy_entry',
+      fallbackLabel: 'Buy entry',
+    });
+    const modal = fs.readFileSync(path.join(__dirname, '../../ExpandedCardModal.tsx'), 'utf8');
+    expect(modal).toMatch(/setBrowserUrl\(deckCta\.webUrl\)/);
+  });
+
   test('D-4 no lead is Directions', () => {
     expect(deckVenueCta({ place: place([]), reservable: READY })).toEqual({ kind: 'directions' });
     expect(deckVenueCta({ place: place(['menu']), reservable: NOT_READY })).toEqual({ kind: 'directions' });

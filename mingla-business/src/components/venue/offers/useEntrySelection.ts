@@ -1,0 +1,260 @@
+/**
+ * #4490 P2 — the state behind buying entry: the offer's public detail, the
+ * days on sale (one read for the strip, one per price option for its weekday
+ * and busy-time answers), the chosen day and counts, and a live server quote.
+ *
+ * Shared by the venue page's Entry tab and the checkout page, so both show
+ * the same days, the same rules and the same total. Anonymous: no `useAuth`.
+ * The server computes every total; the quote is re-asked (debounced) whenever
+ * the day or a count changes.
+ */
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  addDays,
+  countsForDay,
+  entryDayTiles,
+  entryOptionRows,
+  entrySelectionProblem,
+  nextOpenDate,
+  quoteLinesFor,
+  totalGuests,
+  venueToday,
+  type EntryCounts,
+  type EntryDayRow,
+  type EntryDayTile,
+  type EntryOfferDetail,
+  type EntryOptionRow,
+  type EntryQuote,
+} from "@mingla/brand-rendering/venueOffers/entryModel";
+
+import {
+  VenueOfferGuestError,
+  venueOfferGuestService,
+} from "../../../services/venueOfferGuestService";
+import { randomId } from "../../../utils/randomId";
+
+/** How many days the strip offers (the availability read allows 62). */
+export const ENTRY_STRIP_DAYS = 60;
+const QUOTE_DEBOUNCE_MS = 450;
+
+export const venueOfferQueryKeys = {
+  offer: (brandSlug: string, venueSlug: string, offeringId: string) =>
+    ["venue-offer", "detail", brandSlug, venueSlug, offeringId] as const,
+  days: (offeringId: string, from: string, optionId: string | null) =>
+    ["venue-offer", "days", offeringId, from, optionId ?? "all"] as const,
+};
+
+export type EntryQuoteState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; quote: EntryQuote }
+  | { status: "error"; code: string; remaining: number | null };
+
+export interface EntrySelection {
+  offer: EntryOfferDetail | null;
+  offerState: "loading" | "ready" | "error";
+  offerError: string | null;
+  retryOffer: () => void;
+  daysState: "loading" | "ready" | "error";
+  retryDays: () => void;
+  tiles: EntryDayTile[];
+  selectedDate: string | null;
+  selectedTile: EntryDayTile | null;
+  selectDate: (date: string) => void;
+  nextOpen: string | null;
+  optionRows: EntryOptionRow[];
+  counts: EntryCounts;
+  setCount: (optionId: string, next: number) => void;
+  guests: number;
+  /** Why the guest cannot go on, in plain words; null when they can. */
+  problem: string | null;
+  quote: EntryQuoteState;
+  retryQuote: () => void;
+  /** Ask for a fresh quote now (used right before holding). */
+  refreshQuote: () => Promise<EntryQuote | null>;
+}
+
+export function useEntrySelection(input: {
+  brandSlug: string;
+  venueSlug: string;
+  offeringId: string;
+  cartKey: string;
+  initialDate?: string | null;
+  initialCounts?: EntryCounts | null;
+  /** The checkout keeps quoting; the venue pane quotes too, for its total. */
+  enabled?: boolean;
+}): EntrySelection {
+  const { brandSlug, venueSlug, offeringId, cartKey } = input;
+  const enabled = input.enabled !== false;
+
+  const offerQuery = useQuery({
+    queryKey: venueOfferQueryKeys.offer(brandSlug, venueSlug, offeringId),
+    enabled,
+    retry: 1,
+    staleTime: 60_000,
+    queryFn: () => venueOfferGuestService.offer({ brandSlug, venueSlug, offeringId }),
+  });
+  const offer = offerQuery.data ?? null;
+  const from = useMemo(
+    () => venueToday(new Date(), offer?.venue.timezone ?? null),
+    [offer?.venue.timezone],
+  );
+  const to = addDays(from, ENTRY_STRIP_DAYS - 1);
+
+  const daysQuery = useQuery({
+    queryKey: venueOfferQueryKeys.days(offeringId, from, null),
+    enabled: enabled && offer !== null,
+    retry: 1,
+    staleTime: 30_000,
+    queryFn: () => venueOfferGuestService.availability({ offeringId, from, to }),
+  });
+  const optionIds = useMemo(() => (offer?.options ?? []).map((o) => o.id), [offer]);
+  const perOptionQuery = useQuery({
+    queryKey: ["venue-offer", "days-per-option", offeringId, from, optionIds.join(",")],
+    enabled: enabled && offer !== null && optionIds.length > 0,
+    retry: 1,
+    staleTime: 30_000,
+    queryFn: async (): Promise<Array<[string, EntryDayRow[]]>> =>
+      Promise.all(
+        optionIds.map(async (id): Promise<[string, EntryDayRow[]]> => [
+          id,
+          await venueOfferGuestService.availability({ offeringId, from, to, priceOptionId: id }),
+        ]),
+      ),
+  });
+  const perOption = useMemo(
+    () => new Map<string, EntryDayRow[]>(perOptionQuery.data ?? []),
+    [perOptionQuery.data],
+  );
+
+  const rows = useMemo(() => daysQuery.data ?? [], [daysQuery.data]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(input.initialDate ?? null);
+  const [counts, setCounts] = useState<Record<string, number>>(() => ({ ...(input.initialCounts ?? {}) }));
+
+  // The tiles: a day the guest picked outside today's strip still shows.
+  const tiles = useMemo(() => entryDayTiles(rows, from, ENTRY_STRIP_DAYS), [rows, from]);
+
+  // First open day when nothing (or a past day) is chosen.
+  useEffect(() => {
+    if (!daysQuery.isSuccess) return;
+    if (selectedDate !== null && tiles.some((t) => t.date === selectedDate)) return;
+    const firstOpen = tiles.find((t) => t.soldOnline)?.date ?? tiles[0]?.date ?? null;
+    setSelectedDate(firstOpen);
+  }, [daysQuery.isSuccess, selectedDate, tiles]);
+
+  const selectedTile = useMemo(
+    () => tiles.find((t) => t.date === selectedDate) ?? null,
+    [tiles, selectedDate],
+  );
+  const optionRows = useMemo(
+    () => entryOptionRows(offer?.options ?? [], selectedDate, perOption),
+    [offer, selectedDate, perOption],
+  );
+
+  // A first visit with nothing chosen starts with one guest on the first price.
+  const seeded = useRef(input.initialCounts != null && Object.keys(input.initialCounts).length > 0);
+  useEffect(() => {
+    if (seeded.current || optionRows.length === 0 || !perOptionQuery.isSuccess) return;
+    const first = optionRows.find((row) => row.usable);
+    if (first === undefined) return;
+    seeded.current = true;
+    setCounts({ [first.option.id]: first.option.guestMin });
+  }, [optionRows, perOptionQuery.isSuccess]);
+
+  // Changing the day drops prices that do not apply that day.
+  const lastDate = useRef<string | null>(selectedDate);
+  useEffect(() => {
+    if (lastDate.current === selectedDate || !perOptionQuery.isSuccess) return;
+    lastDate.current = selectedDate;
+    setCounts((current) => countsForDay(optionRows, current));
+  }, [selectedDate, optionRows, perOptionQuery.isSuccess]);
+
+  const guests = totalGuests(counts);
+  const problem =
+    daysQuery.isSuccess && perOptionQuery.isSuccess ? entrySelectionProblem(selectedTile, counts) : null;
+
+  // ── the live quote ──────────────────────────────────────────────────────
+  const [quote, setQuote] = useState<EntryQuoteState>({ status: "idle" });
+  const [quoteNonce, setQuoteNonce] = useState(0);
+  const lines = useMemo(() => quoteLinesFor(optionRows, counts), [optionRows, counts]);
+  const windowId = selectedTile?.row?.windowId ?? null;
+  const quoteKey = `${windowId ?? ""}|${JSON.stringify(lines)}|${quoteNonce}`;
+  const latest = useRef(quoteKey);
+  latest.current = quoteKey;
+
+  const askQuote = async (): Promise<EntryQuote | null> => {
+    if (!enabled || problem !== null || windowId === null || lines.length === 0) {
+      setQuote({ status: "idle" });
+      return null;
+    }
+    const asked = latest.current;
+    setQuote({ status: "loading" });
+    try {
+      const next = await venueOfferGuestService.quote({
+        offeringId,
+        windowId,
+        lines,
+        cartKey,
+        idempotencyKey: `venue-offer:quote:${randomId()}`,
+      });
+      if (latest.current === asked) setQuote({ status: "ready", quote: next });
+      return next;
+    } catch (caught) {
+      const error =
+        caught instanceof VenueOfferGuestError ? caught : new VenueOfferGuestError("offer_request_failed", null);
+      if (latest.current === asked) {
+        setQuote({ status: "error", code: error.code, remaining: error.remaining });
+      }
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (!enabled || problem !== null || windowId === null || lines.length === 0) {
+      setQuote({ status: "idle" });
+      return undefined;
+    }
+    setQuote({ status: "loading" });
+    const timer = setTimeout(() => {
+      void askQuote();
+    }, QUOTE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteKey, problem, enabled]);
+
+  return {
+    offer,
+    offerState: offerQuery.isLoading ? "loading" : offerQuery.isError || offer === null ? "error" : "ready",
+    offerError:
+      offerQuery.error instanceof VenueOfferGuestError
+        ? offerQuery.error.code
+        : offerQuery.isError
+          ? "offer_request_failed"
+          : null,
+    retryOffer: () => void offerQuery.refetch(),
+    daysState:
+      daysQuery.isLoading || perOptionQuery.isLoading || offer === null
+        ? "loading"
+        : daysQuery.isError || perOptionQuery.isError
+          ? "error"
+          : "ready",
+    retryDays: () => {
+      void daysQuery.refetch();
+      void perOptionQuery.refetch();
+    },
+    tiles,
+    selectedDate,
+    selectedTile,
+    selectDate: setSelectedDate,
+    nextOpen: selectedDate === null ? null : nextOpenDate(rows, selectedDate),
+    optionRows,
+    counts,
+    setCount: (optionId, next) => setCounts((current) => ({ ...current, [optionId]: Math.max(0, next) })),
+    guests,
+    problem,
+    quote,
+    retryQuote: () => setQuoteNonce((n) => n + 1),
+    refreshQuote: askQuote,
+  };
+}

@@ -1,4 +1,9 @@
 // META-ORCH-1161 Sub-A — per-category message templates (single source of truth).
+// #4490 — venue booking messages (confirmed, cancelled, refund).
+import {
+  isVenueBookingCategory,
+  renderVenueBookingMessage,
+} from "./email/templates/venueBookingEmails.ts";
 import { discoverCityWatchCopy } from "./discoverCityWatchCopy.ts";
 import {
   isBrandReachCategory,
@@ -230,6 +235,10 @@ export function renderCategoryMessage(
   categoryKey: string,
   payload: Record<string, unknown>,
 ): RenderedMessage {
+  // #4490 — venue booking copy (entry passes) lives with its categories.
+  if (isVenueBookingCategory(categoryKey)) {
+    return renderVenueBookingMessage(categoryKey, payload);
+  }
   // #4111 — customer enquiry copy lives with its categories.
   if (isIssue4111EnquiryCategory(categoryKey)) {
     return renderIssue4111Message(categoryKey, payload);

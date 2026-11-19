@@ -45,6 +45,16 @@ import {
 import { ISSUE_4382_SUPPORT_CATEGORIES } from "../_shared/issue4382SupportNotifications.ts";
 // #4383: the Admin push categories (one list, the destination module).
 import { ADMIN_PUSH_CATEGORIES } from "../_shared/adminPushDestinations.ts";
+// #4490 — venue booking emails: the words and the private link at send time.
+import {
+  isVenueBookingCategory,
+  venueBookingEmailFacts,
+} from "../_shared/email/templates/venueBookingEmails.ts";
+import { rederiveVenueOfferBookingToken } from "../_shared/venueOfferBookingToken.ts";
+import {
+  buildVenueVisitUrl,
+  resolveVenueVisitOrigin,
+} from "../_shared/venueOfferVisitLink.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -252,6 +262,72 @@ export async function resolveReservationConfirmationDispatch(
       { outbox_id: row.id ?? null, reason: "manage_link_failed" },
     );
     return { contact, manageUrl: null };
+  }
+}
+
+/**
+ * #4490 — a venue booking email (confirmed, cancelled, refund): the words from
+ * the booking itself, and the guest's private booking link, both resolved at
+ * send time. The link is re-derived from the booking id (the stored token hash
+ * confirms it) and rides only in this request's body to notify-dispatch, which
+ * accepts it from the service role alone and re-validates its shape; it is
+ * never written to the outbox, the payload, the inbox or the ledger. Any
+ * failure omits the link and the email still sends. The email goes only to
+ * the booking's own guest email (the trigger addressed the row to it).
+ */
+export async function resolveVenueBookingDispatch(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+  env: (name: string) => string | undefined = (name) => Deno.env.get(name),
+  ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
+): Promise<{ facts: Record<string, unknown>; visitUrl: string | null }> {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const groupId = String(payload.venue_group_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(groupId)) return { facts: {}, visitUrl: null };
+  let facts: Record<string, unknown> = {};
+  try {
+    const { data: projection } = await admin.rpc(
+      "issue_4490_booking_projection",
+      { p_group_id: groupId, p_qr_pepper: null },
+    );
+    facts = venueBookingEmailFacts(projection, payload);
+  } catch {
+    facts = {};
+  }
+  const contact = typeof row.contact === "string" ? row.contact : "";
+  if (!EMAIL_RE.test(contact)) return { facts, visitUrl: null };
+  try {
+    const { data: group } = await admin.from("stay_reservation_groups")
+      .select("buyer_token_hash").eq("id", groupId).maybeSingle();
+    const token = await rederiveVenueOfferBookingToken({
+      groupId,
+      storedHashHex: typeof group?.buyer_token_hash === "string"
+        ? group.buyer_token_hash
+        : null,
+      ring,
+    });
+    if (token === null) {
+      console.warn("[notify-outbox-drain] venue_visit_link_omitted", {
+        outbox_id: row.id ?? null,
+        reason: "token_not_derivable",
+      });
+      return { facts, visitUrl: null };
+    }
+    return {
+      facts,
+      visitUrl: buildVenueVisitUrl({
+        origin: resolveVenueVisitOrigin(env),
+        groupId,
+        token,
+      }),
+    };
+  } catch {
+    console.warn("[notify-outbox-drain] venue_visit_link_omitted", {
+      outbox_id: row.id ?? null,
+      reason: "visit_link_failed",
+    });
+    return { facts, visitUrl: null };
   }
 }
 
@@ -492,6 +568,12 @@ export async function processGenericOutcome(
       contact = confirmation.contact;
       reservationManageUrl = confirmation.manageUrl;
     }
+    let venueVisitUrl: string | null = null;
+    if (isVenueBookingCategory(String(row.category_key ?? ""))) {
+      const venue = await resolveVenueBookingDispatch(admin, row);
+      Object.assign(payload, venue.facts);
+      venueVisitUrl = venue.visitUrl;
+    }
     const deepLink = typeof payload.deep_link === "string"
       ? payload.deep_link
       : purchaseReminderDeepLink(row);
@@ -513,6 +595,8 @@ export async function processGenericOutcome(
         ...(reservationManageUrl
           ? { reservation_manage_url: reservationManageUrl }
           : {}),
+        // #4490 — in transit only; see resolveVenueBookingDispatch.
+        ...(venueVisitUrl ? { venue_visit_url: venueVisitUrl } : {}),
       }),
     });
     const envelope = await readBoundedSuccessEnvelope(res);

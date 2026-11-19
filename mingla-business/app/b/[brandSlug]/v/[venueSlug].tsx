@@ -53,6 +53,7 @@ import {
   publicVenueMeta,
   type PublicVenueAnalyticsEvent,
   type PublicVenueBookingSlotContext,
+  type PublicVenueEntrySlotContext,
   type PublicVenueOrderingSlotContext,
   type PublicVenueReservationSheetContext,
   type PublicVenueViewModel,
@@ -130,6 +131,14 @@ import { PublicGlassProvider } from "../../../../src/components/offering/PublicG
 const BuyerStayGuestExperience = React.lazy(() =>
   import("../../../../src/components/stay/BuyerStayGuestExperience").then(
     (module) => ({ default: module.BuyerStayGuestExperience }),
+  ),
+);
+
+// #4490 P2 — the Entry tab's buying flow (availability, quote, checkout
+// hand-off). Lazy for the same reason: only a venue that sells entry loads it.
+const VenueEntryPane = React.lazy(() =>
+  import("../../../../src/components/venue/offers/VenueEntryPane").then(
+    (module) => ({ default: module.VenueEntryPane }),
   ),
 );
 
@@ -576,6 +585,33 @@ function PublicVenueRouteBody(): React.ReactElement {
     [prefill.date, prefill.time, prefill.party, prefill.checkin, prefill.checkout, prefill.guests, prefill.room],
   );
 
+  // #4490 P2 — the Entry tab: pick a day and guests, then checkout.
+  const renderEntryBody = useCallback(
+    (context: PublicVenueEntrySlotContext): React.ReactNode =>
+      typeof brandSlug === "string" && typeof venueSlug === "string" ? (
+        <React.Suspense
+          fallback={
+            <View style={styles.stateWrap}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <VenueEntryPane
+            brandSlug={brandSlug}
+            venueSlug={venueSlug}
+            offers={context.offers}
+            currencyCode={context.currencyCode}
+            exponent={context.exponent}
+            palette={context.palette}
+            theme={context.theme}
+            verb={context.verb}
+            onBookingBarChange={context.onBookingBarChange}
+          />
+        </React.Suspense>
+      ) : null,
+    [brandSlug, venueSlug],
+  );
+
   // #4490 — "What's on": events held at the venue open their public page.
   const handleOpenEvent = useCallback(
     (href: string): void => {
@@ -690,6 +726,7 @@ function PublicVenueRouteBody(): React.ReactElement {
       }
       features={features}
       onOpenEvent={handleOpenEvent}
+      entryBody={renderEntryBody}
       refreshState={
         routeState === "populated-error"
           ? "error"

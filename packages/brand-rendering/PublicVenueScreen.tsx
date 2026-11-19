@@ -157,6 +157,7 @@ import {
   type VenueHoursDay,
   type VenuePageModel,
   type VenueSpecialDayRow,
+  type VenueFeatureOfferView,
   type VenueTablesGate,
 } from "./venueFeaturePage";
 import {
@@ -404,6 +405,18 @@ export interface PublicVenueActionBarContext extends PublicVenueThemedContext {
   openReservation: () => void;
 }
 
+/** #4490 P2 — what the Entry tab's flow needs from the page. */
+export interface PublicVenueEntrySlotContext extends PublicVenueThemedContext {
+  /** The venue's live entry offers, in the page's order. */
+  offers: readonly VenueFeatureOfferView[];
+  currencyCode: string;
+  exponent: number;
+  /** The lead's verb ("Buy entry", "Buy a day pass", "Book a visit"). */
+  verb: string;
+  /** Report the live bar on this tab (or null to hand it back). */
+  onBookingBarChange: (bar: PublicVenueReservationBar | null) => void;
+}
+
 /** The modal the Reserve CTA opens. Chrome is app-owned; its state is not. */
 export interface PublicVenueReservationSheetContext
   extends PublicVenueThemedContext {
@@ -608,6 +621,12 @@ export interface PublicVenueScreenProps {
   features?: PublicVenueFeaturesView | null;
   /** Opens an event's public page (`/e/…`). Absent = event rows are plain text. */
   onOpenEvent?: (href: string) => void;
+  /**
+   * #4490 P2 — the Entry tab's flow (pick a day, the guests, see the total,
+   * go to checkout). Host-injected because it talks to the network. Absent =
+   * the Entry tab says entry is not on sale online (never a blank tab).
+   */
+  entryBody?: (context: PublicVenueEntrySlotContext) => BrandRenderingReactNode;
   /**
    * #4490 — a Host preview of a venue that is not public yet: every tab the
    * venue will have, with the booking button and event buttons disabled.
@@ -1262,6 +1281,7 @@ export const PublicVenueScreen = ({
   actionBarHeight = 0,
   features = null,
   onOpenEvent,
+  entryBody,
   preview = null,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
@@ -1731,9 +1751,11 @@ export const PublicVenueScreen = ({
     !(orderingOwnsBar && normalizedReservationUiState.activeTab === "menu");
   // #4420 D-V3 — on the Reservations tab the bar stays, reading the guest's
   // live pick and walking Continue → Confirm & pay.
+  // #4490 P2 — the Entry tab reports the same live bar.
   const reservationTabBar =
     (normalizedReservationUiState.activeTab === "reservations" ||
-      normalizedReservationUiState.activeTab === "rooms") &&
+      normalizedReservationUiState.activeTab === "rooms" ||
+      normalizedReservationUiState.activeTab === "entry") &&
     !normalizedReservationUiState.reservationSheetOpen
       ? liveReservationBar
       : null;
@@ -2402,6 +2424,29 @@ export const PublicVenueScreen = ({
       ? previewBookingNote
       : reservationBodies.stay(true)
     : null;
+  // #4490 P2 — the Entry tab: the host's flow, or (in a preview / without a
+  // host flow) a plain line, never an empty pane.
+  const entryOffers = (featuresView?.offers ?? []).filter((o) => o.kind === "entry");
+  const entryBlock = page.tabs.includes("entry")
+    ? previewing
+      ? previewBookingNote
+      : entryBody !== undefined && page.currency !== null
+        ? entryBody({
+            ...themedSlotContext,
+            offers: entryOffers,
+            currencyCode: page.currency.code,
+            exponent: page.currency.exponent,
+            verb: page.lead?.kind === "entry" ? page.lead.ctaLabel : "Buy entry",
+            onBookingBarChange: setLiveReservationBar,
+          })
+        : (
+            <View style={styles.reservationState} testID="issue-4490-entry-not-online">
+              <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+                Entry isn&apos;t on sale online here yet. You can buy at the gate.
+              </Text>
+            </View>
+          )
+    : null;
   const whatsOnBlock =
     page.events.length > 0 && page.currency !== null ? (
       <VenueWhatsOnPane
@@ -2699,7 +2744,7 @@ export const PublicVenueScreen = ({
           : {
               tabs: page.tabs,
               labels: page.labels,
-              panes: { whats_on: whatsOnBlock, rooms: roomsBlock },
+              panes: { whats_on: whatsOnBlock, rooms: roomsBlock, entry: entryBlock },
             })}
         palette={palette}
         surface={surface}

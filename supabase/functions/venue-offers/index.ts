@@ -9,8 +9,12 @@
 //              booking token returned by `hold` (pay, read, cancel). The
 //              database stores only SHA-256 of the token.
 //
-// Actions: availability, quote, hold, pay, confirm_return, get,
+// Actions: offer, availability, quote, hold, pay, confirm_return, get,
 // cancel_preview, cancel. (change_* arrive in P3, withdraw in P4.)
+// `offer` is the guest's read of one live offer (its named prices, the day
+// rules and the refund terms). It is answered only for an offer the public
+// venue page itself lists (pg_public_venue_page: verified venue, feature on,
+// reads flag on, offer live), so it can never show more than the page does.
 //
 // The payment return address comes from BUSINESS_WEB_ORIGIN (production by
 // default; a loopback origin only when this function runs on a local stack).
@@ -25,7 +29,10 @@ import {
 } from "../_shared/stayPaymentProvider.ts";
 import { handleStayPaystackChargeSuccess } from "../_shared/stayPaymentWebhook.ts";
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
-import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+import {
+  isLocalSupabaseUrl,
+  resolveVenueVisitOrigin,
+} from "../_shared/venueOfferVisitLink.ts";
 import {
   issueVenueOfferBookingToken,
   rederiveVenueOfferBookingToken,
@@ -44,7 +51,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/;
 const CART_KEY = /^[A-Za-z0-9_-]{32,64}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const SLUG = /^[a-z0-9][a-z0-9-]{0,99}$/;
 const ACTIONS = new Set([
+  "offer",
   "availability",
   "quote",
   "hold",
@@ -189,40 +198,19 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 function isLocalSupabase(url: string): boolean {
-  try {
-    const host = new URL(url).hostname;
-    return ["kong", "localhost", "127.0.0.1", "host.docker.internal"].includes(
-      host,
-    );
-  } catch {
-    return false;
-  }
+  return isLocalSupabaseUrl(url);
 }
 
 /**
  * Where the guest returns after paying. Production unless BUSINESS_WEB_ORIGIN
  * names the production origin, a Vercel preview of the business app, or — only
- * when this function itself runs on a local stack — a loopback origin.
+ * when this function itself runs on a local stack — a loopback origin. One
+ * rule with the email links (venueOfferVisitLink.ts).
  */
 export function resolveReturnOrigin(
   env: (name: string) => string | undefined,
 ): string {
-  const configured = (env("BUSINESS_WEB_ORIGIN") ?? "").trim().replace(
-    /\/+$/,
-    "",
-  );
-  if (!configured) return PRODUCTION_BUSINESS_WEB_ORIGIN;
-  if (configured === PRODUCTION_BUSINESS_WEB_ORIGIN) return configured;
-  if (/^https:\/\/mingla-business-[a-z0-9-]+\.vercel\.app$/.test(configured)) {
-    return configured;
-  }
-  if (
-    /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/.test(configured) &&
-    isLocalSupabase(env("SUPABASE_URL") ?? "")
-  ) {
-    return configured;
-  }
-  return PRODUCTION_BUSINESS_WEB_ORIGIN;
+  return resolveVenueVisitOrigin(env);
 }
 
 function qrPepper(env: (name: string) => string | undefined): string | null {
@@ -272,6 +260,97 @@ function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+type Json = Record<string, unknown>;
+const isJson = (value: unknown): value is Json =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** The offer row the public venue page lists, or null when it is not listed. */
+export function publicOfferListing(
+  page: unknown,
+  offeringId: string,
+): Json | null {
+  if (!isJson(page) || !Array.isArray(page.offers)) return null;
+  const row = page.offers.find((offer) =>
+    isJson(offer) && offer.id === offeringId
+  );
+  return isJson(row) ? row : null;
+}
+
+/**
+ * The guest-facing subset of an offer: what is sold, at what prices, on which
+ * days, and the refund terms. Never the host's pool, readiness, versions of
+ * prices or the operator refund rate.
+ */
+export function publicOfferDetail(
+  projection: unknown,
+  page: unknown,
+): Json | null {
+  if (!isJson(projection) || !isJson(page) || projection.status !== "live") {
+    return null;
+  }
+  const venue = isJson(page.venue) ? page.venue : {};
+  const options = Array.isArray(projection.options)
+    ? projection.options.filter(isJson).map((option) => ({
+      id: option.id,
+      name: option.name,
+      unit: option.unit,
+      guestMin: option.guestMin,
+      guestMax: option.guestMax,
+      weekdays: option.weekdays ?? null,
+      startTime: option.startTime ?? null,
+      endTime: option.endTime ?? null,
+      eligibility: isJson(option.eligibility)
+        ? { label: option.eligibility.label ?? null }
+        : null,
+      priceMinor: option.priceMinor,
+      sortOrder: option.sortOrder,
+    }))
+    : [];
+  const policy = isJson(projection.policy) ? projection.policy : null;
+  const schedule = isJson(projection.schedule) ? projection.schedule : null;
+  return {
+    id: projection.id,
+    kind: projection.kind,
+    entryStyle: projection.entryStyle ?? null,
+    name: projection.name,
+    summary: projection.summary ?? null,
+    description: projection.description ?? null,
+    minNoticeMinutes: projection.minNoticeMinutes ?? null,
+    maxAdvanceDays: projection.maxAdvanceDays ?? null,
+    options,
+    policy: policy === null ? null : {
+      text: policy.cancellationPolicy ?? null,
+      refundLadder: Array.isArray(policy.refundLadder)
+        ? policy.refundLadder
+        : [],
+      dateChangeRule: isJson(policy.dateChangeRule)
+        ? policy.dateChangeRule
+        : null,
+    },
+    schedule: schedule === null ? null : {
+      mode: schedule.mode,
+      weekdays: schedule.weekdays ?? null,
+      startTime: schedule.startTime ?? null,
+      endTime: schedule.endTime ?? null,
+      sessionMinutes: schedule.sessionMinutes ?? null,
+    },
+    currencyCode: page.currencyCode ?? null,
+    minorUnitExponent: page.minorUnitExponent ?? 2,
+    vat: isJson(page.vat) ? page.vat : null,
+    venue: {
+      id: venue.id ?? null,
+      name: venue.name ?? null,
+      slug: venue.slug ?? null,
+      brandSlug: venue.brand_slug ?? null,
+      brandName: venue.brand_name ?? null,
+      address: venue.address ?? null,
+      city: venue.city ?? null,
+      countryCode: venue.country_code ?? null,
+      timezone: venue.iana_timezone ?? schedule?.timezone ?? null,
+    },
+  };
+}
+
 export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
   const env = deps.env ?? ((name: string) => Deno.env.get(name));
   return async function handle(req: Request): Promise<Response> {
@@ -306,6 +385,33 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       "unknown";
     if (rateLimited(`${action}:${caller.userId ?? ip}`)) {
       return json(429, { code: "rate_limited" });
+    }
+
+    // ---- offer: one live offer's public detail (no identity needed) -------
+    if (action === "offer") {
+      const offeringId = str(body.offeringId);
+      const brandSlug = str(body.brandSlug);
+      const venueSlug = str(body.venueSlug);
+      if (
+        !UUID.test(offeringId) || !SLUG.test(brandSlug) || !SLUG.test(venueSlug)
+      ) {
+        return json(400, { code: "invalid_request" });
+      }
+      const { data: page, error: pageError } = await client.rpc(
+        "pg_public_venue_page",
+        { p_brand_slug: brandSlug, p_venue_slug: venueSlug },
+      );
+      if (pageError) return rpcFailure(pageError);
+      const listed = publicOfferListing(page, offeringId);
+      if (listed === null) return json(404, { code: "offer_not_found" });
+      const { data: projection, error } = await client.rpc(
+        "issue_4490_offer_projection",
+        { p_offering_id: offeringId },
+      );
+      if (error) return rpcFailure(error);
+      const detail = publicOfferDetail(projection, page);
+      if (detail === null) return json(404, { code: "offer_not_found" });
+      return json(200, { kind: "success", data: detail });
     }
 
     // ---- availability (no identity needed) --------------------------------

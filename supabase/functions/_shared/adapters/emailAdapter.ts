@@ -37,6 +37,37 @@ export interface EmailSendInput {
   replyTo?: string;
 }
 
+const RESEND_EMAILS_URL = "https://api.resend.com/emails";
+
+/**
+ * #4490 — where an email is posted. Always Resend, except on a LOCAL stack
+ * (the function's own SUPABASE_URL is a loopback or docker host) when
+ * LOCAL_RESEND_API_URL names a loopback stand-in that hands the message to the
+ * stack's mail catcher. Anywhere else the override is ignored.
+ */
+export function resendEmailsUrl(
+  env: (name: string) => string | undefined = (name) => Deno.env.get(name),
+): string {
+  const override = (env("LOCAL_RESEND_API_URL") ?? "").trim().replace(
+    /\/+$/,
+    "",
+  );
+  if (!override) return RESEND_EMAILS_URL;
+  let supabaseHost = "";
+  let overrideHost = "";
+  try {
+    supabaseHost = new URL(env("SUPABASE_URL") ?? "").hostname;
+    overrideHost = new URL(override).hostname;
+  } catch {
+    return RESEND_EMAILS_URL;
+  }
+  const local = (host: string): boolean =>
+    ["kong", "localhost", "127.0.0.1", "host.docker.internal"].includes(host);
+  return local(supabaseHost) && local(overrideHost)
+    ? `${override}/emails`
+    : RESEND_EMAILS_URL;
+}
+
 export const emailAdapter = {
   async send(input: EmailSendInput): Promise<AdapterResult> {
     const to = input.to?.trim() ?? "";
@@ -82,7 +113,7 @@ export const emailAdapter = {
 
     try {
       await input.beforeProviderIo?.();
-      const res = await fetch("https://api.resend.com/emails", {
+      const res = await fetch(resendEmailsUrl(), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${key}`,
