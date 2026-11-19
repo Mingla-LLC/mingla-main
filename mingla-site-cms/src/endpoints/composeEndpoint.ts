@@ -12,7 +12,7 @@ import { storageCoverRenditionDeps } from "../lib/artifactBuilder";
 import { materializeSetupContent, parseStagedRows, type StagedSetupRow } from "../lib/setupContent";
 import { composeFormatSite, plannedKeysOf } from "../lib/composeFormat";
 import { inventoryAndSources, loadStudioRecords, parseSignedDesignPass, type SignedDesignPass } from "../lib/designPassInputs";
-import { pageAllDraft, writeComposition } from "../lib/designPassWrite";
+import { pageAllDraft, sameMenu, writeComposition } from "../lib/designPassWrite";
 import { isDesignKey, type DesignKey } from "../contracts/generated/designs.ts";
 import { emitCmsObservation } from "../lib/observability";
 
@@ -347,8 +347,11 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
       items.push(rest);
     }
     const navData = { items, wordmark: result.wordmark };
+    // #4453 — a rebuild that lands on the menu already there writes nothing:
+    // a new menu version with the same items reads in Host as "1 change"
+    // that publishing would not change (Gameland Lagos, 2026-11-19).
     if (navigation) {
-      await req.payload.update({
+      if (!sameMenu(navigation, navData)) await req.payload.update({
         collection: "navigation",
         id: navigation.id as string,
         overrideAccess: true,

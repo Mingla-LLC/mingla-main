@@ -207,3 +207,41 @@ describe("#4453 Build composes in the site's own design", () => {
     for (const grid of grids) expect(grid.variant).toBe("photo-card");
   });
 });
+
+/*
+ * #4453 — Gameland Lagos's live Rebuild (2026-11-19) kept every reviewed
+ * page but wrote a new menu version with the same items (only row ids
+ * differed), so Host showed "1 change: The menu or footer changed" that
+ * publishing would not change.
+ */
+describe("#4453 Rebuild leaves an unchanged menu alone", () => {
+  const menuWrites = (store: ReturnType<typeof fakePayload>) => [
+    ...store.payload.create.mock.calls.filter(([args]) => args.collection === "navigation"),
+    ...store.payload.update.mock.calls.filter(([args]) => args.collection === "navigation"),
+  ].length;
+
+  it("writes no new menu version when the rebuilt menu matches the one there, row ids aside", async () => {
+    const first = await compose({ booking_blocks: true });
+    expect(menuWrites(first.store)).toBe(1);
+    // Payload hands rows back with their own ids.
+    const nav = (await first.store.payload.find({ collection: "navigation" })).docs[0] as Doc;
+    nav.items = (nav.items as Doc[]).map((row, i) => ({ ...row, id: `row-${i}` }));
+
+    const second = await compose({ booking_blocks: true }, first.store);
+    expect(second.response.status, JSON.stringify(second.json)).toBe(200);
+    expect(menuWrites(second.store)).toBe(1);
+  });
+
+  it("still writes the menu when the owner's menu differs from the rebuilt one", async () => {
+    const first = await compose({ booking_blocks: true });
+    const nav = (await first.store.payload.find({ collection: "navigation" })).docs[0] as Doc;
+    const composedLabel = (nav.items as Doc[])[0]!.label;
+    (nav.items as Doc[])[0]!.label = "Something else";
+
+    const second = await compose({ booking_blocks: true }, first.store);
+    expect(second.response.status).toBe(200);
+    expect(menuWrites(second.store)).toBe(2);
+    const after = (await first.store.payload.find({ collection: "navigation" })).docs[0] as Doc;
+    expect((after.items as Doc[])[0]!.label).toBe(composedLabel);
+  });
+});
