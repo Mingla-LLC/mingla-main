@@ -21,6 +21,11 @@ export interface RsvpPartyGuest {
   onMingla: boolean;
   /** Confirm-dialog / success-card name: the account's name, else the formatted number. */
   label: string;
+  /**
+   * issue #4508 R6 — the confirm dialog's line under the name: a text promise
+   * only for a number Mingla can text. Set once when the guest is added.
+   */
+  confirmLine: string;
 }
 
 // ── the submit payload (wave A contract §1) ──

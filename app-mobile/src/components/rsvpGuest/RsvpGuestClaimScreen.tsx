@@ -40,6 +40,7 @@ import {
 import { fetchRsvpPartyPasses } from "../../services/rsvpDeckService";
 import { setPendingRsvpGuest, clearPendingRsvpGuest } from "../../services/pendingRsvpGuest";
 import { openShellDestination } from "../../services/deepLinkService";
+import { KEYBOARD_SCROLL_BOTTOM_OFFSET } from "../../wrappers/keyboardConstants";
 import {
   claimOutcomeScreen,
   formatGuestEventWhen,
@@ -60,6 +61,10 @@ type Phase =
 
 const C = PROGRAM_COLORS;
 // The dark program surface for the shared phone field.
+// #4508 R2: the Done bar's clearance plus the "Text me a code" button and its
+// gap, so the button under the number field stays above the keyboard.
+const CLAIM_FIELD_BOTTOM_OFFSET = KEYBOARD_SCROLL_BOTTOM_OFFSET + 64;
+
 const PHONE_THEME: PhoneInputTheme = {
   backgroundPrimary: "#141414",
   fieldBackground: C.field,
@@ -313,7 +318,9 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
   const sentence = r.inviterHasAccount ? friendshipSentence(inviterFirst) : null;
 
   return (
-    <ProgramScreen title="Your invite" onBack={goHome}>
+    // #4508 R2: "Text me a code" sits right under the number field, so the
+    // scroll keeps the field AND that button above the keyboard's Done bar.
+    <ProgramScreen title="Your invite" onBack={goHome} keyboardBottomOffset={CLAIM_FIELD_BOTTOM_OFFSET}>
       <Text style={styles.headline} accessibilityRole="header">{`${r.inviterName} saved you a spot`}</Text>
       <Text style={styles.copy}>Your pass is in the Mingla app.</Text>
       {eventCard}
@@ -362,6 +369,8 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
                     theme={PHONE_THEME}
                     testID="issue-4508-claim-phone"
                     phoneInputAccessibilityLabel="The number this invite was sent to"
+                    // #4508 R2: one Done bar (the app-wide one), not two.
+                    showDoneAccessory={false}
                   />
                   <ProgramButton
                     label="Text me a code"

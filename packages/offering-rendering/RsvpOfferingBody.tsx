@@ -51,6 +51,7 @@
  */
 
 import type RsvpGuestPartyBlockType from "./RsvpGuestPartyBlock";
+import type { RsvpGuestTextInputComponent } from "./RsvpGuestPartyBlock";
 import React, {
   Suspense,
   useCallback,
@@ -129,7 +130,6 @@ import type { RsvpGuestSnapshot } from "./rsvpGuestSnapshot";
 // issue #4508 — "Who's coming with you?": a plus-one is a phone number (or a
 // friend), never a name / email / phone mini-form.
 import {
-  RSVP_GUEST_GETS_TEXT_AND_PASS,
   buildGuestPayload,
   isCompleteE164,
   rsvpGoingButtonLabel,
@@ -376,6 +376,12 @@ export interface RsvpOfferingBodyProps {
    * failure. Absent ⇒ no lookup: a valid number previews as not on Mingla.
    */
   guestLookup?: RsvpGuestLookup;
+  /**
+   * issue #4508 R2 — the surface's text input for the guest section's search
+   * field. Explorer passes its bottom-sheet-aware input so the keyboard never
+   * covers the field; absent ⇒ react-native's TextInput (Host, buyer web).
+   */
+  guestInputComponent?: RsvpGuestTextInputComponent;
   /**
    * issue #4508 T1 — "Get the app" on the signed-out "Bring someone" card:
    * the surface's app download / deep link for this event. Absent ⇒ the card
@@ -686,7 +692,7 @@ export const useRsvpOfferingState = (
   const [guestLookupState, setGuestLookupState] = useState<
     | { phone: string; state: "checking" }
     | { phone: string; state: "done"; result: RsvpGuestLookupResult }
-    | { phone: string; state: "failed" }
+    | { phone: string; state: "failed"; code?: string }
     | null
   >(null);
   const [guestLookupNonce, setGuestLookupNonce] = useState(0);
@@ -1765,9 +1771,10 @@ export const useRsvpOfferingState = (
           if (seq === lookupSeq.current && isCurrent())
             setGuestLookupState({ phone, state: "done", result });
         },
-        () => {
+        (e: Error) => {
+          // R1: the code (e.g. rate_limited) picks the preview's words.
           if (seq === lookupSeq.current && isCurrent())
-            setGuestLookupState({ phone, state: "failed" });
+            setGuestLookupState({ phone, state: "failed", code: e?.message });
         },
       );
     }, 400);
@@ -1810,6 +1817,7 @@ export const useRsvpOfferingState = (
         onRetryFriends={props.onRetryGuestFriends ?? null}
         renderPhoneField={renderPhoneField}
         PlainField={RsvpField}
+        inputComponent={props.guestInputComponent}
         testID="orch-1163-rsvp-guests"
       />
     </Suspense>
@@ -1835,7 +1843,7 @@ export const useRsvpOfferingState = (
         guestRows={guests.map((g) => ({
           key: g.key,
           label: g.label,
-          line: RSVP_GUEST_GETS_TEXT_AND_PASS,
+          line: g.confirmLine,
         }))}
         submitting={submitting}
         errorText={confirmError}

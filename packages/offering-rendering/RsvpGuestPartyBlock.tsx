@@ -20,6 +20,7 @@ import {
   Text,
   TextInput,
   View,
+  type TextInputProps,
 } from "react-native";
 
 import { offeringSurfaceStyles, type ThemePalette } from "./themePalette";
@@ -35,6 +36,7 @@ import {
   removePartyGuest,
   rsvpFriendLine,
   rsvpNoFriendMatch,
+  rsvpNotOnMinglaLine,
   rsvpOnMinglaLine,
   rsvpPartyHelper,
   searchFriends,
@@ -46,6 +48,16 @@ import {
 import type { RsvpPhoneFieldRenderer, RsvpPlainFieldProps } from "./rsvpPhoneFieldTypes";
 
 const DANGER = "#e5484d";
+
+/**
+ * issue #4508 R2 — a surface's own text input for the guest section's fields.
+ * Explorer passes its bottom-sheet-aware input (the event page is a bottom
+ * sheet, and a plain field there sits under the keyboard); Host and buyer web
+ * pass nothing and keep react-native's TextInput.
+ */
+export type RsvpGuestTextInputComponent = React.ComponentType<
+  TextInputProps & React.RefAttributes<TextInput>
+>;
 
 export interface RsvpGuestPartyBlockProps {
   palette: ThemePalette;
@@ -70,6 +82,8 @@ export interface RsvpGuestPartyBlockProps {
     error: string | null;
     onRetry: (() => void) | null;
     onPick: (friend: RsvpFriendOption) => void;
+    /** R2 — the surface's text input for the search field (default TextInput). */
+    inputComponent?: RsvpGuestTextInputComponent;
   } | null;
   testID?: string;
 }
@@ -89,6 +103,7 @@ export const RsvpGuestPartyBlock: React.FC<RsvpGuestPartyBlockProps> = ({
   friends,
   testID = "issue-4508-rsvp-party",
 }) => {
+  const SearchInput = friends?.inputComponent ?? TextInput;
   const surface = offeringSurfaceStyles(palette);
   const boldFace = themeFontFace(boldFamily);
   const atLimit = party.length >= max;
@@ -218,7 +233,7 @@ export const RsvpGuestPartyBlock: React.FC<RsvpGuestPartyBlockProps> = ({
               <Text style={[styles.sectionLabel, surface.tertiaryText]}>
                 {RSVP_PARTY_COPY.friendsLabel}
               </Text>
-              <TextInput
+              <SearchInput
                 value={friends.query}
                 onChangeText={friends.onQueryChange}
                 placeholder={RSVP_PARTY_COPY.friendsPlaceholder}
@@ -336,7 +351,7 @@ export const RsvpGuestPartyBlock: React.FC<RsvpGuestPartyBlockProps> = ({
           ? guest.source === "friend"
             ? rsvpFriendLine(guest.username)
             : rsvpOnMinglaLine(guest.username)
-          : RSVP_PARTY_COPY.notOnMingla;
+          : rsvpNotOnMinglaLine(guest.phone);
         return (
           <View
             key={guest.key}
@@ -439,7 +454,7 @@ const styles = StyleSheet.create({
 type RsvpGuestLookupState =
   | { phone: string; state: "checking" }
   | { phone: string; state: "done"; result: RsvpGuestLookupResult }
-  | { phone: string; state: "failed" }
+  | { phone: string; state: "failed"; code?: string }
   | null;
 
 export interface RsvpGuestPartyPanelProps {
@@ -471,6 +486,8 @@ export interface RsvpGuestPartyPanelProps {
   renderPhoneField?: RsvpPhoneFieldRenderer;
   /** The body's plain text field, used when the surface injects no phone picker. */
   PlainField: React.ComponentType<RsvpPlainFieldProps>;
+  /** R2 — the surface's text input for the search field (see the block). */
+  inputComponent?: RsvpGuestTextInputComponent;
   testID?: string;
 }
 
@@ -504,7 +521,9 @@ export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
         ? { state: "none" as const }
         : lookupState.state === "done"
           ? { state: "done" as const, result: lookupState.result }
-          : { state: lookupState.state };
+          : lookupState.state === "failed"
+            ? { state: "failed" as const, code: lookupState.code }
+            : { state: lookupState.state };
     return numberPreview({
       phone,
       phoneCountryIso: numberCountry,
@@ -546,6 +565,13 @@ export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
     p.numberRaw.trim().length > 0 &&
     p.numberE164.trim().length === 0 &&
     p.numberRaw.replace(/\D/g, "").length >= 7;
+  // P3: digits with no country (and no "+code") need a country, not a
+  // "valid number".
+  const guestNumberError = guestNumberInvalid
+    ? p.numberCountry === null && !p.numberRaw.trim().startsWith("+")
+      ? RSVP_PARTY_COPY.pickCountry
+      : RSVP_PARTY_COPY.invalid
+    : null;
   const numberField: React.ReactNode = p.renderPhoneField ? (
     p.renderPhoneField({
       role: "plus_one",
@@ -564,7 +590,7 @@ export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
         p.setNumberE164(resolvedE164 ?? "");
       },
       invalid: guestNumberInvalid,
-      errorText: guestNumberInvalid ? RSVP_PARTY_COPY.invalid : null,
+      errorText: guestNumberError,
       palette: p.palette,
       disabled: p.disabled,
       required: false,
@@ -613,6 +639,7 @@ export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
           error: p.friendsError,
           onRetry: p.onRetryFriends,
           onPick: addGuestFriend,
+          inputComponent: p.inputComponent,
         }
       : null;
 

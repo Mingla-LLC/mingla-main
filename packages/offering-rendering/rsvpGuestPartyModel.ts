@@ -23,16 +23,21 @@ import type {
   RsvpSubmittedGuest,
 } from "./rsvpGuestTypes.ts";
 export type { RsvpGuestPayload, RsvpPartyGuest, RsvpSubmittedGuest };
-import {
-  RSVP_GUEST_GETS_TEXT_AND_PASS,
-  isCompleteE164,
-} from "./rsvpGuestCopy.ts";
+import { isCompleteE164 } from "./rsvpGuestCopy.ts";
+// issue #4508 R6 — the server's text route rule, so the form never promises
+// a text to a number Mingla cannot text.
+import { rsvpGuestNumberTextable } from "./rsvpGuestTextRoute.ts";
 
 // The two refusals the guest form shows inline. rsvpGuestErrors.ts repeats the
 // same words for the server's refusals (a separate on-demand chunk: a module
 // both imported would be hoisted into the boot payload); a test pins them equal.
 export const RSVP_GUEST_LIMIT_REACHED = "That's the most this host allows.";
 export const RSVP_GUEST_OWN_NUMBER = "That's you. Enter a friend's number";
+/** The confirm dialog's line for a guest Mingla can text. */
+export const RSVP_GUEST_GETS_TEXT_AND_PASS = "Gets a text and a pass";
+/** issue #4508 R6 — before submit, for a number Mingla cannot text yet. */
+export const RSVP_GUEST_CANT_TEXT_YET =
+  "We can't text this number yet. You'll get an invite to send them.";
 
 
 /** A friend the signed-in inviter can pick (from `get_user_circle`). */
@@ -81,6 +86,10 @@ export const RSVP_PARTY_COPY = {
   limitReached: RSVP_GUEST_LIMIT_REACHED,
   checking: "Checking this number…",
   lookupFailed: "Couldn't check this number. You can still add it.",
+  // issue #4508 R1 — the lookup answered rate_limited.
+  lookupRateLimited: "Too many lookups. Try again in a minute.",
+  // issue #4508 P3 — digits typed with no country picked.
+  pickCountry: "Pick a country first",
   add: "Add",
   getsTextAndPass: RSVP_GUEST_GETS_TEXT_AND_PASS,
 } as const;
@@ -141,7 +150,7 @@ export interface NumberPreviewInput {
     | { state: "none" }
     | { state: "checking" }
     | { state: "done"; result: RsvpGuestLookupResult }
-    | { state: "failed" };
+    | { state: "failed"; code?: string };
 }
 
 export const digitsOf = (phone: string): string => phone.replace(/\D/g, "");
@@ -166,6 +175,12 @@ export const partyGuestLabel = (g: Pick<RsvpPartyGuest, "displayName" | "phone">
       ? formatPartyPhone(g.phone)
       : "Guest";
 
+/** issue #4508 R6 — the "not on Mingla" line: a text promise only when one can go. */
+export const rsvpNotOnMinglaLine = (phone: string | null): string =>
+  phone !== null && !rsvpGuestNumberTextable(phone)
+    ? RSVP_GUEST_CANT_TEXT_YET
+    : RSVP_PARTY_COPY.notOnMingla;
+
 const numberGuest = (
   phone: string,
   iso: string | null,
@@ -173,6 +188,11 @@ const numberGuest = (
 ): RsvpPartyGuest => {
   const user = result?.user ?? null;
   return {
+    // R6: set once at add time, so the confirm dialog (its own chunk) and
+    // the eager body never carry the route rule.
+    confirmLine: rsvpGuestNumberTextable(phone)
+      ? RSVP_GUEST_GETS_TEXT_AND_PASS
+      : RSVP_GUEST_CANT_TEXT_YET,
     key: partyGuestKey({ userId: user?.id ?? null, phone }),
     source: "number",
     phone,
@@ -205,8 +225,10 @@ export const numberPreview = (input: NumberPreviewInput): RsvpNumberPreview => {
       kind: "unchecked",
       guest,
       title: formatPartyPhone(phone),
-      line: RSVP_PARTY_COPY.notOnMingla,
-      message: RSVP_PARTY_COPY.lookupFailed,
+      line: rsvpNotOnMinglaLine(phone),
+      message: (input.lookup.code ?? "").includes("rate_limited")
+        ? RSVP_PARTY_COPY.lookupRateLimited
+        : RSVP_PARTY_COPY.lookupFailed,
     };
   }
   const result = input.lookup.result;
@@ -231,7 +253,7 @@ export const numberPreview = (input: NumberPreviewInput): RsvpNumberPreview => {
         kind: "ready",
         guest,
         title: formatPartyPhone(phone),
-        line: RSVP_PARTY_COPY.notOnMingla,
+        line: rsvpNotOnMinglaLine(phone),
       };
 };
 
@@ -241,6 +263,7 @@ export const addableFromPreview = (preview: RsvpNumberPreview): RsvpPartyGuest |
 
 export const friendGuest = (friend: RsvpFriendOption): RsvpPartyGuest => ({
   key: partyGuestKey({ userId: friend.userId, phone: null }),
+  confirmLine: RSVP_GUEST_GETS_TEXT_AND_PASS,
   source: "friend",
   phone: null,
   phoneCountryIso: null,
