@@ -56,6 +56,19 @@ import {
 } from "../../services/intakeSchemaService";
 import { IntakeQuestionTypePill } from "./IntakeQuestionTypePill";
 import { IntakeRequiredToggle } from "./IntakeRequiredToggle";
+// #4514 — brand form additions to this ONE editor (help text, "Show only if",
+// "Show at the door"). The trip builder passes none of them and is unchanged.
+import { IntakeBrandFormFields, IntakeHelpTextField } from "./IntakeBrandFormFields";
+import { TRIP_INTAKE_FEATURES, type IntakeBuilderFeatures } from "./intakeBuilderFeatures";
+import {
+  addOptionTo,
+  dropBlankOptions,
+  isDoorType,
+  newOptionId,
+  removeOptionFrom,
+  withOptionIds,
+  type ConditionSource,
+} from "../../utils/brandFormDefinition";
 
 export interface IntakeQuestionEditorProps {
   /** Existing question to edit; null = new question with initialType. */
@@ -66,7 +79,32 @@ export interface IntakeQuestionEditorProps {
   onSave: (question: IntakeQuestion) => void;
   onCancel: () => void;
   testID?: string;
+  /** #4514 — extras for brand forms. Omitted: today's trip editor. */
+  features?: IntakeBuilderFeatures;
+  /** Door questions on the form besides this one. */
+  otherDoorCount?: number;
+  /** Earlier single-choice questions this question may depend on. */
+  conditionSources?: ConditionSource[];
+  /** Numbers ("Q3") of questions that depend on this one. */
+  dependentNumbers?: number[];
+  /** 1-based number of this question; null for a new one. */
+  questionNumber?: number | null;
+  doorNoticeAcked?: boolean;
+  onDoorNoticeAck?: () => void;
 }
+
+/** Seed the editor's draft; brand forms give every option a stable id. */
+const seedDraft = (
+  question: IntakeQuestion | null,
+  initialType: IntakeQuestionType | undefined,
+  features: IntakeBuilderFeatures,
+): IntakeQuestion => {
+  const base =
+    question !== null
+      ? { ...question }
+      : createBlankQuestion(initialType ?? "short_text", 0);
+  return features.conditions ? withOptionIds(base) : base;
+};
 
 const QUESTION_EDITOR_SHEET_HEIGHT = 720;
 const LABEL_MAX = 200;
@@ -102,25 +140,26 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
   onSave,
   onCancel,
   testID,
+  features = TRIP_INTAKE_FEATURES,
+  otherDoorCount = 0,
+  conditionSources = [],
+  dependentNumbers = [],
+  questionNumber = null,
+  doorNoticeAcked = true,
+  onDoorNoticeAck = () => undefined,
 }) => {
   // Local draft state. Seeded from `question` on mount / when sheet opens.
   const [draft, setDraft] = useState<IntakeQuestion>(() =>
-    question !== null
-      ? { ...question }
-      : createBlankQuestion(initialType ?? "short_text", 0),
+    seedDraft(question, initialType, features),
   );
 
   // Re-seed when the sheet opens with a fresh question (new question flow
   // re-opens the same Editor instance with different `question` prop).
   useEffect(() => {
     if (visible) {
-      setDraft(
-        question !== null
-          ? { ...question }
-          : createBlankQuestion(initialType ?? "short_text", 0),
-      );
+      setDraft(seedDraft(question, initialType, features));
     }
-  }, [visible, question, initialType]);
+  }, [visible, question, initialType, features]);
 
   // ORCH-0884 follow-up #2 — Cycle 3 wizard root keyboard pattern, applied
   // inside the editor's Sheet body. The Sheet primitive has no keyboard
@@ -174,18 +213,30 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
         // required, position, helper, placeholder. createBlankQuestion seeds
         // type-defaults (options=["",""] for choice, max_files=1 for upload).
         const reseed = createBlankQuestion(nextType, prev.position);
-        return {
+        const carried: IntakeQuestion = {
           ...reseed,
           id: prev.id,
           label: prev.label,
           required: prev.required,
           helper: prev.helper,
           placeholder: prev.placeholder,
+          // #4514 — a condition stays; the door mark stays only where the new
+          // type can show at the door.
+          ...(prev.show_if !== undefined ? { show_if: prev.show_if } : {}),
+          ...(prev.show_at_door === true && isDoorType(nextType)
+            ? { show_at_door: true }
+            : {}),
+          ...(prev.show_at_door === true &&
+          isDoorType(nextType) &&
+          prev.door_label !== undefined
+            ? { door_label: prev.door_label }
+            : {}),
         };
+        return features.conditions ? withOptionIds(carried) : carried;
       });
       setPendingTypeSwitch(null);
     },
-    [],
+    [features],
   );
 
   const cancelTypeSwitch = useCallback(() => {
@@ -217,6 +268,17 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
         return "Min must be less than or equal to Max.";
       }
     }
+    if (
+      features.conditions &&
+      draft.show_if !== undefined &&
+      !conditionSources.some(
+        (s) =>
+          s.id === draft.show_if?.question_id &&
+          s.options.some((o) => o.id === draft.show_if?.option_id),
+      )
+    ) {
+      return "Pick the answer that shows this question, or turn off Show only if.";
+    }
     if (draft.type === "file_upload") {
       const allowedCount =
         (draft.allow_images === true ? 1 : 0) +
@@ -225,26 +287,60 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
       if (allowedCount === 0) return "Pick at least one allowed file type.";
     }
     return null;
-  }, [draft]);
+  }, [draft, features, conditionSources]);
 
   const handleSave = useCallback(() => {
     if (saveError !== null) return;
     // Trim label + drop empty option strings for choice types.
-    const cleaned: IntakeQuestion = { ...draft, label: draft.label.trim() };
+    let cleaned: IntakeQuestion = { ...draft, label: draft.label.trim() };
     if (
       cleaned.type === "single_choice" ||
       cleaned.type === "multi_choice"
     ) {
-      cleaned.options = (cleaned.options ?? [])
-        .map((o) => o.trim())
-        .filter((o) => o.length > 0);
+      // #4514 — brand forms keep each option's id in step with its label.
+      cleaned =
+        features.variant === "brand_form"
+          ? dropBlankOptions(cleaned)
+          : {
+              ...cleaned,
+              options: (cleaned.options ?? [])
+                .map((o) => o.trim())
+                .filter((o) => o.length > 0),
+            };
+    }
+    if (features.helpText) {
+      const h = (cleaned.helper ?? "").trim();
+      if (h.length === 0) {
+        const { helper: _h, ...rest } = cleaned;
+        void _h;
+        cleaned = rest;
+      } else {
+        cleaned = { ...cleaned, helper: h };
+      }
+    }
+    if (features.door) {
+      if (cleaned.show_at_door !== true || !isDoorType(cleaned.type)) {
+        const { show_at_door: _d, door_label: _l, ...rest } = cleaned;
+        void _d;
+        void _l;
+        cleaned = rest;
+      } else {
+        const label = (cleaned.door_label ?? "").trim();
+        if (label.length === 0) {
+          const { door_label: _l, ...rest } = cleaned;
+          void _l;
+          cleaned = rest;
+        } else {
+          cleaned = { ...cleaned, door_label: label };
+        }
+      }
     }
     if (cleaned.placeholder !== undefined) {
       const p = cleaned.placeholder.trim();
       cleaned.placeholder = p.length === 0 ? undefined : p;
     }
     onSave(cleaned);
-  }, [draft, saveError, onSave]);
+  }, [draft, saveError, onSave, features]);
 
   const labelLen = draft.label.length;
   const labelCounterColor =
@@ -291,6 +387,10 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
           {labelLen} / {LABEL_MAX}
         </Text>
 
+        {features.helpText ? (
+          <IntakeHelpTextField draft={draft} setDraft={setDraft} />
+        ) : null}
+
         {/* Type chip row */}
         <Text style={styles.fieldLabel}>Type</Text>
         <View
@@ -298,7 +398,9 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
           accessibilityRole="radiogroup"
           accessibilityLabel="Question type"
         >
-          {TYPE_ORDER.map((t) => (
+          {TYPE_ORDER.filter(
+            (t) => !(features.fileUploadLater && t === "file_upload"),
+          ).map((t) => (
             <IntakeQuestionTypePill
               key={t}
               label={TYPE_LABELS[t]}
@@ -315,9 +417,25 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
           <IntakeRequiredToggle
             value={draft.required}
             onValueChange={(next) => setField("required", next)}
+            audience={features.audience}
             testID="intake-editor-required-toggle"
           />
         </View>
+
+        {features.door || features.conditions ? (
+          <IntakeBrandFormFields
+            draft={draft}
+            setDraft={setDraft}
+            features={features}
+            otherDoorCount={otherDoorCount}
+            conditionSources={conditionSources}
+            dependents={dependentNumbers}
+            number={questionNumber}
+            typeLabel={TYPE_LABELS[draft.type]}
+            doorNoticeAcked={doorNoticeAcked}
+            onDoorNoticeAck={onDoorNoticeAck}
+          />
+        ) : null}
 
         {/* Type-specific config */}
         <View style={styles.typeConfigWrap}>
@@ -325,7 +443,12 @@ export const IntakeQuestionEditor: React.FC<IntakeQuestionEditorProps> = ({
             <TextConfig draft={draft} setField={setField} />
           )}
           {(draft.type === "single_choice" || draft.type === "multi_choice") && (
-            <ChoiceConfig draft={draft} setDraft={setDraft} />
+            <ChoiceConfig
+              draft={draft}
+              setDraft={setDraft}
+              optionMax={features.optionMax}
+              maxOptions={MAX_OPTIONS}
+            />
           )}
           {draft.type === "date" && <DateConfig />}
           {draft.type === "number" && (
@@ -424,10 +547,13 @@ const TextConfig: React.FC<TextConfigProps> = ({ draft, setField }) => {
 interface ChoiceConfigProps {
   draft: IntakeQuestion;
   setDraft: React.Dispatch<React.SetStateAction<IntakeQuestion>>;
+  /** #4514: longest option label (100 for trips, 80 for brand forms). */
+  optionMax: number;
+  maxOptions: number;
 }
 
 /** §3.4.C — single_choice + multi_choice: 2-10 options, drag-drop reorder. */
-const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft }) => {
+const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft, optionMax, maxOptions }) => {
   const options = draft.options ?? [];
 
   // Map options to {id, value} so DraggableFlatList has stable keys across
@@ -455,39 +581,38 @@ const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft }) => {
 
   const removeOption = useCallback(
     (index: number) => {
-      setDraft((prev) => {
-        const cur = prev.options ?? [];
-        if (cur.length <= MIN_OPTIONS) return prev;
-        return { ...prev, options: cur.filter((_, i) => i !== index) };
-      });
+      setDraft((prev) => removeOptionFrom(prev, index, MIN_OPTIONS));
     },
     [setDraft],
   );
 
   const addOption = useCallback(() => {
-    setDraft((prev) => {
-      const cur = prev.options ?? [];
-      if (cur.length >= MAX_OPTIONS) return prev;
-      return { ...prev, options: [...cur, ""] };
-    });
-  }, [setDraft]);
+    setDraft((prev) => addOptionTo(prev, maxOptions));
+  }, [setDraft, maxOptions]);
 
   const handleDragEnd = useCallback(
     (params: { data: typeof optionItems; from: number; to: number }) => {
-      setDraft((prev) => ({
-        ...prev,
-        options: params.data.map((d) => d.value),
-      }));
+      setDraft((prev) => {
+        const ids = prev.option_ids;
+        return {
+          ...prev,
+          options: params.data.map((d) => d.value),
+          // #4514 — keep each option's id with its label after a reorder.
+          ...(ids !== undefined
+            ? { option_ids: params.data.map((d) => ids[d.index] ?? newOptionId()) }
+            : {}),
+        };
+      });
     },
     [setDraft],
   );
 
-  const canAdd = options.length < MAX_OPTIONS;
+  const canAdd = options.length < maxOptions;
 
   return (
     <View>
       <Text style={styles.fieldLabel}>
-        Options ({options.length}/{MAX_OPTIONS})
+        Options ({options.length}/{maxOptions})
       </Text>
       <DraggableFlatList
         data={optionItems}
@@ -518,10 +643,10 @@ const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft }) => {
             </Pressable>
             <TextInput
               value={item.value}
-              onChangeText={(t) => updateOption(item.index, t.slice(0, 100))}
+              onChangeText={(t) => updateOption(item.index, t.slice(0, optionMax))}
               placeholder={`Option ${item.index + 1}`}
               placeholderTextColor={color.text4}
-              maxLength={100}
+              maxLength={optionMax}
               style={styles.optionInput}
               accessibilityLabel={`Option ${item.index + 1}`}
               autoCapitalize="sentences"
@@ -563,7 +688,7 @@ const ChoiceConfig: React.FC<ChoiceConfigProps> = ({ draft, setDraft }) => {
         ]}
       >
         <Text style={styles.addOptionLabel}>
-          {canAdd ? "+ Add option" : `Maximum ${MAX_OPTIONS} options`}
+          {canAdd ? "+ Add option" : `Maximum ${maxOptions} options`}
         </Text>
       </Pressable>
     </View>

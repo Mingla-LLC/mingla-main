@@ -43,6 +43,8 @@ export interface IntakeTypePickerSheetProps {
   onSelect: (type: IntakeQuestionType) => void;
   onCancel: () => void;
   testID?: string;
+  /** #4514: brand forms draw File upload disabled with "Coming later". */
+  fileUploadLater?: boolean;
 }
 
 interface TypeCard {
@@ -82,6 +84,7 @@ export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
   onSelect,
   onCancel,
   testID,
+  fileUploadLater = false,
 }) => {
   return (
     <Sheet
@@ -101,18 +104,23 @@ export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {TYPE_CARDS.map((card) => (
+          {TYPE_CARDS.map((card) => {
+            const later = fileUploadLater && card.type === "file_upload";
+            return (
             <Pressable
               key={card.type}
               accessibilityRole="button"
-              accessibilityLabel={`Add ${card.label} question`}
+              accessibilityLabel={later ? `${card.label}, coming later` : `Add ${card.label} question`}
               accessibilityHint={card.description}
+              accessibilityState={{ disabled: later }}
+              disabled={later}
               hitSlop={4}
               onPress={() => onSelect(card.type)}
               style={({ pressed }) => [
                 styles.cellPress,
                 card.span === 2 ? styles.cellFull : styles.cellHalf,
                 pressed && styles.cellPressed,
+                later && styles.cellLater,
               ]}
               testID={`intake-type-picker-${card.type}`}
             >
@@ -128,12 +136,13 @@ export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
                   </View>
                   <Text style={styles.label}>{card.label}</Text>
                   <Text style={styles.description} numberOfLines={1}>
-                    {card.description}
+                    {later ? "Coming later" : card.description}
                   </Text>
                 </View>
               </GlassCard>
             </Pressable>
-          ))}
+            );
+          })}
         </ScrollView>
       </View>
     </Sheet>
@@ -141,6 +150,9 @@ export const IntakeTypePickerSheet: React.FC<IntakeTypePickerSheetProps> = ({
 };
 
 const styles = StyleSheet.create({
+  cellLater: {
+    opacity: 0.5,
+  },
   container: {
     paddingTop: space[1],
   },

@@ -67,7 +67,8 @@ const fire = (node: Node, prop: string): void => {
   });
 };
 
-const ALL_PAGES = ["home", "hub", "ari", "overview", "campaigns", "ads", "creators", "referrals", "people", "templates"];
+// [TEST-MOD #4514] Forms joined Promote, right after Referrals.
+const ALL_PAGES = ["home", "hub", "ari", "overview", "campaigns", "ads", "creators", "referrals", "forms", "people", "templates"];
 
 /** The rail is a lazy chunk (#4389 bundle): flush until it has rendered. */
 async function renderRail(): Promise<Tree> {
@@ -127,7 +128,7 @@ describe("#4389 P3–P5 collapsed rail", () => {
     }
     const labels = [...ALL_PAGES, "expand", "account"].map((k) => item(tree, k).props.accessibilityLabel);
     expect(labels).toEqual([
-      "Home", "Hub", "Ari", "Overview", "Campaigns", "Ads", "Creators", "Referrals", "People", "Templates",
+      "Home", "Hub", "Ari", "Overview", "Campaigns", "Ads", "Creators", "Referrals", "Forms", "People", "Templates",
       "Expand sidebar", "Account",
     ]);
     // Press hides the bubble and navigates.

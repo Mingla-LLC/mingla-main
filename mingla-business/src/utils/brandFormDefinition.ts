@@ -156,8 +156,11 @@ export function schemaToDefinition(
     if (help !== undefined) out.help = help;
     if (isChoiceType(q.type)) {
       const ids = q.option_ids ?? [];
+      // A question seeded without ids (never in the builder, which gives each
+      // option one) gets a position-based id, so the same input always gives
+      // the same definition and "unsaved changes" stays stable.
       out.options = (q.options ?? []).map((label, i) => ({
-        id: ids[i] ?? newOptionId(),
+        id: ids[i] ?? `o${i + 1}`,
         label,
       }));
     }

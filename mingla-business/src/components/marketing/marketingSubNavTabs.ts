@@ -10,6 +10,7 @@ export type MarketingSubNavId =
   | "ads"
   | "creators"
   | "referrals"
+  | "forms"
   | "people"
   | "templates";
 
@@ -26,6 +27,9 @@ export const MARKETING_SUB_NAV_TABS: ReadonlyArray<MarketingSubNavTab> = [
   { id: "ads", label: "Ads", path: "/(tabs)/marketing/ads" },
   { id: "creators", label: "Creators", path: "/(tabs)/marketing/creators" },
   { id: "referrals", label: "Referrals", path: "/(tabs)/marketing/referrals" },
+  // #4514 — host-built forms live in Promote, after Referrals. This one entry
+  // drives the phone pill and the desktop side-menu item together.
+  { id: "forms", label: "Forms", path: "/(tabs)/marketing/forms" },
   { id: "people", label: "People", path: "/(tabs)/marketing/people" },
   { id: "templates", label: "Templates", path: "/(tabs)/marketing/templates" },
 ];
@@ -41,6 +45,7 @@ export const MARKETING_SECTION_TITLES: Readonly<Record<MarketingSubNavId, string
   ads: "Ads",
   creators: "Creators",
   referrals: "Referrals",
+  forms: "Forms",
   people: "People",
   templates: "Templates",
 };
@@ -54,7 +59,10 @@ export function isMarketingDetailRoute(pathname: string): boolean {
   const lower = pathname.toLowerCase();
   return (
     /\/marketing\/campaigns\/(?!compose(?:\/|$))[^/?#]+/.test(lower) ||
-    /\/marketing\/templates\/[^/?#]+/.test(lower)
+    /\/marketing\/templates\/[^/?#]+/.test(lower) ||
+    // #4514 — the form builder and its Responses page are focused pages with
+    // their own back header, so the section pills step aside there too.
+    /\/marketing\/forms\/[^/?#]+/.test(lower)
   );
 }
 
@@ -66,6 +74,7 @@ export function detectMarketingSubNavActive(pathname: string): MarketingSubNavId
   if (lower.includes("/marketing/ads")) return "ads";
   if (lower.includes("/marketing/creators")) return "creators";
   if (lower.includes("/marketing/referrals")) return "referrals";
+  if (lower.includes("/marketing/forms")) return "forms";
   return "overview";
 }
 
