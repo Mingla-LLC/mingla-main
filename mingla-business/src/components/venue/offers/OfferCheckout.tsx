@@ -41,6 +41,7 @@ import { parsePhoneEntry, resolvePhoneStartCountry } from "@mingla/phone-input/p
 import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
 import {
   ENTRY_EMAIL_PATTERN,
+  bookingVat,
   countdownText,
   entryDateLabel,
   holdSecondsLeft,
@@ -371,7 +372,7 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
           lines={summaryLines(orderLinesByOptions(held.booking.lines, offer?.options.map((o) => o.id) ?? []), {
             currencyCode: held.booking.currencyCode,
             exponent: offer?.exponent ?? 2,
-            taxMinor: held.booking.taxMinor,
+            taxMinor: bookingVat(held.booking, offer?.vat?.ratePct ?? null).taxMinor,
             feeMinor: held.booking.feeMinor,
             totalMinor: held.booking.totalMinor,
             vatMode: held.booking.vatMode,

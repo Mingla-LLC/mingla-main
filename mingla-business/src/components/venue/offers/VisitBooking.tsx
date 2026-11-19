@@ -42,7 +42,7 @@ import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
 import {
   cancelledMoneyLine,
   currencyExponent,
-  impliedVatRatePct,
+  bookingVat,
   countdownText,
   entryDateLabel,
   holdSecondsLeft,
@@ -218,25 +218,29 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
   // offer's own price order, the order checkout showed. Best effort: if the offer
   // cannot be read, the order from the booking stays.
   const [optionOrder, setOptionOrder] = useState<readonly string[]>([]);
+  const [offerVatRatePct, setOfferVatRatePct] = useState<number | null>(null);
   const orderBrandSlug = booking?.venue.brandSlug ?? null;
   const orderVenueSlug = booking?.venue.slug ?? null;
   const orderOfferId = booking?.offer.id ?? null;
   const hasManyLines = (booking?.lines.length ?? 0) > 1;
+  const needsVatRate = booking?.vatMode === "included" && (booking?.taxMinor ?? 0) === 0;
   useEffect(() => {
-    if (!hasManyLines || orderBrandSlug === null || orderVenueSlug === null || orderOfferId === null) return undefined;
+    if (!(hasManyLines || needsVatRate) || orderBrandSlug === null || orderVenueSlug === null || orderOfferId === null) return undefined;
     let stopped = false;
     venueOfferGuestService
       .offer({ brandSlug: orderBrandSlug, venueSlug: orderVenueSlug, offeringId: orderOfferId })
       .then(
         (detail) => {
-          if (!stopped) setOptionOrder(detail.options.map((o) => o.id));
+          if (stopped) return;
+          setOptionOrder(detail.options.map((o) => o.id));
+          setOfferVatRatePct(detail.vat?.ratePct ?? null);
         },
         () => undefined,
       );
     return () => {
       stopped = true;
     };
-  }, [hasManyLines, orderBrandSlug, orderVenueSlug, orderOfferId]);
+  }, [hasManyLines, needsVatRate, orderBrandSlug, orderVenueSlug, orderOfferId]);
 
   const view = booking === null ? null : visitViewFor(booking, now);
   useEffect(() => {
@@ -486,11 +490,11 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
         lines={summaryLines(orderLinesByOptions(booking.lines, optionOrder), {
           currencyCode: booking.currencyCode,
           exponent,
-          taxMinor: booking.taxMinor,
+          taxMinor: bookingVat(booking, offerVatRatePct).taxMinor,
           feeMinor: booking.feeMinor,
           totalMinor: booking.totalMinor,
           vatMode: booking.vatMode,
-          vatRatePct: impliedVatRatePct(booking),
+          vatRatePct: bookingVat(booking, offerVatRatePct).ratePct,
         })}
       />
       {view.kind === "confirmed" && booking.paidMinor > 0 && booking.guest.email !== null ? (

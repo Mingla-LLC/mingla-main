@@ -9,6 +9,7 @@ import React from "react";
 import { describe, expect, it, jest } from "@jest/globals";
 
 import {
+  bookingVat,
   orderLinesByOptions,
   parseEntryQuote,
   summaryLines,
@@ -361,5 +362,17 @@ describe("the wide side panel and the phone sheets all have a Close", () => {
     ]) {
       expect(read(`src/components/venue/${f}`)).toContain("<PickerSheetHead");
     }
+  });
+});
+
+describe("H3 a booking with VAT included still says what VAT is inside the price", () => {
+  it("works the amount out from the rate when the booking reports tax 0", () => {
+    const vat = bookingVat({ taxMinor: 0, totalMinor: 1000000, feeMinor: 0, vatMode: "included" }, 7.5);
+    expect(vat).toEqual({ taxMinor: 69767, ratePct: 7.5 });
+  });
+  it("keeps the stored tax when VAT was added, and says nothing when there is no rate or no VAT", () => {
+    expect(bookingVat({ taxMinor: 75000, totalMinor: 1075000, feeMinor: 0, vatMode: "added" }, 7.5).taxMinor).toBe(75000);
+    expect(bookingVat({ taxMinor: 0, totalMinor: 1000000, feeMinor: 0, vatMode: "included" }, null).taxMinor).toBe(0);
+    expect(bookingVat({ taxMinor: 0, totalMinor: 1000000, feeMinor: 0, vatMode: "none" }, 7.5).taxMinor).toBe(0);
   });
 });

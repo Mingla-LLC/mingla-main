@@ -963,6 +963,23 @@ export function impliedVatRatePct(booking: Pick<EntryBooking, "taxMinor" | "tota
   return Math.round((booking.taxMinor / base) * 1000) / 10;
 }
 
+/**
+ * The VAT shown on a booking. A booking read reports tax 0 when VAT is included in the
+ * price, so the amount inside the price is worked out from the rate: total x rate / (100 + rate)
+ * (the same split the quote uses). Added VAT keeps the stored tax.
+ */
+export function bookingVat(
+  booking: Pick<EntryBooking, "taxMinor" | "totalMinor" | "feeMinor" | "vatMode">,
+  offerRatePct: number | null,
+): { taxMinor: number; ratePct: number } {
+  if (booking.taxMinor > 0) return { taxMinor: booking.taxMinor, ratePct: impliedVatRatePct(booking) };
+  if (booking.vatMode !== "included" || offerRatePct === null || offerRatePct <= 0) {
+    return { taxMinor: 0, ratePct: 0 };
+  }
+  const priced = Math.max(0, booking.totalMinor - booking.feeMinor);
+  return { taxMinor: Math.round((priced * offerRatePct) / (100 + offerRatePct)), ratePct: offerRatePct };
+}
+
 /** Seconds left on a hold (0 when gone or unknown). */
 export function holdSecondsLeft(holdUntil: string | null, now: number): number {
   if (holdUntil === null) return 0;
