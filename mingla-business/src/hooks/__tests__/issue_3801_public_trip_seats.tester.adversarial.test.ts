@@ -358,7 +358,9 @@ describe("issue #3801 tester — the payment-readiness check still runs", () => 
   });
 
   it("a paid trip is not bookable when the readiness check errors", async () => {
-    canCollect = { data: null, error: { message: "boom" } };
+    // [TEST-MOD #4518] a SERVER error (it carries a code) still closes paid
+    // supply; a request that never got an answer no longer does.
+    canCollect = { data: null, error: { code: "42501", message: "boom" } };
     const { bookable } = await read([capped("Paid", 8, 8, 25000)]);
     expect(bookable).toBe(false);
   });

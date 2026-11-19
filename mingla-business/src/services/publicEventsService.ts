@@ -20,7 +20,7 @@ import { readBundleHideRemainingCount } from "@mingla/offering-rendering/remaini
 
 import { supabase } from "./supabase";
 import { isTransportFailure, resolveOfferingBookable } from "./brandCanCollect";
-import { noteUnrestrictedCheckout } from "./eventTicketCheckoutAccessService";
+import { noteUnrestrictedCheckout } from "./checkoutAccessHints";
 import type { PublicTierPricing } from "./publicTierPricingService";
 // issue #2160 — the shared occurrence shape. The direct `event_dates` READ in
 // that module is deleted; only the TYPE survives, because it is the contract

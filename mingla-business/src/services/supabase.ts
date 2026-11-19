@@ -156,36 +156,34 @@ export const laneEdgeEndpoint: {
   : null;
 
 /**
+ * #4518 — the fetch every database call on Host web goes through, including
+ * the ones that do not use the client (`laneEdgeInvoke`).
+ */
+const trackedFetch = createTrackedFetch(() => fetch);
+
+export const supabaseFetch = createResilientFetch(() => trackedFetch, {
+  directOrigin: supabaseUrl,
+  // Web only. Where the `/_sb` rewrite does not exist (local dev), the probe
+  // sees the HTML app shell instead of the database and the road never
+  // switches.
+  enabled: Platform.OS === "web" && typeof window !== "undefined",
+});
+
+/**
  * #2107 (Sentry REACT-NATIVE-1C): every Supabase request is counted while it is
  * on the wire, and held — not sent, not rejected — while an in-app restart is in
  * progress, so nothing reaches RCTNetworking while the bridge tears down. The
  * global fetch is read at call time, exactly like supabase-js's default. On web
  * Metro resolves reloadNetworkFence.web.ts, a plain pass-through.
  */
-/**
- * #4518 — the fetch every database call on Host web goes through, including
- * the ones that do not use the client (`laneEdgeInvoke`).
- */
-export const supabaseFetch = createResilientFetch(() => fetch, {
-  directOrigin: supabaseUrl,
-  enabled:
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    // The second road exists only where the `/_sb` rewrite does.
-    /(^|\.)usemingla\.com$/.test(window.location?.hostname ?? ""),
-});
-
 function withRestartFence<O extends { global: { headers: Record<string, string> } }>(
   options: O,
 ): O & { global: O["global"] & { fetch: typeof fetch } } {
   return {
     ...options,
-    global: {
-      ...options.global,
-      // #4518 — on web, a request that cannot reach the database host is
-      // retried through our own origin (`/_sb`). Native: a pass-through.
-      fetch: createTrackedFetch(() => supabaseFetch),
-    },
+    // #2107 restart fence inside; #4518 same-origin second road around it
+    // (web only; native is a pass-through).
+    global: { ...options.global, fetch: supabaseFetch },
   };
 }
 

@@ -38,13 +38,13 @@ import {
   addUsernameToEventTicketCheckoutAccess,
   fetchEventTicketCheckoutAccess,
   fetchPublicTicketCheckoutAccess,
-  hintedCheckoutAccess,
   removeEventTicketCheckoutAccessMember,
   setEventTicketCheckoutAccessMode,
   type EventTicketCheckoutAccess,
   type EventTicketCheckoutAccessMutationResult,
   type PublicTicketCheckoutAccess,
 } from "../services/eventTicketCheckoutAccessService";
+import { hintedCheckoutAccess } from "../services/checkoutAccessHints";
 import { isBusinessAuthScopeResolved } from "../utils/authReadiness";
 
 export const eventTicketCheckoutAccessKeys = {

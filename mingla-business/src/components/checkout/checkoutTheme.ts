@@ -41,7 +41,6 @@ import {
   inkWash,
   neutralControl,
   neutralHair,
-  paletteIsDark,
   statusOn,
   themeTextAccent,
   type ThemePalette,
@@ -85,8 +84,8 @@ export const CHECKOUT_OUTLINE_MIN_CONTRAST = 3;
  */
 export function checkoutOutlineFor(palette: ThemePalette): string {
   const page = normalizeHex(palette.page);
-  if (page === null) return neutralControl(palette);
-  const ink = paletteIsDark(palette) ? "#ffffff" : "#10141f";
+  const ink = normalizeHex(palette.primaryText);
+  if (page === null || ink === null) return neutralControl(palette);
   for (let amount = 0.34; amount < 1; amount += 0.04) {
     const candidate = mixHex(page, ink, amount);
     if (contrastRatio(candidate, page) >= CHECKOUT_OUTLINE_MIN_CONTRAST) return candidate;

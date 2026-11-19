@@ -5252,6 +5252,19 @@
       "paths": [
         "supabase/migrations/20280809003645_issue_3645_payout_gaps.sql"
       ]
+    },
+    {
+      "capability_key": "checkout-tickets",
+      "paths": [
+        "mingla-business/api/event-checkout-bundle.js",
+        "mingla-business/src/hooks/useEventTicketCheckoutAccess.ts",
+        "mingla-business/src/services/brandCanCollect.ts",
+        "mingla-business/src/services/eventTicketCheckoutAccessService.ts",
+        "mingla-business/src/services/laneEdgeInvoke.ts",
+        "mingla-business/src/services/resilientFetch.ts",
+        "mingla-business/src/services/supabase.ts",
+        "mingla-business/src/theme/surfaceTokens.ts"
+      ]
     }
   ]
 }
