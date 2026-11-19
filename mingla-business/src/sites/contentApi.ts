@@ -19,6 +19,7 @@ import {
   invokeBrandSiteControl,
 } from "../services/brandSitesService";
 import { brandSiteKeys } from "./brandSiteKeys";
+import { refusalDetailFrom, refusalSentence } from "./refusalCopy";
 import type { RichTextDoc } from "../../../packages/site-contracts/src/richText.ts";
 import {
   PREVIEW_DEVICE_KEY,
@@ -169,8 +170,14 @@ async function contentCall<T>(siteId: string, action: string, args: Record<strin
           updatedByName: typeof latest.updated_by_name === "string" ? latest.updated_by_name : null,
         });
       }
+      // What Core relayed about the refusal (a limit, what was wrong) makes the sentence exact.
+      const detail = refusalDetailFrom(body?.error);
       if (typeof code === "string" && CONTENT_MESSAGES[code]) {
-        throw new BrandSitesError(code, CONTENT_MESSAGES[code]!, false);
+        throw new BrandSitesError(code, refusalSentence(code, CONTENT_MESSAGES[code]!, detail), false);
+      }
+      if (code === "VALIDATION_FAILED") {
+        const sentence = refusalSentence(code, "", detail);
+        if (sentence) throw new BrandSitesError(code, sentence, false);
       }
       throw brandSitesErrorFrom(typeof context.status === "number" ? context.status : null, body);
     }
