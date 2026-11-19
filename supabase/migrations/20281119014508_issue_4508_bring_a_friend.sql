@@ -41,12 +41,36 @@ SET LOCAL lock_timeout = '10s';
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.event_rsvp_guests ALTER COLUMN name DROP NOT NULL;
 ALTER TABLE public.event_rsvp_guests ALTER COLUMN email DROP NOT NULL;
+-- C1: a friend picked from the friends list who has no proven number is still
+-- a guest (in-app and push only), so the number may be absent too.
+ALTER TABLE public.event_rsvp_guests ALTER COLUMN phone DROP NOT NULL;
+-- Plain columns first; their foreign keys are added NOT VALID and validated in
+-- separate statements below, so the ShareRowExclusive lock on auth.users is
+-- held only for the catalogue change, never for a scan.
 ALTER TABLE public.event_rsvp_guests
-  ADD COLUMN IF NOT EXISTS invited_by_user_id uuid NULL
-    REFERENCES auth.users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS invited_by_user_id uuid NULL,
   ADD COLUMN IF NOT EXISTS claimed_at timestamptz NULL,
-  ADD COLUMN IF NOT EXISTS brought_by_guest_id uuid NULL
-    REFERENCES public.event_rsvp_guests(id) ON DELETE CASCADE;
+  ADD COLUMN IF NOT EXISTS brought_by_guest_id uuid NULL,
+  ADD COLUMN IF NOT EXISTS added_from_friend boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS sms_hold text NULL,
+  ADD COLUMN IF NOT EXISTS show_me_as_going boolean NOT NULL DEFAULT false;
+ALTER TABLE public.event_rsvp_guests
+  DROP CONSTRAINT IF EXISTS event_rsvp_guests_invited_by_user_id_fkey;
+ALTER TABLE public.event_rsvp_guests
+  ADD CONSTRAINT event_rsvp_guests_invited_by_user_id_fkey
+  FOREIGN KEY (invited_by_user_id) REFERENCES auth.users(id) ON DELETE SET NULL NOT VALID;
+ALTER TABLE public.event_rsvp_guests
+  VALIDATE CONSTRAINT event_rsvp_guests_invited_by_user_id_fkey;
+ALTER TABLE public.event_rsvp_guests
+  DROP CONSTRAINT IF EXISTS event_rsvp_guests_brought_by_guest_id_fkey;
+ALTER TABLE public.event_rsvp_guests
+  ADD CONSTRAINT event_rsvp_guests_brought_by_guest_id_fkey
+  FOREIGN KEY (brought_by_guest_id) REFERENCES public.event_rsvp_guests(id) ON DELETE CASCADE NOT VALID;
+ALTER TABLE public.event_rsvp_guests
+  VALIDATE CONSTRAINT event_rsvp_guests_brought_by_guest_id_fkey;
+ALTER TABLE public.event_rsvp_guests DROP CONSTRAINT IF EXISTS event_rsvp_guests_sms_hold_check;
+ALTER TABLE public.event_rsvp_guests ADD CONSTRAINT event_rsvp_guests_sms_hold_check
+  CHECK (sms_hold IS NULL OR sms_hold IN ('no_phone', 'number_limit'));
 CREATE INDEX IF NOT EXISTS event_rsvp_guests_invited_by_idx
   ON public.event_rsvp_guests (invited_by_user_id) WHERE invited_by_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS event_rsvp_guests_brought_by_idx
@@ -57,6 +81,37 @@ COMMENT ON COLUMN public.event_rsvp_guests.claimed_at IS
   '#4508: when the guest claimed the pass in the app (rsvp_guest_claim).';
 COMMENT ON COLUMN public.event_rsvp_guests.brought_by_guest_id IS
   '#4508 2.5: the claimed guest who brought this guest (guests bring guests).';
+COMMENT ON COLUMN public.event_rsvp_guests.added_from_friend IS
+  '#4508 C1: the inviter picked this guest from their friends list; the server resolved the number and never returns it.';
+COMMENT ON COLUMN public.event_rsvp_guests.sms_hold IS
+  '#4508: why this guest is never texted (no_phone: a friend with no proven number; number_limit: the number already had 3 guest invites in 24 hours).';
+COMMENT ON COLUMN public.event_rsvp_guests.show_me_as_going IS
+  '#4508 D-2.4: a claimed guest shows on the public Who''s going list only while this is on. Default off, as for any RSVP.';
+-- D-2.4: the consent is the guest's own; host and staff writes never flip it
+-- (the same owner-only rule #3682 put on event_rsvps).
+CREATE OR REPLACE FUNCTION public.tg_issue_4508_guest_show_me_owner_only()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $g$
+BEGIN
+  IF OLD.show_me_as_going IS NOT DISTINCT FROM NEW.show_me_as_going THEN
+    RETURN NEW;
+  END IF;
+  IF auth.uid() IS NOT NULL AND auth.uid() = NEW.matched_user_id
+     AND NEW.claimed_at IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  IF auth.uid() IS NULL AND current_user IN ('postgres', 'supabase_admin') THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'show_me_as_going_owner_only' USING ERRCODE = '42501';
+END;
+$g$;
+REVOKE ALL ON FUNCTION public.tg_issue_4508_guest_show_me_owner_only() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS issue_4508_guest_show_me_owner_only ON public.event_rsvp_guests;
+CREATE TRIGGER issue_4508_guest_show_me_owner_only
+  BEFORE UPDATE OF show_me_as_going ON public.event_rsvp_guests
+  FOR EACH ROW EXECUTE FUNCTION public.tg_issue_4508_guest_show_me_owner_only();
 
 ALTER TABLE public.events
   ADD COLUMN IF NOT EXISTS rsvp_guests_can_bring boolean NOT NULL DEFAULT false;
@@ -89,12 +144,21 @@ CREATE TABLE IF NOT EXISTS public.rsvp_guest_releases (
   inviter_user_id uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
   claim_code text NULL,
   released_at timestamptz NOT NULL DEFAULT now(),
+  -- P3-8: who released it so far (user:<id> or rsvp:<party id>) and how often.
+  release_count integer NOT NULL DEFAULT 1,
+  inviter_keys text[] NOT NULL DEFAULT '{}',
   CONSTRAINT rsvp_guest_releases_event_number UNIQUE (event_id, phone_digits)
 );
 CREATE INDEX IF NOT EXISTS rsvp_guest_releases_code_idx
   ON public.rsvp_guest_releases (claim_code) WHERE claim_code IS NOT NULL;
 COMMENT ON TABLE public.rsvp_guest_releases IS
-  '#4508 1.18: "This isn''t me". The number is never texted again for this event and cannot be re-added to it.';
+  '#4508 1.18: "This isn''t me". The inviter whose guest was released can never text or re-add that number for this event; another inviter may add it once, and a second release bars it for the whole event (rsvp_guest_number_barred).';
+-- The codes of every released guest row (a number may be released twice).
+CREATE TABLE IF NOT EXISTS public.rsvp_guest_released_codes (
+  claim_code text PRIMARY KEY,
+  release_id uuid NOT NULL REFERENCES public.rsvp_guest_releases(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS public.rsvp_guest_invite_log (
   id bigserial PRIMARY KEY,
@@ -105,8 +169,28 @@ CREATE TABLE IF NOT EXISTS public.rsvp_guest_invite_log (
 );
 CREATE INDEX IF NOT EXISTS rsvp_guest_invite_log_window_idx
   ON public.rsvp_guest_invite_log (inviter_key, created_at);
+CREATE INDEX IF NOT EXISTS rsvp_guest_invite_log_number_idx
+  ON public.rsvp_guest_invite_log (phone_digits, created_at);
+CREATE INDEX IF NOT EXISTS rsvp_guest_invite_log_event_idx
+  ON public.rsvp_guest_invite_log (event_id, created_at);
 COMMENT ON TABLE public.rsvp_guest_invite_log IS
-  '#4508 1.9: one row per guest number added by an inviter (user:<id> or phone:<digits>); the 24-hour cap counts these, so removing and re-adding does not reset it.';
+  '#4508 1.9: one row per guest number added by an inviter. inviter_key is user:<id> for a signed-in inviter and ip:<salted hash> for a signed-out one (never the unverified number they typed). The caps count these rows, so removing and re-adding does not reset them: 20 per inviter, 30 per event from signed-out inviters, and a number past 3 in 24 hours is added but not texted.';
+
+-- P3-5: the friend-is-going enqueue never blocks an RSVP, and a failure is
+-- recorded here (the rsvp-notify tick reports unreported rows) rather than
+-- dropped.
+CREATE TABLE IF NOT EXISTS public.rsvp_friend_going_failures (
+  id bigserial PRIMARY KEY,
+  event_id uuid NULL,
+  actor_user_id uuid NULL,
+  sql_state text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  reported_at timestamptz NULL
+);
+CREATE INDEX IF NOT EXISTS rsvp_friend_going_failures_unreported_idx
+  ON public.rsvp_friend_going_failures (created_at) WHERE reported_at IS NULL;
+COMMENT ON TABLE public.rsvp_friend_going_failures IS
+  '#4508 P3-5: a friend-is-going enqueue that failed inside the RSVP trigger. Reported once by rsvp-notify (issue_4508_take_friend_going_failures).';
 
 CREATE TABLE IF NOT EXISTS public.rsvp_guest_connections (
   guest_id uuid PRIMARY KEY,
@@ -141,7 +225,8 @@ DO $rls$
 DECLARE v_table text;
 BEGIN
   FOREACH v_table IN ARRAY ARRAY['rsvp_guest_releases', 'rsvp_guest_invite_log',
-    'rsvp_guest_connections', 'rsvp_friend_going_notices'] LOOP
+    'rsvp_guest_connections', 'rsvp_friend_going_notices', 'rsvp_guest_released_codes',
+    'rsvp_friend_going_failures'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_table);
     EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', v_table);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, anon, authenticated', v_table);
@@ -151,52 +236,77 @@ END
 $rls$;
 REVOKE ALL ON SEQUENCE public.rsvp_guest_invite_log_id_seq FROM PUBLIC, anon, authenticated;
 GRANT USAGE, SELECT ON SEQUENCE public.rsvp_guest_invite_log_id_seq TO service_role;
+REVOKE ALL ON SEQUENCE public.rsvp_friend_going_failures_id_seq FROM PUBLIC, anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE public.rsvp_friend_going_failures_id_seq TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 2. Names
 -- ---------------------------------------------------------------------------
+-- P2-2: a name that reaches a Mingla-branded text is reduced to letters,
+-- spaces, hyphens and apostrophes. Empty when nothing survives.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_safe_name_part(p_value text)
+RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
+AS $function$
+  SELECT NULLIF(btrim(regexp_replace(
+    regexp_replace(coalesce(p_value, ''), '[^[:alpha:] ''-]', '', 'g'),
+    '[[:space:]]+', ' ', 'g')), '');
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_guest_safe_name_part(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_safe_name_part(text) TO service_role;
+
 -- The inviter of a guest: who added the number, else the party's primary.
+-- first_name and label are always made of letters, spaces, hyphens and
+-- apostrophes (label adds " L." for a last initial), at most 24 characters.
+-- A signed-out inviter's typed name gets the same treatment; nothing left
+-- means NULL, which every caller renders as "A friend".
 CREATE OR REPLACE FUNCTION public.rsvp_guest_inviter_names(p_guest_id uuid)
 RETURNS TABLE (inviter_user_id uuid, first_name text, label text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $function$
-  WITH src AS (
+  WITH raw AS (
     SELECT COALESCE(g.invited_by_user_id, r.user_id) AS uid,
-           COALESCE(
-             NULLIF(btrim(p.first_name), ''),
-             NULLIF(split_part(btrim(COALESCE(p.display_name, '')), ' ', 1), ''),
-             NULLIF(split_part(btrim(COALESCE(
-               CASE WHEN g.invited_by_user_id IS NULL OR g.invited_by_user_id = r.user_id
-                 THEN r.guest_name END, '')), ' ', 1), ''),
-             NULLIF(btrim(p.username), '')
-           ) AS first_name,
-           COALESCE(
-             NULLIF(btrim(p.last_name), ''),
-             NULLIF(btrim(substr(btrim(COALESCE(p.display_name, '')),
-               length(split_part(btrim(COALESCE(p.display_name, '')), ' ', 1)) + 1)), ''),
-             NULLIF(btrim(substr(btrim(COALESCE(
-               CASE WHEN g.invited_by_user_id IS NULL OR g.invited_by_user_id = r.user_id
-                 THEN r.guest_name END, '')),
-               length(split_part(btrim(COALESCE(
-                 CASE WHEN g.invited_by_user_id IS NULL OR g.invited_by_user_id = r.user_id
-                   THEN r.guest_name END, '')), ' ', 1)) + 1)), '')
-           ) AS last_name
+           CASE WHEN g.invited_by_user_id IS NULL OR g.invited_by_user_id = r.user_id
+             THEN r.guest_name END AS typed,
+           p.first_name AS p_first, p.last_name AS p_last,
+           p.display_name AS p_display, p.username AS p_username
       FROM public.event_rsvp_guests g
       JOIN public.event_rsvps r ON r.id = g.rsvp_id
       LEFT JOIN public.profiles p ON p.id = COALESCE(g.invited_by_user_id, r.user_id)
      WHERE g.id = p_guest_id
+  ), parts AS (
+    SELECT raw.uid,
+           COALESCE(
+             public.rsvp_guest_safe_name_part(raw.p_first),
+             public.rsvp_guest_safe_name_part(split_part(btrim(coalesce(raw.p_display, '')), ' ', 1)),
+             public.rsvp_guest_safe_name_part(split_part(btrim(coalesce(raw.typed, '')), ' ', 1)),
+             public.rsvp_guest_safe_name_part(raw.p_username)
+           ) AS first_raw,
+           COALESCE(
+             public.rsvp_guest_safe_name_part(raw.p_last),
+             public.rsvp_guest_safe_name_part(substr(btrim(coalesce(raw.p_display, '')),
+               length(split_part(btrim(coalesce(raw.p_display, '')), ' ', 1)) + 1)),
+             public.rsvp_guest_safe_name_part(substr(btrim(coalesce(raw.typed, '')),
+               length(split_part(btrim(coalesce(raw.typed, '')), ' ', 1)) + 1))
+           ) AS last_raw
+      FROM raw
+  ), bounded AS (
+    SELECT parts.uid,
+           NULLIF(btrim(left(split_part(parts.first_raw, ' ', 1), 20)), '') AS first_name,
+           upper(left(NULLIF(regexp_replace(coalesce(parts.last_raw, ''), '[^[:alpha:]]', '', 'g'), ''), 1)) AS initial
+      FROM parts
   )
-  SELECT src.uid,
-         src.first_name,
+  SELECT bounded.uid,
+         bounded.first_name,
          CASE
-           WHEN src.first_name IS NULL THEN NULL
-           WHEN src.last_name IS NULL OR src.last_name = 'Guest' THEN src.first_name
-           ELSE src.first_name || ' ' || upper(left(src.last_name, 1)) || '.'
+           WHEN bounded.first_name IS NULL THEN NULL
+           WHEN bounded.initial IS NULL OR lower(bounded.first_name) = 'guest' THEN bounded.first_name
+           ELSE bounded.first_name || ' ' || bounded.initial || '.'
          END
-    FROM src;
+    FROM bounded;
 $function$;
 COMMENT ON FUNCTION public.rsvp_guest_inviter_names(uuid) IS
-  '#4508: the inviter of a guest (who added the number, else the primary): account id, first name, and "First L." for texts.';
+  '#4508: the inviter of a guest (who added the number, else the primary): account id, first name, and "First L." for texts. Letters, spaces, hyphens and apostrophes only, at most 24 characters; NULL when nothing survives.';
 REVOKE ALL ON FUNCTION public.rsvp_guest_inviter_names(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rsvp_guest_inviter_names(uuid) TO service_role;
 
@@ -226,7 +336,10 @@ CREATE OR REPLACE FUNCTION public.rsvp_guest_invite_status(p_guest_id uuid)
 RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $function$
-  SELECT COALESCE((
+  SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM public.event_rsvp_guests g
+     WHERE g.id = p_guest_id AND (g.sms_hold IS NOT NULL OR g.phone IS NULL))
+  THEN 'not_texted' ELSE COALESCE((
     SELECT CASE
              WHEN d.status = 'sent' THEN 'sent'
              WHEN d.status IN ('failed_terminal', 'ambiguous') THEN 'failed'
@@ -239,7 +352,7 @@ AS $function$
        AND n.payload->>'guestId' = p_guest_id::text
      ORDER BY n.created_at DESC
      LIMIT 1
-  ), 'not_texted');
+  ), 'not_texted') END;
 $function$;
 COMMENT ON FUNCTION public.rsvp_guest_invite_status(uuid) IS
   '#4508: sent | sending | failed | not_texted for the guest''s invite text. A failed or suppressed text is never retried.';
@@ -326,6 +439,211 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION public.rsvp_user_on_event_list(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rsvp_user_on_event_list(uuid, uuid, uuid) TO service_role;
+
+-- C1: the number an account has PROVED (a code received at it), the same
+-- proof account_owns_contact accepts. NULL when it has none. Never returned
+-- to a client.
+CREATE OR REPLACE FUNCTION public.rsvp_account_proven_phone(p_user_id uuid)
+RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_phone text;
+  v_number_expr text;
+BEGIN
+  IF p_user_id IS NULL THEN RETURN NULL; END IF;
+  FOR v_phone IN
+    SELECT c.phone FROM (
+      SELECT v.phone_e164 AS phone, 1 AS rank, v.verified_at AS at
+        FROM public.verified_phone_identities v WHERE v.user_id = p_user_id
+      UNION ALL
+      SELECT a.value, 2, a.last_proved_at
+        FROM public.account_claim_contacts a
+       WHERE a.user_id = p_user_id AND a.channel = 'phone' AND a.revoked_at IS NULL
+    ) c
+    WHERE c.phone ~ '^\+[1-9][0-9]{7,14}$'
+    ORDER BY c.rank, c.at DESC
+  LOOP
+    IF public.account_owns_contact(p_user_id, NULL, v_phone) THEN RETURN v_phone; END IF;
+  END LOOP;
+  IF to_regclass('auth.identities') IS NOT NULL THEN
+    v_number_expr := CASE
+      WHEN EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'auth' AND table_name = 'users' AND column_name = 'phone'
+      ) THEN 'coalesce(i.identity_data->>''phone'', u.phone)'
+      ELSE 'i.identity_data->>''phone'''
+    END;
+    FOR v_phone IN EXECUTE format($q$
+      SELECT '+' || regexp_replace(coalesce(%1$s, ''), '[^0-9]', '', 'g')
+        FROM auth.identities i
+        JOIN auth.users u ON u.id = i.user_id
+       WHERE i.user_id = $1 AND i.provider = 'phone'
+       ORDER BY i.last_sign_in_at DESC NULLS LAST
+    $q$, v_number_expr) USING p_user_id
+    LOOP
+      IF v_phone ~ '^\+[1-9][0-9]{7,14}$'
+         AND public.account_owns_contact(p_user_id, NULL, v_phone) THEN
+        RETURN v_phone;
+      END IF;
+    END LOOP;
+  END IF;
+  RETURN NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_account_proven_phone(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_account_proven_phone(uuid) TO service_role;
+
+-- C1: two accounts are friends for a friend-picked guest (accepted, not
+-- removed) and neither has blocked the other.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_friend_pickable(p_inviter uuid, p_friend uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+  SELECT p_inviter IS NOT NULL AND p_friend IS NOT NULL AND p_inviter <> p_friend
+    AND EXISTS (
+      SELECT 1 FROM public.friends f
+       WHERE f.status = 'accepted' AND f.deleted_at IS NULL
+         AND ((f.user_id = p_inviter AND f.friend_user_id = p_friend)
+           OR (f.user_id = p_friend AND f.friend_user_id = p_inviter)))
+    AND NOT public.has_block_between(p_inviter, p_friend)
+    AND NOT EXISTS (
+      SELECT 1 FROM public.friends b
+       WHERE b.status = 'blocked' AND b.deleted_at IS NULL
+         AND ((b.user_id = p_inviter AND b.friend_user_id = p_friend)
+           OR (b.user_id = p_friend AND b.friend_user_id = p_inviter)));
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_guest_friend_pickable(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_friend_pickable(uuid, uuid) TO service_role;
+
+-- P3-8: is this number barred for this inviter on this event? The inviter
+-- whose guest said "This isn't me" can never re-add it; anyone else may add
+-- it until it has been released twice.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_number_barred(
+  p_event_id uuid, p_digits text, p_inviter_key text
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM public.rsvp_guest_releases rel
+     WHERE rel.event_id = p_event_id AND rel.phone_digits = p_digits
+       AND (rel.release_count >= 2
+         OR (p_inviter_key IS NOT NULL AND p_inviter_key = ANY (rel.inviter_keys))));
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_guest_number_barred(uuid, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_number_barred(uuid, text, text) TO service_role;
+
+-- The release key of whoever invited a guest: user:<id>, else the party.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_release_key(p_inviter uuid, p_rsvp_id uuid)
+RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp
+AS $function$
+  SELECT CASE WHEN p_inviter IS NOT NULL THEN 'user:' || p_inviter::text
+              WHEN p_rsvp_id IS NOT NULL THEN 'rsvp:' || p_rsvp_id::text END;
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_guest_release_key(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_release_key(uuid, uuid) TO service_role;
+
+-- C3: a number that has opted out of texts (STOP), as can_send reads it.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_number_suppressed(p_phone text)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+  SELECT p_phone IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.channel_suppressions s
+     WHERE s.channel = 'sms' AND s.scope IN ('transactional', 'all')
+       AND (s.contact = p_phone OR s.contact = lower(p_phone)));
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_guest_number_suppressed(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_number_suppressed(text) TO service_role;
+
+-- P1-1: an event this viewer can RSVP to right now: open (an RSVP event,
+-- scheduled or live, not deleted, its date not over) and visible to them
+-- (reachable by its public or link-shared page, or they are already on it).
+CREATE OR REPLACE FUNCTION public.rsvp_event_open_for_viewer(p_event_id uuid, p_viewer uuid)
+RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF p_viewer IS NULL OR p_event_id IS NULL THEN RETURN false; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.events e
+     WHERE e.id = p_event_id AND e.event_type = 'rsvp'
+       AND e.status IN ('scheduled', 'live') AND e.deleted_at IS NULL
+       AND EXISTS (SELECT 1 FROM public.event_dates d
+                    WHERE d.event_id = e.id AND d.is_master IS TRUE
+                      AND d.end_at > clock_timestamp())
+  ) THEN
+    RETURN false;
+  END IF;
+  RETURN public.pg_offering_passes_visibility_gate(p_event_id, 'direct')
+    OR EXISTS (SELECT 1 FROM public.event_rsvps r
+                WHERE r.event_id = p_event_id AND r.user_id = p_viewer);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_event_open_for_viewer(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_event_open_for_viewer(uuid, uuid) TO service_role;
+
+-- P1-2: who is inviting, for the caps. A signed-in inviter is their account.
+-- A signed-out inviter is the salted hash of their network address, which
+-- public-submit-rsvp sends as the x-mingla-rsvp-client request header (never
+-- the unverified number they typed). No header reads as one shared
+-- "ip:unknown" bucket, so a caller cannot escape the cap by omitting it.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_inviter_key(p_user_id uuid)
+RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $function$
+DECLARE
+  v text;
+BEGIN
+  IF p_user_id IS NOT NULL THEN RETURN 'user:' || p_user_id::text; END IF;
+  BEGIN
+    v := NULLIF(current_setting('request.headers', true), '')::jsonb ->> 'x-mingla-rsvp-client';
+  EXCEPTION WHEN others THEN
+    v := NULL;
+  END;
+  RETURN CASE WHEN v ~ '^[0-9a-f]{64}$' THEN 'ip:' || v ELSE 'ip:unknown' END;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_guest_inviter_key(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_inviter_key(uuid) TO service_role;
+
+-- P1-2: the guest-number caps, checked after this request's rows are logged.
+--   20 numbers per inviter per rolling 24 hours (signed in or not);
+--   30 numbers per event per 24 hours from signed-out inviters altogether.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_assert_caps(p_inviter_key text, p_event_id uuid)
+RETURNS void
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF (SELECT count(*) FROM public.rsvp_guest_invite_log l
+       WHERE l.inviter_key = p_inviter_key
+         AND l.created_at > now() - interval '24 hours') > 20 THEN
+    RAISE EXCEPTION USING ERRCODE = 'P4508', MESSAGE = 'rsvp_guest_daily_cap';
+  END IF;
+  IF p_inviter_key LIKE 'ip:%' AND (SELECT count(*) FROM public.rsvp_guest_invite_log l
+       WHERE l.event_id = p_event_id AND l.inviter_key LIKE 'ip:%'
+         AND l.created_at > now() - interval '24 hours') > 30 THEN
+    RAISE EXCEPTION USING ERRCODE = 'P4508', MESSAGE = 'rsvp_guest_daily_cap';
+  END IF;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_guest_assert_caps(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_assert_caps(text, uuid) TO service_role;
+
+-- P1-2: a number gets at most 3 guest-invite texts per 24 hours across every
+-- event and inviter. Past that the guest is still added (the spot is held)
+-- but not texted (sms_hold = number_limit). Counted before this add is logged.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_number_over_limit(p_digits text)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+  SELECT (SELECT count(*) FROM public.rsvp_guest_invite_log l
+           WHERE l.phone_digits = p_digits
+             AND l.created_at > now() - interval '24 hours') >= 3;
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_guest_number_over_limit(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_number_over_limit(text) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 3. Close friends through an RSVP do not use the pairing allowance (D1).
@@ -508,6 +826,12 @@ DECLARE
   v_recent      integer;
   v_inviter_key text;
   v_guests_out  jsonb;
+  v_seen_users  uuid[] := '{}';
+  v_norm        jsonb := '[]'::jsonb;
+  v_friend      uuid;
+  v_prior_id    uuid;
+  v_release_key text;
+  v_hold        text;
 BEGIN
   -- 1. Load + gate the event (FOR UPDATE serializes concurrent submits).
   SELECT * INTO v_event FROM public.events WHERE id = p_event_id FOR UPDATE;
@@ -589,10 +913,24 @@ BEGIN
     v_plus := 0;
   END IF;
 
+
+  -- #4508: the caller's existing party (if any), for the rules below that
+  -- treat guests already on it differently from guests being added.
+  IF p_user_id IS NOT NULL THEN
+    SELECT id INTO v_prior_id FROM public.event_rsvps
+     WHERE event_id = p_event_id AND user_id = p_user_id;
+  END IF;
+  v_release_key := public.rsvp_guest_release_key(p_user_id, v_prior_id);
+
   -- 3b. Per-guest validation. #4508 1.9: a guest needs only a phone number;
-  --     name and email are optional (older apps still send them). The host's
-  --     plus-one limit is an error, not a silent clamp. The inviter's own
-  --     number and duplicates are refused.
+  --     name and email are optional (older apps still send them). C1: a
+  --     signed-in inviter may instead send {userId} for a friend picked from
+  --     their friends list; the server checks the friendship and resolves
+  --     that account's proven number itself. The host's plus-one limit is an
+  --     error, not a silent clamp. The inviter's own number (P3-6: for guests
+  --     being added, not one already on the party), duplicates anywhere in
+  --     the party (P3-4: including guests a claimed guest brought) and
+  --     barred numbers are refused.
   IF p_rsvp_status = 'not_going' THEN
     p_guests := '[]'::jsonb;
     v_plus := 0;
@@ -615,44 +953,87 @@ BEGIN
     END IF;
     FOR v_guest IN SELECT * FROM jsonb_array_elements(p_guests) LOOP
       IF jsonb_typeof(v_guest) <> 'object'
-         OR v_guest - ARRAY['name','email','phone','phoneCountryIso'] <> '{}'::jsonb THEN
+         OR v_guest - ARRAY['name','email','phone','phoneCountryIso','userId'] <> '{}'::jsonb THEN
         RAISE EXCEPTION 'rsvp_guest_keys_invalid' USING ERRCODE = '22023';
       END IF;
-      IF NULLIF(btrim(COALESCE(v_guest->>'phone', '')), '') IS NULL THEN
-        RAISE EXCEPTION 'rsvp_guest_contact_required';
+      v_friend := NULL;
+      v_gphone := NULL;
+      IF v_guest ? 'userId' THEN
+        -- C1: {userId} alone, from a signed-in inviter, for a friend.
+        IF p_user_id IS NULL
+           OR v_guest - ARRAY['userId'] <> '{}'::jsonb
+           OR jsonb_typeof(v_guest->'userId') <> 'string'
+           OR (v_guest->>'userId') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+          RAISE EXCEPTION 'rsvp_guest_keys_invalid' USING ERRCODE = '22023';
+        END IF;
+        v_friend := (v_guest->>'userId')::uuid;
+        IF NOT public.rsvp_guest_friend_pickable(p_user_id, v_friend) THEN
+          RAISE EXCEPTION 'rsvp_guest_not_friend' USING ERRCODE = '22023';
+        END IF;
+        IF v_friend = ANY (v_seen_users) OR EXISTS (
+          SELECT 1 FROM public.event_rsvp_guests g
+           WHERE g.rsvp_id = v_prior_id AND g.brought_by_guest_id IS NOT NULL
+             AND g.matched_user_id = v_friend) THEN
+          RAISE EXCEPTION 'rsvp_guest_duplicate' USING ERRCODE = '22023';
+        END IF;
+        v_seen_users := v_seen_users || v_friend;
+        v_gphone := public.rsvp_account_proven_phone(v_friend);
+      ELSE
+        IF NULLIF(btrim(COALESCE(v_guest->>'phone', '')), '') IS NULL THEN
+          RAISE EXCEPTION 'rsvp_guest_contact_required';
+        END IF;
+        IF btrim(v_guest->>'phone') !~ '^\+[1-9][0-9]{7,14}$' THEN
+          RAISE EXCEPTION 'rsvp_guest_phone_invalid' USING ERRCODE = '22023';
+        END IF;
+        IF (v_guest ? 'name' AND jsonb_typeof(v_guest->'name') NOT IN ('string', 'null'))
+           OR length(btrim(COALESCE(v_guest->>'name', ''))) > 120 THEN
+          RAISE EXCEPTION 'rsvp_guest_keys_invalid' USING ERRCODE = '22023';
+        END IF;
+        IF NULLIF(btrim(COALESCE(v_guest->>'email', '')), '') IS NOT NULL
+           AND (btrim(v_guest->>'email') !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+             OR length(btrim(v_guest->>'email')) > 254) THEN
+          RAISE EXCEPTION 'rsvp_guest_email_invalid' USING ERRCODE = '22023';
+        END IF;
+        IF v_guest ? 'phoneCountryIso'
+           AND jsonb_typeof(v_guest->'phoneCountryIso') <> 'null'
+           AND (jsonb_typeof(v_guest->'phoneCountryIso') <> 'string'
+             OR (v_guest->>'phoneCountryIso') !~ '^[A-Z]{2}$') THEN
+          RAISE EXCEPTION 'rsvp_guest_phone_country_invalid' USING ERRCODE = '22023';
+        END IF;
+        v_gphone := btrim(v_guest->>'phone');
       END IF;
-      IF btrim(v_guest->>'phone') !~ '^\+[1-9][0-9]{7,14}$' THEN
-        RAISE EXCEPTION 'rsvp_guest_phone_invalid' USING ERRCODE = '22023';
+
+      v_digits := CASE WHEN v_gphone IS NULL THEN NULL
+        ELSE regexp_replace(v_gphone, '\D', '', 'g') END;
+      IF v_digits IS NOT NULL THEN
+        -- P3-6: an unchanged guest already on this party passes (older apps
+        -- re-send the whole party); only a guest being added is refused.
+        IF v_digits = ANY (v_own) AND NOT EXISTS (
+          SELECT 1 FROM public.event_rsvp_guests g
+           WHERE g.rsvp_id = v_prior_id AND g.brought_by_guest_id IS NULL
+             AND regexp_replace(coalesce(g.phone, ''), '\D', '', 'g') = v_digits) THEN
+          RAISE EXCEPTION 'rsvp_guest_own_number' USING ERRCODE = '22023';
+        END IF;
+        IF v_digits = ANY (v_seen) OR EXISTS (
+          SELECT 1 FROM public.event_rsvp_guests g
+           WHERE g.rsvp_id = v_prior_id AND g.brought_by_guest_id IS NOT NULL
+             AND regexp_replace(coalesce(g.phone, ''), '\D', '', 'g') = v_digits) THEN
+          RAISE EXCEPTION 'rsvp_guest_duplicate' USING ERRCODE = '22023';
+        END IF;
+        IF public.rsvp_guest_number_barred(p_event_id, v_digits, v_release_key) THEN
+          RAISE EXCEPTION 'rsvp_guest_released' USING ERRCODE = '22023';
+        END IF;
+        v_seen := v_seen || v_digits;
       END IF;
-      IF (v_guest ? 'name' AND jsonb_typeof(v_guest->'name') NOT IN ('string', 'null'))
-         OR length(btrim(COALESCE(v_guest->>'name', ''))) > 120 THEN
-        RAISE EXCEPTION 'rsvp_guest_keys_invalid' USING ERRCODE = '22023';
-      END IF;
-      IF NULLIF(btrim(COALESCE(v_guest->>'email', '')), '') IS NOT NULL
-         AND (btrim(v_guest->>'email') !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
-           OR length(btrim(v_guest->>'email')) > 254) THEN
-        RAISE EXCEPTION 'rsvp_guest_email_invalid' USING ERRCODE = '22023';
-      END IF;
-      IF v_guest ? 'phoneCountryIso'
-         AND jsonb_typeof(v_guest->'phoneCountryIso') <> 'null'
-         AND (jsonb_typeof(v_guest->'phoneCountryIso') <> 'string'
-           OR (v_guest->>'phoneCountryIso') !~ '^[A-Z]{2}$') THEN
-        RAISE EXCEPTION 'rsvp_guest_phone_country_invalid' USING ERRCODE = '22023';
-      END IF;
-      v_digits := regexp_replace(v_guest->>'phone', '\D', '', 'g');
-      IF v_digits = ANY (v_own) THEN
-        RAISE EXCEPTION 'rsvp_guest_own_number' USING ERRCODE = '22023';
-      END IF;
-      IF v_digits = ANY (v_seen) THEN
-        RAISE EXCEPTION 'rsvp_guest_duplicate' USING ERRCODE = '22023';
-      END IF;
-      IF EXISTS (
-        SELECT 1 FROM public.rsvp_guest_releases rel
-         WHERE rel.event_id = p_event_id AND rel.phone_digits = v_digits
-      ) THEN
-        RAISE EXCEPTION 'rsvp_guest_released' USING ERRCODE = '22023';
-      END IF;
-      v_seen := v_seen || v_digits;
+      v_norm := v_norm || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
+        'userId', v_friend,
+        'phone', v_gphone,
+        'phoneCountryIso', CASE WHEN v_friend IS NULL
+          THEN NULLIF(v_guest->>'phoneCountryIso', '') END,
+        'name', CASE WHEN v_friend IS NULL
+          THEN NULLIF(btrim(COALESCE(v_guest->>'name', '')), '') END,
+        'email', CASE WHEN v_friend IS NULL
+          THEN NULLIF(btrim(COALESCE(v_guest->>'email', '')), '') END)));
     END LOOP;
   END IF;
 
@@ -727,83 +1108,95 @@ BEGIN
     RETURNING id INTO v_existing_id;
   END IF;
 
-  -- 6. #4508: the guest child set. A guest whose number is still listed keeps
-  --    its row (claim, pass and texts survive a re-submit); a number no longer
-  --    listed is removed; a new number is added. Guests a claimed guest
-  --    brought stay unless the party is no longer going or maybe.
+  -- 6. #4508: the guest child set. A guest still listed (by number, or by
+  --    account for a friend picked from the list) keeps its row (claim, pass
+  --    and texts survive a re-submit); a guest no longer listed is removed; a
+  --    new guest is added. Guests a claimed guest brought stay unless the
+  --    party is no longer going or maybe.
   DELETE FROM public.event_rsvp_guests g
    WHERE g.rsvp_id = v_existing_id
      AND (v_status = 'not_going'
        OR (g.brought_by_guest_id IS NULL
-         AND regexp_replace(coalesce(g.phone, ''), '\D', '', 'g') <> ALL (v_seen)));
+         AND NOT (regexp_replace(coalesce(g.phone, ''), '\D', '', 'g') = ANY (v_seen))
+         AND NOT coalesce(g.added_from_friend AND g.matched_user_id = ANY (v_seen_users), false)));
 
-  v_inviter_key := CASE
-    WHEN p_user_id IS NOT NULL THEN 'user:' || p_user_id::text
-    ELSE 'phone:' || regexp_replace(COALESCE(p_guest_phone, ''), '\D', '', 'g')
-  END;
+  v_inviter_key := public.rsvp_guest_inviter_key(p_user_id);
 
-  IF jsonb_array_length(COALESCE(p_guests, '[]'::jsonb)) > 0 THEN
-    FOR v_guest IN SELECT * FROM jsonb_array_elements(p_guests) LOOP
-      v_gname  := NULLIF(btrim(COALESCE(v_guest->>'name', '')), '');
-      v_gemail := NULLIF(btrim(COALESCE(v_guest->>'email', '')), '');
-      v_gphone := btrim(v_guest->>'phone');
-      v_digits := regexp_replace(v_gphone, '\D', '', 'g');
-      v_gphone_country_iso := NULLIF(v_guest->>'phoneCountryIso','');
+  FOR v_guest IN SELECT * FROM jsonb_array_elements(v_norm) LOOP
+    v_friend := NULLIF(v_guest->>'userId', '')::uuid;
+    v_gname  := v_guest->>'name';
+    v_gemail := v_guest->>'email';
+    v_gphone := v_guest->>'phone';
+    v_digits := CASE WHEN v_gphone IS NULL THEN NULL
+      ELSE regexp_replace(v_gphone, '\D', '', 'g') END;
+    v_gphone_country_iso := v_guest->>'phoneCountryIso';
 
-      SELECT * INTO v_kept FROM public.event_rsvp_guests g
-       WHERE g.rsvp_id = v_existing_id AND g.brought_by_guest_id IS NULL
-         AND regexp_replace(coalesce(g.phone, ''), '\D', '', 'g') = v_digits
-       ORDER BY g.created_at
-       LIMIT 1;
-      IF FOUND THEN
-        UPDATE public.event_rsvp_guests
-           SET name = COALESCE(v_gname, name),
-               email = COALESCE(v_gemail, email),
-               phone_country_iso = COALESCE(v_gphone_country_iso, phone_country_iso)
-         WHERE id = v_kept.id;
-        v_guest_id := v_kept.id;
-        v_qr := v_kept.qr_code;
+    SELECT * INTO v_kept FROM public.event_rsvp_guests g
+     WHERE g.rsvp_id = v_existing_id AND g.brought_by_guest_id IS NULL
+       AND ((v_digits IS NOT NULL
+             AND regexp_replace(coalesce(g.phone, ''), '\D', '', 'g') = v_digits)
+         OR (v_friend IS NOT NULL AND g.added_from_friend AND g.matched_user_id = v_friend))
+     ORDER BY g.created_at
+     LIMIT 1;
+    IF FOUND THEN
+      UPDATE public.event_rsvp_guests
+         SET name = COALESCE(v_gname, name),
+             email = COALESCE(v_gemail, email),
+             phone_country_iso = COALESCE(v_gphone_country_iso, phone_country_iso)
+       WHERE id = v_kept.id;
+      v_guest_id := v_kept.id;
+      v_qr := v_kept.qr_code;
+    ELSE
+      IF v_digits IS NOT NULL
+         AND public.rsvp_number_on_event_list(p_event_id, v_digits, v_existing_id) THEN
+        RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
+      END IF;
+      IF v_friend IS NOT NULL THEN
+        v_match := v_friend;
       ELSE
-        IF public.rsvp_number_on_event_list(p_event_id, v_digits, v_existing_id) THEN
-          RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
-        END IF;
         -- #4508 0.2: never the primary's own account.
         v_match := NULLIF(public.biz_resolve_verified_user(v_gemail, v_gphone), p_user_id);
-        IF v_match IS NOT NULL
-           AND public.rsvp_user_on_event_list(p_event_id, v_match, v_existing_id) THEN
-          RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
-        END IF;
-        INSERT INTO public.event_rsvp_guests (rsvp_id, name, email, phone, phone_country_iso,
-          matched_user_id, invited_by_user_id)
-        VALUES (v_existing_id, v_gname, v_gemail, v_gphone, v_gphone_country_iso,
-          v_match, p_user_id)
-        RETURNING id INTO v_guest_id;
+      END IF;
+      IF v_match IS NOT NULL
+         AND public.rsvp_user_on_event_list(p_event_id, v_match, v_existing_id) THEN
+        RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
+      END IF;
+      IF v_match IS NOT NULL AND EXISTS (
+        SELECT 1 FROM public.event_rsvp_guests g
+         WHERE g.rsvp_id = v_existing_id AND g.matched_user_id = v_match) THEN
+        RAISE EXCEPTION 'rsvp_guest_duplicate' USING ERRCODE = '22023';
+      END IF;
+      v_hold := CASE
+        WHEN v_digits IS NULL THEN 'no_phone'
+        WHEN public.rsvp_guest_number_over_limit(v_digits) THEN 'number_limit'
+      END;
+      INSERT INTO public.event_rsvp_guests (rsvp_id, name, email, phone, phone_country_iso,
+        matched_user_id, invited_by_user_id, added_from_friend, sms_hold)
+      VALUES (v_existing_id, v_gname, v_gemail, v_gphone, v_gphone_country_iso,
+        v_match, p_user_id, v_friend IS NOT NULL, v_hold)
+      RETURNING id INTO v_guest_id;
+      IF v_digits IS NOT NULL THEN
         INSERT INTO public.rsvp_guest_invite_log(inviter_key, event_id, phone_digits)
         VALUES (v_inviter_key, p_event_id, v_digits);
-        v_new_count := v_new_count + 1;
-        v_qr := NULL;
       END IF;
-
-      -- Mint the per-guest signed pass ONLY on a going resolution.
-      IF v_status = 'going' AND p_qr_token_pepper IS NOT NULL AND v_qr IS NULL THEN
-        SELECT m.token_hash, m.qr_code INTO v_token_hash, v_qr
-          FROM public.biz_rsvp_mint_qr(v_guest_id, p_qr_token_pepper) m;
-        UPDATE public.event_rsvp_guests
-           SET qr_token_hash = v_token_hash, qr_code = v_qr
-         WHERE id = v_guest_id;
-      END IF;
-    END LOOP;
-  END IF;
-
-  -- #4508 1.9: at most 20 guest numbers per inviter per rolling 24 hours.
-  IF v_new_count > 0 THEN
-    SELECT count(*)::integer INTO v_recent
-      FROM public.rsvp_guest_invite_log l
-     WHERE l.inviter_key = v_inviter_key
-       AND l.created_at > now() - interval '24 hours';
-    IF v_recent > 20 THEN
-      RAISE EXCEPTION USING ERRCODE = 'P4508', MESSAGE = 'rsvp_guest_daily_cap';
+      v_new_count := v_new_count + 1;
+      v_qr := NULL;
     END IF;
+
+    -- Mint the per-guest signed pass ONLY on a going resolution.
+    IF v_status = 'going' AND p_qr_token_pepper IS NOT NULL AND v_qr IS NULL THEN
+      SELECT m.token_hash, m.qr_code INTO v_token_hash, v_qr
+        FROM public.biz_rsvp_mint_qr(v_guest_id, p_qr_token_pepper) m;
+      UPDATE public.event_rsvp_guests
+         SET qr_token_hash = v_token_hash, qr_code = v_qr
+       WHERE id = v_guest_id;
+    END IF;
+  END LOOP;
+
+  -- #4508 1.9 / P1-2: the guest-number caps (20 per inviter; 30 per event
+  -- from signed-out inviters).
+  IF v_new_count > 0 THEN
+    PERFORM public.rsvp_guest_assert_caps(v_inviter_key, p_event_id);
   END IF;
 
   -- #4508: plus_count is the party's guest rows (the primary's and any a
@@ -827,16 +1220,29 @@ BEGIN
     END IF;
   END IF;
 
+  -- C3: sending is asynchronous, so no send status is claimed here. A guest
+  -- who will never be texted says so now (willText false, with the reason);
+  -- every other guest's text is on its way. A friend picked from the list
+  -- never has their number, or its last four, returned.
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
            'guestId', g.id,
-           'phoneLast4', right(regexp_replace(coalesce(g.phone, ''), '\D', '', 'g'), 4),
+           'phoneLast4', CASE WHEN g.added_from_friend OR g.phone IS NULL THEN NULL
+             ELSE right(regexp_replace(g.phone, '\D', '', 'g'), 4) END,
            'onMingla', g.matched_user_id IS NOT NULL,
            'displayName', public.rsvp_guest_display_name(g.id),
            'claimed', g.claimed_at IS NOT NULL,
-           'broughtByGuest', g.brought_by_guest_id IS NOT NULL
+           'broughtByGuest', g.brought_by_guest_id IS NOT NULL,
+           'addedFromFriend', g.added_from_friend,
+           'willText', w.reason IS NULL,
+           'notTextedReason', w.reason
          ) ORDER BY g.created_at, g.id), '[]'::jsonb)
     INTO v_guests_out
     FROM public.event_rsvp_guests g
+    CROSS JOIN LATERAL (SELECT CASE
+      WHEN g.phone IS NULL THEN 'no_phone'
+      WHEN g.sms_hold IS NOT NULL THEN g.sms_hold
+      WHEN public.rsvp_guest_number_suppressed(g.phone) THEN 'suppressed'
+    END AS reason) w
    WHERE g.rsvp_id = v_existing_id;
 
   RETURN jsonb_build_object(
@@ -893,7 +1299,7 @@ DECLARE
   v_event record;
   v_inviter record;
   v_status text;
-  v_release public.rsvp_guest_releases%ROWTYPE;
+  v_public boolean;
 BEGIN
   IF upper(btrim(coalesce(p_code, ''))) !~ '^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{10}$' THEN
     RETURN jsonb_build_object('status', 'not_found');
@@ -901,14 +1307,15 @@ BEGIN
   SELECT * INTO v_guest FROM public.event_rsvp_guests
    WHERE id = public.rsvp_guest_for_code(p_code);
   IF NOT FOUND THEN
-    SELECT * INTO v_release FROM public.rsvp_guest_releases
-     WHERE claim_code = upper(btrim(p_code)) LIMIT 1;
-    IF FOUND THEN RETURN jsonb_build_object('status', 'released'); END IF;
+    IF EXISTS (SELECT 1 FROM public.rsvp_guest_released_codes rc
+                WHERE rc.claim_code = upper(btrim(p_code)))
+    THEN RETURN jsonb_build_object('status', 'released'); END IF;
     RETURN jsonb_build_object('status', 'not_found');
   END IF;
   SELECT * INTO v_rsvp FROM public.event_rsvps WHERE id = v_guest.rsvp_id;
   SELECT e.id, e.title, e.slug, e.status, e.deleted_at, e.location_text, e.visibility,
-         e.timezone, b.name AS brand_name, b.slug AS brand_slug,
+         e.timezone, e.cover_media_url, e.cover_media_type,
+         b.name AS brand_name, b.slug AS brand_slug,
          md.start_at, md.end_at, md.timezone AS date_timezone
     INTO v_event
     FROM public.events e
@@ -920,6 +1327,9 @@ BEGIN
     ) md ON true
    WHERE e.id = v_rsvp.event_id;
   SELECT * INTO v_inviter FROM public.rsvp_guest_inviter_names(v_guest.id);
+  -- C5: the cover only for an event whose page the public can open (the same
+  -- gate the public event page uses), and only an image.
+  v_public := public.pg_offering_passes_visibility_gate(v_event.id, 'direct');
 
   v_status := CASE
     WHEN v_event.deleted_at IS NOT NULL OR v_event.status NOT IN ('scheduled', 'live')
@@ -936,13 +1346,15 @@ BEGIN
     'inviterName', coalesce(v_inviter.label, 'A friend'),
     'inviterFirstName', v_inviter.first_name,
     'inviterHasAccount', v_inviter.inviter_user_id IS NOT NULL,
-    'phoneLast4', right(regexp_replace(coalesce(v_guest.phone, ''), '\D', '', 'g'), 4),
+    'phoneLast4', CASE WHEN v_guest.added_from_friend OR v_guest.phone IS NULL THEN NULL
+      ELSE right(regexp_replace(v_guest.phone, '\D', '', 'g'), 4) END,
     'claimedByViewer', p_viewer IS NOT NULL AND v_guest.claimed_at IS NOT NULL
       AND v_guest.matched_user_id = p_viewer,
     'viewerCanClaim', p_viewer IS NOT NULL AND v_status = 'open'
       AND p_viewer IS DISTINCT FROM v_rsvp.user_id
       AND p_viewer IS DISTINCT FROM v_inviter.inviter_user_id
-      AND public.account_owns_contact(p_viewer, NULL, v_guest.phone),
+      AND CASE WHEN v_guest.added_from_friend THEN v_guest.matched_user_id = p_viewer
+        ELSE public.account_owns_contact(p_viewer, NULL, v_guest.phone) END,
     'viewerIsInviter', p_viewer IS NOT NULL
       AND (p_viewer = v_rsvp.user_id OR p_viewer = v_inviter.inviter_user_id),
     'event', jsonb_build_object(
@@ -954,7 +1366,11 @@ BEGIN
       'venueLine', v_event.location_text,
       'brandName', v_event.brand_name,
       'eventUrl', CASE WHEN v_event.brand_slug IS NOT NULL AND v_event.slug IS NOT NULL
-        THEN 'https://host.usemingla.com/e/' || v_event.brand_slug || '/' || v_event.slug END
+        THEN 'https://host.usemingla.com/e/' || v_event.brand_slug || '/' || v_event.slug END,
+      'coverImageUrl', CASE WHEN v_public
+          AND NULLIF(btrim(coalesce(v_event.cover_media_url, '')), '') IS NOT NULL
+          AND coalesce(v_event.cover_media_type, 'image') = 'image'
+        THEN v_event.cover_media_url END
     )
   );
 END;
@@ -962,8 +1378,11 @@ $function$;
 REVOKE ALL ON FUNCTION public.rsvp_guest_resolve(text, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rsvp_guest_resolve(text, uuid) TO service_role;
 
--- 1.18 "This isn't me": frees the spot, stops texts to the number for this
--- event, and returns the inviter so the caller can tell them in-app.
+-- 1.18 "This isn't me": frees the spot, stops texts to the number from this
+-- inviter, and returns the inviter so the caller can tell them in-app.
+-- P3-1: a text already claimed by the worker but not yet handed to the
+-- provider is closed too; the worker's pre-send mark then refuses it.
+-- P3-8: the bar is on this inviter; a second release bars the whole event.
 CREATE OR REPLACE FUNCTION public.rsvp_guest_release(p_code text)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
@@ -974,13 +1393,15 @@ DECLARE
   v_inviter record;
   v_title text;
   v_digits text;
+  v_key text;
+  v_release uuid;
 BEGIN
   SELECT * INTO v_guest FROM public.event_rsvp_guests
    WHERE id = public.rsvp_guest_for_code(p_code)
    FOR UPDATE;
   IF NOT FOUND THEN
-    IF EXISTS (SELECT 1 FROM public.rsvp_guest_releases
-                WHERE claim_code = upper(btrim(coalesce(p_code, ''))))
+    IF EXISTS (SELECT 1 FROM public.rsvp_guest_released_codes rc
+                WHERE rc.claim_code = upper(btrim(coalesce(p_code, ''))))
     THEN RETURN jsonb_build_object('outcome', 'already_released'); END IF;
     RETURN jsonb_build_object('outcome', 'not_found');
   END IF;
@@ -991,22 +1412,36 @@ BEGIN
   SELECT * INTO v_inviter FROM public.rsvp_guest_inviter_names(v_guest.id);
   SELECT title INTO v_title FROM public.events WHERE id = v_rsvp.event_id;
   v_digits := regexp_replace(coalesce(v_guest.phone, ''), '\D', '', 'g');
+  v_key := public.rsvp_guest_release_key(v_inviter.inviter_user_id, v_rsvp.id);
 
-  INSERT INTO public.rsvp_guest_releases(event_id, rsvp_id, phone_digits,
-    inviter_user_id, claim_code)
-  VALUES (v_rsvp.event_id, v_rsvp.id, v_digits, v_inviter.inviter_user_id,
-    upper(btrim(p_code)))
-  ON CONFLICT (event_id, phone_digits) DO UPDATE
-    SET released_at = now(), claim_code = EXCLUDED.claim_code;
+  IF v_digits ~ '^[0-9]{7,15}$' THEN
+    INSERT INTO public.rsvp_guest_releases(event_id, rsvp_id, phone_digits,
+      inviter_user_id, claim_code, inviter_keys)
+    VALUES (v_rsvp.event_id, v_rsvp.id, v_digits, v_inviter.inviter_user_id,
+      upper(btrim(p_code)), ARRAY[v_key])
+    ON CONFLICT (event_id, phone_digits) DO UPDATE
+      SET released_at = now(), claim_code = EXCLUDED.claim_code,
+          release_count = public.rsvp_guest_releases.release_count
+            + CASE WHEN v_key = ANY (public.rsvp_guest_releases.inviter_keys) THEN 0 ELSE 1 END,
+          inviter_keys = CASE WHEN v_key = ANY (public.rsvp_guest_releases.inviter_keys)
+            THEN public.rsvp_guest_releases.inviter_keys
+            ELSE public.rsvp_guest_releases.inviter_keys || v_key END
+    RETURNING id INTO v_release;
+    INSERT INTO public.rsvp_guest_released_codes(claim_code, release_id)
+    VALUES (upper(btrim(p_code)), v_release)
+    ON CONFLICT (claim_code) DO NOTHING;
+  END IF;
 
-  -- No further texts: every queued delivery for this guest is closed.
+  -- No further texts: every queued delivery for this guest is closed,
+  -- including one the worker holds but has not yet handed to the provider.
   UPDATE public.rsvp_notification_deliveries d
      SET status = 'failed_terminal', safe_error_code = 'rsvp_guest_released',
          processing_started_at = NULL, lease_id = NULL, updated_at = now()
     FROM public.rsvp_notifications n
    WHERE d.notification_id = n.id
      AND n.payload->>'guestId' = v_guest.id::text
-     AND d.status IN ('pending', 'failed_retryable', 'deferred');
+     AND (d.status IN ('pending', 'failed_retryable', 'deferred')
+       OR (d.status = 'processing' AND d.provider_io_started_at IS NULL));
   UPDATE public.claim_links SET revoked_at = now()
    WHERE purpose = 'claim' AND subject_kind = 'rsvp_guest'
      AND subject_id = v_guest.id AND revoked_at IS NULL;
@@ -1022,7 +1457,7 @@ BEGIN
     'eventId', v_rsvp.event_id,
     'eventTitle', v_title,
     'inviterUserId', v_inviter.inviter_user_id,
-    'phoneLast4', right(v_digits, 4)
+    'phoneLast4', CASE WHEN v_guest.added_from_friend THEN NULL ELSE NULLIF(right(v_digits, 4), '') END
   );
 END;
 $function$;
@@ -1030,9 +1465,12 @@ REVOKE ALL ON FUNCTION public.rsvp_guest_release(text) FROM PUBLIC, anon, authen
 GRANT EXECUTE ON FUNCTION public.rsvp_guest_release(text) TO service_role;
 
 -- 1.19-1.22 Claim. One tap when the account has proved the invited number
--- (a code received at it: the possession ledger or a confirmed GoTrue phone);
--- otherwise phone_unproved, and the app proves the number with send-otp /
--- verify-otp first. A code proved for a DIFFERENT number never claims.
+-- (account_owns_contact); otherwise phone_unproved, and the app proves the
+-- number with send-otp / verify-otp first. A code proved for a DIFFERENT
+-- number never claims. P2-1: a row matched to an account that does not own
+-- the number (an old email match) goes to the proven claimer. C1: a friend
+-- picked from the list is matched by account, so that account claims it.
+-- P3-2: nothing is claimed after the event has ended.
 CREATE OR REPLACE FUNCTION public.rsvp_guest_claim(
   p_user_id uuid, p_code text, p_name text DEFAULT NULL
 ) RETURNS jsonb
@@ -1042,6 +1480,7 @@ DECLARE
   v_guest public.event_rsvp_guests%ROWTYPE;
   v_rsvp public.event_rsvps%ROWTYPE;
   v_event public.events%ROWTYPE;
+  v_end timestamptz;
   v_inviter record;
   v_name text := NULLIF(btrim(coalesce(p_name, '')), '');
   v_friend jsonb;
@@ -1054,15 +1493,20 @@ BEGIN
    WHERE id = public.rsvp_guest_for_code(p_code)
    FOR UPDATE;
   IF NOT FOUND THEN
-    IF EXISTS (SELECT 1 FROM public.rsvp_guest_releases
-                WHERE claim_code = upper(btrim(coalesce(p_code, ''))))
+    IF EXISTS (SELECT 1 FROM public.rsvp_guest_released_codes rc
+                WHERE rc.claim_code = upper(btrim(coalesce(p_code, ''))))
     THEN RETURN jsonb_build_object('outcome', 'released'); END IF;
     RETURN jsonb_build_object('outcome', 'not_found');
   END IF;
   SELECT * INTO v_rsvp FROM public.event_rsvps WHERE id = v_guest.rsvp_id;
   SELECT * INTO v_event FROM public.events WHERE id = v_rsvp.event_id;
+  SELECT coalesce(max(d.end_at), max(d.start_at)) INTO v_end
+    FROM public.event_dates d WHERE d.event_id = v_event.id AND d.is_master IS TRUE;
   IF v_event.deleted_at IS NOT NULL OR v_event.status NOT IN ('scheduled', 'live')
-     OR v_rsvp.rsvp_status <> 'going' OR v_rsvp.approval_status <> 'approved' THEN
+     OR v_end IS NULL OR v_end <= now() THEN
+    RETURN jsonb_build_object('outcome', 'ended');
+  END IF;
+  IF v_rsvp.rsvp_status <> 'going' OR v_rsvp.approval_status <> 'approved' THEN
     RETURN jsonb_build_object('outcome', 'ineligible');
   END IF;
   IF v_guest.claimed_at IS NOT NULL THEN
@@ -1079,13 +1523,25 @@ BEGIN
      AND v_guest.matched_user_id IS DISTINCT FROM p_user_id THEN
     RETURN jsonb_build_object('outcome', 'already_on_list');
   END IF;
-  IF NOT public.account_owns_contact(p_user_id, NULL, v_guest.phone) THEN
-    RETURN jsonb_build_object(
-      'outcome', 'phone_unproved',
-      'phoneLast4', right(regexp_replace(coalesce(v_guest.phone, ''), '\D', '', 'g'), 4));
-  END IF;
-  IF v_guest.matched_user_id IS NOT NULL AND v_guest.matched_user_id <> p_user_id THEN
-    RAISE EXCEPTION 'conflict_rsvp_guest_claim' USING ERRCODE = 'PT409';
+  IF v_guest.added_from_friend THEN
+    -- C1: the inviter chose this account; only it may claim the pass.
+    IF v_guest.matched_user_id IS DISTINCT FROM p_user_id THEN
+      RETURN jsonb_build_object('outcome', 'claimed_by_other',
+        'guestId', v_guest.id, 'rsvpId', v_rsvp.id, 'eventId', v_rsvp.event_id);
+    END IF;
+  ELSE
+    IF NOT public.account_owns_contact(p_user_id, NULL, v_guest.phone) THEN
+      RETURN jsonb_build_object(
+        'outcome', 'phone_unproved',
+        'phoneLast4', right(regexp_replace(coalesce(v_guest.phone, ''), '\D', '', 'g'), 4));
+    END IF;
+    -- P2-1: a row matched to another account that has NOT proved this number
+    -- (for example an old email match) is taken by the proven claimer. Two
+    -- accounts that both proved it are a real conflict.
+    IF v_guest.matched_user_id IS NOT NULL AND v_guest.matched_user_id <> p_user_id
+       AND public.account_owns_contact(v_guest.matched_user_id, NULL, v_guest.phone) THEN
+      RAISE EXCEPTION 'conflict_rsvp_guest_claim' USING ERRCODE = 'PT409';
+    END IF;
   END IF;
 
   UPDATE public.event_rsvp_guests
@@ -1113,8 +1569,11 @@ $function$;
 REVOKE ALL ON FUNCTION public.rsvp_guest_claim(uuid, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rsvp_guest_claim(uuid, text, text) TO service_role;
 
--- Amendment 4: the live match under the number field. Signed-out callers get
--- only yes/no (never a name). Blocks hide the account either way.
+-- Amendment 4: the live match under the number field.
+-- P1-1: a signed-out caller learns only whether the number is valid. A
+-- signed-in caller learns whether it is theirs and, when it belongs to an
+-- account (blocks hide it), that account's public name. alreadyOnList and
+-- released are answered only for an event the caller can RSVP to now.
 CREATE OR REPLACE FUNCTION public.rsvp_guest_lookup(
   p_viewer uuid, p_event_id uuid, p_phone text
 ) RETURNS jsonb
@@ -1125,18 +1584,24 @@ DECLARE
   v_digits text;
   v_user uuid;
   v_profile jsonb;
-  v_listed boolean;
+  v_open boolean;
+  v_party uuid;
 BEGIN
   IF v_phone !~ '^\+[1-9][0-9]{7,14}$' THEN
     RETURN jsonb_build_object('valid', false);
   END IF;
+  IF p_viewer IS NULL THEN
+    RETURN jsonb_build_object('valid', true);
+  END IF;
   v_digits := regexp_replace(v_phone, '\D', '', 'g');
-  IF p_viewer IS NOT NULL AND v_digits = ANY (public.rsvp_account_phone_digits(p_viewer)) THEN
-    RETURN jsonb_build_object('valid', true, 'isYou', true, 'onMingla', true,
-      'alreadyOnList', false, 'released', false);
+  v_open := public.rsvp_event_open_for_viewer(p_event_id, p_viewer);
+  IF v_digits = ANY (public.rsvp_account_phone_digits(p_viewer)) THEN
+    RETURN jsonb_strip_nulls(jsonb_build_object('valid', true, 'isYou', true, 'onMingla', true,
+      'alreadyOnList', CASE WHEN v_open THEN false END,
+      'released', CASE WHEN v_open THEN false END));
   END IF;
   v_user := public.biz_resolve_verified_user(NULL, v_phone);
-  IF v_user IS NOT NULL AND p_viewer IS NOT NULL AND (
+  IF v_user IS NOT NULL AND (
     public.has_block_between(p_viewer, v_user) OR EXISTS (
       SELECT 1 FROM public.friends f
        WHERE f.status = 'blocked' AND f.deleted_at IS NULL
@@ -1145,14 +1610,7 @@ BEGIN
   ) THEN
     v_user := NULL;
   END IF;
-  v_listed := p_event_id IS NOT NULL AND (
-    public.rsvp_number_on_event_list(p_event_id, v_digits, (
-      SELECT r.id FROM public.event_rsvps r
-       WHERE r.event_id = p_event_id AND r.user_id = p_viewer LIMIT 1))
-    OR (v_user IS NOT NULL AND public.rsvp_user_on_event_list(p_event_id, v_user, (
-      SELECT r.id FROM public.event_rsvps r
-       WHERE r.event_id = p_event_id AND r.user_id = p_viewer LIMIT 1))));
-  IF v_user IS NOT NULL AND p_viewer IS NOT NULL THEN
+  IF v_user IS NOT NULL THEN
     SELECT jsonb_build_object(
              'id', p.id,
              'displayName', coalesce(NULLIF(btrim(p.display_name), ''),
@@ -1161,14 +1619,22 @@ BEGIN
              'avatarUrl', p.avatar_url)
       INTO v_profile FROM public.profiles p WHERE p.id = v_user;
   END IF;
+  IF v_open THEN
+    SELECT r.id INTO v_party FROM public.event_rsvps r
+     WHERE r.event_id = p_event_id AND r.user_id = p_viewer LIMIT 1;
+  END IF;
   RETURN jsonb_strip_nulls(jsonb_build_object(
     'valid', true,
     'isYou', false,
     'onMingla', v_user IS NOT NULL,
-    'alreadyOnList', coalesce(v_listed, false),
-    'released', p_event_id IS NOT NULL AND EXISTS (
-      SELECT 1 FROM public.rsvp_guest_releases rel
-       WHERE rel.event_id = p_event_id AND rel.phone_digits = v_digits),
+    'alreadyOnList', CASE WHEN v_open THEN
+      public.rsvp_number_on_event_list(p_event_id, v_digits, v_party)
+      OR (v_user IS NOT NULL AND public.rsvp_user_on_event_list(p_event_id, v_user, v_party))
+    END,
+    'released', CASE WHEN v_open THEN
+      public.rsvp_guest_number_barred(p_event_id, v_digits,
+        public.rsvp_guest_release_key(p_viewer, v_party))
+    END,
     'user', v_profile
   ));
 END;
@@ -1177,6 +1643,9 @@ REVOKE ALL ON FUNCTION public.rsvp_guest_lookup(uuid, uuid, text) FROM PUBLIC, a
 GRANT EXECUTE ON FUNCTION public.rsvp_guest_lookup(uuid, uuid, text) TO service_role;
 
 -- 2.5 A claimed guest brings one more person (host setting, default off).
+-- Same rules as a submit: P3-2 not after the event ended, P3-3 not an
+-- account already on the list, the barred-number rule, the per-inviter cap
+-- and the per-number text limit.
 CREATE OR REPLACE FUNCTION public.rsvp_guest_bring(
   p_user_id uuid, p_guest_id uuid, p_phone text, p_phone_country_iso text,
   p_qr_token_pepper text
@@ -1187,13 +1656,15 @@ DECLARE
   v_guest public.event_rsvp_guests%ROWTYPE;
   v_rsvp public.event_rsvps%ROWTYPE;
   v_event public.events%ROWTYPE;
+  v_end timestamptz;
   v_phone text := btrim(coalesce(p_phone, ''));
   v_digits text;
   v_confirmed integer;
   v_new uuid;
+  v_match uuid;
   v_token_hash text;
   v_qr text;
-  v_recent integer;
+  v_key text;
 BEGIN
   IF p_user_id IS NULL OR p_guest_id IS NULL THEN
     RAISE EXCEPTION 'invalid_claim' USING ERRCODE = '22023';
@@ -1214,6 +1685,8 @@ BEGIN
   SELECT * INTO v_event FROM public.events WHERE id = v_rsvp.event_id FOR UPDATE;
   SELECT * INTO v_guest FROM public.event_rsvp_guests WHERE id = p_guest_id FOR UPDATE;
   SELECT * INTO v_rsvp FROM public.event_rsvps WHERE id = v_guest.rsvp_id FOR UPDATE;
+  SELECT coalesce(max(d.end_at), max(d.start_at)) INTO v_end
+    FROM public.event_dates d WHERE d.event_id = v_event.id AND d.is_master IS TRUE;
 
   IF v_guest.matched_user_id IS DISTINCT FROM p_user_id OR v_guest.claimed_at IS NULL THEN
     RETURN jsonb_build_object('outcome', 'not_your_pass');
@@ -1222,7 +1695,10 @@ BEGIN
     RETURN jsonb_build_object('outcome', 'not_allowed');
   END IF;
   IF v_event.deleted_at IS NOT NULL OR v_event.status NOT IN ('scheduled', 'live')
-     OR v_rsvp.rsvp_status <> 'going' OR v_rsvp.approval_status <> 'approved' THEN
+     OR v_end IS NULL OR v_end <= now() THEN
+    RETURN jsonb_build_object('outcome', 'ended');
+  END IF;
+  IF v_rsvp.rsvp_status <> 'going' OR v_rsvp.approval_status <> 'approved' THEN
     RETURN jsonb_build_object('outcome', 'ineligible');
   END IF;
   IF EXISTS (SELECT 1 FROM public.event_rsvp_guests b WHERE b.brought_by_guest_id = v_guest.id) THEN
@@ -1231,11 +1707,15 @@ BEGIN
   IF v_digits = ANY (public.rsvp_account_phone_digits(p_user_id)) THEN
     RAISE EXCEPTION 'rsvp_guest_own_number' USING ERRCODE = '22023';
   END IF;
-  IF EXISTS (SELECT 1 FROM public.rsvp_guest_releases rel
-              WHERE rel.event_id = v_event.id AND rel.phone_digits = v_digits) THEN
+  v_key := 'user:' || p_user_id::text;
+  IF public.rsvp_guest_number_barred(v_event.id, v_digits, v_key) THEN
     RAISE EXCEPTION 'rsvp_guest_released' USING ERRCODE = '22023';
   END IF;
   IF public.rsvp_number_on_event_list(v_event.id, v_digits, NULL) THEN
+    RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
+  END IF;
+  v_match := NULLIF(NULLIF(public.biz_resolve_verified_user(NULL, v_phone), p_user_id), v_rsvp.user_id);
+  IF v_match IS NOT NULL AND public.rsvp_user_on_event_list(v_event.id, v_match, NULL) THEN
     RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
   END IF;
   IF v_event.rsvp_capacity IS NOT NULL THEN
@@ -1249,19 +1729,13 @@ BEGIN
   END IF;
 
   INSERT INTO public.event_rsvp_guests (rsvp_id, phone, phone_country_iso,
-    matched_user_id, invited_by_user_id, brought_by_guest_id)
-  VALUES (v_rsvp.id, v_phone, p_phone_country_iso,
-    NULLIF(NULLIF(public.biz_resolve_verified_user(NULL, v_phone), p_user_id), v_rsvp.user_id),
-    p_user_id, v_guest.id)
+    matched_user_id, invited_by_user_id, brought_by_guest_id, sms_hold)
+  VALUES (v_rsvp.id, v_phone, p_phone_country_iso, v_match, p_user_id, v_guest.id,
+    CASE WHEN public.rsvp_guest_number_over_limit(v_digits) THEN 'number_limit' END)
   RETURNING id INTO v_new;
   INSERT INTO public.rsvp_guest_invite_log(inviter_key, event_id, phone_digits)
-  VALUES ('user:' || p_user_id::text, v_event.id, v_digits);
-  SELECT count(*)::integer INTO v_recent FROM public.rsvp_guest_invite_log l
-   WHERE l.inviter_key = 'user:' || p_user_id::text
-     AND l.created_at > now() - interval '24 hours';
-  IF v_recent > 20 THEN
-    RAISE EXCEPTION USING ERRCODE = 'P4508', MESSAGE = 'rsvp_guest_daily_cap';
-  END IF;
+  VALUES (v_key, v_event.id, v_digits);
+  PERFORM public.rsvp_guest_assert_caps(v_key, v_event.id);
   IF p_qr_token_pepper IS NOT NULL THEN
     SELECT m.token_hash, m.qr_code INTO v_token_hash, v_qr
       FROM public.biz_rsvp_mint_qr(v_new, p_qr_token_pepper) m;
@@ -1282,6 +1756,8 @@ REVOKE ALL ON FUNCTION public.rsvp_guest_bring(uuid, uuid, text, text, text) FRO
 GRANT EXECUTE ON FUNCTION public.rsvp_guest_bring(uuid, uuid, text, text, text) TO service_role;
 
 -- What rsvp-notify needs to write a guest's invite or reminder text.
+-- smsHold: a guest the worker must never text (no number, or the number had
+-- its 3 guest invites in 24 hours).
 CREATE OR REPLACE FUNCTION public.rsvp_guest_message_context(p_guest_id uuid)
 RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
@@ -1298,6 +1774,7 @@ AS $function$
     'eventTimezone', coalesce(md.timezone, e.timezone),
     'inviterLabel', coalesce(n.label, 'A friend'),
     'inviterFirstName', n.first_name,
+    'smsHold', CASE WHEN g.phone IS NULL THEN 'no_phone' ELSE g.sms_hold END,
     'eligible', r.rsvp_status = 'going' AND r.approval_status = 'approved'
       AND e.deleted_at IS NULL AND e.status IN ('scheduled', 'live')
   ) END
@@ -1418,7 +1895,10 @@ BEGIN
                           AND (np.friends_going = false OR np.push_enabled = false))
     ON CONFLICT (event_id, friend_user_id) DO NOTHING;
   EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'issue_4508_friend_going_enqueue_failed event=%', NEW.event_id;
+    -- P3-5: never block the RSVP, never drop the failure. It is recorded and
+    -- the rsvp-notify tick reports it (issue_4508_take_friend_going_failures).
+    INSERT INTO public.rsvp_friend_going_failures(event_id, actor_user_id, sql_state)
+    VALUES (NEW.event_id, NEW.user_id, SQLSTATE);
   END;
   RETURN NULL;
 END;
@@ -1474,6 +1954,30 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_4508_take_friend_going_notices(integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4508_take_friend_going_notices(integer) TO service_role;
 
+-- P3-5: friend-is-going enqueue failures not yet reported, marked reported in
+-- the same statement (each is reported once).
+CREATE OR REPLACE FUNCTION public.issue_4508_take_friend_going_failures(p_limit integer DEFAULT 50)
+RETURNS TABLE (failure_id bigint, event_id uuid, sql_state text, created_at timestamptz)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  RETURN QUERY
+  WITH due AS (
+    SELECT f.id FROM public.rsvp_friend_going_failures f
+     WHERE f.reported_at IS NULL
+     ORDER BY f.created_at
+     FOR UPDATE SKIP LOCKED
+     LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200)
+  )
+  UPDATE public.rsvp_friend_going_failures f
+     SET reported_at = now()
+    FROM due WHERE f.id = due.id
+  RETURNING f.id, f.event_id, f.sql_state, f.created_at;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4508_take_friend_going_failures(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4508_take_friend_going_failures(integer) TO service_role;
+
 
 -- ---------------------------------------------------------------------------
 -- 9. Readers (1.11, 1.24, 1.25, 1.26).
@@ -1481,7 +1985,9 @@ GRANT EXECUTE ON FUNCTION public.issue_4508_take_friend_going_notices(integer) T
 -- grants; the guest name follows 1.11, and each row adds claimed, invited_by,
 -- the invite text status and the guest's invite link. Only the party's
 -- primary sees a guest's invite link and status (the Nudge and the success
--- screen); a matched guest sees only their own row, as before.
+-- screen); a matched guest sees only their own row, as before. C2:
+-- guests_can_bring (the host's "Bring someone too" setting) on the viewer's
+-- own pass rows only. A friend picked from the list never shows a number.
 -- ---------------------------------------------------------------------------
 DROP FUNCTION IF EXISTS public.fetch_user_rsvp_party_passes(uuid);
 CREATE FUNCTION public.fetch_user_rsvp_party_passes(p_rsvp_id uuid)
@@ -1494,13 +2000,15 @@ RETURNS TABLE (
   invited_by_name text,
   invite_status text,
   invite_link text,
-  phone_last4 text
+  phone_last4 text,
+  guests_can_bring boolean
 )
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $function$
   SELECT 'primary'::text, r.id,
          COALESCE(NULLIF(btrim(p.display_name),''),NULLIF(r.guest_name,'Guest'),r.guest_name),
          r.qr_code,
-         true, NULL::text, NULL::text, NULL::text, NULL::text
+         true, NULL::text, NULL::text, NULL::text, NULL::text,
+         e.rsvp_guests_can_bring
     FROM public.event_rsvps r
     JOIN public.events e ON e.id=r.event_id
     LEFT JOIN public.profiles p ON p.id=r.user_id
@@ -1523,8 +2031,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $function$
             WHERE l.purpose='claim' AND l.subject_kind='rsvp_guest'
               AND l.subject_id=g.id AND l.revoked_at IS NULL
             ORDER BY l.created_at DESC LIMIT 1) END,
-         CASE WHEN r.user_id=auth.uid()
-           THEN right(regexp_replace(coalesce(g.phone,''),'\D','','g'),4) END
+         CASE WHEN r.user_id=auth.uid() AND NOT g.added_from_friend AND g.phone IS NOT NULL
+           THEN right(regexp_replace(g.phone,'\D','','g'),4) END,
+         CASE WHEN g.matched_user_id=auth.uid() THEN e.rsvp_guests_can_bring END
     FROM public.event_rsvp_guests g
     JOIN public.event_rsvps r ON r.id=g.rsvp_id
     JOIN public.events e ON e.id=r.event_id
@@ -1571,7 +2080,10 @@ BEGIN
       'checkedInAt',g.checked_in_at,'checkedInBy',g.checked_in_by,
       'invitedByName',(SELECT n.label FROM public.rsvp_guest_inviter_names(g.id) n),
       'claimed',g.claimed_at IS NOT NULL,'onMingla',g.matched_user_id IS NOT NULL,
-      'broughtByGuestId',g.brought_by_guest_id) ORDER BY g.created_at)
+      'broughtByGuestId',g.brought_by_guest_id,
+      -- C8: the last four digits only, never the number.
+      'phoneLast4',CASE WHEN g.phone IS NOT NULL
+        THEN right(regexp_replace(g.phone,'\D','','g'),4) END) ORDER BY g.created_at)
       FROM public.event_rsvp_guests g WHERE g.rsvp_id=r.id),'[]'::jsonb)
   FROM public.event_rsvps r LEFT JOIN public.profiles p ON p.id=r.user_id
   WHERE r.event_id=p_event_id ORDER BY
@@ -1668,6 +2180,79 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.biz_rsvp_scan(uuid,text) FROM PUBLIC, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.biz_rsvp_scan(uuid,text) TO authenticated;
+
+-- C7: a host admits one plus-one by hand (an unclaimed guest who arrives with
+-- the inviter has no QR on their own phone). The same people as a door scan
+-- may do it, under the same rules and with the same answer shape as
+-- biz_rsvp_scan; the check-in is audited in rsvp_scan_events like a scan.
+CREATE OR REPLACE FUNCTION public.host_check_in_rsvp_guest(p_guest_id uuid)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth AS $$
+DECLARE
+  c_before constant interval := interval '120 minutes';
+  c_after constant interval := interval '360 minutes';
+  v_actor uuid := auth.uid();
+  v_guest public.event_rsvp_guests%ROWTYPE; v_rsvp public.event_rsvps%ROWTYPE;
+  v_event_id uuid; v_outcome text; v_now timestamptz := now();
+  v_next_start timestamptz; v_last_end timestamptz; v_scan_id uuid;
+BEGIN
+  SELECT r.event_id INTO v_event_id
+    FROM public.event_rsvp_guests g JOIN public.event_rsvps r ON r.id = g.rsvp_id
+   WHERE g.id = p_guest_id;
+  IF v_actor IS NULL OR v_event_id IS NULL OR NOT (
+    EXISTS (SELECT 1 FROM public.events e WHERE e.id=v_event_id
+      AND public.biz_brand_effective_rank(e.brand_id,v_actor)
+        >= public.biz_role_rank('event_manager'))
+    OR EXISTS (SELECT 1 FROM public.event_scanners es WHERE es.event_id=v_event_id
+      AND es.user_id=v_actor AND es.removed_at IS NULL
+      AND COALESCE((es.permissions->>'scan')::boolean,true))
+    OR EXISTS (SELECT 1 FROM public.events e JOIN public.brand_team_members m ON m.brand_id=e.brand_id
+      WHERE e.id=v_event_id AND m.user_id=v_actor AND m.role='scanner'
+        AND m.removed_at IS NULL AND m.accepted_at IS NOT NULL)
+  ) THEN RAISE EXCEPTION 'scanner_not_authorized'; END IF;
+
+  SELECT * INTO v_guest FROM public.event_rsvp_guests WHERE id=p_guest_id FOR UPDATE;
+  SELECT * INTO v_rsvp FROM public.event_rsvps WHERE id=v_guest.rsvp_id;
+  IF v_rsvp.rsvp_status <> 'going' OR v_rsvp.approval_status <> 'approved' THEN
+    v_outcome := CASE WHEN v_rsvp.approval_status='denied' THEN 'revoked' ELSE 'not_eligible' END;
+  ELSIF EXISTS (SELECT 1 FROM public.events e WHERE e.id=v_event_id
+    AND (e.deleted_at IS NOT NULL OR e.status='cancelled')) THEN v_outcome := 'revoked';
+  ELSIF v_guest.checked_in_at IS NOT NULL THEN v_outcome := 'duplicate';
+  ELSIF NOT EXISTS (SELECT 1 FROM public.event_dates WHERE event_id=v_event_id) THEN v_outcome := 'success';
+  ELSIF EXISTS (SELECT 1 FROM public.event_dates WHERE event_id=v_event_id
+    AND v_now BETWEEN start_at-c_before AND end_at+c_after) THEN v_outcome := 'success';
+  ELSE
+    SELECT min(start_at) INTO v_next_start FROM public.event_dates
+      WHERE event_id=v_event_id AND start_at-c_before > v_now;
+    IF v_next_start IS NOT NULL THEN v_outcome := 'not_yet_open';
+    ELSE v_outcome := 'event_ended';
+      SELECT max(end_at) INTO v_last_end FROM public.event_dates WHERE event_id=v_event_id;
+    END IF;
+  END IF;
+  IF v_outcome='success' THEN
+    UPDATE public.event_rsvp_guests SET checked_in_at=v_now, checked_in_by=v_actor
+     WHERE id=v_guest.id;
+  END IF;
+  INSERT INTO public.rsvp_scan_events(requested_event_id,matched_event_id,rsvp_id,guest_id,
+    scanner_user_id,outcome,metadata)
+  VALUES(v_event_id,v_event_id,NULL,v_guest.id,v_actor,v_outcome,
+    jsonb_strip_nulls(jsonb_build_object('source','host-manual','nextStartAt',v_next_start,'lastEndAt',v_last_end)))
+  RETURNING id INTO v_scan_id;
+  RETURN jsonb_strip_nulls(jsonb_build_object(
+    'result',v_outcome,'scanId',v_scan_id,
+    'entityType',CASE WHEN v_outcome IN ('success','duplicate') THEN 'guest' END,
+    'entityId',CASE WHEN v_outcome IN ('success','duplicate') THEN v_guest.id END,
+    'attendeeDisplayName',CASE WHEN v_outcome IN ('success','duplicate') THEN
+      public.rsvp_guest_display_name(v_guest.id) END,
+    'invitedByName',CASE WHEN v_outcome IN ('success','duplicate') THEN
+      (SELECT n.label FROM public.rsvp_guest_inviter_names(v_guest.id) n) END,
+    'nextStartAt',v_next_start,'lastEndAt',v_last_end,'checkedInAt',
+    CASE WHEN v_outcome IN ('success','duplicate') THEN COALESCE(v_guest.checked_in_at,v_now) END));
+END;
+$$;
+COMMENT ON FUNCTION public.host_check_in_rsvp_guest(uuid) IS
+  '#4508 C7: a host admits one plus-one by hand (same people, rules and answer shape as biz_rsvp_scan; audited as source host-manual).';
+REVOKE ALL ON FUNCTION public.host_check_in_rsvp_guest(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.host_check_in_rsvp_guest(uuid) TO authenticated, service_role;
 
 -- admin_list_event_rsvps (20261224000000): only plus_guests changes (1.26): the
 -- 1.11 name, invitedByName and claimed. Guests may have no email.
@@ -2106,5 +2691,712 @@ $$;
 
 REVOKE ALL ON FUNCTION public.get_user_circle(uuid, int, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_user_circle(uuid, int, int) TO authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- P3-7 fetch_user_going_rsvps (20280322004251, verbatim but for the guest
+-- branch's display_name and invited_by): a number-only guest has no name, so
+-- the guest row reads the 1.11 display name and the inviter label. Same
+-- return shape, so CREATE OR REPLACE; grants restated as #4251 states them.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.fetch_user_going_rsvps(p_user_id uuid)
+RETURNS TABLE(rsvp_id uuid, guest_id uuid, role text, qr_code text, rsvp_status text, approval_status text, plus_count integer, display_name text, invited_by text, event_id uuid, event_title text, event_slug text, cover_media_url text, timezone text, location_text text, is_online boolean, online_url text, brand_id uuid, brand_slug text, brand_name text, master_start_at timestamp with time zone, master_end_at timestamp with time zone, created_at timestamp with time zone, cover_media_type text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- ORCH-1392: self-scope gate. anon is revoked at the grant layer; an
+  -- authenticated caller may only read their OWN rows. service_role
+  -- (auth.uid() IS NULL) is the trusted edge-function path and bypasses.
+  IF auth.uid() IS NOT NULL AND auth.uid() IS DISTINCT FROM p_user_id THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    r.id          AS rsvp_id,
+    NULL::uuid    AS guest_id,
+    'primary'     AS role,
+    r.qr_code,
+    r.rsvp_status,
+    r.approval_status,
+    r.plus_count,
+    COALESCE(NULLIF(btrim(pr.display_name), ''), NULLIF(r.guest_name, 'Guest'), r.guest_name) AS display_name,
+    NULL::text    AS invited_by,
+    e.id          AS event_id,
+    e.title       AS event_title,
+    e.slug        AS event_slug,
+    e.cover_media_url,
+    e.timezone,
+    e.location_text,
+    e.is_online,
+    e.online_url,
+    b.id          AS brand_id,
+    b.slug        AS brand_slug,
+    b.name        AS brand_name,
+    ed.start_at   AS master_start_at,
+    ed.end_at     AS master_end_at,
+    r.created_at,
+    e.cover_media_type
+  FROM public.event_rsvps r
+  JOIN public.events e ON e.id = r.event_id
+  JOIN public.brands b ON b.id = e.brand_id
+  LEFT JOIN public.event_dates ed ON ed.event_id = e.id AND ed.is_master = true
+  LEFT JOIN public.profiles pr ON pr.id = r.user_id
+  WHERE r.user_id = p_user_id
+    AND r.rsvp_status = 'going'
+    AND r.approval_status IN ('approved', 'pending')
+    AND e.deleted_at IS NULL
+
+  UNION ALL
+
+  SELECT
+    r.id          AS rsvp_id,
+    g.id          AS guest_id,
+    'guest'       AS role,
+    g.qr_code,
+    r.rsvp_status,
+    r.approval_status,
+    r.plus_count,
+    -- #4508 P3-7: the 1.11 display name (a number-only guest has no name).
+    public.rsvp_guest_display_name(g.id) AS display_name,
+    COALESCE((SELECT n.label FROM public.rsvp_guest_inviter_names(g.id) n), r.guest_name) AS invited_by,
+    e.id          AS event_id,
+    e.title       AS event_title,
+    e.slug        AS event_slug,
+    e.cover_media_url,
+    e.timezone,
+    e.location_text,
+    e.is_online,
+    e.online_url,
+    b.id          AS brand_id,
+    b.slug        AS brand_slug,
+    b.name        AS brand_name,
+    ed.start_at   AS master_start_at,
+    ed.end_at     AS master_end_at,
+    g.created_at,
+    e.cover_media_type
+  FROM public.event_rsvp_guests g
+  JOIN public.event_rsvps r ON r.id = g.rsvp_id
+  JOIN public.events e ON e.id = r.event_id
+  JOIN public.brands b ON b.id = e.brand_id
+  LEFT JOIN public.event_dates ed ON ed.event_id = e.id AND ed.is_master = true
+  LEFT JOIN public.profiles pg ON pg.id = g.matched_user_id
+  WHERE g.matched_user_id = p_user_id
+    AND r.rsvp_status = 'going'
+    AND r.approval_status IN ('approved', 'pending')
+    AND e.deleted_at IS NULL;
+END;
+$function$;
+
+REVOKE EXECUTE ON FUNCTION public.fetch_user_going_rsvps(p_user_id uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fetch_user_going_rsvps(p_user_id uuid) TO authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- D-2.4 / C4 peer_list_event_guests (20270810003682, verbatim but for the
+-- lines marked #4508): "Brought by" on the public Who's going list. Same
+-- signature and return type, so CREATE OR REPLACE keeps its grants.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.peer_list_event_guests(
+  p_event_id uuid,
+  p_limit integer DEFAULT 50,
+  p_offset integer DEFAULT 0
+)
+RETURNS json
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+DECLARE
+  v_viewer uuid := auth.uid();
+  v_event record;
+  v_limit integer;
+  v_offset integer;
+  v_guests json := '[]'::json;
+  v_fetched integer := 0;
+  v_private_others integer := 0;
+  v_viewer_show boolean := NULL;
+BEGIN
+  -- Guard 1: authentication, before any attendance read.
+  IF v_viewer IS NULL THEN RAISE EXCEPTION 'authentication_required'; END IF;
+
+  -- Guard 2: only a public, current offering owned by a live brand.
+  SELECT e.id, e.event_type, e.status, e.theme INTO v_event
+    FROM public.events e
+    JOIN public.brands b ON b.id = e.brand_id
+   WHERE e.id = p_event_id
+     AND e.visibility = 'public'
+     AND e.deleted_at IS NULL
+     AND b.deleted_at IS NULL
+     AND e.status IN ('scheduled', 'live')
+     AND e.event_type IN ('rsvp', 'event', 'trip', 'experience');
+  IF NOT FOUND THEN RAISE EXCEPTION 'event_not_available'; END IF;
+
+  -- Guard 3: host privacy remains absolute, even for an attendee.
+  IF COALESCE(
+    (v_event.theme #>> '{business_event,settings,privateGuestList}')::boolean,
+    false
+  ) THEN RAISE EXCEPTION 'guest_list_private'; END IF;
+
+  -- Guard 4: exact primary attendance. Email, phone, plus-one and transferred
+  -- ticket identity are deliberately insufficient.
+  IF v_event.event_type = 'rsvp' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.event_rsvps r
+       WHERE r.event_id = v_event.id
+         AND r.user_id = v_viewer
+         AND r.rsvp_status = 'going'
+         AND r.approval_status = 'approved'
+    ) THEN RAISE EXCEPTION 'attendance_required'; END IF;
+  ELSIF v_event.event_type IN ('event', 'trip', 'experience') THEN
+    IF NOT EXISTS (
+      SELECT 1
+        FROM public.orders o
+        JOIN public.tickets t ON t.order_id = o.id
+       WHERE o.event_id = v_event.id
+         AND o.buyer_user_id = v_viewer
+         AND o.payment_status IN ('paid', 'partial_refund')
+         AND t.approval_status IN ('auto', 'approved')
+         AND (
+           (v_event.status = 'scheduled' AND t.status = 'valid') OR
+           (v_event.status = 'live' AND t.status IN ('valid', 'used'))
+         )
+    ) THEN RAISE EXCEPTION 'attendance_required'; END IF;
+  ELSE
+    RAISE EXCEPTION 'event_not_available';
+  END IF;
+
+  -- Clamp only after every disclosure guard.
+  v_limit := LEAST(GREATEST(COALESCE(p_limit, 50), 1), 100);
+  v_offset := GREATEST(COALESCE(p_offset, 0), 0);
+
+  WITH shown_guests AS (
+    -- #4508 D-2.4: a plus-one is a row of their own only once claimed, while
+    -- their own Show me as going is on, and with no block either way.
+    SELECT g.id AS row_id, g.matched_user_id AS linked_user_id, g.created_at,
+           r.id AS rsvp_id, COALESCE(g.invited_by_user_id, r.user_id) AS inviter_id
+      FROM public.event_rsvp_guests g
+      JOIN public.event_rsvps r ON r.id = g.rsvp_id
+     WHERE v_event.event_type = 'rsvp'
+       AND r.event_id = v_event.id
+       AND r.rsvp_status = 'going'
+       AND r.approval_status = 'approved'
+       AND g.claimed_at IS NOT NULL
+       AND g.matched_user_id IS NOT NULL
+       AND g.show_me_as_going
+       AND NOT public.is_blocked_by(g.matched_user_id, v_viewer)
+       AND NOT public.is_blocked_by(v_viewer, g.matched_user_id)
+  ), attendance AS (
+    -- #4508 D-2.4: the inviter's row keeps every guest not shown on their own
+    -- (headcount unchanged) and carries how many have not claimed yet.
+    SELECT r.id AS row_id, r.user_id AS linked_user_id,
+           (1 + r.plus_count
+              - (SELECT count(*) FROM shown_guests sg WHERE sg.rsvp_id = r.id))::integer AS party_size,
+           r.created_at,
+           r.show_me_as_going,
+           (SELECT count(*) FROM public.event_rsvp_guests ug
+             WHERE ug.rsvp_id = r.id AND ug.claimed_at IS NULL)::integer AS unclaimed_count,
+           NULL::uuid AS inviter_id
+      FROM public.event_rsvps r
+     WHERE v_event.event_type = 'rsvp'
+       AND r.event_id = v_event.id
+       AND r.rsvp_status = 'going'
+       AND r.approval_status = 'approved'
+    UNION ALL
+    SELECT sg.row_id, sg.linked_user_id, 1, sg.created_at, true, 0, sg.inviter_id
+      FROM shown_guests sg
+    UNION ALL
+    SELECT o.id, o.buyer_user_id, COUNT(t.id)::integer, o.created_at,
+           o.show_me_as_going, 0, NULL::uuid
+      FROM public.orders o
+      JOIN public.tickets t ON t.order_id = o.id
+     WHERE v_event.event_type IN ('event', 'trip', 'experience')
+       AND o.event_id = v_event.id
+       AND o.payment_status IN ('paid', 'partial_refund')
+       AND t.approval_status IN ('auto', 'approved')
+       AND (
+         (v_event.status = 'scheduled' AND t.status = 'valid') OR
+         (v_event.status = 'live' AND t.status IN ('valid', 'used'))
+       )
+     GROUP BY o.id, o.buyer_user_id, o.created_at, o.show_me_as_going
+  ), user_opted AS (
+    -- Per-user opt-in across every paid/RSVP attendance row for this event.
+    SELECT a.linked_user_id, bool_or(a.show_me_as_going) AS opted
+      FROM attendance a
+     WHERE a.linked_user_id IS NOT NULL
+     GROUP BY a.linked_user_id
+  ), privacy_final AS (
+    SELECT a.row_id, a.party_size, a.created_at, a.unclaimed_count,
+           -- #4508 D-2.4: "Brought by {first name}", only when the inviter is
+           -- someone this viewer may see by name (self, friend, opted in).
+           CASE WHEN a.inviter_id IS NOT NULL
+                 AND NOT public.is_blocked_by(a.inviter_id, v_viewer)
+                 AND NOT public.is_blocked_by(v_viewer, a.inviter_id)
+                 AND (a.inviter_id = v_viewer
+                   OR EXISTS (
+                     SELECT 1 FROM public.friends f
+                      WHERE f.status = 'accepted'
+                        AND f.deleted_at IS NULL
+                        AND (
+                          (f.user_id = v_viewer AND f.friend_user_id = a.inviter_id)
+                          OR (f.friend_user_id = v_viewer AND f.user_id = a.inviter_id)
+                        ))
+                   OR COALESCE((SELECT uoi.opted FROM user_opted uoi
+                                 WHERE uoi.linked_user_id = a.inviter_id), false))
+                THEN (SELECT COALESCE(
+                        public.rsvp_guest_safe_name_part(split_part(btrim(coalesce(ip.first_name, '')), ' ', 1)),
+                        public.rsvp_guest_safe_name_part(split_part(btrim(coalesce(ip.display_name, '')), ' ', 1)))
+                        FROM public.profiles ip WHERE ip.id = a.inviter_id)
+           END AS brought_by_name,
+           a.linked_user_id IS NOT NULL AS is_mingla_user,
+           -- #3682 J: named when self, accepted friend, or user-level opt-in.
+           a.linked_user_id IS NOT NULL AND (
+             a.linked_user_id = v_viewer
+             OR EXISTS (
+               SELECT 1 FROM public.friends f
+                WHERE f.status = 'accepted'
+                  AND f.deleted_at IS NULL
+                  AND (
+                    (f.user_id = v_viewer AND f.friend_user_id = a.linked_user_id)
+                    OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
+                  )
+             )
+             OR COALESCE(uo.opted, false)
+           ) AS is_named,
+           CASE WHEN a.linked_user_id IS NOT NULL AND (
+                  a.linked_user_id = v_viewer
+                  OR EXISTS (
+                    SELECT 1 FROM public.friends f
+                     WHERE f.status = 'accepted'
+                       AND f.deleted_at IS NULL
+                       AND (
+                         (f.user_id = v_viewer AND f.friend_user_id = a.linked_user_id)
+                         OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
+                       )
+                  )
+                  OR COALESCE(uo.opted, false)
+                ) THEN p.id END AS profile_id,
+           CASE WHEN a.linked_user_id IS NOT NULL AND (
+                  a.linked_user_id = v_viewer
+                  OR EXISTS (
+                    SELECT 1 FROM public.friends f
+                     WHERE f.status = 'accepted'
+                       AND f.deleted_at IS NULL
+                       AND (
+                         (f.user_id = v_viewer AND f.friend_user_id = a.linked_user_id)
+                         OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
+                       )
+                  )
+                  OR COALESCE(uo.opted, false)
+                ) THEN p.display_name END AS display_name,
+           CASE WHEN a.linked_user_id IS NOT NULL AND (
+                  a.linked_user_id = v_viewer
+                  OR EXISTS (
+                    SELECT 1 FROM public.friends f
+                     WHERE f.status = 'accepted'
+                       AND f.deleted_at IS NULL
+                       AND (
+                         (f.user_id = v_viewer AND f.friend_user_id = a.linked_user_id)
+                         OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
+                       )
+                  )
+                  OR COALESCE(uo.opted, false)
+                ) THEN p.username END AS username,
+           CASE WHEN a.linked_user_id IS NOT NULL AND (
+                  a.linked_user_id = v_viewer
+                  OR EXISTS (
+                    SELECT 1 FROM public.friends f
+                     WHERE f.status = 'accepted'
+                       AND f.deleted_at IS NULL
+                       AND (
+                         (f.user_id = v_viewer AND f.friend_user_id = a.linked_user_id)
+                         OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
+                       )
+                  )
+                  OR COALESCE(uo.opted, false)
+                ) THEN p.avatar_url END AS avatar_url,
+           CASE WHEN a.linked_user_id IS NOT NULL AND (
+                  a.linked_user_id = v_viewer
+                  OR EXISTS (
+                    SELECT 1 FROM public.friends f
+                     WHERE f.status = 'accepted'
+                       AND f.deleted_at IS NULL
+                       AND (
+                         (f.user_id = v_viewer AND f.friend_user_id = a.linked_user_id)
+                         OR (f.friend_user_id = v_viewer AND f.user_id = a.linked_user_id)
+                       )
+                  )
+                  OR COALESCE(uo.opted, false)
+                ) THEN p.location END AS location
+      FROM attendance a
+      LEFT JOIN user_opted uo ON uo.linked_user_id = a.linked_user_id
+      LEFT JOIN public.profiles p ON p.id = a.linked_user_id
+     WHERE a.linked_user_id IS NULL OR (
+       NOT public.is_blocked_by(a.linked_user_id, v_viewer)
+       AND NOT public.is_blocked_by(v_viewer, a.linked_user_id)
+     )
+  ), ranked AS (
+    SELECT p.*,
+           row_number() OVER (
+             ORDER BY
+               CASE
+                 WHEN p.is_named AND NULLIF(btrim(p.avatar_url), '') IS NOT NULL THEN 0
+                 WHEN p.is_named THEN 1
+                 ELSE 2
+               END,
+               p.created_at ASC,
+               p.row_id ASC
+           ) AS rn
+      FROM privacy_final p
+  ), page AS (
+    SELECT r.*
+      FROM ranked r
+     WHERE r.rn > v_offset
+       AND r.rn <= v_offset + v_limit + 1
+  ), aggregates AS (
+    SELECT
+      -- Same unit as goingCount (party size / ticket count), so the sheet can
+      -- say "N going · M keep it private" without mixing row counts into seats.
+      (SELECT COALESCE(SUM(pf.party_size), 0)::integer
+         FROM privacy_final pf WHERE NOT pf.is_named) AS private_others,
+      (
+        SELECT bool_or(a.show_me_as_going)
+          FROM attendance a
+         WHERE a.linked_user_id = v_viewer
+      ) AS viewer_show,
+      (SELECT COUNT(*)::integer FROM page) AS fetched
+  )
+  SELECT COALESCE(json_agg(json_build_object(
+           'profileId', p.profile_id,
+           'displayName', p.display_name,
+           'username', p.username,
+           'avatarUrl', p.avatar_url,
+           'location', p.location,
+           'isMinglaUser', p.is_mingla_user,
+           'isAnonymous', NOT p.is_named,
+           'partySize', p.party_size,
+           'broughtByName', p.brought_by_name,
+           'unclaimedGuestCount', p.unclaimed_count
+         ) ORDER BY p.rn) FILTER (WHERE p.rn <= v_offset + v_limit), '[]'::json),
+         ag.fetched,
+         ag.private_others,
+         ag.viewer_show
+    INTO v_guests, v_fetched, v_private_others, v_viewer_show
+    FROM aggregates ag
+    LEFT JOIN page p ON true
+   GROUP BY ag.fetched, ag.private_others, ag.viewer_show;
+
+  RETURN json_build_object(
+    'eventId', v_event.id,
+    'entityType', v_event.event_type,
+    'returned', LEAST(v_fetched, v_limit),
+    'hasMore', v_fetched > v_limit,
+    'nextOffset', CASE WHEN v_fetched > v_limit THEN v_offset + v_limit ELSE NULL END,
+    'guests', COALESCE(v_guests, '[]'::json),
+    'privateOthersCount', COALESCE(v_private_others, 0),
+    'viewerShowMeAsGoing', v_viewer_show
+  );
+END;
+$function$;
+
+COMMENT ON FUNCTION public.peer_list_event_guests(uuid, integer, integer) IS
+  '#871 entitled roster + #3682 Show me as going. Authed attendees only. '
+  'Named rows: self, accepted friends, or show_me_as_going. Others anonymous; '
+  'privateOthersCount (party/ticket seats) feeds "M keep it private". '
+  '#4508 D-2.4: a claimed plus-one with Show me as going on is a row of their own '
+  'with broughtByName; unclaimed plus-ones never appear and are counted as '
+  'unclaimedGuestCount on the inviter''s row; the seat total is unchanged.';
+
+-- ---------------------------------------------------------------------------
+-- D-2.4 biz_set_show_me_as_going (20270810003682, verbatim but for the
+-- #4508 lines): a claimed plus-one turns their own Show me as going on or
+-- off with the same call. Same signature, grants kept.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.biz_set_show_me_as_going(
+  p_event_id uuid,
+  p_show boolean
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $f$
+DECLARE
+  v_viewer uuid := auth.uid();
+  v_event record;
+  v_updated integer := 0;
+  v_guest_updated integer := 0;
+BEGIN
+  IF v_viewer IS NULL THEN
+    RAISE EXCEPTION 'authentication_required' USING ERRCODE = '28000';
+  END IF;
+  IF p_event_id IS NULL OR p_show IS NULL THEN
+    RAISE EXCEPTION 'invalid_show_me_as_going' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT e.id, e.event_type, e.status
+    INTO v_event
+    FROM public.events e
+    JOIN public.brands b ON b.id = e.brand_id
+   WHERE e.id = p_event_id
+     AND e.deleted_at IS NULL
+     AND b.deleted_at IS NULL
+     AND e.status IN ('scheduled', 'live')
+     AND e.event_type IN ('rsvp', 'event', 'trip', 'experience');
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'event_not_available' USING ERRCODE = 'P0002';
+  END IF;
+
+  IF v_event.event_type = 'rsvp' THEN
+    UPDATE public.event_rsvps r
+       SET show_me_as_going = p_show
+     WHERE r.event_id = v_event.id
+       AND r.user_id = v_viewer
+       AND r.rsvp_status = 'going'
+       AND r.approval_status = 'approved';
+    GET DIAGNOSTICS v_updated = ROW_COUNT;
+    -- #4508 D-2.4: a claimed plus-one sets their own consent the same way.
+    UPDATE public.event_rsvp_guests g
+       SET show_me_as_going = p_show
+      FROM public.event_rsvps r
+     WHERE g.rsvp_id = r.id
+       AND r.event_id = v_event.id
+       AND g.matched_user_id = v_viewer
+       AND g.claimed_at IS NOT NULL
+       AND r.rsvp_status = 'going'
+       AND r.approval_status = 'approved';
+    GET DIAGNOSTICS v_guest_updated = ROW_COUNT;
+    v_updated := v_updated + v_guest_updated;
+  ELSE
+    UPDATE public.orders o
+       SET show_me_as_going = p_show
+     WHERE o.event_id = v_event.id
+       AND o.buyer_user_id = v_viewer
+       AND o.payment_status IN ('paid', 'partial_refund')
+       AND EXISTS (
+         SELECT 1
+           FROM public.tickets t
+          WHERE t.order_id = o.id
+            AND t.approval_status IN ('auto', 'approved')
+            AND (
+              (v_event.status = 'scheduled' AND t.status = 'valid')
+              OR (v_event.status = 'live' AND t.status IN ('valid', 'used'))
+            )
+       );
+    GET DIAGNOSTICS v_updated = ROW_COUNT;
+  END IF;
+
+  IF v_updated = 0 THEN
+    RAISE EXCEPTION 'attendance_required' USING ERRCODE = '42501';
+  END IF;
+
+  RETURN jsonb_build_object(
+    'eventId', v_event.id,
+    'showMeAsGoing', p_show
+  );
+END;
+$f$;
+
+-- ---------------------------------------------------------------------------
+-- C6 business_update_rsvp_graph (20280521004334, verbatim but for the #4508
+-- lines): the host save path persists rsvpGuestsCanBring and returns it.
+-- Same signature, grants kept.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.business_update_rsvp_graph(p_event_id uuid, p_payload jsonb, p_reason text DEFAULT NULL::text, p_client_request_id uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions', 'pg_temp'
+AS $function$
+DECLARE v_actor uuid:=auth.uid(); v public.events%ROWTYPE; v_draft jsonb; v_patch jsonb; v_merged jsonb;
+  v_theme jsonb; v_result jsonb; v_hash text; v_prior public.rsvp_domain_operation_receipts%ROWTYPE;
+  v_live_payload jsonb; v_update_result jsonb; v_current_revision integer; v_expected_revision integer;
+  v_suggested integer; v_minimum integer;
+  v_keep_cover boolean;  -- applied-cover guard
+BEGIN
+  IF v_actor IS NULL OR p_payload IS NULL OR jsonb_typeof(p_payload)<>'object' THEN
+    RAISE EXCEPTION 'rsvp_payload_invalid' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v FROM public.events WHERE id=p_event_id AND event_type='rsvp' AND deleted_at IS NULL FOR UPDATE;
+  IF NOT FOUND OR public.biz_brand_effective_rank(v.brand_id,v_actor)<public.biz_role_rank('event_manager') THEN
+    RAISE EXCEPTION 'rsvp_not_found_or_forbidden' USING ERRCODE='42501';
+  END IF;
+  v_hash:=encode(extensions.digest(convert_to(p_event_id::text||':'||p_payload::text||':'||COALESCE(p_reason,''),'UTF8'),'sha256'),'hex');
+  IF p_client_request_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended(v_actor::text||':rsvp_update:'||p_client_request_id::text,0));
+    SELECT * INTO v_prior FROM public.rsvp_domain_operation_receipts
+      WHERE actor_id=v_actor AND operation='update' AND client_request_id=p_client_request_id;
+    IF FOUND THEN
+      IF v_prior.request_hash<>v_hash THEN RAISE EXCEPTION 'rsvp_idempotency_hash_mismatch' USING ERRCODE='23505'; END IF;
+      RETURN v_prior.result||jsonb_build_object('replayed',true);
+    END IF;
+  END IF;
+  IF v.status='draft' AND v.visibility='draft' THEN
+    IF EXISTS(SELECT 1 FROM public.event_dates d WHERE d.event_id=p_event_id)
+       OR EXISTS(SELECT 1 FROM public.ticket_types t WHERE t.event_id=p_event_id AND t.deleted_at IS NULL) THEN
+      RAISE EXCEPTION 'rsvp_draft_graph_invalid';
+    END IF;
+    v_draft:=COALESCE(v.theme#>'{business_draft}','{}'::jsonb);
+    v_patch:=COALESCE(p_payload#>'{theme,business_draft}','{}'::jsonb)||p_payload;
+    v_current_revision:=COALESCE((v_draft->>'clientRevision')::integer,0);
+    v_expected_revision:=NULLIF(p_payload->>'__expectedClientRevision','')::integer;
+    IF v_expected_revision IS NOT NULL AND v_expected_revision<v_current_revision THEN
+      RAISE EXCEPTION 'rsvp_revision_conflict' USING ERRCODE='PT409';
+    END IF;
+    -- Applied-cover guard — a cover the server put on this row (a draft_auto
+    -- cover-video job finishing after the host closed the sheet) must survive
+    -- a save from a client that has not seen it. With `__coverBase` (the
+    -- cover the client last received) it is a three-way merge: keep the
+    -- stored cover when the client's cover is still its base and the server's
+    -- has moved since. A client without the key falls back to: the stored
+    -- cover is an applied draft_auto job's video and no save has landed since
+    -- that job applied.
+    v_keep_cover := (CASE WHEN p_payload ? '__coverBase' THEN
+        NULLIF(p_payload->>'cover_media_url','') IS NOT DISTINCT FROM NULLIF(p_payload->>'__coverBase','')
+        AND v.cover_media_url IS DISTINCT FROM NULLIF(p_payload->>'__coverBase','')
+      ELSE
+        v.cover_media_url IS NOT NULL
+        AND NULLIF(p_payload->>'cover_media_url','') IS DISTINCT FROM v.cover_media_url
+        AND EXISTS (SELECT 1 FROM public.event_cover_video_jobs j
+          WHERE j.event_id = p_event_id AND j.target_kind = 'event'
+            AND j.apply_mode = 'draft_auto' AND j.status = 'applied'
+            AND j.processed_url = v.cover_media_url
+            AND j.applied_at >= v.updated_at)
+      END);
+    v_patch:=v_patch-'__expectedClientRevision'-'__coverBase';
+    v_merged:=jsonb_set(v_draft||v_patch,'{clientRevision}',to_jsonb(COALESCE(v_expected_revision,v_current_revision+1)),true);
+    IF v_patch?'when' THEN v_merged:=jsonb_set(v_merged,'{when}',COALESCE(v_draft->'when','{}'::jsonb)||(v_patch->'when'),true); END IF;
+    IF v_patch?'settings' THEN v_merged:=jsonb_set(v_merged,'{settings}',COALESCE(v_draft->'settings','{}'::jsonb)||(v_patch->'settings'),true); END IF;
+    IF COALESCE(jsonb_array_length(COALESCE(v_merged->'tickets','[]'::jsonb)),0)<>0
+       OR COALESCE((v_merged->>'isRsvp')::boolean,true)<>true THEN
+      RAISE EXCEPTION 'rsvp_ticket_wall' USING ERRCODE='22023';
+    END IF;
+    v_suggested:=NULLIF(v_merged->>'rsvpContributionSuggestedCents','')::integer;
+    v_minimum:=NULLIF(v_merged->>'rsvpContributionMinCents','')::integer;
+    IF (v_suggested IS NOT NULL AND v_suggested<=0)
+       OR (v_minimum IS NOT NULL AND v_minimum<=0)
+       OR (v_suggested IS NOT NULL AND v_minimum IS NOT NULL AND v_suggested<v_minimum) THEN
+      RAISE EXCEPTION 'rsvp_contribution_amount_invalid' USING ERRCODE='22023';
+    END IF;
+    v_theme:=jsonb_set(COALESCE(v.theme,'{}'::jsonb),'{business_draft}',v_merged,true);
+    UPDATE public.events SET
+      title=COALESCE(NULLIF(btrim(p_payload->>'title'),''),v.title),
+      description=CASE WHEN p_payload?'description' THEN NULLIF(p_payload->>'description','') ELSE v.description END,
+      location_text=CASE WHEN p_payload?'location_text' THEN NULLIF(p_payload->>'location_text','') ELSE v.location_text END,
+      online_url=CASE WHEN p_payload?'online_url' THEN NULLIF(p_payload->>'online_url','') ELSE v.online_url END,
+      cover_media_url=CASE WHEN v_keep_cover THEN v.cover_media_url WHEN p_payload?'cover_media_url' THEN NULLIF(p_payload->>'cover_media_url','') ELSE v.cover_media_url END,
+      cover_media_poster_url=CASE WHEN v_keep_cover THEN v.cover_media_poster_url WHEN p_payload?'cover_media_poster_url' THEN NULLIF(p_payload->>'cover_media_poster_url','') ELSE v.cover_media_poster_url END,
+      cover_media_type=CASE WHEN v_keep_cover THEN v.cover_media_type WHEN p_payload?'cover_media_type' THEN NULLIF(p_payload->>'cover_media_type','') ELSE v.cover_media_type END,
+      cover_media_provider=CASE WHEN v_keep_cover THEN v.cover_media_provider WHEN p_payload?'cover_media_provider' THEN NULLIF(p_payload->>'cover_media_provider','') ELSE v.cover_media_provider END,
+      cover_media_source_url=CASE WHEN v_keep_cover THEN v.cover_media_source_url WHEN p_payload?'cover_media_source_url' THEN NULLIF(p_payload->>'cover_media_source_url','') ELSE v.cover_media_source_url END,
+      cover_media_credit=CASE WHEN v_keep_cover THEN v.cover_media_credit WHEN p_payload?'cover_media_credit' THEN NULLIF(p_payload->>'cover_media_credit','') ELSE v.cover_media_credit END,
+      cover_media_credit_url=CASE WHEN v_keep_cover THEN v.cover_media_credit_url WHEN p_payload?'cover_media_credit_url' THEN NULLIF(p_payload->>'cover_media_credit_url','') ELSE v.cover_media_credit_url END,
+      cover_media_alt=CASE WHEN v_keep_cover THEN v.cover_media_alt WHEN p_payload?'cover_media_alt' THEN NULLIF(p_payload->>'cover_media_alt','') ELSE v.cover_media_alt END,
+      cover_media_gallery=CASE WHEN p_payload?'cover_media_gallery' THEN p_payload->'cover_media_gallery' ELSE v.cover_media_gallery END,
+      timezone=COALESCE(NULLIF(p_payload->>'timezone',''),v.timezone),
+      is_online=CASE WHEN v_patch?'format' THEN (v_patch->>'format') IN ('online','hybrid') ELSE v.is_online END,
+      theme=v_theme,
+      party_types=CASE WHEN v_patch?'partyTypes' THEN ARRAY(SELECT jsonb_array_elements_text(v_patch->'partyTypes')) ELSE v.party_types END,
+      vibe_tags=CASE WHEN v_patch?'vibeTags' THEN ARRAY(SELECT jsonb_array_elements_text(v_patch->'vibeTags')) ELSE v.vibe_tags END,
+      music_genres=CASE WHEN v_patch?'musicGenres' THEN ARRAY(SELECT jsonb_array_elements_text(v_patch->'musicGenres')) ELSE v.music_genres END,
+      city=CASE WHEN v_patch?'city' THEN NULLIF(v_patch->>'city','') ELSE v.city END,
+      -- Where-step pin: written when the save carries it (the wizard always does;
+      -- an explicit null clears it with the address). Absent key keeps the row.
+      location_geo=CASE WHEN p_payload?'location_geo' THEN NULLIF(p_payload->>'location_geo','')::point ELSE v.location_geo END,
+      location_provider_place_id=CASE WHEN p_payload?'location_provider_place_id' THEN public.places_checked_place_id(NULLIF(btrim(p_payload->>'location_provider_place_id'),'')) ELSE v.location_provider_place_id END,
+      theme_color_override=CASE WHEN p_payload?'theme_color_override' THEN NULLIF(p_payload->>'theme_color_override','') ELSE v.theme_color_override END,
+      theme_font_override=CASE WHEN p_payload?'theme_font_override' THEN NULLIF(p_payload->>'theme_font_override','') ELSE v.theme_font_override END,
+      theme_animation_override=CASE WHEN p_payload?'theme_animation_override' THEN NULLIF(p_payload->>'theme_animation_override','') ELSE v.theme_animation_override END,
+      theme_gradient_override=CASE WHEN p_payload?'theme_gradient_override' THEN NULLIF(p_payload->>'theme_gradient_override','') ELSE v.theme_gradient_override END,
+      currency=COALESCE(NULLIF(upper(COALESCE(p_payload->>'currency',v_patch->>'currency')),''),v.currency),updated_at=now()
+    WHERE id=p_event_id;
+  ELSE
+    IF length(btrim(COALESCE(p_reason,''))) NOT BETWEEN 10 AND 200 THEN
+      RAISE EXCEPTION 'rsvp_edit_reason_invalid' USING ERRCODE='22023';
+    END IF;
+    v_live_payload:=p_payload||jsonb_build_object('title',COALESCE(NULLIF(p_payload->>'title',''),v.title));
+    v_update_result:=public.biz_update_live_rsvp(p_event_id,v_live_payload,p_reason);
+    UPDATE public.events SET
+      party_types=CASE WHEN p_payload?'partyTypes' THEN ARRAY(SELECT jsonb_array_elements_text(p_payload->'partyTypes')) ELSE party_types END,
+      vibe_tags=CASE WHEN p_payload?'vibeTags' THEN ARRAY(SELECT jsonb_array_elements_text(p_payload->'vibeTags')) ELSE vibe_tags END,
+      music_genres=CASE WHEN p_payload?'musicGenres' THEN ARRAY(SELECT jsonb_array_elements_text(p_payload->'musicGenres')) ELSE music_genres END,
+      city=CASE WHEN p_payload?'city' THEN NULLIF(p_payload->>'city','') ELSE city END,
+      -- Where-step pin on a published RSVP: a re-picked address sends its
+      -- coordinate and precision together; an unrelated edit sends neither.
+      location_geo=CASE WHEN p_payload?'location_geo' THEN NULLIF(p_payload->>'location_geo','')::point ELSE location_geo END,
+      location_provider_place_id=CASE WHEN p_payload?'location_provider_place_id' THEN public.places_checked_place_id(NULLIF(btrim(p_payload->>'location_provider_place_id'),'')) ELSE location_provider_place_id END,
+      coordinate_precision=CASE WHEN p_payload?'location_geo' THEN
+        CASE WHEN NULLIF(p_payload->>'location_geo','') IS NOT NULL
+              AND p_payload->>'coordinate_precision' IN ('exact','approximate')
+             THEN p_payload->>'coordinate_precision' END
+        ELSE coordinate_precision END,
+      cover_media_gallery=CASE WHEN p_payload?'cover_media_gallery' THEN p_payload->'cover_media_gallery' ELSE cover_media_gallery END
+    WHERE id=p_event_id;
+  END IF;
+  -- #4508 C6: the host's "Bring someone too" setting, on a draft or a live
+  -- RSVP alike. Absent key keeps the stored value.
+  IF p_payload ? 'rsvpGuestsCanBring' THEN
+    IF jsonb_typeof(p_payload->'rsvpGuestsCanBring') <> 'boolean' THEN
+      RAISE EXCEPTION 'rsvp_payload_invalid' USING ERRCODE='22023';
+    END IF;
+    UPDATE public.events
+       SET rsvp_guests_can_bring=(p_payload->>'rsvpGuestsCanBring')::boolean
+     WHERE id=p_event_id;
+  END IF;
+  v_result:=public.issue_1977_rsvp_graph(p_event_id);
+  v_result:=v_result||jsonb_build_object('rsvpGuestsCanBring',
+    (SELECT e.rsvp_guests_can_bring FROM public.events e WHERE e.id=p_event_id));
+  IF v_update_result IS NOT NULL THEN
+    v_result:=v_result||jsonb_build_object('updateResult',v_update_result);
+  END IF;
+  IF p_client_request_id IS NOT NULL THEN
+    INSERT INTO public.rsvp_domain_operation_receipts(actor_id,operation,client_request_id,event_id,request_hash,result)
+    VALUES(v_actor,'update',p_client_request_id,p_event_id,v_hash,v_result);
+  END IF;
+  RETURN v_result||jsonb_build_object('replayed',false);
+END;
+$function$;
+
+
+-- ---------------------------------------------------------------------------
+-- S2 biz_resolve_brand_person_source: a number-only plus-one has no name, and
+-- the rsvp_plus_one arm read btrim(g.name) into the brand_people insert, which
+-- failed on NULL (the ingest trigger then dropped the guest). The arm now uses
+-- the 'Guest' sentinel every other arm uses. This follows #3524's convention
+-- for this function (its live body carries #1772's and #3524's string
+-- patches): take the live definition, replace exactly one expression, and
+-- raise if it did not land. Idempotent: a second run leaves it as it is.
+-- ---------------------------------------------------------------------------
+DO $s2_patch$
+DECLARE
+  v_def text;
+  v_anchor text := 'SELECT e.brand_id,r.event_id,g.matched_user_id,btrim(g.name),';
+  v_new text := 'SELECT e.brand_id,r.event_id,g.matched_user_id,COALESCE(NULLIF(btrim(g.name),''''),''Guest''),';
+BEGIN
+  SELECT pg_get_functiondef(
+    'public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz)'::regprocedure)
+    INTO v_def;
+  IF position(v_new in v_def) > 0 THEN
+    RAISE NOTICE '#4508: biz_resolve_brand_person_source already names number-only guests; unchanged.';
+    RETURN;
+  END IF;
+  IF (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 THEN
+    RAISE EXCEPTION 'issue_4508_s2_patch_anchor_missing';
+  END IF;
+  v_def := replace(v_def, v_anchor, v_new);
+  IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_source%'
+     OR v_def NOT LIKE '%s.superseded_at IS NULL%'
+     OR v_def NOT LIKE '%issue_3524_grade_marketing_consent%' THEN
+    RAISE EXCEPTION 'issue_4508_s2_patch_failed';
+  END IF;
+  EXECUTE v_def;
+END
+$s2_patch$;
+REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source(
+  uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_resolve_brand_person_source(
+  uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz) TO service_role;
 
 COMMIT;

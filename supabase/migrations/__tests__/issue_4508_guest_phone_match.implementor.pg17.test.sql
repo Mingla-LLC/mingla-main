@@ -1,11 +1,13 @@
 -- #4508 Phase 0 — a plus-one is matched to an account by phone.
 --
--- MINGLA-INVARIANT: I-4508-GUEST-PHONE-MATCH | issue #4508 | biz_resolve_verified_user compares phone numbers as digits only on both sides (a guest "+1..." resolves to a confirmed auth phone "1..."), tries the phone before the email, accepts only a code-proven phone (possession ledger or confirmed GoTrue phone), and submit_event_rsvp never resolves a plus-one to the RSVP's own primary account.
+-- MINGLA-INVARIANT: I-4508-GUEST-PHONE-MATCH | issue #4508 | biz_resolve_verified_user compares phone numbers as digits only on both sides (a guest "+1..." resolves to a GoTrue phone identity "1..."), accepts only the proof account_owns_contact accepts (possession ledger, live claim contact, GoTrue phone identity; never phone_confirmed_at alone), never falls back to an email when a phone is supplied, and submit_event_rsvp never resolves a plus-one to the RSVP's own primary account.
 --
---   happy: guest +15550104508 resolves to the account whose CONFIRMED auth
---          phone is 15550104508 (the live case: stored without "+")
+--   happy: guest +15550104508 resolves to the account whose GoTrue phone
+--          identity is 15550104508 (the live case: stored without "+")
 --   happy: the possession ledger (verified_phone_identities) also resolves
---   adversarial: an UNCONFIRMED auth phone never matches
+--   adversarial: a phone with phone_confirmed_at but no phone identity
+--          (P2-3: confirmed_at is set on every account) never matches
+--   adversarial: P2-1 an email beside an unowned number never matches
 --   adversarial: a guest number equal to the primary's own never matches
 --   adversarial: a phone match wins over a different account's email match
 --
@@ -52,13 +54,16 @@ BEGIN
     (v_primary, 'issue-4508-primary@example.test'),
     (v_email_user, 'issue-4508-email@example.test'),
     (v_ledger_user, 'issue-4508-ledger@example.test');
-  -- GoTrue stores the phone WITHOUT the leading "+".
+  -- GoTrue stores the phone WITHOUT the leading "+". A phone identity is the
+  -- GoTrue proof; phone_confirmed_at alone is not (P2-3).
   UPDATE auth.users SET phone = '15550104508', phone_confirmed_at = now() WHERE id = v_guest_user;
-  UPDATE auth.users SET phone = '15550104509', phone_confirmed_at = NULL WHERE id = v_unconfirmed;
+  UPDATE auth.users SET phone = '15550104509', phone_confirmed_at = now() WHERE id = v_unconfirmed;
   UPDATE auth.users SET phone = '15550104510', phone_confirmed_at = now() WHERE id = v_primary;
-  INSERT INTO auth.identities(user_id, provider, identity_data)
-  VALUES (v_email_user, 'email',
-    jsonb_build_object('email', 'shared-4508@example.test', 'email_verified', true));
+  INSERT INTO auth.identities(user_id, provider, identity_data) VALUES
+    (v_email_user, 'email',
+     jsonb_build_object('email', 'shared-4508@example.test', 'email_verified', true)),
+    (v_guest_user, 'phone', jsonb_build_object('phone', '15550104508')),
+    (v_primary, 'phone', jsonb_build_object('phone', '15550104510'));
   INSERT INTO public.verified_phone_identities(user_id, phone_e164)
   VALUES (v_ledger_user, '+447700904508');
 
@@ -78,19 +83,22 @@ BEGIN
 
   -- Direct reads.
   PERFORM pg_temp.ok(public.biz_resolve_verified_user(NULL, '+15550104508') = v_guest_user,
-    'a +E.164 guest phone must resolve to the confirmed digits-only auth phone');
+    'a +E.164 guest phone must resolve to the digits-only GoTrue phone identity');
   PERFORM pg_temp.ok(public.biz_resolve_verified_user(NULL, '+1 (555) 010-4508') = v_guest_user,
     'formatting characters are ignored on the guest side');
   PERFORM pg_temp.ok(public.biz_resolve_verified_user(NULL, '+15550104509') IS NULL,
-    'an unconfirmed auth phone must never match');
+    'P2-3: phone_confirmed_at without a phone identity must never match');
   PERFORM pg_temp.ok(public.biz_resolve_verified_user(NULL, '+447700904508') = v_ledger_user,
     'the possession ledger must resolve');
   PERFORM pg_temp.ok(
     public.biz_resolve_verified_user('shared-4508@example.test', '+15550104508') = v_guest_user,
     'a phone match must win over a different account''s email match');
   PERFORM pg_temp.ok(
-    public.biz_resolve_verified_user('shared-4508@example.test', '+15550000000') = v_email_user,
-    'the verified email still resolves when no phone matches');
+    public.biz_resolve_verified_user('shared-4508@example.test', '+15550000000') IS NULL,
+    'P2-1: an email beside an unowned number never resolves to the email''s owner');
+  PERFORM pg_temp.ok(
+    public.biz_resolve_verified_user('shared-4508@example.test', NULL) = v_email_user,
+    'with no phone the verified email still resolves');
 
   -- Through the RSVP writer: the live case.
   v_result := public.submit_event_rsvp(
@@ -117,6 +125,19 @@ BEGIN
    WHERE g.rsvp_id = (v_result->>'rsvpId')::uuid AND g.phone = '+15550104510';
   PERFORM pg_temp.ok(v_match IS NULL,
     'a plus-one carrying the primary''s own number must never resolve to the primary');
+
+  -- P2-1 through the writer: a typed email belonging to someone else never
+  -- hands that person a guest pass for a number they have not proved.
+  v_result := public.submit_event_rsvp(
+    v_event, v_owner, 'Owner 4508', 'issue-4508-owner@example.test', '+15550104520',
+    'going', 1,
+    jsonb_build_array(jsonb_build_object('name', 'Victim', 'email', 'shared-4508@example.test',
+      'phone', '+15550104521', 'phoneCountryIso', 'US')),
+    NULL, 'US');
+  SELECT g.matched_user_id INTO v_match FROM public.event_rsvp_guests g
+   WHERE g.rsvp_id = (v_result->>'rsvpId')::uuid;
+  PERFORM pg_temp.ok(v_match IS NULL,
+    'P2-1: the email beside an unowned number must not match: ' || coalesce(v_match::text, 'NULL'));
 
   RAISE NOTICE '#4508 phase 0: all cases passed';
 END

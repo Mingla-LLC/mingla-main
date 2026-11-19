@@ -6,11 +6,10 @@
 -- an account by phone.
 --
 -- 0.1 biz_resolve_verified_user matches PHONE FIRST, then a verified email,
---     comparing phones as digits only on both sides. The phone proof is a code
---     received at that number: our own ledger (verified_phone_identities,
---     written only after Twilio Verify approves) or a CONFIRMED GoTrue phone.
---     auth.users.phone is read only where the column exists (the stock CI image
---     has no such column), the same fail-closed idiom account_owns_contact uses.
+--     comparing phones as digits only on both sides. The phone proof is the
+--     one account_owns_contact accepts (a code received at that number): the
+--     possession ledger, a live verified claim contact, or a GoTrue phone
+--     identity. When a phone is supplied an email is never a fallback.
 -- 0.2 submit_event_rsvp never resolves a plus-one to the RSVP's own primary
 --     account (the one changed line is marked #4508 0.2; the rest of the body is
 --     copied from 20271215004063 lines 500-772 unchanged).
@@ -19,9 +18,8 @@
 -- 0.4 Grants unchanged: service_role only.
 --
 -- Read-only probe to run before applying (must return no rows):
---   select regexp_replace(phone,'\D','','g'), count(*) from auth.users
---    where phone_confirmed_at is not null
---    group by 1 having count(*) > 1;
+--   select regexp_replace(phone_e164,'\D','','g'), count(*)
+--     from public.verified_phone_identities group by 1 having count(*) > 1;
 --
 -- MINGLA-INVARIANT lives beside its test:
 --   supabase/migrations/__tests__/issue_4508_guest_phone_match.implementor.pg17.test.sql
@@ -42,40 +40,66 @@ DECLARE
   v_email text := lower(NULLIF(btrim(COALESCE(p_email, '')), ''));
   v_digits text := NULLIF(regexp_replace(COALESCE(p_phone, ''), '\D', '', 'g'), '');
   v_user_id uuid;
+  v_candidate uuid;
+  v_number_expr text;
 BEGIN
-  -- (a) Phone first, digits only on both sides.
+  -- (a) A phone was supplied: the phone decides, and an email is NEVER a
+  --     fallback (an email typed beside someone else's number must not hand
+  --     that number's pass to the email's owner). The proof is exactly the one
+  --     account_owns_contact accepts (a code received at that number): the
+  --     possession ledger, a live verified claim contact, or a GoTrue phone
+  --     identity. Every candidate is re-checked through account_owns_contact.
   IF v_digits IS NOT NULL AND length(v_digits) BETWEEN 7 AND 15 THEN
-    -- (a1) Our own possession ledger (Twilio Verify approved).
-    SELECT v.user_id INTO v_user_id
-      FROM public.verified_phone_identities v
-     WHERE regexp_replace(v.phone_e164, '\D', '', 'g') = v_digits
-     ORDER BY v.verified_at DESC
-     LIMIT 1;
-    IF v_user_id IS NOT NULL THEN RETURN v_user_id; END IF;
+    FOR v_candidate IN
+      SELECT c.user_id FROM (
+        SELECT v.user_id, 1 AS rank, v.verified_at AS at
+          FROM public.verified_phone_identities v
+         WHERE regexp_replace(v.phone_e164, '\D', '', 'g') = v_digits
+        UNION ALL
+        SELECT a.user_id, 2, a.last_proved_at
+          FROM public.account_claim_contacts a
+         WHERE a.channel = 'phone' AND a.revoked_at IS NULL
+           AND regexp_replace(a.value, '\D', '', 'g') = v_digits
+      ) c
+      ORDER BY c.rank, c.at DESC
+    LOOP
+      IF public.account_owns_contact(v_candidate, NULL, '+' || v_digits) THEN
+        RETURN v_candidate;
+      END IF;
+    END LOOP;
 
-    -- (a2) A CONFIRMED GoTrue phone. Read only where the columns exist.
-    IF EXISTS (
-      SELECT 1 FROM information_schema.columns
-       WHERE table_schema = 'auth' AND table_name = 'users'
-         AND column_name = 'phone'
-    ) AND EXISTS (
-      SELECT 1 FROM information_schema.columns
-       WHERE table_schema = 'auth' AND table_name = 'users'
-         AND column_name = 'phone_confirmed_at'
-    ) THEN
-      EXECUTE $q$
-        SELECT u.id FROM auth.users u
-         WHERE u.phone_confirmed_at IS NOT NULL
-           AND regexp_replace(COALESCE(u.phone, ''), '\D', '', 'g') = $1
-         ORDER BY u.last_sign_in_at DESC NULLS LAST
-         LIMIT 1
-      $q$ INTO v_user_id USING v_digits;
-      IF v_user_id IS NOT NULL THEN RETURN v_user_id; END IF;
+    -- GoTrue phone identity, read only where auth.identities exists (the
+    -- stock CI image has none), the same fail-closed idiom
+    -- account_owns_contact uses. auth.users.phone_confirmed_at alone is NOT a
+    -- proof here.
+    IF to_regclass('auth.identities') IS NOT NULL THEN
+      v_number_expr := CASE
+        WHEN EXISTS (
+          SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'auth' AND table_name = 'users'
+             AND column_name = 'phone'
+        ) THEN 'coalesce(i.identity_data->>''phone'', u.phone)'
+        ELSE 'i.identity_data->>''phone'''
+      END;
+      FOR v_candidate IN EXECUTE format($q$
+        SELECT i.user_id
+          FROM auth.identities i
+          JOIN auth.users u ON u.id = i.user_id
+         WHERE i.provider = 'phone'
+           AND regexp_replace(coalesce(%1$s, ''), '[^0-9]', '', 'g') = $1
+         ORDER BY i.last_sign_in_at DESC NULLS LAST
+      $q$, v_number_expr) USING v_digits
+      LOOP
+        IF public.account_owns_contact(v_candidate, NULL, '+' || v_digits) THEN
+          RETURN v_candidate;
+        END IF;
+      END LOOP;
     END IF;
+    RETURN NULL;
   END IF;
 
-  -- (b) Verified email (unchanged rule). Read only where auth.identities
-  --     exists; a database without it has no email evidence and answers NULL.
+  -- (b) No phone: a verified email (unchanged rule). Read only where
+  --     auth.identities exists; a database without it answers NULL.
   IF v_email IS NOT NULL AND to_regclass('auth.identities') IS NOT NULL THEN
     EXECUTE $q$
       SELECT i.user_id FROM auth.identities i
@@ -90,7 +114,7 @@ END;
 $function$;
 
 COMMENT ON FUNCTION public.biz_resolve_verified_user(text, text) IS
-  '#4508: phone first (possession ledger, then confirmed GoTrue phone), digits only on both sides; then a verified email. NEVER user_metadata.';
+  '#4508: a supplied phone decides alone (the account_owns_contact proof, digits only on both sides; never an email fallback); with no phone, a verified email. NEVER user_metadata.';
 REVOKE ALL ON FUNCTION public.biz_resolve_verified_user(text, text)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_resolve_verified_user(text, text)

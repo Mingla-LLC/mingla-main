@@ -244,11 +244,20 @@ BEGIN
   PERFORM pg_temp.ok(v_err = 'rsvp_guest_released', 'a released number cannot be re-added: ' || v_err);
 
   -- ---- Lookup (amendment 4) -----------------------------------------------
+  -- P1-1: a signed-out caller learns only whether the number is valid.
   v_res := public.rsvp_guest_lookup(NULL, v_event, '+15550204599');
-  PERFORM pg_temp.ok((v_res->>'onMingla')::boolean AND NOT (v_res ? 'user'),
-    'a signed-out lookup says yes/no only: ' || v_res::text);
+  PERFORM pg_temp.ok(v_res = '{"valid": true}'::jsonb,
+    'P1-1: a signed-out lookup says only valid: ' || v_res::text);
+  v_res := public.rsvp_guest_lookup(NULL, v_event, '+15550204502');
+  PERFORM pg_temp.ok(v_res = '{"valid": true}'::jsonb,
+    'P1-1: a signed-out lookup of a listed number says only valid: ' || v_res::text);
   v_res := public.rsvp_guest_lookup(v_ada, v_event, '+15550204599');
-  PERFORM pg_temp.ok(v_res->'user'->>'displayName' = 'Hal Hart', 'a signed-in lookup shows the name');
+  PERFORM pg_temp.ok(v_res->'user'->>'displayName' = 'Hal Hart'
+    AND (v_res->>'alreadyOnList') = 'false' AND (v_res->>'released') = 'false',
+    'a signed-in lookup on an open event shows the name and list state: ' || v_res::text);
+  v_res := public.rsvp_guest_lookup(v_hal, v_event, '+15550204502');
+  PERFORM pg_temp.ok((v_res->>'alreadyOnList')::boolean,
+    'a number on someone else''s party reads as on the list: ' || v_res::text);
   v_res := public.rsvp_guest_lookup(v_ada, v_event, '+15550204503');
   PERFORM pg_temp.ok(NOT (v_res->>'onMingla')::boolean, 'a blocked account looks like not on Mingla');
   v_res := public.rsvp_guest_lookup(v_ada, v_event, '+15550204501');
