@@ -33,32 +33,18 @@ function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
 
-// #4514 — a guest form link carries its personal token in the URL fragment
-// (`/form/{id}#t=…`, web only). The link page removes it after reading; this
-// keeps any copy out of error reports and navigation or request breadcrumbs.
-const T = /([#&]t=)[0-9a-f]{64}/g;
-const s = (v: any): any => (typeof v === "string" ? v.replace(T, "$1[redacted]") : v);
-const c = (b: any): any => {
-  if (b.message) b.message = s(b.message);
-  for (const k in b.data) b.data[k] = s(b.data[k]);
-  return b;
-};
-const scrubEvent = (e: any): any => {
-  if (e.request) e.request.url = s(e.request.url);
-  if (e.transaction) e.transaction = s(e.transaction);
-  e.breadcrumbs?.forEach(c);
-  return e;
-};
-
 export function init(options?: unknown): void {
   if (!isBrowser()) return; // Node static-export: never load the web SDK
   if (!options || typeof options !== "object") return;
   const opts = options as Record<string, unknown>;
   if (!opts.dsn) return; // no DSN => no-op (dev / preview)
-  void import("@sentry/browser")
-    .then((mod) => {
+  // #4514: the guest form link token scrub loads WITH the SDK (one lazy chunk),
+  // never in the boot bundle.
+  void Promise.all([import("@sentry/browser"), import("./sentryTokenScrub")])
+    .then(([mod, scrub]) => {
       sdk = mod;
-      mod.init({ ...opts, beforeSend: scrubEvent, beforeBreadcrumb: c } as any);
+      mod.init(opts as any);
+      scrub.install(mod);
     })
     .catch(() => {
       /* never surface a diagnostics-loader failure to the user */
