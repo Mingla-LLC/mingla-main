@@ -132,6 +132,40 @@ export type BrandEditSection =
   | "contact"
   | "social";
 
+/**
+ * #4453 — what the dirty check compares. A brand read from the server leaves
+ * an unfilled field out (`tagline: undefined`); typing into it and deleting
+ * the text again leaves `tagline: ""`, and a first edit of a missing
+ * `contact` / `links` leaves `{ email: "" }`. Plain JSON.stringify called
+ * those different, so a form put back exactly as it opened stayed "changed"
+ * (Save lit, leave guard armed, brand switch held). Here "nothing" has one
+ * spelling: empty text, null, undefined and an object left with no fields all
+ * drop out, and the two switches that read "on" until set are compared as
+ * what the form shows. A real change (text to no text, on to off) still differs.
+ */
+function withoutNothing(value: unknown): unknown {
+  if (value === "" || value === null || value === undefined) return undefined;
+  if (Array.isArray(value)) return value.map((item) => withoutNothing(item) ?? null);
+  if (typeof value !== "object") return value;
+  const kept: Record<string, unknown> = {};
+  // Keys in one order: a field the form added later (it sits last in the
+  // draft) must not read as a change of its own.
+  for (const key of Object.keys(value).sort()) {
+    const next = withoutNothing((value as Record<string, unknown>)[key]);
+    if (next !== undefined) kept[key] = next;
+  }
+  return Object.keys(kept).length === 0 ? undefined : kept;
+}
+export function brandFormSnapshot(brand: Brand): string {
+  return JSON.stringify(
+    withoutNothing({
+      ...brand,
+      displayAttendeeCount: brand.displayAttendeeCount ?? true,
+      enquiriesEnabled: brand.enquiriesEnabled !== false,
+    }),
+  );
+}
+
 // [TRANSITIONAL] simulated async delay — replaced by real Supabase mutation
 // in B1 backend cycle. The 300ms beat creates a perceptible "Saving…" state
 // so the UI feels real even though the in-memory write is synchronous.
@@ -440,6 +474,8 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   // and key-by-key tracking adds bookkeeping without value. For v1 form
   // fidelity this is fine; if profiling shows perf cost on large objects,
   // revisit. Per spec §3.4.2.
+  // #4453 — compared through `brandFormSnapshot`, so an emptied field equals
+  // the field that was never filled.
   const isDirty = useMemo<boolean>(() => {
     if (brand === null || draft === null) return false;
     if (
@@ -453,7 +489,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     ) {
       return true;
     }
-    return JSON.stringify(draft) !== JSON.stringify(brand);
+    return brandFormSnapshot(draft) !== brandFormSnapshot(brand);
   }, [draft, brand, phoneEdit, openedPhone]);
 
   // ONE patch per user action, derived from current draft state at commit time.

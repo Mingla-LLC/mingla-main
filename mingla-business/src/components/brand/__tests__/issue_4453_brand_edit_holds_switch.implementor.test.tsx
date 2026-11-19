@@ -135,6 +135,36 @@ async function mountEdit(): Promise<Renderer> {
   });
   return renderer;
 }
+async function mountEditOf(brand: Brand): Promise<Renderer> {
+  const route: WorkspaceRoute = { pathname: PATH, params: { id: brand.id }, routeBrandId: brand.id, pendingSwitch };
+  let renderer!: Renderer;
+  await TestRenderer.act(async () => {
+    renderer = TestRenderer.create(
+      <WorkspaceRouteContext.Provider value={route}>
+        <Switcher />
+        <BrandEditView
+          brand={brand}
+          accountId="user-1"
+          onCancel={() => undefined}
+          onSave={async () => undefined}
+          onAfterSave={() => undefined}
+        />
+      </WorkspaceRouteContext.Provider>,
+    );
+  });
+  return renderer;
+}
+const input = (renderer: Renderer, match: (props: Record<string, unknown>) => boolean): Node =>
+  renderer.root.findAll((node) => node.type === "mock-input" && match(node.props))[0]!;
+const typeInto = async (node: Node, text: string): Promise<void> =>
+  TestRenderer.act(async () => {
+    (node.props.onChangeText as (v: string) => void)(text);
+  });
+const saveDisabled = (renderer: Renderer): boolean => {
+  const bar = renderer.root.findAll((node) => node.type === "mock-topbar")[0]!;
+  const save = bar.props.rightSlot as React.ReactElement<{ disabled: boolean }>;
+  return save.props.disabled;
+};
 const tagline = (renderer: Renderer): Node =>
   renderer.root.findAll((node) => node.type === "mock-input" && node.props.testID === "brand-tagline")[0]!;
 const type = async (renderer: Renderer, text: string): Promise<void> =>
@@ -190,5 +220,73 @@ describe("#4453 brand settings holds a brand switch while it has unsaved edits",
     expect(unsavedWork.screens).toBe(1);
     await TestRenderer.act(async () => renderer.unmount());
     expect(unsavedWork.screens).toBe(0);
+  });
+});
+
+// #4453 — a brand as the server hands it over: fields nobody filled are
+// missing (undefined), not "". FAILS-ON-REVERT: compare the draft and the
+// brand with plain JSON.stringify again and "type then delete" stays dirty
+// (unsavedWork.screens 1, the switch "held").
+describe("#4453 brand settings put back as it opened is not changed", () => {
+  const BARE = {
+    id: "brand-bare",
+    displayName: "Bare Brand",
+    slug: "bare-brand",
+    role: "owner",
+    stats: { events: 0, rev: 0 },
+    currentLiveEvent: null,
+    tagline: undefined,
+    countryCode: "US",
+    coverHue: 25,
+  } as unknown as Brand;
+
+  test("typing a tagline into an empty field and deleting it leaves the form clean", async () => {
+    const renderer = await mountEditOf(BARE);
+    expect(saveDisabled(renderer)).toBe(true);
+    await type(renderer, "Hello");
+    expect(unsavedWork.screens).toBe(1);
+    expect(saveDisabled(renderer)).toBe(false);
+    await type(renderer, "");
+    expect(tagline(renderer).props.value).toBe("");
+    expect(unsavedWork.screens).toBe(0);
+    expect(saveDisabled(renderer)).toBe(true);
+    await expect(pick(GAMELAND)).resolves.toBe("same-screen");
+    expect(toasts()).toEqual([]);
+    await TestRenderer.act(async () => renderer.unmount());
+  });
+
+  test("the same for a link and the contact email, which sit in objects the brand did not have", async () => {
+    const renderer = await mountEditOf(BARE);
+    const email = (): Node => input(renderer, (p) => p.accessibilityLabel === "Contact email");
+    const website = (): Node => input(renderer, (p) => p.accessibilityLabel === "Website link");
+    await typeInto(email(), "a@b.test");
+    expect(unsavedWork.screens).toBe(1);
+    await typeInto(email(), "");
+    expect(unsavedWork.screens).toBe(0);
+    await typeInto(website(), "example.test");
+    expect(unsavedWork.screens).toBe(1);
+    await typeInto(website(), "");
+    expect(unsavedWork.screens).toBe(0);
+    expect(saveDisabled(renderer)).toBe(true);
+    await TestRenderer.act(async () => renderer.unmount());
+  });
+
+  test("a real change still counts: clearing text that was there, or filling an empty field", async () => {
+    const { brandFormSnapshot } = require("../BrandEditView") as typeof import("../BrandEditView");
+    expect(brandFormSnapshot({ ...BARE, tagline: "" })).toBe(brandFormSnapshot(BARE));
+    expect(brandFormSnapshot({ ...BARE, contact: { email: "" } } as Brand)).toBe(brandFormSnapshot(BARE));
+    expect(brandFormSnapshot({ ...BARE, links: { website: "" } } as Brand)).toBe(brandFormSnapshot(BARE));
+    expect(brandFormSnapshot({ ...BARE, displayAttendeeCount: true })).toBe(brandFormSnapshot(BARE));
+    expect(brandFormSnapshot({ ...BARE, enquiriesEnabled: true })).toBe(brandFormSnapshot(BARE));
+    expect(brandFormSnapshot({ ...BARE, tagline: "Hi" })).not.toBe(brandFormSnapshot(BARE));
+    expect(brandFormSnapshot({ ...BARE, displayAttendeeCount: false })).not.toBe(brandFormSnapshot(BARE));
+    expect(brandFormSnapshot({ ...BARE, enquiriesEnabled: false })).not.toBe(brandFormSnapshot(BARE));
+    expect(brandFormSnapshot({ ...LANTERN, tagline: "" })).not.toBe(brandFormSnapshot(LANTERN));
+    expect(brandFormSnapshot({ ...LANTERN, tagline: " " })).not.toBe(brandFormSnapshot({ ...LANTERN, tagline: "" }));
+    const renderer = await mountEdit();
+    await type(renderer, "");
+    expect(unsavedWork.screens).toBe(1);
+    await expect(pick(GAMELAND)).resolves.toBe("held");
+    await TestRenderer.act(async () => renderer.unmount());
   });
 });
