@@ -14,9 +14,12 @@ const load = (rpcImpl) => {
   const handlerKey = require.resolve(HANDLER);
   delete require.cache[key];
   delete require.cache[handlerKey];
+  // [TEST-MOD #4518] the buy-gate helper moved to server/buyGateAnswers.js and
+  // requires the RPC module itself: stub that path too, never the network.
+  delete require.cache[require.resolve("../../server/buyGateAnswers")];
   const original = Module._load;
   Module._load = function (request, parent, isMain) {
-    if (request === "../server/supabaseRpc") {
+    if (request === "../server/supabaseRpc" || request === "./supabaseRpc") {
       return { requestRpcJson: rpcImpl, SUPABASE_URL: "x", SUPABASE_ANON_KEY: "y" };
     }
     return original.apply(this, arguments);
