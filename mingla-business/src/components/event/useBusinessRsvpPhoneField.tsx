@@ -101,6 +101,9 @@ export const BusinessRsvpPhoneField = ({
       testID,
       required,
       emptyRequired,
+      disableAutofill,
+      onSubmitEditing,
+      errorText,
   },
   palette,
   phoneFieldTheme,
@@ -131,7 +134,9 @@ export const BusinessRsvpPhoneField = ({
             onChangeCountry(nextIso, resolveUserPhoneE164(rawValue, nextIso));
           }}
           error={
-            emptyRequired
+            errorText !== undefined
+              ? errorText
+              : emptyRequired
               ? `Add ${role === "plus_one" ? "their" : "your"} phone number`
               : invalid
                 ? "Select a country and enter a valid phone number."
@@ -139,6 +144,10 @@ export const BusinessRsvpPhoneField = ({
           }
           disabled={disabled}
           required={required}
+          // issue #4508 1.6 / 1.2b — a guest number never offers the device's
+          // own number, and the keyboard's done key adds it.
+          disableAutofill={disableAutofill === true}
+          onSubmitEditing={onSubmitEditing}
           maxLength={40}
           testID={testID}
           countryButtonAccessibilityLabel={

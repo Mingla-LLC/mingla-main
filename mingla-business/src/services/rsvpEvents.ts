@@ -11,6 +11,8 @@
 
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
+// issue #4508 — the pure guest model by subpath (keeps the barrel out of this service).
+import { parseSubmittedGuests } from "@mingla/offering-rendering/rsvpGuestParty";
 import {
   getStoredAdMatchData,
   getStoredClickAttribution,
@@ -144,13 +146,12 @@ export const updateLiveRsvp = async (
 // the edge fn resolves user_id and the logged-in path applies. See SPEC §6 / §5.3.
 // ===========================================================================
 
-/** ORCH-1163 §H — a per-plus-one contact (name+email+phone, all required). */
-export interface RsvpGuestContactInput {
-  name: string;
-  email: string;
-  phone: string;
-  phoneCountryIso?: string | null;
-}
+/**
+ * issue #4508 1.9 — a plus-one is a phone number (`{ phone, phoneCountryIso }`);
+ * name and email are optional and the form no longer asks for them.
+ */
+export type RsvpGuestContactInput =
+  import("@mingla/offering-rendering").RsvpGuestPayload;
 
 export interface SubmitPublicRsvpInput {
   eventId: string;
@@ -177,6 +178,8 @@ export interface SubmitPublicRsvpResult {
   credentials: import("@mingla/offering-rendering").RsvpPassCredential[];
   anonymousRecovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
   claim: { shortUrl: string | null; code: string | null } | null;
+  /** issue #4508 — each person brought, with the link their text carries. */
+  guests: import("@mingla/offering-rendering").RsvpSubmittedGuest[];
 }
 
 /** #4238 W2-5: stored browser ad context for the server RSVP sign-up. */
@@ -231,6 +234,7 @@ export const submitPublicRsvp = async (
     credentials?: import("@mingla/offering-rendering").RsvpPassCredential[];
     anonymousRecovery?: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
     claim?: { shortUrl?: string | null; code?: string | null } | null;
+    guests?: unknown;
   };
   return {
     status: res.status ?? input.rsvpStatus,
@@ -255,6 +259,45 @@ export const submitPublicRsvp = async (
             shortUrl: res.claim.shortUrl ?? null,
             code: res.claim.code ?? null,
           },
+    guests: parseSubmittedGuests(res.guests),
+  };
+};
+
+/**
+ * issue #4508 1.2a / 1.8 — the live match under the RSVP guest number field
+ * (public-submit-rsvp op `guest_lookup`). A signed-out visitor learns only
+ * whether the number is on Mingla. Throws Error(code) on failure.
+ */
+export const lookupPublicRsvpGuest = async (
+  eventId: string,
+  phone: string,
+): Promise<import("@mingla/offering-rendering").RsvpGuestLookupResult> => {
+  const { data, error } = await supabase.functions.invoke(
+    "public-submit-rsvp",
+    { body: { op: "guest_lookup", eventId, phone } },
+  );
+  if (error !== null) {
+    throw new Error(await readRsvpErrorCode(error as RsvpInvokeError));
+  }
+  const row = (data ?? {}) as Record<string, unknown>;
+  const user = row.user as Record<string, unknown> | null | undefined;
+  const text = (v: unknown): string | null =>
+    typeof v === "string" && v.trim().length > 0 ? v : null;
+  return {
+    valid: row.valid === true,
+    isYou: row.isYou === true,
+    onMingla: row.onMingla === true,
+    alreadyOnList: row.alreadyOnList === true,
+    released: row.released === true,
+    user:
+      user !== null && user !== undefined && typeof user.id === "string"
+        ? {
+            id: user.id,
+            displayName: text(user.displayName),
+            username: text(user.username),
+            avatarUrl: text(user.avatarUrl),
+          }
+        : null,
   };
 };
 

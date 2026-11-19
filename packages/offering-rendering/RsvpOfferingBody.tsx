@@ -82,7 +82,7 @@ import {
   opaqueSurfaceColor,
   type ThemePalette,
 } from "./themePalette";
-import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
+import { Globe, MapPin } from "./LucideIcons";
 import { OfferingFactRows, sameLine } from "./OfferingFactRows";
 import {
   PresentedByFollowerCount,
@@ -125,7 +125,30 @@ import {
 // Type-only: the snapshot parser stays out of this shared (eager) chunk; only
 // the web page that restores a reply pays for it.
 import type { RsvpGuestSnapshot } from "./rsvpGuestSnapshot";
-import { markRsvpPhoneTouchedById } from "./rsvpPhoneValidation";
+// issue #4508 — "Who's coming with you?": a plus-one is a phone number (or a
+// friend), never a name / email / phone mini-form.
+import {
+  addPartyGuest,
+  addableFromPreview,
+  buildGuestPayload,
+  friendChips,
+  friendGuest,
+  isCompleteE164,
+  numberPreview,
+  partyGuestLabel,
+  removePartyGuest,
+  rsvpGoingButtonLabel,
+  rsvpGuestErrorMessage,
+  searchFriends,
+  RSVP_PARTY_COPY,
+  type RsvpFriendOption,
+  type RsvpGuestLookup,
+  type RsvpGuestLookupResult,
+  type RsvpGuestPayload,
+  type RsvpPartyGuest,
+  type RsvpSubmittedGuest,
+} from "./rsvpGuestParty";
+import { RsvpGuestPartyBlock } from "./RsvpGuestPartyBlock";
 import type {
   RsvpAnonymousRecovery,
   RsvpConfirmationDetails,
@@ -274,23 +297,29 @@ export interface RsvpPhoneFieldRenderArgs {
   required: boolean;
   emptyRequired: boolean;
   onBlur: () => void;
+  /**
+   * issue #4508 1.6 — true on a GUEST number: the field must not offer the
+   * device's own number (no telephoneNumber / tel autofill). Absent ⇒ false.
+   */
+  disableAutofill?: boolean;
+  /** issue #4508 1.2b — the keyboard's done key adds the number. */
+  onSubmitEditing?: () => void;
+  /** issue #4508 — the field's own error line; absent ⇒ the renderer's default. */
+  errorText?: string | null;
 }
 export type RsvpPhoneFieldRenderer = (
   args: RsvpPhoneFieldRenderArgs,
 ) => React.ReactNode;
 
+/**
+ * Pre-#4508 guest shape (name + email + phone). Kept exported for callers that
+ * still type it; the form now sends RsvpGuestPayload (number only).
+ */
 export interface RsvpGuestContact {
   name: string;
   email: string;
   phone: string;
   phoneCountryIso?: string | null;
-}
-
-interface RsvpGuestDraft extends RsvpGuestContact {
-  id: string;
-  rawPhone: string;
-  phoneCountryIso: string | null;
-  phoneTouched: boolean;
 }
 
 export interface RsvpSubmitResult {
@@ -303,6 +332,8 @@ export interface RsvpSubmitResult {
   credentials?: RsvpPassCredential[];
   anonymousRecovery?: RsvpAnonymousRecovery[];
   claim?: { shortUrl: string | null; code?: string | null } | null;
+  /** issue #4508 — each guest with its invite link (public-submit-rsvp `guests[]`). */
+  guests?: RsvpSubmittedGuest[];
 }
 
 export interface RsvpOfferingBodyProps {
@@ -346,8 +377,34 @@ export interface RsvpOfferingBodyProps {
     guestPhone: string;
     guestPhoneCountryIso?: string | null;
     plusCount: number;
-    guests: RsvpGuestContact[];
+    /** issue #4508 — number-only guests (`{ phone, phoneCountryIso }`). */
+    guests: RsvpGuestPayload[];
   }) => Promise<RsvpSubmitResult>;
+  /**
+   * issue #4508 1.2a — the live match under the guest number field (the
+   * surface calls public-submit-rsvp `guest_lookup`). Throws Error(code) on
+   * failure. Absent ⇒ no lookup: a valid number previews as not on Mingla.
+   */
+  guestLookup?: RsvpGuestLookup;
+  /**
+   * issue #4508 1.4 — the signed-in inviter's friends (get_user_circle).
+   * Absent ⇒ no "Or from your friends" section (signed out, or a surface that
+   * does not offer it).
+   */
+  guestFriends?: ReadonlyArray<RsvpFriendOption>;
+  guestFriendsLoading?: boolean;
+  guestFriendsError?: string | null;
+  onRetryGuestFriends?: () => void;
+  /**
+   * issue #4508 1.15 / 1.24 — copy a ready-made message. Absent on native ⇒ no
+   * Copy button there (web copies through the clipboard API itself).
+   */
+  onCopyText?: (text: string) => void | Promise<void>;
+  /**
+   * issue #4508 1.15 — share a ready-made message. Absent ⇒ the system share
+   * sheet on native and navigator.share (clipboard fallback) on web.
+   */
+  onShareText?: (text: string) => void | Promise<void>;
   onOpenBrand?: (brandSlug: string) => void;
   /**
    * #3682 Follow contract (a) — optional Follow control rendered as a sibling of
@@ -621,8 +678,23 @@ export const useRsvpOfferingState = (
   const [phoneRawValue, setPhoneRawValue] = useState(
     props.initialGuestPhone ?? "",
   );
-  const [guests, setGuests] = useState<RsvpGuestDraft[]>([]);
-  const nextGuestId = useRef(0);
+  // issue #4508 — the people the inviter is bringing (number or friend), the
+  // guest number draft (country + raw digits + composed E.164), its live
+  // lookup, and the friends search text. One owner for both form mounts.
+  const [guests, setGuests] = useState<RsvpPartyGuest[]>([]);
+  const [guestNumberCountry, setGuestNumberCountry] = useState<string | null>(
+    defaultPhoneCountry ?? null,
+  );
+  const [guestNumberRaw, setGuestNumberRaw] = useState("");
+  const [guestNumberE164, setGuestNumberE164] = useState("");
+  const [guestLookupState, setGuestLookupState] = useState<
+    | { phone: string; state: "checking" }
+    | { phone: string; state: "done"; result: RsvpGuestLookupResult }
+    | { phone: string; state: "failed" }
+    | null
+  >(null);
+  const [guestLookupNonce, setGuestLookupNonce] = useState(0);
+  const [friendQuery, setFriendQuery] = useState("");
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [primaryPhoneTouched, setPrimaryPhoneTouched] = useState(false);
 
@@ -765,7 +837,11 @@ export const useRsvpOfferingState = (
     setPhoneRawValue(props.initialGuestPhone ?? "");
     setPhoneCountry(defaultPhoneCountry ?? null);
     setGuests([]);
-    nextGuestId.current = 0;
+    setGuestNumberCountry(defaultPhoneCountry ?? null);
+    setGuestNumberRaw("");
+    setGuestNumberE164("");
+    setGuestLookupState(null);
+    setFriendQuery("");
     setShowValidationErrors(false);
     setPrimaryPhoneTouched(false);
     setSubmitting(false);
@@ -852,12 +928,9 @@ export const useRsvpOfferingState = (
     (accountFilledContact && (!signedInPhoneNeeded || signedInPhoneReady)) ||
     primaryContactComplete;
   const plusCount = config.allowPlusOnes ? guests.length : 0;
-  const guestsValid = guests.every(
-    (g) =>
-      g.name.trim().length > 0 &&
-      EMAIL_RE.test(g.email.trim()) &&
-      PHONE_RE.test(g.phone.trim()),
-  );
+  // issue #4508 — every person in the party was checked when added (a valid
+  // number or a friend), so the party itself is always ready to send.
+  const guestsValid = true;
   // A4-NEW (extended §H.6): primary + every plus-one must be reachable.
   const contactReady = primaryValid && guestsValid;
 
@@ -879,6 +952,24 @@ export const useRsvpOfferingState = (
     event.hideAddressUntilTicket,
     event.venueName,
   ]);
+
+  // issue #4508 1.15 — the parts of "Send it yourself too" known before the
+  // server answers; the link is each guest's own inviteUrl. City-level area
+  // only, so a hidden address never leaks into a pasted message.
+  const guestInviteMessageBase = useMemo(
+    () => ({
+      eventName: event.name,
+      dateLine: event.dateLine,
+      area:
+        event.format === "online"
+          ? null
+          : (normalizeCityCountry(event.address) ??
+            normalizeCityCountry(event.venueName) ??
+            null),
+      online: event.format === "online",
+    }),
+    [event.name, event.dateLine, event.format, event.address, event.venueName],
+  );
 
   const reportResolved = useCallback(
     (
@@ -913,12 +1004,7 @@ export const useRsvpOfferingState = (
         guestPhone: guestPhone.trim(),
         guestPhoneCountryIso: guestPhone.trim() ? phoneCountry : null,
         plusCount: rsvpStatus === "not_going" ? 0 : plusCount,
-        guests: submittedGuests.map((g) => ({
-          name: g.name.trim(),
-          email: g.email.trim(),
-          phone: g.phone.trim(),
-          phoneCountryIso: g.phoneCountryIso,
-        })),
+        guests: config.allowPlusOnes ? buildGuestPayload(submittedGuests) : [],
       });
       if (!isCurrent()) return null;
       stateFromRestoreRef.current = false;
@@ -934,6 +1020,7 @@ export const useRsvpOfferingState = (
     },
     [
       guests,
+      config.allowPlusOnes,
       onSubmit,
       guestName,
       guestEmail,
@@ -969,12 +1056,6 @@ export const useRsvpOfferingState = (
   const primaryEmailRef = useRef<TextInput | null>(null);
   // A TextInput, or the wrapper View around a host-injected phone field.
   const primaryPhoneRef = useRef<TextInput | View | null>(null);
-  const guestFieldRefs = useRef<
-    Record<
-      string,
-      Partial<Record<RsvpContactFieldKey, TextInput | View | null>>
-    >
-  >({});
   const inlineDecisionRef = useRef<View | null>(null);
   const floatingDecisionRef = useRef<View | null>(null);
   useEffect(() => {
@@ -1000,7 +1081,8 @@ export const useRsvpOfferingState = (
     const issues = rsvpContactIssues({
       primary: { name: guestName, email: guestEmail, phone: guestPhone },
       primaryRequired: !(isLoggedIn && props.requirePrimaryContact !== true),
-      guests,
+      // issue #4508 — guests carry no fields to finish.
+      guests: [],
       emailPattern: EMAIL_RE,
       phonePattern: PHONE_RE,
     });
@@ -1017,10 +1099,7 @@ export const useRsvpOfferingState = (
     // so "typed something that is not a number yet" must read as invalid.
     return issues.map((issue) => {
       if (issue.field !== "phone" || issue.problem !== "missing") return issue;
-      const raw =
-        issue.guestIndex === null
-          ? phoneRawValue
-          : (guests[issue.guestIndex]?.rawPhone ?? "");
+      const raw = issue.guestIndex === null ? phoneRawValue : "";
       return raw.trim().length > 0
         ? { ...issue, problem: "invalid" as const }
         : issue;
@@ -1031,7 +1110,6 @@ export const useRsvpOfferingState = (
     guestPhone,
     isLoggedIn,
     props.requirePrimaryContact,
-    guests,
     renderPhoneField,
     phoneRawValue,
     signedInPhoneNeeded,
@@ -1064,12 +1142,7 @@ export const useRsvpOfferingState = (
           : first.field === "email"
             ? primaryEmailRef.current
             : primaryPhoneRef.current
-        : (() => {
-            const guest = guests[first.guestIndex];
-            return guest === undefined
-              ? null
-              : (guestFieldRefs.current[guest.id]?.[first.field] ?? null);
-          })();
+        : null;
     if (target === null || target === undefined) return;
     // RN TextInput / View refs (and, on web, the DOM element behind them).
     const handle = target as unknown as RsvpFieldHandle;
@@ -1113,7 +1186,7 @@ export const useRsvpOfferingState = (
       if (hint !== null) AccessibilityInfo?.announceForAccessibility?.(hint);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactIssues, guests, props.onRevealField]);
+  }, [contactIssues, props.onRevealField]);
 
   // Maybe / Not-going → record DIRECTLY (no dialog).
   const submitDirect = useCallback(
@@ -1141,7 +1214,11 @@ export const useRsvpOfferingState = (
         const code = err instanceof Error ? err.message : String(err);
         handleAcquisitionError(code);
         if (code.includes("rsvp_full")) setServerSaidFull(true);
-        setErrorMsg(askForAccountPhone(code) ?? mapErrorCode(code));
+        setErrorMsg(
+          rsvpGuestErrorMessage(code) ??
+            askForAccountPhone(code) ??
+            mapErrorCode(code),
+        );
       } finally {
         if (isCurrent()) setSubmitting(false);
       }
@@ -1323,10 +1400,12 @@ export const useRsvpOfferingState = (
             : result.approvalStatus === "pending"
               ? "pending"
               : "going",
-        plusGuests: guests.map((g) => ({ name: g.name.trim() })),
+        plusGuests: guests.map((g) => ({ name: partyGuestLabel(g) })),
         confirmationToken: result.confirmationToken,
         credentials: result.credentials ?? [],
         anonymousRecovery: result.anonymousRecovery ?? [],
+        invites: result.guests ?? [],
+        inviteMessage: guestInviteMessageBase,
       };
       setSuccessDetails(details);
       const phoneDigits = guestPhone.replace(/\D/g, "");
@@ -1342,7 +1421,11 @@ export const useRsvpOfferingState = (
       const code = err instanceof Error ? err.message : String(err);
       handleAcquisitionError(code);
       if (code.includes("rsvp_full")) setServerSaidFull(true);
-      setConfirmError(askForAccountPhone(code) ?? mapErrorCode(code));
+      setConfirmError(
+        rsvpGuestErrorMessage(code) ??
+          askForAccountPhone(code) ??
+          mapErrorCode(code),
+      );
     } finally {
       if (isCurrent()) setSubmitting(false);
     }
@@ -1362,6 +1445,7 @@ export const useRsvpOfferingState = (
     guestName,
     guestEmail,
     guests,
+    guestInviteMessageBase,
     mapErrorCode,
     handleAcquisitionError,
     reportResolved,
@@ -1480,46 +1564,6 @@ export const useRsvpOfferingState = (
       (props.requirePrimaryContact === true && !primaryContactComplete)) &&
     contactFormOpenState;
 
-  // ── per-guest plus-one stepper + contact mini-forms (§H.5) ──
-  const showGuestStepper =
-    config.allowPlusOnes &&
-    !goingResolved &&
-    !pendingResolved &&
-    !waitlistedResolved &&
-    !maybeResolved &&
-    !(ctaState === "full" && !config.waitlistEnabled);
-
-  const addGuest = useCallback(() => {
-    setGuests((g) =>
-      g.length < config.plusOnesMax
-        ? [
-            ...g,
-            {
-              id: `guest-${nextGuestId.current++}`,
-              name: "",
-              email: "",
-              phone: "",
-              rawPhone: "",
-              phoneCountryIso: null,
-              phoneTouched: false,
-            },
-          ]
-        : g,
-    );
-  }, [config.plusOnesMax]);
-  const removeGuest = useCallback(() => {
-    setGuests((g) => (g.length > 0 ? g.slice(0, -1) : g));
-  }, []);
-  const updateGuest = useCallback(
-    (i: number, field: keyof RsvpGuestContact, value: string) => {
-      setGuests((g) =>
-        g.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)),
-      );
-    },
-    [],
-  );
-
-  // Callback refs keyed by guest id, so a blocked tap can reveal a +1's field.
   // A contact field's error state. Blank: marked once a decision tap was blocked
   // (a name that is only spaces is marked at once); filled: marked when it fails
   // its pattern (a name has none).
@@ -1539,15 +1583,6 @@ export const useRsvpOfferingState = (
           invalid: pattern !== null && !pattern.test(value.trim()),
           invalidMsg: badMsg,
         };
-  const guestFieldRef = useCallback(
-    (guestId: string, field: RsvpContactFieldKey) =>
-      (node: View | TextInput | null): void => {
-        const row = (guestFieldRefs.current[guestId] ??= {});
-        row[field] = node;
-      },
-    [],
-  );
-
   // The primary phone field. "inline" is the contact card (it owns the reveal
   // ref and the historical testIDs); "confirm" (#3380) is the same controlled
   // field re-hosted in the Going confirm dialog for a signed-in guest whose
@@ -1695,182 +1730,220 @@ export const useRsvpOfferingState = (
     signedInPhoneForm
   );
 
+  // ── issue #4508 "Who's coming with you?" (replaces the per-guest stepper and
+  // name / email / phone mini-forms). ──
+  const showGuestStepper =
+    config.allowPlusOnes &&
+    config.plusOnesMax > 0 &&
+    !goingResolved &&
+    !pendingResolved &&
+    !waitlistedResolved &&
+    !maybeResolved &&
+    !(ctaState === "full" && !config.waitlistEnabled);
+
+  // The inviter's own number(s): a guest number equal to one is refused
+  // before any lookup (1.3, live-case item 17). The server re-checks.
+  const ownPhones = useMemo(
+    () =>
+      [guestPhone, props.initialGuestPhone ?? ""].filter(
+        (p: string) => p.trim().length > 0,
+      ),
+    [guestPhone, props.initialGuestPhone],
+  );
+
+  // 1.2d — the lookup runs only on a complete valid number, debounced, and its
+  // answer only ever applies to the number it was asked about.
+  const guestLookup = props.guestLookup;
+  const lookupSeq = useRef(0);
+  useEffect(() => {
+    const phone = guestNumberE164.trim();
+    if (!isCompleteE164(phone) || guestLookup === undefined) {
+      lookupSeq.current += 1;
+      setGuestLookupState(null);
+      return;
+    }
+    const seq = ++lookupSeq.current;
+    setGuestLookupState({ phone, state: "checking" });
+    const timer = setTimeout(() => {
+      guestLookup(phone).then(
+        (result: RsvpGuestLookupResult) => {
+          if (seq === lookupSeq.current && isCurrent())
+            setGuestLookupState({ phone, state: "done", result });
+        },
+        () => {
+          if (seq === lookupSeq.current && isCurrent())
+            setGuestLookupState({ phone, state: "failed" });
+        },
+      );
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [guestNumberE164, guestLookup, guestLookupNonce, isCurrent]);
+
+  const guestNumberPreview = useMemo(() => {
+    const phone = guestNumberE164.trim();
+    const lookup =
+      guestLookup === undefined
+        ? {
+            // No lookup on this surface: a valid number is simply invited.
+            state: "done" as const,
+            result: {
+              valid: true,
+              isYou: false,
+              onMingla: false,
+              alreadyOnList: false,
+              released: false,
+            },
+          }
+        : guestLookupState === null || guestLookupState.phone !== phone
+          ? { state: "none" as const }
+          : guestLookupState.state === "done"
+            ? { state: "done" as const, result: guestLookupState.result }
+            : { state: guestLookupState.state };
+    return numberPreview({
+      phone,
+      phoneCountryIso: guestNumberCountry,
+      party: guests,
+      ownPhones,
+      lookup,
+    });
+  }, [
+    guestNumberE164,
+    guestNumberCountry,
+    guestLookup,
+    guestLookupState,
+    guests,
+    ownPhones,
+  ]);
+  const addableGuest = addableFromPreview(guestNumberPreview);
+
+  const clearGuestNumber = (): void => {
+    setGuestNumberRaw("");
+    setGuestNumberE164("");
+    setGuestLookupState(null);
+  };
+  const addGuestFromNumber = (): void => {
+    if (submitting || addableGuest === null) return;
+    setGuests((current: RsvpPartyGuest[]) =>
+      addPartyGuest(current, addableGuest, config.plusOnesMax),
+    );
+    clearGuestNumber();
+    if (Platform.OS !== "web") {
+      AccessibilityInfo.announceForAccessibility?.(
+        `${partyGuestLabel(addableGuest)} added.`,
+      );
+    }
+  };
+  const addGuestFriend = (friend: RsvpFriendOption): void => {
+    if (submitting) return;
+    setGuests((current: RsvpPartyGuest[]) =>
+      addPartyGuest(current, friendGuest(friend), config.plusOnesMax),
+    );
+    setFriendQuery("");
+    if (Platform.OS !== "web") {
+      AccessibilityInfo.announceForAccessibility?.(
+        `${friend.displayName} added.`,
+      );
+    }
+  };
+  const removeGuest = (key: string): void => {
+    if (submitting) return;
+    setGuests((current: RsvpPartyGuest[]) => removePartyGuest(current, key));
+  };
+
+  const guestNumberInvalid =
+    guestNumberRaw.trim().length > 0 &&
+    guestNumberE164.trim().length === 0 &&
+    guestNumberRaw.replace(/\D/g, "").length >= 7;
+  const guestNumberField: React.ReactNode = renderPhoneField ? (
+    renderPhoneField({
+      role: "plus_one",
+      guestId: null,
+      index: null,
+      label: RSVP_PARTY_COPY.numberLabel,
+      testID: "issue-4508-rsvp-guest-phone",
+      countryCode: guestNumberCountry,
+      rawValue: guestNumberRaw,
+      onChangeCountry: (isoCode, resolvedE164) => {
+        setGuestNumberCountry(isoCode);
+        setGuestNumberE164(resolvedE164 ?? "");
+      },
+      onChangeRawValue: (raw, resolvedE164) => {
+        setGuestNumberRaw(raw);
+        setGuestNumberE164(resolvedE164 ?? "");
+      },
+      invalid: guestNumberInvalid,
+      errorText: guestNumberInvalid ? RSVP_PARTY_COPY.invalid : null,
+      palette,
+      disabled: submitting,
+      required: false,
+      emptyRequired: false,
+      onBlur: () => undefined,
+      disableAutofill: true,
+      onSubmitEditing: addGuestFromNumber,
+    })
+  ) : (
+    <RsvpField
+      label={RSVP_PARTY_COPY.numberLabel}
+      value={guestNumberRaw}
+      onChangeText={(value: string) => {
+        // Digits, spaces, +, brackets and dashes only: never letters.
+        const cleaned = value.replace(/[^0-9+()\-\s]/g, "");
+        setGuestNumberRaw(cleaned);
+        const compact = cleaned.replace(/[\s()\-]/g, "");
+        setGuestNumberE164(/^\+[1-9][0-9]{7,14}$/.test(compact) ? compact : "");
+      }}
+      placeholder="+1 555 123 4567"
+      palette={palette}
+      invalid={
+        guestNumberRaw.trim().length > 0 &&
+        guestNumberE164.length === 0 &&
+        guestNumberRaw.replace(/\D/g, "").length >= 8
+      }
+      invalidMsg={RSVP_PARTY_COPY.invalid}
+      keyboardType="phone-pad"
+      autoCapitalize="none"
+      disableAutofill
+      onSubmitEditing={addGuestFromNumber}
+      testID="issue-4508-rsvp-guest-phone-plain"
+      disabled={submitting}
+    />
+  );
+
+  const friendList = props.guestFriends;
+  const friendsSection =
+    isLoggedIn && friendList !== undefined
+      ? {
+          query: friendQuery,
+          onQueryChange: setFriendQuery,
+          results: searchFriends(friendList, friendQuery, guests),
+          chips: friendChips(friendList, guests),
+          loading: props.guestFriendsLoading === true,
+          error: props.guestFriendsError ?? null,
+          onRetry: props.onRetryGuestFriends ?? null,
+          onPick: addGuestFriend,
+        }
+      : null;
+
   const guestForms = showGuestStepper ? (
-    <View
-      style={[styles.guestBlock, surface.card]}
+    <RsvpGuestPartyBlock
+      palette={palette}
+      boldFamily={boldFamily}
+      max={config.plusOnesMax}
+      party={guests}
+      disabled={submitting}
+      numberField={guestNumberField}
+      preview={guestNumberPreview}
+      canAddNumber={addableGuest !== null && !submitting}
+      onAddNumber={addGuestFromNumber}
+      onRetryLookup={
+        guestLookup !== undefined
+          ? () => setGuestLookupNonce((n: number) => n + 1)
+          : null
+      }
+      onRemove={removeGuest}
+      friends={friendsSection}
       testID="orch-1163-rsvp-guests"
-    >
-      {/* issue #4420 — "Bringing anyone?" (design file → P.rsvp): the title
-          and the cap on the left, the shared stepper look on the right
-          (outlined minus, ink plus). Each added guest still opens its own
-          name / email / phone form below, exactly as before. */}
-      <View style={styles.guestHeaderRow}>
-        <View style={styles.guestHeaderText}>
-          <Text style={[styles.guestHeaderTitle, surface.primaryText, boldFace]}>
-            Bringing anyone?
-          </Text>
-          <Text style={[styles.guestHeaderLabel, surface.secondaryText]}>
-            {config.plusOnesMax === 1
-              ? "Up to 1 guest"
-              : `Up to ${config.plusOnesMax} guests`}
-          </Text>
-        </View>
-        <View style={styles.stepperRow}>
-          <Pressable
-            onPress={removeGuest}
-            disabled={submitting || guests.length <= 0}
-            accessibilityRole="button"
-            accessibilityLabel="Remove one extra guest"
-            hitSlop={6}
-            style={[
-              styles.stepBtn,
-              {
-                borderColor: palette.panelBorder,
-                opacity: guests.length <= 0 ? 0.35 : 1,
-              },
-            ]}
-            testID="orch-1157-rsvp-plus-minus"
-          >
-            <Minus size={17} color={palette.primaryText} />
-          </Pressable>
-          <Text
-            style={[
-              styles.stepCount,
-              { color: palette.primaryText, ...boldFace },
-            ]}
-            accessibilityLiveRegion="polite"
-            accessibilityLabel={`${guests.length} extra ${guests.length === 1 ? "guest" : "guests"}`}
-          >
-            {guests.length}
-          </Text>
-          <Pressable
-            onPress={addGuest}
-            disabled={submitting || guests.length >= config.plusOnesMax}
-            accessibilityRole="button"
-            accessibilityLabel="Add one extra guest"
-            hitSlop={6}
-            style={[
-              styles.stepBtn,
-              {
-                backgroundColor: palette.primaryText,
-                borderColor: palette.primaryText,
-                opacity: guests.length >= config.plusOnesMax ? 0.35 : 1,
-              },
-            ]}
-            testID="orch-1157-rsvp-plus-plus"
-          >
-            <Plus size={17} color={palette.page} />
-          </Pressable>
-        </View>
-      </View>
-      {guests.map((g: RsvpGuestDraft, i: number) => (
-        <React.Fragment key={g.id}>
-          <View style={styles.guestRow}>
-            <Text style={[styles.guestRowTitle, surface.tertiaryText]}>
-              Guest {i + 1}
-            </Text>
-            <RsvpField
-              ref={guestFieldRef(g.id, "name")}
-              label="Name"
-              value={g.name}
-              onChangeText={(v) => updateGuest(i, "name", v)}
-              placeholder="First and last name"
-              palette={palette}
-              {...fieldError(g.name, null, "Add their name", "")}
-              autoCapitalize="words"
-              testID={`orch-1163-rsvp-guest-${i}-name`}
-              disabled={submitting}
-            />
-            <RsvpField
-              ref={guestFieldRef(g.id, "email")}
-              label="Email"
-              value={g.email}
-              onChangeText={(v) => updateGuest(i, "email", v)}
-              placeholder="guest@email.com"
-              palette={palette}
-              {...fieldError(
-                g.email,
-                EMAIL_RE,
-                "Add their email",
-                "Enter a valid email",
-              )}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              testID={`orch-1163-rsvp-guest-${i}-email`}
-              disabled={submitting}
-            />
-            {renderPhoneField ? (
-              <View
-                {...{ ref: guestFieldRef(g.id, "phone") }}
-                collapsable={false}
-              >
-                {renderPhoneField({
-                  role: "plus_one",
-                  guestId: g.id,
-                  index: i,
-                  label: `Guest ${i + 1} phone`,
-                  testID: `issue-1857-rsvp-${g.id}-phone`,
-                  countryCode: g.phoneCountryIso,
-                  rawValue: g.rawPhone,
-                  onChangeCountry: (isoCode, resolvedE164) => {
-                    setGuests((rows: RsvpGuestDraft[]) =>
-                      rows.map((row: RsvpGuestDraft) =>
-                        row.id === g.id
-                          ? {
-                              ...row,
-                              phoneCountryIso: isoCode,
-                              phone: resolvedE164 ?? "",
-                            }
-                          : row,
-                      ),
-                    );
-                  },
-                  onChangeRawValue: (raw, resolvedE164) => {
-                    setGuests((rows: RsvpGuestDraft[]) =>
-                      rows.map((row: RsvpGuestDraft) =>
-                        row.id === g.id
-                          ? { ...row, rawPhone: raw, phone: resolvedE164 ?? "" }
-                          : row,
-                      ),
-                    );
-                  },
-                  invalid:
-                    g.rawPhone.trim().length > 0 &&
-                    !PHONE_RE.test(g.phone.trim()),
-                  palette,
-                  disabled: submitting,
-                  required: true,
-                  emptyRequired: (showValidationErrors || g.phoneTouched) && g.rawPhone.trim().length === 0,
-                  onBlur: () => {
-                    setGuests((rows: RsvpGuestDraft[]) =>
-                      markRsvpPhoneTouchedById(rows, g.id),
-                    );
-                  },
-                })}
-              </View>
-            ) : (
-              <RsvpField
-                ref={guestFieldRef(g.id, "phone")}
-                label="Phone"
-                value={g.phone}
-                onChangeText={(v) => updateGuest(i, "phone", v)}
-                placeholder="+1 555 123 4567"
-                palette={palette}
-                {...fieldError(
-                  g.phone,
-                  PHONE_RE,
-                  "Add their phone number",
-                  "Enter a valid phone number",
-                )}
-                keyboardType="phone-pad"
-                autoCapitalize="none"
-                testID={`orch-1163-rsvp-guest-${i}-phone`}
-              />
-            )}
-          </View>
-        </React.Fragment>
-      ))}
-    </View>
+    />
   ) : null;
 
   const errorNode =
@@ -1889,7 +1962,12 @@ export const useRsvpOfferingState = (
         brandDisplayName={brand?.displayName ?? "the host"}
         eventName={event.name.length > 0 ? event.name : "this event"}
         dateLine={event.dateLine}
-        plusGuests={guests.map((g) => ({ name: g.name.trim() }))}
+        plusGuests={guests.map((g) => ({ name: partyGuestLabel(g) }))}
+        guestRows={guests.map((g) => ({
+          key: g.key,
+          label: partyGuestLabel(g),
+          line: RSVP_PARTY_COPY.getsTextAndPass,
+        }))}
         submitting={submitting}
         errorText={confirmError}
         // #3380 — a signed-in guest with no account phone adds it right here.
@@ -1988,6 +2066,8 @@ export const useRsvpOfferingState = (
             : undefined
         }
         renderClaimBody={props.renderClaimBody}
+        onCopyText={props.onCopyText}
+        onShareText={props.onShareText}
         onDownloadPass={
           props.onDownloadPass === undefined ? undefined : downloadPass
         }
@@ -2182,6 +2262,8 @@ const DecisionUnit: React.FC<{
       submitting={state.submitting}
       locked={state.replyLocked}
       contactReady={contactReadyOverride ?? state.contactReady}
+      // issue #4508 1.7 — "Going" alone, "RSVP for N" with guests.
+      goingIdleLabel={rsvpGoingButtonLabel(state.plusCount)}
       onGoing={onGoing ?? state.onGoingTap}
       onMaybe={onMaybe ?? state.onMaybe}
       onNotGoing={onNotGoing ?? state.onNotGoing}
@@ -2812,6 +2894,9 @@ interface RsvpFieldProps {
   autoCapitalize?: "none" | "words";
   testID?: string;
   disabled?: boolean;
+  /** issue #4508 1.6 — a guest's number never offers the device's own number. */
+  disableAutofill?: boolean;
+  onSubmitEditing?: () => void;
 }
 
 // forwardRef so a blocked decision tap can scroll to and focus this field.
@@ -2829,6 +2914,8 @@ const RsvpField = React.forwardRef<TextInput, RsvpFieldProps>(
       autoCapitalize = "none",
       testID,
       disabled = false,
+      disableAutofill = false,
+      onSubmitEditing,
     }: RsvpFieldProps,
     ref: React.Ref<TextInput>,
   ) => {
@@ -2847,6 +2934,16 @@ const RsvpField = React.forwardRef<TextInput, RsvpFieldProps>(
           accessibilityLabel={label}
           editable={!disabled}
           accessibilityState={{ disabled }}
+          {...(disableAutofill
+            ? {
+                textContentType: "none" as const,
+                autoComplete: "off" as const,
+                importantForAutofill: "no" as const,
+              }
+            : {})}
+          {...(onSubmitEditing !== undefined
+            ? { onSubmitEditing, returnKeyType: "done" as const }
+            : {})}
           style={[
             styles.fieldInput,
             {

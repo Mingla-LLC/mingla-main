@@ -46,6 +46,10 @@ interface PhoneInputProps {
   placeholder?: string;
   /** #4473 — the host opens its own country picker (see @mingla/phone-input). */
   onRequestCountryPicker?: () => void;
+  /** #4508 — someone else's number: no own-number autofill. */
+  disableAutofill?: boolean;
+  /** #4508 — the done key also runs this (an RSVP guest number is added). */
+  onSubmitEditing?: () => void;
 }
 
 export const PhoneInput: React.FC<PhoneInputProps> = ({ placeholder, ...props }) => {

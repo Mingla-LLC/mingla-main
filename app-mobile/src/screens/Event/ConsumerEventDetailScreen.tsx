@@ -91,7 +91,6 @@ import {
   RsvpOfferingFloatingBar,
   useRsvpOfferingState,
   type RsvpOfferingConfig,
-  type RsvpGuestContact,
   type RsvpPhoneFieldRenderer,
   type MapsAppId,
   type MapsOpenTarget,
@@ -100,7 +99,6 @@ import {
 } from "@mingla/offering-rendering";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
-import { copyAddressText } from "../../utils/copyAddressText";
 import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
 import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 
@@ -127,8 +125,16 @@ import {
 import {
   fetchRsvpMomentum,
   fetchRsvpPassPdf,
+  lookupRsvpGuest,
   submitDeckRsvp,
 } from "../../services/rsvpDeckService";
+import type {
+  RsvpFriendOption,
+  RsvpGuestLookupResult,
+  RsvpGuestPayload,
+} from "@mingla/offering-rendering/rsvpGuestParty";
+import { useUserCircle } from "../../hooks/useUserCircle";
+import { copyAddressText } from "../../utils/copyAddressText";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import {
@@ -352,6 +358,9 @@ const openMapsForTarget = (
 // reaches here — it renders no copy button at all.
 const copyAddressForTarget = (text: string): Promise<void> =>
   copyAddressText(text);
+
+// issue #4508 — see rsvpFriendGuestsReady below.
+const RSVP_FRIEND_GUESTS_SERVER_READY = false;
 
 export default function ConsumerEventDetailScreen({
   seed: seedProp = null,
@@ -839,11 +848,15 @@ export default function ConsumerEventDetailScreen({
           args.onChangeRawValue(raw, resolveUserPhoneE164(raw, args.countryCode))}
         onChangeCountry={(iso: string) =>
           args.onChangeCountry(iso, resolveUserPhoneE164(args.rawValue, iso))}
-        error={args.emptyRequired
-          ? "Required"
-          : args.invalid
-            ? "Select a country and enter a valid phone number."
-            : null}
+        error={args.errorText !== undefined
+          ? args.errorText
+          : args.emptyRequired
+            ? "Required"
+            : args.invalid
+              ? "Select a country and enter a valid phone number."
+              : null}
+        disableAutofill={args.disableAutofill === true}
+        onSubmitEditing={args.onSubmitEditing}
         disabled={args.disabled}
         theme={rsvpPhoneTheme}
         required={args.required}
@@ -963,7 +976,7 @@ export default function ConsumerEventDetailScreen({
       guestPhone: string;
       guestPhoneCountryIso?: string | null;
       plusCount: number;
-      guests: RsvpGuestContact[];
+      guests: RsvpGuestPayload[];
     }): Promise<RsvpSubmitResult> => {
       if (seed === null) throw new Error("rsvp_not_open");
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1005,9 +1018,43 @@ export default function ConsumerEventDetailScreen({
         confirmationToken: result.confirmationToken,
         credentials: result.credentials,
         anonymousRecovery: result.anonymousRecovery,
+        guests: result.guests,
       };
     },
     [seed, queryClient],
+  );
+
+  // issue #4508 1.2a — the live match under the guest number field.
+  const rsvpGuestLookup = useCallback(
+    async (phone: string): Promise<RsvpGuestLookupResult> => {
+      if (seed === null) throw new Error("unavailable");
+      return lookupRsvpGuest(seed.eventId, phone);
+    },
+    [seed],
+  );
+  // issue #4508 1.4 — "Or from your friends" reads the already-loaded circle
+  // (no network call per keystroke). Friends and close friends only.
+  // [TRANSITIONAL] off until public-submit-rsvp accepts a friend guest without
+  // a number ({ userId }); the wave A contract requires a phone per guest, and
+  // a friend's number is never on this device. Exit: that contract lands.
+  const rsvpFriendGuestsReady = RSVP_FRIEND_GUESTS_SERVER_READY;
+  const rsvpCircle = useUserCircle(
+    rsvpFriendGuestsReady && user !== null ? user.id : null,
+  );
+  const rsvpGuestFriends = useMemo<RsvpFriendOption[] | undefined>(
+    () =>
+      rsvpFriendGuestsReady && user !== null
+        ? rsvpCircle.people
+            .filter((p) => p.tier === "close" || p.tier === "friend")
+            .map((p) => ({
+              userId: p.userId,
+              displayName: p.displayName?.trim() || p.username || "Friend",
+              username: p.username,
+              avatarUrl: p.avatarUrl,
+              closeFriend: p.tier === "close",
+            }))
+        : undefined,
+    [rsvpFriendGuestsReady, user, rsvpCircle.people],
   );
 
   // handleBuy ported VERBATIM (behavior) from EBES handleBuy — same buyer
@@ -1434,6 +1481,12 @@ export default function ConsumerEventDetailScreen({
     renderPhoneField: renderRsvpPhoneField,
     onDownloadPass: handleDownloadRsvpPass,
     onSubmit: rsvpOnSubmit,
+    guestLookup: rsvpGuestLookup,
+    guestFriends: rsvpGuestFriends,
+    guestFriendsLoading: rsvpCircle.isLoading && rsvpGuestFriends !== undefined,
+    guestFriendsError: rsvpCircle.isError ? "Couldn't load your friends." : null,
+    onRetryGuestFriends: () => void rsvpCircle.refetch(),
+    onCopyText: copyAddressText,
     onChipIn: handleChipIn,
     onOpenBrand: (slug: string) => router.push(`/b/${slug}` as never),
     onOpenMaps: openMapsForTarget,

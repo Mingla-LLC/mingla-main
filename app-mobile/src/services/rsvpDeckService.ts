@@ -22,6 +22,14 @@ import type {
   RsvpAnonymousRecovery,
   RsvpPassCredential,
 } from "@mingla/offering-rendering";
+// issue #4508 — the pure guest model by subpath (no barrel, so partial jest
+// mocks of the barrel are unaffected).
+import {
+  parseSubmittedGuests,
+  type RsvpGuestLookupResult,
+  type RsvpGuestPayload,
+  type RsvpSubmittedGuest,
+} from "@mingla/offering-rendering/rsvpGuestParty";
 
 /**
  * ORCH-1157 [rsvp-public-redesign] OQ-1 (resolved = option a) — the consumer RSVP
@@ -146,7 +154,74 @@ export interface SubmitDeckRsvpResult {
   acknowledgement: "accepted" | "pending_approval" | "waitlisted" | "maybe" | "not_going";
   credentials: RsvpPassCredential[];
   anonymousRecovery: RsvpAnonymousRecovery[];
+  /** issue #4508 — each person brought, with the link their text carries. */
+  guests: RsvpSubmittedGuest[];
 }
+
+/** Pull the edge function's `{ error }` code out of a supabase invoke error. */
+const invokeErrorCode = (
+  error: { message?: string; context?: { body?: unknown } },
+  fallback: string,
+): string => {
+  let code = error.message ?? fallback;
+  const ctx = error.context;
+  if (ctx?.body !== undefined && ctx.body !== null) {
+    try {
+      const parsed =
+        typeof ctx.body === "string"
+          ? (JSON.parse(ctx.body) as { error?: string })
+          : (ctx.body as { error?: string });
+      if (typeof parsed.error === "string" && parsed.error.length > 0) {
+        code = parsed.error;
+      }
+    } catch {
+      // keep the fallback code
+    }
+  }
+  return code;
+};
+
+/**
+ * issue #4508 1.2a — the live match under the RSVP guest number field
+ * (public-submit-rsvp op `guest_lookup`). Signed in, so an account's name and
+ * username come back. Throws Error(code): rate_limited, unavailable,
+ * rsvp_guest_phone_invalid, …
+ */
+export const lookupRsvpGuest = async (
+  eventId: string,
+  phone: string,
+): Promise<RsvpGuestLookupResult> => {
+  const { data, error } = await supabase.functions.invoke("public-submit-rsvp", {
+    body: { op: "guest_lookup", eventId, phone },
+  });
+  if (error !== null) {
+    throw new Error(invokeErrorCode(error as { message?: string; context?: { body?: unknown } }, "unavailable"));
+  }
+  return parseRsvpGuestLookup(data);
+};
+
+export const parseRsvpGuestLookup = (data: unknown): RsvpGuestLookupResult => {
+  const row = (data ?? {}) as Record<string, unknown>;
+  const user = row.user as Record<string, unknown> | null | undefined;
+  const text = (v: unknown): string | null =>
+    typeof v === "string" && v.trim().length > 0 ? v : null;
+  return {
+    valid: row.valid === true,
+    isYou: row.isYou === true,
+    onMingla: row.onMingla === true,
+    alreadyOnList: row.alreadyOnList === true,
+    released: row.released === true,
+    user:
+      user !== null && user !== undefined && typeof user.id === "string"
+        ? {
+            id: user.id,
+            displayName: text(user.displayName),
+            username: text(user.username),
+            avatarUrl: text(user.avatarUrl),
+          }
+        : null,
+  };
+};
 
 /**
  * Write the signed-in user's Going / Maybe / Not-going for a discoverable RSVP
@@ -164,7 +239,8 @@ export const submitDeckRsvp = async (
   // ORCH-1163 [rsvp-shared-body] — optional per-guest plus-one contacts (FLOW B).
   // Passed straight through to the edge fn body; omitted (empty) keeps the call
   // byte-identical to the prior no-guests path.
-  guests?: Array<{ name: string; email: string; phone: string; phoneCountryIso?: string | null }>,
+  // issue #4508 — number-only guests ({ phone, phoneCountryIso }).
+  guests?: RsvpGuestPayload[],
   primary?: { name: string; email: string; phone: string; phoneCountryIso?: string | null },
 ): Promise<SubmitDeckRsvpResult> => {
   const { data, error } = await supabase.functions.invoke("public-submit-rsvp", {
@@ -180,22 +256,9 @@ export const submitDeckRsvp = async (
     },
   });
   if (error !== null) {
-    let code = error.message ?? "rsvp_write_failed";
-    const ctx = (error as { context?: { body?: unknown } }).context;
-    if (ctx?.body !== undefined && ctx.body !== null) {
-      try {
-        const parsed =
-          typeof ctx.body === "string"
-            ? (JSON.parse(ctx.body) as { error?: string })
-            : (ctx.body as { error?: string });
-        if (typeof parsed.error === "string" && parsed.error.length > 0) {
-          code = parsed.error;
-        }
-      } catch {
-        // keep default code
-      }
-    }
-    throw new Error(code);
+    throw new Error(
+      invokeErrorCode(error as { message?: string; context?: { body?: unknown } }, "rsvp_write_failed"),
+    );
   }
   const res = (data ?? {}) as {
     status?: "going" | "not_going" | "waitlisted" | "maybe";
@@ -205,6 +268,7 @@ export const submitDeckRsvp = async (
     acknowledgement?: SubmitDeckRsvpResult["acknowledgement"];
     credentials?: RsvpPassCredential[];
     anonymousRecovery?: RsvpAnonymousRecovery[];
+    guests?: unknown;
   };
   return {
     status: res.status ?? rsvpStatus,
@@ -217,6 +281,7 @@ export const submitDeckRsvp = async (
           ? res.status : "accepted"),
     credentials: res.credentials ?? [],
     anonymousRecovery: res.anonymousRecovery ?? [],
+    guests: parseSubmittedGuests(res.guests),
   };
 };
 
@@ -229,22 +294,141 @@ interface RsvpPartyPassRow {
   entity_id: string;
   display_name: string;
   qr_code: string;
+  // issue #4508 contract §4 — present once the bring-a-friend migration is
+  // applied; absent on older servers (read as unknown, never invented).
+  claimed?: boolean | null;
+  invited_by_name?: string | null;
+  invite_status?: string | null;
+  invite_link?: string | null;
+  phone_last4?: string | null;
 }
 
-export const fetchRsvpPartyPasses = async (
+/** issue #4508 1.24 — one person the inviter brought, as the pass sheet shows them. */
+export interface RsvpPartyGuestStatus {
+  guestId: string;
+  displayName: string;
+  /** null ⇒ the server did not say (older server). */
+  claimed: boolean | null;
+  inviteStatus: "sent" | "sending" | "failed" | "not_texted" | null;
+  inviteLink: string | null;
+  phoneLast4: string | null;
+}
+
+export interface RsvpPartyDetails {
+  credentials: RsvpPassCredential[];
+  /** Guests of the caller's own RSVP (the primary's view only). */
+  guests: RsvpPartyGuestStatus[];
+}
+
+const INVITE_STATUSES = new Set(["sent", "sending", "failed", "not_texted"]);
+
+export const mapRsvpPartyRows = (rows: unknown): RsvpPartyDetails => {
+  const list = (Array.isArray(rows) ? rows : []) as RsvpPartyPassRow[];
+  return {
+    credentials: list.map((row) => ({
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      displayName: row.display_name,
+      qrCode: row.qr_code,
+      pdfFetchRef: row.entity_id,
+    })),
+    guests: list
+      // invite_status is filled only for the RSVP's owner (contract §4).
+      .filter((row) => row.entity_type === "guest" && typeof row.invite_status === "string")
+      .map((row) => ({
+        guestId: row.entity_id,
+        displayName: row.display_name,
+        claimed: typeof row.claimed === "boolean" ? row.claimed : null,
+        inviteStatus: INVITE_STATUSES.has(row.invite_status ?? "")
+          ? (row.invite_status as RsvpPartyGuestStatus["inviteStatus"])
+          : null,
+        inviteLink: typeof row.invite_link === "string" && row.invite_link.length > 0
+          ? row.invite_link
+          : null,
+        phoneLast4: typeof row.phone_last4 === "string" && row.phone_last4.length > 0
+          ? row.phone_last4
+          : null,
+      })),
+  };
+};
+
+export const fetchRsvpPartyDetails = async (
   rsvpId: string,
-): Promise<RsvpPassCredential[]> => {
+): Promise<RsvpPartyDetails> => {
   const { data, error } = await supabase.rpc("fetch_user_rsvp_party_passes", {
     p_rsvp_id: rsvpId,
   });
   if (error) throw error;
-  return ((data ?? []) as RsvpPartyPassRow[]).map((row) => ({
-    entityType: row.entity_type,
-    entityId: row.entity_id,
-    displayName: row.display_name,
-    qrCode: row.qr_code,
-    pdfFetchRef: row.entity_id,
-  }));
+  return mapRsvpPartyRows(data);
+};
+
+export const fetchRsvpPartyPasses = async (
+  rsvpId: string,
+): Promise<RsvpPassCredential[]> =>
+  (await fetchRsvpPartyDetails(rsvpId)).credentials;
+
+/**
+ * issue #4508 2.5 — whether a claimed guest may bring someone too. Read
+ * straight from the event; anything unreadable is "no" (the button stays
+ * hidden rather than leading to a refusal).
+ */
+export const fetchRsvpGuestsCanBring = async (eventId: string): Promise<boolean> => {
+  const { data, error } = await supabase
+    .from("events")
+    .select("rsvp_guests_can_bring")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (error !== null || data === null) return false;
+  return (data as { rsvp_guests_can_bring?: boolean | null }).rsvp_guests_can_bring === true;
+};
+
+export type RsvpGuestBringResult =
+  | { ok: true; guestId: string | null; inviteUrl: string | null }
+  | { ok: false; code: string };
+
+/** issue #4508 2.5 — a claimed guest brings one more person (op guest_bring). */
+export const bringRsvpGuest = async (
+  guestId: string,
+  phone: string,
+  phoneCountryIso: string | null,
+): Promise<RsvpGuestBringResult> => {
+  const { data, error } = await supabase.functions.invoke("public-submit-rsvp", {
+    body: {
+      op: "guest_bring",
+      guestId,
+      phone,
+      ...(phoneCountryIso ? { phoneCountryIso } : {}),
+    },
+  });
+  if (error !== null) {
+    return {
+      ok: false,
+      code: invokeErrorCode(error as { message?: string; context?: { body?: unknown } }, "unavailable"),
+    };
+  }
+  const row = (data ?? {}) as Record<string, unknown>;
+  return row.outcome === "added"
+    ? {
+        ok: true,
+        guestId: typeof row.guestId === "string" ? row.guestId : null,
+        inviteUrl: typeof row.inviteUrl === "string" ? row.inviteUrl : null,
+      }
+    : { ok: false, code: typeof row.error === "string" ? row.error : "unavailable" };
+};
+
+/** issue #4508 2.5 — guest_bring refusals in plain words. */
+export const rsvpGuestBringMessage = (code: string): string => {
+  if (code.includes("not_allowed")) return "This host isn't letting guests bring anyone.";
+  if (code.includes("already_brought")) return "You've already brought someone to this event.";
+  if (code.includes("rsvp_full")) return "This event is full, so there's no room for another guest.";
+  if (code.includes("not_your_pass") || code.includes("ineligible")) return "Only a guest with a claimed pass can bring someone.";
+  if (code.includes("rsvp_guest_own_number")) return "That's you. Enter a friend's number.";
+  if (code.includes("rsvp_guest_already_listed")) return "That person is already on the list.";
+  if (code.includes("rsvp_guest_released")) return "That number can't be invited to this event.";
+  if (code.includes("rsvp_guest_daily_cap")) return "You've invited a lot of numbers today. Try again tomorrow.";
+  if (code.includes("rsvp_guest_phone")) return "Enter a valid phone number.";
+  if (code.includes("rate_limited")) return "Too many tries in a row. Wait a minute, then try again.";
+  return "We couldn't add them just now. Try again.";
 };
 
 const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
