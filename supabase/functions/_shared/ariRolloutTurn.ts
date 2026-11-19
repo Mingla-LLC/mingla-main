@@ -39,6 +39,10 @@ export const ARI_UNDERSTAND_FIRST_ONLY_TOOLS: ReadonlySet<string> = new Set([
   // #4453 milestone 11 — "Add a page with Ari" (Core also needs SITES_ARI_ADD_PAGE for the brand).
   "propose_site_page",
   "answer_site_page_question",
+  // #4453 Website workspace — the snapshot read, the one plan and the team request.
+  "get_site_workspace",
+  "propose_site_change_set",
+  "propose_website_team_request",
 ]);
 
 /**

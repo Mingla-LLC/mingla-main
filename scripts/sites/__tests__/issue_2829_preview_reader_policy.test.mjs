@@ -11,7 +11,9 @@ const sql = fs.readFileSync(
   path.join(path.dirname(fileURLToPath(import.meta.url)), "../bootstrap-sites-cms.sql"),
   "utf8",
 );
-const patterns = [...sql.matchAll(/'(\^publications\/[^']+)'/g)].map((match) => match[1]);
+// The artifact grammar (`.json`). #4453 added a second, separate grammar under
+// publications/ for a preview's section list (`.sections`), which has its own test.
+const patterns = [...sql.matchAll(/'(\^publications\/[^']+)'/g)].map((match) => match[1]).filter((pattern) => pattern.endsWith("\\.json$"));
 const SITE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const DIGEST = "a".repeat(64);
 

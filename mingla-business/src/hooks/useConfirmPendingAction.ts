@@ -34,7 +34,7 @@ export interface UseConfirmPendingActionResult {
     pending_action_id: string,
     edited_args?: Record<string, unknown>,
     /** #3355 P3: Website setup asks the server for the next gap after a save. */
-    workflow_context?: "website_setup",
+    workflow_context?: "website_setup" | "website_workspace",
   ) => Promise<AgentConfirmResponse>;
   cancel: (pending_action_id: string) => Promise<AgentConfirmResponse>;
   isExecuting: boolean;
@@ -53,7 +53,7 @@ export function useConfirmPendingAction(
     mutationFn: (args: {
       pending_action_id: string;
       edited_args?: Record<string, unknown>;
-      workflow_context?: "website_setup";
+      workflow_context?: "website_setup" | "website_workspace";
       brand_id?: string;
     }) =>
       confirmAgentAction({ ...args, ari_ui: currentAriUiCapabilities() }),
@@ -143,7 +143,7 @@ export function useConfirmPendingAction(
     async (
       pending_action_id: string,
       edited_args?: Record<string, unknown>,
-      workflow_context?: "website_setup",
+      workflow_context?: "website_setup" | "website_workspace",
     ) => {
       const intent = createAriClientIntent({
         intent: "confirm",

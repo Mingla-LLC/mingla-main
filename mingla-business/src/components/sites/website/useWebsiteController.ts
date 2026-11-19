@@ -42,6 +42,7 @@ import {
   type PersistedPublicationOperation,
 } from "../../../services/brandSitesService";
 import { brandSiteKeys } from "../../../sites/brandSiteKeys";
+import { runDesignChecks } from "../../../sites/contentApi";
 import {
   capabilitiesFrom,
   previewUrlForPage,
@@ -85,6 +86,12 @@ export function noticeFor(error: unknown): WorkspaceNotice {
  * controls show (A5); provision and publication operations are durable and
  * tracked to their receipts (#3583, W9f); a refusal is always a notice.
  */
+const REFUSAL_CODES = new Set(["FORBIDDEN", "NOT_FOUND", "NOT_ENTITLED", "INVALID_STATE", "SESSION_EXPIRED"]);
+/** Core answered "no" (as opposed to not answering, or failing). */
+export function websiteRefusal(error: unknown): boolean {
+  return error instanceof BrandSitesError && REFUSAL_CODES.has(error.code);
+}
+
 export function useWebsiteController(safeBrandId: string, studioResult: StudioReturnResult | null, onPublishPanel: boolean) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -96,8 +103,12 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
   // #2829 (A5) — one owner for "what may this member do": Core's answer.
   const canCheckAvailability = globallyEnabled && safeBrandId.length > 0;
   const availability = useBrandSiteAvailability(safeBrandId, canCheckAvailability);
+  // Core REFUSED (no access, no website for this brand): that is an answer. Anything else that
+  // goes wrong (the service is down, slow or unreachable) is not: the member is told and can
+  // try again, never sent back to the brand's page as if they had no Website.
+  const availabilityDown = availability.isError && !websiteRefusal(availability.error);
   const websiteAvailable: boolean | null = availability.isError
-    ? false
+    ? (availabilityDown ? null : false)
     : availability.data === undefined
       ? null
       : availability.data.available;
@@ -416,6 +427,44 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
         rollbackSourcePublicationId: null,
       });
     },
+    /*
+     * #4453 workspace — Publish from the Publish panel. The draft is checked
+     * again at this moment and exactly that revision is sent, so a change made
+     * since the panel opened (a section read, an autosave) can never make the
+     * publish stale. Resolves with null when Core accepted it, else the reason.
+     */
+    publishChecked: async (): Promise<string | null> => {
+      const accountId = user?.id;
+      if (!accountId || !siteId) return "Sign in again to publish.";
+      if (publicationOperation) return "A publish is already running.";
+      try {
+        setNotice(null);
+        const fresh = await validateBrandSiteDraft({ brandId: safeBrandId, siteId });
+        queryClient.setQueryData(brandSiteKeys.siteData(siteId, "validation"), fresh);
+        // A first publish is accepted only when the design checks ran on THIS draft. The panel ran
+        // them when it opened; a section read or an autosave since then made a new draft, so they
+        // are run again here (they never block; the run is what Core asks for).
+        if (site.data?.last_successful_publication_id === null) {
+          queryClient.setQueryData(brandSiteKeys.siteData(siteId, "design-checks"), await runDesignChecks(siteId));
+        }
+        await startPublication({
+          accountId,
+          brandId: safeBrandId,
+          siteId,
+          operationId: createBrandSiteOperationId(),
+          kind: "publish",
+          startedAt: Date.now(),
+          expectedRevision: fresh.home_revision,
+          sourceDigest: fresh.draft_digest,
+          rollbackSourcePublicationId: null,
+        });
+        return null;
+      } catch (error) {
+        const refused = noticeFor(error);
+        setNotice(refused);
+        return error instanceof BrandSitesError ? error.message : "Mingla couldn’t check your draft just now. Nothing was published.";
+      }
+    },
     rollback: (selectedVersion: BrandSiteVersion) => {
       const accountId = user?.id;
       if (!accountId || !siteId || publicationOperation) return;
@@ -478,6 +527,8 @@ export function useWebsiteController(safeBrandId: string, studioResult: StudioRe
     globallyEnabled,
     canCheckAvailability,
     availability,
+    availabilityDown,
+    retryAvailability: () => { void availability.refetch(); },
     websiteAvailable,
     capabilities,
     brand,

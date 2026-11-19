@@ -42,7 +42,10 @@ import {
   teamQuietUntil,
 } from "../_shared/teamNotifications.ts";
 // #4382 — customer-facing support notifications.
-import { ISSUE_4382_SUPPORT_CATEGORIES } from "../_shared/issue4382SupportNotifications.ts";
+import {
+  ISSUE_4382_EMAIL_CATEGORIES,
+  ISSUE_4382_SUPPORT_CATEGORIES,
+} from "../_shared/issue4382SupportNotifications.ts";
 // #4383: the Admin push categories (one list, the destination module).
 import { ADMIN_PUSH_CATEGORIES } from "../_shared/adminPushDestinations.ts";
 
@@ -129,6 +132,8 @@ const ISSUE_3720_CONTACT_CATEGORIES = new Set([
   "admin.team_mention",
   ...ISSUE_3988_EMAIL_CATEGORIES,
   ...ISSUE_4111_EMAIL_CATEGORIES,
+  // #4453 — the "website change is ready" email goes to the member's own address.
+  ...ISSUE_4382_EMAIL_CATEGORIES,
 ]);
 const ISSUE_3720_DURABLE_CATEGORIES = new Set([
   ...ISSUE_3720_CONTACT_CATEGORIES,

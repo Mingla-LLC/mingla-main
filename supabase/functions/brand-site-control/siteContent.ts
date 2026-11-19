@@ -21,6 +21,10 @@ import { siteEvidence } from "./siteAri.ts";
 import { OWNER_ARI_PAGE_ACTIONS } from "./ariPage.ts";
 import { brandFlagOn } from "./designPass.ts";
 import { ARI_PAGE_MESSAGES } from "../_shared/siteContracts/ariPage.ts";
+import {
+  isWorkspaceCode, WORKSPACE_CONTENT_ACTIONS, WORKSPACE_CONTENT_MEDIA_MESSAGES, WORKSPACE_MESSAGES, workspaceDetail,
+  type WorkspaceContentCode,
+} from "./siteWorkspace.ts";
 
 type JsonObject = Record<string, unknown>;
 type RpcResult = { data: unknown; error: { message: string } | null };
@@ -57,6 +61,8 @@ const STUDIO_ACTIONS = new Set([
   "review_status", "mark_reviewed",
   // #4453 milestone 11 — the owner's Draft page from Ari: answer, Publish this page, Remove.
   ...OWNER_ARI_PAGE_ACTIONS,
+  // #4453 website workspace — the section editor, the look, undo / redo (siteWorkspace.ts).
+  ...WORKSPACE_CONTENT_ACTIONS,
 ]);
 export const CONTENT_ACTIONS: ReadonlySet<string> = new Set([...CORE_ONLY_ACTIONS, ...STUDIO_ACTIONS]);
 
@@ -85,6 +91,8 @@ export type ContentFailureCode =
   | "PAGE_NOT_ARI_DRAFT"
   | "UNSELLABLE_OFFER"
   | "BOOKING_THROUGH_ENQUIRY"
+  // #4453 website workspace — the section editor, the look, undo / redo.
+  | WorkspaceContentCode
   | "SERVICE_TEMPORARILY_UNAVAILABLE";
 
 const MESSAGES: Record<ContentFailureCode, string> = {
@@ -111,6 +119,8 @@ const MESSAGES: Record<ContentFailureCode, string> = {
   PAGE_NOT_ARI_DRAFT: ARI_PAGE_MESSAGES.PAGE_NOT_ARI_DRAFT,
   UNSELLABLE_OFFER: ARI_PAGE_MESSAGES.UNSELLABLE_OFFER,
   BOOKING_THROUGH_ENQUIRY: "That answer reads as taking bookings. Bookings and payments always go through Mingla.",
+  ...WORKSPACE_MESSAGES,
+  ...WORKSPACE_CONTENT_MEDIA_MESSAGES,
   SERVICE_TEMPORARILY_UNAVAILABLE: "Website tools are temporarily unavailable. Please try again.",
 };
 
@@ -138,6 +148,25 @@ const STATUS: Record<ContentFailureCode, number> = {
   PAGE_NOT_ARI_DRAFT: 409,
   UNSELLABLE_OFFER: 409,
   BOOKING_THROUGH_ENQUIRY: 409,
+  SECTION_NOT_FOUND: 404,
+  FIELD_NOT_EDITABLE: 400,
+  FIELD_REQUIRED: 400,
+  VALUE_TOO_LONG: 400,
+  LAYOUT_NOT_IN_DESIGN: 409,
+  SECTION_TYPE_NOT_AVAILABLE: 409,
+  SECTION_LIMIT_REACHED: 409,
+  SECTION_CANNOT_BE_REMOVED: 409,
+  HOME_ALWAYS_ON: 409,
+  MEDIA_REQUIRED: 400,
+  MEDIA_NOT_FOUND: 409,
+  MEDIA_WRONG_KIND: 409,
+  CHANGED_SINCE: 409,
+  NOTHING_TO_UNDO: 409,
+  NOTHING_TO_REDO: 409,
+  UNREADABLE_COLOURS: 409,
+  LIST_NOT_EDITABLE: 400,
+  LIST_LIMIT_REACHED: 409,
+  LIST_ROW_REQUIRED: 409,
   SERVICE_TEMPORARILY_UNAVAILABLE: 503,
 };
 
@@ -380,6 +409,9 @@ export async function handleSiteContentRoute(
   if (result.status >= 300 || body?.ok !== true) {
     const error = (body?.error ?? {}) as JsonObject;
     if (error.code === "REVISION_CONFLICT") return await relayConflict(ctx, siteId, error.latest);
+    // #4453 website workspace — which field, how long it may be, which layouts this style has (bounded).
+    if (isWorkspaceCode(error.code)) return contentFailure(error.code, workspaceDetail(error));
+    if (WORKSPACE_CONTENT_ACTIONS.has(action) && error.code === "VALIDATION_FAILED") return contentFailure("VALIDATION_FAILED", workspaceDetail(error));
     return isCode(error.code) && error.code !== "SERVICE_TEMPORARILY_UNAVAILABLE"
       ? contentFailure(error.code)
       : contentFailure("SERVICE_TEMPORARILY_UNAVAILABLE");

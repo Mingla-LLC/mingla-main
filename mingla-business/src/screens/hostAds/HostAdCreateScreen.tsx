@@ -114,6 +114,7 @@ import { HapticFeedback } from "../../utils/hapticFeedback";
 import { useBusinessMediaTranslation } from "../../i18n";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { unsavedWork } from "../../hooks/useUnsavedChangesGuard";
 import { useReducedMotionNative } from "../../hooks/useReducedMotionNative";
 import { applyAdCreditTopUp, getAdCreditWallet, type AdCreditTopUpLimits } from "../../services/adCreditService";
 import { formatCurrency, formatCurrencyRound } from "../../utils/currency";
@@ -1419,6 +1420,8 @@ export default function HostAdCreateRoute(): React.ReactElement {
     ],
   );
 
+  // #4453 — did the last draft save land? Read by the brand switcher's ask.
+  const draftSaveLandedRef = useRef(true);
   const persistDraft = useCallback(
     (
       snapshot: Record<string, unknown> = draftSnapshot,
@@ -1445,8 +1448,10 @@ export default function HostAdCreateRoute(): React.ReactElement {
             planId: draftPlanIdRef.current ?? existingPlanId,
           });
           draftRevisionRef.current = draft.revision;
+          draftSaveLandedRef.current = true;
           setDraftSaveStatus("saved");
         } catch (cause) {
+          draftSaveLandedRef.current = false;
           const code =
             cause !== null && typeof cause === "object" && "code" in cause
               ? String(cause.code)
@@ -1479,6 +1484,25 @@ export default function HostAdCreateRoute(): React.ReactElement {
     }, 1000);
     return () => clearTimeout(timer);
   }, [draftReady, draftSnapshot, permissions.canPlan, persistDraft]);
+
+  // #4453 — the draft saves a second after the last change. The brand
+  // switcher asks first: anything not saved yet is saved now (through the
+  // same one-at-a-time chain), and the switch is held when that save did not
+  // land (failed, or the draft changed somewhere else).
+  const brandSwitchFlushRef = useRef<() => Promise<boolean>>(async () => true);
+  brandSwitchFlushRef.current = async (): Promise<boolean> => {
+    if (draftSaveStatus === "saved" || draftSaveStatus === "loading") return true;
+    await persistDraft();
+    return draftSaveLandedRef.current;
+  };
+  useEffect(() => {
+    const flush = (): Promise<boolean> => brandSwitchFlushRef.current();
+    const flushers = (unsavedWork.flushers ??= new Set());
+    flushers.add(flush);
+    return (): void => {
+      flushers.delete(flush);
+    };
+  }, []);
 
   const activeStepIndex = HOST_AD_STEPS.findIndex(
     (step) => step.id === activeStepId,

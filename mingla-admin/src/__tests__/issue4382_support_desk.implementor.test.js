@@ -83,8 +83,8 @@ describe("#4382 W2: inbox views, Opened by, filters and search", () => {
   const brandsById = { "b-lnm": { name: "Lagos Night Market" }, "b-afro": { name: "Afro Fest" } };
   const base = { nowMs: now, me, profilesById, brandsById };
 
-  it("the rail is the approved seven views, Needs reply first", () => {
-    assert.deepEqual(SUPPORT_INBOX_VIEWS.map((v) => v.id), ["needs", "mine", "unassigned", "overdue", "waiting", "resolved", "all"]);
+  it("the rail is the approved seven views plus Website changes (#4453), Needs reply first", () => {
+    assert.deepEqual(SUPPORT_INBOX_VIEWS.map((v) => v.id), ["needs", "mine", "unassigned", "overdue", "waiting", "website", "resolved", "all"]);
     assert.deepEqual(OPENED_BY_OPTIONS.map((o) => o.label), ["Everyone", "Customers", "Staff"]);
   });
 

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/agent-confirm-action/__tests__/issue_4453_site_step_activity.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4453-confirm-site-step-activity",
+  "profile": "deno-2-unit"
+}
