@@ -87,3 +87,30 @@ describe("#4420 A2 the thread fills the desktop shell (SC-9)", () => {
     expect(route).not.toContain("? { height: windowHeight } : null");
   });
 });
+
+describe("#4420 SC-10 the phone-web thread follows the visible band", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { visibleBandShift } = require("../webVisualViewport") as typeof import("../webVisualViewport");
+  test("keyboard scrolled the visible band down: the screen moves down by offsetTop", () => {
+    expect(visibleBandShift({ offsetTop: 180, visibleHeight: 420, layoutHeight: 760 })).toBe(180);
+  });
+  test("no shift when nothing is scrolled, and never a negative or NaN shift", () => {
+    expect(visibleBandShift({ offsetTop: 0, visibleHeight: 760, layoutHeight: 760 })).toBe(0);
+    expect(visibleBandShift({ offsetTop: -12, visibleHeight: 420, layoutHeight: 760 })).toBe(0);
+    expect(visibleBandShift({ offsetTop: Number.NaN, visibleHeight: 420, layoutHeight: 760 })).toBe(0);
+  });
+  test("clamped so the screen never leaves the layout viewport (no growing feedback loop)", () => {
+    expect(visibleBandShift({ offsetTop: 900, visibleHeight: 420, layoutHeight: 760 })).toBe(340);
+  });
+  test("rounded, so sub-pixel scroll noise does not re-render", () => {
+    expect(visibleBandShift({ offsetTop: 180.4, visibleHeight: 420, layoutHeight: 760 })).toBe(180);
+  });
+  test("the thread applies it only off the desktop shell, as a transform", () => {
+    const route = source("app/messages/[conversationId].tsx");
+    expect(route).toContain("useVisibleBandShift(!embedded && !shellActive)");
+    expect(route).toContain("transform: [{ translateY: bandShift }]");
+    const hook = source("src/components/messages/webVisualViewport.ts");
+    expect(hook).toContain("window.requestAnimationFrame(read)");
+    expect(hook).toContain("current === next ? current : next");
+  });
+});

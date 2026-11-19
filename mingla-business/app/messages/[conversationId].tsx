@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { messagesScreenWebSize, webPrivacyMaxHeight } from "../../src/components/messages/webViewportPin";
 import { HostShellInsetContext } from "../../src/components/ui/hostShellContext";
+import { useVisibleBandShift } from "../../src/components/messages/webVisualViewport";
 import {
   ActivityIndicator,
   Modal,
@@ -436,6 +437,7 @@ function BrandGroupThreadScreen({
   const { t } = useBusinessMediaTranslation();
   const { isWideDesktop, width: layoutWidth } = useResponsiveLayout();
   const shellActive = React.useContext(HostShellInsetContext);
+  const bandShift = useVisibleBandShift(!embedded && !shellActive);
   const showRail = isWideDesktop && (layoutWidth ?? 0) >= DETAILS_RAIL_MIN_WIDTH;
   // #4304 — on a phone, Plan and Media in the header are icon-only so the
   // group's name keeps its room (both carry an accessibility label).
@@ -1043,6 +1045,9 @@ function BrandGroupThreadScreen({
         messagesScreenWebSize(windowHeight, embedded || shellActive),
         // #4420: capped clear of the Privacy & ad choices strip.
         webPrivacyMaxHeight(),
+        // #4420 SC-10: on phone web, follow the visible band when the
+        // keyboard scrolls it down (transform only, see webVisualViewport).
+        bandShift > 0 ? { transform: [{ translateY: bandShift }] } : null,
       ]}
       testID="brand-group-thread"
     >
