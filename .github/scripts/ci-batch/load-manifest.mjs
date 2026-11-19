@@ -363,7 +363,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4490 P2-2/P2-3 implementor: listed migrations 20280809084490 (venue offer checkout and cancel), 20280809094490 (check-in) and the #2099 pin owner 20280809104490 (skipped by exact filename on the filtered #1931 replay, like the P1 pin owner), registered their pg17 suites (with sidecars) and added them to the #2099 provider path scope; re-sealed.
 // #4490 P2 implementor: skipped the P2 venue offer migrations (and, on the #2117 lane, the P2 pin owner) by exact filename on the filtered #1931 and #2117 template replays (issue-2492 C-1 closure); re-sealed.
 // #4490 P2-7 implementor: listed migration 20280809114490 (admin_list_venue_offers, Admin venue offer list) after the P2 pin owner in the same lanes and registered its pg17 suite (with sidecar); re-sealed.
-export const BOOTSTRAP_SHA256 = "f92afa723967b77a1adf853b9042b16e1e4fda66fe2f37d18503dbe7dc2d82f6";
+// issue #4490 P3 booking access: migration 20280809124490 and its pg17 suite registered; re-sealed.
+export const BOOTSTRAP_SHA256 = "ae94596da48c3a3903cf295805cbbcfa113964670f752cea2951d8a36ff02af6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

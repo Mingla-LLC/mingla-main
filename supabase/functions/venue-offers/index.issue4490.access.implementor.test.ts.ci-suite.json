@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/venue-offers/index.issue4490.access.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-venue-offers-access",
+  "profile": "deno-2-unit"
+}

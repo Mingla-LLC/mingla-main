@@ -256,6 +256,26 @@ async function resolveCaller(
   return { userId: data.user.id };
 }
 
+/**
+ * True only when the booking exists, is a venue booking, and was bought by
+ * this signed-in user (its user_id or booked_by_user_id). A booking bought
+ * signed-out has neither, so no user id ever matches it.
+ */
+export async function callerOwnsBooking(
+  client: ServiceClient,
+  groupId: string,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await client.from("stay_reservation_groups")
+    .select("user_id, booked_by_user_id, offer_kind")
+    .eq("id", groupId)
+    .maybeSingle();
+  if (error || !data || !data.offer_kind) return false;
+  return (typeof data.user_id === "string" && data.user_id === userId) ||
+    (typeof data.booked_by_user_id === "string" &&
+      data.booked_by_user_id === userId);
+}
+
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -533,6 +553,14 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
     const tokenHash = VENUE_OFFER_TOKEN_RE.test(bookingToken)
       ? `\\x${await venueOfferTokenHashHex(bookingToken)}`
       : null;
+    // A signed-in caller without the booking token may act only on a booking
+    // that is theirs (bought signed in). Everyone else needs the token. Staff
+    // use the staff paths (venue-check-in, the Host RPCs), never this one.
+    // The database checks the same rule again (issue_4490_booking_actor_ok).
+    if (!tokenHash && caller.userId) {
+      const owns = await callerOwnsBooking(client, groupId, caller.userId);
+      if (!owns) return json(404, { code: "offer_booking_not_found" });
+    }
 
     if (action === "get") {
       const { data, error } = await client.rpc("issue_4490_get_offer_booking", {
