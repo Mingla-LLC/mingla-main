@@ -425,6 +425,9 @@ describe("Ari's plan as data", () => {
     expect(teamRequestFromProposal("other", {}, () => null)).toBeNull();
     const fromSection = teamRequestFromSection({ typed: "Add a countdown.", pageTitle: "Home", pagePath: "", sectionId: "s1", sectionLabel: "Top of the page" });
     expect(fromSection.what).toBe("Add a countdown (in “Top of the page” on Home).");
+    // What the team reads under "Ari could not" is words, never the code `custom_change`.
+    expect(fromSection.missingCapability).toBe("The website editor has no control for this change yet");
+    expect(teamRequestFromCouldnt({ request: "Add a tour", couldnt: [], pageTitle: "Home", pagePath: "", focus: null }).missingCapability).not.toMatch(/_/);
     expect(teamRequestFromSection({ typed: " ", pageTitle: "Home", pagePath: "", sectionId: null, sectionLabel: null }).what).toBe("");
     const fromRun = teamRequestFromCouldnt({ request: "Add a 360° tour", couldnt: [{ what: "a 360° tour", why: "no section" }], pageTitle: "Home", pagePath: "", focus: null });
     expect(fromRun).toMatchObject({ what: "Add a 360° tour", why: "a 360° tour: no section", missingCapability: "a 360° tour" });

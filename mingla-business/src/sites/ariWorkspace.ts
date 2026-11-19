@@ -62,6 +62,12 @@ export function ticketWhereLine(pageTitle: string | null, sectionLabel: string |
   return sectionLabel?.trim() ? `${page} › ${sectionLabel.trim()}` : page;
 }
 
+/**
+ * What the team reads under "Ari could not" when nothing more exact is known:
+ * plain words, never a code.
+ */
+export const NO_CONTROL_YET = "The website editor has no control for this change yet";
+
 /** The request Ari wrote for the team, from its proposal. */
 export function teamRequestFromProposal(toolName: string, args: unknown, pageTitleOf: (path: string) => string | null): TeamRequestDraft | null {
   if (toolName !== TEAM_REQUEST_TOOL || !isRecord(args) || !str(args.what)) return null;
@@ -73,7 +79,7 @@ export function teamRequestFromProposal(toolName: string, args: unknown, pageTit
     where: { page_path: pagePath, section_id: str(where.section_id) || null, section_label: sectionLabel },
     whereLine: ticketWhereLine(pageTitleOf(pagePath), sectionLabel),
     why: str(args.why) || "Ari has no way to make this change yet",
-    missingCapability: str(args.missing_capability) || "custom_change",
+    missingCapability: str(args.missing_capability) || NO_CONTROL_YET,
   };
 }
 
@@ -99,7 +105,7 @@ export function teamRequestFromSection(input: { typed: string; pageTitle: string
     where: { page_path: input.pagePath, section_id: input.sectionId, section_label: section },
     whereLine: ticketWhereLine(input.pageTitle, section),
     why: "A custom change to this part of the website",
-    missingCapability: "custom_change",
+    missingCapability: NO_CONTROL_YET,
   };
 }
 
@@ -111,7 +117,7 @@ export function teamRequestFromCouldnt(input: { request: string; couldnt: readon
     where: { page_path: input.focus?.page_path ?? input.pagePath, section_id: input.focus?.section_id ?? null, section_label: input.focus?.section_label ?? null },
     whereLine: ticketWhereLine(input.pageTitle, input.focus?.section_label ?? null),
     why: first ? [first.what, first.why].filter(Boolean).join(": ") : "Ari could not make this change",
-    missingCapability: first?.what || "custom_change",
+    missingCapability: first?.what || NO_CONTROL_YET,
   };
 }
 

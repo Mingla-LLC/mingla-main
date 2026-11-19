@@ -218,7 +218,7 @@ WHERE r.ticket_id = '44530000-0000-4000-8000-000000000101';
 SELECT pg_temp.p_assert(
     count(*) = 1
     AND bool_and(m.content LIKE 'What I want: Add a video background%'
-      AND m.content LIKE '%Where: / · Top of the page%'
+      AND m.content LIKE '%Where: Home page · Top of the page%'
       AND m.content LIKE '%Why: Our launch film%'
       AND m.content LIKE '%What Ari could not do: Ari cannot put a video%'
       AND NOT m.is_internal AND m.sender_id = '44530000-0000-4000-8000-0000000000b2'),

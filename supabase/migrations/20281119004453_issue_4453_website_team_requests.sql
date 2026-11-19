@@ -393,7 +393,8 @@ BEGIN
   v_subject := 'Website change: ' || left(btrim(regexp_replace(v_what, '[[:space:][:cntrl:]]+', ' ', 'g')), 120);
   v_message := 'What I want: ' || v_what
     || CASE WHEN v_page IS NULL THEN '' ELSE
-         E'\n\nWhere: ' || v_page
+         -- The team reads this in the ticket thread: the home page by name, never "/".
+         E'\n\nWhere: ' || CASE WHEN v_page = '/' THEN 'Home page' ELSE v_page END
            || CASE WHEN v_section_label IS NULL THEN '' ELSE ' · ' || v_section_label END
        END
     || CASE WHEN v_why IS NULL THEN '' ELSE E'\n\nWhy: ' || v_why END

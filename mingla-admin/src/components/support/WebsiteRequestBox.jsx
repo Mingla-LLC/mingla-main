@@ -12,6 +12,7 @@ import {
   adminSiteHref,
   readyButtonState,
   websiteRequestClock,
+  websiteRequestCouldNot,
   websiteRequestDueAt,
   websiteRequestWhere,
 } from "../../lib/websiteRequestModel";
@@ -69,7 +70,7 @@ export function WebsiteRequestBox({ ticket, profilesById = {}, onReady }) {
           <Fact label="What">{request.what}</Fact>
           <Fact label="Where">{websiteRequestWhere(request)}</Fact>
           <Fact label="Why">{request.why}</Fact>
-          <Fact label="Ari could not">{request.missing_capability}</Fact>
+          <Fact label="Ari could not">{websiteRequestCouldNot(request)}</Fact>
           <Fact label="Draft version">
             {request.draft_digest ? <span className="break-all font-mono">{request.draft_digest}</span> : null}
           </Fact>

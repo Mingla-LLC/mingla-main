@@ -65,6 +65,16 @@ export function websiteRequestWhere(request) {
   return [page, request.section_label].filter(Boolean).join(" · ") || "The whole website";
 }
 
+/**
+ * What Ari could not do, in plain words: a bare code (`custom_change`) is
+ * never shown to the team.
+ */
+export function websiteRequestCouldNot(request) {
+  const value = typeof request?.missing_capability === "string" ? request.missing_capability.trim() : "";
+  if (!value) return "";
+  return /^[a-z0-9]+(_[a-z0-9]+)+$/.test(value) ? "A custom change the website editor has no control for yet" : value;
+}
+
 /** The Admin page for this brand's website (Brands > Websites). */
 export function adminSiteHref(request) {
   return request?.site_id ? `#/brand-sites?siteId=${encodeURIComponent(request.site_id)}` : null;

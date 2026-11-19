@@ -33,6 +33,7 @@ import {
   readyButtonState,
   readyErrorMessage,
   websiteRequestClock,
+  websiteRequestCouldNot,
   websiteRequestDueAt,
   websiteRequestWhere,
 } from "../lib/websiteRequestModel.js";
@@ -153,6 +154,13 @@ describe("#4453: the request details", () => {
     assert.equal(websiteRequestWhere(request({ page_path: "/menu", section_label: null })), "/menu");
     assert.equal(websiteRequestWhere(request({ page_path: null, section_label: null })), "The whole website");
     assert.equal(websiteRequestWhere(null), "");
+  });
+
+  it("what Ari could not do is plain words, never a bare code", () => {
+    assert.equal(websiteRequestCouldNot({ missing_capability: "The website has no live chat section yet." }), "The website has no live chat section yet.");
+    assert.equal(websiteRequestCouldNot({ missing_capability: "custom_change" }), "A custom change the website editor has no control for yet");
+    assert.equal(websiteRequestCouldNot({ missing_capability: "  " }), "");
+    assert.equal(websiteRequestCouldNot(null), "");
   });
 
   it("links to the brand's website in Admin, with the id escaped", () => {
