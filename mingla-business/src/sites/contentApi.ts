@@ -680,6 +680,9 @@ export function useSitePages(siteId: string | null, enabled = true) {
   });
 }
 
+/** What a saved menu also changes in the workspace: its undo history, what is unpublished and the publish check. */
+export const MENU_TOUCHES = ["workspace", "history", "validation"] as const;
+
 export function useSetSiteMenu(siteId: string | null) {
   const client = useQueryClient();
   return useMutation({
@@ -689,6 +692,8 @@ export function useSetSiteMenu(siteId: string | null) {
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "pages") });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "changes") });
       void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, "preview") });
+      // A menu change is one more undoable draft change: the workspace's Undo and status follow it.
+      for (const touched of MENU_TOUCHES) void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, touched) });
     },
   });
 }
