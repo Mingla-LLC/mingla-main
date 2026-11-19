@@ -1192,8 +1192,7 @@ BEGIN
       NULLIF(v_session.table_ids, '{}'::uuid[]),
       v_session.space_id
     );
-  EXCEPTION
-    WHEN unique_violation THEN
+  EXCEPTION WHEN unique_violation THEN
       SELECT * INTO v_row FROM public.reservations
       WHERE payment_intent_id = p_payment_intent_id
       LIMIT 1;

@@ -200,8 +200,9 @@ SELECT public.t4490_reset();
 SELECT public.t4490_ok(NOT ordering_enabled, 'T-3f cascade off wrote ordering_enabled = false')
 FROM public.venue_ordering_settings WHERE venue_id = '44900000-0000-4000-9000-0000000000a1';
 SELECT public.t4490_as('44900000-0000-4000-8000-000000000001');
-SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1','pick_a_table',true,NULL,NULL,NULL,'t3-pick-1',true)$$,
-  'P0001', 'feature_not_available:pick_a_table', 'T-3g a feature whose phase has not shipped cannot be switched on (even by cascade)');
+-- [TEST-MOD-APPROVED #4490] pick_a_table shipped in P5; memberships (P6) is the unbuilt example now.
+SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1','memberships',true,NULL,NULL,NULL,'t3-pick-1',true)$$,
+  'P0001', 'feature_not_available:memberships', 'T-3g a feature whose phase has not shipped cannot be switched on (even by cascade)');
 SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1','guest_list',true,NULL,NULL,NULL,'t3-guest-1')$$,
   'P0001', 'feature_not_available:guest_list', 'T-3h guest list is not built');
 SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000c1','stays',false,NULL,NULL,NULL,'t3-stays-1')$$,

@@ -625,6 +625,7 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 P5-1 tables, floor plan, waitlist, by the hour; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 P4 follow-up: hours you set, hire changes, damage deposit; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 P3 follow-up money fixes; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 P5 test pins follow the new guest writer; MANIFEST.json phase3eContractSha256 matches.
 const LOCKED_PHASE3E_CONTRACT_SHA256 = "aa16d73d83736a6231583f6687671af6ed72eefeb84c36abe2d11b9ec8a5cbdb";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];

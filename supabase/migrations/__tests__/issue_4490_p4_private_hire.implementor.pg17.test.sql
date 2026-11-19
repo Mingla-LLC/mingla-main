@@ -1103,7 +1103,7 @@ $h20$;
 SELECT public.t4490_reset();
 
 -- ===========================================================================
--- H-21 a hire's day and party size cannot change online or by a booking change.
+-- H-21 a hire with no date-change rule offers the guest no move or party change.
 -- ===========================================================================
 SELECT public.t4490_service();
 DO $h21$
@@ -1119,9 +1119,22 @@ $h21$;
 SELECT public.t4490_reset();
 SELECT set_config('t4490.ver', (SELECT version::text FROM public.stay_reservation_groups WHERE id = public.t4490_id('g_b')), false);
 SELECT public.t4490_as('44907000-0000-4000-8000-000000000001');
-SELECT public.t4490_expect(format($$SELECT public.issue_4490_change_booking(%L::uuid, 'change_guests', '{"guests":320}'::jsonb, false,
-    %s, 'p4-h21-staff')$$, public.t4490_id('g_b'), current_setting('t4490.ver')),
-  'P0001', 'offer_change_not_allowed', 'H-21b staff cannot change a hire''s guests through a booking change');
+-- [TEST-MOD-APPROVED #4490] The P4 follow-up (20280809184490) lets staff change a hire's
+-- party (claims and prices follow; proven in issue_4490_p4_hire_followups K-3/K-4), so
+-- the change is no longer refused as "not allowed".
+DO $h21b$
+DECLARE
+  v_err text;
+BEGIN
+  BEGIN
+    PERFORM public.issue_4490_change_booking(public.t4490_id('g_b'), 'change_guests', '{"guests":320}'::jsonb, true);
+  EXCEPTION WHEN OTHERS THEN
+    v_err := SQLERRM;
+  END;
+  PERFORM public.t4490_ok(v_err IS DISTINCT FROM 'offer_change_not_allowed',
+    'H-21b staff may change a hire''s party now (preview: ' || COALESCE(v_err, 'ok') || ')');
+END
+$h21b$;
 SELECT public.t4490_reset();
 
 -- ===========================================================================
