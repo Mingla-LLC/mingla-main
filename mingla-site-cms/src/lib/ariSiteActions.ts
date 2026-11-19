@@ -275,7 +275,7 @@ export function siteDesign(settings: AnyDoc | null | undefined): DesignKey {
   return isDesignKey(settings?.design) ? (settings!.design as DesignKey) : "atelier";
 }
 
-async function currentSettings(ctx: AriActionContext, req = ctx.scoped): Promise<AnyDoc> {
+export async function currentSettings(ctx: Pick<AriActionContext, "req" | "scoped" | "tenantId">, req = ctx.scoped): Promise<AnyDoc> {
   const doc = (await ctx.req.payload.find({
     collection: "site-settings",
     req,
@@ -289,7 +289,7 @@ async function currentSettings(ctx: AriActionContext, req = ctx.scoped): Promise
 }
 
 /** The tenant's READY media for these ids, refusing any other (and the wrong kind). */
-async function readyMedia(ctx: AriActionContext, ids: readonly string[], kind: "image" | "video" | "any"): Promise<Map<string, AnyDoc>> {
+export async function readyMedia(ctx: Pick<AriActionContext, "req" | "scoped" | "tenantId">, ids: readonly string[], kind: "image" | "video" | "any"): Promise<Map<string, AnyDoc>> {
   const unique = [...new Set(ids)];
   if (unique.some((id) => !UUID.test(id))) refuse("MEDIA_NOT_FOUND");
   const result = await ctx.req.payload.find({
@@ -312,7 +312,7 @@ async function readyMedia(ctx: AriActionContext, ids: readonly string[], kind: "
   return byId;
 }
 
-function plainTextToLexical(value: string): Record<string, unknown> {
+export function plainTextToLexical(value: string): Record<string, unknown> {
   const paragraphs = value.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
   return {
     root: {
@@ -492,7 +492,7 @@ export async function inTransaction<T>(ctx: AriActionContext, work: (req: Payloa
 // The actions.
 // ---------------------------------------------------------------------------
 
-function tokensView(settings: AnyDoc) {
+export function tokensView(settings: AnyDoc) {
   const design = siteDesign(settings);
   const definition = designFor(design) ?? DESIGNS.atelier;
   const tokens = ownerTokensOf(settings);
@@ -512,7 +512,7 @@ function tokensView(settings: AnyDoc) {
   };
 }
 
-function mergeTokens(current: OwnerTokenOverrides, proposed: OwnerTokenOverrides): OwnerTokenOverrides {
+export function mergeTokens(current: OwnerTokenOverrides, proposed: OwnerTokenOverrides): OwnerTokenOverrides {
   const colors = { ...(current.colors ?? {}) } as AnyDoc;
   for (const [role, value] of Object.entries(proposed.colors ?? {})) {
     colors[role] = value && typeof value === "object" ? { ...(colors[role] ?? {}), ...value } : value;
@@ -604,6 +604,10 @@ export const ARI_DESIGNER_ACTIONS = new Set([
   // #4453 milestone 11 — "Add a page with Ari" (ariPage.ts; SITES_ARI_ADD_PAGE, checked by Core).
   "propose_site_page",
   "answer_site_page_question",
+  // #4453 website workspace (build contract B) — the planning snapshot, one typed step, and rolling a change set back (siteWorkspace.ts).
+  "get_site_workspace",
+  "apply_site_change",
+  "undo_site_change_group",
 ]);
 
 export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: AriActionContext): Promise<Record<string, unknown>> {
@@ -616,6 +620,11 @@ export async function runAriDesignerAction(action: string, args: AnyDoc, ctx: Ar
   });
   // #4453 milestone 11 — "Add a page with Ari" (ariPage.ts; SITES_ARI_ADD_PAGE, checked by Core).
   if (ARI_PAGE_ACTIONS.has(action)) return runAriPageAction(action, args, ctx);
+  // #4453 website workspace (build contract B).
+  if (action === "get_site_workspace" || action === "apply_site_change" || action === "undo_site_change_group") {
+    const { runSiteWorkspaceAction } = await import("./siteWorkspace");
+    return runSiteWorkspaceAction(action, args, ctx);
+  }
   switch (action) {
     case "get_site_tokens":
       return tokensView(await currentSettings(ctx));
@@ -976,4 +985,8 @@ export const ARI_REFUSAL_CODES = new Set([
   "DESIGN_PASS_TRY_AGAIN",
   // #4453 milestone 11 — "Add a page with Ari" (one plain sentence each, ARI_PAGE_MESSAGES).
   ...ARI_PAGE_CODES,
+  // #4453 website workspace (build contract B) — one typed step, and undoing a change set.
+  "SECTION_NOT_FOUND", "FIELD_NOT_EDITABLE", "FIELD_REQUIRED", "VALUE_TOO_LONG", "LAYOUT_NOT_IN_DESIGN",
+  "SECTION_TYPE_NOT_AVAILABLE", "SECTION_LIMIT_REACHED", "SECTION_CANNOT_BE_REMOVED", "HOME_ALWAYS_ON",
+  "MEDIA_REQUIRED", "UNREADABLE_COLOURS", "CHANGED_SINCE", "NOTHING_TO_UNDO",
 ]);

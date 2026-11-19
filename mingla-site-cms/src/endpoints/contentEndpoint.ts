@@ -93,9 +93,29 @@ export const CONTENT_ACTION_MIN_RANK: Readonly<Record<string, number>> = {
   // #2829 W9b — "Why it looks like this" (read-only) and the six design checks.
   work_log: 20,
   design_checks: 20,
+  // #4453 website workspace (build contract A) — the section editor, the look and undo / redo.
+  workspace: 20,
+  page_sections: 20,
+  section_catalog: 20,
+  edit_section: 20,
+  move_section: 20,
+  remove_section: 20,
+  add_section: 20,
+  set_section_media: 20,
+  set_look: 20,
+  set_page_enabled: 20,
+  history: 20,
+  undo: 20,
+  redo: 20,
   confirm_review: 50,
   set_offering_visibility: 50,
 };
+
+/** #4453 website workspace — handled by lib/sectionActions.ts and lib/draftHistory.ts. */
+export const WORKSPACE_ACTIONS: ReadonlySet<string> = new Set([
+  "workspace", "page_sections", "section_catalog", "edit_section", "move_section", "remove_section", "add_section",
+  "set_section_media", "set_look", "set_page_enabled", "history", "undo", "redo",
+]);
 
 const LIMITS: Record<ContentCollection, number> = {
   destinations: MAX_DESTINATIONS,
@@ -481,7 +501,7 @@ async function oneEntry(ctx: Ctx, collection: ContentCollection | "categories", 
 }
 
 /** One-hour links to the stored 640w renditions of this tenant's READY media. */
-async function thumbsFor(ctx: Ctx, ids: readonly string[]): Promise<Map<string, string>> {
+export async function thumbsFor(ctx: Pick<Ctx, "req" | "tenantId">, ids: readonly string[]): Promise<Map<string, string>> {
   const unique = [...new Set(ids)].filter((id) => ENTRY_ID.test(id));
   const thumbs = new Map<string, string>();
   if (!unique.length) return thumbs;
@@ -542,6 +562,8 @@ async function update(ctx: Ctx, collection: ContentCollection | "categories", id
 
 export async function runContentAction(ctx: Ctx): Promise<unknown> {
   const { action, args } = ctx.request;
+  // #4453 website workspace (build contract A, C).
+  if (WORKSPACE_ACTIONS.has(action)) return runWorkspaceAction(ctx);
   switch (action) {
     case "list": {
       const collection = collectionOf(args.collection);
@@ -995,7 +1017,8 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
         overrideAccess: false,
         draft: true,
         depth: 0,
-        data: { blocks: page.blocks } as never,
+        // #4453 — every page update must name the revision it was read at (Pages enforcePage), or it is a conflict.
+        data: { blocks: page.blocks, revision: page.revision } as never,
       }) as unknown as AnyDoc;
       return { page_id: pageId, ...pageReviewSummary(Array.isArray(updated.blocks) ? updated.blocks as AnyDoc[] : []) };
     }
@@ -1094,6 +1117,14 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
         depth: 0,
         data: { items: next } as never,
       })) as AnyDoc;
+      // #4453 website workspace — the menu is undoable like every other draft change.
+      const { parseChangeGroup, recordChanges, pickSnapshot, MENU_KEYS } = await import("../lib/draftHistory");
+      await recordChanges(
+        { req: ctx.req, scoped: ctx.scoped, tenantId: ctx.tenantId, userId: ctx.request.userId },
+        "user",
+        [{ target: "menu", targetId: null, label: "Change the menu", before: pickSnapshot(navigation, MENU_KEYS), after: pickSnapshot(updated, MENU_KEYS) }],
+        parseChangeGroup(args),
+      );
       return { revision: String(updated.updatedAt ?? ""), audit: { action: "content.updated", collection: "navigation", entry: String(navigation.id) } };
     }
     case "draft_changes": {
@@ -1172,6 +1203,70 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
         hidden_offering_ids: Array.isArray(updated.hidden_offering_ids) ? updated.hidden_offering_ids : [],
         audit: { action: "content.offering_visibility", collection: "offerings", entry: offering, visible: !hidden },
       };
+    }
+    default:
+      return fail("VALIDATION_FAILED");
+  }
+}
+
+/*
+ * #4453 website workspace (build contract A, C) — the section editor, the
+ * look, and undo / redo. Reads return what the workspace draws; every write
+ * is draft-only, checks the stated revision, records an undo entry and may
+ * join a change set (`group_id`, `group_label`).
+ */
+async function runWorkspaceAction(ctx: Ctx): Promise<Record<string, unknown>> {
+  const { action, args } = ctx.request;
+  const sections = await import("../lib/sectionActions");
+  const history = await import("../lib/draftHistory");
+  const { currentSettings, siteDesign, loadDraftState } = await import("../lib/ariSiteActions");
+  const base = { req: ctx.req, scoped: ctx.scoped, tenantId: ctx.tenantId, userId: ctx.request.userId };
+  switch (action) {
+    case "workspace": {
+      const draft = await loadDraftState(ctx.req, ctx.scoped, ctx.tenantId);
+      return {
+        draft_digest: draft.digest,
+        design: siteDesign(draft.settings),
+        look_revision: String(draft.settings?.updatedAt ?? ""),
+        menu_revision: String(draft.navigation?.updatedAt ?? ""),
+        pages: sections.workspacePages(draft.pages, draft.navigation),
+        history: await history.historySummary(base),
+      };
+    }
+    case "history":
+      return history.listHistory(base);
+    case "undo":
+    case "redo": {
+      const group = history.parseChangeGroup(args);
+      return history.undoRedo(base, action, group.groupId);
+    }
+  }
+  const write = { ...base, actor: "user" as const, group: history.parseChangeGroup(args) };
+  const saved = (done: { page: AnyDoc; pageRevision: string }) => ({ page_revision: done.pageRevision, audit: sections.pageAudit(done.page) });
+  switch (action) {
+    case "page_sections":
+      return sections.readPageSections(write, args.page_id, (ids) => thumbsFor(ctx, ids));
+    case "section_catalog":
+      return { types: sections.sectionCatalog(siteDesign(await currentSettings(base)), "user") };
+    case "edit_section":
+      return saved(await sections.editSection(write, { ...args, expected_revision: expected(args) }));
+    case "move_section":
+      return saved(await sections.moveSection(write, { ...args, expected_revision: expected(args) }));
+    case "remove_section":
+      return saved(await sections.removeSection(write, { ...args, expected_revision: expected(args) }));
+    case "add_section": {
+      const done = await sections.addSection(write, { ...args, expected_revision: expected(args), edits: undefined });
+      return { ...saved(done), section_id: done.sectionId };
+    }
+    case "set_section_media":
+      return saved(await sections.setSectionMedia(write, { ...args, expected_revision: expected(args) }));
+    case "set_page_enabled": {
+      const done = await sections.setPageEnabled(write, { ...args, expected_revision: expected(args) });
+      return { ...saved(done), menu_changed: done.menuChanged };
+    }
+    case "set_look": {
+      const done = await sections.setLook(write, { ...args, expected_revision: expected(args) });
+      return { look_revision: done.look_revision, warnings: done.warnings, audit: { action: "content.updated", collection: "site-settings" } };
     }
     default:
       return fail("VALIDATION_FAILED");
@@ -1318,12 +1413,21 @@ export function draftChanges(input: {
   return changes;
 }
 
-const NAMED_CODES = new Set([
+/** #4453 website workspace — each refusal the section editor and undo / redo can answer. */
+export const WORKSPACE_REFUSALS = [
+  "SECTION_NOT_FOUND", "FIELD_NOT_EDITABLE", "FIELD_REQUIRED", "VALUE_TOO_LONG", "LAYOUT_NOT_IN_DESIGN",
+  "SECTION_TYPE_NOT_AVAILABLE", "SECTION_LIMIT_REACHED", "SECTION_CANNOT_BE_REMOVED", "HOME_ALWAYS_ON",
+  "MEDIA_REQUIRED", "MEDIA_NOT_FOUND", "MEDIA_WRONG_KIND", "CHANGED_SINCE", "NOTHING_TO_UNDO", "NOTHING_TO_REDO",
+] as const;
+
+const NAMED_CODES = new Set<string>([
   "FORBIDDEN", "NOT_FOUND", "VALIDATION_FAILED", "REVISION_CONFLICT", "REVIEW_NOT_CONFIRMED",
   "TITLE_REQUIRED", "QUOTE_REQUIRED", "SLUG_TAKEN", "SLUG_INVALID", "CATEGORY_IN_USE",
   "CONTENT_LIMIT_EXCEEDED", "MEDIA_REJECTED", "MEDIA_PROCESSING", "VIDEO_TOO_LONG",
   // #4453 milestone 11 — the owner's Ari-page actions ("Ari needs this", "Publish this page", "Remove").
   "QUESTION_NOT_FOUND", "PAGE_NOT_ARI_DRAFT", "UNSELLABLE_OFFER", "BOOKING_THROUGH_ENQUIRY",
+  // #4453 website workspace — the section editor, the look and undo / redo.
+  ...WORKSPACE_REFUSALS,
 ]);
 
 export function contentFailure(error: unknown): Response {
