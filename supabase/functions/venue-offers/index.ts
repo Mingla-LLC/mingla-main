@@ -10,7 +10,8 @@
 //              database stores only SHA-256 of the token.
 //
 // Actions: offer, availability, quote, hold, pay, confirm_return, get,
-// cancel_preview, cancel. (change_* arrive in P3, withdraw in P4.)
+// cancel_preview, cancel, change_preview, change (P3: more or fewer guests,
+// another day, more extras). (withdraw arrives in P4.)
 // `offer` is the guest's read of one live offer (its named prices, the day
 // rules and the refund terms). It is answered only for an offer the public
 // venue page itself lists (pg_public_venue_page: verified venue, feature on,
@@ -62,6 +63,8 @@ const ACTIONS = new Set([
   "get",
   "cancel_preview",
   "cancel",
+  "change_preview",
+  "change",
 ]);
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_PER_WINDOW = 120;
@@ -101,6 +104,13 @@ const SAFE_CODES = [
   "stale_write",
   "availability_range_invalid",
   "not_authorized",
+  "offer_answer_required",
+  "offer_extra_unavailable",
+  "offer_pay_mode_unavailable",
+  "offer_nothing_to_pay",
+  "offer_change_not_allowed",
+  "offer_change_too_late",
+  "offer_change_nothing",
 ];
 
 type RpcError = { message?: string; code?: string; details?: string };
@@ -355,6 +365,33 @@ export function publicOfferDetail(
       endTime: schedule.endTime ?? null,
       sessionMinutes: schedule.sessionMinutes ?? null,
     },
+    // Group packages: what is included, priced extras, the deposit, when it
+    // starts and for how long (the venue's own words; no internal ids).
+    inclusions: Array.isArray(projection.inclusions)
+      ? projection.inclusions.filter(isJson).map((item) => ({
+        kind: item.kind ?? "item",
+        label: item.label ?? null,
+        qtyPer: item.qtyPer ?? null,
+        staffRatio: item.staffRatio ?? null,
+        options: Array.isArray(item.options) ? item.options : null,
+      }))
+      : [],
+    extras: Array.isArray(projection.extras)
+      ? projection.extras.filter(isJson).map((extra) => ({
+        id: extra.id,
+        name: extra.name,
+        priceMinor: extra.priceMinor,
+        per: extra.per,
+      }))
+      : [],
+    deposit: isJson(projection.deposit) ? projection.deposit : null,
+    payModes: Array.isArray(projection.payModes)
+      ? projection.payModes
+      : ["full"],
+    startTimes: Array.isArray(projection.startTimes)
+      ? projection.startTimes
+      : [],
+    durationMinutes: projection.durationMinutes ?? null,
     currencyCode: page.currencyCode ?? null,
     minorUnitExponent: page.minorUnitExponent ?? 2,
     vat: isJson(page.vat) ? page.vat : null,
@@ -545,6 +582,11 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       ) {
         return json(400, { code: "invalid_request" });
       }
+      const extras = body.extras ?? [];
+      const answers = body.answers ?? {};
+      if (!Array.isArray(extras) || !isJson(answers)) {
+        return json(400, { code: "invalid_request" });
+      }
       const { data, error } = await client.rpc("issue_4490_quote_offer", {
         p_offering_id: offeringId,
         p_window_id: windowId,
@@ -552,6 +594,8 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
         p_actor_key: actorKey,
         p_user_id: caller.userId,
         p_idempotency_key: key,
+        p_extras: extras,
+        p_answers: answers,
       });
       if (error) return rpcFailure(error);
       return json(200, { kind: "success", data });
@@ -649,6 +693,10 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       ) {
         return json(400, { code: "invalid_request" });
       }
+      const payMode = body.payMode ?? null;
+      if (payMode !== null && payMode !== "deposit" && payMode !== "full") {
+        return json(400, { code: "invalid_request" });
+      }
       const prepare = () =>
         client.rpc("issue_4490_prepare_offer_payment", {
           p_group_id: groupId,
@@ -656,6 +704,7 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
           p_user_id: caller.userId,
           p_idempotency_key: key,
           p_expected_version: expectedVersion,
+          p_pay_mode: payMode,
         });
       let { data: prepared, error } = await prepare();
       if (error && safeCode(error) === "offer_payment_already_pending") {
@@ -818,6 +867,38 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
         p_token_hash: tokenHash,
         p_user_id: caller.userId,
       });
+      if (error) return rpcFailure(error);
+      return json(200, { kind: "success", data });
+    }
+
+    if (action === "change_preview" || action === "change") {
+      const change = str(body.change);
+      const payload = body.payload;
+      const preview = action === "change_preview";
+      const key = str(body.idempotencyKey);
+      const expectedVersion = body.expectedVersion;
+      if (
+        !["change_guests", "move_date", "add_extras"].includes(change) ||
+        !isJson(payload) ||
+        (!preview &&
+          (!KEY.test(key) || !Number.isSafeInteger(expectedVersion) ||
+            Number(expectedVersion) < 1))
+      ) {
+        return json(400, { code: "invalid_request" });
+      }
+      const { data, error } = await client.rpc(
+        "issue_4490_guest_change_booking",
+        {
+          p_group_id: groupId,
+          p_token_hash: tokenHash,
+          p_user_id: caller.userId,
+          p_action: change,
+          p_payload: payload,
+          p_preview: preview,
+          p_expected_version: preview ? null : expectedVersion,
+          p_idempotency_key: preview ? null : key,
+        },
+      );
       if (error) return rpcFailure(error);
       return json(200, { kind: "success", data });
     }

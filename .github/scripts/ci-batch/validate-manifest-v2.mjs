@@ -620,7 +620,8 @@ export function phase3dContractDigest(manifest) {
 // #4490 P2-7 implementor: listed migration 20280809114490 (admin_list_venue_offers, Admin venue offer list) and registered its pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 P3 booking access: migration 20280809124490 and its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 P3 collect online: migration 20280809134490 and its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "af33ec9ae83fcdf8e9807084a5dda932c4fb550524a0b7cc257ead7566d5f25d";
+// issue #4490 P3-1 packages and deposits: migration 20280809144490 and its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c12529adfa51614453dfa491fca3d0d9e66d70330c4509a037b66010d2ea175b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -177,10 +177,11 @@ BEGIN
   END LOOP;
   PERFORM public.t4490_ok(NOT has_table_privilege('authenticated', 'public.venue_passes', 'SELECT'),
     'E-1d passes (and their token hash) are not readable by any signed-in user');
+  -- TEST-MOD-APPROVED #4490: P3 adds extras/answers to the quote and the pay mode to pay.
   FOREACH v_fn IN ARRAY ARRAY[
-    'public.issue_4490_quote_offer(uuid,uuid,jsonb,text,uuid,text)',
+    'public.issue_4490_quote_offer(uuid,uuid,jsonb,text,uuid,text,jsonb,jsonb)',
     'public.issue_4490_create_offer_group(uuid,uuid,jsonb,text,uuid,bytea,text)',
-    'public.issue_4490_prepare_offer_payment(uuid,bytea,uuid,text,bigint)',
+    'public.issue_4490_prepare_offer_payment(uuid,bytea,uuid,text,bigint,text)',
     'public.issue_4490_get_offer_booking(uuid,bytea,uuid,text)',
     'public.issue_4490_check_in_scan(uuid,text,integer,boolean,uuid,text)',
     'public.issue_4490_gate_sale(uuid,uuid,jsonb,text,jsonb,text,uuid,uuid,bytea)'] LOOP

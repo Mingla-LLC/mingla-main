@@ -12,6 +12,12 @@
 //   sell   { venueId, offeringId, lines:[{priceOptionId, guests}], method:
 //            "cash" | "transfer" | "pay_link", buyer?: {name, email?, phone?},
 //            idempotencyKey }
+//   take_balance { venueId, groupId, amountMinor, method: "cash" | "transfer"
+//            | "card_at_venue" | "other", idempotencyKey } — money taken at
+//            the venue (needs money rights: venue.manage_money or rank >=
+//            finance_manager)
+//   balance_link { venueId, groupId } — the guest's own pay link for the
+//            balance, shown as a QR on this device (check-in rights)
 //
 // Scan results: admitted, already_used, wrong_day, not_yet, void, not_found,
 // wrong_venue, id_required (ask "ID checked?" and scan again with
@@ -21,6 +27,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import {
   issueVenueOfferBookingToken,
+  rederiveVenueOfferBookingToken,
   venueOfferTokenHashHex,
 } from "../_shared/venueOfferBookingToken.ts";
 
@@ -58,6 +65,11 @@ const SAFE_CODES = [
   "offer_invalid_payload",
   "offer_idempotency_conflict",
   "offers_not_enabled",
+  "offer_booking_not_found",
+  "offer_amount_over_balance",
+  "offer_nothing_to_pay",
+  "offer_invalid_transition",
+  "balance_link_unavailable",
 ];
 
 type RpcError = { message?: string; code?: string; details?: string };
@@ -78,6 +90,7 @@ export type VenueCheckInDeps = {
   env?: (name: string) => string | undefined;
   newGroupId?: () => string;
   issueToken?: typeof issueVenueOfferBookingToken;
+  rederiveToken?: typeof rederiveVenueOfferBookingToken;
 };
 
 function json(status: number, body: unknown): Response {
@@ -317,6 +330,61 @@ export function createVenueCheckInHandler(deps: VenueCheckInDeps = {}) {
         }/visit/${booking.groupId}#t=${token}`;
       }
       return json(200, { kind: "success", data: result });
+    }
+
+    if (action === "take_balance") {
+      const groupId = str(body.groupId);
+      const method = str(body.method);
+      const key = str(body.idempotencyKey);
+      const amount = body.amountMinor;
+      if (
+        !UUID.test(groupId) || !KEY.test(key) ||
+        !["cash", "transfer", "card_at_venue", "other"].includes(method) ||
+        !Number.isSafeInteger(amount) || Number(amount) < 1
+      ) {
+        return json(400, { code: "invalid_request" });
+      }
+      const { data, error } = await client.rpc(
+        "issue_4490_record_offline_payment_for",
+        {
+          p_user_id: userId,
+          p_group_id: groupId,
+          p_amount_minor: amount,
+          p_method: method,
+          p_idempotency_key: key,
+        },
+      );
+      return error ? failure(error) : json(200, { kind: "success", data });
+    }
+
+    if (action === "balance_link") {
+      const groupId = str(body.groupId);
+      if (!UUID.test(groupId)) return json(400, { code: "invalid_request" });
+      const { data, error } = await client.rpc("issue_4490_balance_link_info", {
+        p_venue_id: venueId,
+        p_group_id: groupId,
+        p_user_id: userId,
+      });
+      if (error) return failure(error);
+      const info = data as Record<string, unknown>;
+      const token = await (deps.rederiveToken ??
+        rederiveVenueOfferBookingToken)({
+          groupId,
+          storedHashHex: typeof info.tokenHashHex === "string"
+            ? info.tokenHashHex
+            : null,
+        });
+      // A random (not re-derivable) token cannot be shown again.
+      if (!token) return json(409, { code: "balance_link_unavailable" });
+      return json(200, {
+        kind: "success",
+        data: {
+          groupId,
+          balanceMinor: info.balanceMinor,
+          currencyCode: info.currencyCode,
+          payUrl: `${returnOrigin(env)}/visit/${groupId}#t=${token}`,
+        },
+      });
     }
 
     return json(400, { code: "invalid_request" });

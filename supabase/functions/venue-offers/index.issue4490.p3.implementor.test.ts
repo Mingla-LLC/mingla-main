@@ -236,4 +236,211 @@ Deno.test("the offer read says whether it can be paid online (at the gate only o
   }
 });
 
-export { WINDOW };
+Deno.test("quote passes extras and answers; a bad extras list is refused before the database", async () => {
+  resetVenueOffersRateLimitForTests();
+  const calls: Call[] = [];
+  const handle = createVenueOffersHandler({
+    client: client(calls, {
+      issue_4490_quote_offer: () => ({ data: { quoteId: "q" }, error: null }),
+    }),
+    env: () => undefined,
+  });
+  const base = {
+    action: "quote",
+    offeringId: OFFER,
+    windowId: WINDOW,
+    lines: [{ priceOptionId: OFFER, guests: 12 }],
+    cartKey: "C".repeat(43),
+    idempotencyKey: "quote-key-1234",
+  };
+  const ok = await handle(post({
+    ...base,
+    extras: [{ id: "xcake", qty: 1 }],
+    answers: { "Rice for the group": "Party jollof" },
+  }));
+  assertEquals(ok.status, 200);
+  assertEquals(calls[0].params.p_extras, [{ id: "xcake", qty: 1 }]);
+  assertEquals(calls[0].params.p_answers, {
+    "Rice for the group": "Party jollof",
+  });
+  const bad = await handle(post({ ...base, extras: { id: "x" } }));
+  assertEquals(bad.status, 400);
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("pay passes the pay mode (Half now / All now); anything else is refused", async () => {
+  resetVenueOffersRateLimitForTests();
+  const calls: Call[] = [];
+  const handle = createVenueOffersHandler({
+    client: client(calls, {
+      issue_4490_prepare_offer_payment: () => ({
+        data: null,
+        error: { message: "offer_pay_mode_unavailable", code: "22023" },
+      }),
+    }),
+    env: () => undefined,
+  });
+  const res = await handle(post({ ...payBody, payMode: "deposit" }));
+  assertEquals(res.status, 400);
+  assertEquals((await res.json()).code, "offer_pay_mode_unavailable");
+  assertEquals(calls[0].params.p_pay_mode, "deposit");
+  const bad = await handle(post({ ...payBody, payMode: "half" }));
+  assertEquals(bad.status, 400);
+  assertEquals(calls.length, 1);
+});
+
+Deno.test("change_preview and change go to the guest change RPC with the token; change needs a key and version", async () => {
+  resetVenueOffersRateLimitForTests();
+  const calls: Call[] = [];
+  const handle = createVenueOffersHandler({
+    client: client(calls, {
+      issue_4490_guest_change_booking: (p) => ({
+        data: {
+          action: p.p_action,
+          preview: p.p_preview,
+          amountMinor: 2150000,
+        },
+        error: null,
+      }),
+    }),
+    env: () => undefined,
+  });
+  const preview = await handle(post({
+    action: "change_preview",
+    groupId: GROUP,
+    token: TOKEN,
+    change: "change_guests",
+    payload: { guests: 14 },
+  }));
+  assertEquals(preview.status, 200);
+  assertEquals(calls[0].params.p_preview, true);
+  assertEquals(calls[0].params.p_idempotency_key, null);
+  assert(typeof calls[0].params.p_token_hash === "string");
+  const missing = await handle(post({
+    action: "change",
+    groupId: GROUP,
+    token: TOKEN,
+    change: "change_guests",
+    payload: { guests: 14 },
+  }));
+  assertEquals(missing.status, 400);
+  const apply = await handle(post({
+    action: "change",
+    groupId: GROUP,
+    token: TOKEN,
+    change: "move_date",
+    payload: { windowId: WINDOW },
+    idempotencyKey: "change-key-123",
+    expectedVersion: 7,
+  }));
+  assertEquals(apply.status, 200);
+  assertEquals(calls[1].params.p_preview, false);
+  assertEquals(calls[1].params.p_expected_version, 7);
+  const bad = await handle(
+    post({
+      action: "change",
+      groupId: GROUP,
+      token: TOKEN,
+      change: "cancel_all",
+      payload: {},
+    }),
+  );
+  assertEquals(bad.status, 400);
+});
+
+Deno.test("a change without the token is refused (signed-out), and the too-late code reaches the guest", async () => {
+  resetVenueOffersRateLimitForTests();
+  const calls: Call[] = [];
+  const handle = createVenueOffersHandler({
+    client: client(calls, {
+      issue_4490_guest_change_booking: () => ({
+        data: null,
+        error: { message: "offer_change_too_late", code: "P0001" },
+      }),
+    }),
+    env: () => undefined,
+  });
+  const anon = await handle(
+    post({
+      action: "change_preview",
+      groupId: GROUP,
+      change: "change_guests",
+      payload: { guests: 2 },
+    }),
+  );
+  assertEquals(anon.status, 401);
+  const late = await handle(post({
+    action: "change_preview",
+    groupId: GROUP,
+    token: TOKEN,
+    change: "change_guests",
+    payload: { guests: 2 },
+  }));
+  assertEquals(late.status, 422);
+  assertEquals((await late.json()).code, "offer_change_too_late");
+});
+
+Deno.test("the offer read carries a package's inclusions, extras, deposit, pay modes and start times", async () => {
+  resetVenueOffersRateLimitForTests();
+  const handle = createVenueOffersHandler({
+    client: client([], {
+      pg_public_venue_page: () => ({
+        data: {
+          venue: {},
+          offers: [{ id: OFFER, canCollectOnline: true }],
+          currencyCode: "NGN",
+        },
+        error: null,
+      }),
+      issue_4490_offer_projection: () => ({
+        data: {
+          id: OFFER,
+          kind: "group_package",
+          status: "live",
+          name: "Squad",
+          options: [],
+          pool: { id: "internal" },
+          inclusions: [{
+            kind: "choice",
+            label: "Rice",
+            options: ["A", "B"],
+            menuItemId: "internal",
+          }],
+          extras: [{
+            id: "xcake",
+            name: "Cake table",
+            priceMinor: 2000000,
+            per: "booking",
+          }],
+          deposit: { kind: "percent", value: 5000, balanceDueDaysBefore: 2 },
+          payModes: ["deposit", "full"],
+          startTimes: ["12:00", "14:00"],
+          durationMinutes: 180,
+        },
+        error: null,
+      }),
+    }),
+    env: () => undefined,
+  });
+  const res = await handle(
+    post({
+      action: "offer",
+      offeringId: OFFER,
+      brandSlug: "qa",
+      venueSlug: "gameland",
+    }),
+  );
+  const data = (await res.json()).data;
+  assertEquals(data.extras, [{
+    id: "xcake",
+    name: "Cake table",
+    priceMinor: 2000000,
+    per: "booking",
+  }]);
+  assertEquals(data.inclusions[0].options, ["A", "B"]);
+  assertEquals("menuItemId" in data.inclusions[0], false);
+  assertEquals(data.payModes, ["deposit", "full"]);
+  assertEquals(data.startTimes, ["12:00", "14:00"]);
+  assertEquals(data.durationMinutes, 180);
+  assertEquals("pool" in data, false);
+});

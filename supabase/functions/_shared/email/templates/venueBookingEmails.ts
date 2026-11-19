@@ -1,6 +1,8 @@
 // ===========================================================================
 // #4490 P2 — the guest's venue booking messages (entry passes):
 //   venue_booking_confirmed · venue_booking_cancelled · venue_refund_state
+//   P3: venue_balance_due · venue_balance_overdue · venue_booking_changed ·
+//       venue_balance_paid
 // ---------------------------------------------------------------------------
 // The outbox row carries ids only (venue_group_id, venue_id, reference,
 // amount). `notify-outbox-drain` adds the words at send time from the booking
@@ -15,6 +17,10 @@ export const VENUE_BOOKING_CATEGORIES = new Set([
   "venue_booking_confirmed",
   "venue_booking_cancelled",
   "venue_refund_state",
+  "venue_balance_due",
+  "venue_balance_overdue",
+  "venue_booking_changed",
+  "venue_balance_paid",
 ]);
 
 export const isVenueBookingCategory = (key: string): boolean =>
@@ -111,6 +117,12 @@ export function venueBookingEmailFacts(
     refunded: venueEmailMoney(minor(projection.refundedMinor) ?? 0, currency),
     refunded_minor: minor(projection.refundedMinor) ?? 0,
     paid_minor: minor(projection.paidMinor) ?? 0,
+    // #4490 P3: what is still owed and by when, read at send time.
+    balance: venueEmailMoney(minor(projection.balanceDueMinor) ?? 0, currency),
+    balance_minor: minor(projection.balanceDueMinor) ?? 0,
+    balance_due_date: typeof projection.balanceDueAt === "string"
+      ? venueEmailDate(projection.balanceDueAt.slice(0, 10))
+      : "",
     ...(amountMinor !== null
       ? { amount: venueEmailMoney(amountMinor, currency) }
       : {}),
@@ -179,6 +191,68 @@ export function renderVenueBookingMessage(
       },
       email: { subject: `Your ${venue} booking is cancelled`, body },
       sms: `${venue}: your booking${on} is cancelled.${refLine}`,
+    };
+  }
+  if (
+    categoryKey === "venue_balance_due" ||
+    categoryKey === "venue_balance_overdue"
+  ) {
+    const balance = text(payload.balance) || amount;
+    const due = text(payload.balance_due_date);
+    const overdue = categoryKey === "venue_balance_overdue";
+    const body = overdue
+      ? `The rest of your ${offer} at ${venue}${on} was due${
+        due ? ` on ${due}` : ""
+      }.${refLine} ${
+        balance ? `${balance} is still to pay. ` : ""
+      }Pay it from your booking page, or talk to ${venue}.`
+      : `The rest of your ${offer} at ${venue}${on} is due${
+        due ? ` by ${due}` : " soon"
+      }.${refLine} ${
+        balance ? `${balance} is left to pay. ` : ""
+      }You can pay it from your booking page.`;
+    return {
+      push: {
+        title: overdue ? `${venue}: balance overdue` : `${venue}: balance due`,
+        body: balance ? `${balance} left to pay${on}.` : `Balance due${on}.`,
+      },
+      email: {
+        subject: overdue
+          ? `Your ${venue} balance is overdue`
+          : `Your ${venue} balance is due${due ? ` by ${due}` : ""}`,
+        body,
+      },
+      sms: `${venue}: the rest of your booking${on} is ${
+        overdue ? "overdue" : "due soon"
+      }.${refLine} Pay from your booking page.`,
+    };
+  }
+  if (categoryKey === "venue_booking_changed") {
+    const balanceMinor = minor(payload.balance_minor) ?? 0;
+    const body = `Your ${offer} at ${venue} has changed${
+      date ? `: it is now on ${date}` : ""
+    }${guests > 0 ? ` for ${guestsWord(guests)}` : ""}.${refLine}${
+      balanceMinor > 0 ? ` ${text(payload.balance)} is left to pay.` : ""
+    } Your pass shows the new details.`;
+    return {
+      push: { title: `${venue} booking changed`, body: `${offer}${on}.` },
+      email: { subject: `Your ${venue} booking has changed`, body },
+      sms: `${venue}: your booking changed${on}.${refLine}`,
+    };
+  }
+  if (categoryKey === "venue_balance_paid") {
+    const balanceMinor = minor(payload.balance_minor) ?? 0;
+    const body = `Thank you: ${
+      amount || "your payment"
+    } for your ${offer} at ${venue}${on} is received.${refLine} ${
+      balanceMinor > 0
+        ? `${text(payload.balance)} is still to pay.`
+        : "Nothing more to pay."
+    }`;
+    return {
+      push: { title: `Payment received by ${venue}`, body: `${offer}${on}.` },
+      email: { subject: `Payment received: ${offer} at ${venue}`, body },
+      sms: `${venue}: payment received.${refLine}`,
     };
   }
   // venue_refund_state
