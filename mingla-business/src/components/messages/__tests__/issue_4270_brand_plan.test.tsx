@@ -738,7 +738,8 @@ describe("source contracts", () => {
     expect(chat).toContain('const planBrandId = group ? group.brand_id : null;');
     // #4304: the pill shows whenever the details rail does not (phones and
     // desktop windows too narrow for three panes).
-    expect(chat).toContain("{!showRail && planBrandId ? (");
+    // #4420 SC-17: the pill also shows on desktop while the rail is collapsed.
+    expect(chat).toContain("{!showRail && planBrandId && openPlan ? (");
     expect(chat).toContain('testID="brand-plan-pill"');
     // #4304: the rail tabs render through the shared BrandGroupRailTabRow.
     const rail = chat.slice(chat.indexOf("<BrandGroupRailTabRow"));

@@ -110,6 +110,12 @@ import {
   type MessagesSide,
 } from "../../src/utils/brandMessagesInbox";
 import {
+  readThreadRailCollapsed,
+  resolveThreadRail,
+  writeThreadRailCollapsed,
+  type ThreadRailTab,
+} from "../../src/utils/threadRailPreference";
+import {
   captureSendTarget,
   dispatchBrandThreadSend,
   type BrandThreadSendTarget,
@@ -301,9 +307,16 @@ function BrandGroupMessagesShell({ conversationId }: { conversationId: string | 
 function BrandGroupRailTabRow({
   tabs,
   active,
+  onCollapse,
+  collapseLabel,
+  collapseRef,
 }: {
   tabs: { key: string; label: string; accessibilityLabel: string; onPress: () => void; testID?: string }[];
   active: string;
+  /** #4420 SC-17: hides the rail; the thread takes its width. */
+  onCollapse?: () => void;
+  collapseLabel?: string;
+  collapseRef?: React.Ref<View>;
 }): React.ReactElement {
   return (
     <View style={styles.railTabs} accessibilityRole="tablist" testID="brand-group-rail-tabs">
@@ -323,6 +336,20 @@ function BrandGroupRailTabRow({
           </Pressable>
         );
       })}
+      {onCollapse ? (
+        <Pressable
+          ref={collapseRef}
+          accessibilityRole="button"
+          accessibilityLabel={collapseLabel}
+          {...({ title: collapseLabel } as Record<string, unknown>)}
+          onPress={onCollapse}
+          hitSlop={4}
+          style={styles.railCollapse}
+          testID="brand-group-rail-collapse"
+        >
+          <Icon name="chevR" size={18} color={brandGroupChat.textSecondary} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -462,10 +489,15 @@ function BrandGroupThreadScreen({
   const { isWideDesktop, width: layoutWidth } = useResponsiveLayout();
   const shellActive = React.useContext(HostShellInsetContext);
   const bandShift = useVisibleBandShift(!embedded && !shellActive);
-  const showRail = isWideDesktop && (layoutWidth ?? 0) >= DETAILS_RAIL_MIN_WIDTH;
+  // #4420 SC-17: wide enough for the rail, and the viewer has not hidden it.
+  const railAllowed = isWideDesktop && (layoutWidth ?? 0) >= DETAILS_RAIL_MIN_WIDTH;
+  const [railCollapsed, setRailCollapsedState] = useState<boolean>(() => readThreadRailCollapsed());
+  const showRail = railAllowed && !railCollapsed;
+  const railCollapseRef = useRef<View>(null);
+  const railShowRef = useRef<View>(null);
   // #4304 — on a phone, Plan and Media in the header are icon-only so the
   // group's name keeps its room (both carry an accessibility label).
-  const compactHeaderButtons = !showRail && (layoutWidth ?? 0) < 520;
+  const compactHeaderButtons = !railAllowed && (layoutWidth ?? 0) < 520;
   const { isAuthReady, user } = useAuth();
   const staff = useSupportStaff();
   const { groups, refresh: refreshGroups, setMuted } = useBrandGroups();
@@ -721,13 +753,13 @@ function BrandGroupThreadScreen({
   }, [conversationId, requestedFocusMessageId]);
 
   useEffect(() => {
-    if (requestedGallery === "1") {
-      setMediaPanelOpen(true);
-      setDesktopDetailTab("media");
-    } else if (requestedPlan === "1") {
-      setPlanPanelOpen(true);
-      setDesktopDetailTab("plan");
-    }
+    // #4420 SC-17: a gallery or plan deep link opens a collapsed rail too.
+    const request: ThreadRailTab | null = requestedGallery === "1" ? "media" : requestedPlan === "1" ? "plan" : null;
+    if (request === null) return;
+    if (request === "media") setMediaPanelOpen(true);
+    else setPlanPanelOpen(true);
+    setDesktopDetailTab(request);
+    setRailCollapsedState((collapsed) => resolveThreadRail({ collapsed, tab: request }, request).collapsed);
   }, [requestedGallery, requestedPlan]);
 
   useEffect(() => {
@@ -753,16 +785,36 @@ function BrandGroupThreadScreen({
 
   const openMedia = useCallback(() => {
     if (!conversationId) return;
+    if (railAllowed && railCollapsed) {
+      openRailTab("media");
+      return;
+    }
     setDesktopDetailTab("media");
     setMediaPanelOpen(true);
-  }, [conversationId]);
+  }, [conversationId, openRailTab, railAllowed, railCollapsed]);
+
+  // #4420 SC-17: show / hide the rail; any tab request opens it on that tab.
+  const setRailCollapsed = useCallback((collapsed: boolean): void => {
+    setRailCollapsedState(collapsed);
+    writeThreadRailCollapsed(collapsed);
+    // Focus follows the control: collapsing lands on "Show panel", expanding
+    // on "Hide panel" (web keyboard users never lose their place).
+    setTimeout(() => {
+      const target = collapsed ? railShowRef.current : railCollapseRef.current;
+      if (target && "focus" in target && typeof target.focus === "function") target.focus();
+    }, 0);
+  }, []);
+  const openRailTab = useCallback((tab: ThreadRailTab): void => {
+    const next = resolveThreadRail({ collapsed: railCollapsed, tab: desktopDetailTab }, tab);
+    if (next.collapsed !== railCollapsed) setRailCollapsed(next.collapsed);
+    setDesktopDetailTab(next.tab);
+    setMediaPanelOpen(next.tab === "media");
+  }, [desktopDetailTab, railCollapsed, setRailCollapsed]);
 
   const openPeople = useCallback(() => {
-    if (showRail) {
-      setDesktopDetailTab("people");
-      setMediaPanelOpen(false);
-    } else setPeopleSheetOpen(true);
-  }, [showRail]);
+    if (railAllowed) openRailTab("people");
+    else setPeopleSheetOpen(true);
+  }, [openRailTab, railAllowed]);
 
   const closeMedia = useCallback(() => {
     setMediaPanelOpen(false);
@@ -1010,7 +1062,7 @@ function BrandGroupThreadScreen({
     />
   );
 
-  if (!showRail && planPanelOpen && planBrandId) {
+  if (!railAllowed && planPanelOpen && planBrandId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
         <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={color.text2} /></View>}>
@@ -1026,7 +1078,7 @@ function BrandGroupThreadScreen({
     );
   }
 
-  if (!showRail && mediaPanelOpen && mediaShown && conversationId) {
+  if (!railAllowed && mediaPanelOpen && mediaShown && conversationId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.screen}>
         <React.Suspense fallback={<View style={styles.state}><ActivityIndicator color={color.text2} /></View>}>
@@ -1059,7 +1111,7 @@ function BrandGroupThreadScreen({
   // #4420: the header says which side is showing.
   // #4420 D5: on phones and narrow web the subtitle is the short form, so it
   // is never cut mid-word ("Guests room", "Team chat · private").
-  const narrowHeader = !showRail;
+  const narrowHeader = !railAllowed;
   const subtitle = side === "guests"
     ? t(narrowHeader ? "messages.subtitle_guests_short" : "messages.subtitle_guests")
     : hasSwitcher && !typingText
@@ -1067,10 +1119,8 @@ function BrandGroupThreadScreen({
       : teamSubtitle;
   const openPlan = planBrandId
     ? (): void => {
-      if (showRail) {
-        setDesktopDetailTab("plan");
-        setMediaPanelOpen(false);
-      } else setPlanPanelOpen(true);
+      if (railAllowed) openRailTab("plan");
+      else setPlanPanelOpen(true);
     }
     : null;
   const switcher = hasSwitcher ? (
@@ -1079,7 +1129,7 @@ function BrandGroupThreadScreen({
       teamUnread={group?.unread_count ?? 0}
       guestUnread={guestUnread}
       onChange={setSide}
-      fullWidth={!showRail}
+      fullWidth={!railAllowed}
     />
   ) : null;
   const menuActions = menuMessage
@@ -1130,13 +1180,13 @@ function BrandGroupThreadScreen({
             <Text style={[styles.subtitle, typingText && side === "team" ? styles.subtitleTyping : null, side === "guests" && styles.subtitleGuests]} numberOfLines={1}>{subtitle}</Text>
           </View>
         </Pressable>
-        {showRail ? switcher : null}
-        {!showRail && planBrandId ? (
+        {railAllowed ? switcher : null}
+        {!showRail && planBrandId && openPlan ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t("plan.pill_a11y")}
             hitSlop={5}
-            onPress={() => setPlanPanelOpen(true)}
+            onPress={openPlan}
             style={styles.mediaButton}
             testID="brand-plan-pill"
           >
@@ -1157,6 +1207,22 @@ function BrandGroupThreadScreen({
           {compactHeaderButtons ? null : <Text style={styles.mediaButtonText}>{t("chat.media")}</Text>}
         </Pressable>
         ) : null}
+        {railAllowed && railCollapsed ? (
+          // #4420 SC-17: the way back while the rail is hidden.
+          <Pressable
+            ref={railShowRef}
+            accessibilityRole="button"
+            accessibilityLabel={t("messages.rail_show")}
+            {...({ title: t("messages.rail_show") } as Record<string, unknown>)}
+            hitSlop={5}
+            onPress={() => setRailCollapsed(false)}
+            style={styles.mediaButton}
+            testID="brand-group-rail-show"
+          >
+            <Icon name="chevL" size={16} color={brandGroupChat.textPrimary} />
+            <Text style={styles.mediaButtonText}>{t("messages.rail_show")}</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Brand group options"
@@ -1170,7 +1236,7 @@ function BrandGroupThreadScreen({
       </View>
 
       {/* #4420: below the header, full width, on phones and narrow web. */}
-      {!showRail && switcher ? <View style={[styles.switcherRow, side === "guests" && styles.headerGuests]}>{switcher}</View> : null}
+      {!railAllowed && switcher ? <View style={[styles.switcherRow, side === "guests" && styles.headerGuests]}>{switcher}</View> : null}
 
       {group?.muted && side === "team" ? (
         <View style={styles.mutedNote}>
@@ -1491,9 +1557,12 @@ function BrandGroupThreadScreen({
       )}
       </View>
       {showRail && conversationId ? (
-        <View style={styles.detailsRail}>
+        <View style={styles.detailsRail} testID="brand-group-details-rail">
           <BrandGroupRailTabRow
             active={detailTab}
+            onCollapse={() => setRailCollapsed(true)}
+            collapseLabel={t("messages.rail_hide")}
+            collapseRef={railCollapseRef}
             tabs={[
               { key: "people", label: side === "guests" ? t("messages.guests") : `People · ${members.length || "—"}`, accessibilityLabel: "Show people", onPress: () => { setDesktopDetailTab("people"); setMediaPanelOpen(false); } },
               // #4270 — the brand's plan, for the brand's own team.
@@ -1542,7 +1611,7 @@ function BrandGroupThreadScreen({
       ) : null}
       </KeyboardAvoidingView>
 
-      {!showRail && peopleSheetOpen && side === "guests" && guestChat ? (
+      {!railAllowed && peopleSheetOpen && side === "guests" && guestChat ? (
         <Modal visible transparent animationType="slide" onRequestClose={() => setPeopleSheetOpen(false)}>
           <View style={styles.peopleScrim}>
             <Pressable accessibilityRole="button" accessibilityLabel={t("messages.close")} style={StyleSheet.absoluteFill} onPress={() => setPeopleSheetOpen(false)} />
@@ -1551,7 +1620,7 @@ function BrandGroupThreadScreen({
             </View>
           </View>
         </Modal>
-      ) : !showRail && peopleSheetOpen ? (
+      ) : !railAllowed && peopleSheetOpen ? (
         <BrandGroupPeopleSheet
           visible
           groupName={group?.brand_name ?? "Brand group"}
@@ -1721,6 +1790,7 @@ const styles = StyleSheet.create({
   mediaButtonText: { color: brandGroupChat.textPrimary, fontSize: 13, fontWeight: "700" },
   detailsRail: { width: size.sidePanel, minWidth: 300, maxWidth: "36%", borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
   mediaRail: { flex: 1, minHeight: 0 },
+  railCollapse: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: color.line },
   railTabs: { minHeight: 56, flexDirection: "row", gap: 4, alignItems: "center", paddingHorizontal: space[2], borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: brandGroupChat.hairline },
   railTab: { minHeight: 40, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
   railTabActive: { borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tabOn },

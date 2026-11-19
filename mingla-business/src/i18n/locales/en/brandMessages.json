@@ -99,6 +99,8 @@
     "words_failed": "Couldn't load this screen. Try again.",
     "last_message_fallback": "Sent an update",
     "subtitle_guests_short": "Guests room",
-    "subtitle_team_short": "Team chat · private"
+    "subtitle_team_short": "Team chat · private",
+    "rail_hide": "Hide panel",
+    "rail_show": "Show panel"
   }
 }

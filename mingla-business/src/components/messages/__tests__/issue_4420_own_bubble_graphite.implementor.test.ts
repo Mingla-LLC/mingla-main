@@ -63,7 +63,7 @@ describe("#4420 D4 Media is Team-only", () => {
     const route = source("app/messages/[conversationId].tsx");
     expect(route).toContain('const mediaShown = side === "team";');
     expect(route).toContain('(desktopDetailTab === "media" && !mediaShown) ? "people"');
-    expect(route).toContain("if (!showRail && mediaPanelOpen && mediaShown && conversationId) {");
+    expect(route).toContain("if (!railAllowed && mediaPanelOpen && mediaShown && conversationId) {");
     expect(route).toContain('...(mediaShown ? [{ key: "media"');
     expect((route.match(/\{mediaShown \? \(/g) ?? []).length).toBe(2);
   });
