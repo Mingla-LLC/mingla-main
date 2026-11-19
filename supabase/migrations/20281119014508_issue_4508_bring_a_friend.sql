@@ -1246,16 +1246,6 @@ DECLARE
   v_notices     jsonb := '[]'::jsonb;
   v_doomed uuid[] := '{}';
 BEGIN
-  -- T1: adding a plus-one needs a signed-in account. A caller without one
-  -- who sends any guest is refused before anything (the event, a number, the
-  -- list) is read, with one answer that cannot depend on the numbers sent.
-  -- A signed-out RSVP without guests is unchanged; not_going carries none.
-  IF p_user_id IS NULL AND p_rsvp_status IS DISTINCT FROM 'not_going'
-     AND (COALESCE(p_plus_count, 0) > 0
-       OR (jsonb_typeof(p_guests) = 'array' AND jsonb_array_length(p_guests) > 0)) THEN
-    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'rsvp_guest_sign_in_required';
-  END IF;
-
   -- 1. Load + gate the event (FOR UPDATE serializes concurrent submits).
   SELECT * INTO v_event FROM public.events WHERE id = p_event_id FOR UPDATE;
   IF NOT FOUND
@@ -1283,6 +1273,17 @@ BEGIN
     RAISE EXCEPTION USING
       ERRCODE = 'P1901',
       MESSAGE = 'rsvp_event_ended';
+  END IF;
+
+  -- T1: adding a plus-one needs a signed-in account. A caller without one
+  -- who sends any guest is refused here, right after the #1902 acquisition
+  -- boundary (which stays first) and before any guest, number or list is
+  -- read, with one answer that cannot depend on the numbers sent. A
+  -- signed-out RSVP without guests is unchanged; not_going carries none.
+  IF p_user_id IS NULL AND p_rsvp_status IS DISTINCT FROM 'not_going'
+     AND (COALESCE(p_plus_count, 0) > 0
+       OR (jsonb_typeof(p_guests) = 'array' AND jsonb_array_length(p_guests) > 0)) THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'rsvp_guest_sign_in_required';
   END IF;
 
   IF p_rsvp_status NOT IN ('going', 'not_going', 'maybe') THEN

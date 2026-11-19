@@ -84,9 +84,13 @@ BEGIN
     -- number before counting it, and holds texts past the signed-out daily
     -- ceiling. The third rework (2026-11-19) answers a signed-out caller's
     -- already-listed or released number like a new one (no row, no guest id),
-    -- and counts the signed-out ceiling under a lock. The #1857 phone
-    -- authority lines are unchanged.
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'b8a9a9f0da97ead5565c7699049895d4'),
+    -- and counts the signed-out ceiling under a lock. Fix round 4
+    -- (2026-11-19): a plus-one needs a signed-in inviter (signed-out guests
+    -- refused after the #1902 boundary), an own RSVP replaces an unclaimed
+    -- guest row of the same account, the inviter's cap is serialized by a
+    -- lock, and removed claimed guests are listed for a notice. The #1857
+    -- phone authority lines are unchanged.
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'e65ab1fbc0f870c67c59d3a176e37171'),
     -- #4063 last-writes this wrapper so approved RSVPs receive only a pass,
     -- while pending/other outcomes retain acknowledgement delivery.
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),
