@@ -169,6 +169,30 @@ code attempt or token is persisted outside React Query memory.
 confirmation is disabled while the server preview is pending or unavailable;
 the client never estimates a discounted refund amount.
 
+### brandFormKeys (hooks/brandFormKeys.ts) — issue #4514
+
+| Sub-key | Shape |
+|---------|-------|
+| `all` | `['brand-forms']` |
+| `list(brandId)` | `['brand-forms', 'list', brandId]` |
+| `detail(formId)` | `['brand-forms', 'detail', formId]` |
+| `eventAttachment(eventId)` | `['brand-forms', 'event-attachment', eventId]` |
+| `responses(formId, eventId \| null, filter)` | `['brand-forms', 'responses', formId, eventId ?? 'all', filter]` |
+| `tile(eventId)` | `['brand-forms', 'tile', eventId]` |
+
+**Scoping:** the list is keyed by BRAND, so switching brand never serves another
+brand's forms. No token or answer text enters a key; answers live only in
+React Query memory (never persisted).
+
+**Invalidation rule:** every successful form write (create, save draft,
+publish, close, reopen, archive, door switch, attach, detach) invalidates
+`brandFormKeys.all`, which refreshes the list, the builder, the page's
+attachment, the Responses page and the manage-page tile together.
+
+**Freshness:** the builder's detail read is `staleTime: 0` and refetches on
+mount, so a stale draft revision is caught by the server (PT409,
+"Someone else changed this form. Reload.") rather than by the cache.
+
 ### brandPaystackKeys (useBrandPaystack.ts) — issue #2418
 
 | Sub-key | Shape |
