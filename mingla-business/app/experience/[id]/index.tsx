@@ -74,6 +74,9 @@ import { useCancelBusinessEvent } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { useOfferingPayoutMoney } from "../../../src/hooks/useOfferingPayoutMoney";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+// #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
+import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
+import { canReadGuestQuestions } from "../../../src/utils/guestQuestionsModel";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
@@ -477,7 +480,28 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           } satisfies OfferingTile,
         ]
       : []),
-    ...pick(["guests", "orders", "insights"]),
+    ...pick(["guests"]),
+    // #4514 — "Guest questions": after Spots, before Orders (marketing manager
+    // and up; scanners never see it).
+    ...(canReadGuestQuestions(currentBrandRole.rank) && !currentBrandRole.isLoading && !currentBrandRole.isError && currentBrandRole.role !== null
+      ? [
+          {
+            key: "guestQuestions",
+            icon: "list",
+            label: "Guest questions",
+            onPress: () => undefined,
+            node: (
+              <GuestQuestionsTileSlot
+                eventId={experience.id}
+                brandId={experience.brandId}
+                kind="experience"
+                testID="experience-tile-guest-questions"
+              />
+            ),
+          } satisfies OfferingTile,
+        ]
+      : []),
+    ...pick(["orders", "insights"]),
   ];
   const experienceMoreTiles = pick(["reconciliation", "public", "brand"]);
   const moneyCard = (

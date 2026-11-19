@@ -64,6 +64,9 @@ import { Toast } from "../../../src/components/ui/Toast";
 import { TopBar } from "../../../src/components/ui/TopBar";
 
 import { ActionTile } from "../../../src/components/event/ActionTile";
+// #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
+import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
+import { canReadGuestQuestions } from "../../../src/utils/guestQuestionsModel";
 import { DesktopColumns } from "../../../src/components/ui/DesktopCanvas";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { EndSalesSheet } from "../../../src/components/event/EndSalesSheet";
@@ -1038,6 +1041,12 @@ export default function EventDetailScreen(): React.ReactElement {
                   edit: canEditEvent,
                   promote: promoteEnabled,
                   insights: canShowListingInsights,
+                  // #4514 — marketing manager and up; scanners never see it.
+                  guestQuestions:
+                    !currentBrandRole.isLoading &&
+                    !currentBrandRole.isError &&
+                    currentBrandRole.role !== null &&
+                    canReadGuestQuestions(currentBrandRole.rank),
                   dates: event.whenMode === "multi_date",
                   doorSales: event.inPersonPaymentsEnabled === true,
                   brandPage: brand !== null,
@@ -1127,6 +1136,16 @@ export default function EventDetailScreen(): React.ReactElement {
                           onPress={handleGuests}
                         />
                       );
+                    case "guestQuestions":
+                      return brand !== null ? (
+                        <GuestQuestionsTileSlot
+                          key={key}
+                          eventId={event.serverEventId ?? event.id}
+                          brandId={brand.id}
+                          kind="event"
+                          testID="event-tile-guest-questions"
+                        />
+                      ) : null;
                     case "orders":
                       return (
                         <ActionTile

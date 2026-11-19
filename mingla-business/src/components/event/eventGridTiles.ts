@@ -2,7 +2,7 @@
  * #4420 (round-3 item 10, TILE_MATRIX P10) — the event home tile page, the
  * same core tiles as the RSVP, trip and experience homes:
  *   core: Edit, Scan tickets, Scanners, Group chat, Blast, Promote, Guests,
- *         Orders, Insights;
+ *         Guest questions (#4514), Orders, Insights;
  *   "More for this event": Dates (multi-date only), Door sales (ticketed with
  *         in-person payments), Reconcile (finance rank, gated inside its tile),
  *         Public page, Brand page.
@@ -21,6 +21,7 @@ export type EventGridTileKey =
   | "blast"
   | "promote"
   | "guests"
+  | "guestQuestions"
   | "orders"
   | "insights"
   | "dates"
@@ -37,6 +38,9 @@ export const EVENT_GRID_CORE: readonly EventGridTileKey[] = [
   "blast",
   "promote",
   "guests",
+  // #4514 — "Guest questions": after Guests, before Orders (10 core tiles, so
+  // Insights lands alone on a fourth row, padded to one-third width).
+  "guestQuestions",
   "orders",
   "insights",
 ];
@@ -58,6 +62,8 @@ export interface EventGridAvailability {
   edit: boolean;
   promote: boolean;
   insights: boolean;
+  /** #4514 — marketing manager and up (scanners never see the tile). */
+  guestQuestions: boolean;
   dates: boolean;
   doorSales: boolean;
   brandPage: boolean;
@@ -71,6 +77,8 @@ const isAvailable = (key: EventGridTileKey, available: EventGridAvailability): b
       return available.promote;
     case "insights":
       return available.insights;
+    case "guestQuestions":
+      return available.guestQuestions;
     case "dates":
       return available.dates;
     case "doorSales":

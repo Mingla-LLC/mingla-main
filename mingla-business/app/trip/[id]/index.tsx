@@ -86,6 +86,9 @@ import {
 } from "../../../src/hooks/useTrips";
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+// #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
+import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
+import { canReadGuestQuestions } from "../../../src/utils/guestQuestionsModel";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 // ORCH-0873 [Tr3 Stage 2 UI] — Money tab data.
@@ -610,7 +613,28 @@ export default function TripDashboardRoute(): React.ReactElement {
     groupChatTile,
     ...pick(["blasts"]),
     ...(promoteTile !== null ? [promoteTile] : []),
-    ...pick(["guests", "orders", "insights"]),
+    ...pick(["guests"]),
+    // #4514 — "Guest questions": after Travelers, before Orders (marketing
+    // manager and up; scanners never see it).
+    ...(canReadGuestQuestions(currentBrandRole.rank) && !currentBrandRole.isLoading && !currentBrandRole.isError && currentBrandRole.role !== null
+      ? [
+          {
+            key: "guestQuestions",
+            icon: "list",
+            label: "Guest questions",
+            onPress: () => undefined,
+            node: (
+              <GuestQuestionsTileSlot
+                eventId={trip.id}
+                brandId={trip.brandId}
+                kind="trip"
+                testID="trip-tile-guest-questions"
+              />
+            ),
+          } satisfies OfferingTile,
+        ]
+      : []),
+    ...pick(["orders", "insights"]),
   ];
   const tripMoreTiles: OfferingTile[] = [
     ...pick(["reconciliation"]),

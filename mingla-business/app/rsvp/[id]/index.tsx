@@ -67,6 +67,9 @@ import { useJustPublishedArrival } from "../../../src/hooks/useJustPublishedArri
 import { LazyPublishedBanner } from "../../../src/components/offering/LazyPublishedBanner";
 import { useBusinessEventsForBrand } from "../../../src/hooks/useBusinessEvents";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+// #4514 — "Guest questions" tile (data hook, attach sheet and rules load on demand).
+import { GuestQuestionsTileSlot } from "../../../src/components/forms/GuestQuestionsTileSlot";
+import { canReadGuestQuestions } from "../../../src/utils/guestQuestionsModel";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 // #3645 — a published RSVP can be returned to draft or cancelled. The dialogs
@@ -112,6 +115,13 @@ export default function RsvpDetailScreen(): React.ReactElement {
     !currentBrandRole.isError &&
     currentBrandRole.role !== null &&
     !isScannerOnlyRank(currentBrandRole.rank);
+  // #4514 — marketing manager and up; scanners never see "Guest questions".
+  const showGuestQuestions =
+    brand !== null &&
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    canReadGuestQuestions(currentBrandRole.rank);
 
   // ----- Going-count source (SPEC F-2) -------------------------------
   // useManagedEventRoute → fetchBusinessEventById returns rsvpGoingCount: 0,
@@ -501,8 +511,19 @@ export default function RsvpDetailScreen(): React.ReactElement {
               onPress={handleBlasts}
             />
           </View>
-          {promote.enabled || canShowListingInsights ? (
+          {showGuestQuestions || promote.enabled || canShowListingInsights ? (
           <View style={styles.tileRow}>
+            {/* #4514 — third row, first cell: after Blast, before Promote. It
+                fills the row's empty cell, so the first row keeps the locked
+                door order. */}
+            {showGuestQuestions && brand !== null ? (
+              <GuestQuestionsTileSlot
+                eventId={event.serverEventId ?? event.id}
+                brandId={brand.id}
+                kind="rsvp"
+                testID="rsvp-tile-guest-questions"
+              />
+            ) : null}
             {promote.enabled ? (
               <ActionTile
                 fill
@@ -529,7 +550,10 @@ export default function RsvpDetailScreen(): React.ReactElement {
             {Array.from(
               {
                 length:
-                  3 - (promote.enabled ? 1 : 0) - (canShowListingInsights ? 1 : 0),
+                  3 -
+                  (showGuestQuestions ? 1 : 0) -
+                  (promote.enabled ? 1 : 0) -
+                  (canShowListingInsights ? 1 : 0),
               },
               (_, pad) => (
                 <View key={`pad-${pad}`} style={styles.tilePad} />
