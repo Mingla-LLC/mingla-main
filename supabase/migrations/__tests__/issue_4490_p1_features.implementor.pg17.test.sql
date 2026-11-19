@@ -215,10 +215,24 @@ RETURNS text[] LANGUAGE sql IMMUTABLE SET search_path = '' AS $f$ SELECT public.
 SELECT public.t4490_as('44900000-0000-4000-8000-000000000001');
 SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1','pick_a_table',true,NULL,NULL,NULL,'t3-pick-2')$$,
   'P0001', 'feature_requires:floor_plan', 'T-3j pick_a_table needs floor_plan (tables already on)');
-SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1','pick_a_table',true,NULL,NULL,NULL,'t3-pick-3',true)$$,
-  'P0001', 'feature_requires:space', 'T-3k floor_plan needs an active space');
-SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1','private_hire',true,NULL,NULL,NULL,'t3-hire-1')$$,
-  'P0001', 'feature_requires:space', 'T-3l private_hire needs an active space');
+-- [TEST-MOD-APPROVED #4490] fix round 1 (B2, N20): a feature that needs a space is no longer
+-- refused before the space exists (the add-venue wizard switches features on before any
+-- space can exist); it goes on and the read says what it still needs. T-3k / T-3l assert
+-- that, then switch both back off so T-3m below runs as before.
+DO $t3k$
+DECLARE
+  v jsonb;
+BEGIN
+  v := public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1', 'pick_a_table', true, NULL, NULL, NULL, 't3-pick-3', true);
+  PERFORM public.t4490_ok(v->'changed_keys' = '["floor_plan","pick_a_table"]'::jsonb
+    AND (SELECT f->'needs' FROM jsonb_array_elements(v->'features'->'features') f WHERE f->>'key' = 'floor_plan') ? 'space',
+    'T-3k with no space yet, floor plan and pick a table go on; the floor plan still needs a space');
+  v := public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1', 'private_hire', true, NULL, NULL, NULL, 't3-hire-1');
+  PERFORM public.t4490_ok(v->'needs' = '["space"]'::jsonb, 'T-3l private hire goes on and needs a space');
+  PERFORM public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1', 'floor_plan', false, NULL, NULL, NULL, 't3-fp-undo', true);
+  PERFORM public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1', 'private_hire', false, NULL, NULL, NULL, 't3-hire-undo');
+END
+$t3k$;
 DO $t3m$
 DECLARE
   v jsonb;
@@ -313,7 +327,8 @@ SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('4490000
 SELECT public.t4490_reset();
 
 -- T-5 presets ---------------------------------------------------------------------
-SELECT public.t4490_ok(public.issue_4490_feature_preset('club') = ARRAY['entry','table_reservations','min_spend_tables','events_here']
+-- [TEST-MOD-APPROVED #4490] fix round 1 (B3): the server presets follow the client table (club adds Menu and Table ordering).
+SELECT public.t4490_ok(public.issue_4490_feature_preset('club') = ARRAY['entry','table_reservations','min_spend_tables','menu','table_ordering','events_here']
   AND public.issue_4490_feature_preset('stay') = ARRAY['stays']
   AND public.issue_4490_feature_preset('restaurant') = ARRAY['table_reservations','waitlist','menu','table_ordering']
   AND public.issue_4490_feature_preset('nightclub') IS NULL,
@@ -337,9 +352,10 @@ BEGIN
   PERFORM public.t4490_ok((SELECT enabled FROM public.venue_features WHERE venue_id = '44900000-0000-4000-9000-0000000000b1' AND feature_key = 'events_here'),
     'T-5e a preset never turns anything off');
   v1 := public.issue_4490_apply_feature_preset('44900000-0000-4000-9000-0000000000a1', 'play', 't5-preset-3');
-  PERFORM public.t4490_ok(v1->'applied' = '["events_here"]'::jsonb
+  -- [TEST-MOD-APPROVED #4490] fix round 1 (B3): the play preset now also starts Table ordering (this venue is verified).
+  PERFORM public.t4490_ok(v1->'applied' = '["table_ordering", "events_here"]'::jsonb
     AND v1->'skipped' @> '[{"key":"entry","reason":"not_available_yet"},{"key":"private_hire","reason":"not_available_yet"}]'::jsonb,
-    'T-5f unbuilt preset switches are skipped, built ones applied');
+    'T-5f unbuilt preset switches are skipped, built ones applied: ' || (v1->'applied')::text || ' ' || (v1->'skipped')::text);
 END
 $t5$;
 SELECT public.t4490_as('44900000-0000-4000-8000-000000000003');
