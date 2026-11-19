@@ -6,6 +6,8 @@
 // Android back. Rules: src/utils/unsavedChangesGuard.ts.
 import { useEffect } from "react";
 
+import { registerUnsavedWork } from "../utils/unsavedChangesGuard";
+
 export interface UnsavedChangesGuardConfig {
   /** True while leaving would lose work. */
   dirty: boolean;
@@ -21,6 +23,8 @@ export interface UnsavedChangesGuardConfig {
 }
 
 export function useUnsavedChangesGuard({ dirty }: UnsavedChangesGuardConfig): void {
+  // #4453 — the brand switcher holds a switch while this screen is dirty.
+  useEffect(() => (dirty ? registerUnsavedWork() : undefined), [dirty]);
   useEffect(() => {
     if (!dirty) return;
     const target = globalThis as {

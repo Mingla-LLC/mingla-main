@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
@@ -11,7 +11,10 @@ import {
 } from "../../constants/designSystem";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
-import { usePickBrand } from "../../hooks/usePickBrand";
+// #4453 — a pick opens the same screen for the chosen brand.
+import { useWorkspaceBrandSwitch } from "../../hooks/useWorkspaceBrandSwitch";
+import { useWorkspaceRoute } from "./workspaceBrandContext";
+import { filterBrandsByQuery, showsBrandSearch } from "../../utils/brandSearch";
 // #4389 N3 — draft and free-only rows from the setup checklist.
 import { useBrandSetupStates } from "../../hooks/useBrandSetupStates";
 import { BRAND_SWITCHER_COPY } from "./brandSwitcherCopy";
@@ -27,6 +30,7 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { TopSheet } from "../ui/TopSheet";
 import { BrandMark } from "./BrandMark";
+import { BrandSearchField } from "./BrandSearchField";
 
 export interface BrandSwitcherSheetProps {
   visible: boolean;
@@ -61,8 +65,14 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const brands = brandList.brands;
   const followerCounts = useBrandFollowerCounts(brands.map((brand) => brand.id));
   const { user } = useAuth();
-  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
-  const pickBrand = usePickBrand(onDefaultBrandSaveError);
+  const storeBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  // #4453 — on a route that names its brand, that brand is the ticked one.
+  const currentBrandId = useWorkspaceRoute().routeBrandId ?? storeBrandId;
+  const switchTo = useWorkspaceBrandSwitch({ onDefaultBrandSaveError });
+  // #4453 — a search field above 8 brands.
+  const [query, setQuery] = useState("");
+  const searchable = showsBrandSearch(brands.length);
+  const shownBrands = searchable ? filterBrandsByQuery(brands, query) : brands;
   const router = useRouter();
   // #4389 I-4389-NO-MODAL-ON-OVERLAY — brand creation is never embedded in
   // this non-modal TopSheet any more. Opening the setup flow (and its bank
@@ -107,11 +117,14 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
         onClose();
         return;
       }
-      pickBrand(brand);
+      // #4453 — on a brand-scoped screen this opens the same screen for the
+      // chosen brand; elsewhere it only changes the current brand.
+      void switchTo(brand).then((outcome) => {
+        if (outcome !== "held") onPicked?.(brand);
+      });
       onClose();
-      onPicked?.(brand);
     },
-    [onBeforePick, onClose, onPicked, pickBrand],
+    [onBeforePick, onClose, onPicked, switchTo],
   );
 
   return (
@@ -135,12 +148,25 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                 <Text style={styles.emptyText}>Loading your brands…</Text>
               </View>
             ) : (
+              <>
+              {searchable ? (
+                <View style={styles.search}>
+                  <BrandSearchField value={query} onChangeText={setQuery} testID="brand-switcher-search" />
+                </View>
+              ) : null}
               <ScrollView
                 style={styles.scrollArea}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
               >
-                {brands.map((brand) => {
+                {shownBrands.length === 0 ? (
+                  <Text style={styles.emptyText} testID="brand-switcher-no-match">
+                    {`No brand matches "${query.trim()}".`}
+                  </Text>
+                ) : null}
+                {shownBrands.map((brand) => {
                   const isActive = currentBrandId === brand.id;
                   const followerTotal = followerCounts.data?.[brand.id];
                   const followerLine =
@@ -292,6 +318,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                   );
                 })}
               </ScrollView>
+              </>
             )}
             <View style={styles.footer}>
               <Button
@@ -325,6 +352,7 @@ const styles = StyleSheet.create({
   rowMenuBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginLeft: -space[1] },
   rowContinueLabel: { ...type.caption, color: color.text1, fontWeight: "600" },
   host: { flex: 1 },
+  search: { paddingHorizontal: space[5], paddingBottom: space[3] },
   header: {
     flexDirection: "row",
     alignItems: "center",
