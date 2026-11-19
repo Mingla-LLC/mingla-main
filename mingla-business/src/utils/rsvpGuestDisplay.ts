@@ -17,6 +17,7 @@ export interface RsvpPlusGuestInput {
   onMingla?: boolean | null;
   broughtByGuestId?: string | null;
   phoneLast4?: string | null;
+  checkedInByHand?: boolean | null;
 }
 
 export interface RsvpPlusGuest {
@@ -30,6 +31,8 @@ export interface RsvpPlusGuest {
   broughtByGuestId: string | null;
   /** #4508 C8 - last four digits of the number the plus-one was added with; never the full number. */
   phoneLast4: string | null;
+  /** #4508 P3 - checked in by hand ("Check in with {inviter}"), not by a scan. */
+  checkedInByHand: boolean;
 }
 
 /** Trimmed text, or null when empty or a stringified-null artefact. */
@@ -97,6 +100,7 @@ export const normalisePlusGuests = (raw: unknown): RsvpPlusGuest[] => {
       onMingla: g.onMingla === true,
       broughtByGuestId: cleanText(g.broughtByGuestId),
       phoneLast4: cleanPhoneLast4(g.phoneLast4),
+      checkedInByHand: g.checkedInByHand === true,
     });
   });
   return out;
@@ -209,5 +213,35 @@ export const markPlusGuestCheckedIn = (
   checkedInAt: string,
 ): RsvpPlusGuest[] =>
   list.map((g) =>
-    g.id === guestId && g.checkedInAt === null ? { ...g, checkedInAt } : g,
+    // Only the hand check-in path calls this: the row now reads "by hand".
+    g.id === guestId && g.checkedInAt === null ? { ...g, checkedInAt, checkedInByHand: true } : g,
   );
+
+/**
+ * #4508 P3 - the guest row's check-in line: "N of M checked in", then the
+ * latest check-in's time and how it happened. A plus-one checked in with
+ * "Check in with {inviter}" reads "Checked in by hand", never "by scanner".
+ */
+export const rsvpCheckinLine = (input: {
+  checkedInAt: string | null;
+  plusCount: number;
+  plusCheckedInCount: number;
+  plusCheckins: ReadonlyArray<Pick<RsvpPlusGuest, "checkedInAt" | "checkedInByHand">>;
+  formatTime: (iso: string) => string;
+}): string => {
+  const total = 1 + input.plusCount;
+  const checked = (input.checkedInAt ? 1 : 0) + input.plusCheckedInCount;
+  const events = [
+    ...(input.checkedInAt ? [{ at: input.checkedInAt, byHand: false }] : []),
+    ...input.plusCheckins
+      .filter((g) => typeof g.checkedInAt === "string")
+      .map((g) => ({ at: g.checkedInAt as string, byHand: g.checkedInByHand })),
+  ].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  const latest = events[events.length - 1];
+  const head = `${checked} of ${total} checked in`;
+  if (latest === undefined) return head;
+  const time = input.formatTime(latest.at);
+  return latest.byHand
+    ? `${head} · Checked in by hand at ${time}`
+    : `${head} · ${time} by scanner`;
+};

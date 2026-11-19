@@ -58,6 +58,7 @@ import {
   manualCheckInFailureCopy,
   manualCheckInOutcome,
   markPlusGuestCheckedIn,
+  rsvpCheckinLine,
   type RsvpPlusGuest,
 } from "../../utils/rsvpGuestDisplay";
 import { RsvpGuestDetailSheet } from "./RsvpGuestDetailSheet";
@@ -183,16 +184,16 @@ const isConfirmed = (g: RsvpGuest): boolean =>
 
 const checkinLine = (guest: RsvpGuest): string | null => {
   if (!isConfirmed(guest)) return null;
-  const total = 1 + guest.plusCount;
-  const checked = (guest.checkedInAt ? 1 : 0) + guest.plusCheckedInCount;
-  const sorted = [guest.checkedInAt, ...guest.plusCheckins.map((item) => item.checkedInAt)]
-    .filter((value): value is string => typeof value === "string")
-    .sort();
-  const latest = sorted[sorted.length - 1];
-  const time = latest ? new Date(latest).toLocaleTimeString(undefined, {
-    hour: "numeric", minute: "2-digit",
-  }) : null;
-  return `${checked} of ${total} checked in${time ? ` · ${time} by scanner` : ""}`;
+  // #4508 P3: a hand check-in reads "Checked in by hand" (rsvpCheckinLine).
+  return rsvpCheckinLine({
+    checkedInAt: guest.checkedInAt,
+    plusCount: guest.plusCount,
+    plusCheckedInCount: guest.plusCheckedInCount,
+    plusCheckins: guest.plusCheckins,
+    formatTime: (iso: string) => new Date(iso).toLocaleTimeString(undefined, {
+      hour: "numeric", minute: "2-digit",
+    }),
+  });
 };
 
 export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({

@@ -155,9 +155,11 @@ export const BusinessRsvpPhoneField = ({
               ? "Select country"
               : `${label} country, ${getCountryByCode(countryCode)?.name ?? countryCode}, tap to change`
           }
-          // #4508 P4: never "By phone number phone number" (inline, as this
-          // field rides the boot payload; the same rule as phoneFieldAccessibilityLabel).
-          phoneInputAccessibilityLabel={`${/phone number$/i.test(label) ? label : `${label} phone number`}${required ? ", required" : ""}`}
+          // #4508 P4: never "By phone number phone number" nor "Phone phone
+          // number" (inline, as this field rides the boot payload; the same
+          // rule as phoneFieldAccessibilityLabel). P3: no ", required" here:
+          // PhoneInput adds it from `required`, so it was spoken twice.
+          phoneInputAccessibilityLabel={/phone( number)?$/i.test(label) ? (/number$/i.test(label) ? label : `${label} number`) : `${label} phone number`}
           onBlur={onBlur}
           iconRenderer={(
             name: PhoneInputIconName,

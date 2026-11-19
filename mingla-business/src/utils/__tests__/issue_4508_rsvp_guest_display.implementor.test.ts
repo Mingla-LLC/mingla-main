@@ -74,3 +74,50 @@ Deno.test("wiring: mapper, detail sheet and scanner use the helpers", () => {
   const scanSvc = Deno.readTextFileSync("mingla-business/src/services/scanRsvpService.ts");
   assert(scanSvc.includes("invitedByName"));
 });
+
+// ---- Fix round 6 ------------------------------------------------------------
+// P3: a plus-one checked in by hand ("Check in with {inviter}") reads "Checked
+// in by hand", never "by scanner"; a scan still reads "by scanner".
+// FAILS-ON-REVERT: drop the byHand branch (always "by scanner") -> P3-H fails;
+// drop checkedInByHand from normalisePlusGuests or markPlusGuestCheckedIn ->
+// P3-H2 fails.
+import { markPlusGuestCheckedIn, rsvpCheckinLine } from "../rsvpGuestDisplay.ts";
+
+Deno.test("P3-H: the console says how the latest check-in happened", () => {
+  const time = (iso: string) => iso.slice(11, 16);
+  const base = { checkedInAt: null, plusCount: 2, formatTime: time };
+  assertEquals(rsvpCheckinLine({ ...base, plusCheckedInCount: 0, plusCheckins: [] }), "0 of 3 checked in");
+  assertEquals(
+    rsvpCheckinLine({
+      ...base,
+      plusCheckedInCount: 1,
+      plusCheckins: [{ checkedInAt: "2026-11-19T12:14:00Z", checkedInByHand: true }],
+    }),
+    "1 of 3 checked in · Checked in by hand at 12:14",
+  );
+  assertEquals(
+    rsvpCheckinLine({
+      ...base,
+      checkedInAt: "2026-11-19T12:20:00Z",
+      plusCheckedInCount: 1,
+      plusCheckins: [{ checkedInAt: "2026-11-19T12:14:00Z", checkedInByHand: true }],
+    }),
+    "2 of 3 checked in · 12:20 by scanner",
+  );
+  const console = Deno.readTextFileSync("mingla-business/src/components/rsvp/RsvpGuestConsole.tsx");
+  assert(console.includes("return rsvpCheckinLine({"));
+  assert(!console.includes("by scanner"), "the console no longer hard-codes the method");
+});
+
+Deno.test("P3-H2: the list's checkedInByHand reaches the row, now and after a refetch", () => {
+  const [fromServer] = normalisePlusGuests([{ id: "g1", name: "x", checkedInAt: "2026-11-19T12:14:00Z", checkedInByHand: true }]);
+  assertEquals(fromServer.checkedInByHand, true);
+  const [scanned] = normalisePlusGuests([{ id: "g2", name: "x", checkedInAt: "2026-11-19T12:14:00Z" }]);
+  assertEquals(scanned.checkedInByHand, false);
+  const [marked] = markPlusGuestCheckedIn(
+    normalisePlusGuests([{ id: "g3", name: "x", checkedInAt: null }]),
+    "g3",
+    "2026-11-19T12:14:00Z",
+  );
+  assertEquals(marked.checkedInByHand, true);
+});

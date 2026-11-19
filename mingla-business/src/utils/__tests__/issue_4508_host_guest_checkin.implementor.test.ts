@@ -149,7 +149,8 @@ Deno.test("wiring: service, hook, sheet, console and setup step use the new piec
 // ---- Fix round 4 ------------------------------------------------------------
 // FAILS-ON-REVERT: take the ToastHost out of Sheet.web's centred card -> T4-A
 // fails; drop plusGuestCheckedInLine (or its row Text) -> T4-B fails; append
-// " phone number" to every label again -> P4 fails.
+// " phone number" to every label again, or ", required" to the web label
+// again (round 6 P3) -> P4 fails.
 import { plusGuestCheckedInLine } from "../rsvpGuestDisplay.ts";
 import { phoneFieldAccessibilityLabel } from "../../../../packages/phone-input/accessibilityLabel.ts";
 
@@ -191,6 +192,12 @@ Deno.test("P4: the guest number field's spoken name does not repeat itself", () 
   assertEquals(phoneFieldAccessibilityLabel(" Guest 1 "), "Guest 1 phone number");
   const web = Deno.readTextFileSync("mingla-business/src/components/event/useBusinessRsvpPhoneField.tsx");
   const app = Deno.readTextFileSync("app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx");
-  assert(web.includes("phoneInputAccessibilityLabel={`${/phone number$/i.test(label) ? label : `${label} phone number`}"));
+  // Round 6 P3: "Phone" reads "Phone number", and ", required" is said once
+  // (PhoneInput adds it from `required`; the label no longer carries it too).
+  assertEquals(phoneFieldAccessibilityLabel("Phone"), "Phone number");
+  assert(web.includes("phoneInputAccessibilityLabel={/phone( number)?$/i.test(label) ? (/number$/i.test(label) ? label : `${label} number`) : `${label} phone number`}"));
+  assert(!web.includes('${required ? ", required" : ""}'), "required is spoken once");
+  const input = Deno.readTextFileSync("packages/phone-input/PhoneInput.tsx");
+  assert(input.includes('${required ? ", required" : ""}'), "PhoneInput owns the one suffix");
   assert(app.includes("phoneInputAccessibilityLabel={phoneFieldAccessibilityLabel(args.label)}"));
 });

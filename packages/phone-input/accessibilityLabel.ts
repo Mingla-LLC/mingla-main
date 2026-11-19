@@ -6,5 +6,9 @@
  */
 export const phoneFieldAccessibilityLabel = (label: string): string => {
   const trimmed = label.trim();
-  return /phone number$/i.test(trimmed) ? trimmed : `${trimmed} phone number`;
+  // P3: "Phone" reads "Phone number", not "Phone phone number".
+  if (/phone( number)?$/i.test(trimmed)) {
+    return /number$/i.test(trimmed) ? trimmed : `${trimmed} number`;
+  }
+  return `${trimmed} phone number`;
 };
