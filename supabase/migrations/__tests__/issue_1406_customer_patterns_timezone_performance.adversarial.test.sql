@@ -934,8 +934,15 @@ BEGIN
   -- measured on a PG17 full replay of 5253f49dd9; dropping exactly those three
   -- indexes measures 85 / 6b8508599f829dc2d9ce3d1e41f3543c again. The seven
   -- fingerprinted functions are unchanged by #4423.
-  IF v_index_count <> 88
-    OR v_index_fingerprint <> '3158b5e3ff37207ce334bd6bb4caa0d7'
+  -- [TEST-MOD-APPROVED #4473] 20280806004473_issue_4473_shared_holder_sync_and_expiry
+  -- adds two partial lookup indexes on orders for owned purchases
+  -- (orders_4473_owned_email_idx, orders_4473_owned_phone_idx). Count 88 -> 90,
+  -- hash 3158b5e3ff37207ce334bd6bb4caa0d7 -> 0c4a5b0bc6ad79ab0337f55fcf540fe8,
+  -- measured on a PG17 full replay of dc553ef4d4 (matches main's CI batch);
+  -- dropping exactly those two indexes measures 88 / 3158b5e3ff37207ce334bd6bb4caa0d7
+  -- again. The seven fingerprinted functions are unchanged by #4473.
+  IF v_index_count <> 90
+    OR v_index_fingerprint <> '0c4a5b0bc6ad79ab0337f55fcf540fe8'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION

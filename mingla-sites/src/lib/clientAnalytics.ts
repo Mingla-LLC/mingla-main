@@ -12,10 +12,9 @@ export type SiteEventContext = {
   publicationId: string;
 };
 
-/** #2829 W10 — a preview (the team's or a shared link) is never counted. */
-export function isPreviewPublication(publicationId: string): boolean {
-  return publicationId.startsWith("preview-");
-}
+/** #2829 W10 — a preview (the team's or a shared link) is never counted. One definition: lib/previewPublication. */
+export { isPreviewPublication } from "./previewPublication";
+import { isPreviewPublication } from "./previewPublication";
 
 export function analyticsAllowed(): boolean {
   return typeof window !== "undefined" &&

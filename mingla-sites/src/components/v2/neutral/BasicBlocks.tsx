@@ -62,3 +62,47 @@ export function ContactDetailsNeutral({ block }: { block: Block }) {
     </section>
   );
 }
+
+/*
+ * #4453 milestone 7b — the page-set blocks for designs that draw neither
+ * (atelier): "Keep exploring" as the neutral cards grid (each card a link to
+ * one of the site's own pages, filled by the builder at publish) and the
+ * owner's facts as the neutral facts list. Fewer than 2 pages, or no fact with
+ * a value: nothing is drawn.
+ */
+export function PageLinksNeutral({ block }: { block: Block }) {
+  const items = rows(block.items)
+    .map((row) => ({ label: text(row.label), href: text(row.href), description: text(row.description) }))
+    .filter((row) => row.label && row.href && isSafeHref(row.href))
+    .slice(0, 4);
+  if (items.length < 2) return null;
+  return (
+    <section className="site-collection site-feature-cards site-page-links">
+      <h2>{text(block.heading) || "Keep exploring"}</h2>
+      <div className="grid">
+        {items.map((item, index) => (
+          <article className="tile" key={`${item.href}-${index}`}>
+            <h3><a href={item.href}>{item.label}</a></h3>
+            {item.description ? <p>{item.description}</p> : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function FactsTableNeutral({ block }: { block: Block }) {
+  const facts = rows(block.items)
+    .map((row) => ({ label: text(row.label), value: text(row.value) }))
+    .filter((row) => row.label && row.value)
+    .slice(0, 8);
+  if (!facts.length) return null;
+  return (
+    <section className="site-collection site-contact-details site-facts-table">
+      {text(block.heading) ? <h2>{text(block.heading)}</h2> : null}
+      <dl className="site-facts">
+        {facts.map((fact, index) => <div key={index}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}
+      </dl>
+    </section>
+  );
+}

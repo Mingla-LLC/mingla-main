@@ -7,7 +7,14 @@ import { verifyCoreRequest } from "../lib/gateway";
 import { PLAN_OFFERING_KEYS } from "../contracts/generated/sitePlan.ts";
 import { scopedRequest } from "./contentEndpoint";
 import { importBrandCover } from "../lib/brandCoverImport";
+import { defaultHeroPictureDeps, heroPictureFromOfferings } from "../lib/heroPictureImport";
 import { storageCoverRenditionDeps } from "../lib/artifactBuilder";
+import { materializeSetupContent, parseStagedRows, type StagedSetupRow } from "../lib/setupContent";
+import { composeFormatSite, plannedKeysOf } from "../lib/composeFormat";
+import { inventoryAndSources, loadStudioRecords, parseSignedDesignPass, type SignedDesignPass } from "../lib/designPassInputs";
+import { pageAllDraft, writeComposition } from "../lib/designPassWrite";
+import { isDesignKey } from "../contracts/generated/designs.ts";
+import { emitCmsObservation } from "../lib/observability";
 
 /*
  * #2829 W9a — "Create website draft": Core's signed call (brand-site-control
@@ -35,10 +42,14 @@ function text(value: unknown, max: number): string | null {
 export function parseComposeBody(
   body: unknown,
   envelopeSiteId: string,
-): { siteId: string; brandId: string; plan: ComposePlan; brand: ComposeBrand; coverPhotoPath: string | null; userId: string } | null {
+): { siteId: string; brandId: string; plan: ComposePlan; brand: ComposeBrand; coverPhotoPath: string | null; userId: string; reviewDrafts: boolean; setupContent: StagedSetupRow[]; designPass: SignedDesignPass | null; bookingBlocks: boolean } | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const value = body as AnyDoc;
-  const allowed = new Set(["kind", "site_id", "brand_id", "user_id", "plan", "brand"]);
+  // #4453 — `review_drafts` (SITES_PROOF_PART on: composed sections start Draft)
+  // and `setup_content` (the owner's staged Website-setup entries).
+  // #4453 milestone 7 — `design_pass` (SITES_ARI_DESIGN_PASS on for this brand: composer v2).
+  // #4453 — `booking_blocks` (SITES_BOOKING_BLOCKS, signed in by Core; absent = off).
+  const allowed = new Set(["kind", "site_id", "brand_id", "user_id", "plan", "brand", "review_drafts", "setup_content", "design_pass", "booking_blocks"]);
   if (Object.keys(value).some((key) => !allowed.has(key))) return null;
   if (value.kind !== "compose_from_plan" || value.site_id !== envelopeSiteId) return null;
   if (typeof value.brand_id !== "string" || !UUID.test(value.brand_id)) return null;
@@ -50,6 +61,16 @@ export function parseComposeBody(
     ? plan.offerings_selected.filter((key): key is string => typeof key === "string" && (PLAN_OFFERING_KEYS as readonly string[]).includes(key))
     : null;
   if (offerings === null) return null;
+  if (value.review_drafts !== undefined && typeof value.review_drafts !== "boolean") return null;
+  if (value.booking_blocks !== undefined && typeof value.booking_blocks !== "boolean") return null;
+  const designPass = value.design_pass === undefined ? null : parseSignedDesignPass(value.design_pass);
+  if (value.design_pass !== undefined && !designPass) return null;
+  let setupContent: StagedSetupRow[];
+  try {
+    setupContent = parseStagedRows(value.setup_content);
+  } catch {
+    return null;
+  }
   const story = plan.story && typeof plan.story === "object" && !Array.isArray(plan.story)
     ? {
       who: text((plan.story as AnyDoc).who, 300) ?? undefined,
@@ -75,6 +96,10 @@ export function parseComposeBody(
     },
     coverPhotoPath: coverPhotoPath as string | null,
     userId: value.user_id,
+    reviewDrafts: value.review_drafts === true || designPass !== null,
+    setupContent,
+    designPass,
+    bookingBlocks: value.booking_blocks === true,
   };
 }
 
@@ -119,10 +144,87 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
     const internal = {
       ...req,
       payloadAPI: "local",
-      context: { ...req.context, minglaSignedCore: true, minglaInternalTenantId: tenantId },
+      context: {
+        ...req.context,
+        minglaSignedCore: true,
+        minglaInternalTenantId: tenantId,
+        // #4453 — composed sections are Draft until the owner reviews them.
+        ...(parsed.reviewDrafts ? { minglaReviewSource: "composer" } : {}),
+        // #4453 — Core signed SITES_BOOKING_BLOCKS in as on: the composed
+        // booking blocks may be added (the Pages booking-blocks gate).
+        ...(parsed.bookingBlocks ? { minglaBookingBlocks: true } : {}),
+      },
     } as PayloadRequest;
 
+    // #4453 — the owner's setup entries exist in Studio before composing
+    // (each once: a rerun finds it by its setup_ref).
+    const materialized = await materializeSetupContent(req, {
+      tenantId,
+      siteId: envelope.site_id,
+      brandId: parsed.brandId,
+      userId: parsed.userId,
+      rows: parsed.setupContent,
+    });
+
     const pages = await findAllTenantPages(internal, tenant.id, { overrideAccess: true });
+    // #4453 milestone 7 — composer v2: the brand's format in its chosen style,
+    // only from Mingla's facts and the owner's own answers; every section Draft.
+    if (parsed.designPass && isDesignKey(parsed.designPass.design_key)) {
+      const navigationDoc = (await req.payload.find({
+        collection: "navigation", overrideAccess: true, draft: true, depth: 0, limit: 1, where: { tenant: { equals: tenant.id } },
+      })).docs[0] as unknown as AnyDoc | undefined;
+      const scoped = scopedRequest(req, { action: "compose_from_plan", userId: parsed.userId, siteId: envelope.site_id, brandId: parsed.brandId, rank: 50, args: {} }, tenantId);
+      let coverMediaId = parsed.coverPhotoPath ? await importBrandCover(scoped, parsed.coverPhotoPath, storageCoverRenditionDeps()) : null;
+      const records = await loadStudioRecords(req, tenant.id);
+      // #4453 booking-first Home — no brand cover and no photo in Media: the
+      // hero takes the next offering's own Mingla picture (imported once).
+      if (!coverMediaId && records.photos.length === 0) {
+        coverMediaId = await heroPictureFromOfferings(scoped, { tenantId, next: parsed.designPass.facts.next_offering }, defaultHeroPictureDeps(envelope.site_id));
+      }
+      const { inventory, sources } = inventoryAndSources({
+        signed: parsed.designPass,
+        records,
+        offerings_selected: parsed.plan.offerings_selected,
+        brand: parsed.brand,
+        cover_media_id: coverMediaId,
+      });
+      const composed = composeFormatSite({
+        plan: parsed.plan,
+        answers: parsed.designPass.answers,
+        brand: parsed.brand,
+        design: parsed.designPass.design_key,
+        // #4453 — with the flag off, no booking block is composed (never a failed draft).
+        bookingBlocks: parsed.bookingBlocks,
+        inventory,
+        sources,
+        existing: pages.map((page) => ({
+          id: String(page.id),
+          slug: typeof page.slug === "string" ? page.slug : "",
+          topLevel: !page.parent,
+          blockCount: Array.isArray(page.blocks) ? page.blocks.length : 0,
+          allDraft: pageAllDraft(page as unknown as AnyDoc),
+        })),
+        currentWordmark: typeof navigationDoc?.wordmark === "string" ? navigationDoc.wordmark : null,
+      });
+      if (composed) {
+        const written = await writeComposition(req, internal, tenantId, composed);
+        const present = new Set(written.idBySlug.keys());
+        return sitesJsonResponse({
+          ok: true,
+          data: {
+            site_id: envelope.site_id,
+            pages: plannedKeysOf(composed).filter((key) => key === "home" || composed.pages.some((page) => (page.planned === key || page.key === key) && present.has(page.slug))),
+            created: written.created,
+            composer: "v2",
+            format: composed.format,
+            left_out: composed.left_out_pages,
+            skipped: composed.skipped,
+            materialized: materialized.map((row) => ({ id: row.id, entry_id: row.entry_id })),
+            draft_only: true,
+          },
+        }, 200);
+      }
+    }
     const testimonials = await req.payload.count({
       collection: "testimonials",
       overrideAccess: true,
@@ -256,11 +358,33 @@ async function composeDraft(req: PayloadRequest): Promise<Response> {
         // Only pages that now exist at their address (what Core may tick).
         pages: result.pages.filter((key) => idBySlug.has(slugOf(key))),
         created,
+        // #4453 PR 2 — planned pages left out and why (the plan tells the owner).
+        left_out: result.left_out,
+        // #4453 — the setup entries now in Studio (Core stamps them materialised).
+        materialized: materialized.map((row) => ({ id: row.id, entry_id: row.entry_id })),
         draft_only: true,
       },
     }, 200);
   } catch (error) {
     const code = error instanceof Error && /^[A-Z_]+$/.test(error.message) ? error.message : "SERVICE_TEMPORARILY_UNAVAILABLE";
+    // #4453 — the refusal's own code (a fixed upper-case word, never a
+    // message), so a failed compose is visible in the logs, not null.
+    emitCmsObservation({
+      event: "mingla_sites_state",
+      metric: "cms.compose.refused",
+      request_id: crypto.randomUUID(),
+      operation_id: null,
+      site_id: null,
+      publication_id: null,
+      direction: "core_to_cms",
+      route: "/internal/compose-from-plan",
+      state_transition: "compose_started->compose_refused",
+      latency_ms: 0,
+      retry_count: 0,
+      safe_error_code: code,
+      status_code: code === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : code === "FORBIDDEN" ? 403 : 409,
+      version: "sites-v1",
+    });
     return failure(code, code === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : code === "FORBIDDEN" ? 403 : 409);
   }
 }

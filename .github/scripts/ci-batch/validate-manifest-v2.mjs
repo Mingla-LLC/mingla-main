@@ -579,6 +579,19 @@ export function phase3dContractDigest(manifest) {
 // #4238 rework 8: merged origin/main 09a16113f2 (#4452 B21/B22/B25 flow-validator row and #1931 skip kept beside the #4238/#4420 rows) and origin/4420-host-graphite-glass; re-sealed.
 // #4420 event location migration and pg17 suite listed in the #1857, #1931 and #2117 replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4452 follow-up B8: registered the dashboard last-lead migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
+// #4453 6a: added the 6a design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
+// #4453 6b: added the 6b design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
+// #4453 6c: added the 6c design-keys migration to the post-replay lanes and its pg17 suite; re-sealed.
+// #4453 milestone 5 (after the 6c merge): re-sealed.
+// #4453 milestone 7: the ari-design-pass migration on the post-replay lanes and its pg17 suite; re-sealed.
+// #4453 milestone 7 tester: adversarial design-pass pg17 suite registered; re-sealed.
+// #4453 milestone 9: offering-detail migration and pg17 suites registered; re-sealed.
+// #4453 milestone 7 merged with milestone 9 (0b096f08f0): union of both registrations; re-sealed.
+// #4453 milestone 10: plan-preview migration and pg17 suite registered; re-sealed.
+// #4453 milestone 11: re-sealed after merging milestone 10.
+// #4453 milestone 11 tester: re-sealed.
+// #4453 final pass: three #4453 migrations renamed to sort after 20280725004452; re-sealed.
+// #4453 final pass merge of main (#4460-#4465): main's 20280721004456 and 20280725004452 listed ahead of the #4453 migrations; re-sealed.
 // #4452 follow-up B21/B22/B25: registered the flow-validator migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 template replay by exact filename; re-sealed.
 // #4456: listed migration 20280721004456 (unsend and delete for me) after 20280720004452 in the #1857, #1931 and #2117 lanes, and registered its pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4456 merge of main after #4461: kept 20280721004456 (unsend and delete for me) ahead of 20280725004452 (flow validator) in the #1857, #1931 and #2117 lanes; re-sealed.
@@ -588,8 +601,20 @@ export function phase3dContractDigest(manifest) {
 // #3645 bundle 2A: registered the per-stop paid-price migration in the #1857, #1931 and #2117 lanes and its pg17 suite, live-patch declarations and structural suite (with sidecars) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs source migrations those lanes skip).
 // #4459 merge of main after #4466: listed migration 20280805004459 (brand Guest chat, renamed from 20280730004459) after 20280803004238 and kept its pg17 suites and sidecars; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3281 bundle 3: registered the Ari experience parity pg17 tester suite (with sidecar) in the #1931 and #2117 inventories.
+// #4453 final rework: the booking-reads migration skipped on the filtered #1931 and #2117 template replays (#2492 closure); re-sealed.
+// #4453 final rework 2: the design_keys migration skipped on the filtered #1931 template replay (column inside a CHECK); re-sealed.
+// #4453 merge of main after #4481: renumbered the eleven #4453 migrations to 20280807004453..20280807104453 so they sort after #4473's 20280806004473 (production head), listed after main's rows in the #1857, #1931 and #2117 lanes, and kept main's plus the #4453 filtered-replay skips; re-sealed.
+// #4389 implementor (764896f3c0): listed migration 20280808004389 and registered its implementor pg17 suite (with sidecar); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
+// #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (needs brand_readiness_catalog from the skipped 20280307003355); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4389 merge of main after #4453: kept main's #4453 rows and skip lines beside the #4389 rows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4238 merge of main after #4453 and #4389: kept main's rows, listed the two #4238 migrations after them; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 payout gaps: listed migration 20280809003645 in the #1857, #1931 and #2117 replay inventories and its pg17 suite, hunk guard and sidecars in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 payout gaps PR checks: skipped 20280809003645 by exact filename in the #1931 and #2117 filtered template replays (the #2492 closure gate: it re-emits payout readers over occurrence_key / provider_fee_minor, which only skipped migrations create); re-sealed.
+// #3645 merge of main after #4389: kept main's #4453 and #4389 rows and skip lines, listed 20280809003645 after them and kept its #1931 and #2117 skip lines; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 merge of main after #4238: kept main's two #4238 rows after 20280809003645; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "04b5023a74fbc8eccef982c91a382892495bb62a338007dafd6a2356b9d4f439";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ef476404188030dab48e9cc5414573fd769d8af435a5f65f564de070a935cf7a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

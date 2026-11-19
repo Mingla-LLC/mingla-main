@@ -305,4 +305,24 @@ if (process.env.MINGLA_CAPTURE_SURFACE === "host") {
   require("../tools/product-proof-capture/host/metroOverlay.js")(config, WORKSPACE_ROOT);
 }
 
+// #4453 milestone 10 — the plan-preview DEV harness (app/b/__dev-plan-preview.tsx)
+// never enters a production bundle: outside development Metro does not see the
+// file at all, so expo-router registers no route and no chunk is emitted (not
+// even a redirect stub). `expo start` (development) still serves it for testers.
+// Expo CLI sets NODE_ENV before it loads this file (export / export:embed /
+// EAS release builds are "production").
+// #4453 milestone 11 — the add-a-page-with-Ari DEV harness (app/b/__dev-ari-add-page.tsx) is kept out the same way.
+const DEV_ONLY_ROUTES = [
+  path.join(__dirname, "app", "b", "__dev-plan-preview.tsx"),
+  path.join(__dirname, "app", "b", "__dev-ari-add-page.tsx"),
+];
+if (process.env.NODE_ENV === "production") {
+  const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const existing = config.resolver.blockList;
+  config.resolver.blockList = [
+    ...(Array.isArray(existing) ? existing : existing ? [existing] : []),
+    ...DEV_ONLY_ROUTES.map((file) => new RegExp(`^${escape(file)}$`)),
+  ];
+}
+
 module.exports = config;

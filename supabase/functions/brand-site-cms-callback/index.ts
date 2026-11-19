@@ -816,6 +816,18 @@ async function handleBrandSiteCmsCallbackRequest(
         ? sitesJson({ ok: false, error: { code: "FORBIDDEN" } }, 403)
         : sitesJson({ ok: true, data });
     }
+    // #4453 milestone 5 — may Studio offer the live booking blocks to this
+    // site's editors (SITES_BOOKING_BLOCKS)? Site-bound like every route above;
+    // any read failure answers "off" (Studio fails closed).
+    const bookingFlagMatch = path.match(
+      /^\/internal\/v1\/sites\/([^/]+)\/booking-blocks$/,
+    );
+    if (bookingFlagMatch) {
+      const siteId = requireUuid(bookingFlagMatch[1]);
+      if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
+      const { data, error } = await service.rpc("brand_site_booking_blocks_enabled");
+      return sitesJson({ ok: true, data: { enabled: !error && data === true } });
+    }
     // #2829 W6 (AD-9) — stream videos (Bunny through Core); inert when Bunny
     // is not configured. Site-bound like every route above.
     if (/^\/internal\/v1\/sites\/[^/]+\/videos\//.test(path)) {

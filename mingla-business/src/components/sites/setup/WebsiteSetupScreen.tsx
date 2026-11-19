@@ -11,9 +11,10 @@ import {
 import { supabase } from "../../../services/supabase";
 import { brandSiteKeys } from "../../../sites/brandSiteKeys";
 import { firstOfferingRoute } from "../../../sites/planRoutes";
-import { useSaveBrandSitePlan } from "../../../sites/planApi";
+import { useComposeBrandSiteFromPlan, useSaveBrandSitePlan } from "../../../sites/planApi";
+import { BrandSitesError } from "../../../services/brandSitesService";
 import { planBuildDone, SetupFlowError, useSetupDraft, useSetupFlowState, useTakeOverSetup } from "../../../sites/setupApi";
-import { ariStepToFollow, firstMissingStep, nameInSentence, nextOpenStep, setupBuildBlockers, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
+import { ariStepToFollow, canRebuildPages, firstMissingStep, nameInSentence, nextOpenStep, setupBuildBlockers, setupPresence, setupStepChip, setupSteps } from "../../../sites/setupStatus";
 import type { SitePlanState } from "../../../sites/sitePlanState";
 import { partLabel } from "../../../sites/sitePlanState";
 import { useCurrentBrandStore } from "../../../store/currentBrandStore";
@@ -28,7 +29,9 @@ import { SitePreviewPanel, type PreviewGrantState } from "../website/preview/Sit
 import { PublishSection } from "../website/sections/PublishSection";
 import { OfferingsPart } from "../plan/OfferingsPart";
 import { PlanDesignPart } from "../plan/PlanDesignPart";
+import { PlanPreviewChooser } from "../plan/PlanPreviewChooser";
 import { StoryPart } from "../plan/StoryPart";
+import { ProofPart } from "../plan/ProofPart";
 import { SetupBrandStep } from "./SetupBrandStep";
 import { SetupDraftStep } from "./SetupDraftStep";
 import { SetupLive } from "./SetupLive";
@@ -126,6 +129,8 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
   // #2830 — "Add it myself" in the panel: the field, on this screen.
   const [focusRequest, setFocusRequest] = useState<{ key: string; at: number } | null>(null);
   const [showSteps, setShowSteps] = useState(false);
+  // #4453 M10 — "See all 10 styles" opens the look picker under the three-style preview.
+  const [allStyles, setAllStyles] = useState(false);
 
   // ── Presence ───────────────────────────────────────────────────────────
   const [watching, setWatching] = useState(false);
@@ -309,9 +314,22 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
               <WButton label="Open Website design" onPress={() => router.push(`/brand/${brandId}/website/design?returnTo=${encodeURIComponent(`/brand/${brandId}/website/setup?step=look`)}` as never)} testID="setup-open-design" />
             </View>
           </View>
+        ) : plan.planPreview && !allStyles ? (
+          // #4453 M10 — SITES_PLAN_PREVIEW: real renders in Ari's three picks (flag off: unchanged).
+          <PlanPreviewChooser
+            brandId={brandId}
+            planState={plan}
+            readOnly={readOnly}
+            onDone={() => goStep(nextOpenStep(status.steps, "look"))}
+            onSeeAll={() => setAllStyles(true)}
+            onChangeDetails={() => goStep("story")}
+          />
         ) : <PlanDesignPart brandId={brandId} planState={plan} readOnly={readOnly} onDone={() => goStep(nextOpenStep(status.steps, "look"))} />;
       case "story":
-        return <StoryPart brandId={brandId} step="questions" readOnly={readOnly} onDone={(next) => goStep(next)} />;
+        // #4453 — "What guests say" comes between the story and approval while Core lists it.
+        return <StoryPart brandId={brandId} step="questions" readOnly={readOnly} onDone={(next) => goStep(next === "approve" && status.steps.some((entry) => entry.key === "proof") ? "proof" : next)} />;
+      case "proof":
+        return <ProofPart brandId={brandId} readOnly={readOnly} onDone={(next) => goStep(next)} />;
       case "approve":
         return <StoryPart brandId={brandId} step="approve" readOnly={readOnly} onDone={(next) => goStep(next)} />;
       case "build":
@@ -543,7 +561,7 @@ export function WebsiteSetupScreen({ step, search, planQuery, grant, onHeartbeat
               <SetupStepList steps={status.steps} active={activeStep} canManage={canManage} published={published} onSelect={(key) => goStep(key)} />
             </ScrollView>
             <ScrollView style={styles.main} contentContainerStyle={styles.mainContent} keyboardShouldPersistTaps="handled">
-              <View style={styles.mainInner}>{body}</View>
+              <View style={[styles.mainInner, activeStep === "look" ? styles.mainInnerLook : null]}>{body}</View>
             </ScrollView>
             {ariOpen ? <View style={styles.ariColumn} testID="setup-ari-column">{ariPanel}</View> : null}
           </View>
@@ -615,6 +633,20 @@ function DraftReady({ grant, onPublish, onAdd, onAskAri, ariReady }: {
   ariReady: boolean;
 }): React.ReactElement {
   const ctx = useWebsite();
+  // #4453 — once a site exists, Build is the only place the composer ran, and
+  // it was never offered again: an owner (or a style switch) could not get
+  // Ari's full pages back. Rebuild runs the same composer; pages the owner
+  // edited are kept and every new section arrives as a Draft.
+  const compose = useComposeBrandSiteFromPlan(ctx.brandId);
+  const [confirmRebuild, setConfirmRebuild] = useState(false);
+  const canRebuild = canRebuildPages({ canManage: ctx.plan?.canManage, lockHeldByOther: ctx.lock.heldByOther, paused: ctx.plan?.site?.paused });
+  const rebuild = () => {
+    setConfirmRebuild(false);
+    compose.mutate(undefined, {
+      onSuccess: () => ctx.toast("Ari rebuilt your pages. New sections arrive as Drafts for you to review.", "success"),
+      onError: (error) => ctx.toast(error instanceof BrandSitesError ? error.message : "Your pages weren't rebuilt. Try again.", "error"),
+    });
+  };
   const preview = (
     <SitePreviewPanel
       grant={grant}
@@ -636,8 +668,26 @@ function DraftReady({ grant, onPublish, onAdd, onAskAri, ariReady }: {
         {ctx.phone ? null : <CardTitle>What&apos;s next</CardTitle>}
         <WButton label="Check and publish" variant="primary" onPress={onPublish} testID="setup-go-publish" />
         <WButton label="Add your first trip or event" onPress={onAdd} testID="setup-add-first" />
+        {canRebuild ? (
+          <WButton
+            label="Rebuild my pages"
+            loading={compose.isPending}
+            disabled={compose.isPending}
+            onPress={() => setConfirmRebuild(true)}
+            testID="setup-rebuild-pages"
+          />
+        ) : null}
         {ariReady ? <WButton label="Ask Ari to change something" variant="ghost" onPress={onAskAri} testID="setup-ask-change" /> : null}
       </View>
+      <ConfirmDialog
+        visible={confirmRebuild}
+        onClose={() => setConfirmRebuild(false)}
+        onConfirm={rebuild}
+        title="Rebuild your pages?"
+        description="Ari builds your pages again from your plan, in your chosen design. Pages you have edited yourself are kept. Every new section arrives as a Draft, and nothing goes live until you publish."
+        confirmLabel="Rebuild my pages"
+        testID="setup-rebuild-confirm"
+      />
     </View>
   );
 }
@@ -689,6 +739,8 @@ const styles = StyleSheet.create({
   main: { flex: 1, minWidth: 0 },
   mainContent: { padding: space[6], paddingBottom: 96 },
   mainInner: { maxWidth: websitePaneMaxWidth, width: "100%" },
+  // #4453 — the design step has the picker and its live preview side by side.
+  mainInnerLook: { maxWidth: 1360 },
   ariColumn: { flex: 1, minWidth: ariThread.websiteAriMinWidth, maxWidth: ariThread.websiteAriMaxWidth, borderLeftWidth: 1, borderLeftColor: ui.cardBorder },
   ariFallback: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: space[6] },
   ariFallbackText: { fontSize: 15, lineHeight: 22, color: ui.t2, textAlign: "center" },

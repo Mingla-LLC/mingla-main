@@ -24,6 +24,8 @@ type Alert = {
 
 const EMPTY_ROW_RPCS = new Set([
   "list_missing_payout_source_fees",
+  // Issue #3645: paid stays are their own fee-candidate family.
+  "list_missing_stay_provider_fees",
   "surface_payout_releases_waiting_for_bank",
   "claim_brand_payout_pause_notices",
   "claim_brand_payout_outcome_notices",

@@ -35,6 +35,7 @@ import {
   HOST_AD_PLATFORM_NAMES,
   hostAdErrorMessage,
   hostAdStatusLabel,
+  hostAdWideningKind,
 } from "../../components/marketing/ads/hostAdCopy";
 import {
   goBackToAds,
@@ -80,12 +81,12 @@ import {
   hostAdSliderRange,
   hostAdSnap,
   hostAdTopUpNeededCents,
+  hostAdPlanHoldPlaced,
   hostAdWeekRange,
   type HostAdCheckRow,
 } from "../../components/marketing/ads/hostAdBuilderModel";
 import { hb, hostAdGoalName, hostAdGoalUnit, hostAdStepName } from "../../components/marketing/ads/hostAdBuilderCopy";
 import {
-  AddTile,
   AdvancedRow,
   Badge,
   Blocker,
@@ -97,7 +98,6 @@ import {
   CheckRow,
   CheckState,
   ChipRow,
-  CreativeTile,
   InfoLine,
   Note,
   Segmented,
@@ -153,9 +153,21 @@ import {
   HOST_AD_UNAVAILABLE_TITLE,
   hostAdSetupErrorCopy,
 } from "../../components/marketing/ads/hostAdSetupCopy";
-import { CoverPickerSheet } from "../../components/ui/LazyCoverPickerSheet";
-import type { CoverPatch } from "../../components/ui/CoverPicker";
-import { adCreativeCoverTarget } from "../../components/ui/coverTarget";
+import { HostAdMediaSection, type HostAdMediaTile } from "../../components/marketing/ads/HostAdMediaSection";
+import type { HostAdUploadReport } from "../../components/marketing/ads/HostAdVideoUploadSlot";
+import {
+  HOST_AD_MEDIA_MAX,
+  hostAdAddToAd,
+  hostAdCreativeNameFor,
+  hostAdElapsedLabel,
+  hostAdPickFingerprint,
+  hostAdRemoveFromAd,
+  hostAdUploadOwnerKey,
+  planHostAdPick,
+  type HostAdPickedVideo,
+  type HostAdPickRefusal,
+  type HostAdUploadItem,
+} from "../../components/marketing/ads/hostAdMediaQueue";
 import { color, edge, radius, space, type } from "../../constants/designSystem";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useHostAdPermissions } from "../../hooks/useHostAdPermissions";
@@ -163,7 +175,7 @@ import { useStickyFooterOffset } from "../../hooks/useStickyFooterOffset";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { DONE_BAR_OCCUPIED, MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
-import { hostAdPageGoal } from "../../components/marketing/ads/hostAdGoal";
+import { hostAdGoalFallbackReason, hostAdPageGoal } from "../../components/marketing/ads/hostAdGoal";
 import type {
   HostAdConnection,
   HostAdCopyWarning,
@@ -180,24 +192,29 @@ import type {
   PreparedHostAdPlan,
 } from "../../services/hostAdPlanService";
 import { loadHostAdPlanService } from "./hostAdKitService";
-import { hostAdOwnerKey } from "../../services/eventCoverVideoEdgeContract";
 import { randomUuid } from "../../utils/randomId";
-import { adVideoFitSummaryFor } from "../../utils/adVideoFit";
+import { adTileFitLine } from "../../components/marketing/ads/hostAdTileFit";
 import { hostOptimizationByPlatform } from "../../services/hostAdPlanService";
 
 // #4238: platforms are named the way Hosts know them.
+
+// #4238 B7: the upload slot, multi-picker and video transport load on intent
+// through the one shared authoring runtime (see its header), so Host web never
+// downloads upload code at boot.
+const loadVideoAuthoringRuntime = () => import("../../services/eventCoverVideoAuthoringRuntime");
+const HostAdVideoUploadSlot = React.lazy(() =>
+  loadVideoAuthoringRuntime().then((runtime) => ({ default: runtime.HostAdVideoUploadSlot })),
+);
+
 const PLATFORM_LABELS = HOST_AD_PLATFORM_NAMES;
 
-
-const EMPTY_AD_VIDEO_PATCH: CoverPatch = {
-  coverMediaUrl: null,
-  coverMediaPosterUrl: null,
-  coverMediaType: null,
-  coverMediaProvider: null,
-  coverMediaSourceUrl: null,
-  coverMediaCredit: null,
-  coverMediaCreditUrl: null,
-  coverMediaAlt: null,
+/** #4238 B7: what a refused pick says on its tile. */
+const PICK_REFUSAL_KEY: Record<HostAdPickRefusal, string> = {
+  unsupported: "media.refused.unsupported",
+  too_short: "media.refused.tooShort",
+  too_long: "media.refused.tooLong",
+  too_large: "media.refused.tooLarge",
+  unreadable: "media.refused.unreadable",
 };
 
 const RESUMABLE_STATES = new Set([
@@ -374,28 +391,34 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [draftSaveStatus, setDraftSaveStatus] = useState<
     "loading" | "unsaved" | "saving" | "saved" | "conflict" | "error"
   >("loading");
-  const [adVideoPickerVisible, setAdVideoPickerVisible] = useState(false);
-  const [adVideoPatch, setAdVideoPatch] = useState<CoverPatch>(
-    EMPTY_AD_VIDEO_PATCH,
-  );
-  // #3040 B-C14 — ONE owner: true only while a creative id the server
-  // created is being linked into this draft. Processing never disables the
-  // sheet or the button (A-14: Replace used to be refused while it ran).
+  // #4238 B7/B8: several ad videos upload side by side, each in its own
+  // background slot; there is no sheet on this path, so nothing is reused.
+  const [uploads, setUploads] = useState<HostAdUploadItem[]>([]);
+  const [uploadAttempts, setUploadAttempts] = useState<Record<string, number>>({});
+  const [cancelledUploads, setCancelledUploads] = useState<string[]>([]);
+  // Files refused at pick, shown as failed tiles until cleared.
+  const [refusedPicks, setRefusedPicks] = useState<
+    { key: string; file: HostAdPickedVideo; reason: HostAdPickRefusal }[]
+  >([]);
+  const uploadSeqRef = useRef(0);
+  const uploadsRef = useRef<HostAdUploadItem[]>([]);
+  uploadsRef.current = uploads;
   const [adVideoLinking, setAdVideoLinking] = useState(false);
-  // The job running in the sheet, for the button's own spinner only.
-  const [adVideoProcessing, setAdVideoProcessing] = useState(false);
-  const linkedCreativeIdRef = useRef<string | null>(null);
-  // #3040 AD-04 — the fit sentence for the video this sheet holds, from the
-  // server's per-platform fit (the same matrix every ads gate uses).
-  const adVideoFitSummary = useMemo(
-    (): string | null =>
-      adVideoFitSummaryFor({
-        creatives: setup?.creatives,
-        heldId: adVideoPatch.adCreativeId ?? linkedCreativeIdRef.current,
-        linked: creative,
-      }),
-    [adVideoPatch.adCreativeId, creative, setup],
-  );
+  const linkedCreativeIdsRef = useRef<Set<string>>(new Set());
+  // Picks that repeat a library clip, asked one at a time.
+  const [duplicatePicks, setDuplicatePicks] = useState<
+    { file: HostAdPickedVideo; clipId: string; clipName: string }[]
+  >([]);
+  const [mediaSelectMode, setMediaSelectMode] = useState(false);
+  const [mediaSelected, setMediaSelected] = useState<string[]>([]);
+  const [mediaUndo, setMediaUndo] = useState<
+    null | { text: string; creativeIds?: string[]; restore?: string[] }
+  >(null);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  // B10: the server refused because the rights box was not ticked.
+  const [rightsMissing, setRightsMissing] = useState(false);
+  const rightsYRef = useRef(0);
   // AD-05 — a creative that exists server-side but did not link here yet:
   // "Try linking again" re-links the SAME id, never re-uploads.
   const [unlinkedCreativeId, setUnlinkedCreativeId] = useState<string | null>(null);
@@ -422,7 +445,9 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const [walletCreditCents, setWalletCreditCents] = useState<number | null>(null);
   const [topUpLimits, setTopUpLimits] = useState<AdCreditTopUpLimits | null>(null);
   const [advanced, setAdvanced] = useState<Record<string, boolean>>({});
-  const [sheet, setSheet] = useState<null | "words" | "rights" | "topUp" | "leave" | "launch" | "cancel">(null);
+  const [sheet, setSheet] = useState<
+    null | "words" | "rights" | "topUp" | "leave" | "launch" | "cancel" | "archive"
+  >(null);
   const [launched, setLaunched] = useState<null | "staff" | "apps">(null);
   const scrollRef = useRef<{ scrollTo?: (options: { y: number; animated?: boolean }) => void } | null>(null);
   const checksYRef = useRef(0);
@@ -487,13 +512,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
   }, [brandId, permissions.canRead]);
 
   // #3040 B-C14 [A-14, C-4..C-8] — the ad video is an `ad_creative` lane job;
-  // the SERVER creates the creative row from the READY job and the sheet hands
-  // back its id (`patch.adCreativeId`). Nothing records a creative from a URL
-  // here any more (`recordHostAdVideo` is gone).
+  // the SERVER creates the creative row from the READY job and the upload
+  // slot reports its id. Nothing records a creative from a URL here.
+  // #4238 B7: each finished upload links once; a clip placed in the library
+  // (the ad was full) is refreshed into the library but not added to the ad.
   const linkAdCreative = useCallback(
-    async (creativeId: string): Promise<void> => {
+    async (creativeId: string, placement: "ad" | "library" = "ad"): Promise<void> => {
       if (!brandId) return;
-      if (linkedCreativeIdRef.current === creativeId) return;
+      if (linkedCreativeIdsRef.current.has(creativeId)) return;
       setAdVideoLinking(true);
       setError(null);
       try {
@@ -507,15 +533,15 @@ export default function HostAdCreateRoute(): React.ReactElement {
         if (!recorded) {
           throw new Error(HOST_AD_OWNED_ERROR_COPY.videoNotShown);
         }
-        linkedCreativeIdRef.current = creativeId;
+        linkedCreativeIdsRef.current.add(creativeId);
         setUnlinkedCreativeId(null);
         setSetup(refreshed);
-        setCreative(recorded);
-        setCreativeIds((current) =>
-          current.includes(recorded.id) ? current : [...current, recorded.id].slice(0, 5),
-        );
-        setRightsConfirmed(false);
-        setPrepared(null);
+        if (placement === "ad") {
+          setCreative((current) => current ?? recorded);
+          setCreativeIds((current) => hostAdAddToAd(current, [recorded.id]));
+          setRightsConfirmed(false);
+          setPrepared(null);
+        }
       } catch (cause) {
         setUnlinkedCreativeId(creativeId);
         setError(
@@ -528,22 +554,42 @@ export default function HostAdCreateRoute(): React.ReactElement {
     [brandId],
   );
 
-  const handleAdVideoChange = useCallback(
-    async (patch: CoverPatch): Promise<void> => {
-      setAdVideoPatch(patch);
-      if (!patch.coverMediaUrl) {
-        // "Remove video" — the ad has no video until one is added again.
-        linkedCreativeIdRef.current = null;
-        setUnlinkedCreativeId(null);
-        setCreative(null);
-        setRightsConfirmed(false);
-        setPrepared(null);
-        return;
+  // #4238 B7: one upload slot reports a stage. A ready clip links once and
+  // its tile becomes the library creative.
+  const handleUploadReport = useCallback(
+    (report: HostAdUploadReport): void => {
+      const owner = uploadsRef.current.find((item) => item.key === report.key);
+      if (report.phase === "ready" && report.creativeId !== null && owner) {
+        // Link first; the tile leaves the upload list once the creative shows.
+        void linkAdCreative(report.creativeId, owner.placement).then(() =>
+          setUploads((current) => current.filter((item) => item.key !== report.key)),
+        );
       }
-      if (patch.coverMediaType !== "video" || !patch.adCreativeId) return;
-      await linkAdCreative(patch.adCreativeId);
-    }, [linkAdCreative],
+      setUploads((current) =>
+        current.flatMap((item) => {
+          if (item.key !== report.key) return [item];
+          return [{
+            ...item,
+            phase: report.phase,
+            percent: report.percent,
+            canRetry: report.canRetry,
+            failure: report.failure,
+            preparingSince:
+              report.phase === "preparing" ? item.preparingSince ?? Date.now() : item.preparingSince,
+          }];
+        }),
+      );
+    },
+    [linkAdCreative],
   );
+
+  // The "Getting it ready · 0:42" clock ticks only while something prepares.
+  const anyPreparing = uploads.some((item) => item.phase === "preparing");
+  useEffect(() => {
+    if (!anyPreparing) return undefined;
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [anyPreparing]);
 
   useEffect(() => {
     if (!permissions.isLoading) void load();
@@ -1253,13 +1299,23 @@ export default function HostAdCreateRoute(): React.ReactElement {
     [creativeIds, setup?.creatives],
   );
   const creativeProblem = hostAdCreativeProblem({ picked: pickedCreatives, apps: planApps });
-  const copyError = hostAdCopyError(activeApps, {
+  // #4238 B9: only the apps this ad runs on judge its words (the same list the
+  // words sheet counts against); Google's 90-character limit no longer blocks
+  // Next when Google is off.
+  const copyError = hostAdCopyError(planApps.length > 0 ? planApps : activeApps, {
     primary: primaryText.trim(),
     headline: (headline.trim() || name.trim() || page?.title || ""),
   });
+  // #4238 B7: clips still uploading or getting ready ride along; Next needs
+  // one ready, and Launch waits until they are ready or removed.
+  const preparingAdCount = uploads.filter(
+    (item) => item.placement === "ad" && item.phase !== "failed" && !cancelledUploads.includes(item.key),
+  ).length;
   const creativeError =
     creativeProblem?.kind === "none"
-      ? hb("creative.pickOne")
+      ? preparingAdCount > 0
+        ? hb("media.pending", { count: preparingAdCount })
+        : hb("creative.pickOne")
       : creativeProblem?.kind === "too_many"
         ? hb("creative.pickFive")
         : creativeProblem?.kind === "photo_app"
@@ -1752,6 +1808,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
         setOptimization("signups");
         setNotice(hb("errors.freeEvent"));
         setCheckState("idle");
+      } else if (code === "media_rights_attestation_required") {
+        // #4238 B10: not an app failure. Point at the rights box instead of
+        // "Couldn't check with Facebook & Instagram".
+        setRightsMissing(true);
+        setCheckState("idle");
+        scrollRef.current?.scrollTo?.({ y: Math.max(0, rightsYRef.current - space[6]), animated: !reduceMotion });
       } else {
         setCheckState("failed");
         setError(hostAdErrorMessage(cause, hb("errors.generic")));
@@ -1771,13 +1833,19 @@ export default function HostAdCreateRoute(): React.ReactElement {
     setError(null);
     try {
       const { fundHostAdPlan, launchHostAdPlan } = await loadHostAdPlanService();
-      const funded = await fundHostAdPlan({
-        planId: prepared.planId,
-        versionId: prepared.versionId,
-        planHash: prepared.planHash,
-      });
-      setActivePlanState(funded.state);
-      if (funded.state === "staff_review_required") {
+      // #4238: a plan Mingla approved (or already funded) holds its budget.
+      // Holding again is refused (ad_plan_not_fundable), so launch the hold.
+      const fundedState = hostAdPlanHoldPlaced(activePlanState)
+        ? (activePlanState as string)
+        : (
+            await fundHostAdPlan({
+              planId: prepared.planId,
+              versionId: prepared.versionId,
+              planHash: prepared.planHash,
+            })
+          ).state;
+      setActivePlanState(fundedState);
+      if (fundedState === "staff_review_required") {
         setLaunched("staff");
       } else {
         await launchHostAdPlan({
@@ -2111,8 +2179,11 @@ export default function HostAdCreateRoute(): React.ReactElement {
   const anyRetarget = (guidanceOk?.per_app ?? []).some((row) => row.retarget === true);
   const metaFloorPay = minimumPay("meta");
   const walletPay = walletCreditCents === null ? null : hostAdPayFromCredit(walletCreditCents);
+  // #4238: an approved or funded plan already holds its budget; resuming it
+  // launches that hold, so nothing more is needed from Ads credit.
+  const holdPlaced = hostAdPlanHoldPlaced(activePlanState);
   const topUpNeeded =
-    walletCreditCents === null ? 0 : hostAdTopUpNeededCents(holdPayCents, walletCreditCents);
+    walletCreditCents === null || holdPlaced ? 0 : hostAdTopUpNeededCents(holdPayCents, walletCreditCents);
   const appLabel = (platform: string): string => PLATFORM_LABELS[platform] ?? platform;
 
   // ---- per-app check rows (Review) ----
@@ -2138,14 +2209,41 @@ export default function HostAdCreateRoute(): React.ReactElement {
     .filter((row): row is HostAdCheckRow & { note?: string } => row !== null);
   const blocker = hostAdLaunchBlocker({
     offline,
-    canLaunch: permissions.canLaunch && capabilities.launch?.allowed !== false,
+    canLaunch: permissions.canLaunch,
     canFund: permissions.canFund,
     askName,
     checks: checkRows,
-    checked: prepared !== null && prepared.status === "ready",
+    // #4238 B7: clips still getting ready keep Launch closed (the dock says why).
+    checked: prepared !== null && prepared.status === "ready" && preparingAdCount === 0,
     rightsConfirmed,
     topUpNeededCents: topUpNeeded,
+    // #4238 roles: the server's own answers (admins launch and fund) win.
+    capabilities,
   });
+  // #4238 honest Review questions: say the real reason each app gave.
+  const wideningLines = (platform: string): string[] =>
+    (prepared?.targeting.find((row) => row.platform === platform)?.widening_summary ?? []).filter(
+      (line) => typeof line === "string" && line.trim().length > 0,
+    );
+  const wideningAcceptLabel = (platform: string): string => {
+    const lines = wideningLines(platform);
+    if (lines.length === 0) return hb("review.useWider");
+    const kind = hostAdWideningKind(lines);
+    return kind === "past_buyers"
+      ? hb("review.runWithoutBuyers")
+      : kind === "area"
+        ? hb("review.useWider")
+        : hb("review.runThisWay");
+  };
+  const visitsQuestion = (platform: string): string => {
+    const connection = planConnections.find((item) => item.platform === platform);
+    const wanted: "sales" | "signups" = goal === "signups" ? "signups" : "sales";
+    const reason = connection ? hostAdGoalFallbackReason(wanted, connection) : "cannot";
+    return hb(reason === "not_yet" ? "review.visitsQuestionYet" : "review.visitsQuestionCannot", {
+      app: appLabel(platform),
+      unit,
+    });
+  };
   const blockerText = (): string | null => {
     if (!blocker) return null;
     switch (blocker.kind) {
@@ -2884,6 +2982,294 @@ export default function HostAdCreateRoute(): React.ReactElement {
     </View>
   );
 
+  // ---------------- step 5: media (#4238 B7/B8, approved design) ----------------
+  const mediaApps = planApps.length > 0 ? planApps : activeApps;
+  const visibleUploads = uploads.filter((item) => !cancelledUploads.includes(item.key));
+  const adUploads = visibleUploads.filter((item) => item.placement === "ad");
+  const adMediaCount = creativeIds.length + adUploads.length;
+  const adMediaRoom = Math.max(0, HOST_AD_MEDIA_MAX - adMediaCount);
+  const pendingAdUploads = adUploads.filter((item) => item.phase !== "failed").length;
+
+  const clipLength = (seconds: number | null | undefined): string => {
+    const total = Math.round(Number(seconds ?? 0));
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+  };
+
+  const pickAdVideos = async (): Promise<void> => {
+    if (!brandId || !permissions.canPlan) return;
+    const draftId = draftIdRef.current;
+    if (draftId === null) {
+      setNotice(hb("media.draftNotReady"));
+      return;
+    }
+    let runtime: Awaited<ReturnType<typeof loadVideoAuthoringRuntime>>;
+    let picked: Awaited<ReturnType<typeof runtime.launchAdVideosPicker>>;
+    try {
+      runtime = await loadVideoAuthoringRuntime();
+      // Web can pick past the room (the rest go to the library); native caps it.
+      picked = await runtime.launchAdVideosPicker({
+        maxFiles: Platform.OS === "web" ? HOST_AD_MEDIA_MAX : Math.max(1, adMediaRoom),
+      });
+    } catch (cause) {
+      setError(hostAdErrorMessage(cause, hb("media.pickFailed")));
+      return;
+    }
+    if (picked.canceled || picked.assets.length === 0) return;
+    const files: HostAdPickedVideo[] = picked.assets.map((asset) => {
+      const durationMs = runtime.normalizePickerDurationMs(asset.duration);
+      return {
+        uri: asset.uri,
+        fileName: asset.fileName ?? null,
+        mimeType: asset.mimeType ?? null,
+        fileSize: asset.fileSize ?? null,
+        durationMs: durationMs > 0 ? durationMs : null,
+      };
+    });
+    const plan = planHostAdPick({
+      files,
+      adCount: adMediaCount,
+      library: (setup?.creatives ?? []).map((item) => ({
+        id: item.id,
+        name: item.name,
+        kind: item.kind,
+        duration_seconds: item.duration_seconds,
+      })),
+      inFlight: visibleUploads.map((item) => hostAdPickFingerprint(item.file)),
+      isWeb: Platform.OS === "web",
+    });
+    const make = (file: HostAdPickedVideo, placement: "ad" | "library"): HostAdUploadItem => {
+      uploadSeqRef.current += 1;
+      const token = randomUuid().replace(/-/g, "").slice(0, 10);
+      return {
+        key: `upload-${uploadSeqRef.current}-${token}`,
+        ownerKey: hostAdUploadOwnerKey(draftId, token),
+        file,
+        name: hostAdCreativeNameFor(file.fileName) || hb("media.untitled"),
+        placement,
+        phase: "uploading",
+        percent: 0,
+        preparingSince: null,
+        creativeId: null,
+        failure: null,
+        canRetry: false,
+      };
+    };
+    const added = [
+      ...plan.toAd.map((file) => make(file, "ad")),
+      ...plan.toLibrary.map((file) => make(file, "library")),
+    ];
+    if (added.length > 0) setUploads((current) => [...current, ...added]);
+    if (plan.refused.length > 0) {
+      setRefusedPicks((current) => [
+        ...current,
+        ...plan.refused.map(({ file, reason }) => {
+          uploadSeqRef.current += 1;
+          return { key: `refused-${uploadSeqRef.current}`, file, reason };
+        }),
+      ]);
+    }
+    if (plan.duplicates.length > 0) {
+      setDuplicatePicks((current) => [
+        ...current,
+        ...plan.duplicates.map(({ file, clip }) => ({ file, clipId: clip.id, clipName: clip.name })),
+      ]);
+    }
+    if (plan.toLibrary.length > 0) {
+      setNotice(hb("media.toLibrary", { count: plan.toLibrary.length }));
+    } else if (plan.repeats.length > 0) {
+      setNotice(hb("media.repeat", { name: hostAdCreativeNameFor(plan.repeats[0].fileName) }));
+    }
+    if (Platform.OS === "web" && plan.refused.length + plan.repeats.length === picked.assets.length) {
+      runtime.revokeCoverPickedAssets(picked.assets);
+    }
+    setMediaUndo(null);
+    setRightsConfirmed(false);
+    touch();
+  };
+
+  const removeFromAd = (ids: string[]): void => {
+    if (ids.length === 0) return;
+    const before = creativeIds;
+    setCreativeIds((current) => hostAdRemoveFromAd(current, ids));
+    setRightsConfirmed(false);
+    setPrepared(null);
+    const removedName = setup?.creatives.find((item) => item.id === ids[0])?.name ?? "";
+    setMediaUndo({
+      text: ids.length === 1 ? hb("media.removed", { name: removedName }) : hb("media.removedMany", { count: ids.length }),
+      creativeIds: before,
+    });
+    touch();
+  };
+
+  const addFromLibrary = (id: string): void => {
+    if (adMediaRoom <= 0) return;
+    const item = setup?.creatives.find((row) => row.id === id);
+    setCreativeIds((current) => hostAdAddToAd(current, [id]));
+    if (item && creative === null) setCreative(item);
+    setRightsConfirmed(false);
+    setPrepared(null);
+    setMediaUndo(null);
+    touch();
+  };
+
+  const dropUploads = (keys: string[]): void => {
+    if (keys.length === 0) return;
+    setCancelledUploads((current) => [...new Set([...current, ...keys])]);
+    setRefusedPicks((current) => current.filter((item) => !keys.includes(item.key)));
+  };
+
+  const undoMedia = async (): Promise<void> => {
+    const undo = mediaUndo;
+    if (undo === null) return;
+    setMediaUndo(null);
+    if (undo.creativeIds) {
+      setCreativeIds(undo.creativeIds);
+      setPrepared(null);
+      touch();
+    }
+    if (undo.restore && undo.restore.length > 0) {
+      try {
+        const { restoreHostAdCreatives } = await import("../../services/hostAdCreativeLibraryService");
+        await restoreHostAdCreatives(undo.restore);
+        await load(true);
+      } catch (cause) {
+        setError(hostAdErrorMessage(cause, hb("media.archiveFailed")));
+      }
+    }
+  };
+
+  const libraryCreatives = (setup?.creatives ?? []).filter((item) => !creativeIds.includes(item.id));
+  const selectedAdIds = creativeIds.filter((id) => mediaSelected.includes(id));
+  const selectedLibraryIds = libraryCreatives.map((item) => item.id).filter((id) => mediaSelected.includes(id));
+  const selectedFailedKeys = [
+    ...adUploads.filter((item) => item.phase === "failed").map((item) => item.key),
+    ...refusedPicks.map((item) => item.key),
+  ].filter((key) => mediaSelected.includes(key));
+
+  const confirmArchive = async (): Promise<void> => {
+    const ids = selectedLibraryIds;
+    if (ids.length === 0) return;
+    setArchiveBusy(true);
+    try {
+      const { archiveHostAdCreatives } = await import("../../services/hostAdCreativeLibraryService");
+      const done = await archiveHostAdCreatives(ids);
+      setSheet(null);
+      setMediaSelected([]);
+      setMediaSelectMode(false);
+      await load(true);
+      setMediaUndo({ text: hb("media.archived", { count: done.length }), restore: done });
+    } catch (cause) {
+      setError(hostAdErrorMessage(cause, hb("media.archiveFailed")));
+      setSheet(null);
+    } finally {
+      setArchiveBusy(false);
+    }
+  };
+
+  const toggleSelected = (key: string): void =>
+    setMediaSelected((current) => (current.includes(key) ? current.filter((id) => id !== key) : [...current, key]));
+
+  const creativeTile = (item: HostAdCreative, where: "ad" | "library"): HostAdMediaTile => {
+    const fit = item.kind === "image" ? null : adTileFitLine(item.fit, mediaApps);
+    const name = item.name;
+    return {
+      key: item.id,
+      name,
+      label: item.kind === "image" ? `${name} · ${hb("media.photo")}` : `${name} · ${clipLength(item.duration_seconds)}`,
+      posterUri: item.poster_url ?? item.source_url ?? null,
+      phase: "ready",
+      status: null,
+      percent: null,
+      note: item.kind === "image" ? hb("media.photoFit") : fit?.text ?? "",
+      noteTone: item.kind === "image" || fit?.warn ? "warn" : "plain",
+      corner:
+        where === "ad"
+          ? { icon: "close", label: hb("media.remove", { name }), onPress: () => removeFromAd([item.id]) }
+          : {
+              icon: "plus",
+              label: adMediaRoom > 0 ? hb("media.use", { name }) : hb("media.useFull"),
+              disabled: adMediaRoom <= 0,
+              onPress: () => addFromLibrary(item.id),
+            },
+      selected: mediaSelected.includes(item.id),
+      onToggle: () => toggleSelected(item.id),
+      testID: `host-ad-creative-${item.id}`,
+    };
+  };
+
+  const uploadTile = (item: HostAdUploadItem): HostAdMediaTile => {
+    const failed = item.phase === "failed";
+    return {
+      key: item.key,
+      name: item.name,
+      label: `${item.name} · ${clipLength((item.file.durationMs ?? 0) / 1000)}`,
+      posterUri: null,
+      phase: item.phase === "ready" ? "preparing" : item.phase,
+      status: failed
+        ? item.failure === "network" ? hb("media.failedNetwork") : hb("media.failedFile")
+        : item.phase === "uploading"
+          ? item.percent !== null ? hb("media.uploading", { percent: item.percent }) : hb("media.uploadingNoPct")
+          : hb("media.preparing", { elapsed: hostAdElapsedLabel(item.preparingSince, nowMs) }),
+      percent: item.phase === "uploading" ? item.percent : null,
+      note: failed
+        ? item.failure === "network" ? hb("media.failedNetworkNote") : hb("media.failedFileNote")
+        : hb("media.fitPending"),
+      noteTone: failed ? "warn" : "dim",
+      onRetry:
+        failed && item.canRetry
+          ? () => {
+              setUploads((current) =>
+                current.map((row) => (row.key === item.key ? { ...row, phase: "uploading", percent: 0, failure: null } : row)),
+              );
+              setUploadAttempts((current) => ({ ...current, [item.key]: (current[item.key] ?? 0) + 1 }));
+            }
+          : undefined,
+      corner: {
+        icon: "close",
+        label: failed ? hb("media.clear", { name: item.name }) : hb("media.cancelUpload", { name: item.name }),
+        disabled: false,
+        onPress: () => {
+          dropUploads([item.key]);
+          if (!failed) setNotice(hb("media.cancelled", { name: item.name }));
+        },
+      },
+      selected: failed ? mediaSelected.includes(item.key) : null,
+      onToggle: () => toggleSelected(item.key),
+      testID: `host-ad-upload-${item.key}`,
+    };
+  };
+
+  const refusedTile = (item: { key: string; file: HostAdPickedVideo; reason: HostAdPickRefusal }): HostAdMediaTile => {
+    const name = hostAdCreativeNameFor(item.file.fileName) || hb("media.untitled");
+    const lengthFix = item.reason === "too_short" || item.reason === "too_long";
+    return {
+      key: item.key,
+      name,
+      label: item.file.durationMs ? `${name} · ${clipLength(item.file.durationMs / 1000)}` : name,
+      posterUri: null,
+      phase: "failed",
+      status: hb(PICK_REFUSAL_KEY[item.reason]),
+      percent: null,
+      note: lengthFix ? hb("media.fixLength") : hb("media.fixOther"),
+      noteTone: "warn",
+      corner: { icon: "close", label: hb("media.clear", { name }), onPress: () => dropUploads([item.key]) },
+      selected: mediaSelected.includes(item.key),
+      onToggle: () => toggleSelected(item.key),
+      testID: `host-ad-refused-${item.key}`,
+    };
+  };
+
+  const adMediaTiles: HostAdMediaTile[] = [
+    ...pickedCreatives.map((item) => creativeTile(item, "ad")),
+    ...visibleUploads.filter((item) => item.placement === "ad").map(uploadTile),
+    ...refusedPicks.map(refusedTile),
+  ];
+  const libraryMediaTiles: HostAdMediaTile[] = [
+    ...visibleUploads.filter((item) => item.placement === "library").map(uploadTile),
+    ...libraryCreatives.map((item) => creativeTile(item, "library")),
+  ];
+  const duplicateAsk = duplicatePicks[0] ?? null;
+
   // ---------------- step 5: the ad ----------------
   const creativePreview = (
     <HostAdPreview
@@ -2933,54 +3319,43 @@ export default function HostAdCreateRoute(): React.ReactElement {
         />
       </BuilderList>
       <View style={bs.stack}>
-        <View style={bs.rowBetween}>
-          <BuilderLabel>{hb("creative.media")}</BuilderLabel>
-          <Text style={bs.caption}>{hb("creative.picked", { count: pickedCreatives.length })}</Text>
-        </View>
-        <View style={bs.tiles} testID="host-ad-creative-tiles">
-          {setup.creatives.map((item) => {
-            const on = creativeIds.includes(item.id);
-            return (
-              <CreativeTile
-                key={item.id}
-                label={`${item.name}${item.duration_seconds ? ` · 0:${String(Math.round(Number(item.duration_seconds))).padStart(2, "0")}` : ""}`}
-                selected={on}
-                disabled={!on && creativeIds.length >= 5}
-                poster={
-                  item.poster_url || item.source_url ? (
-                    <Image source={{ uri: item.poster_url ?? item.source_url ?? "" }} style={styles.poster} />
-                  ) : null
-                }
-                onPress={() => {
-                  setCreativeIds((current) =>
-                    current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id].slice(0, 5),
-                  );
-                  if (!on) setCreative(item);
-                  setRightsConfirmed(false);
-                  touch();
-                }}
-                testID={`host-ad-creative-${item.id}`}
-              />
-            );
-          })}
-          <AddTile
-            label={hb("creative.addShort")}
-            loading={adVideoProcessing || adVideoLinking}
-            onPress={() => setAdVideoPickerVisible(true)}
-            testID="host-ad-add-video"
+        <HostAdMediaSection
+          heading={hb("media.inThisAd")}
+          countLabel={
+            adMediaCount > 0 && adMediaCount < 3
+              ? hb("media.countFew", { n: adMediaCount })
+              : hb("media.count", { n: adMediaCount })
+          }
+          libraryHeading={hb("media.library")}
+          libraryHint={hb("media.libraryHint")}
+          emptyAdText={hb("media.emptyAd")}
+          ad={adMediaTiles}
+          library={libraryMediaTiles}
+          selectMode={mediaSelectMode}
+          selectLabel={mediaSelectMode ? hb("media.cancelSelect") : hb("media.select")}
+          onToggleSelectMode={() => {
+            setMediaSelectMode((value) => !value);
+            setMediaSelected([]);
+          }}
+          addLabel={adMediaRoom > 0 ? hb("media.add") : hb("media.full")}
+          addHint={adMediaRoom > 0 ? hb("media.addHint", { n: adMediaRoom }) : hb("media.fullHint")}
+          addDisabled={adMediaRoom <= 0 || mediaSelectMode || !permissions.canPlan}
+          onAdd={() => void pickAdVideos()}
+          retryLabel={hb("media.retry")}
+          notes={[]}
+          empty={{ title: hb("media.emptyTitle"), body: hb("media.emptyBody"), spec: hb("media.emptySpec") }}
+        />
+        {mediaUndo !== null ? (
+          <Note
+            tone="info"
+            text={mediaUndo.text}
+            testID="host-ad-media-undo"
+            actions={
+              mediaUndo.creativeIds || mediaUndo.restore ? (
+                <Button label={hb("media.undo")} variant="secondary" size="sm" onPress={() => void undoMedia()} testID="host-ad-media-undo-button" />
+              ) : undefined
+            }
           />
-        </View>
-        {setup.creatives.some((item) => item.kind === "image") ? (
-          <Text style={bs.caption}>{hb("creative.photoNote")}</Text>
-        ) : null}
-        {guidanceOk?.creatives_hint && pickedCreatives.length > 0 ? (
-          <Text style={bs.caption}>{hb("creative.fewHint")}</Text>
-        ) : null}
-        {adVideoProcessing ? (
-          <View style={styles.inlineRow} accessibilityLiveRegion="polite">
-            <ActivityIndicator size="small" color={color.text2} />
-            <Text style={bs.small}>{hb("creative.preparing")}</Text>
-          </View>
         ) : null}
         {unlinkedCreativeId !== null ? (
           <Button
@@ -3097,7 +3472,14 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 </View>
                 {row.state === "question" && row.note === "wider" ? (
                   <>
-                    <Text style={bs.small}>{hb("review.wider")}</Text>
+                    {/* #4238: the server's own reasons, never a guess about the area. */}
+                    {wideningLines(row.platform).length > 0 ? (
+                      wideningLines(row.platform).map((line) => (
+                        <Text key={line} style={bs.small} testID={`host-ad-widening-${row.platform}`}>{line}</Text>
+                      ))
+                    ) : (
+                      <Text style={bs.small}>{hb("review.wider")}</Text>
+                    )}
                     <View style={bs.actions}>
                       <Button
                         label={hb("review.turnOff", { app: appLabel(row.platform) })}
@@ -3110,7 +3492,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                         }}
                       />
                       <Button
-                        label={hb("review.useWider")}
+                        label={wideningAcceptLabel(row.platform)}
                         variant="secondary"
                         size="sm"
                         onPress={() => {
@@ -3124,7 +3506,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                 ) : null}
                 {row.state === "question" && row.note === "visits" ? (
                   <>
-                    <Text style={bs.small}>{hb("review.visitsQuestion", { unit })}</Text>
+                    <Text style={bs.small} testID={`host-ad-visits-question-${row.platform}`}>{visitsQuestion(row.platform)}</Text>
                     <View style={bs.actions}>
                       <Button
                         label={hb("review.turnOff", { app: appLabel(row.platform) })}
@@ -3138,7 +3520,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                         }}
                       />
                       <Button
-                        label={hb("review.runAnyway")}
+                        label={hb("review.aimVisits")}
                         variant="secondary"
                         size="sm"
                         onPress={() => {
@@ -3206,7 +3588,12 @@ export default function HostAdCreateRoute(): React.ReactElement {
           {hb("review.feeLine", { ads: money(hostAdCreditFromPay(holdPayCents)) })}
         </Text>
       </BuilderCard>
-      <View style={bs.stack}>
+      <View
+        style={bs.stack}
+        onLayout={(event) => {
+          rightsYRef.current = event.nativeEvent.layout.y;
+        }}
+      >
         <BuilderLabel>{hb("review.media")}</BuilderLabel>
         <BuilderList>
           <ValueRow
@@ -3221,10 +3608,16 @@ export default function HostAdCreateRoute(): React.ReactElement {
           label={hb("review.rightsConfirm")}
           onToggle={() => {
             setRightsConfirmed((value) => !value);
+            setRightsMissing(false);
             touch();
           }}
           testID="host-ad-rights"
         />
+        {rightsMissing && !rightsConfirmed ? (
+          <Text style={styles.rightsMissing} accessibilityLiveRegion="assertive" testID="host-ad-rights-missing">
+            {hb("review.rightsMissing")}
+          </Text>
+        ) : null}
         <CheckRow
           checked={aiGenerated}
           label={hb("review.ai")}
@@ -3265,10 +3658,67 @@ export default function HostAdCreateRoute(): React.ReactElement {
   };
   const isReview = activeStepId === "review";
   const stepError = stepErrors[activeStepId];
-  const reviewBlocker = isReview ? blockerText() : null;
-  const dockBlocker = launched ? null : isReview ? reviewBlocker : stepError;
+  const waitingForClips = isReview && preparingAdCount > 0;
+  const reviewBlocker = isReview
+    ? waitingForClips
+      ? hb("review.waitUploads", { count: preparingAdCount })
+      : blockerText()
+    : null;
+  const mediaSelecting = activeStepId === "creative" && mediaSelectMode && !launched;
+  const dockBlocker = launched || mediaSelecting ? null : isReview ? reviewBlocker : stepError;
+  const selectedCount = selectedAdIds.length + selectedLibraryIds.length + selectedFailedKeys.length;
   const primary = launched ? (
     <Button label={hb("review.seeAds")} fullWidth onPress={backToAds} testID="host-ad-see-ads" />
+  ) : mediaSelecting ? (
+    // #4238: select mode swaps Next for one compact row of actions.
+    <View style={styles.selectDock} testID="host-ad-media-select-dock">
+      <Text style={[bs.caption, styles.selectSummary]} accessibilityLiveRegion="polite">
+        {selectedCount === 0 ? hb("media.selectSummary") : hb("media.selected", { count: selectedCount })}
+      </Text>
+      <View style={styles.selectActions}>
+        {selectedAdIds.length + selectedFailedKeys.length > 0 || selectedLibraryIds.length === 0 ? (
+          <View style={styles.grow}>
+            <Button
+              label={
+                selectedAdIds.length + selectedFailedKeys.length > 0
+                  ? hb("media.removeSel", { count: selectedAdIds.length + selectedFailedKeys.length })
+                  : hb("media.removeSelNone")
+              }
+              variant="secondary"
+              fullWidth
+              disabled={selectedAdIds.length + selectedFailedKeys.length === 0}
+              onPress={() => {
+                removeFromAd(selectedAdIds);
+                dropUploads(selectedFailedKeys);
+                setMediaSelected([]);
+                setMediaSelectMode(false);
+              }}
+              testID="host-ad-media-remove-selected"
+            />
+          </View>
+        ) : null}
+        {selectedLibraryIds.length > 0 ? (
+          <View style={styles.grow}>
+            <Button
+              label={hb("media.archiveSel", { count: selectedLibraryIds.length })}
+              variant="destructiveOutline"
+              fullWidth
+              onPress={() => setSheet("archive")}
+              testID="host-ad-media-archive-selected"
+            />
+          </View>
+        ) : null}
+        <Button
+          label={hb("media.done")}
+          variant="secondary"
+          onPress={() => {
+            setMediaSelectMode(false);
+            setMediaSelected([]);
+          }}
+          testID="host-ad-media-select-done"
+        />
+      </View>
+    </View>
   ) : isReview ? (
     blocker?.kind === "top_up" && canTopUp ? (
       <Button
@@ -3368,6 +3818,13 @@ export default function HostAdCreateRoute(): React.ReactElement {
         <View style={styles.sheetBody}>
           <Text style={bs.h1} accessibilityRole="header">{hb("leave.title")}</Text>
           <Text style={bs.small}>{hb("leave.body")}</Text>
+          {pendingAdUploads + visibleUploads.filter((item) => item.placement === "library" && item.phase === "uploading").length > 0 ? (
+            <Text style={bs.small} testID="host-ad-leave-uploading">
+              {hb("leave.uploading", {
+                count: pendingAdUploads + visibleUploads.filter((item) => item.placement === "library" && item.phase === "uploading").length,
+              })}
+            </Text>
+          ) : null}
           <View style={styles.sheetActions}>
             <View style={styles.grow}>
               <Button label={hb("leave.leave")} variant="secondary" fullWidth onPress={() => { setSheet(null); backToAds(); }} testID="host-ad-leave" />
@@ -3426,21 +3883,93 @@ export default function HostAdCreateRoute(): React.ReactElement {
         errorMessage={cancelError}
         testID="host-ad-cancel-dialog"
       />
-      <CoverPickerSheet
-        visible={adVideoPickerVisible}
-        onClose={() => setAdVideoPickerVisible(false)}
-        // #3040 E-1d — `host-ad:<draftId>`: stable for this draft, so a
-        // reopened sheet re-attaches to the same in-flight ad video.
-        target={adCreativeCoverTarget(brandId, hostAdOwnerKey(draftIdRef.current ?? ""))}
-        initial={adVideoPatch}
-        onCoverChange={handleAdVideoChange}
-        onShowToast={(message) => setNotice(message)}
-        onCoverVideoProcessingChange={setAdVideoProcessing}
-        mediaMode="video-only"
-        title={hb("creative.add")}
-        confirmLabel={hb("creative.add")}
-        // #3040 AD-04 — "Fits Meta and TikTok. Snapchat needs 1080×1920."
-        adFitSummary={adVideoFitSummary}
+      {/* #4238 B7: one background upload per picked clip. Mounted at the
+          screen root so changing steps never stops an upload; a removed tile
+          stays mounted as `cancelled` so its job is cancelled. */}
+      <React.Suspense fallback={null}>
+      {brandId
+        ? uploads.map((item) => (
+            <HostAdVideoUploadSlot
+              key={item.key}
+              brandId={brandId}
+              item={item}
+              attempt={uploadAttempts[item.key] ?? 0}
+              cancelled={cancelledUploads.includes(item.key)}
+              onReport={handleUploadReport}
+            />
+          ))
+        : null}
+      </React.Suspense>
+      <Sheet
+        visible={duplicateAsk !== null}
+        onClose={() => setDuplicatePicks((current) => current.slice(1))}
+        snapPoint="half"
+        testID="host-ad-duplicate-sheet"
+      >
+        {duplicateAsk ? (
+          <View style={styles.sheetBody}>
+            <Text style={bs.h1} accessibilityRole="header">
+              {hb("media.dupTitle", { name: duplicateAsk.clipName })}
+            </Text>
+            <Text style={bs.small}>{hb("media.dupBody")}</Text>
+            <Button
+              label={hb("media.dupUse")}
+              fullWidth
+              onPress={() => {
+                if (adMediaRoom > 0) {
+                  addFromLibrary(duplicateAsk.clipId);
+                } else {
+                  setNotice(hb("media.dupFull", { name: duplicateAsk.clipName }));
+                }
+                setDuplicatePicks((current) => current.slice(1));
+              }}
+              testID="host-ad-duplicate-use"
+            />
+            <Button
+              label={hb("media.dupUpload")}
+              variant="secondary"
+              fullWidth
+              onPress={() => {
+                const draftId = draftIdRef.current;
+                if (draftId !== null) {
+                  const token = randomUuid().replace(/-/g, "").slice(0, 10);
+                  uploadSeqRef.current += 1;
+                  const item: HostAdUploadItem = {
+                    key: `upload-${uploadSeqRef.current}-${token}`,
+                    ownerKey: hostAdUploadOwnerKey(draftId, token),
+                    file: duplicateAsk.file,
+                    name: hostAdCreativeNameFor(duplicateAsk.file.fileName) || hb("media.untitled"),
+                    placement: adMediaRoom > 0 ? "ad" : "library",
+                    phase: "uploading",
+                    percent: 0,
+                    preparingSince: null,
+                    creativeId: null,
+                    failure: null,
+                    canRetry: false,
+                  };
+                  setUploads((current) => [...current, item]);
+                }
+                setDuplicatePicks((current) => current.slice(1));
+              }}
+              testID="host-ad-duplicate-upload"
+            />
+          </View>
+        ) : null}
+      </Sheet>
+      <ConfirmDialog
+        visible={sheet === "archive"}
+        onClose={() => {
+          if (!archiveBusy) setSheet(null);
+        }}
+        onConfirm={() => void confirmArchive()}
+        title={hb("media.archiveTitle", { count: selectedLibraryIds.length })}
+        description={hb("media.archiveBody")}
+        confirmLabel={hb("media.archiveConfirm")}
+        cancelLabel={hb("media.keep")}
+        destructive
+        confirmLoading={archiveBusy}
+        closeDisabled={archiveBusy}
+        testID="host-ad-archive-dialog"
       />
     </>
   );
@@ -3629,7 +4158,11 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: space[6] },
   centerText: { textAlign: "center", maxWidth: 360 },
   grow: { flex: 1, minWidth: 0 },
-  scroll: { paddingHorizontal: space[5], paddingTop: space[4], gap: space[6] },
+  selectDock: { gap: space[2], width: "100%" },
+  selectSummary: { textAlign: "center" },
+  selectActions: { flexDirection: "row", gap: space[2], alignItems: "center" },
+  rightsMissing: { ...type.caption, color: color.errorText },
+  scroll:{ paddingHorizontal: space[5], paddingTop: space[4], gap: space[6] },
   topBar: {
     flexDirection: "row",
     alignItems: "center",

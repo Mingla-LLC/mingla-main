@@ -231,6 +231,9 @@ function harness(scenario: Scenario) {
               error: { message: "fee_read_down", code: "XX000" },
             })
             : Promise.resolve({ data: [], error: null });
+        // Issue #3645: paid stays are their own fee-candidate family.
+        case "list_missing_stay_provider_fees":
+          return Promise.resolve({ data: [], error: null });
         case "run_payout_release_dark_sweep":
           return Promise.resolve({ data: { executed: 0 }, error: null });
         case "claim_payout_release_alerts": {
@@ -745,6 +748,8 @@ function railHarness(mode: RailMode, opts: { paystackClaimFails?: boolean; relea
       const ok = (data: unknown) => Promise.resolve({ data, error: null });
       switch (name) {
         case "list_missing_payout_source_fees": return ok([]);
+        // Issue #3645: paid stays are their own fee-candidate family.
+        case "list_missing_stay_provider_fees": return ok([]);
         case "run_payout_release_dark_sweep": return ok({ executed: 0 });
         case "claim_payout_release_alerts":
           alertClaims++;

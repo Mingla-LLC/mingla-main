@@ -32,10 +32,22 @@ export const MINGLA_KEYBOARD_TOOLBAR_THEME: KeyboardToolbarTheme = {
 // bar parked at the top of input-less sheets. Render nothing until a keyboard is
 // visible; the Done bar still appears whenever a keyboard opens. useKeyboardState
 // reads the nearest per-window KeyboardProvider.
-export const KeyboardToolbarRoot: React.FC = () => {
+// #4473 — a dark surface (e.g. a dark bottom sheet) asks for the dark bar
+// whatever the system appearance, so a light pill never floats over it.
+const MINGLA_KEYBOARD_TOOLBAR_DARK_THEME: KeyboardToolbarTheme = {
+  light: MINGLA_KEYBOARD_TOOLBAR_THEME.dark,
+  dark: MINGLA_KEYBOARD_TOOLBAR_THEME.dark,
+};
+
+export const KeyboardToolbarRoot: React.FC<{ tone?: "system" | "dark" }> = ({
+  tone = "system",
+}) => {
   const { isVisible } = useKeyboardState();
   if (!isVisible) return null;
   return (
-    <KeyboardToolbar showArrows={false} theme={MINGLA_KEYBOARD_TOOLBAR_THEME} />
+    <KeyboardToolbar
+      showArrows={false}
+      theme={tone === "dark" ? MINGLA_KEYBOARD_TOOLBAR_DARK_THEME : MINGLA_KEYBOARD_TOOLBAR_THEME}
+    />
   );
 };

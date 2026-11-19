@@ -44,6 +44,10 @@ import { Sheet } from "../ui/Sheet";
 import { Toast } from "../ui/Toast";
 
 import { RolePickerSheet } from "./RolePickerSheet";
+import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+
+/** #4238 — Finance and owner are the brand owner's to give. */
+const OWNER_ONLY_ROLES: readonly BrandRole[] = ["brand_owner", "finance_manager"];
 import {
   isVenueAccessAssignable,
   VenueAccessEditor,
@@ -92,6 +96,7 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
   const [name, setName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [role, setRole] = useState<BrandRole>("venue_staff");
+  const viewerIsOwner = useCurrentBrandRole(brandId).role === "brand_owner";
   const [venueGrants, setVenueGrants] = useState<VenueAccessGrant[]>([]);
   const [outgoingDisposition, setOutgoingDisposition] = useState<
     "leave" | "stay"
@@ -392,6 +397,7 @@ export const InviteBrandMemberSheet: React.FC<InviteBrandMemberSheetProps> = ({
         visible={rolePickerVisible}
         current={role}
         readOnly={rolePickerReadOnly}
+        lockedRoles={viewerIsOwner ? [] : OWNER_ONLY_ROLES}
         onClose={() => setRolePickerVisible(false)}
         onSelect={handlePickerSelect}
       />

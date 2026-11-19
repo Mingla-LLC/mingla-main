@@ -504,6 +504,28 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<
     "Website list item",
     "List item saved as a draft",
   ),
+  // #4453 milestone 7 — Ari's design pass (shown only while it is on for the brand).
+  propose_site_design_pass: row(
+    "Design the website",
+    "Website design",
+    "Website designed as a draft to review",
+  ),
+  propose_site_chrome: row(
+    "Update Website header",
+    "Website header",
+    "Header saved as a draft",
+  ),
+  // #4453 milestone 11 — "Add a page with Ari" (shown only while it is on for the brand).
+  propose_site_page: row(
+    "Add as a Draft",
+    "Website page",
+    "Page added as a Draft to review",
+  ),
+  answer_site_page_question: row(
+    "Add your answer",
+    "Website page",
+    "Answer added to the Draft page",
+  ),
   confirm_site_review: row(
     "Approve Website review",
     "Website review",
@@ -717,3 +739,18 @@ export function ownerSafeProposalFields(
   for (const [key, value] of Object.entries(args)) visit(key, value, 0);
   return out;
 }
+
+// #4453 m11 rework (spec v2.1 §3.1) — Ari's page plan card and sheet share these words.
+/** The fixed Mingla words of the plan card (spec v2.1 §3.1, word for word). */
+export const SITE_PAGE_PLAN_COPY = {
+  heading: "The plan · Draft",
+  addedToMenu: "Added to your menu as a Draft",
+  blocks: "Blocks",
+  have: "Content I have",
+  need: "I still need from you",
+  confirm: "Add as a Draft",
+  dismiss: "Ask for something else",
+  noGuess: "I won't guess prices, people or policies. Gaps stay hidden from visitors until you fill them.",
+  ariNeeds: "Ari needs this",
+} as const;
+export type SitePagePlanCopy = typeof SITE_PAGE_PLAN_COPY;

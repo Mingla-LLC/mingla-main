@@ -17,11 +17,16 @@ import {
   resolveCoreToCmsSigner,
 } from "../_shared/sitesSecurity.ts";
 import { observeSitesRequest } from "../_shared/sitesObservability.ts";
+import { isDesignKey } from "../_shared/siteContracts/designs.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { handleSitePlanRoute, planFailureFromRpc } from "./sitePlan.ts";
 import { handleSiteContentRoute } from "./siteContent.ts";
 import { handleSiteShareRoute } from "./siteShare.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ariFailureFrom, siteEvidence } from "./siteAri.ts";
+import { brandFlagOn, composeFacts, DESIGN_PASS_ACTIONS, liveFingerprints, planFormat } from "./designPass.ts";
+import { ARI_PAGE_ACTIONS } from "./ariPage.ts";
+import { BOOKING_IDENTITY_CAPABILITY, bookingLockRefusal, publicationActionScope } from "./bookingLock.ts";
+import { unreviewedRefusal } from "./reviewGate.ts";
 
 type JsonObject = Record<string, unknown>;
 const CUSTOMER_FAILURE_CODES = new Set<string>(SITES_SAFE_CUSTOMER_CODES);
@@ -167,6 +172,12 @@ async function callCms(
       | null;
     if (!response.ok || !payload?.ok) {
       const reportedCode = payload?.error?.code;
+      // #4453 PR 2 — the booking lock is owner-fixable (a link to change).
+      const bookingLock = bookingLockRefusal(payload?.error, args.operationId);
+      if (bookingLock) return bookingLock;
+      // #4453 — Draft sections block the publish until the owner reviews them.
+      const unreviewed = unreviewedRefusal(payload?.error, args.operationId);
+      if (unreviewed) return unreviewed;
       // #2829 W2 — an owner-fixable refusal is neither an outage nor ambiguous.
       const ownerFixable = sitesOwnerFixableRefusal(reportedCode, args.operationId);
       if (ownerFixable) return ownerFixable;
@@ -643,7 +654,10 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
       );
       if (setupError) return planFailureFromRpc(setupError.message, operationId);
       const designKey = (setup as { design_key?: unknown } | null)?.design_key;
-      if (designKey !== "atelier" && designKey !== "voyage") {
+      // #4453 — every registered design provisions (Core SQL, plan save,
+      // Studio and the renderer already accept all of them); a null or
+      // unknown key is still refused.
+      if (!isDesignKey(designKey)) {
         return sitesFailure("INVALID_STATE", 409, operationId);
       }
       // #2829 — an optional owner-confirmed label; otherwise Core derives it
@@ -795,6 +809,22 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         .eq("status", "active")
         .limit(1)
         .maybeSingle();
+      // #4453 PR 2 (booking lock) — the brand every button on the published
+      // site must resolve to: Core's own row, never the caller's.
+      const { data: actionBrand, error: actionBrandError } = action === "publications"
+        ? await db.service
+          .from("brands")
+          .select("slug,contact_email,contact_phone,social_links")
+          .eq("id", String((data as Record<string, unknown>).brand_id ?? ""))
+          .is("deleted_at", null)
+          .maybeSingle()
+        : { data: null, error: null };
+      // Fail closed: an unreadable brand stops the publish (retryable)
+      // rather than sending no scope.
+      if (actionBrandError) {
+        return sitesFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503, operationId);
+      }
+      const actionScope = publicationActionScope(actionBrand as Record<string, unknown> | null);
       return await callCms(db.service, {
         siteId,
         operationId,
@@ -808,6 +838,11 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
           primary_hostname: typeof primaryHost?.hostname === "string"
             ? primaryHost.hostname
             : null,
+          // Always Core's value: the caller's `action_scope` is overwritten.
+          action_scope: actionScope,
+          // Deploy-order handshake: this Core signs the brand's identity in,
+          // so Studio enforces the identity part of the lock (fail closed).
+          booking_identity: BOOKING_IDENTITY_CAPABILITY,
         },
       });
     }
@@ -861,7 +896,7 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
           },
           async (brandId) => {
             const { data } = await db.service.from("brands")
-              .select("id,name,description,city").eq("id", brandId).is("deleted_at", null).maybeSingle();
+              .select("id,name,description,city,slug,contact_email,contact_phone,social_links").eq("id", brandId).is("deleted_at", null).maybeSingle();
             return (data as JsonObject | null) ?? null;
           },
           siteId,
@@ -869,6 +904,67 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         );
         if (evidence === null) return ariFailureFrom(null, 503);
         payload.evidence = evidence;
+      }
+      // #4453 — while SITES_PROOF_PART is on, the sections Ari writes start Draft.
+      const proofFlag = await db.service.rpc("brand_site_proof_part_enabled");
+      if (!proofFlag.error && proofFlag.data === true) payload.review_drafts = true;
+      // #4453 milestone 5 — SITES_BOOKING_BLOCKS, signed in by Core (never the
+      // caller): Studio offers the live booking blocks only while it is on.
+      // Ari's own tools do not declare them until milestone 7 either way.
+      const bookingFlag = await db.service.rpc("brand_site_booking_blocks_enabled");
+      if (!bookingFlag.error && bookingFlag.data === true) payload.booking_blocks = true;
+      // #4453 milestone 7 — Ari's design pass: only while SITES_ARI_DESIGN_PASS
+      // covers this brand (Core's value, never the caller's). Studio gets the
+      // plan, Mingla's facts and other brands' live looks (no brand ids).
+      const serviceRpc = async (fn: string, args: Record<string, unknown>) => {
+        const { data, error } = await db.service.rpc(fn, args);
+        return { data, error: error ? { message: error.message } : null };
+      };
+      if (DESIGN_PASS_ACTIONS.has(action)) {
+        const brandId = String(auth.brand_id);
+        if (!(await brandFlagOn(serviceRpc, "SITES_ARI_DESIGN_PASS", brandId))) {
+          return ariFailureFrom({ error: { code: "DESIGN_PASS_OFF" } }, 409);
+        }
+        const { data: planRow } = await db.service.from("brand_site_plans")
+          .select("offerings_selected,venue_descriptor,story,design_key,value_points,faq,process_steps,quick_facts")
+          .eq("brand_id", brandId).maybeSingle();
+        const { data: brandRow } = await db.service.from("brands").select("address").eq("id", brandId).maybeSingle();
+        const plan = (planRow ?? {}) as Record<string, unknown>;
+        const planInputs = {
+          offerings_selected: Array.isArray(plan.offerings_selected) ? plan.offerings_selected.filter((v): v is string => typeof v === "string") : [],
+          venue_descriptor: typeof plan.venue_descriptor === "string" ? plan.venue_descriptor : null,
+          story: plan.story && typeof plan.story === "object" ? plan.story as Record<string, unknown> : null,
+          design_key: typeof plan.design_key === "string" ? plan.design_key : null,
+        };
+        const evidenceRows = Array.isArray((payload.evidence as { offerings?: unknown } | undefined)?.offerings)
+          ? (payload.evidence as { offerings: Record<string, unknown>[] }).offerings
+          : [];
+        payload.design_pass = {
+          plan: planInputs,
+          answers: {
+            value_points: Array.isArray(plan.value_points) ? plan.value_points : [],
+            faq: Array.isArray(plan.faq) ? plan.faq : [],
+            process_steps: Array.isArray(plan.process_steps) ? plan.process_steps : [],
+            quick_facts: plan.quick_facts && typeof plan.quick_facts === "object" ? plan.quick_facts : null,
+          },
+          address: typeof (brandRow as { address?: unknown } | null)?.address === "string"
+            ? String((brandRow as { address: string }).address).slice(0, 300)
+            : null,
+          facts: await composeFacts(serviceRpc, siteId, evidenceRows),
+          style_library: await brandFlagOn(serviceRpc, "SITES_STYLE_LIBRARY", brandId),
+          live_fingerprints: await liveFingerprints(serviceRpc, planFormat(planInputs), brandId),
+        };
+        payload.review_drafts = true;
+      }
+      // #4453 milestone 11 — "Add a page with Ari": only while SITES_ARI_ADD_PAGE
+      // covers this brand (Core's value, never the caller's). Every block Ari
+      // adds starts Draft; the page itself is written hidden (Draft by Ari).
+      if (ARI_PAGE_ACTIONS.has(action)) {
+        if (!(await brandFlagOn(serviceRpc, "SITES_ARI_ADD_PAGE", String(auth.brand_id)))) {
+          return ariFailureFrom({ error: { code: "ARI_ADD_PAGE_OFF" } }, 409);
+        }
+        payload.add_page = true;
+        payload.review_drafts = true;
       }
       const studio = await callCmsRaw(db.service, {
         siteId,
@@ -879,6 +975,15 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
       if (!studio) return ariFailureFrom(null, 503);
       if (studio.status >= 300 || studio.body?.ok !== true) {
         return ariFailureFrom(studio.body, studio.status);
+      }
+      // #4453 milestone 7 — the design pass's look, for the look-alike warning on other sites.
+      if (action === "propose_site_design_pass") {
+        const fingerprint = (studio.body.data as { fingerprint?: unknown } | null)?.fingerprint;
+        if (fingerprint && typeof fingerprint === "object") {
+          const recorded = await db.service.rpc("brand_site_record_fingerprint", { p_site_id: siteId, p_fingerprint: fingerprint });
+          // The look-alike check is a warning only: a failed write never fails the confirmed pass, but it is logged.
+          if (recorded.error) console.warn("[brand-site-control] design fingerprint not recorded", { site_id: siteId, code: recorded.error.code ?? null });
+        }
       }
       return sitesJson({ ok: true, data: studio.body.data }, 202);
     }

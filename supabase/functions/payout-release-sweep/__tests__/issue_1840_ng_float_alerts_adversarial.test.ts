@@ -143,6 +143,8 @@ function harness(scenario: Scenario) {
       rpcOrder.push(name);
       switch (name) {
         case "list_missing_payout_source_fees":
+        // Issue #3645: paid stays are their own fee-candidate family.
+        case "list_missing_stay_provider_fees":
           return Promise.resolve({ data: [], error: null });
         case "run_payout_release_dark_sweep":
           return Promise.resolve({ data: { executed: 0 }, error: null });

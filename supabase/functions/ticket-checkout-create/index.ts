@@ -161,6 +161,11 @@ import {
 } from "./doorPayCheckout.ts";
 import { doorPayReturnUrl } from "../_shared/doorPay.ts";
 import {
+  PAYOUT_HOLD_UNREADABLE_ERROR,
+  PAYOUT_HOLD_UNREADABLE_STATUS,
+  payoutHoldStampFromRead,
+} from "../_shared/payoutHoldStamp.ts";
+import {
   assertVatCountryResolved,
   BRAND_SETUP_INCOMPLETE,
   vatCountryMissing,
@@ -3849,6 +3854,30 @@ export const createTicketCheckoutCreateHandler = (
         }
       }
 
+      // #1178 [ng-split-removal] — read the payout-hold cut-over stamp for this
+      // event's brand. A STAMPED brand (brands.payout_hold_cutover_at IS NOT NULL)
+      // settles 100% to Mingla's main balance for later event-anchored release
+      // (#1177) instead of splitting to the organiser subaccount at charge time.
+      // The buyer `amount` (amountSubunits) is untouched either way.
+      // Issue #3645: a failed read refuses BEFORE any provider attempt is
+      // claimed. Guessing "unstamped" split a stamped brand's sale at charge
+      // time and the payout sweep then paid the organiser again.
+      const cutoverStamp = payoutHoldStampFromRead(
+        await supabase
+          .from("events")
+          .select("brands!inner(payout_hold_cutover_at)")
+          .eq("id", eventId)
+          .maybeSingle(),
+        "ticket-checkout-create",
+      );
+      if (!cutoverStamp.ok) {
+        return jsonResponse(
+          { error: PAYOUT_HOLD_UNREADABLE_ERROR },
+          PAYOUT_HOLD_UNREADABLE_STATUS,
+        );
+      }
+      const isCutover = cutoverStamp.isCutover;
+
       // #1930: one deterministic Paystack identity for the logical checkout.
       // Network ambiguity never rotates this reference to escape provider truth.
       const psRequestFingerprint = await sha256Hex(JSON.stringify({
@@ -3953,37 +3982,6 @@ export const createTicketCheckoutCreateHandler = (
       // Channels: NG = card|bank|ussd|bank_transfer — NEVER mobile_money
       // (Ghana-only). https://paystack.com/docs/payments/payment-channels/
       const psChannels = paystackChannelsForCountry("NG");
-
-      // #1178 [ng-split-removal] — read the payout-hold cut-over stamp for this
-      // event's brand. A STAMPED brand (brands.payout_hold_cutover_at IS NOT NULL)
-      // settles 100% to Mingla's main balance for later event-anchored release
-      // (#1177) instead of splitting to the organiser subaccount at charge time.
-      // Read-only embed mirroring the META-ORCH-1236 currency probe below; on ANY
-      // read error fail CLOSED to today's split behaviour (isCutover=false) so a
-      // transient failure can never drop an UNSTAMPED brand's subaccount split.
-      // The buyer `amount` (amountSubunits) is untouched either way.
-      const { data: cutoverRow, error: cutoverErr } = await supabase
-        .from("events")
-        .select("brands!inner(payout_hold_cutover_at)")
-        .eq("id", eventId)
-        .maybeSingle();
-      if (cutoverErr) {
-        console.error(
-          "[ticket-checkout-create] payout_hold_cutover_at read failed; treating as unstamped",
-          cutoverErr,
-        );
-      }
-      const isCutover = ((): boolean => {
-        const brandRel = (cutoverRow as
-          | {
-            brands?:
-              | { payout_hold_cutover_at?: string | null }
-              | { payout_hold_cutover_at?: string | null }[];
-          }
-          | null)?.brands;
-        const brand = Array.isArray(brandRel) ? brandRel[0] : brandRel;
-        return (brand?.payout_hold_cutover_at ?? null) !== null;
-      })();
 
       // amount = psBuyerTotalCents, ALREADY in kobo (the engine works in minor
       // units; NGN minor unit is kobo). DO NOT multiply by 100 again — the

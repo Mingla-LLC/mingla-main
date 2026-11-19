@@ -37,7 +37,7 @@ describe("#2829 A8 design `uses` matches the stylesheet", () => {
     });
 
     it(`${key}: font slots listed == font properties read`, () => {
-      const read = new Set([...css.matchAll(/var\(--font-(display|body|accent)\b/g)].map((match) => match[1]!));
+      const read = new Set([...css.matchAll(/var\(--font-(display|body|accent|label)\b/g)].map((match) => match[1]!));
       expect([...design.uses.font_slots].sort()).toEqual([...read].sort());
     });
   }

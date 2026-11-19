@@ -2,6 +2,7 @@
 // door-pay-code, door-tap-intent and terminal-connection-token.
 
 import { resolveProviderRouting } from "./paymentProvider.ts";
+import { payoutHoldStampFromRead } from "./payoutHoldStamp.ts";
 import {
   computeDoorMoney,
   doorErrorFromDb,
@@ -98,18 +99,20 @@ export async function loadDoorPricing(
     paystack_subaccount_code: string | null;
   };
   const routing = resolveProviderRouting(row);
-  const { data: brandRow } = await supabase
+  const brandRead = await supabase
     .from("events")
     .select("brands!inner(stripe_charges_enabled,payout_hold_cutover_at)")
     .eq("id", eventId)
     .maybeSingle();
-  const rel = (brandRow as { brands?: unknown } | null)?.brands;
+  // Issue #3645: an unreadable brand row is "not ready", never "unstamped".
+  const cutoverStamp = payoutHoldStampFromRead(brandRead, "door-pay");
+  if (!cutoverStamp.ok) return null;
+  const rel = (brandRead.data as { brands?: unknown } | null)?.brands;
   const brand = (Array.isArray(rel) ? rel[0] : rel) as
-    | { stripe_charges_enabled?: boolean; payout_hold_cutover_at?: string | null }
+    | { stripe_charges_enabled?: boolean }
     | undefined;
   if (routing.provider === "paystack") {
-    const cutover = (brand?.payout_hold_cutover_at ?? null) !== null;
-    if (!cutover && !row.paystack_subaccount_code) return null;
+    if (!cutoverStamp.isCutover && !row.paystack_subaccount_code) return null;
   } else if (!row.stripe_account_id || brand?.stripe_charges_enabled !== true) {
     return null;
   }

@@ -56,7 +56,9 @@ describe("#2829 W9a composer: the page set (SC-28)", () => {
     expect(main.menu.items.map((item) => item.slug)).toEqual(["events", "trips", "about", "contact"]);
     const wide = compose(plan(["trips", "events", "experiences", "venue_food_drink", "venue_play", "venue_stay"]));
     expect(wide.menu.items.map((item) => item.label)).toEqual(["Trips", "Events", "Experiences", "Menu", "Visit"]);
-    expect(wide.menu.more.map((item) => item.label)).toEqual(["Rooms", "About", "Contact"]);
+    // #4453 PR 2 — Rooms is left out until stays book through Mingla (NO_ROOMS).
+    expect(wide.menu.more.map((item) => item.label)).toEqual(["About", "Contact"]);
+    expect(wide.left_out).toEqual([{ key: "rooms", reason: "NO_ROOMS" }]);
   });
 
   it("offering pages are live lists with the rules table's empty state and a form (SC-29)", () => {
@@ -67,12 +69,14 @@ describe("#2829 W9a composer: the page set (SC-28)", () => {
     const events = compose(plan(["events"])).create.find((page) => page.slug === "events")!;
     expect(events.blocks[1]).toMatchObject({ empty_text: "Nothing on the calendar yet. Hear first" });
     expect(events.blocks[2]).toMatchObject({ blockType: "newsletter_signup", heading: "Hear first" });
-    const rooms = compose(plan(["venue_stay"])).create.find((page) => page.slug === "rooms")!;
-    expect(rooms.blocks[1]).toMatchObject({ blockType: "contact_form", heading: "Rooms opening soon" });
+    // #4453 PR 2 (booking lock) — venue pages book through Mingla; the
+    // "Message to book" CTA and the rooms enquiry form are gone
+    // (bookingLock.issue4453.test.ts pins the new pages in full).
+    expect(compose(plan(["venue_stay"])).create.find((page) => page.slug === "rooms")).toBeUndefined();
     const menu = compose(plan(["venue_food_drink"])).create.find((page) => page.slug === "menu")!;
-    expect(menu.blocks[1]).toMatchObject({ blockType: "cta", heading: "Our menu is on its way", label: "Message to book", href: "/contact" });
+    expect(menu.blocks[1]).toMatchObject({ blockType: "venue_reservation", heading: "Reserve a table" });
     const visit = compose(plan(["venue_play"])).create.find((page) => page.slug === "visit")!;
-    expect(visit.blocks[1]).toMatchObject({ blockType: "cta", heading: "Message to book", label: "Message to book", href: "/contact" });
+    expect(visit.blocks[1]).toMatchObject({ blockType: "venue_reservation", heading: "Book a visit" });
   });
 });
 

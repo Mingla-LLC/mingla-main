@@ -22,16 +22,18 @@ import { isPlannedOfferingPage, plannedPageIsEmpty } from "./generated/plannedPa
 import type { SiteOffering } from "./generated/offerings.ts";
 
 describe("#2829 W9a plan parts and options", () => {
-  it("has the 8 parts in order with part 7 optional", () => {
+  // #4453 — the setup part "What guests say and where you've been" joins after
+  // the story (9 parts; Core shows it only while SITES_PROOF_PART is on).
+  it("has the 9 parts in order with proof and first_offering optional", () => {
     expect(PLAN_PARTS.map((part) => part.key)).toEqual([
-      "offer", "brand", "look", "story", "approve", "build", "first_offering", "publish",
+      "offer", "brand", "look", "story", "proof", "approve", "build", "first_offering", "publish",
     ]);
-    expect(PLAN_PARTS.filter((part) => part.optional).map((part) => part.key)).toEqual(["first_offering"]);
+    expect(PLAN_PARTS.filter((part) => part.optional).map((part) => part.key)).toEqual(["proof", "first_offering"]);
     // Core accepts exactly these skips (brand_site_plans.skipped_parts CHECK).
-    expect(PLAN_PARTS.filter((part) => part.skippable).map((part) => part.key)).toEqual(["look", "first_offering"]);
+    expect(PLAN_PARTS.filter((part) => part.skippable).map((part) => part.key)).toEqual(["look", "proof", "first_offering"]);
     expect(PLAN_PARTS.map((part) => part.label)).toEqual([
-      "What you'll offer", "Your brand details", "Choose your design", "Your story", "Approve the plan",
-      "Build your pages", "Add your first trip or event", "Check and publish",
+      "What you'll offer", "Your brand details", "Choose your design", "Your story", "What guests say and where you've been",
+      "Approve the plan", "Build your pages", "Add your first trip or event", "Check and publish",
     ]);
   });
 

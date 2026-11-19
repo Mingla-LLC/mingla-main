@@ -277,6 +277,21 @@ export function resolveSitePath(artifact: SiteArtifact, path: string): SiteResol
   return { kind: "not_found" };
 }
 
+/**
+ * #4453 m11 rework (spec v2.1 §3.2-§3.3) — the owner's PRIVATE preview only:
+ * a Draft page from Ari at exactly this path (a v2 page marked `draft_by_ari`,
+ * always disabled), so the editor can show it before it is published. The
+ * live site, the sitemap and share links never call this: they resolve
+ * enabled pages only (`resolveSitePath`), and the publish leaves the page out.
+ */
+export function ariDraftPreviewPage(artifact: SiteArtifact, path: string): ArtifactPage | null {
+  if (!isV2Artifact(artifact) || !isTreeForm(artifact) || path === "") return null;
+  const marked = (artifact.pages as ReadonlyArray<{ path: string; enabled: boolean; draft_by_ari?: true }>)
+    .some((page) => page.path === path && page.draft_by_ari === true && page.enabled === false);
+  if (!marked) return null;
+  return sitePages(artifact).find((page) => page.path === path) ?? null;
+}
+
 /** Whether a page may be listed for search engines. */
 export function isIndexable(page: ArtifactPage): boolean {
   return page.enabled && page.seo?.noindex !== true;

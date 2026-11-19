@@ -22,6 +22,8 @@ export interface FlowFacts {
   stripeState: "none" | "started" | "submitted" | "action_needed";
   terms: boolean;
   details: boolean;
+  /** #4389 P8 rework — a bank is attached (server `bank_connected`). */
+  bankConnected?: boolean;
 }
 
 export const harness = {

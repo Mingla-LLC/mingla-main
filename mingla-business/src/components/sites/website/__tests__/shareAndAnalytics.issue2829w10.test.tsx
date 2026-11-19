@@ -162,7 +162,8 @@ describe("#2829 W10 Share a private preview (Settings)", () => {
     const words = textOf(root);
     expect(words).toContain("Made by Ada");
     expect(words).toContain("opened 2 times");
-    expect(words).toContain("1 earlier link no longer works");
+    // #4453 M8: ended links are listed one by one (expired and turned off), not counted.
+    expect(words).toContain("turned off");
     expect(has(root, `share-revoke-44444444-4444-4444-8444-444444444444`)).toBe(false);
     press(root, `share-revoke-${LINK.id}`);
     expect(mockRevoke).not.toHaveBeenCalled();

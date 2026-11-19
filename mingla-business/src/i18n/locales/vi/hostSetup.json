@@ -54,6 +54,7 @@
       "checkingBody": "Chúng tôi đang kiểm tra. Thường mất vài phút. Bạn có thể tiếp tục.",
       "actionNeeded": "Cần thêm một việc trước khi bạn có thể nhận thanh toán:",
       "ngDone": "Đã kết nối ngân hàng. Bạn đã sẵn sàng bán.",
+      "ngReadyNoBank": "Bạn đã sẵn sàng bán. Thêm ngân hàng trong mục Thanh toán để nhận tiền.",
       "done": "Mọi thứ đã sẵn sàng.",
       "refreshErrorTitle": "Chưa kiểm tra được lúc này.",
       "refreshErrorBody": "Chúng tôi sẽ cập nhật cho bạn.",

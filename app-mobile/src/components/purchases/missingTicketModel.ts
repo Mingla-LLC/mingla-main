@@ -106,3 +106,36 @@ export function mergeFoundEntries(
   for (const entry of second) byKey.set(`${entry.kind}:${entry.id}`, entry);
   return [...byKey.values()];
 }
+
+/**
+ * #4473 — the countries claim-contact can text a code to
+ * (supabase/functions/claim-contact SUPPORTED_PHONE_COUNTRIES). The add
+ * sheet's country picker offers only these, in this order.
+ */
+export const CLAIM_PHONE_COUNTRIES = ["US", "CA", "GB", "NG", "GH", "KE", "ZA"] as const;
+export type ClaimPhoneCountry = (typeof CLAIM_PHONE_COUNTRIES)[number];
+
+export function isClaimPhoneCountry(code: string | null | undefined): code is ClaimPhoneCountry {
+  return !!code && (CLAIM_PHONE_COUNTRIES as readonly string[]).includes(code);
+}
+
+/** The device's country when claim-contact can text it, else the US. */
+export function defaultClaimPhoneCountry(deviceCountry: string | null | undefined): ClaimPhoneCountry {
+  return isClaimPhoneCountry(deviceCountry) ? deviceCountry : "US";
+}
+
+const EXAMPLE_NATIONAL: Record<ClaimPhoneCountry, string> = {
+  US: "5551234567",
+  CA: "4165551234",
+  GB: "07400123456",
+  NG: "08021234567",
+  GH: "0241234567",
+  KE: "0712345678",
+  ZA: "0712345678",
+};
+
+/** An example mobile number written the way the selected country writes it. */
+export function claimPhonePlaceholder(country: string | null | undefined): string | undefined {
+  if (!isClaimPhoneCountry(country)) return undefined;
+  return formatPhoneNational(country, EXAMPLE_NATIONAL[country]).trim();
+}

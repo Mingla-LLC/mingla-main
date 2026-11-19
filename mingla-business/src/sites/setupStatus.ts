@@ -44,7 +44,8 @@ export function setupSteps(input: {
   for (const part of input.setupStatus?.parts ?? []) raw.set(part.key, part);
   const fallback = new Map(input.fallbackParts?.map((part) => [part.key, part]) ?? []);
   const fieldByKey = new Map(input.fields.map((field) => [field.key, field]));
-  const steps: SetupStep[] = PLAN_PARTS.map((meta) => {
+  // #4453 — "What guests say" shows only while Core lists it (SITES_PROOF_PART).
+  const steps: SetupStep[] = PLAN_PARTS.filter((meta) => meta.key !== "proof" || raw.has("proof") || fallback.has("proof")).map((meta) => {
     const key = meta.key;
     const part: RawSetupPart = raw.get(key) ?? {
       key,
@@ -250,4 +251,13 @@ export function setupDraftState(input: {
   }
   if (input.composeFailed) return { kind: "failed", retry: "compose" };
   return input.approved ? { kind: "building" } : { kind: "not_ready" };
+}
+
+/**
+ * #4453 — whether the draft-ready screen offers "Rebuild my pages": the
+ * owner's rank may manage the site, nobody else holds the setup lock, and the
+ * site is not paused. Core still re-checks the rank and the approved plan.
+ */
+export function canRebuildPages(input: { canManage: boolean | undefined; lockHeldByOther: boolean; paused: boolean | undefined }): boolean {
+  return input.canManage === true && !input.lockHeldByOther && input.paused !== true;
 }

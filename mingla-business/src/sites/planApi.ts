@@ -14,8 +14,11 @@ import {
   failureFromInvokeError,
   invokeBrandSiteControl,
 } from "../services/brandSitesService";
+// #4453 I-SITES-DESIGN-KEYS-ONE-LIST — design keys come from site-contracts (types only).
+import type { DesignKey } from "../../../packages/site-contracts/src/designs.ts";
+import type { FaqItem, ProcessStep, QuickFacts, ValuePoint } from "../../../packages/site-contracts/src/sitePlan.ts";
 import { brandSiteKeys } from "./brandSiteKeys";
-import { normalizeSitePlan, type SitePlanState } from "./sitePlanState";
+import { keepCoreFlags, normalizeSitePlan, type SitePlanState } from "./sitePlanState";
 import { useEnsureBrandSiteDraft } from "../hooks/useBrandSite";
 
 /*
@@ -42,6 +45,11 @@ export type SitePlanPatch = {
   approved_plan?: Record<string, string>;
   skipped_parts?: string[];
   active_part?: string | null;
+  // #4453 Q5-Q8 — the owner's own words, saved verbatim (Core validates them).
+  value_points?: ValuePoint[] | null;
+  faq?: FaqItem[] | null;
+  process_steps?: ProcessStep[] | null;
+  quick_facts?: QuickFacts | null;
 };
 
 export async function saveBrandSitePlan(input: {
@@ -73,7 +81,7 @@ export async function saveBrandSitePlan(input: {
 export async function saveBrandSitePlanDesign(input: {
   brandId: string;
   revision: number;
-  designKey: "atelier" | "voyage";
+  designKey: DesignKey;
   /** #2830 — "mingla" when the owner took Mingla's default design. */
   sourceType?: "owner" | "mingla";
 }): Promise<SitePlanState> {
@@ -138,7 +146,9 @@ export function useBrandSitePlan(brandId: string, enabled = true) {
 function useApplyPlan(brandId: string) {
   const queryClient = useQueryClient();
   return async (state: SitePlanState) => {
-    queryClient.setQueryData(brandSiteKeys.plan(brandId), state);
+    // Replies to writes carry no per-brand Sites values: keep the read's.
+    const previous = queryClient.getQueryData<SitePlanState>(brandSiteKeys.plan(brandId));
+    queryClient.setQueryData(brandSiteKeys.plan(brandId), keepCoreFlags(previous, state));
     // The Home to-do row and the site overview follow the plan.
     await queryClient.invalidateQueries({ queryKey: brandSiteKeys.planTodo(brandId) });
   };
@@ -160,7 +170,7 @@ export function useSaveBrandSitePlan(brandId: string) {
 export function useSaveBrandSitePlanDesign(brandId: string) {
   const apply = useApplyPlan(brandId);
   return useMutation({
-    mutationFn: (input: { revision: number; designKey: "atelier" | "voyage"; sourceType?: "owner" | "mingla" }) =>
+    mutationFn: (input: { revision: number; designKey: DesignKey; sourceType?: "owner" | "mingla" }) =>
       saveBrandSitePlanDesign({ brandId, ...input }),
     onSuccess: apply,
   });
@@ -200,6 +210,122 @@ export function useComposeBrandSiteFromPlan(brandId: string) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(brandId) }),
         queryClient.invalidateQueries({ queryKey: brandSiteKeys.detail(brandId) }),
+      ]);
+    },
+  });
+}
+
+/*
+ * #4453 (spec v1 §3.4) — the setup part "What guests say and where you've
+ * been": staged reviews, destinations and stories (before a site exists) and
+ * trips run before Mingla. Core checks every rank; reviews need the "real
+ * review" tick and a brand admin or owner.
+ */
+export type SetupContentKind = "review" | "destination" | "story";
+export type SetupContentItem = {
+  id: string;
+  kind: SetupContentKind;
+  payload: Record<string, string>;
+  confirmedReal: boolean;
+  materialized: boolean;
+  updatedAt: string;
+};
+export type SetupContentState = {
+  hasSite: boolean;
+  canConfirmReviews: boolean;
+  items: SetupContentItem[];
+  pastTrips: { eventId: string; title: string }[];
+};
+
+function normalizeSetupContent(value: unknown): SetupContentState {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const rows = Array.isArray(raw.items) ? raw.items : [];
+  const trips = Array.isArray(raw.past_trips) ? raw.past_trips : [];
+  return {
+    hasSite: raw.has_site === true,
+    canConfirmReviews: raw.can_confirm_reviews === true,
+    items: rows.flatMap((row) => {
+      const r = row && typeof row === "object" ? row as Record<string, unknown> : {};
+      if (typeof r.id !== "string" || (r.kind !== "review" && r.kind !== "destination" && r.kind !== "story")) return [];
+      const payload = r.payload && typeof r.payload === "object" ? r.payload as Record<string, unknown> : {};
+      return [{
+        id: r.id,
+        kind: r.kind,
+        payload: Object.fromEntries(Object.entries(payload).filter(([, v]) => typeof v === "string")) as Record<string, string>,
+        confirmedReal: r.confirmed_real === true,
+        materialized: r.materialized === true,
+        updatedAt: typeof r.updated_at === "string" ? r.updated_at : "",
+      }];
+    }),
+    pastTrips: trips.flatMap((row) => {
+      const r = row && typeof row === "object" ? row as Record<string, unknown> : {};
+      return typeof r.event_id === "string" ? [{ eventId: r.event_id, title: typeof r.title === "string" ? r.title : "Trip" }] : [];
+    }),
+  };
+}
+
+export async function getSetupContent(brandId: string): Promise<SetupContentState> {
+  return normalizeSetupContent(await invokeBrandSiteControl<unknown>(`/v1/brands/${brandId}/setup-content`, "GET"));
+}
+
+export function useSetupContent(brandId: string, enabled = true) {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: brandSiteKeys.setupContent(brandId),
+    queryFn: () => getSetupContent(brandId),
+    enabled: enabled && Boolean(user?.id) && Boolean(brandId),
+    staleTime: 30_000,
+  });
+}
+
+export type SetupContentSave = {
+  kind: SetupContentKind;
+  id?: string | null;
+  payload?: Record<string, string>;
+  confirmedReal?: boolean;
+  updatedAt?: string | null;
+  delete?: boolean;
+};
+
+export function useSaveSetupContent(brandId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SetupContentSave) => invokeBrandSiteControl<unknown>(`/v1/brands/${brandId}/setup-content`, "POST", {
+      kind: input.kind,
+      id: input.id ?? null,
+      payload: input.payload ?? {},
+      confirmed_real: input.confirmedReal === true,
+      updated_at: input.updatedAt ?? null,
+      delete: input.delete === true,
+    }),
+    // The list and the plan's counts and done-check both change.
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: brandSiteKeys.setupContent(brandId) }),
+        queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(brandId), exact: true }),
+      ]);
+    },
+  });
+}
+
+export type PastTripInput = { title: string; where: string; startDate: string; endDate: string; timezone: string; description?: string | null };
+
+export function useAddPastTrip(brandId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: PastTripInput) => invokeBrandSiteControl<unknown>(`/v1/brands/${brandId}/past-trips`, "POST", {
+      title: input.title,
+      where: input.where,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      timezone: input.timezone,
+      description: input.description ?? null,
+    }),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: brandSiteKeys.setupContent(brandId) }),
+        queryClient.invalidateQueries({ queryKey: brandSiteKeys.plan(brandId), exact: true }),
+        queryClient.invalidateQueries({ queryKey: brandSiteKeys.all }),
       ]);
     },
   });

@@ -77,7 +77,19 @@ export type ComposeResult = {
   menu: { items: Array<{ key: MenuEntryKey; label: string; slug: string }>; more: Array<{ key: MenuEntryKey; label: string; slug: string }> };
   /** Text shown in the header when the brand has no logo. */
   wordmark: string;
+  /**
+   * #4453 PR 2 — planned pages left out because nothing on them can be
+   * booked through Mingla yet, with the reason the plan shows the owner.
+   */
+  left_out: Array<{ key: PlannedPageKey; reason: "NO_ROOMS" }>;
 };
+
+/*
+ * #4453 PR 2 (booking lock) — a planned page with nothing bookable through
+ * Mingla is left out (v1 §4.2), never turned into an enquiry form. Rooms
+ * needs the stay blocks (#4453 PR 5); until then it is left out with NO_ROOMS.
+ */
+const LEFT_OUT_PAGES: Readonly<Partial<Record<PlannedPageKey, "NO_ROOMS">>> = { rooms: "NO_ROOMS" };
 
 const SLUG: Readonly<Record<Exclude<ComposedPageKey, "home">, string>> = {
   trips: "trips",
@@ -159,18 +171,24 @@ function offeringPage(page: "trips" | "events" | "experiences"): ComposedPage {
   };
 }
 
-function venuePage(page: "menu" | "visit" | "rooms"): ComposedPage {
-  const words = PLANNED_PAGE_EMPTY_STATES[page];
-  const label = PLANNED_PAGE_LABELS[page].menu;
-  const blocks: ComposedBlock[] = [pageHeader(label)];
-  if (page === "rooms") {
-    blocks.push({ blockType: "contact_form", heading: words.text, message_label: "Your dates and who's coming", submit_label: words.form_button });
-  } else {
-    // #2829 W11 (R1 E28) — until bookings are on, the reservation action is
-    // absent and the honest replacement says exactly what the guest can do.
-    blocks.push({ blockType: "cta", heading: words.text, label: "Message to book", href: "/contact" });
-  }
-  return { key: page, slug: SLUG[page], title: label, kind: "standard", blocks };
+/*
+ * #4453 PR 2 (booking lock) — venue pages book through Mingla. "Message to
+ * book" and the rooms enquiry form are gone. Menu: the reservation button and
+ * the Mingla menu (orderable when the venue takes orders). Visit: the
+ * reservation button and what's on. Each block resolves at publish from
+ * Mingla's own records and is dropped when the brand has no verified venue
+ * or no menu, so nothing here can point anywhere but Mingla. The words are
+ * Mingla's own (the planned-page labels).
+ */
+function venuePage(page: "menu" | "visit"): ComposedPage {
+  const labels = PLANNED_PAGE_LABELS[page];
+  const blocks: ComposedBlock[] = [
+    pageHeader(labels.menu),
+    { blockType: "venue_reservation", heading: labels.action },
+  ];
+  if (page === "menu") blocks.push({ blockType: "menu_board" });
+  else blocks.push({ blockType: "offering_grid", kind: "all", mode: "upcoming", offering_ids: [] });
+  return { key: page, slug: SLUG[page], title: labels.menu, kind: "standard", blocks };
 }
 
 export function composeFromPlan(input: {
@@ -189,8 +207,13 @@ export function composeFromPlan(input: {
   const who = clean(plan.story?.who, 300);
   const why = clean(plan.story?.why, 300);
   const mainAction = clean(plan.story?.main_action, 80);
-  const planned = plannedPagesFor(plan.offerings_selected);
-  const mainPage = mainActionPage(mainAction, plan.offerings_selected);
+  const allPlanned = plannedPagesFor(plan.offerings_selected);
+  const leftOut = allPlanned.filter((page) => LEFT_OUT_PAGES[page]).map((key) => ({ key, reason: LEFT_OUT_PAGES[key]! }));
+  const planned = allPlanned.filter((page) => !LEFT_OUT_PAGES[page]);
+  const plannedMain = mainActionPage(mainAction, plan.offerings_selected);
+  // A main action whose page is left out gets no button (it would lead nowhere).
+  const mainPage = plannedMain && LEFT_OUT_PAGES[plannedMain] ? null : plannedMain;
+  const mainLeftOut = plannedMain !== mainPage;
 
   // ── Home ────────────────────────────────────────────────────────────────
   const homeBlocks: ComposedBlock[] = [];
@@ -199,7 +222,7 @@ export function composeFromPlan(input: {
   homeBlocks.push(input.coverMediaId
     ? { blockType: "hero", heading: (tagline ?? name).slice(0, 120), media: input.coverMediaId, ctas: [] }
     : pageHeader(tagline ?? name));
-  if (mainAction && mainAction.toLowerCase() !== "join the list") {
+  if (mainAction && mainAction.toLowerCase() !== "join the list" && !mainLeftOut) {
     const href = mainPage ? `/${SLUG[mainPage]}` : "/contact";
     // The heading is the owner's own "why" answer, else the brand's name.
     // #3355 bug 21 -- the body is the owner's own "who comes with you"
@@ -238,7 +261,7 @@ export function composeFromPlan(input: {
 
   // ── Offering pages ──────────────────────────────────────────────────────
   const offeringPages = planned.map((page) =>
-    page === "trips" || page === "events" || page === "experiences" ? offeringPage(page) : venuePage(page));
+    page === "trips" || page === "events" || page === "experiences" ? offeringPage(page) : venuePage(page as "menu" | "visit"));
 
   // ── About ───────────────────────────────────────────────────────────────
   const aboutParagraphs = bio
@@ -285,11 +308,13 @@ export function composeFromPlan(input: {
 
   const menu = planMenu(plan.offerings_selected, mainAction);
   const withSlug = (entry: { key: MenuEntryKey; label: string }) => ({ ...entry, slug: SLUG[entry.key] });
+  const shown = (entry: { key: MenuEntryKey }) => !(entry.key in LEFT_OUT_PAGES);
   return {
     create,
     fillHome,
     pages: wanted.map((page) => page.key),
-    menu: { items: menu.items.map(withSlug), more: menu.more.map(withSlug) },
+    menu: { items: menu.items.filter(shown).map(withSlug), more: menu.more.filter(shown).map(withSlug) },
     wordmark: clean(input.currentWordmark, 60) ?? name.slice(0, 60),
+    left_out: leftOut,
   };
 }

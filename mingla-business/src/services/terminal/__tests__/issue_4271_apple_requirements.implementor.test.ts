@@ -167,19 +167,40 @@ describe("B1 release gate", () => {
     expect(isTapToPayIphoneEntitled()).toBe(false);
   });
 
-  // EAS signs `distribution: internal` iOS builds ad hoc, and Apple allows the
-  // development Tap to Pay entitlement only in development-signed apps, so any
-  // EAS profile that sets the switch fails Xcode signing. Entitled phone builds
-  // are local (`expo prebuild` + `expo run:ios --device`) only.
-  test("no eas.json profile sets MINGLA_TAP_TO_PAY_ENTITLEMENT", () => {
+  // Apple granted the Tap to Pay on iPhone publishing entitlement on 2026-11-18
+  // (Development, Ad hoc, App Store Connect). Only the store profile
+  // (`production`) carries the switch. Internal (ad hoc) and simulator profiles
+  // must not, so their signing and simulator builds stay unchanged.
+  test("only the production eas.json profile sets MINGLA_TAP_TO_PAY_ENTITLEMENT", () => {
+    type Profile = {
+      extends?: string;
+      distribution?: string;
+      ios?: { simulator?: boolean };
+      env?: Record<string, string>;
+    };
     const eas = JSON.parse(fs.readFileSync(path.join(BIZ_ROOT, "eas.json"), "utf8")) as {
-      build: Record<string, { env?: Record<string, string> }>;
+      build: Record<string, Profile>;
     };
     expect(Object.keys(eas.build)).toEqual(
       expect.arrayContaining(["development", "production", "preview"]),
     );
-    for (const [name, profile] of Object.entries(eas.build)) {
-      expect([name, profile.env?.MINGLA_TAP_TO_PAY_ENTITLEMENT]).toEqual([name, undefined]);
+    const resolve = (name: string): Profile => {
+      const p = eas.build[name];
+      if (!p.extends) return p;
+      const base = resolve(p.extends);
+      return {
+        ...base,
+        ...p,
+        ios: { ...base.ios, ...p.ios },
+        env: { ...base.env, ...p.env },
+      };
+    };
+    expect(resolve("production").env?.MINGLA_TAP_TO_PAY_ENTITLEMENT).toBe("1");
+    for (const name of Object.keys(eas.build)) {
+      const r = resolve(name);
+      if (r.distribution === "internal" || r.ios?.simulator === true) {
+        expect([name, r.env?.MINGLA_TAP_TO_PAY_ENTITLEMENT]).not.toEqual([name, "1"]);
+      }
     }
   });
 

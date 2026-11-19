@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, type AnchorHTMLAttributes, type ComponentProps, type FormHTMLAttributes, type ReactNode } from "react";
+import type { AssetCredential } from "../lib/assetCredential";
 import { previewFormTarget, previewHref, previewRenderHref, type PreviewLinkTarget } from "../lib/sharedPreviewHref";
 
 /*
@@ -22,14 +23,17 @@ export type PreviewScope = {
   target: PreviewLinkTarget;
   /** The page showing (`about`, or empty for home). */
   path: string;
-  /** The artifact key this preview's own assets carry (a share link has one too, server-side). */
-  assetKey: string;
+  /**
+   * What this preview's own assets carry: the owner's preview key, or (#4453
+   * M11) a share link's own token. A share view never holds the preview key.
+   */
+  assetKey: AssetCredential;
 };
 
 const PreviewScopeContext = createContext<PreviewScope | null>(null);
 
 /** The key this preview's own assets carry, or null on a public page. */
-export function usePreviewAssetKey(): string | null {
+export function usePreviewAssetKey(): AssetCredential | null {
   return useContext(PreviewScopeContext)?.assetKey ?? null;
 }
 

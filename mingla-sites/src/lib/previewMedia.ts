@@ -1,6 +1,10 @@
+import type { OfferingDetailView } from "./offeringDetail";
 import type { LiveOfferings } from "./offeringCards";
+import { assetQuery, type AssetCredential } from "./assetCredential";
 import { loadPreviewArtifact, parsePreviewArtifactKey } from "./previewArtifact";
 import { resolveHostSite } from "./publication";
+import { loadSharedPreview, SHARE_TOKEN } from "./shareLinks";
+import { withSharedView } from "./sharedView";
 import type { SiteArtifact } from "./siteArtifact";
 
 /*
@@ -53,14 +57,74 @@ export async function previewArtifactForAsset(rawKey: string, host: string, now 
   return value;
 }
 
+/*
+ * #4453 milestone 11 — a share link's own assets (`?s=<share token>`).
+ *
+ * The share token, never the preview key, opens them. The artifact answered is
+ * the SHARE VIEW of the site's newest preview (`withSharedView`: no hidden or
+ * Draft-by-Ari page, no link to one), and its media list is narrowed to the
+ * files that view itself names (by URL or id), so a picture only a hidden or Draft page uses
+ * is a 404 too. #4453 final pass (tester P3-1, comment 6945336387): Core is
+ * asked on EVERY share-asset request (no time hold), so a revoked or expired
+ * link's media are refused at once. Only lookups still in flight are shared by
+ * concurrent requests; nothing is kept once Core has answered. A token of
+ * another site, or none Core answers for, is a 404, and a failed lookup fails
+ * closed.
+ */
+const sharedInFlight = new Map<string, Promise<{ artifact: SiteArtifact; expiresAt: string | null }>>();
+
+/** Test hook: forget every in-flight share lookup. */
+export function clearSharedAssetCache(): void {
+  sharedInFlight.clear();
+}
+
+/** The share view with `media` cut to what the view's own pages, settings and blocks name. */
+export function shareScopedArtifact<T extends SiteArtifact>(artifact: T): T {
+  const view = withSharedView(artifact);
+  const { media, ...rest } = view as T & { media?: unknown };
+  if (!Array.isArray(media)) return view;
+  // A block names a picture by its URL (`/media/<id>/…`) or by its id; either names the id.
+  const named = JSON.stringify(rest).toLowerCase();
+  const kept = media.filter((item: { id?: unknown }) => typeof item?.id === "string" && named.includes(item.id.toLowerCase()));
+  return { ...view, media: kept } as T;
+}
+
+/** The share view a `?s=` opens on this host. Throws for anything else; there is no fallback. */
+export async function sharedArtifactForAsset(
+  rawToken: string,
+  host: string,
+  now = Date.now(),
+  load: typeof loadSharedPreview = loadSharedPreview,
+): Promise<SiteArtifact> {
+  if (!SHARE_TOKEN.test(rawToken)) throw new Error("NOT_FOUND");
+  const id = `${host}|${rawToken}`;
+  let value = sharedInFlight.get(id);
+  if (!value) {
+    const loaded = load(host, rawToken).then(({ artifact, expiresAt }) => ({ artifact: shareScopedArtifact(artifact), expiresAt }));
+    if (sharedInFlight.size >= MAX_HELD) sharedInFlight.clear();
+    sharedInFlight.set(id, loaded);
+    const forget = () => { if (sharedInFlight.get(id) === loaded) sharedInFlight.delete(id); };
+    loaded.then(forget, forget);
+    value = loaded;
+  }
+  const { artifact, expiresAt } = await value;
+  if (expiresAt !== null && !(Date.parse(expiresAt) > now)) throw new Error("NOT_FOUND");
+  return artifact;
+}
+
+/** True when an asset request carries any private credential (never shared-cached). */
+export function hasPrivateAssetCredential(search: URLSearchParams): boolean {
+  return search.has("k") || search.has("s");
+}
+
 const MEDIA_URL = /^\/media\/[0-9a-f-]{36}\/[^/?#\s]+$/i;
 const OM_URL = /\/om\/[A-Za-z0-9_-]{43}\/[a-z0-9]+/g;
 
-function keyed(url: string, key: string): string {
-  return `${url}?k=${encodeURIComponent(key)}`;
+function keyed(url: string, key: AssetCredential): string {
+  return `${url}?${assetQuery(key)}`;
 }
 
-function keyedMedia<T>(value: T, key: string): T {
+function keyedMedia<T>(value: T, key: AssetCredential): T {
   if (typeof value === "string") return (MEDIA_URL.test(value) ? keyed(value, key) : value) as T;
   if (Array.isArray(value)) return value.map((item) => keyedMedia(item, key)) as T;
   if (value && typeof value === "object") {
@@ -75,12 +139,12 @@ function keyedMedia<T>(value: T, key: string): T {
  * routes keep reading the stored bytes, and only a same-origin URL is touched,
  * so the key never goes to another host.
  */
-export function withPreviewMediaKey<T extends SiteArtifact>(artifact: T, key: string): T {
+export function withPreviewMediaKey<T extends SiteArtifact>(artifact: T, key: AssetCredential): T {
   return keyedMedia(artifact, key);
 }
 
 /** The same for the offering cards a preview draws (`src` and `srcset`). */
-export function withPreviewOfferingKey(live: LiveOfferings | undefined, key: string): LiveOfferings | undefined {
+export function withPreviewOfferingKey(live: LiveOfferings | undefined, key: AssetCredential): LiveOfferings | undefined {
   if (!live) return live;
   const stamp = (value: string) => value.replace(OM_URL, (url) => keyed(url, key));
   const cards = new Map([...live.cards].map(([id, card]) => [id, {
@@ -89,4 +153,23 @@ export function withPreviewOfferingKey(live: LiveOfferings | undefined, key: str
     coverSrcSet: card.coverSrcSet ? stamp(card.coverSrcSet) : card.coverSrcSet,
   }]));
   return { ...live, cards };
+}
+
+/**
+ * #4453 milestone 9 — a detail page in a preview: its cover, its "other"
+ * cards and its own photos (which already carry `?d=`) all carry the key.
+ */
+export function withPreviewDetailKey(detail: OfferingDetailView, key: AssetCredential): OfferingDetailView {
+  const stamp = (value: string) => value.replace(OM_URL, (url) => keyed(url, key));
+  const card = <C extends OfferingDetailView["card"]>(row: C): C => ({
+    ...row,
+    coverUrl: row.coverUrl ? stamp(row.coverUrl) : row.coverUrl,
+    coverSrcSet: row.coverSrcSet ? stamp(row.coverSrcSet) : row.coverSrcSet,
+  });
+  return {
+    ...detail,
+    card: card(detail.card),
+    others: detail.others.map(card),
+    photos: detail.photos.map((photo) => ({ ...photo, src: `${photo.src}&${assetQuery(key)}` })),
+  };
 }
