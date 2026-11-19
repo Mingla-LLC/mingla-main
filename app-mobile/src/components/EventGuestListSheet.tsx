@@ -763,9 +763,8 @@ export function EventGuestListSheet({
       const a11yLabel = item.isYou
         ? `${name}, you`
         : item.isNamed
-          ? line2 !== null
-            ? `${name}, ${line2}`
-            : name
+          ? (city !== null ? `${name}, ${city}` : name) +
+            (broughtBy !== null ? `, ${broughtBy}` : "")
           : guest.isMinglaUser
             ? "Someone, keeping it low-key"
             : "Guest, not on Mingla";

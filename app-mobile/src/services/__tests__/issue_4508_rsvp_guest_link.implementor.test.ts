@@ -151,3 +151,39 @@ Deno.test("C-4 This isn't me: released, already claimed, gone", () => {
   assertEquals(releaseOutcomeMessage("already_claimed").title, "This pass is already claimed");
   assertEquals(releaseOutcomeMessage("not_found").title, "This link doesn't work any more");
 });
+
+// ── wave B app surfaces: source contracts (these files import react-native) ──
+const src = (rel: string) => Deno.readTextFile(new URL(`../../${rel}`, import.meta.url));
+
+Deno.test("S-1 Connections: an RSVP close friend reads 'through {event}' (1.23)", async () => {
+  const circle = await src("services/circleService.ts");
+  assert(/value === 'rsvp_guest'/.test(circle), "rsvp_guest is a known relationship source");
+  const tile = await src("components/profile/circle/CircleAvatarTile.tsx");
+  assert(/relationshipSource !== 'rsvp_guest'/.test(tile) && /`through \$\{title\}`/.test(tile));
+});
+
+Deno.test("S-2 pass sheet: claimed / not claimed and Nudge with the guest's own link, no system text (1.24)", async () => {
+  const deck = await src("services/rsvpDeckService.ts");
+  assert(/typeof row\.invite_status === "string"/.test(deck), "only the owner's rows carry invite status");
+  const invites = await src("components/activity/RsvpPartyInvites.tsx");
+  assert(/"Claimed" : guest\.claimed === false \? "Not claimed yet"/.test(invites));
+  assert(/shareMessage\(buildGuestInviteMessage\(\{ \.\.\.message, link \}\)\)/.test(invites), "Nudge opens the paste message");
+  assert(!/functions\.invoke|rsvp-notify/.test(invites.split("export function RsvpBringSomeone")[0]), "Nudge sends nothing itself");
+});
+
+Deno.test("S-3 Bring someone too only when the host allows it (2.5)", async () => {
+  const sheet = await src("components/activity/RsvpPassSheet.tsx");
+  assert(/isGuest && canBring && row\.guestId !== null/.test(sheet));
+  const deck = await src("services/rsvpDeckService.ts");
+  assert(/op: "guest_bring"/.test(deck));
+});
+
+Deno.test("S-4 friends-going toggle writes notification_preferences.friends_going (2.3)", async () => {
+  const settings = await src("components/profile/AccountSettings.tsx");
+  assert(/updateNotifPref\('friends_going'/.test(settings));
+});
+
+Deno.test("S-5 Who's going shows Brought by only when the server row carries it (2.4)", async () => {
+  const sheet = await src("components/EventGuestListSheet.tsx");
+  assert(/typeof guest\.broughtByName === "string"/.test(sheet));
+});

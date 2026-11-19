@@ -207,7 +207,9 @@ test("logout clears typed contacts, plus-one drafts and a pending confirmation b
   expect(nodes(tree, "orch-1150-rsvp-name")[0].props.value).toBe("");
   expect(nodes(tree, "orch-1150-rsvp-email")[0].props.value).toBe("");
   expect(nodes(tree, "orch-1150-rsvp-phone")[0].props.value).toBe("");
-  await act(async () => { nodes(tree, "orch-1157-rsvp-plus-plus")[0].props.onPress(); });
+  // [#4508] a plus-one is added by number ("Who's coming with you?").
+  await act(async () => { nodes(tree, "issue-4508-rsvp-guest-phone-plain")[0].props.onChangeText("+1 555 987 6543"); });
+  await act(async () => { nodes(tree, "issue-4508-rsvp-party-number-add")[0].props.onPress(); });
   expect(state.plusCount).toBe(1);
   await update(tree, { identity: "account-b" }); expect(state.plusCount).toBe(0);
   await act(async () => { state.onMaybe(); });

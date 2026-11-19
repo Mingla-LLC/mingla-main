@@ -30,7 +30,11 @@ Deno.test("QA run 2: a cold invite carries the server's real SMS outcome", async
 Deno.test("QA run 2: group settings says 'Text message sent' only when it was", async () => {
   const board = strip(await read("components/board/BoardSettingsDropdown.tsx"));
   const cold = board.slice(board.indexOf('} else if (outcome.kind === "cold") {'), board.indexOf('} else if (outcome.kind === "cold") {') + 700);
-  assert(/if \(outcome\.texted\) \{[\s\S]*?invitedTextSent[\s\S]*?\} else \{\s*showInviteNotTextedAlert\(t, outcome\.phoneE164, outcome\.inviteLink\);/.test(cold), "texted gate");
+  // [#4508 2.2] the texted branch now also offers Copy message / Share, with the
+  // plan's own wording (sessionName); "Text message sent" lives in that alert.
+  assert(/if \(outcome\.texted\) \{\s*showInviteTextedAlert\(t, outcome\.phoneE164, outcome\.inviteLink, sessionName\);\s*\} else \{\s*showInviteNotTextedAlert\(t, outcome\.phoneE164, outcome\.inviteLink, sessionName\);/.test(cold), "texted gate");
+  const alert = strip(await read("utils/inviteNotTextedAlert.ts"));
+  assert(/invitedTextSent/.test(alert.slice(alert.indexOf("export function showInviteTextedAlert"))), "texted copy only in the texted alert");
 });
 
 // #4435: the pending collab sheet was deleted; its phone invite moved to Add
@@ -39,14 +43,16 @@ Deno.test("QA run 2: Add people's phone invite does not claim a text went out", 
   const sheet = strip(await read("components/chat/GroupPhoneInvite.tsx"));
   const cold = sheet.indexOf('if (outcome.kind === "cold" && !outcome.texted) {');
   assert(cold >= 0 && cold < sheet.indexOf("Alert.alert("), "not-texted branch comes before the success alert");
-  assert(/showInviteNotTextedAlert\(t, outcome\.phoneE164, outcome\.inviteLink\)/.test(sheet), "offers Share instead");
+  assert(/showInviteNotTextedAlert\(t, outcome\.phoneE164, outcome\.inviteLink, sessionName\)/.test(sheet), "offers Share instead");
 });
 
 Deno.test("QA run 2: the not-texted alert says so and offers Share", async () => {
   const alert = strip(await read("utils/inviteNotTextedAlert.ts"));
   assert(/t\("connections:fs_sent_invite_not_texted"\)/.test(alert), "title");
   assert(/text: t\("connections:af_share"\)/.test(alert), "Share button");
-  assert(/Share\.share\(\{ message: t\("connections:af_share_message", \{ link \}\) \}\)/.test(alert), "shares the link");
+  // [#4508 2.2] the message is built once (plan wording, else the friend wording).
+  assert(/const message = sessionInviteMessage\(t, link, sessionName\);/.test(alert) && /Share\.share\(\{ message \}\)/.test(alert), "shares the link");
+  assert(/t\("connections:af_share_message", \{ link \}\)/.test(alert), "friend wording when there is no plan");
   const en = JSON.parse(await read("i18n/locales/en/board.json"));
   assert(typeof en.boardSettingsDropdown.inviteNotTextedBody === "string", "body copy");
 });

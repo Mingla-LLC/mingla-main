@@ -92,13 +92,12 @@ export function GroupPhoneInvite({
         showInviteTextedAlert(t, outcome.phoneE164, outcome.inviteLink, sessionName);
         return;
       }
+      // A person already on Mingla: invited in the app.
       Alert.alert(
         t("board:boardSettingsDropdown.invited"),
-        outcome.kind === "warm"
-          ? outcome.displayName
-            ? t("board:boardSettingsDropdown.invitedUser", { name: outcome.displayName })
-            : t("board:boardSettingsDropdown.inviteSent")
-          : t("board:boardSettingsDropdown.invitedTextSent", { phone: outcome.phoneE164 }),
+        outcome.displayName
+          ? t("board:boardSettingsDropdown.invitedUser", { name: outcome.displayName })
+          : t("board:boardSettingsDropdown.inviteSent"),
       );
     } catch (error) {
       setPhoneError(error instanceof Error ? error.message : t("chat:group_action_failed"));
