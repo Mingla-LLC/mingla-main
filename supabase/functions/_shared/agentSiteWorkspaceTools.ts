@@ -36,6 +36,11 @@ import {
   MAX_NAV_ITEMS,
   MAX_NAV_LABEL_LENGTH,
 } from "./siteContracts/limits.ts";
+import {
+  BUTTON_SHAPES,
+  MOTION_PRESETS,
+  RADIUS_PRESETS,
+} from "./siteContracts/tokens.ts";
 
 // ---------------------------------------------------------------------------
 // The turn surface
@@ -297,9 +302,9 @@ const STEP = {
     design: { type: "string", enum: [...STYLE_KEYS] },
     tokens: tokenOverridesSchema(),
     fonts: fontChoicesSchema(),
-    radius: { type: "string", maxLength: 40 },
-    button_shape: { type: "string", maxLength: 40 },
-    motion: { type: "string", maxLength: 40 },
+    radius: { type: "string", enum: [...RADIUS_PRESETS] },
+    button_shape: { type: "string", enum: [...BUTTON_SHAPES] },
+    motion: { type: "string", enum: [...MOTION_PRESETS] },
     items: {
       type: "array",
       minItems: 1,
@@ -579,10 +584,17 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
         );
         if (problems.length) return problems.slice(0, 3).join("; ");
       }
-      for (const key of ["radius", "button_shape", "motion"]) {
-        if (step[key] !== undefined && !shortText(step[key], 40)) {
-          return `${at(key)} must be a short option name`;
-        }
+      for (
+        const [key, options] of [
+          ["radius", RADIUS_PRESETS],
+          ["button_shape", BUTTON_SHAPES],
+          ["motion", MOTION_PRESETS],
+        ] as const
+      ) {
+        if (
+          step[key] !== undefined && step[key] !== null &&
+          !(options as readonly string[]).includes(step[key] as string)
+        ) return `${at(key)} must be one of ${options.join(", ")}`;
       }
       return null;
     }

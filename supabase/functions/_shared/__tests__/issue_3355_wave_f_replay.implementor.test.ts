@@ -60,6 +60,9 @@ import {
   scoreRun,
 } from "../../../../scripts/ari/eval/replay/grade.mjs";
 
+// #4453: the Website workspace's scripted requests run in this harness too.
+import { replayWorkspaceFixtures } from "./_issue4453WorkspaceGrade.ts";
+
 const TOOL_NAMES = AGENT_TOOLS.map((tool) => tool.name);
 const ZONES: Record<string, string> = {
   "Africa/Lagos": "Africa/Lagos",
@@ -276,6 +279,17 @@ Deno.test("F1 CI replay: every fixture passes through the deterministic layers w
     assertEquals(graded.score, graded.passed ? 100 : graded.score);
   }
   assertEquals(failures, []);
+});
+
+Deno.test("F1 CI replay: the #4453 Website workspace requests pass with a stub model and a stub Core", async () => {
+  const graded = await replayWorkspaceFixtures();
+  assert(graded.length >= 24, `only ${graded.length} workspace threads`);
+  assertEquals(
+    graded.filter((thread) => !thread.passed).map((thread) => thread.id),
+    [],
+  );
+  // The same 100 the release gate holds the replay suite to.
+  assertEquals(scoreRun({ replay: graded }).replay, 100);
 });
 
 Deno.test("F1 CI replay: the FAVY10 turn proposes ends_at 2026-12-19T22:59:59Z (Flash's UTC end re-bound)", async () => {
