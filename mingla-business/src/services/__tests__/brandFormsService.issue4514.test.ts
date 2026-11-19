@@ -66,6 +66,8 @@ describe("RPC mapping", () => {
       version: 2,
       status: "live",
       attachedEventIds: ["e1"],
+      // wave 3: an older server without the field reads as no earlier guests.
+      earlierGuests: [],
     });
     expect(rpc).toHaveBeenCalledWith("biz_brand_form_publish", { p_form_id: "f1", p_draft_rev: 5 });
   });
@@ -97,6 +99,7 @@ describe("RPC mapping", () => {
       attachmentId: "a2",
       mode: "required_step",
       existingGuests: 12,
+      earlierGuests: 0,
       formStatus: "live",
       replacedAttachmentId: "a1",
     });

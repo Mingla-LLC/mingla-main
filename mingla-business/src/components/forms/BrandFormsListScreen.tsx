@@ -25,7 +25,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import { color, radius, space, type } from "../../constants/designSystem";
-import { useBrandFormsList, useCreateBrandForm, useReopenBrandForm } from "../../hooks/useBrandForms";
+import { useBrandFormCounts, useBrandFormsList, useCreateBrandForm, useReopenBrandForm } from "../../hooks/useBrandForms";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -38,7 +38,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Pill, type PillVariant } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
-import { FORMS_COPY, modeLabel } from "./brandFormsCopy";
+import { FORMS_COPY, formCountsLine, modeLabel } from "./brandFormsCopy";
 import { errorSentence, useFormsToast } from "./useFormsToast";
 
 const STATUS_VARIANT: Record<BrandFormStatus, PillVariant> = {
@@ -68,13 +68,15 @@ export function pagesLine(item: BrandFormListItem): string {
 
 const FormCard: React.FC<{
   item: BrandFormListItem;
+  counts: { answered: number; toAnswer: number } | undefined;
   busy: boolean;
   onEdit: () => void;
   onResponses: () => void;
   onReopen: () => void;
-}> = ({ item, busy, onEdit, onResponses, onReopen }) => {
+}> = ({ item, counts, busy, onEdit, onResponses, onReopen }) => {
   const { form } = item;
   const status = form.status;
+  const answers = status === "draft" ? null : formCountsLine(counts);
   return (
     <GlassCard variant="base" radius="lg" padding={space[4]} testID={`brand-form-card-${form.id}`}>
       <View style={styles.cardHead}>
@@ -89,6 +91,11 @@ const FormCard: React.FC<{
         {form.name}
       </Text>
       <Text style={styles.cardLine}>{pagesLine(item)}</Text>
+      {answers !== null ? (
+        <Text style={styles.cardSub} testID={`brand-form-counts-${form.id}`}>
+          {answers}
+        </Text>
+      ) : null}
       {status === "draft" ? <Text style={styles.cardSub}>{FORMS_COPY.publishToAdd}</Text> : null}
       <View style={styles.actions}>
         {status === "draft" ? (
@@ -151,6 +158,12 @@ export const BrandFormsListScreen: React.FC = () => {
   const brandId = brand?.id ?? null;
   const role = useCurrentBrandRole(brandId);
   const list = useBrandFormsList(brandId);
+  // Counts are extra: while they load or if they fail, the cards simply omit the line.
+  const counts = useBrandFormCounts(brandId);
+  const countByForm = useMemo(
+    () => new Map((counts.data?.forms ?? []).map((c) => [c.formId, c] as const)),
+    [counts.data],
+  );
   const create = useCreateBrandForm();
   const reopen = useReopenBrandForm();
   const { show, toast } = useFormsToast();
@@ -248,6 +261,7 @@ export const BrandFormsListScreen: React.FC = () => {
           <View key={item.form.id} style={isWideDesktop ? styles.cellWide : styles.cell}>
             <FormCard
               item={item}
+              counts={countByForm.get(item.form.id)}
               busy={reopeningId === item.form.id}
               onEdit={() => router.push(`/(tabs)/marketing/forms/${item.form.id}` as never)}
               onResponses={() => router.push(`/(tabs)/marketing/forms/${item.form.id}/responses` as never)}

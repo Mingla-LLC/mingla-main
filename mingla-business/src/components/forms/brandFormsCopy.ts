@@ -109,15 +109,18 @@ export const FORMS_COPY = {
   tabResponses: (n: number): string => `Responses (${n})`,
   tabNotAnswered: (n: number): string => `Not answered (${n})`,
   changeOrRemove: "Change or remove",
-  exportCsv: "Export CSV",
+  exportCsv: "Export guests and answers",
   exporting: "Preparing…",
-  exportedToast: "Answers export ready.",
+  exportPreparing: "Preparing the guest export with answers…",
+  exportStillPreparing: "The export is still being prepared. Tap Export again shortly to check it.",
+  exportedToast: "Guest export with answers ready.",
   exportFailed: "Couldn't prepare the export. Try again.",
   answeredEarlier: "Answered an earlier version",
   noAnswersYet: "No answers yet",
   noAnswersBody: "Answers appear here as guests respond.",
   allPages: "All pages",
   answeredCount: (n: number): string => `${n} answered`,
+  toAnswerCount: (n: number): string => `${n} to answer`,
   answersCount: (n: number): string => `${n} answers`,
   notAnsweredChip: "Not answered",
   addedByYou: "Added by you",
@@ -190,3 +193,11 @@ export const TILE_COPY = {
   answered: (n: number): string => `${n} answered`,
   answeredOf: (n: number, total: number): string => `${n} of ${total}`,
 } as const;
+
+/** Wave 3: "{n} answered · {m} to answer" on a published form's card; null while loading or failed. */
+export function formCountsLine(c: { answered: number; toAnswer: number } | undefined): string | null {
+  if (c === undefined) return null;
+  return c.toAnswer > 0
+    ? `${FORMS_COPY.answeredCount(c.answered)} · ${FORMS_COPY.toAnswerCount(c.toAnswer)}`
+    : FORMS_COPY.answeredCount(c.answered);
+}

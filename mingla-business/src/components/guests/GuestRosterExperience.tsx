@@ -150,7 +150,16 @@ export const rosterBookedLine = (
   return whens.length === 0 ? null : `Booked for ${whens.join(" · ")}`;
 };
 
-const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionMode: boolean; selected: boolean; timeZone: string | null }> = ({ row, onPress, selectionMode, selected, timeZone }) => {
+// #4514 wave 3: the answers chip and the drawer's answers, loaded through the one
+// forms lazy owner (never statically: it would pull the forms graph into this chunk).
+const GuestAnswersChip = React.lazy(() =>
+  import("../forms/formsOwner").then((m) => ({ default: m.GuestAnswersChip })),
+);
+const GuestAnswersPanel = React.lazy(() =>
+  import("../forms/formsOwner").then((m) => ({ default: m.GuestAnswersPanel })),
+);
+
+const RosterRow: React.FC<{ row: GuestRosterRow; eventId: string; onPress: () => void; selectionMode: boolean; selected: boolean; timeZone: string | null }> = ({ row, eventId, onPress, selectionMode, selected, timeZone }) => {
   const bookedLine = rosterBookedLine(row, timeZone);
   const invitationLabel = GUEST_ROSTER_INVITATION_LABELS[row.invitationStatus];
   const partyText = row.party.size > 1 ? `${row.party.size} people` : "1 person";
@@ -174,6 +183,9 @@ const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionM
           {row.contactLabel !== null ? <Text style={styles.rowContact} numberOfLines={1}>{row.contactLabel}</Text> : null}
           <View style={styles.pillLine}>
             <Pill variant={statusVariant(row.primaryStatus)}>{rosterPrimaryLabel(row)}</Pill>
+            <React.Suspense fallback={null}>
+              <GuestAnswersChip eventId={eventId} rsvpId={row.rsvpId} orderIds={row.orderIds} />
+            </React.Suspense>
             {invitationLabel !== null && row.primaryStatus !== "not_sent" && row.primaryStatus !== "sending" && row.primaryStatus !== "invite_failed" ? (
               <Pill variant={row.invitationStatus === "invited" ? "info" : "draft"}>{invitationLabel}</Pill>
             ) : null}
@@ -193,6 +205,7 @@ const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionM
 
 const GuestDetailSheet: React.FC<{
   row: GuestRosterRow | null;
+  eventId: string;
   onClose: () => void;
   onOpenOrder: (orderId: string) => void;
   onOpenGuestListOrder: (orderId: string) => void;
@@ -201,7 +214,7 @@ const GuestDetailSheet: React.FC<{
   onPreviewAction: (action: "reminder" | "retry_delivery") => void;
   onApproval: (decision: "approve" | "deny") => void;
   timeZone: string | null;
-}> = ({ row, onClose, onOpenOrder, onOpenGuestListOrder, actionsDisabled, actionPending, onPreviewAction, onApproval, timeZone }) => (
+}> = ({ row, eventId, onClose, onOpenOrder, onOpenGuestListOrder, actionsDisabled, actionPending, onPreviewAction, onApproval, timeZone }) => (
   <Sheet visible={row !== null} onClose={onClose} snapPoint="full">
     {row !== null ? (
       <ScrollView contentContainerStyle={styles.detailContent}>
@@ -223,6 +236,9 @@ const GuestDetailSheet: React.FC<{
         {rosterBookedLine(row, timeZone) !== null ? (
           <Text style={styles.truthNote} testID="guest-roster-detail-booked-start">{rosterBookedLine(row, timeZone)}</Text>
         ) : null}
+        <React.Suspense fallback={null}>
+          <GuestAnswersPanel eventId={eventId} rsvpId={row.rsvpId} orderIds={row.orderIds} />
+        </React.Suspense>
         {row.viaLinkLabel ? (
           <Text style={styles.truthNote}>
             {row.cameWithName ? `Added by ${row.cameWithName} · ` : ""}Via {row.viaLinkLabel}
@@ -526,7 +542,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           </View>
         ) : (
           <View style={[styles.list, isWideDesktop && styles.listDesktop]}>
-            {data.rows.map((row) => <RosterRow key={row.rosterKey} row={row} timeZone={timeZone ?? null} selectionMode={selectionMode} selected={selectedKeys.has(row.rosterKey)}
+            {data.rows.map((row) => <RosterRow key={row.rosterKey} row={row} eventId={eventId} timeZone={timeZone ?? null} selectionMode={selectionMode} selected={selectedKeys.has(row.rosterKey)}
               onPress={() => { if (selectionMode) toggleSelected(row); else setSelected(row); }} />)}
             {query.isFetchNextPageError ? (
               <View style={styles.loadMoreState} accessibilityRole="alert">
@@ -564,7 +580,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
         </View>
       </Sheet>
 
-      <GuestDetailSheet row={selected} timeZone={timeZone ?? null} onClose={() => { setSelected(null); setActionPreview(null); setActionMessage(null); }} onOpenOrder={onOpenOrder}
+      <GuestDetailSheet row={selected} eventId={eventId} timeZone={timeZone ?? null} onClose={() => { setSelected(null); setActionPreview(null); setActionMessage(null); }} onOpenOrder={onOpenOrder}
         onOpenGuestListOrder={onOpenGuestListOrder ?? onOpenOrder}
         actionsDisabled={query.isStaleTruth || query.isOffline} actionPending={actionPending}
         onPreviewAction={(action) => { void previewAction(action); }} onApproval={(decision) => { void setApproval(decision); }} />

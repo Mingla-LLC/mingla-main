@@ -20,6 +20,7 @@ import {
   createBrandForm,
   detachBrandForm,
   fetchBrandForm,
+  fetchBrandFormCounts,
   fetchBrandFormResponses,
   fetchBrandForms,
   fetchEventAttachment,
@@ -31,6 +32,7 @@ import {
   type AttachInput,
   type AttachResult,
   type BrandFormAttachment,
+  type BrandFormCounts,
   type BrandFormDetail,
   type BrandFormListItem,
   type BrandFormResponsesFilter,
@@ -43,6 +45,7 @@ import {
 } from "../services/brandFormsService";
 import type { BrandFormDefinition } from "../utils/brandFormDefinition";
 import { brandFormKeys } from "./brandFormKeys";
+import { indexRosterAnswers, type RosterAnswerIndex } from "../utils/guestRosterAnswers";
 
 export { brandFormKeys } from "./brandFormKeys";
 
@@ -60,6 +63,20 @@ export function useBrandFormsList(brandId: string | null): UseQueryResult<BrandF
     queryFn: () => {
       if (brandId === null) throw new Error("brand_required");
       return fetchBrandForms(brandId);
+    },
+  });
+}
+
+/** Wave 3: answered and to-answer per form (list cards) and per page (tiles), one read. */
+export function useBrandFormCounts(brandId: string | null): UseQueryResult<BrandFormCounts> {
+  const ready = useReady();
+  return useQuery<BrandFormCounts>({
+    queryKey: brandId === null ? ["brand-forms", "counts", "none"] : brandFormKeys.counts(brandId),
+    enabled: ready && brandId !== null,
+    staleTime: 15_000,
+    queryFn: () => {
+      if (brandId === null) throw new Error("brand_required");
+      return fetchBrandFormCounts(brandId);
     },
   });
 }
@@ -221,6 +238,33 @@ export function useDetachBrandForm(): UseMutationResult<void, Error, string> {
     mutationFn: (attachmentId: string) => detachBrandForm(attachmentId),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: brandFormKeys.all });
+    },
+  });
+}
+
+/**
+ * Wave 3: one page's answers for the guest list (the chip and the drawer): the
+ * page's active form, then its answers and not-answered list (up to 200 rows).
+ * Null when the page has no published form.
+ */
+export function useRosterAnswers(eventId: string | null): UseQueryResult<RosterAnswerIndex | null> {
+  const ready = useReady();
+  return useQuery<RosterAnswerIndex | null>({
+    queryKey: eventId === null ? ["brand-forms", "roster-answers", "none"] : brandFormKeys.rosterAnswers(eventId),
+    enabled: ready && eventId !== null,
+    staleTime: 15_000,
+    queryFn: async () => {
+      if (eventId === null) throw new Error("event_required");
+      const found = await fetchEventAttachment(eventId);
+      if (found === null || found.form.liveVersionId === null || found.form.status === "draft") return null;
+      const page = await fetchBrandFormResponses({
+        formId: found.form.id,
+        eventId,
+        filter: "all",
+        limit: 200,
+        offset: 0,
+      });
+      return indexRosterAnswers(found.form.name, page);
     },
   });
 }

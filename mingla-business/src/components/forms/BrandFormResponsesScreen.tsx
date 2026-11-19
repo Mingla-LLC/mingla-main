@@ -10,7 +10,7 @@
  * draws no control for them.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -151,16 +151,23 @@ export const BrandFormResponsesScreen: React.FC = () => {
     else router.replace("/(tabs)/marketing/forms" as never);
   }, [router]);
 
+  // Wave 3: the answers ride the guest roster export (one audited job per tap).
+  const exportJob = useRef<string | null>(null);
   const handleExport = useCallback((): void => {
-    if (formId === null || eventId === null || detail.data === undefined || exporting) return;
+    if (eventId === null || exporting) return;
     setExporting(true);
-    exportFormAnswers({ formId, formName: detail.data?.form.name ?? "form", eventId })
-      .then((method) => {
-        if (method !== "dismissed") show("success", FORMS_COPY.exportedToast);
-      })
+    show("success", FORMS_COPY.exportPreparing);
+    exportFormAnswers({
+      eventId,
+      pendingJobId: exportJob.current,
+      onJob: (jobId) => {
+        exportJob.current = jobId;
+      },
+    })
+      .then((result) => show("success", result === "opened" ? FORMS_COPY.exportedToast : FORMS_COPY.exportStillPreparing))
       .catch((error: unknown) => show("error", errorSentence(error, FORMS_COPY.exportFailed)))
       .finally(() => setExporting(false));
-  }, [formId, eventId, detail.data, exporting, show]);
+  }, [eventId, exporting, show]);
 
   const handleClose = useCallback((): void => {
     if (formId === null) return;

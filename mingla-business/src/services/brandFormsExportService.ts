@@ -1,68 +1,80 @@
 /**
- * #4514 — Export for one form's answers (event manager and up). Loaded on
- * demand by the Responses page, so the CSV helper and its dependencies stay
- * out of the eager bundle. See buildAnswersCsv for the [TRANSITIONAL] note:
- * the roster export (`brand-people-export`) does not take a form yet.
+ * #4514 — Export for one page's answers (event manager and up). Wave 3: the
+ * answers ride the EXISTING guest roster export (`brand-people-export`, an
+ * audited export job): the roster CSV plus one column per question of the page's
+ * form (§4.9; `brand_form_roster_export_answers`). There is no second exporter.
+ *
+ * Loaded on demand by the Responses page. It calls the export function directly
+ * (the same three requests the guest list makes) instead of importing the guest
+ * roster service, so no module is shared between two lazy chunks (Metro would
+ * hoist it into the eager Host web chunk, #4514 bundle budget).
  */
 
-import { Platform, Share } from "react-native";
+import { Linking } from "react-native";
 
-import { fetchBrandFormExport, fetchBrandFormResponses } from "./brandFormsService";
-import { answersCsvFilename, buildAnswersCsv, subjectName } from "../utils/brandFormResponses";
+const getSupabase = async () => (await import("./supabase")).supabase;
 
-const PAGE = 200;
-const MAX_PAGES = 25;
+export type FormAnswersExportResult = "opened" | "preparing";
 
-export type FormAnswersExportMethod = "downloaded" | "shared" | "dismissed";
+const POLL_TRIES = 15;
+const POLL_MS = 2_000;
 
-export async function exportFormAnswers(input: {
-  formId: string;
-  formName: string;
-  eventId: string;
-}): Promise<FormAnswersExportMethod> {
-  const feed = await fetchBrandFormExport(input.formId, input.eventId);
-  const names = new Map<string, string>();
-  let offset = 0;
-  for (let i = 0; i < MAX_PAGES; i += 1) {
-    const page = await fetchBrandFormResponses({
-      formId: input.formId,
-      eventId: input.eventId,
-      filter: "all",
-      limit: PAGE,
-      offset,
-    });
-    for (const row of page.rows) names.set(row.responseId, subjectName(row));
-    offset += PAGE;
-    if (offset >= page.total) break;
-  }
-  const csv = buildAnswersCsv(feed, names);
-  return deliverCsv(csv, answersCsvFilename(input.formName, new Date()));
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+const requestId = (): string => {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (c?.randomUUID !== undefined) return c.randomUUID();
+  const hex = (n: number): string => Math.floor(Math.random() * 16 ** n).toString(16).padStart(n, "0");
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${(8 + Math.floor(Math.random() * 4)).toString(16)}${hex(3)}-${hex(12)}`;
+};
+
+async function invoke(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.functions.invoke("brand-people-export", { body });
+  if (error !== null) throw new Error("Couldn't prepare the export. Try again.");
+  return isRecord(data) ? data : {};
 }
 
 /**
- * Hand the file to the host. Web downloads it; the apps open the share sheet
- * with the CSV text. A small local delivery on purpose: the shared roster CSV
- * helper pulls the whole orders and money graph into the eager Host web chunk
- * as soon as a second lazy screen imports it (bundle budget, #4514).
- * [TRANSITIONAL] Replaced when the roster export takes a form scope.
+ * Start (or keep waiting on) the page's guest export, then open the file. A job
+ * still running after ~30 s answers "preparing": tapping Export again checks the
+ * same job (the caller keeps `pendingJobId`).
  */
-async function deliverCsv(csv: string, filename: string): Promise<FormAnswersExportMethod> {
-  if (Platform.OS === "web") {
-    const g = globalThis as unknown as { Blob?: typeof Blob; URL?: typeof URL; document?: Document };
-    if (g.Blob === undefined || g.URL === undefined || g.document === undefined) {
-      throw new Error("Web download is not available in this browser.");
-    }
-    const url = g.URL.createObjectURL(new g.Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const anchor = g.document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    g.document.body.appendChild(anchor);
-    anchor.click();
-    g.document.body.removeChild(anchor);
-    g.URL.revokeObjectURL(url);
-    return "downloaded";
+export async function exportFormAnswers(input: {
+  eventId: string;
+  pendingJobId: string | null;
+  onJob: (jobId: string | null) => void;
+  wait?: (ms: number) => Promise<void>;
+}): Promise<FormAnswersExportResult> {
+  const wait = input.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let jobId = input.pendingJobId;
+  if (jobId === null) {
+    const requested = await invoke({
+      scope: "offering_guest_roster",
+      eventId: input.eventId,
+      filter: "all",
+      search: null,
+      sort: "action_priority",
+      filterSnapshot: {},
+      clientRequestId: requestId(),
+    });
+    jobId = typeof requested.jobId === "string" ? requested.jobId : null;
+    if (jobId === null) throw new Error("Couldn't prepare the export. Try again.");
   }
-  // SHARE-NON-CONTENT:file-export
-  const result = await Share.share({ message: csv, title: filename }, { dialogTitle: "Export answers", subject: filename });
-  return result.action === "sharedAction" ? "shared" : "dismissed";
+  input.onJob(jobId);
+  for (let attempt = 0; attempt < POLL_TRIES; attempt += 1) {
+    const status = await invoke({ operation: "status", jobId });
+    if (status.status === "failed" || status.status === "expired") {
+      input.onJob(null);
+      throw new Error("Couldn't prepare the export. Try again.");
+    }
+    if (status.status === "ready" && typeof status.signedUrl === "string") {
+      input.onJob(null);
+      await Linking.openURL(status.signedUrl);
+      return "opened";
+    }
+    await wait(POLL_MS);
+  }
+  return "preparing";
 }

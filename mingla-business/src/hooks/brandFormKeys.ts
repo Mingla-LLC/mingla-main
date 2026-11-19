@@ -11,4 +11,6 @@ export const brandFormKeys = {
   responses: (formId: string, eventId: string | null, filter: string) =>
     ["brand-forms", "responses", formId, eventId ?? "all", filter] as const,
   tile: (eventId: string) => ["brand-forms", "tile", eventId] as const,
+  counts: (brandId: string) => ["brand-forms", "counts", brandId] as const,
+  rosterAnswers: (eventId: string) => ["brand-forms", "roster-answers", eventId] as const,
 } as const;

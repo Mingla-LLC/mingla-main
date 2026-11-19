@@ -249,6 +249,8 @@ export interface BrandFormResponseRow {
   submittedAt: string;
   updatedAt: string;
   subject: { kind: string; id: string | null; name: string | null };
+  /** Wave 3: a signed-in answer's RSVP and orders at this page (null without a page). */
+  holder: { rsvpId: string | null; orderIds: string[] } | null;
 }
 
 export interface BrandFormNotAnswered {
@@ -611,6 +613,14 @@ const parseResponseRow = (value: unknown): BrandFormResponseRow => {
       id: strOrNull(subject.id),
       name: strOrNull(subject.name),
     },
+    holder: isRecord(r.holder)
+      ? {
+        rsvpId: strOrNull(r.holder.rsvpId),
+        orderIds: Array.isArray(r.holder.orderIds)
+          ? r.holder.orderIds.filter((x): x is string => typeof x === "string")
+          : [],
+      }
+      : null,
   };
 };
 
@@ -749,8 +759,10 @@ export interface PublishResult {
   versionId: string;
   version: number;
   status: BrandFormStatus;
-  /** Pages the form is attached to (for the "Ask earlier guests?" prompt in a later wave). */
+  /** Pages the form is attached to. */
   attachedEventIds: string[];
+  /** Wave 3 (C12): per live page, the guests who signed up and have not answered. */
+  earlierGuests: Array<{ eventId: string; count: number }>;
 }
 
 export async function publishBrandForm(formId: string, draftRev: number): Promise<PublishResult> {
@@ -768,6 +780,10 @@ export async function publishBrandForm(formId: string, draftRev: number): Promis
     attachedEventIds: arr(r.attachedEventIds ?? [], "publish.attachedEventIds").filter(
       (id): id is string => typeof id === "string",
     ),
+    earlierGuests: arr(r.earlierGuests ?? [], "publish.earlierGuests").flatMap((g) => {
+      const x = rec(g, "publish.earlierGuest");
+      return typeof x.eventId === "string" ? [{ eventId: x.eventId, count: count(x.count) }] : [];
+    }),
   };
 }
 
@@ -812,6 +828,8 @@ export interface AttachResult {
   attachmentId: string;
   mode: BrandFormMode;
   existingGuests: number;
+  /** Wave 3 (C12): signed up and not answered (0 unless the form is live). */
+  earlierGuests: number;
   formStatus: BrandFormStatus;
   replacedAttachmentId: string | null;
 }
@@ -831,6 +849,7 @@ export async function attachBrandForm(input: AttachInput): Promise<AttachResult>
     attachmentId: str(r.attachmentId, "attach.attachmentId"),
     mode: parseMode(r.mode),
     existingGuests: typeof r.existingGuests === "number" ? r.existingGuests : 0,
+    earlierGuests: count(r.earlierGuests),
     formStatus: parseStatus(r.formStatus),
     replacedAttachmentId: strOrNull(r.replacedAttachmentId),
   };
@@ -843,6 +862,54 @@ export async function detachBrandForm(attachmentId: string): Promise<void> {
   });
   if (error !== null) return failFrom(error, "Couldn't remove the form from this page. Try again.");
   if (rec(data, "detach").ok !== true) throw bad("detach.ok");
+}
+
+// ---------------------------------------------------------------------------
+// Counts (wave 3): one read for the forms list cards and the manage tiles
+// ---------------------------------------------------------------------------
+
+export interface BrandFormCount {
+  formId: string;
+  answered: number;
+  toAnswer: number;
+  pages: number;
+}
+
+export interface BrandFormPageCount {
+  eventId: string;
+  formId: string;
+  answered: number;
+  toAnswer: number;
+}
+
+export interface BrandFormCounts {
+  forms: BrandFormCount[];
+  pages: BrandFormPageCount[];
+}
+
+const count = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
+
+/** Answered and to-answer per form and per page (`biz_brand_form_counts`, marketing manager and up). */
+export async function fetchBrandFormCounts(brandId: string): Promise<BrandFormCounts> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc("biz_brand_form_counts", { p_brand_id: brandId });
+  if (error !== null) return failFrom(error, "Couldn't load the answer counts. Try again.");
+  const r = rec(data, "counts");
+  return {
+    forms: arr(r.forms ?? [], "counts.forms").map((f) => {
+      const x = rec(f, "counts.form");
+      return { formId: str(x.formId, "counts.formId"), answered: count(x.answered), toAnswer: count(x.toAnswer), pages: count(x.pages) };
+    }),
+    pages: arr(r.pages ?? [], "counts.pages").map((pg) => {
+      const x = rec(pg, "counts.page");
+      return {
+        eventId: str(x.eventId, "counts.eventId"),
+        formId: str(x.formId, "counts.page.formId"),
+        answered: count(x.answered),
+        toAnswer: count(x.toAnswer),
+      };
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -869,18 +936,14 @@ export async function fetchGuestQuestionsTile(eventId: string): Promise<GuestQue
   if (!published || found.form.status === "draft") {
     return { attachment: found.attachment, form: found.form, published, answered: 0, notAnswered: 0 };
   }
-  const page = await fetchBrandFormResponses({
-    formId: found.form.id,
-    eventId,
-    filter: "all",
-    limit: 1,
-    offset: 0,
-  });
+  // Wave 3: the one counts read (per page), not a page of responses.
+  const counts = await fetchBrandFormCounts(found.form.brandId);
+  const here = counts.pages.find((p) => p.eventId === eventId && p.formId === found.form.id);
   return {
     attachment: found.attachment,
     form: found.form,
     published,
-    answered: page.total,
-    notAnswered: page.notAnswered.length,
+    answered: here?.answered ?? 0,
+    notAnswered: here?.toAnswer ?? 0,
   };
 }

@@ -2,14 +2,21 @@
  * #4514 wave 2 — the Responses page's pure helpers (Summary bars, how an
  * answer reads, the answers CSV) and the builder preview's "Show only if".
  *
- * FAILS-ON-REVERT: dropping the formula guard, the hidden-answer drop or the
+ * FAILS-ON-REVERT: dropping the hidden-answer drop or the
  * option-label mapping turns a case red.
  */
 
-import type { BrandFormExport, BrandFormResponseRow, BrandFormResponsesPage } from "../../services/brandFormsService";
+import type { BrandFormResponseRow, BrandFormResponsesPage } from "../../services/brandFormsService";
 import { BRAND_FORM_SCHEMA, type BrandFormDefinition } from "../brandFormDefinition";
-import { missingRequired, previewSchema, visibleAnswers, visibleQuestions } from "../brandFormPreview";
-import { answerText, answersCsvFilename, buildAnswersCsv, subjectName, summarize, summaryDefinition } from "../brandFormResponses";
+import {
+  fromRendererAnswers,
+  missingRequired,
+  rendererSchema,
+  toRendererAnswers,
+  visibleAnswers,
+  visibleQuestions,
+} from "../../../../packages/form-rendering/brandFormRules";
+import { answerText, subjectName, summarize, summaryDefinition } from "../brandFormResponses";
 
 const def: BrandFormDefinition = {
   schema: BRAND_FORM_SCHEMA,
@@ -39,25 +46,33 @@ const def: BrandFormDefinition = {
   ],
 };
 
-describe("preview: Show only if", () => {
+// Wave 3: "Show only if" and the door line live in @mingla/form-rendering (the
+// wave 2 preview adapter is gone). Stored answers hold option IDS, as the server.
+describe("preview: Show only if (package)", () => {
   it("shows a dependent question only after its answer, and drops its answer when hidden", () => {
     expect(visibleQuestions(def, {}).map((q) => q.id)).toEqual(["q1"]);
-    expect(visibleQuestions(def, { q1: "Yes" }).map((q) => q.id)).toEqual(["q1", "q2"]);
-    expect(visibleQuestions(def, { q1: "No" }).map((q) => q.id)).toEqual(["q1"]);
-    expect(visibleAnswers(def, { q1: "No", q2: "A song" })).toEqual({ q1: "No" });
+    expect(visibleQuestions(def, { q1: "yes" }).map((q) => q.id)).toEqual(["q1", "q2"]);
+    expect(visibleQuestions(def, { q1: "no" }).map((q) => q.id)).toEqual(["q1"]);
+    expect(visibleAnswers(def, { q1: "no", q2: "A song" })).toEqual({ q1: "no" });
   });
 
   it("never requires a hidden question", () => {
     expect(missingRequired(def, {})).toBe(true);
-    expect(missingRequired(def, { q1: "No" })).toBe(false);
-    expect(missingRequired(def, { q1: "Yes" })).toBe(true);
-    expect(missingRequired(def, { q1: "Yes", q2: "A song" })).toBe(false);
+    expect(missingRequired(def, { q1: "no" })).toBe(false);
+    expect(missingRequired(def, { q1: "yes" })).toBe(true);
+    expect(missingRequired(def, { q1: "yes", q2: "A song" })).toBe(false);
   });
 
   it("draws a door question with 'Shown to door staff' under its help", () => {
-    const schema = previewSchema(def, { q1: "Yes" });
+    const schema = rendererSchema(def, { q1: "yes" });
     expect(schema.questions[1]?.helper).toBe("A few words\nShown to door staff");
     expect(schema.questions[0]?.options).toEqual(["Yes", "No"]);
+  });
+
+  it("converts option labels to ids and back, dropping a hidden answer", () => {
+    expect(toRendererAnswers(def, { q1: "yes", q2: "A song" })).toEqual({ q1: "Yes", q2: "A song" });
+    expect(fromRendererAnswers(def, { q1: "No", q2: "A song" })).toEqual({ q1: "no" });
+    expect(fromRendererAnswers(def, { q1: "Yes", q2: "A song" })).toEqual({ q1: "yes", q2: "A song" });
   });
 });
 
@@ -74,6 +89,7 @@ const row = (over: Partial<BrandFormResponseRow> = {}): BrandFormResponseRow => 
   submittedAt: "2026-11-19T10:00:00Z",
   updatedAt: "2026-11-19T10:00:00Z",
   subject: { kind: "rsvp", id: "x", name: "Amara N." },
+  holder: null,
   ...over,
 });
 
@@ -108,42 +124,5 @@ describe("Responses helpers", () => {
   it("names a guest without a name instead of leaving a blank", () => {
     expect(subjectName(row({ subject: { kind: "rsvp", id: null, name: "  " } }))).toBe("Guest");
     expect(subjectName(row({ subject: { kind: "user", id: null, name: null } }))).toBe("Mingla guest");
-  });
-});
-
-describe("answers CSV", () => {
-  const feed: BrandFormExport = {
-    columns: [
-      { key: "1:q1", version: 1, questionId: "q1", label: "Would you like to perform?", type: "single_choice" },
-      { key: "1:q2", version: 1, questionId: "q2", label: "What will you do?", type: "short_text" },
-    ],
-    rows: [
-      {
-        responseId: "r1",
-        version: 1,
-        submittedAt: "2026-11-19T10:00:00Z",
-        updatedAt: "2026-11-19T10:05:00Z",
-        verified: true,
-        values: { "1:q1": "Yes", "1:q2": "=HYPERLINK(\"http://x\"), and \"quotes\"" },
-      },
-    ],
-  };
-
-  it("has one column per question and version, quoted per RFC 4180", () => {
-    const csv = buildAnswersCsv(feed, new Map([["r1", "Amara N."]]));
-    const lines = csv.split("\r\n");
-    expect(lines[0]).toBe("Name,Answered,Updated,Form version,Verified,Would you like to perform? (v1),What will you do? (v1)");
-    expect(lines[1]).toContain("Amara N.,2026-11-19T10:00:00Z");
-  });
-
-  it("keeps a typed formula from running in a spreadsheet", () => {
-    const csv = buildAnswersCsv(feed, new Map());
-    expect(csv).toContain("\"'=HYPERLINK(\"\"http://x\"\"), and \"\"quotes\"\"\"");
-    expect(csv).not.toMatch(/,=HYPERLINK/);
-  });
-
-  it("names the file from the form and the date", () => {
-    expect(answersCsvFilename("Open Mic: Sign-up!", new Date(2026, 10, 19))).toBe("open-mic-sign-up-answers-2026-11-19.csv");
-    expect(answersCsvFilename("???", new Date(2026, 10, 19))).toBe("form-answers-2026-11-19.csv");
   });
 });

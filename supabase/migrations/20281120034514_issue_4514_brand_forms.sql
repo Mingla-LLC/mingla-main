@@ -1206,7 +1206,15 @@ BEGIN
                      'name', (SELECT o.buyer_name FROM public.orders o WHERE o.id = r.order_id))
               WHEN r.user_id IS NOT NULL THEN jsonb_build_object('kind', 'user', 'id', r.user_id)
               WHEN r.rsvp_guest_id IS NOT NULL THEN jsonb_build_object('kind', 'rsvp_guest', 'id', r.rsvp_guest_id)
-              ELSE jsonb_build_object('kind', 'contact', 'name', r.contact_name) END
+              ELSE jsonb_build_object('kind', 'contact', 'name', r.contact_name) END,
+           -- Wave 3: a signed-in answer, tied to the person's RSVP or order at this page,
+           -- so the guest list can show it on that guest (ids only; names stay as above).
+           'holder', CASE WHEN p_event_id IS NOT NULL AND r.user_id IS NOT NULL THEN jsonb_build_object(
+              'rsvpId', (SELECT x.id FROM public.event_rsvps x WHERE x.event_id = p_event_id AND x.user_id = r.user_id
+                          ORDER BY x.created_at DESC LIMIT 1),
+              'orderIds', COALESCE((SELECT jsonb_agg(o.id ORDER BY o.created_at) FROM public.orders o
+                          WHERE o.event_id = p_event_id AND o.buyer_user_id = r.user_id
+                            AND o.payment_status IN ('paid', 'partial_refund')), '[]'::jsonb)) END
          ) ORDER BY r.updated_at DESC, r.id), '[]'::jsonb) INTO v_rows
     FROM (SELECT * FROM (SELECT x.* FROM public.brand_form_event_responses(p_form_id, p_event_id) x WHERE COALESCE(p_filter, 'all') = 'all' OR x.version_id IS DISTINCT FROM v_f.live_version_id) s ORDER BY updated_at DESC, id
            LIMIT LEAST(GREATEST(COALESCE(p_limit, 50), 1), 200) OFFSET GREATEST(COALESCE(p_offset, 0), 0)) r

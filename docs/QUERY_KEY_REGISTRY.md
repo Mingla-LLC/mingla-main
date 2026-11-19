@@ -179,6 +179,8 @@ the client never estimates a discounted refund amount.
 | `eventAttachment(eventId)` | `['brand-forms', 'event-attachment', eventId]` |
 | `responses(formId, eventId \| null, filter)` | `['brand-forms', 'responses', formId, eventId ?? 'all', filter]` |
 | `tile(eventId)` | `['brand-forms', 'tile', eventId]` |
+| `counts(brandId)` | `['brand-forms', 'counts', brandId]` (wave 3: answered and to-answer per form and per page) |
+| `rosterAnswers(eventId)` | `['brand-forms', 'roster-answers', eventId]` (wave 3: the guest list's answers chip and drawer for one page) |
 
 **Scoping:** the list is keyed by BRAND, so switching brand never serves another
 brand's forms. No token or answer text enters a key; answers live only in

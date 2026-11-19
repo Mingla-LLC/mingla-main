@@ -1,10 +1,10 @@
 /**
  * #4514 — the Responses page's pure helpers: how an answer reads, the Summary
- * bars, the guest's name, and the answers CSV. No react-native, no supabase.
+ * bars and the guest's name. No react-native, no supabase. (The answers file is
+ * the guest roster export since wave 3.)
  */
 
 import type {
-  BrandFormExport,
   BrandFormResponseRow,
   BrandFormResponsesPage,
   BrandFormVersionDef,
@@ -120,58 +120,3 @@ export function summarize(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Answers CSV
-// ---------------------------------------------------------------------------
-
-const csvCell = (value: string): string =>
-  /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-
-/** A spreadsheet reads a leading = + - @ as a formula; keep it text. */
-const safeCell = (value: string): string => (/^[=+\-@]/.test(value) ? `'${value}` : value);
-
-/**
- * One header column per question and version, one row per response.
- * [TRANSITIONAL] The Name column comes from the Responses page rows; the
- * roster export (`brand-people-export`) does not take a form yet, so this is
- * the answers-only file. Exit: the roster export gains the form scope and
- * this serializer is deleted.
- */
-export function buildAnswersCsv(
-  feed: BrandFormExport,
-  names: ReadonlyMap<string, string>,
-): string {
-  const header = [
-    "Name",
-    "Answered",
-    "Updated",
-    "Form version",
-    "Verified",
-    ...feed.columns.map((c) => `${c.label} (v${c.version})`),
-  ];
-  const lines = [header.map(csvCell).join(",")];
-  for (const row of feed.rows) {
-    const cells = [
-      names.get(row.responseId) ?? "",
-      row.submittedAt,
-      row.updatedAt,
-      String(row.version),
-      row.verified ? "Yes" : "No",
-      ...feed.columns.map((c) => row.values[c.key] ?? ""),
-    ];
-    lines.push(cells.map((c) => csvCell(safeCell(c))).join(","));
-  }
-  return `${lines.join("\r\n")}\r\n`;
-}
-
-export const answersCsvFilename = (formName: string, now: Date): string => {
-  const slug = formName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${slug.length > 0 ? slug : "form"}-answers-${y}-${m}-${d}.csv`;
-};
