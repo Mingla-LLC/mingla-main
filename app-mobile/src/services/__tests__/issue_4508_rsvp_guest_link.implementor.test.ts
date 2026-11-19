@@ -207,3 +207,12 @@ Deno.test("C4 Who's going shows +N guests from unclaimedGuestCount", async () =>
   const sheet = await src("components/EventGuestListSheet.tsx");
   assert(/guest\.unclaimedGuestCount/.test(sheet) && /\+\$\{unclaimed\} \$\{unclaimed === 1 \? "guest" : "guests"\}/.test(sheet));
 });
+
+// ── second rework (#4508) ──
+Deno.test("R-6 Bring someone too needs a claimed pass, not just a matched one", async () => {
+  const deck = await src("services/rsvpDeckService.ts");
+  assert(
+    /row\.entity_type === "guest" &&\s+row\.guests_can_bring === true &&\s+row\.claimed === true/.test(deck),
+    "an unclaimed matched row never turns Bring someone too on",
+  );
+});

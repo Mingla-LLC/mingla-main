@@ -9,6 +9,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { buildRsvpPassPdf } from "../_shared/ticketPdf.ts";
+// #4508 R-9 — one display-name rule for a plus-one.
+import { rsvpGuestDisplayName } from "../_shared/rsvpGuestName.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -125,7 +127,8 @@ serve(async (req: Request): Promise<Response> => {
     role = "guest";
     ownerUserId = guest.matched_user_id;
     parentOwnerUserId = parent.user_id;
-    name = guest.name ?? "Guest";
+    // #4508 R-9: the 1.11 name (a number-only guest has no stored name).
+    name = await rsvpGuestDisplayName(admin, String(guest.id), guest.name);
     qrCode = guest.qr_code;
     state = parent as Record<string, unknown>;
   }

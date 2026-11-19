@@ -247,7 +247,7 @@ globalThis.fetch = async (input: string | URL | Request, init?: RequestInit) => 
     // notices; nothing is due in these fixtures.
     if (leaf === "rsvp_enqueue_guest_reminders") return jsonResponse(0);
     if (leaf === "issue_4508_take_friend_going_notices") return jsonResponse([]);
-    if (leaf === "issue_4508_take_friend_going_failures") return jsonResponse([]);
+    if (leaf === "issue_4508_list_friend_going_failures") return jsonResponse([]);
     if (leaf === "claim_rsvp_notification_deliveries") {
       seen.order.push("claim");
       seen.claimArgs.push(body);

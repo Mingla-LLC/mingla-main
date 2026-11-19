@@ -40,6 +40,8 @@ import { eventUpdateReplyTo } from "../_shared/email/eventUpdatedEmail.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
 // Issue #4422 — one ops alert for a guest reached on no channel.
 import { alertUnreachedGuests } from "../_shared/unreachedGuestAlert.ts";
+// Issue #4508 R-5 — friend-is-going enqueue failures raise an ops alert.
+import { alertFriendGoingFailures } from "./friendGoingFailureAlert.ts";
 // Issue #3827 — buyers and guests are told when a live listing changes.
 import {
   buildEventUpdateDispatch,
@@ -795,26 +797,10 @@ async function processClaim(
  * most once in the database before it is sent, so a friend never gets two
  * for one event; a failed send is logged, not retried. */
 async function sendFriendGoingNotices(admin: AdminClient): Promise<void> {
-  // P3-5: an enqueue that failed inside the RSVP trigger is recorded there,
-  // never dropped; each is reported here once.
-  const { data: failures, error: failuresError } = await admin.rpc(
-    "issue_4508_take_friend_going_failures",
-    { p_limit: 50 },
-  );
-  if (failuresError) {
-    console.error(
-      "[rsvp-notify] friend-going failure read failed",
-      failuresError.message,
-    );
-  } else if (Array.isArray(failures) && failures.length > 0) {
-    console.error(
-      "[rsvp-notify] friend-going enqueue failed",
-      JSON.stringify(
-        (failures as Array<{ event_id: string | null; sql_state: string }>)
-          .map((f) => ({ eventId: f.event_id, sqlState: f.sql_state })),
-      ),
-    );
-  }
+  // P3-5 / R-5: an enqueue that failed inside the RSVP trigger is recorded
+  // there, never dropped; one ops alert goes out for the unreported ones and
+  // they are marked reported only after it went.
+  await alertFriendGoingFailures(admin);
   const { data, error } = await admin.rpc(
     "issue_4508_take_friend_going_notices",
     { p_limit: 50 },

@@ -32,6 +32,38 @@
 --
 -- Application conflicts never raise 40001. Static SQL except where a column
 -- may be absent on the CI image. Re-created functions name their source.
+--
+-- LOCKS (R-8). The whole file is one transaction, so every lock it takes is
+-- held until COMMIT; splitting a foreign key into NOT VALID + VALIDATE inside
+-- one transaction saves nothing, so this file does not pretend to. What is
+-- held: ACCESS EXCLUSIVE on event_rsvp_guests, events, pairings,
+-- friend_requests and notification_preferences (column / constraint changes)
+-- from their statement to COMMIT; SHARE ROW EXCLUSIVE on events, event_rsvps
+-- and pairings (new tables' foreign keys). The SHARE ROW EXCLUSIVE lock on
+-- auth.users, which would stall sign-ins, is taken only by section 11 at the
+-- very end, so it is held for that section and the commit, not the whole
+-- file. Measured on the CI replay (empty tables): the whole file applies in
+-- 60-100 ms. In production add one scan each of event_rsvp_guests (the two
+-- foreign keys and sms_hold check), pairings and friend_requests (their source
+-- checks). lock_timeout only bounds the wait to acquire a lock; it does not
+-- shorten a hold.
+--
+-- ROLLBACK (R-7). Every table and column here is additive and may stay. To
+-- roll back behaviour, re-apply the previous definitions of the re-created
+-- functions from the migrations each section names: submit_event_rsvp from
+-- 20281119004508 (phase 0; which itself names 20271215004063),
+-- check_pairing_allowed from 20260505000000, fetch_user_rsvp_party_passes,
+-- host_list_rsvp_guests, peer_list_event_guests, business_update_rsvp_graph,
+-- fetch_user_going_rsvps, get_user_circle and biz_set_show_me_as_going from the
+-- sources named above each; drop the new #4508 functions, the two triggers
+-- (issue_4508_guest_show_me_owner_only, issue_4508_friend_going) and the
+-- event_rsvp_guests_owner_read change (restore it from 20280707324423). The S2
+-- patch of biz_resolve_brand_person_source reverses by swapping its two
+-- literals back. DATA NOTE: number-only guest rows (name and email NULL) and
+-- friend guests with no proven number (phone NULL) exist once this has run;
+-- the old submit_event_rsvp and old readers assume NOT NULL there, so roll the
+-- functions back only together with a decision about those rows (keep them
+-- and leave the columns nullable, or remove them with their parties' consent).
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -44,9 +76,8 @@ ALTER TABLE public.event_rsvp_guests ALTER COLUMN email DROP NOT NULL;
 -- C1: a friend picked from the friends list who has no proven number is still
 -- a guest (in-app and push only), so the number may be absent too.
 ALTER TABLE public.event_rsvp_guests ALTER COLUMN phone DROP NOT NULL;
--- Plain columns first; their foreign keys are added NOT VALID and validated in
--- separate statements below, so the ShareRowExclusive lock on auth.users is
--- held only for the catalogue change, never for a scan.
+-- Plain columns first. The invited_by_user_id foreign key to auth.users is
+-- added in section 11 at the end (see LOCKS above).
 ALTER TABLE public.event_rsvp_guests
   ADD COLUMN IF NOT EXISTS invited_by_user_id uuid NULL,
   ADD COLUMN IF NOT EXISTS claimed_at timestamptz NULL,
@@ -55,19 +86,10 @@ ALTER TABLE public.event_rsvp_guests
   ADD COLUMN IF NOT EXISTS sms_hold text NULL,
   ADD COLUMN IF NOT EXISTS show_me_as_going boolean NOT NULL DEFAULT false;
 ALTER TABLE public.event_rsvp_guests
-  DROP CONSTRAINT IF EXISTS event_rsvp_guests_invited_by_user_id_fkey;
-ALTER TABLE public.event_rsvp_guests
-  ADD CONSTRAINT event_rsvp_guests_invited_by_user_id_fkey
-  FOREIGN KEY (invited_by_user_id) REFERENCES auth.users(id) ON DELETE SET NULL NOT VALID;
-ALTER TABLE public.event_rsvp_guests
-  VALIDATE CONSTRAINT event_rsvp_guests_invited_by_user_id_fkey;
-ALTER TABLE public.event_rsvp_guests
   DROP CONSTRAINT IF EXISTS event_rsvp_guests_brought_by_guest_id_fkey;
 ALTER TABLE public.event_rsvp_guests
   ADD CONSTRAINT event_rsvp_guests_brought_by_guest_id_fkey
-  FOREIGN KEY (brought_by_guest_id) REFERENCES public.event_rsvp_guests(id) ON DELETE CASCADE NOT VALID;
-ALTER TABLE public.event_rsvp_guests
-  VALIDATE CONSTRAINT event_rsvp_guests_brought_by_guest_id_fkey;
+  FOREIGN KEY (brought_by_guest_id) REFERENCES public.event_rsvp_guests(id) ON DELETE CASCADE;
 ALTER TABLE public.event_rsvp_guests DROP CONSTRAINT IF EXISTS event_rsvp_guests_sms_hold_check;
 ALTER TABLE public.event_rsvp_guests ADD CONSTRAINT event_rsvp_guests_sms_hold_check
   CHECK (sms_hold IS NULL OR sms_hold IN ('no_phone', 'number_limit'));
@@ -112,6 +134,18 @@ DROP TRIGGER IF EXISTS issue_4508_guest_show_me_owner_only ON public.event_rsvp_
 CREATE TRIGGER issue_4508_guest_show_me_owner_only
   BEFORE UPDATE OF show_me_as_going ON public.event_rsvp_guests
   FOR EACH ROW EXECUTE FUNCTION public.tg_issue_4508_guest_show_me_owner_only();
+-- R-3 (C1): a friend picked from the friends list carries the number THEIR
+-- account proved, which the inviter never typed and must never read. The
+-- party owner's direct read (20280707324423) no longer covers those rows; the
+-- friend still reads their own row, hosts keep their read, and the apps read
+-- guests only through SECURITY DEFINER functions (which return no number for
+-- a friend guest), so texting, claiming and the host lists are unaffected.
+ALTER POLICY event_rsvp_guests_owner_read ON public.event_rsvp_guests
+  USING (((EXISTS ( SELECT 1
+     FROM public.event_rsvps r
+    WHERE ((r.id = event_rsvp_guests.rsvp_id) AND (r.user_id = ( SELECT auth.uid() AS uid)))))
+      AND NOT event_rsvp_guests.added_from_friend)
+    OR (matched_user_id = ( SELECT auth.uid() AS uid)));
 
 ALTER TABLE public.events
   ADD COLUMN IF NOT EXISTS rsvp_guests_can_bring boolean NOT NULL DEFAULT false;
@@ -141,7 +175,7 @@ CREATE TABLE IF NOT EXISTS public.rsvp_guest_releases (
   event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
   rsvp_id uuid NULL REFERENCES public.event_rsvps(id) ON DELETE SET NULL,
   phone_digits text NOT NULL CHECK (phone_digits ~ '^[0-9]{7,15}$'),
-  inviter_user_id uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  inviter_user_id uuid NULL,
   claim_code text NULL,
   released_at timestamptz NOT NULL DEFAULT now(),
   -- P3-8: who released it so far (user:<id> or rsvp:<party id>) and how often.
@@ -175,6 +209,27 @@ CREATE INDEX IF NOT EXISTS rsvp_guest_invite_log_event_idx
   ON public.rsvp_guest_invite_log (event_id, created_at);
 COMMENT ON TABLE public.rsvp_guest_invite_log IS
   '#4508 1.9: one row per guest number added by an inviter. inviter_key is user:<id> for a signed-in inviter and ip:<salted hash> for a signed-out one (never the unverified number they typed). The caps count these rows, so removing and re-adding does not reset them: 20 per inviter, 30 per event from signed-out inviters, and a number past 3 in 24 hours is added but not texted.';
+-- R-4: the signed-out daily text ceiling counts these rows across every event.
+CREATE INDEX IF NOT EXISTS rsvp_guest_invite_log_signed_out_idx
+  ON public.rsvp_guest_invite_log (created_at) WHERE inviter_key LIKE 'ip:%';
+
+-- R-1: every signed-out submit that carries guest numbers is counted here, in
+-- its own transaction BEFORE the submit runs (public-submit-rsvp calls
+-- rsvp_guest_signed_out_attempt first), so a submit the database refuses and
+-- rolls back still uses up the caller's and the event's allowance.
+CREATE TABLE IF NOT EXISTS public.rsvp_guest_signed_out_attempts (
+  id bigserial PRIMARY KEY,
+  inviter_key text NOT NULL CHECK (inviter_key LIKE 'ip:%'),
+  event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+  guest_count integer NOT NULL CHECK (guest_count > 0),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS rsvp_guest_signed_out_attempts_key_idx
+  ON public.rsvp_guest_signed_out_attempts (inviter_key, created_at);
+CREATE INDEX IF NOT EXISTS rsvp_guest_signed_out_attempts_event_idx
+  ON public.rsvp_guest_signed_out_attempts (event_id, created_at);
+COMMENT ON TABLE public.rsvp_guest_signed_out_attempts IS
+  '#4508 R-1: guest numbers a signed-out caller tried to add, accepted or refused, counted before the submit so a refused submit still counts (20 per address and 30 per event per rolling 24 hours).';
 
 -- P3-5: the friend-is-going enqueue never blocks an RSVP, and a failure is
 -- recorded here (the rsvp-notify tick reports unreported rows) rather than
@@ -190,13 +245,13 @@ CREATE TABLE IF NOT EXISTS public.rsvp_friend_going_failures (
 CREATE INDEX IF NOT EXISTS rsvp_friend_going_failures_unreported_idx
   ON public.rsvp_friend_going_failures (created_at) WHERE reported_at IS NULL;
 COMMENT ON TABLE public.rsvp_friend_going_failures IS
-  '#4508 P3-5: a friend-is-going enqueue that failed inside the RSVP trigger. Reported once by rsvp-notify (issue_4508_take_friend_going_failures).';
+  '#4508 P3-5: a friend-is-going enqueue that failed inside the RSVP trigger. Reported by one ops alert from rsvp-notify, then marked (issue_4508_list_friend_going_failures, issue_4508_mark_friend_going_failures_reported).';
 
 CREATE TABLE IF NOT EXISTS public.rsvp_guest_connections (
   guest_id uuid PRIMARY KEY,
   event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
-  inviter_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  guest_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  inviter_user_id uuid NOT NULL,
+  guest_user_id uuid NOT NULL,
   pairing_id uuid NULL REFERENCES public.pairings(id) ON DELETE SET NULL,
   outcome text NOT NULL CHECK (outcome IN ('connected', 'already_friends', 'blocked')),
   created_at timestamptz NOT NULL DEFAULT now()
@@ -209,8 +264,8 @@ COMMENT ON TABLE public.rsvp_guest_connections IS
 CREATE TABLE IF NOT EXISTS public.rsvp_friend_going_notices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
-  actor_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  friend_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  actor_user_id uuid NOT NULL,
+  friend_user_id uuid NOT NULL,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'taken')),
   created_at timestamptz NOT NULL DEFAULT now(),
   taken_at timestamptz NULL,
@@ -226,7 +281,7 @@ DECLARE v_table text;
 BEGIN
   FOREACH v_table IN ARRAY ARRAY['rsvp_guest_releases', 'rsvp_guest_invite_log',
     'rsvp_guest_connections', 'rsvp_friend_going_notices', 'rsvp_guest_released_codes',
-    'rsvp_friend_going_failures'] LOOP
+    'rsvp_friend_going_failures', 'rsvp_guest_signed_out_attempts'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_table);
     EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', v_table);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, anon, authenticated', v_table);
@@ -238,6 +293,8 @@ REVOKE ALL ON SEQUENCE public.rsvp_guest_invite_log_id_seq FROM PUBLIC, anon, au
 GRANT USAGE, SELECT ON SEQUENCE public.rsvp_guest_invite_log_id_seq TO service_role;
 REVOKE ALL ON SEQUENCE public.rsvp_friend_going_failures_id_seq FROM PUBLIC, anon, authenticated;
 GRANT USAGE, SELECT ON SEQUENCE public.rsvp_friend_going_failures_id_seq TO service_role;
+REVOKE ALL ON SEQUENCE public.rsvp_guest_signed_out_attempts_id_seq FROM PUBLIC, anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE public.rsvp_guest_signed_out_attempts_id_seq TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 2. Names
@@ -645,6 +702,87 @@ $function$;
 REVOKE ALL ON FUNCTION public.rsvp_guest_number_over_limit(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rsvp_guest_number_over_limit(text) TO service_role;
 
+-- R-14: callers take this transaction lock on a number before counting its
+-- invites, so two submits on different events cannot both read "2" and both
+-- text. Numbers are always locked in ascending key order (no deadlock).
+CREATE OR REPLACE FUNCTION public.rsvp_guest_lock_numbers(p_digits text[])
+RETURNS void
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp
+AS $function$
+DECLARE
+  v_key integer;
+BEGIN
+  FOR v_key IN
+    SELECT DISTINCT hashtext('rsvp_guest_number:' || d)
+      FROM unnest(coalesce(p_digits, '{}'::text[])) d
+     WHERE d IS NOT NULL AND d <> ''
+     ORDER BY 1
+  LOOP
+    PERFORM pg_advisory_xact_lock(4508, v_key);
+  END LOOP;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.rsvp_guest_lock_numbers(text[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_lock_numbers(text[]) TO service_role;
+
+-- R-4: a ceiling on guests texted for signed-out inviters across every event,
+-- per rolling 24 hours. Past it a signed-out guest is still added but not
+-- texted (sms_hold = number_limit), so a burst across many open events cannot
+-- run up an unbounded SMS bill. Signed-in inviters are not counted here.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_signed_out_text_ceiling_reached()
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+  SELECT (SELECT count(*) FROM public.rsvp_guest_invite_log l
+           WHERE l.inviter_key LIKE 'ip:%'
+             AND l.created_at > now() - interval '24 hours') >= 300;
+$function$;
+COMMENT ON FUNCTION public.rsvp_guest_signed_out_text_ceiling_reached() IS
+  '#4508 R-4: true once 300 guests were added by signed-out inviters in the last 24 hours, across all events.';
+REVOKE ALL ON FUNCTION public.rsvp_guest_signed_out_text_ceiling_reached() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_signed_out_text_ceiling_reached() TO service_role;
+
+-- R-1: counts a signed-out caller's guest numbers BEFORE the submit, in a
+-- transaction of its own, so a refused (rolled back) submit still counts.
+-- The caller is the salted address hash public-submit-rsvp sends in the
+-- x-mingla-rsvp-client header (rsvp_guest_inviter_key). Refuses, writing
+-- nothing, when this would take the address past 20 guest numbers across all
+-- events, or the event past 30 from signed-out callers, in 24 hours.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_signed_out_attempt(
+  p_event_id uuid, p_guest_count integer
+) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_key text := public.rsvp_guest_inviter_key(NULL);
+  v_count integer := GREATEST(coalesce(p_guest_count, 0), 0);
+BEGIN
+  IF v_count = 0 OR p_event_id IS NULL
+     OR NOT EXISTS (SELECT 1 FROM public.events e WHERE e.id = p_event_id) THEN
+    -- Nothing to count; the submit refuses an unknown event by itself.
+    RETURN jsonb_build_object('allowed', true, 'counted', false);
+  END IF;
+  -- Same order everywhere: the address, then the event.
+  PERFORM pg_advisory_xact_lock(45081, hashtext(v_key));
+  PERFORM pg_advisory_xact_lock(45082, hashtext(p_event_id::text));
+  IF (SELECT coalesce(sum(a.guest_count), 0) FROM public.rsvp_guest_signed_out_attempts a
+       WHERE a.inviter_key = v_key
+         AND a.created_at > now() - interval '24 hours') + v_count > 20
+     OR (SELECT coalesce(sum(a.guest_count), 0) FROM public.rsvp_guest_signed_out_attempts a
+       WHERE a.event_id = p_event_id
+         AND a.created_at > now() - interval '24 hours') + v_count > 30 THEN
+    RETURN jsonb_build_object('allowed', false, 'counted', false);
+  END IF;
+  INSERT INTO public.rsvp_guest_signed_out_attempts(inviter_key, event_id, guest_count)
+  VALUES (v_key, p_event_id, v_count);
+  RETURN jsonb_build_object('allowed', true, 'counted', true);
+END;
+$function$;
+COMMENT ON FUNCTION public.rsvp_guest_signed_out_attempt(uuid, integer) IS
+  '#4508 R-1: counts a signed-out caller''s guest numbers before the submit (its own transaction), so refused submits count against the 20-per-address and 30-per-event daily caps.';
+REVOKE ALL ON FUNCTION public.rsvp_guest_signed_out_attempt(uuid, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_signed_out_attempt(uuid, integer) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- 3. Close friends through an RSVP do not use the pairing allowance (D1).
 --    check_pairing_allowed: baseline 20260505000000 line 3877; only the count
@@ -832,6 +970,15 @@ DECLARE
   v_prior_id    uuid;
   v_release_key text;
   v_hold        text;
+  -- R-1: a signed-out caller is never told whether a number is already on
+  -- this event's list or was released on it; every such refusal reads the
+  -- same. A signed-in caller keeps the specific codes.
+  v_listed_code text := CASE WHEN p_user_id IS NULL THEN 'rsvp_guest_unavailable'
+                             ELSE 'rsvp_guest_already_listed' END;
+  v_released_code text := CASE WHEN p_user_id IS NULL THEN 'rsvp_guest_unavailable'
+                               ELSE 'rsvp_guest_released' END;
+  v_match_dup_code text := CASE WHEN p_user_id IS NULL THEN 'rsvp_guest_unavailable'
+                                ELSE 'rsvp_guest_duplicate' END;
 BEGIN
   -- 1. Load + gate the event (FOR UPDATE serializes concurrent submits).
   SELECT * INTO v_event FROM public.events WHERE id = p_event_id FOR UPDATE;
@@ -1021,7 +1168,7 @@ BEGIN
           RAISE EXCEPTION 'rsvp_guest_duplicate' USING ERRCODE = '22023';
         END IF;
         IF public.rsvp_guest_number_barred(p_event_id, v_digits, v_release_key) THEN
-          RAISE EXCEPTION 'rsvp_guest_released' USING ERRCODE = '22023';
+          RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = v_released_code;
         END IF;
         v_seen := v_seen || v_digits;
       END IF;
@@ -1121,6 +1268,9 @@ BEGIN
          AND NOT coalesce(g.added_from_friend AND g.matched_user_id = ANY (v_seen_users), false)));
 
   v_inviter_key := public.rsvp_guest_inviter_key(p_user_id);
+  -- R-14: hold every listed number's lock until commit before any invite is
+  -- counted, so concurrent submits on other events see each other's adds.
+  PERFORM public.rsvp_guest_lock_numbers(v_seen);
 
   FOR v_guest IN SELECT * FROM jsonb_array_elements(v_norm) LOOP
     v_friend := NULLIF(v_guest->>'userId', '')::uuid;
@@ -1149,7 +1299,7 @@ BEGIN
     ELSE
       IF v_digits IS NOT NULL
          AND public.rsvp_number_on_event_list(p_event_id, v_digits, v_existing_id) THEN
-        RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = v_listed_code;
       END IF;
       IF v_friend IS NOT NULL THEN
         v_match := v_friend;
@@ -1159,16 +1309,19 @@ BEGIN
       END IF;
       IF v_match IS NOT NULL
          AND public.rsvp_user_on_event_list(p_event_id, v_match, v_existing_id) THEN
-        RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = v_listed_code;
       END IF;
       IF v_match IS NOT NULL AND EXISTS (
         SELECT 1 FROM public.event_rsvp_guests g
          WHERE g.rsvp_id = v_existing_id AND g.matched_user_id = v_match) THEN
-        RAISE EXCEPTION 'rsvp_guest_duplicate' USING ERRCODE = '22023';
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = v_match_dup_code;
       END IF;
+      -- R-4: past the signed-out daily ceiling the guest is held, not texted.
       v_hold := CASE
         WHEN v_digits IS NULL THEN 'no_phone'
         WHEN public.rsvp_guest_number_over_limit(v_digits) THEN 'number_limit'
+        WHEN p_user_id IS NULL
+             AND public.rsvp_guest_signed_out_text_ceiling_reached() THEN 'number_limit'
       END;
       INSERT INTO public.event_rsvp_guests (rsvp_id, name, email, phone, phone_country_iso,
         matched_user_id, invited_by_user_id, added_from_friend, sms_hold)
@@ -1223,18 +1376,21 @@ BEGIN
   -- C3: sending is asynchronous, so no send status is claimed here. A guest
   -- who will never be texted says so now (willText false, with the reason);
   -- every other guest's text is on its way. A friend picked from the list
-  -- never has their number, or its last four, returned.
+  -- never has their number, or its last four, returned. R-2: a signed-out
+  -- caller is never told whether a number has an account (onMingla false, no
+  -- name) nor why a guest will not be texted (willText only).
   SELECT COALESCE(jsonb_agg(jsonb_build_object(
            'guestId', g.id,
            'phoneLast4', CASE WHEN g.added_from_friend OR g.phone IS NULL THEN NULL
              ELSE right(regexp_replace(g.phone, '\D', '', 'g'), 4) END,
-           'onMingla', g.matched_user_id IS NOT NULL,
-           'displayName', public.rsvp_guest_display_name(g.id),
+           'onMingla', p_user_id IS NOT NULL AND g.matched_user_id IS NOT NULL,
+           'displayName', CASE WHEN p_user_id IS NOT NULL
+             THEN public.rsvp_guest_display_name(g.id) END,
            'claimed', g.claimed_at IS NOT NULL,
            'broughtByGuest', g.brought_by_guest_id IS NOT NULL,
            'addedFromFriend', g.added_from_friend,
            'willText', w.reason IS NULL,
-           'notTextedReason', w.reason
+           'notTextedReason', CASE WHEN p_user_id IS NOT NULL THEN w.reason END
          ) ORDER BY g.created_at, g.id), '[]'::jsonb)
     INTO v_guests_out
     FROM public.event_rsvp_guests g
@@ -1728,6 +1884,8 @@ BEGIN
     END IF;
   END IF;
 
+  -- R-14: the number's lock before its invites are counted.
+  PERFORM public.rsvp_guest_lock_numbers(ARRAY[v_digits]);
   INSERT INTO public.event_rsvp_guests (rsvp_id, phone, phone_country_iso,
     matched_user_id, invited_by_user_id, brought_by_guest_id, sms_hold)
   VALUES (v_rsvp.id, v_phone, p_phone_country_iso, v_match, p_user_id, v_guest.id,
@@ -1896,7 +2054,7 @@ BEGIN
     ON CONFLICT (event_id, friend_user_id) DO NOTHING;
   EXCEPTION WHEN OTHERS THEN
     -- P3-5: never block the RSVP, never drop the failure. It is recorded and
-    -- the rsvp-notify tick reports it (issue_4508_take_friend_going_failures).
+    -- the rsvp-notify tick raises an ops alert for it (R-5).
     INSERT INTO public.rsvp_friend_going_failures(event_id, actor_user_id, sql_state)
     VALUES (NEW.event_id, NEW.user_id, SQLSTATE);
   END;
@@ -1954,29 +2112,41 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_4508_take_friend_going_notices(integer) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4508_take_friend_going_notices(integer) TO service_role;
 
--- P3-5: friend-is-going enqueue failures not yet reported, marked reported in
--- the same statement (each is reported once).
-CREATE OR REPLACE FUNCTION public.issue_4508_take_friend_going_failures(p_limit integer DEFAULT 50)
+-- P3-5 / R-5: friend-is-going enqueue failures not yet reported. rsvp-notify
+-- reads them, sends ONE ops alert through the shared ops-alert helper, and
+-- only after that alert went out marks them reported; a failed alert leaves
+-- them unreported for the next tick (the alert's idempotency key stops a
+-- repeat tick from emailing the same set twice).
+DROP FUNCTION IF EXISTS public.issue_4508_take_friend_going_failures(integer);
+CREATE OR REPLACE FUNCTION public.issue_4508_list_friend_going_failures(p_limit integer DEFAULT 50)
 RETURNS TABLE (failure_id bigint, event_id uuid, sql_state text, created_at timestamptz)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $function$
+  SELECT f.id, f.event_id, f.sql_state, f.created_at
+    FROM public.rsvp_friend_going_failures f
+   WHERE f.reported_at IS NULL
+   ORDER BY f.created_at, f.id
+   LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200);
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4508_list_friend_going_failures(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4508_list_friend_going_failures(integer) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_4508_mark_friend_going_failures_reported(p_ids bigint[])
+RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_count integer;
 BEGIN
-  RETURN QUERY
-  WITH due AS (
-    SELECT f.id FROM public.rsvp_friend_going_failures f
-     WHERE f.reported_at IS NULL
-     ORDER BY f.created_at
-     FOR UPDATE SKIP LOCKED
-     LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200)
-  )
   UPDATE public.rsvp_friend_going_failures f
      SET reported_at = now()
-    FROM due WHERE f.id = due.id
-  RETURNING f.id, f.event_id, f.sql_state, f.created_at;
+   WHERE f.id = ANY (coalesce(p_ids, '{}'::bigint[])) AND f.reported_at IS NULL;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.issue_4508_take_friend_going_failures(integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_4508_take_friend_going_failures(integer) TO service_role;
+REVOKE ALL ON FUNCTION public.issue_4508_mark_friend_going_failures_reported(bigint[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4508_mark_friend_going_failures_reported(bigint[]) TO service_role;
 
 
 -- ---------------------------------------------------------------------------
@@ -2033,7 +2203,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $function$
             ORDER BY l.created_at DESC LIMIT 1) END,
          CASE WHEN r.user_id=auth.uid() AND NOT g.added_from_friend AND g.phone IS NOT NULL
            THEN right(regexp_replace(g.phone,'\D','','g'),4) END,
-         CASE WHEN g.matched_user_id=auth.uid() THEN e.rsvp_guests_can_bring END
+         -- R-6: only a guest who has claimed the pass may bring someone.
+         CASE WHEN g.matched_user_id=auth.uid() AND g.claimed_at IS NOT NULL
+           THEN e.rsvp_guests_can_bring END
     FROM public.event_rsvp_guests g
     JOIN public.event_rsvps r ON r.id=g.rsvp_id
     JOIN public.events e ON e.id=r.event_id
@@ -2251,8 +2423,10 @@ END;
 $$;
 COMMENT ON FUNCTION public.host_check_in_rsvp_guest(uuid) IS
   '#4508 C7: a host admits one plus-one by hand (same people, rules and answer shape as biz_rsvp_scan; audited as source host-manual).';
-REVOKE ALL ON FUNCTION public.host_check_in_rsvp_guest(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.host_check_in_rsvp_guest(uuid) TO authenticated, service_role;
+-- R-13: the same grants as biz_rsvp_scan. A service-role caller has no
+-- auth.uid(), so it could only ever be refused; nothing calls it that way.
+REVOKE ALL ON FUNCTION public.host_check_in_rsvp_guest(uuid) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.host_check_in_rsvp_guest(uuid) TO authenticated;
 
 -- admin_list_event_rsvps (20261224000000): only plus_guests changes (1.26): the
 -- 1.11 name, invitedByName and claimed. Guests may have no email.
@@ -3399,5 +3573,43 @@ REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source(
   uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_resolve_brand_person_source(
   uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 11. Foreign keys to auth.users, last (R-8): adding one takes SHARE ROW
+--     EXCLUSIVE on auth.users, which stalls sign-ins until COMMIT, so they are
+--     added only here, right before the commit. Each validates in the same
+--     statement (a NOT VALID + VALIDATE split would save nothing inside one
+--     transaction).
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.event_rsvp_guests
+  DROP CONSTRAINT IF EXISTS event_rsvp_guests_invited_by_user_id_fkey;
+ALTER TABLE public.event_rsvp_guests
+  ADD CONSTRAINT event_rsvp_guests_invited_by_user_id_fkey
+  FOREIGN KEY (invited_by_user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.rsvp_guest_releases
+  DROP CONSTRAINT IF EXISTS rsvp_guest_releases_inviter_user_id_fkey;
+ALTER TABLE public.rsvp_guest_releases
+  ADD CONSTRAINT rsvp_guest_releases_inviter_user_id_fkey
+  FOREIGN KEY (inviter_user_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE public.rsvp_guest_connections
+  DROP CONSTRAINT IF EXISTS rsvp_guest_connections_inviter_user_id_fkey;
+ALTER TABLE public.rsvp_guest_connections
+  ADD CONSTRAINT rsvp_guest_connections_inviter_user_id_fkey
+  FOREIGN KEY (inviter_user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.rsvp_guest_connections
+  DROP CONSTRAINT IF EXISTS rsvp_guest_connections_guest_user_id_fkey;
+ALTER TABLE public.rsvp_guest_connections
+  ADD CONSTRAINT rsvp_guest_connections_guest_user_id_fkey
+  FOREIGN KEY (guest_user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.rsvp_friend_going_notices
+  DROP CONSTRAINT IF EXISTS rsvp_friend_going_notices_actor_user_id_fkey;
+ALTER TABLE public.rsvp_friend_going_notices
+  ADD CONSTRAINT rsvp_friend_going_notices_actor_user_id_fkey
+  FOREIGN KEY (actor_user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE public.rsvp_friend_going_notices
+  DROP CONSTRAINT IF EXISTS rsvp_friend_going_notices_friend_user_id_fkey;
+ALTER TABLE public.rsvp_friend_going_notices
+  ADD CONSTRAINT rsvp_friend_going_notices_friend_user_id_fkey
+  FOREIGN KEY (friend_user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 COMMIT;

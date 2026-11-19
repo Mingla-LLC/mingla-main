@@ -285,3 +285,10 @@ Deno.test("C3 status: a guest the server will not text reads \"We couldn't text 
   // An older server sends no willText: still "on its way", never invented as failed.
   assertEquals(submittedGuestStatus(parsed[2], "going"), "Text on its way");
 });
+
+Deno.test("R-1 (second rework) a signed-out refusal that hides why still reads in plain words", () => {
+  const line = rsvpGuestErrorMessage("rsvp_guest_unavailable");
+  if (line !== "Someone you're bringing can't be added to this event. Remove them and try again.") {
+    throw new Error(`rsvp_guest_unavailable has a plain line: ${line}`);
+  }
+});

@@ -357,8 +357,13 @@ export const mapRsvpPartyRows = (rows: unknown): RsvpPartyDetails => {
           ? row.phone_last4
           : null,
       })),
+    // R-6: only a guest who has claimed their pass may bring someone; the
+    // server already says so, and an unclaimed row never turns it on here.
     guestsCanBring: list.some(
-      (row) => row.entity_type === "guest" && row.guests_can_bring === true,
+      (row) =>
+        row.entity_type === "guest" &&
+        row.guests_can_bring === true &&
+        row.claimed === true,
     ),
   };
 };

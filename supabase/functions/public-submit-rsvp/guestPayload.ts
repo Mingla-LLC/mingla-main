@@ -139,6 +139,8 @@ export const GUEST_RPC_ERRORS: ReadonlyArray<readonly [string, number]> = [
   ["rsvp_guest_duplicate", 400],
   ["rsvp_guest_already_listed", 409],
   ["rsvp_guest_released", 409],
+  // R-1: what a signed-out caller gets for a listed or released number.
+  ["rsvp_guest_unavailable", 409],
   ["rsvp_guest_email_invalid", 400],
   ["rsvp_guest_phone_invalid", 400],
   ["rsvp_guest_phone_country_invalid", 400],
@@ -167,4 +169,76 @@ export async function rsvpClientKey(ip: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/** Issue #4508 R-1 — a signed-out submit's guest numbers are counted BEFORE
+ * the submit, in their own transaction (rsvp_guest_signed_out_attempt), so a
+ * submit the database refuses and rolls back still uses up the caller's and
+ * the event's daily allowance. Signed-in callers and parties without guest
+ * numbers pass straight through. Fails closed: if the count cannot be
+ * written, the submit does not run. */
+export async function signedOutGuestGate(input: {
+  signedIn: boolean;
+  guests: readonly NormalizedGuest[];
+  attempt(count: number): Promise<{
+    data: unknown;
+    error: { message?: string; code?: string } | null;
+  }>;
+}): Promise<{ status: number; body: { error: string } } | null> {
+  if (input.signedIn) return null;
+  const count = input.guests.filter((guest) => "phone" in guest).length;
+  if (count === 0) return null;
+  let outcome: { data: unknown; error: unknown };
+  try {
+    outcome = await input.attempt(count);
+  } catch {
+    return { status: 503, body: { error: "unavailable" } };
+  }
+  if (outcome.error) return { status: 503, body: { error: "unavailable" } };
+  const row = Array.isArray(outcome.data) ? outcome.data[0] : outcome.data;
+  const allowed = row !== null && typeof row === "object" &&
+    (row as Record<string, unknown>).allowed === true;
+  return allowed
+    ? null
+    : { status: 429, body: { error: "rsvp_guest_daily_cap" } };
+}
+
+export interface SubmitGuestRow {
+  guestId?: string;
+  phoneLast4?: string | null;
+  onMingla?: boolean;
+  displayName?: string | null;
+  claimed?: boolean;
+  addedFromFriend?: boolean;
+  willText?: boolean;
+  notTextedReason?: string | null;
+}
+
+/** Issue #4508 1.15 / C3 / R-2 — one guest of the submit response. A
+ * signed-out caller never learns whether a number has an account (onMingla
+ * false, no name) nor why a guest will not be texted (willText only); the
+ * database already answers that way, this is the second line. */
+export function shapeSubmitGuest(
+  guest: SubmitGuestRow,
+  link: { url: string | null; code: string | null } | null,
+  signedIn: boolean,
+): Record<string, unknown> {
+  const willText = guest.willText !== false;
+  return {
+    guestId: guest.guestId ?? null,
+    phoneLast4: guest.phoneLast4 ?? null,
+    onMingla: signedIn && guest.onMingla === true,
+    displayName: signedIn ? guest.displayName ?? null : null,
+    claimed: guest.claimed === true,
+    inviteUrl: link?.url ?? null,
+    inviteCode: link?.code ?? null,
+    // C1: a friend picked from the list; the server never returns their
+    // number or its last four.
+    addedFromFriend: guest.addedFromFriend === true,
+    // C3: sending is asynchronous, so no send status is claimed.
+    willText,
+    notTextedReason: signedIn && !willText
+      ? guest.notTextedReason ?? null
+      : null,
+  };
 }

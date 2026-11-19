@@ -16,7 +16,9 @@ const PATHS = {
   rsvp: "packages/offering-rendering/RsvpOfferingBody.tsx",
   // #4508: plus-ones are one number field plus a party; the per-guest phone
   // fields this gate used to pin are gone.
-  rsvpParty: "packages/offering-rendering/rsvpGuestParty.ts",
+  // #4508 (Host web bundle split): the guest payload builder moved to
+  // rsvpGuestCopy.ts and the guest number field to the lazy party block.
+  rsvpParty: "packages/offering-rendering/rsvpGuestCopy.ts",
   rsvpPartyBlock: "packages/offering-rendering/RsvpGuestPartyBlock.tsx",
   stay: "packages/brand-rendering/StayGuestBooking.tsx",
   rsvpEdge: "supabase/functions/public-submit-rsvp/index.ts",
@@ -56,10 +58,10 @@ export function violations(files) {
   need(files.pickerBehavior, 'return platform !== "web"', "no web haptics", failures);
   need(files.pickerBehavior, 'return countryWasSelected ? "phone" : "country"', "picker close focus", failures);
   need(files.phoneDeclaration, "export function resolveUserPhoneE164(", "declaration adapter append", failures);
-  need(files.rsvp, "setGuestNumberCountry(isoCode)", "RSVP independent state", failures);
+  need(files.rsvpPartyBlock, "p.setNumberCountry(isoCode)", "RSVP independent state", failures);
   need(files.rsvpPartyBlock, "key={guest.key}", "RSVP stable identity", failures);
   need(files.rsvpParty, "{ phone: g.phone, phoneCountryIso: g.phoneCountryIso }", "RSVP transport", failures);
-  need(files.rsvp, "disableAutofill: true", "RSVP guest number never offers the own number", failures);
+  need(files.rsvpPartyBlock, "disableAutofill: true", "RSVP guest number never offers the own number", failures);
   need(files.rsvp, "showValidationErrors || primaryPhoneTouched", "RSVP primary blur", failures);
   forbid(files.rsvp, 'defaultPhoneCountry ?? "US"', "RSVP inferred default", failures);
   need(files.stay, "...(cleanPhone && phoneCountryIso ? { phoneCountryIso } : {})", "Stay transport", failures);
@@ -137,7 +139,8 @@ function selfTest() {
     ["pickerBehavior", 'return platform !== "web"', "return true"],
     ["pickerBehavior", 'if (input.key === "Escape") return "close"', "if (false) return null"],
     ["rsvpParty", "{ phone: g.phone, phoneCountryIso: g.phoneCountryIso }", "{ phone: g.phone, phoneCountryIso: null }"],
-    ["rsvp", "disableAutofill: true", "disableAutofill: false"],
+    ["rsvpPartyBlock", "disableAutofill: true", "disableAutofill: false"],
+    ["rsvpPartyBlock", "p.setNumberCountry(isoCode)", "p.setNumberCountry(null)"],
     ["gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 | issue #1857 |`, "phone-country declaration removed"],
   ];
   for (const fingerprint of [
