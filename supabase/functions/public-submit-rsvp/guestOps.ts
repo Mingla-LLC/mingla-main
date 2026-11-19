@@ -2,8 +2,8 @@
 //
 //   {op:"guest_lookup", eventId, phone}  amendment 4: the live match under the
 //     number field. Anyone may call it; a signed-out caller learns only
-//     whether the number is valid. Rate-limited per user (30/min) or per IP
-//     (15/min).
+//     whether the number is valid. Rate-limited per user (30/min, and 200 per
+//     rolling day) or per IP (15/min).
 //   {op:"guest_bring", guestId, phone, phoneCountryIso?}  2.5: a claimed
 //     guest brings one more person when the host allows it. Signed in only.
 
@@ -49,11 +49,12 @@ async function rateLimit(
   deps: GuestOpsDeps,
   scope: string,
   limit: number,
+  counter: { name: string; args: Record<string, unknown> } = {
+    name: "pg_venue_order_rate_limit_hit",
+    args: { p_scope_key: scope, p_limit: limit },
+  },
 ): Promise<GuestOpResponse | null> {
-  const { data, error } = await deps.rpc("pg_venue_order_rate_limit_hit", {
-    p_scope_key: scope,
-    p_limit: limit,
-  });
+  const { data, error } = await deps.rpc(counter.name, counter.args);
   if (error) return { status: 503, body: { error: "unavailable" } };
   return objectResult(data).allowed === false
     ? { status: 429, body: { error: "rate_limited" } }
@@ -88,6 +89,14 @@ export async function handleGuestOp(
       deps.userId ? 30 : 15,
     );
     if (limited) return limited;
+    // A signed-in account also has a ceiling per rolling day.
+    if (deps.userId) {
+      const day = await rateLimit(deps, "", 200, {
+        name: "rsvp_guest_lookup_day_hit",
+        args: { p_user_id: deps.userId, p_limit: 200 },
+      });
+      if (day) return day;
+    }
     const { data, error } = await deps.rpc("rsvp_guest_lookup", {
       p_viewer: deps.userId,
       p_event_id: eventId,

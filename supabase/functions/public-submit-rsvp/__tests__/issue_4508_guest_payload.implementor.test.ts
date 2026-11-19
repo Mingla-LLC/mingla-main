@@ -137,6 +137,12 @@ function opsDeps(userId: string | null, rpcResults: Record<string, unknown>) {
           error: null,
         });
       }
+      if (name === "rsvp_guest_lookup_day_hit") {
+        return Promise.resolve({
+          data: { allowed: rpcResults.dayAllowed !== false },
+          error: null,
+        });
+      }
       if (name === "mint_claim_link") {
         return Promise.resolve({ data: { code: "ABCDEFGHJK" }, error: null });
       }
@@ -214,6 +220,35 @@ Deno.test("guest_lookup: signed in sees the account", async () => {
       c.name === "rsvp_guest_lookup" && c.args.p_viewer !== null
     ),
     "viewer passed",
+  );
+});
+
+Deno.test("guest_lookup: a signed-in account has a daily ceiling of 200", async () => {
+  const user = "45080000-0000-4000-8000-000000000011";
+  const body = { op: "guest_lookup", eventId: EVENT, phone: "+15550104508" };
+  const open = opsDeps(user, { rsvp_guest_lookup: { valid: true } });
+  const ok = await handleGuestOp(body, open.deps);
+  const day = open.calls.find((c) => c.name === "rsvp_guest_lookup_day_hit");
+  assert(ok.status === 200, "under the ceiling answers");
+  assert(
+    day?.args.p_user_id === user && day?.args.p_limit === 200,
+    `the day counter is asked about this account at 200: ${JSON.stringify(day)}`,
+  );
+  const spent = opsDeps(user, { dayAllowed: false, rsvp_guest_lookup: { valid: true } });
+  const refused = await handleGuestOp(body, spent.deps);
+  assert(
+    refused.status === 429 && refused.body.error === "rate_limited",
+    `past the ceiling is the same rate_limited answer: ${JSON.stringify(refused)}`,
+  );
+  assert(
+    !spent.calls.some((c) => c.name === "rsvp_guest_lookup"),
+    "a refused lookup never reaches the database lookup",
+  );
+  const out = opsDeps(null, { dayAllowed: false, rsvp_guest_lookup: { valid: true } });
+  await handleGuestOp(body, out.deps);
+  assert(
+    !out.calls.some((c) => c.name === "rsvp_guest_lookup_day_hit"),
+    "signed-out callers keep the per-address limit only",
   );
 });
 

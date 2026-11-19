@@ -1041,4 +1041,39 @@ BEGIN
 END
 $rework2$;
 
+-- MINGLA-INVARIANT: I-4508-LOOKUP-DAILY-CEILING | issue #4508 | the signed-in guest lookup is capped at 200 per account per rolling 24 hours: the 201st call in the window answers allowed = false and writes nothing, another account is unaffected, a lookup older than 24 hours no longer counts, and the counter table is service-role only.
+-- FAILS-ON-REVERT: remove rsvp_guest_lookup_day_hit's count check (always allow) -> the 201st call is allowed and L-1 fails.
+DO $lookup_day$
+DECLARE
+  v_a uuid := '45081000-0000-4000-8000-0000000000a1';
+  v_b uuid := '45081000-0000-4000-8000-0000000000a2';
+  v_res jsonb;
+  v_all boolean;
+  v_rows integer;
+BEGIN
+  SELECT bool_and((public.rsvp_guest_lookup_day_hit(v_a, 200)->>'allowed')::boolean)
+    INTO v_all FROM generate_series(1, 200);
+  PERFORM pg_temp.ok(v_all, 'L-1: the first 200 lookups of the day are allowed');
+  v_res := public.rsvp_guest_lookup_day_hit(v_a, 200);
+  PERFORM pg_temp.ok((v_res->>'allowed')::boolean IS FALSE
+    AND (v_res->>'hits')::integer = 200 AND (v_res->>'limit')::integer = 200,
+    'L-1: the 201st lookup is refused: ' || v_res::text);
+  SELECT count(*) INTO v_rows FROM public.rsvp_guest_lookup_log WHERE user_id = v_a;
+  PERFORM pg_temp.ok(v_rows = 200, 'L-2: a refused lookup writes nothing: ' || v_rows);
+  v_res := public.rsvp_guest_lookup_day_hit(v_b, 200);
+  PERFORM pg_temp.ok((v_res->>'allowed')::boolean, 'L-3: another account is not affected');
+  -- Rolling: lookups older than 24 hours stop counting.
+  UPDATE public.rsvp_guest_lookup_log SET created_at = now() - interval '25 hours'
+   WHERE id IN (SELECT id FROM public.rsvp_guest_lookup_log WHERE user_id = v_a ORDER BY id LIMIT 50);
+  v_res := public.rsvp_guest_lookup_day_hit(v_a, 200);
+  PERFORM pg_temp.ok((v_res->>'allowed')::boolean AND (v_res->>'hits')::integer = 151,
+    'L-4: lookups older than 24 hours are dropped from the count: ' || v_res::text);
+  PERFORM pg_temp.ok(NOT has_table_privilege('authenticated', 'public.rsvp_guest_lookup_log', 'SELECT')
+    AND NOT has_function_privilege('authenticated', 'public.rsvp_guest_lookup_day_hit(uuid, integer)', 'EXECUTE')
+    AND NOT has_function_privilege('anon', 'public.rsvp_guest_lookup_day_hit(uuid, integer)', 'EXECUTE'),
+    'L-5: the counter is service-role only');
+  RAISE NOTICE '#4508 lookup daily ceiling: all cases passed';
+END
+$lookup_day$;
+
 ROLLBACK;

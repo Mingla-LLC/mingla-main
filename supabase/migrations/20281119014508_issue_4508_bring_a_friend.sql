@@ -234,6 +234,19 @@ COMMENT ON TABLE public.rsvp_guest_signed_out_attempts IS
 -- P3-5: the friend-is-going enqueue never blocks an RSVP, and a failure is
 -- recorded here (the rsvp-notify tick reports unreported rows) rather than
 -- dropped.
+-- The signed-in guest lookup is limited to 30 a minute (public-submit-rsvp); this
+-- log gives it a ceiling of 200 per account per rolling 24 hours. One row per
+-- lookup that was allowed.
+CREATE TABLE IF NOT EXISTS public.rsvp_guest_lookup_log (
+  id bigserial PRIMARY KEY,
+  user_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS rsvp_guest_lookup_log_user_idx
+  ON public.rsvp_guest_lookup_log (user_id, created_at);
+COMMENT ON TABLE public.rsvp_guest_lookup_log IS
+  '#4508: one row per signed-in guest lookup that was allowed; the daily ceiling (200 per account per rolling 24 hours) counts these. Rows older than 24 hours are swept by the next lookup of the same account.';
+
 CREATE TABLE IF NOT EXISTS public.rsvp_friend_going_failures (
   id bigserial PRIMARY KEY,
   event_id uuid NULL,
@@ -281,7 +294,8 @@ DECLARE v_table text;
 BEGIN
   FOREACH v_table IN ARRAY ARRAY['rsvp_guest_releases', 'rsvp_guest_invite_log',
     'rsvp_guest_connections', 'rsvp_friend_going_notices', 'rsvp_guest_released_codes',
-    'rsvp_friend_going_failures', 'rsvp_guest_signed_out_attempts'] LOOP
+    'rsvp_friend_going_failures', 'rsvp_guest_signed_out_attempts',
+    'rsvp_guest_lookup_log'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_table);
     EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', v_table);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, anon, authenticated', v_table);
@@ -295,6 +309,8 @@ REVOKE ALL ON SEQUENCE public.rsvp_friend_going_failures_id_seq FROM PUBLIC, ano
 GRANT USAGE, SELECT ON SEQUENCE public.rsvp_friend_going_failures_id_seq TO service_role;
 REVOKE ALL ON SEQUENCE public.rsvp_guest_signed_out_attempts_id_seq FROM PUBLIC, anon, authenticated;
 GRANT USAGE, SELECT ON SEQUENCE public.rsvp_guest_signed_out_attempts_id_seq TO service_role;
+REVOKE ALL ON SEQUENCE public.rsvp_guest_lookup_log_id_seq FROM PUBLIC, anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE public.rsvp_guest_lookup_log_id_seq TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 2. Names
@@ -1797,6 +1813,38 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.rsvp_guest_lookup(uuid, uuid, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rsvp_guest_lookup(uuid, uuid, text) TO service_role;
+
+-- The daily ceiling on the signed-in lookup: 200 per account per rolling 24
+-- hours, counted only for lookups the per-minute limit let through. Answers
+-- {allowed, hits, limit} like the per-minute counter, so the edge function
+-- returns the same rate_limited refusal. A refused call writes nothing.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_lookup_day_hit(
+  p_user_id uuid, p_limit integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_limit integer := GREATEST(1, coalesce(p_limit, 200));
+  v_hits integer;
+BEGIN
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'rate_limit_scope_required' USING ERRCODE = '22023';
+  END IF;
+  PERFORM pg_advisory_xact_lock(45083, hashtext(p_user_id::text));
+  DELETE FROM public.rsvp_guest_lookup_log
+   WHERE user_id = p_user_id AND created_at <= now() - interval '24 hours';
+  SELECT count(*) INTO v_hits FROM public.rsvp_guest_lookup_log WHERE user_id = p_user_id;
+  IF v_hits >= v_limit THEN
+    RETURN jsonb_build_object('allowed', false, 'hits', v_hits, 'limit', v_limit);
+  END IF;
+  INSERT INTO public.rsvp_guest_lookup_log(user_id) VALUES (p_user_id);
+  RETURN jsonb_build_object('allowed', true, 'hits', v_hits + 1, 'limit', v_limit);
+END;
+$function$;
+COMMENT ON FUNCTION public.rsvp_guest_lookup_day_hit(uuid, integer) IS
+  '#4508: per-account daily ceiling (200 per rolling 24 hours) on the signed-in guest lookup. Returns {allowed,hits,limit}.';
+REVOKE ALL ON FUNCTION public.rsvp_guest_lookup_day_hit(uuid, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_lookup_day_hit(uuid, integer) TO service_role;
 
 -- 2.5 A claimed guest brings one more person (host setting, default off).
 -- Same rules as a submit: P3-2 not after the event ended, P3-3 not an
