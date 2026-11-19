@@ -99,10 +99,11 @@ describe("feature layout — a venue with spaces", () => {
   it("never shows modules whose phase has not shipped, even with every feature on", () => {
     const modules = deriveVenueNav({ features: ALL_ON, activeSpaceCount: 3, hasRequestOffers: true });
     // TEST-MOD-APPROVED #4490 — P2 ships Offers, Today and Check-in.
-    for (const unbuilt of ["calendar", "requests", "members"]) {
+    // TEST-MOD-APPROVED #4490 P4 — Calendar and Requests ship with private hire; Members stays unbuilt.
+    for (const unbuilt of ["members"]) {
       expect(modules).not.toContain(unbuilt);
     }
-    for (const built of ["offers", "today", "checkin"]) {
+    for (const built of ["offers", "today", "checkin", "calendar", "requests"]) {
       expect(modules).toContain(built);
     }
     expect(modules[0]).toBe("overview");
@@ -161,7 +162,8 @@ describe("dependencies (mirror of the server cascade)", () => {
   });
   it("only built features are switchable here; stays never", () => {
     // TEST-MOD-APPROVED #4490 — P2 ships Entry.
-    expect(SWITCHABLE_FEATURES).toEqual(["entry", "table_reservations", "menu", "table_ordering", "events_here", "waitlist"]);
+    // TEST-MOD-APPROVED #4490 P4 — group packages (P3) and private hire (P4) are switchable.
+    expect(SWITCHABLE_FEATURES).toEqual(["entry", "group_packages", "private_hire", "table_reservations", "menu", "table_ordering", "events_here", "waitlist"]);
     expect(BUILT_FEATURES.has("stays")).toBe(true);
     expect(SWITCHABLE_FEATURES).not.toContain("stays");
   });
@@ -170,7 +172,8 @@ describe("dependencies (mirror of the server cascade)", () => {
       ["bar_lounge", "cafe", "club", "coworking", "creative_and_arts", "event_space", "play", "restaurant", "stay"],
     );
     // TEST-MOD-APPROVED #4490 — P2 ships Entry.
-    expect(builtPreset("play")).toEqual(["entry", "menu", "events_here"]);
+    // TEST-MOD-APPROVED #4490 P4 — the play preset's packages and hire are built now.
+    expect(builtPreset("play")).toEqual(["entry", "group_packages", "private_hire", "menu", "events_here"]);
     expect(builtPreset("club")).toEqual(["entry", "table_reservations", "events_here"]);
     expect(builtPreset("stay")).toEqual([]);
   });
@@ -225,7 +228,8 @@ describe("leaving a hidden module and deep links", () => {
 describe("P2: Offers, Today and Check-in", () => {
   it("Entry on moves a venue to the feature layout with Offers, Today and Check-in", () => {
     const modules = deriveVenueNav({ features: featureSetFrom({ entry: true, menu: true }), activeSpaceCount: 0 });
-    expect(modules).toEqual(["overview", "offers", "spaces", "availability", "today", "checkin", "menu", "insights", "orders", "settings"]);
+    // TEST-MOD-APPROVED #4490 P4 — Calendar shows for any booking feature (B §2.2) now it is built.
+    expect(modules).toEqual(["overview", "offers", "spaces", "availability", "today", "calendar", "checkin", "menu", "insights", "orders", "settings"]);
   });
   it("a restaurant with only table reservations gets no Today or Check-in", () => {
     const modules = deriveVenueNav({ features: backfilledFeatureSet({ reservationsEnabled: true }), activeSpaceCount: 1 });

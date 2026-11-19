@@ -22,6 +22,7 @@ import { Skeleton } from "../../../ui/Skeleton";
 import { dayDateLabel } from "../../../ui/fieldModels";
 import { IconChrome } from "../../../ui/IconChrome";
 import { VenueBookingSheet } from "../bookings/VenueBookingSheet";
+import { RequestsWaitingCard } from "../requests/RequestsWaitingCard";
 import { clockIn } from "../bookings/bookingModel";
 import { entryStyleLabel, money } from "../offers/offersModel";
 import { bookingSourceLabel, bookingStateLabel, dayBalances, dayHeadline, dayNumbers, shiftDay } from "./todayModel";
@@ -30,9 +31,11 @@ export interface VenueTodayModuleProps {
   brandId: string | null;
   venueId: string | null;
   onOpenModule?: (module: VenueModule) => void;
+  /** #4490 P4 — show requests waiting on the host (Requests is in the nav). */
+  showRequests?: boolean;
 }
 
-export function VenueTodayModule({ brandId, venueId, onOpenModule }: VenueTodayModuleProps): React.ReactElement {
+export function VenueTodayModule({ brandId, venueId, onOpenModule, showRequests = false }: VenueTodayModuleProps): React.ReactElement {
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
   const currency = useBrandCurrency(brandId);
@@ -116,6 +119,9 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule }: VenueTodayM
       </View>
 
       {day.closed ? <Text style={styles.closed}>The venue is closed today. Nothing is on sale.</Text> : null}
+      {showRequests && isToday ? (
+        <RequestsWaitingCard brandId={brandId} venueId={venueId} onOpenRequests={() => onOpenModule?.("requests")} />
+      ) : null}
 
       <View style={styles.tiles}>
         <View style={styles.tile}>

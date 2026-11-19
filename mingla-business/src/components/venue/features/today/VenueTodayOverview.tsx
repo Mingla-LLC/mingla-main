@@ -23,6 +23,7 @@ import { Icon } from "../../../ui/Icon";
 import { KpiTile } from "../../../ui/KpiTile";
 import { Skeleton } from "../../../ui/Skeleton";
 import { money } from "../offers/offersModel";
+import { RequestsWaitingCard } from "../requests/RequestsWaitingCard";
 import { dayNumbers } from "./todayModel";
 
 export interface VenueTodayOverviewProps {
@@ -31,6 +32,8 @@ export interface VenueTodayOverviewProps {
   activeSpaceCount: number;
   canManageOffers: boolean;
   onOpenModule: (module: VenueModule) => void;
+  /** #4490 P4 — show requests waiting on the host (Requests is in the nav). */
+  showRequests?: boolean;
 }
 
 interface Step {
@@ -47,6 +50,7 @@ export function VenueTodayOverview({
   activeSpaceCount,
   canManageOffers,
   onOpenModule,
+  showRequests = false,
 }: VenueTodayOverviewProps): React.ReactElement {
   const currency = useBrandCurrency(brandId);
   const offersQuery = useVenueOffers(brandId, venueId);
@@ -173,6 +177,7 @@ export function VenueTodayOverview({
   return (
     <View style={styles.host} testID="venue-overview-today">
       {reviewBanner}
+      {showRequests ? <RequestsWaitingCard brandId={brandId} venueId={venueId} onOpenRequests={() => onOpenModule("requests")} /> : null}
       <View style={styles.tiles}>
         <View style={styles.tile}>
           <KpiTile

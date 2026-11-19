@@ -45,6 +45,18 @@ import type {
   PackageInclusion,
   StaffCancelPreview,
   VenueBookingDetail,
+  CalendarClaim,
+  ClosedReason,
+  HireBookingFacts,
+  HireTerms,
+  NextFreeDate,
+  RequestFilter,
+  RequestTab,
+  StaffActionResult,
+  StaffRequestAction,
+  VenueCalendar,
+  VenueRequest,
+  VenueRequestsList,
 } from "../types/venueOffers";
 
 // ---------------------------------------------------------------------------
@@ -268,6 +280,477 @@ export function mapOffer(v: unknown): VenueOffer {
     payModes: arr(o.payModes).filter((m): m is "deposit" | "full" => m === "deposit" || m === "full"),
     durationMinutes: numOrNull(o.durationMinutes),
     startTimes: arr(o.startTimes).filter((t): t is string => typeof t === "string" && /^\d{2}:\d{2}$/.test(t)),
+    confirmationMode: str(o.confirmationMode) === "request" ? "request" : "instant",
+    hire: o.hire === null || o.hire === undefined ? null : mapHireTerms(o.hire),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// #4490 P4 — private hire (offer part, requests, calendar, staff actions)
+// ---------------------------------------------------------------------------
+
+export function mapHireTerms(v: unknown): HireTerms {
+  const h = obj(v);
+  const charge = str(h.charge, "hire_fee");
+  return {
+    charge: charge === "min_spend" || charge === "per_guest" ? charge : "hire_fee",
+    bookingMode: str(h.bookingMode) === "instant" ? "instant" : "request",
+    spaces: arr(h.spaces).map((x) => {
+      const s = obj(x);
+      return {
+        id: str(s.id),
+        name: str(s.name),
+        setting: strOrNull(s.setting),
+        capacityStanding: numOrNull(s.capacityStanding),
+        capacitySeated: numOrNull(s.capacitySeated),
+        capacity: num(s.capacity),
+      };
+    }),
+    combinations: arr(h.combinations).map((x) => {
+      const c = obj(x);
+      return {
+        id: str(c.id),
+        name: str(c.name),
+        spaceIds: arr(c.spaceIds).filter((id): id is string => typeof id === "string"),
+        capacity: num(c.capacity),
+      };
+    }),
+    rows: arr(h.rows).map((x) => {
+      const r = obj(x);
+      return {
+        optionId: str(r.optionId),
+        name: str(r.name),
+        unit: str(r.unit) === "guest" ? ("guest" as const) : ("booking" as const),
+        spaceId: strOrNull(r.spaceId),
+        combinationId: strOrNull(r.combinationId),
+        placeName: str(r.placeName),
+        capacity: num(r.capacity),
+        guestMin: num(r.guestMin, 1),
+        guestMax: num(r.guestMax, 1),
+        weekdays: weekdays(r.weekdays),
+        priceMinor: num(r.priceMinor),
+      };
+    }),
+    sessions: arr(h.sessions).map((x) => {
+      const r = obj(x);
+      return {
+        ruleId: strOrNull(r.ruleId),
+        label: str(r.label),
+        startTime: str(r.startTime),
+        endTime: str(r.endTime),
+        pastMidnight: r.pastMidnight === true,
+        minutes: num(r.minutes),
+        weekdays: weekdays(r.weekdays),
+        startDate: strOrNull(r.startDate),
+        endDate: strOrNull(r.endDate),
+      };
+    }),
+    setupMinutes: num(h.setupMinutes),
+    cleanupMinutes: num(h.cleanupMinutes),
+    damageDepositMinor: num(h.damageDepositMinor),
+    minSpendMinor: num(h.minSpendMinor),
+    extraGuestMinor: numOrNull(h.extraGuestMinor),
+    overtimeMinorPerHour: numOrNull(h.overtimeMinorPerHour),
+    requestResponseHours: num(h.requestResponseHours, 48),
+    approvedPaymentMinutes: num(h.approvedPaymentMinutes, 4320),
+  };
+}
+
+export type ManageHireAction = "set_spaces" | "set_price_row" | "set_sessions" | "set_terms" | "set_booking";
+
+export async function manageVenueHire(input: {
+  venueId: string;
+  action: ManageHireAction;
+  payload: Record<string, unknown>;
+  expectedVersion: number;
+}): Promise<VenueOffer> {
+  const { data, error } = await supabase.rpc("issue_4490_manage_hire", {
+    p_action: input.action,
+    p_venue_id: input.venueId,
+    p_payload: input.payload,
+    p_expected_version: input.expectedVersion,
+    p_idempotency_key: `hire-${input.action}-${randomId()}`,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapOffer(data);
+}
+
+const REQUEST_TABS: readonly RequestTab[] = ["to_answer", "waiting_for_deposit", "confirmed", "closed"];
+const CLOSED_REASONS: readonly ClosedReason[] = [
+  "declined",
+  "expired",
+  "not_paid",
+  "released",
+  "withdrawn",
+  "cancelled",
+  "needs_checking",
+];
+
+export function mapVenueRequest(v: unknown): VenueRequest {
+  const r = obj(v);
+  const tab = str(r.tab) as RequestTab;
+  const reason = str(r.closedReason) as ClosedReason;
+  const q = r.queue === null || r.queue === undefined ? null : obj(r.queue);
+  const place = str(r.placeStatus);
+  return {
+    groupId: str(r.groupId),
+    reference: str(r.reference),
+    state: str(r.state),
+    tab: REQUEST_TABS.includes(tab) ? tab : "closed",
+    version: num(r.version, 1),
+    offerKind: r.offerKind === undefined || r.offerKind === null ? null : mapKind(r.offerKind),
+    offerName: str(r.offerName),
+    guestName: str(r.guestName, "Guest"),
+    guestEmail: strOrNull(r.guestEmail),
+    guestPhone: strOrNull(r.guestPhone),
+    guests: num(r.guests),
+    placeName: strOrNull(r.placeName),
+    spaceIds: arr(r.spaceIds).filter((x): x is string => typeof x === "string"),
+    sessionLabel: strOrNull(r.sessionLabel),
+    localDate: str(r.localDate),
+    startsAt: strOrNull(r.startsAt),
+    endsAt: strOrNull(r.endsAt),
+    setupFrom: strOrNull(r.setupFrom),
+    cleanupUntil: strOrNull(r.cleanupUntil),
+    requestedAt: strOrNull(r.requestedAt),
+    replyBy: strOrNull(r.replyBy),
+    holdUntil: strOrNull(r.holdUntil),
+    currencyCode: str(r.currencyCode, "NGN"),
+    totalDueMinor: num(r.totalDueMinor),
+    depositMinor: numOrNull(r.depositMinor),
+    paidMinor: num(r.paidMinor),
+    balanceMinor: num(r.balanceMinor),
+    balanceDueAt: strOrNull(r.balanceDueAt),
+    occasion: strOrNull(r.occasion),
+    note: strOrNull(r.note),
+    siteVisit: r.siteVisit === true,
+    closedReason: CLOSED_REASONS.includes(reason) ? reason : null,
+    declineReason: strOrNull(r.declineReason),
+    placeStatus: place === "free" || place === "held" || place === "taken" ? place : null,
+    queue:
+      q === null || Object.keys(q).length === 0
+        ? null
+        : {
+            position: num(q.position, 1),
+            blockedByGroupId: strOrNull(q.blockedByGroupId),
+            blockedByReference: strOrNull(q.blockedByReference),
+            blockedByGuestName: strOrNull(q.blockedByGuestName),
+            blockedByHoldUntil: strOrNull(q.blockedByHoldUntil),
+            queuedAt: strOrNull(q.queuedAt),
+            releasedAt: strOrNull(q.releasedAt),
+          },
+    nextInLine: r.nextInLine === true,
+    waitingBehind: num(r.waitingBehind),
+    nextInLineGuest: strOrNull(r.nextInLineGuest),
+  };
+}
+
+export async function fetchVenueRequests(venueId: string, filter: RequestFilter): Promise<VenueRequestsList> {
+  const { data, error } = await supabase.rpc("issue_4490_requests_list", { p_venue_id: venueId, p_filter: filter });
+  if (error !== null) throw toVenueOfferError(error);
+  const d = obj(data);
+  const c = obj(d.counts);
+  return {
+    counts: {
+      toAnswer: num(c.toAnswer),
+      waitingForDeposit: num(c.waitingForDeposit),
+      confirmed: num(c.confirmed),
+      closed: num(c.closed),
+      moneyDue: num(c.moneyDue),
+    },
+    requests: arr(d.requests).map(mapVenueRequest),
+  };
+}
+
+function mapClaim(v: unknown): CalendarClaim {
+  const c = obj(v);
+  const kind = str(c.kind);
+  return {
+    claimId: str(c.claimId),
+    spaceId: str(c.spaceId),
+    source: str(c.source),
+    state: str(c.state),
+    kind: kind === "hold" || kind === "event" || kind === "block" ? kind : "hire",
+    viaCombinationId: strOrNull(c.viaCombinationId),
+    viaCombinationName: strOrNull(c.viaCombinationName),
+    bookedFrom: strOrNull(c.bookedFrom),
+    bookedTo: strOrNull(c.bookedTo),
+    claimFrom: str(c.claimFrom),
+    claimTo: str(c.claimTo),
+    holdUntil: strOrNull(c.holdUntil),
+    groupId: strOrNull(c.groupId),
+    reference: strOrNull(c.reference),
+    groupState: strOrNull(c.groupState),
+    guestName: strOrNull(c.guestName),
+    offerName: strOrNull(c.offerName),
+    sessionLabel: strOrNull(c.sessionLabel),
+    guests: numOrNull(c.guests),
+    eventId: strOrNull(c.eventId),
+    eventTitle: strOrNull(c.eventTitle),
+    blockReason: strOrNull(c.blockReason),
+  };
+}
+
+export function mapVenueCalendar(v: unknown): VenueCalendar {
+  const d = obj(v);
+  return {
+    timezone: str(d.timezone, "Africa/Lagos"),
+    from: str(d.from),
+    to: str(d.to),
+    spaces: arr(d.spaces).map((x) => {
+      const s = obj(x);
+      return { id: str(s.id), name: str(s.name), setting: strOrNull(s.setting), capacity: num(s.capacity), canBeHired: s.canBeHired !== false };
+    }),
+    combinations: arr(d.combinations).map((x) => {
+      const c = obj(x);
+      return { id: str(c.id), name: str(c.name), spaceIds: arr(c.spaceIds).filter((id): id is string => typeof id === "string") };
+    }),
+    claims: arr(d.claims).map(mapClaim),
+    combinationBlocks: arr(d.combinationBlocks).map((x) => {
+      const b = obj(x);
+      return { combinationId: str(b.combinationId), claimId: str(b.claimId), blockedBy: str(b.blockedBy), from: str(b.from), to: str(b.to), state: str(b.state) };
+    }),
+    requests: arr(d.requests).map((x) => {
+      const r = obj(x);
+      return {
+        groupId: str(r.groupId),
+        reference: str(r.reference),
+        guestName: str(r.guestName, "Guest"),
+        spaceIds: arr(r.spaceIds).filter((id): id is string => typeof id === "string"),
+        placeName: strOrNull(r.placeName),
+        bookedFrom: strOrNull(r.bookedFrom),
+        bookedTo: strOrNull(r.bookedTo),
+        replyBy: strOrNull(r.replyBy),
+        collides: r.collides === true,
+      };
+    }),
+    days: arr(d.days).map((x) => {
+      const day = obj(x);
+      const sh = day.specialHours === null || day.specialHours === undefined ? null : obj(day.specialHours);
+      return {
+        localDate: str(day.localDate),
+        closed: day.closed === true,
+        specialHours: sh === null ? null : { isClosed: sh.isClosed === true, label: strOrNull(sh.label) },
+        pools: arr(day.pools).map((p) => {
+          const r = obj(p);
+          return {
+            poolId: str(r.poolId),
+            name: str(r.name),
+            dailyLimit: num(r.dailyLimit),
+            limitEffective: num(r.limitEffective, num(r.dailyLimit)),
+            hireCut: num(r.hireCut),
+            venueHired: r.venueHired === true,
+            sold: num(r.sold),
+            closed: r.closed === true,
+          };
+        }),
+        groups: arr(day.groups).map((g) => {
+          const r = obj(g);
+          return {
+            groupId: str(r.groupId),
+            reference: str(r.reference),
+            state: str(r.state),
+            offerName: str(r.offerName),
+            guestName: str(r.guestName, "Guest"),
+            guests: num(r.guests),
+            startsAt: strOrNull(r.startsAt),
+            endsAt: strOrNull(r.endsAt),
+          };
+        }),
+      };
+    }),
+    events: arr(d.events).map((x) => {
+      const e = obj(x);
+      return {
+        eventId: str(e.eventId),
+        title: str(e.title),
+        spaceId: strOrNull(e.spaceId),
+        spaceUse: strOrNull(e.spaceUse),
+        status: str(e.status),
+        startsAt: str(e.startsAt),
+        endsAt: str(e.endsAt),
+      };
+    }),
+  };
+}
+
+export async function fetchVenueCalendar(venueId: string, from: string, to: string): Promise<VenueCalendar> {
+  const { data, error } = await supabase.rpc("issue_4490_venue_calendar", { p_venue_id: venueId, p_from: from, p_to: to });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapVenueCalendar(data);
+}
+
+export async function fetchNextFreeDates(input: {
+  offeringId: string;
+  priceOptionId: string;
+  from?: string | null;
+  limit?: number;
+}): Promise<NextFreeDate[]> {
+  const { data, error } = await supabase.rpc("issue_4490_next_free_dates", {
+    p_offering_id: input.offeringId,
+    p_price_option_id: input.priceOptionId,
+    p_from: input.from ?? null,
+    p_limit: input.limit ?? 3,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return arr(data).map((x) => {
+    const r = obj(x);
+    return {
+      windowId: str(r.windowId),
+      localDate: str(r.localDate),
+      startsAt: str(r.startsAt),
+      endsAt: str(r.endsAt),
+      sessionLabel: strOrNull(r.sessionLabel),
+    };
+  });
+}
+
+/** A refusal from `venue-offer-staff`, with the capacity detail when sent. */
+export class VenueStaffError extends VenueOfferError {
+  readonly capacity: { localDate: string | null; poolName: string | null; sold: number; limitAfterHire: number } | null;
+  constructor(code: string, capacity: VenueStaffError["capacity"] = null) {
+    super(code);
+    this.name = "VenueStaffError";
+    this.capacity = capacity;
+  }
+}
+
+async function staff(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.functions.invoke("venue-offer-staff", { body });
+  if (error) {
+    const context = (error as { context?: unknown }).context;
+    if (context !== null && context !== undefined && typeof (context as Response).json === "function") {
+      try {
+        const parsed = obj(await (context as Response).json());
+        if (typeof parsed.code === "string" && parsed.code.length > 0) {
+          const detail = parsed.detail === undefined ? null : obj(parsed.detail);
+          throw new VenueStaffError(
+            parsed.code,
+            detail === null
+              ? null
+              : {
+                  localDate: strOrNull(detail.localDate),
+                  poolName: strOrNull(detail.poolName),
+                  sold: num(detail.sold),
+                  limitAfterHire: num(detail.limitAfterHire),
+                },
+          );
+        }
+      } catch (caught) {
+        if (caught instanceof VenueStaffError) throw caught;
+        // An unreadable body falls through to the network/unknown mapping.
+      }
+    }
+    const fallback = toVenueOfferError({ message: (error as { message?: string }).message ?? "staff_action_failed" });
+    throw new VenueStaffError(fallback.code === "unknown" ? "staff_action_failed" : fallback.code);
+  }
+  const envelope = obj(data);
+  if (envelope.kind !== "success") throw new VenueStaffError(str(envelope.code, "staff_action_failed"));
+  return obj(envelope.data);
+}
+
+export async function staffRequestAction(input: {
+  action: StaffRequestAction;
+  groupId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+  quoteEdit?: { baseMinor: number; note?: string } | null;
+  note?: string | null;
+  reason?: string | null;
+  alternatives?: string[];
+  hours?: 12 | 24 | 48;
+}): Promise<StaffActionResult> {
+  const body: Record<string, unknown> = {
+    action: input.action,
+    groupId: input.groupId,
+    expectedVersion: input.expectedVersion,
+    idempotencyKey: input.idempotencyKey,
+  };
+  if (input.action === "approve") {
+    if (input.quoteEdit !== undefined && input.quoteEdit !== null) {
+      body.quoteEdit = {
+        baseMinor: input.quoteEdit.baseMinor,
+        ...(input.quoteEdit.note !== undefined && input.quoteEdit.note.trim().length > 0 ? { note: input.quoteEdit.note.trim() } : {}),
+      };
+    }
+    if (input.note !== undefined && input.note !== null && input.note.trim().length > 0) body.note = input.note.trim();
+  }
+  if (input.action === "decline") {
+    body.reason = (input.reason ?? "").trim();
+    body.alternatives = input.alternatives ?? [];
+  }
+  if (input.action === "extend_hold") body.hours = input.hours ?? 24;
+  if (input.action === "release_hold" && input.reason !== undefined && input.reason !== null && input.reason.trim().length > 0) {
+    body.reason = input.reason.trim();
+  }
+  const d = await staff(body);
+  return {
+    groupId: str(d.groupId, input.groupId),
+    state: str(d.state),
+    holdUntil: strOrNull(d.holdUntil),
+    depositMinor: numOrNull(d.depositMinor),
+    totalDueMinor: numOrNull(d.totalDueMinor),
+    position: numOrNull(d.position),
+    blockedByReference: strOrNull(d.blockedByReference),
+    replayed: d.replayed === true,
+  };
+}
+
+export async function blockVenueSpace(input: {
+  venueId: string;
+  from: string;
+  to: string;
+  reason: string | null;
+  spaceIds?: string[];
+  combinationId?: string;
+  idempotencyKey: string;
+}): Promise<{ claimIds: string[] }> {
+  const d = await staff({
+    action: "block",
+    venueId: input.venueId,
+    idempotencyKey: input.idempotencyKey,
+    from: input.from,
+    to: input.to,
+    ...(input.reason !== null && input.reason.trim().length > 0 ? { reason: input.reason.trim() } : {}),
+    ...(input.combinationId !== undefined ? { combinationId: input.combinationId } : { spaceIds: input.spaceIds ?? [] }),
+  });
+  return { claimIds: arr(d.claimIds).filter((x): x is string => typeof x === "string") };
+}
+
+export async function unblockVenueSpace(input: { venueId: string; claimId: string; idempotencyKey: string }): Promise<void> {
+  await staff({ action: "unblock", venueId: input.venueId, claimId: input.claimId, idempotencyKey: input.idempotencyKey });
+}
+
+export function mapHireBookingFacts(v: unknown): HireBookingFacts | null {
+  if (v === null || v === undefined) return null;
+  const h = obj(v);
+  const charge = str(h.hireCharge);
+  return {
+    placeName: strOrNull(h.placeName),
+    spaceIds: arr(h.spaceIds).filter((x): x is string => typeof x === "string"),
+    combinationId: strOrNull(h.combinationId),
+    sessionLabel: strOrNull(h.sessionLabel),
+    bookedFrom: strOrNull(h.bookedFrom),
+    bookedTo: strOrNull(h.bookedTo),
+    setupFrom: strOrNull(h.setupFrom),
+    cleanupUntil: strOrNull(h.cleanupUntil),
+    guests: num(h.guests),
+    hireMinor: num(h.hireMinor),
+    extraGuests: num(h.extraGuests),
+    extraGuestMinor: num(h.extraGuestMinor),
+    overtimeHours: num(h.overtimeHours),
+    overtimeMinor: num(h.overtimeMinor),
+    hireCharge: charge === "hire_fee" || charge === "min_spend" || charge === "per_guest" ? charge : null,
+    minSpendMinor: num(h.minSpendMinor),
+    damageDepositMinor: num(h.damageDepositMinor),
+    occasion: strOrNull(h.occasion),
+    note: strOrNull(h.note),
+    siteVisit: h.siteVisit === true,
+    replyWithinHours: numOrNull(h.replyWithinHours),
+    declineReason: strOrNull(h.declineReason),
+    alternatives: arr(h.alternatives).filter((x): x is string => typeof x === "string"),
+    hostNote: strOrNull(h.hostNote),
+    closedReason: strOrNull(h.closedReason),
   };
 }
 
@@ -865,6 +1348,10 @@ export function mapVenueBooking(v: unknown): VenueBookingDetail {
     timezone: str(obj(b.venue).timezone, "Africa/Lagos"),
     brandSlug: strOrNull(obj(b.venue).brandSlug),
     venueSlug: strOrNull(obj(b.venue).slug),
+    hire: mapHireBookingFacts(b.hire),
+    requestDeadline: strOrNull(b.requestDeadline),
+    paymentDeadline: strOrNull(b.paymentDeadline),
+    policyText: strOrNull(obj(b.policy).text),
   };
 }
 

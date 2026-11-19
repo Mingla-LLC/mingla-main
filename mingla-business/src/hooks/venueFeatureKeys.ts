@@ -38,4 +38,15 @@ export const venueFeatureKeys = {
     ["venueDayClosure", brandId, venueId] as const,
   dayClosure: (brandId: string, venueId: string, localDate: string): readonly string[] =>
     ["venueDayClosure", brandId, venueId, localDate] as const,
+  // #4490 P4 — requests, the calendar and next free dates (private hire).
+  requestsAll: (brandId: string, venueId: string): readonly string[] =>
+    ["venueRequests", brandId, venueId] as const,
+  requests: (brandId: string, venueId: string, filter: string): readonly string[] =>
+    ["venueRequests", brandId, venueId, filter] as const,
+  calendarAll: (brandId: string, venueId: string): readonly string[] =>
+    ["venueCalendar", brandId, venueId] as const,
+  calendar: (brandId: string, venueId: string, from: string, to: string): readonly string[] =>
+    ["venueCalendar", brandId, venueId, from, to] as const,
+  nextFreeDates: (brandId: string, venueId: string, optionId: string, from: string): readonly string[] =>
+    ["venueNextFreeDates", brandId, venueId, optionId, from] as const,
 };

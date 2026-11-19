@@ -81,6 +81,9 @@ export const BOOKING_STATE_WORDS: Readonly<Record<string, { label: string; varia
   cancelled: { label: "Cancelled", variant: "error" },
   request_pending: { label: "To answer", variant: "info" },
   approved_payment_required: { label: "Waiting for deposit", variant: "warn" },
+  // #4490 P4 — closed requests.
+  declined: { label: "Declined", variant: "muted" },
+  request_expired: { label: "Closed", variant: "muted" },
 };
 
 export function bookingStateWords(state: string): { label: string; variant: "ok" | "warn" | "info" | "muted" | "error" } {
@@ -120,6 +123,10 @@ export function moneyRows(b: VenueBookingDetail): MoneyRow[] {
   if (b.paidAtVenueMinor > 0) rows.push({ key: "venue", label: "Paid at the venue", value: m(b.paidAtVenueMinor) });
   if (b.refundedMinor > 0) rows.push({ key: "refunded", label: "Refunded", value: m(b.refundedMinor), muted: true });
   rows.push({ key: "balance", label: "Still to pay", value: m(Math.max(0, b.balanceDueMinor)), total: true });
+  // #4490 P4 — a hire's refundable damage deposit sits inside the total.
+  if (b.hire !== null && b.hire.damageDepositMinor > 0) {
+    rows.push({ key: "damage", label: "Includes damage deposit (refundable)", value: m(b.hire.damageDepositMinor), muted: true });
+  }
   return rows;
 }
 

@@ -84,6 +84,9 @@ function useInvalidateBooking(brandId: string | null, venueId: string | null): (
     void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.dayAll(brandId, venueId) });
     void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.checkInsAll(brandId, venueId) });
     void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.dayClosureAll(brandId, venueId) });
+    // #4490 P4 — a hire's money and state show in Requests and the Calendar too.
+    void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.requestsAll(brandId, venueId) });
+    void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.calendarAll(brandId, venueId) });
   };
 }
 

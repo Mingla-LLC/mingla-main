@@ -175,6 +175,15 @@ const LazyVenueCheckInModule = React.lazy(async () => {
   const mod = await import("./features/checkin/VenueCheckInModule");
   return { default: mod.VenueCheckInModule };
 });
+// #4490 P4 — Requests and Calendar (private hire), own lazy boundaries.
+const LazyVenueRequestsModule = React.lazy(async () => {
+  const mod = await import("./features/requests/VenueRequestsModule");
+  return { default: mod.VenueRequestsModule };
+});
+const LazyVenueCalendarModule = React.lazy(async () => {
+  const mod = await import("./features/calendar/VenueCalendarModule");
+  return { default: mod.VenueCalendarModule };
+});
 const LazyVenueTodayOverview = React.lazy(async () => {
   const mod = await import("./features/today/VenueTodayOverview");
   return { default: mod.VenueTodayOverview };
@@ -322,6 +331,8 @@ export function VenueSuiteShell({
   );
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
+  // #4490 P4 — the Calendar opens a hold or a request in Requests.
+  const [requestItem, setRequestItem] = useState<string | null>(null);
   const availabilityRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
   const settingsRef = useRef<VenueSettingsLeaveHandle | null>(null);
   const offersRef = useRef<VenueModuleLeaveHandle | null>(null);
@@ -645,7 +656,8 @@ export function VenueSuiteShell({
       // #4420 B8 + round-3 item 12 — the invitation and the page's Local
       // reviews panel now scroll WITH the dashboard (as its header) instead of
       // being pinned above it, and the invitation is one compact row.
-      const sellsOffers = features.entry.enabled;
+      // #4490 — any selling feature (Entry, group packages, private hire).
+      const sellsOffers = features.entry.enabled || features.group_packages.enabled || features.private_hire.enabled;
       const header = (
         <>
           {sellsOffers && !venueAccess.scoped ? (
@@ -658,6 +670,7 @@ export function VenueSuiteShell({
                 onOpenModule={(next) => {
                   if (visibleModules.includes(next)) selectModule(next);
                 }}
+                showRequests={visibleModules.includes("requests")}
               />
             </React.Suspense>
           ) : null}
@@ -766,7 +779,50 @@ export function VenueSuiteShell({
             </View>
           }
         >
-          <LazyVenueTodayModule brandId={brandId} venueId={venueId} onOpenModule={openModule} />
+          <LazyVenueTodayModule brandId={brandId} venueId={venueId} onOpenModule={openModule} showRequests={visibleModules.includes("requests")} />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "requests") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueRequestsModule
+            key={requestItem ?? "requests"}
+            brandId={brandId}
+            venueId={venueId}
+            onOpenModule={openModule}
+            initialGroupId={requestItem ?? (initialModule === "requests" ? initialItemId : null)}
+          />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "calendar") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueCalendarModule
+            brandId={brandId}
+            venueId={venueId}
+            onOpenRequest={
+              visibleModules.includes("requests")
+                ? (groupId) => {
+                    setRequestItem(groupId);
+                    selectModule("requests");
+                  }
+                : undefined
+            }
+          />
         </React.Suspense>
       );
     }

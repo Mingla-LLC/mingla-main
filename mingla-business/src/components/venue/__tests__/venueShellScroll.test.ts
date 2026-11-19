@@ -44,6 +44,9 @@ describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
     expect(moduleSelfScrolls("settings")).toBe(true);
     // TEST-MOD-APPROVED #4490 — Offers owns its scroll (the Entry editor pins its Back/Continue bar).
     expect(moduleSelfScrolls("offers")).toBe(true);
+    // TEST-MOD-APPROVED #4490 P4 — Requests (list + detail) and Calendar (week grid) own their scroll.
+    expect(moduleSelfScrolls("requests")).toBe(true);
+    expect(moduleSelfScrolls("calendar")).toBe(true);
     for (
       const m of ALL_MODULES.filter(
         (x) =>
@@ -51,7 +54,9 @@ describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
           x !== "insights" &&
           x !== "reservations" &&
           x !== "settings" &&
-          x !== "offers",
+          x !== "offers" &&
+          x !== "requests" &&
+          x !== "calendar",
       )
     ) {
       expect(moduleSelfScrolls(m)).toBe(false);

@@ -206,7 +206,7 @@ function BookingBody({ brandId, venueId, groupId, mode, setMode, onClose, onDone
   const guests = b.lines.reduce((n, l) => n + l.guests, 0);
   const answers = Object.entries(b.answers);
   const facts = [
-    { key: "offer", label: b.offerKind === "group_package" ? "Package" : "Offer", value: b.offer.name || "—" },
+    { key: "offer", label: b.offerKind === "group_package" ? "Package" : b.offerKind === "private_hire" ? "Private hire" : "Offer", value: b.hire?.placeName ?? (b.offer.name || "—") },
     { key: "when", label: "When", value: whenLine(b) },
     {
       key: "guests",
@@ -217,7 +217,7 @@ function BookingBody({ brandId, venueId, groupId, mode, setMode, onClose, onDone
     },
     { key: "by", label: "Booked by", value: [b.guest.name, b.guest.phone, b.guest.email].filter(Boolean).join(" · ") },
     { key: "ref", label: "Reference", value: b.reference },
-    ...answers.map(([q, a]) => ({ key: `a-${q}`, label: q, value: a })),
+    ...(b.hire !== null ? hireFacts(b) : answers.map(([q, a]) => ({ key: `a-${q}`, label: q, value: a }))),
   ];
   const historyItems = [
     ...b.history.map((h, i) => ({
@@ -305,8 +305,15 @@ function BookingBody({ brandId, venueId, groupId, mode, setMode, onClose, onDone
         {canChange ? (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Change</Text>
-            <ActionLine icon="users" label="Change guest numbers" detail={`${guests} now`} onPress={() => setMode("guests")} testID="venue-booking-change-guests" />
-            <ActionLine icon="calendar" label="Move the date" detail={b.window !== null ? shortDay(b.window.localDate) : null} onPress={() => setMode("date")} testID="venue-booking-move" />
+            {b.changeRules === null || b.changeRules.canChangeGuests ? (
+              <ActionLine icon="users" label="Change guest numbers" detail={`${guests} now`} onPress={() => setMode("guests")} testID="venue-booking-change-guests" />
+            ) : null}
+            {b.changeRules === null || b.changeRules.canMove ? (
+              <ActionLine icon="calendar" label="Move the date" detail={b.window !== null ? shortDay(b.window.localDate) : null} onPress={() => setMode("date")} testID="venue-booking-move" />
+            ) : null}
+            {b.hire !== null ? (
+              <Text style={styles.meta}>A hire&apos;s day and guest numbers are changed with the guest directly for now: cancel and rebook, or agree it with them.</Text>
+            ) : null}
             {offer !== null && offer.extras.length > 0 ? (
               <ActionLine icon="plus" label="Add an extra" detail={null} onPress={() => setMode("extras")} testID="venue-booking-add-extra" />
             ) : null}
@@ -325,6 +332,26 @@ function BookingBody({ brandId, venueId, groupId, mode, setMode, onClose, onDone
       </ScrollView>
     </View>
   );
+}
+
+/** #4490 P4 — the hire facts: session, setup and cleanup, the damage deposit, the guest's answers and the saved terms. */
+function hireFacts(b: VenueBookingDetail): Array<{ key: string; label: string; value: string }> {
+  const h = b.hire;
+  if (h === null) return [];
+  const out: Array<{ key: string; label: string; value: string }> = [];
+  if (h.sessionLabel !== null) out.push({ key: "session", label: "Session", value: h.sessionLabel });
+  const setup = clockIn(h.setupFrom, b.timezone);
+  const cleanup = clockIn(h.cleanupUntil, b.timezone);
+  if (setup !== null && cleanup !== null) out.push({ key: "setup", label: "Setup", value: `From ${setup} · cleanup until ${cleanup}` });
+  if (h.extraGuests > 0) out.push({ key: "extra", label: "Extra guests", value: `${h.extraGuests} · ${money(h.extraGuestMinor, b.currencyCode)}` });
+  if (h.overtimeHours > 0) out.push({ key: "over", label: "Running over", value: `${h.overtimeHours} h · ${money(h.overtimeMinor, b.currencyCode)}` });
+  if (h.damageDepositMinor > 0) out.push({ key: "damage", label: "Damage deposit", value: `${money(h.damageDepositMinor, b.currencyCode)} · refundable` });
+  if (h.occasion !== null) out.push({ key: "occasion", label: "Occasion", value: h.occasion });
+  if (h.note !== null) out.push({ key: "note", label: "Their note", value: h.note });
+  if (h.siteVisit) out.push({ key: "visit", label: "Site visit", value: "Asked to see the space first" });
+  if (h.hostNote !== null) out.push({ key: "hostNote", label: "Your note", value: h.hostNote });
+  if (b.policyText !== null) out.push({ key: "terms", label: "Terms", value: b.policyText });
+  return out;
 }
 
 function Shell({ title, onClose, plainHead, children }: { title: string; onClose: () => void; plainHead: boolean; children: React.ReactNode }): React.ReactElement {

@@ -66,7 +66,7 @@ export interface NewOfferCard {
 export const NEW_OFFER_CARDS: readonly NewOfferCard[] = [
   { key: "entry", label: "Entry", helper: "Walk-in, day pass or timed session. Priced per guest.", icon: "ticket", built: true },
   { key: "group_package", label: "Group package", helper: "A per-guest deal for groups, with extras included.", icon: "users", built: true },
-  { key: "private_hire", label: "Private hire", helper: "A space to themselves. By request, with a deposit.", icon: "shield", built: false },
+  { key: "private_hire", label: "Private hire", helper: "A space to themselves. By request, with a deposit.", icon: "shield", built: true },
   { key: "by_the_hour", label: "By the hour", helper: "A room, court, lane, table or desk.", icon: "clock", built: false },
   { key: "table_reservations", label: "Table reservations", helper: "A table at a time. Restaurants, bars, lounges.", icon: "calendar", built: true },
   { key: "membership", label: "Membership", helper: "Monthly access with perks. Coworking, clubs.", icon: "star", built: false },
@@ -74,7 +74,7 @@ export const NEW_OFFER_CARDS: readonly NewOfferCard[] = [
 
 /** Why a card can't be picked yet (plain words, no dead tap). */
 export const COMING_SOON_REASON =
-  "Private hire, by the hour and memberships are coming soon. You'll sell them here once they're ready.";
+  "By the hour and memberships are coming soon. You'll sell them here once they're ready.";
 
 // ---------------------------------------------------------------- money
 
@@ -460,6 +460,12 @@ export function optionSummary(option: VenuePriceOption, currency: string | null)
 /** Lowest price label for the list ("₦4,000 per guest", "from ₦4,000"). */
 export function priceColumn(offer: VenueOffer, currency: string | null): string {
   if (offer.options.length === 0) return "No price yet";
+  if (offer.kind === "private_hire") {
+    const lowest = Math.min(...offer.options.map((o) => o.priceMinor));
+    const max = Math.max(...offer.options.map((o) => o.guestMax));
+    const perGuest = offer.options.some((o) => o.unit === "guest");
+    return `from ${money(lowest, currency)}${perGuest ? " a guest" : ""} · up to ${max.toLocaleString("en-GB")} guests`;
+  }
   if (offer.kind === "group_package") {
     const lowest = Math.min(...offer.options.map((o) => o.priceMinor));
     const perGroup = offer.options.length === 1 && offer.options[0].unit === "booking";
@@ -478,6 +484,12 @@ export function priceColumn(offer: VenueOffer, currency: string | null): string 
 }
 
 export function whenColumn(offer: VenueOffer): string {
+  if (offer.kind === "private_hire") {
+    const sessions = offer.hire?.sessions ?? [];
+    if (sessions.length === 0) return "No sessions yet";
+    const days = weekdaysSummary(sessions[0].weekdays);
+    return `${days} · ${sessions.map((s) => s.label).join(", ")}`;
+  }
   if (offer.kind === "group_package") {
     if (offer.startTimes.length === 0) return "No start times yet";
     const days = weekdaysSummary(offer.schedule?.weekdays ?? [0, 1, 2, 3, 4, 5, 6]);
@@ -495,6 +507,10 @@ export function whenColumn(offer: VenueOffer): string {
 }
 
 export function kindLine(offer: VenueOffer): string {
+  if (offer.kind === "private_hire") {
+    const places = (offer.hire?.spaces.length ?? 0) + (offer.hire?.combinations.length ?? 0);
+    return `Private hire · ${places} ${places === 1 ? "space" : "spaces"} · ${offer.confirmationMode === "request" ? "request first" : "book instantly"}`;
+  }
   if (offer.kind === "group_package") {
     const min = offer.options.length > 0 ? Math.min(...offer.options.map((o) => o.guestMin)) : null;
     const max = offer.options.length > 0 ? Math.max(...offer.options.map((o) => o.guestMax)) : null;

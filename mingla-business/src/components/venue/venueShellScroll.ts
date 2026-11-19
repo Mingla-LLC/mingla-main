@@ -39,7 +39,11 @@ export function moduleSelfScrolls(module: VenueModule): boolean {
     module === "settings" ||
     // #4490 P2 — Offers owns its scroll so the Entry editor can pin its
     // Back / Continue bar under its own scrolling form.
-    module === "offers"
+    module === "offers" ||
+    // #4490 P4 — Requests (list and detail side by side) and the Calendar
+    // (week grid with its own horizontal scroll) own their scroll.
+    module === "requests" ||
+    module === "calendar"
   );
 }
 

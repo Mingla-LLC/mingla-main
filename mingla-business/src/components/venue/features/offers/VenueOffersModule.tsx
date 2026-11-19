@@ -41,6 +41,7 @@ import { Tabs } from "../../../ui/Tabs";
 import type { VenueModuleLeaveHandle } from "../../venueLeaveContract";
 import { venueScrollBottomPad } from "../../venueShellScroll";
 import { EntryEditor } from "./EntryEditor";
+import { HireEditor } from "./HireEditor";
 import { PackageEditor } from "./PackageEditor";
 import {
   COMING_SOON_REASON,
@@ -77,7 +78,8 @@ export interface VenueOffersModuleProps {
   initialOfferId?: string | null;
 }
 
-type Editing = { offerId: string | null; kind: "entry" | "group_package" } | null;
+type EditorKind = "entry" | "group_package" | "private_hire";
+type Editing = { offerId: string | null; kind: EditorKind } | null;
 type Confirm = { action: "pause" | "archive"; offer: VenueOffer } | null;
 
 export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersModuleProps>(function VenueOffersModule(
@@ -129,6 +131,8 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const entryOn = featuresQuery.data?.features.entry.enabled === true;
   const tablesOn = featuresQuery.data?.features.table_reservations.enabled === true;
   const packagesOn = featuresQuery.data?.features.group_packages.enabled === true;
+  const hireOn = featuresQuery.data?.features.private_hire.enabled === true;
+  const activeSpaces = featuresQuery.data?.activeSpaceCount ?? 0;
   const canEdit = access.canEditSpaces;
   const soldToday = useMemo(() => {
     const map: Record<string, number> = {};
@@ -144,7 +148,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const visible = tab === "all" ? offers : offers.filter((o) => o.kind === tab);
 
   const openEditor = useCallback(
-    (offerId: string | null, kind: "entry" | "group_package" = "entry"): void => {
+    (offerId: string | null, kind: EditorKind = "entry"): void => {
       setPicker(false);
       if (Platform.OS !== "web" && venueId !== null) {
         router.push(`/venue/${venueId}/offer/${offerId ?? "new"}?kind=${kind}` as never);
@@ -155,7 +159,8 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
     [router, venueId],
   );
   const openOffer = useCallback(
-    (offer: VenueOffer): void => openEditor(offer.id, offer.kind === "group_package" ? "group_package" : "entry"),
+    (offer: VenueOffer): void =>
+      openEditor(offer.id, offer.kind === "group_package" || offer.kind === "private_hire" ? offer.kind : "entry"),
     [openEditor],
   );
   const openPayments = useCallback((): void => {
@@ -191,12 +196,41 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
         );
         return;
       }
+      if (card.key === "private_hire") {
+        if (hireOn) {
+          openEditor(null, "private_hire");
+          return;
+        }
+        if (activeSpaces === 0) {
+          // A hire takes a whole space: the venue needs one first.
+          setPicker(false);
+          setFeatureError("Private hire needs at least one space. Add your spaces first, then pick Private hire again.");
+          onOpenModule?.("spaces");
+          return;
+        }
+        // #4490 P4 — an owner or admin turns Private hire on as they pick it.
+        setFeatureError(null);
+        setFeature.mutate(
+          { key: "private_hire", enabled: true, cascade: true },
+          {
+            onSuccess: () => {
+              setToast("Private hire turned on");
+              openEditor(null, "private_hire");
+            },
+            onError: () => {
+              setPicker(false);
+              setFeatureError("Couldn't turn on Private hire. Try again, or switch it on in Settings.");
+            },
+          },
+        );
+        return;
+      }
       if (card.key === "table_reservations") {
         setPicker(false);
         onOpenModule?.(tablesOn ? "reservations" : "settings");
       }
     },
-    [onOpenModule, openEditor, packagesOn, setFeature, tablesOn],
+    [activeSpaces, hireOn, onOpenModule, openEditor, packagesOn, setFeature, tablesOn],
   );
 
   const runStatus = useCallback(
@@ -237,7 +271,22 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   if (editing !== null) {
     return (
       <View style={styles.editorHost} testID="venue-offers-editor">
-        {(editing.offerId !== null ? offers.find((o) => o.id === editing.offerId)?.kind ?? editing.kind : editing.kind) === "group_package" ? (
+        {(editing.offerId !== null ? offers.find((o) => o.id === editing.offerId)?.kind ?? editing.kind : editing.kind) === "private_hire" ? (
+          <HireEditor
+            ref={editorRef}
+            brandId={brandId}
+            venueId={venueId}
+            venueName={venueName}
+            offerId={editing.offerId}
+            onOpenSettings={onOpenModule !== undefined ? () => onOpenModule("settings") : undefined}
+            onOpenSpaces={onOpenModule !== undefined ? () => onOpenModule("spaces") : undefined}
+            onOpenPayments={openPayments}
+            onClose={(result) => {
+              setEditing(null);
+              if (result?.published === true) setToast(`${result.name} is live`);
+            }}
+          />
+        ) : (editing.offerId !== null ? offers.find((o) => o.id === editing.offerId)?.kind ?? editing.kind : editing.kind) === "group_package" ? (
           <PackageEditor
             ref={editorRef}
             brandId={brandId}
@@ -303,7 +352,9 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           !canEdit ||
           (card.key === "entry" && !entryOn) ||
           (card.key === "group_package" && !packagesOn && !access.canSwitchFeatures) ||
-          (card.key === "group_package" && setFeature.isPending);
+          (card.key === "group_package" && setFeature.isPending) ||
+          (card.key === "private_hire" && !hireOn && !access.canSwitchFeatures) ||
+          (card.key === "private_hire" && setFeature.isPending);
         const helper = !card.built
           ? "Coming soon"
           : card.key === "entry" && !entryOn
@@ -312,6 +363,12 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
               ? access.canSwitchFeatures
                 ? `${card.helper} Picking it turns on Group packages.`
                 : `${card.helper} Ask a brand owner or admin to turn on Group packages.`
+            : card.key === "private_hire" && !hireOn
+              ? access.canSwitchFeatures
+                ? activeSpaces === 0
+                  ? `${card.helper} Add a space first: a hire takes a whole space.`
+                  : `${card.helper} Picking it turns on Private hire.`
+                : `${card.helper} Ask a brand owner or admin to turn on Private hire.`
             : card.key === "table_reservations"
               ? `${card.helper} ${tablesOn ? "Opens Reservations." : "Switch it on in Settings."}`
               : card.helper;
@@ -514,7 +571,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
               >
                 <View style={[styles.colName, styles.nameCell]}>
                   <View style={styles.iconTile}>
-                    <Icon name={offer.kind === "group_package" ? "users" : offer.options.some((o) => o.eligibility !== null) ? "shield" : "ticket"} size={18} color={color.text2} />
+                    <Icon name={offer.kind === "group_package" ? "users" : offer.kind === "private_hire" ? "home" : offer.options.some((o) => o.eligibility !== null) ? "shield" : "ticket"} size={18} color={color.text2} />
                   </View>
                   <View style={styles.cellText}>
                     <Text style={styles.rowTitle} numberOfLines={1}>{offer.name}</Text>

@@ -309,9 +309,9 @@ export function shouldLeaveBookingModule(input: {
 //  - FEATURES: once the venue has a space (or Events here is on), the Offers
 //    group appears: Spaces and "Availability & pricing" (hours, special days,
 //    closing a day, and Table times when table reservations are on).
-// Modules whose phase has not shipped (Calendar, Requests, Members) stay
-// hidden through BUILT_FEATURES / BUILT_MODULES. P2 ships Offers, Today and
-// Check-in; Today and Check-in show only for a booking feature (entry, group
+// Modules whose phase has not shipped (Members) stay hidden through
+// BUILT_FEATURES / BUILT_MODULES. P2 ships Offers, Today and Check-in; P4
+// ships Calendar and Requests (private hire); Today and Check-in show only for a booking feature (entry, group
 // packages, private hire, by the hour, events here — reconciliation 34).
 // ---------------------------------------------------------------------------
 
@@ -322,6 +322,9 @@ export const BUILT_MODULES: ReadonlySet<VenueModule> = new Set<VenueModule>([
   "offers",
   "spaces",
   "today",
+  // P4: private hire — Calendar and Requests.
+  "calendar",
+  "requests",
   "checkin",
   "tables",
   "availability",
@@ -365,7 +368,10 @@ export function venueUsesSpaces(input: VenueNavInput): boolean {
     input.spacesRequested === true ||
     featureOn(input.features, "events_here") ||
     // P2: a venue that sells Entry needs Offers, Today and Check-in.
-    featureOn(input.features, "entry")
+    featureOn(input.features, "entry") ||
+    // P3/P4: group packages and private hire are sold from Offers too.
+    featureOn(input.features, "group_packages") ||
+    featureOn(input.features, "private_hire")
   );
 }
 

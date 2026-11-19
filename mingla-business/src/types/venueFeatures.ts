@@ -78,6 +78,9 @@ export interface VenueFeatureState {
 export const BUILT_FEATURES: ReadonlySet<VenueFeatureKey> = new Set<VenueFeatureKey>([
   // P2: Entry (offers, passes, check-in, Today).
   "entry",
+  // P3: group packages; P4: private hire (requests, calendar).
+  "group_packages",
+  "private_hire",
   "table_reservations",
   "waitlist",
   "menu",
