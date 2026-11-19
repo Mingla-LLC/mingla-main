@@ -47,6 +47,7 @@ import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
 // replay over the SAME client the service exposes (so capture/identify/reset at
 // the call sites and autocapture share one instance).
 import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
+import { RouteScreenTracker } from "../src/components/RouteScreenTracker";
 import { UnifiedShareProvider } from "../src/components/share/UnifiedShareProvider";
 // #4261: every web link opens in Mingla's in-app browser (useOpenInMingla).
 import { InAppBrowserProvider } from "../src/components/InAppBrowserProvider";
@@ -208,6 +209,7 @@ function RootLayout() {
                     {/* #4261: the root in-app browser for every route. Screens
                         inside their own RN Modal mount their own provider. */}
                     <InAppBrowserProvider>
+                      <RouteScreenTracker />
                       <Stack screenOptions={{ headerShown: false }} />
                     </InAppBrowserProvider>
                   </UnifiedShareProvider>

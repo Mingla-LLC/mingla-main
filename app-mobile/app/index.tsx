@@ -136,6 +136,7 @@ import { mixpanelService } from "../src/services/mixpanelService";
 // kept IDENTICAL across PostHog/Mixpanel so the eventual Mixpanel retirement is
 // a 1:1 mapping.
 import { postHogService } from "../src/services/postHogService";
+import { screenNameForApp } from "../src/services/screenTracking";
 import { captureExplorerSearchOutcome } from "../src/services/searchOutcome";
 import { useTranslation } from 'react-i18next';
 import i18n from '../src/i18n';
@@ -1805,6 +1806,21 @@ function AppContent() {
       mixpanelService.trackScreenViewed(currentPage);
     }
   }, [currentPage, isAuthenticated, isLoadingAuth]);
+
+  // #4226: one PostHog screen view per in-app screen (welcome, onboarding,
+  // preferences, each page). Routes outside this file are tracked by
+  // <RouteScreenTracker /> in app/_layout.tsx. Stable names, no personal data.
+  useEffect(() => {
+    postHogService.screen(
+      screenNameForApp({
+        isLoadingAuth,
+        isAuthenticated,
+        inOnboarding: Boolean(showOnboardingFlow || needsOnboarding),
+        showPreferences: Boolean(showPreferences),
+        currentPage: String(currentPage ?? ''),
+      }),
+    );
+  }, [currentPage, isAuthenticated, isLoadingAuth, showOnboardingFlow, needsOnboarding, showPreferences]);
 
   // Identify user in Mixpanel once authenticated — sets user properties + super properties
   const signupFiredRef = useRef(false);

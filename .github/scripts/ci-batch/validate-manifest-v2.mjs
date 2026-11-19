@@ -614,10 +614,12 @@ export function phase3dContractDigest(manifest) {
 // #3645 merge of main after #4389: kept main's #4453 and #4389 rows and skip lines, listed 20280809003645 after them and kept its #1931 and #2117 skip lines; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3645 merge of main after #4238: kept main's two #4238 rows after 20280809003645; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
+// #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4508: registered the bring-a-friend RSVP migrations and their pg17 suites in the #1857, #1931 and #2117 inventories.
 // #4508: skipped 20281119014508 by exact filename on the filtered #1931 template replay (#2492 closure: it reads claim_links, which only the skipped #4063 migration creates); re-sealed.
 // #4508 tester retest: registered issue_4508_one_place.tester.retest.pg17.test.sql in the #1931 and #2117 inventories; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "a0ccf303c9c2fcc14f67c7cc47e3c7653c273d0c76711a91fa943ba730df5d58";
+// #4508 merge of main after #4226: kept main's #4226 row and skip line beside the #4508 rows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "60a92ac63202fec98923aa6cf7c52d9a6d84d27932053e2184e362ccfd9b8a10";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

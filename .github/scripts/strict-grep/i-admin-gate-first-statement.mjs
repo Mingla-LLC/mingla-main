@@ -127,6 +127,14 @@ const GUARDED_DEFINER_FNS = [
   // ISSUE-4130 Wave 4a [Dashboard]: the founder's morning numbers in one
   // admin-only aggregate. Reverting 20280114004130 removes it → this gate FAILS.
   "admin_dashboard_summary",
+  // ISSUE-4226 Phase 2 [People journey]: the one People filter, its counts
+  // and facets, one person's journey and the Support desk lookup. Reverting
+  // 20281118024226 removes them → this gate FAILS.
+  "admin_people_filter",
+  "admin_people_filter_counts",
+  "admin_people_facets",
+  "admin_person_journey",
+  "admin_people_lookup",
 ];
 
 function fnBody(src, name) {
@@ -312,10 +320,12 @@ if (process.argv.includes("--self-test")) {
         "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
     )
     .join("");
-  // ISSUE-4130 Wave 2a: guard-first GOOD fixtures for the four appended names.
+  // ISSUE-4130 Wave 2a (and #4226 Phase 2): guard-first GOOD fixtures for the appended names.
   const money4130 = [
     "admin_mingla_money_summary", "admin_list_brand_payment_readiness",
     "admin_orders_overview", "admin_settle_owes_back", "admin_dashboard_summary",
+    "admin_people_filter", "admin_people_filter_counts", "admin_people_facets", "admin_person_journey",
+    "admin_people_lookup",
   ]
     .map(
       (n) =>

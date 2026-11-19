@@ -357,10 +357,12 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645 payout gaps: listed migration 20280809003645 in the #1857, #1931 and #2117 lanes (after main's #4453 and #4389 rows), registered its pg17 suite and sidecars in the #1931 and #2117 inventories, and skipped it by exact filename on the #1931 and #2117 filtered template replays (#2492 closure); re-sealed.
 // #3645 merge of main after #4238: listed 20280809003645 before main's 20281118004238 and 20281118014238 rows (filename order); re-sealed.
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
+// #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed.
 // #4508: registered the bring-a-friend RSVP migrations and their pg17 suites in the #1857, #1931 and #2117 inventories.
 // #4508 tester: register issue_4508_bring_a_friend.tester.adversarial.pg17.test.sql (and its .ci-suite.json) beside the implementor proof in #1931 and #2117; re-sealed.
 // #4508 tester retest: register issue_4508_one_place.tester.retest.pg17.test.sql (and its .ci-suite.json) beside the other #4508 proofs in #1931 and #2117; re-sealed.
-export const BOOTSTRAP_SHA256 = "a8e4c6566c7844d198660bc3b91e9b29d6cdb3c2982c5f52b586ce6bc615ab0a";
+// #4508 merge of main after #4226: listed the two #4508 migrations after main's 20281118024226 row and kept both lanes' skip lines; re-sealed.
+export const BOOTSTRAP_SHA256 = "ac6bb41d19badcd3cf861125e8d2851c1bb49a2fe43bc4cb42b8c72d65d3c949";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
