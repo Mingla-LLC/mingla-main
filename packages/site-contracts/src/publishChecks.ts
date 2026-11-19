@@ -157,10 +157,17 @@ export const UNREVIEWED_SECTIONS_MESSAGE = "Review the sections marked Draft bef
 
 export type ReviewState = "draft" | "reviewed";
 export type ReviewSource = "ari" | "composer";
+/**
+ * Everyone a stamp can name: the two writers above, a person (the owner or a
+ * teammate changed the section themselves) and the Mingla team (#4453 website
+ * workspace: a section staff built for a team request).
+ */
+export type ReviewStampSource = ReviewSource | "person" | "team";
+export const REVIEW_STAMP_SOURCES: readonly ReviewStampSource[] = ["ari", "composer", "person", "team"];
 /** The Studio-only stamp on a block. `source` is who wrote it; `by` is who reviewed it (or null). */
 export type BlockReviewStamp = {
   readonly state: ReviewState;
-  readonly source: ReviewSource | "person";
+  readonly source: ReviewStampSource;
   readonly at: string;
   readonly by: string | null;
 };
@@ -184,6 +191,7 @@ export function unreviewedPages(pages: readonly { path: string; title?: string; 
 }
 
 /** The owner chip for a Draft block (spec v1 §4.3). */
-export function draftChipLabel(source: ReviewSource | "person"): string {
+export function draftChipLabel(source: ReviewStampSource): string {
+  if (source === "team") return "Draft · made by the Mingla team";
   return source === "ari" ? "Draft · by Ari" : "Draft · from your answers";
 }
