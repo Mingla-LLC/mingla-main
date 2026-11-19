@@ -29,6 +29,10 @@
 --   2.3  friend-is-going notices, one per friend per event, drained by the
 --        existing every-minute rsvp-notify tick.
 --   2.5  events.rsvp_guests_can_bring (default off) and rsvp_guest_bring.
+--   R5   (fix round 5) J also covers the ad audience's People arm; one place
+--        per person on the claim sweep and the anonymous-RSVP attach
+--        (section 10c); old-contract guests whose number owner proves the
+--        typed email are claimed at submit (submit_event_rsvp, transitional).
 --
 -- Application conflicts never raise 40001. Static SQL except where a column
 -- may be absent on the CI image. Re-created functions name their source.
@@ -74,7 +78,15 @@
 -- literal pairs back; biz_resolve_brand_person_source_derived(text,uuid) is
 -- restored from 20270305001770 and biz_brand_person_conflict_subject from
 -- 20270426002305; drop trigger issue_4508_guest_claim_reingest and its
--- function. DATA NOTE: number-only guest rows (name and email NULL) and
+-- function. R5: ad_list_audience_refresh is restored from 20280318004238
+-- (it then has neither J nor the People-arm lines), and
+-- claim_attendance_by_verified_identity and claim_attendance_internal_v2 from
+-- 20280805004459; drop trigger issue_4508_rsvp_attach_one_place on
+-- event_rsvps, the functions issue_4508_unclaimed_plus_one_link,
+-- issue_4508_contact_only_from_unclaimed_plus_one,
+-- issue_4508_release_for_own_place, issue_4508_sweep_guest_yields,
+-- tg_issue_4508_rsvp_attach_one_place and issue_4508_take_guest_notices; the
+-- table rsvp_guest_notices may stay. DATA NOTE: number-only guest rows (name and email NULL) and
 -- friend guests with no proven number (phone NULL) exist once this has run;
 -- the old submit_event_rsvp and old readers assume NOT NULL there, so roll the
 -- functions back only together with a decision about those rows (keep them
@@ -389,13 +401,36 @@ CREATE INDEX IF NOT EXISTS rsvp_friend_going_notices_pending_idx
 COMMENT ON TABLE public.rsvp_friend_going_notices IS
   '#4508 2.3: "{Name} is going to {event}". At most one per friend per event, ever.';
 
+-- R5-2: "Your guest's spot is free" for an unclaimed plus-one released by a
+-- database path that has no edge to send it (a proven-contact claim sweep, or
+-- an anonymous own RSVP attached to the account). rsvp-notify's every-minute
+-- tick takes each row once (issue_4508_take_guest_notices) and sends it
+-- through notify-dispatch with the same type, words and idempotency key as
+-- the submit path's notice (rsvp_guest_own_rsvp:<guestId>).
+CREATE TABLE IF NOT EXISTS public.rsvp_guest_notices (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind text NOT NULL CHECK (kind IN ('guest_has_own_rsvp')),
+  user_id uuid NOT NULL,
+  guest_id uuid NOT NULL,
+  event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+  phone_last4 text NULL CHECK (phone_last4 IS NULL OR phone_last4 ~ '^[0-9]{4}$'),
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'taken')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  taken_at timestamptz NULL,
+  CONSTRAINT rsvp_guest_notices_once UNIQUE (guest_id, kind)
+);
+CREATE INDEX IF NOT EXISTS rsvp_guest_notices_pending_idx
+  ON public.rsvp_guest_notices (created_at) WHERE status = 'pending';
+COMMENT ON TABLE public.rsvp_guest_notices IS
+  '#4508 R5-2: in-app notices to an inviter whose unclaimed guest took their own place, queued by database paths with no edge (claim sweep, anonymous RSVP attach); rsvp-notify takes each once.';
+
 DO $rls$
 DECLARE v_table text;
 BEGIN
   FOREACH v_table IN ARRAY ARRAY['rsvp_guest_releases', 'rsvp_guest_invite_log',
     'rsvp_guest_connections', 'rsvp_friend_going_notices', 'rsvp_guest_released_codes',
     'rsvp_friend_going_failures', 'rsvp_guest_signed_out_attempts',
-    'rsvp_guest_lookup_log', 'rsvp_guest_signed_out_ceiling_hits'] LOOP
+    'rsvp_guest_lookup_log', 'rsvp_guest_signed_out_ceiling_hits', 'rsvp_guest_notices'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_table);
     EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', v_table);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC, anon, authenticated', v_table);
@@ -1245,6 +1280,10 @@ DECLARE
   -- (public-submit-rsvp sends the notices and strips them from its answer).
   v_notices     jsonb := '[]'::jsonb;
   v_doomed uuid[] := '{}';
+  -- R5-3: the request is in the pre-#4508 contract (every guest {name,
+  -- email, phone}); see the legacy rule at the guest insert below.
+  v_legacy      boolean := false;
+  v_legacy_claim boolean;
 BEGIN
   -- 1. Load + gate the event (FOR UPDATE serializes concurrent submits).
   SELECT * INTO v_event FROM public.events WHERE id = p_event_id FOR UPDATE;
@@ -1363,6 +1402,7 @@ BEGIN
       p_guests := '[]'::jsonb;
     END IF;
     p_guests := COALESCE(p_guests, '[]'::jsonb);
+    v_legacy := p_user_id IS NOT NULL AND jsonb_array_length(p_guests) > 0;
     v_max_guests := CASE WHEN v_event.rsvp_allow_plus_ones
       THEN COALESCE(v_event.rsvp_plus_ones_max, 0) ELSE 0 END;
     IF jsonb_array_length(p_guests) > v_max_guests THEN
@@ -1402,6 +1442,7 @@ BEGIN
         END IF;
         v_seen_users := v_seen_users || v_friend;
         v_gphone := public.rsvp_account_proven_phone(v_friend);
+        v_legacy := false;
       ELSE
         IF NULLIF(btrim(COALESCE(v_guest->>'phone', '')), '') IS NULL THEN
           RAISE EXCEPTION 'rsvp_guest_contact_required';
@@ -1425,6 +1466,12 @@ BEGIN
           RAISE EXCEPTION 'rsvp_guest_phone_country_invalid' USING ERRCODE = '22023';
         END IF;
         v_gphone := btrim(v_guest->>'phone');
+        -- R5-3: one guest outside the old contract (number-only here, or a
+        -- friend pick above) makes the whole request a current-client one.
+        IF NULLIF(btrim(COALESCE(v_guest->>'name', '')), '') IS NULL
+           OR NULLIF(btrim(COALESCE(v_guest->>'email', '')), '') IS NULL THEN
+          v_legacy := false;
+        END IF;
       END IF;
 
       v_digits := CASE WHEN v_gphone IS NULL THEN NULL
@@ -1648,11 +1695,25 @@ BEGIN
          AND public.rsvp_number_on_event_list(p_event_id, v_digits, v_existing_id) THEN
         RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
       END IF;
+      v_legacy_claim := false;
       IF v_friend IS NOT NULL THEN
         v_match := v_friend;
       ELSE
         -- #4508 0.2: never the primary's own account.
         v_match := NULLIF(public.biz_resolve_verified_user(v_gemail, v_gphone), p_user_id);
+        -- R5-3 old Explorer apps (no claim screen). A guest sent in the
+        -- pre-#4508 contract (v_legacy: every guest of the request carries a
+        -- name, an email and a number, none is a friend pick) whose matched
+        -- account proves BOTH the number (the match above: phone decides,
+        -- P2-1) and the typed email (account_owns_contact) is claimed at
+        -- submit, as such a guest got their pass in the app before #4508.
+        -- An email never chooses the account: a typed email that is not the
+        -- number owner's, or a number nobody proved, stays claim-first.
+        -- [TRANSITIONAL] old Explorer apps without the claim screen - remove
+        -- once the Explorer minimum version (app version policy, enforce)
+        -- is the first #4508 release.
+        v_legacy_claim := v_legacy AND v_match IS NOT NULL AND v_gemail IS NOT NULL
+          AND public.account_owns_contact(v_match, v_gemail, NULL);
       END IF;
       IF v_match IS NOT NULL
          AND public.rsvp_user_on_event_list(p_event_id, v_match, v_existing_id) THEN
@@ -1673,9 +1734,10 @@ BEGIN
       END IF;
       v_new_count := v_new_count + 1;
       INSERT INTO public.event_rsvp_guests (rsvp_id, name, email, phone, phone_country_iso,
-        matched_user_id, invited_by_user_id, added_from_friend, sms_hold)
+        matched_user_id, invited_by_user_id, added_from_friend, sms_hold, claimed_at)
       VALUES (v_existing_id, v_gname, v_gemail, v_gphone, v_gphone_country_iso,
-        v_match, p_user_id, v_friend IS NOT NULL, v_hold)
+        v_match, p_user_id, v_friend IS NOT NULL, v_hold,
+        CASE WHEN v_legacy_claim THEN now() END)
       RETURNING id INTO v_guest_id;
       v_qr := NULL;
     END IF;
@@ -1761,7 +1823,7 @@ $$;
 
 COMMENT ON FUNCTION public.submit_event_rsvp(
   uuid, uuid, text, text, text, text, integer, jsonb, text, text
-) IS '#4063: an anonymous submission never changes an RSVP that already exists for that email. I-4063-RSVP-SUBMIT-GUARD. #4508: guests need a signed-in inviter (rsvp_guest_sign_in_required); number-only guests, server plus-one limit, own/duplicate/listed/released numbers refused, 20 guest numbers per inviter per 24h (serialized per inviter), guest rows kept across re-submits; an own RSVP replaces an unclaimed guest row of the same account.';
+) IS '#4063: an anonymous submission never changes an RSVP that already exists for that email. I-4063-RSVP-SUBMIT-GUARD. #4508: guests need a signed-in inviter (rsvp_guest_sign_in_required); number-only guests, server plus-one limit, own/duplicate/listed/released numbers refused, 20 guest numbers per inviter per 24h (serialized per inviter), guest rows kept across re-submits; an own RSVP replaces an unclaimed guest row of the same account; an old-contract guest (name, email and number) whose number owner also proves the email is claimed at submit (transitional, old Explorer apps).';
 
 REVOKE ALL ON FUNCTION public.submit_event_rsvp(
   uuid, uuid, text, text, text, text, integer, jsonb, text, text
@@ -4036,28 +4098,96 @@ GRANT EXECUTE ON FUNCTION public.biz_resolve_brand_person_source(
 
 -- ---------------------------------------------------------------------------
 -- J ad_list_audience_refresh (#4238, 20280318004238 lines 278-670, its only
--- writer). An UNCLAIMED plus-one is in no brand ad audience: their number
--- (typed by the inviter, or a friend pick's resolved from their own account)
--- was never theirs to give a brand. They enter on claim, like any guest. The
--- same live-definition patch as S2/S3 above: only the guest arm's WHERE gains
--- "AND g.claimed_at IS NOT NULL"; every other byte of the function is the
--- replayed catalogue's (raises if the anchor is not there exactly once).
+-- writer). Nothing about an UNCLAIMED plus-one enters any brand ad audience:
+-- their number (typed by the inviter, or a friend pick's resolved from their
+-- own account) was never theirs to give a brand. They enter on claim, like
+-- any guest. Two arms read guests:
+--   J  the guest arm (event_rsvp_guests): only claimed rows.
+--   R5-1 the People arm (brand_people): a person counts only through a
+--      source link that is not an unclaimed plus-one, and a contact method
+--      whose every live source is an unclaimed plus-one is left out (the
+--      People import brings an unclaimed number in as an unlinked contact,
+--      or as an extra number on a person who is in the list another way).
+--      Nobody else's membership changes: a person or contact method with any
+--      other live source reads exactly as before.
+-- The same live-definition patch as S2/S3 above: each expression is replaced
+-- only where its anchor occurs exactly once (raises otherwise); a patch
+-- already present is left alone, so a re-apply changes nothing. Every other
+-- byte of the function is the replayed catalogue's.
 -- ---------------------------------------------------------------------------
+-- R5-1: a People source link that stands for an unclaimed plus-one (its guest
+-- row is unclaimed, or gone).
+CREATE OR REPLACE FUNCTION public.issue_4508_unclaimed_plus_one_link(p_source_kind text, p_source_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE
+SET search_path = public, pg_temp
+AS $function$
+  SELECT p_source_kind = 'rsvp_plus_one' AND NOT EXISTS (
+    SELECT 1 FROM public.event_rsvp_guests g
+     WHERE g.id = p_source_id AND g.claimed_at IS NOT NULL);
+$function$;
+COMMENT ON FUNCTION public.issue_4508_unclaimed_plus_one_link(text, uuid) IS
+  '#4508 R5-1: true for a brand People source link that is an unclaimed (or released) plus-one; such a link gives a brand no ad audience member.';
+REVOKE ALL ON FUNCTION public.issue_4508_unclaimed_plus_one_link(text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4508_unclaimed_plus_one_link(text, uuid) TO service_role;
+
+-- R5-1: a People contact method whose every live source is an unclaimed
+-- plus-one. A contact method with any other live source is unaffected.
+CREATE OR REPLACE FUNCTION public.issue_4508_contact_only_from_unclaimed_plus_one(p_contact_method_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE
+SET search_path = public, pg_temp
+AS $function$
+  SELECT EXISTS (
+      SELECT 1 FROM public.brand_person_contact_method_sources s
+        JOIN public.brand_person_source_links l ON l.id = s.source_link_id
+       WHERE s.contact_method_id = p_contact_method_id AND s.active
+         AND l.detached_at IS NULL
+         AND public.issue_4508_unclaimed_plus_one_link(l.source_kind, l.source_id))
+     AND NOT EXISTS (
+      SELECT 1 FROM public.brand_person_contact_method_sources s
+        JOIN public.brand_person_source_links l ON l.id = s.source_link_id
+       WHERE s.contact_method_id = p_contact_method_id AND s.active
+         AND l.detached_at IS NULL
+         AND NOT public.issue_4508_unclaimed_plus_one_link(l.source_kind, l.source_id));
+$function$;
+COMMENT ON FUNCTION public.issue_4508_contact_only_from_unclaimed_plus_one(uuid) IS
+  '#4508 R5-1: true for a brand People contact method that only an unclaimed plus-one gave the brand; it is in no ad audience until the claim.';
+REVOKE ALL ON FUNCTION public.issue_4508_contact_only_from_unclaimed_plus_one(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4508_contact_only_from_unclaimed_plus_one(uuid) TO service_role;
+
 DO $j_patch$
 DECLARE
   v_def text;
-  v_anchor text := E'      FROM public.event_rsvp_guests g\n      JOIN public.event_rsvps r ON r.id = g.rsvp_id\n      JOIN public.events e ON e.id = r.event_id\n      JOIN public.brands b ON b.id = e.brand_id\n      WHERE e.brand_id = v_a.brand_id AND r.rsvp_status = ''going'';';
-  v_new text := E'      FROM public.event_rsvp_guests g\n      JOIN public.event_rsvps r ON r.id = g.rsvp_id\n      JOIN public.events e ON e.id = r.event_id\n      JOIN public.brands b ON b.id = e.brand_id\n      WHERE e.brand_id = v_a.brand_id AND r.rsvp_status = ''going'' AND g.claimed_at IS NOT NULL;';
+  v_patches text[][] := ARRAY[
+    -- J: the guest arm.
+    ARRAY[E'      FROM public.event_rsvp_guests g\n      JOIN public.event_rsvps r ON r.id = g.rsvp_id\n      JOIN public.events e ON e.id = r.event_id\n      JOIN public.brands b ON b.id = e.brand_id\n      WHERE e.brand_id = v_a.brand_id AND r.rsvp_status = ''going'';',
+          E'      FROM public.event_rsvp_guests g\n      JOIN public.event_rsvps r ON r.id = g.rsvp_id\n      JOIN public.events e ON e.id = r.event_id\n      JOIN public.brands b ON b.id = e.brand_id\n      WHERE e.brand_id = v_a.brand_id AND r.rsvp_status = ''going'' AND g.claimed_at IS NOT NULL;'],
+    -- R5-1: the People arm's source links.
+    ARRAY[E'            AND l.source_kind IN (''order'',''ticket_holder'',''event_rsvp'',''rsvp_plus_one'',''reservation'')\n        );',
+          E'            AND l.source_kind IN (''order'',''ticket_holder'',''event_rsvp'',''rsvp_plus_one'',''reservation'')\n            AND NOT public.issue_4508_unclaimed_plus_one_link(l.source_kind, l.source_id)\n        );'],
+    -- R5-1: the People arm's contact methods.
+    ARRAY[E'        WHERE m.brand_person_id = p.id AND m.record_state = ''active'' AND m.retired_at IS NULL\n      ) pm',
+          E'        WHERE m.brand_person_id = p.id AND m.record_state = ''active'' AND m.retired_at IS NULL\n          AND NOT public.issue_4508_contact_only_from_unclaimed_plus_one(m.id)\n      ) pm']
+  ];
+  i integer;
+  v_changed boolean := false;
 BEGIN
   SELECT pg_get_functiondef('public.ad_list_audience_refresh(uuid)'::regprocedure) INTO v_def;
-  IF position(v_new in v_def) > 0 THEN
+  FOR i IN 1 .. array_length(v_patches, 1) LOOP
+    IF position(v_patches[i][2] in v_def) > 0 THEN
+      CONTINUE;
+    END IF;
+    IF (length(v_def) - length(replace(v_def, v_patches[i][1], ''))) / length(v_patches[i][1]) <> 1 THEN
+      RAISE EXCEPTION 'issue_4508_j_patch_anchor_missing:%', i;
+    END IF;
+    v_def := replace(v_def, v_patches[i][1], v_patches[i][2]);
+    v_changed := true;
+  END LOOP;
+  IF NOT v_changed THEN
     RAISE NOTICE '#4508: ad_list_audience_refresh already leaves unclaimed plus-ones out; unchanged.';
     RETURN;
   END IF;
-  IF (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 THEN
-    RAISE EXCEPTION 'issue_4508_j_patch_anchor_missing';
-  END IF;
-  v_def := replace(v_def, v_anchor, v_new);
   IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.ad_list_audience_refresh(%' THEN
     RAISE EXCEPTION 'issue_4508_j_patch_failed';
   END IF;
@@ -4314,6 +4444,250 @@ $create$, v_shared_arm);
             WHERE g.matched_user_id IS NOT NULL AND g.claimed_at IS NULL) s;
 END
 $n1_guest_chat$;
+
+-- ---------------------------------------------------------------------------
+-- 10c. R5-2 One place per person on the claim paths that do not go through
+--      submit_event_rsvp: the proven-contact claim sweep (#4063 / #4459
+--      claim_attendance_by_verified_identity) and an anonymous own RSVP
+--      attached to an account (that sweep's RSVP arm, or a claim link through
+--      claim_attendance_internal_v2). The rule is round 4's (T3):
+--        * an own RSVP (not "Can't go", not denied) wins over an UNCLAIMED
+--          plus-one row of the same person: the row is released (texts
+--          closed, link dead, spot freed, number not barred) and the inviter
+--          gets "Your guest's spot is free" (rsvp_guest_notices, sent by
+--          rsvp-notify);
+--        * a CLAIMED guest pass is that person's place: an anonymous own
+--          RSVP is not attached to them (the sweep leaves it; a claim link
+--          answers conflict).
+--      Both functions are #4459's (20280805004459, their latest writer) and
+--      are patched on their live definitions exactly as S2/S3 and J above:
+--      each anchor must occur once, a patch already present is left alone.
+-- ---------------------------------------------------------------------------
+-- Releases one unclaimed plus-one row whose person holds their own place,
+-- and queues the inviter's notice. Returns false (nothing done) for a row
+-- that is gone or claimed.
+CREATE OR REPLACE FUNCTION public.issue_4508_release_for_own_place(p_guest_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_event uuid;
+  v_claimed timestamptz;
+  v_last4 text;
+  v_inviter uuid;
+BEGIN
+  SELECT r.event_id, g.claimed_at,
+         CASE WHEN g.added_from_friend OR g.phone IS NULL THEN NULL
+           ELSE right(regexp_replace(g.phone, '\D', '', 'g'), 4) END
+    INTO v_event, v_claimed, v_last4
+    FROM public.event_rsvp_guests g
+    JOIN public.event_rsvps r ON r.id = g.rsvp_id
+   WHERE g.id = p_guest_id
+   FOR UPDATE OF g;
+  IF NOT FOUND OR v_claimed IS NOT NULL THEN RETURN false; END IF;
+  SELECT n.inviter_user_id INTO v_inviter FROM public.rsvp_guest_inviter_names(p_guest_id) n;
+  IF v_inviter IS NOT NULL THEN
+    INSERT INTO public.rsvp_guest_notices(kind, user_id, guest_id, event_id, phone_last4)
+    VALUES ('guest_has_own_rsvp', v_inviter, p_guest_id, v_event,
+      CASE WHEN v_last4 ~ '^[0-9]{4}$' THEN v_last4 END)
+    ON CONFLICT ON CONSTRAINT rsvp_guest_notices_once DO NOTHING;
+  END IF;
+  PERFORM public.rsvp_guest_drop(p_guest_id, 'rsvp_guest_has_own_rsvp');
+  RETURN true;
+END;
+$function$;
+COMMENT ON FUNCTION public.issue_4508_release_for_own_place(uuid) IS
+  '#4508 R5-2: releases an unclaimed plus-one row whose person now holds their own place on the event and queues the inviter''s notice (rsvp_guest_notices).';
+REVOKE ALL ON FUNCTION public.issue_4508_release_for_own_place(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4508_release_for_own_place(uuid) TO service_role;
+
+-- The sweep's guest arm, per row it would match: true = do not match now
+-- (released because the person holds their own place, another place on the
+-- event already, or the event row is busy so the next sweep decides).
+-- The event row lock is the one submit_event_rsvp and rsvp_guest_claim take
+-- first, so a sweep and an own RSVP of one person serialize. It is never
+-- waited on here (SKIP LOCKED): the sweep already holds this guest row, and a
+-- submit holds the event row before it reaches guest rows.
+CREATE OR REPLACE FUNCTION public.issue_4508_sweep_guest_yields(p_guest_id uuid, p_user_id uuid)
+RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_event uuid;
+  v_rsvp uuid;
+BEGIN
+  SELECT r.event_id, r.id INTO v_event, v_rsvp
+    FROM public.event_rsvp_guests g JOIN public.event_rsvps r ON r.id = g.rsvp_id
+   WHERE g.id = p_guest_id;
+  IF NOT FOUND THEN RETURN true; END IF;
+  PERFORM 1 FROM public.events e WHERE e.id = v_event FOR UPDATE SKIP LOCKED;
+  IF NOT FOUND THEN RETURN true; END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.event_rsvps o
+     WHERE o.event_id = v_event AND o.user_id = p_user_id
+       AND o.rsvp_status <> 'not_going' AND o.approval_status <> 'denied'
+  ) THEN
+    PERFORM public.issue_4508_release_for_own_place(p_guest_id);
+    RETURN true;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.event_rsvps o
+     WHERE o.event_id = v_event AND o.user_id = p_user_id
+  ) OR EXISTS (
+    SELECT 1 FROM public.event_rsvp_guests g2
+      JOIN public.event_rsvps r2 ON r2.id = g2.rsvp_id
+     WHERE r2.event_id = v_event AND g2.matched_user_id = p_user_id
+       AND g2.id <> p_guest_id
+  ) THEN
+    RETURN true;
+  END IF;
+  RETURN false;
+END;
+$function$;
+COMMENT ON FUNCTION public.issue_4508_sweep_guest_yields(uuid, uuid) IS
+  '#4508 R5-2: the claim sweep''s one-place check for one guest row (event row lock, never waited on); releases the row when the account holds its own place on the event.';
+REVOKE ALL ON FUNCTION public.issue_4508_sweep_guest_yields(uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4508_sweep_guest_yields(uuid, uuid) TO service_role;
+
+-- An anonymous own RSVP attached to an account (user_id NULL -> account),
+-- whichever function attaches it: an unclaimed plus-one row of that account on
+-- the event is released; a claimed guest pass refuses the attach
+-- (PT409 rsvp_guest_has_pass; the two callers check first, so this is the
+-- race backstop). Takes the event row lock first, like every one-place path.
+CREATE OR REPLACE FUNCTION public.tg_issue_4508_rsvp_attach_one_place()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $g$
+DECLARE
+  v_gid uuid;
+BEGIN
+  IF NEW.rsvp_status = 'not_going' OR NEW.approval_status = 'denied' THEN
+    RETURN NEW;
+  END IF;
+  PERFORM 1 FROM public.events e WHERE e.id = NEW.event_id FOR UPDATE;
+  IF EXISTS (
+    SELECT 1 FROM public.event_rsvp_guests g
+      JOIN public.event_rsvps r ON r.id = g.rsvp_id
+     WHERE r.event_id = NEW.event_id AND g.matched_user_id = NEW.user_id
+       AND g.claimed_at IS NOT NULL AND r.rsvp_status <> 'not_going'
+       AND r.id <> NEW.id
+  ) THEN
+    RAISE EXCEPTION 'rsvp_guest_has_pass' USING ERRCODE = 'PT409';
+  END IF;
+  FOR v_gid IN
+    SELECT g.id FROM public.event_rsvp_guests g
+      JOIN public.event_rsvps r ON r.id = g.rsvp_id
+     WHERE r.event_id = NEW.event_id AND g.matched_user_id = NEW.user_id
+       AND g.claimed_at IS NULL AND r.id <> NEW.id
+     ORDER BY g.id
+  LOOP
+    PERFORM public.issue_4508_release_for_own_place(v_gid);
+  END LOOP;
+  RETURN NEW;
+END;
+$g$;
+REVOKE ALL ON FUNCTION public.tg_issue_4508_rsvp_attach_one_place() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS issue_4508_rsvp_attach_one_place ON public.event_rsvps;
+CREATE TRIGGER issue_4508_rsvp_attach_one_place
+  BEFORE UPDATE OF user_id ON public.event_rsvps
+  FOR EACH ROW
+  WHEN (OLD.user_id IS NULL AND NEW.user_id IS NOT NULL)
+  EXECUTE FUNCTION public.tg_issue_4508_rsvp_attach_one_place();
+
+-- The sweep (claim_attendance_by_verified_identity, 20280805004459 lines
+-- 993-1376) and the claim link (claim_attendance_internal_v2, lines 787-991).
+DO $r5_sweep$
+DECLARE
+  v_def text;
+  v_sweep text[][] := ARRAY[
+    -- Guest arm: an own place no longer hides the row (only a "Can't go" or
+    -- denied own RSVP still does, as before); the row is released instead.
+    ARRAY[E'       AND NOT EXISTS (\n         SELECT 1 FROM public.event_rsvps owned\n          WHERE owned.event_id = r.event_id AND owned.user_id = p_user_id\n       )',
+          E'       AND NOT EXISTS (\n         SELECT 1 FROM public.event_rsvps owned\n          WHERE owned.event_id = r.event_id AND owned.user_id = p_user_id\n            AND (owned.rsvp_status = ''not_going'' OR owned.approval_status = ''denied'')\n       )'],
+    ARRAY[E'    UPDATE public.event_rsvp_guests\n       SET matched_user_id = p_user_id\n     WHERE id = v_row.id AND matched_user_id IS NULL;',
+          E'    -- #4508 R5-2: one place per person (releases the row when the\n    -- account holds its own place on the event).\n    IF public.issue_4508_sweep_guest_yields(v_row.id, p_user_id) THEN CONTINUE; END IF;\n    UPDATE public.event_rsvp_guests\n       SET matched_user_id = p_user_id\n     WHERE id = v_row.id AND matched_user_id IS NULL;'],
+    -- RSVP arm: an anonymous own RSVP is not attached to an account that
+    -- holds a claimed guest pass on the event.
+    ARRAY[E'       AND NOT EXISTS (\n         SELECT 1 FROM public.event_rsvps x\n          WHERE x.event_id = r.event_id AND x.user_id = p_user_id\n       )',
+          E'       AND NOT EXISTS (\n         SELECT 1 FROM public.event_rsvps x\n          WHERE x.event_id = r.event_id AND x.user_id = p_user_id\n       )\n       AND NOT EXISTS (\n         SELECT 1 FROM public.event_rsvp_guests g4508\n           JOIN public.event_rsvps r4508 ON r4508.id = g4508.rsvp_id\n          WHERE r4508.event_id = r.event_id AND g4508.matched_user_id = p_user_id\n            AND g4508.claimed_at IS NOT NULL AND r4508.rsvp_status <> ''not_going''\n       )']
+  ];
+  v_link text[][] := ARRAY[
+    ARRAY[E'  IF p_kind = ''rsvp'' AND EXISTS (\n    SELECT 1 FROM public.event_rsvps other\n     WHERE other.event_id = p_event_id AND other.user_id = p_user_id\n       AND other.id <> p_source_id\n  ) THEN RETURN jsonb_build_object(''result'', ''conflict''); END IF;',
+          E'  IF p_kind = ''rsvp'' AND EXISTS (\n    SELECT 1 FROM public.event_rsvps other\n     WHERE other.event_id = p_event_id AND other.user_id = p_user_id\n       AND other.id <> p_source_id\n  ) THEN RETURN jsonb_build_object(''result'', ''conflict''); END IF;\n  -- #4508 R5-2: a claimed guest pass is this account''s place on the event.\n  IF p_kind = ''rsvp'' AND EXISTS (\n    SELECT 1 FROM public.event_rsvp_guests g4508\n      JOIN public.event_rsvps r4508 ON r4508.id = g4508.rsvp_id\n     WHERE r4508.event_id = p_event_id AND g4508.matched_user_id = p_user_id\n       AND g4508.claimed_at IS NOT NULL AND r4508.rsvp_status <> ''not_going''\n  ) THEN RETURN jsonb_build_object(''result'', ''conflict''); END IF;']
+  ];
+  i integer;
+  v_changed boolean;
+BEGIN
+  v_def := pg_get_functiondef('public.claim_attendance_by_verified_identity(uuid)'::regprocedure);
+  v_changed := false;
+  FOR i IN 1 .. array_length(v_sweep, 1) LOOP
+    IF position(v_sweep[i][2] in v_def) > 0 THEN CONTINUE; END IF;
+    IF (length(v_def) - length(replace(v_def, v_sweep[i][1], ''))) / length(v_sweep[i][1]) <> 1 THEN
+      RAISE EXCEPTION 'issue_4508_r5_sweep_anchor_missing:%', i;
+    END IF;
+    v_def := replace(v_def, v_sweep[i][1], v_sweep[i][2]);
+    v_changed := true;
+  END LOOP;
+  IF v_changed THEN
+    IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.claim_attendance_by_verified_identity(%' THEN
+      RAISE EXCEPTION 'issue_4508_r5_sweep_patch_failed';
+    END IF;
+    EXECUTE format('CREATE OR REPLACE FUNCTION public.claim_attendance_by_verified_identity%s',
+      substr(v_def, length('CREATE OR REPLACE FUNCTION public.claim_attendance_by_verified_identity') + 1));
+  END IF;
+
+  v_def := pg_get_functiondef(
+    'public.claim_attendance_internal_v2(uuid,text,uuid,uuid,bytea,bytea)'::regprocedure);
+  v_changed := false;
+  FOR i IN 1 .. array_length(v_link, 1) LOOP
+    IF position(v_link[i][2] in v_def) > 0 THEN CONTINUE; END IF;
+    IF (length(v_def) - length(replace(v_def, v_link[i][1], ''))) / length(v_link[i][1]) <> 1 THEN
+      RAISE EXCEPTION 'issue_4508_r5_link_anchor_missing:%', i;
+    END IF;
+    v_def := replace(v_def, v_link[i][1], v_link[i][2]);
+    v_changed := true;
+  END LOOP;
+  IF v_changed THEN
+    IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.claim_attendance_internal_v2(%' THEN
+      RAISE EXCEPTION 'issue_4508_r5_link_patch_failed';
+    END IF;
+    EXECUTE format('CREATE OR REPLACE FUNCTION public.claim_attendance_internal_v2%s',
+      substr(v_def, length('CREATE OR REPLACE FUNCTION public.claim_attendance_internal_v2') + 1));
+  END IF;
+END
+$r5_sweep$;
+-- Grants restated as they stand (CREATE OR REPLACE keeps them).
+REVOKE ALL ON FUNCTION public.claim_attendance_by_verified_identity(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_attendance_by_verified_identity(uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.claim_attendance_internal_v2(uuid, text, uuid, uuid, bytea, bytea) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_attendance_internal_v2(uuid, text, uuid, uuid, bytea, bytea) TO service_role;
+
+-- rsvp-notify's tick takes each queued notice once (a failed send is logged,
+-- not retried, as for the friend-going notices).
+CREATE OR REPLACE FUNCTION public.issue_4508_take_guest_notices(p_limit integer DEFAULT 50)
+RETURNS TABLE (notice_id uuid, kind text, user_id uuid, guest_id uuid, event_id uuid,
+  event_title text, phone_last4 text)
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+  WITH due AS (
+    SELECT n.id FROM public.rsvp_guest_notices n
+     WHERE n.status = 'pending'
+     ORDER BY n.created_at
+     FOR UPDATE SKIP LOCKED
+     LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200)
+  ), taken AS (
+    UPDATE public.rsvp_guest_notices n
+       SET status = 'taken', taken_at = now()
+      FROM due WHERE n.id = due.id
+    RETURNING n.id, n.kind, n.user_id, n.guest_id, n.event_id, n.phone_last4, n.created_at
+  )
+  SELECT t.id, t.kind, t.user_id, t.guest_id, t.event_id, e.title, t.phone_last4
+    FROM taken t
+    LEFT JOIN public.events e ON e.id = t.event_id
+   ORDER BY t.created_at, t.id;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4508_take_guest_notices(integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4508_take_guest_notices(integer) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 11. Foreign keys to auth.users, last (R-8): adding one takes SHARE ROW

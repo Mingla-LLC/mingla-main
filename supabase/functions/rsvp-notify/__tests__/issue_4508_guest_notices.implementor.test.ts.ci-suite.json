@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/rsvp-notify/__tests__/issue_4508_guest_notices.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4508-guest-notices-implementor",
+  "profile": "deno-2-unit"
+}
