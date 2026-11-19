@@ -57,6 +57,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { noteSourceHints } from "../src/services/peopleJourneyService";
 
 import { Button } from "../src/components/ui/Button";
 import { BusinessAppDownloadCta } from "../src/components/invite/BusinessAppDownloadCta";
@@ -103,6 +104,12 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
 
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [hasRun, setHasRun] = useState<boolean>(false);
+
+  // #4226: a team invitation link is how a brand-new host may have arrived;
+  // noted in memory so the sign-up source can say so (cleared on sign-out).
+  useEffect(() => {
+    if (token.length > 0) noteSourceHints({ hostInvite: true });
+  }, [token]);
 
   useEffect(() => {
     // Axis 1 still genuinely transient — wait (this is the ONLY legitimate wait).

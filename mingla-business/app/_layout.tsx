@@ -97,6 +97,7 @@ import { mixpanelService } from "../src/services/mixpanelService";
 // NOT remove them). Provider + boot init + iOS ATT prompt (before AppsFlyer).
 import { postHogService } from "../src/services/postHogService";
 import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
+import { RouteScreenTracker } from "../src/components/RouteScreenTracker";
 import { VersionForegroundStateMachine } from "../src/services/appVersionForeground";
 import { revenueCatService } from "../src/services/revenueCatService";
 import {
@@ -870,6 +871,8 @@ function RootLayoutInner(): React.ReactElement {
       <HostDesktopShell>
         <Stack screenOptions={{ headerShown: false }} />
       </HostDesktopShell>
+      {/* #4226: one PostHog screen view per route change; renders nothing. */}
+      <RouteScreenTracker />
       {/* #4271: a SIBLING of the Stack, never a wrapper. Renders nothing unless Tap to Pay is live. */}
       <TapToPayTerminalHost />
       <TapToPayAwarenessModal />

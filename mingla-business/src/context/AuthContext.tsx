@@ -36,6 +36,8 @@ import { mixpanelService } from "../services/mixpanelService";
 // META-ORCH-1187 [Growth Analytics Hub] — PostHog identity bind + reset runs
 // alongside Mixpanel/AppsFlyer (parallel run; do NOT remove them).
 import { postHogService } from "../services/postHogService";
+import { recordHostSignupSourceOnce } from "../services/peopleJourneyService";
+import { useAnalyticsPrefsStore } from "../store/analyticsPrefsStore";
 // ORCH-0808-FOLLOWUP — RevenueCat identity binding (install-only scope).
 import { revenueCatService } from "../services/revenueCatService";
 // ORCH-0808-FOLLOWUP — OneSignal identity binding (install-only scope).
@@ -890,6 +892,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                         ? attach.newHost
                         : createdAt !== null && Date.now() - createdAt < 30_000;
                     if (isFirstTime) {
+                      // #4226: how this new host found Mingla. Fire-and-forget;
+                      // first write wins on the server.
+                      void recordHostSignupSourceOnce({
+                        userId: userForDeferred.id,
+                        platform: Platform.OS,
+                        optedOut: useAnalyticsPrefsStore.getState().analyticsOptOut === true,
+                      });
                       // #4238 W6-7: once per account on this device, even when
                       // a second sign-in lands inside the first-time window.
                       void logAppsFlyerRegistrationOnce(userForDeferred.id, {

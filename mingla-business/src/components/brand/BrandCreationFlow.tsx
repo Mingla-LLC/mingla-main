@@ -77,6 +77,7 @@ import { useNetInfoSafe } from "../../lib/netinfoSafe";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Button } from "../ui/Button";
 import { Stepper } from "../ui/Stepper";
+import { recordJourneyMark } from "../../services/peopleJourneyService";
 import { STEP_INDEX, brandSetupStepperSteps, brandSetupStepperTarget } from "./brandSetupStepper";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
@@ -295,6 +296,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     if (viewedRef.current === step) return;
     viewedRef.current = step;
     trackBrandSetup("brand_setup_step_viewed", { step, brand_id: brandId, resumed });
+    // #4226: the People screen shows where a host stopped. Key = the step name
+    // (name, country, pay, done); the server keeps the furthest. Fire-and-forget.
+    recordJourneyMark("host_brand_setup", STEP_INDEX[step], step);
   }, [step, brandId, resumed]);
 
   // ── X1 / X2 ────────────────────────────────────────────────────────────
