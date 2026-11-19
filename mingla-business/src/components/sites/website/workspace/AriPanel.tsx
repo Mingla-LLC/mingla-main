@@ -89,6 +89,7 @@ export function AriPanel({ run, disabledReason, draftText, onDraftText, onUndoRu
         {run.teamDraft ? (
           <TeamRequestCard
             draft={run.teamDraft.draft}
+            byAri={run.teamDraft.pendingActionId !== null}
             disabledReason={disabledReason}
             onSend={onSendTeam}
             onCancel={run.teamDraft.pendingActionId ? run.dropTeamDraft : run.closeTeamDraft}

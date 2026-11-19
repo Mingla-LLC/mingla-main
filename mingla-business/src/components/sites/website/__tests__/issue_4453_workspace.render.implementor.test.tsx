@@ -422,6 +422,9 @@ describe("the workspace shell (desktop)", () => {
     const { root } = await open({ segments: ["pages"] });
     await act(async () => { (mockPreviewProps.onSelect as (id: string) => void)("s2"); });
     await press(root, "section-ari-team");
+    // The owner is writing this one: the card does not claim Ari wrote it.
+    expect(words(root)).toContain("Say what you’d like in your own words. The team sees where you are on your website.");
+    expect(words(root)).not.toContain("Ari wrote this so the team gets it right.");
     await type(root, "team-request-what", "Add a countdown to this section.");
     await press(root, "team-request-send");
     expect(mockRpcCalls).toHaveLength(1);
@@ -773,6 +776,7 @@ describe("Ari mode", () => {
     await press(root, "ari-send");
     expect(mockConfirm).not.toHaveBeenCalled();
     expect(has(root, "team-request-card")).toBe(true);
+    expect(words(root)).toContain("Ari wrote this so the team gets it right. Change anything, then send.");
     expect(words(root)).toContain("Home › Pick a time");
     expect(words(root)).toContain("Ari has no section that can show a 360° tour yet");
     await type(root, "team-request-what", "Add a 360° tour. I can send the footage.");

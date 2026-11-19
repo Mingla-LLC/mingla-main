@@ -126,7 +126,7 @@ const CONTENT_MESSAGES: Readonly<Record<string, string>> = {
   NOT_FOUND: "That isn't on your website any more. It may have been deleted.",
   // #4453 workspace — every refusal the section, look and history actions can
   // give (STUDIO-AS-BUILT.md), in the owner's words.
-  CHANGED_SINCE: "That part of your website changed afterwards, so this step can’t be put back on its own.",
+  CHANGED_SINCE: "That part of your website changed afterwards, so this step can’t be put back on its own. Use Undo at the top to step back one change at a time.",
   NOTHING_TO_UNDO: "There is nothing to undo.",
   NOTHING_TO_REDO: "There is nothing to redo.",
   HOME_ALWAYS_ON: "Your home page is always on.",

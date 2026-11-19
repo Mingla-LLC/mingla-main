@@ -17,3 +17,11 @@ describe("a menu change made under Pages and menu is an undoable draft change li
     expect(hook).toContain("for (const touched of MENU_TOUCHES) void client.invalidateQueries({ queryKey: brandSiteKeys.siteData(siteId, touched) });");
   });
 });
+
+describe("a step that cannot be undone on its own says what to do next", () => {
+  it("points at the Undo button at the top", () => {
+    expect(read("contentApi.ts")).toContain(
+      'CHANGED_SINCE: "That part of your website changed afterwards, so this step can’t be put back on its own. Use Undo at the top to step back one change at a time."',
+    );
+  });
+});

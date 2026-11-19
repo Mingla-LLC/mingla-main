@@ -11,8 +11,15 @@ import { parts } from "./parts";
  * editable before sending. Sending reports the truth: sent, or not sent with
  * the reason and the words still in the box.
  */
-export function TeamRequestCard({ draft, onSend, onCancel, disabledReason }: {
+export const TEAM_REQUEST_INTRO = {
+  ari: "Ari wrote this so the team gets it right. Change anything, then send.",
+  owner: "Say what you’d like in your own words. The team sees where you are on your website.",
+} as const;
+
+export function TeamRequestCard({ draft, onSend, onCancel, disabledReason, byAri = false }: {
   draft: TeamRequestDraft;
+  /** Ari wrote the request (it proposed it, or filled it in from what it could not do). */
+  byAri?: boolean;
   /** Resolves with null when sent, or the plain reason it was not. */
   onSend: (what: string) => Promise<string | null>;
   onCancel: () => void;
@@ -44,7 +51,7 @@ export function TeamRequestCard({ draft, onSend, onCancel, disabledReason }: {
   return (
     <View style={[parts.box, styles.card]} testID="team-request-card" role="group" accessibilityLabel="Request for the Mingla team">
       <Text style={parts.title} role="heading" aria-level={2}>Request for the Mingla team</Text>
-      <Text style={parts.body}>Ari wrote this so the team gets it right. Change anything, then send.</Text>
+      <Text style={parts.body} testID="team-request-intro">{byAri || draft.what.trim() ? TEAM_REQUEST_INTRO.ari : TEAM_REQUEST_INTRO.owner}</Text>
       <Field
         ref={inputRef}
         label="What you want"
