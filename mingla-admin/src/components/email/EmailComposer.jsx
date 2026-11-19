@@ -37,12 +37,15 @@ import {
   audienceSummary,
   choosePreset,
   exclusionReasons,
+  isPeopleMode,
   isRecipientChosen,
   leadTargetFromHash,
   leadsSendError,
   presetIsActive,
 } from "../../lib/emailAudience";
 import { getLead } from "../../services/leadsService";
+import { PeopleAudiencePicker } from "./PeopleAudiencePicker";
+import { ACTIVATION_PLAYS, peopleFilterFromHash, recipientFromHash } from "../../lib/peopleFilter";
 import {
   DRAFT_STATUS_LABELS,
   canEditDraft,
@@ -221,8 +224,17 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   // #4452 A1.5: #/email?leads=<selection> or ?lead=<lead> opens a leads audience.
   const [leadTarget, setLeadTarget] = useState(() => (editingCampaign || initialDraft ? null : leadTargetFromHash(typeof window !== "undefined" ? window.location.hash : "")));
   const [leadError, setLeadError] = useState(null);
-  const [audienceMode, setAudienceMode] = useState(() => leadTarget?.mode || "segment");
-  const [recipientQuery, setRecipientQuery] = useState("");
+  // #4226 Phase 2: #/email?people=<filter> (People's "Email these people")
+  // opens the builder with that filter; #/email?recipient=<email> ("Email this
+  // person") opens One person with the search filled in.
+  const [handOff] = useState(() => {
+    if (editingCampaign || initialDraft || typeof window === "undefined") return { people: null, recipient: null };
+    return { people: peopleFilterFromHash(window.location.hash), recipient: recipientFromHash(window.location.hash) };
+  });
+  const [audienceMode, setAudienceMode] = useState(() => leadTarget?.mode || (handOff.people ? "people" : handOff.recipient ? "person" : "segment"));
+  const [peopleFilter, setPeopleFilter] = useState(() => handOff.people || {});
+  const [playId, setPlayId] = useState(null);
+  const [recipientQuery, setRecipientQuery] = useState(() => handOff.recipient || "");
   const [recipientMatches, setRecipientMatches] = useState([]);
   const [selectedRecipient, setSelectedRecipient] = useState(null);
   const [recipientSearching, setRecipientSearching] = useState(false);
@@ -253,8 +265,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
   const bodyEditorRef = useRef(null);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const audience = useMemo(
-    () => audienceFor(audienceMode, selectedRecipient, filters, leadTarget),
-    [audienceMode, selectedRecipient, filters, leadTarget],
+    () => audienceFor(audienceMode, selectedRecipient, filters, leadTarget, peopleFilter),
+    [audienceMode, selectedRecipient, filters, leadTarget, peopleFilter],
   );
   const blogPostIdsKey = useMemo(() => [...new Set(documentValue.filter((block) => block.type === "blog_post").map((block) => block.postId))].sort().join(","), [documentValue]);
 
@@ -284,6 +296,24 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     const timer = setTimeout(() => setTemplateManagerOpen(true), 0);
     return () => clearTimeout(timer);
   }, [openTemplateManager]);
+
+  // #4226 Phase 2: a play or a built group sets the People filter.
+  const choosePeopleFilter = useCallback((next, nextPlayId) => {
+    setPeopleFilter(next || {});
+    setPlayId(nextPlayId || null);
+  }, []);
+  const editPlayFilters = useCallback((next) => {
+    setPeopleFilter(next || {});
+    setPlayId(null);
+    setAudienceMode("people");
+  }, []);
+  const applyPlayMessage = useCallback((play) => {
+    if (!subject.trim()) setSubject(play.name);
+    setDocumentValue((current) => {
+      const empty = current.every((block) => block.type === "rich_text" && !String(block.html || "").replace(/<[^>]*>/g, "").trim());
+      return empty ? [{ id: blockId(), type: "rich_text", html: `<p>${escapeHtml(play.message)}</p>` }] : current;
+    });
+  }, [subject]);
 
   const setFilter = useCallback((key, value) => {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -472,6 +502,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
     setAudienceMode("segment");
     setLeadTarget(null);
     setFilters(EMPTY_FILTERS);
+    setPeopleFilter({});
+    setPlayId(null);
     setSelectedRecipient(null);
     setRecipientQuery("");
     setScheduleMode("now");
@@ -955,7 +987,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               <p className="text-xs text-[var(--color-text-tertiary)]">Hosts are the default. Explorer, ticket-buyer, host-contact and Everyone sends always require an explicit choice and count review. People without a Mingla account only get marketing email if they agreed to it (a host's import counts as agreement).</p>
             </div>
             {leadsMode ? null : (
-            <div className="flex rounded-lg bg-[var(--gray-100)] p-1">
+            <div className="flex flex-wrap rounded-lg bg-[var(--gray-100)] p-1">
               {AUDIENCE_PRESETS.map((preset) => {
                 const active = presetIsActive(preset, audienceMode, filters);
                 return (
@@ -967,6 +999,8 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
                       const next = choosePreset(preset, filters);
                       setAudienceMode(next.audienceMode);
                       if (next.filters !== filters) setFilters(next.filters);
+                      // #4226 Phase 2: plays open on a play, never on "everyone".
+                      if (preset.id === "plays" && !playId) choosePeopleFilter(ACTIVATION_PLAYS[0].filter, ACTIVATION_PLAYS[0].id);
                     }}
                     className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${active ? "bg-[var(--color-background-primary)] text-[var(--color-text-primary)] shadow-sm" : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"}`}
                   >
@@ -998,6 +1032,16 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
             </div>
           )}
 
+          {isPeopleMode(audienceMode) && (
+            <PeopleAudiencePicker
+              mode={audienceMode}
+              filter={peopleFilter}
+              playId={playId}
+              onChoose={choosePeopleFilter}
+              onEditFilters={editPlayFilters}
+              onUseMessage={applyPlayMessage}
+            />
+          )}
           {audienceMode === "everyone" && (
             <div className="flex items-center gap-2 rounded-lg border border-[var(--gray-200)] bg-[var(--gray-50)] px-3 py-2.5 text-sm text-[var(--color-text-secondary)]">
               <Users className="h-4 w-4 text-[var(--color-brand-500)]" />
@@ -1051,7 +1095,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                 <FilterSelect label="User type" value={filters.userType} onChange={(value) => setFilter("userType", value)}>
-                  <option value="all">All</option><option value="host">Host</option><option value="explorer">Explorer</option><option value="ticket_buyers">Ticket buyers</option><option value="host_contacts">Host contacts</option>
+                  <option value="all">All</option><option value="host">Hosts (incl. Both)</option><option value="explorer">Explorers (incl. Both)</option><option value="ticket_buyers">Ticket buyers</option><option value="host_contacts">Host contacts</option>
                 </FilterSelect>
                 <FilterSelect label="Source" value={filters.source} onChange={(value) => setFilter("source", value)}>
                   <option value="all">All</option>

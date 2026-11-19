@@ -41,7 +41,10 @@ const CLAIM_VARIANT = {
   revoked: "error",
   none: "default",
 };
-const SEGMENT_VARIANT = { admin: "brand", business: "info", explorer: "default" };
+// #4226 Phase 2: the People classifier's segment (admin_get_person), one owner
+// with People, the drawer and the Support desk.
+const SEGMENT_VARIANT = { explorer: "default", host: "info", both: "info", incomplete: "warning", internal: "brand", seed: "default" };
+const SEGMENT_WORDS = { explorer: "Explorer", host: "Host", both: "Explorer and host", incomplete: "Signing up", internal: "Staff and test", seed: "Seed profile" };
 const ROLE_VARIANT = { brand_owner: "brand", brand_admin: "info", finance_manager: "warning" };
 const TICKET_VARIANT = { open: "warning", pending: "info", resolved: "success", closed: "default" };
 
@@ -188,6 +191,10 @@ function buildPersonSections(bundle, onOpenBrand) {
     ],
   });
 
+  // #4226 Phase 2: a person who is not a host has no Business sections. A
+  // closed business account still shows, so it can be restored.
+  const isHost = person.is_host === true || !!account;
+  if (isHost) {
   // Business account
   if (account) {
     sections.push({
@@ -266,6 +273,7 @@ function buildPersonSections(bundle, onOpenBrand) {
             )),
           ),
   });
+  }
 
   // Subscription
   const rawTier = subscription.raw?.tier;
@@ -385,17 +393,13 @@ export function PeopleConsolePage() {
     const account = bundle?.account || null;
     const title = person.display_name || account?.business_name || person.email || "Person";
     const badges = [];
-    if (person.segment) badges.push({ label: person.segment, variant: SEGMENT_VARIANT[person.segment] || "default" });
+    if (person.segment) badges.push({ label: SEGMENT_WORDS[person.segment] || person.segment, variant: SEGMENT_VARIANT[person.segment] || "default" });
     badges.push(
       person.active === false
         ? { label: "Banned", variant: "error" }
         : { label: "Active", variant: "success" },
     );
-    badges.push(
-      account
-        ? { label: "Business", variant: "info" }
-        : { label: "Consumer-only", variant: "default" },
-    );
+    if (account) badges.push({ label: "Business", variant: "info" });
     if (account?.deleted_at) badges.push({ label: "Account deleted", variant: "error" });
 
     // Entity-level footer HIGH actions → EntityDetailView renders HighRiskActionModal.

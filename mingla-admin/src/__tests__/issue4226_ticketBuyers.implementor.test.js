@@ -19,14 +19,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  PEOPLE_TABS,
-  peopleTabFor,
-  peopleTabLabel,
   flattenPersonRow,
   spentLabel,
   marketingConsent,
   appStatusLabel,
 } from "../lib/peopleSegments.js";
+import { JOURNEY_TABS, journeyTabFor, tabFilter } from "../lib/peopleFilter.js";
 import {
   AUDIENCE_PRESETS,
   EMPTY_FILTERS,
@@ -45,13 +43,15 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
 
 describe("#4226 People: the ticket-buyer tab", () => {
-  it("is a tab on the server segment, with the server count", () => {
-    const tab = peopleTabFor("ticket-buyers");
-    assert.equal(tab.segment, "ticket_buyer_no_app");
-    assert.equal(tab.label, "Ticket buyers, no app");
-    assert.equal(peopleTabLabel(tab, { ticket_buyer_no_app: 262 }), "Ticket buyers, no app · 262");
-    assert.equal(peopleTabLabel(tab, null), "Ticket buyers, no app", "no count until the server answers");
-    assert.equal(PEOPLE_TABS.filter((t) => t.segment === "ticket_buyer_no_app").length, 1);
+  // #4226 Phase 2 (D10): ticket buyers with no account are one part of the
+  // "No account yet" tab; the old address still lands there.
+  it("is the 'Bought a ticket' part of the No account yet tab", () => {
+    const tab = journeyTabFor("ticket-buyers");
+    assert.equal(tab.id, "noaccount");
+    assert.equal(tab.label, "No account yet");
+    assert.equal(tab.stripLabels.no_account_buyers, "Bought a ticket");
+    assert.deepEqual(tabFilter(tab, { strip: "no_account_buyers" }), { track: "no_account_buyers" });
+    assert.equal(JOURNEY_TABS.filter((t) => t.track === "no_account").length, 1);
   });
 
   it("flattens a no-account buyer into the table and CSV fields", () => {
@@ -92,21 +92,19 @@ describe("#4226 People: the ticket-buyer tab", () => {
     assert.equal(marketingConsent("maybe").label, "No", "anything unknown is not consent");
   });
 
-  it("renders the agreed columns, exports, and does not open a drawer for no-account rows", () => {
+  // #4226 Phase 2 (D10): no-account rows are listed with what they bought
+  // and open a details panel.
+  it("renders the No account yet columns, exports, and opens a panel for every row", () => {
     const page = read("pages/PeoplePage.jsx");
-    const block = page.slice(page.indexOf("const TICKET_BUYER_COLUMNS"), page.indexOf("const COLUMNS = {"));
-    for (const label of ["Name / email", "App status", "City", "Country", "Spent", "Last purchase", "Emails OK"]) {
-      assert.match(block, new RegExp(`label: "${label}"`), `column ${label}`);
+    const block = page.slice(page.indexOf("  noaccount: ["), page.indexOf("  staff: ["));
+    for (const label of ["Kind", "Bought", "Last purchase or added"]) {
+      assert.match(block, new RegExp(`"${label}"`), `column ${label}`);
     }
-    assert.match(block, /count\("tickets", "Tickets"\)/, "column Tickets");
-    assert.match(page, /ticket_buyer_no_app: TICKET_BUYER_COLUMNS/);
-    assert.match(page, /if \(segment === "ticket_buyer_no_app"\) return CSV_TICKET_BUYERS;/);
+    for (const column of ["PERSON_COLUMN", "SOURCE_COLUMN", "PLACE_COLUMN"]) assert.match(block, new RegExp(column));
     assert.match(page, /rowKey=\{\(row\) => row\.row_key\}/);
-    // Host contacts (no account either) share the no-drawer rule.
-    assert.match(page, /const noAccountTab = segment === "ticket_buyer_no_app" \|\|/);
-    assert.match(page, /onRowClick=\{noAccountTab \? undefined :/);
-    const service = read("services/peopleService.js");
-    assert.match(service, /last_purchase_at: \{ asc: "last_active_asc", desc: "last_active_desc" \}/);
+    assert.match(page, /onRowClick=\{\(row\) => writeHash\(\{ tab: tab\.id, personKey: row\.person_key/);
+    const drawer = read("components/people/PersonDrawer.jsx");
+    assert.match(drawer, /getPersonJourney\(personKey\)/, "the panel reads people with no account by person key");
   });
 });
 

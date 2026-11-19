@@ -108,7 +108,9 @@ function NewTicketForm({ brands, staffRoster, myUserId, onClose, onCreated, onEr
         details: details.trim(),
         requesterUserId: visibility === "person" ? person.id : null,
         brandId: brandId || null,
-        segment: visibility === "person" ? (person.segment === "explorer" ? "explorer" : "business") : null,
+        // #4226 Phase 2: the People classifier — a host (or both) is a Host app
+        // ticket; everyone else is an Explorer app ticket.
+        segment: visibility === "person" ? (["host", "both"].includes(person.app_status || person.segment) ? "business" : "explorer") : null,
         priority,
         productArea: productArea.trim() || null,
         // Nobody chosen, or me without a roster row: the server makes me the owner.

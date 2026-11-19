@@ -11,6 +11,8 @@
 // suppressed, no consent where it applies, staff and test, no email,
 // duplicates), and the estimate counts each reason and each group.
 
+import { peopleAudience } from "./peopleFilter.js";
+
 /** Every segment filter, at its "All" value. Hosts is the default audience. */
 export const EMPTY_FILTERS = Object.freeze({
   userType: "host",
@@ -29,12 +31,19 @@ export const EMPTY_FILTERS = Object.freeze({
   joinedTo: "",
 });
 
-/** The quick audience buttons, in order. Each segment preset sets userType. */
+/**
+ * The quick audience buttons, in order. Each segment preset sets userType.
+ * #4226 Phase 2: "Activation plays" and "Build a group" send the People
+ * filter (mode "people"); Hosts and Explorers say they include Both, the same
+ * words People uses.
+ */
 export const AUDIENCE_PRESETS = Object.freeze([
-  Object.freeze({ id: "hosts", label: "Hosts", userType: "host" }),
+  Object.freeze({ id: "plays", label: "Activation plays" }),
+  Object.freeze({ id: "people", label: "Build a group" }),
+  Object.freeze({ id: "hosts", label: "Hosts (incl. Both)", userType: "host" }),
   Object.freeze({ id: "person", label: "One person" }),
   Object.freeze({ id: "segment", label: "Segment" }),
-  Object.freeze({ id: "explorers", label: "Explorer users", userType: "explorer" }),
+  Object.freeze({ id: "explorers", label: "Explorers (incl. Both)", userType: "explorer" }),
   Object.freeze({ id: "ticket_buyers", label: "Ticket buyers", userType: "ticket_buyers" }),
   Object.freeze({ id: "host_contacts", label: "Host contacts", userType: "host_contacts" }),
   Object.freeze({ id: "everyone", label: "Everyone" }),
@@ -82,8 +91,15 @@ export function isRecipientChosen(recipient) {
   return Boolean(recipient?.profile_id || recipient?.email);
 }
 
+/** #4226 Phase 2: the composer modes that send the People filter. */
+export function isPeopleMode(mode) {
+  return mode === "plays" || mode === "people";
+}
+
 /** The audience the edge function receives. */
-export function audienceFor(mode, selectedRecipient, filters, leadTarget = null) {
+export function audienceFor(mode, selectedRecipient, filters, leadTarget = null, peopleFilter = null) {
+  // #4226 Phase 2: a play or a built group is the People filter itself.
+  if (isPeopleMode(mode)) return peopleAudience(peopleFilter || {});
   // #4452 A1.5: a Leads list selection, or a one-to-one reply to one lead.
   if (mode === "leads") return { mode, selectionId: leadTarget?.selectionId || "" };
   if (mode === "lead_reply") return { mode, leadId: leadTarget?.leadId || "" };
@@ -129,6 +145,7 @@ export function audienceSummary(audienceMode, filters, estimate, selectedRecipie
   }
   if (audienceMode === "person") return selectedRecipient?.display_name || "One person";
   const count = estimate?.will_receive ?? "—";
+  if (isPeopleMode(audienceMode)) return `${count} people`;
   if (filters?.userType === "host") return `${count} Hosts`;
   if (filters?.userType === "explorer") return `${count} Explorer users`;
   if (filters?.userType === "ticket_buyers") return `${count} ticket buyers`;

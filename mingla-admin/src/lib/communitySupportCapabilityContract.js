@@ -108,7 +108,9 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     // #4382: staff threads are support tickets now; the desk writes only
     // through the support-* Edge Functions (the retired internal-thread RPCs
     // are gone).
-    rpcs: Object.freeze([]),
+    // #4226 Phase 2: people lookups use the People classifier
+    // (admin_people_lookup), one owner with People.
+    rpcs: Object.freeze(["admin_people_lookup"]),
     // support-send is reached by the ticket panel's composer
     // (components/support/SupportComposer.jsx), not by the page itself.
     functions: Object.freeze(["support-claim", "support-set-status"]),
