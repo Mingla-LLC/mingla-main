@@ -120,16 +120,16 @@ Deno.test("#4226 conversion data is held until the user is known, then sent once
   const { calls, fakes } = makeJourney();
   const j = await load(fakes);
   j.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
-  assertEquals(await j.sendHeldInstallAttribution({ userId: null, appsflyerId: "af-1", optedOut: false }), "held");
+  assertEquals(await j.sendHeldInstallAttribution({ userId: null, appsflyerId: "af-1", optedOut: false, platform: "ios", appId: "app-1" }), "held");
   assertEquals(calls.length, 0);
-  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af-1", optedOut: false }), "sent");
+  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af-1", optedOut: false, platform: "ios", appId: "app-1" }), "sent");
   // handled: the held payload is cleared, so a repeat has nothing left to send
-  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af-1", optedOut: false }), "held");
+  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af-1", optedOut: false, platform: "ios", appId: "app-1" }), "held");
   assertEquals(calls.length, 1);
   assertEquals(calls[0].name, "record_install_attribution");
   assertEquals(calls[0].args.p_app, "consumer");
   assertEquals(calls[0].args.p_appsflyer_id, "af-1");
-  assertEquals(calls[0].args.p_payload, { af_status: "Non-organic", media_source: "x" });
+  assertEquals(calls[0].args.p_payload, { af_status: "Non-organic", media_source: "x", platform: "ios", app_id: "app-1" });
 });
 
 Deno.test("#4226 sign-out and opt-out clear held attribution (Constitution 6)", async () => {
@@ -140,9 +140,9 @@ Deno.test("#4226 sign-out and opt-out clear held attribution (Constitution 6)", 
   j.clearPeopleJourneyState();
   assertEquals(j.getHeldInstallConversion(), null);
   assertEquals(j.getSourceHints().friendInvite, false);
-  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-2", appsflyerId: "af", optedOut: false }), "held");
+  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-2", appsflyerId: "af", optedOut: false, platform: "ios", appId: "app-1" }), "held");
   j.holdInstallConversion({ af_status: "Organic" });
-  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-2", appsflyerId: "af", optedOut: true }), "skipped");
+  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-2", appsflyerId: "af", optedOut: true, platform: "ios", appId: "app-1" }), "skipped");
   assertEquals(j.getHeldInstallConversion(), null);
   assertEquals(calls.length, 0);
 });
@@ -201,6 +201,8 @@ Deno.test("#4226 the AppsFlyer service holds conversion data that arrives before
   assertEquals(sent.length, 1);
   assertEquals(sent[0].userId, "u-1");
   assertEquals(sent[0].appsflyerId, "af-uid");
+  assertEquals(sent[0].platform, "ios");
+  assertEquals(sent[0].appId, "1", "app_id comes from the same source as the device upsert");
   svc.clearAppsFlyerUserId();
   assertEquals(cleared, 1, "sign-out did not clear the held state");
 });
@@ -260,21 +262,21 @@ Deno.test("#4226 rework: held attribution clears only after a boolean answer; er
   const a = makeJourney({ attributionAnswers: [false] });
   const ja = await load(a.fakes);
   ja.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
-  assertEquals(await ja.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af", optedOut: false }), "sent");
+  assertEquals(await ja.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af", optedOut: false, platform: "ios", appId: "app-1" }), "sent");
   assertEquals(ja.getHeldInstallConversion(), null);
 
   // error: kept
   const b = makeJourney({ rpcError: true });
   const jb = await load(b.fakes);
   jb.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
-  assertEquals(await jb.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af", optedOut: false }), "failed");
+  assertEquals(await jb.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af", optedOut: false, platform: "ios", appId: "app-1" }), "failed");
   assert(jb.getHeldInstallConversion() !== null, "payload dropped after an error");
 
   // no error but no answer ("no rows"): kept, never "sent"; stops after 3 tries
   const c = makeJourney({ attributionAnswers: [undefined, null, undefined, undefined] });
   const jc = await load(c.fakes);
   jc.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
-  const ctx = { userId: "u-1", appsflyerId: "af", optedOut: false };
+  const ctx = { userId: "u-1", appsflyerId: "af", optedOut: false, platform: "ios", appId: "app-1" };
   assertEquals(await jc.sendHeldInstallAttribution(ctx), "failed");
   assertEquals(await jc.sendHeldInstallAttribution(ctx), "failed");
   assertEquals(await jc.sendHeldInstallAttribution(ctx), "failed");

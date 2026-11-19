@@ -45,6 +45,9 @@ jest.mock("../supabase", () => ({
     // Models the "update only if the row exists, no error, no answer" server.
     rpc: jest.fn(async (name: string, args: Record<string, unknown>) => {
       rt.rpcCalls.push(name);
+      const payload = args.p_payload as Record<string, unknown>;
+      // the server raises invalid_platform / invalid_app_id without both keys
+      if (!payload.platform || !payload.app_id) return { error: { message: "invalid_platform" } };
       const row = rt.rows.get(`host-1:${String(args.p_app)}:${String(args.p_appsflyer_id)}`);
       if (row && row.media_source == null) row.media_source = (args.p_payload as Record<string, unknown>).media_source;
       return { error: null };

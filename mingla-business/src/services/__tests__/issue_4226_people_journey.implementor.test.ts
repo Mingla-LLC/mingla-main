@@ -189,7 +189,7 @@ describe("#4226 Host install attribution", () => {
     expect(sent[0].args).toEqual({
       p_appsflyer_id: "af-host-uid",
       p_app: "business",
-      p_payload: { af_status: "Non-organic", media_source: "m", is_first_launch: "true" },
+      p_payload: { af_status: "Non-organic", media_source: "m", is_first_launch: "true", platform: "ios", app_id: "6768737367" },
     });
   });
 
@@ -201,13 +201,13 @@ describe("#4226 Host install attribution", () => {
     expect(j.getHeldInstallConversion()).toBeNull();
     expect(j.getSourceHints().hostInvite).toBe(false);
     j.holdInstallConversion({ af_status: "Organic" });
-    await expect(j.sendHeldInstallAttribution({ userId: "h", appsflyerId: "af", optedOut: true })).resolves.toBe("skipped");
+    await expect(j.sendHeldInstallAttribution({ userId: "h", appsflyerId: "af", optedOut: true, platform: "ios", appId: "app-1" })).resolves.toBe("skipped");
     expect(j.getHeldInstallConversion()).toBeNull();
     expect(rt.rpcCalls).toHaveLength(0);
   });
 
   test("rework: held attribution clears only after a boolean answer; errors and empty answers keep it, at most 3 tries", async () => {
-    const ctx = { userId: "h-1", appsflyerId: "af", optedOut: false };
+    const ctx = { userId: "h-1", appsflyerId: "af", optedOut: false, platform: "ios", appId: "app-1" };
     // false = already recorded earlier: handled, payload cleared
     let j = await importJourney();
     rt.attributionAnswers = [false];

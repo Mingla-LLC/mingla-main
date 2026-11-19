@@ -466,6 +466,8 @@ function flushInstallAttribution(): void {
       userId: _signedInUserId,
       appsflyerId: uid,
       optedOut: isAnalyticsOptedOut(),
+      platform: Platform.OS,
+      appId: Platform.OS === 'ios' ? AF_IOS_APP_ID : AF_ANDROID_APP_ID,
     })
   })
 }

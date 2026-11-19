@@ -140,6 +140,9 @@ export async function sendHeldInstallAttribution(ctx: {
   userId: string | null;
   appsflyerId: string | null;
   optedOut: boolean;
+  /** Same values the device upsert writes to appsflyer_devices.platform / .app_id; the server needs them to create a missing device row. */
+  platform: string;
+  appId: string | undefined;
 }): Promise<InstallAttributionResult> {
   if (ctx.optedOut) {
     heldConversion = null;
@@ -161,7 +164,7 @@ export async function sendHeldInstallAttribution(ctx: {
       const { data, error } = await supabase.rpc("record_install_attribution", {
         p_appsflyer_id: ctx.appsflyerId,
         p_app: PEOPLE_JOURNEY_APP,
-        p_payload: payload,
+        p_payload: { ...payload, platform: ctx.platform, app_id: ctx.appId },
       });
       if (error) {
         warn("record_install_attribution failed:", error.message ?? error);
