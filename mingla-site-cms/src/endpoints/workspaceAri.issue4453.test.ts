@@ -124,6 +124,21 @@ describe("#4453 get_site_workspace", () => {
   });
 });
 
+describe("#4453 get_site_workspace on one very long page", () => {
+  it("still names every section of the page, within the limit", async () => {
+    const long = "A long paragraph about game nights in Lagos. ".repeat(30);
+    pageOf(site, site.homeId).blocks = Array.from({ length: 60 }, (_, at) => ({
+      id: `home-${at}`.padEnd(24, "0"), blockType: "faq", variant: "split", heading: long.slice(0, 120),
+      items: Array.from({ length: 8 }, (_row, n) => ({ id: `q-${at}-${n}`, question: long.slice(0, 240), answer: long.slice(0, 1000) })),
+    }));
+    const { status, data } = await ari(site, "get_site_workspace");
+    expect(status).toBe(200);
+    expect(new TextEncoder().encode(JSON.stringify(data)).length).toBeLessThanOrEqual(WORKSPACE_MAX_BYTES);
+    expect(data.pages[0].sections).toHaveLength(60);
+    expect(data.pages[0].sections[59]).toMatchObject({ index: 59, type: "faq", label: "Questions and answers 60" });
+  });
+});
+
 describe("#4453 apply_site_change", () => {
   it("edit_section: applies the words as Ari, stamps the section Draft by Ari, logs why, and records an undo entry", async () => {
     const hero = sectionId(site, site.homeId, "hero");

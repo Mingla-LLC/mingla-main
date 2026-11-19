@@ -890,10 +890,18 @@ export async function runContentAction(ctx: Ctx): Promise<unknown> {
           next.video = video;
         }
         const nextBlocks = blocks.map((block, index) => (index === heroIndex ? next : block));
-        await ctx.req.payload.update({
+        const updated = await ctx.req.payload.update({
           collection: "pages", id: home.id, req: ctx.scoped, overrideAccess: false, draft: true, depth: 0,
           data: { blocks: nextBlocks, revision: home.revision } as never,
-        });
+        }) as unknown as AnyDoc;
+        // #4453 website workspace — the cover is undoable like every other draft change.
+        const { parseChangeGroup, recordChanges, pageSnapshot } = await import("../lib/draftHistory");
+        await recordChanges(
+          { req: ctx.req, scoped: ctx.scoped, tenantId: ctx.tenantId, userId: ctx.request.userId },
+          "user",
+          [{ target: "page", targetId: String(home.id), label: "Change the cover", before: pageSnapshot(home), after: pageSnapshot(updated) }],
+          parseChangeGroup(args),
+        );
         return { saved: true, audit: { action: "content.updated", collection: "pages", entry: String(home.id) } };
       }
       const photoId = relationId(hero.media);

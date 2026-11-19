@@ -83,8 +83,10 @@ function snapshotAt(level: number, input: { draft: Awaited<ReturnType<typeof loa
   const rows = workspacePages(draft.pages, navigation);
   const byId = new Map(draft.pages.map((page) => [String(page.id), page]));
   const pages = rows.map((row, at) => {
-    // Past the size limit, pages further down the menu keep their sections but not the words in them.
-    const wordless = level >= 3 && at > 0;
+    // Past the size limit, pages further down the menu keep their sections but not the words in them
+    // (then not their fields); only then does the first page lose its words too.
+    const wordless = (level >= 3 && at > 0) || level >= 5;
+    const fieldless = (level >= 4 && at > 0) || level >= 6;
     const sections = describeSections(byId.get(row.id)!, design, "ari").map((section) => ({
       id: section.id,
       index: section.index,
@@ -97,7 +99,7 @@ function snapshotAt(level: number, input: { draft: Awaited<ReturnType<typeof loa
       fields: section.fields.map((field) => (wordless ? { key: field.key } : { key: field.key, ...cut(field.value, valueMax) })),
       ...(section.media.some((slot) => slot.media_id) ? { media: section.media.filter((slot) => slot.media_id).map((slot) => ({ slot: slot.slot, media_id: slot.media_id })) } : {}),
     }));
-    return { id: row.id, title: row.title, path: row.path, enabled: row.enabled, in_menu: row.in_menu, ari_draft: row.ari_draft, sections: level >= 4 && at > 0 ? sections.map(({ fields: _fields, ...rest }) => rest) : sections };
+    return { id: row.id, title: row.title, path: row.path, enabled: row.enabled, in_menu: row.in_menu, ari_draft: row.ari_draft, sections: fieldless ? sections.map(({ fields: _fields, ...rest }) => rest) : sections };
   });
   const menu = ((Array.isArray(navigation?.items) ? navigation!.items : []) as AnyDoc[])
     .filter((item) => item.target_type !== "url" && relationId(item.page))
@@ -137,7 +139,7 @@ export async function getSiteWorkspace(ctx: AriActionContext): Promise<AnyDoc> {
   const draft = await loadDraftState(ctx.req, ctx.scoped, ctx.tenantId);
   const navigation = draft.navigation;
   let snapshot: AnyDoc = {};
-  for (let level = 0; level <= 4; level += 1) {
+  for (let level = 0; level <= 6; level += 1) {
     snapshot = snapshotAt(level, { draft, navigation, ctx });
     if (bytes(snapshot) <= WORKSPACE_MAX_BYTES) return snapshot;
   }

@@ -19,7 +19,7 @@ vi.mock("../lib/observability", () => ({ emitCmsObservation: async () => {}, obs
 
 import { contentEndpoints } from "./contentEndpoint";
 import { HISTORY_ROW_CAP, sameContent } from "../lib/draftHistory";
-import { BRAND, SITE, TEAMMATE, USER, blocksOf, pageOf, revisionOf, seedSite, signedRequest, type Doc } from "./workspaceTestKit.issue4453";
+import { BRAND, PHOTO_A, PHOTO_C, SITE, TEAMMATE, USER, blocksOf, pageOf, revisionOf, seedSite, signedRequest, type Doc } from "./workspaceTestKit.issue4453";
 
 type Site = Awaited<ReturnType<typeof seedSite>>;
 
@@ -159,6 +159,15 @@ describe("#4453 undo and redo: the look and the menu", () => {
     expect(labels()).toEqual(["About", "Instagram"]);
     await call(site, "redo");
     expect(labels()).toEqual(["Instagram"]);
+  });
+
+  it("the cover screen's change is undoable too (set_cover records history)", async () => {
+    const saved = await call(site, "set_cover", { expected_revision: "1", photo_media_id: PHOTO_C });
+    expect(saved.status, JSON.stringify(saved.error)).toBe(200);
+    expect(blocksOf(site, site.homeId)[0]!.media).toBe(PHOTO_C);
+    expect((await summary(site)).undo_label).toBe("Change the cover");
+    await call(site, "undo");
+    expect(blocksOf(site, site.homeId)[0]!.media).toBe(PHOTO_A);
   });
 
   it("turning a page off is one change: the page and the menu come back together", async () => {
