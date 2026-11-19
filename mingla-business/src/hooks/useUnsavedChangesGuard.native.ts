@@ -7,12 +7,12 @@
 import { useEffect, useRef } from "react";
 import { BackHandler, Platform } from "react-native";
 
-import type { UnsavedChangesGuardConfig } from "./useUnsavedChangesGuard";
+import type { UnsavedChangesGuardConfig, UnsavedWork } from "./useUnsavedChangesGuard";
 
 export type { UnsavedChangesGuardConfig } from "./useUnsavedChangesGuard";
 
 /** #4453 — how many mounted screens have unsaved work; see useUnsavedChangesGuard.ts. */
-export const unsavedWork = { screens: 0 };
+export const unsavedWork: UnsavedWork = { screens: 0 };
 
 export function useUnsavedChangesGuard({
   dirty,

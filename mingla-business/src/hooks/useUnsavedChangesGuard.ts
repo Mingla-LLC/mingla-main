@@ -25,8 +25,18 @@ export interface UnsavedChangesGuardConfig {
  * The brand switcher reads this: switching brand leaves the screen (or swaps
  * the brand under it), so it holds the switch and says why instead of
  * discarding the work silently.
+ *
+ * `flushers` (types only here; nothing in this file fills it): a screen that
+ * saves by itself (a wizard's step save, a save that waits a moment after the
+ * last change) adds a function that saves what is pending and answers true
+ * once it is safe to leave. The switcher runs them before a switch and holds
+ * the switch when one answers false.
  */
-export const unsavedWork = { screens: 0 };
+export interface UnsavedWork {
+  screens: number;
+  flushers?: Set<() => Promise<boolean>>;
+}
+export const unsavedWork: UnsavedWork = { screens: 0 };
 
 export function useUnsavedChangesGuard({ dirty }: UnsavedChangesGuardConfig): void {
   useEffect(() => {

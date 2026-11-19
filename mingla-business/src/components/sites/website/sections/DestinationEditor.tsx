@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { useWebsite } from "../WebsiteContext";
 import { Card, CardTitle, Field, Hint, ListBox, MiniButton, Row, SectionHead, Skeleton, Toggle, WButton, ui } from "../ui";
@@ -14,7 +14,7 @@ import {
   type PictureRef,
 } from "../../../../sites/contentApi";
 import type { RichTextDoc } from "../../../../../../packages/site-contracts/src/richText.ts";
-import { ConflictBanner, DeleteEntry, EditorCrumb, OfferingPicker, RichTextEditor, saveErrorMessage, useEditorChrome } from "./EditorKit";
+import { ConflictBanner, DeleteEntry, EditorCrumb, OfferingPicker, RichTextEditor, editorFormChanged, saveErrorMessage, useEditorChrome } from "./EditorKit";
 
 
 import { color } from "../../../../constants/designSystem";
@@ -143,10 +143,13 @@ export function DestinationEditor({ entryId }: { entryId: string | "new" }): Rea
       },
     });
   };
+  // #4453 — the saved copy: the destination as last read, or the empty form.
+  const opened = useMemo<Form | null>(() => (isNew ? BLANK : entry.data ? formOf(entry.data) : null), [entry.data, isNew]);
   useEditorChrome({
     isNew,
     saving: save.isPending,
     disabled: readOnly || form === null,
+    changed: editorFormChanged(form, opened),
     onSave: () => doSave(),
     onCancel: () => ctx.go({ kind: "section", section: "destinations" }),
   });

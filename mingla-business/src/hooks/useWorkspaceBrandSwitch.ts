@@ -8,7 +8,8 @@
  * app behaves the same.
  *
  * Order of events when the screen changes:
- *   1. unsaved work on this screen holds the switch (a toast says why);
+ *   1. unsaved work on this screen holds the switch (a toast says why); a
+ *      screen that saves by itself saves first, and holds only if it cannot;
  *   2. a brand the member cannot open for that screen opens its Home, with a
  *      toast that says why;
  *   3. the route is REPLACED (no extra history entry) and the current brand
@@ -36,6 +37,26 @@ import { usePickBrand } from "./usePickBrand";
 
 export const UNSAVED_WORK_HOLDS_SWITCH =
   "You have changes that aren't saved. Save or discard them, then switch brand.";
+
+/**
+ * Does unsaved work hold this switch? A screen with unsaved edits holds it
+ * outright. A screen that saves by itself is asked to save first (its
+ * flusher): the switch goes on once every save has landed, and is held when
+ * one could not (failed, timed out, or the item changed somewhere else).
+ */
+export async function unsavedWorkHoldsSwitch(): Promise<boolean> {
+  if (unsavedWork.screens > 0) return true;
+  for (const flush of [...(unsavedWork.flushers ?? [])]) {
+    let saved = false;
+    try {
+      saved = await flush();
+    } catch {
+      saved = false;
+    }
+    if (!saved) return true;
+  }
+  return false;
+}
 
 /** How long a role lookup may hold a switch before the screen is opened anyway. */
 export const ROLE_LOOKUP_BUDGET_MS = 4000;
@@ -128,7 +149,7 @@ export function useWorkspaceBrandSwitch(
         pathname === null ? null : sameScreenForBrand(pathname, params, from, brand.id);
       if (sameScreen === null) {
         const unchanged = from === brand.id && currentBrandId === brand.id;
-        if (!unchanged && unsavedWork.screens > 0) {
+        if (!unchanged && (await unsavedWorkHoldsSwitch())) {
           showWorkspaceToast("warn", UNSAVED_WORK_HOLDS_SWITCH);
           return "held";
         }
@@ -136,7 +157,7 @@ export function useWorkspaceBrandSwitch(
         pickBrand(brand);
         return unchanged ? "unchanged" : "switched";
       }
-      if (unsavedWork.screens > 0) {
+      if (await unsavedWorkHoldsSwitch()) {
         showWorkspaceToast("warn", UNSAVED_WORK_HOLDS_SWITCH);
         return "held";
       }
