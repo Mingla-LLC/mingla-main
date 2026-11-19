@@ -167,8 +167,8 @@ describe("#4453 Looks good needs no revision", () => {
 
 describe("#4453 the preview bridge: Host sends only what the frame accepts", () => {
   test("limits are the frame's own", () => {
-    const protocol = read("mingla-sites/src/lib/previewBridgeProtocol.ts");
-    expect(protocol).toContain("{1,64}");
+    // The frame's own pattern (the bridge protocol imports it from the shared contract).
+    expect(read("packages/site-contracts/src/previewSections.ts")).toContain("PREVIEW_SECTION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/");
     const id64 = "a".repeat(64);
     const section = { id: id64, type: "hero", top: 0, height: 10 };
     expect(parsePreviewMessage({ type: "mingla:preview-ready", page_path: "", sections: [section], scroll_y: 0, doc_height: 10 })).not.toBeNull();
@@ -191,5 +191,19 @@ describe("#4453 the preview bridge: Host sends only what the frame accepts", () 
     const other = swapReducer(swapReducer(state, { type: "url", url: "https://x/about-1", page: "about" }), { type: "timeout", key: 2 });
     expect(other.shown?.page).toBe("about");
     expect(other.scrollY).toBe(0);
+  });
+
+  test("a preview out of sight stays laid out (never display: none), on web, native and behind a \"more\" screen", () => {
+    const shell = read("mingla-business/src/components/sites/website/workspace/WorkspaceShell.tsx");
+    const hidden = shell.match(/\n  hidden: \{([^}]*)\}/);
+    expect(hidden).not.toBeNull();
+    expect(hidden![1]).toContain('visibility: "hidden"');
+    expect(hidden![1]).not.toContain("display");
+    const web = read("mingla-business/src/components/sites/website/workspace/LivePreview.web.tsx");
+    expect(web).toContain("opacity: visible ? 1 : 0");
+    expect(web).not.toMatch(/display:\s*["']none["']/);
+    const native = read("mingla-business/src/components/sites/website/workspace/LivePreview.tsx");
+    expect(native).toContain("hidden: { opacity: 0 }");
+    expect(native).not.toMatch(/display:\s*["']none["']/);
   });
 });

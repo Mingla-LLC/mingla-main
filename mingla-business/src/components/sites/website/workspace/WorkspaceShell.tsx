@@ -660,7 +660,9 @@ function DetailBody({ detail, route, requests }: { detail: WorkspaceDetail; rout
 
 const styles = StyleSheet.create({
   fill: { flex: 1, minHeight: 0, minWidth: 0 },
-  hidden: { display: "none" },
+  // Out of sight behind a "more" screen, but still LAID OUT: a frame with no layout reports every
+  // section at top 0 and height 0, and a rebuilt draft would never paint or say it is ready.
+  hidden: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, visibility: "hidden", pointerEvents: "none" } as object,
   desktop: { flex: 1, flexDirection: "row", minHeight: 0 },
   panel: { width: websiteWorkspacePanelWidth, flexGrow: 0, flexShrink: 0, borderRightWidth: 1, borderRightColor: ui.cardBorder, minHeight: 0 },
   // The switcher keeps its 44pt target; the save line tucks under its name inside the 56pt bar.

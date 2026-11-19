@@ -33,6 +33,10 @@ const AFTER_LOAD_MS = 1_200;
 const TOKENS_DEBOUNCE_MS = 150;
 /** A frame that has loaded but not spoken is spoken to again this often (see `onLoaded`). */
 const NUDGE_MS = 500;
+/** A page that has loaded and said nothing for this long is treated as one with no sections to pick. */
+const SILENT_AFTER_MS = 4_000;
+/** The plain line shown over the page when its sections cannot be picked there. */
+export const NO_PICK_LINE = "Sections can’t be picked on the page right now. Choose Edit to change them from the list.";
 /** How long a "show this section" waits for the page that holds it to load. */
 const WANTED_SCROLL_MS = 15_000;
 
@@ -51,6 +55,12 @@ export function usePreviewFrames(options: {
   geometry: PreviewGeometry;
   /** The visible frame's bridge has spoken (sections can be clicked). */
   bridged: boolean;
+  /**
+   * The page is on screen but has no section to pick: its bridge listed none
+   * (an older preview build with no section list, a page that draws no
+   * sections), or it has loaded and stayed silent. The Edit list still works.
+   */
+  noPick: boolean;
   onMessage: (key: number, raw: unknown) => void;
   onLoaded: (key: number) => void;
   commands: PreviewCommands;
@@ -58,6 +68,9 @@ export function usePreviewFrames(options: {
   const [swap, dispatch] = useReducer(swapReducer, EMPTY_SWAP);
   const [geometry, setGeometry] = useState<PreviewGeometry>({ sections: [], scrollY: 0 });
   const [bridged, setBridged] = useState(false);
+  /** The visible frame loaded a while ago and its bridge never spoke. */
+  const [silent, setSilent] = useState(false);
+  const silentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef(options);
   latest.current = options;
   const swapRef = useRef(swap);
@@ -127,6 +140,7 @@ export function usePreviewFrames(options: {
     timers.current.clear();
     nudges.current.forEach((nudge) => clearInterval(nudge));
     nudges.current.clear();
+    if (silentTimer.current) clearTimeout(silentTimer.current);
   }, []);
 
   // The new frame took over: give it the state, then the place it replaces.
@@ -149,6 +163,9 @@ export function usePreviewFrames(options: {
     }
     const replaced = previousShown.current !== null && previousShown.current !== shownKey;
     previousShown.current = shownKey;
+    if (silentTimer.current) clearTimeout(silentTimer.current);
+    silentTimer.current = null;
+    setSilent(false);
     if (replaced) {
       // The reducer already set this to 0 when the new frame shows another page.
       pendingRestore.current = { key: shownKey, scrollY: swapRef.current.scrollY };
@@ -195,6 +212,7 @@ export function usePreviewFrames(options: {
     if (message.type === PREVIEW_READY) {
       readyFrames.current.set(key, message.sections);
       stopNudging(key);
+      if (fromShown) setSilent(false);
       // Where the frame says it IS: a restored scroll is reported by the
       // frame itself (`rects`) once it has moved, never assumed here.
       setGeometry({ sections: message.sections, scrollY: message.scrollY });
@@ -243,6 +261,12 @@ export function usePreviewFrames(options: {
     if (state.shown?.key === key) {
       sync(key);
       nudge(key);
+      if (!readyFrames.current.has(key) && silentTimer.current === null) {
+        silentTimer.current = setTimeout(() => {
+          silentTimer.current = null;
+          if (swapRef.current.shown?.key === key && !readyFrames.current.has(key)) setSilent(true);
+        }, SILENT_AFTER_MS);
+      }
       return;
     }
     if (state.loading?.key !== key || timers.current.has(key)) return;
@@ -269,5 +293,6 @@ export function usePreviewFrames(options: {
     },
   }), []);
 
-  return { swap, geometry, bridged, onMessage, onLoaded, commands };
+  const noPick = shownKey !== null && (silent || (bridged && geometry.sections.length === 0));
+  return { swap, geometry, bridged, noPick, onMessage, onLoaded, commands };
 }

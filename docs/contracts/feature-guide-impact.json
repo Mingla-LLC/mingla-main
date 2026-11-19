@@ -5234,6 +5234,84 @@
       "paths": [
         "supabase/migrations/20280809003645_issue_3645_payout_gaps.sql"
       ]
+    },
+    {
+      "capability_key": "sites-brand-website",
+      "paths": [
+        "mingla-business/src/components/sites/website/WebsiteContext.tsx",
+        "mingla-business/src/components/sites/website/useWebsiteController.ts",
+        "mingla-business/src/components/sites/website/workspace/AriPanel.tsx",
+        "mingla-business/src/components/sites/website/workspace/DesignPanel.tsx",
+        "mingla-business/src/components/sites/website/workspace/EditPanel.tsx",
+        "mingla-business/src/components/sites/website/workspace/LivePreview.tsx",
+        "mingla-business/src/components/sites/website/workspace/LivePreview.types.ts",
+        "mingla-business/src/components/sites/website/workspace/LivePreview.web.tsx",
+        "mingla-business/src/components/sites/website/workspace/MoreMenu.tsx",
+        "mingla-business/src/components/sites/website/workspace/PublishPanel.tsx",
+        "mingla-business/src/components/sites/website/workspace/RequestsPane.tsx",
+        "mingla-business/src/components/sites/website/workspace/SectionAriCard.tsx",
+        "mingla-business/src/components/sites/website/workspace/TeamRequestCard.tsx",
+        "mingla-business/src/components/sites/website/workspace/WorkspaceShell.tsx",
+        "mingla-business/src/components/sites/website/workspace/parts.tsx",
+        "mingla-business/src/components/sites/website/workspace/useAriRun.ts",
+        "mingla-business/src/components/sites/website/workspace/usePreviewFrames.ts",
+        "mingla-business/src/components/sites/website/workspace/useWorkspace.ts",
+        "mingla-business/src/sites/ariRunActivity.ts",
+        "mingla-business/src/sites/ariWorkspace.ts",
+        "mingla-business/src/sites/designMoods.ts",
+        "mingla-business/src/sites/draftWriter.ts",
+        "mingla-business/src/sites/previewBridge.ts",
+        "mingla-business/src/sites/sectionEdits.ts",
+        "mingla-business/src/sites/teamRequests.ts",
+        "mingla-business/src/sites/teamRequestsPort.ts",
+        "mingla-business/src/sites/workspaceRoute.ts",
+        "mingla-business/src/sites/workspaceStatus.ts",
+        "mingla-site-cms/src/collections/DraftChanges.ts",
+        "mingla-site-cms/src/contracts/generated/previewSections.ts",
+        "mingla-site-cms/src/endpoints/workspaceTestKit.issue4453.ts",
+        "mingla-site-cms/src/lib/draftHistory.ts",
+        "mingla-site-cms/src/lib/mediaHolders.ts",
+        "mingla-site-cms/src/lib/sectionActions.ts",
+        "mingla-site-cms/src/lib/siteWorkspace.ts",
+        "mingla-site-cms/src/migrations/20261119_100000_issue_4453_draft_changes.ts",
+        "mingla-sites/e2e/preview-bridge/verify.mjs",
+        "mingla-sites/src/components/PreviewBridge.tsx",
+        "mingla-sites/src/components/PreviewTokenBridge.tsx",
+        "mingla-sites/src/components/v2/PreviewSection.tsx",
+        "mingla-sites/src/contracts/generated/previewSections.ts",
+        "mingla-sites/src/lib/previewBridge.ts",
+        "mingla-sites/src/lib/previewBridgeProtocol.ts",
+        "mingla-sites/src/lib/previewSections.ts",
+        "packages/site-contracts/src/previewSections.ts",
+        "supabase/functions/_shared/agentSiteWorkspaceTools.ts",
+        "supabase/functions/_shared/siteContracts/previewSections.ts",
+        "supabase/functions/agent-confirm-action/siteStepActivity.ts",
+        "supabase/functions/brand-site-control/siteWorkspace.ts",
+        "supabase/migrations/20281119004453_issue_4453_website_team_requests.sql",
+        "supabase/migrations/20281119014453_issue_4453_workspace_content_ranks.sql"
+      ]
+    },
+    {
+      "capability_key": "brand-profile",
+      "paths": [
+        "mingla-business/src/components/brand/BrandSearchField.tsx",
+        "mingla-business/src/components/brand/WorkspaceBrandMenu.tsx",
+        "mingla-business/src/components/brand/WorkspaceBrandSwitcher.tsx",
+        "mingla-business/src/components/brand/workspaceBrandContext.ts",
+        "mingla-business/src/config/workspaceBrandRoutes.ts",
+        "mingla-business/src/hooks/useWorkspaceBrand.ts",
+        "mingla-business/src/hooks/useWorkspaceBrandRouteSync.ts",
+        "mingla-business/src/hooks/useWorkspaceBrandSwitch.ts",
+        "mingla-business/src/utils/brandSearch.ts"
+      ]
+    },
+    {
+      "capability_key": "staff-support-desk",
+      "paths": [
+        "mingla-admin/src/components/support/WebsiteRequestBox.jsx",
+        "mingla-admin/src/lib/websiteRequestModel.js",
+        "supabase/migrations/20281119004453_issue_4453_website_team_requests.sql"
+      ]
     }
   ]
 }

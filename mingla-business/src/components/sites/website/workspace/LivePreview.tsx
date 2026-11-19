@@ -1,10 +1,10 @@
 import React, { useCallback, useImperativeHandle, useRef, useState } from "react";
-import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { WebView } from "react-native-webview";
 import { color } from "../../../../constants/designSystem";
 import { previewDimensions, PREVIEW_DEVICE_LABELS } from "../../../../sites/previewDevice";
 import { nativeBridgeCall, stageFrame } from "../../../../sites/previewBridge";
-import { usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
+import { NO_PICK_LINE, usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
 import type { LivePreviewProps } from "./LivePreview.types";
 
 /*
@@ -73,6 +73,11 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
           );
         })}
       </View>
+      {editMode && preview.noPick ? (
+        <View style={styles.noPick} role="status" accessibilityLiveRegion="polite" testID="live-preview-no-pick">
+          <Text style={styles.noPickText}>{NO_PICK_LINE}</Text>
+        </View>
+      ) : null}
     </View>
   );
 });
@@ -82,4 +87,6 @@ const styles = StyleSheet.create({
   viewport: { position: "absolute", top: 0, left: 0, overflow: "hidden", backgroundColor: color.paper },
   web: { flex: 1, backgroundColor: color.paper },
   hidden: { opacity: 0 },
+  noPick: { position: "absolute", left: 12, right: 12, bottom: 12, alignItems: "center", pointerEvents: "none" },
+  noPickText: { maxWidth: 520, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, overflow: "hidden", fontSize: 13, lineHeight: 18, color: color.text1, backgroundColor: color.card3, textAlign: "center" },
 });

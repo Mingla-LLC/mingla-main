@@ -15,6 +15,10 @@ let mockServer: (action: string, args: Record<string, unknown>) => Reply = () =>
 let mockWide = true;
 let mockPreviewProps: Record<string, unknown> = {};
 const mockPost = jest.fn();
+const mockRpcCalls: { name: string; args: Record<string, unknown> }[] = [];
+let mockRequestRows: Record<string, unknown>[] = [];
+let mockAboutOff = false;
+let mockSwitcherProps: { brandId?: string; compact?: boolean } = {};
 let mockEmit: (events: { id: string; event_type: string; detail?: unknown }[]) => void = () => undefined;
 const mockChat = {
   conversationId: null as string | null,
@@ -43,9 +47,29 @@ jest.mock("../../../../services/supabase", () => ({
         return { data: { ok: true, data: reply.data }, error: null };
       }),
     },
-    rpc: jest.fn(async () => ({ data: null, error: null })),
+    rpc: jest.fn(async (name: string, args: Record<string, unknown>) => {
+      mockRpcCalls.push({ name, args });
+      return { data: { ticket_id: "t-9", ticket_number: 2041, replayed: false }, error: null };
+    }),
+    // The brand's requests to the team (support_website_requests, read under RLS).
+    from: jest.fn(() => {
+      const chain: Record<string, unknown> = {};
+      for (const method of ["select", "eq", "order"]) chain[method] = () => chain;
+      chain.limit = async () => ({ data: mockRequestRows, error: null });
+      return chain;
+    }),
   },
 }));
+jest.mock("../../../brand/WorkspaceBrandSwitcher", () => {
+  const ReactLib = require("react");
+  const { Text } = require("react-native");
+  return {
+    WorkspaceBrandSwitcher: (props: { brandId?: string; compact?: boolean }) => {
+      mockSwitcherProps = props;
+      return ReactLib.createElement(Text, { testID: "workspace-brand-switcher" }, `Brand switcher for ${props.brandId}`);
+    },
+  };
+});
 jest.mock("expo-router", () => ({ useRouter: () => mockRouter }));
 jest.mock("expo-image-picker", () => ({ launchImageLibraryAsync: jest.fn() }));
 jest.mock("../WebsiteIcon", () => ({ WebsiteIcon: () => null }));
@@ -177,7 +201,7 @@ function server(action: string, args: Record<string, unknown>): Reply {
     case "workspace": return { data: {
       draft_digest: "d1", design: "atelier", look_revision: "2026-11-18T00:00:00.000Z", menu_revision: "m1",
       pages: [{ id: "p1", title: "Home", path: "", enabled: true, in_menu: true, revision: String(state.revision), ari_draft: false, unreviewed: unread.length },
-        { id: "p2", title: "About", path: "about", enabled: true, in_menu: true, revision: "3", ari_draft: false, unreviewed: 0 }],
+        { id: "p2", title: "About", path: "about", enabled: !mockAboutOff, in_menu: !mockAboutOff, revision: "3", ari_draft: false, unreviewed: 0 }],
       history: state.history,
     } };
     case "page_sections": return { data: { page: { id: args.page_id, title: "Home", path: "", revision: String(state.revision) }, sections: state.sections.map((entry, index) => ({ ...entry, index })) } };
@@ -290,6 +314,10 @@ afterEach(async () => {
 
 beforeEach(() => {
   mockCalls.length = 0;
+  mockRpcCalls.length = 0;
+  mockRequestRows = [];
+  mockAboutOff = false;
+  mockSwitcherProps = {};
   mockPost.mockClear();
   Object.values(mockChat).forEach((value) => typeof value === "function" && (value as jest.Mock).mockReset());
   mockConfirm.mockReset();
@@ -313,7 +341,11 @@ describe("the workspace shell (desktop)", () => {
     expect(has(root, "ari-intro")).toBe(true);
     expect(words(root)).toContain("Live · 2 not published yet");
     expect(words(root)).toContain("Publish 2 changes");
-    expect(words(root)).toContain("Gameland Lagos");
+    // The header is the app's brand switcher for THIS brand (compact), with the save state under it.
+    expect(mockSwitcherProps).toMatchObject({ brandId: "b", compact: true });
+    expect(words(root)).toContain("Brand switcher for b");
+    expect(has(root, "workspace-save-state")).toBe(true);
+    expect(words(root)).toContain("Website · saved");
     expect(root.findAll((node) => node.props.testID === "workspace-publish" && typeof node.type !== "string").length).toBeGreaterThan(0);
     await press(root, "workspace-publish");
     expect(has(root, "publish-panel")).toBe(true);
@@ -347,9 +379,55 @@ describe("the workspace shell (desktop)", () => {
     expect(words(first.root)).toContain("Go live");
   });
 
-  it("a ready-for-review notification link opens the requests list", async () => {
+  it("a ready-for-review notification link opens the requests list on that request, with its section chosen and in view", async () => {
+    mockRequestRows = [
+      { ticket_id: "t-0", what: "Something else", section_id: null, section_label: null, page_path: null, due_at: "2026-11-21T09:00:00Z", ready_at: null, created_at: "2026-11-18T09:00:00Z", ticket: { ticket_number: 2040, status: "open" } },
+      { ticket_id: "t-1", what: "Add a countdown", section_id: "s2", section_label: "Pick a time", page_path: "/", due_at: "2026-11-20T09:00:00Z", ready_at: "2026-11-19T12:00:00Z", created_at: "2026-11-19T09:00:00Z", ticket: { ticket_number: 2041, status: "pending" } },
+    ];
     const { root } = await open({ search: { request: "t-1" } });
     expect(has(root, "requests-pane")).toBe(true);
+    expect(words(root)).toContain("Add a countdown");
+    expect(words(root)).toContain("Request 2041");
+    expect(words(root)).toContain("Ready for your review");
+    // The section the request is about is already chosen on the page behind the list.
+    expect(mockPost).toHaveBeenCalledWith({ type: "mingla:preview-scroll-to", section_id: "s2" });
+    expect((mockPreviewProps.marks as { selected: string | null }).selected).toBe("s2");
+    // "Read it on the page" closes the list on that section, open in Edit.
+    mockPost.mockClear();
+    await press(root, "request-read-t-1");
+    expect(has(root, "requests-pane")).toBe(false);
+    expect(has(root, "workspace-mode-edit")).toBe(true);
+    expect(mockPost).toHaveBeenCalledWith({ type: "mingla:preview-scroll-to", section_id: "s2" });
+    expect(has(root, "field-s2-heading")).toBe(true);
+  });
+
+  it("a request the owner starts from a section is sent with the page's visitor address and the draft's digest", async () => {
+    const { root } = await open({ segments: ["pages"] });
+    await act(async () => { (mockPreviewProps.onSelect as (id: string) => void)("s2"); });
+    await press(root, "section-ari-team");
+    await type(root, "team-request-what", "Add a countdown to this section.");
+    await press(root, "team-request-send");
+    expect(mockRpcCalls).toHaveLength(1);
+    expect(mockRpcCalls[0]!.name).toBe("issue_4453_create_website_request");
+    expect(mockRpcCalls[0]!.args).toMatchObject({
+      p_brand_id: "b", p_site_id: SITE, p_what: "Add a countdown to this section.",
+      // "" in the workspace is "/" in the database (which refuses a section without its page).
+      p_where: { page_path: "/", section_id: "s2", section_label: "Pick a time" },
+    });
+    expect(has(root, "team-request-sent")).toBe(true);
+  });
+
+  it("a page that is off has no draft page to show: it says so and offers to turn it on", async () => {
+    mockAboutOff = true;
+    const { root } = await open({ segments: ["pages"] });
+    expect(has(root, "workspace-preview-off")).toBe(false);
+    await press(root, "page-picker-toggle");
+    await press(root, "page-option-about");
+    // The preview would be "not found" for a page that is off: no frame is loaded for it.
+    expect(has(root, "workspace-preview-off")).toBe(true);
+    expect(words(root)).toContain("“About” is off");
+    await press(root, "workspace-preview-off-turn-on");
+    expect(called("set_page_enabled")[0]!.args).toEqual({ page_id: "p2", expected_revision: "3", enabled: true });
   });
 });
 
@@ -630,9 +708,13 @@ describe("Ari mode", () => {
     const { root } = await open();
     await type(root, "ari-input", "Put booking first");
     await press(root, "ari-send");
-    expect(words(root)).toContain("That was already done. Your page is up to date.");
+    // The server's own words: it may have landed in part the first time.
+    expect(words(root)).toContain("This change was already started. Check your draft, and use Undo this if it looks half done.");
     expect(has(root, "ari-retry")).toBe(false);
     expect(mockConfirm).toHaveBeenCalledTimes(1);
+    // Undo this undoes THAT change set (its group is the approval's id), never just the latest change.
+    await press(root, "ari-undo-already");
+    expect(called("undo")).toEqual([{ action: "undo", args: { group_id: "pa1" } }]);
   });
 
   it("cannot do it → Ari writes the team request → the owner edits and sends → sent", async () => {
@@ -640,7 +722,7 @@ describe("Ari mode", () => {
       kind: "pending_action", pending_action_id: "pa2", tool_name: "propose_website_team_request", client_turn_id: "t3",
       tool_args: { brand_id: "b", site_id: SITE, what: "Add a 360° tour of the venue to Home.", where: { page_path: "", section_label: "Pick a time" }, why: "Ari has no section that can show a 360° tour yet", missing_capability: "tour_360" },
     });
-    mockConfirm.mockResolvedValue({ kind: "executed", result: { ticket_id: "t-1", ticket_number: "S-1042", status: "received" } });
+    mockConfirm.mockResolvedValue({ kind: "executed", result: { ticket_id: "t-1", ticket_number: 1042, status: "received" } });
     const { root } = await open();
     await type(root, "ari-input", "Add a 360° tour of the venue");
     await press(root, "ari-send");
@@ -650,7 +732,11 @@ describe("Ari mode", () => {
     expect(words(root)).toContain("Ari has no section that can show a 360° tour yet");
     await type(root, "team-request-what", "Add a 360° tour. I can send the footage.");
     await press(root, "team-request-send");
-    expect(mockConfirm).toHaveBeenCalledWith("pa2", { what: "Add a 360° tour. I can send the footage." }, "website_workspace");
+    // The WHOLE request goes back: the server replaces the stored one with it and re-checks every field.
+    expect(mockConfirm).toHaveBeenCalledWith("pa2", {
+      brand_id: "b", site_id: SITE, what: "Add a 360° tour. I can send the footage.", where: { page_path: "", section_label: "Pick a time" },
+      why: "Ari has no section that can show a 360° tour yet", missing_capability: "tour_360",
+    }, "website_workspace");
     expect(has(root, "team-request-sent")).toBe(true);
     expect(words(root)).toContain("Sent. Usually ready within 24 hours.");
     expect(has(root, "team-request-card")).toBe(false);

@@ -11,6 +11,7 @@ import { fetchAriTurnStatus } from "../services/ariTurnService";
 import type { StepEvent } from "./ariWorkspace";
 
 const POLL_MS = 2_500;
+const hasDetail = (event: StepEvent): boolean => event.detail !== null && typeof event.detail === "object";
 
 export function followAriRun(clientTurnId: string, onEvents: (events: StepEvent[]) => void): () => void {
   const seen = new Map<string, StepEvent & { sequence?: number }>();
@@ -20,7 +21,11 @@ export function followAriRun(clientTurnId: string, onEvents: (events: StepEvent[
     for (const row of rows) {
       if (!row || typeof row !== "object") continue;
       const event = row as StepEvent & { id?: unknown; sequence?: number };
-      if (typeof event.id !== "string" || typeof event.event_type !== "string" || seen.has(event.id)) continue;
+      if (typeof event.id !== "string" || typeof event.event_type !== "string") continue;
+      const known = seen.get(event.id);
+      // The status re-read carries no `detail` (which step); the pushed row does.
+      // Whichever arrives first, the row with the detail is the one kept.
+      if (known && (hasDetail(known) || !hasDetail(event))) continue;
       seen.set(event.id, event);
       changed = true;
     }

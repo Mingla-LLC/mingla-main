@@ -56,8 +56,8 @@ import {
   siteStepProblem,
   siteStepWritesWords,
   siteTeamRequestProblem,
-  siteWorkspaceContextText,
   siteTicketNumber,
+  siteWorkspaceContextText,
   siteWorkspaceFollowupText,
   siteWorkspaceIds,
   siteWorkspaceProposalIssue,
@@ -765,6 +765,19 @@ Deno.test("#4453 the snapshot is kept inside the turn's context budget", () => {
   assertEquals(huge.truncated, true);
   assert(JSON.stringify(huge).length < 30_000);
   assertEquals((huge.pages as unknown[]).length, 1);
+  // The keys are Studio's own (`media`, `facts`, `addable_sections`): the
+  // list of what can be added is dropped last, under the name Studio sends.
+  const wide = boundSiteWorkspace({
+    pages: [{ id: "pg_home" }],
+    media: [],
+    facts: {},
+    addable_sections: Array.from(
+      { length: 400 },
+      (_, n) => ({ type: `t${n}`, label: "x".repeat(100), needs_photo: false }),
+    ),
+  });
+  assertEquals(wide.addable_sections, undefined);
+  assert(JSON.stringify(wide).length < 30_000);
 });
 
 // ---------------------------------------------------------------------------

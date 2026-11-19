@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { color, scrim } from "../../../../constants/designSystem";
 import { previewDimensions, PREVIEW_DEVICE_LABELS } from "../../../../sites/previewDevice";
 import { ariCardPosition, messageFromFrame, scaleRect, sectionViewportRect, stageFrame, viewportRect } from "../../../../sites/previewBridge";
-import { usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
+import { NO_PICK_LINE, usePreviewFrames, type FrameMessage, type PreviewCommands } from "./usePreviewFrames";
 import type { LivePreviewProps } from "./LivePreview.types";
 
 /*
@@ -122,6 +122,11 @@ export const LivePreview = React.forwardRef<PreviewCommands, LivePreviewProps>(f
           });
         })}
       </View>
+      {editMode && preview.noPick ? (
+        <View style={styles.noPick} role="status" accessibilityLiveRegion="polite" testID="live-preview-no-pick">
+          <Text style={styles.noPickText}>{NO_PICK_LINE}</Text>
+        </View>
+      ) : null}
       {cardAt && renderCard ? (
         <View style={[styles.card, { top: cardAt.top, left: cardAt.left, width: cardAt.width }]} testID="live-preview-card">
           {renderCard()}
@@ -142,4 +147,6 @@ const styles = StyleSheet.create({
     boxShadow: `0 0 0 1px ${color.fill.step}, 0 12px 40px ${scrim.modal}`,
   } as object,
   card: { position: "absolute", zIndex: 5 },
+  noPick: { position: "absolute", left: 12, right: 12, bottom: 12, zIndex: 4, alignItems: "center", pointerEvents: "none" },
+  noPickText: { maxWidth: 520, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, overflow: "hidden", fontSize: 13, lineHeight: 18, color: color.text1, backgroundColor: color.card3, textAlign: "center" },
 });

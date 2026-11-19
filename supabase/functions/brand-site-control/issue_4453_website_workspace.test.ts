@@ -171,3 +171,80 @@ Deno.test("#4453 workspace: Core signs Draft review in for Ari's workspace actio
   // Evidence is signed for every designer action except the token read, so for all three of these.
   assert(/if \(action !== "get_site_tokens"\) \{\s*const evidence = await siteEvidence\(/.test(source));
 });
+
+// ---------------------------------------------------------------------------
+// One list in four places.
+// MINGLA-INVARIANT: I-4453-WORKSPACE-ACTIONS-ONE-LIST | issue #4453 | the thirteen Website workspace content actions are named identically in Core's allow-list (CONTENT_ACTIONS), Studio's rank table (CONTENT_ACTION_MIN_RANK) and the database rank function (brand_site_content_min_rank), all at rank 20, and every content action Host sends (mingla-business contentApi.ts) is one Core lets through.
+// Host sends an action, Core lets it through and asks the database for its
+// minimum rank, Studio checks the rank again and does the work. A name
+// missing from any one of them is a refusal the owner sees as "not available".
+// Core's list is the loaded one; the other three are read from their sources.
+// ---------------------------------------------------------------------------
+
+const REPO_ROOT = new URL("../../../", import.meta.url);
+const readRepo = (file: string): string => Deno.readTextFileSync(new URL(file, REPO_ROOT));
+const quotedNames = (source: string): string[] => [...source.matchAll(/["']([a-z][a-z0-9_]*)["']/g)].map((match) => match[1]!);
+
+const THE_THIRTEEN = [
+  "workspace", "page_sections", "section_catalog",
+  "edit_section", "move_section", "remove_section", "add_section", "set_section_media",
+  "set_look", "set_page_enabled",
+  "history", "undo", "redo",
+];
+
+function studioContentRanks(): Map<string, number> {
+  const body = readRepo("mingla-site-cms/src/endpoints/contentEndpoint.ts").match(/CONTENT_ACTION_MIN_RANK[^=]*=\s*\{([\s\S]*?)\n\};/);
+  assert(body, "Studio's CONTENT_ACTION_MIN_RANK was not found");
+  return new Map([...body[1]!.matchAll(/^\s*([a-z_]+):\s*(\d+),/gm)].map((match) => [match[1]!, Number(match[2])]));
+}
+
+function databaseContentRanks(): Map<string, number> {
+  const body = readRepo("supabase/migrations/20281119014453_issue_4453_workspace_content_ranks.sql")
+    .match(/FUNCTION public\.brand_site_content_min_rank\(p_action text\)[\s\S]*?\$function\$([\s\S]*?)\$function\$/);
+  assert(body, "brand_site_content_min_rank was not found");
+  const ranks = new Map<string, number>();
+  for (const branch of body[1]!.matchAll(/WHEN p_action IN \(([\s\S]*?)\)\s*THEN\s*(\d+)/g)) {
+    for (const name of quotedNames(branch[1]!.replace(/--[^\n]*/g, ""))) ranks.set(name, Number(branch[2]));
+  }
+  return ranks;
+}
+
+/** Every action name Host's contentApi.ts passes to the content route. */
+function hostContentActions(): string[] {
+  const source = readRepo("mingla-business/src/sites/contentApi.ts");
+  return [...new Set([...source.matchAll(/contentCall(?:<[\s\S]*?>)?\(\s*[A-Za-z_.!]+,\s*"([a-z_]+)"/g)].map((match) => match[1]!))].sort();
+}
+
+Deno.test("#4453 contract: the thirteen workspace actions are in Core, Studio and the database, all at rank 20", () => {
+  assertEquals([...WORKSPACE_CONTENT_ACTIONS].sort(), [...THE_THIRTEEN].sort());
+  const studio = studioContentRanks();
+  const database = databaseContentRanks();
+  for (const action of THE_THIRTEEN) {
+    assertEquals([action, CONTENT_ACTIONS.has(action)], [action, true]);
+    assertEquals([action, studio.get(action)], [action, 20]);
+    assertEquals([action, database.get(action)], [action, 20]);
+  }
+});
+
+Deno.test("#4453 contract: every content action Host sends is one Core lets through and the database ranks", () => {
+  const sent = hostContentActions();
+  const database = databaseContentRanks();
+  assert(sent.length > 30, `only ${sent.length} Host actions were found: the reader no longer matches contentApi.ts`);
+  for (const action of sent) {
+    assertEquals([action, CONTENT_ACTIONS.has(action)], [action, true]);
+    assertEquals([action, typeof database.get(action)], [action, "number"]);
+  }
+  for (const action of THE_THIRTEEN) assert(sent.includes(action), `Host never sends ${action}`);
+});
+
+Deno.test("#4453 contract: Studio and the database give the same rank to every action both know", () => {
+  const studio = studioContentRanks();
+  const database = databaseContentRanks();
+  let compared = 0;
+  for (const [action, rank] of studio) {
+    if (!database.has(action)) continue;
+    compared += 1;
+    assertEquals([action, database.get(action)], [action, rank]);
+  }
+  assert(compared >= THE_THIRTEEN.length + 10);
+});

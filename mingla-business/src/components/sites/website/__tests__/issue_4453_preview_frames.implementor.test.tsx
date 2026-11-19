@@ -84,8 +84,8 @@ describe("the live preview's frames", () => {
     await act(async () => { api.onMessage(2, ready(0)); });
     expect(api.swap.shown).toEqual({ key: 2, url: "https://x/2", page: "home" });
     expect(api.swap.loading).toBeNull();
-    expect(types(2)).toEqual(["mingla:preview-mode", "mingla:preview-marks", "mingla:preview-restore-scroll"]);
-    expect(sent.at(-1)!.message).toEqual({ type: "mingla:preview-restore-scroll", scroll_y: 640 });
+    expect(types(2).slice(0, 2)).toEqual(["mingla:preview-mode", "mingla:preview-marks"]);
+    expect(sent.filter((entry) => entry.message.type === "mingla:preview-restore-scroll")).toEqual([{ key: 2, message: { type: "mingla:preview-restore-scroll", scroll_y: 640 } }]);
     // The frame is where it SAID it is until it reports the restored scroll itself.
     expect(api.geometry.scrollY).toBe(0);
     await act(async () => { api.onMessage(2, { type: "mingla:preview-rects", sections: [], scroll_y: 640, doc_height: 2000 }); });
@@ -176,6 +176,28 @@ describe("the live preview's frames", () => {
     await act(async () => { tree.update(<Harness url="https://x/3" />); });
     await act(async () => { jest.advanceTimersByTime(6100); });
     expect(api.swap.shown!.url).toBe("https://x/3");
+  });
+
+  it("a page with no section list (an older preview build) or a silent page says sections can't be picked there", async () => {
+    await act(async () => { create(<Harness url="https://x/1" />); });
+    expect(api.noPick).toBe(false);
+    // The bridge answers with no sections: the page works, nothing is clickable.
+    await act(async () => { api.onMessage(1, { type: "mingla:preview-ready", page_path: "", sections: [], scroll_y: 0, doc_height: 900 }); });
+    expect(api.bridged).toBe(true);
+    expect(api.noPick).toBe(true);
+    await act(async () => { api.onMessage(1, ready()); });
+    expect(api.noPick).toBe(false);
+  });
+
+  it("a page that loads and never speaks is treated the same after a few seconds, and recovers when it does", async () => {
+    await act(async () => { create(<Harness url="https://x/1" />); });
+    await act(async () => { api.onLoaded(1); });
+    await act(async () => { jest.advanceTimersByTime(3900); });
+    expect(api.noPick).toBe(false);
+    await act(async () => { jest.advanceTimersByTime(200); });
+    expect(api.noPick).toBe(true);
+    await act(async () => { api.onMessage(1, ready()); });
+    expect(api.noPick).toBe(false);
   });
 
   it("posts unsaved colours after a short pause, again after a reload, and commands go to the visible frame", async () => {

@@ -177,15 +177,15 @@ describe("the preview bridge", () => {
 
   it("a new draft loads out of sight and swaps in when ready, keeping the scroll", () => {
     let state = swapReducer(EMPTY_SWAP, { type: "url", url: "https://x/1" });
-    expect(state.shown).toEqual({ key: 1, url: "https://x/1" });
+    expect(state.shown).toEqual({ key: 1, url: "https://x/1", page: null });
     expect(state.loading).toBeNull();
     state = swapReducer(state, { type: "scroll", key: 1, scrollY: 640 });
     state = swapReducer(state, { type: "url", url: "https://x/2" });
     expect(state.shown?.url).toBe("https://x/1");
-    expect(state.loading).toEqual({ key: 2, url: "https://x/2" });
+    expect(state.loading).toEqual({ key: 2, url: "https://x/2", page: null });
     expect(swapReducer(state, { type: "ready", key: 1 })).toBe(state);
     state = swapReducer(state, { type: "url", url: "https://x/3" });
-    expect(state.loading).toEqual({ key: 3, url: "https://x/3" });
+    expect(state.loading).toEqual({ key: 3, url: "https://x/3", page: null });
     expect(swapReducer(state, { type: "ready", key: 2 })).toBe(state);
     state = swapReducer(state, { type: "ready", key: 3 });
     expect(state).toMatchObject({ shown: { key: 3, url: "https://x/3" }, loading: null, scrollY: 640 });
@@ -271,8 +271,8 @@ describe("autosave", () => {
   afterEach(() => jest.useRealTimers());
   const settle = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
 
-  function harness(send?: (job: DraftJob, revision: string) => Promise<string | null>) {
-    const sent: { job: DraftJob; revision: string }[] = [];
+  function harness(send?: (job: DraftJob, revision: string | null) => Promise<string | null>) {
+    const sent: { job: DraftJob; revision: string | null }[] = [];
     const states: SaveState[] = [];
     const errors: { error: unknown; dropped: number }[] = [];
     const revisions = new Map<string, string>([["p1", "r1"]]);

@@ -1860,12 +1860,13 @@ export interface SiteWorkspaceExecutionContext
 }
 
 const WORKSPACE_MAX_CHARS = 30_000;
+// The snapshot's own top-level keys (Studio `get_site_workspace`), least
+// needed for planning first. Studio already keeps it under 24 KB; this is
+// the last line of defence, so it must name keys that exist.
 const WORKSPACE_DROP_ORDER = [
   "media",
-  "approved_media",
   "facts",
-  "addable_section_types",
-  "section_types",
+  "addable_sections",
 ];
 
 /** Keep the planning snapshot inside the turn's context budget. */

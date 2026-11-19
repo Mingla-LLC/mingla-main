@@ -138,7 +138,7 @@ describe("#4453 team requests: reading the list", () => {
       ticket: { ticket_number: 1042, status: "new" },
     };
     expect(toWebsiteRequest(row)).toEqual({
-      ticketId: "t-1", ticketNumber: 1042, what: "Add a video background", sectionLabel: "Top of the page",
+      ticketId: "t-1", ticketNumber: 1042, what: "Add a video background", sectionId: null, sectionLabel: "Top of the page",
       pagePath: "/", status: "received", createdAt: "2026-11-19T09:00:00Z", dueAt: "2026-11-20T09:00:00Z", readyAt: null,
     });
     // An embedded one-row array and a missing ticket are both tolerated.
