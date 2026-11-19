@@ -135,7 +135,11 @@ export interface GuestMessageDeps {
 
 export type GuestMessageDecision =
   | { kind: "not_guest_row" }
-  | { kind: "finish"; status: "failed_terminal" | "failed_retryable"; code: string }
+  | {
+    kind: "finish";
+    status: "failed_terminal" | "failed_retryable";
+    code: string;
+  }
   | { kind: "message"; copy: GuestCopy; link: string | null };
 
 const textOf = (value: unknown): string | null =>
@@ -162,7 +166,11 @@ export async function resolveGuestMessage(
   }
   if (guestId === null) {
     return isReminder
-      ? { kind: "finish", status: "failed_terminal", code: "rsvp_guest_missing" }
+      ? {
+        kind: "finish",
+        status: "failed_terminal",
+        code: "rsvp_guest_missing",
+      }
       : { kind: "not_guest_row" };
   }
   const ctx = await deps.context(guestId);
@@ -175,7 +183,11 @@ export async function resolveGuestMessage(
   }
   // 1.18 — a released guest is never texted again.
   if (!ctx.exists) {
-    return { kind: "finish", status: "failed_terminal", code: "rsvp_guest_released" };
+    return {
+      kind: "finish",
+      status: "failed_terminal",
+      code: "rsvp_guest_released",
+    };
   }
   if (isReminder && (ctx.claimed || !ctx.eligible)) {
     return {
@@ -186,7 +198,9 @@ export async function resolveGuestMessage(
   }
   // The invite email keeps the shared #4063 message; texts, push and in-app
   // name the inviter. A reminder reads the same on every channel.
-  if (!isReminder && input.channel === "email") return { kind: "not_guest_row" };
+  if (!isReminder && input.channel === "email") {
+    return { kind: "not_guest_row" };
+  }
   const link = await deps.claimLink(guestId);
   if (link === null && input.channel === "sms") {
     return {
@@ -201,7 +215,16 @@ export async function resolveGuestMessage(
     : null;
   const title = ctx.eventTitle ?? textOf(input.payload.eventName);
   const copy = isReminder
-    ? buildGuestReminderCopy({ inviter: ctx.inviterLabel, title, link: display })
-    : buildGuestInviteCopy({ inviter: ctx.inviterLabel, title, date, link: display });
+    ? buildGuestReminderCopy({
+      inviter: ctx.inviterLabel,
+      title,
+      link: display,
+    })
+    : buildGuestInviteCopy({
+      inviter: ctx.inviterLabel,
+      title,
+      date,
+      link: display,
+    });
   return { kind: "message", copy, link: link?.url ?? null };
 }

@@ -39,7 +39,10 @@ function deps(ctx: GuestMessageContext | "unavailable", link = true) {
         calls.push(`link:${id}`);
         return Promise.resolve(
           link
-            ? { url: `https://usemingla.com/c/${CODE}`, display: `usemingla.com/c/${CODE}` }
+            ? {
+              url: `https://usemingla.com/c/${CODE}`,
+              display: `usemingla.com/c/${CODE}`,
+            }
             : null,
         );
       },
@@ -47,7 +50,9 @@ function deps(ctx: GuestMessageContext | "unavailable", link = true) {
   };
 }
 
-const live = (over: Partial<GuestMessageContext> = {}): GuestMessageContext => ({
+const live = (
+  over: Partial<GuestMessageContext> = {},
+): GuestMessageContext => ({
   exists: true,
   claimed: false,
   eligible: true,
@@ -72,17 +77,32 @@ Deno.test("invite text names the inviter, links the claim and fits one segment",
     assert(decision.kind === "message", JSON.stringify(decision));
     const sms = decision.copy.sms;
     assert(sms.startsWith("Mingla: Ada O. is bringing you to "), sms);
-    assert(sms.endsWith(`Get your pass in the Mingla app: usemingla.com/c/${CODE}`), sms);
+    assert(
+      sms.endsWith(`Get your pass in the Mingla app: usemingla.com/c/${CODE}`),
+      sms,
+    );
     assert(/Dec 5|5 Dec/.test(sms), `date: ${sms}`);
-    assert(finalSmsLength(sms) <= 160, `one segment with STOP: ${finalSmsLength(sms)}`);
-    assert(decision.link === `https://usemingla.com/c/${CODE}`, "push / in-app link");
-    assert(decision.copy.title === `Ada O. is bringing you to ${title}`, decision.copy.title);
+    assert(
+      finalSmsLength(sms) <= 160,
+      `one segment with STOP: ${finalSmsLength(sms)}`,
+    );
+    assert(
+      decision.link === `https://usemingla.com/c/${CODE}`,
+      "push / in-app link",
+    );
+    assert(
+      decision.copy.title === `Ada O. is bringing you to ${title}`,
+      decision.copy.title,
+    );
   }
 });
 
 Deno.test("the same rule for approval and spot-opened passes, not for primaries", async () => {
   for (const template of ["rsvp_approved", "rsvp_waitlist_promoted"]) {
-    const decision = await resolveGuestMessage(deps(live()).deps, guestRow(template));
+    const decision = await resolveGuestMessage(
+      deps(live()).deps,
+      guestRow(template),
+    );
     assert(decision.kind === "message", template);
   }
   const primary = await resolveGuestMessage(deps(live()).deps, {
@@ -91,8 +111,14 @@ Deno.test("the same rule for approval and spot-opened passes, not for primaries"
     payload: { role: "primary" },
   });
   assert(primary.kind === "not_guest_row", "a primary row is unchanged");
-  const email = await resolveGuestMessage(deps(live()).deps, { ...guestRow(), channel: "email" });
-  assert(email.kind === "not_guest_row", "the invite email keeps the shared message");
+  const email = await resolveGuestMessage(deps(live()).deps, {
+    ...guestRow(),
+    channel: "email",
+  });
+  assert(
+    email.kind === "not_guest_row",
+    "the invite email keeps the shared message",
+  );
 });
 
 Deno.test("a released guest is never texted", async () => {
@@ -103,18 +129,36 @@ Deno.test("a released guest is never texted", async () => {
       decision.code === "rsvp_guest_released",
     JSON.stringify(decision),
   );
-  assert(!calls.some((c) => c.startsWith("link:")), "no link minted for a released guest");
+  assert(
+    !calls.some((c) => c.startsWith("link:")),
+    "no link minted for a released guest",
+  );
 });
 
 Deno.test("a failed read or link is retried, never sent wrong", async () => {
-  const unread = await resolveGuestMessage(deps("unavailable").deps, guestRow());
-  assert(unread.kind === "finish" && unread.status === "failed_retryable", "context");
-  const nolink = await resolveGuestMessage(deps(live(), false).deps, guestRow());
-  assert(nolink.kind === "finish" && nolink.code === "rsvp_guest_link_unavailable", "link");
+  const unread = await resolveGuestMessage(
+    deps("unavailable").deps,
+    guestRow(),
+  );
+  assert(
+    unread.kind === "finish" && unread.status === "failed_retryable",
+    "context",
+  );
+  const nolink = await resolveGuestMessage(
+    deps(live(), false).deps,
+    guestRow(),
+  );
+  assert(
+    nolink.kind === "finish" && nolink.code === "rsvp_guest_link_unavailable",
+    "link",
+  );
 });
 
 Deno.test("the reminder goes only to an unclaimed, eligible guest", async () => {
-  const sent = await resolveGuestMessage(deps(live()).deps, guestRow("rsvp_guest_reminder"));
+  const sent = await resolveGuestMessage(
+    deps(live()).deps,
+    guestRow("rsvp_guest_reminder"),
+  );
   assert(sent.kind === "message", "unclaimed");
   assert(
     sent.copy.sms ===
@@ -122,22 +166,43 @@ Deno.test("the reminder goes only to an unclaimed, eligible guest", async () => 
     sent.copy.sms,
   );
   for (const over of [{ claimed: true }, { eligible: false }]) {
-    const held = await resolveGuestMessage(deps(live(over)).deps, guestRow("rsvp_guest_reminder"));
-    assert(held.kind === "finish" && held.code === "rsvp_guest_reminder_not_needed", JSON.stringify(over));
+    const held = await resolveGuestMessage(
+      deps(live(over)).deps,
+      guestRow("rsvp_guest_reminder"),
+    );
+    assert(
+      held.kind === "finish" && held.code === "rsvp_guest_reminder_not_needed",
+      JSON.stringify(over),
+    );
   }
   const long = await resolveGuestMessage(
     deps(live({ eventTitle: LONG })).deps,
     guestRow("rsvp_guest_reminder"),
   );
-  assert(long.kind === "message" && finalSmsLength(long.copy.sms) <= 160, "reminder fits");
+  assert(
+    long.kind === "message" && finalSmsLength(long.copy.sms) <= 160,
+    "reminder fits",
+  );
 });
 
 Deno.test("copy helpers and context parsing", () => {
   assert(inviterForText(null) === "A friend", "unknown inviter");
-  assert(inviterForText("Zoë Ångström-Ndukwe The Third").length <= 24, "bounded");
-  assert(parseGuestMessageContext({ exists: false })?.exists === false, "released");
+  assert(
+    inviterForText("Zoë Ångström-Ndukwe The Third").length <= 24,
+    "bounded",
+  );
+  assert(
+    parseGuestMessageContext({ exists: false })?.exists === false,
+    "released",
+  );
   assert(parseGuestMessageContext("nope") === null, "garbage");
-  const going = buildFriendGoingCopy({ actorName: "Yas", eventTitle: "Rooftop Night" });
+  const going = buildFriendGoingCopy({
+    actorName: "Yas",
+    eventTitle: "Rooftop Night",
+  });
   assert(going.title === "Yas is going to Rooftop Night", going.title);
-  assert(going.body === "Yas is going to Rooftop Night. Join them?", going.body);
+  assert(
+    going.body === "Yas is going to Rooftop Night. Join them?",
+    going.body,
+  );
 });

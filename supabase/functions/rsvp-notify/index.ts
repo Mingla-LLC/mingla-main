@@ -673,9 +673,7 @@ async function processClaim(
     : defaultLink;
   const link = guestMessage?.link ?? buyerLink?.url ?? update?.link ??
     recoveryLink?.passUrl ?? authenticatedPassLink;
-  const copy = guestMessage
-    ? guestMessage.copy
-    : modernMessage
+  const copy = guestMessage ? guestMessage.copy : modernMessage
     ? {
       title: modernMessage.body.copy.subject,
       body: modernMessage.body.copy.promise,
@@ -836,7 +834,8 @@ async function sendFriendGoingNotices(admin: AdminClient): Promise<void> {
             deepLink: `mingla://event/${encodeURIComponent(row.event_id)}`,
             relatedId: row.event_id,
             relatedType: "event",
-            idempotencyKey: `friend_going:${row.event_id}:${row.friend_user_id}`,
+            idempotencyKey:
+              `friend_going:${row.event_id}:${row.friend_user_id}`,
           },
         },
       );

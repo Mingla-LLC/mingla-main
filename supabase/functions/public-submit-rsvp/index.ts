@@ -13,6 +13,12 @@
  *
  * A4-NEW: a link guest (no JWT) MUST supply name + email + phone. A logged-in
  * app-user (JWT resolves a user_id) supplies none of those (profile-inherited).
+ *
+ * Issue #4508: each plus-one needs only a phone number (guestPayload.ts); the
+ * old {name,email,phone} guest is still accepted. The response lists each
+ * guest with its invite link. Two more operations ride this function
+ * (guestOps.ts): guest_lookup (the live match under the number field) and
+ * guest_bring (a claimed guest brings one more person).
  */
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
@@ -34,6 +40,8 @@ import {
   parseRsvpAdContext,
   scheduleRsvpAdConversion,
 } from "./rsvpAdConversion.ts";
+import { mapGuestRpcError, parseGuests } from "./guestPayload.ts";
+import { handleGuestOp, isGuestOp } from "./guestOps.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,13 +49,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-interface RsvpGuestInput {
-  name?: string;
-  email?: string;
-  phone?: string;
-  phoneCountryIso?: string | null;
-}
 
 interface SubmitRsvpRequest {
   eventId?: string;
@@ -57,9 +58,9 @@ interface SubmitRsvpRequest {
   guestPhoneCountryIso?: string | null;
   rsvpStatus?: "going" | "not_going" | "maybe";
   plusCount?: number;
-  // ORCH-1163 [rsvp-shared-body] — one CONTACT record per plus-one (name/email/
-  // phone), NOT a count. Length must match plusCount for going/maybe.
-  guests?: RsvpGuestInput[];
+  // ORCH-1163 / #4508 — one record per plus-one: {phone, phoneCountryIso} with
+  // optional name / email. Length must match plusCount when plusCount is sent.
+  guests?: unknown;
   // #4238 W2-5 — the web browser's ad match keys + click id (web only).
   ad_context?: unknown;
 }
@@ -130,6 +131,53 @@ serve(async (req: Request): Promise<Response> => {
     body = (await req.json()) as SubmitRsvpRequest;
   } catch {
     return json(400, { error: "invalid_json" });
+  }
+
+  // Issue #4508 — guest_lookup / guest_bring.
+  if (isGuestOp(body)) {
+    const opAdmin = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false },
+    });
+    let opUserId: string | null = null;
+    const opAuth = req.headers.get("Authorization") ?? "";
+    const opToken = opAuth.toLowerCase().startsWith("bearer ")
+      ? opAuth.slice(7).trim()
+      : "";
+    if (opToken.length > 0) {
+      try {
+        const { data, error } = await opAdmin.auth.getUser(opToken);
+        if (!error && data.user) opUserId = data.user.id;
+      } catch (err) {
+        console.warn("[public-submit-rsvp] token resolve failed", String(err));
+      }
+    }
+    const result = await handleGuestOp(
+      body as unknown as Record<string, unknown>,
+      {
+        rpc: async (name, args) => {
+          const { data, error } = await opAdmin.rpc(name, args);
+          return {
+            data,
+            error: error ? { message: error.message, code: error.code } : null,
+          };
+        },
+        userId: opUserId,
+        ip,
+        pepper: () => {
+          try {
+            return qrTokenPepper();
+          } catch (err) {
+            console.error(
+              "[public-submit-rsvp] qr_token_pepper unavailable for guest_bring",
+              String(err),
+            );
+            return null;
+          }
+        },
+        drain: (rsvpId) => drainRsvpDeliveries(opAdmin, rsvpId),
+      },
+    );
+    return json(result.status, result.body);
   }
   if (
     !body || typeof body !== "object" || Array.isArray(body) ||
@@ -256,76 +304,18 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  const plusCount =
-    typeof body.plusCount === "number" && Number.isFinite(body.plusCount)
-      ? Math.max(0, Math.floor(body.plusCount))
-      : 0;
-
-  // ORCH-1163 [rsvp-shared-body] — per-guest plus-one validation. not_going
-  // forces an empty array (no plus-ones). For going/maybe with plusCount > 0,
-  // guests.length must equal plusCount and each guest must carry a valid
-  // name/email/phone (same EMAIL_RE / normalizePhone gates as the primary).
-  // The RPC re-validates server-side; this is the friendly 400 contract.
-  const rawGuests = Array.isArray(body.guests) ? body.guests : [];
-  let normalizedGuests: Array<
-    {
-      name: string;
-      email: string;
-      phone: string;
-      phoneCountryIso: string | null;
-    }
-  > = [];
-  if (rsvpStatus === "going" || rsvpStatus === "maybe") {
-    if (plusCount > 0) {
-      if (rawGuests.length !== plusCount) {
-        return json(400, { error: "rsvp_guest_count_mismatch" });
-      }
-      for (const g of rawGuests) {
-        if (
-          !g || typeof g !== "object" || Array.isArray(g) ||
-          Object.keys(g).some((key) =>
-            !["name", "email", "phone", "phoneCountryIso"].includes(key)
-          )
-        ) {
-          return json(400, { error: "rsvp_guest_keys_invalid" });
-        }
-        const gName = typeof g?.name === "string" ? g.name.trim() : "";
-        const gEmail = typeof g?.email === "string" ? g.email.trim() : "";
-        const gRawPhone = typeof g?.phone === "string" ? g.phone.trim() : "";
-        const gPhoneCountryIso = optionalCountryIso(g?.phoneCountryIso);
-        if (
-          gName.length > 120 || gEmail.length > 254 || gRawPhone.length > 40
-        ) {
-          return json(400, { error: "rsvp_guest_payload_invalid" });
-        }
-        if (
-          gName.length === 0 ||
-          gEmail.length === 0 ||
-          !EMAIL_RE.test(gEmail) ||
-          gRawPhone.length === 0
-        ) {
-          return json(400, { error: "rsvp_guest_contact_required" });
-        }
-        if (gPhoneCountryIso === undefined) {
-          return json(400, { error: "rsvp_guest_phone_country_invalid" });
-        }
-        const gPhone = normalizePhone(gRawPhone);
-        if (gPhone === null) {
-          return json(400, { error: "rsvp_guest_phone_invalid" });
-        }
-        normalizedGuests.push({
-          name: gName,
-          email: gEmail,
-          phone: gPhone,
-          phoneCountryIso: gPhoneCountryIso,
-        });
-      }
-    }
-    // plusCount === 0 → no guests required; ignore any stray array.
-  } else {
-    // not_going → no plus-ones.
-    normalizedGuests = [];
-  }
+  // ORCH-1163 / #4508 — per-guest validation (guestPayload.ts). not_going
+  // forces no plus-ones. The RPC re-validates server-side; this is the
+  // friendly 400 contract.
+  const parsedGuests = parseGuests({
+    rawGuests: body.guests,
+    rawPlusCount: body.plusCount,
+    rsvpStatus,
+    primaryPhone: normalizedPhone,
+  });
+  if (!parsedGuests.ok) return json(400, { error: parsedGuests.error });
+  const plusCount = parsedGuests.plusCount;
+  const normalizedGuests = parsedGuests.guests;
 
   // ORCH-1163 — source the QR pepper via the shared helper. A misconfigured env
   // must NOT break the RSVP write: on throw, log + proceed with a null pepper
@@ -430,6 +420,9 @@ serve(async (req: Request): Promise<Response> => {
       return json(404, { error: "rsvp_not_open" });
     }
     if (code.includes("rsvp_full")) return json(409, { error: "rsvp_full" });
+    // #4508 — guest refusals the form shows in plain words.
+    const guestError = mapGuestRpcError(error.code, code);
+    if (guestError) return json(guestError.status, { error: guestError.error });
     if (code.includes("rsvp_already_exists")) {
       console.warn(
         "[public-submit-rsvp] RSVP rejected",
@@ -465,6 +458,13 @@ serve(async (req: Request): Promise<Response> => {
     approvalStatus?: string;
     capacityFull?: boolean;
     confirmationToken?: string | null;
+    guests?: Array<{
+      guestId?: string;
+      phoneLast4?: string;
+      onMingla?: boolean;
+      displayName?: string;
+      claimed?: boolean;
+    }>;
   };
 
   const passEligible = result.status === "going" &&
@@ -530,22 +530,26 @@ serve(async (req: Request): Promise<Response> => {
   if (typeof result.rsvpId === "string") {
     // Drain the acknowledgement rows as well as pass rows. Delivery remains
     // best-effort relative to the already committed RSVP write.
-    try {
-      const { data: due } = await admin.from("rsvp_notifications")
-        .select("id")
-        .eq("rsvp_id", result.rsvpId)
-        .in("status", ["pending", "failed_retryable"]);
-      for (const row of (due ?? []) as Array<{ id: string }>) {
-        await admin.functions.invoke("rsvp-notify", {
-          body: { notificationId: row.id },
-        });
-      }
-    } catch (err) {
-      console.warn(
-        "[public-submit-rsvp] RSVP delivery drain failed (non-fatal)",
-        String(err),
-      );
-    }
+    await drainRsvpDeliveries(admin, result.rsvpId);
+  }
+
+  // Issue #4508 1.15 — each guest with the link the text carries, for the
+  // success screen's "Invites sent" and "Send it yourself too".
+  const guestsOut: Array<Record<string, unknown>> = [];
+  for (const guest of result.guests ?? []) {
+    const link = typeof guest.guestId === "string"
+      ? await mintClaimLink(admin, "rsvp_guest", guest.guestId)
+      : null;
+    guestsOut.push({
+      guestId: guest.guestId ?? null,
+      phoneLast4: guest.phoneLast4 ?? null,
+      // A signed-out inviter learns only yes/no about an account (amendment 4).
+      onMingla: guest.onMingla === true,
+      displayName: userId !== null ? guest.displayName ?? null : null,
+      claimed: guest.claimed === true,
+      inviteUrl: link?.url ?? null,
+      inviteCode: link?.code ?? null,
+    });
   }
 
   return json(200, {
@@ -582,8 +586,33 @@ serve(async (req: Request): Promise<Response> => {
       }))
       : [],
     anonymousRecovery: [],
+    guests: guestsOut,
   });
 });
+
+// Best-effort: deliver the RSVP's pending rows now (the queue's every-minute
+// sweep is the backstop).
+async function drainRsvpDeliveries(
+  admin: AdminClient,
+  rsvpId: string,
+): Promise<void> {
+  try {
+    const { data: due } = await admin.from("rsvp_notifications")
+      .select("id")
+      .eq("rsvp_id", rsvpId)
+      .in("status", ["pending", "failed_retryable"]);
+    for (const row of (due ?? []) as Array<{ id: string }>) {
+      await admin.functions.invoke("rsvp-notify", {
+        body: { notificationId: row.id },
+      });
+    }
+  } catch (err) {
+    console.warn(
+      "[public-submit-rsvp] RSVP delivery drain failed (non-fatal)",
+      String(err),
+    );
+  }
+}
 
 // ORCH-1163 [rsvp-shared-body] — build the recipient fan-out + enqueue/invoke
 // rsvp-notify. One `rsvp_pass` row per recipient:
