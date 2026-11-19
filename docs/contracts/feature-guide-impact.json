@@ -2661,6 +2661,8 @@
         "supabase/functions/rsvp-notify/friendGoingFailureAlert.ts",
         "supabase/functions/rsvp-notify/guestInvite.ts",
         "supabase/functions/rsvp-notify/signedOutCeilingAlert.ts",
+        "supabase/functions/_shared/rsvpGuestNotice.ts",
+        "supabase/functions/rsvp-notify/guestNotices.ts",
         "supabase/migrations/20281119004508_issue_4508_guest_phone_match.sql",
         "supabase/migrations/20281119014508_issue_4508_bring_a_friend.sql"
       ]
