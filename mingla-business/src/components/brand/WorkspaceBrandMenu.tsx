@@ -3,7 +3,10 @@
  *
  *   Web >= 1024: a popover in the sheet material, anchored under the brand
  *   chip, kept inside the viewport.
- *   Phone, narrow web and native: the shared bottom Sheet.
+ *   Phone, narrow web and native: the TopSheet, dropping from the top like
+ *   the app's full brand sheet (BrandSwitcherSheet), in a full-screen layer
+ *   of its own (the chip sits in a small bar, which the sheet must not be
+ *   confined to).
  *
  * Both list every brand with its mark, tick the brand you are in, show a
  * search field above 8 brands and end with "Create a new brand". Picking a
@@ -11,7 +14,9 @@
  *
  * Keyboard (web): Up / Down / Home / End move through the rows, Enter picks,
  * Escape closes and focus returns to the chip. Typing in the search field
- * keeps focus there; Down steps into the results.
+ * keeps focus there; Down steps into the results. The sheet closes on Escape
+ * or a tap outside it too, and tells its host once it is gone (`onClosed`),
+ * so focus goes back to the chip after the layer has left the page.
  *
  * Loaded on demand by WorkspaceBrandSwitcher, so none of this is on the boot
  * path.
@@ -19,6 +24,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Modal as RNModal, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import type { TextInput } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useRouter } from "expo-router";
 
 import { color, radius, shadow, space, type } from "../../constants/designSystem";
@@ -31,7 +37,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { Material } from "../ui/Material";
-import { Sheet } from "../ui/Sheet";
+import { TopSheet } from "../ui/TopSheet";
 import { useWebEscapeClose } from "../ui/useWebEscapeClose";
 import { BrandMark } from "./BrandMark";
 import { BrandSearchField } from "./BrandSearchField";
@@ -49,17 +55,22 @@ export interface WorkspaceBrandMenuProps {
   onClose: () => void;
   /** The brand the screen is in (ticked). */
   activeBrandId: string | null;
-  /** Wide desktop: where the chip is; null presents the bottom Sheet. */
+  /** Wide desktop: where the chip is; null presents the top sheet. */
   anchor: BrandMenuAnchor | null;
   /** The host's full switcher (continue setup, discard a draft, delete). */
   onManageBrands?: () => void;
+  /** The sheet's layer has left the page (focus can go back to the chip). */
+  onClosed?: () => void;
   testID?: string;
 }
 
 export const BRAND_MENU_WIDTH = 320;
 export const BRAND_MENU_ROW_HEIGHT = 56;
 const POPOVER_MAX_HEIGHT = 520;
-const SHEET_CHROME_HEIGHT = 24 + 44 + space[6];
+/** The sheet's layer stays until the TopSheet has slid away (its exit runs 240 to 280ms). */
+const SHEET_EXIT_MS = 300;
+/** The web TopSheet's drag band lies over the last 28px of the panel: nothing tappable sits under it. */
+const SHEET_DRAG_BAND = 28;
 
 /** Under the chip, left-aligned to it, inside the viewport. */
 export const brandMenuPosition = (
@@ -97,6 +108,7 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
   activeBrandId,
   anchor,
   onManageBrands,
+  onClosed,
   testID = "workspace-brand-menu",
 }) => {
   const router = useRouter();
@@ -114,6 +126,16 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
   );
   const popover = anchor !== null;
   useWebEscapeClose(visible && popover, onClose);
+  // The sheet's full-screen layer outlives `visible` by the slide-away.
+  const [sheetLayer, setSheetLayer] = useState(visible);
+  useEffect(() => {
+    if (visible) {
+      setSheetLayer(true);
+      return undefined;
+    }
+    const timer = setTimeout(() => setSheetLayer(false), SHEET_EXIT_MS);
+    return (): void => clearTimeout(timer);
+  }, [visible]);
 
   const draftBrand = brands.find((brand) => brand.id === setupStates.draftId) ?? null;
   const openCreate = useCallback((): void => {
@@ -324,7 +346,7 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
 
   const body = (
     <View
-      style={styles.body}
+      style={popover ? styles.body : styles.bodySheet}
       accessibilityRole="menu"
       accessibilityLabel="Switch brand"
       testID={testID}
@@ -341,14 +363,14 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
         </View>
       ) : null}
       <ScrollView
-        style={styles.scroll}
+        style={popover ? styles.scroll : styles.scrollSheet}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
       >
         {list}
       </ScrollView>
-      <View style={styles.footer}>
+      <View style={popover ? styles.footer : [styles.footer, styles.footerSheet]}>
         {footer.map((action, offset) => {
           const index = shown.length + offset;
           return (
@@ -403,31 +425,42 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
     );
   }
 
-  const rows = Math.min(Math.max(shown.length, 1), 6);
-  const sheetHeight =
-    SHEET_CHROME_HEIGHT +
-    (searchable ? 64 : 0) +
-    rows * BRAND_MENU_ROW_HEIGHT +
-    footer.length * BRAND_MENU_ROW_HEIGHT +
-    space[4];
+  // A layer of its own: the chip sits in a small bar, and the TopSheet fills whatever it is in.
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint={sheetHeight} testID="workspace-brand-sheet">
-      <View style={styles.sheetBody}>
-        <Text style={styles.sheetTitle} accessibilityRole="header">
-          Switch brand
-        </Text>
-        {body}
-      </View>
-    </Sheet>
+    <RNModal
+      visible={visible || sheetLayer}
+      transparent
+      statusBarTranslucent
+      animationType="none"
+      onRequestClose={onClose}
+      onDismiss={onClosed}
+    >
+      <GestureHandlerRootView style={styles.sheetLayer}>
+        <TopSheet visible={visible} onClose={onClose} testID="workspace-brand-sheet">
+          <View style={styles.sheetBody}>
+            <Text style={styles.sheetTitle} accessibilityRole="header">
+              Switch brand
+            </Text>
+            {body}
+          </View>
+        </TopSheet>
+      </GestureHandlerRootView>
+    </RNModal>
   );
 };
 
 const styles = StyleSheet.create({
   popover: { position: "absolute", width: BRAND_MENU_WIDTH, borderRadius: radius.md },
   popoverSurface: { flexShrink: 1, paddingVertical: space[2] },
-  sheetBody: { flex: 1 },
+  sheetLayer: { flex: 1 },
+  // Breathing room inside the panel: the title and the rows start 20 from its edge, as in the full brand sheet.
+  sheetBody: { flex: 1, paddingTop: space[5], paddingHorizontal: space[3] },
   sheetTitle: { ...type.h2, color: color.text1, minHeight: 44, paddingHorizontal: space[2] },
   body: { flexShrink: 1, minHeight: 0 },
+  // In the sheet the list takes the room there is and scrolls; the actions stay pinned under it.
+  bodySheet: { flex: 1, minHeight: 0 },
+  scrollSheet: { flex: 1 },
+  footerSheet: { paddingBottom: SHEET_DRAG_BAND + space[2] },
   search: { paddingHorizontal: space[2], paddingBottom: space[2] },
   scroll: { flexShrink: 1 },
   scrollContent: { paddingHorizontal: space[2], gap: space[1] },

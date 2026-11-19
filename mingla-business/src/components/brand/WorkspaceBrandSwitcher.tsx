@@ -13,7 +13,7 @@
  * (`useContext(WorkspaceRouteContext).Switcher`), so it loads with the root
  * layout and none of it sits in the shared boot chunk. The menu loads the
  * first time it opens. Web >= 1024 gets a popover under the chip; phones and
- * native get a sheet. A top bar that owns a full switcher sheet (create,
+ * native get a sheet that drops from the top. A top bar that owns a full switcher sheet (create,
  * continue setup, delete) passes it as `onOpenSheet`: phones open that sheet,
  * and the desktop popover offers it as "Manage brands".
  */
@@ -94,10 +94,13 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
 
   const expandedState = useMemo(() => ({ expanded: open }), [open]);
 
-  const handleClose = useCallback((): void => {
-    setOpen(false);
+  const focusChip = useCallback((): void => {
     (chipRef.current as Measurable)?.focus?.();
   }, []);
+  const handleClose = useCallback((): void => {
+    setOpen(false);
+    focusChip();
+  }, [focusChip]);
 
   return (
     <>
@@ -119,6 +122,8 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
             activeBrandId={workspace.brand?.id ?? null}
             anchor={isWideDesktop ? anchor : null}
             onManageBrands={isWideDesktop ? onOpenSheet : undefined}
+            // The phone sheet's layer holds focus until it has left the page: hand it back then too.
+            onClosed={focusChip}
           />
         </Suspense>
       ) : null}

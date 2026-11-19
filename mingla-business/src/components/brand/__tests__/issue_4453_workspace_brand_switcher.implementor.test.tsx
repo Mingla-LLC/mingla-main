@@ -103,11 +103,23 @@ jest.mock("../../ui/Material", () => {
   const { View } = require("react-native");
   return { Material: ({ children }: { children?: React.ReactNode }) => <View>{children}</View> };
 });
+// The phone sheet is the TopSheet (it drops from the top, as the full brand sheet does). The
+// bottom Sheet stays stubbed under another name, so a menu that went back to it shows up.
+const mockTopSheetProps: Record<string, unknown>[] = [];
+jest.mock("../../ui/TopSheet", () => {
+  const { View } = require("react-native");
+  return {
+    TopSheet: (props: { visible: boolean; children?: React.ReactNode; testID?: string }) => {
+      mockTopSheetProps.push(props as unknown as Record<string, unknown>);
+      return props.visible ? <View testID={props.testID}>{props.children}</View> : null;
+    },
+  };
+});
 jest.mock("../../ui/Sheet", () => {
   const { View } = require("react-native");
   return {
-    Sheet: ({ visible, children, testID }: { visible: boolean; children?: React.ReactNode; testID?: string }) =>
-      visible ? <View testID={testID}>{children}</View> : null,
+    Sheet: ({ visible, children }: { visible: boolean; children?: React.ReactNode }) =>
+      visible ? <View testID="bottom-sheet-used">{children}</View> : null,
   };
 });
 
@@ -212,6 +224,7 @@ beforeEach(() => {
   mockPush.mockClear();
   mockRefetch.mockClear();
   mockCacheListeners.clear();
+  mockTopSheetProps.length = 0;
 });
 
 describe("#4453 the chip names the brand of the screen you are on", () => {
@@ -359,17 +372,93 @@ describe("#4453 opening the switcher", () => {
     await TestRenderer.act(async () => tree.unmount());
   });
 
-  test("phone, on a screen without a top-bar sheet: the bottom sheet", async () => {
+  test("phone, on a screen without a top-bar sheet: the sheet drops from the top", async () => {
     mockWide = false;
     const tree = await mount({ brandId: GAMELAND.id, compact: true });
     await openMenu(tree);
     expect(hosts(tree, "workspace-brand-sheet")).toHaveLength(1);
+    // The top sheet, never the bottom one, at the full brand sheet's own height.
+    expect(hosts(tree, "bottom-sheet-used")).toHaveLength(0);
+    const sheetProps = mockTopSheetProps[mockTopSheetProps.length - 1]!;
+    expect(sheetProps.visible).toBe(true);
+    expect(sheetProps.heightMode).toBeUndefined();
     expect(hosts(tree, "workspace-brand-popover")).toHaveLength(0);
     expect(rowIds(tree)).toEqual([GAMELAND.id, LANTERN.id]);
     expect(labelled(tree)).not.toContain("Manage brands");
     await press(tree, `workspace-brand-row-${LANTERN.id}`);
     expect(mockSwitch).toHaveBeenCalledWith(LANTERN);
+    // A row tap closes the sheet.
+    expect(hosts(tree, "workspace-brand-sheet")).toHaveLength(0);
     await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("phone sheet: a full-screen layer of its own, with room inside and nothing under the drag band", async () => {
+    mockWide = false;
+    mockBrands = many(9);
+    const tree = await mount({ brandId: "brand-0", compact: true });
+    await openMenu(tree);
+    // The chip sits in a 48pt strip; the TopSheet fills its parent, so it needs its own layer.
+    const layers = tree.root.findAll(
+      (n) => n.props.transparent === true && typeof n.props.onRequestClose === "function" && typeof n.props.onDismiss === "function",
+    );
+    expect(layers.length).toBeGreaterThan(0);
+    expect(layers[0]!.props.visible).toBe(true);
+    // Search and the list are inside the sheet.
+    const sheet = hosts(tree, "workspace-brand-sheet")[0]!;
+    const inSheet = (testID: string): number =>
+      (sheet as unknown as Tree["root"]).findAll((n) => typeof n.type === "string" && n.props.testID === testID).length;
+    expect(inSheet("workspace-brand-search")).toBe(1);
+    expect(inSheet("workspace-brand-menu")).toBe(1);
+    const flat = (n: Node): Record<string, unknown> => StyleSheet.flatten(n.props.style as never) as Record<string, unknown>;
+    // Breathing room: the sheet's content is inset from the panel's edge and top.
+    const padded = (sheet as unknown as Tree["root"]).findAll(
+      (n) => typeof n.type === "string" && typeof flat(n)?.paddingTop === "number" && typeof flat(n)?.paddingHorizontal === "number",
+    )[0]!;
+    expect(flat(padded).paddingTop as number).toBeGreaterThanOrEqual(16);
+    expect(flat(padded).paddingHorizontal as number).toBeGreaterThanOrEqual(12);
+    // The list takes the room there is (it scrolls); the actions stay below it, clear of the
+    // 28pt band the web TopSheet lays over the bottom of the panel.
+    const menu = hosts(tree, "workspace-brand-menu")[0]!;
+    expect(flat(menu).flex).toBe(1);
+    const footer = (sheet as unknown as Tree["root"]).findAll(
+      (n) => typeof n.type === "string" && typeof flat(n)?.borderTopWidth === "number",
+    )[0]!;
+    expect(flat(footer).paddingBottom as number).toBeGreaterThanOrEqual(28);
+    await TestRenderer.act(async () => tree.unmount());
+  });
+
+  test("phone sheet: Escape or a tap outside closes it, and focus goes back to the chip once the layer is gone", async () => {
+    mockWide = false;
+    const focus = jest.fn();
+    let tree: Tree | null = null;
+    await TestRenderer.act(async () => {
+      tree = (TestRenderer.create as unknown as (el: React.ReactElement, o: unknown) => Tree)(
+        <WorkspaceRouteContext.Provider value={{ pathname: null, params: {}, routeBrandId: null }}>
+          <WorkspaceBrandSwitcher brandId={GAMELAND.id} compact />
+        </WorkspaceRouteContext.Provider>,
+        { createNodeMock: () => ({ focus }) },
+      );
+    });
+    const mounted = tree as unknown as Tree;
+    await openMenu(mounted);
+    expect(hosts(mounted, "workspace-brand-sheet")).toHaveLength(1);
+    focus.mockClear();
+    // The TopSheet's own Escape and scrim tap both call its onClose.
+    await TestRenderer.act(async () => {
+      (mockTopSheetProps[mockTopSheetProps.length - 1]!.onClose as () => void)();
+    });
+    expect(hosts(mounted, "workspace-brand-sheet")).toHaveLength(0);
+    expect((chip(mounted).props.accessibilityState as { expanded?: boolean }).expanded).toBe(false);
+    expect(focus).toHaveBeenCalledTimes(1);
+    // The layer holds focus until it has left the page; when it has, the chip is focused again.
+    const layer = mounted.root.findAll(
+      (n) => n.props.transparent === true && typeof n.props.onDismiss === "function",
+    )[0]!;
+    await TestRenderer.act(async () => {
+      (layer.props.onDismiss as () => void)();
+    });
+    expect(focus).toHaveBeenCalledTimes(2);
+    await TestRenderer.act(async () => mounted.unmount());
   });
 
   test("phone, in the app top bar: the host's own full switcher sheet opens", async () => {
