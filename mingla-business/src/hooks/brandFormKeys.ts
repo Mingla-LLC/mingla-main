@@ -13,4 +13,7 @@ export const brandFormKeys = {
   tile: (eventId: string) => ["brand-forms", "tile", eventId] as const,
   counts: (brandId: string) => ["brand-forms", "counts", brandId] as const,
   rosterAnswers: (eventId: string) => ["brand-forms", "roster-answers", eventId] as const,
+  /** The key of a read that is switched off because its id is missing (never fetched). */
+  idle: (read: "list" | "counts" | "detail" | "responses" | "event-attachment" | "tile" | "roster-answers") =>
+    ["brand-forms", read, "none"] as const,
 } as const;

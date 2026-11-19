@@ -45,7 +45,7 @@ import {
 } from "../services/brandFormsService";
 import type { BrandFormDefinition } from "../utils/brandFormDefinition";
 import { brandFormKeys } from "./brandFormKeys";
-import { indexRosterAnswers, type RosterAnswerIndex } from "../utils/guestRosterAnswers";
+import { loadRosterAnswers, type RosterAnswerIndex } from "../utils/guestRosterAnswers";
 
 export { brandFormKeys } from "./brandFormKeys";
 
@@ -57,7 +57,7 @@ const useReady = (): boolean => {
 export function useBrandFormsList(brandId: string | null): UseQueryResult<BrandFormListItem[]> {
   const ready = useReady();
   return useQuery<BrandFormListItem[]>({
-    queryKey: brandId === null ? ["brand-forms", "list", "none"] : brandFormKeys.list(brandId),
+    queryKey: brandId === null ? brandFormKeys.idle("list") : brandFormKeys.list(brandId),
     enabled: ready && brandId !== null,
     staleTime: 15_000,
     queryFn: () => {
@@ -71,7 +71,7 @@ export function useBrandFormsList(brandId: string | null): UseQueryResult<BrandF
 export function useBrandFormCounts(brandId: string | null): UseQueryResult<BrandFormCounts> {
   const ready = useReady();
   return useQuery<BrandFormCounts>({
-    queryKey: brandId === null ? ["brand-forms", "counts", "none"] : brandFormKeys.counts(brandId),
+    queryKey: brandId === null ? brandFormKeys.idle("counts") : brandFormKeys.counts(brandId),
     enabled: ready && brandId !== null,
     staleTime: 15_000,
     queryFn: () => {
@@ -84,7 +84,7 @@ export function useBrandFormCounts(brandId: string | null): UseQueryResult<Brand
 export function useBrandFormDetail(formId: string | null): UseQueryResult<BrandFormDetail> {
   const ready = useReady();
   return useQuery<BrandFormDetail>({
-    queryKey: formId === null ? ["brand-forms", "detail", "none"] : brandFormKeys.detail(formId),
+    queryKey: formId === null ? brandFormKeys.idle("detail") : brandFormKeys.detail(formId),
     enabled: ready && formId !== null,
     staleTime: 0,
     refetchOnMount: "always",
@@ -106,7 +106,7 @@ export function useBrandFormResponses(input: {
   return useQuery<BrandFormResponsesPage>({
     queryKey:
       formId === null
-        ? ["brand-forms", "responses", "none"]
+        ? brandFormKeys.idle("responses")
         : brandFormKeys.responses(formId, eventId, filter),
     enabled: ready && formId !== null && input.enabled !== false,
     staleTime: 10_000,
@@ -123,7 +123,7 @@ export function useEventAttachment(
 ): UseQueryResult<{ attachment: BrandFormAttachment; form: BrandFormRow } | null> {
   const ready = useReady();
   return useQuery<{ attachment: BrandFormAttachment; form: BrandFormRow } | null>({
-    queryKey: eventId === null ? ["brand-forms", "event-attachment", "none"] : brandFormKeys.eventAttachment(eventId),
+    queryKey: eventId === null ? brandFormKeys.idle("event-attachment") : brandFormKeys.eventAttachment(eventId),
     enabled: ready && eventId !== null && enabled,
     staleTime: 15_000,
     queryFn: () => {
@@ -140,7 +140,7 @@ export function useGuestQuestionsTileData(
 ): UseQueryResult<GuestQuestionsTileData | null> {
   const ready = useReady();
   return useQuery<GuestQuestionsTileData | null>({
-    queryKey: eventId === null ? ["brand-forms", "tile", "none"] : brandFormKeys.tile(eventId),
+    queryKey: eventId === null ? brandFormKeys.idle("tile") : brandFormKeys.tile(eventId),
     enabled: ready && eventId !== null && enabled,
     staleTime: 15_000,
     queryFn: () => {
@@ -244,27 +244,25 @@ export function useDetachBrandForm(): UseMutationResult<void, Error, string> {
 
 /**
  * Wave 3: one page's answers for the guest list (the chip and the drawer): the
- * page's active form, then its answers and not-answered list (up to 200 rows).
- * Null when the page has no published form.
+ * page's active form, then every page of its answers (200 a read) and the
+ * not-answered list. A list longer than the read cap is marked `truncated`, and
+ * guests past it show "Answer not loaded" instead of nothing. Null when the page
+ * has no published form.
  */
 export function useRosterAnswers(eventId: string | null): UseQueryResult<RosterAnswerIndex | null> {
   const ready = useReady();
   return useQuery<RosterAnswerIndex | null>({
-    queryKey: eventId === null ? ["brand-forms", "roster-answers", "none"] : brandFormKeys.rosterAnswers(eventId),
+    queryKey: eventId === null ? brandFormKeys.idle("roster-answers") : brandFormKeys.rosterAnswers(eventId),
     enabled: ready && eventId !== null,
     staleTime: 15_000,
     queryFn: async () => {
       if (eventId === null) throw new Error("event_required");
       const found = await fetchEventAttachment(eventId);
       if (found === null || found.form.liveVersionId === null || found.form.status === "draft") return null;
-      const page = await fetchBrandFormResponses({
-        formId: found.form.id,
-        eventId,
-        filter: "all",
-        limit: 200,
-        offset: 0,
-      });
-      return indexRosterAnswers(found.form.name, page);
+      const formId = found.form.id;
+      return loadRosterAnswers(found.form.name, (offset, limit) =>
+        fetchBrandFormResponses({ formId, eventId, filter: "all", limit, offset }),
+      );
     },
   });
 }

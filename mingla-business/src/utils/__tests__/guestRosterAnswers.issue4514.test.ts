@@ -7,7 +7,10 @@
  */
 
 import type { BrandFormResponseRow, BrandFormResponsesPage } from "../../services/brandFormsService";
-import { chipForRow, chipLabel, indexRosterAnswers } from "../guestRosterAnswers";
+import { chipForRow, chipLabel, indexRosterAnswers, loadRosterAnswers } from "../guestRosterAnswers";
+import { brandFormKeys } from "../../hooks/brandFormKeys";
+import * as fs from "fs";
+import * as path from "path";
 
 const row = (over: Partial<BrandFormResponseRow>): BrandFormResponseRow => ({
   responseId: "r",
@@ -69,5 +72,54 @@ describe("guest list answers chip", () => {
     expect(chipForRow(index, { rsvpId: null, orderIds: [] })).toEqual({ kind: "none" });
     expect(chipLabel({ kind: "none" })).toBeNull();
     expect([...index.byRsvp.values(), ...index.byOrder.values()].some((r) => r.responseId === "d")).toBe(false);
+  });
+});
+
+// Fix wave (review finding 2): the guest list used to read only the first 200
+// answers, so guests after row 200 silently showed no chip.
+// FAILS-ON-REVERT: reading one page only leaves rsvp-449 without "Answered".
+describe("more than 200 answers", () => {
+  const many = (n: number): BrandFormResponseRow[] =>
+    Array.from({ length: n }, (_, i) => row({ responseId: `r${i}`, subject: { kind: "rsvp", id: `rsvp-${i}`, name: `G${i}` } }));
+  const pager = (all: BrandFormResponseRow[]) => {
+    const calls: Array<[number, number]> = [];
+    const fetchPage = (offset: number, limit: number): Promise<BrandFormResponsesPage> => {
+      calls.push([offset, limit]);
+      return Promise.resolve({ ...page(all.slice(offset, offset + limit), []), total: all.length });
+    };
+    return { calls, fetchPage };
+  };
+
+  it("reads every page, so a guest after row 200 shows Answered", async () => {
+    const all = many(450);
+    const { calls, fetchPage } = pager(all);
+    const index = await loadRosterAnswers("Open mic", fetchPage);
+    expect(calls).toEqual([[0, 200], [200, 200], [400, 200]]);
+    expect(index.truncated).toBe(false);
+    expect(index.byRsvp.size).toBe(450);
+    expect(chipLabel(chipForRow(index, { rsvpId: "rsvp-449", orderIds: [] }))).toBe("Answered");
+    expect(chipForRow(index, { rsvpId: "rsvp-nobody", orderIds: [] })).toEqual({ kind: "none" });
+  });
+
+  it("past the read cap the list says so: an unmatched guest is 'Answer not loaded', never blank", async () => {
+    const { calls, fetchPage } = pager(many(450));
+    const index = await loadRosterAnswers("Open mic", fetchPage, 2);
+    expect(calls).toHaveLength(2);
+    expect(index.truncated).toBe(true);
+    expect(chipLabel(chipForRow(index, { rsvpId: "rsvp-399", orderIds: [] }))).toBe("Answered");
+    const past = chipForRow(index, { rsvpId: "rsvp-449", orderIds: [] });
+    expect(past).toEqual({ kind: "not_loaded" });
+    expect(chipLabel(past)).toBe("Answer not loaded");
+  });
+});
+
+// Fix wave (review finding 7): no inline fallback keys; every brand forms key
+// comes from the factory.
+describe("brand forms query keys", () => {
+  it("the idle keys come from brandFormKeys and the hooks write none inline", () => {
+    expect(brandFormKeys.idle("counts")).toEqual(["brand-forms", "counts", "none"]);
+    expect(brandFormKeys.idle("roster-answers")).toEqual(["brand-forms", "roster-answers", "none"]);
+    const hooks = fs.readFileSync(path.join(__dirname, "../../hooks/useBrandForms.ts"), "utf8");
+    expect(hooks).not.toMatch(/\[\s*"brand-forms"/);
   });
 });

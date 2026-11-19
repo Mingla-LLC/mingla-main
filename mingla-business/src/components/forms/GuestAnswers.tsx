@@ -65,6 +65,14 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
   if (index === undefined || index === null) return null;
   const state = chipForRow(index, { rsvpId, orderIds });
   if (state.kind === "none") return null;
+  if (state.kind === "not_loaded") {
+    return (
+      <View style={styles.block} testID="guest-answers-panel">
+        <Text style={styles.title}>{`${COPY.drawerTitle} · ${index.formName}`}</Text>
+        <Text style={styles.muted}>{COPY.truncated(index.page.rows.length)}</Text>
+      </View>
+    );
+  }
   const response = state.kind === "answered" ? state.response : null;
   const version = response !== null ? index.page.versions[response.versionId] : undefined;
   const live = index.page.form.liveVersionId !== null ? index.page.versions[index.page.form.liveVersionId] : undefined;

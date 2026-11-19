@@ -17,6 +17,7 @@ import type {
 export type GuestAnswersChipState =
   | { kind: "answered"; viaLink: boolean; earlierVersion: boolean; response: BrandFormResponseRow }
   | { kind: "not_answered"; addedByHost: boolean }
+  | { kind: "not_loaded" }
   | { kind: "none" };
 
 export const GUEST_ANSWERS_CHIP_COPY = {
@@ -33,7 +34,14 @@ export const GUEST_ANSWERS_CHIP_COPY = {
   retry: "Try again",
   empty: "Not answered",
   noForm: "No guest questions on this page.",
+  notLoaded: "Answer not loaded",
+  truncated: (n: number): string =>
+    `Only the first ${n} answers are loaded here. Open Responses in Promote › Forms to see every answer.`,
 } as const;
+
+/** Answers read per request (the server's page cap) and the most pages one guest list reads. */
+export const ROSTER_ANSWERS_PAGE = 200;
+export const ROSTER_ANSWERS_MAX_PAGES = 25;
 
 export interface RosterAnswerIndex {
   formName: string;
@@ -41,10 +49,40 @@ export interface RosterAnswerIndex {
   byRsvp: Map<string, BrandFormResponseRow>;
   byOrder: Map<string, BrandFormResponseRow>;
   notAnswered: Map<string, BrandFormNotAnswered>;
+  /** More answers exist than were read (the read cap): unmatched guests are "not loaded", not "none". */
+  truncated: boolean;
 }
 
-/** Index one page of answers by RSVP and order id. */
-export function indexRosterAnswers(formName: string, page: BrandFormResponsesPage): RosterAnswerIndex {
+/**
+ * Read every page of a page's answers (offset paging, `ROSTER_ANSWERS_PAGE` a
+ * read) up to `maxPages`, then index them. The not-answered list is not paged
+ * (the server returns all of it with each read), so it comes from the first page.
+ */
+export async function loadRosterAnswers(
+  formName: string,
+  fetchPage: (offset: number, limit: number) => Promise<BrandFormResponsesPage>,
+  maxPages: number = ROSTER_ANSWERS_MAX_PAGES,
+): Promise<RosterAnswerIndex> {
+  const first = await fetchPage(0, ROSTER_ANSWERS_PAGE);
+  const rows: BrandFormResponseRow[] = [...first.rows];
+  let offset = first.rows.length;
+  let pages = 1;
+  while (offset < first.total && pages < maxPages) {
+    const next = await fetchPage(offset, ROSTER_ANSWERS_PAGE);
+    if (next.rows.length === 0) break;
+    rows.push(...next.rows);
+    offset += next.rows.length;
+    pages += 1;
+  }
+  return indexRosterAnswers(formName, { ...first, rows }, rows.length < first.total);
+}
+
+/** Index one set of answers by RSVP and order id. */
+export function indexRosterAnswers(
+  formName: string,
+  page: BrandFormResponsesPage,
+  truncated: boolean = false,
+): RosterAnswerIndex {
   const byRsvp = new Map<string, BrandFormResponseRow>();
   const byOrder = new Map<string, BrandFormResponseRow>();
   for (const row of page.rows) {
@@ -58,7 +96,7 @@ export function indexRosterAnswers(formName: string, page: BrandFormResponsesPag
   }
   const notAnswered = new Map<string, BrandFormNotAnswered>();
   for (const n of page.notAnswered) notAnswered.set(`${n.kind}:${n.id}`, n);
-  return { formName, page, byRsvp, byOrder, notAnswered };
+  return { formName, page, byRsvp, byOrder, notAnswered, truncated };
 }
 
 /** The chip for one guest list row. */
@@ -74,6 +112,8 @@ export function chipForRow(
   const missing = (row.rsvpId !== null ? index.notAnswered.get(`rsvp:${row.rsvpId}`) : undefined) ??
     row.orderIds.map((id) => index.notAnswered.get(`order:${id}`)).find((n) => n !== undefined);
   if (missing !== undefined) return { kind: "not_answered", addedByHost: missing.addedByHost };
+  // Past the read cap a guest may have answered on a page that was not read.
+  if (index.truncated) return { kind: "not_loaded" };
   return { kind: "none" };
 }
 
@@ -85,6 +125,8 @@ export function chipLabel(state: GuestAnswersChipState): string | null {
         : GUEST_ANSWERS_CHIP_COPY.answered;
     case "not_answered":
       return state.addedByHost ? GUEST_ANSWERS_CHIP_COPY.addedByYou : GUEST_ANSWERS_CHIP_COPY.notAnswered;
+    case "not_loaded":
+      return GUEST_ANSWERS_CHIP_COPY.notLoaded;
     case "none":
       return null;
     default: {
