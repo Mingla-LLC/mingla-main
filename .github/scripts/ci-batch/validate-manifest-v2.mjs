@@ -616,7 +616,8 @@ export function phase3dContractDigest(manifest) {
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
 // #4508: registered the bring-a-friend RSVP migrations and their pg17 suites in the #1857, #1931 and #2117 inventories.
 // #4508: skipped 20281119014508 by exact filename on the filtered #1931 template replay (#2492 closure: it reads claim_links, which only the skipped #4063 migration creates); re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "1a3d418c24dcba8b114aa36e340a7fe9635ef8dadd02e41227d9cd9a53591c5d";
+// #4508 tester retest: registered issue_4508_one_place.tester.retest.pg17.test.sql in the #1931 and #2117 inventories; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "a0ccf303c9c2fcc14f67c7cc47e3c7653c273d0c76711a91fa943ba730df5d58";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
