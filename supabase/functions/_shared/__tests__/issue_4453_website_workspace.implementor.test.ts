@@ -44,6 +44,7 @@ import {
   readableLookStep,
   runSiteChangeSet,
   SITE_CHANGE_SET_BUDGET,
+  SITE_STEP_IN_PROGRESS_WAIT_MS,
   SITE_STEP_OPS,
   SITE_WORKSPACE_PROMPT_RULES,
   SITE_WORKSPACE_TURN_TOOLS,
@@ -350,11 +351,11 @@ Deno.test("#4453 a step outside the list, or with the wrong shape, is refused by
       op: "edit_section",
       page_id: "pg_home",
       section_id: "sec_hero",
-    }, /needs edits or a layout/],
+    }, /needs edits, a layout or list_ops/],
     [
       "edit with empty edits",
       { ...EDIT, edits: [] },
-      /needs edits or a layout/,
+      /needs edits, a layout or list_ops/,
     ],
     [
       "edit bad key",
@@ -1947,4 +1948,433 @@ Deno.test("#4453 as built: every Core refusal reaches the owner as Core's plain 
     ),
     "Your style doesn't have that layout. Choose one of the layouts shown.",
   );
+});
+
+// ---------------------------------------------------------------------------
+// List rows and once-per-operation steps (Studio a5f4e5e72f)
+// ---------------------------------------------------------------------------
+
+const FAQ = { op: "edit_section", page_id: "pg_home", section_id: "sec_faq" };
+const ROW = [
+  { key: "question", value: "Do you have vegan dishes?" },
+  { key: "answer", value: "Yes, half the menu is vegan." },
+];
+const addRow = (extra: Record<string, unknown> = {}) => ({
+  list: "items",
+  op: "add",
+  values: ROW,
+  ...extra,
+});
+
+Deno.test("#4453 list rows: add, remove and move are accepted in their exact shape, at most 20 a step", () => {
+  for (
+    const list_ops of [
+      [addRow()],
+      [addRow({ after_index: 2 })],
+      [addRow({ after_index: null })],
+      [{ list: "items", op: "remove", index: 1 }],
+      [{ list: "items", op: "move", index: 2, to_index: 0 }],
+      Array.from(
+        { length: 20 },
+        () => ({ list: "items", op: "move", index: 0, to_index: 1 }),
+      ),
+    ]
+  ) {
+    assertEquals(
+      siteStepProblem({ ...FAQ, list_ops }),
+      null,
+      JSON.stringify(list_ops).slice(0, 80),
+    );
+  }
+  const bad: Array<[string, unknown, RegExp]> = [
+    ["not a list", "add", /needs edits, a layout or list_ops/],
+    [
+      "21 rows",
+      Array.from(
+        { length: 21 },
+        () => ({ list: "items", op: "remove", index: 0 }),
+      ),
+      /at most 20/,
+    ],
+    [
+      "unknown op",
+      [{ list: "items", op: "replace", index: 0 }],
+      /op must be one of add, remove, move/,
+    ],
+    ["no list", [{ op: "remove", index: 0 }], /list must be a list name/],
+    [
+      "list path",
+      [{ list: "items.0", op: "remove", index: 0 }],
+      /list must be a list name/,
+    ],
+    [
+      "add without words",
+      [{ list: "items", op: "add" }],
+      /values must give the new row's words/,
+    ],
+    [
+      "add empty words",
+      [addRow({ values: [{ key: "question", value: " " }] })],
+      /value must be the words/,
+    ],
+    ["add field twice", [addRow({ values: [ROW[0], ROW[0]] })], /named once/],
+    ["add bad after", [addRow({ after_index: -1 })], /after_index/],
+    [
+      "add with index",
+      [addRow({ index: 1 })],
+      /takes only list, after_index and values/,
+    ],
+    [
+      "remove without index",
+      [{ list: "items", op: "remove" }],
+      /index must be a row position/,
+    ],
+    ["remove with values", [{
+      list: "items",
+      op: "remove",
+      index: 0,
+      values: ROW,
+    }], /takes only list and index/],
+    [
+      "move without target",
+      [{ list: "items", op: "move", index: 0 }],
+      /index and to_index/,
+    ],
+  ];
+  for (const [name, list_ops, pattern] of bad) {
+    const problem = siteStepProblem({ ...FAQ, list_ops });
+    assert(problem, `${name} was accepted`);
+    assertMatch(problem, pattern, name);
+  }
+  // Only edit_section takes rows.
+  assertMatch(
+    siteStepProblem({ ...MOVE, list_ops: [addRow()] })!,
+    /does not take list_ops/,
+  );
+  // A new row is new words: it needs a source. Removing or moving does not.
+  assert(siteStepWritesWords({ ...FAQ, list_ops: [addRow()] }));
+  assert(
+    !siteStepWritesWords({
+      ...FAQ,
+      list_ops: [{ list: "items", op: "remove", index: 0 }],
+    }),
+  );
+  assertMatch(
+    siteChangeSetProblem(
+      changeSet([{
+        label: "Add a question",
+        why: "Asked.",
+        step: { ...FAQ, list_ops: [addRow()] },
+      }]),
+    )!,
+    /cites needs at least one citation/,
+  );
+  const schema = (rawSiteTool("propose_site_change_set").parameters as any)
+    .properties.steps.items.properties.step.properties.list_ops;
+  assertEquals(schema.maxItems, 20);
+  assertEquals(schema.items.properties.op.enum, ["add", "remove", "move"]);
+  compileGeminiToolDeclarations([rawSiteTool("propose_site_change_set")]);
+});
+
+Deno.test("#4453 list rows: the plan is checked against the section's lists (name, min, max, count, row fields) across every step", () => {
+  const issue = (...steps: Array<Record<string, unknown>>) =>
+    siteWorkspaceProposalIssue({
+      toolName: "propose_site_change_set",
+      args: changeSet(steps.map((step) => entry("Change the questions", step))),
+      workspace: true,
+      focus: null,
+      brandId: WS_BRAND_ID,
+      snapshot: { ...WORKSPACE_SNAPSHOT, site_id: WS_SITE_ID },
+    } as any);
+  const rows = (...list_ops: unknown[]) => ({ ...FAQ, list_ops });
+  // The fixture's questions list: min 1, max 4, count 3, fields question + answer.
+  assertEquals(issue(rows(addRow({ after_index: 2 }))), null);
+  assertEquals(
+    issue(
+      rows({ list: "items", op: "remove", index: 2 }, {
+        list: "items",
+        op: "move",
+        index: 1,
+        to_index: 0,
+      }),
+    ),
+    null,
+  );
+  // A remove makes room for an add, in order.
+  assertEquals(
+    issue(rows({ list: "items", op: "remove", index: 0 }, addRow(), addRow())),
+    null,
+  );
+  assertEquals(issue(rows(addRow(), addRow()))?.code, "LIST_LIMIT_REACHED");
+  // The count carries across steps of the same plan.
+  assertEquals(
+    issue(rows(addRow()), rows(addRow()))?.code,
+    "LIST_LIMIT_REACHED",
+  );
+  assertEquals(
+    issue(
+      rows({ list: "items", op: "remove", index: 0 }, {
+        list: "items",
+        op: "remove",
+        index: 0,
+      }, { list: "items", op: "remove", index: 0 }),
+    )?.code,
+    "LIST_ROW_REQUIRED",
+  );
+  for (
+    const op of [
+      { list: "items", op: "remove", index: 3 },
+      { list: "items", op: "move", index: 0, to_index: 3 },
+      addRow({ after_index: 3 }),
+      addRow({ values: [ROW[0]] }),
+      addRow({
+        values: [...ROW, { key: "link", value: "https://example.com" }],
+      }),
+    ]
+  ) assertEquals(issue(rows(op))?.code, "INVALID_ARGS", JSON.stringify(op));
+  assertStringIncludes(
+    issue(rows(addRow({ values: [ROW[0]] })))!.message,
+    "Missing: answer",
+  );
+  // A list the section does not offer rows for (the top buttons, a photo list, a Mingla feed).
+  const hero = issue({
+    op: "edit_section",
+    page_id: "pg_home",
+    section_id: "sec_hero",
+    list_ops: [{ list: "ctas", op: "remove", index: 0 }],
+  });
+  assertEquals(hero?.code, "LIST_NOT_EDITABLE");
+  assertStringIncludes(hero!.message, "team request");
+  assertEquals(
+    issue(rows({ list: "images", op: "remove", index: 0 }))?.code,
+    "LIST_NOT_EDITABLE",
+  );
+  // A snapshot compacted past its lists leaves the check to Core.
+  const compacted = structuredClone(WORKSPACE_SNAPSHOT) as any;
+  for (const page of compacted.pages) {
+    for (const section of page.sections) delete section.lists;
+  }
+  assertEquals(
+    siteWorkspaceProposalIssue({
+      toolName: "propose_site_change_set",
+      args: changeSet([entry("Add", rows(addRow(), addRow()))]),
+      workspace: true,
+      focus: null,
+      brandId: WS_BRAND_ID,
+      snapshot: { ...compacted, compacted: true, site_id: WS_SITE_ID },
+    } as any),
+    null,
+  );
+});
+
+Deno.test("#4453 list rows: Core receives rows as Studio takes them (values as a map, the top as after_index null)", async () => {
+  const h = harness((call) =>
+    call.action === "run_site_design_checks" ? CHECKS_PASS : { ok: true }
+  );
+  await h.run(changeSet([entry("Change the questions", {
+    ...FAQ,
+    list_ops: [addRow(), { list: "items", op: "remove", index: 0 }, {
+      list: "items",
+      op: "move",
+      index: 2,
+      to_index: 0,
+    }],
+    edits: [{ key: "items.0.answer", value: "Yes, most of it." }],
+  })]));
+  assertEquals(h.calls[0].args.step, {
+    ...FAQ,
+    list_ops: [
+      {
+        list: "items",
+        op: "add",
+        after_index: null,
+        values: {
+          question: "Do you have vegan dishes?",
+          answer: "Yes, half the menu is vegan.",
+        },
+      },
+      { list: "items", op: "remove", index: 0 },
+      { list: "items", op: "move", index: 2, to_index: 0 },
+    ],
+    edits: [{ key: "items.0.answer", value: "Yes, most of it." }],
+  });
+  assertEquals(h.calls[0].args.cites, CITES);
+});
+
+const inProgress = () =>
+  attachSiteRefusal(
+    new ToolError(
+      "SERVICE_TEMPORARILY_UNAVAILABLE",
+      "That change is still being applied. Try again in a moment.",
+    ),
+    { code: "STEP_IN_PROGRESS" },
+  );
+
+Deno.test("#4453 once per operation id: STEP_IN_PROGRESS waits and asks once more with the same id; repeated: true is success", async () => {
+  const waits: number[] = [];
+  let asked = 0;
+  const calls: Array<{ action: string; operationId: string }> = [];
+  const run = (answer: () => unknown) =>
+    runSiteChangeSet({
+      args: changeSet([{
+        label: "Move reviews up",
+        why: "Asked.",
+        step: MOVE,
+      }]),
+      groupId: WS_PENDING_ID,
+      deps: {
+        call: async (action, _args, operationId) => {
+          calls.push({ action, operationId });
+          if (action === "run_site_design_checks") return CHECKS_PASS;
+          if (action === "undo_site_change_group") return { undone: false };
+          return answer();
+        },
+        sleep: async (ms) => {
+          waits.push(ms);
+        },
+      },
+    });
+  const done = await run(() => {
+    if (asked++ === 0) throw inProgress();
+    return {
+      ok: true,
+      repeated: true,
+      page_revision: "8",
+      touched: { page_id: "pg_home", section_id: "sec_reviews" },
+    };
+  });
+  assertEquals(done.status, "applied");
+  assertEquals(done.applied.length, 1);
+  assertEquals(waits, [SITE_STEP_IN_PROGRESS_WAIT_MS]);
+  const applies = calls.filter((call) => call.action === "apply_site_change");
+  assertEquals(applies.length, 2);
+  assertEquals(applies[0].operationId, applies[1].operationId);
+
+  // Still running after the one wait: the plan fails honestly, in Core's words,
+  // and the group is undone (the step may yet land).
+  calls.length = 0;
+  waits.length = 0;
+  const stuck = await run(() => {
+    throw inProgress();
+  });
+  assertEquals(calls.map((call) => call.action), [
+    "apply_site_change",
+    "apply_site_change",
+    "undo_site_change_group",
+  ]);
+  assertEquals(waits.length, 1);
+  assertEquals(stuck.status, "rolled_back");
+  assertEquals(
+    stuck.failed?.reason,
+    "That change is still being applied. Try again in a moment.",
+  );
+});
+
+Deno.test("#4453 once per operation id: no wait is started when the time left would not cover it", async () => {
+  let clock = 0;
+  const waits: number[] = [];
+  const result = await runSiteChangeSet({
+    args: changeSet([{ label: "Move reviews up", why: "Asked.", step: MOVE }]),
+    groupId: WS_PENDING_ID,
+    deps: {
+      call: async (action) => {
+        if (action === "undo_site_change_group") return { undone: false };
+        clock = 63_000; // 80 s cap, 15 s kept for the rollback: 2 s left for steps
+        throw inProgress();
+      },
+      now: () => clock,
+      sleep: async (ms) => {
+        waits.push(ms);
+      },
+    },
+  });
+  assertEquals(waits, []);
+  assertEquals(result.status, "rolled_back");
+});
+
+Deno.test("#4453 the refusal map is exactly Studio's code list (no guessed names)", () => {
+  const source = Deno.readTextFileSync(
+    new URL("../agentSiteTools.ts", import.meta.url),
+  );
+  const block = source.slice(
+    source.indexOf("// #4453 Website workspace — Core's named refusals"),
+    source.indexOf("const SITE_SERVICE_UNAVAILABLE_MESSAGE"),
+  );
+  const mapped = [...block.matchAll(/^\s+([A-Z_]+): "/gm)].map((match) =>
+    match[1]
+  ).sort();
+  // STUDIO-AS-BUILT.md: the workspace codes Core relays with its own sentence
+  // (brand-site-control/siteWorkspace.ts WORKSPACE_MESSAGES). The media and
+  // citation codes were already mapped; MEDIA_PROCESSING is a safe Sites code.
+  assertEquals(mapped, [
+    "CHANGED_SINCE",
+    "FIELD_NOT_EDITABLE",
+    "FIELD_REQUIRED",
+    "HOME_ALWAYS_ON",
+    "LAYOUT_NOT_IN_DESIGN",
+    "LIST_LIMIT_REACHED",
+    "LIST_NOT_EDITABLE",
+    "LIST_ROW_REQUIRED",
+    "MEDIA_REQUIRED",
+    "NOTHING_TO_REDO",
+    "NOTHING_TO_UNDO",
+    "SECTION_CANNOT_BE_REMOVED",
+    "SECTION_LIMIT_REACHED",
+    "SECTION_NOT_FOUND",
+    "SECTION_TYPE_NOT_AVAILABLE",
+    "STEP_IN_PROGRESS",
+    "UNREADABLE_COLOURS",
+    "VALUE_TOO_LONG",
+  ]);
+  for (
+    const already of [
+      "MEDIA_NOT_FOUND",
+      "MEDIA_WRONG_KIND",
+      "CITATION_REQUIRED",
+      "CITATION_INVALID",
+      "CLAIM_NOT_BACKED",
+      "BOOKING_THROUGH_ENQUIRY",
+      "PAGE_NOT_FOUND",
+      "VIDEO_TOO_LONG",
+    ]
+  ) {
+    assert(new RegExp(`^\\s+${already}: "`, "m").test(source), already);
+  }
+});
+
+Deno.test("#4453 list refusals at apply reach the owner as Core's sentence; a full list or page never says 'characters'", async () => {
+  const tool = rawSiteTool("propose_site_change_set");
+  const args = changeSet([
+    entry("Add a question", { ...FAQ, list_ops: [addRow()] }),
+  ]);
+  for (
+    const [code, message, detail] of [
+      [
+        "LIST_NOT_EDITABLE",
+        "Rows can't be added or removed in that part of the section.",
+        { list: "ctas" },
+      ],
+      [
+        "LIST_LIMIT_REACHED",
+        "That list is full. Remove a row before adding another.",
+        { list: "items", max: 4 },
+      ],
+      ["LIST_ROW_REQUIRED", "This section needs at least that many rows.", {
+        list: "items",
+        min: 1,
+      }],
+      [
+        "SECTION_LIMIT_REACHED",
+        "This page is full. Remove a section before adding another.",
+        { max: 30 },
+      ],
+    ] as Array<[string, string, Record<string, unknown>]>
+  ) {
+    const core = new FakeCore({ fail: { index: 0, code, message, detail } });
+    const result = await tool.executor(args, core.client(), WS_USER_ID, {
+      operationId: WS_PENDING_ID,
+    }) as any;
+    assertEquals(result.status, "rolled_back", code);
+    assertEquals(result.failed.reason, message, code);
+  }
 });

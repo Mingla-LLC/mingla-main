@@ -101,6 +101,8 @@ export const WORKSPACE_SNAPSHOT = {
             field("items.2.question", "Question 3", "Can I bring a cake?"),
             field("items.2.answer", "Answer 3", "Yes, tell us when you book.", "multiline"),
           ],
+          // Rows a step may add, remove or move (list_ops).
+          lists: [{ name: "items", min: 1, max: 4, count: 3, fields: ["question", "answer"] }],
         },
       ],
     },
@@ -206,7 +208,8 @@ function plan(say, summary, steps, couldnt) {
           why: "The owner asked for this.",
           ...(cites
             ? { cites }
-            : step.op === "set_menu" || (step.edits ?? []).length > 0
+            : step.op === "set_menu" || (step.edits ?? []).length > 0 ||
+                (step.list_ops ?? []).some((row) => row.op === "add")
             ? { cites: words(say) }
             : {}),
           step,
@@ -1156,6 +1159,210 @@ export const WEBSITE_WORKSPACE_FIXTURES = [
         slot: "media",
         media_id: null,
       }]],
+    )],
+  },
+  // --- list rows (questions, steps, facts): add, remove, reorder ------------
+  {
+    id: "ws_list_add_row_owner_answer",
+    source: "Add a question with the owner's own answer: one new row, cited, in one step.",
+    turns: [applied(
+      "Add a question: Do you have vegan dishes? Answer: Yes, half the menu is vegan.",
+      "Add a question about vegan dishes",
+      [["Add the vegan question", {
+        op: "edit_section",
+        page_id: "pg_home",
+        section_id: "sec_faq",
+        list_ops: [{
+          list: "items",
+          op: "add",
+          after_index: 2,
+          values: [
+            { key: "question", value: "Do you have vegan dishes?" },
+            { key: "answer", value: "Yes, half the menu is vegan." },
+          ],
+        }],
+      }]],
+      { workspace: { uncited_steps: 0, sent_row: { question: "Do you have vegan dishes?", answer: "Yes, half the menu is vegan." } } },
+    )],
+  },
+  {
+    id: "ws_list_remove_row",
+    source: "Remove one question: a row removal needs no source.",
+    turns: [applied(
+      "Remove the parking question",
+      "Remove the parking question",
+      [["Remove the parking question", {
+        op: "edit_section",
+        page_id: "pg_home",
+        section_id: "sec_faq",
+        list_ops: [{ list: "items", op: "remove", index: 1 }],
+      }]],
+      { workspace: { uncited_steps: 1 } },
+    )],
+  },
+  {
+    id: "ws_list_reorder_rows",
+    source: "Reorder questions: the cake question goes first.",
+    turns: [applied(
+      "Put the cake question first",
+      "Move the cake question to the top",
+      [["Move the cake question to the top", {
+        op: "edit_section",
+        page_id: "pg_home",
+        section_id: "sec_faq",
+        list_ops: [{ list: "items", op: "move", index: 2, to_index: 0 }],
+      }]],
+      { workspace: { uncited_steps: 1 } },
+    )],
+  },
+  {
+    id: "ws_list_refused_at_max",
+    source: "The list is full: a plan that would take it past its maximum is sent back, and Ari says so instead of dropping a row.",
+    turns: [{
+      say: "Add two questions: Is it loud? Sometimes. And: Do you do takeaway? No.",
+      focus: null,
+      stub: {
+        model: [
+          plan("Add two questions: Is it loud? Sometimes. And: Do you do takeaway? No.", "Add two questions", [
+            ["Add two questions", {
+              op: "edit_section",
+              page_id: "pg_home",
+              section_id: "sec_faq",
+              list_ops: [
+                { list: "items", op: "add", after_index: 2, values: [{ key: "question", value: "Is it loud?" }, { key: "answer", value: "Sometimes." }] },
+                { list: "items", op: "add", after_index: 3, values: [{ key: "question", value: "Do you do takeaway?" }, { key: "answer", value: "No." }] },
+              ],
+            }],
+          ]),
+          {
+            text:
+              "Questions holds four at most and you have three, so only one more fits. Which one should I add?\nChoices: Is it loud? | Do you do takeaway?",
+          },
+        ],
+      },
+      expect: {
+        route: "text",
+        reply_must: ["four", "\\?"],
+        reply_must_not: NEVER_OVERCLAIMS,
+        workspace: { model_calls: 2, bounced: ["LIST_LIMIT_REACHED"], question_options: 2, core_writes: 0 },
+      },
+    }],
+  },
+  {
+    id: "ws_list_full_at_apply",
+    source: "The list filled up after the plan was made (a teammate added a row): Core refuses, nothing is changed, the reply is Core's sentence.",
+    turns: [{
+      say: "Add a question: Is it loud? Sometimes.",
+      focus: null,
+      stub: {
+        model: [plan("Add a question: Is it loud? Sometimes.", "Add a question about noise", [
+          ["Add the noise question", {
+            op: "edit_section",
+            page_id: "pg_home",
+            section_id: "sec_faq",
+            list_ops: [{ list: "items", op: "add", after_index: 2, values: [{ key: "question", value: "Is it loud?" }, { key: "answer", value: "Sometimes." }] }],
+          }],
+        ])],
+        core: {
+          fail: {
+            index: 0,
+            code: "LIST_LIMIT_REACHED",
+            message: "That list is full. Remove a row before adding another.",
+            detail: { list: "items", max: 4 },
+          },
+        },
+      },
+      confirm: true,
+      expect: {
+        route: "proposal:propose_site_change_set",
+        reply_must: ["Step 1 of 1", "That list is full", "Nothing was changed"],
+        reply_must_not: ["LIST_LIMIT", "characters", "on your draft, ready"],
+        workspace: { status: "rolled_back", applied: 0, failed_index: 0, undo_called: false },
+      },
+    }],
+  },
+  {
+    id: "ws_list_missing_row_words",
+    source: "A new row without the owner's answer is sent back; Ari asks for the answer instead of writing one.",
+    turns: [{
+      say: "Add a question about gift vouchers",
+      focus: null,
+      stub: {
+        model: [
+          plan("Add a question about gift vouchers", "Add a question about gift vouchers", [
+            ["Add the voucher question", {
+              op: "edit_section",
+              page_id: "pg_home",
+              section_id: "sec_faq",
+              list_ops: [{ list: "items", op: "add", values: [{ key: "question", value: "Do you sell gift vouchers?" }] }],
+            }, words("Add a question about gift vouchers")],
+          ]),
+          { text: "What should the answer say?\nChoices: I'll type the answer | Leave it for now" },
+        ],
+      },
+      expect: {
+        route: "text",
+        reply_must: ["answer", "\\?"],
+        workspace: { model_calls: 2, bounced: ["INVALID_ARGS"], question_options: 2, core_writes: 0 },
+      },
+    }],
+  },
+  {
+    id: "ws_list_not_row_editable_team_request",
+    source: "A list whose rows need a link (the top buttons) is not row-editable: sent back, then the team request.",
+    turns: [{
+      say: "Add a third button to the top that says See the menu",
+      focus: FOCUS_HERO,
+      stub: {
+        model: [
+          plan("Add a third button to the top that says See the menu", "Add a button to the top", [
+            ["Add a button", {
+              op: "edit_section",
+              page_id: "pg_home",
+              section_id: "sec_hero",
+              list_ops: [{ list: "ctas", op: "add", values: [{ key: "label", value: "See the menu" }] }],
+            }, words("Add a third button to the top that says See the menu")],
+          ]),
+          {
+            call: {
+              tool: "propose_website_team_request",
+              args: {
+                brand_id: WS_BRAND_ID,
+                site_id: WS_SITE_ID,
+                what: "A third button at the top of the home page that says See the menu.",
+                where: { page_path: "", section_id: "sec_hero", section_label: "Top of the page" },
+                why: "Add a third button to the top that says See the menu",
+                missing_capability: "Buttons at the top cannot be added from the workspace yet.",
+              },
+            },
+          },
+        ],
+        core: {},
+      },
+      confirm: true,
+      expect: {
+        route: "proposal:propose_website_team_request",
+        reply_must: ["Mingla team"],
+        workspace: { model_calls: 2, bounced: ["LIST_NOT_EDITABLE"], team_request: true, core_writes: 0 },
+      },
+    }],
+  },
+  {
+    id: "ws_step_still_running_then_repeated",
+    source: "Core says the step is still running from an earlier ask: Ari waits, asks once more with the same id, and takes the repeated answer as done (nothing applied twice).",
+    turns: [applied(
+      "Move the reviews above our story",
+      "Move What guests say above Our story",
+      [["Move What guests say up", {
+        op: "move_section",
+        page_id: "pg_home",
+        section_id: "sec_reviews",
+        to_index: 1,
+      }]],
+      {
+        core: { in_progress_once: 0 },
+        workspace: { apply_calls: 2, ops: ["move_section", "move_section"], same_operation_id: true },
+      },
     )],
   },
 ];

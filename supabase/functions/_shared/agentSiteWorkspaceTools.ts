@@ -64,6 +64,8 @@ const SITE_REQUEST_MAX = 1000;
 const SITE_COULDNT_MAX = 6;
 const SITE_EDITS_MAX = 40;
 const SITE_EDIT_VALUE_MAX = 5000;
+export const SITE_LIST_OPS_MAX = 20;
+export const SITE_LIST_OPS = ["add", "remove", "move"] as const;
 const SITE_TEAM_TEXT_MAX = 1000;
 
 /** Every step type the change set may carry (build contract section B). */
@@ -188,7 +190,7 @@ export const SITE_WORKSPACE_PROMPT_RULES =
 - Never say a change was made unless its result says it was applied. A plan that has not been applied is "ready", not "done". If a step failed, say which one and that nothing was changed.
 - A new section must be one of addable_sections; one marked needs_photo takes a media_id from the workspace's media list (ask which photo when the owner did not say). A photo spot is named by its slot exactly as the workspace lists it.
 - For the look, send only the colours that change. You may set the style to atelier or voyage only; any other style is the owner's pick in Design. If a colour would be hard to read you will be told the nearest shade that reads: say which shade was used, never hide it.
-- You cannot add or remove rows inside a list (a new question, a new team member): that is a team request.
+- A section's lists entry names the lists whose rows you can add, remove or reorder with list_ops on edit_section (questions and answers, steps, facts, and the like), with how few and how many rows each may hold. A new row needs every field of the row in the owner's own words (ask when they did not give them) and cites. Photo lists are changed through their photo spots. A list that is not in lists (one Mingla fills, or one whose rows need a link, such as the top buttons) is a team request.
 - When part of the request cannot be done with these steps, do the part you can and list the rest in couldnt (what, and why in plain words).
 - When nothing here can do what the owner asked, say so plainly in one sentence and call propose_website_team_request so the Mingla team can build it. Never pretend, and never offer a workaround that links bookings off Mingla.
 - You never publish from here. Publishing is the owner's Publish button. Never invent facts, prices, dates or reviews.
@@ -270,7 +272,7 @@ const STEP = {
   type: "object",
   additionalProperties: false,
   description:
-    "One typed change. edit_section: page_id, section_id, and edits and/or layout. move_section: page_id, section_id, to_index. remove_section: page_id, section_id. add_section: page_id, type, after_section_id (leave out to add at the top), optional edits, and media_id when the type needs a photo. set_section_media: page_id, section_id, slot, media_id. set_look: at least one of design, tokens (only the colours that change), fonts, radius, button_shape, motion. set_menu: items. set_page_enabled: page_id, enabled.",
+    "One typed change. edit_section: page_id, section_id, and at least one of edits, layout, list_ops. move_section: page_id, section_id, to_index. remove_section: page_id, section_id. add_section: page_id, type, after_section_id (leave out to add at the top), optional edits, and media_id when the type needs a photo. set_section_media: page_id, section_id, slot, media_id. set_look: at least one of design, tokens (only the colours that change), fonts, radius, button_shape, motion. set_menu: items. set_page_enabled: page_id, enabled.",
   properties: {
     op: { type: "string", enum: [...SITE_STEP_OPS] },
     page_id: ID,
@@ -280,6 +282,50 @@ const STEP = {
       type: "string",
       maxLength: 40,
       description: "A layout key this section offers (its layouts list)",
+    },
+    list_ops: {
+      type: "array",
+      maxItems: SITE_LIST_OPS_MAX,
+      description:
+        "edit_section only: add, remove or move rows of one of the section's lists (its lists entry in the workspace: name, min, max, count, fields). Rows are applied first, in order, then edits, so a new row's words can also be written by its new index. add: list, after_index (leave out for the top), values with every field of the row. remove: list, index. move: list, index, to_index. Indexes count from 0.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          list: {
+            type: "string",
+            maxLength: 60,
+            description: "The list's name from the section's lists",
+          },
+          op: { type: "string", enum: [...SITE_LIST_OPS] },
+          after_index: {
+            type: "integer",
+            minimum: 0,
+            maximum: 199,
+            nullable: true,
+            description:
+              "add: the row the new one goes after; null or left out is the top",
+          },
+          index: { type: "integer", minimum: 0, maximum: 199 },
+          to_index: { type: "integer", minimum: 0, maximum: 199 },
+          values: {
+            type: "array",
+            maxItems: 12,
+            description:
+              "add: the new row's words, one entry per row field (key is the row field, e.g. question)",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                key: { type: "string", minLength: 1, maxLength: 60 },
+                value: { type: "string", maxLength: SITE_EDIT_VALUE_MAX },
+              },
+              required: ["key", "value"],
+            },
+          },
+        },
+        required: ["list", "op"],
+      },
     },
     to_index: {
       type: "integer",
@@ -506,8 +552,68 @@ function editsProblem(value: unknown, path: string): string | null {
   return null;
 }
 
+const LIST_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{0,59}$/;
+const rowIndex = (value: unknown) =>
+  Number.isInteger(value) && (value as number) >= 0 && (value as number) < 200;
+
+/** The first problem with a step's list rows (add / remove / move), or null. */
+function listOpsProblem(value: unknown, path: string): string | null {
+  if (!Array.isArray(value)) return `${path} must be a list`;
+  if (value.length > SITE_LIST_OPS_MAX) {
+    return `${path} allows at most ${SITE_LIST_OPS_MAX} row changes in one step`;
+  }
+  for (const [index, raw] of value.entries()) {
+    const at = `${path}[${index}]`;
+    if (!isRecord(raw)) return `${at} must be an object`;
+    if (typeof raw.list !== "string" || !LIST_NAME_PATTERN.test(raw.list)) {
+      return `${at}.list must be a list name from the section's lists`;
+    }
+    if (raw.op === "add") {
+      if (unknownKeys(raw, ["list", "op", "after_index", "values"]).length) {
+        return `${at} (add) takes only list, after_index and values`;
+      }
+      if (
+        raw.after_index !== undefined && raw.after_index !== null &&
+        !rowIndex(raw.after_index)
+      ) {
+        return `${at}.after_index must be a row position, or left out for the top`;
+      }
+      const values = raw.values;
+      if (!Array.isArray(values) || values.length < 1 || values.length > 12) {
+        return `${at}.values must give the new row's words, one entry per row field`;
+      }
+      const seen = new Set<string>();
+      for (const [n, item] of values.entries()) {
+        if (
+          !isRecord(item) || unknownKeys(item, ["key", "value"]).length ||
+          typeof item.key !== "string" || !LIST_NAME_PATTERN.test(item.key) ||
+          seen.has(item.key)
+        ) return `${at}.values[${n}].key must be one row field, named once`;
+        seen.add(item.key);
+        if (
+          typeof item.value !== "string" || !item.value.trim() ||
+          item.value.length > SITE_EDIT_VALUE_MAX
+        ) return `${at}.values[${n}].value must be the words for that field`;
+      }
+    } else if (raw.op === "remove") {
+      if (unknownKeys(raw, ["list", "op", "index"]).length) {
+        return `${at} (remove) takes only list and index`;
+      }
+      if (!rowIndex(raw.index)) return `${at}.index must be a row position`;
+    } else if (raw.op === "move") {
+      if (unknownKeys(raw, ["list", "op", "index", "to_index"]).length) {
+        return `${at} (move) takes only list, index and to_index`;
+      }
+      if (!rowIndex(raw.index) || !rowIndex(raw.to_index)) {
+        return `${at} needs index and to_index as row positions`;
+      }
+    } else return `${at}.op must be one of ${SITE_LIST_OPS.join(", ")}`;
+  }
+  return null;
+}
+
 const STEP_FIELDS: Record<SiteStepOp, readonly string[]> = {
-  edit_section: ["page_id", "section_id", "edits", "layout"],
+  edit_section: ["page_id", "section_id", "edits", "layout", "list_ops"],
   move_section: ["page_id", "section_id", "to_index"],
   remove_section: ["page_id", "section_id"],
   add_section: ["page_id", "type", "after_section_id", "edits", "media_id"],
@@ -539,8 +645,14 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
     case "edit_section": {
       const hasEdits = Array.isArray(step.edits) && step.edits.length > 0;
       const hasLayout = step.layout !== undefined && step.layout !== null;
-      if (!hasEdits && !hasLayout) {
-        return `${path} (edit_section) needs edits or a layout`;
+      const hasRows = Array.isArray(step.list_ops) &&
+        step.list_ops.length > 0;
+      if (!hasEdits && !hasLayout && !hasRows) {
+        return `${path} (edit_section) needs edits, a layout or list_ops`;
+      }
+      if (step.list_ops !== undefined) {
+        const problem = listOpsProblem(step.list_ops, at("list_ops"));
+        if (problem) return problem;
       }
       if (step.edits !== undefined) {
         const problem = editsProblem(step.edits, at("edits"));
@@ -683,6 +795,11 @@ export function siteStepProblem(step: unknown, path = "step"): string | null {
 /** Does this step write words a visitor reads? (Studio's own rule.) */
 export function siteStepWritesWords(step: Record<string, unknown>): boolean {
   if (step.op === "set_menu") return true;
+  // A new list row is new words too.
+  if (
+    step.op === "edit_section" && Array.isArray(step.list_ops) &&
+    step.list_ops.some((row) => isRecord(row) && row.op === "add")
+  ) return true;
   return (step.op === "edit_section" || step.op === "add_section") &&
     Array.isArray(step.edits) && step.edits.length > 0;
 }
@@ -929,6 +1046,133 @@ function siteAddableSectionProblem(
 }
 
 /**
+ * List rows against the draft: the list must be one the section says can
+ * take rows, and the plan (every step, in order) must stay inside its
+ * minimum and maximum and name rows that exist.
+ */
+function siteListRowsProblem(
+  args: Record<string, unknown>,
+  snapshot: Record<string, unknown>,
+): { code: string; message: string } | null {
+  // A snapshot cut hard to fit drops the lists: Core then checks them.
+  if (snapshot.truncated === true) return null;
+  const sections = new Map<string, Record<string, unknown>>();
+  let listsKnown = false;
+  for (const page of Array.isArray(snapshot.pages) ? snapshot.pages : []) {
+    if (!isRecord(page) || !Array.isArray(page.sections)) continue;
+    for (const section of page.sections) {
+      if (!isRecord(section) || typeof section.id !== "string") continue;
+      sections.set(`${String(page.id)}#${section.id}`, section);
+      if (Array.isArray(section.lists)) listsKnown = true;
+    }
+  }
+  // Compacted past the point where lists are listed at all.
+  if (!listsKnown && snapshot.compacted === true) return null;
+  const counts = new Map<string, number>();
+  const steps = Array.isArray(args.steps) ? args.steps : [];
+  for (const [index, raw] of steps.entries()) {
+    const step = isRecord(raw) && isRecord(raw.step) ? raw.step : {};
+    if (step.op !== "edit_section" || !Array.isArray(step.list_ops)) continue;
+    const sectionKey = `${String(step.page_id)}#${String(step.section_id)}`;
+    const section = sections.get(sectionKey);
+    if (!section) continue;
+    const lists = (Array.isArray(section.lists) ? section.lists : []).filter(
+      isRecord,
+    );
+    for (const [n, op] of step.list_ops.entries()) {
+      if (!isRecord(op)) continue;
+      const at = `steps[${index}].step.list_ops[${n}]`;
+      const list = lists.find((item) => item.name === op.list);
+      if (!list) {
+        return {
+          code: "LIST_NOT_EDITABLE",
+          message: `${at}: rows cannot be added, removed or moved in "${
+            String(op.list)
+          }" of that section. ${
+            lists.length
+              ? `Its lists that take rows are: ${
+                lists.map((item) => String(item.name)).join(", ")
+              }.`
+              : "It has no list that takes rows."
+          } A photo list is changed through its photo spots (set_section_media); a list Mingla fills, or one whose rows need a link, is a team request.`,
+        };
+      }
+      const key = `${sectionKey}#${String(list.name)}`;
+      const count = counts.get(key) ??
+        (typeof list.count === "number" ? list.count : 0);
+      const max = typeof list.max === "number" ? list.max : null;
+      const min = typeof list.min === "number" ? list.min : 0;
+      const outside = (value: unknown) =>
+        typeof value === "number" && value >= count;
+      if (op.op === "add") {
+        if (max !== null && count + 1 > max) {
+          return {
+            code: "LIST_LIMIT_REACHED",
+            message:
+              `${at}: that list holds at most ${max} rows and would have ${
+                count + 1
+              }. Add fewer rows, or tell the owner the list is full and ask which row to replace.`,
+          };
+        }
+        if (outside(op.after_index)) {
+          return {
+            code: "INVALID_ARGS",
+            message:
+              `${at}.after_index is past the end: the list has ${count} rows (positions 0 to ${
+                count - 1
+              }). Leave it out for the top.`,
+          };
+        }
+        const fields = (Array.isArray(list.fields) ? list.fields : []).filter((
+          field,
+        ): field is string => typeof field === "string");
+        const given = (Array.isArray(op.values) ? op.values : []).flatMap((
+          item,
+        ) => isRecord(item) && typeof item.key === "string" ? [item.key] : []);
+        const unknown = given.filter((field) => !fields.includes(field));
+        const missing = fields.filter((field) => !given.includes(field));
+        if (fields.length && (unknown.length || missing.length)) {
+          return {
+            code: "INVALID_ARGS",
+            message: `${at}.values must give exactly this row's fields (${
+              fields.join(", ")
+            }), each in the owner's own words or from Mingla's records. ${
+              missing.length ? `Missing: ${missing.join(", ")}. ` : ""
+            }${
+              unknown.length ? `Not a field: ${unknown.join(", ")}. ` : ""
+            }If the owner did not give the words for one, ask for them; never write them yourself.`,
+          };
+        }
+        counts.set(key, count + 1);
+      } else if (op.op === "remove") {
+        if (outside(op.index)) {
+          return {
+            code: "INVALID_ARGS",
+            message: `${at}.index is past the end: the list has ${count} rows.`,
+          };
+        }
+        if (count - 1 < min) {
+          return {
+            code: "LIST_ROW_REQUIRED",
+            message: `${at}: that list keeps at least ${min} row${
+              min === 1 ? "" : "s"
+            }. Tell the owner it cannot be emptied; they can remove the whole section instead.`,
+          };
+        }
+        counts.set(key, count - 1);
+      } else if (outside(op.index) || outside(op.to_index)) {
+        return {
+          code: "INVALID_ARGS",
+          message:
+            `${at}: index and to_index must be rows that exist (the list has ${count}).`,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * The check a workspace plan passes while the model can still repair it.
  * Fills the brand and site from the turn (never from the model's memory),
  * then: the right tool for the surface, the exact shape, the selected
@@ -985,6 +1229,8 @@ export function siteWorkspaceProposalIssue(input: {
     }
     const addable = siteAddableSectionProblem(input.args, snapshot);
     if (addable) return addable;
+    const rows = siteListRowsProblem(input.args, snapshot);
+    if (rows) return rows;
   }
   return null;
 }
@@ -1079,10 +1325,17 @@ export interface SiteChangeSetDeps {
   ) => Promise<unknown>;
   emit?: (event: SiteStepActivity) => Promise<void>;
   now?: () => number;
+  /** The pause before a step that is still running is asked again. */
+  sleep?: (ms: number) => Promise<void>;
   budget?: Partial<SiteChangeSetBudget>;
 }
 
+/** How long to wait before asking again for a step Core says is still running. */
+export const SITE_STEP_IN_PROGRESS_WAIT_MS = 1_500;
+
 const TIMEOUT_CODE = "SITE_STEP_TIMEOUT";
+const defaultSleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Core's own refusal code and the bounded detail a caller can act on. */
 export interface SiteRefusalDetail {
@@ -1245,6 +1498,36 @@ function normalizedStep(
   if (clean.op === "edit_section" && clean.edits === undefined) {
     clean.edits = [];
   }
+  // Studio takes a new row's words as { field: words } and the top of a
+  // list as after_index null.
+  if (Array.isArray(clean.list_ops)) {
+    if (clean.list_ops.length === 0) delete clean.list_ops;
+    else {
+      clean.list_ops = clean.list_ops.map((raw) => {
+        const row = raw as Record<string, unknown>;
+        if (row.op !== "add") {
+          return row.op === "remove"
+            ? { list: row.list, op: "remove", index: row.index }
+            : {
+              list: row.list,
+              op: "move",
+              index: row.index,
+              to_index: row.to_index,
+            };
+        }
+        return {
+          list: row.list,
+          op: "add",
+          after_index: row.after_index ?? null,
+          values: Object.fromEntries(
+            (row.values as Array<{ key: string; value: string }>).map((
+              item,
+            ) => [item.key, item.value]),
+          ),
+        };
+      });
+    }
+  }
   return clean;
 }
 
@@ -1345,6 +1628,18 @@ export async function runSiteChangeSet(input: {
             room && error instanceof ToolError &&
             error.code === "REVISION_CONFLICT"
           ) {
+            outcome = await apply(step);
+          } else if (
+            // Core runs a step once per operation id. "Still running" means
+            // an earlier ask for this same step has not finished: wait a
+            // moment and ask again with the same id (the answer is then the
+            // first try's own result, marked repeated, and nothing is
+            // applied twice).
+            siteRefusalOf(error)?.code === "STEP_IN_PROGRESS" &&
+            remaining() - budget.rollbackReserveMs >
+              SITE_STEP_IN_PROGRESS_WAIT_MS + 2_000
+          ) {
+            await (deps.sleep ?? defaultSleep)(SITE_STEP_IN_PROGRESS_WAIT_MS);
             outcome = await apply(step);
           } else if (room && readable) {
             outcome = await apply(readable.step);

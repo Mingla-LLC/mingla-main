@@ -265,6 +265,13 @@ const SITES_NAMED_CODES: Readonly<Record<string, string>> = {
   NOTHING_TO_UNDO: "CONFLICT",
   NOTHING_TO_REDO: "CONFLICT",
   UNREADABLE_COLOURS: "VALIDATION_FAILED",
+  // List rows (list_ops on edit_section).
+  LIST_NOT_EDITABLE: "VALIDATION_FAILED",
+  LIST_LIMIT_REACHED: "DOMAIN_ACTION_REFUSED",
+  LIST_ROW_REQUIRED: "DOMAIN_ACTION_REFUSED",
+  // The same step is still running from an earlier ask: it may yet land, so
+  // it rides the retryable envelope and is asked once more after a pause.
+  STEP_IN_PROGRESS: "SERVICE_TEMPORARILY_UNAVAILABLE",
 };
 
 const SITE_SERVICE_UNAVAILABLE_MESSAGE =
@@ -353,7 +360,12 @@ function refusalDetail(error: Record<string, unknown> | undefined): string {
   const variants = list(error.variants, 20);
   if (variants.length) parts.push(`This design draws: ${variants.join(", ")}.`);
   // #4453 Website workspace — how long a field may be, which layouts exist.
-  if (typeof error.max === "number" && Number.isFinite(error.max)) {
+  // (`max` on a full page or a full list is a count, so only a too-long
+  // value says characters.)
+  if (
+    error.code === "VALUE_TOO_LONG" && typeof error.max === "number" &&
+    Number.isFinite(error.max)
+  ) {
     parts.push(`The limit is ${Math.floor(error.max)} characters.`);
   }
   const layouts = list(error.layouts, 20);

@@ -44,6 +44,8 @@ export interface CoreScript {
   };
   /** A set_look step is refused this many times as hard to read, with the nearest shade. */
   unreadable?: { times: number; foreground: string; nearest_readable: string };
+  /** This step answers STEP_IN_PROGRESS once, then the first try's result, marked repeated. */
+  in_progress_once?: number;
   /** This step answers REVISION_CONFLICT once, then applies. */
   stale_once?: number;
   /** From this step on Core does not answer (the undo does not either). */
@@ -70,6 +72,7 @@ export class FakeCore {
   private appliedSteps = 0;
   private staleSpent = false;
   private unreadableSpent = 0;
+  private inProgressSpent = false;
 
   constructor(readonly script: CoreScript = {}) {}
 
@@ -140,6 +143,18 @@ export class FakeCore {
           },
         );
       }
+      let repeated = false;
+      if (script.in_progress_once === index) {
+        if (!this.inProgressSpent) {
+          this.inProgressSpent = true;
+          return this.refused(
+            "STEP_IN_PROGRESS",
+            "That change is still being applied. Try again in a moment.",
+            { retryable: true },
+          );
+        }
+        repeated = true;
+      }
       if (script.stale_once === index && !this.staleSpent) {
         this.staleSpent = true;
         return this.refused("REVISION_CONFLICT");
@@ -152,6 +167,7 @@ export class FakeCore {
         ok: true,
         group_id: args.group_id,
         draft_only: true,
+        ...(repeated ? { repeated: true } : {}),
         ...(step.op === "set_look"
           ? { look_revision: "2026-11-19T10:00:00.000Z", warnings: [] }
           : step.op === "set_menu"
@@ -588,6 +604,21 @@ export function gradeWorkspaceTurn(
         (sum: number, item: any) => sum + (item.adjusted_colours ?? []).length,
         0,
       ),
+    );
+  }
+  if (expect.sent_row) {
+    // Studio takes a new row's words as { field: words }.
+    add(
+      "the new row as Core receives it",
+      expect.sent_row,
+      applies.at(-1)?.args.step?.list_ops?.[0]?.values ?? null,
+    );
+  }
+  if (expect.same_operation_id) {
+    add(
+      "the repeat carries the same operation id",
+      1,
+      new Set(applies.map((call) => call.operation_id)).size,
     );
   }
   if (expect.uncited_steps !== undefined) {
