@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4420",
+  "suite": {
+    "id": "issue-4420-add-to-calendar-chooser",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/**",
+      "mingla-business/app/**",
+      "packages/offering-rendering/**",
+      "mingla-business/jest.config.cjs"
+    ],
+    "steps": [
+      {
+        "name": "Buyer web: Add to calendar opens a chooser whose every row is a real link",
+        "cwd": "mingla-business",
+        "run": "npx jest src/components/event/__tests__/issue_4420_add_to_calendar_chooser.implementor.test.tsx --runInBand",
+        "commandId": "assert:issue-4420-add-to-calendar-chooser:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest src/components/event/__tests__/issue_4420_add_to_calendar_chooser.implementor.test.tsx --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4420",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/src/components/event/__tests__/issue_4420_add_to_calendar_chooser.implementor.test.tsx"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.config.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 25,
+      "p95": 40,
+      "evidence": "Local targeted run 2026-11-19"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 180
+  }
+}

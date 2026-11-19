@@ -3494,7 +3494,7 @@
         "packages/offering-rendering/OfferingGlassBar.tsx",
         "packages/offering-rendering/OfferingGlassContext.tsx",
         "packages/offering-rendering/OfferingSectionTitle.tsx",
-        "packages/offering-rendering/offeringCalendar.ts",
+        "packages/offering-rendering/offeringCalendar.cjs",
         "packages/offering-rendering/offeringFrameMetrics.ts"
       ]
     },

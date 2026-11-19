@@ -81,8 +81,8 @@ import {
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
 // issue #4420 — Add to calendar, only from a real start and end.
-import { offeringCalendarEntry } from "@mingla/offering-rendering/offeringCalendar";
-import { addOfferingToCalendar } from "../../utils/offeringCalendarAction";
+import { offeringCalendarEntry } from "@mingla/offering-rendering/offeringCalendar.cjs";
+import { useAddToCalendar } from "./useAddToCalendar";
 import { recordShareDestination } from "../../analytics/shareDestination";
 import {
   captureOfferingCta,
@@ -164,6 +164,7 @@ import {
 
 import {
   checkoutPublicPathWithSeed,
+  eventCalendarUrl,
   eventOgImageUrl,
   eventPublicPath,
   eventPublicUrl,
@@ -1874,12 +1875,24 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       publicEvent.venueName,
     ],
   );
+  // #4420 — the chooser's "Apple" and "Other calendar" rows open the server's
+  // one-event file (api/event-calendar.js), built from the page's own slugs.
+  const calendarIcsUrl = useMemo((): string | null => {
+    try {
+      return eventCalendarUrl({
+        brandSlug: event.brandSlug,
+        eventSlug: event.eventSlug,
+      });
+    } catch {
+      return null;
+    }
+  }, [event.brandSlug, event.eventSlug]);
+  const { open: openAddToCalendar, chooser: addToCalendarChooser } =
+    useAddToCalendar(calendarEntry, calendarIcsUrl);
   const handleAddToCalendar =
     calendarEntry === null
       ? undefined
-      : (): void => {
-          addOfferingToCalendar(calendarEntry, `${event.id}@usemingla.com`);
-        };
+      : openAddToCalendar;
 
   if (isRsvp) {
     return (
@@ -2049,6 +2062,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           testID="orch-1150-rsvp-public"
         />
 
+        {addToCalendarChooser}
         <ShareModal
           visible={shareModalVisible}
           onClose={() => setShareModalVisible(false)}
@@ -2446,6 +2460,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         <TicketCheckoutAccessNotice eventId={event.id} />
       </View>
 
+      {addToCalendarChooser}
       <ShareModal
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
