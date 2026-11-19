@@ -105,3 +105,38 @@ export const VENUE_FEATURES_COPY = {
   arrangeBody: "Draw where each space sits, so staff and guests see the layout.",
   arrangeOnComputer: "Arrange your spaces on a wider screen, like a computer. Your list of spaces works the same here.",
 } as const;
+
+/**
+ * #4490 N18/N57: the empty Spaces chips and the "What's here" placeholder
+ * follow the venue's type, so a restaurant is not offered pool tables and a
+ * coworking space is not offered a rooftop bar.
+ */
+const SPACE_STARTERS_BY_TYPE: Readonly<Record<string, readonly string[]>> = {
+  restaurant: ["Main dining room", "Terrace", "Bar", "Private room"],
+  bar_lounge: ["Main floor", "Bar", "VIP section", "Terrace"],
+  club: ["Dance floor", "VIP section", "Bar", "Terrace"],
+  play: ["Main floor", "Party room", "Outdoor area"],
+  cafe: ["Main floor", "Meeting room", "Terrace"],
+  coworking: ["Open desks", "Meeting room", "Boardroom", "Phone booth"],
+  event_space: ["Main hall", "Garden", "Breakout room"],
+  creative_and_arts: ["Studio", "Gallery", "Rehearsal room"],
+};
+
+const AMENITY_EXAMPLES_BY_TYPE: Readonly<Record<string, string>> = {
+  restaurant: "Window seats, high chairs…",
+  bar_lounge: "Sound system, booths…",
+  club: "DJ booth, sound system…",
+  play: "Pool tables, karaoke…",
+  cafe: "Plugs, Wi-Fi…",
+  coworking: "Screen, whiteboard, Wi-Fi…",
+  event_space: "Stage, PA system, parking…",
+  creative_and_arts: "Easels, lighting rig…",
+};
+
+export function spaceStartersFor(category: string | null | undefined): readonly string[] {
+  return (category != null ? SPACE_STARTERS_BY_TYPE[category] : undefined) ?? VENUE_FEATURES_COPY.spacesStarters;
+}
+
+export function amenityExamplesFor(category: string | null | undefined): string {
+  return (category != null ? AMENITY_EXAMPLES_BY_TYPE[category] : undefined) ?? "What guests will find here…";
+}

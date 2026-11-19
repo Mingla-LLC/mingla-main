@@ -156,16 +156,16 @@ export function PlansView({ brandId, venueId, canEdit, onBack, onEdit, onOpenOff
                   testID={`venue-plan-row-${plan.id}`}
                 >
                   <View style={[styles.colName, styles.cellText]}>
-                    <Text style={styles.rowTitle} numberOfLines={1}>{plan.name}</Text>
-                    <Text style={styles.meta} numberOfLines={2}>
+                    <Text style={styles.rowTitle} numberOfLines={2}>{plan.name}</Text>
+                    <Text style={styles.meta}>
                       {isWideDesktop ? planTermsLine(plan) : `${price} · ${members} ${plan.activeMembers === 1 && plan.maxMembers === null ? "member" : "members"}`}
                     </Text>
-                    {!isWideDesktop && lines.length > 0 ? <Text style={styles.meta} numberOfLines={2}>{lines.join(" · ")}</Text> : null}
+                    {!isWideDesktop && lines.length > 0 ? <Text style={styles.meta}>{lines.join(" · ")}</Text> : null}
                   </View>
                   {isWideDesktop ? (
                     <>
                       <Text style={[styles.cell, styles.colPrice]}>{price}</Text>
-                      <Text style={[styles.cell, styles.colInc]} numberOfLines={3}>{lines.length > 0 ? lines.join(" · ") : "—"}</Text>
+                      <Text style={[styles.cell, styles.colInc]}>{lines.length > 0 ? lines.join(" · ") : "—"}</Text>
                       <Text style={[styles.cell, styles.colMembers]}>{members}</Text>
                       <View style={styles.colStatus}>
                         <Pill variant={st.variant}>{st.label}</Pill>

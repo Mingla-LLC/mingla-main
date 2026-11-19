@@ -23,13 +23,17 @@ export interface TableDraft {
   walkInOnly: boolean;
 }
 
-export function tableDraftFrom(table: VenueFloorTable | null, defaults: { spaceId: string | null; name?: string }): TableDraft {
+export function tableDraftFrom(
+  table: VenueFloorTable | null,
+  defaults: { spaceId: string | null; name?: string; like?: Pick<VenueFloorTable, "shape" | "capacity"> | null },
+): TableDraft {
   if (table === null) {
     return {
       name: defaults.name ?? "",
       spaceId: defaults.spaceId,
-      shape: "round",
-      capacity: 4,
+      // #4490 N24: a new table copies the last one's shape and seats.
+      shape: defaults.like?.shape ?? "round",
+      capacity: defaults.like?.capacity ?? 4,
       minParty: 1,
       minSpendMinor: null,
       holdOn: false,
@@ -109,7 +113,11 @@ export function tablePayload(d: TableDraft, saved: VenueFloorTable | null, opts:
   return out;
 }
 
-export function tableDraftDirty(d: TableDraft, saved: VenueFloorTable | null, defaults: { spaceId: string | null }): boolean {
+export function tableDraftDirty(
+  d: TableDraft,
+  saved: VenueFloorTable | null,
+  defaults: { spaceId: string | null; name?: string; like?: Pick<VenueFloorTable, "shape" | "capacity"> | null },
+): boolean {
   return JSON.stringify(d) !== JSON.stringify(tableDraftFrom(saved, defaults));
 }
 
@@ -121,4 +129,13 @@ export function nextTableName(existing: readonly string[], prefix = "T"): string
     if (!taken.has(candidate.toLowerCase())) return candidate;
   }
   return `${prefix}${existing.length + 1}`;
+}
+
+/**
+ * #4490 N24: the next name after the last table added, keeping its letters
+ * (B1 → B2, Booth 3 → Booth 4); "T1" when there is no table yet.
+ */
+export function nextTableNameAfter(existing: readonly string[], last: string | null | undefined): string {
+  const m = /^(.*?)(\d+)$/.exec((last ?? "").trim());
+  return nextTableName(existing, m !== null && m[1].length > 0 ? m[1] : "T");
 }

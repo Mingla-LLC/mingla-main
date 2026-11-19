@@ -574,7 +574,7 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
         <View style={styles.actions}>
           <Button
             label="Decline"
-            variant="ghost"
+            variant="secondary"
             size="md"
             onPress={() => setDialog({ kind: "decline", date: null, reason: null })}
             disabled={action.isPending}
@@ -664,7 +664,7 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
       ) : null}
       {onOpenCalendar !== undefined && r.tab !== "closed" ? (
         <View>
-          <Button label="See it on the calendar" variant="ghost" size="sm" leadingIcon="calendar" onPress={onOpenCalendar} testID="venue-request-calendar" />
+          <Button label="See it on the calendar" variant="secondary" size="sm" leadingIcon="calendar" onPress={onOpenCalendar} testID="venue-request-calendar" />
         </View>
       ) : null}
 

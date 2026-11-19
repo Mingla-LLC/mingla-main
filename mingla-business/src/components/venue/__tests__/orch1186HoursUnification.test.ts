@@ -129,7 +129,8 @@ describe("ORCH-1186-A T11 — VenueStep4Hours is a thin wrapper over the shared 
     expect(wizard).toContain("Opening hours");
     // TEST-MOD-APPROVED #4490 D5/D20 — the helper now reads 24-hour and the
     // step uses the multi-window editor.
-    expect(wizard).toContain("Mon to Sat 09:00–17:00 to start, Sunday closed.");
+    // TEST-MOD-APPROVED #4490 N37 — no fixed starting-hours line that goes stale.
+    expect(wizard).toContain("Set the days and times you open.");
     expect(wizard).toContain("allowWindows");
   });
 

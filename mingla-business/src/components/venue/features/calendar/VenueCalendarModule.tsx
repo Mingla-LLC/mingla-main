@@ -21,6 +21,7 @@ import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
 import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
 import { useSpaceBlock, useVenueCalendar } from "../../../../hooks/useVenueHire";
 import { useVenueOffers } from "../../../../hooks/useVenueOffers";
+import { useVenueFeatures } from "../../../../hooks/useVenueFeatures";
 import { VenueStaffError } from "../../../../services/venueOffersService";
 import type { VenueCalendar } from "../../../../types/venueOffers";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
@@ -87,6 +88,7 @@ export function VenueCalendarModule({ brandId, venueId, onOpenRequest }: VenueCa
   const bottomPad = venueScrollBottomPad(insets.bottom);
   const offersQuery = useVenueOffers(brandId, venueId);
   const access = useVenueEditAccess(brandId, venueId);
+  const hireOn = useVenueFeatures(brandId, venueId).data?.features.private_hire.enabled !== false;
   const timezone = offersQuery.data?.settings?.timezone ?? "Africa/Lagos";
   const today = dateIn(new Date().toISOString(), timezone) ?? new Date().toISOString().slice(0, 10);
   const [view, setView] = useState<CalendarView>(isWideDesktop ? "week" : "day");
@@ -186,7 +188,7 @@ export function VenueCalendarModule({ brandId, venueId, onOpenRequest }: VenueCa
     <ScrollView style={styles.scroll} contentContainerStyle={[styles.host, { paddingBottom: bottomPad }]} testID="venue-calendar">
       {head}
       {body}
-      {cal !== undefined && view !== "month" ? <Legend /> : null}
+      {cal !== undefined && view !== "month" ? <Legend hireOn={hireOn} /> : null}
       {actionError !== null ? <Text style={styles.error}>{actionError}</Text> : null}
       <VenueBookingSheet brandId={brandId} venueId={venueId} groupId={bookingOpen} onClose={() => setBookingOpen(null)} />
       {cal !== undefined ? (
@@ -492,12 +494,13 @@ function MonthGrid({ cal, days, today, onPickDay }: { cal: VenueCalendar; days: 
   );
 }
 
-function Legend(): React.ReactElement {
+function Legend({ hireOn }: { hireOn: boolean }): React.ReactElement {
+  // #4490 N57: hire words only when the venue has Private hire on.
   const items: Array<{ tone: keyof typeof TONE_STYLE; label: string }> = [
-    { tone: "hire", label: "Private hire" },
+    ...(hireOn ? [{ tone: "hire" as const, label: "Private hire" }] : []),
     { tone: "hold", label: "On hold" },
     { tone: "event", label: "Event" },
-    { tone: "inside", label: "Blocked by a bigger hire" },
+    ...(hireOn ? [{ tone: "inside" as const, label: "Blocked by a bigger hire" }] : []),
     { tone: "block", label: "Blocked" },
     { tone: "request", label: "Asked, not held" },
   ];

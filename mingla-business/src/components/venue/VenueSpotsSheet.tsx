@@ -58,6 +58,11 @@ export interface VenueSpotsSheetProps {
   brandId: string | null;
   /** Manager-plus. RLS enforces the same floor server-side. */
   canMutate: boolean;
+  /**
+   * #4490 N72: opened from a venue, the sheet lists that venue's spots only
+   * (and "Print all" counts only them). Null keeps the brand-wide list.
+   */
+  venueId?: string | null;
   testID?: string;
 }
 
@@ -66,6 +71,7 @@ export function VenueSpotsSheet({
   onClose,
   brandId,
   canMutate,
+  venueId = null,
   testID,
 }: VenueSpotsSheetProps): React.ReactElement {
   const spotsQuery = useQrSpots(visible ? brandId : null);
@@ -86,8 +92,11 @@ export function VenueSpotsSheet({
     return map;
   }, [venues]);
   const groups = useMemo(
-    () => groupSpotsByVenue(spotsQuery.data ?? [], venues),
-    [spotsQuery.data, venues],
+    () =>
+      groupSpotsByVenue(spotsQuery.data ?? [], venues).filter(
+        (group) => venueId === null || group.venueId === venueId,
+      ),
+    [spotsQuery.data, venues, venueId],
   );
   const printableTotal = useMemo(
     () => groups.reduce((sum, group) => sum + group.activeCount, 0),
@@ -418,7 +427,8 @@ export function VenueSpotsSheet({
             }
             onPress={() => {
               if (brandId === null) return;
-              print(bulkPrintRequest(brandId, null), null);
+              // #4490 N72: from a venue, "Print all" prints that venue only.
+              print(bulkPrintRequest(brandId, venueId), null);
             }}
             variant="primary"
             size="lg"

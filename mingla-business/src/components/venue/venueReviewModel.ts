@@ -7,7 +7,7 @@
 import type { BrandHourEntry } from "../../types/brand";
 import { venueTypeOption } from "../../types/venueFeatures";
 import { currencySymbol } from "../ui/fieldModels";
-import { normalizeHoursWeek } from "../../utils/venueBrandHours";
+import { dayWindows, normalizeHoursWeek } from "../../utils/venueBrandHours";
 
 /** "Play and games" for "play"; "—" when unset. */
 export function venueTypeLabel(category: string | null | undefined): string {
@@ -50,11 +50,8 @@ const SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 function dayText(entry: BrandHourEntry): string {
   if (entry.isClosed) return "Closed";
-  const windows = [
-    { openTime: entry.openTime, closeTime: entry.closeTime },
-    ...(entry.extraWindows ?? []),
-  ];
-  return windows
+  // #4490 N16: earliest window first.
+  return dayWindows(entry)
     .filter((w) => (w.openTime ?? "").length > 0 && (w.closeTime ?? "").length > 0)
     .map((w) => `${w.openTime}–${w.closeTime}`)
     .join(", ");

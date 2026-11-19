@@ -72,6 +72,10 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
+import { useQuery } from "@tanstack/react-query";
+import { venueFeatureKeys } from "../../hooks/venueFeatureKeys";
+import { FeatureSetupNeedsCard } from "./features/FeatureSetupNeedsCard";
+import { featureSetupNeeds, type SetupRefusal, type SetupTarget } from "./features/featureSetupModel";
 import {
   filterVenueModulesForCapabilities,
   scopedStaffManagesOffers,
@@ -110,6 +114,7 @@ import { deriveVenueRailModules } from "./venueRail";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   deriveVenueNav,
+  hasNoStoredFeatures,
   resolveTablesAlias,
   shouldLeaveHiddenModule,
   venueUsesSpaces,
@@ -238,6 +243,12 @@ export interface VenueSuiteShellProps {
   renderReviewsSummary?: (openReviews: () => void) => React.ReactNode;
   /** #4490 — `&item=<id>`: open that offer on arrival (with `?module=offers`). */
   initialItemId?: string | null;
+  /**
+   * #4490 N11: told every time the open module changes after the first
+   * paint, so the page can keep `?module=` in the address (reload, Back and a
+   * shared link open the same module).
+   */
+  onModuleChange?: (module: VenueModule) => void;
 }
 
 export function VenueSuiteShell({
@@ -249,6 +260,7 @@ export function VenueSuiteShell({
   reviewsPanel = null,
   renderReviewsSummary,
   initialItemId = null,
+  onModuleChange,
 }: VenueSuiteShellProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const insets = useSafeAreaInsets();
@@ -303,18 +315,46 @@ export function VenueSuiteShell({
     !tableReservationsOn &&
     (featuresCategory === null ||
       builtPreset(featuresCategory as VenueTypeKey).includes("table_reservations"));
+  const requestSpacesInStore = useVenueSuiteStore((s) => s.requestSpaces);
+  // #4490 N20/N61: what the add-venue Features step asked for and the server
+  // refused (cache only: written by the create call), plus anything switched
+  // on that still waits for a space.
+  const startRefusedQuery = useQuery<SetupRefusal[]>({
+    queryKey: venueFeatureKeys.startRefused(venueId ?? ""),
+    queryFn: () => [],
+    enabled: false,
+    staleTime: Infinity,
+  });
+  const setupNeeds = useMemo(
+    () =>
+      featuresQuery.data === undefined
+        ? []
+        : featureSetupNeeds({
+            features: featuresQuery.data.features,
+            activeSpaceCount: featuresQuery.data.activeSpaceCount,
+            refused: startRefusedQuery.data ?? null,
+          }),
+    [featuresQuery.data, startRefusedQuery.data],
+  );
+  const setupNeedsSpace = setupNeeds.some((n) => n.target === "spaces");
   const spacesRequestedVenueId = useVenueSuiteStore((s) => s.spacesRequestedVenueId);
   const navInput = useMemo(
     () => ({
       features,
       activeSpaceCount: featuresQuery.data?.activeSpaceCount ?? 0,
+      // #4490 N61/N62: no stored rows → the nav follows the type's preset.
+      venueCategory: featuresQuery.data?.venueCategory ?? null,
+      noStoredFeatures: featuresQuery.data !== undefined && hasNoStoredFeatures(featuresQuery.data.features),
       spacesRequested:
         (venueId !== null && spacesRequestedVenueId === venueId) ||
+        // #4490 N20: a chosen feature waiting for a space opens Spaces.
+        setupNeedsSpace ||
         scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities),
     }),
     [
       features,
-      featuresQuery.data?.activeSpaceCount,
+      featuresQuery.data,
+      setupNeedsSpace,
       spacesRequestedVenueId,
       venueAccess.capabilities,
       venueAccess.scoped,
@@ -337,6 +377,12 @@ export function VenueSuiteShell({
   );
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
+  const lastToldModuleRef = useRef<VenueModule>(initialModule);
+  useEffect(() => {
+    if (lastToldModuleRef.current === activeModule) return;
+    lastToldModuleRef.current = activeModule;
+    onModuleChange?.(activeModule);
+  }, [activeModule, onModuleChange]);
   // #4490 P4 — the Calendar opens a hold or a request in Requests.
   const [requestItem, setRequestItem] = useState<string | null>(null);
   const availabilityRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
@@ -696,14 +742,24 @@ export function VenueSuiteShell({
         features.private_hire.enabled ||
         features.by_the_hour.enabled ||
         features.memberships.enabled;
+      const openSetupTarget = (target: SetupTarget): void => {
+        if ((target === "spaces" || target === "tables") && venueId !== null) requestSpacesInStore(venueId);
+        selectModule(target);
+      };
       const header = (
         <>
+          {setupNeeds.length > 0 && !venueAccess.scoped ? (
+            <View style={styles.setupNeeds}>
+              <FeatureSetupNeedsCard needs={setupNeeds} onOpen={openSetupTarget} />
+            </View>
+          ) : null}
           {sellsOffers && !venueAccess.scoped ? (
             <React.Suspense fallback={null}>
               <LazyVenueTodayOverview
                 brandId={brandId}
                 venueId={venueId}
                 activeSpaceCount={featuresQuery.data?.activeSpaceCount ?? 0}
+                features={features}
                 canManageOffers={!venueAccess.scoped || scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities)}
                 onOpenModule={(next) => {
                   if (visibleModules.includes(next)) selectModule(next);
@@ -1127,6 +1183,7 @@ export function VenueSuiteShell({
 }
 
 const styles = StyleSheet.create({
+  setupNeeds: { marginBottom: space[4] },
   accessState: {
     flex: 1,
     alignItems: "center",

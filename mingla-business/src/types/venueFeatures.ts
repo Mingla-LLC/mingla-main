@@ -54,6 +54,12 @@ export interface VenueFeature {
   version: number;
   /** What still stands in the way of switching it on (parent keys or "space"). */
   blockedBy: string[];
+  /**
+   * #4490 fix1 (backend B2): what it still needs before guests can use it
+   * ("space", "table"), on or off. A space-needing feature may now be on
+   * before the first space exists. Absent on older reads.
+   */
+  needs?: string[];
 }
 
 /** Total: a missing row reads as disabled. */

@@ -605,7 +605,20 @@ export function hirePriceLine(draft: HireDraft, currency: string | null): string
   if (prices.length === 0) return "No price yet";
   const from = money(Math.min(...prices), currency);
   if (draft.rows.every((r) => r.perHour)) return `From ${from} an hour`;
-  return draft.charge === "per_guest" ? `From ${from} a guest` : `From ${from}`;
+  if (draft.charge === "per_guest") return `From ${from} a guest`;
+  // #4490 N45: a minimum spend is never summarised as a price.
+  return draft.charge === "min_spend" ? `Minimum spend from ${from}` : `From ${from}`;
+}
+
+/**
+ * #4490 N45/N68: one price row in words, naming its days when it is not
+ * every day, so a weekday and a weekend row never read as the same thing.
+ * "The Main Hall · 50–600 guests · Fri, Sat and Sun: ₦4,200,000".
+ */
+export function hireRowWords(row: HireRowDraft, placeName: string, charge: HireCharge, currency: string | null): string {
+  const days = row.weekdays.length > 0 && row.weekdays.length < 7 ? ` · ${weekdaysSummary(row.weekdays)}` : "";
+  const unit = row.perHour ? " an hour" : charge === "per_guest" ? " a guest" : "";
+  return `${placeName} · ${row.guestMin}–${row.guestMax} guests${days}: ${row.priceMinor !== null ? `${money(row.priceMinor, currency)}${unit}` : "—"}`;
 }
 
 export function hireDepositLine(draft: HireDraft, currency: string | null): string {
@@ -641,13 +654,13 @@ export function hireReviewItems(
     },
     {
       key: "prices",
-      label: "Price by group size",
+      label: `${HIRE_CHARGES.find((c) => c.key === draft.charge)?.column ?? "Price"} by group size`,
       value:
         draft.rows.length === 0
           ? "No prices yet"
           : draft.rows
-              .map((r) => `${chosen.find((p) => p.key === r.place)?.name ?? "Space"} ${r.guestMin}–${r.guestMax}: ${r.priceMinor !== null ? money(r.priceMinor, currency) : "—"}`)
-              .join(" · "),
+              .map((r) => hireRowWords(r, chosen.find((p) => p.key === r.place)?.name ?? "Space", draft.charge, currency))
+              .join("\n"),
     },
     {
       key: "extras",

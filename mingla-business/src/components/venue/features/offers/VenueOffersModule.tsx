@@ -35,6 +35,7 @@ import { GlassCard } from "../../../ui/GlassCard";
 import { Icon } from "../../../ui/Icon";
 import { IconChrome } from "../../../ui/IconChrome";
 import { Menu, type MenuAnchor } from "../../../ui/Menu";
+import { weekdaysSummary } from "../../../ui/fieldModels";
 import { Modal } from "../../../ui/Modal";
 import { OptionCard } from "../../../ui/OptionCard";
 import { Pill } from "../../../ui/Pill";
@@ -54,6 +55,7 @@ import {
   kindLine,
   offerErrorCopy,
   priceColumn,
+  splitOfferCards,
   whenColumn,
   type NewOfferCard,
 } from "./offersModel";
@@ -109,6 +111,18 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const [editing, setEditing] = useState<Editing>(initialOfferId !== null ? { offerId: initialOfferId, kind: "entry" } : null);
   const [picker, setPicker] = useState(false);
   const [menu, setMenu] = useState<{ offer: VenueOffer; anchor: MenuAnchor | null } | null>(null);
+  // #4490 N5: on desktop the row menu opens as a popover under its "…" button.
+  const moreRefs = useRef(new Map<string, View>());
+  const openRowMenu = useCallback((offer: VenueOffer): void => {
+    const node = moreRefs.current.get(offer.id);
+    if (node === undefined || typeof node.measureInWindow !== "function") {
+      setMenu({ offer, anchor: null });
+      return;
+    }
+    node.measureInWindow((x, y, width, height) =>
+      setMenu({ offer, anchor: width > 0 ? { x, y, width, height } : null }),
+    );
+  }, []);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -134,6 +148,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const state = offersQuery.data;
   const offers = useMemo(() => state?.offers ?? [], [state?.offers]);
   const entryOn = featuresQuery.data?.features.entry.enabled === true;
+  const [showMoreCards, setShowMoreCards] = useState(false);
   const tablesOn = featuresQuery.data?.features.table_reservations.enabled === true;
   const packagesOn = featuresQuery.data?.features.group_packages.enabled === true;
   const hireOn = featuresQuery.data?.features.private_hire.enabled === true;
@@ -413,9 +428,15 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
     );
   }
 
+  const cardSplit = splitOfferCards(
+    NEW_OFFER_CARDS,
+    (key) => featuresQuery.data?.features[key].enabled === true,
+    featuresQuery.data?.venueCategory ?? null,
+  );
   const cardGrid = (onPick: (card: NewOfferCard) => void): React.ReactElement => (
+    <>
     <View style={[styles.cardGrid, isWideDesktop ? styles.cardGridWide : null]}>
-      {NEW_OFFER_CARDS.map((card) => {
+      {(showMoreCards ? [...cardSplit.main, ...cardSplit.more] : cardSplit.main).map((card) => {
         const disabled =
           !card.built ||
           !canEdit ||
@@ -471,6 +492,18 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
         );
       })}
     </View>
+    {cardSplit.more.length > 0 ? (
+      <View style={styles.moreCards}>
+        <Button
+          label={showMoreCards ? "Fewer ways to sell" : `More ways to sell (${cardSplit.more.length})`}
+          variant="secondary"
+          size="sm"
+          onPress={() => setShowMoreCards((v) => !v)}
+          testID="venue-offer-kind-more"
+        />
+      </View>
+    ) : null}
+    </>
   );
 
   const banners = (
@@ -478,7 +511,9 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
       {!state.flags.writes ? (
         <Banner tone="info" title="Selling offers isn't switched on yet" body="You can look around; publishing opens when Mingla switches it on for your brand." />
       ) : null}
-      {!entryOn && featuresQuery.data !== undefined ? (
+      {/* #4490 N26: only when Entry offers exist and are paused by it, never a
+          warning on a venue that does not sell Entry. */}
+      {!entryOn && featuresQuery.data !== undefined && state.offers.some((o) => o.kind === "entry") ? (
         <Banner
           tone="warning"
           title="Entry is off"
@@ -616,8 +651,8 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
                 <Icon name="star" size={18} color={color.text2} />
               </View>
               <View style={styles.cellText}>
-                <Text style={styles.rowTitle} numberOfLines={1}>{plan.name}</Text>
-                <Text style={styles.meta} numberOfLines={1}>
+                <Text style={styles.rowTitle} numberOfLines={2}>{plan.name}</Text>
+                <Text style={styles.meta}>
                   {`${money(plan.priceMinor, plan.currencyCode || currency)} a month · ${plan.activeMembers} ${plan.activeMembers === 1 ? "member" : "members"}`}
                 </Text>
               </View>
@@ -698,19 +733,26 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
                     <Icon name={offer.kind === "group_package" ? "users" : offer.kind === "private_hire" ? "home" : offer.kind === "by_the_hour" ? "clock" : offer.options.some((o) => o.eligibility !== null) ? "shield" : "ticket"} size={18} color={color.text2} />
                   </View>
                   <View style={styles.cellText}>
-                    <Text style={styles.rowTitle} numberOfLines={1}>{offer.name}</Text>
-                    <Text style={styles.meta} numberOfLines={2}>
+                    <Text style={styles.rowTitle} numberOfLines={2}>{offer.name}</Text>
+                    {/* #4490 N48: the detail line wraps; it was cut to "Every da…" at 390. */}
+                    <Text style={styles.meta}>
                       {isWideDesktop
                         ? kindLine(offer)
                         : `${priceColumn(offer, currency)} · ${whenColumn(offer)}`}
                     </Text>
                     {notReady ? <Text style={styles.metaWarn}>Not published: {offer.readiness.length} {offer.readiness.length === 1 ? "thing" : "things"} to finish</Text> : null}
+                    {offer.outsideOpeningHours === true ? (
+                      // #4490 N28: the offer is never changed by itself; the host is told.
+                      <Text style={styles.metaWarn} testID={`venue-offer-outside-hours-${offer.id}`}>
+                        {`Sells outside your opening hours on ${weekdaysSummary(offer.outsideOpeningHoursDays ?? [])}. Change the offer's hours or your opening hours.`}
+                      </Text>
+                    ) : null}
                   </View>
                 </View>
                 {isWideDesktop ? (
                   <>
                     <Text style={[styles.cell, styles.colPrice]}>{priceColumn(offer, currency)}</Text>
-                    <Text style={[styles.cell, styles.colWhen]} numberOfLines={2}>{whenColumn(offer)}</Text>
+                    <Text style={[styles.cell, styles.colWhen]}>{whenColumn(offer)}</Text>
                     <Text style={[styles.cell, styles.colSold]}>{offer.status === "live" || offer.status === "paused" ? `${sold} sold` : "—"}</Text>
                     <View style={styles.colStatus}>
                       <Pill variant={status.variant}>{status.label}</Pill>
@@ -721,12 +763,18 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
                 )}
               </Pressable>
               {canEdit ? (
-                <View style={styles.colMenu}>
+                <View
+                  style={styles.colMenu}
+                  ref={(node) => {
+                    if (node === null) moreRefs.current.delete(offer.id);
+                    else moreRefs.current.set(offer.id, node);
+                  }}
+                >
                   <IconChrome
                     icon="moreH"
                     size={36}
                     accessibilityLabel={`More for ${offer.name}`}
-                    onPress={() => setMenu({ offer, anchor: null })}
+                    onPress={() => openRowMenu(offer)}
                     testID={`venue-offer-more-${offer.id}`}
                   />
                 </View>
@@ -742,6 +790,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
 });
 
 const styles = StyleSheet.create({
+  moreCards: { flexDirection: "row", marginTop: space[2] },
   host: { gap: space[4], paddingHorizontal: space[4], paddingTop: space[4] },
   scroll: { flex: 1 },
   editorHost: { flex: 1, minHeight: 0 },

@@ -50,6 +50,8 @@ export interface PackageFormProps extends EntryThemeProps {
 
 export function PackageForm({ selection, palette, theme, showSummary = true, testID = "issue-4490-package" }: PackageFormProps): React.ReactElement {
   const { offer } = selection;
+  // #4490 N32: a typed count below the smallest group is raised, and said so.
+  const [raisedTo, setRaisedTo] = React.useState<number | null>(null);
   if (selection.offerState === "loading") {
     return (
       <View style={styles.skeletonWrap} testID={`${testID}-loading`} accessibilityLabel="Loading the package">
@@ -209,13 +211,21 @@ export function PackageForm({ selection, palette, theme, showSummary = true, tes
               value={selection.guests}
               min={selection.range.min}
               max={selection.range.max}
-              onChange={selection.setGuests}
+              onChange={(n) => {
+                setRaisedTo(null);
+                selection.setGuests(n);
+              }}
+              typeable
+              onClamp={(typed, clamped) => setRaisedTo(typed < clamped ? clamped : null)}
               decrementLabel="One guest fewer"
               incrementLabel="One guest more"
-              valueLabel={`${selection.guests} guests`}
+              valueLabel={`${selection.guests} guests. Type a number or use minus and plus`}
               testID={`${testID}-guests`}
             />
           </View>
+          {raisedTo !== null ? (
+            <Text style={[styles.small, { color: palette.secondaryText }]} accessibilityLiveRegion="polite">{`The smallest group for this package is ${raisedTo}, so we set ${raisedTo}.`}</Text>
+          ) : null}
           {selection.guests >= selection.range.max ? (
             <Text style={[styles.small, { color: palette.secondaryText }]}>{`${selection.range.max} is the most for this package. For more, ask the venue.`}</Text>
           ) : null}

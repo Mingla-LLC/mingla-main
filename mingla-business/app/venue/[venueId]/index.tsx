@@ -187,6 +187,21 @@ export default function VenueManagementPage(): React.ReactElement {
     proceed();
   }, [requestLeave, router, setPendingLeaveFocus]);
 
+  // #4490 N11: keep the open module in the address. Moving by the side nav
+  // used to leave `?module=offers` behind, so a reload or a shared link opened
+  // the wrong module. `setParams` replaces the address (no extra history
+  // entry); an offer or member opened by `&item=` belongs to the module it was
+  // opened in, so it is dropped on a move.
+  const handleModuleChange = useCallback(
+    (module: string): void => {
+      router.setParams({
+        module: module === "overview" ? undefined : module,
+        item: undefined,
+      } as never);
+    },
+    [router],
+  );
+
   // ----- public-page actions (#1483) -----
   // `venue_public_view` is defined `WHERE claim_status = 'verified'`, so any
   // other claim state renders PublicVenueNotFound. The controls are therefore
@@ -523,6 +538,7 @@ export default function VenueManagementPage(): React.ReactElement {
           // reach this branch (Insights does not exist for stays in v1 — G-21).
           initialModule={initialModule ?? "overview"}
           initialItemId={initialItemId}
+          onModuleChange={handleModuleChange}
           // #4420 (round-3 item 19) — Local reviews are their own Reviews
           // module now, not a panel at the top of Overview.
           reviewsPanel={renderLocalReviews("module")}

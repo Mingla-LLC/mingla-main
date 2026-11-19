@@ -41,6 +41,7 @@ import {
 } from "../../src/components/brand/ClaimMatchCard";
 import { VenueCategoryPicker } from "../../src/components/brand/VenueCategoryPicker";
 import { VenueCreatorWizard } from "../../src/components/venue/VenueCreatorWizard";
+import { CreatedVenueSetupNeeds } from "../../src/components/venue/features/CreatedVenueSetupNeeds";
 import {
   venueCreateCloseGoesBack,
   venueWizardResumeProgress,
@@ -406,6 +407,15 @@ export default function VenueCreateRoute(): React.ReactElement {
           {coverWarning !== null ? (
             <Text style={styles.successWarning}>{coverWarning}</Text>
           ) : null}
+          {createdVenueId !== null && !successWasClaim ? (
+            <CreatedVenueSetupNeeds
+              brandId={currentBrand?.id ?? null}
+              venueId={createdVenueId}
+              onOpen={(target) =>
+                router.replace(`/venue/${createdVenueId}?module=${target}` as never)
+              }
+            />
+          ) : null}
           <Button
             label="Done"
             variant="primary"
@@ -447,8 +457,9 @@ export default function VenueCreateRoute(): React.ReactElement {
       <View style={styles.chrome}>
         <IconChrome
           icon="chevL"
-          accessibilityLabel="Back"
-          onPress={handleClose}
+          accessibilityLabel={phase === "category" ? "Back to venue name" : "Back"}
+          // #4490 N14: one Back on the type step (this one), not two.
+          onPress={phase === "category" ? () => setPhase("gate") : handleClose}
         />
         <Text style={styles.chromeTitle}>Add a venue</Text>
         <View style={{ width: 36 }} />
@@ -548,9 +559,10 @@ export default function VenueCreateRoute(): React.ReactElement {
               placeholder="Venue name"
               accessibilityLabel="Venue working name"
             />
-            {poolSearchLoading ? (
-              <Text style={styles.hint}>Searching our directory…</Text>
-            ) : null}
+            {/* #4490 N37: the line's room is kept, so Continue never moves under the pointer. */}
+            <Text style={[styles.hint, styles.searchLine]} accessibilityLiveRegion="polite">
+              {poolSearchLoading ? "Searching our directory…" : " "}
+            </Text>
             {poolSearchError !== null ? (
               <>
                 <Text style={styles.warn}>{poolSearchError}</Text>
@@ -597,15 +609,6 @@ export default function VenueCreateRoute(): React.ReactElement {
           </>
         ) : (
           <>
-            <Pressable
-              onPress={() => setPhase("gate")}
-              style={styles.backRow}
-              accessibilityRole="button"
-              accessibilityLabel="Back to venue name"
-            >
-              <Icon name="chevL" size={18} color={color.text3} />
-              <Text style={styles.backText}>Back</Text>
-            </Pressable>
             <Text style={styles.h1}>What kind of place is it?</Text>
             <VenueCategoryPicker
               value={venueCategory}
@@ -620,6 +623,14 @@ export default function VenueCreateRoute(): React.ReactElement {
               showPreset
               testID="venue-category-picker"
             />
+
+          </>
+        )}
+      </ScrollView>
+      {phase === "category" ? (
+        // #4490 N14: Continue stays in view under the nine type cards.
+        <View style={[styles.footer, { paddingBottom: insets.bottom + space[3] }]}>
+          <View style={styles.footerInner}>
             {/* B1: fullWidth makes Continue stretch to the same insets as the
                 category cards above it (previously it shrank to content width,
                 so the cards read as wider than the button). */}
@@ -634,9 +645,9 @@ export default function VenueCreateRoute(): React.ReactElement {
               }
               onPress={handleCategoryContinue}
             />
-          </>
-        )}
-      </ScrollView>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -667,7 +678,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[6],
     paddingTop: space[4],
     paddingBottom: space[7],
+    // #4490 N14: a readable column at 1440, not a 1300-wide field and button.
+    width: "100%",
+    maxWidth: 720,
+    alignSelf: "center",
   },
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: color.line,
+    backgroundColor: color.canvas,
+    paddingTop: space[3],
+    paddingHorizontal: space[6],
+  },
+  footerInner: { width: "100%", maxWidth: 720 - space[6] * 2, alignSelf: "center" },
   h1: {
     fontSize: type.h1.fontSize,
     fontWeight: type.h1.fontWeight,
@@ -681,6 +704,7 @@ const styles = StyleSheet.create({
     fontSize: type.caption.fontSize,
     color: color.text3,
   },
+  searchLine: { minHeight: 18 },
   warn: {
     fontSize: type.caption.fontSize,
     color: color.accentText,
@@ -747,6 +771,9 @@ const styles = StyleSheet.create({
   },
   successInner: {
     flex: 1,
+    width: "100%",
+    maxWidth: 560,
+    alignSelf: "center",
     justifyContent: "center",
     gap: space[6],
     paddingBottom: space[7],

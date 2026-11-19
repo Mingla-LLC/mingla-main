@@ -115,10 +115,11 @@ export interface PackageDraft {
 }
 
 export const START_EVERY_OPTIONS: ReadonlyArray<{ key: string; label: string; minutes: number }> = [
+  // #4490 N43: "Every …" so these never read like the booking length below.
   { key: "60", label: "Every hour", minutes: 60 },
-  { key: "90", label: "1½ hours", minutes: 90 },
-  { key: "120", label: "2 hours", minutes: 120 },
-  { key: "180", label: "3 hours", minutes: 180 },
+  { key: "90", label: "Every 1½ hours", minutes: 90 },
+  { key: "120", label: "Every 2 hours", minutes: 120 },
+  { key: "180", label: "Every 3 hours", minutes: 180 },
 ];
 
 export const BALANCE_DUE_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
@@ -556,7 +557,11 @@ export function reviewItems(draft: PackageDraft, pool: VenueCapacityPool | null,
           ? "None"
           : draft.extras.map((e) => `${e.name.trim()} ${money(e.priceMinor ?? 0, currency)} ${e.per === "guest" ? "a guest" : "a booking"}`).join(" · "),
     },
-    { key: "when", label: "Starts", value: `${weekdaysSummary(draft.weekdays)} · ${startTimesLine(draft)} · ${durationWords(draft.durationMinutes)}` },
+    {
+      key: "when",
+      label: "Starts",
+      value: `${weekdaysSummary(draft.weekdays)} · ${startTimesLine(draft)} · each booking lasts ${durationWords(draft.durationMinutes)}`,
+    },
     { key: "where", label: "Where", value: `Any open space · counts against ${pool !== null ? `the ${pool.dailyLimit.toLocaleString("en-GB")} guests a day` : "the day limit"}` },
     { key: "notice", label: "Book at least", value: draft.minNoticeMinutes <= 0 ? "Any time before" : minutesBeforeLabel(draft.minNoticeMinutes).replace(/ before$/, " ahead") },
     { key: "pay", label: "Paying", value: depositLine(draft, currency) },

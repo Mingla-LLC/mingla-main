@@ -276,6 +276,8 @@ export function mapOffer(v: unknown): VenueOffer {
             endDate: strOrNull(schedule.endDate),
           },
     readiness: arr(o.readiness).filter((r): r is string => typeof r === "string"),
+    outsideOpeningHours: o.outsideOpeningHours === true,
+    outsideOpeningHoursDays: arr(o.outsideOpeningHoursDays).filter((d): d is number => typeof d === "number"),
     warnings: arr(o.warnings).filter((r): r is string => typeof r === "string"),
     canCollectOnline: o.canCollectOnline !== false,
     inclusions: arr(o.inclusions).map(mapInclusion).filter((i) => i.label.length > 0),
@@ -1082,6 +1084,7 @@ export function mapVenueDay(v: unknown): VenueDay {
     }),
     checkIn: { passes: num(check.passes), expected: num(check.expected), admitted: num(check.admitted) },
     membersIn: num(d.membersIn),
+    collectedTodayMinor: typeof d.collectedTodayMinor === "number" ? d.collectedTodayMinor : null,
     bookings: arr(d.bookings).map((b): VenueDayBooking => {
       const r = obj(b);
       return {

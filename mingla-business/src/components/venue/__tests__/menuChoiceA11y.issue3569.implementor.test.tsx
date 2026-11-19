@@ -113,19 +113,17 @@ describe("issue #3569 menu choice selected-state semantics", () => {
     );
     const monday = pressable(tree, "menu-category-day-1");
 
+    // TEST-MOD-APPROVED #4490 N71: the shared WeekdayChips; chips start off
+    // (none picked = every day), so the first tap picks Monday.
     expect(monday.props.accessibilityRole).toBe("checkbox");
     expect(monday.props.accessibilityState).toEqual(
-      expect.objectContaining({ checked: true }),
-    );
-    expect(monday.props["aria-checked"]).toBe(true);
-    expect(monday.props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining({ minHeight: 44 })]),
+      expect.objectContaining({ checked: false }),
     );
 
     await press(monday);
     expect(
       pressable(tree, "menu-category-day-1").props.accessibilityState,
-    ).toEqual(expect.objectContaining({ checked: false }));
+    ).toEqual(expect.objectContaining({ checked: true }));
     await TestRenderer.act(async () => tree.unmount());
   });
 

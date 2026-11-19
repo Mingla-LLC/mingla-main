@@ -18,7 +18,7 @@ import { BrandSwitch } from "../../../ui/BrandSwitch";
 import { Button } from "../../../ui/Button";
 import { Input } from "../../../ui/Input";
 import { MoneyField } from "../../../ui/MoneyField";
-import { NumberStepper } from "../../../ui/NumberStepper";
+import { NumberStepper, NumberStepperPair } from "../../../ui/NumberStepper";
 import { Chip } from "../../../ui/Pill";
 import { SelectSheet } from "../../../ui/SelectSheet";
 import { floorErrorCopy, SHAPE_LABEL, TABLE_SHAPES } from "./floorModel";
@@ -46,6 +46,8 @@ export interface TableFormProps {
   allTables: readonly VenueFloorTable[];
   defaultSpaceId: string | null;
   defaultName?: string;
+  /** #4490 N24: a new table starts like this one (shape and seats). */
+  defaultLike?: Pick<VenueFloorTable, "shape" | "capacity"> | null;
   currency: string | null;
   features: { minSpendTables: boolean; pickATable: boolean; floorPlan: boolean };
   canEdit: boolean;
@@ -91,6 +93,7 @@ export function TableForm({
   allTables,
   defaultSpaceId,
   defaultName,
+  defaultLike = null,
   currency,
   features,
   canEdit,
@@ -102,7 +105,10 @@ export function TableForm({
 }: TableFormProps): React.ReactElement {
   const touch = useTouchFloor();
   const manage = useManageVenueTable(brandId, venueId);
-  const defaults = useMemo(() => ({ spaceId: defaultSpaceId, name: defaultName }), [defaultSpaceId, defaultName]);
+  const defaults = useMemo(
+    () => ({ spaceId: defaultSpaceId, name: defaultName, like: defaultLike }),
+    [defaultSpaceId, defaultName, defaultLike],
+  );
   const [draft, setDraft] = useState<TableDraft>(() => tableDraftFrom(table, defaults));
   const [showErrors, setShowErrors] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,28 +210,24 @@ export function TableForm({
         ))}
       </View>
 
-      <View style={styles.steppers}>
-        <View style={styles.stepper}>
-          <NumberStepper
-            label="Seats"
-            value={draft.capacity}
-            min={1}
-            max={100}
-            onChange={(capacity) => patch({ capacity, minParty: Math.min(draft.minParty, capacity) })}
-            testID={`${testID}-seats`}
-          />
-        </View>
-        <View style={styles.stepper}>
-          <NumberStepper
-            label="Smallest party"
-            value={draft.minParty}
-            min={1}
-            max={draft.capacity}
-            onChange={(minParty) => patch({ minParty })}
-            testID={`${testID}-min-party`}
-          />
-        </View>
-      </View>
+      <NumberStepperPair>
+        <NumberStepper
+          label="Seats"
+          value={draft.capacity}
+          min={1}
+          max={100}
+          onChange={(capacity) => patch({ capacity, minParty: Math.min(draft.minParty, capacity) })}
+          testID={`${testID}-seats`}
+        />
+        <NumberStepper
+          label="Smallest party"
+          value={draft.minParty}
+          min={1}
+          max={draft.capacity}
+          onChange={(minParty) => patch({ minParty })}
+          testID={`${testID}-min-party`}
+        />
+      </NumberStepperPair>
       {showErrors && issues.minParty !== null ? <Text style={styles.error}>{issues.minParty}</Text> : null}
 
       <Text style={styles.section}>Money</Text>

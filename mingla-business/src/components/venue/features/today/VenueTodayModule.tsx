@@ -146,7 +146,15 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule, showRequests 
         <KpiTile
           label={isToday ? "Taken today" : "Booked"}
           value={money(n.takenMinor, cur)}
-          sub={n.takenAtGateMinor > 0 ? `${money(n.takenAtGateMinor, cur)} at the gate` : "Online and at the gate"}
+          // #4490 N47: what today's bookings are worth; money received today
+          // (deposits for later dates included) is the "Collected" line.
+          sub={
+            isToday && typeof day.collectedTodayMinor === "number"
+              ? `Collected today ${money(day.collectedTodayMinor, cur)}`
+              : n.takenAtGateMinor > 0
+                ? `${money(n.takenAtGateMinor, cur)} at the gate`
+                : "Online and at the gate"
+          }
           style={styles.tile}
         />
         {membersOn ? (

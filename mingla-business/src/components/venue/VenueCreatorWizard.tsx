@@ -77,6 +77,7 @@ import {
 import { saveVenueReservationsEnabled } from "../../hooks/useVenueReservationSettings";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
 import { upsertBrandHours } from "../../services/brandsService";
+import { withOrderedWindows } from "../../utils/venueBrandHours";
 import type { VenueTypeKey } from "../../types/venueFeatures";
 import { chosenStartingFeatures } from "./features/wizardFeaturesModel";
 import { VenueFeaturesStep } from "./features/VenueFeaturesStep";
@@ -400,7 +401,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           coverMediaType: coverChoice?.type ?? null,
           // #4490 D5 — the create RPC takes one window a day; extra windows
           // are written right after the row exists (upsertBrandHours below).
-          hours: st.hours.map((h) => ({ ...h, extraWindows: [] })),
+          hours: st.hours.map((h) => ({ ...withOrderedWindows(h), extraWindows: [] })),
           // #4490 D9 — the Features step's switches (create only; claim keeps
           // the type preset).
           ...(claimMode
@@ -472,7 +473,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
             // the wizard no longer collects a tagline (vestigial empty string).
             tagline: st.tagline.trim(),
             description: st.description.trim(),
-            hours: st.hours.map((h) => ({ ...h, extraWindows: [] })),
+            hours: st.hours.map((h) => ({ ...withOrderedWindows(h), extraWindows: [] })),
             // META-ORCH-1290 Leg B (D-1) — the folded create wizard now collects
             // website/gallery too. Issue #1384 removes discovery money from the
             // tier staging blob; both create and claim save one canonical range
@@ -509,7 +510,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
 
       // #4490 D5 — a split day's extra windows (the create RPC took window 1).
       if (st.hours.some((h) => !h.isClosed && (h.extraWindows?.length ?? 0) > 0)) {
-        await upsertBrandHours(venueId, st.hours);
+        await upsertBrandHours(venueId, st.hours.map(withOrderedWindows));
       }
 
       await commitNewVenueDiscoveryRange({

@@ -44,6 +44,7 @@ import { CenteredState } from "../../ui/CenteredState";
 import { GlassCard } from "../../ui/GlassCard";
 import { Sheet } from "../../ui/Sheet";
 import { Skeleton } from "../../ui/Skeleton";
+import { Toast } from "../../ui/Toast";
 import { featureSavedLine, featureSwitchConfirm, otherChangedFeatures } from "./featureSwitchModel";
 import { venueWriteErrorCopy } from "./venueFeaturesCopy";
 
@@ -79,7 +80,12 @@ export function VenueTypeAndFeaturesPanel({
   const requestSpaces = useVenueSuiteStore((s) => s.requestSpaces);
 
   const [pending, setPending] = useState<PendingSwitch | null>(null);
-  const [rowStatus, setRowStatus] = useState<{ key: VenueFeatureKey; text: string; error: boolean } | null>(null);
+  // #4490 N21: what a switch did is told in a toast, never in a line under the
+  // row. The line pushed every row below it down for four seconds, so the next
+  // tap landed on the wrong switch. The row only shows "Saving…" beside the
+  // switch, in a slot that is always there.
+  const [savingKey, setSavingKey] = useState<VenueFeatureKey | null>(null);
+  const [notice, setNotice] = useState<{ text: string; error: boolean; needsSpace: boolean } | null>(null);
   const [typeOpen, setTypeOpen] = useState(false);
   const [typeError, setTypeError] = useState<string | null>(null);
   const [offer, setOffer] = useState<{ type: VenueTypeKey; keys: VenueFeatureKey[]; note: string } | null>(null);
@@ -97,7 +103,8 @@ export function VenueTypeAndFeaturesPanel({
 
   const runSwitch = useCallback(
     (key: VenueFeatureKey, enable: boolean, cascade: readonly VenueFeatureKey[]): void => {
-      setRowStatus({ key, text: "Saving…", error: false });
+      setSavingKey(key);
+      setNotice(null);
       setFeature.mutate(
         {
           key,
@@ -116,11 +123,18 @@ export function VenueTypeAndFeaturesPanel({
               key,
               result.changedKeys,
             );
-            setRowStatus({ key, text: featureSavedLine(result.state.features, others), error: false });
+            setSavingKey(null);
+            setNotice({ text: featureSavedLine(result.state.features, others), error: false, needsSpace: false });
           },
           onError: (error) => {
             const e = error instanceof VenueFeatureError ? error : null;
-            setRowStatus({ key, text: venueWriteErrorCopy("feature", e?.code ?? "unknown", e?.detail ?? null), error: true });
+            setSavingKey(null);
+            setNotice({
+              text: venueWriteErrorCopy("feature", e?.code ?? "unknown", e?.detail ?? null),
+              error: true,
+              // #4490 N61: "Add a space first" gets a button to Spaces.
+              needsSpace: e?.code === "feature_requires" && e?.detail === "space",
+            });
           },
         },
       );
@@ -191,23 +205,33 @@ export function VenueTypeAndFeaturesPanel({
     );
   }
 
+  const openSpaces = (): void => {
+    if (venueId !== null) requestSpaces(venueId);
+    selectModule?.("spaces");
+  };
+
   const renderRow = (key: VenueFeatureKey): React.ReactElement => {
     const feature = state.features[key];
     const needsVerified = key === "table_ordering" && !verified && !feature.enabled;
     const disabled = !canSwitch || setFeature.isPending || needsVerified;
-    const status = rowStatus?.key === key ? rowStatus : null;
+    const saving = savingKey === key;
     return (
       <View key={key} style={styles.row} testID={`venue-feature-row-${key}`}>
         <View style={styles.rowText}>
           <Text style={styles.rowTitle}>{FEATURE_COPY[key].label}</Text>
           <Text style={styles.rowSub}>{FEATURE_COPY[key].summary}</Text>
           {needsVerified ? <Text style={styles.rowNote}>Available once Mingla approves this venue.</Text> : null}
-          {status !== null ? (
-            <Text style={status.error ? styles.rowError : styles.rowSaved} accessibilityLiveRegion="polite">
-              {status.text}
-            </Text>
+          {feature.enabled && (feature.needs ?? []).includes("space") ? (
+            // #4490 N61: on, but guests can't book it until a space exists.
+            <View style={styles.needsRow} testID={`venue-feature-needs-space-${key}`}>
+              <Text style={styles.rowNote}>Needs a space</Text>
+              <Button label="Add a space" variant="secondary" size="sm" onPress={openSpaces} testID={`venue-feature-add-space-${key}`} />
+            </View>
           ) : null}
         </View>
+        <Text style={styles.rowSaving} accessibilityLiveRegion="polite" testID={`venue-feature-status-${key}`}>
+          {saving ? "Saving…" : ""}
+        </Text>
         <BrandSwitch
           value={feature.enabled}
           onValueChange={(next) => onToggle(key, next)}
@@ -219,6 +243,7 @@ export function VenueTypeAndFeaturesPanel({
       </View>
     );
   };
+
 
   const confirm = pending !== null ? featureSwitchConfirm(pending.key, pending.enable, pending.cascade) : null;
   const spaceCount = state.activeSpaceCount;
@@ -311,10 +336,7 @@ export function VenueTypeAndFeaturesPanel({
           label={spaceCount === 0 ? "Add spaces" : "Open Spaces"}
           variant="secondary"
           size="sm"
-          onPress={() => {
-            if (venueId !== null) requestSpaces(venueId);
-            selectModule?.("spaces");
-          }}
+          onPress={openSpaces}
           testID="venue-features-open-spaces"
         />
       </GlassCard>
@@ -356,6 +378,15 @@ export function VenueTypeAndFeaturesPanel({
           {typeError !== null ? <Text style={styles.rowError}>{typeError}</Text> : null}
         </View>
       </Sheet>
+
+      <Toast
+        visible={notice !== null}
+        kind={notice?.error ? "error" : "success"}
+        message={notice?.text ?? ""}
+        onDismiss={() => setNotice(null)}
+        action={notice?.needsSpace ? { label: "Add a space", onPress: openSpaces } : undefined}
+        testID="venue-feature-notice"
+      />
 
       {pending !== null && confirm !== null ? (
         <React.Suspense fallback={null}>
@@ -403,7 +434,8 @@ const styles = StyleSheet.create({
   rowTitle: { ...type.row, color: color.text1 },
   rowSub: { ...type.small, color: color.text2 },
   rowNote: { ...type.caption, color: color.text3 },
-  rowSaved: { ...type.caption, color: color.text2 },
+  needsRow: { flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap", marginTop: space[1] },
+  rowSaving: { ...type.caption, color: color.text3, width: 56, textAlign: "right" },
   rowError: { ...type.caption, color: color.errorText },
   sheetBody: { flex: 1, paddingHorizontal: space[4], paddingTop: space[2], gap: space[2] },
   sheetScroll: { flex: 1 },

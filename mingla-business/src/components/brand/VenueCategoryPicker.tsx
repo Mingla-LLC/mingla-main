@@ -38,7 +38,7 @@ const OPTIONS: {
 const STAY_OPTION: (typeof OPTIONS)[number] = {
   id: "stay",
   label: "Stay",
-  description: "Hotels, resorts & short stays",
+  description: "Hotels, resorts and short stays",
 };
 
 /** "Starts with Menu and Events here" for a type (built features only). */

@@ -219,6 +219,12 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
         </Text>
         <Text style={styles.status}>{status === "live" ? "ON SALE" : status === "paused" ? "NOT TAKING NEW MEMBERS" : status === "archived" ? "ARCHIVED" : "DRAFT"}</Text>
       </View>
+      {plan === null ? (
+        // #4490 N60: New offer › Membership lands here, so say where plans live.
+        <Text style={styles.hint} testID="plan-editor-where">
+          Membership plans live in Members › Plans. After you save, you&apos;ll find this plan there, and its members under Members.
+        </Text>
+      ) : null}
       {stale ? (
         <Banner
           tone="warning"

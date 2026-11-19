@@ -49,12 +49,25 @@ function hm(value: string | null): string {
   return (value ?? "").slice(0, 5);
 }
 
-/** All of a day's windows in order: window 0 then the extras. */
+/**
+ * All of a day's windows, earliest open first. #4490 N16: a second window
+ * typed earlier than the first ("17:00–00:00" then "11:00–15:00") used to be
+ * kept out of order on the review and in what was saved.
+ */
 export function dayWindows(entry: BrandHourEntry): BrandHourWindow[] {
-  return [
+  const windows = [
     { openTime: entry.openTime, closeTime: entry.closeTime },
     ...(entry.extraWindows ?? []),
   ];
+  const at = (w: BrandHourWindow): number => minutesOf(w.openTime) ?? Number.MAX_SAFE_INTEGER;
+  return windows.map((w, i) => ({ w, i })).sort((a, b) => at(a.w) - at(b.w) || a.i - b.i).map((x) => x.w);
+}
+
+/** The same day with its windows in order (window 0 = the earliest). Pure. */
+export function withOrderedWindows(entry: BrandHourEntry): BrandHourEntry {
+  if (entry.isClosed || (entry.extraWindows?.length ?? 0) === 0) return entry;
+  const [first, ...rest] = dayWindows(entry);
+  return { ...entry, openTime: first.openTime, closeTime: first.closeTime, extraWindows: rest };
 }
 
 function minutesOf(value: string | null): number | null {
@@ -76,16 +89,20 @@ export function windowBounds(w: BrandHourWindow): [number, number] | null {
  * Mirrors the server: every open window needs both times, open and close
  * differ, at most four windows a day, and a day's windows never overlap.
  */
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
 export function hoursWeekIssue(entries: readonly BrandHourEntry[]): string | null {
   for (const entry of entries) {
     if (entry.isClosed) continue;
+    // #4490 N7: every message names the day, so the host knows where to look.
+    const day = DAY_NAMES[entry.weekday] ?? "A day";
     const windows = dayWindows(entry);
-    if (windows.length > 4) return "A day can have at most four windows.";
+    if (windows.length > 4) return `${day}: a day can have at most four windows.`;
     for (const w of windows) {
       if ((w.openTime ?? "").length === 0 || (w.closeTime ?? "").length === 0) {
-        return "Open and close times are required for open days.";
+        return `${day}: open and close times are required for open days.`;
       }
-      if (hm(w.openTime) === hm(w.closeTime)) return "Open and close can't be the same time.";
+      if (hm(w.openTime) === hm(w.closeTime)) return `${day}: open and close can't be the same time.`;
     }
     const bounds = windows.map(windowBounds);
     for (let i = 0; i < bounds.length; i++) {
@@ -93,7 +110,7 @@ export function hoursWeekIssue(entries: readonly BrandHourEntry[]): string | nul
         const a = bounds[i];
         const b = bounds[j];
         if (a !== null && b !== null && a[0] < b[1] && b[0] < a[1]) {
-          return "Two windows on the same day overlap. Change one so they don't.";
+          return `${day}: two windows overlap. Change one so they don't.`;
         }
       }
     }

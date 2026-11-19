@@ -36,8 +36,10 @@ import { Button } from "../../../ui/Button";
 import { CenteredState } from "../../../ui/CenteredState";
 import { Input } from "../../../ui/Input";
 import { MoneyField } from "../../../ui/MoneyField";
-import { NumberStepper } from "../../../ui/NumberStepper";
+import { NumberStepper, NumberStepperPair } from "../../../ui/NumberStepper";
 import { OptionCard } from "../../../ui/OptionCard";
+import { useBrandHours } from "../../../../hooks/useBrandHours";
+import { openingHoursDefault } from "../hoursModel";
 import { Chip, Segmented } from "../../../ui/Pill";
 import { SelectSheet } from "../../../ui/SelectSheet";
 import { Skeleton } from "../../../ui/Skeleton";
@@ -112,6 +114,23 @@ export const HourEditor = forwardRef<VenueModuleLeaveHandle, HourEditorProps>(fu
       setBaseline(JSON.stringify(d));
     }
   }, [offer]);
+  // #4490 N59: a new By the hour offer starts on the venue's opening days and
+  // hours (Mon–Fri 08:00–20:00), not every day 09:00–21:00. Applied once,
+  // before the host types, and kept as the baseline so it is not "unsaved".
+  const hoursQuery = useBrandHours(brandId, venueId);
+  const seededFromHours = useRef(false);
+  useEffect(() => {
+    if (seededFromHours.current || offerId !== null || currentId !== null) return;
+    if (hoursQuery.data === undefined) return;
+    seededFromHours.current = true;
+    const opening = openingHoursDefault(hoursQuery.data);
+    if (opening === null) return;
+    const d = { ...hourDraftFrom(null), weekdays: opening.weekdays, opens: opening.open, closes: opening.close };
+    if (JSON.stringify(draft) === baseline) {
+      setDraft(d);
+      setBaseline(JSON.stringify(d));
+    }
+  }, [baseline, currentId, draft, hoursQuery.data, offerId]);
   const dirty = JSON.stringify(draft) !== baseline;
   const [showErrors, setShowErrors] = useState(false);
   const [busy, setBusy] = useState<"save" | "publish" | null>(null);
@@ -328,14 +347,10 @@ export const HourEditor = forwardRef<VenueModuleLeaveHandle, HourEditorProps>(fu
             ) : (
               <>
                 <Input value={draft.unitName} onChangeText={(unitName) => patch({ unitName: unitName.slice(0, 50) })} placeholder="Pool table" accessibilityLabel="Unit name" error={showErrors ? issues.place : null} testID="hour-editor-unit-name" />
-                <View style={styles.row2}>
-                  <View style={styles.cell}>
-                    <NumberStepper label="How many" value={draft.unitCount} min={1} max={50} onChange={(unitCount) => patch({ unitCount })} testID="hour-editor-unit-count" />
-                  </View>
-                  <View style={styles.cell}>
-                    <NumberStepper label="Guests each" value={draft.unitSeats} min={1} max={1000} onChange={(unitSeats) => patch({ unitSeats })} testID="hour-editor-unit-seats" />
-                  </View>
-                </View>
+                <NumberStepperPair>
+                  <NumberStepper label="How many" value={draft.unitCount} min={1} max={50} onChange={(unitCount) => patch({ unitCount })} testID="hour-editor-unit-count" />
+                  <NumberStepper label="Guests each" value={draft.unitSeats} min={1} max={1000} onChange={(unitSeats) => patch({ unitSeats })} testID="hour-editor-unit-seats" />
+                </NumberStepperPair>
                 <Text style={styles.hint}>
                   {draft.unitName.trim().length > 0
                     ? draft.unitCount === 1

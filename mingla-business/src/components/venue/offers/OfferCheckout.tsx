@@ -15,11 +15,13 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
+  type ViewStyle,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -416,6 +418,16 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
     </View>
   );
 
+  const payCaption = (
+    <Text
+      style={[styles.caption, { color: blocker !== null ? palette.secondaryText : palette.tertiaryText }]}
+      testID="issue-4490-checkout-pay-reason"
+    >
+      {blocker ??
+        "Card, bank transfer or USSD on the secure payment page. Your places are held while you pay."}
+    </Text>
+  );
+
   const changeHeld =
     held !== null ? (
       <Pressable
@@ -560,13 +572,16 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
         {wide ? (
           <View style={styles.twoCol}>
             <View style={styles.leftCol}>{left}</View>
-            <View style={styles.rightCol}>{summaryCard}</View>
+            {/* #4490 N30: the summary stays in view beside the form. */}
+            <View style={[styles.rightCol, Platform.OS === "web" ? (STICKY_SUMMARY as unknown as ViewStyle) : null]}>{summaryCard}</View>
           </View>
         ) : (
           <View style={styles.column}>
             {left}
             {holdLive ? summaryCard : null}
-            {payBlock}
+            {/* #4490 N41: one primary at a time. With the pinned bar showing
+                Pay, the inline button is not drawn (its line stays). */}
+            {showBar && totalText !== null ? payCaption : payBlock}
           </View>
         )}
       </ScrollView>
@@ -590,6 +605,8 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
     </View>
   );
 }
+
+const STICKY_SUMMARY = { position: "sticky", top: space[4] };
 
 const styles = StyleSheet.create({
   memberChoice: { flexDirection: "row", alignItems: "center", gap: space[3], borderWidth: 1 },

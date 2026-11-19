@@ -779,6 +779,10 @@ function GuestVenueReservationBody({
     }
   };
 
+  const previewTotalLabel =
+    activePreview?.requiresPayment === true
+      ? formatMoney(activePreview.totalCents, activePreview.currency)
+      : null;
   // ── #4420 D-V3 — report the live bar to the page (Reservations tab). ──
   const barStep: "pick" | "details" =
     step === "details" && selectedSlot !== undefined ? "details" : "pick";
@@ -789,10 +793,7 @@ function GuestVenueReservationBody({
     partySize,
     occasion,
     noTables: availabilitySettled && slots.length === 0,
-    totalLabel:
-      activePreview?.requiresPayment === true
-        ? formatMoney(activePreview.totalCents, activePreview.currency)
-        : null,
+    totalLabel: previewTotalLabel,
     requiresPayment: activePreview?.requiresPayment ?? null,
     reviewing: reviewQuote !== null,
   });
@@ -864,6 +865,28 @@ function GuestVenueReservationBody({
             <Text style={[styles.yourTableTitle, { color: palette.primaryText }]}>{completedTable.summary}</Text>
             {completedTable.holdLine !== null ? <Text style={[styles.body, { color: palette.secondaryText }]}>{completedTable.holdLine}</Text> : null}
             {completedTable.minSpendLine !== null ? <Text style={[styles.body, { color: palette.secondaryText }]}>{completedTable.minSpendLine}</Text> : null}
+          </View>
+        ) : null}
+        {completedTable === null && date !== null ? (
+          // #4490 N56: the same recap every other offer's booking page shows:
+          // the day, time, party and table, and what the guest can do next.
+          <View testID="issue-4490-table-recap">
+            <Text style={[styles.yourTableTitle, { color: palette.primaryText }]}>
+              {[
+                venueBarDayLabel(date),
+                selectedSlot?.slotLocalLabel ?? null,
+                `${partySize} ${partySize === 1 ? "guest" : "guests"}`,
+                pickedLive !== null && pickedLive.names.length > 0 ? pickedLive.names.join(" + ") : null,
+                occasion.trim().length > 0 ? occasion.trim() : null,
+              ]
+                .filter((x): x is string => x !== null)
+                .join(" · ")}
+            </Text>
+            {!requested ? (
+              <Text style={[styles.body, { color: palette.secondaryText }]}>
+                {`To change or cancel, use the link in your confirmation email${completed.email !== null ? ` to ${completed.email}` : ""}, or contact ${venueName ?? "the venue"}.`}
+              </Text>
+            ) : null}
           </View>
         ) : null}
         {requested ? (
@@ -1428,12 +1451,8 @@ function GuestVenueReservationBody({
           >
             {BUYER_CLAIM_COPY.checkoutPromise.booking}
           </Text>
-          <Input
-            value={occasion}
-            onChangeText={setOccasion}
-            placeholder="Occasion (optional)"
-            accessibilityLabel="Occasion"
-          />
+          {/* #4490 N53: the occasion is the chip picked on the step before
+              (carried over); no second free-text box here. */}
           <Input
             value={notes}
             onChangeText={setNotes}
@@ -1625,7 +1644,9 @@ function GuestVenueReservationBody({
                 ? "Send request"
                 : activePreview?.requiresPayment
                 ? reviewQuote === null
-                  ? "Confirm & pay"
+                  ? previewTotalLabel !== null
+                    ? `Confirm · ${previewTotalLabel}`
+                    : "Confirm reservation"
                   : "Confirm updated total"
                 : "Confirm reservation"
             }

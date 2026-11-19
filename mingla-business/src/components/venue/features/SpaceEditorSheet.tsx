@@ -39,7 +39,7 @@ const SETTING_OPTIONS: ReadonlyArray<{ key: SpaceSetting; label: string }> = [
 
 const CAPACITY_MAX = 100_000;
 
-export function emptySpaceDraft(name = ""): SpaceDraft {
+export function emptySpaceDraft(name = "", hireOn = true): SpaceDraft {
   return {
     name,
     // #4490 D14 — "Outdoor area" / "Rooftop" start outdoor.
@@ -47,7 +47,8 @@ export function emptySpaceDraft(name = ""): SpaceDraft {
     capacityStanding: null,
     capacitySeated: null,
     photos: [],
-    canBeHired: true,
+    // #4490 N57: only starts "can be hired" when Private hire is on.
+    canBeHired: hireOn,
     stepFree: null,
     amenities: [],
   };
@@ -75,6 +76,10 @@ export interface SpaceEditorSheetProps {
   combinations: readonly VenueSpaceCombination[];
   /** Label for the amenities list ("Games here" at a play venue). */
   amenitiesLabel: string;
+  /** #4490 N18: examples that fit the venue's type. */
+  amenitiesPlaceholder?: string;
+  /** #4490 N57: whether Private hire is on (a new space starts hireable only then). */
+  hireOn?: boolean;
   canEdit: boolean;
   saving: boolean;
   deleting: boolean;
@@ -91,6 +96,8 @@ export function SpaceEditorSheet({
   initialName = "",
   combinations,
   amenitiesLabel,
+  amenitiesPlaceholder = "What guests will find here…",
+  hireOn = true,
   canEdit,
   saving,
   deleting,
@@ -102,8 +109,8 @@ export function SpaceEditorSheet({
 }: SpaceEditorSheetProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const baseline = useMemo(
-    () => (spaceRow !== null ? draftFromSpace(spaceRow) : emptySpaceDraft(initialName)),
-    [initialName, spaceRow],
+    () => (spaceRow !== null ? draftFromSpace(spaceRow) : emptySpaceDraft(initialName, hireOn)),
+    [hireOn, initialName, spaceRow],
   );
   const [draft, setDraft] = useState<SpaceDraft>(baseline);
   const [showErrors, setShowErrors] = useState(false);
@@ -289,7 +296,7 @@ export function SpaceEditorSheet({
             helper="Type one and press enter. Up to 20."
             values={draft.amenities}
             onChange={(amenities) => patch({ amenities: amenities.slice(0, 20).map((a) => a.slice(0, 40)) })}
-            placeholder="Pool tables, karaoke…"
+            placeholder={amenitiesPlaceholder}
             editable={canEdit}
             testID="space-editor-amenities"
           />

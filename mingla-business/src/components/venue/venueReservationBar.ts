@@ -22,7 +22,7 @@ export const venueBarDayLabel = (value: string): string => {
  *
  * | Step    | Title                 | Subtitle               | CTA            |
  * | pick    | "Fri 20 Nov · 7:30 PM"| "4 guests · Date night"| Continue       |
- * | details | "$63.90 today"        | "Deposit · Fri 20 Nov…"| Confirm & pay  |
+ * | details | "$63.90 today"        | "Deposit · Fri 20 Nov…"| Confirm · $63.90 |
  * | none    | "Thu 19 Nov"          | "No tables this day"   | Continue (off) |
  */
 export const venueReservationBarCopy = (input: {
@@ -40,12 +40,14 @@ export const venueReservationBarCopy = (input: {
   const when =
     input.timeLabel === null ? input.dayLabel : `${input.dayLabel} · ${input.timeLabel}`;
   if (input.step === "details" && input.timeLabel !== null) {
-    const ctaLabel =
-      input.requiresPayment === false
-        ? "Confirm reservation"
-        : input.reviewing
-          ? "Confirm updated total"
-          : "Confirm & pay";
+    // #4490 N53: never "Confirm & pay" with nothing to pay. "Confirm · ₦x"
+    // when a hold is due; "Confirm reservation" when nothing is (or the price
+    // is still loading).
+    const ctaLabel = input.reviewing
+      ? "Confirm updated total"
+      : input.requiresPayment === true && input.totalLabel !== null
+        ? `Confirm · ${input.totalLabel}`
+        : "Confirm reservation";
     if (input.requiresPayment === true && input.totalLabel !== null) {
       return {
         title: `${input.totalLabel} today`,

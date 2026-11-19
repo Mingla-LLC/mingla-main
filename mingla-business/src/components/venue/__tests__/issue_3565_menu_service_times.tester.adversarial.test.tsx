@@ -284,7 +284,8 @@ describe("#3565 adversarial service-window truth", () => {
 
   test("all-day day subsets remain explicit and save the exact ISO days", () => {
     renderCategory(menu({ id: "lunch", name: "Lunch" }));
-    for (const isoDay of [2, 4, 6, 7]) {
+    // TEST-MOD-APPROVED #4490 N71: chips start off (every day); tapping a day picks it.
+    for (const isoDay of [1, 3, 5]) {
       call(byTestID(`menu-category-day-${isoDay}`), "onPress");
     }
     expect(textOf(byTestID("menu-category-window-summary"))).toBe(

@@ -119,6 +119,10 @@ export interface VenueCapacityPool {
 }
 
 export interface VenueOffer {
+  /** #4490 N28 (backend B6): sells on a day its hours fall outside the venue's opening hours. */
+  outsideOpeningHours?: boolean;
+  /** Those days, 0 = Mon … 6 = Sun. */
+  outsideOpeningHoursDays?: number[];
   id: string;
   venueId: string;
   kind: VenueOfferKind;
@@ -600,6 +604,12 @@ export interface VenueDay {
   bookings: VenueDayBooking[];
   /** #4490 P6 — members checked in today (0 when the venue has none). */
   membersIn?: number;
+  /**
+   * #4490 N47 (backend B7): money actually received on the venue's service day
+   * (online payments for any date, at-venue payments, gate sales, table
+   * deposits, less refunds). Null on an older read.
+   */
+  collectedTodayMinor?: number | null;
 }
 
 // ------------------------------------------------------------- check-in

@@ -131,7 +131,8 @@ function EntryOfferBody({
           : total !== null
             ? `${guestsText(selection.guests)} · ${total}`
             : guestsText(selection.guests),
-      ctaLabel: "Continue",
+      // #4490 N41: the bar uses the pane's own words.
+      ctaLabel: verb,
       enabled: ready,
       onPress: go,
     });
@@ -156,6 +157,9 @@ function EntryOfferBody({
       )}
       {selection.offerState === "ready" && selection.selectedTile?.soldOnline && !gateOnly ? (
         <>
+          {/* #4490 N41: with the page's bar showing the same action, the
+              inline button is not drawn, so there is one primary at a time. */}
+          {onBookingBarChange === undefined ? (
           <EntryButton
             palette={palette}
             theme={theme}
@@ -165,6 +169,7 @@ function EntryOfferBody({
             accessibilityLabel={total !== null ? `${verb}, ${total}, go to checkout` : verb}
             testID="issue-4490-entry-continue"
           />
+          ) : null}
           {selection.problem !== null ? (
             <Text style={[styles.reason, { color: palette.secondaryText }]} testID="issue-4490-entry-reason">
               {selection.problem}

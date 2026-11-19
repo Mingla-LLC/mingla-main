@@ -45,6 +45,7 @@ export interface HireFormProps extends EntryThemeProps {
 
 export function HireForm({ selection, palette, theme, compact = false, testID = "issue-4490-hire" }: HireFormProps): React.ReactElement {
   const { offer } = selection;
+  const [clampNote, setClampNote] = React.useState<string | null>(null);
   const tones = statusOn(palette);
   const hair = neutralHair(palette);
   if (selection.offerState === "loading") {
@@ -121,29 +122,30 @@ export function HireForm({ selection, palette, theme, compact = false, testID = 
           value={selection.guests}
           min={selection.range.min}
           max={selection.range.max}
-          onChange={selection.setGuests}
+          onChange={(n) => {
+            setClampNote(null);
+            selection.setGuests(n);
+          }}
+          typeable
+          onClamp={(typed, clamped) =>
+            setClampNote(
+              typed > clamped
+                ? `${typed.toLocaleString("en-GB")} is more than any space here takes, so we set ${clamped.toLocaleString("en-GB")}.`
+                : `The smallest group here is ${clamped.toLocaleString("en-GB")}, so we set ${clamped.toLocaleString("en-GB")}.`,
+            )
+          }
           decrementLabel="One guest fewer"
           incrementLabel="One guest more"
-          valueLabel={`${selection.guests} guests`}
+          valueLabel={`${selection.guests} guests. Type a number or use minus and plus`}
           testID={`${testID}-guests`}
         />
       </View>
-      <View style={styles.quickRow}>
-        {[-10, -1, 1, 10].map((step) => (
-          <OfferingChoiceChip
-            key={step}
-            palette={palette}
-            label={step > 0 ? `+${step}` : String(step)}
-            selected={false}
-            disabled={selection.guests + step < selection.range.min || selection.guests + step > selection.range.max}
-            onPress={() => selection.setGuests(selection.guests + step)}
-            role="button"
-            accessibilityLabel={`${step > 0 ? "Add" : "Remove"} ${Math.abs(step)} ${Math.abs(step) === 1 ? "guest" : "guests"}`}
-            testID={`${testID}-guests-${step}`}
-          />
-        ))}
-      </View>
-      {selection.guests >= selection.range.max ? (
+      {clampNote !== null ? (
+        <Text style={[styles.small, { color: palette.secondaryText }]} accessibilityLiveRegion="polite" testID={`${testID}-guests-clamped`}>
+          {clampNote}
+        </Text>
+      ) : null}
+      {clampNote === null && selection.guests >= selection.range.max ? (
         <Text style={[styles.small, { color: palette.secondaryText }]}>{`${selection.range.max.toLocaleString("en-GB")} is the most any space here takes.`}</Text>
       ) : null}
 

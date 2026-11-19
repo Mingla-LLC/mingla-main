@@ -18,6 +18,8 @@ export const venueFeatureKeys = {
   specialDays: (brandId: string, venueId: string): readonly string[] =>
     ["venueSpecialDays", brandId, venueId] as const,
   eventVenue: (eventId: string): readonly string[] => ["eventVenueLink", eventId] as const,
+  /** #4490 N20: switches the add-venue Features step asked for that the server refused. */
+  startRefused: (venueId: string): readonly string[] => ["venueStartRefused", venueId] as const,
   // #4490 P2 — offers, day limits, the venue's day and the door list.
   offers: (brandId: string, venueId: string): readonly string[] =>
     ["venueOffers", brandId, venueId] as const,

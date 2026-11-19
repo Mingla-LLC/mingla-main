@@ -408,9 +408,15 @@ export function VenueMenuModule({
     setItemSaveFailure(null);
   }, [optionsSaving, optionsDirty]);
 
+  // #4490 N19: one item save at a time. A second tap (or a second "Add item"
+  // opened while the first save was still going) used to call mutate again,
+  // and react-query only runs the per-call callbacks of the LAST call, so the
+  // first item could vanish with no error.
+  const itemSaveInFlight = useRef(false);
   const handleSaveItem = useCallback(
     (input: MenuItemSheetSaveInput): void => {
       if (itemSheetMenuId === null) return;
+      if (itemSaveInFlight.current || upsertItem.isPending) return;
       setSaveError(false);
       setItemSaveFailure(null);
       // #3645 — `menu_items.currency` cannot be empty, and `currency` here is
@@ -433,6 +439,7 @@ export function VenueMenuModule({
         editingItem !== null
           ? editingItem.sortOrder
           : (parentMenu?.items.length ?? 0);
+      itemSaveInFlight.current = true;
       upsertItem.mutate(
         {
           id: editingItem?.id,
@@ -457,6 +464,9 @@ export function VenueMenuModule({
           },
           onError: (error) =>
             setItemSaveFailure(classifyMenuTextSaveFailure(error, "item")),
+          onSettled: () => {
+            itemSaveInFlight.current = false;
+          },
         },
       );
     },
@@ -1282,11 +1292,15 @@ export function VenueMenuModule({
           {canMutate ? (
             <Pressable
               onPress={() => openAddItem(menu.id)}
+              // #4490 N19: waits for the previous item save to finish.
+              disabled={upsertItem.isPending}
               accessibilityRole="button"
               accessibilityLabel={`Add item to ${menu.name}`}
+              accessibilityState={{ disabled: upsertItem.isPending }}
               style={({ pressed }) => [
                 styles.addItemRow,
                 pressed && styles.pressed,
+                upsertItem.isPending && styles.addItemBusy,
               ]}
               testID={`venue-menu-add-item-${menu.id}`}
             >
@@ -1328,6 +1342,7 @@ export function VenueMenuModule({
       {spotsSheetOpen ? (
         <React.Suspense fallback={null}>
           <LazyVenueSpotsSheet
+            venueId={venueId ?? null}
             visible
             onClose={() => setSpotsSheetOpen(false)}
             brandId={brandId}
@@ -1454,6 +1469,7 @@ function TextControl({
 }
 
 const styles = StyleSheet.create({
+  addItemBusy: { opacity: 0.5 },
   host: {
     paddingHorizontal: space[4],
     paddingTop: space[4],

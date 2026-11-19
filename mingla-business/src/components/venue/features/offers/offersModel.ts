@@ -6,6 +6,7 @@
 
 import { formatCurrency } from "../../../../utils/currency";
 import { weekdaysSummary } from "../../../ui/fieldModels";
+import { builtPreset, type VenueFeatureKey, type VenueTypeKey } from "../../../../types/venueFeatures";
 import type {
   BusyRule,
   CapacityOverride,
@@ -72,6 +73,33 @@ export const NEW_OFFER_CARDS: readonly NewOfferCard[] = [
   // #4490 P6 — a monthly plan, built in Members › Plans.
   { key: "membership", label: "Membership", helper: "Monthly access with perks. Coworking, clubs.", icon: "star", built: true },
 ];
+
+/** The feature each new-offer card sells under. */
+export const OFFER_CARD_FEATURE: Readonly<Record<NewOfferCard["key"], VenueFeatureKey>> = {
+  entry: "entry",
+  group_package: "group_packages",
+  private_hire: "private_hire",
+  by_the_hour: "by_the_hour",
+  table_reservations: "table_reservations",
+  membership: "memberships",
+};
+
+/**
+ * #4490 N57: the New offer cards follow the venue's features and type. Cards
+ * for a feature that is on, or that the type usually uses, come first; the
+ * rest wait behind "More ways to sell". Pure.
+ */
+export function splitOfferCards(
+  cards: readonly NewOfferCard[],
+  enabled: (key: VenueFeatureKey) => boolean,
+  category: string | null,
+): { main: NewOfferCard[]; more: NewOfferCard[] } {
+  const preset = category === null ? [] : builtPreset(category as VenueTypeKey);
+  const isMain = (c: NewOfferCard): boolean => enabled(OFFER_CARD_FEATURE[c.key]) || preset.includes(OFFER_CARD_FEATURE[c.key]);
+  const main = cards.filter(isMain);
+  if (main.length === 0) return { main: [...cards], more: [] };
+  return { main, more: cards.filter((c) => !isMain(c)) };
+}
 
 // ---------------------------------------------------------------- money
 
@@ -461,7 +489,13 @@ export function priceColumn(offer: VenueOffer, currency: string | null): string 
     const lowest = Math.min(...offer.options.map((o) => o.priceMinor));
     const max = Math.max(...offer.options.map((o) => o.guestMax));
     const perGuest = offer.options.some((o) => o.unit === "guest");
-    return `from ${money(lowest, currency)}${perGuest ? " a guest" : ""} · up to ${max.toLocaleString("en-GB")} guests`;
+    // #4490 N68: a weekend price is named with its days, never folded into "from".
+    const dayPrices = offer.options.filter((o) => o.weekdays.length > 0 && o.weekdays.length < 7);
+    const days =
+      dayPrices.length > 0
+        ? ` · ${dayPrices.map((o) => `${weekdaysSummary(o.weekdays)} ${money(o.priceMinor, currency)}`).join(", ")}`
+        : "";
+    return `from ${money(lowest, currency)}${perGuest ? " a guest" : ""}${days} · up to ${max.toLocaleString("en-GB")} guests`;
   }
   if (offer.kind === "by_the_hour") {
     const lowest = Math.min(...offer.options.map((o) => o.priceMinor));

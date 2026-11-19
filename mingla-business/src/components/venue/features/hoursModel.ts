@@ -85,3 +85,28 @@ export function closedDayCopy(tableReservationsOn: boolean): string {
     ? "Guests see you as closed that day and can't book a table."
     : "Guests see you as closed that day.";
 }
+
+/**
+ * #4490 N59/N66 — an editor's starting days and hours from the venue's
+ * opening hours: the open days, and the most common first window among them
+ * (earliest open on a tie). Null when no day is open, so the editor keeps its
+ * own default. Pure.
+ */
+export function openingHoursDefault(
+  hours: readonly { weekday: number; openTime: string | null; closeTime: string | null; isClosed: boolean }[] | null | undefined,
+): { weekdays: number[]; open: string; close: string } | null {
+  const open = (hours ?? []).filter((h) => !h.isClosed && h.openTime !== null && h.closeTime !== null);
+  if (open.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const h of open) {
+    const key = `${(h.openTime as string).slice(0, 5)}-${(h.closeTime as string).slice(0, 5)}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const best = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+  const [o, c] = best.split("-");
+  return {
+    weekdays: [...new Set(open.map((h) => h.weekday))].sort((a, b) => a - b),
+    open: o,
+    close: c,
+  };
+}

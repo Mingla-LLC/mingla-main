@@ -62,7 +62,8 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
     <View style={styles.host}>
       <Text style={styles.title}>Opening hours</Text>
       <Text style={styles.helper}>
-        Mon to Sat 09:00–17:00 to start, Sunday closed. Add a window for a split day, and close after midnight if you need to.
+        {/* #4490 N37: no fixed "Mon to Sat 09:00–17:00" line that goes stale after edits. */}
+        Set the days and times you open. Add a window for a split day, and close after midnight if you need to.
       </Text>
       {/* #4490 D5 — the same multi-window editor as Availability. */}
       <BrandHoursEditor

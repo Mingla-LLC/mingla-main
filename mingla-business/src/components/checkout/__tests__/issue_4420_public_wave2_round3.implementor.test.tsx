@@ -127,7 +127,8 @@ describe("issue #4420 round 3", () => {
     expect(venueReservationBarCopy({ ...base, step: "details" })).toEqual({
       title: "$63.90 today",
       subtitle: "Deposit · Fri 20 Nov · 7:30 PM · 4 guests",
-      ctaLabel: "Confirm & pay",
+      // TEST-MOD-APPROVED #4490 (N53): the bar names the amount due.
+      ctaLabel: "Confirm · $63.90",
     });
     expect(
       venueReservationBarCopy({ ...base, step: "details", requiresPayment: false, totalLabel: null })

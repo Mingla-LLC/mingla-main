@@ -516,6 +516,8 @@ export function MenuItemSheet({
               value={name}
               onChangeText={handleNameChange}
               onBlur={() => setNameBlurred(true)}
+              // #4490 N12: Enter saves (handleSave refuses while a save runs).
+              onSubmitEditing={handleSave}
               placeholder="e.g. Margherita"
               accessibilityLabel="Item name"
               accessibilityHint={menuTextAccessibilityHint(
@@ -754,30 +756,6 @@ export function MenuItemSheet({
             </Text>
           ) : null}
 
-          <Button
-            label={
-              saveFailureMessage !== null
-                ? "Try again"
-                : isEdit
-                  ? "Save item"
-                  : "Add item"
-            }
-            onPress={handleSave}
-            variant="primary"
-            size="lg"
-            fullWidth
-            loading={saving}
-            disabled={!canSave}
-            accessibilityLabel={
-              optionsDirty
-                ? `${isEdit ? "Save item" : "Add item"}. Unavailable. ${MENU_ITEM_OPTIONS_HOLD_NOTE}`
-                : saveFailureMessage !== null
-                  ? "Try saving item again"
-                  : undefined
-            }
-            style={styles.saveBtn}
-            testID="menu-item-save"
-          />
 
           {showDelete ? (
             <Button
@@ -793,6 +771,33 @@ export function MenuItemSheet({
             />
           ) : null}
         </ScrollView>
+        {/* #4490 N12: the primary button is pinned in the sheet footer. */}
+        <View style={styles.footer}>
+            <Button
+              label={
+                saveFailureMessage !== null
+                  ? "Try again"
+                  : isEdit
+                    ? "Save item"
+                    : "Add item"
+              }
+              onPress={handleSave}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={saving}
+              disabled={!canSave}
+              accessibilityLabel={
+                optionsDirty
+                  ? `${isEdit ? "Save item" : "Add item"}. Unavailable. ${MENU_ITEM_OPTIONS_HOLD_NOTE}`
+                  : saveFailureMessage !== null
+                    ? "Try saving item again"
+                    : undefined
+              }
+              style={styles.saveBtn}
+              testID="menu-item-save"
+            />
+        </View>
       </View>
 
       {showDelete ? (
@@ -966,6 +971,11 @@ function ToggleRow({
 }
 
 const styles = StyleSheet.create({
+  footer: {
+    paddingTop: space[3],
+    borderTopWidth: 1,
+    borderTopColor: color.line,
+  },
   body: {
     flex: 1,
     paddingHorizontal: space[4],
@@ -1078,7 +1088,7 @@ const styles = StyleSheet.create({
     marginTop: space[6],
   },
   saveBtn: {
-    marginTop: space[6],
+    marginTop: 0,
   },
   deleteBtn: {
     marginTop: space[2],

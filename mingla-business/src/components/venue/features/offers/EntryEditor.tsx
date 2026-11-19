@@ -51,7 +51,7 @@ import { CenteredState } from "../../../ui/CenteredState";
 import { DurationSelect } from "../../../ui/DurationSelect";
 import { weekdaysSummary } from "../../../ui/fieldModels";
 import { Input } from "../../../ui/Input";
-import { NumberStepper } from "../../../ui/NumberStepper";
+import { NumberStepper, NumberStepperPair } from "../../../ui/NumberStepper";
 import { OptionCard } from "../../../ui/OptionCard";
 import { SelectSheet } from "../../../ui/SelectSheet";
 import { useScrollToTopOnChange } from "../../../ui/useScrollToTopOnChange";
@@ -993,7 +993,7 @@ function RulesStep({ draft, patch, showErrors, disabled }: StepProps): React.Rea
         <View style={styles.subCard}>
           {draft.customLadder.map((rung, i) => (
             <View key={`rung-${i}`} style={styles.rungRow}>
-              <View style={styles.grow}>
+              <NumberStepperPair>
                 <NumberStepper
                   label="Hours before it starts"
                   value={Math.round(rung.minMinutesBefore / 60)}
@@ -1006,8 +1006,6 @@ function RulesStep({ draft, patch, showErrors, disabled }: StepProps): React.Rea
                   }
                   testID={`entry-rung-${i}-hours`}
                 />
-              </View>
-              <View style={styles.grow}>
                 <NumberStepper
                   label="% they get back"
                   value={Math.round(rung.refundBps / 100)}
@@ -1018,9 +1016,10 @@ function RulesStep({ draft, patch, showErrors, disabled }: StepProps): React.Rea
                   }
                   testID={`entry-rung-${i}-pct`}
                 />
-              </View>
+              </NumberStepperPair>
               {draft.customLadder.length > 1 ? (
                 <Button
+                  style={styles.rungRemove}
                   label="Remove"
                   variant="ghost"
                   size="sm"
@@ -1112,7 +1111,13 @@ function ReviewStep({
     {
       key: "when",
       label: "On sale",
-      value: `${weekdaysSummary(draft.scheduleWeekdays)} · ${timeRangeLabel(draft.startTime, draft.endTime) ?? ""}${
+      // #4490 N58: the days it really sells: the on-sale days that at least one
+      // price is sold on (a Mon–Fri price on an every-day schedule reads Mon to Fri).
+      value: `${weekdaysSummary(
+        draft.scheduleWeekdays.filter((d) =>
+          draft.options.some((o) => o.weekdays.length === 0 || o.weekdays.includes(d)),
+        ),
+      )} · ${timeRangeLabel(draft.startTime, draft.endTime) ?? ""}${
         draft.style === "timed_session" ? ` · ${draft.sessionMinutes} min sessions for ${draft.sessionCapacity}` : ""
       }`,
     },
@@ -1218,7 +1223,8 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[2] },
   switchTitle: { ...type.row, color: color.text1 },
   subCard: { gap: space[3], padding: space[3], borderRadius: radius.md, borderWidth: 1, borderColor: color.line },
-  rungRow: { flexDirection: "row", gap: space[3], alignItems: "flex-end", flexWrap: "wrap" },
+  rungRow: { gap: space[1] },
+  rungRemove: { alignSelf: "flex-end" },
   noteRow: { flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" },
   readiness: { gap: space[2] },
   reviewList: { gap: space[2] },

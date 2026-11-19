@@ -177,14 +177,30 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
     [setHoursRow],
   );
 
+  // #4490 N7: the bulk row keeps what was picked and opens a closed day only
+  // once it has both times, so "Open and close times are required" never
+  // flashes (and shifts the layout) while the second field is still empty.
+  const [bulkOpen, setBulkOpen] = useState<string>("");
+  const [bulkClose, setBulkClose] = useState<string>("");
   const onWebBulkTime = useCallback(
     (field: "open" | "close", raw: string): void => {
       const hm = normalizeTime24(raw);
       if (hm === null || selectedDays.size === 0) return;
-      const key = field === "open" ? "openTime" : "closeTime";
-      setHoursRows(Array.from(selectedDays), { isClosed: false, [key]: hm });
+      const open = field === "open" ? hm : bulkOpen;
+      const close = field === "close" ? hm : bulkClose;
+      if (field === "open") setBulkOpen(hm);
+      else setBulkClose(hm);
+      onChange(
+        hours.map((r) => {
+          if (!selectedDays.has(r.weekday)) return r;
+          const nextOpen = open.length > 0 ? open : r.isClosed ? null : r.openTime;
+          const nextClose = close.length > 0 ? close : r.isClosed ? null : r.closeTime;
+          if (nextOpen === null || nextClose === null) return r; // wait for the other time
+          return { ...r, isClosed: false, openTime: nextOpen, closeTime: nextClose };
+        }),
+      );
     },
-    [selectedDays, setHoursRows],
+    [bulkClose, bulkOpen, hours, onChange, selectedDays],
   );
 
   return (
@@ -258,7 +274,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
           <View style={styles.timeRow}>
             <TimeField
               label="Opens (all selected)"
-              value=""
+              value={bulkOpen}
               disabled={disabled}
               onChangeValue={(v) => onWebBulkTime("open", v)}
               accessibilityLabel="Opening time for selected days"
@@ -266,7 +282,7 @@ export const BrandHoursEditor: React.FC<BrandHoursEditorProps> = ({
             />
             <TimeField
               label="Closes (all selected)"
-              value=""
+              value={bulkClose}
               disabled={disabled}
               onChangeValue={(v) => onWebBulkTime("close", v)}
               accessibilityLabel="Closing time for selected days"

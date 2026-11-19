@@ -14,8 +14,11 @@
 import type { VenueModule } from "../../types/venueReservation";
 import {
   BUILT_FEATURES,
+  builtPreset,
+  featureSetFrom,
   type VenueFeatureKey,
   type VenueFeatureSet,
+  type VenueTypeKey,
 } from "../../types/venueFeatures";
 
 /** #4490 — the four rail groups of the feature-driven venue workspace. */
@@ -349,6 +352,38 @@ export interface VenueNavInput {
   spacesRequested?: boolean;
   /** Any offer that books "Request first" (P3+). */
   hasRequestOffers?: boolean;
+  /**
+   * #4490 N61/N62: the venue's type. A venue with no stored feature rows reads
+   * as the server's legacy backfill (reservations switch, Menu on), which left
+   * an event space with only Overview, Menu, Orders and Settings and bounced
+   * `?module=spaces` to Overview. With no stored rows the nav follows the
+   * type's preset instead (see `navFeatures`).
+   */
+  venueCategory?: string | null;
+  /** True when the venue has never stored a feature row (every version 0). */
+  noStoredFeatures?: boolean;
+}
+
+/**
+ * The features the nav is drawn from. Stored rows win; a venue that never
+ * stored one follows its type's preset, plus the old reservations switch.
+ */
+export function navFeatures(input: VenueNavInput): VenueFeatureSet {
+  if (input.noStoredFeatures !== true || input.venueCategory == null) return input.features;
+  const preset = builtPreset(input.venueCategory as VenueTypeKey);
+  if (preset.length === 0) return input.features;
+  const on: Partial<Record<VenueFeatureKey, boolean>> = {};
+  for (const key of preset) on[key] = true;
+  if (input.features.table_reservations.enabled) {
+    on.table_reservations = true;
+    on.waitlist = input.features.waitlist.enabled || on.waitlist === true;
+  }
+  return featureSetFrom(on);
+}
+
+/** True when no feature has a stored row yet (the read is all backfill). */
+export function hasNoStoredFeatures(features: VenueFeatureSet): boolean {
+  return Object.values(features).every((f) => f.version === 0);
 }
 
 const BOOKING_FEATURES: readonly VenueFeatureKey[] = [
@@ -364,7 +399,8 @@ function featureOn(features: VenueFeatureSet, key: VenueFeatureKey): boolean {
 }
 
 /** True when the venue uses the feature layout (see the header above). */
-export function venueUsesSpaces(input: VenueNavInput): boolean {
+export function venueUsesSpaces(rawInput: VenueNavInput): boolean {
+  const input = { ...rawInput, features: navFeatures(rawInput) };
   return (
     input.activeSpaceCount > 0 ||
     input.spacesRequested === true ||
@@ -387,7 +423,9 @@ export function venueUsesSpaces(input: VenueNavInput): boolean {
  * Classic layout = `deriveVenueModules(table_reservations)` exactly.
  */
 export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
-  const { features } = input;
+  const features = navFeatures(input);
+  // #4490 N17/N57: Orders only when the venue takes orders (Menu or Table ordering).
+  const orders = featureOn(features, "menu") || featureOn(features, "table_ordering");
   const tables = featureOn(features, "table_reservations");
   const anyBooking = BOOKING_FEATURES.some((key) => featureOn(features, key));
   // P6: members come in through the same door (Check-in) and count on Today.
@@ -415,7 +453,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["checkin", door],
         ["menu", featureOn(features, "menu")],
         ["insights", true],
-        ["orders", true],
+        ["orders", orders],
         ["settings", true],
       ]
     : [
@@ -426,7 +464,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["waitlist", featureOn(features, "waitlist")],
         ["menu", featureOn(features, "menu")],
         ["insights", true],
-        ["orders", true],
+        ["orders", orders],
         ["settings", true],
       ];
   return candidates

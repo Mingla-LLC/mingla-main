@@ -39,7 +39,7 @@ import { DurationSelect } from "../../../ui/DurationSelect";
 import { Input } from "../../../ui/Input";
 import { LeadTimeSelect } from "../../../ui/LeadTimeSelect";
 import { MoneyField } from "../../../ui/MoneyField";
-import { NumberStepper } from "../../../ui/NumberStepper";
+import { NumberStepper, NumberStepperPair } from "../../../ui/NumberStepper";
 import { OptionCard } from "../../../ui/OptionCard";
 import { Pill, Segmented } from "../../../ui/Pill";
 import { SelectSheet } from "../../../ui/SelectSheet";
@@ -821,28 +821,25 @@ function PriceStep({ draft, patch, showErrors, disabled, cap, currency }: StepPr
             error={showErrors && (draft.priceMinor === null || draft.priceMinor <= 0) ? "Enter a price" : null}
             testID="package-price"
           />
-          <View style={styles.inlineRow}>
-            <View style={styles.grow}>
-              <NumberStepper
-                label="Smallest group"
-                value={draft.guestMin}
-                min={1}
-                max={Math.max(1, Math.min(draft.guestMax, cap))}
-                onChange={(guestMin) => patch({ guestMin })}
-                testID="package-guest-min"
-              />
-            </View>
-            <View style={styles.grow}>
-              <NumberStepper
-                label="Largest group"
-                value={draft.guestMax}
-                min={Math.max(1, draft.guestMin)}
-                max={cap}
-                onChange={(guestMax) => patch({ guestMax })}
-                testID="package-guest-max"
-              />
-            </View>
-          </View>
+          <NumberStepperPair>
+            <NumberStepper
+              label="Smallest group"
+              value={draft.guestMin}
+              min={1}
+              max={Math.max(1, cap)}
+              // #4490 N8: raising the smallest past the largest raises the largest too.
+              onChange={(guestMin) => patch({ guestMin, guestMax: Math.max(guestMin, draft.guestMax) })}
+              testID="package-guest-min"
+            />
+            <NumberStepper
+              label="Largest group"
+              value={draft.guestMax}
+              min={Math.max(1, draft.guestMin)}
+              max={cap}
+              onChange={(guestMax) => patch({ guestMax })}
+              testID="package-guest-max"
+            />
+          </NumberStepperPair>
           <Text style={styles.hint}>
             Up to {cap.toLocaleString("en-GB")} guests: the most the venue takes in a day. For a bigger group, raise the day limit in Availability &amp; pricing.
           </Text>
@@ -857,14 +854,10 @@ function PriceStep({ draft, patch, showErrors, disabled, cap, currency }: StepPr
                 patch({ tiers: draft.tiers.map((t) => (t.key === tier.key ? { ...t, ...next } : t)) });
               return (
                 <View key={tier.key} style={styles.tierRow} testID={`package-tier-${tier.key}`}>
-                  <View style={styles.inlineRow}>
-                    <View style={styles.grow}>
-                      <NumberStepper label="From" value={tier.guestMin} min={1} max={cap} onChange={(guestMin) => update({ guestMin, guestMax: Math.max(guestMin, tier.guestMax) })} />
-                    </View>
-                    <View style={styles.grow}>
-                      <NumberStepper label="To" value={tier.guestMax} min={tier.guestMin} max={cap} onChange={(guestMax) => update({ guestMax })} />
-                    </View>
-                  </View>
+                  <NumberStepperPair>
+                    <NumberStepper label="From" value={tier.guestMin} min={1} max={cap} onChange={(guestMin) => update({ guestMin, guestMax: Math.max(guestMin, tier.guestMax) })} />
+                    <NumberStepper label="To" value={tier.guestMax} min={tier.guestMin} max={cap} onChange={(guestMax) => update({ guestMax })} />
+                  </NumberStepperPair>
                   <MoneyField
                     label={`Per guest for ${tier.guestMin} to ${tier.guestMax}`}
                     valueMinor={tier.priceMinor}
@@ -1101,7 +1094,17 @@ function WhereStep({ draft, patch, showErrors, disabled, pool, sharedWith }: Ste
         ) : null}
       </View>
       <WeekdayChips label="Days" value={draft.weekdays} onChange={(weekdays) => patch({ weekdays })} disabled={disabled} showSummary testID="package-days" />
-      <Text style={styles.label}>A group can start</Text>
+      <DurationSelect
+        label="Each booking lasts"
+        value={draft.durationMinutes}
+        onChange={(durationMinutes) => patch({ durationMinutes })}
+        min={30}
+        max={720}
+        disabled={disabled}
+        testID="package-duration"
+      />
+      <Text style={styles.label}>Start times</Text>
+      <Text style={styles.hint}>How far apart groups can start. Separate from how long each booking lasts.</Text>
       <Segmented
         options={START_EVERY_OPTIONS.map((o) => ({ key: o.key, label: o.label }))}
         value={String(draft.startEvery)}
@@ -1144,15 +1147,11 @@ function WhereStep({ draft, patch, showErrors, disabled, pool, sharedWith }: Ste
           ))
         )}
       </View>
-      <DurationSelect
-        label="Each booking lasts"
-        value={draft.durationMinutes}
-        onChange={(durationMinutes) => patch({ durationMinutes })}
-        min={30}
-        max={720}
-        disabled={disabled}
-        testID="package-duration"
-      />
+      {times.length > 1 && draft.startEvery < draft.durationMinutes ? (
+        <Text style={styles.hint} testID="package-start-overlap">
+          A new group can start before the last one ends. That's fine when you have room for both.
+        </Text>
+      ) : null}
       <LeadTimeSelect
         label="Book at least"
         value={draft.minNoticeMinutes}
@@ -1236,7 +1235,7 @@ function RulesStep({ draft, patch, showErrors, disabled, currency }: StepProps &
         <View style={styles.subCard}>
           {draft.customLadder.map((rung, i) => (
             <View key={`rung-${i}`} style={styles.rungRow}>
-              <View style={styles.grow}>
+              <NumberStepperPair>
                 <NumberStepper
                   label="Days before it starts"
                   value={Math.round(rung.minMinutesBefore / 1440)}
@@ -1245,8 +1244,6 @@ function RulesStep({ draft, patch, showErrors, disabled, currency }: StepProps &
                   onChange={(d) => patch({ customLadder: draft.customLadder.map((r, j) => (j === i ? { ...r, minMinutesBefore: d * 1440 } : r)) })}
                   testID={`package-rung-${i}-days`}
                 />
-              </View>
-              <View style={styles.grow}>
                 <NumberStepper
                   label="% they get back"
                   value={Math.round(rung.refundBps / 100)}
@@ -1255,9 +1252,9 @@ function RulesStep({ draft, patch, showErrors, disabled, currency }: StepProps &
                   onChange={(pct) => patch({ customLadder: draft.customLadder.map((r, j) => (j === i ? { ...r, refundBps: pct * 100 } : r)) })}
                   testID={`package-rung-${i}-pct`}
                 />
-              </View>
+              </NumberStepperPair>
               {draft.customLadder.length > 1 ? (
-                <Button label="Remove" variant="ghost" size="sm" onPress={() => patch({ customLadder: draft.customLadder.filter((_, j) => j !== i) })} disabled={disabled} />
+                <Button style={styles.rungRemove} label="Remove" variant="ghost" size="sm" onPress={() => patch({ customLadder: draft.customLadder.filter((_, j) => j !== i) })} disabled={disabled} />
               ) : null}
             </View>
           ))}
@@ -1304,14 +1301,10 @@ function RulesStep({ draft, patch, showErrors, disabled, currency }: StepProps &
             disabled={disabled}
             testID="package-move-cutoff"
           />
-          <View style={styles.inlineRow}>
-            <View style={styles.grow}>
-              <NumberStepper label="How many times" value={draft.maxChanges} min={1} max={5} onChange={(maxChanges) => patch({ maxChanges })} testID="package-max-changes" />
-            </View>
-            <View style={styles.grow}>
-              <NumberStepper label="Fee (% of the booking)" value={draft.changeFeePercent} min={0} max={100} onChange={(changeFeePercent) => patch({ changeFeePercent })} testID="package-change-fee" />
-            </View>
-          </View>
+          <NumberStepperPair>
+            <NumberStepper label="How many times" value={draft.maxChanges} min={1} max={5} onChange={(maxChanges) => patch({ maxChanges })} testID="package-max-changes" />
+            <NumberStepper label="Fee (% of the booking)" value={draft.changeFeePercent} min={0} max={100} onChange={(changeFeePercent) => patch({ changeFeePercent })} testID="package-change-fee" />
+          </NumberStepperPair>
         </View>
       ) : null}
       {showErrors && issue !== null ? <Text style={styles.error}>{issue}</Text> : null}
@@ -1441,7 +1434,8 @@ const styles = StyleSheet.create({
   timeChipText: { ...type.small, color: color.text1, fontVariant: ["tabular-nums"] },
   switchRow: { flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[2] },
   switchTitle: { ...type.row, color: color.text1 },
-  rungRow: { flexDirection: "row", gap: space[3], alignItems: "flex-end", flexWrap: "wrap" },
+  rungRow: { gap: space[1] },
+  rungRemove: { alignSelf: "flex-end" },
   readiness: { gap: space[2] },
   readinessRow: { flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" },
   reviewList: { gap: space[2] },

@@ -54,6 +54,7 @@ interface FeatureRowJson {
   settings?: unknown;
   version?: unknown;
   blocked_by?: unknown;
+  needs?: unknown;
 }
 
 function isFeatureKey(value: unknown): value is VenueFeatureKey {
@@ -80,6 +81,9 @@ export function mapVenueFeatureState(json: unknown): VenueFeatureState {
         version: typeof item.version === "number" ? item.version : 0,
         blockedBy: Array.isArray(item.blocked_by)
           ? item.blocked_by.filter((b): b is string => typeof b === "string")
+          : [],
+        needs: Array.isArray(item.needs)
+          ? item.needs.filter((b): b is string => typeof b === "string")
           : [],
       });
     }
@@ -176,25 +180,66 @@ export async function applyFeaturePreset(
  * host turned it off. Table ordering is never written here (it waits for
  * approval). Returns the final state, or null when nothing could be read.
  */
+export interface StartingFeaturesRefusal {
+  key: VenueFeatureKey;
+  /** The server's code ("feature_requires", …) and detail ("space", parent keys). */
+  code: string;
+  detail: string | null;
+}
+
+export interface StartingFeaturesReport {
+  state: VenueFeatureState;
+  /** Chosen switches the server did not turn on, with why. */
+  refused: StartingFeaturesRefusal[];
+}
+
+/**
+ * #4490 N20: one refusal must not drop the rest. The loop used to throw on
+ * the first refusal (Private hire needs a space, and a new venue has none),
+ * which silently skipped every switch after it (Floor plan, Pick a table) and
+ * the caller swallowed the error. Now each switch is tried on its own, the
+ * refusals are collected and handed back so the success screen can say what
+ * still needs setting up, with a button to the right place.
+ */
+export async function applyStartingFeaturesReport(
+  venueId: string,
+  chosen: readonly VenueFeatureKey[],
+): Promise<StartingFeaturesReport> {
+  // #4490 fix1 (backend B2): one server call applies every chosen feature
+  // (parents first), and says what it skipped and what still needs setup.
+  // A space-needing feature is now stored on before the first space exists.
+  const { data, error } = await supabase.rpc("issue_4490_apply_starting_features", {
+    p_venue_id: venueId,
+    p_features: [...chosen],
+    p_idempotency_key: `start-${randomId()}`,
+  });
+  if (error !== null) {
+    const e = toVenueFeatureError(error);
+    // A venue that already sells keeps its switches (Settings changes them).
+    if (e.code !== "venue_already_selling") throw e;
+    return { state: await fetchVenueFeatures(venueId), refused: [] };
+  }
+  const row = (data ?? {}) as Record<string, unknown>;
+  const refused: StartingFeaturesRefusal[] = [];
+  if (Array.isArray(row.skipped)) {
+    for (const item of row.skipped as Array<Record<string, unknown>>) {
+      if (!isFeatureKey(item.key)) continue;
+      const reason = String(item.reason ?? "");
+      refused.push(
+        reason.startsWith("requires:")
+          ? { key: item.key, code: "feature_requires", detail: reason.slice("requires:".length) }
+          : { key: item.key, code: reason, detail: null },
+      );
+    }
+  }
+  return { state: mapVenueFeatureState(row.features), refused };
+}
+
 export async function applyStartingFeatures(
   venueId: string,
   chosen: readonly VenueFeatureKey[],
 ): Promise<VenueFeatureState | null> {
-  let state = await fetchVenueFeatures(venueId);
-  for (const key of SWITCHABLE_FEATURES) {
-    if (key === "table_ordering") continue;
-    const want = chosen.includes(key);
-    if (state.features[key].enabled === want) continue;
-    const result = await setVenueFeature({
-      venueId,
-      key,
-      enabled: want,
-      cascade: true,
-      expectedVersion: state.features[key].version,
-    });
-    state = result.state;
-  }
-  return state;
+  return (await applyStartingFeaturesReport(venueId, chosen)).state;
 }
 
 // ---------------------------------------------------------------------------

@@ -40,7 +40,7 @@ import { Button } from "../../../ui/Button";
 import { CenteredState } from "../../../ui/CenteredState";
 import { Input } from "../../../ui/Input";
 import { MoneyField } from "../../../ui/MoneyField";
-import { NumberStepper } from "../../../ui/NumberStepper";
+import { NumberStepper, NumberStepperPair } from "../../../ui/NumberStepper";
 import { OptionCard } from "../../../ui/OptionCard";
 import { Segmented } from "../../../ui/Pill";
 import { SelectSheet } from "../../../ui/SelectSheet";
@@ -97,6 +97,9 @@ import {
   type HireStepId,
 } from "./hireModel";
 import { draftKey, offerErrorCopy, refundSummary, vatLine } from "./offersModel";
+import { weekdaysSummary } from "../../../ui/fieldModels";
+import { useBrandHours } from "../../../../hooks/useBrandHours";
+import { openingHoursDefault } from "../hoursModel";
 import { CHANGE_CUTOFFS, ONLINE_PAYMENTS_OFF } from "./packageModel";
 
 const RAIL_MIN_WIDTH = 1280;
@@ -169,13 +172,22 @@ export const HireEditor = forwardRef<VenueModuleLeaveHandle, HireEditorProps>(fu
   );
   const settings = state?.settings ?? null;
 
+  // #4490 N66: a new hire's first session and days follow the venue's
+  // opening hours (an event space open 10:00–17:00 starts there, not 12:00–00:00).
+  const hoursQuery = useBrandHours(brandId, venueId);
   useEffect(() => {
     if (draft !== null || state === undefined) return;
     if (offerId !== null && listOffer === null) return;
+    if (listOffer === null && hoursQuery.isLoading) return;
     const next = hireDraftFrom(listOffer);
+    const opening = listOffer === null ? openingHoursDefault(hoursQuery.data) : null;
+    if (opening !== null) {
+      next.weekdays = opening.weekdays;
+      next.sessions = [{ ...next.sessions[0], label: "Full day", startTime: opening.open, endTime: opening.close }];
+    }
     setDraft(next);
     setBase(clone(next));
-  }, [draft, listOffer, offerId, state]);
+  }, [draft, hoursQuery.data, hoursQuery.isLoading, listOffer, offerId, state]);
 
   const step = HIRE_STEPS[stepIndex];
   const dirty = draft !== null && base !== null && JSON.stringify(draft) !== JSON.stringify(base);
@@ -824,6 +836,7 @@ function SpacesStep({ draft, patch, showErrors, disabled, places, onOpenSpaces }
                 onPress={() => toggle(p)}
                 disabled={disabled || (!p.hirable && !draft.spaceIds.includes(p.id))}
                 testID={`hire-place-${p.id}`}
+                multiple
                 style={COLUMN_OPTION_CARD}
               />
             ))}
@@ -841,6 +854,7 @@ function SpacesStep({ draft, patch, showErrors, disabled, places, onOpenSpaces }
                     onPress={() => toggle(p)}
                     disabled={disabled || (!p.hirable && !draft.combinationIds.includes(p.id))}
                     testID={`hire-place-${p.id}`}
+                    multiple
                     style={COLUMN_OPTION_CARD}
                   />
                 ))}
@@ -1037,7 +1051,9 @@ function PriceStep({
       if (r.weekdays.length > 0) return [r];
       return [
         { ...r, weekdays: [0, 1, 2, 3] },
-        { ...r, key: draftKey("hire-row"), optionId: null, weekdays: [4, 5, 6] },
+        // #4490 N68: the weekend row starts with no price, so the weekday fee
+        // is never carried over silently; the host types the weekend price.
+        { ...r, key: draftKey("hire-row"), optionId: null, weekdays: [4, 5, 6], priceMinor: null },
       ];
     });
     patch({ rows: next.slice(0, MAX_ROWS) });
@@ -1092,28 +1108,28 @@ function PriceStep({
               hasError={showErrors && ri.place !== null}
               testID={`hire-row-${i}-place`}
             />
-            <View style={styles.inlineRow}>
-              <View style={styles.grow}>
-                <NumberStepper
-                  label="Smallest group"
-                  value={row.guestMin}
-                  min={1}
-                  max={Math.max(1, Math.min(row.guestMax, cap))}
-                  onChange={(guestMin) => patch({ rows: draft.rows.map((r) => (r.key === row.key ? { ...r, guestMin } : r)) })}
-                  testID={`hire-row-${i}-min`}
-                />
-              </View>
-              <View style={styles.grow}>
-                <NumberStepper
-                  label="Largest group"
-                  value={row.guestMax}
-                  min={Math.max(1, row.guestMin)}
-                  max={cap}
-                  onChange={(guestMax) => patch({ rows: draft.rows.map((r) => (r.key === row.key ? { ...r, guestMax } : r)) })}
-                  testID={`hire-row-${i}-max`}
-                />
-              </View>
-            </View>
+            <NumberStepperPair>
+              <NumberStepper
+                label="Smallest group"
+                value={row.guestMin}
+                min={1}
+                max={Math.max(1, cap)}
+                // #4490 N8: a smallest group above the largest raises the largest
+                // (it used to clamp the typed 250 down to 100 silently).
+                onChange={(guestMin) =>
+                  patch({ rows: draft.rows.map((r) => (r.key === row.key ? { ...r, guestMin, guestMax: Math.max(guestMin, r.guestMax) } : r)) })
+                }
+                testID={`hire-row-${i}-min`}
+              />
+              <NumberStepper
+                label="Largest group"
+                value={row.guestMax}
+                min={Math.max(1, row.guestMin)}
+                max={cap}
+                onChange={(guestMax) => patch({ rows: draft.rows.map((r) => (r.key === row.key ? { ...r, guestMax } : r)) })}
+                testID={`hire-row-${i}-max`}
+              />
+            </NumberStepperPair>
             {place !== null ? <Text style={styles.hint}>{place.name} holds {place.capacity.toLocaleString("en-GB")}.</Text> : null}
             {showErrors && ri.guests !== null ? <Text style={styles.error}>{ri.guests}</Text> : null}
             {draft.flexOn || row.perHour ? (
@@ -1132,7 +1148,7 @@ function PriceStep({
               </View>
             ) : null}
             <MoneyField
-              label={row.perHour ? "Per hour" : charge.column}
+              label={`${row.perHour ? "Per hour" : charge.column}${row.weekdays.length > 0 && row.weekdays.length < 7 ? ` · ${weekdaysSummary(row.weekdays)}` : ""}`}
               valueMinor={row.priceMinor}
               onChangeMinor={(priceMinor) => patch({ rows: draft.rows.map((r) => (r.key === row.key ? { ...r, priceMinor } : r)) })}
               currency={currency}
@@ -1309,7 +1325,7 @@ function TermsStep({ draft, patch, showErrors, disabled, currency }: StepProps):
         <View style={styles.subCard}>
           {draft.customLadder.map((rung, i) => (
             <View key={`rung-${i}`} style={styles.rungRow}>
-              <View style={styles.grow}>
+              <NumberStepperPair>
                 <NumberStepper
                   label="Days before"
                   value={Math.round(rung.minMinutesBefore / 1440)}
@@ -1318,8 +1334,6 @@ function TermsStep({ draft, patch, showErrors, disabled, currency }: StepProps):
                   onChange={(d) => patch({ customLadder: draft.customLadder.map((r, j) => (j === i ? { ...r, minMinutesBefore: d * 1440 } : r)) })}
                   testID={`hire-rung-${i}-days`}
                 />
-              </View>
-              <View style={styles.grow}>
                 <NumberStepper
                   label="% they get back"
                   value={Math.round(rung.refundBps / 100)}
@@ -1328,9 +1342,9 @@ function TermsStep({ draft, patch, showErrors, disabled, currency }: StepProps):
                   onChange={(pct) => patch({ customLadder: draft.customLadder.map((r, j) => (j === i ? { ...r, refundBps: pct * 100 } : r)) })}
                   testID={`hire-rung-${i}-pct`}
                 />
-              </View>
+              </NumberStepperPair>
               {draft.customLadder.length > 1 ? (
-                <Button label="Remove" variant="ghost" size="sm" onPress={() => patch({ customLadder: draft.customLadder.filter((_, j) => j !== i) })} disabled={disabled} />
+                <Button style={styles.rungRemove} label="Remove" variant="ghost" size="sm" onPress={() => patch({ customLadder: draft.customLadder.filter((_, j) => j !== i) })} disabled={disabled} />
               ) : null}
             </View>
           ))}
@@ -1372,14 +1386,10 @@ function TermsStep({ draft, patch, showErrors, disabled, currency }: StepProps):
       {draft.dateChange ? (
         <View style={styles.subCard}>
           <SelectSheet label="Up to" value={draft.moveCutoffMinutes} options={CHANGE_CUTOFFS} onChange={(moveCutoffMinutes) => patch({ moveCutoffMinutes })} disabled={disabled} testID="hire-move-cutoff" />
-          <View style={styles.inlineRow}>
-            <View style={styles.grow}>
-              <NumberStepper label="How many times" value={draft.maxChanges} min={1} max={5} onChange={(maxChanges) => patch({ maxChanges })} testID="hire-max-changes" />
-            </View>
-            <View style={styles.grow}>
-              <NumberStepper label="Fee (% of the booking)" value={draft.changeFeePercent} min={0} max={100} onChange={(changeFeePercent) => patch({ changeFeePercent })} testID="hire-change-fee" />
-            </View>
-          </View>
+          <NumberStepperPair>
+            <NumberStepper label="How many times" value={draft.maxChanges} min={1} max={5} onChange={(maxChanges) => patch({ maxChanges })} testID="hire-max-changes" />
+            <NumberStepper label="Fee (% of the booking)" value={draft.changeFeePercent} min={0} max={100} onChange={(changeFeePercent) => patch({ changeFeePercent })} testID="hire-change-fee" />
+          </NumberStepperPair>
         </View>
       ) : null}
       <Text style={styles.hint}>
@@ -1551,7 +1561,8 @@ const styles = StyleSheet.create({
   addRow: { flexDirection: "row", gap: space[2], flexWrap: "wrap" },
   switchRow: { flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: space[2] },
   switchTitle: { ...type.row, color: color.text1 },
-  rungRow: { flexDirection: "row", gap: space[3], alignItems: "flex-end", flexWrap: "wrap" },
+  rungRow: { gap: space[1] },
+  rungRemove: { alignSelf: "flex-end" },
   readiness: { gap: space[2] },
   readinessRow: { flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" },
   reviewList: { gap: space[2] },

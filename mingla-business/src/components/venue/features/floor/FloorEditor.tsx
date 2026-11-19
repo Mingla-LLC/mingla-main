@@ -64,7 +64,7 @@ import {
   type UndoStack,
 } from "./floorModel";
 import { TableForm } from "./TableForm";
-import { nextTableName } from "./tableDraft";
+import { nextTableNameAfter } from "./tableDraft";
 
 const WIDE = 1024;
 
@@ -485,7 +485,8 @@ export const FloorEditor = forwardRef<VenueModuleLeaveHandle, FloorEditorProps>(
         spaces={spaces}
         allTables={allTables}
         defaultSpaceId={floorSpace.id}
-        defaultName={nextTableName(allTables.map((t) => t.name))}
+        defaultName={nextTableNameAfter(allTables.map((t) => t.name), floorSpace.tables[floorSpace.tables.length - 1]?.name)}
+        defaultLike={floorSpace.tables[floorSpace.tables.length - 1] ?? null}
         currency={currency}
         features={features}
         canEdit={canEdit}

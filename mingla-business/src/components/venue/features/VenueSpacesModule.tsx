@@ -39,7 +39,7 @@ import { CombineSpacesSheet } from "./CombineSpacesSheet";
 import { SitePlan, SitePlanLegend } from "./SitePlan";
 import { SpaceEditorSheet } from "./SpaceEditorSheet";
 import { autoPlanShapes, changedShapes, spaceUsedFor } from "./spaceModel";
-import { VENUE_FEATURES_COPY, venueWriteErrorCopy } from "./venueFeaturesCopy";
+import { VENUE_FEATURES_COPY, amenityExamplesFor, spaceStartersFor, venueWriteErrorCopy } from "./venueFeaturesCopy";
 import { VenueTablesInSpaces } from "./floor/VenueTablesInSpaces";
 import type { VenueModuleLeaveHandle } from "../venueLeaveContract";
 
@@ -361,6 +361,8 @@ export const VenueSpacesModule = forwardRef<VenueModuleLeaveHandle, VenueSpacesM
         initialName={editor.open ? editor.initialName : ""}
         combinations={combinations}
         amenitiesLabel={amenitiesLabel}
+        amenitiesPlaceholder={amenityExamplesFor(venueQuery.data?.venueCategory)}
+        hireOn={features?.private_hire.enabled === true}
         canEdit={canEdit}
         saving={manageSpace.isPending && manageSpace.variables?.action !== "archive"}
         deleting={manageSpace.isPending && manageSpace.variables?.action === "archive"}
@@ -402,7 +404,7 @@ export const VenueSpacesModule = forwardRef<VenueModuleLeaveHandle, VenueSpacesM
           {canEdit ? (
             <>
               <View style={styles.starters}>
-                {VENUE_FEATURES_COPY.spacesStarters.map((name) => (
+                {spaceStartersFor(venueQuery.data?.venueCategory).map((name) => (
                   <Chip
                     key={name}
                     label={name}

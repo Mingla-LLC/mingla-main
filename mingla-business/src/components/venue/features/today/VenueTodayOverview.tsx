@@ -17,6 +17,8 @@ import { useVenueDay } from "../../../../hooks/useVenueDay";
 import { useVenueListing } from "../../../../hooks/useVenueListings";
 import { useVenueOffers } from "../../../../hooks/useVenueOffers";
 import type { VenueModule } from "../../../../types/venueReservation";
+import type { VenueFeatureSet } from "../../../../types/venueFeatures";
+import { sellStepMeta, spacesRequired, spacesStepMeta } from "../featureSetupModel";
 import { Banner } from "../../../ui/Banner";
 import { Button } from "../../../ui/Button";
 import { Icon } from "../../../ui/Icon";
@@ -30,6 +32,8 @@ export interface VenueTodayOverviewProps {
   brandId: string | null;
   venueId: string | null;
   activeSpaceCount: number;
+  /** #4490 N17: the checklist follows the venue's features, not Entry. */
+  features?: VenueFeatureSet | null;
   canManageOffers: boolean;
   onOpenModule: (module: VenueModule) => void;
   /** #4490 P4 — show requests waiting on the host (Requests is in the nav). */
@@ -48,6 +52,7 @@ export function VenueTodayOverview({
   brandId,
   venueId,
   activeSpaceCount,
+  features = null,
   canManageOffers,
   onOpenModule,
   showRequests = false,
@@ -118,14 +123,24 @@ export function VenueTodayOverview({
       {
         key: "spaces",
         title: "Add your spaces",
-        meta: activeSpaceCount > 0 ? `${activeSpaceCount} ${activeSpaceCount === 1 ? "space" : "spaces"}` : "Optional for Entry. The areas guests play in, sit in or hire",
+        meta:
+          features !== null
+            ? spacesStepMeta(features, activeSpaceCount)
+            : activeSpaceCount > 0
+              ? `${activeSpaceCount} ${activeSpaceCount === 1 ? "space" : "spaces"}`
+              : "The rooms and areas guests use",
         done: activeSpaceCount > 0,
         action: { label: "Add spaces", module: "spaces" },
       },
       {
         key: "offer",
         title: "Add what you sell",
-        meta: offers.length > 0 ? `${offers.length} draft ${offers.length === 1 ? "offer" : "offers"}` : "Entry, with a price for each kind of guest",
+        meta:
+          offers.length > 0
+            ? `${offers.length} draft ${offers.length === 1 ? "offer" : "offers"}`
+            : features !== null
+              ? sellStepMeta(features)
+              : "What guests can book or buy",
         done: offers.length > 0,
         action: { label: "Add an offer", module: "offers" },
       },
@@ -137,9 +152,13 @@ export function VenueTodayOverview({
         action: offers.length > 0 ? { label: "Open offers", module: "offers" } : undefined,
       },
     ];
-    // The next step is the first not done that is required (spaces are optional).
-    const next = steps.find((s) => !s.done && s.key !== "spaces" && s.key !== "details");
-    const left = steps.filter((s) => !s.done && s.key !== "spaces").length;
+    // The next step is the first not done that is required. Spaces are
+    // optional unless a switched-on feature needs one (Private hire, By the
+    // hour, Floor plan).
+    const spacesOptional = features === null || !spacesRequired(features);
+    const optional = (key: string): boolean => key === "spaces" && spacesOptional;
+    const next = steps.find((s) => !s.done && !optional(s.key) && s.key !== "details");
+    const left = steps.filter((s) => !s.done && !optional(s.key)).length;
     return (
       <View style={styles.host} testID="venue-overview-first-run">
         {reviewBanner}
@@ -202,7 +221,17 @@ export function VenueTodayOverview({
           )}
         </View>
         <View style={styles.tile}>
-          <KpiTile label="Taken today" value={money(n.takenMinor, cur)} sub={n.takenAtGateMinor > 0 ? `${money(n.takenAtGateMinor, cur)} at the gate` : "Online and at the gate"} />
+          <KpiTile
+            label="Taken today"
+            value={money(n.takenMinor, cur)}
+            sub={
+              typeof day.collectedTodayMinor === "number"
+                ? `Collected today ${money(day.collectedTodayMinor, cur)}`
+                : n.takenAtGateMinor > 0
+                  ? `${money(n.takenAtGateMinor, cur)} at the gate`
+                  : "Online and at the gate"
+            }
+          />
         </View>
       </View>
       <View style={styles.links}>

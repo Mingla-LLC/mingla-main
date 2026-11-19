@@ -112,7 +112,9 @@ describe("feature layout — a venue with spaces", () => {
   it("Menu follows its feature; Orders and Insights are always present", () => {
     const off = deriveVenueNav({ features: featureSetFrom({}), activeSpaceCount: 1 });
     expect(off).not.toContain("menu");
-    expect(off).toEqual(expect.arrayContaining(["orders", "insights", "settings"]));
+    // TEST-MOD-APPROVED #4490 N57: Orders shows only with Menu or Table ordering.
+    expect(off).toEqual(expect.arrayContaining(["insights", "settings"]));
+    expect(off).not.toContain("orders");
   });
   it("a spaces request reaches Spaces before the first space exists", () => {
     const modules = deriveVenueNav({ features: featureSetFrom({ menu: true }), activeSpaceCount: 0, spacesRequested: true });

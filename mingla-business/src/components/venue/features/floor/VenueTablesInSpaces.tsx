@@ -31,7 +31,7 @@ import type { VenueModuleLeaveHandle } from "../../venueLeaveContract";
 import { FloorEditor } from "./FloorEditor";
 import { seatsLine, SHAPE_LABEL } from "./floorModel";
 import { TableForm } from "./TableForm";
-import { nextTableName } from "./tableDraft";
+import { nextTableNameAfter } from "./tableDraft";
 
 export interface VenueTablesInSpacesProps {
   brandId: string | null;
@@ -121,6 +121,12 @@ export const VenueTablesInSpaces = forwardRef<VenueModuleLeaveHandle, VenueTable
     }),
   );
 
+  // #4490 N25: the "Save this floor first?" question belongs to one attempt
+  // to leave. Once the floor is saved (or nothing is unsaved) it goes away.
+  useEffect(() => {
+    if (!editorDirty) setPendingSpace(null);
+  }, [editorDirty]);
+
   const chooseSpace = (id: string): void => {
     if (id === spaceId) return;
     if (editorDirty) {
@@ -189,7 +195,9 @@ export const VenueTablesInSpaces = forwardRef<VenueModuleLeaveHandle, VenueTable
             <Text style={styles.rowName}>Large parties can ask</Text>
             <Text style={styles.hint}>
               {largeOn
-                ? `Groups bigger than your largest table${plan.partyMax > 0 ? ` (${plan.partyMax})` : ""} send a request you confirm. Nothing is paid until you do.`
+                ? allTables.length === 0
+                  ? "Once you add tables, groups bigger than your largest table can send a request you confirm."
+                  : `Groups bigger than your largest table${plan.partyMax > 0 ? ` (${plan.partyMax})` : ""} send a request you confirm. Nothing is paid until you do.`
                 : "Guests can only book parties your tables seat."}
             </Text>
           </View>
@@ -214,7 +222,7 @@ export const VenueTablesInSpaces = forwardRef<VenueModuleLeaveHandle, VenueTable
         <Banner
           tone="warning"
           title="Save this floor first?"
-          body="You moved tables and haven't saved the layout."
+          body="This floor has changes you haven't saved. Save the floor, or leave without saving."
           action={{
             label: "Leave without saving",
             onPress: () => {
@@ -287,7 +295,7 @@ export const VenueTablesInSpaces = forwardRef<VenueModuleLeaveHandle, VenueTable
           <View style={styles.floorOff}>
             <Text style={styles.rowName}>Draw the floor</Text>
             <Text style={styles.hint}>
-              Turn on Floor plan to place each table where it stands and see who is on it during service. It needs Table reservations.
+              {`Turn on Floor plan to place each table where it stands and see who is on it during service.${tableReservationsOn ? "" : " It needs Table reservations."}`}
             </Text>
             {access.canSwitchFeatures ? (
               <Button
@@ -327,7 +335,8 @@ export const VenueTablesInSpaces = forwardRef<VenueModuleLeaveHandle, VenueTable
                 spaces={spaces.map((s) => ({ id: s.id, name: s.name }))}
                 allTables={allTables}
                 defaultSpaceId={selected?.id ?? null}
-                defaultName={nextTableName(allTables.map((t) => t.name))}
+                defaultName={nextTableNameAfter(allTables.map((t) => t.name), (selected?.tables ?? [])[(selected?.tables ?? []).length - 1]?.name)}
+                defaultLike={(selected?.tables ?? [])[(selected?.tables ?? []).length - 1] ?? null}
                 currency={currency}
                 features={features}
                 canEdit={canEdit}

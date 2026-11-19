@@ -109,13 +109,19 @@ export function useCreateVenueListing(): UseMutationResult<
       return import("../services/venueFeaturesService")
         .then((mod) =>
           input.startingFeatures !== undefined
-            ? mod.applyStartingFeatures(venueId, input.startingFeatures)
-            : mod.applyFeaturePreset(venueId, input.venueCategory).then((r) => r.state),
+            ? mod.applyStartingFeaturesReport(venueId, input.startingFeatures)
+            : mod.applyFeaturePreset(venueId, input.venueCategory).then((r) => ({
+                state: r.state,
+                refused: r.skipped
+                  .filter((x) => x.reason.startsWith("requires:"))
+                  .map((x) => ({ key: x.key, code: "feature_requires", detail: x.reason.slice("requires:".length) })),
+              })),
         )
-        .then((state) => {
-          if (state !== null) {
-            queryClient.setQueryData(venueFeatureKeys.features(input.brandId, venueId), state);
-          }
+        .then(({ state, refused }) => {
+          queryClient.setQueryData(venueFeatureKeys.features(input.brandId, venueId), state);
+          // #4490 N20: the success screen and Overview read what was not
+          // switched on, so the host is told instead of finding out later.
+          queryClient.setQueryData(venueFeatureKeys.startRefused(venueId), refused);
         })
         .catch(() => undefined);
     },
