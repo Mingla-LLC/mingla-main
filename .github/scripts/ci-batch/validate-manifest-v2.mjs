@@ -623,7 +623,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 P3-1 packages and deposits: migration 20280809144490 and its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
 // #4490 P4-1 private hire registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 P5-1 tables, floor plan, waitlist, by the hour; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "75f0eaf943663228f343e9145d48e7421625f62cd8fedc5802f59a7d26dc9d55";
+// issue #4490 P4 follow-up: hours you set, hire changes, damage deposit; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "6c146bba8d18965a5f5c8a10444021088a9aed6dee8ad6687687a8af0eef6d91";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
