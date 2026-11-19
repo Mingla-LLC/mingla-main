@@ -31,8 +31,22 @@ type Widen<T> = T extends string
     ? number
     : { readonly [K in keyof T]: Widen<T[K]> };
 
-/** designSystem's `color`, with every value a plain string (host hexes). */
-export type SurfaceColor = Widen<typeof graphiteColor>;
+/**
+ * designSystem's `color`, with every value a plain string (host hexes), plus
+ * #4518 `controlOutline`: the 1px outline of a quiet control (a secondary
+ * button, the inline access notice) that reaches 3:1 against `card`.
+ * `lineStrong` cannot do it (13 % white measures well under 3:1 on the
+ * Graphite card).
+ */
+export type SurfaceColor = Widen<typeof graphiteColor> & { readonly controlOutline: string };
+
+/**
+ * #4518 — Graphite `controlOutline`: `card` (#1b1b1e) mixed toward `text1`
+ * (#f5f5f7) until 3:1 against the card (the `checkoutOutlineFor` loop, run on
+ * the card): 38 % ⇒ #6e6e70, 3.38:1. Checkout palettes compute their own in
+ * `checkoutColorFor`.
+ */
+export const GRAPHITE_CONTROL_OUTLINE = "#6e6e70";
 
 export type SurfaceMaterials = Readonly<Record<MaterialKind, MaterialRecipe>>;
 
@@ -42,7 +56,7 @@ export interface SurfaceTokens {
 }
 
 const GRAPHITE: SurfaceTokens = {
-  color: graphiteColor,
+  color: { ...graphiteColor, controlOutline: GRAPHITE_CONTROL_OUTLINE },
   materials: graphiteMaterials,
 };
 

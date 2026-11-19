@@ -67,6 +67,8 @@ import {
 // unchanged native behavior. Advisory only: the server is authoritative.
 // The notice itself mounts in TripCheckoutFlow (the content flow), not here.
 import { usePublicTicketCheckoutRouteAccess } from "../../../src/hooks/usePublicTicketCheckoutRouteAccess";
+import { BuyerConnectionNotice } from "../../../src/components/buyer/BuyerConnectionNotice";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
 import { usePublicTripGuide } from "../../../src/hooks/usePublicTripGuide";
 import { useTripTierAllIn } from "../../../src/hooks/useTripTierAllIn";
@@ -321,6 +323,21 @@ function PublicTripRouteBody(): React.ReactElement {
     setMuted((m) => !m);
   }, []);
 
+  // #4518 — one notice for a page that could not load (no raw error text).
+  // Kept on screen while Try again re-reads (the query stays in error until
+  // it succeeds), so the buyer sees "Trying again…".
+  if (routeState === "error" || (routeState === "loading" && query.isError)) {
+    return (
+      <View style={styles.noticeHost}>
+        <BuyerConnectionNotice
+          variant={isConnectionFailure(query.error) ? "connection" : "server"}
+          onRetry={() => query.refetch()}
+          testID="public-trip-connection-notice"
+        />
+      </View>
+    );
+  }
+
   if (routeState === "loading") {
     return (
       <View style={styles.stateHost}>
@@ -330,24 +347,6 @@ function PublicTripRouteBody(): React.ReactElement {
     );
   }
 
-  if (routeState === "error") {
-    // ORCH-0879: surface PostgrestError.message (Supabase errors are
-    // { code, message, details, hint } objects, NOT JS Error instances).
-    const rawError: unknown = query.error;
-    const errorMessage =
-      rawError !== null &&
-      typeof rawError === "object" &&
-      "message" in rawError &&
-      typeof (rawError as { message: unknown }).message === "string"
-        ? (rawError as { message: string }).message
-        : "Check your connection and try again.";
-    return (
-      <View style={styles.stateHost}>
-        <Text style={styles.stateTitle}>Couldn&rsquo;t load trip</Text>
-        <Text style={styles.stateText}>{errorMessage}</Text>
-      </View>
-    );
-  }
 
   const payload = query.data;
   if (payload === null || payload === undefined) {
@@ -974,6 +973,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: space[7],
     gap: space[4],
+    backgroundColor: color.canvas,
+  },
+  noticeHost: {
+    flex: 1,
     backgroundColor: color.canvas,
   },
   stateTitle: {

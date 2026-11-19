@@ -67,8 +67,9 @@ type Widen<T> = T extends string
     ? number
     : { readonly [K in keyof T]: Widen<T[K]> };
 
-/** designSystem's `color`, with every value a plain string (host hexes). */
-export type CheckoutColor = Widen<typeof graphite>;
+/** designSystem's `color`, with every value a plain string (host hexes),
+ *  plus #4518 `controlOutline` (see surfaceTokens). */
+export type CheckoutColor = Widen<typeof graphite> & { readonly controlOutline: string };
 
 const wash = inkWash;
 
@@ -94,6 +95,46 @@ export function checkoutOutlineFor(palette: ThemePalette): string {
 }
 
 /**
+ * #4518 — the outline of a quiet control drawn ON A CARD (a secondary button,
+ * the inline access notice): the same loop as `checkoutOutlineFor`, run
+ * against the host card (and card2) instead of the page, so it reaches 3:1
+ * on both.
+ */
+const RGBA = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i;
+
+/** A colour as the opaque hex it paints on `base` (rgba composited). */
+function opaqueOn(value: string, base: string): string | null {
+  const hex = normalizeHex(value);
+  if (hex !== null) return hex;
+  const m = RGBA.exec(value.trim());
+  if (m === null) return null;
+  const alpha = m[4] === undefined ? 1 : Number(m[4]);
+  const toHex = (n: number): string => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, "0");
+  const fg = `#${toHex(Number(m[1]))}${toHex(Number(m[2]))}${toHex(Number(m[3]))}`;
+  return mixHex(base, fg, alpha);
+}
+
+export function checkoutControlOutlineFor(palette: ThemePalette): string {
+  const page = normalizeHex(palette.page);
+  const card = page === null ? null : opaqueOn(palette.card, page);
+  // The inline notice sits on `card2` (panelStrong): the outline must reach
+  // 3:1 on both surfaces it is drawn on.
+  const card2 = page === null ? null : opaqueOn(palette.panelStrong, page);
+  const ink = normalizeHex(palette.primaryText);
+  if (card === null || card2 === null || ink === null) return checkoutOutlineFor(palette);
+  for (let amount = 0.34; amount < 1; amount += 0.04) {
+    const candidate = mixHex(card, ink, amount);
+    if (
+      contrastRatio(candidate, card) >= CHECKOUT_OUTLINE_MIN_CONTRAST &&
+      contrastRatio(candidate, card2) >= CHECKOUT_OUTLINE_MIN_CONTRAST
+    ) {
+      return candidate;
+    }
+  }
+  return ink;
+}
+
+/**
  * The Graphite token set, re-pointed at a host palette. Text accents take the
  * theme's first colour (never the gradient, #1023); status colours come from
  * `statusOn` (the same values as designSystem's, per page brightness).
@@ -109,6 +150,7 @@ export function checkoutColorFor(palette: ThemePalette): CheckoutColor {
     card3: palette.panelStrong,
     line: neutralHair(palette),
     lineStrong: checkoutOutlineFor(palette),
+    controlOutline: checkoutControlOutlineFor(palette),
     text1: palette.primaryText,
     text2: palette.secondaryText,
     text3: palette.tertiaryText,

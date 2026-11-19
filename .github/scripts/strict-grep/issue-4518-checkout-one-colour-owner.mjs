@@ -40,6 +40,7 @@ const ROOT = process.cwd().endsWith("mingla-business") ? path.resolve(process.cw
 const BUSINESS = "mingla-business";
 
 export const SHARED_PARTS = [
+  "src/components/buyer/BuyerConnectionNotice.tsx",
   "src/components/ui/Button.tsx",
   "src/components/ui/EmptyState.tsx",
   "src/components/ui/GlassChrome.tsx",

@@ -63,6 +63,8 @@ import {
   type TripPaymentPlanChoice,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { BuyerConnectionNotice } from "../../../src/components/buyer/BuyerConnectionNotice";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // trip checkout too (the event checkout already does; trips/experiences didn't,
@@ -465,6 +467,29 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripEventId, trip, lines]);
 
+  // #4518 — one notice when the offering could not load: Try again re-reads
+  // (and stays on screen while it does), Back stays as the quiet second
+  // action. Checked before the loading branch so a retry shows "Trying
+  // again…" instead of swapping to the loading text.
+  if (publicTripQuery.isError) {
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={0}
+          totalSteps={totalSteps}
+          title="Reserve your spot"
+          onBack={handleBack}
+        />
+        <BuyerConnectionNotice
+          variant={isConnectionFailure(publicTripQuery.error) ? "connection" : "server"}
+          onRetry={() => publicTripQuery.refetch()}
+          onBack={handleBack}
+          testID="checkout-trip-connection-notice"
+        />
+      </View>
+    );
+  }
+
   // ----- Trip-not-found / past / closed empty states -----
   if (publicTripQuery.isLoading || publicTripQuery.isFetching) {
     return (
@@ -477,27 +502,6 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
         />
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>Loading trip…</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (publicTripQuery.isError) {
-    return (
-      <View style={styles.host}>
-        <CheckoutHeader
-          stepIndex={0}
-          totalSteps={totalSteps}
-          title="Reserve your spot"
-          onBack={handleBack}
-        />
-        <View style={styles.emptyWrap}>
-          <EmptyState
-            illustration="ticket"
-            title="Trip couldn't load"
-            description="Refresh this page or try the trip link again."
-            cta={{ label: "Back", onPress: handleBack }}
-          />
         </View>
       </View>
     );

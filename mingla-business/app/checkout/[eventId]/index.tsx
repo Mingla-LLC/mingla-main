@@ -71,6 +71,8 @@ import {
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import { BuyerConnectionNotice } from "../../../src/components/buyer/BuyerConnectionNotice";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { CheckoutCoverFallback } from "../../../src/components/checkout/CheckoutCoverFallback";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 import { CartTicketExtras } from "../../../src/components/checkout/CartTicketExtras";
@@ -476,6 +478,29 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     router.push(`/checkout/${eventId}/buyer${tokenParam}` as never);
   }, [router, eventId, ticketLinkToken, totals.isEmpty]);
 
+  // #4518 — one notice when the offering could not load: Try again re-reads
+  // (and stays on screen while it does), Back stays as the quiet second
+  // action. Checked before the loading branch so a retry shows "Trying
+  // again…" instead of swapping to the loading text.
+  if (publicEventQuery.isError) {
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={0}
+          totalSteps={3}
+          title="Get tickets"
+          onBack={handleBack}
+        />
+        <BuyerConnectionNotice
+          variant={isConnectionFailure(publicEventQuery.error) ? "connection" : "server"}
+          onRetry={() => publicEventQuery.refetch()}
+          onBack={handleBack}
+          testID="checkout-event-connection-notice"
+        />
+      </View>
+    );
+  }
+
   // ----- Event-not-found / past / cancelled empty state -----
   if (
     publicEventQuery.isLoading ||
@@ -492,27 +517,6 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         />
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>Loading tickets...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (publicEventQuery.isError) {
-    return (
-      <View style={styles.host}>
-        <CheckoutHeader
-          stepIndex={0}
-          totalSteps={3}
-          title="Get tickets"
-          onBack={handleBack}
-        />
-        <View style={styles.emptyWrap}>
-          <EmptyState
-            illustration="ticket"
-            title="Tickets could not load"
-            description="Refresh this page or try the event link again."
-            cta={{ label: "Back", onPress: handleBack }}
-          />
         </View>
       </View>
     );
