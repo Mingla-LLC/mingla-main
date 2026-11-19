@@ -22,7 +22,7 @@
  * nothing on a slow connection.
  */
 
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useGlobalSearchParams, usePathname, useSegments } from "expo-router";
 
@@ -33,18 +33,19 @@ import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useItemRouteBrand } from "../../hooks/useItemRouteBrand";
+import type { PendingBrandSwitch } from "../../hooks/pendingBrandSwitch";
+import { useRouteBrand } from "../../hooks/useWorkspaceBrand";
 import { useWorkspaceBrandRouteSync } from "../../hooks/useWorkspaceBrandRouteSync";
 import { brandIdFromRoute, isAboveBrandScreen, itemRouteRef, phoneBrandStrip, type WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
 import { WorkspaceBrandSwitcher } from "../brand/WorkspaceBrandSwitcher";
-import { WorkspaceRouteContext, type WorkspaceRoute } from "../brand/workspaceBrandContext";
+import type { WorkspaceRoute } from "../brand/workspaceBrandContext";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { visibleTabsForRank } from "../../utils/navTabGate";
 
 import { DesktopSidebar, SIDEBAR_SOURCE_TABS } from "./DesktopSidebar";
 import { useDesktopSidebarStore } from "./desktopSidebarState";
 import { hostDesktopShellModeFor } from "./hostDesktopShellRoutes";
-import { HostShellInsetContext } from "./hostShellContext";
-import { useScreenOwnsBrandSwitcher } from "./phoneBrandSwitcherOwner";
+import { HostShellInsetContext, WorkspaceRouteContext } from "./hostShellContext";
 import { TopBar } from "./TopBar";
 
 const loadBrandSwitcherSheet = () => import("../brand/BrandSwitcherSheet");
@@ -115,11 +116,22 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   // ones the shell draws chrome for): a visitor's page never moves the host's brand.
   const itemRef = useMemo(() => (mode === "sidebar" || mode === "rail" ? itemRouteRef(pathname) : null), [mode, pathname]);
   const itemBrand = useItemRouteBrand(itemRef, user != null);
-  const workspaceRoute = useMemo<WorkspaceRoute>(() => {
-    const params = JSON.parse(paramsKey) as WorkspaceRouteParams;
-    return { pathname: pathname ?? null, params, routeBrandId: brandIdFromRoute(pathname, params) ?? itemBrand.brandId };
-  }, [itemBrand.brandId, paramsKey, pathname]);
-  useWorkspaceBrandRouteSync(workspaceRoute.pathname, workspaceRoute.routeBrandId);
+  const routeParams = useMemo(() => JSON.parse(paramsKey) as WorkspaceRouteParams, [paramsKey]);
+  const routeBrandId = useMemo(() => brandIdFromRoute(pathname, routeParams) ?? itemBrand.brandId, [itemBrand.brandId, pathname, routeParams]);
+  const routeBrand = useRouteBrand(routeBrandId);
+  // A switch the switcher holds until its route change lands (settled by the route sync below).
+  const pendingSwitch = useRef<PendingBrandSwitch | null>(null);
+  // Screens that show the switcher in their own bar on phones (the Website workspace) count themselves here.
+  const [switcherOwners, setSwitcherOwners] = useState(0);
+  const ownPhoneSwitcher = useCallback((): (() => void) => {
+    setSwitcherOwners((count) => count + 1);
+    return () => setSwitcherOwners((count) => count - 1);
+  }, []);
+  const workspaceRoute = useMemo<WorkspaceRoute>(
+    () => ({ pathname: pathname ?? null, params: routeParams, routeBrandId, brand: routeBrand, Switcher: WorkspaceBrandSwitcher, pendingSwitch, ownPhoneSwitcher }),
+    [ownPhoneSwitcher, pathname, routeBrand, routeBrandId, routeParams],
+  );
+  useWorkspaceBrandRouteSync(workspaceRoute.pathname, routeBrandId, pendingSwitch);
   const active = Platform.OS === "web" && isWideDesktop && user != null && (mode === "sidebar" || mode === "rail");
   const rail = mode === "rail";
   const inset = active ? (rail || collapsed ? DESKTOP_RAIL_WIDTH : DESKTOP_SIDEBAR_WIDTH) : 0;
@@ -128,7 +140,7 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   // (a trip, an event, a listing...) open under a back bar that names the screen, not the brand. The brand being edited is named above it, and is the
   // switcher. (The Website workspace has it in its own bar and says so; desktop has the top bar;
   // native keeps its headers.)
-  const screenOwnsSwitcher = useScreenOwnsBrandSwitcher();
+  const screenOwnsSwitcher = switcherOwners > 0;
   const phoneBrand = Platform.OS === "web" && !isWideDesktop && user != null && !screenOwnsSwitcher
     ? phoneBrandStrip(pathname, workspaceRoute.routeBrandId, mode)
     : null;

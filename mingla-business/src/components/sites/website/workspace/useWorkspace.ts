@@ -11,6 +11,7 @@ import {
   moveSection,
   redoSiteChange,
   removeSection,
+  pageSectionsKey,
   setPageEnabled,
   setSectionMedia,
   undoSiteChange,
@@ -119,7 +120,7 @@ export function useWorkspace(input: {
   const previewRef = useRef<PreviewCommands | null>(null);
   const shownText = useRef(new Map<string, string>());
 
-  const sectionsKey = useCallback((id: string | null) => brandSiteKeys.pageSections(siteId, id), [siteId]);
+  const sectionsKey = useCallback((id: string | null) => pageSectionsKey(siteId, id), [siteId]);
   /**
    * Each page as it was before the changes still being saved were shown on it.
    * A change that does not save is taken off the screen at once from here, even

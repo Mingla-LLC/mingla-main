@@ -16,10 +16,10 @@
  *      guard (`beforeRemove`) can still stop the move, and then the brand
  *      stays put too.
  */
-import { useCallback } from "react";
+import { useCallback, useContext } from "react";
+import { WorkspaceRouteContext } from "../components/ui/hostShellContext";
 import { useRouter } from "expo-router";
 
-import { useWorkspaceRoute } from "../components/brand/workspaceBrandContext";
 import { nextToastEntryId, useToastStore } from "../components/ui/toastStore";
 import type { ToastKind } from "../components/ui/toastTimings";
 import {
@@ -31,7 +31,7 @@ import {
 } from "../config/workspaceBrandRoutes";
 import { useAuth } from "../context/AuthContext";
 import { useCurrentBrandStore, type Brand } from "../store/currentBrandStore";
-import { hasUnsavedWork } from "../utils/unsavedChangesGuard";
+import { unsavedWork } from "./useUnsavedChangesGuard";
 import { usePickBrand } from "./usePickBrand";
 
 export const UNSAVED_WORK_HOLDS_SWITCH =
@@ -53,14 +53,6 @@ export function showWorkspaceToast(kind: ToastKind, message: string): void {
     testID: "workspace-brand-toast",
   });
 }
-
-import { holdPendingBrandSwitch } from "./pendingBrandSwitch";
-
-export {
-  hasPendingBrandSwitchForTest,
-  resetPendingBrandSwitchForTest,
-  settlePendingBrandSwitch,
-} from "./pendingBrandSwitch";
 
 /**
  * The member's role rank on a brand they are about to switch to. A brand they
@@ -119,24 +111,24 @@ export function useWorkspaceBrandSwitch(
   options: WorkspaceBrandSwitchOptions = {},
 ): (brand: Brand) => Promise<WorkspaceBrandSwitchOutcome> {
   const { fromBrandId } = options;
-  const route = useWorkspaceRoute();
+  const route = useContext(WorkspaceRouteContext);
   const router = useRouter();
   const { user } = useAuth();
   const userId = user?.id ?? null;
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const ownPickBrand = usePickBrand();
   const pickBrand = options.pickBrand ?? ownPickBrand;
-  const { pathname, params, routeBrandId } = route;
+  const { pathname, params, routeBrandId, pendingSwitch } = route;
 
   return useCallback(
     async (brand: Brand): Promise<WorkspaceBrandSwitchOutcome> => {
-      holdPendingBrandSwitch(null);
+      if (pendingSwitch !== undefined) pendingSwitch.current = null;
       const from = fromBrandId ?? routeBrandId ?? currentBrandId ?? null;
       const sameScreen =
         pathname === null ? null : sameScreenForBrand(pathname, params, from, brand.id);
       if (sameScreen === null) {
         const unchanged = from === brand.id && currentBrandId === brand.id;
-        if (!unchanged && hasUnsavedWork()) {
+        if (!unchanged && unsavedWork.screens > 0) {
           showWorkspaceToast("warn", UNSAVED_WORK_HOLDS_SWITCH);
           return "held";
         }
@@ -144,7 +136,7 @@ export function useWorkspaceBrandSwitch(
         pickBrand(brand);
         return unchanged ? "unchanged" : "switched";
       }
-      if (hasUnsavedWork()) {
+      if (unsavedWork.screens > 0) {
         showWorkspaceToast("warn", UNSAVED_WORK_HOLDS_SWITCH);
         return "held";
       }
@@ -166,12 +158,15 @@ export function useWorkspaceBrandSwitch(
       if (targetPath === workspaceRoutePath(pathname)) {
         // Same path, another brand in the query: nothing can hold this move.
         pickBrand(brand);
+      } else if (pendingSwitch !== undefined) {
+        pendingSwitch.current = { targetPath, apply: () => pickBrand(brand) };
       } else {
-        holdPendingBrandSwitch({ targetPath, apply: () => pickBrand(brand) });
+        // No shell above (an isolated render): nothing would settle a held switch.
+        pickBrand(brand);
       }
       router.replace(href as never);
       return outcome;
     },
-    [currentBrandId, fromBrandId, params, pathname, pickBrand, routeBrandId, router, userId],
+    [currentBrandId, fromBrandId, params, pathname, pendingSwitch, pickBrand, routeBrandId, router, userId],
   );
 }

@@ -46,16 +46,15 @@ jest.mock("../../config/queryClient", () => ({
   queryClient: { fetchQuery: ({ queryFn }: { queryFn: () => Promise<unknown> }) => queryFn() },
 }));
 
-import { WorkspaceRouteContext, type WorkspaceRoute } from "../../components/brand/workspaceBrandContext";
+import type { WorkspaceRoute } from "../../components/brand/workspaceBrandContext";
+import { WorkspaceRouteContext } from "../../components/ui/hostShellContext";
 import { resetToastStoreForTest, useToastStore } from "../../components/ui/toastStore";
-import { brandIdFromRoute, type WorkspaceRouteParams } from "../../config/workspaceBrandRoutes";
+import { brandIdFromRoute, type WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
 import type { Brand } from "../../store/currentBrandStore";
-import { registerUnsavedWork, resetUnsavedWorkForTest } from "../../utils/unsavedChangesGuard";
+import { unsavedWork } from "../useUnsavedChangesGuard";
+import { settlePendingBrandSwitch as settleHeld, type PendingBrandSwitchHolder } from "../pendingBrandSwitch";
 import {
   UNSAVED_WORK_HOLDS_SWITCH,
-  hasPendingBrandSwitchForTest,
-  resetPendingBrandSwitchForTest,
-  settlePendingBrandSwitch,
   useWorkspaceBrandSwitch,
   type WorkspaceBrandSwitchOutcome,
 } from "../useWorkspaceBrandSwitch";
@@ -66,6 +65,22 @@ const TestRenderer = require("react-test-renderer") as {
 };
 
 type Switch = (brand: Brand) => Promise<WorkspaceBrandSwitchOutcome>;
+
+// The root shell owns the held switch and settles it on every route change;
+// here the test plays the shell.
+const pendingSwitch: PendingBrandSwitchHolder = { current: null };
+const settlePendingBrandSwitch = (pathname: string | null): void => settleHeld(pendingSwitch, pathname);
+const hasPendingBrandSwitchForTest = (): boolean => pendingSwitch.current !== null;
+const resetPendingBrandSwitchForTest = (): void => {
+  pendingSwitch.current = null;
+};
+/** What useUnsavedChangesGuard does while a screen is dirty. */
+const registerUnsavedWork = (): (() => void) => {
+  unsavedWork.screens += 1;
+  return () => {
+    unsavedWork.screens -= 1;
+  };
+};
 
 /** Mount the hook on a route (or outside any route) and hand back its function. */
 async function mountOn(
@@ -78,7 +93,7 @@ async function mountOn(
     switchTo = useWorkspaceBrandSwitch({ fromBrandId });
     return null;
   };
-  const route: WorkspaceRoute = { pathname, params, routeBrandId: brandIdFromRoute(pathname, params) };
+  const route: WorkspaceRoute = { pathname, params, routeBrandId: brandIdFromRoute(pathname, params), pendingSwitch };
   await TestRenderer.act(async () => {
     TestRenderer.create(
       pathname === null ? (
@@ -104,7 +119,7 @@ beforeEach(() => {
   mockCurrentBrandId = GAMELAND.id;
   mockRole = { role: "brand_owner" };
   resetPendingBrandSwitchForTest();
-  resetUnsavedWorkForTest();
+  unsavedWork.screens = 0;
   resetToastStoreForTest();
 });
 afterEach(() => {
@@ -307,10 +322,9 @@ describe("#4453 unsaved work holds the switch", () => {
     expect(mockPick).not.toHaveBeenCalled();
   });
 
-  test("releasing twice does not unlock someone else's unsaved work", async () => {
+  test("two dirty screens: one saving does not unlock the other's unsaved work", async () => {
     const first = registerUnsavedWork();
     registerUnsavedWork();
-    first();
     first();
     const switchTo = await mountOn("/home");
     await expect(switchTo(LANTERN as Brand)).resolves.toBe("held");

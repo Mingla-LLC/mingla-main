@@ -36,36 +36,6 @@ export const UNSAVED_AUTOSAVE_FAILED_DIALOG: UnsavedChangesDialogCopy = {
   cancelLabel: "Keep editing",
 };
 
-/**
- * #4453 — screens with unsaved work, counted while their guard is `dirty`.
- * The brand switcher reads this: switching brand leaves the screen (or swaps
- * the brand under it), so it holds the switch and says why instead of
- * discarding the work silently. `useUnsavedChangesGuard` registers for every
- * screen that uses it; a screen with its own guard can call this directly.
- */
-let unsavedScreens = 0;
-
-/** Count this screen as holding unsaved work; call the result to release it. */
-export function registerUnsavedWork(): () => void {
-  unsavedScreens += 1;
-  let released = false;
-  return (): void => {
-    if (released) return;
-    released = true;
-    unsavedScreens = Math.max(0, unsavedScreens - 1);
-  };
-}
-
-/** True while any mounted screen has reported unsaved work. */
-export function hasUnsavedWork(): boolean {
-  return unsavedScreens > 0;
-}
-
-/** Test seam. */
-export function resetUnsavedWorkForTest(): void {
-  unsavedScreens = 0;
-}
-
 /** Ask before leaving only when there is work to lose and nothing is in flight. */
 export function shouldConfirmLeave(input: { dirty: boolean; busy?: boolean }): boolean {
   return input.dirty && input.busy !== true;

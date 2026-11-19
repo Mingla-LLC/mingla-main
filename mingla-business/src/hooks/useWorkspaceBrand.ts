@@ -11,9 +11,10 @@
  * is `pending` until the cache can answer, so the chip shows its calm
  * placeholder rather than another brand's name.
  */
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 
-import { useWorkspaceRoute } from "../components/brand/workspaceBrandContext";
+import type { WorkspaceChipBrand } from "../components/brand/workspaceBrandContext";
+import { WorkspaceRouteContext } from "../components/ui/hostShellContext";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import type { Brand } from "../types/brand";
 import { brandKeys } from "./brandKeys";
@@ -28,7 +29,7 @@ export interface WorkspaceBrand {
   scoped: boolean;
 }
 
-// The brand chip is on every screen, and most screens follow the current brand and never look
+// The switcher is on every signed-in screen, and most screens follow the current brand and never look
 // in the cache. The app's query client (and the cache lookup built on it) is therefore reached
 // only when a screen names another brand, not when this file loads: a screen that mounts the chip
 // does not construct the client by importing it.
@@ -49,15 +50,11 @@ const brandListsAnswered = (): boolean =>
     .getQueriesData<Brand[]>({ queryKey: brandKeys.lists() })
     .some(([, brands]) => brands !== undefined);
 
-export function useWorkspaceBrand(brandId?: string | null): WorkspaceBrand {
-  const route = useWorkspaceRoute();
-  const currentBrand = useCurrentBrand();
-  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
-  const scopedId =
-    typeof brandId === "string" && brandId.length > 0 ? brandId : route.routeBrandId;
-  // Only a screen whose brand differs from the store needs the cache lookup.
-  const differs =
-    scopedId !== null && scopedId !== currentBrandId && scopedId !== currentBrand?.id;
+/** The cache's answer for a brand a screen names; nothing is read (or subscribed to) unless `differs`. */
+function useCachedBrand(
+  scopedId: string | null,
+  differs: boolean,
+): { cached: Brand | null; answered: boolean } {
   const subscribe = differs ? subscribeToBrandCache : noSubscription;
   const readBrand = useCallback(
     (): Brand | null => (differs ? brandFromCache(scopedId) : null),
@@ -69,6 +66,19 @@ export function useWorkspaceBrand(brandId?: string | null): WorkspaceBrand {
   );
   const cached = useSyncExternalStore(subscribe, readBrand, readBrand);
   const answered = useSyncExternalStore(subscribe, readAnswered, readAnswered);
+  return { cached, answered };
+}
+
+export function useWorkspaceBrand(brandId?: string | null): WorkspaceBrand {
+  const route = useContext(WorkspaceRouteContext);
+  const currentBrand = useCurrentBrand();
+  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  const scopedId =
+    typeof brandId === "string" && brandId.length > 0 ? brandId : route.routeBrandId;
+  // Only a screen whose brand differs from the store needs the cache lookup.
+  const differs =
+    scopedId !== null && scopedId !== currentBrandId && scopedId !== currentBrand?.id;
+  const { cached, answered } = useCachedBrand(scopedId, differs);
 
   if (!differs) return { brand: currentBrand, pending: false, scoped: scopedId !== null };
   if (cached !== null) return { brand: cached, pending: false, scoped: true };
@@ -76,4 +86,21 @@ export function useWorkspaceBrand(brandId?: string | null): WorkspaceBrand {
   // the screen cannot be theirs to edit. Show their own brand, not a spinner.
   if (answered) return { brand: currentBrand, pending: false, scoped: false };
   return { brand: null, pending: true, scoped: true };
+}
+
+/**
+ * The root shell's version, for a bare brand chip (one that is not inside the
+ * switcher): the brand the ROUTE names while it is not the current brand, or
+ * undefined when the chip should simply follow the current brand (the route
+ * names none, names the current one, or names one the person is not on).
+ * It reads the store's id only, so the shell mounts no brand query of its own.
+ */
+export function useRouteBrand(routeBrandId: string | null): WorkspaceChipBrand | undefined {
+  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  const differs = routeBrandId !== null && routeBrandId !== currentBrandId;
+  const { cached, answered } = useCachedBrand(routeBrandId, differs);
+  return useMemo(
+    () => (!differs || (cached === null && answered) ? undefined : { brand: cached, pending: cached === null }),
+    [answered, cached, differs],
+  );
 }

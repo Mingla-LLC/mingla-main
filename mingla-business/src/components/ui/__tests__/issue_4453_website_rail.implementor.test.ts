@@ -3,7 +3,7 @@
  * #4453 — the Website workspace draws its own 392 panel beside the live
  * draft, so the app's left sidebar collapses to the icon rail there.
  *
- * FAILS-ON-REVERT: drop WEBSITE_WORKSPACE_RE from `isRailRoute`
+ * FAILS-ON-REVERT: drop the `/brand/<id>/website` rule from `isRailRoute`
  * (desktopSidebarState.ts) and every "rail" row below reads "sidebar" / 248.
  *
  *   cd mingla-business && npx jest --maxWorkers=2 \

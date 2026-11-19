@@ -3,8 +3,9 @@
  * #4453 (contract section I) — on host.usemingla.com the top bar read
  * "Lantern Room" while the screen was /brand/<Gameland Lagos>/website.
  *
- * FAILS-ON-REVERT: make BrandChip read `useCurrentBrand()` again (ignoring the
- * route) and "the bug" fails with "Brand: Lantern Room…".
+ * FAILS-ON-REVERT: stop the switcher handing the screen's brand to its chip
+ * (so the chip follows `useCurrentBrand()` again, ignoring the route) and
+ * "the bug" fails with "Brand: Lantern Room…".
  *
  *   cd mingla-business && npx jest --maxWorkers=2 \
  *     src/components/brand/__tests__/issue_4453_workspace_brand_switcher.implementor.test.tsx
@@ -113,8 +114,9 @@ jest.mock("../../ui/Sheet", () => {
 import { StyleSheet } from "react-native";
 import { WorkspaceBrandSwitcher } from "../WorkspaceBrandSwitcher";
 import { BRAND_MENU_WIDTH, brandMenuPosition } from "../WorkspaceBrandMenu";
-import { WorkspaceRouteContext, type WorkspaceRoute } from "../workspaceBrandContext";
-import { brandIdFromRoute } from "../../../config/workspaceBrandRoutes";
+import type { WorkspaceRoute } from "../workspaceBrandContext";
+import { WorkspaceRouteContext } from "../../ui/hostShellContext";
+import { brandIdFromRoute } from "../../../config/workspaceBrandRoute";
 import { filterBrandsByQuery, showsBrandSearch } from "../../../utils/brandSearch";
 
 interface Node { type: unknown; props: Record<string, unknown>; children: (Node | string)[]; parent: Node | null }

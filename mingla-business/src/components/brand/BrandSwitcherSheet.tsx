@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useContext, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { WorkspaceRouteContext } from "../ui/hostShellContext";
 import { useRouter } from "expo-router";
 
 import {
@@ -14,7 +15,6 @@ import { useBrandListState } from "../../hooks/useBrandListShim";
 import { usePickBrand } from "../../hooks/usePickBrand";
 // #4453 — a pick opens the same screen for the chosen brand.
 import { useWorkspaceBrandSwitch } from "../../hooks/useWorkspaceBrandSwitch";
-import { useWorkspaceRoute } from "./workspaceBrandContext";
 import { filterBrandsByQuery, showsBrandSearch } from "../../utils/brandSearch";
 // #4389 N3 — draft and free-only rows from the setup checklist.
 import { useBrandSetupStates } from "../../hooks/useBrandSetupStates";
@@ -68,7 +68,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const { user } = useAuth();
   const storeBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   // #4453 — on a route that names its brand, that brand is the ticked one.
-  const currentBrandId = useWorkspaceRoute().routeBrandId ?? storeBrandId;
+  const currentBrandId = useContext(WorkspaceRouteContext).routeBrandId ?? storeBrandId;
   // The pick itself is still usePickBrand (select now, save as the default in
   // the background); #4453 decides WHEN it lands and which screen opens.
   const pickBrand = usePickBrand(onDefaultBrandSaveError);

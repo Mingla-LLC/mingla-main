@@ -1,33 +1,44 @@
 /**
- * #4453 (contract section I) — the route the host is on, for the brand
- * switcher. The root HostDesktopShell (mounted on every platform, around the
- * whole Stack) provides it from expo-router; the brand chip and the switch
- * hook read it from context, so they need no router hook of their own and
- * resolve the route's brand in the SAME render as the route change (no frame
- * showing the previous brand).
+ * #4453 (contract section I) — the shape of what the root HostDesktopShell
+ * (mounted on every platform, around the whole Stack) hands to the screens
+ * below it for the brand switcher: the route the host is on, the route's
+ * brand, and the switcher itself.
+ *
+ * Types only. The context is `WorkspaceRouteContext` in
+ * components/ui/hostShellContext.ts, the one small file about the shell that
+ * is in the shared boot chunk. Everything the shell puts in it (reading the
+ * brand from the route, looking it up, the switcher component, the held
+ * switch) is the shell's own code and loads with the root layout; top bars
+ * and screens reach it through the context, never by importing it. A bare
+ * `<BrandChip>` (one outside the switcher) is handed `brand` by its screen.
  *
  * Outside the provider (isolated renders) there is no route: the chip shows
  * the current brand and a pick only changes the current brand.
  */
-import { createContext, useContext } from "react";
+import type { ComponentType } from "react";
 
 import type { WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
+import type { PendingBrandSwitchHolder } from "../../hooks/pendingBrandSwitch";
+import type { Brand } from "../../types/brand";
+import type { WorkspaceBrandSwitcherProps } from "./WorkspaceBrandSwitcher";
+
+/** The brand a chip shows when the screen names one; `pending` while it is being read. */
+export interface WorkspaceChipBrand {
+  brand: Brand | null;
+  pending: boolean;
+}
 
 export interface WorkspaceRoute {
   pathname: string | null;
   params: WorkspaceRouteParams;
   /** The brand the route names (`/brand/<id>/…`, `?brandId=`), or null. */
   routeBrandId: string | null;
+  /** The route's brand while it is not the current brand (absent: follow the current brand). */
+  brand?: WorkspaceChipBrand;
+  /** The workspace brand switcher (WorkspaceBrandSwitcher). */
+  Switcher?: ComponentType<WorkspaceBrandSwitcherProps>;
+  /** A brand switch held until its route change lands; the shell settles it. */
+  pendingSwitch?: PendingBrandSwitchHolder;
+  /** A screen whose own bar shows the switcher on phones calls this; the result releases it. */
+  ownPhoneSwitcher?: () => () => void;
 }
-
-const NO_PARAMS: WorkspaceRouteParams = Object.freeze({});
-
-export const NO_WORKSPACE_ROUTE: WorkspaceRoute = Object.freeze({
-  pathname: null,
-  params: NO_PARAMS,
-  routeBrandId: null,
-});
-
-export const WorkspaceRouteContext = createContext<WorkspaceRoute>(NO_WORKSPACE_ROUTE);
-
-export const useWorkspaceRoute = (): WorkspaceRoute => useContext(WorkspaceRouteContext);

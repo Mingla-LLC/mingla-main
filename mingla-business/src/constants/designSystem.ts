@@ -686,9 +686,6 @@ export const venueRailWidth = 220 as const;
 export const websiteRailWidth = 232 as const;
 export const websitePaneMaxWidth = 760 as const;
 export const websitePreviewWidth = 440 as const;
-/** #4453 — the Website workspace: the left panel that holds every control, and its top bars. */
-export const websiteWorkspacePanelWidth = 392 as const;
-export const websiteWorkspaceBarHeight = 56 as const;
 
 // Issue #2737 — reservation calendar geometry. This is deliberately scoped to
 // the operator calendar so responsive density never becomes a second global

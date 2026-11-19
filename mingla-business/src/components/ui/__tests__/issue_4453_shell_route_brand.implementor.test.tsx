@@ -76,7 +76,8 @@ jest.mock("../Icon", () => ({ Icon: (): null => null }));
 
 import { HostDesktopShell } from "../HostDesktopShell";
 import { BrandChip } from "../BrandChip";
-import { useWorkspaceRoute } from "../../brand/workspaceBrandContext";
+import type { WorkspaceRoute } from "../../brand/workspaceBrandContext";
+import { WorkspaceRouteContext } from "../hostShellContext";
 
 interface Node { type: unknown; props: Record<string, unknown> }
 type Tree = { root: { findAll: (p: (n: Node) => boolean) => Node[] }; unmount: () => void };
@@ -85,10 +86,12 @@ const TestRenderer = require("react-test-renderer") as {
   create: (el: React.ReactElement) => Tree;
 };
 
-let seenRoute: ReturnType<typeof useWorkspaceRoute> | null = null;
+let seenRoute: WorkspaceRoute | null = null;
 const Screen: React.FC = () => {
-  seenRoute = useWorkspaceRoute();
-  return <BrandChip onPress={() => undefined} />;
+  const route = React.useContext(WorkspaceRouteContext);
+  seenRoute = route;
+  // A bare chip (Ari's): its screen hands it the route's brand from the shell.
+  return <BrandChip onPress={() => undefined} brand={route.brand?.brand} brandLoading={route.brand?.pending} />;
 };
 async function mount(): Promise<Tree> {
   let tree: Tree | null = null;
@@ -126,11 +129,16 @@ describe("#4453 the shell hands the route's brand to the chrome", () => {
     mockSetCurrentBrandId.mockImplementation(() => undefined);
     const tree = await mount();
     expect(chipLabel(tree)).toBe("Brand: Gameland Lagos. Switch brand");
-    expect(seenRoute).toEqual({
+    expect(seenRoute).toMatchObject({
       pathname: `/brand/${GAMELAND.id}/website`,
       params: { id: GAMELAND.id },
       routeBrandId: GAMELAND.id,
+      // The route's brand, read by the shell: what a bare chip shows.
+      brand: { brand: GAMELAND, pending: false },
     });
+    // The shell also hands down the switcher and the held-switch holder.
+    expect(typeof seenRoute?.Switcher).toBe("function");
+    expect(seenRoute?.pendingSwitch).toEqual({ current: null });
     await TestRenderer.act(async () => tree.unmount());
   });
 

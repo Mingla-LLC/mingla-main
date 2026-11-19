@@ -12,7 +12,7 @@
  *   - Toast (canonical app-wide toast — supports tap, close button, swipe-up to dismiss)
  */
 
-import React, { useRef, useState } from "react";
+import React, { useContext, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Keyboard,
@@ -76,6 +76,7 @@ import { Toast } from "../../components/ui/Toast";
 // #4389 AB — Ari's one top bar composes the shared brand chip (never a brand
 // TopBar with rightSlot=, I-37).
 import { BrandChip } from "../../components/ui/BrandChip";
+import { WorkspaceRouteContext } from "../../components/ui/hostShellContext";
 import { AriBrandSwitchConfirmSheet } from "../../components/ari/AriBrandSwitchConfirmSheet";
 import { ARI_BRAND_BAR_COPY } from "../../components/ari/ariBrandBarCopy";
 import { trackBrandSetup } from "../../components/brand/brandSetupAnalytics";
@@ -396,6 +397,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     null,
   );
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
+  // #4453 — the chip names the brand the route names (`/ari?brandId=`), read by the root shell.
+  const routeBrand = useContext(WorkspaceRouteContext).brand;
   // #4389 R-16 — a pick held while Ari is answering, waiting for the host.
   const [heldBrandPick, setHeldBrandPick] = useState<Brand | null>(null);
   const pickBrand = usePickBrand();
@@ -1745,6 +1748,8 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
             <View style={styles.ariBarLeft}>
               <BrandChip
                 onPress={() => setBrandSwitcherOpen(true)}
+                brand={routeBrand?.brand}
+                brandLoading={routeBrand?.pending}
                 fullNameLabel
                 testID="ari-brand-chip"
               />

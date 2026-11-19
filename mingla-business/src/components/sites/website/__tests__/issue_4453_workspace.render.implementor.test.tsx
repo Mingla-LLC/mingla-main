@@ -179,7 +179,12 @@ for (const [file, names] of [
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { parseWebsitePath, type WebsiteRoute } from "../../../../sites/websiteNav";
 import type { WebsiteContextValue } from "../WebsiteContext";
-import { HostShellInsetContext } from "../../../ui/hostShellContext";
+import { HostShellInsetContext, WorkspaceRouteContext } from "../../../ui/hostShellContext";
+// The root shell hands the brand switcher to screens through its context
+// (the screen does not import it); here the test plays the shell.
+import type { WorkspaceRoute } from "../../../brand/workspaceBrandContext";
+import { WorkspaceBrandSwitcher } from "../../../brand/WorkspaceBrandSwitcher";
+const SHELL_ROUTE: WorkspaceRoute = { pathname: "/brand/b/website", params: { id: "b" }, routeBrandId: "b", Switcher: WorkspaceBrandSwitcher };
 
 const { WorkspaceShell } = require("../workspace/WorkspaceShell") as typeof import("../workspace/WorkspaceShell");
 const { act, create } = require("react-test-renderer") as {
@@ -313,9 +318,11 @@ async function open(options: { segments?: string[]; search?: Record<string, stri
   await act(async () => {
     tree = create(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } })}>
-        <HostShellInsetContext.Provider value={options.shellTopBar === true}>
-          <WorkspaceShell base={base} route={route} search={options.search ?? {}} segments={segments} contentDetails={["stories"]} dialogs={null} offlineDevice={false} />
-        </HostShellInsetContext.Provider>
+        <WorkspaceRouteContext.Provider value={SHELL_ROUTE}>
+          <HostShellInsetContext.Provider value={options.shellTopBar === true}>
+            <WorkspaceShell base={base} route={route} search={options.search ?? {}} segments={segments} contentDetails={["stories"]} dialogs={null} offlineDevice={false} />
+          </HostShellInsetContext.Provider>
+        </WorkspaceRouteContext.Provider>
       </QueryClientProvider>,
     );
   });

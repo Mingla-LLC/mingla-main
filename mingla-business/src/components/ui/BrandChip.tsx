@@ -4,13 +4,13 @@
  *
  * #4453 (contract section I) — the chip names the brand of the SCREEN you are
  * on, not just the current-brand store: a screen that names its brand (the
- * `brandId` prop, or the route, e.g. `/brand/<id>/website`) wins. It is the
+ * `brand` prop: its own, or the route's, e.g. `/brand/<id>/website`) wins. It is the
  * trigger of WorkspaceBrandSwitcher: brand mark, name, chevron, at least 44pt
  * tall, and its label always carries the full name ("Brand: Gameland Lagos.
  * Switch brand") however the visible name is shortened.
  *
- * `fullNameLabel` / `compact`: the name truncates with "…" by layout instead
- * of the 18-character label Home keeps.
+ * `fullNameLabel`: the name truncates with "…" by layout instead of the
+ * 18-character label Home keeps.
  */
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -21,9 +21,10 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
-import { useWorkspaceBrand } from "../../hooks/useWorkspaceBrand";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 // issue #3345 — loading vs absent. Store selectors only (no new query mounts).
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
+import type { Brand } from "../../types/brand";
 import { isCurrentBrandPending } from "../../utils/currentBrandPending";
 
 import { BrandMark } from "../brand/BrandMark";
@@ -31,25 +32,27 @@ import { Icon } from "./Icon";
 
 export const BRAND_LABEL_MAX_CHARS = 18;
 const BRAND_MARK_SIZE = 24;
-const BRAND_MARK_COMPACT_SIZE = 20;
-/** #4453 — the chip is a control: never shorter than a 44pt target. */
-const BRAND_CHIP_MIN_HEIGHT = 44;
 
 const truncate = (value: string, max: number): string =>
   value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 
 export interface BrandChipProps {
-  onPress: () => void;
+  onPress?: () => void;
   /** issue #3345 — the host knows the active brand is still being resolved. */
   brandLoading?: boolean;
   /** Ari: label truncates by layout; the accessibility label names the brand in full. */
   fullNameLabel?: boolean;
-  /** #4453 — the brand this screen edits; wins over the route and the store. */
-  brandId?: string | null;
-  /** #4453 — a tight header (a panel beside other controls): smaller mark, layout truncation. */
-  compact?: boolean;
-  /** #4453 — the switcher menu is open (announced to screen readers). */
-  expanded?: boolean;
+  /**
+   * #4453 — the brand of the screen, when the screen names one: the switcher
+   * passes its own, a bare chip passes the route's from the shell
+   * (`useContext(WorkspaceRouteContext).brand`). Undefined: the current
+   * brand. Null: that brand is still being read (pass `brandLoading` too).
+   */
+  brand?: Brand | null;
+  /** #4453 — the brand mark's size (a tight header uses a smaller one). */
+  markSize?: number;
+  /** #4453 — the switcher says whether its menu is open (announced to screen readers). */
+  accessibilityState?: { expanded: boolean };
   /** #4453 — the pressable, so a popover can anchor under it and hand focus back. */
   chipRef?: React.Ref<View>;
   testID?: string;
@@ -59,28 +62,28 @@ export const BrandChip: React.FC<BrandChipProps> = ({
   onPress,
   brandLoading = false,
   fullNameLabel = false,
-  brandId,
-  compact = false,
-  expanded,
+  brand,
+  markSize = BRAND_MARK_SIZE,
+  accessibilityState,
   chipRef,
   testID,
 }) => {
-  const workspace = useWorkspaceBrand(brandId);
-  const currentBrand = workspace.brand;
-  const byLayout = fullNameLabel || compact;
+  // #4453 — a screen that names its brand shows that brand; otherwise the
+  // chip follows the current brand, as before.
+  const storeBrand = useCurrentBrand();
+  const currentBrand = brand === undefined ? storeBrand : brand;
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const hasBrandHydrated = useCurrentBrandStore((s) => s.hasHydrated);
   // issue #3345 — "no brand yet" is not "no brand". A selected brand whose record
   // is still on its way must never read "Create brand".
   const brandPending =
-    workspace.pending ||
-    (currentBrand === null &&
+    currentBrand === null &&
     (brandLoading ||
       isCurrentBrandPending({
         brandPresent: false,
         currentBrandId,
         hasHydrated: hasBrandHydrated,
-      })));
+      }));
 
   if (brandPending) {
     return (
@@ -101,7 +104,7 @@ export const BrandChip: React.FC<BrandChipProps> = ({
   const label =
     currentBrand === null
       ? "Create brand"
-      : byLayout
+      : fullNameLabel
         ? currentBrand.displayName
         : truncate(currentBrand.displayName, BRAND_LABEL_MAX_CHARS);
   // #4453 — always the full name, and always says what a press does.
@@ -115,8 +118,8 @@ export const BrandChip: React.FC<BrandChipProps> = ({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
-      accessibilityState={expanded === undefined ? undefined : { expanded }}
-      style={byLayout ? [styles.brandRow, styles.brandRowShrink] : styles.brandRow}
+      accessibilityState={accessibilityState}
+      style={fullNameLabel ? [styles.brandRow, styles.brandRowShrink] : styles.brandRow}
       testID={testID}
     >
       {/* #3355 bug 17 — the brand's uploaded logo beside its name.
@@ -125,12 +128,12 @@ export const BrandChip: React.FC<BrandChipProps> = ({
       {currentBrand !== null ? (
         <BrandMark
           brand={currentBrand}
-          size={compact ? BRAND_MARK_COMPACT_SIZE : BRAND_MARK_SIZE}
+          size={markSize}
           testID="topbar-brand-mark"
         />
       ) : null}
       <Text
-        style={byLayout ? [styles.brandLabel, styles.brandLabelShrink] : styles.brandLabel}
+        style={fullNameLabel ? [styles.brandLabel, styles.brandLabelShrink] : styles.brandLabel}
         numberOfLines={1}
       >
         {label}
@@ -146,7 +149,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space[2],
     minWidth: 0,
-    minHeight: BRAND_CHIP_MIN_HEIGHT,
+    // #4453 — the chip is a control: never shorter than a 44pt target.
+    minHeight: 44,
   },
   brandRowShrink: {
     flexShrink: 1,

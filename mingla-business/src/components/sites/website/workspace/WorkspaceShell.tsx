@@ -4,9 +4,9 @@ import { useRouter } from "expo-router";
 import { SafeScreen } from "../../../ui/SafeScreen";
 import { Sheet } from "../../../ui/Sheet";
 import { Toast } from "../../../ui/Toast";
-import { HostShellInsetContext } from "../../../ui/hostShellContext";
+import { HostShellInsetContext, WorkspaceRouteContext } from "../../../ui/hostShellContext";
 import { useOwnPhoneBrandSwitcher } from "../../../ui/phoneBrandSwitcherOwner";
-import { color, radius, space, websitePaneMaxWidth, websiteWorkspaceBarHeight, websiteWorkspacePanelWidth } from "../../../../constants/designSystem";
+import { color, radius, space, websitePaneMaxWidth } from "../../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
 import { useBrandSiteLook } from "../../../../hooks/useBrandSite";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
@@ -33,7 +33,6 @@ import {
 import type { CollectionSection as CollectionKind, WebsiteRoute } from "../../../../sites/websiteNav";
 import type { WorkspaceSection } from "../../../../sites/contentApi";
 import { WebsiteProvider, type StickyBar, type TopbarSave, type WebsiteContextValue } from "../WebsiteContext";
-import { WorkspaceBrandSwitcher } from "../../../brand/WorkspaceBrandSwitcher";
 import { LockBanner } from "../LockBanner";
 import { NoticeBanner } from "../NoticeBanner";
 import { Banner, Chip, Skeleton, WButton, ui } from "../ui";
@@ -69,6 +68,10 @@ import { useWorkspace, type WorkspaceToast } from "./useWorkspace";
  * bottom sheet. Old Website addresses land here in the right place.
  */
 const HEARTBEAT_MS = 120_000;
+// The left panel that holds every control, and the height of its top bars. Kept here, not in
+// the design system file: that file is in the shared boot chunk and only this screen uses them.
+const websiteWorkspacePanelWidth = 392;
+const websiteWorkspaceBarHeight = 56;
 type Shown = Exclude<WebsiteRoute, { kind: "redirect" | "preview" | "setup" }>;
 
 export function WorkspaceShell({ base, route, search, segments, contentDetails, dialogs, offlineDevice }: {
@@ -656,12 +659,15 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
  * (desktop), only the autosave state is shown: one switcher per screen.
  */
 function BrandHead({ brandId, line, switcher }: { brandId: string; line: string; switcher: boolean }): React.ReactElement {
+  // The switcher is the root shell's, reached through its context (importing
+  // it here would move it into the shared boot chunk).
+  const { Switcher: WorkspaceBrandSwitcher } = useContext(WorkspaceRouteContext);
   return (
     <View style={styles.brandHead} testID="workspace-brand-slot">
       {switcher ? (
         // The name shortens to the room the bar has: it never runs under the buttons beside it.
         <View style={styles.brandFit} testID="workspace-brand-fit">
-          <WorkspaceBrandSwitcher brandId={brandId} compact testID="workspace-brand-switcher" />
+          {WorkspaceBrandSwitcher !== undefined ? <WorkspaceBrandSwitcher brandId={brandId} compact testID="workspace-brand-switcher" /> : null}
         </View>
       ) : null}
       <Text style={[styles.saveLine, switcher ? null : styles.saveLineAlone]} numberOfLines={1} role="status" accessibilityLiveRegion="polite" testID="workspace-save-state">{line}</Text>

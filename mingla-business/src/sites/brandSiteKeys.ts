@@ -46,9 +46,6 @@ export const brandSiteKeys = {
     ["brand-sites", siteId, "content", collection, id] as const,
   siteData: (siteId: string | null, what: string) => ["brand-sites", siteId, "data", what] as const,
   previewDevice: (userId: string | null) => ["brand-sites", "preview-device", userId] as const,
-  /** #4453 workspace — one page's sections, top to bottom. */
-  pageSections: (siteId: string | null, pageId: string | null) =>
-    ["brand-sites", siteId, "data", "page-sections", pageId] as const,
   /** #2829 W10 — the site's private share-preview links. */
   shareLinks: (siteId: string | null) => ["brand-sites", siteId, "share-links"] as const,
 };

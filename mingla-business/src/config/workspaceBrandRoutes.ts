@@ -1,26 +1,55 @@
 /**
  * #4453 (contract section I) — route metadata for the workspace brand switcher.
  *
- * Two questions, answered from the pathname and the route's params alone:
- *   1. `brandIdFromRoute` — does this screen name a brand? Then that brand is
- *      the one being edited, whatever the current-brand store says.
- *   2. `sameScreenForBrand` — the host is on this screen and picks another
- *      brand: where is "the same screen" for that brand?
+ * One question, answered from the pathname and the route's params alone:
+ * `sameScreenForBrand` — the host is on this screen and picks another brand:
+ * where is "the same screen" for that brand? (Which brand a screen is about
+ * is `brandIdFromRoute`, in workspaceBrandRoute.ts.)
  *
  * Dependency-free and pure (no React, no React Native, no router), so the
  * whole table is unit-tested in the node jest lane.
  */
 
-// The route's own brand (and the path helpers) live in workspaceBrandRoute.ts,
-// the small part the app shell loads at boot; this file is the switcher's.
-import { brandIdFromRoute, firstParam as one, workspacePathSegments, workspaceRoutePath, type WorkspaceRouteParams } from "./workspaceBrandRoute";
+// Which brand a screen is about (`brandIdFromRoute`) is the app shell's
+// question and lives in workspaceBrandRoute.ts, which loads with the root
+// layout. This file loads with the switcher, and a module two chunks import
+// is moved onto the boot path, so the three small path helpers below are
+// restated here instead of imported; the unit test pins the two files together.
+import type { WorkspaceRouteParams } from "./workspaceBrandRoute";
 
-export {
-  brandIdFromRoute,
-  workspacePathSegments,
-  workspaceRoutePath,
-  type WorkspaceRouteParams,
-} from "./workspaceBrandRoute";
+export type { WorkspaceRouteParams } from "./workspaceBrandRoute";
+
+/** The first value of a route param, or null when it is absent or empty. */
+const one = (value: string | string[] | undefined): string | null => {
+  const first = Array.isArray(value) ? value[0] : value;
+  return typeof first === "string" && first.length > 0 ? first : null;
+};
+
+/** Path segments without the query string or `(group)` segments. */
+export const workspacePathSegments = (
+  pathname: string | null | undefined,
+): string[] =>
+  typeof pathname !== "string"
+    ? []
+    : (pathname.split(/[?#]/)[0] ?? "")
+        .split("/")
+        .filter((segment) => segment.length > 0 && !/^\(.*\)$/.test(segment));
+
+/** `/(tabs)/hub/events?x=1` and `/hub/events/` both read `/hub/events`. */
+export const workspaceRoutePath = (
+  pathname: string | null | undefined,
+): string => `/${workspacePathSegments(pathname).join("/")}`;
+
+/** The brand `/brand/<id>/...` names; `/brand/new` (the create flow) names none. */
+const brandOfBrandRoute = (segments: readonly string[]): string | null => {
+  const id = segments[1];
+  if (id === undefined || id === "new") return null;
+  try {
+    return decodeURIComponent(id);
+  } catch {
+    return id;
+  }
+};
 
 /** Home for any brand: the Home tab reads the current brand. */
 export const WORKSPACE_BRAND_HOME = "/(tabs)/home";
@@ -125,7 +154,7 @@ export function sameScreenForBrand(
   const to = enc(toBrandId);
 
   if (head === "brand") {
-    const here = brandIdFromRoute(pathname, params);
+    const here = brandOfBrandRoute(segments);
     // `/brand/new` (the create flow) belongs to no brand: leave it for Home.
     if (here === null) return WORKSPACE_BRAND_HOME;
     if (here === toBrandId) return null;

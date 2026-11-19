@@ -36,10 +36,10 @@ import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
 import { messagesBadgeCount } from "../../utils/brandEnquiryWaiting";
 
-import { WorkspaceBrandSwitcher } from "../brand/WorkspaceBrandSwitcher";
-
 import { Avatar } from "./Avatar";
+import { BrandChip } from "./BrandChip";
 import { GlassChrome } from "./GlassChrome";
+import { WorkspaceRouteContext } from "./hostShellContext";
 import { IconChrome } from "./IconChrome";
 
 export type TopBarLeftKind = "brand" | "back" | "none";
@@ -267,6 +267,9 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
+  // #4453 — the switcher is the root shell's; it reaches every bar through
+  // the shell's context, so it is not part of the shared boot chunk.
+  const { Switcher: WorkspaceBrandSwitcher } = useContext(WorkspaceRouteContext);
 
   // Desktop top-bar layout (web ≥1024px, default-cluster consumers only):
   // `extraRightSlot` (typically the "+" CTA) moves to an absolutely-positioned
@@ -291,7 +294,12 @@ export const TopBar: React.FC<TopBarProps> = ({
       case "brand": {
         // #4453 — the one switcher: it shows the brand of the screen you
         // are on and opens the same screen for the brand you pick.
-        return <WorkspaceBrandSwitcher onOpenSheet={onBrandTap} brandLoading={brandLoading} />;
+        // Without the shell above (an isolated render) it is the plain chip.
+        return WorkspaceBrandSwitcher !== undefined ? (
+          <WorkspaceBrandSwitcher onOpenSheet={onBrandTap} brandLoading={brandLoading} />
+        ) : (
+          <BrandChip onPress={onBrandTap} brandLoading={brandLoading} />
+        );
       }
       case "back": {
         return (

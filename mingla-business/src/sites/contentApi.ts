@@ -983,9 +983,13 @@ export function useSiteWorkspace(siteId: string | null, enabled = true) {
   });
 }
 
+/** #4453 workspace — one page's sections, top to bottom (under the site's `data` keys). */
+export const pageSectionsKey = (siteId: string | null, pageId: string | null) =>
+  [...brandSiteKeys.siteData(siteId, "page-sections"), pageId] as const;
+
 export function usePageSections(siteId: string | null, pageId: string | null, enabled = true) {
   return useQuery({
-    queryKey: brandSiteKeys.pageSections(siteId, pageId),
+    queryKey: pageSectionsKey(siteId, pageId),
     queryFn: () => getPageSections(siteId!, pageId!),
     enabled: siteId !== null && pageId !== null && enabled,
     staleTime: 5_000,

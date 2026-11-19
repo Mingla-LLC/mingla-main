@@ -55,13 +55,14 @@ jest.mock("../../config/queryClient", () => ({
   },
 }));
 const mockSettle = jest.fn();
-// #4453 integration: the held switch moved to its own small file (the only
-// part the shell loads at boot); the behaviour asserted below is unchanged.
+// #4453 integration: the held switch is the shell's (it hands the holder to
+// this hook and to the switcher); the behaviour asserted below is unchanged.
 jest.mock("../pendingBrandSwitch", () => ({
-  settlePendingBrandSwitch: (pathname: string | null) => mockSettle(pathname),
+  settlePendingBrandSwitch: (_holder: unknown, pathname: string | null) => mockSettle(pathname),
 }));
+const HELD = { current: null };
 
-import { brandIdFromRoute } from "../../config/workspaceBrandRoutes";
+import { brandIdFromRoute } from "../../config/workspaceBrandRoute";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { useWorkspaceBrandRouteSync } from "../useWorkspaceBrandRouteSync";
 
@@ -78,7 +79,7 @@ const TestRenderer = require("react-test-renderer") as {
 let renders = 0;
 const Shell: React.FC<{ pathname: string; params?: Record<string, string> }> = ({ pathname, params = {} }) => {
   renders += 1;
-  useWorkspaceBrandRouteSync(pathname, brandIdFromRoute(pathname, params));
+  useWorkspaceBrandRouteSync(pathname, brandIdFromRoute(pathname, params), HELD);
   return null;
 };
 

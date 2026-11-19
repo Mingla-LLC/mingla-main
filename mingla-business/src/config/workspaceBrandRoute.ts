@@ -1,12 +1,15 @@
 /**
  * #4453 (contract section I) — which brand a screen is about, read from the
- * pathname and the route's params alone: `brandIdFromRoute`.
+ * pathname and the route's params alone: `brandIdFromRoute`, and what the
+ * shell draws for it (`isAboveBrandScreen`, `phoneBrandStrip`, `itemRouteRef`).
  *
- * This is the ONE part of the workspace brand switcher the app shell needs
- * before anything draws (the top bar must name the brand of the screen you
- * are on), so it lives alone in this small file. Where "the same screen" is
- * for another brand (the whole route table) is only needed when the host
- * switches, and loads with the switcher: config/workspaceBrandRoutes.ts.
+ * The app shell needs this before anything draws (the top bar must name the
+ * brand of the screen you are on). ONLY the root shell and its own hooks
+ * import this file, so it loads with the root layout; anything in an
+ * on-demand chunk that imported it too would move it onto the boot path.
+ * Where "the same screen" is for another brand (the whole route table) is
+ * only needed when the host switches, and loads with the switcher:
+ * config/workspaceBrandRoutes.ts, which restates the path helpers.
  *
  * Dependency-free and pure (no React, no React Native, no router).
  */

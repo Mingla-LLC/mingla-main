@@ -8,13 +8,16 @@
  *
  *   <WorkspaceBrandSwitcher brandId={brandId} compact />
  *
- * The chip (mark, name, chevron) is on the boot path; the menu loads the
+ * The root shell is the only file that imports this one: it hands it to
+ * every top bar and brand screen through the workspace route context
+ * (`useContext(WorkspaceRouteContext).Switcher`), so it loads with the root
+ * layout and none of it sits in the shared boot chunk. The menu loads the
  * first time it opens. Web >= 1024 gets a popover under the chip; phones and
  * native get a sheet. A top bar that owns a full switcher sheet (create,
  * continue setup, delete) passes it as `onOpenSheet`: phones open that sheet,
  * and the desktop popover offers it as "Manage brands".
  */
-import React, { Suspense, useCallback, useRef, useState } from "react";
+import React, { Suspense, useCallback, useMemo, useRef, useState } from "react";
 import type { View } from "react-native";
 
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
@@ -47,6 +50,9 @@ type Measurable = {
   measureInWindow?: (cb: (x: number, y: number, width: number, height: number) => void) => void;
   focus?: () => void;
 } | null;
+
+/** A tight header: a smaller brand mark. */
+const COMPACT_MARK_SIZE = 20;
 
 const FALLBACK_ANCHOR: BrandMenuAnchor = { x: 16, y: 16, width: 160, height: 44 };
 
@@ -95,6 +101,8 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
     node.measureInWindow((x, y, width, height) => show({ x, y, width, height }));
   }, [isWideDesktop, onOpenSheet, workspace.brand, workspace.pending]);
 
+  const expandedState = useMemo(() => ({ expanded: open }), [open]);
+
   const handleClose = useCallback((): void => {
     setOpen(false);
     (chipRef.current as Measurable)?.focus?.();
@@ -104,10 +112,11 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
     <>
       <BrandChip
         onPress={handlePress}
-        brandId={brandId}
-        compact={compact}
-        brandLoading={brandLoading}
-        expanded={open}
+        brand={workspace.brand}
+        fullNameLabel={compact}
+        markSize={compact ? COMPACT_MARK_SIZE : undefined}
+        brandLoading={brandLoading === true || workspace.pending}
+        accessibilityState={expandedState}
         chipRef={chipRef}
         testID={testID}
       />

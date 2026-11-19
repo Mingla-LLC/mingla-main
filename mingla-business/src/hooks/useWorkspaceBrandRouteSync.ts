@@ -25,7 +25,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { queryClient } from "../config/queryClient";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
 import { getBrandFromCache } from "./brandCache";
-import { settlePendingBrandSwitch } from "./pendingBrandSwitch";
+import { settlePendingBrandSwitch, type PendingBrandSwitchHolder } from "./pendingBrandSwitch";
 
 // Before paint in the browser and on native; a plain effect where there is no
 // layout phase (static rendering).
@@ -34,6 +34,7 @@ const useBeforePaintEffect = typeof window !== "undefined" ? useLayoutEffect : u
 export function useWorkspaceBrandRouteSync(
   pathname: string | null,
   routeBrandId: string | null,
+  pendingSwitch: PendingBrandSwitchHolder,
 ): void {
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const hasHydrated = useCurrentBrandStore((s) => s.hasHydrated);
@@ -42,8 +43,8 @@ export function useWorkspaceBrandRouteSync(
   const [cacheTick, setCacheTick] = useState(0);
 
   useBeforePaintEffect(() => {
-    settlePendingBrandSwitch(pathname);
-  }, [pathname]);
+    settlePendingBrandSwitch(pendingSwitch, pathname);
+  }, [pathname, pendingSwitch]);
 
   useBeforePaintEffect(() => {
     if (routeBrandId === null) {

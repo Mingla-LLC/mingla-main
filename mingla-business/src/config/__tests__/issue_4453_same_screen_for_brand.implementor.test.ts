@@ -13,13 +13,18 @@ import { describe, expect, test } from "@jest/globals";
 
 import {
   WORKSPACE_BRAND_HOME,
-  brandIdFromRoute,
   canOpenWorkspaceScreen,
   sameScreenForBrand,
   workspaceFallbackMessage,
+  workspacePathSegments,
   workspaceRoutePath,
   workspaceScreenAccess,
 } from "../workspaceBrandRoutes";
+import {
+  brandIdFromRoute,
+  workspacePathSegments as shellPathSegments,
+  workspaceRoutePath as shellRoutePath,
+} from "../workspaceBrandRoute";
 import { MIN_RANK_FOR_TAB } from "../../utils/navTabGate";
 import { MIN_RANK } from "../../utils/permissionGates";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
@@ -277,6 +282,40 @@ describe("#4453 who can open the same screen", () => {
       "Your role at Lantern Room doesn't include the website. You're on its Home instead.",
     );
     expect(workspaceFallbackMessage("Lantern Room", "/(tabs)/marketing/ads")).toContain("doesn't include Blast");
+  });
+
+  // The switcher's table loads on demand and the shell's file loads with the
+  // root layout, so the table restates the shell's path helpers instead of
+  // importing them (a shared module would land in the boot chunk). They must
+  // read every address the same way.
+  test.each([
+    null,
+    undefined,
+    "",
+    "/",
+    "/(tabs)/hub/events?x=1",
+    "/hub/events/",
+    `/brand/${A}/website/pages#top`,
+    "/brand/new",
+    "/brand/a%20b/website",
+    "/brand/%E0%A4%A/website",
+    "/(tabs)/(nested)/marketing/ads/123?by=plan",
+    "/ari?brandId=x&sitesIntent=edit",
+  ])("the table and the shell read %p the same way", (pathname) => {
+    expect(workspacePathSegments(pathname)).toEqual(shellPathSegments(pathname));
+    expect(workspaceRoutePath(pathname)).toBe(shellRoutePath(pathname));
+  });
+
+  test("a brand route's brand is read the same way when switching as when drawing", () => {
+    // `sameScreenForBrand` returns null only when the brand it reads from the
+    // address is the one being switched to: the same answer `brandIdFromRoute` gives.
+    for (const pathname of [`/brand/${B}/team`, "/brand/a%20b/team", "/brand/%E0%A4%A/team"]) {
+      const here = brandIdFromRoute(pathname, {});
+      expect(here).not.toBeNull();
+      expect(sameScreenForBrand(pathname, {}, null, here as string)).toBeNull();
+    }
+    expect(brandIdFromRoute("/brand/new", {})).toBeNull();
+    expect(sameScreenForBrand("/brand/new", {}, null, B)).toBe(WORKSPACE_BRAND_HOME);
   });
 
   test("workspaceRoutePath ignores groups, the query and a trailing slash", () => {
