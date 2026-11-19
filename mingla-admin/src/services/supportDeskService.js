@@ -20,6 +20,7 @@ import {
   CLOSED_PAGE_SIZE,
   DONE_TICKET_STATUSES,
 } from "../lib/supportTicketMetrics";
+import { WEBSITE_TOPIC, readyErrorMessage } from "../lib/websiteRequestModel";
 
 export const SUPPORT_ATTACHMENT_BUCKET = "support-attachments";
 export const SIGNED_URL_SECONDS = 60 * 60;
@@ -32,6 +33,7 @@ const TICKET_COLUMNS = [
   "first_response_at", "resolved_at", "last_message_at", "next_update_at",
   "next_update_note", "support_workflow_revision",
 ].join(", ");
+// (topic is in the list above: #4453 reads it to find website change requests.)
 
 function unwrap(result, fallback) {
   if (result.error) throw new Error(result.error.message || fallback);
@@ -98,14 +100,70 @@ export async function listSupportTickets({ closedLimit = CLOSED_PAGE_SIZE } = {}
       byTicket.set(row.ticket_id, entry);
     }
   }
+  const websiteRequests = await loadWebsiteRequests(
+    tickets.filter((ticket) => ticket.topic === WEBSITE_TOPIC).map((ticket) => ticket.id),
+  );
   return {
     tickets: tickets.map((ticket) => ({
       ...ticket,
       image_count: byTicket.get(ticket.id)?.image_count || 0,
       voice_ms: byTicket.get(ticket.id)?.voice_ms || 0,
+      website_request: websiteRequests.get(ticket.id) || null,
     })),
     coverage,
   };
+}
+
+const WEBSITE_REQUEST_COLUMNS = [
+  "ticket_id", "brand_id", "site_id", "requested_by", "page_path", "section_id",
+  "section_label", "what", "why", "missing_capability", "draft_digest",
+  "due_at", "ready_at", "ready_by", "ready_note", "created_at",
+].join(", ");
+
+/**
+ * #4453 — the detail rows of these website change tickets, by ticket id. A
+ * failed read (for example before the table exists) never blocks the inbox:
+ * the tickets still list, without their request details.
+ */
+export async function loadWebsiteRequests(ticketIds) {
+  const byTicket = new Map();
+  for (const ids of chunks([...new Set((ticketIds || []).filter(Boolean))])) {
+    const { data, error } = await supabase
+      .from("support_website_requests")
+      .select(WEBSITE_REQUEST_COLUMNS)
+      .in("ticket_id", ids);
+    if (error) {
+      console.warn("[support desk] website request details unavailable:", error.message);
+      return byTicket;
+    }
+    for (const row of data || []) byTicket.set(row.ticket_id, row);
+  }
+  return byTicket;
+}
+
+/**
+ * #4453 — "Ready for review": the gated RPC posts the ready reply, moves the
+ * ticket to Waiting and tells the owner (bell, push, email). Returns
+ * { ok, data } or { ok:false, error, sessionExpired }. Never throws.
+ */
+export async function markWebsiteRequestReady(ticketId, note) {
+  try {
+    const trimmed = String(note || "").trim();
+    const { data, error } = await supabase.rpc("issue_4453_website_request_ready", {
+      p_ticket_id: ticketId,
+      p_note: trimmed || null,
+    });
+    if (error) {
+      if (isSessionExpiredError(error) || error.status === 401) {
+        return { ok: false, sessionExpired: true, error: SESSION_EXPIRED_MESSAGE };
+      }
+      return { ok: false, error: readyErrorMessage(error.message || error.code) };
+    }
+    return { ok: true, data };
+  } catch (err) {
+    if (isSessionExpiredError(err)) return { ok: false, sessionExpired: true, error: SESSION_EXPIRED_MESSAGE };
+    return { ok: false, error: readyErrorMessage(err?.message) };
+  }
 }
 
 /** Profiles (with segment) and every brand name, for the rows and filters. */
