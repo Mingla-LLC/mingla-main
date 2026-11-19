@@ -62,8 +62,6 @@
     "people_guest": "Guest",
     "people_guests_error": "Couldn't load the guest list.",
     "people_guests_none": "No guests yet. People join when they buy a ticket or RSVP.",
-    "people_mute": "Mute notifications",
-    "people_mute_team": "For the Team chat",
     "try_again": "Try again",
     "load_earlier": "Load earlier messages",
     "loading_earlier": "Loading earlier messages…",

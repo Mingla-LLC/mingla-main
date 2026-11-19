@@ -283,7 +283,7 @@ describe("#4304 inbox rows", () => {
     expect(texts()).toContain("Ada: Doors at 7?");
     expect(texts()).toContain("2");
     expect(texts()).toContain("3 people · Brand group");
-    expect(renderer.root.findAll((node) => typeof node.type !== "string" && node.props.accessibilityLabel === "Lagos Social, 2 unread in Team, muted") /* #4420: rows are brands; the label names each side’s unread */).not.toHaveLength(0);
+    expect(renderer.root.findAll((node) => typeof node.type !== "string" && node.props.accessibilityLabel === "Lagos Social, messages.row_team_unread, messages.row_muted") /* #4420: rows are brands; the label names each side’s unread (keys: this suite mocks the translator) */).not.toHaveLength(0);
     // Staff-only chips are hidden for a non-staff host.
     expect(byTestId(renderer, "brand-group-filter-supporting")).toHaveLength(0);
 

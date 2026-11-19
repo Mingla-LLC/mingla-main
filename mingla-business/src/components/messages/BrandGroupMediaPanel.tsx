@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   title: { color: color.text1, fontSize: 17, lineHeight: 24, fontWeight: "600" },
   subtitle: { color: color.text3, fontSize: 13, marginTop: 2 },
   // #4420 design: a pill segmented control.
-  tabs: { minHeight: 40, flexDirection: "row", marginHorizontal: space[4], marginVertical: space[2], padding: 3, borderRadius: radius.full, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.input },
+  tabs: { minHeight: 44, flexDirection: "row", marginHorizontal: space[4], marginVertical: space[2], padding: 3, borderRadius: radius.full, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.input },
   tab: { flex: 1, minHeight: 32, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
   tabActive: { backgroundColor: color.fill.tabOn, borderWidth: 1, borderColor: color.line, borderTopColor: color.lineStrong },
   tabText: { color: color.text2, fontSize: 14, fontWeight: "600" },

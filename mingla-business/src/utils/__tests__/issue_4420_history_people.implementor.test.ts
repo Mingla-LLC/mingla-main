@@ -79,3 +79,22 @@ describe("People per side", () => {
     expect(route).toContain("<LazyBrandGuestPeoplePanel conversationId={guestChat.conversation_id} />");
   });
 });
+
+describe("#4420 Messages words go through the locale files", () => {
+  test("no new English literals left in the Guests side, switcher, plan card or Select text", () => {
+    const panel = source("src/components/groupChat/GroupChatPanel.tsx");
+    for (const literal of ["Who can post in the Guests room", "Replies are off.", "Message guests as", "Guest list and chat settings"]) {
+      expect(panel).not.toContain(literal);
+    }
+    const route = source("app/messages/[conversationId].tsx");
+    for (const literal of ["Switch to Guests</Text>", "\"Open Plan\"", "Press and hold to select", "Who you are talking to\""]) {
+      expect(route).not.toContain(literal);
+    }
+  });
+  test("the words load on intent, never in the boot chunk", () => {
+    const lazy = source("src/components/groupChat/LazyGroupChatPanel.tsx");
+    expect(lazy).toContain('import("../../i18n/brandMessagesEnglish")');
+    expect(lazy).toContain('Promise.all([import("./GroupChatPanel"), ensureMessagesEnglish()])');
+    expect(source("src/i18n/index.ts")).not.toContain("brandMessages");
+  });
+});

@@ -71,6 +71,10 @@ export function BrandGroupMessageText({
 }): React.ReactElement {
   const { t } = useBusinessMediaTranslation();
   const segments = splitBrandGroupMentions(content, mentionNames);
+  const plain = segments.length <= 1 && !segments[0]?.mention && linkifyMessageText(content).every((token) => token.type === "text");
+  if (plain) {
+    return <Text style={[styles.text, mine && styles.textMine]} selectable testID="brand-group-message-text">{content}</Text>;
+  }
   return (
     <Text style={[styles.text, mine && styles.textMine]} selectable testID="brand-group-message-text">
       {segments.map((segment, index) => segment.mention ? (
