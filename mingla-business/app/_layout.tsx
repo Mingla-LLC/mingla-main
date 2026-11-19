@@ -97,7 +97,7 @@ import { mixpanelService } from "../src/services/mixpanelService";
 // NOT remove them). Provider + boot init + iOS ATT prompt (before AppsFlyer).
 import { postHogService } from "../src/services/postHogService";
 import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
-import { RouteScreenTracker } from "../src/components/RouteScreenTracker";
+import { useHostSignupSourceTracking, useRouteScreenTracking } from "../src/hooks/usePeopleJourneyTracking";
 import { VersionForegroundStateMachine } from "../src/services/appVersionForeground";
 import { revenueCatService } from "../src/services/revenueCatService";
 import {
@@ -283,6 +283,9 @@ function RootLayoutInner(): React.ReactElement {
   // for. The `currentBrandId === null` short-circuit also handles this case;
   // both paths converge on `brandReady=true` (defensive belt-and-suspenders).
   const { loading, user } = useAuth();
+  // #4226: screen views + host sign-up source; hooks, so the root JSX is untouched.
+  useRouteScreenTracking();
+  useHostSignupSourceTracking();
   const previousRecentUserRef = useRef<string | null>(null);
   const router = useRouter();
   // ORCH-1103 — the current route, so the unauthenticated redirect never targets
@@ -871,8 +874,6 @@ function RootLayoutInner(): React.ReactElement {
       <HostDesktopShell>
         <Stack screenOptions={{ headerShown: false }} />
       </HostDesktopShell>
-      {/* #4226: one PostHog screen view per route change; renders nothing. */}
-      <RouteScreenTracker />
       {/* #4271: a SIBLING of the Stack, never a wrapper. Renders nothing unless Tap to Pay is live. */}
       <TapToPayTerminalHost />
       <TapToPayAwarenessModal />

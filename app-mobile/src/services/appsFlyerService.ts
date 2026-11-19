@@ -470,6 +470,15 @@ function flushInstallAttribution(): void {
   })
 }
 
+/**
+ * #4226: a held payload that errored is retried when the app returns to the
+ * foreground (app/index.tsx calls this from its AppState listener). Capped at
+ * three tries per app session inside sendHeldInstallAttribution.
+ */
+export function retryHeldInstallAttribution(): void {
+  flushInstallAttribution()
+}
+
 function registerInstallConversion(): void {
   if (_conversionSubscribed || typeof appsFlyer.onInstallConversionData !== 'function') return
   try {

@@ -119,10 +119,21 @@ export function getHeldInstallConversion(): InstallConversion | null {
 
 export type InstallAttributionResult = 'sent' | 'held' | 'skipped' | 'failed'
 
+/** At most this many tries per app session; a held payload is not retried after. */
+export const MAX_ATTRIBUTION_ATTEMPTS = 3
+let attributionAttempts = 0
+let attributionRerun = false
+
 /**
  * Send the held conversion data once for this user. Needs the signed-in user
  * and this phone's AppsFlyer id; with either missing (or nothing held) it stays
  * held. Opted-out people send nothing and nothing is kept.
+ *
+ * The server upserts the device row itself and answers true (written) or false
+ * (already recorded earlier); both mean handled and clear the held payload. An
+ * error, or an answer that is not a boolean ("no error, no rows"), is NOT sent:
+ * the payload stays held and the next auth or foreground event retries, up to
+ * MAX_ATTRIBUTION_ATTEMPTS per app session.
  */
 export async function sendHeldInstallAttribution(ctx: {
   userId: string | null
@@ -134,19 +145,45 @@ export async function sendHeldInstallAttribution(ctx: {
     return 'skipped'
   }
   if (!ctx.userId || !ctx.appsflyerId || !heldConversion) return 'held'
-  if (attributionSentFor.has(ctx.userId) || attributionInFlight) return 'skipped'
+  if (attributionSentFor.has(ctx.userId)) return 'skipped'
+  if (attributionInFlight) {
+    attributionRerun = true
+    return 'skipped'
+  }
+  if (attributionAttempts >= MAX_ATTRIBUTION_ATTEMPTS) return 'skipped'
+  attributionAttempts += 1
   attributionInFlight = true
   const payload = heldConversion
+  let handled = false
   try {
-    const ok = await callRpc('record_install_attribution', {
-      p_appsflyer_id: ctx.appsflyerId,
-      p_app: PEOPLE_JOURNEY_APP,
-      p_payload: payload,
-    })
-    if (ok) attributionSentFor.add(ctx.userId)
-    return ok ? 'sent' : 'failed'
+    try {
+      const { data, error } = await supabase.rpc('record_install_attribution', {
+        p_appsflyer_id: ctx.appsflyerId,
+        p_app: PEOPLE_JOURNEY_APP,
+        p_payload: payload,
+      })
+      if (error) {
+        warn('record_install_attribution failed:', error.message ?? error)
+      } else if (data === true || data === false) {
+        handled = true
+      } else {
+        warn('record_install_attribution gave no answer; keeping it held', data)
+      }
+    } catch (e) {
+      warn('record_install_attribution threw:', e)
+    }
+    if (handled) {
+      attributionSentFor.add(ctx.userId)
+      if (heldConversion === payload) heldConversion = null
+    }
+    return handled ? 'sent' : 'failed'
   } finally {
     attributionInFlight = false
+    if (!handled && attributionRerun && attributionAttempts < MAX_ATTRIBUTION_ATTEMPTS) {
+      attributionRerun = false
+      void sendHeldInstallAttribution(ctx)
+    }
+    attributionRerun = false
   }
 }
 
@@ -280,6 +317,8 @@ export function clearPeopleJourneyState(): void {
   heldConversion = null
   attributionSentFor.clear()
   attributionInFlight = false
+  attributionAttempts = 0
+  attributionRerun = false
   hintSnapshot = { ...EMPTY_SOURCE_HINTS }
   signupSourceDone.clear()
 }

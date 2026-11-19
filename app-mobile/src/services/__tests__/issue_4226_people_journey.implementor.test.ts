@@ -3,7 +3,8 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { flush, loadWithFakes } from "./appsFlyerHarness.issue4238.ts";
 
-function makeJourney(opts: { rpcError?: boolean } = {}) {
+function makeJourney(opts: { rpcError?: boolean; attributionAnswers?: unknown[] } = {}) {
+  const answers = [...(opts.attributionAnswers ?? [])];
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
   const store = new Map<string, string>();
   const fakes = {
@@ -11,6 +12,10 @@ function makeJourney(opts: { rpcError?: boolean } = {}) {
       supabase: {
         rpc: async (name: string, args: Record<string, unknown>) => {
           calls.push({ name, args });
+          if (name === "record_install_attribution") {
+            if (opts.rpcError) return { data: null, error: { message: "boom" } };
+            return { data: answers.length ? answers.shift() : true, error: null };
+          }
           return { error: opts.rpcError ? { message: "boom" } : null };
         },
       },
@@ -118,7 +123,8 @@ Deno.test("#4226 conversion data is held until the user is known, then sent once
   assertEquals(await j.sendHeldInstallAttribution({ userId: null, appsflyerId: "af-1", optedOut: false }), "held");
   assertEquals(calls.length, 0);
   assertEquals(await j.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af-1", optedOut: false }), "sent");
-  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af-1", optedOut: false }), "skipped");
+  // handled: the held payload is cleared, so a repeat has nothing left to send
+  assertEquals(await j.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af-1", optedOut: false }), "held");
   assertEquals(calls.length, 1);
   assertEquals(calls[0].name, "record_install_attribution");
   assertEquals(calls[0].args.p_app, "consumer");
@@ -247,4 +253,32 @@ Deno.test("#4226 wiring: onboarding marks every step view, PostHog tags the app,
   assert(ph.includes("registerAppSuperProperty(this.client)"));
   assert((await read("app/_layout.tsx")).includes("<RouteScreenTracker />"));
   assert((await read("app/index.tsx")).includes("screenNameForApp("));
+});
+
+Deno.test("#4226 rework: held attribution clears only after a boolean answer; errors and empty answers keep it, at most 3 tries", async () => {
+  // false = "already recorded earlier": handled, payload cleared
+  const a = makeJourney({ attributionAnswers: [false] });
+  const ja = await load(a.fakes);
+  ja.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
+  assertEquals(await ja.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af", optedOut: false }), "sent");
+  assertEquals(ja.getHeldInstallConversion(), null);
+
+  // error: kept
+  const b = makeJourney({ rpcError: true });
+  const jb = await load(b.fakes);
+  jb.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
+  assertEquals(await jb.sendHeldInstallAttribution({ userId: "u-1", appsflyerId: "af", optedOut: false }), "failed");
+  assert(jb.getHeldInstallConversion() !== null, "payload dropped after an error");
+
+  // no error but no answer ("no rows"): kept, never "sent"; stops after 3 tries
+  const c = makeJourney({ attributionAnswers: [undefined, null, undefined, undefined] });
+  const jc = await load(c.fakes);
+  jc.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
+  const ctx = { userId: "u-1", appsflyerId: "af", optedOut: false };
+  assertEquals(await jc.sendHeldInstallAttribution(ctx), "failed");
+  assertEquals(await jc.sendHeldInstallAttribution(ctx), "failed");
+  assertEquals(await jc.sendHeldInstallAttribution(ctx), "failed");
+  assertEquals(await jc.sendHeldInstallAttribution(ctx), "skipped");
+  assertEquals(c.calls.filter((x) => x.name === "record_install_attribution").length, 3);
+  assert(jc.getHeldInstallConversion() !== null);
 });

@@ -14,7 +14,8 @@ const rt: {
   optOut: boolean;
   initOk: ((r: unknown) => void) | null;
   conversionCb: ((r: unknown) => void) | null;
-} = { rpcCalls: [], rpcError: false, rpcThrows: false, store: new Map(), optOut: false, initOk: null, conversionCb: null };
+  attributionAnswers: unknown[];
+} = { rpcCalls: [], rpcError: false, rpcThrows: false, store: new Map(), optOut: false, initOk: null, conversionCb: null, attributionAnswers: [] };
 
 jest.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 jest.mock("@react-native-async-storage/async-storage", () => ({
@@ -59,6 +60,10 @@ jest.mock("../supabase", () => ({
     rpc: jest.fn(async (name: string, args: Record<string, unknown>) => {
       rt.rpcCalls.push({ name, args });
       if (rt.rpcThrows) throw new Error("network down");
+      if (name === "record_install_attribution") {
+        if (rt.rpcError) return { data: null, error: { message: "boom" } };
+        return { data: rt.attributionAnswers.length ? rt.attributionAnswers.shift() : true, error: null };
+      }
       return { error: rt.rpcError ? { message: "boom" } : null };
     }),
     auth: {
@@ -78,7 +83,7 @@ const read = (rel: string) => fs.readFileSync(path.join(__dirname, "../../..", r
 
 beforeEach(() => {
   jest.resetModules();
-  Object.assign(rt, { rpcCalls: [], rpcError: false, rpcThrows: false, store: new Map(), optOut: false, initOk: null, conversionCb: null });
+  Object.assign(rt, { rpcCalls: [], rpcError: false, rpcThrows: false, store: new Map(), optOut: false, initOk: null, conversionCb: null, attributionAnswers: [] });
   process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY = "k";
   process.env.EXPO_PUBLIC_APPSFLYER_IOS_APP_ID = "6768737367";
   process.env.EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID = "com.sethogieva.minglabusiness";
@@ -158,7 +163,10 @@ describe("#4226 Host sign-up source", () => {
   });
 
   test("the first-time sign-in and the invitation route feed it", () => {
-    expect(read("src/context/AuthContext.tsx")).toMatch(/if \(isFirstTime\) \{[\s\S]{0,200}recordHostSignupSourceOnce\(/);
+    // AuthContext.tsx is byte-pinned by #1881, so the call lives in a hook.
+    expect(read("src/hooks/usePeopleJourneyTracking.ts")).toContain("recordHostSignupSourceOnce(");
+    expect(read("app/_layout.tsx")).toContain("useHostSignupSourceTracking();");
+    expect(read("src/context/AuthContext.tsx")).not.toContain("peopleJourneyService");
     expect(read("app/accept-brand-invitation.tsx")).toContain("noteSourceHints({ hostInvite: true })");
   });
 });
@@ -196,6 +204,37 @@ describe("#4226 Host install attribution", () => {
     await expect(j.sendHeldInstallAttribution({ userId: "h", appsflyerId: "af", optedOut: true })).resolves.toBe("skipped");
     expect(j.getHeldInstallConversion()).toBeNull();
     expect(rt.rpcCalls).toHaveLength(0);
+  });
+
+  test("rework: held attribution clears only after a boolean answer; errors and empty answers keep it, at most 3 tries", async () => {
+    const ctx = { userId: "h-1", appsflyerId: "af", optedOut: false };
+    // false = already recorded earlier: handled, payload cleared
+    let j = await importJourney();
+    rt.attributionAnswers = [false];
+    j.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
+    await expect(j.sendHeldInstallAttribution(ctx)).resolves.toBe("sent");
+    expect(j.getHeldInstallConversion()).toBeNull();
+    // error keeps it
+    jest.resetModules();
+    rt.rpcCalls = [];
+    j = await importJourney();
+    rt.rpcError = true;
+    j.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
+    await expect(j.sendHeldInstallAttribution(ctx)).resolves.toBe("failed");
+    expect(j.getHeldInstallConversion()).not.toBeNull();
+    rt.rpcError = false;
+    // no error, no answer ("no rows"): never "sent"; stops after 3 tries
+    jest.resetModules();
+    rt.rpcCalls = [];
+    j = await importJourney();
+    rt.attributionAnswers = [undefined, null, undefined, undefined];
+    j.holdInstallConversion({ af_status: "Non-organic", media_source: "x" });
+    await expect(j.sendHeldInstallAttribution(ctx)).resolves.toBe("failed");
+    await expect(j.sendHeldInstallAttribution(ctx)).resolves.toBe("failed");
+    await expect(j.sendHeldInstallAttribution(ctx)).resolves.toBe("failed");
+    await expect(j.sendHeldInstallAttribution(ctx)).resolves.toBe("skipped");
+    expect(rpc("record_install_attribution")).toHaveLength(3);
+    expect(j.getHeldInstallConversion()).not.toBeNull();
   });
 
   test("clearAppsFlyerUserId (sign-out) clears the held conversion data", async () => {
@@ -243,7 +282,8 @@ describe("#4226 Host PostHog app tag and screens", () => {
     const ph = read("src/services/postHogService.ts");
     expect(ph).toMatch(/this\.initialized = true;\s*\/\/ #4226[^\n]*\n\s*registerAppSuperProperty\(client\)/);
     expect(ph).toContain("registerAppSuperProperty(this.client)");
-    expect(read("app/_layout.tsx")).toContain("<RouteScreenTracker />");
+    expect(read("app/_layout.tsx")).toContain("useRouteScreenTracking();");
+    expect(read("src/hooks/usePeopleJourneyTracking.ts")).toContain("postHogService.screen(");
     expect(read("src/services/postHogService.web.ts")).toContain("screen(_name: string | null)");
   });
 });
