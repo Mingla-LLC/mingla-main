@@ -52,6 +52,16 @@ export interface BrandSwitcherSheetProps {
   testID?: string;
 }
 
+/**
+ * #4453 — the least width a row's switch target (mark, name, check) keeps
+ * beside the row's buttons. On a 375pt phone the row is about 320 wide and
+ * Continue needs about 90, so the name was left "go…" / "Young & …"; below
+ * this the buttons wrap under the name instead (phones up to about 400pt
+ * wide). Mark 40 + gaps 32 + check 44 leave the name at least ~130 beside
+ * the buttons, on up to two lines, and the whole row once they have wrapped.
+ */
+export const ROW_PICK_BASIS = 248;
+
 export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   visible,
   onClose,
@@ -236,7 +246,9 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           testID={`brand-switcher-mark-${brand.id}`}
                         />
                         <View style={styles.brandTextCol}>
-                          <Text style={styles.brandName} numberOfLines={1}>
+                          {/* #4453 — the name is what a row is for: up to two
+                              lines, never "go…" beside its buttons. */}
+                          <Text style={styles.brandName} numberOfLines={2}>
                             {brand.displayName}
                           </Text>
                           {setupRest !== null ? (
@@ -267,6 +279,13 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           </View>
                         ) : null}
                       </Pressable>
+                        {/* #4453 — the row's own buttons, kept together. On a
+                            wide sheet they sit beside the name; where that
+                            would leave the name less than ROW_PICK_BASIS
+                            (a 375pt phone) they drop to a line of their own
+                            under it, at the row's trailing edge. */}
+                        {setupRest !== null || canDiscard ? (
+                        <View style={styles.rowActions} testID={`brand-switcher-actions-${brand.id}`}>
                         {setupRest !== null ? (
                           <Pressable
                             onPress={() => openSetup(brand)}
@@ -296,6 +315,8 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           >
                             <Icon name="moreH" size={16} color={color.text3} />
                           </Pressable>
+                        ) : null}
+                        </View>
                         ) : null}
                       </View>
                       {/* Issue #1835 — PER-ROW gate, deliberately not a
@@ -409,8 +430,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   // The row box keeps its look; the switch target fills it up to the pill.
-  brandRowSplit: { padding: 0, paddingRight: space[4], gap: space[2] },
-  rowPick: { flex: 1, minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], paddingRight: 0 },
+  // #4453 — the row wraps: the switch target asks for ROW_PICK_BASIS, and
+  // the buttons move under it when the sheet cannot give it that beside them.
+  brandRowSplit: { padding: 0, paddingRight: space[4], gap: 0, columnGap: space[2], flexWrap: "wrap" },
+  rowPick: { flexGrow: 1, flexShrink: 1, flexBasis: ROW_PICK_BASIS, minWidth: 0, minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], paddingRight: 0 },
+  // Trailing edge on either line; the padding is the breathing room under
+  // the pill when it sits on a line of its own.
+  rowActions: { flexDirection: "row", alignItems: "center", gap: space[2], marginLeft: "auto", paddingVertical: space[2] },
   brandTextCol: { flex: 1, minWidth: 0 },
   brandName: { fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, fontWeight: "600", color: color.text1 },
   brandSub: { fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, color: color.text3 },
