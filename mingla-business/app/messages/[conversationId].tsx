@@ -783,16 +783,6 @@ function BrandGroupThreadScreen({
     return () => { void supabase.removeChannel(channel); };
   }, [conversationId, planBrandId, queryClient, refresh]);
 
-  const openMedia = useCallback(() => {
-    if (!conversationId) return;
-    if (railAllowed && railCollapsed) {
-      openRailTab("media");
-      return;
-    }
-    setDesktopDetailTab("media");
-    setMediaPanelOpen(true);
-  }, [conversationId, openRailTab, railAllowed, railCollapsed]);
-
   // #4420 SC-17: show / hide the rail; any tab request opens it on that tab.
   const setRailCollapsed = useCallback((collapsed: boolean): void => {
     setRailCollapsedState(collapsed);
@@ -810,6 +800,18 @@ function BrandGroupThreadScreen({
     setDesktopDetailTab(next.tab);
     setMediaPanelOpen(next.tab === "media");
   }, [desktopDetailTab, railCollapsed, setRailCollapsed]);
+
+  // #4420: declared after openRailTab, which it calls (a hook dependency
+  // array is read during render: a later const is a crash, P0 on 2a5f48061d).
+  const openMedia = useCallback(() => {
+    if (!conversationId) return;
+    if (railAllowed && railCollapsed) {
+      openRailTab("media");
+      return;
+    }
+    setDesktopDetailTab("media");
+    setMediaPanelOpen(true);
+  }, [conversationId, openRailTab, railAllowed, railCollapsed]);
 
   const openPeople = useCallback(() => {
     if (railAllowed) openRailTab("people");
