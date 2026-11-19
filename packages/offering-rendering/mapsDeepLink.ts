@@ -56,10 +56,11 @@ export interface MapsOpenTarget {
   label: string | null;
   geo: MapsGeoPoint | null;
   /**
-   * #4334 (Seth decision D8) — the Google place id of a place picked through
-   * Google. Added to the GOOGLE links only (`query_place_id`), so Google Maps
-   * shows the venue's name with the pin. Absent on rows picked before #4334:
-   * those links stay byte-identical.
+   * #4334 (Seth decision D8, reshaped by M1) — the Google place id of a place
+   * picked through Google. On the GOOGLE https links it becomes
+   * `query=<label>&query_place_id=<id>` so Google opens the named place. Absent
+   * (or not a valid Google id): the Google links stay on the coordinate query,
+   * byte-identical to before #4334.
    */
   googlePlaceId?: string | null;
 }
@@ -143,17 +144,26 @@ export const normalizeGooglePlaceId = (id: string | null | undefined): string | 
 };
 
 /**
- * #4334 (D8) — Google search link anchored by place id. `query` stays EXACTLY
- * the coordinate pair when we hold one (#2553 G-2: never a label in `query`);
- * `query_place_id` is appended. With no coordinate (a past offering whose
- * Google coordinates expired, spec v2 §6.6) the id anchors and `query` is the
- * host's label, which Google uses only if it cannot find the id.
+ * #4334 (M1) — THE one Google https link builder. With a valid place id the
+ * link is `query=<label>&query_place_id=<id>`: Google opens the NAMED place,
+ * and if the id ever goes stale it falls back to the label text. (The earlier
+ * D8 form kept the coordinate pair in `query`, which made Google title the pin
+ * with raw coordinates — Seth's 19 Nov report.) With no label the coordinate
+ * pair is the query. With NO place id the output is byte-identical to the
+ * pre-#4334 link (coordinate query, or the text query): the #2479 guard, since
+ * free-text search alone once sent a Lagos event to a London street.
  * https://developers.google.com/maps/documentation/urls/get-started#search-action
  */
-const googlePlaceSearchUrl = (query: string, placeId: string | null): string =>
+const googlePlaceSearchUrl = (
+  query: string,
+  placeId: string | null,
+  label: string | null,
+): string =>
   placeId === null
     ? googleSearchUrl(query)
-    : `${googleSearchUrl(query)}&query_place_id=${encodeURIComponent(placeId)}`;
+    : `${
+      googleSearchUrl(label === null ? query : encodeURIComponent(label))
+    }&query_place_id=${encodeURIComponent(placeId)}`;
 
 /**
  * Android's `geo:` label is wrapped in LITERAL parentheses — `?q=<lat>,<lng>(<label>)`
@@ -180,6 +190,12 @@ const encodeGeoLabel = (label: string): string =>
  *   android  geo:<lat>,<lng>?q=<lat>,<lng>(<label>)
  *   web      https://www.google.com/maps/search/?api=1&query=<lat>,<lng>
  *
+ * With a valid Google place id (#4334 M1) EVERY Google https URL above (web
+ * url and the iOS/Android fallbackUrl) becomes
+ *   https://www.google.com/maps/search/?api=1&query=<label>&query_place_id=<id>
+ * (query = the coordinate pair when there is no label). Apple `maps://` and
+ * Android `geo:` never change.
+ *
  * No coordinates, label present (UNCHANGED pre-#2468 behaviour — the honest
  * fallback for the free-typed addresses we hold no pin for):
  *   ios      maps://?q=<label>
@@ -204,7 +220,7 @@ export function buildMapsDeepLink(
     // #4334 R3-1 — the https fallback IS a Google link on every platform (the
     // browser path when no maps app opens the native scheme), so it carries the
     // picked place id too. The native `maps://` / `geo:` URLs are unchanged.
-    const fallbackUrl = googlePlaceSearchUrl(pair, placeId);
+    const fallbackUrl = googlePlaceSearchUrl(pair, placeId, label);
     const encodedLabel = label === null ? null : encodeURIComponent(label);
     if (platform === "ios") {
       const url =
@@ -220,16 +236,14 @@ export function buildMapsDeepLink(
           : `geo:${pair}?q=${pair}(${encodeGeoLabel(label)})`;
       return { url, fallbackUrl, coordinateAnchored: true };
     }
-    const webUrl = googlePlaceSearchUrl(pair, placeId);
+    const webUrl = googlePlaceSearchUrl(pair, placeId, label);
     return { url: webUrl, fallbackUrl: webUrl, coordinateAnchored: true };
   }
 
   if (label === null) return null;
 
   const encoded = encodeURIComponent(label);
-  const fallbackUrl = platform === "web"
-    ? googlePlaceSearchUrl(encoded, placeId)
-    : googleSearchUrl(encoded);
+  const fallbackUrl = googlePlaceSearchUrl(encoded, placeId, label);
   if (platform === "ios") {
     return { url: `maps://?q=${encoded}`, fallbackUrl, coordinateAnchored: false };
   }
@@ -477,7 +491,7 @@ export function buildMapsAppLink(
   // authority sits BEFORE the `?`, so the label cannot move the pin.
   if (geo !== null) {
     const pair = `${geo.lat},${geo.lng}`;
-    const fallbackUrl = googlePlaceSearchUrl(pair, placeId);
+    const fallbackUrl = googlePlaceSearchUrl(pair, placeId, label);
     return {
       id: "google",
       label: name,
@@ -497,7 +511,7 @@ export function buildMapsAppLink(
 
   if (label === null) return null;
   const encoded = encodeURIComponent(label);
-  const fallbackUrl = googlePlaceSearchUrl(encoded, placeId);
+  const fallbackUrl = googlePlaceSearchUrl(encoded, placeId, label);
   return {
     id: "google",
     label: name,
