@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-CHECKOUT-ONE-COLOUR-OWNER | issue #4518 | Checkout screens, and every shared part drawn inside them, take `color` and `materials` from the active surface tokens (checkoutTheme / theme/surfaceTokens), never straight from constants/designSystem.
+// MINGLA-INVARIANT: I-CHECKOUT-ONE-COLOUR-OWNER | issue #4518 | Checkout screens, and every shared part drawn inside them, take `color` and `materials` from the surface tokens the checkout palette sets (checkoutTheme / theme/surfaceTokens), never straight from constants/designSystem.
 /**
  * issue #4518 — one colour owner inside checkout.
  *

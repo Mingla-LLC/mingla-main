@@ -68,6 +68,19 @@ export const resetDatabaseRoute = (): void => {
 };
 
 const emit = (event: RouteEvent): void => {
+  // #4518 N4 — counted in product analytics (sent only when analytics is on
+  // for the visitor; no personal data). Imported on use: this module is
+  // loaded off the boot path and must not pull analytics into it.
+  void import("../analytics/webAnalytics")
+    .then((analytics) =>
+      analytics.captureWeb("buyer_database_route", {
+        outcome: event.outcome,
+        path: event.path,
+      }),
+    )
+    .catch(() => {
+      // Reporting is best-effort; the request outcome is unaffected.
+    });
   for (const listener of listeners) {
     try {
       listener(event);
@@ -170,6 +183,39 @@ const fetchWithTimeLimit = async (
   }
 };
 
+/**
+ * A direct request failed to connect (or hung): find out whether the
+ * same-origin road reaches the database, switch to it if so, and replay the
+ * request only when it is safe to send twice. Otherwise rethrow `error`.
+ */
+export async function recoverDirectFailure(
+  fetchImpl: FetchLike,
+  directOrigin: string,
+  input: string,
+  init: RequestInit | undefined,
+  error: unknown,
+): Promise<Response> {
+  // The caller cancelled it: not a connection failure.
+  if (isCallerAbort(init?.signal)) throw error;
+  const path = input.slice(directOrigin.length);
+  probing ??= probeSameOrigin(fetchImpl);
+  const reachable = await probing;
+  probing = null;
+  if (!reachable) {
+    emit({ outcome: "unreachable", path: reportablePath(path) });
+    throw error;
+  }
+  // Another request may have switched the road while this one waited.
+  if (currentDatabaseRoute() !== "sameOrigin") {
+    route = "sameOrigin";
+    rememberRoute();
+    emit({ outcome: "rescued", path: reportablePath(path) });
+  }
+  // A write is never sent twice from here; see the header.
+  if (!isReplaySafe(init?.method ?? "GET", path.split("?")[0])) throw error;
+  return fetchImpl(toSameOrigin(input, directOrigin), init);
+}
+
 export interface ResilientFetchOptions {
   /** The database origin, no trailing slash. */
   directOrigin: string;
@@ -204,25 +250,7 @@ export function createResilientFetch(
         ? await fetchWithTimeLimit(fetchImpl, input, init, DIRECT_TIME_LIMIT_MS)
         : await fetchImpl(input, init);
     } catch (error) {
-      // The caller cancelled it: not a connection failure.
-      if (isCallerAbort(init?.signal)) throw error;
-
-      probing ??= probeSameOrigin(fetchImpl);
-      const reachable = await probing;
-      probing = null;
-      if (!reachable) {
-        emit({ outcome: "unreachable", path: reportablePath(path) });
-        throw error;
-      }
-      // Another request may have switched the road while this one waited.
-      if (currentDatabaseRoute() !== "sameOrigin") {
-        route = "sameOrigin";
-        rememberRoute();
-        emit({ outcome: "rescued", path: reportablePath(path) });
-      }
-      // A write is never sent twice from here; see the header.
-      if (!safe) throw error;
-      return fetchImpl(toSameOrigin(input, directOrigin), init);
+      return recoverDirectFailure(fetchImpl, directOrigin, input, init, error);
     }
   };
 }

@@ -7,7 +7,6 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { getNativeAppVersionHeaders } from "./appVersionIdentity";
 import { createTrackedFetch } from "./reloadNetworkFence";
-import { createResilientFetch } from "./resilientFetch";
 
 const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
 
@@ -157,17 +156,36 @@ export const laneEdgeEndpoint: {
 
 /**
  * #4518 — the fetch every database call on Host web goes through, including
- * the ones that do not use the client (`laneEdgeInvoke`).
+ * the ones that do not use the client (`laneEdgeInvoke`). On web it gains a
+ * same-origin second road (`resilientFetch.ts`), loaded OFF the boot path:
+ * until that chunk arrives a request goes direct, and one that fails waits
+ * for the chunk and is recovered by it. Native is a plain pass-through.
  */
-const trackedFetch = createTrackedFetch(() => fetch);
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+const trackedFetch: FetchLike = createTrackedFetch(() => fetch);
+let secondRoadFetch: FetchLike | null = null;
+const secondRoad =
+  Platform.OS === "web" && typeof window !== "undefined"
+    ? import("./resilientFetch").then((road) => {
+        secondRoadFetch = road.createResilientFetch(() => trackedFetch, {
+          directOrigin: supabaseUrl,
+          enabled: true,
+        });
+        return road;
+      })
+    : null;
 
-export const supabaseFetch = createResilientFetch(() => trackedFetch, {
-  directOrigin: supabaseUrl,
-  // Web only. Where the `/_sb` rewrite does not exist (local dev), the probe
-  // sees the HTML app shell instead of the database and the road never
-  // switches.
-  enabled: Platform.OS === "web" && typeof window !== "undefined",
-});
+export const supabaseFetch: FetchLike = (input, init) => {
+  if (secondRoadFetch !== null) return secondRoadFetch(input, init);
+  const direct = trackedFetch(input, init);
+  return secondRoad === null || typeof input !== "string"
+    ? direct
+    : direct.catch((error: unknown) =>
+        secondRoad.then((road) =>
+          road.recoverDirectFailure(trackedFetch, supabaseUrl, input, init, error),
+        ),
+      );
+};
 
 /**
  * #2107 (Sentry REACT-NATIVE-1C): every Supabase request is counted while it is

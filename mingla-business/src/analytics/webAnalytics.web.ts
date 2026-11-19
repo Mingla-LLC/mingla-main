@@ -49,7 +49,6 @@ import {
   type SearchMeasurementProperties,
 } from "@mingla/search-measurement";
 import { isSignInRoute } from "../utils/coldLoadAuthGates";
-import { onDatabaseRouteEvent } from "../services/resilientFetch";
 
 // US region is dispatch-locked (I-PROPOSED-1187-POSTHOG-HOST-US). Keep the
 // literal here so the strict-grep gate sees it at the init site.
@@ -1564,15 +1563,3 @@ export function postAttributionConversion(_input: {
 }): void {
   // Intentionally empty — trusted server path only.
 }
-
-// #4518 N4 — a buyer whose phone could not reach the database host used to be
-// invisible to us. Each visit that had to switch to the same-origin road
-// (`rescued`), or that could reach neither road (`unreachable`), is counted,
-// with the id-free request path that failed first. No personal data. Like
-// every other event here it is sent only when analytics is on for the visitor.
-onDatabaseRouteEvent((event) => {
-  captureWeb("buyer_database_route", {
-    outcome: event.outcome,
-    path: event.path,
-  });
-});
