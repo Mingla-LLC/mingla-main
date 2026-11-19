@@ -104,6 +104,15 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [hasRun, setHasRun] = useState<boolean>(false);
 
+  // #4226: a team invitation link is how a brand-new host may have arrived;
+  // noted in memory so the sign-up source can say so (cleared on sign-out).
+  useEffect(() => {
+    if (token.length === 0) return;
+    void import("../src/services/peopleJourneyService")
+      .then(({ noteSourceHints }) => noteSourceHints({ hostInvite: true }))
+      .catch((e: unknown) => console.warn("[peopleJourney] invite hint failed:", e));
+  }, [token]);
+
   useEffect(() => {
     // Axis 1 still genuinely transient — wait (this is the ONLY legitimate wait).
     if (authStatus === "bootstrapping" || authStatus === "refreshing") return;

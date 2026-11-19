@@ -69,7 +69,12 @@
         "app-mobile/src/i18n/locales/yo/modals.json",
         "app-mobile/src/i18n/locales/zh/modals.json",
         "app-mobile/src/types/onboarding.ts",
-        "app-mobile/src/utils/onboardingLocationOverride.ts"
+        "app-mobile/src/utils/onboardingLocationOverride.ts",
+        "app-mobile/src/components/RouteScreenTracker.tsx",
+        "app-mobile/src/services/peopleJourneyService.ts",
+        "app-mobile/src/services/postHogService.ts",
+        "app-mobile/src/services/screenTracking.ts",
+        "app-mobile/src/services/signupSourceHints.ts"
       ]
     },
     {
@@ -1668,7 +1673,12 @@
         "mingla-admin/src/services/peopleService.js",
         "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
         "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql",
-        "supabase/migrations/20280317004250_issue_4250_drop_profiles_is_admin.sql"
+        "supabase/migrations/20280317004250_issue_4250_drop_profiles_is_admin.sql",
+        "mingla-admin/src/lib/peopleFilter.js",
+        "mingla-admin/src/pages/PeopleConsolePage.jsx",
+        "supabase/functions/admin-person-activity/function-policy.json",
+        "supabase/functions/admin-person-activity/index.ts",
+        "supabase/migrations/20281118024226_issue_4226_people_journey.sql"
       ]
     },
     {
@@ -1694,7 +1704,10 @@
         "supabase/migrations/20280301004226_issue_4226_ticket_buyer_people.sql",
         "supabase/migrations/20280302004226_issue_4226_host_contacts_people.sql",
         "supabase/migrations/20280322004255_issue_4255_admin_access_email_drafts.sql",
-        "mingla-marketing/public/brand/mingla-logo-pill.png"
+        "mingla-marketing/public/brand/mingla-logo-pill.png",
+        "mingla-admin/src/components/email/PeopleAudiencePicker.jsx",
+        "mingla-admin/src/lib/peopleFilter.js",
+        "supabase/migrations/20281118024226_issue_4226_people_journey.sql"
       ]
     },
     {
@@ -1927,7 +1940,12 @@
         "mingla-business/src/hooks/useBrandSetupFlowWrites.ts",
         "mingla-business/src/hooks/useSetTapLocationAddress.ts",
         "packages/brand-rendering/BrandOfferingCard.tsx",
-        "packages/brand-rendering/GlassTabs.tsx"
+        "packages/brand-rendering/GlassTabs.tsx",
+        "mingla-business/src/hooks/usePeopleJourneyTracking.ts",
+        "mingla-business/src/services/peopleJourneyService.ts",
+        "mingla-business/src/services/postHogService.ts",
+        "mingla-business/src/services/postHogService.web.ts",
+        "mingla-business/src/services/screenTracking.ts"
       ]
     },
     {

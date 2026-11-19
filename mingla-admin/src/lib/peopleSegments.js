@@ -1,31 +1,12 @@
 // Issue #4130 (Wave 3) — the words and shapes behind People, Brands and
 // Offerings. Pure module: no React, no Supabase; a node test runs it.
 //
-// The server decides every number and every segment (admin_people_segments,
-// admin_list_people, admin_list_brands_board, admin_list_offerings_board).
+// The server decides every number and every segment (#4226 Phase 2: the
+// People filter in lib/peopleFilter.js; admin_list_brands_board, admin_list_offerings_board).
 // This file only names them in plain English.
 
 import { PROVIDER_LABEL, READINESS, READINESS_LABEL, parseReadinessCode } from "./paymentReadiness.js";
 import { joinMoneyAmounts } from "./moneyFormat.js";
-
-/** People tabs, in order. `id` is the address value (#/people?tab=...). */
-export const PEOPLE_TABS = Object.freeze([
-  Object.freeze({ id: "explorers", segment: "explorer", label: "Explorers" }),
-  Object.freeze({ id: "hosts", segment: "host", label: "Hosts" }),
-  Object.freeze({ id: "both", segment: "both", label: "Both" }),
-  Object.freeze({ id: "incomplete", segment: "incomplete", label: "Didn't finish sign-up" }),
-  Object.freeze({ id: "internal", segment: "internal", label: "Staff and test" }),
-  // #4226: anyone with a paid ticket who has not finished Explorer onboarding
-  // (no account, or an account that never onboarded). Not a partition: an
-  // account holder here keeps their own tab too.
-  Object.freeze({ id: "ticket-buyers", segment: "ticket_buyer_no_app", label: "Ticket buyers, no app" }),
-  // #4226: people a host imported or added to their contact book who have no
-  // account and no ticket. Hosts' contacts who do have one are marked on
-  // their own tab instead.
-  Object.freeze({ id: "host-contacts", segment: "host_contact_no_app", label: "Host contacts, no app" }),
-]);
-
-export const DEFAULT_PEOPLE_TAB = "explorers";
 
 /**
  * The staff and test email rule. Mirror of the server's
@@ -48,17 +29,6 @@ export function isInternalEmail(email) {
   if (["usemingla.com", "example.com", "example.org", "example.net", "cloudtestlabaccounts.com"].includes(domain)) return true;
   if (/\.(test|invalid|example|localhost)$/.test(domain)) return true;
   return /^test/.test(local) || /(^|[._+0-9-])test($|[._+0-9-])/.test(local);
-}
-
-/** The tab an address asks for, or the default. Never an inherited key. */
-export function peopleTabFor(value) {
-  return PEOPLE_TABS.find((tab) => tab.id === value) || PEOPLE_TABS.find((tab) => tab.id === DEFAULT_PEOPLE_TAB);
-}
-
-/** "Explorers · 75" once the count is known; just the label before. */
-export function peopleTabLabel(tab, counts) {
-  const value = counts && Number.isFinite(Number(counts[tab.segment])) ? Number(counts[tab.segment]) : null;
-  return value === null ? tab.label : `${tab.label} · ${value.toLocaleString()}`;
 }
 
 /** A name to show; never invents one. */

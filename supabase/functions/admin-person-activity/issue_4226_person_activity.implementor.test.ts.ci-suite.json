@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/admin-person-activity/issue_4226_person_activity.implementor.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4226-person-activity-edge",
+  "profile": "deno-1.46-stripe"
+}

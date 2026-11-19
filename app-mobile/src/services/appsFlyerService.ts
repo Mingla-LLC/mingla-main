@@ -4,6 +4,13 @@ import { Platform } from 'react-native'
 import { supabase } from './supabase'
 import { resolveOneLinkDestination, OneLinkDestination } from './oneLinkResolver'
 import { captureNativeOneLinkAttribution } from './nativeAdAttributionService'
+import {
+  clearPeopleJourneyState,
+  dropHeldInstallConversion,
+  getHeldInstallConversion,
+  holdInstallConversion,
+  sendHeldInstallAttribution,
+} from './peopleJourneyService'
 
 // ORCH-1318 — the branded OneLink subdomain the SDK must treat as a OneLink
 // host at runtime (SPEC §C.1). EXACT constant, shared with oneLinkShare.ts.
@@ -167,6 +174,8 @@ function applyPrivacyChoice(): void {
   _anonymized = optedOut
   if (optedOut) {
     _eventQueue = []
+    // #4226: held install conversion data goes too.
+    dropHeldInstallConversion()
     clearAppsFlyerUserEmails()
     forgetSentUninstallToken()
   } else {
@@ -440,6 +449,59 @@ const DEEPLINK_DEDUP_WINDOW_MS = 5000
 let _lastHandledLink: string | null = null
 let _lastHandledAt = 0
 
+// ─────────────────────────────────────────────────────────────────────────────
+// #4226 — install conversion data reaches the server once the user is known.
+// The SDK can deliver it before sign-in; it is held in memory (never stored on
+// disk), sent once after auth (and once the device row exists), dropped on
+// sign-out and whenever the person turns analytics off.
+// ─────────────────────────────────────────────────────────────────────────────
+let _conversionSubscribed = false
+
+function flushInstallAttribution(): void {
+  const userId = _signedInUserId
+  // Nothing held: no native call at all.
+  if (!userId || !getHeldInstallConversion()) return
+  withInstallUid((uid) => {
+    void sendHeldInstallAttribution({
+      userId: _signedInUserId,
+      appsflyerId: uid,
+      optedOut: isAnalyticsOptedOut(),
+      platform: Platform.OS,
+      appId: Platform.OS === 'ios' ? AF_IOS_APP_ID : AF_ANDROID_APP_ID,
+    })
+  })
+}
+
+/**
+ * #4226: a held payload that errored is retried when the app returns to the
+ * foreground (app/index.tsx calls this from its AppState listener). Capped at
+ * three tries per app session inside sendHeldInstallAttribution.
+ */
+export function retryHeldInstallAttribution(): void {
+  flushInstallAttribution()
+}
+
+function registerInstallConversion(): void {
+  if (_conversionSubscribed || typeof appsFlyer.onInstallConversionData !== 'function') return
+  try {
+    appsFlyer.onInstallConversionData((res: { type?: string; data?: unknown }) => {
+      try {
+        if (isAnalyticsOptedOut()) return
+        if (res?.type === 'onInstallConversionFailure') return
+        if (res?.data && typeof res.data === 'object') {
+          holdInstallConversion(res.data as Record<string, unknown>)
+          flushInstallAttribution()
+        }
+      } catch (e) {
+        console.warn('[AppsFlyer] install conversion handler failed:', e)
+      }
+    })
+    _conversionSubscribed = true
+  } catch (e) {
+    console.warn('[AppsFlyer] onInstallConversionData registration failed:', e)
+  }
+}
+
 /**
  * Initialize the AppsFlyer SDK. Call once at app startup.
  *
@@ -470,6 +532,8 @@ export function initializeAppsFlyer(): void {
   // resolving during the first session is dropped. This is transmission-inert
   // (it does NOT start the SDK) so the ATT gate is untouched.
   registerOneLinkDeepLink()
+  // #4226: install conversion data is held for the People journey.
+  registerInstallConversion()
   // #4238 W6-6 / W6-5 — follow the privacy switch and the push token.
   subscribePrivacyChoice()
   watchPushTokenForUninstall()
@@ -676,6 +740,8 @@ export function setAppsFlyerUserId(userId: string): void {
   }
   // #4238 W6-11: hashed email for advanced matching (skipped when opted out).
   void syncAppsFlyerUserEmail(userId)
+  // #4226: send any install conversion data that arrived before sign-in.
+  flushInstallAttribution()
 }
 
 /**
@@ -693,6 +759,8 @@ export function clearAppsFlyerUserId(): void {
   _pendingUserId = null
   _pendingDeviceUserId = null
   _eventQueue = []
+  // #4226 (Constitution 6): held install conversion data and journey state.
+  clearPeopleJourneyState()
   // #4238 W6-11: sign-out clears the email.
   clearAppsFlyerUserEmails()
   if (!_initialized) return
@@ -775,6 +843,8 @@ export function registerAppsFlyerDevice(userId: string): void {
             } else {
               registeredDeviceKeys.add(deviceKey)
               if (__DEV__) console.log(`[AppsFlyer] Device registered: ${platform}/${uid}`)
+              // #4226: the device row exists now, so install attribution can attach to it.
+              flushInstallAttribution()
             }
           })
       }
