@@ -219,12 +219,20 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
       onRequestClose={onClose}
       accessibilityViewIsModal
     >
-      <Pressable
-        style={styles.scrim}
-        onPress={onClose}
-        accessibilityLabel="Dismiss"
-      >
+      {/* issue #4508 R4 — the backdrop is a sibling behind the card, not
+          its parent: a parent Pressable made the whole card one "Dismiss"
+          element for VoiceOver and swallowed the card's own buttons. It is
+          hidden from screen readers; the card's Done / Close end the popup. */}
+      <View style={styles.scrim}>
         <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
+          testID="issue-4508-rsvp-success-backdrop"
+        />
+        <View
           style={[
             styles.card,
             {
@@ -233,7 +241,6 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
               maxHeight: Math.min(650, Math.max(320, windowHeight - 48)),
             },
           ]}
-          onPress={() => undefined}
           testID="orch-1163-rsvp-success-popup"
         >
           {passPresentation === "claim" ? (
@@ -250,10 +257,14 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
               </Text>
             </Pressable>
           ) : null}
+          {/* R4: the content scrolls inside the card's max height (flexShrink),
+              so later invite rows stay reachable on a small phone. */}
           <ScrollView
+            style={styles.cardScroll}
             contentContainerStyle={styles.cardContent}
             showsVerticalScrollIndicator
             keyboardShouldPersistTaps="handled"
+            testID="issue-4508-rsvp-success-scroll"
           >
             <Text
               style={[
@@ -481,28 +492,35 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
                 {chipInPanel !== undefined && chipInPanel !== null ? (
                   <View style={styles.chipInWrap}>{chipInPanel}</View>
                 ) : null}
-
-                <Pressable
-                  onPress={onClose}
-                  accessibilityRole="button"
-                  accessibilityLabel="Done"
-                  style={[styles.doneBtn, accentFill(palette)]}
-                  testID="orch-1163-rsvp-success-done"
-                >
-                  <Text
-                    style={[
-                      styles.doneBtnText,
-                      { color: palette.accentText, ...boldFace },
-                    ]}
-                  >
-                    Done
-                  </Text>
-                </Pressable>
               </>
             )}
           </ScrollView>
-        </Pressable>
-      </Pressable>
+          {passPresentation === "claim" ? null : (
+            // R4: Done is pinned under the scrolling content, always reachable.
+            <View
+              style={[styles.footer, { borderColor: palette.panelBorder }]}
+              testID="issue-4508-rsvp-success-footer"
+            >
+              <Pressable
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Done"
+                style={[styles.doneBtn, accentFill(palette)]}
+                testID="orch-1163-rsvp-success-done"
+              >
+                <Text
+                  style={[
+                    styles.doneBtnText,
+                    { color: palette.accentText, ...boldFace },
+                  ]}
+                >
+                  Done
+                </Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      </View>
     </Modal>
   );
 };
@@ -521,8 +539,17 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     position: "relative",
+    overflow: "hidden",
   },
   cardContent: { padding: 22 },
+  // R4: shrink to the card's max height instead of growing past it.
+  cardScroll: { flexGrow: 0, flexShrink: 1 },
+  footer: {
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    paddingBottom: 18,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
   title: {
     fontSize: 22,
     fontWeight: "900",
@@ -567,7 +594,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 14,
     paddingVertical: 15,
-    marginTop: 18,
   },
   doneBtnText: { fontSize: 16, fontWeight: "900" },
   closeButton: {

@@ -64,7 +64,10 @@ export const RsvpGuestInvitesCard: React.FC<RsvpGuestInvitesCardProps> = ({
 
   return (
     <View style={styles.wrap} testID="issue-4508-rsvp-invites">
-      <Text style={[styles.heading, { color: palette.primaryText, ...boldFace }]}>
+      <Text
+        style={[styles.heading, { color: palette.primaryText, ...boldFace }]}
+        accessibilityRole="header"
+      >
         Invites sent
       </Text>
       {invites.map((guest, index) => {
@@ -74,6 +77,9 @@ export const RsvpGuestInvitesCard: React.FC<RsvpGuestInvitesCardProps> = ({
           <View
             key={guest.guestId ?? `guest-${index}`}
             style={[styles.row, { borderColor: palette.panelBorder }]}
+            // issue #4508 R4 — each guest is one element a screen reader reads.
+            accessible
+            accessibilityLabel={`${submittedGuestLabel(guest)}, ${status}`}
             testID={`issue-4508-rsvp-invite-${index}`}
           >
             <Text style={[styles.name, { color: palette.primaryText, ...boldFace }]} numberOfLines={1}>
@@ -88,7 +94,10 @@ export const RsvpGuestInvitesCard: React.FC<RsvpGuestInvitesCardProps> = ({
 
       {linked.length > 0 ? (
         <View style={styles.selfSend} testID="issue-4508-rsvp-send-yourself">
-          <Text style={[styles.heading, { color: palette.primaryText, ...boldFace }]}>
+          <Text
+            style={[styles.heading, { color: palette.primaryText, ...boldFace }]}
+            accessibilityRole="header"
+          >
             Send it yourself too
           </Text>
           <Text style={[styles.hint, { color: palette.secondaryText }]}>
