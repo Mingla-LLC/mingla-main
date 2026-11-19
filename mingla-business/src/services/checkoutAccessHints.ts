@@ -3,7 +3,15 @@
  * `eventTicketCheckoutAccessService` so it carries no database client: the
  * page-bundle parser writes a hint, the eligibility hook reads it.
  */
-import type { PublicTicketCheckoutAccess } from "./eventTicketCheckoutAccessService";
+// No import from `eventTicketCheckoutAccessService`, not even a type: that
+// service is web-only (#2101 A8.2-3) and this module is reachable from the
+// native bundle through the page-bundle parser. The shape is restated here;
+// it is assignable to `PublicTicketCheckoutAccess`, which the hook checks.
+interface UnrestrictedCheckoutAccess {
+  schemaVersion: 1;
+  mode: "unrestricted";
+  state: "unrestricted";
+}
 
 // ---- #4518 N1: the same-origin "this sale is open to everyone" hint --------
 //
@@ -16,7 +24,7 @@ import type { PublicTicketCheckoutAccess } from "./eventTicketCheckoutAccessServ
 // a buyer who is not allowed.
 const unrestrictedCheckoutEventIds = new Set<string>();
 
-const UNRESTRICTED_CHECKOUT_ACCESS: PublicTicketCheckoutAccess = {
+const UNRESTRICTED_CHECKOUT_ACCESS: UnrestrictedCheckoutAccess = {
   schemaVersion: 1,
   mode: "unrestricted",
   state: "unrestricted",
@@ -28,7 +36,7 @@ export const noteUnrestrictedCheckout = (eventId: string): void => {
 
 export const hintedCheckoutAccess = (
   eventId: string,
-): PublicTicketCheckoutAccess | undefined =>
+): UnrestrictedCheckoutAccess | undefined =>
   unrestrictedCheckoutEventIds.has(eventId)
     ? UNRESTRICTED_CHECKOUT_ACCESS
     : undefined;
