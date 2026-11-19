@@ -9,6 +9,7 @@
  *   - Ari's three workspace actions are designer actions (Core signs the same
  *     evidence as for every designer write) and always start Draft.
  */
+// MINGLA-INVARIANT: I-4453-WORKSPACE-ACTIONS-ONE-LIST | issue #4453 | the thirteen Website workspace content actions are named identically in Core's allow-list (CONTENT_ACTIONS), Studio's rank table (CONTENT_ACTION_MIN_RANK) and the database rank function (brand_site_content_min_rank), all at rank 20, and every content action Host sends (mingla-business contentApi.ts) is one Core lets through.
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { CONTENT_ACTIONS, handleSiteContentRoute, type SiteContentContext } from "./siteContent.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ARI_FAILURE_MESSAGES, ariFailureFrom } from "./siteAri.ts";
@@ -174,7 +175,6 @@ Deno.test("#4453 workspace: Core signs Draft review in for Ari's workspace actio
 
 // ---------------------------------------------------------------------------
 // One list in four places.
-// MINGLA-INVARIANT: I-4453-WORKSPACE-ACTIONS-ONE-LIST | issue #4453 | the thirteen Website workspace content actions are named identically in Core's allow-list (CONTENT_ACTIONS), Studio's rank table (CONTENT_ACTION_MIN_RANK) and the database rank function (brand_site_content_min_rank), all at rank 20, and every content action Host sends (mingla-business contentApi.ts) is one Core lets through.
 // Host sends an action, Core lets it through and asks the database for its
 // minimum rank, Studio checks the rank again and does the work. A name
 // missing from any one of them is a refusal the owner sees as "not available".

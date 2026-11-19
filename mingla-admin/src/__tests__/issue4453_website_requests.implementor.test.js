@@ -2,7 +2,7 @@
 // "Website changes" view, the request details, the 24-hour clock and the
 // "Ready for review" button.
 //
-// MINGLA-INVARIANT: I-4453-WEBSITE-CLOCK-ONE-RULE | issue #4453 | A website change request reads as overdue on the desk exactly when it is still active, not yet marked ready and its due time has passed; a ready or finished request never shows a running clock.
+// MINGLA-INVARIANT: I-4453-WEBSITE-CLOCK-ONE-RULE | issue #4453 | A website change request reads as overdue on the desk exactly when it is still open, not yet marked ready and its due time has passed; a ready or finished request never shows a running clock.
 // MINGLA-INVARIANT: I-4453-WEBSITE-READY-THROUGH-RPC | issue #4453 | The desk marks a website change request ready only through the issue_4453_website_request_ready RPC; it never writes support_website_requests or support_tickets from the browser, and the button is held while a press is in flight or after the owner has been told.
 //
 // FAILS-ON-REVERT: drop the "website" view or its topic rule and the view tests fail; let a
