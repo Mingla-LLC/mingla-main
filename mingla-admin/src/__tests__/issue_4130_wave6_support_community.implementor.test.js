@@ -233,7 +233,7 @@ describe("W6-5 the inbox counts match the inbox", () => {
     for (const { id } of SUPPORT_INBOX_VIEWS) {
       assert.equal(counts[id], supportInboxRows(rows, id, ctx).length, id);
     }
-    assert.deepEqual(counts, { needs: 2, mine: 2, unassigned: 2, overdue: 1, waiting: 1, resolved: 2, all: 6, open: 2 });
+    assert.deepEqual(counts, { needs: 2, mine: 2, unassigned: 2, overdue: 1, waiting: 1, website: 0, resolved: 2, all: 6, open: 2 });
   });
 
   it("the inbox opens on Needs reply, longest waiting first; Resolved is newest first", () => {

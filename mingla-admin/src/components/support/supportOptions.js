@@ -30,6 +30,8 @@ export const TOPIC_LABEL = Object.freeze({
   venue: "Venue",
   account: "Account",
   other: "Other",
+  // #4453 — sent from the Website workspace ("Ask the Mingla team").
+  website_change: "Website change",
   broken: "Something is broken",
   bookings_payments: "Bookings and payments",
   idea: "An idea",
