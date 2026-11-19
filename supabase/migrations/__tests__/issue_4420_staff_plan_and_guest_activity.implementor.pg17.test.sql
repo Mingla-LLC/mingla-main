@@ -12,6 +12,8 @@
 -- Cases
 --   P-*  plan: staff read, staff cannot add, outsider still not_found, team
 --        unchanged
+--   B-*  new Guest rooms start in Broadcast (20281120024420); an existing
+--        Open-chat room stays Open when ensure runs again
 --   G-*  guest activity: team sees unread guest messages after their read
 --        marker, brand posts and own posts are not unread, a non-team user
 --        and a guest see no rows, a removed teammate sees no rows
@@ -19,7 +21,9 @@
 -- Fails on revert: dropping the staff path from brand_plan_can_read fails
 -- P-STAFF-READ; letting the staff path into brand_plan_can_write fails
 -- P-STAFF-NO-ADD; dropping the team filter from the activity function fails
--- G-OUTSIDER / G-GUEST / G-REMOVED; counting brand posts fails G-UNREAD.
+-- G-OUTSIDER / G-GUEST / G-REMOVED; counting brand posts fails G-UNREAD;
+-- reverting the ensure start value fails B-NEW; letting ensure's ON CONFLICT
+-- reset the setting fails B-KEEP.
 
 BEGIN;
 
@@ -153,6 +157,18 @@ BEGIN
   PERFORM pg_temp.ok('G-STAFF support staff not on the team see no Guest chat rows', v_rows = '[]'::jsonb);
   PERFORM pg_temp.ok('G-ANON anon cannot run it',
     NOT has_function_privilege('anon', 'public.issue_4420_brand_guest_activity()', 'EXECUTE'));
+
+  -- B-*: Broadcast start.
+  PERFORM pg_temp.ok('B-NEW a newly ensured Guest room starts broadcast-only',
+    (SELECT is_broadcast_only FROM public.conversations WHERE id = pg_temp.u('chat')));
+  UPDATE public.conversations SET is_broadcast_only = false WHERE id = pg_temp.u('chat');
+  -- A rename makes ensure take its ON CONFLICT DO UPDATE path.
+  UPDATE public.brands SET name = 'Brand 4420 renamed' WHERE id = pg_temp.u('brand');
+  PERFORM public.issue_4459_ensure_brand_guest_chat(pg_temp.u('brand'));
+  PERFORM pg_temp.ok('B-KEEP an existing Open-chat room stays Open after ensure runs again',
+    (SELECT NOT is_broadcast_only AND name = 'Brand 4420 renamed' FROM public.conversations WHERE id = pg_temp.u('chat')));
+  PERFORM pg_temp.ok('B-ONE ensure never makes a second room',
+    (SELECT count(*) FROM public.conversations WHERE brand_id = pg_temp.u('brand') AND linked_entity_type = 'brand_guests') = 1);
 
   -- G-READ: moving my own read marker clears my unread (the Host app's path).
   PERFORM pg_temp.as_user('mgr');
