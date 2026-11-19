@@ -14,6 +14,7 @@ import { sitesJson } from "../_shared/sitesContracts.ts";
 import { BOOKING_IDENTITY_CAPABILITY, BOOKING_LOCK_REASONS } from "./bookingLock.ts";
 import { socialHandlesFrom } from "../_shared/siteContracts/safety.ts";
 import { ARI_PAGE_MESSAGES, type AriPageCode } from "../_shared/siteContracts/ariPage.ts";
+import { WORKSPACE_ARI_ACTIONS, WORKSPACE_MESSAGES, workspaceDetail, type WorkspaceCode } from "./siteWorkspace.ts";
 
 type JsonObject = Record<string, unknown>;
 type RpcResult = { data: unknown; error: { message: string } | null };
@@ -44,6 +45,8 @@ export const ARI_CMS_ACTIONS: ReadonlySet<string> = new Set([
   // #4453 milestone 11 — "Add a page with Ari" (Core checks SITES_ARI_ADD_PAGE).
   "propose_site_page",
   "answer_site_page_question",
+  // #4453 website workspace — the planning snapshot, one typed step, rolling a change set back.
+  ...WORKSPACE_ARI_ACTIONS,
 ]);
 
 /** Designer actions: Studio answers them unmapped (named refusals with detail); Core attaches evidence. */
@@ -63,6 +66,8 @@ export const ARI_DESIGNER_ACTIONS: ReadonlySet<string> = new Set([
   // #4453 milestone 11 — "Add a page with Ari" (Core checks SITES_ARI_ADD_PAGE).
   "propose_site_page",
   "answer_site_page_question",
+  // #4453 website workspace — Core signs the same evidence for these as for every designer write.
+  ...WORKSPACE_ARI_ACTIONS,
 ]);
 
 export type AriFailureCode =
@@ -97,6 +102,8 @@ export type AriFailureCode =
   | "DESIGN_PASS_TRY_AGAIN"
   // #4453 milestone 11 — "Add a page with Ari" (one plain sentence each, site-contracts ARI_PAGE_MESSAGES).
   | AriPageCode
+  // #4453 website workspace — one typed step, and undoing a change set.
+  | WorkspaceCode
   | "SERVICE_TEMPORARILY_UNAVAILABLE";
 
 export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
@@ -127,6 +134,7 @@ export const ARI_FAILURE_MESSAGES: Readonly<Record<AriFailureCode, string>> = {
   DESIGN_PASS_ALREADY_RUN: "Ari has already designed this draft once. Change sections one at a time, or ask the owner before starting again.",
   DESIGN_PASS_TRY_AGAIN: "Ari couldn't start the design pass just now and nothing was changed. Try again in a moment.",
   ...ARI_PAGE_MESSAGES,
+  ...WORKSPACE_MESSAGES,
   SERVICE_TEMPORARILY_UNAVAILABLE: "Website tools are temporarily unavailable. Please try again.",
 };
 
@@ -159,6 +167,9 @@ export function ariFailureFrom(body: JsonObject | null, status: number): Respons
   if (typeof error.problem === "string") detail.problem = error.problem.slice(0, 300);
   if (typeof error.latest_revision === "string") detail.latest_revision = error.latest_revision.slice(0, 200);
   if (typeof error.page_path === "string") detail.page_path = error.page_path.slice(0, 200);
+  // #4453 website workspace — which field, its limit, the layouts this style has, the nearest readable colour.
+  const { problems: _problems, ...workspace } = workspaceDetail(error);
+  Object.assign(detail, workspace);
   return sitesJson({
     ok: false,
     error: {
