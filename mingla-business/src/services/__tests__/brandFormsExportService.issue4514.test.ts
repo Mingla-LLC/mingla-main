@@ -1,60 +1,106 @@
 /**
- * #4514 wave 3 — Export on the Responses page rides the guest roster export
- * (one audited job), no second exporter: request the job, poll it, open the file.
+ * #4514 fix wave (review finding 1, contract C5) — Export on the Responses page
+ * is event manager and up, answers only: it reads `biz_brand_form_responses_export`
+ * (event_manager+) and never the guest roster export (`brand-people-export` ->
+ * `biz_export_brand_people`, brand_admin+), so an event manager's tap is never a
+ * dead tap. The pg17 suite pins the server ranks (T-FIX-RANK); the button gate is
+ * pinned here.
  *
- * FAILS-ON-REVERT: sending a form scope the export function does not take, or
- * opening the file before the job is ready, turns a case red.
+ * FAILS-ON-REVERT: routing Export through `brand-people-export` again, or dropping
+ * the leading tab / carriage return guard, turns a case red.
  */
 
+const rpc = jest.fn();
 const invoke = jest.fn();
-const openURL = jest.fn();
-jest.mock("../supabase", () => ({ supabase: { functions: { invoke: (...a: unknown[]) => invoke(...a) } } }));
-jest.mock("react-native", () => ({ Linking: { openURL: (...a: unknown[]) => openURL(...a) } }));
+const share = jest.fn();
+jest.mock("../supabase", () => ({
+  supabase: { rpc: (...a: unknown[]) => rpc(...a), functions: { invoke: (...a: unknown[]) => invoke(...a) } },
+}));
+jest.mock("react-native", () => ({
+  Platform: { OS: "ios" },
+  Share: { share: (...a: unknown[]) => share(...a) },
+}));
 
-import { exportFormAnswers } from "../brandFormsExportService";
+import { answersCsvFilename, buildAnswersCsv, exportFormAnswers } from "../brandFormsExportService";
+import { MIN_RANK } from "../../utils/permissionGates";
 
-const noWait = (): Promise<void> => Promise.resolve();
+const feed = {
+  formId: "f1",
+  eventId: "e1",
+  columns: [{ key: "1:q1", versionId: "v1", version: 1, questionId: "q1", label: "Act", type: "short_text" }],
+  rows: [{
+    responseId: "r1", version: 1, submittedAt: "2026-11-19T10:00:00Z", updatedAt: "2026-11-19T10:00:00Z",
+    verified: true, values: { "1:q1": "\t=HYPERLINK(1)" },
+  }],
+};
+
+const responsesPage = {
+  form: { id: "f1", name: "Open mic", status: "live", liveVersionId: "v1", doorFullAnswers: true },
+  mode: "required_step",
+  versions: {},
+  total: 1,
+  answeredCount: 1,
+  counts: {},
+  rows: [{
+    responseId: "r1", versionId: "v1", version: 1, earlierVersion: false, answers: {}, source: "link",
+    verified: true, viaLink: true, editCount: 0, submittedAt: "2026-11-19T10:00:00Z",
+    updatedAt: "2026-11-19T10:00:00Z", subject: { kind: "rsvp", id: "rsvp-1", name: "Amara" }, holder: null,
+  }],
+  notAnswered: [],
+};
 
 beforeEach(() => {
+  rpc.mockReset();
   invoke.mockReset();
-  openURL.mockReset();
-  openURL.mockResolvedValue(true);
+  share.mockReset();
+  rpc.mockImplementation((name: string) =>
+    Promise.resolve(name === "biz_brand_form_responses_export"
+      ? { data: feed, error: null }
+      : { data: responsesPage, error: null }));
+  share.mockResolvedValue({ action: "sharedAction" });
 });
 
-describe("exportFormAnswers", () => {
-  it("requests the page's guest roster export, waits for it, then opens the file", async () => {
-    invoke
-      .mockResolvedValueOnce({ data: { jobId: "job-1", status: "queued" }, error: null })
-      .mockResolvedValueOnce({ data: { status: "running", result: null }, error: null })
-      .mockResolvedValueOnce({ data: { status: "ready", signedUrl: "https://files/x.csv" }, error: null });
-    const jobs: Array<string | null> = [];
-    const result = await exportFormAnswers({ eventId: "e1", pendingJobId: null, onJob: (j) => jobs.push(j), wait: noWait });
-    expect(result).toBe("opened");
-    expect(invoke.mock.calls[0]).toEqual(["brand-people-export", { body: expect.objectContaining({
-      scope: "offering_guest_roster", eventId: "e1", filter: "all", sort: "action_priority" }) }]);
-    expect(Object.keys(invoke.mock.calls[0][1].body)).not.toContain("formId");
-    expect(invoke.mock.calls[1]).toEqual(["brand-people-export", { body: { operation: "status", jobId: "job-1" } }]);
-    expect(openURL).toHaveBeenCalledTimes(1);
-    expect(openURL).toHaveBeenCalledWith("https://files/x.csv");
-    expect(jobs).toEqual(["job-1", null]);
+describe("Export on the Responses page (C5)", () => {
+  it("the button shows from event manager, the rank the answers-only feed accepts", () => {
+    expect(MIN_RANK.EXPORT_FORM_RESPONSES).toBe(40); // event_manager
   });
 
-  it("a job still running keeps its id so the next tap checks the same job", async () => {
-    invoke.mockResolvedValue({ data: { status: "running" }, error: null });
-    let pending: string | null = "job-9";
-    const result = await exportFormAnswers({ eventId: "e1", pendingJobId: "job-9", onJob: (j) => { pending = j; }, wait: noWait });
-    expect(result).toBe("preparing");
-    expect(pending).toBe("job-9");
-    expect(invoke.mock.calls.every((c) => c[1].body.operation === "status")).toBe(true);
-    expect(openURL).not.toHaveBeenCalled();
+  it("reads the answers-only feed and never the roster export", async () => {
+    const method = await exportFormAnswers({ formId: "f1", formName: "Open mic", eventId: "e1" });
+    expect(method).toBe("shared");
+    expect(rpc).toHaveBeenCalledWith("biz_brand_form_responses_export", { p_form_id: "f1", p_event_id: "e1" });
+    expect(rpc.mock.calls.map((c) => c[0])).not.toContain("biz_export_brand_people");
+    expect(invoke).not.toHaveBeenCalled();
+    const csv: string = share.mock.calls[0][0].message;
+    expect(csv.split("\r\n")[0]).toBe("Name,Answered,Updated,Form version,Verified,Act (v1)");
+    expect(csv).toContain("Amara,");
+    // A guest-written answer starting with a tab is kept as text.
+    expect(csv).toContain("'\t=HYPERLINK(1)");
   });
 
-  it("a failed job or a refused request throws a sentence the host can act on", async () => {
-    invoke.mockResolvedValueOnce({ data: null, error: { message: "forbidden" } });
-    await expect(exportFormAnswers({ eventId: "e1", pendingJobId: null, onJob: () => undefined, wait: noWait }))
-      .rejects.toThrow("Couldn't prepare the export. Try again.");
-    invoke.mockResolvedValueOnce({ data: { status: "failed" }, error: null });
-    await expect(exportFormAnswers({ eventId: "e1", pendingJobId: "job-2", onJob: () => undefined, wait: noWait }))
-      .rejects.toThrow("Couldn't prepare the export. Try again.");
+  it("a refused feed throws a sentence the host can act on", async () => {
+    rpc.mockResolvedValueOnce({ data: null, error: { code: "42501", message: "brand_form_forbidden" } });
+    await expect(exportFormAnswers({ formId: "f1", formName: "Open mic", eventId: "e1" })).rejects.toThrow();
+    expect(share).not.toHaveBeenCalled();
+  });
+});
+
+describe("answers CSV", () => {
+  it("every leading = + - @, tab or carriage return is text; quotes and commas are escaped", () => {
+    const csv = buildAnswersCsv(
+      { ...feed, rows: ["=1", "+1", "-1", "@1", "\t1", "\r1", 'a,"b"'].map((v, i) => ({ ...feed.rows[0], responseId: `r${i}`, values: { "1:q1": v } })) },
+      new Map(),
+    );
+    expect(csv).toContain(",'=1\r\n");
+    expect(csv).toContain(",'+1\r\n");
+    expect(csv).toContain(",'-1\r\n");
+    expect(csv).toContain(",'@1\r\n");
+    expect(csv).toContain(",'\t1\r\n");
+    expect(csv).toContain(',"\'\r1"\r\n');
+    expect(csv).toContain(',"a,""b"""\r\n');
+  });
+
+  it("the file name is the form's slug and the date", () => {
+    expect(answersCsvFilename("Open Mic!", new Date(2026, 10, 19))).toBe("open-mic-answers-2026-11-19.csv");
   });
 });

@@ -1,80 +1,110 @@
 /**
- * #4514 — Export for one page's answers (event manager and up). Wave 3: the
- * answers ride the EXISTING guest roster export (`brand-people-export`, an
- * audited export job): the roster CSV plus one column per question of the page's
- * form (§4.9; `brand_form_roster_export_answers`). There is no second exporter.
+ * #4514 — Export on the Responses page: one page's answers, event manager and
+ * up (contract correction C5). It reads the answers-only feed
+ * (`biz_brand_form_responses_export`, event_manager+) and never the guest
+ * roster export: that runs `biz_export_brand_people`, which needs brand_admin,
+ * and C5 widens no roster RPC. (The brand-admin roster export carries the same
+ * answers as one column per question, through `brand_form_roster_export_answers`.)
  *
- * Loaded on demand by the Responses page. It calls the export function directly
- * (the same three requests the guest list makes) instead of importing the guest
- * roster service, so no module is shared between two lazy chunks (Metro would
- * hoist it into the eager Host web chunk, #4514 bundle budget).
+ * Loaded with the Responses page (lazy). The file is delivered locally: the
+ * shared roster CSV helper pulls the orders and money graph into the eager Host
+ * web chunk as soon as a second lazy screen imports it (bundle budget, #4514).
  */
 
-import { Linking } from "react-native";
+import { Platform, Share } from "react-native";
 
-const getSupabase = async () => (await import("./supabase")).supabase;
+import { fetchBrandFormExport, fetchBrandFormResponses, type BrandFormExport } from "./brandFormsService";
+import { subjectName } from "../utils/brandFormResponses";
 
-export type FormAnswersExportResult = "opened" | "preparing";
+const PAGE = 200;
+const MAX_PAGES = 25;
 
-const POLL_TRIES = 15;
-const POLL_MS = 2_000;
+export type FormAnswersExportMethod = "downloaded" | "shared" | "dismissed";
 
-const isRecord = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
+const csvCell = (value: string): string =>
+  /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
-const requestId = (): string => {
-  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
-  if (c?.randomUUID !== undefined) return c.randomUUID();
-  const hex = (n: number): string => Math.floor(Math.random() * 16 ** n).toString(16).padStart(n, "0");
-  return `${hex(8)}-${hex(4)}-4${hex(3)}-${(8 + Math.floor(Math.random() * 4)).toString(16)}${hex(3)}-${hex(12)}`;
-};
+/** A spreadsheet reads a leading = + - @, tab or carriage return as a formula; keep it text. */
+const safeCell = (value: string): string => (/^[=+\-@\t\r]/.test(value) ? `'${value}` : value);
 
-async function invoke(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const supabase = await getSupabase();
-  const { data, error } = await supabase.functions.invoke("brand-people-export", { body });
-  if (error !== null) throw new Error("Couldn't prepare the export. Try again.");
-  return isRecord(data) ? data : {};
+/** One header column per question and version, one row per response. */
+export function buildAnswersCsv(feed: BrandFormExport, names: ReadonlyMap<string, string>): string {
+  const header = [
+    "Name",
+    "Answered",
+    "Updated",
+    "Form version",
+    "Verified",
+    ...feed.columns.map((c) => `${c.label} (v${c.version})`),
+  ];
+  const lines = [header.map((c) => csvCell(safeCell(c))).join(",")];
+  for (const row of feed.rows) {
+    const cells = [
+      names.get(row.responseId) ?? "",
+      row.submittedAt,
+      row.updatedAt,
+      String(row.version),
+      row.verified ? "Yes" : "No",
+      ...feed.columns.map((c) => row.values[c.key] ?? ""),
+    ];
+    lines.push(cells.map((c) => csvCell(safeCell(c))).join(","));
+  }
+  return `${lines.join("\r\n")}\r\n`;
 }
 
-/**
- * Start (or keep waiting on) the page's guest export, then open the file. A job
- * still running after ~30 s answers "preparing": tapping Export again checks the
- * same job (the caller keeps `pendingJobId`).
- */
+export const answersCsvFilename = (formName: string, now: Date): string => {
+  const slug = formName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${slug.length > 0 ? slug : "form"}-answers-${y}-${m}-${d}.csv`;
+};
+
 export async function exportFormAnswers(input: {
+  formId: string;
+  formName: string;
   eventId: string;
-  pendingJobId: string | null;
-  onJob: (jobId: string | null) => void;
-  wait?: (ms: number) => Promise<void>;
-}): Promise<FormAnswersExportResult> {
-  const wait = input.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-  let jobId = input.pendingJobId;
-  if (jobId === null) {
-    const requested = await invoke({
-      scope: "offering_guest_roster",
+}): Promise<FormAnswersExportMethod> {
+  const feed = await fetchBrandFormExport(input.formId, input.eventId);
+  const names = new Map<string, string>();
+  let offset = 0;
+  for (let i = 0; i < MAX_PAGES; i += 1) {
+    const page = await fetchBrandFormResponses({
+      formId: input.formId,
       eventId: input.eventId,
       filter: "all",
-      search: null,
-      sort: "action_priority",
-      filterSnapshot: {},
-      clientRequestId: requestId(),
+      limit: PAGE,
+      offset,
     });
-    jobId = typeof requested.jobId === "string" ? requested.jobId : null;
-    if (jobId === null) throw new Error("Couldn't prepare the export. Try again.");
+    for (const row of page.rows) names.set(row.responseId, subjectName(row));
+    offset += PAGE;
+    if (offset >= page.total || page.rows.length === 0) break;
   }
-  input.onJob(jobId);
-  for (let attempt = 0; attempt < POLL_TRIES; attempt += 1) {
-    const status = await invoke({ operation: "status", jobId });
-    if (status.status === "failed" || status.status === "expired") {
-      input.onJob(null);
-      throw new Error("Couldn't prepare the export. Try again.");
+  return deliverCsv(buildAnswersCsv(feed, names), answersCsvFilename(input.formName, new Date()));
+}
+
+/** Web downloads the file; the apps open the share sheet with the CSV text. */
+async function deliverCsv(csv: string, filename: string): Promise<FormAnswersExportMethod> {
+  if (Platform.OS === "web") {
+    const g = globalThis as { Blob?: typeof Blob; URL?: typeof URL; document?: Document };
+    if (g.Blob === undefined || g.URL === undefined || g.document === undefined) {
+      throw new Error("Web download is not available in this browser.");
     }
-    if (status.status === "ready" && typeof status.signedUrl === "string") {
-      input.onJob(null);
-      await Linking.openURL(status.signedUrl);
-      return "opened";
-    }
-    await wait(POLL_MS);
+    const url = g.URL.createObjectURL(new g.Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = g.document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    g.document.body.appendChild(anchor);
+    anchor.click();
+    g.document.body.removeChild(anchor);
+    g.URL.revokeObjectURL(url);
+    return "downloaded";
   }
-  return "preparing";
+  // SHARE-NON-CONTENT:file-export
+  const result = await Share.share({ message: csv, title: filename }, { dialogTitle: "Export answers", subject: filename });
+  return result.action === "sharedAction" ? "shared" : "dismissed";
 }

@@ -88,7 +88,7 @@ describe("brand header data", () => {
 });
 
 describe("the wave 2 adapters are gone", () => {
-  it("the preview adapter, the business header file and the answers-only CSV no longer exist", () => {
+  it("the preview adapter and the business header file are gone; the answers CSV (C5, event manager export) lives in the export service, not the pure helpers", () => {
     const root = path.join(__dirname, "../../..");
     for (const rel of ["src/utils/brandFormPreview.ts", "src/components/forms/BrandFormHeader.tsx"]) {
       expect(fs.existsSync(path.join(root, rel))).toBe(false);
