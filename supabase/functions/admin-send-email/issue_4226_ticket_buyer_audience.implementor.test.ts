@@ -202,6 +202,14 @@ class FakeQuery {
       `in:${column}:${values.join("|")}`,
     );
   }
+  // #4226 Phase 2: the country filter is case-insensitive. ILIKE with no
+  // wildcard is case-insensitive equality.
+  ilike(column: string, value: string) {
+    return this.next(
+      (row) => String((row as Record<string, unknown>)[column] ?? "").toLowerCase() === value.toLowerCase(),
+      `ilike:${column}:${value}`,
+    );
+  }
   contains(column: string, literal: string) {
     const wanted = parseArrayLiteral(literal);
     return this.next((row) => {
@@ -355,6 +363,14 @@ Deno.test("#4226 segment filters: bought tickets, brand bought from, country", (
       filters: { userType: "ticket_buyers", country: "US" },
     }))),
     ["e:raleigh@mingla-fixture.org", "u:staff"],
+  );
+  assertEquals(
+    keys(audienceOf(normalizeAudience({
+      mode: "segment",
+      filters: { userType: "ticket_buyers", country: "us" },
+    }))),
+    ["e:raleigh@mingla-fixture.org", "u:staff"],
+    "#4226 Phase 2: the country filter matches in any case",
   );
   assertEquals(
     keys(audienceOf(normalizeAudience({

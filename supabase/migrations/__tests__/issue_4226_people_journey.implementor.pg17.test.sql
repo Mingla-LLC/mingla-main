@@ -467,6 +467,11 @@ BEGIN
     EXISTS (SELECT 1 FROM jsonb_array_elements(v_j -> 'milestones') m WHERE m ->> 'kind' = 'brand_created')
     AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_j -> 'milestones') m WHERE m ->> 'kind' = 'first_sale'),
     'J-09 host milestones: brand created, first sale');
+  PERFORM pg_temp.t4226j_assert(
+    (v_j #>> '{brands,0,name}') = 'J Brand 8' AND (v_j #>> '{brands,0,payout_country}') = 'GB'
+    AND (v_j #>> '{brands,0,published}')::int = 2 AND (v_j #>> '{brands,0,paystack_bank}')::boolean
+    AND (v_j #>> '{brands,0,first_sale_at}') IS NOT NULL AND (v_j #>> '{counts,friends}') IS NOT NULL,
+    'J-09 each owned brand carries payout country, bank, published count and first sale');
   v_raised := false;
   BEGIN
     PERFORM public.admin_person_journey('e:nobody-t4226j@mingla-fixture.org');

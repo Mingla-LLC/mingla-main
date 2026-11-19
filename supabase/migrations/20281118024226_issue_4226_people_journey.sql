@@ -1105,6 +1105,8 @@ DECLARE
   v_uid   uuid;
   v_email text;
   v_ms    jsonb;
+  v_brands jsonb;
+  v_counts jsonb;
 BEGIN
   IF NOT public.is_admin_user() THEN RAISE EXCEPTION 'not_authorized'; END IF;
   IF p_key IS NULL OR length(p_key) > 330 OR p_key !~ '^(u:[0-9a-fA-F-]{36}|e:.{3,})$' THEN RAISE EXCEPTION 'invalid_key'; END IF;
@@ -1197,7 +1199,43 @@ BEGIN
     INTO v_ms
     FROM (SELECT * FROM ms WHERE ms.at IS NOT NULL ORDER BY ms.at DESC LIMIT 200) x;
 
-  RETURN jsonb_build_object('person', to_jsonb(v_row), 'milestones', v_ms);
+  -- The brands they own, each with its own money and progress facts.
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+           'id', b.id, 'name', b.name, 'created_at', b.created_at,
+           'payout_country', upper(NULLIF(btrim(b.payout_country), '')),
+           'currency', b.default_currency, 'payment_provider', b.payment_provider,
+           'payments_setup_started_at', b.payments_setup_started_at,
+           'stripe_payouts_enabled', COALESCE(b.stripe_payouts_enabled, false)
+                                     OR EXISTS (SELECT 1 FROM public.stripe_connect_accounts s
+                                                 WHERE s.brand_id = b.id AND s.detached_at IS NULL AND s.payouts_enabled),
+           'paystack_bank', EXISTS (SELECT 1 FROM public.brand_paystack_recipients r WHERE r.brand_id = b.id AND r.is_active),
+           'bank_added_at', (SELECT m.first_bank_added_at FROM public.brand_appsflyer_milestones m WHERE m.brand_id = b.id),
+           'drafts', (SELECT count(*) FROM public.events e WHERE e.brand_id = b.id AND e.deleted_at IS NULL
+                         AND e.published_at IS NULL AND e.status = 'draft'),
+           'published', (SELECT count(*) FROM public.events e WHERE e.brand_id = b.id AND e.deleted_at IS NULL
+                            AND (e.published_at IS NOT NULL OR e.status IN ('scheduled', 'live'))),
+           'first_sale_at', (SELECT min(o.created_at) FROM public.orders o JOIN public.events e ON e.id = o.event_id
+                              WHERE e.brand_id = b.id AND o.payment_status = 'paid'))
+           ORDER BY b.created_at), '[]'::jsonb)
+    INTO v_brands
+    FROM public.brands b
+   WHERE v_uid IS NOT NULL AND b.account_id = v_uid AND b.deleted_at IS NULL;
+
+  IF v_uid IS NOT NULL THEN
+    v_counts := jsonb_build_object(
+      'saves', v_row.saves_count,
+      'friends', v_row.friends_count,
+      'collab_sessions', (SELECT count(DISTINCT sp.session_id) FROM public.session_participants sp WHERE sp.user_id = v_uid),
+      'chats', (SELECT count(DISTINCT cp.conversation_id) FROM public.conversation_participants cp
+                  JOIN public.conversations c ON c.id = cp.conversation_id
+                 WHERE cp.user_id = v_uid AND (c.type = 'direct' OR c.session_id IS NOT NULL)),
+      'brands_followed', (SELECT count(*) FROM public.brand_follows bf WHERE bf.user_id = v_uid),
+      'tickets', v_row.ticket_count,
+      'rsvps', v_row.rsvp_count,
+      'experiences', v_row.experience_count);
+  END IF;
+
+  RETURN jsonb_build_object('person', to_jsonb(v_row), 'milestones', v_ms, 'brands', v_brands, 'counts', v_counts);
 END;
 $$;
 COMMENT ON FUNCTION public.admin_person_journey(text) IS
