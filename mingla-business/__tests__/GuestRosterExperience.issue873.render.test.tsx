@@ -188,3 +188,62 @@ describe("#873 GuestRosterExperience rendered status truth", () => {
     expect(mockQuery.fetchNextPage).not.toHaveBeenCalled();
   });
 });
+
+// [TEST-MOD-APPROVED #3281] the roster shows each guest's booked start (the
+// guest-chosen start on an open-hours experience), on the row and in the
+// detail sheet, in the event's time zone (UTC when unknown).
+describe("#3281 GuestRosterExperience booked start", () => {
+  beforeEach(resetMockQuery);
+  afterEach(() => {
+    act(() => {
+      renderedTrees.splice(0).forEach((tree) => tree.unmount());
+    });
+  });
+
+  const withStarts = (bookedStarts: string[] | undefined): void => {
+    const [casey, nia] = mockRoster.rows;
+    Object.assign(mockQuery, {
+      data: { ...mockRoster, rows: [casey, { ...nia, ...(bookedStarts ? { bookedStarts } : {}) }] },
+    });
+  };
+  const renderIn = (timeZone: string | null): TestTree => {
+    let tree!: TestTree;
+    act(() => {
+      tree = testRenderer.create(
+        <GuestRosterExperience eventId="event-873" onBack={jest.fn()} onOpenOrder={jest.fn()} onExport={jest.fn()} timeZone={timeZone} />,
+      );
+    });
+    renderedTrees.push(tree);
+    return tree;
+  };
+  const byTestID = (tree: TestTree, id: string): string[] =>
+    tree.root.findAll((n: TestInstance) => n.type === "Text" && n.props.testID === id).map(textOf);
+
+  test("a booked start shows on the row and in the detail sheet, in the event's zone", () => {
+    withStarts(["2026-11-14T18:30:00Z"]);
+    const tree = renderIn("Africa/Lagos");
+    const [line] = byTestID(tree, "guest-roster-booked-start");
+    expect(line).toMatch(/^Booked for /);
+    expect(line).toMatch(/7:30/); // 18:30 UTC is 19:30 in Lagos
+    const row = tree.root.findByProps({ accessibilityLabel: "Nia Buyer, Bought ticket, Invited" });
+    act(() => row.props.onPress?.());
+    expect(byTestID(tree, "guest-roster-detail-booked-start")).toEqual([line]);
+  });
+
+  test("several orders at different starts list each", () => {
+    withStarts(["2026-11-14T18:30:00Z", "2026-11-15T09:00:00Z"]);
+    const [line] = byTestID(renderIn("UTC"), "guest-roster-booked-start");
+    expect(line.split(" · ")).toHaveLength(2);
+  });
+
+  test("no booked start shows no line", () => {
+    withStarts(undefined);
+    expect(byTestID(renderIn("Africa/Lagos"), "guest-roster-booked-start")).toEqual([]);
+  });
+
+  test("an unknown zone shows UTC, never the phone's zone", () => {
+    withStarts(["2026-11-14T18:30:00Z"]);
+    const [line] = byTestID(renderIn(null), "guest-roster-booked-start");
+    expect(line).toMatch(/6:30/);
+  });
+});

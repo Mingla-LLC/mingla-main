@@ -43,6 +43,7 @@ import { IconChrome } from "../ui/IconChrome";
 import { Input } from "../ui/Input";
 import { Pill, type PillVariant } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
+import { bookedStartLine, formatBookedStart } from "../../utils/bookedStart";
 
 const FILTERS: ReadonlyArray<{ key: GuestRosterFilter; label: string }> = [
   { key: "all", label: "All guests" },
@@ -131,7 +132,26 @@ const Avatar: React.FC<{ row: GuestRosterRow }> = ({ row }) => {
   );
 };
 
-const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionMode: boolean; selected: boolean }> = ({ row, onPress, selectionMode, selected }) => {
+/**
+ * issue #3281 — the start(s) this guest booked on an open-hours experience,
+ * in the event's time zone (UTC when unknown), or null. "Booked for Sat, Nov
+ * 14, 7:30 PM"; several orders at different starts list each.
+ */
+export const rosterBookedLine = (
+  row: Pick<GuestRosterRow, "bookedStarts">,
+  timeZone: string | null | undefined,
+): string | null => {
+  const starts = row.bookedStarts ?? [];
+  if (starts.length === 0) return null;
+  if (starts.length === 1) return bookedStartLine(starts[0], timeZone);
+  const whens = starts
+    .map((start) => formatBookedStart(start, timeZone))
+    .filter((when): when is string => when !== null);
+  return whens.length === 0 ? null : `Booked for ${whens.join(" · ")}`;
+};
+
+const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionMode: boolean; selected: boolean; timeZone: string | null }> = ({ row, onPress, selectionMode, selected, timeZone }) => {
+  const bookedLine = rosterBookedLine(row, timeZone);
   const invitationLabel = GUEST_ROSTER_INVITATION_LABELS[row.invitationStatus];
   const partyText = row.party.size > 1 ? `${row.party.size} people` : "1 person";
   const checkedText = row.party.checkedIn > 0 ? ` · ${row.party.checkedIn} checked in` : "";
@@ -161,6 +181,9 @@ const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionM
           <Text style={styles.rowMeta}>
             {partyText}{checkedText}{row.cameWithName ? ` · came with ${row.cameWithName}` : ""}{row.viaLinkLabel ? ` · via ${row.viaLinkLabel}` : ""}
           </Text>
+          {bookedLine !== null ? (
+            <Text style={styles.rowMeta} testID="guest-roster-booked-start">{bookedLine}</Text>
+          ) : null}
         </View>
         <Text style={styles.chevron} accessibilityElementsHidden>›</Text>
       </GlassCard>
@@ -177,7 +200,8 @@ const GuestDetailSheet: React.FC<{
   actionPending: boolean;
   onPreviewAction: (action: "reminder" | "retry_delivery") => void;
   onApproval: (decision: "approve" | "deny") => void;
-}> = ({ row, onClose, onOpenOrder, onOpenGuestListOrder, actionsDisabled, actionPending, onPreviewAction, onApproval }) => (
+  timeZone: string | null;
+}> = ({ row, onClose, onOpenOrder, onOpenGuestListOrder, actionsDisabled, actionPending, onPreviewAction, onApproval, timeZone }) => (
   <Sheet visible={row !== null} onClose={onClose} snapPoint="full">
     {row !== null ? (
       <ScrollView contentContainerStyle={styles.detailContent}>
@@ -196,6 +220,9 @@ const GuestDetailSheet: React.FC<{
             </Pill>
           ) : null}
         </View>
+        {rosterBookedLine(row, timeZone) !== null ? (
+          <Text style={styles.truthNote} testID="guest-roster-detail-booked-start">{rosterBookedLine(row, timeZone)}</Text>
+        ) : null}
         {row.viaLinkLabel ? (
           <Text style={styles.truthNote}>
             {row.cameWithName ? `Added by ${row.cameWithName} · ` : ""}Via {row.viaLinkLabel}
@@ -267,6 +294,8 @@ export interface GuestRosterExperienceProps {
   /** issue #3827 — set only when the viewer may add guests (ADD_COMP_GUEST). */
   onAddGuests?: () => void;
   onOpenPrivateLinks?: () => void;
+  /** issue #3281 — the event's time zone for booked starts (UTC when unknown). */
+  timeZone?: string | null;
 }
 
 export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
@@ -277,6 +306,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   onExport,
   onAddGuests,
   onOpenPrivateLinks,
+  timeZone,
 }) => {
   const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
@@ -493,7 +523,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           </View>
         ) : (
           <View style={[styles.list, isWideDesktop && styles.listDesktop]}>
-            {data.rows.map((row) => <RosterRow key={row.rosterKey} row={row} selectionMode={selectionMode} selected={selectedKeys.has(row.rosterKey)}
+            {data.rows.map((row) => <RosterRow key={row.rosterKey} row={row} timeZone={timeZone ?? null} selectionMode={selectionMode} selected={selectedKeys.has(row.rosterKey)}
               onPress={() => { if (selectionMode) toggleSelected(row); else setSelected(row); }} />)}
             {query.isFetchNextPageError ? (
               <View style={styles.loadMoreState} accessibilityRole="alert">
@@ -531,7 +561,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
         </View>
       </Sheet>
 
-      <GuestDetailSheet row={selected} onClose={() => { setSelected(null); setActionPreview(null); setActionMessage(null); }} onOpenOrder={onOpenOrder}
+      <GuestDetailSheet row={selected} timeZone={timeZone ?? null} onClose={() => { setSelected(null); setActionPreview(null); setActionMessage(null); }} onOpenOrder={onOpenOrder}
         onOpenGuestListOrder={onOpenGuestListOrder ?? onOpenOrder}
         actionsDisabled={query.isStaleTruth || query.isOffline} actionPending={actionPending}
         onPreviewAction={(action) => { void previewAction(action); }} onApproval={(decision) => { void setApproval(decision); }} />
