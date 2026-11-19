@@ -63,6 +63,13 @@ import {
   MAX_NAV_LABEL_LENGTH,
   MAX_PAGE_TITLE_LENGTH,
 } from "./siteContracts/limits.ts";
+import {
+  assertSiteWorkspaceToolArgs,
+  buildSiteWorkspaceTools,
+  GET_SITE_WORKSPACE_TOOL,
+  SITE_CHANGE_SET_TOOL,
+  SITE_TEAM_REQUEST_TOOL,
+} from "./agentSiteWorkspaceTools.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const REVISION = { type: "string", minLength: 1, maxLength: 200 };
@@ -236,6 +243,16 @@ const SITES_NAMED_CODES: Readonly<Record<string, string>> = {
   ARI_PAGE_DUPLICATE: "CONFLICT",
   QUESTION_NOT_FOUND: "VALIDATION_FAILED",
   PAGE_NOT_ARI_DRAFT: "VALIDATION_FAILED",
+  // #4453 Website workspace — Core's named refusals for a change-set step or
+  // its undo. Each carries Core's plain sentence to the owner.
+  CHANGED_SINCE: "CONFLICT",
+  SECTION_NOT_FOUND: "VALIDATION_FAILED",
+  FIELD_NOT_FOUND: "VALIDATION_FAILED",
+  SECTION_TYPE_NOT_ALLOWED: "VALIDATION_FAILED",
+  SECTION_CANNOT_BE_REMOVED: "DOMAIN_ACTION_REFUSED",
+  UNREADABLE_COLOURS: "VALIDATION_FAILED",
+  MEDIA_NOT_READY: "VALIDATION_FAILED",
+  NOTHING_TO_UNDO: "CONFLICT",
 };
 
 const SITE_SERVICE_UNAVAILABLE_MESSAGE =
@@ -2017,6 +2034,14 @@ const createSitePreview = publicationTool("create_site_preview");
 const publishSite = publicationTool("publish_site");
 const rollbackSite = publicationTool("rollback_site");
 
+// #4453 Website workspace — one snapshot read, one plan (a change set applied
+// as one undoable group) and the written-up request to the Mingla team.
+const SITE_WORKSPACE_TOOLS = buildSiteWorkspaceTools({
+  tool,
+  cmsCall: cmsTool,
+  resolveSiteId: authoritativeSiteId,
+});
+
 export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getBrandSite,
   getSitePlan,
@@ -2053,6 +2078,8 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getOperation,
   listVersions,
   rollbackSite,
+  // #4453 Website workspace — on-path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS).
+  ...SITE_WORKSPACE_TOOLS,
 ];
 
 export const SITE_AGENT_READ_ONLY = new Set([
@@ -2070,6 +2097,8 @@ export const SITE_AGENT_READ_ONLY = new Set([
   "get_site_operation_status",
   "list_site_versions",
   "get_site_design_brief",
+  // #4453 Website workspace — the planning snapshot.
+  GET_SITE_WORKSPACE_TOOL,
 ]);
 
 /** The Sites tools that write (each one a confirmed proposal). */
@@ -2095,11 +2124,16 @@ export function assertSiteToolArgs(
   const invalid = (message: string): never => {
     throw new ToolError("INVALID_ARGS", message);
   };
+  // #4453 Website workspace — a change set cites per step and a team request
+  // changes nothing on the site; both have their own exact checks.
+  assertSiteWorkspaceToolArgs(toolName, args);
   const needsLog = ![
     "confirm_site_review",
     "create_site_preview",
     "publish_site",
     "rollback_site",
+    SITE_CHANGE_SET_TOOL,
+    SITE_TEAM_REQUEST_TOOL,
   ].includes(toolName);
   if (needsLog) {
     const problem = workLogCitesProblem(args.cites);

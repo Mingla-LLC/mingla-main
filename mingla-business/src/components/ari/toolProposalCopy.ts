@@ -526,6 +526,17 @@ export const WRITE_TOOL_OWNER_COPY: Readonly<
     "Website page",
     "Answer added to the Draft page",
   ),
+  // #4453 Website workspace — one plan, and the request to the Mingla team.
+  propose_site_change_set: row(
+    "Make these changes",
+    "Website changes",
+    "Changes saved to your draft",
+  ),
+  propose_website_team_request: row(
+    "Send to the Mingla team",
+    "Request to the Mingla team",
+    "Request sent to the Mingla team",
+  ),
   confirm_site_review: row(
     "Approve Website review",
     "Website review",
