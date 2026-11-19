@@ -39,12 +39,7 @@ import { formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
 import { claimMapsUri } from "../lib/claimsMapsLink";
 
-const CAT_LABELS = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & arts",
-  stay: "Stay",
-};
+import { VENUE_CATEGORY_LABELS as CAT_LABELS, venueCategoryLabel } from "../lib/venueCategoryLabels";
 
 // ORCH-1064 — feedback category enum → human label (matches the migration
 // CHECK + the business sheet's group order).
@@ -741,7 +736,7 @@ export function ClaimsPage() {
                 <div className="text-[var(--color-text-tertiary)]">Slug</div>
                 <div>{detail.slug}</div>
                 <div className="text-[var(--color-text-tertiary)]">Category</div>
-                <div>{CAT_LABELS[detail.venue_category] ?? detail.venue_category}</div>
+                <div>{venueCategoryLabel(detail.venue_category)}</div>
                 <div className="text-[var(--color-text-tertiary)]">Google Place</div>
                 <div className="break-all">{detail.google_place_id ?? "—"}</div>
                 <div className="text-[var(--color-text-tertiary)]">Location</div>

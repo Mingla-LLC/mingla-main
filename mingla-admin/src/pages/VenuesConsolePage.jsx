@@ -27,9 +27,14 @@ const CLAIM_VARIANT = {
 
 const CATEGORY_OPTIONS = [
   { value: "restaurant", label: "Restaurant" },
-  { value: "play", label: "Play" },
-  { value: "creative_and_arts", label: "Creative & arts" },
+  { value: "play", label: "Play and games" },
+  { value: "creative_and_arts", label: "Creative and arts" },
   { value: "stay", label: "Stay" },
+  { value: "bar_lounge", label: "Bar and lounge" },
+  { value: "club", label: "Club" },
+  { value: "cafe", label: "Cafe" },
+  { value: "event_space", label: "Event space" },
+  { value: "coworking", label: "Coworking" },
 ];
 const CLAIM_OPTIONS = [
   { value: "none", label: "None" },

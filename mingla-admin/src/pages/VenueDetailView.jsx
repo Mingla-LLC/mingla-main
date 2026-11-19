@@ -34,6 +34,7 @@ import { getAdminStayVenue } from "../services/stayAdminService";
 import { getAdminVenueFeatures } from "../services/venueFeaturesAdminService";
 import { buildVenueFeatureSections } from "../components/venue/venueFeatureSections";
 import { formatDate, formatDateTime } from "../lib/formatters";
+import { venueCategoryLabel } from "../lib/venueCategoryLabels";
 
 function money(cents, currency) {
   if (cents == null) return "—";
@@ -145,7 +146,7 @@ function venueSections(data, cb) {
     fields: [
       field("Name", v.name),
       field("Slug", v.slug ? `/${v.slug}` : null),
-      field("Category", null, () => (v.venue_category ? <Badge variant={CATEGORY_VARIANT[v.venue_category] || "default"}>{v.venue_category}</Badge> : muted("—"))),
+      field("Category", null, () => (v.venue_category ? <Badge variant={CATEGORY_VARIANT[v.venue_category] || "default"}>{venueCategoryLabel(v.venue_category)}</Badge> : muted("—"))),
       field("Claim status", null, () => (v.claim_status ? <Badge variant={CLAIM_VARIANT[v.claim_status] || "default"} dot>{v.claim_status}</Badge> : muted("—"))),
       field("Address", v.address),
       field("City", v.city),
@@ -408,7 +409,7 @@ export function VenueDetailView({ venueId, onBack }) {
 
   const v = data?.venue || {};
   const badges = [];
-  if (v.venue_category) badges.push({ label: v.venue_category, variant: CATEGORY_VARIANT[v.venue_category] || "default" });
+  if (v.venue_category) badges.push({ label: venueCategoryLabel(v.venue_category), variant: CATEGORY_VARIANT[v.venue_category] || "default" });
   if (v.claim_status) badges.push({ label: v.claim_status, variant: CLAIM_VARIANT[v.claim_status] || "default" });
 
   const a = activeAction;

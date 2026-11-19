@@ -2,11 +2,7 @@ import { Badge } from "../ui/Badge";
 import { formatDateTime } from "../../lib/formatters";
 import { formatPhoneHref, resolveClaimDisplayPhone } from "../../lib/claimsPhone";
 
-const CAT_LABELS = {
-  restaurant: "Restaurant",
-  play: "Play",
-  creative_and_arts: "Creative & arts",
-};
+import { venueCategoryLabel } from "../../lib/venueCategoryLabels";
 
 export function slaLabel(createdAt) {
   const start = new Date(createdAt).getTime();
@@ -111,7 +107,7 @@ function NameCell({ row }) {
         </span>
       ) : null}
       <div className="text-xs font-normal text-[var(--color-text-tertiary)] mt-0.5">
-        {CAT_LABELS[row.venue_category] ?? row.venue_category ?? "—"}
+        {venueCategoryLabel(row.venue_category)}
       </div>
     </>
   );
