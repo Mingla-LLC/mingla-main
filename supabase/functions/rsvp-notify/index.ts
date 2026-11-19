@@ -42,6 +42,7 @@ import { buildCalendarLinks } from "../_shared/email/calendar.ts";
 import { alertUnreachedGuests } from "../_shared/unreachedGuestAlert.ts";
 // Issue #4508 R-5 — friend-is-going enqueue failures raise an ops alert.
 import { alertFriendGoingFailures } from "./friendGoingFailureAlert.ts";
+import { alertSignedOutCeilingHits } from "./signedOutCeilingAlert.ts";
 // Issue #3827 — buyers and guests are told when a live listing changes.
 import {
   buildEventUpdateDispatch,
@@ -933,6 +934,9 @@ serve(async (req: Request): Promise<Response> => {
   if (!notificationId) {
     await alertUnreachedGuests(admin, "rsvp");
     await sendFriendGoingNotices(admin);
+    // Issue #4508 N-8 — one ops alert the first time a day the signed-out
+    // guest text ceiling holds a guest.
+    await alertSignedOutCeilingHits(admin);
   }
   return json(200, { ok: true, claimed: claims.length });
 });

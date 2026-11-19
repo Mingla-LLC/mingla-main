@@ -14,6 +14,7 @@ import {
   resolveGuestMessage,
 } from "../guestInvite.ts";
 import { alertFriendGoingFailures } from "../friendGoingFailureAlert.ts";
+import { alertSignedOutCeilingHits } from "../signedOutCeilingAlert.ts";
 import { buildRsvpPassMessage } from "../../_shared/rsvpPassMessage.ts";
 import type { OpsAlertEmailInput } from "../../_shared/stripeOpsAlertEmail.ts";
 
@@ -374,6 +375,89 @@ Deno.test("R-5 wiring: the tick raises the alert instead of only logging", async
     /await alertFriendGoingFailures\(admin\);/.test(src) &&
       !/friend-going enqueue failed/.test(src),
     "rsvp-notify calls the ops-alert path",
+  );
+});
+
+// N-8: the first ceiling hold of a UTC day raises ONE ops alert through the
+// shared helper, keyed by the day, and the day is marked reported only after
+// the alert went out.
+function ceilingClient(rows: unknown[]) {
+  const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  return {
+    calls,
+    client: {
+      rpc: (name: string, args: Record<string, unknown>) => {
+        calls.push({ name, args });
+        return Promise.resolve(
+          name === "issue_4508_list_ceiling_hits"
+            ? { data: rows, error: null }
+            : { data: 1, error: null },
+        );
+      },
+    },
+  };
+}
+
+Deno.test("N-8: a ceiling day raises one ops alert, then is marked reported", async () => {
+  const { calls, client } = ceilingClient([
+    { hit_day: "2026-11-19", first_hit_at: "2026-11-19T09:00:00Z" },
+  ]);
+  const sent: OpsAlertEmailInput[] = [];
+  const outcome = await alertSignedOutCeilingHits(client, {
+    send: (input) => {
+      sent.push(input);
+      return Promise.resolve({ attempted: 1, succeeded: 1, failed: 0 });
+    },
+    recipients: () => ["ops@example.test"],
+  });
+  assert(outcome === "sent", outcome);
+  assert(
+    sent.length === 1 && sent[0].recipients[0] === "ops@example.test" &&
+      sent[0].idempotencyKey === "issue4508:signed-out-ceiling:2026-11-19",
+    "one alert per day to the existing recipients: " + JSON.stringify(sent),
+  );
+  const mark = calls.find((c) => c.name === "issue_4508_mark_ceiling_hit_reported");
+  assert(
+    mark !== undefined && mark.args.p_hit_day === "2026-11-19" &&
+      calls.indexOf(mark) === calls.length - 1,
+    "marked after the alert: " + JSON.stringify(calls),
+  );
+});
+
+Deno.test("N-8: a failed alert leaves the day unreported; no day, no alert", async () => {
+  for (const send of [
+    () => Promise.resolve({ attempted: 1, succeeded: 0, failed: 1 }),
+    () => Promise.reject(new Error("resend down")),
+  ]) {
+    const { calls, client } = ceilingClient([{ hit_day: "2026-11-19", first_hit_at: null }]);
+    const outcome = await alertSignedOutCeilingHits(client, {
+      send,
+      recipients: () => ["ops@example.test"],
+    });
+    assert(outcome === "send_failed", outcome);
+    assert(
+      !calls.some((c) => c.name === "issue_4508_mark_ceiling_hit_reported"),
+      "nothing is marked when the alert did not go out",
+    );
+  }
+  let sends = 0;
+  const quiet = ceilingClient([]);
+  assert(
+    await alertSignedOutCeilingHits(quiet.client, {
+      send: () => {
+        sends += 1;
+        return Promise.resolve({ attempted: 1, succeeded: 1, failed: 0 });
+      },
+    }) === "none" && sends === 0,
+    "no ceiling day, no alert",
+  );
+});
+
+Deno.test("N-8 wiring: the tick raises the ceiling alert", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(
+    /await alertSignedOutCeilingHits\(admin\);/.test(src),
+    "rsvp-notify calls the ceiling ops-alert path",
   );
 });
 

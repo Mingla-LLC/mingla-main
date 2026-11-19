@@ -435,11 +435,63 @@ Deno.test("R-1: a signed-out submit with guest numbers is counted first", async 
   assert(asked === 0, "the count is only for signed-out guest numbers");
 });
 
-Deno.test("R-1: the unavailable refusal maps to one plain 409", () => {
+// R-1 (third rework): a signed-out caller is answered the same for a number
+// already on the list (the database writes no row and returns no id) as for a
+// new one. Field by field, the two response entries are identical apart from
+// the last four digits the caller typed.
+Deno.test("R-1: signed out, a quiet guest and a new guest read the same, field by field", () => {
+  // What the database returns for each (submit_event_rsvp, signed out).
+  const fresh = {
+    guestId: null,
+    phoneLast4: "0001",
+    onMingla: false,
+    displayName: null,
+    claimed: false,
+    addedFromFriend: false,
+    willText: true,
+    notTextedReason: null,
+  };
+  const quiet = { ...fresh, phoneLast4: "0002" };
+  // The edge would mint a link only from a guest id; signed out it never does.
+  const a = shapeSubmitGuest(fresh, { url: "https://usemingla.com/c/AAAAAAAAAA", code: "AAAAAAAAAA" }, false);
+  const b = shapeSubmitGuest(quiet, null, false);
+  const keysA = Object.keys(a).sort();
+  const keysB = Object.keys(b).sort();
+  assert(JSON.stringify(keysA) === JSON.stringify(keysB), "same keys: " + keysA + " / " + keysB);
+  for (const key of keysA) {
+    if (key === "phoneLast4") continue;
+    assert(
+      JSON.stringify(a[key]) === JSON.stringify(b[key]),
+      `field ${key} differs: ${JSON.stringify(a[key])} vs ${JSON.stringify(b[key])}`,
+    );
+  }
+  assert(a.guestId === null && a.inviteUrl === null && a.inviteCode === null,
+    "signed out: no guest id and no invite link, even when one was passed: " + JSON.stringify(a));
+  // A real row reaching the shaper signed out (an older database) is still
+  // stripped of its id, link, claim and friend flags.
+  const leaked = shapeSubmitGuest(
+    { ...fresh, guestId: "g1", claimed: true, addedFromFriend: true },
+    { url: "https://usemingla.com/c/BBBBBBBBBB", code: "BBBBBBBBBB" },
+    false,
+  );
   assert(
-    JSON.stringify(mapGuestRpcError("22023", "rsvp_guest_unavailable")) ===
-      JSON.stringify({ error: "rsvp_guest_unavailable", status: 409 }),
-    "rsvp_guest_unavailable is a 409",
+    JSON.stringify({ ...leaked, phoneLast4: "x" }) === JSON.stringify({ ...a, phoneLast4: "x" }),
+    "an id, a link or a flag never reaches a signed-out caller: " + JSON.stringify(leaked),
+  );
+  // Signed in keeps the id and the link.
+  const inside = shapeSubmitGuest({ ...fresh, guestId: "g1" }, { url: "https://usemingla.com/c/C", code: "C" }, true);
+  assert(inside.guestId === "g1" && inside.inviteUrl === "https://usemingla.com/c/C",
+    "signed in keeps the id and link: " + JSON.stringify(inside));
+  // No 409 code exists for the signed-out quiet cases any more.
+  assert(mapGuestRpcError("22023", "rsvp_guest_unavailable") === null,
+    "rsvp_guest_unavailable is gone from the contract");
+});
+
+Deno.test("R-1 wiring: signed out, no invite link is minted for a guest", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(
+    /const link = userId !== null && typeof guest\.guestId === "string"/.test(src),
+    "the link is minted only for a signed-in caller",
   );
 });
 

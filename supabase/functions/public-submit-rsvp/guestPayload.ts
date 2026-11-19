@@ -139,8 +139,6 @@ export const GUEST_RPC_ERRORS: ReadonlyArray<readonly [string, number]> = [
   ["rsvp_guest_duplicate", 400],
   ["rsvp_guest_already_listed", 409],
   ["rsvp_guest_released", 409],
-  // R-1: what a signed-out caller gets for a listed or released number.
-  ["rsvp_guest_unavailable", 409],
   ["rsvp_guest_email_invalid", 400],
   ["rsvp_guest_phone_invalid", 400],
   ["rsvp_guest_phone_country_invalid", 400],
@@ -214,10 +212,13 @@ export interface SubmitGuestRow {
   notTextedReason?: string | null;
 }
 
-/** Issue #4508 1.15 / C3 / R-2 — one guest of the submit response. A
+/** Issue #4508 1.15 / C3 / R-2 / R-1 — one guest of the submit response. A
  * signed-out caller never learns whether a number has an account (onMingla
- * false, no name) nor why a guest will not be texted (willText only); the
- * database already answers that way, this is the second line. */
+ * false, no name) nor why a guest will not be texted (willText only), and
+ * gets no guest id and no invite link: a number already on the list is
+ * answered like a new one (no row), and an id or a link that opens would
+ * tell the two apart. The database already answers that way; this is the
+ * second line. The guest's own text still carries their link. */
 export function shapeSubmitGuest(
   guest: SubmitGuestRow,
   link: { url: string | null; code: string | null } | null,
@@ -225,16 +226,16 @@ export function shapeSubmitGuest(
 ): Record<string, unknown> {
   const willText = guest.willText !== false;
   return {
-    guestId: guest.guestId ?? null,
+    guestId: signedIn ? guest.guestId ?? null : null,
     phoneLast4: guest.phoneLast4 ?? null,
     onMingla: signedIn && guest.onMingla === true,
     displayName: signedIn ? guest.displayName ?? null : null,
-    claimed: guest.claimed === true,
-    inviteUrl: link?.url ?? null,
-    inviteCode: link?.code ?? null,
+    claimed: signedIn && guest.claimed === true,
+    inviteUrl: signedIn ? link?.url ?? null : null,
+    inviteCode: signedIn ? link?.code ?? null : null,
     // C1: a friend picked from the list; the server never returns their
     // number or its last four.
-    addedFromFriend: guest.addedFromFriend === true,
+    addedFromFriend: signedIn && guest.addedFromFriend === true,
     // C3: sending is asynchronous, so no send status is claimed.
     willText,
     notTextedReason: signedIn && !willText

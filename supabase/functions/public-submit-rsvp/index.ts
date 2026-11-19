@@ -575,7 +575,8 @@ serve(async (req: Request): Promise<Response> => {
   // success screen's "Invites sent" and "Send it yourself too".
   const guestsOut: Array<Record<string, unknown>> = [];
   for (const guest of result.guests ?? []) {
-    const link = typeof guest.guestId === "string"
+    // R-1: a signed-out caller gets no invite link (see shapeSubmitGuest).
+    const link = userId !== null && typeof guest.guestId === "string"
       ? await mintClaimLink(admin, "rsvp_guest", guest.guestId)
       : null;
     // C1 / C3 / R-2: a signed-out caller sees willText only, never whether a
