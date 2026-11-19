@@ -85,6 +85,7 @@ import { Icon } from "../ui/Icon";
 import { Input, PHONE_COUNTRIES } from "../ui/Input";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 // Issue #1835 — brand deletion is owner-only; the danger zone is hidden for
 // everyone else rather than offered and then refused by the database. Uses the
 // existing `accountId` prop (the signed-in operator) — no new auth dependency.
@@ -563,6 +564,8 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
       onCancel();
     }
   }, [isDirty, onCancel]);
+  // #4453 — unsaved edits hold a brand switch (the switcher says to save first).
+  useUnsavedChangesGuard({ dirty: isDirty, onRequestLeave: handleBackPress });
 
   const handleDiscardConfirm = useCallback((): void => {
     setDiscardDialogVisible(false);

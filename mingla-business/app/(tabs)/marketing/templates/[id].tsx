@@ -26,6 +26,7 @@ import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
+import { useUnsavedChangesGuard } from "../../../../src/hooks/useUnsavedChangesGuard";
 
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { Icon } from "../../../../src/components/ui/Icon";
@@ -91,6 +92,8 @@ export default function TemplateDetailRoute(): React.ReactElement {
     if (router.canGoBack()) router.back();
     else router.replace("/(tabs)/marketing/templates" as never);
   }, [router]);
+  // #4453 — an unsaved template holds a brand switch. Android back keeps its own leave prompt.
+  useUnsavedChangesGuard({ dirty: isDirty, onRequestLeave: handleBack, hardwareBack: false });
 
   const handleSubjectChange = useCallback((next: string) => {
     setSubject(next);
