@@ -199,28 +199,31 @@ describe("#4453 change sets, typing and the history list", () => {
   });
 
   it("typing merges: the same person, section and field again within 30 seconds is one entry", async () => {
+    // Times run forward from the real clock: the store stamps rows with a clock that never goes
+    // back, so a fixed date in the past (as this was until 2026-11-19 10:00 UTC) merged everything.
+    const start = Date.now() + 60_000;
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-11-19T10:00:00.000Z"));
+    vi.setSystemTime(start);
     await edit(site, "faq", "heading", "B");
-    vi.setSystemTime(new Date("2026-11-19T10:00:10.000Z"));
+    vi.setSystemTime(start + 10_000);
     await edit(site, "faq", "heading", "Be");
-    vi.setSystemTime(new Date("2026-11-19T10:00:35.000Z"));
+    vi.setSystemTime(start + 35_000);
     await edit(site, "faq", "heading", "Before you come");
     expect(site.rows("draft-changes")).toHaveLength(1);
     expect(await entries(site)).toHaveLength(1);
 
     // More than 30 seconds after the last keystroke: a new entry.
-    vi.setSystemTime(new Date("2026-11-19T10:01:10.000Z"));
+    vi.setSystemTime(start + 70_000);
     await edit(site, "faq", "heading", "Before you arrive");
     // Another field, and another person, never merge.
-    vi.setSystemTime(new Date("2026-11-19T10:01:12.000Z"));
+    vi.setSystemTime(start + 72_000);
     await edit(site, "faq", "items.0.question", "Can I bring a friend?");
-    vi.setSystemTime(new Date("2026-11-19T10:01:14.000Z"));
+    vi.setSystemTime(start + 74_000);
     await edit(site, "faq", "items.0.question", "Can I bring two friends?", {}, TEAMMATE);
     expect(site.rows("draft-changes")).toHaveLength(4);
 
     // One undo takes back the whole typed run.
-    vi.setSystemTime(new Date("2026-11-19T10:02:00.000Z"));
+    vi.setSystemTime(start + 120_000);
     await call(site, "undo");
     await call(site, "undo");
     await call(site, "undo");
