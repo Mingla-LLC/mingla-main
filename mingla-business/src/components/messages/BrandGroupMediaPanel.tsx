@@ -17,7 +17,7 @@ import { useBrandGroupMediaPages } from "../../hooks/useBrandGroupMedia";
 import { useBusinessMediaTranslation } from "../../i18n";
 import type { BrandGroupMediaKind, BrandGroupMediaRow } from "../../services/brandGroupMediaService";
 import { formatFileSize } from "../../utils/formatMediaDuration";
-import { color, space } from "../../constants/designSystem";
+import { color, radius, space } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
 
 interface Props {
@@ -131,16 +131,18 @@ export function BrandGroupMediaPanel({ conversationId, groupName, compact = fals
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: color.canvas },
-  rootCompact: { width: 340, borderLeftWidth: 1, borderLeftColor: color.line },
+  // #4420: the rail is 400 (size.sidePanel) and draws its own edge.
+  rootCompact: { flex: 1, minWidth: 0 },
   header: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderBottomWidth: 1, borderBottomColor: color.line },
   iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.pressed },
   headerCopy: { flex: 1, minWidth: 0 },
-  title: { color: color.text1, fontSize: 17, fontWeight: "800" },
-  subtitle: { color: color.text3, fontSize: 11, marginTop: 2 },
-  tabs: { minHeight: 44, flexDirection: "row", marginHorizontal: 14, marginVertical: 8, padding: 3, borderRadius: 12, backgroundColor: color.fill.tile },
-  tab: { flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 9 },
-  tabActive: { backgroundColor: color.fill.tabOn, borderWidth: 1, borderColor: color.lineStrong },
-  tabText: { color: color.text2, fontSize: 13, fontWeight: "600" },
+  title: { color: color.text1, fontSize: 17, lineHeight: 24, fontWeight: "600" },
+  subtitle: { color: color.text3, fontSize: 13, marginTop: 2 },
+  // #4420 design: a pill segmented control.
+  tabs: { minHeight: 40, flexDirection: "row", marginHorizontal: space[4], marginVertical: space[2], padding: 3, borderRadius: radius.full, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.input },
+  tab: { flex: 1, minHeight: 32, alignItems: "center", justifyContent: "center", borderRadius: radius.full },
+  tabActive: { backgroundColor: color.fill.tabOn, borderWidth: 1, borderColor: color.line, borderTopColor: color.lineStrong },
+  tabText: { color: color.text2, fontSize: 14, fontWeight: "600" },
   tabTextActive: { color: color.textStrong },
   body: { flex: 1 },
   state: { flex: 1, minHeight: 260, alignItems: "center", justifyContent: "center", gap: space[2], padding: space[6] },
@@ -153,15 +155,15 @@ const styles = StyleSheet.create({
   skeletonFiles: { width: "100%", gap: 8 },
   skeletonFile: { width: "100%", height: 56, borderRadius: 10, backgroundColor: color.fill.tile },
   listContent: { paddingBottom: space[7] },
-  month: { color: color.text3, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 6, backgroundColor: color.canvas },
-  gridRow: { flexDirection: "row", gap: 2 },
-  tile: { flex: 1, aspectRatio: 1 },
+  month: { color: color.text3, fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.84, paddingHorizontal: space[4], paddingTop: 14, paddingBottom: space[2], backgroundColor: color.canvas },
+  gridRow: { flexDirection: "row", gap: 4, paddingHorizontal: space[4], marginBottom: 4 },
+  tile: { flex: 1, aspectRatio: 1, borderRadius: 10, overflow: "hidden" },
   tileThumb: { width: "100%", height: "100%" },
-  fileRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: color.line },
+  fileRow: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, marginHorizontal: space[4], paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: color.line },
   fileIcon: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile },
   extension: { color: color.text1, fontSize: 11, fontWeight: "800" },
   fileCopy: { flex: 1, minWidth: 0 },
-  fileName: { color: color.text1, fontSize: 14, fontWeight: "800" },
-  fileMeta: { color: color.text3, fontSize: 11, marginTop: 3 },
+  fileName: { color: color.text1, fontSize: 15, lineHeight: 21, fontWeight: "600" },
+  fileMeta: { color: color.text3, fontSize: 13, marginTop: 2 },
   footer: { margin: space[4] },
 });

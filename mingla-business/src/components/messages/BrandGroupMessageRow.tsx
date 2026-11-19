@@ -31,6 +31,7 @@ import { Icon } from "../ui/Icon";
 import { BrandGroupBubbleGestures } from "./BrandGroupBubbleGestures";
 import { BrandGroupPersonAvatar } from "./BrandGroupTile";
 import { linkifyMessageText } from "../../utils/messageLinks";
+import { useBusinessMediaTranslation } from "../../i18n";
 
 const AVATAR = 28;
 const TAIL = brandGroupChat.bubbleTail;
@@ -68,6 +69,7 @@ export function BrandGroupMessageText({
   onOpenLink?: (url: string) => void;
   onLongPress?: () => void;
 }): React.ReactElement {
+  const { t } = useBusinessMediaTranslation();
   const segments = splitBrandGroupMentions(content, mentionNames);
   return (
     <Text style={[styles.text, mine && styles.textMine]} selectable testID="brand-group-message-text">
@@ -77,7 +79,7 @@ export function BrandGroupMessageText({
         <Text
           key={`${index}-${tokenIndex}`}
           accessibilityRole="link"
-          accessibilityLabel={`Open link ${token.text}`}
+          accessibilityLabel={t("messages.link_a11y", { url: token.text })}
           onPress={() => onOpenLink(token.url)}
           onLongPress={onLongPress ?? (() => undefined)}
           style={[styles.link, mine && styles.textMine]}

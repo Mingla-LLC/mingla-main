@@ -38,6 +38,7 @@ import {
   type BrandInboxRow,
 } from "../../utils/brandMessagesInbox";
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import { useBusinessMediaTranslation } from "../../i18n";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { BrandGroupTile } from "./BrandGroupTile";
@@ -57,16 +58,17 @@ export function BrandGroupInboxRow({
   onPress: () => void;
   now?: Date;
 }): React.ReactElement {
+  const { t } = useBusinessMediaTranslation();
   const unread = row.teamUnread + row.guestUnread > 0;
   const time = brandGroupInboxTime(row.lastAt, now);
-  const preview = brandInboxRowPreview(row, viewerId);
+  const preview = brandInboxRowPreview(row, viewerId, t);
   const muted = row.group?.muted === true;
   const label = [
     row.brandName,
-    row.teamUnread > 0 ? `${row.teamUnread} unread in Team` : null,
-    row.guestUnread > 0 ? `${row.guestUnread} unread from guests` : null,
-    row.guestChat ? "has a Guests room" : null,
-    muted ? "muted" : null,
+    row.teamUnread > 0 ? t("messages.row_team_unread", { n: row.teamUnread }) : null,
+    row.guestUnread > 0 ? t("messages.row_guest_unread", { n: row.guestUnread }) : null,
+    row.guestChat ? t("messages.row_has_guests") : null,
+    muted ? t("messages.row_muted") : null,
   ].filter(Boolean).join(", ");
   return (
     <Pressable
@@ -92,7 +94,7 @@ export function BrandGroupInboxRow({
           <Text style={[styles.preview, unread && styles.previewUnread]} numberOfLines={1}>
             {preview.side ? (
               <Text style={preview.side === "guests" ? styles.sideTagGuests : styles.sideTag}>
-                {preview.side === "guests" ? "Guests · " : "Team · "}
+                {preview.side === "guests" ? t("messages.tag_guests") : t("messages.tag_team")}
               </Text>
             ) : null}
             {preview.text}
@@ -185,13 +187,14 @@ export function BrandGroupInboxList({
   header?: React.ReactNode;
   scrollable?: boolean;
 }): React.ReactElement {
+  const { t } = useBusinessMediaTranslation();
   const [filter, setFilter] = useState<BrandGroupInboxFilter>("all");
   const [query, setQuery] = useState("");
   const rows = useMemo(
     () => buildBrandInboxRows(groups, guestChats, guestActivity),
     [groups, guestActivity, guestChats],
   );
-  const visible = useMemo(() => filterBrandInboxRows(rows, filter, query, viewerId), [filter, query, rows, viewerId]);
+  const visible = useMemo(() => filterBrandInboxRows(rows, filter, query, viewerId, t), [filter, query, rows, t, viewerId]);
   const own = visible.filter((row) => row.accessKind === "brand");
   const supporting = visible.filter((row) => row.accessKind === "support");
   const splitSections = isStaff && filter === "all";
@@ -210,7 +213,7 @@ export function BrandGroupInboxList({
   ));
 
   const emptyText = query.trim()
-    ? `No brands match “${query.trim()}”.`
+    ? t("messages.no_match", { query: query.trim() })
     : filter === "unread"
       ? "You’re all caught up."
       : filter === "supporting"
@@ -224,10 +227,10 @@ export function BrandGroupInboxList({
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search brands"
+          placeholder={t("messages.search")}
           placeholderTextColor={brandGroupChat.textMuted}
           style={styles.search}
-          accessibilityLabel="Search brands"
+          accessibilityLabel={t("messages.search")}
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
@@ -271,11 +274,11 @@ export function BrandGroupInboxList({
         <Text style={styles.emptyText}>{emptyText}</Text>
       ) : splitSections ? (
         <>
-          <Text style={styles.sectionTitle}>Your brands</Text>
+          <Text style={styles.sectionTitle}>{t("messages.section_mine")}</Text>
           {own.length ? renderRows(own) : <Text style={styles.emptyText}>Your active brand teams will appear here automatically.</Text>}
           {supporting.length ? (
             <>
-              <Text style={styles.sectionTitle}>Brands you support</Text>
+              <Text style={styles.sectionTitle}>{t("messages.section_support")}</Text>
               {renderRows(supporting)}
             </>
           ) : null}
@@ -284,7 +287,7 @@ export function BrandGroupInboxList({
       {!loading && !error && visible.length > 0 ? (
         <View style={styles.listEnd} testID="brand-inbox-list-end">
           <View style={styles.listEndRule} />
-          <Text style={styles.listEndText}>{`All ${rows.length} ${rows.length === 1 ? "brand" : "brands"}`}</Text>
+          <Text style={styles.listEndText}>{rows.length === 1 ? t("messages.list_end_one") : t("messages.list_end", { n: rows.length })}</Text>
           <View style={styles.listEndRule} />
         </View>
       ) : null}

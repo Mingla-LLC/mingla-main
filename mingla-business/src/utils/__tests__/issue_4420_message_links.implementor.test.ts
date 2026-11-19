@@ -109,7 +109,7 @@ describe("SC-16 part of a message can be selected and copied", () => {
     expect(thread).toContain('case "select_text":');
     expect(thread).toContain("canSelectText: Platform.OS !== \"web\"");
     expect(thread).toContain("onRequestClose={() => setSelectText(null)}");
-    expect(thread).toContain('accessibilityLabel="Close select text"');
+    expect(thread).toContain('accessibilityLabel={t("messages.close")}');
     expect(thread).toContain('testID="brand-group-select-text-close"');
     expect(thread).toContain("showSoftInputOnFocus={false}");
     expect(thread).toContain("onChangeText={() => undefined}");

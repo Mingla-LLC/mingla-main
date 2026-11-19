@@ -31,6 +31,10 @@ import {
 } from "../brandMessagesInbox";
 
 const source = (relative: string): string => readFileSync(join(process.cwd(), relative), "utf8");
+// English words, as the app reads them (messages.* in the locale files).
+const words = (JSON.parse(source("src/i18n/locales/en/brandMessages.json")) as { messages: Record<string, string> }).messages;
+const t = (key: string, variables: Record<string, string | number> = {}): string =>
+  (words[key.replace(/^messages\./, "")] ?? key).replace(/{{(\w+)}}/g, (_, name: string) => String(variables[name] ?? ""));
 
 const group = (over: Partial<BrandGroupSummary>): BrandGroupSummary => ({
   conversation_id: "g-ty",
@@ -96,10 +100,10 @@ describe("SC-1 one row per brand", () => {
     )[0];
     expect(later.lastAt).toBe("2026-11-18T12:30:00Z");
     expect(later.lastSide).toBe("guests");
-    expect(brandInboxRowPreview(later, null)).toEqual({ side: "guests", text: "As Tinoe's Yard: Parking: street parking" });
+    expect(brandInboxRowPreview(later, null, t)).toEqual({ side: "guests", text: "As Tinoe's Yard: Parking: street parking" });
     const teamLast = buildBrandInboxRows([group({})], [guestChat({})], new Map([["x-ty", activity({})]]))[0];
     expect(teamLast.lastSide).toBe("team");
-    expect(brandInboxRowPreview(teamLast, null)).toEqual({ side: "team", text: "Michelle: Done, it's on the plan" });
+    expect(brandInboxRowPreview(teamLast, null, t)).toEqual({ side: "team", text: "Michelle: Done, it's on the plan" });
   });
 
   test("a support row never carries a Guest chat; the Guest chat is not lost", () => {
@@ -125,7 +129,7 @@ describe("SC-1 one row per brand", () => {
     const foodie = rows.find((row) => row.brandId === "ff");
     expect(foodie?.guestUnread).toBe(3);
     expect(foodie?.teamUnread).toBe(0);
-    expect(filterBrandInboxRows(rows, "unread", "").map((row) => row.brandId)).toEqual(["ff"]);
+    expect(filterBrandInboxRows(rows, "unread", "", null, t).map((row) => row.brandId)).toEqual(["ff"]);
     // Guests-only news opens the Guests side.
     expect(foodie && brandInboxOpenSide(foodie)).toBe("guests");
   });
@@ -163,7 +167,7 @@ describe("SC-8 redirects", () => {
     expect(route).toContain("`/messages/${group.conversation_id}?mode=brand&side=guests`");
     expect(route).toContain('item.access_kind === "brand"');
     expect(route).toContain("<Redirect href={href as never} />");
-    expect(route).toContain("<LazyGroupChatPanel brandId={id} teamUnavailableReason=");
+    expect(route).toContain("<LazyGroupChatPanel brandId={id} teamUnavailable />");
     expect(route).not.toMatch(/from "[^"]*brandMessagesInbox"/);
   });
   test("/messages/<guest chat id> redirects to its brand's Guests side", () => {
@@ -184,17 +188,17 @@ describe("SC-3 the Guests audience never shows an unknown N as 0", () => {
   test("loading or failed roster → unknown, and the words say 'your guests'", () => {
     expect(guestAudienceCount(members, { loaded: false, error: null })).toBeNull();
     expect(guestAudienceCount([], { loaded: true, error: "boom" })).toBeNull();
-    expect(guestAudienceLine(null, "Tinoe's Yard", false)).toBe("To your guests · as Tinoe's Yard");
-    expect(guestAudienceLine(null, "Tinoe's Yard", false)).not.toMatch(/\b0 guests/);
+    expect(guestAudienceLine(t, null, "Tinoe's Yard", false)).toBe("To your guests · as Tinoe's Yard");
+    expect(guestAudienceLine(t, null, "Tinoe's Yard", false)).not.toMatch(/\b0 guests/);
   });
   test("open chat, broadcast and the first-send check", () => {
-    expect(guestAudienceLine(23, "Tinoe's Yard", false)).toBe("To 23 guests · as Tinoe's Yard");
-    expect(guestAudienceLine(23, "Tinoe's Yard", true)).toBe("Broadcast to 23 guests as Tinoe's Yard");
-    expect(guestSendLabel(false)).toBe("Send to guests");
-    expect(guestSendLabel(true)).toBe("Broadcast");
-    expect(guestConfirmCopy(23, "Tinoe's Yard", false).title).toBe("Send to 23 guests?");
-    expect(guestConfirmCopy(23, "Tinoe's Yard", true).title).toBe("Broadcast to 23 guests?");
-    expect(guestConfirmCopy(null, "Tinoe's Yard", false).title).toBe("Send to your guests?");
+    expect(guestAudienceLine(t, 23, "Tinoe's Yard", false)).toBe("To 23 guests · as Tinoe's Yard");
+    expect(guestAudienceLine(t, 23, "Tinoe's Yard", true)).toBe("Broadcast to 23 guests as Tinoe's Yard");
+    expect(guestSendLabel(t, false)).toBe("Send to guests");
+    expect(guestSendLabel(t, true)).toBe("Broadcast");
+    expect(guestConfirmCopy(t, 23, "Tinoe's Yard", false).title).toBe("Send to 23 guests?");
+    expect(guestConfirmCopy(t, 23, "Tinoe's Yard", true).title).toBe("Broadcast to 23 guests?");
+    expect(guestConfirmCopy(t, null, "Tinoe's Yard", false).title).toBe("Send to your guests?");
   });
 });
 
@@ -215,7 +219,7 @@ describe("SC-7 plan lines fold into one card", () => {
     const cards = items.filter((item) => item.kind === "plan");
     expect(cards).toHaveLength(1);
     expect(cards[0].kind === "plan" && cards[0].lines.map((line) => line.id)).toEqual(["a", "b", "c", "d"]);
-    expect(cards[0].kind === "plan" && brandPlanActivityTitle(cards[0].lines)).toBe("Mingla added 4 items to the plan");
+    expect(cards[0].kind === "plan" && brandPlanActivityTitle(t, cards[0].lines)).toBe("Mingla added 4 items to the plan");
   });
 
   test("a plan line followed by a chat message stays two items", () => {
@@ -239,6 +243,6 @@ describe("SC-7 plan lines fold into one card", () => {
   });
 
   test("mixed authors read as plan updates", () => {
-    expect(brandPlanActivityTitle([{ content: "Mingla added “A” to the plan." }, { content: "Feji added “B” to the plan." }])).toBe("2 plan updates");
+    expect(brandPlanActivityTitle(t, [{ content: "Mingla added “A” to the plan." }, { content: "Feji added “B” to the plan." }])).toBe("2 plan updates");
   });
 });

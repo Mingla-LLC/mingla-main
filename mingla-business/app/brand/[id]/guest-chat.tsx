@@ -36,7 +36,7 @@ export default function BrandGuestChatRoute(): React.ReactElement | null {
       </View>
     );
   }
-  return <LazyGroupChatPanel brandId={id} teamUnavailableReason="This brand has no Team chat you can open yet." />;
+  return <LazyGroupChatPanel brandId={id} teamUnavailable />;
 }
 
 const styles = StyleSheet.create({

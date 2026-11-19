@@ -9,7 +9,7 @@ import { Platform } from "react-native";
 import { isOpenableMessageLink } from "../../utils/messageLinks";
 
 export async function openMessageLink(url: string): Promise<void> {
-  if (!isOpenableMessageLink(url)) throw new Error("This link can't be opened.");
+  if (!isOpenableMessageLink(url)) throw new Error("unsafe_link");
   if (Platform.OS === "web") {
     const opened = typeof window !== "undefined" ? window.open(url, "_blank", "noopener,noreferrer") : null;
     // With noopener the browser returns null even when the tab opened, so a

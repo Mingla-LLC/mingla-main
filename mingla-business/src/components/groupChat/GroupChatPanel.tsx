@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -53,6 +53,7 @@ import { SafeScreen } from "../ui/SafeScreen";
 import { GroupChatModerationSheet } from "./GroupChatModerationSheet";
 import { GroupChatMessageMedia } from "./GroupChatMessageMedia";
 import { groupChatMediaKind } from "../../utils/groupChatMedia";
+import { useBusinessMediaTranslation } from "../../i18n";
 import {
   guestAudienceCount,
   guestAudienceLine,
@@ -61,7 +62,9 @@ import {
   guestModeLine,
   guestSendA11y,
   guestSendLabel,
+  guestWho,
 } from "../../utils/brandGuestAudience";
+import { showsJumpToLatest } from "../../utils/brandThreadHistory";
 import {
   captureSendTarget,
   dispatchBrandThreadSend,
@@ -100,11 +103,13 @@ export interface GroupChatPanelProps {
   /** #4420: rendered as the Guests side inside the brand's one thread (no own header). */
   thread?: GroupChatThreadBinding;
   /** #4420: a brand with a Guest chat but no Team chat says why Team is missing. */
-  teamUnavailableReason?: string;
+  teamUnavailable?: boolean;
 }
 
-export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId, embedded = false, thread, teamUnavailableReason }) => {
+export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId, embedded = false, thread, teamUnavailable = false }) => {
   const router = useRouter();
+  const { t } = useBusinessMediaTranslation();
+  const jumpLabel = t("messages.jump_latest");
   const insets = useSafeAreaInsets();
   const chat = useEventGroupChat(eventId ?? null, brandId ?? null);
   const moderation = useEventGroupChatModeration(chat.conversation?.id ?? null);
@@ -123,6 +128,9 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
   const [sending, setSending] = useState(false);
   const [modeBusy, setModeBusy] = useState(false);
   const [moderationOpen, setModerationOpen] = useState(false);
+  // #4420: Jump to latest (the inverted list's newest end is offset 0).
+  const listRef = useRef<FlatList<(typeof chat.messages)[number]>>(null);
+  const [farFromLatest, setFarFromLatest] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const broadcastOnly = chat.conversation?.is_broadcast_only ?? false;
   // #4420: N = members not on the team, exactly as membership says; unknown
@@ -207,7 +215,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
       return;
     }
     // #4420 decision 5: asked before the first guest message each thread open.
-    const copy = guestConfirmCopy(guestCount, brandName, broadcastOnly);
+    const copy = guestConfirmCopy(t, guestCount, brandName, broadcastOnly);
     showAlert(copy.title, copy.description, [
       { text: copy.cancelLabel, style: "cancel" },
       {
@@ -229,7 +237,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
     try {
       const result = await moderation.setBroadcastOnly(value);
       if (result.error) {
-        showAlert("Could not update chat", `${result.error} The room is still ${broadcastOnly ? "Broadcast" : "Open chat"}.`);
+        showAlert(t("messages.mode_failed_title"), t("messages.mode_failed_body", { error: result.error, mode: broadcastOnly ? t("messages.mode_broadcast") : t("messages.mode_open") }));
         return;
       }
       await chat.refresh();
@@ -240,9 +248,9 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
 
   const handleToggleBroadcast = (value: boolean) => {
     if (value === broadcastOnly || modeBusy) return;
-    const copy = guestModeConfirmCopy(value, guestCount, brandName);
+    const copy = guestModeConfirmCopy(t, value, guestCount, brandName);
     showAlert(copy.title, copy.description, [
-      { text: "Cancel", style: "cancel" },
+      { text: t("messages.cancel"), style: "cancel" },
       { text: copy.confirmLabel, onPress: () => void applyBroadcast(value) },
     ]);
   };
@@ -291,7 +299,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
   };
 
   const sendDisabled = composer.trim().length === 0 || sending || conversationId === null;
-  const audience = guestAudienceLine(guestCount, brandName, broadcastOnly);
+  const audience = guestAudienceLine(t, guestCount, brandName, broadcastOnly);
 
   // #4420: the Guests band and the Broadcast / Open chat switch (SC-14).
   const guestsBand = chat.conversation !== null ? (
@@ -300,19 +308,19 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
         <Icon name="megaphone" size={16} color={color.infoText} />
         <Text style={styles.bandText}>
           {guestCount === 0
-            ? `No guests yet. People who book appear here, and what you post reaches them as ${brandName}.`
-            : `You are talking to ${guestCount === null ? "your guests" : `${guestCount} ${guestCount === 1 ? "guest" : "guests"}`} as ${brandName}. Everyone with a ticket or RSVP sees what you post here.`}
+            ? t("messages.band_none", { brand: brandName })
+            : t("messages.band", { who: guestWho(t, guestCount), brand: brandName })}
         </Text>
       </View>
       <View style={styles.modeBar}>
-        <View accessibilityRole="radiogroup" accessibilityLabel="Who can post in the Guests room" style={styles.modeSeg}>
+        <View accessibilityRole="radiogroup" accessibilityLabel={t("messages.mode_a11y")} style={styles.modeSeg}>
           {([true, false] as const).map((value) => {
             const on = broadcastOnly === value;
             return (
               <Pressable
                 key={value ? "broadcast" : "open"}
                 accessibilityRole="radio"
-                accessibilityLabel={value ? "Broadcast" : "Open chat"}
+                accessibilityLabel={value ? t("messages.mode_broadcast") : t("messages.mode_open")}
                 accessibilityState={{ checked: on, disabled: modeBusy, busy: modeBusy && !on }}
                 disabled={modeBusy}
                 onPress={() => handleToggleBroadcast(value)}
@@ -320,15 +328,15 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
                 testID={value ? "brand-guests-mode-broadcast" : "brand-guests-mode-open"}
               >
                 <Icon name={value ? "megaphone" : "users"} size={14} color={on ? color.textStrong : color.infoText} />
-                <Text style={[styles.modeText, on && styles.modeTextOn]}>{value ? "Broadcast" : "Open chat"}</Text>
+                <Text style={[styles.modeText, on && styles.modeTextOn]}>{value ? t("messages.mode_broadcast") : t("messages.mode_open")}</Text>
               </Pressable>
             );
           })}
         </View>
-        <Text style={styles.modeLine}>{guestModeLine(broadcastOnly, brandName)}</Text>
+        <Text style={styles.modeLine}>{guestModeLine(t, broadcastOnly, brandName)}</Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Guest list and chat settings"
+          accessibilityLabel={t("messages.manage_a11y")}
           onPress={() => setModerationOpen(true)}
           style={styles.modeManage}
           testID="brand-guests-manage"
@@ -337,6 +345,24 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
         </Pressable>
       </View>
     </>
+  ) : null;
+
+  const jumpButton = farFromLatest ? (
+    <View style={styles.jumpWrap} pointerEvents="box-none">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={jumpLabel}
+        onPress={() => {
+          setFarFromLatest(false);
+          listRef.current?.scrollToOffset({ offset: 0, animated: true });
+        }}
+        style={styles.jump}
+        testID="brand-guests-jump-latest"
+      >
+        <Icon name="chevD" size={16} color={color.text1} />
+        <Text style={styles.jumpText}>{jumpLabel}</Text>
+      </Pressable>
+    </View>
   ) : null;
 
   const composerBlock = (
@@ -376,7 +402,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
               <TextInput
                 value={composer}
                 onChangeText={setComposer}
-                placeholder={broadcastOnly ? `Broadcast as ${brandName}` : `Message guests as ${brandName}`}
+                placeholder={broadcastOnly ? t("messages.placeholder_broadcast", { brand: brandName }) : t("messages.placeholder_open", { brand: brandName })}
                 placeholderTextColor={color.text3}
                 style={styles.input}
                 multiline
@@ -386,7 +412,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
             </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={guestSendA11y(guestCount, brandName, broadcastOnly)}
+              accessibilityLabel={guestSendA11y(t, guestCount, brandName, broadcastOnly)}
               accessibilityState={{ disabled: sendDisabled, busy: sending }}
               onPress={handleSend}
               disabled={sendDisabled}
@@ -398,7 +424,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
               ) : (
                 <>
                   <Icon name="megaphone" size={16} color={color.textStrong} />
-                  <Text style={styles.sendText}>{guestSendLabel(broadcastOnly)}</Text>
+                  <Text style={styles.sendText}>{guestSendLabel(t, broadcastOnly)}</Text>
                 </>
               )}
             </Pressable>
@@ -428,6 +454,9 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
           here, no listener is registered, and no scroll call holds it in
           place — which is why it also survives #1894. */}
       <FlatList
+        ref={listRef}
+        onScroll={(event) => setFarFromLatest(showsJumpToLatest(event.nativeEvent.contentOffset.y))}
+        scrollEventThrottle={64}
         style={[styles.messages, styles.messagesGuests]}
         contentContainerStyle={styles.messagesContent}
         showsVerticalScrollIndicator={false}
@@ -437,14 +466,14 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
         ListHeaderComponent={broadcastOnly ? (
           <View style={styles.repliesOff} accessibilityRole="text">
             <Icon name="shield" size={13} color={color.text3} />
-            <Text style={styles.repliesOffText}>Replies are off. Guests can read but not reply.</Text>
+            <Text style={styles.repliesOffText}>{t("messages.replies_off")}</Text>
           </View>
         ) : null}
         ListEmptyComponent={guestCount === 0 ? (
           <View style={styles.emptyGuests} testID="brand-guests-empty">
             <View style={styles.emptyIcon}><Icon name="megaphone" size={26} color={color.infoText} /></View>
-            <Text style={styles.emptyTitle}>No guests yet</Text>
-            <Text style={styles.emptyText}>People who book appear here. What you post now is waiting for them when they join.</Text>
+            <Text style={styles.emptyTitle}>{t("messages.empty_title")}</Text>
+            <Text style={styles.emptyText}>{t("messages.empty_body")}</Text>
           </View>
         ) : null}
         renderItem={({ item: message }) => {
@@ -456,10 +485,10 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
           // guests by their own name.
           const fromBrand = message.sender_kind === "brand";
           const senderLabel = fromBrand
-            ? `As ${brandName} · by ${mine ? "you" : message.author_name ?? "a teammate"}`
+            ? t("messages.sender_as_brand", { brand: brandName, who: mine ? t("messages.by_you") : message.author_name ?? t("messages.by_teammate") })
             : mine
               ? null
-              : message.sender_display_name_snapshot || "Guest";
+              : message.sender_display_name_snapshot || t("messages.people_guest");
           // #4114 Wave 6: Explorer photos and videos are private-bucket
           // paths (signed in GroupChatMessageMedia); view once is never shown.
           const hasImage = groupChatMediaKind(message) !== "none";
@@ -519,6 +548,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
           promised visible gap is the composer's own bottom spacer while it
           is lifted, so the two terms are added once, in different places,
           instead of one of them twice. */}
+      {jumpButton}
       {thread ? composerBlock : (
         <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={DONE_BAR_OCCUPIED}>
           {composerBlock}
@@ -580,13 +610,13 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
           <Icon name="moreH" size={18} color={color.text1} />
         </Pressable>
       </View>
-      {teamUnavailableReason ? (
+      {teamUnavailable ? (
         <View style={styles.teamUnavailable} testID="brand-guests-team-unavailable">
-          <View accessibilityRole="tab" accessibilityState={{ disabled: true, selected: false }} accessibilityLabel={`Team, unavailable: ${teamUnavailableReason}`} style={styles.teamUnavailablePill}>
+          <View accessibilityRole="tab" accessibilityState={{ disabled: true, selected: false }} accessibilityLabel={t("messages.team_unavailable_a11y", { reason: t("messages.team_unavailable") })} style={styles.teamUnavailablePill}>
             <Icon name="shield" size={13} color={color.text4} />
-            <Text style={styles.teamUnavailablePillText}>Team</Text>
+            <Text style={styles.teamUnavailablePillText}>{t("messages.team")}</Text>
           </View>
-          <Text style={styles.teamUnavailableText}>{teamUnavailableReason}</Text>
+          <Text style={styles.teamUnavailableText}>{t("messages.team_unavailable")}</Text>
         </View>
       ) : null}
       {guestsBand}
@@ -596,12 +626,85 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
   );
 };
 
+/**
+ * #4420 design: People on the Guests side is the guest list (members not on
+ * the team), names through the shared fallback ("Guest" when a member has no
+ * name, #4508). Loaded with this chunk through LazyGroupChatPanel.
+ */
+export interface BrandGuestPeoplePanelProps {
+  conversationId: string;
+  onClose?: () => void;
+}
+
+export const BrandGuestPeoplePanel: React.FC<BrandGuestPeoplePanelProps> = ({ conversationId, onClose }) => {
+  const { t } = useBusinessMediaTranslation();
+  const roster = useEventGroupChatModeration(conversationId);
+  const guests = (roster.participants ?? []).filter((member) => !member.is_team);
+  const count = guestAudienceCount(roster.participants ?? [], { loaded: roster.loaded === true, error: roster.error ?? null });
+  return (
+    <View style={styles.peopleRoot} testID="brand-guests-people-panel">
+      <View style={styles.peopleHead}>
+        <View style={styles.headerCopy}>
+          <Text style={styles.peopleTitle}>{t("messages.guests")}</Text>
+          <Text style={styles.peopleSub}>{t("messages.people_guests_sub", { who: guestWho(t, count) })}</Text>
+        </View>
+        {onClose ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={t("messages.close")} onPress={onClose} style={styles.iconButton}>
+            <Icon name="close" size={18} color={color.text1} />
+          </Pressable>
+        ) : null}
+      </View>
+      {roster.loading && !roster.loaded ? (
+        <View style={styles.state}><ActivityIndicator color={color.text2} /></View>
+      ) : roster.error ? (
+        <View style={styles.state}>
+          <Text style={styles.errorText}>{t("messages.people_guests_error")}</Text>
+          <Button label={t("messages.try_again")} variant="secondary" onPress={() => void roster.refresh()} />
+        </View>
+      ) : guests.length === 0 ? (
+        <View style={styles.state}><Text style={styles.errorText}>{t("messages.people_guests_none")}</Text></View>
+      ) : (
+        <FlatList
+          data={guests}
+          keyExtractor={(guest) => guest.user_id}
+          contentContainerStyle={styles.peopleList}
+          renderItem={({ item: guest }) => {
+            const name = guest.display_name?.trim() || t("messages.people_guest");
+            return (
+              <View style={styles.peopleRow}>
+                <View style={styles.peopleAvatar}><Text style={styles.peopleAvatarText}>{name.charAt(0).toUpperCase()}</Text></View>
+                <View style={styles.headerCopy}>
+                  <Text style={styles.peopleName} numberOfLines={1}>{name}</Text>
+                  <Text style={styles.peopleMeta}>{t("messages.people_guest")}</Text>
+                </View>
+              </View>
+            );
+          }}
+        />
+      )}
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: color.canvas,
   },
   threadRoot: { flex: 1, minHeight: 0 },
+  peopleRoot: { flex: 1, minHeight: 0, backgroundColor: color.canvas },
+  peopleHead: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], borderBottomWidth: 1, borderBottomColor: color.line },
+  peopleTitle: { color: color.text1, fontSize: 17, lineHeight: 24, fontWeight: "600" },
+  peopleSub: { marginTop: 2, color: color.text3, fontSize: 13 },
+  peopleList: { paddingHorizontal: space[4], paddingBottom: space[6] },
+  peopleRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line },
+  peopleAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: color.solidTint.info },
+  peopleAvatarText: { color: color.infoText, fontSize: 14, fontWeight: "700" },
+  peopleName: { color: color.text1, fontSize: 15, fontWeight: "600" },
+  peopleMeta: { marginTop: 2, color: color.infoText, fontSize: 13 },
+  jumpWrap: { position: "relative", height: 0, zIndex: 4 },
+  jump: { position: "absolute", right: space[4], bottom: space[2], minHeight: 36, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: radius.full, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.card2 },
+  jumpText: { color: color.text1, fontSize: 14, fontWeight: "600" },
   // #4420 Guests treatment (info blue): band, mode bar, composer, send.
   band: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: space[4], paddingVertical: 9, backgroundColor: color.infoTint, borderBottomWidth: 1, borderBottomColor: color.guestLine },
   bandText: { flex: 1, color: color.infoText, fontSize: 13, lineHeight: 18 },

@@ -7,7 +7,7 @@
  * may import this file statically.
  */
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { SafeScreen } from "../ui/SafeScreen";
@@ -21,6 +21,9 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useSupportStaff } from "../../hooks/useSupportStaff";
 import { brandEnquiryThreadRoute } from "../../utils/brandEnquiryWaiting";
 import { brandInboxRowHref } from "../../utils/brandMessagesInbox";
+import { useBusinessMediaTranslation } from "../../i18n";
+import { useMessagesEnglishReady } from "../groupChat/LazyGroupChatPanel";
+import { Button } from "../ui/Button";
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
 import { color, space } from "../../constants/designSystem";
 
@@ -75,6 +78,24 @@ export function BrandGroupInboxScreen(): React.ReactElement {
   const guestChats = useBrandGuestChats();
   const staff = useSupportStaff();
   const { isWideDesktop } = useResponsiveLayout();
+  const { t } = useBusinessMediaTranslation();
+  // #4420: the Messages words load on intent (never in the boot chunk).
+  const words = useMessagesEnglishReady();
+
+  if (!words.ready) {
+    return (
+      <SafeScreen edges={["top"]} style={styles.screen} testID="brand-groups-messages-index">
+        <View style={styles.wordsState} accessibilityLabel={t("messages.opening")}>
+          {words.error ? (
+            <>
+              <Text style={styles.desktopEmptyText}>{t("messages.words_failed")}</Text>
+              <Button label={t("messages.try_again")} variant="secondary" onPress={words.retry} />
+            </>
+          ) : <ActivityIndicator color={color.text2} />}
+        </View>
+      </SafeScreen>
+    );
+  }
 
   const list = (
     <BrandGroupInboxList
@@ -102,8 +123,8 @@ export function BrandGroupInboxScreen(): React.ReactElement {
           <View style={styles.desktopList}>{list}</View>
           <ScrollView style={styles.desktopEmptyScroll} contentContainerStyle={styles.desktopEmpty}>
             <Icon name="chat" size={36} color={brandGroupChat.textMuted} />
-            <Text style={styles.desktopEmptyTitle}>Your Mingla conversations</Text>
-            <Text style={styles.desktopEmptyText}>Pick a brand on the left. Each brand has one chat: Team, private to your team and Mingla, and Guests, everyone with a ticket or RSVP.</Text>
+            <Text style={styles.desktopEmptyTitle}>{t("messages.desktop_empty_title")}</Text>
+            <Text style={styles.desktopEmptyText}>{t("messages.desktop_empty_body")}</Text>
           </ScrollView>
         </View>
       ) : list}
@@ -121,6 +142,7 @@ const styles = StyleSheet.create({
   supportTitle: { color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "700" },
   supportText: { color: brandGroupChat.textSoft, fontSize: 13 },
   desktop: { flex: 1, flexDirection: "row" },
+  wordsState: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
   enquiries: { marginHorizontal: space[4] },
   // #4420 one-thread design: the inbox column is 360.
   desktopList: { width: 360, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },

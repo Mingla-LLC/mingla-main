@@ -113,14 +113,16 @@ function rowFor(
   };
 }
 
+type Translate = (key: string, variables?: Record<string, string | number>) => string;
+
 /** What the row says under the name: which side spoke last, then the line. */
-export function brandInboxRowPreview(row: BrandInboxRow, viewerId: string | null): { side: MessagesSide | null; text: string } {
+export function brandInboxRowPreview(row: BrandInboxRow, viewerId: string | null, t: Translate): { side: MessagesSide | null; text: string } {
   const teamText = row.group ? brandGroupInboxPreview(row.group, viewerId) : "";
   if (!row.guestChat) return { side: null, text: teamText };
   if (row.lastSide === "team" && row.group) return { side: "team", text: teamText };
   const line = (row.guestActivity?.last_message_preview ?? "").replace(/\s+/g, " ").trim();
-  if (!line) return { side: "guests", text: "No guest messages yet" };
-  return { side: "guests", text: row.guestActivity?.last_message_from_brand ? `As ${row.brandName}: ${line}` : line };
+  if (!line) return { side: "guests", text: t("messages.no_guest_messages") };
+  return { side: "guests", text: row.guestActivity?.last_message_from_brand ? t("messages.as_brand", { brand: row.brandName, text: line }) : line };
 }
 
 /** Search and the All / Unread / My brands / Supporting chips, on rows. */
@@ -128,7 +130,8 @@ export function filterBrandInboxRows(
   rows: readonly BrandInboxRow[],
   filter: BrandGroupInboxFilter,
   query: string,
-  viewerId: string | null = null,
+  viewerId: string | null,
+  t: Translate,
 ): BrandInboxRow[] {
   const needle = query.trim().toLowerCase();
   return rows.filter((row) => {
@@ -137,7 +140,7 @@ export function filterBrandInboxRows(
     if (filter === "supporting" && row.accessKind !== "support") return false;
     if (!needle) return true;
     return row.brandName.toLowerCase().includes(needle)
-      || brandInboxRowPreview(row, viewerId).text.toLowerCase().includes(needle);
+      || brandInboxRowPreview(row, viewerId, t).text.toLowerCase().includes(needle);
   });
 }
 

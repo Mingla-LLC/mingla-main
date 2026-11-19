@@ -41,13 +41,17 @@ export function foldBrandPlanLines<T extends BrandPlanLineInput>(
 }
 
 /** "Mingla added 11 items to the plan" when one person added them all, else "3 plan updates". */
-export function brandPlanActivityTitle(lines: readonly { content: string }[]): string {
+export function brandPlanActivityTitle(
+  t: (key: string, variables?: Record<string, string | number>) => string,
+  lines: readonly { content: string }[],
+): string {
   const n = lines.length;
   const names = lines.map((line) => /^(.+?) added “/.exec(line.content ?? "")?.[1] ?? null);
-  if (n > 0 && names.every((name) => name !== null && name === names[0])) {
-    return `${names[0]} added ${n} ${n === 1 ? "item" : "items"} to the plan`;
+  const name = names[0];
+  if (n > 0 && name && names.every((item) => item === name)) {
+    return n === 1 ? t("messages.plan_card_by_one", { name }) : t("messages.plan_card_by", { name, n });
   }
-  return `${n} ${n === 1 ? "plan update" : "plan updates"}`;
+  return n === 1 ? t("messages.plan_card_update_one") : t("messages.plan_card_updates", { n });
 }
 
 /** How many lines the card shows before "Show all". */

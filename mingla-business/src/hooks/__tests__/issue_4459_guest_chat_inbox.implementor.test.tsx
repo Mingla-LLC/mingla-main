@@ -87,5 +87,5 @@ test("#4420: the inbox is one row per brand; the Guest chat joins its brand's ro
   const list = read("../../components/messages/BrandGroupInboxList.tsx");
   expect(list).toContain("buildBrandInboxRows(groups, guestChats, guestActivity)");
   const route = read("../../../app/brand/[id]/guest-chat.tsx");
-  expect(route).toContain("<LazyGroupChatPanel brandId={id} teamUnavailableReason=");
+  expect(route).toContain("<LazyGroupChatPanel brandId={id} teamUnavailable />");
 });
