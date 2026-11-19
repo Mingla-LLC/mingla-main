@@ -627,7 +627,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 P3 follow-up money fixes; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 P5 test pins follow the new guest writer; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 P5 follow-ups: hour pricing contract, flexible too-soon, calendar party; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "1ecf9a20267b23846432cfd08e004b792a3cd61e31e013121c61aedae213adb6";
+// issue #4490 P6-1: memberships migration + pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "7493e94b8b75129492cafc1926d7995bd9551ed170bdb44c6f9be10868e2875c";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

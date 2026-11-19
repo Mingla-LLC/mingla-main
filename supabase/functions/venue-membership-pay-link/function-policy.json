@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "venue-membership-pay-link",
+  "verify_jwt": true,
+  "gateway_reason": "Signed-out members use the project anon JWT; the handler identifies a signed-in member by verifying their user JWT, otherwise requires the unguessable member token, rate-limits by caller, and calls service-only membership RPCs.",
+  "env": {
+    "migration_fallback_top_level": [],
+    "optional_top_level": [
+      "AD_CONVERSION_TOKENS",
+      "BUSINESS_WEB_ORIGIN",
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "LOCAL_QR_TOKEN_PEPPER",
+      "SENTRY_DSN",
+      "SENTRY_ENVIRONMENT",
+      "STRIPE_PUBLISHABLE_KEY",
+      "app.qr_token_pepper"
+    ],
+    "required_bundle_fields": {},
+    "required_top_level": []
+  }
+}

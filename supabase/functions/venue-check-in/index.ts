@@ -8,6 +8,10 @@
 //   list   { venueId, localDate? }
 //   scan   { venueId, qrPayload, admitCount?, idChecked? }
 //   admit  { venueId, passId, count?, idChecked? }
+//   admit_member { venueId, subscriptionId, guests? (0..20, on the
+//            member's guest passes) } — a member from the list (#4490 P6);
+//            a member's pass code goes through `scan` (admitCount = the
+//            member plus guests)
 //   undo   { venueId, logId }
 //   sell   { venueId, offeringId, lines:[{priceOptionId, guests}], method:
 //            "cash" | "transfer" | "pay_link", buyer?: {name, email?, phone?},
@@ -70,6 +74,8 @@ const SAFE_CODES = [
   "offer_nothing_to_pay",
   "offer_invalid_transition",
   "balance_link_unavailable",
+  "member_guest_passes_used_up",
+  "member_guests_day_full",
 ];
 
 type RpcError = { message?: string; code?: string; details?: string };
@@ -133,6 +139,9 @@ function failure(error: RpcError): Response {
       const detail = JSON.parse(error.details);
       if (typeof detail?.remaining === "number") {
         body.remaining = detail.remaining;
+      }
+      if (typeof detail?.left === "number") {
+        body.left = detail.left;
       }
     } catch {
       // optional
@@ -269,6 +278,24 @@ export function createVenueCheckInHandler(deps: VenueCheckInDeps = {}) {
         p_pass_id: passId,
         p_count: count ?? null,
         p_id_checked: body.idChecked === true,
+        p_scanner_user_id: userId,
+      });
+      return error ? failure(error) : json(200, { kind: "success", data });
+    }
+
+    if (action === "admit_member") {
+      const subscriptionId = str(body.subscriptionId);
+      const guests = body.guests ?? 0;
+      if (
+        !UUID.test(subscriptionId) || !Number.isInteger(guests) ||
+        (guests as number) < 0 || (guests as number) > 20
+      ) {
+        return json(400, { code: "invalid_request" });
+      }
+      const { data, error } = await client.rpc("issue_4490_check_in_member", {
+        p_venue_id: venueId,
+        p_subscription_id: subscriptionId,
+        p_guests: guests,
         p_scanner_user_id: userId,
       });
       return error ? failure(error) : json(200, { kind: "success", data });

@@ -195,6 +195,11 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     venue_waitlist_joined: ["waitlist_id", "venue_id"],
     venue_table_opened: ["waitlist_id", "venue_id"],
     venue_waitlist_ready: ["waitlist_id", "venue_id"],
+    // #4490 P6 — members: opaque ids only (no token, no contact).
+    venue_membership_renewal: ["subscription_id", "venue_id"],
+    venue_membership_lapsed: ["subscription_id", "venue_id"],
+    venue_membership_paid: ["subscription_id", "venue_id"],
+    venue_membership_ended: ["subscription_id", "venue_id"],
     // #3682 wave 2 — Explorer routes these to the brand / offering page from
     // the public slugs; the receive reason is not personal data.
     brand_offering_invite: ["brand_slug", "event_slug", "reason"],

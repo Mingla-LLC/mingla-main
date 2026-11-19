@@ -17,6 +17,11 @@
 // on a local stack) a loopback origin: the same rule as the payment return.
 // ===========================================================================
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "./businessWebOrigin.ts";
+import { venueMemberUrlSubscriptionId } from "./venueMembershipToken.ts";
+import {
+  isVenueMembershipCategory,
+  VENUE_MEMBERSHIP_CTA,
+} from "./email/templates/venueMembershipEmails.ts";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -191,6 +196,23 @@ export function trustedVenueVisitCta(input: {
 }): { label: string; url: string; note: string } | undefined {
   if (input.visitUrl === undefined || input.visitUrl === null) return undefined;
   const category = String(input.categoryKey ?? "");
+  // #4490 P6: a member message's button is exactly the member page link of
+  // the SAME member the payload names.
+  if (isVenueMembershipCategory(category)) {
+    const subscriptionId = venueMemberUrlSubscriptionId(
+      input.visitUrl,
+      input.origin,
+    );
+    if (
+      !input.serviceCaller || subscriptionId === null ||
+      String(input.payload.subscription_id ?? "").toLowerCase() !==
+        subscriptionId
+    ) {
+      console.warn("[notify-dispatch v2] venue_member_url_rejected");
+      return undefined;
+    }
+    return { ...VENUE_MEMBERSHIP_CTA[category], url: input.visitUrl as string };
+  }
   const groupId = venueVisitUrlGroupId(input.visitUrl, input.origin);
   if (
     !input.serviceCaller ||

@@ -22,6 +22,13 @@
 // venue page itself lists (pg_public_venue_page: verified venue, feature on,
 // reads flag on, offer live), so it can never show more than the page does.
 //
+// #4490 P6 memberships: membership_join (a plan, signed out or in; returns
+// the member token once), membership_get, membership_leave, membership_stay,
+// membership_pause, membership_resume (the member token, or the member's own
+// signed-in account). `quote` may carry `membership: {subscriptionId, token?,
+// useCredits?}` for the member's price (included hours and entry, guest
+// passes, the plan discount). Paying a month is venue-membership-pay-link.
+//
 // The payment return address comes from BUSINESS_WEB_ORIGIN (production by
 // default; a loopback origin only when this function runs on a local stack).
 // `confirm_return` asks the provider about the payment when the guest comes
@@ -45,6 +52,11 @@ import {
   VENUE_OFFER_TOKEN_RE,
   venueOfferTokenHashHex,
 } from "../_shared/venueOfferBookingToken.ts";
+import {
+  issueVenueMemberToken,
+  rederiveVenueMemberToken,
+  VENUE_MEMBER_TOKEN_RE,
+} from "../_shared/venueMembershipToken.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,7 +85,19 @@ const ACTIONS = new Set([
   "hire_options",
   "withdraw",
   "hour_day",
+  "membership_join",
+  "membership_get",
+  "membership_leave",
+  "membership_stay",
+  "membership_pause",
+  "membership_resume",
 ]);
+const MEMBER_ACTIONS: Record<string, string> = {
+  membership_leave: "leave",
+  membership_stay: "stay",
+  membership_pause: "pause",
+  membership_resume: "resume",
+};
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_PER_WINDOW = 120;
 const windows = new Map<string, { count: number; resetAt: number }>();
@@ -122,6 +146,22 @@ const SAFE_CODES = [
   "offer_space_taken",
   "offer_overtime_unavailable",
   "offer_length_invalid",
+  // #4490 P6 memberships.
+  "plan_not_found",
+  "plan_full",
+  "membership_invalid",
+  "membership_member_invalid",
+  "membership_start_invalid",
+  "membership_already_member",
+  "membership_not_found",
+  "membership_ended",
+  "membership_already_leaving",
+  "membership_not_leaving",
+  "membership_cannot_pause",
+  "membership_not_paused",
+  "member_not_active",
+  "member_wrong_venue",
+  "member_credits_used_up",
 ];
 
 type RpcError = { message?: string; code?: string; details?: string };
@@ -146,7 +186,27 @@ export type VenueOffersDeps = {
   newGroupId?: () => string;
   issueToken?: typeof issueVenueOfferBookingToken;
   rederiveToken?: typeof rederiveVenueOfferBookingToken;
+  newSubscriptionId?: () => string;
+  issueMemberToken?: typeof issueVenueMemberToken;
+  rederiveMemberToken?: typeof rederiveVenueMemberToken;
 };
+
+/**
+ * #4490 P5 follow-up: the by-the-hour price rule, stated with the day line.
+ * Per minute, pro rata to the hour price (half up); lengths in the offer's
+ * step from the shortest booking.
+ */
+export function hourPricing(day: unknown): Json | null {
+  if (!isJson(day) || !Number.isInteger(day.stepMinutes)) return null;
+  const step = day.stepMinutes as number;
+  const min = Number.isInteger(day.minMinutes) ? day.minMinutes as number : step;
+  return {
+    rule: "per_minute_pro_rata",
+    formula: "pricePerHourMinor * minutes / 60, rounded half up",
+    billableStepMinutes: step,
+    minBillableMinutes: Math.max(min, step),
+  };
+}
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -471,6 +531,19 @@ export function publicHireDetail(hire: unknown): Json | null {
       pastMidnight: s.pastMidnight === true,
       weekdays: s.weekdays ?? null,
     })),
+    // #4490 P5 follow-up: "Hours you set" (the guest picks a start and a
+    // length inside these hours). No internal rule id.
+    hoursYouSet: isJson(hire.hoursYouSet)
+      ? {
+        weekdays: hire.hoursYouSet.weekdays ?? null,
+        startTime: hire.hoursYouSet.startTime ?? null,
+        endTime: hire.hoursYouSet.endTime ?? null,
+        pastMidnight: hire.hoursYouSet.pastMidnight === true,
+        minMinutes: hire.hoursYouSet.minMinutes ?? null,
+        maxMinutes: hire.hoursYouSet.maxMinutes ?? null,
+        stepMinutes: hire.hoursYouSet.stepMinutes ?? null,
+      }
+      : null,
   };
 }
 
@@ -671,7 +744,11 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       });
       if (error) return rpcFailure(error);
       if (data === null) return json(404, { code: "offer_not_found" });
-      return json(200, { kind: "success", data });
+      const pricing = hourPricing(data);
+      return json(200, {
+        kind: "success",
+        data: pricing ? { ...(data as Json), pricing } : data,
+      });
     }
 
     // ---- quote / hold: actor key = user, else the browser's cart key ------
@@ -718,6 +795,16 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       if (!Array.isArray(extras) || !isJson(answers)) {
         return json(400, { code: "invalid_request" });
       }
+      const membership = body.membership;
+      if (
+        membership !== undefined && membership !== null &&
+        (!isJson(membership) || !UUID.test(str(membership.subscriptionId)) ||
+          (membership.token !== undefined &&
+            !VENUE_MEMBER_TOKEN_RE.test(str(membership.token))) ||
+          (!caller.userId && !VENUE_MEMBER_TOKEN_RE.test(str(membership.token))))
+      ) {
+        return json(400, { code: "invalid_request" });
+      }
       const { data, error } = await client.rpc("issue_4490_quote_offer", {
         p_offering_id: offeringId,
         p_window_id: windowId,
@@ -729,7 +816,28 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
         p_answers: answers,
       });
       if (error) return rpcFailure(error);
-      return json(200, { kind: "success", data });
+      if (!isJson(membership)) return json(200, { kind: "success", data });
+      // #4490 P6: the member's price on the same booking (a new quote; the
+      // guests' price quote expires).
+      const memberToken = str(membership.token);
+      const { data: member, error: memberError } = await client.rpc(
+        "issue_4490_member_quote",
+        {
+          p_quote_id: (data as Json).quoteId,
+          p_subscription_id: membership.subscriptionId,
+          p_token_hash: memberToken
+            ? `\\x${await venueOfferTokenHashHex(memberToken)}`
+            : null,
+          p_user_id: memberToken ? null : caller.userId,
+          p_actor_key: actorKey,
+          p_use_credits: membership.useCredits !== false,
+        },
+      );
+      if (memberError) return rpcFailure(memberError);
+      return json(200, {
+        kind: "success",
+        data: { ...(data as Json), ...(member as Json) },
+      });
     }
 
     if (action === "hold") {
@@ -783,6 +891,103 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
           visitPath: `/visit/${booking.groupId}`,
         },
       });
+    }
+
+    // ---- #4490 P6 memberships ---------------------------------------------
+    if (action === "membership_join") {
+      const planId = str(body.planId);
+      const key = str(body.idempotencyKey);
+      const member = body.member;
+      const startOn = body.startOn;
+      if (
+        !actorKey || !UUID.test(planId) || !KEY.test(key) || !isJson(member) ||
+        (startOn !== undefined && startOn !== null && !DATE.test(str(startOn)))
+      ) {
+        return json(400, { code: "invalid_request" });
+      }
+      const subscriptionId =
+        (deps.newSubscriptionId ?? (() => crypto.randomUUID()))();
+      const issued = await (deps.issueMemberToken ?? issueVenueMemberToken)({
+        subscriptionId,
+      });
+      const { data, error } = await client.rpc("issue_4490_membership_join", {
+        p_subscription_id: subscriptionId,
+        p_plan_id: planId,
+        p_member: {
+          name: str(member.name),
+          email: str(member.email),
+          ...(member.phone ? { phone: str(member.phone) } : {}),
+        },
+        p_start_on: startOn ?? null,
+        p_actor_key: actorKey,
+        p_user_id: caller.userId,
+        p_member_token_hash: `\\x${await venueOfferTokenHashHex(
+          issued.token,
+        )}`,
+        p_idempotency_key: key,
+      });
+      if (error) return rpcFailure(error);
+      const joined = data as Json;
+      let token: string | null = issued.token;
+      if (joined.subscriptionId !== subscriptionId) {
+        // A replay returned the first join: rebuild its token (derived only).
+        const { data: row } = await client.from(
+          "venue_membership_subscriptions",
+        ).select("member_token_hash").eq("id", joined.subscriptionId)
+          .maybeSingle();
+        token = await (deps.rederiveMemberToken ?? rederiveVenueMemberToken)({
+          subscriptionId: String(joined.subscriptionId),
+          storedHashHex: typeof row?.member_token_hash === "string"
+            ? row.member_token_hash
+            : null,
+        });
+      }
+      return json(200, {
+        kind: "success",
+        data: {
+          ...joined,
+          memberToken: token,
+          memberPath: `/visit/plan/${joined.subscriptionId}`,
+        },
+      });
+    }
+
+    if (action === "membership_get" || action in MEMBER_ACTIONS) {
+      const subscriptionId = str(body.subscriptionId);
+      const memberToken = str(body.token);
+      if (!UUID.test(subscriptionId)) {
+        return json(400, { code: "invalid_request" });
+      }
+      if (!caller.userId && !VENUE_MEMBER_TOKEN_RE.test(memberToken)) {
+        return json(401, { code: "membership_token_required" });
+      }
+      const tokenHash = VENUE_MEMBER_TOKEN_RE.test(memberToken)
+        ? `\\x${await venueOfferTokenHashHex(memberToken)}`
+        : null;
+      if (action === "membership_get") {
+        const { data, error } = await client.rpc("issue_4490_membership_get", {
+          p_subscription_id: subscriptionId,
+          p_token_hash: tokenHash,
+          p_user_id: tokenHash ? null : caller.userId,
+          p_qr_pepper: qrPepper(env),
+        });
+        if (error) return rpcFailure(error);
+        return json(200, { kind: "success", data });
+      }
+      const key = str(body.idempotencyKey);
+      if (!KEY.test(key)) return json(400, { code: "invalid_request" });
+      const { data, error } = await client.rpc(
+        "issue_4490_membership_member_action",
+        {
+          p_subscription_id: subscriptionId,
+          p_token_hash: tokenHash,
+          p_user_id: tokenHash ? null : caller.userId,
+          p_action: MEMBER_ACTIONS[action],
+          p_idempotency_key: key,
+        },
+      );
+      if (error) return rpcFailure(error);
+      return json(200, { kind: "success", data });
     }
 
     // ---- everything else acts on one booking ------------------------------

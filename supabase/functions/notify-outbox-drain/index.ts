@@ -52,6 +52,12 @@ import {
   venueBookingEmailFacts,
 } from "../_shared/email/templates/venueBookingEmails.ts";
 import { rederiveVenueOfferBookingToken } from "../_shared/venueOfferBookingToken.ts";
+// #4490 P6 — member emails: the member page link built at send time.
+import { isVenueMembershipCategory } from "../_shared/email/templates/venueMembershipEmails.ts";
+import {
+  buildVenueMemberUrl,
+  rederiveVenueMemberToken,
+} from "../_shared/venueMembershipToken.ts";
 import {
   buildVenueVisitUrl,
   resolveVenueVisitOrigin,
@@ -350,6 +356,56 @@ export async function resolveVenueBookingDispatch(
   }
 }
 
+/**
+ * #4490 P6: the member page link for a member email, built when it is sent
+ * (re-derived from the member id and checked against the stored hash). Null
+ * when no working link can be built: the email then goes without a button.
+ */
+export async function resolveVenueMemberDispatch(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+  env: (name: string) => string | undefined = (name) => Deno.env.get(name),
+  ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
+): Promise<string | null> {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const subscriptionId = String(payload.subscription_id ?? "");
+  const contact = typeof row.contact === "string" ? row.contact : "";
+  if (!/^[0-9a-f-]{36}$/i.test(subscriptionId) || !EMAIL_RE.test(contact)) {
+    return null;
+  }
+  try {
+    const { data: member } = await admin.from(
+      "venue_membership_subscriptions",
+    ).select("member_token_hash").eq("id", subscriptionId).maybeSingle();
+    const token = await rederiveVenueMemberToken({
+      subscriptionId,
+      storedHashHex: typeof member?.member_token_hash === "string"
+        ? member.member_token_hash
+        : null,
+      ring,
+    });
+    if (token === null) {
+      console.warn("[notify-outbox-drain] venue_member_link_omitted", {
+        outbox_id: row.id ?? null,
+        reason: "token_not_derivable",
+      });
+      return null;
+    }
+    return buildVenueMemberUrl({
+      origin: resolveVenueVisitOrigin(env),
+      subscriptionId,
+      token,
+    });
+  } catch {
+    console.warn("[notify-outbox-drain] venue_member_link_omitted", {
+      outbox_id: row.id ?? null,
+      reason: "member_link_failed",
+    });
+    return null;
+  }
+}
+
 interface GenericBuyerLinkRequest {
   kind: BuyerLinkKind;
   sourceId: string;
@@ -605,6 +661,9 @@ export async function processGenericOutcome(
         }).eq("id", id);
         return "done";
       }
+    }
+    if (isVenueMembershipCategory(String(row.category_key ?? ""))) {
+      venueVisitUrl = await resolveVenueMemberDispatch(admin, row);
     }
     const deepLink = typeof payload.deep_link === "string"
       ? payload.deep_link

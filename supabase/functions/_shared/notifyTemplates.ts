@@ -9,6 +9,11 @@ import {
   isVenueWaitlistCategory,
   renderVenueWaitlistMessage,
 } from "./email/templates/venueWaitlistEmails.ts";
+// #4490 P6 — member messages (renewal, lapsed, paid, ended).
+import {
+  isVenueMembershipCategory,
+  renderVenueMembershipMessage,
+} from "./email/templates/venueMembershipEmails.ts";
 import { discoverCityWatchCopy } from "./discoverCityWatchCopy.ts";
 import {
   isBrandReachCategory,
@@ -246,6 +251,9 @@ export function renderCategoryMessage(
   }
   if (isVenueWaitlistCategory(categoryKey)) {
     return renderVenueWaitlistMessage(categoryKey, payload);
+  }
+  if (isVenueMembershipCategory(categoryKey)) {
+    return renderVenueMembershipMessage(categoryKey, payload);
   }
   // #4111 — customer enquiry copy lives with its categories.
   if (isIssue4111EnquiryCategory(categoryKey)) {

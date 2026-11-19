@@ -148,9 +148,9 @@ SELECT public.t4490_ok(
   'P-4b a restaurant with reservations on offers tables, party max = its largest table');
 
 -- P-5 features filter -------------------------------------------------------------------
--- [TEST-MOD-APPROVED #4490] P2 ships entry, P3 group packages, P4 private hire, P5 by the hour (built); the unbuilt example is now memberships.
+-- [TEST-MOD-APPROVED #4490] P2-P6 shipped entry, group packages, private hire, by the hour and memberships; the unbuilt example is now guest list.
 INSERT INTO public.venue_features (venue_id, brand_id, feature_key, enabled) VALUES
-  ('44904000-0000-4000-9000-0000000000a1', '44904000-0000-4000-9000-000000000010', 'memberships', true),
+  ('44904000-0000-4000-9000-0000000000a1', '44904000-0000-4000-9000-000000000010', 'guest_list', true),
   ('44904000-0000-4000-9000-0000000000a1', '44904000-0000-4000-9000-000000000010', 'events_here', true),
   ('44904000-0000-4000-9000-0000000000a2', '44904000-0000-4000-9000-000000000010', 'menu', false),
   ('44904000-0000-4000-9000-0000000000a2', '44904000-0000-4000-9000-000000000010', 'table_ordering', true);
@@ -158,7 +158,7 @@ SELECT public.t4490_ok(
   (SELECT p->'features' = '["menu","events_here"]'::jsonb FROM (SELECT public.pg_public_venue_page('gameland-p-4490', 'gameland') AS p) x)
   AND (SELECT NOT (p->'features' ? 'table_ordering') AND NOT (p->'features' ? 'menu')
        FROM (SELECT public.pg_public_venue_page('gameland-p-4490', 'gogi') AS p) x),
-  'P-5a an unbuilt feature (memberships) and a feature whose parent is off (ordering without menu) are left out');
+  'P-5a an unbuilt feature (guest list) and a feature whose parent is off (ordering without menu) are left out');
 
 -- P-6 spaces ----------------------------------------------------------------------------
 SELECT public.t4490_ok(

@@ -81,6 +81,8 @@ const VENUE_CAPABILITIES = new Set([
   "venue.view_bookings",
   "venue.check_in",
   "venue.manage_money",
+  // #4490 P6 — members (server: 20280809204490).
+  "venue.manage_members",
 ]);
 
 /** #4490 — every venue type except Stay takes restaurant.* and venue.* grants. */
