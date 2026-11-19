@@ -642,7 +642,12 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
 function BrandHead({ brandId, line, switcher }: { brandId: string; line: string; switcher: boolean }): React.ReactElement {
   return (
     <View style={styles.brandHead} testID="workspace-brand-slot">
-      {switcher ? <WorkspaceBrandSwitcher brandId={brandId} compact testID="workspace-brand-switcher" /> : null}
+      {switcher ? (
+        // The name shortens to the room the bar has: it never runs under the buttons beside it.
+        <View style={styles.brandFit} testID="workspace-brand-fit">
+          <WorkspaceBrandSwitcher brandId={brandId} compact testID="workspace-brand-switcher" />
+        </View>
+      ) : null}
       <Text style={[styles.saveLine, switcher ? null : styles.saveLineAlone]} numberOfLines={1} role="status" accessibilityLiveRegion="polite" testID="workspace-save-state">{line}</Text>
     </View>
   );
@@ -674,6 +679,7 @@ const styles = StyleSheet.create({
   panel: { width: websiteWorkspacePanelWidth, flexGrow: 0, flexShrink: 0, borderRightWidth: 1, borderRightColor: ui.cardBorder, minHeight: 0 },
   // The switcher keeps its 44pt target; the save line tucks under its name inside the 56pt bar.
   brandHead: { flex: 1, minWidth: 0, justifyContent: "center", alignItems: "flex-start" },
+  brandFit: { alignSelf: "stretch", flexDirection: "row", minWidth: 0, maxWidth: "100%", overflow: "hidden" },
   saveLine: { marginTop: -10, fontSize: 12, lineHeight: 16, color: ui.t3, pointerEvents: "none" },
   saveLineAlone: { marginTop: 0, fontSize: 13, lineHeight: 18, color: ui.t2 },
   panelHead: { height: websiteWorkspaceBarHeight, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[3], borderBottomWidth: 1, borderBottomColor: ui.cardBorder },
