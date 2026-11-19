@@ -210,6 +210,12 @@ const loadGuestBlock = (retry: () => void) =>
       ),
     })),
   );
+// issue #4508 T1 — plus-ones need a signed-in account: a signed-out viewer
+// sees a small "Bring someone" card instead, also on demand.
+// It lives in the guest section's own on-demand module (RsvpGuestPartyBlock).
+const RsvpBringSomeoneCard = React.lazy(() =>
+  import("./RsvpGuestPartyBlock").then((m) => ({ default: m.RsvpBringSomeoneCard })),
+);
 // Only a refused submit needs the guest error lines, so they load on demand.
 const guestErrorLine = (code: string): Promise<string | null> =>
   import("./rsvpGuestErrors").then(
@@ -376,6 +382,12 @@ export interface RsvpOfferingBodyProps {
    * failure. Absent ⇒ no lookup: a valid number previews as not on Mingla.
    */
   guestLookup?: RsvpGuestLookup;
+  /**
+   * issue #4508 T1 — "Get the app" on the signed-out "Bring someone" card:
+   * the surface's app download / deep link for this event. Absent ⇒ the card
+   * shows no button.
+   */
+  onGetApp?: () => void;
   /**
    * issue #4508 1.4 — the signed-in inviter's friends (get_user_circle).
    * Absent ⇒ no "Or from your friends" section (signed out, or a surface that
@@ -1771,7 +1783,14 @@ export const useRsvpOfferingState = (
   // The number preview, add / remove handlers, number field and friends section
   // live in the lazily loaded guest block (RsvpGuestPartyBlock.tsx); this body
   // keeps only the state, the debounced lookup above and the submit payload.
-  const guestForms = showGuestStepper ? (
+  // issue #4508 T1 — signed out: the "Bring someone" card, never the guest
+  // block (a plus-one needs a signed-in account; the RSVP stays one tap).
+  const bringSomeoneCard = (
+    <Suspense fallback={null}>
+      <RsvpBringSomeoneCard palette={palette} boldFamily={boldFamily} onGetApp={props.onGetApp} />
+    </Suspense>
+  );
+  const guestForms = showGuestStepper ? !isLoggedIn ? bringSomeoneCard : (
     // N-7: the slot holds the section's height while the block loads.
     <Suspense fallback={<View style={[styles.guestSlot, surface.card]} />}>
       <RsvpGuestPartyBlock

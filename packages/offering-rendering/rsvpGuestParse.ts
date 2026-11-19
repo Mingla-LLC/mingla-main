@@ -21,5 +21,6 @@ export const parseSubmittedGuests = (value: unknown): RsvpSubmittedGuest[] => {
       inviteCode: str(v.inviteCode),
       // Older servers send no willText; their guests were all texted.
       willText: v.willText !== false,
+      notTextedReason: str(v.notTextedReason),
     }));
 };

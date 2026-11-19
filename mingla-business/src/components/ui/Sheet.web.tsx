@@ -64,6 +64,9 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { hideModalFocusBrackets } from "./hideModalFocusBrackets";
 import { useEscapeLayer } from "./escapeLayerStack";
 import { useSheetGone } from "./useSheetGone";
+// #4508 T4 — the centred card's own toast layer (as SheetMobile and Modal
+// have): a toast fired while this card is open draws above it, not under it.
+import { ToastHost } from "./ToastHost";
 
 // Import the canonical bottom sheet from the platform-NEUTRAL `./SheetMobile`,
 // never from the bare `./Sheet` specifier. On web, Metro resolves `./Sheet` to
@@ -393,6 +396,9 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
             </View>
           </View>
         </View>
+        {/* #4508 T4 / #4420 B4: toasts fired while this card is open draw
+            above it (the root host sits under this Modal's portal). */}
+        <ToastHost layer="overlay" open={visible} />
       </View>
     </Modal>
   );

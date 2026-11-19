@@ -100,6 +100,8 @@ import {
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
 import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
+// #4508 P4 — one spoken name for the phone field.
+import { phoneFieldAccessibilityLabel } from "@mingla/phone-input/accessibilityLabel";
 import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 
 import {
@@ -866,7 +868,7 @@ export default function ConsumerEventDetailScreen({
         countryButtonAccessibilityLabel={args.countryCode === null
           ? "Select country"
           : `${args.label} country, ${getCountryByCode(args.countryCode)?.name ?? args.countryCode}, tap to change`}
-        phoneInputAccessibilityLabel={`${args.label} phone number`}
+        phoneInputAccessibilityLabel={phoneFieldAccessibilityLabel(args.label)}
         onBlur={args.onBlur}
       />
     </View>

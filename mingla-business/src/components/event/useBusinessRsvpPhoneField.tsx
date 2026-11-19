@@ -14,6 +14,8 @@ import {
   type PhoneInputIconName,
   type PhoneInputTheme,
 } from "@mingla/phone-input";
+// #4508 P4 — one spoken name for the phone field.
+import { phoneFieldAccessibilityLabel } from "@mingla/phone-input/accessibilityLabel";
 import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 
 import { Icon } from "../ui/Icon";
@@ -155,7 +157,7 @@ export const BusinessRsvpPhoneField = ({
               ? "Select country"
               : `${label} country, ${getCountryByCode(countryCode)?.name ?? countryCode}, tap to change`
           }
-          phoneInputAccessibilityLabel={`${label} phone number${required ? ", required" : ""}`}
+          phoneInputAccessibilityLabel={`${phoneFieldAccessibilityLabel(label)}${required ? ", required" : ""}`}
           onBlur={onBlur}
           iconRenderer={(
             name: PhoneInputIconName,

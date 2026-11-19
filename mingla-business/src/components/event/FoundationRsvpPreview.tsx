@@ -133,6 +133,8 @@ export interface FoundationRsvpPreviewProps {
   }) => Promise<RsvpSubmitResult>;
   /** issue #4508 1.2a — the live guest-number lookup (buyer web; signed out sees yes/no only). */
   guestLookup?: import("@mingla/offering-rendering").RsvpGuestLookup;
+  /** issue #4508 T1 — "Get the app" on the signed-out "Bring someone" card. */
+  onGetApp?: () => void;
   /** issue #4508 1.15 — copy / share for "Send it yourself too". */
   onCopyText?: (text: string) => void | Promise<void>;
   onShareText?: (text: string) => void | Promise<void>;
@@ -192,6 +194,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     staticMapUrl = null,
     onSubmit,
     guestLookup,
+    onGetApp,
     onCopyText,
     onShareText,
     onChipIn,
@@ -295,6 +298,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     recoveryNotice,
     onSubmit,
     guestLookup,
+    onGetApp,
     onCopyText,
     onShareText,
     onChipIn,

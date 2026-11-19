@@ -1725,6 +1725,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [gateEntity],
   );
 
+  const handleGetAppForGuests = useCallback((): void => {
+    handleOpenRsvpClaim(null);
+  }, [handleOpenRsvpClaim]);
+
   // ORCH-1291 [rsvp-chip-in] — the buyer-web payment hand-off for a voluntary
   // gift. surface:'web' → the edge fn returns a hosted Stripe Checkout URL (or a
   // Paystack authorization URL for NGN); we navigate the browser there and report
@@ -2037,6 +2041,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
           guestLookup={rsvpGuestLookup}
+          // issue #4508 T1 — signed out, "Bring someone" points to the app
+          // with this event's own download / deep link (the claim fallback).
+          onGetApp={handleGetAppForGuests}
           // issue #4508 1.15 — "Send it yourself too": the same clipboard as
           // Copy address; Share uses navigator.share (clipboard fallback).
           onCopyText={copyAddressForTarget}

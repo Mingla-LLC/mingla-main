@@ -429,6 +429,10 @@ export const rsvpGuestBringMessage = (code: string): string => {
   if (code.includes("rsvp_guest_daily_cap")) return "You've invited a lot of numbers today. Try again tomorrow.";
   if (code.includes("rsvp_guest_phone")) return "Enter a valid phone number.";
   if (code.includes("rate_limited")) return "Too many tries in a row. Wait a minute, then try again.";
+  // #4508 T1: a session the server could not verify.
+  if (code.includes("rsvp_guest_sign_in_required")) return "Update or open the Mingla app to bring someone";
+  // #4508 P3: a server without bring-a-friend answers the op as an unknown payload.
+  if (code.includes("rsvp_payload_invalid")) return "Bringing someone isn't available yet. Try again soon.";
   return "We couldn't add them just now. Try again.";
 };
 

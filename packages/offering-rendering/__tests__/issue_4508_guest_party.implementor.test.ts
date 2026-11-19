@@ -348,3 +348,60 @@ Deno.test("refusal copy: the server's and the form's limit and own-number lines 
   assertEquals(RSVP_PARTY_COPY.limitReached, RSVP_GUEST_LIMIT_REACHED);
   assertEquals(RSVP_PARTY_COPY.own, RSVP_GUEST_OWN_NUMBER);
 });
+
+// ---- Fix round 4 -----------------------------------------------------------
+// FAILS-ON-REVERT: mount the guest block for a signed-out viewer again -> T1-C
+// fails; drop the unsupported_region branch -> P3-R fails; drop the new codes
+// from rsvpGuestErrorMessage -> T1-E / P3-O fail.
+
+Deno.test("T1-C signed out: the body shows the Bring someone card (lazy), never the guest block", async () => {
+  // The card is React Native (not Deno-importable); its copy is pinned from
+  // source. It lives in the guest section's own on-demand module.
+  const cardSrc = await Deno.readTextFile(new URL("../RsvpGuestPartyBlock.tsx", import.meta.url));
+  assert(cardSrc.includes('RSVP_BRING_SOMEONE_TITLE = "Bring someone"'), "title");
+  assert(
+    cardSrc.includes(`"Add a friend with just their number in the Mingla app. They'll get their own pass."`),
+    "body",
+  );
+  assert(cardSrc.includes('RSVP_BRING_SOMEONE_CTA = "Get the app"') && cardSrc.includes('accessibilityRole="button"'),
+    "a real button");
+  const src = await Deno.readTextFile(new URL("../RsvpOfferingBody.tsx", import.meta.url));
+  assert(
+    /const RsvpBringSomeoneCard = React\.lazy\(\(\) =>\s*import\("\.\/RsvpGuestPartyBlock"\)\.then\(\(m\) => \(\{ default: m\.RsvpBringSomeoneCard \}\)\),\s*\);/.test(src),
+    "the card loads on demand",
+  );
+  assert(
+    /<RsvpBringSomeoneCard[^>]*onGetApp=\{props\.onGetApp\}/.test(src) &&
+      /const guestForms = showGuestStepper \? !isLoggedIn \? bringSomeoneCard : \(/.test(src),
+    "signed out: the card, with the surface's Get the app",
+  );
+  assert(!/^import .*RsvpBringSomeoneCard/m.test(src), "no eager import of the card");
+  assert(!/[\u{1F300}-\u{1FAFF}]/u.test(cardSrc), "no emoji");
+});
+
+Deno.test("T1-E / P3-O refusals: sign in, has a pass, and an older server in plain words", () => {
+  assertEquals(rsvpGuestErrorMessage("rsvp_guest_sign_in_required"), "Update or open the Mingla app to bring someone");
+  assertEquals(rsvpGuestErrorMessage("rsvp_guest_has_pass"), "You already have a pass for this event from a friend.");
+  assertEquals(rsvpGuestErrorMessage("rsvp_guest_contact_required"), "Bringing someone isn't available yet. Try again soon.");
+  assertEquals(rsvpGuestErrorMessage("rsvp_guest_keys_invalid"), "Bringing someone isn't available yet. Try again soon.");
+});
+
+Deno.test("P3-R a number we cannot text yet says so, with the paste text as the way", () => {
+  const [g] = parseSubmittedGuests([{
+    guestId: "g1",
+    phoneLast4: "4567",
+    willText: false,
+    notTextedReason: "unsupported_region",
+    inviteUrl: "https://usemingla.com/c/ABCDEFGHJK",
+  }]);
+  assertEquals(g.notTextedReason, "unsupported_region");
+  assertEquals(
+    submittedGuestStatus(g, "going"),
+    "We can't text this number yet. Send them your invite yourself.",
+  );
+  const [other] = parseSubmittedGuests([{ guestId: "g2", willText: false, notTextedReason: "suppressed" }]);
+  assertEquals(submittedGuestStatus(other, "going"), "We couldn't text this number");
+  const [texted] = parseSubmittedGuests([{ guestId: "g3", willText: true }]);
+  assertEquals(texted.notTextedReason, null);
+  assertEquals(submittedGuestStatus(texted, "going"), "Text on its way");
+});

@@ -635,4 +635,64 @@ export const RsvpGuestPartyPanel: React.FC<RsvpGuestPartyPanelProps> = (p) => {
   );
 };
 
+// ── issue #4508 T1: the signed-out "Bring someone" card ───────────────────
+// Adding a plus-one by number needs a signed-in Mingla account, so a
+// signed-out viewer (buyer web) gets this card where the guest section would
+// be: the RSVP itself stays one tap, and "Get the app" opens the surface's own
+// app download / deep link for this event. It lives in this on-demand module
+// (the guest section's own chunk), so it never rides the boot payload.
+export const RSVP_BRING_SOMEONE_TITLE = "Bring someone";
+export const RSVP_BRING_SOMEONE_BODY =
+  "Add a friend with just their number in the Mingla app. They'll get their own pass.";
+export const RSVP_BRING_SOMEONE_CTA = "Get the app";
+
+export interface RsvpBringSomeoneCardProps {
+  palette: ThemePalette;
+  boldFamily: string;
+  /** Opens the app download / deep link for this event. Absent ⇒ no button. */
+  onGetApp?: () => void;
+}
+
+export function RsvpBringSomeoneCard(props: RsvpBringSomeoneCardProps): React.ReactElement {
+  const surface = offeringSurfaceStyles(props.palette);
+  const boldFace = themeFontFace(props.boldFamily);
+  const onGetApp = props.onGetApp;
+  return (
+    <View style={[cardStyles.card, surface.card]} testID="issue-4508-rsvp-bring-someone">
+      <Text style={[cardStyles.title, surface.primaryText, boldFace]} accessibilityRole="header">
+        {RSVP_BRING_SOMEONE_TITLE}
+      </Text>
+      <Text style={[cardStyles.body, surface.secondaryText]}>{RSVP_BRING_SOMEONE_BODY}</Text>
+      {onGetApp !== undefined ? (
+        <Pressable
+          onPress={onGetApp}
+          accessibilityRole="button"
+          accessibilityLabel={`${RSVP_BRING_SOMEONE_CTA} to bring someone`}
+          style={[cardStyles.cta, { backgroundColor: props.palette.primaryText }]}
+          testID="issue-4508-rsvp-bring-someone-get-app"
+        >
+          <Text style={[cardStyles.ctaText, { color: props.palette.page }, boldFace]}>
+            {RSVP_BRING_SOMEONE_CTA}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  card: { borderRadius: 18, padding: 18, marginBottom: 14, gap: 8 },
+  title: { fontSize: 17, lineHeight: 22 },
+  body: { fontSize: 14, lineHeight: 20 },
+  cta: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: 22,
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  ctaText: { fontSize: 15 },
+});
+
 export default RsvpGuestPartyPanel;

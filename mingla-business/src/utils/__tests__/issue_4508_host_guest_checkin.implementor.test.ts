@@ -145,3 +145,52 @@ Deno.test("wiring: service, hook, sheet, console and setup step use the new piec
   assert(mapper.includes("payload.rsvpGuestsCanBring ="));
   assert(mapper.includes("row.rsvp_guests_can_bring"));
 });
+
+// ---- Fix round 4 ------------------------------------------------------------
+// FAILS-ON-REVERT: take the ToastHost out of Sheet.web's centred card -> T4-A
+// fails; drop plusGuestCheckedInLine (or its row Text) -> T4-B fails; append
+// " phone number" to every label again -> P4 fails.
+import { plusGuestCheckedInLine } from "../rsvpGuestDisplay.ts";
+import { phoneFieldAccessibilityLabel } from "../../../../packages/phone-input/accessibilityLabel.ts";
+
+Deno.test("T4-A: on desktop web the guest sheet has its own toast layer, above the card", () => {
+  const web = Deno.readTextFileSync("mingla-business/src/components/ui/Sheet.web.tsx");
+  const card = web.slice(web.indexOf("const DesktopCenteredCard"));
+  const host = card.indexOf('<ToastHost layer="overlay" open={visible} />');
+  assert(host > card.indexOf("{children}") && host < card.indexOf("</Modal>"),
+    "the host sits inside the card's Modal, after the card, like SheetMobile and Modal");
+  assert(/import \{ ToastHost \} from "\.\/ToastHost";/.test(web));
+  // The guest sheet keeps routing its notices to its own in-sheet Toast.
+  const sheet = Deno.readTextFileSync("mingla-business/src/components/rsvp/RsvpGuestDetailSheet.tsx");
+  assert(sheet.includes('testID="rsvp-guest-detail-notice"') && sheet.includes("kind={noticeKind}"));
+});
+
+Deno.test("T4-B: a checked-in plus-one's row says \"Checked in\", now and after a refetch", () => {
+  assertEquals(plusGuestCheckedInLine({ checkedInAt: "2026-11-19T20:00:00Z" }), "Checked in");
+  assertEquals(plusGuestCheckedInLine({ checkedInAt: null }), null);
+  assertEquals(plusGuestCheckedInLine({ checkedInAt: " null " }), null);
+  // Immediately: the console marks the row checked in on success.
+  const [marked] = markPlusGuestCheckedIn(
+    normalisePlusGuests([{ id: "g1", name: "Ada's guest", claimed: false, checkedInAt: null }]),
+    "g1",
+    "2026-11-19T20:00:00Z",
+  );
+  assertEquals(plusGuestCheckedInLine(marked), "Checked in");
+  // After a refetch: the server's checkedInAt reads the same way.
+  const [fetched] = normalisePlusGuests([{ id: "g1", name: "Ada's guest", checkedInAt: "2026-11-19T20:00:00Z" }]);
+  assertEquals(plusGuestCheckedInLine(fetched), "Checked in");
+  assert(!canCheckInByHand(fetched), "and the button is gone");
+  const sheet = Deno.readTextFileSync("mingla-business/src/components/rsvp/RsvpGuestDetailSheet.tsx");
+  assert(sheet.includes("const checkedInLine = plusGuestCheckedInLine(pg);") &&
+    sheet.includes("testID={`rsvp-plus-checked-in-${pg.id}`}"), "the row renders it");
+});
+
+Deno.test("P4: the guest number field's spoken name does not repeat itself", () => {
+  assertEquals(phoneFieldAccessibilityLabel("By phone number"), "By phone number");
+  assertEquals(phoneFieldAccessibilityLabel("Your"), "Your phone number");
+  assertEquals(phoneFieldAccessibilityLabel(" Guest 1 "), "Guest 1 phone number");
+  const web = Deno.readTextFileSync("mingla-business/src/components/event/useBusinessRsvpPhoneField.tsx");
+  const app = Deno.readTextFileSync("app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx");
+  assert(web.includes("phoneInputAccessibilityLabel={`${phoneFieldAccessibilityLabel(label)}"));
+  assert(app.includes("phoneInputAccessibilityLabel={phoneFieldAccessibilityLabel(args.label)}"));
+});

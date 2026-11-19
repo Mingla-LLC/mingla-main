@@ -39,6 +39,7 @@ import {
   invitedByLine,
   manualCheckInLabel,
   hostPlusGuestLabel,
+  plusGuestCheckedInLine,
   type RsvpPlusGuest,
 } from "../../utils/rsvpGuestDisplay";
 import type {
@@ -283,6 +284,8 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
                 // #4508 N-5: "Ada's guest · 0199" until the guest claims.
                 const label = hostPlusGuestLabel(pg, pg.invitedByName);
                 const checkingIn = checkingInGuestId === pg.id;
+                // #4508 T4: the row itself says so once the guest is in.
+                const checkedInLine = plusGuestCheckedInLine(pg);
                 return (
                   <View key={pg.id} style={styles.plusGroup}>
                   <View
@@ -290,7 +293,7 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
                     accessible
                     accessibilityLabel={`${label}, ${claimStatusLabel(pg.claimed).toLowerCase()}${
                       invited !== null ? `. ${invited}` : ""
-                    }${pg.checkedInAt !== null ? ". Checked in" : ""}`}
+                    }${checkedInLine !== null ? `. ${checkedInLine}` : ""}`}
                     testID={`rsvp-plus-guest-${pg.id}`}
                   >
                     <View style={styles.plusRowText}>
@@ -300,6 +303,15 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
                       {invited !== null ? (
                         <Text style={styles.meta} numberOfLines={1}>
                           {invited}
+                        </Text>
+                      ) : null}
+                      {checkedInLine !== null ? (
+                        <Text
+                          style={[styles.meta, { color: color.success }]}
+                          numberOfLines={1}
+                          testID={`rsvp-plus-checked-in-${pg.id}`}
+                        >
+                          {checkedInLine}
                         </Text>
                       ) : null}
                     </View>

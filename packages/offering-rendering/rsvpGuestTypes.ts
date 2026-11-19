@@ -44,4 +44,10 @@ export interface RsvpSubmittedGuest {
    * "delivered".
    */
   willText: boolean;
+  /**
+   * issue #4508 P3 — why a signed-in inviter's guest will not be texted, when
+   * the server says (e.g. "unsupported_region": no SMS route for the
+   * country). Absent / null otherwise.
+   */
+  notTextedReason?: string | null;
 }

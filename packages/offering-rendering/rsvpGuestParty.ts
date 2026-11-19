@@ -56,6 +56,10 @@ export const buildGuestInviteMessage = (input: GuestInviteMessageInput): string 
   return `I've put you down for ${input.eventName.trim() || "this event"} with me${when}${where}. Your pass is waiting in the Mingla app, grab it here: ${input.link}`;
 };
 
+/** issue #4508 P3 — a number in a country we cannot text yet. */
+export const RSVP_GUEST_UNSUPPORTED_REGION =
+  "We can't text this number yet. Send them your invite yourself.";
+
 export const submittedGuestLabel = (g: RsvpSubmittedGuest): string =>
   g.displayName !== null && g.displayName.trim().length > 0
     ? g.displayName.trim()
@@ -72,7 +76,13 @@ export const submittedGuestStatus = (
   // C3 / R-1: willText alone says whether a text goes. A signed-out inviter
   // gets no invite link (so a number already on the list reads like a new
   // one), and their guests are still texted.
-  if (!g.willText) return "We couldn't text this number";
+  if (!g.willText) {
+    // P3: no SMS route for the number's country; the paste text below is
+    // the way to reach them.
+    return g.notTextedReason === "unsupported_region"
+      ? RSVP_GUEST_UNSUPPORTED_REGION
+      : "We couldn't text this number";
+  }
   return g.onMingla ? "Text on its way, and a note in their app" : "Text on its way";
 };
 

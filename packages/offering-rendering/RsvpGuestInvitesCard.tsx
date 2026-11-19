@@ -69,7 +69,7 @@ export const RsvpGuestInvitesCard: React.FC<RsvpGuestInvitesCardProps> = ({
       </Text>
       {invites.map((guest, index) => {
         const status = submittedGuestStatus(guest, rsvpStatus);
-        const failed = status === "We couldn't text this number";
+        const failed = !guest.claimed && rsvpStatus === "going" && !guest.willText;
         return (
           <View
             key={guest.guestId ?? `guest-${index}`}

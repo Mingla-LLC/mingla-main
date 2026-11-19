@@ -149,6 +149,11 @@ export const canCheckInByHand = (
   guest: Pick<RsvpPlusGuest, "claimed" | "checkedInAt">,
 ): boolean => guest.claimed !== true && cleanText(guest.checkedInAt) === null;
 
+/** #4508 T4 — the row's own "Checked in" line once the plus-one is in. */
+export const plusGuestCheckedInLine = (
+  guest: Pick<RsvpPlusGuest, "checkedInAt">,
+): string | null => (cleanText(guest.checkedInAt) === null ? null : "Checked in");
+
 /** "Check in with Ada" (first name of the inviter), or "Check in". */
 export const manualCheckInLabel = (invitedByName: unknown): string => {
   const inviter = cleanText(invitedByName);
