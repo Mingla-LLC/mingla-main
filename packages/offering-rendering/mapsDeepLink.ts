@@ -447,7 +447,10 @@ export function buildMapsAppLink(
   //             Even `venue_listings`, which HAS the column, populated it for
   //             1 of 5 rows. So it was unavailable on the surface that reported
   //             this. (#4334 stores the Google place id for new picks; their
-  //             Google links now carry `query_place_id` — googlePlaceSearchUrl.)
+  //             Google links now carry `query_place_id` — googlePlaceSearchUrl —
+  //             and, since M1, `query=<label>` instead of the coordinate pair, so
+  //             Google titles the pin with the venue. WITHOUT an id the
+  //             coordinate query below is unchanged.)
   //   ios     → comgooglemaps:// documents `q` as "the query string for your
   //             search". No label parameter. No parentheses. Anywhere.
   //
