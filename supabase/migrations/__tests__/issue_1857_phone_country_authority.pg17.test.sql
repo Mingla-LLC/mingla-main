@@ -82,8 +82,11 @@ BEGIN
     -- per-number holds and willText. The second rework gives a signed-out
     -- caller one refusal code and no account or reason, locks each guest
     -- number before counting it, and holds texts past the signed-out daily
-    -- ceiling. The #1857 phone authority lines are unchanged.
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'dd21c0689c3b1f47123166b1c192ca9a'),
+    -- ceiling. The third rework (2026-11-19) answers a signed-out caller's
+    -- already-listed or released number like a new one (no row, no guest id),
+    -- and counts the signed-out ceiling under a lock. The #1857 phone
+    -- authority lines are unchanged.
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'b8a9a9f0da97ead5565c7699049895d4'),
     -- #4063 last-writes this wrapper so approved RSVPs receive only a pass,
     -- while pending/other outcomes retain acknowledgement delivery.
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),

@@ -3937,15 +3937,16 @@ AS $function$
   );
 $function$
 $create$, v_shared_arm);
-  REVOKE ALL ON FUNCTION public.issue_4459_brand_guest_eligible(uuid, uuid) FROM PUBLIC, anon, authenticated;
-  GRANT EXECUTE ON FUNCTION public.issue_4459_brand_guest_eligible(uuid, uuid) TO service_role;
+  -- (Literal statements: the #1860 gate reads every DDL this file runs.)
+  EXECUTE 'REVOKE ALL ON FUNCTION public.issue_4459_brand_guest_eligible(uuid, uuid) FROM PUBLIC, anon, authenticated';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION public.issue_4459_brand_guest_eligible(uuid, uuid) TO service_role';
 
   -- The #4459 party trigger, now also on claimed_at (same function).
-  DROP TRIGGER IF EXISTS issue_4459_brand_guest_chat_rsvp_party ON public.event_rsvp_guests;
-  CREATE TRIGGER issue_4459_brand_guest_chat_rsvp_party
+  EXECUTE 'DROP TRIGGER IF EXISTS issue_4459_brand_guest_chat_rsvp_party ON public.event_rsvp_guests';
+  EXECUTE 'CREATE TRIGGER issue_4459_brand_guest_chat_rsvp_party
   AFTER INSERT OR UPDATE OF matched_user_id, rsvp_id, claimed_at OR DELETE
   ON public.event_rsvp_guests
-  FOR EACH ROW EXECUTE FUNCTION public.issue_4459_tg_event_rsvp_guests();
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4459_tg_event_rsvp_guests()';
 
   -- Re-sync every account matched to an unclaimed guest row, so one that
   -- joined through that match alone leaves (one that is eligible another way
