@@ -1,9 +1,10 @@
 -- #4490 fix round 3 (20280809254490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-EVENT-TAKES-ITS-PLACE | issue #4490 | a scheduled or live event saved as "takes the space" holds every space it sits in (one space, each part of a combination, or every active space of the venue) for each active date, so hires, by-the-hour bookings and blocks over it are refused, and it cannot go live over a committed hire or block (event_space_taken).
+-- MINGLA-INVARIANT: I-4490-WAITLIST-SPACE-OF-ITS-VENUE | issue #4490 | a waitlist row's preferred space is a space of that row's venue.
 -- MINGLA-INVARIANT: I-4490-EVENT-ONE-PLACE | issue #4490 | an event sits in one space OR one combination of its own venue OR the whole venue, never two.
 --
--- S one space (N101). C combination (N106). W whole venue. B refusal. K calendar (N102). A authority.
+-- S one space (N101). C combination (N106). W whole venue. B refusal. K calendar (N102). Q waitlist space (N112). A authority.
 --
 -- FAILS-ON-REVERT (seen): without 20280809254490 S-1b fails (event_space_taken: the duplicated date clashes with
 -- itself), C-1a fails (no p_combination_id) and W-1 claims nothing.
@@ -298,6 +299,19 @@ BEGIN
     'K-3 a cancelled date is not listed');
 END
 $k$;
+SELECT public.t4490_reset();
+
+-- ===========================================================================
+-- Q: the waitlist asks for one of the venue's own spaces (N112).
+-- ===========================================================================
+SELECT public.t4490_as('44907000-0000-4000-8000-000000000001');
+INSERT INTO public.venue_waitlist (brand_id, venue_id, guest_name, party_size, preferred_space_id)
+VALUES ('44907000-0000-4000-9000-000000000010', '44907000-0000-4000-9000-0000000000a1', 'Ada', 4, public.t4490_id('lounge'));
+SELECT public.t4490_ok((SELECT preferred_space_id FROM public.venue_waitlist WHERE guest_name = 'Ada') = public.t4490_id('lounge'),
+  'Q-1 a walk-in can ask for The Lounge Side');
+SELECT public.t4490_expect(format($$INSERT INTO public.venue_waitlist (brand_id, venue_id, guest_name, party_size, preferred_space_id)
+    VALUES (%L, %L, 'Bola', 2, %L)$$, '44907000-0000-4000-9000-000000000010', '44907000-0000-4000-9000-0000000000a1', public.t4490_id('a2main')),
+  '23514', 'waitlist_space_not_in_venue', 'Q-2 another venue''s space is refused');
 SELECT public.t4490_reset();
 
 SELECT public.t4490_as('44907000-0000-4000-8000-000000000005');

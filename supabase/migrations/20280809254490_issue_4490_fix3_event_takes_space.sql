@@ -19,6 +19,9 @@
 --   * issue_4490_set_event_venue takes p_combination_id (DEFAULT NULL; old
 --     callers unchanged).
 --   * issue_4490_venue_calendar events carry combinationId and spaceIds.
+--   * venue_waitlist.preferred_space_id: a walk-in can ask for one of the
+--     venue's own spaces (N112); the generic seating words stay for venues
+--     without spaces. The space must belong to the waitlist row's venue.
 --
 -- Conflicts raise PT409 (never 40001). Static SQL. Local stack only.
 -- Reverse (local only): restore issue_4490_assert_event_venue and
@@ -26,7 +29,10 @@
 -- and triggers from 20280809164490, issue_4490_venue_calendar from
 -- 20280809214490; drop issue_4490_event_space_ids(uuid); ALTER TABLE
 -- public.events DROP CONSTRAINT events_one_place, DROP CONSTRAINT
--- events_combination_needs_venue, DROP COLUMN combination_id.
+-- events_combination_needs_venue, DROP COLUMN combination_id; DROP TRIGGER
+-- issue_4490_waitlist_space ON public.venue_waitlist; DROP FUNCTION
+-- public.issue_4490_assert_waitlist_space(); ALTER TABLE public.venue_waitlist
+-- DROP COLUMN preferred_space_id.
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -414,6 +420,42 @@ BEGIN
   );
 END;
 $function$;
+
+-- ---------------------------------------------------------------------------
+-- Waitlist: "Preferred seating" can be one of the venue's own spaces.
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.venue_waitlist
+  ADD COLUMN preferred_space_id uuid NULL REFERENCES public.venue_spaces(id) ON DELETE SET NULL;
+COMMENT ON COLUMN public.venue_waitlist.preferred_space_id IS
+  '#4490 fix 3: the space of this venue the walk-in would like (preferred_zone stays for venues without spaces).';
+
+CREATE OR REPLACE FUNCTION public.issue_4490_assert_waitlist_space()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  IF NEW.preferred_space_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.preferred_space_id IS NOT DISTINCT FROM OLD.preferred_space_id
+     AND NEW.venue_id IS NOT DISTINCT FROM OLD.venue_id THEN
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.venue_spaces s
+    WHERE s.id = NEW.preferred_space_id AND s.venue_id = NEW.venue_id AND s.archived_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'waitlist_space_not_in_venue' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4490_assert_waitlist_space() FROM PUBLIC, anon, authenticated;
+CREATE TRIGGER issue_4490_waitlist_space
+  BEFORE INSERT OR UPDATE OF preferred_space_id, venue_id ON public.venue_waitlist
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4490_assert_waitlist_space();
 
 -- Existing exclusive events that now claim more (a combination or the whole
 -- venue). None are expected: the Host app only ever saved 'shared'.
