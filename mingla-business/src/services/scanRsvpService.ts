@@ -7,6 +7,8 @@ export interface RsvpScanResponse {
   scanId: string | null;
   entityId: string | null;
   attendeeDisplayName: string | null;
+  // #4508 1.25 — who brought a guest-pass holder; absent for primary guests.
+  invitedByName?: string | null;
   entityType: "primary" | "guest" | null;
   nextStartAt: string | null;
   lastEndAt: string | null;

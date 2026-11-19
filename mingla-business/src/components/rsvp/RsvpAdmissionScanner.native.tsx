@@ -52,6 +52,12 @@ import {
   type RsvpScanResult,
 } from "../../services/scanRsvpService";
 import { postHogService } from "../../services/postHogService";
+import {
+  cleanText,
+  guestDisplayName,
+  invitedByLine,
+  scanDetailLine,
+} from "../../utils/rsvpGuestDisplay";
 
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
@@ -129,6 +135,7 @@ interface SessionEntry {
   id: string;
   result: RsvpScanResult;
   guestName: string;
+  invitedByName: string | null;
   role: "primary" | "guest";
   scannedAt: string;
 }
@@ -355,7 +362,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
           setSessionScans((current) => [{
             id: result.scanId ?? `${Date.now()}`,
             result: kind,
-            guestName: result.attendeeDisplayName ?? "Guest",
+            guestName: guestDisplayName(result.attendeeDisplayName, result.invitedByName),
+            invitedByName: cleanText(result.invitedByName),
             role: result.entityType ?? "primary",
             scannedAt: new Date().toISOString(),
           }, ...current].slice(0, 10));
@@ -363,8 +371,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
             void summary.refetch();
             showResult({
               kind,
-              message: `${result.attendeeDisplayName ?? "Guest"} checked in`,
-              detail: result.entityType === "guest" ? "Plus-one" : "Primary guest",
+              message: `${guestDisplayName(result.attendeeDisplayName, result.invitedByName)} checked in`,
+              detail: scanDetailLine(result.entityType, result.invitedByName),
             });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
@@ -375,6 +383,10 @@ export default function ScannerCameraRoute(): React.ReactElement {
           // pull nextStartAt / lastEndAt off the server response.
           let message: string;
           let detail: string | undefined = result.attendeeDisplayName ?? undefined;
+          const invitedBy = invitedByLine(result.invitedByName);
+          if (invitedBy !== null && kind === "duplicate") {
+            detail = `${result.attendeeDisplayName ?? "Guest"} · ${invitedBy}`;
+          }
           if (kind === "duplicate") {
             message = "Already checked in";
           } else if (kind === "wrong_event") {
@@ -761,7 +773,7 @@ const SessionLogRow: React.FC<SessionLogRowProps> = ({ scan }) => {
           {scan.guestName}
         </Text>
         <Text style={styles.logRowSubline} numberOfLines={1}>
-          {scan.role === "guest" ? "Plus-one" : "Primary guest"}
+          {scanDetailLine(scan.role, scan.invitedByName)}
         </Text>
       </View>
       <View style={styles.logRowRight}>

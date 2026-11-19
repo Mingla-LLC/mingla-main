@@ -33,6 +33,10 @@ import { Sheet } from "../ui/Sheet";
 // the console-root sibling Toast (which iOS New-Arch drops as a second modal on
 // the screen-root VC while the sheet modal is up). Mirrors #1356 CoverPickerSheet.
 import { Toast } from "../ui/Toast";
+import {
+  claimStatusLabel,
+  invitedByLine,
+} from "../../utils/rsvpGuestDisplay";
 import type {
   RsvpApprovalValue,
   RsvpGuest,
@@ -252,6 +256,56 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
             </View>
           ) : null}
 
+          {/* #4508 1.25 — the people this guest brought: display name, who
+              invited them, and whether they claimed their pass. */}
+          {guest.plusCheckins.length > 0 ? (
+            <View style={styles.block}>
+              <SectionLabel>GUESTS</SectionLabel>
+              {guest.plusCheckins.map((pg) => {
+                const invited = invitedByLine(pg.invitedByName);
+                return (
+                  <View
+                    key={pg.id}
+                    style={styles.plusRow}
+                    accessible
+                    accessibilityLabel={`${pg.name}, ${claimStatusLabel(pg.claimed).toLowerCase()}${
+                      invited !== null ? `. ${invited}` : ""
+                    }${pg.checkedInAt !== null ? ". Checked in" : ""}`}
+                    testID={`rsvp-plus-guest-${pg.id}`}
+                  >
+                    <View style={styles.plusRowText}>
+                      <Text style={styles.value} numberOfLines={1}>
+                        {pg.name}
+                      </Text>
+                      {invited !== null ? (
+                        <Text style={styles.meta} numberOfLines={1}>
+                          {invited}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View
+                      style={[
+                        styles.badge,
+                        pg.claimed
+                          ? { backgroundColor: color.accentTint, borderColor: color.accentLine }
+                          : { backgroundColor: color.infoTint, borderColor: WEB_BADGE_BORDER },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.badgeText,
+                          { color: pg.claimed ? APP_BADGE_TEXT : WEB_BADGE_TEXT },
+                        ]}
+                      >
+                        {claimStatusLabel(pg.claimed)}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+
           {/* CONTACT — email always for app; phone when present; omit missing rows */}
           <View style={styles.block}>
             <SectionLabel>CONTACT</SectionLabel>
@@ -415,6 +469,14 @@ const styles = StyleSheet.create({
     lineHeight: type.small.lineHeight,
     color: color.text2,
   },
+  plusRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space[2],
+  },
+  plusRowText: { flex: 1, gap: 2 },
   contactRow: {
     minHeight: 44,
     justifyContent: "center",
