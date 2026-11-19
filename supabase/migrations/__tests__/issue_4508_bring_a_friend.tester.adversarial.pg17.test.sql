@@ -8,9 +8,9 @@
 -- 300 signed-out texts), and the release / re-invite sequence across three
 -- inviters.
 --
--- MINGLA-INVARIANT: I-4508-TESTER-GUEST-INPUT-STRICT | issue #4508 | submit_event_rsvp refuses a guest number that is not strict E.164 (8 to 15 digits, no leading 0, no full-width digits, no trailing newline), a lower-case or three-letter country code, a non-object guest, an unknown key, a {userId} guest from a signed-out caller or for a non-friend, and a guest count that differs from plusCount, writing nothing.
+-- MINGLA-INVARIANT: I-4508-TESTER-GUEST-INPUT-STRICT | issue #4508 | submit_event_rsvp refuses a guest number that is not strict E.164 (8 to 15 digits, no leading 0, no full-width digits, no trailing newline), a lower-case or three-letter country code, a non-object guest, an unknown key, any guest from a signed-out caller (rsvp_guest_sign_in_required, T1), a {userId} guest for a non-friend, and a guest count that differs from plusCount, writing nothing.
 -- MINGLA-INVARIANT: I-4508-TESTER-CODES-NOT-REUSABLE | issue #4508 | a guest claim code is case-insensitive but never claims after release, never claims a later guest row for the same number, a primary RSVP claim code never resolves as a guest code, and a claimed pass is never released.
--- MINGLA-INVARIANT: I-4508-TESTER-CAP-EDGES | issue #4508 | the 20th guest number an inviter adds in 24 hours is accepted and the 21st refused (rsvp_guest_daily_cap) with nothing written; the 4th guest invite to one number in 24 hours is held (willText false, number_limit); the 301st signed-out guest in 24 hours is held while a signed-in inviter is still texted.
+-- MINGLA-INVARIANT: I-4508-TESTER-CAP-EDGES | issue #4508 | the 20th guest number an inviter adds in 24 hours is accepted and the 21st refused (rsvp_guest_daily_cap) with nothing written; the 4th guest invite to one number in 24 hours is held (willText false, number_limit); a signed-out caller cannot add any guest (T1), so the signed-out text ceiling is never reached and a signed-in inviter is still texted past it.
 -- MINGLA-INVARIANT: I-4508-TESTER-PAIRING-LIMIT | issue #4508 | a claim between two free accounts that are both already at their one pairing still makes the rsvp_guest close-friend pairing, and check_pairing_allowed for each still counts only their one ordinary pairing.
 \set ON_ERROR_STOP on
 \ir ../20281119004508_issue_4508_guest_phone_match.sql
@@ -144,10 +144,12 @@ BEGIN
   PERFORM pg_temp.ok(v_err = 'rsvp_guest_count_mismatch', 'plusCount larger than the guests refused: ' || v_err);
   v_err := pg_temp.try_guests(v_ev3, v_inv, '+15550301001', 1, '[{"phone":"+15550301099"}]');
   PERFORM pg_temp.ok(v_err = 'rsvp_plus_ones_exceeded', 'a guest on an event with plus-ones off refused: ' || v_err);
-  -- Signed out: {userId} is never accepted.
+  -- Signed out: {userId} is never accepted. [changed by the implementor in
+  -- fix round 4, T1: any guest from a signed-out caller is refused with
+  -- rsvp_guest_sign_in_required before the guest is read; was keys_invalid.]
   v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Anon', 'anon-t4508@example.test',
     '+15550309901', 'going', 1, '[{"userId":"45089000-0000-4000-8000-000000000012"}]'::jsonb, NULL, 'US')$s$, v_ev));
-  PERFORM pg_temp.ok(v_err = 'rsvp_guest_keys_invalid', 'signed out cannot send a {userId} guest: ' || v_err);
+  PERFORM pg_temp.ok(v_err = 'rsvp_guest_sign_in_required', 'signed out cannot send a {userId} guest: ' || v_err);
   -- Reset Tess's party to no guests.
   PERFORM public.submit_event_rsvp(v_ev, v_inv, 'Tess Tester', 't-inv@example.test', '+15550301001',
     'going', 0, '[]'::jsonb, NULL, 'US');
@@ -190,12 +192,15 @@ BEGIN
   PERFORM pg_temp.ok(public.rsvp_guest_release(v_code2)->>'outcome' = 'released', 'second release (another inviter)');
   v_err := pg_temp.try_guests(v_ev, v_kai, '+15550301006', 1, '[{"phone":"+15550301003"}]');
   PERFORM pg_temp.ok(v_err = 'rsvp_guest_released', 'two releases bar the number for a third inviter: ' || v_err);
-  -- Signed out, the barred number is answered like a new one and not added.
-  v_res := public.submit_event_rsvp(v_ev, NULL, 'Anon Two', 'anon2-t4508@example.test', '+15550309902',
-    'going', 1, '[{"phone":"+15550301003"}]'::jsonb, NULL, 'US');
-  PERFORM pg_temp.ok(v_res->'guests'->0->'guestId' = 'null'::jsonb
-    AND NOT EXISTS (SELECT 1 FROM public.event_rsvp_guests WHERE rsvp_id = (v_res->>'rsvpId')::uuid),
-    'signed out, a barred number gets no row and no id: ' || v_res::text);
+  -- Signed out, the barred number is never added. [changed by the
+  -- implementor in fix round 4, T1: the whole signed-out submit with a guest
+  -- is refused (rsvp_guest_sign_in_required), writing nothing; it was
+  -- answered like a new number with no row.]
+  v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Anon Two', 'anon2-t4508@example.test',
+    '+15550309902', 'going', 1, '[{"phone":"+15550301003"}]'::jsonb, NULL, 'US')$s$, v_ev));
+  PERFORM pg_temp.ok(v_err = 'rsvp_guest_sign_in_required'
+    AND NOT EXISTS (SELECT 1 FROM public.event_rsvps WHERE guest_email = 'anon2-t4508@example.test'),
+    'signed out, a barred number is refused and nothing is written: ' || v_err);
 
   -- ---- 3. A claimed guest re-invited -------------------------------------
   v_res := public.submit_event_rsvp(v_ev2, v_inv, 'Tess Tester', 't-inv@example.test', '+15550301001',
@@ -210,11 +215,13 @@ BEGIN
     'another account cannot take a claimed pass');
   v_err := pg_temp.try_guests(v_ev2, v_kai, '+15550301006', 1, '[{"phone":"+15550301004"}]');
   PERFORM pg_temp.ok(v_err = 'rsvp_guest_already_listed', 'a claimed guest''s number cannot be re-invited: ' || v_err);
-  v_res := public.submit_event_rsvp(v_ev2, NULL, 'Anon Three', 'anon3-t4508@example.test', '+15550309903',
-    'going', 1, '[{"phone":"+15550301004"}]'::jsonb, NULL, 'US');
-  PERFORM pg_temp.ok((SELECT count(*) FROM public.event_rsvp_guests g JOIN public.event_rsvps r ON r.id = g.rsvp_id
+  -- [changed by the implementor in fix round 4, T1: signed out is refused.]
+  v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Anon Three', 'anon3-t4508@example.test',
+    '+15550309903', 'going', 1, '[{"phone":"+15550301004"}]'::jsonb, NULL, 'US')$s$, v_ev2));
+  PERFORM pg_temp.ok(v_err = 'rsvp_guest_sign_in_required'
+    AND (SELECT count(*) FROM public.event_rsvp_guests g JOIN public.event_rsvps r ON r.id = g.rsvp_id
       WHERE r.event_id = v_ev2 AND g.phone = '+15550301004') = 1,
-    'signed out, a claimed number is not added a second time');
+    'signed out, a claimed number is not added a second time: ' || v_err);
   PERFORM public.submit_event_rsvp(v_ev2, v_inv, 'Tess Tester', 't-inv@example.test', '+15550301001',
     'maybe', 1, '[{"phone":"+15550301004"}]'::jsonb, NULL, 'US');
   PERFORM pg_temp.ok((SELECT claimed_at IS NOT NULL AND matched_user_id = v_gil
@@ -305,23 +312,29 @@ BEGIN
     'going', 2, '[{"phone":"+15550308555"},{"phone":"+15550308556"}]'::jsonb, NULL, NULL);
   PERFORM pg_temp.ok((SELECT sms_hold IS NULL FROM public.event_rsvp_guests WHERE phone = '+15550308556'),
     'invites older than 24 hours do not hold a number');
-  -- 300 signed-out texts: at 299 a signed-out guest is texted, at 300 held;
-  -- a signed-in inviter is never held by it.
+  -- 300 signed-out texts. [changed by the implementor in fix round 4, T1:
+  -- a signed-out caller can no longer add a guest at all, so at 299 and
+  -- past 300 the signed-out submit is refused, nothing is logged and no
+  -- ceiling hold is recorded; it was texted at 300 and held at 301.]
+  -- A signed-in inviter is never held by it.
   DELETE FROM public.rsvp_guest_invite_log WHERE inviter_key LIKE 'ip:%';
   INSERT INTO public.rsvp_guest_invite_log(inviter_key, event_id, phone_digits)
   SELECT 'ip:' || md5(i::text) || md5(i::text), v_ev2, '1555066' || lpad(i::text, 4, '0') FROM generate_series(1, 299) i;
-  v_res := public.submit_event_rsvp(v_ev, NULL, 'Anon Four', 'anon4-t4508@example.test', '+15550309904',
-    'going', 1, '[{"phone":"+15550308300"}]'::jsonb, NULL, 'US');
-  PERFORM pg_temp.ok((v_res->'guests'->0->>'willText')::boolean IS TRUE,
-    'the 300th signed-out guest in 24 hours is texted: ' || v_res::text);
-  v_res := public.submit_event_rsvp(v_ev, NULL, 'Anon Five', 'anon5-t4508@example.test', '+15550309905',
-    'going', 1, '[{"phone":"+15550308301"}]'::jsonb, NULL, 'US');
-  PERFORM pg_temp.ok((v_res->'guests'->0->>'willText')::boolean IS FALSE
-    AND (SELECT sms_hold FROM public.event_rsvp_guests WHERE phone = '+15550308301') = 'number_limit',
-    'the 301st signed-out guest in 24 hours is held: ' || v_res::text);
-  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.rsvp_guest_signed_out_ceiling_hits
-      WHERE hit_day = (now() AT TIME ZONE 'UTC')::date AND reported_at IS NULL),
-    'the first ceiling hold of the day is recorded for one alert');
+  v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Anon Four', 'anon4-t4508@example.test',
+    '+15550309904', 'going', 1, '[{"phone":"+15550308300"}]'::jsonb, NULL, 'US')$s$, v_ev));
+  PERFORM pg_temp.ok(v_err = 'rsvp_guest_sign_in_required',
+    'a signed-out guest at 299 signed-out texts is refused: ' || v_err);
+  INSERT INTO public.rsvp_guest_invite_log(inviter_key, event_id, phone_digits)
+  VALUES ('ip:' || repeat('f', 64), v_ev2, '15550308399');
+  v_err := pg_temp.err(format($s$SELECT public.submit_event_rsvp(%L, NULL, 'Anon Five', 'anon5-t4508@example.test',
+    '+15550309905', 'going', 1, '[{"phone":"+15550308301"}]'::jsonb, NULL, 'US')$s$, v_ev));
+  PERFORM pg_temp.ok(v_err = 'rsvp_guest_sign_in_required'
+    AND NOT EXISTS (SELECT 1 FROM public.event_rsvp_guests WHERE phone IN ('+15550308300', '+15550308301'))
+    AND (SELECT count(*) FROM public.rsvp_guest_invite_log WHERE inviter_key LIKE 'ip:%') = 300,
+    'past the ceiling a signed-out guest is refused and nothing is logged: ' || v_err);
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.rsvp_guest_signed_out_ceiling_hits
+      WHERE hit_day = (now() AT TIME ZONE 'UTC')::date),
+    'no signed-out guest reaches the ceiling, so no hold is recorded');
   v_res := public.submit_event_rsvp(v_ev, v_owner, 'Owner', 't-owner@example.test', NULL,
     'going', 3, '[{"phone":"+15550308555"},{"phone":"+15550308556"},{"phone":"+15550308302"}]'::jsonb, NULL, NULL);
   PERFORM pg_temp.ok((SELECT sms_hold IS NULL FROM public.event_rsvp_guests WHERE phone = '+15550308302'),

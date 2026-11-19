@@ -63,7 +63,8 @@
 -- fetch_user_going_rsvps, get_user_circle and biz_set_show_me_as_going from the
 -- sources named above each; drop the new #4508 functions, the two triggers
 -- (issue_4508_guest_show_me_owner_only, issue_4508_friend_going,
--- issue_4508_guest_match_is_claim) and the event_rsvp_guests_owner_read change
+-- issue_4508_guest_match_is_claim, and on events
+-- issue_4508_guests_bring_needs_plus_ones) and the event_rsvp_guests_owner_read change
 -- (restore it from 20280707324423). N-3: GRANT SELECT ON event_rsvp_guests TO
 -- anon, authenticated restores the table read. N-1: re-apply
 -- issue_4459_brand_guest_eligible and its party trigger from 20280805004459
@@ -188,6 +189,12 @@ ALTER POLICY event_rsvp_guests_owner_read ON public.event_rsvp_guests
 -- claiming, host phoneLast4, the Admin list), so none is affected. No client
 -- in the apps, Host, Admin or the website selects this table directly. A
 -- column added later is not readable by app roles until granted here.
+-- T2: nor are the account a number matched (matched_user_id) and who added
+-- the guest (invited_by_user_id): a host or inviter could otherwise read the
+-- account behind an UNCLAIMED number. Every reader that needs them is a
+-- SECURITY DEFINER function that applies the claim rule (host labels, party
+-- passes, Who's going). Row policies may still compare matched_user_id to the
+-- caller; a policy expression needs no column privilege.
 REVOKE SELECT ON TABLE public.event_rsvp_guests FROM PUBLIC, anon, authenticated;
 DO $n3_columns$
 DECLARE
@@ -197,7 +204,7 @@ BEGIN
     INTO v_cols
     FROM information_schema.columns c
    WHERE c.table_schema = 'public' AND c.table_name = 'event_rsvp_guests'
-     AND c.column_name NOT IN ('phone', 'email');
+     AND c.column_name NOT IN ('phone', 'email', 'matched_user_id', 'invited_by_user_id');
   EXECUTE format('GRANT SELECT (%s) ON public.event_rsvp_guests TO authenticated', v_cols);
 END
 $n3_columns$;
@@ -1107,6 +1114,72 @@ REVOKE ALL ON FUNCTION public.issue_4508_connect_rsvp_pair(uuid, uuid, uuid, uui
 GRANT EXECUTE ON FUNCTION public.issue_4508_connect_rsvp_pair(uuid, uuid, uuid, uuid) TO service_role;
 
 
+-- T3: drop one unclaimed guest row whose account now holds its own place:
+-- every queued text for it is closed (one the worker holds but has not handed
+-- to the provider included), its links die, the row goes (its spot frees) and
+-- the party's count follows. Unlike "This isn't me" the number is not barred:
+-- the account is on the list itself, which already refuses re-adding it.
+CREATE OR REPLACE FUNCTION public.rsvp_guest_drop(p_guest_id uuid, p_reason text)
+RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_rsvp_id uuid;
+BEGIN
+  SELECT g.rsvp_id INTO v_rsvp_id FROM public.event_rsvp_guests g
+   WHERE g.id = p_guest_id AND g.claimed_at IS NULL
+   FOR UPDATE;
+  IF NOT FOUND THEN RETURN; END IF;
+  UPDATE public.rsvp_notification_deliveries d
+     SET status = 'failed_terminal', safe_error_code = left(coalesce(p_reason, 'rsvp_guest_dropped'), 64),
+         processing_started_at = NULL, lease_id = NULL, updated_at = now()
+    FROM public.rsvp_notifications n
+   WHERE d.notification_id = n.id
+     AND n.payload->>'guestId' = p_guest_id::text
+     AND (d.status IN ('pending', 'failed_retryable', 'deferred')
+       OR (d.status = 'processing' AND d.provider_io_started_at IS NULL));
+  UPDATE public.claim_links SET revoked_at = now()
+   WHERE purpose = 'claim' AND subject_kind = 'rsvp_guest'
+     AND subject_id = p_guest_id AND revoked_at IS NULL;
+  DELETE FROM public.event_rsvp_guests WHERE id = p_guest_id;
+  UPDATE public.event_rsvps
+     SET plus_count = (SELECT count(*)::integer FROM public.event_rsvp_guests g
+                        WHERE g.rsvp_id = v_rsvp_id)
+   WHERE id = v_rsvp_id;
+END;
+$function$;
+COMMENT ON FUNCTION public.rsvp_guest_drop(uuid, text) IS
+  '#4508 T3: drops an unclaimed guest row whose account now has its own RSVP on the event (texts closed, links revoked, spot freed). The number is not barred.';
+REVOKE ALL ON FUNCTION public.rsvp_guest_drop(uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rsvp_guest_drop(uuid, text) TO service_role;
+
+-- P3-T10: "Guests can bring guests" only means something while plus-ones are
+-- on. Every writer of a published event (any Host app version, Admin, the
+-- live-edit owner) is held to it here; a draft keeps the host's choice in
+-- the wizard until it publishes, when this runs on the publishing update.
+CREATE OR REPLACE FUNCTION public.tg_issue_4508_guests_bring_needs_plus_ones()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $g$
+BEGIN
+  IF NEW.rsvp_guests_can_bring AND NEW.rsvp_allow_plus_ones IS NOT TRUE
+     AND NEW.status IS DISTINCT FROM 'draft' THEN
+    NEW.rsvp_guests_can_bring := false;
+  END IF;
+  RETURN NEW;
+END;
+$g$;
+REVOKE ALL ON FUNCTION public.tg_issue_4508_guests_bring_needs_plus_ones() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS issue_4508_guests_bring_needs_plus_ones ON public.events;
+CREATE TRIGGER issue_4508_guests_bring_needs_plus_ones
+  BEFORE INSERT OR UPDATE OF rsvp_guests_can_bring, rsvp_allow_plus_ones, status ON public.events
+  FOR EACH ROW EXECUTE FUNCTION public.tg_issue_4508_guests_bring_needs_plus_ones();
+-- Published events already in that state (none expected before release).
+UPDATE public.events SET rsvp_guests_can_bring = false
+ WHERE rsvp_guests_can_bring AND rsvp_allow_plus_ones IS NOT TRUE
+   AND status IS DISTINCT FROM 'draft';
+
 -- ---------------------------------------------------------------------------
 -- 5. submit_event_rsvp (20281119004508, from 20271215004063 lines 500-772).
 --    Unchanged: signature, grants, the event and #1902 gates, #1857 phone
@@ -1168,13 +1241,21 @@ DECLARE
   v_prior_id    uuid;
   v_release_key text;
   v_hold        text;
-  -- R-1: a signed-out caller is never told whether a number is already on
-  -- this event's list (by number or by its account) or was released on it.
-  -- Such a guest is answered exactly like a new number (v_quiet): counted,
-  -- but no row and no text. A signed-in caller keeps the specific refusals.
-  v_quiet       boolean;
-  v_signed_out_guests jsonb := '[]'::jsonb;
+  -- T3 / P3-T11: who must be told about a guest row this submit removed
+  -- (public-submit-rsvp sends the notices and strips them from its answer).
+  v_notices     jsonb := '[]'::jsonb;
+  v_doomed uuid[] := '{}';
 BEGIN
+  -- T1: adding a plus-one needs a signed-in account. A caller without one
+  -- who sends any guest is refused before anything (the event, a number, the
+  -- list) is read, with one answer that cannot depend on the numbers sent.
+  -- A signed-out RSVP without guests is unchanged; not_going carries none.
+  IF p_user_id IS NULL AND p_rsvp_status IS DISTINCT FROM 'not_going'
+     AND (COALESCE(p_plus_count, 0) > 0
+       OR (jsonb_typeof(p_guests) = 'array' AND jsonb_array_length(p_guests) > 0)) THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'rsvp_guest_sign_in_required';
+  END IF;
+
   -- 1. Load + gate the event (FOR UPDATE serializes concurrent submits).
   SELECT * INTO v_event FROM public.events WHERE id = p_event_id FOR UPDATE;
   IF NOT FOUND
@@ -1362,9 +1443,8 @@ BEGIN
              AND regexp_replace(coalesce(g.phone, ''), '\D', '', 'g') = v_digits) THEN
           RAISE EXCEPTION 'rsvp_guest_duplicate' USING ERRCODE = '22023';
         END IF;
-        -- R-1: signed out, a released number is answered like a new one below.
-        IF p_user_id IS NOT NULL
-           AND public.rsvp_guest_number_barred(p_event_id, v_digits, v_release_key) THEN
+        -- T1: only a signed-in inviter reaches this (guests need an account).
+        IF public.rsvp_guest_number_barred(p_event_id, v_digits, v_release_key) THEN
           RAISE EXCEPTION 'rsvp_guest_released' USING ERRCODE = '22023';
         END IF;
         v_seen := v_seen || v_digits;
@@ -1388,6 +1468,45 @@ BEGIN
       JOIN public.event_rsvps r ON r.id = g.rsvp_id
      WHERE r.event_id = p_event_id AND r.user_id = p_user_id
        AND g.brought_by_guest_id IS NOT NULL;
+  END IF;
+
+  -- T3: one person, one place. An account that RSVPs on its own (going or
+  -- maybe) while a plus-one row in another party on this event is matched to
+  -- it and still UNCLAIMED: their own RSVP wins. That guest row is dropped
+  -- (spot freed, texts stopped, link dead) before capacity is counted, and
+  -- the inviter is told (v_notices). A CLAIMED guest pass already is their
+  -- place, so a first own RSVP is refused; an own RSVP that already exists
+  -- may still be changed. rsvp_guest_claim takes the same event lock, so a
+  -- claim and an own RSVP for one account can never both land.
+  IF p_user_id IS NOT NULL AND p_rsvp_status <> 'not_going' THEN
+    IF v_prior_id IS NULL AND EXISTS (
+      SELECT 1 FROM public.event_rsvp_guests g
+        JOIN public.event_rsvps r ON r.id = g.rsvp_id
+       WHERE r.event_id = p_event_id AND g.matched_user_id = p_user_id
+         AND g.claimed_at IS NOT NULL AND r.rsvp_status <> 'not_going') THEN
+      RAISE EXCEPTION 'rsvp_guest_has_pass' USING ERRCODE = '22023';
+    END IF;
+    FOR v_guest_id IN
+      SELECT g.id FROM public.event_rsvp_guests g
+        JOIN public.event_rsvps r ON r.id = g.rsvp_id
+       WHERE r.event_id = p_event_id AND g.matched_user_id = p_user_id
+         AND g.claimed_at IS NULL AND r.id IS DISTINCT FROM v_prior_id
+       ORDER BY g.id
+    LOOP
+      v_notices := v_notices || COALESCE((
+        SELECT jsonb_build_array(jsonb_build_object(
+                 'kind', 'guest_has_own_rsvp',
+                 'userId', n.inviter_user_id,
+                 'guestId', g.id,
+                 'eventId', p_event_id,
+                 'eventTitle', v_event.title,
+                 'phoneLast4', CASE WHEN g.added_from_friend OR g.phone IS NULL THEN NULL
+                   ELSE right(regexp_replace(g.phone, '\D', '', 'g'), 4) END))
+          FROM public.event_rsvp_guests g
+         CROSS JOIN LATERAL public.rsvp_guest_inviter_names(g.id) n
+         WHERE g.id = v_guest_id AND n.inviter_user_id IS NOT NULL), '[]'::jsonb);
+      PERFORM public.rsvp_guest_drop(v_guest_id, 'rsvp_guest_has_own_rsvp');
+    END LOOP;
   END IF;
 
   -- 4. Resolve approval + attendance (UNCHANGED from ORCH-1150 maybe version).
@@ -1457,20 +1576,42 @@ BEGIN
   --    and texts survive a re-submit); a guest no longer listed is removed; a
   --    new guest is added. Guests a claimed guest brought stay unless the
   --    party is no longer going or maybe.
-  DELETE FROM public.event_rsvp_guests g
+  --    P3-T11: a removed guest who has CLAIMED their pass (and anyone such a
+  --    guest brought, removed with them) is told, as "Can't go" already
+  --    removes claimed guests: the inviter may remove, the guest hears of it.
+  SELECT COALESCE(array_agg(g.id), '{}') INTO v_doomed
+    FROM public.event_rsvp_guests g
    WHERE g.rsvp_id = v_existing_id
      AND (v_status = 'not_going'
        OR (g.brought_by_guest_id IS NULL
          AND NOT (regexp_replace(coalesce(g.phone, ''), '\D', '', 'g') = ANY (v_seen))
          AND NOT coalesce(g.added_from_friend AND g.matched_user_id = ANY (v_seen_users), false)));
+  IF cardinality(v_doomed) > 0 THEN
+    v_notices := v_notices || COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'kind', 'guest_pass_removed',
+               'userId', g.matched_user_id,
+               'guestId', g.id,
+               'eventId', p_event_id,
+               'eventTitle', v_event.title,
+               'inviterName', n.label) ORDER BY g.id)
+        FROM public.event_rsvp_guests g
+       CROSS JOIN LATERAL public.rsvp_guest_inviter_names(g.id) n
+       WHERE g.claimed_at IS NOT NULL AND g.matched_user_id IS NOT NULL
+         AND (g.id = ANY (v_doomed)
+           OR g.brought_by_guest_id = ANY (v_doomed))), '[]'::jsonb);
+    DELETE FROM public.event_rsvp_guests g WHERE g.id = ANY (v_doomed);
+  END IF;
 
   v_inviter_key := public.rsvp_guest_inviter_key(p_user_id);
   -- R-14: hold every listed number's lock until commit before any invite is
   -- counted, so concurrent submits on other events see each other's adds.
   PERFORM public.rsvp_guest_lock_numbers(v_seen);
-  -- N-8: then the signed-out ceiling's lock, so it is counted atomically.
-  IF p_user_id IS NULL AND jsonb_array_length(v_norm) > 0 THEN
-    PERFORM public.rsvp_guest_lock_signed_out_ceiling();
+  -- P3-T6: then the inviter's own lock, held to commit, so two submits by one
+  -- inviter on events of different brands count each other's numbers against
+  -- the 20-a-day cap. Always taken after the number locks (no deadlock).
+  IF jsonb_array_length(v_norm) > 0 THEN
+    PERFORM pg_advisory_xact_lock(45082, hashtext(v_inviter_key));
   END IF;
 
   FOR v_guest IN SELECT * FROM jsonb_array_elements(v_norm) LOOP
@@ -1498,78 +1639,38 @@ BEGIN
       v_guest_id := v_kept.id;
       v_qr := v_kept.qr_code;
     ELSE
-      -- R-1: signed in, a number or account already on the list (or a second
-      -- number of an account already in this party) is refused by name.
-      -- Signed out it is answered like a new number (v_quiet below).
-      v_quiet := false;
+      -- A number or account already on the list (or a second number of an
+      -- account already in this party) is refused by name. T1: only a
+      -- signed-in inviter gets here; the signed-out "answer it like a new
+      -- number" path is gone with signed-out guests.
       IF v_digits IS NOT NULL
          AND public.rsvp_number_on_event_list(p_event_id, v_digits, v_existing_id) THEN
-        IF p_user_id IS NOT NULL THEN
-          RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
-        END IF;
-        v_quiet := true;
+        RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
       END IF;
-      IF NOT v_quiet AND p_user_id IS NULL AND v_digits IS NOT NULL
-         AND public.rsvp_guest_number_barred(p_event_id, v_digits, v_release_key) THEN
-        v_quiet := true;
+      IF v_friend IS NOT NULL THEN
+        v_match := v_friend;
+      ELSE
+        -- #4508 0.2: never the primary's own account.
+        v_match := NULLIF(public.biz_resolve_verified_user(v_gemail, v_gphone), p_user_id);
       END IF;
-      v_match := NULL;
-      IF NOT v_quiet THEN
-        IF v_friend IS NOT NULL THEN
-          v_match := v_friend;
-        ELSE
-          -- #4508 0.2: never the primary's own account.
-          v_match := NULLIF(public.biz_resolve_verified_user(v_gemail, v_gphone), p_user_id);
-        END IF;
-        IF v_match IS NOT NULL
-           AND public.rsvp_user_on_event_list(p_event_id, v_match, v_existing_id) THEN
-          IF p_user_id IS NOT NULL THEN
-            RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
-          END IF;
-          v_quiet := true;
-        ELSIF v_match IS NOT NULL AND EXISTS (
-          SELECT 1 FROM public.event_rsvp_guests g
-           WHERE g.rsvp_id = v_existing_id AND g.matched_user_id = v_match) THEN
-          IF p_user_id IS NOT NULL THEN
-            RAISE EXCEPTION 'rsvp_guest_duplicate' USING ERRCODE = '22023';
-          END IF;
-          v_quiet := true;
-        END IF;
+      IF v_match IS NOT NULL
+         AND public.rsvp_user_on_event_list(p_event_id, v_match, v_existing_id) THEN
+        RAISE EXCEPTION 'rsvp_guest_already_listed' USING ERRCODE = '22023';
+      ELSIF v_match IS NOT NULL AND EXISTS (
+        SELECT 1 FROM public.event_rsvp_guests g
+         WHERE g.rsvp_id = v_existing_id AND g.matched_user_id = v_match) THEN
+        RAISE EXCEPTION 'rsvp_guest_duplicate' USING ERRCODE = '22023';
       END IF;
-      -- R-4 / N-8: past the signed-out daily ceiling the guest is held, not
-      -- texted (counted under the ceiling lock; the first hold of a day is
-      -- recorded for one ops alert).
+      -- Past the per-number limit the guest is held, not texted.
       v_hold := CASE
         WHEN v_digits IS NULL THEN 'no_phone'
         WHEN public.rsvp_guest_number_over_limit(v_digits) THEN 'number_limit'
-        WHEN p_user_id IS NULL
-             AND public.rsvp_guest_signed_out_ceiling_holds() THEN 'number_limit'
       END;
-      -- Every new number counts against the caps, a quiet one included, so
-      -- the caps cannot tell the two apart either.
       IF v_digits IS NOT NULL THEN
         INSERT INTO public.rsvp_guest_invite_log(inviter_key, event_id, phone_digits)
         VALUES (v_inviter_key, p_event_id, v_digits);
       END IF;
       v_new_count := v_new_count + 1;
-      IF p_user_id IS NULL THEN
-        -- R-1 / R-2: what a signed-out caller is told, the same for a quiet
-        -- guest and a new one: the last four digits they typed and whether a
-        -- text will go (the per-number limit, the ceiling, or an opt-out).
-        v_signed_out_guests := v_signed_out_guests || jsonb_build_array(jsonb_build_object(
-          'guestId', NULL,
-          'phoneLast4', right(v_digits, 4),
-          'onMingla', false,
-          'displayName', NULL,
-          'claimed', false,
-          'broughtByGuest', false,
-          'addedFromFriend', false,
-          'willText', v_hold IS NULL AND NOT public.rsvp_guest_number_suppressed(v_gphone),
-          'notTextedReason', NULL));
-      END IF;
-      IF v_quiet THEN
-        CONTINUE;
-      END IF;
       INSERT INTO public.event_rsvp_guests (rsvp_id, name, email, phone, phone_country_iso,
         matched_user_id, invited_by_user_id, added_from_friend, sms_hold)
       VALUES (v_existing_id, v_gname, v_gemail, v_gphone, v_gphone_country_iso,
@@ -1642,13 +1743,6 @@ BEGIN
       WHEN public.rsvp_guest_number_suppressed(g.phone) THEN 'suppressed'
     END AS reason) w
    WHERE g.rsvp_id = v_existing_id;
-  -- R-1: a signed-out caller's party is always new (#4063 W0), so every guest
-  -- in it was answered in the loop, in the order sent, with no guest id: a
-  -- guest id (or the invite link minted from it) would tell a new guest from
-  -- a quiet one.
-  IF p_user_id IS NULL THEN
-    v_guests_out := v_signed_out_guests;
-  END IF;
 
   RETURN jsonb_build_object(
     'rsvpId', v_existing_id,
@@ -1656,14 +1750,17 @@ BEGIN
     'approvalStatus', v_approval,
     'capacityFull', (v_status = 'waitlisted'),
     'confirmationToken', v_primary_qr,
-    'guests', v_guests_out
+    'guests', v_guests_out,
+    -- T3 / P3-T11: in-app notices for public-submit-rsvp to send (it strips
+    -- this key from its answer).
+    'guestNotices', v_notices
   );
 END;
 $$;
 
 COMMENT ON FUNCTION public.submit_event_rsvp(
   uuid, uuid, text, text, text, text, integer, jsonb, text, text
-) IS '#4063: an anonymous submission never changes an RSVP that already exists for that email. I-4063-RSVP-SUBMIT-GUARD. #4508: number-only guests, server plus-one limit, own/duplicate/listed/released numbers refused, 20 guest numbers per inviter per 24h, guest rows kept across re-submits.';
+) IS '#4063: an anonymous submission never changes an RSVP that already exists for that email. I-4063-RSVP-SUBMIT-GUARD. #4508: guests need a signed-in inviter (rsvp_guest_sign_in_required); number-only guests, server plus-one limit, own/duplicate/listed/released numbers refused, 20 guest numbers per inviter per 24h (serialized per inviter), guest rows kept across re-submits; an own RSVP replaces an unclaimed guest row of the same account.';
 
 REVOKE ALL ON FUNCTION public.submit_event_rsvp(
   uuid, uuid, text, text, text, text, integer, jsonb, text, text
@@ -1889,13 +1986,23 @@ DECLARE
   v_inviter record;
   v_name text := NULLIF(btrim(coalesce(p_name, '')), '');
   v_friend jsonb;
+  v_guest_id uuid;
 BEGIN
   IF p_user_id IS NULL THEN RAISE EXCEPTION 'invalid_claim' USING ERRCODE = '22023'; END IF;
   IF v_name IS NOT NULL AND length(v_name) > 120 THEN
     RAISE EXCEPTION 'rsvp_guest_name_invalid' USING ERRCODE = '22023';
   END IF;
+  -- T3: the event row first (the lock order submit_event_rsvp and
+  -- rsvp_guest_bring use), so a claim and the same account's own RSVP on the
+  -- event run one after the other and the second sees the first.
+  v_guest_id := public.rsvp_guest_for_code(p_code);
+  PERFORM 1 FROM public.events e
+   WHERE e.id = (SELECT r.event_id FROM public.event_rsvp_guests g
+                   JOIN public.event_rsvps r ON r.id = g.rsvp_id
+                  WHERE g.id = v_guest_id)
+   FOR UPDATE;
   SELECT * INTO v_guest FROM public.event_rsvp_guests
-   WHERE id = public.rsvp_guest_for_code(p_code)
+   WHERE id = v_guest_id
    FOR UPDATE;
   IF NOT FOUND THEN
     IF EXISTS (SELECT 1 FROM public.rsvp_guest_released_codes rc
@@ -1924,8 +2031,18 @@ BEGIN
   IF p_user_id = v_rsvp.user_id OR p_user_id = v_inviter.inviter_user_id THEN
     RETURN jsonb_build_object('outcome', 'own_party');
   END IF;
-  IF public.rsvp_user_on_event_list(v_rsvp.event_id, p_user_id, NULL)
-     AND v_guest.matched_user_id IS DISTINCT FROM p_user_id THEN
+  -- T3: one person, one place. The claimer's own RSVP (or another guest row
+  -- of theirs) already on this event's list refuses the claim, also when
+  -- this very row was matched to them at submit; only this row is ignored.
+  IF EXISTS (
+       SELECT 1 FROM public.event_rsvps r
+        WHERE r.event_id = v_rsvp.event_id AND r.user_id = p_user_id
+          AND r.rsvp_status <> 'not_going')
+     OR EXISTS (
+       SELECT 1 FROM public.event_rsvp_guests g
+         JOIN public.event_rsvps r ON r.id = g.rsvp_id
+        WHERE r.event_id = v_rsvp.event_id AND g.matched_user_id = p_user_id
+          AND g.id <> v_guest.id AND r.rsvp_status <> 'not_going') THEN
     RETURN jsonb_build_object('outcome', 'already_on_list');
   END IF;
   IF v_guest.added_from_friend THEN
@@ -1975,7 +2092,7 @@ REVOKE ALL ON FUNCTION public.rsvp_guest_claim(uuid, text, text) FROM PUBLIC, an
 GRANT EXECUTE ON FUNCTION public.rsvp_guest_claim(uuid, text, text) TO service_role;
 
 -- Amendment 4: the live match under the number field.
--- P1-1: a signed-out caller learns only whether the number is valid. A
+-- T1: a signed-out caller is refused (rsvp_guest_sign_in_required). A
 -- signed-in caller learns whether it is theirs and, when it belongs to an
 -- account (blocks hide it), that account's public name. alreadyOnList and
 -- released are answered only for an event the caller can RSVP to now.
@@ -1992,11 +2109,13 @@ DECLARE
   v_open boolean;
   v_party uuid;
 BEGIN
+  -- T1: adding a plus-one needs a signed-in account, so a caller without one
+  -- is refused before the number is read at all.
+  IF p_viewer IS NULL THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'rsvp_guest_sign_in_required';
+  END IF;
   IF v_phone !~ '^\+[1-9][0-9]{7,14}$' THEN
     RETURN jsonb_build_object('valid', false);
-  END IF;
-  IF p_viewer IS NULL THEN
-    RETURN jsonb_build_object('valid', true);
   END IF;
   v_digits := regexp_replace(v_phone, '\D', '', 'g');
   v_open := public.rsvp_event_open_for_viewer(p_event_id, p_viewer);
@@ -2128,7 +2247,9 @@ BEGIN
   IF v_guest.matched_user_id IS DISTINCT FROM p_user_id OR v_guest.claimed_at IS NULL THEN
     RETURN jsonb_build_object('outcome', 'not_your_pass');
   END IF;
-  IF NOT v_event.rsvp_guests_can_bring THEN
+  -- P3-T10: plus-ones switched off means nobody brings anyone, whatever the
+  -- stored "guests can bring guests" says.
+  IF NOT v_event.rsvp_guests_can_bring OR v_event.rsvp_allow_plus_ones IS NOT TRUE THEN
     RETURN jsonb_build_object('outcome', 'not_allowed');
   END IF;
   IF v_event.deleted_at IS NOT NULL OR v_event.status NOT IN ('scheduled', 'live')
@@ -2165,8 +2286,10 @@ BEGIN
     END IF;
   END IF;
 
-  -- R-14: the number's lock before its invites are counted.
+  -- R-14: the number's lock before its invites are counted; P3-T6: then the
+  -- inviter's, as in submit_event_rsvp.
   PERFORM public.rsvp_guest_lock_numbers(ARRAY[v_digits]);
+  PERFORM pg_advisory_xact_lock(45082, hashtext(v_key));
   INSERT INTO public.event_rsvp_guests (rsvp_id, phone, phone_country_iso,
     matched_user_id, invited_by_user_id, brought_by_guest_id, sms_hold)
   VALUES (v_rsvp.id, v_phone, p_phone_country_iso, v_match, p_user_id, v_guest.id,
@@ -3784,11 +3907,15 @@ BEGIN
       theme_gradient_override=CASE WHEN p_payload?'theme_gradient_override' THEN NULLIF(p_payload->>'theme_gradient_override','') ELSE v.theme_gradient_override END,
       currency=COALESCE(NULLIF(upper(COALESCE(p_payload->>'currency',v_patch->>'currency')),''),v.currency),updated_at=now()
     WHERE id=p_event_id;
-  ELSE
+  ELSIF (p_payload-'rsvpGuestsCanBring')<>'{}'::jsonb THEN
+    -- T5: "Guests can bring guests" is a host-only setting, written below. It
+    -- never reaches the live-edit owner, so it is never part of the change
+    -- that tells going guests "event updated"; a save of that setting alone
+    -- skips the live edit (and its notice) entirely.
     IF length(btrim(COALESCE(p_reason,''))) NOT BETWEEN 10 AND 200 THEN
       RAISE EXCEPTION 'rsvp_edit_reason_invalid' USING ERRCODE='22023';
     END IF;
-    v_live_payload:=p_payload||jsonb_build_object('title',COALESCE(NULLIF(p_payload->>'title',''),v.title));
+    v_live_payload:=(p_payload-'rsvpGuestsCanBring')||jsonb_build_object('title',COALESCE(NULLIF(p_payload->>'title',''),v.title));
     v_update_result:=public.biz_update_live_rsvp(p_event_id,v_live_payload,p_reason);
     UPDATE public.events SET
       party_types=CASE WHEN p_payload?'partyTypes' THEN ARRAY(SELECT jsonb_array_elements_text(p_payload->'partyTypes')) ELSE party_types END,
@@ -3806,6 +3933,9 @@ BEGIN
         ELSE coordinate_precision END,
       cover_media_gallery=CASE WHEN p_payload?'cover_media_gallery' THEN p_payload->'cover_media_gallery' ELSE cover_media_gallery END
     WHERE id=p_event_id;
+  ELSE
+    -- T5: only the host setting changed on a published RSVP; nobody is told.
+    v_update_result:=jsonb_build_object('ok',true,'notified_count',0);
   END IF;
   -- #4508 C6: the host's "Bring someone too" setting, on a draft or a live
   -- RSVP alike. Absent key keeps the stored value.
@@ -3899,6 +4029,39 @@ REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source(
   uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_resolve_brand_person_source(
   uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- J ad_list_audience_refresh (#4238, 20280318004238 lines 278-670, its only
+-- writer). An UNCLAIMED plus-one is in no brand ad audience: their number
+-- (typed by the inviter, or a friend pick's resolved from their own account)
+-- was never theirs to give a brand. They enter on claim, like any guest. The
+-- same live-definition patch as S2/S3 above: only the guest arm's WHERE gains
+-- "AND g.claimed_at IS NOT NULL"; every other byte of the function is the
+-- replayed catalogue's (raises if the anchor is not there exactly once).
+-- ---------------------------------------------------------------------------
+DO $j_patch$
+DECLARE
+  v_def text;
+  v_anchor text := E'      FROM public.event_rsvp_guests g\n      JOIN public.event_rsvps r ON r.id = g.rsvp_id\n      JOIN public.events e ON e.id = r.event_id\n      JOIN public.brands b ON b.id = e.brand_id\n      WHERE e.brand_id = v_a.brand_id AND r.rsvp_status = ''going'';';
+  v_new text := E'      FROM public.event_rsvp_guests g\n      JOIN public.event_rsvps r ON r.id = g.rsvp_id\n      JOIN public.events e ON e.id = r.event_id\n      JOIN public.brands b ON b.id = e.brand_id\n      WHERE e.brand_id = v_a.brand_id AND r.rsvp_status = ''going'' AND g.claimed_at IS NOT NULL;';
+BEGIN
+  SELECT pg_get_functiondef('public.ad_list_audience_refresh(uuid)'::regprocedure) INTO v_def;
+  IF position(v_new in v_def) > 0 THEN
+    RAISE NOTICE '#4508: ad_list_audience_refresh already leaves unclaimed plus-ones out; unchanged.';
+    RETURN;
+  END IF;
+  IF (length(v_def) - length(replace(v_def, v_anchor, ''))) / length(v_anchor) <> 1 THEN
+    RAISE EXCEPTION 'issue_4508_j_patch_anchor_missing';
+  END IF;
+  v_def := replace(v_def, v_anchor, v_new);
+  IF v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.ad_list_audience_refresh(%' THEN
+    RAISE EXCEPTION 'issue_4508_j_patch_failed';
+  END IF;
+  EXECUTE v_def;
+END
+$j_patch$;
+REVOKE ALL ON FUNCTION public.ad_list_audience_refresh(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ad_list_audience_refresh(uuid) TO service_role;
 
 -- S3: the ingest worker's entry point, re-created from its latest writer
 -- (20270305001770 lines 1509-1534; #1857 and #1773 re-granted it but never
