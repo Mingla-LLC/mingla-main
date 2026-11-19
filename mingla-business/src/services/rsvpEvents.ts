@@ -12,7 +12,7 @@
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
 // issue #4508 — the pure guest model by subpath (keeps the barrel out of this service).
-import { parseSubmittedGuests } from "@mingla/offering-rendering/rsvpGuestParty";
+import { parseSubmittedGuests } from "@mingla/offering-rendering/rsvpGuestCopy";
 import {
   getStoredAdMatchData,
   getStoredClickAttribution,

@@ -128,27 +128,20 @@ import type { RsvpGuestSnapshot } from "./rsvpGuestSnapshot";
 // issue #4508 — "Who's coming with you?": a plus-one is a phone number (or a
 // friend), never a name / email / phone mini-form.
 import {
-  addPartyGuest,
-  addableFromPreview,
+  RSVP_GUEST_GETS_TEXT_AND_PASS,
   buildGuestPayload,
-  friendChips,
-  friendGuest,
   isCompleteE164,
-  numberPreview,
   partyGuestLabel,
-  removePartyGuest,
   rsvpGoingButtonLabel,
-  rsvpGuestErrorMessage,
-  searchFriends,
-  RSVP_PARTY_COPY,
-  type RsvpFriendOption,
-  type RsvpGuestLookup,
-  type RsvpGuestLookupResult,
-  type RsvpGuestPayload,
-  type RsvpPartyGuest,
-  type RsvpSubmittedGuest,
+} from "./rsvpGuestCopy";
+import type {
+  RsvpFriendOption,
+  RsvpGuestLookup,
+  RsvpGuestLookupResult,
+  RsvpGuestPayload,
+  RsvpPartyGuest,
+  RsvpSubmittedGuest,
 } from "./rsvpGuestParty";
-import { RsvpGuestPartyBlock } from "./RsvpGuestPartyBlock";
 import type {
   RsvpAnonymousRecovery,
   RsvpConfirmationDetails,
@@ -196,6 +189,15 @@ const RsvpGoingConfirmDialog = React.lazy(
 const RsvpDetailsModal = React.lazy(() => import("./RsvpDetailsModal"));
 const RsvpChipInPanel = React.lazy(() => import("./RsvpChipInPanel"));
 const RsvpSuccessPopup = React.lazy(() => import("./RsvpSuccessPopup"));
+// issue #4508 — the "Who's coming with you?" block only mounts once the host allows
+// guests, so its code rides its own chunk instead of the eager boot payload.
+const RsvpGuestPartyBlock = React.lazy(() => import("./RsvpGuestPartyBlock"));
+// Only a refused submit needs the guest error lines, so they load on demand.
+const guestErrorLine = (code: string): Promise<string | null> =>
+  import("./rsvpGuestErrors").then(
+    (m) => m.rsvpGuestErrorMessage(code),
+    () => null,
+  );
 
 if (
   Platform.OS === "android" &&
@@ -1214,10 +1216,10 @@ export const useRsvpOfferingState = (
         const code = err instanceof Error ? err.message : String(err);
         handleAcquisitionError(code);
         if (code.includes("rsvp_full")) setServerSaidFull(true);
+        const guestLine = await guestErrorLine(code);
+        if (!isCurrent()) return;
         setErrorMsg(
-          rsvpGuestErrorMessage(code) ??
-            askForAccountPhone(code) ??
-            mapErrorCode(code),
+          guestLine ?? askForAccountPhone(code) ?? mapErrorCode(code),
         );
       } finally {
         if (isCurrent()) setSubmitting(false);
@@ -1421,10 +1423,10 @@ export const useRsvpOfferingState = (
       const code = err instanceof Error ? err.message : String(err);
       handleAcquisitionError(code);
       if (code.includes("rsvp_full")) setServerSaidFull(true);
+      const guestLine = await guestErrorLine(code);
+      if (!isCurrent()) return;
       setConfirmError(
-        rsvpGuestErrorMessage(code) ??
-          askForAccountPhone(code) ??
-          mapErrorCode(code),
+        guestLine ?? askForAccountPhone(code) ?? mapErrorCode(code),
       );
     } finally {
       if (isCurrent()) setSubmitting(false);
@@ -1779,171 +1781,56 @@ export const useRsvpOfferingState = (
     return () => clearTimeout(timer);
   }, [guestNumberE164, guestLookup, guestLookupNonce, isCurrent]);
 
-  const guestNumberPreview = useMemo(() => {
-    const phone = guestNumberE164.trim();
-    const lookup =
-      guestLookup === undefined
-        ? {
-            // No lookup on this surface: a valid number is simply invited.
-            state: "done" as const,
-            result: {
-              valid: true,
-              isYou: false,
-              onMingla: false,
-              alreadyOnList: false,
-              released: false,
-            },
-          }
-        : guestLookupState === null || guestLookupState.phone !== phone
-          ? { state: "none" as const }
-          : guestLookupState.state === "done"
-            ? { state: "done" as const, result: guestLookupState.result }
-            : { state: guestLookupState.state };
-    return numberPreview({
-      phone,
-      phoneCountryIso: guestNumberCountry,
-      party: guests,
-      ownPhones,
-      lookup,
-    });
-  }, [
-    guestNumberE164,
-    guestNumberCountry,
-    guestLookup,
-    guestLookupState,
-    guests,
-    ownPhones,
-  ]);
-  const addableGuest = addableFromPreview(guestNumberPreview);
-
-  const clearGuestNumber = (): void => {
-    setGuestNumberRaw("");
-    setGuestNumberE164("");
-    setGuestLookupState(null);
-  };
-  const addGuestFromNumber = (): void => {
-    if (submitting || addableGuest === null) return;
-    setGuests((current: RsvpPartyGuest[]) =>
-      addPartyGuest(current, addableGuest, config.plusOnesMax),
-    );
-    clearGuestNumber();
-    if (Platform.OS !== "web") {
-      AccessibilityInfo.announceForAccessibility?.(
-        `${partyGuestLabel(addableGuest)} added.`,
-      );
-    }
-  };
-  const addGuestFriend = (friend: RsvpFriendOption): void => {
-    if (submitting) return;
-    setGuests((current: RsvpPartyGuest[]) =>
-      addPartyGuest(current, friendGuest(friend), config.plusOnesMax),
-    );
-    setFriendQuery("");
-    if (Platform.OS !== "web") {
-      AccessibilityInfo.announceForAccessibility?.(
-        `${friend.displayName} added.`,
-      );
-    }
-  };
-  const removeGuest = (key: string): void => {
-    if (submitting) return;
-    setGuests((current: RsvpPartyGuest[]) => removePartyGuest(current, key));
-  };
-
-  const guestNumberInvalid =
-    guestNumberRaw.trim().length > 0 &&
-    guestNumberE164.trim().length === 0 &&
-    guestNumberRaw.replace(/\D/g, "").length >= 7;
-  const guestNumberField: React.ReactNode = renderPhoneField ? (
-    renderPhoneField({
-      role: "plus_one",
-      guestId: null,
-      index: null,
-      label: RSVP_PARTY_COPY.numberLabel,
-      testID: "issue-4508-rsvp-guest-phone",
-      countryCode: guestNumberCountry,
-      rawValue: guestNumberRaw,
-      onChangeCountry: (isoCode, resolvedE164) => {
-        setGuestNumberCountry(isoCode);
-        setGuestNumberE164(resolvedE164 ?? "");
-      },
-      onChangeRawValue: (raw, resolvedE164) => {
-        setGuestNumberRaw(raw);
-        setGuestNumberE164(resolvedE164 ?? "");
-      },
-      invalid: guestNumberInvalid,
-      errorText: guestNumberInvalid ? RSVP_PARTY_COPY.invalid : null,
-      palette,
-      disabled: submitting,
-      required: false,
-      emptyRequired: false,
-      onBlur: () => undefined,
-      disableAutofill: true,
-      onSubmitEditing: addGuestFromNumber,
-    })
-  ) : (
-    <RsvpField
-      label={RSVP_PARTY_COPY.numberLabel}
-      value={guestNumberRaw}
-      onChangeText={(value: string) => {
-        // Digits, spaces, +, brackets and dashes only: never letters.
-        const cleaned = value.replace(/[^0-9+()\-\s]/g, "");
-        setGuestNumberRaw(cleaned);
-        const compact = cleaned.replace(/[\s()\-]/g, "");
-        setGuestNumberE164(/^\+[1-9][0-9]{7,14}$/.test(compact) ? compact : "");
-      }}
-      placeholder="+1 555 123 4567"
-      palette={palette}
-      invalid={
-        guestNumberRaw.trim().length > 0 &&
-        guestNumberE164.length === 0 &&
-        guestNumberRaw.replace(/\D/g, "").length >= 8
-      }
-      invalidMsg={RSVP_PARTY_COPY.invalid}
-      keyboardType="phone-pad"
-      autoCapitalize="none"
-      disableAutofill
-      onSubmitEditing={addGuestFromNumber}
-      testID="issue-4508-rsvp-guest-phone-plain"
-      disabled={submitting}
-    />
-  );
-
-  const friendList = props.guestFriends;
-  const friendsSection =
-    isLoggedIn && friendList !== undefined
-      ? {
-          query: friendQuery,
-          onQueryChange: setFriendQuery,
-          results: searchFriends(friendList, friendQuery, guests),
-          chips: friendChips(friendList, guests),
-          loading: props.guestFriendsLoading === true,
-          error: props.guestFriendsError ?? null,
-          onRetry: props.onRetryGuestFriends ?? null,
-          onPick: addGuestFriend,
-        }
-      : null;
-
+  // The number preview, add / remove handlers, number field and friends section
+  // live in the lazily loaded guest block (RsvpGuestPartyBlock.tsx); this body
+  // keeps only the state, the debounced lookup above and the submit payload.
   const guestForms = showGuestStepper ? (
-    <RsvpGuestPartyBlock
-      palette={palette}
-      boldFamily={boldFamily}
-      max={config.plusOnesMax}
-      party={guests}
-      disabled={submitting}
-      numberField={guestNumberField}
-      preview={guestNumberPreview}
-      canAddNumber={addableGuest !== null && !submitting}
-      onAddNumber={addGuestFromNumber}
-      onRetryLookup={
-        guestLookup !== undefined
-          ? () => setGuestLookupNonce((n: number) => n + 1)
-          : null
-      }
-      onRemove={removeGuest}
-      friends={friendsSection}
-      testID="orch-1163-rsvp-guests"
-    />
+    <Suspense fallback={null}>
+      <RsvpGuestPartyBlock
+        palette={palette}
+        boldFamily={boldFamily}
+        max={config.plusOnesMax}
+        party={guests}
+        setParty={setGuests}
+        disabled={submitting}
+        numberCountry={guestNumberCountry}
+        setNumberCountry={setGuestNumberCountry}
+        numberRaw={guestNumberRaw}
+        setNumberRaw={setGuestNumberRaw}
+        numberE164={guestNumberE164}
+        setNumberE164={setGuestNumberE164}
+        lookupState={guestLookupState}
+        setLookupState={setGuestLookupState}
+        lookupEnabled={guestLookup !== undefined}
+        onRetryLookup={() => setGuestLookupNonce((n: number) => n + 1)}
+        ownPhones={ownPhones}
+        friendQuery={friendQuery}
+        setFriendQuery={setFriendQuery}
+        friendList={isLoggedIn ? props.guestFriends : undefined}
+        friendsLoading={props.guestFriendsLoading === true}
+        friendsError={props.guestFriendsError ?? null}
+        onRetryFriends={props.onRetryGuestFriends ?? null}
+        renderPhoneField={renderPhoneField}
+        renderPlainField={(plain) => (
+          <RsvpField
+            label={plain.label}
+            value={plain.value}
+            onChangeText={plain.onChangeText}
+            placeholder="+1 555 123 4567"
+            palette={palette}
+            invalid={plain.invalid}
+            invalidMsg={plain.invalidMsg}
+            keyboardType="phone-pad"
+            autoCapitalize="none"
+            disableAutofill
+            onSubmitEditing={plain.onSubmitEditing}
+            testID="issue-4508-rsvp-guest-phone-plain"
+            disabled={plain.disabled}
+          />
+        )}
+        testID="orch-1163-rsvp-guests"
+      />
+    </Suspense>
   ) : null;
 
   const errorNode =
@@ -1966,7 +1853,7 @@ export const useRsvpOfferingState = (
         guestRows={guests.map((g) => ({
           key: g.key,
           label: partyGuestLabel(g),
-          line: RSVP_PARTY_COPY.getsTextAndPass,
+          line: RSVP_GUEST_GETS_TEXT_AND_PASS,
         }))}
         submitting={submitting}
         errorText={confirmError}

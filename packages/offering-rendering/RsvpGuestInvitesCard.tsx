@@ -22,9 +22,11 @@ import {
   buildGuestInviteMessage,
   submittedGuestLabel,
   submittedGuestStatus,
-  type GuestInviteMessageInput,
-  type RsvpSubmittedGuest,
 } from "./rsvpGuestParty";
+import type {
+  GuestInviteMessageInput,
+  RsvpSubmittedGuest,
+} from "./rsvpGuestPartyModel";
 
 export interface RsvpGuestInvitesCardProps {
   palette: ThemePalette;
