@@ -30,6 +30,7 @@ import {
 import { Icon } from "../ui/Icon";
 import { BrandGroupBubbleGestures } from "./BrandGroupBubbleGestures";
 import { BrandGroupPersonAvatar } from "./BrandGroupTile";
+import { linkifyMessageText } from "../../utils/messageLinks";
 
 const AVATAR = 28;
 const TAIL = brandGroupChat.bubbleTail;
@@ -47,24 +48,44 @@ export function brandGroupBubbleCorners(
     : { borderTopRightRadius: RADIUS, borderBottomRightRadius: RADIUS, borderTopLeftRadius: top, borderBottomLeftRadius: bottom };
 }
 
+/**
+ * #4420 SC-15 / SC-16 — message text: mentions styled, http(s) and www. links
+ * tappable (underlined, in the bubble's own text colour, so they read on both
+ * bubbles), and the text selectable (web: native partial selection; phones:
+ * the menu's Select text sheet). A long-press on a link opens the message
+ * menu, never the link and never a second action.
+ */
 export function BrandGroupMessageText({
   content,
   mine,
   mentionNames,
+  onOpenLink,
+  onLongPress,
 }: {
   content: string;
   mine: boolean;
   mentionNames: readonly string[];
+  onOpenLink?: (url: string) => void;
+  onLongPress?: () => void;
 }): React.ReactElement {
   const segments = splitBrandGroupMentions(content, mentionNames);
-  if (segments.length <= 1 && !segments[0]?.mention) {
-    return <Text style={[styles.text, mine && styles.textMine]}>{content}</Text>;
-  }
   return (
-    <Text style={[styles.text, mine && styles.textMine]}>
+    <Text style={[styles.text, mine && styles.textMine]} selectable testID="brand-group-message-text">
       {segments.map((segment, index) => segment.mention ? (
         <Text key={index} style={[styles.mention, mine && styles.mentionMine]}>{segment.text}</Text>
-      ) : segment.text)}
+      ) : linkifyMessageText(segment.text).map((token, tokenIndex) => token.type === "link" && onOpenLink ? (
+        <Text
+          key={`${index}-${tokenIndex}`}
+          accessibilityRole="link"
+          accessibilityLabel={`Open link ${token.text}`}
+          onPress={() => onOpenLink(token.url)}
+          onLongPress={onLongPress ?? (() => undefined)}
+          style={[styles.link, mine && styles.textMine]}
+          testID="brand-group-message-link"
+        >
+          {token.text}
+        </Text>
+      ) : token.text))}
     </Text>
   );
 }
@@ -234,6 +255,9 @@ const styles = StyleSheet.create({
   bubbleHighlighted: { borderColor: brandGroupChat.accent, borderWidth: 2, shadowColor: brandGroupChat.accent, shadowOpacity: 0.45, shadowRadius: 8 },
   text: { color: brandGroupChat.otherText, fontSize: 15, lineHeight: 21 },
   textMine: { color: brandGroupChat.mineText },
+  // #4420 SC-15: links keep the bubble's text colour (contrast holds on both
+  // bubbles) and are underlined and heavier, never an orange field.
+  link: { color: brandGroupChat.otherText, textDecorationLine: "underline", fontWeight: "600" },
   mention: { color: brandGroupChat.mentionText, backgroundColor: brandGroupChat.mentionBg, fontWeight: "700", borderRadius: 4 },
   mentionMine: { color: brandGroupChat.mineText, backgroundColor: brandGroupChat.mentionMineBg },
   quote: { flexDirection: "row", gap: 8, padding: 8, borderRadius: 10, backgroundColor: brandGroupChat.quoteBg },

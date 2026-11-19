@@ -36,6 +36,7 @@ import { BrandGroupInboxList } from "../../src/components/messages/BrandGroupInb
 import { BrandGroupMessageMenu } from "../../src/components/messages/BrandGroupMessageMenu";
 import { BrandGroupMessageRow, BrandGroupMessageText } from "../../src/components/messages/BrandGroupMessageRow";
 import { BrandGroupTile } from "../../src/components/messages/BrandGroupTile";
+import { openMessageLink } from "../../src/components/messages/openMessageLink";
 // #4420: the Guests side of a brand's one thread is the Guest chat panel, on
 // intent through the one shared lazy chunk (never a static GroupChatPanel).
 import { LazyGroupChatPanel } from "../../src/components/groupChat/LazyGroupChatPanel";
@@ -496,6 +497,8 @@ function BrandGroupThreadScreen({
   const [peopleSheetOpen, setPeopleSheetOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [menuMessage, setMenuMessage] = useState<BrandGroupMessage | null>(null);
+  // #4420 SC-16: the Select text sheet (phones), for either side.
+  const [selectText, setSelectText] = useState<string | null>(null);
   const [planPanelOpen, setPlanPanelOpen] = useState(requestedPlan === "1" && requestedGallery !== "1");
   // #4270: on wide web the rail opens on the plan, unless the address asks for
   // the gallery. A group with no plan (support access) shows People instead.
@@ -578,6 +581,13 @@ function BrandGroupThreadScreen({
   const showError = useCallback((message: string): void => {
     setToast({ visible: true, message, kind: "error" });
   }, []);
+  // #4420 SC-15: a link in a message opens in the in-app browser (phones) or a
+  // new tab (web); a refused or failed open says so.
+  const openLink = useCallback((url: string): void => {
+    void openMessageLink(url).catch((cause: unknown) => {
+      showError(cause instanceof Error ? cause.message : "Couldn't open that link.");
+    });
+  }, [showError]);
   const liveMessageIds = useMemo(
     () => messages.filter((message) => message.message_type !== "system" && message.message_type !== "brand_enquiry_card").map((message) => message.id),
     [messages],
@@ -863,6 +873,9 @@ function BrandGroupThreadScreen({
       case "copy":
         void copyMessage(message);
         return;
+      case "select_text":
+        setSelectText(message.content);
+        return;
       case "signal":
         setSignalSourceId(message.id);
         return;
@@ -1011,6 +1024,7 @@ function BrandGroupThreadScreen({
       hasText: menuMessage.content.trim().length > 0 && !menuMessage.file_id,
       canSupport,
       selected: selectedIds.includes(menuMessage.id),
+      canSelectText: Platform.OS !== "web",
     })
     : [];
   const myMenuReactions = menuMessage
@@ -1125,6 +1139,16 @@ function BrandGroupThreadScreen({
             sendConfirmed: guestSendConfirmed,
             onSendConfirmed: () => setGuestSendConfirmed(true),
             onRead: () => void refreshGuestActivity(),
+            // #4420 SC-15 / SC-16: guest messages get the same links and Select text.
+            renderText: (content: string, mine: boolean) => (
+              <BrandGroupMessageText
+                content={content}
+                mine={mine}
+                mentionNames={[]}
+                onOpenLink={openLink}
+                onLongPress={Platform.OS === "web" ? undefined : () => setSelectText(content)}
+              />
+            ),
           }}
         />
       ) : (
@@ -1229,7 +1253,7 @@ function BrandGroupThreadScreen({
                     >
                       {isMedia && mediaItem ? <BrandGroupMediaBubble item={mediaItem} name={message.file_name} sizeBytes={message.file_size} mine={mine} renderThumbnail={renderMediaThumbnail} thumbStyle={styles.mediaBubbleThumb} footerStyle={styles.mediaBubbleFooter} mineFooterStyle={styles.messageTextMine} /> : <><View style={[styles.fileCardIcon, mine && styles.fileCardIconMine]}><Icon name="notebook" size={20} color={mine ? brandGroupChat.mineText : color.accent} /></View><View style={styles.fileCardCopy}><Text style={[styles.fileName, mine && styles.messageTextMine]} numberOfLines={2}>{message.file_name}</Text><Text style={[styles.fileMeta, mine && styles.fileMetaMine]}>{t("chat.file_meta", { size: formatFileSize(message.file_size, (key, variables) => t(key, variables)) })}</Text></View></>}
                     </Pressable>
-                  ) : <BrandGroupMessageText content={message.content} mine={mine} mentionNames={mentionNames} />}
+                  ) : <BrandGroupMessageText content={message.content} mine={mine} mentionNames={mentionNames} onOpenLink={openLink} onLongPress={() => setMenuMessage(message)} />}
                 />
               </View>
             );
@@ -1462,6 +1486,37 @@ function BrandGroupThreadScreen({
         </Modal>
       ) : null}
 
+      {selectText !== null ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setSelectText(null)}>
+          {/* #4420 SC-16: the message in a read-only field the OS lets you
+              partly select and copy. Close button, backdrop and back all
+              dismiss it. */}
+          <View style={styles.optionsScrim}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close select text" style={StyleSheet.absoluteFill} onPress={() => setSelectText(null)} />
+            <View style={styles.selectSheet} testID="brand-group-select-text">
+              <View style={styles.selectSheetHead}>
+                <Text style={styles.selectSheetTitle}>Select text</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={6} onPress={() => setSelectText(null)} style={styles.iconButton} testID="brand-group-select-text-close">
+                  <Icon name="close" size={18} color={brandGroupChat.textPrimary} />
+                </Pressable>
+              </View>
+              <Text style={styles.selectSheetHint}>Press and hold to select the part you want, then Copy.</Text>
+              <TextInput
+                value={selectText}
+                onChangeText={() => undefined}
+                multiline
+                scrollEnabled
+                showSoftInputOnFocus={false}
+                caretHidden
+                contextMenuHidden={false}
+                accessibilityLabel="Message text, read only"
+                style={styles.selectSheetField}
+                testID="brand-group-select-text-field"
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
       <BrandGroupMessageMenu
         message={menuMessage}
         actions={menuActions}
@@ -1620,6 +1675,11 @@ const styles = StyleSheet.create({
   sendButton: { width: size.btn.phone, height: size.btn.phone, borderRadius: radius.full, alignItems: "center", justifyContent: "center", backgroundColor: color.paper },
   sendButtonDisabled: { backgroundColor: color.card2 },
   optionsScrim: { flex: 1, alignItems: "flex-end", paddingTop: 64, paddingHorizontal: space[4], backgroundColor: brandGroupChat.scrim },
+  selectSheet: { alignSelf: "stretch", maxHeight: "80%", gap: space[2], padding: space[5], paddingBottom: space[7], borderRadius: 28, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
+  selectSheetHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  selectSheetTitle: { color: brandGroupChat.textPrimary, fontSize: 17, fontWeight: "700" },
+  selectSheetHint: { color: brandGroupChat.textSoft, fontSize: 13 },
+  selectSheetField: { minHeight: 120, maxHeight: 360, padding: space[3], borderRadius: 16, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.input, color: brandGroupChat.textPrimary, fontSize: 16, lineHeight: 22, textAlignVertical: "top" },
   optionsCard: { width: 240, overflow: "hidden", borderRadius: 16, borderWidth: 1, borderColor: brandGroupChat.hairline, backgroundColor: brandGroupChat.surface },
   optionRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
   optionRowPressed: { backgroundColor: brandGroupChat.strip },

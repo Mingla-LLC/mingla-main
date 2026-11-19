@@ -86,6 +86,8 @@ export interface GroupChatThreadBinding {
   onSendConfirmed: () => void;
   /** The guest side was read (the inbox and switcher badges refresh). */
   onRead?: () => void;
+  /** #4420 SC-15: message text with tappable links, from the thread. */
+  renderText?: (content: string, mine: boolean) => React.ReactNode;
 }
 
 export interface GroupChatPanelProps {
@@ -476,15 +478,20 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
               ) : null}
               {hasImage ? <GroupChatMessageMedia message={message} mine={mine} /> : null}
               {hasCaption ? (
-                <Text
-                  style={[
-                    styles.messageText,
-                    mine && styles.messageTextMine,
-                    hasImage && styles.messageTextWithImage,
-                  ]}
-                >
-                  {message.content}
-                </Text>
+                thread?.renderText ? (
+                  <View style={hasImage ? styles.messageTextWithImage : null}>{thread.renderText(message.content, mine)}</View>
+                ) : (
+                  <Text
+                    selectable
+                    style={[
+                      styles.messageText,
+                      mine && styles.messageTextMine,
+                      hasImage && styles.messageTextWithImage,
+                    ]}
+                  >
+                    {message.content}
+                  </Text>
+                )
               ) : null}
               <View style={styles.messageMetaRow}>
                 <Text style={styles.messageMeta}>
