@@ -160,6 +160,25 @@ const LazyVenueAvailabilityPricingModule = React.lazy(async () => {
   const mod = await import("./features/VenueAvailabilityPricingModule");
   return { default: mod.VenueAvailabilityPricingModule };
 });
+// #4490 P2 — Offers (with the Entry editor), Today, Check-in and the Overview
+// day header, each its own host-owned lazy boundary (Sheet, Modal, pickers,
+// the QR encoder and the web camera never reach the eager shell).
+const LazyVenueOffersModule = React.lazy(async () => {
+  const mod = await import("./features/offers/VenueOffersModule");
+  return { default: mod.VenueOffersModule };
+});
+const LazyVenueTodayModule = React.lazy(async () => {
+  const mod = await import("./features/today/VenueTodayModule");
+  return { default: mod.VenueTodayModule };
+});
+const LazyVenueCheckInModule = React.lazy(async () => {
+  const mod = await import("./features/checkin/VenueCheckInModule");
+  return { default: mod.VenueCheckInModule };
+});
+const LazyVenueTodayOverview = React.lazy(async () => {
+  const mod = await import("./features/today/VenueTodayOverview");
+  return { default: mod.VenueTodayOverview };
+});
 
 /** All built features on: scoped staff's loading frame never shows "no pages". */
 const PENDING_SCOPED_FEATURES = featureSetFrom(
@@ -202,6 +221,8 @@ export interface VenueSuiteShellProps {
    * the Reviews module is.
    */
   renderReviewsSummary?: (openReviews: () => void) => React.ReactNode;
+  /** #4490 — `&item=<id>`: open that offer on arrival (with `?module=offers`). */
+  initialItemId?: string | null;
 }
 
 export function VenueSuiteShell({
@@ -212,6 +233,7 @@ export function VenueSuiteShell({
   overviewHeader = null,
   reviewsPanel = null,
   renderReviewsSummary,
+  initialItemId = null,
 }: VenueSuiteShellProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const insets = useSafeAreaInsets();
@@ -232,6 +254,7 @@ export function VenueSuiteShell({
   // fails after a successful load keeps the last `data`, so that answer holds.)
   const settingsResolved = settingsQuery.data !== undefined;
   const venueAccessQuery = useMyVenueAccess(venueId);
+  // #4490 P2 — a brand scanner reads as scoped with venue.check_in (useMyVenueAccess).
   const venueAccess = venueAccessQuery.data ?? PENDING_VENUE_ACCESS;
 
   // #4490 — the nav derives from venue_features (I-4490-VENUE-FEATURES-GATE-
@@ -301,6 +324,7 @@ export function VenueSuiteShell({
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
   const availabilityRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
   const settingsRef = useRef<VenueSettingsLeaveHandle | null>(null);
+  const offersRef = useRef<VenueModuleLeaveHandle | null>(null);
   const leaveHandlesRef = useRef<
     Partial<Record<VenueModule, VenueModuleLeaveHandle>>
   >({});
@@ -323,6 +347,7 @@ export function VenueSuiteShell({
         return leaveHandlesRef.current[module] ?? null;
       }
       if (module === "settings") return settingsRef.current;
+      if (module === "offers") return offersRef.current;
       return null;
     },
     [],
@@ -620,8 +645,22 @@ export function VenueSuiteShell({
       // #4420 B8 + round-3 item 12 — the invitation and the page's Local
       // reviews panel now scroll WITH the dashboard (as its header) instead of
       // being pinned above it, and the invitation is one compact row.
+      const sellsOffers = features.entry.enabled;
       const header = (
         <>
+          {sellsOffers && !venueAccess.scoped ? (
+            <React.Suspense fallback={null}>
+              <LazyVenueTodayOverview
+                brandId={brandId}
+                venueId={venueId}
+                activeSpaceCount={featuresQuery.data?.activeSpaceCount ?? 0}
+                canManageOffers={!venueAccess.scoped || scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities)}
+                onOpenModule={(next) => {
+                  if (visibleModules.includes(next)) selectModule(next);
+                }}
+              />
+            </React.Suspense>
+          ) : null}
           {showReservationsInvite ? (
             <GlassCard
               variant="base"
@@ -693,6 +732,55 @@ export function VenueSuiteShell({
           venueId={venueId}
           hoursLiveInAvailability={usesSpaces && visibleModules.includes("availability")}
         />
+      );
+    }
+    // #4490 P2 — Offers (Entry editor inside), Today and Check-in.
+    const openModule = (next: VenueModule): void => {
+      if (visibleModules.includes(next)) selectModule(next);
+    };
+    if (activeModule === "offers") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueOffersModule
+            ref={offersRef}
+            brandId={brandId}
+            venueId={venueId}
+            onOpenModule={openModule}
+            initialOfferId={initialModule === "offers" ? initialItemId : null}
+          />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "today") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueTodayModule brandId={brandId} venueId={venueId} onOpenModule={openModule} />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "checkin") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueCheckInModule brandId={brandId} venueId={venueId} />
+        </React.Suspense>
       );
     }
     // #4490 — Spaces (P1-8).

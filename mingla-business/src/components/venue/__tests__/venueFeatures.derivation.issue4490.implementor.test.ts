@@ -65,7 +65,8 @@ describe("feature layout — a venue with spaces", () => {
       features: backfilledFeatureSet({ reservationsEnabled: false }),
       activeSpaceCount: 2,
     });
-    expect(modules).toEqual(["overview", "spaces", "availability", "menu", "insights", "orders", "settings"]);
+    // TEST-MOD-APPROVED #4490 — P2 ships Offers (always in the feature layout).
+    expect(modules).toEqual(["overview", "offers", "spaces", "availability", "menu", "insights", "orders", "settings"]);
     expect(venueModuleLabel("availability", modules)).toBe("Availability & pricing");
     const rail = deriveVenueRailModules(modules);
     expect(rail.find((r) => r.key === "spaces")?.group).toBe("Offers");
@@ -80,8 +81,10 @@ describe("feature layout — a venue with spaces", () => {
       features: backfilledFeatureSet({ reservationsEnabled: true }),
       activeSpaceCount: 1,
     });
+    // TEST-MOD-APPROVED #4490 — P2 ships Offers.
     expect(modules).toEqual([
       "overview",
+      "offers",
       "spaces",
       "availability",
       "tables",
@@ -95,8 +98,12 @@ describe("feature layout — a venue with spaces", () => {
   });
   it("never shows modules whose phase has not shipped, even with every feature on", () => {
     const modules = deriveVenueNav({ features: ALL_ON, activeSpaceCount: 3, hasRequestOffers: true });
-    for (const unbuilt of ["offers", "today", "calendar", "requests", "members", "checkin"]) {
+    // TEST-MOD-APPROVED #4490 — P2 ships Offers, Today and Check-in.
+    for (const unbuilt of ["calendar", "requests", "members"]) {
       expect(modules).not.toContain(unbuilt);
+    }
+    for (const built of ["offers", "today", "checkin"]) {
+      expect(modules).toContain(built);
     }
     expect(modules[0]).toBe("overview");
     expect(modules[modules.length - 1]).toBe("settings");
@@ -153,7 +160,8 @@ describe("dependencies (mirror of the server cascade)", () => {
     expect(joinFeatureLabels(["table_reservations", "floor_plan"])).toBe("Table reservations and Floor plan");
   });
   it("only built features are switchable here; stays never", () => {
-    expect(SWITCHABLE_FEATURES).toEqual(["table_reservations", "menu", "table_ordering", "events_here", "waitlist"]);
+    // TEST-MOD-APPROVED #4490 — P2 ships Entry.
+    expect(SWITCHABLE_FEATURES).toEqual(["entry", "table_reservations", "menu", "table_ordering", "events_here", "waitlist"]);
     expect(BUILT_FEATURES.has("stays")).toBe(true);
     expect(SWITCHABLE_FEATURES).not.toContain("stays");
   });
@@ -161,8 +169,9 @@ describe("dependencies (mirror of the server cascade)", () => {
     expect(VENUE_TYPES.map((t) => t.key).sort()).toEqual(
       ["bar_lounge", "cafe", "club", "coworking", "creative_and_arts", "event_space", "play", "restaurant", "stay"],
     );
-    expect(builtPreset("play")).toEqual(["menu", "events_here"]);
-    expect(builtPreset("club")).toEqual(["table_reservations", "events_here"]);
+    // TEST-MOD-APPROVED #4490 — P2 ships Entry.
+    expect(builtPreset("play")).toEqual(["entry", "menu", "events_here"]);
+    expect(builtPreset("club")).toEqual(["entry", "table_reservations", "events_here"]);
     expect(builtPreset("stay")).toEqual([]);
   });
 });
@@ -173,12 +182,14 @@ describe("capabilities (#4188 scoped staff + venue.*)", () => {
     activeSpaceCount: 1,
   });
   it("venue.manage_offers sees Spaces and Availability & pricing only", () => {
-    expect(filterVenueModulesForCapabilities(featureNav, true, ["venue.manage_offers"])).toEqual(["spaces", "availability"]);
+    // TEST-MOD-APPROVED #4490 — P2 ships Offers.
+    expect(filterVenueModulesForCapabilities(featureNav, true, ["venue.manage_offers"])).toEqual(["offers", "spaces", "availability"]);
   });
   it("scoped staff with nothing granted see nothing", () => {
     expect(filterVenueModulesForCapabilities(featureNav, true, [])).toEqual([]);
   });
   it("the check-in-only role sees no unbuilt module and no money surface", () => {
+    // TEST-MOD-APPROVED #4490 — a table-only venue has no Today/Check-in (conflict 34).
     expect(filterVenueModulesForCapabilities(featureNav, true, ["venue.check_in"])).toEqual([]);
   });
   it("restaurant reservations staff keep exactly what they had", () => {
@@ -207,5 +218,22 @@ describe("leaving a hidden module and deep links", () => {
     expect(parseVenueItemParam(["3f2504e0-4f89-11d3-9a0c-0305e82c3301", "x"])).toBe("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
     expect(parseVenueItemParam("tables")).toBeUndefined();
     expect(parseVenueItemParam(undefined)).toBeUndefined();
+  });
+});
+
+// #4490 P2 — Today and Check-in follow the booking features (conflict 34).
+describe("P2: Offers, Today and Check-in", () => {
+  it("Entry on moves a venue to the feature layout with Offers, Today and Check-in", () => {
+    const modules = deriveVenueNav({ features: featureSetFrom({ entry: true, menu: true }), activeSpaceCount: 0 });
+    expect(modules).toEqual(["overview", "offers", "spaces", "availability", "today", "checkin", "menu", "insights", "orders", "settings"]);
+  });
+  it("a restaurant with only table reservations gets no Today or Check-in", () => {
+    const modules = deriveVenueNav({ features: backfilledFeatureSet({ reservationsEnabled: true }), activeSpaceCount: 1 });
+    expect(modules).not.toContain("today");
+    expect(modules).not.toContain("checkin");
+  });
+  it("the check-in-only role sees Today and Check-in, nothing else", () => {
+    const nav = deriveVenueNav({ features: featureSetFrom({ entry: true, menu: true }), activeSpaceCount: 0 });
+    expect(filterVenueModulesForCapabilities(nav, true, ["venue.check_in"])).toEqual(["today", "checkin"]);
   });
 });

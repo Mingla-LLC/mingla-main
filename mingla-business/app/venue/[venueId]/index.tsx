@@ -47,7 +47,10 @@ import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaim
 import { StaySuiteShell } from "../../../src/components/stay/StaySuiteShell";
 import { VenueIdentityBand } from "../../../src/components/venue/VenueIdentityBand";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
-import { parseVenueModuleParam } from "../../../src/components/venue/venueModules";
+import {
+  parseVenueItemParam,
+  parseVenueModuleParam,
+} from "../../../src/components/venue/venueModules";
 // #2099 §F3 — EXTENSIONLESS on purpose: Metro resolves `.web` on web and
 // `.native` on iOS/Android, so the correction feature never enters a native
 // graph. TypeScript is served by the sibling `.d.ts` (the same shape
@@ -121,6 +124,7 @@ export default function VenueManagementPage(): React.ReactElement {
     venueId?: string | string[];
     focus?: string | string[];
     module?: string | string[];
+    item?: string | string[];
   }>();
   const venueId = paramValue(params.venueId);
   const focus =
@@ -134,6 +138,8 @@ export default function VenueManagementPage(): React.ReactElement {
   // shell once its settings load (`shouldLeaveBookingModule`).
   const requestedModule = paramValue(params.module);
   const initialModule = parseVenueModuleParam(requestedModule);
+  // #4490 — `&item=<id>` opens that offer on arrival (`?module=offers`).
+  const initialItemId = parseVenueItemParam(params.item) ?? null;
 
   const venueQuery = useVenueListing(venueId);
   const venue = venueQuery.data ?? null;
@@ -516,6 +522,7 @@ export default function VenueManagementPage(): React.ReactElement {
           // shell's store sync propagates it to the pill row/rail. Stays never
           // reach this branch (Insights does not exist for stays in v1 — G-21).
           initialModule={initialModule ?? "overview"}
+          initialItemId={initialItemId}
           // #4420 (round-3 item 19) — Local reviews are their own Reviews
           // module now, not a panel at the top of Overview.
           reviewsPanel={renderLocalReviews("module")}

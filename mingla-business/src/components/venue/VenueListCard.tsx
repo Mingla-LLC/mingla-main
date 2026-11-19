@@ -8,12 +8,19 @@
  * Data-slot precedence (first match wins; none → row HIDDEN — Constitution #9
  * no fabricated data):
  *   1. open admin-feedback count > 0 → "{n} to fix" (warning, w600)
- *   2. menu item count > 0          → "{n} menu items"
- *   3. reservations enabled          → "Reservations on"
+ *   2. #4490: switched-on features   → "Entry · Menu · Events here"
+ *   3. menu item count > 0          → "{n} menu items"
+ *   4. reservations enabled (features unread) → "Reservations on"
  *
  * The whole card is ONE Pressable (no dead taps; manage actions live inside
  * the venue page — one card, one action). Android glass = the exact
  * META-ORCH-1002 opaque frosted fallback.
+ *
+ * #4490 P2 (hub, click-test E2) — feature-driven: the data slot names the
+ * venue's switched-on features ("Entry · Menu · Events here") instead of the
+ * old "Reservations on"; a venue that sells shows its day (In now, To arrive,
+ * Paying now) and the two things a host opens most, Check-in and Public page,
+ * as their own buttons BELOW the card's pressable (never nested in it).
  */
 
 import React, { useMemo, useState } from "react";
@@ -27,6 +34,13 @@ import {
   materials,
 } from "../../constants/designSystem";
 import type { VenueListing } from "../../services/venueListingsService";
+import { useVenueDay } from "../../hooks/useVenueDay";
+import { useVenueFeatures } from "../../hooks/useVenueFeatures";
+import { VENUE_FEATURE_KEYS, featureLine } from "../../types/venueFeatures";
+import { Button } from "../ui/Button";
+import { StatRow } from "../ui/StatRow";
+import { Skeleton } from "../ui/Skeleton";
+import { dayNumbers } from "./features/today/todayModel";
 import type { ListingStatusView } from "../../utils/listingStatus";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
@@ -51,9 +65,13 @@ export interface VenueListCardProps {
   openFixCount: number;
   /** Brand-level menu item count ([TRANSITIONAL-3] menus are brand-level). */
   menuItemCount: number;
-  /** THIS venue's reservations toggle. */
+  /** THIS venue's reservations toggle (used only while its features are unread). */
   reservationsEnabled: boolean;
   onOpen: () => void;
+  /** #4490 — open this venue's Check-in (shown when the venue sells). */
+  onCheckIn?: () => void;
+  /** #4490 — open the public page (verified venues only; omit to hide). */
+  onPublicPage?: () => void;
   testID?: string;
 }
 
@@ -64,8 +82,18 @@ export function VenueListCard({
   menuItemCount,
   reservationsEnabled,
   onOpen,
+  onCheckIn,
+  onPublicPage,
   testID,
 }: VenueListCardProps): React.ReactElement {
+  const featuresQuery = useVenueFeatures(venue.brandId, venue.id);
+  const features = featuresQuery.data?.features ?? null;
+  const sells = features?.entry.enabled === true;
+  const dayQuery = useVenueDay(venue.brandId, venue.id, null, { enabled: sells });
+  const enabledKeys = useMemo(
+    () => new Set(features === null ? [] : VENUE_FEATURE_KEYS.filter((k) => features[k].enabled)),
+    [features],
+  );
   // Web focus ring (keyboard :focus-visible semantics via RNW focus events).
   const [focused, setFocused] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -85,6 +113,9 @@ export function VenueListCard({
     // and it reinforced the same false promise the Menus module used to make.
     // Suppressing it here falls through to the honest reservations slot.
     // Re-enable for Stays when #1536 ships a Stay menu that actually renders.
+    // #4490 E2 — the features the venue has on come before the menu count.
+    const features0 = featureLine(enabledKeys);
+    if (features0 !== null) return { label: features0, warning: false };
     if (menuItemCount > 0 && venue.venueCategory !== "stay") {
       return {
         label:
@@ -92,13 +123,17 @@ export function VenueListCard({
         warning: false,
       };
     }
-    if (reservationsEnabled) {
+    if (features === null && reservationsEnabled) {
       return { label: "Reservations on", warning: false };
     }
     return null;
-  }, [openFixCount, menuItemCount, reservationsEnabled, venue.venueCategory]);
+  }, [enabledKeys, features, openFixCount, menuItemCount, reservationsEnabled, venue.venueCategory]);
+  const day = dayQuery.data;
+  const numbers = day !== undefined ? dayNumbers(day) : null;
+  const showActions = (sells && onCheckIn !== undefined) || onPublicPage !== undefined;
 
   return (
+    <View style={styles.outer}>
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Open ${venue.name}, status: ${status.label}`}
@@ -159,10 +194,66 @@ export function VenueListCard({
         </View>
       )}
     </Pressable>
+    {sells ? (
+      dayQuery.isLoading ? (
+        <Skeleton height={56} radius="md" />
+      ) : numbers !== null ? (
+        <StatRow
+          items={[
+            { key: "in", label: "In now", value: String(numbers.inNow) },
+            { key: "arrive", label: "To arrive", value: String(numbers.toArrive) },
+            { key: "paying", label: "Paying now", value: String(numbers.waiting) },
+          ]}
+          style={styles.stats}
+          testID={testID !== undefined ? `${testID}-stats` : undefined}
+        />
+      ) : null
+    ) : null}
+    {showActions ? (
+      <View style={styles.actions}>
+        {sells && onCheckIn !== undefined ? (
+          <View style={styles.action}>
+            <Button
+              label="Check-in"
+              variant="secondary"
+              size="sm"
+              leadingIcon="scan"
+              fullWidth
+              onPress={onCheckIn}
+              accessibilityLabel={`Check-in at ${venue.name}`}
+              testID={testID !== undefined ? `${testID}-checkin` : undefined}
+            />
+          </View>
+        ) : null}
+        {onPublicPage !== undefined ? (
+          <View style={styles.action}>
+            <Button
+              label="Public page"
+              variant="secondary"
+              size="sm"
+              leadingIcon="eye"
+              fullWidth
+              onPress={onPublicPage}
+              accessibilityLabel={`Public page of ${venue.name}`}
+              testID={testID !== undefined ? `${testID}-public` : undefined}
+            />
+          </View>
+        ) : null}
+      </View>
+    ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  outer: { gap: space[2] },
+  stats: {
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: color.line,
+  },
+  actions: { flexDirection: "row", gap: space[2] },
+  action: { flex: 1 },
   host: {
     position: "relative",
     // META-ORCH-1002 opaque frosted Android fallback; translucent glass on iOS.

@@ -47,7 +47,13 @@ const GATE_QR_IMPORT_ALLOWLIST = new Set([
 
 // #4271 — DoorPayQr encodes a /pay/door/<code> link only (a 10-minute,
 // pays-once basket built solely by makeDoorPayUrl), never a ticket credential.
-const PAY_LINK_QR_ALLOWLIST = new Set(["mingla-business/src/components/door/DoorPayQr.tsx"]);
+// #4490 — VenuePayQr encodes a /visit/<groupId>#t= pay link only (one held
+// walk-in booking the guest pays on their phone, proven by toVenuePayUrl),
+// never a pass credential: the pass is issued only after payment.
+const PAY_LINK_QR_ALLOWLIST = new Set([
+  "mingla-business/src/components/door/DoorPayQr.tsx",
+  "mingla-business/src/components/venue/features/checkin/VenuePayQr.tsx",
+]);
 
 const stripComments = (source) =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");

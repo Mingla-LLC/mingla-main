@@ -210,6 +210,14 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    (biz_preview_venue_page reads auth.uid() for a brand member). Folds
   //    isAuthReady into enabled.
   "useVenuePreviewPage.ts",
+  // ── #4490 P2 — venue offers, the venue's day and the door list
+  //    (issue_4490_list_offers / venue_day read auth.uid(); the
+  //    venue-check-in edge function needs the staff JWT). An anon answer would
+  //    read as "no offers" or "nobody expected". All three fold isAuthReady
+  //    into enabled.
+  "useVenueOffers.ts",
+  "useVenueDay.ts",
+  "useVenueCheckIns.ts",
   // ── #1792 (#1767 Phase 3b) — waiter mode. The pad reads the venue's own
   //    menus/menu_items/menu_modifier_groups and the open-tab summaries, all
   //    brand-member-RLS-gated. A pre-auth fire caches an RLS-empty 200, which a
