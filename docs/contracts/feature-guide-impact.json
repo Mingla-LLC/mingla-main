@@ -423,7 +423,6 @@
         "mingla-admin/src/pages/crm/GigTimeline.jsx",
         "mingla-business/src/components/programs/dueChange.ts",
         "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
-        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql",
         "mingla-business/src/components/programs/applicantFilters.ts",
         "mingla-business/app/join/referral/[token].tsx",
         "mingla-business/src/components/creators/screens/CreatorResultsScreen.tsx",
@@ -852,7 +851,6 @@
         "app-mobile/src/components/ConnectionsPage.tsx",
         "supabase/migrations/20280403064261_issue_4261_referral_credit_on_accept.sql",
         "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
-        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql",
         "mingla-business/src/components/referrals/PromoterHomeView.tsx",
         "mingla-business/src/components/referrals/ReferralHomeView.tsx",
         "mingla-business/src/components/referrals/ReferralOfferSheet.tsx"

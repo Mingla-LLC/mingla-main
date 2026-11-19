@@ -20,8 +20,8 @@
 --     it stops being released (a Stripe payout.failed sends it back):
 --       - Stripe: the snapshot of the claim being recorded (its claim id is
 --         still OLD's in the paying UPDATE). Stripe sends exactly due_cents.
---       - Paystack: the snapshot of the claim that planned the organiser legs
---         (the latest one made before any leg existed, plan_reused false),
+--       - Paystack: the snapshot of the claim the organiser legs were planned
+--         under (payout_transfer_legs.planned_claim_id, stamped on insert),
 --         because a re-claim sends that plan unchanged; with no legs, the
 --         claim being settled. due_cents is then the pool the legs were
 --         planned from; the host receives it less the transfer fees and stamp
@@ -104,17 +104,57 @@ CREATE POLICY payout_release_claim_snapshots_brand_read
   FOR SELECT TO authenticated
   USING (public.biz_brand_effective_rank(brand_id, (SELECT auth.uid()))
          >= public.biz_role_rank('finance_manager'::text));
-REVOKE ALL ON public.payout_release_claim_snapshots FROM PUBLIC, anon;
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
-  ON public.payout_release_claim_snapshots FROM authenticated;
+-- The baseline's default privileges grant ALL on new public tables (MAINTAIN,
+-- REFERENCES, TRIGGER included), so revoke everything, then grant back only
+-- reads to clients and reads and inserts to the server. Append-only: the row
+-- trigger refuses UPDATE/DELETE, and nobody is granted TRUNCATE.
+REVOKE ALL ON public.payout_release_claim_snapshots FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON public.payout_release_claim_snapshots TO authenticated;
 GRANT SELECT, INSERT ON public.payout_release_claim_snapshots TO service_role;
--- Append-only: the row trigger refuses UPDATE/DELETE; TRUNCATE is never granted.
-REVOKE UPDATE, DELETE, TRUNCATE ON public.payout_release_claim_snapshots FROM service_role;
 
 ALTER TABLE public.brand_payout_releases
   ADD COLUMN IF NOT EXISTS paid_snapshot_id uuid
     REFERENCES public.payout_release_claim_snapshots(id);
+
+-- The claim each Paystack organiser leg was planned under, stamped at insert
+-- from the release's current claim (record_paystack_leg_plan only plans for
+-- the current claim, under the release's row lock). Null for legs planned
+-- before this migration.
+ALTER TABLE public.payout_transfer_legs
+  ADD COLUMN IF NOT EXISTS planned_claim_id uuid;
+
+COMMENT ON COLUMN public.payout_transfer_legs.planned_claim_id IS
+  'issue #3645 bundle 2e-1: the Paystack execution claim this leg was planned under (null for legs planned before it was recorded).';
+
+CREATE OR REPLACE FUNCTION public.issue_3645_stamp_leg_planned_claim()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $function$
+BEGIN
+  IF NEW.planned_claim_id IS NULL AND NEW.kind = 'organiser' THEN
+    BEGIN
+      SELECT r.paystack_execution_claim_id INTO NEW.planned_claim_id
+        FROM public.brand_payout_releases r
+       WHERE r.id = NEW.release_id;
+    EXCEPTION WHEN OTHERS THEN
+      -- Never block a transfer plan for a record of it.
+      NEW.planned_claim_id := NULL;
+      RAISE WARNING 'issue_3645_leg_planned_claim_failed: release %: %', NEW.release_id, SQLERRM;
+    END;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_3645_stamp_leg_planned_claim() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS payout_transfer_legs_stamp_planned_claim
+  ON public.payout_transfer_legs;
+CREATE TRIGGER payout_transfer_legs_stamp_planned_claim
+  BEFORE INSERT ON public.payout_transfer_legs
+  FOR EACH ROW EXECUTE FUNCTION public.issue_3645_stamp_leg_planned_claim();
 
 COMMENT ON COLUMN public.brand_payout_releases.paid_snapshot_id IS
   'issue #3645 bundle 2e-1: the claim snapshot of the claim that paid this release (Stripe: the recorded claim; Paystack: the claim that planned the organiser legs). Null while not released, for releases paid before snapshots existed, or when that snapshot was not recorded.';
@@ -195,28 +235,25 @@ BEGIN
       IF NEW.provider = 'paystack' THEN
         IF EXISTS (SELECT 1 FROM public.payout_transfer_legs l
                     WHERE l.release_id = NEW.id AND l.kind = 'organiser') THEN
-          -- The claim that planned the legs: the latest made before any
-          -- existed (every later claim reuses that plan unchanged), and only
-          -- if the legs were planned from its due (the sweep plans the pool
-          -- net + recredit into principal + fee + stamp), so a planning claim
-          -- whose own snapshot was not recorded never links an older one.
+          -- The claim the legs were planned under (a re-claim sends that
+          -- plan unchanged): exactly that claim's snapshot, and only if the
+          -- legs were planned from its due (the sweep plans the pool
+          -- net + recredit into principal + fee + stamp). Legs planned before
+          -- planned_claim_id existed, or a planning snapshot that was not
+          -- recorded, leave the link null.
           SELECT s.id INTO NEW.paid_snapshot_id
             FROM public.payout_release_claim_snapshots s
            WHERE s.release_id = NEW.id AND s.provider = 'paystack'
-             AND s.plan_reused IS FALSE
-           ORDER BY s.seq DESC
-           LIMIT 1;
-          IF NEW.paid_snapshot_id IS NOT NULL
-             AND (SELECT s.due_cents FROM public.payout_release_claim_snapshots s
-                   WHERE s.id = NEW.paid_snapshot_id)
-                 IS DISTINCT FROM (
+             AND s.claim_id = (
+                   SELECT l.planned_claim_id FROM public.payout_transfer_legs l
+                    WHERE l.release_id = NEW.id AND l.kind = 'organiser'
+                    ORDER BY l.chunk_index LIMIT 1)
+             AND s.due_cents = (
                    SELECT sum(l.principal_cents::bigint
                               + COALESCE(l.estimated_fee_cents, 0)
                               + COALESCE(l.stamp_duty_cents, 0))
                      FROM public.payout_transfer_legs l
-                    WHERE l.release_id = NEW.id AND l.kind = 'organiser') THEN
-            NEW.paid_snapshot_id := NULL;
-          END IF;
+                    WHERE l.release_id = NEW.id AND l.kind = 'organiser');
         ELSE
           -- Nothing planned (nothing to send): the claim being settled.
           SELECT s.id INTO NEW.paid_snapshot_id

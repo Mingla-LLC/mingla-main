@@ -26,6 +26,7 @@ DECLARE
   v_ps_b     constant uuid := '36452e10-0000-4000-8000-000000000032';
   v_ps_c     constant uuid := '36452e10-0000-4000-8000-000000000033';
   v_ps_d     constant uuid := '36452e10-0000-4000-8000-000000000034';
+  v_ps_e     constant uuid := '36452e10-0000-4000-8000-000000000035';
   v_debt     constant uuid := '36452e10-0000-4000-8000-000000000040';
   v_now      constant timestamptz := '2027-09-01 12:00:00+00';
   v_snap     public.payout_release_claim_snapshots;
@@ -295,6 +296,38 @@ BEGIN
   END IF;
   RAISE NOTICE 'ISSUE-3645-2E1 S9 PASS: with nothing planned, the settled claim links';
 
+  -- ── S9b an earlier claim that never planned, then a planning claim whose
+  -- snapshot was refused, at the same due: no link (never the earlier claim) ─
+  INSERT INTO public.brand_payout_releases (
+    id, brand_id, occurrence_key, surface, provider, currency,
+    anchor_end_at, releasable_at, gross_cents, mingla_fee_cents, net_release_cents, status
+  ) VALUES (v_ps_e, v_brand_ps, '2e1-ps-e', 'order', 'paystack', 'ngn',
+            v_now - interval '2 days', v_now - interval '1 day', 10000, 1000, 9000, 'pending');
+  PERFORM public.claim_paystack_payout_releases(20, v_now);
+  -- Claim A stops before planning; the release goes back.
+  UPDATE public.brand_payout_releases
+     SET status = 'pending', paystack_execution_claim_id = NULL, paystack_execution_claimed_at = NULL
+   WHERE id = v_ps_e;
+  ALTER TABLE public.payout_release_claim_snapshots
+    ADD CONSTRAINT t2e1_refuse CHECK (due_cents < 0) NOT VALID;
+  PERFORM public.claim_paystack_payout_releases(20, v_now);
+  ALTER TABLE public.payout_release_claim_snapshots DROP CONSTRAINT t2e1_refuse;
+  SELECT paystack_execution_claim_id INTO v_claim FROM public.brand_payout_releases WHERE id = v_ps_e;
+  PERFORM public.record_paystack_leg_plan(v_ps_e, v_claim,
+    '[{"chunk_index":0,"principal_cents":8900,"estimated_fee_cents":90,"stamp_duty_cents":10}]'::jsonb, v_now);
+  SELECT id INTO v_leg FROM public.payout_transfer_legs WHERE release_id = v_ps_e;
+  IF (SELECT planned_claim_id FROM public.payout_transfer_legs WHERE id = v_leg) IS DISTINCT FROM v_claim THEN
+    RAISE EXCEPTION 'S9b FAIL: the leg was not stamped with its planning claim';
+  END IF;
+  PERFORM public.record_paystack_transfer_leg_outcome(v_leg, v_ps_e, 'succeeded', 'TRF_2e1_e', 'ref-2e1-e', NULL, v_now);
+  PERFORM public.reconcile_paystack_transfer_leg_fee(v_leg, 90, 10, v_now);
+  SELECT * INTO v_rel FROM public.brand_payout_releases WHERE id = v_ps_e;
+  IF v_rel.status <> 'released' OR v_rel.paid_snapshot_id IS NOT NULL
+     OR (SELECT count(*) FROM public.payout_release_claim_snapshots WHERE release_id = v_ps_e) <> 1 THEN
+    RAISE EXCEPTION 'S9b FAIL: want released with no link, got %', to_jsonb(v_rel);
+  END IF;
+  RAISE NOTICE 'ISSUE-3645-2E1 S9b PASS: a missing planning snapshot leaves no link, even when an older claim has the same due';
+
   -- ── S10 snapshots are append-only, for service_role too ───────────────────
   BEGIN
     UPDATE public.payout_release_claim_snapshots SET due_cents = 0 WHERE release_id = v_st_a;
@@ -316,7 +349,15 @@ BEGIN
   END;
   RESET ROLE;
   IF v_err IS NULL THEN RAISE EXCEPTION 'S10 FAIL: service_role truncated the snapshots'; END IF;
-  RAISE NOTICE 'ISSUE-3645-2E1 S10 PASS: snapshots cannot be changed or deleted';
+  IF has_table_privilege('authenticated', 'public.payout_release_claim_snapshots', 'INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN')
+     OR has_table_privilege('anon', 'public.payout_release_claim_snapshots', 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN')
+     OR has_table_privilege('service_role', 'public.payout_release_claim_snapshots', 'UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN')
+     OR NOT has_table_privilege('authenticated', 'public.payout_release_claim_snapshots', 'SELECT')
+     OR NOT has_table_privilege('service_role', 'public.payout_release_claim_snapshots', 'SELECT')
+     OR NOT has_table_privilege('service_role', 'public.payout_release_claim_snapshots', 'INSERT') THEN
+    RAISE EXCEPTION 'S10 FAIL: table privileges are wider than read (clients) and read + insert (server)';
+  END IF;
+  RAISE NOTICE 'ISSUE-3645-2E1 S10 PASS: snapshots cannot be changed or deleted; privileges are read and read + insert only';
 
   -- ── S11 only the brand's finance managers read; nobody else writes ────────
   SET LOCAL ROLE authenticated;
