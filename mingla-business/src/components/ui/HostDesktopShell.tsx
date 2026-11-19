@@ -22,7 +22,7 @@
  * nothing on a slow connection.
  */
 
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { useGlobalSearchParams, usePathname, useSegments } from "expo-router";
 
@@ -32,6 +32,9 @@ import { isTabVisible } from "../../config/featureFlags";
 import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useWorkspaceBrandRouteSync } from "../../hooks/useWorkspaceBrandRouteSync";
+import { brandIdFromRoute, type WorkspaceRouteParams } from "../../config/workspaceBrandRoutes";
+import { WorkspaceRouteContext, type WorkspaceRoute } from "../brand/workspaceBrandContext";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { visibleTabsForRank } from "../../utils/navTabGate";
 
@@ -95,7 +98,16 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   const segments = useSegments();
   const { user } = useAuth();
   const collapsed = useDesktopSidebarStore((s) => s.collapsed);
-  const { mode: editModeParam } = useGlobalSearchParams<{ mode?: string | string[] }>();
+  const globalParams = useGlobalSearchParams<{ mode?: string | string[] }>();
+  const editModeParam = globalParams.mode;
+  // #4453 — the route, shared with every brand chip and switcher below. The
+  // route's brand is resolved here, in the render of the route change itself.
+  const paramsKey = JSON.stringify(globalParams ?? {});
+  const workspaceRoute = useMemo<WorkspaceRoute>(() => {
+    const params = JSON.parse(paramsKey) as WorkspaceRouteParams;
+    return { pathname: pathname ?? null, params, routeBrandId: brandIdFromRoute(pathname, params) };
+  }, [paramsKey, pathname]);
+  useWorkspaceBrandRouteSync(workspaceRoute.pathname, workspaceRoute.routeBrandId);
   const editMode = Array.isArray(editModeParam) ? editModeParam[0] : editModeParam;
   const mode = hostDesktopShellModeFor(pathname, segments as readonly string[], editMode ?? null);
   const active = Platform.OS === "web" && isWideDesktop && user != null && (mode === "sidebar" || mode === "rail");
@@ -114,6 +126,7 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [active]);
 
   return (
+    <WorkspaceRouteContext.Provider value={workspaceRoute}>
     <HostShellInsetContext.Provider value={active}>
       <View style={[styles.host, active ? [styles.canvas, { paddingLeft: inset + DESKTOP_BEZEL_MARGIN }] : null]}>
         {active ? <ShellTopBar onBrandTap={() => setSwitcherOpen(true)} /> : null}
@@ -131,6 +144,7 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
       </View>
       {active ? <ShellSidebar rail={rail} /> : null}
     </HostShellInsetContext.Provider>
+    </WorkspaceRouteContext.Provider>
   );
 };
 

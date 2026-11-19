@@ -2,13 +2,12 @@
  * TopBar — top-of-screen chrome.
  *
  * Three left-slot variants:
- *   - `brand` — brand label + chevron-down. Reads `useCurrentBrand()`
- *               from `currentBrandStore`. When no brand exists, label
- *               is "Create brand" and tapping fires a Toast saying
- *               brand creation lands in Cycle 1. When a brand exists,
- *               tapping fires a Toast saying the brand switcher lands
- *               in Cycle 2. Subsequent taps on the chip toggle the
- *               Toast (open → dismiss). MinglaMark logo intentionally
+ *   - `brand` — the WorkspaceBrandSwitcher (#4453): brand mark, name and
+ *               chevron for the brand of the screen you are on (the route's
+ *               brand wins over the current-brand store). `onBrandTap` is
+ *               the host's own full switcher sheet: phones open it, the
+ *               desktop popover offers it as "Manage brands". Without it the
+ *               switcher opens its own menu. MinglaMark logo intentionally
  *               omitted per ORCH-BIZ-0a-D1.
  *   - `back`  — `chevL` IconChrome + optional title.
  *   - `none`  — no left content (renders empty View for layout balance).
@@ -23,14 +22,13 @@
  * overrides per ORCH-BIZ-0a-D2 (Path D — full premium).
  */
 
-import React, { useContext, useState } from "react";
+import React, { useContext } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { useRouter } from "expo-router";
 import { QueryClientContext } from "@tanstack/react-query";
 
 import { color, shadow as shadowTokens, space, type } from "../../constants/designSystem";
-import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useAuth } from "../../context/AuthContext";
 import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotifications";
@@ -38,12 +36,11 @@ import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
 import { messagesBadgeCount } from "../../utils/brandEnquiryWaiting";
 
+import { WorkspaceBrandSwitcher } from "../brand/WorkspaceBrandSwitcher";
+
 import { Avatar } from "./Avatar";
-import { BrandChip } from "./BrandChip";
 import { GlassChrome } from "./GlassChrome";
 import { IconChrome } from "./IconChrome";
-import { Toast } from "./Toast";
-import type { ToastKind } from "./Toast";
 
 export type TopBarLeftKind = "brand" | "back" | "none";
 
@@ -91,11 +88,10 @@ export interface TopBarProps {
   /** Bell badge count when default right slot renders. */
   unreadCount?: number;
   /**
-   * Cycle 1+ override for brand-chip-tap behaviour (per DEC-079 carve-out).
-   * When defined, suppresses the Cycle 0a transitional Toast and fires this
-   * handler instead — typically to open BrandSwitcherSheet. When undefined,
-   * the existing Cycle 0a Toast fires (backward compatible).
-   * Anchor: line 11 header comment marks the Toast as Cycle 0a-transitional.
+   * The host's own full brand switcher sheet (create, continue setup, delete).
+   * Phones open it from the brand chip; on desktop the chip opens the
+   * WorkspaceBrandSwitcher popover, which offers it as "Manage brands".
+   * Undefined: the chip opens the switcher's own menu (#4453).
    */
   onBrandTap?: () => void;
   /**
@@ -123,11 +119,6 @@ export interface TopBarProps {
 const TOPBAR_HEIGHT = 56;
 /** Room kept clear on each side of a centred title (back button / right icons). */
 const CENTER_TITLE_INSET = 96;
-
-interface ToastState {
-  kind: ToastKind;
-  message: string;
-}
 
 /**
  * Default right-slot icons (Messages + bell). Rendered WITHOUT outer View
@@ -274,10 +265,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   testID,
   style,
 }) => {
-  const currentBrand = useCurrentBrand();
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
-  const [toast, setToast] = useState<ToastState | null>(null);
 
   // Desktop top-bar layout (web ≥1024px, default-cluster consumers only):
   // `extraRightSlot` (typically the "+" CTA) moves to an absolutely-positioned
@@ -297,33 +286,12 @@ export const TopBar: React.FC<TopBarProps> = ({
     router.push("/(tabs)/account" as never);
   };
 
-  const handleBrandTap = (): void => {
-    // Cycle 1+ override per DEC-079: caller supplies real handler (typically
-    // opens BrandSwitcherSheet). Toast path remains for any consumer that
-    // hasn't migrated yet.
-    if (onBrandTap !== undefined) {
-      onBrandTap();
-      return;
-    }
-    if (toast !== null) {
-      setToast(null);
-      return;
-    }
-    if (currentBrand === null) {
-      setToast({ kind: "info", message: "Brand creation lands in Cycle 1." });
-    } else {
-      setToast({ kind: "info", message: "Brand switcher lands in Cycle 2." });
-    }
-  };
-
-  const dismissToast = (): void => setToast(null);
-
   const renderLeft = (): React.ReactNode => {
     switch (leftKind) {
       case "brand": {
-        // #4389 AB — the chip lives in BrandChip (shared with Ari); the
-        // element tree, labels and styles are unchanged (U-9).
-        return <BrandChip onPress={handleBrandTap} brandLoading={brandLoading} />;
+        // #4453 — the one switcher: it shows the brand of the screen you
+        // are on and opens the same screen for the brand you pick.
+        return <WorkspaceBrandSwitcher onOpenSheet={onBrandTap} brandLoading={brandLoading} />;
       }
       case "back": {
         return (
@@ -393,16 +361,6 @@ export const TopBar: React.FC<TopBarProps> = ({
           </View>
         </View>
       </GlassChrome>
-      {toast !== null ? (
-        <View style={styles.toastWrap} pointerEvents="box-none">
-          <Toast
-            visible={toast !== null}
-            kind={toast.kind}
-            message={toast.message}
-            onDismiss={dismissToast}
-          />
-        </View>
-      ) : null}
     </View>
   );
 };
@@ -467,14 +425,6 @@ const styles = StyleSheet.create({
   none: {
     width: 36,
     height: 36,
-  },
-  toastWrap: {
-    position: "absolute",
-    top: TOPBAR_HEIGHT + space[2],
-    left: 0,
-    right: 0,
-    zIndex: 1000,
-    elevation: 1000,
   },
 });
 
