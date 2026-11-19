@@ -4,6 +4,11 @@ import {
   isVenueBookingCategory,
   renderVenueBookingMessage,
 } from "./email/templates/venueBookingEmails.ts";
+// #4490 P5 — guest waitlist messages.
+import {
+  isVenueWaitlistCategory,
+  renderVenueWaitlistMessage,
+} from "./email/templates/venueWaitlistEmails.ts";
 import { discoverCityWatchCopy } from "./discoverCityWatchCopy.ts";
 import {
   isBrandReachCategory,
@@ -238,6 +243,9 @@ export function renderCategoryMessage(
   // #4490 — venue booking copy (entry passes) lives with its categories.
   if (isVenueBookingCategory(categoryKey)) {
     return renderVenueBookingMessage(categoryKey, payload);
+  }
+  if (isVenueWaitlistCategory(categoryKey)) {
+    return renderVenueWaitlistMessage(categoryKey, payload);
   }
   // #4111 — customer enquiry copy lives with its categories.
   if (isIssue4111EnquiryCategory(categoryKey)) {

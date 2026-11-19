@@ -10,6 +10,9 @@
 //              database stores only SHA-256 of the token.
 //
 // Actions: offer, availability, quote, hold, pay, confirm_return, get,
+// hour_day (P5: the day line of a by-the-hour offer: opening hours, busy
+// ranges and every start with the longest free booking; quote then takes
+// `startsAt` + `minutes` instead of `windowId`),
 // cancel_preview, cancel, change_preview, change (P3: more or fewer guests,
 // another day, more extras), hire_options and withdraw (P4 private hire:
 // which places are free for a session; the guest withdraws a request or an
@@ -69,6 +72,7 @@ const ACTIONS = new Set([
   "change",
   "hire_options",
   "withdraw",
+  "hour_day",
 ]);
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_PER_WINDOW = 120;
@@ -117,6 +121,7 @@ const SAFE_CODES = [
   "offer_change_nothing",
   "offer_space_taken",
   "offer_overtime_unavailable",
+  "offer_length_invalid",
 ];
 
 type RpcError = { message?: string; code?: string; details?: string };
@@ -644,6 +649,31 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       return json(200, { kind: "success", data: { options: data ?? [] } });
     }
 
+    // ---- hour_day: a flexible offer's day line (no identity needed) --------
+    if (action === "hour_day") {
+      const offeringId = str(body.offeringId);
+      const date = str(body.date);
+      const guests = body.guests;
+      const option = body.priceOptionId;
+      if (
+        !UUID.test(offeringId) || !DATE.test(date) ||
+        (guests !== undefined && guests !== null &&
+          !Number.isInteger(guests)) ||
+        (option !== undefined && option !== null && !UUID.test(str(option)))
+      ) {
+        return json(400, { code: "invalid_request" });
+      }
+      const { data, error } = await client.rpc("pg_venue_hour_day", {
+        p_offering_id: offeringId,
+        p_date: date,
+        p_guests: guests ?? null,
+        p_price_option_id: option ?? null,
+      });
+      if (error) return rpcFailure(error);
+      if (data === null) return json(404, { code: "offer_not_found" });
+      return json(200, { kind: "success", data });
+    }
+
     // ---- quote / hold: actor key = user, else the browser's cart key ------
     const cartKey = str(body.cartKey);
     const actorKey = caller.userId
@@ -654,13 +684,34 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
 
     if (action === "quote") {
       const offeringId = str(body.offeringId);
-      const windowId = str(body.windowId);
+      let windowId = str(body.windowId);
       const key = str(body.idempotencyKey);
+      // #4490 P5: a flexible booking (by the hour, "Hours you set") names its
+      // start and length; its own window is made first.
+      const flexible = !windowId && body.startsAt !== undefined;
+      const startsAt = str(body.startsAt);
       if (
-        !actorKey || !UUID.test(offeringId) || !UUID.test(windowId) ||
+        !actorKey || !UUID.test(offeringId) ||
+        (flexible
+          ? Number.isNaN(Date.parse(startsAt)) ||
+            !Number.isInteger(body.minutes) ||
+            (body.minutes as number) < 15 || (body.minutes as number) > 1440
+          : !UUID.test(windowId)) ||
         !KEY.test(key) || !Array.isArray(body.lines)
       ) {
         return json(400, { code: "invalid_request" });
+      }
+      if (flexible) {
+        const { data: made, error: windowError } = await client.rpc(
+          "issue_4490_flexible_window",
+          {
+            p_offering_id: offeringId,
+            p_starts_at: new Date(startsAt).toISOString(),
+            p_minutes: body.minutes,
+          },
+        );
+        if (windowError) return rpcFailure(windowError);
+        windowId = String(made ?? "");
       }
       const extras = body.extras ?? [];
       const answers = body.answers ?? {};

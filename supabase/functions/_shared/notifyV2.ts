@@ -191,6 +191,10 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     venue_hold_expiring: ["venue_group_id", "venue_id"],
     venue_request_declined: ["venue_group_id", "venue_id"],
     venue_request_expired: ["venue_group_id", "venue_id"],
+    // #4490 P5 — guest waitlist: opaque ids only (no token, no contact).
+    venue_waitlist_joined: ["waitlist_id", "venue_id"],
+    venue_table_opened: ["waitlist_id", "venue_id"],
+    venue_waitlist_ready: ["waitlist_id", "venue_id"],
     // #3682 wave 2 — Explorer routes these to the brand / offering page from
     // the public slugs; the receive reason is not personal data.
     brand_offering_invite: ["brand_slug", "event_slug", "reason"],
