@@ -106,6 +106,19 @@ describe("SC-1 one row per brand", () => {
     expect(brandInboxRowPreview(teamLast, null, t)).toEqual({ side: "team", text: "Michelle: Done, it's on the plan" });
   });
 
+  test("P3-2 a contentless last guest message shows a fallback, never a blank line", () => {
+    const at = "2026-11-19T11:00:00Z";
+    const row = (fromBrand: boolean) => buildBrandInboxRows(
+      [group({ last_message_at: "2026-11-10T08:00:00Z" })],
+      [guestChat({})],
+      new Map([["x-ty", activity({ last_message_preview: "  ", last_message_from_brand: fromBrand, last_message_at: at })]]),
+    )[0];
+    expect(brandInboxRowPreview(row(false), null, t)).toEqual({ side: "guests", text: "Sent an update" });
+    expect(brandInboxRowPreview(row(true), null, t)).toEqual({ side: "guests", text: "As Tinoe's Yard: Sent an update" });
+    const empty = buildBrandInboxRows([], [guestChat({ last_message_at: null })], new Map([["x-ty", activity({ last_message_preview: "", last_message_at: null })]]))[0];
+    expect(brandInboxRowPreview(empty, null, t)).toEqual({ side: "guests", text: "No guest messages yet" });
+  });
+
   test("a support row never carries a Guest chat; the Guest chat is not lost", () => {
     const rows = buildBrandInboxRows([group({ access_kind: "support" })], [guestChat({})]);
     expect(rows).toHaveLength(1);

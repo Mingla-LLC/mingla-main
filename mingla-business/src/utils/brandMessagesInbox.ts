@@ -121,7 +121,13 @@ export function brandInboxRowPreview(row: BrandInboxRow, viewerId: string | null
   if (!row.guestChat) return { side: null, text: teamText };
   if (row.lastSide === "team" && row.group) return { side: "team", text: teamText };
   const line = (row.guestActivity?.last_message_preview ?? "").replace(/\s+/g, " ").trim();
-  if (!line) return { side: "guests", text: t("messages.no_guest_messages") };
+  // #4420 P3-2: a message with no text (a card or plan line) still says
+  // something; only a room with no message at all says there are none.
+  if (!line && !row.guestActivity?.last_message_at) return { side: "guests", text: t("messages.no_guest_messages") };
+  if (!line) {
+    const fallback = t("messages.last_message_fallback");
+    return { side: "guests", text: row.guestActivity?.last_message_from_brand ? t("messages.as_brand", { brand: row.brandName, text: fallback }) : fallback };
+  }
   return { side: "guests", text: row.guestActivity?.last_message_from_brand ? t("messages.as_brand", { brand: row.brandName, text: line }) : line };
 }
 

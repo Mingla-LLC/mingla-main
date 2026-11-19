@@ -96,6 +96,7 @@
     "desktop_empty_title": "Your Mingla conversations",
     "desktop_empty_body": "Pick a brand on the left. Each brand has one chat: Team, private to your team and Mingla, and Guests, everyone with a ticket or RSVP.",
     "opening": "Opening the conversation",
-    "words_failed": "Couldn't load this screen. Try again."
+    "words_failed": "Couldn't load this screen. Try again.",
+    "last_message_fallback": "Sent an update"
   }
 }
