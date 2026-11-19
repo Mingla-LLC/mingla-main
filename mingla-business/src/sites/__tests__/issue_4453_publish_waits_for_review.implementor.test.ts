@@ -31,6 +31,8 @@ describe("#4453 Publish waits for review", () => {
     const section = read("components/sites/website/sections/PublishSection.tsx");
     expect(section).toMatch(/const unreviewed = unreviewedSectionCount\(useReviewStatus\(site\.id\)\.data\);/);
     expect(section).toMatch(/const readyToPublish = [^;]*&& unreviewed === 0;/);
+    // Not while the check reloads after a review saved a new revision (Mark all included).
+    expect(section).toMatch(/const readyToPublish = validation\.data !== undefined && !validation\.isFetching &&/);
     expect(section).toContain('testID="publish-needs-review"');
   });
 
