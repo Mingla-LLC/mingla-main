@@ -44,6 +44,7 @@ import {
   type EventTicketCheckoutAccessMutationResult,
   type PublicTicketCheckoutAccess,
 } from "../services/eventTicketCheckoutAccessService";
+import { hintedCheckoutAccess } from "../services/checkoutAccessHints";
 import { isBusinessAuthScopeResolved } from "../utils/authReadiness";
 
 export const eventTicketCheckoutAccessKeys = {
@@ -122,6 +123,12 @@ export const usePublicTicketCheckoutEligibility = (
     staleTime: 0,
     refetchOnMount: "always",
     queryFn: () => fetchPublicTicketCheckoutAccess(eventId),
+    // #4518 N1 — when the same-origin page bundle already said "this sale is
+    // open to everyone", start from that answer. `staleTime: 0` and
+    // `refetchOnMount: "always"` still re-read it in the background, so a
+    // sale that was restricted since is corrected, and the server decides
+    // regardless. A restricted sale has no hint and loads exactly as before.
+    initialData: () => hintedCheckoutAccess(eventId),
   });
 
   const refetch = useCallback((): void => {
@@ -132,7 +139,10 @@ export const usePublicTicketCheckoutEligibility = (
     // Initial resolution ONLY. `isFetching` is deliberately NOT read here.
     loading:
       !isAuthScopeResolved || (query.data === undefined && !query.isError),
-    error: query.isError,
+    // #4518 — an error is "we have NO answer for this viewer". A background
+    // re-read that fails on a weak connection must not throw away the answer
+    // already held for the same viewer and lock an open sale.
+    error: query.isError && query.data === undefined,
     data: query.data,
     refetch,
   };

@@ -32,9 +32,9 @@ import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
-  color,
   space,
 } from "../../constants/designSystem";
+import { color, themedStyles } from "../../theme/surfaceTokens";
 import { GlassCard } from "../ui/GlassCard";
 import { installmentReassuranceText } from "../../copy/installmentReassurance";
 import type { InstallmentChargeSchedule } from "@mingla/offering-rendering/discountQuote";
@@ -151,7 +151,7 @@ export const InstallmentScheduleDisplay: React.FC<
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   host: {
     width: "100%",
   },
@@ -205,4 +205,4 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: space[4],
   },
-});
+}));

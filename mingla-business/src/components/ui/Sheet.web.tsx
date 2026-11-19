@@ -60,6 +60,10 @@ import {
   size,
   space,
 } from "../../constants/designSystem";
+import {
+  isSurfaceThemed,
+  materials as surfaceMaterials,
+} from "../../theme/surfaceTokens";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { hideModalFocusBrackets } from "./hideModalFocusBrackets";
 import { useEscapeLayer } from "./escapeLayerStack";
@@ -351,6 +355,16 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
                 backgroundColor: panelBackground ?? CARD_BACKGROUND,
                 borderColor: materials.sheet.rim.edge,
                 borderTopColor: materials.sheet.rim.top ?? materials.sheet.rim.edge,
+                // #4518 — inside a host-themed checkout the panel is the host's
+                // sheet colour, so its themed content is never dark on dark.
+                ...(isSurfaceThemed()
+                  ? {
+                      backgroundColor:
+                        panelBackground ?? surfaceMaterials.sheet.solidFill,
+                      borderColor: surfaceMaterials.sheet.rim.edge,
+                      borderTopColor: surfaceMaterials.sheet.rim.edge,
+                    }
+                  : null),
               },
               sidePanel ? styles.sidePanel : null,
               shadowTokens.dialog,

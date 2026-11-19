@@ -78,7 +78,6 @@ import {
   extrasRefusalCopy,
   extrasRefusalIn,
 } from "@mingla/offering-rendering/ticketExtrasCart";
-import { JoinWaitlistSheet } from "../../../src/components/waitlist/JoinWaitlistSheet";
 // ORCH-0850 [End-not-start parity systemic]: route the past gate through the
 // canonical helper. Pre-0850 local `computeIsPast` used `new Date(event.date)
 // + 24h < Date.now()` which fired at 8pm EDT on the start day for any
@@ -93,6 +92,13 @@ import {
   useCheckoutWideLayout,
 } from "../../../src/components/checkout/CheckoutOrderSummary";
 
+// #4518 — loaded on intent (a tap on "Join waitlist"), not at boot: the
+// sheet was in the eager shared chunk of every Host web page.
+const JoinWaitlistSheet = React.lazy(() =>
+  import("../../../src/components/waitlist/JoinWaitlistSheet").then((module) => ({
+    default: module.JoinWaitlistSheet,
+  })),
+);
 const CheckoutDiscountCodeField = React.lazy(() =>
   import("../../../src/components/checkout/DiscountCodeField").then(
     (module) => ({ default: module.CheckoutDiscountCodeField }),
@@ -244,6 +250,8 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
       ? extrasRefusalCopy(extrasRefusalIn(quoteErrorCode))
       : null;
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
+  const waitlistSheetOpened = useRef(false);
+  if (waitlistTicketId !== null) waitlistSheetOpened.current = true;
   // #3281 / #4204 — this choice belongs only to the deferred ticket-selection
   // route. Keeping it out of the root CartProvider prevents host-only UI state
   // from inflating every Business web boot. Cart lines remain the cross-step
@@ -928,13 +936,18 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         </CheckoutOrderSummary>
       </CheckoutColumns>
 
-      <JoinWaitlistSheet
-        visible={waitlistTicket !== null}
-        eventId={event.id}
-        ticket={waitlistTicket}
-        onClose={() => setWaitlistTicketId(null)}
-        currency={event.currency ?? null}
-      />
+      {/* Mounted from the first open on, so its close animation still runs. */}
+      {waitlistTicket !== null || waitlistSheetOpened.current ? (
+        <React.Suspense fallback={null}>
+          <JoinWaitlistSheet
+            visible={waitlistTicket !== null}
+            eventId={event.id}
+            ticket={waitlistTicket}
+            onClose={() => setWaitlistTicketId(null)}
+            currency={event.currency ?? null}
+          />
+        </React.Suspense>
+      ) : null}
     </View>
   );
 }
