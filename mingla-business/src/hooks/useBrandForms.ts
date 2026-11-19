@@ -23,6 +23,7 @@ import {
   fetchBrandFormResponses,
   fetchBrandForms,
   fetchEventAttachment,
+  fetchGuestQuestionsTile,
   publishBrandForm,
   reopenBrandForm,
   saveBrandFormDraft,
@@ -35,6 +36,7 @@ import {
   type BrandFormResponsesFilter,
   type BrandFormResponsesPage,
   type BrandFormRow,
+  type GuestQuestionsTileData,
   type BrandFormStatus,
   type PublishResult,
   type SaveDraftInput,
@@ -110,6 +112,23 @@ export function useEventAttachment(
     queryFn: () => {
       if (eventId === null) throw new Error("event_required");
       return fetchEventAttachment(eventId);
+    },
+  });
+}
+
+/** The "Guest questions" manage-page tile: the page's form and its counts. */
+export function useGuestQuestionsTileData(
+  eventId: string | null,
+  enabled = true,
+): UseQueryResult<GuestQuestionsTileData | null> {
+  const ready = useReady();
+  return useQuery<GuestQuestionsTileData | null>({
+    queryKey: eventId === null ? ["brand-forms", "tile", "none"] : brandFormKeys.tile(eventId),
+    enabled: ready && eventId !== null && enabled,
+    staleTime: 15_000,
+    queryFn: () => {
+      if (eventId === null) throw new Error("event_required");
+      return fetchGuestQuestionsTile(eventId);
     },
   });
 }

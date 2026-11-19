@@ -57,6 +57,12 @@ const EventTicketCheckoutAccessCard = React.lazy(() =>
     (m) => ({ default: m.EventTicketCheckoutAccessCard }),
   ),
 );
+// #4514 — the "Guest questions" row (after Cover on a live edit) loads on demand.
+const GuestQuestionsRow = React.lazy(() =>
+  import("../../../src/components/forms/GuestQuestionsRow").then((m) => ({
+    default: m.GuestQuestionsRow,
+  })),
+);
 import {
   experienceDetailKeys,
   useExperienceDetail,
@@ -462,6 +468,18 @@ export default function ExperienceEditRoute(): React.ReactElement {
             isLive && Platform.OS === "web" ? (
               <React.Suspense fallback={null}>
                 <EventTicketCheckoutAccessCard eventId={experience.id} />
+              </React.Suspense>
+            ) : null
+          }
+          coverBottomSlot={
+            isLive ? (
+              <React.Suspense fallback={null}>
+                <GuestQuestionsRow
+                  eventId={experience.id}
+                  brandId={experience.brandId}
+                  kind="experience"
+                  testID="edit-guest-questions-row"
+                />
               </React.Suspense>
             ) : null
           }

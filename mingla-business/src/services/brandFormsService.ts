@@ -844,3 +844,43 @@ export async function detachBrandForm(attachmentId: string): Promise<void> {
   if (error !== null) return failFrom(error, "Couldn't remove the form from this page. Try again.");
   if (rec(data, "detach").ok !== true) throw bad("detach.ok");
 }
+
+// ---------------------------------------------------------------------------
+// The manage-page tile
+// ---------------------------------------------------------------------------
+
+export interface GuestQuestionsTileData {
+  attachment: BrandFormAttachment;
+  form: BrandFormRow;
+  published: boolean;
+  answered: number;
+  notAnswered: number;
+}
+
+/**
+ * What the "Guest questions" tile on a manage page needs: the page's active
+ * form and, once the form has been published, how many answered and how many
+ * are still to answer. Null when no form is on the page.
+ */
+export async function fetchGuestQuestionsTile(eventId: string): Promise<GuestQuestionsTileData | null> {
+  const found = await fetchEventAttachment(eventId);
+  if (found === null) return null;
+  const published = found.form.liveVersionId !== null;
+  if (!published || found.form.status === "draft") {
+    return { attachment: found.attachment, form: found.form, published, answered: 0, notAnswered: 0 };
+  }
+  const page = await fetchBrandFormResponses({
+    formId: found.form.id,
+    eventId,
+    filter: "all",
+    limit: 1,
+    offset: 0,
+  });
+  return {
+    attachment: found.attachment,
+    form: found.form,
+    published,
+    answered: page.total,
+    notAnswered: page.notAnswered.length,
+  };
+}
