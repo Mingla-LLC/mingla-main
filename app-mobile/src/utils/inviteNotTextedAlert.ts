@@ -72,6 +72,7 @@ export function showInviteTextedAlert(
         copyAddressText(message).catch((error: unknown) => {
           // Copy failed: the share sheet carries the same message instead.
           console.warn("[inviteTextedAlert] copy failed, opening share:", error);
+          // SHARE-NON-CONTENT:invite
           Share.share({ message }).catch((shareError: unknown) => {
             console.warn("[inviteTextedAlert] share failed:", shareError);
           });
