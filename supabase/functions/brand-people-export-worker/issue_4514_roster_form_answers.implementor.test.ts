@@ -8,6 +8,7 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleExportWorkerRequest, rosterFormAnswers } from "./index.ts";
+import { csvCell } from "../brand-people-export/csv.ts";
 
 const KEY = "service-key";
 
@@ -149,4 +150,15 @@ Deno.test("rosterFormAnswers: no form means no columns", async () => {
   const out = await rosterFormAnswers(s.svc, "job-1");
   assertEquals(out.headers, []);
   assertEquals(out.byPerson.size, 0);
+});
+
+// Fix wave (finding 6): a guest-written answer starting with a tab or carriage
+// return is a formula to some spreadsheets; it is kept as text like = + - @.
+Deno.test("csvCell: a leading = + - @, tab or carriage return is kept as text", () => {
+  for (const lead of ["=", "+", "-", "@", "\t", "\r"]) {
+    assertEquals(csvCell(`${lead}SUM(A1)`), `"'${lead}SUM(A1)"`);
+  }
+  assertEquals(csvCell("Juggle"), '"Juggle"');
+  assertEquals(csvCell('say "hi"'), '"say ""hi"""');
+  assertEquals(csvCell("a\tb"), '"a\tb"');
 });
