@@ -69,7 +69,10 @@ export const submittedGuestStatus = (
 ): string => {
   if (g.claimed) return "Has their pass";
   if (rsvpStatus !== "going") return "We'll text them once you're in";
-  if (!g.willText || g.inviteUrl === null) return "We couldn't text this number";
+  // C3 / R-1: willText alone says whether a text goes. A signed-out inviter
+  // gets no invite link (so a number already on the list reads like a new
+  // one), and their guests are still texted.
+  if (!g.willText) return "We couldn't text this number";
   return g.onMingla ? "Text on its way, and a note in their app" : "Text on its way";
 };
 

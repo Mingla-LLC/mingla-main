@@ -15,8 +15,6 @@ export const rsvpGuestErrorMessage = (code: string): string | null => {
   if (code.includes("rsvp_guest_duplicate")) return "You've added the same person twice. Remove one and try again.";
   if (code.includes("rsvp_guest_already_listed")) return "Someone you're bringing is already on the list. Remove them and try again.";
   if (code.includes("rsvp_guest_released")) return "Someone you're bringing can't be invited to this event. Remove them and try again.";
-  // R-1: signed out, a listed or released number reads the same, on purpose.
-  if (code.includes("rsvp_guest_unavailable")) return "Someone you're bringing can't be added to this event. Remove them and try again.";
   if (code.includes("rsvp_guest_not_friend")) return "You can only add people from your friends list. Add them by phone number instead.";
   if (code.includes("rsvp_guest_daily_cap")) return "You've invited a lot of numbers today. Try again tomorrow, or RSVP just for yourself.";
   if (code.includes("rsvp_guest_phone_invalid")) return "One of the numbers you added isn't valid. Remove it and add it again.";
