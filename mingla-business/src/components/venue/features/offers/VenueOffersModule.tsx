@@ -13,6 +13,7 @@ import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, u
 import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { color, radius, space, type } from "../../../../constants/designSystem";
 import { useBrandCurrency } from "../../../../hooks/useBrandCurrency";
@@ -24,7 +25,8 @@ import { useVenueListing } from "../../../../hooks/useVenueListings";
 import { useManageVenueOffer, useVenueOffers } from "../../../../hooks/useVenueOffers";
 import { useVenueMembershipPlans } from "../../../../hooks/useVenueMembershipPlans";
 import { planStatusWords } from "../members/membersModel";
-import { toVenueOfferError } from "../../../../services/venueOffersService";
+import { duplicateVenueOffer, toVenueOfferError } from "../../../../services/venueOffersService";
+import { venueFeatureKeys } from "../../../../hooks/venueFeatureKeys";
 import type { VenueOffer, VenueOfferKind } from "../../../../types/venueOffers";
 import type { VenueModule } from "../../../../types/venueReservation";
 import { ScrollView } from "../../../../wrappers/SmartScrollView";
@@ -54,6 +56,7 @@ import {
   OFFER_STATUS,
   kindLine,
   offerErrorCopy,
+  optionSummary,
   priceColumn,
   splitOfferCards,
   whenColumn,
@@ -100,6 +103,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
   const bottomPad = venueScrollBottomPad(insets.bottom);
   const currency = useBrandCurrency(brandId);
   const offersQuery = useVenueOffers(brandId, venueId);
+  const queryClient = useQueryClient();
   const dayQuery = useVenueDay(brandId, venueId);
   const featuresQuery = useVenueFeatures(brandId, venueId);
   const setFeature = useSetVenueFeature(brandId, venueId);
@@ -324,6 +328,30 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
       );
     },
     [confirm, manageOffer],
+  );
+
+  // #4490 fix 2 (N5): Duplicate copies the offer as a draft on the server
+  // and opens the copy in its editor.
+  const [duplicating, setDuplicating] = useState(false);
+  const runDuplicate = useCallback(
+    (offer: VenueOffer): void => {
+      if (venueId === null || duplicating) return;
+      setMenu(null);
+      setRowError(null);
+      setDuplicating(true);
+      duplicateVenueOffer(venueId, offer.id)
+        .then((copy) => {
+          setToast(`${copy.name} saved as a draft`);
+          if (brandId !== null) void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.offers(brandId, venueId) });
+          openOffer(copy);
+        })
+        .catch((e: unknown) => {
+          const err = toVenueOfferError(e);
+          setRowError(`Couldn't copy ${offer.name}. ${offerErrorCopy(err.code, err.detail)}`);
+        })
+        .finally(() => setDuplicating(false));
+    },
+    [brandId, duplicating, openOffer, queryClient, venueId],
   );
 
   const turnOnEntry = useCallback((): void => {
@@ -579,6 +607,9 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
               : menu.offer.status === "paused"
                 ? [{ key: "resume", label: "Resume", icon: "play" as const, onPress: () => runStatus(menu.offer, "publish", `${menu.offer.name} is selling again`), testID: "venue-offer-menu-resume" }]
                 : []),
+            ...(menu.offer.kind === "entry" || menu.offer.kind === "group_package" || menu.offer.kind === "private_hire" || menu.offer.kind === "by_the_hour"
+              ? [{ key: "duplicate", label: "Duplicate", icon: "copy" as const, onPress: () => runDuplicate(menu.offer), testID: "venue-offer-menu-duplicate" }]
+              : []),
             { key: "archive", label: "Archive", icon: "trash", danger: true, onPress: () => setConfirm({ action: "archive", offer: menu.offer }), testID: "venue-offer-menu-archive" },
           ]}
           testID="venue-offer-menu"
@@ -740,6 +771,14 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
                         ? kindLine(offer)
                         : `${priceColumn(offer, currency)} · ${whenColumn(offer)}`}
                     </Text>
+                    {/* #4490 fix 2 (N77): each Entry price with its ID check, hours and booking limit. */}
+                    {offer.kind === "entry"
+                      ? offer.options.map((o) => (
+                          <Text key={o.id} style={styles.meta} testID={`venue-offer-option-${o.id}`}>
+                            {`${o.name}: ${optionSummary(o, currency)}`}
+                          </Text>
+                        ))
+                      : null}
                     {notReady ? <Text style={styles.metaWarn}>Not published: {offer.readiness.length} {offer.readiness.length === 1 ? "thing" : "things"} to finish</Text> : null}
                     {offer.outsideOpeningHours === true ? (
                       // #4490 N28: the offer is never changed by itself; the host is told.

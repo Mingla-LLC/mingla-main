@@ -724,7 +724,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
       break;
     case "confirmed": {
       const pass = booking.passes.find((p) => p.status === "valid") ?? booking.passes[0];
-      const windowLine = passWindowLine(booking);
+      const windowLine = passWindowLine(booking, hourFacts !== null ? "front_desk" : "gate");
       const idLine = passIdLine(pass);
       const allIn = pass !== undefined && pass.admittedCount >= pass.admits && pass.admits > 0;
       main = (

@@ -484,3 +484,17 @@ export function memberErrorCopy(code: string, detail: string | null = null): str
   }
   return base;
 }
+
+/** #4490 fix 2 (N83): what a venue's by-the-hour places are called, by its type. */
+export function hourPlacesTitle(venueCategory: string | null | undefined): string {
+  switch (venueCategory) {
+    case "coworking":
+      return "Meeting rooms";
+    case "creative_and_arts":
+      return "Studios and rooms";
+    case "play":
+      return "Lanes, tables and rooms";
+    default:
+      return "Rooms by the hour";
+  }
+}

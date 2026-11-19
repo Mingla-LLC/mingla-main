@@ -780,7 +780,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
                 size="lg"
                 trailingIcon="chevR"
                 onPress={goNext}
-                disabled={!stepValid}
+                // #4490 fix 2 (N20 check): never a dead tap — Continue stays
+                // pressable and a step that isn't finished says why.
                 testID="venue-wizard-continue"
               />
             ) : null}

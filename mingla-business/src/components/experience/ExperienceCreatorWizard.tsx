@@ -185,6 +185,7 @@ import {
 } from "../../services/offeringTheme";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 import { currencyCodeOrNull } from "../../utils/currency";
+import type { VenueLocation } from "../../services/venueFeaturesService";
 import {
   EXPERIENCE_PAYOUT_COUNTRY_PUBLISH_COPY,
   experienceDisplayCurrencySymbol,
@@ -883,6 +884,31 @@ export const ExperienceCreatorWizard: React.FC<
       cancelled = true;
     };
   }, [existingExperienceId]);
+
+  // #4490 fix 2 (N84) — a venue picked in Where fills the first stop's place
+  // (name, address, pin); "Somewhere else" leaves the stops as typed.
+  const onVenuePlace = useCallback((venue: VenueLocation | null): void => {
+    if (venue === null) return;
+    setStops((prev) => {
+      if (prev.length === 0) return prev;
+      const complete = venue.city !== null && venue.lat !== null && venue.lng !== null;
+      const first = prev[0];
+      return [
+        {
+          ...first,
+          placeId: venue.placeId,
+          placeName: venue.name,
+          address: venue.address ?? venue.name,
+          city: venue.city,
+          countryCode: venue.countryCode,
+          lat: complete ? venue.lat : null,
+          lng: complete ? venue.lng : null,
+          coordinatePrecision: complete ? "approximate" : null,
+        },
+        ...prev.slice(1),
+      ];
+    });
+  }, []);
 
   // When-step adapter (feeds the lifted CreatorStep2When). Edit-mode seeds it.
   // ORCH-1339 — the synthetic draft carries the wizard's guest-privacy state.
@@ -2191,6 +2217,24 @@ export const ExperienceCreatorWizard: React.FC<
         ) : null}
 
         {step === 2 ? (
+          // #4490 — "Where: venue and space": link the experience to one of
+          // the brand's venues and a space there (lazy; saves on pick).
+          // fix 2 (N84): first on the step, and a venue pick fills stop 1's
+          // place and address.
+          <React.Suspense fallback={null}>
+            <View style={styles.venueLink}>
+              <LazyEventVenueSpacePicker
+                brandId={brandId}
+                eventId={experienceId}
+                noun="experience"
+                hasOtherAddress={(stops[0]?.address ?? "").trim().length > 0}
+                addressMissing={(stops[0]?.address ?? "").trim().length === 0}
+                onPlace={onVenuePlace}
+              />
+            </View>
+          </React.Suspense>
+        ) : null}
+        {step === 2 ? (
           <ExperienceStopsStep
             brandId={brandId}
             currencySymbol={currencySymbol}
@@ -2208,15 +2252,6 @@ export const ExperienceCreatorWizard: React.FC<
               recurrenceRule: whenAdapter.whenState.recurrenceRule,
             })}
           />
-        ) : null}
-        {step === 2 ? (
-          // #4490 — "Where: venue and space": link the experience to one of
-          // the brand's venues and a space there (lazy; saves on pick).
-          <React.Suspense fallback={null}>
-            <View style={styles.venueLink}>
-              <LazyEventVenueSpacePicker brandId={brandId} eventId={experienceId} noun="experience" />
-            </View>
-          </React.Suspense>
         ) : null}
 
         {step === 3 ? (

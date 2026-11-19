@@ -111,12 +111,13 @@ function EntryOfferBody({
         offerId,
         date: selection.selectedDate,
         counts: selection.counts,
+        windowId: selection.selectedSession?.windowId ?? null,
       }) as never,
     );
   };
 
   // The page bar mirrors the pick; it hands the bar back when this unmounts.
-  const barKey = `${selection.selectedDate}|${JSON.stringify(selection.counts)}|${total}|${ready}|${selection.problem}`;
+  const barKey = `${selection.selectedSession?.windowId ?? ""}|${selection.selectedDate}|${JSON.stringify(selection.counts)}|${total}|${ready}|${selection.problem}`;
   useEffect(() => {
     if (onBookingBarChange === undefined) return undefined;
     if (selection.offerState !== "ready" || selection.selectedDate === null || gateOnly) {
@@ -124,7 +125,10 @@ function EntryOfferBody({
       return undefined;
     }
     onBookingBarChange({
-      title: entryDateLabel(selection.selectedDate),
+      title:
+        selection.selectedSession !== null
+          ? `${entryDateLabel(selection.selectedDate)} · ${selection.selectedSession.label}`
+          : entryDateLabel(selection.selectedDate),
       subtitle:
         selection.problem !== null
           ? selection.problem

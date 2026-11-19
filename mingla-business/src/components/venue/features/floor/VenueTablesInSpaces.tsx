@@ -197,7 +197,7 @@ export const VenueTablesInSpaces = forwardRef<VenueModuleLeaveHandle, VenueTable
               {largeOn
                 ? allTables.length === 0
                   ? "Once you add tables, groups bigger than your largest table can send a request you confirm."
-                  : `Groups bigger than your largest table${plan.partyMax > 0 ? ` (${plan.partyMax})` : ""} send a request you confirm. Nothing is paid until you do.`
+                  : `On to start with. Groups bigger than your largest table${plan.partyMax > 0 ? ` (${plan.partyMax})` : ""} send a request you confirm; nothing is paid until you do. Switch it off to take only what your tables seat.`
                 : "Guests can only book parties your tables seat."}
             </Text>
           </View>

@@ -91,6 +91,8 @@ export interface OfferCheckoutProps {
   venueSlug: string;
   offerId: string;
   initialDate: string | null;
+  /** #4490 fix 2 (N85) — the timed session picked on the venue page. */
+  initialWindowId?: string | null;
   initialCounts: Record<string, number>;
   safeTop: number;
   safeBottom: number;
@@ -129,6 +131,7 @@ export function OfferCheckout(props: OfferCheckoutProps): React.ReactElement {
     cartKey,
     membership: member !== null && useMember ? member : null,
     initialDate: props.initialDate,
+    initialWindowId: props.initialWindowId ?? null,
     initialCounts: props.initialCounts,
   });
   const offer = selection.offer;

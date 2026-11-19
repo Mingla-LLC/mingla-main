@@ -21,6 +21,8 @@ export interface HourDraft {
   unitSeats: number;
   unitSetting: "indoor" | "covered" | "outdoor";
   priceMinor: number | null;
+  /** #4490 fix 2 (N80): the smallest group one booking can be. */
+  guestMin: number;
   guestMax: number;
   busyOn: boolean;
   busy: { weekdays: number[]; from: string; to: string; amountMinor: number | null };
@@ -158,6 +160,7 @@ export function hourDraftFrom(offer: VenueOffer | null): HourDraft {
     unitSeats: 4,
     unitSetting: "indoor",
     priceMinor: option?.priceMinor ?? h?.pricePerHourMinor ?? null,
+    guestMin: option?.guestMin ?? 1,
     guestMax: option?.guestMax ?? 10,
     busyOn: busy !== null,
     busy: busy !== null
@@ -245,8 +248,8 @@ export function hourOptionPayload(d: HourDraft, optionId: string | null): Record
   const payload: Record<string, unknown> = {
     name: "Per hour",
     unit: "hour",
-    guestMin: 1,
-    guestMax: Math.max(1, d.guestMax),
+    guestMin: Math.max(1, Math.min(d.guestMin, d.guestMax)),
+    guestMax: Math.max(1, d.guestMax, d.guestMin),
     priceMinor: d.priceMinor ?? 0,
     weekdays: [0, 1, 2, 3, 4, 5, 6],
     eligibility: null,

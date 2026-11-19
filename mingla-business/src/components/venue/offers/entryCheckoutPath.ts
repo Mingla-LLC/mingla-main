@@ -15,6 +15,8 @@ export function entryCheckoutPath(input: {
   offerId: string;
   date: string;
   counts: Readonly<Record<string, number>>;
+  /** #4490 fix 2 (N85) — the timed session picked (its window id). */
+  windowId?: string | null;
 }): string {
   const q = Object.entries(input.counts)
     .filter(([id, n]) => UUID.test(id) && Number.isInteger(n) && n > 0)
@@ -23,6 +25,7 @@ export function entryCheckoutPath(input: {
   const params = new URLSearchParams();
   if (DATE.test(input.date)) params.set("date", input.date);
   if (q.length > 0) params.set("q", q);
+  if (typeof input.windowId === "string" && UUID.test(input.windowId)) params.set("t", input.windowId);
   const query = params.toString();
   return `/b/${encodeURIComponent(input.brandSlug)}/v/${encodeURIComponent(input.venueSlug)}/book/${encodeURIComponent(
     input.offerId,
@@ -32,7 +35,8 @@ export function entryCheckoutPath(input: {
 export function parseEntryCheckoutParams(params: {
   date?: string | string[] | null;
   q?: string | string[] | null;
-}): { date: string | null; counts: Record<string, number> } {
+  t?: string | string[] | null;
+}): { date: string | null; counts: Record<string, number>; windowId: string | null } {
   const first = (v: string | string[] | null | undefined): string | null =>
     Array.isArray(v) ? (v[0] ?? null) : typeof v === "string" ? v : null;
   const rawDate = first(params.date);
@@ -47,5 +51,10 @@ export function parseEntryCheckoutParams(params: {
       }
     }
   }
-  return { date: rawDate !== null && DATE.test(rawDate) ? rawDate : null, counts };
+  const rawS = first(params.t);
+  return {
+    date: rawDate !== null && DATE.test(rawDate) ? rawDate : null,
+    counts,
+    windowId: rawS !== null && UUID.test(rawS) ? rawS.toLowerCase() : null,
+  };
 }

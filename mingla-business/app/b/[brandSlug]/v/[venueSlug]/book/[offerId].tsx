@@ -52,6 +52,8 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
     // #4490 P5 — a by-the-hour choice (`k=hour&d=&s=&m=&g=`).
     s?: string | string[];
     m?: string | string[];
+    // #4490 fix 2 (N85) — the entry session picked (`t=<windowId>`).
+    t?: string | string[];
   }>();
   const hourChoice = parseHourCheckoutParams(params);
   const hireChoice = parseHireRequestParams(params);
@@ -59,7 +61,7 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
   const brandSlug = one(params.brandSlug);
   const venueSlug = one(params.venueSlug);
   const offerId = one(params.offerId);
-  const { date, counts } = parseEntryCheckoutParams({ date: params.date, q: params.q });
+  const { date, counts, windowId } = parseEntryCheckoutParams({ date: params.date, q: params.q, t: params.t });
 
   if (brandSlug === null || venueSlug === null || offerId === null || !UUID.test(offerId)) {
     return <PublicVenueNotFound brandSlug={brandSlug} brandDisplayName={null} />;
@@ -111,6 +113,7 @@ export default function VenueOfferCheckoutRoute(): React.ReactElement {
         venueSlug={venueSlug}
         offerId={offerId.toLowerCase()}
         initialDate={date}
+        initialWindowId={windowId}
         initialCounts={counts}
         safeTop={insets.top}
         safeBottom={insets.bottom}

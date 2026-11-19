@@ -300,6 +300,12 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
             />
           ))}
         </View>
+        {/* #4490 fix 2 (N81 e) — events are filed under a party type; a class,
+            workshop or tour is an experience (its own creator, no party type). */}
+        <Text style={styles.fieldHint}>
+          Running a class, workshop or tour? Make it an experience instead: Create › Experience, or
+          &quot;Add an experience here&quot; inside your venue.
+        </Text>
         {partyTypesError !== undefined ? (
           <Text style={styles.helperError}>{partyTypesError}</Text>
         ) : null}
@@ -403,6 +409,12 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: color.text2,
     marginBottom: space[1],
+  },
+  fieldHint: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
+    marginTop: space[2],
   },
   helperError: {
     fontSize: type.caption.fontSize,

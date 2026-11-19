@@ -309,8 +309,9 @@ export function HourCheckout(props: HourCheckoutProps): React.ReactElement {
       <View style={[entryStyles.card, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}>
         <Text style={[styles.small, { color: palette.primaryText }]}>{when}</Text>
         <Text style={[styles.small, { color: palette.secondaryText }]}>{`${hourLengthWords(choice.minutes)} · ${choice.guests} ${choice.guests === 1 ? "guest" : "guests"}`}</Text>
-        <Pressable onPress={goBack} accessibilityRole="button" accessibilityLabel="Change the time" hitSlop={8} style={styles.change} testID="issue-4490-hour-checkout-change">
-          <Text style={[styles.small, { color: palette.accent }]}>Change the time</Text>
+        {/* #4490 fix 2 (N87): a real button, not an accent text link. */}
+        <Pressable onPress={goBack} accessibilityRole="button" accessibilityLabel="Change the time" hitSlop={8} style={[styles.change, { borderColor: palette.panelBorder }]} testID="issue-4490-hour-checkout-change">
+          <Text style={[styles.small, styles.changeLabel, { color: palette.primaryText }]}>Change the time</Text>
         </Pressable>
       </View>
       {member !== null ? (
@@ -444,7 +445,15 @@ const styles = StyleSheet.create({
   totalText: { ...type.body, fontWeight: "700" },
   rule: { height: StyleSheet.hairlineWidth },
   line: { flexDirection: "row", justifyContent: "space-between", gap: space[3] },
-  change: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
+  change: {
+    minHeight: 44,
+    justifyContent: "center",
+    alignSelf: "flex-start",
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
+    borderWidth: 1,
+  },
+  changeLabel: { fontWeight: "600" },
   payBlock: { gap: space[2] },
   memberChoice: { flexDirection: "row", alignItems: "center", gap: space[3], borderWidth: 1 },
   memberTitle: { ...type.row },

@@ -177,8 +177,9 @@ const payButtons = (tree: RenderTree): RenderNode[] =>
 
 describe("issue #4420 — venue basket bar and review sheet", () => {
   test("B-1 the bar never guesses a total and says where the order is paid", () => {
+    // TEST-MOD-APPROVED #4490 (fix round 2, N91): with no table the bar and the chip say the same thing.
     expect(venueOrderingBarCopy({ count: 0, totalCents: null, currency: null })).toEqual({
-      title: "Order from your table",
+      title: "Order here, collect at the counter",
       subtitle: "Add something to start",
       ctaLabel: null,
       spoken: null,

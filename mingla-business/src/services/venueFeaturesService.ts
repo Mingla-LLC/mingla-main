@@ -544,6 +544,44 @@ export async function setEventVenue(input: {
   if (error !== null) throw toVenueFeatureError(error);
 }
 
+/**
+ * #4490 fix 2 (N84) — where a venue is, so an event placed "at one of your
+ * venues" takes the venue's name, address, pin and time zone without typing.
+ */
+export interface VenueLocation {
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  countryCode: string | null;
+  lat: number | null;
+  lng: number | null;
+  placeId: string | null;
+}
+
+export async function fetchVenueLocation(venueId: string): Promise<VenueLocation | null> {
+  const { data, error } = await supabase
+    .from("venue_listings")
+    .select("id, name, address, city, country_code, lat, lng, location_provider_place_id")
+    .eq("id", venueId)
+    .maybeSingle();
+  if (error !== null) throw toVenueFeatureError(error);
+  if (data === null) return null;
+  const row = data as Record<string, unknown>;
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const str = (v: unknown): string | null => (typeof v === "string" && v.trim().length > 0 ? v : null);
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    address: str(row.address),
+    city: str(row.city),
+    countryCode: str(row.country_code),
+    lat: num(row.lat),
+    lng: num(row.lng),
+    placeId: str(row.location_provider_place_id),
+  };
+}
+
 /** Row kinds that can sit in a venue space (the picker's two callers). */
 export function eventVenueLinkTypes(kind: "event" | "experience"): readonly string[] {
   return kind === "experience" ? ["experience"] : ["event", "rsvp"];

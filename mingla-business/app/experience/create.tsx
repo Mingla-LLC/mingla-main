@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 import { ActivityIndicator, StyleSheet, Text } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { isVenueIdParam, setEventVenueIntent } from "../../src/utils/eventVenueIntent";
 import { isSetupReturn, setupReturnWith } from "../../src/utils/brandEditReturn";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -30,8 +31,16 @@ export default function ExperienceCreateRoute(): React.ReactElement {
   const queryClient = useQueryClient();
   const brandId = currentBrand?.id ?? null;
   // #2830 — Website setup's way back. Anything else behaves as if absent.
-  const params = useLocalSearchParams<{ returnTo?: string | string[] }>();
+  const params = useLocalSearchParams<{ returnTo?: string | string[]; venueId?: string | string[] }>();
   const rawReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  // #4490 fix 2 (N76) — "Add an experience here" from a venue preselects it in Where.
+  const rawVenueId = Array.isArray(params.venueId) ? params.venueId[0] : params.venueId;
+  React.useEffect(() => {
+    if (brandId === null) return;
+    setEventVenueIntent(
+      isVenueIdParam(rawVenueId) ? { brandId, venueId: rawVenueId, noun: "experience" } : null,
+    );
+  }, [brandId, rawVenueId]);
   const setupReturn = isSetupReturn(rawReturnTo) ? (rawReturnTo as string) : null;
 
   const handleExit = useCallback((): void => {

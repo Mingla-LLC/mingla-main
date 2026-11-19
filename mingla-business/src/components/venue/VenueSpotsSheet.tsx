@@ -63,6 +63,8 @@ export interface VenueSpotsSheetProps {
    * (and "Print all" counts only them). Null keeps the brand-wide list.
    */
   venueId?: string | null;
+  /** #4490 fix 2 (N80): the empty state's way forward (Spaces, where tables are added). */
+  onOpenSpaces?: () => void;
   testID?: string;
 }
 
@@ -72,6 +74,7 @@ export function VenueSpotsSheet({
   brandId,
   canMutate,
   venueId = null,
+  onOpenSpaces,
   testID,
 }: VenueSpotsSheetProps): React.ReactElement {
   const spotsQuery = useQrSpots(visible ? brandId : null);
@@ -214,9 +217,22 @@ export function VenueSpotsSheet({
             <GlassCard variant="base" style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>No spots yet</Text>
               <Text style={styles.emptyBody}>
-                Add a table, or name a room, and its QR spot appears here on its
-                own. You never keep two lists.
+                A QR spot is a code you print and put where guests sit, so they
+                can open your menu and order from there. Each table you add in
+                Spaces gets its spot here by itself, ready to print.
               </Text>
+              {onOpenSpaces !== undefined ? (
+                <Button
+                  label="Add tables in Spaces"
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    onClose();
+                    onOpenSpaces();
+                  }}
+                  testID="venue-spots-open-spaces"
+                />
+              ) : null}
             </GlassCard>
           ) : (
             groups.map((group) => (

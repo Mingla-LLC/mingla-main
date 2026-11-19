@@ -20,11 +20,22 @@ import { SelectSheet } from "../../../ui/SelectSheet";
 import { TimeField } from "../../../ui/TimeField";
 import { WeekdayChips } from "../../../ui/WeekdayChips";
 import { MenuTextCounter } from "../../MenuTextCounter";
-import { draftKey, optionIssues, type BusyRuleDraft, type PriceOptionDraft } from "./offersModel";
+import { draftKey, optionIssues, optionNameOrDefault, type BusyRuleDraft, type PriceOptionDraft } from "./offersModel";
+
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
 export const OPTION_NAME_MAX = 40;
 
-const ID_LABELS = ["Student ID", "NYSC ID", "Student or NYSC ID", "Age 18+", "Other"] as const;
+// #4490 fix 2 (N77): Age 21+ and Government ID beside the student choices.
+const ID_LABELS = [
+  "Student ID",
+  "NYSC ID",
+  "Student or NYSC ID",
+  "Age 18+",
+  "Age 21+",
+  "Government ID",
+  "Other",
+] as const;
 
 export interface PriceOptionCardProps {
   index: number;
@@ -54,6 +65,10 @@ export function PriceOptionCard({
   const patch = (next: Partial<PriceOptionDraft>): void => onChange({ ...option, ...next });
   const idPreset = (ID_LABELS as readonly string[]).includes(option.idLabel) ? option.idLabel : option.idLabel.length > 0 ? "Other" : null;
   const [otherLabel, setOtherLabel] = useState(idPreset === "Other");
+  // #4490 fix 2 (N70): the days come from "When it's on sale"; a price only
+  // asks for its own days when the host picks "Only some days".
+  const everyDay = ALL_DAYS.every((d) => option.weekdays.includes(d));
+  const [someDays, setSomeDays] = useState(!everyDay);
   const nameId = `price-option-${option.key}-name`;
   const counterId = `price-option-${option.key}-count`;
   const tid = `price-option-${index}`;
@@ -65,7 +80,7 @@ export function PriceOptionCard({
     <View style={styles.card} testID={tid}>
       <View style={styles.head}>
         <Text style={styles.cardTitle} accessibilityRole="header">
-          {option.name.trim().length > 0 ? option.name.trim() : `Price ${index + 1}`}
+          {optionNameOrDefault(option.name, index)}
         </Text>
         {canRemove ? (
           <IconChrome
@@ -80,11 +95,11 @@ export function PriceOptionCard({
       </View>
 
       <View style={styles.field}>
-        <Text style={styles.label} nativeID={nameId}>Name</Text>
+        <Text style={styles.label} nativeID={nameId}>Name (optional)</Text>
         <Input
           value={option.name}
           onChangeText={(name) => patch({ name: name.slice(0, OPTION_NAME_MAX) })}
-          placeholder="e.g. Adult, Child, Student"
+          placeholder={`Optional. Shown as "${optionNameOrDefault("", index)}" if blank`}
           accessibilityLabel={`Price ${index + 1} name`}
           disabled={disabled}
           error={showErrors ? issues.name : null}
@@ -124,15 +139,6 @@ export function PriceOptionCard({
         </View>
       </View>
 
-      <WeekdayChips
-        label="Days it can be used"
-        value={option.weekdays}
-        onChange={(weekdays) => patch({ weekdays })}
-        disabled={disabled}
-        showSummary
-        testID={`${tid}-days`}
-      />
-      {showErrors && issues.weekdays !== null ? <Text style={styles.error}>{issues.weekdays}</Text> : null}
 
       <View style={styles.field}>
         <NumberStepper
@@ -145,6 +151,83 @@ export function PriceOptionCard({
         />
         {showErrors && issues.guestMax !== null ? <Text style={styles.error}>{issues.guestMax}</Text> : null}
       </View>
+
+      {/* #4490 fix 2 (N77): the extras row sits ABOVE what it adds and its
+          buttons never disappear (an added extra reads "added" and is off),
+          so nothing moves under the pointer when one is added. */}
+      <View style={styles.actions}>
+        <Button
+          label={someDays ? "Some days added" : "Only some days"}
+          variant="ghost"
+          size="sm"
+          leadingIcon="calendar"
+          onPress={() => setSomeDays(true)}
+          disabled={disabled || someDays}
+          testID={`${tid}-add-days`}
+        />
+        <Button
+          label={option.idCheck ? "ID check added" : "Add an ID check"}
+          variant="ghost"
+          size="sm"
+          leadingIcon="shield"
+          onPress={() => patch({ idCheck: true })}
+          disabled={disabled || option.idCheck}
+          testID={`${tid}-add-id`}
+        />
+        <Button
+          label={option.limitHours ? "Hours limited" : "Limit the hours"}
+          variant="ghost"
+          size="sm"
+          leadingIcon="clock"
+          onPress={() => patch({ limitHours: true })}
+          disabled={disabled || option.limitHours}
+          testID={`${tid}-add-hours`}
+        />
+        <Button
+          label="Add a busy-time price"
+          variant="ghost"
+          size="sm"
+          leadingIcon="trending"
+          onPress={() =>
+            patch({
+              busyRules: [
+                ...option.busyRules,
+                { key: draftKey("busy"), weekdays: [4, 5], from: "18:00", to: "23:00", amountMinor: null },
+              ],
+            })
+          }
+          disabled={disabled || option.busyRules.length >= 10}
+          testID={`${tid}-add-busy`}
+        />
+      </View>
+
+      {someDays ? (
+        <View style={styles.subCard}>
+          <View style={styles.switchRow}>
+            <Text style={[styles.switchTitle, styles.grow]}>Only on these days</Text>
+            <Button
+              label="Remove"
+              variant="ghost"
+              size="sm"
+              onPress={() => {
+                setSomeDays(false);
+                patch({ weekdays: ALL_DAYS });
+              }}
+              disabled={disabled}
+              testID={`${tid}-days-remove`}
+            />
+          </View>
+          <WeekdayChips
+            label="Days this price can be used"
+            value={option.weekdays}
+            onChange={(weekdays) => patch({ weekdays })}
+            disabled={disabled}
+            showSummary
+            testID={`${tid}-days`}
+          />
+          {showErrors && issues.weekdays !== null ? <Text style={styles.error}>{issues.weekdays}</Text> : null}
+        </View>
+      ) : null}
 
       {option.idCheck ? (
         <View style={styles.subCard}>
@@ -281,48 +364,6 @@ export function PriceOptionCard({
       ))}
       {showErrors && issues.busy !== null ? <Text style={styles.error}>{issues.busy}</Text> : null}
 
-      <View style={styles.actions}>
-        {!option.idCheck ? (
-          <Button
-            label="Add an ID check"
-            variant="ghost"
-            size="sm"
-            leadingIcon="shield"
-            onPress={() => patch({ idCheck: true })}
-            disabled={disabled}
-            testID={`${tid}-add-id`}
-          />
-        ) : null}
-        {!option.limitHours ? (
-          <Button
-            label="Limit the hours"
-            variant="ghost"
-            size="sm"
-            leadingIcon="clock"
-            onPress={() => patch({ limitHours: true })}
-            disabled={disabled}
-            testID={`${tid}-add-hours`}
-          />
-        ) : null}
-        {option.busyRules.length < 10 ? (
-          <Button
-            label="Add a busy-time price"
-            variant="ghost"
-            size="sm"
-            leadingIcon="trending"
-            onPress={() =>
-              patch({
-                busyRules: [
-                  ...option.busyRules,
-                  { key: draftKey("busy"), weekdays: [4, 5], from: "18:00", to: "23:00", amountMinor: null },
-                ],
-              })
-            }
-            disabled={disabled}
-            testID={`${tid}-add-busy`}
-          />
-        ) : null}
-      </View>
     </View>
   );
 }

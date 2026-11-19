@@ -59,9 +59,16 @@ export const formatMenuPrice = (
   if (priceCents === null) return null;
   const major = priceCents / menuMinorFactor(currency);
   try {
+    // #4490 fix 2 (N91): the page's own money style — the symbol ("₦10,000",
+    // not "NGN 10,000.00").
+    // Whole naira drop the ".00" (the venue page writes ₦10,000); other
+    // currencies keep their usual two places (£20.00).
+    const dropCents = currency.toUpperCase() === "NGN" && Number.isInteger(major);
     return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
+      currencyDisplay: "narrowSymbol",
+      ...(dropCents ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}),
     }).format(major);
   } catch {
     return `${currency} ${major.toFixed(2)}`;

@@ -16,7 +16,9 @@ import {
   entryDayTiles,
   entryOptionRows,
   entrySelectionProblem,
+  entrySessionsFor,
   nextOpenDate,
+  pickEntrySession,
   quoteLinesFor,
   totalGuests,
   venueToday,
@@ -24,6 +26,7 @@ import {
   type EntryDayRow,
   type EntryDayTile,
   type EntryOfferDetail,
+  type EntrySessionChip,
   type EntryOptionRow,
   type EntryQuote,
 } from "@mingla/brand-rendering/venueOffers/entryModel";
@@ -63,6 +66,11 @@ export interface EntrySelection {
   selectedDate: string | null;
   selectedTile: EntryDayTile | null;
   selectDate: (date: string) => void;
+  /** #4490 fix 2 (N85) — the day's timed sessions (empty when the day has one window). */
+  sessions: EntrySessionChip[];
+  /** The session being quoted (null when the day has one window). */
+  selectedSession: EntrySessionChip | null;
+  selectSession: (windowId: string) => void;
   nextOpen: string | null;
   optionRows: EntryOptionRow[];
   counts: EntryCounts;
@@ -84,6 +92,8 @@ export function useEntrySelection(input: {
   offeringId: string;
   cartKey: string;
   initialDate?: string | null;
+  /** #4490 fix 2 (N85) — the session picked on the venue page. */
+  initialWindowId?: string | null;
   initialCounts?: EntryCounts | null;
   /** The checkout keeps quoting; the venue pane quotes too, for its total. */
   enabled?: boolean;
@@ -148,10 +158,25 @@ export function useEntrySelection(input: {
     setSelectedDate(firstOpen);
   }, [daysQuery.isSuccess, selectedDate, tiles]);
 
-  const selectedTile = useMemo(
+  const dayTile = useMemo(
     () => tiles.find((t) => t.date === selectedDate) ?? null,
     [tiles, selectedDate],
   );
+  // #4490 fix 2 (N85): a day with several windows is sold by session. The
+  // guest picks a time chip; the quote, the places-left check and the
+  // checkout use that session's window.
+  const [pickedWindowId, setPickedWindowId] = useState<string | null>(input.initialWindowId ?? null);
+  const allSessions = useMemo(
+    () => entrySessionsFor(rows, selectedDate, offer?.venue.timezone ?? null),
+    [rows, selectedDate, offer?.venue.timezone],
+  );
+  const sessions = allSessions.length > 1 || offer?.entryStyle === "timed_session" ? allSessions : [];
+  const selectedSession = sessions.length > 0 ? pickEntrySession(sessions, pickedWindowId) : null;
+  const selectedTile = useMemo((): EntryDayTile | null => {
+    if (dayTile === null || sessions.length === 0) return dayTile;
+    const sessionRow = rows.find((r) => r.windowId === selectedSession?.windowId) ?? dayTile.row;
+    return { ...dayTile, row: sessionRow };
+  }, [dayTile, sessions.length, rows, selectedSession?.windowId]);
   const optionRows = useMemo(
     () => entryOptionRows(offer?.options ?? [], selectedDate, perOption),
     [offer, selectedDate, perOption],
@@ -272,6 +297,9 @@ export function useEntrySelection(input: {
     selectedDate,
     selectedTile,
     selectDate: setSelectedDate,
+    sessions,
+    selectedSession,
+    selectSession: setPickedWindowId,
     nextOpen: selectedDate === null ? null : nextOpenDate(rows, selectedDate),
     optionRows,
     counts,

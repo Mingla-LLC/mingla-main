@@ -70,6 +70,7 @@ import {
   venueOrderTipPresets,
 } from "./venueOrderingRules";
 import { accentEdgeOnFill, accentFill } from "@mingla/offering-rendering/themeAccentStyle";
+import { OfferingStepper } from "@mingla/offering-rendering/OfferingDecideParts";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -256,21 +257,41 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   );
   const body = (
     <>
+      {/* #4490 fix 2 (N94): the order has a title, a proper Back to menu
+          button and a Close, like every other sheet. */}
       <View style={styles.headRow}>
         <Pressable
           onPress={onBack}
           accessibilityRole="button"
           accessibilityLabel="Back to the menu"
-          style={styles.backBtn}
+          style={[styles.backBtn, { borderColor: palette.panelBorder }]}
+          testID="venue-order-back"
         >
-          <Text style={[styles.backLabel, { color: palette.accent }]}>
+          <Text style={[styles.backLabel, { color: palette.primaryText }]}>
             ‹ Menu
           </Text>
         </Pressable>
-        <Text style={[styles.headChip, { color: palette.tertiaryText }]}>
-          {venueOrderHandoverChip(config)}
+        <Text
+          style={[styles.headTitle, { color: palette.primaryText }]}
+          accessibilityRole="header"
+        >
+          Your order
         </Text>
+        <Pressable
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Close your order"
+          style={[styles.backBtn, { borderColor: palette.panelBorder }]}
+          testID="venue-order-close"
+        >
+          <Text style={[styles.backLabel, { color: palette.primaryText }]}>
+            Close
+          </Text>
+        </Pressable>
       </View>
+      <Text style={[styles.headChip, { color: palette.tertiaryText }]}>
+        {venueOrderHandoverChip(config)}
+      </Text>
 
       {/* ── the basket ──────────────────────────────────────────────────── */}
       <View style={[styles.card, surface.card]}>
@@ -407,30 +428,17 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
           <Text style={[styles.blockHelp, { color: palette.tertiaryText }]}>
             {VENUE_ORDER_PARTY_SIZE_HELP}
           </Text>
-          <Input
-            value={partySize === null ? "" : String(partySize)}
-            onChangeText={(value: string) => {
-              const digits = value.replace(/\D/g, "");
-              if (digits === "") {
-                onPartySizeChange(null);
-                return;
-              }
-              const parsed = Number(digits);
-              onPartySizeChange(
-                parsed >= 1 && parsed <= VENUE_ORDER_PARTY_SIZE_MAX
-                  ? parsed
-                  : null,
-              );
-            }}
-            keyboardType="number-pad"
-            placeholder="e.g. 4"
-            placeholderTextColor={palette.tertiaryText}
-            accessibilityLabel={VENUE_ORDER_PARTY_SIZE_PROMPT}
-            maxLength={3}
-            style={[
-              styles.input,
-              { borderColor: palette.panelBorder, color: palette.primaryText },
-            ]}
+          <OfferingStepper
+            palette={palette}
+            value={partySize ?? 0}
+            min={0}
+            max={VENUE_ORDER_PARTY_SIZE_MAX}
+            onChange={(next: number) => onPartySizeChange(next === 0 ? null : next)}
+            decrementLabel="One fewer"
+            incrementLabel="One more"
+            valueLabel={partySize === null ? "Not said" : `${partySize} ${partySize === 1 ? "person" : "people"}`}
+            typeable
+            testID="venue-order-party-size"
           />
         </View>
       ) : null}
@@ -733,8 +741,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
-  backBtn: { minHeight: 34, justifyContent: "center" },
+  backBtn: { minHeight: 40, justifyContent: "center", paddingHorizontal: 14, borderRadius: 999, borderWidth: 1 },
   backLabel: { fontSize: 15, fontWeight: "800" },
+  headTitle: { flex: 1, textAlign: "center", fontSize: 17, fontWeight: "800" },
   headChip: { fontSize: 13, fontWeight: "700" },
   card: { borderRadius: 16, padding: 14 },
   block: { gap: 10 },

@@ -162,6 +162,19 @@ interface GuestVenueReservationProps {
   venueName?: string | null;
 }
 const INVALID_PHONE_COPY = "Enter a valid phone number.";
+
+/**
+ * #4490 fix 2 (N56) — the guest's private manage page for a free table
+ * booking: the id and token ride in the fragment (never sent to a server).
+ */
+export function guestReservationManageHref(
+  brandId: string,
+  reservationId: string | null | undefined,
+  token: string | null,
+): string | null {
+  if (typeof reservationId !== "string" || reservationId.length === 0 || token === null || token.length === 0) return null;
+  return `/reserve/${encodeURIComponent(brandId)}/manage#reservationId=${encodeURIComponent(reservationId)}&token=${encodeURIComponent(token)}`;
+}
 const INVALID_NAME_COPY = "Enter your name.";
 const INVALID_EMAIL_COPY = "Enter a valid email address.";
 const RESERVATION_FAILURE_COPY =
@@ -372,6 +385,8 @@ function GuestVenueReservationBody({
     phoneLast4: string | null;
     shortUrl: string | null;
     code: string | null;
+    /** #4490 fix 2 (N56): the guest's private manage page (web, free bookings). */
+    manageHref?: string | null;
   } | null>(null);
 
   const availability = usePublicVenueAvailability(
@@ -689,6 +704,7 @@ function GuestVenueReservationBody({
           phoneLast4: result.buyerContact?.phoneLast4 ?? null,
           shortUrl: result.claim?.shortUrl ?? null,
           code: result.claim?.code ?? null,
+          manageHref: guestReservationManageHref(brandId, result.reservationId, result.guestCancelToken ?? null),
         });
         captureWeb("venue_reservation_completed", {
           surface: analyticsSurface,
@@ -882,7 +898,24 @@ function GuestVenueReservationBody({
                 .filter((x): x is string => x !== null)
                 .join(" · ")}
             </Text>
-            {!requested ? (
+            {!requested && completed.manageHref != null ? (
+              <View style={styles.manageRow}>
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel="Change or cancel this booking"
+                  onPress={() => {
+                    if (typeof window !== "undefined") window.location.assign(completed.manageHref as string);
+                  }}
+                  style={[styles.manageButton, { borderColor: palette.secondaryText }]}
+                  testID="issue-4490-table-manage"
+                >
+                  <Text style={[styles.manageLabel, { color: palette.primaryText }]}>Change or cancel</Text>
+                </Pressable>
+                <Text style={[styles.body, { color: palette.secondaryText }]}>
+                  {`The same link is in your confirmation email${completed.email !== null ? ` to ${completed.email}` : ""}.`}
+                </Text>
+              </View>
+            ) : !requested ? (
               <Text style={[styles.body, { color: palette.secondaryText }]}>
                 {`To change or cancel, use the link in your confirmation email${completed.email !== null ? ` to ${completed.email}` : ""}, or contact ${venueName ?? "the venue"}.`}
               </Text>
@@ -1377,6 +1410,12 @@ function GuestVenueReservationBody({
               {INVALID_EMAIL_COPY}
             </Text>
           ) : null}
+          {/* #4490 fix 2 (N53): the venue needs a number to reach the table's
+              guest (the reservation writer requires one, #1857), so the field
+              says so like Name and Email. */}
+          <Text style={[styles.label, { color: palette.tertiaryText }]} testID="issue-4490-phone-required-label">
+            PHONE · REQUIRED
+          </Text>
           <PhoneInput
             // issue #3380 — formats as typed, follows a pasted +code, autofill.
             smartEntry
@@ -1684,6 +1723,16 @@ const styles = StyleSheet.create({
   host: { gap: space[2] },
   title: { ...type.h1 },
   body: { ...type.small },
+  manageRow: { gap: space[2], marginTop: space[2] },
+  manageButton: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
+    borderWidth: 1,
+  },
+  manageLabel: { ...type.small, fontWeight: "600" },
   label: {
     ...type.caption,
     letterSpacing: 1.2,

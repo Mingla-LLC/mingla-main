@@ -91,6 +91,7 @@ import { useVenueListing } from "../../../src/hooks/useVenueListings";
 import { openExternal } from "../../../src/services/guestFunnelLink";
 import { useVenueSuiteStore } from "../../../src/store/venueSuiteStore";
 import { listingStatusView } from "../../../src/utils/listingStatus";
+import { QueryClientContext } from "@tanstack/react-query";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { OptionalFeatureBoundary } from "../../../src/components/brandContact/OptionalFeatureBoundary";
 
@@ -149,11 +150,51 @@ export default function VenueManagementPage(): React.ReactElement {
   const brand = useBrand(brandId).data ?? null;
   const pipeline = useVenuePipelineState(venueId);
 
-  const status = listingStatusView({
+  const listingStatus = listingStatusView({
     hasVenue: venue !== null,
     status: pipeline.data?.status ?? null,
     claimStatus: venue?.claimStatus,
   });
+  // #4490 fix 2 (N74): a stay venue Mingla approved is not "Live" until its
+  // stay itself sells (the Stay overview's own rule: booking state active and
+  // a live room or place). The header says the same thing as the overview.
+  // Read through the query cache only for a stay venue (no extra hook, so the
+  // route's module tests that mount without a query client are unchanged).
+  const routeQueryClient = React.useContext(QueryClientContext);
+  const stayVenueHeader = venue?.venueCategory === "stay";
+  const [stayLive, setStayLive] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    if (!stayVenueHeader || routeQueryClient === undefined || typeof venueId !== "string" || venueId.length === 0) {
+      setStayLive(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void import("../../../src/services/stayInventoryService")
+      .then(({ getStayInventory }) =>
+        routeQueryClient.fetchQuery({
+          queryKey: ["stay-inventory", venueId],
+          staleTime: 10_000,
+          queryFn: () => getStayInventory(venueId),
+        }),
+      )
+      .then((snap) => {
+        if (cancelled) return;
+        setStayLive(
+          snap.settings?.booking_state === "active" &&
+            (snap.offerings ?? []).some((offering) => offering.status === "live"),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setStayLive(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stayVenueHeader, routeQueryClient, venueId]);
+  const status =
+    stayVenueHeader && listingStatus.label === "Live on Mingla" && stayLive === false
+      ? { ...listingStatus, label: "Approved · not live yet", tone: "info" as const, hint: "Mingla approved your venue. Finish the Stay overview to start taking bookings." }
+      : listingStatus;
 
   // LOCKED DECISION 5 — suite store lifecycle moved to this page.
   const activate = useVenueSuiteStore((s) => s.activate);

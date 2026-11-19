@@ -372,8 +372,14 @@ export function tileStateFor(row: EntryDayRow | null): EntryTileState {
  * window on sale is "Closed" (no schedule, a closed weekday, a special day).
  */
 export function entryDayTiles(rows: readonly EntryDayRow[], from: string, count: number): EntryDayTile[] {
+  // #4490 fix 2 (N85): a day can hold several windows (timed sessions). The
+  // tile speaks for the day's best window: a day with any session still on
+  // sale is open, never "Too late" because its first session has passed.
   const byDate = new Map<string, EntryDayRow>();
-  for (const row of rows) if (!byDate.has(row.localDate)) byDate.set(row.localDate, row);
+  for (const row of rows) {
+    const seen = byDate.get(row.localDate);
+    if (seen === undefined || dayRowRank(row) > dayRowRank(seen)) byDate.set(row.localDate, row);
+  }
   const tiles: EntryDayTile[] = [];
   for (let i = 0; i < count; i += 1) {
     const date = addDays(from, i);
@@ -390,6 +396,83 @@ export function entryDayTiles(rows: readonly EntryDayRow[], from: string, count:
     });
   }
   return tiles;
+}
+
+/** How good a window is for speaking for its day (higher wins). */
+function dayRowRank(row: EntryDayRow): number {
+  if (row.status === "available" && row.remaining > 0) return 3;
+  if (row.status === "gate_only") return 2;
+  if (row.status === "sold_out" || row.status === "taken") return 1;
+  return 0;
+}
+
+export type EntrySessionState = "open" | "few_left" | "full" | "past" | "closed";
+
+/** One timed session of a day, as a time chip ("10:30", "25 left"). */
+export interface EntrySessionChip {
+  windowId: string;
+  /** "10:30". */
+  label: string;
+  /** "10:30 to 11:00". */
+  rangeText: string | null;
+  /** "25 left", "Few left · 4", "Full", "Past". */
+  note: string;
+  remaining: number;
+  state: EntrySessionState;
+  /** Can be picked and bought online. */
+  usable: boolean;
+}
+
+/**
+ * #4490 fix 2 (N85) — the day's sessions in time order, each with places
+ * left; sessions that have started (server "too_soon") are "Past" and off.
+ */
+export function entrySessionsFor(
+  rows: readonly EntryDayRow[],
+  date: string | null,
+  timeZone: string | null,
+): EntrySessionChip[] {
+  if (date === null) return [];
+  return rows
+    .filter((row) => row.localDate === date)
+    .slice()
+    .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    .map((row) => {
+      const label = venueClock(row.startsAt, timeZone) ?? "";
+      let state: EntrySessionState;
+      if (row.status === "available" && row.remaining > 0) state = row.remaining <= FEW_LEFT ? "few_left" : "open";
+      else if (row.status === "available" || row.status === "sold_out" || row.status === "taken") state = "full";
+      else if (row.status === "too_soon") state = "past";
+      else state = "closed";
+      const note =
+        state === "open"
+          ? `${row.remaining} left`
+          : state === "few_left"
+            ? `Few left · ${row.remaining}`
+            : state === "full"
+              ? "Full"
+              : state === "past"
+                ? "Past"
+                : "Closed";
+      return {
+        windowId: row.windowId,
+        label,
+        rangeText: windowText(row, timeZone),
+        note,
+        remaining: row.remaining,
+        state,
+        usable: state === "open" || state === "few_left",
+      };
+    });
+}
+
+/** The session to quote: the picked one when it is usable, else the day's first usable. */
+export function pickEntrySession(
+  sessions: readonly EntrySessionChip[],
+  pickedWindowId: string | null,
+): EntrySessionChip | null {
+  const picked = sessions.find((s) => s.windowId === pickedWindowId && s.usable);
+  return picked ?? sessions.find((s) => s.usable) ?? null;
 }
 
 /** The first day after `after` that can be bought online, or null. */
@@ -1054,10 +1137,12 @@ export function passHeadline(booking: EntryBooking): string {
 }
 
 /** "Show this at the gate, any time from 12:00 to 00:00." */
-export function passWindowLine(booking: EntryBooking): string | null {
+export function passWindowLine(booking: EntryBooking, place: "gate" | "front_desk" = "gate"): string | null {
   if (booking.window === null) return null;
   const text = windowText(booking.window, booking.venue.timezone);
-  return text === null ? null : `Show this at the gate, any time from ${text}.`;
+  // #4490 fix 2 (N87): a room or desk booked by the hour is shown at the front desk.
+  const where = place === "front_desk" ? "at the front desk" : "at the gate";
+  return text === null ? null : `Show this ${where}, any time from ${text}.`;
 }
 
 /** "Bring a Student or NYSC ID for 1 guest." */

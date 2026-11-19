@@ -21,6 +21,7 @@ import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
 import { useDoorAction, useVenueCheckIns } from "../../../../hooks/useVenueCheckIns";
 import { useVenueDay } from "../../../../hooks/useVenueDay";
 import { useVenueOffers } from "../../../../hooks/useVenueOffers";
+import { useVenueFeatures } from "../../../../hooks/useVenueFeatures";
 import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
 import { useAdmitMember } from "../../../../hooks/useVenueMembers";
@@ -52,7 +53,7 @@ const LazyToast = React.lazy(async () => {
   return { default: mod.Toast };
 });
 
-type Filter = "all" | "entry" | "events" | "members";
+type Filter = "all" | "entry" | "hour" | "events" | "members";
 
 type Row =
   | { kind: "pass"; key: string; pass: CheckInPass }
@@ -102,6 +103,10 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const admitMember = useAdmitMember(brandId, venueId);
 
   const [filter, setFilter] = useState<Filter>("all");
+  // #4490 fix 2 (N60): By the hour and Members get their own filter when those features are on.
+  const featureSet = useVenueFeatures(brandId, venueId).data?.features;
+  const hourOn = featureSet?.by_the_hour?.enabled === true;
+  const membersOn = featureSet?.memberships?.enabled === true;
   const [search, setSearch] = useState("");
   const [scanOpen, setScanOpen] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
@@ -128,11 +133,22 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
       : null;
 
   const rows: Row[] = useMemo(() => {
-    const passes: Row[] = (list?.passes ?? []).map((pass) => ({ kind: "pass", key: `p-${pass.passId}`, pass }));
+    const allPasses: Row[] = (list?.passes ?? []).map((pass) => ({ kind: "pass", key: `p-${pass.passId}`, pass }));
+    const isHour = (r: Row): boolean => r.kind === "pass" && r.pass.offerKind === "by_the_hour";
+    const passes: Row[] = hourOn ? allPasses.filter((r) => !isHour(r)) : allPasses;
+    const hours: Row[] = allPasses.filter(isHour);
     const tickets: Row[] = (list?.tickets ?? []).map((ticket) => ({ kind: "ticket", key: `t-${ticket.ticketId}`, ticket }));
     const members: Row[] = (list?.members ?? []).map((member) => ({ kind: "member", key: `m-${member.subscriptionId}`, member }));
     const all =
-      filter === "entry" ? passes : filter === "events" ? tickets : filter === "members" ? members : [...passes, ...members, ...tickets];
+      filter === "entry"
+        ? passes
+        : filter === "hour"
+          ? hours
+          : filter === "events"
+            ? tickets
+            : filter === "members"
+              ? members
+              : [...allPasses, ...members, ...tickets];
     const needle = search.trim().toLowerCase();
     if (needle.length === 0) return all;
     return all.filter((r) =>
@@ -144,7 +160,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
           ? r.member.holderName.toLowerCase().includes(needle) || r.member.planName.toLowerCase().includes(needle)
           : r.ticket.holderName.toLowerCase().includes(needle) || r.ticket.eventTitle.toLowerCase().includes(needle),
     );
-  }, [filter, list?.members, list?.passes, list?.tickets, search]);
+  }, [filter, hourOn, list?.members, list?.passes, list?.tickets, search]);
 
   const runDoor = useCallback(
     (action: Parameters<typeof door.mutate>[0], onDone?: (o: ScanOutcome) => void): void => {
@@ -656,8 +672,9 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         <Segmented
           options={[
             { key: "all", label: "Everyone", count: list.passes.length + list.tickets.length + (list.members ?? []).length },
-            { key: "entry", label: "Entry", count: list.passes.length },
-            ...((list.members ?? []).length > 0 ? [{ key: "members" as const, label: "Members", count: (list.members ?? []).length }] : []),
+            { key: "entry", label: "Entry", count: hourOn ? list.passes.filter((p) => p.offerKind !== "by_the_hour").length : list.passes.length },
+            ...(hourOn ? [{ key: "hour" as const, label: "By the hour", count: list.passes.filter((p) => p.offerKind === "by_the_hour").length }] : []),
+            ...(membersOn || (list.members ?? []).length > 0 ? [{ key: "members" as const, label: "Members", count: (list.members ?? []).length }] : []),
             { key: "events", label: "Events", count: list.tickets.length },
           ]}
           value={filter}

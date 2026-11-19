@@ -403,7 +403,25 @@ export const HourEditor = forwardRef<VenueModuleLeaveHandle, HourEditorProps>(fu
           <Text style={styles.sectionTitle}>Price</Text>
           <MoneyField label="Price per hour" valueMinor={draft.priceMinor} onChangeMinor={(priceMinor) => patch({ priceMinor })} currency={currency} error={showErrors ? issues.price : null} testID="hour-editor-price" />
           {exampleLine !== null ? <Text style={styles.hint}>{exampleLine}</Text> : null}
-          <NumberStepper label="Most guests on one booking" value={draft.guestMax} min={1} max={1000} onChange={(guestMax) => patch({ guestMax })} testID="hour-editor-guest-max" />
+          {/* #4490 fix 2 (N80): smallest and largest group on one booking; the largest rises with the smallest. */}
+          <NumberStepperPair>
+            <NumberStepper
+              label="Smallest group"
+              value={draft.guestMin}
+              min={1}
+              max={1000}
+              onChange={(guestMin) => patch({ guestMin, guestMax: Math.max(draft.guestMax, guestMin) })}
+              testID="hour-editor-guest-min"
+            />
+            <NumberStepper
+              label="Largest group"
+              value={draft.guestMax}
+              min={Math.max(1, draft.guestMin)}
+              max={1000}
+              onChange={(guestMax) => patch({ guestMax })}
+              testID="hour-editor-guest-max"
+            />
+          </NumberStepperPair>
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
               <Text style={styles.switchTitle}>Busy-time price</Text>

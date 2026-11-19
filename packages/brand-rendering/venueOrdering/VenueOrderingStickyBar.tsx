@@ -26,7 +26,6 @@ import { formatMenuPrice } from "../PublicMenuSections";
 // SERVER total once priced, never a guess) on the left, "View order" on the
 // right. Same count, same total rule, same onPress.
 import { OfferingGlassBar } from "@mingla/offering-rendering/OfferingGlassBar";
-import { premiumDesktopBarDockStyle } from "@mingla/offering-rendering/offeringFrameMetrics";
 
 /**
  * issue #4420 D-V2 — where the bar sits. "screen": web docks it to the bottom
@@ -52,6 +51,9 @@ export interface VenueOrderingStickyBarProps {
   bottomInset?: number;
 }
 
+/** #4490 fix 2 (N91): one wording for ordering with no table (chip and bar). */
+export const VENUE_ORDER_COUNTER_TITLE = "Order here, collect at the counter";
+
 /** The bar's two lines, as data (pure; the render test reads the same). */
 export function venueOrderingBarCopy(input: {
   count: number;
@@ -65,7 +67,7 @@ export function venueOrderingBarCopy(input: {
       : null;
   if (input.count === 0) {
     return {
-      title: "Order from your table",
+      title: spot === null ? VENUE_ORDER_COUNTER_TITLE : "Order from your table",
       subtitle: "Add something to start",
       ctaLabel: null,
       spoken: null,
@@ -101,9 +103,13 @@ export const VenueOrderingStickyBar: React.FC<VenueOrderingStickyBarProps> = ({
 }) => {
   const copy = venueOrderingBarCopy({ count, totalCents, currency, spotLabel });
   const docked = placement === "screen" && Platform.OS === "web";
+  // #4490 fix 2 (N93): on desktop the bar stays in the menu's own column,
+  // held at the bottom of the screen while the menu scrolls (sticky). A
+  // `position: fixed` dock sat inside the page's transformed scroller, so it
+  // scrolled with the page and ended up across the cover photo (the H1 bug).
   const wrapStyle: StyleProp<ViewStyle> = docked
     ? isDesktop
-      ? premiumDesktopBarDockStyle(22 + bottomInset)
+      ? desktopStickyStyle(22 + bottomInset)
       : phoneDockStyle(12 + bottomInset)
     : styles.wrap;
   return (
@@ -133,6 +139,16 @@ interface PhoneBarDockStyle {
   bottom: number;
   zIndex: number;
 }
+interface DesktopStickyStyle {
+  position: ViewStyle["position"] | "sticky";
+  bottom: number;
+  zIndex: number;
+  marginTop: number;
+}
+const desktopStickyStyle = (bottom: number): StyleProp<ViewStyle> => {
+  const dock: DesktopStickyStyle = { position: "sticky", bottom, zIndex: 6, marginTop: 16 };
+  return dock as StyleProp<ViewStyle>;
+};
 const phoneDockStyle = (bottom: number): StyleProp<ViewStyle> => {
   const dock: PhoneBarDockStyle = { position: "fixed", left: 12, right: 12, bottom, zIndex: 6 };
   return dock as StyleProp<ViewStyle>;

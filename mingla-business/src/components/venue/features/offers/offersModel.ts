@@ -155,6 +155,8 @@ export type RefundPreset = "none" | "full_24h" | "full_24h_half_after" | "custom
 
 export interface EntryDraft {
   name: string;
+  /** #4490 fix 2 (N80) — the one line guests see under the name. */
+  summary: string;
   style: EntryStyle;
   sessionCapacity: number;
   options: PriceOptionDraft[];
@@ -165,6 +167,8 @@ export interface EntryDraft {
   endTime: string;
   sessionMinutes: number;
   sessionEveryMinutes: number;
+  /** #4490 fix 2 (N82) — "Runs until" (last day on sale, YYYY-MM-DD); "" = no end. */
+  endDate: string;
   refundPreset: RefundPreset;
   customLadder: RefundRung[];
   dateChange: boolean;
@@ -278,6 +282,7 @@ export function entryDraftFrom(input: {
   const schedule = offer?.schedule ?? null;
   return {
     name: offer?.name ?? "",
+    summary: offer?.summary ?? "",
     style: offer?.entryStyle ?? "walk_in",
     sessionCapacity: offer?.sessionCapacity ?? 50,
     options: (offer?.options ?? []).map(optionDraftFrom),
@@ -289,6 +294,7 @@ export function entryDraftFrom(input: {
     endTime: schedule?.endTime ?? input.defaultClose,
     sessionMinutes: schedule?.sessionMinutes ?? 60,
     sessionEveryMinutes: schedule?.sessionEveryMinutes ?? schedule?.sessionMinutes ?? 60,
+    endDate: schedule?.endDate ?? "",
     refundPreset: offer?.policy === null || offer === null ? "none" : presetForLadder(ladder),
     customLadder: offer?.policy !== null && offer !== null && presetForLadder(ladder) === "custom" ? ladder : [{ minMinutesBefore: 1440, refundBps: 10000 }],
     dateChange: change !== null && change.allowedUntilMinutesBefore !== null,
@@ -315,7 +321,8 @@ export function optionIssues(option: PriceOptionDraft, dailyLimit: number | null
     (r) => r.weekdays.length === 0 || !TIME.test(r.from) || !TIME.test(r.to) || r.amountMinor === null,
   );
   return {
-    name: option.name.trim().length === 0 ? "Give this price a name guests will recognise" : null,
+    // #4490 fix 2 (N58): a price with no name is saved as "Entry" / "Guest".
+    name: null,
     price: !option.free && (option.priceMinor === null || option.priceMinor <= 0) ? "Enter a price, or switch this option to free" : null,
     weekdays: option.weekdays.length === 0 ? "Pick at least one day" : null,
     hours:
@@ -353,7 +360,6 @@ export const ENTRY_STEPS: ReadonlyArray<{ id: EntryStepId; label: string }> = [
 export function entryStepIssue(step: EntryStepId, draft: EntryDraft): string | null {
   if (step === "basics") {
     if (draft.name.trim().length === 0) return "Name this offer";
-    if (draft.style === "timed_session" && draft.sessionCapacity < 1) return "Set how many fit in one session";
     return null;
   }
   if (step === "prices") {
@@ -362,11 +368,17 @@ export function entryStepIssue(step: EntryStepId, draft: EntryDraft): string | n
     if (index < 0) return null;
     const option = draft.options[index];
     const issues = optionIssues(option, draft.dailyLimit > 0 ? draft.dailyLimit : null);
-    if (issues.name !== null) return index === 0 ? "Name the first price" : `Name price ${index + 1}`;
-    return `Fix ${option.name.trim()}`;
+    return `Fix ${optionNameOrDefault(option.name, index)}`;
   }
   if (step === "capacity") {
-    if (draft.dailyLimit < 1) return "Set how many guests a day";
+    if (draft.style === "timed_session") {
+      if (draft.sessionCapacity < 1) return "Set how many fit in one session";
+      if (draft.sessionMinutes < 15) return "Pick how long a session lasts";
+      if (TIME.test(draft.startTime) && TIME.test(draft.endTime) && timedSessionStarts(draft).length === 0) {
+        return "No session fits between opens and closes";
+      }
+    }
+    if (draft.dailyLimit < 1) return draft.style === "timed_session" ? "Set how many fit in one session" : "Set how many guests a day";
     if (draft.keptForWalkIns > draft.dailyLimit) return "Kept for walk-ins is more than the day limit";
     const maxGuests = Math.max(0, ...draft.options.map((o) => o.guestMax));
     if (maxGuests > draft.dailyLimit) return "A price allows more guests than the day limit";
@@ -389,9 +401,17 @@ export function entryStepIssue(step: EntryStepId, draft: EntryDraft): string | n
 
 // ------------------------------------------------------------- payloads
 
+/** #4490 fix 2 (N58): the name used when the host left it blank. */
+export function optionNameOrDefault(name: string, index: number): string {
+  const trimmed = name.trim();
+  if (trimmed.length > 0) return trimmed;
+  if (index === 0) return "Entry";
+  return index === 1 ? "Guest" : `Guest ${index}`;
+}
+
 export function optionPayload(option: PriceOptionDraft, sortOrder: number): Record<string, unknown> {
   const payload: Record<string, unknown> = {
-    name: option.name.trim(),
+    name: optionNameOrDefault(option.name, sortOrder),
     unit: "guest",
     guestMin: 1,
     guestMax: Math.max(1, option.guestMax),
@@ -429,11 +449,58 @@ export function schedulePayload(draft: EntryDraft): Record<string, unknown> {
     startTime: draft.startTime,
     endTime: draft.endTime,
   };
+  // #4490 fix 2 (N82): "Runs until" — the server stops making days after it.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(draft.endDate)) base.endDate = draft.endDate;
   if (draft.style === "timed_session") {
     base.sessionMinutes = draft.sessionMinutes;
     base.sessionEveryMinutes = draft.sessionEveryMinutes;
   }
   return base;
+}
+
+// --------------------------------------------- timed sessions (N82)
+
+function minutesOf(hhmm: string): number | null {
+  if (!TIME.test(hhmm)) return null;
+  return Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+}
+
+function clockOf(minutes: number): string {
+  const m = ((minutes % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Session start times in one day: from Opens, a new one every interval, the
+ * last one ending by Closes (a close at or before the open runs past midnight).
+ * The same rule the server uses to make the day's windows.
+ */
+export function timedSessionStarts(
+  draft: Pick<EntryDraft, "startTime" | "endTime" | "sessionMinutes" | "sessionEveryMinutes">,
+): string[] {
+  const open = minutesOf(draft.startTime);
+  let close = minutesOf(draft.endTime);
+  if (open === null || close === null) return [];
+  if (close <= open) close += 1440;
+  const length = Math.max(15, draft.sessionMinutes);
+  const every = Math.max(15, draft.sessionEveryMinutes);
+  const starts: string[] = [];
+  for (let t = open; t + length <= close && starts.length < 200; t += every) starts.push(clockOf(t));
+  return starts;
+}
+
+/** Guests a day for a timed offer: sessions × guests per session. */
+export function timedDayTotal(draft: EntryDraft): number {
+  return timedSessionStarts(draft).length * Math.max(0, draft.sessionCapacity);
+}
+
+/** "10:00, 10:30 … 17:30 · 16 sessions · 25 each" (null when no session fits). */
+export function timedSessionPreview(draft: EntryDraft): string | null {
+  const starts = timedSessionStarts(draft);
+  if (starts.length === 0) return null;
+  const head =
+    starts.length <= 3 ? starts.join(", ") : `${starts[0]}, ${starts[1]} … ${starts[starts.length - 1]}`;
+  return `${head} · ${starts.length} ${starts.length === 1 ? "session" : "sessions"} · ${draft.sessionCapacity} each`;
 }
 
 // ------------------------------------------------------ summaries (copy)
@@ -479,6 +546,8 @@ export function optionSummary(option: VenuePriceOption, currency: string | null)
   const hours = timeRangeLabel(option.startTime, option.endTime);
   if (hours !== null) parts.push(hours);
   if (option.eligibility !== null) parts.push(`${option.eligibility.label} checked at the gate`);
+  // #4490 fix 2 (N77): the most guests on one booking.
+  parts.push(`up to ${option.guestMax} on one booking`);
   return parts.join(" · ");
 }
 
@@ -514,6 +583,13 @@ export function priceColumn(offer: VenueOffer, currency: string | null): string 
   const prices = offer.options.map((o) => o.priceMinor);
   const lowest = Math.min(...prices);
   if (lowest === 0 && prices.every((p) => p === 0)) return "Free";
+  // #4490 fix 2 (N77): a free option beside paid ones reads "Free – ₦x"
+  // (the lowest paid price), never "from ₦0".
+  const paid = prices.filter((p) => p > 0);
+  if (lowest === 0) {
+    const cheapest = Math.min(...paid);
+    return `Free – ${money(cheapest, currency)}${new Set(paid).size > 1 ? "+" : ""} per guest`;
+  }
   const label = `${money(lowest, currency)} per guest`;
   return new Set(prices).size > 1 ? `from ${label}` : label;
 }

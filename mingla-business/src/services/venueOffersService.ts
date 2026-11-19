@@ -946,6 +946,21 @@ export async function manageVenueOffer(input: ManageOfferInput): Promise<VenueOf
   return mapOffer(data);
 }
 
+/**
+ * #4490 fix 2 (N5) — copy an offer of the venue as a new draft ("<name>
+ * (copy)") with its prices, rules, schedule, extras and spaces. The server
+ * copies; nothing is retyped and nothing sold is copied.
+ */
+export async function duplicateVenueOffer(venueId: string, offerId: string): Promise<VenueOffer> {
+  const { data, error } = await supabase.rpc("issue_4490_duplicate_offer", {
+    p_venue_id: venueId,
+    p_offer_id: offerId,
+    p_idempotency_key: `offer-duplicate-${randomId()}`,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapOffer(data);
+}
+
 export interface PoolInput {
   venueId: string;
   action: "create" | "update" | "archive";

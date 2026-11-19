@@ -60,7 +60,8 @@ describe("price options", () => {
   it("never defaults a name, and a blank name is an error in plain words", () => {
     const fresh = emptyOptionDraft();
     expect(fresh.name).toBe("");
-    expect(optionIssues(fresh, 400).name).toBe("Give this price a name guests will recognise");
+    // TEST-MOD-APPROVED #4490 (fix round 2, N58): a blank price name is not an error; it saves as "Entry" / "Guest".
+    expect(optionIssues(fresh, 400).name).toBeNull();
     expect(optionIssues(fresh, 400).price).toBe("Enter a price, or switch this option to free");
   });
 
@@ -108,7 +109,8 @@ describe("entry steps", () => {
   it("names the first problem of each step", () => {
     expect(entryStepIssue("basics", draft({ name: " " }))).toBe("Name this offer");
     expect(entryStepIssue("prices", draft({ options: [] }))).toBe("Add a price option");
-    expect(entryStepIssue("prices", draft({ options: [emptyOptionDraft()] }))).toBe("Name the first price");
+    // TEST-MOD-APPROVED #4490 (fix round 2, N58): an unnamed first price is called "Entry"; its missing price is the problem.
+    expect(entryStepIssue("prices", draft({ options: [emptyOptionDraft()] }))).toBe("Fix Entry");
     expect(entryStepIssue("capacity", draft({ dailyLimit: 0 }))).toBe("Set how many guests a day");
     expect(entryStepIssue("capacity", draft({ keptForWalkIns: 500 }))).toBe("Kept for walk-ins is more than the day limit");
     expect(entryStepIssue("capacity", draft())).toBeNull();

@@ -834,6 +834,17 @@ export interface VenuePageContext {
   preview?: boolean;
   /** Tabs this release builds. Default `BUILT_VENUE_TABS`. */
   built?: ReadonlySet<PublicVenueTab>;
+  /**
+   * #4490 fix 2 (N90): the venue's type leads with tables (a bar or a
+   * restaurant): when its tables can be booked they are the lead, ahead of an
+   * Entry deal. Other types keep Entry first.
+   */
+  tablesFirst?: boolean;
+}
+
+/** #4490 fix 2 (N90): venue types whose first feature is their tables. */
+export function venueTypeLeadsWithTables(category: string | null | undefined): boolean {
+  return category === "bar_lounge" || category === "restaurant";
 }
 
 export interface VenueLeadRow {
@@ -1013,7 +1024,7 @@ export function deriveVenuePage(
       row: null,
       keepPriceRow: true,
     };
-  } else if (tabSet.has("entry")) {
+  } else if (tabSet.has("entry") && !(ctx.tablesFirst === true && tabSet.has("reservations") && tablesReady && tablesFeature)) {
     const styles = entryOffers.map((o) => o.entryStyle);
     const verb = styles.every((s) => s === "day_pass")
       ? "Buy a day pass"

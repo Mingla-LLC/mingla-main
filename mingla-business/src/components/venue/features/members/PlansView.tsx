@@ -10,6 +10,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { color, radius, space, type } from "../../../../constants/designSystem";
 import { useBrandCurrency } from "../../../../hooks/useBrandCurrency";
 import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
+import { useVenueListing } from "../../../../hooks/useVenueListings";
 import { useManageMembershipPlan, useVenueMembershipPlans } from "../../../../hooks/useVenueMembershipPlans";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
 import type { MembershipPlan } from "../../../../types/venueMembers";
@@ -22,7 +23,7 @@ import { Menu } from "../../../ui/Menu";
 import { Pill } from "../../../ui/Pill";
 import { Skeleton } from "../../../ui/Skeleton";
 import { money } from "../offers/offersModel";
-import { planErrorCopy, planIncludesLines, planStatusWords, planTermsLine } from "./membersModel";
+import { hourPlacesTitle, planErrorCopy, planIncludesLines, planStatusWords, planTermsLine } from "./membersModel";
 
 const LazyConfirmDialog = React.lazy(async () => {
   const mod = await import("../../../ui/ConfirmDialog");
@@ -56,6 +57,7 @@ function planLines(plan: MembershipPlan): string[] {
 }
 
 export function PlansView({ brandId, venueId, canEdit, onBack, onEdit, onOpenOffers, onToast }: PlansViewProps): React.ReactElement {
+  const venueCategory = useVenueListing(venueId).data?.venueCategory ?? null;
   const { isWideDesktop } = useResponsiveLayout();
   const currency = useBrandCurrency(brandId);
   const query = useVenueMembershipPlans(brandId, venueId);
@@ -190,7 +192,7 @@ export function PlansView({ brandId, venueId, canEdit, onBack, onEdit, onOpenOff
         <GlassCard variant="base" padding={space[4]} contentStyle={styles.roomsCard} testID="venue-plans-rooms">
           <Icon name="clock" size={20} color={color.text2} />
           <View style={styles.cellText}>
-            <Text style={styles.rowTitle}>Meeting rooms</Text>
+            <Text style={styles.rowTitle}>{hourPlacesTitle(venueCategory)}</Text>
             <Text style={styles.meta}>{`By the hour · ${state.hourOffers.map((o) => o.name).join(", ")} · members use their hours first`}</Text>
           </View>
           {onOpenOffers !== undefined ? <Button label="Open Offers" variant="secondary" size="sm" onPress={onOpenOffers} testID="venue-plans-open-offers" /> : null}

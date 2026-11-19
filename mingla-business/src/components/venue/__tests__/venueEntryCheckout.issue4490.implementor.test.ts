@@ -234,11 +234,14 @@ describe("#4490 P2-6 checkout address and public routes", () => {
     );
     expect(path).not.toMatch(/token|#t=/);
     const q = new URLSearchParams(path.split("?")[1]);
+    // TEST-MOD-APPROVED #4490 (fix round 2, N85): the address may carry the timed session too (null when none).
     expect(parseEntryCheckoutParams({ date: q.get("date"), q: q.get("q") })).toEqual({
       date: "2026-11-19",
       counts: { [WALKIN]: 2, [STUDENT]: 1 },
+      windowId: null,
     });
-    expect(parseEntryCheckoutParams({ date: "19/11/2026", q: "x:1,y" })).toEqual({ date: null, counts: {} });
+    // TEST-MOD-APPROVED #4490 (fix round 2, N85): no session in the address reads as null.
+    expect(parseEntryCheckoutParams({ date: "19/11/2026", q: "x:1,y" })).toEqual({ date: null, counts: {}, windowId: null });
   });
 
   test("C-2 /visit/ is public and segment-safe; /visitor is not; it is not an ad pixel page", () => {

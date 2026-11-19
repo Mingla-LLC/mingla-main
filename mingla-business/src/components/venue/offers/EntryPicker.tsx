@@ -12,6 +12,8 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
+  OfferingChipRow,
+  OfferingChoiceChip,
   OfferingDateStrip,
   OfferingPanel,
   OfferingStepper,
@@ -123,6 +125,30 @@ export function EntryPicker({
           testID={`${testID}-day`}
         />
       )}
+
+      {/* #4490 fix 2 (N85) — a timed-session day: one chip per session with
+          places left; started sessions read "Past" and can't be picked. */}
+      {tile !== null && tile.soldOnline && selection.sessions.length > 0 ? (
+        <View style={styles.block} testID={`${testID}-sessions`}>
+          <EntrySectionLabel palette={palette}>Pick a time</EntrySectionLabel>
+          <OfferingChipRow accessibilityLabel="Choose a session">
+            {selection.sessions.map((session) => (
+              <OfferingChoiceChip
+                key={session.windowId}
+                palette={palette}
+                label={session.label}
+                note={session.note}
+                selected={selection.selectedSession?.windowId === session.windowId}
+                disabled={!session.usable}
+                readableWhenDisabled
+                onPress={() => selection.selectSession(session.windowId)}
+                accessibilityLabel={`${session.rangeText ?? session.label}, ${session.note}`}
+                testID={`${testID}-session-${session.label.replace(":", "")}`}
+              />
+            ))}
+          </OfferingChipRow>
+        </View>
+      ) : null}
 
       {tile !== null && tile.row !== null && tile.soldOnline ? (
         <Text style={[styles.dayLine, { color: palette.secondaryText }]} testID={`${testID}-day-line`}>

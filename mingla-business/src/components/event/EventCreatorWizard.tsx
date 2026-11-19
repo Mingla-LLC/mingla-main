@@ -166,6 +166,7 @@ import { PublishErrorsSheet } from "./PublishErrorsSheet";
 // master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
 // the app-local copy is deleted.
 import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
+import { defaultTimezoneForBrand, detectDeviceTimezone } from "../../utils/timezones";
 
 // #1742 / ORCH-1083 — creator intelligence is not app-startup UI.
 const LazyTurnoutIntelProvider = createDeferredTurnoutIntelProvider(
@@ -748,6 +749,25 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       updateDraft(liveDraft.id, { timezone: detected });
     }
   }, [liveDraft.id, liveDraft.timezone, updateDraft]);
+
+  // #4490 fix 2 (N84 d) — a NEW event runs in the brand's zone (payout
+  // country, then currency: Lagos for a Nigerian brand), not whatever zone
+  // the device happens to be in. Only while nothing is dated yet and the
+  // zone is still the device default, once per draft; the host can still
+  // change it, and a venue picked in Where sets the venue's zone.
+  const brandZoneAppliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (brandZoneAppliedRef.current === liveDraft.id) return;
+    if (brand === null) return;
+    brandZoneAppliedRef.current = liveDraft.id;
+    if (liveDraft.date !== null || liveDraft.timezone !== detectDeviceTimezone()) return;
+    const zone = defaultTimezoneForBrand({
+      payoutCountry: brand.payoutCountry ?? brand.paymentCountry ?? null,
+      currency: brand.defaultCurrency ?? null,
+      deviceZone: liveDraft.timezone,
+    });
+    if (zone !== liveDraft.timezone) updateDraft(liveDraft.id, { timezone: zone });
+  }, [brand, liveDraft.date, liveDraft.id, liveDraft.timezone, updateDraft]);
 
   // ORCH-1355 F-1/F-3 — handleUpdate MUST be STABLE and build the autosave
   // payload from the store's FRESH post-write state, never from a captured

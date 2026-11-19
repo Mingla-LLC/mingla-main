@@ -192,6 +192,31 @@ export function blocksFor(cal: VenueCalendar, row: CalendarRow, date: string): C
       if (c.spaceId !== row.id || !touchesDay(c.claimFrom, c.claimTo, date, tz)) continue;
       out.push(claimBlock(c, tz, c.viaCombinationId !== null));
     }
+    // #4490 fix 2 (N76 c) — events at the venue that share their space (no
+    // claim) still show on the space they use; a whole-venue event shows on
+    // every space. An exclusive event already has its claim above.
+    const claimed = new Set(cal.claims.filter((c) => c.eventId !== null && c.spaceId === row.id).map((c) => c.eventId));
+    const seenDates = new Set<string>();
+    for (const e of cal.events ?? []) {
+      if (e.spaceId !== null && e.spaceId !== row.id) continue;
+      if (claimed.has(e.eventId) || !touchesDay(e.startsAt, e.endsAt, date, tz)) continue;
+      const dateKey = `${e.eventId}|${e.startsAt}`;
+      if (seenDates.has(dateKey)) continue;
+      seenDates.add(dateKey);
+      const times = timesWords(e.startsAt, e.endsAt, tz);
+      const where = e.spaceId === null ? "Whole venue" : null;
+      out.push({
+        key: `ev-${e.eventId}-${e.startsAt}-${row.id}`,
+        tone: "event",
+        title: e.title,
+        detail: [times, where].filter(Boolean).join(" · ") || null,
+        label: `Event: ${e.title}${times !== null ? `, ${times}` : ""}${where !== null ? ", whole venue" : ""}`,
+        groupId: null,
+        claimId: null,
+        eventId: e.eventId,
+        at: e.startsAt,
+      });
+    }
   } else {
     // The combination's own hire: one block for the booking (its parts carry the claims).
     for (const c of cal.claims) {
@@ -261,15 +286,20 @@ export function daySummary(cal: VenueCalendar, date: string): { hires: number; h
   const tz = cal.timezone;
   const groups = new Set<string>();
   const holds = new Set<string>();
-  let events = 0;
+  const eventIds = new Set<string>();
   let blocks = 0;
   for (const c of cal.claims) {
     if (!touchesDay(c.claimFrom, c.claimTo, date, tz)) continue;
-    if (c.kind === "event") events += 1;
+    if (c.kind === "event") eventIds.add(c.eventId ?? c.claimId);
     else if (c.kind === "block") blocks += 1;
     else if (c.kind === "hold") holds.add(c.groupId ?? c.claimId);
     else groups.add(c.groupId ?? c.claimId);
   }
+  // #4490 fix 2 — shared-space and whole-venue events count once each.
+  for (const e of cal.events ?? []) {
+    if (touchesDay(e.startsAt, e.endsAt, date, tz)) eventIds.add(e.eventId);
+  }
+  const events = eventIds.size;
   const requests = cal.requests.filter((r) => touchesDay(r.bookedFrom, r.bookedTo, date, tz)).length;
   const packages = cal.days.find((d) => d.localDate === date)?.groups.length ?? 0;
   return { hires: groups.size, holds: holds.size, events, blocks, requests, groups: packages };

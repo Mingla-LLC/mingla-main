@@ -88,7 +88,10 @@ export function VenueCalendarModule({ brandId, venueId, onOpenRequest }: VenueCa
   const bottomPad = venueScrollBottomPad(insets.bottom);
   const offersQuery = useVenueOffers(brandId, venueId);
   const access = useVenueEditAccess(brandId, venueId);
-  const hireOn = useVenueFeatures(brandId, venueId).data?.features.private_hire.enabled !== false;
+  const featuresData = useVenueFeatures(brandId, venueId).data;
+  const hireOn = featuresData?.features.private_hire.enabled !== false;
+  // #4490 fix 2 (N76) — with Events here on, start an event at this venue.
+  const eventsOn = featuresData?.features.events_here?.enabled === true;
   const timezone = offersQuery.data?.settings?.timezone ?? "Africa/Lagos";
   const today = dateIn(new Date().toISOString(), timezone) ?? new Date().toISOString().slice(0, 10);
   const [view, setView] = useState<CalendarView>(isWideDesktop ? "week" : "day");
@@ -147,6 +150,16 @@ export function VenueCalendarModule({ brandId, venueId, onOpenRequest }: VenueCa
           <IconChrome icon="chevR" size={36} accessibilityLabel={`Next ${view}`} onPress={() => setAnchor(shiftAnchor(view, at, 1))} testID="venue-calendar-next" />
         </View>
         {at !== today ? <Button label="Today" variant="ghost" size="sm" onPress={() => setAnchor(null)} testID="venue-calendar-today" /> : null}
+        {access.canManageBookings && eventsOn && venueId !== null ? (
+          <Button
+            label="Add an event here"
+            variant="secondary"
+            size="sm"
+            leadingIcon="plus"
+            onPress={() => router.push(`/event/create?venueId=${encodeURIComponent(venueId as string)}` as never)}
+            testID="venue-calendar-add-event"
+          />
+        ) : null}
         {access.canManageBookings && rows.length > 0 ? (
           <Button label="Block a space" variant="secondary" size="sm" leadingIcon="shield" onPress={() => setBlockOpen(true)} testID="venue-calendar-block" />
         ) : null}

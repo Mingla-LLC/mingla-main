@@ -272,6 +272,10 @@ jest.mock("../ui/GlassCard", () => ({
 jest.mock("../event/CreatorStep2When", () => ({ CreatorStep2When: (): null => null }));
 jest.mock("../experience/ExperienceCoverStep", () => ({ ExperienceCoverStep: (): null => null }));
 jest.mock("../experience/ExperienceStopsStep", () => ({ ExperienceStopsStep: (): null => null }));
+// [TEST-MOD-APPROVED #4490] fix round 2: the venue / space choice on the
+// Where step is its own lazy module (it reads venues); inert here, as in the
+// other Experience suites.
+jest.mock("../venue/features/EventVenueSpacePicker", () => ({ EventVenueSpacePicker: (): null => null }));
 jest.mock("../pricing/LazyWhoCoversCostsSection", () => ({
   WhoCoversCostsSection: (): null => null,
 }));
@@ -534,6 +538,9 @@ const BOUNDARY: Record<string, () => unknown> = {
     useTripIntakeSchemasByEvent: () => intakeQuery,
     useUpsertTripIntakeSchema: () => mutation,
   }),
+  // [TEST-MOD-APPROVED #4490] fix round 2: the event creator starts a new
+  // event in the brand's time zone (pure helpers; real module).
+  timezones: () => jest.requireActual("../../utils/timezones"),
 };
 const STEP_LEAF =
   /^(CreatorStep\d\w+|RsvpStep\d\w+|PublishErrorsSheet|TripCreatorStep(1Basics|2Itinerary|3Inclusions|5Policy|6Intake))$/;

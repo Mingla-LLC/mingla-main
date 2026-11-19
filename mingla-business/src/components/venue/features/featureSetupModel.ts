@@ -153,7 +153,8 @@ const SELL_WORDS: Readonly<Partial<Record<VenueFeatureKey, string>>> = {
 export function sellStepMeta(features: VenueFeatureSet): string {
   const on = SELLING.filter((k) => features[k].enabled);
   if (on.length === 0) return "Switch on what you sell in Settings, then add it here";
-  if (on.length === 1) return SELL_WORDS[on[0]] ?? featureLabel(on[0]);
+  // #4490 fix 2: a single line starts with a capital too ("Private hire for a space").
+  if (on.length === 1) return (SELL_WORDS[on[0]] ?? featureLabel(on[0])).replace(/^./, (c) => c.toUpperCase());
   const words = on.map((k) => SELL_WORDS[k] ?? featureLabel(k)).map((w) => w.replace(/, with a price for each kind of guest$/, ""));
   return `${words.slice(0, -1).join(", ")} or ${words[words.length - 1]}`.replace(/^./, (c) => c.toUpperCase());
 }

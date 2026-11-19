@@ -78,6 +78,7 @@ import {
   type MenuItemReorderIntent,
 } from "../../hooks/menuItemReorder";
 import { useNetInfoSafe } from "../../lib/netinfoSafe";
+import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import type { Menu, MenuItem } from "../../services/menusService";
 import { randomId } from "../../utils/randomId";
 import { MenuCategorySheet } from "./MenuCategorySheet";
@@ -216,6 +217,14 @@ export function VenueMenuModule({
   // #1789 — the row currently being 86'd, so one tap cannot fire twice.
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
   const [spotsSheetOpen, setSpotsSheetOpen] = useState<boolean>(false);
+  // #4490 fix 2 (N80): the sheet's code loads ahead, so "QR spots & printing"
+  // opens at once (it took seconds with no sign of life on a slow load).
+  useEffect(() => {
+    void import("./VenueSpotsSheet").catch(() => undefined);
+  }, []);
+  const suiteSelectModule = useVenueSuiteStore((s) => s.selectModule);
+  const suiteRequestSpaces = useVenueSuiteStore((s) => s.requestSpaces);
+  const suiteModules = useVenueSuiteStore((s) => s.visibleModules);
   const [itemReorderFeedback, setItemReorderFeedback] =
     useState<MenuItemReorderFeedback | null>(null);
   const activeItemReorderRef = useRef<string | null>(null);
@@ -1340,13 +1349,27 @@ export function VenueMenuModule({
         canDelete={canMutate}
       />
       {spotsSheetOpen ? (
-        <React.Suspense fallback={null}>
+        <React.Suspense
+          fallback={
+            <Text style={styles.spotsLoading} accessibilityLiveRegion="polite" testID="venue-spots-opening">
+              Opening QR spots…
+            </Text>
+          }
+        >
           <LazyVenueSpotsSheet
             venueId={venueId ?? null}
             visible
             onClose={() => setSpotsSheetOpen(false)}
             brandId={brandId}
             canMutate={canMutate}
+            onOpenSpaces={
+              venueId !== null && suiteModules.includes("spaces")
+                ? () => {
+                    suiteRequestSpaces(venueId);
+                    suiteSelectModule?.("spaces");
+                  }
+                : undefined
+            }
           />
         </React.Suspense>
       ) : null}
@@ -1469,6 +1492,7 @@ function TextControl({
 }
 
 const styles = StyleSheet.create({
+  spotsLoading: { ...type.caption, color: color.text3, textAlign: "center", paddingVertical: space[2] },
   addItemBusy: { opacity: 0.5 },
   host: {
     paddingHorizontal: space[4],

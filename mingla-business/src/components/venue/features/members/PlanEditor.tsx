@@ -423,7 +423,8 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
             />
             {draft.discountPercent > 0 ? (
               <View style={styles.inset}>
-                <Text style={styles.label}>Off</Text>
+                {/* #4490 fix 2 (N80): say what the chips choose, and which are chosen. */}
+                <Text style={styles.label}>{`${draft.discountPercent}% off on`}</Text>
                 <View style={styles.chips}>
                   {DISCOUNT_KINDS.map((k) => (
                     <Chip
@@ -441,6 +442,11 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
                     />
                   ))}
                 </View>
+                <Text style={styles.hint}>
+                  {draft.discountKinds.length > 0
+                    ? `Members pay ${100 - draft.discountPercent}% of the price on ${draft.discountKinds.map((k) => DISCOUNT_KIND_LABEL[k]).join(" and ")}.`
+                    : "Tap what the member price applies to."}
+                </Text>
                 {showErrors && issues.discount !== null ? <Text style={styles.error}>{issues.discount}</Text> : null}
               </View>
             ) : null}

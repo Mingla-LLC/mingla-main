@@ -254,6 +254,10 @@ export function hireLadder(draft: Pick<HireDraft, "refundPreset" | "customLadder
 }
 
 /** The editor's starting point: the recommended defaults (spec B §8 Q6) or the saved offer. */
+/** #4490 fix 2 (N83): the setup and cleanup a new hire starts with. */
+export const HIRE_DEFAULT_SETUP_MINUTES = 180;
+export const HIRE_DEFAULT_CLEANUP_MINUTES = 120;
+
 export function hireDraftFrom(offer: VenueOffer | null): HireDraft {
   const h = offer?.hire ?? null;
   const deposit = offer?.deposit ?? null;
@@ -276,8 +280,8 @@ export function hireDraftFrom(offer: VenueOffer | null): HireDraft {
     flexStep: h?.hoursYouSet?.stepMinutes ?? 60,
     flexMinMinutes: h?.hoursYouSet?.minMinutes ?? 240,
     flexMaxMinutes: h?.hoursYouSet?.maxMinutes ?? 0,
-    setupMinutes: h?.setupMinutes ?? 180,
-    cleanupMinutes: h?.cleanupMinutes ?? 120,
+    setupMinutes: h?.setupMinutes ?? HIRE_DEFAULT_SETUP_MINUTES,
+    cleanupMinutes: h?.cleanupMinutes ?? HIRE_DEFAULT_CLEANUP_MINUTES,
     minNoticeMinutes: offer?.minNoticeMinutes ?? 10080,
     maxAdvanceDays: offer?.maxAdvanceDays ?? 365,
     charge: h?.charge ?? (unitGuest ? "per_guest" : "hire_fee"),
@@ -650,7 +654,12 @@ export function hireReviewItems(
     {
       key: "buffers",
       label: "Setup and cleanup",
-      value: `Setup ${bufferWords(draft.setupMinutes)} before · cleanup ${bufferWords(draft.cleanupMinutes)} after`,
+      // #4490 fix 2 (N83): the starting values are ours; say so, and where to change them.
+      value: `Setup ${bufferWords(draft.setupMinutes)} before · cleanup ${bufferWords(draft.cleanupMinutes)} after${
+        draft.setupMinutes === HIRE_DEFAULT_SETUP_MINUTES && draft.cleanupMinutes === HIRE_DEFAULT_CLEANUP_MINUTES
+          ? " · our starting times, change them on Times"
+          : ""
+      }`,
     },
     {
       key: "prices",

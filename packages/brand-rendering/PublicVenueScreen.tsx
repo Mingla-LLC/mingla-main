@@ -146,6 +146,7 @@ import {
 import { formatSourceRange } from "./venueMoney";
 import {
   deriveVenuePage,
+  venueTypeLeadsWithTables,
   groupVenueHours,
   venueHoursDaysFromEntries,
   venueHoursText,
@@ -1356,8 +1357,9 @@ export const PublicVenueScreen = ({
         menuTabVisible: hasMenu,
         tablesGate,
         preview: previewing,
+        tablesFirst: venueTypeLeadsWithTables(venue.venueCategory),
       }),
-    [featuresView, hasMenu, previewing, tablesGate],
+    [featuresView, hasMenu, previewing, tablesGate, venue.venueCategory],
   );
   // Which booking body the Reservations tab mounts. Today it is the category's;
   // with features it is "stay" only for a venue whose one bookable tab is its
@@ -1795,8 +1797,18 @@ export const PublicVenueScreen = ({
   // app root ends above it (I-PRIVACY-BAR-NEVER-OCCLUDES), so the reserve bar
   // always shows.
   // #4420 D-V2 — on the Menu tab an open ordering basket owns the bottom edge.
+  // #4490 fix 2 (N87): on another booking tab (By the hour, Groups, Hire,
+  // Plans, Entry) the bar speaks for that tab only; until its pane has a
+  // choice to show, the lead's words ("Buy a day pass") are not borrowed.
+  const activeIsOtherBookingTab =
+    normalizedReservationUiState.activeTab === "entry" ||
+    normalizedReservationUiState.activeTab === "groups" ||
+    normalizedReservationUiState.activeTab === "hire" ||
+    normalizedReservationUiState.activeTab === "by_the_hour" ||
+    normalizedReservationUiState.activeTab === "plans";
   const showPersistentReserveCta =
     showReserveCta &&
+    !activeIsOtherBookingTab &&
     !(orderingOwnsBar && normalizedReservationUiState.activeTab === "menu");
   // #4420 D-V3 — on the Reservations tab the bar stays, reading the guest's
   // live pick and walking Continue → Confirm & pay.

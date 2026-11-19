@@ -72,7 +72,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { useQuery } from "@tanstack/react-query";
+import { QueryClientContext } from "@tanstack/react-query";
 import { venueFeatureKeys } from "../../hooks/venueFeatureKeys";
 import { FeatureSetupNeedsCard } from "./features/FeatureSetupNeedsCard";
 import { featureSetupNeeds, type SetupRefusal, type SetupTarget } from "./features/featureSetupModel";
@@ -194,6 +194,10 @@ const LazyVenueCalendarModule = React.lazy(async () => {
 const LazyVenueMembersModule = React.lazy(async () => {
   const mod = await import("./features/members/VenueMembersModule");
   return { default: mod.VenueMembersModule };
+});
+const LazyEventsHereCard = React.lazy(async () => {
+  const mod = await import("./features/today/EventsHereCard");
+  return { default: mod.EventsHereCard };
 });
 const LazyVenueTodayOverview = React.lazy(async () => {
   const mod = await import("./features/today/VenueTodayOverview");
@@ -319,12 +323,16 @@ export function VenueSuiteShell({
   // #4490 N20/N61: what the add-venue Features step asked for and the server
   // refused (cache only: written by the create call), plus anything switched
   // on that still waits for a space.
-  const startRefusedQuery = useQuery<SetupRefusal[]>({
-    queryKey: venueFeatureKeys.startRefused(venueId ?? ""),
-    queryFn: () => [],
-    enabled: false,
-    staleTime: Infinity,
-  });
+  // #4490 fix 2: read from the cache through the context, not useQuery, so a
+  // shell mounted without a query client (the module render tests) still
+  // renders; the create call writes this before the venue page opens.
+  const shellQueryClient = React.useContext(QueryClientContext);
+  const startRefusedQuery = {
+    data:
+      shellQueryClient === undefined
+        ? undefined
+        : shellQueryClient.getQueryData<SetupRefusal[]>(venueFeatureKeys.startRefused(venueId ?? "")),
+  };
   const setupNeeds = useMemo(
     () =>
       featuresQuery.data === undefined
@@ -766,6 +774,17 @@ export function VenueSuiteShell({
                 }}
                 showRequests={visibleModules.includes("requests")}
               />
+            </React.Suspense>
+          ) : null}
+          {/* #4490 fix 2 (N76) — Events here on: start an event at this venue. */}
+          {features.events_here.enabled && !venueAccess.scoped && venueId !== null ? (
+            <React.Suspense fallback={null}>
+              <View style={styles.setupNeeds}>
+                <LazyEventsHereCard
+                  venueId={venueId}
+                  onOpenCalendar={visibleModules.includes("calendar") ? () => selectModule("calendar") : undefined}
+                />
+              </View>
             </React.Suspense>
           ) : null}
           {showReservationsInvite ? (

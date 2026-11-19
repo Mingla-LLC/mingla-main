@@ -685,7 +685,8 @@ export function MenuItemSheet({
             testID="menu-item-available"
           />
 
-          <Text style={styles.groupLabel}>Kitchen</Text>
+          {/* #4490 fix 2 (N79): bottles and drinks are made at the bar, not only the kitchen. */}
+          <Text style={styles.groupLabel}>Kitchen and bar</Text>
           <ToggleRow
             label="Let guests add a note (no ice, extra hot)"
             value={allowsNotes}
@@ -697,7 +698,7 @@ export function MenuItemSheet({
             testID="menu-item-allows-notes"
           />
           <Text style={styles.helper}>
-            Notes are capped so a kitchen ticket stays readable.
+            Off for things that need no note, like a sealed bottle. Notes are capped so a ticket stays readable.
           </Text>
           <Field label="Where it's made (optional)">
             <View style={styles.stationRow}>

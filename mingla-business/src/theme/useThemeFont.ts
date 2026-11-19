@@ -73,11 +73,16 @@ export async function loadThemeFont(family: string | null | undefined): Promise<
   if (existing) return existing;
 
   if (isGoogleKey(family)) {
-    const { ensureGoogleFontKey } = await loadGoogleFontLoader();
-    const outcome = await ensureGoogleFontKey(family, {
-      loadFallback: loadInterFallback,
-    });
-    googleOutcomes.set(family, outcome);
+    try {
+      const { ensureGoogleFontKey } = await loadGoogleFontLoader();
+      const outcome = await ensureGoogleFontKey(family, {
+        loadFallback: loadInterFallback,
+      });
+      googleOutcomes.set(family, outcome);
+    } catch {
+      // #4490 fix 2 (N75): the loader chunk itself failed; draw the fallback.
+      googleOutcomes.set(family, { loaded: false, fellBack: true });
+    }
     return;
   }
 
@@ -91,6 +96,11 @@ export async function loadThemeFont(family: string | null | undefined): Promise<
       if (!Font.isLoaded(family)) {
         await Font.loadAsync({ [family]: fontModule });
       }
+    } catch {
+      // #4490 fix 2 (N75): a slow or failed face (expo-font's web loader gives
+      // up with "6000ms timeout exceeded") is not an error for the page: the
+      // text keeps its fallback face. Never rethrow (it surfaced as an
+      // uncaught error overlay, once per font, on slow machines).
     } finally {
       inFlight.delete(family);
     }
@@ -125,9 +135,11 @@ export function useThemeFont(family: string | null | undefined): {
       return;
     }
     setLoaded(false);
-    void loadThemeFont(family).then(() => {
-      if (!cancelled) setLoaded(isThemeFontKeyReady(family));
-    });
+    void loadThemeFont(family)
+      .catch(() => undefined)
+      .then(() => {
+        if (!cancelled) setLoaded(isThemeFontKeyReady(family));
+      });
     return () => {
       cancelled = true;
     };

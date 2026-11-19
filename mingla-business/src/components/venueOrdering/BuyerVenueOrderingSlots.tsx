@@ -13,6 +13,7 @@
  * renderers under `@mingla/brand-rendering/venueOrdering`.
  */
 
+import { VENUE_ORDER_COUNTER_TITLE } from "@mingla/brand-rendering/venueOrdering/VenueOrderingStickyBar";
 import React from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import type {
@@ -127,7 +128,8 @@ export const BuyerVenueOrderingNotice: React.FC<
     ordering.config.spot?.label !== null &&
     ordering.config.spot?.label !== undefined
       ? `Ordering for ${ordering.config.spot.label}`
-      : "Order & collect from the counter";
+      : // #4490 fix 2 (N91): the same words as the order bar with no table.
+        VENUE_ORDER_COUNTER_TITLE;
   return <VenueOrderingSpotChip label={label} palette={palette} />;
 };
 
@@ -436,15 +438,20 @@ export const BuyerVenueOrderingSurface: React.FC<{
     );
   }
 
+  // #4490 fix 2 (N93): on desktop the bar comes after the menu and sticks to
+  // the bottom of the screen inside the menu's column (never over the cover).
+  const bar = (
+    <BuyerVenueOrderingBar
+      {...slotProps}
+      isDesktop={isDesktop}
+      bottomInset={bottomInset}
+      onBottomBarChange={onBottomBarChange}
+    />
+  );
   return (
     <View style={styles.surface}>
       <BuyerVenueOrderingNotice {...slotProps} />
-      <BuyerVenueOrderingBar
-        {...slotProps}
-        isDesktop={isDesktop}
-        bottomInset={bottomInset}
-        onBottomBarChange={onBottomBarChange}
-      />
+      {isDesktop ? null : bar}
       {canOrder ? (
         <BuyerVenueOrderingMenu
           {...slotProps}
@@ -461,6 +468,7 @@ export const BuyerVenueOrderingSurface: React.FC<{
           theme={theme}
         />
       )}
+      {isDesktop ? bar : null}
     </View>
   );
 };

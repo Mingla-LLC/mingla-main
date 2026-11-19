@@ -48,6 +48,7 @@ import { Banner } from "../../../ui/Banner";
 import { BrandSwitch } from "../../../ui/BrandSwitch";
 import { Button } from "../../../ui/Button";
 import { CenteredState } from "../../../ui/CenteredState";
+import { DayDateField } from "../../../ui/DayDateField";
 import { DurationSelect } from "../../../ui/DurationSelect";
 import { weekdaysSummary } from "../../../ui/fieldModels";
 import { Input } from "../../../ui/Input";
@@ -76,11 +77,15 @@ import {
   offerErrorCopy,
   optionChanged,
   optionDraftFrom,
+  optionNameOrDefault,
   optionPayload,
   readinessLine,
   refundSummary,
   schedulePayload,
   timeRangeLabel,
+  timedDayTotal,
+  timedSessionPreview,
+  timedSessionStarts,
   vatLine,
   type EntryDraft,
   type EntryStepId,
@@ -234,6 +239,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
             payload: {
               kind: "entry",
               name: draft.name.trim(),
+              summary: draft.summary.trim(),
               entryStyle: draft.style,
               ...(draft.style === "timed_session" ? { sessionCapacity: draft.sessionCapacity } : {}),
             },
@@ -241,6 +247,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
           setCurrentOfferId(current.id);
         } else if (
           current.name !== draft.name.trim() ||
+          (current.summary ?? "") !== draft.summary.trim() ||
           current.entryStyle !== draft.style ||
           (draft.style === "timed_session" && current.sessionCapacity !== draft.sessionCapacity)
         ) {
@@ -250,6 +257,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
             payload: {
               offerId: current.id,
               name: draft.name.trim(),
+              summary: draft.summary.trim(),
               entryStyle: draft.style,
               ...(draft.style === "timed_session" ? { sessionCapacity: draft.sessionCapacity } : {}),
             },
@@ -287,6 +295,15 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
         setDraft((d) => (d === null ? d : { ...d, options: fresh.options.map(optionDraftFrom) }));
       }
       if (id === "capacity") {
+        // #4490 fix 2 (N82): guests per session is asked here, once.
+        if (draft.style === "timed_session" && current.sessionCapacity !== draft.sessionCapacity) {
+          current = await manageVenueOffer({
+            venueId,
+            action: "update",
+            payload: { offerId: current.id, sessionCapacity: draft.sessionCapacity },
+            expectedVersion: current.version,
+          });
+        }
         let nextPool = pool;
         if (nextPool === null) {
           nextPool = await manageCapacityPool({
@@ -323,6 +340,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
           JSON.stringify(s.weekdays) === JSON.stringify(sched.weekdays) &&
           s.startTime === sched.startTime &&
           s.endTime === sched.endTime &&
+          (s.endDate ?? "") === (typeof sched.endDate === "string" ? sched.endDate : "") &&
           (sched.mode !== "sessions" ||
             (s.sessionMinutes === sched.sessionMinutes && s.sessionEveryMinutes === sched.sessionEveryMinutes));
         if (!same) {
@@ -785,6 +803,19 @@ function BasicsStep({ draft, patch, showErrors, disabled }: StepProps): React.Re
           testID="entry-name"
         />
       </View>
+      {/* #4490 fix 2 (N80) — the one line guests read under the name. */}
+      <View style={styles.field}>
+        <Text style={styles.label}>One line for guests (optional)</Text>
+        <Input
+          value={draft.summary}
+          onChangeText={(summary) => patch({ summary: summary.slice(0, 140) })}
+          placeholder="e.g. All-day play for kids under 12, socks on"
+          accessibilityLabel="One line for guests"
+          disabled={disabled}
+          testID="entry-summary"
+        />
+        <Text style={styles.hint}>Shown on your venue page under the name. {draft.summary.length}/140</Text>
+      </View>
       <Text style={styles.label}>How it works</Text>
       <View style={styles.options}>
         {ENTRY_STYLES.map((s) => (
@@ -801,14 +832,7 @@ function BasicsStep({ draft, patch, showErrors, disabled }: StepProps): React.Re
         ))}
       </View>
       {draft.style === "timed_session" ? (
-        <NumberStepper
-          label="Guests per session"
-          value={draft.sessionCapacity}
-          min={1}
-          max={100000}
-          onChange={(sessionCapacity) => patch({ sessionCapacity })}
-          testID="entry-session-capacity"
-        />
+        <Text style={styles.hint}>You set the session times and how many fit in each on Capacity.</Text>
       ) : null}
     </View>
   );
@@ -869,35 +893,24 @@ function PricesStep({
 function CapacityStep({ draft, patch, showErrors, disabled, sharedWith }: StepProps & { sharedWith: string[] }): React.ReactElement {
   const maxGuests = Math.max(0, ...draft.options.map((o) => o.guestMax));
   const issue = entryStepIssue("capacity", draft);
+  const timed = draft.style === "timed_session";
+  const starts = timed ? timedSessionStarts(draft) : [];
+  const preview = timed ? timedSessionPreview(draft) : null;
+  const dayTotal = timed ? timedDayTotal(draft) : draft.dailyLimit;
+  const today = new Date().toISOString().slice(0, 10);
+  // #4490 fix 2 (N82): a timed offer's day total is derived (sessions × guests
+  // per session); it is shown, never asked.
+  // A day pool shared with other Entry offers is never changed by itself:
+  // then its limit stays a field of its own (it covers them too).
+  const ownPool = sharedWith.length === 0;
+  useEffect(() => {
+    if (!timed || !ownPool || dayTotal === draft.dailyLimit) return;
+    patch({ dailyLimit: dayTotal, keptForWalkIns: Math.min(draft.keptForWalkIns, dayTotal) });
+  }, [timed, ownPool, dayTotal, draft.dailyLimit, draft.keptForWalkIns, patch]);
+
   return (
     <View style={styles.stepBody} testID="entry-step-capacity">
-      <StepHead title="Capacity" sub="How many guests can be in on one day." />
-      <NumberStepper
-        label="Guests per day"
-        value={draft.dailyLimit}
-        min={0}
-        max={100000}
-        onChange={(dailyLimit) =>
-          patch({ dailyLimit, keptForWalkIns: Math.min(draft.keptForWalkIns, dailyLimit) })
-        }
-        testID="entry-daily-limit"
-      />
-      <Text style={styles.hint}>
-        Counts every Entry price together.
-        {sharedWith.length > 0 ? ` Shared with ${sharedWith.join(", ")}: changing it changes theirs too.` : ""}
-      </Text>
-      <NumberStepper
-        label="Kept for walk-ins"
-        value={draft.keptForWalkIns}
-        min={0}
-        max={Math.max(0, draft.dailyLimit)}
-        onChange={(keptForWalkIns) => patch({ keptForWalkIns })}
-        testID="entry-kept-walk-ins"
-      />
-      <Text style={styles.hint}>Only sold at the gate, so online sales never lock out walk-ups.</Text>
-      {showErrors && maxGuests > draft.dailyLimit && draft.dailyLimit > 0 ? (
-        <Text style={styles.error}>A price allows {maxGuests} guests on one booking. Raise the day limit or lower that price&apos;s most guests.</Text>
-      ) : null}
+      <StepHead title="Capacity" sub="When it's on sale and how many can come." />
 
       <Text style={styles.sectionLabel}>When it&apos;s on sale</Text>
       <WeekdayChips
@@ -911,10 +924,10 @@ function CapacityStep({ draft, patch, showErrors, disabled, sharedWith }: StepPr
       <View style={styles.inlineRow}>
         <View style={styles.grow}>
           <TimeField
-            label="Opens"
+            label={timed ? "First session starts" : "Opens"}
             value={draft.startTime}
             onChangeValue={(startTime) => patch({ startTime })}
-            accessibilityLabel="Entry opens"
+            accessibilityLabel={timed ? "First session starts" : "Entry opens"}
             disabled={disabled}
             hasError={showErrors && !/^\d{2}:\d{2}$/.test(draft.startTime)}
             testID="entry-opens"
@@ -922,10 +935,10 @@ function CapacityStep({ draft, patch, showErrors, disabled, sharedWith }: StepPr
         </View>
         <View style={styles.grow}>
           <TimeField
-            label="Closes"
+            label={timed ? "Last session ends by" : "Closes"}
             value={draft.endTime}
             onChangeValue={(endTime) => patch({ endTime })}
-            accessibilityLabel="Entry closes"
+            accessibilityLabel={timed ? "Last session ends by" : "Entry closes"}
             disabled={disabled}
             hasError={showErrors && !/^\d{2}:\d{2}$/.test(draft.endTime)}
             testID="entry-closes"
@@ -933,36 +946,127 @@ function CapacityStep({ draft, patch, showErrors, disabled, sharedWith }: StepPr
         </View>
       </View>
       {draft.endTime !== "" && draft.startTime !== "" && draft.endTime <= draft.startTime ? (
-        <Text style={styles.hint}>Closes the next day.</Text>
+        <Text style={styles.hint}>{timed ? "The last session ends the next day." : "Closes the next day."}</Text>
       ) : null}
-      {draft.style === "timed_session" ? (
+      {timed ? (
+        <View style={styles.subCard} testID="entry-sessions-group">
+          <Text style={styles.switchTitle}>Sessions</Text>
+          <Text style={styles.hint}>
+            How long one group stays, and how often a new group can start. Starting every 30 minutes with 1-hour sessions
+            means two groups are in at once.
+          </Text>
+          <View style={styles.inlineRow}>
+            <View style={styles.grow}>
+              <DurationSelect
+                label="Each session lasts"
+                value={draft.sessionMinutes}
+                onChange={(sessionMinutes) => patch({ sessionMinutes })}
+                min={15}
+                max={720}
+                disabled={disabled}
+                testID="entry-session-length"
+              />
+            </View>
+            <View style={styles.grow}>
+              <DurationSelect
+                label="A new one starts every"
+                value={draft.sessionEveryMinutes}
+                onChange={(sessionEveryMinutes) => patch({ sessionEveryMinutes })}
+                min={15}
+                max={720}
+                disabled={disabled}
+                testID="entry-session-every"
+              />
+            </View>
+          </View>
+          <Text style={styles.previewLine} testID="entry-session-preview" accessibilityLiveRegion="polite">
+            {preview ?? "No session fits between the first start and the last end. Move the times or shorten the session."}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.field}>
+        <DayDateField
+          label="Runs until (optional)"
+          value={draft.endDate}
+          onChangeValue={(endDate) => patch({ endDate })}
+          accessibilityLabel="Runs until"
+          min={today}
+          today={today}
+          placeholder="No end date"
+          error={showErrors && draft.endDate !== "" && draft.endDate < today ? "Pick today or a later day" : null}
+          disabled={disabled}
+          testID="entry-runs-until"
+        />
+        <View style={styles.inlineRow}>
+          <Text style={[styles.hint, styles.grow]}>
+            {draft.endDate === "" ? "On sale with no end date." : "Not on sale after this day."}
+          </Text>
+          {draft.endDate !== "" ? (
+            <Button label="No end date" variant="ghost" size="sm" onPress={() => patch({ endDate: "" })} disabled={disabled} testID="entry-runs-until-clear" />
+          ) : null}
+        </View>
+      </View>
+
+      <Text style={styles.sectionLabel}>How many</Text>
+      {timed ? (
         <>
-          <DurationSelect
-            label="Each session lasts"
-            value={draft.sessionMinutes}
-            onChange={(sessionMinutes) => patch({ sessionMinutes })}
-            min={15}
-            max={720}
-            disabled={disabled}
-            testID="entry-session-length"
+          <NumberStepper
+            label="Guests per session"
+            value={draft.sessionCapacity}
+            min={1}
+            max={100000}
+            onChange={(sessionCapacity) => patch({ sessionCapacity })}
+            testID="entry-session-capacity"
           />
-          <DurationSelect
-            label="A new session starts every"
-            value={draft.sessionEveryMinutes}
-            onChange={(sessionEveryMinutes) => patch({ sessionEveryMinutes })}
-            min={15}
-            max={720}
-            disabled={disabled}
-            testID="entry-session-every"
+          <Text style={styles.hint} testID="entry-day-total">
+            {starts.length > 0
+              ? `Up to ${dayTotal.toLocaleString("en-GB")} guests a day (${starts.length} ${starts.length === 1 ? "session" : "sessions"} × ${draft.sessionCapacity}).`
+              : "Set the session times to see the day's total."}
+          </Text>
+          {!ownPool ? (
+            <>
+              <NumberStepper
+                label="Guests per day, all Entry together"
+                value={draft.dailyLimit}
+                min={0}
+                max={100000}
+                onChange={(dailyLimit) => patch({ dailyLimit, keptForWalkIns: Math.min(draft.keptForWalkIns, dailyLimit) })}
+                testID="entry-daily-limit"
+              />
+              <Text style={styles.hint}>{`Shared with ${sharedWith.join(", ")}: changing it changes theirs too.`}</Text>
+            </>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <NumberStepper
+            label="Guests per day"
+            value={draft.dailyLimit}
+            min={0}
+            max={100000}
+            onChange={(dailyLimit) =>
+              patch({ dailyLimit, keptForWalkIns: Math.min(draft.keptForWalkIns, dailyLimit) })
+            }
+            testID="entry-daily-limit"
           />
           <Text style={styles.hint}>
-            {draft.sessionEveryMinutes === draft.sessionMinutes
-              ? "Sessions run back to back."
-              : draft.sessionEveryMinutes < draft.sessionMinutes
-                ? "Sessions overlap: a new group starts before the last one ends."
-                : "There's a gap between sessions."}
+            Counts every Entry price together.
+            {sharedWith.length > 0 ? ` Shared with ${sharedWith.join(", ")}: changing it changes theirs too.` : ""}
           </Text>
         </>
+      )}
+      <NumberStepper
+        label="Kept for walk-ins"
+        value={draft.keptForWalkIns}
+        min={0}
+        max={Math.max(0, draft.dailyLimit)}
+        onChange={(keptForWalkIns) => patch({ keptForWalkIns })}
+        testID="entry-kept-walk-ins"
+      />
+      <Text style={styles.hint}>Only sold at the gate, so online sales never lock out walk-ups.</Text>
+      {showErrors && maxGuests > draft.dailyLimit && draft.dailyLimit > 0 ? (
+        <Text style={styles.error}>A price allows {maxGuests} guests on one booking. Raise the day limit or lower that price&apos;s most guests.</Text>
       ) : null}
       {showErrors && issue !== null ? <Text style={styles.error}>{issue}</Text> : null}
     </View>
@@ -1093,20 +1197,29 @@ function ReviewStep({
 }): React.ReactElement {
   const reasons = offer?.readiness ?? [];
   const items = [
-    ...draft.options.map((o) => ({
+    // #4490 fix 2 (N77): each price says which ID, its own hours and the
+    // most guests on one booking.
+    ...draft.options.map((o, i) => ({
       key: o.key,
-      label: o.name.trim(),
+      label: optionNameOrDefault(o.name, i),
       value: [
         o.free ? "Free" : o.priceMinor === null ? "—" : money(o.priceMinor, currency),
         weekdaysSummary(o.weekdays),
-        ...(o.idCheck ? ["ID check"] : []),
+        ...(o.limitHours ? [timeRangeLabel(o.startTime, o.endTime) ?? ""] : []),
+        `up to ${o.guestMax} on one booking`,
+        ...(o.idCheck ? [`${o.idLabel.trim() || "ID"} checked at the gate`] : []),
         ...(o.busyRules.length > 0 ? [`${o.busyRules.length} busy-time ${o.busyRules.length === 1 ? "price" : "prices"}`] : []),
-      ].join(" · "),
+      ]
+        .filter((x) => x.length > 0)
+        .join(" · "),
     })),
     {
       key: "limit",
-      label: "Guests per day",
-      value: `${draft.dailyLimit.toLocaleString("en-GB")} · ${draft.keptForWalkIns.toLocaleString("en-GB")} kept for walk-ins`,
+      label: draft.style === "timed_session" ? "Guests" : "Guests per day",
+      value:
+        draft.style === "timed_session"
+          ? `${draft.sessionCapacity.toLocaleString("en-GB")} per session · up to ${draft.dailyLimit.toLocaleString("en-GB")} a day · ${draft.keptForWalkIns.toLocaleString("en-GB")} kept for walk-ins`
+          : `${draft.dailyLimit.toLocaleString("en-GB")} · ${draft.keptForWalkIns.toLocaleString("en-GB")} kept for walk-ins`,
     },
     {
       key: "when",
@@ -1118,8 +1231,8 @@ function ReviewStep({
           draft.options.some((o) => o.weekdays.length === 0 || o.weekdays.includes(d)),
         ),
       )} · ${timeRangeLabel(draft.startTime, draft.endTime) ?? ""}${
-        draft.style === "timed_session" ? ` · ${draft.sessionMinutes} min sessions for ${draft.sessionCapacity}` : ""
-      }`,
+        draft.style === "timed_session" ? ` · ${timedSessionPreview(draft) ?? "no session fits"}` : ""
+      }${draft.endDate !== "" ? ` · until ${draft.endDate.slice(8, 10)}/${draft.endDate.slice(5, 7)}/${draft.endDate.slice(0, 4)}` : ""}`,
     },
     { key: "sold", label: "Sold", value: draft.keptForWalkIns > 0 ? "Online and at the gate" : "Online" },
     { key: "refunds", label: "Refunds", value: refundSummary(ladderForDraft(draft)) },
@@ -1216,6 +1329,7 @@ const styles = StyleSheet.create({
   label: { ...type.small, color: color.text2 },
   sectionLabel: { ...type.label, color: color.text3, marginTop: space[2] },
   hint: { ...type.caption, color: color.text3 },
+  previewLine: { ...type.small, color: color.text1, fontWeight: "600" },
   error: { ...type.caption, color: color.errorText },
   options: { gap: space[2] },
   inlineRow: { flexDirection: "row", gap: space[3], flexWrap: "wrap" },

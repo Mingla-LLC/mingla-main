@@ -42,6 +42,7 @@ import { useDraftEventStore } from "../../src/store/draftEventStore";
 import { useAuth } from "../../src/context/AuthContext";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { isSetupReturn, withReturnTo } from "../../src/utils/brandEditReturn";
+import { isVenueIdParam, setEventVenueIntent } from "../../src/utils/eventVenueIntent";
 
 const ROUTE_BOOT_TIMEOUT_MS = 6000;
 const DRAFT_HYDRATION_TIMEOUT_MS = 6000;
@@ -75,7 +76,9 @@ export default function EventCreateRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   // #2830 — carried through to the wizard, only when it is Website setup's.
-  const params = useLocalSearchParams<{ returnTo?: string | string[] }>();
+  const params = useLocalSearchParams<{ returnTo?: string | string[]; venueId?: string | string[] }>();
+  // #4490 fix 2 (N76) — "Add an event here" from a venue: Where opens on it.
+  const rawVenueId = Array.isArray(params.venueId) ? params.venueId[0] : params.venueId;
   const rawReturnTo = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
   const setupReturn = isSetupReturn(rawReturnTo) ? (rawReturnTo as string) : null;
   const currentBrandId = useCurrentBrandId();
@@ -194,6 +197,11 @@ export default function EventCreateRoute(): React.ReactElement {
     // into the post-hydration state directly — no subscription staleness,
     // no risk of the persisted state replacing our write.
     const draft = useDraftEventStore.getState().createDraft(currentBrandId);
+    setEventVenueIntent(
+      isVenueIdParam(rawVenueId)
+        ? { brandId: currentBrandId, venueId: rawVenueId, noun: "event" }
+        : null,
+    );
     if (setupReturn) {
       router.replace(withReturnTo(`/event/${draft.id}/edit?step=0`, setupReturn) as never);
       return;
@@ -201,6 +209,7 @@ export default function EventCreateRoute(): React.ReactElement {
     router.replace(`/event/${draft.id}/edit?step=0` as never);
   }, [
     setupReturn,
+    rawVenueId,
     currentBrandId,
     canUseStoredBrandForWeb,
     currentBrandRecovery.isResolving,
