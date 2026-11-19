@@ -7,6 +7,7 @@ type Call = { ids: string[]; eventId: string | null };
 const calls: Call[] = [];
 let ordersResult: { data: unknown; error: unknown } | (() => never) = { data: [], error: null };
 let failOnCall: number | null = null;
+let stallFromCall: number | null = null;
 const mockRpc = jest.fn();
 const mockReport = jest.fn();
 
@@ -28,7 +29,16 @@ jest.mock("../supabase", () => ({
         },
         eq: (_col: string, value: string) => {
           call.eventId = value;
+          return builder;
+        },
+        abortSignal: (signal: AbortSignal) => {
           calls.push(call);
+          if (stallFromCall !== null && calls.length >= stallFromCall) {
+            // Never settles on its own; settles (rejected) only when aborted.
+            return new Promise((_resolve, reject) => {
+              signal.addEventListener("abort", () => reject(new Error("aborted")));
+            });
+          }
           if (typeof ordersResult === "function") return ordersResult();
           if (failOnCall !== null && calls.length === failOnCall) {
             return Promise.resolve({ data: null, error: { message: "permission denied" } });
@@ -46,7 +56,9 @@ jest.mock("../supabase", () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { BOOKED_START_BATCH, fetchGuestRoster } from "../guestRosterService";
+import { fetchGuestRoster } from "../guestRosterService";
+// eslint-disable-next-line import/first
+import { BOOKED_START_BATCH, withBookedStarts } from "../guestRosterBookedStarts";
 
 const row = (key: string, orderIds: string[]) => ({ rosterKey: key, orderIds });
 const page = (rows: unknown[]) => ({ rows, summary: {}, nextCursor: null });
@@ -62,6 +74,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
   calls.length = 0;
   failOnCall = null;
+  stallFromCall = null;
   mockReport.mockReset();
   ordersResult = { data: [], error: null };
   mockRpc.mockReset();
@@ -145,4 +158,31 @@ test("a page with no orders makes no orders read", async () => {
   mockRpc.mockResolvedValue({ data: page([row("a", [])]), error: null });
   await fetchGuestRoster(input);
   expect(calls).toEqual([]);
+});
+
+test("a request that never settles is cut at the deadline; the roster still returns", async () => {
+  const rows = [row("a", ["o1"])];
+  stallFromCall = 1;
+  const result = await withBookedStarts(page(rows) as never, "event-1", { deadlineMs: 20 });
+  expect(result.rows).toEqual(rows);
+  await flush();
+  expect(mockReport).toHaveBeenCalledTimes(1);
+  expect(String(mockReport.mock.calls[0][1])).toContain("deadline");
+});
+
+test("a stall after a successful batch keeps that batch's starts", async () => {
+  const ids = Array.from({ length: 150 }, (_, i) => `o${i}`);
+  ordersResult = { data: [{ id: "o0", booked_start_at: "2026-11-14T18:30:00Z" }], error: null };
+  stallFromCall = 2;
+  const result = await withBookedStarts(
+    page([row("a", ["o0"]), row("c", ids)]) as never,
+    "event-1",
+    { deadlineMs: 20 },
+  );
+  expect(result.rows.map((r) => r.bookedStarts)).toEqual([
+    ["2026-11-14T18:30:00Z"],
+    ["2026-11-14T18:30:00Z"],
+  ]);
+  await flush();
+  expect(mockReport).toHaveBeenCalledTimes(1);
 });

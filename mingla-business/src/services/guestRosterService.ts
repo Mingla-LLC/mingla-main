@@ -69,80 +69,17 @@ export async function fetchGuestRoster(input: GuestRosterListInput): Promise<Gue
     throw new GuestRosterError(code, error.message);
   }
   const page = asObject(data) as unknown as GuestRosterPage;
-  return input.bookedStarts === true ? await withBookedStarts(page, input.eventId) : page;
-}
-
-/**
- * A failed booked-start read must be visible somewhere other than a missing
- * line. The reporter loads only on this path, as refundPolicyWrites does, so
- * the native Sentry SDK is not pulled into every screen that loads a roster.
- */
-function reportBookedStartFailure(failure: unknown): void {
-  void import("../diagnostics/reportNonFatal").then(
-    ({ reportNonFatal }) => reportNonFatal("guestRosterBookedStarts", failure),
-    () => undefined,
-  );
-}
-
-/** Order ids per `.in()` request: keeps the GET URL short for a full page. */
-export const BOOKED_START_BATCH = 100;
-
-/**
- * issue #3281 — each row's booked start(s) (`orders.booked_start_at`, the
- * guest-chosen start on an open-hours experience), read with the page so they
- * refresh with it. One person may hold several orders, so a row carries its
- * distinct starts in order. Fail-soft: any read error leaves the rows as they
- * were (no booked-start line), never failing the roster.
- */
-export async function withBookedStarts(
-  page: GuestRosterPage,
-  eventId: string,
-): Promise<GuestRosterPage> {
-  const rows = Array.isArray(page.rows) ? page.rows : [];
-  const ids = [
-    ...new Set(
-      rows.flatMap((row) => (Array.isArray(row.orderIds) ? row.orderIds : [])),
-    ),
-  ];
-  if (ids.length === 0) return page;
-  const startById = new Map<string, string>();
-  // A failed batch stops the read and keeps what earlier batches found; it is
-  // reported, never thrown (the roster still shows, without that line).
+  if (input.bookedStarts !== true) return page;
+  // issue #3281 — optional enrichment, loaded on demand (out of the shared web
+  // chunk); it never fails or blocks the roster.
   try {
-    for (let i = 0; i < ids.length; i += BOOKED_START_BATCH) {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id, booked_start_at")
-        .in("id", ids.slice(i, i + BOOKED_START_BATCH))
-        .eq("event_id", eventId);
-      if (error !== null) {
-        reportBookedStartFailure(error);
-        break;
-      }
-      for (const order of (data ?? []) as Array<{ id: string; booked_start_at: string | null }>) {
-        if (typeof order.booked_start_at === "string" && order.booked_start_at.length > 0) {
-          startById.set(order.id, order.booked_start_at);
-        }
-      }
-    }
-  } catch (thrown) {
-    reportBookedStartFailure(thrown);
+    const { withBookedStarts } = await import("./guestRosterBookedStarts");
+    return await withBookedStarts(page, input.eventId);
+  } catch {
+    return page;
   }
-  if (startById.size === 0) return page;
-  return {
-    ...page,
-    rows: rows.map((row) => {
-      const starts = [
-        ...new Set(
-          (row.orderIds ?? [])
-            .map((id) => startById.get(id))
-            .filter((start): start is string => start !== undefined),
-        ),
-      ].sort((a, b) => Date.parse(a) - Date.parse(b));
-      return starts.length > 0 ? { ...row, bookedStarts: starts } : row;
-    }),
-  };
 }
+
 
 export async function fetchGuestRosterAccess(eventId: string): Promise<GuestRosterAccess> {
   const { data, error } = await supabase.rpc("biz_guest_roster_access", {
