@@ -295,6 +295,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     if (viewedRef.current === step) return;
     viewedRef.current = step;
     trackBrandSetup("brand_setup_step_viewed", { step, brand_id: brandId, resumed });
+    // #4226: the People screen shows where a host stopped. Key = the step name
+    // (name, country, pay, done); the server keeps the furthest. Fire-and-forget,
+    // loaded on use so the tracking code stays out of the web boot bundle.
+    void import("../../services/peopleJourneyService")
+      .then(({ recordJourneyMark }) => recordJourneyMark("host_brand_setup", STEP_INDEX[step], step))
+      .catch((e: unknown) => console.warn("[peopleJourney] brand setup mark failed:", e));
   }, [step, brandId, resumed]);
 
   // ── X1 / X2 ────────────────────────────────────────────────────────────

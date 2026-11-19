@@ -9,6 +9,11 @@
 // ('host_contact_no_app').
 //
 // Audiences:
+//   People         #4226 Phase 2: the People page's own filter, read through
+//                  admin_people_filter (the same function People counts
+//                  with), so a play or "Email these people" matches exactly
+//                  the People count. Staff/test are out of every track but
+//                  the internal one; the snapshot rules below still apply.
 //   Everyone       EVERY person on the list (Seth, 2026-11-02): explorers,
 //                  hosts, both, didn't finish sign-up, ticket buyers with no
 //                  app, host contacts with no app. No filter at all; the
@@ -163,7 +168,12 @@ export function applyDirectoryFilters(
     query = query.contains("brand_ids", arrayLiteral(filters.brandId));
   }
   if (filters.country && filters.country !== "all") {
-    query = query.eq("country", filters.country);
+    // #4226: case-insensitive. The options are upper-case ISO codes; a profile
+    // can hold "ng". A two- or three-letter code has no ILIKE wildcards.
+    const code = String(filters.country).trim();
+    query = /^[A-Za-z]{2,3}$/.test(code)
+      ? query.ilike("country", code)
+      : query.eq("country", code);
   }
   if (filters.onboarding === "completed") {
     query = query.eq("has_completed_onboarding", true);

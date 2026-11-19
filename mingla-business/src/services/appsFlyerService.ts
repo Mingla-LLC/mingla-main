@@ -20,6 +20,13 @@
 import { Platform } from "react-native";
 import { parseHostAttachResponse, type HostAttachResult } from "./hostAttachResponse";
 import { supabase } from "./supabase";
+import {
+  clearPeopleJourneyState,
+  dropHeldInstallConversion,
+  getHeldInstallConversion,
+  holdInstallConversion,
+  sendHeldInstallAttribution,
+} from "./peopleJourneyService";
 import type { AppsFlyerConsentData } from "./appsFlyerConsent";
 // #1050 — the branded OneLink host is imported from the storeLinks SSOT, never
 // hardcoded here (the orch-1342 gate bans a bare `biz.usemingla.com` literal
@@ -229,6 +236,8 @@ function applyPrivacyChoice(): void {
   _anonymized = optedOut;
   if (optedOut) {
     _preInitEvents = [];
+    // #4226: held install conversion data goes too.
+    dropHeldInstallConversion();
     clearAppsFlyerUserEmails();
     forgetSentUninstallToken();
   } else {
@@ -633,10 +642,39 @@ export async function attachHostAttribution(): Promise<HostAttachResult | null> 
   }
 }
 
+/**
+ * #4226 — the install conversion data reaches the server once the host is
+ * known. It can arrive before sign-in: it is held in memory (never stored on
+ * disk), sent once after auth and once the device row exists, and dropped on
+ * sign-out and when the host turns analytics off.
+ */
+function flushInstallAttribution(): void {
+  const userId = _signedInUserId;
+  // Nothing held: no native call at all.
+  if (!userId || !getHeldInstallConversion()) return;
+  withInstallUid((uid) => {
+    void sendHeldInstallAttribution({
+      userId: _signedInUserId,
+      appsflyerId: uid,
+      optedOut: isAnalyticsOptedOut(),
+      platform: Platform.OS,
+      appId: Platform.OS === "ios" ? AF_IOS_APP_ID : AF_ANDROID_APP_ID,
+    });
+  });
+}
+
 function registerInstallConversionData(sdk: AppsFlyerSdk): void {
   if (typeof sdk.onInstallConversionData !== "function") return;
   try {
     sdk.onInstallConversionData((res) => {
+      try {
+        if (!isAnalyticsOptedOut() && res?.type !== "onInstallConversionFailure" && res?.data) {
+          holdInstallConversion(res.data);
+          flushInstallAttribution();
+        }
+      } catch (e) {
+        console.warn("[AppsFlyer] install conversion hold failed:", e);
+      }
       try {
         const row = installAttributionFromConversionData(
           res?.data ?? null,
@@ -1015,6 +1053,8 @@ export function setAppsFlyerUserId(userId: string): void {
   }
   // #4238 W6-11 — hashed email for advanced matching (skipped when opted out).
   void syncAppsFlyerUserEmail(userId);
+  // #4226 — send any install conversion data that arrived before sign-in.
+  flushInstallAttribution();
 }
 
 /**
@@ -1029,6 +1069,8 @@ export function clearAppsFlyerUserId(): void {
   _signedInUserId = null;
   // #4238 W6-1 — events queued for the signed-out user are dropped.
   _preInitEvents = [];
+  // #4226 (Constitution 6) — held install conversion data and journey state.
+  clearPeopleJourneyState();
   // #4238 W6-11 — sign-out clears the email.
   clearAppsFlyerUserEmails();
   if (!_initialized || !appsFlyer) return;
@@ -1120,6 +1162,8 @@ export function registerAppsFlyerDevice(userId: string): void {
               );
             } else {
               registeredDeviceKeys.add(deviceKey);
+              // #4226 — the device row exists now, so install attribution can attach to it.
+              flushInstallAttribution();
               if (__DEV__) {
                 console.log(`[AppsFlyer] Device registered: ${platform}/${uid}`);
               }

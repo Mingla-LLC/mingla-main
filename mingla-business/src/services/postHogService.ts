@@ -41,6 +41,8 @@ import { sanitizeSearchMeasurement } from "@mingla/search-measurement";
 // #2211 — the shared text-size bucketing, so both apps register byte-identical
 // property shapes and a single PostHog breakdown covers consumer and business.
 import { textSizeAnalyticsProperties } from "../constants/dynamicType";
+// #4226 — the `app` super property and the screen tracker (pure helpers).
+import { createScreenTracker, registerAppSuperProperty } from "./screenTracking";
 
 /**
  * Flat, JSON-serializable analytics property bag (matches PostHog's
@@ -93,6 +95,10 @@ class PostHogService {
   private client: PostHog | null = null;
   private initialized = false;
   private readonly isWeb = Platform.OS === "web";
+  private readonly screenTracker = createScreenTracker({
+    getClient: () => (this.isReady() ? this.client : null),
+    isOptedOut: () => useAnalyticsPrefsStore.getState().analyticsOptOut === true,
+  });
 
   static getInstance(): PostHogService {
     if (PostHogService.instance === null) {
@@ -138,6 +144,8 @@ class PostHogService {
       });
       this.client = client;
       this.initialized = true;
+      // #4226 — every event says which app sent it.
+      registerAppSuperProperty(client);
       // Honor the persisted opt-out at boot (default = opted-IN, anonymous).
       if (useAnalyticsPrefsStore.getState().analyticsOptOut) {
         client.optOut();
@@ -153,6 +161,8 @@ class PostHogService {
     if (!this.isReady() || this.client === null) return;
     try {
       this.client.identify(userId, clean(properties));
+      // #4226 — identify can reset registered properties on some SDK paths.
+      registerAppSuperProperty(this.client);
     } catch (e) {
       console.warn("[postHog] identify failed:", e);
     }
@@ -209,6 +219,14 @@ class PostHogService {
   }
 
   /** Capture a product event. No-op when not ready / opted out. Never throws. */
+  /**
+   * #4226 — one `$screen` view per change, by a stable name. Skipped when the
+   * host turned analytics off. Never throws.
+   */
+  screen(name: string | null): void {
+    this.screenTracker.track(name);
+  }
+
   capture(event: string, properties?: AnalyticsProps): void {
     if (!this.isReady() || this.client === null) return;
     try {
@@ -230,9 +248,12 @@ class PostHogService {
 
   /** Clear identity on signout (SC-7 / Constitution #6). */
   reset(): void {
+    this.screenTracker.reset();
     if (!this.isReady() || this.client === null) return;
     try {
       this.client.reset();
+      // #4226 — reset clears registered properties; the app tag goes back.
+      registerAppSuperProperty(this.client);
     } catch (e) {
       console.warn("[postHog] reset failed:", e);
     }

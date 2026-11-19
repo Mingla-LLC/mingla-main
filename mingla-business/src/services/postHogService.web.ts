@@ -52,6 +52,11 @@ class PostHogService {
     // no-op on web
   }
 
+  /** #4226 — web page views are owned by webAnalytics.web.ts; no native screens here. */
+  screen(_name: string | null): void {
+    // no-op on web
+  }
+
   capture(event: string, _properties?: AnalyticsProps): void {
     if (event === "signup_completed") {
       captureWebSearchOutcome("sign_up", {

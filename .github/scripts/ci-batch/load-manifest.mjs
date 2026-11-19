@@ -357,7 +357,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645 payout gaps: listed migration 20280809003645 in the #1857, #1931 and #2117 lanes (after main's #4453 and #4389 rows), registered its pg17 suite and sidecars in the #1931 and #2117 inventories, and skipped it by exact filename on the #1931 and #2117 filtered template replays (#2492 closure); re-sealed.
 // #3645 merge of main after #4238: listed 20280809003645 before main's 20281118004238 and 20281118014238 rows (filename order); re-sealed.
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
-export const BOOTSTRAP_SHA256 = "d23200ec6edcb2c13335f6f2d7fc81dbc949d7f348bfc9573e1135d9b858e909";
+export const BOOTSTRAP_SHA256 = "310eb8d63d8adc826d69cac9e125acd5d9078bad570d9c17554227cbe3443fa6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
