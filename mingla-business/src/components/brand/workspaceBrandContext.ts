@@ -45,7 +45,11 @@ export interface WorkspaceRoute {
   params: WorkspaceRouteParams;
   /** The brand the route names (`/brand/<id>/…`, `?brandId=`), or null. */
   routeBrandId: string | null;
-  /** The route's brand while it is not the current brand (absent: follow the current brand). */
+  /**
+   * The route's brand while it is not the current brand (absent: follow the current brand).
+   * Also `{ brand: null, pending: true }` while one item's brand (a trip, an event, a listing)
+   * is still being read: the chips show their placeholder, not the brand last worked on.
+   */
   brand?: WorkspaceChipBrand;
   /** The workspace brand switcher (WorkspaceBrandSwitcher). */
   Switcher?: ComponentType<WorkspaceBrandSwitcherProps>;

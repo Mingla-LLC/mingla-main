@@ -118,7 +118,7 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   const itemBrand = useItemRouteBrand(itemRef, user != null);
   const routeParams = useMemo(() => JSON.parse(paramsKey) as WorkspaceRouteParams, [paramsKey]);
   const routeBrandId = useMemo(() => brandIdFromRoute(pathname, routeParams) ?? itemBrand.brandId, [itemBrand.brandId, pathname, routeParams]);
-  const routeBrand = useRouteBrand(routeBrandId);
+  const routeBrand = useRouteBrand(routeBrandId, itemBrand.pending);
   // A switch the switcher holds until its route change lands (settled by the route sync below).
   const pendingSwitch = useRef<PendingBrandSwitch | null>(null);
   // Screens that show the switcher in their own bar on phones (the Website workspace) count themselves here.

@@ -41,5 +41,7 @@ export function useItemRouteBrand(ref: ItemRouteRef | null, enabled: boolean): I
     },
   });
   if (!active) return { brandId: null, pending: false };
-  return { brandId: query.data ?? null, pending: query.isPending };
+  // Offline with nothing cached, the read cannot answer: that is "not known", not "loading"
+  // (the chrome falls back to the current brand instead of a placeholder that never ends).
+  return { brandId: query.data ?? null, pending: query.isPending && query.fetchStatus !== "paused" };
 }

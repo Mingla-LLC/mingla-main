@@ -69,6 +69,9 @@ function useCachedBrand(
   return { cached, answered };
 }
 
+const ITEM_BRAND_PENDING: WorkspaceBrand = { brand: null, pending: true, scoped: true };
+const ITEM_CHIP_PENDING: WorkspaceChipBrand = { brand: null, pending: true };
+
 export function useWorkspaceBrand(brandId?: string | null): WorkspaceBrand {
   const route = useContext(WorkspaceRouteContext);
   const currentBrand = useCurrentBrand();
@@ -80,6 +83,9 @@ export function useWorkspaceBrand(brandId?: string | null): WorkspaceBrand {
     scopedId !== null && scopedId !== currentBrandId && scopedId !== currentBrand?.id;
   const { cached, answered } = useCachedBrand(scopedId, differs);
 
+  // One trip, event or listing whose brand is still being read (the shell says so): the placeholder,
+  // never the brand last worked on. A screen that names its own brand is not waiting for anything.
+  if (scopedId === null && route.brand?.pending === true) return ITEM_BRAND_PENDING;
   if (!differs) return { brand: currentBrand, pending: false, scoped: scopedId !== null };
   if (cached !== null) return { brand: cached, pending: false, scoped: true };
   // The lists answered without this brand: the person is not on its team, so
@@ -94,13 +100,23 @@ export function useWorkspaceBrand(brandId?: string | null): WorkspaceBrand {
  * undefined when the chip should simply follow the current brand (the route
  * names none, names the current one, or names one the person is not on).
  * It reads the store's id only, so the shell mounts no brand query of its own.
+ *
+ * `itemPending`: the screen shows one item (a trip, an event, a listing) whose
+ * brand is still being read. Until it is known every chip shows the loading
+ * placeholder; the current brand is the fallback only once the read has
+ * answered without a brand (not found, no access, or an error).
  */
-export function useRouteBrand(routeBrandId: string | null): WorkspaceChipBrand | undefined {
+export function useRouteBrand(routeBrandId: string | null, itemPending = false): WorkspaceChipBrand | undefined {
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const differs = routeBrandId !== null && routeBrandId !== currentBrandId;
   const { cached, answered } = useCachedBrand(routeBrandId, differs);
   return useMemo(
-    () => (!differs || (cached === null && answered) ? undefined : { brand: cached, pending: cached === null }),
-    [answered, cached, differs],
+    () =>
+      routeBrandId === null && itemPending
+        ? ITEM_CHIP_PENDING
+        : !differs || (cached === null && answered)
+          ? undefined
+          : { brand: cached, pending: cached === null },
+    [answered, cached, differs, itemPending, routeBrandId],
   );
 }
