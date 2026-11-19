@@ -5,6 +5,7 @@ import { SafeScreen } from "../../../ui/SafeScreen";
 import { Sheet } from "../../../ui/Sheet";
 import { Toast } from "../../../ui/Toast";
 import { HostShellInsetContext } from "../../../ui/hostShellContext";
+import { useOwnPhoneBrandSwitcher } from "../../../ui/phoneBrandSwitcherOwner";
 import { color, radius, space, websitePaneMaxWidth, websiteWorkspaceBarHeight, websiteWorkspacePanelWidth } from "../../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
 import { useBrandSiteLook } from "../../../../hooks/useBrandSite";
@@ -86,6 +87,8 @@ export function WorkspaceShell({ base, route, search, segments, contentDetails, 
   const phone = !isWideDesktop;
   // The desktop shell's top bar already carries the brand switcher: one per screen.
   const shellHasSwitcher = useContext(HostShellInsetContext);
+  // Phones: this bar carries the brand switcher, so the shell shows no second one above it.
+  useOwnPhoneBrandSwitcher(phone);
   const siteId = controller.siteId!;
   const site = controller.site.data ?? null;
 

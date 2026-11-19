@@ -33,7 +33,8 @@ import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useWorkspaceBrandRouteSync } from "../../hooks/useWorkspaceBrandRouteSync";
-import { brandIdFromRoute, type WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
+import { brandIdFromRoute, isAboveBrandScreen, phoneBrandStripFor, type WorkspaceRouteParams } from "../../config/workspaceBrandRoute";
+import { WorkspaceBrandSwitcher } from "../brand/WorkspaceBrandSwitcher";
 import { WorkspaceRouteContext, type WorkspaceRoute } from "../brand/workspaceBrandContext";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { visibleTabsForRank } from "../../utils/navTabGate";
@@ -42,6 +43,7 @@ import { DesktopSidebar, SIDEBAR_SOURCE_TABS } from "./DesktopSidebar";
 import { useDesktopSidebarStore } from "./desktopSidebarState";
 import { hostDesktopShellModeFor } from "./hostDesktopShellRoutes";
 import { HostShellInsetContext } from "./hostShellContext";
+import { useScreenOwnsBrandSwitcher } from "./phoneBrandSwitcherOwner";
 import { TopBar } from "./TopBar";
 
 const loadBrandSwitcherSheet = () => import("../brand/BrandSwitcherSheet");
@@ -86,9 +88,11 @@ const ShellSidebar: React.FC<{ rail: boolean }> = ({ rail }) => {
   return <DesktopSidebar tabs={tabs} forceRail={rail} testID="host-shell-sidebar" />;
 };
 
-const ShellTopBar: React.FC<{ onBrandTap: () => void }> = ({ onBrandTap }) => (
+// #4453 — the brand name sits at the top of every brand screen and of none above brand level
+// (Account, Notifications, Help, creating a brand): those are not about the brand last worked on.
+const ShellTopBar: React.FC<{ onBrandTap: () => void; aboveBrand: boolean }> = ({ onBrandTap, aboveBrand }) => (
   <View style={styles.topBar} testID="host-shell-topbar">
-    <TopBar leftKind="brand" onBrandTap={onBrandTap} />
+    <TopBar leftKind={aboveBrand ? "none" : "brand"} onBrandTap={onBrandTap} />
   </View>
 );
 
@@ -114,6 +118,14 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
   const rail = mode === "rail";
   const inset = active ? (rail || collapsed ? DESKTOP_RAIL_WIDTH : DESKTOP_SIDEBAR_WIDTH) : 0;
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  // #4453 — phones and narrow web: a brand's own screens (/brand/<id>/...) open under a back bar
+  // that names the screen, not the brand. The brand being edited is named above it, and is the
+  // switcher. (The Website workspace has it in its own bar and says so; desktop has the top bar;
+  // native keeps its headers.)
+  const screenOwnsSwitcher = useScreenOwnsBrandSwitcher();
+  const phoneBrandId = Platform.OS === "web" && !isWideDesktop && user != null && !screenOwnsSwitcher
+    ? phoneBrandStripFor(pathname, workspaceRoute.routeBrandId)
+    : null;
 
   useEffect(() => {
     if (!active) {
@@ -129,7 +141,12 @@ export const HostDesktopShell: React.FC<{ children: React.ReactNode }> = ({ chil
     <WorkspaceRouteContext.Provider value={workspaceRoute}>
     <HostShellInsetContext.Provider value={active}>
       <View style={[styles.host, active ? [styles.canvas, { paddingLeft: inset + DESKTOP_BEZEL_MARGIN }] : null]}>
-        {active ? <ShellTopBar onBrandTap={() => setSwitcherOpen(true)} /> : null}
+        {active ? <ShellTopBar onBrandTap={() => setSwitcherOpen(true)} aboveBrand={isAboveBrandScreen(pathname)} /> : null}
+        {phoneBrandId !== null ? (
+          <View style={styles.phoneBrand} testID="host-phone-brand-strip">
+            <WorkspaceBrandSwitcher brandId={phoneBrandId} compact testID="host-phone-brand-switcher" />
+          </View>
+        ) : null}
         <View style={styles.stack}>{children}</View>
         {active && switcherOpen ? (
           <View
@@ -152,6 +169,7 @@ const styles = StyleSheet.create({
   host: { flex: 1 },
   canvas: { backgroundColor: color.canvas },
   topBar: { paddingTop: space[4], paddingRight: DESKTOP_BEZEL_MARGIN, paddingBottom: space[2] },
+  phoneBrand: { minHeight: 48, flexDirection: "row", alignItems: "center", paddingHorizontal: space[4], backgroundColor: color.canvas },
   stack: { flex: 1 },
   overlayLayer: { position: "absolute", top: 0, bottom: 0, right: 0, zIndex: SHELL_SWITCHER_OVERLAY_Z },
 });

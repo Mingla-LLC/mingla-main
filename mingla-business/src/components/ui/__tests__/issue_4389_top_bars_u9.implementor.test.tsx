@@ -174,13 +174,14 @@ describe("#4389 U-9 Home top bar", () => {
     ["Home", "../../../../app/(tabs)/home.tsx", "home-universal-creator-button"],
     ["Hub", "../../../../app/(tabs)/hub/_layout.tsx", "hub-universal-creator-button"],
     ["Account", "../../../../app/(tabs)/account.tsx", "account-universal-creator-button"],
-  ])("%s mounts TopBar leftKind=brand; the + extraRightSlot is desktop-only", (_name, rel, testID) => {
+  ])("%s mounts TopBar leftKind=brand (Account: none, #4453); the + extraRightSlot is desktop-only", (name, rel, testID) => {
     const src = fs.readFileSync(path.join(__dirname, rel), "utf8");
     const at = src.indexOf("<TopBar");
     const end = src.indexOf(") : undefined", src.indexOf("extraRightSlot", at));
     expect(end).toBeGreaterThan(at);
     const block = src.slice(at, end + ") : undefined".length);
-    expect(block).toContain('leftKind="brand"');
+    // #4453 — Account is above brand level (it lists every brand): no brand name at its top.
+    expect(block).toContain(name === "Account" ? 'leftKind="none"' : 'leftKind="brand"');
     expect(block).toMatch(/extraRightSlot=\{[\s\S]*?isWideDesktop \? \(\s*<IconChrome/);
     expect(block).toContain('icon="plus"');
     expect(block).toContain(`testID="${testID}"`);

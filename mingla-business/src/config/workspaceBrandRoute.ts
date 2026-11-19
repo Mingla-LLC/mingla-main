@@ -74,3 +74,41 @@ export function brandIdFromRoute(
   }
   return null;
 }
+
+/**
+ * Screens above brand level: they are about the person signed in (their
+ * account, their notifications, help) or about brands as a set (creating one),
+ * not about one brand. No brand name is shown at the top of these, so nothing
+ * there suggests the screen belongs to the brand last worked on.
+ */
+const ABOVE_BRAND_SCREENS: ReadonlySet<string> = new Set([
+  "account",
+  "notifications",
+  "support",
+  "recent",
+  "partner",
+  "promoting",
+]);
+
+export function isAboveBrandScreen(pathname: string | null | undefined): boolean {
+  const segments = workspacePathSegments(pathname);
+  const head = segments[0] ?? "";
+  if (head === "brand") return segments[1] === "new";
+  // A screen that names its brand in the address (Tap to Pay under Account) is that brand's.
+  if (head === "account" && segments[1] === "tap-to-pay") return false;
+  return ABOVE_BRAND_SCREENS.has(head);
+}
+
+/**
+ * On a phone, the brand to name above a brand's own screen (`/brand/<id>/...`),
+ * or null when it is not one brand's screen. Website is included: its setup,
+ * overview and "try again" screens have no bar of their own to carry the name
+ * (the workspace, which does, tells the shell so: phoneBrandSwitcherOwner).
+ * The full-screen preview shows only the website.
+ */
+export function phoneBrandStripFor(pathname: string | null | undefined, routeBrandId: string | null): string | null {
+  const segments = workspacePathSegments(pathname);
+  if (segments[0] !== "brand" || routeBrandId === null || segments[1] === "new") return null;
+  if (segments[2] === "website" && segments[3] === "preview") return null;
+  return routeBrandId;
+}
