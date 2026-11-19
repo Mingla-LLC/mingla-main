@@ -5,7 +5,7 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
-import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
 import type { PackageExtraView } from "@mingla/brand-rendering/venueOffers/packageModel";
 
@@ -52,12 +52,14 @@ export function ExtrasList({
             accessibilityLabel={`${e.name}, ${price}`}
             style={({ pressed }) => [
               styles.row,
-              { borderColor: on ? palette.accent : palette.panelBorder, backgroundColor: palette.card },
+              on
+                ? accentOutline(palette, { background: palette.card, opaqueBackground: palette.page })
+                : { borderColor: palette.panelBorder, backgroundColor: palette.card },
               pressed ? styles.pressed : null,
             ]}
             testID={`${testID}-${e.id}`}
           >
-            <View style={[styles.box, { borderColor: on ? palette.accent : palette.secondaryText, backgroundColor: on ? palette.accent : "transparent" }]}>
+            <View style={[styles.box, on ? accentFillWithBorder(palette) : { borderColor: palette.secondaryText, backgroundColor: "transparent" }]}>
               {on ? <Icon name="check" size={14} color={palette.accentText} /> : null}
             </View>
             <View style={styles.text}>

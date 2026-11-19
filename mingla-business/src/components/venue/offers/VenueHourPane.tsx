@@ -25,7 +25,8 @@ import {
   OfferingStepper,
   type OfferingDateTile,
 } from "@mingla/offering-rendering/OfferingDecideParts";
-import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { accentFillWithBorder, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 import type { PublicVenueReservationBar } from "@mingla/brand-rendering/PublicVenueScreen";
 import { formatVenueMoney, type VenueFeatureOfferView } from "@mingla/brand-rendering/venueFeaturePage";
 import {
@@ -168,7 +169,7 @@ export function VenueHourPane({
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
                 accessibilityLabel={`${o.name}, ${money(o.fromMinor)} an hour${on ? ", chosen" : ""}`}
-                style={[styles.offer, { borderColor: on ? palette.accent : palette.panelBorder, backgroundColor: on ? palette.accentWash : palette.card }]}
+                style={[styles.offer, on ? accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }) : { borderColor: palette.panelBorder, backgroundColor: palette.card }]}
                 testID={`venue-hour-offer-${o.id}`}
               >
                 <View style={styles.offerText}>
@@ -278,7 +279,7 @@ export function VenueHourPane({
                     style={[
                       styles.cell,
                       c.state === "mine"
-                        ? { backgroundColor: palette.accent, borderColor: palette.accent }
+                        ? accentFillWithBorder(palette)
                         : c.state === "free"
                           ? { backgroundColor: palette.card, borderColor: palette.panelBorder }
                           : { borderColor: palette.panelBorder, borderStyle: "dotted", opacity: 0.45 },

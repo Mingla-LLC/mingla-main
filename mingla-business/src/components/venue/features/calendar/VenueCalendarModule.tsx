@@ -12,7 +12,7 @@
  * "Block a space" takes a space or combination out of use for a while.
  */
 import React, { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -69,8 +69,12 @@ const LazyToast = React.lazy(async () => {
   return { default: mod.Toast };
 });
 
-const LABEL_COL = 160;
-const DAY_COL_MIN = 96;
+const LABEL_COL = 144;
+const DAY_COL_MIN = 88;
+// #4490 N120 — the week opens by itself only when the window leaves room for
+// all seven days beside the app's two sidebars; narrower (1024) it opens on the
+// day list, and Week stays one tap away.
+export const WEEK_DEFAULT_MIN_WIDTH = 1280;
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export interface VenueCalendarModuleProps {
@@ -94,7 +98,8 @@ export function VenueCalendarModule({ brandId, venueId, onOpenRequest }: VenueCa
   const eventsOn = featuresData?.features.events_here?.enabled === true;
   const timezone = offersQuery.data?.settings?.timezone ?? "Africa/Lagos";
   const today = dateIn(new Date().toISOString(), timezone) ?? new Date().toISOString().slice(0, 10);
-  const [view, setView] = useState<CalendarView>(isWideDesktop ? "week" : "day");
+  const [pickedView, setView] = useState<CalendarView | null>(null);
+  const view: CalendarView = pickedView ?? (isWideDesktop && width >= WEEK_DEFAULT_MIN_WIDTH ? "week" : "day");
   const [anchor, setAnchor] = useState<string | null>(null);
   const at = anchor ?? today;
   const range = rangeFor(view, at);
@@ -281,17 +286,33 @@ export function VenueCalendarModule({ brandId, venueId, onOpenRequest }: VenueCa
 
 // ------------------------------------------------------------------ views
 
-function BlockChip({ block, onPress, compact }: { block: CalendarBlock; onPress?: () => void; compact?: boolean }): React.ReactElement {
+/**
+ * #4490 N115 — the full text of a cell as a hover title (web). React Native
+ * Web drops a `title` prop, so the title goes on the element itself through its
+ * ref; the same text is already the cell's accessible label.
+ */
+function hoverTitle(label: string): { ref?: (node: unknown) => void } {
+  if (Platform.OS !== "web") return {};
+  return {
+    ref: (node: unknown): void => {
+      if (node !== null && typeof node === "object" && "setAttribute" in node) {
+        (node as { setAttribute: (name: string, value: string) => void }).setAttribute("title", label);
+      }
+    },
+  };
+}
+
+function BlockChip({ block, onPress }: { block: CalendarBlock; onPress?: () => void }): React.ReactElement {
   const tone = TONE_STYLE[block.tone];
   const content = (
     <>
-      <Text style={[styles.blockTitle, tone.text]} numberOfLines={compact ? 1 : 2}>{block.title}</Text>
-      {block.detail !== null ? <Text style={[styles.blockDetail, tone.sub]} numberOfLines={compact ? 1 : 2}>{block.detail}</Text> : null}
+      <Text style={[styles.blockTitle, tone.text]} numberOfLines={2}>{block.title}</Text>
+      {block.detail !== null ? <Text style={[styles.blockDetail, tone.sub]} numberOfLines={2}>{block.detail}</Text> : null}
     </>
   );
   if (onPress === undefined) {
     return (
-      <View style={[styles.block, tone.box]} accessibilityLabel={block.label} testID={`venue-calendar-block-${block.key}`}>
+      <View style={[styles.block, tone.box]} accessibilityLabel={block.label} testID={`venue-calendar-block-${block.key}`} {...hoverTitle(block.label)}>
         {content}
       </View>
     );
@@ -303,6 +324,7 @@ function BlockChip({ block, onPress, compact }: { block: CalendarBlock; onPress?
       accessibilityLabel={block.label}
       style={({ pressed }) => [styles.block, tone.box, pressed ? styles.pressed : null]}
       testID={`venue-calendar-block-${block.key}`}
+      {...hoverTitle(block.label)}
     >
       {content}
     </Pressable>
@@ -360,10 +382,10 @@ function WeekGrid({
             const fill = entryFill(day);
             const groups = day?.groups.length ?? 0;
             return (
-              <View key={d} style={[styles.dayCell, styles.entryCell]} accessibilityLabel={`${shortDay(d)}: ${fill?.line ?? "no entry"}`}>
+              <View key={d} style={[styles.dayCell, styles.entryCell]} accessibilityLabel={`${shortDay(d)}: ${fill?.line ?? "no entry"}`} {...hoverTitle(`${shortDay(d)}: ${fill?.line ?? "no entry"}`)}>
                 {fill !== null ? (
                   <>
-                    <Text style={[styles.meta, fill.cut ? styles.cutText : null]} numberOfLines={2}>{fill.line}</Text>
+                    <Text style={[styles.meta, fill.cut ? styles.cutText : null]} numberOfLines={3}>{fill.line}</Text>
                     <Meter value={fill.pct} max={100} tone="accent" />
                   </>
                 ) : (
@@ -386,7 +408,7 @@ function WeekGrid({
             return (
               <View key={d} style={styles.dayCell}>
                 {blocks.map((b) => (
-                  <BlockChip key={b.key} block={b} compact onPress={tappable(b) ? () => onOpen(b, row) : undefined} />
+                  <BlockChip key={b.key} block={b} onPress={tappable(b) ? () => onOpen(b, row) : undefined} />
                 ))}
               </View>
             );

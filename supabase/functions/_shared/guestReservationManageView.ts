@@ -34,6 +34,12 @@ export interface GuestReservationManageView {
   reservedForUtc: string;
   partySize: number;
   venueName: string | null;
+  /**
+   * #4490 N119 — the venue's own IANA zone, so the page can say the time the
+   * way the confirmation does (day-first, 24-hour, venue zone). Null when it
+   * cannot be read; the page then falls back to the device zone.
+   */
+  timezone: string | null;
   /** A guest may cancel only an upcoming booking in a cancellable state. */
   canCancel: boolean;
 }
@@ -60,7 +66,7 @@ export async function guestCancelTokenHash(token: string): Promise<string> {
 }
 
 // deno-lint-ignore no-explicit-any
-type QueryClient = { from: (table: string) => any };
+type QueryClient = { from: (table: string) => any; rpc?: (name: string, args: Record<string, unknown>) => any };
 
 export async function loadGuestReservationManageView(
   client: QueryClient,
@@ -102,6 +108,16 @@ export async function loadGuestReservationManageView(
       : null;
   }
 
+  let timezone: string | null = null;
+  if (typeof venueId === "string" && venueId.length > 0 && typeof client.rpc === "function") {
+    try {
+      const { data: zone } = await client.rpc("issue_4490_venue_timezone", { p_venue_id: venueId });
+      timezone = typeof zone === "string" && zone.length > 0 ? zone : null;
+    } catch {
+      timezone = null;
+    }
+  }
+
   const status = String(reservation.status) as GuestManageReservationStatus;
   const reservedForUtc = String(reservation.reserved_for);
   const reservedForMs = Date.parse(reservedForUtc);
@@ -117,6 +133,7 @@ export async function loadGuestReservationManageView(
     reservedForUtc,
     partySize: Number(reservation.party_size),
     venueName,
+    timezone,
     canCancel: GUEST_CANCELLABLE.has(status) &&
       Number.isFinite(reservedForMs) && reservedForMs > nowMs,
   };

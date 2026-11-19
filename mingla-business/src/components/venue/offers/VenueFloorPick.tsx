@@ -9,6 +9,8 @@
 import React, { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import type { ThemePalette } from "@mingla/offering-rendering";
+import { accentFill, accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 import { defaultTableSize, LANDMARK_LABEL, parseRoom, PLAN_WIDTH, roomHeight, type TableShape } from "../features/floor/floorModel";
 import type { GuestTableOption } from "../../../services/venueTableGuestService";
@@ -70,7 +72,9 @@ export function VenueFloorPick({ palette, options, spacePlans, selectedKey, onSe
         accessibilityState={{ selected, disabled: !free }}
         style={[
           styles.row,
-          { borderColor: selected ? palette.accent : palette.panelBorder, backgroundColor: selected ? palette.accentWash : palette.card },
+          selected
+            ? accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) })
+            : { borderColor: palette.panelBorder, backgroundColor: palette.card },
           !free ? styles.rowOff : null,
         ]}
         testID={`${testID}-row-${key}`}
@@ -105,7 +109,7 @@ export function VenueFloorPick({ palette, options, spacePlans, selectedKey, onSe
                 accessibilityRole="tab"
                 accessibilityState={{ selected: on }}
                 accessibilityLabel={s.name}
-                style={[styles.chip, { borderColor: on ? palette.accent : palette.panelBorder, backgroundColor: on ? palette.accentWash : "transparent" }]}
+                style={[styles.chip, on ? accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }) : { borderColor: palette.panelBorder, backgroundColor: "transparent" }]}
               >
                 <Text style={[styles.chipText, { color: palette.primaryText }]}>{s.name}</Text>
               </Pressable>
@@ -169,10 +173,13 @@ export function VenueFloorPick({ palette, options, spacePlans, selectedKey, onSe
                         height: h,
                         borderRadius: radiusFor(o.shape),
                         transform: [{ rotate: `${o.rotation}deg` }],
-                        borderColor: selected || free ? palette.accent : palette.panelBorder,
+                        ...(selected
+                          ? accentFill(palette)
+                          : free
+                            ? accentOutline(palette, { background: palette.page, opaqueBackground: palette.page })
+                            : { borderColor: palette.panelBorder, backgroundColor: palette.page }),
                         borderWidth: selected ? 0 : free ? 2 : 1,
                         borderStyle: free || selected ? "solid" : "dashed",
-                        backgroundColor: selected ? palette.accent : palette.page,
                         opacity: free || selected ? 1 : 0.5,
                       },
                     ]}
@@ -198,11 +205,11 @@ export function VenueFloorPick({ palette, options, spacePlans, selectedKey, onSe
       {placed.length > 0 ? (
         <View style={styles.legend} accessibilityLabel="Legend: outlined fits your party, filled is your table, faded is taken or the wrong size">
           <View style={styles.legendItem}>
-            <View style={[styles.swatch, { borderColor: palette.accent, borderWidth: 2 }]} />
+            <View style={[styles.swatch, { ...accentOutline(palette, { opaqueBackground: palette.page }), borderWidth: 2 }]} />
             <Text style={[styles.legendText, { color: palette.secondaryText }]}>Fits your party</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.swatch, { backgroundColor: palette.accent }]} />
+            <View style={[styles.swatch, accentFill(palette)]} />
             <Text style={[styles.legendText, { color: palette.secondaryText }]}>Yours</Text>
           </View>
           <Text style={[styles.legendText, { color: palette.tertiaryText }]}>Faded: taken or the wrong size</Text>

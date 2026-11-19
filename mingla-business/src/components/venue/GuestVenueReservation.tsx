@@ -902,14 +902,14 @@ function GuestVenueReservationBody({
               <View style={styles.manageRow}>
                 <Pressable
                   accessibilityRole="link"
-                  accessibilityLabel="Change or cancel this booking"
+                  accessibilityLabel="Manage this booking"
                   onPress={() => {
                     if (typeof window !== "undefined") window.location.assign(completed.manageHref as string);
                   }}
                   style={[styles.manageButton, { borderColor: palette.secondaryText }]}
                   testID="issue-4490-table-manage"
                 >
-                  <Text style={[styles.manageLabel, { color: palette.primaryText }]}>Change or cancel</Text>
+                  <Text style={[styles.manageLabel, { color: palette.primaryText }]}>Manage booking</Text>
                 </Pressable>
                 <Text style={[styles.body, { color: palette.secondaryText }]}>
                   {`The same link is in your confirmation email${completed.email !== null ? ` to ${completed.email}` : ""}.`}
@@ -1502,10 +1502,18 @@ function GuestVenueReservationBody({
             <Text style={[styles.body, { color: palette.secondaryText }]}>
               Send me occasional Mingla updates
             </Text>
-            <Switch value={marketingOptIn} onValueChange={setMarketingOptIn} />
+            <Switch
+              value={marketingOptIn}
+              onValueChange={setMarketingOptIn}
+              accessibilityLabel="Send me occasional Mingla updates"
+              testID="issue-4490-marketing-opt-in"
+            />
           </View>
+          {/* #4490 N118: the price area keeps one height whether it is loading or
+              settled, so Confirm never slides away from under the pointer. */}
+          <View style={previewEnabled ? styles.priceArea : undefined} testID="issue-4490-price-area">
           {reservationPreview.isLoading || reservationPreview.isFetching ? (
-            <View style={styles.loading}>
+            <View style={[styles.loading, styles.priceAreaLoading, { borderColor: palette.panelBorder }]}>
               <ActivityIndicator color={palette.accent} />
               <Text style={[styles.body, { color: palette.secondaryText }]}>
                 Getting your exact price…
@@ -1671,6 +1679,7 @@ function GuestVenueReservationBody({
               )}
             </View>
           ) : null}
+          </View>
           {error !== null ? (
             <Text style={styles.error} accessibilityLiveRegion="polite">
               {error}
@@ -1705,6 +1714,8 @@ function GuestVenueReservationBody({
     </View>
   );
 }
+
+const PRICE_AREA_MIN_HEIGHT = 96;
 
 const styles = StyleSheet.create({
   partyPanel: { marginTop: 18, marginBottom: 18 },
@@ -1758,6 +1769,14 @@ const styles = StyleSheet.create({
   },
   chipText: { ...type.small },
   loading: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  // #4490 N118 — as tall as the settled "No deposit" card, so nothing shifts.
+  priceArea: { minHeight: PRICE_AREA_MIN_HEIGHT },
+  priceAreaLoading: {
+    minHeight: PRICE_AREA_MIN_HEIGHT,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: space[4],
+  },
   stateCard: {
     gap: space[2],
     borderRadius: radius.md,

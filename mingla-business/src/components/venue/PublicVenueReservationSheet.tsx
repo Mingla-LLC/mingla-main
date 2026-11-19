@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from "react";
 import { StyleSheet, Text, View, type View as ViewInstance } from "react-native";
 
-import { space, type, color } from "../../constants/designSystem";
+import { space } from "../../constants/designSystem";
 import { ScrollView } from "../../wrappers/SmartScrollView";
+import { PickerSheetHead } from "../ui/PickerSheetHead";
 import { Sheet } from "../ui/Sheet";
 
 // Keep focus restoration beyond every canonical close/unmount animation.
@@ -90,7 +91,9 @@ export function PublicVenueReservationSheet({
           accessibilityRole="header"
           accessibilityLabel={title}
         >
-          <Text style={styles.heading}>{title}</Text>
+          {/* #4490 N118: the same head the other sheets carry: title and a
+              visible Close, for the form and for its confirmation. */}
+          <PickerSheetHead title={title} onClose={onClose} testID="issue-4490-reservation-sheet-head" />
         </View>
         <ScrollView
           style={styles.scroll}
@@ -111,10 +114,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minHeight: 0,
     gap: space[2],
-  },
-  heading: {
-    ...type.h1,
-    color: color.text1,
   },
   scroll: {
     flex: 1,

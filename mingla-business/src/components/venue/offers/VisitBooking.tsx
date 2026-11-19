@@ -396,6 +396,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
         setShared("Copied. Paste it into your group chat.");
         return;
       }
+      // SHARE-NON-CONTENT:receipt
       await Share.share({ message });
     } catch {
       setShared("Couldn't open sharing on this device.");

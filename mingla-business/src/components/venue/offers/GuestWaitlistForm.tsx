@@ -17,6 +17,8 @@ import {
 } from "@mingla/phone-input";
 import { parsePhoneEntry, resolvePhoneStartCountry } from "@mingla/phone-input/phoneNumber";
 import type { ThemePalette } from "@mingla/offering-rendering";
+import { accentOutline } from "@mingla/offering-rendering/themeAccentStyle";
+import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
 
 import { color, space, type } from "../../../constants/designSystem";
 import { joinGuestWaitlist, GuestWaitlistError } from "../../../services/venueTableGuestService";
@@ -160,7 +162,7 @@ export function GuestWaitlistForm({
       accessibilityRole="button"
       accessibilityState={{ selected: on }}
       accessibilityLabel={`${label} ${t}`}
-      style={[styles.chip, { borderColor: on ? palette.accent : palette.panelBorder, backgroundColor: on ? palette.accentWash : "transparent" }]}
+      style={[styles.chip, on ? accentOutline(palette, { background: palette.accentWash, opaqueBackground: opaqueAccentWashColor(palette) }) : { borderColor: palette.panelBorder, backgroundColor: "transparent" }]}
     >
       <Text style={[styles.chipText, { color: palette.primaryText }]}>{t}</Text>
     </Pressable>

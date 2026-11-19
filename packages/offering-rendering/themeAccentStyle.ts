@@ -56,7 +56,10 @@ export const themeFontFace = (
  */
 export const WEB_FONT_FALLBACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const withWebFallback = (fontFamily: string): string =>
-  fontFamily.includes(",") ? fontFamily : `${fontFamily}, ${WEB_FONT_FALLBACK}`;
+  // A theme with no face key at all (older rows, stubs) stays as it was.
+  typeof fontFamily !== "string" || fontFamily.includes(",")
+    ? fontFamily
+    : `${fontFamily}, ${WEB_FONT_FALLBACK}`;
 
 /** The theme's bold face (`boldFontFamily`) as a text style; see themeFontFace. */
 export const themeBoldFace = (

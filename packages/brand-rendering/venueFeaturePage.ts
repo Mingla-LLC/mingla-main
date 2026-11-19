@@ -1002,7 +1002,7 @@ export function deriveVenuePage(
       return present(tab);
     }),
   );
-  const tabs = TAB_ORDER.filter((tab) => tabSet.has(tab));
+  const tabs: PublicVenueTab[] = TAB_ORDER.filter((tab) => tabSet.has(tab));
 
   // The table tab reads "Reservations" when the table family is all a venue
   // sells (today's Gogi), otherwise "Tables". A stay keeps "Reservations".
@@ -1234,6 +1234,14 @@ export function deriveVenuePage(
   if (lead !== null) {
     const at = ways.findIndex((w) => w.tab === lead.tab);
     if (at > 0) ways.unshift(...ways.splice(at, 1));
+  }
+  // #4490 N117: the same for the tab strip. When the tables lead the page and
+  // sit beside other ways to come (they read "Tables"), the Tables tab comes
+  // right after Overview, not last. A table-only venue keeps its order.
+  if (lead !== null && lead.kind === "tables" && labels.reservations === "Tables") {
+    const at = tabs.indexOf("reservations");
+    const after = tabs.indexOf("overview") + 1;
+    if (at > after) tabs.splice(after, 0, ...tabs.splice(at, 1));
   }
   const showWays =
     !stays && ways.length > 0 && WAYS_FEATURES.some((key) => on.has(key));

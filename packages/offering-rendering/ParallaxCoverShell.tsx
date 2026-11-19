@@ -42,6 +42,11 @@
 
 import React from "react";
 import {
+  flyerColumnStickyTop,
+  flyerMaxHeight,
+  PREMIUM_DESK_PAGE_TOP,
+} from "./flyerColumnStickyTop";
+import {
   Animated,
   Platform,
   ScrollView,
@@ -499,6 +504,37 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   const [solidHeader, setSolidHeader] = React.useState(false);
   const solidRef = React.useRef(false);
   const [premiumCoverHeight, setPremiumCoverHeight] = React.useState(0);
+  // #4490 N116 — the desktop flyer column sticks at 96 from the top of the
+  // scroll area. The scroll area is already the window minus the Privacy & ad
+  // choices strip (I-PRIVACY-BAR-NEVER-OCCLUDES: #root ends above it), so when
+  // the column is taller than what is left, stick it higher so its foot (the
+  // docked action bar) stays above the strip instead of being clipped by it.
+  const [deskScrollHeight, setDeskScrollHeight] = React.useState(0);
+  const [deskColHeight, setDeskColHeight] = React.useState(0);
+  const [deskFlyerBox, setDeskFlyerBox] = React.useState({ width: 0, height: 0 });
+  const flyerStickyTop = flyerColumnStickyTop(deskScrollHeight, deskColHeight);
+  const flyerCap = flyerMaxHeight({
+    scrollHeight: deskScrollHeight,
+    columnHeight: deskColHeight,
+    flyerWidth: deskFlyerBox.width,
+    flyerHeight: deskFlyerBox.height,
+  });
+  const onDeskFlyerLayout = React.useCallback((event: LayoutChangeEvent): void => {
+    const { width, height } = event.nativeEvent.layout;
+    setDeskFlyerBox((prev) =>
+      prev.width === width && prev.height === height ? prev : { width, height },
+    );
+  }, []);
+  const onDeskScrollLayout = React.useCallback(
+    (event: LayoutChangeEvent): void => {
+      setDeskScrollHeight(event.nativeEvent.layout.height);
+      onScrollViewLayout?.(event);
+    },
+    [onScrollViewLayout],
+  );
+  const onDeskColLayout = React.useCallback((event: LayoutChangeEvent): void => {
+    setDeskColHeight(event.nativeEvent.layout.height);
+  }, []);
   const headerHeight = safeAreaTop + PREMIUM_HEADER_ROW;
   const solidThreshold = isDesktop
     ? PREMIUM_DESKTOP_SOLID_AT
@@ -796,25 +832,28 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           showsVerticalScrollIndicator={false}
           onScroll={handlePremiumScroll}
           scrollEventThrottle={16}
-          onLayout={onScrollViewLayout}
+          onLayout={onDeskScrollLayout}
         >
           <View style={styles.premiumDeskPage}>
             <View style={styles.premiumDeskCols}>
               <View
                 style={webStyle({
                   position: "sticky",
-                  top: 96,
+                  top: flyerStickyTop,
                   width: "40%",
                   maxWidth: PREMIUM_FLYER_MAX,
                   flexShrink: 0,
                   gap: 12,
                 })}
+                onLayout={onDeskColLayout}
                 testID={testID !== undefined ? `${testID}-flyer-col` : undefined}
               >
                 <View
+                  onLayout={onDeskFlyerLayout}
                   style={[
                     styles.premiumFlyer,
                     { borderColor: palette.panelBorder },
+                    flyerCap !== null ? { maxHeight: flyerCap } : null,
                     webStyle({ boxShadow: "0 34px 80px -28px rgba(0,0,0,0.85)" }),
                   ]}
                 >
@@ -1498,7 +1537,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 1160,
     alignSelf: "center",
-    paddingTop: 84,
+    paddingTop: PREMIUM_DESK_PAGE_TOP,
     paddingHorizontal: 40,
     paddingBottom: 140,
   },
