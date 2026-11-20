@@ -124,6 +124,8 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
     // #4420 — the wizards' invite publish gate (pure; real module).
     if (exportName === "wizardInvitePublishGate") return jest.requireActual("../../invites/wizardInvitePublishGate");
     if (exportName === "useUnsavedChangesGuard") return jest.requireActual("../../../hooks/useUnsavedChangesGuard");
+    // [TEST-MOD-APPROVED #4490] 07-A: the wizards read whether the event is at a venue (server venue link); no venue in these hosts.
+    if (exportName === "useEventAtVenue") return { useEventAtVenue: () => false };
     throw new Error(`Unclassified host boundary: ${name}`);
   };
   const module = { exports: {} as Record<string, React.ComponentType<any>> };

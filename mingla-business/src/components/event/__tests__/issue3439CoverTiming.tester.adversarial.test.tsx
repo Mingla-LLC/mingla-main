@@ -118,6 +118,8 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     if (exportName === "useUnsavedChangesGuard") return jest.requireActual("../../../hooks/useUnsavedChangesGuard");
     // [TEST-MOD-APPROVED #4490] the wizard reads the brand / device time zone (pure; real module).
     if (exportName === "timezones") return jest.requireActual("../../../utils/timezones");
+    // [TEST-MOD-APPROVED #4490] 07-A: the wizards read whether the event is at a venue (server venue link); no venue in these hosts.
+    if (exportName === "useEventAtVenue") return { useEventAtVenue: () => false };
     throw new Error(`Unclassified wizard boundary: ${name}`);
   };
   const module = { exports: {} as Record<string, React.ComponentType<any>> };
