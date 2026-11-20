@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4514-DOOR-LINE-CAPS | issue #4514 | every door answer line (ticket scan and name admit) shows at most 3 answers, each cut to 60 characters, and an unanswered form is a line, never a refusal (_shared/__tests__/issue_4514_door_line.implementor.test.ts).
 // issue #3281 — the start a guest booked on an open-daily experience
 // (`orders.booked_start_at`, round 1b / #3979), carried to the door: the QR
 // scan answer (`scan-ticket`) and the "Find by name" search (`guest-list`).
@@ -111,7 +112,6 @@ export async function readScanExtras(
 // send this shape, and each screen only renders `lines` (no client formatting
 // module, so nothing door-shaped lands in the shared web boot chunk).
 //
-// MINGLA-INVARIANT: I-4514-DOOR-LINE-CAPS | issue #4514 | every door answer line (ticket scan and name admit) shows at most 3 answers, each cut to 60 characters, and an unanswered form is a line, never a refusal (_shared/__tests__/issue_4514_door_line.implementor.test.ts).
 
 /** Decision 16: at most 3 door questions, each answer cut at 60 characters. */
 export const DOOR_LINE_MAX_ITEMS = 3;

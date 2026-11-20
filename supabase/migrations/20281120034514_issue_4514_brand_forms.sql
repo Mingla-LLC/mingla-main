@@ -1,4 +1,15 @@
 -- Issue #4514 wave 1: brand forms, the database and server core.
+-- MINGLA-INVARIANT: I-4514-FORM-VERSIONS-IMMUTABLE | issue #4514 | a published brand form version is never updated or deleted (this trigger; pg17 test T-IMM).
+-- MINGLA-INVARIANT: I-4514-ONE-PERSON-ONE-RESPONSE | issue #4514 | the write path (brand_form_submit_core) and every read path find a person's existing answer with this one rule, lock on the person, and update that row rather than insert a second one (pg17 T-PERSON).
+-- MINGLA-INVARIANT: I-4514-FORM-LINK-ONE-FORM-ONE-RECIPIENT | issue #4514 | a personal link token is stored only as a hash, names one form and one person, and is refused on any other form (brand_form_submit_core; Deno test in brand-form-submit, pg17 T-LINK).
+-- MINGLA-INVARIANT: I-4514-DOOR-READ-ONE-GUEST-OF-THIS-EVENT | issue #4514 | door reads take one guest of the scanned event per call, refuse another event's guest, show the marked line only (both-versions filter), and return full answers only when the form allows it or the caller is event_manager+ (pg17 T-DOOR*).
+-- MINGLA-INVARIANT: I-4514-FORM-REQUEST-NO-INVITE | issue #4514 | a form request (Ask, Remind, the automatic reminder) writes no invite, no invite delivery attempt and no access grant, and leaves guest status and invite counts unchanged (pg17 T-W4-D17; Deno issue_4514_form_requests).
+-- MINGLA-INVARIANT: I-4514-FORM-REQUEST-THROTTLE | issue #4514 | one form request per person per form per 24 hours (a queued, claimed or sent row for the same person key), enforced in brand_form_request_enqueue under the brand lock (pg17 T-W4-THROTTLE, T-W4-CONC).
+-- MINGLA-INVARIANT: I-4514-FORM-REQUEST-QUEUED | issue #4514 | form requests are delivered from the queue in pages of at most 100 by brand_form_request_claim_batch; a stale claim is retried or failed, never left blocking (pg17 T-W4-QUEUE).
+-- MINGLA-INVARIANT: I-4514-CHECKOUT-FORM-BEFORE-PAYMENT | issue #4514 | with a required, live form on the page and the capability marker, ticket-checkout-create refuses missing or invalid answers before any session, payment-provider object or free order exists, and the answers become the order's response only in the transaction that gives the session its order (pg17 T-CHECKOUT; Deno issue_4514_checkout_form in ticket-checkout-create).
+-- MINGLA-INVARIANT: I-4514-CHECKOUT-FORM-ONE-VISIBILITY-RULE | issue #4514 | the checkout form read (brand_form_checkout_form) and the required-answers check (brand_form_checkout_check / _stash) decide whether the page's form applies with this ONE rule, from the credential the buyer already presents to ticket-checkout-create, so a buyer is never refused for a form they cannot see (pg17 T-CHECKOUT-VIS).
+-- MINGLA-INVARIANT: I-4514-FINALIZE-TRIGGER-CANNOT-BLOCK-CHECKOUT | issue #4514 | brand_form_finalize_checkout_answers runs only when a session's order_id is set, does one primary-key probe of brand_form_checkout_answers, does nothing when there is no stash, never waits on a lock (NOWAIT row lock on this session's own stash row, try-only person lock) and catches every error inside a guarded block, logging it and leaving the order finalize untouched (pg17 T-FINALIZE-SAFE).
+-- MINGLA-INVARIANT: I-4514-PURGE-CANNOT-ABORT-4452-RETENTION | issue #4514 | the line this migration appends to issue_4452_forms_retention calls brand_form_checkout_answers_purge(), which deletes only from brand_form_checkout_answers and catches its own errors (WARNING, returns -1), so it can never roll back #4452's retention DELETEs in the same job transaction; the job's original statements stay byte-for-byte (pg17 T-CHECKOUT-PURGE).
 --
 -- Hosts build their own forms in Promote -> Forms, attach one to any page
 -- (RSVP, event, experience, trip) and send personal links. Contract: BUILD
@@ -466,7 +477,6 @@ GRANT SELECT, INSERT ON public.brand_form_versions TO service_role;
 ALTER TABLE public.brand_forms ADD CONSTRAINT brand_forms_live_version_fk
   FOREIGN KEY (live_version_id) REFERENCES public.brand_form_versions(id) ON DELETE RESTRICT;
 
--- MINGLA-INVARIANT: I-4514-FORM-VERSIONS-IMMUTABLE | issue #4514 | a published brand form version is never updated or deleted (this trigger; pg17 test T-IMM).
 CREATE FUNCTION public.brand_form_versions_immutable() RETURNS trigger
 LANGUAGE plpgsql SET search_path = '' AS $fn$
 BEGIN RAISE EXCEPTION 'brand_form_version_immutable' USING ERRCODE = '42501'; END $fn$;
@@ -818,7 +828,6 @@ BEGIN
 END;
 $fn$;
 
--- MINGLA-INVARIANT: I-4514-ONE-PERSON-ONE-RESPONSE | issue #4514 | the write path (brand_form_submit_core) and every read path find a person's existing answer with this one rule, lock on the person, and update that row rather than insert a second one (pg17 T-PERSON).
 -- The same person's existing response to a form, for every path (read and write):
 -- an RSVP or order finds its own row, else its holder's signed-in row
 -- (brand_form_find_response); a signed-in user on a page finds, in order, their
@@ -1563,7 +1572,6 @@ $fn$;
 -- ---------------------------------------------------------------------------
 -- 10. Personal links (service role)
 -- ---------------------------------------------------------------------------
--- MINGLA-INVARIANT: I-4514-FORM-LINK-ONE-FORM-ONE-RECIPIENT | issue #4514 | a personal link token is stored only as a hash, names one form and one person, and is refused on any other form (brand_form_submit_core; Deno test in brand-form-submit, pg17 T-LINK).
 CREATE FUNCTION public.brand_form_link_issue(
   p_form_id uuid, p_event_id uuid, p_subject jsonb, p_created_by uuid DEFAULT NULL, p_ttl_days integer DEFAULT 30
 ) RETURNS jsonb
@@ -1913,7 +1921,6 @@ $fn$;
 
 -- The automatic line (§6): only questions marked "show at the door" in BOTH the
 -- version answered and the current live version; null when there is nothing to show.
--- MINGLA-INVARIANT: I-4514-DOOR-READ-ONE-GUEST-OF-THIS-EVENT | issue #4514 | door reads take one guest of the scanned event per call, refuse another event's guest, show the marked line only (both-versions filter), and return full answers only when the form allows it or the caller is event_manager+ (pg17 T-DOOR*).
 CREATE FUNCTION public.brand_form_door_answers(p_actor_id uuid, p_event_id uuid, p_subject jsonb) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
@@ -2326,9 +2333,6 @@ $fn$;
 -- written as 'unreachable' (counted, never dropped). Push and the Explorer inbox
 -- row wait for the Explorer /form route; contact routes are text then email.
 --
--- MINGLA-INVARIANT: I-4514-FORM-REQUEST-NO-INVITE | issue #4514 | a form request (Ask, Remind, the automatic reminder) writes no invite, no invite delivery attempt and no access grant, and leaves guest status and invite counts unchanged (pg17 T-W4-D17; Deno issue_4514_form_requests).
--- MINGLA-INVARIANT: I-4514-FORM-REQUEST-THROTTLE | issue #4514 | one form request per person per form per 24 hours (a queued, claimed or sent row for the same person key), enforced in brand_form_request_enqueue under the brand lock (pg17 T-W4-THROTTLE, T-W4-CONC).
--- MINGLA-INVARIANT: I-4514-FORM-REQUEST-QUEUED | issue #4514 | form requests are delivered from the queue in pages of at most 100 by brand_form_request_claim_batch; a stale claim is retried or failed, never left blocking (pg17 T-W4-QUEUE).
 
 -- Decision 13: one automatic reminder per page and date, two days before each
 -- guest's own date. 'held_form_closed' is decision 10 (held, host told).
@@ -3224,7 +3228,6 @@ COMMENT ON FUNCTION public.brand_form_door_order_header(uuid, uuid) IS '#4514 §
 -- the buyer is "to answer" (C1). Door sales send no marker and are exempt (C9).
 -- Off switch on: nothing is checked or stashed (OP-7 / C8).
 
--- MINGLA-INVARIANT: I-4514-CHECKOUT-FORM-BEFORE-PAYMENT | issue #4514 | with a required, live form on the page and the capability marker, ticket-checkout-create refuses missing or invalid answers before any session, payment-provider object or free order exists, and the answers become the order's response only in the transaction that gives the session its order (pg17 T-CHECKOUT; Deno issue_4514_checkout_form in ticket-checkout-create).
 CREATE TABLE public.brand_form_checkout_answers (
   checkout_session_id uuid PRIMARY KEY REFERENCES public.ticket_checkout_sessions(id) ON DELETE CASCADE,
   event_id            uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
@@ -3243,7 +3246,6 @@ REVOKE ALL ON public.brand_form_checkout_answers FROM PUBLIC, anon, authenticate
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.brand_form_checkout_answers TO service_role;
 COMMENT ON TABLE public.brand_form_checkout_answers IS '#4514 wave 5: checkout answers stashed per checkout session before payment; moved into brand_form_responses by brand_form_finalize_checkout_answers when the session gets its order. Service role only.';
 
--- MINGLA-INVARIANT: I-4514-CHECKOUT-FORM-ONE-VISIBILITY-RULE | issue #4514 | the checkout form read (brand_form_checkout_form) and the required-answers check (brand_form_checkout_check / _stash) decide whether the page's form applies with this ONE rule, from the credential the buyer already presents to ticket-checkout-create, so a buyer is never refused for a form they cannot see (pg17 T-CHECKOUT-VIS).
 -- Whether this buyer may see the page's form at checkout. A publicly readable
 -- page (brand_form_event_public: public or hidden, scheduled or live, not
 -- deleted, not read-blocked) needs no credential. A private page (#1931) needs
@@ -3493,7 +3495,6 @@ BEGIN
 END;
 $fn$;
 
--- MINGLA-INVARIANT: I-4514-FINALIZE-TRIGGER-CANNOT-BLOCK-CHECKOUT | issue #4514 | brand_form_finalize_checkout_answers runs only when a session's order_id is set, does one primary-key probe of brand_form_checkout_answers, does nothing when there is no stash, never waits on a lock (NOWAIT row lock on this session's own stash row, try-only person lock) and catches every error inside a guarded block, logging it and leaving the order finalize untouched (pg17 T-FINALIZE-SAFE).
 -- The promotion, in the transaction that sets the session's order (paid and free).
 -- I-4514-ONE-PERSON-ONE-RESPONSE: if the order's person (the order's own row,
 -- else the buyer's user, order or RSVP row: brand_form_find_response) already
@@ -3557,7 +3558,6 @@ FOR EACH ROW
 WHEN (NEW.order_id IS NOT NULL AND OLD.order_id IS DISTINCT FROM NEW.order_id)
 EXECUTE FUNCTION public.brand_form_finalize_checkout_answers();
 
--- MINGLA-INVARIANT: I-4514-PURGE-CANNOT-ABORT-4452-RETENTION | issue #4514 | the line this migration appends to issue_4452_forms_retention calls brand_form_checkout_answers_purge(), which deletes only from brand_form_checkout_answers and catches its own errors (WARNING, returns -1), so it can never roll back #4452's retention DELETEs in the same job transaction; the job's original statements stay byte-for-byte (pg17 T-CHECKOUT-PURGE).
 -- SC-35: stashed answers of an abandoned checkout (no order) are purged 7 days
 -- after the session expired. Run daily by the EXISTING forms retention job
 -- (issue_4452_forms_retention, 03:17 UTC); no new cron. Exception-safe: any
