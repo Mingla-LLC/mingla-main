@@ -58,6 +58,7 @@ import {
 import { VenueCategoryPicker } from "../brand/VenueCategoryPicker";
 import { AddressInput } from "../location/AddressInput";
 import { Button } from "../ui/Button";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 import { Input, PHONE_COUNTRIES, type PhoneCountry } from "../ui/Input";
 import {
   VENUE_DETAILS_SUPPORT_EMAIL,
@@ -140,6 +141,8 @@ export function VenueDetailsEditor({
   const [phoneText, setPhoneText] = useState<string>("");
   const [phoneCountry, setPhoneCountry] = useState<PhoneCountry | null>(null);
   const [emailText, setEmailText] = useState<string>("");
+  // #4453 — the contact form as it opened: what "changed" is measured against.
+  const [contactOpened, setContactOpened] = useState<{ phone: string; iso: string | null; email: string } | null>(null);
 
   const identityMode = venueIdentityEditMode(venue?.claimStatus);
   const contactEditable = canEditVenueContact(venue?.claimStatus);
@@ -169,9 +172,11 @@ export function VenueDetailsEditor({
     if (venue === null) return;
     const startIso = contactStartCountryIso(venue, brandCountryCode);
     const country = countryForIso(startIso) ?? FIELD_DEFAULT_COUNTRY;
+    const openedPhone = contactPhoneLocalText(venue.contactPhone, country?.dialCode ?? null);
     setPhoneCountry(country);
-    setPhoneText(contactPhoneLocalText(venue.contactPhone, country?.dialCode ?? null));
+    setPhoneText(openedPhone);
     setEmailText(venue.contactEmail ?? "");
+    setContactOpened({ phone: openedPhone, iso: country?.iso ?? null, email: venue.contactEmail ?? "" });
     setFormError(null);
     setNotice(null);
     setMode("contact");
@@ -260,6 +265,29 @@ export function VenueDetailsEditor({
         : null,
     [venue, identityDraft],
   );
+
+  // #4453 — an open details or contact form that differs from what is saved
+  // holds a brand switch (it sits in the venue's Settings, under the
+  // switcher, and was not part of the page's own unsaved check).
+  // An address typed but not yet matched to a place is not in the patch; it
+  // is still typing that would be lost.
+  const identityChanged =
+    mode === "identity" &&
+    venue !== null &&
+    identityDraft !== null &&
+    ((identityPatch !== null && !isEmptyIdentityPatch(identityPatch)) ||
+      identityDraft.addressText.trim() !== identityDraftFromVenue(venue).addressText.trim());
+  const contactChanged =
+    mode === "contact" &&
+    contactOpened !== null &&
+    (phoneText.trim() !== contactOpened.phone.trim() ||
+      (phoneCountry?.iso ?? null) !== contactOpened.iso ||
+      emailText.trim() !== contactOpened.email.trim());
+  useUnsavedChangesGuard({
+    dirty: canMutate && (identityChanged || contactChanged),
+    onRequestLeave: closeForm,
+    hardwareBack: false,
+  });
 
   const saveIdentity = useCallback((): void => {
     if (venue === null || identityDraft === null || identityPatch === null) return;

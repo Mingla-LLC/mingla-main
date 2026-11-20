@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { Button } from "../../../src/components/ui/Button";
 import { Toast } from "../../../src/components/ui/Toast";
+import { useUnsavedChangesGuard } from "../../../src/hooks/useUnsavedChangesGuard";
 import { supabase } from "../../../src/services/supabase";
 import { formatCurrency } from "../../../src/utils/currency";
 import {
@@ -75,6 +76,26 @@ const formatInZone = (iso: string, zone: string | null): string => {
   }
 };
 
+/**
+ * #4453 — does any date still hold a typed title or place that is not what is
+ * saved? Compared to the saved rows (trimmed, as a save stores them), so
+ * typing and deleting again is not a change. The route holds a brand switch
+ * while this is true.
+ */
+export function hasUnsavedDateEdits(
+  rows: readonly Pick<DateRow, "id" | "override_title" | "override_location">[],
+  drafts: Readonly<Record<string, { title: string; location: string } | undefined>>,
+): boolean {
+  return rows.some((row) => {
+    const draft = drafts[row.id];
+    return (
+      draft !== undefined &&
+      (draft.title.trim() !== (row.override_title ?? "").trim() ||
+        draft.location.trim() !== (row.override_location ?? "").trim())
+    );
+  });
+}
+
 const isPastEnd = (endAt: string, nowMs: number): boolean => {
   const end = Date.parse(endAt);
   return Number.isFinite(end) && end <= nowMs;
@@ -101,6 +122,14 @@ export default function EventDatesScreen(): React.ReactElement {
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
   const nowMs = useMemo(() => Date.now(), [rows]);
+  // #4453 — typed and not saved holds a brand switch (`dirtyIdsRef` is a ref:
+  // nothing re-renders when it changes). Back keeps its own behaviour.
+  const goBack = useCallback((): void => router.back(), [router]);
+  useUnsavedChangesGuard({
+    dirty: !loading && hasUnsavedDateEdits(rows, drafts),
+    onRequestLeave: goBack,
+    hardwareBack: false,
+  });
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (typeof id !== "string" || id.length === 0) {
@@ -269,7 +298,7 @@ export default function EventDatesScreen(): React.ReactElement {
       <TopBar
         leftKind="back"
         title="Dates"
-        onBack={() => router.back()}
+        onBack={goBack}
         rightSlot={null}
       />
       {loading ? (

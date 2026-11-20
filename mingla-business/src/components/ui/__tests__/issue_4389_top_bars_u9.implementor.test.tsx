@@ -128,7 +128,8 @@ describe("#4389 U-9 Home top bar", () => {
       />,
     );
     const l = labels(r);
-    const iBrand = l.indexOf("Brand: Lantern Room");
+    // #4453: the label always carries the full name and what a press does.
+    const iBrand = l.indexOf("Brand: Lantern Room. Switch brand");
     const iMsg = l.indexOf("Messages, 2 unread");
     const iBell = l.indexOf("Notifications, 3 unread");
     const iPlus = l.indexOf("Create event, experience, or trip");
@@ -160,7 +161,7 @@ describe("#4389 U-9 Home top bar", () => {
     });
     mounted.push(r);
     const l = labels(r);
-    const order = ["Brand: Lantern Room", "Messages, 2 unread", "Mingla team", "Notifications, 3 unread", "Create event, experience, or trip"]
+    const order = ["Brand: Lantern Room. Switch brand", "Messages, 2 unread", "Mingla team", "Notifications, 3 unread", "Create event, experience, or trip"]
       .map((x) => l.indexOf(x));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
@@ -173,13 +174,14 @@ describe("#4389 U-9 Home top bar", () => {
     ["Home", "../../../../app/(tabs)/home.tsx", "home-universal-creator-button"],
     ["Hub", "../../../../app/(tabs)/hub/_layout.tsx", "hub-universal-creator-button"],
     ["Account", "../../../../app/(tabs)/account.tsx", "account-universal-creator-button"],
-  ])("%s mounts TopBar leftKind=brand; the + extraRightSlot is desktop-only", (_name, rel, testID) => {
+  ])("%s mounts TopBar leftKind=brand (Account: none, #4453); the + extraRightSlot is desktop-only", (name, rel, testID) => {
     const src = fs.readFileSync(path.join(__dirname, rel), "utf8");
     const at = src.indexOf("<TopBar");
     const end = src.indexOf(") : undefined", src.indexOf("extraRightSlot", at));
     expect(end).toBeGreaterThan(at);
     const block = src.slice(at, end + ") : undefined".length);
-    expect(block).toContain('leftKind="brand"');
+    // #4453 — Account is above brand level (it lists every brand): no brand name at its top.
+    expect(block).toContain(name === "Account" ? 'leftKind="none"' : 'leftKind="brand"');
     expect(block).toMatch(/extraRightSlot=\{[\s\S]*?isWideDesktop \? \(\s*<IconChrome/);
     expect(block).toContain('icon="plus"');
     expect(block).toContain(`testID="${testID}"`);
@@ -189,7 +191,11 @@ describe("#4389 U-9 Home top bar", () => {
 
   test("TopBar's brand slot is the shared BrandChip; the 18-character label stays", () => {
     const src = fs.readFileSync(path.join(__dirname, "../TopBar.tsx"), "utf8");
-    expect(src).toContain("<BrandChip onPress={handleBrandTap} brandLoading={brandLoading} />");
+    // #4453: the brand slot is the WorkspaceBrandSwitcher, whose trigger is
+    // the shared BrandChip.
+    expect(src).toContain("<WorkspaceBrandSwitcher onOpenSheet={onBrandTap} onDiscardDraft={onDiscardDraft} brandLoading={brandLoading} />");
+    const switcher = fs.readFileSync(path.join(__dirname, "../../brand/WorkspaceBrandSwitcher.tsx"), "utf8");
+    expect(switcher).toMatch(/<BrandChip\s/);
     const chip = fs.readFileSync(path.join(__dirname, "../BrandChip.tsx"), "utf8");
     expect(chip).toContain("export const BRAND_LABEL_MAX_CHARS = 18;");
     expect(chip).toContain('accessibilityLabel="Brand: loading"');

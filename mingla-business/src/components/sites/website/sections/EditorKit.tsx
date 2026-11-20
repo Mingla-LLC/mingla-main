@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useUnsavedChangesGuard } from "../../../../hooks/useUnsavedChangesGuard";
 import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useWebsite } from "../WebsiteContext";
 import { Banner, Body, Hint, Row, RowText, WButton, ui } from "../ui";
@@ -42,11 +43,34 @@ export function EditorCrumb({ section, label, current }: { section: CollectionSe
   );
 }
 
-/** Save / Cancel in the right place for the screen size. */
+/**
+ * #4453 — is an editor's form different from the copy it opened with?
+ * Rich text is compared as the website would show it (the editor rebuilds the
+ * document as you type, so typing a word and deleting it again leaves a
+ * different object with the same content).
+ */
+export function editorFormChanged(form: unknown, opened: unknown): boolean {
+  if (form === null || opened === null) return false;
+  const shown = (value: unknown): string =>
+    JSON.stringify(value, (_key, field: unknown) =>
+      field !== null && typeof field === "object" && (field as { type?: unknown }).type === "doc"
+        ? blocksToDoc(docToBlocks(field as RichTextDoc))
+        : field,
+    );
+  return shown(form) !== shown(opened);
+}
+
+/**
+ * Save / Cancel in the right place for the screen size.
+ * #4453 — `changed` (the form differs from the saved copy): the editor then
+ * holds a brand switch, which would open the Website workspace for another
+ * brand and drop what was typed.
+ */
 export function useEditorChrome(input: {
   isNew: boolean;
   saving: boolean;
   disabled: boolean;
+  changed: boolean;
   onSave: () => void;
   onCancel: () => void;
 }): void {
@@ -55,6 +79,12 @@ export function useEditorChrome(input: {
   save.current = input.onSave;
   const cancel = useRef(input.onCancel);
   cancel.current = input.onCancel;
+  // Cancel stays the editor's own way out; Android back keeps the workspace's.
+  useUnsavedChangesGuard({
+    dirty: input.changed && !input.disabled,
+    onRequestLeave: () => cancel.current(),
+    hardwareBack: false,
+  });
   useEffect(() => {
     if (input.disabled) {
       setStickyBar(null);

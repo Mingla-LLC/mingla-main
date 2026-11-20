@@ -261,3 +261,13 @@ export function setupDraftState(input: {
 export function canRebuildPages(input: { canManage: boolean | undefined; lockHeldByOther: boolean; paused: boolean | undefined }): boolean {
   return input.canManage === true && !input.lockHeldByOther && input.paused !== true;
 }
+
+/**
+ * #4453 — how many Draft sections still wait for review on enabled pages.
+ * Studio refuses a publish while any remain (UNREVIEWED_SECTIONS), and Core
+ * reports that only as a generic failure, so Publish waits for zero.
+ */
+export function unreviewedSectionCount(status: { pages: ReadonlyArray<{ enabled: boolean; count: number }> } | null | undefined): number {
+  if (!status) return 0;
+  return status.pages.reduce((sum, page) => sum + (page.enabled && page.count > 0 ? page.count : 0), 0);
+}
