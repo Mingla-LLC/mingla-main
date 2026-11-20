@@ -93,7 +93,10 @@ describe("RPC mapping", () => {
   });
 
   it("attaches with the mode and the attachment the screen saw", async () => {
-    ok({ attachmentId: "a2", mode: "required_step", formStatus: "live", existingGuests: 12, replacedAttachmentId: "a1" });
+    ok({
+      attachmentId: "a2", mode: "required_step", formStatus: "live", existingGuests: 12, replacedAttachmentId: "a1",
+      autoRemind: true, autoRemindChannels: ["push", "sms", "email"],
+    });
     const result = await attachBrandForm({ formId: "f1", eventId: "e1", mode: "required_step", expectedAttachmentId: "a1" });
     expect(result).toEqual({
       attachmentId: "a2",
@@ -102,6 +105,9 @@ describe("RPC mapping", () => {
       earlierGuests: 0,
       formStatus: "live",
       replacedAttachmentId: "a1",
+      // Wave 4 review: the earlier-guests sheet shows the stored reminder (push dropped).
+      autoRemind: true,
+      autoRemindChannels: ["sms", "email"],
     });
     expect(rpc).toHaveBeenCalledWith("biz_brand_form_attach", {
       p_form_id: "f1",
