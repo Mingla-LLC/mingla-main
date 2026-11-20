@@ -24,7 +24,7 @@
  * failed, and never that it succeeded.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -43,6 +43,7 @@ import {
   resolveTheme,
 } from "@mingla/offering-rendering";
 import type { VenueOrderLiveStatus } from "@mingla/brand-rendering/venueOrdering";
+import { venueOrderStatusPollDelay } from "@mingla/brand-rendering/venueOrdering/venueOrderingPoll";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { venuePublicPath } from "../../../src/constants/publicUrls";
 import { useSignedInHostViewer } from "../../../src/components/venue/guestViewHostSession";
@@ -120,6 +121,7 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
     void refresh();
   }, [refresh]);
 
+  const pendingReadsRef = useRef(0);
   useEffect(() => {
     if (live === null) return () => undefined;
     const settled =
@@ -128,10 +130,16 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
         live.fulfillmentStatus === "cancelled" ||
         live.fulfillmentStatus === "refunded");
     if (settled) return () => undefined;
-    const handle = setInterval(() => {
+    // N143: back off while unpaid (5 s, 10 s, 20 s, then stop) and stop on a
+    // declined answer; a paid order keeps the steady interval.
+    if (live.paymentStatus !== "pending") pendingReadsRef.current = 0;
+    const delay = venueOrderStatusPollDelay(live, pendingReadsRef.current, POLL_INTERVAL_MS);
+    if (delay === null) return () => undefined;
+    const handle = setTimeout(() => {
+      if (live.paymentStatus === "pending") pendingReadsRef.current += 1;
       void refresh();
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(handle);
+    }, delay);
+    return () => clearTimeout(handle);
   }, [live, refresh]);
 
   /**

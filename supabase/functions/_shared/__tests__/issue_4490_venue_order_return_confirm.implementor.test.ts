@@ -73,3 +73,21 @@ Deno.test("R-3 nothing is finalized while the payment is still in progress", asy
   assertEquals(check, "in_progress");
   assertEquals(client.calls.length, 0);
 });
+
+// N143: at most one Paystack call per reference per 30 s, none after a
+// declined / abandoned answer. Fails-on-revert: returning null always (no
+// cache) fails C-1 and C-2.
+import { venueOrderCachedReturnCheck } from "../venueOrderWebhook.ts";
+Deno.test("C-1 a declined answer is final for that reference", () => {
+  const at = new Date(0).toISOString();
+  assertEquals(venueOrderCachedReturnCheck({ reference: "r1", result: "not_paid", at }, "r1", 10 ** 12), "not_paid");
+  // a new payment (new reference) asks again
+  assertEquals(venueOrderCachedReturnCheck({ reference: "r1", result: "not_paid", at }, "r2", 10 ** 12), null);
+});
+Deno.test("C-2 a 'still confirming' answer is reused for 30 s, then asked again", () => {
+  const now = Date.parse("2026-11-20T12:00:00Z");
+  const stored = { reference: "r1", result: "in_progress", at: new Date(now - 10_000).toISOString() };
+  assertEquals(venueOrderCachedReturnCheck(stored, "r1", now), "in_progress");
+  assertEquals(venueOrderCachedReturnCheck({ ...stored, at: new Date(now - 31_000).toISOString() }, "r1", now), null);
+  assertEquals(venueOrderCachedReturnCheck(null, "r1", now), null);
+});

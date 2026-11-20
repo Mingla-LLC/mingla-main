@@ -24,6 +24,7 @@ import {
 import { venueOrderErrorCopy } from "../_shared/venueOrderPricing.ts";
 import {
   confirmVenueOrderPaystackOnReturn,
+  venueOrderCachedReturnCheck,
   isVenueOrderPaystackReference,
   type VenueOrderReturnCheck,
 } from "../_shared/venueOrderWebhook.ts";
@@ -124,15 +125,35 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     order.provider === "paystack" &&
     isVenueOrderPaystackReference(order.paystack_reference)
   ) {
-    try {
-      paymentCheck = await confirmVenueOrderPaystackOnReturn(
-        supabase,
-        String(order.paystack_reference),
-        paystackVerifyTransaction,
-      );
-    } catch (err) {
-      console.error("[venue-order-status] paystack verify on return failed", String(err));
-      paymentCheck = "in_progress";
+    // N143: one Paystack call per reference per 30 s at most, and none after
+    // a terminal "not_paid" (declined / abandoned) until a new payment starts
+    // (a new reference). The last answer rides in the order's metadata.
+    const reference = String(order.paystack_reference);
+    const meta = (order.metadata !== null && typeof order.metadata === "object"
+      ? order.metadata
+      : {}) as Record<string, unknown>;
+    // N144: a guest reopening the payment ("Try again") starts the check over.
+    const cached = includePaymentContinuation
+      ? null
+      : venueOrderCachedReturnCheck(meta.paystack_return_check, reference, Date.now());
+    if (cached !== null) {
+      paymentCheck = cached;
+    } else {
+      try {
+        paymentCheck = await confirmVenueOrderPaystackOnReturn(
+          supabase,
+          reference,
+          paystackVerifyTransaction,
+        );
+      } catch (err) {
+        console.error("[venue-order-status] paystack verify on return failed", String(err));
+        paymentCheck = "in_progress";
+      }
+      if (paymentCheck !== "confirmed") {
+        await supabase.from("venue_orders").update({
+          metadata: { ...meta, paystack_return_check: { reference, result: paymentCheck, at: new Date().toISOString() } },
+        }).eq("id", order.id).eq("payment_status", "pending");
+      }
     }
     if (paymentCheck === "confirmed") {
       const { data: fresh } = await supabase.from("venue_orders")

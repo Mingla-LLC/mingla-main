@@ -308,3 +308,28 @@ export async function confirmVenueOrderPaystackOnReturn(
     ? "confirmed"
     : "in_progress";
 }
+
+/** N143 — how long a "still confirming" answer is reused before asking Paystack again. */
+export const VENUE_ORDER_RETURN_CHECK_TTL_MS = 30_000;
+
+/**
+ * N143 (#4490) — the stored answer to reuse instead of calling Paystack, or
+ * null to call. A "not_paid" (declined / abandoned) answer for this reference
+ * is final until the guest starts a new payment (a new reference); an
+ * "in_progress" answer is reused for 30 s.
+ */
+export function venueOrderCachedReturnCheck(
+  stored: unknown,
+  reference: string,
+  nowMs: number,
+): VenueOrderReturnCheck | null {
+  if (stored === null || typeof stored !== "object") return null;
+  const s = stored as Record<string, unknown>;
+  if (s.reference !== reference) return null;
+  if (s.result === "not_paid") return "not_paid";
+  const at = typeof s.at === "string" ? Date.parse(s.at) : NaN;
+  if (s.result === "in_progress" && Number.isFinite(at) && nowMs - at < VENUE_ORDER_RETURN_CHECK_TTL_MS) {
+    return "in_progress";
+  }
+  return null;
+}
