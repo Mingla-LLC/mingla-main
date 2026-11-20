@@ -1855,6 +1855,27 @@ BEGIN
 END;
 $fn$;
 
+-- §6 / decision 15: the "From {first name} {initial}.'s order" header for a scanned
+-- ticket that is not the buyer's own; null for the buyer's own ticket. The buyer's
+-- own ticket is the one whose holder is the buyer (by user, else by holder or
+-- attendee email); with no holder on the ticket, the order's first ticket. A ticket
+-- sent to a friend (#4063, transfer_state 'claimed') is another ticket of the order.
+CREATE FUNCTION public.brand_form_door_order_header(p_order_id uuid, p_ticket_id uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+  SELECT CASE WHEN p_ticket_id IS NULL OR EXISTS (
+       SELECT 1 FROM public.tickets t JOIN public.orders o ON o.id = t.order_id
+        WHERE t.id = p_ticket_id AND t.order_id = p_order_id
+          AND CASE
+                WHEN t.holder_user_id IS NOT NULL THEN t.holder_user_id = o.buyer_user_id
+                WHEN NULLIF(btrim(COALESCE(t.holder_email, t.attendee_email)), '') IS NOT NULL
+                  THEN lower(btrim(COALESCE(t.holder_email, t.attendee_email))) = lower(btrim(COALESCE(o.buyer_email, '')))
+                ELSE t.id = (SELECT t2.id FROM public.tickets t2 WHERE t2.order_id = o.id
+                              ORDER BY t2.created_at, t2.id LIMIT 1)
+              END) THEN NULL
+    ELSE (SELECT public.brand_form_short_name(o.buyer_name) FROM public.orders o WHERE o.id = p_order_id) END;
+$fn$;
+
 -- The automatic line (§6): only questions marked "show at the door" in BOTH the
 -- version answered and the current live version; null when there is nothing to show.
 -- MINGLA-INVARIANT: I-4514-DOOR-READ-ONE-GUEST-OF-THIS-EVENT | issue #4514 | door reads take one guest of the scanned event per call, refuse another event's guest, show the marked line only (both-versions filter), and return full answers only when the form allows it or the caller is event_manager+ (pg17 T-DOOR*).
@@ -1872,9 +1893,10 @@ DECLARE
   v_items jsonb;
   v_added boolean := false;
   v_from text;
+  v_rank integer;
   v_uuid constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 BEGIN
-  PERFORM public.brand_form_door_authority(p_actor_id, p_event_id);
+  v_rank := public.brand_form_door_authority(p_actor_id, p_event_id);
   IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order') OR COALESCE(p_subject->>'id', '') !~ v_uuid
      OR (p_subject ? 'ticketId' AND jsonb_typeof(p_subject->'ticketId') <> 'null'
          AND (v_kind <> 'order' OR COALESCE(p_subject->>'ticketId', '') !~ v_uuid)) THEN
@@ -1931,25 +1953,16 @@ BEGIN
      AND public.brand_form_answer_text(q.value, v_resp.answers->(q.value->>'id')) IS NOT NULL;
   IF jsonb_array_length(v_items) = 0 THEN RETURN NULL; END IF;
   -- §6: another ticket of the same order shows the buyer's answers under
-  -- "From {first name} {initial}.'s order". The buyer's own ticket is the one whose
-  -- holder is the buyer (by user, else by holder or attendee email); with no holder
-  -- on the ticket, the order's first ticket. A ticket sent to a friend (#4063,
-  -- transfer_state 'claimed') is another ticket of the order; a ticket moved by the
-  -- older transfer (status 'transferred' or transferred_at) shows none of the order's answers.
-  IF v_ticket IS NOT NULL AND NOT EXISTS (
-       SELECT 1 FROM public.tickets t JOIN public.orders o ON o.id = t.order_id
-        WHERE t.id = v_ticket
-          AND CASE
-                WHEN t.holder_user_id IS NOT NULL THEN t.holder_user_id = o.buyer_user_id
-                WHEN NULLIF(btrim(COALESCE(t.holder_email, t.attendee_email)), '') IS NOT NULL
-                  THEN lower(btrim(COALESCE(t.holder_email, t.attendee_email))) = lower(btrim(COALESCE(o.buyer_email, '')))
-                ELSE t.id = (SELECT t2.id FROM public.tickets t2 WHERE t2.order_id = o.id
-                              ORDER BY t2.created_at, t2.id LIMIT 1)
-              END) THEN
-    SELECT public.brand_form_short_name(o.buyer_name) INTO v_from FROM public.orders o WHERE o.id = v_sid;
+  -- "From {first name} {initial}.'s order" (a ticket moved by the older transfer
+  -- already read nothing above).
+  IF v_ticket IS NOT NULL THEN
+    v_from := public.brand_form_door_order_header(v_sid, v_ticket);
   END IF;
+  -- Wave 6: whether "See all answers" opens the full view for this actor (the
+  -- host switch, or manager rank). brand_form_door_full_answers enforces it again.
   RETURN jsonb_strip_nulls(jsonb_build_object('state', 'answered', 'formName', v_a.form_name,
     'fromOrderOf', v_from,
+    'fullAnswers', v_a.door_full_answers OR v_rank >= public.biz_role_rank('event_manager'),
     'items', (SELECT jsonb_agg(x.value) FROM jsonb_array_elements(v_items) WITH ORDINALITY x WHERE x.ordinality <= 3)));
 END;
 $fn$;
@@ -1971,16 +1984,29 @@ DECLARE
   v_result text;
   v_out jsonb;
   v_current boolean;
+  v_ticket uuid;
+  v_from text;
   v_uuid constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 BEGIN
   v_rank := public.brand_form_door_authority(p_actor_id, p_event_id);
   IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order') OR COALESCE(p_subject->>'id', '') !~ v_uuid
-     OR COALESCE(p_via, '') NOT IN ('scan', 'search') THEN
+     OR COALESCE(p_via, '') NOT IN ('scan', 'search')
+     OR (p_subject ? 'ticketId' AND jsonb_typeof(p_subject->'ticketId') <> 'null'
+         AND (v_kind <> 'order' OR COALESCE(p_subject->>'ticketId', '') !~ v_uuid)) THEN
     RAISE EXCEPTION 'subject_invalid' USING ERRCODE = '22023';
   END IF;
   v_sid := (p_subject->>'id')::uuid;
   IF public.brand_form_subject_event(v_kind, v_sid) IS DISTINCT FROM p_event_id THEN
     RAISE EXCEPTION 'subject_other_event' USING ERRCODE = '42501';
+  END IF;
+  -- Wave 6: the scanned ticket (optional) must be a ticket of this order at this
+  -- event, exactly as the door line checks it.
+  IF v_kind = 'order' AND (p_subject->>'ticketId') ~ v_uuid THEN
+    v_ticket := (p_subject->>'ticketId')::uuid;
+    IF NOT EXISTS (SELECT 1 FROM public.tickets t
+                    WHERE t.id = v_ticket AND t.order_id = v_sid AND t.event_id = p_event_id) THEN
+      RAISE EXCEPTION 'subject_other_event' USING ERRCODE = '42501';
+    END IF;
   END IF;
   -- Current guests only, by the door's own admission rule (biz_rsvp_scan: going and
   -- approved), or an order that is paid or partly refunded. A not-going, waitlisted,
@@ -2009,6 +2035,15 @@ BEGIN
     v_out := jsonb_build_object('state', 'no_form');
   ELSE
     v_resp := public.brand_form_find_response(v_a.form_id, v_kind, v_sid);
+    -- A ticket moved by the older transfer never opens the previous holder's
+    -- (the order's) answers, the same rule as the door line (SC-38).
+    IF v_ticket IS NOT NULL AND EXISTS (SELECT 1 FROM public.tickets t
+         WHERE t.id = v_ticket AND (t.transferred_at IS NOT NULL OR t.status = 'transferred')) THEN
+      v_resp := NULL;
+    END IF;
+    IF v_ticket IS NOT NULL THEN
+      v_from := public.brand_form_door_order_header(v_sid, v_ticket);
+    END IF;
     IF v_resp.id IS NULL THEN
       v_result := 'not_answered';
       v_out := jsonb_build_object('state', 'not_answered', 'formName', v_a.form_name,
@@ -2026,10 +2061,18 @@ BEGIN
         INTO v_questions
         FROM jsonb_array_elements(v_def->'questions') q
        WHERE q.value->>'type' <> 'file_upload';
-      v_out := jsonb_build_object('state', 'answered', 'formName', v_a.form_name,
+      -- Wave 6: the answered version (file questions left out) and the stored
+      -- answers too, so the door draws them with the read-only form renderer.
+      v_out := jsonb_strip_nulls(jsonb_build_object('state', 'answered', 'formName', v_a.form_name,
                  'brand', public.brand_form_brand_header(v_a.brand_id),
                  'answeredAt', v_resp.updated_at, 'isCurrentVersion', v_resp.version_id = v_a.live_version_id,
-                 'questions', v_questions);
+                 'fromOrderOf', v_from,
+                 'questions', v_questions,
+                 'definition', jsonb_set(v_def, '{questions}', COALESCE((SELECT jsonb_agg(q.value ORDER BY (q.value->>'position')::integer)
+                     FROM jsonb_array_elements(v_def->'questions') q WHERE q.value->>'type' <> 'file_upload'), '[]'::jsonb)),
+                 'answers', COALESCE((SELECT jsonb_object_agg(a.key, a.value) FROM jsonb_each(v_resp.answers) a
+                     WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(v_def->'questions') q
+                                    WHERE q.value->>'id' = a.key AND q.value->>'type' <> 'file_upload')), '{}'::jsonb)));
     END IF;
   END IF;
   INSERT INTO public.brand_form_door_reads (actor_id, event_id, form_id, subject_kind, subject_id, via, result)
@@ -3019,6 +3062,7 @@ REVOKE ALL ON FUNCTION
   public.brand_form_code_begin(uuid, text, text, text, text),
   public.brand_form_submit_core(jsonb),
   public.brand_form_door_authority(uuid, uuid),
+  public.brand_form_door_order_header(uuid, uuid),
   public.brand_form_door_answers(uuid, uuid, jsonb),
   public.brand_form_door_full_answers(uuid, uuid, jsonb, text),
   public.brand_form_unanswered_count(uuid, uuid),
@@ -3095,6 +3139,7 @@ GRANT EXECUTE ON FUNCTION
   public.brand_form_code_begin(uuid, text, text, text, text),
   public.brand_form_submit_core(jsonb),
   public.brand_form_door_authority(uuid, uuid),
+  public.brand_form_door_order_header(uuid, uuid),
   public.brand_form_door_answers(uuid, uuid, jsonb),
   public.brand_form_door_full_answers(uuid, uuid, jsonb, text),
   public.brand_form_unanswered_count(uuid, uuid),
@@ -3118,7 +3163,8 @@ TO service_role;
 
 COMMENT ON FUNCTION public.brand_form_submit_core(jsonb) IS '#4514: the only RPC writer of brand_form_responses (service role; brand-form-submit); checkout answers arrive through the brand_form_finalize_checkout_answers trigger. See BUILD CONTRACT v2 §3.5 and the wave 1 implementation report on #4514 for codes.';
 COMMENT ON FUNCTION public.brand_form_door_answers(uuid, uuid, jsonb) IS '#4514 §6: the door line (marked questions in both the answered and the live version), at most 3; null when there is nothing to show.';
-COMMENT ON FUNCTION public.brand_form_door_full_answers(uuid, uuid, jsonb, text) IS '#4514 C4: one current guest (going RSVP, paid or partly refunded order) of this event per call, logged in brand_form_door_reads, 60 per actor per 10 minutes under a per-actor lock.';
+COMMENT ON FUNCTION public.brand_form_door_full_answers(uuid, uuid, jsonb, text) IS '#4514 C4: one current guest (going RSVP, paid or partly refunded order) of this event per call, logged in brand_form_door_reads, 60 per actor per 10 minutes under a per-actor lock. Wave 6: an optional scanned ticketId (a ticket of this order at this event; a transferred ticket reads not_answered), the order header, and the answered definition with its stored answers for the read-only renderer.';
+COMMENT ON FUNCTION public.brand_form_door_order_header(uuid, uuid) IS '#4514 §6 decision 15: the "From {first name} {initial}.''s order" header for a scanned ticket that is not the buyer''s own; null otherwise.';
 
 -- ---------------------------------------------------------------------------
 -- Wave 5: the checkout Questions step (tickets and experiences) and the

@@ -809,7 +809,18 @@ BEGIN
   PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_door_reads) = v_n + 1
     AND EXISTS (SELECT 1 FROM public.brand_form_door_reads WHERE actor_id = v_scan_a AND result = 'full' AND via = 'scan'),
     'T-DOOR C4 every full read is logged with who, which guest and when');
+  -- Wave 6: the door line says whether "See all answers" opens the full view.
+  v := public.brand_form_door_answers(v_scan_a, v_e1, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'r1')));
+  PERFORM pg_temp.f_assert(v->>'fullAnswers' = 'true', 'T-W6-SWITCH setting on: the scanner''s line offers the full view');
   UPDATE public.brand_forms SET door_full_answers = false WHERE id = v_form;
+  v := public.brand_form_door_answers(v_scan_a, v_e1, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'r1')));
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND v->>'fullAnswers' = 'false',
+    'T-W6-SWITCH setting off with scanner rank: the line stays, the full view is not offered (' || v::text || ')');
+  v := public.brand_form_door_answers(v_em_a, v_e1, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'r1')));
+  PERFORM pg_temp.f_assert(v->>'fullAnswers' = 'true', 'T-W6-SWITCH setting off: an event manager is still offered the full view');
+  v := public.brand_form_door_full_answers(v_scan_a, v_e1, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'r1')), 'scan');
+  PERFORM pg_temp.f_assert(v->>'state' = 'line_only' AND NOT (v ? 'questions') AND NOT (v ? 'definition') AND NOT (v ? 'answers'),
+    'T-W6-SWITCH setting off with scanner rank: the scan path returns no full answers either');
   v := public.brand_form_door_full_answers(v_scan_a, v_e1, jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'r1')), 'search');
   PERFORM pg_temp.f_assert(v->>'state' = 'line_only' AND NOT (v ? 'questions')
     AND jsonb_array_length(v->'line'->'items') = 1,
@@ -1153,6 +1164,58 @@ BEGIN
   v_r := pg_temp.f_err(format($$SELECT public.brand_form_door_answers(%L, %L, %L::jsonb)$$, v_em, v_e7,
            jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 'tx'))));
   PERFORM pg_temp.f_assert(v_r LIKE '42501:subject_other_event%', 'T-HEADER a ticket of another order is refused');
+  RESET ROLE;
+END
+$t$;
+
+-- ═══ T-W6 (wave 6): the ticket scan's full answers, per scanned ticket ═══════════
+DO $t$
+DECLARE
+  v_e6 uuid := (SELECT id FROM f4514 WHERE k = 'e6');
+  v_e7 uuid := (SELECT id FROM f4514 WHERE k = 'e7');
+  v_em uuid := (SELECT id FROM f4514 WHERE k = 'em_a');
+  v_sc6 uuid := (SELECT id FROM f4514 WHERE k = 'sc6');
+  v_oq uuid := (SELECT id FROM f4514 WHERE k = 'oq');
+  v jsonb; v_r text; v_n integer;
+BEGIN
+  SET LOCAL ROLE service_role;
+  -- The buyer's own ticket: full answers, no header, the definition and the stored answers for the renderer.
+  v := public.brand_form_door_full_answers(v_em, v_e7, jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 't1')), 'scan');
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND NOT (v ? 'fromOrderOf')
+    AND jsonb_typeof(v->'definition'->'questions') = 'array' AND jsonb_typeof(v->'answers') = 'object'
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'definition'->'questions') q WHERE q.value->>'type' = 'file_upload'),
+    'T-W6-1 the scanned buyer ticket opens the answers with the definition for the read-only renderer (' || COALESCE(v::text, 'null') || ')');
+  -- Another ticket of the order: the buyer's answers under "From Quinn B.'s order" (decision 15).
+  v := public.brand_form_door_full_answers(v_em, v_e7, jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 't2')), 'scan');
+  PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND v->>'fromOrderOf' = 'Quinn B.',
+    'T-W6-2 another ticket of the order opens the buyer''s answers headed "From Quinn B.''s order"');
+  -- A ticket moved by the older transfer never opens the previous holder's answers (SC-38).
+  v := public.brand_form_door_full_answers(v_em, v_e7, jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 't3')), 'scan');
+  PERFORM pg_temp.f_assert(v->>'state' = 'not_answered' AND NOT (v ? 'questions') AND NOT (v ? 'answers'),
+    'T-W6-3 a transferred ticket opens nothing of the order''s answers');
+  -- Only the scanned guest of this event: a ticket of another order, a ticket id that is not a uuid,
+  -- and a scanner of another event are all refused, and nothing is logged for them.
+  SELECT count(*) INTO v_n FROM public.brand_form_door_reads;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_door_full_answers(%L, %L, %L::jsonb, 'scan')$$, v_em, v_e7,
+           jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 'tx'))));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:subject_other_event%', 'T-W6-4 a ticket of another order is refused');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_door_full_answers(%L, %L, %L::jsonb, 'scan')$$, v_em, v_e7,
+           jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', 'all')));
+  PERFORM pg_temp.f_assert(v_r LIKE '22023:subject_invalid%', 'T-W6-4 no enumeration through the ticket id');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_door_full_answers(%L, %L, %L::jsonb, 'scan')$$, v_sc6, v_e7,
+           jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 't1'))));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:forbidden%' AND (SELECT count(*) FROM public.brand_form_door_reads) = v_n,
+    'T-W6-4 a scanner of another event reads nothing and nothing is logged');
+  -- The door line carries the switch flag; the "From" header is unchanged on the line.
+  v := public.brand_form_door_answers(v_em, v_e7, jsonb_build_object('kind', 'order', 'id', v_oq, 'ticketId', (SELECT id FROM f4514 WHERE k = 't2')));
+  PERFORM pg_temp.f_assert(v->>'fromOrderOf' = 'Quinn B.' AND v->>'fullAnswers' = 'true'
+    AND jsonb_array_length(v->'items') <= 3
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'items') i WHERE char_length(i.value->>'value') > 60),
+    'T-W6-5 the ticket door line keeps its header, its caps and offers the full view to a manager');
+  -- The 60-character cut the door line uses.
+  PERFORM pg_temp.f_assert(char_length(public.brand_form_cut(repeat('a', 80), 60)) = 60
+    AND right(public.brand_form_cut(repeat('a', 80), 60), 1) = '…' AND public.brand_form_cut('short', 60) = 'short',
+    'T-W6-6 a door answer is cut to 60 characters with an ellipsis');
   RESET ROLE;
 END
 $t$;
