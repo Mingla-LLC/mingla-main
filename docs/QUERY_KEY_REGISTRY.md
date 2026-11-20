@@ -181,6 +181,7 @@ the client never estimates a discounted refund amount.
 | `tile(eventId)` | `['brand-forms', 'tile', eventId]` |
 | `counts(brandId)` | `['brand-forms', 'counts', brandId]` (wave 3: answered and to-answer per form and per page) |
 | `rosterAnswers(eventId)` | `['brand-forms', 'roster-answers', eventId]` (wave 3: the guest list's answers chip and drawer for one page) |
+| `requestPreview(formId, eventId, kind, audience, channels, subjects)` | `['brand-forms', 'request-preview', formId, eventId, kind, audience, channels, subjects]` (wave 4: reach and cost before Ask guests to answer / Remind; `staleTime: 0`; channels and subjects are sorted, joined ids, never contacts or tokens) |
 | `idle(read)` | `['brand-forms', read, 'none']` (a read switched off because its id is missing; never fetched) |
 
 **Scoping:** the list is keyed by BRAND, so switching brand never serves another
@@ -188,7 +189,7 @@ brand's forms. No token or answer text enters a key; answers live only in
 React Query memory (never persisted).
 
 **Invalidation rule:** every successful form write (create, save draft,
-publish, close, reopen, archive, door switch, attach, detach) invalidates
+publish, close, reopen, archive, door switch, attach, detach, and in wave 4 a form request send and the automatic reminder switch) invalidates
 `brandFormKeys.all`, which refreshes the list, the builder, the page's
 attachment, the Responses page and the manage-page tile together.
 

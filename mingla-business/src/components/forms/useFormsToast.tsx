@@ -34,7 +34,11 @@ export function useFormsToast(): FormsToast {
 
 /** The sentence to show for a thrown value. Services throw BrandFormsError. */
 export function errorSentence(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.length > 0 && error.name === "BrandFormsError") {
+  if (
+    error instanceof Error &&
+    error.message.length > 0 &&
+    (error.name === "BrandFormsError" || error.name === "FormRequestError")
+  ) {
     return error.message;
   }
   return fallback;

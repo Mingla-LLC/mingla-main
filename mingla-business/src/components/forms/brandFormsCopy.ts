@@ -199,3 +199,60 @@ export function formCountsLine(c: { answered: number; toAnswer: number } | undef
     ? `${FORMS_COPY.answeredCount(c.answered)} · ${FORMS_COPY.toAnswerCount(c.toAnswer)}`
     : FORMS_COPY.answeredCount(c.answered);
 }
+
+/** #4514 wave 4 — Ask guests to answer, Remind, the earlier-guests prompt (§4.6, §4.7). */
+export const FORM_REQUEST_COPY = {
+  askTitle: "Ask guests to answer",
+  remindTitle: "Remind",
+  earlierTitle: "Ask earlier guests?",
+  earlierLine: (n: number): string =>
+    `${n} ${n === 1 ? "person" : "people"} signed up before this form existed. Ask them to answer?`,
+  askOne: "Ask to answer",
+  remindOne: "Remind",
+  remindAll: "Remind all",
+  rowLine: "Send the form to people who signed up before it existed, or skipped it.",
+  audienceLabel: "Who",
+  audienceUnanswered: "Hasn't answered",
+  audienceEveryone: "Everyone going",
+  channelsLabel: "How",
+  push: "Push (free)",
+  sms: "Text",
+  email: "Email (free)",
+  messageLabel: "Message",
+  message: (brand: string, event: string): string =>
+    `${brand} has a few questions about ${event}. Answer here: [their own link]`,
+  messageBrandFallback: "Your brand",
+  messageEventFallback: "this event",
+  linkNote: "Each guest gets their own link. It opens only this form.",
+  loading: "Checking who can be reached…",
+  previewFailed: "Couldn't check who can be reached.",
+  retry: "Try again",
+  pickChannel: "Pick at least one way to reach them.",
+  reachLine: (reachable: number, optedOut: number, unreachable: number): string =>
+    `${reachable} reachable · ${optedOut} opted out of texts · ${unreachable} can't be reached`,
+  throttledLine: (n: number): string =>
+    `${n} ${n === 1 ? "was" : "were"} asked in the last 24 hours and won't get another yet.`,
+  costLine: (amount: string): string => `Estimated cost: up to ${amount}`,
+  costUnpriced: (texts: number): string =>
+    `Estimated cost: ${texts} ${texts === 1 ? "text" : "texts"}; a price isn't available for every country yet.`,
+  noCost: "No paid channel cost",
+  askNow: "Ask them now",
+  sendReminder: "Send reminder",
+  notNow: "Not now",
+  confirmLine: (n: number): string => `Send to ${n} ${n === 1 ? "guest" : "guests"}?`,
+  confirm: "Send",
+  back: "Back",
+  sending: "Sending…",
+  nobody: "Nobody here can be reached with these choices.",
+  sentToast: (n: number): string => `Sent to ${n} ${n === 1 ? "guest" : "guests"}.`,
+  partialToast: (sent: number, failed: number): string =>
+    `Sent to ${sent}. ${failed} couldn't be reached; try them again later.`,
+  noneSentToast: "Nothing was sent. Try again later.",
+  sendFailed: "Couldn't send. Try again.",
+  autoRemindTitle: "Remind people who haven't answered",
+  autoRemindLine: (event: string, day: string | null): string =>
+    `One reminder 2 days before ${event}${day !== null ? ` (${day})` : ""}. Push first, free; then only the channels ticked above.`,
+  autoRemindOnToast: "We'll remind people who haven't answered.",
+  autoRemindOffToast: "Automatic reminder off.",
+  autoRemindFailed: "Couldn't change the reminder. Try again.",
+} as const;

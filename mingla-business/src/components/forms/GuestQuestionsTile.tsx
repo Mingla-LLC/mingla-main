@@ -32,7 +32,9 @@ import {
 } from "../../utils/guestQuestionsModel";
 import { ActionTile } from "../event/ActionTile";
 import { modeLabel, TILE_COPY } from "./brandFormsCopy";
+import { FormRequestSheet } from "./FormRequestSheet";
 import { GuestQuestionsSheet } from "./GuestQuestionsSheet";
+import { useFormsToast } from "./useFormsToast";
 
 export interface GuestQuestionsTileProps {
   eventId: string;
@@ -52,6 +54,9 @@ export const GuestQuestionsTile: React.FC<GuestQuestionsTileProps> = ({
   const readable = canReadGuestQuestions(role.rank);
   const query = useGuestQuestionsTileData(eventId, readable);
   const [sheetOpen, setSheetOpen] = useState<boolean>(false);
+  // Wave 4 (§4.6, C12): "Ask earlier guests?" after a save on a page with guests.
+  const [earlier, setEarlier] = useState<{ formId: string; count: number; attachmentId: string } | null>(null);
+  const { show, toast } = useFormsToast();
 
   const data: TileData | undefined =
     query.data === undefined
@@ -127,9 +132,25 @@ export const GuestQuestionsTile: React.FC<GuestQuestionsTileProps> = ({
           brandId={brandId}
           eventId={eventId}
           kind={kind}
+          onSaved={({ result, formId: savedFormId }) => {
+            if (result.earlierGuests > 0) setEarlier({ formId: savedFormId, count: result.earlierGuests, attachmentId: result.attachmentId });
+          }}
           current={query.data === undefined || query.data === null ? null : { attachment: query.data.attachment, form: query.data.form }}
         />
       ) : null}
+      {earlier !== null ? (
+        <FormRequestSheet
+          visible
+          onClose={() => setEarlier(null)}
+          formId={earlier.formId}
+          eventId={eventId}
+          mode="earlier"
+          earlierCount={earlier.count}
+          autoRemind={{ attachmentId: earlier.attachmentId, on: false }}
+          notify={show}
+        />
+      ) : null}
+      {toast}
     </>
   );
 };

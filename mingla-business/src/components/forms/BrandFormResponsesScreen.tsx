@@ -43,7 +43,8 @@ import { Chip, Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Tabs } from "../ui/Tabs";
-import { FORMS_COPY, modeLabel } from "./brandFormsCopy";
+import { FORM_REQUEST_COPY, FORMS_COPY, modeLabel } from "./brandFormsCopy";
+import { FormRequestSheet, type FormRequestSheetMode } from "./FormRequestSheet";
 import { FormsNotice } from "./FormsNotice";
 import { GuestQuestionsSheet } from "./GuestQuestionsSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
@@ -103,6 +104,8 @@ export const BrandFormResponsesScreen: React.FC = () => {
   const close = useCloseBrandForm();
   const reopen = useReopenBrandForm();
   const { show, toast } = useFormsToast();
+  // Wave 4: Ask guests to answer / Remind all / the earlier-guests prompt (event manager+, C5).
+  const [request, setRequest] = useState<{ mode: FormRequestSheetMode; earlierCount?: number } | null>(null);
 
   const attachments = useMemo(() => detail.data?.attachments ?? [], [detail.data]);
   const paramEvent = typeof params.eventId === "string" ? params.eventId : null;
@@ -128,6 +131,8 @@ export const BrandFormResponsesScreen: React.FC = () => {
   const responses = useBrandFormResponses({ formId, eventId, filter: "all" });
   const page = responses.data;
   const canExport = role.rank >= MIN_RANK.EXPORT_FORM_RESPONSES && eventId !== null;
+  // C5 puts Export, Ask, Remind and attach at one rank (event manager and up); the edge re-checks.
+  const canAsk = role.rank >= MIN_RANK.EXPORT_FORM_RESPONSES && eventId !== null && detail.data?.form.status === "live";
   const canRead = role.isLoading || role.rank >= MIN_RANK.READ_FORM_RESPONSES;
   // "Change or remove" is the attach sheet: event manager and up, for one page.
   const canChange = canAttachGuestQuestions(role.rank) && attachment !== null;
@@ -284,6 +289,15 @@ export const BrandFormResponsesScreen: React.FC = () => {
         ) : (
           <View style={styles.summaryGrid}>
             <Text style={styles.hint}>{FORMS_COPY.notAnsweredHeadline(notAnswered.length)}</Text>
+            {canAsk ? (
+              <Button
+                label={FORM_REQUEST_COPY.remindAll}
+                variant="secondary"
+                size="sm"
+                onPress={() => setRequest({ mode: "remind" })}
+                testID="brand-form-remind-all"
+              />
+            ) : null}
             <GlassCard variant="base" radius="lg" padding={space[2]}>
               {notAnswered.map((n) => (
                 <View key={`${n.kind}-${n.id}`} style={styles.row} testID={`brand-form-not-answered-${n.id}`}>
@@ -332,6 +346,15 @@ export const BrandFormResponsesScreen: React.FC = () => {
               disabled={exporting}
               onPress={handleExport}
               testID="brand-form-export"
+            />
+          ) : null}
+          {canAsk ? (
+            <Button
+              label={FORM_REQUEST_COPY.askTitle}
+              variant="secondary"
+              size="sm"
+              onPress={() => setRequest({ mode: "ask" })}
+              testID="brand-form-ask-guests"
             />
           ) : null}
           {canChange ? (
@@ -426,6 +449,23 @@ export const BrandFormResponsesScreen: React.FC = () => {
           kind={attachKind}
           current={{ attachment, form: detail.data.form }}
           onRemoved={() => setPickedEvent(null)}
+          onSaved={({ result }) => {
+            if (result.earlierGuests > 0) setRequest({ mode: "earlier", earlierCount: result.earlierGuests });
+          }}
+        />
+      ) : null}
+
+      {request !== null && formId !== null && eventId !== null ? (
+        <FormRequestSheet
+          visible
+          onClose={() => setRequest(null)}
+          formId={formId}
+          eventId={eventId}
+          mode={request.mode}
+          earlierCount={request.earlierCount}
+          autoRemind={attachment !== null ? { attachmentId: attachment.id, on: attachment.autoRemind } : null}
+          eventTitle={attachment?.eventName ?? null}
+          notify={show}
         />
       ) : null}
 

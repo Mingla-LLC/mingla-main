@@ -158,6 +158,10 @@ const GuestAnswersChip = React.lazy(() =>
 const GuestAnswersPanel = React.lazy(() =>
   import("../forms/formsOwner").then((m) => ({ default: m.GuestAnswersPanel })),
 );
+// #4514 wave 4: "Ask guests to answer", through the same lazy owner.
+const GuestFormRequestRow = React.lazy(() =>
+  import("../forms/formsOwner").then((m) => ({ default: m.GuestFormRequestRow })),
+);
 
 const RosterRow: React.FC<{ row: GuestRosterRow; eventId: string; onPress: () => void; selectionMode: boolean; selected: boolean; timeZone: string | null }> = ({ row, eventId, onPress, selectionMode, selected, timeZone }) => {
   const bookedLine = rosterBookedLine(row, timeZone);
@@ -487,6 +491,10 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           ) : null}
         </View>
       </View>
+
+      <React.Suspense fallback={null}>
+        <GuestFormRequestRow eventId={eventId} />
+      </React.Suspense>
 
       {searchOpen ? (
         <View style={styles.searchWrap}>

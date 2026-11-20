@@ -22,7 +22,9 @@ import {
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { ATTACH_COPY } from "./brandFormsCopy";
+import { FormRequestSheet } from "./FormRequestSheet";
 import { GuestQuestionsSheet } from "./GuestQuestionsSheet";
+import { useFormsToast } from "./useFormsToast";
 
 export interface GuestQuestionsRowProps {
   eventId: string;
@@ -41,6 +43,9 @@ export const GuestQuestionsRow: React.FC<GuestQuestionsRowProps> = ({
   const allowed = canAttachGuestQuestions(role.rank);
   const query = useEventAttachment(eventId, allowed);
   const [open, setOpen] = useState<boolean>(false);
+  // Wave 4 (§4.6, C12): "Ask earlier guests?" after a save on a page with guests.
+  const [earlier, setEarlier] = useState<{ formId: string; count: number; attachmentId: string } | null>(null);
+  const { show, toast } = useFormsToast();
 
   const handlePress = useCallback((): void => {
     if (query.isError) {
@@ -99,9 +104,25 @@ export const GuestQuestionsRow: React.FC<GuestQuestionsRowProps> = ({
           brandId={brandId}
           eventId={eventId}
           kind={kind}
+          onSaved={({ result, formId: savedFormId }) => {
+            if (result.earlierGuests > 0) setEarlier({ formId: savedFormId, count: result.earlierGuests, attachmentId: result.attachmentId });
+          }}
           current={query.data ?? null}
         />
       ) : null}
+      {earlier !== null ? (
+        <FormRequestSheet
+          visible
+          onClose={() => setEarlier(null)}
+          formId={earlier.formId}
+          eventId={eventId}
+          mode="earlier"
+          earlierCount={earlier.count}
+          autoRemind={{ attachmentId: earlier.attachmentId, on: false }}
+          notify={show}
+        />
+      ) : null}
+      {toast}
     </View>
   );
 };

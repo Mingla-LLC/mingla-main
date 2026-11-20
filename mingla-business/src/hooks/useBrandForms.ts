@@ -46,6 +46,15 @@ import {
 import type { BrandFormDefinition } from "../utils/brandFormDefinition";
 import { brandFormKeys } from "./brandFormKeys";
 import { loadRosterAnswers, type RosterAnswerIndex } from "../utils/guestRosterAnswers";
+import {
+  previewFormRequest,
+  sendFormRequest,
+  setFormAutoRemind,
+  type FormRequestChannel,
+  type FormRequestInput,
+  type FormRequestPreview,
+  type FormRequestResult,
+} from "../services/brandFormRequestService";
 
 export { brandFormKeys } from "./brandFormKeys";
 
@@ -264,6 +273,62 @@ export function useRosterAnswers(eventId: string | null): UseQueryResult<RosterA
       return loadRosterAnswers(found.form.name, (offset, limit) =>
         fetchBrandFormResponses({ formId, eventId, filter: "all", limit, offset }),
       );
+    },
+  });
+}
+
+/**
+ * Wave 4: reach and cost before "Ask guests to answer" or "Remind" sends
+ * (event manager and up; the edge checks again). Refreshed when the audience or
+ * channels change; never cached long, since answers and throttles move.
+ */
+export function useFormRequestPreview(input: FormRequestInput | null): UseQueryResult<FormRequestPreview> {
+  const ready = useReady();
+  return useQuery<FormRequestPreview>({
+    queryKey:
+      input === null
+        ? brandFormKeys.idle("request-preview")
+        : brandFormKeys.requestPreview(
+            input.formId,
+            input.eventId,
+            input.kind,
+            input.kind === "remind" ? "unanswered" : input.audience,
+            [...input.channels].sort().join(","),
+            (input.subjects ?? []).map((s) => `${s.kind}:${s.id}`).sort().join(","),
+          ),
+    enabled: ready && input !== null && input.channels.length > 0,
+    staleTime: 0,
+    queryFn: () => {
+      if (input === null) throw new Error("request_required");
+      return previewFormRequest(input);
+    },
+  });
+}
+
+export function useSendFormRequest(): UseMutationResult<
+  FormRequestResult,
+  Error,
+  FormRequestInput & { expectedCostMinor: number | null; currency: string | null }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: FormRequestInput & { expectedCostMinor: number | null; currency: string | null }) => sendFormRequest(v),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: brandFormKeys.all });
+    },
+  });
+}
+
+export function useSetFormAutoRemind(): UseMutationResult<
+  { autoRemind: boolean; remindAt: string | null },
+  Error,
+  { attachmentId: string; on: boolean; channels: FormRequestChannel[] }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { attachmentId: string; on: boolean; channels: FormRequestChannel[] }) => setFormAutoRemind(v),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: brandFormKeys.all });
     },
   });
 }

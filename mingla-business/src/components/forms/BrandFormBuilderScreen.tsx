@@ -63,6 +63,7 @@ import { BrandFormPreview } from "./BrandFormPreview";
 import { brandFormHeaderData } from "../../utils/brandFormHeader";
 import { FORMS_COPY } from "./brandFormsCopy";
 import { FormsNotice } from "./FormsNotice";
+import { FormRequestSheet } from "./FormRequestSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
 
 // #4514 — the question builder (with its editor and type picker) loads on
@@ -113,6 +114,8 @@ export const BrandFormBuilderScreen: React.FC = () => {
   const archive = useArchiveBrandForm();
   const doorFull = useSetDoorFullAnswers();
   const { show, toast } = useFormsToast();
+  // Wave 4 (C12): publishing on live pages with guests asks "Ask earlier guests?", one page at a time.
+  const [earlierQueue, setEarlierQueue] = useState<Array<{ eventId: string; count: number }>>([]);
 
   // Local editing state (the draft the host is working on).
   const [name, setName] = useState<string>("");
@@ -239,8 +242,9 @@ export const BrandFormBuilderScreen: React.FC = () => {
       if (dirty) revision = await saveDraft();
       if (revision === null) return;
       try {
-        await publish.mutateAsync({ formId, draftRev: revision });
+        const published = await publish.mutateAsync({ formId, draftRev: revision });
         show("success", FORMS_COPY.publishedToast);
+        setEarlierQueue(published.earlierGuests.filter((g) => g.count > 0));
       } catch (error) {
         reportError(error, "Couldn't publish the form. Try again.");
       }
@@ -503,6 +507,19 @@ export const BrandFormBuilderScreen: React.FC = () => {
         confirmLoading={archive.isPending}
         testID="brand-form-archive-dialog"
       />
+      {earlierQueue.length > 0 && formId !== null ? (
+        <FormRequestSheet
+          key={earlierQueue[0].eventId}
+          visible
+          onClose={() => setEarlierQueue((q) => q.slice(1))}
+          formId={formId}
+          eventId={earlierQueue[0].eventId}
+          mode="earlier"
+          earlierCount={earlierQueue[0].count}
+          eventTitle={detail.data?.attachments.find((a) => a.eventId === earlierQueue[0].eventId)?.eventName ?? null}
+          notify={show}
+        />
+      ) : null}
       {toast}
     </View>
   );

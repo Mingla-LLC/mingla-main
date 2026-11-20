@@ -8,7 +8,7 @@
  * Words, never colour alone. A page with no published form draws nothing.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
@@ -21,6 +21,9 @@ import {
 } from "../../utils/guestRosterAnswers";
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
+import { FORM_REQUEST_COPY } from "./brandFormsCopy";
+import { FormRequestSheet } from "./FormRequestSheet";
+import { useFormsToast } from "./useFormsToast";
 
 export interface GuestAnswersRowRef {
   eventId: string;
@@ -52,6 +55,9 @@ const formatDate = (iso: string): string => {
 /** The answers section in the guest's detail drawer: every question, read-only, with the version. */
 export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpId, orderIds }) => {
   const answers = useRosterAnswers(eventId);
+  // Wave 4: Remind this guest (not answered) or ask again, through the send sheet.
+  const [asking, setAsking] = useState(false);
+  const { show, toast } = useFormsToast();
   if (answers.isLoading) return <Text style={styles.muted}>{COPY.loading}</Text>;
   if (answers.isError) {
     return (
@@ -89,6 +95,27 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
       ) : (
         <Text style={styles.muted}>{chipLabel(state)}</Text>
       )}
+      {index.page.form.status === "live" && (rsvpId !== null || orderIds.length > 0) ? (
+        <Button
+          label={response === null ? FORM_REQUEST_COPY.remindOne : FORM_REQUEST_COPY.askOne}
+          variant="secondary"
+          size="sm"
+          onPress={() => setAsking(true)}
+          testID="guest-answers-ask"
+        />
+      ) : null}
+      {asking ? (
+        <FormRequestSheet
+          visible
+          onClose={() => setAsking(false)}
+          formId={index.page.form.id}
+          eventId={eventId}
+          mode={response === null ? "remind" : "ask"}
+          subjects={rsvpId !== null ? [{ kind: "rsvp", id: rsvpId }] : orderIds.map((id) => ({ kind: "order" as const, id }))}
+          notify={show}
+        />
+      ) : null}
+      {toast}
       {def !== undefined
         ? [...def.questions].sort((a, b) => a.position - b.position).map((q) => {
           const text = response !== null ? answerText(q, response.answers[q.id]).trim() : "";
