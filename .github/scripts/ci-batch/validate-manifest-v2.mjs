@@ -167,8 +167,11 @@ const HEAP_RAISED_ALLOWED_STEP_ENV = JSON.stringify({ NODE_PATH: "./node_modules
 // that calls `npx jest` / `npm test` / `npx tsc`, or a script that `cd mingla-business` and
 // then calls one of those. Any other step (no business jest, children, or any
 // other env) never gets it.
-const BUSINESS_JEST_RUN = /\b(?:npx jest|npm (?:run )?test|npx tsc)\b/;
-const BUSINESS_JEST_AFTER_CD = /(?:^|\n|&&\s*|;\s*)cd mingla-business\b[\s\S]*\b(?:npx jest|npm (?:run )?test|npx tsc)\b/;
+// [#3643] `npx --no-install jest` is the same jest, and `(cd mingla-business && ...)`
+// is the same cd in a subshell: #1857's Edge-contracts step uses both forms, so
+// the raise missed it and that jest run died at the 2 GB default on main.
+const BUSINESS_JEST_RUN = /\b(?:npx (?:--no-install )?jest|npm (?:run )?test|npx (?:--no-install )?tsc)\b/;
+const BUSINESS_JEST_AFTER_CD = /(?:^|\n|&&\s*|;\s*|\(\s*)cd mingla-business\b[\s\S]*\b(?:npx (?:--no-install )?jest|npm (?:run )?test|npx (?:--no-install )?tsc)\b/;
 export function isHeapRaisedStep(step) {
   if (!step || step.children || typeof step.run !== "string") return false;
   const runsBusinessJest = (step.cwd === "mingla-business" && BUSINESS_JEST_RUN.test(step.run))
