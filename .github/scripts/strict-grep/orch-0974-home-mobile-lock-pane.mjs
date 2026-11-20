@@ -12,6 +12,7 @@
  * [TEST-MOD-APPROVED #3645] The approved Home money card replaces Last 7 days.
  * [TEST-MOD-APPROVED #4037] The approved Home Pulse panel replaces the money,
  * Analytics, followers and Live-now surfaces as one responsive owner.
+ * [TEST-MOD-APPROVED #4420] Wide Home scrolls as one page; Recent is in page flow.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -170,7 +171,7 @@ if (homeSource.length > 0) {
     }
   }
 
-  const desktopRecent = homeSource.indexOf('testID="home-desktop-recent-scroll"');
+  const desktopRecent = homeSource.indexOf('testID="home-desktop-recent-grid"');
   const wideStart = homeSource.lastIndexOf("{isWideDesktop ? (", desktopRecent);
   const mobileStart = beginIndex;
   if (wideStart === -1 || mobileStart === -1 || mobileStart <= wideStart) {
@@ -184,8 +185,22 @@ if (homeSource.length > 0) {
       ["wide Home Pulse panel", "<BusinessPulsePanel"],
       ["wide Ads section", "<HomeAdsSection"],
       ["wide Recent section", "style={styles.desktopUpcomingPane}"],
-      ["independent desktop Recent scroll", 'testID="home-desktop-recent-scroll"'],
+      ["wide Recent grid in page flow", 'testID="home-desktop-recent-grid"'],
     ]);
+    // #4420: wide Home is one page scroll; it is never locked and Recent never
+    // gets its own nested scroll again.
+    if (wide.includes("scrollEnabled={false}")) {
+      fail(
+        "C11: wide-one-scroll",
+        "The wide Home page scroll must not be disabled (scrollEnabled={false}).",
+      );
+    }
+    if (wide.includes('testID="home-desktop-recent-scroll"')) {
+      fail(
+        "C11: wide-one-scroll",
+        "Wide Recent must stay in page flow, not in its own nested scroll.",
+      );
+    }
   }
 
   if (countToken(homeCode, "<BusinessPulsePanel") !== 2) {
