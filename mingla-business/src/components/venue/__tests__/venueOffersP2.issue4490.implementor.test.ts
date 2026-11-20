@@ -232,6 +232,8 @@ describe("the venue's day and the hub card", () => {
       { groupId: "b", reference: "VB-B", state: "confirmed", guestName: "B", guests: 2, totalMinor: 1075000, currencyCode: "NGN", source: "gate", paymentCollection: "property", admittedCount: 2, createdAt: "2" },
       { groupId: "c", reference: "VB-C", state: "instant_payment_pending", guestName: "C", guests: 1, totalMinor: 537500, currencyCode: "NGN", source: "mingla", paymentCollection: "mingla", admittedCount: 0, createdAt: "3" },
     ],
+    // TEST-MOD-APPROVED #4490 07-E: the day carries the server's money (null here).
+    money: null,
   };
 
   it("counts in, to arrive, walk-ins, paying and money the same way everywhere", () => {
@@ -241,10 +243,12 @@ describe("the venue's day and the hub card", () => {
       dailyLimit: 400,
       walkInLeft: 98,
       waiting: 1,
-      takenMinor: 2580000,
-      takenAtGateMinor: 1075000,
       currencyCode: "NGN",
     });
+    // TEST-MOD-APPROVED #4490 07-E: the client no longer sums booking values as
+    // money ("Taken today" deleted); the server's money day replaces it.
+    expect(dayNumbers(day)).not.toHaveProperty("takenMinor");
+    expect(dayNumbers(day)).not.toHaveProperty("takenAtGateMinor");
     expect(dayHeadline(day)).toBe("Thu 19 Nov 2026 · 2 of 400 in");
     expect(dayHeadline({ ...day, closed: true })).toBe("Thu 19 Nov 2026 · closed today");
   });

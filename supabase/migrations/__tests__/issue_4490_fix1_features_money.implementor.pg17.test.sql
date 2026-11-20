@@ -433,6 +433,8 @@ $x5$;
 
 -- ===========================================================================
 -- X-6 Money collected today beside "taken today".
+-- TEST-MOD-APPROVED #4490 (07-E): issue_4490_collected_on was replaced by
+-- issue_4490_venue_money_day; venue_day returns it under 'money'.
 -- ===========================================================================
 DO $x6$
 DECLARE
@@ -440,17 +442,18 @@ DECLARE
   v jsonb;
 BEGIN
   v := public.issue_4490_venue_day(a1, NULL);
-  PERFORM public.t4490_ok((v->>'collectedTodayMinor')::bigint = 9137500
-    AND (v->'collectedToday'->>'onlineMinor')::bigint = 9137500 AND (v->'collectedToday'->>'refundedMinor')::bigint = 0
+  PERFORM public.t4490_ok((v->'money'->>'paidInMinor')::bigint = 9137500
+    AND (v->'money'->'paidIn'->>'online')::bigint = 9137500 AND (v->'money'->'paidIn'->>'refunded')::bigint = 0
+    AND (v->'money'->>'forTodayPaidMinor')::bigint = 0
     AND jsonb_array_length(v->'bookings') = 0,
-    'X-6a Amaka''s first month (N91,375) paid today is collected today, while today has no bookings to take: ' || (v->'collectedToday')::text);
+    'X-6a Amaka''s first month (N91,375) paid today is paid in today, and is not for a booking today: ' || (v->'money')::text);
   v := public.issue_4490_venue_day(a1, (now() AT TIME ZONE 'Africa/Lagos')::date + 1);
-  PERFORM public.t4490_ok((v->>'collectedTodayMinor')::bigint = 0, 'X-6b nothing is collected tomorrow yet');
+  PERFORM public.t4490_ok((v->'money'->>'paidInMinor')::bigint = 0, 'X-6b nothing is paid in tomorrow yet');
 END
 $x6$;
 SELECT public.t4490_reset();
 SELECT public.t4490_as('44906000-0000-4000-8000-000000000005');
-SELECT public.t4490_expect($q$SELECT public.issue_4490_collected_on('44906000-0000-4000-9000-0000000000a1', current_date)$q$,
+SELECT public.t4490_expect($q$SELECT public.issue_4490_venue_money_day('44906000-0000-4000-9000-0000000000a1', current_date)$q$,
   '42501', NULL, 'X-6c a stranger cannot read the money helper directly');
 SELECT public.t4490_reset();
 

@@ -31,6 +31,8 @@ import type {
   VenueBookingSettings,
   VenueCapacityPool,
   VenueDay,
+  VenueDayMoney,
+  VenueDayMoneyParts,
   VenueDayBooking,
   VenueDayOffer,
   VenueDayPool,
@@ -1101,7 +1103,7 @@ export function mapVenueDay(v: unknown): VenueDay {
     }),
     checkIn: { passes: num(check.passes), expected: num(check.expected), admitted: num(check.admitted) },
     membersIn: num(d.membersIn),
-    collectedTodayMinor: typeof d.collectedTodayMinor === "number" ? d.collectedTodayMinor : null,
+    money: parseVenueDayMoney(d.money),
     bookings: arr(d.bookings).map((b): VenueDayBooking => {
       const r = obj(b);
       return {
@@ -1694,4 +1696,24 @@ export async function balancePayLink(input: { venueId: string; groupId: string }
 }> {
   const data = obj(await checkIn<unknown>({ action: "balance_link", venueId: input.venueId, groupId: input.groupId }));
   return { payUrl: str(data.payUrl), balanceMinor: num(data.balanceMinor), currencyCode: strOrNull(data.currencyCode) };
+}
+
+/** #4490 07-E — the day's money as the server computed it; null when absent or malformed. */
+export function parseVenueDayMoney(raw: unknown): VenueDayMoney | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const parts = (p: unknown): VenueDayMoneyParts | null => {
+    if (p === null || typeof p !== "object") return null;
+    const o = p as Record<string, unknown>;
+    const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : Number(v ?? 0) || 0);
+    return { online: n(o.online), atVenue: n(o.atVenue), members: n(o.members), tableDeposits: n(o.tableDeposits), refunded: n(o.refunded) };
+  };
+  const paidIn = parts(r.paidIn);
+  const forToday = parts(r.forToday);
+  const paidInMinor = Number(r.paidInMinor);
+  const forTodayPaidMinor = Number(r.forTodayPaidMinor);
+  if (paidIn === null || forToday === null || !Number.isFinite(paidInMinor) || !Number.isFinite(forTodayPaidMinor)) {
+    return null;
+  }
+  return { paidInMinor, paidIn, forTodayPaidMinor, forToday };
 }

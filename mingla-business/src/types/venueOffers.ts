@@ -609,11 +609,29 @@ export interface VenueDay {
   /** #4490 P6 — members checked in today (0 when the venue has none). */
   membersIn?: number;
   /**
-   * #4490 N47 (backend B7): money actually received on the venue's service day
-   * (online payments for any date, at-venue payments, gate sales, table
-   * deposits, less refunds). Null on an older read.
+   * #4490 07-E: the day's money, computed only on the server
+   * (issue_4490_venue_money_day). Null when the read carried none.
    */
-  collectedTodayMinor?: number | null;
+  money: VenueDayMoney | null;
+}
+
+/** #4490 07-E — the parts behind each money tile. */
+export interface VenueDayMoneyParts {
+  online: number;
+  atVenue: number;
+  members: number;
+  tableDeposits: number;
+  refunded: number;
+}
+
+/** #4490 07-E — "Paid in today" and "For today's bookings". */
+export interface VenueDayMoney {
+  /** Money received that service day, for any date. */
+  paidInMinor: number;
+  paidIn: VenueDayMoneyParts;
+  /** Paid so far for bookings dated that day. */
+  forTodayPaidMinor: number;
+  forToday: VenueDayMoneyParts;
 }
 
 // ------------------------------------------------------------- check-in

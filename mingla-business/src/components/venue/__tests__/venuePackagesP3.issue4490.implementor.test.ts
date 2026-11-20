@@ -333,6 +333,8 @@ describe("#4490 P3-2 the door and the day", () => {
       pools: [],
       offers: [],
       checkIn: { passes: 0, expected: 0, admitted: 0 },
+      // TEST-MOD-APPROVED #4490 07-E: the day carries the server's money (null here).
+      money: null,
       bookings: [
         { groupId: "a", reference: "a", state: "confirmed", guestName: "A", guests: 12, totalMinor: 1, currencyCode: "NGN", source: null, paymentCollection: "mingla", admittedCount: 0, createdAt: "", balanceDueMinor: 7_525_000, balanceDueAt: "2026-11-26T15:00:00Z" },
         { groupId: "b", reference: "b", state: "confirmed", guestName: "B", guests: 2, totalMinor: 1, currencyCode: "NGN", source: null, paymentCollection: "mingla", admittedCount: 0, createdAt: "", balanceDueMinor: 0 },

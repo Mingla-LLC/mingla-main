@@ -26,6 +26,7 @@ import { VenueBookingSheet } from "../bookings/VenueBookingSheet";
 import { RequestsWaitingCard } from "../requests/RequestsWaitingCard";
 import { clockIn } from "../bookings/bookingModel";
 import { entryStyleLabel, money } from "../offers/offersModel";
+import { TodayMoneyTiles } from "./TodayMoneyTiles";
 import { bookingSourceLabel, bookingStateLabel, dayBalances, dayHeadline, dayNumbers, shiftDay } from "./todayModel";
 import { shortBookingReference } from "../../../../utils/venueBookingReference";
 
@@ -144,19 +145,16 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule, showRequests 
           style={styles.tile}
           testID="venue-today-tile-walkins"
         />
-        <KpiTile
-          label={isToday ? "Taken today" : "Booked"}
-          value={money(n.takenMinor, cur)}
-          // #4490 N47: what today's bookings are worth; money received today
-          // (deposits for later dates included) is the "Collected" line.
-          sub={
-            isToday && typeof day.collectedTodayMinor === "number"
-              ? `Collected today ${money(day.collectedTodayMinor, cur)}`
-              : n.takenAtGateMinor > 0
-                ? `${money(n.takenAtGateMinor, cur)} at the gate`
-                : "Online and at the gate"
-          }
-          style={styles.tile}
+        {/* #4490 07-E: two honest money numbers, both the server's. */}
+        <TodayMoneyTiles
+          money={day.money}
+          loading={dayQuery.isFetching && day.money === null}
+          isToday={isToday}
+          currency={cur}
+          dateLine={day.localDate.length > 0 ? dayDateLabel(day.localDate) : "Today"}
+          onRetry={() => void dayQuery.refetch()}
+          onOpenOrders={onOpenModule !== undefined ? () => onOpenModule("orders") : undefined}
+          tileStyle={styles.tile}
         />
         {membersOn ? (
           <KpiTile

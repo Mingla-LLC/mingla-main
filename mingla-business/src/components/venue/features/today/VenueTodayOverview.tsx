@@ -24,9 +24,10 @@ import { Button } from "../../../ui/Button";
 import { Icon } from "../../../ui/Icon";
 import { KpiTile } from "../../../ui/KpiTile";
 import { Skeleton } from "../../../ui/Skeleton";
-import { money } from "../offers/offersModel";
 import { RequestsWaitingCard } from "../requests/RequestsWaitingCard";
 import { dayNumbers } from "./todayModel";
+import { TodayMoneyTiles } from "./TodayMoneyTiles";
+import { dayDateLabel } from "../../../ui/fieldModels";
 
 export interface VenueTodayOverviewProps {
   brandId: string | null;
@@ -220,19 +221,16 @@ export function VenueTodayOverview({
             <KpiTile label="Paying now" value={n.waiting} sub="Guests mid-checkout" />
           )}
         </View>
-        <View style={styles.tile}>
-          <KpiTile
-            label="Taken today"
-            value={money(n.takenMinor, cur)}
-            sub={
-              typeof day.collectedTodayMinor === "number"
-                ? `Collected today ${money(day.collectedTodayMinor, cur)}`
-                : n.takenAtGateMinor > 0
-                  ? `${money(n.takenAtGateMinor, cur)} at the gate`
-                  : "Online and at the gate"
-            }
-          />
-        </View>
+        {/* #4490 07-E: two honest money numbers, both the server's. */}
+        <TodayMoneyTiles
+          money={day.money}
+          isToday
+          currency={cur}
+          dateLine={day.localDate.length > 0 ? dayDateLabel(day.localDate) : "Today"}
+          onRetry={() => void dayQuery.refetch()}
+          onOpenOrders={() => onOpenModule("orders")}
+          tileStyle={styles.tile}
+        />
       </View>
       <View style={styles.links}>
         <Button label="Open Today" variant="secondary" size="sm" onPress={() => onOpenModule("today")} testID="venue-overview-open-today" />
