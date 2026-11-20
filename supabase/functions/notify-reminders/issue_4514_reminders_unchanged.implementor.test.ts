@@ -17,7 +17,9 @@ function fakeAdmin(
   return {
     rpc: (fn, args) => {
       calls.push({ fn, args });
-      const key = fn === "pg_notify_reminders_enqueue" ? `${fn}:${String(args.p_lead_bucket)}` : fn;
+      const key = fn === "pg_notify_reminders_enqueue"
+        ? `${fn}:${String(args.p_lead_bucket)}`
+        : fn;
       return Promise.resolve(answers[key] ?? { data: null, error: null });
     },
   };
@@ -31,11 +33,20 @@ function env(): void {
 }
 
 const req = () =>
-  new Request("https://x/notify-reminders", { method: "POST", headers: { Authorization: "Bearer service-key" } });
+  new Request("https://x/notify-reminders", {
+    method: "POST",
+    headers: { Authorization: "Bearer service-key" },
+  });
 
 const EXPECTED_ENQUEUE: Call[] = [
-  { fn: "pg_notify_reminders_enqueue", args: { p_lead_hours: 24, p_lead_bucket: "24h", p_window_minutes: 10 } },
-  { fn: "pg_notify_reminders_enqueue", args: { p_lead_hours: 2, p_lead_bucket: "2h", p_window_minutes: 10 } },
+  {
+    fn: "pg_notify_reminders_enqueue",
+    args: { p_lead_hours: 24, p_lead_bucket: "24h", p_window_minutes: 10 },
+  },
+  {
+    fn: "pg_notify_reminders_enqueue",
+    args: { p_lead_hours: 2, p_lead_bucket: "2h", p_window_minutes: 10 },
+  },
 ];
 
 Deno.test("#4514 reminders: the two enqueue calls and the response are unchanged when no form reminder is due", async () => {
@@ -50,8 +61,18 @@ Deno.test("#4514 reminders: the two enqueue calls and the response are unchanged
       }),
   });
   assertEquals(res.status, 200);
-  assertEquals(await res.text(), JSON.stringify({ ok: true, enqueued: { "24h": 3, "2h": 1 }, windowMinutes: 10 }));
-  assertEquals(calls.filter((c) => c.fn === "pg_notify_reminders_enqueue"), EXPECTED_ENQUEUE);
+  assertEquals(
+    await res.text(),
+    JSON.stringify({
+      ok: true,
+      enqueued: { "24h": 3, "2h": 1 },
+      windowMinutes: 10,
+    }),
+  );
+  assertEquals(
+    calls.filter((c) => c.fn === "pg_notify_reminders_enqueue"),
+    EXPECTED_ENQUEUE,
+  );
   // The reminders run first; nothing is sent before them.
   assertEquals(calls.slice(0, 2), EXPECTED_ENQUEUE);
 });
@@ -62,20 +83,32 @@ Deno.test("#4514 reminders: a failing bucket still reports 207 with the same bod
   const res = await handler(req(), {
     createAdmin: () =>
       fakeAdmin(calls, {
-        "pg_notify_reminders_enqueue:24h": { data: null, error: { message: "boom" } },
+        "pg_notify_reminders_enqueue:24h": {
+          data: null,
+          error: { message: "boom" },
+        },
         "pg_notify_reminders_enqueue:2h": { data: 2, error: null },
         brand_form_auto_reminders_due: { data: [], error: null },
       }),
   });
   assertEquals(res.status, 207);
-  assertEquals(await res.text(), JSON.stringify({ ok: false, enqueued: { "24h": "error: boom", "2h": 2 }, windowMinutes: 10 }));
+  assertEquals(
+    await res.text(),
+    JSON.stringify({
+      ok: false,
+      enqueued: { "24h": "error: boom", "2h": 2 },
+      windowMinutes: 10,
+    }),
+  );
   assertEquals(calls.slice(0, 2), EXPECTED_ENQUEUE);
 });
 
 Deno.test("#4514 reminders: missing bearer is still refused before any call", async () => {
   env();
   const calls: Call[] = [];
-  const res = await handler(new Request("https://x", { method: "POST" }), { createAdmin: () => fakeAdmin(calls, {}) });
+  const res = await handler(new Request("https://x", { method: "POST" }), {
+    createAdmin: () => fakeAdmin(calls, {}),
+  });
   assertEquals(res.status, 401);
   assertEquals(calls.length, 0);
 });
@@ -95,7 +128,10 @@ Deno.test("#4514 reminders: a failing form step never blocks or changes the remi
       fakeAdmin(calls, {
         "pg_notify_reminders_enqueue:24h": { data: 3, error: null },
         "pg_notify_reminders_enqueue:2h": { data: 1, error: null },
-        brand_form_auto_reminders_due: { data: null, error: { message: "down" } },
+        brand_form_auto_reminders_due: {
+          data: null,
+          error: { message: "down" },
+        },
       }),
   });
   assertEquals(calls.slice(0, 2), EXPECTED_ENQUEUE);
@@ -108,40 +144,89 @@ Deno.test("#4514 reminders: a failing form step never blocks or changes the remi
 Deno.test("#4514 reminders: a due form reminder sends push first, then the ticked email, and settles", async () => {
   env();
   const calls: Call[] = [];
-  const sent: Array<{ category: string; channel: string | null | undefined; contact: string | null | undefined }> = [];
+  const sent: Array<
+    {
+      category: string;
+      channel: string | null | undefined;
+      contact: string | null | undefined;
+    }
+  > = [];
   const res = await handler(req(), {
     createAdmin: () =>
       fakeAdmin(calls, {
         "pg_notify_reminders_enqueue:24h": { data: 0, error: null },
         "pg_notify_reminders_enqueue:2h": { data: 0, error: null },
         brand_form_auto_reminders_due: {
-          data: [{ attachmentId: ATT, formId: FORM, eventId: EVENT, channels: ["email", "push"] }],
+          data: [{
+            attachmentId: ATT,
+            formId: FORM,
+            eventId: EVENT,
+            channels: ["email", "push"],
+          }],
           error: null,
         },
         brand_form_request_audience: {
           data: {
-            formId: FORM, eventId: EVENT, brandId: ATT, formName: "Sign-up", eventTitle: "Open mic", brandName: "Brand A",
-            recipients: [{ kind: "rsvp", id: RSVP, userId: null, email: "g@example.test", phone: "+12025550101",
-              answered: false, throttled: false, smsAllowed: true, emailAllowed: true }],
+            formId: FORM,
+            eventId: EVENT,
+            brandId: ATT,
+            formName: "Sign-up",
+            eventTitle: "Open mic",
+            brandName: "Brand A",
+            recipients: [{
+              kind: "rsvp",
+              id: RSVP,
+              userId: null,
+              email: "g@example.test",
+              phone: "+12025550101",
+              answered: false,
+              throttled: false,
+              smsAllowed: true,
+              emailAllowed: true,
+            }],
           },
           error: null,
         },
-        brand_form_request_claim: { data: { claimed: true, sendId: ATT, token: "a".repeat(64) }, error: null },
+        brand_form_request_claim: {
+          data: { claimed: true, sendId: ATT, token: "a".repeat(64) },
+          error: null,
+        },
         brand_form_request_settle: { data: true, error: null },
         brand_form_auto_reminder_settle: { data: true, error: null },
       }),
     dispatch: (input) => {
-      sent.push({ category: input.category_key, channel: input.requested_channel, contact: input.contact });
-      return Promise.resolve({ success: true, deliveries: [{ channel: "email", status: "sent", providerMessageId: "m1" }] });
+      sent.push({
+        category: input.category_key,
+        channel: input.requested_channel,
+        contact: input.contact,
+      });
+      return Promise.resolve({
+        success: true,
+        deliveries: [{
+          channel: "email",
+          status: "sent",
+          providerMessageId: "m1",
+        }],
+      });
     },
   });
   assertEquals(res.status, 200);
   assertEquals(calls.slice(0, 2), EXPECTED_ENQUEUE);
   // No account, so no push; texts were not ticked, so the email on file. Never the phone.
-  assertEquals(sent, [{ category: "brand_form_request", channel: undefined, contact: "g@example.test" }]);
+  assertEquals(sent, [{
+    category: "brand_form_request",
+    channel: undefined,
+    contact: "g@example.test",
+  }]);
   const claim = calls.find((c) => c.fn === "brand_form_request_claim");
   assertEquals(claim?.args.p_kind, "auto");
-  assertEquals(calls.some((c) => c.fn === "brand_form_auto_reminder_settle" && c.args.p_attachment_id === ATT), true);
+  assertEquals(
+    calls.some((c) =>
+      c.fn === "brand_form_auto_reminder_settle" &&
+      c.args.p_attachment_id === ATT
+    ),
+    true,
+  );
   const body = await res.json();
   assertEquals(body.formReminders, { pages: 1, sent: 1, failed: 0 });
 });
