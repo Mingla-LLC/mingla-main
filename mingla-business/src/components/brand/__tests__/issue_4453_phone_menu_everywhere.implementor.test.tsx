@@ -21,6 +21,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports, import/first */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -129,6 +130,19 @@ beforeEach(() => {
 });
 
 describe("#4453 one brand menu everywhere", () => {
+  test("(e0) footer buttons stack in a column and show their full labels", async () => {
+    const tree = await mount({ onOpenSheet: jest.fn() });
+    await openMenu(tree);
+    const footer = hosts(tree, "workspace-brand-footer-buttons");
+    expect(footer).toHaveLength(1);
+    const flat = StyleSheet.flatten(footer[0]!.props.style as never) as { flexDirection?: string };
+    expect(flat.flexDirection).toBe("column");
+    const textOf = (n: Node): string =>
+      n.children.map((c) => (typeof c === "string" ? c : textOf(c))).join("");
+    expect(textOf(hosts(tree, "workspace-brand-create")[0]!)).toBe("Create a new brand");
+    expect(textOf(hosts(tree, "workspace-brand-manage")[0]!)).toBe("Manage brands");
+  });
+
   test("(a) phone + host sheet: the chip opens the menu, not the sheet; Manage brands is the way to the sheet", async () => {
     const onOpenSheet = jest.fn();
     const tree = await mount({ onOpenSheet });

@@ -441,7 +441,7 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
         {list}
       </ScrollView>
       <View style={popover ? styles.footer : [styles.footer, styles.footerSheet]}>
-        <View style={styles.footerButtons}>
+        <View style={styles.footerButtons} testID="workspace-brand-footer-buttons">
           {footer.map((action, offset) => {
             const index = shown.length + offset;
             const filled = action.key === "create";
@@ -464,10 +464,7 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
                 testID={`workspace-brand-${action.key}`}
               >
                 <Icon name={action.icon} size={16} color={filled ? color.ink : color.text1} />
-                <Text
-                  style={[styles.footerLabel, filled ? styles.footerLabelFilled : null]}
-                  numberOfLines={1}
-                >
+                <Text style={[styles.footerLabel, filled ? styles.footerLabelFilled : null]}>
                   {action.label}
                 </Text>
               </Pressable>
@@ -614,10 +611,9 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: color.line,
   },
-  footerButtons: { flexDirection: "row", gap: 10 },
+  footerButtons: { flexDirection: "column", gap: 10 },
   footerBtn: {
-    flex: 1,
-    minWidth: 0,
+    alignSelf: "stretch",
     minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
@@ -629,7 +625,7 @@ const styles = StyleSheet.create({
   footerBtnFilled: { backgroundColor: color.text1 },
   footerBtnOutlined: { borderWidth: 1, borderColor: color.lineStrong },
   footerBtnActive: { opacity: 0.85 },
-  footerLabel: { ...type.small, color: color.text1, fontWeight: "600", flexShrink: 1 },
+  footerLabel: { ...type.small, color: color.text1, fontWeight: "600" },
   footerLabelFilled: { color: color.ink },
 });
 
