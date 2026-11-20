@@ -1,3 +1,4 @@
+import { venueAppLinkDisplay } from "./venueBookingEmails.ts";
 // ===========================================================================
 // #4490 P5 — the guest waitlist messages:
 //   venue_waitlist_joined · venue_table_opened · venue_waitlist_ready
@@ -110,6 +111,10 @@ export function renderVenueWaitlistMessage(
       body: `${day}${forParty}.${line}`,
     },
     email: { subject: `You're on the waitlist at ${venue}${on}`, body },
-    sms: `${venue}: you're on the waitlist${on}.${line}`,
+    sms: venueAppLinkDisplay(payload)
+      ? `Mingla: you're on the waitlist at ${venue}${on}.${line} Your place is in the Mingla app: ${
+        venueAppLinkDisplay(payload)
+      }`
+      : `${venue}: you're on the waitlist${on}.${line}`,
   };
 }

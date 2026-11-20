@@ -128,6 +128,8 @@ export interface EmailCtaInput {
   url: string;
   /** A paragraph appended to the email body, above the button. */
   note: string;
+  /** #4490 Explorer W1: the web link under "Open in Mingla". */
+  secondary?: { label: string; url: string };
 }
 
 // #4063 — the only category payload fields allowed to leave Mingla for the
@@ -212,7 +214,12 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
 function emailContent(
   rendered: RenderedMessage,
   emailCta: EmailCtaInput | undefined,
-): { title: string; body: string; cta?: { label: string; url: string } } {
+): {
+  title: string;
+  body: string;
+  cta?: { label: string; url: string };
+  secondaryCta?: { label: string; url: string };
+} {
   if (!emailCta) {
     return { title: rendered.email.subject, body: rendered.email.body };
   }
@@ -220,6 +227,7 @@ function emailContent(
     title: rendered.email.subject,
     body: `${rendered.email.body}\n\n${emailCta.note}`,
     cta: { label: emailCta.label, url: emailCta.url },
+    ...(emailCta.secondary ? { secondaryCta: emailCta.secondary } : {}),
   };
 }
 

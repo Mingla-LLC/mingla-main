@@ -57,6 +57,14 @@ import {
   rederiveVenueMemberToken,
   VENUE_MEMBER_TOKEN_RE,
 } from "../_shared/venueMembershipToken.ts";
+import type { ClaimLinkAdmin } from "../_shared/claimLink.ts";
+import {
+  NO_VENUE_CLAIM,
+  passPepperFor,
+  venueClaimFor,
+  venueFlagOn,
+  withClaim,
+} from "../_shared/venueAppHandoff.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -295,7 +303,7 @@ export function resolveReturnOrigin(
   return resolveVenueVisitOrigin(env);
 }
 
-function qrPepper(env: (name: string) => string | undefined): string | null {
+export function qrPepper(env: (name: string) => string | undefined): string | null {
   const local = isLocalSupabase(env("SUPABASE_URL") ?? "");
   const pepper = (env("app.qr_token_pepper") ??
     (local ? env("LOCAL_QR_TOKEN_PEPPER") : undefined) ?? "").trim();
@@ -965,14 +973,26 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
         ? `\\x${await venueOfferTokenHashHex(memberToken)}`
         : null;
       if (action === "membership_get") {
+        const [appOnly, handoffOn] = await Promise.all([
+          venueFlagOn(client, "VENUE_PASS_APP_ONLY"),
+          venueFlagOn(client, "VENUE_APP_HANDOFF"),
+        ]);
         const { data, error } = await client.rpc("issue_4490_membership_get", {
           p_subscription_id: subscriptionId,
           p_token_hash: tokenHash,
           p_user_id: tokenHash ? null : caller.userId,
-          p_qr_pepper: qrPepper(env),
+          p_qr_pepper: passPepperFor(qrPepper(env), appOnly, caller, tokenHash),
         });
         if (error) return rpcFailure(error);
-        return json(200, { kind: "success", data });
+        const claim = data
+          ? await venueClaimFor(
+            client as unknown as ClaimLinkAdmin,
+            handoffOn,
+            "venue_membership",
+            subscriptionId,
+          )
+          : NO_VENUE_CLAIM;
+        return json(200, { kind: "success", data: withClaim(data, claim) });
       }
       const key = str(body.idempotencyKey);
       if (!KEY.test(key)) return json(400, { code: "invalid_request" });
@@ -1010,14 +1030,26 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
     }
 
     if (action === "get") {
+      const [appOnly, handoffOn] = await Promise.all([
+        venueFlagOn(client, "VENUE_PASS_APP_ONLY"),
+        venueFlagOn(client, "VENUE_APP_HANDOFF"),
+      ]);
       const { data, error } = await client.rpc("issue_4490_get_offer_booking", {
         p_group_id: groupId,
         p_token_hash: tokenHash,
         p_user_id: caller.userId,
-        p_qr_pepper: qrPepper(env),
+        p_qr_pepper: passPepperFor(qrPepper(env), appOnly, caller, tokenHash),
       });
       if (error) return rpcFailure(error);
-      return json(200, { kind: "success", data });
+      const claim = data
+        ? await venueClaimFor(
+          client as unknown as ClaimLinkAdmin,
+          handoffOn,
+          "venue_booking",
+          groupId,
+        )
+        : NO_VENUE_CLAIM;
+      return json(200, { kind: "success", data: withClaim(data, claim) });
     }
 
     if (action === "pay") {
@@ -1181,19 +1213,29 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       } else if (attempt?.state === "succeeded") {
         outcome = "confirmed";
       }
+      const [appOnly, handoffOn] = await Promise.all([
+        venueFlagOn(client, "VENUE_PASS_APP_ONLY"),
+        venueFlagOn(client, "VENUE_APP_HANDOFF"),
+      ]);
       const { data: fresh, error: readError } = await client.rpc(
         "issue_4490_get_offer_booking",
         {
           p_group_id: groupId,
           p_token_hash: tokenHash,
           p_user_id: caller.userId,
-          p_qr_pepper: qrPepper(env),
+          p_qr_pepper: passPepperFor(qrPepper(env), appOnly, caller, tokenHash),
         },
       );
       if (readError) return rpcFailure(readError);
+      const claim = await venueClaimFor(
+        client as unknown as ClaimLinkAdmin,
+        handoffOn,
+        "venue_booking",
+        groupId,
+      );
       return json(200, {
         kind: "success",
-        data: { outcome, booking: fresh ?? booking },
+        data: { outcome, booking: withClaim(fresh ?? booking, claim), claim },
       });
     }
 

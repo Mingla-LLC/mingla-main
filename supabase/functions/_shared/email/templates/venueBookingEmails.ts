@@ -80,6 +80,30 @@ export function venueEmailDate(date: string): string {
 }
 
 /** "₦15,050" (whole) or "₦15,050.50"; the currency's own minor exponent. */
+/** "17:00" in the venue's zone; "" when unknown. */
+export function venueEmailTime(iso: string, timezone: string): string {
+  const at = Date.parse(iso);
+  if (!iso || Number.isNaN(at)) return "";
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: timezone || "Africa/Lagos",
+    }).format(new Date(at));
+  } catch {
+    return "";
+  }
+}
+
+/** #4490 Explorer W1: the app link display ("usemingla.com/c/K7Q2MX…"), or "". */
+export function venueAppLinkDisplay(payload: Record<string, unknown>): string {
+  const v = payload.venue_app_link_display;
+  return typeof v === "string" && /^usemingla\.com\/c\/[0-9A-Z]{10}$/.test(v)
+    ? v
+    : "";
+}
+
 export function venueEmailMoney(amountMinor: number, currency: string): string {
   const code = currency.toUpperCase().slice(0, 3);
   try {
@@ -126,6 +150,8 @@ export function venueBookingEmailFacts(
     venue_name: text(venue.name),
     offer_name: text(offer.name),
     visit_date: venueEmailDate(text(win.localDate)),
+    // #4490 Explorer W1: the start time in the venue's zone, for the text.
+    visit_time: venueEmailTime(text(win.startsAt), text(venue.timezone)),
     guests,
     id_check_label: text(firstPass?.idCheckLabel),
     id_check_count: minor(firstPass?.idCheckCount) ?? 0,
@@ -227,7 +253,12 @@ export function renderVenueBookingMessage(
         body: `${offer}${on}${who}. Your pass is ready.`,
       },
       email: { subject: `You're in: ${offer} at ${venue}${on}`, body },
-      sms: `${venue}: you're in${on}.${refLine} Your pass is in your email.`,
+      // #4490 Explorer W1 (§6): with the app link, the text carries it.
+      sms: venueAppLinkDisplay(payload)
+        ? `Mingla: ${venue}, ${
+          [date, text(payload.visit_time)].filter(Boolean).join(" ")
+        }. Your pass is in the Mingla app: ${venueAppLinkDisplay(payload)}`
+        : `${venue}: you're in${on}.${refLine} Your pass is in your email.`,
     };
   }
   if (categoryKey === "venue_booking_cancelled") {

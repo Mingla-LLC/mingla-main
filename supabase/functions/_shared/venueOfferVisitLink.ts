@@ -22,6 +22,8 @@ import {
   isVenueMembershipCategory,
   VENUE_MEMBERSHIP_CTA,
 } from "./email/templates/venueMembershipEmails.ts";
+import { isVenueWaitlistCategory } from "./email/templates/venueWaitlistEmails.ts";
+import { isVenueHostCategory } from "./email/templates/venueBookingEmails.ts";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -193,7 +195,81 @@ export function trustedVenueVisitCta(input: {
   payload: Record<string, unknown>;
   visitUrl: unknown;
   origin: string;
-}): { label: string; url: string; note: string } | undefined {
+  /** #4490 Explorer W1: the claim link minted at send time (VENUE_APP_HANDOFF). */
+  appUrl?: unknown;
+}): VenueEmailCta | undefined {
+  const web = trustedVenueWebCta(input);
+  const appUrl = venueAppClaimUrl(input.appUrl);
+  const category = String(input.categoryKey ?? "");
+  if (
+    appUrl === null || !input.serviceCaller || isVenueHostCategory(category) ||
+    !(VENUE_VISIT_CATEGORIES.has(category) ||
+      isVenueMembershipCategory(category) ||
+      isVenueWaitlistCategory(category))
+  ) {
+    return web;
+  }
+  // "Open in Mingla" leads; the web action becomes the second link (§6 copy).
+  return {
+    label: "Open in Mingla",
+    url: appUrl,
+    note: VENUE_PASS_CATEGORIES.has(category)
+      ? "No app? Give your name at the door."
+      : web?.note ?? "Open it in the Mingla app.",
+    ...(web
+      ? { secondary: { label: venueWebLinkLabel(category), url: web.url } }
+      : {}),
+  };
+}
+
+export interface VenueEmailCta {
+  label: string;
+  url: string;
+  note: string;
+  secondary?: { label: string; url: string };
+}
+
+/** Categories whose message is about a pass the guest shows at the door. */
+const VENUE_PASS_CATEGORIES = new Set([
+  "venue_booking_confirmed",
+  "venue_booking_changed",
+  "venue_balance_paid",
+  "venue_membership_paid",
+]);
+
+const CLAIM_URL_RE = /^https:\/\/usemingla\.com\/c\/[0-9A-Z]{10}$/;
+
+/** Only a claim link Mingla minted (usemingla.com/c/<code>) may lead an email. */
+export function venueAppClaimUrl(value: unknown): string | null {
+  return typeof value === "string" && CLAIM_URL_RE.test(value.trim())
+    ? value.trim()
+    : null;
+}
+
+/** §6: the second link's words under "Open in Mingla". */
+export function venueWebLinkLabel(categoryKey: string): string {
+  if (
+    [
+      "venue_balance_due",
+      "venue_balance_overdue",
+      "venue_payment_required",
+      "venue_hold_expiring",
+      "venue_membership_renewal",
+      "venue_membership_lapsed",
+    ].includes(categoryKey)
+  ) return "Pay on the web";
+  if (isVenueMembershipCategory(categoryKey)) return "See your plan on the web";
+  if (isVenueWaitlistCategory(categoryKey)) return "See your place in line";
+  return "See your booking on the web";
+}
+
+function trustedVenueWebCta(input: {
+  serviceCaller: boolean;
+  categoryKey: unknown;
+  payload: Record<string, unknown>;
+  visitUrl: unknown;
+  origin: string;
+}): VenueEmailCta | undefined {
   if (input.visitUrl === undefined || input.visitUrl === null) return undefined;
   const category = String(input.categoryKey ?? "");
   // #4490 P6: a member message's button is exactly the member page link of

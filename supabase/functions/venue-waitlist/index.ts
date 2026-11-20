@@ -20,6 +20,13 @@
 // Rate limited per IP (and per user) like the other guest functions.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import type { ClaimLinkAdmin } from "../_shared/claimLink.ts";
+import {
+  NO_VENUE_CLAIM,
+  venueClaimFor,
+  venueFlagOn,
+  withClaim,
+} from "../_shared/venueAppHandoff.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -234,12 +241,20 @@ export function createVenueWaitlistHandler(deps: WaitlistDeps = {}) {
       });
       if (error) return failure(error);
       const entry = data as Record<string, unknown>;
+      // #4490 Explorer W1: the app handoff link (only while VENUE_APP_HANDOFF is on).
+      const claim = await venueClaimFor(
+        client as unknown as ClaimLinkAdmin,
+        await venueFlagOn(client, "VENUE_APP_HANDOFF"),
+        "venue_waitlist",
+        String(entry.waitlistId ?? ""),
+      );
       return json(200, {
         kind: "success",
         data: {
           ...entry,
           token,
           visitPath: `/visit/waitlist/${String(entry.waitlistId ?? "")}`,
+          claim,
         },
       });
     }
@@ -264,6 +279,17 @@ export function createVenueWaitlistHandler(deps: WaitlistDeps = {}) {
       },
     );
     if (error) return failure(error);
+    if (action === "get") {
+      const claim = data
+        ? await venueClaimFor(
+          client as unknown as ClaimLinkAdmin,
+          await venueFlagOn(client, "VENUE_APP_HANDOFF"),
+          "venue_waitlist",
+          waitlistId,
+        )
+        : NO_VENUE_CLAIM;
+      return json(200, { kind: "success", data: withClaim(data, claim) });
+    }
     return json(200, { kind: "success", data });
   };
 }

@@ -1,3 +1,4 @@
+import { venueAppLinkDisplay } from "./venueBookingEmails.ts";
 // ===========================================================================
 // #4490 P6 — the member's messages:
 //   venue_membership_renewal (steps: renewal 7 days before, due on renewal
@@ -133,7 +134,11 @@ export function renderVenueMembershipMessage(
           body: `Your member pass for ${venue} is ready.`,
         },
         email: { subject: `Welcome to ${plan} at ${venue}`, body },
-        sms: `${venue}: welcome to ${plan}. Your member pass is ready.`,
+        sms: venueAppLinkDisplay(payload)
+          ? `Mingla: welcome to ${plan} at ${venue}. Your pass is in the Mingla app: ${
+            venueAppLinkDisplay(payload)
+          }`
+          : `${venue}: welcome to ${plan}. Your member pass is ready.`,
       };
     }
     const body = `${hi}Thanks, we received${
@@ -239,8 +244,13 @@ export function renderVenueMembershipMessage(
         : `Your ${plan} renews${renewsOn ? ` on ${renewsOn}` : " soon"}`,
       body,
     },
-    sms: `${venue}: your ${plan} renews${
-      renewsOn ? ` on ${renewsOn}` : " soon"
-    }. Pay from your member page.`,
+    // #4490 Explorer W1 (§6): with the app link, "Pay here: {link}".
+    sms: venueAppLinkDisplay(payload) && renewsOn && !restart
+      ? `Mingla: your ${plan} at ${venue} renews on ${renewsOn}. Pay here: ${
+        venueAppLinkDisplay(payload)
+      }`
+      : `${venue}: your ${plan} renews${
+        renewsOn ? ` on ${renewsOn}` : " soon"
+      }. Pay from your member page.`,
   };
 }

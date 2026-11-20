@@ -57,6 +57,12 @@ import {
 import { rederiveVenueOfferBookingToken } from "../_shared/venueOfferBookingToken.ts";
 // #4490 P6 — member emails: the member page link built at send time.
 import { isVenueMembershipCategory } from "../_shared/email/templates/venueMembershipEmails.ts";
+import { isVenueWaitlistCategory } from "../_shared/email/templates/venueWaitlistEmails.ts";
+import {
+  venueClaimFor,
+  type VenueClaimKind,
+  venueFlagOn,
+} from "../_shared/venueAppHandoff.ts";
 import {
   buildVenueMemberUrl,
   rederiveVenueMemberToken,
@@ -359,6 +365,44 @@ export async function resolveVenueBookingDispatch(
     });
     return { facts, visitUrl: null };
   }
+}
+
+/**
+ * #4490 Explorer W1: the "Open in Mingla" claim link for a guest's venue
+ * message, minted when it is sent and only while VENUE_APP_HANDOFF is on.
+ * Messages to the venue's own people never get one. Null = no app link (the
+ * message goes exactly as before).
+ */
+export async function resolveVenueAppLink(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+): Promise<{ url: string; display: string } | null> {
+  const category = String(row.category_key ?? "");
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  let subject: { kind: VenueClaimKind; id: string } | null = null;
+  if (isVenueBookingCategory(category) && !isVenueHostCategory(category)) {
+    subject = {
+      kind: "venue_booking",
+      id: String(payload.venue_group_id ?? ""),
+    };
+  } else if (isVenueMembershipCategory(category)) {
+    subject = {
+      kind: "venue_membership",
+      id: String(payload.subscription_id ?? ""),
+    };
+  } else if (isVenueWaitlistCategory(category)) {
+    subject = { kind: "venue_waitlist", id: String(payload.waitlist_id ?? "") };
+  }
+  if (subject === null || !/^[0-9a-f-]{36}$/i.test(subject.id)) return null;
+  const claim = await venueClaimFor(
+    admin,
+    await venueFlagOn(admin, "VENUE_APP_HANDOFF"),
+    subject.kind,
+    subject.id,
+  );
+  if (claim.shortUrl === null || claim.code === null) return null;
+  return { url: claim.shortUrl, display: `usemingla.com/c/${claim.code}` };
 }
 
 /**
@@ -670,6 +714,9 @@ export async function processGenericOutcome(
     if (isVenueMembershipCategory(String(row.category_key ?? ""))) {
       venueVisitUrl = await resolveVenueMemberDispatch(admin, row);
     }
+    // #4490 Explorer W1: the app link leads the email and rides in the text.
+    const venueApp = await resolveVenueAppLink(admin, row);
+    if (venueApp !== null) payload.venue_app_link_display = venueApp.display;
     const deepLink = typeof payload.deep_link === "string"
       ? payload.deep_link
       : purchaseReminderDeepLink(row);
@@ -693,6 +740,7 @@ export async function processGenericOutcome(
           : {}),
         // #4490 — in transit only; see resolveVenueBookingDispatch.
         ...(venueVisitUrl ? { venue_visit_url: venueVisitUrl } : {}),
+        ...(venueApp ? { venue_app_url: venueApp.url } : {}),
       }),
     });
     const envelope = await readBoundedSuccessEnvelope(res);

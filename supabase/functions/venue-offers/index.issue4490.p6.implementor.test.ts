@@ -46,6 +46,11 @@ function fake(
 ): () => ServiceClient {
   return () => ({
     rpc: (name, params) => {
+      // TEST-MOD-APPROVED #4490 (Explorer W1): the #4490 rollout flag reads are not
+      // part of what these cases pin; they are answered "off" and not recorded.
+      if (name === "issue_4490_flag_on") {
+        return Promise.resolve({ data: false, error: null });
+      }
       calls.push({ name, params });
       return Promise.resolve(
         result(name, params) as { data: unknown; error: null },

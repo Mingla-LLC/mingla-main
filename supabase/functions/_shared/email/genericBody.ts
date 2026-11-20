@@ -223,6 +223,18 @@ export function renderGenericBody(input: GenericBodyInput): {
       </tr>
     </table>`
     : "";
+  // #4490 Explorer W1: the second link (for example "See your booking on the
+  // web" under "Open in Mingla"). https only; anything else is dropped.
+  const secondaryUrl = input.secondaryCta
+    ? safeHttpsUrl(input.secondaryCta.url)
+    : null;
+  const secondary = input.secondaryCta && secondaryUrl
+    ? `<p style="margin:16px 0 0 0;font-size:14px;line-height:1.5;"><a href="${
+      escapeHtml(secondaryUrl)
+    }" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;text-decoration:underline;">${
+      escapeHtml(input.secondaryCta.label)
+    }</a></p>`
+    : "";
 
   const document = input.document?.map(renderDocumentBlock).filter((block) =>
     block.html
@@ -243,10 +255,13 @@ export function renderGenericBody(input: GenericBodyInput): {
         ? contentHtml
         : `<p style="margin:0;font-size:15px;color:${BRAND_MUTED};">—</p>`
     }
-    ${cta}`;
+    ${cta}${secondary}`;
 
   const textLines = [input.title, "", ...contentText];
   if (input.cta) textLines.push("", `${input.cta.label}: ${input.cta.url}`);
+  if (input.secondaryCta && secondaryUrl) {
+    textLines.push("", `${input.secondaryCta.label}: ${secondaryUrl}`);
+  }
 
   return {
     html,

@@ -31,6 +31,14 @@ import {
 } from "../_shared/venueOfferVisitLink.ts";
 import { venueOfferTokenHashHex } from "../_shared/venueOfferBookingToken.ts";
 import { VENUE_MEMBER_TOKEN_RE } from "../_shared/venueMembershipToken.ts";
+import type { ClaimLinkAdmin } from "../_shared/claimLink.ts";
+import {
+  NO_VENUE_CLAIM,
+  passPepperFor,
+  venueClaimFor,
+  venueFlagOn,
+  withClaim,
+} from "../_shared/venueAppHandoff.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -291,17 +299,31 @@ export function createPayLinkHandler(deps: PayLinkDeps = {}) {
       : null;
     const who = { p_token_hash: tokenHash, p_user_id: tokenHash ? null : userId };
 
+    // #4490 Explorer W1: one pepper rule (venueAppHandoff.ts passPepperFor).
+    const [appOnly, handoffOn] = await Promise.all([
+      venueFlagOn(client, "VENUE_PASS_APP_ONLY"),
+      venueFlagOn(client, "VENUE_APP_HANDOFF"),
+    ]);
+    const pepper = passPepperFor(qrPepper(env), appOnly, { userId }, tokenHash);
     const read = () =>
       client.rpc("issue_4490_membership_get", {
         p_subscription_id: subscriptionId,
         ...who,
-        p_qr_pepper: qrPepper(env),
+        p_qr_pepper: pepper,
       });
 
     if (action === "get") {
       const { data, error } = await read();
       if (error) return rpcFailure(error);
-      return json(200, { kind: "success", data });
+      const claim = data
+        ? await venueClaimFor(
+          client as unknown as ClaimLinkAdmin,
+          handoffOn,
+          "venue_membership",
+          subscriptionId,
+        )
+        : NO_VENUE_CLAIM;
+      return json(200, { kind: "success", data: withClaim(data, claim) });
     }
 
     if (action === "pay") {

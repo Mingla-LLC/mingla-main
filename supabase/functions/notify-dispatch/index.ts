@@ -702,6 +702,8 @@ serve(async (req) => {
             payload: (payload.payload ?? {}) as Record<string, unknown>,
             visitUrl: payload.venue_visit_url,
             origin: resolveVenueVisitOrigin((name) => Deno.env.get(name)),
+            // #4490 Explorer W1: "Open in Mingla" leads when a claim link came.
+            appUrl: payload.venue_app_url,
           }),
       };
       if (!v2Input.idempotency_key) {

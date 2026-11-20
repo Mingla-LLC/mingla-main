@@ -19,6 +19,8 @@ export interface EmailSendInput {
   title: string;
   body: string; // plain paragraphs separated by \n\n
   cta?: { label: string; url: string };
+  /** #4490 Explorer W1: a second link under the button. */
+  secondaryCta?: { label: string; url: string };
   idempotencyKey?: string;
   beforeProviderIo?: () => Promise<void>;
   attachments?: Array<{ filename: string; content: string }>;
@@ -100,6 +102,7 @@ export const emailAdapter = {
           title: input.title,
           paragraphs: input.body.split("\n\n"),
           cta: input.cta ?? null,
+          secondaryCta: input.secondaryCta ?? null,
         },
       });
     } catch {
