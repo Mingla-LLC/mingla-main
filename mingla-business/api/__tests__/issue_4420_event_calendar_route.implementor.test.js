@@ -71,11 +71,18 @@ test("E-01 a real event returns 200 text/calendar with the right DTSTART, DTEND,
   assert.match(res.headers["cache-control"], /^public, max-age=0, s-maxage=\d+$/);
   assert.match(res.body, /DTSTART:20261220T140000Z\r\n/);
   assert.match(res.body, /DTEND:20261220T193000Z\r\n/);
-  assert.match(res.body, /LOCATION:5 Wumego Cres\\, Lekki Phase I\\, Lagos\r\n/);
+  assert.match(res.body, /LOCATION:Jameson Yard\\, 5 Wumego Cres\\, Lekki Phase I\\, Lagos\r\n/);
   assert.match(res.body, /UID:9132b8c6-1111-4222-8333-444455556666@usemingla\.com\r\n/);
   assert.match(res.body, /URL:https:\/\/host\.usemingla\.com\/e\/foodiefantasybythesea\/foodiefantasy-by-the-sea\r\n/);
   // DTSTAMP is the creation time, not the event start (RFC 5545).
   assert.doesNotMatch(res.body, /DTSTAMP:20261220T140000Z/);
+});
+
+test("E-08 a shown address names the venue and the address; a venue-prefixed address is not doubled; trailing space trimmed", async () => {
+  const shown = await call(bundle({ ...EVENT, venueName: "Jameson Yard ", address: "Lekki Phase 1, Lagos, Nigeria" }));
+  assert.match(shown.body, /LOCATION:Jameson Yard\\, Lekki Phase 1\\, Lagos\\, Nigeria\r\n/);
+  const prefixed = await call(bundle({ ...EVENT, venueName: "Jameson Yard ", address: "jameson yard, Lekki" }));
+  assert.match(prefixed.body, /LOCATION:jameson yard\\, Lekki\r\n/);
 });
 
 test("E-02 no real end (null, or before the start) is a 404, never an invented duration", async () => {

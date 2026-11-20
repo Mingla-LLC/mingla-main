@@ -23,7 +23,7 @@ import {
 } from "../calendarChooser.ts";
 
 // offeringCalendar is CommonJS (one owner shared with the server route).
-const { offeringCalendarEntry, offeringCalendarIcs, offeringGoogleCalendarUrl, offeringOutlookCalendarUrl } =
+const { offeringCalendarLocation, offeringCalendarEntry, offeringCalendarIcs, offeringGoogleCalendarUrl, offeringOutlookCalendarUrl } =
   createRequire(import.meta.url)("../offeringCalendar.cjs");
 
 const entry = offeringCalendarEntry({
@@ -170,4 +170,15 @@ Deno.test("B-3 Android in-app: Other calendar opens the file in Chrome through a
   assertEquals(chromeIntentUrl("https://a.b/c?x=1"), "intent://a.b/c?x=1#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=" + encodeURIComponent("https://a.b/c?x=1") + ";end");
   // plain Android Chrome keeps the https file link
   assertEquals(model(UA.androidChrome).options[2].href, ICS);
+});
+
+Deno.test("L-1 calendar location: venue + address, hidden = venue only, no doubling, trimmed", () => {
+  const loc = offeringCalendarLocation;
+  assertEquals(loc({ venueName: "Jameson Yard ", address: "Lekki Phase 1, Lagos", addressHidden: false }), "Jameson Yard, Lekki Phase 1, Lagos");
+  assertEquals(loc({ venueName: "Jameson Yard ", address: "Lekki Phase 1", addressHidden: true }), "Jameson Yard");
+  assertEquals(loc({ venueName: "Jameson Yard", address: "JAMESON YARD, Lekki", addressHidden: false }), "JAMESON YARD, Lekki");
+  assertEquals(loc({ venueName: null, address: "Lekki", addressHidden: false }), "Lekki");
+  assertEquals(loc({ venueName: "Jameson Yard", address: null, addressHidden: false }), "Jameson Yard");
+  assertEquals(loc({ venueName: " ", address: null, addressHidden: false }), null);
+  assertEquals(loc({ venueName: null, address: "x", addressHidden: true }), null);
 });

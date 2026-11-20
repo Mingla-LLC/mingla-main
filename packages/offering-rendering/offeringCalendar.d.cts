@@ -30,3 +30,9 @@ export function offeringCalendarIcs(entry: OfferingCalendarEntry, uid: string, s
 export function offeringGoogleCalendarUrl(entry: OfferingCalendarEntry): string;
 /** The Outlook.com / Microsoft 365 compose link. */
 export function offeringOutlookCalendarUrl(entry: OfferingCalendarEntry): string;
+/** The calendar LOCATION: venue only when hidden; "Venue, address" when shown; null when both are missing. */
+export function offeringCalendarLocation(input: {
+  venueName?: string | null;
+  address?: string | null;
+  addressHidden?: boolean;
+}): string | null;

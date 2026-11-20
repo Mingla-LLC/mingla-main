@@ -23,6 +23,7 @@ const { requestRpcJson } = require("../server/supabaseRpc");
 const {
   offeringCalendarEntry,
   offeringCalendarIcs,
+  offeringCalendarLocation,
 } = require("../../packages/offering-rendering/offeringCalendar.cjs");
 
 const firstQueryValue = (value) => (Array.isArray(value) ? value[0] : value);
@@ -93,8 +94,8 @@ module.exports = async function eventCalendarHandler(req, res) {
   const eventId = text(data.id);
   const hidden = data.hideAddressUntilTicket === true;
   const venueName = text(data.venueName);
-  // The page's rule: hidden => the venue name only; otherwise the address.
-  const location = hidden ? venueName : (text(data.address) ?? venueName);
+  // The page's rule, one owner: hidden => venue name only; else venue + address.
+  const location = offeringCalendarLocation({ venueName, address: text(data.address), addressHidden: hidden });
   const pagePath = `/e/${encodeURIComponent(brandSlug)}/${encodeURIComponent(eventSlug)}`;
   const entry = eventId === null
     ? null

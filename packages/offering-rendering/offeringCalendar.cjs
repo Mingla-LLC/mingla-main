@@ -102,7 +102,25 @@ function offeringOutlookCalendarUrl(entry) {
   return `https://outlook.live.com/calendar/0/action/compose?${params.join("&")}`;
 }
 
+/**
+ * The calendar LOCATION line, ONE owner for the page and the server route.
+ * Hidden address: the venue name only. Shown: "Venue, address", unless the
+ * address already starts with the venue name (then the address alone). One
+ * missing: the other. Both missing: null.
+ */
+function offeringCalendarLocation(input) {
+  const clean = (v) => (typeof v === "string" && v.trim().length > 0 ? v.trim() : null);
+  const venue = clean(input.venueName);
+  if (input.addressHidden === true) return venue;
+  const address = clean(input.address);
+  if (venue === null) return address;
+  if (address === null) return venue;
+  if (address.toLowerCase().startsWith(venue.toLowerCase())) return address;
+  return `${venue}, ${address}`;
+}
+
 module.exports = {
+  offeringCalendarLocation,
   offeringCalendarEntry,
   calendarUtcStamp,
   offeringCalendarIcs,

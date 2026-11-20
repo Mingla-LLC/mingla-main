@@ -81,7 +81,7 @@ import {
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
 // issue #4420 — Add to calendar, only from a real start and end.
-import { offeringCalendarEntry } from "@mingla/offering-rendering/offeringCalendar.cjs";
+import { offeringCalendarEntry, offeringCalendarLocation } from "@mingla/offering-rendering/offeringCalendar.cjs";
 import { useAddToCalendar } from "./useAddToCalendar";
 import { recordShareDestination } from "../../analytics/shareDestination";
 import {
@@ -1851,9 +1851,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             title: event.name,
             startIso: event.masterStartAtUtc ?? null,
             endIso: event.masterEndAtUtc ?? null,
-            location: publicEvent.hideAddressUntilTicket
-              ? publicEvent.venueName
-              : publicEvent.address ?? publicEvent.venueName,
+            location: offeringCalendarLocation({
+              venueName: publicEvent.venueName,
+              address: publicEvent.address,
+              addressHidden: publicEvent.hideAddressUntilTicket,
+            }),
             // Web only, and only when the page really has a location (test
             // windows and some embeds have none): no link rather than a crash.
             url:

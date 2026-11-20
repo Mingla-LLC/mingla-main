@@ -557,7 +557,7 @@ const renderPublicEventPage = (
       // [TEST-MOD-APPROVED #4420] Harness registration only — Add to calendar
       // (built only from real times) is outside this close-callback contract.
       case "@mingla/offering-rendering/offeringCalendar.cjs":
-        return { offeringCalendarEntry: () => null };
+        return { offeringCalendarEntry: () => null, offeringCalendarLocation: () => null };
       case "./useAddToCalendar":
         return { useAddToCalendar: () => ({ open: () => undefined, chooser: null }) };
       // [TEST-MOD-APPROVED #4063] Harness registration only — the shared
