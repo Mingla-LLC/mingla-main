@@ -388,7 +388,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 gap list 07-A: party type optional at a venue; re-sealed.
 // issue #4490 gap list 07-D: menu ordering mode; re-sealed.
 // issue #4490 gap list 07-E: Today money; re-sealed.
-export const BOOTSTRAP_SHA256 = "d21f3fdf7f9f0e94043e6cb0d083632f69618558d32d709385421ca70f8cd77b";
+// issue #4490 gap list 07-L: venue cover for an event; re-sealed.
+export const BOOTSTRAP_SHA256 = "57eb13084947527ac4cba149435f58f55328bf3bf4e188c7c586cf80ccac77a5";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

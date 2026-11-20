@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/event-cover-attest-selection/issue_4490_copy_venue_cover.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-copy-venue-cover",
+  "profile": "deno-2-unit"
+}

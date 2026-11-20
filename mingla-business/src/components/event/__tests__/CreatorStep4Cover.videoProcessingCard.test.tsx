@@ -49,6 +49,8 @@ jest.mock("../../ui/Button", () => {
   };
 });
 jest.mock("../../ui/CoverPickerSheet", () => ({ CoverPickerSheet: (): null => null }));
+// TEST-MOD-APPROVED #4490 07-L: the step now reads the event's venue cover (no venue here).
+jest.mock("../../../hooks/useEventVenueCover", () => ({ useEventVenueCover: (): null => null }));
 jest.mock("../../ui/EventCoverMedia", () => ({ EventCoverMedia: (): null => null }));
 jest.mock("../../theme/ThemeControlRow", () => ({ ThemeControlRow: (): null => null }));
 jest.mock("../../theme/ThemeSheet", () => ({ ThemeSheet: (): null => null }));

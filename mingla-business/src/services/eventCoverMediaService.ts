@@ -440,3 +440,60 @@ export const clearEventCover = async (serverEventId: string): Promise<void> => {
     );
   }
 };
+
+/**
+ * #4490 07-L — copy the venue's cover onto an event at that venue. The edge
+ * copies an image/GIF into event_covers/<brand>/<event>/ (so removing the venue
+ * cover later doesn't break the event) and returns a video cover as it is.
+ * The caller applies the result through the normal upload path.
+ */
+export interface CopiedVenueCover {
+  url: string;
+  type: EventCoverMediaType;
+  posterUrl: string;
+}
+
+export const copyVenueCoverToEvent = async (
+  serverEventId: string,
+  venueId: string,
+): Promise<CopiedVenueCover> => {
+  requireServerEventId(serverEventId);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(serverEventId)) {
+    throw new EventCoverMediaError("missing_server_event_id", "Save this event before using the venue's cover.");
+  }
+  const { data, error } = await supabase.functions.invoke("event-cover-attest-selection", {
+    body: { action: "copy_venue_cover", event_id: serverEventId, venue_id: venueId },
+  });
+  if (error !== null) throw new EventCoverMediaError("upload_failed", error.message);
+  const row = data !== null && typeof data === "object" && !Array.isArray(data) ? (data as Record<string, unknown>) : {};
+  const type = row.type;
+  if (
+    typeof row.url !== "string" ||
+    typeof row.poster_url !== "string" ||
+    (type !== "image" && type !== "gif" && type !== "video")
+  ) {
+    throw new EventCoverMediaError("upload_failed", "The venue's cover could not be copied.");
+  }
+  return { url: row.url, type, posterUrl: row.poster_url };
+};
+
+/** #4490 07-L — the patch the cover step applies (provider upload, no credit). */
+export const venueCoverPatch = (copied: CopiedVenueCover, venueName: string): {
+  coverMediaUrl: string;
+  coverMediaPosterUrl: string;
+  coverMediaType: EventCoverMediaType;
+  coverMediaProvider: "upload";
+  coverMediaSourceUrl: null;
+  coverMediaCredit: null;
+  coverMediaCreditUrl: null;
+  coverMediaAlt: string;
+} => ({
+  coverMediaUrl: copied.url,
+  coverMediaPosterUrl: copied.posterUrl,
+  coverMediaType: copied.type,
+  coverMediaProvider: "upload",
+  coverMediaSourceUrl: null,
+  coverMediaCredit: null,
+  coverMediaCreditUrl: null,
+  coverMediaAlt: `${venueName} cover`,
+});

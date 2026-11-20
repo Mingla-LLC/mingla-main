@@ -645,7 +645,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 gap list 07-A: party type optional at a venue; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 gap list 07-D: menu ordering mode; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 gap list 07-E: Today money; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "794be652b8654a9d015d715dec5b30fda00b438222dece2e8f3b5b060a2be7b8";
+// issue #4490 gap list 07-L: venue cover for an event; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "319456c868d904829046cc3d4969517276b943e62485439ca6597b413adc43bf";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
