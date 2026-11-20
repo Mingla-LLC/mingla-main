@@ -174,6 +174,13 @@ export function useBuyerVenueOrdering(
     initialBuyer: { name: sitting?.buyerName ?? "" },
   });
   const [discountCode, setDiscountCode] = useState("");
+  // N126 (#4490 07-D): the host may change the ordering mode while a basket
+  // is open; read it again when the review opens (the preview also carries it).
+  const reviewOpen = cart.state.view === "review";
+  const refetchConfig = configQuery.refetch;
+  useEffect(() => {
+    if (reviewOpen) void refetchConfig();
+  }, [reviewOpen, refetchConfig]);
   // #4490 07-D — sent only where the venue offers the choice (Both).
   const [pickupChoice, setPickup] = useState(false);
   const pickup = pickupChoice && venueOrderingOffersPickup(config);

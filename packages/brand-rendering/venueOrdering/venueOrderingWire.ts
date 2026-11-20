@@ -248,6 +248,9 @@ export function parseVenueOrderPreview(
   data: Record<string, unknown>,
 ): VenueOrderPreview {
   return {
+    ...(data.orderMode === "table" || data.orderMode === "counter" || data.orderMode === "both"
+      ? { orderMode: data.orderMode }
+      : {}),
     currency: String(data.currency ?? ""),
     listSubtotalCents: Number(
       data.listSubtotalCents ?? data.subtotalCents ?? 0,

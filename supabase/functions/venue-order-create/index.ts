@@ -608,6 +608,13 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       // rather than stacking (D-9).
       tipsEnabled: ctx.settings.tips_enabled === true,
       counterPickupEnabled: ctx.settings.counter_pickup_enabled === true,
+      // N126 (#4490 07-D): the venue's ordering mode as it is NOW, so a review
+      // built before the host changed it shows what this order will do.
+      orderMode: ctx.settings.table_service_enabled === false
+        ? "counter"
+        : ctx.settings.counter_pickup_enabled === true
+        ? "both"
+        : "table",
       discounts: discountQuote.applied.map((entry) => ({
         id: entry.discountId,
         kind: entry.kind,

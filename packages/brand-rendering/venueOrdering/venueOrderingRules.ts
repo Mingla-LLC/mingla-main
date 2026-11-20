@@ -550,6 +550,25 @@ export function venueOrderingIsCounterPickup(
   return pickup && venueOrderingOffersPickup(config);
 }
 
+/**
+ * N126 (#4490 07-D) — the config the review shows. The basket may have been
+ * built before the host changed the ordering mode; the server's preview
+ * carries the mode it will apply now, and that wins.
+ */
+export function venueOrderingReviewConfig(
+  config: VenueOrderingConfig,
+  preview: { orderMode?: VenueOrderingConfig["orderMode"] } | null,
+): VenueOrderingConfig {
+  const mode = preview?.orderMode;
+  if (mode === undefined || mode === config.orderMode) return config;
+  return {
+    ...config,
+    orderMode: mode,
+    tableServiceEnabled: mode !== "counter",
+    counterPickupEnabled: mode !== "table",
+  };
+}
+
 /** #4490 07-D — the "I'll collect it" switch: a scanned spot at a Both venue. */
 export function venueOrderingOffersPickup(config: VenueOrderingConfig): boolean {
   return config.spotState === "ok" && config.tableServiceEnabled !== false &&

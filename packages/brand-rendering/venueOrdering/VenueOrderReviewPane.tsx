@@ -72,6 +72,7 @@ import {
   venueOrderingFulfilmentLine,
   venueOrderingIsCounterPickup,
   venueOrderingOffersPickup,
+  venueOrderingReviewConfig,
 } from "./venueOrderingRules";
 import { accentEdgeOnFill, accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 import { OfferingStepper } from "@mingla/offering-rendering/OfferingDecideParts";
@@ -188,8 +189,11 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   pickup = false,
   onPickupChange,
 }) => {
-  const counterPickup = venueOrderingIsCounterPickup(config, pickup);
-  const offersPickup = venueOrderingOffersPickup(config) && onPickupChange !== undefined;
+  // N126: the server's current mode (from the preview) wins over the mode
+  // the basket was built with.
+  const shown = venueOrderingReviewConfig(config, preview);
+  const counterPickup = venueOrderingIsCounterPickup(shown, pickup);
+  const offersPickup = venueOrderingOffersPickup(shown) && onPickupChange !== undefined;
   const Input = TextInputComponent ?? TextInput;
   const priced = previewStatus === "ready" && preview !== null;
   const money = (cents: number): string =>
@@ -301,7 +305,7 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
         </Pressable>
       </View>
       <Text style={[styles.headChip, { color: palette.tertiaryText }]}>
-        {venueOrderHandoverChip(config, pickup)}
+        {venueOrderHandoverChip(shown, pickup)}
       </Text>
 
       {/* ── the basket ──────────────────────────────────────────────────── */}
@@ -497,7 +501,7 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
           style={[styles.blockHelp, { color: palette.primaryText }]}
           testID="venue-order-fulfilment-line"
         >
-          {venueOrderingFulfilmentLine(config, pickup)}
+          {venueOrderingFulfilmentLine(shown, pickup)}
         </Text>
         {offersPickup ? (
           <View style={styles.pickupRow}>

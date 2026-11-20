@@ -52,6 +52,7 @@ export {
   venueOrderingFulfilmentLine,
   venueOrderingIsCounterPickup,
   venueOrderingOffersPickup,
+  venueOrderingReviewConfig,
   venueOrderingItemOrderable,
   venueOrderingMenuGroups,
   venueOrderingModifierFailure,

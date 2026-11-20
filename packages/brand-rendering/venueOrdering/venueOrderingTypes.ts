@@ -153,6 +153,8 @@ export interface VenueOrderCodeOutcome {
 }
 
 export interface VenueOrderPreview {
+  /** N126 — the server's ordering mode at preview time (absent on older servers). */
+  orderMode?: VenueOrderingMode;
   currency: string;
   listSubtotalCents: number;
   discountCents: number;

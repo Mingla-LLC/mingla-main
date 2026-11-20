@@ -10,6 +10,7 @@
 jest.mock("../../../services/supabase", () => ({ supabase: { rpc: jest.fn(), functions: { invoke: jest.fn() } } }));
 
 import {
+  parseVenueOrderPreview,
   parseVenueOrderingConfig,
   venueOrderCreateBody,
 } from "@mingla/brand-rendering/venueOrdering/venueOrderingWire";
@@ -18,6 +19,7 @@ import {
   venueOrderingFulfilmentLine,
   venueOrderingIsCounterPickup,
   venueOrderingOffersPickup,
+  venueOrderingReviewConfig,
   type VenueOrderingConfig,
 } from "@mingla/brand-rendering/venueOrdering";
 import { venueOrderModeOf, venueOrderModeErrorCopy, type VenueOrderingSettings } from "../../../hooks/useVenueOrderingSettings";
@@ -75,6 +77,23 @@ describe("#4490 07-D ordering mode", () => {
     expect(venueOrderHandoverChip(state("both"), true)).toBe("Collect from the counter");
     expect(venueOrderHandoverChip(state("both"))).toBe("Ordering for Table 6");
     expect(venueOrderHandoverChip(state("table"))).toBe("Ordering for Table 6");
+  });
+
+  it("N126: the review follows the server's current mode, not the basket's", () => {
+    // The basket was built while the venue ordered to the table; the host then
+    // switched to counter. The preview carries the server's mode.
+    const preview = parseVenueOrderPreview({ currency: "NGN", orderMode: "counter" });
+    expect(preview.orderMode).toBe("counter");
+    const shown = venueOrderingReviewConfig(state("table"), preview);
+    expect(venueOrderingFulfilmentLine(shown)).toBe("Collect it at the counter. We'll call your name.");
+    expect(venueOrderHandoverChip(shown)).toBe("Collect from the counter");
+    // ...and back to table: the I'll collect it switch is no longer offered.
+    const back = venueOrderingReviewConfig(state("both"), parseVenueOrderPreview({ currency: "NGN", orderMode: "table" }));
+    expect(venueOrderingOffersPickup(back)).toBe(false);
+    // An older server (no orderMode) leaves the basket's config untouched.
+    const old = state("both");
+    expect(venueOrderingReviewConfig(old, parseVenueOrderPreview({ currency: "NGN" }))).toBe(old);
+    expect(venueOrderingReviewConfig(old, null)).toBe(old);
   });
 
   it("no scanned spot stays a counter order", () => {
