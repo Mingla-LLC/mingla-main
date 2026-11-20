@@ -352,6 +352,38 @@ Deno.test("#4514 send: a text that fails falls back to the email on the route", 
   ]);
 });
 
+Deno.test("#4514 retry: a retried claim whose text already went answers duplicate; it counts as sent, no email follows and it is not failed", async () => {
+  // The first try died after the provider took the text; the claim came back
+  // after 10 minutes and the dispatcher's (key, channel) slot says duplicate.
+  const h = harness({
+    recipients: [],
+    pages: [[claimed(1)]],
+    dispatch: (input) =>
+      Promise.resolve(
+        input.contact?.includes("@")
+          ? ok("email")
+          : ({
+            success: true,
+            deliveries: [{
+              channel: "sms",
+              status: "duplicate",
+              providerMessageId: null,
+            }],
+          } as DispatchV2Result),
+      ),
+  });
+  const out = await drainFormRequests(h.deps, { budgetMs: 1_000 });
+  assertEquals([out.sent, out.failed], [1, 0]);
+  assertEquals(h.sent.map((s) => s.idempotency_key), [
+    `brand_form_request:${id(901)}:sms`,
+  ]);
+  const settle = h.rpcs.find((c) => c.fn === "brand_form_request_settle");
+  assertEquals(
+    [settle?.args.p_status, settle?.args.p_channel, settle?.args.p_reason],
+    ["sent", "sms", null],
+  );
+});
+
 Deno.test("#4514 drain: a full page keeps draining; when the time budget runs out the rest stays queued for the cron (resumable)", async () => {
   const full = Array.from(
     { length: 25 },

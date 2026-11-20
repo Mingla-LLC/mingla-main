@@ -214,6 +214,10 @@ export function parseClaimed(value: unknown): ClaimedRequest | null {
   };
 }
 
+// A retried claim (its first try died after the provider took the send) meets
+// the dispatcher's (idempotency key, channel) slot and comes back "duplicate":
+// that channel already sent, so it counts as sent and stops the route (no
+// email on top of the text, no "failed" that lets the host pay again).
 function delivered(
   result: DispatchV2Result,
   channel: FormRequestChannel,
@@ -222,7 +226,8 @@ function delivered(
   return (result.deliveries ?? []).some((d) =>
     d.channel === channel &&
     (d.status === "sent" || d.status === "sending" ||
-      d.status === "delivered" || d.status === "queued")
+      d.status === "delivered" || d.status === "queued" ||
+      d.status === "duplicate")
   );
 }
 
