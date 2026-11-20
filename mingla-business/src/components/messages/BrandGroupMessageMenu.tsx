@@ -21,6 +21,7 @@ import { Icon, type IconName } from "../ui/Icon";
 const ACTION_ICON: Record<BrandGroupMenuActionKey, IconName> = {
   reply: "reply",
   copy: "copy",
+  select_text: "edit",
   signal: "flag",
   select: "check",
 };

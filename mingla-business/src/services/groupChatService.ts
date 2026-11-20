@@ -163,10 +163,15 @@ export async function listMessages(
     )
     .eq("conversation_id", conversationId)
     .is("deleted_at", null)
-    .order("created_at", { ascending: true })
+    // #4420 P2-2: the NEWEST `limit` messages (newest first, then reversed
+    // below). Ascending + limit returned the OLDEST 80, so a busy room never
+    // showed its latest messages.
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(limit);
   if (error) return { messages: [], error: error.message };
-  const messages = (data ?? []) as EventGroupMessage[];
+  // Oldest first, as every caller expects (the panel appends new ones last).
+  const messages = ((data ?? []) as EventGroupMessage[]).slice().reverse();
   // #4459: a brand post stores no sender (guests never see which team member
   // wrote it); the team reads the author from brand_guest_post_authors.
   const brandIds = messages.filter((m) => m.sender_kind === "brand").map((m) => m.id);
@@ -214,6 +219,31 @@ export async function listParticipants(
     })),
     error: null,
   };
+}
+
+/**
+ * #4420: the team member has seen the Guests side up to now. Moves only the
+ * caller's own read marker (conversation_participants.last_read_at, the
+ * "update their own participation" policy); the guests unread count
+ * (issue_4420_brand_guest_activity) counts guest messages after it.
+ */
+export async function markBrandGuestChatRead(
+  conversationId: string,
+): Promise<{ error: string | null }> {
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth.user?.id ?? null;
+  if (userId === null) return { error: "Not signed in" };
+  const { data, error } = await supabase
+    .from("conversation_participants")
+    .update({ last_read_at: new Date().toISOString() })
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .select("id");
+  if (error) return { error: error.message };
+  // 0 rows means the marker did not move (not a participant, or RLS refused):
+  // say so, never a silent success.
+  if (!data || data.length === 0) return { error: "Could not mark this chat read" };
+  return { error: null };
 }
 
 export async function setBroadcastOnly(

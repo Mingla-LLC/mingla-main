@@ -12,7 +12,21 @@
         "mingla-business/src/services/laneEdgeInvoke.ts",
         "mingla-business/src/services/resilientFetch.ts",
         "mingla-business/src/services/supabase.ts",
-        "mingla-business/src/theme/surfaceTokens.ts"
+        "mingla-business/src/theme/surfaceTokens.ts",
+        "mingla-business/app/_layout.tsx",
+        "mingla-business/app/b/[brandSlug]/index.tsx",
+        "mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
+        "mingla-business/server/buyGateAnswers.js",
+        "mingla-business/src/components/buyer/BuyerConnectionNotice.tsx",
+        "mingla-business/src/components/buyer/BuyerConnectionNoticeFull.tsx",
+        "mingla-business/src/components/buyer/buyerConnectionNoticeTypes.ts",
+        "mingla-business/src/components/buyer/buyerConnectionCopy.ts",
+        "mingla-business/src/services/buyerMediaRoute.ts",
+        "mingla-business/src/services/connectionFailure.ts",
+        "packages/offering-rendering/CountAwareGallery.tsx",
+        "packages/offering-rendering/EventCoverMedia.tsx",
+        "packages/offering-rendering/offeringMediaRoute.ts",
+        "packages/offering-rendering/useOfferingImageUri.ts"
       ]
     },
     {
@@ -286,7 +300,24 @@
         "mingla-business/app/checkout-trip/[tripEventId]/_layout.tsx",
         "mingla-business/src/components/offering/LazyPublicParts.tsx",
         "packages/offering-rendering/offeringCta.ts",
-        "packages/offering-rendering/socialProofMomentum.ts"
+        "packages/offering-rendering/socialProofMomentum.ts",
+        "mingla-business/api/experience-checkout-bundle.js",
+        "mingla-business/api/trip-checkout-bundle.js",
+        "mingla-business/app/checkout-experience/[experienceEventId]/index.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/index.tsx",
+        "mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx",
+        "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
+        "mingla-business/server/buyGateAnswers.js",
+        "mingla-business/src/components/buyer/BuyerConnectionNotice.tsx",
+        "mingla-business/src/components/buyer/BuyerConnectionNoticeFull.tsx",
+        "mingla-business/src/components/buyer/buyerConnectionNoticeTypes.ts",
+        "mingla-business/src/components/buyer/buyerConnectionCopy.ts",
+        "mingla-business/src/components/trip/TripPreview.tsx",
+        "mingla-business/src/hooks/usePublicTripBySlug.ts",
+        "mingla-business/src/services/buyerMediaRoute.ts",
+        "mingla-business/src/services/connectionFailure.ts",
+        "mingla-business/src/services/publicExperienceService.ts",
+        "packages/offering-rendering/CountAwareGallery.tsx"
       ]
     },
     {
@@ -3260,7 +3291,20 @@
         "mingla-business/app/g/[token].tsx",
         "mingla-admin/src/hooks/useMinuteClock.js",
         "mingla-admin/src/lib/brandGroupHostAssign.js",
-        "mingla-admin/src/lib/brandGroupSideAccess.js"
+        "mingla-admin/src/lib/brandGroupSideAccess.js",
+        "mingla-business/src/components/messages/openMessageLink.ts",
+        "mingla-business/src/components/messages/webVisualViewport.ts",
+        "mingla-business/src/i18n/brandMessagesEnglish.ts",
+        "mingla-business/src/i18n/locales/en/brandMessages.json",
+        "mingla-business/src/utils/brandGroupPlanFold.ts",
+        "mingla-business/src/utils/brandMessagesInbox.ts",
+        "mingla-business/src/utils/brandThreadHistory.ts",
+        "mingla-business/src/utils/brandThreadSend.ts",
+        "mingla-business/src/utils/brandThreadSupport.ts",
+        "mingla-business/src/utils/messageLinks.ts",
+        "mingla-business/src/utils/threadRailPreference.ts",
+        "mingla-business/src/utils/webDocumentCss.ts",
+        "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql"
       ]
     },
     {
@@ -5080,6 +5124,7 @@
         "mingla-business/src/components/groupChat/GroupChatModerationSheet.tsx",
         "mingla-business/src/components/groupChat/GroupChatPanel.tsx",
         "mingla-business/src/components/groupChat/LazyGroupChatPanel.tsx",
+        "mingla-business/src/components/groupChat/LazyBrandGuestPeoplePanel.tsx",
         "mingla-business/src/components/messages/BrandGuestChatSection.tsx",
         "mingla-business/src/hooks/useBrandGuestChats.ts",
         "mingla-business/src/hooks/useEventGroupChat.ts",
@@ -5087,7 +5132,10 @@
         "mingla-business/src/services/brandGuestChatList.ts",
         "mingla-business/src/services/groupChatService.ts",
         "supabase/functions/claim-pending-trip-chat-participation/index.ts",
-        "supabase/migrations/20280805004459_issue_4459_brand_guest_chat.sql"
+        "supabase/migrations/20280805004459_issue_4459_brand_guest_chat.sql",
+        "mingla-business/src/utils/brandGuestAudience.ts",
+        "supabase/migrations/20281120014420_issue_4420_brand_guest_activity.sql",
+        "supabase/migrations/20281120024420_issue_4420_guest_rooms_start_broadcast.sql"
       ]
     },
     {

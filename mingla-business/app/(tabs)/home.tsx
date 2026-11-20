@@ -1018,7 +1018,6 @@ export default function HomeTab(): React.ReactElement {
         <ScrollView
           testID="home-desktop-content"
           style={styles.desktopOuterScroll}
-          scrollEnabled={false}
           contentContainerStyle={[styles.scroll, styles.desktopScroll]}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -1085,12 +1084,9 @@ export default function HomeTab(): React.ReactElement {
                     ) : null}
                   </View>
                 )}
-                <ScrollView
-                  testID="home-desktop-recent-scroll"
-                  style={styles.desktopUpcomingList}
-                  scrollEnabled={isWideDesktop}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={[styles.desktopEventsGrid]}
+                <View
+                  testID="home-desktop-recent-grid"
+                  style={[styles.desktopUpcomingList, styles.desktopEventsGrid]}
                 >
                   {renderRecentState()}
                   {recent.rows.slice(0, 10).map((row) => (
@@ -1104,7 +1100,7 @@ export default function HomeTab(): React.ReactElement {
                       />
                     </View>
                   ))}
-                </ScrollView>
+                </View>
               </View>
             </>
           )}
@@ -1338,21 +1334,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   desktopScroll: {
-    flex: 1,
-    flexGrow: 1,
-    minHeight: 0,
     paddingHorizontal: 0,
     paddingTop: space[2],
-    paddingBottom: 0,
+    paddingBottom: space[6],
   },
   desktopUpcomingPane: {
-    flex: 1,
-    minHeight: 0,
-    overflow: "hidden",
+    // #4420: in page flow, never height-constrained or clipped.
   },
   desktopUpcomingList: {
-    flex: 1,
-    minHeight: 0,
     marginTop: space[2],
   },
   emptyScroll: {

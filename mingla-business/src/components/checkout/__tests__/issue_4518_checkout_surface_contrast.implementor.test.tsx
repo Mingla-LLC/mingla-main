@@ -340,6 +340,49 @@ describe.each(THEMES)("#4518 — checkout is readable on %s", (_name, palette) =
     }
   });
 
+  // #4518 follow-up — the one "couldn't connect" notice (both layers: the
+  // eager plain notice and the designed card), on Graphite (public pages, no
+  // host palette) and inside every host checkout palette.
+  test.each([
+    ["plain", "connection"],
+    ["plain", "accessCheck"],
+    ["full", "connection"],
+    ["full", "accessCheck"],
+  ] as const)("the %s %s notice's text is readable and its outlines reach 3:1 (rendered)", (layer, variant) => {
+    const shell = require("../../buyer/BuyerConnectionNotice") as typeof import("../../buyer/BuyerConnectionNotice");
+    const fullModule = require("../../buyer/BuyerConnectionNoticeFull") as typeof import("../../buyer/BuyerConnectionNoticeFull");
+    const View_ = layer === "plain" ? shell.BuyerConnectionNoticePlain : fullModule.BuyerConnectionNoticeFull;
+    const tree = mount(
+      <View style={{ backgroundColor: color.canvas }}>
+        <View_
+          variant={variant}
+          title="We couldn’t connect"
+          body="Your connection looks weak or unstable."
+          retrying={false}
+          fails={0}
+          onTryAgain={() => undefined}
+          onBack={variant === "connection" ? () => undefined : undefined}
+        />
+      </View>,
+    );
+    const found = measureText(tree.root, color.canvas);
+    const texts = found.map((f) => f.text);
+    expect(texts).toEqual(expect.arrayContaining(["Try again"]));
+    if (variant === "connection") expect(texts).toEqual(expect.arrayContaining(["Back"]));
+    for (const f of found) expect({ ...f, ok: f.ratio >= TEXT_MIN }).toMatchObject({ ok: true });
+    const outlined = tree.root.findAll(
+      (n: Instance) =>
+        typeof n.type === "string" && flat(n.props.style).borderColor === color.controlOutline,
+    );
+    expect(outlined.length).toBeGreaterThan(0);
+    // `controlOutline` sits on the card (Back) and on card2 (inline card).
+    for (const under of [[color.canvas, color.card], [color.canvas, color.card2]]) {
+      const ratio = contrastOn(color.controlOutline, under);
+      expect({ layer, variant, under, ratio, ok: ratio >= OUTLINE_MIN }).toMatchObject({ ok: true });
+    }
+    tree.unmount();
+  });
+
   test.each(["primary", "secondary", "ghost"] as const)(
     "a %s button's label is readable, enabled and disabled (rendered)",
     (variant) => {

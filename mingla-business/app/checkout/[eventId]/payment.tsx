@@ -108,6 +108,8 @@ import { CheckoutOfferingStrip } from "../../../src/components/checkout/Checkout
 import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
 import { resolveChosenDaysLine } from "../../../src/utils/eventDateDisplay";
 import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
+import { BUYER_CONNECTION_COPY } from "../../../src/components/buyer/buyerConnectionCopy";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 
 // ORCH-0849 (2026-05-15): CHECKOUT_RETURN_URL_SCHEME removed — native
 // PaymentSheet handles return-URL internally via the StripeNativeProvider's
@@ -892,8 +894,11 @@ function CheckoutPaymentScreenContent({
         }, 1200);
       } catch (error) {
         setProcessing(false);
-        const message =
-          error instanceof Error
+        // #4518 — a request that never got an answer shows the one connection
+        // message (never "Failed to fetch"); a server refusal keeps its words.
+        const message = isConnectionFailure(error)
+          ? BUYER_CONNECTION_COPY.PAYMENT_CONNECTION_ERROR
+          : error instanceof Error
             ? error.message
             : "Payment could not be completed. Please try again.";
         setPaymentError(message);

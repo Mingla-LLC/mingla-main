@@ -3,7 +3,7 @@ import path from "node:path";
 import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
 
-test("desktop ids identify the vertical Recent list while Business Pulse owns live presentation", () => {
+test("desktop has no nested Recent scroll while Business Pulse owns live presentation", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "home.tsx"), "utf8");
   const ast = parse(source, {
     sourceType: "module",
@@ -28,10 +28,8 @@ test("desktop ids identify the vertical Recent list while Business Pulse owns li
       });
     },
   });
-  expect(found.get("home-desktop-recent-scroll")).toEqual({
-    tag: "ScrollView",
-    horizontal: false,
-  });
+  // [TEST-MOD-APPROVED #4420] Recent is a plain View in page flow now.
+  expect(found.has("home-desktop-recent-scroll")).toBe(false);
   expect(found.has("home-live-carousel")).toBe(false);
   expect(source.match(/<BusinessPulsePanel/g)).toHaveLength(2);
 });

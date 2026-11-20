@@ -47,7 +47,8 @@ describe("#3988 Brand group composer and mentions", () => {
     );
     expect(route.match(/<KeyboardAvoidingView\b/g)).toHaveLength(1);
     expect(route).toContain("liftedBottomSpacer(");
-    expect(route).toContain('Platform.OS === "web" && windowHeight > 0');
+    // #4420 A2: the web pin moved into messagesScreenWebSize (visible height off the desktop shell).
+    expect(route).toContain("messagesScreenWebSize(windowHeight, embedded || shellActive)");
     expect(route).toContain('keyboardShouldPersistTaps="handled"');
     expect(route).toContain("listBrandGroupMentionCandidates");
     expect(route).toContain("mentionedUserIds: selectedMentions.map");

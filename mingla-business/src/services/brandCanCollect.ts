@@ -20,6 +20,7 @@
  * checkout 409 remains the terminal backstop"): the server re-checks the
  * brand when the buyer pays, so nothing is sold that should not be.
  */
+import { isConnectionFailure } from "./connectionFailure";
 import { supabase } from "./supabase";
 
 export type BrandCanCollect = "yes" | "no" | "unknown";
@@ -33,9 +34,10 @@ type RpcError = { code?: string | null; message?: string | null } | null;
  * A request that never reached the server carries no Postgres / PostgREST
  * code: supabase-js reports a thrown fetch as `{ code: "", message: "TypeError:
  * Failed to fetch" }`. Anything with a code is the server's own answer.
+ * #4518: delegates to the ONE classifier (`connectionFailure.ts`).
  */
 export const isTransportFailure = (error: RpcError): boolean =>
-  error !== null && (error.code === undefined || error.code === null || error.code === "");
+  error !== null && isConnectionFailure(error);
 
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
