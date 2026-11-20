@@ -327,7 +327,7 @@ BEGIN
      OR (SELECT order_id FROM public.ticket_checkout_sessions WHERE id = v_session) IS DISTINCT FROM v_order
      OR (SELECT count(*) FROM public.order_installments
           WHERE order_id = v_order AND kind = 'scheduled' AND schedule_version = 0
-            AND addon_portion_minor = 0 AND status = 'scheduled') <> 3
+            AND addon_portion_minor = 0 AND status = 'scheduled' AND ticket_type_id = v_tt) <> 3
      OR (SELECT sum(amount_cents) FROM public.order_installments WHERE order_id = v_order) <> 180000 THEN
     RAISE EXCEPTION 'E-8 finalize must write the v2 rows and terms, got %', v_fin;
   END IF;

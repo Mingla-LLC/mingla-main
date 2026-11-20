@@ -1662,7 +1662,7 @@ BEGIN
         INSERT INTO public.order_installments (
           order_id, ordinal, amount_cents, currency, due_at, status,
           provider, collection_method, plan_bound_at,
-          kind, schedule_version, addon_portion_minor
+          kind, schedule_version, addon_portion_minor, ticket_type_id
         ) VALUES (
           v_session.order_id,
           (v_inst_item ->> 'ordinal')::smallint,
@@ -1677,7 +1677,9 @@ BEGIN
           CASE WHEN public.issue_3645_finalize_is_paystack(p_stripe_payment_intent_id, p_stripe_charge_id)
                THEN NULL ELSE now() END,
           -- issue #4522 — a planned row, version 0, with its spread add-on share.
-          'scheduled', 0, COALESCE((v_inst_item ->> 'addonPortionCents')::bigint, 0)
+          'scheduled', 0, COALESCE((v_inst_item ->> 'addonPortionCents')::bigint, 0),
+          -- v2 rows name their package (rebalance and flex allocation); v1 stays NULL.
+          NULLIF(v_inst_item ->> 'sourceTicketTypeId', '')::uuid
         );
       END LOOP;
 
@@ -1815,7 +1817,7 @@ BEGIN
       INSERT INTO public.order_installments (
         order_id, ordinal, amount_cents, currency, due_at, status,
         provider, collection_method, plan_bound_at,
-        kind, schedule_version, addon_portion_minor
+        kind, schedule_version, addon_portion_minor, ticket_type_id
       ) VALUES (
         v_order_id,
         (v_inst_item ->> 'ordinal')::smallint,
@@ -1830,7 +1832,9 @@ BEGIN
         CASE WHEN public.issue_3645_finalize_is_paystack(p_stripe_payment_intent_id, p_stripe_charge_id)
              THEN NULL ELSE v_now END,
         -- issue #4522 — a planned row, version 0, with its spread add-on share.
-        'scheduled', 0, COALESCE((v_inst_item ->> 'addonPortionCents')::bigint, 0)
+        'scheduled', 0, COALESCE((v_inst_item ->> 'addonPortionCents')::bigint, 0),
+        -- v2 rows name their package (rebalance and flex allocation); v1 stays NULL.
+        NULLIF(v_inst_item ->> 'sourceTicketTypeId', '')::uuid
       );
     END LOOP;
   END IF;
