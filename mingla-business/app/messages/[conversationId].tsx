@@ -40,8 +40,10 @@ import { BrandGroupTile } from "../../src/components/messages/BrandGroupTile";
 import { openMessageLink } from "../../src/components/messages/openMessageLink";
 // #4420: the Guests side of a brand's one thread is the Guest chat panel, on
 // intent through the one shared lazy chunk (never a static GroupChatPanel).
-import { LazyBrandGuestPeoplePanel, LazyGroupChatPanel, useMessagesEnglishReady } from "../../src/components/groupChat/LazyGroupChatPanel";
+import { LazyBrandGuestPeoplePanel } from "../../src/components/groupChat/LazyBrandGuestPeoplePanel";
+import { LazyGroupChatPanel, ensureMessagesEnglish, threadSupport } from "../../src/components/groupChat/LazyGroupChatPanel";
 import { Button } from "../../src/components/ui/Button";
+import { createRetryableLazyErrorBoundary } from "../../src/components/ui/RetryableLazyBoundary";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { Toast, type ToastKind } from "../../src/components/ui/Toast";
@@ -88,14 +90,6 @@ import {
 } from "../../src/utils/brandGroupMentions";
 import { isNearLatestBrandGroupMessage } from "../../src/utils/brandGroupScroll";
 import {
-  earlierCursor,
-  mayHaveEarlier,
-  mergeNewestPage,
-  prependEarlierPage,
-  showsJumpToLatest,
-  stickyDayIndices,
-} from "../../src/utils/brandThreadHistory";
-import {
   BRAND_PLAN_CARD_PREVIEW,
   brandPlanActivityTitle,
   foldBrandPlanLines,
@@ -115,11 +109,7 @@ import {
   writeThreadRailCollapsed,
   type ThreadRailTab,
 } from "../../src/utils/threadRailPreference";
-import {
-  captureSendTarget,
-  dispatchBrandThreadSend,
-  type BrandThreadSendTarget,
-} from "../../src/utils/brandThreadSend";
+import type { BrandThreadSendTarget } from "../../src/utils/brandThreadSend";
 import { visibleBrandGroupPendingUploads } from "../../src/utils/brandGroupPendingUploads";
 import {
   BRAND_GROUP_HEART,
@@ -205,13 +195,23 @@ export default function BrandGroupThreadRoute(): React.ReactElement {
   return <BrandGroupMessagesShell conversationId={conversationId} />;
 }
 
+// #4420: the Messages words and thread helpers load on intent (never in the
+// boot chunk); the lazy boundary shows the loader and Try again.
+const BrandGroupMessagesShell = createRetryableLazyErrorBoundary<{ conversationId: string | null }>(
+  async () => {
+    await ensureMessagesEnglish();
+    return { default: BrandGroupMessagesShellBody };
+  },
+  { loadingLabel: "Opening Messages", style: { flex: 1 } },
+);
+
 /**
  * #4304 — on desktop web the Messages page is three panes: the group list,
  * the thread and the details rail. Choosing another group swaps the thread in
  * place (router.setParams), so the list keeps its scroll, search and filter.
  * Phones keep separate screens.
  */
-function BrandGroupMessagesShell({ conversationId }: { conversationId: string | null }): React.ReactElement {
+function BrandGroupMessagesShellBody({ conversationId }: { conversationId: string | null }): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const { height: windowHeight } = useWindowDimensions();
   const router = useRouter();
@@ -223,19 +223,6 @@ function BrandGroupMessagesShell({ conversationId }: { conversationId: string | 
   const guestChats = useBrandGuestChats();
   const shellActive = React.useContext(HostShellInsetContext);
   const { t } = useBusinessMediaTranslation();
-  // #4420: the Messages words load on intent (never in the boot chunk).
-  const words = useMessagesEnglishReady();
-  if (!words.ready) {
-    return (
-      <SafeScreen edges={["top"]} style={styles.screen}>
-        <View style={styles.state}>
-          {words.error ? (
-            <Button label={t("messages.try_again")} variant="secondary" onPress={words.retry} />
-          ) : <ActivityIndicator color={color.text2} />}
-        </View>
-      </SafeScreen>
-    );
-  }
   // #4420 redirect: /messages/<a Guest chat id> lands on its brand's thread
   // with Guests selected (or the Guest chat alone when there is no Team chat).
   const inGroups = groups.some((group) => group.conversation_id === conversationId);
@@ -715,8 +702,8 @@ function BrandGroupThreadScreen({
       const result = await listBrandGroupMessages(conversationId);
       if (result.error) throw new Error(result.error);
       // #4420: a refresh keeps older pages already loaded with Load earlier.
-      setMessages((current) => mergeNewestPage(current, result.messages));
-      setHasEarlier((current) => current ?? mayHaveEarlier(result.messages.length));
+      setMessages((current) => threadSupport().mergeNewestPage(current, result.messages));
+      setHasEarlier((current) => current ?? threadSupport().mayHaveEarlier(result.messages.length));
       setError(null);
       await markBrandGroupRead(conversationId);
       announceRead();
@@ -871,7 +858,7 @@ function BrandGroupThreadScreen({
   const updateLatestMessageProximity = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      setFarFromLatest(showsJumpToLatest(contentSize.height - layoutMeasurement.height - contentOffset.y));
+      setFarFromLatest(threadSupport().showsJumpToLatest(contentSize.height - layoutMeasurement.height - contentOffset.y));
       autoFollowLatest.current = isNearLatestBrandGroupMessage({
         contentHeight: contentSize.height,
         viewportHeight: layoutMeasurement.height,
@@ -883,15 +870,15 @@ function BrandGroupThreadScreen({
 
   // #4420: Load earlier messages, the real older page (120 per page).
   async function loadEarlier(): Promise<void> {
-    const before = earlierCursor(messages);
+    const before = threadSupport().earlierCursor(messages);
     if (!conversationId || !before || loadingEarlier) return;
     autoFollowLatest.current = false;
     setLoadingEarlier(true);
     try {
       const older = await listBrandGroupMessages(conversationId, before);
       if (older.error) throw new Error(older.error);
-      setMessages((current) => prependEarlierPage(current, older.messages));
-      setHasEarlier(mayHaveEarlier(older.messages.length));
+      setMessages((current) => threadSupport().prependEarlierPage(current, older.messages));
+      setHasEarlier(threadSupport().mayHaveEarlier(older.messages.length));
     } catch (cause) {
       showError(cause instanceof Error ? cause.message : t("messages.earlier_failed"));
     } finally {
@@ -909,11 +896,11 @@ function BrandGroupThreadScreen({
     // #4420 SC-5: the send is bound to the Team chat showing when Send was
     // pressed; a switch to Guests mid-send never redirects it.
     const content = composer.trim();
-    const target = captureSendTarget("team", conversationId);
+    const target = threadSupport().captureSendTarget("team", conversationId);
     if (!target || !content || sending) return;
     setSending(true);
     try {
-      await dispatchBrandThreadSend(target, content, {
+      await threadSupport().dispatchBrandThreadSend(target, content, {
         team: (id, text) => sendBrandGroupMessage({
           conversationId: id,
           content: text,
@@ -1307,7 +1294,7 @@ function BrandGroupThreadScreen({
           onContentSizeChange={followLatestMessage}
           onScroll={updateLatestMessageProximity}
           // #4420: day markers stay at the top while you scroll.
-          stickyHeaderIndices={messages.length ? stickyDayIndices(threadItems, 1) : undefined}
+          stickyHeaderIndices={messages.length ? threadSupport().stickyDayIndices(threadItems, 1) : undefined}
           scrollEventThrottle={16}
           testID="brand-group-message-scroll"
         >

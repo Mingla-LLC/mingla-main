@@ -14,3 +14,7 @@ export function addMessagesEnglish(): void {
   const current = copy.messages;
   copy.messages = { ...(typeof current === "object" ? current : {}), ...messagesEnglish.messages };
 }
+
+// #4420: the thread helpers (history paging, guarded send) ride the same
+// on-intent import as the words (LazyGroupChatPanel.ensureMessagesEnglish).
+export * from "../utils/brandThreadSupport";

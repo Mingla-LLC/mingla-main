@@ -66,13 +66,8 @@ import {
   guestWho,
   compactGuestsChrome,
 } from "../../utils/brandGuestAudience";
-import { showsJumpToLatest } from "../../utils/brandThreadHistory";
-import {
-  captureSendTarget,
-  dispatchBrandThreadSend,
-  guestSendNeedsConfirm,
-  type BrandThreadSendTarget,
-} from "../../utils/brandThreadSend";
+import type { BrandThreadSendTarget } from "../../utils/brandThreadSend";
+import { threadSupport } from "./LazyGroupChatPanel";
 
 /**
  * #4420 — the Guests side of a brand's one thread. The thread screen owns the
@@ -193,7 +188,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
   const sendNow = async (target: BrandThreadSendTarget, content: string): Promise<void> => {
     setSending(true);
     try {
-      const result = await dispatchBrandThreadSend(target, content, {
+      const result = await threadSupport().dispatchBrandThreadSend(target, content, {
         team: () => Promise.reject(new Error("The Guests composer never sends to the Team chat.")),
         guests: (id, text) => postPlannerMessage(id, text),
       });
@@ -210,9 +205,9 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
 
   const handleSend = () => {
     const content = composer.trim();
-    const target = captureSendTarget("guests", conversationId);
+    const target = threadSupport().captureSendTarget("guests", conversationId);
     if (content.length === 0 || target === null || sending) return;
-    if (!guestSendNeedsConfirm(target.side, sendConfirmed)) {
+    if (!threadSupport().guestSendNeedsConfirm(target.side, sendConfirmed)) {
       void sendNow(target, content);
       return;
     }
@@ -461,7 +456,7 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId, brandId
           place — which is why it also survives #1894. */}
       <FlatList
         ref={listRef}
-        onScroll={(event) => setFarFromLatest(showsJumpToLatest(event.nativeEvent.contentOffset.y))}
+        onScroll={(event) => setFarFromLatest(threadSupport().showsJumpToLatest(event.nativeEvent.contentOffset.y))}
         scrollEventThrottle={64}
         style={[styles.messages, styles.messagesGuests]}
         contentContainerStyle={styles.messagesContent}

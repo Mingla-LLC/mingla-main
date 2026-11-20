@@ -44,7 +44,7 @@ describe("Load earlier is real pagination", () => {
     const route = source("app/messages/[conversationId].tsx");
     expect(route).toContain("const older = await listBrandGroupMessages(conversationId, before);");
     expect(route).toContain('testID="brand-group-load-earlier"');
-    expect(route).toContain("setMessages((current) => mergeNewestPage(current, result.messages));");
+    expect(route).toContain("setMessages((current) => threadSupport().mergeNewestPage(current, result.messages));");
   });
 });
 
@@ -58,7 +58,7 @@ describe("Jump to latest and sticky days", () => {
   });
   test("both sides render Jump to latest; the Team side sticks its day markers", () => {
     const route = source("app/messages/[conversationId].tsx");
-    expect(route).toContain("stickyHeaderIndices={messages.length ? stickyDayIndices(threadItems, 1) : undefined}");
+    expect(route).toContain("stickyHeaderIndices={messages.length ? threadSupport().stickyDayIndices(threadItems, 1) : undefined}");
     expect(route).toContain('testID="brand-group-jump-latest"');
     expect(source("src/components/groupChat/GroupChatPanel.tsx")).toContain('testID="brand-guests-jump-latest"');
   });

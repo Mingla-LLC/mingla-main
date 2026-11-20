@@ -77,10 +77,10 @@ describe("SC-5 a send stays bound to the side showing when Send was pressed", ()
 
   test("both composers send through the bound dispatch, each refusing the other side", () => {
     const thread = source("app/messages/[conversationId].tsx");
-    expect(thread).toContain('const target = captureSendTarget("team", conversationId);');
+    expect(thread).toContain('const target = threadSupport().captureSendTarget("team", conversationId);');
     expect(thread).toContain('guests: () => Promise.reject(new Error("The Team composer never sends to guests."))');
     const panel = source("src/components/groupChat/GroupChatPanel.tsx");
-    expect(panel).toContain('const target = captureSendTarget("guests", conversationId);');
+    expect(panel).toContain('const target = threadSupport().captureSendTarget("guests", conversationId);');
     expect(panel).toContain('team: () => Promise.reject(new Error("The Guests composer never sends to the Team chat."))');
     expect(panel).toContain("guests: (id, text) => postPlannerMessage(id, text)");
   });

@@ -152,12 +152,7 @@ const palette = {
   blue: {
     500: "#3b82f6",
     300: "#8fb3ff",
-    // #4420 Host Messages Guests side: the composer wash, the selected Guests
-    // segment and badge fill, and the Guests hairline.
-    a10: "rgba(59, 130, 246, 0.10)",
     a14: "rgba(59, 130, 246, 0.14)",
-    a22: "rgba(59, 130, 246, 0.22)",
-    a45: "rgba(59, 130, 246, 0.45)",
   },
   amber: { 500: "#f59e0b", 300: "#fbbf24", a14: "rgba(245, 158, 11, 0.14)" },
   transparent: "transparent",
@@ -256,9 +251,9 @@ export const color = {
   infoText: palette.blue[300],
   infoTint: palette.blue.a14,
   /** #4420 Guests side (info blue): composer wash, selected segment / badge fill, hairline. */
-  guestWash: palette.blue.a10,
-  guestTint2: palette.blue.a22,
-  guestLine: palette.blue.a45,
+  guestWash: "rgba(59, 130, 246, 0.10)",
+  guestTint2: "rgba(59, 130, 246, 0.22)",
+  guestLine: "rgba(59, 130, 246, 0.45)",
   warning: palette.amber[500],
   warningText: palette.amber[300],
   warningTint: palette.amber.a14,

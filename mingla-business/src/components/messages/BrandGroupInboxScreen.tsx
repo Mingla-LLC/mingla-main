@@ -7,7 +7,7 @@
  * may import this file statically.
  */
 import React from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { SafeScreen } from "../ui/SafeScreen";
@@ -22,8 +22,6 @@ import { useSupportStaff } from "../../hooks/useSupportStaff";
 import { brandEnquiryThreadRoute } from "../../utils/brandEnquiryWaiting";
 import { brandInboxRowHref } from "../../utils/brandMessagesInbox";
 import { useBusinessMediaTranslation } from "../../i18n";
-import { useMessagesEnglishReady } from "../groupChat/LazyGroupChatPanel";
-import { Button } from "../ui/Button";
 import { brandGroupChat } from "../../constants/brandGroupChatTokens";
 import { color, space } from "../../constants/designSystem";
 
@@ -79,23 +77,6 @@ export function BrandGroupInboxScreen(): React.ReactElement {
   const staff = useSupportStaff();
   const { isWideDesktop } = useResponsiveLayout();
   const { t } = useBusinessMediaTranslation();
-  // #4420: the Messages words load on intent (never in the boot chunk).
-  const words = useMessagesEnglishReady();
-
-  if (!words.ready) {
-    return (
-      <SafeScreen edges={["top"]} style={styles.screen} testID="brand-groups-messages-index">
-        <View style={styles.wordsState} accessibilityLabel={t("messages.opening")}>
-          {words.error ? (
-            <>
-              <Text style={styles.desktopEmptyText}>{t("messages.words_failed")}</Text>
-              <Button label={t("messages.try_again")} variant="secondary" onPress={words.retry} />
-            </>
-          ) : <ActivityIndicator color={color.text2} />}
-        </View>
-      </SafeScreen>
-    );
-  }
 
   const list = (
     <BrandGroupInboxList
@@ -142,7 +123,6 @@ const styles = StyleSheet.create({
   supportTitle: { color: brandGroupChat.textPrimary, fontSize: 15, fontWeight: "700" },
   supportText: { color: brandGroupChat.textSoft, fontSize: 13 },
   desktop: { flex: 1, flexDirection: "row" },
-  wordsState: { flex: 1, alignItems: "center", justifyContent: "center", gap: space[4], padding: space[6] },
   enquiries: { marginHorizontal: space[4] },
   // #4420 one-thread design: the inbox column is 360.
   desktopList: { width: 360, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: brandGroupChat.hairline },
