@@ -105,8 +105,13 @@ describe("#3720 official Brand groups Host contract", () => {
     expect(topBar).toContain('router.push("/messages"');
     expect(topBar).not.toContain('icon="search"');
     expect(index).toContain("<BrandGroupInboxList");
-    expect(inbox).toContain("Your Brand groups");
-    expect(inbox).toContain("Brand groups you support");
+    // [TEST-MOD-APPROVED #4420] the section titles moved into the Messages locale
+    // file (one row per brand): same two sections, own and supported.
+    const words = read("src/i18n/locales/en/brandMessages.json");
+    expect(inbox).toContain('t("messages.section_mine")');
+    expect(inbox).toContain('t("messages.section_support")');
+    expect(words).toContain('"section_mine": "Your brands"');
+    expect(words).toContain('"section_support": "Brands you support"');
     expect(index).toContain("Support inbox");
   });
 

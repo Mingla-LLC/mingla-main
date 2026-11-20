@@ -6,9 +6,10 @@
  */
 import { color, scrim } from "./designSystem";
 
-// #4420 Graphite Glass: every chat colour is a designSystem token. Sent
-// bubbles stay the brand orange with ink text; received bubbles sit on the
-// card surface with white text.
+// #4420 Graphite Glass: every chat colour is a designSystem token.
+// #4420 D2 (approved design, "no orange fields"): your own bubble is the
+// selected graphite material (card3) with white text; received bubbles sit on
+// the card surface. Orange stays a small accent (the quote bar).
 export const brandGroupChat = {
   screenBg: color.canvas,
   surface: color.card,
@@ -22,19 +23,22 @@ export const brandGroupChat = {
   textSoft: color.text3,
   textMuted: color.text4,
   scrim: scrim.modal,
-  mineBubble: color.accent,
+  mineBubble: color.card3,
+  /** Ink text on accent/paper controls (Mingla team screens). Not for bubbles. */
   mineText: color.onAccent,
-  mineTextSecondary: color.onAccent2,
-  otherBubble: color.card3,
+  /** #4420 D2: text on your own (graphite) bubble. */
+  mineBubbleText: color.textStrong,
+  mineTextSecondary: color.text2,
+  otherBubble: color.card,
   otherText: color.textStrong,
   senderName: color.text2,
   mentionBg: color.accentTint,
   mentionText: color.accentText,
-  mentionMineBg: color.onAccentTint,
+  mentionMineBg: color.accentTint,
   quoteBg: color.fill.pressed,
-  quoteMineBg: color.onAccentTint2,
+  quoteMineBg: color.fill.pressed,
   quoteBar: color.accent,
-  quoteBarMine: color.onAccent,
+  quoteBarMine: color.accent,
   selected: color.focus,
   bubbleRadius: 20,
   bubbleTail: 6,

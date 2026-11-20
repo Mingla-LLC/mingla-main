@@ -618,8 +618,12 @@ export function phase3dContractDigest(manifest) {
 // #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows (filename order) and both sides' pg17 suites; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3645 bundle 2e-1 (merge of main): registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 merge of main after #3645 bundle 2e-1: kept main's 20281119003645 row before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 1931 replay: skipped 20281120014420_issue_4420_brand_guest_activity.sql by exact filename on the filtered #1931 temp replay (it calls issue_4459_is_brand_team, defined only by the skipped 20280805004459; #2492 closure); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4514 merge of main after #4420: kept the three #4420 rows before the 20281120034514 row (filename order) and #4420's 20281120014420 skip;
 // #4514 brand forms: removed the exact-filename skip of 20281120034514 from the #1931 filtered template replay (the #2492 gate now credits applied CREATE TABLE columns); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "3eaade528b1c2da4d2ad59d71b6cb2e8091f19f432be8ae14c59b581bf71e0f7";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "52fbfea216924a6d693499d5f754b57aeb6b8e70ee08760fee7f4e34050f4160";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

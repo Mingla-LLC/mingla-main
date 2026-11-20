@@ -400,6 +400,11 @@ BEGIN
   PERFORM pg_temp.ok('L-REMOVE-TEAM the team cannot remove a team member', v::text LIKE '%22023%');
 END $l$;
 
+-- [TEST-MOD #4420] New Guest rooms start in Broadcast (20281120024420). The
+-- cases below need guests to post, so the rooms are switched to Open chat
+-- first; what each case proves is unchanged.
+UPDATE public.conversations SET is_broadcast_only = false WHERE linked_entity_type = 'brand_guests';
+
 -- ═══ A: adversarial ═════════════════════════════════════════════════════════
 DO $a$
 DECLARE v jsonb; v_r text; v_msg uuid; v_i integer; v_err text;
