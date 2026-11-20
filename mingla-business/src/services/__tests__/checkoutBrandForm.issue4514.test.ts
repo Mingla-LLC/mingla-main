@@ -42,8 +42,10 @@ import {
 } from "../checkoutBrandFormService";
 import { checkoutFormRefusalCopy, CHECKOUT_FORM_COPY } from "../../components/checkout/intake/checkoutFormCopy";
 import {
+  answersForForm,
   canContinueStep,
   markPurchaseHandedOff,
+  recoveryAction,
   probeOf,
   purchaseHandedOff,
 } from "../../components/checkout/intake/CheckoutQuestionsStep";
@@ -198,9 +200,26 @@ describe("#4514 W5 fix 1: the Details probe uses the buyer's checkout credential
     expect(probeOf("success", await fetchCheckoutForm("e9"))).toBe("none");
   });
 
-  it("OP-5 (fix 5): a signed-in buyer who already answered gets no Questions step", () => {
-    expect(parseCheckoutForm({ ...base, mode: "required_step", answered: true })).toBeNull();
-    expect(probeOf("success", parseCheckoutForm({ ...base, mode: "required_step", answered: true }))).toBe("none");
+  // Wave 7 (OP-5 UX, the approved contract §5.4 "A guest who answered before
+  // sees their answers filled in"): the step is NOT skipped; it opens prefilled.
+  it("OP-5 (wave 7): a signed-in buyer who already answered gets the step, prefilled with their own answers", () => {
+    const answered = {
+      ...base,
+      mode: "required_step",
+      answered: true,
+      prefill: { answers: { q1: "Vegan", q9: { bad: true }, q7: ["a", "b"] }, versionId: "v-old" },
+    };
+    const form = parseCheckoutForm(answered);
+    expect(form).not.toBeNull();
+    expect(probeOf("success", form)).toBe("required");
+    expect(form?.prefill).toEqual({ answers: { q1: "Vegan", q7: ["a", "b"] }, versionId: "v-old" });
+    // Only questions of the live version are filled; nothing typed yet means the prefill.
+    expect(answersForForm(form!, null)).toEqual({ q1: "Vegan" });
+    // What the buyer types wins over the prefill.
+    expect(answersForForm(form!, { formId: ANSWERS.formId, versionId: ANSWERS.versionId, answers: { q1: "Halal" } })).toEqual({ q1: "Halal" });
+    // A buyer who has not answered gets no prefill.
+    expect(parseCheckoutForm({ ...base, mode: "required_step" })?.prefill).toBeNull();
+    expect(parseCheckoutForm({ ...base, mode: "required_step", prefill: answered.prefill })?.prefill).toBeNull();
   });
 });
 
@@ -221,7 +240,9 @@ describe("#4514 W5 fix 2: no dead end", () => {
   it.each(ROUTES)("%s: those failures show the normal retryable checkout error", (file) => {
     const src = readSrc(file);
     const msg = file.includes("payment") ? "PAID_CHECKOUT_FAILED_MESSAGE" : "FREE_CHECKOUT_FAILED_MESSAGE";
-    expect(src).toMatch(new RegExp(`BRAND_FORM_SERVER_FAILURE\\.test\\([\\s\\S]{0,120}\\)\\s*\\?[\\s\\S]{0,200}?${msg}`));
+    // A ternary (payment) or an early-return arm (the free rails keep #2337's
+    // exact `setSubmitError(freeCheckoutErrorMessage(error))` line).
+    expect(src).toMatch(new RegExp(`BRAND_FORM_SERVER_FAILURE\\.test\\([\\s\\S]{0,120}\\)\\s*(\\?|\\)\\s*\\{)[\\s\\S]{0,200}?${msg}`));
     expect(src).not.toMatch(/brand_form_\\w\+\)\$/);
   });
 
@@ -236,9 +257,24 @@ describe("#4514 W5 fix 2: no dead end", () => {
   it("a refusal with no form offers Try again that re-reads the form, and Continue stays on", () => {
     const root = path.resolve(__dirname, "../../..");
     const step = fs.readFileSync(path.join(root, "src/components/checkout/intake/CheckoutQuestionsStep.tsx"), "utf8");
-    expect(step).toMatch(/loadFailed \|\| refusedWithoutForm \? \(\s*<Button\s+label=\{CHECKOUT_FORM_COPY\.tryAgain\}[\s\S]*?onPress=\{\(\) => void refetch\(\)\}/);
+    expect(step).toMatch(/recovery === "try_again" \? \(\s*<Button\s+label=\{CHECKOUT_FORM_COPY\.tryAgain\}[\s\S]*?onPress=\{retry\}/);
+    expect(step).toMatch(/const retry = useCallback\(\(\): void => \{\s*void refetch\(\)/);
     expect(step).toContain("const canContinue = canContinueStep({ submitting, loading, form, missing });");
     expect(CHECKOUT_FORM_COPY.noFormRefused).toMatch(/Nothing was charged\. Try again\./);
+  });
+
+  // Wave 7 (P3-C): one failed Try again is enough; then the way out, never a loop.
+  it("after one failed Try again the step offers Back to event instead of another Try again", () => {
+    expect(recoveryAction({ failing: true, loading: false, failedRetries: 0, canGoBack: true })).toBe("try_again");
+    expect(recoveryAction({ failing: true, loading: false, failedRetries: 1, canGoBack: true })).toBe("back_to_event");
+    expect(recoveryAction({ failing: true, loading: false, failedRetries: 3, canGoBack: true })).toBe("back_to_event");
+    expect(recoveryAction({ failing: true, loading: true, failedRetries: 1, canGoBack: true })).toBe("none");
+    expect(recoveryAction({ failing: false, loading: false, failedRetries: 1, canGoBack: true })).toBe("none");
+    expect(CHECKOUT_FORM_COPY.backToEvent).toBe("Back to event");
+    expect(CHECKOUT_FORM_COPY.retryFailed).not.toMatch(/Try again/);
+    for (const file of ["app/checkout/[eventId]/buyer.tsx", "app/checkout-experience/[experienceEventId]/buyer.tsx"]) {
+      expect(readSrc(file)).toContain("onBackToEvent={handleBackToEvent}");
+    }
   });
 });
 

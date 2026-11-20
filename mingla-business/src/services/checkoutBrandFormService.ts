@@ -8,7 +8,8 @@
  *   the SAME credential the buyer presents to checkout: the session bearer
  *   (attached by the client) and the private ticket link. The server applies the
  *   one visibility rule its required-answers check uses (review fix 1), and a
- *   signed-in buyer who already answered gets no step (OP-5).
+ *   signed-in buyer who already answered gets the step PREFILLED with their own
+ *   answers (OP-5); Continue then updates their one response.
  * - "After they purchase" (§5.5): a personal link for the buyer's own order,
  *   from brand-form-submit `{op:"purchase_link"}`; possession is the checkout
  *   session's buyer status token. Never an invite (decision 17).
@@ -23,6 +24,12 @@ import { supabase } from "./supabase";
 
 export type CheckoutFormMode = "required_step" | "optional_on_page" | "after_purchase";
 
+/** OP-5: the signed-in buyer's own earlier answers, to open the step filled in. */
+export interface CheckoutFormPrefill {
+  answers: Record<string, string | number | string[] | null>;
+  versionId: string | null;
+}
+
 export interface CheckoutForm {
   mode: CheckoutFormMode;
   formId: string;
@@ -31,6 +38,22 @@ export interface CheckoutForm {
   definition: BrandFormDefinitionShape | null;
   doorFullAnswers: boolean;
   brand: BrandHeaderData;
+  /** OP-5: set when this signed-in buyer already answered (the step opens prefilled). */
+  prefill: CheckoutFormPrefill | null;
+}
+
+/** The server's prefill, keeping only answer shapes a question can hold. Pure; exported for tests. */
+export function parsePrefill(raw: unknown): CheckoutFormPrefill | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const a = r.answers;
+  if (!a || typeof a !== "object" || Array.isArray(a)) return null;
+  const answers: CheckoutFormPrefill["answers"] = {};
+  for (const [id, value] of Object.entries(a as Record<string, unknown>)) {
+    if (typeof value === "string" || typeof value === "number") answers[id] = value;
+    else if (Array.isArray(value) && value.every((v) => typeof v === "string")) answers[id] = value as string[];
+  }
+  return { answers, versionId: typeof r.versionId === "string" ? r.versionId : null };
 }
 
 const MODES: readonly CheckoutFormMode[] = ["required_step", "optional_on_page", "after_purchase"];
@@ -40,8 +63,6 @@ export function parseCheckoutForm(data: unknown): CheckoutForm | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (d.active !== true || typeof d.formId !== "string") return null;
-  // OP-5: this signed-in buyer already answered the form; nothing to ask.
-  if (d.answered === true) return null;
   const mode = MODES.find((m) => m === d.mode);
   if (mode === undefined) return null;
   const def = d.definition;
@@ -57,6 +78,8 @@ export function parseCheckoutForm(data: unknown): CheckoutForm | null {
     name: typeof d.name === "string" ? d.name : "",
     definition,
     doorFullAnswers: d.doorFullAnswers === true,
+    // OP-5 (contract): a returning buyer's step opens prefilled, never skipped.
+    prefill: d.answered === true ? parsePrefill(d.prefill) : null,
     brand: brandHeaderFromServer(
       d.brand && typeof d.brand === "object" ? (d.brand as Record<string, unknown>) : null,
     ),

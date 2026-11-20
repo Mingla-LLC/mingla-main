@@ -387,6 +387,15 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     }
   }, [hasNoLines, experienceEventId, router]);
 
+  // #4514 P3-C — the Questions step's way out once a Try again has failed.
+  const handleBackToEvent = useCallback((): void => {
+    if (experience !== null) {
+      router.replace(`/exp/${experience.brandSlug}/${experience.slug}` as never);
+    } else if (experienceEventId !== null) {
+      router.replace(`/checkout-experience/${experienceEventId}` as never);
+    }
+  }, [router, experience, experienceEventId]);
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
@@ -526,11 +535,11 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         }
         // #4514 — a server failure of the form check or stash happened before
         // any reservation: the normal retryable error, never the step.
-        setSubmitError(
-          BRAND_FORM_SERVER_FAILURE.test((error as { code?: string } | null)?.code ?? "")
-            ? FREE_CHECKOUT_FAILED_MESSAGE
-            : freeCheckoutErrorMessage(error),
-        );
+        if (BRAND_FORM_SERVER_FAILURE.test((error as { code?: string } | null)?.code ?? "")) {
+          setSubmitError(FREE_CHECKOUT_FAILED_MESSAGE);
+          return;
+        }
+        setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
         submitInFlight.current = false;
         setSubmitting(false);
@@ -645,6 +654,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
               continueLabel={finalLabel}
               submitting={submitting}
               submitError={submitError}
+              onBackToEvent={handleBackToEvent}
             />
           </React.Suspense>
         </ScrollView>

@@ -66,15 +66,22 @@ export function probeOf(
   return "none";
 }
 
-/** Keep the answers of questions that still exist in this version. Pure; exported for tests. */
+/**
+ * Keep the answers of questions that still exist in this version. With nothing
+ * typed yet for this form, a returning buyer's own earlier answers (OP-5
+ * prefill) fill the step. Pure; exported for tests.
+ */
 export function answersForForm(
   form: CheckoutForm,
   value: CheckoutBrandFormAnswers | null,
 ): BrandAnswers {
-  if (value === null || value.formId !== form.formId || form.definition === null) return {};
+  if (form.definition === null) return {};
+  const source =
+    value !== null && value.formId === form.formId ? value.answers : (form.prefill?.answers ?? null);
+  if (source === null) return {};
   const ids = new Set(form.definition.questions.map((q) => q.id));
   const out: BrandAnswers = {};
-  for (const [id, answer] of Object.entries(value.answers)) {
+  for (const [id, answer] of Object.entries(source)) {
     if (!ids.has(id)) continue;
     out[id] = typeof answer === "number" ? String(answer) : answer;
   }
@@ -121,6 +128,23 @@ export interface CheckoutQuestionsStepProps {
   submitting: boolean;
   /** A create error the details screen would show (kept visible on this step). */
   submitError?: string | null;
+  /** P3-C: after one failed Try again the step offers this instead (no retry loop). */
+  onBackToEvent?: () => void;
+}
+
+/**
+ * P3-C: what the step offers when it has no form to show. First Try again;
+ * once a Try again has itself failed, Back to event (never a loop). Pure;
+ * exported for tests.
+ */
+export function recoveryAction(input: {
+  failing: boolean;
+  loading: boolean;
+  failedRetries: number;
+  canGoBack: boolean;
+}): "none" | "try_again" | "back_to_event" {
+  if (!input.failing || input.loading) return "none";
+  return input.failedRetries >= 1 && input.canGoBack ? "back_to_event" : "try_again";
 }
 
 export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
@@ -135,6 +159,7 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
   continueLabel,
   submitting,
   submitError = null,
+  onBackToEvent,
 }) => {
   const query = useQuery(checkoutFormQueryOptions(eventId, ticketLinkToken));
   const form = query.data ?? null;
@@ -148,6 +173,16 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
   useEffect(() => {
     if (refusal !== null) void refetch();
   }, [refusal, refetch]);
+
+  // P3-C: a Try again that itself fails is counted; one is enough to offer the way out.
+  const [failedRetries, setFailedRetries] = useState<number>(0);
+  const retry = useCallback((): void => {
+    void refetch().then((result) => {
+      if (result.status === "error" || result.data === null || result.data === undefined) {
+        setFailedRetries((n) => n + 1);
+      }
+    });
+  }, [refetch]);
 
   const [missing, setMissing] = useState<boolean>(true);
   const handleMissing = useCallback((ids: string[]): void => setMissing(ids.length > 0), []);
@@ -172,13 +207,25 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
   // The server asked for answers this screen has no form for: say so plainly
   // and offer Try again; Continue stays on (never a disabled dead end).
   const refusedWithoutForm = form === null && refusal !== null && !loading;
+  const recovery = recoveryAction({
+    failing: loadFailed || refusedWithoutForm,
+    loading,
+    failedRetries,
+    canGoBack: onBackToEvent !== undefined,
+  });
+  // After a failed Try again the copy stops asking for another one.
+  const retryExhausted = recovery === "back_to_event";
   const reason = loadFailed
-    ? CHECKOUT_FORM_COPY.loadFailed
+    ? retryExhausted
+      ? CHECKOUT_FORM_COPY.retryFailed
+      : CHECKOUT_FORM_COPY.loadFailed
     : required && missing
       ? CHECKOUT_FORM_COPY.needsAnswers
       : null;
   const refusalLine = refusedWithoutForm
-    ? CHECKOUT_FORM_COPY.noFormRefused
+    ? retryExhausted
+      ? CHECKOUT_FORM_COPY.retryFailed
+      : CHECKOUT_FORM_COPY.noFormRefused
     : checkoutFormRefusalCopy(refusal);
   const payload = (): CheckoutBrandFormAnswers | null =>
     form !== null && form.versionId !== null
@@ -206,13 +253,22 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
         </Text>
       ) : null}
       {loading ? <Text style={styles.note}>{CHECKOUT_FORM_COPY.loading}</Text> : null}
-      {loadFailed || refusedWithoutForm ? (
+      {recovery === "try_again" ? (
         <Button
           label={CHECKOUT_FORM_COPY.tryAgain}
           variant="secondary"
           size="md"
-          onPress={() => void refetch()}
+          onPress={retry}
           testID="checkout-questions-retry"
+        />
+      ) : null}
+      {recovery === "back_to_event" && onBackToEvent !== undefined ? (
+        <Button
+          label={CHECKOUT_FORM_COPY.backToEvent}
+          variant="secondary"
+          size="md"
+          onPress={onBackToEvent}
+          testID="checkout-questions-back-to-event"
         />
       ) : null}
       {form !== null && form.definition !== null ? (

@@ -65,6 +65,7 @@ import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
 import { radius as radiusTokens, space, edge } from "../../../src/constants/designSystem";
+import { eventPublicPath } from "../../../src/constants/publicUrls";
 import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
@@ -532,6 +533,15 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   }, [hasNoLines, eventId, router]);
 
   // ----- Handlers ---------------------------------------------------
+  // #4514 P3-C — the Questions step's way out once a Try again has failed.
+  const handleBackToEvent = useCallback((): void => {
+    if (event !== null) {
+      router.replace(eventPublicPath({ brandSlug: event.brandSlug, eventSlug: event.eventSlug }) as never);
+    } else if (eventId !== null) {
+      router.replace(`/checkout/${eventId}` as never);
+    }
+  }, [router, event, eventId]);
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
@@ -853,11 +863,11 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         }
         // #4514 — a server failure of the form check or stash happened before
         // any reservation: the normal retryable error, never the step.
-        setSubmitError(
-          BRAND_FORM_SERVER_FAILURE.test((error as { code?: string } | null)?.code ?? "")
-            ? FREE_CHECKOUT_FAILED_MESSAGE
-            : freeCheckoutErrorMessage(error),
-        );
+        if (BRAND_FORM_SERVER_FAILURE.test((error as { code?: string } | null)?.code ?? "")) {
+          setSubmitError(FREE_CHECKOUT_FAILED_MESSAGE);
+          return;
+        }
+        setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
         submitInFlight.current = false;
         setSubmitting(false);
@@ -1003,6 +1013,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
               continueLabel={finalLabel}
               submitting={submitting}
               submitError={submitError}
+              onBackToEvent={handleBackToEvent}
             />
           </React.Suspense>
         </ScrollView>

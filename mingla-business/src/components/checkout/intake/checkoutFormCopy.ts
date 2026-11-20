@@ -16,6 +16,9 @@ export const CHECKOUT_FORM_COPY = {
   needsAnswers: "Answer the required questions to continue",
   loadFailed: "Load the questions to continue",
   tryAgain: "Try again",
+  // P3-C: offered once a Try again has failed (no retry loop).
+  backToEvent: "Back to event",
+  retryFailed: "We still couldn't load the questions. Nothing was charged.",
   loading: "Loading the questions…",
   skip: "Skip",
   optionalNote: "Optional. You can skip these.",
