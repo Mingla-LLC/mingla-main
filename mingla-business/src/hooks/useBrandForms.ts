@@ -47,13 +47,17 @@ import type { BrandFormDefinition } from "../utils/brandFormDefinition";
 import { brandFormKeys } from "./brandFormKeys";
 import { loadRosterAnswers, type RosterAnswerIndex } from "../utils/guestRosterAnswers";
 import {
+  fetchFormRequestLog,
   previewFormRequest,
   sendFormRequest,
   setFormAutoRemind,
   type FormRequestChannel,
   type FormRequestInput,
+  type FormRequestLog,
   type FormRequestPreview,
   type FormRequestResult,
+  type FormRequestSendInput,
+  type FormRequestSubject,
 } from "../services/brandFormRequestService";
 
 export { brandFormKeys } from "./brandFormKeys";
@@ -305,14 +309,10 @@ export function useFormRequestPreview(input: FormRequestInput | null): UseQueryR
   });
 }
 
-export function useSendFormRequest(): UseMutationResult<
-  FormRequestResult,
-  Error,
-  FormRequestInput & { expectedCostMinor: number | null; currency: string | null }
-> {
+export function useSendFormRequest(): UseMutationResult<FormRequestResult, Error, FormRequestSendInput> {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: FormRequestInput & { expectedCostMinor: number | null; currency: string | null }) => sendFormRequest(v),
+    mutationFn: (v: FormRequestSendInput) => sendFormRequest(v),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: brandFormKeys.all });
     },
@@ -320,7 +320,7 @@ export function useSendFormRequest(): UseMutationResult<
 }
 
 export function useSetFormAutoRemind(): UseMutationResult<
-  { autoRemind: boolean; remindAt: string | null },
+  { autoRemind: boolean; remindAt: string | null; channels: FormRequestChannel[] },
   Error,
   { attachmentId: string; on: boolean; channels: FormRequestChannel[] }
 > {
@@ -329,6 +329,33 @@ export function useSetFormAutoRemind(): UseMutationResult<
     mutationFn: (v: { attachmentId: string; on: boolean; channels: FormRequestChannel[] }) => setFormAutoRemind(v),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: brandFormKeys.all });
+    },
+  });
+}
+
+/**
+ * Wave 4 review: the host's delivery log (sends and failures per guest, the
+ * automatic reminder runs) for one form on one page, or one guest. Loaded only
+ * when the host opens it.
+ */
+export function useFormRequestLog(
+  input: { formId: string; eventId: string; subject?: FormRequestSubject } | null,
+): UseQueryResult<FormRequestLog> {
+  const ready = useReady();
+  return useQuery<FormRequestLog>({
+    queryKey:
+      input === null
+        ? brandFormKeys.idle("request-log")
+        : brandFormKeys.requestLog(
+            input.formId,
+            input.eventId,
+            input.subject === undefined ? "all" : `${input.subject.kind}:${input.subject.id}`,
+          ),
+    enabled: ready && input !== null,
+    staleTime: 15_000,
+    queryFn: () => {
+      if (input === null) throw new Error("request_required");
+      return fetchFormRequestLog(input);
     },
   });
 }

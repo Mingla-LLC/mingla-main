@@ -10,7 +10,7 @@
  * draws no control for them.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -43,11 +43,14 @@ import { Chip, Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Tabs } from "../ui/Tabs";
-import { FORM_REQUEST_COPY, FORMS_COPY, modeLabel } from "./brandFormsCopy";
+import { FORM_REQUEST_COPY, FORM_REQUEST_LOG_COPY, FORMS_COPY, modeLabel } from "./brandFormsCopy";
 import { FormRequestSheet, type FormRequestSheetMode } from "./FormRequestSheet";
 import { FormsNotice } from "./FormsNotice";
 import { GuestQuestionsSheet } from "./GuestQuestionsSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
+
+// Wave 4 review: the delivery log loads only when the host opens it.
+const FormRequestLog = React.lazy(async () => ({ default: (await import("./FormRequestLog")).FormRequestLog }));
 
 type RTab = "summary" | "responses" | "not_answered";
 
@@ -106,6 +109,7 @@ export const BrandFormResponsesScreen: React.FC = () => {
   const { show, toast } = useFormsToast();
   // Wave 4: Ask guests to answer / Remind all / the earlier-guests prompt (event manager+, C5).
   const [request, setRequest] = useState<{ mode: FormRequestSheetMode; earlierCount?: number } | null>(null);
+  const [logOpen, setLogOpen] = useState<boolean>(false);
 
   const attachments = useMemo(() => detail.data?.attachments ?? [], [detail.data]);
   const paramEvent = typeof params.eventId === "string" ? params.eventId : null;
@@ -357,6 +361,16 @@ export const BrandFormResponsesScreen: React.FC = () => {
               testID="brand-form-ask-guests"
             />
           ) : null}
+          {canAsk ? (
+            <Button
+              label={FORM_REQUEST_LOG_COPY.open}
+              variant="secondary"
+              size="sm"
+              onPress={() => setLogOpen((v) => !v)}
+              accessibilityState={{ expanded: logOpen }}
+              testID="brand-form-delivery-log"
+            />
+          ) : null}
           {canChange ? (
             <Button
               label={FORMS_COPY.changeOrRemove}
@@ -408,6 +422,11 @@ export const BrandFormResponsesScreen: React.FC = () => {
     <View style={styles.host}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {content}
+        {logOpen && formId !== null && eventId !== null ? (
+          <Suspense fallback={null}>
+            <FormRequestLog formId={formId} eventId={eventId} />
+          </Suspense>
+        ) : null}
       </ScrollView>
 
       <Sheet visible={drawer !== null} onClose={() => setDrawer(null)} snapPoint="half">
@@ -463,7 +482,11 @@ export const BrandFormResponsesScreen: React.FC = () => {
           eventId={eventId}
           mode={request.mode}
           earlierCount={request.earlierCount}
-          autoRemind={attachment !== null ? { attachmentId: attachment.id, on: attachment.autoRemind } : null}
+          autoRemind={
+            attachment !== null
+              ? { attachmentId: attachment.id, on: attachment.autoRemind, channels: attachment.autoRemindChannels }
+              : null
+          }
           eventTitle={attachment?.eventName ?? null}
           notify={show}
         />

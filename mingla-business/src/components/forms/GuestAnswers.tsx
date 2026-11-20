@@ -8,7 +8,7 @@
  * Words, never colour alone. A page with no published form draws nothing.
  */
 
-import React, { useState } from "react";
+import React, { Suspense, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
@@ -21,9 +21,12 @@ import {
 } from "../../utils/guestRosterAnswers";
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
-import { FORM_REQUEST_COPY } from "./brandFormsCopy";
+import { FORM_REQUEST_COPY, FORM_REQUEST_LOG_COPY } from "./brandFormsCopy";
 import { FormRequestSheet } from "./FormRequestSheet";
 import { useFormsToast } from "./useFormsToast";
+
+// Wave 4 review: this guest's delivery log loads only when the host opens it.
+const FormRequestLog = React.lazy(async () => ({ default: (await import("./FormRequestLog")).FormRequestLog }));
 
 export interface GuestAnswersRowRef {
   eventId: string;
@@ -57,6 +60,7 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
   const answers = useRosterAnswers(eventId);
   // Wave 4: Remind this guest (not answered) or ask again, through the send sheet.
   const [asking, setAsking] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
   const { show, toast } = useFormsToast();
   if (answers.isLoading) return <Text style={styles.muted}>{COPY.loading}</Text>;
   if (answers.isError) {
@@ -103,6 +107,25 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
           onPress={() => setAsking(true)}
           testID="guest-answers-ask"
         />
+      ) : null}
+      {rsvpId !== null || orderIds.length > 0 ? (
+        <Button
+          label={FORM_REQUEST_LOG_COPY.open}
+          variant="secondary"
+          size="sm"
+          onPress={() => setLogOpen((v) => !v)}
+          accessibilityState={{ expanded: logOpen }}
+          testID="guest-answers-delivery-log"
+        />
+      ) : null}
+      {logOpen ? (
+        <Suspense fallback={null}>
+          <FormRequestLog
+            formId={index.page.form.id}
+            eventId={eventId}
+            subject={rsvpId !== null ? { kind: "rsvp", id: rsvpId } : { kind: "order", id: orderIds[0] ?? "" }}
+          />
+        </Suspense>
       ) : null}
       {asking ? (
         <FormRequestSheet

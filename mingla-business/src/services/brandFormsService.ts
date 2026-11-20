@@ -215,6 +215,8 @@ export interface BrandFormAttachment {
   eventId: string;
   mode: BrandFormMode;
   autoRemind: boolean;
+  /** The automatic reminder's stored channels (text, email; push waits for the Explorer form screen). */
+  autoRemindChannels: Array<"sms" | "email">;
   eventName: string | null;
   eventType: string | null;
 }
@@ -429,6 +431,7 @@ const parseAttachment = (
     eventId,
     mode: parseMode(r.mode),
     autoRemind: bool(r.auto_remind, false),
+    autoRemindChannels: contactChannels(r.auto_remind_channels),
     eventName: ev?.name ?? null,
     eventType: ev?.type ?? null,
   };
@@ -436,7 +439,11 @@ const parseAttachment = (
 
 const FORM_COLUMNS =
   "id, brand_id, name, status, draft, draft_rev, live_version_id, door_full_answers, updated_at, closed_at";
-const ATTACHMENT_COLUMNS = "id, form_id, event_id, mode, auto_remind";
+const ATTACHMENT_COLUMNS = "id, form_id, event_id, mode, auto_remind, auto_remind_channels";
+
+/** Stored reminder channels, push dropped (it waits for the Explorer form screen). */
+const contactChannels = (value: unknown): Array<"sms" | "email"> =>
+  Array.isArray(value) ? value.filter((c): c is "sms" | "email" => c === "sms" || c === "email") : [];
 
 const getSupabase = async () => (await import("./supabase")).supabase;
 
@@ -832,6 +839,9 @@ export interface AttachResult {
   earlierGuests: number;
   formStatus: BrandFormStatus;
   replacedAttachmentId: string | null;
+  /** The new attachment's stored automatic reminder (the earlier-guests sheet shows it). */
+  autoRemind: boolean;
+  autoRemindChannels: Array<"sms" | "email">;
 }
 
 export async function attachBrandForm(input: AttachInput): Promise<AttachResult> {
@@ -852,6 +862,8 @@ export async function attachBrandForm(input: AttachInput): Promise<AttachResult>
     earlierGuests: count(r.earlierGuests),
     formStatus: parseStatus(r.formStatus),
     replacedAttachmentId: strOrNull(r.replacedAttachmentId),
+    autoRemind: r.autoRemind === true,
+    autoRemindChannels: contactChannels(r.autoRemindChannels),
   };
 }
 

@@ -1,11 +1,15 @@
 /**
  * #4514 wave 4 — the send sheet behind "Ask guests to answer", "Remind" and the
- * "Ask earlier guests?" prompt (§4.6, §4.7). Audience, channels (Push free,
- * Text, Email free), the message, the reach line and the cost line come before
- * a confirm step; then a toast. Remind reaches only people who have not
- * answered. Each guest gets their own form link; a request never creates an
- * invite or grants page access (decision 17). The server throttles each guest
- * per form for 24 hours and re-checks the role (event manager and up, C5).
+ * "Ask earlier guests?" prompt (§4.6, §4.7). Audience, channels (Text, Email
+ * free; push waits for the Explorer form screen and is not offered), the
+ * message, the reach line and the cost line (real text parts, the daily text
+ * limit, quiet hours) come before a confirm step; then a toast. Texts with no
+ * price need the host's explicit tick. Remind reaches only people who have not
+ * answered; Ask for named guests reaches them even if they answered (Ask
+ * again). Each guest gets their own form link; a request never creates an
+ * invite or grants page access (decision 17). The server throttles each person
+ * per form for 24 hours, queues the sends and re-checks the role (event
+ * manager and up, C5).
  *
  * Loaded only through the lazy forms owner (never from an eager module).
  */
@@ -27,7 +31,7 @@ import { Chip } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Switch } from "../ui/Switch";
-import { costLine } from "../../utils/formRequestCost";
+import { canSendRequest, costLine, initialAudience, REQUEST_CHANNELS } from "../../utils/formRequestCost";
 import { FORM_REQUEST_COPY as COPY } from "./brandFormsCopy";
 import { errorSentence } from "./useFormsToast";
 
@@ -43,18 +47,17 @@ export interface FormRequestSheetProps {
   subjects?: FormRequestSubject[];
   /** The prompt's count ("Ask earlier guests?"). */
   earlierCount?: number;
-  /** With an attachment, the sheet shows the automatic reminder switch. */
-  autoRemind?: { attachmentId: string; on: boolean } | null;
+  /** With an attachment, the sheet shows the automatic reminder switch, its stored state and channels. */
+  autoRemind?: { attachmentId: string; on: boolean; channels?: FormRequestChannel[] } | null;
   brandName?: string | null;
   eventTitle?: string | null;
   notify: (kind: "success" | "error", message: string) => void;
 }
 
-const CHANNELS: ReadonlyArray<{ key: FormRequestChannel; label: string }> = [
-  { key: "push", label: COPY.push },
-  { key: "sms", label: COPY.sms },
-  { key: "email", label: COPY.email },
-];
+const CHANNELS: ReadonlyArray<{ key: FormRequestChannel; label: string }> = REQUEST_CHANNELS.map((key) => ({
+  key,
+  label: key === "sms" ? COPY.sms : COPY.email,
+}));
 
 export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
   visible,
@@ -70,10 +73,14 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
   notify,
 }) => {
   const kind: FormRequestKind = mode === "remind" ? "remind" : "ask";
-  const [audience, setAudience] = useState<FormRequestAudience>("unanswered");
-  const [channels, setChannels] = useState<FormRequestChannel[]>(["push", "email"]);
+  const named = subjects !== undefined && subjects.length > 0;
+  // Ask for named guests reaches them even if they already answered (Ask again).
+  const [audience, setAudience] = useState<FormRequestAudience>(initialAudience(mode, named));
+  const [channels, setChannels] = useState<FormRequestChannel[]>(["sms", "email"]);
   const [confirming, setConfirming] = useState(false);
+  const [confirmUnpriced, setConfirmUnpriced] = useState(false);
   const [remindOn, setRemindOn] = useState(autoRemind?.on ?? false);
+  const [remindChannels, setRemindChannels] = useState<FormRequestChannel[]>(autoRemind?.channels ?? []);
   const send = useSendFormRequest();
   const setAuto = useSetFormAutoRemind();
 
@@ -88,16 +95,24 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
 
   const toggleChannel = useCallback((key: FormRequestChannel): void => {
     setConfirming(false);
+    setConfirmUnpriced(false);
     setChannels((prev) => (prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]));
   }, []);
 
   const handleSend = useCallback((): void => {
     if (input === null || preview.data === undefined || send.isPending) return;
     send.mutate(
-      { ...input, expectedCostMinor: preview.data.estimatedCostMinor, currency: preview.data.currency },
+      {
+        ...input,
+        expectedCostMinor: preview.data.estimatedCostMinor,
+        currency: preview.data.currency,
+        confirmUnpriced,
+      },
       {
         onSuccess: (r) => {
-          if (r.sent === 0) notify("error", COPY.noneSentToast);
+          if (r.queued === 0 && r.sent === 0) notify("error", r.unreachable > 0 ? COPY.unreachableToast(r.unreachable) : COPY.noneSentToast);
+          else if (r.waitingForMorning > 0) notify("success", COPY.waitingToast(r.waitingForMorning));
+          else if (r.pending > 0) notify("success", COPY.queuedToast(r.queued, r.sent));
           else if (r.failed > 0) notify("success", COPY.partialToast(r.sent, r.failed));
           else notify("success", COPY.sentToast(r.sent));
           onClose();
@@ -108,7 +123,7 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
         },
       },
     );
-  }, [input, preview.data, send, notify, onClose]);
+  }, [input, preview.data, send, notify, onClose, confirmUnpriced]);
 
   const handleAutoRemind = useCallback(
     (on: boolean): void => {
@@ -116,9 +131,12 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
       const previous = remindOn;
       setRemindOn(on);
       setAuto.mutate(
-        { attachmentId: autoRemind.attachmentId, on, channels: channels.length > 0 ? channels : ["push"] },
+        { attachmentId: autoRemind.attachmentId, on, channels: channels.length > 0 ? channels : ["email"] },
         {
-          onSuccess: (r) => notify("success", r.autoRemind ? COPY.autoRemindOnToast : COPY.autoRemindOffToast),
+          onSuccess: (r) => {
+            setRemindChannels(r.channels);
+            notify("success", r.autoRemind ? COPY.autoRemindOnToast : COPY.autoRemindOffToast);
+          },
           onError: (error) => {
             setRemindOn(previous);
             notify("error", errorSentence(error, COPY.autoRemindFailed));
@@ -131,7 +149,16 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
 
   const title = mode === "earlier" ? COPY.earlierTitle : mode === "remind" ? COPY.remindTitle : COPY.askTitle;
   const p = preview.data;
-  const canSend = input !== null && p !== undefined && p.reachableCount > 0 && !send.isPending && !preview.isFetching;
+  const unpriced = p !== undefined && p.smsCount > 0 && p.estimatedCostMinor === null;
+  const canSend =
+    input !== null &&
+    p !== undefined &&
+    canSendRequest(p, confirmUnpriced) &&
+    !send.isPending &&
+    !preview.isFetching;
+  const remindCost =
+    p === undefined ? null : channels.includes("sms") && p.smsCount > 0 ? COPY.autoRemindCost(costLine(p)) : COPY.autoRemindFree;
+  const storedChannels = remindChannels.map((c) => (c === "sms" ? COPY.sms : COPY.email)).join(", ");
 
   let reachBlock: React.ReactNode;
   if (input === null) reachBlock = <Text style={styles.warn}>{COPY.pickChannel}</Text>;
@@ -149,6 +176,25 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
         <Text style={styles.line}>{COPY.reachLine(p.reachableCount, p.smsOptedOutCount, p.unreachableCount)}</Text>
         {p.throttledCount > 0 ? <Text style={styles.muted}>{COPY.throttledLine(p.throttledCount)}</Text> : null}
         <Text style={styles.line}>{costLine(p)}</Text>
+        {p.smsCount > 0 && p.smsSegments > 1 ? <Text style={styles.muted}>{COPY.segmentsLine(p.smsSegments)}</Text> : null}
+        {p.smsCount > 0 ? <Text style={styles.muted}>{COPY.capLine(p.textsToday, p.textCap)}</Text> : null}
+        {p.overTextCap ? <Text style={styles.warn}>{COPY.overCap}</Text> : null}
+        {p.textsWaitUntil !== null ? (
+          <Text style={styles.muted}>
+            {COPY.waitLine(new Date(p.textsWaitUntil).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))}
+          </Text>
+        ) : null}
+        {unpriced ? (
+          <View style={styles.switchRow}>
+            <Text style={[styles.muted, styles.switchText]}>{COPY.unpricedConfirm}</Text>
+            <Switch
+              value={confirmUnpriced}
+              onValueChange={setConfirmUnpriced}
+              accessibilityLabel={COPY.unpricedConfirm}
+              testID="form-request-confirm-unpriced"
+            />
+          </View>
+        ) : null}
         {p.reachableCount === 0 ? <Text style={styles.warn}>{COPY.nobody}</Text> : null}
       </View>
     );
@@ -200,7 +246,7 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
         <Text style={styles.title} accessibilityRole="header">{title}</Text>
         {mode === "earlier" && earlierCount !== undefined ? <Text style={styles.line}>{COPY.earlierLine(earlierCount)}</Text> : null}
 
-        {kind === "ask" && (subjects === undefined || subjects.length === 0) && mode !== "earlier" ? (
+        {kind === "ask" && !named && mode !== "earlier" ? (
           <View style={styles.block}>
             <Text style={styles.cap}>{COPY.audienceLabel}</Text>
             <View style={styles.chips}>
@@ -223,6 +269,7 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
               />
             ))}
           </View>
+          <Text style={styles.muted}>{COPY.channelsNote}</Text>
         </View>
 
         <View style={styles.block}>
@@ -250,6 +297,10 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
                   null,
                 )}
               </Text>
+              {remindOn && storedChannels.length > 0 ? (
+                <Text style={styles.muted} testID="form-request-auto-remind-channels">{COPY.autoRemindChannels(storedChannels)}</Text>
+              ) : null}
+              {remindCost !== null ? <Text style={styles.muted}>{remindCost}</Text> : null}
             </View>
             <Switch
               value={remindOn}

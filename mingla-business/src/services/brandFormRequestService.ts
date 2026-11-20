@@ -1,12 +1,14 @@
 /**
  * #4514 wave 4 — "Ask guests to answer", "Remind" and the automatic reminder
- * switch. The edge (guest-roster-actions form operations) checks the role
- * (event manager and up, C5), throttles each guest per form for 24 hours and
- * mints each guest's own form link; a request never creates an invite
- * (decision 17). Loaded only by the lazy forms owner; no module-scope client.
+ * switch, and the host's delivery log. The edge (guest-roster-actions form
+ * operations) checks the role (event manager and up, C5), throttles each person
+ * per form for 24 hours, queues the requests and sends them by text or email
+ * with each guest's own form link; a request never creates an invite (decision
+ * 17). Push waits for the Explorer form screen, so it is never offered here.
+ * Loaded only by the lazy forms owner; no module-scope client.
  */
 
-export type FormRequestChannel = "push" | "sms" | "email";
+export type FormRequestChannel = "sms" | "email";
 export type FormRequestKind = "ask" | "remind";
 export type FormRequestAudience = "unanswered" | "everyone";
 
@@ -33,17 +35,49 @@ export interface FormRequestPreview {
   unreachableCount: number;
   perChannelReachable: Record<FormRequestChannel, number>;
   smsCount: number;
+  /** Parts per text, as the SMS adapter counts them (emoji and accents cost more). */
+  smsSegments: number;
   /** null: some texts go to a country without a price yet (never a guessed amount). */
   estimatedCostMinor: number | null;
   currency: string | null;
+  /** The brand's form request texts in the last 24 hours, and the daily limit. */
+  textsToday: number;
+  textCap: number;
+  overTextCap: boolean;
+  /** Texts wait until this time (9am on the page's own clock), or null. */
+  textsWaitUntil: string | null;
 }
 
 export interface FormRequestResult {
+  queued: number;
   sent: number;
   failed: number;
+  /** Queued and still going out (the rest of a big send, or texts waiting for 9am). */
+  pending: number;
+  waitingForMorning: number;
   throttled: number;
   answered: number;
   unreachable: number;
+}
+
+export interface FormRequestLogRow {
+  id: string;
+  kind: "ask" | "remind" | "auto";
+  subjectKind: "rsvp" | "order";
+  subjectId: string;
+  name: string;
+  channel: FormRequestChannel | "push" | null;
+  status: "queued" | "claimed" | "sent" | "failed" | "skipped" | "unreachable";
+  reason: string | null;
+  notBefore: string | null;
+  createdAt: string;
+  settledAt: string | null;
+}
+
+export interface FormRequestLog {
+  sends: FormRequestLogRow[];
+  counts: { queued: number; sent: number; failed: number; unreachable: number; skipped: number };
+  runs: Array<{ startsAt: string; outcome: "sending" | "sent" | "failed" | "held_form_closed" }>;
 }
 
 export type FormRequestErrorCode =
@@ -54,6 +88,8 @@ export type FormRequestErrorCode =
   | "audience_too_large"
   | "no_recipients"
   | "preview_stale_cost"
+  | "cost_unpriced"
+  | "text_cap"
   | "network_error"
   | "invalid_response"
   | "unknown";
@@ -75,6 +111,8 @@ const ERROR_COPY: Record<FormRequestErrorCode, string> = {
   audience_too_large: "That's more than 500 guests. Ask from the guest list in smaller groups.",
   no_recipients: "Nobody here can be reached right now.",
   preview_stale_cost: "The cost changed. Check the new estimate and send again.",
+  cost_unpriced: "Some texts have no price yet. Tick the box to send them anyway, or untick Text.",
+  text_cap: "That's over today's limit for form texts. Send by email, or text the rest tomorrow.",
   network_error: "Couldn't reach Mingla. Check your connection and try again.",
   invalid_response: "Something went wrong reading the reply. Try again.",
   unknown: "Couldn't send. Try again.",
@@ -123,10 +161,15 @@ export function parseFormRequestPreview(data: Record<string, unknown>): FormRequ
     throttledCount: num(data.throttledCount),
     smsOptedOutCount: num(data.smsOptedOutCount),
     unreachableCount: num(data.unreachableCount),
-    perChannelReachable: { push: num(per.push), sms: num(per.sms), email: num(per.email) },
+    perChannelReachable: { sms: num(per.sms), email: num(per.email) },
     smsCount: num(data.smsCount),
+    smsSegments: num(data.smsSegments),
     estimatedCostMinor: typeof data.estimatedCostMinor === "number" ? data.estimatedCostMinor : null,
     currency: typeof data.currency === "string" ? data.currency : null,
+    textsToday: num(data.textsToday),
+    textCap: num(data.textCap),
+    overTextCap: data.overTextCap === true,
+    textsWaitUntil: typeof data.textsWaitUntil === "string" ? data.textsWaitUntil : null,
   };
 }
 
@@ -144,19 +187,28 @@ export async function previewFormRequest(input: FormRequestInput): Promise<FormR
   return parseFormRequestPreview(await invoke({ operation: "form_preview", ...requestBody(input) }));
 }
 
-export async function sendFormRequest(
-  input: FormRequestInput & { expectedCostMinor: number | null; currency: string | null },
-): Promise<FormRequestResult> {
+export type FormRequestSendInput = FormRequestInput & {
+  expectedCostMinor: number | null;
+  currency: string | null;
+  /** The host ticked "send texts without a price" (the server checks it). */
+  confirmUnpriced?: boolean;
+};
+
+export async function sendFormRequest(input: FormRequestSendInput): Promise<FormRequestResult> {
   const data = await invoke({
     operation: "form_send",
     ...requestBody(input),
     expectedCostMinor: input.expectedCostMinor,
     currency: input.currency,
+    ...(input.confirmUnpriced === true ? { confirmUnpriced: true } : {}),
   });
   const skipped = isRecord(data.skipped) ? data.skipped : {};
   return {
+    queued: num(data.queued),
     sent: num(data.sent),
     failed: num(data.failed),
+    pending: num(data.pending),
+    waitingForMorning: num(data.waitingForMorning),
     throttled: num(skipped.throttled),
     answered: num(skipped.answered),
     unreachable: num(skipped.unreachable),
@@ -167,7 +219,7 @@ export async function setFormAutoRemind(input: {
   attachmentId: string;
   on: boolean;
   channels: FormRequestChannel[];
-}): Promise<{ autoRemind: boolean; remindAt: string | null }> {
+}): Promise<{ autoRemind: boolean; remindAt: string | null; channels: FormRequestChannel[] }> {
   const supabase = await getSupabase();
   const { data, error } = await supabase.rpc("biz_brand_form_set_auto_remind", {
     p_attachment_id: input.attachmentId,
@@ -182,5 +234,69 @@ export async function setFormAutoRemind(input: {
   return {
     autoRemind: data.autoRemind === true,
     remindAt: typeof data.remindAt === "string" ? data.remindAt : null,
+    channels: parseContactChannels(data.channels),
   };
+}
+
+/** Stored channels, push dropped (it waits for the Explorer form screen). */
+export function parseContactChannels(value: unknown): FormRequestChannel[] {
+  return Array.isArray(value)
+    ? value.filter((c): c is FormRequestChannel => c === "sms" || c === "email")
+    : [];
+}
+
+const LOG_STATUSES: ReadonlyArray<FormRequestLogRow["status"]> = ["queued", "claimed", "sent", "failed", "skipped", "unreachable"];
+
+export function parseFormRequestLog(value: unknown): FormRequestLog {
+  if (!isRecord(value)) throw new FormRequestError("invalid_response", ERROR_COPY.invalid_response);
+  const sends = (Array.isArray(value.sends) ? value.sends : []).flatMap((row): FormRequestLogRow[] => {
+    if (!isRecord(row) || typeof row.id !== "string" || typeof row.createdAt !== "string") return [];
+    const status = LOG_STATUSES.find((x) => x === row.status);
+    if (status === undefined) return [];
+    const kind = row.kind === "remind" || row.kind === "auto" ? row.kind : "ask";
+    const channel = row.channel === "sms" || row.channel === "email" || row.channel === "push" ? row.channel : null;
+    return [{
+      id: row.id,
+      kind,
+      subjectKind: row.subjectKind === "order" ? "order" : "rsvp",
+      subjectId: typeof row.subjectId === "string" ? row.subjectId : "",
+      name: typeof row.name === "string" && row.name.length > 0 ? row.name : "Guest",
+      channel,
+      status,
+      reason: typeof row.reason === "string" ? row.reason : null,
+      notBefore: typeof row.notBefore === "string" ? row.notBefore : null,
+      createdAt: row.createdAt,
+      settledAt: typeof row.settledAt === "string" ? row.settledAt : null,
+    }];
+  });
+  const c = isRecord(value.counts) ? value.counts : {};
+  const runs = (Array.isArray(value.runs) ? value.runs : []).flatMap((r): FormRequestLog["runs"] => {
+    if (!isRecord(r) || typeof r.startsAt !== "string") return [];
+    const outcome = r.outcome === "sent" || r.outcome === "failed" || r.outcome === "held_form_closed" ? r.outcome : "sending";
+    return [{ startsAt: r.startsAt, outcome }];
+  });
+  return {
+    sends,
+    counts: { queued: num(c.queued), sent: num(c.sent), failed: num(c.failed), unreachable: num(c.unreachable), skipped: num(c.skipped) },
+    runs,
+  };
+}
+
+/** The host's delivery log for one form on one page (event manager and up), optionally one guest. */
+export async function fetchFormRequestLog(input: {
+  formId: string;
+  eventId: string;
+  subject?: FormRequestSubject;
+}): Promise<FormRequestLog> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc("biz_brand_form_request_log", {
+    p_form_id: input.formId,
+    p_event_id: input.eventId,
+    p_subject: input.subject ?? null,
+  });
+  if (error !== null) {
+    const code: FormRequestErrorCode = error.code === "42501" ? "forbidden" : "unknown";
+    throw new FormRequestError(code, code === "unknown" ? "Couldn't load the delivery log. Try again." : ERROR_COPY[code]);
+  }
+  return parseFormRequestLog(data);
 }

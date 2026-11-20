@@ -5,7 +5,11 @@
  */
 
 import { FORM_REQUEST_COPY as COPY } from "../components/forms/brandFormsCopy";
-import type { FormRequestPreview } from "../services/brandFormRequestService";
+import type {
+  FormRequestAudience,
+  FormRequestChannel,
+  FormRequestPreview,
+} from "../services/brandFormRequestService";
 
 /** The cost in the currency's own minor unit (no guessed amount). */
 export function costLine(p: FormRequestPreview): string {
@@ -20,3 +24,19 @@ export function costLine(p: FormRequestPreview): string {
   }
 }
 
+/**
+ * The channels the send sheet offers. Push is not one of them until the
+ * Explorer form screen ships (a push would open nothing).
+ */
+export const REQUEST_CHANNELS: readonly FormRequestChannel[] = ["sms", "email"];
+
+/** Ask for named guests reaches them even if they already answered ("Ask again"). */
+export function initialAudience(mode: "ask" | "remind" | "earlier", named: boolean): FormRequestAudience {
+  return named && mode !== "remind" ? "everyone" : "unanswered";
+}
+
+/** Texts with no price need the host's tick; over the daily text limit never sends. */
+export function canSendRequest(p: FormRequestPreview, confirmUnpriced: boolean): boolean {
+  const unpriced = p.smsCount > 0 && p.estimatedCostMinor === null;
+  return p.reachableCount > 0 && !p.overTextCap && (!unpriced || confirmUnpriced);
+}

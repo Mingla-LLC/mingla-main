@@ -215,8 +215,8 @@ export const FORM_REQUEST_COPY = {
   audienceUnanswered: "Hasn't answered",
   audienceEveryone: "Everyone going",
   channelsLabel: "How",
-  push: "Push (free)",
   sms: "Text",
+  channelsNote: "Texts go to guests with a phone on file; everyone else gets the email.",
   email: "Email (free)",
   messageLabel: "Message",
   message: (brand: string, event: string): string =>
@@ -235,6 +235,11 @@ export const FORM_REQUEST_COPY = {
   costLine: (amount: string): string => `Estimated cost: up to ${amount}`,
   costUnpriced: (texts: number): string =>
     `Estimated cost: ${texts} ${texts === 1 ? "text" : "texts"}; a price isn't available for every country yet.`,
+  segmentsLine: (parts: number): string => `Each text is ${parts} parts (emoji and some letters make a text longer).`,
+  unpricedConfirm: "Send these texts even though a price isn't available yet",
+  capLine: (today: number, cap: number): string => `${today} of ${cap} form texts used in the last 24 hours.`,
+  overCap: "That's over the daily limit for form texts. Untick Text to send by email, or try tomorrow.",
+  waitLine: (time: string): string => `Texts wait until ${time}: no texts before 9am or after 9pm where the event is.`,
   noCost: "No paid channel cost",
   askNow: "Ask them now",
   sendReminder: "Send reminder",
@@ -245,14 +250,56 @@ export const FORM_REQUEST_COPY = {
   sending: "Sending…",
   nobody: "Nobody here can be reached with these choices.",
   sentToast: (n: number): string => `Sent to ${n} ${n === 1 ? "guest" : "guests"}.`,
+  queuedToast: (queued: number, sent: number): string =>
+    `Sending to ${queued} ${queued === 1 ? "guest" : "guests"}. ${sent} sent so far; the rest go out shortly.`,
+  waitingToast: (n: number): string => `${n} ${n === 1 ? "text goes" : "texts go"} out after 9am where the event is.`,
+  unreachableToast: (n: number): string => `${n} can't be reached: no phone or email on file.`,
   partialToast: (sent: number, failed: number): string =>
     `Sent to ${sent}. ${failed} couldn't be reached; try them again later.`,
   noneSentToast: "Nothing was sent. Try again later.",
   sendFailed: "Couldn't send. Try again.",
   autoRemindTitle: "Remind people who haven't answered",
   autoRemindLine: (event: string, day: string | null): string =>
-    `One reminder 2 days before ${event}${day !== null ? ` (${day})` : ""}. Push first, free; then only the channels ticked above.`,
+    `One reminder 2 days before each guest's date for ${event}${day !== null ? ` (next: ${day})` : ""}, by the channels ticked above.`,
+  autoRemindChannels: (channels: string): string => `Stored channels: ${channels}.`,
+  autoRemindCost: (cost: string): string => `Reminder texts: ${cost} at today's count.`,
+  autoRemindFree: "Reminder by email only: no text cost.",
   autoRemindOnToast: "We'll remind people who haven't answered.",
   autoRemindOffToast: "Automatic reminder off.",
   autoRemindFailed: "Couldn't change the reminder. Try again.",
+} as const;
+
+/** Wave 4 review: the host's delivery log (Responses and the guest answers drawer). */
+export const FORM_REQUEST_LOG_COPY = {
+  open: "Delivery log",
+  title: "Who got the form",
+  loading: "Loading the delivery log…",
+  failed: "Couldn't load the delivery log.",
+  retry: "Try again",
+  empty: "No requests sent yet.",
+  counts: (sent: number, queued: number, failed: number, unreachable: number): string =>
+    `${sent} sent · ${queued} on the way · ${failed} failed · ${unreachable} can't be reached`,
+  kind: { ask: "Ask", remind: "Remind", auto: "Automatic reminder" },
+  channel: { sms: "Text", email: "Email", push: "Push" },
+  status: {
+    queued: "On the way",
+    claimed: "Sending",
+    sent: "Sent",
+    failed: "Failed",
+    skipped: "Not sent",
+    unreachable: "Can't be reached",
+  },
+  reason: {
+    no_contact: "no phone or email on file",
+    sms_opted_out: "opted out of texts",
+    answered: "already answered",
+    not_a_guest: "no longer going",
+    form_closed: "the form closed",
+    expired: "not delivered within a day",
+    claim_expired: "not delivered after 3 tries",
+  } as Record<string, string>,
+  run: (date: string, outcome: "sending" | "sent" | "failed" | "held_form_closed"): string =>
+    `Automatic reminder for ${date}: ${
+      outcome === "sent" ? "sent" : outcome === "failed" ? "failed" : outcome === "held_form_closed" ? "held, the form was closed" : "sending"
+    }`,
 } as const;

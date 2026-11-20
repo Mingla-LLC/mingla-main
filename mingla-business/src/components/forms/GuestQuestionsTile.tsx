@@ -55,7 +55,13 @@ export const GuestQuestionsTile: React.FC<GuestQuestionsTileProps> = ({
   const query = useGuestQuestionsTileData(eventId, readable);
   const [sheetOpen, setSheetOpen] = useState<boolean>(false);
   // Wave 4 (§4.6, C12): "Ask earlier guests?" after a save on a page with guests.
-  const [earlier, setEarlier] = useState<{ formId: string; count: number; attachmentId: string } | null>(null);
+  const [earlier, setEarlier] = useState<{
+    formId: string;
+    count: number;
+    attachmentId: string;
+    autoRemind: boolean;
+    autoRemindChannels: Array<"sms" | "email">;
+  } | null>(null);
   const { show, toast } = useFormsToast();
 
   const data: TileData | undefined =
@@ -133,7 +139,15 @@ export const GuestQuestionsTile: React.FC<GuestQuestionsTileProps> = ({
           eventId={eventId}
           kind={kind}
           onSaved={({ result, formId: savedFormId }) => {
-            if (result.earlierGuests > 0) setEarlier({ formId: savedFormId, count: result.earlierGuests, attachmentId: result.attachmentId });
+            if (result.earlierGuests > 0) {
+              setEarlier({
+                formId: savedFormId,
+                count: result.earlierGuests,
+                attachmentId: result.attachmentId,
+                autoRemind: result.autoRemind,
+                autoRemindChannels: result.autoRemindChannels,
+              });
+            }
           }}
           current={query.data === undefined || query.data === null ? null : { attachment: query.data.attachment, form: query.data.form }}
         />
@@ -146,7 +160,7 @@ export const GuestQuestionsTile: React.FC<GuestQuestionsTileProps> = ({
           eventId={eventId}
           mode="earlier"
           earlierCount={earlier.count}
-          autoRemind={{ attachmentId: earlier.attachmentId, on: false }}
+          autoRemind={{ attachmentId: earlier.attachmentId, on: earlier.autoRemind, channels: earlier.autoRemindChannels }}
           notify={show}
         />
       ) : null}

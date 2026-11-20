@@ -44,7 +44,13 @@ export const GuestQuestionsRow: React.FC<GuestQuestionsRowProps> = ({
   const query = useEventAttachment(eventId, allowed);
   const [open, setOpen] = useState<boolean>(false);
   // Wave 4 (§4.6, C12): "Ask earlier guests?" after a save on a page with guests.
-  const [earlier, setEarlier] = useState<{ formId: string; count: number; attachmentId: string } | null>(null);
+  const [earlier, setEarlier] = useState<{
+    formId: string;
+    count: number;
+    attachmentId: string;
+    autoRemind: boolean;
+    autoRemindChannels: Array<"sms" | "email">;
+  } | null>(null);
   const { show, toast } = useFormsToast();
 
   const handlePress = useCallback((): void => {
@@ -105,7 +111,15 @@ export const GuestQuestionsRow: React.FC<GuestQuestionsRowProps> = ({
           eventId={eventId}
           kind={kind}
           onSaved={({ result, formId: savedFormId }) => {
-            if (result.earlierGuests > 0) setEarlier({ formId: savedFormId, count: result.earlierGuests, attachmentId: result.attachmentId });
+            if (result.earlierGuests > 0) {
+              setEarlier({
+                formId: savedFormId,
+                count: result.earlierGuests,
+                attachmentId: result.attachmentId,
+                autoRemind: result.autoRemind,
+                autoRemindChannels: result.autoRemindChannels,
+              });
+            }
           }}
           current={query.data ?? null}
         />
@@ -118,7 +132,7 @@ export const GuestQuestionsRow: React.FC<GuestQuestionsRowProps> = ({
           eventId={eventId}
           mode="earlier"
           earlierCount={earlier.count}
-          autoRemind={{ attachmentId: earlier.attachmentId, on: false }}
+          autoRemind={{ attachmentId: earlier.attachmentId, on: earlier.autoRemind, channels: earlier.autoRemindChannels }}
           notify={show}
         />
       ) : null}
