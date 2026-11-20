@@ -72,7 +72,8 @@ BEGIN
                 AND public.issue_4490_venue_service_date(p_venue_id, f.created_at) = p_local_date), 0)
   + COALESCE((SELECT sum(sr.buyer_refund_requested_cents) FROM public.source_refunds sr
               WHERE sr.source_type = 'venue_reservation' AND sr.venue_id = p_venue_id
-                AND sr.buyer_state <> 'failed_terminal'
+                -- N125: a refund that failed or ended with no refund due moved no money.
+                AND sr.buyer_state NOT IN ('failed_terminal', 'cancelled_no_refund_due')
                 AND public.issue_4490_venue_service_date(p_venue_id, sr.requested_at) = p_local_date), 0)
   INTO v_refunded;
 
@@ -103,7 +104,8 @@ BEGIN
     COALESCE((SELECT sum(fee_cents) FROM day_tables), 0),
     v_f_refunded + COALESCE((SELECT sum(sr.buyer_refund_requested_cents) FROM public.source_refunds sr
               WHERE sr.source_type = 'venue_reservation' AND sr.venue_id = p_venue_id
-                AND sr.buyer_state <> 'failed_terminal'
+                -- N125: a refund that failed or ended with no refund due moved no money.
+                AND sr.buyer_state NOT IN ('failed_terminal', 'cancelled_no_refund_due')
                 -- N124: production writes source_id = the checkout session and
                 -- subject_id = the reservation.
                 AND sr.subject_id IN (SELECT id FROM day_tables)), 0)
