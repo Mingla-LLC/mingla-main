@@ -145,6 +145,8 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "team",
   "trip",
   "venue",
+  // #4490 P2-6: a guest's venue booking and pass (/visit/<groupId>, token-authorized).
+  "visit",
   "website-return",
 ]);
 

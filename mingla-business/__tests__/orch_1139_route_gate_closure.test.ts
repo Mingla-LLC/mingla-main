@@ -133,6 +133,9 @@ const EXPECTED: Record<string, Bucket> = {
   reserve: "buyer-exempt",
   refund: "buyer-exempt",
   o: "buyer-exempt",
+  // [TEST-MOD-APPROVED #4490] P2-6 /visit/<groupId>: a guest's venue booking and pass, in
+  // PUBLIC_BUYER_ROUTE_PREFIXES ("/visit/"), token-authorized; buying never needs sign-in.
+  visit: "buyer-exempt",
   booking: "buyer-exempt",
   // [TEST-MOD-APPROVED #3645] `/pay/{token}` is the signed-out installment
   // handoff already governed by the exact public-buyer allowlist.
