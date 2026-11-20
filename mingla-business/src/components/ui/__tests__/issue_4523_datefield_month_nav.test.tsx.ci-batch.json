@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4523",
+  "suite": {
+    "id": "issue-4523-one-calendar",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/src/components/ui/**",
+      "packages/calendar/**",
+      "packages/brand-rendering/**",
+      "mingla-business/jest.issue4523.cfg.cjs"
+    ],
+    "steps": [
+      {
+        "name": "One-calendar date picker regression suites",
+        "cwd": "mingla-business",
+        "run": "npx jest --config jest.issue4523.cfg.cjs --runInBand",
+        "commandId": "assert:issue-4523-one-calendar:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "npx jest --config jest.issue4523.cfg.cjs --runInBand"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4523",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/jest.issue4523.cfg.cjs",
+      "mingla-business/src/components/ui/__tests__/issue_4523_datefield_month_nav.test.tsx",
+      "packages/brand-rendering/__tests__/issue_4523_stay_range_month_nav.test.tsx"
+    ],
+    "externalReferenceFiles": [
+      "mingla-business/jest.orch1118.babel.cjs"
+    ],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 10,
+      "p95": 20,
+      "evidence": "Local targeted run 2026-11-20"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 120
+  }
+}

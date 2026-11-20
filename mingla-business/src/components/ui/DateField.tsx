@@ -74,9 +74,25 @@ export function DateField({
   testID,
 }: DateFieldProps): React.ReactElement {
   const [pickerOpen, setPickerOpen] = useState(false);
+  // #4523 slice 1 interim — replaced by @mingla/calendar in slice 3.
+  // iOS only: the inline calendar writes here, never to the caller. Month and
+  // year changes raise the same native event as a day tap, so the picker may
+  // not commit or close on an event; only Done commits and only Done/Cancel close.
+  const [draft, setDraft] = useState<Date | null>(null);
+
+  const closePicker = useCallback((): void => {
+    setPickerOpen(false);
+    setDraft(null);
+  }, []);
 
   const handleNativePick = useCallback(
     (event: DateTimePickerEvent, selected?: Date): void => {
+      if (Platform.OS === "ios") {
+        // The inline calendar stays on screen. A "dismissed" event is not a
+        // close request here either (it can fire while paging months).
+        if (event.type === "set" && selected !== undefined) setDraft(selected);
+        return;
+      }
       // Android's dialog owns its own lifecycle — close on every event,
       // including a back-press dismissal.
       setPickerOpen(false);
@@ -132,7 +148,7 @@ export function DateField({
       </Pressable>
       {pickerOpen ? (
         <DateTimePicker
-          value={anchor}
+          value={draft ?? anchor}
           mode="date"
           display={Platform.OS === "ios" ? "inline" : "default"}
           minimumDate={min === undefined ? undefined : (parseStayDate(min) ?? undefined)}
@@ -140,6 +156,31 @@ export function DateField({
           themeVariant="dark"
           onChange={handleNativePick}
         />
+      ) : null}
+      {pickerOpen && Platform.OS === "ios" ? (
+        <View style={styles.actions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Cancel, ${accessibilityLabel}`}
+            onPress={closePicker}
+            testID={testID === undefined ? undefined : `${testID}-cancel`}
+            style={styles.action}
+          >
+            <Text style={styles.actionText}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Done, ${accessibilityLabel}`}
+            onPress={() => {
+              onChangeValue(formatStayDate(draft ?? anchor));
+              closePicker();
+            }}
+            testID={testID === undefined ? undefined : `${testID}-done`}
+            style={styles.action}
+          >
+            <Text style={styles.actionText}>Done</Text>
+          </Pressable>
+        </View>
       ) : null}
     </View>
   );
@@ -172,6 +213,22 @@ const styles = StyleSheet.create({
   },
   rowValue: {
     fontSize: 16,
+    color: color.text1,
+  },
+  actions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  action: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  actionText: {
+    fontSize: 16,
+    fontWeight: "600",
     color: color.text1,
   },
   rowPlaceholder: {
