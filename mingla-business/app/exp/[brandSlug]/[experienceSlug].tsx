@@ -68,7 +68,10 @@ import {
 // adapter (web projects the ONE bounded server eligibility state; native is a
 // legacy pass-through). The notice mounts in ExperienceCheckoutFlow, not here.
 import { usePublicTicketCheckoutRouteAccess } from "../../../src/hooks/usePublicTicketCheckoutRouteAccess";
-import { BuyerConnectionNotice } from "../../../src/components/buyer/BuyerConnectionNotice";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { usePublicExperienceBySlug } from "../../../src/hooks/usePublicExperience";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
@@ -336,6 +339,9 @@ function PublicExperienceRouteBody(): React.ReactElement {
   const handleToggleMute = useCallback((): void => {
     setMuted((m) => !m);
   }, []);
+
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
 
   // #4518 — one notice for a page that could not load (no raw error text).
   // Kept on screen while Try again re-reads (the query stays in error until

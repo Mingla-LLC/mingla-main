@@ -31,7 +31,10 @@ import { space, color } from "../../../src/constants/designSystem";
 import { usePublicEventBySlug } from "../../../src/hooks/usePublicEvents";
 import { PublicEventPage } from "../../../src/components/event/PublicEventPage";
 import { PublicEventNotFound } from "../../../src/components/event/PublicEventNotFound";
-import { BuyerConnectionNotice } from "../../../src/components/buyer/BuyerConnectionNotice";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
@@ -146,6 +149,9 @@ function PublicEventRouteBody(): React.ReactElement {
       state: routeState,
     });
   }, [publicEventQuery.data, routeState]);
+
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
 
   // #4518 — one notice for a page that could not load. Kept on screen while
   // Try again re-reads (the query stays in error until it succeeds), so the

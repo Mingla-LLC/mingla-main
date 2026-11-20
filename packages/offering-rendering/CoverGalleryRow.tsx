@@ -17,7 +17,6 @@
 
 import React from "react";
 import {
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -29,7 +28,8 @@ import Svg, { Path } from "react-native-svg";
 import { deriveCoverPosterUrl } from "./coverMediaPresentation";
 import { type ThemePalette } from "./themePalette";
 import { type OfferingGalleryImage } from "./types";
-import { useOfferingImageUri } from "./useOfferingImageUri";
+// issue #4518 — thumbnails take the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 import { accentFill, accentOutline } from "./themeAccentStyle";
 
 export interface CoverGalleryRowProps {
@@ -175,21 +175,6 @@ const CheckBadge: React.FC<{ palette: ThemePalette }> = ({ palette }) => (
   </View>
 );
 
-// issue #4518 — one gallery thumbnail on the picture road (one fallback).
-const GalleryThumb: React.FC<{ uri: string }> = ({ uri }) => {
-  const media = useOfferingImageUri(uri);
-  return (
-    <Image
-      source={{ uri: media.uri ?? uri }}
-      style={styles.cardImage}
-      resizeMode="cover"
-      accessibilityIgnoresInvertColors
-      onLoad={media.onLoad}
-      onError={media.onError}
-    />
-  );
-};
-
 export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
   cover,
   gallery,
@@ -219,7 +204,12 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
     const cardContents = (
       <>
         {thumbUrl !== null ? (
-          <GalleryThumb uri={thumbUrl} />
+          <OfferingRoutedImage
+            source={{ uri: thumbUrl }}
+            style={styles.cardImage}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+          />
         ) : null}
         {showPlay ? <PlayBadge /> : null}
         {active ? <CheckBadge palette={palette} /> : null}

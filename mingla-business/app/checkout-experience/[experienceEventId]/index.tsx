@@ -17,7 +17,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header mirroring /checkout-trip/[tripEventId]/index.tsx; insets.bottom IS applied (bottom dock); the top status-bar overlap with the banner header is the intended buyer aesthetic.
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -46,7 +46,10 @@ import {
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { BuyerConnectionNotice } from "../../../src/components/buyer/BuyerConnectionNotice";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
@@ -272,6 +275,9 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
     if (experienceEventId === null || totals.isEmpty) return;
     router.push(`/checkout-experience/${experienceEventId}/buyer` as never);
   }, [router, experienceEventId, totals.isEmpty]);
+
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
 
   // #4518 — one notice when the offering could not load: Try again re-reads
   // (and stays on screen while it does), Back stays as the quiet second

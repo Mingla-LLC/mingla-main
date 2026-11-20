@@ -21,7 +21,7 @@
 // anywhere (SC-7, strict-grep gate).
 
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -30,6 +30,8 @@ import type {
 
 import type { PublicMenuGroup } from "./types";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
+// issue #4518 — dish photos take the picture road (one fallback).
+import { OfferingRoutedImage } from "@mingla/offering-rendering/useOfferingImageUri";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -166,7 +168,7 @@ const MenuTab: React.FC<{
                 {/* issue #4420 wave 2 (D-V5) — the dish photo, when the
                     venue added one: a 76 square at the row's end. */}
                 {typeof item.photoUrl === "string" && item.photoUrl.length > 0 ? (
-                  <Image
+                  <OfferingRoutedImage
                     source={{ uri: item.photoUrl }}
                     style={styles.menuItemPhoto}
                     accessibilityIgnoresInvertColors

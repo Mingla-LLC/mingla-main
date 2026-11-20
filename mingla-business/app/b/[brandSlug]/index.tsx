@@ -34,7 +34,10 @@ import {
 } from "../../../src/hooks/usePublicBrandSections";
 import { PublicBrandPage } from "../../../src/components/brand/PublicBrandPage";
 import { PublicBrandNotFound } from "../../../src/components/brand/PublicBrandNotFound";
-import { BuyerConnectionNotice } from "../../../src/components/buyer/BuyerConnectionNotice";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { PublicGlassProvider } from "../../../src/components/offering/PublicGlassProvider";
 
@@ -106,6 +109,9 @@ function PublicBrandRouteBody(): React.ReactElement {
       state: routeState,
     });
   }, [publicBrandQuery.data, routeState]);
+
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
 
   // #4518 — one notice for a page that could not load. Kept on screen while
   // Try again re-reads (the query stays in error until it succeeds).

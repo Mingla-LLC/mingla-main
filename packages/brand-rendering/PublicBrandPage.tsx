@@ -33,7 +33,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   AppState,
-  Image,
   Linking,
   Platform,
   Pressable,
@@ -92,7 +91,8 @@ import {
 import { themeTextAccent } from "@mingla/offering-rendering/themePalette";
 
 import { ThemeAccentFill } from "@mingla/offering-rendering/ThemeAccentFill";
-import { useOfferingImageUri } from "@mingla/offering-rendering/useOfferingImageUri";
+// issue #4518 — the venue thumbnail takes the picture road (one fallback).
+import { OfferingRoutedImage } from "@mingla/offering-rendering/useOfferingImageUri";
 
 import { spacing } from "./designTokens";
 // #3188 — the socials-row sizing solver. A separate, pure, import-free module
@@ -2145,7 +2145,13 @@ const ReservationsPane = ({
               pressed && styles.cardPressed,
             ]}
           >
-            {v.photoUrl !== null ? <VenueThumb uri={v.photoUrl} /> : null}
+            {v.photoUrl !== null ? (
+              <OfferingRoutedImage
+                source={{ uri: v.photoUrl }}
+                style={styles.venueThumb}
+                accessibilityIgnoresInvertColors
+              />
+            ) : null}
             <View style={styles.venueCopy}>
               <Text
                 numberOfLines={1}
@@ -2251,20 +2257,6 @@ const ClampedBio: React.FC<{ text: string; palette: ThemePalette }> = ({
     />
   </React.Suspense>
 );
-
-// issue #4518 — a venue thumbnail on the picture road (one fallback).
-const VenueThumb = ({ uri }: { uri: string }) => {
-  const media = useOfferingImageUri(uri);
-  return (
-    <Image
-      source={{ uri: media.uri ?? uri }}
-      style={styles.venueThumb}
-      accessibilityIgnoresInvertColors
-      onLoad={media.onLoad}
-      onError={media.onError}
-    />
-  );
-};
 
 const styles = StyleSheet.create({
   // ---- identity ----

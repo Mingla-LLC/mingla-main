@@ -63,7 +63,10 @@ import {
   type TripPaymentPlanChoice,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { BuyerConnectionNotice } from "../../../src/components/buyer/BuyerConnectionNotice";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
@@ -466,6 +469,9 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     autoSkipNavigatedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tripEventId, trip, lines]);
+
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
 
   // #4518 — one notice when the offering could not load: Try again re-reads
   // (and stays on screen while it does), Back stays as the quiet second

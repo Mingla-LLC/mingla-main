@@ -14,7 +14,6 @@
 
 import React, { useState } from "react";
 import {
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -25,7 +24,8 @@ import {
 import Svg, { Path } from "react-native-svg";
 
 import { EventCoverMedia } from "./EventCoverMedia";
-import { useOfferingImageUri } from "./useOfferingImageUri";
+// issue #4518 — tiles take the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 import { type ThemePalette } from "./themePalette";
 
 import { pickGalleryLayout } from "./galleryLayout";
@@ -61,26 +61,6 @@ const opaqueTileBg = (palette: ThemePalette): string =>
   Platform.select({ android: "#1A1A1C", default: palette.card }) ??
   palette.card;
 
-
-// issue #4518 — one gallery tile on the picture road (one fallback).
-const GalleryTileImage: React.FC<{
-  uri: string;
-  style: React.ComponentProps<typeof Image>["style"];
-  accessibilityLabel: string;
-}> = ({ uri, style, accessibilityLabel }) => {
-  const media = useOfferingImageUri(uri);
-  return (
-    <Image
-      source={{ uri: media.uri ?? uri }}
-      style={style}
-      resizeMode="cover"
-      accessibilityRole="image"
-      accessibilityLabel={accessibilityLabel}
-      onLoad={media.onLoad}
-      onError={media.onError}
-    />
-  );
-};
 
 export const CountAwareGallery: React.FC<CountAwareGalleryProps> = ({
   items,
@@ -141,10 +121,12 @@ export const CountAwareGallery: React.FC<CountAwareGalleryProps> = ({
       );
     }
     return (
-      <GalleryTileImage
+      <OfferingRoutedImage
         key={`item-${index}`}
-        uri={item.url}
+        source={{ uri: item.url }}
         style={tileBase}
+        resizeMode="cover"
+        accessibilityRole="image"
         accessibilityLabel={a11y}
       />
     );

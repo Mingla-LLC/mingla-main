@@ -81,53 +81,24 @@ export const CHECKOUT_OUTLINE_MIN_CONTRAST = 3;
  * opaque colour that reaches 3:1 on THIS host page. `neutralControl` is one
  * fixed 34 % wash; on a near-black host page that measured 2.16:1, so a
  * buyer could not see where the name and email fields were. Here the page's
- * ink is mixed in until the boundary is met.
+ * ink is mixed in until the boundary is met — against the page, or against
+ * every surface in `over` (`controlOutline`: the card and card2 a quiet
+ * button or the inline notice sits on). The palette's cards are white at an
+ * alpha (`createThemePalette`), composited over the page here.
  */
-export function checkoutOutlineFor(palette: ThemePalette): string {
+export function checkoutOutlineFor(
+  palette: ThemePalette,
+  over: readonly string[] = [palette.page],
+): string {
   const page = normalizeHex(palette.page);
   const ink = normalizeHex(palette.primaryText);
   if (page === null || ink === null) return neutralControl(palette);
+  const under = over.map(
+    (c) => normalizeHex(c) ?? mixHex(page, "#ffffff", +c.slice(c.lastIndexOf(",") + 1, -1) || 0),
+  );
   for (let amount = 0.34; amount < 1; amount += 0.04) {
     const candidate = mixHex(page, ink, amount);
-    if (contrastRatio(candidate, page) >= CHECKOUT_OUTLINE_MIN_CONTRAST) return candidate;
-  }
-  return ink;
-}
-
-/**
- * #4518 — the outline of a quiet control drawn ON A CARD (a secondary button,
- * the inline access notice): the same loop as `checkoutOutlineFor`, run
- * against the host card (and card2) instead of the page, so it reaches 3:1
- * on both.
- */
-const RGBA = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i;
-
-/** A colour as the opaque hex it paints on `base` (rgba composited). */
-function opaqueOn(value: string, base: string): string | null {
-  const hex = normalizeHex(value);
-  if (hex !== null) return hex;
-  const m = RGBA.exec(value.trim());
-  if (m === null) return null;
-  const alpha = m[4] === undefined ? 1 : Number(m[4]);
-  const toHex = (n: number): string => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, "0");
-  const fg = `#${toHex(Number(m[1]))}${toHex(Number(m[2]))}${toHex(Number(m[3]))}`;
-  return mixHex(base, fg, alpha);
-}
-
-export function checkoutControlOutlineFor(palette: ThemePalette): string {
-  const page = normalizeHex(palette.page);
-  const card = page === null ? null : opaqueOn(palette.card, page);
-  // The inline notice sits on `card2` (panelStrong): the outline must reach
-  // 3:1 on both surfaces it is drawn on.
-  const card2 = page === null ? null : opaqueOn(palette.panelStrong, page);
-  const ink = normalizeHex(palette.primaryText);
-  if (card === null || card2 === null || ink === null) return checkoutOutlineFor(palette);
-  for (let amount = 0.34; amount < 1; amount += 0.04) {
-    const candidate = mixHex(card, ink, amount);
-    if (
-      contrastRatio(candidate, card) >= CHECKOUT_OUTLINE_MIN_CONTRAST &&
-      contrastRatio(candidate, card2) >= CHECKOUT_OUTLINE_MIN_CONTRAST
-    ) {
+    if (under.every((u) => contrastRatio(candidate, u) >= CHECKOUT_OUTLINE_MIN_CONTRAST)) {
       return candidate;
     }
   }
@@ -150,7 +121,7 @@ export function checkoutColorFor(palette: ThemePalette): CheckoutColor {
     card3: palette.panelStrong,
     line: neutralHair(palette),
     lineStrong: checkoutOutlineFor(palette),
-    controlOutline: checkoutControlOutlineFor(palette),
+    controlOutline: checkoutOutlineFor(palette, [palette.card, palette.panelStrong]),
     text1: palette.primaryText,
     text2: palette.secondaryText,
     text3: palette.tertiaryText,

@@ -7,13 +7,14 @@
 // passing `badge` (e.g. "Open now") instead of a presenter.
 
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import type { ResolvedTheme } from "./designTokens";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { accentFill, themeFontFace } from "./themeAccentStyle";
 import { boldFontFamily, type ThemePalette } from "./themePalette";
-import { useOfferingImageUri } from "./useOfferingImageUri";
+// issue #4518 — the brand logo takes the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 
 /**
  * issue #4420 audit — the phone cover clamps the title to 3 lines. At the
@@ -72,9 +73,6 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
   const soft = onCover ? "rgba(255,255,255,0.86)" : palette.secondaryText;
   const initial = (presenter?.name.trim()[0] ?? "•").toUpperCase();
   const avatarSize = onCover ? 60 : 64;
-  // issue #4518 — the brand logo takes the picture road (one fallback).
-  const avatarMedia = useOfferingImageUri(avatar?.photo ?? null);
-  const presenterMedia = useOfferingImageUri(presenter?.photo ?? null);
   return (
     <View style={styles.wrap} testID={testID}>
       {avatar !== null ? (
@@ -103,13 +101,11 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
             ]}
           >
             {avatar.photo != null && avatar.photo.length > 0 ? (
-              <Image
-                source={{ uri: avatarMedia.uri ?? avatar.photo }}
+              <OfferingRoutedImage
+                source={{ uri: avatar.photo }}
                 style={styles.avatarPhoto}
                 accessibilityLabel={avatar.label}
                 accessibilityIgnoresInvertColors
-                onLoad={avatarMedia.onLoad}
-                onError={avatarMedia.onError}
               />
             ) : (
               <Text
@@ -182,12 +178,10 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
               borderRadius={styles.avatar.borderRadius}
             />
             {presenter.photo != null && presenter.photo.length > 0 ? (
-              <Image
-                source={{ uri: presenterMedia.uri ?? presenter.photo }}
+              <OfferingRoutedImage
+                source={{ uri: presenter.photo }}
                 style={styles.avatarPhoto}
                 accessibilityIgnoresInvertColors
-                onLoad={presenterMedia.onLoad}
-                onError={presenterMedia.onError}
               />
             ) : (
               <Text style={[styles.avatarInitial, { color: palette.accentText }, face]}>

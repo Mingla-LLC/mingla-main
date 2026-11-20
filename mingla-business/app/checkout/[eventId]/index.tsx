@@ -71,7 +71,10 @@ import {
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
-import { BuyerConnectionNotice } from "../../../src/components/buyer/BuyerConnectionNotice";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { CheckoutCoverFallback } from "../../../src/components/checkout/CheckoutCoverFallback";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
@@ -477,6 +480,9 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         : `?ticketLink=${encodeURIComponent(ticketLinkToken)}`;
     router.push(`/checkout/${eventId}/buyer${tokenParam}` as never);
   }, [router, eventId, ticketLinkToken, totals.isEmpty]);
+
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
 
   // #4518 — one notice when the offering could not load: Try again re-reads
   // (and stays on screen while it does), Back stays as the quiet second
