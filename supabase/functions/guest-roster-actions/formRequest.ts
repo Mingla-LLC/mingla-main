@@ -15,8 +15,8 @@ import {
   type FormRequestChannel,
   type FormRequestDeps,
   parseAudience,
-  previewFormRequest,
 } from "../_shared/brandFormRequests.ts";
+import { previewFormRequest } from "../_shared/brandFormRequestPreview.ts";
 import type { SmsRateV1 } from "../_shared/smsPriceTable.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

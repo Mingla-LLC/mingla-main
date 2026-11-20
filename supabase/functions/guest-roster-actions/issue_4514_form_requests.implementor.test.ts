@@ -17,10 +17,12 @@ import {
   drainFormRequests,
   FORM_REQUEST_PUSH_ENABLED,
   type FormRequestRecipient,
-  previewFormRequest,
-  requestSmsSegments,
   routeFor,
 } from "../_shared/brandFormRequests.ts";
+import {
+  previewFormRequest,
+  requestSmsSegments,
+} from "../_shared/brandFormRequestPreview.ts";
 import type { DispatchV2Input, DispatchV2Result } from "../_shared/notifyV2.ts";
 import { renderCategoryMessage } from "../_shared/notifyTemplates.ts";
 import { providerSafePayload } from "../_shared/notifyV2.ts";

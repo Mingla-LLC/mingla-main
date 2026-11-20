@@ -2398,26 +2398,31 @@ $fn$;
 -- dates never count.
 CREATE FUNCTION public.brand_form_guest_dates(p_kind text, p_id uuid, p_event_id uuid)
 RETURNS SETOF timestamptz
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
-  WITH booked AS (
-    SELECT o.booked_start_at AS at FROM public.orders o JOIN public.events e ON e.id = o.event_id
-     WHERE p_kind = 'order' AND o.id = p_id AND e.event_type = 'experience' AND o.booked_start_at IS NOT NULL
-  ), ticketed AS (
-    SELECT DISTINCT ed.start_at AS at FROM public.tickets t
-      JOIN public.ticket_event_dates ted ON ted.ticket_id = t.id
-      JOIN public.event_dates ed ON ed.id = ted.event_date_id AND ed.event_id = p_event_id
-     WHERE p_kind = 'order' AND t.order_id = p_id AND ed.cancelled_at IS NULL
-       AND NOT EXISTS (SELECT 1 FROM booked)
-  )
-  SELECT b.at FROM booked b
-  UNION ALL
-  SELECT t.at FROM ticketed t
-  UNION ALL
+BEGIN
+  -- The #3281 slot column and ticket-date table are named inside EXECUTE: the
+  -- filtered #1931 template replay skips the migrations that create them
+  -- (#2492 closure); every real database has them.
+  IF p_kind = 'order' THEN
+    RETURN QUERY EXECUTE
+      'SELECT o.booked_start_at FROM public.orders o JOIN public.events e ON e.id = o.event_id'
+      || ' WHERE o.id = $1 AND e.event_type = $2 AND o.booked_start_at IS NOT NULL'
+      USING p_id, 'experience';
+    IF FOUND THEN RETURN; END IF;
+    RETURN QUERY EXECUTE
+      'SELECT DISTINCT ed.start_at FROM public.tickets t'
+      || ' JOIN public.ticket_event_dates ted ON ted.ticket_id = t.id'
+      || ' JOIN public.event_dates ed ON ed.id = ted.event_date_id AND ed.event_id = $2'
+      || ' WHERE t.order_id = $1 AND ed.cancelled_at IS NULL'
+      USING p_id, p_event_id;
+    IF FOUND THEN RETURN; END IF;
+  END IF;
+  RETURN QUERY
   SELECT min(ed.start_at) FROM public.event_dates ed
    WHERE ed.event_id = p_event_id AND ed.start_at > now() AND ed.cancelled_at IS NULL
-     AND NOT EXISTS (SELECT 1 FROM booked) AND NOT EXISTS (SELECT 1 FROM ticketed)
-  HAVING min(ed.start_at) IS NOT NULL
+  HAVING min(ed.start_at) IS NOT NULL;
+END;
 $fn$;
 
 -- Who a request for one form on one page would reach (service role). The actor
@@ -2771,8 +2776,9 @@ BEGIN
        AND EXISTS (SELECT 1 FROM public.event_dates d WHERE d.event_id = a.event_id
                     AND d.start_at > now() + interval '46 hours' AND d.start_at <= now() + interval '48 hours'
                    UNION ALL
-                   SELECT 1 FROM public.orders o WHERE o.event_id = a.event_id AND o.booked_start_at IS NOT NULL
-                    AND o.booked_start_at > now() + interval '46 hours' AND o.booked_start_at <= now() + interval '48 hours')
+                   SELECT 1 FROM public.orders o
+                    CROSS JOIN LATERAL (SELECT (to_jsonb(o)->>'booked_start_at')::timestamptz AS at) bs
+                    WHERE o.event_id = a.event_id AND bs.at > now() + interval '46 hours' AND bs.at <= now() + interval '48 hours')
      ORDER BY a.id
      FOR UPDATE OF a SKIP LOCKED
   LOOP
