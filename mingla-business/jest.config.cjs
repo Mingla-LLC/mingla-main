@@ -102,6 +102,7 @@ module.exports = {
     "issue_3460_ari_composer_narrow_web_clearance\\.happy\\.test\\.ts$",
     // #4304 — First Home with Ari render proof; runs under jest.issue1890.render.cjs.
     "issue_4304_first_run_ari\\.implementor\\.test\\.ts$",
+    "issue_4523_host_datetime_field\\.test\\.tsx$", // #4523 — runs under jest.issue4523.cfg.cjs
     "issue_4523_datefield_month_nav\\.test\\.tsx$", // #4523 — runs under jest.issue4523.cfg.cjs (RN preset, react-test-renderer); never the default node config
     // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
     // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no

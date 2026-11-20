@@ -33,9 +33,9 @@ test("#3872 Send interest shows refusals next to the field, success only after t
 
 test("#3872 the agreement step collects an 18+ date of birth, the tax line, and no tax details", () => {
   const agreement = read("app/creator/setup/agreement.tsx");
-  // #4402: the typed field and the wheel live in CreatorDobField, which only allows 18+ birth dates.
+  // #4402 / #4523: the date of birth is picked on the Mingla calendar's year grid in CreatorDobField, which only allows 18+ birth dates.
   assert.match(agreement, /<CreatorDobField/);
-  assert.match(read("src/components/creator/CreatorDobField.tsx"), /maximumDate = latestAdultBirthDate\(\)/);
+  assert.match(read("src/components/creator/CreatorDobField.tsx"), /<DobField[\s\S]*minAge=\{18\}/);
   assert.match(agreement, /if \(!isAdult\(birthDate\)\)/);
   assert.match(agreement, /signAgreement\(birthDate\)/);
   assert.match(agreement, /You’re responsible for reporting and paying tax on what you earn\./);

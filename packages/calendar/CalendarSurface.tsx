@@ -49,6 +49,8 @@ type SurfaceModeProps =
       mode: "range";
       value: RangeValue;
       onChange: (range: { start: CalendarDate; end: CalendarDate }) => void;
+      /** When set, Clear commits "no value" through this and closes (an optional field). */
+      onClear?: () => void;
       unit?: RangeUnit;
       minLength?: number;
       maxLength?: number;
@@ -57,6 +59,8 @@ type SurfaceModeProps =
       mode: "datetime";
       value: DateTimeValue;
       onChange: (value: { date: CalendarDate; time: WallTime }) => void;
+      /** When set, Clear commits "no value" through this and closes (an optional field). */
+      onClear?: () => void;
       timeStepMinutes?: 5 | 15 | 30;
       minTime?: WallTime;
       maxTime?: WallTime;
@@ -192,9 +196,13 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
   };
 
   const clear = (): void => {
-    if (props.mode === "range") setRangeDraft({ start: "", end: "" });
-    else if (props.mode === "datetime") setDateTimeDraft({ date: "", time: "" });
-    else if (props.mode === "single") {
+    if (props.mode === "range" || props.mode === "datetime") {
+      if (props.onClear !== undefined) {
+        props.onClear();
+        props.onDone();
+      } else if (props.mode === "range") setRangeDraft({ start: "", end: "" });
+      else setDateTimeDraft({ date: "", time: "" });
+    } else if (props.mode === "single") {
       props.onChange("");
       props.onDone();
     }

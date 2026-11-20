@@ -41,6 +41,7 @@
     "expectedFiles": [
       "mingla-business/jest.issue4523.cfg.cjs",
       "mingla-business/src/components/ui/__tests__/issue_4523_datefield_month_nav.test.tsx",
+      "mingla-business/src/components/ui/__tests__/issue_4523_host_datetime_field.test.tsx",
       "packages/brand-rendering/__tests__/issue_4523_stay_range_month_nav.test.tsx",
       "packages/calendar/__tests__/core.calendar.test.ts",
       "packages/calendar/__tests__/monthNavigationNeverCloses.test.tsx"

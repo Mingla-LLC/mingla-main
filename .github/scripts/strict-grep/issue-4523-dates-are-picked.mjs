@@ -13,7 +13,8 @@
  *      dynamic mode, or no mode at all, which defaults to a date).
  *   3. `showPicker(` anywhere.
  *   4. a `placeholder` that teaches a typed date: YYYY, DD/MM, MM/DD.
- *   5. an import of `ui/WebDateTimeInput` or `ui/DateField` (the old controls).
+ *   5. an import of `ui/WebDateTimeInput` (the old browser date/time input).
+ *      (`ui/DateField` is the Mingla calendar wrapper since slice 3 and is allowed.)
  *   6. structural: the calendar surface's month-navigation handler must not
  *      mention onChange, onDone, onCancel or onClose (a behavioural jest suite
  *      owns the truth; this pins the wiring).
@@ -48,10 +49,7 @@ export const SCAN_ROOTS = [
 /** Counted ratchet. Only ever lowered. */
 export const ALLOWLIST = {
   "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx": 3,
-  "mingla-business/src/components/creators/screens/GigBriefEditorScreen.tsx": 1,
-  "mingla-business/src/components/creators/screens/HostGigContractScreen.tsx": 1,
   "mingla-business/src/components/discounts/DiscountEditSheet.tsx": 2,
-  "mingla-business/src/components/discounts/ItemDiscountControls.tsx": 1,
   "mingla-business/src/components/event/CreatorStep2When.tsx": 5,
   "mingla-business/src/components/event/MultiDateOverrideSheet.tsx": 1,
   "mingla-business/src/components/event/TicketTierEditSheet.tsx": 5,
@@ -59,24 +57,15 @@ export const ALLOWLIST = {
   "mingla-business/src/components/marketing/ComposerStepWhen.tsx": 2,
   "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx": 1,
   "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.tsx": 2,
-  "mingla-business/src/components/marketing/ads/HostAdLiveEditCard.tsx": 1,
-  "mingla-business/src/components/marketing/ads/HostAdManageSheets.tsx": 1,
-  "mingla-business/src/components/messages/BrandPlanAddSheet.tsx": 1,
   "mingla-business/src/components/programs/TimeField.tsx": 1,
-  "mingla-business/src/components/sites/website/sections/ReviewEditor.tsx": 2,
-  "mingla-business/src/components/sites/website/sections/StoryEditor.tsx": 2,
-  "mingla-business/src/components/stay/StayInventoryManager.tsx": 2,
   "mingla-business/src/components/trip/BookingDeadlinePicker.tsx": 3,
   "mingla-business/src/components/trip/PaymentPlanEditor.tsx": 2,
   "mingla-business/src/components/trip/TripCreatorStep1Basics.tsx": 2,
   "mingla-business/src/components/venue/MenuCategorySheet.tsx": 1,
-  "mingla-business/src/components/venue/VenueBlackoutSheet.tsx": 1,
-  "mingla-business/src/screens/hostAds/HostAdCreateScreen.tsx": 1,
   "app-mobile/src/components/OnboardingFlow.tsx": 1,
   "app-mobile/src/components/PostExperienceModal.tsx": 1,
   "app-mobile/src/components/activity/ProposeDateTimeModal.tsx": 2,
   "app-mobile/src/components/chat/PlanTimePickerSheet.tsx": 2,
-  "app-mobile/src/components/creator/CreatorDobField.tsx": 3,
   "app-mobile/src/components/discover/StayFilterChips.tsx": 1,
   "app-mobile/src/components/expandedCard/ActionButtons.tsx": 2,
   "app-mobile/src/components/expandedCard/ConsumerIntakeForm.tsx": 2,
@@ -226,9 +215,9 @@ export function checkSource(relPath, rawSource) {
   // A type-only import is erased and brings in no control.
   for (const m of src.replace(/import\s+type\s[^;]*;/g, "").matchAll(/(?:from|import|require\()\s*\(?\s*["']([^"']+)["']/g)) {
     const spec = m[1];
-    const isOld = /(^|\/)(WebDateTimeInput|DateField)$/.test(spec);
+    const isOld = /(^|\/)WebDateTimeInput$/.test(spec);
     if (!isOld) continue;
-    if (/(^|\/)ui\/(WebDateTimeInput|DateField)$/.test(spec) || (inUiDir && /^\.\/(WebDateTimeInput|DateField)$/.test(spec))) {
+    if (/(^|\/)ui\/WebDateTimeInput$/.test(spec) || (inUiDir && /^\.\/WebDateTimeInput$/.test(spec))) {
       hits.push({ rule: 5, detail: `import ${spec}` });
     }
   }
@@ -313,7 +302,7 @@ if (process.argv.includes("--self-test")) {
   expectHits("date-mode DateTimePicker fails", "mingla-business/src/a.tsx", 'import DateTimePicker from "@react-native-community/datetimepicker";\nconst x = <DateTimePicker mode="date" value={d} onChange={() => 1} />;', 1);
   expectHits("modeless DateTimePicker fails", "mingla-business/src/a.tsx", 'import DateTimePicker from "@react-native-community/datetimepicker";\nconst x = <DateTimePicker value={d} />;', 1);
   expectHits("dynamic-mode DateTimePicker fails", "mingla-business/src/a.tsx", 'import DateTimePicker from "@react-native-community/datetimepicker";\nconst x = <DateTimePicker mode={m} value={d} />;', 1);
-  expectHits("import of ui/DateField fails", "mingla-business/src/a.tsx", 'import { DateField } from "../ui/DateField";', 1);
+  expectHits("import of ui/DateField (the calendar wrapper) passes", "mingla-business/src/a.tsx", 'import { DateField } from "../ui/DateField";', 0);
   expectHits("import of ui/WebDateTimeInput fails", "mingla-business/src/a.tsx", 'import { WebDateTimeInput } from "../../components/ui/WebDateTimeInput";', 1);
   expectHits("a type-only import of ui/DateField passes", "mingla-business/src/a.tsx", 'import type { DateFieldProps } from "../ui/DateField";', 0);
   expectHits('type="time" passes', "mingla-business/src/a.tsx", '<input type="time" value={v} />', 0);

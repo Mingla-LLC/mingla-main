@@ -190,6 +190,8 @@ export interface DateRangeFieldProps extends CommonOnly {
   unit?: RangeUnit;
   minLength?: number;
   maxLength?: number;
+  /** Optional field: Clear commits "no value" and closes. */
+  onClear?: () => void;
   /** Two months side by side (wide web). */
   months?: 1 | 2;
 }
@@ -197,7 +199,7 @@ export interface DateRangeFieldProps extends CommonOnly {
 /** Range. Stays open until Done; dismissing discards the draft. */
 export function BaseDateRangeField(props: DateRangeFieldProps): React.ReactElement {
   const { Surface } = useSurfaceImpl();
-  const { value, onChange, unit = "nights", minLength, maxLength, months, ...common } = props;
+  const { value, onChange, onClear, unit = "nights", minLength, maxLength, months, ...common } = props;
   const labels = mergeLabels(common.labels);
   const complete = value.start !== "" && value.end !== "" && parseCalendarDate(value.start) !== null && parseCalendarDate(value.end) !== null;
   const displayText = complete
@@ -220,6 +222,7 @@ export function BaseDateRangeField(props: DateRangeFieldProps): React.ReactEleme
           mode="range"
           value={value}
           onChange={onChange}
+          onClear={onClear}
           unit={unit}
           minLength={minLength}
           maxLength={maxLength}
@@ -238,12 +241,14 @@ export interface DateTimeFieldProps extends CommonOnly {
   timeStepMinutes?: 5 | 15 | 30;
   minTime?: WallTime;
   maxTime?: WallTime;
+  /** Optional field: Clear commits "no value" and closes. */
+  onClear?: () => void;
 }
 
 /** Date and time. Stays open until Done. */
 export function BaseDateTimeField(props: DateTimeFieldProps): React.ReactElement {
   const { Surface } = useSurfaceImpl();
-  const { value, onChange, timeStepMinutes, minTime, maxTime, ...common } = props;
+  const { value, onChange, onClear, timeStepMinutes, minTime, maxTime, ...common } = props;
   const labels = mergeLabels(common.labels);
   const displayText =
     value.date !== "" && value.time !== "" && parseCalendarDate(value.date) !== null
@@ -261,6 +266,7 @@ export function BaseDateTimeField(props: DateTimeFieldProps): React.ReactElement
           mode="datetime"
           value={value}
           onChange={onChange}
+          onClear={onClear}
           timeStepMinutes={timeStepMinutes}
           minTime={minTime}
           maxTime={maxTime}

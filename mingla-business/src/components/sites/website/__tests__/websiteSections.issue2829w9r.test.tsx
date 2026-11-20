@@ -17,6 +17,8 @@ const mockSaveLook = jest.fn();
 jest.mock("../WebsiteIcon", () => ({ WebsiteIcon: () => null }));
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => true }) }));
 jest.mock("../../../ui/ConfirmDialog", () => ({ ConfirmDialog: () => null }));
+// #4523: the date fields load the Mingla calendar through a lazy import; these suites do not exercise dates.
+jest.mock("../../../ui/DateField", () => ({ DateField: () => null }));
 jest.mock("expo-image-picker", () => ({ launchImageLibraryAsync: jest.fn() }));
 jest.mock("../../../../hooks/useBrands", () => ({
   useBrand: () => ({ data: { id: "b", displayName: "Young & Stamped", theme: null, tagline: "", bio: "" } }),
