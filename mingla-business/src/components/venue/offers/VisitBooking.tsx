@@ -91,6 +91,7 @@ import {
   entryStyles,
 } from "./EntryUi";
 import { VenueOfferPassQr } from "./VenueOfferPassQr";
+import { VenueClaimCard, VenuePassInAppBlock, parseVenueHandoff } from "./VenueAppHandoff";
 import { PayModeChoice } from "./PayModeChoice";
 import { VisitBalanceCard, VisitChanges, VisitPackageFacts } from "./VisitPackageParts";
 import { HireFacts, HireStateMain, HireTracker } from "./VisitHireParts";
@@ -215,6 +216,8 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
   const hire = useMemo(() => parseHireBooking(load.status === "ready" ? load.raw : null), [load]);
   // #4490 P5 — the by-the-hour part (null for other kinds).
   const hourFacts = useMemo(() => parseHourFacts(load.status === "ready" ? load.raw : null), [load]);
+  // #4490 Explorer W1: the app handoff (claim link) and the app-only pass switch.
+  const handoff = useMemo(() => parseVenueHandoff(load.status === "ready" ? load.raw : null), [load]);
   const [withdrawing, setWithdrawing] = useState(false);
   const [payMode, setPayMode] = useState<"deposit" | "full">("deposit");
   const [changeNote, setChangeNote] = useState<string | null>(null);
@@ -769,6 +772,9 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               <EntryButton palette={palette} theme={theme} variant="secondary" label="I've paid: check now" onPress={() => void checkPayment()} busy={paying} />
             </View>
           ) : null}
+          {handoff.passInApp && !pass?.qrPayload ? (
+            <VenuePassInAppBlock palette={palette} theme={theme} />
+          ) : (
           <View
             style={[entryStyles.card, styles.passCard, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
           >
@@ -789,6 +795,16 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               <Text style={[styles.small, { color: tones.success.text }]}>Everyone on this pass is checked in.</Text>
             ) : null}
           </View>
+          )}
+          <VenueClaimCard
+            handoff={handoff}
+            kind="pass"
+            email={booking.guest.email}
+            phone={booking.guest.phone}
+            analyticsSurface="venue_visit_booking"
+            brandSlug={booking.venue.brandSlug}
+            venueSlug={booking.venue.slug}
+          />
           {idLine !== null ? (
             <EntryNote palette={palette} icon="shield" testID="issue-4490-visit-id">
               {idLine}

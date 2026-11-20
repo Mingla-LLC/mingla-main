@@ -60,6 +60,7 @@ describe("#4238 W2-4 isAdPixelRoute", () => {
       (prefix) => !pixel.includes(prefix),
     );
     // TEST-MOD-APPROVED #4490: /visit/ (a token-opened booking page) is not a shopping page either.
-    expect([...excluded].sort()).toEqual(["/booking/", "/m/", "/pay/", "/refund/", "/stay/pay/", "/visit/"]);
+    // TEST-MOD-APPROVED #4490 (Explorer W1): /paid/ (the app payment return) is not a shopping page.
+    expect([...excluded].sort()).toEqual(["/booking/", "/m/", "/paid/", "/pay/", "/refund/", "/stay/pay/", "/visit/"]);
   });
 });

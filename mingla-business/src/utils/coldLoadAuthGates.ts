@@ -236,6 +236,7 @@ export const PUBLIC_BUYER_ROUTE_PREFIXES = [
   "/pay/", // /pay/[token] — #3645 anonymous instalment pay/approve link
   "/stay/pay/", // /stay/pay/[token] — #4188/#4420 staff-made Stay secure payment link (token-authorized)
   "/visit/", // /visit/[groupId] — #4490 venue booking and pass (booking-token-authorized; buying never needs sign-in)
+  "/paid/", // /paid/visit/[groupId], /paid/plan/[subscriptionId] — #4490 Explorer W1 app payment return (shows no booking data)
 ] as const;
 
 /**
@@ -292,6 +293,7 @@ const NON_SHOPPING_BUYER_ROUTE_PREFIXES: readonly string[] = [
   "/pay/",
   "/stay/pay/",
   "/visit/",
+  "/paid/", // #4490 Explorer W1
 ];
 
 export const isAdPixelRoute = (

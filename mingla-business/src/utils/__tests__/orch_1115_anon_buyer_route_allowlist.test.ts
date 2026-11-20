@@ -267,6 +267,8 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       // #4490 — a guest's venue booking and pass (booking-token-authorized).
       // TEST-MOD-APPROVED #4490: the reviewed set gains /visit/ (reconciliation conflict 20).
       "/visit/",
+      // TEST-MOD-APPROVED #4490 (Explorer W1): the app payment return page (no booking data).
+      "/paid/",
     ]);
   });
 

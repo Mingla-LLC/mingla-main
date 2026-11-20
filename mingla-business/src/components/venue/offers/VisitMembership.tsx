@@ -41,6 +41,7 @@ import { SecurePaymentHandoff } from "../../offering/LazyPublicParts";
 import { Icon, type IconName } from "../../ui/Icon";
 import { EntryButton, EntryNote, EntryProblem, entryStyles } from "./EntryUi";
 import { VenueOfferPassQr } from "./VenueOfferPassQr";
+import { VenueClaimCard, VenuePassInAppBlock, parseVenueHandoff, type VenueHandoff } from "./VenueAppHandoff";
 import {
   forgetVenueMember,
   guestMemberState,
@@ -94,7 +95,10 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
     setToken(fromFragment ?? readVenueOfferBookingToken(subscriptionId));
   }, [subscriptionId]);
 
+  // #4490 Explorer W1: the app handoff and the app-only pass switch, read off each member read.
+  const [handoff, setHandoff] = useState<VenueHandoff>({ shortUrl: null, code: null, passInApp: false });
   const apply = useCallback((raw: unknown): GuestMember | null => {
+    setHandoff(parseVenueHandoff(raw));
     const member = parseGuestMember(raw);
     if (member !== null) {
       setLoad({ status: "ready", member });
@@ -388,7 +392,20 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
                 : "Your pass won't open the door until this month is paid."}
         </Text>
       </View>
+    ) : handoff.passInApp ? (
+      <VenuePassInAppBlock palette={palette} theme={theme} />
     ) : null;
+  const claimCard = (
+    <VenueClaimCard
+      handoff={handoff}
+      kind="pass"
+      email={member.memberEmail ?? null}
+      phone={null}
+      analyticsSurface="venue_visit_membership"
+      brandSlug={member.venue.brandSlug}
+      venueSlug={member.venue.slug}
+    />
+  );
 
   const factsCard = member.status !== "cancelled" ? (
     <View style={[entryStyles.card, { backgroundColor: palette.card, borderColor: palette.panelBorder }]} testID="issue-4490-member-facts">
@@ -497,7 +514,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
             {includesCard}
             {actionsCard}
           </View>
-          <View style={styles.rightCol}>{passCard}</View>
+          <View style={styles.rightCol}>{passCard}{claimCard}</View>
         </View>
       </>,
     );
@@ -508,6 +525,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
       {statusCard}
       {payCard}
       {passCard}
+      {claimCard}
       {factsCard}
       {includesCard}
       {actionsCard}
