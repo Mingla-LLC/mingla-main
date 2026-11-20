@@ -56,6 +56,7 @@ const palette = {
     820: "#2b2b30", // card-3
     810: "#2c2c30", // solid selected
     700: "#5a5a60", // text-4
+    600: "#6e6e70", // control outline (#4518)
     500: "#8b8b91", // text-3
     400: "#a8a8ad", // text-2
     300: "#d4d4d8",
@@ -149,7 +150,11 @@ const palette = {
     a45: "rgba(248, 113, 113, 0.45)",
   },
   green: { 500: "#22c55e", 300: "#5ee08f", a12: "rgba(34, 197, 94, 0.12)" },
-  blue: { 500: "#3b82f6", 300: "#8fb3ff", a14: "rgba(59, 130, 246, 0.14)" },
+  blue: {
+    500: "#3b82f6",
+    300: "#8fb3ff",
+    a14: "rgba(59, 130, 246, 0.14)",
+  },
   amber: { 500: "#f59e0b", 300: "#fbbf24", a14: "rgba(245, 158, 11, 0.14)" },
   transparent: "transparent",
   // Status colours that read on a paper (light) surface: receipts, light
@@ -203,6 +208,12 @@ export const color = {
   card3: palette.graphite[820],
   line: palette.w["075"],
   lineStrong: palette.w["13"],
+  /**
+   * #4518 — the 1px outline of a quiet control (a secondary button, the inline
+   * access notice): `card` mixed toward `text1` until 3:1 against the card
+   * (38 %, 3.38:1). `lineStrong` measures well under 3:1 on the card.
+   */
+  controlOutline: palette.graphite[600],
   text1: palette.graphite[50],
   text2: palette.graphite[400],
   text3: palette.graphite[500],
@@ -246,6 +257,10 @@ export const color = {
   info: palette.blue[500],
   infoText: palette.blue[300],
   infoTint: palette.blue.a14,
+  /** #4420 Guests side (info blue): composer wash, selected segment / badge fill, hairline. */
+  guestWash: "rgba(59, 130, 246, 0.10)",
+  guestTint2: "rgba(59, 130, 246, 0.22)",
+  guestLine: "rgba(59, 130, 246, 0.45)",
   warning: palette.amber[500],
   warningText: palette.amber[300],
   warningTint: palette.amber.a14,

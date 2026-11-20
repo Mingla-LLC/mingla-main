@@ -22,6 +22,10 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { activeCheckoutPalette, checkoutStyles, color } from "./checkoutTheme";
+import { BUYER_CONNECTION_COPY } from "../buyer/buyerConnectionCopy";
+
+/** #4518 P3 — the Pay-step connection message leads with its cause, semibold. */
+const CONNECTION_LEAD = `${BUYER_CONNECTION_COPY.CONNECTION_TITLE}.`;
 
 export interface CheckoutHeaderProps {
   /**
@@ -202,7 +206,16 @@ export const CheckoutStatusBanner: React.FC<{
     >
       {title}
     </Text>
-    <Text style={styles.bannerBody}>{body}</Text>
+    <Text style={styles.bannerBody}>
+      {body === BUYER_CONNECTION_COPY.PAYMENT_CONNECTION_ERROR ? (
+        <>
+          <Text style={styles.bannerLead}>{CONNECTION_LEAD}</Text>
+          {body.slice(CONNECTION_LEAD.length)}
+        </>
+      ) : (
+        body
+      )}
+    </Text>
   </View>
 );
 
@@ -299,6 +312,7 @@ const styles = checkoutStyles(() => StyleSheet.create({
   bannerTitleError: { color: color.errorText },
   bannerTitleWarning: { color: color.warningText },
   bannerBody: { fontSize: 13.5, lineHeight: 19, color: color.text2 },
+  bannerLead: { fontWeight: "600" },
 }));
 
 export default CheckoutHeader;

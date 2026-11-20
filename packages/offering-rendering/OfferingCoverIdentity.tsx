@@ -7,12 +7,14 @@
 // passing `badge` (e.g. "Open now") instead of a presenter.
 
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import type { ResolvedTheme } from "./designTokens";
 import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { accentFill, themeFontFace } from "./themeAccentStyle";
 import { boldFontFamily, type ThemePalette } from "./themePalette";
+// issue #4518 — the brand logo takes the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 
 /**
  * issue #4420 audit — the phone cover clamps the title to 3 lines. At the
@@ -99,7 +101,7 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
             ]}
           >
             {avatar.photo != null && avatar.photo.length > 0 ? (
-              <Image
+              <OfferingRoutedImage
                 source={{ uri: avatar.photo }}
                 style={styles.avatarPhoto}
                 accessibilityLabel={avatar.label}
@@ -176,7 +178,7 @@ export const OfferingCoverIdentity: React.FC<OfferingCoverIdentityProps> = ({
               borderRadius={styles.avatar.borderRadius}
             />
             {presenter.photo != null && presenter.photo.length > 0 ? (
-              <Image
+              <OfferingRoutedImage
                 source={{ uri: presenter.photo }}
                 style={styles.avatarPhoto}
                 accessibilityIgnoresInvertColors

@@ -2,6 +2,7 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
+import { ensureMessagesEnglish } from "../../src/components/groupChat/LazyGroupChatPanel";
 import { createRetryableLazyErrorBoundary } from "../../src/components/ui/RetryableLazyBoundary";
 import { color } from "../../src/constants/designSystem";
 
@@ -14,7 +15,11 @@ import { color } from "../../src/constants/designSystem";
  * not import any Brand-group inbox module statically here.
  */
 const LazyBrandGroupInboxScreen = createRetryableLazyErrorBoundary<Record<string, never>>(
-  async () => ({ default: (await import("./[conversationId]")).BrandGroupInboxScreen }),
+  async () => {
+    // #4420: the Messages words and thread helpers load on intent, before the inbox mounts.
+    await ensureMessagesEnglish();
+    return { default: (await import("./[conversationId]")).BrandGroupInboxScreen };
+  },
   { loadingLabel: "Loading messages", style: { flex: 1 } },
 );
 

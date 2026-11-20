@@ -27,6 +27,7 @@ import { CheckoutCoverFallback } from "./CheckoutCoverFallback";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { formatCurrency } from "../../utils/currency";
 import { useCart } from "./CartContext";
+import { useOfferingImageUri } from "@mingla/offering-rendering/useOfferingImageUri";
 
 // #4420 §4.1 — the desktop ticket stub is 400 wide, sticky at top 96.
 const SUMMARY_WIDTH = 400;
@@ -165,6 +166,10 @@ export const CheckoutOrderSummary: React.FC<CheckoutOrderSummaryProps> = ({
   onBarHeight,
   stub = null,
 }) => {
+  // #4518 — the stub cover takes the picture road (one fallback).
+  const stubCover = useOfferingImageUri(
+    stub !== null && stub.coverUrl !== null && stub.coverUrl.length > 0 ? stub.coverUrl : null,
+  );
   if (!wide) {
     const pad: ViewStyle = { paddingBottom: bottomInset + space[4] };
     return (
@@ -191,10 +196,12 @@ export const CheckoutOrderSummary: React.FC<CheckoutOrderSummaryProps> = ({
           <View style={styles.band} testID="checkout-stub-band">
             {stub.coverUrl !== null && stub.coverUrl.length > 0 ? (
               <Image
-                source={{ uri: stub.coverUrl }}
+                source={{ uri: stubCover.uri ?? stub.coverUrl }}
                 style={StyleSheet.absoluteFill}
                 resizeMode="cover"
                 accessibilityIgnoresInvertColors
+                onLoad={stubCover.onLoad}
+                onError={stubCover.onError}
               />
             ) : (
               <CheckoutCoverFallback style={StyleSheet.absoluteFill} />

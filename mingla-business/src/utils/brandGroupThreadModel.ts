@@ -266,7 +266,7 @@ export function brandGroupReactionToggle(
 
 // ── Context menu ────────────────────────────────────────────────────────────
 
-export type BrandGroupMenuActionKey = "reply" | "copy" | "signal" | "select";
+export type BrandGroupMenuActionKey = "reply" | "copy" | "select_text" | "signal" | "select";
 
 export interface BrandGroupMenuAction {
   key: BrandGroupMenuActionKey;
@@ -284,12 +284,17 @@ export function buildBrandGroupMessageMenu(input: {
   hasText: boolean;
   canSupport: boolean;
   selected: boolean;
+  /** #4420 SC-16: phones offer Select text (a sheet for partial copy); web selects natively. */
+  canSelectText?: boolean;
 }): BrandGroupMenuAction[] {
   const actions: BrandGroupMenuAction[] = [
     { key: "reply", label: "Reply", accessibilityLabel: `Reply to ${input.senderName}` },
   ];
   if (input.hasText) {
     actions.push({ key: "copy", label: "Copy", accessibilityLabel: "Copy message text" });
+    if (input.canSelectText) {
+      actions.push({ key: "select_text", label: "Select text", accessibilityLabel: "Select part of the message to copy" });
+    }
   }
   if (input.canSupport) {
     actions.push({

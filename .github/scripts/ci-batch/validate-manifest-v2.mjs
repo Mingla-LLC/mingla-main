@@ -167,8 +167,11 @@ const HEAP_RAISED_ALLOWED_STEP_ENV = JSON.stringify({ NODE_PATH: "./node_modules
 // that calls `npx jest` / `npm test` / `npx tsc`, or a script that `cd mingla-business` and
 // then calls one of those. Any other step (no business jest, children, or any
 // other env) never gets it.
-const BUSINESS_JEST_RUN = /\b(?:npx jest|npm (?:run )?test|npx tsc)\b/;
-const BUSINESS_JEST_AFTER_CD = /(?:^|\n|&&\s*|;\s*)cd mingla-business\b[\s\S]*\b(?:npx jest|npm (?:run )?test|npx tsc)\b/;
+// [#3643] `npx --no-install jest` is the same jest, and `(cd mingla-business && ...)`
+// is the same cd in a subshell: #1857's Edge-contracts step uses both forms, so
+// the raise missed it and that jest run died at the 2 GB default on main.
+const BUSINESS_JEST_RUN = /\b(?:npx (?:--no-install )?jest|npm (?:run )?test|npx (?:--no-install )?tsc)\b/;
+const BUSINESS_JEST_AFTER_CD = /(?:^|\n|&&\s*|;\s*|\(\s*)cd mingla-business\b[\s\S]*\b(?:npx (?:--no-install )?jest|npm (?:run )?test|npx (?:--no-install )?tsc)\b/;
 export function isHeapRaisedStep(step) {
   if (!step || step.children || typeof step.run !== "string") return false;
   const runsBusinessJest = (step.cwd === "mingla-business" && BUSINESS_JEST_RUN.test(step.run))
@@ -618,7 +621,10 @@ export function phase3dContractDigest(manifest) {
 // #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows (filename order) and both sides' pg17 suites; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3645 bundle 2e-1 (merge of main): registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "72bcd7494fb66d5fd87618a31b5ea1ddaa0f35b1920133998cb391c69fc7ad38";
+// #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 merge of main after #3645 bundle 2e-1: kept main's 20281119003645 row before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 1931 replay: skipped 20281120014420_issue_4420_brand_guest_activity.sql by exact filename on the filtered #1931 temp replay (it calls issue_4459_is_brand_team, defined only by the skipped 20280805004459; #2492 closure); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "88388103fb7bf6779ad6104fa9ed19dbfe2d6bea4cbf4d73491c456fba7ab0da";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

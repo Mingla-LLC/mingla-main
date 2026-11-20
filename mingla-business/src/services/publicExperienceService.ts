@@ -25,6 +25,7 @@
 
 import { supabase } from "./supabase";
 import { resolveOfferingBookable } from "./brandCanCollect";
+import { noteUnrestrictedCheckout } from "./checkoutAccessHints";
 import type { RecurrenceRule } from "../store/draftEventStore";
 // ORCH-1147 — reuse the SINGLE owner of pg_public_event_tier_pricing (no
 // duplicated RPC / fee math here). The trip + event paths use the same helper.
@@ -792,6 +793,12 @@ interface RpcExpPayload {
   dates: RpcExpDate[];
   bookable: boolean;
   /**
+   * #4518 — carried by `/api/experience-checkout-bundle` only, and only for a
+   * sale open to everyone. Never `brandCanCollect`: `bookable` above is the
+   * server's answer already.
+   */
+  checkoutAccessMode?: unknown;
+  /**
    * issue #3284 — `null` = no published terms; ABSENT (a pre-#3284 server or a
    * cached body) = unknown. Read only through readRefundPolicyState.
    */
@@ -949,6 +956,11 @@ export async function getPublicExperienceBySlug(
           // Malformed body is a REAL defect — do not hide it behind RPC fallback
           // (same contract as publicEventsService invalid_direct_event_checkout_bundle).
           throw new Error("invalid_experience_checkout_bundle");
+        }
+        // #4518 — "this sale is open to everyone" rode in from our own site,
+        // so the eligibility read starts from it (and still re-reads).
+        if (data.checkoutAccessMode === "unrestricted") {
+          noteUnrestrictedCheckout(data.id);
         }
         try {
           return mapRpcPayload(data);

@@ -62,7 +62,6 @@ import React, {
 import {
   AccessibilityInfo,
   findNodeHandle,
-  Image,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -134,6 +133,8 @@ import type {
 import type { ChipInPanelState } from "./RsvpChipInPanel";
 import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
 import { StaticMapImage } from "./StaticMapFrame";
+// issue #4518 — the brand photo takes the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9\s()-]{7,20}$/;
@@ -2556,7 +2557,7 @@ export const RsvpOfferingBody: React.FC<
               style={[styles.brandTile, accentFill(palette)]}
             >
               {brand?.photo !== undefined && brand.photo.length > 0 ? (
-                <Image
+                <OfferingRoutedImage
                   source={{ uri: brand.photo }}
                   style={styles.brandPhoto}
                   resizeMode="cover"

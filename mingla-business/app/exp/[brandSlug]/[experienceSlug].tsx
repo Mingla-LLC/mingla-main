@@ -68,6 +68,11 @@ import {
 // adapter (web projects the ONE bounded server eligibility state; native is a
 // legacy pass-through). The notice mounts in ExperienceCheckoutFlow, not here.
 import { usePublicTicketCheckoutRouteAccess } from "../../../src/hooks/usePublicTicketCheckoutRouteAccess";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { usePublicExperienceBySlug } from "../../../src/hooks/usePublicExperience";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
 // anon-safe RPC — this is an anon buyer route, ungated per ORCH-1004).
@@ -335,6 +340,24 @@ function PublicExperienceRouteBody(): React.ReactElement {
     setMuted((m) => !m);
   }, []);
 
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
+
+  // #4518 — one notice for a page that could not load (no raw error text).
+  // Kept on screen while Try again re-reads (the query stays in error until
+  // it succeeds), so the buyer sees "Trying again…".
+  if (routeState === "error" || (routeState === "loading" && query.isError)) {
+    return (
+      <View style={styles.noticeHost}>
+        <BuyerConnectionNotice
+          variant={isConnectionFailure(query.error) ? "connection" : "server"}
+          onRetry={() => query.refetch()}
+          testID="public-experience-connection-notice"
+        />
+      </View>
+    );
+  }
+
   if (routeState === "loading") {
     return (
       <View style={styles.stateHost}>
@@ -344,22 +367,6 @@ function PublicExperienceRouteBody(): React.ReactElement {
     );
   }
 
-  if (routeState === "error") {
-    const rawError: unknown = query.error;
-    const errorMessage =
-      rawError !== null &&
-      typeof rawError === "object" &&
-      "message" in rawError &&
-      typeof (rawError as { message: unknown }).message === "string"
-        ? (rawError as { message: string }).message
-        : "Check your connection and try again.";
-    return (
-      <View style={styles.stateHost}>
-        <Text style={styles.stateTitle}>Couldn&rsquo;t load experience</Text>
-        <Text style={styles.stateText}>{errorMessage}</Text>
-      </View>
-    );
-  }
 
   const payload = query.data;
   if (payload === null || payload === undefined) {
@@ -1181,6 +1188,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: space[7],
     gap: space[4],
+    backgroundColor: color.canvas,
+  },
+  noticeHost: {
+    flex: 1,
     backgroundColor: color.canvas,
   },
   stateTitle: {

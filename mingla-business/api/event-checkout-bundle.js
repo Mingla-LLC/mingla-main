@@ -28,6 +28,7 @@
 // only ever cause the pre-existing race — see "2 left", tap, be refused —
 // which two simultaneous buyers already produce today.
 const { requestRpcJson } = require("../server/supabaseRpc");
+const { withBuyGateAnswers } = require("../server/buyGateAnswers");
 
 // Vercel gives repeated query keys as arrays. Inlined rather than imported from
 // socialPreview for the same reason requestRpcJson was extracted: this handler
@@ -55,48 +56,8 @@ const send = (res, status, body, cacheable) => {
   res.end(JSON.stringify(body));
 };
 
-// #4518 N1 — the two answers the Buy button waits on travel WITH the page
-// data, from our own site. Before this, the browser asked the database host
-// for them directly, so a phone that could reach us but not that host showed
-// "Booking unavailable. The organizer is finishing payment setup." about a
-// brand whose setup was complete.
-//
-// Each answer is added only when the read succeeded and was unambiguous. A
-// read that fails adds nothing, and the client falls back to asking for
-// itself, exactly as before this change. Neither field loosens anything: the
-// reservation path re-checks both, under its own locks, when the buyer pays.
-//   brandCanCollect      boolean, verbatim from pg_brand_can_collect
-//   checkoutAccessMode   "unrestricted" only. A restricted sale is decided
-//                        per buyer and is never answered from a shared cache.
-const withBuyGateAnswers = async (data) => {
-  if (data === null || typeof data !== "object") return data;
-  const brandId = typeof data.brandId === "string" ? data.brandId : null;
-  const eventId = typeof data.id === "string" ? data.id : null;
-  const [canCollect, access] = await Promise.allSettled([
-    brandId === null
-      ? Promise.reject(new Error("no_brand_id"))
-      : requestRpcJson("pg_brand_can_collect", { p_brand_id: brandId }),
-    eventId === null
-      ? Promise.reject(new Error("no_event_id"))
-      : requestRpcJson("pg_public_ticket_checkout_access_state", {
-          p_event_id: eventId,
-        }),
-  ]);
-  const out = { ...data };
-  if (canCollect.status === "fulfilled" && typeof canCollect.value === "boolean") {
-    out.brandCanCollect = canCollect.value;
-  }
-  if (
-    access.status === "fulfilled" &&
-    access.value !== null &&
-    typeof access.value === "object" &&
-    access.value.mode === "unrestricted"
-  ) {
-    out.checkoutAccessMode = "unrestricted";
-  }
-  return out;
-};
-
+// #4518 N1 — the two buy-gate answers ride with the bundle. The one copy of
+// that logic (and its contract) lives in server/buyGateAnswers.js.
 module.exports = async function eventCheckoutBundleHandler(req, res) {
   const eventId = firstQueryValue(req.query.eventId);
   const brandSlug = firstQueryValue(req.query.brandSlug);
@@ -130,7 +91,7 @@ module.exports = async function eventCheckoutBundleHandler(req, res) {
       return;
     }
 
-    send(res, 200, await withBuyGateAnswers(data), true);
+    send(res, 200, await withBuyGateAnswers(data, { brandCanCollect: true }), true);
   } catch {
     // Uncached, and the client falls back to calling Supabase directly, so an
     // outage here degrades to today's behaviour rather than to a broken page.
