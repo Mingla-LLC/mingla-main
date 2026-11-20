@@ -1,6 +1,5 @@
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -62,6 +61,8 @@ import {
 } from "./PublicVenueTabs";
 import { accentEdgeOnFill, accentFill, accentOutline, themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import { opaqueAccentWashColor } from "@mingla/offering-rendering/themePalette";
+// issue #4518 — stay pictures take the picture road (one fallback).
+import { OfferingRoutedImage } from "@mingla/offering-rendering/useOfferingImageUri";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -926,7 +927,7 @@ function OfferingCard({
       accessibilityLabel={`${offering.kind === "room" ? "Room" : "Place"}: ${offering.name}`}
     >
       {cover ? (
-        <Image
+        <OfferingRoutedImage
           source={{ uri: cover.url }}
           style={styles.cover}
           accessibilityLabel={cover.altText ?? offering.name}
@@ -939,7 +940,7 @@ function OfferingCard({
           contentContainerStyle={styles.galleryStrip}
         >
           {gallery.map((media) => (
-            <Image
+            <OfferingRoutedImage
               key={`${media.url}:${media.sortOrder}`}
               source={{ uri: media.url }}
               style={styles.galleryImage}

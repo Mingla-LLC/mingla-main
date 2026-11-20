@@ -1,3 +1,4 @@
+// invariant: #4420 wide-desktop Home is one page scroll; home-desktop-content scrolls and no nested home-desktop-recent-scroll exists
 import React from "react";
 import { StyleSheet } from "react-native";
 import { act, fireEvent, render } from "@testing-library/react-native";
@@ -377,6 +378,15 @@ describe("issue #874 Home integration real render", () => {
     expect(
       StyleSheet.flatten(content.props.contentContainerStyle).gap,
     ).toBeUndefined();
+  });
+
+  it("#4420: desktop Home scrolls as one page with a live event (no locked outer, no nested Recent scroll)", async () => {
+    mockIsWideDesktop = true;
+    const screen = await render(<HomeTab />);
+    const content = screen.getByTestId("home-desktop-content");
+    expect(content.props.scrollEnabled).not.toBe(false);
+    expect(screen.queryByTestId("home-desktop-recent-scroll")).toBeNull();
+    expect(screen.getByTestId("home-desktop-recent-grid")).toBeTruthy();
   });
 
   it("empty Recent has no manual create link (the top bar's + keeps the wizards)", async () => {

@@ -14,7 +14,6 @@
 
 import React, { useState } from "react";
 import {
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -25,6 +24,8 @@ import {
 import Svg, { Path } from "react-native-svg";
 
 import { EventCoverMedia } from "./EventCoverMedia";
+// issue #4518 — tiles take the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 import { type ThemePalette } from "./themePalette";
 
 import { pickGalleryLayout } from "./galleryLayout";
@@ -59,6 +60,7 @@ const SIZES = {
 const opaqueTileBg = (palette: ThemePalette): string =>
   Platform.select({ android: "#1A1A1C", default: palette.card }) ??
   palette.card;
+
 
 export const CountAwareGallery: React.FC<CountAwareGalleryProps> = ({
   items,
@@ -119,7 +121,7 @@ export const CountAwareGallery: React.FC<CountAwareGalleryProps> = ({
       );
     }
     return (
-      <Image
+      <OfferingRoutedImage
         key={`item-${index}`}
         source={{ uri: item.url }}
         style={tileBase}

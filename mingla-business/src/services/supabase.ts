@@ -164,6 +164,7 @@ export const laneEdgeEndpoint: {
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 const trackedFetch: FetchLike = createTrackedFetch(() => fetch);
 let secondRoadFetch: FetchLike | null = null;
+let secondRoadRoute: (() => "direct" | "sameOrigin") | null = null;
 const secondRoad =
   Platform.OS === "web" && typeof window !== "undefined"
     ? import("./resilientFetch").then((road) => {
@@ -171,9 +172,22 @@ const secondRoad =
           directOrigin: supabaseUrl,
           enabled: true,
         });
+        secondRoadRoute = road.restoredDatabaseRoute;
         return road;
       })
     : null;
+
+/**
+ * #4518 — which road this visit's database traffic takes, read WITHOUT
+ * loading the second-road chunk eagerly: "direct" until that chunk has
+ * loaded, then its route (a switch remembered for this tab included). Read
+ * by the buyer picture road (`buyerMediaRoute.ts`); it never switches it.
+ */
+export const databaseRouteNow = (): "direct" | "sameOrigin" =>
+  secondRoadRoute === null ? "direct" : secondRoadRoute();
+
+/** #4518 — the database project origin, no trailing slash ("" when unset). */
+export const supabaseProjectUrl = supabaseUrl.replace(/\/+$/, "");
 
 export const supabaseFetch: FetchLike = (input, init) => {
   if (secondRoadFetch !== null) return secondRoadFetch(input, init);

@@ -17,7 +17,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header mirroring /checkout-trip/[tripEventId]/index.tsx; insets.bottom IS applied (bottom dock); the top status-bar overlap with the banner header is the intended buyer aesthetic.
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -46,6 +46,11 @@ import {
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
 import { CheckoutHeader } from "../../../src/components/checkout/CheckoutHeader";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // experience checkout too (the event checkout already does; trips/experiences
@@ -271,6 +276,32 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
     router.push(`/checkout-experience/${experienceEventId}/buyer` as never);
   }, [router, experienceEventId, totals.isEmpty]);
 
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
+
+  // #4518 — one notice when the offering could not load: Try again re-reads
+  // (and stays on screen while it does), Back stays as the quiet second
+  // action. Checked before the loading branch so a retry shows "Trying
+  // again…" instead of swapping to the loading text.
+  if (query.isError) {
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={0}
+          totalSteps={3}
+          title="Get your spot"
+          onBack={handleBack}
+        />
+        <BuyerConnectionNotice
+          variant={isConnectionFailure(query.error) ? "connection" : "server"}
+          onRetry={() => query.refetch()}
+          onBack={handleBack}
+          testID="checkout-experience-connection-notice"
+        />
+      </View>
+    );
+  }
+
   if (query.isLoading || query.isFetching) {
     return (
       <View style={styles.host}>
@@ -282,27 +313,6 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
         />
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyTitle}>Loading experience…</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (query.isError) {
-    return (
-      <View style={styles.host}>
-        <CheckoutHeader
-          stepIndex={0}
-          totalSteps={3}
-          title="Get your spot"
-          onBack={handleBack}
-        />
-        <View style={styles.emptyWrap}>
-          <EmptyState
-            illustration="ticket"
-            title="Experience couldn't load"
-            description="Refresh this page or try the experience link again."
-            cta={{ label: "Back", onPress: handleBack }}
-          />
         </View>
       </View>
     );

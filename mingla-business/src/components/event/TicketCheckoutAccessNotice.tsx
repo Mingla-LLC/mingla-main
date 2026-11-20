@@ -20,7 +20,7 @@
  */
 
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import {
   radius as radiusTokens,
@@ -29,6 +29,7 @@ import {
   type,
 } from "../../constants/designSystem";
 import { usePublicTicketCheckoutRouteAccess } from "../../hooks/usePublicTicketCheckoutRouteAccess";
+import { BuyerConnectionNotice } from "../buyer/BuyerConnectionNotice";
 
 export interface TicketCheckoutAccessNoticeProps {
   /** The offering's canonical events-row UUID. */
@@ -60,27 +61,17 @@ export const TicketCheckoutAccessNotice: React.FC<
   }
 
   if (access.state === "error") {
+    // #4518 — the one connection notice (inline). testIDs kept: the
+    // wrapper is `…-error` (one node) and its Try again is `…-retry`; Buy stays paused
+    // while access is unknown (fail-closed, unchanged).
     return (
-      <View
-        style={styles.host}
-        accessibilityRole="alert"
-        accessibilityLiveRegion="polite"
-        testID={`${testID}-error`}
-      >
-        <Text style={styles.title}>We couldn&rsquo;t check this sale</Text>
-        <Text style={styles.body}>
-          Buying is paused until we can confirm access. Check your connection
-          and try again.
-        </Text>
-        <Pressable
-          onPress={access.retry}
-          accessibilityRole="button"
-          accessibilityLabel="Try checking this sale again"
-          style={styles.retry}
-          testID={`${testID}-retry`}
-        >
-          <Text style={styles.retryText}>Try again</Text>
-        </Pressable>
+      <View testID={`${testID}-error`}>
+        <BuyerConnectionNotice
+          variant="accessCheck"
+          onRetry={access.retry}
+          testID={`${testID}-error-notice`}
+          retryTestID={`${testID}-retry`}
+        />
       </View>
     );
   }
@@ -139,19 +130,5 @@ const styles = StyleSheet.create({
     fontSize: type.caption.fontSize,
     lineHeight: 18,
     color: color.text2,
-  },
-  retry: {
-    alignSelf: "flex-start",
-    marginTop: space[1],
-    paddingHorizontal: space[2],
-    paddingVertical: 6,
-    borderRadius: radiusTokens.sm,
-    borderWidth: 1,
-    borderColor: color.lineStrong,
-  },
-  retryText: {
-    fontSize: type.caption.fontSize,
-    fontWeight: "700",
-    color: color.text1,
   },
 });

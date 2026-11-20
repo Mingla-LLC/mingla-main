@@ -18,7 +18,11 @@ import {
 } from "../../constants/designSystem";
 import type { BrandHourEntry } from "../../types/brand";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
-import { BrandHoursEditor } from "./BrandHoursEditor";
+// #4518 — host-only, so loaded on intent (when the hours step / card shows),
+// not in the shared boot payload every buyer page downloads.
+const BrandHoursEditor = React.lazy(() =>
+  import("./BrandHoursEditor").then((module) => ({ default: module.BrandHoursEditor })),
+);
 
 export interface VenueStep4HoursProps {
   showErrors: boolean;
@@ -59,11 +63,13 @@ export const VenueStep4Hours: React.FC<VenueStep4HoursProps> = ({
     <View style={styles.host}>
       <Text style={styles.title}>Opening hours</Text>
       <Text style={styles.helper}>Default: Mon–Sat 9–5, Sun closed.</Text>
-      <BrandHoursEditor
-        hours={hours}
-        onChange={handleChange}
-        showErrors={showErrors}
-      />
+      <React.Suspense fallback={null}>
+        <BrandHoursEditor
+          hours={hours}
+          onChange={handleChange}
+          showErrors={showErrors}
+        />
+      </React.Suspense>
     </View>
   );
 };

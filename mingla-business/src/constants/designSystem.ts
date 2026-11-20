@@ -56,6 +56,7 @@ const palette = {
     820: "#2b2b30", // card-3
     810: "#2c2c30", // solid selected
     700: "#5a5a60", // text-4
+    600: "#6e6e70", // control outline (#4518)
     500: "#8b8b91", // text-3
     400: "#a8a8ad", // text-2
     300: "#d4d4d8",
@@ -207,6 +208,12 @@ export const color = {
   card3: palette.graphite[820],
   line: palette.w["075"],
   lineStrong: palette.w["13"],
+  /**
+   * #4518 — the 1px outline of a quiet control (a secondary button, the inline
+   * access notice): `card` mixed toward `text1` until 3:1 against the card
+   * (38 %, 3.38:1). `lineStrong` measures well under 3:1 on the card.
+   */
+  controlOutline: palette.graphite[600],
   text1: palette.graphite[50],
   text2: palette.graphite[400],
   text3: palette.graphite[500],

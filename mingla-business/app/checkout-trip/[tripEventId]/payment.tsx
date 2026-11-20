@@ -90,6 +90,8 @@ import { CheckoutOfferingStrip } from "../../../src/components/checkout/Checkout
 import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
 import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
 import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
+import { BUYER_CONNECTION_COPY } from "../../../src/components/buyer/buyerConnectionCopy";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { tripFunnelTotalSteps, tripPaymentStepIndex } from "./tripFunnelSteps";
 // issue #3351 [free trip intake loop] — the flattener and the presence probe
 // both live in the step-order owner now, so the trip route holds exactly one
@@ -656,8 +658,11 @@ function CheckoutTripPaymentScreenContent({
         }, 1200);
       } catch (error) {
         setProcessing(false);
-        const message =
-          error instanceof Error
+        // #4518 — a request that never got an answer shows the one connection
+        // message (never "Failed to fetch"); a server refusal keeps its words.
+        const message = isConnectionFailure(error)
+          ? BUYER_CONNECTION_COPY.PAYMENT_CONNECTION_ERROR
+          : error instanceof Error
             ? error.message
             : "Payment could not be completed. Please try again.";
         setPaymentError(message);
