@@ -63,6 +63,12 @@ import {
   MAX_NAV_LABEL_LENGTH,
   MAX_PAGE_TITLE_LENGTH,
 } from "./siteContracts/limits.ts";
+import {
+  assertSiteWorkspaceToolArgs,
+  attachSiteRefusal,
+  type SiteRefusalDetail,
+  siteWorkspaceToolParts,
+} from "./agentSiteWorkspaceTools.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const REVISION = { type: "string", minLength: 1, maxLength: 200 };
@@ -141,7 +147,13 @@ function requiredIds(args: Record<string, unknown>): {
 
 type SitesControlOutcome =
   | { kind: "ok"; data: unknown }
-  | { kind: "refused"; code: string; status: number; message: string }
+  | {
+    kind: "refused";
+    code: string;
+    status: number;
+    message: string;
+    site?: SiteRefusalDetail;
+  }
   | {
     kind: "unavailable";
     reason:
@@ -236,12 +248,38 @@ const SITES_NAMED_CODES: Readonly<Record<string, string>> = {
   ARI_PAGE_DUPLICATE: "CONFLICT",
   QUESTION_NOT_FOUND: "VALIDATION_FAILED",
   PAGE_NOT_ARI_DRAFT: "VALIDATION_FAILED",
+  // #4453 Website workspace — Core's named refusals for a section action, a
+  // change-set step or its undo (brand-site-control/siteWorkspace.ts). Each
+  // carries Core's plain sentence to the owner.
+  SECTION_NOT_FOUND: "VALIDATION_FAILED",
+  FIELD_NOT_EDITABLE: "VALIDATION_FAILED",
+  FIELD_REQUIRED: "VALIDATION_FAILED",
+  VALUE_TOO_LONG: "VALIDATION_FAILED",
+  LAYOUT_NOT_IN_DESIGN: "VALIDATION_FAILED",
+  SECTION_TYPE_NOT_AVAILABLE: "VALIDATION_FAILED",
+  SECTION_LIMIT_REACHED: "DOMAIN_ACTION_REFUSED",
+  SECTION_CANNOT_BE_REMOVED: "DOMAIN_ACTION_REFUSED",
+  HOME_ALWAYS_ON: "DOMAIN_ACTION_REFUSED",
+  MEDIA_REQUIRED: "VALIDATION_FAILED",
+  CHANGED_SINCE: "CONFLICT",
+  NOTHING_TO_UNDO: "CONFLICT",
+  NOTHING_TO_REDO: "CONFLICT",
+  UNREADABLE_COLOURS: "VALIDATION_FAILED",
+  // List rows (list_ops on edit_section).
+  LIST_NOT_EDITABLE: "VALIDATION_FAILED",
+  LIST_LIMIT_REACHED: "DOMAIN_ACTION_REFUSED",
+  LIST_ROW_REQUIRED: "DOMAIN_ACTION_REFUSED",
+  // The same step is still running from an earlier ask: it may yet land, so
+  // it rides the retryable envelope and is asked once more after a pause.
+  STEP_IN_PROGRESS: "SERVICE_TEMPORARILY_UNAVAILABLE",
 };
 
 const SITE_SERVICE_UNAVAILABLE_MESSAGE =
   "Ari could not reach Website tools right now.";
 
-function safeRefusal(body: unknown): { code: string; message: string } | null {
+function safeRefusal(
+  body: unknown,
+): { code: string; message: string; site?: SiteRefusalDetail } | null {
   if (!body || typeof body !== "object") return null;
   const candidate = body as {
     ok?: unknown;
@@ -253,6 +291,9 @@ function safeRefusal(body: unknown): { code: string; message: string } | null {
       problem?: unknown;
       variants?: unknown;
       latest_revision?: unknown;
+      max?: unknown;
+      layouts?: unknown;
+      suggestions?: unknown;
     };
   };
   const code = candidate.error?.code;
@@ -273,9 +314,32 @@ function safeRefusal(body: unknown): { code: string; message: string } | null {
       message: `${candidate.error.message.slice(0, 300)}${
         refusalDetail(candidate.error)
       }`,
+      site: siteRefusalDetailOf(code, candidate.error),
     };
   }
   return null;
+}
+
+function siteRefusalDetailOf(
+  code: string,
+  error: Record<string, unknown>,
+): SiteRefusalDetail {
+  const hex = (value: unknown) =>
+    typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)
+      ? value.toLowerCase()
+      : null;
+  const suggestions = Array.isArray(error.suggestions)
+    ? error.suggestions.slice(0, 8).flatMap((row) => {
+      if (!row || typeof row !== "object") return [];
+      const item = row as Record<string, unknown>;
+      const foreground = hex(item.foreground);
+      const nearest = hex(item.nearest_readable);
+      return foreground && nearest
+        ? [{ foreground, nearest_readable: nearest }]
+        : [];
+    })
+    : [];
+  return { code, ...(suggestions.length ? { suggestions } : {}) };
 }
 
 /** Bounded detail Core passed (claims, fields, layouts, latest revision) for Ari to act on. */
@@ -295,6 +359,17 @@ function refusalDetail(error: Record<string, unknown> | undefined): string {
   ];
   const variants = list(error.variants, 20);
   if (variants.length) parts.push(`This design draws: ${variants.join(", ")}.`);
+  // #4453 Website workspace — how long a field may be, which layouts exist.
+  // (`max` on a full page or a full list is a count, so only a too-long
+  // value says characters.)
+  if (
+    error.code === "VALUE_TOO_LONG" && typeof error.max === "number" &&
+    Number.isFinite(error.max)
+  ) {
+    parts.push(`The limit is ${Math.floor(error.max)} characters.`);
+  }
+  const layouts = list(error.layouts, 20);
+  if (layouts.length) parts.push(`Layouts on offer: ${layouts.join(", ")}.`);
   if (typeof error.latest_revision === "string" && error.latest_revision) {
     parts.push(`Latest revision: ${error.latest_revision.slice(0, 200)}.`);
   }
@@ -350,6 +425,7 @@ async function readControl(
             code: refusal.code,
             message: refusal.message,
             status,
+            ...(refusal.site ? { site: refusal.site } : {}),
           };
         } else {
           outcome = {
@@ -380,6 +456,7 @@ async function readControl(
           code: refusal.code,
           message: refusal.message,
           status: 200,
+          ...(refusal.site ? { site: refusal.site } : {}),
         }
         : { kind: "unavailable", reason: "body_unrecognized", status: null };
     }
@@ -402,7 +479,11 @@ async function readControl(
 function settleControl(outcome: SitesControlOutcome): unknown {
   if (outcome.kind === "ok") return outcome.data;
   if (outcome.kind === "refused") {
-    throw new ToolError(outcome.code, outcome.message);
+    const error = new ToolError(outcome.code, outcome.message);
+    // #4453: Core's own code and bounded detail ride along for the caller
+    // that can act on them (the change-set executor); never shown as is.
+    if (outcome.site) attachSiteRefusal(error, outcome.site);
+    throw error;
   }
   throw new ToolError(
     "SITE_SERVICE_UNAVAILABLE",
@@ -2017,6 +2098,35 @@ const createSitePreview = publicationTool("create_site_preview");
 const publishSite = publicationTool("publish_site");
 const rollbackSite = publicationTool("rollback_site");
 
+// #4453 Website workspace — one snapshot read, one plan (a change set applied
+// as one undoable group) and the written-up request to the Mingla team.
+// The schemas, checks and executors live in agentSiteWorkspaceTools.ts.
+const SITE_WORKSPACE_PARTS = siteWorkspaceToolParts({
+  cmsCall: cmsTool,
+  resolveSiteId: authoritativeSiteId,
+});
+const getSiteWorkspace = tool(
+  "get_site_workspace",
+  SITE_WORKSPACE_PARTS.getSiteWorkspace.description,
+  SITE_WORKSPACE_PARTS.getSiteWorkspace.properties,
+  SITE_WORKSPACE_PARTS.getSiteWorkspace.required,
+  SITE_WORKSPACE_PARTS.getSiteWorkspace.executor,
+);
+const proposeSiteChangeSet = tool(
+  "propose_site_change_set",
+  SITE_WORKSPACE_PARTS.proposeSiteChangeSet.description,
+  SITE_WORKSPACE_PARTS.proposeSiteChangeSet.properties,
+  SITE_WORKSPACE_PARTS.proposeSiteChangeSet.required,
+  SITE_WORKSPACE_PARTS.proposeSiteChangeSet.executor,
+);
+const proposeWebsiteTeamRequest = tool(
+  "propose_website_team_request",
+  SITE_WORKSPACE_PARTS.proposeWebsiteTeamRequest.description,
+  SITE_WORKSPACE_PARTS.proposeWebsiteTeamRequest.properties,
+  SITE_WORKSPACE_PARTS.proposeWebsiteTeamRequest.required,
+  SITE_WORKSPACE_PARTS.proposeWebsiteTeamRequest.executor,
+);
+
 export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getBrandSite,
   getSitePlan,
@@ -2053,6 +2163,10 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getOperation,
   listVersions,
   rollbackSite,
+  // #4453 Website workspace — on-path only (ARI_UNDERSTAND_FIRST_ONLY_TOOLS).
+  getSiteWorkspace,
+  proposeSiteChangeSet,
+  proposeWebsiteTeamRequest,
 ];
 
 export const SITE_AGENT_READ_ONLY = new Set([
@@ -2070,6 +2184,8 @@ export const SITE_AGENT_READ_ONLY = new Set([
   "get_site_operation_status",
   "list_site_versions",
   "get_site_design_brief",
+  // #4453 Website workspace — the planning snapshot.
+  "get_site_workspace",
 ]);
 
 /** The Sites tools that write (each one a confirmed proposal). */
@@ -2095,11 +2211,16 @@ export function assertSiteToolArgs(
   const invalid = (message: string): never => {
     throw new ToolError("INVALID_ARGS", message);
   };
+  // #4453 Website workspace — a change set cites per step and a team request
+  // changes nothing on the site; both have their own exact checks.
+  assertSiteWorkspaceToolArgs(toolName, args);
   const needsLog = ![
     "confirm_site_review",
     "create_site_preview",
     "publish_site",
     "rollback_site",
+    "propose_site_change_set",
+    "propose_website_team_request",
   ].includes(toolName);
   if (needsLog) {
     const problem = workLogCitesProblem(args.cites);

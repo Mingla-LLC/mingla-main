@@ -59,6 +59,7 @@ export const COLOUR_ALLOWLIST_ENTRIES = [
   { path: "src/components/auth/BusinessWelcomeScreen.tsx", reason: "the welcome video veil, Apple button and caption shadows are pinned by the #2052 welcome-video contract" },
   { path: "src/components/brand/BrandProfileView.tsx", reason: "the cover gradient is built from the brand's own coverHue (data)" },
   { path: "src/components/sites/website/sections/DesignSection.tsx", reason: "an example colour code inside host-facing copy (\"Try something like #89cff0\")" },
+  { path: "src/sites/designMoods.ts", reason: "#4453 mood presets: the colours of the owner's WEBSITE (content sent to the site as its look), never Host chrome; proven readable by src/sites/__tests__/issue_4453_ws_moods" },
   { path: "src/components/event/useBusinessRsvpPhoneField.tsx", reason: "the field error colour is chosen against the host theme's foreground (host-theme content)" },
   { path: "src/components/orders/OrderListCard.tsx", reason: "the buyer avatar tile hue is generated from the buyer's name (data)" },
   { path: "src/utils/brandGroupThreadModel.ts", reason: "the brand tile hues are generated from the brand id (data)" },

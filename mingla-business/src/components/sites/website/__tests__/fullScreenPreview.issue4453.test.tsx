@@ -238,11 +238,19 @@ describe("#4453 M8 preview frames and states", () => {
     expect(has(render(panel(ready, desktop)), "preview-unsaved")).toBe(false);
   });
 
-  it("the native full-screen modal passes unsaved and tokenDeclarations (as the old sheet did)", () => {
+  // #4453 integration: the full-screen modal now lives with the dialogs, so the
+  // workspace can open it too (it could not before: the modal was drawn only by
+  // the old phone shell). There is no "unsaved design" any more (the Design
+  // panel autosaves), so the modal passes the colours being picked right now,
+  // whatever mode is open, and never an "unsaved" flag.
+  it("the native full-screen modal is one of the shared dialogs and shows the colours being picked", () => {
     const source = require("fs").readFileSync(require("path").join(__dirname, "../WebsiteApp.tsx"), "utf8") as string;
+    const dialogs = source.slice(source.indexOf("const dialogs = ("), source.indexOf('if (route.kind === "setup")'));
+    expect(dialogs).toContain("<Modal visible={previewSheet}");
     const modal = source.slice(source.indexOf("<Modal visible={previewSheet}"), source.indexOf("</Modal>"));
-    expect(modal).toContain('unsaved={section === "design" && designDirty}');
-    expect(modal).toContain('tokenDeclarations={section === "design" ? tokenDeclarations : null}');
+    expect(modal).toContain("tokenDeclarations={tokenDeclarations}");
+    expect(modal).not.toContain("unsaved=");
+    expect(source.match(/<Modal visible=\{previewSheet\}/g)).toHaveLength(1);
   });
 
   it("no draft yet, loading and error each say what is happening; error can retry", () => {

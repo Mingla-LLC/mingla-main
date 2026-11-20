@@ -54,7 +54,7 @@ const code = stripComments(source)
 // Isolate loginToOneSignal's body: from its declaration to the NEXT top-level function
 // (requestPushPermission). Bounding to THIS function ensures syncPushPermissionTag's own
 // getPermissionAsync read (a different function) cannot mask a revert of the fix.
-const loginStart = code.indexOf('export async function loginToOneSignal')
+const loginStart = code.indexOf('export function loginToOneSignal')
 assert.ok(loginStart !== -1, 'loginToOneSignal must exist')
 const bodyEnd = code.indexOf('export async function requestPushPermission', loginStart)
 assert.ok(bodyEnd !== -1, 'requestPushPermission must follow loginToOneSignal (body boundary)')

@@ -170,7 +170,47 @@ export async function requestPostTourPermissions(): Promise<void> {
   // wraps OneSignal's canRequestPermission() inside oneSignalService (the only
   // module allowed to import OneSignal). A declined or already-granted user is
   // never re-prompted (ORCH-1244).
-  if (await canRequestPushPermission()) {
-    await requestPushPermission();
-  }
+  await requestPushOnce();
+}
+
+// #4517: the gated push request, single-flight per app session. Shared by the
+// post-onboarding call above and the returning-user call below so the two can
+// never both raise the OS prompt (both would read "can still ask" before either
+// finished). Released again when nobody was asked. Never throws.
+let _pushRequestInFlight: Promise<void> | null = null;
+
+function requestPushOnce(): Promise<void> {
+  if (_pushRequestInFlight) return _pushRequestInFlight;
+  let asked = false;
+  const flight: Promise<void> = (async () => {
+    try {
+      if (await canRequestPushPermission()) {
+        asked = true;
+        await requestPushPermission();
+      }
+    } catch (e) {
+      console.warn('[permissions] push request failed:', e);
+    } finally {
+      // Nobody was asked (the SDK was not ready, or the check failed): release, so
+      // a later call this session can try again. Once the request was made the
+      // latch stays, so the two callers can never both raise the prompt.
+      if (!asked && _pushRequestInFlight === flight) _pushRequestInFlight = null;
+    }
+  })();
+  _pushRequestInFlight = flight;
+  return flight;
+}
+
+/**
+ * #4517: an already-onboarded, signed-in user who was never asked (typically an
+ * existing account signing in on a new phone) gets the push request once per app
+ * session on reaching home. Before #4517 this happened by accident: opt-in at
+ * sign-in raised the OS prompt. It waits for ATT (iOS prompt order is ATT, then
+ * location, then notifications), then goes through the same gate as onboarding:
+ * a user who already answered is never asked again (ORCH-1244).
+ * The caller guards on "signed in and onboarded"; this is a no-op after the first call.
+ */
+export async function requestReturningUserPushPermission(): Promise<void> {
+  await ensureAttRequested();
+  await requestPushOnce();
 }

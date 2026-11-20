@@ -21,6 +21,7 @@ import { StudioUsers } from "./collections/StudioUsers";
 import { Tenants } from "./collections/Tenants";
 import { WorkLog } from "./collections/WorkLog";
 import { DesignCheckRuns } from "./collections/DesignCheckRuns";
+import { DraftChanges } from "./collections/DraftChanges";
 import { fontEndpoints } from "./endpoints/fontEndpoints";
 import { sitesEndpoints } from "./endpoints/sitesEndpoints";
 import { composeEndpoints } from "./endpoints/composeEndpoint";
@@ -111,6 +112,8 @@ export default buildConfig({
     // #2829 W9b — "Why it looks like this" and the design checks' results.
     WorkLog,
     DesignCheckRuns,
+    // #4453 website workspace — the draft's undo / redo history.
+    DraftChanges,
   ],
   endpoints: [...sitesEndpoints, ...fontEndpoints, ...composeEndpoints, ...planPreviewEndpoints, ...contentEndpoints],
   plugins: [
@@ -129,6 +132,7 @@ export default buildConfig({
         "publication-jobs": {},
         "work-log": {},
         "design-check-runs": {},
+        "draft-changes": {},
       },
       tenantsSlug: "tenants",
       tenantsArrayField: { includeDefaultField: false },

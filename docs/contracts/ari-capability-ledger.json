@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 196,
-    "capability_count": 208,
+    "registered_tool_count": 199,
+    "capability_count": 211,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 195,
+      "registered_unverified": 198,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -8707,6 +8707,144 @@
       ],
       "confidence": "high",
       "verified_at": "2026-11-17"
+    },
+    {
+      "id": "ari.sites.read_workspace",
+      "domain": "sites",
+      "outcome": "Read the website draft as one planning snapshot for the Website workspace",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_4453"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/src/components/sites/website/WebsiteApp.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const getSiteWorkspace"
+          }
+        ]
+      },
+      "ari_tool": "get_site_workspace",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "4eefd752df67383df108f72e8bf4d00a787b7b73",
+          "reference": "supabase/functions/_shared/__tests__/issue_4453_website_workspace.implementor.test.ts: get_site_workspace",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        4453
+      ],
+      "blockers": [
+        "On-path only; no exact-revision runtime evidence on the required Business surfaces yet"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-19"
+    },
+    {
+      "id": "ari.sites.propose_change_set",
+      "domain": "sites",
+      "outcome": "Propose one plan of up to eight draft changes, applied as one undoable group and put back whole if a step fails",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_4453"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/src/components/sites/website/WebsiteApp.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeSiteChangeSet"
+          }
+        ]
+      },
+      "ari_tool": "propose_site_change_set",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "4eefd752df67383df108f72e8bf4d00a787b7b73",
+          "reference": "supabase/functions/_shared/__tests__/issue_4453_website_workspace.implementor.test.ts: propose_site_change_set executor",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        4453
+      ],
+      "blockers": [
+        "On-path only; no exact-revision runtime evidence on the required Business surfaces yet"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-19"
+    },
+    {
+      "id": "ari.sites.team_request",
+      "domain": "sites",
+      "outcome": "Write up a website change the workspace cannot make as a request to the Mingla team",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue_4453"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/src/components/sites/website/WebsiteApp.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentSiteTools.ts",
+            "symbol": "const proposeWebsiteTeamRequest"
+          }
+        ]
+      },
+      "ari_tool": "propose_website_team_request",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "4eefd752df67383df108f72e8bf4d00a787b7b73",
+          "reference": "supabase/functions/_shared/__tests__/issue_4453_website_workspace.implementor.test.ts: propose_website_team_request",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        4453
+      ],
+      "blockers": [
+        "On-path only; no exact-revision runtime evidence on the required Business surfaces yet"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-11-19"
     },
     {
       "id": "ari.sites.confirm_review",

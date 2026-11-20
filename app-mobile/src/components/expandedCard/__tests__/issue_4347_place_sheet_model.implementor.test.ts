@@ -178,7 +178,7 @@ describe("#4347 wave 2 directions", () => {
     const target = directionsTarget({ lat: 6.4, lng: 3.4, label: "Nok", googlePlaceId: ` ${id} ` });
     expect(target).toEqual({ label: "Nok", geo: { lat: 6.4, lng: 3.4 }, googlePlaceId: id });
     expect(buildMapsDeepLink({ ...target, platform: "web" }).url).toBe(
-      `https://www.google.com/maps/search/?api=1&query=6.4,3.4&query_place_id=${id}`,
+      `https://www.google.com/maps/search/?api=1&query=Nok&query_place_id=${id}`,
     );
     // Not Google ids: the pool's own UUID and a pre-#4334 urn id leave the link as before.
     for (const bad of ["33333333-3333-4333-8333-333333333333", "dXJuOm1ieHBvaTpmb28", "", null]) {

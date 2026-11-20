@@ -285,9 +285,11 @@ BEGIN
   -- floor rises to the live 58.
   -- [TEST-MOD-APPROVED #4255] The rework's ops_due_digest: 58 -> 59.
   -- [TEST-MOD-APPROVED #4420] The Stay booking-link resend: 59 -> 60.
-  IF v_count < 60 THEN
+  -- [TEST-MOD-APPROVED #4453] "Ready for review" on a website change request
+  -- (issue_4453_website_request_ready): 60 -> 61.
+  IF v_count < 61 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_60_got_%',
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_61_got_%',
       v_count;
   END IF;
 
@@ -305,9 +307,10 @@ BEGIN
   -- [TEST-MOD-APPROVED #4255] team_chat_enqueue: 42 -> 43 writers; the
   -- rework's ops_due_digest: 43 -> 44.
   -- [TEST-MOD-APPROVED #4420] the Stay booking-link resend: 44 -> 45.
-  IF v_count < 45 THEN
+  -- [TEST-MOD-APPROVED #4453] issue_4453_website_request_ready: 45 -> 46.
+  IF v_count < 46 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_producer_floor_breached_expected_at_least_45_got_%',
+      'issue_1529_adv_producer_floor_breached_expected_at_least_46_got_%',
       v_count;
   END IF;
 END;
@@ -370,7 +373,11 @@ DECLARE
     -- [TEST-MOD-APPROVED #4420] the email-only Stay booking-link resend
     -- writes an explicit NULL country_code;
     -- issue_4420_stay_other_contact_recovery.implementor.pg17 asserts it.
-    'issue_4420_stay_group_resend_link'
+    'issue_4420_stay_group_resend_link',
+    -- [TEST-MOD-APPROVED #4453] "Ready for review" (bell, push, email; no SMS)
+    -- writes an explicit NULL country_code;
+    -- issue_4453_website_team_requests.implementor.pg17 asserts it.
+    'issue_4453_website_request_ready'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of

@@ -275,6 +275,10 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // #4453 milestone 11 — "Add a page with Ari" (on-path only; Core checks SITES_ARI_ADD_PAGE).
   propose_site_page: role("marketing_manager", "brand"),
   answer_site_page_question: role("marketing_manager", "brand"),
+  // #4453 Website workspace (on-path only; Core re-checks rank 20 per step).
+  get_site_workspace: role("marketing_manager", "brand"),
+  propose_site_change_set: role("marketing_manager", "brand"),
+  propose_website_team_request: role("marketing_manager", "brand"),
   confirm_site_review: role("brand_admin", "brand"),
   propose_trip_guide_update: role("event_manager", "brand"),
   create_site_preview: role("marketing_manager", "brand"),

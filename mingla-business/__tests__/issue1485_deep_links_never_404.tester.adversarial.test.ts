@@ -123,6 +123,8 @@ const COMPILED_SRC: Record<string, string> = {
   // [TEST-MOD-APPROVED #3827] The bearer route is server-rendered before the
   // SPA catch-all; keep the exhaustive compiled-route oracle aware of it.
   "/g/:token": "^/g(?:/([^/]+?))$",
+  // #4420 — the event's calendar file (Add to calendar), served by api/event-calendar.
+  "/e/:brandSlug/:eventSlug/calendar.ics": "^/e(?:/([^/]+?))(?:/([^/]+?))/calendar\\.ics$",
   "/e/:brandSlug/:eventSlug": "^/e(?:/([^/]+?))(?:/([^/]+?))$",
   // [TEST-MOD-APPROVED #1968] Canonical experience pages now have their own
   // crawler-only metadata handler so their ordinary browser route stays SPA-owned.

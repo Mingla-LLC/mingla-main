@@ -35,9 +35,21 @@ export default function BrandWebsiteAriRoute(): React.ReactElement {
       />
     );
   }
+  // #4453 — the full Ari chat with the website in view stays one tap away
+  // (the workspace's "Open the full Ari chat" asks for it by name).
+  if (requestedIntent === "chat") {
+    return (
+      <Redirect
+        href={`/(tabs)/ari?brandId=${encodeURIComponent(safeBrandId)}&sitesIntent=edit` as never}
+      />
+    );
+  }
+  // #4453 — editing with Ari happens in the Website workspace's Ari mode: its
+  // own light panel, so the chat screen's chunk is still never loaded here.
+  // A brand with no website yet lands on the Website screen, which says so.
   return (
     <Redirect
-      href={`/(tabs)/ari?brandId=${encodeURIComponent(safeBrandId)}&sitesIntent=edit` as never}
+      href={`/brand/${encodeURIComponent(safeBrandId)}/website?mode=ari` as never}
     />
   );
 }

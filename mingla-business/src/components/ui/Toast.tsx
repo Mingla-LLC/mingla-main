@@ -343,6 +343,11 @@ interface ToastCardProps {
 const ToastCard: React.FC<ToastCardProps> = ({ entry, onPressIn, onPressOut, onHoverIn, onHoverOut }) => {
   const tokens = kindTokens()[entry.kind];
   const { action, onDismiss } = entry;
+  // #4453: on web a "button" role draws a <button>, and the action and close
+  // buttons inside it are <button>s too ("<button> cannot be a descendant of
+  // <button>"). There the card is a plain clickable surface, out of the tab
+  // order, and the close button is the keyboard and screen-reader way to dismiss.
+  const web = Platform.OS === "web";
   return (
     // ORCH-0789: tap-anywhere-on-card dismisses; onDismiss is idempotent.
     <Pressable
@@ -351,7 +356,8 @@ const ToastCard: React.FC<ToastCardProps> = ({ entry, onPressIn, onPressOut, onH
       onPressOut={onPressOut}
       onHoverIn={onHoverIn}
       onHoverOut={onHoverOut}
-      accessibilityRole="button"
+      accessibilityRole={web ? undefined : "button"}
+      tabIndex={web ? -1 : 0}
       accessibilityLabel="Dismiss notification"
       style={[styles.cardShadow, shadow.toast]}
     >

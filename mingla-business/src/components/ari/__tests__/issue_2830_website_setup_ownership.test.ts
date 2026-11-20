@@ -26,7 +26,13 @@ describe("#2830 Ari owns Website setup without trapping the owner", () => {
       'chat.setWorkflowContext(websiteSetup ? "website_setup" : null)',
     );
     expect(agentHook).toContain("workflow_context: workflowContextRef.current");
-    expect(agentService).toContain('workflow_context?: "website_setup"');
+    // #4453: the field's type widened to the two surfaces that are not the
+    // main chat. Both values are allowed, and nothing else is.
+    expect(agentService).toContain(
+      'export type AriWorkflowContext = "website_setup" | "website_workspace";',
+    );
+    expect(agentService.match(/workflow_context\?: AriWorkflowContext;/g)).toHaveLength(2);
+    expect(agentService).not.toMatch(/workflow_context\?: (?!AriWorkflowContext;)/);
   });
 
   it("opens Ari beside the form and starts with the server's kickoff, before any draft", () => {

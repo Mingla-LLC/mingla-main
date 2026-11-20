@@ -72,6 +72,7 @@ import {
   useVenueCapacityRules,
 } from "../../hooks/useVenueCapacityRules";
 import type { VenueCapacityRule } from "../../types/venueReservation";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 
 export interface VenueCapacityRulesPanelProps {
   brandId: string | null;
@@ -148,6 +149,19 @@ export function VenueCapacityRulesPanel({
     return minorFromMajor(major, currency);
   }, [amountDraft, currency]);
   const depositOn = savedDepositActive || depositPendingOn;
+  // #4453 — a party size or deposit amount typed and not yet saved holds a
+  // brand switch. Compared with what is saved, so retyping the saved value
+  // (or clearing what was typed) is not a change.
+  const savedAmountText =
+    savedDepositCents !== null ? String(majorFromMinor(savedDepositCents, currency)) : "";
+  useUnsavedChangesGuard({
+    dirty:
+      canMutate &&
+      ((depositDraft !== "" && depositDraft !== (depositValue != null ? String(depositValue) : "")) ||
+        amountDraft !== savedAmountText),
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
   const depositBlocking = depositRuleBlocksGuests({
     isActive: savedDepositActive,
     params: deposit?.params,

@@ -52,7 +52,7 @@ const PAGE_IDS = pageIds();
 // The approved sidebar (~/.mingla-private/4130 design, "sidebar").
 const MENU = [
   // #4255 W4: Notifications left the menu for Messages in the top bar.
-  ["Home", ["overview:Dashboard", "work-board:Work"]],
+  ["Home", ["overview:Dashboard", "messages:Messages", "work-board:Work"]],
   // #4130 + #3872: the Creator Program pages sit right under Hosts and creators.
   ["Outreach", ["outreach:Hosts and creators", "program-creators:Creators", "program-gigs:Gigs", "program-locals:Mingla Locals", "program-disputes:Disputes", "inbound:Leads", "forms:Forms", "content-calendar:Calendar", "team-dashboard:Team dashboard"]],
   ["Support", ["support:Support", "community:Community"]],
@@ -119,13 +119,13 @@ describe("#4130 W0-1: the menu is the approved sidebar", () => {
     // #4255 W4: - Notifications (Messages is in the top bar).
     // #4383: + the Communications group (Overview, Push, Announcements,
     // Roadmap, Email, Blog, Links page).
-    assert.equal(NAV_ITEMS.length, 43); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
+    assert.equal(NAV_ITEMS.length, 44); // #4517: + Messages; // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
   });
   it("Needs you, My agent and Guide are not menu entries; My agent and Guide keep their pages in the header", () => {
     const ids = NAV_ITEMS.map((i) => i.id);
     for (const gone of ["drafts", "agent", "guide"]) assert.equal(ids.includes(gone), false, gone);
     // #4255 W4: + Messages (its button in the top bar, #/messages its full page).
-    assert.deepEqual(HEADER_PAGE_ITEMS.map((i) => i.id), ["agent", "guide", "messages"]);
+    assert.deepEqual(HEADER_PAGE_ITEMS.map((i) => i.id), ["agent", "guide"]); // #4517: Messages is a menu entry now
     for (const id of ["agent", "guide"]) assert.ok(PAGE_IDS.includes(id), `${id} keeps its route`);
     const header = stripComments(read("components/layout/Header.jsx"));
     assert.ok(header.includes('openPage("guide")') && header.includes('openPage("agent")'));
@@ -307,7 +307,7 @@ describe("#4130 W0-7: the Work entry counts only your own waiting cards", () => 
   it("the badge sits on Work and reads cards, not drafts", () => {
     const sidebar = stripComments(read("components/layout/Sidebar.jsx"));
     // #4452 §7.2: + Brand groups' waiting count, from its own panel.
-    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : 0;'));
+    assert.ok(sidebar.includes('const waiting = item.id === "work-board" ? reviewCount.cards || 0 : item.id === "brand-groups" ? groupsWaiting : item.id === "messages" ? messages.count || 0 : 0;'));
     assert.equal(sidebar.includes('item.id === "drafts"'), false);
     const hook = stripComments(read("hooks/useReviewCount.js"));
     // #4270 (D20): the count is your own open cards due today or overdue.

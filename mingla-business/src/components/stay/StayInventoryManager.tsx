@@ -32,6 +32,7 @@ import {
 } from "../../constants/designSystem";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 import {
   stayInventoryKeys,
   useStayInventory,
@@ -2010,6 +2011,16 @@ function AvailabilityManager({
   const [quantity, setQuantity] = useState("1");
   const [stopSell, setStopSell] = useState(false);
   const [overridePrice, setOverridePrice] = useState("");
+  // #4453 — a price or a number of open rooms typed here and not yet saved
+  // holds a brand switch. `savedPrice` / `savedQuantity` are what the last
+  // save sent (the form opens on no price and 1).
+  const [savedPrice, setSavedPrice] = useState("");
+  const [savedQuantity, setSavedQuantity] = useState("1");
+  useUnsavedChangesGuard({
+    dirty: overridePrice.trim() !== savedPrice.trim() || quantity.trim() !== savedQuantity.trim(),
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
   const [mode, setMode] = useState<StayPlaceScheduleMode>("fixed_slots");
@@ -2134,8 +2145,11 @@ function AvailabilityManager({
         })),
       });
     },
-    onSuccess: ({ inventory }) =>
-      queryClient.setQueryData(stayInventoryKeys.detail(venueId), inventory),
+    onSuccess: ({ inventory }) => {
+      setSavedPrice(overridePrice);
+      setSavedQuantity(quantity);
+      queryClient.setQueryData(stayInventoryKeys.detail(venueId), inventory);
+    },
   });
 
   if (!selected) {
@@ -2381,6 +2395,14 @@ export function StayInventoryManager({
   const [editor, setEditor] = useState<StayOfferingRecord | "new" | null>(null);
   // #1532 §3 — the two halves of the ONE dismissal funnel.
   const [editorDirty, setEditorDirty] = useState(false);
+  // #4453 — an unsaved Room or Place holds a brand switch (on a wide screen
+  // the editor sits in the page, under the switcher). Its own close and
+  // discard confirm are unchanged.
+  useUnsavedChangesGuard({
+    dirty: editor !== null && editorDirty,
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
   const [discardOpen, setDiscardOpen] = useState(false);
   const offerings = useMemo(
     () => inventory.data?.offerings ?? [],
