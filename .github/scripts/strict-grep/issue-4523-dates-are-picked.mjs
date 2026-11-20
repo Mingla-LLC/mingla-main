@@ -49,14 +49,8 @@ export const SCAN_ROOTS = [
 /** Counted ratchet. Only ever lowered. */
 export const ALLOWLIST = {
   "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx": 3,
-  "mingla-business/src/components/discounts/DiscountEditSheet.tsx": 2,
-  "mingla-business/src/components/event/CreatorStep2When.tsx": 5,
+  "mingla-business/src/components/event/CreatorStep2When.tsx": 1,
   "mingla-business/src/components/event/MultiDateOverrideSheet.tsx": 1,
-  "mingla-business/src/components/event/TicketTierEditSheet.tsx": 5,
-  "mingla-business/src/components/guests/TicketLinksSheet.tsx": 2,
-  "mingla-business/src/components/marketing/ComposerStepWhen.tsx": 2,
-  "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx": 1,
-  "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.tsx": 2,
   "mingla-business/src/components/programs/TimeField.tsx": 1,
   "mingla-business/src/components/trip/BookingDeadlinePicker.tsx": 3,
   "mingla-business/src/components/trip/PaymentPlanEditor.tsx": 2,

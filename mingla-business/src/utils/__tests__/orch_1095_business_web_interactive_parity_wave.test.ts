@@ -42,16 +42,13 @@ describe("ORCH-1095 interactive parity firewall is retired (ORCH-1098 Stage 3)",
     ).toBe(false);
   });
 
-  test("ORCH-1095's kept browser-native schedule picker split is intact", () => {
-    const webPicker = stripComments(
+  test("the schedule picker is one Mingla calendar sheet on web and native, with no OS picker (#4523 replaced ORCH-1095's browser/native split)", () => {
+    const picker = stripComments(
       repoFile("src/components/marketing/ComposerV2/SchedulePickerSheet.tsx"),
     );
-    const nativePicker = repoFile(
-      "src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx",
-    );
-    expect(webPicker).toContain('type="date"');
-    expect(webPicker).toContain('type="time"');
-    expect(webPicker).not.toContain("@react-native-community/datetimepicker");
-    expect(nativePicker).toContain("@react-native-community/datetimepicker");
+    expect(picker).toContain("HostDateTimeField");
+    expect(picker).not.toContain("@react-native-community/datetimepicker");
+    expect(picker).not.toContain('type="date"');
+    expect(existsSync(join(REPO_ROOT, "mingla-business", "src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx"))).toBe(false);
   });
 });

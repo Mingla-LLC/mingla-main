@@ -1867,7 +1867,6 @@
         "mingla-business/src/components/marketing/ComposerV2/ComposerCanvas.web.tsx",
         "mingla-business/src/components/marketing/ComposerV2/ComposerV2Editor.tsx",
         "mingla-business/src/components/marketing/ComposerV2/InsertionBar.tsx",
-        "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.native.tsx",
         "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.tsx",
         "mingla-business/src/components/marketing/ComposerV2/SelectionFormattingTooltip.tsx",
         "mingla-business/src/components/marketing/ComposerV2/SubjectTokenRail.tsx",

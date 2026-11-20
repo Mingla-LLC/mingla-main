@@ -16,17 +16,14 @@
  * Helper text: "Brand's local time · best between 10am–2pm".
  */
 
-import React, { useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
+import React, { useMemo } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 // issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
 // Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
 // marketing send-schedule picker was broken on web.
-import { WebDateTimeInput } from "../ui/WebDateTimeInput";
+import { HostDateTimeField } from "../ui/HostCalendarFields";
 
 export type SendMode = "now" | "schedule";
 
@@ -39,8 +36,6 @@ export interface ComposerStepWhenProps {
   validationMessage?: string | null;
 }
 
-type PickerVisible = "none" | "date" | "time";
-
 function parseOrDefault(iso: string): Date {
   if (iso.length === 0) {
     // Default to "now + 1 hour, rounded to next 15 min" — a sensible
@@ -52,22 +47,6 @@ function parseOrDefault(iso: string): Date {
   }
   const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-function formatDateLabel(d: Date): string {
-  return d.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatTimeLabel(d: Date): string {
-  return d.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function toLocalIso(d: Date): string {
@@ -86,30 +65,12 @@ export const ComposerStepWhen: React.FC<ComposerStepWhenProps> = ({
   onScheduledForChange,
   validationMessage,
 }) => {
-  const [pickerVisible, setPickerVisible] = useState<PickerVisible>("none");
   const currentValue = useMemo(
     () => parseOrDefault(scheduledForIso),
     [scheduledForIso],
   );
 
-  const handleChange = (kind: "date" | "time") =>
-    (event: DateTimePickerEvent, selected?: Date) => {
-      // Android: 'set' on confirm, 'dismissed' on cancel. iOS: only 'set'.
-      if (Platform.OS === "android") setPickerVisible("none");
-      if (event.type === "dismissed") return;
-      if (selected === undefined) return;
-      const next = new Date(currentValue);
-      if (kind === "date") {
-        next.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
-      } else {
-        next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-      }
-      onScheduledForChange(toLocalIso(next));
-    };
-
   const hasValue = scheduledForIso.length > 0;
-  const dateLabel = hasValue ? formatDateLabel(currentValue) : "Pick date";
-  const timeLabel = hasValue ? formatTimeLabel(currentValue) : "Pick time";
 
   return (
     <View style={styles.host}>
@@ -163,108 +124,19 @@ export const ComposerStepWhen: React.FC<ComposerStepWhenProps> = ({
       </View>
       {mode === "schedule" ? (
         <View style={styles.scheduleHost}>
-          {Platform.OS === "web" ? (
-            /* issue #1027 Thread B (Class 2) — visible native date + time inputs
-               on web; each commits the merged ISO via the same handleChange
-               merge logic. Native keeps the pill → DateTimePicker flow. */
-            <View style={styles.pillRow}>
-              <View style={styles.webPickerCell}>
-                <Text style={styles.pickerPillLabel}>Date</Text>
-                <WebDateTimeInput
-                  type="date"
-                  value={hasValue ? toLocalIso(currentValue).slice(0, 10) : ""}
-                  min={toLocalIso(new Date()).slice(0, 10)}
-                  ariaLabel="Send date"
-                  testID="composer-when-date-web"
-                  onChangeValue={(v) => {
-                    if (v.length === 0) return;
-                    const [y, m, d] = v.split("-").map(Number);
-                    const next = new Date(currentValue);
-                    next.setFullYear(y, m - 1, d);
-                    onScheduledForChange(toLocalIso(next));
-                  }}
-                />
-              </View>
-              <View style={styles.webPickerCell}>
-                <Text style={styles.pickerPillLabel}>Time</Text>
-                <WebDateTimeInput
-                  type="time"
-                  value={hasValue ? toLocalIso(currentValue).slice(11, 16) : ""}
-                  ariaLabel="Send time"
-                  testID="composer-when-time-web"
-                  onChangeValue={(v) => {
-                    if (v.length === 0) return;
-                    const [h, mm] = v.split(":").map(Number);
-                    const next = new Date(currentValue);
-                    next.setHours(h, mm, 0, 0);
-                    onScheduledForChange(toLocalIso(next));
-                  }}
-                />
-              </View>
-            </View>
-          ) : (
-            <>
-              <View style={styles.pillRow}>
-                <Pressable
-                  onPress={() =>
-                    setPickerVisible(pickerVisible === "date" ? "none" : "date")
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel={`Send date: ${dateLabel}`}
-                  style={({ pressed }) => [
-                    styles.pickerPill,
-                    pickerVisible === "date" ? styles.pickerPillActive : null,
-                    pressed ? styles.pickerPillPressed : null,
-                  ]}
-                >
-                  <Text style={styles.pickerPillLabel}>Date</Text>
-                  <Text style={styles.pickerPillValue}>{dateLabel}</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() =>
-                    setPickerVisible(pickerVisible === "time" ? "none" : "time")
-                  }
-                  accessibilityRole="button"
-                  accessibilityLabel={`Send time: ${timeLabel}`}
-                  style={({ pressed }) => [
-                    styles.pickerPill,
-                    pickerVisible === "time" ? styles.pickerPillActive : null,
-                    pressed ? styles.pickerPillPressed : null,
-                  ]}
-                >
-                  <Text style={styles.pickerPillLabel}>Time</Text>
-                  <Text style={styles.pickerPillValue}>{timeLabel}</Text>
-                </Pressable>
-              </View>
-              {pickerVisible !== "none" ? (
-                <View style={styles.pickerHost}>
-                  <DateTimePicker
-                    value={currentValue}
-                    mode={pickerVisible}
-                    display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={handleChange(pickerVisible)}
-                    themeVariant="dark"
-                    minimumDate={
-                      pickerVisible === "date" ? new Date() : undefined
-                    }
-                  />
-                  {Platform.OS === "ios" ? (
-                    <Pressable
-                      onPress={() => setPickerVisible("none")}
-                      accessibilityRole="button"
-                      accessibilityLabel="Done picking"
-                      style={({ pressed }) => [
-                        styles.doneBtn,
-                        pressed ? styles.doneBtnPressed : null,
-                      ]}
-                    >
-                      <Text style={styles.doneBtnLabel}>Done</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              ) : null}
-            </>
-          )}
+          <HostDateTimeField
+            label="Send on"
+            accessibilityLabel="Send date and time"
+            placeholder="Pick date and time"
+            value={{
+              date: hasValue ? toLocalIso(currentValue).slice(0, 10) : "",
+              time: hasValue ? toLocalIso(currentValue).slice(11, 16) : "",
+            }}
+            min={toLocalIso(new Date()).slice(0, 10)}
+            timeStepMinutes={15}
+            onChangeValue={(next) => onScheduledForChange(`${next.date}T${next.time}`)}
+            testID="composer-when-datetime"
+          />
           {validationMessage !== null && validationMessage !== undefined ? (
             <Text style={styles.validationMessage}>{validationMessage}</Text>
           ) : (

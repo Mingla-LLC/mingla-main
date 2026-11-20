@@ -20,9 +20,6 @@ import {
 } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Per SPEC §7.F.
 import { ScrollView } from "../../wrappers/SmartScrollView";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -40,18 +37,12 @@ import { useEventWaitlist } from "../../hooks/useEventWaitlist";
 import type { EventWaitlistEntry } from "../../services/waitlistService";
 import { generateTicketId } from "../../utils/draftEventId";
 import { saleWindowCaution } from "../../utils/saleWindowCaution";
+import { isoFromSaleField, saleFieldValue } from "../../utils/saleWindowFields";
 import { ticketPriceEntryMinimumMessage } from "../../utils/ticketPriceMinimum";
 import { formatCurrency, minorFromMajor } from "../../utils/currency";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
-// #2664 — Android has no `datetime` picker mode; the sale window has to step
-// date -> time and combine. See the module header for the crash mechanism.
-import {
-  type AndroidDateTimeStep,
-  combineAndroidDateAndTime,
-  seedAndroidTimeStep,
-} from "../../utils/androidDateTimeStep";
-
 import { Button } from "../ui/Button";
+import { HostDateTimeField } from "../ui/HostCalendarFields";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { UNSAVED_CHANGES_DIALOG } from "../../utils/unsavedChangesGuard";
 import { GlassCard } from "../ui/GlassCard";
@@ -94,29 +85,6 @@ const ItemDiscountControls = React.lazy(() =>
     default: module.ItemDiscountControls,
   })),
 );
-
-// ---- Web datetime helpers -------------------------------------------
-
-// Web-only helpers for the datetime-local sale period picker.
-// HTML5 `<input type="datetime-local">` value format is "YYYY-MM-DDTHH:MM".
-const datetimeLocalFromDate = (d: Date): string => {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
-};
-
-// Hidden HTML5 inputs for web direct-tap pickers — opacity 0 + 1×1px,
-// NOT display:none (display:none breaks showPicker()/.click()).
-const HIDDEN_WEB_INPUT_STYLE = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  opacity: 0,
-  pointerEvents: "none",
-} as const;
 
 const currencySymbol = (currency?: string): string | null => {
   if (currency === undefined || currency.trim().length === 0) return null;
@@ -644,27 +612,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const [description, setDescription] = useState<string>("");
   const [saleStartAt, setSaleStartAt] = useState<string | null>(null);
   const [saleEndAt, setSaleEndAt] = useState<string | null>(null);
-  // Sale-period picker — bottom-docked inline (same pattern as
-  // MultiDateOverrideSheet's time picker). NOT a nested Sheet.
-  const [salePickerMode, setSalePickerMode] = useState<"start" | "end" | null>(
-    null,
-  );
-  const [salePickerTemp, setSalePickerTemp] = useState<Date | null>(null);
-  // #2664 — Android two-step. `saleAndroidStep` says which real Android mode is
-  // presented (`date` then `time`); `saleAndroidDatePart` holds the step-1
-  // calendar date while step 2 is up. NOTHING is committed until step 2 sets —
-  // cancelling either dialog must leave saleStartAt/saleEndAt untouched.
-  const [saleAndroidStep, setSaleAndroidStep] =
-    useState<AndroidDateTimeStep | null>(null);
-  const [saleAndroidDatePart, setSaleAndroidDatePart] = useState<Date | null>(
-    null,
-  );
-
-  // Web hidden input refs — tap row → showPicker()/.click() opens browser
-  // native datetime picker directly. No Sheet, no Done button on web.
-  const saleStartInputRef = useRef<HTMLInputElement | null>(null);
-  const saleEndInputRef = useRef<HTMLInputElement | null>(null);
-
   // Visibility sub-sheet
   const [visSheetVisible, setVisSheetVisible] = useState<boolean>(false);
   const [validDaysSheetVisible, setValidDaysSheetVisible] = useState<boolean>(false);
@@ -942,132 +889,6 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   const showPriceError = priceInvalid && touched.price;
   const showCapacityInvalid = capacityInvalid && touched.capacity;
   const showCapacityBelowSold = capacityBelowSold && touched.capacity;
-
-  // Sale period picker handlers — bottom-docked inline DateTimePicker
-  // (matches MultiDateOverrideSheet's pattern for in-sheet pickers).
-  const handleOpenSalePicker = useCallback(
-    (mode: "start" | "end"): void => {
-      // Web: trigger hidden input directly. Browser opens native datetime
-      // picker. No Sheet, no Done button on web.
-      if (Platform.OS === "web") {
-        const ref = mode === "start" ? saleStartInputRef : saleEndInputRef;
-        const el = ref.current;
-        if (el !== null) {
-          if (typeof el.showPicker === "function") {
-            try {
-              el.showPicker();
-            } catch {
-              el.click();
-            }
-          } else {
-            el.click();
-          }
-        }
-        return;
-      }
-      // Native (iOS/Android): existing Sheet/dialog flow.
-      const initialIso = mode === "start" ? saleStartAt : saleEndAt;
-      const initial = initialIso !== null ? new Date(initialIso) : new Date();
-      setSalePickerTemp(initial);
-      // #2664 — Android opens on the DATE half of the sequence. iOS keeps its
-      // single `datetime` spinner, which is a real mode there.
-      setSaleAndroidStep(Platform.OS === "android" ? "date" : null);
-      setSaleAndroidDatePart(null);
-      setSalePickerMode(mode);
-    },
-    [saleStartAt, saleEndAt],
-  );
-
-  const commitSalePickerValue = useCallback(
-    (mode: "start" | "end" | null, d: Date): void => {
-      const iso = d.toISOString();
-      if (mode === "start") setSaleStartAt(iso);
-      else if (mode === "end") setSaleEndAt(iso);
-    },
-    [],
-  );
-
-  const handleSalePickerChange = useCallback(
-    (event: DateTimePickerEvent, selected?: Date): void => {
-      if (Platform.OS === "android") {
-        const mode = salePickerMode;
-        const step = saleAndroidStep;
-        // #2664 — cancelling EITHER dialog abandons the whole edit. A dismiss on
-        // the time step must not silently persist the date the operator already
-        // picked; the sale window is committed once, from both halves, or never.
-        if (event.type === "dismissed" || selected === undefined) {
-          setSalePickerMode(null);
-          setSaleAndroidStep(null);
-          setSaleAndroidDatePart(null);
-          return;
-        }
-        if (step === "date") {
-          // Step 1 of 2. Hold the calendar date and advance to the clock —
-          // the dialog stays open, and saleStartAt/saleEndAt are untouched.
-          setSaleAndroidDatePart(selected);
-          setSaleAndroidStep("time");
-          return;
-        }
-        // Step 2 of 2 — combine and commit.
-        setSalePickerMode(null);
-        setSaleAndroidStep(null);
-        setSaleAndroidDatePart(null);
-        if (saleAndroidDatePart === null) return;
-        commitSalePickerValue(
-          mode,
-          combineAndroidDateAndTime(saleAndroidDatePart, selected),
-        );
-        return;
-      }
-      // iOS: track temp value; commit on Done.
-      if (selected !== undefined) setSalePickerTemp(selected);
-    },
-    [
-      salePickerMode,
-      saleAndroidStep,
-      saleAndroidDatePart,
-      commitSalePickerValue,
-    ],
-  );
-
-  const handleCloseSalePicker = useCallback((): void => {
-    // iOS + Web both Done-commit; Android commits inline via per-change.
-    if (
-      Platform.OS !== "android" &&
-      salePickerTemp !== null &&
-      salePickerMode !== null
-    ) {
-      commitSalePickerValue(salePickerMode, salePickerTemp);
-    }
-    setSalePickerMode(null);
-    setSalePickerTemp(null);
-    setSaleAndroidStep(null);
-    setSaleAndroidDatePart(null);
-  }, [salePickerMode, salePickerTemp, commitSalePickerValue]);
-
-  const handleClearSaleStart = useCallback((): void => {
-    setSaleStartAt(null);
-  }, []);
-
-  const handleClearSaleEnd = useCallback((): void => {
-    setSaleEndAt(null);
-  }, []);
-
-  const formatSaleDateTime = (iso: string | null): string => {
-    if (iso === null) return "Not scheduled";
-    try {
-      const d = new Date(iso);
-      return d.toLocaleString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return iso;
-    }
-  };
 
   const extrasOut = keepExtraDaysInTier(
     extras,
@@ -1715,73 +1536,30 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           <Text style={styles.sectionHeader}>Sale period (optional)</Text>
 
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Sales open</Text>
-            <View style={styles.saleRow}>
-              <Pressable
-                onPress={() => handleOpenSalePicker("start")}
-                accessibilityRole="button"
-                accessibilityLabel="Set sale start date and time"
-                style={styles.salePickerRow}
-              >
-                <Text
-                  style={
-                    saleStartAt !== null
-                      ? styles.pickerValue
-                      : styles.pickerPlaceholder
-                  }
-                >
-                  {formatSaleDateTime(saleStartAt)}
-                </Text>
-              </Pressable>
-              {saleStartAt !== null ? (
-                <Pressable
-                  onPress={handleClearSaleStart}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear sale start"
-                  hitSlop={6}
-                  style={styles.clearBtn}
-                >
-                  <Icon name="close" size={14} color={color.text3} />
-                </Pressable>
-              ) : null}
-            </View>
+            <HostDateTimeField
+              label="Sales open"
+              accessibilityLabel="Sale start date and time"
+              placeholder="Not scheduled"
+              value={saleFieldValue(saleStartAt)}
+              onChangeValue={(next) => setSaleStartAt(isoFromSaleField(next))}
+              onClear={() => setSaleStartAt(null)}
+              testID="ticket-sale-start"
+            />
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Sales close</Text>
-            <View
-              style={[
-                styles.saleRow,
-                saleEndBeforeStart && styles.inputWrapError,
-              ]}
-            >
-              <Pressable
-                onPress={() => handleOpenSalePicker("end")}
-                accessibilityRole="button"
-                accessibilityLabel="Set sale end date and time"
-                style={styles.salePickerRow}
-              >
-                <Text
-                  style={
-                    saleEndAt !== null
-                      ? styles.pickerValue
-                      : styles.pickerPlaceholder
-                  }
-                >
-                  {formatSaleDateTime(saleEndAt)}
-                </Text>
-              </Pressable>
-              {saleEndAt !== null ? (
-                <Pressable
-                  onPress={handleClearSaleEnd}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear sale end"
-                  hitSlop={6}
-                  style={styles.clearBtn}
-                >
-                  <Icon name="close" size={14} color={color.text3} />
-                </Pressable>
-              ) : null}
+            <View style={saleEndBeforeStart ? styles.inputWrapError : undefined}>
+              <HostDateTimeField
+                label="Sales close"
+                accessibilityLabel="Sale end date and time"
+                placeholder="Not scheduled"
+                hasError={saleEndBeforeStart}
+                value={saleFieldValue(saleEndAt)}
+                min={saleStartAt !== null ? saleFieldValue(saleStartAt).date : undefined}
+                onChangeValue={(next) => setSaleEndAt(isoFromSaleField(next))}
+                onClear={() => setSaleEndAt(null)}
+                testID="ticket-sale-end"
+              />
             </View>
             {saleEndBeforeStart ? (
               <Text style={styles.helperError}>
@@ -1882,117 +1660,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           </GlassCard>
         </ScrollView>
 
-        {/* Sale period picker dock — iOS Sheet+spinner / Android dialog.
-            Web is handled via hidden inputs at component bottom (below);
-            handleOpenSalePicker triggers them on web and returns early. */}
-        {salePickerMode !== null && Platform.OS === "ios" ? (
-          <View style={styles.salePickerDockWrap}>
-            <GlassCard
-              variant="elevated"
-              radius="xl"
-              padding={space[4]}
-              style={styles.salePickerDockCard}
-            >
-              <View style={styles.salePickerDockRow}>
-                <Text style={styles.salePickerDockTitle}>
-                  {salePickerMode === "start" ? "Sales open" : "Sales close"}
-                </Text>
-                <Button
-                  label="Done"
-                  variant="primary"
-                  size="md"
-                  onPress={handleCloseSalePicker}
-                />
-              </View>
-              {salePickerTemp !== null ? (
-                <DateTimePicker
-                  value={salePickerTemp}
-                  mode="datetime"
-                  display="spinner"
-                  onChange={handleSalePickerChange}
-                  is24Hour
-                  textColor={color.textStrong}
-                  themeVariant="dark"
-                  style={styles.salePicker}
-                />
-              ) : null}
-            </GlassCard>
-          </View>
-        ) : null}
       </View>
-
-      {/* Android native dialog — auto-dismisses. #2664: Android registers only
-          `date` and `time` pickers, so this steps date -> time and combines;
-          `mode="datetime"` crashed on unmount here. Same shape as
-          CreatorStep2When's Android branch. */}
-      {salePickerMode !== null &&
-      Platform.OS === "android" &&
-      saleAndroidStep !== null ? (
-        <DateTimePicker
-          value={
-            saleAndroidStep === "time" && saleAndroidDatePart !== null
-              ? seedAndroidTimeStep(
-                  saleAndroidDatePart,
-                  salePickerTemp ?? new Date(),
-                )
-              : salePickerMode === "start"
-                ? saleStartAt !== null
-                  ? new Date(saleStartAt)
-                  : new Date()
-                : saleEndAt !== null
-                  ? new Date(saleEndAt)
-                  : new Date()
-          }
-          mode={saleAndroidStep === "date" ? "date" : "time"}
-          display="default"
-          onChange={handleSalePickerChange}
-          is24Hour
-        />
-      ) : null}
-
-      {/* Hidden HTML5 inputs for web direct-tap pickers. */}
-      {Platform.OS === "web" ? (
-        <>
-          <input
-            ref={saleStartInputRef}
-            type="datetime-local"
-            value={
-              saleStartAt !== null
-                ? datetimeLocalFromDate(new Date(saleStartAt))
-                : ""
-            }
-            onChange={(e) => {
-              const v = (e.target as unknown as { value: string }).value;
-              if (v.length === 0) return;
-              const [datePart, timePart] = v.split("T");
-              const [y, m, d] = datePart.split("-").map(Number);
-              const [h, mm] = timePart.split(":").map(Number);
-              setSaleStartAt(new Date(y, m - 1, d, h, mm, 0, 0).toISOString());
-            }}
-            aria-label="Sales open date and time"
-            style={HIDDEN_WEB_INPUT_STYLE}
-          />
-          <input
-            ref={saleEndInputRef}
-            type="datetime-local"
-            value={
-              saleEndAt !== null
-                ? datetimeLocalFromDate(new Date(saleEndAt))
-                : ""
-            }
-            onChange={(e) => {
-              const v = (e.target as unknown as { value: string }).value;
-              if (v.length === 0) return;
-              const [datePart, timePart] = v.split("T");
-              const [y, m, d] = datePart.split("-").map(Number);
-              const [h, mm] = timePart.split(":").map(Number);
-              setSaleEndAt(new Date(y, m - 1, d, h, mm, 0, 0).toISOString());
-            }}
-            aria-label="Sales close date and time"
-            style={HIDDEN_WEB_INPUT_STYLE}
-          />
-        </>
-      ) : null}
 
       {dayScopeEntries !== null ? (
         <ValidDaysSheet
