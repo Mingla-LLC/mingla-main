@@ -41,12 +41,12 @@ type Widen<T> = T extends string
 export type SurfaceColor = Widen<typeof graphiteColor> & { readonly controlOutline: string };
 
 /**
- * #4518 — Graphite `controlOutline`: `card` (#1b1b1e) mixed toward `text1`
- * (#f5f5f7) until 3:1 against the card (the `checkoutOutlineFor` loop, run on
- * the card): 38 % ⇒ #6e6e70, 3.38:1. Checkout palettes compute their own in
- * `checkoutColorFor`.
+ * #4518 — Graphite `controlOutline`: `card` mixed toward `text1` until 3:1
+ * against the card (the `checkoutOutlineFor` loop, run on the card): 38 %,
+ * 3.38:1. The value is a designSystem token; checkout palettes compute their
+ * own in `checkoutColorFor`.
  */
-export const GRAPHITE_CONTROL_OUTLINE = "#6e6e70";
+export const GRAPHITE_CONTROL_OUTLINE: string = graphiteColor.controlOutline;
 
 export type SurfaceMaterials = Readonly<Record<MaterialKind, MaterialRecipe>>;
 

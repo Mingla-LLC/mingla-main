@@ -132,7 +132,10 @@ export function check(raw) {
   ]) {
     if (!truth.includes(token)) failures.push(`occurrence normalization missing: ${token}`);
   }
-  if (!raw.route.includes("onRetryOccurrences") || !raw.route.includes("publicEventQuery.refetch")) {
+  // The refetch must sit INSIDE onRetryOccurrences, not merely somewhere in
+  // the route: since #4518 the page-level error notice also calls
+  // publicEventQuery.refetch, which would otherwise satisfy a bare includes().
+  if (!/onRetryOccurrences=\{async \(\) => \{\s*const result = await publicEventQuery\.refetch\(\);/.test(raw.route)) {
     failures.push("route does not own occurrence recovery");
   }
   for (const token of ["<DraftEventFoundationPreview", "buyerPreview.occurrences", "draftEventBuyerPreview", "onCheckout={() => setToast("]) {
@@ -236,7 +239,7 @@ if (process.argv.includes("--self-test")) {
     ["shared", "!purchaseReady || selectedQty === 0", "selectedQty === 0"],
     ["chooser", 'accessibilityRole="checkbox"', 'accessibilityRole="radio"'],
     ["truth", "new Map<string, PublicEventOccurrence>()", "new Map()"],
-    ["route", "publicEventQuery.refetch", "Promise.resolve"],
+    ["route", "await publicEventQuery.refetch()", "await Promise.resolve()"],
     ["previewRoute", "<DraftEventFoundationPreview", "<PreviewEventView"],
     ["previewFoundation", "<FoundationEventPreview", "<View"],
     ["chooser", '"aria-checked": selected', '"aria-checked": false'],

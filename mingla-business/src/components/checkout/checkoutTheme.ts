@@ -73,6 +73,23 @@ export type CheckoutColor = Widen<typeof graphite> & { readonly controlOutline: 
 
 const wash = inkWash;
 
+/**
+ * A palette `rgba(r, g, b, a)` surface composited over the opaque `page`, as
+ * the opaque hex a buyer sees. The channels come from the palette string, so
+ * no colour is restated here. Anything unparseable reads as the page itself.
+ */
+function compositeOver(page: string, surface: string): string {
+  const inner = /^rgba?\(([^)]*)\)$/i.exec(surface.trim())?.[1];
+  const parts = inner === undefined ? [] : inner.split(",").map((p) => Number(p.trim()));
+  if (parts.length < 3 || parts.slice(0, 3).some((n) => !Number.isFinite(n))) return page;
+  const alpha = parts.length > 3 && Number.isFinite(parts[3]) ? (parts[3] as number) : 1;
+  const channels = parts
+    .slice(0, 3)
+    .map((n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0"))
+    .join("");
+  return mixHex(page, `#${channels}`, alpha);
+}
+
 /** WCAG 1.4.11: a field outline needs 3:1 against the page it sits on. */
 export const CHECKOUT_OUTLINE_MIN_CONTRAST = 3;
 
@@ -93,9 +110,7 @@ export function checkoutOutlineFor(
   const page = normalizeHex(palette.page);
   const ink = normalizeHex(palette.primaryText);
   if (page === null || ink === null) return neutralControl(palette);
-  const under = over.map(
-    (c) => normalizeHex(c) ?? mixHex(page, "#ffffff", +c.slice(c.lastIndexOf(",") + 1, -1) || 0),
-  );
+  const under = over.map((c) => normalizeHex(c) ?? compositeOver(page, c));
   for (let amount = 0.34; amount < 1; amount += 0.04) {
     const candidate = mixHex(page, ink, amount);
     if (under.every((u) => contrastRatio(candidate, u) >= CHECKOUT_OUTLINE_MIN_CONTRAST)) {
