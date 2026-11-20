@@ -7,10 +7,10 @@ const React = require("react");
 const { isAllowedPublicPoster, s6CardCss, wordmarkSource } = require("./cardIdentityRenderer");
 const { selectSharedCardFacts } = require("@mingla/card-identity");
 const {
-  privacyBarCss,
   privacyBarMarkup,
   privacyBarRuntimeSource,
   privacyReaderSource,
+  privacyStripDocumentCss,
 } = require("./publicPrivacyRuntime");
 const { SHARED_CARD_PROXY_HEADER } = require("./sharedCardProxyAuth");
 const { contentShareOneLink } = require("./contentShareService");
@@ -77,11 +77,12 @@ const PUBLIC_ANALYTICS_FAMILIES = new Set(["opaque-share", "content-share"]);
  * #2331 — the server-rendered share hosts (/s/ content shares, /p/ shared
  * cards) show the same privacy bar as every buyer page, from the one
  * server-side source: the "Privacy & ad choices" strip and its choices sheet
- * (#4318: no separate privacy link on the page). The page body ends above the
- * strip.
+ * (#4318: no separate privacy link on the page). These pages scroll the
+ * document, so the body's last line clears the strip's constant band
+ * (`body{padding-bottom:var(--mingla-privacy-strip)}`).
  */
 const sharePrivacyBar = () =>
-  `<style>${privacyBarCss()}\nbody{padding-bottom:var(--mingla-privacy-inset,0px)}</style>`
+  `<style>${privacyStripDocumentCss()}</style>`
   + privacyBarMarkup()
   + `<script>${privacyReaderSource()}${privacyBarRuntimeSource()}__minglaPrivacyBar();</script>`;
 

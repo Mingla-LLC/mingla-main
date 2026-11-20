@@ -30,17 +30,38 @@ const privacyReaderSource = () => [
 // The strip's (and sheet's) stylesheet. Byte-for-byte the same rules as the
 // React owner (src/analytics/ConsentBanner.web.tsx BAR_CSS);
 // src/analytics/__tests__/privacyBarCssParity.issue2331.test.ts pins it.
+//
+// I-PRIVACY-BAR-NEVER-OCCLUDES (#2331): the strip owns a fixed band at the
+// bottom, `--mingla-privacy-strip`, a CSS constant set once here and never
+// written by JS. On Host web the app root is a fixed box that ends at the
+// strip's top edge and, through `contain:layout`, is the containing block of
+// every `position:fixed` layer inside it, so `bottom:0` there means "just
+// above the strip". The strip, its sheet and scrim are siblings of #root
+// (outside it) and sit on the top z-layer. react-native-web Modal (0.21)
+// portals a bare <div> to <body> whose grandchild is the `aria-modal` View:
+// the `body>div:has(>div>[aria-modal="true"])` rule gives that portal the same
+// box. A body-level `aria-modal` layer (the phone country picker portal) ends
+// at the strip too.
+const PRIVACY_HOST_SHELL_CSS_LINES = [
+  ":root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}",
+  "html,body{height:100%;overflow:hidden}",
+  "#root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow-y:auto;overscroll-behavior:contain}",
+  "body>div:has(>div>[aria-modal=\"true\"]){position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);contain:layout;z-index:9999;pointer-events:none}",
+  ":where(body>div:has(>div>[aria-modal=\"true\"]))>div{pointer-events:auto}",
+  "body>[aria-modal=\"true\"]{bottom:var(--mingla-privacy-strip)!important}",
+];
+
+// The strip and its sheet: the same on every document that carries the strip,
+// including the standalone share pages that scroll the document.
 const PRIVACY_BAR_CSS_LINES = [
-  ":root{--mingla-privacy-inset:calc(28px + env(safe-area-inset-bottom,0px))}",
-  "#root{box-sizing:border-box;height:calc(100% - var(--mingla-privacy-inset,0px))}",
-  "html[data-mingla-privacy-bar=\"shown\"] #root{overflow-y:auto;overscroll-behavior:contain}",
-  ".mps{position:fixed;left:0;right:0;bottom:0;z-index:9000;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:calc(28px + env(safe-area-inset-bottom,0px));margin:0;padding:0 12px env(safe-area-inset-bottom,0px);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}",
+  ".mps{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:var(--mingla-privacy-strip);margin:0;padding:0 12px env(safe-area-inset-bottom,0px);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 -apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}",
+  ".mps span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}",
   ".mps svg{display:block;flex:none;width:14px;height:14px}",
   ".mps:focus{outline:none}",
   ".mps:focus-visible{outline:2px solid #eb7825;outline-offset:-3px}",
   ".mps-saved{color:#8fd3a8}",
-  ".mpb-scrim{position:fixed;left:0;right:0;top:0;bottom:var(--mingla-privacy-inset,0px);z-index:9001;background:rgba(0,0,0,.45)}",
-  ".mpb{position:fixed;left:0;right:0;bottom:var(--mingla-privacy-inset,0px);z-index:9002;box-sizing:border-box;margin:0;background:#15171c;color:#fff;border-radius:18px 18px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));max-height:80vh;max-height:80dvh;overflow-y:auto;overscroll-behavior:contain;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;animation:mpb-in .2s ease-out}",
+  ".mpb-scrim{position:fixed;left:0;right:0;top:0;bottom:var(--mingla-privacy-strip);z-index:2147483001;background:rgba(0,0,0,.45)}",
+  ".mpb{position:fixed;left:0;right:0;bottom:var(--mingla-privacy-strip);z-index:2147483002;box-sizing:border-box;margin:0;background:#15171c;color:#fff;border-radius:18px 18px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));max-height:80vh;max-height:80dvh;overflow-y:auto;overscroll-behavior:contain;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;animation:mpb-in .2s ease-out}",
   ".mpb *{box-sizing:border-box}",
   ".mpb[hidden],.mpb [hidden],.mpb-scrim[hidden]{display:none!important}",
   ".mpb-panel{max-width:640px;margin:0 auto;display:flex;flex-direction:column}",
@@ -66,7 +87,16 @@ const PRIVACY_BAR_CSS_LINES = [
   "@media (prefers-reduced-motion:reduce){.mpb{animation:none}.mpb-switch,.mpb-switch::after{transition:none}}",
 ];
 
-const privacyBarCss = () => PRIVACY_BAR_CSS_LINES.join("\n");
+// The whole Host web stylesheet: the shell box plus the strip.
+const privacyBarCss = () => [...PRIVACY_HOST_SHELL_CSS_LINES, ...PRIVACY_BAR_CSS_LINES].join("\n");
+
+// #2331 — a document that scrolls itself (the standalone /s/ and /p/ share
+// pages): the constant and the strip, and the body's last line clears the band.
+const privacyStripDocumentCss = () => [
+  PRIVACY_HOST_SHELL_CSS_LINES[0],
+  ...PRIVACY_BAR_CSS_LINES,
+  "body{padding-bottom:var(--mingla-privacy-strip)}",
+].join("\n");
 
 // #4318 — the strip's rules in their own <style>, under the id the app's strip
 // (ConsentBanner.web.tsx STYLE_ID) looks for. The public boot hand-off drops
@@ -113,7 +143,6 @@ const privacyBarRuntimeSource = () => [
   "function __minglaPrivacyBar(){var strip=document.querySelector(\"[data-mingla-ssr-privacy-strip]\"),bar=document.querySelector(\"[data-mingla-ssr-privacy-bar]\"),scrim=document.querySelector(\"[data-mingla-ssr-privacy-scrim]\");if(!strip||!bar)return;",
   "var label=strip.querySelector(\"[data-mps-label]\"),timer=0;",
   "function sw(k){return bar.querySelector('[data-mpb-switch=\"'+k+'\"]');}",
-  "function inset(){var h=strip.isConnected?Math.round(strip.getBoundingClientRect().height):0,d=document.documentElement;d.style.setProperty(\"--mingla-privacy-inset\",h+\"px\");if(typeof d.setAttribute===\"function\"){if(h>0)d.setAttribute(\"data-mingla-privacy-bar\",\"shown\");else d.removeAttribute(\"data-mingla-privacy-bar\");}}",
   "function items(){return Array.prototype.slice.call(bar.querySelectorAll(\"input,button,a[href]\"));}",
   "function open(){if(!bar.isConnected)return;sw(\"analytics\").checked=__minglaPrivacyOn(\"analytics\");sw(\"ads\").checked=__minglaPrivacyOn(\"ads\");bar.hidden=false;if(scrim)scrim.hidden=false;strip.setAttribute(\"aria-expanded\",\"true\");var f=items()[0];if(f)f.focus();}",
   "function close(){bar.hidden=true;if(scrim)scrim.hidden=true;strip.setAttribute(\"aria-expanded\",\"false\");strip.focus();}",
@@ -124,21 +153,16 @@ const privacyBarRuntimeSource = () => [
   "if(scrim)scrim.addEventListener(\"click\",close);",
   "bar.querySelector('[data-mpb-act=\"save\"]').addEventListener(\"click\",function(){save(sw(\"analytics\").checked,sw(\"ads\").checked);});",
   "document.addEventListener(\"keydown\",function(e){if(bar.hidden||!bar.isConnected)return;if(e.key===\"Escape\"){close();return;}if(e.key!==\"Tab\")return;var l=items(),a=document.activeElement,first=l[0],last=l[l.length-1];if(!first)return;if(e.shiftKey&&(a===first||!bar.contains(a))){e.preventDefault();last.focus();}else if(!e.shiftKey&&(a===last||!bar.contains(a))){e.preventDefault();first.focus();}});",
-  "window.addEventListener(\"mingla:privacy-choices\",open);",
-  "if(typeof ResizeObserver===\"function\")new ResizeObserver(inset).observe(strip);inset();}",
+  "window.addEventListener(\"mingla:privacy-choices\",open);}",
 ].join("");
 
 // ---------------------------------------------------------------------------
-// #2331 → #4318 — the lean strip for the #922 invite critical shell. That
-// shell has a hard byte budget (20,000 raw / 6,000 gzip), so it carries only
-// the strip: the same words, the same look, the same inset. Tapping it hands
-// off to the app (`window.__minglaPrivacyOpenExpanded`) and boots it; the
-// React strip then opens its choices sheet straight away.
-
-const COLLAPSED_ONLY_INCLUDED = /^(?::root|#root|html\[|\.mps)/;
-
-const privacyBarCollapsedCss = () =>
-  PRIVACY_BAR_CSS_LINES.filter((line) => COLLAPSED_ONLY_INCLUDED.test(line)).join("\n");
+// #2331 → #4318 — the lean strip for the SPA shell (app/+html.tsx), which the
+// #922 invite critical entry is cut from. It carries only the strip, under the
+// full stylesheet (privacyBarCss): the same words, the same look, the same
+// band. Tapping it hands off to the app (`window.__minglaPrivacyOpenExpanded`)
+// and dispatches `mingla:privacy-options` (the invite shell boots the app on
+// it); the React strip then opens its choices sheet straight away.
 
 const privacyBarCollapsedMarkup = () => privacyStripMarkup();
 
@@ -148,9 +172,7 @@ const privacyBarCollapsedMarkup = () => privacyStripMarkup();
  */
 const privacyBarCollapsedRuntimeSource = () => [
   "function __minglaPrivacyBar(){var strip=document.querySelector(\"[data-mingla-ssr-privacy-strip]\");if(!strip)return;",
-  "function inset(){var h=strip.isConnected?Math.round(strip.getBoundingClientRect().height):0,d=document.documentElement;d.style.setProperty(\"--mingla-privacy-inset\",h+\"px\");if(h>0)d.setAttribute(\"data-mingla-privacy-bar\",\"shown\");else d.removeAttribute(\"data-mingla-privacy-bar\");}",
-  "strip.addEventListener(\"click\",function(){window.__minglaPrivacyOpenExpanded=true;window.dispatchEvent(new Event(\"mingla:privacy-options\"));});",
-  "if(typeof ResizeObserver===\"function\")new ResizeObserver(inset).observe(strip);inset();}",
+  "strip.addEventListener(\"click\",function(){window.__minglaPrivacyOpenExpanded=true;window.dispatchEvent(new Event(\"mingla:privacy-options\"));});}",
 ].join("");
 
 module.exports = {
@@ -159,7 +181,6 @@ module.exports = {
   PRIVACY_POLICY_URL,
   PRIVACY_STORAGE_KEY,
   PRIVACY_STRIP_LABEL,
-  privacyBarCollapsedCss,
   privacyBarCollapsedMarkup,
   privacyBarCollapsedRuntimeSource,
   privacyBarCss,
@@ -167,5 +188,6 @@ module.exports = {
   privacyBarRuntimeSource,
   privacyBarStyleElement,
   privacyReaderSource,
+  privacyStripDocumentCss,
   privacyStripMarkup,
 };

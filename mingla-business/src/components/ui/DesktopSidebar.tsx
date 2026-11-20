@@ -263,8 +263,9 @@ const styles = StyleSheet.create({
     position: "fixed" as unknown as "absolute",
     top: 0,
     left: 0,
-    // #2331 — ends above the privacy bar (I-PRIVACY-BAR-NEVER-OCCLUDES).
-    bottom: "var(--mingla-privacy-inset, 0px)" as unknown as number,
+    // #2331 — fixed inside the app root, which ends at the privacy strip's
+    // top edge (I-PRIVACY-BAR-NEVER-OCCLUDES).
+    bottom: 0,
     backgroundColor: materials.chrome.solidFill,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: color.line,

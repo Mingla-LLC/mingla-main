@@ -47,7 +47,7 @@ export function VideoModal({ open, onClose, title, src, placeholder }: VideoModa
           role="dialog"
           aria-modal="true"
           aria-label={title ?? 'Video player'}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 px-4 backdrop-blur-md"
+          className="fixed inset-0 bottom-[var(--mingla-privacy-strip)] z-[100] flex items-center justify-center bg-black/75 px-4 backdrop-blur-md"
         >
           <motion.div
             key="video-frame"

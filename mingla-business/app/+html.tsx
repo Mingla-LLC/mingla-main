@@ -1,6 +1,20 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import { type PropsWithChildren } from "react";
 
+// #2331 (I-PRIVACY-BAR-NEVER-OCCLUDES) — the shell box and the strip ship in
+// the first HTML of every SPA route, so `#root` ends at the strip's top edge
+// from the very first paint (no 28px shift when the app mounts). The strip
+// here is the lean server copy: tapping it before the app boots hands the open
+// sheet to the app (`__minglaPrivacyOpenExpanded`), which removes this copy on
+// mount and draws its own in the same frame.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const privacyRuntime = require("../server/publicPrivacyRuntime") as {
+  PRIVACY_BAR_STYLE_ID: string;
+  privacyBarCss: () => string;
+  privacyBarCollapsedMarkup: () => string;
+  privacyBarCollapsedRuntimeSource: () => string;
+};
+
 // ORCH-0964: web-only HTML document for mingla-business.
 //
 // The public brand/event pages hard-crash the MOBILE browser renderer because
@@ -30,8 +44,24 @@ export default function Root({ children }: PropsWithChildren) {
         />
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: MOBILE_WEB_BLUR_KILL }} />
+        <style
+          id={privacyRuntime.PRIVACY_BAR_STYLE_ID}
+          dangerouslySetInnerHTML={{ __html: privacyRuntime.privacyBarCss() }}
+        />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <div
+          style={{ display: "contents" }}
+          data-mingla-ssr-privacy-host
+          dangerouslySetInnerHTML={{ __html: privacyRuntime.privacyBarCollapsedMarkup() }}
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `${privacyRuntime.privacyBarCollapsedRuntimeSource()}__minglaPrivacyBar();`,
+          }}
+        />
+      </body>
     </html>
   );
 }
