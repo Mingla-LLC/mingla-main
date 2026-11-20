@@ -19,8 +19,8 @@
  * INVARIANT: I-4523-DATES-ARE-PICKED (declared in the strict-grep gate).
  */
 
-import React, { Suspense } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { Suspense, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, type } from "../../constants/designSystem";
 
@@ -52,27 +52,45 @@ export interface DateFieldProps {
 }
 
 export function DateField(props: DateFieldProps): React.ReactElement {
+  // A tap on the placeholder while the body loads is remembered (Constitution
+  // #1: no dead tap) and opens the calendar the moment the body mounts.
+  const [armed, setArmed] = useState(false);
   return (
-    <Suspense fallback={<DateFieldPlaceholder {...props} />}>
-      <DateFieldBody {...props} />
+    <Suspense fallback={<DateFieldPlaceholder {...props} armed={armed} onArm={() => setArmed(true)} />}>
+      <DateFieldBody {...props} openOnMount={armed} />
     </Suspense>
   );
 }
 
-/** Same row, inert, while the calendar chunk loads (it starts loading on mount). */
-function DateFieldPlaceholder({ label, placeholder = "Choose a date", disabled = false, hasError = false, testID }: DateFieldProps): React.ReactElement {
+/** The same row while the calendar chunk loads; it starts loading on mount. */
+function DateFieldPlaceholder({
+  label,
+  placeholder = "Choose a date",
+  disabled = false,
+  hasError = false,
+  testID,
+  armed,
+  onArm,
+}: DateFieldProps & { armed: boolean; onArm: () => void }): React.ReactElement {
   return (
     <View style={styles.host}>
       <Text style={styles.label}>{label}</Text>
-      <View
+      <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}
-        accessibilityState={{ busy: true, disabled: true }}
+        accessibilityState={{ busy: true, disabled }}
+        disabled={disabled}
+        onPress={onArm}
         testID={testID === undefined ? undefined : `${testID}-loading`}
-        style={[styles.row, hasError ? styles.rowError : null, disabled ? styles.rowDisabled : null]}
+        style={({ pressed }) => [
+          styles.row,
+          hasError ? styles.rowError : null,
+          disabled ? styles.rowDisabled : null,
+          pressed || armed ? styles.rowPressed : null,
+        ]}
       >
         <Text style={styles.rowPlaceholder}>{placeholder}</Text>
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -91,6 +109,7 @@ const styles = StyleSheet.create({
   },
   rowError: { borderColor: color.errorText },
   rowDisabled: { opacity: 0.45 },
+  rowPressed: { opacity: 0.7 },
   rowPlaceholder: { fontSize: 16, color: color.text4 },
 });
 

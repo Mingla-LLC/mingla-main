@@ -11,6 +11,11 @@ import { detectDeviceTimezone } from "../../utils/timezones";
 import { HOST_CALENDAR_CONFIG } from "./calendarHostConfig";
 import type { DateFieldProps } from "./DateField";
 
+interface BodyProps extends DateFieldProps {
+  /** A tap made on the placeholder while this chunk loaded. */
+  openOnMount?: boolean;
+}
+
 export default function DateFieldBody({
   label,
   value,
@@ -26,7 +31,8 @@ export default function DateFieldBody({
   // not pass a brand or venue zone yet; exit: each caller passes `timeZone`
   // (the #4523 later slices migrate them).
   timeZone = detectDeviceTimezone(),
-}: DateFieldProps): React.ReactElement {
+  openOnMount = false,
+}: BodyProps): React.ReactElement {
   return (
     <CalendarField
       label={label}
@@ -41,6 +47,7 @@ export default function DateFieldBody({
       testID={testID}
       timeZone={timeZone}
       clearable={Platform.OS === "web"}
+      defaultOpen={openOnMount}
       config={HOST_CALENDAR_CONFIG}
     />
   );

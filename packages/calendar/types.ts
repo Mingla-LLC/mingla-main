@@ -68,6 +68,8 @@ export interface CalendarCommon {
   placeholder?: string;
   disabled?: boolean;
   error?: string | null;
+  /** Mount with the calendar already open (a tap made while the field was still loading). */
+  defaultOpen?: boolean;
   /** Error border without a message (callers that show their own text). */
   invalid?: boolean;
   hint?: string;

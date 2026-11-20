@@ -71,6 +71,29 @@ const open = (tree: Tree): boolean =>
   tree.root.findAll((n) => n.props.testID === "df-calendar-next").length > 0;
 
 describe("issue #4523 Host DateField uses the Mingla calendar", () => {
+  it("a tap made while the calendar is still loading is kept and opens it once loaded", async () => {
+    // FIRST test in the file: the lazy body has not been loaded yet.
+    let tree!: Tree;
+    TestRenderer.act(() => {
+      tree = TestRenderer.create(
+        <DateField label="Start" accessibilityLabel="Start date" value="" onChangeValue={jest.fn()} timeZone="Africa/Lagos" testID="df" />,
+      ) as unknown as Tree;
+    });
+    const placeholder = tree.root.findAll((n) => n.props.testID === "df-loading" && typeof n.props.onPress === "function")[0];
+    expect(placeholder).toBeDefined(); // still the loading row
+    expect((placeholder.props.accessibilityState as { busy?: boolean }).busy).toBe(true);
+    TestRenderer.act(() => {
+      (placeholder.props.onPress as () => void)();
+    });
+    expect(open(tree)).toBe(false);
+    for (let i = 0; i < 3; i += 1) {
+      await TestRenderer.act(async () => {
+        await Promise.resolve();
+      });
+    }
+    expect(open(tree)).toBe(true);
+  });
+
   it("opens the calendar; changing month many times never closes it or commits", async () => {
     const onChangeValue = jest.fn();
     const tree = await mount(onChangeValue);

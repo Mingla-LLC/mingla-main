@@ -55,7 +55,7 @@ function Shell(props: ShellProps): React.ReactElement {
   const config: CalendarConfig = useCalendarConfig(props.config);
   const styles: CalendarStyles = useMemo(() => createCalendarStyles(config.tokens), [config.tokens]);
   const labels: CalendarLabels = useMemo(() => mergeLabels(props.labels), [props.labels]);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(props.defaultOpen === true);
   const close = useCallback((): void => setOpen(false), []);
   const { Sheet, renderIcon } = config.primitives;
   const placeholder =
