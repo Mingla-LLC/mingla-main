@@ -76,13 +76,34 @@ import { Icon } from "../../../../src/components/ui/Icon";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
 import { doorExtrasLine, readDoorExtras } from "../../../../src/components/scanner/doorExtras";
 import { doorBookedLine } from "../../../../src/utils/bookedStart";
-import {
-  DOOR_LINE_COPY,
-  doorLineFromScan,
-  type DoorLineView,
-} from "../../../../src/components/scanner/doorAnswersLine";
 
 // ---- Helpers --------------------------------------------------------
+
+// #4514 §6 — the server (scan-ticket, _shared/doorBookedStart.ts) sends the
+// door line ready to show: at most 3 lines, each answer already cut. This
+// screen only checks the shape and renders it; it never formats answers.
+type DoorLine = {
+  state: "answered" | "not_answered" | "unavailable";
+  header: string | null;
+  lines: string[];
+  fullAnswers: boolean;
+};
+const readDoorLine = (value: unknown): DoorLine | null => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const state = raw.state;
+  if (state !== "answered" && state !== "not_answered" && state !== "unavailable") return null;
+  const lines = Array.isArray(raw.lines)
+    ? raw.lines.filter((l): l is string => typeof l === "string" && l.length > 0)
+    : [];
+  if (lines.length === 0) return null;
+  return {
+    state,
+    header: typeof raw.header === "string" && raw.header.length > 0 ? raw.header : null,
+    lines,
+    fullAnswers: raw.fullAnswers === true,
+  };
+};
 
 // issue #3827 — the door "Find by name" sheet loads on first open, so it stays
 // out of the business-web boot chunk (__common ceiling, orch-1083).
@@ -163,7 +184,7 @@ interface ResultOverlayState {
   /** issue #3281 — "Booked for Sat, Nov 14, 7:30 PM"; never clipped. */
   booked?: string;
   /** #4514 §6 — the door line (marked answers, not answered, unavailable). */
-  door?: DoorLineView;
+  door?: DoorLine;
   /** #4514 wave 6 — the scan that "See all answers" opens, with the guest's name. */
   answersFor?: { scanId: string; guestName: string };
 }
@@ -438,10 +459,10 @@ export default function ScannerCameraRoute(): React.ReactElement {
           // server never sends it otherwise; this guard keeps it that way.
           const door =
             kind === "success" || kind === "duplicate"
-              ? doorLineFromScan(result.doorAnswers) ?? undefined
+              ? readDoorLine(result.doorAnswers) ?? undefined
               : undefined;
           const answersFor =
-            door?.canOpenAll === true && typeof result.scanId === "string"
+            door?.fullAnswers === true && typeof result.scanId === "string"
               ? { scanId: result.scanId, guestName: result.buyerName ?? "Guest" }
               : undefined;
           if (kind === "success") {
@@ -813,6 +834,28 @@ export default function ScannerCameraRoute(): React.ReactElement {
   }
 
   // ---- Granted: camera viewport -----------------------------------
+  // #4514 wave 6 — the one lazy "See all answers" sheet. Opened from the scan
+  // card it sits at the root; opened from "Find by name" it renders inside the
+  // search sheet (a modal over that modal), so the search stays where it was.
+  const answersSheet =
+    answersOpen !== null ? (
+      <Suspense
+        fallback={
+          <View style={styles.answersLoading} testID="door-answers-chunk-loading">
+            <ActivityIndicator color={color.textStrong} />
+          </View>
+        }
+      >
+        <DoorAnswersSheet
+          visible
+          onClose={handleCloseAnswers}
+          eventId={event.id}
+          scanId={answersOpen.scanId}
+          guestName={answersOpen.guestName}
+        />
+      </Suspense>
+    ) : null;
+
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
       <View style={styles.chromeRow}>
@@ -873,7 +916,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
                 overlay.booked,
                 overlay.extras,
                 overlay.door?.header ?? undefined,
-                overlay.door?.text,
+                overlay.door?.lines.join(" · "),
               ]
                 .filter((part): part is string => typeof part === "string" && part.length > 0)
                 .join(". ")}
@@ -924,20 +967,20 @@ export default function ScannerCameraRoute(): React.ReactElement {
                   <Text
                     style={[
                       styles.doorLine,
-                      overlay.door.tone === "not_answered"
+                      overlay.door.state === "not_answered"
                         ? styles.doorLineWarn
-                        : overlay.door.tone === "unavailable"
+                        : overlay.door.state === "unavailable"
                           ? styles.doorLineMuted
                           : null,
                     ]}
                     numberOfLines={2}
-                    testID={`scan-result-door-${overlay.door.tone}`}
+                    testID={`scan-result-door-${overlay.door.state}`}
                   >
-                    {overlay.door.text}
+                    {overlay.door.lines.join(" · ")}
                   </Text>
                   {overlay.answersFor !== undefined ? (
                     <Button
-                      label={DOOR_LINE_COPY.seeAll}
+                      label="See all answers"
                       variant="secondary"
                       size="sm"
                       onPress={() => {
@@ -1013,23 +1056,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
         ) : null}
       </View>
 
-      {answersOpen !== null ? (
-        <Suspense
-          fallback={
-            <View style={styles.answersLoading} testID="door-answers-chunk-loading">
-              <ActivityIndicator color={color.textStrong} />
-            </View>
-          }
-        >
-          <DoorAnswersSheet
-            visible
-            onClose={handleCloseAnswers}
-            eventId={event.id}
-            scanId={answersOpen.scanId}
-            guestName={answersOpen.guestName}
-          />
-        </Suspense>
-      ) : null}
+      {answersOpen !== null && !findOpen ? answersSheet : null}
 
       {findOpen ? (
         <Suspense fallback={null}>
@@ -1040,6 +1067,8 @@ export default function ScannerCameraRoute(): React.ReactElement {
             noun={kindCfg.noun}
             onAdmitted={handleNameAdmitted}
             timeZone={event.timezone}
+            onOpenAnswers={handleOpenAnswers}
+            answers={answersOpen !== null ? answersSheet : null}
           />
         </Suspense>
       ) : null}

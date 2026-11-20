@@ -295,6 +295,14 @@ export interface AdmitResponse {
   nextStartAt: string | null;
   lastEndAt: string | null;
   eventDateId: string | null;
+  /** #4514 — the admission's scan receipt, sent with a door line ("See all answers"). */
+  scanId?: string | null;
+  /**
+   * #4514 §6 — the door line ready to show (state, header, lines, fullAnswers),
+   * built by the server exactly as for a ticket scan; absent when there is
+   * nothing to show. Read defensively by the door search panel.
+   */
+  doorAnswers?: unknown;
 }
 
 export const admitTicket = (input: { eventId: string; ticketId: string }): Promise<AdmitResponse> =>

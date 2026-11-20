@@ -42,10 +42,10 @@ export interface ServerScanResult {
   /** issue #3281 — ISO start the guest booked; absent when none. */
   bookedStartAt?: string | null;
   /**
-   * #4514 §6 — the guest's door line: `{state:"answered", formName, items,
-   * fromOrderOf?, fullAnswers}`, `{state:"not_answered", formName}` or
-   * `{state:"unavailable"}`; absent when there is nothing to show. Read with
-   * `doorLineFromScan`; never stored in scanStore.
+   * #4514 §6 — the guest's door line, ready to show: `{state, header, lines,
+   * fullAnswers}` with state "answered", "not_answered" or "unavailable"
+   * (the server owns the 3 / 60 rule); absent when there is nothing to show.
+   * Never stored in scanStore.
    */
   doorAnswers?: unknown;
 }
