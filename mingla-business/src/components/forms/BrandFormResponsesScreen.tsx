@@ -10,7 +10,7 @@
  * draws no control for them.
  */
 
-import React, { Suspense, useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -44,13 +44,11 @@ import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Tabs } from "../ui/Tabs";
 import { FORM_REQUEST_COPY, FORM_REQUEST_LOG_COPY, FORMS_COPY, modeLabel } from "./brandFormsCopy";
+import { FormRequestLog } from "./FormRequestLog";
 import { FormRequestSheet, type FormRequestSheetMode } from "./FormRequestSheet";
 import { FormsNotice } from "./FormsNotice";
 import { GuestQuestionsSheet } from "./GuestQuestionsSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
-
-// Wave 4 review: the delivery log loads only when the host opens it.
-const FormRequestLog = React.lazy(async () => ({ default: (await import("./FormRequestLog")).FormRequestLog }));
 
 type RTab = "summary" | "responses" | "not_answered";
 
@@ -423,9 +421,7 @@ export const BrandFormResponsesScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {content}
         {logOpen && formId !== null && eventId !== null ? (
-          <Suspense fallback={null}>
-            <FormRequestLog formId={formId} eventId={eventId} />
-          </Suspense>
+          <FormRequestLog formId={formId} eventId={eventId} />
         ) : null}
       </ScrollView>
 

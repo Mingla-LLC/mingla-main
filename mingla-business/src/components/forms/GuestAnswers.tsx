@@ -8,7 +8,7 @@
  * Words, never colour alone. A page with no published form draws nothing.
  */
 
-import React, { Suspense, useState } from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
@@ -22,11 +22,10 @@ import {
 import { Button } from "../ui/Button";
 import { Pill } from "../ui/Pill";
 import { FORM_REQUEST_COPY, FORM_REQUEST_LOG_COPY } from "./brandFormsCopy";
+import { FormRequestLog } from "./FormRequestLog";
 import { FormRequestSheet } from "./FormRequestSheet";
 import { useFormsToast } from "./useFormsToast";
 
-// Wave 4 review: this guest's delivery log loads only when the host opens it.
-const FormRequestLog = React.lazy(async () => ({ default: (await import("./FormRequestLog")).FormRequestLog }));
 
 export interface GuestAnswersRowRef {
   eventId: string;
@@ -119,13 +118,11 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
         />
       ) : null}
       {logOpen ? (
-        <Suspense fallback={null}>
-          <FormRequestLog
-            formId={index.page.form.id}
-            eventId={eventId}
-            subject={rsvpId !== null ? { kind: "rsvp", id: rsvpId } : { kind: "order", id: orderIds[0] ?? "" }}
-          />
-        </Suspense>
+        <FormRequestLog
+          formId={index.page.form.id}
+          eventId={eventId}
+          subject={rsvpId !== null ? { kind: "rsvp", id: rsvpId } : { kind: "order", id: orderIds[0] ?? "" }}
+        />
       ) : null}
       {asking ? (
         <FormRequestSheet

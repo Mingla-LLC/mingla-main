@@ -3,8 +3,9 @@
  * to, by text or email, and what happened (sent, on the way, failed, can't be
  * reached, not sent and why), plus the automatic reminder runs. Event manager
  * and up (the server checks). Shown on the Responses screen and in the guest
- * answers drawer; loaded with React.lazy only when the host opens it, and the
- * read runs only then. Never a contact or a link.
+ * answers drawer; mounted only when the host opens it (so the read runs only
+ * then), inside the one lazy forms owner chunk: never import it through its own
+ * async boundary, that hoists the shared forms modules into __common. Never a contact or a link.
  */
 
 import React from "react";
