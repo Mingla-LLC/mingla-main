@@ -363,7 +363,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645 bundle 2e-1 (merge of main): registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
 // #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order) in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 merge of main after #3645 bundle 2e-1: kept main's 20281119003645 row before the three #4420 rows (filename order); re-sealed.
-export const BOOTSTRAP_SHA256 = "161c2e0ec2eb9f6ed4737defd7cb5a658b4dbef4875774b0ffdc4afe441eb1e9";
+// #4420 1931 replay: skipped 20281120014420_issue_4420_brand_guest_activity.sql by exact filename on the filtered #1931 temp replay (it calls issue_4459_is_brand_team, defined only by the skipped 20280805004459; #2492 closure); re-sealed.
+export const BOOTSTRAP_SHA256 = "3897a67d315b4e90da3a267a5bf7dc68e67142a166b4e583aa3e6713791cf79c";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
