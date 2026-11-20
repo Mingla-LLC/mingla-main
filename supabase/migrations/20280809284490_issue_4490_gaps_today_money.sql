@@ -10,7 +10,8 @@
 -- service day, for this venue's groups (entry, packages, hire, by the hour,
 -- stays, membership periods paid online) + (b) money recorded at the venue that
 -- day + (c) membership periods paid at the venue that day + (d) table deposits
--- paid that day - (e) refunds raised that day (stays + table deposits).
+-- paid that day (still counted there once refunded, N123) - (e) refunds
+-- raised that day (stays + table deposits).
 -- A pay-at-venue booking counts only through (b). A table deposit counts on the
 -- day it was paid, never again when it is used at the Till (spec 07 §11 B2).
 --
@@ -55,10 +56,12 @@ BEGIN
   WHERE m.paid_via = 'venue' AND m.paid_at IS NOT NULL
     AND public.issue_4490_member_venue(m.subscription_id) = p_venue_id
     AND public.issue_4490_venue_service_date(p_venue_id, m.paid_at) = p_local_date;
-  -- (d) table deposits paid that day
+  -- (d) table deposits paid that day. A deposit refunded later flips to
+  -- 'refunded' when the refund settles; it was still received that day
+  -- (N123), and the refund comes off on its own day through (e).
   SELECT COALESCE(sum(r.fee_cents), 0)::bigint INTO v_tables
   FROM public.reservations r
-  WHERE r.venue_id = p_venue_id AND r.payment_status = 'paid' AND COALESCE(r.fee_cents, 0) > 0
+  WHERE r.venue_id = p_venue_id AND r.payment_status IN ('paid', 'refunded') AND COALESCE(r.fee_cents, 0) > 0
     AND public.issue_4490_venue_service_date(p_venue_id, r.created_at) = p_local_date;
   -- (e) refunds raised that day
   SELECT
@@ -93,7 +96,7 @@ BEGIN
 
   WITH day_tables AS (
     SELECT r.id, r.fee_cents FROM public.reservations r
-    WHERE r.venue_id = p_venue_id AND r.payment_status = 'paid' AND COALESCE(r.fee_cents, 0) > 0
+    WHERE r.venue_id = p_venue_id AND r.payment_status IN ('paid', 'refunded') AND COALESCE(r.fee_cents, 0) > 0
       AND public.issue_4490_venue_service_date(p_venue_id, r.reserved_for) = p_local_date
   )
   SELECT
