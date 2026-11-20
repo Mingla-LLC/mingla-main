@@ -29,6 +29,10 @@ function harness(opts: {
       if (fn === "issue_3281_door_order_extras") {
         return { abortSignal: () => (opts.extras ?? (() => Promise.resolve({ data: {}, error: null })))() };
       }
+      // #4514 — no form on this event: the door line read finds nothing to show.
+      if (fn === "brand_form_door_answers") {
+        return { abortSignal: () => Promise.resolve({ data: null, error: null }) };
+      }
       throw new Error(`unexpected rpc ${fn}`);
     },
     from: (table: string) => {

@@ -106,19 +106,71 @@ export async function readScanExtras(
   }
 }
 
+/** #4514 §6: the door line's result when the read failed or missed the deadline. */
+export const DOOR_ANSWERS_UNAVAILABLE = Object.freeze({ state: "unavailable" });
+
 /**
- * The scan answer with the door's optional fields added. With no extras and
- * no booked start it is the same object, so the body stays byte-identical.
+ * #4514 §6 — the guest's door line (`brand_form_door_answers`): the answers to
+ * the questions the host marked "Shown to door staff", "Questions not
+ * answered", or null when there is nothing to show (no form, an optional form
+ * left blank, a guest added by the host). Never throws: a refused, failed or
+ * too-slow read is `{state:"unavailable"}`, so the scan answer still goes back.
+ * Callers pass only a scan the actor-checked RPC already resolved at this event.
+ */
+export async function readDoorAnswers(
+  client: DoorReadClient,
+  actorId: string,
+  eventId: string,
+  orderId: string,
+  ticketId: string | null,
+  signal: AbortSignal,
+): Promise<Record<string, unknown> | null> {
+  if (!UUID.test(eventId) || !UUID.test(orderId)) return null;
+  try {
+    const result = await client
+      .rpc("brand_form_door_answers", {
+        p_actor_id: actorId,
+        p_event_id: eventId,
+        p_subject: {
+          kind: "order",
+          id: orderId,
+          ...(ticketId !== null && UUID.test(ticketId) ? { ticketId } : {}),
+        },
+      })
+      .abortSignal(signal) as QueryResult;
+    if (result.error) {
+      console.error("[door] answers unavailable");
+      return { ...DOOR_ANSWERS_UNAVAILABLE };
+    }
+    const line = result.data;
+    if (line === null || line === undefined) return null;
+    if (typeof line !== "object" || Array.isArray(line)) {
+      console.error("[door] answers unreadable");
+      return { ...DOOR_ANSWERS_UNAVAILABLE };
+    }
+    return line as Record<string, unknown>;
+  } catch {
+    console.error("[door] answers unavailable");
+    return { ...DOOR_ANSWERS_UNAVAILABLE };
+  }
+}
+
+/**
+ * The scan answer with the door's optional fields added. With no extras, no
+ * booked start and no door line it is the same object, so the body stays
+ * byte-identical.
  */
 export function withDoorFields(
   scan: Record<string, unknown>,
   extras: unknown[],
   bookedStartAt: string | null,
+  doorAnswers: Record<string, unknown> | null = null,
 ): Record<string, unknown> {
-  if (extras.length === 0 && bookedStartAt === null) return scan;
+  if (extras.length === 0 && bookedStartAt === null && doorAnswers === null) return scan;
   return {
     ...scan,
     ...(extras.length > 0 ? { extras } : {}),
     ...(bookedStartAt !== null ? { bookedStartAt } : {}),
+    ...(doorAnswers !== null ? { doorAnswers } : {}),
   };
 }
