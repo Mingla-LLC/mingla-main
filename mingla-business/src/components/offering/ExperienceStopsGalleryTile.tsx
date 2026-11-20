@@ -12,7 +12,6 @@
 
 import React from "react";
 import {
-  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +28,8 @@ import { GlassCard } from "../ui/GlassCard";
 import type { ExperienceStopRow } from "../../services/experienceDetailService";
 // #3372 — naira stop prices show "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+// issue #4518 — stop photos take the picture road (one fallback).
+import { OfferingRoutedImage } from "@mingla/offering-rendering/useOfferingImageUri";
 
 export interface ExperienceStopsGalleryTileProps {
   stops: ExperienceStopRow[];
@@ -118,7 +119,7 @@ export const ExperienceStopsGalleryTile: React.FC<
                 accessibilityLabel={`${stop.placeName} photo gallery`}
               >
                 {stop.imageUrls.map((uri, idx) => (
-                  <Image
+                  <OfferingRoutedImage
                     key={`${stop.id}-img-${idx}`}
                     source={{ uri }}
                     style={styles.galleryImage}

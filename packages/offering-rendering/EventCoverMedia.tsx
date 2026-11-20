@@ -39,6 +39,7 @@ import {
 // legitimate play (source-defer below), so a paused/off-screen/grid cover fetches
 // zero bytes.
 import { useCachedCoverVideoUri } from "./useCachedCoverVideoUri";
+import { useOfferingImageUri } from "./useOfferingImageUri";
 
 export interface EventCoverMediaProps {
   hue?: number;
@@ -394,6 +395,11 @@ const EventCoverNativeVideo: React.FC<{
   onError,
 }) => {
   const shouldPlay = autoplay && playbackActive;
+  // issue #4518 — the still poster takes the picture road; the video `uri`
+  // itself is never rewritten (large, and not a public-storage picture).
+  const poster = useOfferingImageUri(
+    typeof posterUrl === "string" && posterUrl.length > 0 ? posterUrl : null,
+  );
   // META-ORCH-1270 Phase 3 (Vector A/C — the true closer of the cover-video
   // bandwidth leak). ROOT CAUSE (Finding A): `useVideoPlayer(uri, …)` sourced the
   // player ON CREATION, so expo-video opened the HTTP connection and buffered the
@@ -533,9 +539,11 @@ const EventCoverNativeVideo: React.FC<{
           accessible={false}
           accessibilityElementsHidden={true}
           importantForAccessibility="no-hide-descendants"
-          source={{ uri: posterUrl }}
+          source={{ uri: poster.uri ?? posterUrl }}
           style={StyleSheet.absoluteFill}
           resizeMode={contentFit}
+          onLoad={poster.onLoad}
+          onError={poster.onError}
         />
       ) : null}
       {!isVideoPlayerReleasedForReload(player) ? (
@@ -737,6 +745,19 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
     [mediaType, mediaUrl, onMediaError],
   );
 
+  // issue #4518 — the cover picture takes the picture road: a failed (or
+  // hung) public-storage picture is fetched once more through our own site
+  // before the error fallback shows. No provider (native) ⇒ pass-through.
+  const coverImage = useOfferingImageUri(isVideoPresentation ? null : mediaUrl);
+  const coverImageError = coverImage.onError;
+  const handleImageError = useCallback(
+    (event?: NativeSyntheticEvent<ImageErrorEventData>): void => {
+      if (coverImageError(event)) return;
+      handleMediaError(event);
+    },
+    [coverImageError, handleMediaError],
+  );
+
   // #3827 — react-native-web's <Image> re-runs its load effect whenever its
   // onLoad / onError identity changes, and that effect sets LOADING (a second
   // state update). Fresh inline handlers did that on EVERY parent render, so
@@ -747,14 +768,16 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   // identities stable while a real load or error behaves exactly as before.
   // ORCH-0992: report image aspect ratio so an adaptive hero fits square /
   // vertical image covers the same way it fits videos.
+  const coverImageLoad = coverImage.onLoad;
   const handleImageLoad = useCallback(
     (event: NativeSyntheticEvent<ImageLoadEventData>): void => {
+      coverImageLoad(event);
       const source = event.nativeEvent?.source;
       if (source !== undefined && source.width > 0 && source.height > 0) {
         onAspectRatio?.(source.width / source.height);
       }
     },
-    [onAspectRatio],
+    [coverImageLoad, onAspectRatio],
   );
 
   // Render heavy media only when there IS media AND (native OR the card is at/
@@ -832,13 +855,13 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
             accessible={false}
             accessibilityElementsHidden={true}
             importantForAccessibility="no-hide-descendants"
-            source={{ uri: mediaUrl }}
+            source={{ uri: coverImage.uri ?? mediaUrl }}
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
-            // #3827: stable handlers (see handleImageLoad / handleMediaError).
-            // onLoad stays absent when no caller wants the aspect ratio.
-            onLoad={onAspectRatio === undefined ? undefined : handleImageLoad}
-            onError={handleMediaError}
+            // #3827: stable handlers (see handleImageLoad / handleImageError).
+            // #4518: onLoad is always present so a hang timer is cancelled.
+            onLoad={handleImageLoad}
+            onError={handleImageError}
           />
         )}
       </View>

@@ -105,14 +105,16 @@ const EXPECTED_FIELDS = [
 // and eight Bunny fields while preserving the 90-name ceiling and #1772 field.
 // [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
 // 91st top-level name; the AD envelope and #1772 field remain byte-for-byte unchanged.
-test("#1772 keeps the exact governed 91-name envelope with no direct erasure secret", () => {
+// [TEST-MOD-APPROVED #4334] #4334 [secret count 90 approved by Seth]: the retired map-vendor token
+// leaves the top-level names (pinned digest re-derived); the AD envelope and #1772 field are unchanged.
+test("#1772 keeps the exact governed 90-name envelope with no direct erasure secret", () => {
   const names = manifest.secrets.map((entry) => entry.name);
-  assert.equal(names.length, 91);
+  assert.equal(names.length, 90);
   assert.equal(
     crypto.createHash("sha256").update(JSON.stringify(names)).digest("hex"),
-    "9f8ed3375fb188bb9b7ba2e0d84cf54916e709d1a337ed167650cb169c75cc1a",
+    "9256b757848c4c2a5c3f80eddbddfa5178f870553fb67c3646c47f1e65138fcb",
   );
-  assert.equal(manifest.rollout.expected_user_managed_count, 91);
+  assert.equal(manifest.rollout.expected_user_managed_count, 90);
   assert.deepEqual(manifest.exceptions, [
     {
       issue: 2830,

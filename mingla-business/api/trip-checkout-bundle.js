@@ -4,6 +4,7 @@
 // errors. Wraps the canonical SECURITY DEFINER RPC `pg_public_trip_by_slug`.
 // Do NOT CDN publicSearchDocument HTML (#2986).
 const { requestRpcJson } = require("../server/supabaseRpc");
+const { withBuyGateAnswers } = require("../server/buyGateAnswers");
 
 const firstQueryValue = (value) => (Array.isArray(value) ? value[0] : value);
 
@@ -48,7 +49,9 @@ module.exports = async function tripCheckoutBundleHandler(req, res) {
       return;
     }
 
-    send(res, 200, data, true);
+    // #4518 — the buy-gate answers that apply to a trip: brandCanCollect
+    // (the trip RPC carries no server `bookable`) and an unrestricted sale.
+    send(res, 200, await withBuyGateAnswers(data, { brandCanCollect: true }), true);
   } catch {
     send(res, 502, { error: "upstream_unavailable" }, false);
   }

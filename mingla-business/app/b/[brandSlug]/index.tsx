@@ -34,6 +34,11 @@ import {
 } from "../../../src/hooks/usePublicBrandSections";
 import { PublicBrandPage } from "../../../src/components/brand/PublicBrandPage";
 import { PublicBrandNotFound } from "../../../src/components/brand/PublicBrandNotFound";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { PublicGlassProvider } from "../../../src/components/offering/PublicGlassProvider";
 
 function PublicBrandRouteBody(): React.ReactElement {
@@ -105,22 +110,28 @@ function PublicBrandRouteBody(): React.ReactElement {
     });
   }, [publicBrandQuery.data, routeState]);
 
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
+
+  // #4518 — one notice for a page that could not load. Kept on screen while
+  // Try again re-reads (the query stays in error until it succeeds).
+  if (routeState === "error" || (routeState === "loading" && publicBrandQuery.isError)) {
+    return (
+      <View style={styles.noticeHost}>
+        <BuyerConnectionNotice
+          variant={isConnectionFailure(publicBrandQuery.error) ? "connection" : "server"}
+          onRetry={() => publicBrandQuery.refetch()}
+          testID="public-brand-connection-notice"
+        />
+      </View>
+    );
+  }
+
   if (routeState === "loading") {
     return (
       <View style={styles.stateWrap}>
         <ActivityIndicator />
         <Text style={styles.stateText}>Loading brand...</Text>
-      </View>
-    );
-  }
-
-  if (routeState === "error") {
-    return (
-      <View style={styles.stateWrap}>
-        <Text style={styles.stateTitle}>Brand could not load</Text>
-        <Text style={styles.stateText}>
-          Refresh this page or try the link again.
-        </Text>
       </View>
     );
   }
@@ -182,11 +193,9 @@ const styles = StyleSheet.create({
     padding: space[6],
     backgroundColor: color.canvas,
   },
-  stateTitle: {
-    color: color.text1,
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: space[1],
+  noticeHost: {
+    flex: 1,
+    backgroundColor: color.canvas,
   },
   stateText: {
     color: color.text2,

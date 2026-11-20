@@ -76,6 +76,8 @@ import { CheckoutOfferingStrip } from "../../../src/components/checkout/Checkout
 import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
 import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
+import { BUYER_CONNECTION_COPY } from "../../../src/components/buyer/buyerConnectionCopy";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 
 const formatQuoteMoney = (minor: number, currency: string): string => {
   try {
@@ -613,8 +615,11 @@ function CheckoutExperiencePaymentScreenContent({
         }, 1200);
       } catch (error) {
         setProcessing(false);
-        const message =
-          error instanceof Error
+        // #4518 — a request that never got an answer shows the one connection
+        // message (never "Failed to fetch"); a server refusal keeps its words.
+        const message = isConnectionFailure(error)
+          ? BUYER_CONNECTION_COPY.PAYMENT_CONNECTION_ERROR
+          : error instanceof Error
             ? error.message
             : "Payment could not be completed. Please try again.";
         setPaymentError(message);

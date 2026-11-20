@@ -12,7 +12,21 @@
         "mingla-business/src/services/laneEdgeInvoke.ts",
         "mingla-business/src/services/resilientFetch.ts",
         "mingla-business/src/services/supabase.ts",
-        "mingla-business/src/theme/surfaceTokens.ts"
+        "mingla-business/src/theme/surfaceTokens.ts",
+        "mingla-business/app/_layout.tsx",
+        "mingla-business/app/b/[brandSlug]/index.tsx",
+        "mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
+        "mingla-business/server/buyGateAnswers.js",
+        "mingla-business/src/components/buyer/BuyerConnectionNotice.tsx",
+        "mingla-business/src/components/buyer/BuyerConnectionNoticeFull.tsx",
+        "mingla-business/src/components/buyer/buyerConnectionNoticeTypes.ts",
+        "mingla-business/src/components/buyer/buyerConnectionCopy.ts",
+        "mingla-business/src/services/buyerMediaRoute.ts",
+        "mingla-business/src/services/connectionFailure.ts",
+        "packages/offering-rendering/CountAwareGallery.tsx",
+        "packages/offering-rendering/EventCoverMedia.tsx",
+        "packages/offering-rendering/offeringMediaRoute.ts",
+        "packages/offering-rendering/useOfferingImageUri.ts"
       ]
     },
     {
@@ -286,7 +300,24 @@
         "mingla-business/app/checkout-trip/[tripEventId]/_layout.tsx",
         "mingla-business/src/components/offering/LazyPublicParts.tsx",
         "packages/offering-rendering/offeringCta.ts",
-        "packages/offering-rendering/socialProofMomentum.ts"
+        "packages/offering-rendering/socialProofMomentum.ts",
+        "mingla-business/api/experience-checkout-bundle.js",
+        "mingla-business/api/trip-checkout-bundle.js",
+        "mingla-business/app/checkout-experience/[experienceEventId]/index.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/index.tsx",
+        "mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx",
+        "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
+        "mingla-business/server/buyGateAnswers.js",
+        "mingla-business/src/components/buyer/BuyerConnectionNotice.tsx",
+        "mingla-business/src/components/buyer/BuyerConnectionNoticeFull.tsx",
+        "mingla-business/src/components/buyer/buyerConnectionNoticeTypes.ts",
+        "mingla-business/src/components/buyer/buyerConnectionCopy.ts",
+        "mingla-business/src/components/trip/TripPreview.tsx",
+        "mingla-business/src/hooks/usePublicTripBySlug.ts",
+        "mingla-business/src/services/buyerMediaRoute.ts",
+        "mingla-business/src/services/connectionFailure.ts",
+        "mingla-business/src/services/publicExperienceService.ts",
+        "packages/offering-rendering/CountAwareGallery.tsx"
       ]
     },
     {

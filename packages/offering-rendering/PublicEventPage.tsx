@@ -25,7 +25,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
-  Image,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -103,6 +102,8 @@ import type {
 // issue #3314 — the one owner of remaining-count copy under "Hide remaining count".
 import { ticketAvailabilityCaption } from "./remainingCountVisibility";
 import { accentFill, themeBoldFace } from "./themeAccentStyle";
+// issue #4518 — the brand photo takes the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 
 const SHOW_INITIAL_DATES = 10;
 
@@ -690,7 +691,7 @@ const PublishedBody = ({
             ]}
           >
             {brand?.photo !== undefined && brand.photo.length > 0 ? (
-              <Image
+              <OfferingRoutedImage
                 source={{ uri: brand.photo }}
                 style={[
                   styles.brandTile,

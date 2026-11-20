@@ -42,6 +42,9 @@ export const FUNCTIONS_ROOT = resolve(REPO_ROOT, "supabase", "functions");
 // #4276: count 91 approved by Seth Ogieva on 2026-11-07 in chat
 // (GOOGLE_SEEDING_API_KEY) with the absolute ceiling raised to 91; the declared
 // set is exactly 91 and the band stays empty.
+// #4334: the retired map-vendor token unset approved by Seth on 2026-11-20 in
+// chat; the declared set is exactly 90 under the unchanged 87/91 ceilings and
+// the band stays empty.
 export const ISSUE_2241_EXTRA_NAMES = Object.freeze([]);
 
 export const ISSUE_2241_FUNCTIONS = Object.freeze([
