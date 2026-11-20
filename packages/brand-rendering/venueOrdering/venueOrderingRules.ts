@@ -666,3 +666,17 @@ export function venueOrderSubmitFailure(
   }
   return { resetKey: false, message: alreadyInCopy };
 }
+
+/**
+ * N140 (#4490) — the order page while a payment is unpaid. "checking" while
+ * the provider is still confirming (no second payment offered); "retry" only
+ * when the provider says nothing was paid, or no provider check applies.
+ */
+export function venueOrderPaymentView(live: {
+  paymentStatus: string;
+  paymentCheck?: "confirmed" | "in_progress" | "not_paid" | null;
+}): "none" | "checking" | "retry" {
+  if (live.paymentStatus !== "pending") return "none";
+  if (live.paymentCheck === "in_progress" || live.paymentCheck === "confirmed") return "checking";
+  return "retry";
+}

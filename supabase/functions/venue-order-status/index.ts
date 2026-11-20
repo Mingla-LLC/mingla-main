@@ -22,6 +22,12 @@ import {
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
 import { venueOrderErrorCopy } from "../_shared/venueOrderPricing.ts";
+import {
+  confirmVenueOrderPaystackOnReturn,
+  isVenueOrderPaystackReference,
+  type VenueOrderReturnCheck,
+} from "../_shared/venueOrderWebhook.ts";
+import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import {
@@ -109,6 +115,34 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
 
+  // N140 (#4490): an unpaid Paystack order is checked with Paystack on every
+  // read while it is pending (the guest's return and the page's poll) and
+  // finalized through the webhook's own path when the charge succeeded.
+  let paymentCheck: VenueOrderReturnCheck | null = null;
+  if (
+    order.payment_status === "pending" &&
+    order.provider === "paystack" &&
+    isVenueOrderPaystackReference(order.paystack_reference)
+  ) {
+    try {
+      paymentCheck = await confirmVenueOrderPaystackOnReturn(
+        supabase,
+        String(order.paystack_reference),
+        paystackVerifyTransaction,
+      );
+    } catch (err) {
+      console.error("[venue-order-status] paystack verify on return failed", String(err));
+      paymentCheck = "in_progress";
+    }
+    if (paymentCheck === "confirmed") {
+      const { data: fresh } = await supabase.from("venue_orders")
+        .select("payment_status").eq("id", order.id).maybeSingle();
+      if (fresh && typeof fresh.payment_status === "string") {
+        order.payment_status = fresh.payment_status;
+      }
+    }
+  }
+
   const [{ data: brand }, { data: venue }] = await Promise.all([
     supabase.from("brands").select("slug").eq("id", order.brand_id)
       .maybeSingle(),
@@ -145,6 +179,8 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     brandSlug: typeof brand?.slug === "string" ? brand.slug : null,
     venueSlug: typeof venue?.slug === "string" ? venue.slug : null,
     paymentStatus: String(order.payment_status),
+    // N140: null when no provider check applies (paid, Stripe, free).
+    paymentCheck,
     fulfillmentStatus: String(order.fulfillment_status),
     placedAt: order.created_at,
     acknowledgedAt: order.acknowledged_at,

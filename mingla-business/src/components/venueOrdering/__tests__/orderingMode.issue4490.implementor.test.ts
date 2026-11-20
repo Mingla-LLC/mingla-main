@@ -10,6 +10,7 @@
 jest.mock("../../../services/supabase", () => ({ supabase: { rpc: jest.fn(), functions: { invoke: jest.fn() } } }));
 
 import {
+  parseVenueOrderStatus,
   parseVenueOrderPreview,
   parseVenueOrderingConfig,
   venueOrderCreateBody,
@@ -22,6 +23,7 @@ import {
   venueOrderingReviewConfig,
   venueOrderSubmitFailure,
   venueOrderBuyerFailure,
+  venueOrderPaymentView,
   type VenueOrderingConfig,
 } from "@mingla/brand-rendering/venueOrdering";
 import { venueOrderModeOf, venueOrderModeErrorCopy, type VenueOrderingSettings } from "../../../hooks/useVenueOrderingSettings";
@@ -138,6 +140,16 @@ describe("#4490 07-D ordering mode", () => {
     expect(b("bola@example.test")?.message).toMatch(/can get receipts at/);
     expect(b("a@x.invalid")?.field).toBe("email");
     expect(b("tester-4490@example.com")).toBeNull();
+  });
+
+  it("N140: while the provider is confirming, the page checks and never offers a second payment", () => {
+    expect(venueOrderPaymentView({ paymentStatus: "pending", paymentCheck: "in_progress" })).toBe("checking");
+    expect(venueOrderPaymentView({ paymentStatus: "pending", paymentCheck: "confirmed" })).toBe("checking");
+    expect(venueOrderPaymentView({ paymentStatus: "pending", paymentCheck: "not_paid" })).toBe("retry");
+    expect(venueOrderPaymentView({ paymentStatus: "pending", paymentCheck: null })).toBe("retry");
+    expect(venueOrderPaymentView({ paymentStatus: "paid", paymentCheck: null })).toBe("none");
+    const parsed = parseVenueOrderStatus({ orderId: "o", paymentStatus: "pending", paymentCheck: "in_progress" }, "o");
+    expect(parsed.paymentCheck).toBe("in_progress");
   });
 
   it("no scanned spot stays a counter order", () => {

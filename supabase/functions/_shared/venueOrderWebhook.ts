@@ -269,3 +269,42 @@ export async function handleVenueOrderPaystackCharge(
     brandId: typeof order.brand_id === "string" ? order.brand_id : null,
   };
 }
+
+// ---------------------------------------------------------------------------
+// N140 (#4490) — confirm a Paystack venue order ON RETURN.
+//
+// A menu order used to be confirmed only by the webhook: a guest back from a
+// successful payment saw "Payment isn't finished" and was invited to pay
+// again until the webhook landed (never, locally). On return the status read
+// verifies the transaction by reference (the same verify the webhook uses)
+// and, on success, finalizes through the SAME handleVenueOrderPaystackCharge /
+// pg_venue_order_finalize_payment path: same amount and currency gate, and
+// idempotent with the webhook (FOR UPDATE + early return), so a return racing
+// the webhook pays the order once.
+// ---------------------------------------------------------------------------
+
+/** What the guest is told while an order is unpaid after a payment start. */
+export type VenueOrderReturnCheck = "confirmed" | "in_progress" | "not_paid";
+
+/** Paystack's verify status, in the three words the order page needs. */
+export function venueOrderReturnCheckFor(verifyStatus: string): VenueOrderReturnCheck {
+  const s = verifyStatus.toLowerCase();
+  if (s === "success") return "confirmed";
+  if (s === "failed" || s === "abandoned" || s === "reversed") return "not_paid";
+  return "in_progress";
+}
+
+export async function confirmVenueOrderPaystackOnReturn(
+  client: ServiceClient,
+  reference: string,
+  verify: (reference: string) => Promise<Record<string, unknown>>,
+): Promise<VenueOrderReturnCheck> {
+  const txn = await verify(reference);
+  const check = venueOrderReturnCheckFor(String(txn?.status ?? ""));
+  if (check !== "confirmed") return check;
+  const outcome = await handleVenueOrderPaystackCharge(client, reference, txn);
+  // A mismatch is never "paid": the order stays pending for staff review.
+  return outcome.matched && (outcome.status === "finalized" || outcome.status === "replayed")
+    ? "confirmed"
+    : "in_progress";
+}

@@ -37,6 +37,7 @@ import type { VenueOrderLiveStatus } from "./venueOrderingTypes";
 import {
   venueOrderHandover,
   venueOrderProgressCopy,
+  venueOrderPaymentView,
 } from "./venueOrderingRules";
 import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
@@ -75,6 +76,9 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
   const money = (cents: number): string =>
     formatMenuPrice(cents, live.totals.currency) ?? "—";
   const awaitingPayment = live.paymentStatus === "pending";
+  // N140: while the provider is still confirming, say so and offer no second payment.
+  const paymentView = venueOrderPaymentView(live);
+  const checkingPayment = paymentView === "checking";
 
   return (
     <View style={styles.wrap}>
@@ -90,10 +94,12 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
           </View>
         ) : null}
         <Text style={[styles.heroTitle, { color: palette.primaryText }]}>
-          {awaitingPayment ? "Payment isn't finished" : copy.title}
+          {checkingPayment ? "Checking your payment" : awaitingPayment ? "Payment isn't finished" : copy.title}
         </Text>
         <Text style={[styles.heroBody, { color: palette.secondaryText }]}>
-          {awaitingPayment
+          {checkingPayment
+            ? "We're confirming your payment. This takes a few seconds; there's no need to pay again."
+            : awaitingPayment
             ? "Your order is saved, but payment is still incomplete. You can safely try the same payment again."
             : copy.body}
         </Text>
@@ -165,7 +171,7 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
       )}
 
       <View style={styles.actions}>
-        {awaitingPayment && onRetryPayment !== null ? (
+        {paymentView === "retry" && onRetryPayment !== null ? (
           <Pressable
             onPress={onRetryPayment}
             disabled={retryPaymentPending}

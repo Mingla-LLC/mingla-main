@@ -192,6 +192,12 @@ export type VenueOrderFulfillmentStatus =
 
 /** The live order, as `venue-order-status` reports it. */
 export interface VenueOrderLiveStatus {
+  /**
+   * N140 (#4490) — the server's provider check while unpaid: "in_progress"
+   * (verifying; never offer a second payment), "not_paid" (the guest may try
+   * again), "confirmed" (paid). Absent/null when no check applies.
+   */
+  paymentCheck?: "confirmed" | "in_progress" | "not_paid" | null;
   orderId: string;
   buyerName: string;
   brandSlug: string | null;

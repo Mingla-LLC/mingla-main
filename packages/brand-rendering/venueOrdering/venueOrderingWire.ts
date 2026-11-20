@@ -329,6 +329,10 @@ export function parseVenueOrderStatus(
 ): VenueOrderLiveStatus {
   const totals = (data.totals ?? {}) as Record<string, unknown>;
   return {
+    paymentCheck: data.paymentCheck === "confirmed" || data.paymentCheck === "in_progress" ||
+        data.paymentCheck === "not_paid"
+      ? data.paymentCheck
+      : null,
     orderId: String(data.orderId ?? fallbackOrderId),
     buyerName: typeof data.buyerName === "string" ? data.buyerName : "",
     brandSlug: typeof data.brandSlug === "string" ? data.brandSlug : null,
