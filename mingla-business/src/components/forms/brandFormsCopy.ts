@@ -297,6 +297,8 @@ export const FORM_REQUEST_LOG_COPY = {
     form_closed: "the form closed",
     expired: "not delivered within a day",
     claim_expired: "not delivered after 3 tries",
+    text_cap: "the day's text limit was reached",
+    event_started: "their date had already started",
   } as Record<string, string>,
   run: (date: string, outcome: "sending" | "sent" | "failed" | "held_form_closed"): string =>
     `Automatic reminder for ${date}: ${

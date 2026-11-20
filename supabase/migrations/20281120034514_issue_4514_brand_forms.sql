@@ -2313,16 +2313,15 @@ AS $fn$
      AND s.created_at > now() - interval '24 hours'
 $fn$;
 
--- One person, one key: the signed-in account, else the phone, else the email,
--- else the booking. The 24-hour throttle and the de-duplication of one person
--- with several RSVPs or orders key on it.
-CREATE FUNCTION public.brand_form_person_key(p_user_id uuid, p_phone text, p_email text, p_kind text, p_id uuid)
+-- One person, one key: the signed-in account, else the booking (the RSVP,
+-- order or trip-booking id). Never the phone or the email: two guests who share
+-- a phone are two people, each with their own link. The 24-hour throttle and the
+-- de-duplication of one account with several RSVPs or orders key on it.
+CREATE FUNCTION public.brand_form_person_key(p_user_id uuid, p_kind text, p_id uuid)
 RETURNS text
 LANGUAGE sql IMMUTABLE SET search_path = ''
 AS $fn$
   SELECT CASE WHEN p_user_id IS NOT NULL THEN 'u:' || p_user_id::text
-              WHEN NULLIF(btrim(p_phone), '') IS NOT NULL THEN 'p:' || btrim(p_phone)
-              WHEN NULLIF(btrim(p_email), '') IS NOT NULL THEN 'e:' || lower(btrim(p_email))
               ELSE 's:' || p_kind || ':' || p_id::text END
 $fn$;
 
@@ -2388,7 +2387,7 @@ AS $fn$
                                           WHERE s->>'kind' = g.kind AND lower(s->>'id') = g.id::text)
   )
   SELECT p.kind, p.id, p.user_id, p.name, p.answered, p.contact->>'phone', p.contact->>'email',
-         public.brand_form_person_key(p.user_id, p.contact->>'phone', p.contact->>'email', p.kind, p.id)
+         public.brand_form_person_key(p.user_id, p.kind, p.id)
     FROM picked p
 $fn$;
 
@@ -2401,21 +2400,20 @@ RETURNS SETOF timestamptz
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
 BEGIN
-  -- The #3281 slot column and ticket-date table are named inside EXECUTE: the
-  -- filtered #1931 template replay skips the migrations that create them
-  -- (#2492 closure); every real database has them.
+  -- Plain static SQL (the #4402 / #4226 precedent): a plpgsql body is not
+  -- resolved at CREATE time, so the filtered #1931 template replay that skips
+  -- the #3281 slot column and ticket-date table still creates this function
+  -- (#2492 closure). pg17 T-W4-DATES-0 checks the columns it reads exist.
   IF p_kind = 'order' THEN
-    RETURN QUERY EXECUTE
-      'SELECT o.booked_start_at FROM public.orders o JOIN public.events e ON e.id = o.event_id'
-      || ' WHERE o.id = $1 AND e.event_type = $2 AND o.booked_start_at IS NOT NULL'
-      USING p_id, 'experience';
+    RETURN QUERY
+    SELECT o.booked_start_at FROM public.orders o JOIN public.events e ON e.id = o.event_id
+     WHERE o.id = p_id AND e.event_type = 'experience' AND o.booked_start_at IS NOT NULL;
     IF FOUND THEN RETURN; END IF;
-    RETURN QUERY EXECUTE
-      'SELECT DISTINCT ed.start_at FROM public.tickets t'
-      || ' JOIN public.ticket_event_dates ted ON ted.ticket_id = t.id'
-      || ' JOIN public.event_dates ed ON ed.id = ted.event_date_id AND ed.event_id = $2'
-      || ' WHERE t.order_id = $1 AND ed.cancelled_at IS NULL'
-      USING p_id, p_event_id;
+    RETURN QUERY
+    SELECT DISTINCT ed.start_at FROM public.tickets t
+      JOIN public.ticket_event_dates ted ON ted.ticket_id = t.id
+      JOIN public.event_dates ed ON ed.id = ted.event_date_id AND ed.event_id = p_event_id
+     WHERE t.order_id = p_id AND ed.cancelled_at IS NULL;
     IF FOUND THEN RETURN; END IF;
   END IF;
   RETURN QUERY
@@ -2604,6 +2602,7 @@ DECLARE
   v_subject_kind text;
   v_subject_id uuid;
   v_window timestamptz;
+  v_starts timestamptz;
 BEGIN
   IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 100 THEN
     RAISE EXCEPTION 'limit_invalid' USING ERRCODE = '22023';
@@ -2651,6 +2650,16 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM public.orders o WHERE o.id = v_row.order_id
                           AND o.event_id = v_row.event_id AND o.payment_status IN ('paid', 'partial_refund')) THEN
       UPDATE public.brand_form_request_sends SET status = 'skipped', safe_reason = 'not_a_guest', settled_at = now()
+       WHERE id = v_row.id;
+      CONTINUE;
+    END IF;
+    -- The guest's own date has started (a text held for quiet hours, or a slow
+    -- queue): too late to ask. The automatic reminder's date, else the guest's
+    -- latest date (an RSVP's is the page's next date, so it never trips here).
+    v_starts := COALESCE(v_row.starts_at,
+                         (SELECT max(d.at) FROM public.brand_form_guest_dates(v_subject_kind, v_subject_id, v_row.event_id) d(at)));
+    IF v_starts IS NOT NULL AND v_starts <= now() THEN
+      UPDATE public.brand_form_request_sends SET status = 'skipped', safe_reason = 'event_started', settled_at = now()
        WHERE id = v_row.id;
       CONTINUE;
     END IF;
@@ -2702,7 +2711,9 @@ BEGIN
   END IF;
   UPDATE public.brand_form_request_sends
      SET status = p_status, channel = p_channel, settled_at = now(),
-         safe_reason = CASE WHEN p_reason ~ '^[a-z0-9_]{1,64}$' THEN p_reason END
+         -- A guest emailed because the day's texts ran out keeps 'text_cap' in the log.
+         safe_reason = CASE WHEN p_reason ~ '^[a-z0-9_]{1,64}$' THEN p_reason
+                            WHEN p_status = 'sent' AND safe_reason = 'text_cap' THEN 'text_cap' END
    WHERE id = p_send_id AND status = 'claimed';
   GET DIAGNOSTICS v_n = ROW_COUNT;
   RETURN v_n = 1;
@@ -2748,7 +2759,12 @@ $fn$;
 -- the drain sends them. A closed or archived form: the run is held
 -- ('held_form_closed') and the attaching host (else the brand's account) is
 -- told through the notify outbox with a link to the form (decision 10). A
--- draft form asks nobody. Nothing due: nothing written.
+-- draft form asks nobody. Nothing due: nothing written. It queues under the
+-- same brand lock as brand_form_request_enqueue, so a host's Ask and the
+-- reminder never both reach one person inside 24 hours, and it keeps to the
+-- per-brand daily text limit: texts only up to what is left today; past that a
+-- guest gets the email on their route ('text_cap' in the log), or, with no
+-- email, is written 'skipped' with 'text_cap'.
 CREATE FUNCTION public.brand_form_auto_reminders_due() RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $fn$
@@ -2758,6 +2774,7 @@ DECLARE
   v_run uuid;
   v_ch text[];
   v_n integer;
+  v_left integer;
   v_runs integer := 0;
   v_queued integer := 0;
   v_held integer := 0;
@@ -2777,8 +2794,8 @@ BEGIN
                     AND d.start_at > now() + interval '46 hours' AND d.start_at <= now() + interval '48 hours'
                    UNION ALL
                    SELECT 1 FROM public.orders o
-                    CROSS JOIN LATERAL (SELECT (to_jsonb(o)->>'booked_start_at')::timestamptz AS at) bs
-                    WHERE o.event_id = a.event_id AND bs.at > now() + interval '46 hours' AND bs.at <= now() + interval '48 hours')
+                    WHERE o.event_id = a.event_id AND o.booked_start_at > now() + interval '46 hours'
+                      AND o.booked_start_at <= now() + interval '48 hours')
      ORDER BY a.id
      FOR UPDATE OF a SKIP LOCKED
   LOOP
@@ -2821,6 +2838,10 @@ BEGIN
       ELSE
         v_runs := v_runs + 1;
       END IF;
+      -- The brand lock (the one brand_form_request_enqueue takes), then the
+      -- texts left today, read under it.
+      PERFORM pg_advisory_xact_lock(hashtextextended('brand_form_request:' || v_a.brand_id::text, 4514));
+      v_left := GREATEST(public.brand_form_request_text_cap() - public.brand_form_request_texts_today(v_a.brand_id), 0);
       WITH due AS (
         SELECT DISTINCT ON (g.g_person_key) g.*
           FROM public.brand_form_request_guests(v_a.form_id, v_a.event_id, NULL) g
@@ -2831,19 +2852,29 @@ BEGIN
         INSERT INTO public.brand_form_request_sends (form_id, attachment_id, event_id, brand_id, rsvp_id, order_id,
                run_id, person_key, kind, route, status, safe_reason, starts_at, not_before, settled_at)
         SELECT v_a.form_id, v_a.attachment_id, v_a.event_id, v_a.brand_id,
-               CASE WHEN x.g_kind = 'rsvp' THEN x.g_id END, CASE WHEN x.g_kind = 'order' THEN x.g_id END,
-               v_run, x.g_person_key, 'auto', x.route,
-               CASE WHEN cardinality(x.route) = 0 THEN 'unreachable' ELSE 'queued' END,
-               CASE WHEN cardinality(x.route) = 0 THEN 'no_contact' END,
+               CASE WHEN y.g_kind = 'rsvp' THEN y.g_id END, CASE WHEN y.g_kind = 'order' THEN y.g_id END,
+               -- A skipped guest keeps the text route, so the log shows the text that did not go.
+               v_run, y.g_person_key, 'auto', CASE WHEN cardinality(y.sent_route) = 0 THEN y.route ELSE y.sent_route END,
+               CASE WHEN cardinality(y.route) = 0 THEN 'unreachable'
+                    WHEN cardinality(y.sent_route) = 0 THEN 'skipped' ELSE 'queued' END,
+               CASE WHEN cardinality(y.route) = 0 THEN 'no_contact' WHEN y.capped THEN 'text_cap' END,
                v_d.starts_at,
-               CASE WHEN x.route[1] = 'sms' THEN public.brand_form_text_window(v_a.tz, now()) ELSE now() END,
-               CASE WHEN cardinality(x.route) = 0 THEN now() END
-          FROM (SELECT due.*, public.brand_form_request_route(due.g_phone, due.g_email, v_ch) AS route FROM due) x
-         WHERE NOT x.g_answered
-           AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends s
-                            WHERE s.form_id = v_a.form_id AND s.person_key = x.g_person_key
-                              AND s.status IN ('queued', 'claimed', 'sent')
-                              AND s.created_at > now() - interval '24 hours')
+               CASE WHEN y.sent_route[1] = 'sms' THEN public.brand_form_text_window(v_a.tz, now()) ELSE now() END,
+               CASE WHEN cardinality(y.sent_route) = 0 THEN now() END
+          FROM (SELECT z.*, z.route[1] = 'sms' AND z.text_n > v_left AS capped,
+                       CASE WHEN z.route[1] = 'sms' AND z.text_n > v_left THEN array_remove(z.route, 'sms')
+                            ELSE z.route END AS sent_route
+                  FROM (SELECT x.*, row_number() OVER (PARTITION BY x.route[1] = 'sms'
+                                                       ORDER BY x.g_kind, x.g_id) AS text_n
+                          FROM (SELECT due.*, public.brand_form_request_route(due.g_phone, due.g_email, v_ch) AS route
+                                  FROM due) x
+                         WHERE NOT x.g_answered
+                           AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends s
+                                            WHERE s.form_id = v_a.form_id AND s.person_key = x.g_person_key
+                                              AND s.status IN ('queued', 'claimed', 'sent')
+                                              AND s.created_at > now() - interval '24 hours')
+                           AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends s
+                                            WHERE s.run_id = v_run AND s.person_key = x.g_person_key)) z) y
         ON CONFLICT (run_id, person_key) WHERE run_id IS NOT NULL DO NOTHING
         RETURNING 1
       )
@@ -2884,11 +2915,15 @@ BEGIN
     v_kind := p_subject->>'kind';
     v_id := (p_subject->>'id')::uuid;
   END IF;
-  SELECT f.brand_id INTO v_brand FROM public.brand_forms f WHERE f.id = p_form_id;
-  IF v_brand IS NULL OR NOT EXISTS (SELECT 1 FROM public.events e WHERE e.id = p_event_id AND e.brand_id = v_brand) THEN
+  -- The role first (the page's brand, else the form's): a caller below event
+  -- manager learns nothing about which forms or pages exist.
+  v_brand := COALESCE((SELECT e.brand_id FROM public.events e WHERE e.id = p_event_id),
+                      (SELECT f.brand_id FROM public.brand_forms f WHERE f.id = p_form_id));
+  PERFORM public.brand_form_require_rank(v_brand, 'event_manager');
+  IF NOT EXISTS (SELECT 1 FROM public.brand_forms f WHERE f.id = p_form_id AND f.brand_id = v_brand)
+     OR NOT EXISTS (SELECT 1 FROM public.events e WHERE e.id = p_event_id AND e.brand_id = v_brand) THEN
     RAISE EXCEPTION 'form_not_found' USING ERRCODE = 'P0002';
   END IF;
-  PERFORM public.brand_form_require_rank(v_brand, 'event_manager');
   RETURN jsonb_build_object(
     'sends', COALESCE((
       SELECT jsonb_agg(jsonb_build_object(
@@ -2977,7 +3012,7 @@ REVOKE ALL ON FUNCTION
   public.brand_form_roster_export_answers(uuid),
   public.brand_form_request_text_cap(),
   public.brand_form_request_texts_today(uuid),
-  public.brand_form_person_key(uuid, text, text, text, uuid),
+  public.brand_form_person_key(uuid, text, uuid),
   public.brand_form_request_route(text, text, text[]),
   public.brand_form_text_window(text, timestamptz),
   public.brand_form_request_guests(uuid, uuid, jsonb),
@@ -3052,7 +3087,7 @@ GRANT EXECUTE ON FUNCTION
   public.brand_form_roster_export_answers(uuid),
   public.brand_form_request_text_cap(),
   public.brand_form_request_texts_today(uuid),
-  public.brand_form_person_key(uuid, text, text, text, uuid),
+  public.brand_form_person_key(uuid, text, uuid),
   public.brand_form_request_route(text, text, text[]),
   public.brand_form_text_window(text, timestamptz),
   public.brand_form_request_guests(uuid, uuid, jsonb),

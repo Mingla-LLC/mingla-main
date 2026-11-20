@@ -148,6 +148,21 @@ describe("brandFormRequestService (#4514 wave 4)", () => {
     expect(FORM_REQUEST_LOG_COPY.counts(0, 0, 1, 1)).toBe("0 sent · 0 on the way · 1 failed · 1 can't be reached");
   });
 
+  it("the delivery log names a text held back by the daily limit and a reminder too late to send", () => {
+    const log = parseFormRequestLog({
+      sends: [
+        { id: "c1", kind: "auto", subjectKind: "rsvp", subjectId: EVENT, name: "Ike O.", channel: "sms", status: "skipped", reason: "text_cap", createdAt: "2028-03-01T10:00:00Z", settledAt: null },
+        { id: "c2", kind: "auto", subjectKind: "rsvp", subjectId: EVENT, name: "Val W.", channel: "email", status: "sent", reason: "text_cap", createdAt: "2028-03-01T10:00:00Z", settledAt: null },
+        { id: "c3", kind: "ask", subjectKind: "order", subjectId: EVENT, name: "Ada D.", channel: "sms", status: "skipped", reason: "event_started", createdAt: "2028-03-01T10:00:00Z", settledAt: null },
+      ],
+      counts: { sent: 1, queued: 0, failed: 0, unreachable: 0, skipped: 2 },
+      runs: [],
+    });
+    expect(logLine(log.sends[0])).toContain("Ike O. · Automatic reminder · Text · Not sent (the day's text limit was reached)");
+    expect(logLine(log.sends[1])).toContain("Val W. · Automatic reminder · Email · Sent (the day's text limit was reached)");
+    expect(logLine(log.sends[2])).toContain("Ada D. · Ask · Text · Not sent (their date had already started)");
+  });
+
   it("uses the contract wording for the prompt", () => {
     expect(FORM_REQUEST_COPY.earlierTitle).toBe("Ask earlier guests?");
     expect(FORM_REQUEST_COPY.earlierLine(3)).toBe("3 people signed up before this form existed. Ask them to answer?");

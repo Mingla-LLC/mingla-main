@@ -1733,11 +1733,26 @@ $t$;
 -- T-W4-DATES   each guest's own date: a multi-date page reminds only the guest on the date in
 --              the window (not the later date, not a past date); an experience uses
 --              booked_start_at.
--- T-W4-LOG     the host delivery log: event manager and up, names and outcomes, never a link.
+-- T-W4-LOG     the host delivery log: event manager and up, names and outcomes, never a link;
+--              the role is checked before the form is looked up (N7).
+-- Re-review fixes (N2-N7):
+-- T-W4-PERSON  the person key is the account, else the booking, never the phone or email:
+--              two guests sharing a phone each get their own request and link; one account
+--              with an RSVP and an order is one person (N5).
+-- T-W4-AUTOCAP the automatic reminder keeps to the daily text limit: texts only up to what is
+--              left; past it the email on the route goes ('text_cap'), else 'skipped'
+--              ('text_cap'), and the log shows it (N2).
+-- T-W4-AUTOLOCK the automatic reminder queues under the brand lock that enqueue takes, and an
+--              Ask and the reminder never both reach one person inside 24 hours (N3).
+-- T-W4-STARTED a request whose guest date has started is skipped at claim ('event_started') (N4).
+-- T-W4-DATES-0 brand_form_guest_dates is static SQL (no EXECUTE) and the columns it reads exist (N6).
 -- FAILS-ON-REVERT (review fixes): deleting the stale-claim UPDATE in claim_batch fails
 -- T-W4-QUEUE-2; deleting the brand_form_text_window delay fails T-W4-QUIET-2; deleting the cap
 -- RAISE fails T-W4-CAP-1; replacing brand_form_guest_dates with the page's next date fails
--- T-W4-DATES-2 and T-W4-DATES-4.
+-- T-W4-DATES-2 and T-W4-DATES-4; restoring the phone and email branches of
+-- brand_form_person_key fails T-W4-PERSON-0 and T-W4-PERSON-1; deleting the text-limit split in
+-- brand_form_auto_reminders_due fails T-W4-AUTOCAP-1 and -2; deleting the event_started check in
+-- claim_batch fails T-W4-STARTED-1 and -2.
 DO $t$
 DECLARE v_t text; v_f text;
 BEGIN
@@ -1781,9 +1796,12 @@ BEGIN
       AND public.brand_form_text_window('America/New_York', '2028-01-01 12:00Z') = '2028-01-01 14:00Z'
       AND public.brand_form_text_window('Not/AZone', '2028-01-01 23:30Z') = '2028-01-02 09:00Z',
     'T-W4-QUIET-1 the text window: daytime unchanged, night moves to 9am local, an unknown zone reads as UTC');
-  PERFORM pg_temp.f_assert(public.brand_form_person_key(NULL, ' +12025551002 ', 'A@x.test', 'rsvp', gen_random_uuid()) = 'p:+12025551002'
-      AND public.brand_form_person_key(NULL, NULL, ' A@X.test', 'rsvp', gen_random_uuid()) = 'e:a@x.test',
-    'T-W4-PERSON-0 one person key: account, else phone, else email');
+  PERFORM pg_temp.f_assert(public.brand_form_person_key(NULL, 'rsvp', '00000000-0000-4000-8000-000000000001') = 's:rsvp:00000000-0000-4000-8000-000000000001'
+      AND public.brand_form_person_key(NULL, 'order', '00000000-0000-4000-8000-000000000002') = 's:order:00000000-0000-4000-8000-000000000002'
+      AND public.brand_form_person_key('00000000-0000-4000-8000-000000000003', 'rsvp', gen_random_uuid()) = 'u:00000000-0000-4000-8000-000000000003'
+      AND NOT EXISTS (SELECT 1 FROM pg_proc WHERE oid = 'public.brand_form_person_key(uuid,text,uuid)'::regprocedure
+                        AND (prosrc LIKE '%phone%' OR prosrc LIKE '%email%')),
+    'T-W4-PERSON-0 one person key: the account, else the booking; never the phone or email');
 END
 $t$;
 
@@ -1800,7 +1818,7 @@ BEGIN
   PERFORM pg_temp.f_assert(jsonb_array_length(v->'recipients') = 2
     AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'recipients') r WHERE (r->>'id')::uuid = v_rw),
     'T-W4-AUD-1 unanswered: the 2 who have not answered, not Wes (' || (v->'recipients')::text || ')');
-  PERFORM pg_temp.f_assert((SELECT bool_and(r->'route' = '["sms", "email"]'::jsonb AND r->>'personKey' LIKE 'p:+1202555%')
+  PERFORM pg_temp.f_assert((SELECT bool_and(r->'route' = '["sms", "email"]'::jsonb AND r->>'personKey' = 's:rsvp:' || (r->>'id'))
                               FROM jsonb_array_elements(v->'recipients') r)
       AND (v->>'textCap')::integer = 300 AND (v->>'textsToday')::integer = 0,
     'T-W4-AUD-1b each person: the route text then email, a person key, the daily text limit (' || v::text || ')');
@@ -1919,18 +1937,67 @@ BEGIN
       (SELECT id FROM f4514 WHERE k = 'mm_a'), v_w, v_e10, 'ask', 'unanswered', '{email}')) LIKE '42501:%',
     'T-W4-AUD-6 C5: a marketing manager cannot queue');
   RESET ROLE;
-  -- One person, two RSVPs (the same phone): one row in the audience, one request.
+  -- Two guests who share Val's phone and have no account are two people (N5):
+  -- each is in the audience, each gets their own request and their own link.
   PERFORM set_config('session_replication_role', 'replica', true);
   INSERT INTO public.event_rsvps(id, event_id, user_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
-  VALUES (v_twin, v_e10, NULL, 'Val Again', 'f4514-v2@example.test', '+12025551002', 'going', 'approved');
+  VALUES (v_twin, v_e10, NULL, 'Vic Sharing', 'f4514-v2@example.test', '+12025551002', 'going', 'approved');
   PERFORM set_config('session_replication_role', 'origin', true);
   SET LOCAL ROLE service_role;
   v := public.brand_form_request_audience(v_em, v_w, v_e10, 'everyone', NULL);
-  PERFORM pg_temp.f_assert(jsonb_array_length(v->'recipients') = 3
-      AND (SELECT (r->>'throttled')::boolean FROM jsonb_array_elements(v->'recipients') r WHERE r->>'personKey' = 'p:+12025551002'),
-    'T-W4-PERSON-1 Val''s two RSVPs are one person, and the throttle follows the person');
+  PERFORM pg_temp.f_assert(jsonb_array_length(v->'recipients') = 4
+      AND (SELECT (r->>'throttled')::boolean FROM jsonb_array_elements(v->'recipients') r WHERE (r->>'id')::uuid = v_rv)
+      AND (SELECT NOT (r->>'throttled')::boolean AND r->>'personKey' = 's:rsvp:' || v_twin::text
+             FROM jsonb_array_elements(v->'recipients') r WHERE (r->>'id')::uuid = v_twin),
+    'T-W4-PERSON-1 Val and Vic share a phone but are two people: Val throttled, Vic not (' || (v->'recipients')::text || ')');
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone',
+         jsonb_build_array(jsonb_build_object('kind', 'rsvp', 'id', v_twin)), ARRAY['email']);
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 1, 'T-W4-PERSON-1b Vic is asked on his own (' || v::text || ')');
+  v := public.brand_form_request_claim_batch(100);
   RESET ROLE;
+  PERFORM pg_temp.f_assert((SELECT l.rsvp_id = v_twin AND l.kind = 'person' FROM public.brand_form_links l
+                             WHERE l.id = (SELECT s.link_id FROM public.brand_form_request_sends s WHERE s.rsvp_id = v_twin))
+      AND (SELECT count(DISTINCT s.link_id) FROM public.brand_form_request_sends s
+            WHERE s.rsvp_id IN (v_rv, v_twin) AND s.status = 'claimed') = 2,
+    'T-W4-PERSON-1c Vic gets his own link, not Val''s');
   INSERT INTO f4514 VALUES ('rv2', v_twin);
+END
+$t$;
+
+-- T-W4-PERSON-2: one account with an RSVP and an order on the same page is one person.
+DO $t$
+DECLARE
+  v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v_em uuid := (SELECT id FROM f4514 WHERE k = 'em_a');
+  v_user uuid := gen_random_uuid(); v_r uuid := gen_random_uuid(); v_o uuid := gen_random_uuid();
+  v jsonb;
+BEGIN
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.event_rsvps(id, event_id, user_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (v_r, v_e10, v_user, 'Uma Account', 'f4514-u1@example.test', '+12025551301', 'going', 'approved');
+  INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_name, buyer_email, buyer_phone_e164,
+    total_cents, currency, payment_method, payment_status, source, is_door_sale)
+  VALUES (v_o, v_e10, v_user, 'Uma Account', 'f4514-u2@example.test', '+12025551302', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false);
+  PERFORM set_config('session_replication_role', 'origin', true);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_audience(v_em, v_w, v_e10, 'everyone', NULL);
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM jsonb_array_elements(v->'recipients') r
+                             WHERE r->>'personKey' = 'u:' || v_user::text) = 1
+      AND jsonb_array_length(v->'recipients') = 5,
+    'T-W4-PERSON-2 an account with an RSVP and an order is one person in the audience (' || (v->'recipients')::text || ')');
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone',
+         jsonb_build_array(jsonb_build_object('kind', 'rsvp', 'id', v_r), jsonb_build_object('kind', 'order', 'id', v_o)),
+         ARRAY['email']);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 1
+      AND (SELECT count(*) FROM public.brand_form_request_sends WHERE person_key = 'u:' || v_user::text) = 1,
+    'T-W4-PERSON-2b one request for that account, not one per booking (' || v::text || ')');
+  DELETE FROM public.brand_form_request_sends WHERE person_key = 'u:' || v_user::text;
+  PERFORM set_config('session_replication_role', 'replica', true);
+  DELETE FROM public.orders WHERE id = v_o;
+  DELETE FROM public.event_rsvps WHERE id = v_r;
+  PERFORM set_config('session_replication_role', 'origin', true);
 END
 $t$;
 
@@ -2019,13 +2086,19 @@ BEGIN
   UPDATE public.event_dates SET start_at = now() + interval '47 hours', end_at = now() + interval '50 hours' WHERE event_id = v_e10;
   SET LOCAL ROLE service_role;
   v := public.brand_form_auto_reminders_due();
-  PERFORM pg_temp.f_assert((v->>'runs')::integer = 1 AND (v->>'queued')::integer = 2
+  PERFORM pg_temp.f_assert((v->>'runs')::integer = 1 AND (v->>'queued')::integer = 3
       AND (SELECT count(*) FROM public.brand_form_request_sends s WHERE s.kind = 'auto' AND s.route = ARRAY['sms']
-             AND s.status = 'queued' AND s.event_id = v_e10) = 2,
-    'T-W4-AUTO-3 two days before: one run, Val and Ike queued on texts, Wes (answered) left out (' || v::text || ')');
+             AND s.status = 'queued' AND s.event_id = v_e10) = 3,
+    'T-W4-AUTO-3 two days before: one run, Val, Vic and Ike queued on texts, Wes (answered) left out (' || v::text || ')');
   v := public.brand_form_auto_reminders_due();
   PERFORM pg_temp.f_assert((v->>'queued')::integer = 0 AND (v->>'runs')::integer = 0
-      AND (SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto') = 2, 'T-W4-AUTO-3b never twice');
+      AND (SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto') = 3, 'T-W4-AUTO-3b never twice');
+  -- N3: a host Ask right after the reminder queued Val does not reach her again.
+  v := public.brand_form_request_enqueue((SELECT id FROM f4514 WHERE k = 'em_a'), v_w, v_e10, 'ask', 'everyone',
+         jsonb_build_array(jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'rv'))), ARRAY['email', 'sms']);
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 0 AND (v->>'throttled')::integer = 1
+      AND (SELECT count(*) FROM public.brand_form_request_sends WHERE rsvp_id = (SELECT id FROM f4514 WHERE k = 'rv')) = 1,
+    'T-W4-AUTOLOCK-1 an Ask after the reminder: Val is throttled, one request in 24 hours (' || v::text || ')');
   v := public.brand_form_request_claim_batch(100);
   PERFORM public.brand_form_request_settle((x->>'sendId')::uuid, 'sms', 'sent', NULL) FROM jsonb_array_elements(v) x;
   PERFORM public.brand_form_request_claim_batch(100);
@@ -2042,6 +2115,56 @@ BEGIN
   PERFORM pg_temp.f_assert((SELECT outcome = 'failed' FROM public.brand_form_auto_reminder_runs WHERE id = v_run)
       AND (SELECT bool_and(status = 'failed' AND safe_reason = 'expired') FROM public.brand_form_request_sends WHERE run_id = v_run),
     'T-W4-AUTO-3d a stuck run is closed as failed, visibly, never left at sending');
+  -- N2: the automatic reminder keeps to the day's text limit. 299 texts already
+  -- today leave one: one guest is texted, the other two are skipped (texts only).
+  DELETE FROM public.brand_form_request_sends;
+  DELETE FROM public.brand_form_auto_reminder_runs WHERE attachment_id = v_att;
+  INSERT INTO public.brand_form_request_sends (form_id, event_id, brand_id, rsvp_id, person_key, kind, route, status)
+  SELECT v_w, v_e10, (SELECT brand_id FROM public.events WHERE id = v_e10), (SELECT id FROM f4514 WHERE k = 'ri'),
+         'p:cap' || g, 'ask', ARRAY['sms'], 'sent' FROM generate_series(1, 299) g;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_auto_reminders_due();
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued' AND route = ARRAY['sms']) = 1
+      AND (SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'skipped'
+             AND safe_reason = 'text_cap' AND route = ARRAY['sms'] AND settled_at IS NOT NULL) = 2
+      AND public.brand_form_request_texts_today((SELECT brand_id FROM public.events WHERE id = v_e10)) = 300,
+    'T-W4-AUTOCAP-1 one text left: one guest texted, two skipped with text_cap, the limit is not overrun');
+  -- No texts left, text and email ticked: guests with an email get the email
+  -- (marked text_cap); Vic, whose email bounced, is skipped.
+  DELETE FROM public.brand_form_request_sends WHERE kind = 'auto';
+  DELETE FROM public.brand_form_auto_reminder_runs WHERE attachment_id = v_att;
+  INSERT INTO public.brand_form_request_sends (form_id, event_id, brand_id, rsvp_id, person_key, kind, route, status)
+  VALUES (v_w, v_e10, (SELECT brand_id FROM public.events WHERE id = v_e10), (SELECT id FROM f4514 WHERE k = 'ri'),
+          'p:cap300', 'ask', ARRAY['sms'], 'sent');
+  UPDATE public.brand_form_attachments SET auto_remind_channels = ARRAY['email', 'sms'] WHERE id = v_att;
+  -- Vic's email bounced: no consent to email him, so no email route.
+  INSERT INTO public.channel_suppressions (contact, channel, scope, reason)
+  VALUES ('f4514-v2@example.test', 'email', 'all', 'bounce');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_auto_reminders_due();
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued'
+                              AND route = ARRAY['email'] AND safe_reason = 'text_cap') = 2
+      AND (SELECT status = 'skipped' AND safe_reason = 'text_cap' FROM public.brand_form_request_sends
+            WHERE kind = 'auto' AND rsvp_id = (SELECT id FROM f4514 WHERE k = 'rv2'))
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued' AND route[1] = 'sms'),
+    'T-W4-AUTOCAP-2 no texts left: Val and Ike get the email (text_cap), Vic with no email route is skipped (text_cap)');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_claim_batch(100);
+  PERFORM public.brand_form_request_settle((x->>'sendId')::uuid, 'email', 'sent', NULL) FROM jsonb_array_elements(v) x;
+  RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'em_a'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_request_log(v_w, v_e10, NULL, 500);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM jsonb_array_elements(v->'sends') x
+                             WHERE x->>'kind' = 'auto' AND x->>'reason' = 'text_cap' AND x->>'status' = 'sent' AND x->>'channel' = 'email') = 2
+      AND (SELECT count(*) FROM jsonb_array_elements(v->'sends') x
+            WHERE x->>'kind' = 'auto' AND x->>'reason' = 'text_cap' AND x->>'status' = 'skipped' AND x->>'channel' = 'sms') = 1,
+    'T-W4-AUTOCAP-3 the delivery log shows who was emailed instead and who was skipped for the text limit');
+  DELETE FROM public.channel_suppressions WHERE contact = 'f4514-v2@example.test';
+  UPDATE public.brand_form_attachments SET auto_remind_channels = ARRAY['sms'] WHERE id = v_att;
   -- Decision 10: a closed form's reminder is held and the host told with a link.
   DELETE FROM public.brand_form_request_sends;
   DELETE FROM public.brand_form_auto_reminder_runs WHERE attachment_id = v_att;
@@ -2075,6 +2198,23 @@ DECLARE
   v_ta uuid := gen_random_uuid(); v_tb uuid := gen_random_uuid(); v_tc uuid := gen_random_uuid();
   v jsonb;
 BEGIN
+  -- N6: static SQL, and every column it reads exists (a rename fails here, not quietly at runtime).
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM information_schema.columns c
+                             WHERE c.table_schema = 'public' AND (c.table_name, c.column_name) IN (
+                               ('orders', 'booked_start_at'), ('orders', 'event_id'), ('orders', 'id'),
+                               ('events', 'event_type'), ('events', 'id'),
+                               ('tickets', 'order_id'), ('tickets', 'id'),
+                               ('ticket_event_dates', 'ticket_id'), ('ticket_event_dates', 'event_date_id'),
+                               ('event_dates', 'id'), ('event_dates', 'event_id'), ('event_dates', 'start_at'),
+                               ('event_dates', 'cancelled_at'))) = 13
+      AND (SELECT data_type FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'booked_start_at') = 'timestamp with time zone',
+    'T-W4-DATES-0a every column brand_form_guest_dates reads exists, booked_start_at a timestamptz');
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM pg_proc
+                             WHERE oid IN ('public.brand_form_guest_dates(text,uuid,uuid)'::regprocedure,
+                                           'public.brand_form_auto_reminders_due()'::regprocedure)
+                               AND (prosrc ~* '\mEXECUTE\M' OR prosrc LIKE '%to_jsonb(o)%')),
+    'T-W4-DATES-0b brand_form_guest_dates and the due check use static SQL (no EXECUTE, no to_jsonb(o) read)');
   DELETE FROM public.brand_form_request_sends;
   PERFORM set_config('session_replication_role', 'replica', true);
   INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
@@ -2141,7 +2281,82 @@ BEGIN
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.biz_brand_form_request_log(%L, %L)', v_w, v_e12)) LIKE '42501:%',
     'T-W4-LOG-2 C5: a marketing manager cannot read the delivery log');
+  PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.biz_brand_form_request_log(%L, %L)', gen_random_uuid(), v_e12)) LIKE '42501:%',
+    'T-W4-LOG-3 the role is checked first: a marketing manager probing a form id that does not exist gets forbidden, not form_not_found');
   RESET ROLE;
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'owner_b'));
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.biz_brand_form_request_log(%L, %L)', gen_random_uuid(), v_e12)) LIKE '42501:%'
+      AND pg_temp.f_err(format('SELECT public.biz_brand_form_request_log(%L, %L)', gen_random_uuid(), gen_random_uuid())) LIKE '42501:%',
+    'T-W4-LOG-4 another brand''s owner learns nothing about which forms or pages exist');
+  RESET ROLE;
+END
+$t$;
+
+-- T-W4-STARTED (N4): at claim, a request whose guest date has started is skipped.
+DO $t$
+DECLARE
+  v_e12 uuid := (SELECT id FROM f4514 WHERE k = 'e12');
+  v_e13 uuid := (SELECT id FROM f4514 WHERE k = 'e13');
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v_em uuid := (SELECT id FROM f4514 WHERE k = 'em_a');
+  v_oc uuid := (SELECT id FROM public.orders WHERE event_id = (SELECT id FROM f4514 WHERE k = 'e12') AND buyer_name = 'Cy Past Day');
+  v_oa uuid := (SELECT id FROM public.orders WHERE event_id = (SELECT id FROM f4514 WHERE k = 'e12') AND buyer_name = 'Ada Day One');
+  v_ox uuid := (SELECT id FROM public.orders WHERE event_id = (SELECT id FROM f4514 WHERE k = 'e13') AND buyer_name = 'Xi Booked Soon');
+  v jsonb;
+BEGIN
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e12, 'ask', 'everyone',
+         jsonb_build_array(jsonb_build_object('kind', 'order', 'id', v_oc)), ARRAY['email']);
+  v := public.brand_form_request_claim_batch(100, v_w, v_e12);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v) x WHERE (x->>'subjectId')::uuid = v_oc)
+      AND (SELECT status = 'skipped' AND safe_reason = 'event_started' AND link_id IS NULL
+             FROM public.brand_form_request_sends WHERE order_id = v_oc)
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(v) x WHERE (x->>'subjectId')::uuid = v_oa),
+    'T-W4-STARTED-1 an Ask to Cy, whose date has passed, is skipped at claim (no link, nothing sent); Ada (in two days) goes');
+  UPDATE public.brand_form_request_sends SET starts_at = now() - interval '1 minute', not_before = now()
+   WHERE order_id = v_ox AND kind = 'auto';
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_claim_batch(100, v_w, v_e13);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(jsonb_array_length(v) = 0
+      AND (SELECT status = 'skipped' AND safe_reason = 'event_started' FROM public.brand_form_request_sends
+            WHERE order_id = v_ox AND kind = 'auto'),
+    'T-W4-STARTED-2 an automatic reminder held past the guest''s start (quiet hours) is skipped, never sent after the event');
+END
+$t$;
+
+-- T-W4-AUTOLOCK-2 (N3): the reminder takes the brand lock enqueue takes. Brand B has had no
+-- Ask in this transaction, so its lock is held only if the reminder took it.
+DO $t$
+DECLARE
+  v_bb uuid := (SELECT id FROM f4514 WHERE k = 'bb');
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v_e14 uuid := gen_random_uuid();
+  v_key bigint := hashtextextended('brand_form_request:' || (SELECT id FROM f4514 WHERE k = 'bb')::text, 4514);
+  v jsonb;
+BEGIN
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM pg_locks l WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid()
+                                        AND ((l.classid::bigint << 32) | l.objid::bigint) = v_key),
+    'T-W4-AUTOLOCK-2a brand B''s lock is not held before the reminder runs');
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES (v_e14, v_bb, 'Brand B fourteen', 'f4514-e14', 'event', 'scheduled', 'public', 'UTC', 'USD');
+  INSERT INTO public.event_dates (event_id, start_at, end_at, timezone, is_master)
+  VALUES (v_e14, now() + interval '47 hours', now() + interval '50 hours', 'UTC', true);
+  INSERT INTO public.event_rsvps(event_id, user_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (v_e14, NULL, 'Bo Brand B', 'f4514-bo@example.test', '+12025551401', 'going', 'approved');
+  INSERT INTO public.brand_form_attachments (form_id, brand_id, event_id, mode, auto_remind, auto_remind_channels, created_by)
+  VALUES (v_w, v_bb, v_e14, 'after_purchase', true, ARRAY['email'], (SELECT id FROM f4514 WHERE k = 'owner_b'));
+  PERFORM set_config('session_replication_role', 'origin', true);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_auto_reminders_due();
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE event_id = v_e14) = 1
+      AND EXISTS (SELECT 1 FROM pg_locks l WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid()
+                    AND ((l.classid::bigint << 32) | l.objid::bigint) = v_key AND l.granted),
+    'T-W4-AUTOLOCK-2b the reminder queued Bo under brand B''s lock, held to the end of the transaction (' || v::text || ')');
 END
 $t$;
 

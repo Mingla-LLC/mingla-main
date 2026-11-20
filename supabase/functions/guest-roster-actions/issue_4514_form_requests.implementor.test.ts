@@ -360,16 +360,14 @@ Deno.test("#4514 retry: a retried claim whose text already went answers duplicat
     pages: [[claimed(1)]],
     dispatch: (input) =>
       Promise.resolve(
-        input.contact?.includes("@")
-          ? ok("email")
-          : ({
-            success: true,
-            deliveries: [{
-              channel: "sms",
-              status: "duplicate",
-              providerMessageId: null,
-            }],
-          } as DispatchV2Result),
+        input.contact?.includes("@") ? ok("email") : ({
+          success: true,
+          deliveries: [{
+            channel: "sms",
+            status: "duplicate",
+            providerMessageId: null,
+          }],
+        } as DispatchV2Result),
       ),
   });
   const out = await drainFormRequests(h.deps, { budgetMs: 1_000 });
