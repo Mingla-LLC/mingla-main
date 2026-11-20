@@ -27,6 +27,7 @@
     { "source": "/og/trip/:tripId.png", "destination": "/api/og-trip?tripId=:tripId" },
     { "source": "/og/venue/:brandSlug/:venueSlug.png", "destination": "/api/og-venue?brandSlug=:brandSlug&venueSlug=:venueSlug" },
     { "source": "/g/:token", "destination": "/api/ticket-link?token=:token" },
+    { "source": "/e/:brandSlug/:eventSlug/calendar.ics", "destination": "/api/event-calendar?brandSlug=:brandSlug&eventSlug=:eventSlug" },
     { "source": "/e/:brandSlug/:eventSlug", "destination": "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug" },
     { "source": "/t/:brandSlug/:tripSlug", "destination": "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug" },
     { "source": "/exp/:brandSlug/:experienceSlug", "destination": "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug" },

@@ -9,7 +9,7 @@
  * (`selectVenueMapsTarget`), the real builders and the real chooser hook
  * (`useVenueMapsActions`) run.
  *
- *   L-1 web, nothing asked: the opened URL is `query=<lat>,<lng>&query_place_id=<id>`
+ *   L-1 web, nothing asked: the opened URL is `query=<label>&query_place_id=<id>` (#4334 M1)
  *   L-2 web chooser: the hook's Google row carries the id, and choosing Google
  *       opens that URL; choosing Apple opens Apple's link (no Google id)
  *   L-3 iOS chooser, Google chosen: the opened https link carries the id
@@ -111,11 +111,11 @@ beforeEach(() => {
 });
 
 describe("#4334 R3-1 — the URL actually opened carries query_place_id", () => {
-  test("L-1 web, nothing asked: the opened link is the coordinate plus the place id", async () => {
+  test("L-1 web, nothing asked: the opened link is the venue label plus the place id", async () => {
     openMapsTarget(target());
     await flush();
     expect(opened()).toEqual([
-      `https://www.google.com/maps/search/?api=1&query=6.4478093,3.4723495&query_place_id=${ID}`,
+      `https://www.google.com/maps/search/?api=1&query=Didi%20Museum%2C%20175%20Akin%20Adesola%20St&query_place_id=${ID}`,
     ]);
   });
 
@@ -125,7 +125,7 @@ describe("#4334 R3-1 — the URL actually opened carries query_place_id", () => 
     expect(actions.choices[0].url).toContain(`&query_place_id=${ID}`);
     act(() => actions.chooseApp("google"));
     await flush();
-    expect(opened()[0]).toContain(`query=6.4478093,3.4723495&query_place_id=${ID}`);
+    expect(opened()[0]).toContain(`query=Didi%20Museum%2C%20175%20Akin%20Adesola%20St&query_place_id=${ID}`);
     mockOpenURL.mockClear();
     act(() => actions.chooseApp("apple"));
     await flush();
@@ -139,7 +139,7 @@ describe("#4334 R3-1 — the URL actually opened carries query_place_id", () => 
     act(() => actions.chooseApp("google"));
     await flush();
     expect(opened()[0]).toBe(
-      `https://www.google.com/maps/search/?api=1&query=6.4478093,3.4723495&query_place_id=${ID}`,
+      `https://www.google.com/maps/search/?api=1&query=Didi%20Museum%2C%20175%20Akin%20Adesola%20St&query_place_id=${ID}`,
     );
   });
 

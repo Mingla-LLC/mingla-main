@@ -82,7 +82,7 @@ import { sanitizeReferralCode, type OneLinkDestination } from "../src/services/o
 import { groupChatUrl, groupJoinAction } from "../src/utils/friendShareLink";
 import { router, useLocalSearchParams } from "expo-router";
 import type { Href } from "expo-router";
-import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
+import { ensureAttRequested, requestPostTourPermissions, requestReturningUserPushPermission, whenAttResolved } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
@@ -1738,6 +1738,19 @@ function AppContent() {
     // ORCH-1313: intentionally-once at mount ([] deps) — no auth gate. attFiredRef +
     // ensureAttRequested single-flight + startAppsFlyer _started guard keep it idempotent.
   }, []);
+
+  // #4517: returning user (onboarding already completed) who has never been asked
+  // for notifications gets the gated request once per app session on reaching home,
+  // after ATT. Users still in onboarding are asked by the onboarding onComplete call.
+  // Single-flight inside requestReturningUserPushPermission shares its gate with that
+  // call, so the two never double-prompt.
+  useEffect(() => {
+    if (!_hasHydrated || isLoadingAuth || !isAuthenticated || !user?.id) return;
+    if (showOnboardingFlow || profile?.has_completed_onboarding !== true) return;
+    requestReturningUserPushPermission().catch((e) =>
+      console.warn('[AppContent] Returning-user push request failed:', e)
+    );
+  }, [_hasHydrated, isLoadingAuth, isAuthenticated, user?.id, showOnboardingFlow, profile?.has_completed_onboarding]);
   // ───────────────────────────────────────────────────────────────────────────
 
   // Structured navigation logging

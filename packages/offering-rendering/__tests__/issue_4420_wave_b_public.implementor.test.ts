@@ -18,12 +18,16 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-import {
+import { createRequire } from "node:module";
+
+// offeringCalendar is a CommonJS module (one owner, shared with the server
+// route api/event-calendar.js), so Deno loads it through createRequire.
+const {
   calendarUtcStamp,
   offeringCalendarEntry,
   offeringCalendarIcs,
   offeringGoogleCalendarUrl,
-} from "../offeringCalendar.ts";
+} = createRequire(import.meta.url)("../offeringCalendar.cjs");
 
 const read = (rel: string): string =>
   Deno.readTextFileSync(new URL(rel, import.meta.url));

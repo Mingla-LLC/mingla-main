@@ -108,7 +108,7 @@ describe("R-3 one definition of what is due for you (#4270)", () => {
     assert.match(hook, /dueTodayState\(\{ enabled, data: counts\.data, error: counts\.error \}\)/);
     assert.match(hook, /cards: work\.status === "ready" \? work\.dueToday \+ work\.overdue : null,/);
     assert.doesNotMatch(hook, /const cards = needsPerson \+ draftNeeded \+ wording/);
-    assert.match(strip(read("components/layout/Sidebar.jsx")), /item\.id === "work-board" \? reviewCount\.cards \|\| 0 : item\.id === "brand-groups" \? groupsWaiting : 0/);
+    assert.match(strip(read("components/layout/Sidebar.jsx")), /item\.id === "work-board" \? reviewCount\.cards \|\| 0 : item\.id === "brand-groups" \? groupsWaiting : item\.id === "messages" \? messages\.count \|\| 0 : 0/);
     assert.match(strip(read("pages/OverviewPage.jsx")), /\{Number\(review\.dueToday \|\| 0\)\.toLocaleString\(\)\}/);
     assert.match(strip(read("pages/TeamDashboardPage.jsx")), /waiting\.data\?\.counts\?\.tagged/);
     assert.equal(typeof isTagged, "function");
