@@ -157,5 +157,8 @@ export function renderIssue4111SubscribeSms(
  * byte for byte.
  */
 export function transactionalConsentSourceForCategory(categoryKey: string): string {
-  return categoryKey === ISSUE_4111_SUBSCRIBE_SMS_CATEGORY ? "brand_subscribe" : "reservation";
+  if (categoryKey === ISSUE_4111_SUBSCRIBE_SMS_CATEGORY) return "brand_subscribe";
+  // #4514: a host's form request to a guest's contact on file is its own source.
+  if (categoryKey === "brand_form_request") return "brand_form_request";
+  return "reservation";
 }

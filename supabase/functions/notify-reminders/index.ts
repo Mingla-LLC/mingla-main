@@ -5,7 +5,10 @@
 // the atomic windowed select → INSERT into notification_outbox (idempotent per
 // {category}:{entityId}:{leadBucket}); the existing 1-min outbox drain then
 // forwards each row to notify-dispatch v2 (simultaneous send + can_send gate +
-// per-market SMS kill-switch). This fn NEVER sends directly.
+// per-market SMS kill-switch). The buyer and reservation reminders never send
+// directly. #4514: after them, this fn queues the optional brand form reminder
+// (brand_form_auto_reminders_due) and drains the brand form request queue
+// through notify-dispatch, on the same five-minute cron.
 //
 // Lead times are ENV-configurable (defaults 24h + 2h per §7.3 / §12 Q1 RESOLVED):
 //   REMINDER_LEAD_24H_HOURS  (default 24)
@@ -13,7 +16,8 @@
 // The RPC's third argument is retained only for compatibility/logging; the SQL
 // owns the fixed -7/+3 minute window paired with the five-minute cron.
 //
-// verify_jwt=false (config.toml): invoked by pg_cron with the service-role bearer.
+// verify_jwt=false (config.toml): invoked by pg_cron with the service-role bearer,
+// which is checked exactly (isExactServiceBearer): it now triggers paid texts.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -22,6 +26,7 @@ import {
   runAutoFormReminders,
 } from "../_shared/brandFormRequests.ts";
 import type { DispatchV2Input, DispatchV2Result } from "../_shared/notifyV2.ts";
+import { isExactServiceBearer } from "../_shared/legacyEmailIdempotency.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,12 +68,13 @@ export interface ReminderDeps {
  * never holds provider secrets itself. The contact path carries the link in the
  * request only; notify-dispatch keeps no message body for a contact send.
  */
-async function viaNotifyDispatch(
+export async function viaNotifyDispatch(
   url: string,
   serviceKey: string,
   input: DispatchV2Input,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<DispatchV2Result> {
-  const response = await fetch(`${url}/functions/v1/notify-dispatch`, {
+  const response = await fetchImpl(`${url}/functions/v1/notify-dispatch`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -109,6 +115,11 @@ export async function handler(
   const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!SUPABASE_URL || !SERVICE_KEY) {
     return json({ error: "server_misconfigured" }, 500);
+  }
+  // Only the cron's service-role bearer: any other token is refused before a
+  // single call (this function triggers paid texts).
+  if (!isExactServiceBearer(authHeader, SERVICE_KEY)) {
+    return json({ error: "forbidden" }, 403);
   }
 
   const admin: ReminderAdmin = deps.createAdmin
@@ -154,10 +165,12 @@ export async function handler(
   }
 
   // #4514 wave 4 (decision 13): the optional brand form reminder, two days
-  // before, AFTER the buyer and reservation reminders above, which it never
-  // changes or blocks. It sends directly rather than through the outbox because
-  // a text or email carries the guest's personal form link, a credential that is
-  // never stored. Nothing due: one read, nothing written, the response unchanged.
+  // before each guest's own date, AFTER the buyer and reservation reminders
+  // above, which it never changes or blocks. Due reminders are queued in SQL;
+  // the drain then sends the queue (and resumes any host send a dead request
+  // left) through notify-dispatch rather than the outbox, because a text or
+  // email carries the guest's personal form link, a credential that is never
+  // stored. Nothing due and nothing queued: the response is unchanged.
   const formReminders = await runAutoFormReminders({
     rpc: async (fn, args) => {
       const { data, error } = await admin.rpc(fn, args);

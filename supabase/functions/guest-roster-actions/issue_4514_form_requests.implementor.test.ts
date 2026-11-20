@@ -1,29 +1,38 @@
-// #4514 wave 4 — Ask guests to answer and Remind (guest-roster-actions form ops).
+// #4514 wave 4 — Ask guests to answer and Remind (guest-roster-actions form ops),
+// with the wave 4 review fixes.
 //
-// Pins: Remind reaches only people who have not answered; push carries no link
-// and texts and emails carry the guest's own form link; a request calls only the
-// form-request SQL (decision 17: never an invite RPC, never the offering
-// dispatcher); a throttled guest is skipped; a grown cost is refused; channel
-// choice follows the guest's contact on file.
+// Pins: no push while the Explorer /form screen is missing (texts and emails
+// carry the guest's own link; a guest with no contact is counted, never
+// dropped); the host's send only queues and then drains this page in pages of
+// 25, resumable after a crash or a partial failure; cost counts real segments
+// (emoji and accented letters), refuses texts with no price unless the host
+// confirmed, and refuses a send over the brand's daily text limit; a request
+// calls only form-request SQL (decision 17: never an invite RPC).
 import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleFormRequest, isFormRequestBody } from "./formRequest.ts";
 import {
+  drainFormRequests,
+  FORM_REQUEST_PUSH_ENABLED,
   type FormRequestRecipient,
   previewFormRequest,
+  requestSmsSegments,
   routeFor,
 } from "../_shared/brandFormRequests.ts";
-import type { DispatchV2Input } from "../_shared/notifyV2.ts";
+import type { DispatchV2Input, DispatchV2Result } from "../_shared/notifyV2.ts";
 import { renderCategoryMessage } from "../_shared/notifyTemplates.ts";
 import { providerSafePayload } from "../_shared/notifyV2.ts";
+import type { SmsRateV1 } from "../_shared/smsPriceTable.ts";
 
 const FORM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const EVENT = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const BRAND = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 const ACTOR = "ffffffff-ffff-4fff-8fff-ffffffffffff";
-const id = (n: number) => `0000000${n}-0000-4000-8000-000000000000`;
+const id = (n: number) =>
+  `${String(n).padStart(8, "0")}-0000-4000-8000-000000000000`;
+const TOKEN = "a".repeat(64);
 
 const guest = (
   n: number,
@@ -32,21 +41,77 @@ const guest = (
   kind: "rsvp",
   id: id(n),
   userId: null,
+  personKey: `p:${n}`,
   email: null,
   phone: null,
   answered: false,
   throttled: false,
-  smsAllowed: true,
-  emailAllowed: true,
+  route: [],
+  smsOptedOut: false,
   ...over,
 });
 
-function harness(
+const audience = (
   recipients: FormRequestRecipient[],
-  claim: (subjectId: string) => Record<string, unknown>,
-) {
+  over: Record<string, unknown> = {},
+) => ({
+  formId: FORM,
+  eventId: EVENT,
+  brandId: BRAND,
+  formName: "Dietary",
+  eventTitle: "Supper Club",
+  brandName: "Lagos Supper",
+  eventStartsAt: "2028-03-04T18:00:00Z",
+  textsToday: 0,
+  textCap: 300,
+  textsWaitUntil: null,
+  recipients,
+  ...over,
+});
+
+const RATES: SmsRateV1[] = [{
+  country: "US",
+  currency: "USD",
+  minorNumerator: 1,
+  minorDenominator: 1,
+} as unknown as SmsRateV1];
+
+const claimed = (n: number, over: Record<string, unknown> = {}) => ({
+  sendId: id(900 + n),
+  token: TOKEN,
+  formId: FORM,
+  eventId: EVENT,
+  kind: "ask",
+  subjectKind: "rsvp",
+  subjectId: id(n),
+  userId: id(500 + n),
+  route: ["sms", "email"],
+  phone: "+12025550100",
+  email: `g${n}@example.test`,
+  brandName: "Lagos Supper",
+  eventTitle: "Supper Club",
+  eventTimezone: "Africa/Lagos",
+  startsAt: "2028-03-04T18:00:00Z",
+  ...over,
+});
+
+const ok = (channel: string): DispatchV2Result =>
+  ({
+    success: true,
+    deliveries: [{ channel, status: "sent" }],
+  }) as unknown as DispatchV2Result;
+
+function harness(opts: {
+  recipients: FormRequestRecipient[];
+  pages?: unknown[][];
+  enqueue?: { data: unknown; error: { message: string } | null };
+  dispatch?: (input: DispatchV2Input) => Promise<DispatchV2Result>;
+  rates?: SmsRateV1[] | null;
+  audienceOver?: Record<string, unknown>;
+}) {
   const rpcs: Array<{ fn: string; args: Record<string, unknown> }> = [];
   const sent: DispatchV2Input[] = [];
+  const pages = [...(opts.pages ?? [])];
   return {
     rpcs,
     sent,
@@ -55,256 +120,360 @@ function harness(
         rpcs.push({ fn, args });
         if (fn === "brand_form_request_audience") {
           return Promise.resolve({
-            data: {
-              formId: FORM,
-              eventId: EVENT,
-              brandId: BRAND,
-              formName: "Sign-up",
-              eventTitle: "Open mic",
-              brandName: "Brand A",
-              recipients,
-            },
+            data: audience(opts.recipients, opts.audienceOver),
             error: null,
           });
         }
-        if (fn === "brand_form_request_claim") {
-          return Promise.resolve({
-            data: claim((args.p_subject as { id: string }).id),
-            error: null,
-          });
+        if (fn === "brand_form_request_enqueue") {
+          return Promise.resolve(
+            opts.enqueue ??
+              {
+                data: { queued: opts.recipients.length, throttled: 0 },
+                error: null,
+              },
+          );
+        }
+        if (fn === "brand_form_request_claim_batch") {
+          return Promise.resolve({ data: pages.shift() ?? [], error: null });
         }
         return Promise.resolve({ data: true, error: null });
       },
       dispatch: (input: DispatchV2Input) => {
         sent.push(input);
-        const channel = input.requested_channel ??
-          (input.contact?.includes("@") ? "email" : "sms");
-        return Promise.resolve({
-          success: true,
-          deliveries: [{ channel, status: "sent", providerMessageId: "m" }],
-        });
+        return opts.dispatch
+          ? opts.dispatch(input)
+          : Promise.resolve(ok(input.contact?.includes("@") ? "email" : "sms"));
       },
-      smsRates: () => Promise.resolve(null),
+      smsRates: () =>
+        Promise.resolve(opts.rates === undefined ? RATES : opts.rates),
     },
   };
 }
 
 const body = (over: Record<string, unknown> = {}) => ({
-  operation: "form_send",
+  operation: "form_send" as const,
   eventId: EVENT,
   formId: FORM,
-  kind: "ask",
-  audience: "unanswered",
-  channels: ["email", "push", "sms"],
-  expectedCostMinor: null,
-  currency: null,
+  kind: "ask" as const,
+  audience: "unanswered" as const,
+  channels: ["email", "sms"] as Array<"push" | "sms" | "email">,
+  expectedCostMinor: 1000,
+  currency: "USD",
   ...over,
 });
 
-Deno.test("#4514 body: Remind must target people who have not answered; unknown keys refused", () => {
+Deno.test("#4514 body: Remind targets people who have not answered; unknown keys refused; push refused while the form screen is missing", () => {
   assert(isFormRequestBody(body()));
-  assert(isFormRequestBody(body({ kind: "remind" })));
-  assertEquals(
-    isFormRequestBody(body({ kind: "remind", audience: "everyone" })),
-    false,
-  );
-  assertEquals(isFormRequestBody(body({ inviteId: id(1) })), false);
-  assertEquals(isFormRequestBody(body({ operation: "form_preview" })), false); // preview carries no cost
-  assertEquals(
-    isFormRequestBody({
-      ...body({ operation: "form_preview" }),
+  assert(!isFormRequestBody(body({ kind: "remind", audience: "everyone" })));
+  assert(!isFormRequestBody(body({ extra: 1 })));
+  assertEquals(FORM_REQUEST_PUSH_ENABLED, false);
+  assert(!isFormRequestBody(body({ channels: ["push"] })));
+  assert(!isFormRequestBody(body({ channels: ["push", "email"] })));
+  assert(isFormRequestBody(body({ confirmUnpriced: true })));
+  assert(
+    !isFormRequestBody({
+      ...body(),
+      operation: "form_preview",
       expectedCostMinor: undefined,
       currency: undefined,
+      confirmUnpriced: true,
     }),
-    true,
   );
 });
 
-Deno.test("#4514 route: push first for an account, then the contact on file (phone before email), consent applied", () => {
-  const all = ["email", "push", "sms"] as const;
-  assertEquals(
-    routeFor(
-      guest(1, { userId: ACTOR, phone: "+12025550101", email: "a@x.test" }),
-      all,
-    ),
-    ["push", "sms"],
-  );
-  assertEquals(
-    routeFor(
-      guest(2, { phone: "+12025550101", email: "a@x.test", smsAllowed: false }),
-      all,
-    ),
-    ["email"],
-  );
-  assertEquals(
-    routeFor(guest(3, { phone: "+12025550101" }), ["email", "push"]),
-    [],
-  );
-  assertEquals(routeFor(guest(4, { userId: ACTOR }), ["sms"]), []);
+Deno.test("#4514 route: no push even for an account; the server's contact route (text, then email) narrowed to the ticked channels", () => {
+  const app = guest(1, { userId: id(7), route: ["sms", "email"] });
+  assertEquals(routeFor(app, ["push", "sms", "email"]), ["sms", "email"]);
+  assertEquals(routeFor(app, ["push", "email"]), ["email"]);
+  assertEquals(routeFor(guest(2, { userId: id(8) }), ["push", "sms"]), []);
 });
 
-Deno.test("#4514 preview: reach line counts (reachable, opted out of texts, can't be reached, throttled)", () => {
+Deno.test("#4514 preview: reachable, opted out of texts and can't reach are counted, never dropped", () => {
   const p = previewFormRequest(
-    {
-      formId: FORM,
-      eventId: EVENT,
-      brandId: BRAND,
-      formName: "",
-      eventTitle: "E",
-      brandName: "B",
-      recipients: [
-        guest(1, { phone: "+12025550101" }),
-        guest(2, { phone: "+12025550102", smsAllowed: false }),
-        guest(3),
-        guest(4, { email: "x@y.test", throttled: true }),
-        guest(5, { userId: ACTOR }),
-      ],
-    },
-    ["email", "push", "sms"],
-    null,
+    audience([
+      guest(1, { phone: "+12025550101", route: ["sms", "email"] }),
+      guest(2, { email: "b@example.test", route: ["email"] }),
+      guest(3, { phone: "+12025550103", smsOptedOut: true }),
+      guest(4, { userId: id(9) }),
+      guest(5, { route: ["email"], throttled: true }),
+    ]),
+    ["sms", "email"],
+    RATES,
   );
-  assertEquals([
-    p.reachableCount,
-    p.smsOptedOutCount,
-    p.unreachableCount,
-    p.throttledCount,
-  ], [2, 1, 1, 1]);
-  assertEquals(p.perChannelReachable, { push: 1, sms: 1, email: 0 });
+  assertEquals(p.selectedCount, 5);
+  assertEquals(p.reachableCount, 2);
+  assertEquals(p.smsOptedOutCount, 1);
+  assertEquals(p.unreachableCount, 1);
+  assertEquals(p.throttledCount, 1);
+  assertEquals(p.perChannelReachable, { push: 0, sms: 1, email: 1 });
   assertEquals(p.smsCount, 1);
-  assertEquals(p.estimatedCostMinor, null); // no rates: no amount, never a guess
 });
 
-Deno.test("#4514 send: decision 17 — only form-request SQL, push without a link, text and email with the guest's own link", async () => {
-  const h = harness(
-    [
-      guest(1, { userId: ACTOR, phone: "+12025550101" }),
-      guest(2, { phone: "+12025550102" }),
-      guest(3, { email: "g3@example.test" }),
+Deno.test("#4514 cost: segments come from the SMS adapter (an emoji or accented name costs more parts)", () => {
+  const plain = requestSmsSegments("Lagos Supper", "Supper Club");
+  const emoji = requestSmsSegments("Lagos Supper", "Supper Club 🎉");
+  const accent = requestSmsSegments("Café Ọmọ", "Fête");
+  assert(plain >= 1);
+  assert(emoji > plain, `emoji ${emoji} > plain ${plain}`);
+  assert(accent > plain, `accent ${accent} > plain ${plain}`);
+  const g = [guest(1, { phone: "+12025550101", route: ["sms"] })];
+  const p1 = previewFormRequest(audience(g), ["sms"], RATES);
+  const p2 = previewFormRequest(
+    audience(g, { eventTitle: "Supper Club 🎉" }),
+    ["sms"],
+    RATES,
+  );
+  assertEquals(p1.estimatedCostMinor, plain);
+  assertEquals(p2.estimatedCostMinor, emoji);
+});
+
+Deno.test("#4514 send: decision 17 — only form-request SQL; it queues, then drains this page; texts and emails carry the guest's own link; no push", async () => {
+  const h = harness({
+    recipients: [
+      guest(1, { phone: "+12025550101", userId: id(5), route: ["sms"] }),
+      guest(2, { email: "b@example.test", route: ["email"] }),
     ],
-    (sid) => ({
-      claimed: true,
-      sendId: sid,
-      token: sid.slice(7, 8).repeat(64),
-    }),
-  );
-  const res = await handleFormRequest(body() as never, ACTOR, h.deps);
-  assertEquals(res.status, 200);
-  assertEquals(res.body.sent, 3);
-  const fns = [...new Set(h.rpcs.map((r) => r.fn))].sort();
-  assertEquals(fns, [
-    "brand_form_request_audience",
-    "brand_form_request_claim",
-    "brand_form_request_settle",
-  ]);
-  assert(h.rpcs.every((r) => !/invite|offering|guest_roster/.test(r.fn)));
-  const push = h.sent.find((s) => s.requested_channel === "push");
-  assertEquals(push?.user_id, ACTOR);
-  assertEquals("form_url" in (push?.payload ?? {}), false);
-  const sms = h.sent.find((s) => s.contact === "+12025550102");
-  assertEquals(
-    sms?.payload.form_url,
-    `https://host.usemingla.com/form/${FORM}#t=${"2".repeat(64)}`,
-  );
-  assertEquals(sms?.user_id, null);
-  const email = h.sent.find((s) => s.contact === "g3@example.test");
-  assertEquals(
-    email?.email_cta?.url,
-    `https://host.usemingla.com/form/${FORM}#t=${"3".repeat(64)}`,
-  );
-  // The link renders into the text, and never reaches the push provider.
-  assert(
-    renderCategoryMessage("brand_form_request", sms!.payload).sms.includes(
-      String(sms!.payload.form_url),
-    ),
-  );
-  assertEquals(
-    providerSafePayload("brand_form_request", sms!.payload).form_url,
-    undefined,
-  );
-});
-
-Deno.test("#4514 send: a guest the server throttles is skipped and nothing is sent to them", async () => {
-  const h = harness(
-    [guest(1, { email: "a@x.test" }), guest(2, { email: "b@x.test" })],
-    (sid) =>
-      sid === id(1)
-        ? { claimed: false, reason: "throttled" }
-        : { claimed: true, sendId: sid, token: "b".repeat(64) },
-  );
-  const res = await handleFormRequest(body() as never, ACTOR, h.deps);
-  assertEquals(res.body.sent, 1);
-  assertEquals((res.body.skipped as Record<string, number>).throttled, 1);
-  assertEquals(h.sent.map((s) => s.contact), ["b@x.test"]);
-});
-
-Deno.test("#4514 send: Remind skips anyone who has answered before claiming", async () => {
-  const h = harness([
-    guest(1, { email: "a@x.test", answered: true }),
-    guest(2, { email: "b@x.test" }),
-  ], (sid) => ({ claimed: true, sendId: sid, token: "c".repeat(64) }));
-  const res = await handleFormRequest(
-    body({ kind: "remind" }) as never,
+    pages: [[
+      claimed(1, { route: ["sms"] }),
+      claimed(2, { route: ["email"], phone: null }),
+    ]],
+  });
+  const r = await handleFormRequest(
+    body({ expectedCostMinor: 100 }),
     ACTOR,
     h.deps,
   );
-  assertEquals(res.body.sent, 1);
+  assertEquals(r.status, 200);
+  assertEquals(r.body.queued, 2);
+  assertEquals(r.body.sent, 2);
+  assertEquals(r.body.status, "sent");
+  const fns = h.rpcs.map((c) => c.fn);
+  assert(fns.every((f) => f.startsWith("brand_form_request_")), fns.join());
+  const claim = h.rpcs.find((c) => c.fn === "brand_form_request_claim_batch");
+  assertEquals(claim?.args, {
+    p_limit: 25,
+    p_form_id: FORM,
+    p_event_id: EVENT,
+  });
+  assertEquals(h.sent.length, 2);
+  assert(
+    h.sent.every((s) => s.requested_channel !== "push" && s.user_id === null),
+  );
+  for (const s of h.sent) {
+    assertEquals(
+      s.payload.form_url,
+      `https://host.usemingla.com/form/${FORM}#t=${TOKEN}`,
+    );
+    assertEquals(s.payload.brand_name, "Lagos Supper");
+    assertEquals(s.payload.event_date, "2028-03-04T18:00:00Z");
+  }
+  const email = h.sent.find((s) => s.contact === "g2@example.test");
   assertEquals(
-    h.rpcs.filter((r) => r.fn === "brand_form_request_claim").map((r) =>
-      (r.args.p_subject as { id: string }).id
+    email?.email_cta?.url,
+    `https://host.usemingla.com/form/${FORM}#t=${TOKEN}`,
+  );
+  const text = renderCategoryMessage("brand_form_request", h.sent[0].payload);
+  assert(
+    text.sms.includes(
+      "Lagos Supper has a few questions about Supper Club on Sat 4 Mar.",
     ),
-    [id(2)],
+    text.sms,
   );
   assertEquals(
-    h.rpcs.find((r) => r.fn === "brand_form_request_claim")?.args.p_kind,
-    "remind",
+    Object.keys(providerSafePayload("brand_form_request", h.sent[0].payload))
+      .sort(),
+    ["event_id", "form_id", "rsvp_id"],
   );
 });
 
-Deno.test("#4514 send: a cost that grew past the preview is refused before anything is sent", async () => {
-  const h = harness(
-    [guest(1, { phone: "+12025550101" })],
-    (sid) => ({ claimed: true, sendId: sid, token: "d".repeat(64) }),
+Deno.test("#4514 send: a partial failure settles each guest and the drain stops at a short page (no retry storm)", async () => {
+  const h = harness({
+    recipients: [
+      guest(1, { email: "a@x.test", route: ["email"] }),
+      guest(2, { email: "b@x.test", route: ["email"] }),
+      guest(3, { email: "c@x.test", route: ["email"] }),
+    ],
+    pages: [[
+      claimed(1, { route: ["email"] }),
+      claimed(2, { route: ["email"] }),
+      claimed(3, { route: ["email"] }),
+    ]],
+    dispatch: (input) =>
+      input.contact === "g2@example.test"
+        ? Promise.reject(new Error("provider down"))
+        : Promise.resolve(ok("email")),
+  });
+  const r = await handleFormRequest(
+    body({ channels: ["email"] }),
+    ACTOR,
+    h.deps,
   );
+  assertEquals([r.body.sent, r.body.failed, r.body.pending], [2, 1, 0]);
+  const settles = h.rpcs.filter((c) => c.fn === "brand_form_request_settle");
+  assertEquals(settles.length, 3);
+  assertEquals(
+    settles.find((s) => s.args.p_send_id === id(902))?.args.p_reason,
+    "email_dispatch_failed",
+  );
+  assertEquals(
+    h.rpcs.filter((c) => c.fn === "brand_form_request_claim_batch").length,
+    1,
+  );
+});
+
+Deno.test("#4514 send: a text that fails falls back to the email on the route", async () => {
+  const h = harness({
+    recipients: [
+      guest(1, {
+        phone: "+12025550101",
+        email: "a@x.test",
+        route: ["sms", "email"],
+      }),
+    ],
+    pages: [[claimed(1)]],
+    dispatch: (input) =>
+      Promise.resolve(
+        input.contact?.includes("@")
+          ? ok("email")
+          : ({ success: false, reason: "sms_disabled" } as DispatchV2Result),
+      ),
+  });
+  const r = await handleFormRequest(
+    body({ expectedCostMinor: 100 }),
+    ACTOR,
+    h.deps,
+  );
+  assertEquals(r.body.sent, 1);
+  assertEquals(h.sent.map((s) => s.idempotency_key), [
+    `brand_form_request:${id(901)}:sms`,
+    `brand_form_request:${id(901)}:email`,
+  ]);
+});
+
+Deno.test("#4514 drain: a full page keeps draining; when the time budget runs out the rest stays queued for the cron (resumable)", async () => {
+  const full = Array.from(
+    { length: 25 },
+    (_, i) => claimed(i + 1, { route: ["email"] }),
+  );
+  const h = harness({ recipients: [], pages: [full, full, full] });
+  let t = 0;
+  const out = await drainFormRequests(h.deps, {
+    budgetMs: 70,
+    now: () => {
+      t += 30;
+      return t;
+    },
+  });
+  assert(out.more, "budget spent with pages still coming");
+  assertEquals([out.pages, out.sent], [2, 50]);
+});
+
+Deno.test("#4514 send: a crash in the drain after queueing still answers queued (nothing lost; the cron resumes)", async () => {
+  const h = harness({
+    recipients: [guest(1, { email: "a@x.test", route: ["email"] })],
+  });
   const deps = {
     ...h.deps,
-    smsRates: () =>
-      Promise.resolve([{
-        rateId: "r",
-        provider: "twilio" as const,
-        country: "US",
-        currency: "USD",
-        unit: "sms_segment" as const,
-        minorNumerator: 1,
-        minorDenominator: 1,
-        effectiveAt: "",
-        expiresAt: "",
-        sourceReference: "",
-      }]),
+    rpc: (fn: string, args: Record<string, unknown>) =>
+      fn === "brand_form_request_claim_batch"
+        ? Promise.resolve({ data: null, error: { message: "timeout" } })
+        : h.deps.rpc(fn, args),
   };
-  const res = await handleFormRequest(
-    body({ expectedCostMinor: 0, currency: null }) as never,
-    ACTOR,
-    deps,
-  );
-  assertEquals([res.status, res.body.code], [409, "preview_stale_cost"]);
-  assertEquals(h.sent.length, 0);
-  assertEquals(h.rpcs.some((r) => r.fn === "brand_form_request_claim"), false);
+  const r = await handleFormRequest(body({ channels: ["email"] }), ACTOR, deps);
+  assertEquals(r.status, 200);
+  assertEquals([r.body.status, r.body.queued, r.body.pending], [
+    "queued",
+    1,
+    1,
+  ]);
 });
 
-Deno.test("#4514 send: below event manager the audience read refuses and nothing is sent", async () => {
-  const sent: DispatchV2Input[] = [];
-  const res = await handleFormRequest(body() as never, ACTOR, {
-    rpc: () =>
-      Promise.resolve({
+Deno.test("#4514 cost: texts with no price are refused unless the host confirms; then they queue", async () => {
+  const recipients = [guest(1, { phone: "+2348012345678", route: ["sms"] })];
+  const h = harness({ recipients, rates: RATES });
+  const refused = await handleFormRequest(
+    body({ expectedCostMinor: null, currency: null }),
+    ACTOR,
+    h.deps,
+  );
+  assertEquals([refused.status, refused.body.code], [409, "cost_unpriced"]);
+  assert(!h.rpcs.some((c) => c.fn === "brand_form_request_enqueue"));
+  const h2 = harness({ recipients, rates: RATES });
+  const okSend = await handleFormRequest(
+    body({ expectedCostMinor: null, currency: null, confirmUnpriced: true }),
+    ACTOR,
+    h2.deps,
+  );
+  assertEquals(okSend.status, 200);
+  assert(h2.rpcs.some((c) => c.fn === "brand_form_request_enqueue"));
+});
+
+Deno.test("#4514 cap: over the brand's daily text limit nothing is queued; the database refusal maps to the same code", async () => {
+  const recipients = [guest(1, { phone: "+12025550101", route: ["sms"] })];
+  const h = harness({ recipients, audienceOver: { textsToday: 300 } });
+  const r = await handleFormRequest(body(), ACTOR, h.deps);
+  assertEquals([r.status, r.body.code, r.body.textCap], [409, "text_cap", 300]);
+  assert(!h.rpcs.some((c) => c.fn === "brand_form_request_enqueue"));
+  const h2 = harness({
+    recipients,
+    enqueue: { data: null, error: { message: "form_request_text_cap" } },
+  });
+  const r2 = await handleFormRequest(body(), ACTOR, h2.deps);
+  assertEquals([r2.status, r2.body.code], [409, "text_cap"]);
+  assertEquals(h2.sent.length, 0);
+});
+
+Deno.test("#4514 send: a cost that grew past the preview is refused before anything is queued", async () => {
+  const h = harness({
+    recipients: [guest(1, { phone: "+12025550101", route: ["sms"] })],
+  });
+  const r = await handleFormRequest(
+    body({ expectedCostMinor: 0 }),
+    ACTOR,
+    h.deps,
+  );
+  assertEquals([r.status, r.body.code], [409, "preview_stale_cost"]);
+  assert(!h.rpcs.some((c) => c.fn === "brand_form_request_enqueue"));
+});
+
+Deno.test("#4514 send: below event manager the audience read refuses and nothing is queued or sent", async () => {
+  const h = harness({ recipients: [] });
+  const deps = {
+    ...h.deps,
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      h.rpcs.push({ fn, args });
+      return Promise.resolve({
         data: null,
         error: { message: "brand_form_forbidden" },
-      }),
-    dispatch: (i) => {
-      sent.push(i);
-      return Promise.resolve({ success: true });
+      });
     },
-    smsRates: () => Promise.resolve(null),
+  };
+  const r = await handleFormRequest(body(), ACTOR, deps);
+  assertEquals([r.status, r.body.code], [403, "forbidden"]);
+  assertEquals(h.rpcs.map((c) => c.fn), ["brand_form_request_audience"]);
+  assertEquals(h.sent.length, 0);
+});
+
+Deno.test("#4514 concurrency: two Asks at once each queue through the database (the brand lock decides), and the second's throttled people are reported", async () => {
+  const recipients = [guest(1, { email: "a@x.test", route: ["email"] })];
+  const first = harness({
+    recipients,
+    enqueue: { data: { queued: 1, throttled: 0 }, error: null },
+    pages: [[claimed(1, { route: ["email"] })]],
   });
-  assertEquals([res.status, res.body.code], [403, "forbidden"]);
-  assertEquals(sent.length, 0);
+  const second = harness({
+    recipients,
+    enqueue: { data: { queued: 0, throttled: 1 }, error: null },
+  });
+  const [a, b] = await Promise.all([
+    handleFormRequest(body({ channels: ["email"] }), ACTOR, first.deps),
+    handleFormRequest(body({ channels: ["email"] }), ACTOR, second.deps),
+  ]);
+  assertEquals([a.body.queued, a.body.sent], [1, 1]);
+  assertEquals([
+    b.body.queued,
+    b.body.sent,
+    (b.body.skipped as Record<string, number>).throttled,
+  ], [0, 0, 1]);
+  assertEquals(first.sent.length + second.sent.length, 1);
 });

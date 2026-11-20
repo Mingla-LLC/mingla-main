@@ -6,7 +6,10 @@
 // and the same response, whether or not a form reminder is due, and even when
 // the form step fails. Run before and after the wave 4 change (see #4514).
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { handler, type ReminderAdmin } from "./index.ts";
+import { handler, type ReminderAdmin, viaNotifyDispatch } from "./index.ts";
+import type { DispatchV2Input, DispatchV2Result } from "../_shared/notifyV2.ts";
+import { brandFormEmailCta } from "../_shared/brandFormNotify.ts";
+import { transactionalConsentSourceForCategory } from "../_shared/issue4111EnquiryNotifications.ts";
 
 type Call = { fn: string; args: Record<string, unknown> };
 
@@ -141,92 +144,147 @@ Deno.test("#4514 reminders: a failing form step never blocks or changes the remi
   assertEquals(body.ok, false);
 });
 
-Deno.test("#4514 reminders: a due form reminder sends push first, then the ticked email, and settles", async () => {
+Deno.test("#4514 reminders: due reminders are queued in SQL, then the drain sends the guest's link by text or email (never push) and settles", async () => {
   env();
   const calls: Call[] = [];
-  const sent: Array<
-    {
-      category: string;
-      channel: string | null | undefined;
-      contact: string | null | undefined;
-    }
-  > = [];
+  const sent: DispatchV2Input[] = [];
+  let pages = 0;
   const res = await handler(req(), {
-    createAdmin: () =>
-      fakeAdmin(calls, {
-        "pg_notify_reminders_enqueue:24h": { data: 0, error: null },
-        "pg_notify_reminders_enqueue:2h": { data: 0, error: null },
-        brand_form_auto_reminders_due: {
-          data: [{
-            attachmentId: ATT,
-            formId: FORM,
-            eventId: EVENT,
-            channels: ["email", "push"],
-          }],
-          error: null,
-        },
-        brand_form_request_audience: {
-          data: {
-            formId: FORM,
-            eventId: EVENT,
-            brandId: ATT,
-            formName: "Sign-up",
-            eventTitle: "Open mic",
-            brandName: "Brand A",
-            recipients: [{
-              kind: "rsvp",
-              id: RSVP,
-              userId: null,
-              email: "g@example.test",
-              phone: "+12025550101",
-              answered: false,
-              throttled: false,
-              smsAllowed: true,
-              emailAllowed: true,
+    createAdmin: () => ({
+      rpc: (fn, args) => {
+        calls.push({ fn, args });
+        if (fn === "pg_notify_reminders_enqueue") {
+          return Promise.resolve({ data: 0, error: null });
+        }
+        if (fn === "brand_form_auto_reminders_due") {
+          return Promise.resolve({
+            data: { runs: 1, queued: 1, held: 0 },
+            error: null,
+          });
+        }
+        if (fn === "brand_form_request_claim_batch") {
+          pages += 1;
+          return Promise.resolve({
+            data: pages > 1 ? [] : [{
+              sendId: ATT,
+              token: "b".repeat(64),
+              formId: FORM,
+              eventId: EVENT,
+              kind: "auto",
+              subjectKind: "rsvp",
+              subjectId: RSVP,
+              userId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+              route: ["email"],
+              phone: null,
+              email: "val@example.test",
+              brandName: "Lagos Supper",
+              eventTitle: "Supper Club",
+              eventTimezone: "Africa/Lagos",
+              startsAt: "2028-03-04T18:00:00Z",
             }],
-          },
-          error: null,
-        },
-        brand_form_request_claim: {
-          data: { claimed: true, sendId: ATT, token: "a".repeat(64) },
-          error: null,
-        },
-        brand_form_request_settle: { data: true, error: null },
-        brand_form_auto_reminder_settle: { data: true, error: null },
-      }),
+            error: null,
+          });
+        }
+        return Promise.resolve({ data: true, error: null });
+      },
+    }),
     dispatch: (input) => {
-      sent.push({
-        category: input.category_key,
-        channel: input.requested_channel,
-        contact: input.contact,
-      });
-      return Promise.resolve({
-        success: true,
-        deliveries: [{
-          channel: "email",
-          status: "sent",
-          providerMessageId: "m1",
-        }],
-      });
+      sent.push(input);
+      return Promise.resolve(
+        {
+          success: true,
+          deliveries: [{ channel: "email", status: "sent" }],
+        } as unknown as DispatchV2Result,
+      );
     },
   });
-  assertEquals(res.status, 200);
   assertEquals(calls.slice(0, 2), EXPECTED_ENQUEUE);
-  // No account, so no push; texts were not ticked, so the email on file. Never the phone.
-  assertEquals(sent, [{
-    category: "brand_form_request",
-    channel: undefined,
-    contact: "g@example.test",
-  }]);
-  const claim = calls.find((c) => c.fn === "brand_form_request_claim");
-  assertEquals(claim?.args.p_kind, "auto");
-  assertEquals(
-    calls.some((c) =>
-      c.fn === "brand_form_auto_reminder_settle" &&
-      c.args.p_attachment_id === ATT
-    ),
-    true,
-  );
+  assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(body.formReminders, { pages: 1, sent: 1, failed: 0 });
+  assertEquals(body.formReminders, {
+    runs: 1,
+    queued: 1,
+    held: 0,
+    sent: 1,
+    failed: 0,
+    more: false,
+  });
+  assertEquals(sent.length, 1);
+  assertEquals(sent[0].contact, "val@example.test");
+  assertEquals(sent[0].user_id, null);
+  assertEquals(sent[0].requested_channel, undefined);
+  assertEquals(
+    sent[0].payload.form_url,
+    `https://host.usemingla.com/form/${FORM}#t=${"b".repeat(64)}`,
+  );
+  const claim = calls.find((c) => c.fn === "brand_form_request_claim_batch");
+  assertEquals(claim?.args, {
+    p_limit: 25,
+    p_form_id: null,
+    p_event_id: null,
+  });
+  const settle = calls.find((c) => c.fn === "brand_form_request_settle");
+  assertEquals(settle?.args, {
+    p_send_id: ATT,
+    p_channel: "email",
+    p_status: "sent",
+    p_reason: null,
+  });
+});
+
+Deno.test("#4514 reminders: any bearer other than the exact service-role key is refused before any call", async () => {
+  env();
+  const calls: Call[] = [];
+  const res = await handler(
+    new Request("https://x", {
+      method: "POST",
+      headers: { Authorization: "Bearer someone-elses-jwt" },
+    }),
+    { createAdmin: () => fakeAdmin(calls, {}) },
+  );
+  assertEquals(res.status, 403);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("#4514 reminders: the notify-dispatch call carries the service bearer and the form link, and the email gets its link button", async () => {
+  const seen: Array<{ url: string; init: RequestInit }> = [];
+  const fakeFetch = ((url: string, init: RequestInit) => {
+    seen.push({ url, init });
+    return Promise.resolve(
+      new Response(JSON.stringify({ success: true, deliveries: [] })),
+    );
+  }) as unknown as typeof fetch;
+  const link = `https://host.usemingla.com/form/${FORM}#t=${"c".repeat(64)}`;
+  const result = await viaNotifyDispatch(
+    "https://example.supabase.co",
+    "service-key",
+    {
+      user_id: null,
+      contact: "val@example.test",
+      category_key: "brand_form_request",
+      payload: { form_id: FORM, brand_name: "Lagos Supper", form_url: link },
+      idempotency_key: "brand_form_request:x:email",
+    },
+    fakeFetch,
+  );
+  assertEquals(result.success, true);
+  assertEquals(
+    seen[0].url,
+    "https://example.supabase.co/functions/v1/notify-dispatch",
+  );
+  assertEquals(
+    (seen[0].init.headers as Record<string, string>).Authorization,
+    "Bearer service-key",
+  );
+  const sentBody = JSON.parse(String(seen[0].init.body));
+  assertEquals(sentBody.payload.form_url, link);
+  // notify-dispatch's contact path builds the button from that payload.
+  assertEquals(
+    brandFormEmailCta("brand_form_request", sentBody.payload)?.url,
+    link,
+  );
+  assertEquals(
+    transactionalConsentSourceForCategory("brand_form_request"),
+    "brand_form_request",
+  );
 });

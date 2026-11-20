@@ -292,8 +292,10 @@ function validDeepLink(
   if (isIssue4382SupportCategory(category)) {
     return issue4382DeepLinkValid(category, deepLink, payload);
   }
-  // #4514 wave 4: form requests and the held notice carry no deep link yet.
-  if (isBrandFormCategory(category)) return brandFormDeepLinkValid(deepLink);
+  // #4514 wave 4: a request carries no deep link yet; the held notice opens the form.
+  if (isBrandFormCategory(category)) {
+    return brandFormDeepLinkValid(category, deepLink, payload);
+  }
   if (category === "business.community_roadmap_updated") {
     return deepLink === "mingla-business://community/roadmap";
   }

@@ -2,12 +2,13 @@
 //
 //   brand_form_request                 a host asked a guest to answer a form
 //                                      (Ask guests to answer, Remind, the
-//                                      automatic reminder). Push to an account
-//                                      carries no link; a text or email to the
-//                                      contact on file carries the guest's
+//                                      automatic reminder). A text or email to
+//                                      the contact on file carries the guest's
 //                                      personal link, which only ever travels in
 //                                      the anonymous contact path (no inbox row,
-//                                      the ledger keeps no body).
+//                                      the ledger keeps no body). Push is off
+//                                      until the Explorer /form route ships
+//                                      (FORM_REQUEST_PUSH_ENABLED).
 //   business.brand_form_reminder_held  the automatic reminder was held because
 //                                      the form had closed (decision 10).
 //
@@ -50,11 +51,49 @@ export function brandFormProviderSafeKeys(category: string): string[] {
     : ["form_id", "event_id", "brand_id"];
 }
 
-/** Neither category opens a deep link yet (the Explorer `/form` route ships later). */
+/** The host's link to the form's Responses page (the held-reminder notice). */
+export function brandFormHeldDeepLink(formId: string): string {
+  return `mingla-business://marketing/forms/${formId}/responses`;
+}
+
+/**
+ * The request opens no deep link (the Explorer `/form` route ships later); the
+ * held notice opens the form's Responses page in the Host app, for its own
+ * form only.
+ */
 export function brandFormDeepLinkValid(
+  category: string,
   deepLink: string | null | undefined,
+  payload: Record<string, unknown> = {},
 ): boolean {
-  return deepLink === null || deepLink === undefined;
+  if (deepLink === null || deepLink === undefined) return true;
+  return category === BRAND_FORM_REMINDER_HELD_CATEGORY &&
+    typeof payload.form_id === "string" &&
+    /^[0-9a-f-]{36}$/.test(payload.form_id) &&
+    deepLink === brandFormHeldDeepLink(payload.form_id);
+}
+
+/** "Sat 21 Nov" in the page's own time zone (empty when unknown). */
+export function brandFormDateLabel(value: unknown, timeZone: unknown): string {
+  if (typeof value !== "string") return "";
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return "";
+  const opts: Intl.DateTimeFormatOptions = {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  };
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      ...opts,
+      timeZone: typeof timeZone === "string" && timeZone.length > 0
+        ? timeZone
+        : "UTC",
+    }).format(at).replace(",", "");
+  } catch {
+    return new Intl.DateTimeFormat("en-GB", { ...opts, timeZone: "UTC" })
+      .format(at).replace(",", "");
+  }
 }
 
 /** The email button: the guest's own form, from a validated link only. */
@@ -89,8 +128,9 @@ export function renderBrandFormMessage(
       sms: "",
     };
   }
+  const day = brandFormDateLabel(payload.event_date, payload.event_timezone);
   const ask = event
-    ? `${brand} has a few questions about ${event}.`
+    ? `${brand} has a few questions about ${event}${day ? ` on ${day}` : ""}.`
     : `${brand} has a few questions.`;
   const link = brandFormLinkValid(payload.form_url) ? payload.form_url : null;
   return {
