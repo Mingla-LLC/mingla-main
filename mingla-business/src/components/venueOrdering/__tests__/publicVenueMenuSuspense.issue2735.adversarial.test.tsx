@@ -110,6 +110,9 @@ const ordering: { current: BuyerVenueOrdering } = {
     orderMore: jest.fn(),
     askPartySize: false,
     tipRemembered: false,
+    // TEST-MOD-APPROVED #4490 07-D: the ordering hook returns the "I'll collect it" choice.
+    pickup: false,
+    setPickup: () => undefined,
   },
 };
 

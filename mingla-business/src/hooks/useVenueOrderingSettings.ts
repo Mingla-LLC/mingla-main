@@ -39,6 +39,8 @@ export interface VenueOrderingSettings {
   serviceChargeBps: number;
   serviceChargeLabel: string;
   counterPickupEnabled: boolean;
+  /** #4490 07-D — a scanned spot orders to the table. */
+  tableServiceEnabled: boolean;
   staffTabsEnabled: boolean;
   prepTimeMinutes: number | null;
 }
@@ -51,12 +53,13 @@ interface SettingsRow {
   service_charge_bps: number;
   service_charge_label: string;
   counter_pickup_enabled: boolean;
+  table_service_enabled: boolean;
   staff_tabs_enabled: boolean;
   prep_time_minutes: number | null;
 }
 
 const SETTINGS_COLUMNS =
-  "venue_id, brand_id, ordering_enabled, paused_at, service_charge_bps, service_charge_label, counter_pickup_enabled, staff_tabs_enabled, prep_time_minutes";
+  "venue_id, brand_id, ordering_enabled, paused_at, service_charge_bps, service_charge_label, counter_pickup_enabled, table_service_enabled, staff_tabs_enabled, prep_time_minutes";
 
 export const venueOrderingSettingsKeys = {
   detail: (venueId: string): readonly ["venueOrderingSettings", string] =>
@@ -97,6 +100,7 @@ export function useVenueOrderingSettings(
         serviceChargeBps: data.service_charge_bps,
         serviceChargeLabel: data.service_charge_label,
         counterPickupEnabled: data.counter_pickup_enabled,
+        tableServiceEnabled: data.table_service_enabled !== false,
         staffTabsEnabled: data.staff_tabs_enabled,
         prepTimeMinutes: data.prep_time_minutes,
       };
@@ -143,6 +147,60 @@ export function useSetVenueOrderingEnabled(
     mutationFn: async (enabled: boolean): Promise<void> => {
       if (venueId === null) throw new Error("venue_required");
       await invokeStaff({ action: "set_ordering_enabled", venueId, enabled });
+    },
+    onSuccess: () => {
+      if (venueId !== null) {
+        void queryClient.invalidateQueries({
+          queryKey: venueOrderingSettingsKeys.detail(venueId),
+        });
+      }
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// #4490 07-D — how guests get their order. Derived from the two switches,
+// never stored twice: table = (table service, no counter), counter = (no
+// table service, counter), both = (both on).
+// ---------------------------------------------------------------------------
+
+export type VenueOrderMode = "table" | "counter" | "both";
+
+/** A venue with no settings row yet has the table defaults: both on. */
+export function venueOrderModeOf(settings: VenueOrderingSettings | null): VenueOrderMode {
+  const table = settings === null ? true : settings.tableServiceEnabled;
+  const counter = settings === null ? true : settings.counterPickupEnabled;
+  if (table && counter) return "both";
+  return table ? "table" : "counter";
+}
+
+/** Plain words for a refused mode save (never a raw code). */
+export function venueOrderModeErrorCopy(error: unknown): string {
+  const raw =
+    error !== null && typeof error === "object" && "message" in error
+      ? String((error as { message: unknown }).message ?? "")
+      : "";
+  if (raw.includes("not_authorized")) {
+    return "You don't have access to change how guests order. Ask a brand admin.";
+  }
+  if (raw.includes("venue_not_found")) {
+    return "We couldn't find this venue. Refresh and try again.";
+  }
+  return "Couldn't save how guests get their order. Check your connection and try again.";
+}
+
+export function useSetVenueOrderMode(
+  venueId: string | null,
+): UseMutationResult<void, Error, VenueOrderMode> {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, VenueOrderMode>({
+    mutationFn: async (mode: VenueOrderMode): Promise<void> => {
+      if (venueId === null) throw new Error("venue_not_found");
+      const { error } = await supabase.rpc("biz_venue_ordering_set_mode", {
+        p_venue_id: venueId,
+        p_mode: mode,
+      });
+      if (error !== null) throw new Error(error.message);
     },
     onSuccess: () => {
       if (venueId !== null) {

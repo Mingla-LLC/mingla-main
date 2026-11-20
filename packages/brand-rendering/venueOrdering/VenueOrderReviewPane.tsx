@@ -35,6 +35,7 @@ import { BrandRenderingReact as React } from "../PublicVenueTabs";
 import {
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   type TextInputProps,
@@ -68,6 +69,9 @@ import {
   venueOrderBuyerFailure,
   venueOrderHandoverChip,
   venueOrderTipPresets,
+  venueOrderingFulfilmentLine,
+  venueOrderingIsCounterPickup,
+  venueOrderingOffersPickup,
 } from "./venueOrderingRules";
 import { accentEdgeOnFill, accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 import { OfferingStepper } from "@mingla/offering-rendering/OfferingDecideParts";
@@ -132,6 +136,9 @@ export interface VenueOrderReviewPaneProps {
    * footer. The contents, the rules and the button are the same either way.
    */
   layout?: (body: React.ReactNode, payButton: React.ReactNode) => React.ReactNode;
+  /** #4490 07-D — "I'll collect it" at a scanned spot in Both. */
+  pickup?: boolean;
+  onPickupChange?: (pickup: boolean) => void;
 }
 
 /**
@@ -178,7 +185,11 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   renderPhoneField,
   phoneFailure = null,
   layout,
+  pickup = false,
+  onPickupChange,
 }) => {
+  const counterPickup = venueOrderingIsCounterPickup(config, pickup);
+  const offersPickup = venueOrderingOffersPickup(config) && onPickupChange !== undefined;
   const Input = TextInputComponent ?? TextInput;
   const priced = previewStatus === "ready" && preview !== null;
   const money = (cents: number): string =>
@@ -480,10 +491,34 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
         </Text>
       ) : null}
 
+      {/* ── #4490 07-D: where the order goes ─────────────────────────────── */}
+      <View style={[styles.card, surface.card, styles.block]}>
+        <Text
+          style={[styles.blockHelp, { color: palette.primaryText }]}
+          testID="venue-order-fulfilment-line"
+        >
+          {venueOrderingFulfilmentLine(config, pickup)}
+        </Text>
+        {offersPickup ? (
+          <View style={styles.pickupRow}>
+            <Text style={[styles.blockHelp, styles.pickupLabel, { color: palette.primaryText }]}>
+              I'll collect it
+            </Text>
+            <Switch
+              value={pickup}
+              onValueChange={(value: boolean) => onPickupChange?.(value)}
+              disabled={submitting}
+              accessibilityLabel="I'll collect it"
+              testID="venue-order-pickup-switch"
+            />
+          </View>
+        ) : null}
+      </View>
+
       {/* ── who this order belongs to (P-22 gate 8) ─────────────────────── */}
       <View style={[styles.card, surface.card, styles.block]}>
         <Text style={[styles.blockTitle, { color: palette.primaryText }]}>
-          {config.spotState === "ok" ? "Who's ordering?" : "Who's collecting?"}
+          {counterPickup ? "Who's collecting?" : "Who's ordering?"}
         </Text>
         <Input
           value={buyer.name}
@@ -749,6 +784,8 @@ const styles = StyleSheet.create({
   block: { gap: 10 },
   blockTitle: { fontSize: 15, lineHeight: 20, fontWeight: "800" },
   blockHelp: { fontSize: 13, lineHeight: 18 },
+  pickupRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  pickupLabel: { flex: 1, fontWeight: "700" },
   lineRow: { paddingVertical: 10, gap: 8 },
   lineTop: {
     flexDirection: "row",

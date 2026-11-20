@@ -276,6 +276,8 @@ export const BuyerVenueOrderingMenu: React.FC<
             onPartySizeChange={ordering.cart.setPartySize}
             buyer={ordering.cart.state.buyer}
             onBuyerChange={ordering.cart.patchBuyer}
+            pickup={ordering.pickup}
+            onPickupChange={ordering.setPickup}
             onSetQuantity={ordering.cart.setQuantity}
             onSetNotes={ordering.cart.setNotes}
             // issue #3380 — the country picker instead of a free-text box.

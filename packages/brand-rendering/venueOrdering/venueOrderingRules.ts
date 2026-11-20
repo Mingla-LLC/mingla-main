@@ -532,11 +532,36 @@ export function venueOrderingCanOrder(config: VenueOrderingConfig): boolean {
   return config.counterPickupEnabled && config.venueId !== null;
 }
 
-/** True when the basket will become a counter-pickup order (no spot recorded). */
+/**
+ * True when the basket will become a counter-pickup order (no spot recorded).
+ * #4490 07-D — also at a scanned spot when the venue has table service off, or
+ * when the guest chose "I'll collect it" (offered only in Both).
+ */
 export function venueOrderingIsCounterPickup(
   config: VenueOrderingConfig,
+  pickup = false,
 ): boolean {
-  return config.spotState !== "ok";
+  if (config.spotState !== "ok") return true;
+  if (config.tableServiceEnabled === false) return true;
+  return pickup && venueOrderingOffersPickup(config);
+}
+
+/** #4490 07-D — the "I'll collect it" switch: a scanned spot at a Both venue. */
+export function venueOrderingOffersPickup(config: VenueOrderingConfig): boolean {
+  return config.spotState === "ok" && config.tableServiceEnabled !== false &&
+    config.counterPickupEnabled;
+}
+
+/** #4490 07-D — the one line under the basket that says where the order goes. */
+export function venueOrderingFulfilmentLine(
+  config: VenueOrderingConfig,
+  pickup = false,
+): string {
+  if (venueOrderingIsCounterPickup(config, pickup)) {
+    return "Collect it at the counter. We'll call your name.";
+  }
+  const spot = config.spot?.label?.trim();
+  return `We'll bring it to ${spot !== undefined && spot.length > 0 ? spot : "your table"}.`;
 }
 
 // ---------------------------------------------------------------------------

@@ -92,6 +92,7 @@ import {
   type MenuTextSaveFailure,
 } from "./menuTextValidation";
 import { VenueHubEmptyState } from "./VenueHubEmptyState";
+import { OrderingModeCard } from "./OrderingModeCard";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 const STACKED_ITEM_ROW_WIDTH = 720;
@@ -1016,6 +1017,9 @@ export function VenueMenuModule({
         {visibilityCopy.intro}
       </Text>
 
+      {/* #4490 07-D — how guests get their order (table, counter or both). */}
+      {venueId !== null ? <OrderingModeCard venueId={venueId} canMutate={canMutate} /> : null}
+
       {/*
         #1789 (#1767 Phase 1) — the way into the Spots inventory. It lives here
         because the Menu module is the one command-band module every venue has,
@@ -1360,6 +1364,9 @@ export function VenueMenuModule({
             venueId={venueId ?? null}
             visible
             onClose={() => setSpotsSheetOpen(false)}
+            onOpenOrderingMode={
+              venueId !== null ? () => setSpotsSheetOpen(false) : undefined
+            }
             brandId={brandId}
             canMutate={canMutate}
             onOpenSpaces={

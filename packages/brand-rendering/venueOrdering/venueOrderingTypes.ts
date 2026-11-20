@@ -58,8 +58,18 @@ export interface VenueOrderingConfig {
   tipsEnabled: boolean;
   tipPresetsBps: number[] | null;
   counterPickupEnabled: boolean;
+  /**
+   * #4490 07-D — false: a scanned spot orders as a counter order. Absent (a
+   * config built before 07-D) means table service, exactly as before.
+   */
+  tableServiceEnabled?: boolean;
+  /** #4490 07-D — derived by the server from the two switches. */
+  orderMode?: VenueOrderingMode;
   prepTimeMinutes: number | null;
 }
+
+/** #4490 07-D — how guests get their order. */
+export type VenueOrderingMode = "table" | "counter" | "both";
 
 /**
  * One chosen option on a line. `priceDeltaCents` is a MENU FACT read off the

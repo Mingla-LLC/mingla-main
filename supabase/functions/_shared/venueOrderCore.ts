@@ -41,10 +41,56 @@ export interface OrderingSettings {
   service_charge_label: string;
   tips_enabled: boolean;
   counter_pickup_enabled: boolean;
+  /** #4490 07-D — false: a scanned spot orders as a counter order. */
+  table_service_enabled: boolean;
   staff_tabs_enabled: boolean;
 }
 
 export type ContextFailure = { code: VenueOrderErrorCode; venue?: string };
+
+/**
+ * #4490 07-D — the venue's ordering mode applied to a GUEST order.
+ *
+ * A scanned table spot becomes a counter order, placed EXACTLY as one (the
+ * spot was resolved for the venue above, then treated as absent: no spot on
+ * the session, a pickup code, a name, the counter rate scope), when:
+ *  - the venue has table service off (Collect at the counter), or
+ *  - the guest chose "I'll collect it" (`pickup: true`), allowed only in Both.
+ * A pickup request at a table-only venue is refused with the existing
+ * counter_pickup_unavailable code. Staff orders never pass through here.
+ */
+export function routeGuestOrder(
+  ctx: OrderContext,
+  pickupRequested: boolean,
+): { ok: true; context: OrderContext; routedToCounter: boolean } | {
+  ok: false;
+  code: VenueOrderErrorCode;
+} {
+  if (ctx.spotId === null) {
+    return { ok: true, context: ctx, routedToCounter: false };
+  }
+  const tableService = ctx.settings.table_service_enabled !== false;
+  const counter = ctx.settings.counter_pickup_enabled === true;
+  if (pickupRequested && !counter) {
+    return { ok: false, code: "counter_pickup_unavailable" };
+  }
+  if (tableService && !pickupRequested) {
+    return { ok: true, context: ctx, routedToCounter: false };
+  }
+  return {
+    ok: true,
+    routedToCounter: true,
+    context: {
+      ...ctx,
+      spotId: null,
+      spotLabel: null,
+      venueTableId: null,
+      stayUnitId: null,
+      zone: null,
+      servingMenuId: null,
+    },
+  };
+}
 
 /**
  * P-22 gates 1-3, fail-closed and in order.
@@ -139,7 +185,7 @@ export async function resolveOrderContext(
   const { data: settingsRow, error: settingsError } = await supabase
     .from("venue_ordering_settings")
     .select(
-      "ordering_enabled, paused_at, service_charge_bps, service_charge_label, tips_enabled, counter_pickup_enabled, staff_tabs_enabled",
+      "ordering_enabled, paused_at, service_charge_bps, service_charge_label, tips_enabled, counter_pickup_enabled, table_service_enabled, staff_tabs_enabled",
     )
     .eq("venue_id", servingVenueId)
     .maybeSingle();

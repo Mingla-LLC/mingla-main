@@ -77,6 +77,7 @@ import {
   loadVenueTimezone,
   markVenueOrderFailed,
   resolveOrderContext,
+  routeGuestOrder,
 } from "../_shared/venueOrderCore.ts";
 import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 // Issue #1791 — the T0 leg of the notification triple for the one order shape
@@ -285,7 +286,10 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   if (!resolved.ok) {
     return fail(resolved.failure.code, { venue: resolved.failure.venue });
   }
-  const ctx = resolved.context;
+  // #4490 07-D — the ordering mode: a scanned spot may become a counter order.
+  const routed = routeGuestOrder(resolved.context, body.pickup === true);
+  if (!routed.ok) return fail(routed.code);
+  const ctx = routed.context;
 
   const discountAttemptScopes = discountCode === null ? [] : await Promise.all(
     [
@@ -479,7 +483,11 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       )
       .eq("id", bodySessionId)
       .maybeSingle();
-    if (data && String(data.venue_id) === ctx.servingVenueId) {
+    if (
+      data && String(data.venue_id) === ctx.servingVenueId &&
+      // #4490 07-D — a counter order never continues a table sitting.
+      !(routed.routedToCounter && data.qr_spot_id !== null)
+    ) {
       session = data as Record<string, unknown>;
     }
   }

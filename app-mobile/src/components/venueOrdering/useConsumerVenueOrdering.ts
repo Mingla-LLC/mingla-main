@@ -43,6 +43,7 @@ import {
   serialiseVenueOrderSitting,
   useVenueOrderingCart,
   venueOrderShouldAskPartySize,
+  venueOrderingOffersPickup,
   venueOrderSittingKey,
   venueOrderingQueryKeys,
 } from "@mingla/brand-rendering/venueOrdering";
@@ -114,6 +115,9 @@ export interface ConsumerVenueOrdering {
   orderMore: () => void;
   askPartySize: boolean;
   tipRemembered: boolean;
+  /** #4490 07-D — "I'll collect it" at a scanned spot (Both only). */
+  pickup: boolean;
+  setPickup: (pickup: boolean) => void;
 }
 
 export function useConsumerVenueOrdering(
@@ -200,6 +204,9 @@ export function useConsumerVenueOrdering(
     initialBuyer: { name: sitting?.buyerName ?? "" },
   });
   const [discountCode, setDiscountCode] = useState("");
+  // #4490 07-D — sent only where the venue offers the choice (Both).
+  const [pickupChoice, setPickup] = useState(false);
+  const pickup = pickupChoice && venueOrderingOffersPickup(config);
 
   // ── the request. ONE shape, priced by the server and charged by the server.
   const request: VenueOrderRequest = useMemo(
@@ -214,8 +221,10 @@ export function useConsumerVenueOrdering(
       tipFlatCents: cart.state.tip.flatCents,
       entrySource: input.entrySource,
       discountCode: discountCode.trim().length > 0 ? discountCode.trim() : null,
+      pickup,
     }),
     [
+      pickup,
       cart.state.buyer,
       cart.state.lines,
       cart.state.partySize,
@@ -253,8 +262,10 @@ export function useConsumerVenueOrdering(
         spot: config.spotState === "ok" ? input.spotCode : null,
         venue: config.venueId,
         discountCode: discountCode.trim().toUpperCase(),
+        pickup,
       }),
     [
+      pickup,
       cart.state.lines,
       cart.state.tip,
       config.spotState,
@@ -659,5 +670,7 @@ export function useConsumerVenueOrdering(
     orderMore,
     askPartySize: venueOrderShouldAskPartySize(sitting),
     tipRemembered: sitting !== null,
+    pickup,
+    setPickup,
   };
 }

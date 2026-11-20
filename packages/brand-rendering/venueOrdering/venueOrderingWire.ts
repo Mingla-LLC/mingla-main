@@ -88,6 +88,8 @@ export interface VenueOrderRequest {
   entrySource: string | null;
   discountCode?: string | null;
   quoteDigest?: string | null;
+  /** #4490 07-D — "I'll collect it" at a scanned spot (Both only). */
+  pickup?: boolean;
 }
 
 /**
@@ -136,6 +138,7 @@ export function venueOrderCreateBody(input: {
         request.quoteDigest.length > 0
       ? { quoteDigest: request.quoteDigest }
       : {}),
+    ...(request.pickup === true ? { pickup: true } : {}),
     ...(input.idempotencyKey === undefined
       ? {}
       : { idempotencyKey: input.idempotencyKey }),
@@ -154,6 +157,8 @@ export const VENUE_ORDERING_UNAVAILABLE: VenueOrderingConfig = {
   tipsEnabled: false,
   tipPresetsBps: null,
   counterPickupEnabled: false,
+  tableServiceEnabled: true,
+  orderMode: "table",
   prepTimeMinutes: null,
 };
 
@@ -193,6 +198,11 @@ export function parseVenueOrderingConfig(data: unknown): VenueOrderingConfig {
     tipsEnabled: row.tips_enabled === true,
     tipPresetsBps: presets !== null && presets.length > 0 ? presets : null,
     counterPickupEnabled: row.counter_pickup_enabled === true,
+    // #4490 07-D — absent (an older server) means table service, as before.
+    tableServiceEnabled: row.table_service_enabled !== false,
+    orderMode: row.order_mode === "counter" || row.order_mode === "both"
+      ? row.order_mode
+      : "table",
     prepTimeMinutes: row.prep_time_minutes === null ||
         row.prep_time_minutes === undefined
       ? null

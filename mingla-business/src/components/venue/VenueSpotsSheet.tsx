@@ -65,6 +65,8 @@ export interface VenueSpotsSheetProps {
   venueId?: string | null;
   /** #4490 fix 2 (N80): the empty state's way forward (Spaces, where tables are added). */
   onOpenSpaces?: () => void;
+  /** #4490 07-D — back to Menu's "How guests get their order" card. */
+  onOpenOrderingMode?: () => void;
   testID?: string;
 }
 
@@ -75,6 +77,7 @@ export function VenueSpotsSheet({
   canMutate,
   venueId = null,
   onOpenSpaces,
+  onOpenOrderingMode,
   testID,
 }: VenueSpotsSheetProps): React.ReactElement {
   const spotsQuery = useQrSpots(visible ? brandId : null);
@@ -192,6 +195,15 @@ export function VenueSpotsSheet({
           One list for the whole brand. Tables and rooms appear here on their
           own — print the codes and put them where guests sit.
         </Text>
+        {onOpenOrderingMode !== undefined ? (
+          <Button
+            label="How guests get their order"
+            variant="secondary"
+            size="sm"
+            onPress={onOpenOrderingMode}
+            testID="venue-spots-ordering-mode"
+          />
+        ) : null}
 
         {actionError !== null ? (
           <Text style={styles.errorNote} testID="venue-spots-error">

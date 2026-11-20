@@ -386,7 +386,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 fix round 3: an event takes its space, combinations, calendar part in use; re-sealed.
 // #4490 merge of main (#3645, #4238, #4226, #4453 rows): kept main's rows and skip lines beside the #4490 rows in filename order; re-sealed.
 // issue #4490 gap list 07-A: party type optional at a venue; re-sealed.
-export const BOOTSTRAP_SHA256 = "7f7e07650f7dfaf8ec19b57e88bd164e13d9ef96147cd58161051688bc9d88a4";
+// issue #4490 gap list 07-D: menu ordering mode; re-sealed.
+export const BOOTSTRAP_SHA256 = "9976d59b8ebe7811de776c73b4f8305c548aff6b29b6356177fa59dbdca28d0d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
