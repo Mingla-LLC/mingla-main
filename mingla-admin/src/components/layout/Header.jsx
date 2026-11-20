@@ -89,7 +89,7 @@ export function Header({ activeTab, title, collapsed, onToggleCollapsed, onMobil
         </button>
 
         {/* #4255 W4 (D11): Messages, between Search and Live. */}
-        <MessagesButton />
+        <MessagesButton active={activeTab === "messages"} />
 
         {/* Live indicator */}
         <div className="flex items-center gap-1.5 rounded-full bg-[var(--color-success-50)] px-3 py-1 text-xs font-medium text-[var(--color-success-700)]">
