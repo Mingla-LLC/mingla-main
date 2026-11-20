@@ -25,7 +25,7 @@ import { durations, motion, radius, size, space, type } from "../../constants/de
 import { color, themedStyles } from "../../theme/surfaceTokens";
 import { BUYER_CONNECTION_COPY as COPY } from "./buyerConnectionCopy";
 
-import type { BuyerConnectionNoticeViewProps } from "./BuyerConnectionNotice";
+import type { BuyerConnectionNoticeViewProps } from "./buyerConnectionNoticeTypes";
 
 const WIDE_MIN = 768;
 

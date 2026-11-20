@@ -24,28 +24,17 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { color, themedStyles } from "../../theme/surfaceTokens";
 import { BUYER_CONNECTION_COPY as COPY } from "./buyerConnectionCopy";
 
-export type BuyerConnectionNoticeVariant = "connection" | "server" | "accessCheck";
-export type BuyerConnectionNoticeLayout = "page" | "checkout" | "inline";
+import type {
+  BuyerConnectionNoticeProps,
+  BuyerConnectionNoticeViewProps,
+} from "./buyerConnectionNoticeTypes";
 
-export interface BuyerConnectionNoticeProps {
-  variant: BuyerConnectionNoticeVariant;
-  onRetry: () => Promise<unknown> | void;
-  onBack?: () => void;
-  layout?: BuyerConnectionNoticeLayout;
-  testID?: string;
-  /** Defaults to `${testID}-retry` (the #2101 notice keeps its own id). */
-  retryTestID?: string;
-}
-
-/** What either layer draws: the shell's copy and retry state. */
-export interface BuyerConnectionNoticeViewProps
-  extends Omit<BuyerConnectionNoticeProps, "onRetry"> {
-  title: string;
-  body: string;
-  retrying: boolean;
-  fails: number;
-  onTryAgain: () => void;
-}
+export type {
+  BuyerConnectionNoticeLayout,
+  BuyerConnectionNoticeProps,
+  BuyerConnectionNoticeVariant,
+  BuyerConnectionNoticeViewProps,
+} from "./buyerConnectionNoticeTypes";
 
 /** Retrying is held at least this long so a fast failure still reads as one. */
 export const MIN_RETRY_MS = 600;
