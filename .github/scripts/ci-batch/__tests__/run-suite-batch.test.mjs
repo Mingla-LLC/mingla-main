@@ -347,6 +347,11 @@ test("#4420 heap raise: only the pinned jest commands get the one NODE_OPTIONS l
   assert.equal(isHeapRaisedStep({ cwd: ".", run: "node .github/scripts/strict-grep/x.mjs" }), false);
   assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "set +e\nnpx tsc --noEmit --pretty false" }), true);
   assert.equal(isHeapRaisedStep({ cwd: "mingla-admin", run: "npx tsc --noEmit" }), false);
+  // [#3643] #1857's Edge-contracts step: subshell cd and `npx --no-install jest`.
+  assert.equal(isHeapRaisedStep({ cwd: ".", run: "deno test a.ts\n(cd mingla-business && npx --no-install jest a.test.ts --runInBand)\ndeno test b.ts\n" }), true);
+  assert.equal(isHeapRaisedStep({ cwd: "mingla-business", run: "npx --no-install jest a" }), true);
+  assert.equal(isHeapRaisedStep({ cwd: ".", run: "(cd mingla-admin && npx --no-install jest a)" }), false);
+  assert.equal(isHeapRaisedStep({ cwd: ".", run: "(cd mingla-business && npx --no-install playwright test)" }), false);
   const home2 = fs.mkdtempSync(path.join(os.tmpdir(), "heap-raise-"));
   try {
     const env = minimalChildEnvironment({ NODE_PATH: "./node_modules" }, home2, { allowNodePath: true, heapRaised: true });
@@ -355,4 +360,15 @@ test("#4420 heap raise: only the pinned jest commands get the one NODE_OPTIONS l
   } finally {
     fs.rmSync(home2, { recursive: true, force: true });
   }
+});
+
+test("[#3643] the reviewed heap raise reaches #1857's Edge-contracts step and #1902's business jest child leaves", async () => {
+  const { isHeapRaisedStep } = await import("../validate-manifest-v2.mjs");
+  const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), ".github/ci-batch/MANIFEST.json"), "utf8"));
+  const steps = new Map(manifest.suites.flatMap((suite) => suite.steps || []).map((step) => [step.commandId, step]));
+  assert.equal(isHeapRaisedStep(steps.get("assert:issue-1857-phone-country-authority-tests:03")), true);
+  const lifecycle = steps.get("assert:issue-1902-public-event-lifecycle-tests:07");
+  assert.equal(isHeapRaisedStep(lifecycle), false, "a step with declared children is never raised as a whole");
+  const byId = new Map(lifecycle.children.map((child) => [child.id.split(":").pop(), isHeapRaisedStep(child)]));
+  assert.deepEqual(Object.fromEntries(byId), { offering: false, brand: true, business: true, consumer: false });
 });
