@@ -5,8 +5,8 @@
  *   - `brand` — the WorkspaceBrandSwitcher (#4453): brand mark, name and
  *               chevron for the brand of the screen you are on (the route's
  *               brand wins over the current-brand store). `onBrandTap` is
- *               the host's own full switcher sheet: phones open it, the
- *               desktop popover offers it as "Manage brands". Without it the
+ *               the host's own full switcher sheet: the brand menu offers it
+ *               as "Manage brands" (phones and desktop alike). Without it the
  *               switcher opens its own menu. MinglaMark logo intentionally
  *               omitted per ORCH-BIZ-0a-D1.
  *   - `back`  — `chevL` IconChrome + optional title.
@@ -35,6 +35,7 @@ import { useBusinessNotificationsInbox } from "../../hooks/useBusinessNotificati
 import { useBrandGroups } from "../../hooks/useBrandGroups";
 import { useBrandEnquiries } from "../../hooks/useBrandEnquiries";
 import { messagesBadgeCount } from "../../utils/brandEnquiryWaiting";
+import type { Brand } from "../../types/brand";
 
 import { Avatar } from "./Avatar";
 import { BrandChip } from "./BrandChip";
@@ -89,11 +90,13 @@ export interface TopBarProps {
   unreadCount?: number;
   /**
    * The host's own full brand switcher sheet (create, continue setup, delete).
-   * Phones open it from the brand chip; on desktop the chip opens the
-   * WorkspaceBrandSwitcher popover, which offers it as "Manage brands".
+   * The chip opens the WorkspaceBrandSwitcher menu on every width; the menu
+   * offers this sheet as "Manage brands".
    * Undefined: the chip opens the switcher's own menu (#4453).
    */
   onBrandTap?: () => void;
+  /** Home: opens the discard flow for a draft brand from the brand menu. */
+  onDiscardDraft?: (brand: Brand) => void;
   /**
    * issue #3345 — the host knows the active brand is still being resolved
    * (Home passes its recovery state). The top bar also derives the id-selected
@@ -259,6 +262,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   extraRightSlot,
   unreadCount,
   onBrandTap,
+  onDiscardDraft,
   brandLoading = false,
   showProfileButton,
   titleAlign,
@@ -296,7 +300,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         // are on and opens the same screen for the brand you pick.
         // Without the shell above (an isolated render) it is the plain chip.
         return WorkspaceBrandSwitcher !== undefined ? (
-          <WorkspaceBrandSwitcher onOpenSheet={onBrandTap} brandLoading={brandLoading} />
+          <WorkspaceBrandSwitcher onOpenSheet={onBrandTap} onDiscardDraft={onDiscardDraft} brandLoading={brandLoading} />
         ) : (
           <BrandChip onPress={onBrandTap} brandLoading={brandLoading} />
         );

@@ -973,6 +973,7 @@ export default function HomeTab(): React.ReactElement {
         <TopBar
           leftKind="brand"
           onBrandTap={handleOpenSwitcher}
+          onDiscardDraft={handleRequestDeleteBrand}
           brandLoading={brandPending}
           extraRightSlot={
             // #4420 B5 — phone: Create is the centre BottomNav button, so the

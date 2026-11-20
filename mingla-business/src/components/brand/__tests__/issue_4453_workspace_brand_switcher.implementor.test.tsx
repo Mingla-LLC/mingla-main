@@ -463,13 +463,17 @@ describe("#4453 opening the switcher", () => {
     await TestRenderer.act(async () => mounted.unmount());
   });
 
-  test("phone, in the app top bar: the host's own full switcher sheet opens", async () => {
+  // #4453 one brand menu everywhere: the chip opens the compact menu on a
+  // phone too; the host's sheet is the menu's "Manage brands".
+  test("phone, in the app top bar: the chip opens the menu; the host's sheet is Manage brands", async () => {
     mockWide = false;
     const onOpenSheet = jest.fn();
     const tree = await mount({ onOpenSheet });
-    await press(tree, "workspace-brand-switcher");
+    await openMenu(tree);
+    expect(onOpenSheet).not.toHaveBeenCalled();
+    expect(hosts(tree, "workspace-brand-menu").length).toBeGreaterThan(0);
+    await press(tree, "workspace-brand-manage");
     expect(onOpenSheet).toHaveBeenCalledTimes(1);
-    expect(hosts(tree, "workspace-brand-menu")).toHaveLength(0);
     await TestRenderer.act(async () => tree.unmount());
   });
 
@@ -501,7 +505,7 @@ describe("#4453 opening the switcher", () => {
     await TestRenderer.act(async () => tree.unmount());
   });
 
-  test("phone: a host's own onManageBrands wins over the shell's; a top-bar sheet still opens directly", async () => {
+  test("phone: a host's own onManageBrands wins over the shell's; a top-bar sheet is Manage brands", async () => {
     mockWide = false;
     const manageBrands = jest.fn();
     const own = jest.fn();
@@ -514,11 +518,12 @@ describe("#4453 opening the switcher", () => {
 
     const onOpenSheet = jest.fn();
     const bar = await mount({ onOpenSheet }, "/home", {}, { manageBrands });
-    await TestRenderer.act(async () => {
-      (pressable(bar, "workspace-brand-switcher").props.onPress as () => void)();
-    });
+    await openMenu(bar);
+    expect(onOpenSheet).not.toHaveBeenCalled();
+    await press(bar, "workspace-brand-manage");
+    // The top bar's own sheet wins over the shell's.
     expect(onOpenSheet).toHaveBeenCalledTimes(1);
-    expect(hosts(bar, "workspace-brand-menu")).toHaveLength(0);
+    expect(manageBrands).not.toHaveBeenCalled();
     await TestRenderer.act(async () => bar.unmount());
   });
 
@@ -654,7 +659,13 @@ describe("#4453 search and keyboard", () => {
         .findAll((n) => typeof n.type === "string" && n.props.style !== undefined)
         .filter((n) => {
           const flat = StyleSheet.flatten(n.props.style as never) as Record<string, unknown>;
-          return flat.minHeight !== undefined && flat.backgroundColor !== undefined && flat.flexDirection === "row";
+          // Rows highlight with a fill; the footer buttons (Create is always filled) dim.
+          const footer = typeof n.props.testID === "string" && /^workspace-brand-(create|manage)$/.test(n.props.testID);
+          return (
+            flat.minHeight !== undefined &&
+            flat.flexDirection === "row" &&
+            (footer ? flat.opacity !== undefined : flat.backgroundColor !== undefined)
+          );
         })
         .map((n) => textOf(n));
     // Opens on the brand you are in (Gameland): it is both current and active.
