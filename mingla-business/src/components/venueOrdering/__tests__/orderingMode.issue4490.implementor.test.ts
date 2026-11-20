@@ -185,3 +185,63 @@ describe("#4490 07-D ordering mode", () => {
     expect(venueOrderModeErrorCopy(new Error("not_authorized"))).not.toContain("not_authorized");
   });
 });
+
+// N145 (#4490): a counter order from a scanned table never overwrites the
+// table's sitting. Fails-on-revert: keying every order by the spot (the old
+// rule) fails both cases.
+import { venueOrderCounterStatusPath, venueOrderSittingKeyForOrder } from "@mingla/brand-rendering/venueOrdering/venueOrderingSitting";
+describe("N145 sitting key for an order", () => {
+  it("a pickup / counter order from a table is a counter (venue) sitting", () => {
+    expect(venueOrderSittingKeyForOrder({ venueId: "v1", spotCode: "sagwddej7e", toCounter: true })).toBe(
+      "mingla.venueOrderSitting.venue.v1",
+    );
+  });
+  it("a table order stays the table's sitting", () => {
+    expect(venueOrderSittingKeyForOrder({ venueId: "v1", spotCode: "sagwddej7e", toCounter: false })).toBe(
+      "mingla.venueOrderSitting.spot.sagwddej7e",
+    );
+  });
+  it("the table page links to the pickup order's own status page", () => {
+    const counter = {
+      sessionId: "s1", orderId: "o-1", buyerStatusToken: "t/1", guestCancelToken: null,
+      tip: null, partySizeClaimed: null, buyerName: "Tayo", expiresAt: Date.now() + 1000,
+    } as unknown as Parameters<typeof venueOrderCounterStatusPath>[0];
+    expect(venueOrderCounterStatusPath(counter)).toBe("/o/venue/o-1?bst=t%2F1");
+    expect(venueOrderCounterStatusPath(null)).toBeNull();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    const slots = fs.readFileSync(require.resolve("../BuyerVenueOrderingSlots.tsx"), "utf8");
+    expect(slots).toContain("Your pickup order · See status");
+  });
+  it("both guest hooks pass the counter routing into the sitting write", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    for (const f of ["../useBuyerVenueOrdering.ts", "../../../../../app-mobile/src/components/venueOrdering/useConsumerVenueOrdering.ts"]) {
+      const src = fs.readFileSync(require.resolve(f), "utf8");
+      expect(src).toMatch(/\}, config\.spotState === "ok" && venueOrderingIsCounterPickup\(config, pickup\)\);/);
+    }
+  });
+});
+
+// N143 / N144 (#4490): the order page backs off and stops; an unpaid order
+// offers no refund and the venue page offers a real Try again.
+// Fails-on-revert: a fixed 5 s interval fails P-1; the old label fails P-3.
+import { venueOrderStatusPollDelay } from "@mingla/brand-rendering/venueOrdering/venueOrderingPoll";
+describe("N143 / N144 order page after payment", () => {
+  it("P-1 unpaid: 5 s, 10 s, 20 s, then stop; declined stops at once", () => {
+    const pending = { paymentStatus: "pending", paymentCheck: "in_progress" as const };
+    expect([0, 1, 2, 3].map((n) => venueOrderStatusPollDelay(pending, n, 5000))).toEqual([5000, 10000, 20000, null]);
+    expect(venueOrderStatusPollDelay({ paymentStatus: "pending", paymentCheck: "not_paid" }, 0, 5000)).toBeNull();
+  });
+  it("P-2 a paid order keeps following the kitchen at the steady interval", () => {
+    expect(venueOrderStatusPollDelay({ paymentStatus: "paid", paymentCheck: null }, 7, 5000)).toBe(5000);
+  });
+  it("P-3 unpaid orders say Cancel order, never full refund; the venue page wires Try again", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    const pane = fs.readFileSync(require.resolve("../../../../../packages/brand-rendering/venueOrdering/VenueOrderStatusPane.tsx"), "utf8");
+    expect(pane).toMatch(/awaitingPayment \? "Cancel order" : "Cancel · full refund"/);
+    const slots = fs.readFileSync(require.resolve("../BuyerVenueOrderingSlots.tsx"), "utf8");
+    expect(slots).toMatch(/onRetryPayment=\{ordering\.retryPayment\}/);
+  });
+});

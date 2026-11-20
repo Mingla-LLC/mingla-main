@@ -15,7 +15,7 @@
 
 import { VENUE_ORDER_COUNTER_TITLE } from "@mingla/brand-rendering/venueOrdering/VenueOrderingStickyBar";
 import React from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -133,8 +133,48 @@ export const BuyerVenueOrderingNotice: React.FC<
       ? `Ordering for ${ordering.config.spot.label}`
       : // #4490 fix 2 (N91): the same words as the order bar with no table.
         VENUE_ORDER_COUNTER_TITLE;
-  return <VenueOrderingSpotChip label={label} palette={palette} />;
+  const counterPath = ordering.counterOrderPath ?? null;
+  if (counterPath === null) {
+    return <VenueOrderingSpotChip label={label} palette={palette} />;
+  }
+  // N145 (#4490): a pickup order placed from this table keeps its own status
+  // page; the table stays orderable and links to it.
+  return (
+    <View style={counterStyles.row}>
+      <VenueOrderingSpotChip label={label} palette={palette} />
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="See your pickup order"
+        onPress={() => openCounterOrder(counterPath)}
+        hitSlop={8}
+      >
+        <Text style={[counterStyles.link, { color: palette.primaryText }]}>
+          Your pickup order · See status
+        </Text>
+      </Pressable>
+    </View>
+  );
 };
+
+function openCounterOrder(path: string): void {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.location.assign(path);
+    return;
+  }
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { router } = require("expo-router") as typeof import("expo-router");
+  router.push(path as never);
+}
+
+const counterStyles = StyleSheet.create({
+  row: { gap: 8 },
+  link: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
+});
 
 /**
  * issue #4420 — the order review's frame: the app's bottom sheet on phone (a
@@ -227,6 +267,8 @@ export const BuyerVenueOrderingMenu: React.FC<
         onCancel={ordering.cancelOrder}
         onRequestRefund={ordering.requestRefund}
         onOrderMore={ordering.orderMore}
+        onRetryPayment={ordering.retryPayment}
+        retryPaymentPending={ordering.retryPending}
       />
     );
   }

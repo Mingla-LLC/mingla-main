@@ -93,6 +93,7 @@ export {
   venueOrderShouldAskPartySize,
   venueOrderSittingKey,
   venueOrderSittingKeyForOrder,
+  venueOrderCounterStatusPath,
   venueOrderTipAfterHydration,
 } from "./venueOrderingSitting";
 

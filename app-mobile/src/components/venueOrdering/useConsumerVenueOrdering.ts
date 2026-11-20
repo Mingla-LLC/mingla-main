@@ -44,6 +44,8 @@ import {
   useVenueOrderingCart,
   venueOrderShouldAskPartySize,
   venueOrderingOffersPickup,
+  venueOrderingIsCounterPickup,
+  venueOrderSittingKeyForOrder,
   venueOrderSubmitFailure,
   VENUE_ORDER_REVIEW_MODE_POLL_MS,
   venueOrderSittingKey,
@@ -188,16 +190,21 @@ export function useConsumerVenueOrdering(
   }, [sittingKey]);
 
   const persistSitting = useCallback(
-    (next: Omit<VenueOrderSitting, "expiresAt">): void => {
+    (next: Omit<VenueOrderSitting, "expiresAt">, toCounter = false): void => {
       const now = Date.now();
-      setSitting({ ...next, expiresAt: now + 4 * 60 * 60 * 1000 });
-      if (sittingKey === null) return;
+      // N145 (#4490): a counter order from a scanned table is remembered as a
+      // counter sitting (venue key), never over the table's own sitting.
+      const key = toCounter
+        ? venueOrderSittingKeyForOrder({ venueId: config.venueId, spotCode: input.spotCode, toCounter })
+        : sittingKey;
+      if (!toCounter) setSitting({ ...next, expiresAt: now + 4 * 60 * 60 * 1000 });
+      if (key === null) return;
       void AsyncStorage.setItem(
-        sittingKey,
+        key,
         serialiseVenueOrderSitting(next, now),
       ).catch(() => undefined);
     },
-    [sittingKey],
+    [config.venueId, input.spotCode, sittingKey],
   );
 
   const cart = useVenueOrderingCart({
@@ -461,7 +468,7 @@ export function useConsumerVenueOrdering(
             tip: cart.state.tip,
             partySizeClaimed: cart.state.partySize,
             buyerName: cart.state.buyer.name.trim(),
-          });
+          }, config.spotState === "ok" && venueOrderingIsCounterPickup(config, pickup));
         }
         const statusToken =
           created.kind !== "free_completed" && created.resumed
@@ -593,6 +600,8 @@ export function useConsumerVenueOrdering(
     idempotencyKeyFor,
     initPaymentSheet,
     isPaymentSheetSupported,
+    config,
+    pickup,
     persistSitting,
     pollUntilPaid,
     presentPaymentSheet,
