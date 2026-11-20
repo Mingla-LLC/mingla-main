@@ -85,7 +85,7 @@ export function TodayMoneyTiles({
             <PickerSheetHead title={todayMoneyCopy(open, isToday).label} onClose={() => setOpen(null)} />
             <Text style={styles.sub}>{dateLine}</Text>
             <View style={styles.card}>
-              {todayMoneyRows(parts).map((row) => (
+              {todayMoneyRows(parts, open).map((row) => (
                 <View key={row.key} style={styles.row}>
                   <Text style={styles.rowLabel}>{row.label}</Text>
                   <Text style={styles.rowValue}>

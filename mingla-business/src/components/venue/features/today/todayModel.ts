@@ -88,14 +88,17 @@ export function todayMoneyCopy(tile: TodayMoneyTile, isToday: boolean): { label:
 /** The detail sheet's lines, in the approved order; refunds read as minus. */
 export function todayMoneyRows(
   parts: VenueDayMoneyParts,
+  tile: TodayMoneyTile = "paidIn",
 ): Array<{ key: keyof VenueDayMoneyParts; label: string; minor: number; negative: boolean }> {
-  return [
+  const rows: Array<{ key: keyof VenueDayMoneyParts; label: string; minor: number; negative: boolean }> = [
     { key: "online", label: "Online", minor: parts.online, negative: false },
     { key: "atVenue", label: "At the venue", minor: parts.atVenue, negative: false },
     { key: "members", label: "Members", minor: parts.members, negative: false },
     { key: "tableDeposits", label: "Table deposits", minor: parts.tableDeposits, negative: false },
     { key: "refunded", label: "Refunded", minor: parts.refunded, negative: true },
   ];
+  // N137: memberships are never part of a booking dated that day.
+  return tile === "forToday" ? rows.filter((r) => r.key !== "members") : rows;
 }
 
 // #4490 P3 — balances still to collect on a day (group package deposits).

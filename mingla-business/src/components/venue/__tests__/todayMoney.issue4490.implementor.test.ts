@@ -58,6 +58,11 @@ describe("#4490 07-E today's money", () => {
     expect(rows.find((r) => r.key === "refunded")?.negative).toBe(true);
   });
 
+  it("N137: For today's bookings lists no Members line (always 0 there)", () => {
+    expect(todayMoneyRows(serverMoney.forToday, "forToday").map((r) => r.key)).toEqual(["online", "atVenue", "tableDeposits", "refunded"]);
+    expect(todayMoneyRows(serverMoney.paidIn, "paidIn").map((r) => r.key)).toContain("members");
+  });
+
   it("a cancelled gate sale reads Gate sale · cancelled, not Bought online", () => {
     const b = (over: Partial<VenueDayBooking>): VenueDayBooking => ({
       groupId: "g", reference: "VB-1", state: "confirmed", guestName: "Ada", guests: 1, totalMinor: 500000,
