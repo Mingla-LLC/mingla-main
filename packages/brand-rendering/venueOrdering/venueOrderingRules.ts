@@ -608,6 +608,14 @@ export function venueOrderBuyerFailure(
   if (!EMAIL_RE.test(buyer.email.trim())) {
     return { field: "email", message: "That email doesn't look right." };
   }
+  // N139 (#4490): reserved test domains are refused by the payment provider;
+  // the server says the same (buyer_email_undeliverable).
+  if (/(^|\.)(test|invalid|example|localhost|local)$/.test(buyer.email.trim().toLowerCase().split("@")[1] ?? "")) {
+    return {
+      field: "email",
+      message: "Use an email address you can get receipts at. Addresses ending in .test, .invalid, .example or .localhost can't be used.",
+    };
+  }
   // Digits only, because the country code is chosen separately and the server
   // normalises to E.164 and is the authority (`normalizePhoneE164`). Seven is
   // the shortest national number in use anywhere.

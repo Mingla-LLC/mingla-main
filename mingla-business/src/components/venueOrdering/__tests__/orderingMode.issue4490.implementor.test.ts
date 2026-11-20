@@ -21,6 +21,7 @@ import {
   venueOrderingOffersPickup,
   venueOrderingReviewConfig,
   venueOrderSubmitFailure,
+  venueOrderBuyerFailure,
   type VenueOrderingConfig,
 } from "@mingla/brand-rendering/venueOrdering";
 import { venueOrderModeOf, venueOrderModeErrorCopy, type VenueOrderingSettings } from "../../../hooks/useVenueOrderingSettings";
@@ -130,6 +131,13 @@ describe("#4490 07-D ordering mode", () => {
     }
     const pane = fs.readFileSync(require.resolve("../../../../../packages/brand-rendering/venueOrdering/VenueOrderReviewPane.tsx"), "utf8");
     expect(pane).toMatch(/previewStatus === "ready" \? venueOrderingReviewConfig\(config, preview\) : config/);
+  });
+
+  it("N139: a reserved test email is refused before Pay, in words", () => {
+    const b = (email: string) => venueOrderBuyerFailure({ name: "Ada", email, phone: "08030000000" });
+    expect(b("bola@example.test")?.message).toMatch(/can get receipts at/);
+    expect(b("a@x.invalid")?.field).toBe("email");
+    expect(b("tester-4490@example.com")).toBeNull();
   });
 
   it("no scanned spot stays a counter order", () => {

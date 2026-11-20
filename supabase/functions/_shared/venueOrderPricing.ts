@@ -72,6 +72,13 @@ export const VENUE_ORDER_ERRORS = {
     guest: "That email doesn't look right.",
     staff: "That email doesn't look right.",
   },
+  // N139 (#4490): an address the payment provider will refuse (a reserved
+  // test domain), or one the provider did refuse. Said in words, never raw.
+  buyer_email_undeliverable: {
+    status: 400,
+    guest: "Use an email address you can get receipts at. Addresses ending in .test, .invalid, .example or .localhost can't be used.",
+    staff: "Use an email address the guest can get receipts at.",
+  },
   buyer_phone_required: {
     status: 400,
     guest: "We need a phone number to text you when it's ready.",
@@ -850,4 +857,19 @@ function hhmmToMinutes(value: string): number | null {
     return null;
   }
   return h * 60 + m;
+}
+
+/**
+ * N139 (#4490) — reserved domains no payment provider delivers to (RFC 2606 /
+ * 6761). Paystack refuses them with a 400, so they are refused before any
+ * payment call, in words the guest can act on.
+ */
+export function venueOrderEmailUndeliverable(email: string): boolean {
+  const domain = email.trim().toLowerCase().split("@")[1] ?? "";
+  return /(^|\.)(test|invalid|example|localhost|local)$/.test(domain);
+}
+
+/** N139 — a provider refusal that is about the email address. */
+export function paystackRefusedEmail(message: string): boolean {
+  return /email/i.test(message);
 }

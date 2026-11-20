@@ -57,6 +57,10 @@ import {
   resolveReferrerFromSupabase,
 } from "../_shared/attribution.ts";
 import {
+  paystackRefusedEmail,
+  venueOrderEmailUndeliverable,
+} from "../_shared/venueOrderPricing.ts";
+import {
   applyVenueDiscountQuote,
   computeVenueOrderMoney,
   priceCart,
@@ -645,6 +649,10 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
     return fail("buyer_email_invalid");
   }
+  // N139: a reserved test domain is refused by the provider; say so first.
+  if (movesMoney && venueOrderEmailUndeliverable(buyerEmail)) {
+    return fail("buyer_email_undeliverable");
+  }
   if (buyerPhoneE164 === null) {
     return buyerPhone.message === null
       ? fail("buyer_phone_required")
@@ -1097,12 +1105,14 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         pricingBreakdown,
       });
     } catch (err) {
-      await markVenueOrderFailed(
-        supabase,
-        orderId,
-        String((err as Error)?.message ?? err),
+      const message = String((err as Error)?.message ?? err);
+      await markVenueOrderFailed(supabase, orderId, message);
+      // N139: a refused email gets words the guest can act on.
+      return fail(
+        paystackRefusedEmail(message)
+          ? "buyer_email_undeliverable"
+          : "payment_intent_create_failed",
       );
-      return fail("payment_intent_create_failed");
     }
   }
 
