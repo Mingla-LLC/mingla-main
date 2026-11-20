@@ -39,7 +39,11 @@ function deps(opts: {
       log: () => undefined,
       ipSalt: () => Promise.resolve("salt"),
       checkout: {
-        checkoutForm(eventId: string, userId: string | null, hash: string | null) {
+        checkoutForm(
+          eventId: string,
+          userId: string | null,
+          hash: string | null,
+        ) {
           calls.push([eventId, userId, hash]);
           return Promise.resolve(
             opts.answer ?? {
@@ -68,20 +72,32 @@ const post = (body: unknown, bearer?: string) =>
 Deno.test("#4514 W5 fix 1 checkout_form: the signed-in buyer and the hashed link reach SQL", async () => {
   const f = deps({ user: USER });
   const res = await handleBrandFormSubmit(
-    post({ op: "checkout_form", eventId: EVENT, ticketLinkToken: LINK }, "jwt-1"),
+    post(
+      { op: "checkout_form", eventId: EVENT, ticketLinkToken: LINK },
+      "jwt-1",
+    ),
     f.deps,
   );
   assertEquals(res.status, 200);
   const body = await res.json();
-  assertEquals(body, { ok: true, form: { active: true, mode: "required_step", formId: "f" } });
+  assertEquals(body, {
+    ok: true,
+    form: { active: true, mode: "required_step", formId: "f" },
+  });
   assertEquals(f.bearers, ["jwt-1"]);
   assertEquals(f.calls, [[EVENT, USER, `hmac(${LINK})`]]);
-  assert(!JSON.stringify(f.calls).includes(`"${LINK}"`), "the raw link never reaches SQL");
+  assert(
+    !JSON.stringify(f.calls).includes(`"${LINK}"`),
+    "the raw link never reaches SQL",
+  );
 });
 
 Deno.test("#4514 W5 fix 1 checkout_form: an anonymous buyer with no link sends nulls", async () => {
   const f = deps({});
-  const res = await handleBrandFormSubmit(post({ op: "checkout_form", eventId: EVENT }), f.deps);
+  const res = await handleBrandFormSubmit(
+    post({ op: "checkout_form", eventId: EVENT }),
+    f.deps,
+  );
   assertEquals(res.status, 200);
   assertEquals(f.calls, [[EVENT, null, null]]);
 });
@@ -104,7 +120,10 @@ Deno.test("#4514 W5 fix 1 checkout_form: malformed bodies are 400 and reach no d
 
 Deno.test("#4514 W5 fix 1 checkout_form: a database error is a 500 the step can retry", async () => {
   const f = deps({ answer: { data: null, error: { message: "boom" } } });
-  const res = await handleBrandFormSubmit(post({ op: "checkout_form", eventId: EVENT }), f.deps);
+  const res = await handleBrandFormSubmit(
+    post({ op: "checkout_form", eventId: EVENT }),
+    f.deps,
+  );
   assertEquals(res.status, 500);
   assertEquals((await res.json()).error, "server_error");
 });

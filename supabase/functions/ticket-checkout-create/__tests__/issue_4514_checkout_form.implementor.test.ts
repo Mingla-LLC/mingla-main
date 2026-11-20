@@ -589,28 +589,39 @@ Deno.test("#4514 W5 fix 3: only PGRST202 on brand_form_checkout_check itself fai
   assert(
     !isCheckFunctionMissing({
       code: "42883",
-      message: "function public.brand_form_validate_answers(uuid, jsonb) does not exist",
+      message:
+        "function public.brand_form_validate_answers(uuid, jsonb) does not exist",
     }),
     "a missing INNER function must not fail open",
   );
   assert(
     !isCheckFunctionMissing({
       code: "PGRST202",
-      message: "Could not find the function public.brand_form_checkout_stash(...) in the schema cache",
+      message:
+        "Could not find the function public.brand_form_checkout_stash(...) in the schema cache",
     }),
     "a stale cache for another function must not fail open",
   );
-  assert(!isCheckFunctionMissing({ code: null, message: "brand_form_checkout_check timeout" }));
+  assert(
+    !isCheckFunctionMissing({
+      code: null,
+      message: "brand_form_checkout_check timeout",
+    }),
+  );
 });
 
 Deno.test("#4514 W5 fix 3: the fail-open raises an ops alert without buyer data", () => {
   const captured: Array<{ error: unknown; ctx: Record<string, unknown> }> = [];
   reportBrandFormCheckFailOpen(
     { code: "PGRST202", message: "x" },
-    (error, ctx) => captured.push({ error, ctx: ctx as Record<string, unknown> }),
+    (error, ctx) =>
+      captured.push({ error, ctx: ctx as Record<string, unknown> }),
   );
   assertEquals(captured.length, 1);
-  assertEquals((captured[0].error as Error).message, "brand_form_checkout_check_missing");
+  assertEquals(
+    (captured[0].error as Error).message,
+    "brand_form_checkout_check_missing",
+  );
   assertEquals(captured[0].ctx.fn, "ticket-checkout-create");
   assertEquals(
     (captured[0].ctx.tags as Record<string, string>).alert,
@@ -622,21 +633,32 @@ Deno.test("#4514 W5 fix 3: the check missing from the schema cache completes the
   const db = new FakeCheckoutDb();
   db.checkError = {
     code: "PGRST202",
-    message: "Could not find the function public.brand_form_checkout_check in the schema cache",
+    message:
+      "Could not find the function public.brand_form_checkout_check in the schema cache",
   };
-  const { status, body } = await run(db, { brandFormStep: 1, brandForm: ANSWERS });
+  const { status, body } = await run(db, {
+    brandFormStep: 1,
+    brandForm: ANSWERS,
+  });
   assertEquals(status, 200);
   assertEquals(body.kind, "free_completed");
-  assert(!has(db, "rpc:brand_form_checkout_stash"), "no stash after a fail-open");
+  assert(
+    !has(db, "rpc:brand_form_checkout_stash"),
+    "no stash after a fail-open",
+  );
 });
 
 Deno.test("#4514 W5 fix 3: a missing inner function (42883) is the retryable refusal, before any session", async () => {
   const db = new FakeCheckoutDb();
   db.checkError = {
     code: "42883",
-    message: "function public.brand_form_validate_answers(uuid, jsonb) does not exist",
+    message:
+      "function public.brand_form_validate_answers(uuid, jsonb) does not exist",
   };
-  const { status, body } = await run(db, { brandFormStep: 1, brandForm: ANSWERS });
+  const { status, body } = await run(db, {
+    brandFormStep: 1,
+    brandForm: ANSWERS,
+  });
   assertEquals(status, 409);
   assertEquals(body.error, "brand_form_check_failed");
   assert(!has(db, "rpc:biz_ticket_checkout_create_session"));
@@ -645,10 +667,17 @@ Deno.test("#4514 W5 fix 3: a missing inner function (42883) is the retryable ref
 
 Deno.test("#4514 W5 fix 1: the check and the stash get the buyer's own credential (one visibility rule)", async () => {
   const db = new FakeCheckoutDb();
-  const { status } = await run(db, { brandFormStep: 1, brandForm: ANSWERS }, BUYER_ID);
+  const { status } = await run(
+    db,
+    { brandFormStep: 1, brandForm: ANSWERS },
+    BUYER_ID,
+  );
   assertEquals(status, 200);
   const names = db.formArgs.map((a) => a.name);
-  assertEquals(names, ["brand_form_checkout_check", "brand_form_checkout_stash"]);
+  assertEquals(names, [
+    "brand_form_checkout_check",
+    "brand_form_checkout_stash",
+  ]);
   for (const a of db.formArgs) {
     assertEquals(a.p_buyer_user_id, BUYER_ID);
     assert("p_ticket_link_hash" in a, "the link hash slot is always sent");

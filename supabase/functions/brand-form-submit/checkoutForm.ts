@@ -49,7 +49,9 @@ export function parseCheckoutFormRequest(
   if (!isCheckoutFormOp(raw)) return null;
   const r = raw as Record<string, unknown>;
   if (
-    Object.keys(r).some((k) => !["op", "eventId", "ticketLinkToken"].includes(k))
+    Object.keys(r).some((k) =>
+      !["op", "eventId", "ticketLinkToken"].includes(k)
+    )
   ) return null;
   if (typeof r.eventId !== "string" || !UUID_RE.test(r.eventId)) return null;
   const link = r.ticketLinkToken;
