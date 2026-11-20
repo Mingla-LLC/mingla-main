@@ -536,7 +536,7 @@
         "view": "Detailweergave",
         "inReview": "Mingla controleert de eerste 3 advertenties van een merk, daarna doen de apps dat. Meestal een paar uur, tot 24. Er wordt niets uitgegeven tot hij is goedgekeurd.",
         "runningOn": "Loopt op {{apps}}.",
-        "learning": "Dag {{day}} van 7. De apps zoeken {{who}}, dus de resultaten schommelen deze week.",
+        "learning": "Dag {{day}} van {{total}}. De apps zoeken {{who}}, dus de resultaten schommelen deze week.",
         "whoSales": "mensen die waarschijnlijk kopen",
         "whoSignups": "mensen die zich waarschijnlijk aanmelden",
         "whoVisits": "mensen die waarschijnlijk je pagina bezoeken",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} resultaat",
         "chartLabel": "Wat je de afgelopen 30 dagen hebt betaald. {{line}}.",
         "last30": "Afgelopen 30 dagen"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Te vroeg om te zeggen",
+          "on_track": "Op koers",
+          "behind": "Achter op wat we verwachtten",
+          "ahead": "Voor op wat we verwachtten"
+        },
+        "verdictBody": {
+          "too_early": "Kijk weer na de eerste volle dag van de advertentie.",
+          "on_track": "De resultaten liggen in de verwachte lijn voor wat je hebt uitgegeven.",
+          "onTrackNone": "Je hebt minder uitgegeven dan één {{unit}} meestal kost, dus nog geen is normaal.",
+          "ahead": "Resultaten komen goedkoper binnen dan verwacht."
+        },
+        "dropOff": {
+          "not_tapping": "Mensen zien de advertentie, maar weinigen tikken erop.",
+          "not_reaching_page": "Mensen tikken op de advertentie, maar komen niet op je pagina.",
+          "not_buying": "Mensen bezoeken je pagina, maar nog niemand heeft gekocht.",
+          "not_signing_up": "Mensen bezoeken je pagina, maar nog niemand heeft zich aangemeld.",
+          "not_finishing": "Mensen beginnen met afrekenen, maar ronden niet af.",
+          "too_dear": "Elke {{unit}} kost meer dan verwacht."
+        },
+        "tileSpentOf": "van {{total}}",
+        "tilePerVisit": "Per paginabezoek",
+        "tilePerTap": "Per tik",
+        "tileCheckout": "Afrekenen gestart",
+        "funnelTitle": "Van gezien tot verkocht",
+        "step": {
+          "shown": "Getoond",
+          "tapped": "Op de advertentie getikt",
+          "reached": "Op je pagina gekomen",
+          "checkout": "Afrekenen gestart",
+          "bought": "Gekocht",
+          "signedUp": "Aangemeld"
+        },
+        "tapRate": "{{rate}}% van wie hem zag, tikte",
+        "arrivalRate": "{{rate}}% van de tikken kwam op je pagina",
+        "lateSales": "Tickets gekocht tot 7 dagen nadat iemand op de advertentie tikt, tellen hier nog mee.",
+        "pace": "Tempo",
+        "paceSpent": "{{spent}} van {{total}} uitgegeven",
+        "paceEven": "Gelijk tempo vandaag",
+        "paceRow": "{{spent}} · {{visits}} paginabezoeken · {{each}} per bezoek",
+        "paceState": {
+          "on_pace": "Op tempo",
+          "ends_early": "Stopt eerder",
+          "stopped": "Gestopt"
+        },
+        "endsEarlyLine": "{{app}} heeft zijn deel op {{day}} op en stopt vanzelf. Er wordt niets extra gerekend.",
+        "bestVideo": "Beste video tot nu toe",
+        "bestVideoLine": "{{best}} kost {{bestEach}} per tik, tegen {{worstEach}} voor {{worst}}.",
+        "askAri": "Vraag Ari over deze advertentie",
+        "askAriBehindSales": "Vraag Ari waarom niemand koopt",
+        "askAriBehindSignups": "Vraag Ari waarom niemand zich aanmeldt",
+        "ariPrompt": "Waarom koopt niemand via mijn advertentie {{name}}?",
+        "ariPromptNeutral": "Hoe doet mijn advertentie {{name}} het?",
+        "updatedNow": "Zojuist bijgewerkt",
+        "updatedMin": "{{count}} min geleden bijgewerkt",
+        "updatedHours": "{{count}} u geleden bijgewerkt",
+        "updatedDays": "{{count}} d geleden bijgewerkt"
       }
     }
   }

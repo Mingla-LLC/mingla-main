@@ -113,7 +113,55 @@ export type HostAdCapabilityAnswer = {
   ask_name?: string;
 };
 
+/**
+ * #4238 Overview ("is my ad working?"), computed on the server. Amounts are
+ * Ads credit in the plan currency (convert with hostAdPayFromCredit). Every
+ * field is optional and null when unknown: an older server sends nothing.
+ */
+export type HostAdOverviewVerdictState = "too_early" | "on_track" | "behind" | "ahead";
+export type HostAdOverviewDropOff =
+  | "not_tapping"
+  | "not_reaching_page"
+  | "not_buying"
+  | "not_finishing"
+  | "too_dear";
+export type HostAdOverviewVideo = {
+  creative_id: string;
+  name: string;
+  taps: number;
+  spend_per_tap_credit_cents: number;
+};
+export type HostAdOverviewPaceApp = {
+  platform: string;
+  campaign_id: string;
+  spent_credit_cents: number | null;
+  page_visits: number;
+  cost_per_visit_credit_cents: number | null;
+  state: "on_pace" | "ends_early" | "stopped";
+  stops_at: string | null;
+};
+export type HostAdOverview = {
+  verdict?: {
+    state: HostAdOverviewVerdictState;
+    drop_off: HostAdOverviewDropOff | null;
+    cost_per_result_cents: number | null;
+    expected_cost_per_result_cents: number;
+  } | null;
+  checkout_started?: number | null;
+  run_days?: number | null;
+  synced_at?: string | null;
+  pace?: {
+    total_credit_cents: number;
+    spent_credit_cents: number;
+    even_share: number | null;
+    apps: HostAdOverviewPaceApp[];
+  } | null;
+  best_video?: { best: HostAdOverviewVideo; worst: HostAdOverviewVideo } | null;
+};
+
 export type HostAdCampaignDetail = {
+  /** #4238 Overview block; absent on older servers. */
+  overview?: HostAdOverview | null;
   /** #4238 W4b/W5: what this teammate can do here, and who to ask. */
   capabilities?: Partial<Record<string, HostAdCapabilityAnswer>>;
   days_live?: number | null;
@@ -160,6 +208,7 @@ export type HostAdCampaignDetail = {
   }[];
   results: {
     /** #4238 W5: Mingla's own counts (7-day tap window). */
+    orders?: number;
     tickets?: number;
     sign_ups?: number;
     clicks?: number;

@@ -536,7 +536,7 @@
         "view": "Detailansicht",
         "inReview": "Mingla prüft die ersten 3 Anzeigen einer Marke, danach prüfen die Apps. Meist ein paar Stunden, bis zu 24. Bis zur Freigabe wird nichts ausgegeben.",
         "runningOn": "Läuft auf {{apps}}.",
-        "learning": "Tag {{day}} von 7. Die Apps suchen {{who}}, deshalb schwanken die Ergebnisse diese Woche.",
+        "learning": "Tag {{day}} von {{total}}. Die Apps suchen {{who}}, deshalb schwanken die Ergebnisse diese Woche.",
         "whoSales": "Leute, die wahrscheinlich kaufen",
         "whoSignups": "Leute, die sich wahrscheinlich anmelden",
         "whoVisits": "Leute, die wahrscheinlich deine Seite besuchen",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} Ergebnis",
         "chartLabel": "Was du in den letzten 30 Tagen bezahlt hast. {{line}}.",
         "last30": "Letzte 30 Tage"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Noch zu früh",
+          "on_track": "Im Plan",
+          "behind": "Hinter unserer Erwartung",
+          "ahead": "Vor unserer Erwartung"
+        },
+        "verdictBody": {
+          "too_early": "Schau nach dem ersten vollen Tag der Anzeige wieder rein.",
+          "on_track": "Die Ergebnisse liegen im erwarteten Bereich für das, was du ausgegeben hast.",
+          "onTrackNone": "Du hast weniger ausgegeben, als ein(e) {{unit}} meist kostet, daher ist noch keins normal.",
+          "ahead": "Die Ergebnisse kommen günstiger als erwartet."
+        },
+        "dropOff": {
+          "not_tapping": "Leute sehen die Anzeige, aber wenige tippen darauf.",
+          "not_reaching_page": "Leute tippen auf die Anzeige, kommen aber nicht auf deine Seite.",
+          "not_buying": "Leute besuchen die Seite, aber noch niemand hat gekauft.",
+          "not_signing_up": "Leute besuchen die Seite, aber noch niemand hat sich angemeldet.",
+          "not_finishing": "Leute beginnen den Kauf, schließen ihn aber nicht ab.",
+          "too_dear": "Jede(r) {{unit}} kostet mehr als erwartet."
+        },
+        "tileSpentOf": "von {{total}}",
+        "tilePerVisit": "Pro Seitenbesuch",
+        "tilePerTap": "Pro Tippen",
+        "tileCheckout": "Kauf begonnen",
+        "funnelTitle": "Vom Sehen zum Kauf",
+        "step": {
+          "shown": "Angezeigt",
+          "tapped": "Auf die Anzeige getippt",
+          "reached": "Auf deiner Seite angekommen",
+          "checkout": "Kauf begonnen",
+          "bought": "Gekauft",
+          "signedUp": "Angemeldet"
+        },
+        "tapRate": "{{rate}} % der Leute, die sie sahen, haben getippt",
+        "arrivalRate": "{{rate}} % der Tipps kamen auf deiner Seite an",
+        "lateSales": "Tickets, die bis zu 7 Tage nach dem Tippen auf die Anzeige gekauft werden, zählen hier weiter.",
+        "pace": "Tempo",
+        "paceSpent": "{{spent}} von {{total}} ausgegeben",
+        "paceEven": "Gleichmäßiges Tempo heute",
+        "paceRow": "{{spent}} · {{visits}} Seitenbesuche · {{each}} pro Besuch",
+        "paceState": {
+          "on_pace": "Im Tempo",
+          "ends_early": "Endet früher",
+          "stopped": "Gestoppt"
+        },
+        "endsEarlyLine": "{{app}} hat seinen Anteil bis {{day}} aufgebraucht und stoppt von selbst. Es wird nichts extra berechnet.",
+        "bestVideo": "Bestes Video bisher",
+        "bestVideoLine": "{{best}} kostet {{bestEach}} pro Tippen, gegenüber {{worstEach}} bei {{worst}}.",
+        "askAri": "Ari zu dieser Anzeige fragen",
+        "askAriBehindSales": "Ari fragen, warum niemand kauft",
+        "askAriBehindSignups": "Ari fragen, warum sich niemand anmeldet",
+        "ariPrompt": "Warum kauft niemand über meine Anzeige {{name}}?",
+        "ariPromptNeutral": "Wie läuft meine Anzeige {{name}}?",
+        "updatedNow": "Gerade aktualisiert",
+        "updatedMin": "Vor {{count}} Min. aktualisiert",
+        "updatedHours": "Vor {{count}} Std. aktualisiert",
+        "updatedDays": "Vor {{count}} T. aktualisiert"
       }
     }
   }

@@ -55,6 +55,12 @@ export function AdResultsSection(props: {
   notes: readonly string[];
   placements: readonly { platform: string; placement: string; conversions: number }[];
   onRetry: () => void;
+  /**
+   * #4238 Overview: wide desktop already shows the funnel and per-app pace in
+   * the Overview, so Day by day hides its own copies there. Default true.
+   */
+  showFunnel?: boolean;
+  showSplit?: boolean;
 }): React.ReactElement {
   const { width } = useWindowDimensions();
   const [placesOpen, setPlacesOpen] = useState(false);
@@ -109,8 +115,8 @@ export function AdResultsSection(props: {
               </>
             ) : null}
           </View>
-          <AdFunnelRow steps={funnel} resultLabel={label} />
-          <AdPlatformSplit bars={bars} resultLabel={label} />
+          {props.showFunnel === false ? null : <AdFunnelRow steps={funnel} resultLabel={label} />}
+          {props.showSplit === false ? null : <AdPlatformSplit bars={bars} resultLabel={label} />}
         </>
       )}
       {props.notes.map((line) => (

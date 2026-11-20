@@ -536,7 +536,7 @@
         "view": "Detail view",
         "inReview": "Mingla checks a brand's first 3 ads, then the apps do. Usually a few hours, up to 24. Nothing is spent until it's approved.",
         "runningOn": "Running on {{apps}}.",
-        "learning": "Day {{day}} of 7. The apps are finding {{who}}, so results jump around this week.",
+        "learning": "Day {{day}} of {{total}}. The apps are finding {{who}}, so results jump around this week.",
         "whoSales": "people likely to buy",
         "whoSignups": "people likely to sign up",
         "whoVisits": "people likely to visit your page",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} result",
         "chartLabel": "What you paid over the last 30 days. {{line}}.",
         "last30": "Last 30 days"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Too early to tell",
+          "on_track": "On track",
+          "behind": "Behind what we expected",
+          "ahead": "Ahead of what we expected"
+        },
+        "verdictBody": {
+          "too_early": "Check back after the ad's first full day.",
+          "on_track": "Results so far are in the range we expected for what you've spent.",
+          "onTrackNone": "You've spent less than one {{unit}} usually costs, so none yet is normal.",
+          "ahead": "Results are coming in cheaper than we expected."
+        },
+        "dropOff": {
+          "not_tapping": "People see the ad, but few tap it.",
+          "not_reaching_page": "People tap the ad, but don't reach your page.",
+          "not_buying": "People are visiting, but nobody has bought yet.",
+          "not_signing_up": "People are visiting, but nobody has signed up yet.",
+          "not_finishing": "People start checkout, but don't finish.",
+          "too_dear": "Each {{unit}} is costing more than we expected."
+        },
+        "tileSpentOf": "of {{total}}",
+        "tilePerVisit": "Per page visit",
+        "tilePerTap": "Per tap",
+        "tileCheckout": "Started checkout",
+        "funnelTitle": "From seen to sold",
+        "step": {
+          "shown": "Shown",
+          "tapped": "Tapped the ad",
+          "reached": "Reached your page",
+          "checkout": "Started checkout",
+          "bought": "Bought",
+          "signedUp": "Signed up"
+        },
+        "tapRate": "{{rate}}% of people shown tapped",
+        "arrivalRate": "{{rate}}% of taps reached your page",
+        "lateSales": "Tickets bought up to 7 days after someone taps the ad still count here.",
+        "pace": "Pace",
+        "paceSpent": "{{spent}} of {{total}} spent",
+        "paceEven": "Even pace today",
+        "paceRow": "{{spent}} · {{visits}} page visits · {{each}} a visit",
+        "paceState": {
+          "on_pace": "On pace",
+          "ends_early": "Ends early",
+          "stopped": "Stopped"
+        },
+        "endsEarlyLine": "{{app}} will use up its share by {{day}} and stop by itself. Nothing extra is charged.",
+        "bestVideo": "Best video so far",
+        "bestVideoLine": "{{best}} costs {{bestEach}} a tap, against {{worstEach}} for {{worst}}.",
+        "askAri": "Ask Ari about this ad",
+        "askAriBehindSales": "Ask Ari why people aren't buying",
+        "askAriBehindSignups": "Ask Ari why people aren't signing up",
+        "ariPrompt": "Why aren't people buying from my ad {{name}}?",
+        "ariPromptNeutral": "How is my ad {{name}} doing?",
+        "updatedNow": "Updated just now",
+        "updatedMin": "Updated {{count}} min ago",
+        "updatedHours": "Updated {{count}} h ago",
+        "updatedDays": "Updated {{count}} d ago"
       }
     }
   }

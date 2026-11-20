@@ -536,7 +536,7 @@
         "view": "Ghe ẹre hia",
         "inReview": "Mingla ghe ẹkpẹti eha okaro ọ brand, ẹghẹ ọni apps ghe ẹre. Ọ ya ẹghẹ kherhe, sẹ ẹghẹ 24. A i loo emwi te a ka rhie ẹre.",
         "runningOn": "Ọ ye rre vbe {{apps}}.",
-        "learning": "Ẹdẹ {{day}} vbe 7. Apps ye gualọ {{who}}, ọni ọ zẹ emwi ne ọ re ya werriẹ vbe ẹmẹdẹ na.",
+        "learning": "Ẹdẹ {{day}} vbe {{total}}. Apps ye gualọ {{who}}, ọni ọ zẹ emwi ne ọ re ya werriẹ vbe ẹmẹdẹ na.",
         "whoSales": "emwa ne ọ khian dẹ",
         "whoSignups": "emwa ne ọ khian ya eni ye",
         "whoVisits": "emwa ne ọ khian ghe ehe ruẹ",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} emwi ne ọ ladian",
         "chartLabel": "Ne u hwẹ vbe ẹdẹ 30 ne ọ gberra. {{line}}.",
         "last30": "Ẹdẹ 30 ne ọ gberra"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Ọ ma sẹ ẹghẹ ne a gha ta",
+          "on_track": "Ọ ye ẹkpẹti",
+          "behind": "Ọ rre egbe ẹmwẹ ne ma gha mwẹ ẹkoẹnmwẹ",
+          "ahead": "Ọ gberra ẹmwẹ ne ma gha mwẹ ẹkoẹnmwẹ"
+        },
+        "verdictBody": {
+          "too_early": "Gha dọ ghee ọ vbe ẹdẹ nọkaro ne ọ fu vbe ẹdẹ nọkaro ọghẹ ipolowo na.",
+          "on_track": "Emwi ne ọ re ya rre ẹkpẹti ne ma gha mwẹ ẹkoẹnmwẹ vbe ighẹ ugbo ne u rhie.",
+          "onTrackNone": "U rhie ugbo ne ọ kherre sẹ ne {{unit}} ọkpa ya rhie, ọni ọ zẹ ne ọ ma kẹ ọkpa rre.",
+          "ahead": "Emwi ne ọ re ya mwẹ ugbo ne ọ kherre sẹ ne ma gha mwẹ ẹkoẹnmwẹ."
+        },
+        "dropOff": {
+          "not_tapping": "Emwa miẹn ipolowo na, sokpan emwa kherhe ẹre gbe ẹ.",
+          "not_reaching_page": "Emwa gbe ipolowo na, sokpan ẹi sẹ ẹbe ruẹ.",
+          "not_buying": "Emwa ya rre, sokpan ọ ma kẹ ọmwa ne dẹ ẹre.",
+          "not_signing_up": "Emwa ya rre, sokpan ọ ma kẹ ọmwa ne yae ẹvbo.",
+          "not_finishing": "Emwa bẹghe ọ vbe ẹkpẹti ugbo, sokpan ẹi fiẹ ẹre fua.",
+          "too_dear": "{{unit}} ọkpa ọkpa rhie ugbo ne ọ wu sẹ ne ma gha mwẹ ẹkoẹnmwẹ."
+        },
+        "tileSpentOf": "vbe {{total}}",
+        "tilePerVisit": "Vbe ẹbe ọkpa ne a ya rre",
+        "tilePerTap": "Vbe ẹgbe ọkpa",
+        "tileCheckout": "Ẹ bẹghe ugbo",
+        "funnelTitle": "Vbe ẹmiẹn rre ẹdẹ",
+        "step": {
+          "shown": "A rhie ẹre ma",
+          "tapped": "Ẹ gbe ipolowo",
+          "reached": "Ẹ sẹ ẹbe ruẹ",
+          "checkout": "Ẹ bẹghe ugbo",
+          "bought": "Ẹ dẹ ẹre",
+          "signedUp": "Ẹ yae ẹvbo"
+        },
+        "tapRate": "{{rate}}% vbe emwa ne miẹn ẹre gbe ẹre",
+        "arrivalRate": "{{rate}}% vbe ẹgbe sẹ ẹbe ruẹ",
+        "lateSales": "Tikẹti ne a dẹ vbe ẹdẹ 7 ne ọmwa gbe ipolowo ye a gha ya rre evba.",
+        "pace": "Ẹkpẹti",
+        "paceSpent": "A rhie {{spent}} vbe {{total}}",
+        "paceEven": "Ẹkpẹti ọkpa ẹdẹ na",
+        "paceRow": "{{spent}} · ẹbe ne a ya rre {{visits}} · {{each}} vbe ọkpa",
+        "paceState": {
+          "on_pace": "Ọ ye ẹkpẹti",
+          "ends_early": "Ọ gha fiẹ ẹre fua ẹghẹ",
+          "stopped": "Ọ mudia"
+        },
+        "endsEarlyLine": "{{app}} gha rhie ẹkpẹ ọghẹ ẹre fua vbe {{day}} ọ ghi mudia ọmwẹ ẹre. A i ghi gu ugbo ọvbehe.",
+        "bestVideo": "Vidio ne ọ maan sẹ evba",
+        "bestVideoLine": "{{best}} rhie {{bestEach}} vbe ẹgbe ọkpa, vbe {{worstEach}} ọghẹ {{worst}}.",
+        "askAri": "Nọ Ari vbe ipolowo na",
+        "askAriBehindSales": "Nọ Ari vbe ẹmwẹ ne a i ya dẹ",
+        "askAriBehindSignups": "Nọ Ari vbe ẹmwẹ ne a i ya yae ẹvbo",
+        "ariPrompt": "De emwi ne ọ zẹ ne ọmwa ma dẹ vbe ipolowo mwẹ {{name}}?",
+        "ariPromptNeutral": "De vbe ipolowo mwẹ {{name}} ye?",
+        "updatedNow": "A gbẹnnẹ ẹre ẹghẹ na",
+        "updatedMin": "A gbẹnnẹ ẹre vbe iminiti {{count}} ne ọ gberra",
+        "updatedHours": "A gbẹnnẹ ẹre vbe awa {{count}} ne ọ gberra",
+        "updatedDays": "A gbẹnnẹ ẹre vbe ẹdẹ {{count}} ne ọ gberra"
       }
     }
   }

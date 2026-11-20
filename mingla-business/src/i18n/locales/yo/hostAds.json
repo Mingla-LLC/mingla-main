@@ -536,7 +536,7 @@
         "view": "Ìwòye kíkún",
         "inReview": "Mingla máa ń ṣàyẹ̀wò ìpolówó mẹ́ta àkọ́kọ́ ti àmì-ìdámọ̀ kan, lẹ́yìn náà àwọn ohun èlò á ṣàyẹ̀wò. Ó máa ń gba wákàtí díẹ̀, títí dé 24. A kò ní ná ohunkóhun títí a ó fi fọwọ́ sí i.",
         "runningOn": "Ń lọ lọ́wọ́ lórí {{apps}}.",
-        "learning": "Ọjọ́ {{day}} nínú 7. Àwọn ohun èlò ń wá {{who}}, nítorí náà àbájáde máa ń yí padà ní ọ̀sẹ̀ yìí.",
+        "learning": "Ọjọ́ {{day}} nínú {{total}}. Àwọn ohun èlò ń wá {{who}}, nítorí náà àbájáde máa ń yí padà ní ọ̀sẹ̀ yìí.",
         "whoSales": "àwọn tó ṣeé ṣe kí wọ́n rà",
         "whoSignups": "àwọn tó ṣeé ṣe kí wọ́n forúkọ sílẹ̀",
         "whoVisits": "àwọn tó ṣeé ṣe kí wọ́n bẹ ojú-ìwé rẹ wò",
@@ -772,6 +772,65 @@
         "resultOne": "Èsì {{count}}",
         "chartLabel": "Ohun tí o san ní ọjọ́ 30 sẹ́yìn. {{line}}.",
         "last30": "Ọjọ́ 30 sẹ́yìn"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Ó ti yá jù láti sọ",
+          "on_track": "Ó ń lọ dáadáa",
+          "behind": "Ó wà lẹ́yìn ohun tí a retí",
+          "ahead": "Ó ti kọjá ohun tí a retí"
+        },
+        "verdictBody": {
+          "too_early": "Padà wò lẹ́yìn ọjọ́ kíkún àkọ́kọ́ ìpolówó náà.",
+          "on_track": "Àbájáde títí di ìsinsìnyí wà nínú ibi tí a retí fún ohun tí o ti ná.",
+          "onTrackNone": "O ti ná kéré sí ohun tí {{unit}} kan máa ń ná, nítorí náà kò sí ọ̀kan síbẹ̀ jẹ́ déédé.",
+          "ahead": "Àbájáde ń wá ní owó tí ó kéré ju bí a ṣe retí lọ."
+        },
+        "dropOff": {
+          "not_tapping": "Àwọn ènìyàn ń rí ìpolówó náà, ṣùgbọ́n díẹ̀ ló ń tẹ̀ ẹ́.",
+          "not_reaching_page": "Àwọn ènìyàn ń tẹ ìpolówó náà, ṣùgbọ́n wọn kò dé ojú-ìwé rẹ.",
+          "not_buying": "Àwọn ènìyàn ń ṣèbẹ̀wò, ṣùgbọ́n kò sí ẹni tí ó ti rà síbẹ̀.",
+          "not_signing_up": "Àwọn ènìyàn ń ṣèbẹ̀wò, ṣùgbọ́n kò sí ẹni tí ó ti forúkọsílẹ̀ síbẹ̀.",
+          "not_finishing": "Àwọn ènìyàn ń bẹ̀rẹ̀ ìsanwó, ṣùgbọ́n wọn kò parí rẹ̀.",
+          "too_dear": "{{unit}} kọ̀ọ̀kan ń ná ju bí a ṣe retí lọ."
+        },
+        "tileSpentOf": "nínú {{total}}",
+        "tilePerVisit": "Fún ìbẹ̀wò ojú-ìwé kọ̀ọ̀kan",
+        "tilePerTap": "Fún títẹ̀ kọ̀ọ̀kan",
+        "tileCheckout": "Bẹ̀rẹ̀ ìsanwó",
+        "funnelTitle": "Láti rírí sí títà",
+        "step": {
+          "shown": "Fihàn",
+          "tapped": "Tẹ ìpolówó",
+          "reached": "Dé ojú-ìwé rẹ",
+          "checkout": "Bẹ̀rẹ̀ ìsanwó",
+          "bought": "Rà",
+          "signedUp": "Forúkọsílẹ̀"
+        },
+        "tapRate": "{{rate}}% àwọn tí ó rí i ló tẹ̀ ẹ́",
+        "arrivalRate": "{{rate}}% àwọn títẹ̀ ló dé ojú-ìwé rẹ",
+        "lateSales": "Àwọn tíkẹ́ẹ̀tì tí a rà láàrín ọjọ́ 7 lẹ́yìn tí ẹnìkan tẹ ìpolówó ṣì ń kà níbí.",
+        "pace": "Ìyára",
+        "paceSpent": "A ti ná {{spent}} nínú {{total}}",
+        "paceEven": "Ìyára dọ́gba fún òní",
+        "paceRow": "{{spent}} · ìbẹ̀wò ojú-ìwé {{visits}} · {{each}} fún ìbẹ̀wò kan",
+        "paceState": {
+          "on_pace": "Ó wà ní ìyára",
+          "ends_early": "Yóò parí ní kùtùkùtù",
+          "stopped": "Ti dúró"
+        },
+        "endsEarlyLine": "{{app}} yóò lo ìpín rẹ̀ tán ní {{day}} yóò sì dúró fúnra rẹ̀. Kò sí owó àfikún kankan.",
+        "bestVideo": "Fídíò tó dára jù lọ títí di ìsinsìnyí",
+        "bestVideoLine": "{{best}} ń ná {{bestEach}} fún títẹ̀ kọ̀ọ̀kan, ní ìfiwéra pẹ̀lú {{worstEach}} fún {{worst}}.",
+        "askAri": "Béèrè lọ́wọ́ Ari nípa ìpolówó yìí",
+        "askAriBehindSales": "Béèrè lọ́wọ́ Ari ìdí tí àwọn ènìyàn kò fi ń rà",
+        "askAriBehindSignups": "Béèrè lọ́wọ́ Ari ìdí tí àwọn ènìyàn kò fi ń forúkọsílẹ̀",
+        "ariPrompt": "Kí ló dé tí kò sí ẹni tó ń rà láti inú ìpolówó mi {{name}}?",
+        "ariPromptNeutral": "Báwo ni ìpolówó mi {{name}} ṣe ń lọ?",
+        "updatedNow": "A ṣẹ̀ṣẹ̀ ṣe ìmúdójúìwọ̀n",
+        "updatedMin": "A ṣe ìmúdójúìwọ̀n ní ìṣẹ́jú {{count}} sẹ́yìn",
+        "updatedHours": "A ṣe ìmúdójúìwọ̀n ní wákàtí {{count}} sẹ́yìn",
+        "updatedDays": "A ṣe ìmúdójúìwọ̀n ní ọjọ́ {{count}} sẹ́yìn"
       }
     }
   }

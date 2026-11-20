@@ -536,7 +536,7 @@
         "view": "詳細表示",
         "inReview": "Mingla がブランドの最初の3件の広告を確認し、その後は各アプリが確認します。通常は数時間、最長24時間です。承認されるまで費用はかかりません。",
         "runningOn": "{{apps}} で配信中。",
-        "learning": "7日中 {{day}} 日目。アプリは{{who}}を探しているため、今週は成果が上下します。",
+        "learning": "{{total}}日中 {{day}} 日目。アプリは{{who}}を探しているため、今週は成果が上下します。",
         "whoSales": "購入しそうな人",
         "whoSignups": "登録しそうな人",
         "whoVisits": "ページを訪れそうな人",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} 件の成果",
         "chartLabel": "過去30日間に支払った金額。{{line}}。",
         "last30": "過去30日間"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "判断するにはまだ早い",
+          "on_track": "順調",
+          "behind": "予想を下回っています",
+          "ahead": "予想を上回っています"
+        },
+        "verdictBody": {
+          "too_early": "広告の最初の丸1日が終わってから確認してください。",
+          "on_track": "これまでの成果は、使った金額に対して予想の範囲内です。",
+          "onTrackNone": "{{unit}}1件にふつうかかる額より少ししか使っていないので、まだ0件なのは普通です。",
+          "ahead": "成果が予想より安く得られています。"
+        },
+        "dropOff": {
+          "not_tapping": "広告は見られていますが、タップする人が少ないです。",
+          "not_reaching_page": "広告はタップされていますが、ページまで届いていません。",
+          "not_buying": "ページは見られていますが、まだ誰も購入していません。",
+          "not_signing_up": "ページは見られていますが、まだ誰も登録していません。",
+          "not_finishing": "購入手続きは始まっていますが、完了していません。",
+          "too_dear": "{{unit}}1件あたりが予想より高くなっています。"
+        },
+        "tileSpentOf": "/ {{total}}",
+        "tilePerVisit": "ページ訪問あたり",
+        "tilePerTap": "タップあたり",
+        "tileCheckout": "購入手続き開始",
+        "funnelTitle": "表示から購入まで",
+        "step": {
+          "shown": "表示",
+          "tapped": "広告をタップ",
+          "reached": "ページに到達",
+          "checkout": "購入手続き開始",
+          "bought": "購入",
+          "signedUp": "登録"
+        },
+        "tapRate": "表示された人の{{rate}}%がタップ",
+        "arrivalRate": "タップの{{rate}}%がページに到達",
+        "lateSales": "広告がタップされてから7日以内に購入されたチケットもここに含まれます。",
+        "pace": "ペース",
+        "paceSpent": "{{total}}中{{spent}}を使用",
+        "paceEven": "今日の均等ペース",
+        "paceRow": "{{spent}} · ページ訪問{{visits}}件 · 1訪問{{each}}",
+        "paceState": {
+          "on_pace": "ペース通り",
+          "ends_early": "早めに終了",
+          "stopped": "停止中"
+        },
+        "endsEarlyLine": "{{app}}は{{day}}までに配分を使い切り、自動で止まります。追加の請求はありません。",
+        "bestVideo": "これまでのベスト動画",
+        "bestVideoLine": "{{best}}は1タップ{{bestEach}}、{{worst}}は{{worstEach}}です。",
+        "askAri": "この広告についてAriに聞く",
+        "askAriBehindSales": "購入されない理由をAriに聞く",
+        "askAriBehindSignups": "登録されない理由をAriに聞く",
+        "ariPrompt": "広告「{{name}}」からなぜ誰も買わないの？",
+        "ariPromptNeutral": "広告「{{name}}」の調子はどう？",
+        "updatedNow": "たった今更新",
+        "updatedMin": "{{count}}分前に更新",
+        "updatedHours": "{{count}}時間前に更新",
+        "updatedDays": "{{count}}日前に更新"
       }
     }
   }

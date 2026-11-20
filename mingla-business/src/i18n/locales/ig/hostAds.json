@@ -536,7 +536,7 @@
         "view": "Nlele zuru ezu",
         "inReview": "Mingla na-enyocha mgbasa ozi atọ mbụ nke akara, mgbe ahụ ngwa na-enyocha. Ọ na-ewe awa ole na ole, ruo 24. A naghị emefu ihe ọ bụla tupu anabata ya.",
         "runningOn": "Na-agba na {{apps}}.",
-        "learning": "Ụbọchị {{day}} n'ime 7. Ngwa na-achọ {{who}}, ya mere nsonaazụ na-arịgo ma na-ada n'izu a.",
+        "learning": "Ụbọchị {{day}} n'ime {{total}}. Ngwa na-achọ {{who}}, ya mere nsonaazụ na-arịgo ma na-ada n'izu a.",
         "whoSales": "ndị nwere ike ịzụta",
         "whoSignups": "ndị nwere ike idebanye aha",
         "whoVisits": "ndị nwere ike ileta peeji gị",
@@ -772,6 +772,65 @@
         "resultOne": "Nsonaazụ {{count}}",
         "chartLabel": "Ihe ị kwụrụ n'ime ụbọchị 30 gara aga. {{line}}.",
         "last30": "Ụbọchị 30 gara aga"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Ọ ka dị oke n'isi ịkọ",
+          "on_track": "Ọ na-aga nke ọma",
+          "behind": "Ọ dị n'azụ ihe anyị tụrụ anya ya",
+          "ahead": "Ọ karịrị ihe anyị tụrụ anya ya"
+        },
+        "verdictBody": {
+          "too_early": "Lelee ọzọ mgbe ụbọchị mbụ zuru ezu nke mgbasa ozi gachara.",
+          "on_track": "Nsonaazụ ruo ugbu a dị n'ogo anyị tụrụ anya ya maka ihe i mefuru.",
+          "onTrackNone": "I mefuru ihe na-erughị ihe otu {{unit}} na-efukarị, ya mere na ọ dịbeghị ọ bụla bụ ihe nkịtị.",
+          "ahead": "Nsonaazụ na-abịa ọnụ ala karịa ka anyị tụrụ anya ya."
+        },
+        "dropOff": {
+          "not_tapping": "Ndị mmadụ na-ahụ mgbasa ozi ahụ, mana ole na ole na-apị ya.",
+          "not_reaching_page": "Ndị mmadụ na-apị mgbasa ozi ahụ, mana ha anaghị eru peeji gị.",
+          "not_buying": "Ndị mmadụ na-eleta, mana ọ dịbeghị onye zụtara.",
+          "not_signing_up": "Ndị mmadụ na-eleta, mana ọ dịbeghị onye debanyere aha.",
+          "not_finishing": "Ndị mmadụ na-amalite ịkwụ ụgwọ, mana ha anaghị emecha.",
+          "too_dear": "{{unit}} ọ bụla na-efu karịa ka anyị tụrụ anya ya."
+        },
+        "tileSpentOf": "n'ime {{total}}",
+        "tilePerVisit": "Kwa nleta peeji",
+        "tilePerTap": "Kwa mpị",
+        "tileCheckout": "Bidoro ịkwụ ụgwọ",
+        "funnelTitle": "Site n'ịhụ ruo n'ire",
+        "step": {
+          "shown": "Egosiri",
+          "tapped": "Pịrị mgbasa ozi",
+          "reached": "Ruru peeji gị",
+          "checkout": "Bidoro ịkwụ ụgwọ",
+          "bought": "Zụtara",
+          "signedUp": "Debanyere aha"
+        },
+        "tapRate": "{{rate}}% nke ndị hụrụ ya pịrị",
+        "arrivalRate": "{{rate}}% nke mpị ruru peeji gị",
+        "lateSales": "Tiketi a zụtara n'ime ụbọchị 7 mgbe mmadụ pịrị mgbasa ozi ka a na-agụ ebe a.",
+        "pace": "Ọsọ",
+        "paceSpent": "E mefuru {{spent}} n'ime {{total}}",
+        "paceEven": "Ọsọ nha anya taa",
+        "paceRow": "{{spent}} · nleta peeji {{visits}} · {{each}} kwa nleta",
+        "paceState": {
+          "on_pace": "Na ọsọ",
+          "ends_early": "Ga-akwụsị n'oge",
+          "stopped": "Akwụsịrị"
+        },
+        "endsEarlyLine": "{{app}} ga-eji oke ya mechaa tupu {{day}} ma kwụsị n'onwe ya. Ọ dịghị ihe ọzọ a na-ana.",
+        "bestVideo": "Vidiyo kacha mma ruo ugbu a",
+        "bestVideoLine": "{{best}} na-efu {{bestEach}} kwa mpị, ma {{worst}} na-efu {{worstEach}}.",
+        "askAri": "Jụọ Ari maka mgbasa ozi a",
+        "askAriBehindSales": "Jụọ Ari ihe kpatara na ndị mmadụ anaghị azụ",
+        "askAriBehindSignups": "Jụọ Ari ihe kpatara na ndị mmadụ anaghị edebanye aha",
+        "ariPrompt": "Gịnị mere na ọ dịghị onye na-azụ site na mgbasa ozi m {{name}}?",
+        "ariPromptNeutral": "Kedu ka mgbasa ozi m {{name}} si aga?",
+        "updatedNow": "Emelitere ugbu a",
+        "updatedMin": "Emelitere nkeji {{count}} gara aga",
+        "updatedHours": "Emelitere awa {{count}} gara aga",
+        "updatedDays": "Emelitere ụbọchị {{count}} gara aga"
       }
     }
   }

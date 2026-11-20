@@ -536,7 +536,7 @@
         "view": "상세 보기",
         "inReview": "Mingla가 브랜드의 첫 광고 3개를 검토하고, 그다음은 각 앱이 검토해요. 보통 몇 시간, 최대 24시간 걸려요. 승인 전에는 아무것도 쓰이지 않아요.",
         "runningOn": "{{apps}}에서 진행 중이에요.",
-        "learning": "7일 중 {{day}}일째. 앱이 {{who}}을 찾고 있어서 이번 주에는 성과가 오르내려요.",
+        "learning": "{{total}}일 중 {{day}}일째. 앱이 {{who}}을 찾고 있어서 이번 주에는 성과가 오르내려요.",
         "whoSales": "구매할 가능성이 높은 사람들",
         "whoSignups": "신청할 가능성이 높은 사람들",
         "whoVisits": "페이지를 방문할 가능성이 높은 사람들",
@@ -772,6 +772,65 @@
         "resultOne": "결과 {{count}}개",
         "chartLabel": "지난 30일 동안 결제한 금액. {{line}}.",
         "last30": "지난 30일"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "판단하기엔 아직 일러요",
+          "on_track": "순조로워요",
+          "behind": "예상보다 뒤처져 있어요",
+          "ahead": "예상보다 앞서 있어요"
+        },
+        "verdictBody": {
+          "too_early": "광고의 첫 하루가 지난 뒤 다시 확인해 보세요.",
+          "on_track": "지금까지의 성과는 쓴 금액 대비 예상 범위 안에 있어요.",
+          "onTrackNone": "{{unit}} 1건에 보통 드는 금액보다 적게 썼으니 아직 없는 게 정상이에요.",
+          "ahead": "성과가 예상보다 저렴하게 나오고 있어요."
+        },
+        "dropOff": {
+          "not_tapping": "사람들이 광고를 보지만 탭하는 사람은 적어요.",
+          "not_reaching_page": "사람들이 광고를 탭하지만 페이지에 도착하지 않아요.",
+          "not_buying": "사람들이 방문하지만 아직 아무도 구매하지 않았어요.",
+          "not_signing_up": "사람들이 방문하지만 아직 아무도 가입하지 않았어요.",
+          "not_finishing": "사람들이 결제를 시작하지만 끝내지 않아요.",
+          "too_dear": "{{unit}} 1건당 비용이 예상보다 높아요."
+        },
+        "tileSpentOf": "/ {{total}}",
+        "tilePerVisit": "페이지 방문당",
+        "tilePerTap": "탭당",
+        "tileCheckout": "결제 시작",
+        "funnelTitle": "노출부터 판매까지",
+        "step": {
+          "shown": "노출",
+          "tapped": "광고 탭",
+          "reached": "페이지 도착",
+          "checkout": "결제 시작",
+          "bought": "구매",
+          "signedUp": "가입"
+        },
+        "tapRate": "본 사람의 {{rate}}%가 탭함",
+        "arrivalRate": "탭의 {{rate}}%가 페이지에 도착",
+        "lateSales": "광고를 탭한 뒤 7일 안에 구매된 티켓도 여기서 계속 집계돼요.",
+        "pace": "속도",
+        "paceSpent": "{{total}} 중 {{spent}} 사용",
+        "paceEven": "오늘의 균등 속도",
+        "paceRow": "{{spent}} · 페이지 방문 {{visits}}회 · 방문당 {{each}}",
+        "paceState": {
+          "on_pace": "속도 유지",
+          "ends_early": "일찍 끝남",
+          "stopped": "중지됨"
+        },
+        "endsEarlyLine": "{{app}}은(는) {{day}}까지 할당분을 다 쓰고 자동으로 멈춰요. 추가 요금은 없어요.",
+        "bestVideo": "지금까지 최고의 영상",
+        "bestVideoLine": "{{best}}은(는) 탭당 {{bestEach}}, {{worst}}은(는) {{worstEach}}예요.",
+        "askAri": "이 광고에 대해 Ari에게 묻기",
+        "askAriBehindSales": "구매가 없는 이유를 Ari에게 묻기",
+        "askAriBehindSignups": "가입이 없는 이유를 Ari에게 묻기",
+        "ariPrompt": "내 광고 {{name}}에서 왜 아무도 구매하지 않나요?",
+        "ariPromptNeutral": "내 광고 {{name}}은(는) 어떤가요?",
+        "updatedNow": "방금 업데이트됨",
+        "updatedMin": "{{count}}분 전 업데이트됨",
+        "updatedHours": "{{count}}시간 전 업데이트됨",
+        "updatedDays": "{{count}}일 전 업데이트됨"
       }
     }
   }

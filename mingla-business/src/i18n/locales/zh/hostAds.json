@@ -536,7 +536,7 @@
         "view": "详情视图",
         "inReview": "Mingla 会审核一个品牌的前 3 个广告，之后由各应用审核。通常几小时，最长 24 小时。通过前不会产生任何花费。",
         "runningOn": "正在 {{apps}} 投放。",
-        "learning": "第 {{day}} 天，共 7 天。各应用正在寻找{{who}}，所以本周结果会有波动。",
+        "learning": "第 {{day}} 天，共 {{total}} 天。各应用正在寻找{{who}}，所以本周结果会有波动。",
         "whoSales": "可能购买的人",
         "whoSignups": "可能报名的人",
         "whoVisits": "可能访问你页面的人",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} 个结果",
         "chartLabel": "过去 30 天你支付的金额。{{line}}。",
         "last30": "过去 30 天"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "现在下结论还太早",
+          "on_track": "进展正常",
+          "behind": "低于我们的预期",
+          "ahead": "高于我们的预期"
+        },
+        "verdictBody": {
+          "too_early": "等广告完整跑满第一天后再来看看。",
+          "on_track": "按你已花的金额，目前的结果在我们预期的范围内。",
+          "onTrackNone": "你花的钱还不到通常一个{{unit}}的成本，所以暂时没有是正常的。",
+          "ahead": "结果比我们预期的更便宜。"
+        },
+        "dropOff": {
+          "not_tapping": "有人看到广告，但很少有人点击。",
+          "not_reaching_page": "有人点击了广告，但没有到达你的页面。",
+          "not_buying": "有人访问，但还没有人购买。",
+          "not_signing_up": "有人访问，但还没有人报名。",
+          "not_finishing": "有人开始结账，但没有完成。",
+          "too_dear": "每个{{unit}}的花费高于我们的预期。"
+        },
+        "tileSpentOf": "/ {{total}}",
+        "tilePerVisit": "每次页面访问",
+        "tilePerTap": "每次点击",
+        "tileCheckout": "开始结账",
+        "funnelTitle": "从看到到售出",
+        "step": {
+          "shown": "展示",
+          "tapped": "点击了广告",
+          "reached": "到达你的页面",
+          "checkout": "开始结账",
+          "bought": "已购买",
+          "signedUp": "已报名"
+        },
+        "tapRate": "看到的人中有 {{rate}}% 点击了",
+        "arrivalRate": "点击中有 {{rate}}% 到达了你的页面",
+        "lateSales": "有人点击广告后 7 天内购买的票仍会计入这里。",
+        "pace": "花费进度",
+        "paceSpent": "已花 {{spent}}，共 {{total}}",
+        "paceEven": "今天的均匀进度",
+        "paceRow": "{{spent}} · {{visits}} 次页面访问 · 每次 {{each}}",
+        "paceState": {
+          "on_pace": "进度正常",
+          "ends_early": "会提前结束",
+          "stopped": "已停止"
+        },
+        "endsEarlyLine": "{{app}} 会在 {{day}} 前用完它的份额并自动停止，不会额外收费。",
+        "bestVideo": "目前最佳视频",
+        "bestVideoLine": "{{best}} 每次点击花费 {{bestEach}}，而 {{worst}} 为 {{worstEach}}。",
+        "askAri": "向 Ari 询问这个广告",
+        "askAriBehindSales": "问 Ari 为什么没人购买",
+        "askAriBehindSignups": "问 Ari 为什么没人报名",
+        "ariPrompt": "为什么没人通过我的广告 {{name}} 购买？",
+        "ariPromptNeutral": "我的广告 {{name}} 效果怎么样？",
+        "updatedNow": "刚刚更新",
+        "updatedMin": "{{count}} 分钟前更新",
+        "updatedHours": "{{count}} 小时前更新",
+        "updatedDays": "{{count}} 天前更新"
       }
     }
   }

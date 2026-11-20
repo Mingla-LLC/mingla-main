@@ -536,7 +536,7 @@
         "view": "Detaljvy",
         "inReview": "Mingla granskar ett varumärkes första 3 annonser, sedan gör apparna det. Oftast några timmar, upp till 24. Inget spenderas innan den godkänts.",
         "runningOn": "Pågår på {{apps}}.",
-        "learning": "Dag {{day}} av 7. Apparna letar efter {{who}}, så resultaten varierar den här veckan.",
+        "learning": "Dag {{day}} av {{total}}. Apparna letar efter {{who}}, så resultaten varierar den här veckan.",
         "whoSales": "folk som troligen köper",
         "whoSignups": "folk som troligen anmäler sig",
         "whoVisits": "folk som troligen besöker din sida",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} resultat",
         "chartLabel": "Det du betalat de senaste 30 dagarna. {{line}}.",
         "last30": "Senaste 30 dagarna"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "För tidigt att säga",
+          "on_track": "På rätt spår",
+          "behind": "Efter det vi väntade oss",
+          "ahead": "Före det vi väntade oss"
+        },
+        "verdictBody": {
+          "too_early": "Kolla igen efter annonsens första hela dag.",
+          "on_track": "Resultaten ligger inom det väntade för det du har spenderat.",
+          "onTrackNone": "Du har spenderat mindre än en {{unit}} brukar kosta, så att ingen har kommit än är normalt.",
+          "ahead": "Resultaten kommer in billigare än väntat."
+        },
+        "dropOff": {
+          "not_tapping": "Folk ser annonsen, men få trycker på den.",
+          "not_reaching_page": "Folk trycker på annonsen, men når inte din sida.",
+          "not_buying": "Folk besöker sidan, men ingen har köpt än.",
+          "not_signing_up": "Folk besöker sidan, men ingen har anmält sig än.",
+          "not_finishing": "Folk börjar betala, men slutför inte.",
+          "too_dear": "Varje {{unit}} kostar mer än väntat."
+        },
+        "tileSpentOf": "av {{total}}",
+        "tilePerVisit": "Per sidbesök",
+        "tilePerTap": "Per tryck",
+        "tileCheckout": "Påbörjat köp",
+        "funnelTitle": "Från sett till sålt",
+        "step": {
+          "shown": "Visad",
+          "tapped": "Tryckte på annonsen",
+          "reached": "Nådde din sida",
+          "checkout": "Påbörjat köp",
+          "bought": "Köpte",
+          "signedUp": "Anmälde sig"
+        },
+        "tapRate": "{{rate}} % av dem som såg den tryckte",
+        "arrivalRate": "{{rate}} % av trycken nådde din sida",
+        "lateSales": "Biljetter som köps upp till 7 dagar efter att någon tryckt på annonsen räknas fortfarande här.",
+        "pace": "Takt",
+        "paceSpent": "{{spent}} av {{total}} spenderat",
+        "paceEven": "Jämn takt i dag",
+        "paceRow": "{{spent}} · {{visits}} sidbesök · {{each}} per besök",
+        "paceState": {
+          "on_pace": "I takt",
+          "ends_early": "Slutar tidigt",
+          "stopped": "Stoppad"
+        },
+        "endsEarlyLine": "{{app}} har använt sin del senast {{day}} och stannar av sig själv. Inget extra debiteras.",
+        "bestVideo": "Bästa videon hittills",
+        "bestVideoLine": "{{best}} kostar {{bestEach}} per tryck, mot {{worstEach}} för {{worst}}.",
+        "askAri": "Fråga Ari om den här annonsen",
+        "askAriBehindSales": "Fråga Ari varför ingen köper",
+        "askAriBehindSignups": "Fråga Ari varför ingen anmäler sig",
+        "ariPrompt": "Varför köper ingen via min annons {{name}}?",
+        "ariPromptNeutral": "Hur går det för min annons {{name}}?",
+        "updatedNow": "Uppdaterad nyss",
+        "updatedMin": "Uppdaterad för {{count}} min sedan",
+        "updatedHours": "Uppdaterad för {{count}} h sedan",
+        "updatedDays": "Uppdaterad för {{count}} d sedan"
       }
     }
   }

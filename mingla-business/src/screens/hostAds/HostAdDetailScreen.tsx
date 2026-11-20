@@ -72,6 +72,23 @@ import { platformNames } from "../../components/marketing/ads/hostAdCopy";
 import { formatHostAdMoneyCents } from "../../components/marketing/ads/hostAdMoney";
 import { AdResultsSection } from "../../components/marketing/ads/results/AdResultsSection";
 import {
+  AdAskAriButton,
+  AdBestVideoCard,
+  AdPaceCard,
+  AdSeenToSoldFunnel,
+  AdVerdictCard,
+} from "../../components/marketing/ads/results/AdOverviewCards";
+import {
+  learningDay,
+  learningTotal,
+  overviewFunnel,
+  perResultTile,
+  updatedAgo,
+  verdictCopy,
+} from "../../components/marketing/ads/results/hostAdOverviewModel";
+import { useAriSeedStore } from "../../store/ariSeedStore";
+import { postHogService } from "../../services/postHogService";
+import {
   builderStyles as bs,
   BuilderCard,
   BuilderLabel,
@@ -621,6 +638,12 @@ function HostAdDetailBody(): React.ReactElement {
   const backPay = payload.settlements.reduce((sum, row) => sum + Math.max(0, Number(row.released_host_cents ?? 0)), 0);
   const settling = payload.settlements.some((row) => row.settled_at === null);
   const runDay = hostAdRunDay(typeof c.starts_at === "string" ? c.starts_at : null, new Date().toISOString(), tz);
+  // #4238 Overview: the server's "is my ad working?" block (absent on older servers).
+  const overview = payload.overview ?? null;
+  const overviewCards = phase !== "review" && phase !== "rejected";
+  const learnTotal = learningTotal(overview?.run_days);
+  const updated =
+    phase !== "ended" && phase !== "review" && phase !== "rejected" ? updatedAgo(overview?.synced_at, Date.now()) : null;
 
   // ── Status line ─────────────────────────────────────────────────────────
   const statusLabel =
@@ -641,7 +664,11 @@ function HostAdDetailBody(): React.ReactElement {
       : review
         ? hm("detail.inReview")
         : learning
-          ? hm("detail.learning", { day: Math.min(7, payload.days_live ?? runDay ?? 1), who: hostAdLearningWho(goal) })
+          ? hm("detail.learning", {
+              day: learningDay(payload.days_live, runDay, learnTotal),
+              total: learnTotal,
+              who: hostAdLearningWho(goal),
+            })
           : live
             ? hm("detail.runningOn", { apps })
             : null;
@@ -680,6 +707,26 @@ function HostAdDetailBody(): React.ReactElement {
       : goal === "signups"
         ? hm("detail.headSignups", { spent: money(results.spentPay), count: results.count })
         : hm("detail.headVisits", { spent: money(results.spentPay), count: results.count });
+  const daily = payload.daily ?? [];
+  const sumDaily = (key: "clicks" | "page_visits"): number | null => {
+    const values = daily.map((point) => point[key]).filter((value): value is number => typeof value === "number");
+    return values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0);
+  };
+  const perTile = perResultTile({
+    count: results.count,
+    spentPay: results.spentPay,
+    visits: sumDaily("page_visits"),
+    clicks: sumDaily("clicks"),
+  });
+  const checkoutStarted =
+    goal === "sales" && typeof overview?.checkout_started === "number" ? overview.checkout_started : null;
+  const funnelSteps = overviewFunnel({
+    daily,
+    goal,
+    checkoutStarted,
+    orders: payload.results?.orders,
+    signUps: payload.results?.sign_ups,
+  });
   const summary = (
     <BuilderCard accessibilityLabel={hm("detail.results")} testID="ads-detail-results">
       <BuilderLabel>{hm("detail.results")}</BuilderLabel>
@@ -694,22 +741,37 @@ function HostAdDetailBody(): React.ReactElement {
             <View style={styles.tile}>
               <Text style={bs.caption}>{hm("detail.tileSpent")}</Text>
               <Text style={styles.stat} testID="ads-detail-spent">{money(results.spentPay)}</Text>
+              {budget.totalPay > 0 ? (
+                <Text style={bs.caption} testID="ads-detail-spent-of">
+                  {hm("overview.tileSpentOf", { total: money(budget.totalPay) })}
+                </Text>
+              ) : null}
             </View>
+            {perTile ? (
+              <View style={styles.tile}>
+                <Text style={bs.caption}>
+                  {perTile.labelKey === "detail.tilePer" ? hm("detail.tilePer", { unit: hostAdUnit(goal, true) }) : hm(perTile.labelKey)}
+                </Text>
+                <Text style={styles.stat} testID="ads-detail-each">{money(perTile.pay)}</Text>
+              </View>
+            ) : null}
+            {checkoutStarted !== null ? (
+              <View style={styles.tile}>
+                <Text style={bs.caption}>{hm("overview.tileCheckout")}</Text>
+                <Text style={styles.stat} testID="ads-detail-checkout">{String(checkoutStarted)}</Text>
+              </View>
+            ) : null}
             <View style={styles.tile}>
               <Text style={bs.caption}>{hm(goal === "sales" ? "detail.tileTickets" : goal === "signups" ? "detail.tileSignups" : "detail.tileVisits")}</Text>
               <Text style={styles.stat} testID="ads-detail-count">{String(results.count)}</Text>
             </View>
-            <View style={styles.tile}>
-              <Text style={bs.caption}>{hm("detail.tilePer", { unit: hostAdUnit(goal, true) })}</Text>
-              <Text style={styles.stat} testID="ads-detail-each">{results.eachPay === null ? "—" : money(results.eachPay)}</Text>
-            </View>
-            {results.salesValue !== null ? (
-              <View style={styles.tile}>
-                <Text style={bs.caption}>{hm("detail.tileSales")}</Text>
-                <Text style={styles.stat}>{money(results.salesValue)}</Text>
-              </View>
-            ) : null}
           </View>
+          <AdSeenToSoldFunnel
+            title={hm("overview.funnelTitle")}
+            steps={funnelSteps}
+            label={(step) => hm(`overview.step.${step.key}`)}
+            rateText={(step) => (step.rate ? hm(step.rate.key, { rate: step.rate.value }) : null)}
+          />
           {ended && results.returnX !== null && results.salesValue !== null ? (
             <Text style={bs.body}>
               {hm("detail.returnLine", { spent: money(results.spentPay), sales: money(results.salesValue), times: results.returnX.toFixed(1) })}
@@ -718,6 +780,9 @@ function HostAdDetailBody(): React.ReactElement {
           <Text style={bs.caption} testID="ads-detail-counting">
             {`${hostAdCountingLine(goal)} ${hm("detail.toAds", { amount: money(results.spentCredit) })}`}
           </Text>
+          {goal === "sales" ? (
+            <Text style={bs.caption} testID="ads-detail-late-sales">{hm("overview.lateSales")}</Text>
+          ) : null}
           {ended && results.count > 0 && publicPageUrl ? (
             <View style={bs.actions}>
               <Button label={hm("detail.share")} variant="secondary" size="md" onPress={() => setShareVisible(true)} testID="ads-detail-share" />
@@ -741,6 +806,8 @@ function HostAdDetailBody(): React.ReactElement {
         notes={[hostAdCountingLine(goal)]}
         placements={payload.by_placement}
         onRetry={() => void load()}
+        showFunnel={!isWideDesktop}
+        showSplit={!isWideDesktop}
       />
     </BuilderCard>
   );
@@ -818,6 +885,91 @@ function HostAdDetailBody(): React.ReactElement {
       {settling ? <Note tone="info" text={hm("detail.backPending")} /> : null}
     </BuilderCard>
   ) : null;
+
+  // ── #4238 Overview cards ────────────────────────────────────────────────
+  const verdict = overviewCards ? overview?.verdict ?? null : null;
+  const verdictCard = verdict ? (() => {
+    const words = verdictCopy(verdict, goal, results.count);
+    return (
+      <AdVerdictCard
+        state={verdict.state}
+        title={hm(words.titleKey)}
+        body={hm(words.bodyKey, { unit: hostAdUnit(goal, true) })}
+      />
+    );
+  })() : null;
+  const pace = overviewCards && phase !== "ended" ? overview?.pace ?? null : null;
+  const paceCard =
+    pace && pace.total_credit_cents > 0 ? (
+      <AdPaceCard
+        title={hm("overview.pace")}
+        spentLine={hm("overview.paceSpent", {
+          spent: money(hostAdPayFromCredit(pace.spent_credit_cents)),
+          total: money(hostAdPayFromCredit(pace.total_credit_cents)),
+        })}
+        evenLabel={hm("overview.paceEven")}
+        spentShare={pace.spent_credit_cents / pace.total_credit_cents}
+        evenShare={pace.even_share}
+        rows={pace.apps.map((row) => {
+          const appName = platformNames([row.platform]);
+          const spent = row.spent_credit_cents === null ? null : money(hostAdPayFromCredit(row.spent_credit_cents));
+          return {
+            platform: row.platform,
+            appName,
+            line:
+              spent !== null && row.cost_per_visit_credit_cents !== null
+                ? hm("overview.paceRow", {
+                    spent,
+                    visits: row.page_visits,
+                    each: money(hostAdPayFromCredit(row.cost_per_visit_credit_cents)),
+                  })
+                : spent,
+            state: row.state,
+            stateLabel: hm(`overview.paceState.${row.state}`),
+            endsEarlyLine:
+              row.state === "ends_early" && row.stops_at
+                ? hm("overview.endsEarlyLine", { app: appName, day: dateText(row.stops_at) })
+                : null,
+          };
+        })}
+      />
+    ) : null;
+  const best = overviewCards ? overview?.best_video ?? null : null;
+  const bestVideoCard = best ? (
+    <AdBestVideoCard
+      title={hm("overview.bestVideo")}
+      line={hm("overview.bestVideoLine", {
+        best: best.best.name,
+        bestEach: money(hostAdPayFromCredit(best.best.spend_per_tap_credit_cents)),
+        worstEach: money(hostAdPayFromCredit(best.worst.spend_per_tap_credit_cents)),
+        worst: best.worst.name,
+      })}
+    />
+  ) : null;
+  const behind = verdict?.state === "behind";
+  const onAskAri = (): void => {
+    if (campaignId === null) return;
+    useAriSeedStore
+      .getState()
+      .setSeed(behind && goal !== "signups" ? hm("overview.ariPrompt", { name }) : hm("overview.ariPromptNeutral", { name }));
+    postHogService.capture("host_ad_ask_ari_opened", {
+      campaign_id: campaignId,
+      plan_id: payload.plan_id ?? null,
+      verdict: verdict?.state ?? null,
+    });
+    router.push(
+      `/(tabs)/ari?brandId=${encodeURIComponent(brandId)}&adCampaignId=${encodeURIComponent(campaignId)}` as never,
+    );
+  };
+  const askAriOverview =
+    overviewCards && !offline ? (
+      <AdAskAriButton
+        label={
+          behind ? hm(goal === "signups" ? "overview.askAriBehindSignups" : "overview.askAriBehindSales") : hm("overview.askAri")
+        }
+        onPress={onAskAri}
+      />
+    ) : null;
 
   const ariCard =
     suggestion && suggestion.kind !== "accept_last_tickets" && suggestion.kind !== "new_video" ? (
@@ -959,7 +1111,14 @@ function HostAdDetailBody(): React.ReactElement {
 
   const hero = (
     <View style={styles.hero} testID="ads-detail-hero">
-      <StatusChip phase={phase} label={statusLabel} />
+      <View style={styles.chipRow}>
+        <StatusChip phase={phase} label={statusLabel} />
+        {updated ? (
+          <Text style={styles.updated} testID="ads-detail-updated">
+            {hm(updated.key, { count: updated.count })}
+          </Text>
+        ) : null}
+      </View>
       <Text style={styles.title} accessibilityRole="header">{name}</Text>
       <Text style={styles.sub}>{`${hostAdGoalName(goal)} · ${apps}`}</Text>
     </View>
@@ -1003,13 +1162,17 @@ function HostAdDetailBody(): React.ReactElement {
         <IconChrome icon="chevL" onPress={() => goBackToAds(router)} accessibilityLabel={hm("detail.back2")} testID="ads-detail-back" />
         {isWideDesktop ? (
           <View style={styles.desk}>
-            <View style={styles.deskMain}>
+            <View style={styles.deskMain} testID="ads-detail-desk-main">
               {hero}
               {top}
+              {verdictCard}
               {summary}
               {hasNumbers ? numbers : null}
             </View>
-            <View style={styles.deskSide}>
+            <View style={styles.deskSide} testID="ads-detail-desk-side">
+              {paceCard}
+              {bestVideoCard}
+              {askAriOverview}
               {ariCard}
               {budgetCard}
               {refundCard}
@@ -1027,8 +1190,12 @@ function HostAdDetailBody(): React.ReactElement {
             ) : (
               <>
                 {top}
-                {ariCard}
+                {verdictCard}
                 {summary}
+                {paceCard}
+                {bestVideoCard}
+                {askAriOverview}
+                {ariCard}
                 {budgetCard}
                 {refundCard}
                 {actions}
@@ -1204,6 +1371,8 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.tile,
   },
   chipDot: { width: 7, height: 7, borderRadius: 4 },
+  chipRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: space[3] },
+  updated: { ...type.caption, color: color.text2 },
   chipText: { ...type.caption, color: color.text1 },
   title: { ...type.h1, color: color.text1 },
   sub: { ...type.small, color: color.text2 },

@@ -536,7 +536,7 @@
         "view": "Xem chi tiết",
         "inReview": "Mingla duyệt 3 quảng cáo đầu tiên của một thương hiệu, sau đó các ứng dụng sẽ duyệt. Thường vài giờ, tối đa 24. Không chi gì cho đến khi được duyệt.",
         "runningOn": "Đang chạy trên {{apps}}.",
-        "learning": "Ngày {{day}} trên 7. Các ứng dụng đang tìm {{who}}, nên kết quả tuần này sẽ dao động.",
+        "learning": "Ngày {{day}} trên {{total}}. Các ứng dụng đang tìm {{who}}, nên kết quả tuần này sẽ dao động.",
         "whoSales": "những người có khả năng mua",
         "whoSignups": "những người có khả năng đăng ký",
         "whoVisits": "những người có khả năng xem trang của bạn",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} kết quả",
         "chartLabel": "Số tiền bạn đã trả trong 30 ngày qua. {{line}}.",
         "last30": "30 ngày qua"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Còn quá sớm để nói",
+          "on_track": "Đúng hướng",
+          "behind": "Kém hơn chúng tôi dự kiến",
+          "ahead": "Tốt hơn chúng tôi dự kiến"
+        },
+        "verdictBody": {
+          "too_early": "Hãy xem lại sau ngày chạy đầy đủ đầu tiên của quảng cáo.",
+          "on_track": "Kết quả đến giờ nằm trong mức dự kiến so với số tiền bạn đã chi.",
+          "onTrackNone": "Bạn đã chi ít hơn mức thường cần cho một {{unit}}, nên chưa có là bình thường.",
+          "ahead": "Kết quả đang rẻ hơn chúng tôi dự kiến."
+        },
+        "dropOff": {
+          "not_tapping": "Mọi người thấy quảng cáo nhưng ít ai chạm vào.",
+          "not_reaching_page": "Mọi người chạm vào quảng cáo nhưng không tới trang của bạn.",
+          "not_buying": "Mọi người có ghé xem nhưng chưa ai mua.",
+          "not_signing_up": "Mọi người có ghé xem nhưng chưa ai đăng ký.",
+          "not_finishing": "Mọi người bắt đầu thanh toán nhưng không hoàn tất.",
+          "too_dear": "Mỗi {{unit}} đang tốn hơn chúng tôi dự kiến."
+        },
+        "tileSpentOf": "trên {{total}}",
+        "tilePerVisit": "Mỗi lượt xem trang",
+        "tilePerTap": "Mỗi lượt chạm",
+        "tileCheckout": "Bắt đầu thanh toán",
+        "funnelTitle": "Từ thấy đến mua",
+        "step": {
+          "shown": "Đã hiển thị",
+          "tapped": "Đã chạm quảng cáo",
+          "reached": "Đã tới trang của bạn",
+          "checkout": "Bắt đầu thanh toán",
+          "bought": "Đã mua",
+          "signedUp": "Đã đăng ký"
+        },
+        "tapRate": "{{rate}}% người thấy đã chạm",
+        "arrivalRate": "{{rate}}% lượt chạm đã tới trang của bạn",
+        "lateSales": "Vé mua trong vòng 7 ngày sau khi ai đó chạm quảng cáo vẫn được tính ở đây.",
+        "pace": "Nhịp chi",
+        "paceSpent": "Đã chi {{spent}} trên {{total}}",
+        "paceEven": "Nhịp đều hôm nay",
+        "paceRow": "{{spent}} · {{visits}} lượt xem trang · {{each}} mỗi lượt",
+        "paceState": {
+          "on_pace": "Đúng nhịp",
+          "ends_early": "Kết thúc sớm",
+          "stopped": "Đã dừng"
+        },
+        "endsEarlyLine": "{{app}} sẽ dùng hết phần của mình vào {{day}} và tự dừng. Không tính thêm gì.",
+        "bestVideo": "Video tốt nhất đến giờ",
+        "bestVideoLine": "{{best}} tốn {{bestEach}} mỗi lượt chạm, so với {{worstEach}} của {{worst}}.",
+        "askAri": "Hỏi Ari về quảng cáo này",
+        "askAriBehindSales": "Hỏi Ari vì sao không ai mua",
+        "askAriBehindSignups": "Hỏi Ari vì sao không ai đăng ký",
+        "ariPrompt": "Vì sao không ai mua từ quảng cáo {{name}} của tôi?",
+        "ariPromptNeutral": "Quảng cáo {{name}} của tôi đang thế nào?",
+        "updatedNow": "Vừa cập nhật",
+        "updatedMin": "Cập nhật {{count}} phút trước",
+        "updatedHours": "Cập nhật {{count}} giờ trước",
+        "updatedDays": "Cập nhật {{count}} ngày trước"
       }
     }
   }

@@ -536,7 +536,7 @@
         "view": "Duban cikakken bayani",
         "inReview": "Mingla na duba tallace-tallace 3 na farko na alama, sannan manhajoji su duba. Yawanci 'yan sa'o'i, har zuwa 24. Ba a kashe komai sai an amince.",
         "runningOn": "Yana gudana a {{apps}}.",
-        "learning": "Rana ta {{day}} cikin 7. Manhajoji suna neman {{who}}, don haka sakamako yana hawa da sauka wannan makon.",
+        "learning": "Rana ta {{day}} cikin {{total}}. Manhajoji suna neman {{who}}, don haka sakamako yana hawa da sauka wannan makon.",
         "whoSales": "mutanen da wataƙila za su saya",
         "whoSignups": "mutanen da wataƙila za su yi rajista",
         "whoVisits": "mutanen da wataƙila za su ziyarci shafinka",
@@ -772,6 +772,65 @@
         "resultOne": "Sakamako {{count}}",
         "chartLabel": "Abin da ka biya a kwanaki 30 da suka wuce. {{line}}.",
         "last30": "Kwanaki 30 da suka wuce"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Ya yi wuri a faɗi",
+          "on_track": "Yana tafiya daidai",
+          "behind": "Bai kai abin da muka zata ba",
+          "ahead": "Ya wuce abin da muka zata"
+        },
+        "verdictBody": {
+          "too_early": "Ka sake dubawa bayan cikakkiyar rana ta farko ta tallan.",
+          "on_track": "Sakamakon zuwa yanzu yana cikin kewayon da muka zata don abin da ka kashe.",
+          "onTrackNone": "Ka kashe ƙasa da abin da {{unit}} ɗaya ke ci a al'ada, don haka rashin samun ko ɗaya yanzu al'ada ne.",
+          "ahead": "Sakamako yana zuwa da arha fiye da yadda muka zata."
+        },
+        "dropOff": {
+          "not_tapping": "Mutane suna ganin tallan, amma kaɗan ne ke taɓa shi.",
+          "not_reaching_page": "Mutane suna taɓa tallan, amma ba sa isa shafinka.",
+          "not_buying": "Mutane suna ziyara, amma babu wanda ya saya tukuna.",
+          "not_signing_up": "Mutane suna ziyara, amma babu wanda ya yi rajista tukuna.",
+          "not_finishing": "Mutane suna fara biya, amma ba sa kammalawa.",
+          "too_dear": "Kowane {{unit}} yana ci fiye da yadda muka zata."
+        },
+        "tileSpentOf": "cikin {{total}}",
+        "tilePerVisit": "Kowace ziyarar shafi",
+        "tilePerTap": "Kowane taɓawa",
+        "tileCheckout": "Sun fara biya",
+        "funnelTitle": "Daga gani zuwa saye",
+        "step": {
+          "shown": "An nuna",
+          "tapped": "Sun taɓa tallan",
+          "reached": "Sun isa shafinka",
+          "checkout": "Sun fara biya",
+          "bought": "Sun saya",
+          "signedUp": "Sun yi rajista"
+        },
+        "tapRate": "{{rate}}% na waɗanda suka gani sun taɓa",
+        "arrivalRate": "{{rate}}% na taɓawa sun isa shafinka",
+        "lateSales": "Tikitin da aka saya cikin kwana 7 bayan an taɓa tallan har yanzu ana ƙirga su a nan.",
+        "pace": "Saurin kashewa",
+        "paceSpent": "An kashe {{spent}} cikin {{total}}",
+        "paceEven": "Saurin daidai na yau",
+        "paceRow": "{{spent}} · ziyarar shafi {{visits}} · {{each}} kowace ziyara",
+        "paceState": {
+          "on_pace": "Yana daidai",
+          "ends_early": "Zai ƙare da wuri",
+          "stopped": "An tsayar"
+        },
+        "endsEarlyLine": "{{app}} zai gama rabonsa kafin {{day}} kuma ya tsaya da kansa. Ba a ƙara cajin komai ba.",
+        "bestVideo": "Mafi kyawun bidiyo zuwa yanzu",
+        "bestVideoLine": "{{best}} yana ci {{bestEach}} kowane taɓawa, idan aka kwatanta da {{worstEach}} na {{worst}}.",
+        "askAri": "Tambayi Ari game da wannan tallan",
+        "askAriBehindSales": "Tambayi Ari me yasa ba a saya",
+        "askAriBehindSignups": "Tambayi Ari me yasa ba a yi rajista",
+        "ariPrompt": "Me yasa babu wanda ke saye daga tallana {{name}}?",
+        "ariPromptNeutral": "Yaya tallana {{name}} ke tafiya?",
+        "updatedNow": "An sabunta yanzu",
+        "updatedMin": "An sabunta minti {{count}} da suka wuce",
+        "updatedHours": "An sabunta awa {{count}} da suka wuce",
+        "updatedDays": "An sabunta kwana {{count}} da suka wuce"
       }
     }
   }

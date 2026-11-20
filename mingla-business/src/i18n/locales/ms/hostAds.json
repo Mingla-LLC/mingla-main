@@ -536,7 +536,7 @@
         "view": "Tampilan detail",
         "inReview": "Mingla menyemak 3 iklan pertama sebuah jenama, lalu aplikasi yang menyemak. Biasanya beberapa jam, hingga 24. Tidak ada yang digunakan sebelum disetujui.",
         "runningOn": "Berjalan di {{apps}}.",
-        "learning": "Hari {{day}} dari 7. Aplikasi sedang mencari {{who}}, jadi hasilnya naik turun minggu ini.",
+        "learning": "Hari {{day}} dari {{total}}. Aplikasi sedang mencari {{who}}, jadi hasilnya naik turun minggu ini.",
         "whoSales": "orang yang kemungkinan membeli",
         "whoSignups": "orang yang kemungkinan mendaftar",
         "whoVisits": "orang yang kemungkinan melawat halaman anda",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} hasil",
         "chartLabel": "Apa yang anda bayar dalam 30 hari lepas. {{line}}.",
         "last30": "30 hari lepas"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Terlalu awal untuk dikatakan",
+          "on_track": "Di landasan",
+          "behind": "Di belakang jangkaan kami",
+          "ahead": "Di hadapan jangkaan kami"
+        },
+        "verdictBody": {
+          "too_early": "Semak semula selepas hari penuh pertama iklan.",
+          "on_track": "Hasil setakat ini dalam julat yang kami jangka untuk perbelanjaan anda.",
+          "onTrackNone": "Anda telah berbelanja kurang daripada kos biasa satu {{unit}}, jadi belum ada lagi adalah normal.",
+          "ahead": "Hasil datang lebih murah daripada jangkaan kami."
+        },
+        "dropOff": {
+          "not_tapping": "Orang nampak iklan, tetapi sedikit yang mengetiknya.",
+          "not_reaching_page": "Orang mengetik iklan, tetapi tidak sampai ke halaman anda.",
+          "not_buying": "Orang melawat, tetapi belum ada yang membeli.",
+          "not_signing_up": "Orang melawat, tetapi belum ada yang mendaftar.",
+          "not_finishing": "Orang mula membuat bayaran, tetapi tidak selesai.",
+          "too_dear": "Setiap {{unit}} lebih mahal daripada jangkaan kami."
+        },
+        "tileSpentOf": "daripada {{total}}",
+        "tilePerVisit": "Setiap lawatan halaman",
+        "tilePerTap": "Setiap ketikan",
+        "tileCheckout": "Mula membayar",
+        "funnelTitle": "Dari dilihat ke dijual",
+        "step": {
+          "shown": "Dipaparkan",
+          "tapped": "Mengetik iklan",
+          "reached": "Sampai ke halaman anda",
+          "checkout": "Mula membayar",
+          "bought": "Membeli",
+          "signedUp": "Mendaftar"
+        },
+        "tapRate": "{{rate}}% orang yang melihat mengetik",
+        "arrivalRate": "{{rate}}% ketikan sampai ke halaman anda",
+        "lateSales": "Tiket yang dibeli sehingga 7 hari selepas seseorang mengetik iklan masih dikira di sini.",
+        "pace": "Kadar",
+        "paceSpent": "{{spent}} daripada {{total}} dibelanjakan",
+        "paceEven": "Kadar sekata hari ini",
+        "paceRow": "{{spent}} · {{visits}} lawatan halaman · {{each}} setiap lawatan",
+        "paceState": {
+          "on_pace": "Ikut kadar",
+          "ends_early": "Tamat awal",
+          "stopped": "Berhenti"
+        },
+        "endsEarlyLine": "{{app}} akan habiskan bahagiannya menjelang {{day}} dan berhenti sendiri. Tiada caj tambahan.",
+        "bestVideo": "Video terbaik setakat ini",
+        "bestVideoLine": "{{best}} berharga {{bestEach}} setiap ketikan, berbanding {{worstEach}} untuk {{worst}}.",
+        "askAri": "Tanya Ari tentang iklan ini",
+        "askAriBehindSales": "Tanya Ari kenapa orang tidak membeli",
+        "askAriBehindSignups": "Tanya Ari kenapa orang tidak mendaftar",
+        "ariPrompt": "Kenapa orang tidak membeli daripada iklan saya {{name}}?",
+        "ariPromptNeutral": "Bagaimana prestasi iklan saya {{name}}?",
+        "updatedNow": "Baru dikemas kini",
+        "updatedMin": "Dikemas kini {{count}} min lalu",
+        "updatedHours": "Dikemas kini {{count}} jam lalu",
+        "updatedDays": "Dikemas kini {{count}} hari lalu"
       }
     }
   }

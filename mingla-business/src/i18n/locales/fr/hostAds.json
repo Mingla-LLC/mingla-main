@@ -536,7 +536,7 @@
         "view": "Vue détaillée",
         "inReview": "Mingla vérifie les 3 premières pubs d'une marque, puis les applis le font. En général quelques heures, jusqu'à 24. Rien n'est dépensé avant l'approbation.",
         "runningOn": "Diffusée sur {{apps}}.",
-        "learning": "Jour {{day}} sur 7. Les applis cherchent {{who}}, donc les résultats varient cette semaine.",
+        "learning": "Jour {{day}} sur {{total}}. Les applis cherchent {{who}}, donc les résultats varient cette semaine.",
         "whoSales": "des personnes susceptibles d'acheter",
         "whoSignups": "des personnes susceptibles de s'inscrire",
         "whoVisits": "des personnes susceptibles de visiter votre page",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} résultat",
         "chartLabel": "Ce que tu as payé ces 30 derniers jours. {{line}}.",
         "last30": "30 derniers jours"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Trop tôt pour le dire",
+          "on_track": "En bonne voie",
+          "behind": "En dessous de nos prévisions",
+          "ahead": "Au-dessus de nos prévisions"
+        },
+        "verdictBody": {
+          "too_early": "Revenez après le premier jour complet de la pub.",
+          "on_track": "Les résultats sont dans la fourchette prévue pour ce que vous avez dépensé.",
+          "onTrackNone": "Vous avez dépensé moins que le coût habituel d'un(e) {{unit}}, donc aucun résultat pour l'instant, c'est normal.",
+          "ahead": "Les résultats coûtent moins cher que prévu."
+        },
+        "dropOff": {
+          "not_tapping": "Les gens voient la pub, mais peu la touchent.",
+          "not_reaching_page": "Les gens touchent la pub, mais n'arrivent pas sur votre page.",
+          "not_buying": "Les gens visitent, mais personne n'a encore acheté.",
+          "not_signing_up": "Les gens visitent, mais personne ne s'est encore inscrit.",
+          "not_finishing": "Les gens commencent le paiement, mais ne le terminent pas.",
+          "too_dear": "Chaque {{unit}} coûte plus cher que prévu."
+        },
+        "tileSpentOf": "sur {{total}}",
+        "tilePerVisit": "Par visite de page",
+        "tilePerTap": "Par clic",
+        "tileCheckout": "Paiement commencé",
+        "funnelTitle": "De la vue à la vente",
+        "step": {
+          "shown": "Vue",
+          "tapped": "Ont touché la pub",
+          "reached": "Sont arrivés sur votre page",
+          "checkout": "Paiement commencé",
+          "bought": "Ont acheté",
+          "signedUp": "Inscrits"
+        },
+        "tapRate": "{{rate}} % des personnes l'ayant vue ont touché",
+        "arrivalRate": "{{rate}} % des clics sont arrivés sur votre page",
+        "lateSales": "Les billets achetés jusqu'à 7 jours après un clic sur la pub comptent toujours ici.",
+        "pace": "Rythme",
+        "paceSpent": "{{spent}} dépensés sur {{total}}",
+        "paceEven": "Rythme régulier aujourd'hui",
+        "paceRow": "{{spent}} · {{visits}} visites de page · {{each}} par visite",
+        "paceState": {
+          "on_pace": "Au bon rythme",
+          "ends_early": "Finit en avance",
+          "stopped": "Arrêtée"
+        },
+        "endsEarlyLine": "{{app}} aura utilisé sa part d'ici {{day}} et s'arrêtera seule. Rien de plus n'est facturé.",
+        "bestVideo": "Meilleure vidéo pour l'instant",
+        "bestVideoLine": "{{best}} coûte {{bestEach}} par clic, contre {{worstEach}} pour {{worst}}.",
+        "askAri": "Demander à Ari à propos de cette pub",
+        "askAriBehindSales": "Demander à Ari pourquoi personne n'achète",
+        "askAriBehindSignups": "Demander à Ari pourquoi personne ne s'inscrit",
+        "ariPrompt": "Pourquoi personne n'achète via ma pub {{name}} ?",
+        "ariPromptNeutral": "Comment se porte ma pub {{name}} ?",
+        "updatedNow": "Mis à jour à l'instant",
+        "updatedMin": "Mis à jour il y a {{count}} min",
+        "updatedHours": "Mis à jour il y a {{count}} h",
+        "updatedDays": "Mis à jour il y a {{count}} j"
       }
     }
   }

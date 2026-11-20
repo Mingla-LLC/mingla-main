@@ -536,7 +536,7 @@
         "view": "Ayrıntı görünümü",
         "inReview": "Mingla bir markanın ilk 3 reklamını kontrol eder, sonra uygulamalar kontrol eder. Genelde birkaç saat, en fazla 24. Onaylanana kadar hiçbir şey harcanmaz.",
         "runningOn": "{{apps}} üzerinde yayında.",
-        "learning": "7 günün {{day}}. günü. Uygulamalar {{who}} arıyor, bu yüzden sonuçlar bu hafta oynayabilir.",
+        "learning": "{{total}} günün {{day}}. günü. Uygulamalar {{who}} arıyor, bu yüzden sonuçlar bu hafta oynayabilir.",
         "whoSales": "satın alması muhtemel kişileri",
         "whoSignups": "kayıt olması muhtemel kişileri",
         "whoVisits": "sayfanı ziyaret etmesi muhtemel kişileri",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} sonuç",
         "chartLabel": "Son 30 günde ödediğin tutar. {{line}}.",
         "last30": "Son 30 gün"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Söylemek için erken",
+          "on_track": "Yolunda",
+          "behind": "Beklediğimizin gerisinde",
+          "ahead": "Beklediğimizin önünde"
+        },
+        "verdictBody": {
+          "too_early": "Reklamın ilk tam gününden sonra tekrar bak.",
+          "on_track": "Sonuçlar harcadığın tutar için beklediğimiz aralıkta.",
+          "onTrackNone": "Bir {{unit}} için genelde gerekenden az harcadın, bu yüzden henüz hiç olmaması normal.",
+          "ahead": "Sonuçlar beklediğimizden ucuza geliyor."
+        },
+        "dropOff": {
+          "not_tapping": "İnsanlar reklamı görüyor ama az kişi dokunuyor.",
+          "not_reaching_page": "İnsanlar reklama dokunuyor ama sayfana ulaşmıyor.",
+          "not_buying": "İnsanlar ziyaret ediyor ama henüz kimse satın almadı.",
+          "not_signing_up": "İnsanlar ziyaret ediyor ama henüz kimse kaydolmadı.",
+          "not_finishing": "İnsanlar ödemeye başlıyor ama bitirmiyor.",
+          "too_dear": "Her {{unit}} beklediğimizden pahalıya geliyor."
+        },
+        "tileSpentOf": "/ {{total}}",
+        "tilePerVisit": "Sayfa ziyareti başına",
+        "tilePerTap": "Dokunma başına",
+        "tileCheckout": "Ödemeye başladı",
+        "funnelTitle": "Görülmekten satışa",
+        "step": {
+          "shown": "Gösterildi",
+          "tapped": "Reklama dokundu",
+          "reached": "Sayfana ulaştı",
+          "checkout": "Ödemeye başladı",
+          "bought": "Satın aldı",
+          "signedUp": "Kaydoldu"
+        },
+        "tapRate": "Görenlerin %{{rate}} kadarı dokundu",
+        "arrivalRate": "Dokunmaların %{{rate}} kadarı sayfana ulaştı",
+        "lateSales": "Reklama dokunduktan sonraki 7 gün içinde alınan biletler burada sayılmaya devam eder.",
+        "pace": "Hız",
+        "paceSpent": "{{total}} içinden {{spent}} harcandı",
+        "paceEven": "Bugün için eşit hız",
+        "paceRow": "{{spent}} · {{visits}} sayfa ziyareti · ziyaret başına {{each}}",
+        "paceState": {
+          "on_pace": "Hızında",
+          "ends_early": "Erken bitecek",
+          "stopped": "Durdu"
+        },
+        "endsEarlyLine": "{{app}} payını {{day}} itibarıyla bitirip kendiliğinden duracak. Ekstra bir şey alınmaz.",
+        "bestVideo": "Şimdiye kadarki en iyi video",
+        "bestVideoLine": "{{best}} dokunma başına {{bestEach}} tutuyor, {{worst}} ise {{worstEach}}.",
+        "askAri": "Bu reklamı Ari'ye sor",
+        "askAriBehindSales": "Neden kimsenin almadığını Ari'ye sor",
+        "askAriBehindSignups": "Neden kimsenin kaydolmadığını Ari'ye sor",
+        "ariPrompt": "{{name}} reklamımdan neden kimse satın almıyor?",
+        "ariPromptNeutral": "{{name}} reklamım nasıl gidiyor?",
+        "updatedNow": "Az önce güncellendi",
+        "updatedMin": "{{count}} dk önce güncellendi",
+        "updatedHours": "{{count}} sa önce güncellendi",
+        "updatedDays": "{{count}} gün önce güncellendi"
       }
     }
   }

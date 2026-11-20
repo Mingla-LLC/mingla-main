@@ -536,7 +536,7 @@
         "view": "Vizualizare detaliată",
         "inReview": "Mingla verifică primele 3 reclame ale unui brand, apoi o fac aplicațiile. De obicei câteva ore, până la 24. Nu se cheltuie nimic până la aprobare.",
         "runningOn": "Rulează pe {{apps}}.",
-        "learning": "Ziua {{day}} din 7. Aplicațiile caută {{who}}, așa că rezultatele variază săptămâna asta.",
+        "learning": "Ziua {{day}} din {{total}}. Aplicațiile caută {{who}}, așa că rezultatele variază săptămâna asta.",
         "whoSales": "oameni care probabil cumpără",
         "whoSignups": "oameni care probabil se înscriu",
         "whoVisits": "oameni care probabil îți vizitează pagina",
@@ -772,6 +772,65 @@
         "resultOne": "{{count}} rezultat",
         "chartLabel": "Cât ai plătit în ultimele 30 de zile. {{line}}.",
         "last30": "Ultimele 30 de zile"
+      },
+      "overview": {
+        "verdictTitle": {
+          "too_early": "Prea devreme pentru a spune",
+          "on_track": "Pe drumul cel bun",
+          "behind": "Sub ce ne așteptam",
+          "ahead": "Peste ce ne așteptam"
+        },
+        "verdictBody": {
+          "too_early": "Revino după prima zi completă a reclamei.",
+          "on_track": "Rezultatele sunt în intervalul așteptat pentru cât ai cheltuit.",
+          "onTrackNone": "Ai cheltuit mai puțin decât costă de obicei un(o) {{unit}}, deci e normal să nu ai încă niciunul.",
+          "ahead": "Rezultatele vin mai ieftin decât ne așteptam."
+        },
+        "dropOff": {
+          "not_tapping": "Oamenii văd reclama, dar puțini apasă pe ea.",
+          "not_reaching_page": "Oamenii apasă pe reclamă, dar nu ajung pe pagina ta.",
+          "not_buying": "Oamenii vizitează, dar nimeni n-a cumpărat încă.",
+          "not_signing_up": "Oamenii vizitează, dar nimeni nu s-a înscris încă.",
+          "not_finishing": "Oamenii încep plata, dar n-o finalizează.",
+          "too_dear": "Fiecare {{unit}} costă mai mult decât ne așteptam."
+        },
+        "tileSpentOf": "din {{total}}",
+        "tilePerVisit": "Per vizită pe pagină",
+        "tilePerTap": "Per apăsare",
+        "tileCheckout": "Plată începută",
+        "funnelTitle": "De la văzut la vândut",
+        "step": {
+          "shown": "Afișată",
+          "tapped": "Au apăsat pe reclamă",
+          "reached": "Au ajuns pe pagina ta",
+          "checkout": "Plată începută",
+          "bought": "Au cumpărat",
+          "signedUp": "S-au înscris"
+        },
+        "tapRate": "{{rate}}% dintre cei care au văzut-o au apăsat",
+        "arrivalRate": "{{rate}}% dintre apăsări au ajuns pe pagina ta",
+        "lateSales": "Biletele cumpărate până la 7 zile după ce cineva apasă pe reclamă contează încă aici.",
+        "pace": "Ritm",
+        "paceSpent": "{{spent}} din {{total}} cheltuiți",
+        "paceEven": "Ritm egal azi",
+        "paceRow": "{{spent}} · {{visits}} vizite pe pagină · {{each}} pe vizită",
+        "paceState": {
+          "on_pace": "În ritm",
+          "ends_early": "Se termină mai devreme",
+          "stopped": "Oprită"
+        },
+        "endsEarlyLine": "{{app}} își va folosi partea până {{day}} și se va opri singură. Nu se percepe nimic în plus.",
+        "bestVideo": "Cel mai bun video până acum",
+        "bestVideoLine": "{{best}} costă {{bestEach}} pe apăsare, față de {{worstEach}} pentru {{worst}}.",
+        "askAri": "Întreab-o pe Ari despre această reclamă",
+        "askAriBehindSales": "Întreab-o pe Ari de ce nu cumpără nimeni",
+        "askAriBehindSignups": "Întreab-o pe Ari de ce nu se înscrie nimeni",
+        "ariPrompt": "De ce nu cumpără nimeni din reclama mea {{name}}?",
+        "ariPromptNeutral": "Cum merge reclama mea {{name}}?",
+        "updatedNow": "Actualizat acum",
+        "updatedMin": "Actualizat acum {{count}} min",
+        "updatedHours": "Actualizat acum {{count}} h",
+        "updatedDays": "Actualizat acum {{count}} z"
       }
     }
   }
