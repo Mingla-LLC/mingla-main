@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Modal, ModalBody, ModalFooter } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { defaultResetDue } from "../../lib/outreachView";
+import { CalendarInput } from "@mingla/calendar-web";
 
 export function ResetDueModal({ open, count, singular, today, busy, error, onConfirm, onCancel }) {
   const [due, setDue] = useState(() => defaultResetDue(today));
@@ -17,9 +18,9 @@ export function ResetDueModal({ open, count, singular, today, busy, error, onCon
           They all get the new date below, so the Due badges mean something again. Their stage, owner and next step stay the same.
         </p>
         <label htmlFor="reset-due-date" className="mt-4 mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">New due date</label>
-        <input
+        <CalendarInput
           id="reset-due-date"
-          type="date"
+          mode="date"
           min={today}
           value={due}
           disabled={busy}

@@ -1,3 +1,4 @@
+import { CalendarInput } from "@mingla/calendar-web";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { communicationsErrorMessage } from "../../lib/communicationsErrors";
 import {
@@ -1166,14 +1167,14 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
                     <label htmlFor="email-joined-from" className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-tertiary)]">Joined from</label>
                     <button type="button" onClick={() => setFilter("joinedFrom", "")} className={`text-[10px] font-semibold ${filters.joinedFrom ? "text-[var(--color-brand-700)] hover:underline" : "text-[var(--color-text-tertiary)]"}`}>All</button>
                   </div>
-                  <input id="email-joined-from" type="date" value={filters.joinedFrom} onChange={(event) => setFilter("joinedFrom", event.target.value)} className="h-9 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-xs text-[var(--color-text-primary)]" />
+                  <CalendarInput id="email-joined-from" mode="date" value={filters.joinedFrom} onChange={(event) => setFilter("joinedFrom", event.target.value)} className="h-9 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-xs text-[var(--color-text-primary)]" />
                 </div>
                 <div>
                   <div className="mb-1 flex items-center justify-between gap-2">
                     <label htmlFor="email-joined-through" className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--color-text-tertiary)]">Joined through</label>
                     <button type="button" onClick={() => setFilter("joinedTo", "")} className={`text-[10px] font-semibold ${filters.joinedTo ? "text-[var(--color-brand-700)] hover:underline" : "text-[var(--color-text-tertiary)]"}`}>All</button>
                   </div>
-                  <input id="email-joined-through" type="date" value={filters.joinedTo} onChange={(event) => setFilter("joinedTo", event.target.value)} className="h-9 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-xs text-[var(--color-text-primary)]" />
+                  <CalendarInput id="email-joined-through" mode="date" value={filters.joinedTo} onChange={(event) => setFilter("joinedTo", event.target.value)} className="h-9 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-2 text-xs text-[var(--color-text-primary)]" />
                 </div>
               </div>
               <div className="flex items-center justify-between gap-3 text-xs">
@@ -1259,7 +1260,7 @@ export function EmailComposer({ callEdgeFunction, providerConfigured, onSessionE
               <div className="flex min-h-9 flex-wrap items-center gap-2">
                 <button type="button" aria-pressed={scheduleMode === "now"} onClick={() => setScheduleMode("now")} className={`h-9 rounded-lg border px-3 text-xs font-semibold ${scheduleMode === "now" ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-300)]"}`}>Send now</button>
                 <button type="button" aria-pressed={scheduleMode === "later"} onClick={() => setScheduleMode("later")} className={`h-9 rounded-lg border px-3 text-xs font-semibold ${scheduleMode === "later" ? "border-[var(--color-brand-500)] bg-[var(--color-brand-50)] text-[var(--color-brand-700)]" : "border-[var(--gray-300)]"}`}>Schedule</button>
-                {scheduleMode === "later" && <input type="datetime-local" value={scheduledLocal} onChange={(event) => setScheduledLocal(event.target.value)} className="h-9 min-w-[195px] rounded-lg border border-[var(--gray-300)] px-2 text-xs" />}
+                {scheduleMode === "later" && <CalendarInput mode="datetime" value={scheduledLocal} onChange={(event) => setScheduledLocal(event.target.value)} className="h-9 min-w-[195px] rounded-lg border border-[var(--gray-300)] px-2 text-xs" />}
               </div>
               <p className="mt-1 text-[11px] text-[var(--color-text-tertiary)]">{timezone}</p>
             </div>

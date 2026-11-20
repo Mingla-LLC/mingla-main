@@ -10,6 +10,7 @@ import { PeopleField } from "../people/PeopleField";
 import { usePeopleDirectory } from "../../hooks/usePeopleDirectory";
 import { RecordPicker } from "./RecordPicker";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
+import { CalendarInput } from "@mingla/calendar-web";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] ${FOCUS}`;
@@ -194,7 +195,7 @@ export function WorkAddForm({ config, online, headingRef, onAdded, onCancel, onO
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex min-w-0 flex-col gap-1">
           <span className={LABEL}>Due date</span>
-          <input type="date" value={due} onChange={(e) => setDue(e.target.value)} className={INPUT} />
+          <CalendarInput mode="date" value={due} onChange={(e) => setDue(e.target.value)} className={INPUT} />
           {!due && eventLink && <span className="break-words text-[12px] text-[var(--color-text-tertiary)]">Due date counted back from {eventLink.label}{kit ? ` (T${Number(kit) > 0 ? "+" : ""}${kit})` : ", the day before it starts"}.</span>}
           {due && <span className="text-[12px] text-[var(--color-text-tertiary)]">Due {dayLabel(due)}</span>}
         </label>

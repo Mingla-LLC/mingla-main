@@ -5,6 +5,7 @@
 // opens a short form: what, assignees, watchers, due, Files link and "Host
 // can see this task on their plan" (off by default, D4). Mingla writes the
 // card's instructions and done means (C-6); staff can edit them on the card.
+import { CalendarInput } from "@mingla/calendar-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "../ui/Button";
@@ -180,7 +181,7 @@ export function HostToDoSection({ record, read, online, onAdded, prefill = null 
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex min-w-0 flex-col gap-1" htmlFor={fid("due")}>
               <span className={LABEL}>Due</span>
-              <input id={fid("due")} type="date" min={today} value={form.due} disabled={busy}
+              <CalendarInput id={fid("due")} mode="date" min={today} value={form.due} disabled={busy}
                 aria-invalid={!!problemFor("due_on") || undefined} onChange={(e) => set({ due: e.target.value })} className={INPUT} />
               {problemFor("due_on") && <span className="text-[12px] text-[var(--color-error-700)]">{problemFor("due_on")}</span>}
             </label>

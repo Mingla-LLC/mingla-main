@@ -73,6 +73,7 @@ import { DraftKeptNote, SideLink, usePanelLinks } from "../ui/PanelStack";
 import { usePanelDraft } from "../../hooks/usePanelDraft";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
 import { linkSide, sideHref } from "../../lib/panelStack";
+import { CalendarInput } from "@mingla/calendar-web";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
@@ -640,7 +641,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                 {(closeIt) => (
                   <>
                     <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">Start date
-                      <input type="date" defaultValue={card.start_on || ""} max={card.due_on || undefined} onChange={(e) => { update({ start_on: e.target.value || null }, e.target.value ? "Start date set" : "Start date cleared"); closeIt(); }} className={INPUT} />
+                      <CalendarInput mode="date" defaultValue={card.start_on || ""} max={card.due_on || undefined} onChange={(e) => { update({ start_on: e.target.value || null }, e.target.value ? "Start date set" : "Start date cleared"); closeIt(); }} className={INPUT} />
                     </label>
                     {card.start_on && <button type="button" onClick={() => { update({ start_on: null }, "Start date cleared"); closeIt(); }} className={`self-start text-[12.5px] text-[var(--color-text-secondary)] underline ${FOCUS}`}>Clear</button>}
                   </>
@@ -649,7 +650,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
               <PropChip label={`Due${card.kit_step !== null && card.kit_step !== undefined ? ` · T${card.kit_step > 0 ? "+" : ""}${card.kit_step}` : ""}`} empty="Due" value={card.due_on || closed ? <span data-due={due.tone} title={due.full || undefined} className={`rounded-full px-1.5 py-px ${DUE_TONE[due.tone]}`}>{due.text}</span> : ""} danger={!!card.overdue} disabled={!canEdit} width="w-56">
                 {(closeIt) => (
                   <label className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">Due date
-                    <input type="date" defaultValue={card.due_on || ""} onChange={(e) => { if (e.target.value) { update({ due_on: e.target.value }, "Due date changed"); closeIt(); } }} className={INPUT} />
+                    <CalendarInput mode="date" defaultValue={card.due_on || ""} onChange={(e) => { if (e.target.value) { update({ due_on: e.target.value }, "Due date changed"); closeIt(); } }} className={INPUT} />
                   </label>
                 )}
               </PropChip>

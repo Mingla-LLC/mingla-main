@@ -1,5 +1,6 @@
 import { forwardRef, useId, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { CalendarInput } from "@mingla/calendar-web";
 
 // #4452 §7.1: fields are 44 px, radius 12, a 1.5 px --a-line border, 14 px
 // text; focus is an ink border with a 4 px orange ring (rgba(235,120,37,.16)).
@@ -28,6 +29,30 @@ export const Input = forwardRef(function Input(
         </label>
       )}
       <div className="relative">
+        {type === "date" || type === "datetime-local" ? (
+          // #4523: dates are picked on the Mingla calendar, never the browser's date box. The handler
+          // still receives an input-like event ({ target: { value } }).
+          <CalendarInput
+            ref={ref}
+            id={inputId}
+            mode={type === "date" ? "date" : "datetime"}
+            value={props.value}
+            defaultValue={props.defaultValue}
+            onChange={props.onChange}
+            min={props.min}
+            max={props.max}
+            disabled={props.disabled}
+            name={props.name}
+            placeholder={props.placeholder}
+            aria-label={props["aria-label"]}
+            aria-invalid={error ? true : props["aria-invalid"]}
+            aria-describedby={props["aria-describedby"]}
+            required={props.required}
+            onFocus={onFocus}
+            onBlur={onBlur}
+            className={["h-11 text-sm rounded-xl", error ? FIELD_ERR : FIELD_OK, className].join(" ")}
+          />
+        ) : (
         <input
           ref={ref}
           id={inputId}
@@ -43,6 +68,7 @@ export const Input = forwardRef(function Input(
           onBlur={onBlur}
           {...props}
         />
+        )}
         {isPassword && (
           <button
             type="button"

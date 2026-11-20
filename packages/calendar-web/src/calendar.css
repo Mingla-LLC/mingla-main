@@ -1,0 +1,56 @@
+/*
+ * @mingla/calendar-web (#4523). Tokens are CSS variables with fallbacks, so the
+ * calendar follows the host's theme (mingla-admin sets --color-* on :root and
+ * [data-theme="dark"]) and still renders sensibly where none are defined.
+ */
+.mc-input { position: relative; display: inline-block; max-width: 100%; }
+.mc-input__button {
+  display: inline-flex; align-items: center; min-height: 36px; width: 100%; text-align: left; cursor: pointer;
+  padding: 0 12px; border-radius: 8px; border: 1px solid var(--mc-border, var(--color-border-primary, rgba(127, 127, 127, 0.4)));
+  background: var(--mc-field, var(--color-background-primary, transparent)); color: var(--mc-text, var(--color-text-primary, inherit)); font: inherit;
+}
+.mc-input__button:disabled { opacity: 0.5; cursor: not-allowed; }
+.mc-input__button--invalid { border-color: var(--mc-error, #dc2626); }
+.mc-input__placeholder { color: var(--mc-muted, var(--color-text-tertiary, rgba(127, 127, 127, 0.9))); }
+.mc-input__popover {
+  position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; max-width: calc(100vw - 32px);
+  border-radius: 12px; border: 1px solid var(--mc-border, var(--color-border-primary, rgba(127, 127, 127, 0.4)));
+  background: var(--mc-surface, var(--color-background-primary, #fff)); color: var(--mc-text, var(--color-text-primary, #111));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+}
+.mc-cal { width: 320px; max-width: 100%; padding: 12px; box-sizing: border-box; font-size: 14px; }
+.mc-cal__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.mc-cal__title { flex: 1; text-align: center; font-weight: 700; }
+.mc-cal__nav {
+  width: 36px; height: 36px; border-radius: 18px; border: 0; cursor: pointer; font-size: 20px; line-height: 1;
+  background: var(--mc-field, rgba(127, 127, 127, 0.16)); color: inherit;
+}
+.mc-cal__nav:disabled { opacity: 0.35; cursor: not-allowed; }
+.mc-cal__months { display: flex; gap: 20px; }
+.mc-cal__month { flex: 1; min-width: 0; }
+.mc-cal__monthlabel { font-weight: 600; margin-bottom: 4px; }
+.mc-cal__week { display: grid; grid-template-columns: repeat(7, 1fr); }
+.mc-cal__weekday { text-align: center; padding: 4px 0; font-size: 12px; font-weight: 700; color: var(--mc-muted, rgba(127, 127, 127, 0.9)); }
+.mc-cal__cell { display: flex; align-items: center; justify-content: center; height: 38px; }
+.mc-cal__cell--range { background: var(--mc-range, rgba(234, 88, 12, 0.16)); }
+.mc-cal__day {
+  width: 34px; height: 34px; border-radius: 10px; border: 0; cursor: pointer; background: transparent; color: inherit; font: inherit; position: relative;
+}
+.mc-cal__day:hover:not(:disabled) { background: var(--mc-field, rgba(127, 127, 127, 0.18)); }
+.mc-cal__day:focus-visible, .mc-cal__nav:focus-visible, .mc-cal__time:focus-visible, .mc-cal__btn:focus-visible, .mc-input__button:focus-visible {
+  outline: 2px solid var(--mc-accent, #ea580c); outline-offset: 2px;
+}
+.mc-cal__day:disabled { opacity: 0.35; cursor: not-allowed; }
+.mc-cal__day--selected { background: var(--mc-accent, #ea580c); color: var(--mc-on-accent, #fff); font-weight: 700; }
+.mc-cal__day--today::after { content: ""; position: absolute; bottom: 3px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 2px; background: currentColor; }
+.mc-cal__times { display: flex; flex-wrap: wrap; gap: 6px; max-height: 132px; overflow-y: auto; margin-top: 10px; }
+.mc-cal__time { padding: 6px 10px; min-height: 32px; border-radius: 8px; border: 0; cursor: pointer; color: inherit; background: var(--mc-field, rgba(127, 127, 127, 0.16)); font: inherit; }
+.mc-cal__time--selected { background: var(--mc-accent, #ea580c); color: var(--mc-on-accent, #fff); font-weight: 700; }
+.mc-cal__footer { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.mc-cal__readout { font-weight: 600; min-height: 1.2em; }
+.mc-cal__tz { font-size: 12px; color: var(--mc-muted, rgba(127, 127, 127, 0.95)); }
+.mc-cal__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.mc-cal__btn { min-height: 36px; padding: 0 16px; border-radius: 8px; border: 0; cursor: pointer; font: inherit; font-weight: 600; background: var(--mc-accent, #ea580c); color: var(--mc-on-accent, #fff); }
+.mc-cal__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mc-cal__btn--quiet { background: var(--mc-field, rgba(127, 127, 127, 0.16)); color: inherit; }
+@media (prefers-reduced-motion: reduce) { .mc-cal * { transition: none !important; animation: none !important; } }

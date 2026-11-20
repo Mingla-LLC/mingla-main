@@ -16,6 +16,7 @@ module.exports = {
   rootDir: businessRoot,
   roots: [
     path.join(repoRoot, "packages", "calendar"),
+    path.join(repoRoot, "packages", "calendar-web"),
     path.join(repoRoot, "packages", "brand-rendering", "__tests__"),
     path.join(businessRoot, "src", "components", "ui", "__tests__"),
   ],
@@ -31,6 +32,7 @@ module.exports = {
     "**/__tests__/issue_4523_*.test.tsx",
     "**/packages/calendar/__tests__/**/*.test.ts",
     "**/packages/calendar/__tests__/**/*.test.tsx",
+    "**/packages/calendar-web/__tests__/**/*.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-reanimated|react-native-svg)",
