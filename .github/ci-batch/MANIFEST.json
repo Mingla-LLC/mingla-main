@@ -17951,6 +17951,7 @@
         "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql",
         "supabase/migrations/20281120014420_issue_4420_brand_guest_activity.sql",
         "supabase/migrations/20281120024420_issue_4420_guest_rooms_start_broadcast.sql",
+        "supabase/migrations/20281120043281_issue_3281_add_on_links.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19843,6 +19844,7 @@
         "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql",
         "supabase/migrations/20281120014420_issue_4420_brand_guest_activity.sql",
         "supabase/migrations/20281120024420_issue_4420_guest_rooms_start_broadcast.sql",
+        "supabase/migrations/20281120043281_issue_3281_add_on_links.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20256,6 +20258,8 @@
         "supabase/migrations/__tests__/issue_3193_public_search_live_row_ledger_consumers.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3281_add_on_links.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3281_add_on_links.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_ari_experience_parity.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3281_ari_experience_parity.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_b3_reemit_hunks.structural.test.ts",
@@ -25470,6 +25474,7 @@
         "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql",
         "supabase/migrations/20281120014420_issue_4420_brand_guest_activity.sql",
         "supabase/migrations/20281120024420_issue_4420_guest_rooms_start_broadcast.sql",
+        "supabase/migrations/20281120043281_issue_3281_add_on_links.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -25883,6 +25888,8 @@
         "supabase/migrations/__tests__/issue_3193_public_search_live_row_ledger_consumers.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.implementor.happy.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3197_public_search_auto_promotion.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3281_add_on_links.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3281_add_on_links.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_ari_experience_parity.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3281_ari_experience_parity.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3281_b3_reemit_hunks.structural.test.ts",
@@ -54521,5 +54528,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "88388103fb7bf6779ad6104fa9ed19dbfe2d6bea4cbf4d73491c456fba7ab0da"
+  "phase3eContractSha256": "07c9428cd76812660dff103c11b38a44c0119cba68b6f9481b055f3adf44dfc6"
 }
