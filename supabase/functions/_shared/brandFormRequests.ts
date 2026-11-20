@@ -12,7 +12,10 @@
 // reminders choose. The personal link travels only in a text or email.
 
 import type { DispatchV2Input, DispatchV2Result } from "./notifyV2.ts";
-import { BRAND_FORM_REQUEST_CATEGORY, brandFormEmailCta } from "./brandFormNotify.ts";
+import {
+  BRAND_FORM_REQUEST_CATEGORY,
+  brandFormEmailCta,
+} from "./brandFormNotify.ts";
 import { countryFromE164 } from "./e164Country.ts";
 import type { SmsRateV1 } from "./smsPriceTable.ts";
 
@@ -55,7 +58,8 @@ export interface FormRequestDeps {
   dispatch: (input: DispatchV2Input) => Promise<DispatchV2Result>;
 }
 
-const str = (v: unknown): string | null => typeof v === "string" && v.length > 0 ? v : null;
+const str = (v: unknown): string | null =>
+  typeof v === "string" && v.length > 0 ? v : null;
 
 /** The audience read, checked field by field (a malformed row is refused, never guessed). */
 export function parseAudience(value: unknown): FormRequestAudience {
@@ -64,12 +68,21 @@ export function parseAudience(value: unknown): FormRequestAudience {
   }
   const v = value as Record<string, unknown>;
   const ids = [v.formId, v.eventId, v.brandId];
-  if (!ids.every((id) => typeof id === "string" && UUID.test(id)) || !Array.isArray(v.recipients)) {
+  if (
+    !ids.every((id) => typeof id === "string" && UUID.test(id)) ||
+    !Array.isArray(v.recipients)
+  ) {
     throw new Error("form_request_audience_invalid");
   }
   const recipients = v.recipients.map((row): FormRequestRecipient => {
-    const r = (typeof row === "object" && row !== null ? row : {}) as Record<string, unknown>;
-    if ((r.kind !== "rsvp" && r.kind !== "order") || typeof r.id !== "string" || !UUID.test(r.id)) {
+    const r = (typeof row === "object" && row !== null ? row : {}) as Record<
+      string,
+      unknown
+    >;
+    if (
+      (r.kind !== "rsvp" && r.kind !== "order") || typeof r.id !== "string" ||
+      !UUID.test(r.id)
+    ) {
       throw new Error("form_request_audience_invalid");
     }
     return {
@@ -100,11 +113,17 @@ export function parseAudience(value: unknown): FormRequestAudience {
  * to their account when ticked, then their contact on file (phone before email)
  * on a ticked channel the consent gate allows. Empty: they can't be reached.
  */
-export function routeFor(r: FormRequestRecipient, channels: readonly FormRequestChannel[]): FormRequestChannel[] {
+export function routeFor(
+  r: FormRequestRecipient,
+  channels: readonly FormRequestChannel[],
+): FormRequestChannel[] {
   const out: FormRequestChannel[] = [];
   if (channels.includes("push") && r.userId !== null) out.push("push");
-  if (r.phone !== null && channels.includes("sms") && r.smsAllowed) out.push("sms");
-  else if (r.email !== null && channels.includes("email") && r.emailAllowed) out.push("email");
+  if (r.phone !== null && channels.includes("sms") && r.smsAllowed) {
+    out.push("sms");
+  } else if (r.email !== null && channels.includes("email") && r.emailAllowed) {
+    out.push("email");
+  }
   return out;
 }
 
@@ -121,9 +140,16 @@ export interface FormRequestPreview {
 }
 
 /** The longest text a request sends, for the segment estimate (GSM: 160, then 153 a part). */
-export function requestSmsSegments(brandName: string, eventTitle: string): number {
-  const fakeLink = `${FORM_LINK_ORIGIN}/form/${"0".repeat(36)}#t=${"0".repeat(64)}`;
-  const text = `${brandName.slice(0, 80)} has a few questions about ${eventTitle.slice(0, 90)}. Answer here: ${fakeLink}`;
+export function requestSmsSegments(
+  brandName: string,
+  eventTitle: string,
+): number {
+  const fakeLink = `${FORM_LINK_ORIGIN}/form/${"0".repeat(36)}#t=${
+    "0".repeat(64)
+  }`;
+  const text = `${brandName.slice(0, 80)} has a few questions about ${
+    eventTitle.slice(0, 90)
+  }. Answer here: ${fakeLink}`;
   return text.length <= 160 ? 1 : Math.ceil(text.length / 153);
 }
 
@@ -144,11 +170,15 @@ export function previewFormRequest(
   let currency: string | null = null;
   const segments = requestSmsSegments(audience.brandName, audience.eventTitle);
   for (const r of audience.recipients) {
-    if (r.throttled) { throttled += 1; continue; }
+    if (r.throttled) {
+      throttled += 1;
+      continue;
+    }
     const route = routeFor(r, channels);
     if (route.length === 0) {
-      if (r.phone !== null && channels.includes("sms") && !r.smsAllowed) optedOut += 1;
-      else unreachable += 1;
+      if (r.phone !== null && channels.includes("sms") && !r.smsAllowed) {
+        optedOut += 1;
+      } else unreachable += 1;
       continue;
     }
     reachable += 1;
@@ -157,7 +187,9 @@ export function previewFormRequest(
       smsCount += 1;
       const country = countryFromE164(r.phone);
       const rate = rates?.find((x) => x.country === country);
-      if (rate === undefined || (currency !== null && rate.currency !== currency)) {
+      if (
+        rate === undefined || (currency !== null && rate.currency !== currency)
+      ) {
         priced = false;
       } else {
         currency = rate.currency;
@@ -173,7 +205,11 @@ export function previewFormRequest(
     unreachableCount: unreachable,
     perChannelReachable: per,
     smsCount,
-    estimatedCostMinor: smsCount === 0 ? 0 : priced ? Math.ceil(costNumer) : null,
+    estimatedCostMinor: smsCount === 0
+      ? 0
+      : priced
+      ? Math.ceil(costNumer)
+      : null,
     currency: smsCount === 0 ? null : priced ? currency : null,
   };
 }
@@ -181,13 +217,21 @@ export function previewFormRequest(
 export interface FormRequestOutcome {
   sent: number;
   failed: number;
-  skipped: Record<"throttled" | "answered" | "not_a_guest" | "form_closed" | "unreachable", number>;
+  skipped: Record<
+    "throttled" | "answered" | "not_a_guest" | "form_closed" | "unreachable",
+    number
+  >;
 }
 
-function delivered(result: DispatchV2Result, channel: FormRequestChannel): boolean {
+function delivered(
+  result: DispatchV2Result,
+  channel: FormRequestChannel,
+): boolean {
   if (!result.success) return false;
   return (result.deliveries ?? []).some((d) =>
-    d.channel === channel && (d.status === "sent" || d.status === "sending" || d.status === "delivered" || d.status === "queued")
+    d.channel === channel &&
+    (d.status === "sent" || d.status === "sending" ||
+      d.status === "delivered" || d.status === "queued")
   );
 }
 
@@ -202,32 +246,54 @@ async function sendOne(
   out: FormRequestOutcome,
 ): Promise<void> {
   const route = routeFor(r, channels);
-  if (route.length === 0) { out.skipped.unreachable += 1; return; }
+  if (route.length === 0) {
+    out.skipped.unreachable += 1;
+    return;
+  }
   const claim = await deps.rpc("brand_form_request_claim", {
-    p_form_id: audience.formId, p_event_id: audience.eventId,
-    p_subject: { kind: r.kind, id: r.id }, p_kind: kind, p_actor_id: actorId,
+    p_form_id: audience.formId,
+    p_event_id: audience.eventId,
+    p_subject: { kind: r.kind, id: r.id },
+    p_kind: kind,
+    p_actor_id: actorId,
   });
-  if (claim.error !== null || typeof claim.data !== "object" || claim.data === null) {
+  if (
+    claim.error !== null || typeof claim.data !== "object" ||
+    claim.data === null
+  ) {
     out.failed += 1;
     return;
   }
-  const c = claim.data as { claimed?: boolean; reason?: string; sendId?: string; token?: string };
+  const c = claim.data as {
+    claimed?: boolean;
+    reason?: string;
+    sendId?: string;
+    token?: string;
+  };
   if (c.claimed !== true) {
     const reason = c.reason;
-    if (reason === "throttled" || reason === "answered" || reason === "not_a_guest" || reason === "form_closed") {
+    if (
+      reason === "throttled" || reason === "answered" ||
+      reason === "not_a_guest" || reason === "form_closed"
+    ) {
       out.skipped[reason] += 1;
     } else out.failed += 1;
     return;
   }
-  if (typeof c.sendId !== "string" || typeof c.token !== "string" || !/^[0-9a-f]{64}$/.test(c.token)) {
+  if (
+    typeof c.sendId !== "string" || typeof c.token !== "string" ||
+    !/^[0-9a-f]{64}$/.test(c.token)
+  ) {
     out.failed += 1;
     return;
   }
   const formUrl = `${FORM_LINK_ORIGIN}/form/${audience.formId}#t=${c.token}`;
   const payload: Record<string, unknown> = {
-    form_id: audience.formId, event_id: audience.eventId,
+    form_id: audience.formId,
+    event_id: audience.eventId,
     ...(r.kind === "rsvp" ? { rsvp_id: r.id } : { order_id: r.id }),
-    brand_name: audience.brandName, event_title: audience.eventTitle,
+    brand_name: audience.brandName,
+    event_title: audience.eventTitle,
   };
   let sentOn: FormRequestChannel | null = null;
   let lastReason = "not_delivered";
@@ -235,8 +301,11 @@ async function sendOne(
     try {
       const result = channel === "push"
         ? await deps.dispatch({
-          user_id: r.userId, category_key: BRAND_FORM_REQUEST_CATEGORY, payload,
-          idempotency_key: `brand_form_request:${c.sendId}:push`, requested_channel: "push",
+          user_id: r.userId,
+          category_key: BRAND_FORM_REQUEST_CATEGORY,
+          payload,
+          idempotency_key: `brand_form_request:${c.sendId}:push`,
+          requested_channel: "push",
         })
         : await deps.dispatch({
           user_id: null,
@@ -246,20 +315,30 @@ async function sendOne(
           payload: { ...payload, form_url: formUrl },
           idempotency_key: `brand_form_request:${c.sendId}:${channel}`,
           email_cta: channel === "email"
-            ? brandFormEmailCta(BRAND_FORM_REQUEST_CATEGORY, { ...payload, form_url: formUrl })
+            ? brandFormEmailCta(BRAND_FORM_REQUEST_CATEGORY, {
+              ...payload,
+              form_url: formUrl,
+            })
             : undefined,
         });
-      if (delivered(result, channel)) { sentOn = channel; break; }
+      if (delivered(result, channel)) {
+        sentOn = channel;
+        break;
+      }
       lastReason = `${channel}_not_delivered`;
     } catch {
       lastReason = `${channel}_dispatch_failed`;
     }
   }
   const settled = await deps.rpc("brand_form_request_settle", {
-    p_send_id: c.sendId, p_channel: sentOn ?? route[route.length - 1],
-    p_status: sentOn !== null ? "sent" : "failed", p_reason: sentOn !== null ? null : lastReason,
+    p_send_id: c.sendId,
+    p_channel: sentOn ?? route[route.length - 1],
+    p_status: sentOn !== null ? "sent" : "failed",
+    p_reason: sentOn !== null ? null : lastReason,
   });
-  if (settled.error !== null) console.error("[brand-form-request] settle failed", c.sendId);
+  if (settled.error !== null) {
+    console.error("[brand-form-request] settle failed", c.sendId);
+  }
   if (sentOn !== null) out.sent += 1;
   else out.failed += 1;
 }
@@ -273,16 +352,33 @@ export async function sendFormRequests(
   actorId: string | null,
 ): Promise<FormRequestOutcome> {
   const out: FormRequestOutcome = {
-    sent: 0, failed: 0,
-    skipped: { throttled: 0, answered: 0, not_a_guest: 0, form_closed: 0, unreachable: 0 },
+    sent: 0,
+    failed: 0,
+    skipped: {
+      throttled: 0,
+      answered: 0,
+      not_a_guest: 0,
+      form_closed: 0,
+      unreachable: 0,
+    },
   };
   const queue = audience.recipients.filter((r) => {
-    if (r.throttled) { out.skipped.throttled += 1; return false; }
-    if (kind !== "ask" && r.answered) { out.skipped.answered += 1; return false; }
+    if (r.throttled) {
+      out.skipped.throttled += 1;
+      return false;
+    }
+    if (kind !== "ask" && r.answered) {
+      out.skipped.answered += 1;
+      return false;
+    }
     return true;
   });
   for (let i = 0; i < queue.length; i += 5) {
-    await Promise.all(queue.slice(i, i + 5).map((r) => sendOne(deps, audience, r, channels, kind, actorId, out)));
+    await Promise.all(
+      queue.slice(i, i + 5).map((r) =>
+        sendOne(deps, audience, r, channels, kind, actorId, out)
+      ),
+    );
   }
   return out;
 }
@@ -297,30 +393,59 @@ export async function runAutoFormReminders(deps: FormRequestDeps): Promise<
   { pages: number; sent: number; failed: number } | null
 > {
   const due = await deps.rpc("brand_form_auto_reminders_due", {});
-  if (due.error !== null) throw new Error(`brand_form_auto_reminders_due: ${due.error.message}`);
+  if (due.error !== null) {
+    throw new Error(`brand_form_auto_reminders_due: ${due.error.message}`);
+  }
   const pages = Array.isArray(due.data)
-    ? due.data as Array<{ attachmentId?: unknown; formId?: unknown; eventId?: unknown; channels?: unknown }>
+    ? due.data as Array<
+      {
+        attachmentId?: unknown;
+        formId?: unknown;
+        eventId?: unknown;
+        channels?: unknown;
+      }
+    >
     : [];
   if (pages.length === 0) return null;
   let sent = 0, failed = 0;
   for (const page of pages) {
     try {
       const read = await deps.rpc("brand_form_request_audience", {
-        p_actor_id: null, p_form_id: page.formId, p_event_id: page.eventId, p_audience: "unanswered", p_subjects: null,
+        p_actor_id: null,
+        p_form_id: page.formId,
+        p_event_id: page.eventId,
+        p_audience: "unanswered",
+        p_subjects: null,
       });
       if (read.error !== null) throw new Error(read.error.message);
       const ticked = Array.isArray(page.channels)
-        ? page.channels.filter((c): c is FormRequestChannel => c === "push" || c === "sms" || c === "email")
+        ? page.channels.filter((c): c is FormRequestChannel =>
+          c === "push" || c === "sms" || c === "email"
+        )
         : [];
-      const channels: FormRequestChannel[] = ["push", ...ticked.filter((c) => c !== "push")];
-      const outcome = await sendFormRequests(deps, parseAudience(read.data), channels, "auto", null);
+      const channels: FormRequestChannel[] = [
+        "push",
+        ...ticked.filter((c) => c !== "push"),
+      ];
+      const outcome = await sendFormRequests(
+        deps,
+        parseAudience(read.data),
+        channels,
+        "auto",
+        null,
+      );
       sent += outcome.sent;
       failed += outcome.failed;
-      await deps.rpc("brand_form_auto_reminder_settle", { p_attachment_id: page.attachmentId });
+      await deps.rpc("brand_form_auto_reminder_settle", {
+        p_attachment_id: page.attachmentId,
+      });
     } catch (error) {
       failed += 1;
-      console.error("[brand-form-request] automatic reminder failed", page.attachmentId,
-        error instanceof Error ? error.message : String(error));
+      console.error(
+        "[brand-form-request] automatic reminder failed",
+        page.attachmentId,
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
   return { pages: pages.length, sent, failed };

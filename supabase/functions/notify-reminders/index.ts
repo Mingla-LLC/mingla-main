@@ -21,7 +21,7 @@ import {
   type FormRequestDeps,
   runAutoFormReminders,
 } from "../_shared/brandFormRequests.ts";
-import { dispatchV2, type MinimalClient } from "../_shared/notifyV2.ts";
+import type { DispatchV2Input, DispatchV2Result } from "../_shared/notifyV2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,6 +55,41 @@ export interface ReminderDeps {
   createAdmin?: (url: string, serviceKey: string) => ReminderAdmin;
   /** #4514: the notify v2 dispatcher the brand form reminder sends with. */
   dispatch?: FormRequestDeps["dispatch"];
+}
+
+/**
+ * #4514: the brand form reminder sends through notify-dispatch (the v2
+ * category path), the same dispatcher the outbox drain uses, so this function
+ * never holds provider secrets itself. The contact path carries the link in the
+ * request only; notify-dispatch keeps no message body for a contact send.
+ */
+async function viaNotifyDispatch(
+  url: string,
+  serviceKey: string,
+  input: DispatchV2Input,
+): Promise<DispatchV2Result> {
+  const response = await fetch(`${url}/functions/v1/notify-dispatch`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${serviceKey}`,
+      apikey: serviceKey,
+    },
+    body: JSON.stringify({
+      category_key: input.category_key,
+      user_id: input.user_id ?? null,
+      contact: input.contact ?? null,
+      payload: input.payload,
+      idempotency_key: input.idempotency_key,
+      country_code: input.country_code ?? null,
+      requested_channel: input.requested_channel ?? null,
+    }),
+  });
+  const value: unknown = await response.json().catch(() => null);
+  if (typeof value !== "object" || value === null) {
+    return { success: false, reason: `notify_dispatch_${response.status}` };
+  }
+  return value as DispatchV2Result;
 }
 
 export async function handler(
@@ -126,10 +161,13 @@ export async function handler(
   const formReminders = await runAutoFormReminders({
     rpc: async (fn, args) => {
       const { data, error } = await admin.rpc(fn, args);
-      return { data, error: error === null ? null : { message: error.message } };
+      return {
+        data,
+        error: error === null ? null : { message: error.message },
+      };
     },
     dispatch: deps.dispatch ??
-      ((input) => dispatchV2(admin as unknown as MinimalClient, input)),
+      ((input) => viaNotifyDispatch(SUPABASE_URL, SERVICE_KEY, input)),
   }).catch((error: unknown) => {
     hadError = true;
     const message = error instanceof Error ? error.message : String(error);

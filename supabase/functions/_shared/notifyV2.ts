@@ -62,6 +62,7 @@ import {
 import { brandReachEmailCta } from "./brandReachMessages.ts";
 import {
   brandFormDeepLinkValid,
+  brandFormEmailCta,
   brandFormProviderSafeKeys,
   isBrandFormCategory,
 } from "./brandFormNotify.ts";
@@ -1774,7 +1775,9 @@ async function dispatchAnon(
         to: contactEmail!,
         ...emailContent(
           rendered,
-          input.email_cta ?? issue4111EmailCta(input.category_key, input.payload),
+          input.email_cta ?? issue4111EmailCta(input.category_key, input.payload) ??
+            // #4514 wave 4: a form request's button is the guest's own form link.
+            brandFormEmailCta(input.category_key, input.payload),
         ),
       });
       await updateGuestDelivery(

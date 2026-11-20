@@ -97,7 +97,9 @@ export function renderBrandFormMessage(
     push: { title: `Questions from ${brand}`, body: `${ask} Tap to answer.` },
     email: {
       subject: `${brand} has a few questions`,
-      body: link ? ask : `${ask}\n\nOpen your ticket or pass in Mingla to answer.`,
+      body: link
+        ? ask
+        : `${ask}\n\nOpen your ticket or pass in Mingla to answer.`,
     },
     // No link, no text: a text is only ever sent with the guest's own link.
     sms: link ? `${ask} Answer here: ${link}` : "",
