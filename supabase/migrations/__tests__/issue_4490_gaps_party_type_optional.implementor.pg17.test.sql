@@ -108,6 +108,11 @@ BEGIN
   PERFORM public.issue_4490_set_event_venue(v_draft, v_venue, NULL, 'shared', NULL, NULL);
   PERFORM public.issue_4490_set_event_venue(v_draft, NULL, NULL, 'shared', NULL, NULL);
   RAISE NOTICE 'PASS  A-3c a draft can clear its venue';
+  -- A-3d a live experience (no party types by design) may leave its venue
+  UPDATE public.events SET event_type = 'experience', party_types = ARRAY[]::text[] WHERE id = v_event;
+  PERFORM public.issue_4490_set_event_venue(v_event, v_venue, NULL, 'shared', NULL, NULL);
+  PERFORM public.issue_4490_set_event_venue(v_event, NULL, NULL, 'shared', NULL, NULL);
+  RAISE NOTICE 'PASS  A-3d a live experience can leave its venue';
 
   -- A-4 the publish gates carry the venue clause; the #2333 literal stays
   FOREACH v_fn IN ARRAY ARRAY[

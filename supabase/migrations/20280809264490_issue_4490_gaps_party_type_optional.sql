@@ -1424,7 +1424,7 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
   END IF;
-  SELECT e.id, e.brand_id, e.updated_at, e.deleted_at, e.status, e.party_types INTO v_event
+  SELECT e.id, e.brand_id, e.updated_at, e.deleted_at, e.status, e.party_types, e.event_type INTO v_event
   FROM public.events e WHERE e.id = p_event_id
   FOR UPDATE;
   IF NOT FOUND OR v_event.deleted_at IS NOT NULL THEN
@@ -1469,7 +1469,9 @@ BEGIN
 
   -- #4490 07-A: a live event at a venue may have no party type; moving it
   -- away from the venue needs one first.
+  -- Experiences have no party type, so only events and RSVPs are held.
   IF p_venue_id IS NULL AND v_event.status <> 'draft'
+     AND v_event.event_type IN ('event', 'rsvp')
      AND cardinality(COALESCE(v_event.party_types, ARRAY[]::text[])) = 0 THEN
     RAISE EXCEPTION 'party_types_required' USING ERRCODE = '22023';
   END IF;

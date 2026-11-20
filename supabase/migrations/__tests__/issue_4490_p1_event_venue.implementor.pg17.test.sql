@@ -89,9 +89,10 @@ INSERT INTO public.venue_spaces (id, venue_id, brand_id, name, capacity_standing
   ('44902000-0000-4000-a000-0000000000a1', '44902000-0000-4000-9000-0000000000a1', '44902000-0000-4000-9000-000000000010', 'The Lawn', 400),
   ('44902000-0000-4000-a000-0000000000a2', '44902000-0000-4000-9000-0000000000a2', '44902000-0000-4000-9000-000000000010', 'Rooftop', 80),
   ('44902000-0000-4000-a000-0000000000b1', '44902000-0000-4000-9000-0000000000b1', '44902000-0000-4000-9000-000000000020', 'Hall', 200);
-INSERT INTO public.events (id, brand_id, title, slug, event_type, visibility, status, timezone, currency) VALUES
-  ('44902000-0000-4000-b000-000000000001', '44902000-0000-4000-9000-000000000010', 'Game Night', 'game-night-4490', 'event', 'public', 'scheduled', 'Africa/Lagos', 'NGN'),
-  ('44902000-0000-4000-b000-000000000002', '44902000-0000-4000-9000-000000000010', 'Paint Party', 'paint-party-4490', 'experience', 'public', 'scheduled', 'Africa/Lagos', 'NGN');
+-- TEST-MOD-APPROVED #4490 07-A: a live event needs a party type to leave its venue, so Game Night has one.
+INSERT INTO public.events (id, brand_id, title, slug, event_type, visibility, status, timezone, currency, party_types) VALUES
+  ('44902000-0000-4000-b000-000000000001', '44902000-0000-4000-9000-000000000010', 'Game Night', 'game-night-4490', 'event', 'public', 'scheduled', 'Africa/Lagos', 'NGN', ARRAY['club-night']::text[]),
+  ('44902000-0000-4000-b000-000000000002', '44902000-0000-4000-9000-000000000010', 'Paint Party', 'paint-party-4490', 'experience', 'public', 'scheduled', 'Africa/Lagos', 'NGN', ARRAY[]::text[]);
 
 -- E-1 columns ---------------------------------------------------------------------------
 SELECT public.t4490_ok(
