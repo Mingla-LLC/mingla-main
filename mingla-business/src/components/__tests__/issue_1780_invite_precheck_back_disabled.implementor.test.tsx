@@ -572,6 +572,9 @@ function loadCompiledCreator(relative: string, exportName: string): React.Compon
     if (key === "useEventDateKeys") {
       return { useEventDateKeys: () => ({ data: undefined }) };
     } // #3281 sold-date keys; unused by these hosts
+    if (key === "useEventAtVenue") {
+      return { useEventAtVenue: () => false };
+    } // [TEST-MOD-APPROVED #4490] 07-A: whether the event is at a venue (server link); none in these hosts
     if (STEP_LEAF.test(key)) return { [key]: leaf(key) };
     throw new Error(`Unclassified creator boundary in ${exportName}: ${specifier}`);
   };
