@@ -107,6 +107,8 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 // issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
+import { DayDateField } from "../ui/DayDateField";
+import { TimeField } from "../ui/TimeField";
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 
 import { CreatorStep2WhenRepeatPickerSheet } from "./CreatorStep2WhenRepeatPickerSheet";
@@ -993,14 +995,16 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>{dateRowLabel}</Text>
             {Platform.OS === "web" ? (
-              <WebDateTimeInput
-                type="date"
+              // N136 (#4490): the design-system day-first date field, never a
+              // native browser date input ("mm/dd/yyyy" that typing can't drive).
+              <DayDateField
+                label=""
                 value={draft.date ?? ""}
                 min={isoFromDate(new Date())}
-                ariaLabel={`Pick ${dateRowLabel.toLowerCase()}`}
-                hasError={
-                  dateError !== undefined || dayMismatchError !== undefined
-                }
+                today={isoFromDate(new Date())}
+                accessibilityLabel={`Pick ${dateRowLabel.toLowerCase()}`}
+                // The step shows its own error line below (no second copy).
+                error={null}
                 testID="creator-when-date-web"
                 onChangeValue={(v) => {
                   if (v.length === 0) return;
@@ -1047,10 +1051,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             <View style={styles.timeCell}>
               <Text style={styles.fieldLabel}>{opensLabel}</Text>
               {Platform.OS === "web" ? (
-                <WebDateTimeInput
-                  type="time"
+                // N136: the shared 24-hour TimeField, not a native time input.
+                <TimeField
+                  label=""
                   value={draft.doorsOpen ?? ""}
-                  ariaLabel="Pick door-open time"
+                  accessibilityLabel="Pick door-open time"
                   hasError={doorsError !== undefined}
                   testID="creator-when-doors-web"
                   onChangeValue={(v) => {
@@ -1089,10 +1094,10 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             <View style={styles.timeCell}>
               <Text style={styles.fieldLabel}>Ends</Text>
               {Platform.OS === "web" ? (
-                <WebDateTimeInput
-                  type="time"
+                <TimeField
+                  label=""
                   value={draft.endsAt ?? ""}
-                  ariaLabel="Pick end time"
+                  accessibilityLabel="Pick end time"
                   hasError={endsError !== undefined}
                   testID="creator-when-ends-web"
                   onChangeValue={(v) => {

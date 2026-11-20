@@ -121,15 +121,14 @@ const tapMode = async (tree: Tree, label: string): Promise<void> => {
   });
 };
 
+// TEST-MOD-APPROVED #4490 (N136): the date row is the day-first DayDateField on
+// web; the pick goes through its onChangeValue ("YYYY-MM-DD"), same value as before.
 const pickFirstDate = async (tree: Tree, iso: string): Promise<void> => {
-  const input = tree.root
-    .findAll((n) => n.type === "input")
-    .find((n) => n.props["data-testid"] === "creator-when-date-web");
-  expect(input).toBeDefined();
+  const field = tree.root
+    .findAll((n) => n.props.testID === "creator-when-date-web" && typeof n.props.onChangeValue === "function")[0];
+  expect(field).toBeDefined();
   await TestRenderer.act(async () => {
-    (input?.props.onChange as (e: { target: { value: string } }) => void)({
-      target: { value: iso },
-    });
+    (field?.props.onChangeValue as (v: string) => void)(iso);
   });
 };
 
