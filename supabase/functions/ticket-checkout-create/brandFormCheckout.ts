@@ -10,7 +10,7 @@
 // no marker completes the order as "to answer"; the off switch checks nothing.
 // Door sales (C9) never reach this module: the caller skips it for door pay.
 
-import { captureEdgeException } from "../_shared/sentryEdge.ts";
+import { captureEdgeExceptionAsync } from "../_shared/sentryEdge.ts";
 import {
   BRAND_FORM_CHECKOUT_STEP,
   type BrandFormAnswers,
@@ -113,23 +113,78 @@ export function isCheckFunctionMissing(error: RpcError): boolean {
     /\bbrand_form_checkout_check\b/.test(error.message ?? "");
 }
 
+type WaitUntil = (promise: Promise<unknown>) => void;
+
+function edgeWaitUntil(): WaitUntil | null {
+  const runtime = (globalThis as {
+    EdgeRuntime?: { waitUntil?: WaitUntil };
+  }).EdgeRuntime;
+  return typeof runtime?.waitUntil === "function"
+    ? runtime.waitUntil.bind(runtime)
+    : null;
+}
+
+/** Wave 7 (P3-F): the alert goes out once per isolate, not once per checkout. */
+let failOpenAlerted = false;
+
+/** Tests only: forget that this isolate already alerted. */
+export function __resetBrandFormFailOpenAlertForTest(): void {
+  failOpenAlerted = false;
+}
+
 /**
  * [TRANSITIONAL] (same exit condition) The fail-open above is an ops alert, the
  * way edge functions raise one (Sentry through the shared edge helper; the
- * function already declares SENTRY_DSN). Never carries buyer data.
+ * function already declares SENTRY_DSN). Sent once per isolate, through
+ * `EdgeRuntime.waitUntil` when the runtime has it, so the response never waits
+ * on it and the isolate is not torn down before it is delivered. Never carries
+ * buyer data. Returns whether this call sent the alert.
  */
 export function reportBrandFormCheckFailOpen(
   error: RpcError,
-  capture: typeof captureEdgeException = captureEdgeException,
-): void {
+  capture: (
+    error: unknown,
+    context: Parameters<typeof captureEdgeExceptionAsync>[1],
+  ) => Promise<void> | void = captureEdgeExceptionAsync,
+  waitUntil: WaitUntil | null = edgeWaitUntil(),
+): boolean {
   console.error(
     "[ticket-checkout-create] brand form check unavailable (function missing): failing open",
   );
-  capture(new Error("brand_form_checkout_check_missing"), {
-    fn: "ticket-checkout-create",
-    tags: { issue: "4514", alert: "brand_form_check_fail_open" },
-    extra: { code: error.code ?? null },
-  });
+  if (failOpenAlerted) return false;
+  failOpenAlerted = true;
+  const sent = Promise.resolve(
+    capture(new Error("brand_form_checkout_check_missing"), {
+      fn: "ticket-checkout-create",
+      tags: { issue: "4514", alert: "brand_form_check_fail_open" },
+      extra: { code: error.code ?? null },
+    }),
+  ).catch(() => undefined);
+  if (waitUntil !== null) waitUntil(sent);
+  else void sent;
+  return true;
+}
+
+/**
+ * Wave 7 (P1-A / P3-E): the pre-session check said `stash` (the buyer saw the
+ * form and sent valid answers) but the stash for the session did not keep them
+ * (a grant or private link that ended in between). Never a silent pass: the
+ * caller answers 409 `brand_form_stash_failed` and payment never starts. A
+ * replay of a session that already has its order (`finalized`) is not a loss.
+ */
+export function stashLostAnswers(
+  checkOutcome: unknown,
+  stashOutcome: unknown,
+): boolean {
+  return checkOutcome === "stash" && stashOutcome !== "stash" &&
+    stashOutcome !== "finalized";
+}
+
+/** The outcome field of a check or stash reply, or null. */
+export function outcomeOf(data: unknown): string | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const o = (data as Record<string, unknown>).outcome;
+  return typeof o === "string" ? o : null;
 }
 
 /**

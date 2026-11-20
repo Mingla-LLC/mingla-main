@@ -21,11 +21,13 @@ import {
   type TicketCheckoutCreateDeps,
 } from "../index.ts";
 import {
+  __resetBrandFormFailOpenAlertForTest,
   brandFormRefusal,
   isCheckFunctionMissing,
   isCheckoutBrandFormRefusal,
   parseCheckoutBrandForm,
   reportBrandFormCheckFailOpen,
+  stashLostAnswers,
 } from "../brandFormCheckout.ts";
 import { resolveDoorPayCheckout } from "../doorPayCheckout.ts";
 
@@ -179,6 +181,11 @@ class FakeCheckoutDb {
   readonly formArgs: Array<Record<string, unknown>> = [];
   /** Review fix 5 (OP-5): the signed-in buyer who already answered the form. */
   answeredUser: string | null = null;
+  /**
+   * Wave 7 (P1-A / P3-E): the stash no longer sees the form (a grant or link
+   * that ended between the check and the stash).
+   */
+  stashLosesForm = false;
 
   /**
    * A model of brand_form_checkout_check / _stash (the SQL is proven by the
@@ -202,8 +209,18 @@ class FakeCheckoutDb {
         error: null,
       };
     }
+    if (name === "brand_form_checkout_stash" && this.stashLosesForm) {
+      return {
+        data: { outcome: "to_answer", reason: "not_visible" },
+        error: null,
+      };
+    }
+    // OP-5: a returning buyer who sends no answers is answered; one who sends
+    // answers is validated and stashed like anyone (the trigger updates
+    // their one response).
     if (
-      this.answeredUser !== null && args.p_buyer_user_id === this.answeredUser
+      this.answeredUser !== null &&
+      args.p_buyer_user_id === this.answeredUser && args.p_form === null
     ) {
       return { data: { outcome: "answered" }, error: null };
     }
@@ -611,11 +628,14 @@ Deno.test("#4514 W5 fix 3: only PGRST202 on brand_form_checkout_check itself fai
 });
 
 Deno.test("#4514 W5 fix 3: the fail-open raises an ops alert without buyer data", () => {
+  __resetBrandFormFailOpenAlertForTest();
   const captured: Array<{ error: unknown; ctx: Record<string, unknown> }> = [];
   reportBrandFormCheckFailOpen(
     { code: "PGRST202", message: "x" },
-    (error, ctx) =>
-      captured.push({ error, ctx: ctx as Record<string, unknown> }),
+    (error, ctx) => {
+      captured.push({ error, ctx: ctx as Record<string, unknown> });
+    },
+    null,
   );
   assertEquals(captured.length, 1);
   assertEquals(
@@ -692,4 +712,74 @@ Deno.test("#4514 W5 fix 5 (OP-5): a signed-in buyer who already answered is not 
   assertEquals(status, 200);
   assertEquals(body.kind, "free_completed");
   assertEquals(db.stashed.length, 0);
+});
+
+// ── Wave 7 ──────────────────────────────────────────────────────────────────
+
+Deno.test("#4514 W7 P3-F: the fail-open alert goes through waitUntil, once per isolate", async () => {
+  __resetBrandFormFailOpenAlertForTest();
+  let sends = 0;
+  const kept: Promise<unknown>[] = [];
+  const capture = (): Promise<void> => {
+    sends += 1;
+    return Promise.resolve();
+  };
+  const waitUntil = (p: Promise<unknown>): void => {
+    kept.push(p);
+  };
+  assert(
+    reportBrandFormCheckFailOpen({ code: "PGRST202" }, capture, waitUntil),
+  );
+  assert(
+    !reportBrandFormCheckFailOpen({ code: "PGRST202" }, capture, waitUntil),
+  );
+  assert(
+    !reportBrandFormCheckFailOpen({ code: "PGRST202" }, capture, waitUntil),
+  );
+  assertEquals(sends, 1, "one alert per isolate, not one per checkout");
+  assertEquals(kept.length, 1, "the send is handed to EdgeRuntime.waitUntil");
+  await Promise.all(kept);
+  // A failing send never rejects into the request.
+  __resetBrandFormFailOpenAlertForTest();
+  const failing = (): Promise<void> => Promise.reject(new Error("offline"));
+  reportBrandFormCheckFailOpen({ code: "PGRST202" }, failing, waitUntil);
+  await Promise.all(kept);
+});
+
+Deno.test("#4514 W7 P1-A: the stash losing answers the check kept is a loss; a finalized replay is not", () => {
+  assert(stashLostAnswers("stash", "to_answer"));
+  assert(stashLostAnswers("stash", "none"));
+  assert(stashLostAnswers("stash", null));
+  assert(!stashLostAnswers("stash", "stash"));
+  assert(!stashLostAnswers("stash", "finalized"));
+  assert(!stashLostAnswers("to_answer", "to_answer"));
+  assert(!stashLostAnswers(null, "to_answer"));
+});
+
+Deno.test("#4514 W7 P1-A/P3-E: a grant or link that ends between check and stash is 409, never a silent pass", async () => {
+  const db = new FakeCheckoutDb();
+  db.stashLosesForm = true;
+  const { status, body } = await run(db, {
+    brandFormStep: 1,
+    brandForm: ANSWERS,
+  });
+  assertEquals(status, 409);
+  assertEquals(body.error, "brand_form_stash_failed");
+  assert(
+    !has(db, "rpc:biz_ticket_checkout_finalize"),
+    "payment never starts and no free order is finalized",
+  );
+  assertEquals(db.orders.length, 0);
+});
+
+Deno.test("#4514 W7 OP-5: a returning buyer who sends answers has them stashed (the trigger updates their one response)", async () => {
+  const db = new FakeCheckoutDb();
+  db.answeredUser = BUYER_ID;
+  const { status } = await run(
+    db,
+    { brandFormStep: 1, brandForm: ANSWERS },
+    BUYER_ID,
+  );
+  assertEquals(status, 200);
+  assertEquals(db.stashed.length, 1);
 });

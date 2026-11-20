@@ -55,6 +55,20 @@ export function captureEdgeException(
   error: unknown,
   context: EdgeSentryContext = {},
 ): void {
+  captureEdgeExceptionAsync(error, context).catch(() => {
+    // Never throw from telemetry
+  });
+}
+
+/**
+ * #4514 — the same report, returning the send so a caller can hand it to
+ * `EdgeRuntime.waitUntil` and keep the isolate alive until it is delivered.
+ * Never rejects.
+ */
+export async function captureEdgeExceptionAsync(
+  error: unknown,
+  context: EdgeSentryContext = {},
+): Promise<void> {
   const dsn = resolveDsn();
   if (!dsn) return;
 
@@ -91,7 +105,7 @@ export function captureEdgeException(
   const sentryAuth =
     `Sentry sentry_version=7, sentry_client=mingla-edge/1.0, sentry_key=${parsed.publicKey}`;
 
-  void fetch(`https://${parsed.host}/api/${parsed.projectId}/store/`, {
+  await fetch(`https://${parsed.host}/api/${parsed.projectId}/store/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

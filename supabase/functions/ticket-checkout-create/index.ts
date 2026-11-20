@@ -125,8 +125,10 @@ import {
   checkoutFormPayload,
   isCheckoutBrandFormRefusal,
   isCheckFunctionMissing,
+  outcomeOf,
   reportBrandFormCheckFailOpen,
   parseCheckoutBrandForm,
+  stashLostAnswers,
 } from "./brandFormCheckout.ts";
 // Issue #3645 — each later Paystack payment priced at checkout by the deposit's
 // engine, shown to the buyer, persisted on the session and charged unchanged.
@@ -2087,6 +2089,7 @@ export const createTicketCheckoutCreateHandler = (
     // user and the private ticket link hash), so they apply the SAME visibility
     // rule as the checkout form read the Details step used (OP-5 included).
     let brandFormFailedOpen = false;
+    let brandFormCheckOutcome: string | null = null;
     if (doorPay === null && parsedBrandForm.capable) {
       const formCheck = await supabase.rpc("brand_form_checkout_check", {
         p_event_id: eventId,
@@ -2113,6 +2116,8 @@ export const createTicketCheckoutCreateHandler = (
           });
           return jsonResponse({ error: "brand_form_check_failed" }, 409);
         }
+      } else {
+        brandFormCheckOutcome = outcomeOf(formCheck.data);
       }
     }
 
@@ -2677,6 +2682,14 @@ export const createTicketCheckoutCreateHandler = (
         }
         console.error("[ticket-checkout-create] brand form stash failed", {
           error: stashed.error.message,
+        });
+        return jsonResponse({ error: "brand_form_stash_failed" }, 409);
+      }
+      // Wave 7 (P1-A / P3-E): the check kept answers the stash then could not
+      // (a grant or link that ended in between): 409, never a silent pass.
+      if (stashLostAnswers(brandFormCheckOutcome, outcomeOf(stashed.data))) {
+        console.error("[ticket-checkout-create] brand form stash lost the form", {
+          outcome: outcomeOf(stashed.data),
         });
         return jsonResponse({ error: "brand_form_stash_failed" }, 409);
       }
