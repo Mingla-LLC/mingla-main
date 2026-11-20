@@ -148,6 +148,11 @@ import {
   TRIP_INSTALLMENT_CAPABILITY_UNAVAILABLE,
 } from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
 import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
+import {
+  parseTripPlanV2ContractPlan,
+  tierRowsCarryPlanV2,
+  type TripPlanV2ContractPlan,
+} from "./tripPlanV2Contract.ts";
 import { formatMoneyCents } from "../_shared/stripeEdgeAuth.ts";
 // Issue #4271 — door pay code: the guest pays a host-made code on their phone.
 import {
@@ -501,6 +506,16 @@ const EXTRAS_REFUSALS = [
   "extra_capacity_exceeded",
   "extras_need_paid_ticket",
   "extras_not_on_installments",
+] as const;
+/**
+ * issue #4522 — the database's v2 trip-plan refusals, returned by these names.
+ * `installment_plan_unavailable` here means the booking date only allows paying
+ * in full (the client refreshes its quote); the others are stale-client inputs.
+ */
+const PLAN_V2_REFUSALS = [
+  "installment_plan_unavailable",
+  "addon_payment_mode_invalid",
+  "payment_plan_v2_unavailable",
 ] as const;
 type CheckoutMode = "create" | "preview" | "quote";
 // ORCH-1006 Slice 2 (SPEC §B.6): the BuyerAddress type + parseBuyerAddress +
@@ -1098,6 +1113,21 @@ export const createTicketCheckoutCreateHandler = (
       }
       paymentPlanChoice = body.payment_plan_choice;
     }
+    // issue #4522 — how add-ons on a v2 trip plan are paid ("today" joins the
+    // deposit, "spread" rides the plan rows). Inert while the server switch is
+    // off. Absent => every RPC call below is byte-identical to today: the
+    // parameter is sent only when the buyer chose.
+    let addonPaymentMode: "today" | "spread" | null = null;
+    if (body.addonPaymentMode !== undefined && body.addonPaymentMode !== null) {
+      if (
+        body.addonPaymentMode !== "today" && body.addonPaymentMode !== "spread"
+      ) {
+        return jsonResponse({ error: "addon_payment_mode_invalid" }, 400);
+      }
+      addonPaymentMode = body.addonPaymentMode;
+    }
+    const addonPaymentModeArg: { p_addon_payment_mode?: "today" | "spread" } =
+      addonPaymentMode === null ? {} : { p_addon_payment_mode: addonPaymentMode };
 
     if (!eventId) return refuse({ error: "event_id_required" }, 400);
     if (buyerName.length < 2) {
@@ -1696,6 +1726,7 @@ export const createTicketCheckoutCreateHandler = (
         p_buyer_user_id: userId,
         p_link_token_hash: ticketLinkHash,
         p_queued: queueEngaged,
+        ...addonPaymentModeArg,
       });
       if (error !== null || data === null || typeof data !== "object") {
         throw new Error(error?.message ?? "ticket_quote_failed");
@@ -1920,6 +1951,16 @@ export const createTicketCheckoutCreateHandler = (
         if (detail === "installment_amount_below_minimum") {
           return jsonResponse({ error: "installment_amount_below_minimum" }, 409);
         }
+        // issue #4522 — v2 plan refusals keep their own names for client copy.
+        const planV2Refusal = PLAN_V2_REFUSALS.find((token) =>
+          detail.includes(token)
+        );
+        if (planV2Refusal !== undefined) {
+          return jsonResponse(
+            { error: planV2Refusal },
+            planV2Refusal === "addon_payment_mode_invalid" ? 400 : 409,
+          );
+        }
         if (detail.includes("discount_code_invalid")) {
           return jsonResponse(
             { error: "invalid_request", detail: "discount_code_invalid" },
@@ -2068,7 +2109,10 @@ export const createTicketCheckoutCreateHandler = (
     // not enter this branch and remains byte-for-byte on its existing path.
     let selectedTripTierRows: Array<{
       ticket_type_id: string;
-      tier_metadata: { installments?: InstallmentTemplate } | null;
+      // issue #4522 — `payment_plan` is the v2 plan shape.
+      tier_metadata:
+        | { installments?: InstallmentTemplate; payment_plan?: unknown }
+        | null;
     }> = [];
     const selectionRequestsInstallments = isCheckoutV2
       ? checkoutV2Lines!.some((line) =>
@@ -2214,6 +2258,7 @@ export const createTicketCheckoutCreateHandler = (
           p_booked_party_size: partySize,
           p_discount_code: discountCode,
           p_expected_quote_digest: quoteDigest,
+          ...addonPaymentModeArg,
         },
       )
       : null;
@@ -2292,6 +2337,7 @@ export const createTicketCheckoutCreateHandler = (
           p_booked_party_size: partySize,
           p_discount_code: discountCode,
           p_expected_quote_digest: quoteDigest,
+          ...addonPaymentModeArg,
       },
       );
     const sessionResult: unknown = sessionCall.data;
@@ -2392,6 +2438,16 @@ export const createTicketCheckoutCreateHandler = (
       // issue #3281 — a day-limited ticket off the chosen dates.
       if (sessionError?.message?.includes("ticket_not_valid_on_chosen_days")) {
         return jsonResponse({ error: "ticket_not_valid_on_chosen_days" }, 422);
+      }
+      // issue #4522 — v2 plan refusals, by stable name for client copy.
+      const planV2Refusal = PLAN_V2_REFUSALS.find((token) =>
+        sessionError?.message?.includes(token)
+      );
+      if (planV2Refusal !== undefined) {
+        return jsonResponse(
+          { error: planV2Refusal },
+          planV2Refusal === "addon_payment_mode_invalid" ? 400 : 409,
+        );
       }
       // issue #3281 — extras refusals, by stable name for client copy.
       const extrasRefusal = EXTRAS_REFUSALS.find((token) =>
@@ -2681,9 +2737,36 @@ export const createTicketCheckoutCreateHandler = (
           row,
         ) => [row.ticket_type_id, row.tier_metadata]),
       );
+      // issue #4522 — a package with a v2 plan is planned by the database, so
+      // the money math has one owner. NULL (switch off, or no v2 line) keeps
+      // the legacy planner below, byte for byte.
+      let planV2: TripPlanV2ContractPlan | null = null;
+      if (tierRowsCarryPlanV2(selectedTripTierRows)) {
+        const { data: planV2Data, error: planV2Error } = await supabase.rpc(
+          "issue_4522_checkout_v2_plan",
+          {
+            p_checkout_session_id: checkoutSessionId,
+            p_lines: canonicalLines.map((line) => ({
+              ticketTypeId: line.ticketTypeId,
+              paymentPlanChoice: line.paymentPlanChoice,
+            })),
+          },
+        );
+        if (planV2Error !== null) {
+          if (planV2Error.message?.includes("installment_plan_unavailable")) {
+            return refuse({ error: "installment_plan_unavailable" }, 409);
+          }
+          return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
+        }
+        try {
+          planV2 = parseTripPlanV2ContractPlan(planV2Data);
+        } catch {
+          return jsonResponse({ error: "checkout_contract_unavailable" }, 409);
+        }
+      }
       let computedPlan: ReturnType<typeof computeMultiLineInstallmentPlan>;
       try {
-        computedPlan = computeMultiLineInstallmentPlan({
+        computedPlan = planV2 ?? computeMultiLineInstallmentPlan({
           bookedAt: new Date(contractSessionRow.created_at),
           lines: canonicalLines.map((line) => ({
             ticketTypeId: line.ticketTypeId,
@@ -2703,17 +2786,18 @@ export const createTicketCheckoutCreateHandler = (
         return refuse({ error: "installment_deposit_invalid" }, 409);
       }
       try {
-        const listPlan = computeMultiLineInstallmentPlan({
-          bookedAt: new Date(contractSessionRow.created_at),
-          lines: canonicalLines.map((line) => ({
-            ticketTypeId: line.ticketTypeId,
-            lineTotalCents: line.listUnitPriceCents * line.quantity,
-            paymentPlanChoice: line.paymentPlanChoice,
-            template: tierByTicketType.get(line.ticketTypeId)?.installments ??
-              null,
-          })),
-        });
-        checkoutListSubtotalCents = listPlan.dueTodayCents;
+        checkoutListSubtotalCents = planV2 !== null
+          ? planV2.dueTodayListCents
+          : computeMultiLineInstallmentPlan({
+            bookedAt: new Date(contractSessionRow.created_at),
+            lines: canonicalLines.map((line) => ({
+              ticketTypeId: line.ticketTypeId,
+              lineTotalCents: line.listUnitPriceCents * line.quantity,
+              paymentPlanChoice: line.paymentPlanChoice,
+              template:
+                tierByTicketType.get(line.ticketTypeId)?.installments ?? null,
+            })),
+          }).dueTodayCents;
       } catch (error) {
         if (error instanceof MultiLineInstallmentError) {
           return refuse({ error: error.code }, 409);
@@ -2743,6 +2827,8 @@ export const createTicketCheckoutCreateHandler = (
           depositCents: computedPlan.dueTodayCents,
           currency,
           installments: computedPlan.scheduled,
+          // issue #4522 — v2 schedule facts (absent for legacy plans).
+          ...(planV2 !== null ? planV2.summary : {}),
         }
         : null;
       checkoutV2Fingerprint = await sha256Hex(

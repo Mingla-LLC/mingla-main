@@ -92,7 +92,10 @@ export function parseOfferingRefundPolicy(
   if (typeof kind !== "string" || !POLICY_KINDS.has(kind)) return null;
   const rawTiers = value.tiers;
   if (!Array.isArray(rawTiers)) return null;
-  const hasNoRefunds = Object.prototype.hasOwnProperty.call(value, "no_refunds");
+  const hasNoRefunds = Object.prototype.hasOwnProperty.call(
+    value,
+    "no_refunds",
+  );
   const hasDepositRule = Object.prototype.hasOwnProperty.call(
     value,
     "deposit_non_refundable",

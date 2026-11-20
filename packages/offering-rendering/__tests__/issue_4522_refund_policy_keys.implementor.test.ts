@@ -45,7 +45,11 @@ Deno.test("deposit_non_refundable is carried when present and boolean", () => {
 
 Deno.test("no_refunds false keeps the ladder; a non-boolean is unreadable", () => {
   assertEquals(
-    parseOfferingRefundPolicy({ kind: "custom", tiers: LADDER, no_refunds: false }),
+    parseOfferingRefundPolicy({
+      kind: "custom",
+      tiers: LADDER,
+      no_refunds: false,
+    }),
     { kind: "custom", tiers: LADDER, no_refunds: false },
   );
   assertEquals(
