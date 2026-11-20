@@ -40,6 +40,10 @@ import { TripPreview } from "../offering/LazyPublicParts";
 import type { TripPreviewBrand } from "./TripPreview";
 import { TripGuideReviewSections } from "./TripGuideReviewSections";
 import { resolveProviderNeutralPaidPublishGuardCopy } from "../../utils/paidPublishGuards";
+import {
+  BUILDER_STEP_TITLES,
+  builderStepForLegacyStep,
+} from "./tripBuilderV2Model";
 import { buildDraftPreviewSocialProof } from "../../utils/draftPreviewSocialProof";
 
 export interface TripCreatorStep5ReviewProps {
@@ -64,6 +68,8 @@ export interface TripCreatorStep5ReviewProps {
   themeOverrides?: ThemeInput | null;
   /** #1022 — ONE patch per user action. */
   onThemeChange?: (next: ThemeInput | null) => void;
+  /** #4522 — true in the 4-step builder: the live preview is drawn beside the form instead. */
+  hidePreview?: boolean;
 }
 
 export interface PublishErrorState {
@@ -83,6 +89,7 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
   themeOverrides = null,
   onThemeChange,
   onConnectStripe,
+  hidePreview = false,
 }) => {
   const [themeSheetOpen, setThemeSheetOpen] = useState(false);
   // `brand` here is the narrow TripPreviewBrand (no theme), so the brand theme
@@ -130,7 +137,9 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
           <Text style={styles.errorBannerTitle}>Can&rsquo;t publish yet</Text>
           <Text style={styles.errorBannerText}>{publishError.message}</Text>
           <Text style={styles.errorBannerStep}>
-            Go back to Step {publishError.pointsToStep} to fix.
+            {hidePreview
+              ? `Fix it in ${BUILDER_STEP_TITLES[builderStepForLegacyStep(publishError.pointsToStep)]}.`
+              : `Go back to Step ${publishError.pointsToStep} to fix.`}
           </Text>
         </View>
       ) : null}
@@ -150,6 +159,9 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
         </View>
       ) : null}
 
+      {/* #4522 — the 4-step builder shows the live preview beside the form (a
+          peek sheet on phones), so Review does not draw it a second time. */}
+      {hidePreview ? null : (
       <View style={styles.previewWrap}>
         {/* #1022 A/F-12 (Trip leg) — `theme` is the SAME resolve call every
             other surface makes: brand theme FIRST, offering override SECOND.
@@ -168,6 +180,7 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
           socialProof={previewSocialProof}
         />
       </View>
+      )}
       {/* Issue #2829 (A9) — the "Before you go" guide as it will be published
           with the trip: nothing is hidden before publish. */}
       <TripGuideReviewSections eventId={trip.id} capacity={trip.businessTrip.capacity ?? null} />

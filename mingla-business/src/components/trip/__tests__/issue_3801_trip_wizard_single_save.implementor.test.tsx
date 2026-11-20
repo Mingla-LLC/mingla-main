@@ -148,6 +148,9 @@ const realQueue = jest.requireActual("../../../utils/tripSaveQueue") as Record<
 > & { createTripSaveQueue: (ms?: number) => unknown };
 
 const BOUNDARY: Record<string, () => unknown> = {
+  // #4522 — the 4-step builder is dark: its flag reads false here, its rules are pure.
+  TripBuilderV2Parts: () => ({ TRIP_BUILDER_V2: false }),
+  tripBuilderV2Model: () => jest.requireActual("../tripBuilderV2Model"),
   "@mingla/offering-rendering/tripInstallmentCapability": () => ({
     tripInstallmentsSupported: () => false,
   }),

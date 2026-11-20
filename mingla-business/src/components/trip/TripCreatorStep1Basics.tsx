@@ -77,6 +77,8 @@ import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-renderin
 
 export interface Step1Draft {
   title: string;
+  /** #4522 — trip description (the 4-step builder's step 1); absent on older drafts. */
+  description?: string;
   startAt: string | null; // ISO 8601 (e.g. "2026-03-12T00:00:00.000Z")
   endAt: string | null;
   destinationPlaceId: string | null;
@@ -146,6 +148,12 @@ export interface TripCreatorStep1BasicsProps {
    * over a video the server is about to apply.
    */
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
+  /**
+   * #4522 — the 4-step builder: shows the Description field under the title and
+   * focuses the title or description when a checklist item jumps here.
+   */
+  builderV2?: boolean;
+  focusField?: "title" | "description" | null;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker now
   // uses the keyboard-controller library's KAV wrap instead.
 }
@@ -194,7 +202,15 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   showAddressErrors = false,
   timeZone,
   onCoverVideoProcessingChange,
+  builderV2 = false,
+  focusField = null,
 }) => {
+  const titleInputRef = useRef<TextInput | null>(null);
+  const descriptionInputRef = useRef<TextInput | null>(null);
+  useEffect(() => {
+    if (focusField === "title") titleInputRef.current?.focus();
+    else if (focusField === "description") descriptionInputRef.current?.focus();
+  }, [focusField]);
   const [departureSelectionState, setDepartureSelectionState] =
     useState<LocationSelectionState>(
       draft.departureLocationText?.trim() &&
@@ -514,14 +530,40 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <TextInput
           value={draft.title}
           onChangeText={(v) => onChange({ title: v })}
-          placeholder="e.g. Tulum Yoga Retreat — March 2026"
+          placeholder="e.g. Tulum Yoga Retreat"
           placeholderTextColor={color.text3}
           editable={!disabled}
           accessibilityLabel="Trip title"
           style={styles.textInput}
           testID="trip-step1-title"
+          ref={titleInputRef}
         />
       </View>
+
+      {/* #4522 — description (4-step builder). A buyer-facing paragraph; the
+          publish checklist asks for 20+ characters. */}
+      {builderV2 ? (
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Description</Text>
+          <TextInput
+            ref={descriptionInputRef}
+            value={draft.description ?? ""}
+            onChangeText={(v) => onChange({ description: v })}
+            placeholder="What is this trip, who is it for, and what will travelers remember?"
+            placeholderTextColor={color.text3}
+            editable={!disabled}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+            accessibilityLabel="Trip description"
+            style={[styles.textInput, styles.descriptionInput]}
+            testID="trip-step1-description"
+          />
+          <Text style={styles.descriptionCount}>
+            {(draft.description ?? "").trim().length} characters · 20 or more to publish
+          </Text>
+        </View>
+      ) : null}
 
       {/* Dates */}
       <View style={styles.dateRow}>
@@ -998,6 +1040,17 @@ const styles = StyleSheet.create({
     borderColor: INPUT_BORDER,
     color: color.text1,
     fontSize: type.body.fontSize,
+  },
+  descriptionInput: {
+    height: undefined,
+    minHeight: 112,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  descriptionCount: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    color: color.text3,
   },
   dateRow: {
     flexDirection: "row",

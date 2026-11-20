@@ -12,7 +12,8 @@ export type FeatureFlagKey =
   | "paystack"
   | "accountSideToggle"
   | "sites"
-  | "extras";
+  | "extras"
+  | "tripBuilderV2";
 
 function readEnvFlag(raw: string | undefined, defaultEnabled: boolean): boolean {
   if (raw === undefined || raw === "") {
@@ -44,6 +45,11 @@ export const featureFlags: Readonly<Record<FeatureFlagKey, boolean>> = {
    * so an organiser never sets up an extra nobody can purchase.
    */
   extras: readEnvFlag(process.env.EXPO_PUBLIC_FF_EXTRAS_ENABLED, false),
+  /**
+   * #4522 — the 4-step trip builder (live preview, publish checklist, "Saved"
+   * pill, dated itinerary). Dark until Seth switches it on (spec §16).
+   */
+  tripBuilderV2: readEnvFlag(process.env.EXPO_PUBLIC_FF_TRIP_BUILDER_V2, false),
 };
 
 export function isFeatureEnabled(key: FeatureFlagKey): boolean {

@@ -93,6 +93,9 @@ const asyncNoop = async (): Promise<undefined> => undefined;
 const settledIdle = { isPending: false, isFetching: false, isError: false };
 
 const BOUNDARY: Record<string, () => unknown> = {
+  // #4522 — the 4-step builder is dark: its flag reads false here, its rules are pure.
+  TripBuilderV2Parts: () => ({ TRIP_BUILDER_V2: false }),
+  tripBuilderV2Model: () => jest.requireActual("../tripBuilderV2Model"),
   // [TEST-MOD-APPROVED #3859] The #3801 fixture has no installment provider;
   // model the new capability boundary without changing its itinerary subject.
   "@mingla/offering-rendering/tripInstallmentCapability": () => ({

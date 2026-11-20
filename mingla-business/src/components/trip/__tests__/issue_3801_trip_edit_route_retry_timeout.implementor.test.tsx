@@ -150,6 +150,9 @@ const leaf = (name: string) => {
 };
 
 const BOUNDARY: Record<string, () => unknown> = {
+  // #4522 — the 4-step builder is dark: the route keeps creating the draft on mount.
+  featureFlags: () => ({ isFeatureEnabled: () => false }),
+  TripStartGate: () => ({ TripStartGate: () => null }),
   react: () => React,
   "react-native": () => ({
     ActivityIndicator: leaf("ActivityIndicator"),
