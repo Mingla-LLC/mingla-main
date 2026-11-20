@@ -191,7 +191,9 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
 }) => {
   // N126: the server's current mode (from the preview) wins over the mode
   // the basket was built with.
-  const shown = venueOrderingReviewConfig(config, preview);
+  // While a re-price is in flight (the open review re-reads the mode, and a
+  // mode change re-prices), the fresh config is shown, never an older preview.
+  const shown = previewStatus === "ready" ? venueOrderingReviewConfig(config, preview) : config;
   const counterPickup = venueOrderingIsCounterPickup(shown, pickup);
   const offersPickup = venueOrderingOffersPickup(shown) && onPickupChange !== undefined;
   const Input = TextInputComponent ?? TextInput;

@@ -32,6 +32,7 @@ import {
   venueOrderShouldAskPartySize,
   venueOrderingOffersPickup,
   venueOrderSubmitFailure,
+  VENUE_ORDER_REVIEW_MODE_POLL_MS,
   venueOrderSittingKey,
   venueOrderingQueryKeys,
 } from "@mingla/brand-rendering/venueOrdering";
@@ -180,7 +181,12 @@ export function useBuyerVenueOrdering(
   const reviewOpen = cart.state.view === "review";
   const refetchConfig = configQuery.refetch;
   useEffect(() => {
-    if (reviewOpen) void refetchConfig();
+    if (!reviewOpen) return undefined;
+    void refetchConfig();
+    // N126 residual: keep reading it while the review is open, so a change
+    // shows without waiting for the next price check.
+    const handle = setInterval(() => void refetchConfig(), VENUE_ORDER_REVIEW_MODE_POLL_MS);
+    return () => clearInterval(handle);
   }, [reviewOpen, refetchConfig]);
   // #4490 07-D — sent only where the venue offers the choice (Both).
   const [pickupChoice, setPickup] = useState(false);
@@ -237,8 +243,11 @@ export function useBuyerVenueOrdering(
         venue: config.venueId,
         discountCode: discountCode.trim().toUpperCase(),
         pickup,
+        // N126: a mode change re-prices at once, so the review follows it.
+        mode: config.orderMode ?? null,
       }),
     [
+      config.orderMode,
       pickup,
       cart.state.lines,
       cart.state.tip,

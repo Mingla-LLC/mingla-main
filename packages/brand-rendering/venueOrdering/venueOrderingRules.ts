@@ -550,6 +550,9 @@ export function venueOrderingIsCounterPickup(
   return pickup && venueOrderingOffersPickup(config);
 }
 
+/** N126 — how often an open review re-reads the venue's ordering mode. */
+export const VENUE_ORDER_REVIEW_MODE_POLL_MS = 15_000;
+
 /**
  * N126 (#4490 07-D) — the config the review shows. The basket may have been
  * built before the host changed the ordering mode; the server's preview

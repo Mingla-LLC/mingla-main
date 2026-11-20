@@ -54,6 +54,7 @@ export {
   venueOrderingOffersPickup,
   venueOrderingReviewConfig,
   venueOrderSubmitFailure,
+  VENUE_ORDER_REVIEW_MODE_POLL_MS,
   venueOrderingItemOrderable,
   venueOrderingMenuGroups,
   venueOrderingModifierFailure,

@@ -120,6 +120,18 @@ describe("#4490 07-D ordering mode", () => {
     }
   });
 
+  it("N126 residual: an open review keeps re-reading the mode and re-prices on a change", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    for (const f of ["../useBuyerVenueOrdering.ts", "../../../../../app-mobile/src/components/venueOrdering/useConsumerVenueOrdering.ts"]) {
+      const src = fs.readFileSync(require.resolve(f), "utf8");
+      expect(src).toMatch(/setInterval\(\(\) => void refetchConfig\(\), VENUE_ORDER_REVIEW_MODE_POLL_MS\)/);
+      expect(src).toMatch(/mode: config\.orderMode \?\? null,/);
+    }
+    const pane = fs.readFileSync(require.resolve("../../../../../packages/brand-rendering/venueOrdering/VenueOrderReviewPane.tsx"), "utf8");
+    expect(pane).toMatch(/previewStatus === "ready" \? venueOrderingReviewConfig\(config, preview\) : config/);
+  });
+
   it("no scanned spot stays a counter order", () => {
     expect(venueOrderingIsCounterPickup(state("both", false))).toBe(true);
   });
