@@ -207,6 +207,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    answer the host reads as "no spaces" or "every feature off". All three
   //    fold isAuthReady into enabled.
   "useVenueFeatures.ts",
+  // #4490 07-A / 07-L: read the event's venue link (events, RLS by brand) with isAuthReady folded into enabled.
+  "useEventAtVenue.ts",
+  "useEventVenueCover.ts",
   "useVenueSpaces.ts",
   "useVenueSpecialDays.ts",
   // ── #4490 — the Host's preview of a venue page not public yet

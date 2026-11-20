@@ -92,6 +92,9 @@ jest.mock("../../../hooks/useCurrentBrand", () => ({
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({
   useCurrentBrandRole: () => ({ rank: 100 }),
 }));
+// TEST-MOD-APPROVED #4490 07-D: the Menu module now opens with the ordering-mode card (its own
+// settings query); registered like the module's other hooks, the card is inert here.
+jest.mock("../OrderingModeCard", () => ({ OrderingModeCard: (): null => null }));
 jest.mock("../../../hooks/useMenus", () => ({
   useBrandMenus: () => ({
     data: menuFixture,
