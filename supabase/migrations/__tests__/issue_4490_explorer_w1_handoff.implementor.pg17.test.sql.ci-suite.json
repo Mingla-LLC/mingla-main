@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4490_explorer_w1_handoff.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4490-36-explorer-w1-handoff",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}
