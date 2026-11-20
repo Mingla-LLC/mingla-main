@@ -25,7 +25,8 @@ import {
   type IntakeFormRendererProps,
 } from "@mingla/form-rendering";
 
-import { color, radius, space, type } from "../../../constants/designSystem";
+import { radius, space, type } from "../../../constants/designSystem";
+import { activeSurfaceTokens, themed } from "../../../theme/surfaceTokens";
 import { EventCoverMedia } from "../../ui/EventCoverMedia";
 import { Icon } from "../../ui/Icon";
 import { WebDateTimeInput } from "../../ui/WebDateTimeInput";
@@ -46,8 +47,23 @@ const BusinessBrandCover: React.FC<FormBrandCoverProps> = ({ uri, hue, height })
   />
 );
 
+/**
+ * #4518: text and line colours come from the surface tokens, read at render.
+ * `themed` builds one token object per active palette, so the package's
+ * per-token style cache rebuilds when a host palette is set and a change of
+ * palette never reuses a stale sheet.
+ */
+const surfaceFormTokens = themed(() => ({
+  color: activeSurfaceTokens().color,
+  radius,
+  space,
+  type,
+}));
+
 export const businessFormPrimitives: FormRenderingPrimitives = {
-  tokens: { color, radius, space, type },
+  get tokens() {
+    return surfaceFormTokens();
+  },
   Icon,
   WebDateTimeInput,
   BrandCover: BusinessBrandCover,

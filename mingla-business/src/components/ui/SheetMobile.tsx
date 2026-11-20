@@ -67,6 +67,11 @@ import {
   size,
   space,
 } from "../../constants/designSystem";
+import {
+  color as surfaceColor,
+  isSurfaceThemed,
+  materials as surfaceMaterials,
+} from "../../theme/surfaceTokens";
 
 import { Material } from "./Material";
 import { ToastHost } from "./ToastHost";
@@ -607,13 +612,27 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
           styles.bodyClip,
           styles.webRim,
           { backgroundColor: WEB_OPAQUE_BACKGROUND },
+          // #4518 — host-themed checkout: the host's sheet colour and line.
+          isSurfaceThemed()
+            ? {
+                backgroundColor: surfaceMaterials.sheet.solidFill,
+                borderTopColor: surfaceMaterials.sheet.rim.edge,
+                borderLeftColor: surfaceMaterials.sheet.rim.edge,
+                borderRightColor: surfaceMaterials.sheet.rim.edge,
+              }
+            : null,
         ]}
       />
     ) : (
       <Material kind="sheet" style={[StyleSheet.absoluteFill, styles.bodyClip]} pointerEvents="none" />
     )}
     <View style={styles.handleWrap}>
-      <View style={styles.handle} />
+      <View
+        style={[
+          styles.handle,
+          isSurfaceThemed() ? { backgroundColor: surfaceColor.fill.handle } : null,
+        ]}
+      />
     </View>
     <View
       style={[

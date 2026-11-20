@@ -14,7 +14,8 @@ import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { IntakeQuestionShell, type FormRenderingPrimitives } from "@mingla/form-rendering";
 
-import { radius, color, space, type } from "../../../constants/designSystem";
+import { radius, space, type } from "../../../constants/designSystem";
+import { color, themedStyles } from "../../../theme/surfaceTokens";
 import { GlassCard } from "../../ui/GlassCard";
 import { Icon } from "../../ui/Icon";
 import type {
@@ -384,7 +385,7 @@ export const IntakeQuestionFileUpload: React.FC<
 };
 
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   choiceRowPressed: {
     opacity: 0.7,
   },
@@ -474,4 +475,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-});
+}));

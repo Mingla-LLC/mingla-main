@@ -67,6 +67,7 @@ import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
 // window, from #1841's measurement rather than from assumption.
 import { DONE_BAR_PRESENT_IN_RAW_MODAL } from "../../wrappers/keyboardClearance";
 import { MinglaToSAcceptanceGate } from "../onboarding/MinglaToSAcceptanceGate";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 
 export interface BrandPaystackOnboardViewProps {
   brandId: string;
@@ -149,6 +150,10 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
   const [bankCode, setBankCode] = useState<string | null>(null);
   const [bankName, setBankName] = useState<string | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
+  // #4453 — the account number the last successful connect sent: until the
+  // number in the box is that one, it is typed-and-not-saved, and holds a
+  // brand switch (the same form for another brand must not keep it).
+  const [connectedNumber, setConnectedNumber] = useState<string | null>(null);
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pickerOpenerRef = useRef<React.ElementRef<typeof Pressable>>(null);
@@ -403,6 +408,7 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
       // refetched (useCreatePaystackSubaccount awaits its own invalidation), so
       // the screen this navigates to cannot read a pre-connect snapshot.
       await submitMutation.mutateAsync(input);
+      setConnectedNumber(accountNumber);
       onConnected?.();
     } catch (err) {
       // #3192 — this was a BARE `catch {}`. The error object was discarded, so
@@ -420,6 +426,12 @@ export const BrandPaystackOnboardView: React.FC<BrandPaystackOnboardViewProps> =
       setError(describePaystackConnectError(err, isUpdate, bankDetailsSaved));
     }
   };
+
+  useUnsavedChangesGuard({
+    dirty: showBankForm && accountNumber.trim() !== "" && accountNumber !== connectedNumber,
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
 
   return (
     <GlassCard variant="elevated" padding={space[6]}>

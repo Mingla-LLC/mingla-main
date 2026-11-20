@@ -1,11 +1,16 @@
 /**
  * #4389 (screen AB) — the brand chip, shared by Home's TopBar and Ari's top
- * bar. Extracted from TopBar unchanged: the same element tree, styles and
- * labels, so Home renders exactly as before (U-9).
+ * bar.
  *
- * `fullNameLabel` is Ari's only difference: on a narrow first-run bar the name
- * truncates with "…" by layout, and the chip's accessibility label carries
- * the full name. Home keeps its 18-character label.
+ * #4453 (contract section I) — the chip names the brand of the SCREEN you are
+ * on, not just the current-brand store: a screen that names its brand (the
+ * `brand` prop: its own, or the route's, e.g. `/brand/<id>/website`) wins. It is the
+ * trigger of WorkspaceBrandSwitcher: brand mark, name, chevron, at least 44pt
+ * tall, and its label always carries the full name ("Brand: Gameland Lagos.
+ * Switch brand") however the visible name is shortened.
+ *
+ * `fullNameLabel`: the name truncates with "…" by layout instead of the
+ * 18-character label Home keeps.
  */
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -19,6 +24,7 @@ import {
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 // issue #3345 — loading vs absent. Store selectors only (no new query mounts).
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
+import type { Brand } from "../../types/brand";
 import { isCurrentBrandPending } from "../../utils/currentBrandPending";
 
 import { BrandMark } from "../brand/BrandMark";
@@ -30,12 +36,35 @@ const BRAND_MARK_SIZE = 24;
 const truncate = (value: string, max: number): string =>
   value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 
+export interface BrandChipMenuState {
+  accessibilityState: { expanded: boolean };
+  "aria-expanded": boolean;
+  "aria-haspopup": "menu";
+}
+
 export interface BrandChipProps {
-  onPress: () => void;
+  onPress?: () => void;
   /** issue #3345 — the host knows the active brand is still being resolved. */
   brandLoading?: boolean;
   /** Ari: label truncates by layout; the accessibility label names the brand in full. */
   fullNameLabel?: boolean;
+  /**
+   * #4453 — the brand of the screen, when the screen names one: the switcher
+   * passes its own, a bare chip passes the route's from the shell
+   * (`useContext(WorkspaceRouteContext).brand`). Undefined: the current
+   * brand. Null: that brand is still being read (pass `brandLoading` too).
+   */
+  brand?: Brand | null;
+  /** #4453 — the brand mark's size (a tight header uses a smaller one). */
+  markSize?: number;
+  /**
+   * #4453 — the switcher says that the chip opens a menu and whether it is
+   * open, in both spellings: `accessibilityState` is what native announces,
+   * `aria-expanded` / `aria-haspopup` are what the web build renders.
+   */
+  menuState?: BrandChipMenuState;
+  /** #4453 — the pressable, so a popover can anchor under it and hand focus back. */
+  chipRef?: React.Ref<View>;
   testID?: string;
 }
 
@@ -43,9 +72,16 @@ export const BrandChip: React.FC<BrandChipProps> = ({
   onPress,
   brandLoading = false,
   fullNameLabel = false,
+  brand,
+  markSize = BRAND_MARK_SIZE,
+  menuState,
+  chipRef,
   testID,
 }) => {
-  const currentBrand = useCurrentBrand();
+  // #4453 — a screen that names its brand shows that brand; otherwise the
+  // chip follows the current brand, as before.
+  const storeBrand = useCurrentBrand();
+  const currentBrand = brand === undefined ? storeBrand : brand;
   const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
   const hasBrandHydrated = useCurrentBrandStore((s) => s.hasHydrated);
   // issue #3345 — "no brand yet" is not "no brand". A selected brand whose record
@@ -62,6 +98,7 @@ export const BrandChip: React.FC<BrandChipProps> = ({
   if (brandPending) {
     return (
       <Pressable
+        ref={chipRef}
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel="Brand: loading"
@@ -80,15 +117,18 @@ export const BrandChip: React.FC<BrandChipProps> = ({
       : fullNameLabel
         ? currentBrand.displayName
         : truncate(currentBrand.displayName, BRAND_LABEL_MAX_CHARS);
+  // #4453 — always the full name, and always says what a press does.
   const a11yLabel =
-    fullNameLabel && currentBrand !== null
+    currentBrand !== null
       ? `Brand: ${currentBrand.displayName}. Switch brand`
       : `Brand: ${label}`;
   return (
     <Pressable
+      ref={chipRef}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={a11yLabel}
+      {...menuState}
       style={fullNameLabel ? [styles.brandRow, styles.brandRowShrink] : styles.brandRow}
       testID={testID}
     >
@@ -98,7 +138,7 @@ export const BrandChip: React.FC<BrandChipProps> = ({
       {currentBrand !== null ? (
         <BrandMark
           brand={currentBrand}
-          size={BRAND_MARK_SIZE}
+          size={markSize}
           testID="topbar-brand-mark"
         />
       ) : null}
@@ -119,6 +159,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space[2],
     minWidth: 0,
+    // #4453 — the chip is a control: never shorter than a 44pt target.
+    minHeight: 44,
   },
   brandRowShrink: {
     flexShrink: 1,

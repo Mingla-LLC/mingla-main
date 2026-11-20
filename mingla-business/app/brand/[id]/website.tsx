@@ -15,12 +15,21 @@ import { color } from "../../../src/constants/designSystem";
 const LazyWebsiteApp = React.lazy(() => import("../../../src/components/sites/website/WebsiteApp"));
 
 export default function BrandWebsiteRoute(): React.ReactElement {
-  const params = useLocalSearchParams<{ id: string | string[]; studioResult?: string | string[] }>();
-  const brandId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const studioResult = Array.isArray(params.studioResult) ? params.studioResult[0] : params.studioResult;
+  // #4453 — mode, panel and request say where in the workspace to land
+  // (Ari / Edit / Design, a "more" screen, a team request from a notification).
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    studioResult?: string | string[];
+    mode?: string | string[];
+    panel?: string | string[];
+    request?: string | string[];
+  }>();
+  const first = (value: string | string[] | undefined): string | undefined => (Array.isArray(value) ? value[0] : value);
+  const brandId = first(params.id);
+  const studioResult = first(params.studioResult);
   return (
     <React.Suspense fallback={<View style={styles.loading}><ActivityIndicator color={color.text1} accessibilityLabel="Loading your website" /></View>}>
-      <LazyWebsiteApp brandId={typeof brandId === "string" ? brandId : ""} segments={[]} search={{ studioResult }} />
+      <LazyWebsiteApp brandId={typeof brandId === "string" ? brandId : ""} segments={[]} search={{ studioResult, mode: first(params.mode), panel: first(params.panel), request: first(params.request) }} />
     </React.Suspense>
   );
 }

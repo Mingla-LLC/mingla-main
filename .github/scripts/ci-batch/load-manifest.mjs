@@ -357,9 +357,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645 payout gaps: listed migration 20280809003645 in the #1857, #1931 and #2117 lanes (after main's #4453 and #4389 rows), registered its pg17 suite and sidecars in the #1931 and #2117 inventories, and skipped it by exact filename on the #1931 and #2117 filtered template replays (#2492 closure); re-sealed.
 // #3645 merge of main after #4238: listed 20280809003645 before main's 20281118004238 and 20281118014238 rows (filename order); re-sealed.
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
+// #4453 Website workspace (team requests): listed migrations 20281119004453 (website team requests) and 20281119014453 (workspace content ranks, audit vocabulary, Ari step events) after 20281118014238 in the #1857, #1931 and #2117 lanes and registered their two implementor pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed. The unmerged #4490 branch also adds rows and re-seals: whichever merges second re-seals again.
 // #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed.
+// #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4514 brand forms: the #1931 filtered template replay no longer skips the brand forms migration (the #2492 gate credits CREATE TABLE columns of applied migrations); re-sealed.
-export const BOOTSTRAP_SHA256 = "55207fc8583f2b160c66147563502ae82d61d8811362e5a72cd3d71c50afc977";
+export const BOOTSTRAP_SHA256 = "5fa0a263f3924b64dd5694f514d987616d3740c5e4e766b37cc874c66510ad4a";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

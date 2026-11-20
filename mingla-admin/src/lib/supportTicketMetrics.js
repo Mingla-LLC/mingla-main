@@ -13,6 +13,7 @@
 //   Unassigned   nobody owns it and still active
 //   Overdue      still active and the promised next update has passed
 //   Waiting      Waiting on customer (status pending)
+//   Website      #4453: still active and the topic is a website change
 //   Resolved     resolved or closed
 //   All          everything
 
@@ -26,6 +27,8 @@ export const SUPPORT_INBOX_VIEWS = Object.freeze([
   Object.freeze({ id: "unassigned", label: "Unassigned", group: "Work" }),
   Object.freeze({ id: "overdue", label: "Overdue", group: "Work" }),
   Object.freeze({ id: "waiting", label: "Waiting on customer", group: "Work" }),
+  // #4453 — owners' website change requests (topic website_change), 24-hour clock.
+  Object.freeze({ id: "website", label: "Website changes", group: "Work" }),
   Object.freeze({ id: "resolved", label: "Resolved", group: "Done" }),
   Object.freeze({ id: "all", label: "All tickets", group: "Done" }),
 ]);
@@ -84,6 +87,8 @@ export function ticketMatchesView(ticket, view, { me = null, nowMs = Date.now() 
       return isOverdueTicket(ticket, nowMs);
     case "waiting":
       return ticket.status === "pending";
+    case "website":
+      return ticket.topic === "website_change" && isActiveTicket(ticket);
     case "resolved":
       return DONE_SUPPORT_STATUSES.has(ticket.status);
     case "all":
@@ -152,7 +157,19 @@ function waitingSince(ticket) {
   return Number.isFinite(at) ? at : 0;
 }
 
-const OLDEST_FIRST = new Set(["needs", "mine", "unassigned", "overdue", "waiting"]);
+function websiteDueMs(ticket) {
+  const at = Date.parse(ticket?.website_request?.due_at || ticket?.next_update_at || "");
+  return Number.isFinite(at) ? at : Number.MAX_SAFE_INTEGER;
+}
+
+function compareWebsiteRequests(left, right) {
+  const leftReady = left?.website_request?.ready_at ? 1 : 0;
+  const rightReady = right?.website_request?.ready_at ? 1 : 0;
+  if (leftReady !== rightReady) return leftReady - rightReady;
+  return websiteDueMs(left) - websiteDueMs(right) || waitingSince(left) - waitingSince(right);
+}
+
+const OLDEST_FIRST = new Set(["needs", "mine", "unassigned", "overdue", "waiting", "website"]);
 
 /**
  * The rows a view shows. Work still waiting lists the longest-waiting first;
@@ -161,6 +178,9 @@ const OLDEST_FIRST = new Set(["needs", "mine", "unassigned", "overdue", "waiting
 export function supportInboxRows(rows, view, ctx = {}) {
   const nowMs = ctx.nowMs ?? Date.now();
   const list = supportInboxBase(rows, ctx).filter((row) => ticketMatchesView(row, view, { me: ctx.me, nowMs }));
+  // #4453: website change requests list by their 24-hour clock: the ones
+  // still to do first (soonest due on top), then the ones already marked ready.
+  if (view === "website") return list.sort(compareWebsiteRequests);
   const oldestFirst = OLDEST_FIRST.has(view);
   return list.sort((left, right) => (oldestFirst
     ? waitingSince(left) - waitingSince(right)
@@ -219,7 +239,7 @@ export const DONE_TICKET_STATUSES = Object.freeze([...DONE_SUPPORT_STATUSES]);
 export const ACTIVE_TICKET_CAP = 2000;
 export const CLOSED_PAGE_SIZE = 300;
 
-const WORK_VIEWS = new Set(["needs", "mine", "unassigned", "overdue", "waiting"]);
+const WORK_VIEWS = new Set(["needs", "mine", "unassigned", "overdue", "waiting", "website"]);
 
 /**
  * { partial, loaded, total, canLoadOlder } for a view, from the load's

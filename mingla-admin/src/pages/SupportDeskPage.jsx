@@ -3,7 +3,7 @@
  *
  * One inbox over support_tickets (customer tickets and staff tickets alike):
  * a rail of views (Needs reply, Mine, Unassigned, Overdue, Waiting on
- * customer, Resolved, All), an Opened-by switch (Everyone, Customers, Staff),
+ * customer, Website changes (#4453), Resolved, All), an Opened-by switch (Everyone, Customers, Staff),
  * filters for product area, priority, owner and brand, and search by subject,
  * person, brand or S-number. Every count is worked out from the same rows the
  * list shows (lib/supportTicketMetrics.js).
@@ -40,7 +40,9 @@ import {
   invokeSupportFunction,
   listSupportTickets,
   loadInboxLookups,
+  markWebsiteRequestReady,
 } from "../services/supportDeskService";
+import { isWebsiteRequestTicket, websiteRequestClock } from "../lib/websiteRequestModel";
 import {
   OPENED_BY_OPTIONS,
   SUPPORT_INBOX_VIEWS,
@@ -157,7 +159,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
         listProductSignals(),
         listSupportStaffRoster(),
       ]);
-      const userIds = [...new Set(rows.flatMap((t) => [t.requester_user_id, t.assigned_staff_id, t.created_by]).concat((roster || []).map((r) => r.user_id)).filter(Boolean))];
+      const userIds = [...new Set(rows.flatMap((t) => [t.requester_user_id, t.assigned_staff_id, t.created_by, t.website_request?.ready_by]).concat((roster || []).map((r) => r.user_id)).filter(Boolean))];
       const lookups = await loadInboxLookups(userIds);
       if (!mountedRef.current) return;
       setTickets(rows);
@@ -294,6 +296,28 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
     if (mountedRef.current) setActing(false);
   }, [selectedTicket, addToast, loadQueue, noteResult, showError]);
 
+  // #4453: "Ready for review" on a website change request. Returns the
+  // result so the request box can show a refusal next to the button.
+  const handleWebsiteReady = useCallback(async (note) => {
+    if (!selectedTicket) return { ok: false, error: "No ticket is open" };
+    const ticketId = selectedTicket.id;
+    const res = await markWebsiteRequestReady(ticketId, note);
+    if (res.ok) {
+      setSessionExpired(false);
+      const told = Number(res.data?.notified || 0);
+      addToast({
+        variant: "success",
+        title: "Marked ready for review",
+        description: told > 0 ? `${told} ${told === 1 ? "person" : "people"} on the brand's team told.` : "Nobody new to tell.",
+      });
+      await logAdminAction("support.website_request_ready", "support_ticket", ticketId, { notified: told, has_note: Boolean(note) });
+      await loadQueue();
+    } else {
+      noteResult(res);
+    }
+    return res;
+  }, [selectedTicket, addToast, loadQueue, noteResult]);
+
   const handleWorkflowError = useCallback((error) => {
     const message = error?.message || "The action didn't finish";
     const stale = message.includes("stale_revision");
@@ -418,7 +442,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
             <div className="flex flex-col items-center gap-2 py-12 text-center">
               <LifeBuoy className="h-10 w-10 text-[var(--gray-300)]" aria-hidden="true" />
               <p className="px-4 text-sm text-[var(--color-text-tertiary)]">
-                {filtersActive ? "Nothing here for these filters." : view === "needs" ? "Nobody is waiting on a reply." : "No tickets in this view."}
+                {filtersActive ? "Nothing here for these filters." : view === "needs" ? "Nobody is waiting on a reply." : view === "website" ? "No website change requests are open." : "No tickets in this view."}
               </p>
             </div>
           ) : (
@@ -427,6 +451,8 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
                 const who = rowWho(t, profilesById, brandsById);
                 const owner = t.assigned_staff_id ? profilesById[t.assigned_staff_id] : null;
                 const selected = t.id === selectedId;
+                // #4453: a website change request shows its 24-hour clock.
+                const clock = isWebsiteRequestTicket(t) ? websiteRequestClock(t) : null;
                 return (
                   <li key={t.id}>
                     <button
@@ -447,7 +473,9 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
                       </span>
                       <span className="flex flex-col items-end gap-1 text-xs">
                         <Badge variant={STATUS_BADGE[t.status] || "default"}>{STATUS_LABEL[t.status] || t.status}</Badge>
-                        {isOverdueTicket(t) && <Badge variant="error">Overdue</Badge>}
+                        {clock && clock.state !== "done"
+                          ? <Badge variant={clock.tone}>{clock.label}</Badge>
+                          : isOverdueTicket(t) && <Badge variant="error">Overdue</Badge>}
                         <span className="text-[var(--color-text-tertiary)]">{owner ? (owner.id === myUserId ? "You" : personName(owner)) : "No owner"}</span>
                         <span className="tabular-nums text-[var(--color-text-tertiary)]">{waitLabel(t)}</span>
                       </span>
@@ -481,6 +509,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
               }}
               onError={showError}
               onSessionExpired={() => setSessionExpired(true)}
+              onWebsiteReady={handleWebsiteReady}
             />
           </div>
         )}

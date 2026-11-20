@@ -25,13 +25,13 @@ export const PUBLISH_REFUSAL_COPY: Readonly<Record<string, string>> = {
   DESIGN_CHECKS_REQUIRED: "Your first publish needs the design checks run on this draft. Run them below, then publish again.",
 };
 
-function failureReason(receipt: { error_code?: string | null; result_summary?: Record<string, unknown> | null } | null): string {
+export function failureReason(receipt: { error_code?: string | null; result_summary?: Record<string, unknown> | null } | null): string {
   const reason = receipt?.result_summary?.reason_code;
   if (typeof reason === "string" && PUBLISH_REFUSAL_COPY[reason]) return PUBLISH_REFUSAL_COPY[reason]!;
   return `Reason: ${(receipt?.error_code && SITES_ERROR_MESSAGES[receipt.error_code]) ?? "Mingla couldn't finish publishing."}`;
 }
 
-const STEPS = ["Checking your draft", "Building your pages", "Making sure it loads", "Switching it live"] as const;
+export const STEPS = ["Checking your draft", "Building your pages", "Making sure it loads", "Switching it live"] as const;
 
 /** Which plain step a publication's status is on. */
 export function publishStep(status: BrandSiteVersion["status"] | null | undefined): number {
@@ -48,8 +48,11 @@ export function publishStep(status: BrandSiteVersion["status"] | null | undefine
  * from. A publish is followed to its receipt whatever it takes (A18 #1).
  */
 export function PublishSection({ variant, onFix }: {
-  /** #2830 state 13 — the final check on the setup screen. Still the one publish path. */
-  variant?: "setup";
+  /**
+   * #2830 state 13 — "setup": the final check on the setup screen. Still the one publish path.
+   * #4453 workspace — "history": History and restore only (Publish lives in the workspace's Publish panel).
+   */
+  variant?: "setup" | "history";
   onFix?: (section: WebsiteSection) => void;
 } = {}): React.ReactElement {
   const ctx = useWebsite();
@@ -188,11 +191,17 @@ export function PublishSection({ variant, onFix }: {
     );
   }
 
+  const historyOnly = variant === "history";
   return (
-    <View testID="website-publish">
+    <View testID={historyOnly ? "website-history" : "website-publish"}>
       <OfflineBanner />
-      <SectionHead ref={headingRef} phone={phone} title="Publish & history" subtitle="Changes you make are saved to your draft. Publishing makes them visible." />
-      <DraftReviewCard siteId={site.id} proofEnabled={ctx.plan?.proofEnabled === true} readOnly={ctx.lock.heldByOther} mode="publish" toast={toast} />
+      <SectionHead
+        ref={headingRef}
+        phone={phone}
+        title={historyOnly ? "History and restore" : "Publish & history"}
+        subtitle={historyOnly ? "Every version you have published. Restoring one makes it live again; your draft isn’t changed." : "Changes you make are saved to your draft. Publishing makes them visible."}
+      />
+      {historyOnly ? null : <DraftReviewCard siteId={site.id} proofEnabled={ctx.plan?.proofEnabled === true} readOnly={ctx.lock.heldByOther} mode="publish" toast={toast} />}
       {tracking ? (
         <Card testID="publish-progress">
           <View role="status" accessibilityLiveRegion="polite">
@@ -253,6 +262,7 @@ export function PublishSection({ variant, onFix }: {
         </Banner>
       ) : null}
 
+      {historyOnly ? null : <>
       <Card testID="publish-changes">
         <CardTitle>{count ? `${count} ${count === 1 ? "change" : "changes"} since you last published` : changes.isLoading ? "Changes since you last published" : "Your draft matches your live website"}</CardTitle>
         {changes.isLoading ? <Hint>Comparing your draft with your live website…</Hint> : changes.isError ? (
@@ -300,6 +310,8 @@ export function PublishSection({ variant, onFix }: {
         {!canPublish ? <Hint style={styles.mmNote}>Marketing managers can change the draft. Publishing needs a brand admin or the owner; they get a notification with a link here.</Hint> : null}
       </Card>
 
+      </>}
+
       <History versions={versions} activeId={site.active_publication_id} canRestore={canPublish && !tracking} onRestore={setRestoring} loading={controller.versions.isLoading} />
 
       <WhyItLooksLikeThis />
@@ -325,7 +337,7 @@ export function PublishSection({ variant, onFix }: {
 }
 
 /** #2829 W9b — what each design check says when it passes, and the plain heading of its warnings. */
-const CHECK_COPY: Readonly<Record<DesignCheck["key"], { pass: string; warn: (n: number) => string; section: WebsiteSection }>> = {
+export const CHECK_COPY: Readonly<Record<DesignCheck["key"], { pass: string; warn: (n: number) => string; section: WebsiteSection }>> = {
   words: { pass: "Your words read as finished", warn: (n) => `${n} ${n === 1 ? "thing" : "things"} to check in your words`, section: "pages" },
   photos: { pass: "Every picture spot is filled and sharp", warn: (n) => `${n} ${n === 1 ? "photo note" : "photo notes"}`, section: "pages" },
   readability: { pass: "Text is easy to read", warn: () => "Some text is hard to read (your choice)", section: "design" },

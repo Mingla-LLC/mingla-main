@@ -12,7 +12,8 @@ import React from "react";
 import Svg, { Circle, G, Path, Rect } from "react-native-svg";
 import type { StyleProp, ViewStyle } from "react-native";
 
-import { color as dsColor, brandMarks } from "../../constants/designSystem";
+import { brandMarks } from "../../constants/designSystem";
+import { color as dsColor } from "../../theme/surfaceTokens";
 import { HomeAriOrb } from "../home/HomeAriOrb";
 
 export type IconName =

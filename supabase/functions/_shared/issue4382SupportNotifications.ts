@@ -13,7 +13,14 @@ export const ISSUE_4382_SUPPORT_CATEGORIES = [
   "explorer.support_reply",
   "explorer.support_status_changed",
   "explorer.support_product_update",
+  // #4453 — "Ready for review" on a website change request (Host).
+  "business.website_request_ready",
 ] as const;
+
+/** #4453 — the support categories that also send an email. */
+export const ISSUE_4382_EMAIL_CATEGORIES: readonly string[] = [
+  "business.website_request_ready",
+];
 
 export type Issue4382SupportCategory =
   typeof ISSUE_4382_SUPPORT_CATEGORIES[number];
@@ -36,6 +43,12 @@ export function issue4382DeepLinkValid(
 ): boolean {
   const id = typeof payload.ticket_id === "string" ? payload.ticket_id : "";
   if (!new RegExp(`^${UUID}$`, "i").test(id)) return false;
+  // #4453 — opens the brand's Website workspace on this request.
+  if (category === "business.website_request_ready") {
+    const brand = typeof payload.brand_id === "string" ? payload.brand_id : "";
+    return new RegExp(`^${UUID}$`, "i").test(brand) &&
+      deepLink === `mingla-business://brand/${brand}/website?request=${id}`;
+  }
   const expected = category.startsWith("explorer.")
     ? `mingla://support/${id}`
     : `mingla-business://support/${id}`;
@@ -45,6 +58,28 @@ export function issue4382DeepLinkValid(
 /** Only opaque ids reach the push provider — never subjects or message text. */
 export function issue4382ProviderSafeKeys(): string[] {
   return ["ticket_id", "message_id", "update_kind", "status"];
+}
+
+/**
+ * #4453 — the email button for a website change that is ready: the brand's
+ * Website workspace in Host on the web, built from validated ids only.
+ */
+export function issue4382EmailCta(
+  category: string,
+  payload: Record<string, unknown>,
+): { label: string; url: string; note: string } | undefined {
+  if (category !== "business.website_request_ready") return undefined;
+  const id = typeof payload.ticket_id === "string" ? payload.ticket_id : "";
+  const brand = typeof payload.brand_id === "string" ? payload.brand_id : "";
+  const uuid = new RegExp(`^${UUID}$`, "i");
+  if (!uuid.test(id) || !uuid.test(brand)) return undefined;
+  return {
+    label: "Review the change",
+    url: `https://host.usemingla.com/brand/${brand}/website?request=${id}`,
+    note:
+      "You get this email because your team asked Mingla to change this website. " +
+      "Nothing is published until you publish it.",
+  };
 }
 
 function text(value: unknown, fallback: string): string {
@@ -116,6 +151,25 @@ export function renderIssue4382Message(
         push: { title: `${label} ${words}`, body: subject },
         email: { subject: `${label} ${words}`, body: subject },
         sms: `Mingla: ${label} ${words}.`,
+      };
+    }
+    case "business.website_request_ready": {
+      const what = text(payload.what, subject);
+      const where = text(payload.section_label, "");
+      const note = text(payload.note, "");
+      const body = `The Mingla team finished the change you asked for` +
+        `${where ? ` in "${where}"` : ""}: ${what}` +
+        `${note ? ` Note from the team: ${note}` : ""}`;
+      return {
+        push: {
+          title: "Your website change is ready",
+          body: `Have a look before you publish: ${what}`,
+        },
+        email: {
+          subject: `Your website change is ready to review (${label})`,
+          body,
+        },
+        sms: `Mingla: your website change (${label}) is ready to review.`,
       };
     }
     case "business.support_product_update":

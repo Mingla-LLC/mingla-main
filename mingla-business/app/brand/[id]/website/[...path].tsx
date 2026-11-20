@@ -28,6 +28,9 @@ export default function BrandWebsiteSectionRoute(): React.ReactElement {
     added?: string | string[];
     addedId?: string | string[];
     returnTo?: string | string[];
+    mode?: string | string[];
+    panel?: string | string[];
+    request?: string | string[];
   }>();
   const brandId = first(params.id);
   const segments = Array.isArray(params.path) ? params.path : typeof params.path === "string" ? params.path.split("/") : [];
@@ -36,7 +39,7 @@ export default function BrandWebsiteSectionRoute(): React.ReactElement {
       <LazyWebsiteApp
         brandId={typeof brandId === "string" ? brandId : ""}
         segments={segments}
-        search={{ part: first(params.part), device: first(params.device), orientation: first(params.orientation), studioResult: first(params.studioResult), step: first(params.step), ari: first(params.ari), added: first(params.added), addedId: first(params.addedId), returnTo: first(params.returnTo) }}
+        search={{ part: first(params.part), device: first(params.device), orientation: first(params.orientation), studioResult: first(params.studioResult), step: first(params.step), ari: first(params.ari), added: first(params.added), addedId: first(params.addedId), returnTo: first(params.returnTo), mode: first(params.mode), panel: first(params.panel), request: first(params.request) }}
       />
     </React.Suspense>
   );

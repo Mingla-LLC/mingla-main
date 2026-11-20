@@ -24,9 +24,9 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // web — buyer-web capture is a separate leg).
 import { postHogService } from "../../../src/services/postHogService";
 
-import { radius as radiusTokens, space, materials } from "../../../src/constants/designSystem";
+import { radius as radiusTokens, space } from "../../../src/constants/designSystem";
 import { CheckoutHero, youreInLine } from "../../../src/components/checkout/CheckoutHero";
-import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
+import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { BUYER_CLAIM_COPY } from "../../../src/constants/buyerClaimCopy";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 

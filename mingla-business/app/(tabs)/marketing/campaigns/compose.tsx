@@ -140,6 +140,7 @@ import {
 } from "../../../../src/hooks/marketing/useResolveAudience";
 import { useScheduleCampaign } from "../../../../src/hooks/marketing/useScheduleCampaign";
 import { useComposerDraft } from "../../../../src/hooks/marketing/useComposerDraft";
+import { unsavedWork } from "../../../../src/hooks/useUnsavedChangesGuard";
 import { useStarterTemplates } from "../../../../src/hooks/marketing/useStarterTemplates";
 import { useUserTemplates } from "../../../../src/hooks/marketing/useUserTemplates";
 import {
@@ -1127,6 +1128,21 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     campaignId,
     templateId,
   ]);
+
+  // #4453 — the draft saves a moment after the last keystroke. The brand
+  // switcher asks first: what is typed is saved now, and the switch is held
+  // when it could not be (refused, or nothing to save it under yet).
+  const brandSwitchFlushRef = useRef<() => Promise<boolean>>(async () => true);
+  brandSwitchFlushRef.current = async (): Promise<boolean> =>
+    !isDirty || (await flushDraft()) !== null;
+  useEffect(() => {
+    const flush = (): Promise<boolean> => brandSwitchFlushRef.current();
+    const flushers = (unsavedWork.flushers ??= new Set());
+    flushers.add(flush);
+    return (): void => {
+      flushers.delete(flush);
+    };
+  }, []);
 
   useComposerDraft({
     // ORCH-1282 — include mmsMediaUrls so autosave re-fires when media changes.

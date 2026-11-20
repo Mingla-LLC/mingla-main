@@ -213,6 +213,9 @@ ari.sites.propose_design_pass
 ari.sites.propose_chrome
 ari.sites.propose_page
 ari.sites.answer_page_question
+ari.sites.read_workspace
+ari.sites.propose_change_set
+ari.sites.team_request
 ari.sites.confirm_review
 ari.sites.propose_trip_guide
 ari.research.search_public_web

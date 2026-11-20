@@ -155,6 +155,39 @@ export const laneEdgeEndpoint: {
   : null;
 
 /**
+ * #4518 — the fetch every database call on Host web goes through, including
+ * the ones that do not use the client (`laneEdgeInvoke`). On web it gains a
+ * same-origin second road (`resilientFetch.ts`), loaded OFF the boot path:
+ * until that chunk arrives a request goes direct, and one that fails waits
+ * for the chunk and is recovered by it. Native is a plain pass-through.
+ */
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+const trackedFetch: FetchLike = createTrackedFetch(() => fetch);
+let secondRoadFetch: FetchLike | null = null;
+const secondRoad =
+  Platform.OS === "web" && typeof window !== "undefined"
+    ? import("./resilientFetch").then((road) => {
+        secondRoadFetch = road.createResilientFetch(() => trackedFetch, {
+          directOrigin: supabaseUrl,
+          enabled: true,
+        });
+        return road;
+      })
+    : null;
+
+export const supabaseFetch: FetchLike = (input, init) => {
+  if (secondRoadFetch !== null) return secondRoadFetch(input, init);
+  const direct = trackedFetch(input, init);
+  return secondRoad === null || typeof input !== "string"
+    ? direct
+    : direct.catch((error: unknown) =>
+        secondRoad.then((road) =>
+          road.recoverDirectFailure(trackedFetch, supabaseUrl, input, init, error),
+        ),
+      );
+};
+
+/**
  * #2107 (Sentry REACT-NATIVE-1C): every Supabase request is counted while it is
  * on the wire, and held — not sent, not rejected — while an in-app restart is in
  * progress, so nothing reaches RCTNetworking while the bridge tears down. The
@@ -166,7 +199,9 @@ function withRestartFence<O extends { global: { headers: Record<string, string> 
 ): O & { global: O["global"] & { fetch: typeof fetch } } {
   return {
     ...options,
-    global: { ...options.global, fetch: createTrackedFetch(() => fetch) },
+    // #2107 restart fence inside; #4518 same-origin second road around it
+    // (web only; native is a pass-through).
+    global: { ...options.global, fetch: supabaseFetch },
   };
 }
 

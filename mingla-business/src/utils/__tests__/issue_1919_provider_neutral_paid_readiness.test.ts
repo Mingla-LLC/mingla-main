@@ -68,17 +68,24 @@ describe("issue #1919 provider-neutral Business readiness", () => {
     const experiences = businessFile("src/services/publicExperienceService.ts");
     const trips = businessFile("src/hooks/usePublicTripBySlug.ts");
 
-    expect(events).toContain('supabase.rpc("pg_brand_can_collect"');
+    // [TEST-MOD #4518] — the three copies of this read became ONE owner
+    // (`brandCanCollect.ts`). The pins below followed the code there. What
+    // changed on purpose: a request that never got an answer is retried and
+    // is no longer rendered as "the organizer is finishing payment setup";
+    // a server "no", and a server error, still close paid supply.
+    const owner = businessFile("src/services/brandCanCollect.ts");
+    expect(owner).toContain('supabase.rpc("pg_brand_can_collect"');
+    expect(owner).toContain("if (!isPaid) return true;");
+    expect(owner).toContain('if (!isTransportFailure(error)) return "no";');
+    expect(owner).toContain('answer !== "no"');
+    for (const reader of [events, experiences, trips]) {
+      expect(reader).toContain("resolveOfferingBookable(");
+      expect(reader).not.toContain('supabase.rpc("pg_brand_can_collect"');
+    }
     expect(events).toContain('supabase.rpc("pg_brands_can_collect"');
-    expect(events).toContain("if (!isPaid) return true;");
-    expect(events).toContain("if (error !== null) return false;");
-    expect(events).toContain("if (error !== null) return new Set<string>();");
-    expect(experiences).toContain('supabase.rpc("pg_brand_can_collect"');
-    expect(experiences).toContain("if (!isPaid) return true;");
-    expect(experiences).toContain("if (error !== null) return false;");
-    expect(trips).toContain('supabase.rpc("pg_brand_can_collect"');
-    expect(trips).toContain("if (!isPaid) return true;");
-    expect(trips).toContain("if (error !== null) return false;");
+    expect(events).toContain(
+      "return isTransportFailure(error) ? new Set<string>(brandIds) : new Set<string>();",
+    );
 
     for (const reader of [events, experiences, trips]) {
       expect(reader).not.toContain('supabase.rpc("pg_brand_can_charge"');

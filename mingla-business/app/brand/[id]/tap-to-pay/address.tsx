@@ -34,6 +34,10 @@ import {
 import { useBrandSetupChecklist } from "../../../../src/hooks/useBrandSetupChecklist";
 import { useSetTapLocationAddress } from "../../../../src/hooks/useSetTapLocationAddress";
 import { useNetInfoSafe } from "../../../../src/lib/netinfoSafe";
+import { useUnsavedChangesGuard } from "../../../../src/hooks/useUnsavedChangesGuard";
+
+/** This screen has no close of its own: the system back leaves it, as before. */
+const noLeaveOwner = (): void => undefined;
 
 export default function TapToPayAddressRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -65,6 +69,14 @@ export default function TapToPayAddressRoute(): React.ReactElement {
     }
     return null;
   }, [draft, number]);
+
+  // #4453 — an address being entered (typed, picked, or part-filled) holds a
+  // brand switch: the next brand's form would open empty and this one be gone.
+  useUnsavedChangesGuard({
+    dirty: query.trim() !== "" || draft !== null || number.trim() !== "" || unit.trim() !== "",
+    onRequestLeave: noLeaveOwner,
+    hardwareBack: false,
+  });
 
   const submit = (): void => {
     if (ready === null || offline) return;

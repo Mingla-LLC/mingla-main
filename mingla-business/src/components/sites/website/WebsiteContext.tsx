@@ -55,6 +55,11 @@ export type WebsiteContextValue = {
   headingRef: React.RefObject<Text | null>;
   /** The brand ticked Trips (Past trips, copy). */
   offerings: string[];
+  /**
+   * #4453 workspace — open one page's sections in Edit mode. Absent outside
+   * the workspace (the Pages list then opens the page editor as before).
+   */
+  editPage?: (pageId: string) => void;
   setStickyBar: (bar: StickyBar | null) => void;
   setTopbarSave: (save: TopbarSave | null) => void;
 };

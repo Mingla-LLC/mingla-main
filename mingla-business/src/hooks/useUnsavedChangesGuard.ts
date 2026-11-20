@@ -20,9 +20,29 @@ export interface UnsavedChangesGuardConfig {
   hardwareBack?: boolean;
 }
 
+/**
+ * #4453 — how many mounted screens have unsaved work (their guard is `dirty`).
+ * The brand switcher reads this: switching brand leaves the screen (or swaps
+ * the brand under it), so it holds the switch and says why instead of
+ * discarding the work silently.
+ *
+ * `flushers` (types only here; nothing in this file fills it): a screen that
+ * saves by itself (a wizard's step save, a save that waits a moment after the
+ * last change) adds a function that saves what is pending and answers true
+ * once it is safe to leave. The switcher runs them before a switch and holds
+ * the switch when one answers false.
+ */
+export interface UnsavedWork {
+  screens: number;
+  flushers?: Set<() => Promise<boolean>>;
+}
+export const unsavedWork: UnsavedWork = { screens: 0 };
+
 export function useUnsavedChangesGuard({ dirty }: UnsavedChangesGuardConfig): void {
   useEffect(() => {
     if (!dirty) return;
+    // #4453 — the brand switcher holds a switch while this screen is dirty.
+    unsavedWork.screens += 1;
     const target = globalThis as {
       addEventListener?: (type: string, fn: (event: BeforeUnloadEvent) => void) => void;
       removeEventListener?: (type: string, fn: (event: BeforeUnloadEvent) => void) => void;
@@ -32,6 +52,9 @@ export function useUnsavedChangesGuard({ dirty }: UnsavedChangesGuardConfig): vo
       event.returnValue = "You have unsaved changes.";
     };
     target.addEventListener?.("beforeunload", guard);
-    return (): void => target.removeEventListener?.("beforeunload", guard);
+    return (): void => {
+      unsavedWork.screens -= 1;
+      target.removeEventListener?.("beforeunload", guard);
+    };
   }, [dirty]);
 }

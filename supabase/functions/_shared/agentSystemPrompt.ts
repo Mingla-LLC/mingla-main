@@ -85,7 +85,12 @@
 // real-people / real-venues creative rule (also checked by the server).
 // v39 (#4453 PR 2): booking lock — every website button goes to this brand's
 // own Mingla pages or a page of the site; question forms never take bookings.
-export const PROMPT_VERSION = "v39";
+import { SITE_WORKSPACE_PROMPT_RULES } from "./agentSiteWorkspaceTools.ts";
+
+// v40 (#4453 Website workspace): get_site_workspace, propose_site_change_set
+// and propose_website_team_request, and the workspace rules a turn sent from
+// the Website workspace carries (one plan, scoped to the selected section).
+export const PROMPT_VERSION = "v40";
 
 /**
  * #3355 Wave D (D4, D7a) — added to the system instruction when a host has
@@ -269,6 +274,9 @@ export const ARI_CAPABILITY_INDEX = `CAPABILITIES (your tools):
 - propose_site_chrome — propose the header layout, phone booking bar and header button after confirmation
 - propose_site_page — propose a new page the owner asked for, as a plan card (blocks, the content you have with sources, the questions only the owner sees); after confirmation it is added hidden as a Draft by Ari, and only the owner publishes it; never gift cards, vouchers, memberships, passes, legal text or bookings off Mingla
 - answer_site_page_question — put the owner's answer to one of your questions on a Draft page from Ari, word for word, after confirmation
+- get_site_workspace — read the website draft as one planning snapshot (pages, sections with ids, field keys and current words, layouts, the look, the menu, section types that may be added, approved photos, Mingla's facts)
+- propose_site_change_set — propose ONE plan for a website request: one to eight typed steps (edit a section's words or layout, move, remove or add a section, set a photo, change the look, set the menu, turn a page on or off) applied to the draft in order as a single change the owner can undo; if a step fails the whole plan is put back
+- propose_website_team_request — write up a website change no step can make as a request to the Mingla team (what, where, why, what is missing); the owner edits and sends it
 - confirm_site_review — show the confirm-real card for one review (only brand admins and owners can confirm it)
 - propose_trip_guide_update — propose a trip's guide after confirmation (event managers and up)
 - create_site_preview — create a 30-minute private preview for one exact validated revision after confirmation
@@ -543,6 +551,8 @@ export function buildSystemPrompt(
     business?: BusinessContext | null;
     /** #4304: present only while the Host app shows its first-run greeting. */
     firstRun?: FirstRunHint | null;
+    /** #4453: the turn was sent from the Website workspace. */
+    websiteWorkspace?: boolean;
   } = { injectStrictReminder: false },
 ): string {
   const userBlock = profile
@@ -637,6 +647,11 @@ export function buildSystemPrompt(
     : "";
 
   const firstRunBlock = firstRunContextBlock(options.firstRun ?? null);
+  // #4453: the workspace rules replace "one card per change" for that surface
+  // only; every other turn's prompt is unchanged.
+  const workspaceBlock = options.websiteWorkspace
+    ? `\n\n${SITE_WORKSPACE_PROMPT_RULES}\nIn the Website workspace these rules come before WEBSITE RULES wherever the two differ; the hard limits on facts, reviews, bookings and publishing stay exactly as written there.`
+    : "";
 
   return `You are Ari, the AI co-pilot inside Mingla Host. You help an event organiser run the entire business app through chat — brands, offerings, tickets, marketing, money, venue ops, people, and account — with the same safety as tapping the screen.
 
@@ -786,7 +801,7 @@ TOOL FAILURES vs MISSING CAPABILITIES — read this carefully:
   - reason="INVALID_ARGS: start_at must be in the future" → "The date you gave is in the past. What date should we use instead?"
   - reason="PAYOUT_NOT_READY: ..." → "This brand can't collect payments yet. Open Payouts to finish Stripe or Paystack."
 
-For legal/tax-advice questions (not tax-registration status), decline: "That's not something I can help with — check the Help page or contact support."${firstRunBlock}${reminder}`;
+For legal/tax-advice questions (not tax-registration status), decline: "That's not something I can help with — check the Help page or contact support."${workspaceBlock}${firstRunBlock}${reminder}`;
 }
 
 function escapeForPrompt(value: string): string {

@@ -108,6 +108,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #4271 — biz_brand_team_members, split out of useBrandInvitations.ts.
   // Folds isAuthReady into enabled.
   "useBrandTeamMemberDirectory.ts",
+  // #4453 — one item's brand (events / venue_listings, readable to the brand's
+  // team only). Folds isAuthReady into enabled.
+  "useItemRouteBrand.ts",
   // #4271 — biz_tap_to_pay_release, authenticated only. Folds isAuthReady into enabled.
   "useTapToPayRelease.ts",
   // #4389 S-11 — biz_native_connect_onboarding, authenticated only. Folds isAuthReady into enabled.

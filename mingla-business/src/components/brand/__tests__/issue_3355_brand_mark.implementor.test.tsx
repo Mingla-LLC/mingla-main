@@ -94,7 +94,9 @@ describe("#3355 the switcher and the TopBar chip use the brand's logo", () => {
 
   test("the TopBar brand chip renders the logo when the current brand has one", () => {
     // #4389 AB — the chip moved, unchanged, into the shared BrandChip.
-    expect(read("../../ui/TopBar.tsx")).toContain("<BrandChip ");
+    // #4453 — the top bar mounts it through the WorkspaceBrandSwitcher.
+    expect(read("../../ui/TopBar.tsx")).toContain("<WorkspaceBrandSwitcher ");
+    expect(read("../WorkspaceBrandSwitcher.tsx")).toMatch(/<BrandChip\s/);
     const chip = read("../../ui/BrandChip.tsx");
     // [TEST-MOD-APPROVED #4420] every current brand gets a mark: the logo,
     // or its initial on the surface fill when there is no logo.
