@@ -94,6 +94,7 @@ export {
   venueOrderSittingKey,
   venueOrderSittingKeyForOrder,
   venueOrderCounterStatusPath,
+  venueOrderActiveSitting,
   venueOrderTipAfterHydration,
 } from "./venueOrderingSitting";
 

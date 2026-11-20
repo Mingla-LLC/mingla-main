@@ -100,6 +100,19 @@ export function venueOrderCounterStatusPath(
 }
 
 /**
+ * N145 (#4490) — which sitting the order on screen belongs to. A pickup order
+ * from a table is remembered apart from the table's sitting, so its cancel,
+ * retry and status reads must use the pickup order's own tokens.
+ */
+export function venueOrderActiveSitting(input: {
+  table: VenueOrderSitting | null;
+  counter: VenueOrderSitting | null;
+  viewingCounter: boolean;
+}): VenueOrderSitting | null {
+  return input.viewingCounter ? input.counter : input.table;
+}
+
+/**
  * Parse a stored sitting, returning null for anything expired, malformed or of
  * an unrecognised shape. Fails toward FORGETTING: a sitting we cannot read is a
  * sitting we do not have, and the guest is asked once more. The opposite

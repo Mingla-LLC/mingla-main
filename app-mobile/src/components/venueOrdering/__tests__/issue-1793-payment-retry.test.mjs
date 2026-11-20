@@ -25,7 +25,10 @@ test("T-1793-R8 — native cancel keeps the stable basket key and accepts the re
     hook,
     /created\.kind === "free_completed" \|\| !created\.resumed/,
   );
-  assert.match(hook, /sitting\?\.buyerStatusToken \?\? ""/);
+  // TEST-MOD-APPROVED #4490: a resumed order's token now comes from the sitting
+  // it belongs to (the table's, or a pickup order's own, N145); the resume
+  // behaviour this guards is unchanged.
+  assert.match(hook, /[sS]itting(\([\s\S]*?\))?\?\.buyerStatusToken \?\? ""\)/);
   assert.match(service, /resumed: data\.resumed === true/);
 });
 

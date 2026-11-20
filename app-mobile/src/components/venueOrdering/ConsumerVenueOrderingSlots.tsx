@@ -22,7 +22,7 @@
  */
 
 import React from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -214,7 +214,7 @@ export const ConsumerVenueOrderingNotice: React.FC<
     );
   }
   if (!venueOrderingCanOrder(ordering.config)) return null;
-  return (
+  const chip = (
     <VenueOrderingSpotChip
       label={
         ordering.config.spotState === "ok" &&
@@ -228,7 +228,35 @@ export const ConsumerVenueOrderingNotice: React.FC<
       palette={palette}
     />
   );
+  if (!ordering.hasCounterOrder) return chip;
+  // N145 (#4490): a pickup order placed from this table keeps its own status;
+  // the table stays orderable and links to it (the same words as buyer web).
+  return (
+    <View style={counterStyles.row}>
+      {chip}
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel="See your pickup order"
+        onPress={ordering.openCounterOrder}
+        hitSlop={8}
+      >
+        <Text style={[counterStyles.link, { color: palette.primaryText }]}>
+          Your pickup order · See status
+        </Text>
+      </Pressable>
+    </View>
+  );
 };
+
+const counterStyles = StyleSheet.create({
+  row: { gap: 8 },
+  link: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "700",
+    textDecorationLine: "underline",
+  },
+});
 
 /**
  * The ORDERABLE menu — or the display-only one, unchanged, when this guest

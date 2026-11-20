@@ -34,6 +34,7 @@ import {
   venueOrderingIsCounterPickup,
   venueOrderSittingKeyForOrder,
   venueOrderCounterStatusPath,
+  venueOrderActiveSitting,
   venueOrderSubmitFailure,
   VENUE_ORDER_REVIEW_MODE_POLL_MS,
   venueOrderSittingKey,
@@ -182,6 +183,10 @@ export function useBuyerVenueOrdering(
     setCounterSitting(parseVenueOrderSitting(webStorage.get(counterKey), Date.now()));
   }, [counterKey]);
 
+  // N145: a free pickup order shows here in-pane; its own tokens drive it.
+  const [viewingCounter, setViewingCounter] = useState(false);
+  const activeSitting = venueOrderActiveSitting({ table: sitting, counter: counterSitting, viewingCounter });
+
   const persistSitting = useCallback(
     (next: Omit<VenueOrderSitting, "expiresAt">, toCounter = false): void => {
       const now = Date.now();
@@ -193,6 +198,7 @@ export function useBuyerVenueOrdering(
         : sittingKey;
       if (!toCounter) setSitting({ ...next, expiresAt: now + 4 * 60 * 60 * 1000 });
       else setCounterSitting({ ...next, expiresAt: now + 4 * 60 * 60 * 1000 });
+      setViewingCounter(toCounter);
       if (key === null) return;
       webStorage.set(key, serialiseVenueOrderSitting(next, now));
     },
@@ -375,7 +381,7 @@ export function useBuyerVenueOrdering(
       live.fulfillmentStatus === "delivered" ||
       live.fulfillmentStatus === "cancelled" ||
       live.fulfillmentStatus === "refunded";
-    const token = sitting?.buyerStatusToken ?? null;
+    const token = activeSitting?.buyerStatusToken ?? null;
     if (settled || token === null) return () => undefined;
     const orderId = live.orderId;
     // N143: back off while unpaid and stop on a declined answer.
@@ -389,7 +395,7 @@ export function useBuyerVenueOrdering(
       });
     }, delay);
     return () => clearTimeout(handle);
-  }, [live, sitting?.buyerStatusToken]);
+  }, [live, activeSitting?.buyerStatusToken]);
 
   // P-23 — one key per basket. Stable across a retry of the SAME basket (so a
   // double-tap cannot buy dinner twice) and fresh the moment the basket changes
@@ -499,7 +505,7 @@ export function useBuyerVenueOrdering(
   const guestAction = useCallback(
     (action: "cancel" | "request_refund"): void => {
       const orderId = live?.orderId ?? null;
-      const token = sitting?.guestCancelToken ?? null;
+      const token = activeSitting?.guestCancelToken ?? null;
       if (orderId === null || token === null) return;
       setActionError(null);
       setActionPending(true);
@@ -507,7 +513,7 @@ export function useBuyerVenueOrdering(
         .then(async () => {
           const status = await fetchVenueOrderStatus(
             orderId,
-            sitting?.buyerStatusToken ?? "",
+            activeSitting?.buyerStatusToken ?? "",
           );
           if (status !== null) setLive(status);
         })
@@ -520,7 +526,7 @@ export function useBuyerVenueOrdering(
         })
         .finally(() => setActionPending(false));
     },
-    [live?.orderId, sitting?.buyerStatusToken, sitting?.guestCancelToken],
+    [live?.orderId, activeSitting?.buyerStatusToken, activeSitting?.guestCancelToken],
   );
 
   // N144 (#4490): after a decline the venue page offers a real "Try again"
@@ -528,7 +534,7 @@ export function useBuyerVenueOrdering(
   // "not paid" answer, so the return is verified afresh).
   const [retryPending, setRetryPending] = useState(false);
   const retryPayment = useCallback((): void => {
-    const token = sitting?.buyerStatusToken ?? null;
+    const token = activeSitting?.buyerStatusToken ?? null;
     if (live === null || token === null || retryPending) return;
     setRetryPending(true);
     setActionError(null);
@@ -542,10 +548,11 @@ export function useBuyerVenueOrdering(
       })
       .catch(() => setActionError("Payment couldn't be opened. Try again."))
       .finally(() => setRetryPending(false));
-  }, [live, retryPending, sitting?.buyerStatusToken]);
+  }, [live, retryPending, activeSitting?.buyerStatusToken]);
 
   const orderMore = useCallback((): void => {
     setSubmitError(null);
+    setViewingCounter(false);
     cart.setView("browse");
   }, [cart]);
 
