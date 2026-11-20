@@ -32,6 +32,43 @@ export function useEventVenueCover(
   const venueId = linkQuery.data?.venueId ?? null;
   const venueQuery = useVenueListing(venueId);
   const venue = venueQuery.data ?? null;
-  if (venueId === null || venue === null || venue.coverMediaUrl === null || venue.coverMediaType === null) return null;
+  if (venueId === null || venue === null) return null;
+  // N133: offer the button only for a cover the edge will copy.
+  if (!venueCoverIsCopyable({
+    brandId: venue.brandId,
+    url: venue.coverMediaUrl,
+    posterUrl: venue.coverMediaPosterUrl ?? null,
+    type: venue.coverMediaType,
+  })) return null;
   return { venueId, venueName: venue.name };
+}
+
+const PUBLIC_MARK = "/storage/v1/object/public/";
+
+function ownBrandCover(url: string | null, brandId: string): boolean {
+  if (url === null) return false;
+  const at = url.indexOf(PUBLIC_MARK);
+  if (at < 0) return false;
+  const rest = decodeURIComponent(url.slice(at + PUBLIC_MARK.length).split("?")[0] ?? "");
+  return rest.startsWith(`brand_covers/${brandId}/`) && !rest.includes("..");
+}
+
+/**
+ * N133 (#4490) — the same rule the edge applies (N122): an image or GIF is
+ * copyable only when it is the brand's own uploaded venue cover
+ * (brand_covers/<brand>/, and a GIF's poster too). GIPHY and Pexels covers are
+ * not copied, so the button is not offered for them; the host picks those
+ * again from the cover picker. A video cover is offered (returned as is and
+ * checked against a ready venue video job by the server).
+ */
+export function venueCoverIsCopyable(input: {
+  brandId: string;
+  url: string | null;
+  posterUrl: string | null;
+  type: "image" | "gif" | "video" | null;
+}): boolean {
+  if (input.url === null || input.type === null) return false;
+  if (input.type === "video") return true;
+  if (!ownBrandCover(input.url, input.brandId)) return false;
+  return input.type !== "gif" || ownBrandCover(input.posterUrl, input.brandId);
 }
