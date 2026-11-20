@@ -195,6 +195,7 @@ import {
   experiencePublishNeedsPayoutCountry,
   isEventCurrencyRequiredRefusal,
 } from "../../utils/experiencePublishCurrencyGate";
+import { upfrontDraftPayload } from "../../utils/experienceUpfrontDraft";
 
 // #1742 / ORCH-1083 — the gate sheet is needed only at the final publish door.
 // Preload its async chunk one step early so opening it remains immediate while
@@ -1270,7 +1271,11 @@ export const ExperienceCreatorWizard: React.FC<
     try {
       const { data, error } = await supabase.rpc("biz_create_experience", {
         p_brand_id: brandId,
-        p_payload: buildPayload(false),
+        // N129 (#4490): the up-front draft is made when the host leaves
+        // Identity, before any price has a name; unnamed seeds would be
+        // refused (experience_price_name_required) and the Cover step would
+        // wait forever. Prices are written by the save / publish that follows.
+        p_payload: upfrontDraftPayload(buildPayload(false)),
         p_publish: false,
       });
       if (error !== null) {
