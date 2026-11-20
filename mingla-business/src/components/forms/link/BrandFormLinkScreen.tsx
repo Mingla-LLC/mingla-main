@@ -18,6 +18,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import type { BrandAnswers, BrandHeaderData } from "@mingla/form-rendering";
 
 import { color, radius, space, type } from "../../../constants/designSystem";
@@ -58,18 +59,49 @@ const EMPTY_HEADER: BrandHeaderData = { displayName: "", photo: null, coverUrl: 
  * (kept in memory only); native has no fragment link today (the app route is a
  * later wave).
  */
-function readToken(): string | null {
+function readToken(formId: string | null): string | null {
   if (Platform.OS !== "web" || typeof window === "undefined") return null;
-  return takeLinkToken(window);
+  const fromLink = takeLinkToken(window);
+  if (fromLink !== null || formId === null) return fromLink;
+  return takePurchaseToken(formId);
+}
+
+/**
+ * #4514 wave 5 — "After they purchase": the checkout success screen hands the
+ * buyer's own token over in sessionStorage (key pairs with
+ * `purchaseTokenStorageKey` in services/checkoutBrandFormService.ts; not
+ * imported, so the two lazy chunks share no module). Read once, removed, then
+ * held in memory for a re-mount, like the fragment token.
+ */
+let purchaseHeld: { formId: string; token: string } | null = null;
+function takePurchaseToken(formId: string): string | null {
+  if (purchaseHeld !== null && purchaseHeld.formId === formId) return purchaseHeld.token;
+  try {
+    const key = `mingla.formPurchaseToken.${formId}`;
+    const token = window.sessionStorage.getItem(key);
+    if (token === null || !/^[0-9a-f]{64}$/.test(token)) return null;
+    window.sessionStorage.removeItem(key);
+    purchaseHeld = { formId, token };
+    return token;
+  } catch (error) {
+    console.error("[brand-form-link] purchase token read failed", error);
+    return null;
+  }
 }
 
 export interface BrandFormLinkScreenProps {
   formId: string | null;
+  /** #4514 wave 5 — opened right after a purchase: the strip and a way back. */
+  fromPurchase?: boolean;
 }
 
-export default function BrandFormLinkScreen({ formId }: BrandFormLinkScreenProps): React.ReactElement {
+export default function BrandFormLinkScreen({
+  formId,
+  fromPurchase = false,
+}: BrandFormLinkScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
-  const token = useMemo(readToken, []);
+  const router = useRouter();
+  const token = useMemo(() => readToken(formId), [formId]);
   const [phase, setPhase] = useState<LinkPhase>({ kind: "loading" });
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [header, setHeader] = useState<BrandHeaderData>(EMPTY_HEADER);
@@ -212,6 +244,19 @@ export default function BrandFormLinkScreen({ formId }: BrandFormLinkScreenProps
             </React.Suspense>
           </View>
           <View style={styles.body} accessibilityLiveRegion="polite">
+            {fromPurchase ? (
+              <View style={styles.purchaseStrip} testID="brand-form-link-purchase-strip">
+                <Text style={styles.purchaseStripText}>{LINK_COPY.purchaseStrip}</Text>
+                <Text style={styles.purchaseOneMore}>{LINK_COPY.purchaseOneMore(header.displayName)}</Text>
+                <Button
+                  label={LINK_COPY.purchaseContinue}
+                  variant="secondary"
+                  size="md"
+                  onPress={() => (router.canGoBack() ? router.back() : router.replace("/" as never))}
+                  testID="brand-form-link-purchase-continue"
+                />
+              </View>
+            ) : null}
             {renderBody()}
           </View>
         </View>
@@ -475,6 +520,9 @@ const Notice: React.FC<{ title: string; body: string; testID?: string; children?
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: color.canvas },
+  purchaseStrip: { gap: space[2] },
+  purchaseStripText: { ...type.small, color: color.text2 },
+  purchaseOneMore: { ...type.title, color: color.text1 },
   scroll: { flexGrow: 1, alignItems: "center" },
   column: { width: "100%", maxWidth: 560 },
   headerWrap: { overflow: "hidden" },

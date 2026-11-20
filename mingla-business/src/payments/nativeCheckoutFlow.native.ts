@@ -43,6 +43,7 @@ import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
 
 import { supabase } from "../services/supabase";
+import type { CheckoutBrandFormAnswers } from "../components/checkout/CartContext";
 // issue #3281 — server refusals are mapped to buyer copy, never shown raw.
 import {
   checkoutRefusalRaiseMessage,
@@ -50,6 +51,7 @@ import {
 } from "../services/checkoutErrorCopy";
 import {
   PAID_CHECKOUT_FAILED_MESSAGE,
+  checkoutBrandFormFields,
   paidCheckoutErrorMessage,
 } from "../services/ticketCheckoutService";
 import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview";
@@ -119,6 +121,8 @@ export interface NativeCheckoutInput {
     email: string;
     phone: string;
     marketingOptIn?: boolean;
+    /** #4514 wave 5 — the Questions step's answers (sent top-level, never in buyer). */
+    brandForm?: CheckoutBrandFormAnswers | null;
     // ORCH-1130 Fix #2 — buyer address is OPTIONAL. Tax is venue-sourced
     // server-side (events.venue_tax_address); the buyer never types an
     // address (MINGLA-WIDE all-in / WYSIWYP). Retained optional only for
@@ -790,6 +794,8 @@ export const useNativeCheckoutFlow = (): ((
         // the no-address create computes the same all-in total.
         ...(input.buyer.address ? { address: input.buyer.address } : {}),
       },
+      // #4514 wave 5 — the capability marker and the Questions step's answers.
+      ...checkoutBrandFormFields(input.buyer),
       // issue #3281 — v2 sends the normalized lines (plan choice, dates,
       // extras); v1 keeps its body unchanged.
       lines: v2Lines?.ok ? v2Lines.lines : input.lines,

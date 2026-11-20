@@ -12,8 +12,8 @@
 
 import {
   BRAND_FORM_CHECKOUT_STEP,
-  unstorableAnswerErrors,
   type BrandFormAnswers,
+  unstorableAnswerErrors,
 } from "../_shared/brandFormsContract.ts";
 
 export interface CheckoutBrandForm {

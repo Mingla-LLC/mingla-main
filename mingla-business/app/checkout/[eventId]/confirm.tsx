@@ -49,6 +49,14 @@ import {
 } from "../../../src/components/checkout/checkoutPersistence";
 import { BuyerClaimCard } from "../../../src/components/offering/LazyPublicParts";
 import { LazyYoureInFollowCard as YoureInFollowCard } from "../../../src/components/checkout/LazyYoureInFollowCard";
+
+// #4514 wave 5 — "After they purchase": the hand-off to the page's form loads
+// through the ONE forms lazy owner, never in the eager bundle.
+const PurchaseFormHandoff = React.lazy(() =>
+  import("../../../src/components/checkout/intake/formRenderingPrimitives").then(
+    (module) => ({ default: module.PurchaseFormHandoff }),
+  ),
+);
 import {
   TicketConfirmVerdictHero,
   type TicketConfirmEnding,
@@ -606,6 +614,12 @@ function CheckoutConfirmScreenInner({
           body={youreInLine(result.receipt, event.name.trim().length > 0 ? event.name : "this event", { one: "ticket", many: "tickets" })}
           testID="checkout-youre-in-hero"
         />
+        <React.Suspense fallback={null}>
+          <PurchaseFormHandoff
+            checkoutSessionId={result.checkoutSessionId ?? null}
+            buyerStatusToken={result.buyerStatusToken ?? null}
+          />
+        </React.Suspense>
 
         <BuyerClaimCard
           kind="ticket"

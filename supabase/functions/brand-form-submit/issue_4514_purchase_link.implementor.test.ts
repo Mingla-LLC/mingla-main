@@ -61,7 +61,11 @@ const post = (body: unknown) =>
 Deno.test("#4514 W5 purchase_link: the buyer status token is hashed and a link comes back", async () => {
   const f = deps({});
   const res = await handleBrandFormSubmit(
-    post({ op: "purchase_link", checkoutSessionId: SESSION, buyerStatusToken: BST }),
+    post({
+      op: "purchase_link",
+      checkoutSessionId: SESSION,
+      buyerStatusToken: BST,
+    }),
     f.deps,
   );
   assertEquals(res.status, 200);
@@ -79,7 +83,11 @@ Deno.test("#4514 W5 purchase_link: none, answered, not the holder, over the cap"
   for (
     const [answer, status, error] of [
       [{ data: { outcome: "none" }, error: null }, 200, undefined],
-      [{ data: { outcome: "answered", formId: FORM }, error: null }, 200, undefined],
+      [
+        { data: { outcome: "answered", formId: FORM }, error: null },
+        200,
+        undefined,
+      ],
       [{ data: null, error: { message: "link_invalid" } }, 403, "link_invalid"],
       [{ data: null, error: { message: "rate_limited" } }, 429, "rate_limited"],
       [{ data: null, error: { message: "boom" } }, 500, "server_error"],
@@ -87,7 +95,11 @@ Deno.test("#4514 W5 purchase_link: none, answered, not the holder, over the cap"
   ) {
     const f = deps({ answer });
     const res = await handleBrandFormSubmit(
-      post({ op: "purchase_link", checkoutSessionId: SESSION, buyerStatusToken: BST }),
+      post({
+        op: "purchase_link",
+        checkoutSessionId: SESSION,
+        buyerStatusToken: BST,
+      }),
       f.deps,
     );
     assertEquals(res.status, status);
@@ -99,7 +111,11 @@ Deno.test("#4514 W5 purchase_link: none, answered, not the holder, over the cap"
 Deno.test("#4514 W5 purchase_link: the off switch answers 503 and a bad body 400", async () => {
   const off = deps({ off: true });
   const paused = await handleBrandFormSubmit(
-    post({ op: "purchase_link", checkoutSessionId: SESSION, buyerStatusToken: BST }),
+    post({
+      op: "purchase_link",
+      checkoutSessionId: SESSION,
+      buyerStatusToken: BST,
+    }),
     off.deps,
   );
   assertEquals(paused.status, 503);
@@ -107,8 +123,17 @@ Deno.test("#4514 W5 purchase_link: the off switch answers 503 and a bad body 400
   for (
     const body of [
       { op: "purchase_link", checkoutSessionId: "x", buyerStatusToken: BST },
-      { op: "purchase_link", checkoutSessionId: SESSION, buyerStatusToken: "short" },
-      { op: "purchase_link", checkoutSessionId: SESSION, buyerStatusToken: BST, extra: 1 },
+      {
+        op: "purchase_link",
+        checkoutSessionId: SESSION,
+        buyerStatusToken: "short",
+      },
+      {
+        op: "purchase_link",
+        checkoutSessionId: SESSION,
+        buyerStatusToken: BST,
+        extra: 1,
+      },
     ]
   ) {
     const f = deps({});

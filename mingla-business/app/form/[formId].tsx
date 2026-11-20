@@ -21,7 +21,7 @@ const BrandFormLinkScreen = React.lazy(
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default function BrandFormLinkRoute(): React.ReactElement {
-  const params = useLocalSearchParams<{ formId?: string | string[] }>();
+  const params = useLocalSearchParams<{ formId?: string | string[]; from?: string }>();
   const raw = Array.isArray(params.formId) ? params.formId[0] ?? null : params.formId ?? null;
   const formId = raw !== null && UUID.test(raw) ? raw.toLowerCase() : null;
   return (
@@ -32,7 +32,7 @@ export default function BrandFormLinkRoute(): React.ReactElement {
         </View>
       }
     >
-      <BrandFormLinkScreen formId={formId} />
+      <BrandFormLinkScreen formId={formId} fromPurchase={params.from === "purchase"} />
     </Suspense>
   );
 }

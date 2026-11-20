@@ -185,7 +185,10 @@ class FakeCheckoutDb {
       return { data: null, error: { message: "could not write" } };
     }
     if (this.switchedOff || this.formMode === "none") {
-      return { data: { outcome: this.switchedOff ? "off" : "none" }, error: null };
+      return {
+        data: { outcome: this.switchedOff ? "off" : "none" },
+        error: null,
+      };
     }
     const form = args.p_form as Record<string, unknown> | null;
     if (form === null) {
@@ -215,7 +218,10 @@ class FakeCheckoutDb {
         data: null,
         error: {
           message: "form_answers_invalid",
-          details: JSON.stringify([{ questionId: QUESTION_ID, code: "required" }]),
+          details: JSON.stringify([{
+            questionId: QUESTION_ID,
+            code: "required",
+          }]),
         },
       };
     }
@@ -315,7 +321,9 @@ const makeDeps = (client: FakeCheckoutDb): TicketCheckoutCreateDeps => ({
   userIdFromAuthHeader: () => Promise.resolve(null),
   serviceClient: () => client as never,
   paystackInitializeTransaction: (() => {
-    throw new Error("PROVIDER CALLED — a free reservation never reaches a provider");
+    throw new Error(
+      "PROVIDER CALLED — a free reservation never reaches a provider",
+    );
   }) as never,
 });
 
@@ -332,7 +340,11 @@ const freeRequest = (extra: Record<string, unknown> = {}): Request =>
         email: "guest@issue4514.test",
         phone: "+15551234567",
       },
-      lines: [{ ticketTypeId: TIER_ID, quantity: 1, expectedUnitPriceCents: 0 }],
+      lines: [{
+        ticketTypeId: TIER_ID,
+        quantity: 1,
+        expectedUnitPriceCents: 0,
+      }],
       ...extra,
     }),
   });
@@ -370,8 +382,14 @@ Deno.test("#4514 W5 required form + marker + no answers: refused before any sess
   assertEquals(body.error, "form_answers_required");
   assertEquals(body.versionId, VERSION_ID);
   assert(has(db, "rpc:brand_form_checkout_check"));
-  assert(!has(db, "rpc:biz_ticket_checkout_create_session"), "a session was created");
-  assert(!has(db, "rpc:biz_ticket_checkout_finalize"), "a free order was finalized");
+  assert(
+    !has(db, "rpc:biz_ticket_checkout_create_session"),
+    "a session was created",
+  );
+  assert(
+    !has(db, "rpc:biz_ticket_checkout_finalize"),
+    "a free order was finalized",
+  );
   assertEquals(db.orders.length, 0);
   assertEquals(db.stashed.length, 0);
 });
@@ -379,8 +397,16 @@ Deno.test("#4514 W5 required form + marker + no answers: refused before any sess
 Deno.test("#4514 W5 invalid answers and a stale version are refused before any session", async () => {
   for (
     const [form, code, status] of [
-      [{ ...ANSWERS, answers: { [QUESTION_ID]: "bad" } }, "form_answers_invalid", 422],
-      [{ ...ANSWERS, versionId: "45140000-0000-4000-8000-000000000fff" }, "form_changed", 409],
+      [
+        { ...ANSWERS, answers: { [QUESTION_ID]: "bad" } },
+        "form_answers_invalid",
+        422,
+      ],
+      [
+        { ...ANSWERS, versionId: "45140000-0000-4000-8000-000000000fff" },
+        "form_changed",
+        409,
+      ],
     ] as const
   ) {
     const db = new FakeCheckoutDb();
@@ -394,22 +420,36 @@ Deno.test("#4514 W5 invalid answers and a stale version are refused before any s
 
 Deno.test("#4514 W5 valid answers are stashed against the session BEFORE the free finalize", async () => {
   const db = new FakeCheckoutDb();
-  const { status, body } = await run(db, { brandFormStep: 1, brandForm: ANSWERS });
+  const { status, body } = await run(db, {
+    brandFormStep: 1,
+    brandForm: ANSWERS,
+  });
   assertEquals(status, 200);
   assertEquals(body.kind, "free_completed");
   assertEquals(db.stashed, [{ session: SESSION_ID, answers: ANSWERS.answers }]);
   const check = db.operations.indexOf("rpc:brand_form_checkout_check");
-  const session = db.operations.indexOf("rpc:biz_ticket_checkout_create_session");
+  const session = db.operations.indexOf(
+    "rpc:biz_ticket_checkout_create_session",
+  );
   const stash = db.operations.indexOf("rpc:brand_form_checkout_stash");
   const finalize = db.operations.indexOf("rpc:biz_ticket_checkout_finalize");
-  assert(check >= 0 && check < session, "the check must run before the session");
-  assert(session < stash && stash < finalize, "the stash must sit between the session and the finalize");
+  assert(
+    check >= 0 && check < session,
+    "the check must run before the session",
+  );
+  assert(
+    session < stash && stash < finalize,
+    "the stash must sit between the session and the finalize",
+  );
 });
 
 Deno.test("#4514 W5 a failed stash answers 409 and no order is finalized", async () => {
   const db = new FakeCheckoutDb();
   db.stashFails = true;
-  const { status, body } = await run(db, { brandFormStep: 1, brandForm: ANSWERS });
+  const { status, body } = await run(db, {
+    brandFormStep: 1,
+    brandForm: ANSWERS,
+  });
   assertEquals(status, 409);
   assertEquals(body.error, "brand_form_stash_failed");
   assert(!has(db, "rpc:biz_ticket_checkout_finalize"));
@@ -446,7 +486,10 @@ Deno.test("#4514 W5 malformed brand form fields are a 400, never ignored", () =>
     const body of [
       { brandFormStep: 2 },
       { brandFormStep: 1, brandForm: "x" },
-      { brandFormStep: 1, brandForm: { formId: "nope", versionId: VERSION_ID, answers: {} } },
+      {
+        brandFormStep: 1,
+        brandForm: { formId: "nope", versionId: VERSION_ID, answers: {} },
+      },
       { brandFormStep: 1, brandForm: { ...ANSWERS, answers: [] } },
     ]
   ) {
@@ -477,7 +520,11 @@ Deno.test("#4514 W5 door sales are exempt (C9): the rebuilt door body never carr
   };
   const fake = {
     from: () => ({
-      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: row, error: null }) }) }),
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: row, error: null }),
+        }),
+      }),
     }),
   };
   const resolved = await resolveDoorPayCheckout(fake, {

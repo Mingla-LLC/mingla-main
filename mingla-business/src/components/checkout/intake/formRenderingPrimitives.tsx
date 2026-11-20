@@ -20,54 +20,19 @@ import {
   type BrandFormRendererProps,
   BrandHeader,
   type BrandHeaderProps,
-  type FormBrandCoverProps,
-  type FormRenderingPrimitives,
   type IntakeFormRendererProps,
 } from "@mingla/form-rendering";
 
-import { radius, space, type } from "../../../constants/designSystem";
-import { activeSurfaceTokens, themed } from "../../../theme/surfaceTokens";
-import { EventCoverMedia } from "../../ui/EventCoverMedia";
-import { Icon } from "../../ui/Icon";
-import { WebDateTimeInput } from "../../ui/WebDateTimeInput";
 import {
   IntakeQuestionFileUpload,
   type IntakeQuestionFileUploadProps,
 } from "./IntakeQuestionFileUpload";
 
-/** The brand header's cover: the host's cover media, or its hue gradient (§5.1). */
-const BusinessBrandCover: React.FC<FormBrandCoverProps> = ({ uri, hue, height }) => (
-  <EventCoverMedia
-    hue={hue}
-    mediaUrl={uri}
-    mediaType={uri === null ? null : "image"}
-    radius={0}
-    label=""
-    height={height}
-  />
-);
+export { businessFormPrimitives } from "./businessFormPrimitives";
+import { businessFormPrimitives } from "./businessFormPrimitives";
 
-/**
- * #4518: text and line colours come from the surface tokens, read at render.
- * `themed` builds one token object per active palette, so the package's
- * per-token style cache rebuilds when a host palette is set and a change of
- * palette never reuses a stale sheet.
- */
-const surfaceFormTokens = themed(() => ({
-  color: activeSurfaceTokens().color,
-  radius,
-  space,
-  type,
-}));
-
-export const businessFormPrimitives: FormRenderingPrimitives = {
-  get tokens() {
-    return surfaceFormTokens();
-  },
-  Icon,
-  WebDateTimeInput,
-  BrandCover: BusinessBrandCover,
-};
+/** #4514 wave 5: the checkout Questions step and the after-purchase hand-off. */
+export { CheckoutQuestionsStep, PurchaseFormHandoff } from "./CheckoutQuestionsStep";
 
 /** #4514 wave 3: the header fields of a server read, mapped for BrandHeader (link page). */
 export { brandHeaderFromServer } from "@mingla/form-rendering";

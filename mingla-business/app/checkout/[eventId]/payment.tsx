@@ -227,6 +227,12 @@ function CheckoutPaymentScreenContent({
     resetCheckoutAttempt,
   } = useCart();
   const totals = useCartQuoteTotals();
+  // #4514 wave 5 — a page with a Questions step has four steps; the buyer's
+  // answers (or null when skipped) are set only by that step.
+  const formStepProps =
+    buyer.brandForm !== undefined
+      ? ({ stepIndex: 3, totalSteps: 4, stepNames: ["Tickets", "Details", "Questions", "Payment"] } as const)
+      : ({ stepIndex: 2, totalSteps: 3 } as const);
 
   // ORCH-0789/0790 REWORK: on web, the buyer may be returning from a
   // Stripe Checkout cancel. Cart context is in-memory and was wiped by
@@ -695,6 +701,16 @@ function CheckoutPaymentScreenContent({
             setPaymentError(null);
             return;
           }
+          // #4514 wave 5 — the server wants the page's questions answered (the
+          // form changed after Details): back to the Questions step, nothing charged.
+          if (
+            /^(form_answers_required|form_answers_invalid|form_changed|brand_form_\w+)$/.test(
+              (error as { code?: string } | null)?.code ?? "",
+            )
+          ) {
+            router.replace(`/checkout/${eventId}/buyer?questions=1` as never);
+            return;
+          }
           // issue #2188 — NEVER render the raw thrown string. supabase-js reports
           // every handled refusal as "Edge Function returned a non-2xx status
           // code"; the mapper is total and turns each bounded case into a
@@ -769,6 +785,8 @@ function CheckoutPaymentScreenContent({
             phone: buyer.phone,
             // #4273: buying opts the buyer in; there is no box to untick.
             marketingOptIn: true,
+            // #4514 wave 5 — the Questions step's answers (sent top-level).
+            brandForm: buyer.brandForm ?? null,
           },
           // ORCH-1246 (Apple 4.9) — event title so the Apple Pay sheet line item
           // shows the product, not the company. Fallback "Ticket" if event unloaded.
@@ -955,8 +973,7 @@ function CheckoutPaymentScreenContent({
     return (
       <View style={styles.host}>
         <CheckoutHeader
-          stepIndex={2}
-          totalSteps={3}
+          {...formStepProps}
           title="Payment"
           onBack={handleBack}
         />
@@ -968,8 +985,7 @@ function CheckoutPaymentScreenContent({
     return (
       <View style={styles.host}>
         <CheckoutHeader
-          stepIndex={2}
-          totalSteps={3}
+          {...formStepProps}
           title="Review changes"
           onBack={handleBack}
         />
@@ -999,8 +1015,7 @@ function CheckoutPaymentScreenContent({
   return (
     <View style={styles.host}>
       <CheckoutHeader
-        stepIndex={2}
-        totalSteps={3}
+        {...formStepProps}
         title="Payment"
         onBack={handleBack}
       />

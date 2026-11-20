@@ -16,6 +16,11 @@ export const LINK_COPY = {
   saveChanges: "Save changes",
   saving: "Saving…",
   needsAnswers: "Answer the required questions to continue",
+  // #4514 wave 5 — opened right after a purchase (§5.5).
+  purchaseStrip: "You're in. Your ticket is waiting in the Mingla app.",
+  purchaseOneMore: (brand: string): string =>
+    brand.length > 0 ? `One more thing from ${brand}` : "One more thing",
+  purchaseContinue: "Go to my tickets",
   saveFailed: "Couldn't save your answers. Check your connection and try again.",
   saveRateLimited: "Too many tries from here. Wait a few minutes, then try again.",
   saveStale: "Updated elsewhere. Reload.",

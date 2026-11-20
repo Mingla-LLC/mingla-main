@@ -11,6 +11,7 @@ import {
 } from "./checkoutErrorCopy";
 import type {
   BuyerDetails,
+  CheckoutBrandFormAnswers,
   CartLine,
   OrderResult,
 } from "../components/checkout/CartContext";
@@ -811,6 +812,29 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   return PAID_CHECKOUT_FAILED_MESSAGE;
 };
 
+/**
+ * #4514 wave 5 (C1) — the capability marker: this client shows the brand form
+ * Questions step, so a required form's answers are checked before payment.
+ * Mirrors `BRAND_FORM_CHECKOUT_STEP` in supabase/functions/_shared/brandFormsContract.ts.
+ */
+export const BRAND_FORM_CHECKOUT_STEP = 1;
+
+/** The marker, plus the buyer's answers when the Questions step collected them. */
+export const checkoutBrandFormFields = (
+  buyer: Pick<BuyerDetails, "brandForm">,
+): { brandFormStep: number; brandForm?: CheckoutBrandFormAnswers } =>
+  buyer.brandForm
+    ? { brandFormStep: BRAND_FORM_CHECKOUT_STEP, brandForm: buyer.brandForm }
+    : { brandFormStep: BRAND_FORM_CHECKOUT_STEP };
+
+/** `buyer` as the server reads it: the answers never ride inside it. */
+export const buyerWithoutBrandForm = (
+  buyer: BuyerDetails,
+): Omit<BuyerDetails, "brandForm"> => {
+  const { brandForm: _answers, ...rest } = buyer;
+  return rest;
+};
+
 export const createTicketCheckout = async (
   input: TicketCheckoutCreateInput,
 ): Promise<TicketCheckoutCreateResult> => {
@@ -877,7 +901,10 @@ export const createTicketCheckout = async (
             purchaseTermsAccepted: true,
           }
         : {}),
-      buyer: input.buyer,
+      // #4514 wave 5 — the Questions step's answers travel top-level, never
+      // inside `buyer`; the marker says this client can show the step (C1).
+      buyer: buyerWithoutBrandForm(input.buyer),
+      ...checkoutBrandFormFields(input.buyer),
       ...(typeof input.discountCode === "string" &&
       input.discountCode.length > 0
         ? { discountCode: input.discountCode }
