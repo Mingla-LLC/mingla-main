@@ -48,6 +48,11 @@
 --     (SELECT count(*) FROM public.orders WHERE intake_form_data IS NOT NULL);
 --
 -- ROLLBACK (manual):
+--   FIRST put the #4452 retention job back (else its daily run calls a dropped
+--   function and that error rolls back #4452's deletes):
+--     SELECT cron.alter_job(jobid, command := replace(command,
+--       E'\n    SELECT public.brand_form_checkout_answers_purge();', ''))
+--       FROM cron.job WHERE jobname = 'issue_4452_forms_retention';
 --   DROP FUNCTION IF EXISTS every function named public.brand_form_* / public.biz_brand_form_* /
 --     public.public_brand_form_for_event / public.brand_forms_my_pending /
 --     public.validate_brand_form_definition;
@@ -756,6 +761,32 @@ BEGIN
 END;
 $fn$;
 
+-- Wave 7 (P2-B, I-4514-ONE-PERSON-ONE-RESPONSE): a signed-in person's one
+-- response to a form, across every row that is theirs: their user row, else the
+-- response of an order they bought (orders.buyer_user_id), else of an RSVP of
+-- theirs (event_rsvps.user_id), on any page of the form. The newest wins if old
+-- data ever holds more than one.
+CREATE FUNCTION public.brand_form_user_response(p_form_id uuid, p_user_id uuid)
+RETURNS public.brand_form_responses
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v public.brand_form_responses;
+BEGIN
+  IF p_form_id IS NULL OR p_user_id IS NULL THEN RETURN v; END IF;
+  SELECT * INTO v FROM public.brand_form_responses WHERE form_id = p_form_id AND user_id = p_user_id;
+  IF FOUND THEN RETURN v; END IF;
+  SELECT r.* INTO v FROM public.brand_form_responses r JOIN public.orders o ON o.id = r.order_id
+   WHERE r.form_id = p_form_id AND o.buyer_user_id = p_user_id
+   ORDER BY r.updated_at DESC, r.id LIMIT 1;
+  IF FOUND THEN RETURN v; END IF;
+  SELECT r.* INTO v FROM public.brand_form_responses r JOIN public.event_rsvps e ON e.id = r.rsvp_id
+   WHERE r.form_id = p_form_id AND e.user_id = p_user_id
+   ORDER BY r.updated_at DESC, r.id LIMIT 1;
+  RETURN v;
+END;
+$fn$;
+
 -- One response of a form for a subject; for an RSVP or an order it also finds
 -- the holder's own signed-in response (OP-5: the same person meets the same form).
 CREATE FUNCTION public.brand_form_find_response(p_form_id uuid, p_kind text, p_id uuid)
@@ -781,7 +812,7 @@ BEGIN
     RETURN v;
   END IF;
   IF v_user IS NOT NULL THEN
-    SELECT * INTO v FROM public.brand_form_responses WHERE form_id = p_form_id AND user_id = v_user;
+    v := public.brand_form_user_response(p_form_id, v_user);
   END IF;
   RETURN v;
 END;
@@ -3032,6 +3063,7 @@ REVOKE ALL ON FUNCTION
   public.brand_form_brand_header(uuid),
   public.brand_form_short_name(text),
   public.brand_form_subject_event(text, uuid),
+  public.brand_form_user_response(uuid, uuid),
   public.brand_form_find_response(uuid, text, uuid),
   public.brand_form_person_response(uuid, text, uuid, uuid),
   public.brand_form_person_lock_key(uuid, text, uuid),
@@ -3124,6 +3156,7 @@ GRANT EXECUTE ON FUNCTION
   public.brand_form_brand_header(uuid),
   public.brand_form_short_name(text),
   public.brand_form_subject_event(text, uuid),
+  public.brand_form_user_response(uuid, uuid),
   public.brand_form_find_response(uuid, text, uuid),
   public.brand_form_person_response(uuid, text, uuid, uuid),
   public.brand_form_person_lock_key(uuid, text, uuid),
@@ -3220,14 +3253,22 @@ COMMENT ON TABLE public.brand_form_checkout_answers IS '#4514 wave 5: checkout a
 -- link that is not (wrong event, revoked, expired, full) gives nothing. Absent
 -- or invalid credential: false, and both the read and the check then treat the
 -- page as having no enforceable form ("to answer").
-CREATE FUNCTION public.brand_form_checkout_visible(
-  p_event_id uuid, p_buyer_user_id uuid, p_ticket_link_hash text
+--
+-- Wave 7 (P1-A): checked for a checkout SESSION, the link is judged against that
+-- session. The session RPC has already reserved the link's units for it, so a
+-- link with max_uses = 1 reads 'full' once THIS session holds the unit. A link
+-- the session is bound to (its ticket_link_id) that reads 'full' still lets
+-- that session's buyer see the form; any other state (revoked, expired, event
+-- or tier unavailable) still gives nothing.
+CREATE FUNCTION public.brand_form_checkout_visible_session(
+  p_event_id uuid, p_buyer_user_id uuid, p_ticket_link_hash text, p_checkout_session_id uuid
 ) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
   v_e record;
   v_link public.ticket_type_links;
+  v_state text;
 BEGIN
   SELECT e.id, e.visibility, e.status, e.deleted_at, b.deleted_at AS brand_deleted_at INTO v_e
     FROM public.events e JOIN public.brands b ON b.id = e.brand_id
@@ -3241,7 +3282,15 @@ BEGIN
     IF p_ticket_link_hash !~ '^[0-9a-f]{64}$' THEN RETURN false; END IF;
     SELECT l.* INTO v_link FROM public.ticket_type_links l
      WHERE l.token_hash = p_ticket_link_hash AND l.event_id = p_event_id AND l.kind = 'private_ticket';
-    IF NOT FOUND OR public.issue_3827_link_state(v_link, now()) <> 'active' THEN RETURN false; END IF;
+    IF NOT FOUND THEN RETURN false; END IF;
+    v_state := public.issue_3827_link_state(v_link, now());
+    IF v_state = 'full' AND p_checkout_session_id IS NOT NULL AND EXISTS (
+         SELECT 1 FROM public.ticket_checkout_sessions s
+          WHERE s.id = p_checkout_session_id AND s.event_id = p_event_id
+            AND s.ticket_link_id = v_link.id) THEN
+      v_state := 'active';
+    END IF;
+    IF v_state <> 'active' THEN RETURN false; END IF;
   END IF;
   IF v_e.visibility IN ('public', 'hidden') THEN RETURN true; END IF;
   IF v_e.visibility <> 'private' OR p_buyer_user_id IS NULL
@@ -3257,11 +3306,25 @@ BEGIN
 END;
 $fn$;
 
+-- Before any session exists (the read and the pre-session check).
+CREATE FUNCTION public.brand_form_checkout_visible(
+  p_event_id uuid, p_buyer_user_id uuid, p_ticket_link_hash text
+) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+BEGIN
+  RETURN public.brand_form_checkout_visible_session(p_event_id, p_buyer_user_id, p_ticket_link_hash, NULL);
+END;
+$fn$;
+
 -- The checkout's form read (service role; brand-form-submit {op:"checkout_form"},
 -- which derives the buyer from the bearer and hashes the ticket link). The same
 -- shape as the public read and nothing more (title, questions, brand header),
--- under the shared visibility rule. OP-5: a signed-in buyer who has already
--- answered this form gets `answered: true` and no step.
+-- under the shared visibility rule. OP-5 (contract: "the form opens
+-- prefilled"): a signed-in buyer who already answered this form, anywhere
+-- (brand_form_user_response), gets `answered: true` and `prefill` with THEIR
+-- OWN answers to the questions that still exist in the live version, so the
+-- step opens filled in. Only the bearer's own answers are ever returned.
 CREATE FUNCTION public.brand_form_checkout_form(
   p_event_id uuid, p_buyer_user_id uuid, p_ticket_link_hash text
 ) RETURNS jsonb
@@ -3269,14 +3332,26 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
   v_out jsonb;
+  v_resp public.brand_form_responses;
+  v_prefill jsonb;
 BEGIN
   IF NOT public.brand_form_checkout_visible(p_event_id, p_buyer_user_id, p_ticket_link_hash) THEN
     RETURN jsonb_build_object('active', false);
   END IF;
   v_out := public.brand_form_page_form(p_event_id);
-  IF (v_out->>'active')::boolean AND p_buyer_user_id IS NOT NULL
-     AND (public.brand_form_find_response((v_out->>'formId')::uuid, 'user', p_buyer_user_id)).id IS NOT NULL THEN
-    v_out := v_out || jsonb_build_object('answered', true);
+  IF (v_out->>'active')::boolean AND p_buyer_user_id IS NOT NULL THEN
+    v_resp := public.brand_form_user_response((v_out->>'formId')::uuid, p_buyer_user_id);
+    IF v_resp.id IS NOT NULL THEN
+      v_out := v_out || jsonb_build_object('answered', true);
+      IF jsonb_typeof(v_out->'definition'->'questions') = 'array' THEN
+        SELECT COALESCE(jsonb_object_agg(a.key, a.value), '{}'::jsonb) INTO v_prefill
+          FROM jsonb_each(COALESCE(v_resp.answers, '{}'::jsonb)) a
+         WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(v_out->'definition'->'questions') q
+                        WHERE q->>'id' = a.key);
+        v_out := v_out || jsonb_build_object('prefill',
+          jsonb_build_object('answers', v_prefill, 'versionId', v_resp.version_id));
+      END IF;
+    END IF;
   END IF;
   RETURN v_out;
 END;
@@ -3285,11 +3360,16 @@ $fn$;
 -- The check. Pure read: raises form_answers_required / form_answers_invalid /
 -- form_changed, or returns {outcome}: 'off' (switch on), 'none' (nothing to keep),
 -- 'to_answer' (required form, no marker or no credential to see it: the order
--- completes unanswered), 'answered' (OP-5: the signed-in buyer already answered
--- this form; nothing is asked or kept and the order shows as answered through
--- brand_form_find_response) or 'stash' (valid answers, cleaned by the validator).
-CREATE FUNCTION public.brand_form_checkout_check(
-  p_event_id uuid, p_capable boolean, p_form jsonb, p_buyer_user_id uuid, p_ticket_link_hash text
+-- completes unanswered; reason 'not_visible' when the credential is missing),
+-- 'answered' (OP-5: the signed-in buyer already answered this form and sent no
+-- new answers; nothing is asked or kept) or 'stash' (valid answers, cleaned by
+-- the validator). A returning buyer who sends answers is validated like anyone
+-- else (an edit is validated against the live version, §3.3; a version that is
+-- no longer live on a required step is form_changed), and the finalize trigger
+-- then UPDATES their one response.
+CREATE FUNCTION public.brand_form_checkout_check_session(
+  p_event_id uuid, p_capable boolean, p_form jsonb, p_buyer_user_id uuid, p_ticket_link_hash text,
+  p_checkout_session_id uuid
 ) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
@@ -3298,6 +3378,7 @@ DECLARE
   v_required boolean;
   v_check jsonb;
   v_has_answers boolean;
+  v_answered boolean;
 BEGIN
   IF public.brand_forms_switched_off() THEN RETURN jsonb_build_object('outcome', 'off'); END IF;
   SELECT * INTO v_a FROM public.brand_form_active_for_event(p_event_id);
@@ -3309,20 +3390,23 @@ BEGIN
   v_required := v_a.mode = 'required_step';
   -- The ONE visibility rule the checkout read uses: a buyer is never refused for
   -- a form they cannot see.
-  IF NOT public.brand_form_checkout_visible(p_event_id, p_buyer_user_id, p_ticket_link_hash) THEN
+  IF NOT public.brand_form_checkout_visible_session(p_event_id, p_buyer_user_id, p_ticket_link_hash,
+                                                    p_checkout_session_id) THEN
     RETURN jsonb_build_object('outcome', CASE WHEN v_required THEN 'to_answer' ELSE 'none' END,
                               'formId', v_a.form_id, 'reason', 'not_visible');
   END IF;
-  -- OP-5 (§3.6 step 2): the same person already has a response to this form.
-  IF p_buyer_user_id IS NOT NULL
-     AND (public.brand_form_find_response(v_a.form_id, 'user', p_buyer_user_id)).id IS NOT NULL THEN
+  v_has_answers := COALESCE(jsonb_typeof(p_form) = 'object' AND jsonb_typeof(p_form->'answers') = 'object', false);
+  -- OP-5 (§3.6 step 2): the same person already has a response to this form,
+  -- through their user row, an order they bought or an RSVP of theirs.
+  v_answered := p_buyer_user_id IS NOT NULL
+    AND (public.brand_form_user_response(v_a.form_id, p_buyer_user_id)).id IS NOT NULL;
+  IF v_answered AND NOT (COALESCE(p_capable, false) AND v_has_answers) THEN
     RETURN jsonb_build_object('outcome', 'answered', 'formId', v_a.form_id);
   END IF;
   IF NOT COALESCE(p_capable, false) THEN
     RETURN jsonb_build_object('outcome', CASE WHEN v_required THEN 'to_answer' ELSE 'none' END,
                               'formId', v_a.form_id);
   END IF;
-  v_has_answers := COALESCE(jsonb_typeof(p_form) = 'object' AND jsonb_typeof(p_form->'answers') = 'object', false);
   IF NOT v_has_answers THEN
     IF v_required THEN
       RAISE EXCEPTION 'form_answers_required' USING ERRCODE = '22023',
@@ -3354,8 +3438,25 @@ BEGIN
 END;
 $fn$;
 
--- The stash: re-runs the check (authoritative) and keeps valid answers against
--- the session. A session that already has its order is left alone (a replay).
+-- The pre-session check (ticket-checkout-create, before the session RPC).
+CREATE FUNCTION public.brand_form_checkout_check(
+  p_event_id uuid, p_capable boolean, p_form jsonb, p_buyer_user_id uuid, p_ticket_link_hash text
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+BEGIN
+  RETURN public.brand_form_checkout_check_session(p_event_id, p_capable, p_form, p_buyer_user_id,
+                                                  p_ticket_link_hash, NULL);
+END;
+$fn$;
+
+-- The stash: re-runs the check (authoritative) FOR THIS SESSION (P1-A: the
+-- link's units this session reserved never hide the form from its own buyer)
+-- and keeps valid answers against the session. A session that already has its
+-- order is left alone (a replay). When the pre-session check said 'stash' and
+-- this one does not (a grant or link that ended in between), ticket-checkout-
+-- create answers 409 brand_form_stash_failed and payment never starts: the
+-- answers are never dropped silently.
 CREATE FUNCTION public.brand_form_checkout_stash(
   p_checkout_session_id uuid, p_event_id uuid, p_capable boolean, p_form jsonb,
   p_buyer_user_id uuid, p_ticket_link_hash text
@@ -3374,7 +3475,8 @@ BEGIN
   IF v_session.order_id IS NOT NULL THEN
     RETURN jsonb_build_object('outcome', 'finalized');
   END IF;
-  v_out := public.brand_form_checkout_check(p_event_id, p_capable, p_form, p_buyer_user_id, p_ticket_link_hash);
+  v_out := public.brand_form_checkout_check_session(p_event_id, p_capable, p_form, p_buyer_user_id,
+                                                    p_ticket_link_hash, p_checkout_session_id);
   IF v_out->>'outcome' <> 'stash' THEN
     -- A retry of this session without answers keeps nothing from an earlier try.
     DELETE FROM public.brand_form_checkout_answers WHERE checkout_session_id = p_checkout_session_id;
@@ -3391,57 +3493,99 @@ BEGIN
 END;
 $fn$;
 
+-- MINGLA-INVARIANT: I-4514-FINALIZE-TRIGGER-CANNOT-BLOCK-CHECKOUT | issue #4514 | brand_form_finalize_checkout_answers runs only when a session's order_id is set, does one primary-key probe of brand_form_checkout_answers, does nothing when there is no stash, never waits on a lock (NOWAIT row lock on this session's own stash row, try-only person lock) and catches every error inside a guarded block, logging it and leaving the order finalize untouched (pg17 T-FINALIZE-SAFE).
 -- The promotion, in the transaction that sets the session's order (paid and free).
+-- I-4514-ONE-PERSON-ONE-RESPONSE: if the order's person (the order's own row,
+-- else the buyer's user, order or RSVP row: brand_form_find_response) already
+-- has a response to this form, that ONE response is updated with the answers
+-- and the version they were checked against; otherwise the order's response is
+-- inserted. Never a second response for the same person.
+-- Live-checkout safety: everything after the primary-key probe runs inside a
+-- guarded block. A busy person lock, a locked stash row or any other error is
+-- logged (WARNING) and swallowed; the stash row stays for diagnosis, and the
+-- order finalize commits exactly as it would without this trigger.
 CREATE FUNCTION public.brand_form_finalize_checkout_answers() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
   v_s public.brand_form_checkout_answers;
   v_brand uuid;
+  v_existing public.brand_form_responses;
 BEGIN
   IF NEW.order_id IS NULL OR NEW.order_id IS NOT DISTINCT FROM OLD.order_id THEN
     RETURN NEW;
   END IF;
-  SELECT * INTO v_s FROM public.brand_form_checkout_answers
-   WHERE checkout_session_id = NEW.id FOR UPDATE;
-  IF NOT FOUND THEN RETURN NEW; END IF;
-  SELECT f.brand_id INTO v_brand FROM public.brand_forms f WHERE f.id = v_s.form_id;
-  -- One response per order per form: a second finalize of the same order keeps the first.
-  INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, attachment_id, event_id,
-                                           order_id, answers, source)
-  VALUES (v_s.form_id, v_s.version_id, v_brand, v_s.attachment_id, v_s.event_id,
-          NEW.order_id, v_s.answers, 'page')
-  ON CONFLICT (form_id, order_id) WHERE order_id IS NOT NULL DO NOTHING;
-  DELETE FROM public.brand_form_checkout_answers WHERE checkout_session_id = NEW.id;
+  -- One primary-key probe; no stash (every order of a page without a form): done.
+  IF NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = NEW.id) THEN
+    RETURN NEW;
+  END IF;
+  BEGIN
+    SELECT * INTO v_s FROM public.brand_form_checkout_answers
+     WHERE checkout_session_id = NEW.id FOR UPDATE NOWAIT;
+    IF FOUND THEN
+      IF NOT pg_try_advisory_xact_lock(public.brand_form_person_lock_key(v_s.form_id, 'order', NEW.order_id)) THEN
+        RAISE EXCEPTION 'brand_form_person_busy';
+      END IF;
+      v_existing := public.brand_form_find_response(v_s.form_id, 'order', NEW.order_id);
+      IF v_existing.id IS NOT NULL THEN
+        UPDATE public.brand_form_responses
+           SET answers = v_s.answers, version_id = v_s.version_id, edit_count = edit_count + 1,
+               updated_at = now(), attachment_id = COALESCE(v_s.attachment_id, attachment_id),
+               event_id = COALESCE(event_id, v_s.event_id)
+         WHERE id = v_existing.id;
+      ELSE
+        SELECT f.brand_id INTO v_brand FROM public.brand_forms f WHERE f.id = v_s.form_id;
+        INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, attachment_id, event_id,
+                                                 order_id, answers, source)
+        VALUES (v_s.form_id, v_s.version_id, v_brand, v_s.attachment_id, v_s.event_id,
+                NEW.order_id, v_s.answers, 'page')
+        ON CONFLICT (form_id, order_id) WHERE order_id IS NOT NULL DO NOTHING;
+      END IF;
+      DELETE FROM public.brand_form_checkout_answers WHERE checkout_session_id = NEW.id;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING '#4514 brand_form_finalize_checkout_answers skipped for session % (order %): % (%)',
+      NEW.id, NEW.order_id, SQLERRM, SQLSTATE;
+  END;
   RETURN NEW;
 END;
 $fn$;
 REVOKE ALL ON FUNCTION public.brand_form_finalize_checkout_answers() FROM PUBLIC, anon, authenticated;
 CREATE TRIGGER brand_form_finalize_checkout_answers
 AFTER UPDATE OF order_id ON public.ticket_checkout_sessions
-FOR EACH ROW EXECUTE FUNCTION public.brand_form_finalize_checkout_answers();
+FOR EACH ROW
+WHEN (NEW.order_id IS NOT NULL AND OLD.order_id IS DISTINCT FROM NEW.order_id)
+EXECUTE FUNCTION public.brand_form_finalize_checkout_answers();
 
+-- MINGLA-INVARIANT: I-4514-PURGE-CANNOT-ABORT-4452-RETENTION | issue #4514 | the line this migration appends to issue_4452_forms_retention calls brand_form_checkout_answers_purge(), which deletes only from brand_form_checkout_answers and catches its own errors (WARNING, returns -1), so it can never roll back #4452's retention DELETEs in the same job transaction; the job's original statements stay byte-for-byte (pg17 T-CHECKOUT-PURGE).
 -- SC-35: stashed answers of an abandoned checkout (no order) are purged 7 days
 -- after the session expired. Run daily by the EXISTING forms retention job
--- (issue_4452_forms_retention, 03:17 UTC); no new cron.
+-- (issue_4452_forms_retention, 03:17 UTC); no new cron. Exception-safe: any
+-- error is logged and the function returns -1, so the job's other statements
+-- (the #4452 deletes, which share its transaction) always commit.
 CREATE FUNCTION public.brand_form_checkout_answers_purge() RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
   v_n integer;
 BEGIN
-  DELETE FROM public.brand_form_checkout_answers c
-   USING public.ticket_checkout_sessions s
-   WHERE s.id = c.checkout_session_id AND s.order_id IS NULL
-     AND s.expires_at < now() - interval '7 days';
-  GET DIAGNOSTICS v_n = ROW_COUNT;
+  BEGIN
+    DELETE FROM public.brand_form_checkout_answers c
+     USING public.ticket_checkout_sessions s
+     WHERE s.id = c.checkout_session_id AND s.order_id IS NULL
+       AND s.expires_at < now() - interval '7 days';
+    GET DIAGNOSTICS v_n = ROW_COUNT;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING '#4514 brand_form_checkout_answers_purge failed: % (%)', SQLERRM, SQLSTATE;
+    v_n := -1;
+  END;
   RETURN v_n;
 END;
 $fn$;
 
 -- Hook the purge into the existing daily forms retention job: its command keeps
--- every statement it has and gains one line. Skipped loudly when pg_cron or that
--- job is missing; a new job is never scheduled here.
+-- every statement it has, byte-for-byte, and gains exactly one line. Skipped
+-- loudly when pg_cron or that job is missing; a new job is never scheduled here.
 DO $cron$
 DECLARE
   v_job bigint;
@@ -3506,16 +3650,20 @@ $fn$;
 
 REVOKE ALL ON FUNCTION
   public.brand_form_checkout_visible(uuid, uuid, text),
+  public.brand_form_checkout_visible_session(uuid, uuid, text, uuid),
   public.brand_form_checkout_form(uuid, uuid, text),
   public.brand_form_checkout_check(uuid, boolean, jsonb, uuid, text),
+  public.brand_form_checkout_check_session(uuid, boolean, jsonb, uuid, text, uuid),
   public.brand_form_checkout_stash(uuid, uuid, boolean, jsonb, uuid, text),
   public.brand_form_checkout_answers_purge(),
   public.brand_form_purchase_link(uuid, text)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION
   public.brand_form_checkout_visible(uuid, uuid, text),
+  public.brand_form_checkout_visible_session(uuid, uuid, text, uuid),
   public.brand_form_checkout_form(uuid, uuid, text),
   public.brand_form_checkout_check(uuid, boolean, jsonb, uuid, text),
+  public.brand_form_checkout_check_session(uuid, boolean, jsonb, uuid, text, uuid),
   public.brand_form_checkout_stash(uuid, uuid, boolean, jsonb, uuid, text),
   public.brand_form_checkout_answers_purge(),
   public.brand_form_purchase_link(uuid, text)

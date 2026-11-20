@@ -2717,7 +2717,7 @@ BEGIN
   v := public.brand_form_checkout_form(v_eh, NULL, NULL);
   SELECT array_agg(k ORDER BY k) INTO v_keys FROM jsonb_object_keys(v) k;
   PERFORM pg_temp.f_assert(v_keys <@ ARRAY['active','brand','definition','doorFullAnswers','formId','mode','name',
-                                           'questionCount','requiredForm','versionId','answered']
+                                           'questionCount','requiredForm','versionId','answered','prefill']
       AND v = public.public_brand_form_for_event(v_eh),
     'T-CHECKOUT-VIS-4 the read is exactly the public form shape, no more (' || array_to_string(v_keys, ',') || ')');
   -- T-CHECKOUT-VIS-5: a private ticket link.
@@ -2776,12 +2776,11 @@ BEGIN
       WHERE c.conrelid = 'public.brand_form_checkout_answers'::regclass AND c.contype = 'f'
         AND a.attname IN ('form_id', 'version_id')) = ARRAY['c', 'c'],
     'T-CHECKOUT-PURGE-3 the stash never blocks removing its form or version (ON DELETE CASCADE)');
+  -- Wave 7: no pass when pg_cron or the job is absent (CI has both, as #4452's T-1.3c assumes).
   PERFORM pg_temp.f_assert(
-    to_regnamespace('cron') IS NULL
-    OR NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'issue_4452_forms_retention')
-    OR ((SELECT command FROM cron.job WHERE jobname = 'issue_4452_forms_retention') LIKE '%brand_form_checkout_answers_purge()%'
+    (SELECT command FROM cron.job WHERE jobname = 'issue_4452_forms_retention') LIKE '%brand_form_checkout_answers_purge()%'
         AND NOT EXISTS (SELECT 1 FROM cron.job WHERE command LIKE '%brand_form_checkout_answers_purge%'
-                          AND jobname <> 'issue_4452_forms_retention')),
+                          AND jobname <> 'issue_4452_forms_retention'),
     'T-CHECKOUT-PURGE-4 the purge runs in the existing forms retention job, and no other');
 END
 $t$;
@@ -2819,6 +2818,275 @@ BEGIN
            (SELECT id FROM public.ticket_checkout_sessions WHERE event_id = v_ec AND order_id IS NOT NULL LIMIT 1), v_hash));
   PERFORM pg_temp.f_assert(v_r LIKE '42501:link_invalid%', 'T-PURCHASE-LINK one buyer''s token never opens another session');
   RESET ROLE;
+END
+$t$;
+
+-- ═══ Wave 7 (re-review of wave 5 + pre-apply proofs) ══════════════════════════════
+-- T-W7-LINK-1   P1-A: a private ticket link with max_uses = 1. Before the session the check
+--               says 'stash'; once THIS session holds the unit the link reads 'full', and the
+--               stash for that session still keeps the answers.
+-- T-W7-LINK-2   the full link still hides the form from a session that is not bound to it.
+-- T-W7-LINK-3   P3-E: the link expires between check and stash: the stash returns
+--               'to_answer'/'not_visible' and keeps nothing (ticket-checkout-create answers
+--               409 brand_form_stash_failed: Deno issue_4514_checkout_form).
+-- T-W7-LINK-4   the same for a private-page grant revoked between check and stash.
+-- T-W7-PERSON-1 P2-B: a buyer who answered through an ORDER at another page is "answered"
+--               (no refusal without answers; the read says answered and prefills).
+-- T-W7-PERSON-2 P2-B: a buyer who answered through an RSVP is "answered" the same way.
+-- T-W7-PERSON-3 I-4514-ONE-PERSON-ONE-RESPONSE: that buyer sends new answers at checkout; the
+--               finalize trigger UPDATES their one response (answers, live version, edit
+--               count + 1) and writes no second row.
+-- T-W7-PREFILL  OP-5 UX: the prefill carries only the questions of the live version; a returning
+--               buyer's stale version on a required step is form_changed (PT409).
+-- T-FINALIZE-SAFE  pre-apply proof for the trigger on ticket_checkout_sessions: primary-key
+--               lookup; WHEN clause (runs only when order_id is set); no stash = no write and no
+--               lock; a forced error inside is caught and logged and the order finalize commits.
+-- T-PURGE-SAFE  pre-apply proof for the cron line: the purge deletes only from
+--               brand_form_checkout_answers; the #4452 job command is the original trimmed plus
+--               exactly one line; a failing purge never rolls back #4452's deletes.
+-- FAILS-ON-REVERT (wave 7): dropping the bound-session exemption in
+-- brand_form_checkout_visible_session fails T-W7-LINK-1; restoring the user-row-only lookup in
+-- brand_form_user_response fails T-W7-PERSON-1/2; restoring insert-only in the trigger fails
+-- T-W7-PERSON-3; deleting the trigger's EXCEPTION block fails T-FINALIZE-SAFE-4; deleting the
+-- purge's EXCEPTION block fails T-PURGE-SAFE-4.
+DO $t$
+DECLARE
+  v_ba uuid := (SELECT id FROM f4514 WHERE k = 'ba');
+  v_form uuid := (SELECT id FROM f4514 WHERE k = 'form');
+  v_ver uuid := (SELECT live_version_id FROM public.brand_forms WHERE id = (SELECT id FROM f4514 WHERE k = 'form'));
+  v_em uuid := (SELECT id FROM f4514 WHERE k = 'em_a');
+  v_ub uuid := pg_temp.f_user('w7_order_buyer');
+  v_ur uuid := pg_temp.f_user('w7_rsvp_guest');
+  v_ug uuid := pg_temp.f_user('w7_grant');
+  v_el uuid := gen_random_uuid(); v_ea uuid := gen_random_uuid(); v_eb uuid := gen_random_uuid();
+  v_er uuid := gen_random_uuid(); v_ep uuid := gen_random_uuid();
+  v_tt uuid := gen_random_uuid(); v_link uuid := gen_random_uuid();
+  v_sl uuid := gen_random_uuid(); v_sx uuid := gen_random_uuid(); v_sb uuid := gen_random_uuid();
+  v_sp uuid := gen_random_uuid(); v_sf uuid := gen_random_uuid(); v_sn uuid := gen_random_uuid();
+  v_oa uuid := gen_random_uuid(); v_ob uuid := gen_random_uuid(); v_of uuid := gen_random_uuid();
+  v_on uuid := gen_random_uuid(); v_rr uuid := gen_random_uuid();
+  v_hash text := encode(extensions.digest('w7-ticket-link-max-one', 'sha256'), 'hex');
+  c_ok jsonb := jsonb_build_object('11111111-1111-4111-8111-111111111111', 'yes',
+                                   '22222222-2222-4222-8222-222222222222', 'Juggle');
+  c_new jsonb := jsonb_build_object('11111111-1111-4111-8111-111111111111', 'yes',
+                                    '22222222-2222-4222-8222-222222222222', 'Unicycle');
+  v_ans jsonb; v jsonb; v_r text; v_resp public.brand_form_responses; v_n integer; v_locks integer;
+  v_old_cmd text := E'\n    DELETE FROM public.forms_submit_attempts WHERE created_at < now() - interval ''7 days'';\n    DELETE FROM public.form_funnel_events WHERE created_at < now() - interval ''400 days'';\n    DELETE FROM public.site_preview_tokens WHERE expires_at < now() - interval ''1 day'';\n  ';
+  v_cmd text; v_src text; v_ok boolean;
+BEGIN
+  v_ans := jsonb_build_object('formId', v_form, 'versionId', v_ver, 'answers', c_ok);
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES (v_el, v_ba, 'W7 link page', 'f4514-w7-link', 'event', 'scheduled', 'hidden', 'UTC', 'USD'),
+         (v_ea, v_ba, 'W7 page A', 'f4514-w7-a', 'event', 'scheduled', 'public', 'UTC', 'USD'),
+         (v_eb, v_ba, 'W7 page B', 'f4514-w7-b', 'event', 'scheduled', 'public', 'UTC', 'USD'),
+         (v_er, v_ba, 'W7 RSVP page', 'f4514-w7-r', 'rsvp', 'scheduled', 'public', 'UTC', 'USD'),
+         (v_ep, v_ba, 'W7 private', 'f4514-w7-p', 'event', 'scheduled', 'private', 'UTC', 'USD');
+  INSERT INTO public.ticket_types(id, event_id, name, price_cents, quantity_total, currency, available_online)
+  VALUES (v_tt, v_el, 'W7 tier', 1000, 50, 'USD', true);
+  INSERT INTO public.ticket_type_links(id, event_id, brand_id, ticket_type_id, kind, label, party_max, max_uses,
+    token_nonce, token_hash, created_by)
+  VALUES (v_link, v_el, v_ba, v_tt, 'private_ticket', 'One use', 1, 1, decode(md5(v_link::text), 'hex'), v_hash, v_em);
+  INSERT INTO public.brand_form_attachments(form_id, brand_id, event_id, mode, created_by)
+  VALUES (v_form, v_ba, v_el, 'required_step', v_em), (v_form, v_ba, v_eb, 'required_step', v_em),
+         (v_form, v_ba, v_ep, 'required_step', v_em);
+  INSERT INTO public.private_event_access_state(event_id, epoch, active, setup_state) VALUES (v_ep, 1, true, 'ready');
+  INSERT INTO public.private_event_access_grants(event_id, epoch, principal_kind, bound_user_id, capability_hash, expires_at)
+  VALUES (v_ep, 1, 'authenticated_user', v_ug, encode(extensions.digest('w7-grant', 'sha256'), 'hex'), now() + interval '1 hour');
+  PERFORM set_config('session_replication_role', 'origin', true);
+  UPDATE public.private_event_access_runtime SET enabled = true WHERE singleton;
+
+  -- T-W7-LINK-1: before the session, the link is live and the check says stash.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_check(v_el, true, v_ans, NULL, v_hash);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'stash', 'T-W7-LINK-1 before the session the check says stash (' || v::text || ')');
+  RESET ROLE;
+  -- The session RPC reserves the link's only unit for THIS session.
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.ticket_checkout_sessions(id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164,
+    idempotency_key, expires_at, status, total_cents, currency, ticket_link_id, ticket_link_units)
+  VALUES (v_sl, v_el, v_ba, 'Lin', 'f4514-w7l@example.test', '+12025550701', 'w7-sl', now() + interval '1 hour', 'requires_payment', 1000, 'USD', v_link, 1),
+         (v_sx, v_el, v_ba, 'Xan', 'f4514-w7x@example.test', '+12025550702', 'w7-sx', now() + interval '1 hour', 'requires_payment', 1000, 'USD', NULL, NULL);
+  PERFORM set_config('session_replication_role', 'origin', true);
+  PERFORM pg_temp.f_assert(public.issue_3827_link_state((SELECT l FROM public.ticket_type_links l WHERE l.id = v_link), now()) = 'full',
+    'T-W7-LINK-1 the session holds the unit: the link now reads full');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_stash(v_sl, v_el, true, v_ans, NULL, v_hash);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'stash'
+      AND EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sl),
+    'T-W7-LINK-1 the stash for the session holding the unit keeps the answers (' || v::text || ')');
+  -- T-W7-LINK-2: a session not bound to the link sees the full link as nothing.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_stash(v_sx, v_el, true, v_ans, NULL, v_hash);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'to_answer' AND v->>'reason' = 'not_visible'
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sx),
+    'T-W7-LINK-2 a session not bound to the full link gets no form (' || v::text || ')');
+  -- T-W7-LINK-3: the link expires between check and stash.
+  UPDATE public.ticket_type_links SET expires_at = now() - interval '1 second' WHERE id = v_link;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_stash(v_sl, v_el, true, v_ans, NULL, v_hash);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'to_answer' AND v->>'reason' = 'not_visible'
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sl),
+    'T-W7-LINK-3 an expired link at stash time says not_visible, never a silent stash (' || v::text || ')');
+  -- T-W7-LINK-4: a private-page grant revoked between check and stash.
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.ticket_checkout_sessions(id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164,
+    idempotency_key, expires_at, status, total_cents, currency)
+  VALUES (v_sp, v_ep, v_ba, 'Pru', 'f4514-w7p@example.test', '+12025550703', 'w7-sp', now() + interval '1 hour', 'requires_payment', 1000, 'USD');
+  PERFORM set_config('session_replication_role', 'origin', true);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_check(v_ep, true, v_ans, v_ug, NULL);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'stash', 'T-W7-LINK-4 with the grant the check says stash');
+  RESET ROLE;
+  UPDATE public.private_event_access_grants SET revoked_at = now(), state = 'revoked' WHERE event_id = v_ep AND bound_user_id = v_ug;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_stash(v_sp, v_ep, true, v_ans, v_ug, NULL);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'to_answer' AND v->>'reason' = 'not_visible'
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sp),
+    'T-W7-LINK-4 a grant revoked at stash time says not_visible (' || v::text || ')');
+
+  -- T-W7-PERSON-1: answered through an ORDER on page A (no user row anywhere).
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_name, buyer_email, buyer_phone_e164,
+    total_cents, currency, payment_method, payment_status, source, is_door_sale)
+  VALUES (v_oa, v_ea, v_ub, 'Ola', 'f4514-w7o@example.test', '+12025550704', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false),
+         (v_ob, v_eb, v_ub, 'Ola', 'f4514-w7o@example.test', '+12025550704', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false);
+  INSERT INTO public.event_rsvps(id, event_id, user_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (v_rr, v_er, v_ur, 'Rae', 'f4514-w7r@example.test', '+12025550705', 'going', 'approved');
+  INSERT INTO public.ticket_checkout_sessions(id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164,
+    idempotency_key, expires_at, status, total_cents, currency)
+  VALUES (v_sb, v_eb, v_ba, 'Ola', 'f4514-w7o@example.test', '+12025550704', 'w7-sb', now() + interval '1 hour', 'requires_payment', 1000, 'USD');
+  PERFORM set_config('session_replication_role', 'origin', true);
+  INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, event_id, order_id, answers, source)
+  VALUES (v_form, v_ver, v_ba, v_ea, v_oa, c_ok || jsonb_build_object('99999999-9999-4999-8999-999999999999', 'gone'), 'page');
+  INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, event_id, rsvp_id, answers, source)
+  VALUES (v_form, v_ver, v_ba, v_er, v_rr, c_ok, 'page');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_check(v_eb, true, NULL, v_ub, NULL);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'answered',
+    'T-W7-PERSON-1 answered through an order elsewhere: no refusal without answers (' || v::text || ')');
+  v := public.brand_form_checkout_form(v_eb, v_ub, NULL);
+  PERFORM pg_temp.f_assert((v->>'answered')::boolean IS TRUE AND v->'prefill'->'answers' = c_ok
+      AND v->'prefill'->>'versionId' = v_ver::text,
+    'T-W7-PREFILL the read opens prefilled with the live questions only (' || COALESCE(v->>'prefill', 'null') || ')');
+  -- T-W7-PERSON-2: answered through an RSVP.
+  v := public.brand_form_checkout_check(v_eb, true, NULL, v_ur, NULL);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'answered',
+    'T-W7-PERSON-2 answered through an RSVP: no refusal without answers (' || v::text || ')');
+  PERFORM pg_temp.f_assert((public.brand_form_checkout_form(v_eb, v_ur, NULL)->>'answered')::boolean IS TRUE,
+    'T-W7-PERSON-2 the read says answered for the RSVP guest');
+  -- T-W7-PREFILL: a returning buyer's stale version on a required step is form_changed.
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, %L::jsonb, %L, NULL)$$, v_eb,
+           jsonb_build_object('formId', v_form, 'versionId', gen_random_uuid(), 'answers', c_new), v_ub));
+  PERFORM pg_temp.f_assert(v_r LIKE 'PT409:form_changed%', 'T-W7-PREFILL a stale version from a returning buyer is form_changed (' || v_r || ')');
+  -- T-W7-PERSON-3: new answers at checkout update the one response.
+  v := public.brand_form_checkout_stash(v_sb, v_eb, true,
+         jsonb_build_object('formId', v_form, 'versionId', v_ver, 'answers', c_new), v_ub, NULL);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'stash', 'T-W7-PERSON-3 a returning buyer''s edit is stashed (' || v::text || ')');
+  RESET ROLE;
+  UPDATE public.ticket_checkout_sessions SET order_id = v_ob, status = 'paid_completed' WHERE id = v_sb;
+  SELECT * INTO v_resp FROM public.brand_form_responses WHERE form_id = v_form AND order_id = v_oa;
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE order_id = v_ob)
+      AND (SELECT count(*) FROM public.brand_form_responses r
+             WHERE r.form_id = v_form AND (r.order_id IN (v_oa, v_ob) OR r.user_id = v_ub)) = 1
+      AND v_resp.answers->>'22222222-2222-4222-8222-222222222222' = 'Unicycle'
+      AND v_resp.edit_count = 1 AND v_resp.version_id = v_ver
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sb),
+    'T-W7-PERSON-3 the finalize updates the person''s one response and writes no second row');
+  PERFORM pg_temp.f_assert((public.brand_form_find_response(v_form, 'order', v_ob)).id = v_resp.id,
+    'T-W7-PERSON-3 the new order shows the person''s one response');
+
+  -- T-FINALIZE-SAFE-1: a primary-key lookup on the stash.
+  PERFORM pg_temp.f_assert(EXISTS (
+      SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
+       WHERE i.indrelid = 'public.brand_form_checkout_answers'::regclass AND i.indisprimary
+         AND i.indnatts = 1 AND a.attname = 'checkout_session_id'),
+    'T-FINALIZE-SAFE-1 the stash is keyed by checkout_session_id (primary key)');
+  -- T-FINALIZE-SAFE-2: the trigger fires only when order_id is set to a new value.
+  SELECT pg_get_triggerdef(t.oid) INTO v_src FROM pg_trigger t
+   WHERE t.tgrelid = 'public.ticket_checkout_sessions'::regclass AND t.tgname = 'brand_form_finalize_checkout_answers';
+  PERFORM pg_temp.f_assert(v_src LIKE '%AFTER UPDATE OF order_id%'
+      AND v_src LIKE '%WHEN (((new.order_id IS NOT NULL) AND (old.order_id IS DISTINCT FROM new.order_id)))%',
+    'T-FINALIZE-SAFE-2 the trigger runs only when a session gets its order (' || v_src || ')');
+  -- T-FINALIZE-SAFE-3: no stash: nothing written, no lock taken.
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_name, buyer_email, buyer_phone_e164,
+    total_cents, currency, payment_method, payment_status, source, is_door_sale)
+  VALUES (v_on, v_ea, NULL, 'Nia', 'f4514-w7n@example.test', '+12025550706', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false),
+         (v_of, v_eb, NULL, 'Fay', 'f4514-w7f@example.test', '+12025550707', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false);
+  INSERT INTO public.ticket_checkout_sessions(id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164,
+    idempotency_key, expires_at, status, total_cents, currency)
+  VALUES (v_sn, v_ea, v_ba, 'Nia', 'f4514-w7n@example.test', '+12025550706', 'w7-sn', now() + interval '1 hour', 'requires_payment', 1000, 'USD'),
+         (v_sf, v_eb, v_ba, 'Fay', 'f4514-w7f@example.test', '+12025550707', 'w7-sf', now() + interval '1 hour', 'requires_payment', 1000, 'USD');
+  PERFORM set_config('session_replication_role', 'origin', true);
+  SELECT count(*) INTO v_n FROM public.brand_form_responses;
+  SELECT count(*) INTO v_locks FROM pg_locks WHERE pid = pg_backend_pid() AND locktype = 'advisory';
+  UPDATE public.ticket_checkout_sessions SET order_id = v_on, status = 'paid_completed' WHERE id = v_sn;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_responses) = v_n
+      AND (SELECT count(*) FROM pg_locks WHERE pid = pg_backend_pid() AND locktype = 'advisory') = v_locks,
+    'T-FINALIZE-SAFE-3 with no stash the trigger writes nothing and takes no lock');
+  -- T-FINALIZE-SAFE-4: a forced error inside the trigger never aborts the order finalize.
+  INSERT INTO public.brand_form_checkout_answers (checkout_session_id, event_id, form_id, version_id, answers)
+  VALUES (v_sf, v_eb, v_form, v_ver, c_ok);
+  CREATE FUNCTION pg_temp.w7_boom() RETURNS trigger LANGUAGE plpgsql AS $b$
+  BEGIN RAISE EXCEPTION 'w7_forced_response_failure'; END; $b$;
+  EXECUTE 'CREATE TRIGGER w7_boom BEFORE INSERT ON public.brand_form_responses FOR EACH ROW EXECUTE FUNCTION pg_temp.w7_boom()';
+  v_ok := true;
+  BEGIN
+    UPDATE public.ticket_checkout_sessions SET order_id = v_of, status = 'paid_completed' WHERE id = v_sf;
+  EXCEPTION WHEN OTHERS THEN
+    v_ok := false;
+  END;
+  EXECUTE 'DROP TRIGGER w7_boom ON public.brand_form_responses';
+  PERFORM pg_temp.f_assert(v_ok AND (SELECT order_id FROM public.ticket_checkout_sessions WHERE id = v_sf) = v_of
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE order_id = v_of)
+      AND EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sf),
+    'T-FINALIZE-SAFE-4 a forced error is caught: the order is finalized, the stash is kept for diagnosis');
+
+  -- T-PURGE-SAFE-1: the purge deletes only from brand_form_checkout_answers.
+  SELECT p.prosrc INTO v_src FROM pg_proc p WHERE p.oid = 'public.brand_form_checkout_answers_purge()'::regprocedure;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM regexp_matches(v_src, '\m(DELETE|UPDATE|INSERT|TRUNCATE)\M', 'gi')) = 1
+      AND v_src ~ 'DELETE FROM public\.brand_form_checkout_answers c\s',
+    'T-PURGE-SAFE-1 the purge has exactly one write: DELETE FROM public.brand_form_checkout_answers');
+  PERFORM pg_temp.f_assert(obj_description('public.brand_form_checkout_answers'::regclass, 'pg_class') LIKE '#4514 wave 5:%',
+    'T-PURGE-SAFE-1 that table is the one this migration creates');
+  -- T-PURGE-SAFE-2/3: the job exists (pg_cron is present where this suite runs, as #4452's own
+  -- T-1.3c assumes) and its command is the original, trimmed, plus exactly one line.
+  SELECT command INTO v_cmd FROM cron.job WHERE jobname = 'issue_4452_forms_retention';
+  PERFORM pg_temp.f_assert(v_cmd IS NOT NULL, 'T-PURGE-SAFE-2 the #4452 retention job exists');
+  PERFORM pg_temp.f_assert(v_cmd = rtrim(v_old_cmd, E' \n') || E'\n    SELECT public.brand_form_checkout_answers_purge();\n  ',
+    'T-PURGE-SAFE-2 new command = original trimmed + exactly one appended line (' || v_cmd || ')');
+  PERFORM pg_temp.f_assert(left(v_cmd, length(rtrim(v_old_cmd, E' \n'))) = rtrim(v_old_cmd, E' \n'),
+    'T-PURGE-SAFE-2 the original statements are byte-for-byte unchanged');
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM cron.job WHERE command LIKE '%brand_form_checkout_answers_purge%') = 1
+      AND (SELECT count(*) FROM cron.job WHERE jobname LIKE '%4514%') = 0,
+    'T-PURGE-SAFE-3 no new job; the purge is in that one job only');
+  -- T-PURGE-SAFE-4: a failing purge never rolls back #4452's deletes in the same job run.
+  INSERT INTO public.forms_submit_attempts (ip_hash, outcome, created_at)
+  VALUES (repeat('7', 64), 'accepted', now() - interval '8 days');
+  CREATE FUNCTION pg_temp.w7_purge_boom() RETURNS trigger LANGUAGE plpgsql AS $b$
+  BEGIN RAISE EXCEPTION 'w7_forced_purge_failure'; END; $b$;
+  EXECUTE 'CREATE TRIGGER w7_purge_boom BEFORE DELETE ON public.brand_form_checkout_answers FOR EACH ROW EXECUTE FUNCTION pg_temp.w7_purge_boom()';
+  UPDATE public.ticket_checkout_sessions SET expires_at = now() - interval '8 days', status = 'expired' WHERE id = v_sx;
+  INSERT INTO public.brand_form_checkout_answers (checkout_session_id, event_id, form_id, version_id, answers)
+  VALUES (v_sx, v_el, v_form, v_ver, c_ok);
+  v_ok := true;
+  BEGIN
+    EXECUTE v_cmd;
+  EXCEPTION WHEN OTHERS THEN
+    v_ok := false;
+  END;
+  EXECUTE 'DROP TRIGGER w7_purge_boom ON public.brand_form_checkout_answers';
+  PERFORM pg_temp.f_assert(v_ok AND NOT EXISTS (SELECT 1 FROM public.forms_submit_attempts WHERE ip_hash = repeat('7', 64))
+      AND EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sx),
+    'T-PURGE-SAFE-4 the purge failed and was logged, and #4452''s deletes still ran');
+  EXECUTE v_cmd;
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sx),
+    'T-PURGE-SAFE-4 the job run itself purges the abandoned stash');
 END
 $t$;
 
