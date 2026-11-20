@@ -149,7 +149,11 @@ const palette = {
     a45: "rgba(248, 113, 113, 0.45)",
   },
   green: { 500: "#22c55e", 300: "#5ee08f", a12: "rgba(34, 197, 94, 0.12)" },
-  blue: { 500: "#3b82f6", 300: "#8fb3ff", a14: "rgba(59, 130, 246, 0.14)" },
+  blue: {
+    500: "#3b82f6",
+    300: "#8fb3ff",
+    a14: "rgba(59, 130, 246, 0.14)",
+  },
   amber: { 500: "#f59e0b", 300: "#fbbf24", a14: "rgba(245, 158, 11, 0.14)" },
   transparent: "transparent",
   // Status colours that read on a paper (light) surface: receipts, light
@@ -246,6 +250,10 @@ export const color = {
   info: palette.blue[500],
   infoText: palette.blue[300],
   infoTint: palette.blue.a14,
+  /** #4420 Guests side (info blue): composer wash, selected segment / badge fill, hairline. */
+  guestWash: "rgba(59, 130, 246, 0.10)",
+  guestTint2: "rgba(59, 130, 246, 0.22)",
+  guestLine: "rgba(59, 130, 246, 0.45)",
   warning: palette.amber[500],
   warningText: palette.amber[300],
   warningTint: palette.amber.a14,

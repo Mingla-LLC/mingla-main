@@ -29,6 +29,24 @@ export function webPrivacyMaxHeight(): ViewStyle | null {
   };
 }
 
+/**
+ * #4420 A2 — how a Messages screen sizes itself on web.
+ *
+ * Inside the desktop shell (HostDesktopShell: the web top bar sits ABOVE the
+ * route) the screen must FILL the slot the shell leaves it. Pinning it to the
+ * full window height made the page 80px taller than the screen, so #root
+ * scrolled and the composer scrolled out of view at 1280x800 / 1440x900.
+ * There is no soft keyboard on wide desktop, so nothing needs the pin there.
+ *
+ * Outside the shell (phones, narrow web) the pin stays: the visible height,
+ * capped clear of the privacy strip, so the composer rides the keyboard.
+ */
+export function messagesScreenWebSize(windowHeight: number, shellActive: boolean): ViewStyle[] | null {
+  if (Platform.OS !== "web") return null;
+  if (shellActive) return [{ flex: 1, minHeight: 0 }];
+  return webViewportPin(windowHeight);
+}
+
 /** The full pin: the visible height, capped clear of the privacy strip. */
 export function webViewportPin(windowHeight: number): ViewStyle[] | null {
   if (Platform.OS !== "web" || windowHeight <= 0) return null;
