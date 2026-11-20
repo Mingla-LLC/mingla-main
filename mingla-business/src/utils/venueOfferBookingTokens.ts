@@ -61,21 +61,8 @@ export function tokenFromFragment(hash: string | null | undefined): string | nul
  * Take the token from the address bar's fragment (if any), keep it on this
  * device, and remove the fragment from the address bar and history.
  */
-/** True when the address is this item's page (/visit/<id> or /visit/plan/<id>, any case). */
-export function addressNamesGroup(pathname: string, groupId: string): boolean {
-  const match = /^\/visit\/(?:plan\/)?([0-9a-f-]{36})\/?$/i.exec(pathname);
-  return match !== null && match[1].toLowerCase() === groupId.toLowerCase();
-}
-
 export function adoptFragmentToken(groupId: string): string | null {
   if (typeof window === "undefined" || typeof window.location === "undefined") return null;
-  // #4490 Explorer W1 (N-visit-fragment): the route's first render can run
-  // before the router has read the path (groupId is still the placeholder).
-  // Adopting then would file the token under the wrong id and scrub the
-  // fragment, so the real render finds no token ("We couldn't find this
-  // booking" from a valid emailed link). Only the page whose address names
-  // this booking may take its fragment.
-  if (!addressNamesGroup(window.location.pathname, groupId)) return null;
   const token = tokenFromFragment(window.location.hash);
   if (token !== null) saveVenueOfferBookingToken(groupId, token);
   if (window.location.hash.length > 0) scrubVisitAddress({ dropQuery: false });
