@@ -384,8 +384,10 @@ export function audit(base = repoRoot) {
 
   // [TEST-MOD-APPROVED #4276] — [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY
   // fills approved slot 91; every #1772 field and ordering check stays fixed.
+  // [TEST-MOD-APPROVED #4334] — [secret count 90 approved by Seth]: the retired map-vendor token is
+  // unset, so the proof names the exact 90-name envelope.
   for (const needle of [
-    "91-name envelope",
+    "90-name envelope",
     "canonical standard Base64",
     "fail-closed handler ordering",
     "provider executes the Node proof before both happy Deno suites",

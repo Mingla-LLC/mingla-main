@@ -32,14 +32,6 @@
  *       mapboxAddressInputKeyboardCap{,.adversarial}.1027.test.ts — their
  *       jest commands are sealed, immutable assertion capabilities in
  *       .github/ci-batch/MANIFEST.json (Phase 2), so the files keep the name.
- *   [TRANSITIONAL] ALLOWED UNTIL THE LIVE SECRET IS UNSET:
- *     - supabase/secrets.manifest.json and
- *       scripts/secrets/issue_1436_secret_capacity_exit.adversarial.test.mjs
- *       still name MAPBOX_ACCESS_TOKEN because the secret is still set on the
- *       live project (spec v2 rollout step 7, ops cleanup: it stays until the rollback window
- *       closes). Exit condition: the PR that records the unset removes the
- *       manifest row, rewrites that test's fixture, and deletes these two
- *       entries.
  *
  * Exit codes: 0 pass · 1 fail · 2 git/fs error. --self-test checks the detector.
  */
@@ -72,9 +64,6 @@ export const ALLOWED_PATHS = [
   /^supabase\/functions\/mapbox-geocode\/__tests__\/fixtures\//,
   /^\.github\/ci-batch\/MANIFEST\.json$/,
   /^\.github\/scripts\/ci-discovery\/legacy-baseline\.json$/,
-  // [TRANSITIONAL] until MAPBOX_ACCESS_TOKEN is unset on the live project (see header).
-  /^supabase\/secrets\.manifest\.json$/,
-  /^scripts\/secrets\/issue_1436_secret_capacity_exit\.adversarial\.test\.mjs$/,
   // The Feature Guide path registry names the files #4334 deleted (the PR links
   // check counts deleted paths too).
   /^docs\/contracts\/feature-guide-impact\.json$/,

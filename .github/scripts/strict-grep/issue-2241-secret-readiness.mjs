@@ -51,7 +51,8 @@ export function violations(files) {
   // 2026-10-22. No migration-band name fits above the absolute ceiling.
   // #4276: count 91 approved by Seth Ogieva on 2026-11-07 in chat
   // (GOOGLE_SEEDING_API_KEY); the absolute ceiling moves 90 -> 91.
-  if (manifest.secrets?.length !== 91) failures.push("manifest:not_exact_91");
+  // #4334: Seth approved unsetting the retired map-vendor token on 2026-11-20 in chat; the declared set is exactly 90 under the unchanged 87/91 ceilings.
+  if (manifest.secrets?.length !== 90) failures.push("manifest:not_exact_90");
   const records = new Map(
     manifest.secrets?.map((record) => [record.name, record]),
   );
@@ -206,7 +207,7 @@ export function violations(files) {
     [
       "live_name_set_mismatch",
       "in_memory_receipt_authority_required",
-      "remediation_requires_exact_91",
+      "remediation_requires_exact_90",
       "remediation_function_set_mismatch",
       "assertLiveNameParity",
       // #2241: normal mode ACCEPTS the approved band without REQUIRING it.
@@ -244,7 +245,7 @@ export function violations(files) {
       "normal mode accepts the approved migration band",
       "normal mode still rejects any name outside the band",
       "normal mode still rejects a missing declared name",
-      "remediation mode still REQUIRES exactly 91",
+      "remediation mode still REQUIRES exactly 90",
       "every relaxed deploy route runs the fallback watch",
       "the watch fails closed on every way of not observing",
     ],
@@ -382,14 +383,14 @@ function readFiles() {
 
 function fixture() {
   const filler = Array.from(
-    { length: 89 },
+    { length: 88 },
     (_, index) => ({ name: `SAFE_${index}` }),
   );
   return {
     audit:
       "findCallBoundaryArguments dynamic_call_expression_undeclared dynamic_call_expression_unused dynamic_import_not_static callArgumentsAt tokenizeSyntax decodeIdentifierEscape invalid_identifier_escape skipRegexLiteral parseModuleLinkage buildGovernedBindingPlan parameterDefaultReceiver IDENTIFIER_REFERENCE_SITE computed_namespace_member consumedMemberPositions unrecognized_deno_env_access indirect_deno_env_get dynamic_getter_reference_undeclared allowed_identifier_references",
     bandTest:
-      "normal mode accepts the approved migration band normal mode still rejects any name outside the band normal mode still rejects a missing declared name remediation mode still REQUIRES exactly 91 every relaxed deploy route runs the fallback watch the watch fails closed on every way of not observing",
+      "normal mode accepts the approved migration band normal mode still rejects any name outside the band normal mode still rejects a missing declared name remediation mode still REQUIRES exactly 90 every relaxed deploy route runs the fallback watch the watch fails closed on every way of not observing",
     claimFunction:
       'resolveAttendanceClaimPepperRing; issue_order_attendance_claim_proof_v2; p_generation: pepperRing.current.generation; p_allow_retry_rotation: true; json(503; "claim_link_temporarily_unavailable"',
     componentTest:
@@ -448,7 +449,7 @@ function fixture() {
       ],
     }),
     preflight:
-      'live_name_set_mismatch in_memory_receipt_authority_required remediation_requires_exact_91 remediation_function_set_mismatch assertLiveNameParity const acceptedLive = sortedUnique([...manifestNames, ...bandNames]); const requiredLive = mode === "issue-2241-remediation"',
+      'live_name_set_mismatch in_memory_receipt_authority_required remediation_requires_exact_90 remediation_function_set_mismatch assertLiveNameParity const acceptedLive = sortedUnique([...manifestNames, ...bandNames]); const requiredLive = mode === "issue-2241-remediation"',
     resolver:
       "AD_CONVERSION_TOKENS governed_ad_bundle_invalid governed_ad_legacy_fallback legacyName !== LEGACY_NAMES[field]",
     service:
@@ -481,7 +482,7 @@ function selfTest() {
     ["cta", 'name="externalLink" size={18}', "buyer-cta"],
     ["componentTest", "all seven phases", "buyer-component-test"],
     ["componentTest", "navigationsAfter", "buyer-component-test"],
-    ["preflight", "remediation_requires_exact_91", "preflight"],
+    ["preflight", "remediation_requires_exact_90", "preflight"],
     ["preflight", "const acceptedLive", "preflight"],
     [
       "preflight",
@@ -532,7 +533,7 @@ function selfTest() {
     const broken = { ...clean, manifest: JSON.stringify({ secrets }) };
     if (
       !violations(broken).some((failure) =>
-        failure.includes("manifest:not_exact_91")
+        failure.includes("manifest:not_exact_90")
       )
     ) throw new Error("manifest cardinality reversion not caught");
   }

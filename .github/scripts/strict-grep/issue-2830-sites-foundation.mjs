@@ -735,8 +735,9 @@ export function violations(files) {
   if (
     // #3645: the payout-release RAK is the approved 90th name.
     // #4276: count 91 approved by Seth Ogieva on 2026-11-07 in chat (GOOGLE_SEEDING_API_KEY).
-    manifest.rollout?.expected_user_managed_count !== 91 ||
-    manifest.secrets?.length !== 91 ||
+    // #4334: Seth approved unsetting the retired map-vendor token on 2026-11-20 in chat; the declared set is exactly 90 under the unchanged 87/91 ceilings.
+    manifest.rollout?.expected_user_managed_count !== 90 ||
+    manifest.secrets?.length !== 90 ||
     manifest.exceptions?.length !== 1 ||
     manifest.exceptions?.[0]?.issue !== 2830 ||
     sitesSecret?.class !== "credential_bundle" ||
@@ -1442,7 +1443,7 @@ export function violations(files) {
   for (const token of [
     "issue_2830_sites_foundation_happy.test.ts",
     "issue_2893_sites_live_readiness.test.ts",
-    "final 91-name bundled-authority state",
+    "final 90-name bundled-authority state",
   ]) need(files.secretWorkflow ?? "", token, "existing secret CI lane", failures);
   for (const token of [
     "mingla-site-cms-build:",
@@ -1662,7 +1663,7 @@ function selfTest() {
     ["businessPublish", "result_summary?.retryable === true", "result_summary?.retryable !== false", "terminal publication recovery"],
     ["businessView", "if (canCheckAvailability && websiteAvailable === false) {", "if (false) {", "Business Website route"],
     ["businessOverview", "testID=\"overview-ari\"", "testID=\"overview-ari\" Journey state", "customer-safe Website state"],
-    ["secretWorkflow", "final 91-name bundled-authority state", "final state", "existing secret CI lane"],
+    ["secretWorkflow", "final 90-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
     // CMS job step name is unique; strip only that lane's --allowlist command.
     [
