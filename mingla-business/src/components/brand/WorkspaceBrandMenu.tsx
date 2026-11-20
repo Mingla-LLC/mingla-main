@@ -28,10 +28,12 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useRouter } from "expo-router";
 
 import { color, radius, shadow, space, type } from "../../constants/designSystem";
+import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
 import { useBrandSetupStates } from "../../hooks/useBrandSetupStates";
 import { useWorkspaceBrandSwitch } from "../../hooks/useWorkspaceBrandSwitch";
 import type { Brand } from "../../store/currentBrandStore";
+import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { filterBrandsByQuery, showsBrandSearch } from "../../utils/brandSearch";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Icon } from "../ui/Icon";
@@ -115,6 +117,7 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
   testID = "workspace-brand-menu",
 }) => {
   const router = useRouter();
+  const { user } = useAuth();
   const viewport = useWindowDimensions();
   const brandList = useBrandListState();
   const brands = brandList.brands;
@@ -296,7 +299,8 @@ export const WorkspaceBrandMenu: React.FC<WorkspaceBrandMenuProps> = ({
           ? BRAND_SWITCHER_COPY.n3.freeOnlyTag
           : `${setup.kind === "draft" ? `${BRAND_SWITCHER_COPY.n3.draftLabel} · ` : ""}${BRAND_SWITCHER_COPY.n3.progress(setup.doneCount)}`;
     const unfinished = setup.kind !== "none";
-    const canDiscard = setup.kind === "draft" && onDiscardDraft !== undefined;
+    const canDiscard =
+      setup.kind === "draft" && onDiscardDraft !== undefined && canDeleteBrand(brand, user?.id ?? null);
     return (
       <View key={brand.id}>
         {/* The row is a plain box: the switch target, the Continue pill and the

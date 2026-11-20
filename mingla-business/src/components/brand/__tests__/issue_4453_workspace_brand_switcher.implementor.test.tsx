@@ -48,6 +48,7 @@ const mockPush = jest.fn();
 const mockRefetch = jest.fn(async () => undefined);
 const mockCacheListeners = new Set<() => void>();
 
+jest.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ user: { id: "u1" } }) }));
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: (...a: unknown[]) => mockPush(...a) }) }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({
   useResponsiveLayout: () => ({ isWideDesktop: mockWide }),

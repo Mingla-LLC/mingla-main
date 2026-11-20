@@ -26,6 +26,7 @@ import React from "react";
 
 const mockPush = jest.fn();
 const mockSwitch = jest.fn();
+let mockCanDelete = true;
 let mockWide = false;
 let mockBrand: { id: string; displayName: string } | null = null;
 let mockStates: Record<string, unknown> = {};
@@ -50,6 +51,8 @@ jest.mock("../../../hooks/useBrandSetupStates", () => ({
 jest.mock("../../../hooks/useWorkspaceBrandSwitch", () => ({
   useWorkspaceBrandSwitch: () => (b: unknown) => mockSwitch(b),
 }));
+jest.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ user: { id: "u-1" } }) }));
+jest.mock("../../../utils/brandDeletePermission", () => ({ canDeleteBrand: () => mockCanDelete }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../ui/Material", () => ({ Material: ({ children }: { children?: React.ReactNode }) => children }));
 jest.mock("../../ui/TopSheet", () => {
@@ -114,6 +117,7 @@ const openMenu = async (tree: Tree): Promise<void> => {
 beforeEach(() => {
   mockPush.mockClear();
   mockSwitch.mockClear();
+  mockCanDelete = true;
   mockWide = false;
   mockBrand = BRANDS[0]!;
   mockDraftId = "b-draft";
@@ -182,6 +186,13 @@ describe("#4453 one brand menu everywhere", () => {
     await press(tree, "workspace-brand-discard-b-draft");
     expect(onDiscardDraft).toHaveBeenCalledTimes(1);
     expect((onDiscardDraft.mock.calls[0] as unknown[])[0]).toMatchObject({ id: "b-draft" });
+  });
+
+  test("(d2) a draft the user may not delete has no more button, even with a handler", async () => {
+    mockCanDelete = false;
+    const tree = await mount({ onOpenSheet: jest.fn(), onDiscardDraft: jest.fn() });
+    await openMenu(tree);
+    expect(hosts(tree, "workspace-brand-more-b-draft")).toHaveLength(0);
   });
 
   test("(e) the footer actions are real buttons", async () => {
