@@ -21,6 +21,9 @@
  *     form this read cannot see) is NEVER a dead end (review fix 2): Continue
  *     stays on, the server stays the authority, and a refusal with no form
  *     shows a plain line and a Try again that re-reads the form.
+ *   - A read that fails while the step is shown is a connection problem: it
+ *     shows the one buyer connection notice (#4518 BuyerConnectionNotice),
+ *     whose Try again re-reads the form; Continue stays on.
  *   - Answers are kept on screen through a refusal; a newer version of the
  *     form drops only the answers of questions that no longer exist.
  *
@@ -39,6 +42,7 @@ import { BrandFormRenderer, BrandHeader } from "@mingla/form-rendering";
 import { space, type } from "../../../constants/designSystem";
 import { checkoutFormKeys } from "./checkoutFormKeys";
 import {
+  checkoutFormReadFailure,
   fetchCheckoutForm,
   purchaseHandedOffStorageKey,
   purchaseTokenStorageKey,
@@ -50,6 +54,8 @@ import { Button } from "../../ui/Button";
 import { checkoutStyles, color } from "../checkoutTheme";
 import type { CheckoutBrandFormAnswers } from "../CartContext";
 import { businessFormPrimitives } from "./businessFormPrimitives";
+import { BuyerConnectionNotice } from "../../buyer/BuyerConnectionNotice";
+import { isConnectionFailure } from "../../../services/connectionFailure";
 
 export type CheckoutFormProbe = "loading" | "none" | "required" | "optional" | "error";
 
@@ -183,6 +189,8 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
       }
     });
   }, [refetch]);
+  // #4518: the connection notice owns its own retry state; it only needs the re-read.
+  const retryConnection = useCallback((): Promise<unknown> => refetch(), [refetch]);
 
   const [missing, setMissing] = useState<boolean>(true);
   const handleMissing = useCallback((ids: string[]): void => setMissing(ids.length > 0), []);
@@ -208,25 +216,21 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
   // and offer Try again; Continue stays on (never a disabled dead end).
   const refusedWithoutForm = form === null && refusal !== null && !loading;
   const recovery = recoveryAction({
-    failing: loadFailed || refusedWithoutForm,
+    failing: !loadFailed && refusedWithoutForm,
     loading,
     failedRetries,
     canGoBack: onBackToEvent !== undefined,
   });
   // After a failed Try again the copy stops asking for another one.
   const retryExhausted = recovery === "back_to_event";
-  const reason = loadFailed
-    ? retryExhausted
-      ? CHECKOUT_FORM_COPY.retryFailed
-      : CHECKOUT_FORM_COPY.loadFailed
-    : required && missing
-      ? CHECKOUT_FORM_COPY.needsAnswers
-      : null;
-  const refusalLine = refusedWithoutForm
-    ? retryExhausted
-      ? CHECKOUT_FORM_COPY.retryFailed
-      : CHECKOUT_FORM_COPY.noFormRefused
-    : checkoutFormRefusalCopy(refusal);
+  const reason = !loadFailed && required && missing ? CHECKOUT_FORM_COPY.needsAnswers : null;
+  const refusalLine = loadFailed
+    ? null
+    : refusedWithoutForm
+      ? retryExhausted
+        ? CHECKOUT_FORM_COPY.retryFailed
+        : CHECKOUT_FORM_COPY.noFormRefused
+      : checkoutFormRefusalCopy(refusal);
   const payload = (): CheckoutBrandFormAnswers | null =>
     form !== null && form.versionId !== null
       ? { formId: form.formId, versionId: form.versionId, answers }
@@ -242,6 +246,16 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
           caption={CHECKOUT_FORM_COPY.caption(form.brand.displayName)}
         />
       ) : null}
+      {loadFailed ? (
+        <BuyerConnectionNotice
+          variant={isConnectionFailure(checkoutFormReadFailure(query.error)) ? "connection" : "server"}
+          layout="inline"
+          onRetry={retryConnection}
+          onBack={onBackToEvent}
+          testID="checkout-questions-connection"
+          retryTestID="checkout-questions-retry"
+        />
+      ) : null}
       {refusalLine !== null ? (
         <Text style={styles.refusal} accessibilityRole="alert" testID="checkout-questions-refusal">
           {refusalLine}
@@ -252,7 +266,7 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
           {submitError}
         </Text>
       ) : null}
-      {loading ? <Text style={styles.note}>{CHECKOUT_FORM_COPY.loading}</Text> : null}
+      {loading && !loadFailed ? <Text style={styles.note}>{CHECKOUT_FORM_COPY.loading}</Text> : null}
       {recovery === "try_again" ? (
         <Button
           label={CHECKOUT_FORM_COPY.tryAgain}

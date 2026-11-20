@@ -86,6 +86,11 @@ export function parseCheckoutForm(data: unknown): CheckoutForm | null {
   };
 }
 
+/** The error behind a failed form read: the `cause` the read keeps, else the error itself. */
+export function checkoutFormReadFailure(error: unknown): unknown {
+  return error instanceof Error && error.cause !== undefined ? error.cause : error;
+}
+
 /** Throws on a transport or database error, so the step can say so and retry. */
 export async function fetchCheckoutForm(
   eventId: string,
@@ -98,7 +103,9 @@ export async function fetchCheckoutForm(
       ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
     },
   });
-  if (error) throw new Error("checkout_form_read_failed");
+  // #4518: the original error rides along as `cause` so the step can tell a
+  // connection failure from a server error (`checkoutFormReadFailure`).
+  if (error) throw new Error("checkout_form_read_failed", { cause: error });
   const d = (data ?? {}) as Record<string, unknown>;
   return parseCheckoutForm(d.form);
 }

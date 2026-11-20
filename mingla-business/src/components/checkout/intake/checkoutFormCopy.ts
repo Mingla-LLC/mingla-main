@@ -14,7 +14,6 @@ export const CHECKOUT_FORM_COPY = {
   stepTitle: "A few questions",
   caption: (brand: string): string => (brand.length > 0 ? `Questions from ${brand}` : "A few questions"),
   needsAnswers: "Answer the required questions to continue",
-  loadFailed: "Load the questions to continue",
   tryAgain: "Try again",
   // P3-C: offered once a Try again has failed (no retry loop).
   backToEvent: "Back to event",

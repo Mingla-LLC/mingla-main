@@ -30,12 +30,14 @@ jest.mock("@mingla/form-rendering", () =>
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("../../components/ui/Button", () => ({ Button: () => null }));
 jest.mock("../../components/checkout/intake/businessFormPrimitives", () => ({ businessFormPrimitives: {} }));
+jest.mock("../../components/buyer/BuyerConnectionNotice", () => ({ BuyerConnectionNotice: () => null }));
 
 import * as fs from "fs";
 import * as path from "path";
 
 import * as ts from "typescript";
 import {
+  checkoutFormReadFailure,
   fetchCheckoutForm,
   parseCheckoutForm,
   requestPurchaseFormLink,
@@ -50,6 +52,7 @@ import {
   purchaseHandedOff,
 } from "../../components/checkout/intake/CheckoutQuestionsStep";
 import type { BuyerDetails } from "../../components/checkout/CartContext";
+import { isConnectionFailure } from "../connectionFailure";
 
 const ANSWERS = {
   formId: "45140000-0000-4000-8000-000000000f01",
@@ -319,5 +322,44 @@ describe("#4514 W5 fix 4: the after-purchase redirect happens once per checkout 
     } finally {
       g.sessionStorage = prev;
     }
+  });
+});
+
+// ── #4518 merge: a failed form read uses the one buyer connection notice ─────
+describe("#4514 x #4518: the Questions step's load failure is the one connection notice", () => {
+  const stepSrc = (): string =>
+    fs.readFileSync(
+      path.join(path.resolve(__dirname, "../../.."), "src/components/checkout/intake/CheckoutQuestionsStep.tsx"),
+      "utf8",
+    );
+
+  it("renders BuyerConnectionNotice on a failed read, retrying with a re-read, and no copy of its own", () => {
+    const step = stepSrc();
+    expect(step).toMatch(/import \{ BuyerConnectionNotice \} from "\.\.\/\.\.\/buyer\/BuyerConnectionNotice";/);
+    expect(step).toMatch(/\{loadFailed \? \(\s*<BuyerConnectionNotice[\s\S]*?onRetry=\{retryConnection\}[\s\S]*?onBack=\{onBackToEvent\}/);
+    expect(step).toContain("const retryConnection = useCallback((): Promise<unknown> => refetch(), [refetch]);");
+    // The branch's own load-failure line is gone; the refusal path keeps its words.
+    expect(step).not.toContain("CHECKOUT_FORM_COPY.loadFailed");
+    expect((CHECKOUT_FORM_COPY as Record<string, unknown>).loadFailed).toBeUndefined();
+    expect(step).toContain("CHECKOUT_FORM_COPY.noFormRefused");
+  });
+
+  it("keeps the transport error as the cause, so a dropped connection reads as one", async () => {
+    const fetchFailed = Object.assign(new Error("Failed to send a request to the Edge Function"), {
+      name: "FunctionsFetchError",
+    });
+    invoke.mockResolvedValueOnce({ data: null, error: fetchFailed });
+    const thrown = await fetchCheckoutForm("e1").catch((e: unknown) => e);
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe("checkout_form_read_failed");
+    expect(isConnectionFailure(checkoutFormReadFailure(thrown))).toBe(true);
+
+    const serverSaidNo = Object.assign(new Error("Edge Function returned a non-2xx status code"), {
+      name: "FunctionsHttpError",
+      status: 500,
+    });
+    invoke.mockResolvedValueOnce({ data: null, error: serverSaidNo });
+    const thrown2 = await fetchCheckoutForm("e1").catch((e: unknown) => e);
+    expect(isConnectionFailure(checkoutFormReadFailure(thrown2))).toBe(false);
   });
 });
