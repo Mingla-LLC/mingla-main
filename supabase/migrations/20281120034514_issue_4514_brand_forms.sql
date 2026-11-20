@@ -1860,10 +1860,13 @@ $fn$;
 -- own ticket is the one whose holder is the buyer (by user, else by holder or
 -- attendee email); with no holder on the ticket, the order's first ticket. A ticket
 -- sent to a friend (#4063, transfer_state 'claimed') is another ticket of the order.
+-- plpgsql on purpose: a SQL-language body is validated at CREATE time, and
+-- filtered replay lanes skip the migrations that add tickets.holder_user_id (#2492).
 CREATE FUNCTION public.brand_form_door_order_header(p_order_id uuid, p_ticket_id uuid) RETURNS text
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
-  SELECT CASE WHEN p_ticket_id IS NULL OR EXISTS (
+BEGIN
+  RETURN CASE WHEN p_ticket_id IS NULL OR EXISTS (
        SELECT 1 FROM public.tickets t JOIN public.orders o ON o.id = t.order_id
         WHERE t.id = p_ticket_id AND t.order_id = p_order_id
           AND CASE
@@ -1874,6 +1877,7 @@ AS $fn$
                               ORDER BY t2.created_at, t2.id LIMIT 1)
               END) THEN NULL
     ELSE (SELECT public.brand_form_short_name(o.buyer_name) FROM public.orders o WHERE o.id = p_order_id) END;
+END;
 $fn$;
 
 -- The automatic line (§6): only questions marked "show at the door" in BOTH the
