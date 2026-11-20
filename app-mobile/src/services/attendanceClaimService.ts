@@ -35,7 +35,12 @@ export type ClaimedEntry = {
     | "reservation"
     | "stay_group"
     | "venue_order"
-    | "ticket";
+    | "ticket"
+    // #4490 Explorer W1: venue offer bookings, memberships, waitlist places, Till receipts.
+    | "venue_booking"
+    | "venue_membership"
+    | "venue_waitlist"
+    | "venue_till_sale";
   id: string;
   routeKind:
     | "order"
@@ -43,7 +48,11 @@ export type ClaimedEntry = {
     | "reservation"
     | "stay"
     | "venue_order"
-    | "held_ticket";
+    | "held_ticket"
+    | "venue_booking"
+    | "venue_membership"
+    | "venue_waitlist"
+    | "venue_till_sale";
   routeId: string;
   offeringType:
     | "event"
@@ -82,6 +91,10 @@ const CLAIM_KINDS = new Set<ClaimedEntry["kind"]>([
   "stay_group",
   "venue_order",
   "ticket",
+  "venue_booking",
+  "venue_membership",
+  "venue_waitlist",
+  "venue_till_sale",
 ]);
 const CLAIM_ROUTE_KINDS = new Set<ClaimedEntry["routeKind"]>([
   "order",
@@ -90,6 +103,10 @@ const CLAIM_ROUTE_KINDS = new Set<ClaimedEntry["routeKind"]>([
   "stay",
   "venue_order",
   "held_ticket",
+  "venue_booking",
+  "venue_membership",
+  "venue_waitlist",
+  "venue_till_sale",
 ]);
 const CLAIM_OFFERING_TYPES = new Set<ClaimedEntry["offeringType"]>([
   "event",

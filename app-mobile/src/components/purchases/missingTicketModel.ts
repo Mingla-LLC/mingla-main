@@ -16,7 +16,10 @@ import { formatStartsAtLabel } from "../../utils/zoneLabel";
 export function claimedEntryPath(entry: ClaimedEntry): string {
   if (
     entry.routeKind === "order" || entry.routeKind === "rsvp" ||
-    entry.routeKind === "reservation" || entry.routeKind === "venue_order"
+    entry.routeKind === "reservation" || entry.routeKind === "venue_order" ||
+    // #4490 Explorer W1: venue bookings, plans, waitlist places, Till receipts.
+    entry.routeKind === "venue_booking" || entry.routeKind === "venue_membership" ||
+    entry.routeKind === "venue_waitlist" || entry.routeKind === "venue_till_sale"
   ) {
     return `/purchases/${entry.routeKind}/${encodeURIComponent(entry.routeId)}`;
   }
