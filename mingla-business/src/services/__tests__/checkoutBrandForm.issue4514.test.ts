@@ -34,20 +34,13 @@ jest.mock("../../components/checkout/intake/businessFormPrimitives", () => ({ bu
 import * as fs from "fs";
 import * as path from "path";
 
-import {
-  BRAND_FORM_CHECKOUT_STEP,
-  buyerWithoutBrandForm,
-  checkoutBrandFormFields,
-} from "../ticketCheckoutService";
+import * as ts from "typescript";
 import {
   fetchCheckoutForm,
   parseCheckoutForm,
   requestPurchaseFormLink,
 } from "../checkoutBrandFormService";
 import { checkoutFormRefusalCopy, CHECKOUT_FORM_COPY } from "../../components/checkout/intake/checkoutFormCopy";
-import { formRefusalOf, questionsParamRefusal } from "../checkoutFormMarker";
-import { paidCheckoutErrorMessage, PAID_CHECKOUT_FAILED_MESSAGE } from "../ticketCheckoutService";
-import { freeCheckoutErrorMessage, FREE_CHECKOUT_FAILED_MESSAGE } from "../checkoutErrorCopy";
 import {
   canContinueStep,
   markPurchaseHandedOff,
@@ -64,23 +57,46 @@ const ANSWERS = {
 const BUYER: BuyerDetails = { name: "Ann", email: "a@example.test", phone: "+12025550101", marketingOptIn: true };
 const DEF = { schema: "mingla.brand_form.v1", title: "T", questions: [{ id: "q1", position: 0, type: "short_text", label: "Q", required: true }] };
 
+const ROOT = path.resolve(__dirname, "../../..");
+const readSrc = (p: string): string => fs.readFileSync(path.join(ROOT, p), "utf8");
+
 describe("#4514 W5 the create body", () => {
-  it("always sends the capability marker, and the answers only when the step collected them", () => {
-    expect(BRAND_FORM_CHECKOUT_STEP).toBe(1);
-    expect(checkoutBrandFormFields(BUYER)).toEqual({ brandFormStep: 1 });
-    expect(checkoutBrandFormFields({ ...BUYER, brandForm: null })).toEqual({ brandFormStep: 1 });
-    expect(checkoutBrandFormFields({ ...BUYER, brandForm: ANSWERS })).toEqual({
-      brandFormStep: 1,
-      brandForm: ANSWERS,
-    });
+  // Inline on purpose (the eager bundle budget): the marker and the lift of the
+  // answers out of `buyer` are the only brand form code on the eager path.
+  const svc = readSrc("src/services/ticketCheckoutService.ts");
+  it("always sends the capability marker, and the answers top-level", () => {
+    expect(svc).toContain("const { brandForm, ...buyerFields } = input.buyer;");
+    expect(svc).toMatch(/buyer: buyerFields,\s*\n\s*brandFormStep: 1,\s*\n\s*brandForm,/);
+    expect(svc).not.toMatch(/buyer: input\.buyer\b/);
   });
 
-  it("never sends the answers inside buyer", () => {
-    const out = buyerWithoutBrandForm({ ...BUYER, brandForm: ANSWERS });
-    expect(out).toEqual(BUYER);
-    expect("brandForm" in out).toBe(false);
+  it("keeps no forms module on the eager path", () => {
+    expect(svc).not.toMatch(/from "[^"]*(brandFormsCopy|checkoutFormMarker|brandFormKeys|intake\/)/);
   });
 });
+
+/** The refusal helpers each route carries inline, compiled and run as written. */
+function routeHelpers(file: string): {
+  formRefusalOf: (c: unknown) => string | null;
+  questionsParamRefusal?: (c: unknown) => string | null;
+  BRAND_FORM_SERVER_FAILURE: RegExp;
+} {
+  const src = readSrc(file);
+  const start = src.indexOf("const FORM_REFUSAL = ");
+  const end = src.indexOf("\n", src.indexOf("const BRAND_FORM_SERVER_FAILURE = "));
+  expect(start).toBeGreaterThan(-1);
+  const js = ts.transpileModule(src.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ES2019 } }).outputText;
+  const names = ["formRefusalOf", "BRAND_FORM_SERVER_FAILURE"].concat(js.includes("questionsParamRefusal") ? ["questionsParamRefusal"] : []);
+  // eslint-disable-next-line no-new-func
+  return new Function(`${js}; return { ${names.join(", ")} };`)() as ReturnType<typeof routeHelpers>;
+}
+
+const ROUTES = [
+  "app/checkout/[eventId]/buyer.tsx",
+  "app/checkout-experience/[experienceEventId]/buyer.tsx",
+  "app/checkout/[eventId]/payment.tsx",
+  "app/checkout-experience/[experienceEventId]/payment.tsx",
+] as const;
 
 describe("#4514 W5 the page's form", () => {
   it("maps a live required or optional form, and nothing else", () => {
@@ -186,20 +202,24 @@ describe("#4514 W5 fix 1: the Details probe uses the buyer's checkout credential
 });
 
 describe("#4514 W5 fix 2: no dead end", () => {
-  it("a server failure of the check or the stash never reopens the Questions step", () => {
-    expect(formRefusalOf("brand_form_check_failed")).toBeNull();
-    expect(formRefusalOf("brand_form_stash_failed")).toBeNull();
-    expect(formRefusalOf("form_answers_required")).toBe("form_answers_required");
-    expect(formRefusalOf("form_changed")).toBe("form_changed");
-    expect(formRefusalOf(undefined)).toBeNull();
+  it.each(ROUTES)("%s: a server failure of the check or the stash never reopens the Questions step", (file) => {
+    const h = routeHelpers(file);
+    expect(h.formRefusalOf("brand_form_check_failed")).toBeNull();
+    expect(h.formRefusalOf("brand_form_stash_failed")).toBeNull();
+    expect(h.formRefusalOf("form_answers_required")).toBe("form_answers_required");
+    expect(h.formRefusalOf("form_answers_invalid")).toBe("form_answers_invalid");
+    expect(h.formRefusalOf("form_changed")).toBe("form_changed");
+    expect(h.formRefusalOf(undefined)).toBeNull();
+    expect(h.BRAND_FORM_SERVER_FAILURE.test("brand_form_check_failed")).toBe(true);
+    expect(h.BRAND_FORM_SERVER_FAILURE.test("brand_form_stash_failed")).toBe(true);
+    expect(h.BRAND_FORM_SERVER_FAILURE.test("form_answers_required")).toBe(false);
   });
 
-  it("they show the normal retryable checkout error, paid and free", () => {
-    for (const code of ["brand_form_check_failed", "brand_form_stash_failed"]) {
-      const err = Object.assign(new Error("Edge Function returned a non-2xx status code"), { code, status: 409 });
-      expect(paidCheckoutErrorMessage(err)).toBe(PAID_CHECKOUT_FAILED_MESSAGE);
-      expect(freeCheckoutErrorMessage(err)).toBe(FREE_CHECKOUT_FAILED_MESSAGE);
-    }
+  it.each(ROUTES)("%s: those failures show the normal retryable checkout error", (file) => {
+    const src = readSrc(file);
+    const msg = file.includes("payment") ? "PAID_CHECKOUT_FAILED_MESSAGE" : "FREE_CHECKOUT_FAILED_MESSAGE";
+    expect(src).toMatch(new RegExp(`BRAND_FORM_SERVER_FAILURE\\.test\\([\\s\\S]{0,120}\\)\\s*\\?[\\s\\S]{0,200}?${msg}`));
+    expect(src).not.toMatch(/brand_form_\\w\+\)\$/);
   });
 
   it("with no form to show, Continue is on; a form on screen still gates required answers", () => {
@@ -220,12 +240,19 @@ describe("#4514 W5 fix 2: no dead end", () => {
 });
 
 describe("#4514 W5 fix 7: payment sends the real refusal code back to the step", () => {
-  it("maps the questions param to the real code, and an old link to required", () => {
-    expect(questionsParamRefusal("form_changed")).toBe("form_changed");
-    expect(questionsParamRefusal("form_answers_invalid")).toBe("form_answers_invalid");
-    expect(questionsParamRefusal("1")).toBe("form_answers_required");
-    expect(questionsParamRefusal("brand_form_stash_failed")).toBeNull();
-    expect(questionsParamRefusal(undefined)).toBeNull();
+  it.each(ROUTES.slice(0, 2))("%s maps the questions param to the real code, and an old link to required", (file) => {
+    const q = routeHelpers(file).questionsParamRefusal!;
+    expect(q("form_changed")).toBe("form_changed");
+    expect(q("form_answers_invalid")).toBe("form_answers_invalid");
+    expect(q("1")).toBe("form_answers_required");
+    expect(q("brand_form_stash_failed")).toBeNull();
+    expect(q(undefined)).toBeNull();
+  });
+
+  it.each(ROUTES.slice(2))("%s sends the real code back (and keeps a ticket link)", (file) => {
+    const src = readSrc(file);
+    expect(src).toMatch(/buyer\?questions=\$\{formCode\}/);
+    if (file.startsWith("app/checkout/")) expect(src).toContain("&ticketLink=${encodeURIComponent(ticketLinkToken)}");
   });
 });
 

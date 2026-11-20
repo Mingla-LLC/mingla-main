@@ -60,7 +60,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { space } from "../../../src/constants/designSystem";
-import { formRefusalOf } from "../../../src/services/checkoutFormMarker";
 import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout Pay CTA, matching the public page.
@@ -153,6 +152,16 @@ const RESUMABLE_SESSION_STATUSES = new Set([
   "requires_payment",
   "processing_payment",
 ]);
+
+// #4514 wave 5 — the refusals that reopen the Questions step. Only these: a
+// server failure of the check or the stash (brand_form_check_failed /
+// brand_form_stash_failed) is the normal retryable error and never opens a step
+// the buyer cannot finish. Inline in each route on purpose: a shared module
+// would land in the eager bundle (the #4514 bundle budget).
+const FORM_REFUSAL = /^(form_answers_required|form_answers_invalid|form_changed)$/;
+const formRefusalOf = (code: unknown): string | null =>
+  typeof code === "string" && FORM_REFUSAL.test(code) ? code : null;
+const BRAND_FORM_SERVER_FAILURE = /^brand_form_(check|stash)_failed$/;
 
 export default function CheckoutPaymentScreen(): React.ReactElement {
   return (
@@ -726,7 +735,11 @@ function CheckoutPaymentScreenContent({
             (error as { code?: string } | null)?.code ?? "",
           )
             ? EXTRAS_CHANGED_MESSAGE
-            : paidCheckoutErrorMessage(error);
+            : BRAND_FORM_SERVER_FAILURE.test((error as { code?: string } | null)?.code ?? "")
+              ? // #4514 — the form check or stash failed on the server before any
+                // charge: the normal retryable error, never the Questions step.
+                PAID_CHECKOUT_FAILED_MESSAGE
+              : paidCheckoutErrorMessage(error);
           setPaymentError(message);
           mixpanelService.track("ticket_checkout_failed", {
             surface,

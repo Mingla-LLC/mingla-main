@@ -796,9 +796,6 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   // of the state of this sale", which is the recoverable, in-progress case far
   // more often than not — and it is the ONLY one where telling the guest to
   // wait rather than retry immediately is the right instruction.
-  // #4514 — a brand form check or stash that failed on the server is the
-  // normal retryable error: nothing was charged and trying again is right.
-  if (code?.startsWith("brand_form_")) return PAID_CHECKOUT_FAILED_MESSAGE;
   if (status === 409) return PAID_CHECKOUT_IN_PROGRESS_MESSAGE;
   // Copy this module already owns must pass through unchanged.
   const message =
@@ -814,18 +811,10 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   return PAID_CHECKOUT_FAILED_MESSAGE;
 };
 
-// #4514 wave 5 (C1) — the marker and body helpers live in a tiny module with
-// no imports, so the eager checkout code carries nothing else of the forms.
-import {
-  BRAND_FORM_CHECKOUT_STEP,
-  buyerWithoutBrandForm,
-  checkoutBrandFormFields,
-} from "./checkoutFormMarker";
-export { BRAND_FORM_CHECKOUT_STEP, buyerWithoutBrandForm, checkoutBrandFormFields };
-
 export const createTicketCheckout = async (
   input: TicketCheckoutCreateInput,
 ): Promise<TicketCheckoutCreateResult> => {
+  const { brandForm, ...buyerFields } = input.buyer;
   const isCheckoutV2 =
     input.checkoutContractVersion === TICKET_CHECKOUT_CONTRACT_VERSION;
   if (isCheckoutV2 && !isCheckoutAttemptId(input.checkoutAttemptId)) {
@@ -889,10 +878,14 @@ export const createTicketCheckout = async (
             purchaseTermsAccepted: true,
           }
         : {}),
-      // #4514 wave 5 — the Questions step's answers travel top-level, never
-      // inside `buyer`; the marker says this client can show the step (C1).
-      buyer: buyerWithoutBrandForm(input.buyer),
-      ...checkoutBrandFormFields(input.buyer),
+      // #4514 wave 5 (C1) — `brandFormStep: 1` is the capability marker (this
+      // client shows the Questions step; mirrors BRAND_FORM_CHECKOUT_STEP in
+      // supabase/functions/_shared/brandFormsContract.ts). The step's answers
+      // travel top-level, never inside `buyer`. Kept inline: it is the only
+      // brand form code on the eager path (the bundle budget, #4514 review).
+      buyer: buyerFields,
+      brandFormStep: 1,
+      brandForm,
       ...(typeof input.discountCode === "string" &&
       input.discountCode.length > 0
         ? { discountCode: input.discountCode }

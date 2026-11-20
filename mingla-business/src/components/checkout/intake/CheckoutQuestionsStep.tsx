@@ -37,7 +37,7 @@ import type { BrandAnswers } from "@mingla/form-rendering";
 import { BrandFormRenderer, BrandHeader } from "@mingla/form-rendering";
 
 import { space, type } from "../../../constants/designSystem";
-import { brandFormKeys } from "../../../hooks/brandFormKeys";
+import { checkoutFormKeys } from "./checkoutFormKeys";
 import {
   fetchCheckoutForm,
   purchaseHandedOffStorageKey,
@@ -82,7 +82,7 @@ export function answersForForm(
 }
 
 export const checkoutFormQueryOptions = (eventId: string, ticketLinkToken: string | null = null) => ({
-  queryKey: brandFormKeys.checkoutForm(eventId, ticketLinkToken !== null),
+  queryKey: checkoutFormKeys.forEvent(eventId, ticketLinkToken !== null),
   queryFn: () => fetchCheckoutForm(eventId, ticketLinkToken),
   staleTime: 30_000,
   retry: 1,

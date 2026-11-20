@@ -69,6 +69,7 @@ import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import {
   createTicketCheckout,
   FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
+  FREE_CHECKOUT_FAILED_MESSAGE,
   freeCheckoutErrorMessage,
   isFreeReservationAlreadyExists,
 } from "../../../src/services/ticketCheckoutService";
@@ -101,10 +102,6 @@ import {
   useCart,
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
-import {
-  formRefusalOf,
-  questionsParamRefusal,
-} from "../../../src/services/checkoutFormMarker";
 import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
 import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
@@ -135,6 +132,18 @@ const CheckoutQuestionsStep = React.lazy(() =>
     (module) => ({ default: module.CheckoutQuestionsStep }),
   ),
 );
+// #4514 wave 5 — the refusals that reopen the Questions step. Only these: a
+// server failure of the check or the stash (brand_form_check_failed /
+// brand_form_stash_failed) is the normal retryable error and never opens a step
+// the buyer cannot finish. Inline in each route on purpose: a shared module
+// would land in the eager bundle (the #4514 bundle budget).
+const FORM_REFUSAL = /^(form_answers_required|form_answers_invalid|form_changed)$/;
+const formRefusalOf = (code: unknown): string | null =>
+  typeof code === "string" && FORM_REFUSAL.test(code) ? code : null;
+/** The `questions` param payment sets: the real refusal code ("1" from an older link). */
+const questionsParamRefusal = (param: unknown): string | null =>
+  param === "1" ? "form_answers_required" : formRefusalOf(param);
+const BRAND_FORM_SERVER_FAILURE = /^brand_form_(check|stash)_failed$/;
 const FORM_STEP_NAMES = ["Your spot", "Details", "Questions", "Payment"] as const;
 
 // #4420 — read per render: the tokens follow the host palette.
@@ -515,7 +524,13 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           setQuestionsOpen(true);
           return;
         }
-        setSubmitError(freeCheckoutErrorMessage(error));
+        // #4514 — a server failure of the form check or stash happened before
+        // any reservation: the normal retryable error, never the step.
+        setSubmitError(
+          BRAND_FORM_SERVER_FAILURE.test((error as { code?: string } | null)?.code ?? "")
+            ? FREE_CHECKOUT_FAILED_MESSAGE
+            : freeCheckoutErrorMessage(error),
+        );
       } finally {
         submitInFlight.current = false;
         setSubmitting(false);

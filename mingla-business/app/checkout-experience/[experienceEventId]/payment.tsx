@@ -40,13 +40,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { space } from "../../../src/constants/designSystem";
-import { formRefusalOf } from "../../../src/services/checkoutFormMarker";
 import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { isRequiredPhoneValid } from "../../../src/utils/phone";
 import {
   confirmTicketCheckout,
   createTicketCheckout,
+  PAID_CHECKOUT_FAILED_MESSAGE,
   paidCheckoutErrorMessage,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
   ticketCheckoutProviderHandoff,
@@ -104,6 +104,16 @@ const TicketQuoteSummary = React.lazy(() =>
     (module) => ({ default: module.TicketQuoteSummary }),
   ),
 );
+
+// #4514 wave 5 — the refusals that reopen the Questions step. Only these: a
+// server failure of the check or the stash (brand_form_check_failed /
+// brand_form_stash_failed) is the normal retryable error and never opens a step
+// the buyer cannot finish. Inline in each route on purpose: a shared module
+// would land in the eager bundle (the #4514 bundle budget).
+const FORM_REFUSAL = /^(form_answers_required|form_answers_invalid|form_changed)$/;
+const formRefusalOf = (code: unknown): string | null =>
+  typeof code === "string" && FORM_REFUSAL.test(code) ? code : null;
+const BRAND_FORM_SERVER_FAILURE = /^brand_form_(check|stash)_failed$/;
 
 export default function CheckoutExperiencePaymentScreen(): React.ReactElement {
   return (
@@ -461,7 +471,13 @@ function CheckoutExperiencePaymentScreenContent({
           // every handled refusal as "Edge Function returned a non-2xx status
           // code"; the mapper is total and turns each bounded case into a
           // sentence that also says whether money moved.
-          const message = paidCheckoutErrorMessage(error);
+          // #4514 — the form check or stash failed on the server before any
+          // charge: the normal retryable error, never the Questions step.
+          const message = BRAND_FORM_SERVER_FAILURE.test(
+            (error as { code?: string } | null)?.code ?? "",
+          )
+            ? PAID_CHECKOUT_FAILED_MESSAGE
+            : paidCheckoutErrorMessage(error);
           setPaymentError(message);
           mixpanelService.track("ticket_checkout_failed", {
             surface,

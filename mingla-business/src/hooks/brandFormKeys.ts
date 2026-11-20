@@ -19,12 +19,6 @@ export const brandFormKeys = {
   /** Wave 4 review: the host's delivery log for one form on one page (optionally one guest). */
   requestLog: (formId: string, eventId: string, subject: string) =>
     ["brand-forms", "request-log", formId, eventId, subject] as const,
-  /**
-   * Wave 5: the page's form as a buyer's checkout reads it, with or without a
-   * private ticket link (the credential changes what the server shows).
-   */
-  checkoutForm: (eventId: string, withTicketLink: boolean) =>
-    ["brand-forms", "checkout", eventId, withTicketLink ? "link" : "plain"] as const,
   /** The key of a read that is switched off because its id is missing (never fetched). */
   idle: (
     read: "list" | "counts" | "detail" | "responses" | "event-attachment" | "tile" | "roster-answers" | "request-preview" | "request-log",
