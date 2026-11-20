@@ -6,11 +6,12 @@
  */
 import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
 import type { BrandGuestPeoplePanelProps } from "./GroupChatPanel";
-import { ensureMessagesEnglish } from "./LazyGroupChatPanel";
+import { ensureMessagesEnglish, threadSupport } from "./LazyGroupChatPanel";
 
 export const LazyBrandGuestPeoplePanel = createRetryableLazyErrorBoundary<BrandGuestPeoplePanelProps>(
   async () => {
     const [panel] = await Promise.all([import("./GroupChatPanel"), ensureMessagesEnglish()]);
+    panel.setMessagesSupport(threadSupport());
     return { default: panel.BrandGuestPeoplePanel };
   },
   { loadingLabel: "Loading the guest list", style: { flex: 1 } },

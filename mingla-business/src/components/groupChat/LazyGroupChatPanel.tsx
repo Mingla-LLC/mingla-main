@@ -46,7 +46,10 @@ export const ensureMessagesEnglish = (): Promise<void> =>
 /** One request per session; a failed load is retried on the next call. */
 const loadGroupChatPanel = (): Promise<GroupChatPanelModule> => {
   groupChatPanelPromise ??= Promise.all([import("./GroupChatPanel"), ensureMessagesEnglish()])
-    .then(([module]) => module)
+    .then(([module]) => {
+      module.setMessagesSupport(threadSupport());
+      return module;
+    })
     .catch((error: unknown) => {
       groupChatPanelPromise = null;
       throw error;

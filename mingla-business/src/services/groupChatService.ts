@@ -233,12 +233,17 @@ export async function markBrandGuestChatRead(
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth.user?.id ?? null;
   if (userId === null) return { error: "Not signed in" };
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("conversation_participants")
     .update({ last_read_at: new Date().toISOString() })
     .eq("conversation_id", conversationId)
-    .eq("user_id", userId);
-  return { error: error ? error.message : null };
+    .eq("user_id", userId)
+    .select("id");
+  if (error) return { error: error.message };
+  // 0 rows means the marker did not move (not a participant, or RLS refused):
+  // say so, never a silent success.
+  if (!data || data.length === 0) return { error: "Could not mark this chat read" };
+  return { error: null };
 }
 
 export async function setBroadcastOnly(

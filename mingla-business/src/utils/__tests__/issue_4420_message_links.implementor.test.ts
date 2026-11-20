@@ -70,11 +70,12 @@ describe("SC-15 the linkify tokenizer", () => {
     expect(links("foo.www.bar.com")).toEqual([]);
   });
 
-  test("links open in the in-app browser (phones) or a noopener tab (web)", () => {
+  test("links open in the in-app browser (phones) or the shared openExternal tab (web)", () => {
     const opener = source("src/components/messages/openMessageLink.ts");
     expect(opener).toContain('await import("expo-web-browser")');
     expect(opener).toContain("WebBrowser.openBrowserAsync(url)");
-    expect(opener).toContain('window.open(url, "_blank", "noopener,noreferrer")');
+    expect(opener).toContain("openExternal(url)");
+    expect(opener).not.toContain("window.open");
     expect(opener).toContain("if (!isOpenableMessageLink(url)) throw");
   });
 

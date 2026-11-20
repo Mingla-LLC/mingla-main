@@ -67,7 +67,15 @@ import {
   compactGuestsChrome,
 } from "../../utils/brandGuestAudience";
 import type { BrandThreadSendTarget } from "../../utils/brandThreadSend";
-import { threadSupport } from "./LazyGroupChatPanel";
+// #4420: the on-intent Messages helpers, handed over by the lazy loaders once
+// they resolve. Held here, in the Guest chat chunk, so this file never imports
+// LazyGroupChatPanel back (a require cycle) and no eager module has to hold them.
+type MessagesSupport = typeof import("../../i18n/brandMessagesEnglish");
+let loadedSupport = null as unknown as MessagesSupport;
+export const setMessagesSupport = (support: MessagesSupport): void => {
+  loadedSupport = support;
+};
+const threadSupport = (): MessagesSupport => loadedSupport;
 
 /**
  * #4420 — the Guests side of a brand's one thread. The thread screen owns the
