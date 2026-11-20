@@ -56,7 +56,7 @@ export function TodayMoneyTiles({
         accessibilityLabel={`${copy.label}, ${value}. Show the parts`}
         disabled={m === null}
         onPress={() => setOpen(kind)}
-        style={({ pressed }) => [tileStyle, pressed ? styles.pressed : null]}
+        style={({ pressed }) => [tileStyle, styles.moneyTile, pressed ? styles.pressed : null]}
         testID={`venue-today-money-${kind}`}
       >
         <KpiTile label={copy.label} value={value} sub={copy.sub} />
@@ -119,6 +119,8 @@ export function TodayMoneyTiles({
 }
 
 const styles = StyleSheet.create({
+  // The subs are two short sentences; give them room so they never clip.
+  moneyTile: { flexBasis: 220, minWidth: 200 },
   pressed: { opacity: 0.85 },
   error: { flexBasis: "100%", gap: space[2], alignItems: "flex-start" },
   errorText: { ...type.small, color: color.errorText },
