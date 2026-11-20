@@ -1973,11 +1973,6 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingRight: space[2],
   },
-  pickerPlaceholder: {
-    fontSize: type.body.fontSize,
-    lineHeight: type.body.lineHeight,
-    color: color.text3,
-  },
 
   // Toggle row (Free / Unlimited / new modifiers)
   toggleRow: {
@@ -2076,55 +2071,6 @@ const styles = StyleSheet.create({
     minHeight: 64,
   },
 
-  // Sale period
-  saleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space[1],
-  },
-  salePickerRow: {
-    flex: 1,
-    paddingHorizontal: space[4],
-    paddingVertical: space[4],
-    borderRadius: radiusTokens.md,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: color.line,
-    backgroundColor: color.fill.inset,
-  },
-  clearBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: color.fill.tile,
-    borderWidth: 1,
-    borderColor: color.lineStrong,
-  },
-  salePickerDockWrap: {
-    paddingHorizontal: space[4],
-    paddingBottom: space[4],
-    paddingTop: space[2],
-  },
-  salePickerDockCard: {
-    // GlassCard provides surface; no extra styling.
-  },
-  salePickerDockRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: space[2],
-  },
-  salePickerDockTitle: {
-    fontSize: type.small.fontSize,
-    fontWeight: "600",
-    color: color.text1,
-  },
-  salePicker: {
-    width: "100%",
-  },
 
   // Visibility / Available-at sub-sheet rows
   visRow: {
