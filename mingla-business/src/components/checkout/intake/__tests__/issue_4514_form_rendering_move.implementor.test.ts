@@ -18,6 +18,8 @@ jest.mock("@react-native-community/datetimepicker", () => ({ __esModule: true, d
 jest.mock("../IntakeQuestionFileUpload", () => ({ IntakeQuestionFileUpload: () => null }));
 // Wave 5: the lazy owner also exports the checkout step (expo-router); not under test here.
 jest.mock("../CheckoutQuestionsStep", () => ({ CheckoutQuestionsStep: () => null, PurchaseFormHandoff: () => null }));
+// Wave 6: the lazy owner also exports the door answers sheet; not under test here.
+jest.mock("../../../scanner/DoorAnswersSheet", () => ({ DoorAnswersSheet: () => null }));
 
 import {
   formStylesFor,
@@ -61,6 +63,9 @@ describe("#4514 — the renderers live in @mingla/form-rendering", () => {
   const CHUNK_ONLY = [
     "checkout/intake/CheckoutQuestionsStep.tsx",
     "services/checkoutBrandFormService.ts",
+    // Wave 6: "See all answers" on the ticket scan result and its read model.
+    "scanner/DoorAnswersSheet.tsx",
+    "scanner/doorFullAnswersModel.ts",
   ];
   test("no Host module imports the renderers or their owner statically (they would be hoisted into the eager bundle)", () => {
     const bizRoot = path.join(ROOT, "mingla-business");

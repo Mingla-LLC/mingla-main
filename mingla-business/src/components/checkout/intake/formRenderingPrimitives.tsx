@@ -31,6 +31,9 @@ import {
 export { businessFormPrimitives } from "./businessFormPrimitives";
 import { businessFormPrimitives } from "./businessFormPrimitives";
 
+/** #4514 wave 6: "See all answers" on the ticket scan result (read-only renderer). */
+export { DoorAnswersSheet } from "../../scanner/DoorAnswersSheet";
+
 /** #4514 wave 5: the checkout Questions step and the after-purchase hand-off. */
 export { CheckoutQuestionsStep, PurchaseFormHandoff } from "./CheckoutQuestionsStep";
 

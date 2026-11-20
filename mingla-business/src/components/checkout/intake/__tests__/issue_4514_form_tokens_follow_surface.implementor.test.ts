@@ -13,6 +13,8 @@ jest.mock("@react-native-community/datetimepicker", () => ({ __esModule: true, d
 jest.mock("../IntakeQuestionFileUpload", () => ({ IntakeQuestionFileUpload: () => null }));
 // Wave 5: the lazy owner also exports the checkout step (expo-router); not under test here.
 jest.mock("../CheckoutQuestionsStep", () => ({ CheckoutQuestionsStep: () => null, PurchaseFormHandoff: () => null }));
+// Wave 6: the lazy owner also exports the door answers sheet; not under test here.
+jest.mock("../../../scanner/DoorAnswersSheet", () => ({ DoorAnswersSheet: () => null }));
 
 import { formStylesFor } from "@mingla/form-rendering";
 import { businessFormPrimitives } from "../formRenderingPrimitives";

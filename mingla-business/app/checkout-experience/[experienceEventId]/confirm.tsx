@@ -17,7 +17,10 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
+// #4514 — the after-purchase form hand-off renders fields here: the wrapper
+// keeps a focused field clear of the keyboard (orch-0892).
+import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
