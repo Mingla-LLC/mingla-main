@@ -369,8 +369,16 @@ BEGIN
     true);
   SELECT total_cents INTO v_bill FROM public.venue_orders WHERE id = v_settle;
 
+  -- TEST-MOD-APPROVED #4490 (N148): finalize with the PaymentIntent this
+  -- settlement stores. Every real Stripe caller does: venue-order-staff and
+  -- venue-order-create mint one PI per order (idempotency key
+  -- venue_order:<id>) and store its id, and the webhook passes that same id;
+  -- hosted checkout stores none (the check allows NULL). Since 304490 a
+  -- different id is refused as another payment's (N147).
   v_res := public.pg_venue_order_finalize_payment(
-    v_settle, 'stripe', v_bill, 'GBP', 'pi_x', 'ch_x', 120, 'txn_x');
+    v_settle, 'stripe', v_bill, 'GBP',
+    (SELECT stripe_payment_intent_id FROM public.venue_orders WHERE id = v_settle),
+    'ch_x', 120, 'txn_x');
   IF v_res->>'status' <> 'finalized' THEN
     RAISE EXCEPTION 'issue_1792 T-1792-T2: the settlement payment did not finalize (%)',
       v_res->>'status';
@@ -691,8 +699,11 @@ BEGIN
   PERFORM public.biz_venue_tab_close(v_bill_session, 'bill_to_phone');
   v_settle := pg_temp.mint_settlement(v_bill_session, 4800, 0, 0, true, v_created);
   SELECT total_cents INTO v_bill FROM public.venue_orders WHERE id = v_settle;
+  -- TEST-MOD-APPROVED #4490 (N148): the stored PaymentIntent, as above.
   PERFORM public.pg_venue_order_finalize_payment(
-    v_settle, 'stripe', v_bill, 'GBP', 'pi_ctl', 'ch_ctl', 150, 'txn_ctl');
+    v_settle, 'stripe', v_bill, 'GBP',
+    (SELECT stripe_payment_intent_id FROM public.venue_orders WHERE id = v_settle),
+    'ch_ctl', 150, 'txn_ctl');
   -- Issue #3645 (append-only): payout maturity now reads the actual payment
   -- timestamp. This historical control is meant to be a 10-day-old settlement,
   -- so pin confirmed_at as well as created_at instead of relying on event-time
