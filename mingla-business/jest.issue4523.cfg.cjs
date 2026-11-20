@@ -15,6 +15,7 @@ const modules = path.join(businessRoot, "node_modules");
 module.exports = {
   rootDir: businessRoot,
   roots: [
+    path.join(repoRoot, "packages", "calendar"),
     path.join(repoRoot, "packages", "brand-rendering", "__tests__"),
     path.join(businessRoot, "src", "components", "ui", "__tests__"),
   ],

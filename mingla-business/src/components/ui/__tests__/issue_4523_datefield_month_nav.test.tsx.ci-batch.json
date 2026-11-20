@@ -41,21 +41,23 @@
     "expectedFiles": [
       "mingla-business/jest.issue4523.cfg.cjs",
       "mingla-business/src/components/ui/__tests__/issue_4523_datefield_month_nav.test.tsx",
-      "packages/brand-rendering/__tests__/issue_4523_stay_range_month_nav.test.tsx"
+      "packages/brand-rendering/__tests__/issue_4523_stay_range_month_nav.test.tsx",
+      "packages/calendar/__tests__/core.calendar.test.ts",
+      "packages/calendar/__tests__/monthNavigationNeverCloses.test.tsx"
     ],
     "externalReferenceFiles": [
       "mingla-business/jest.orch1118.babel.cjs"
     ],
     "requiredContext": "CI batch: business-node22-ignore-scripts",
     "timingSeconds": {
-      "p50": 10,
-      "p95": 20,
+      "p50": 60,
+      "p95": 90,
       "evidence": "Local targeted run 2026-11-20"
     },
     "generatedPaths": [
       "suite-results.json"
     ],
     "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
-    "timeoutSeconds": 120
+    "timeoutSeconds": 300
   }
 }

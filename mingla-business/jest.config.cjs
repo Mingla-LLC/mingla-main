@@ -486,6 +486,8 @@ module.exports = {
     // the subpath form only: the bare barrel and its jest.mock() users are
     // untouched.
     "^@mingla/phone-input/(.+)$": "<rootDir>/../packages/phone-input/$1",
+    // #4523 — deep `@mingla/calendar/<sub>` resolves to this checkout's package.
+    "^@mingla/calendar/(.+)$": "<rootDir>/../packages/calendar/$1",
     // #1773 — resolution repair, NOT a mock. The phone owner is deliberately a
     // real `.mjs` ESM module for Supabase's hosted ESZip bundler. Metro resolves
     // the workspace symlink, while this node/ts-jest runner must stay on this
