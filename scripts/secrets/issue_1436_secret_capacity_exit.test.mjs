@@ -29,20 +29,21 @@ const PAYMENT_FIELDS = [
 // 90th and final absolute-ceiling slot.
 // [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY occupies
 // slot 91; the absolute ceiling moves 90 -> 91 and the normal ceiling stays 87.
+// [TEST-MOD-APPROVED #4334] #4334 [secret count 90 approved by Seth]: the retired map-vendor token is unset, so the manifest is exactly 90 under the unchanged 87/91 ceilings.
 
 function record(name) {
   return manifest.secrets.find((entry) => entry.name === name);
 }
 
-test("issue #1436: final manifest is exactly 91 unique names", () => {
+test("issue #1436: final manifest is exactly 90 unique names", () => {
   const names = manifest.secrets.map((entry) => entry.name);
   assert.equal(manifest.rollout.live_audit_mode, "enforced");
   assert.equal(manifest.rollout.transition_stage, "complete");
-  assert.equal(manifest.rollout.expected_user_managed_count, 91);
+  assert.equal(manifest.rollout.expected_user_managed_count, 90);
   assert.equal(manifest.policy.normal_ceiling, 87);
   assert.equal(manifest.policy.absolute_ceiling, 91);
-  assert.equal(names.length, 91);
-  assert.equal(new Set(names).size, 91);
+  assert.equal(names.length, 90);
+  assert.equal(new Set(names).size, 90);
   assert.equal(manifest.exceptions.length, 1);
   assert.equal(manifest.exceptions[0].issue, 2830);
   assert.equal(manifest.exceptions[0].expires_at, "2026-11-28T03:40:33Z");
@@ -134,7 +135,7 @@ test("issue #1436: exact live-set parity passes and any retired direct-name retu
     nowMs: Date.parse("2026-08-03T00:00:00Z"),
   });
   assert.equal(exact.ok, true);
-  assert.equal(exact.count, 91);
+  assert.equal(exact.count, 90);
 
   for (const retired of RETIRED_DIRECT_NAMES) {
     const restored = auditSecretBudget({

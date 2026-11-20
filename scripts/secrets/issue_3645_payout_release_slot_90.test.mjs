@@ -26,12 +26,15 @@ const exceptionWindowNow = Date.parse("2026-10-22T12:00:00Z");
 // [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
 // 91st name after this one; the payout-release RAK stays governed, the absolute
 // ceiling is 91, and any 92nd live name still fails closed.
+// [TEST-MOD-APPROVED #4334] #4334 [secret count 90 approved by Seth]: the retired map-vendor token is
+// unset, so the manifest is 90 under the unchanged 87/91 ceilings; an undeclared 91st name fails
+// parity, and the over-ceiling fixture adds two undeclared names to reach 92.
 
 test("#3645 happy: payout release RAK stays governed after the approved 91st name", () => {
   const names = manifest.secrets.map((record) => record.name);
-  assert.equal(names.length, 91);
-  assert.equal(new Set(names).size, 91);
-  assert.equal(manifest.rollout.expected_user_managed_count, 91);
+  assert.equal(names.length, 90);
+  assert.equal(new Set(names).size, 90);
+  assert.equal(manifest.rollout.expected_user_managed_count, 90);
   assert.ok(names.includes("GOOGLE_SEEDING_API_KEY"));
   assert.deepEqual(manifest.secrets.find((record) => record.name === NAME), {
     name: NAME,
@@ -59,8 +62,8 @@ test("#3645 happy: payout release RAK stays governed after the approved 91st nam
     liveAudit: true,
   });
   assert.equal(budget.ok, true);
-  assert.equal(budget.count, 91);
-  assert.equal(budget.freeSlots, 9);
+  assert.equal(budget.count, 90);
+  assert.equal(budget.freeSlots, 10);
 });
 
 test("#3645 adversarial: an undeclared or 92nd live name fails closed", () => {
@@ -98,7 +101,7 @@ test("#3645 adversarial: an undeclared or 92nd live name fails closed", () => {
   );
   const over = auditSecretBudget({
     manifest,
-    liveNames: [...names, "UNAPPROVED_NINETY_SECOND_NAME"],
+    liveNames: [...names, "UNAPPROVED_NINETY_FIRST_NAME", "UNAPPROVED_NINETY_SECOND_NAME"],
     nowMs: exceptionWindowNow,
   });
   assert.equal(over.ok, false);

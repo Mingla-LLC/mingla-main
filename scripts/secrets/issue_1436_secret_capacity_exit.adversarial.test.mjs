@@ -19,15 +19,16 @@ const RETIRED_DIRECT_NAMES = [
 // [TEST-MOD-APPROVED #3980] #3980 [secret count 89 approved by Seth]: SPRINT_ROLLOVER_TOKEN is slot 89.
 // [TEST-MOD-APPROVED #3645] The payout-release RAK is the 90th and final slot.
 // [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is slot 91.
+// [TEST-MOD-APPROVED #4334] #4334 [secret count 90 approved by Seth]: the retired map-vendor token is unset on the live project and leaves the manifest; the substitution fixture now drops GOOGLE_SEEDING_API_KEY instead.
 
 test("issue #1436 adversarial: a same-count direct-name substitution cannot bypass exact-set parity", () => {
-  assert.equal(expectedNames.length, 91);
+  assert.equal(expectedNames.length, 90);
 
   for (const retiredName of RETIRED_DIRECT_NAMES) {
     const substitutedNames = expectedNames
-      .filter((name) => name !== "MAPBOX_ACCESS_TOKEN")
+      .filter((name) => name !== "GOOGLE_SEEDING_API_KEY")
       .concat(retiredName);
-    assert.equal(substitutedNames.length, 91);
+    assert.equal(substitutedNames.length, 90);
 
     const result = auditSecretBudget({
       manifest,
@@ -37,7 +38,7 @@ test("issue #1436 adversarial: a same-count direct-name substitution cannot bypa
     });
 
     assert.equal(result.ok, false, `${retiredName} substitution must fail`);
-    assert.match(result.failures.join("\n"), /MAPBOX_ACCESS_TOKEN:missing_live_name/);
+    assert.match(result.failures.join("\n"), /GOOGLE_SEEDING_API_KEY:missing_live_name/);
     assert.match(
       result.failures.join("\n"),
       new RegExp(`${retiredName}:unexpected_live_name`),

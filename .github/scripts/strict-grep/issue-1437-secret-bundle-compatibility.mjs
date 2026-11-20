@@ -489,8 +489,9 @@ export function violations(files) {
   // founder-approved Sites slot 88 is independently guarded by issue #2830.
   // #3645: the payout-release RAK is the approved 90th name.
   // #4276: count 91 approved by Seth Ogieva on 2026-11-07 in chat (GOOGLE_SEEDING_API_KEY).
-  if (manifest.rollout?.expected_user_managed_count !== 91) {
-    failures.push("manifest: Phase B plus approved slots 88–91 must enforce expected count at 91");
+  // #4334: Seth approved unsetting the retired map-vendor token on 2026-11-20 in chat; the declared set is exactly 90 under the unchanged 87/91 ceilings.
+  if (manifest.rollout?.expected_user_managed_count !== 90) {
+    failures.push("manifest: Phase B plus approved governed names must enforce expected count at 90");
   }
   const records = new Map(
     (manifest.secrets ?? []).map((record) => [record.name, record]),

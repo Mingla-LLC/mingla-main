@@ -483,7 +483,9 @@ test("H33 proxy credential is standalone governed authority and excluded from ru
   // approved 90th name; this cross-issue proof follows the governed manifest.
   // [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is
   // the approved 91st name; this cross-issue proof follows the governed manifest.
-  assert.equal(manifest.rollout.expected_user_managed_count, 91);
+  // [TEST-MOD-APPROVED #4334] #4334 [secret count 90 approved by Seth]: the retired map-vendor token
+  // is unset; this cross-issue proof follows the governed 90-name manifest.
+  assert.equal(manifest.rollout.expected_user_managed_count, 90);
   assert.equal(record.class, "authentication_secret");
   assert.deepEqual(record.readers, ["supabase/functions/shared-card/index.ts"]);
   assert.equal(record.issue, 1615);

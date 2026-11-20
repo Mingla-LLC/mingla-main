@@ -7,6 +7,11 @@
  * downloads read the key only through supabase/functions/_shared/seedingGoogleKey.ts
  * and fall back to GOOGLE_MAPS_API_KEY when it is unset, so it is optional in
  * both functions' contract entries. Names only: no value appears here.
+ *
+ * [TEST-MOD-APPROVED #4334] #4334 [secret count 90 approved by Seth]: the retired map-vendor token
+ * is unset, so the seeding key stays governed in a 90-name set under the
+ * unchanged 87/91 ceilings; an undeclared 91st name fails parity and the
+ * over-ceiling fixture adds two undeclared names to reach 92.
  */
 
 import assert from "node:assert/strict";
@@ -36,11 +41,11 @@ const READER = "supabase/functions/_shared/seedingGoogleKey.ts";
 const projectRef = "gqnoajqerqhnvulmnyvv";
 const exceptionWindowNow = Date.parse("2026-11-07T12:00:00Z");
 
-test("#4276 happy: the seeding key is the governed 91st name under 87/91 ceilings", () => {
+test("#4276 happy: the seeding key stays governed in the 90-name set under 87/91 ceilings", () => {
   const names = manifest.secrets.map((record) => record.name);
-  assert.equal(names.length, 91);
-  assert.equal(new Set(names).size, 91);
-  assert.equal(manifest.rollout.expected_user_managed_count, 91);
+  assert.equal(names.length, 90);
+  assert.equal(new Set(names).size, 90);
+  assert.equal(manifest.rollout.expected_user_managed_count, 90);
   assert.equal(manifest.policy.normal_ceiling, 87);
   assert.equal(manifest.policy.absolute_ceiling, 91);
   assert.ok(names.includes("STRIPE_RAK_PAYOUT_RELEASE_LIVE"));
@@ -81,8 +86,8 @@ test("#4276 happy: the seeding key is the governed 91st name under 87/91 ceiling
     liveAudit: true,
   });
   assert.equal(budget.ok, true);
-  assert.equal(budget.count, 91);
-  assert.equal(budget.freeSlots, 9);
+  assert.equal(budget.count, 90);
+  assert.equal(budget.freeSlots, 10);
   assert.match(budget.warnings.join("\n"), /issue=2830/);
 
   const parity = assertLiveNameParity({
@@ -91,7 +96,7 @@ test("#4276 happy: the seeding key is the governed 91st name under 87/91 ceiling
     liveNames: names,
     projectRef,
   });
-  assert.equal(parity.liveUserManaged.length, 91);
+  assert.equal(parity.liveUserManaged.length, 90);
   const remediation = assertLiveNameParity({
     contract,
     manifest,
@@ -99,7 +104,7 @@ test("#4276 happy: the seeding key is the governed 91st name under 87/91 ceiling
     projectRef,
     mode: "issue-2241-remediation",
   });
-  assert.equal(remediation.liveUserManaged.length, 91);
+  assert.equal(remediation.liveUserManaged.length, 90);
 });
 
 test("#4276 adversarial: an undeclared seeding key or a 92nd live name fails closed", () => {
@@ -138,13 +143,13 @@ test("#4276 adversarial: an undeclared seeding key or a 92nd live name fails clo
 
   const over = auditSecretBudget({
     manifest,
-    liveNames: [...names, "UNAPPROVED_NINETY_SECOND_NAME"],
+    liveNames: [...names, "UNAPPROVED_NINETY_FIRST_NAME", "UNAPPROVED_NINETY_SECOND_NAME"],
     nowMs: exceptionWindowNow,
   });
   assert.equal(over.ok, false);
   assert.match(over.failures.join("\n"), /absolute_ceiling_exceeded/);
 
-  // Without the #2830 exception, 91 is still a breach above the normal ceiling.
+  // Without the #2830 exception, 90 is still a breach above the normal ceiling.
   const noException = auditSecretBudget({
     manifest: { ...manifest, exceptions: [] },
     liveNames: names,

@@ -14,6 +14,10 @@
  *
  * [TEST-MOD-APPROVED #4276] #4276 [secret count 91 approved by Seth]: GOOGLE_SEEDING_API_KEY is the
  * 91st name; any unknown 92nd name is still refused.
+ *
+ * [TEST-MOD-APPROVED #4334] #4334 [secret count 90 approved by Seth]: the retired map-vendor token
+ * is unset, so the declared set is 90 under the unchanged 87/91 ceilings; an
+ * unknown 91st name fails parity and the over-ceiling fixture reaches 92.
  */
 
 import assert from "node:assert/strict";
@@ -98,7 +102,7 @@ test("#3980 adversarial: the preflight rejects an unknown 92nd name", () => {
     () => parity([...live, "UNKNOWN_NINETIETH_NAME"]),
     readinessCode("live_name_set_mismatch", "unexpected:UNKNOWN_NINETIETH_NAME"),
   );
-  // A swap that keeps the count at 91 is refused in both directions.
+  // A swap that keeps the count at 90 is refused in both directions.
   assert.throws(
     () => parity([...before3980, "UNKNOWN_NINETIETH_NAME"]),
     (error) =>
@@ -120,13 +124,14 @@ test("#3980 adversarial: the preflight rejects an unknown 92nd name", () => {
       ]),
     readinessCode("live_name_set_mismatch", "unexpected:UNKNOWN_NINETY_FIRST_NAME"),
   );
-  // And the budget audit refuses a 91st name outright.
+  // And the budget audit refuses a 92nd name outright.
   const over = auditSecretBudget({
     manifest,
     liveNames: [
       ...live,
       ...contract.remediation.allowed_extra_live_names,
       "UNKNOWN_NINETY_FIRST_NAME",
+      "UNKNOWN_NINETY_SECOND_NAME",
     ],
     nowMs: exceptionWindowNow,
   });
