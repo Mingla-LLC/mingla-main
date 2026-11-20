@@ -184,6 +184,11 @@ SELECT pg_temp.paid_order('ea', t) FROM unnest(ARRAY['ana', 'ben', 'cy', 'lea', 
 SELECT pg_temp.paid_order('eb', 'gb');
 
 -- ── T-CROSS: a guest or team member of brand A has no reach into brand B ────
+-- [TEST-MOD #4420] New Guest rooms start in Broadcast (20281120024420). The
+-- cases below need guests to post, so the rooms are switched to Open chat
+-- first; what each case proves is unchanged.
+UPDATE public.conversations SET is_broadcast_only = false WHERE linked_entity_type = 'brand_guests';
+
 DO $cross$
 DECLARE v_b uuid := pg_temp.chat('b'); v_post uuid;
 BEGIN

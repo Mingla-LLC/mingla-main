@@ -174,6 +174,11 @@ BEGIN
   RETURN COALESCE(r, '');
 END $f$;
 
+-- [TEST-MOD #4420] New Guest rooms start in Broadcast (20281120024420). The
+-- cases below need guests to post, so the rooms are switched to Open chat
+-- first; what each case proves is unchanged.
+UPDATE public.conversations SET is_broadcast_only = false WHERE linked_entity_type = 'brand_guests';
+
 DO $p$
 DECLARE v jsonb; v_brand_post uuid; v_brand_post2 uuid; v_guest_post uuid; v_reply uuid; v_blob text; v_conv uuid := pg_temp.chat('b1');
 BEGIN
