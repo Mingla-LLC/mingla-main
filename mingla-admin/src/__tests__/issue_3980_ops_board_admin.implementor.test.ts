@@ -47,7 +47,8 @@ Deno.test("#3980 the Pipeline menu: To review, Work board, Agent log, Calendar, 
   assertEquals(
     home?.items.map((i: { id: string; label: string; icon: string }) => `${i.id}:${i.label}:${i.icon}`),
     // #4255 W4: Notifications left the menu for Messages in the top bar.
-    ["overview:Dashboard:LayoutDashboard", "work-board:Work:SquareKanban"],
+    // #4517: Messages has its own row under Dashboard.
+    ["overview:Dashboard:LayoutDashboard", "messages:Messages:MessageSquareText", "work-board:Work:SquareKanban"],
   );
   const outreach = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Outreach");
   assertEquals(

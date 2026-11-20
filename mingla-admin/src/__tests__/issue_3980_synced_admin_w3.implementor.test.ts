@@ -68,7 +68,8 @@ Deno.test("#3980 W3 D-11: the Pipeline menu is Needs you, Work and Calendar toge
   const home = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Home");
   assertEquals(home?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
     // #4255 W4: Notifications left the menu for Messages in the top bar.
-    "overview:Dashboard", "work-board:Work",
+    // #4517: Messages has its own row under Dashboard.
+    "overview:Dashboard", "messages:Messages", "work-board:Work",
   ]);
   const outreach = NAV_GROUPS.find((g: { label: string | null }) => g.label === "Outreach");
   assertEquals(outreach?.items.map((i: { id: string; label: string }) => `${i.id}:${i.label}`), [
