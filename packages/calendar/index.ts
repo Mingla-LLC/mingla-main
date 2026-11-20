@@ -5,7 +5,7 @@
  * `@mingla/calendar/core/calendarDate`) so the lazy surface chunk stays out of
  * the eager bundle. This barrel is types plus pure helpers only: it re-exports
  * no component value, which keeps a stray `import { ... } from "@mingla/calendar"`
- * from pulling the surface into `__common` (I-1047 rule 1).
+ * from pulling the surface into `__common` (the bundle-deferral gate pins this).
  */
 export type {
   CalendarCommon,
