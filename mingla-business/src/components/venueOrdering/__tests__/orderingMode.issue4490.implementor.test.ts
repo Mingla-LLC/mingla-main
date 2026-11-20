@@ -20,6 +20,7 @@ import {
   venueOrderingIsCounterPickup,
   venueOrderingOffersPickup,
   venueOrderingReviewConfig,
+  venueOrderSubmitFailure,
   type VenueOrderingConfig,
 } from "@mingla/brand-rendering/venueOrdering";
 import { venueOrderModeOf, venueOrderModeErrorCopy, type VenueOrderingSettings } from "../../../hooks/useVenueOrderingSettings";
@@ -94,6 +95,29 @@ describe("#4490 07-D ordering mode", () => {
     const old = state("both");
     expect(venueOrderingReviewConfig(old, parseVenueOrderPreview({ currency: "NGN" }))).toBe(old);
     expect(venueOrderingReviewConfig(old, null)).toBe(old);
+  });
+
+  it("N134: after a failed payment start, Pay works again (fresh key, plain message)", () => {
+    expect(venueOrderSubmitFailure({ kind: "threw" }, "x")).toEqual({ resetKey: true, message: null });
+    expect(venueOrderSubmitFailure({ kind: "already_created", paymentStatus: "failed" }, "x")).toEqual({
+      resetKey: true,
+      message: "Your card wasn't charged. Try again.",
+    });
+    // A real duplicate (paid or pending) still says it is already in, and keeps the key.
+    expect(venueOrderSubmitFailure({ kind: "already_created", paymentStatus: "pending" }, "That order is already in.")).toEqual({
+      resetKey: false,
+      message: "That order is already in.",
+    });
+  });
+
+  it("N134: both guest hooks mint a fresh key after a failed start", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    for (const f of ["../useBuyerVenueOrdering.ts", "../../../../../app-mobile/src/components/venueOrdering/useConsumerVenueOrdering.ts"]) {
+      const src = fs.readFileSync(require.resolve(f), "utf8");
+      expect(src).toMatch(/if \(failure\.resetKey\) keyRef\.current = null;/);
+      expect(src).toMatch(/venueOrderSubmitFailure\(\{ kind: "threw" \}, ""\)\.resetKey\) keyRef\.current = null;/);
+    }
   });
 
   it("no scanned spot stays a counter order", () => {

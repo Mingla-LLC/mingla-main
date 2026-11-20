@@ -636,3 +636,22 @@ export function venueOrderPartySizeValid(value: number | null): boolean {
 export const VENUE_ORDER_PARTY_SIZE_PROMPT = "How many of you? (optional)";
 export const VENUE_ORDER_PARTY_SIZE_HELP =
   "Your estimate. It helps the venue plan — skip it if you'd rather not.";
+
+/**
+ * N134 (#4490) — what a failed Pay leaves behind. A payment start that failed
+ * leaves an order with payment_status 'failed' under this basket's
+ * idempotency key; re-sending the same key only ever returns that dead order
+ * ("already_created"), so Pay looked dead. Any failure, and a replay of a
+ * failed order, mints a fresh key so the next tap starts a new payment.
+ * Returns the message to show (null = keep the thrown error's own message).
+ */
+export function venueOrderSubmitFailure(
+  outcome: { kind: "threw" } | { kind: "already_created"; paymentStatus: string },
+  alreadyInCopy: string,
+): { resetKey: boolean; message: string | null } {
+  if (outcome.kind === "threw") return { resetKey: true, message: null };
+  if (outcome.paymentStatus === "failed" || outcome.paymentStatus === "expired") {
+    return { resetKey: true, message: "Your card wasn't charged. Try again." };
+  }
+  return { resetKey: false, message: alreadyInCopy };
+}

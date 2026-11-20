@@ -53,6 +53,7 @@ export {
   venueOrderingIsCounterPickup,
   venueOrderingOffersPickup,
   venueOrderingReviewConfig,
+  venueOrderSubmitFailure,
   venueOrderingItemOrderable,
   venueOrderingMenuGroups,
   venueOrderingModifierFailure,

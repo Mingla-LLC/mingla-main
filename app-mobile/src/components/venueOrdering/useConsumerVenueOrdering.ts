@@ -44,6 +44,7 @@ import {
   useVenueOrderingCart,
   venueOrderShouldAskPartySize,
   venueOrderingOffersPickup,
+  venueOrderSubmitFailure,
   venueOrderSittingKey,
   venueOrderingQueryKeys,
 } from "@mingla/brand-rendering/venueOrdering";
@@ -433,9 +434,13 @@ export function useConsumerVenueOrdering(
           idempotencyKeyFor(priceSignature),
         );
         if (created.kind === "already_created") {
-          setSubmitError(
+          // N134: a replay of a failed payment start gets a fresh key next tap.
+          const failure = venueOrderSubmitFailure(
+            { kind: "already_created", paymentStatus: created.paymentStatus },
             "That order is already in. Pull down to see how it's doing.",
           );
+          if (failure.resetKey) keyRef.current = null;
+          setSubmitError(failure.message);
           return;
         }
         if (created.kind === "free_completed" || !created.resumed) {
@@ -562,6 +567,8 @@ export function useConsumerVenueOrdering(
         cart.roundSettled();
         await pollUntilPaid(created.orderId, statusToken);
       } catch (error) {
+        // N134: the failed start left a dead order under this key; mint anew.
+        if (venueOrderSubmitFailure({ kind: "threw" }, "").resetKey) keyRef.current = null;
         setSubmitError(
           error instanceof VenueOrderError
             ? error.message
