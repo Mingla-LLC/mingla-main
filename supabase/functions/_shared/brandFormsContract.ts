@@ -169,6 +169,15 @@ export const BRAND_FORM_CORE_CODES: readonly BrandFormSubmitErrorCode[] = [
   "credential_invalid",
 ];
 
+/**
+ * Wave 5 (C1): the capability marker a checkout client sends in the
+ * ticket-checkout-create body (`brandFormStep: 1`) when it can show the
+ * Questions step. Without it a required form never blocks: the order completes
+ * and the buyer is "to answer". Mirrored by mingla-business
+ * `src/services/ticketCheckoutService.ts` (BRAND_FORM_CHECKOUT_STEP).
+ */
+export const BRAND_FORM_CHECKOUT_STEP = 1 as const;
+
 /** §3.8 abuse limits. */
 export const BRAND_FORM_MAX_BODY_BYTES = 32 * 1024;
 export const BRAND_FORM_PER_IP_10MIN = 20;

@@ -41,6 +41,12 @@ import {
   isCodeOp,
   parseCodeRequest,
 } from "./code.ts";
+import {
+  handlePurchaseLink,
+  isPurchaseLinkOp,
+  parsePurchaseLinkRequest,
+  type PurchaseLinkDeps,
+} from "./purchaseLink.ts";
 
 /** The derivation label for this limiter's salt (one label per purpose, #3201). */
 export const IP_SALT_LABEL = "brand-form-submit-ip-salt";
@@ -83,6 +89,8 @@ export interface BrandFormSubmitDeps {
   ipSalt?: () => Promise<string>;
   /** Wave 3: the link page's one-time code actions (./code.ts). */
   code?: CodeDeps;
+  /** Wave 5: the after-purchase link for the buyer's own order (./purchaseLink.ts). */
+  purchase?: Pick<PurchaseLinkDeps, "purchaseLink">;
 }
 
 export function corsFor(origin: string | null): Record<string, string> | null {
@@ -192,6 +200,30 @@ export async function handleBrandFormSubmit(
     raw = JSON.parse(text);
   } catch {
     return fail("bad_request", cors);
+  }
+  // Wave 5: {op:"purchase_link"} is the buyer success screen asking for the
+  // after-purchase form link of its own order (./purchaseLink.ts).
+  if (isPurchaseLinkOp(raw)) {
+    const linkReq = parsePurchaseLinkRequest(raw);
+    if (!linkReq || !deps.purchase) return fail("bad_request", cors);
+    try {
+      if (await deps.db.switchedOff()) return fail("forms_paused", cors);
+      const result = await handlePurchaseLink(linkReq, {
+        log,
+        ...deps.purchase,
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] purchase_link server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
   }
   // Wave 3: {op:"code_begin"|"code_verify"} are the link page's one-time code
   // actions (./code.ts); every other body is an answer submit.

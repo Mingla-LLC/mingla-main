@@ -120,6 +120,13 @@ import {
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
+import {
+  brandFormRefusal,
+  checkoutFormPayload,
+  isCheckoutBrandFormRefusal,
+  isMissingFunction,
+  parseCheckoutBrandForm,
+} from "./brandFormCheckout.ts";
 // Issue #3645 — each later Paystack payment priced at checkout by the deposit's
 // engine, shown to the buyer, persisted on the session and charged unchanged.
 import {
@@ -865,6 +872,13 @@ export const createTicketCheckoutCreateHandler = (
     }
     const isCheckoutV2 = requestedContractVersion ===
       TICKET_CHECKOUT_CONTRACT_VERSION;
+    // #4514 wave 5 — the brand form fields (capability marker + answers). A
+    // door sale is exempt (C9): its body is rebuilt from the code and never
+    // carries them, and the check below is skipped for it by name.
+    const parsedBrandForm = parseCheckoutBrandForm(body);
+    if (isCheckoutBrandFormRefusal(parsedBrandForm)) {
+      return jsonResponse(parsedBrandForm.body, parsedBrandForm.status);
+    }
     let checkoutAttemptId: string | null = null;
     let checkoutV2Lines: CheckoutV2Line[] | null = null;
     if (isCheckoutV2) {
@@ -2061,6 +2075,38 @@ export const createTicketCheckoutCreateHandler = (
       }
     }
 
+    // #4514 wave 5 — I-4514-CHECKOUT-FORM-BEFORE-PAYMENT. A required, live form
+    // on the page with the capability marker: missing or invalid answers are
+    // refused HERE, before the session RPC, any snapshot, provider object or
+    // free order. No marker: the order completes and the buyer is "to answer".
+    // The off switch (inside SQL) checks nothing. Door pay is exempt (C9).
+    // Without the marker there is nothing to refuse and nothing to keep, so an
+    // older client's request makes no extra database call at all.
+    if (doorPay === null && parsedBrandForm.capable) {
+      const formCheck = await supabase.rpc("brand_form_checkout_check", {
+        p_event_id: eventId,
+        p_capable: parsedBrandForm.capable,
+        p_form: checkoutFormPayload(parsedBrandForm),
+      });
+      if (formCheck.error) {
+        const refusal = brandFormRefusal(formCheck.error);
+        if (refusal !== null) {
+          return jsonResponse(refusal.body, refusal.status);
+        }
+        if (isMissingFunction(formCheck.error)) {
+          // The forms migration is not applied yet: there can be no form.
+          console.error(
+            "[ticket-checkout-create] brand form check unavailable (function missing)",
+          );
+        } else {
+          console.error("[ticket-checkout-create] brand form check failed", {
+            error: formCheck.error.message,
+          });
+          return jsonResponse({ error: "brand_form_check_failed" }, 409);
+        }
+      }
+    }
+
     // #3859 — capability preflight before the session RPC and before provider
     // I/O. Public readers remove unsupported plans, but a stale client can
     // still replay `auto`/`installments`; selected tier metadata is therefore
@@ -2599,6 +2645,32 @@ export const createTicketCheckoutCreateHandler = (
         );
       }
       canonicalIntakeFormData = attached.data;
+    }
+
+    // #4514 wave 5 — stash the answers against this session BEFORE any quote
+    // bind, free finalization or provider I/O. The trigger
+    // brand_form_finalize_checkout_answers makes them the order's response in
+    // the same transaction that gives the session its order (paid and free).
+    // If this write fails the reply is 409 and payment never starts.
+    if (doorPay === null && parsedBrandForm.capable) {
+      const stashed = await supabase.rpc("brand_form_checkout_stash", {
+        p_checkout_session_id: checkoutSessionId,
+        p_event_id: eventId,
+        p_capable: parsedBrandForm.capable,
+        p_form: checkoutFormPayload(parsedBrandForm),
+      });
+      if (stashed.error) {
+        const refusal = brandFormRefusal(stashed.error);
+        if (refusal !== null) {
+          return jsonResponse(refusal.body, refusal.status);
+        }
+        if (!isMissingFunction(stashed.error)) {
+          console.error("[ticket-checkout-create] brand form stash failed", {
+            error: stashed.error.message,
+          });
+          return jsonResponse({ error: "brand_form_stash_failed" }, 409);
+        }
+      }
     }
 
     // #3859 checkout-v2 binds the normalized client intent to the canonical

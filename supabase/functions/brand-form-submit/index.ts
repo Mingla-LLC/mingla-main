@@ -156,6 +156,18 @@ export async function handler(req: Request): Promise<Response> {
   return await handleBrandFormSubmit(req, {
     db: restSubmitDb(supabase),
     code: restCodeDeps(supabase),
+    purchase: {
+      async purchaseLink(checkoutSessionId, tokenHash) {
+        const { data, error } = await supabase.rpc("brand_form_purchase_link", {
+          p_checkout_session_id: checkoutSessionId,
+          p_buyer_status_token_hash: tokenHash,
+        });
+        return {
+          data,
+          error: error ? { message: String(error.message ?? "") } : null,
+        };
+      },
+    },
   });
 }
 

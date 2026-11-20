@@ -2360,4 +2360,214 @@ BEGIN
 END
 $t$;
 
+-- ═══ Wave 5: T-CHECKOUT (the checkout Questions step, §3.6, C1, C8) ═══════════
+-- T-CHECKOUT-1..3  required + marker: missing answers, invalid answers and a stale version are
+--                  refused by the check and by the stash, and nothing is stashed.
+-- T-CHECKOUT-4     no marker: 'to_answer' and nothing stashed (the order completes unanswered).
+-- T-CHECKOUT-5     the off switch: 'off', nothing checked, nothing stashed.
+-- T-CHECKOUT-6     atomicity: valid answers are stashed, NOT a response; a failed payment (no
+--                  order_id) leaves no response; a finalize that fails after setting order_id
+--                  rolls the response back with it; a success leaves exactly one response for the
+--                  order and removes the stash; a replayed finalize adds none.
+-- T-CHECKOUT-7     an optional form never blocks, and its answers are kept when given.
+-- T-CHECKOUT-8     anon and signed-in cannot call the checkout RPCs or read the stash.
+-- T-PURCHASE-LINK  "After they purchase": only the session's own buyer status token, only a
+--                  completed session, only an after-purchase form; a link names the order;
+--                  answered says so; never an invite.
+-- FAILS-ON-REVERT (wave 5): deleting the required RAISE in brand_form_checkout_check fails
+-- T-CHECKOUT-1; dropping the trigger fails T-CHECKOUT-6c; deleting the capable test fails
+-- T-CHECKOUT-4; deleting the switched-off test fails T-CHECKOUT-5.
+DO $t$
+DECLARE
+  v_ba uuid := (SELECT id FROM f4514 WHERE k = 'ba');
+  v_form uuid := (SELECT id FROM f4514 WHERE k = 'form');
+  v_ver uuid := (SELECT live_version_id FROM public.brand_forms WHERE id = (SELECT id FROM f4514 WHERE k = 'form'));
+  v_ec uuid := gen_random_uuid(); v_eo uuid := gen_random_uuid(); v_ep uuid := gen_random_uuid();
+  v_s1 uuid := gen_random_uuid(); v_s2 uuid := gen_random_uuid(); v_s3 uuid := gen_random_uuid();
+  v_s4 uuid := gen_random_uuid(); v_s5 uuid := gen_random_uuid();
+  v_o1 uuid := gen_random_uuid(); v_o3 uuid := gen_random_uuid(); v_o5 uuid := gen_random_uuid();
+  c_ok jsonb := jsonb_build_object('11111111-1111-4111-8111-111111111111', 'yes',
+                                   '22222222-2222-4222-8222-222222222222', 'Juggle');
+  c_bad jsonb := jsonb_build_object('11111111-1111-4111-8111-111111111111', 'yes');
+  v_r text; v jsonb; v_failed boolean := false;
+BEGIN
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES (v_ec, v_ba, 'Checkout required', 'f4514-w5-req', 'event', 'scheduled', 'public', 'UTC', 'USD'),
+         (v_eo, v_ba, 'Checkout optional', 'f4514-w5-opt', 'experience', 'scheduled', 'public', 'UTC', 'USD'),
+         (v_ep, v_ba, 'After purchase', 'f4514-w5-after', 'event', 'scheduled', 'public', 'UTC', 'USD');
+  INSERT INTO public.ticket_checkout_sessions(id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164,
+    idempotency_key, expires_at, status, total_cents, currency, buyer_status_token_hash)
+  VALUES (v_s1, v_ec, v_ba, 'Ann Buyer', 'f4514-w5a@example.test', '+12025550301', 'w5-s1', now() + interval '1 hour', 'requires_payment', 1000, 'USD', NULL),
+         (v_s2, v_ec, v_ba, 'Bob Buyer', 'f4514-w5b@example.test', '+12025550302', 'w5-s2', now() + interval '1 hour', 'requires_payment', 1000, 'USD', NULL),
+         (v_s3, v_eo, v_ba, 'Cat Buyer', 'f4514-w5c@example.test', '+12025550303', 'w5-s3', now() + interval '1 hour', 'pending_free', 0, 'USD', NULL),
+         (v_s4, v_ec, v_ba, 'Dee Buyer', 'f4514-w5d@example.test', '+12025550304', 'w5-s4', now() + interval '1 hour', 'requires_payment', 1000, 'USD', NULL),
+         (v_s5, v_ep, v_ba, 'Eve Buyer', 'f4514-w5e@example.test', '+12025550305', 'w5-s5', now() + interval '1 hour', 'paid_completed', 1000, 'USD',
+          encode(extensions.digest('eve-buyer-status-token-0123456789abcdef', 'sha256'), 'hex'));
+  INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_name, buyer_email, buyer_phone_e164,
+    total_cents, currency, payment_method, payment_status, source, is_door_sale)
+  VALUES (v_o1, v_ec, NULL, 'Ann Buyer', 'f4514-w5a@example.test', '+12025550301', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false),
+         (v_o3, v_eo, NULL, 'Cat Buyer', 'f4514-w5c@example.test', '+12025550303', 0, 'USD', 'free', 'paid', 'online_checkout', false),
+         (v_o5, v_ep, NULL, 'Eve Buyer', 'f4514-w5e@example.test', '+12025550305', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false);
+  UPDATE public.ticket_checkout_sessions SET order_id = v_o5 WHERE id = v_s5;
+  PERFORM set_config('session_replication_role', 'origin', true);
+  INSERT INTO f4514 VALUES ('w5_ec', v_ec), ('w5_ep', v_ep), ('w5_s5', v_s5), ('w5_o5', v_o5);
+
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'em_a'));
+  SET LOCAL ROLE authenticated;
+  PERFORM public.biz_brand_form_attach(v_form, v_ec, 'required_step');
+  PERFORM public.biz_brand_form_attach(v_form, v_eo, 'optional_on_page');
+  PERFORM public.biz_brand_form_attach(v_form, v_ep, 'after_purchase');
+  RESET ROLE;
+
+  -- T-CHECKOUT-8: no client grant.
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'g1'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, NULL)$$, v_ec));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-CHECKOUT-8 a signed-in caller cannot run the check (' || v_r || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_stash(%L, %L, true, NULL)$$, v_s1, v_ec));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-CHECKOUT-8 a signed-in caller cannot stash');
+  v_r := pg_temp.f_err($$SELECT count(*) FROM public.brand_form_checkout_answers$$);
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-CHECKOUT-8 a signed-in caller cannot read the stash');
+  RESET ROLE;
+  PERFORM pg_temp.f_as(NULL);
+  SET LOCAL ROLE anon;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_purchase_link(%L, %L)$$, v_s5, repeat('a', 64)));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-CHECKOUT-8 anon cannot ask for a purchase link directly');
+  RESET ROLE;
+
+  SET LOCAL ROLE service_role;
+  -- T-CHECKOUT-1: required + marker + no answers.
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, NULL)$$, v_ec));
+  PERFORM pg_temp.f_assert(v_r LIKE '22023:form_answers_required%', 'T-CHECKOUT-1 missing answers are refused (' || v_r || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_stash(%L, %L, true, NULL)$$, v_s1, v_ec));
+  PERFORM pg_temp.f_assert(v_r LIKE '22023:form_answers_required%', 'T-CHECKOUT-1 the stash refuses them too');
+  -- T-CHECKOUT-2: invalid (Q2 is required once Q1 = yes).
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, %L::jsonb)$$, v_ec,
+           jsonb_build_object('formId', v_form, 'versionId', v_ver, 'answers', c_bad)));
+  PERFORM pg_temp.f_assert(v_r LIKE '22023:form_answers_invalid%', 'T-CHECKOUT-2 invalid answers are refused (' || v_r || ')');
+  -- T-CHECKOUT-3: a version that is no longer live, and another form's answers.
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, %L::jsonb)$$, v_ec,
+           jsonb_build_object('formId', v_form, 'versionId', gen_random_uuid(), 'answers', c_ok)));
+  PERFORM pg_temp.f_assert(v_r LIKE 'PT409:form_changed%', 'T-CHECKOUT-3 a stale version is form_changed (PT409)');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, %L::jsonb)$$, v_ec,
+           jsonb_build_object('formId', (SELECT id FROM f4514 WHERE k = 'form_y'), 'versionId', v_ver, 'answers', c_ok)));
+  PERFORM pg_temp.f_assert(v_r LIKE 'PT409:form_changed%', 'T-CHECKOUT-3 another form''s answers are form_changed');
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_s1),
+    'T-CHECKOUT-1..3 nothing was stashed for a refused checkout');
+  -- T-CHECKOUT-4: no marker.
+  v := public.brand_form_checkout_check(v_ec, false, NULL);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'to_answer', 'T-CHECKOUT-4 no marker: the order completes as to answer (' || v::text || ')');
+  v := public.brand_form_checkout_stash(v_s2, v_ec, false, jsonb_build_object('formId', v_form, 'versionId', v_ver, 'answers', c_ok));
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'to_answer'
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_s2),
+    'T-CHECKOUT-4 no marker: nothing is stashed');
+  RESET ROLE;
+
+  -- T-CHECKOUT-5: the off switch.
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'BRAND_FORMS_KILL_SWITCH';
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_check(v_ec, true, NULL);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'off', 'T-CHECKOUT-5 switched off: a required form does not block (' || v::text || ')');
+  v := public.brand_form_checkout_stash(v_s4, v_ec, true, NULL);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'off', 'T-CHECKOUT-5 switched off: the stash passes and keeps nothing');
+  RESET ROLE;
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'BRAND_FORMS_KILL_SWITCH';
+
+  -- T-CHECKOUT-6: atomicity.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_stash(v_s1, v_ec, true,
+         jsonb_build_object('formId', v_form, 'versionId', v_ver, 'answers', c_ok || jsonb_build_object('33333333-3333-4333-8333-333333333333', NULL)));
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'stash'
+      AND (SELECT count(*) FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_s1) = 1
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE event_id = v_ec),
+    'T-CHECKOUT-6a valid answers are stashed and are not yet a response');
+  -- Payment fails: the session never gets an order.
+  UPDATE public.ticket_checkout_sessions SET status = 'failed' WHERE id = v_s1;
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE event_id = v_ec),
+    'T-CHECKOUT-6b a failed payment leaves no response');
+  UPDATE public.ticket_checkout_sessions SET status = 'requires_payment' WHERE id = v_s1;
+  -- A finalize that fails after giving the session its order rolls the response back with it.
+  BEGIN
+    UPDATE public.ticket_checkout_sessions SET order_id = v_o1, status = 'paid_completed' WHERE id = v_s1;
+    PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_responses WHERE order_id = v_o1) = 1,
+      'T-CHECKOUT-6c the response is written inside the finalize transaction');
+    RAISE EXCEPTION 'simulated_finalize_failure';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'simulated_finalize_failure' THEN RAISE; END IF;
+    v_failed := true;
+  END;
+  PERFORM pg_temp.f_assert(v_failed AND NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE order_id = v_o1)
+      AND (SELECT order_id FROM public.ticket_checkout_sessions WHERE id = v_s1) IS NULL
+      AND EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_s1),
+    'T-CHECKOUT-6d a finalize that fails keeps neither order link nor response; the stash survives for the retry');
+  UPDATE public.ticket_checkout_sessions SET order_id = v_o1, status = 'paid_completed' WHERE id = v_s1;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_responses WHERE order_id = v_o1) = 1
+      AND (SELECT answers->>'22222222-2222-4222-8222-222222222222' FROM public.brand_form_responses WHERE order_id = v_o1) = 'Juggle'
+      AND (SELECT version_id FROM public.brand_form_responses WHERE order_id = v_o1) = v_ver
+      AND (SELECT event_id FROM public.brand_form_responses WHERE order_id = v_o1) = v_ec
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_s1),
+    'T-CHECKOUT-6e a paid order has exactly one response with the answers, and the stash is gone');
+  -- A replayed webhook: the same order again, then a status touch.
+  UPDATE public.ticket_checkout_sessions SET order_id = v_o1 WHERE id = v_s1;
+  UPDATE public.ticket_checkout_sessions SET status = 'paid_completed' WHERE id = v_s1;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_responses WHERE order_id = v_o1) = 1,
+    'T-CHECKOUT-6f a replayed finalize adds no second response');
+  -- A replayed create on a finalized session keeps nothing new.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_stash(v_s1, v_ec, true, NULL);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'finalized', 'T-CHECKOUT-6g a create replayed after the order exists is left alone');
+
+  -- T-CHECKOUT-7: optional (an experience): skipping never blocks; answers given are kept (free order).
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_check(v_eo, true, NULL);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'none', 'T-CHECKOUT-7 an optional form with no answers passes');
+  v := public.brand_form_checkout_check(v_eo, true, jsonb_build_object('formId', v_form, 'versionId', gen_random_uuid(), 'answers', c_ok));
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'none', 'T-CHECKOUT-7 stale optional answers never block');
+  v := public.brand_form_checkout_stash(v_s3, v_eo, true, jsonb_build_object('formId', v_form, 'versionId', v_ver, 'answers', c_ok));
+  RESET ROLE;
+  UPDATE public.ticket_checkout_sessions SET order_id = v_o3, status = 'free_completed' WHERE id = v_s3;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_responses WHERE order_id = v_o3) = 1,
+    'T-CHECKOUT-7 a free order keeps its optional answers in the same transaction');
+END
+$t$;
+
+-- ═══ T-PURCHASE-LINK ("After they purchase", §5.5, decision 17) ═════════════════
+DO $t$
+DECLARE
+  v_s5 uuid := (SELECT id FROM f4514 WHERE k = 'w5_s5');
+  v_o5 uuid := (SELECT id FROM f4514 WHERE k = 'w5_o5');
+  v_ec uuid := (SELECT id FROM f4514 WHERE k = 'w5_ec');
+  v_hash text := encode(extensions.digest('eve-buyer-status-token-0123456789abcdef', 'sha256'), 'hex');
+  v_invites_before bigint := (SELECT count(*) FROM public.brand_offering_invites);
+  v_r text; v jsonb;
+BEGIN
+  SET LOCAL ROLE service_role;
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_purchase_link(%L, %L)$$, v_s5, repeat('a', 64)));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:link_invalid%', 'T-PURCHASE-LINK another token is refused (' || v_r || ')');
+  v := public.brand_form_purchase_link(v_s5, v_hash);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'link' AND (v->>'token') ~ '^[0-9a-f]{64}$'
+      AND EXISTS (SELECT 1 FROM public.brand_form_links l WHERE l.order_id = v_o5 AND l.kind = 'person'
+                    AND l.token_hash = public.brand_form_token_hash(v->>'token')),
+    'T-PURCHASE-LINK the buyer gets a personal link that names their order (' || v::text || ')');
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_offering_invites) = v_invites_before,
+    'T-PURCHASE-LINK no invite is created (decision 17)');
+  INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, attachment_id, event_id, order_id, answers, source)
+  SELECT a.form_id, f.live_version_id, f.brand_id, a.id, a.event_id, v_o5, '{}'::jsonb, 'purchase_redirect'
+    FROM public.brand_form_attachments a JOIN public.brand_forms f ON f.id = a.form_id
+   WHERE a.event_id = (SELECT event_id FROM public.ticket_checkout_sessions WHERE id = v_s5) AND a.detached_at IS NULL;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_purchase_link(v_s5, v_hash);
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'answered', 'T-PURCHASE-LINK an answered order is told so, no new link');
+  -- A required-step page is not an after-purchase page.
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_purchase_link(%L, %L)$$,
+           (SELECT id FROM public.ticket_checkout_sessions WHERE event_id = v_ec AND order_id IS NOT NULL LIMIT 1), v_hash));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:link_invalid%', 'T-PURCHASE-LINK one buyer''s token never opens another session');
+  RESET ROLE;
+END
+$t$;
+
 ROLLBACK;
