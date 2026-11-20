@@ -26,6 +26,11 @@ jest.mock("@mingla/form-rendering", () =>
   jest.requireActual("../../../../packages/form-rendering/brandFormRules"),
 );
 
+// The step module's pure helpers are tested; its UI imports are stubbed.
+jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock("../../components/ui/Button", () => ({ Button: () => null }));
+jest.mock("../../components/checkout/intake/businessFormPrimitives", () => ({ businessFormPrimitives: {} }));
+
 import * as fs from "fs";
 import * as path from "path";
 
@@ -39,7 +44,16 @@ import {
   parseCheckoutForm,
   requestPurchaseFormLink,
 } from "../checkoutBrandFormService";
-import { checkoutFormRefusalCopy, CHECKOUT_FORM_COPY } from "../../components/forms/brandFormsCopy";
+import { checkoutFormRefusalCopy, CHECKOUT_FORM_COPY } from "../../components/checkout/intake/checkoutFormCopy";
+import { formRefusalOf, questionsParamRefusal } from "../checkoutFormMarker";
+import { paidCheckoutErrorMessage, PAID_CHECKOUT_FAILED_MESSAGE } from "../ticketCheckoutService";
+import { freeCheckoutErrorMessage, FREE_CHECKOUT_FAILED_MESSAGE } from "../checkoutErrorCopy";
+import {
+  canContinueStep,
+  markPurchaseHandedOff,
+  probeOf,
+  purchaseHandedOff,
+} from "../../components/checkout/intake/CheckoutQuestionsStep";
 import type { BuyerDetails } from "../../components/checkout/CartContext";
 
 const ANSWERS = {
@@ -79,12 +93,13 @@ describe("#4514 W5 the page's form", () => {
     expect(parseCheckoutForm({ ...base, mode: "something" })).toBeNull();
   });
 
-  it("reads the public RPC and throws on an error so the step can retry", async () => {
-    rpc.mockResolvedValueOnce({ data: { active: false }, error: null });
+  it("reads through the checkout credential read and throws on an error so the step can retry", async () => {
+    invoke.mockResolvedValueOnce({ data: { ok: true, form: { active: false } }, error: null });
     await expect(fetchCheckoutForm("e1")).resolves.toBeNull();
-    expect(rpc).toHaveBeenCalledWith("public_brand_form_for_event", { p_event_id: "e1" });
-    rpc.mockResolvedValueOnce({ data: null, error: { message: "down" } });
+    expect(invoke).toHaveBeenLastCalledWith("brand-form-submit", { body: { op: "checkout_form", eventId: "e1" } });
+    invoke.mockResolvedValueOnce({ data: null, error: { message: "down" } });
     await expect(fetchCheckoutForm("e1")).rejects.toThrow("checkout_form_read_failed");
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it("asks for the after-purchase link with the session's possession proof", async () => {
@@ -143,5 +158,100 @@ describe("#4514 W5 the routes", () => {
     const step = read("src/components/checkout/intake/CheckoutQuestionsStep.tsx");
     expect(step).not.toMatch(/React\.lazy|import\(/);
     expect(step).not.toMatch(/\buseAuth\(/);
+  });
+});
+
+// ── Wave 5 review fixes ─────────────────────────────────────────────────────
+describe("#4514 W5 fix 1: the Details probe uses the buyer's checkout credential", () => {
+  const base = { active: true, formId: ANSWERS.formId, versionId: ANSWERS.versionId, name: "Diet", definition: DEF, brand: { displayName: "B" } };
+
+  it("sends the private ticket link, and a private page the buyer can see gives the step", async () => {
+    invoke.mockResolvedValueOnce({ data: { ok: true, form: { ...base, mode: "required_step" } }, error: null });
+    const form = await fetchCheckoutForm("e9", "AbCdEfGhIjKlMnOpQrStUv");
+    expect(invoke).toHaveBeenLastCalledWith("brand-form-submit", {
+      body: { op: "checkout_form", eventId: "e9", ticketLinkToken: "AbCdEfGhIjKlMnOpQrStUv" },
+    });
+    expect(probeOf("success", form)).toBe("required");
+  });
+
+  it("no credential: the server shows no form, so no step and no refusal is expected", async () => {
+    invoke.mockResolvedValueOnce({ data: { ok: true, form: { active: false } }, error: null });
+    expect(probeOf("success", await fetchCheckoutForm("e9"))).toBe("none");
+  });
+
+  it("OP-5 (fix 5): a signed-in buyer who already answered gets no Questions step", () => {
+    expect(parseCheckoutForm({ ...base, mode: "required_step", answered: true })).toBeNull();
+    expect(probeOf("success", parseCheckoutForm({ ...base, mode: "required_step", answered: true }))).toBe("none");
+  });
+});
+
+describe("#4514 W5 fix 2: no dead end", () => {
+  it("a server failure of the check or the stash never reopens the Questions step", () => {
+    expect(formRefusalOf("brand_form_check_failed")).toBeNull();
+    expect(formRefusalOf("brand_form_stash_failed")).toBeNull();
+    expect(formRefusalOf("form_answers_required")).toBe("form_answers_required");
+    expect(formRefusalOf("form_changed")).toBe("form_changed");
+    expect(formRefusalOf(undefined)).toBeNull();
+  });
+
+  it("they show the normal retryable checkout error, paid and free", () => {
+    for (const code of ["brand_form_check_failed", "brand_form_stash_failed"]) {
+      const err = Object.assign(new Error("Edge Function returned a non-2xx status code"), { code, status: 409 });
+      expect(paidCheckoutErrorMessage(err)).toBe(PAID_CHECKOUT_FAILED_MESSAGE);
+      expect(freeCheckoutErrorMessage(err)).toBe(FREE_CHECKOUT_FAILED_MESSAGE);
+    }
+  });
+
+  it("with no form to show, Continue is on; a form on screen still gates required answers", () => {
+    expect(canContinueStep({ submitting: false, loading: false, form: null, missing: true })).toBe(true);
+    const required = parseCheckoutForm({ active: true, mode: "required_step", formId: "f", versionId: "v", definition: DEF, brand: {} });
+    expect(canContinueStep({ submitting: false, loading: false, form: required, missing: true })).toBe(false);
+    expect(canContinueStep({ submitting: false, loading: false, form: required, missing: false })).toBe(true);
+    expect(canContinueStep({ submitting: true, loading: false, form: null, missing: false })).toBe(false);
+  });
+
+  it("a refusal with no form offers Try again that re-reads the form, and Continue stays on", () => {
+    const root = path.resolve(__dirname, "../../..");
+    const step = fs.readFileSync(path.join(root, "src/components/checkout/intake/CheckoutQuestionsStep.tsx"), "utf8");
+    expect(step).toMatch(/loadFailed \|\| refusedWithoutForm \? \(\s*<Button\s+label=\{CHECKOUT_FORM_COPY\.tryAgain\}[\s\S]*?onPress=\{\(\) => void refetch\(\)\}/);
+    expect(step).toContain("const canContinue = canContinueStep({ submitting, loading, form, missing });");
+    expect(CHECKOUT_FORM_COPY.noFormRefused).toMatch(/Nothing was charged\. Try again\./);
+  });
+});
+
+describe("#4514 W5 fix 7: payment sends the real refusal code back to the step", () => {
+  it("maps the questions param to the real code, and an old link to required", () => {
+    expect(questionsParamRefusal("form_changed")).toBe("form_changed");
+    expect(questionsParamRefusal("form_answers_invalid")).toBe("form_answers_invalid");
+    expect(questionsParamRefusal("1")).toBe("form_answers_required");
+    expect(questionsParamRefusal("brand_form_stash_failed")).toBeNull();
+    expect(questionsParamRefusal(undefined)).toBeNull();
+  });
+});
+
+describe("#4514 W5 fix 4: the after-purchase redirect happens once per checkout session", () => {
+  it("a session handed off once is not handed off again (Later works)", () => {
+    expect(purchaseHandedOff("sess-1")).toBe(false);
+    markPurchaseHandedOff("sess-1");
+    expect(purchaseHandedOff("sess-1")).toBe(true);
+    expect(purchaseHandedOff("sess-2")).toBe(false);
+  });
+
+  it("the flag is in sessionStorage, so a fresh load of the confirm page does not redirect", () => {
+    const store = new Map<string, string>();
+    const g = globalThis as unknown as { sessionStorage?: Storage };
+    const prev = g.sessionStorage;
+    g.sessionStorage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+    } as unknown as Storage;
+    try {
+      markPurchaseHandedOff("sess-3");
+      expect(store.get("mingla.formPurchaseHandedOff.sess-3")).toBe("1");
+      store.set("mingla.formPurchaseHandedOff.sess-4", "1");
+      expect(purchaseHandedOff("sess-4")).toBe(true);
+    } finally {
+      g.sessionStorage = prev;
+    }
   });
 });

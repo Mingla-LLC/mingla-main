@@ -11,7 +11,6 @@ import {
 } from "./checkoutErrorCopy";
 import type {
   BuyerDetails,
-  CheckoutBrandFormAnswers,
   CartLine,
   OrderResult,
 } from "../components/checkout/CartContext";
@@ -797,6 +796,9 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   // of the state of this sale", which is the recoverable, in-progress case far
   // more often than not — and it is the ONLY one where telling the guest to
   // wait rather than retry immediately is the right instruction.
+  // #4514 — a brand form check or stash that failed on the server is the
+  // normal retryable error: nothing was charged and trying again is right.
+  if (code?.startsWith("brand_form_")) return PAID_CHECKOUT_FAILED_MESSAGE;
   if (status === 409) return PAID_CHECKOUT_IN_PROGRESS_MESSAGE;
   // Copy this module already owns must pass through unchanged.
   const message =
@@ -812,28 +814,14 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   return PAID_CHECKOUT_FAILED_MESSAGE;
 };
 
-/**
- * #4514 wave 5 (C1) — the capability marker: this client shows the brand form
- * Questions step, so a required form's answers are checked before payment.
- * Mirrors `BRAND_FORM_CHECKOUT_STEP` in supabase/functions/_shared/brandFormsContract.ts.
- */
-export const BRAND_FORM_CHECKOUT_STEP = 1;
-
-/** The marker, plus the buyer's answers when the Questions step collected them. */
-export const checkoutBrandFormFields = (
-  buyer: Pick<BuyerDetails, "brandForm">,
-): { brandFormStep: number; brandForm?: CheckoutBrandFormAnswers } =>
-  buyer.brandForm
-    ? { brandFormStep: BRAND_FORM_CHECKOUT_STEP, brandForm: buyer.brandForm }
-    : { brandFormStep: BRAND_FORM_CHECKOUT_STEP };
-
-/** `buyer` as the server reads it: the answers never ride inside it. */
-export const buyerWithoutBrandForm = (
-  buyer: BuyerDetails,
-): Omit<BuyerDetails, "brandForm"> => {
-  const { brandForm: _answers, ...rest } = buyer;
-  return rest;
-};
+// #4514 wave 5 (C1) — the marker and body helpers live in a tiny module with
+// no imports, so the eager checkout code carries nothing else of the forms.
+import {
+  BRAND_FORM_CHECKOUT_STEP,
+  buyerWithoutBrandForm,
+  checkoutBrandFormFields,
+} from "./checkoutFormMarker";
+export { BRAND_FORM_CHECKOUT_STEP, buyerWithoutBrandForm, checkoutBrandFormFields };
 
 export const createTicketCheckout = async (
   input: TicketCheckoutCreateInput,

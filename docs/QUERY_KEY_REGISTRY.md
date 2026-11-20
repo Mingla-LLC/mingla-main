@@ -183,7 +183,7 @@ the client never estimates a discounted refund amount.
 | `rosterAnswers(eventId)` | `['brand-forms', 'roster-answers', eventId]` (wave 3: the guest list's answers chip and drawer for one page) |
 | `requestPreview(formId, eventId, kind, audience, channels, subjects)` | `['brand-forms', 'request-preview', formId, eventId, kind, audience, channels, subjects]` (wave 4: reach and cost before Ask guests to answer / Remind; `staleTime: 0`; channels and subjects are sorted, joined ids, never contacts or tokens) |
 | `requestLog(formId, eventId, subject)` | `['brand-forms', 'request-log', formId, eventId, subject]` (wave 4 review: the host delivery log, sends and failures per guest and the automatic reminder runs; `subject` is `all` or `kind:id`; never contacts or tokens) |
-| `publicForEvent(eventId)` | `['brand-forms', 'public', eventId]` (wave 5: the page's form as the buyer checkout reads it, anonymous; `staleTime: 30s`; refetched when checkout-create refuses with a form code) |
+| `checkoutForm(eventId, withTicketLink)` | `['brand-forms', 'checkout', eventId, 'link' \| 'plain']` (wave 5: the page's form as the buyer checkout reads it through brand-form-submit `checkout_form`, with the buyer's checkout credential; `staleTime: 30s`; refetched when checkout-create refuses with a form code, and by the step's Try again) |
 | `idle(read)` | `['brand-forms', read, 'none']` (a read switched off because its id is missing; never fetched) |
 
 **Scoping:** the list is keyed by BRAND, so switching brand never serves another

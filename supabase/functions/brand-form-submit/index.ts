@@ -13,6 +13,8 @@
 // address-hash and code-digest salts are derived from, _shared/derivedSecret.ts).
 // Wave 3's one-time code (./code.ts) reuses the existing email sender and SMS
 // verify secrets that claim-contact (#4063) already uses. No new secret.
+// Wave 5 review fix 1: the checkout form read hashes a private ticket link with
+// the existing OFFERING_INVITE_TOKEN_PEPPER, exactly as ticket-checkout-create does.
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -27,6 +29,8 @@ import { emailAdapter } from "../_shared/adapters/emailAdapter.ts";
 import { renderContactCodeEmail } from "../_shared/email/contactCodeEmail.ts";
 import { EMAIL_SENDERS } from "../_shared/email/senders.ts";
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
+import { hashTicketLinkToken } from "../_shared/ticketLinkToken.ts";
+import { resolveOfferingInviteTokenPepper } from "../_shared/offeringInviteToken.ts";
 
 // deno-lint-ignore no-explicit-any
 type Client = any;
@@ -156,6 +160,23 @@ export async function handler(req: Request): Promise<Response> {
   return await handleBrandFormSubmit(req, {
     db: restSubmitDb(supabase),
     code: restCodeDeps(supabase),
+    checkout: {
+      async checkoutForm(eventId, buyerUserId, ticketLinkHash) {
+        const { data, error } = await supabase.rpc("brand_form_checkout_form", {
+          p_event_id: eventId,
+          p_buyer_user_id: buyerUserId,
+          p_ticket_link_hash: ticketLinkHash,
+        });
+        return {
+          data,
+          error: error ? { message: String(error.message ?? "") } : null,
+        };
+      },
+      async hashTicketLink(token) {
+        const pepper = await resolveOfferingInviteTokenPepper();
+        return await hashTicketLinkToken(token, pepper.bytes);
+      },
+    },
     purchase: {
       async purchaseLink(checkoutSessionId, tokenHash) {
         const { data, error } = await supabase.rpc("brand_form_purchase_link", {

@@ -10,6 +10,7 @@
 // no marker completes the order as "to answer"; the off switch checks nothing.
 // Door sales (C9) never reach this module: the caller skips it for door pay.
 
+import { captureEdgeException } from "../_shared/sentryEdge.ts";
 import {
   BRAND_FORM_CHECKOUT_STEP,
   type BrandFormAnswers,
@@ -99,9 +100,36 @@ function detailObject(details: string | null | undefined): unknown {
   }
 }
 
-/** The migration is not applied yet (PostgREST cannot find the function). */
-export function isMissingFunction(error: RpcError): boolean {
-  return error.code === "PGRST202" || error.code === "42883";
+/**
+ * [TRANSITIONAL] The forms migration is not applied yet: PostgREST cannot find
+ * `brand_form_checkout_check` ITSELF (PGRST202 naming that function). Nothing
+ * else fails open: a missing inner function (42883), a stale cache for another
+ * function or any other error stays a retryable refusal. Exit condition: remove
+ * once 20281120034514 is in the production migration ledger and PostgREST is
+ * reloaded.
+ */
+export function isCheckFunctionMissing(error: RpcError): boolean {
+  return error.code === "PGRST202" &&
+    /\bbrand_form_checkout_check\b/.test(error.message ?? "");
+}
+
+/**
+ * [TRANSITIONAL] (same exit condition) The fail-open above is an ops alert, the
+ * way edge functions raise one (Sentry through the shared edge helper; the
+ * function already declares SENTRY_DSN). Never carries buyer data.
+ */
+export function reportBrandFormCheckFailOpen(
+  error: RpcError,
+  capture: typeof captureEdgeException = captureEdgeException,
+): void {
+  console.error(
+    "[ticket-checkout-create] brand form check unavailable (function missing): failing open",
+  );
+  capture(new Error("brand_form_checkout_check_missing"), {
+    fn: "ticket-checkout-create",
+    tags: { issue: "4514", alert: "brand_form_check_fail_open" },
+    extra: { code: error.code ?? null },
+  });
 }
 
 /**

@@ -124,7 +124,8 @@ import {
   brandFormRefusal,
   checkoutFormPayload,
   isCheckoutBrandFormRefusal,
-  isMissingFunction,
+  isCheckFunctionMissing,
+  reportBrandFormCheckFailOpen,
   parseCheckoutBrandForm,
 } from "./brandFormCheckout.ts";
 // Issue #3645 — each later Paystack payment priced at checkout by the deposit's
@@ -2082,22 +2083,30 @@ export const createTicketCheckoutCreateHandler = (
     // The off switch (inside SQL) checks nothing. Door pay is exempt (C9).
     // Without the marker there is nothing to refuse and nothing to keep, so an
     // older client's request makes no extra database call at all.
+    // The check and the stash take the buyer's own credentials (the bearer's
+    // user and the private ticket link hash), so they apply the SAME visibility
+    // rule as the checkout form read the Details step used (OP-5 included).
+    let brandFormFailedOpen = false;
     if (doorPay === null && parsedBrandForm.capable) {
       const formCheck = await supabase.rpc("brand_form_checkout_check", {
         p_event_id: eventId,
         p_capable: parsedBrandForm.capable,
         p_form: checkoutFormPayload(parsedBrandForm),
+        p_buyer_user_id: userId,
+        p_ticket_link_hash: ticketLinkHash,
       });
       if (formCheck.error) {
         const refusal = brandFormRefusal(formCheck.error);
         if (refusal !== null) {
           return jsonResponse(refusal.body, refusal.status);
         }
-        if (isMissingFunction(formCheck.error)) {
-          // The forms migration is not applied yet: there can be no form.
-          console.error(
-            "[ticket-checkout-create] brand form check unavailable (function missing)",
-          );
+        if (isCheckFunctionMissing(formCheck.error)) {
+          // [TRANSITIONAL] fail-open while brand_form_checkout_check is not in
+          // PostgREST's schema: there can be no form yet. Exit: remove once
+          // 20281120034514 is in the production migration ledger and PostgREST
+          // is reloaded. Raised as an ops alert, never a silent console line.
+          brandFormFailedOpen = true;
+          reportBrandFormCheckFailOpen(formCheck.error);
         } else {
           console.error("[ticket-checkout-create] brand form check failed", {
             error: formCheck.error.message,
@@ -2652,24 +2661,24 @@ export const createTicketCheckoutCreateHandler = (
     // brand_form_finalize_checkout_answers makes them the order's response in
     // the same transaction that gives the session its order (paid and free).
     // If this write fails the reply is 409 and payment never starts.
-    if (doorPay === null && parsedBrandForm.capable) {
+    if (doorPay === null && parsedBrandForm.capable && !brandFormFailedOpen) {
       const stashed = await supabase.rpc("brand_form_checkout_stash", {
         p_checkout_session_id: checkoutSessionId,
         p_event_id: eventId,
         p_capable: parsedBrandForm.capable,
         p_form: checkoutFormPayload(parsedBrandForm),
+        p_buyer_user_id: userId,
+        p_ticket_link_hash: ticketLinkHash,
       });
       if (stashed.error) {
         const refusal = brandFormRefusal(stashed.error);
         if (refusal !== null) {
           return jsonResponse(refusal.body, refusal.status);
         }
-        if (!isMissingFunction(stashed.error)) {
-          console.error("[ticket-checkout-create] brand form stash failed", {
-            error: stashed.error.message,
-          });
-          return jsonResponse({ error: "brand_form_stash_failed" }, 409);
-        }
+        console.error("[ticket-checkout-create] brand form stash failed", {
+          error: stashed.error.message,
+        });
+        return jsonResponse({ error: "brand_form_stash_failed" }, 409);
       }
     }
 

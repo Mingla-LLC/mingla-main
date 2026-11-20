@@ -4,7 +4,11 @@
  * (`components/checkout/intake/formRenderingPrimitives`), so nothing here is in
  * the eager bundle.
  *
- * - The page's form, as `public_brand_form_for_event` returns it (§3.4, C7).
+ * - The page's form, read through brand-form-submit `{op:"checkout_form"}` with
+ *   the SAME credential the buyer presents to checkout: the session bearer
+ *   (attached by the client) and the private ticket link. The server applies the
+ *   one visibility rule its required-answers check uses (review fix 1), and a
+ *   signed-in buyer who already answered gets no step (OP-5).
  * - "After they purchase" (§5.5): a personal link for the buyer's own order,
  *   from brand-form-submit `{op:"purchase_link"}`; possession is the checkout
  *   session's buyer status token. Never an invite (decision 17).
@@ -36,6 +40,8 @@ export function parseCheckoutForm(data: unknown): CheckoutForm | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (d.active !== true || typeof d.formId !== "string") return null;
+  // OP-5: this signed-in buyer already answered the form; nothing to ask.
+  if (d.answered === true) return null;
   const mode = MODES.find((m) => m === d.mode);
   if (mode === undefined) return null;
   const def = d.definition;
@@ -58,10 +64,20 @@ export function parseCheckoutForm(data: unknown): CheckoutForm | null {
 }
 
 /** Throws on a transport or database error, so the step can say so and retry. */
-export async function fetchCheckoutForm(eventId: string): Promise<CheckoutForm | null> {
-  const { data, error } = await supabase.rpc("public_brand_form_for_event", { p_event_id: eventId });
-  if (error) throw new Error(`checkout_form_read_failed:${error.message}`);
-  return parseCheckoutForm(data);
+export async function fetchCheckoutForm(
+  eventId: string,
+  ticketLinkToken: string | null = null,
+): Promise<CheckoutForm | null> {
+  const { data, error } = await supabase.functions.invoke("brand-form-submit", {
+    body: {
+      op: "checkout_form",
+      eventId,
+      ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
+    },
+  });
+  if (error) throw new Error("checkout_form_read_failed");
+  const d = (data ?? {}) as Record<string, unknown>;
+  return parseCheckoutForm(d.form);
 }
 
 export type PurchaseLinkResult =
@@ -86,6 +102,13 @@ export async function requestPurchaseFormLink(input: {
   }
   return { outcome: d.outcome === "answered" ? "answered" : "none" };
 }
+
+/**
+ * Review fix 4: the after-purchase hand-off happens once per checkout session.
+ * Set before the redirect, so a fresh load of the confirm page ("Later") stays.
+ */
+export const purchaseHandedOffStorageKey = (checkoutSessionId: string): string =>
+  `mingla.formPurchaseHandedOff.${checkoutSessionId}`;
 
 /** Where the link page picks the after-purchase token up (web, one read, then removed). */
 export const purchaseTokenStorageKey = (formId: string): string => `mingla.formPurchaseToken.${formId}`;

@@ -16,8 +16,11 @@
  *     connection never locks buying, #4518).
  *   - Visible: the compact brand strip, the form, and its own footer. Required:
  *     Continue stays off with "Answer the required questions to continue".
- *     Optional: Continue or Skip. A failed read on the step: Continue off with
- *     "Load the questions to continue" and Try again.
+ *     Optional: Continue or Skip.
+ *   - No form to show (form === null: a failed read, or the server refused a
+ *     form this read cannot see) is NEVER a dead end (review fix 2): Continue
+ *     stays on, the server stays the authority, and a refusal with no form
+ *     shows a plain line and a Try again that re-reads the form.
  *   - Answers are kept on screen through a refusal; a newer version of the
  *     form drops only the answers of questions that no longer exist.
  *
@@ -37,11 +40,12 @@ import { space, type } from "../../../constants/designSystem";
 import { brandFormKeys } from "../../../hooks/brandFormKeys";
 import {
   fetchCheckoutForm,
+  purchaseHandedOffStorageKey,
   purchaseTokenStorageKey,
   requestPurchaseFormLink,
   type CheckoutForm,
 } from "../../../services/checkoutBrandFormService";
-import { CHECKOUT_FORM_COPY, checkoutFormRefusalCopy } from "../../forms/brandFormsCopy";
+import { CHECKOUT_FORM_COPY, checkoutFormRefusalCopy } from "./checkoutFormCopy";
 import { Button } from "../../ui/Button";
 import { checkoutStyles, color } from "../checkoutTheme";
 import type { CheckoutBrandFormAnswers } from "../CartContext";
@@ -77,15 +81,33 @@ export function answersForForm(
   return out;
 }
 
-export const checkoutFormQueryOptions = (eventId: string) => ({
-  queryKey: brandFormKeys.publicForEvent(eventId),
-  queryFn: () => fetchCheckoutForm(eventId),
+export const checkoutFormQueryOptions = (eventId: string, ticketLinkToken: string | null = null) => ({
+  queryKey: brandFormKeys.checkoutForm(eventId, ticketLinkToken !== null),
+  queryFn: () => fetchCheckoutForm(eventId, ticketLinkToken),
   staleTime: 30_000,
   retry: 1,
 });
 
+/**
+ * Review fix 2: whether Continue is on. A form on screen gates on its required
+ * answers; NO form on screen never disables Continue (the server decides).
+ * Pure; exported for tests.
+ */
+export function canContinueStep(input: {
+  submitting: boolean;
+  loading: boolean;
+  form: CheckoutForm | null;
+  missing: boolean;
+}): boolean {
+  if (input.submitting || input.loading) return false;
+  if (input.form === null) return true;
+  return input.form.mode !== "required_step" || !input.missing;
+}
+
 export interface CheckoutQuestionsStepProps {
   eventId: string;
+  /** The private ticket link the buyer checks out with (#3827), if any. */
+  ticketLinkToken?: string | null;
   /** false on the Details step: render nothing, only report the probe. */
   visible: boolean;
   value: CheckoutBrandFormAnswers | null;
@@ -103,6 +125,7 @@ export interface CheckoutQuestionsStepProps {
 
 export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
   eventId,
+  ticketLinkToken = null,
   visible,
   value,
   onChange,
@@ -113,7 +136,7 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
   submitting,
   submitError = null,
 }) => {
-  const query = useQuery(checkoutFormQueryOptions(eventId));
+  const query = useQuery(checkoutFormQueryOptions(eventId, ticketLinkToken));
   const form = query.data ?? null;
   const probe = probeOf(query.status, form);
   useEffect(() => {
@@ -142,17 +165,21 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
 
   if (!visible) return null;
 
-  const required = form?.mode === "required_step" || (form === null && refusal !== null);
+  const required = form?.mode === "required_step";
   const loadFailed = query.status === "error";
   const loading = query.status === "pending" || (query.isFetching && form === null);
-  const canContinue =
-    !submitting && !loading && !loadFailed && form !== null && (!required || !missing);
+  const canContinue = canContinueStep({ submitting, loading, form, missing });
+  // The server asked for answers this screen has no form for: say so plainly
+  // and offer Try again; Continue stays on (never a disabled dead end).
+  const refusedWithoutForm = form === null && refusal !== null && !loading;
   const reason = loadFailed
     ? CHECKOUT_FORM_COPY.loadFailed
-    : required && missing && form !== null
+    : required && missing
       ? CHECKOUT_FORM_COPY.needsAnswers
       : null;
-  const refusalLine = checkoutFormRefusalCopy(refusal);
+  const refusalLine = refusedWithoutForm
+    ? CHECKOUT_FORM_COPY.noFormRefused
+    : checkoutFormRefusalCopy(refusal);
   const payload = (): CheckoutBrandFormAnswers | null =>
     form !== null && form.versionId !== null
       ? { formId: form.formId, versionId: form.versionId, answers }
@@ -179,7 +206,7 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
         </Text>
       ) : null}
       {loading ? <Text style={styles.note}>{CHECKOUT_FORM_COPY.loading}</Text> : null}
-      {loadFailed ? (
+      {loadFailed || refusedWithoutForm ? (
         <Button
           label={CHECKOUT_FORM_COPY.tryAgain}
           variant="secondary"
@@ -245,9 +272,32 @@ export interface PurchaseFormHandoffProps {
   buyerStatusToken: string | null;
 }
 
+/** Review fix 4: handed-off sessions this app run (native, or no storage). */
+const handedOff = new Set<string>();
+
+/** Has this checkout session already been sent to its form? Web keeps it per tab session. */
+export function purchaseHandedOff(checkoutSessionId: string): boolean {
+  if (handedOff.has(checkoutSessionId)) return true;
+  try {
+    return globalThis.sessionStorage?.getItem(purchaseHandedOffStorageKey(checkoutSessionId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Record the hand-off BEFORE redirecting, so "Later" and a reload stay on the success screen. */
+export function markPurchaseHandedOff(checkoutSessionId: string): void {
+  handedOff.add(checkoutSessionId);
+  try {
+    globalThis.sessionStorage?.setItem(purchaseHandedOffStorageKey(checkoutSessionId), "1");
+  } catch (error) {
+    console.error("[checkout-after-purchase] hand-off flag not saved", error);
+  }
+}
+
 /**
- * "After they purchase": once per order, ask for the buyer's form link and open
- * it. Renders a one-line fallback only when the link could not be had.
+ * "After they purchase": once per checkout session, ask for the buyer's form
+ * link and open it. Renders a one-line fallback only when the link could not be had.
  */
 export const PurchaseFormHandoff: React.FC<PurchaseFormHandoffProps> = ({
   checkoutSessionId,
@@ -258,7 +308,7 @@ export const PurchaseFormHandoff: React.FC<PurchaseFormHandoffProps> = ({
   const [failed, setFailed] = useState<boolean>(false);
   useEffect(() => {
     if (checkoutSessionId === null || buyerStatusToken === null || buyerStatusToken.length < 32) return;
-    if (asked.current === checkoutSessionId) return;
+    if (asked.current === checkoutSessionId || purchaseHandedOff(checkoutSessionId)) return;
     asked.current = checkoutSessionId;
     let live = true;
     requestPurchaseFormLink({ checkoutSessionId, buyerStatusToken })
@@ -272,9 +322,11 @@ export const PurchaseFormHandoff: React.FC<PurchaseFormHandoffProps> = ({
             setFailed(true);
             return;
           }
+          markPurchaseHandedOff(checkoutSessionId);
           router.push(`/form/${result.formId}?from=purchase` as never);
           return;
         }
+        markPurchaseHandedOff(checkoutSessionId);
         void Linking.openURL(`https://host.usemingla.com/form/${result.formId}#t=${result.token}`);
       })
       .catch((error: unknown) => {

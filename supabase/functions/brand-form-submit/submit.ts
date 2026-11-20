@@ -47,6 +47,12 @@ import {
   parsePurchaseLinkRequest,
   type PurchaseLinkDeps,
 } from "./purchaseLink.ts";
+import {
+  type CheckoutFormDeps,
+  handleCheckoutForm,
+  isCheckoutFormOp,
+  parseCheckoutFormRequest,
+} from "./checkoutForm.ts";
 
 /** The derivation label for this limiter's salt (one label per purpose, #3201). */
 export const IP_SALT_LABEL = "brand-form-submit-ip-salt";
@@ -91,6 +97,8 @@ export interface BrandFormSubmitDeps {
   code?: CodeDeps;
   /** Wave 5: the after-purchase link for the buyer's own order (./purchaseLink.ts). */
   purchase?: Pick<PurchaseLinkDeps, "purchaseLink">;
+  /** Wave 5 review fix 1: the checkout's form read (./checkoutForm.ts). */
+  checkout?: Pick<CheckoutFormDeps, "checkoutForm" | "hashTicketLink">;
 }
 
 export function corsFor(origin: string | null): Record<string, string> | null {
@@ -219,6 +227,31 @@ export async function handleBrandFormSubmit(
     } catch (e) {
       log(
         `[brand-form-submit] purchase_link server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
+  // Wave 5 review fix 1: {op:"checkout_form"} is the buyer checkout reading the
+  // page's form with the credential it presents to checkout (./checkoutForm.ts).
+  if (isCheckoutFormOp(raw)) {
+    const formReq = parseCheckoutFormRequest(raw);
+    if (!formReq || !deps.checkout) return fail("bad_request", cors);
+    try {
+      const jwt = bearerOf(req);
+      const userId = jwt ? await deps.db.userFromBearer(jwt) : null;
+      const result = await handleCheckoutForm(formReq, userId, {
+        log,
+        ...deps.checkout,
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] checkout_form server_error ${
           e instanceof Error ? e.name : "unknown"
         }`,
       );

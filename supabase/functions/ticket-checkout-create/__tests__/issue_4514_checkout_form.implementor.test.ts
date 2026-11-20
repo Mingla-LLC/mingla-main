@@ -22,8 +22,10 @@ import {
 } from "../index.ts";
 import {
   brandFormRefusal,
+  isCheckFunctionMissing,
   isCheckoutBrandFormRefusal,
   parseCheckoutBrandForm,
+  reportBrandFormCheckFailOpen,
 } from "../brandFormCheckout.ts";
 import { resolveDoorPayCheckout } from "../doorPayCheckout.ts";
 
@@ -171,6 +173,12 @@ class FakeCheckoutDb {
   /** Makes the stash write fail (a database error, not a refusal). */
   stashFails = false;
   readonly stashed: Array<Record<string, unknown>> = [];
+  /** Review fix 3: an error the check RPC itself returns (code + message). */
+  checkError: { message: string; code: string } | null = null;
+  /** Review fix 1/5: every argument set the check and the stash received. */
+  readonly formArgs: Array<Record<string, unknown>> = [];
+  /** Review fix 5 (OP-5): the signed-in buyer who already answered the form. */
+  answeredUser: string | null = null;
 
   /**
    * A model of brand_form_checkout_check / _stash (the SQL is proven by the
@@ -181,6 +189,10 @@ class FakeCheckoutDb {
     name: string,
     args: Record<string, unknown>,
   ): DbResult & { error?: { message: string; details?: string } | null } {
+    this.formArgs.push({ name, ...args });
+    if (name === "brand_form_checkout_check" && this.checkError !== null) {
+      return { data: null, error: this.checkError };
+    }
     if (name === "brand_form_checkout_stash" && this.stashFails) {
       return { data: null, error: { message: "could not write" } };
     }
@@ -189,6 +201,11 @@ class FakeCheckoutDb {
         data: { outcome: this.switchedOff ? "off" : "none" },
         error: null,
       };
+    }
+    if (
+      this.answeredUser !== null && args.p_buyer_user_id === this.answeredUser
+    ) {
+      return { data: { outcome: "answered" }, error: null };
     }
     const form = args.p_form as Record<string, unknown> | null;
     if (form === null) {
@@ -317,8 +334,11 @@ class FakeCheckoutDb {
   }
 }
 
-const makeDeps = (client: FakeCheckoutDb): TicketCheckoutCreateDeps => ({
-  userIdFromAuthHeader: () => Promise.resolve(null),
+const makeDeps = (
+  client: FakeCheckoutDb,
+  userId: string | null = null,
+): TicketCheckoutCreateDeps => ({
+  userIdFromAuthHeader: () => Promise.resolve(userId),
   serviceClient: () => client as never,
   paystackInitializeTransaction: (() => {
     throw new Error(
@@ -355,14 +375,18 @@ const ANSWERS = {
   answers: { [QUESTION_ID]: "Vegetarian" },
 };
 
-async function run(db: FakeCheckoutDb, extra: Record<string, unknown>) {
+async function run(
+  db: FakeCheckoutDb,
+  extra: Record<string, unknown>,
+  userId: string | null = null,
+) {
   const g = globalThis as unknown as {
     EdgeRuntime?: { waitUntil: (w: Promise<unknown>) => void };
   };
   const held: Promise<unknown>[] = [];
   g.EdgeRuntime = { waitUntil: (w) => held.push(w) };
   try {
-    const res = await createTicketCheckoutCreateHandler(makeDeps(db))(
+    const res = await createTicketCheckoutCreateHandler(makeDeps(db, userId))(
       freeRequest(extra),
     );
     const body = await res.json() as Record<string, unknown>;
@@ -546,8 +570,97 @@ Deno.test("#4514 W5 door sales are exempt (C9): the rebuilt door body never carr
   // And both form calls in the handler are skipped for a door sale by name.
   const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
   assertEquals(
-    src.split("if (doorPay === null && parsedBrandForm.capable) {").length - 1,
+    src.split("if (doorPay === null && parsedBrandForm.capable").length - 1,
     2,
     "the check and the stash must both skip door pay",
   );
+});
+
+// ── Wave 5 review fixes ─────────────────────────────────────────────────────
+
+const BUYER_ID = "45140000-0000-4000-8000-0000000000b1";
+
+Deno.test("#4514 W5 fix 3: only PGRST202 on brand_form_checkout_check itself fails open", () => {
+  assert(isCheckFunctionMissing({
+    code: "PGRST202",
+    message:
+      "Could not find the function public.brand_form_checkout_check(p_buyer_user_id, p_capable, p_event_id, p_form, p_ticket_link_hash) in the schema cache",
+  }));
+  assert(
+    !isCheckFunctionMissing({
+      code: "42883",
+      message: "function public.brand_form_validate_answers(uuid, jsonb) does not exist",
+    }),
+    "a missing INNER function must not fail open",
+  );
+  assert(
+    !isCheckFunctionMissing({
+      code: "PGRST202",
+      message: "Could not find the function public.brand_form_checkout_stash(...) in the schema cache",
+    }),
+    "a stale cache for another function must not fail open",
+  );
+  assert(!isCheckFunctionMissing({ code: null, message: "brand_form_checkout_check timeout" }));
+});
+
+Deno.test("#4514 W5 fix 3: the fail-open raises an ops alert without buyer data", () => {
+  const captured: Array<{ error: unknown; ctx: Record<string, unknown> }> = [];
+  reportBrandFormCheckFailOpen(
+    { code: "PGRST202", message: "x" },
+    (error, ctx) => captured.push({ error, ctx: ctx as Record<string, unknown> }),
+  );
+  assertEquals(captured.length, 1);
+  assertEquals((captured[0].error as Error).message, "brand_form_checkout_check_missing");
+  assertEquals(captured[0].ctx.fn, "ticket-checkout-create");
+  assertEquals(
+    (captured[0].ctx.tags as Record<string, string>).alert,
+    "brand_form_check_fail_open",
+  );
+});
+
+Deno.test("#4514 W5 fix 3: the check missing from the schema cache completes the order and skips the stash", async () => {
+  const db = new FakeCheckoutDb();
+  db.checkError = {
+    code: "PGRST202",
+    message: "Could not find the function public.brand_form_checkout_check in the schema cache",
+  };
+  const { status, body } = await run(db, { brandFormStep: 1, brandForm: ANSWERS });
+  assertEquals(status, 200);
+  assertEquals(body.kind, "free_completed");
+  assert(!has(db, "rpc:brand_form_checkout_stash"), "no stash after a fail-open");
+});
+
+Deno.test("#4514 W5 fix 3: a missing inner function (42883) is the retryable refusal, before any session", async () => {
+  const db = new FakeCheckoutDb();
+  db.checkError = {
+    code: "42883",
+    message: "function public.brand_form_validate_answers(uuid, jsonb) does not exist",
+  };
+  const { status, body } = await run(db, { brandFormStep: 1, brandForm: ANSWERS });
+  assertEquals(status, 409);
+  assertEquals(body.error, "brand_form_check_failed");
+  assert(!has(db, "rpc:biz_ticket_checkout_create_session"));
+  assertEquals(db.orders.length, 0);
+});
+
+Deno.test("#4514 W5 fix 1: the check and the stash get the buyer's own credential (one visibility rule)", async () => {
+  const db = new FakeCheckoutDb();
+  const { status } = await run(db, { brandFormStep: 1, brandForm: ANSWERS }, BUYER_ID);
+  assertEquals(status, 200);
+  const names = db.formArgs.map((a) => a.name);
+  assertEquals(names, ["brand_form_checkout_check", "brand_form_checkout_stash"]);
+  for (const a of db.formArgs) {
+    assertEquals(a.p_buyer_user_id, BUYER_ID);
+    assert("p_ticket_link_hash" in a, "the link hash slot is always sent");
+    assertEquals(a.p_ticket_link_hash, null);
+  }
+});
+
+Deno.test("#4514 W5 fix 5 (OP-5): a signed-in buyer who already answered is not refused and nothing is stashed", async () => {
+  const db = new FakeCheckoutDb();
+  db.answeredUser = BUYER_ID;
+  const { status, body } = await run(db, { brandFormStep: 1 }, BUYER_ID);
+  assertEquals(status, 200);
+  assertEquals(body.kind, "free_completed");
+  assertEquals(db.stashed.length, 0);
 });

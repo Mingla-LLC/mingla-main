@@ -60,6 +60,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { space } from "../../../src/constants/designSystem";
+import { formRefusalOf } from "../../../src/services/checkoutFormMarker";
 import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout Pay CTA, matching the public page.
@@ -703,12 +704,16 @@ function CheckoutPaymentScreenContent({
           }
           // #4514 wave 5 — the server wants the page's questions answered (the
           // form changed after Details): back to the Questions step, nothing charged.
-          if (
-            /^(form_answers_required|form_answers_invalid|form_changed|brand_form_\w+)$/.test(
-              (error as { code?: string } | null)?.code ?? "",
-            )
-          ) {
-            router.replace(`/checkout/${eventId}/buyer?questions=1` as never);
+          // The real refusal code travels, so the step explains the right thing;
+          // a private ticket link is kept. A server failure of the check or the
+          // stash is NOT a form refusal: it is the normal retryable error below.
+          const formCode = formRefusalOf((error as { code?: string } | null)?.code);
+          if (formCode !== null) {
+            router.replace(
+              `/checkout/${eventId}/buyer?questions=${formCode}${
+                ticketLinkToken === null ? "" : `&ticketLink=${encodeURIComponent(ticketLinkToken)}`
+              }` as never,
+            );
             return;
           }
           // issue #2188 — NEVER render the raw thrown string. supabase-js reports

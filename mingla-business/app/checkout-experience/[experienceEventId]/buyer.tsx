@@ -101,6 +101,10 @@ import {
   useCart,
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
+import {
+  formRefusalOf,
+  questionsParamRefusal,
+} from "../../../src/services/checkoutFormMarker";
 import { CheckoutOfferingStrip } from "../../../src/components/checkout/CheckoutOfferingStrip";
 import { useCheckoutWideLayout } from "../../../src/components/checkout/CheckoutOrderSummary";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
@@ -132,7 +136,6 @@ const CheckoutQuestionsStep = React.lazy(() =>
   ),
 );
 const FORM_STEP_NAMES = ["Your spot", "Details", "Questions", "Payment"] as const;
-const FORM_REFUSAL = /^(form_answers_required|form_answers_invalid|form_changed|brand_form_\w+)$/;
 
 // #4420 — read per render: the tokens follow the host palette.
 const publicBuyerPhoneTheme = (): PhoneInputTheme => ({
@@ -259,10 +262,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   // #4514 wave 5 — what the page's brand form asks of this checkout.
   const [formProbe, setFormProbe] = useState<string>("loading");
   const [formRefusal, setFormRefusal] = useState<string | null>(
-    params.questions === "1" ? "form_answers_required" : null,
+    questionsParamRefusal(params.questions),
   );
   const [questionsOpen, setQuestionsOpen] = useState<boolean>(
-    params.questions === "1",
+    questionsParamRefusal(params.questions) !== null,
   );
   const hasFormStep =
     formProbe === "required" || formProbe === "optional" || formRefusal !== null;
@@ -504,8 +507,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           return;
         }
         // #4514 wave 5 — reopen the Questions step, answers kept.
-        const formCode = (error as { code?: string } | null)?.code ?? "";
-        if (FORM_REFUSAL.test(formCode)) {
+        // Only the three form refusals: a server failure of the check or the
+        // stash is the normal retryable error below, never a dead-end step.
+        const formCode = formRefusalOf((error as { code?: string } | null)?.code);
+        if (formCode !== null) {
           setFormRefusal(formCode);
           setQuestionsOpen(true);
           return;
