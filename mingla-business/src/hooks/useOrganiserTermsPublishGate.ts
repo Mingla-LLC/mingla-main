@@ -255,6 +255,12 @@ export function useOrganiserTermsPublishGate(
     [],
   );
 
+  const handleDismiss = useCallback((): void => {
+    pendingResumeRef.current = null;
+    pendingResumeFromServerRef.current = false;
+    setGateOpen(false);
+  }, []);
+
   let gateElement: React.ReactElement | null = null;
   if (gateOpen && resolvedBrandId !== null && userId !== null) {
     // Lazy require keeps expo-haptics out of wizard suites that never open the gate.
@@ -266,6 +272,9 @@ export function useOrganiserTermsPublishGate(
       brandId: resolvedBrandId,
       userId,
       onPassed: handlePassed,
+      // N135 (#4490): Escape or a tap outside backs out of publishing; nothing
+      // is accepted and the publish does not resume.
+      onDismiss: handleDismiss,
       subtitle: "A quick read before you publish a paid listing.",
     });
   }
