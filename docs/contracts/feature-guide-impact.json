@@ -3124,7 +3124,8 @@
         "supabase/migrations/20280508003645_issue_3645_payout_debt_returns.sql",
         "supabase/migrations/20280602003645_issue_3645_payout_ledger_followups.sql",
         "supabase/migrations/20280603003645_issue_3645_ledger_followup_closed_carrier_and_expired_claims.sql",
-        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
+        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql"
       ]
     },
     {
@@ -5017,7 +5018,8 @@
         "supabase/migrations/20280704404402_issue_4402_post_resubmit_and_payee_name_review.sql",
         "supabase/migrations/20280704504402_issue_4402_gig_min_fee_ngn_100.sql",
         "supabase/migrations/20280704604402_issue_4402_upload_deadline_follows_agreed_due.sql",
-        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql"
+        "supabase/migrations/20280707424430_issue_4430_gig_money_and_notices.sql",
+        "supabase/migrations/20281119003645_issue_3645_payout_claim_snapshots.sql"
       ]
     },
     {
