@@ -2,6 +2,7 @@
  * #4490 Explorer W1 — the app keeps venue claim rows and routes them.
  * FAILS-ON-REVERT: drop venue_booking from CLAIM_KINDS and W1-A1 fails.
  */
+import { expect, jest, test } from "@jest/globals";
 jest.mock("../../lib/secureStoreSafe", () => ({ secureDeleteItem: jest.fn(), secureGetItem: jest.fn(), secureSetItem: jest.fn() }));
 jest.mock("@mingla/phone-input/phoneNumber", () => ({ formatPhoneNational: (v: string) => v }));
 jest.mock("../../constants/countries", () => ({ COUNTRIES: [] }));
