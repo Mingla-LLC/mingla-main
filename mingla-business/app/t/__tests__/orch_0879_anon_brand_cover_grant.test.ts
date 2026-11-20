@@ -61,12 +61,15 @@ describe("ORCH-0879 — anon GRANT on brands cover-media columns + error UI surf
     expect(ROUTE).not.toMatch(/query\.error\s+instanceof\s+Error/);
   });
 
-  test("trip route error UI extracts .message from PostgrestError-shaped objects", () => {
-    expect(ROUTE).toContain('"message" in rawError');
-    expect(ROUTE).toMatch(/\(rawError as \{ message: string \}\)\.message/);
+  // [TEST-MOD-APPROVED #4518] Seth approved replacing the raw error text with
+  // the one connection notice (spec N-2). The ORCH-0879 intent stays pinned:
+  // PostgrestError-shaped objects are classified without `instanceof Error`.
+  test("trip route error UI classifies PostgrestError-shaped objects for the one notice", () => {
+    expect(ROUTE).toContain("<BuyerConnectionNotice");
+    expect(ROUTE).toContain('variant={isConnectionFailure(query.error) ? "connection" : "server"}');
   });
 
-  test("trip route error UI keeps generic fallback for non-object errors", () => {
-    expect(ROUTE).toContain('"Check your connection and try again."');
+  test("trip route error UI never shows raw error text", () => {
+    expect(ROUTE).not.toMatch(/rawError|error\.message|\.message\}/);
   });
 });

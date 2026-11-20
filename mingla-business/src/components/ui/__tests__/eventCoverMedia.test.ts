@@ -193,7 +193,18 @@ describe("EventCoverMedia presentation", () => {
     expect(handlerBlock.indexOf("onMediaError?.({")).toBeLessThan(
       handlerBlock.indexOf("setHasMediaError(true)"),
     );
-    expect(source.match(/onError=\{handleMediaError\}/g)).toHaveLength(2);
+    // [TEST-MOD-APPROVED #4518] The video still reports straight to
+    // handleMediaError. The image first lets the second-road hook try once
+    // through our own site, and reports to handleMediaError only when the hook
+    // declines, so failures still reach the caller before the fallback.
+    expect(source.match(/onError=\{handleMediaError\}/g)).toHaveLength(1);
+    expect(source).toContain("onError={handleImageError}");
+    const imageHandler = source.slice(
+      source.indexOf("const handleImageError = useCallback("),
+      source.indexOf("[coverImageError, handleMediaError]"),
+    );
+    expect(imageHandler).toContain("if (coverImageError(event)) return;");
+    expect(imageHandler).toContain("handleMediaError(event);");
     // ORCH-0989/ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the CreatorStep4Cover
     // media-display-error UI (mediaDisplayError / accessibilityRole="alert") moved
     // into the shared <CoverPickerSheet>/<CoverPicker> when the inline picker was

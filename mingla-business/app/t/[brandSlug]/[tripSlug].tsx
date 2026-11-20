@@ -330,6 +330,9 @@ function PublicTripRouteBody(): React.ReactElement {
   useEffect(preloadBuyerConnectionNotice, []);
 
   // #4518 — one notice for a page that could not load (no raw error text).
+  // ORCH-0879: supabase-js errors are PostgrestError-shaped objects, not
+  // `Error` instances; isConnectionFailure reads them without an instanceof
+  // Error gate, so a blocked read still shows the connection notice.
   // Kept on screen while Try again re-reads (the query stays in error until
   // it succeeds), so the buyer sees "Trying again…".
   if (routeState === "error" || (routeState === "loading" && query.isError)) {

@@ -60,7 +60,7 @@ type Mounted = ReturnType<typeof TestRenderer.create>;
 
 /**
  * Re-render a mounted tree with react-test-renderer's own `update`. A named
- * helper so the I-MUTATION-ROWCOUNT scan (which reads every update call under
+ * helper so the mutation row-count gate (which reads every update call under
  * src/services as a Supabase write) does not mistake a renderer for a query.
  */
 function rerender(mounted: Mounted | null, element: React.ReactElement): void {
