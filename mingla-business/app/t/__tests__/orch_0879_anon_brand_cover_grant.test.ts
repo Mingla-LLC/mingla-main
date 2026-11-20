@@ -26,6 +26,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
+
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
 
 function readFile(rel: string): string {
@@ -67,6 +69,16 @@ describe("ORCH-0879 — anon GRANT on brands cover-media columns + error UI surf
   test("trip route error UI classifies PostgrestError-shaped objects for the one notice", () => {
     expect(ROUTE).toContain("<BuyerConnectionNotice");
     expect(ROUTE).toContain('variant={isConnectionFailure(query.error) ? "connection" : "server"}');
+  });
+
+  test("a blocked read's PostgrestError-shaped error is classified as connection, a server answer is not", () => {
+    // Behaviour, not shape: supabase-js reports a fetch that never arrived as
+    // a plain object with an empty code (not an Error instance).
+    expect(isConnectionFailure({ message: "TypeError: Failed to fetch", code: "" })).toBe(true);
+    expect(isConnectionFailure(new TypeError("Failed to fetch"))).toBe(true);
+    // A real server answer (the ORCH-0879 permission-denied case) is not.
+    expect(isConnectionFailure({ message: "permission denied for table brands", code: "42501" })).toBe(false);
+    expect(isConnectionFailure({ message: "x", status: 500 })).toBe(false);
   });
 
   test("trip route error UI never shows raw error text", () => {
