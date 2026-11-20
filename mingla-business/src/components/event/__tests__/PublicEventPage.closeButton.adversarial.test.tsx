@@ -556,10 +556,10 @@ const renderPublicEventPage = (
         return { SimpleConfirmDialog: () => null };
       // [TEST-MOD-APPROVED #4420] Harness registration only — Add to calendar
       // (built only from real times) is outside this close-callback contract.
-      case "@mingla/offering-rendering/offeringCalendar":
-        return { offeringCalendarEntry: () => null };
-      case "../../utils/offeringCalendarAction":
-        return { addOfferingToCalendar: () => undefined };
+      case "@mingla/offering-rendering/offeringCalendar.cjs":
+        return { offeringCalendarEntry: () => null, offeringCalendarLocation: () => null };
+      case "./useAddToCalendar":
+        return { useAddToCalendar: () => ({ open: () => undefined, chooser: null }) };
       // [TEST-MOD-APPROVED #4063] Harness registration only — the shared
       // approval toast copy does not participate in the close contract.
       case "../../constants/buyerClaimCopy":

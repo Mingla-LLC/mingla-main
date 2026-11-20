@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "packages/offering-rendering/__tests__/issue_4420_calendar_chooser.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4420-calendar-chooser-packages",
+  "profile": "deno-2-unit"
+}
