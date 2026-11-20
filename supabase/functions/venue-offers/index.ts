@@ -79,6 +79,8 @@ const CART_KEY = /^[A-Za-z0-9_-]{32,64}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,99}$/;
 const ACTIONS = new Set([
+  // #4490 Explorer W1: re-send the app link by text to the phone on file.
+  "text_claim_link",
   "offer",
   "availability",
   "quote",
@@ -130,6 +132,9 @@ const SAFE_CODES = [
   "offer_guest_email_required",
   "offer_idempotency_conflict",
   "offer_booking_not_found",
+  "claim_text_unavailable",
+  "claim_text_no_phone",
+  "claim_text_limit",
   "offer_hold_expired",
   "offer_payment_already_pending",
   "offer_payment_already_paid",
@@ -207,7 +212,9 @@ export type VenueOffersDeps = {
 export function hourPricing(day: unknown): Json | null {
   if (!isJson(day) || !Number.isInteger(day.stepMinutes)) return null;
   const step = day.stepMinutes as number;
-  const min = Number.isInteger(day.minMinutes) ? day.minMinutes as number : step;
+  const min = Number.isInteger(day.minMinutes)
+    ? day.minMinutes as number
+    : step;
   return {
     rule: "per_minute_pro_rata",
     formula: "pricePerHourMinor * minutes / 60, rounded half up",
@@ -303,7 +310,9 @@ export function resolveReturnOrigin(
   return resolveVenueVisitOrigin(env);
 }
 
-export function qrPepper(env: (name: string) => string | undefined): string | null {
+export function qrPepper(
+  env: (name: string) => string | undefined,
+): string | null {
   const local = isLocalSupabase(env("SUPABASE_URL") ?? "");
   const pepper = (env("app.qr_token_pepper") ??
     (local ? env("LOCAL_QR_TOKEN_PEPPER") : undefined) ?? "").trim();
@@ -809,7 +818,8 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
         (!isJson(membership) || !UUID.test(str(membership.subscriptionId)) ||
           (membership.token !== undefined &&
             !VENUE_MEMBER_TOKEN_RE.test(str(membership.token))) ||
-          (!caller.userId && !VENUE_MEMBER_TOKEN_RE.test(str(membership.token))))
+          (!caller.userId &&
+            !VENUE_MEMBER_TOKEN_RE.test(str(membership.token))))
       ) {
         return json(400, { code: "invalid_request" });
       }
@@ -913,8 +923,8 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       ) {
         return json(400, { code: "invalid_request" });
       }
-      const subscriptionId =
-        (deps.newSubscriptionId ?? (() => crypto.randomUUID()))();
+      const subscriptionId = (deps.newSubscriptionId ?? (() =>
+        crypto.randomUUID()))();
       const issued = await (deps.issueMemberToken ?? issueVenueMemberToken)({
         subscriptionId,
       });
@@ -1027,6 +1037,19 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
     if (!tokenHash && caller.userId) {
       const owns = await callerOwnsBooking(client, groupId, caller.userId);
       if (!owns) return json(404, { code: "offer_booking_not_found" });
+    }
+
+    // #4490 Explorer W1 (design web:desk): "Text me the link". The booking
+    // token (or the signed-in owner, checked above) is required; the text goes
+    // only to the phone already on the booking, at most 3 times (SQL).
+    if (action === "text_claim_link") {
+      const { data, error } = await client.rpc("issue_4490_text_claim_link", {
+        p_group_id: groupId,
+        p_token_hash: tokenHash,
+        p_user_id: tokenHash ? null : caller.userId,
+      });
+      if (error) return rpcFailure(error);
+      return json(200, { kind: "success", data });
     }
 
     if (action === "get") {

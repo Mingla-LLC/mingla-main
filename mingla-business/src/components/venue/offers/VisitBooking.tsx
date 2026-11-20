@@ -804,6 +804,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
             analyticsSurface="venue_visit_booking"
             brandSlug={booking.venue.brandSlug}
             venueSlug={booking.venue.slug}
+            textLink={{ groupId, token: token ?? null }}
           />
           {idLine !== null ? (
             <EntryNote palette={palette} icon="shield" testID="issue-4490-visit-id">

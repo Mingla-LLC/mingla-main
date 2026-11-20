@@ -126,7 +126,7 @@ BEGIN
     jsonb_build_array(jsonb_build_object('priceOptionId', public.t4490_id('walkin'), 'guests', 2)),
     public.t4490_key('cart:w1'), NULL, 'quote-w1');
   v_g := public.issue_4490_create_offer_group(gen_random_uuid(), (v_q->>'quoteId')::uuid,
-    jsonb_build_object('name', 'Tolu Adebayo', 'email', 'Tolu@Example.test'),
+    jsonb_build_object('name', 'Tolu Adebayo', 'email', 'Tolu@Example.test', 'phone', '+2348030004821', 'phoneCountryIso', 'NG'),
     public.t4490_key('cart:w1'), NULL, sha256(convert_to('tok:w1', 'UTF8')), 'hold-w1-key');
   INSERT INTO t4490_ids VALUES ('booking', (v_g->>'groupId')::uuid);
   v := public.issue_4490_membership_join(gen_random_uuid(), public.t4490_id('plan'),
@@ -225,6 +225,34 @@ END
 $p$;
 
 -- ===========================================================================
+-- T: "Text me the link" re-sends to the phone on file, at most 3 times.
+-- ===========================================================================
+DO $t$
+DECLARE
+  v jsonb;
+BEGIN
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'VENUE_APP_HANDOFF';
+  PERFORM public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('booking'), sha256(convert_to('tok:w1', 'UTF8'))),
+    'P0001', 'claim_text_unavailable', 'T-1 nothing is texted while VENUE_APP_HANDOFF is off');
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'VENUE_APP_HANDOFF';
+  PERFORM public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('member'), sha256(convert_to('tok:w1', 'UTF8'))),
+    'P0002', 'offer_booking_not_found', 'T-2 only an offer booking can be texted');
+  v := public.issue_4490_text_claim_link(public.t4490_id('booking'), sha256(convert_to('tok:w1', 'UTF8')), NULL);
+  PERFORM public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('booking'), sha256(convert_to('wrong', 'UTF8'))),
+    'P0002', 'offer_booking_not_found', 'T-2b a wrong booking token cannot text anyone');
+  PERFORM public.t4490_ok((v->>'remaining')::int = 2 AND v->>'phoneLast4' = '4821', 'T-3 first text queued, 2 left');
+  PERFORM public.t4490_ok((SELECT o.contact = '+2348030004821' AND o.country_code = 'NG' AND o.payload->>'channel_hint' = 'sms'
+      AND o.category_key = 'venue_booking_confirmed'
+    FROM public.notification_outbox o WHERE o.idempotency_key = 'venue-claim-text:' || public.t4490_id('booking') || ':1'),
+    'T-4 the row goes to the phone on file, SMS leg, derived country NG');
+  PERFORM public.issue_4490_text_claim_link(public.t4490_id('booking'), sha256(convert_to('tok:w1', 'UTF8')), NULL);
+  PERFORM public.issue_4490_text_claim_link(public.t4490_id('booking'), sha256(convert_to('tok:w1', 'UTF8')), NULL);
+  PERFORM public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('booking'), sha256(convert_to('tok:w1', 'UTF8'))),
+    'P0001', 'claim_text_limit', 'T-5 a fourth text is refused');
+END
+$t$;
+
+-- ===========================================================================
 -- A: anon and signed-in callers cannot reach the projections or the claim helpers.
 -- ===========================================================================
 SELECT public.t4490_as(NULL);
@@ -237,6 +265,8 @@ SELECT public.t4490_expect(format('SELECT public.issue_4490_member_projection(%L
   '42501', NULL, 'A-3 a signed-in user cannot call the member projection');
 SELECT public.t4490_expect(format('SELECT public.mint_claim_link(%L, %L)', 'venue_booking', public.t4490_id('booking')),
   '42501', NULL, 'A-4 a signed-in user cannot mint a claim link');
+SELECT public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('booking'), sha256(convert_to('tok:w1', 'UTF8'))),
+  '42501', NULL, 'A-5 a signed-in user cannot queue a text directly');
 SELECT public.t4490_reset();
 
 ROLLBACK;

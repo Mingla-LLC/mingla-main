@@ -14,6 +14,7 @@ jest.mock("../../offering/LazyPublicParts", () => ({ BuyerClaimCard: () => null 
 jest.mock("../../../services/claimLinkService", () => ({ mintClaimLinkHandoff: jest.fn() }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 jest.mock("../../ui/Button", () => ({ Button: () => null }));
+jest.mock("../../../services/venueOfferGuestService", () => ({ VenueOfferGuestError: class extends Error {}, venueOfferGuestService: {} }));
 jest.mock("@mingla/offering-rendering/themeAccentStyle", () => ({ themeBoldFace: () => ({}) }));
 
 import { parseVenueHandoff, phoneLastFour, VENUE_PASS_IN_APP_COPY } from "../offers/VenueAppHandoff";
@@ -72,5 +73,21 @@ describe("#4490 W1 app payment return", () => {
   test("H-5 /paid/ is a public route and not an ad-pixel page", () => {
     const gates = fs.readFileSync(path.join(__dirname, "../../../utils/coldLoadAuthGates.ts"), "utf8");
     expect(gates.match(/"\/paid\/"/g)?.length).toBe(2);
+  });
+});
+
+describe("#4490 W1 text me the link and the waitlist card", () => {
+  test("H-6 plain-words errors, never a raw code", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { textLinkErrorCopy, TEXT_LINK_COPY } = require("../offers/VenueAppHandoff");
+    expect(textLinkErrorCopy("claim_text_limit")).toBe("We've already texted this link 3 times. Use the link in your email.");
+    expect(textLinkErrorCopy("claim_text_no_phone")).toBe("There's no phone number on this booking. Use the link in your email.");
+    expect(textLinkErrorCopy("offer_request_failed")).toBe("We couldn't send the text. Try again.");
+    expect(TEXT_LINK_COPY.sent("4821")).toBe("Sent to •••4821.");
+  });
+  test("H-7 the waitlist page shows the claim card for an open place", () => {
+    const page = read("offers/VisitWaitlist.tsx");
+    expect(page).toMatch(/<VenueClaimCard\s+handoff=\{parseVenueHandoff\(\{ claim: entry\.claim \}\)\}\s+kind="booking"/);
+    expect(read("offers/VisitBooking.tsx")).toMatch(/textLink=\{\{ groupId, token: token \?\? null \}\}/);
   });
 });

@@ -11,16 +11,18 @@
  * - `VenueClaimCard` is BuyerClaimCard fed the same way as the table booking
  *   confirmation; hidden while there is no claim link.
  */
-import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Platform, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 
-import { radius, space, type } from "../../../constants/designSystem";
+import { color, radius, space, type } from "../../../constants/designSystem";
 import { mintClaimLinkHandoff } from "../../../services/claimLinkService";
 import { BuyerClaimCard } from "../../offering/LazyPublicParts";
 import { Icon } from "../../ui/Icon";
 import { entryStyles } from "./EntryUi";
+import { Button } from "../../ui/Button";
+import { VenueOfferGuestError, venueOfferGuestService } from "../../../services/venueOfferGuestService";
 
 export interface VenueHandoff {
   shortUrl: string | null;
@@ -81,6 +83,61 @@ export function VenuePassInAppBlock({
   );
 }
 
+export const TEXT_LINK_COPY = {
+  button: "Text me the link",
+  sending: "Sending…",
+  sent: (last4: string | null) => (last4 ? `Sent to •••${last4}.` : "Sent."),
+  limit: "We've already texted this link 3 times. Use the link in your email.",
+  noPhone: "There's no phone number on this booking. Use the link in your email.",
+  failed: "We couldn't send the text. Try again.",
+} as const;
+
+export function textLinkErrorCopy(code: string): string {
+  if (code === "claim_text_limit") return TEXT_LINK_COPY.limit;
+  if (code === "claim_text_no_phone") return TEXT_LINK_COPY.noPhone;
+  return TEXT_LINK_COPY.failed;
+}
+
+/** Desktop only (a phone has the Open button): re-send the app link by text. */
+function TextMeTheLink({ groupId, token }: { groupId: string; token: string | null }): React.ReactElement | null {
+  const { width } = useWindowDimensions();
+  const [state, setState] = useState<{ phase: "idle" | "sending" | "sent" | "error"; line: string | null }>({
+    phase: "idle",
+    line: null,
+  });
+  if (Platform.OS !== "web" || width < 1024) return null;
+  const send = async (): Promise<void> => {
+    setState({ phase: "sending", line: null });
+    try {
+      const out = await venueOfferGuestService.textClaimLink({ groupId, token });
+      setState({ phase: "sent", line: TEXT_LINK_COPY.sent(out.phoneLast4) });
+    } catch (caught) {
+      const code = caught instanceof VenueOfferGuestError ? caught.code : "offer_request_failed";
+      setState({ phase: "error", line: textLinkErrorCopy(code) });
+    }
+  };
+  return (
+    <View style={styles.textRow} testID="issue-4490-text-link">
+      <Button
+        label={state.phase === "sending" ? TEXT_LINK_COPY.sending : TEXT_LINK_COPY.button}
+        variant="secondary"
+        size="md"
+        onPress={() => void send()}
+        disabled={state.phase === "sending" || state.phase === "sent"}
+        testID="issue-4490-text-link-button"
+      />
+      {state.line !== null ? (
+        <Text
+          style={[styles.textLine, state.phase === "error" ? styles.textError : null]}
+          accessibilityLiveRegion="polite"
+        >
+          {state.line}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 export function VenueClaimCard({
   handoff,
   kind,
@@ -89,6 +146,7 @@ export function VenueClaimCard({
   analyticsSurface,
   brandSlug,
   venueSlug,
+  textLink,
 }: {
   handoff: VenueHandoff;
   kind: "pass" | "booking";
@@ -97,6 +155,8 @@ export function VenueClaimCard({
   analyticsSurface: string;
   brandSlug: string | null;
   venueSlug: string | null;
+  /** Offer bookings only: the "Text me the link" button on a desktop. */
+  textLink?: { groupId: string; token: string | null };
 }): React.ReactElement | null {
   if (handoff.shortUrl === null) return null;
   const code = handoff.code;
@@ -113,6 +173,7 @@ export function VenueClaimCard({
         analyticsSurface={analyticsSurface}
         fallbackEntity={{ entityType: "event", brandSlug: brandSlug ?? "", entitySlug: venueSlug ?? "" }}
       />
+      {textLink !== undefined && last4 !== null ? <TextMeTheLink groupId={textLink.groupId} token={textLink.token} /> : null}
     </View>
   );
 }
@@ -123,4 +184,7 @@ const styles = StyleSheet.create({
   copy: { flex: 1, gap: space[1] },
   title: { ...type.row },
   body: { ...type.body },
+  textRow: { marginTop: space[3], gap: space[2], alignItems: "flex-start" },
+  textLine: { ...type.small, color: color.text2 },
+  textError: { color: color.errorText },
 });

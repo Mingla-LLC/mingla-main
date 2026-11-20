@@ -196,6 +196,7 @@ $ratchet$;
 --                                             email contact, so no SMS leg)
 --       issue_4490_enqueue_waitlist_message → explicit NULL (#4490 waitlist; email)
 --       issue_4490_member_enqueue           → explicit NULL (#4490 memberships; email)
+--       issue_4490_text_claim_link          → mingla_e164_country(v_phone) (#4490 W1 text)
 --
 --     PUSH-ONLY — the #3872 notification producers write only in-app/push
 --     categories and deliberately do not carry an SMS country. They are still
@@ -259,7 +260,11 @@ DECLARE
     -- row they enqueue.
     'issue_4490_enqueue_offer_event',
     'issue_4490_enqueue_waitlist_message',
-    'issue_4490_member_enqueue'
+    'issue_4490_member_enqueue',
+    -- [TEST-MOD-APPROVED #4490] Explorer W1: "Text me the link" writes one SMS
+    -- row to the guest phone on file with mingla_e164_country(phone);
+    -- issue_4490_explorer_w1_handoff.implementor.pg17 (T-4) asserts NG.
+    'issue_4490_text_claim_link'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -413,7 +418,11 @@ DECLARE
     -- row they enqueue.
     'issue_4490_enqueue_offer_event',
     'issue_4490_enqueue_waitlist_message',
-    'issue_4490_member_enqueue'
+    'issue_4490_member_enqueue',
+    -- [TEST-MOD-APPROVED #4490] Explorer W1: "Text me the link" writes one SMS
+    -- row to the guest phone on file with mingla_e164_country(phone);
+    -- issue_4490_explorer_w1_handoff.implementor.pg17 (T-4) asserts NG.
+    'issue_4490_text_claim_link'
   ];
   v_missing text;
 BEGIN

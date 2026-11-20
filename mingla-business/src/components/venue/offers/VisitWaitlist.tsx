@@ -23,6 +23,7 @@ import { ScrollView } from "../../../wrappers/SmartScrollView";
 import { Button } from "../../ui/Button";
 import { readWaitlistToken, saveWaitlistToken } from "./tablePendingReturn";
 import { dayWords, tableGuestErrorCopy, waitlistStateCopy } from "./tablePickModel";
+import { VenueClaimCard, parseVenueHandoff } from "./VenueAppHandoff";
 
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -191,6 +192,23 @@ export function VisitWaitlist({ waitlistId, safeTop, safeBottom }: VisitWaitlist
         {entry.status === "waiting" ? <Text style={styles.caption}>This page checks for news every 30 seconds.</Text> : null}
       </View>
     );
+    // #4490 Explorer W1: the app handoff for an open place in line.
+    if (entry.status === "waiting" || entry.status === "notified") {
+      body = (
+        <>
+          {body}
+          <VenueClaimCard
+            handoff={parseVenueHandoff({ claim: entry.claim })}
+            kind="booking"
+            email={null}
+            phone={null}
+            analyticsSurface="venue_visit_waitlist"
+            brandSlug={entry.venue.brandSlug}
+            venueSlug={entry.venue.slug}
+          />
+        </>
+      );
+    }
   }
 
   return (

@@ -122,6 +122,8 @@ export interface GuestWaitlistEntry {
   guestName: string | null;
   createdAt: string | null;
   venue: { id: string; name: string; slug: string | null; brandSlug: string | null; brandName: string | null; timezone: string | null };
+  /** #4490 Explorer W1: the app claim link as the server sent it (parsed by the page). */
+  claim: unknown;
 }
 
 export class GuestWaitlistError extends Error {
@@ -143,6 +145,7 @@ export function mapGuestWaitlistEntry(raw: unknown): GuestWaitlistEntry | null {
   if (id === null) return null;
   const v = r.venue !== null && typeof r.venue === "object" ? (r.venue as Record<string, unknown>) : {};
   return {
+    claim: r.claim ?? null,
     waitlistId: id,
     status: WL_STATUSES.find((x) => x === r.status) ?? "waiting",
     position: n(r.position),

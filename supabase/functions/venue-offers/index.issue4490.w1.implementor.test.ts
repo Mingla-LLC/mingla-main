@@ -249,3 +249,34 @@ Deno.test("W1-8 passPepperFor: the one rule", () => {
   assertEquals(passPepperFor(PEPPER, true, { userId: OWNER }, null), PEPPER);
   assertEquals(passPepperFor(null, false, { userId: OWNER }, null), null);
 });
+
+Deno.test("W1-9 text_claim_link: token hash passed, never a typed number; the owner without a token passes the user id", async () => {
+  const withToken = await readGet({ appOnly: false, handoff: true }, {
+    action: "text_claim_link",
+    groupId: GROUP,
+    token: TOKEN,
+    phone: "+2348000000000",
+  }, false);
+  const call = withToken.calls.find((c) =>
+    c.name === "issue_4490_text_claim_link"
+  );
+  assert(call !== undefined);
+  assertEquals(Object.keys(call.params).sort(), [
+    "p_group_id",
+    "p_token_hash",
+    "p_user_id",
+  ]);
+  assert(
+    typeof call.params.p_token_hash === "string" &&
+      call.params.p_user_id === null,
+  );
+  const owner = await readGet({ appOnly: false, handoff: true }, {
+    action: "text_claim_link",
+    groupId: GROUP,
+  }, true);
+  assertEquals(
+    owner.calls.find((c) => c.name === "issue_4490_text_claim_link")?.params
+      .p_user_id,
+    OWNER,
+  );
+});

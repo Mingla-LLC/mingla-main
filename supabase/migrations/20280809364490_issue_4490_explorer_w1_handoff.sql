@@ -700,3 +700,54 @@ INSERT INTO public.feature_flags (flag_key, is_enabled, description) VALUES
   ('VENUE_APP_HANDOFF', false, '#4490 explorer W1: claim links for venue bookings and Open in Mingla in venue emails and texts'),
   ('VENUE_PASS_APP_ONLY', false, '#4490 explorer W1: venue passes are shown only in the Mingla app; web token reads get no QR')
 ON CONFLICT (flag_key) DO NOTHING;
+
+-- 6. "Text me the link" (design web:desk; spec 06 names no endpoint, so this
+--    is the smallest server action): re-send the booking's app link by text to
+--    the guest phone already on the booking. No number can be typed in; at
+--    most 3 texts per booking; the existing SMS path (notification_outbox ->
+--    notify-outbox-drain -> notify-dispatch -> smsAdapter) sends it, and the
+--    drain mints the claim link when the text is sent.
+CREATE OR REPLACE FUNCTION public.issue_4490_text_claim_link(p_group_id uuid, p_token_hash bytea, p_user_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_group public.stay_reservation_groups%ROWTYPE;
+  v_phone text;
+  v_sent integer;
+BEGIN
+  SELECT * INTO v_group FROM public.stay_reservation_groups
+  WHERE id = p_group_id AND offer_kind IS NOT NULL AND offer_kind <> 'membership'
+  FOR UPDATE;
+  -- Only the booking's token holder or its signed-in owner.
+  IF NOT FOUND OR NOT public.issue_4490_booking_actor_ok(v_group, p_token_hash, p_user_id) THEN
+    RAISE EXCEPTION 'offer_booking_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  IF NOT public.issue_4490_flag_on('VENUE_APP_HANDOFF') THEN
+    RAISE EXCEPTION 'claim_text_unavailable' USING ERRCODE = 'P0001';
+  END IF;
+  v_phone := public.mingla_e164_normalize(NULLIF(v_group.guest_snapshot->>'phone', ''));
+  IF v_phone IS NULL THEN
+    RAISE EXCEPTION 'claim_text_no_phone' USING ERRCODE = '22023';
+  END IF;
+  SELECT count(*) INTO v_sent FROM public.notification_outbox
+  WHERE idempotency_key LIKE 'venue-claim-text:' || v_group.id || ':%';
+  IF v_sent >= 3 THEN
+    RAISE EXCEPTION 'claim_text_limit' USING ERRCODE = 'P0001';
+  END IF;
+  INSERT INTO public.notification_outbox (
+    category_key, user_id, contact, brand_id, payload, idempotency_key, country_code
+  ) VALUES (
+    'venue_booking_confirmed', NULL, v_phone, v_group.brand_id,
+    jsonb_build_object('venue_group_id', v_group.id, 'channel_hint', 'sms', 'claim_text', true),
+    'venue-claim-text:' || v_group.id || ':' || (v_sent + 1),
+    public.mingla_e164_country(v_phone)
+  );
+  RETURN jsonb_build_object('sent', true, 'remaining', 2 - v_sent,
+    'phoneLast4', right(regexp_replace(v_phone, '\D', '', 'g'), 4));
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4490_text_claim_link(uuid, bytea, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_text_claim_link(uuid, bytea, uuid) TO service_role;

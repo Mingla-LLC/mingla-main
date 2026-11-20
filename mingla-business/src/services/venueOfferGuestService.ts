@@ -465,6 +465,19 @@ export const venueOfferGuestService = {
     };
   },
 
+  /** #4490 Explorer W1: re-send the app link by text to the phone on the booking (at most 3). */
+  async textClaimLink(input: { groupId: string; token: string | null }): Promise<{ remaining: number; phoneLast4: string | null }> {
+    const raw = (await invoke({
+      action: "text_claim_link",
+      groupId: input.groupId,
+      ...(input.token ? { token: input.token } : {}),
+    })) as Record<string, unknown> | null;
+    return {
+      remaining: typeof raw?.remaining === "number" ? raw.remaining : 0,
+      phoneLast4: typeof raw?.phoneLast4 === "string" ? raw.phoneLast4 : null,
+    };
+  },
+
   async get(input: { groupId: string; token: string | null }): Promise<EntryBooking> {
     return (await venueOfferGuestService.getWithRaw(input)).booking;
   },
