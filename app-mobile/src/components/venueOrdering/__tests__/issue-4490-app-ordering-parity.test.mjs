@@ -60,3 +60,15 @@ test("A-4 unpaid reads back off (5 s, 10 s, 20 s, stop) and a decline stops at o
   assert.doesNotMatch(hook, /setInterval\(\(\) => \{\n\s+void fetchVenueOrderStatus/);
   assert.match(hook, /if \(status\.paymentCheck === "not_paid"\) return;/);
 });
+
+// N149 (#4490): the pickup link uses design-system tokens and a 44 pt target.
+// Fails-on-revert: hardcoded 14/20/8 or a hitSlop-only target fails A-5.
+test("A-5 the pickup link uses tokens and a 44 pt tap target", () => {
+  const block = slots.slice(slots.indexOf("const counterStyles"));
+  assert.match(block, /minHeight: touchTargets\.minimum/);
+  assert.match(block, /\.\.\.typography\.sm/);
+  assert.match(block, /fontWeight: fontWeights\.bold/);
+  assert.match(block, /gap: spacing\.sm/);
+  assert.doesNotMatch(block.slice(0, block.indexOf("});")), /fontSize: \d|lineHeight: \d|gap: \d/);
+  assert.match(slots, /style=\{counterStyles\.target\}/);
+});

@@ -23,6 +23,12 @@
 
 import React from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  fontWeights,
+  spacing,
+  touchTargets,
+  typography,
+} from "../../constants/designSystem";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -238,7 +244,7 @@ export const ConsumerVenueOrderingNotice: React.FC<
         accessibilityRole="link"
         accessibilityLabel="See your pickup order"
         onPress={ordering.openCounterOrder}
-        hitSlop={8}
+        style={counterStyles.target}
       >
         <Text style={[counterStyles.link, { color: palette.primaryText }]}>
           Your pickup order · See status
@@ -248,12 +254,18 @@ export const ConsumerVenueOrderingNotice: React.FC<
   );
 };
 
+// N149 (#4490): design-system tokens, and a 44 pt tap target (the text line
+// alone is 20 pt).
 const counterStyles = StyleSheet.create({
-  row: { gap: 8 },
+  row: { gap: spacing.sm },
+  target: {
+    minHeight: touchTargets.minimum,
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
   link: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "700",
+    ...typography.sm,
+    fontWeight: fontWeights.bold,
     textDecorationLine: "underline",
   },
 });
