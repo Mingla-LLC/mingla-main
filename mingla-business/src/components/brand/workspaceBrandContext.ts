@@ -35,6 +35,8 @@ export interface WorkspaceBrandSwitcherProps {
    * menu. Default: the shell's (`WorkspaceRoute.manageBrands`).
    */
   onManageBrands?: () => void;
+  /** Hands a true draft to the host's discard flow; without it the menu has no discard. */
+  onDiscardDraft?: (brand: Brand) => void;
   /** The host knows the current brand is still being resolved (issue #3345). */
   brandLoading?: boolean;
   testID?: string;

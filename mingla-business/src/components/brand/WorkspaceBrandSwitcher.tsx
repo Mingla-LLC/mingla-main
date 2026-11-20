@@ -13,11 +13,12 @@
  * (`useContext(WorkspaceRouteContext).Switcher`), so it loads with the root
  * layout and none of it sits in the shared boot chunk. The menu loads the
  * first time it opens. Web >= 1024 gets a popover under the chip; phones and
- * native get a sheet that drops from the top. A top bar that owns a full switcher sheet (create,
- * continue setup, delete) passes it as `onOpenSheet`: phones open that sheet,
- * and the desktop popover offers it as "Manage brands". Everywhere else the
- * menu (the phone sheet too) offers the shell's full brands sheet as "Manage
- * brands" (`WorkspaceRoute.manageBrands`, or the host's `onManageBrands`).
+ * native get a sheet that drops from the top, on every screen including Home.
+ * A top bar that owns a full switcher sheet (create, continue setup, delete)
+ * passes it as `onOpenSheet`: the menu offers it as "Manage brands" (only a
+ * host with no brand yet opens it straight from the chip). Everywhere else the
+ * menu offers the shell's full brands sheet as "Manage brands"
+ * (`WorkspaceRoute.manageBrands`, or the host's `onManageBrands`).
  */
 import React, { Suspense, useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { View } from "react-native";
@@ -55,6 +56,7 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
   compact = false,
   onOpenSheet,
   onManageBrands,
+  onDiscardDraft,
   brandLoading,
   testID = "workspace-brand-switcher",
 }) => {
@@ -63,7 +65,7 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
   // "Manage brands" in the menu: the host's own way in, else the shell's
   // full brands sheet. Phones get it too (they had no way to it at all).
   const shellManageBrands = useContext(WorkspaceRouteContext).manageBrands;
-  const manageBrands = onManageBrands ?? (isWideDesktop ? onOpenSheet : undefined) ?? shellManageBrands;
+  const manageBrands = onManageBrands ?? onOpenSheet ?? shellManageBrands;
   const chipRef = useRef<View | null>(null);
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<BrandMenuAnchor | null>(null);
@@ -78,10 +80,6 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
       return;
     }
     if (!isWideDesktop) {
-      if (onOpenSheet !== undefined) {
-        onOpenSheet();
-        return;
-      }
       setAnchor(null);
       setLoaded(true);
       setOpen(true);
@@ -134,6 +132,7 @@ export const WorkspaceBrandSwitcher: React.FC<WorkspaceBrandSwitcherProps> = ({
             activeBrandId={workspace.brand?.id ?? null}
             anchor={isWideDesktop ? anchor : null}
             onManageBrands={manageBrands}
+            onDiscardDraft={onDiscardDraft}
             // The phone sheet's layer holds focus until it has left the page: hand it back then too.
             onClosed={focusChip}
           />
