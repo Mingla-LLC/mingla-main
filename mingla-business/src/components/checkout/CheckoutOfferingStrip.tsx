@@ -13,6 +13,7 @@
  */
 import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
+import { useOfferingImageUri } from "@mingla/offering-rendering/useOfferingImageUri";
 
 import { checkoutStyles, checkoutTitleFace, color } from "./checkoutTheme";
 
@@ -36,6 +37,9 @@ export function CheckoutOfferingStrip({
   wide,
   testID = "checkout-offering-strip",
 }: CheckoutOfferingStripProps): React.ReactElement | null {
+  // #4518 — source only: a failed cover is fetched once more through our own
+  // site. Layout, styles, testIDs and the fallback are unchanged.
+  const thumb = useOfferingImageUri(coverUrl !== null && coverUrl.length > 0 ? coverUrl : null);
   if (wide) return null;
   return (
     <View
@@ -46,10 +50,12 @@ export function CheckoutOfferingStrip({
     >
       {coverUrl !== null && coverUrl.length > 0 ? (
         <Image
-          source={{ uri: coverUrl }}
+          source={{ uri: thumb.uri ?? coverUrl }}
           style={styles.thumb}
           resizeMode="cover"
           accessibilityIgnoresInvertColors
+          onLoad={thumb.onLoad}
+          onError={thumb.onError}
         />
       ) : (
         <View style={[styles.thumb, styles.thumbFallback]} testID={`${testID}-thumb-fallback`} />

@@ -25,7 +25,6 @@
 
 import React from "react";
 import {
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -91,6 +90,8 @@ import type { BrandStripeStatus } from "../../store/currentBrandStore";
 // #3372 — naira shows "₦", not "NGN", in the trip preview (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
+// #4518 — trip day pictures take the picture road (one fallback).
+import { OfferingRoutedImage } from "@mingla/offering-rendering/useOfferingImageUri";
 
 export interface TripPreviewBrand {
   id: string;
@@ -781,7 +782,7 @@ const LegacyTripPreview: React.FC<{
                               ) : null}
                             </Pressable>
                           ) : (
-                            <Image
+                            <OfferingRoutedImage
                               key={key}
                               source={{ uri: m.url }}
                               style={styles.legacyDayMediaTile}

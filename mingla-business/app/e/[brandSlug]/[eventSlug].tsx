@@ -31,6 +31,11 @@ import { space, color } from "../../../src/constants/designSystem";
 import { usePublicEventBySlug } from "../../../src/hooks/usePublicEvents";
 import { PublicEventPage } from "../../../src/components/event/PublicEventPage";
 import { PublicEventNotFound } from "../../../src/components/event/PublicEventNotFound";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
+import { isConnectionFailure } from "../../../src/services/connectionFailure";
 // issue #3284 — the refund ladder's chunk starts with this page's data fetch.
 import { loadOfferingRefundLadder } from "@mingla/offering-rendering/LazyOfferingRefundLadder";
 import { PublicGlassProvider } from "../../../src/components/offering/PublicGlassProvider";
@@ -145,20 +150,29 @@ function PublicEventRouteBody(): React.ReactElement {
     });
   }, [publicEventQuery.data, routeState]);
 
+  // #4518 — fetch the designed notice once the page is idle (best effort).
+  useEffect(preloadBuyerConnectionNotice, []);
+
+  // #4518 — one notice for a page that could not load. Kept on screen while
+  // Try again re-reads (the query stays in error until it succeeds), so the
+  // buyer sees "Trying again…" rather than a spinner swap.
+  if (routeState === "error" || (routeState === "loading" && publicEventQuery.isError)) {
+    return (
+      <View style={styles.noticeHost}>
+        <BuyerConnectionNotice
+          variant={isConnectionFailure(publicEventQuery.error) ? "connection" : "server"}
+          onRetry={() => publicEventQuery.refetch()}
+          testID="public-event-connection-notice"
+        />
+      </View>
+    );
+  }
+
   if (routeState === "loading") {
     return (
       <View style={styles.stateWrap}>
         <ActivityIndicator />
         <Text style={styles.stateText}>Loading event...</Text>
-      </View>
-    );
-  }
-
-  if (routeState === "error") {
-    return (
-      <View style={styles.stateWrap}>
-        <Text style={styles.stateTitle}>Event could not load</Text>
-        <Text style={styles.stateText}>Refresh this page or try the link again.</Text>
       </View>
     );
   }
@@ -210,11 +224,9 @@ const styles = StyleSheet.create({
     padding: space[6],
     backgroundColor: color.canvas,
   },
-  stateTitle: {
-    color: color.text1,
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: space[1],
+  noticeHost: {
+    flex: 1,
+    backgroundColor: color.canvas,
   },
   stateText: {
     color: color.text2,

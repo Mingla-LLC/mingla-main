@@ -109,6 +109,16 @@ const restoreRoute = (): void => {
   }
 };
 
+/**
+ * #4518 — the route, with a switch this tab already made (sessionStorage)
+ * honoured before the first database call. Read by `supabase.ts`
+ * `databaseRouteNow`; the only reader of the stored route stays this module.
+ */
+export const restoredDatabaseRoute = (): DatabaseRoute => {
+  restoreRoute();
+  return route;
+};
+
 const rememberRoute = (): void => {
   try {
     sessionStore()?.setItem(STORAGE_KEY, route);

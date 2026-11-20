@@ -34,6 +34,7 @@ import { publicTripInstallmentSchedule } from "@mingla/offering-rendering/tripIn
 
 import { supabase } from "../services/supabase";
 import { resolveOfferingBookable } from "../services/brandCanCollect";
+import { noteUnrestrictedCheckout } from "../services/checkoutAccessHints";
 import { tripKeys } from "./useTrips";
 import type {
   Trip,
@@ -207,6 +208,12 @@ interface RpcTripPayload {
   days: RpcTripDay[];
   inclusions: RpcTripInclusion[];
   tiers: RpcTripTier[];
+  /**
+   * #4518 — buy-gate answers carried by `/api/trip-checkout-bundle` only (the
+   * RPC fallback never has them). Read defensively: boolean / "unrestricted".
+   */
+  brandCanCollect?: unknown;
+  checkoutAccessMode?: unknown;
 }
 
 // META-ORCH-1174 Leg A.2 — narrow tier_metadata.installments into the typed
@@ -269,10 +276,13 @@ interface PublicTripPayload {
 // error fail CLOSED for paid supply; free never reaches this RPC.
 // #4518 — one owner (`brandCanCollect.ts`): a failed read is retried and is
 // never shown as "the organizer is finishing payment setup".
+// `known` is the answer the same-origin bundle already carried (mirrors
+// resolveEventBookable): then no direct database read is made at all.
 const resolveTripBookable = (
   brandId: string,
   isPaid: boolean,
-): Promise<boolean> => resolveOfferingBookable(brandId, isPaid);
+  known?: boolean,
+): Promise<boolean> => resolveOfferingBookable(brandId, isPaid, known);
 
 const DISABLED_KEY = ["trips", "__public_disabled__"] as const;
 
@@ -305,6 +315,7 @@ export const usePublicTripBySlug = (
       // falls through to the canonical SECURITY DEFINER RPC.
       const cached = await readCachedTripPayload(brandSlug, tripSlug);
       let data: unknown;
+      const fromBundle = cached !== TRIP_CACHE_MISS;
       if (cached === TRIP_CACHE_MISS) {
         const rpc = await supabase.rpc("pg_public_trip_by_slug", {
           p_brand_slug: brandSlug,
@@ -317,6 +328,16 @@ export const usePublicTripBySlug = (
       }
       if (data === null || data === undefined) return null;
       const p = data as RpcTripPayload;
+
+      // #4518 — the same-origin bundle carries the buy-gate answers. Only
+      // trusted from the bundle (the RPC fallback never has them).
+      if (fromBundle && p.checkoutAccessMode === "unrestricted") {
+        noteUnrestrictedCheckout(p.id);
+      }
+      const bundleCanCollect =
+        fromBundle && typeof p.brandCanCollect === "boolean"
+          ? p.brandCanCollect
+          : undefined;
 
       const tripStartAt = p.startAt;
       const tripEndAt = p.endAt;
@@ -442,7 +463,7 @@ export const usePublicTripBySlug = (
       // the brand's charge-readiness so the floating bar can render its
       // unavailable state (the trip RPC does not encode charge-readiness).
       const isPaid = (trip.pricingTiers[0]?.priceCents ?? 0) > 0;
-      const bookable = await resolveTripBookable(p.brandId, isPaid);
+      const bookable = await resolveTripBookable(p.brandId, isPaid, bundleCanCollect);
 
       // META-ORCH-1174 Leg A.2 — the BRAND theme now comes off the RPC payload
       // (the definer owner reads brands.theme_* directly, so the COMMS-0009 anon

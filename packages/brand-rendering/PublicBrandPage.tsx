@@ -92,6 +92,8 @@ import {
 import { themeTextAccent } from "@mingla/offering-rendering/themePalette";
 
 import { ThemeAccentFill } from "@mingla/offering-rendering/ThemeAccentFill";
+// issue #4518 — the venue thumbnail takes the picture road (one fallback).
+import { useOfferingImageUri } from "@mingla/offering-rendering/useOfferingImageUri";
 
 import { spacing } from "./designTokens";
 // #3188 — the socials-row sizing solver. A separate, pure, import-free module
@@ -2072,6 +2074,26 @@ const EmptyPane: React.FC<{ copy: string; palette: ThemePalette }> = ({
 // via onOpenVenue. 0 venues → renders nothing (real-data-only). Inline param
 // annotation (not React.FC) so the section stays fully typed under every
 // consumer tsconfig.
+/**
+ * issue #4518 — a venue thumbnail on the picture road (one fallback). A real
+ * react-native <Image> stays at this site so the #2539 round-clip gate keeps
+ * resolving it: `styles.venueThumb` has a borderRadius, so no shadow / tint /
+ * blur may ever join it here (see the gate). The hook's handlers change
+ * identity only with the url (#3827).
+ */
+const VenueThumb = ({ url }: { url: string }): React.ReactElement => {
+  const media = useOfferingImageUri(url);
+  return (
+    <Image
+      source={{ uri: media.uri ?? url }}
+      style={styles.venueThumb}
+      onLoad={media.onLoad}
+      onError={media.onError}
+      accessibilityIgnoresInvertColors
+    />
+  );
+};
+
 const ReservationsPane = ({
   venues,
   palette,
@@ -2145,11 +2167,7 @@ const ReservationsPane = ({
             ]}
           >
             {v.photoUrl !== null ? (
-              <Image
-                source={{ uri: v.photoUrl }}
-                style={styles.venueThumb}
-                accessibilityIgnoresInvertColors
-              />
+              <VenueThumb url={v.photoUrl} />
             ) : null}
             <View style={styles.venueCopy}>
               <Text

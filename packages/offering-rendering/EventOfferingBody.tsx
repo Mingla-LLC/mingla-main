@@ -57,7 +57,6 @@ import React, {
 import {
   AccessibilityInfo,
   findNodeHandle,
-  Image,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -143,6 +142,8 @@ import {
 } from "./LazyOfferingRefundLadder";
 import { type RefundPolicyReadState } from "./offeringRefundPolicy";
 import { accentFill, accentOutline, themeBoldFace, themeFontFace } from "./themeAccentStyle";
+// issue #4518 — the brand logo takes the picture road (one fallback).
+import { OfferingRoutedImage } from "./useOfferingImageUri";
 import { StaticMapImage } from "./StaticMapFrame";
 
 // Re-export the pure totals so a single import surface stays one place.
@@ -866,7 +867,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
                 borderRadius={styles.brandTile.borderRadius}
               />
               {brand?.photo !== undefined && brand.photo.length > 0 ? (
-                <Image
+                <OfferingRoutedImage
                   source={{ uri: brand.photo }}
                   style={styles.brandPhoto}
                   resizeMode="cover"
