@@ -294,15 +294,22 @@ BEGIN
 
   -- An invalid add-on choice is refused (22023); a valid one on a cart with no add-ons is ignored.
   v_raised := pg_temp.raised(format($q$SELECT public.issue_3872_ticket_quote(%L, %L::jsonb,
-    NULL,NULL,NULL,NULL,'auto',NULL,'buyer@example.test','+15555550901',NULL,NULL,false,'later')$q$, v_event, v_lines));
+    NULL,NULL,NULL,NULL,'auto',NULL,'buyer@example.test','+15555550901',NULL,NULL,false)$q$, v_event,
+    '[{"ticketTypeId":"45220000-0000-4000-8000-000000000013","quantity":2,"addonPaymentMode":"later"}]'));
   IF v_raised IS DISTINCT FROM '22023:addon_payment_mode_invalid' THEN
     RAISE EXCEPTION 'E-5 expected addon_payment_mode_invalid, got %', v_raised;
+  END IF;
+  IF public.issue_4522_lines_addon_payment_mode('[{"addonPaymentMode":"today"},{"addonPaymentMode":"today"},{}]') <> 'today'
+     OR public.issue_4522_lines_addon_payment_mode('[{"ticketTypeId":"x"}]') IS NOT NULL
+     OR pg_temp.raised($q$SELECT public.issue_4522_lines_addon_payment_mode('[{"addonPaymentMode":"today"},{"addonPaymentMode":"spread"}]')$q$)
+        IS DISTINCT FROM '22023:addon_payment_mode_invalid' THEN
+    RAISE EXCEPTION 'E-5b one add-on choice per cart';
   END IF;
 
   -- Session + finalize: terms frozen, rows written with kind / version / add-on share.
   v_s := public.biz_ticket_checkout_create_session(v_event, NULL, 'Buyer', 'buyer@example.test',
     '+15555550901', false, v_lines, 'ticket_checkout:' || v_event::text || ':4522-e',
-    now() + interval '15 minutes', 0, 'installments', NULL, NULL, NULL, NULL, NULL, NULL, 'spread');
+    now() + interval '15 minutes', 0, 'installments', NULL, NULL, NULL, NULL, NULL, NULL);
   v_session := (v_s->>'checkoutSessionId')::uuid;
   IF (v_s->>'totalCents')::integer <> 60000 OR (v_s->'installmentSchedule'->>'planVersion')::integer <> 2 THEN
     RAISE EXCEPTION 'E-6 the v2 session is wrong: %', v_s;
@@ -352,6 +359,7 @@ DO $$
 DECLARE
   v_event uuid := '45220000-0000-4000-8000-000000000003';
   v_lines jsonb := '[{"ticketTypeId":"45220000-0000-4000-8000-000000000013","quantity":2,"addOns":[{"addOnId":"45220000-0000-4000-8000-000000000021","quantity":2}]}]';
+  v_spread jsonb := '[{"ticketTypeId":"45220000-0000-4000-8000-000000000013","quantity":2,"addonPaymentMode":"spread","addOns":[{"addOnId":"45220000-0000-4000-8000-000000000021","quantity":2}]}]';
   v_q jsonb;
   v_s jsonb;
   v_sum bigint;
@@ -364,7 +372,7 @@ BEGIN
     end_at = date_trunc('day', now()) + interval '207 days 8 hours'
    WHERE event_id = v_event;
   v_raised := pg_temp.raised(format($q$SELECT public.issue_3872_ticket_quote(%L, %L::jsonb,
-    NULL,NULL,NULL,NULL,'auto',NULL,'buyer@example.test','+15555550901',NULL,NULL,false,'spread')$q$, v_event, v_lines));
+    NULL,NULL,NULL,NULL,'auto',NULL,'buyer@example.test','+15555550901',NULL,NULL,false)$q$, v_event, v_spread));
   IF v_raised IS DISTINCT FROM 'P0001:extras_not_on_installments' THEN
     RAISE EXCEPTION 'F-1 add-ons on a plan need #3281''s plan switch, got %', v_raised;
   END IF;
@@ -379,8 +387,8 @@ BEGIN
   END IF;
 
   -- spread: the add-ons ride the rows, each row tracks its add-on share.
-  v_q := public.issue_3872_ticket_quote(v_event, v_lines,
-    NULL,NULL,NULL,NULL,'auto',NULL,'buyer@example.test','+15555550901',NULL,NULL,false,'spread');
+  v_q := public.issue_3872_ticket_quote(v_event, v_spread,
+    NULL,NULL,NULL,NULL,'auto',NULL,'buyer@example.test','+15555550901',NULL,NULL,false);
   SELECT sum((e->>'amountCents')::bigint), sum((e->>'addonPortionCents')::bigint) INTO v_sum, v_addon
     FROM jsonb_array_elements(v_q->'installmentSchedule'->'installments') e;
   IF (v_q->>'dueTodayNetCents')::bigint <> 60000 OR v_q->>'addonPaymentMode' <> 'spread'
@@ -390,8 +398,8 @@ BEGIN
   END IF;
 
   v_s := public.biz_ticket_checkout_create_session(v_event, NULL, 'Buyer Two', 'buyer2@example.test',
-    '+15555550902', false, v_lines, 'ticket_checkout:' || v_event::text || ':4522-f',
-    now() + interval '15 minutes', 0, 'installments', NULL, NULL, NULL, NULL, NULL, v_q->>'quoteDigest', 'spread');
+    '+15555550902', false, v_spread, 'ticket_checkout:' || v_event::text || ':4522-f',
+    now() + interval '15 minutes', 0, 'installments', NULL, NULL, NULL, NULL, NULL, v_q->>'quoteDigest');
   v_session := (v_s->>'checkoutSessionId')::uuid;
   IF (v_s->>'totalCents')::integer <> 60000 OR v_s->>'addonPaymentMode' <> 'spread'
      OR (SELECT addon_payment_mode FROM public.ticket_checkout_sessions WHERE id = v_session) <> 'spread'
@@ -447,8 +455,9 @@ BEGIN
   -- Grants: every new function is service_role only.
   IF has_function_privilege('authenticated', 'public.issue_4522_plan_cart_v2(uuid,jsonb,text,timestamptz,jsonb,text)', 'EXECUTE')
      OR has_function_privilege('anon', 'public.issue_4522_checkout_v2_plan(uuid,jsonb)', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'public.issue_3872_ticket_quote(uuid,jsonb,uuid[],timestamptz,timestamptz,integer,text,text,text,text,uuid,text,boolean,text)', 'EXECUTE')
-     OR NOT has_function_privilege('service_role', 'public.biz_ticket_checkout_create_session(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text,text)', 'EXECUTE') THEN
+     OR has_function_privilege('authenticated', 'public.issue_3872_ticket_quote(uuid,jsonb,uuid[],timestamptz,timestamptz,integer,text,text,text,text,uuid,text,boolean)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.issue_4522_lines_addon_payment_mode(jsonb)', 'EXECUTE')
+     OR NOT has_function_privilege('service_role', 'public.biz_ticket_checkout_create_session(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'G-4 grants are wrong';
   END IF;
 END $$;

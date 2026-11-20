@@ -1115,8 +1115,8 @@ export const createTicketCheckoutCreateHandler = (
     }
     // issue #4522 — how add-ons on a v2 trip plan are paid ("today" joins the
     // deposit, "spread" rides the plan rows). Inert while the server switch is
-    // off. Absent => every RPC call below is byte-identical to today: the
-    // parameter is sent only when the buyer chose.
+    // off. It rides the cart lines (`addonPaymentMode`) so no RPC signature
+    // changes; absent => every RPC call below is byte-identical to today.
     let addonPaymentMode: "today" | "spread" | null = null;
     if (body.addonPaymentMode !== undefined && body.addonPaymentMode !== null) {
       if (
@@ -1126,8 +1126,11 @@ export const createTicketCheckoutCreateHandler = (
       }
       addonPaymentMode = body.addonPaymentMode;
     }
-    const addonPaymentModeArg: { p_addon_payment_mode?: "today" | "spread" } =
-      addonPaymentMode === null ? {} : { p_addon_payment_mode: addonPaymentMode };
+    // The quote and the session RPCs read the choice from the lines; every
+    // other use of `lines` (idempotency, intake, capability) is unchanged.
+    const rpcLines = addonPaymentMode === null
+      ? lines
+      : lines.map((line) => ({ ...line, addonPaymentMode }));
 
     if (!eventId) return refuse({ error: "event_id_required" }, 400);
     if (buyerName.length < 2) {
@@ -1712,7 +1715,7 @@ export const createTicketCheckoutCreateHandler = (
       }
       const { data, error } = await supabase.rpc("issue_3872_ticket_quote", {
         p_event_id: eventId,
-        p_lines: lines,
+        p_lines: rpcLines,
         p_event_date_ids: orderedEventDateIds.length > 0
           ? orderedEventDateIds
           : null,
@@ -1726,7 +1729,6 @@ export const createTicketCheckoutCreateHandler = (
         p_buyer_user_id: userId,
         p_link_token_hash: ticketLinkHash,
         p_queued: queueEngaged,
-        ...addonPaymentModeArg,
       });
       if (error !== null || data === null || typeof data !== "object") {
         throw new Error(error?.message ?? "ticket_quote_failed");
@@ -2243,7 +2245,7 @@ export const createTicketCheckoutCreateHandler = (
           p_buyer_email: buyerEmail,
           p_buyer_phone_e164: buyerPhoneE164,
           p_marketing_opt_in: marketingOptIn,
-          p_lines: lines,
+          p_lines: rpcLines,
           p_idempotency_key: idempotencyKey,
           p_expires_at: queueEngaged
             ? "infinity"
@@ -2258,7 +2260,6 @@ export const createTicketCheckoutCreateHandler = (
           p_booked_party_size: partySize,
           p_discount_code: discountCode,
           p_expected_quote_digest: quoteDigest,
-          ...addonPaymentModeArg,
         },
       )
       : null;
@@ -2314,7 +2315,7 @@ export const createTicketCheckoutCreateHandler = (
           p_buyer_email: buyerEmail,
           p_buyer_phone_e164: buyerPhoneE164,
           p_marketing_opt_in: marketingOptIn,
-          p_lines: lines,
+          p_lines: rpcLines,
           p_idempotency_key: idempotencyKey,
           // Queued holds use the 'infinity' carrier (slice 2). Quiet / unarmed
           // path keeps the 15-minute clock byte-identical to today.
@@ -2337,7 +2338,6 @@ export const createTicketCheckoutCreateHandler = (
           p_booked_party_size: partySize,
           p_discount_code: discountCode,
           p_expected_quote_digest: quoteDigest,
-          ...addonPaymentModeArg,
       },
       );
     const sessionResult: unknown = sessionCall.data;

@@ -8,11 +8,11 @@
 -- each guarded by an md5 drift check:
 --   issue_3872_plan_due_today — a v2 prefix; the legacy body is untouched,
 --     including installment_schedule_past_due_at_booking (legacy plans only).
---   issue_3872_ticket_quote, issue_1930_ticket_checkout_create_session_base,
---   biz_ticket_checkout_create_session, biz_ticket_link_checkout_create_session
---     — DROP + CREATE: one new trailing parameter p_addon_payment_mode
---     (DEFAULT NULL), so every existing caller (positional or named) is
---     unchanged. Grants are restored exactly (service_role only).
+--   issue_3872_ticket_quote, issue_1930_ticket_checkout_create_session_base
+--     — same signatures: the add-on choice rides the cart lines
+--     (`addonPaymentMode` on a line), so every caller and wrapper
+--     (biz_ticket_checkout_create_session, the private-link and door
+--     wrappers) is untouched. Grants are unchanged (service_role only).
 --   issue_1930_ticket_checkout_finalize_base — rows carry kind, version 0 and
 --     the spread add-on share; orders copy the frozen terms and add-on choice;
 --     the session still records its order_id (the #4514 forms trigger reads it).
@@ -29,8 +29,6 @@ BEGIN
     ('public.issue_3872_plan_due_today(uuid,jsonb,text)','334d4e8f288f5db5e4e4800dd791a06c'),
     ('public.issue_3872_ticket_quote(uuid,jsonb,uuid[],timestamptz,timestamptz,integer,text,text,text,text,uuid,text,boolean)','4adeb2b03e5546201b596f91e4c9b1f1'),
     ('public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text)','c0ba32c9494e8a73de5254390974953e'),
-    ('public.biz_ticket_checkout_create_session(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text)','71d260221145caa2d9580a82c9eea0a0'),
-    ('public.biz_ticket_link_checkout_create_session(text,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text)','5e29cdca34bd3e68e7650a93c94bb3c3'),
     ('public.issue_1930_ticket_checkout_finalize_base(uuid,text,text,text,text,text,text,boolean)','e4a077a319fd8c9ba3805ce544126cd2')
   ) v(sig,expected_md5) LOOP
     SELECT md5(pg_get_functiondef(r.sig::regprocedure)) INTO v_actual;
@@ -528,14 +526,35 @@ END;
 $function$;
 
 -- ---------------------------------------------------------------------------
--- 6. Quote, create-session and its two wrappers: p_addon_payment_mode.
+-- 6. Quote and create-session: the v2 add-on seam (same signatures).
 -- ---------------------------------------------------------------------------
-DROP FUNCTION public.biz_ticket_link_checkout_create_session(text,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text);
-DROP FUNCTION public.biz_ticket_checkout_create_session(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text);
-DROP FUNCTION public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text);
-DROP FUNCTION public.issue_3872_ticket_quote(uuid,jsonb,uuid[],timestamptz,timestamptz,integer,text,text,text,text,uuid,text,boolean);
+CREATE FUNCTION public.issue_4522_lines_addon_payment_mode(p_lines jsonb)
+RETURNS text
+LANGUAGE plpgsql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_modes text[];
+BEGIN
+  IF p_lines IS NULL OR jsonb_typeof(p_lines) <> 'array' THEN RETURN NULL; END IF;
+  SELECT array_agg(DISTINCT l->>'addonPaymentMode') INTO v_modes
+    FROM jsonb_array_elements(p_lines) l
+   WHERE jsonb_typeof(l) = 'object' AND l ? 'addonPaymentMode'
+     AND jsonb_typeof(l->'addonPaymentMode') <> 'null';
+  IF v_modes IS NULL THEN RETURN NULL; END IF;
+  IF array_length(v_modes, 1) <> 1 OR v_modes[1] IS NULL OR v_modes[1] NOT IN ('today', 'spread') THEN
+    RAISE EXCEPTION 'addon_payment_mode_invalid' USING ERRCODE = '22023';
+  END IF;
+  RETURN v_modes[1];
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_lines_addon_payment_mode(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_lines_addon_payment_mode(jsonb) TO service_role;
+COMMENT ON FUNCTION public.issue_4522_lines_addon_payment_mode(jsonb) IS
+  'Issue #4522: the cart''s add-on payment choice for a v2 plan, from `addonPaymentMode` on its lines (one value per cart: today | spread; NULL when absent). Anything else raises addon_payment_mode_invalid (22023).';
 
-CREATE OR REPLACE FUNCTION public.issue_3872_ticket_quote(p_event_id uuid, p_lines jsonb, p_event_date_ids uuid[], p_booked_start_at timestamp with time zone, p_booked_end_at timestamp with time zone, p_booked_party_size integer, p_payment_plan_choice text, p_discount_code text, p_buyer_email text, p_buyer_phone_e164 text, p_buyer_user_id uuid, p_link_token_hash text, p_queued boolean, p_addon_payment_mode text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION public.issue_3872_ticket_quote(p_event_id uuid, p_lines jsonb, p_event_date_ids uuid[], p_booked_start_at timestamp with time zone, p_booked_end_at timestamp with time zone, p_booked_party_size integer, p_payment_plan_choice text, p_discount_code text, p_buyer_email text, p_buyer_phone_e164 text, p_buyer_user_id uuid, p_link_token_hash text, p_queued boolean)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -564,14 +583,14 @@ DECLARE
   v_result jsonb;
   v_extras jsonb;
   v_preview jsonb;
+  v_addon_mode text;
 BEGIN
   IF COALESCE(p_payment_plan_choice,'') NOT IN ('auto','full','installments') THEN
     RAISE EXCEPTION 'payment_plan_choice_invalid';
   END IF;
-  -- issue #4522 — how add-ons on a v2 plan are paid (today | spread).
-  IF p_addon_payment_mode IS NOT NULL AND p_addon_payment_mode NOT IN ('today','spread') THEN
-    RAISE EXCEPTION 'addon_payment_mode_invalid' USING ERRCODE='22023';
-  END IF;
+  -- issue #4522 — how add-ons on a v2 plan are paid (today | spread), carried
+  -- on the cart lines so every caller and wrapper keeps its signature.
+  v_addon_mode:=public.issue_4522_lines_addon_payment_mode(p_lines);
   IF p_lines IS NULL OR jsonb_typeof(p_lines)<>'array' OR jsonb_array_length(p_lines)=0 THEN
     RAISE EXCEPTION 'ticket_lines_required';
   END IF;
@@ -714,14 +733,14 @@ BEGIN
         RAISE EXCEPTION 'extras_not_on_installments';
       END IF;
       v_plan:=public.issue_4522_plan_cart_v2(p_event_id,v_items,p_payment_plan_choice,now(),
-        v_extras,COALESCE(p_addon_payment_mode,'today'));
+        v_extras,COALESCE(v_addon_mode,'today'));
     END IF;
   END IF;
   -- issue #4522 — what a v2 plan would look like on this booking day, so a
   -- client asking for `full` still learns the plan's availability first.
   IF NOT (v_plan ? 'planVersion') AND public.issue_4522_cart_has_v2(p_event_id,v_items) THEN
     v_preview:=public.issue_4522_plan_cart_v2(p_event_id,v_items,'auto',now(),v_extras,
-      COALESCE(p_addon_payment_mode,'today'));
+      COALESCE(v_addon_mode,'today'));
   ELSIF v_plan ? 'planVersion' THEN
     v_preview:=v_plan;
   END IF;
@@ -759,10 +778,8 @@ BEGIN
       'addonPaymentMode',v_plan->'addonPaymentMode') END;
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.issue_3872_ticket_quote(uuid,jsonb,uuid[],timestamptz,timestamptz,integer,text,text,text,text,uuid,text,boolean,text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_3872_ticket_quote(uuid,jsonb,uuid[],timestamptz,timestamptz,integer,text,text,text,text,uuid,text,boolean,text) TO service_role;
 
-CREATE OR REPLACE FUNCTION public.issue_1930_ticket_checkout_create_session_base(p_event_id uuid, p_buyer_user_id uuid, p_buyer_name text, p_buyer_email text, p_buyer_phone_e164 text, p_marketing_opt_in boolean, p_lines jsonb, p_idempotency_key text, p_expires_at timestamp with time zone, p_application_fee_amount_cents integer DEFAULT 0, p_payment_plan_choice text DEFAULT 'auto'::text, p_event_date_ids uuid[] DEFAULT NULL::uuid[], p_booked_start_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_booked_end_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_booked_party_size integer DEFAULT NULL::integer, p_discount_code text DEFAULT NULL::text, p_expected_quote_digest text DEFAULT NULL::text, p_addon_payment_mode text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION public.issue_1930_ticket_checkout_create_session_base(p_event_id uuid, p_buyer_user_id uuid, p_buyer_name text, p_buyer_email text, p_buyer_phone_e164 text, p_marketing_opt_in boolean, p_lines jsonb, p_idempotency_key text, p_expires_at timestamp with time zone, p_application_fee_amount_cents integer DEFAULT 0, p_payment_plan_choice text DEFAULT 'auto'::text, p_event_date_ids uuid[] DEFAULT NULL::uuid[], p_booked_start_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_booked_end_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_booked_party_size integer DEFAULT NULL::integer, p_discount_code text DEFAULT NULL::text, p_expected_quote_digest text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -855,14 +872,14 @@ DECLARE
   v_date_qty integer;
   v_ctx_price jsonb;
   v_sum integer;
+  v_addon_mode text;
 BEGIN
   IF COALESCE(p_payment_plan_choice, '') NOT IN ('auto', 'full', 'installments') THEN
     RAISE EXCEPTION 'payment_plan_choice_invalid';
   END IF;
-  -- issue #4522 — how add-ons on a v2 plan are paid (today | spread).
-  IF p_addon_payment_mode IS NOT NULL AND p_addon_payment_mode NOT IN ('today', 'spread') THEN
-    RAISE EXCEPTION 'addon_payment_mode_invalid' USING ERRCODE = '22023';
-  END IF;
+  -- issue #4522 — how add-ons on a v2 plan are paid (today | spread), carried
+  -- on the cart lines so every caller and wrapper keeps its signature.
+  v_addon_mode := public.issue_4522_lines_addon_payment_mode(p_lines);
 
   IF p_buyer_phone_e164 IS NULL OR p_buyer_phone_e164 !~ '^\+[1-9][0-9]{1,14}$' THEN
     RAISE EXCEPTION 'buyer_phone_required';
@@ -1396,7 +1413,7 @@ BEGIN
         RAISE EXCEPTION 'extras_not_on_installments';
       END IF;
       v_plan := public.issue_4522_plan_cart_v2(p_event_id, v_items, p_payment_plan_choice, now(),
-        v_extras, COALESCE(p_addon_payment_mode, 'today'));
+        v_extras, COALESCE(v_addon_mode, 'today'));
       v_total := (v_plan->>'dueTodayNetCents')::integer;
       v_list_due_today := (v_plan->>'dueTodayListCents')::bigint;
       v_unioned := v_plan->'installmentSchedule';
@@ -1551,323 +1568,6 @@ BEGIN
        ELSE '{}'::jsonb END;
 END;
 $function$;
-REVOKE ALL ON FUNCTION public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text,text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_1930_ticket_checkout_create_session_base(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text,text) TO service_role;
-
-CREATE OR REPLACE FUNCTION public.biz_ticket_checkout_create_session(p_event_id uuid, p_buyer_user_id uuid, p_buyer_name text, p_buyer_email text, p_buyer_phone_e164 text, p_marketing_opt_in boolean, p_lines jsonb, p_idempotency_key text, p_expires_at timestamp with time zone, p_application_fee_amount_cents integer DEFAULT 0, p_payment_plan_choice text DEFAULT 'auto'::text, p_event_date_ids uuid[] DEFAULT NULL::uuid[], p_booked_start_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_booked_end_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_booked_party_size integer DEFAULT NULL::integer, p_discount_code text DEFAULT NULL::text, p_expected_quote_digest text DEFAULT NULL::text, p_addon_payment_mode text DEFAULT NULL::text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'auth', 'pg_temp'
-AS $function$
-DECLARE
-  v_event public.events%ROWTYPE;
-  v_existing record;
-  v_items jsonb := '[]'::jsonb;
-  v_result jsonb;
-  v_decision text;
-  v_replay_decision text;
-  v_snapshot jsonb;
-  v_mode text;
-  v_session_id uuid;
-BEGIN
-  SELECT * INTO v_event FROM public.events WHERE id=p_event_id FOR UPDATE;
-  IF NOT FOUND OR v_event.deleted_at IS NOT NULL THEN
-    RAISE EXCEPTION 'event_not_found';
-  END IF;
-  -- #2101 A3.1 — brand lock immediately after the event lock.
-  PERFORM 1 FROM public.brands
-    WHERE id=v_event.brand_id AND deleted_at IS NULL FOR UPDATE;
-  IF public.issue_1930_event_sale_reason(v_event)<>'sellable' THEN
-    RAISE EXCEPTION 'event_not_selling';
-  END IF;
-
-  -- #2101 — fresh decision BEFORE the idempotency replay owner.
-  v_decision := public.issue_2101_ticket_checkout_access_decision(
-    p_event_id, p_buyer_user_id);
-  IF v_decision='sign_in_required' THEN
-    RAISE EXCEPTION 'checkout_sign_in_required';
-  END IF;
-  IF v_decision NOT IN ('allowed_unrestricted','allowed_named') THEN
-    RAISE EXCEPTION 'checkout_restricted';
-  END IF;
-  v_snapshot := public.issue_2101_current_access_snapshot(p_event_id,p_buyer_user_id);
-  v_mode := v_snapshot->>'mode';
-
-  -- issue #2696 — SCOPED TO THE EVENT BEING BOUGHT.
-  --
-  -- This lookup resolved a session by idempotency key ALONE. The key is globally
-  -- UNIQUE with no event or brand column, and its event-scoping was only ever an
-  -- implicit property of how the edge composed it. That made it defeatable the
-  -- moment a caller could supply their own key, which the edge accepted verbatim
-  -- until #2696 removed it.
-  --
-  -- The conjunct here is the durable half of that fix: even a caller-supplied or
-  -- colliding key can no longer return a session belonging to a different event.
-  -- Without it, a request naming event B could be answered with event A's
-  -- session, and every decision after this point — the #2101 access mode, the
-  -- named-buyer cross-check, the status-token write — was then made against B's
-  -- rules on A's row.
-  --
-  -- NOT A BEHAVIOUR CHANGE: all 179 live sessions already satisfy
-  -- `idempotency_key LIKE 'ticket_checkout:' || event_id || ':%'`, and 0 do not.
-  -- A legitimate resubmit derives the same key for the same event and still
-  -- finds its row.
-  SELECT *
-    INTO v_existing
-    FROM public.ticket_checkout_sessions
-   WHERE idempotency_key=p_idempotency_key
-     AND event_id=p_event_id;
-
-  IF FOUND THEN
-    -- ═══════════════════════════════════════════════════════════════════════
-    -- issue #2150 — A COMPLETED **FREE** RESERVATION IS RETURNED, NOT REMINTED.
-    --
-    -- This block is evaluated BEFORE the ORCH-0791 terminal tombstone and
-    -- before the ORCH-0829-B D-1 expiry tombstone, and it is the ONLY thing
-    -- that changed in this function. Every conjunct is load-bearing:
-    --
-    --   status='free_completed'  the only status `biz_ticket_checkout_finalize`
-    --                            assigns when `total_cents = 0`.
-    --   total_cents = 0          independent proof this carried NO money, so
-    --                            the paid arm cannot enter here even if a
-    --                            status were corrupted. THIS is the conjunct
-    --                            that scopes the change to the zero-total case.
-    --   order_id IS NOT NULL     there is something to hand back.
-    --   revoked_at IS NULL       the sale was not revoked (#2079 / #1930).
-    --   buyer identity matches   an anonymous guest is (NULL,NULL) and matches
-    --                            itself; a DIFFERENT signed-in user presenting
-    --                            the same derived key falls through to today's
-    --                            behaviour rather than being handed someone
-    --                            else's passes.
-    --   a live ticket exists     a cancelled / refunded / voided reservation is
-    --                            NOT a reservation the guest still holds, so it
-    --                            falls through and they can re-reserve.
-    --
-    -- On a match the guest's ORIGINAL session is returned untouched: the key is
-    -- NOT renamed, no row is inserted, and `ticket-checkout-create` answers
-    -- with that same order's already-issued tickets — one order, one ticket,
-    -- one confirmation email and one SMS, however many times they submit.
-    -- ═══════════════════════════════════════════════════════════════════════
-    IF v_existing.status='free_completed'
-       AND COALESCE(v_existing.total_cents,0)=0
-       AND v_existing.order_id IS NOT NULL
-       AND v_existing.revoked_at IS NULL
-       AND v_existing.buyer_user_id IS NOT DISTINCT FROM p_buyer_user_id
-       AND EXISTS(SELECT 1 FROM public.tickets t
-                   WHERE t.order_id=v_existing.order_id
-                     AND t.status IN ('valid','used','transferred')) THEN
-      SELECT COALESCE(jsonb_agg(jsonb_build_object(
-        'ticketTypeId',i.ticket_type_id,
-        'ticketName',i.ticket_name_at_purchase,
-        'quantity',i.quantity,
-        'unitPriceCents',i.unit_price_cents,
-        'listUnitPriceCents',COALESCE(i.list_unit_price_cents,i.unit_price_cents),
-        'discountCents',i.discount_cents,
-        'totalCents',i.total_cents,
-        'applied',i.applied_discounts
-      ) ORDER BY i.created_at),'[]'::jsonb)
-        INTO v_items
-        FROM public.ticket_checkout_session_items i
-       WHERE i.checkout_session_id=v_existing.id;
-
-      RETURN jsonb_build_object(
-        'checkoutSessionId',v_existing.id,
-        'eventId',v_existing.event_id,
-        'brandId',v_existing.brand_id,
-        'status',v_existing.status,
-        'totalCents',v_existing.total_cents,
-        'subtotalCents',v_existing.total_cents,
-        'listSubtotalCents',COALESCE(v_existing.list_subtotal_cents,v_existing.total_cents),
-        'discountCents',v_existing.discount_cents,
-        'currency',trim(v_existing.currency),
-        'stripeAccountId',v_existing.stripe_account_id,
-        'orderId',v_existing.order_id,
-        'items',v_items,
-        'lineItems',v_items,
-        'installmentSchedule',v_existing.installment_schedule,
-        'extras',public.issue_3281_session_extras(v_existing.id)->'items',
-        'extrasTotalCents',(public.issue_3281_session_extras(v_existing.id)->>'totalCents')::integer
-      );
-    END IF;
-
-    IF v_existing.status IN ('paid_completed','free_completed','failed','expired')
-       OR v_existing.expires_at < now() THEN
-      UPDATE public.ticket_checkout_sessions
-         SET idempotency_key=idempotency_key || ':tombstone:' || id::text,
-             status=CASE
-               WHEN status IN ('paid_completed','free_completed','failed','expired') THEN status
-               ELSE 'expired'
-             END,
-             failed_at=CASE
-               WHEN status IN ('paid_completed','free_completed','failed','expired') THEN failed_at
-               WHEN status IN ('pending_free','requires_payment','processing_payment','awaiting_web_redirect')
-                 AND expires_at < now() THEN now()
-               ELSE failed_at
-             END,
-             updated_at=now()
-       WHERE id=v_existing.id;
-    ELSE
-      v_replay_decision := public.issue_2101_ticket_checkout_access_decision(
-        p_event_id, v_existing.buyer_user_id,
-        v_existing.checkout_access_mode_snapshot,
-        v_existing.checkout_access_restrictive_epoch_snapshot,
-        v_existing.checkout_access_membership_id_snapshot,
-        v_existing.checkout_access_membership_epoch_snapshot);
-      IF v_replay_decision NOT IN ('allowed_unrestricted','allowed_named')
-         OR (v_mode='named_buyers'
-             AND v_existing.buyer_user_id IS DISTINCT FROM p_buyer_user_id) THEN
-        RAISE EXCEPTION 'checkout_restricted';
-      END IF;
-
-      SELECT COALESCE(jsonb_agg(jsonb_build_object(
-        'ticketTypeId',i.ticket_type_id,
-        'ticketName',i.ticket_name_at_purchase,
-        'quantity',i.quantity,
-        'unitPriceCents',i.unit_price_cents,
-        'listUnitPriceCents',COALESCE(i.list_unit_price_cents,i.unit_price_cents),
-        'discountCents',i.discount_cents,
-        'totalCents',i.total_cents,
-        'applied',i.applied_discounts
-      ) ORDER BY i.created_at),'[]'::jsonb)
-        INTO v_items
-        FROM public.ticket_checkout_session_items i
-       WHERE i.checkout_session_id=v_existing.id;
-
-      RETURN jsonb_build_object(
-        'checkoutSessionId',v_existing.id,
-        'eventId',v_existing.event_id,
-        'brandId',v_existing.brand_id,
-        'status',v_existing.status,
-        'totalCents',v_existing.total_cents,
-        'subtotalCents',v_existing.total_cents,
-        'listSubtotalCents',COALESCE(v_existing.list_subtotal_cents,v_existing.total_cents),
-        'discountCents',v_existing.discount_cents,
-        'currency',trim(v_existing.currency),
-        'stripeAccountId',v_existing.stripe_account_id,
-        'orderId',v_existing.order_id,
-        'items',v_items,
-        'lineItems',v_items,
-        'installmentSchedule',v_existing.installment_schedule,
-        'extras',public.issue_3281_session_extras(v_existing.id)->'items',
-        'extrasTotalCents',(public.issue_3281_session_extras(v_existing.id)->>'totalCents')::integer
-      );
-    END IF;
-  END IF;
-
-  -- issue #2160 DELTA 2 of 2 — forward the day set. NOTHING ELSE IN THIS
-  -- FUNCTION CHANGED: the #2150 free-completed exemption above, the ORCH-0791
-  -- terminal tombstone, the ORCH-0829-B expiry tombstone, the #2101 fresh
-  -- decision, the event -> brand lock order and the access snapshot write-back
-  -- are byte-preserved from 20270419002150:158-358.
-  -- issue #3281 / R2 — forward optional start, end, and party size.
-  v_result:=public.issue_1930_ticket_checkout_create_session_base(
-    p_event_id,p_buyer_user_id,p_buyer_name,p_buyer_email,p_buyer_phone_e164,
-    p_marketing_opt_in,p_lines,p_idempotency_key,p_expires_at,
-    p_application_fee_amount_cents,p_payment_plan_choice,p_event_date_ids,
-    p_booked_start_at,p_booked_end_at,p_booked_party_size,
-    p_discount_code,p_expected_quote_digest,p_addon_payment_mode);
-
-  v_session_id := (v_result->>'checkoutSessionId')::uuid;
-  IF v_session_id IS NOT NULL THEN
-    UPDATE public.ticket_checkout_sessions SET
-      checkout_access_mode_snapshot=v_mode,
-      checkout_access_restrictive_epoch_snapshot=
-        COALESCE((v_snapshot->>'restrictiveEpoch')::bigint,0),
-      checkout_access_membership_id_snapshot=
-        NULLIF(v_snapshot->>'membershipId','')::uuid,
-      checkout_access_membership_epoch_snapshot=
-        NULLIF(v_snapshot->>'membershipEpoch','')::bigint
-    WHERE id=v_session_id;
-  END IF;
-
-  RETURN jsonb_build_object(
-    'checkoutSessionId',v_result->'checkoutSessionId',
-    'eventId',v_result->'eventId',
-    'brandId',v_result->'brandId',
-    'status',v_result->'status',
-    'totalCents',v_result->'totalCents',
-    'subtotalCents',v_result->'subtotalCents',
-    'listSubtotalCents',v_result->'listSubtotalCents',
-    'discountCents',v_result->'discountCents',
-    'fullListCents',v_result->'fullListCents',
-    'fullNetCents',v_result->'fullNetCents',
-    'quoteDigest',v_result->'quoteDigest',
-    'quoteListDigest',v_result->'quoteListDigest',
-    'discounts',v_result->'discounts',
-    'codeOutcome',v_result->'codeOutcome',
-    'notices',v_result->'notices',
-    'currency',v_result->'currency',
-    'stripeAccountId',v_result->'stripeAccountId',
-    'orderId',v_result->'orderId',
-    'items',v_result->'items',
-    'lineItems',v_result->'lineItems',
-    'installmentSchedule',v_result->'installmentSchedule',
-    -- issue #3281 — extras pass through to the edge function.
-    'extras',v_result->'extras',
-    'extrasTotalCents',v_result->'extrasTotalCents'
-  );
-END $function$;
-REVOKE ALL ON FUNCTION public.biz_ticket_checkout_create_session(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text,text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_ticket_checkout_create_session(uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text,text) TO service_role;
-
-CREATE OR REPLACE FUNCTION public.biz_ticket_link_checkout_create_session(p_token_hash text, p_event_id uuid, p_buyer_user_id uuid, p_buyer_name text, p_buyer_email text, p_buyer_phone_e164 text, p_marketing_opt_in boolean, p_lines jsonb, p_idempotency_key text, p_expires_at timestamp with time zone, p_application_fee_amount_cents integer DEFAULT 0, p_payment_plan_choice text DEFAULT 'auto'::text, p_event_date_ids uuid[] DEFAULT NULL::uuid[], p_booked_start_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_booked_end_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_booked_party_size integer DEFAULT NULL::integer, p_discount_code text DEFAULT NULL::text, p_expected_quote_digest text DEFAULT NULL::text, p_addon_payment_mode text DEFAULT NULL::text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_temp'
-AS $function$
-DECLARE
-  v_link public.ticket_type_links;
-  v_line jsonb;
-  v_units integer := 0;
-  v_state text;
-  v_result jsonb;
-  v_session_id uuid;
-BEGIN
-  SELECT l.* INTO v_link FROM public.ticket_type_links l WHERE l.token_hash = p_token_hash FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'link_not_found'; END IF;
-  IF v_link.event_id <> p_event_id OR v_link.kind <> 'private_ticket' THEN
-    RAISE EXCEPTION 'not_a_private_ticket_link';
-  END IF;
-  v_state := public.issue_3827_link_state(v_link, now());
-  IF v_state <> 'active' THEN
-    RAISE EXCEPTION '%', CASE v_state WHEN 'revoked' THEN 'link_revoked'
-      WHEN 'expired' THEN 'link_expired' WHEN 'full' THEN 'link_full' ELSE v_state END;
-  END IF;
-  IF p_lines IS NULL OR jsonb_typeof(p_lines) <> 'array' OR jsonb_array_length(p_lines) = 0 THEN
-    RAISE EXCEPTION 'invalid_request';
-  END IF;
-  FOR v_line IN SELECT * FROM jsonb_array_elements(p_lines) LOOP
-    IF (v_line ->> 'ticketTypeId')::uuid <> v_link.ticket_type_id THEN
-      RAISE EXCEPTION 'link_tier_mismatch';
-    END IF;
-    v_units := v_units + COALESCE((v_line ->> 'quantity')::integer, 0);
-  END LOOP;
-  IF v_units <= 0 THEN RAISE EXCEPTION 'invalid_request'; END IF;
-  IF v_link.max_uses IS NOT NULL
-     AND public.issue_3827_link_uses_taken(v_link.id) + v_units > v_link.max_uses THEN
-    RAISE EXCEPTION 'link_full';
-  END IF;
-
-  PERFORM set_config('mingla.ticket_link_id', v_link.id::text, true);
-  v_result := public.biz_ticket_checkout_create_session(
-    p_event_id, p_buyer_user_id, p_buyer_name, p_buyer_email,
-    p_buyer_phone_e164, p_marketing_opt_in, p_lines, p_idempotency_key,
-    p_expires_at, p_application_fee_amount_cents, p_payment_plan_choice,
-    p_event_date_ids, p_booked_start_at, p_booked_end_at, p_booked_party_size,
-    p_discount_code, p_expected_quote_digest, p_addon_payment_mode
-  );
-  v_session_id := (v_result ->> 'checkoutSessionId')::uuid;
-  UPDATE public.ticket_checkout_sessions
-     SET ticket_link_id = v_link.id, ticket_link_units = v_units
-   WHERE id = v_session_id AND ticket_link_id IS NULL;
-  PERFORM set_config('mingla.ticket_link_id', '', true);
-  RETURN v_result;
-END;
-$function$;
-REVOKE ALL ON FUNCTION public.biz_ticket_link_checkout_create_session(text,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text,text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.biz_ticket_link_checkout_create_session(text,uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text,uuid[],timestamptz,timestamptz,integer,text,text,text) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 7. Finalize: v2 row columns, frozen terms, the add-on choice.

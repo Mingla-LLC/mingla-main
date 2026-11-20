@@ -138,13 +138,15 @@ Deno.test("the contract-path plan is read strictly; NULL keeps the legacy planne
 });
 
 Deno.test("the add-on payment choice reaches the database only when chosen", () => {
+  // It rides the cart lines, so no RPC signature changes and a request without
+  // a choice sends exactly the lines it sent before.
   assertStringIncludes(
     source,
-    "addonPaymentMode === null ? {} : { p_addon_payment_mode: addonPaymentMode }",
+    "const rpcLines = addonPaymentMode === null\n      ? lines\n      : lines.map((line) => ({ ...line, addonPaymentMode }));",
   );
-  // Quote, the private-link session and the main session carry it; the door
-  // wrapper (never a trip plan) does not.
-  assertEquals(source.split("...addonPaymentModeArg,").length - 1, 3);
+  // Quote, the private-link session and the main session read it; the door
+  // wrappers (never a trip plan) keep `lines`.
+  assertEquals(source.split("p_lines: rpcLines,").length - 1, 3);
   assertStringIncludes(
     source,
     'return jsonResponse({ error: "addon_payment_mode_invalid" }, 400);',
