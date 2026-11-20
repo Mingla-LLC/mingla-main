@@ -75,6 +75,18 @@ import {
   HOST_AD_RESULTS_COPY,
   minglaCountedConversions,
 } from "../_shared/hostAdAttribution.ts";
+import {
+  hostAdBestVideo,
+  type HostAdCreativeMetricRow,
+  hostAdOverviewGoal,
+  hostAdOverviewPhase,
+  hostAdPace,
+  hostAdReadAllPages,
+  hostAdRunDays,
+  hostAdSyncedAt,
+  hostAdVerdict,
+  loadHostAdCheckoutStarted,
+} from "../_shared/hostAdOverview.ts";
 import { shouldPauseForCap } from "../_shared/adMoney.ts";
 import {
   endDatePassed,
@@ -475,6 +487,8 @@ serve(async (req: Request): Promise<Response> => {
     let lastLiveEditAt: string | null = null;
     // #4238 rework 1: the frozen destination's public link (Share results).
     let publicPageUrl: string | null = null;
+    // #4238 Overview: the plan's frozen guidance (credit terms).
+    let planGuidance: Record<string, unknown> | null = null;
     if (
       typeof data.plan_version_id === "string" &&
       typeof data.plan_hash === "string"
@@ -521,6 +535,10 @@ serve(async (req: Request): Promise<Response> => {
       planMeasurement = canonical?.measurement &&
           typeof canonical.measurement === "object"
         ? canonical.measurement as Record<string, unknown>
+        : null;
+      planGuidance = canonical?.guidance_snapshot &&
+          typeof canonical.guidance_snapshot === "object"
+        ? canonical.guidance_snapshot as Record<string, unknown>
         : null;
     }
     const planCampaignIds = planCampaigns.map((row: { id: string }) => row.id);
@@ -605,6 +623,9 @@ serve(async (req: Request): Promise<Response> => {
     const providerSpendByCurrency = [...providerSpendTotals.entries()]
       .map(([currency, spend_cents]) => ({ currency, spend_cents }))
       .sort((a, b) => a.currency.localeCompare(b.currency));
+    // #4238 Overview pace: each campaign's spend in plan-currency credit,
+    // recorded by the same frozen-FX loop (no extra conversions).
+    const creditByCampaign = new Map<string, number>();
     let hostSpendEquivalentCents: number | null =
       typeof planCurrency === "string" && /^[A-Z]{3}$/.test(planCurrency) &&
         typeof data.plan_version_id === "string"
@@ -641,6 +662,7 @@ serve(async (req: Request): Promise<Response> => {
         }
         if (providerCurrency === hostCurrency) {
           hostSpendEquivalentCents += campaignSpend.total;
+          creditByCampaign.set(String(campaign.id), campaignSpend.total);
           continue;
         }
         const snapshotId = typeof allocation.fx_snapshot_id === "string"
@@ -664,6 +686,7 @@ serve(async (req: Request): Promise<Response> => {
           break;
         }
         hostSpendEquivalentCents += convertedAmount;
+        creditByCampaign.set(String(campaign.id), convertedAmount);
       }
     }
     const adSetIds = (adSetsResult.data ?? []).map((row: { id: unknown }) =>
@@ -681,7 +704,7 @@ serve(async (req: Request): Promise<Response> => {
     const { data: rawConversions } = await supabase
       .from("ad_conversions")
       .select(
-        "touch_id, platform, value_cents, currency, shared_with_platforms, created_at",
+        "touch_id, platform, value_cents, currency, shared_with_platforms, created_at, order_id",
       )
       .in("campaign_id", planCampaignIds);
     // #4238 W4b §5: Mingla's count is a sale within 7 days after the ad tap
@@ -708,6 +731,7 @@ serve(async (req: Request): Promise<Response> => {
         currency?: unknown;
         shared_with_platforms?: boolean;
         created_at?: unknown;
+        order_id?: unknown;
       }[],
       new Map(
         ((touches ?? []) as { id: unknown; created_at?: unknown }[]).map(
@@ -778,6 +802,31 @@ serve(async (req: Request): Promise<Response> => {
       "ad_campaign_daily_series",
       { p_campaign_ids: planCampaignIds, p_time_zone: timeZone },
     );
+    const frozenConvert = async (
+      { amount, platform, source }: {
+        amount: number;
+        platform: string;
+        source: string;
+      },
+    ): Promise<number | null> => {
+      const allocation = providerAllocations.find((row) =>
+        row.platform === platform
+      );
+      if (!allocation || !planCurrency) return null;
+      const { data: converted, error: conversionError } = await supabase
+        .rpc("ad_fx_convert_frozen_minor", {
+          p_amount: amount,
+          p_source: source,
+          p_target: planCurrency,
+          p_snapshot: typeof allocation.fx_snapshot_id === "string"
+            ? allocation.fx_snapshot_id
+            : null,
+        });
+      const value = Number(converted);
+      return conversionError || !Number.isSafeInteger(value) || value < 0
+        ? null
+        : value;
+    };
     const series = seriesError ? null : await buildHostDailySeries({
       rows: ((seriesRows ?? []) as DailySeriesRow[]).map((row) => ({
         ...row,
@@ -788,25 +837,7 @@ serve(async (req: Request): Promise<Response> => {
         results: row.results === null ? null : Number(row.results),
       })),
       hostCurrency: planCurrency,
-      convert: async ({ amount, platform, source }) => {
-        const allocation = providerAllocations.find((row) =>
-          row.platform === platform
-        );
-        if (!allocation || !planCurrency) return null;
-        const { data: converted, error: conversionError } = await supabase
-          .rpc("ad_fx_convert_frozen_minor", {
-            p_amount: amount,
-            p_source: source,
-            p_target: planCurrency,
-            p_snapshot: typeof allocation.fx_snapshot_id === "string"
-              ? allocation.fx_snapshot_id
-              : null,
-          });
-        const value = Number(converted);
-        return conversionError || !Number.isSafeInteger(value) || value < 0
-          ? null
-          : value;
-      },
+      convert: frozenConvert,
     });
     if (planId) {
       const [{ data: hold }, { data: lastEdit }] = await Promise.all([
@@ -831,6 +862,8 @@ serve(async (req: Request): Promise<Response> => {
     // #4238 rework 2 (tester P3-2): a lifetime (total) budget app spends its
     // pace, not the plan daily; set from the live-edit context below.
     let liveDailyNow: number | null | undefined;
+    let liveSinceMs: number | null = null;
+    let planCounts: { orders: number; tickets: number; sign_ups: number } | null = null;
     if (planId) {
       const { data: planRow } = await supabase.from("ad_plans")
         .select("id,brand_id,owner_kind,state,current_version_id,destination_family,destination_key")
@@ -847,6 +880,8 @@ serve(async (req: Request): Promise<Response> => {
         );
       }
       const counts = await loadPlanResults(supabase, planCampaignIds, "sales", nowMs);
+      planCounts = counts;
+      liveSinceMs = loaded?.ok ? loaded.ctx.liveSinceMs : null;
       const spendForCost = hostSpendEquivalentCents;
       const learningUntil = loaded?.ok && loaded.ctx.liveSinceMs !== null
         ? loaded.ctx.liveSinceMs + HOST_LEARNING_WINDOW_DAYS * 86_400_000
@@ -879,6 +914,38 @@ serve(async (req: Request): Promise<Response> => {
           ? await loadPlanSuggestion(supabase, brandId, planRow, loaded.ctx, nowMs)
           : null,
       };
+    }
+    // #4238 Overview ("is my ad working?"). Additive and optional: a failure
+    // here never fails `get`; the whole block falls back to null.
+    let overview: Record<string, unknown> | null = null;
+    try {
+      overview = await buildHostAdOverview({
+        // deno-lint-ignore no-explicit-any
+        db: supabase as any,
+        planId,
+        planState,
+        planCurrency,
+        planCapCents,
+        planGuidance,
+        planCampaigns: planCampaigns as Record<string, unknown>[],
+        planCampaignIds,
+        spendByCampaign,
+        creditByCampaign,
+        hostSpendEquivalentCents,
+        counts: planCounts,
+        conversions: conversions as { touch_id?: unknown; order_id?: unknown }[],
+        series,
+        creatives: (creativeRows ?? []) as Record<string, unknown>[],
+        liveSinceMs,
+        nowMs,
+        convert: frozenConvert,
+      });
+    } catch (cause) {
+      console.warn(
+        "[host-ad-campaign] overview unavailable:",
+        cause instanceof Error ? cause.message : "unknown",
+      );
+      overview = null;
     }
     // #4238 W4b §2: what this teammate can do on this ad, and who to ask.
     const capabilities = await hostAdCapabilities(supabase, brandId, user.id);
@@ -963,6 +1030,7 @@ serve(async (req: Request): Promise<Response> => {
       timeline: timelineResult.data ?? [],
       credit_events: creditResult.data ?? [],
       settlements: settlementResult.data ?? [],
+      overview,
     });
   }
 
@@ -2024,6 +2092,135 @@ async function loadPlanSuggestion(
     acknowledgeLearningReset: false,
   }));
   return dry.ok ? suggestion : null;
+}
+
+/**
+ * #4238 Overview: loads what the pure hostAdOverview maths needs and builds
+ * the additive `overview` block. Any field whose read fails is null.
+ */
+async function buildHostAdOverview(input: {
+  // deno-lint-ignore no-explicit-any
+  db: any;
+  planId: string | null;
+  planState: string | null;
+  planCurrency: string | null;
+  planCapCents: number | null;
+  planGuidance: Record<string, unknown> | null;
+  planCampaigns: Record<string, unknown>[];
+  planCampaignIds: string[];
+  spendByCampaign: Map<string, { total: number; currencies: Set<string>; valid: boolean }>;
+  creditByCampaign: Map<string, number>;
+  hostSpendEquivalentCents: number | null;
+  counts: { orders: number; tickets: number; sign_ups: number } | null;
+  conversions: { touch_id?: unknown; order_id?: unknown }[];
+  series: Awaited<ReturnType<typeof buildHostDailySeries>> | null;
+  creatives: Record<string, unknown>[];
+  liveSinceMs: number | null;
+  nowMs: number;
+  convert: (input: { amount: number; platform: string; source: string }) => Promise<number | null>;
+}): Promise<Record<string, unknown>> {
+  const phase = hostAdOverviewPhase({ planState: input.planState, campaigns: input.planCampaigns });
+  const goal = hostAdOverviewGoal(input.planGuidance);
+  const total = (key: "impressions" | "clicks" | "page_visits"): number | null => {
+    if (!input.series) return null;
+    const values = input.series.daily.map((point) => point[key])
+      .filter((value): value is number => typeof value === "number");
+    return values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0);
+  };
+  const shown = total("impressions");
+  const taps = total("clicks");
+  const visits = total("page_visits");
+  const bought = input.counts
+    ? goal === "signups" ? input.counts.sign_ups : input.counts.orders
+    : null;
+  let checkoutStarted: number | null = null;
+  if (goal === "sales" && input.counts) {
+    const purchaseTouchIds = [
+      ...new Set(input.conversions.flatMap((row) =>
+        typeof row.order_id === "string" && typeof row.touch_id === "string" ? [row.touch_id] : []
+      )),
+    ];
+    checkoutStarted = await loadHostAdCheckoutStarted(input.db, {
+      campaignIds: input.planCampaignIds,
+      purchaseTouchIds,
+      bought: input.counts.orders,
+    });
+  }
+  const starts = input.planCampaigns.map((row) => row.starts_at);
+  const startMs = starts.map((value) => typeof value === "string" ? Date.parse(value) : NaN)
+    .filter((value) => Number.isFinite(value));
+  const verdict = hostAdVerdict({
+    snapshot: input.planGuidance,
+    spendCredit: input.hostSpendEquivalentCents,
+    results: input.counts
+      ? goal === "signups" ? input.counts.sign_ups : input.counts.tickets
+      : 0,
+    liveSinceMs: input.liveSinceMs,
+    earliestStartMs: startMs.length > 0 ? Math.min(...startMs) : null,
+    nowMs: input.nowMs,
+    phase,
+    hasPlan: input.planId !== null && input.counts !== null,
+    funnel: { shown, taps, visits, checkout: checkoutStarted, bought },
+  });
+  const visitsByCampaign = new Map(
+    (input.series?.by_campaign_visits ?? []).map((row) => [row.campaign_id, row.page_visits]),
+  );
+  const pace = hostAdPace({
+    phase,
+    currency: input.planCurrency,
+    totalCreditCents: input.planCapCents,
+    spentCreditCents: input.hostSpendEquivalentCents,
+    nowMs: input.nowMs,
+    campaigns: input.planCampaigns.map((row) => {
+      const id = String(row.id);
+      return {
+        ...(row as unknown as Parameters<typeof providerCapCents>[0]),
+        id,
+        platform: row.platform as Platform,
+        starts_at: typeof row.starts_at === "string" ? row.starts_at : null,
+        ends_at: typeof row.ends_at === "string" ? row.ends_at : null,
+        status_synced_at: typeof row.status_synced_at === "string" ? row.status_synced_at : null,
+        auto_pause_reason: typeof row.auto_pause_reason === "string" ? row.auto_pause_reason : null,
+        provider_spend_cents: input.spendByCampaign.get(id)?.total ?? 0,
+        spent_credit_cents: input.creditByCampaign.get(id) ?? null,
+        page_visits: visitsByCampaign.get(id) ?? 0,
+      };
+    }),
+  });
+  let bestVideo: Awaited<ReturnType<typeof hostAdBestVideo>> = null;
+  if (phase !== "review" && phase !== "rejected" && input.planCampaignIds.length > 0) {
+    const metricRows = await hostAdReadAllPages<HostAdCreativeMetricRow>((from, to) =>
+      input.db.from("ad_creative_metrics_daily")
+        .select("creative_id, platform, spend_cents, link_clicks, currency")
+        .in("campaign_id", input.planCampaignIds).order("id").range(from, to)
+    );
+    const names = new Map<string, string>();
+    for (const ad of input.creatives) {
+      const linked = Array.isArray(ad.ad_creatives) ? ad.ad_creatives[0] : ad.ad_creatives;
+      const creative = linked && typeof linked === "object" ? linked as Record<string, unknown> : null;
+      if (creative && typeof creative.id === "string" && typeof creative.name === "string" && creative.name.trim()) {
+        names.set(creative.id, creative.name.trim());
+      }
+    }
+    bestVideo = metricRows === null ? null : await hostAdBestVideo({
+      rows: metricRows.map((row) => ({
+        ...row,
+        spend_cents: row.spend_cents === null ? null : Number(row.spend_cents),
+        link_clicks: row.link_clicks === null ? null : Number(row.link_clicks),
+      })),
+      hostCurrency: input.planCurrency,
+      convert: input.convert,
+      names,
+    });
+  }
+  return {
+    verdict,
+    checkout_started: checkoutStarted,
+    run_days: hostAdRunDays(starts, input.planCampaigns.map((row) => row.ends_at)),
+    synced_at: hostAdSyncedAt(input.planCampaigns),
+    pace,
+    best_video: bestVideo,
+  };
 }
 
 /** #4238 W5 (8a): counted results for a plan's campaigns, in tickets. */

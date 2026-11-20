@@ -171,7 +171,12 @@ export function snapchatCampaignStatsPath(
   }/stats?${query.toString()}`;
 }
 
-/** Relative path for one ad squad's daily spend, result, reach and frequency. */
+/**
+ * Relative path for one ad squad's daily spend and results. #4238: no
+ * `reach` or `frequency` — Snap rejects uniques-type stats at DAY
+ * granularity, which failed the whole call so no Snapchat stage rows landed.
+ * The stage parser turns the missing values into 0.
+ */
 export function snapchatAdSquadStatsPath(
   externalAdSquadId: string,
   window: SnapchatStatsWindow,
@@ -179,7 +184,7 @@ export function snapchatAdSquadStatsPath(
   const query = new URLSearchParams({
     granularity: "DAY",
     fields:
-      "impressions,reach,frequency,swipes,spend,conversion_purchases,conversion_page_views",
+      "impressions,swipes,spend,conversion_purchases,conversion_page_views",
     start_time: window.start_time,
     end_time: window.end_time,
   });

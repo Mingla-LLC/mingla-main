@@ -200,3 +200,22 @@ Deno.test("#4238 list summary counts the month in the brand's time zone", async 
   assertEquals(summary.results, 1);
   assertEquals(summary.daily_spend.at(-1), { day: "2026-11-01", cents: 50 });
 });
+
+Deno.test("#4238 Overview pace: by_campaign_visits sums page visits per campaign", async () => {
+  const { by_campaign_visits, by_platform_spend } = await buildHostDailySeries({
+    rows: [
+      row("2026-11-01", "meta", 100, { page_visits: 7 }),
+      row("2026-11-02", "meta", 100, { page_visits: null }),
+      row("2026-11-01", "snapchat", 50, { page_visits: 3 }),
+      row("2026-11-02", "snapchat", null, { page_visits: 4 }),
+    ],
+    hostCurrency: "USD",
+    convert: () => Promise.resolve(null),
+  });
+  assertEquals(by_campaign_visits, [
+    { campaign_id: "meta", page_visits: 7 },
+    { campaign_id: "snapchat", page_visits: 7 },
+  ]);
+  // Additive: the per-app spend split is unchanged.
+  assertEquals(by_platform_spend.map((p) => [p.platform, p.spend_provider_cents]), [["meta", 200], ["snapchat", 50]]);
+});

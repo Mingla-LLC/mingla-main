@@ -358,6 +358,8 @@ export async function buildHostDailySeries(input: {
     provider_currency: string | null;
     results: number;
   }[];
+  /** #4238 Overview pace: page visits per campaign (additive). */
+  by_campaign_visits: { campaign_id: string; page_visits: number }[];
 }> {
   const days = [...new Set(input.rows.map((row) => row.day))].sort();
   const platforms = [
@@ -427,7 +429,19 @@ export async function buildHostDailySeries(input: {
       results: rows.reduce((sum, row) => sum + Number(row.results ?? 0), 0),
     };
   });
-  return { daily, by_platform_spend };
+  const visitsByCampaign = new Map<string, number>();
+  for (const row of input.rows) {
+    const visits = Number(row.page_visits ?? 0);
+    visitsByCampaign.set(
+      row.campaign_id,
+      (visitsByCampaign.get(row.campaign_id) ?? 0) +
+        (Number.isFinite(visits) && visits > 0 ? visits : 0),
+    );
+  }
+  const by_campaign_visits = [...visitsByCampaign.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([campaign_id, page_visits]) => ({ campaign_id, page_visits }));
+  return { daily, by_platform_spend, by_campaign_visits };
 }
 
 /** "2026-11-02" for an instant in a time zone (UTC when the zone is unknown). */
