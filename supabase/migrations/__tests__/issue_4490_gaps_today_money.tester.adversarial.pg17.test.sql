@@ -11,6 +11,8 @@
 --       hours; at a venue whose today closes at 02:00, 01:30 counts today and 02:30 counts tomorrow.
 --   T-5 a source refund that ended 'cancelled_no_refund_due' moved no money and is not subtracted
 --       (it is inside T-1b / T-2's expected totals).
+--   T-6 (N127) cash after midnight with the default paid_on lands on the service night; a chosen paid_on is kept.
+--   T-7 (N128) a payment in another currency is not added in and sets otherCurrency.
 --   T-4 a stranger cannot read another brand's day money through issue_4490_venue_day.
 --
 -- Fixture rows are written with session_replication_role = replica (money rows only), like the implementor suite.
@@ -127,6 +129,34 @@ BEGIN
     v_failed := v_failed || format(E'\nT-3 FAIL: late venue tomorrow online=%s, want 800', t->'paidIn'->>'online');
   END IF;
   IF v_failed !~ 'T-3' THEN RAISE NOTICE 'PASS  T-3 venue midnight and late-close service days'; END IF;
+
+  -- T-6 (N127) cash at the late venue: recorded 01:30 after today's 02:00 close with the default paid_on
+  -- (the calendar day) counts on tonight; cash recorded tomorrow morning with paid_on chosen as today counts today;
+  -- a day staff chose explicitly is kept (recorded tonight 22:00, paid_on chosen as tomorrow, counts tomorrow).
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.venue_offline_payments (group_id, amount_minor, currency_code, method, paid_on, idempotency_key, request_hash, created_at) VALUES
+    (g_late, 1600, 'NGN', 'cash', v_today + 1, 'adv-offline-1', repeat('a', 64), ((v_today + 1) + time '01:30') AT TIME ZONE v_tz),
+    (g_late, 3200, 'NGN', 'cash', v_today,     'adv-offline-2', repeat('a', 64), ((v_today + 1) + time '10:00') AT TIME ZONE v_tz),
+    (g_late, 6400, 'NGN', 'transfer', v_today + 1, 'adv-offline-3', repeat('a', 64), (v_today + time '22:00') AT TIME ZONE v_tz);
+  -- T-7 (N128) a GBP payment at the plain venue today is not added into NGN.
+  INSERT INTO public.stay_payment_attempts (id, group_id, provider, attempt_ordinal, amount_minor, currency_code, idempotency_key, request_hash, state, succeeded_at) VALUES
+    (gen_random_uuid(), g_plain, 'stripe', 3, 999, 'GBP', 'adv-attempt-gbp', repeat('a', 64), 'succeeded', v_noon);
+  SET LOCAL session_replication_role = origin;
+  t := public.issue_4490_venue_money_day(v_late, v_today);
+  IF (t->'paidIn'->>'atVenue')::bigint <> 1600 + 3200 THEN
+    v_failed := v_failed || format(E'\nT-6 FAIL: late venue tonight atVenue=%s, want 4800 (01:30 default-day cash + morning cash dated tonight)', t->'paidIn'->>'atVenue');
+  END IF;
+  t := public.issue_4490_venue_money_day(v_late, v_today + 1);
+  IF (t->'paidIn'->>'atVenue')::bigint <> 6400 THEN
+    v_failed := v_failed || format(E'\nT-6 FAIL: late venue tomorrow atVenue=%s, want 6400 (staff-chosen day kept)', t->'paidIn'->>'atVenue');
+  END IF;
+  IF v_failed !~ 'T-6' THEN RAISE NOTICE 'PASS  T-6 cash lands on the service night; a chosen day is kept'; END IF;
+  t := public.issue_4490_venue_money_day(v_plain, v_today);
+  IF (t->'paidIn'->>'online')::bigint <> 100 OR COALESCE((t->>'otherCurrency')::boolean, false) IS NOT TRUE THEN
+    v_failed := v_failed || format(E'\nT-7 FAIL: plain venue today %s (want NGN online 100 and otherCurrency true)', t);
+  ELSE
+    RAISE NOTICE 'PASS  T-7 a GBP payment is kept out of the NGN total and flagged';
+  END IF;
 
   -- T-4 a stranger (no role on the brand) cannot read the day.
   PERFORM set_config('request.jwt.claim.sub', v_stranger::text, true);
