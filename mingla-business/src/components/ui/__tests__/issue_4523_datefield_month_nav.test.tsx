@@ -51,6 +51,9 @@ const mount = async (onChangeValue: jest.Mock, value = "2027-03-12"): Promise<Tr
       />,
     );
   });
+  await TestRenderer.act(async () => {
+    await Promise.resolve();
+  });
   return tree;
 };
 

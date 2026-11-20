@@ -152,6 +152,12 @@ for (const rel of [...SOURCE_ROOTS, "mingla-admin/src", "mingla-sites/src", "min
   if (!/calendar/i.test(src)) continue;
   for (const match of src.matchAll(staticImportOf)) {
     const specifier = match[3] ?? match[4] ?? "";
+    // The eager-surface field variant is for the ONE host that owns the lazy boundary.
+    if (/@mingla\/calendar\/CalendarFieldEager/.test(specifier) && rel !== "mingla-business/src/components/ui/DateFieldBody.tsx") {
+      violations.push(
+        `${rel} statically imports \`${specifier}\` — only mingla-business/src/components/ui/DateFieldBody.tsx (the single lazy owner) may (#4523).`,
+      );
+    }
     if (/@mingla\/calendar/.test(specifier) && HEAVY_CALENDAR.test(`${specifier}"`)) {
       violations.push(
         `${rel} statically imports \`${specifier}\` — the calendar surface, grid, time list and keyboard are ` +

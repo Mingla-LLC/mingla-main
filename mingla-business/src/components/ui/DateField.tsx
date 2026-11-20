@@ -12,15 +12,19 @@
  * venue/operator-local calendar date `YYYY-MM-DD`, or `""` for unset. A `Date`
  * never crosses this boundary.
  *
+ * BUNDLE: this file is the eager half. The whole calendar feature (field,
+ * surface, Host config) loads through the ONE React.lazy below, so none of
+ * @mingla/calendar is imported eagerly by the Host screens that use DateField.
+ *
  * INVARIANT: I-4523-DATES-ARE-PICKED (declared in the strict-grep gate).
  */
 
-import { CalendarField } from "@mingla/calendar/CalendarField";
-import React from "react";
-import { Platform } from "react-native";
+import React, { Suspense } from "react";
+import { StyleSheet, Text, View } from "react-native";
 
-import { detectDeviceTimezone } from "../../utils/timezones";
-import { HOST_CALENDAR_CONFIG } from "./calendarHostConfig";
+import { color, radius, type } from "../../constants/designSystem";
+
+const DateFieldBody = React.lazy(() => import("./DateFieldBody"));
 
 export interface DateFieldProps {
   /** Visible label rendered above the control. */
@@ -47,39 +51,47 @@ export interface DateFieldProps {
   timeZone?: string;
 }
 
-export function DateField({
-  label,
-  value,
-  onChangeValue,
-  accessibilityLabel,
-  min,
-  max,
-  placeholder,
-  disabled = false,
-  hasError = false,
-  testID,
-  // [TRANSITIONAL] falls back to the device zone — the seven current callers do
-  // not pass a brand or venue zone yet; exit: each caller passes `timeZone`
-  // (the #4523 later slices migrate them).
-  timeZone = detectDeviceTimezone(),
-}: DateFieldProps): React.ReactElement {
+export function DateField(props: DateFieldProps): React.ReactElement {
   return (
-    <CalendarField
-      label={label}
-      accessibilityLabel={accessibilityLabel}
-      value={value}
-      onChange={onChangeValue}
-      min={min}
-      max={max}
-      placeholder={placeholder}
-      disabled={disabled}
-      invalid={hasError}
-      testID={testID}
-      timeZone={timeZone}
-      clearable={Platform.OS === "web"}
-      config={HOST_CALENDAR_CONFIG}
-    />
+    <Suspense fallback={<DateFieldPlaceholder {...props} />}>
+      <DateFieldBody {...props} />
+    </Suspense>
   );
 }
+
+/** Same row, inert, while the calendar chunk loads (it starts loading on mount). */
+function DateFieldPlaceholder({ label, placeholder = "Choose a date", disabled = false, hasError = false, testID }: DateFieldProps): React.ReactElement {
+  return (
+    <View style={styles.host}>
+      <Text style={styles.label}>{label}</Text>
+      <View
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ busy: true, disabled: true }}
+        testID={testID === undefined ? undefined : `${testID}-loading`}
+        style={[styles.row, hasError ? styles.rowError : null, disabled ? styles.rowDisabled : null]}
+      >
+        <Text style={styles.rowPlaceholder}>{placeholder}</Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  host: { gap: 2 },
+  label: { ...type.small, color: color.text2 },
+  row: {
+    minHeight: 48,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+  },
+  rowError: { borderColor: color.errorText },
+  rowDisabled: { opacity: 0.45 },
+  rowPlaceholder: { fontSize: 16, color: color.text4 },
+});
 
 export default DateField;

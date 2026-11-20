@@ -223,7 +223,8 @@ export function checkSource(relPath, rawSource) {
 
   // 5 — the old controls
   const inUiDir = /(^|\/)components\/ui\/[^/]+$/.test(relPath);
-  for (const m of src.matchAll(/(?:from|import|require\()\s*\(?\s*["']([^"']+)["']/g)) {
+  // A type-only import is erased and brings in no control.
+  for (const m of src.replace(/import\s+type\s[^;]*;/g, "").matchAll(/(?:from|import|require\()\s*\(?\s*["']([^"']+)["']/g)) {
     const spec = m[1];
     const isOld = /(^|\/)(WebDateTimeInput|DateField)$/.test(spec);
     if (!isOld) continue;
@@ -314,6 +315,7 @@ if (process.argv.includes("--self-test")) {
   expectHits("dynamic-mode DateTimePicker fails", "mingla-business/src/a.tsx", 'import DateTimePicker from "@react-native-community/datetimepicker";\nconst x = <DateTimePicker mode={m} value={d} />;', 1);
   expectHits("import of ui/DateField fails", "mingla-business/src/a.tsx", 'import { DateField } from "../ui/DateField";', 1);
   expectHits("import of ui/WebDateTimeInput fails", "mingla-business/src/a.tsx", 'import { WebDateTimeInput } from "../../components/ui/WebDateTimeInput";', 1);
+  expectHits("a type-only import of ui/DateField passes", "mingla-business/src/a.tsx", 'import type { DateFieldProps } from "../ui/DateField";', 0);
   expectHits('type="time" passes', "mingla-business/src/a.tsx", '<input type="time" value={v} />', 0);
   expectHits("time-only DateTimePicker passes", "mingla-business/src/a.tsx", 'import DateTimePicker from "@react-native-community/datetimepicker";\nconst x = <DateTimePicker mode="time" value={d} onChange={() => 1} />;', 0);
   expectHits("question-type metadata passes", "mingla-business/src/a.tsx", '{ type: "date", label: "Date" }', 0);

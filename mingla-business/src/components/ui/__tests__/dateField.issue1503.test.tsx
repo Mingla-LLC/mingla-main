@@ -78,8 +78,12 @@ jest.mock("@react-native-community/datetimepicker", () => ({
 
 async function mount(element: React.ReactElement): Promise<Tree> {
   let created: Tree | undefined;
-  await TestRenderer.act(() => {
+  await TestRenderer.act(async () => {
     created = TestRenderer.create(element);
+  });
+  // DateField loads its body through one React.lazy (#4523); let it resolve.
+  await TestRenderer.act(async () => {
+    await Promise.resolve();
   });
   return created as Tree;
 }
