@@ -2902,8 +2902,9 @@ BEGIN
         IF FOUND THEN
           v_held := v_held + 1;
           IF v_a.host_id IS NOT NULL THEN
-            INSERT INTO public.notification_outbox (category_key, user_id, brand_id, payload, idempotency_key)
-            VALUES ('business.brand_form_reminder_held', v_a.host_id, v_a.brand_id,
+            -- In-app and push only (no SMS channel): an explicit NULL country_code (#1529).
+            INSERT INTO public.notification_outbox (category_key, user_id, brand_id, country_code, payload, idempotency_key)
+            VALUES ('business.brand_form_reminder_held', v_a.host_id, v_a.brand_id, NULL,
                     jsonb_build_object('form_id', v_a.form_id, 'event_id', v_a.event_id, 'brand_id', v_a.brand_id,
                                        'form_name', v_a.form_name, 'event_title', v_a.event_title,
                                        'deep_link', 'mingla-business://marketing/forms/' || v_a.form_id::text || '/responses'),
@@ -3264,7 +3265,9 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
   v_e record;
-  v_link public.ticket_type_links;
+  -- Scalars only: nothing here names the ticket_type_links row type at CREATE
+  -- time, so filtered replays without #3827 still apply this migration.
+  v_link_id uuid;
   v_state text;
 BEGIN
   SELECT e.id, e.visibility, e.status, e.deleted_at, b.deleted_at AS brand_deleted_at INTO v_e
@@ -3277,14 +3280,14 @@ BEGIN
   END IF;
   IF p_ticket_link_hash IS NOT NULL THEN
     IF p_ticket_link_hash !~ '^[0-9a-f]{64}$' THEN RETURN false; END IF;
-    SELECT l.* INTO v_link FROM public.ticket_type_links l
+    SELECT l.id, public.issue_3827_link_state(l, now()) INTO v_link_id, v_state
+      FROM public.ticket_type_links l
      WHERE l.token_hash = p_ticket_link_hash AND l.event_id = p_event_id AND l.kind = 'private_ticket';
     IF NOT FOUND THEN RETURN false; END IF;
-    v_state := public.issue_3827_link_state(v_link, now());
     IF v_state = 'full' AND p_checkout_session_id IS NOT NULL AND EXISTS (
          SELECT 1 FROM public.ticket_checkout_sessions s
           WHERE s.id = p_checkout_session_id AND s.event_id = p_event_id
-            AND s.ticket_link_id = v_link.id) THEN
+            AND s.ticket_link_id = v_link_id) THEN
       v_state := 'active';
     END IF;
     IF v_state <> 'active' THEN RETURN false; END IF;

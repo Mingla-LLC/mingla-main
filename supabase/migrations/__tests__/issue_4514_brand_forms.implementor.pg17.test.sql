@@ -2283,6 +2283,10 @@ BEGIN
              AND payload->>'deep_link' = 'mingla-business://marketing/forms/' || v_w::text || '/responses'
              AND idempotency_key LIKE 'brand_form_reminder_held:' || v_att::text || ':%') = v_out_before + 1,
     'T-W4-AUTO-4 a closed form: held, nothing sent, the attaching host told once with a link to the form');
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM public.notification_outbox
+      WHERE category_key = 'business.brand_form_reminder_held'
+        AND idempotency_key LIKE 'brand_form_reminder_held:' || v_att::text || ':%' AND country_code IS NOT NULL),
+    'T-W4-AUTO-4 #1529 the held notice is in-app and push only: an explicit NULL country_code');
   UPDATE public.brand_forms SET status = 'live', closed_at = NULL WHERE id = v_w;
   UPDATE public.brand_form_attachments SET auto_remind = false WHERE id = v_att;
 END

@@ -118,6 +118,10 @@ $vacuity$;
 -- country_code: the category has no SMS channel) adds one writer: 45 -> 46.
 -- issue_4453_website_team_requests.implementor.pg17 asserts the NULL country
 -- on its rows.
+-- [TEST-MOD #4514] The brand form automatic reminder's "held" host notice
+-- (brand_form_auto_reminders_due; business.brand_form_reminder_held, in-app and
+-- push only, an explicit NULL country_code) adds one writer: 46 -> 47.
+-- issue_4514_brand_forms.implementor.pg17 asserts the NULL country on its row.
 -- (2) RATCHET — raised 12 -> 18 for #3988, 18 -> 19 for #4073, 19 -> 20 for
 --     the buyer venue-order receipt, 20 -> 22 for #4063 Wave 5, and
 --     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271, and 42 -> 43 -> 44 for #4255, and 44 -> 45 for #4420, and 45 -> 46 for #4453.
@@ -190,6 +194,8 @@ $ratchet$;
 --                                             Stay booking link resend)
 --       issue_4453_website_request_ready    → explicit NULL (#4453 "Ready for
 --                                             review": bell, push, email; no SMS)
+--       brand_form_auto_reminders_due       → explicit NULL (#4514 "reminder held"
+--                                             host notice: in-app and push; no SMS)
 --
 --     PUSH-ONLY — the #3872 notification producers write only in-app/push
 --     categories and deliberately do not carry an SMS country. They are still
@@ -244,7 +250,8 @@ DECLARE
     'team_chat_enqueue',
     'ops_due_digest',
     'issue_4420_stay_group_resend_link',
-    'issue_4453_website_request_ready'
+    'issue_4453_website_request_ready',
+    'brand_form_auto_reminders_due'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -389,7 +396,8 @@ DECLARE
     'team_chat_enqueue',
     'ops_due_digest',
     'issue_4420_stay_group_resend_link',
-    'issue_4453_website_request_ready'
+    'issue_4453_website_request_ready',
+    'brand_form_auto_reminders_due'
   ];
   v_missing text;
 BEGIN
