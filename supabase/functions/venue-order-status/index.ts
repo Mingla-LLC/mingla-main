@@ -24,7 +24,7 @@ import {
 import { venueOrderErrorCopy } from "../_shared/venueOrderPricing.ts";
 import {
   confirmVenueOrderPaystackOnReturn,
-  venueOrderCachedReturnCheck,
+  venueOrderReturnCheckPlan,
   isVenueOrderPaystackReference,
   type VenueOrderReturnCheck,
 } from "../_shared/venueOrderWebhook.ts";
@@ -132,12 +132,22 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     const meta = (order.metadata !== null && typeof order.metadata === "object"
       ? order.metadata
       : {}) as Record<string, unknown>;
-    // N144: a guest reopening the payment ("Try again") starts the check over.
-    const cached = includePaymentContinuation
-      ? null
-      : venueOrderCachedReturnCheck(meta.paystack_return_check, reference, Date.now());
-    if (cached !== null) {
-      paymentCheck = cached;
+    // N144: a guest reopening the payment ("Try again") starts the check over:
+    // the reopened checkout reuses this reference, so the remembered
+    // "not_paid" is forgotten and nothing is asked of Paystack until they return.
+    const plan = venueOrderReturnCheckPlan(
+      meta.paystack_return_check,
+      reference,
+      Date.now(),
+      includePaymentContinuation,
+    );
+    if (plan.forget) {
+      const { paystack_return_check: _forgotten, ...rest } = meta;
+      await supabase.from("venue_orders").update({ metadata: rest })
+        .eq("id", order.id).eq("payment_status", "pending");
+    }
+    if (!plan.verify) {
+      paymentCheck = plan.answer;
     } else {
       try {
         paymentCheck = await confirmVenueOrderPaystackOnReturn(

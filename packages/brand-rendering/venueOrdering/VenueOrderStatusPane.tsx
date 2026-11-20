@@ -191,11 +191,12 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
             disabled={actionPending}
             accessibilityRole="button"
             accessibilityState={{ disabled: actionPending }}
-            accessibilityLabel="Cancel this order and get a full refund"
+            // N144 (#4490): an unpaid order has nothing to refund.
+            accessibilityLabel={awaitingPayment ? "Cancel this order" : "Cancel this order and get a full refund"}
             style={[styles.action, { borderColor: palette.panelBorder }]}
           >
             <Text style={[styles.actionLabel, { color: palette.primaryText }]}>
-              {actionPending ? "One moment…" : "Cancel · full refund"}
+              {actionPending ? "One moment…" : awaitingPayment ? "Cancel order" : "Cancel · full refund"}
             </Text>
           </Pressable>
         ) : null}

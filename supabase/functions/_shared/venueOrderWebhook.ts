@@ -318,6 +318,27 @@ export const VENUE_ORDER_RETURN_CHECK_TTL_MS = 30_000;
  * is final until the guest starts a new payment (a new reference); an
  * "in_progress" answer is reused for 30 s.
  */
+/**
+ * N143 / N144 (#4490) — what one status read does about Paystack. A guest
+ * reopening the payment ("Try again") reuses the order's reference, so the
+ * remembered answer is forgotten and Paystack is not asked until they return;
+ * otherwise a remembered answer is reused and only a missing one is verified.
+ */
+export function venueOrderReturnCheckPlan(
+  stored: unknown,
+  reference: string,
+  nowMs: number,
+  reopening: boolean,
+): { verify: boolean; forget: boolean; answer: VenueOrderReturnCheck | null } {
+  if (reopening) {
+    return { verify: false, forget: stored !== undefined && stored !== null, answer: "in_progress" };
+  }
+  const cached = venueOrderCachedReturnCheck(stored, reference, nowMs);
+  return cached !== null
+    ? { verify: false, forget: false, answer: cached }
+    : { verify: true, forget: false, answer: null };
+}
+
 export function venueOrderCachedReturnCheck(
   stored: unknown,
   reference: string,
