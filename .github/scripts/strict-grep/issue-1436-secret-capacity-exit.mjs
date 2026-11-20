@@ -81,12 +81,13 @@ export function violations(files) {
   if (
     manifest.rollout?.live_audit_mode !== "enforced" ||
     manifest.rollout?.transition_stage !== "complete" ||
-    manifest.rollout?.expected_user_managed_count !== 91
+    manifest.rollout?.expected_user_managed_count !== 90
   ) {
     // #3645: the payout-release RAK is the approved 90th name.
     // #4276: count 91 approved by Seth Ogieva on 2026-11-07 in chat
     // (GOOGLE_SEEDING_API_KEY); the absolute ceiling moves 90 -> 91.
-    failures.push("manifest: final enforced 91-name rollout missing");
+    // #4334: Seth approved unsetting the retired map-vendor token on 2026-11-20 in chat; the declared set is exactly 90 under the unchanged 87/91 ceilings.
+    failures.push("manifest: final enforced 90-name rollout missing");
   }
   if (
     manifest.policy?.normal_ceiling !== 87 ||
@@ -94,8 +95,8 @@ export function violations(files) {
   ) {
     failures.push("manifest: 87/91 policy changed");
   }
-  if (records.size !== 91 || manifest.secrets?.length !== 91) {
-    failures.push("manifest: exactly 91 unique records required");
+  if (records.size !== 90 || manifest.secrets?.length !== 90) {
+    failures.push("manifest: exactly 90 unique records required");
   }
   if (
     !Array.isArray(manifest.exceptions) || manifest.exceptions.length !== 1 ||
@@ -197,7 +198,7 @@ export function violations(files) {
   }
 
   for (const [token, label] of [
-    ["target_must_be_91_unique_names", "capacity gate"],
+    ["target_must_be_90_unique_names", "capacity gate"],
     ['["content_share_v1_create_enabled", "CONTENT_SHARE_V1_CREATE_ENABLED"]', "capacity gate"],
     ['["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]', "capacity gate"],
     ['["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]', "capacity gate"],
@@ -209,7 +210,7 @@ export function violations(files) {
     "retired direct compatibility name present",
     "bundled payment authority missing",
     "bundled notification HMAC authority missing",
-    "exact 91-name manifest",
+    "exact 90-name manifest",
   ]) {
     requireToken(files.refund ?? "", token, "refund guard", failures);
   }
@@ -219,7 +220,7 @@ export function violations(files) {
     "SOURCE_REFUNDS_POST_DISABLED",
     "PAYOUT_RELEASE_EXECUTE",
     "PAYOUT_HOLD_ONBOARD_FLIP",
-    "exactly 91",
+    "exactly 90",
     "content_share_v1_create_enabled",
     "CONTENT_SHARE_V1_CREATE_ENABLED",
   ]) {
@@ -320,7 +321,7 @@ function readFiles() {
 }
 
 function fixtureManifest() {
-  const filler = Array.from({ length: 86 }, (_, index) => ({
+  const filler = Array.from({ length: 85 }, (_, index) => ({
     name: `SAFE_${String(index).padStart(2, "0")}`,
     readers: [],
     bundle_fields: [],
@@ -330,7 +331,7 @@ function fixtureManifest() {
     rollout: {
       live_audit_mode: "enforced",
       transition_stage: "complete",
-      expected_user_managed_count: 91,
+      expected_user_managed_count: 90,
     },
     exceptions: [sitesException],
     secrets: [
@@ -399,11 +400,11 @@ function selfTest() {
   const clean = {
     manifest: JSON.stringify(fixtureManifest()),
     capacity:
-      'target_must_be_91_unique_names; ["content_share_v1_create_enabled", "CONTENT_SHARE_V1_CREATE_ENABLED"]; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
+      'target_must_be_90_unique_names; ["content_share_v1_create_enabled", "CONTENT_SHARE_V1_CREATE_ENABLED"]; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
     refund:
-      "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 91-name manifest",
+      "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 90-name manifest",
     runbook:
-      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 91 content_share_v1_create_enabled CONTENT_SHARE_V1_CREATE_ENABLED",
+      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 90 content_share_v1_create_enabled CONTENT_SHARE_V1_CREATE_ENABLED",
     test: "any retired direct-name return fails closed",
     adversarialTest:
       "same-count direct-name substitution cannot bypass exact-set parity",
@@ -431,10 +432,10 @@ function selfTest() {
         ...fixtureManifest(),
         rollout: {
           ...fixtureManifest().rollout,
-          expected_user_managed_count: 90,
+          expected_user_managed_count: 91,
         },
       }),
-      expected: "final enforced 91-name rollout missing",
+      expected: "final enforced 90-name rollout missing",
     },
     {
       key: "manifest",
@@ -545,6 +546,6 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "issue-1436 secret-capacity exit gate PASS (91 names, bundled authority, exact #2830 slot-88 exception)",
+    "issue-1436 secret-capacity exit gate PASS (90 names, bundled authority, exact #2830 slot-88 exception)",
   );
 }
