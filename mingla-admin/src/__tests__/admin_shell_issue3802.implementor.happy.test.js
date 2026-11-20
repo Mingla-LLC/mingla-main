@@ -60,7 +60,7 @@ const APP = read("App.jsx");
 // 27 pages, Home first. (#4130: Careers is its own page again.) Retired ids redirect (lib/adminRoutes.js).
 const MENU = [
   // #4255 W4: Notifications left the menu for Messages in the top bar.
-  ["Home", ["overview", "work-board"]],
+  ["Home", ["overview", "messages", "work-board"]],
   // #4130 + #3872: the four Creator Program pages sit under Hosts and creators.
   ["Outreach", ["outreach", "program-creators", "program-gigs", "program-locals", "program-disputes", "inbound", "forms", "content-calendar", "team-dashboard"]], // #4452 §7.0: + Forms
   ["Support", ["support", "community"]],
@@ -78,7 +78,7 @@ const MENU = [
 
 // The words on each menu item. #4130: the polish design's names.
 const LABELS = {
-  overview: "Dashboard", "work-board": "Work",
+  overview: "Dashboard", messages: "Messages", "work-board": "Work",
   outreach: "Hosts and creators",
   // #4130 + #3872: the Creator Program pages keep their #3872 labels.
   "program-creators": "Creators", "program-gigs": "Gigs", "program-locals": "Mingla Locals", "program-disputes": "Disputes",
@@ -153,9 +153,10 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // #4130 + #3872: + the four Creator Program pages (Creators, Gigs, Mingla Locals, Disputes).
     // #3355: the guarded Ari Improvement Lab is the 32nd admin destination.
     // #4255 W4: - Notifications (Messages is in the top bar).
+    // #4517: + Messages (menu entry under Dashboard; its top-bar button opens the same page).
     // #4383: + the Communications group (Overview, Push, Announcements,
     // Roadmap, Email, Blog, Links page).
-    assert.equal(ids.length, 43); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
+    assert.equal(ids.length, 44); // #4294: + Company tools; #4273: + SMS countries; #4452: + Brand groups, + Forms, + Website pages
   });
   it("the menu plus governed Ads deep links are the app's pages (the role Home aside)", () => {
     const pagesBlock = APP.match(/const PAGES = \{([\s\S]*?)\n\};/);
@@ -169,7 +170,7 @@ describe("#3802 S-2: every page is in the menu exactly once", () => {
     // community-support console is a redirect, not a page.
     const menuPages = NAV_ITEMS.map((i) => i.id);
     // #4255 W4: Messages is a header page too (its full page, #/messages).
-    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", "agent-log", "agent", "guide", "messages", ...menuPages].sort());
+    assert.deepEqual([...pageIds].sort(), ["home", "campaign-builder", "campaigns", "agent-log", "agent", "guide", ...menuPages].sort());
   });
   it("the role Home group is still put first by lib/access.js, not by the menu list", () => {
     assert.equal(NAV_ITEMS.some((i) => i.id === "home"), false);

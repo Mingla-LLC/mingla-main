@@ -4,16 +4,17 @@
 // R-NAV-1 / R-COPY-1: every link and copy text for 12 production-shaped targets
 // is BYTE-IDENTICAL to the pre-#4334 builder when no Google place id is held
 // (fixtures/issue_4334_deep_links_before.json, generated from origin/main).
-// R-NAV-2: with a Google id, ONLY the Google links gain `&query_place_id=`;
-// `query` stays exactly the coordinate pair (#2553 G-2). Apple and Android
-// `geo:` links are unchanged.
+// R-NAV-2: with a Google id, ONLY the Google https links change: they become
+// `query=<encoded label>&query_place_id=<id>` (#4334 M1 reshaped the older
+// "query stays the coordinate pair" form, which made Google title the pin with
+// raw coordinates). Apple and Android `geo:` links are unchanged.
 // R-NAV-5: a past offering whose Google coordinates expired: Google →
 // label + query_place_id; Apple/Android → today's text forms.
 // R-NAV-4: a hidden address yields no target, so no id and no link.
 //
 // Fails-on-revert:
 //   N-2 drop googlePlaceSearchUrl (no query_place_id)          → red
-//   N-3 put the label into `query` with the id                 → red
+//   N-3 put the coordinate pair back into `query` with the id  → red
 //   N-4 drop the addressHidden-first return                    → red
 //   N-6 drop normalizeGooglePlaceId's dXJuOm guard             → red
 
@@ -58,7 +59,7 @@ const target = selectVenueMapsTarget({
 const pair = `${DIDI.lat},${DIDI.lng}`;
 
 Deno.test("N-2 R-NAV-2: Google links carry query_place_id; Apple and Android do not change", () => {
-  const google = `https://www.google.com/maps/search/?api=1&query=${pair}&query_place_id=${ID}`;
+  const google = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target.label!)}&query_place_id=${ID}`;
   assertEquals(buildMapsDeepLink({ ...target, platform: "web" })?.url, google);
   assertEquals(buildMapsAppLink({ ...target, platform: "ios", app: "google" })?.url, google);
   assertEquals(buildMapsAppLink({ ...target, platform: "web", app: "google" })?.url, google);
@@ -71,9 +72,10 @@ Deno.test("N-2 R-NAV-2: Google links carry query_place_id; Apple and Android do 
   assert(!buildMapsAppLink({ ...target, platform: "web", app: "apple" })!.url.includes("query_place_id"));
 });
 
-Deno.test("N-3 #2553 G-2 kept: `query` is exactly the coordinate pair when the id is present", () => {
+Deno.test("N-3 #4334 M1: `query` is the venue label (not the coordinate pair) when the id is present", () => {
   const url = new URL(buildMapsDeepLink({ ...target, platform: "web" })!.url);
-  assertEquals(url.searchParams.get("query"), pair);
+  assertEquals(url.searchParams.get("query"), target.label);
+  assertEquals(url.searchParams.get("query") === pair, false);
   assertEquals(url.searchParams.get("query_place_id"), ID);
 });
 
@@ -107,4 +109,30 @@ Deno.test("N-6 only real Google ids are used: retired and malformed ids are drop
     venueName: "Didi Museum", address: null, addressHidden: false, locationGeo: DIDI, googlePlaceId: "dXJuOm1ieHBvaTpkaWRp",
   })!;
   assert(!buildMapsDeepLink({ ...retired, platform: "web" })!.url.includes("query_place_id"));
+});
+
+Deno.test("N-7 #4334 M1: every Google https URL carries label + id; no label falls back to the pair; geo/Apple untouched", () => {
+  const encoded = encodeURIComponent(target.label!);
+  const withLabel = `https://www.google.com/maps/search/?api=1&query=${encoded}&query_place_id=${ID}`;
+  for (const platform of ["ios", "android", "web"]) {
+    assertEquals(buildMapsDeepLink({ ...target, platform })?.fallbackUrl, withLabel, `default ${platform}`);
+    assertEquals(buildMapsAppLink({ ...target, platform, app: "google" })?.fallbackUrl, withLabel, `app ${platform}`);
+  }
+  const chooser = listMapsAppChoices({ ...target, platform: "web" }).find((c) => c.id === "google")!;
+  assertEquals(chooser.url, withLabel);
+  // no label: the coordinate pair is the query
+  assertEquals(
+    buildMapsDeepLink({ geo: DIDI, googlePlaceId: ID, platform: "web" })?.url,
+    `https://www.google.com/maps/search/?api=1&query=${pair}&query_place_id=${ID}`,
+  );
+  // no coordinate, ios: the https fallback now carries the id too
+  assertEquals(
+    buildMapsDeepLink({ label: "Didi Museum", googlePlaceId: ID, platform: "ios" })?.fallbackUrl,
+    `https://www.google.com/maps/search/?api=1&query=Didi%20Museum&query_place_id=${ID}`,
+  );
+  // no id: coordinate query, byte-identical
+  assertEquals(
+    buildMapsDeepLink({ geo: DIDI, label: "Didi Museum", platform: "web" })?.url,
+    `https://www.google.com/maps/search/?api=1&query=${pair}`,
+  );
 });

@@ -58,6 +58,17 @@ export const eventPublicUrl = (input: {
   eventSlug: string;
 }): string => `${BUSINESS_PUBLIC_ORIGIN}${eventPublicPath(input)}`;
 
+/** #4420 — the one-event calendar file (served by api/event-calendar.js). */
+export const eventCalendarPath = (input: {
+  brandSlug: string;
+  eventSlug: string;
+}): string => `${eventPublicPath(input)}/calendar.ics`;
+
+export const eventCalendarUrl = (input: {
+  brandSlug: string;
+  eventSlug: string;
+}): string => `${BUSINESS_PUBLIC_ORIGIN}${eventCalendarPath(input)}`;
+
 export const brandPublicPath = (brandSlug: string): string =>
   `/b/${requireSegment(brandSlug, "brandSlug")}`;
 

@@ -1,6 +1,7 @@
 // Issue #4255 (W4, D11) — Messages' three tabs (Notifications, Team chats,
-// Settings), shared by the 440px panel under the top bar and the full page
-// at #/messages. The numbers come from the one Messages poll (useMessages).
+// Settings), on the full page at #/messages (the top-bar button and the menu
+// entry both open it; #4517 removed the old panel). The numbers come from
+// the one Messages poll (useMessages).
 import { useId } from "react";
 import { MESSAGES_TABS } from "../../lib/messagesModel";
 import { MessagesNotifications } from "./MessagesNotifications";

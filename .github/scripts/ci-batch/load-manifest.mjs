@@ -360,8 +360,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4453 Website workspace (team requests): listed migrations 20281119004453 (website team requests) and 20281119014453 (workspace content ranks, audit vocabulary, Ari step events) after 20281118014238 in the #1857, #1931 and #2117 lanes and registered their two implementor pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed. The unmerged #4490 branch also adds rows and re-seals: whichever merges second re-seals again.
 // #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed.
 // #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows in the #1857, #1931 and #2117 lanes; re-sealed.
+// #3645 bundle 2e-1 (merge of main): registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
 // #4514 brand forms: the #1931 filtered template replay no longer skips the brand forms migration (the #2492 gate credits CREATE TABLE columns of applied migrations); re-sealed.
-export const BOOTSTRAP_SHA256 = "5fa0a263f3924b64dd5694f514d987616d3740c5e4e766b37cc874c66510ad4a";
+export const BOOTSTRAP_SHA256 = "3efb72ff17a0e1c2fb6c0b4329cc0680a607801fa0aa7e8a17c53df7ad3e1137";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

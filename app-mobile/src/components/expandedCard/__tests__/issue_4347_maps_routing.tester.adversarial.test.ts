@@ -40,11 +40,11 @@ describe("M — #4347 Directions on #4334's Maps target", () => {
     const withId = directionsTarget({ lat: 6.45, lng: 3.43, label: "Nok by Alara", googlePlaceId: GID });
     expect(withId).toEqual({ label: "Nok by Alara", geo: { lat: 6.45, lng: 3.43 }, googlePlaceId: GID });
     expect(buildMapsDeepLink({ ...withId, platform: "web" })?.url).toBe(
-      `https://www.google.com/maps/search/?api=1&query=6.45,3.43&query_place_id=${GID}`,
+      `https://www.google.com/maps/search/?api=1&query=Nok%20by%20Alara&query_place_id=${GID}`,
     );
     const ios = buildMapsDeepLink({ ...withId, platform: "ios" });
     expect(ios?.url).toBe("maps://?ll=6.45,3.43&q=Nok%20by%20Alara");
-    expect(ios?.fallbackUrl).toBe(`https://www.google.com/maps/search/?api=1&query=6.45,3.43&query_place_id=${GID}`);
+    expect(ios?.fallbackUrl).toBe(`https://www.google.com/maps/search/?api=1&query=Nok%20by%20Alara&query_place_id=${GID}`);
     expect(buildMapsDeepLink({ ...withId, platform: "android" })?.url).toBe("geo:6.45,3.43?q=6.45,3.43(Nok%20by%20Alara)");
 
     const noId = directionsTarget({ lat: 6.45, lng: 3.43, label: "Nok by Alara", googlePlaceId: UUID });

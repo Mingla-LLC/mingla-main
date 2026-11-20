@@ -617,8 +617,9 @@ export function phase3dContractDigest(manifest) {
 // #4453 Website workspace (team requests): listed migrations 20281119004453 and 20281119014453 in the #1857, #1931 and #2117 replay inventories and their two implementor pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows (filename order) and both sides' pg17 suites; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 bundle 2e-1 (merge of main): registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4514 brand forms: removed the exact-filename skip of 20281120034514 from the #1931 filtered template replay (the #2492 gate now credits applied CREATE TABLE columns); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "1a2e12b91f5ec958685ecd88a99fcb9a2916a95f43c793b84a835401431e8903";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "3eaade528b1c2da4d2ad59d71b6cb2e8091f19f432be8ae14c59b581bf71e0f7";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
