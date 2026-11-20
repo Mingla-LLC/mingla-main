@@ -5213,7 +5213,9 @@
       "capability_key": "trips-installments",
       "paths": [
         "mingla-business/src/components/trip/InstallmentScheduleDisplay.tsx",
-        "mingla-business/src/components/trip/PaymentPlanEditor.tsx"
+        "mingla-business/src/components/trip/PaymentPlanEditor.tsx",
+        "packages/offering-rendering/offeringRefundPolicy.ts",
+        "supabase/migrations/20281120054522_issue_4522_plan_v2_model.sql"
       ]
     },
     {
