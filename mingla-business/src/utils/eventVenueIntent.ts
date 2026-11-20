@@ -77,3 +77,15 @@ export function readEventVenueIntent(
 export function clearEventVenueIntent(): void {
   setEventVenueIntent(null);
 }
+
+/**
+ * #4490 07-A — Party Type is optional for an event at a venue: the event's
+ * saved venue link has a venue, or the creator was opened from a venue.
+ * `linkVenueId` is undefined while the link is unknown.
+ */
+export function resolveEventAtVenue(
+  linkVenueId: string | null | undefined,
+  hasIntent: boolean,
+): boolean {
+  return (linkVenueId !== undefined && linkVenueId !== null) || hasIntent;
+}

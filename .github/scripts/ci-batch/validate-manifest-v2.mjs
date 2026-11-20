@@ -642,7 +642,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 fix round 2: copy an offer as a draft, runs until, schedule saves keep selling; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 fix round 3: an event takes its space, combinations, calendar part in use; MANIFEST.json phase3eContractSha256 matches.
 // #4490 merge of main (#3645, #4238, #4226, #4453 rows): kept main's rows and skip lines beside the #4490 rows in filename order; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e62f0e8220b8553bb454788082494184f9dfb65e569a3a5e8b52dd91fc38c286";
+// issue #4490 gap list 07-A: party type optional at a venue; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "68f895eca2a2940b1fedcca4214d894258ab9ace3d724bf18e23d49e51975dc0";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

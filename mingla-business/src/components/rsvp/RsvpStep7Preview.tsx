@@ -51,8 +51,9 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
   updateDraft,
   brand,
   onTapMiniCard,
+  atVenue = false,
 }) => {
-  const errors = validateRsvpPublish(draft);
+  const errors = validateRsvpPublish(draft, { atVenue });
   const isReady = errors.length === 0;
 
   const handleMiniCardPress = useCallback((): void => {

@@ -148,6 +148,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
   scrollToBottom,
   focusFirstErrorSignal = 0,
   scrollToStepOffset,
+  atVenue = false,
 }) => {
   const nameRef = useRef<TextInput>(null);
   const descriptionRef = useRef<TextInput>(null);
@@ -286,9 +287,12 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
         </View>
       </View>
 
-      {/* Party Type — required, multi-select */}
+      {/* Party Type — required, multi-select (#4490 07-A: optional at a venue) */}
       <View style={styles.field} onLayout={rememberSectionY("partyTypes")}>
-        <Text style={styles.fieldLabel}>Party Type *</Text>
+        <Text style={styles.fieldLabel}>{atVenue ? "Party Type" : "Party Type *"}</Text>
+        {atVenue ? (
+          <Text style={styles.fieldHint}>Optional for an event at your venue.</Text>
+        ) : null}
         <View style={styles.taxonomyGrid}>
           {PARTY_TYPES.map((opt) => (
             <TaxonomyPill

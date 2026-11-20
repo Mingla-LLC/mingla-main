@@ -26,6 +26,11 @@ export interface StepBodyProps {
   /** issue #2590 — the event's LAST occurrence END, ISO-8601 UTC. */
   eventEndsAtIso?: string | null;
   draft: DraftEvent;
+  /**
+   * #4490 07-A — the event is at one of the brand's venues (server venue link
+   * or a venue intent), so Party Type is optional. Absent = not at a venue.
+   */
+  atVenue?: boolean;
   /** Patches the draft via draftEventStore.updateDraft (create-flow) or local state setter (edit-published flow). */
   updateDraft: (
     patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,

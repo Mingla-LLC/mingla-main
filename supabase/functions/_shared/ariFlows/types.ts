@@ -219,6 +219,8 @@ export interface FlowEventRow {
   cover_media_url: string | null;
   online_url: string | null;
   created_at: string | null;
+  /** #4490 07-A: the venue the event is at (null = none). Party Type is optional at a venue. */
+  venue_id: string | null;
   /** theme.business_draft (draft facts, tickets, when). */
   draft: Record<string, unknown>;
 }

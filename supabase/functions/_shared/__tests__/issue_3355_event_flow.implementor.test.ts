@@ -420,6 +420,8 @@ function rowFrom(args: Record<string, unknown>): FlowEventRow {
     cover_media_url: null,
     online_url: null,
     created_at: new Date().toISOString(),
+    // TEST-MOD-APPROVED #4490: FlowEventRow gained venue_id (07-A); no venue here.
+    venue_id: null,
     draft: {
       format: args.format,
       clientRevision: 0,

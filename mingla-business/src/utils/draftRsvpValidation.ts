@@ -13,7 +13,11 @@
  */
 
 import type { DraftEvent } from "../store/draftEventStore";
-import { validateBasics, type ValidationError } from "./draftEventValidation";
+import {
+  validateBasics,
+  type ValidationError,
+  type ValidationOptions,
+} from "./draftEventValidation";
 
 const startOfToday = (): Date => {
   const d = new Date();
@@ -98,10 +102,11 @@ const validateRsvpWhere = (d: DraftEvent): ValidationError[] => {
 export const validateRsvpStep = (
   step: number,
   draft: DraftEvent,
+  opts: ValidationOptions = {},
 ): ValidationError[] => {
   switch (step) {
     case 0:
-      return validateBasics(draft); // KEEP party-type gate (steering #2)
+      return validateBasics(draft, opts); // KEEP party-type gate (steering #2)
     case 1:
       return validateRsvpWhen(draft); // single-mode only
     case 2:
@@ -117,10 +122,13 @@ export const validateRsvpStep = (
   }
 };
 
-export const validateRsvpPublish = (draft: DraftEvent): ValidationError[] => {
+export const validateRsvpPublish = (
+  draft: DraftEvent,
+  opts: ValidationOptions = {},
+): ValidationError[] => {
   const errors: ValidationError[] = [];
   for (let step = 0; step <= 4; step++) {
-    errors.push(...validateRsvpStep(step, draft));
+    errors.push(...validateRsvpStep(step, draft, opts));
   }
   // NO stripe/paid cross-step gate (RSVP is moneyless).
   return errors;
