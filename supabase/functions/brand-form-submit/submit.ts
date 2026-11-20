@@ -53,6 +53,12 @@ import {
   isCheckoutFormOp,
   parseCheckoutFormRequest,
 } from "./checkoutForm.ts";
+import {
+  handleLinkRead,
+  isLinkReadOp,
+  type LinkReadDeps,
+  parseLinkReadRequest,
+} from "./linkRead.ts";
 
 /** The derivation label for this limiter's salt (one label per purpose, #3201). */
 export const IP_SALT_LABEL = "brand-form-submit-ip-salt";
@@ -99,6 +105,8 @@ export interface BrandFormSubmitDeps {
   purchase?: Pick<PurchaseLinkDeps, "purchaseLink">;
   /** Wave 5 review fix 1: the checkout's form read (./checkoutForm.ts). */
   checkout?: Pick<CheckoutFormDeps, "checkoutForm" | "hashTicketLink">;
+  /** The link page's read, so brand_form_my_response is never anon-executable (./linkRead.ts). */
+  linkRead?: Pick<LinkReadDeps, "myResponse">;
 }
 
 export function corsFor(origin: string | null): Record<string, string> | null {
@@ -252,6 +260,26 @@ export async function handleBrandFormSubmit(
     } catch (e) {
       log(
         `[brand-form-submit] checkout_form server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
+  // {op:"link_read"} is the link page reading its form with the personal token
+  // (./linkRead.ts): the read is service-role only, never anon PostgREST.
+  if (isLinkReadOp(raw)) {
+    const readReq = parseLinkReadRequest(raw);
+    if (!readReq || !deps.linkRead) return fail("bad_request", cors);
+    try {
+      const result = await handleLinkRead(readReq, { log, ...deps.linkRead });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] link_read server_error ${
           e instanceof Error ? e.name : "unknown"
         }`,
       );

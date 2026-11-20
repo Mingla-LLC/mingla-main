@@ -11,6 +11,8 @@
 -- MINGLA-INVARIANT: I-4514-PURGE-CANNOT-ABORT-4452-RETENTION | issue #4514 | the line this migration appends to issue_4452_forms_retention calls brand_form_checkout_answers_purge(), which deletes only from brand_form_checkout_answers and catches its own errors (WARNING, returns -1), so it can never roll back #4452's retention DELETEs in the same job transaction; the job's original statements stay byte-for-byte (pg17 T-CHECKOUT-PURGE).
 -- #4514 wave 1 brand forms: executable PostgreSQL 17 proof, after the full migration replay.
 --
+-- T-ANON-DEFINER  no brand forms SECURITY DEFINER function is anon or PUBLIC executable; anon
+--                 calling the two guest reads gets 42501 (they run through edge functions).
 -- T-GRANT  SC-21  anon and signed-in have no write grant on any brand_form_* table; a direct
 --                 insert or update as either fails; responses, links and door reads are unreadable.
 -- T-DEF    SC-2   validate_brand_form_definition refuses: a 21st question; show_if to a later
@@ -409,12 +411,44 @@ BEGIN
 END
 $t$;
 
+-- ═══ T-ANON-DEFINER ═══════════════════════════════════════════════════════════
+-- The guest reads run through edge functions with the service role (the link page
+-- through brand-form-submit {op:"link_read"}, checkout through {op:"checkout_form"}),
+-- so no brand forms SECURITY DEFINER function is executable by anon or PUBLIC.
+DO $t$
+DECLARE v_e1 uuid := (SELECT id FROM f4514 WHERE k = 'e1'); v_form uuid := (SELECT id FROM f4514 WHERE k = 'form');
+  v_r text; v_bad text;
+BEGIN
+  SELECT string_agg(p.oid::regprocedure::text, ', ') INTO v_bad
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.prosecdef
+     AND (p.proname LIKE '%brand_form%' OR p.proname = 'validate_brand_form_definition')
+     AND (has_function_privilege('anon', p.oid, 'EXECUTE')
+          OR EXISTS (SELECT 1 FROM aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) a
+                      WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE'));
+  PERFORM pg_temp.f_assert(v_bad IS NULL, 'T-ANON-DEFINER no brand forms definer function is anon or PUBLIC executable: ' || COALESCE(v_bad, ''));
+  PERFORM pg_temp.f_assert(NOT has_function_privilege('authenticated', 'public.public_brand_form_for_event(uuid)', 'EXECUTE')
+    AND has_function_privilege('service_role', 'public.public_brand_form_for_event(uuid)', 'EXECUTE')
+    AND has_function_privilege('authenticated', 'public.brand_form_my_response(uuid,uuid,text,uuid)', 'EXECUTE')
+    AND has_function_privilege('service_role', 'public.brand_form_my_response(uuid,uuid,text,uuid)', 'EXECUTE'),
+    'T-ANON-DEFINER the public page read is service_role only; the guest read is signed-in or service_role');
+  PERFORM pg_temp.f_as(NULL);
+  SET LOCAL ROLE anon;
+  v_r := pg_temp.f_err(format($$SELECT public.public_brand_form_for_event(%L)$$, v_e1));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-ANON-DEFINER anon calling public_brand_form_for_event gets permission denied (' || v_r || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_my_response(%L, NULL, %L, NULL)$$, v_form, repeat('a', 64)));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%' AND v_r NOT LIKE '%link_invalid%',
+    'T-ANON-DEFINER anon calling brand_form_my_response gets permission denied, before any token check (' || v_r || ')');
+  RESET ROLE;
+END
+$t$;
+
 -- ═══ T-PUB ════════════════════════════════════════════════════════════════════
 DO $t$
 DECLARE v jsonb; v_e1 uuid := (SELECT id FROM f4514 WHERE k = 'e1'); v_e3 uuid := (SELECT id FROM f4514 WHERE k = 'e3');
 BEGIN
   PERFORM pg_temp.f_as(NULL);
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   v := public.public_brand_form_for_event(v_e1);
   PERFORM pg_temp.f_assert(v->>'active' = 'true' AND v->>'mode' = 'required_step'
     AND (v->'requiredForm'->>'versionId')::uuid = (SELECT id FROM f4514 WHERE k = 'v1')
@@ -425,7 +459,7 @@ BEGIN
   PERFORM pg_temp.f_assert(public.public_brand_form_for_event(v_e3)->>'active' = 'false', 'T-PUB a page with no form reports none');
   RESET ROLE;
   UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'BRAND_FORMS_KILL_SWITCH';
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   v := public.public_brand_form_for_event(v_e1);
   PERFORM pg_temp.f_assert(v->>'active' = 'false' AND v->>'switchedOff' = 'true', 'T-PUB OP-7 switched off: no required form');
   RESET ROLE;
@@ -558,7 +592,7 @@ BEGIN
   PERFORM pg_temp.f_assert(v_r LIKE '42501:code_required%', 'T-LINK SC-20 a forwarded link cannot change an existing answer');
   RESET ROLE;
   PERFORM pg_temp.f_as(NULL);
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   v := public.brand_form_my_response(v_form, NULL, v_token, NULL);
   PERFORM pg_temp.f_assert(v->>'state' = 'code_required' AND NOT (v ? 'response'),
     'T-LINK SC-20 a forwarded link cannot read an existing answer');
@@ -582,7 +616,7 @@ BEGIN
     AND (SELECT count(*) FROM public.brand_form_responses WHERE form_id = v_form AND rsvp_id = v_r2) = 1,
     'T-LINK SC-22 reusing a valid token with the code edits the same response');
   RESET ROLE;
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   v := public.brand_form_my_response(v_form, NULL, v_token, v_ch);
   PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND v->'response'->'answers' = c_no,
     'T-LINK with the code the person sees their answer');
@@ -738,7 +772,7 @@ BEGIN
            'credential', jsonb_build_object('kind', 'user', 'userId', v_g1, 'rsvpId', (SELECT id FROM f4514 WHERE k = 'r1')))));
   PERFORM pg_temp.f_assert(v_r LIKE '22023:form_closed%', 'T-SUB SC-18 a closed form refuses submits (form_closed)');
   RESET ROLE;
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   PERFORM pg_temp.f_assert(public.public_brand_form_for_event(v_e1)->>'active' = 'false', 'T-PUB a closed form is not offered on the page');
   RESET ROLE;
   PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
@@ -962,7 +996,7 @@ BEGIN
     'T-PERSON-1 the scan line is unchanged (' || COALESCE(v_line2::text, 'null') || ')');
   RESET ROLE;
   PERFORM pg_temp.f_as(NULL);
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   v := public.brand_form_my_response(v_p, NULL, v_token, NULL);
   PERFORM pg_temp.f_assert(v->>'state' = 'code_required' AND v->>'answered' = 'true' AND NOT (v ? 'response'),
     'T-PERSON-1 seeing it through the link needs the code too (read and write agree)');
@@ -1346,14 +1380,14 @@ DECLARE
   v jsonb; v_r text;
 BEGIN
   PERFORM pg_temp.f_as(NULL);
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   PERFORM pg_temp.f_assert(public.public_brand_form_for_event(v_e9)->>'active' = 'false' AND NOT (public.public_brand_form_for_event(v_e9) ? 'definition'),
     'T-PUBVIS-10 a private page returns no form');
   v := public.public_brand_form_for_event(v_e8);
   PERFORM pg_temp.f_assert(v->>'active' = 'true' AND v->>'mode' = 'optional_on_page', 'T-PUBVIS an unlisted page opened by its link returns its form');
   RESET ROLE;
   UPDATE public.events SET visibility = 'draft' WHERE id = v_e8;
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   PERFORM pg_temp.f_assert(public.public_brand_form_for_event(v_e8)->>'active' = 'false', 'T-PUBVIS a draft page returns no form');
   RESET ROLE;
   UPDATE public.events SET visibility = 'hidden' WHERE id = v_e8;
@@ -1557,7 +1591,7 @@ BEGIN
   RESET ROLE;
   -- Without a settled code, the existing answer stays hidden.
   PERFORM pg_temp.f_as(NULL);
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   v := public.brand_form_my_response(v_w, NULL, v_tok, v_c1);
   RESET ROLE;
   PERFORM pg_temp.f_assert(v->>'state' = 'code_required' AND NOT (v ? 'response'), 'T-W3-CODE a locked challenge reveals nothing');
@@ -1570,13 +1604,13 @@ BEGIN
   PERFORM pg_temp.f_assert(v->>'outcome' = 'invalid', 'T-W3-CODE a used code cannot be replayed');
   RESET ROLE;
   PERFORM pg_temp.f_as(NULL);
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   v := public.brand_form_my_response(v_w, NULL, v_tok, v_c2);
   RESET ROLE;
   PERFORM pg_temp.f_assert(v->>'state' = 'answered' AND v->'response'->'answers'->>'22222222-2222-4222-8222-222222222222' = 'Juggle',
     'T-W3-CODE the settled code opens the person''s own answer');
   -- The grant is for its own link only: Val's link with Wes's challenge reveals nothing.
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   v := public.brand_form_my_response(v_w, NULL, v_other_tok, v_c2);
   RESET ROLE;
   PERFORM pg_temp.f_assert(v->>'state' = 'unanswered' AND v->'response' = 'null'::jsonb,
@@ -1732,7 +1766,7 @@ BEGIN
          (v_fresh, 'brand_form_access', 'email', 'f4514-w@example.test', repeat('d', 64), v_link_w,
           now() - interval '35 minutes', now() - interval '25 minutes', now() - interval '29 minutes');
   PERFORM pg_temp.f_as(NULL);
-  SET LOCAL ROLE anon;
+  SET LOCAL ROLE service_role;
   v := public.brand_form_my_response(v_w, NULL, v_tok_w, v_old);
   PERFORM pg_temp.f_assert(v->>'state' = 'code_required' AND NOT (v ? 'response'),
     'T-FIX-GRANT a grant settled 31 minutes ago shows nothing (' || (v->>'state') || ')');
@@ -2679,11 +2713,13 @@ BEGIN
   PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-CHECKOUT-VIS-4 anon cannot call the checkout read directly (' || v_r || ')');
   v_r := pg_temp.f_err($$SELECT public.brand_form_checkout_answers_purge()$$);
   PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-CHECKOUT-PURGE anon cannot run the purge');
-  v := public.public_brand_form_for_event(v_epv);
-  PERFORM pg_temp.f_assert((v->>'active')::boolean IS FALSE, 'T-CHECKOUT-VIS-4 the public read still shows nothing for a private page');
+  v_r := pg_temp.f_err(format($$SELECT public.public_brand_form_for_event(%L)$$, v_epv));
+  PERFORM pg_temp.f_assert(v_r LIKE '42501:%', 'T-CHECKOUT-VIS-4 anon cannot call the public page read directly (' || v_r || ')');
   RESET ROLE;
 
   SET LOCAL ROLE service_role;
+  v := public.public_brand_form_for_event(v_epv);
+  PERFORM pg_temp.f_assert((v->>'active')::boolean IS FALSE, 'T-CHECKOUT-VIS-4 the public read still shows nothing for a private page');
   -- T-CHECKOUT-VIS-1: private, no credential.
   v := public.brand_form_checkout_form(v_epv, NULL, NULL);
   PERFORM pg_temp.f_assert((v->>'active')::boolean IS FALSE AND v - 'active' = '{}'::jsonb,

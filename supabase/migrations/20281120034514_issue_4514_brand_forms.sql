@@ -3138,9 +3138,15 @@ GRANT EXECUTE ON FUNCTION
   public.biz_brand_form_set_auto_remind(uuid, boolean, text[]),
   public.biz_brand_form_request_log(uuid, uuid, jsonb, integer)
 TO authenticated, service_role;
--- Public and guest reads.
-GRANT EXECUTE ON FUNCTION public.public_brand_form_for_event(uuid) TO anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.brand_form_my_response(uuid, uuid, text, uuid) TO anon, authenticated, service_role;
+-- Public and guest reads. Neither is executable by anon or PUBLIC (the revoke
+-- above; the #1392 anon-definer gate): anonymous guests read through edge
+-- functions with the service role (the link page: brand-form-submit
+-- {op:"link_read"}; checkout: {op:"checkout_form"}). brand_form_my_response
+-- keeps authenticated for its sign-in path, which is keyed to auth.uid() and
+-- returns only the caller's own answer, or the form to a caller who holds a
+-- place on a page that carries it; its link path needs the personal token.
+GRANT EXECUTE ON FUNCTION public.public_brand_form_for_event(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.brand_form_my_response(uuid, uuid, text, uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.brand_forms_my_pending() TO authenticated, service_role;
 -- Service role only: the submit core, links, codes, door reads and their helpers.
 GRANT EXECUTE ON FUNCTION

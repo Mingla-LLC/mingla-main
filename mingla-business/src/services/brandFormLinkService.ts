@@ -4,7 +4,8 @@
  * BODY (never a query string, never logged). Imported only by the lazily loaded
  * link screen, so nothing here reaches the eager Host web bundle.
  *
- * - read:   `brand_form_my_response(form, token, challenge?)` (granted to anon)
+ * - read:   `brand-form-submit` {op:"link_read"} (the service role calls
+ *           `brand_form_my_response`; that function is never anon-executable)
  * - save:   `brand-form-submit` (the answers)
  * - codes:  `brand-form-submit` {op:"code_begin"|"code_verify"} (C2, decision 12)
  *
@@ -36,15 +37,16 @@ export async function readLinkForm(input: {
   token: string;
   challengeId: string | null;
 }): Promise<LinkRead> {
-  const supabase = await getSupabase();
-  const { data, error } = await supabase.rpc("brand_form_my_response", {
-    p_form_id: input.formId,
-    p_event_id: null,
-    p_token: input.token,
-    p_challenge_id: input.challengeId,
+  const out = await callSubmit({
+    op: "link_read",
+    formId: input.formId,
+    token: input.token,
+    challengeId: input.challengeId,
   });
-  if (error !== null) throw new BrandFormLinkError(String(error.message ?? "read_failed"));
-  const read = parseLinkRead(data);
+  if (out.ok !== true) {
+    throw new BrandFormLinkError(typeof out.error === "string" ? out.error : "read_failed");
+  }
+  const read = parseLinkRead(out.read);
   if (read === null) throw new BrandFormLinkError("read_shape");
   return read;
 }

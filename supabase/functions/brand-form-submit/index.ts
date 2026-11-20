@@ -15,6 +15,8 @@
 // verify secrets that claim-contact (#4063) already uses. No new secret.
 // Wave 5 review fix 1: the checkout form read hashes a private ticket link with
 // the existing OFFERING_INVITE_TOKEN_PEPPER, exactly as ticket-checkout-create does.
+// The link page's read ({op:"link_read"}, ./linkRead.ts) calls
+// brand_form_my_response with the service role: that function is not anon-executable.
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -175,6 +177,20 @@ export async function handler(req: Request): Promise<Response> {
       async hashTicketLink(token) {
         const pepper = await resolveOfferingInviteTokenPepper();
         return await hashTicketLinkToken(token, pepper.bytes);
+      },
+    },
+    linkRead: {
+      async myResponse(formId, token, challengeId) {
+        const { data, error } = await supabase.rpc("brand_form_my_response", {
+          p_form_id: formId,
+          p_event_id: null,
+          p_token: token,
+          p_challenge_id: challengeId,
+        });
+        return {
+          data,
+          error: error ? { message: String(error.message ?? "") } : null,
+        };
       },
     },
     purchase: {
