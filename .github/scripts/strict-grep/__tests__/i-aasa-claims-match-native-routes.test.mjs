@@ -311,3 +311,29 @@ test("(d) the shell-consumed exemption is narrow, proved, and still rejects a st
     "mingla-business/app.json must NOT claim /attendance on host.usemingla.com",
   );
 });
+
+// #4514 (decision 11, contract C3): brand form links (/form/{id}) belong to the
+// EXPLORER app; until it opens them the web page offers "Open in the Explorer
+// app". The Host app SERVES a /form route (so #2180 T-7 lists the segment) but
+// must never CLAIM form links. Fails-on-revert: adding a /form component to the
+// Host app's AASA block, or a /form pathPrefix to mingla-business/app.json.
+test("(e) the Host app never claims brand form links (/form) (#4514)", () => {
+  const aasa = loadAasa();
+  const host = aasa.applinks.details.filter((d) =>
+    d.appIDs.includes("782KVMY869.com.sethogieva.minglabusiness")
+  );
+  assert.ok(host.length > 0, "the Host app's AASA block exists");
+  for (const block of host) {
+    for (const c of block.components) {
+      assert.doesNotMatch(c["/"], /^\/form(\/|$|\*)/, `Host AASA claims ${c["/"]}`);
+    }
+  }
+  const biz = readJson("mingla-business/app.json");
+  const filters = biz.expo.android?.intentFilters ?? [];
+  assert.ok(filters.length > 0, "the Host app's intent filters exist");
+  assert.doesNotMatch(
+    JSON.stringify(filters.map((f) => f.data ?? null)),
+    /"path(Prefix|Pattern)?":"\/form/,
+    "the Host app's Android intent filters claim /form",
+  );
+});
