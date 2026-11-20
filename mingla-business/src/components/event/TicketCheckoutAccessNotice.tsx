@@ -61,16 +61,18 @@ export const TicketCheckoutAccessNotice: React.FC<
   }
 
   if (access.state === "error") {
-    // #4518 — the one connection notice (inline). testIDs kept: the notice
-    // root is `…-error` and its Try again is `…-retry`; Buy stays paused
+    // #4518 — the one connection notice (inline). testIDs kept: the
+    // wrapper is `…-error` (one node) and its Try again is `…-retry`; Buy stays paused
     // while access is unknown (fail-closed, unchanged).
     return (
-      <BuyerConnectionNotice
-        variant="accessCheck"
-        onRetry={access.retry}
-        testID={`${testID}-error`}
-        retryTestID={`${testID}-retry`}
-      />
+      <View testID={`${testID}-error`}>
+        <BuyerConnectionNotice
+          variant="accessCheck"
+          onRetry={access.retry}
+          testID={`${testID}-error-notice`}
+          retryTestID={`${testID}-retry`}
+        />
+      </View>
     );
   }
 

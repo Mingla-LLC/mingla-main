@@ -28,6 +28,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Animated,
   Platform,
@@ -41,7 +42,6 @@ import {
 import Svg, { Circle, Path } from "react-native-svg";
 
 import { durations, motion, radius, size, space, type } from "../../constants/designSystem";
-import { useReduceMotion } from "../../hooks/useMotionPreferences";
 import { color, themedStyles } from "../../theme/surfaceTokens";
 import { BUYER_CONNECTION_COPY as COPY } from "./buyerConnectionCopy";
 
@@ -57,6 +57,35 @@ export interface BuyerConnectionNoticeProps {
   /** Defaults to `${testID}-retry` (the #2101 notice keeps its own id). */
   retryTestID?: string;
 }
+
+/**
+ * The device's reduce-motion setting. Read defensively: the notice renders on
+ * every buyer failure path, so a missing accessibility API (an older runtime,
+ * a test double) must never stop it from rendering.
+ */
+const useReduceMotionSafe = (): boolean => {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    const api = AccessibilityInfo as Partial<typeof AccessibilityInfo> | undefined;
+    if (typeof api?.isReduceMotionEnabled !== "function") return undefined;
+    api
+      .isReduceMotionEnabled()
+      .then((enabled) => {
+        if (alive) setReduce(enabled === true);
+      })
+      .catch(() => undefined);
+    const subscription =
+      typeof api.addEventListener === "function"
+        ? api.addEventListener("reduceMotionChanged", (enabled: boolean) => setReduce(enabled === true))
+        : undefined;
+    return () => {
+      alive = false;
+      subscription?.remove?.();
+    };
+  }, []);
+  return reduce;
+};
 
 /** Retrying is held at least this long so a fast failure still reads as one. */
 export const MIN_RETRY_MS = 600;
@@ -89,7 +118,7 @@ export const BuyerConnectionNotice: React.FC<BuyerConnectionNoticeProps> = ({
 }) => {
   const { width, height } = useWindowDimensions();
   const wide = Platform.OS === "web" && width >= WIDE_MIN;
-  const reduceMotion = useReduceMotion();
+  const reduceMotion = useReduceMotionSafe();
   const inline = layout === "inline";
 
   const [retrying, setRetrying] = useState(false);
