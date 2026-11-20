@@ -11,7 +11,8 @@
 //   (b) default on: a first visit loads the pixels with the sheet closed;
 //   (c) the strip opens the choices; Save turns ads off and back on, the strip
 //       reads "Saved", Escape closes the sheet and focus returns to the strip;
-//   (d) the strip holds a permanent 28px inset (it never changes size).
+//   (d) the strip holds a permanent 28px band (it never changes size): a CSS
+//       constant (#2331), never measured or written by the runtime.
 import { describe, expect, jest, test } from "@jest/globals";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -142,10 +143,11 @@ describe("#4318 (a) the strip is the one privacy surface on Host web", () => {
     for (const retired of ["privacy-bar-ok", "privacy-bar-options", "privacy-toast", "privacy-bar-folded", "privacy-bar-reopen", "Mingla uses cookies", "Turn off all"]) {
       expect([retired, BANNER.includes(retired)]).toEqual([retired, false]);
     }
-    // The strip's height is the permanent inset; 28px plus the safe area.
-    expect(privacyRuntime.privacyBarCss()).toContain("height:calc(28px + env(safe-area-inset-bottom,0px))");
-    expect(privacyRuntime.privacyBarCss()).toContain(":root{--mingla-privacy-inset:calc(28px + env(safe-area-inset-bottom,0px))}");
-    expect(BANNER).toMatch(/const measure = \(\): void => writeInset\(strip\.getBoundingClientRect\(\)\.height\);/);
+    // [TEST-MOD-APPROVED #2331] The strip's height is the permanent band, one
+    // CSS constant (28px plus the safe area); nothing measures it.
+    expect(privacyRuntime.privacyBarCss()).toContain("height:var(--mingla-privacy-strip)");
+    expect(privacyRuntime.privacyBarCss()).toContain(":root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}");
+    expect(BANNER).not.toContain("writeInset");
   });
 });
 
@@ -363,13 +365,15 @@ describe("#4318 (c) the strip opens the choices; Save takes effect; Saved shows"
 });
 
 describe("#4318 (d) the strip never changes size", () => {
-  test("the inset is the strip's 28px from load, open, Save and close", () => {
+  // [TEST-MOD-APPROVED #2331] The band is a CSS constant: the runtime never
+  // writes it, from load through open, Save and close.
+  test("the runtime never writes the band from load, open, Save and close", () => {
     const page = runPage();
-    expect(page.inset.at(-1)).toBe("28px");
     page.strip.click();
     page.parts.save.click();
     page.runTimers();
-    expect(new Set(page.inset)).toEqual(new Set(["28px"]));
+    expect(page.inset).toEqual([]);
+    expect(privacyRuntime.privacyBarCss()).toContain(":root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}");
   });
 
   test("the lean invite-shell strip hands off to the app instead of a banner", () => {

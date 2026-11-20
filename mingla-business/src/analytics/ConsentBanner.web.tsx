@@ -42,8 +42,8 @@ const BAR_CSS = `
 :root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}
 html,body{height:100%;overflow:hidden}
 #root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow-y:auto;overscroll-behavior:contain}
-body>div:has(>div>[aria-modal="true"]){position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);contain:layout;z-index:9999;pointer-events:none}
-:where(body>div:has(>div>[aria-modal="true"]))>div{pointer-events:auto}
+body>div:has(>div [aria-modal="true"]){position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);contain:layout;z-index:9999;pointer-events:none}
+:where(body>div:has(>div [aria-modal="true"]))>div{pointer-events:auto}
 body>[aria-modal="true"]{bottom:var(--mingla-privacy-strip)!important}
 .mps{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:var(--mingla-privacy-strip);margin:0;padding:0 12px env(safe-area-inset-bottom,0px);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
 .mps span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}

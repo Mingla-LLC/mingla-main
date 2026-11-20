@@ -132,10 +132,10 @@ function validateOwnerPins() {
   // the React owner must carry the same words, and the retired banner none.
   const owner = files["src/analytics/ConsentBanner.web.tsx"];
   const server = files["server/publicPrivacyRuntime.js"];
-  for (const pin of ['PRIVACY_STRIP_LABEL = "Privacy & ad choices"', 'PRIVACY_SAVED_LABEL = "Saved"', 'data-testid="privacy-strip"', 'aria-live="polite"', "height:calc(28px + env(safe-area-inset-bottom,0px))", "Ads measurement", "Privacy policy", "https://usemingla.com/privacy-policy"]) {
+  for (const pin of ['PRIVACY_STRIP_LABEL = "Privacy & ad choices"', 'PRIVACY_SAVED_LABEL = "Saved"', 'data-testid="privacy-strip"', 'aria-live="polite"', ":root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}", "height:var(--mingla-privacy-strip)", "Ads measurement", "Privacy policy", "https://usemingla.com/privacy-policy"]) {
     invariant(owner.includes(pin), `privacy strip owner drift: ${pin}`);
   }
-  for (const pin of ['data-testid="privacy-strip"', "Privacy &amp; ad choices", "height:calc(28px + env(safe-area-inset-bottom,0px))", "Ads measurement"]) {
+  for (const pin of ['data-testid="privacy-strip"', "Privacy &amp; ad choices", ":root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}", "height:var(--mingla-privacy-strip)", "Ads measurement"]) {
     invariant(server.includes(pin), `privacy strip server copy drift: ${pin}`);
   }
   for (const retired of ["Mingla uses cookies", "Cookies for analytics and ads.", "privacy-bar-ok", "privacy-bar-options", "privacy-toast", "Turn off all", "Your privacy choices"]) {

@@ -72,16 +72,16 @@ const SERVER_SNAPSHOT: MarketingPrivacySnapshot = { saved: true, analytics: fals
 // The strip, then its scrim and sheet, on the top z-layer: above page content,
 // the fixed nav, dialogs, sheets and the side menu.
 const BAR_CSS = `
-:root{${PRIVACY_STRIP_PROPERTY}:calc(28px + env(safe-area-inset-bottom,0px))}
-body{padding-bottom:var(${PRIVACY_STRIP_PROPERTY})}
-.mps{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:var(${PRIVACY_STRIP_PROPERTY});white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;padding:0 12px max(env(safe-area-inset-bottom,0px),0px);transform:translateZ(0);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 var(--font-inter,-apple-system),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+:root{${PRIVACY_STRIP_PROPERTY}:calc(28px + max(env(safe-area-inset-bottom,0px),0px))}
+body{padding-bottom:var(--mingla-privacy-strip)}
+.mps{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:var(--mingla-privacy-strip);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0;padding:0 12px max(env(safe-area-inset-bottom,0px),0px);transform:translateZ(0);border:0;border-radius:0;background:#15171c;color:rgba(255,255,255,.9);font:600 12px/1 var(--font-inter,-apple-system),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
 .mps svg{display:block;flex:none;width:14px;height:14px}
 .mps span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .mps:focus{outline:none}
 .mps:focus-visible{outline:2px solid #eb7825;outline-offset:-3px}
 .mps-saved{color:#8fd3a8}
-.mpb-scrim{position:fixed;left:0;right:0;top:0;bottom:var(${PRIVACY_STRIP_PROPERTY});z-index:2147483001;background:rgba(0,0,0,.45)}
-.mpb{position:fixed;left:0;right:0;bottom:var(${PRIVACY_STRIP_PROPERTY});z-index:2147483002;box-sizing:border-box;margin:0;background:#15171c;color:#fff;border-radius:18px 18px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));max-height:80vh;max-height:80dvh;overflow-y:auto;overscroll-behavior:contain;font-family:var(--font-inter,inherit),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;animation:mpb-in .2s ease-out}
+.mpb-scrim{position:fixed;left:0;right:0;top:0;bottom:var(--mingla-privacy-strip);z-index:2147483001;background:rgba(0,0,0,.45)}
+.mpb{position:fixed;left:0;right:0;bottom:var(--mingla-privacy-strip);z-index:2147483002;box-sizing:border-box;margin:0;background:#15171c;color:#fff;border-radius:18px 18px 0 0;padding:16px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));max-height:80vh;max-height:80dvh;overflow-y:auto;overscroll-behavior:contain;font-family:var(--font-inter,inherit),-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;animation:mpb-in .2s ease-out}
 .mpb *{box-sizing:border-box}
 .mpb-panel{max-width:640px;margin:0 auto;display:flex;flex-direction:column}
 .mpb-title{margin:0 0 4px;font-size:15px;line-height:20px;font-weight:700;color:#fff}

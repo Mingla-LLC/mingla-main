@@ -60,6 +60,26 @@
 // ---------------------------------------------------------------------------
 
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+
+// #2331 (I-PRIVACY-BAR-NEVER-OCCLUDES) — the privacy strip's band ships in the
+// first HTML of every SPA route: the shell stylesheet (#root is the fixed box
+// that ends at the strip's top edge) in <head>, and the lean strip plus its
+// hand-off runtime as a sibling AFTER #root, so it is there at the first paint
+// and #root never shifts by 28px when the app mounts. `+html.tsx` is ignored
+// under `web.output:"single"`, so this injector owns it, like the blur kill.
+// The app removes this strip on mount and draws its own in the same frame.
+// The #922 invite entry (build-invite-critical-entry.mjs) is cut from this HTML.
+const {
+  PRIVACY_BAR_STYLE_ID,
+  privacyBarCss,
+  privacyBarCollapsedMarkup,
+  privacyBarCollapsedRuntimeSource,
+} = createRequire(import.meta.url)("../server/publicPrivacyRuntime.js");
+const PRIVACY_STRIP_MARKER = "mingla-privacy-strip-shell";
+const PRIVACY_HEAD = `<style id="${PRIVACY_BAR_STYLE_ID}">${privacyBarCss()}</style>`;
+const PRIVACY_BODY =
+  `${privacyBarCollapsedMarkup()}<script id="${PRIVACY_STRIP_MARKER}">${privacyBarCollapsedRuntimeSource()}__minglaPrivacyBar();</script>`;
 
 const HTML_PATH = "dist/index.html";
 const MARKER = "mingla-mobile-web-no-blur";
@@ -199,6 +219,14 @@ try {
   let html = readFileSync(HTML_PATH, "utf8");
   normalizeExpoWebScriptFilenames(html);
   repairMissingExpoLayoutChunks(html);
+  // #2331 — the strip after #root (its own marker, so it lands exactly once).
+  if (!html.includes(PRIVACY_STRIP_MARKER) && html.includes('<div id="root"></div>') && html.includes("</head>")) {
+    html = html
+      .replace("</head>", `${PRIVACY_HEAD}</head>`)
+      .replace('<div id="root"></div>', `<div id="root"></div>${PRIVACY_BODY}`);
+    writeFileSync(HTML_PATH, html);
+    console.log("[mobile-blur-fix] #2331 injected the privacy strip shell (CSS + strip after #root).");
+  }
   if (html.includes(MARKER) && html.includes(CHUNK_RECOVERY_MARKER)) {
     console.log("[mobile-blur-fix] already present — skipping.");
     process.exit(0);

@@ -39,15 +39,15 @@ const privacyReaderSource = () => [
 // above the strip". The strip, its sheet and scrim are siblings of #root
 // (outside it) and sit on the top z-layer. react-native-web Modal (0.21)
 // portals a bare <div> to <body> whose grandchild is the `aria-modal` View:
-// the `body>div:has(>div>[aria-modal="true"])` rule gives that portal the same
+// the `body>div:has(>div [aria-modal="true"])` rule gives that portal the same
 // box. A body-level `aria-modal` layer (the phone country picker portal) ends
 // at the strip too.
 const PRIVACY_HOST_SHELL_CSS_LINES = [
   ":root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}",
   "html,body{height:100%;overflow:hidden}",
   "#root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow-y:auto;overscroll-behavior:contain}",
-  "body>div:has(>div>[aria-modal=\"true\"]){position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);contain:layout;z-index:9999;pointer-events:none}",
-  ":where(body>div:has(>div>[aria-modal=\"true\"]))>div{pointer-events:auto}",
+  "body>div:has(>div [aria-modal=\"true\"]){position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);contain:layout;z-index:9999;pointer-events:none}",
+  ":where(body>div:has(>div [aria-modal=\"true\"]))>div{pointer-events:auto}",
   "body>[aria-modal=\"true\"]{bottom:var(--mingla-privacy-strip)!important}",
 ];
 

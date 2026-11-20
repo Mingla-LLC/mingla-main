@@ -6,6 +6,19 @@ import { tmpdir } from "node:os";
 
 const packageRoot = resolve(__dirname, "..");
 const builder = join(packageRoot, "scripts/build-invite-critical-entry.mjs");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const privacy = require("../server/publicPrivacyRuntime.js") as {
+  PRIVACY_BAR_STYLE_ID: string;
+  privacyBarCss: () => string;
+  privacyBarCollapsedMarkup: () => string;
+  privacyBarCollapsedRuntimeSource: () => string;
+};
+
+// #2331 — what scripts/inject-mobile-blur-css.mjs puts in every exported index.html: the strip's
+// stylesheet in the head, and the lean strip plus its hand-off after #root.
+const htmlShellHead = `<style id="${privacy.PRIVACY_BAR_STYLE_ID}">${privacy.privacyBarCss()}</style>`;
+const htmlShellStrip =
+  `${privacy.privacyBarCollapsedMarkup()}<script id="mingla-privacy-strip-shell">${privacy.privacyBarCollapsedRuntimeSource()}__minglaPrivacyBar();</script>`;
 
 function fixture(): { dir: string; source: string } {
   const dir = mkdtempSync(join(tmpdir(), "issue922-happy-"));
@@ -17,7 +30,7 @@ function fixture(): { dir: string; source: string } {
     '<script referrerpolicy="no-referrer" src="/_expo/static/js/web/index-c.js?v=orch1091" defer></script>',
   ];
   for (const name of ["runtime-a.js", "common-b.js", "index-c.js"]) writeFileSync(join(jsDir, name), "// fixture");
-  const source = `<!doctype html><html><head></head><body><div id="root"></div>${tags.join("")}</body></html>`;
+  const source = `<!doctype html><html><head>${htmlShellHead}</head><body><div id="root"></div>${htmlShellStrip}${tags.join("")}</body></html>`;
   writeFileSync(join(dir, "index.html"), source);
   return { dir, source };
 }
@@ -53,13 +66,6 @@ describe("issue #922 dedicated invitation entry", () => {
     const button = readFileSync(join(packageRoot, "src/components/ui/Button.tsx"), "utf8");
     const tokens = readFileSync(join(packageRoot, "src/constants/designSystem.ts"), "utf8");
     const builderSource = readFileSync(builder, "utf8");
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const privacy = require("../server/publicPrivacyRuntime.js") as {
-      privacyBarCss: () => string;
-      privacyBarCollapsedCss: () => string;
-      privacyBarCollapsedMarkup: () => string;
-      privacyBarCollapsedRuntimeSource: () => string;
-    };
     for (const copy of ["You're invited", "Sign in to accept this invitation. We'll bring you right back.", "Sign in"]) {
       expect(inviteRoute).toContain(copy);
       expect(builderSource).toContain(copy.replace(/'/g, "\\'"));
@@ -81,14 +87,14 @@ describe("issue #922 dedicated invitation entry", () => {
     ]) {
       expect(consent).toContain(copy);
     }
-    expect(output).toContain(privacy.privacyBarCollapsedCss());
-    expect(output).toContain(privacy.privacyBarCollapsedMarkup());
-    // Beside the host, never inside its translateZ(0) layer.
-    expect(output).toContain(`</main>${privacy.privacyBarCollapsedMarkup()}'`);
+    // #2331 — the strip is the export's own (scripts/inject-mobile-blur-css.mjs): the full stylesheet
+    // and one strip, a sibling of #root (never inside it, never a second copy).
+    expect(output).toContain(privacy.privacyBarCss());
+    expect(output.split(privacy.privacyBarCollapsedMarkup())).toHaveLength(2);
+    expect(output).toContain(`<div id="root"></div>${htmlShellStrip}`);
+    expect(output).not.toContain(`</main>${privacy.privacyBarCollapsedMarkup()}`);
+    expect(output.split("function __minglaPrivacyBar(")).toHaveLength(2);
     expect(output).toContain(privacy.privacyBarCollapsedRuntimeSource());
-    // Every collapsed rule is a verbatim rule of the full bar's stylesheet.
-    const full = privacy.privacyBarCss().split("\n");
-    for (const rule of privacy.privacyBarCollapsedCss().split("\n")) expect(full).toContain(rule);
     expect(output).toContain('window.addEventListener("mingla:privacy-options",function(){protect(boot)})');
     expect(output).toContain("window.__minglaPrivacyOpenExpanded=true");
     expect(consent).toContain("__minglaPrivacyOpenExpanded");

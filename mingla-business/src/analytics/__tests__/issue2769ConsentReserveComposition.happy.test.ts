@@ -52,18 +52,18 @@ describe("#2331 privacy bar / reserve composition", () => {
     expect(markup).toContain('data-analytics="false"');
   });
 
-  test("the bar reads the one privacy owner, writes the inset, and has no floating pill", () => {
+  // [TEST-MOD-APPROVED #2331] The strip's band is a CSS constant; nothing measures it.
+  test("the bar reads the one privacy owner, owns a constant band, and has no floating pill", () => {
     const banner = read("mingla-business/src/analytics/ConsentBanner.web.tsx");
     expect(banner).toContain("const privacy = usePrivacyState();");
-    expect(banner).toContain("--mingla-privacy-inset");
-    // The app root ends at the bar's top edge at every bar height (the reserve
-    // action rises with it) and scrolls a screen that no longer fits; no rule
-    // styles the root's children, so the bar and its toast are never resized.
-    expect(banner).toContain("#root{box-sizing:border-box;height:calc(100% - var(${PRIVACY_INSET_PROPERTY},0px))}");
-    expect(banner).toContain('html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto;overscroll-behavior:contain}');
+    expect(banner).toContain(":root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}");
+    // The app root is the fixed box that ends at the strip's top edge (the
+    // reserve action rises with it) and scrolls a screen that no longer fits;
+    // no rule styles the root's children.
+    expect(banner).toContain("#root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);");
     expect(banner).not.toMatch(/#root>/);
-    expect(banner).not.toContain("padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)");
-    expect(banner).toContain("new ResizeObserver(measure)");
+    expect(banner).not.toContain("padding-bottom:var(--mingla-privacy-strip)");
+    expect(banner).not.toContain("ResizeObserver");
     expect(banner).not.toContain("choiceLinkHost");
     expect(banner).not.toContain("Ad privacy choices");
     expect(banner).not.toContain("readStoredConsent");

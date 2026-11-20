@@ -9,8 +9,9 @@ import { Script } from "node:vm";
 import { createRequire } from "node:module";
 
 // #2331 — the static shell shows the same lean privacy strip as every SPA
-// route: app/+html.tsx ships the shell box, the strip (a sibling of #root) and
-// its hand-off runtime in the exported index.html this entry is cut from. The
+// route: scripts/inject-mobile-blur-css.mjs ships the shell box, the strip (a
+// sibling of #root) and its hand-off runtime in the index.html this entry is
+// cut from (it runs first in the vercel.json build). The
 // strip hands off to the app, whose sheet opens expanded.
 const require = createRequire(import.meta.url);
 const { privacyBarCollapsedMarkup } = require("../server/publicPrivacyRuntime.js");
@@ -158,7 +159,7 @@ function withoutLegacyConsentCss(css) {
 
 /**
  * #2331 — replace the copied consent panel with the privacy strip the source
- * index already carries (app/+html.tsx): drop the panel's rules and markup,
+ * index already carries (inject-mobile-blur-css.mjs): drop the panel's rules and markup,
  * and boot the app when the strip hands off or a choice is saved.
  */
 function withPrivacyBar(payload) {
@@ -194,8 +195,8 @@ export function buildCriticalEntry(buildDir) {
   if (html.includes(ENTRY_MARKER)) fail("source index already contains the output marker");
   if (!html.includes('<div id="root"></div>')) fail("source index lacks the Expo root scaffold");
   if (!html.includes("</body>")) fail("source index lacks </body>");
-  // #2331 — the strip is the source index's own (app/+html.tsx), outside #root.
-  if (!html.includes(privacyBarCollapsedMarkup())) fail("source index lacks the privacy strip (app/+html.tsx)");
+  // #2331 — the strip is the source index's own (inject-mobile-blur-css.mjs), outside #root.
+  if (!html.includes(privacyBarCollapsedMarkup())) fail("source index lacks the privacy strip (inject-mobile-blur-css.mjs)");
   const scripts = extractEagerScripts(html, buildDir);
   const withoutScripts = removeScripts(html, scripts);
   // The shell markup is assigned through a single-quoted inline-JS string.
