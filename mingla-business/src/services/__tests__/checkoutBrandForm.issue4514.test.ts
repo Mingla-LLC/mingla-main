@@ -65,8 +65,11 @@ describe("#4514 W5 the create body", () => {
   // answers out of `buyer` are the only brand form code on the eager path.
   const svc = readSrc("src/services/ticketCheckoutService.ts");
   it("always sends the capability marker, and the answers top-level", () => {
-    expect(svc).toContain("const { brandForm, ...buyerFields } = input.buyer;");
-    expect(svc).toMatch(/buyer: buyerFields,\s*\n\s*brandFormStep: 1,\s*\n\s*brandForm,/);
+    expect(svc).toMatch(/buyer: \{ \.\.\.input\.buyer, brandForm: undefined \},\s*\n\s*brandFormStep: 1,\s*\n\s*brandForm: input\.buyer\.brandForm,/);
+    // An undefined key never reaches the wire: the answers are not inside buyer.
+    const wire = JSON.parse(JSON.stringify({ buyer: { ...BUYER, brandForm: undefined }, brandFormStep: 1, brandForm: ANSWERS }));
+    expect(wire).toEqual({ buyer: BUYER, brandFormStep: 1, brandForm: ANSWERS });
+    expect("brandForm" in wire.buyer).toBe(false);
     expect(svc).not.toMatch(/buyer: input\.buyer\b/);
   });
 
