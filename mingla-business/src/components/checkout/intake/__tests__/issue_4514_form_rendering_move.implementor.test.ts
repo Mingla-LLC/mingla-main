@@ -31,6 +31,7 @@ import { businessFormPrimitives } from "../formRenderingPrimitives";
 import { Icon } from "../../../ui/Icon";
 import { WebDateTimeInput } from "../../../ui/WebDateTimeInput";
 import { color } from "../../../../constants/designSystem";
+import { activeSurfaceTokens, GRAPHITE_CONTROL_OUTLINE } from "../../../../theme/surfaceTokens";
 
 const ROOT = path.resolve(__dirname, "../../../../../..");
 const PKG = path.join(ROOT, "packages/form-rendering");
@@ -119,7 +120,10 @@ describe("#4514 — the renderers live in @mingla/form-rendering", () => {
   test("the injected primitives are the business app's own components and tokens", () => {
     expect(businessFormPrimitives.Icon).toBe(Icon);
     expect(businessFormPrimitives.WebDateTimeInput).toBe(WebDateTimeInput);
-    expect(businessFormPrimitives.tokens.color).toBe(color);
+    // #4518: the colours are the active surface tokens (Graphite here): every
+    // designSystem colour, plus the surface-only `controlOutline`.
+    expect(businessFormPrimitives.tokens.color).toBe(activeSurfaceTokens().color);
+    expect(businessFormPrimitives.tokens.color).toEqual({ ...color, controlOutline: GRAPHITE_CONTROL_OUTLINE });
   });
 
   test("the package exports the renderers, and styles are built once per token set", () => {

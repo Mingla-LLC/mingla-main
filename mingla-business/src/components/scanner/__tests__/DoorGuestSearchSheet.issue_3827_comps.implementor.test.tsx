@@ -335,7 +335,8 @@ describe("issue #3827 — door Find by name", () => {
     expect(src).toMatch(/detail: copy\.detail,\s*extras,\s*booked,\s*door,\s*answersFor,/);
     expect(src).toMatch(/showResult\(\{ kind, message, detail, extras, booked, door, answersFor \}\)/);
     // A screen reader hears the booked start, the extras and the door line, not only "Dismiss".
-    expect(src).toMatch(/accessibilityLabel=\{\[\s*overlay\.message,\s*overlay\.detail,\s*overlay\.booked,\s*overlay\.extras,\s*overlay\.door\?\.header \?\? undefined,\s*overlay\.door\?\.text,\s*\]/);
+    // [TEST-MOD #4514 wave 7] the door line is now its lines (the same door line a search admit shows).
+    expect(src).toMatch(/accessibilityLabel=\{\[\s*overlay\.message,\s*overlay\.detail,\s*overlay\.booked,\s*overlay\.extras,\s*overlay\.door\?\.header \?\? undefined,\s*overlay\.door\?\.lines\.join\(" · "\),\s*\]/);
     expect(src).toMatch(/<Text style=\{styles\.overlayDetail\} testID="scan-result-booked">/);
   });
 
