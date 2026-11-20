@@ -8,7 +8,7 @@
  * - The routes put the step between Details and Payment with their own step
  *   names, load it only through the forms lazy owner, and never call useAuth.
  *
- * FAILS-ON-REVERT: dropping the marker from checkoutBrandFormFields, sending the
+ * FAILS-ON-REVERT: dropping the marker from the create body, sending the
  * answers inside `buyer`, or wiring a route's Continue straight to the final
  * submit turns a case below red.
  */

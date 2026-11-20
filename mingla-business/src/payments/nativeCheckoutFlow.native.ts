@@ -51,7 +51,6 @@ import {
 } from "../services/checkoutErrorCopy";
 import {
   PAID_CHECKOUT_FAILED_MESSAGE,
-  checkoutBrandFormFields,
   paidCheckoutErrorMessage,
 } from "../services/ticketCheckoutService";
 import { ticketCheckoutReviewFromError } from "../services/ticketCheckoutReview";
@@ -794,8 +793,10 @@ export const useNativeCheckoutFlow = (): ((
         // the no-address create computes the same all-in total.
         ...(input.buyer.address ? { address: input.buyer.address } : {}),
       },
-      // #4514 wave 5 — the capability marker and the Questions step's answers.
-      ...checkoutBrandFormFields(input.buyer),
+      // #4514 wave 5 — the capability marker (C1, mirrors BRAND_FORM_CHECKOUT_STEP)
+      // and the Questions step's answers, top-level as ticketCheckoutService sends them.
+      brandFormStep: 1,
+      brandForm: input.buyer.brandForm,
       // issue #3281 — v2 sends the normalized lines (plan choice, dates,
       // extras); v1 keeps its body unchanged.
       lines: v2Lines?.ok ? v2Lines.lines : input.lines,

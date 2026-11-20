@@ -104,7 +104,7 @@ export interface BuyerDetails {
   /**
    * #4514 wave 5 — the buyer's answers to the page's brand form, from the
    * checkout Questions step. Never sent inside `buyer`: the checkout services
-   * lift it to the top-level `brandForm` field (checkoutBrandFormFields).
+   * lift it to the top-level `brandForm` field with the `brandFormStep` marker.
    */
   brandForm?: CheckoutBrandFormAnswers | null;
   address?: {

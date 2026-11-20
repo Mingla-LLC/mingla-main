@@ -1,8 +1,8 @@
 /**
  * #4514 wave 5 — every word of the buyer's checkout Questions step and the
  * after-purchase hand-off. Imported ONLY by the step (inside the one lazy forms
- * owner), so none of it reaches the eager bundle. The eager checkout code needs
- * only `services/checkoutFormMarker.ts`.
+ * owner), so none of it reaches the eager bundle. The eager checkout code carries
+ * only the inline marker (ticketCheckoutService) and each route's refusal codes.
  */
 
 /**
