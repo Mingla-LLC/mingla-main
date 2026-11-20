@@ -25,10 +25,11 @@ const TICKET = "43820000-0000-4000-8000-000000000101";
 const read = (relative: string) =>
   Deno.readTextFile(new URL(relative, import.meta.url));
 
-Deno.test("five categories, each routed to the app it names", () => {
+Deno.test("six categories (five from #4382, one from #4453), each routed to the app it names", () => {
   assertEquals([...ISSUE_4382_SUPPORT_CATEGORIES].sort(), [
     "business.support_product_update",
     "business.support_status_changed",
+    "business.website_request_ready",
     "explorer.support_product_update",
     "explorer.support_reply",
     "explorer.support_status_changed",

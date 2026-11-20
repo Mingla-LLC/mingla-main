@@ -312,6 +312,66 @@ function flowTitleOf(context: unknown): string | null {
   return isOwnerSafe(trimmed, "label") ? trimmed : null;
 }
 
+const isRow = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+function gatedRows(
+  rows: Array<[string, unknown]>,
+): PresentationField[] {
+  return rows.flatMap(([label, value]) =>
+    typeof value === "string" && value.trim() && isOwnerSafe(label, "label") &&
+      isOwnerSafeValue(value.trim())
+      ? [{ label, value: value.trim().slice(0, MAX_VALUE) }]
+      : []
+  );
+}
+
+/**
+ * #4453 Website workspace — the plan's own words as the card's rows: one row
+ * per step (its plain label) and what could not be done; a team request reads
+ * as what, where, why and what is missing. Null for every other tool, and for
+ * args that do not carry the shape (the generic rows then apply).
+ */
+function siteWorkspaceRows(
+  toolName: string,
+  args: Record<string, unknown>,
+): PresentationField[] | null {
+  if (toolName === "propose_site_change_set" && Array.isArray(args.steps)) {
+    const steps = args.steps.filter(isRow);
+    if (steps.length === 0) return null;
+    const couldnt = Array.isArray(args.couldnt)
+      ? args.couldnt.filter(isRow)
+      : [];
+    return gatedRows([
+      ...steps.map((step, index): [string, unknown] => [
+        `Step ${index + 1}`,
+        step.label,
+      ]),
+      ...couldnt.map((item): [string, unknown] => ["Not done", item.what]),
+    ]);
+  }
+  if (toolName === "propose_website_team_request" && isRow(args.where)) {
+    const where = args.where;
+    const page = where.page_path === ""
+      ? "Home page"
+      : typeof where.page_path === "string"
+      ? `/${where.page_path}`
+      : null;
+    return gatedRows([
+      ["What you want", args.what],
+      [
+        "Where",
+        typeof where.section_label === "string" && where.section_label.trim()
+          ? `${where.section_label.trim()}${page ? `, ${page}` : ""}`
+          : page,
+      ],
+      ["Why", args.why],
+      ["What is missing", args.missing_capability],
+    ]);
+  }
+  return null;
+}
+
 // #3355: every registered write tool has owner words and a copy-gate-clean
 // presentation (I-ARI-EVERY-WRITE-HAS-PRESENTATION, declared in
 // supabase/functions/_shared/__tests__/issue_3355_turn_hygiene.implementor.test.ts).
@@ -328,7 +388,12 @@ export function buildProposalPresentation(
       typeof (context as Record<string, unknown>).brand_timezone === "string"
     ? (context as Record<string, unknown>).brand_timezone as string
     : null;
-  const identity = identityOf(clean);
+  const workspaceRows = siteWorkspaceRows(toolName, clean);
+  const planSummary = workspaceRows && toolName === "propose_site_change_set" &&
+      typeof clean.summary === "string" && clean.summary.trim()
+    ? clean.summary.trim().slice(0, 120)
+    : null;
+  const identity = identityOf(clean) ?? planSummary;
   // #3355: an engine proposal may name its own card ("Import 48 contacts").
   const flowTitle = flowTitleOf(context);
   const title = flowTitle ??
@@ -347,7 +412,7 @@ export function buildProposalPresentation(
     }),
     title,
     fields: [
-      ...(rowsOnly ? [] : presentationFields(clean, brandZone)),
+      ...(rowsOnly ? [] : workspaceRows ?? presentationFields(clean, brandZone)),
       ...flowRows(context),
     ].slice(
       0,

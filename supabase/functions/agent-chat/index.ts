@@ -337,6 +337,16 @@ import {
   websiteSetupPlanRevision,
   websiteSetupWorkflowInitialCalls,
 } from "../_shared/agentWebsiteSetup.ts";
+import {
+  GET_SITE_WORKSPACE_TOOL,
+  parseSiteFocus,
+  SITE_WORKSPACE_CONTEXT,
+  SITE_WORKSPACE_TURN_TOOLS,
+  type SiteQuestionChoices,
+  siteWorkspaceContextText,
+  siteWorkspaceProposalIssue,
+  splitSiteQuestionChoices,
+} from "../_shared/agentSiteWorkspaceTools.ts";
 
 import { isValidIanaTimezone } from "../_shared/agentRelativeTime.ts";
 import { marketDefaultTimezone } from "../_shared/payoutCountries.ts";
@@ -431,7 +441,9 @@ interface RequestBody {
   choice_response?: AgentChoiceSubmissionV2;
   attachment_ids?: string[];
   ari_ui?: unknown;
-  workflow_context?: "website_setup";
+  workflow_context?: "website_setup" | "website_workspace";
+  /** #4453: the section the owner opened Ari from (Website workspace only). */
+  site_focus?: unknown;
   /**
    * #4304: First Home with Ari — context only, never the owner's words. The
    * Host app sends it while the account has no brand (no_brand) or nothing
@@ -468,6 +480,8 @@ type Response_ =
     handoff_route?: string;
     flow?: FlowArtefact;
     flow_state?: FlowStateView | null;
+    /** #4453 Website workspace: Ari's one question with tappable answers. */
+    site_question?: SiteQuestionChoices;
   }
   | {
     // #3355 P3 (I-ARI-BOUND-ANSWERS): the answered card is no longer the
@@ -1128,6 +1142,12 @@ async function commitTextTurn(
     ...(args.handoffRoute ? { handoff_route: args.handoffRoute } : {}),
     ...(args.flowArtefact ? { flow: args.flowArtefact } : {}),
     ...(args.flowState !== undefined ? { flow_state: args.flowState } : {}),
+    ...(args.structuredData?.site_question
+      ? {
+        site_question: args.structuredData
+          .site_question as SiteQuestionChoices,
+      }
+      : {}),
   });
 }
 
@@ -1223,9 +1243,21 @@ async function handle(req: Request): Promise<Response> {
   const ariUiCapabilities = parseAriUiCapabilities(body.ari_ui);
   if (
     body.workflow_context !== undefined &&
-    body.workflow_context !== "website_setup"
+    body.workflow_context !== "website_setup" &&
+    body.workflow_context !== SITE_WORKSPACE_CONTEXT
   ) {
     return errorResponse(400, "BAD_REQUEST", "workflow_context is invalid");
+  }
+  // #4453 Website workspace: the selected section is app context, checked
+  // field by field; it is only accepted on a workspace turn.
+  const siteFocus = body.site_focus === undefined || body.site_focus === null
+    ? null
+    : parseSiteFocus(body.site_focus);
+  if (
+    body.site_focus !== undefined && body.site_focus !== null &&
+    (!siteFocus || body.workflow_context !== SITE_WORKSPACE_CONTEXT)
+  ) {
+    return errorResponse(400, "BAD_REQUEST", "site_focus is invalid");
   }
 
   const firstRun = body.first_run === undefined
@@ -2089,6 +2121,12 @@ async function handle(req: Request): Promise<Response> {
       serviceClient,
       activeBrand?.id ?? null,
     );
+    // #4453 Website workspace: the turn came from the workspace's Ari panel.
+    // Its tools exist only on the switch's on path; with the switch off (or
+    // no brand) the turn runs as an ordinary one.
+    const websiteWorkspace = body.workflow_context === SITE_WORKSPACE_CONTEXT &&
+      understandFirst && activeBrand !== null && !choiceSubmission &&
+      !flowAnswer;
     // #3355 rework 9 (fix 6, I-ARI-CHAT-TITLE-SPECIFIC): a new chat is
     // titled from the host's first message, never a generic or duplicate
     // phrase. Off: the #3429 taxonomy title stays.
@@ -2360,7 +2398,8 @@ async function handle(req: Request): Promise<Response> {
         flowState: decision.state,
       });
     };
-    if (activeBrand && !choiceSubmission) {
+    // #4453: a workspace turn edits the draft; it never enters a guided setup.
+    if (activeBrand && !choiceSubmission && !websiteWorkspace) {
       const otherLaneActive = body.workflow_context === "website_setup" ||
         (taskState.active_task !== null &&
           !["completed", "cancelled"].includes(taskState.status));
@@ -2504,7 +2543,7 @@ async function handle(req: Request): Promise<Response> {
     // does: the setup starts exactly as the keyword lane used to start it,
     // and its first card (or its one protected proposal) is the reply.
     const startFlowAllowed = engineOn && understandFirst &&
-      activeBrand !== null && !flowSide &&
+      activeBrand !== null && !flowSide && !websiteWorkspace &&
       !escalation.escalate && !intentSafetyReply &&
       (turnRoute.offerStartFlow || flowParked !== null);
     const startModelFlow = async (
@@ -2961,6 +3000,7 @@ async function handle(req: Request): Promise<Response> {
       {
         injectStrictReminder: injection.flagged,
         business,
+        websiteWorkspace,
         // #4304: the hint is advisory; the brand list above stays the truth (a
         // "no_brand" hint on an account that now has brands is ignored).
         firstRun: firstRun &&
@@ -3135,6 +3175,16 @@ async function handle(req: Request): Promise<Response> {
       parts: [
         ...currentAttachmentParts,
         ...(turnContextPart ? [turnContextPart] : []),
+        // #4453: where the owner is in the Website workspace (app context).
+        ...(websiteWorkspace && activeBrand
+          ? [{
+            text: siteWorkspaceContextText({
+              brandId: activeBrand.id,
+              brandName: activeBrand.name,
+              focus: siteFocus,
+            }),
+          }]
+          : []),
         { text: `<user_data>\n${semanticMessage}\n</user_data>` },
       ],
     });
@@ -3165,7 +3215,9 @@ async function handle(req: Request): Promise<Response> {
         questionId: crypto.randomUUID(),
       }
       : null;
-    const activeEventPlan = taskState.active_task?.intent === "create_event" &&
+    // #4453: a workspace turn is never an answer to an event plan.
+    const activeEventPlan = !websiteWorkspace &&
+      taskState.active_task?.intent === "create_event" &&
       !["completed", "cancelled"].includes(taskState.status);
     // Website setup is a separate durable workflow. It must not be interpreted
     // as an answer to an older event-planning question in the same thread.
@@ -3174,6 +3226,7 @@ async function handle(req: Request): Promise<Response> {
     // Website request is the model's start_flow.
     // #3355 ship-prep: with the switch off, origin/main's lane (no route).
     const websiteSetupIntent = activeBrand && !websiteEngine &&
+        !websiteWorkspace &&
         (!understandFirst || turnRoute.websiteLane)
       ? detectWebsiteSetupIntent(semanticMessage)
       : null;
@@ -3331,7 +3384,7 @@ async function handle(req: Request): Promise<Response> {
       ? turnRoute.planner
       : isCreateEventPlanningRequest(semanticMessage);
     if (
-      plannerContext && !websiteSetupBoundary &&
+      plannerContext && !websiteSetupBoundary && !websiteWorkspace &&
       !readInterruption && !questionInterruption &&
       // #3355 Wave E (D3a): a NEW event request reaches the slot planner only
       // when the intent route sends it (engine off); with the engine on the
@@ -3644,7 +3697,7 @@ async function handle(req: Request): Promise<Response> {
     const { data: agentLoopFlag, error: agentLoopFlagError } = await userClient
       .rpc("ari_agent_loop_enabled");
     if (
-      websiteSetupBoundary ||
+      websiteSetupBoundary || websiteWorkspace ||
       (!agentLoopFlagError && agentLoopFlag === true)
     ) {
       if (
@@ -3715,21 +3768,22 @@ ${boundedAgentContext}
           }`
           : "");
 
-      const onboardingResumeRequest = needsAriOnboardingResumeRead(
-        semanticMessage,
-      );
+      // #4453: none of the keyword lanes below takes a workspace turn; it
+      // reads the draft and goes to the model.
+      const onboardingResumeRequest = !websiteWorkspace &&
+        needsAriOnboardingResumeRead(semanticMessage);
       // #2830 — a Website setup turn never belongs to onboarding: its
       // "Continue Website setup" answers would otherwise re-open the brand
       // onboarding checklist.
       const onboardingSetupRequest = !!activeBrand &&
-        !websiteSetupBoundary &&
+        !websiteSetupBoundary && !websiteWorkspace &&
         !onboardingResumeRequest &&
         (needsAriOnboardingSetupRead(semanticMessage) ||
           onboardingPlan?.status === "active" &&
             isAriOnboardingPlanProgressMessage(semanticMessage));
-      const campaignWorkflowRequest = !!activeBrand &&
+      const campaignWorkflowRequest = !!activeBrand && !websiteWorkspace &&
         needsAriCampaignWorkflow(semanticMessage);
-      const eventLaunchReadinessRequest = !!activeBrand &&
+      const eventLaunchReadinessRequest = !!activeBrand && !websiteWorkspace &&
         isAriEventLaunchReadinessRequest(semanticMessage);
       const selectedToolsets = new Set<AriToolsetKey>(
         onboardingSetupRequest
@@ -3791,6 +3845,14 @@ ${boundedAgentContext}
       // only when the model calls start_flow; it is offered while no setup is
       // live here (or the one here was just parked) and no safety reply,
       // escalation or Website screen owns the turn.
+      // #4453: a workspace turn sees exactly the workspace tools (the
+      // snapshot read, the one plan, the team request): nothing that
+      // publishes, and none of the one-card-per-change website tools.
+      if (websiteWorkspace) {
+        selectedTools = turnTools.filter((tool) =>
+          SITE_WORKSPACE_TURN_TOOLS.includes(tool.name)
+        );
+      }
       const startFlowOffered = startFlowAllowed && !websiteSetupBoundary;
       const startFlowDeclarations = startFlowOffered
         ? [ARI_START_FLOW_DECLARATION]
@@ -3805,7 +3867,7 @@ ${boundedAgentContext}
         if (schemaResponse) return schemaResponse;
         throw err;
       }
-      const launchPlanRequest = activeBrand !== null &&
+      const launchPlanRequest = activeBrand !== null && !websiteWorkspace &&
         (isBrandLaunchPlanRequest(semanticMessage) ||
           eventLaunchReadinessRequest);
       const launchInitialCalls = launchPlanRequest && activeBrand
@@ -3821,14 +3883,12 @@ ${boundedAgentContext}
           args: { brand_id: activeBrand.id, upcoming_only: false, limit: 50 },
         });
       }
-      const standaloneResearchRequest = isStandalonePublicResearchRequest(
-        semanticMessage,
-      );
+      const standaloneResearchRequest = !websiteWorkspace &&
+        isStandalonePublicResearchRequest(semanticMessage);
       const completeFromSearchIndex = standaloneResearchRequest &&
         canCompleteResearchFromSearchIndex(semanticMessage);
-      const capabilityDiscoveryRequest = needsAriCapabilityDiscovery(
-        semanticMessage,
-      );
+      const capabilityDiscoveryRequest = !websiteWorkspace &&
+        needsAriCapabilityDiscovery(semanticMessage);
       const recentEventTitle = findAriRecentEventTitle(
         history.filter((row) => row.role === "user").flatMap((row) => {
           const content = row.content as Record<string, unknown> | null;
@@ -3837,7 +3897,8 @@ ${boundedAgentContext}
       );
       // #3355 Wave E (D3a): keyword read lanes pre-read only when the intent
       // route agrees the turn is a tool use or a question.
-      const deterministicRead = !turnRoute.allowDeterministicReads
+      const deterministicRead =
+        !turnRoute.allowDeterministicReads || websiteWorkspace
         ? null
         : ariDeterministicReadPlan(
           semanticMessage,
@@ -3864,7 +3925,15 @@ ${boundedAgentContext}
       // #3355 P8 (D-16): initialCalls is the loop's read-only pre-pass; a
       // write placed here can never run. Trips are created by the engine's
       // create_trip flow (or proposed by the model when the engine is off).
-      const initialCalls = websiteInitialCalls.length > 0
+      // #4453: the workspace's one required pre-read is the draft snapshot
+      // (the executor finds the brand's site), so the model plans from real
+      // ids and its one write fits the loop's budget.
+      const initialCalls = websiteWorkspace && activeBrand
+        ? [{
+          name: GET_SITE_WORKSPACE_TOOL,
+          args: { brand_id: activeBrand.id },
+        }]
+        : websiteInitialCalls.length > 0
         ? websiteInitialCalls
         : standaloneResearchRequest
         ? [{ name: "search_public_web", args: { query: semanticMessage } }]
@@ -3939,6 +4008,9 @@ ${boundedAgentContext}
         : ariGuideInitialCalls(semanticMessage);
       let lastProgressEvent: string | null = null;
       let sideModelFailed = false;
+      // #4453: this turn's draft snapshot, kept so the plan's ids are
+      // checked against what was actually read.
+      let workspaceSnapshot: unknown = null;
       const loopRun = runAgentLoop({
         // #3355 local verification uses a device-resident model. Preserve the
         // production 55s budget, but allow the explicitly enabled loopback
@@ -4052,6 +4124,10 @@ ${boundedAgentContext}
           ? standaloneResearchRequest && !completeFromSearchIndex
             ? (_text, observations) => requiredPublicPageReads(observations)
             : undefined
+          // #4453: in the workspace a "can't" is the team-request card,
+          // not a guide search.
+          : websiteWorkspace
+          ? undefined
           : (text, observations) => [
             ...(standaloneResearchRequest && !completeFromSearchIndex
               ? requiredPublicPageReads(observations)
@@ -4144,6 +4220,18 @@ ${boundedAgentContext}
           return "write";
         },
         validateProposal: (call) => {
+          // #4453 Website workspace: the plan is checked while the model can
+          // still repair it (shape, plain labels, and the selected section's
+          // scope), and no other website write is taken from this surface.
+          const workspaceIssue = siteWorkspaceProposalIssue({
+            toolName: call.name,
+            args: call.args,
+            workspace: websiteWorkspace,
+            focus: websiteWorkspace ? siteFocus : null,
+            brandId: activeBrand?.id ?? null,
+            snapshot: workspaceSnapshot,
+          });
+          if (workspaceIssue) return workspaceIssue;
           const setupSkipped = ariSetupSkippedIssue({
             startFlowHint: turnRoute.startFlowHint,
             startFlowAllowed: startFlowAllowed && !modelFlowDelegated,
@@ -4287,6 +4375,9 @@ ${boundedAgentContext}
               userId,
               { operationId: null },
             );
+            if (call.name === GET_SITE_WORKSPACE_TOOL) {
+              workspaceSnapshot = result;
+            }
             if (call.name === "request_tools") {
               const requested = Array.isArray(call.args.toolsets)
                 ? call.args.toolsets
@@ -4693,6 +4784,14 @@ ${boundedAgentContext}
           "Ari stopped. Your message is still here.",
         );
       }
+      // #4453 Website workspace: a question that ends with a "Choices:" line
+      // becomes the question plus tappable answers.
+      let siteQuestion: SiteQuestionChoices | null = null;
+      if (websiteWorkspace && loopResult.kind === "text") {
+        const split = splitSiteQuestionChoices(loopResult.text);
+        loopResult.text = split.text;
+        siteQuestion = split.question;
+      }
       let launchPlan = launchPlanRequest && activeBrand
         ? buildBrandLaunchPlan({
           brandName: activeBrand.name,
@@ -4805,6 +4904,7 @@ ${boundedAgentContext}
       let escalationNote: string | null = null;
       if (
         escalation.escalate && activeBrand && !websiteSetupBoundary &&
+        !websiteWorkspace &&
         !websiteSetupPresentation && !launchPlan && !resumePrompt &&
         loopResult.kind === "text"
       ) {
@@ -4872,6 +4972,7 @@ ${boundedAgentContext}
           ...(guideCitations.length > 0
             ? { guide_citations: guideCitations }
             : {}),
+          ...(siteQuestion ? { site_question: siteQuestion } : {}),
         },
         resumed: readInterruption || questionInterruption,
       });

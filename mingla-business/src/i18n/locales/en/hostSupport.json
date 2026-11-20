@@ -28,7 +28,8 @@
     "events": "Events",
     "venue": "Venue",
     "account": "Account",
-    "other": "Something else"
+    "other": "Something else",
+    "website_change": "Website change"
   },
   "form": {
     "title": "New request",

@@ -45,13 +45,13 @@ type TextInputFocusHandler = NonNullable<TextInputProps["onFocus"]>;
 type TextInputFocusEvent = Parameters<TextInputFocusHandler>[0];
 
 import {
-  color,
   durations,
   edge,
   radius as radiusTokens,
   type,
   space,
 } from "../../constants/designSystem";
+import { color, isSurfaceThemed, themedStyles } from "../../theme/surfaceTokens";
 
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
@@ -439,8 +439,11 @@ export interface InputProps
 const HEIGHT = 48;
 const PADDING_X = 14;
 const ICON_SIZE = 18;
-const IDLE_BORDER = color.lineStrong;
-const BACKGROUND = color.fill.input;
+// #4518 — read at render, never frozen at import: inside a host-themed
+// checkout the field outline, fill, text and focus ring are the host's.
+const idleBorder = (): string => color.lineStrong;
+const focusBorder = (): string =>
+  isSurfaceThemed() ? color.focus : edge.ringInputFocus.borderColor;
 const COUNTRY_CHIP_GAP = 8;
 
 // ---------------------------------------------------------------------------
@@ -468,7 +471,7 @@ const PickerSearchInput: React.FC<PickerSearchInputProps> = ({
       style={[
         styles.container,
         {
-          borderColor: focused ? edge.ringInputFocus.borderColor : IDLE_BORDER,
+          borderColor: focused ? focusBorder() : idleBorder(),
           borderWidth: focused ? 1.5 : 1,
         },
       ]}
@@ -642,8 +645,8 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
             borderColor: hasError
               ? edge.ringError.borderColor
               : focused
-                ? edge.ringInputFocus.borderColor
-                : IDLE_BORDER,
+                ? focusBorder()
+                : idleBorder(),
             borderWidth: focused ? 1.5 : 1,
             opacity: disabled ? 0.5 : 1,
           },
@@ -845,13 +848,13 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
 // Styles
 // ---------------------------------------------------------------------------
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
     height: HEIGHT,
     borderRadius: radiusTokens.sm,
-    backgroundColor: BACKGROUND,
+    backgroundColor: color.fill.input,
     transitionProperty: "border-color",
     transitionDuration: `${durations.fast}ms`,
   } as ViewStyle,
@@ -964,6 +967,6 @@ const styles = StyleSheet.create({
     color: color.text3,
     marginLeft: space[2],
   },
-});
+}));
 
 export default Input;

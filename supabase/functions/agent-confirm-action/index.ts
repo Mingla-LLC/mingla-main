@@ -87,6 +87,12 @@ import {
   websiteSetupNextAfterConfirm,
 } from "./confirmNext.ts";
 import type { FlowStateView } from "../_shared/ariFlows/edge.ts";
+import {
+  SITE_CHANGE_SET_TOOL,
+  type SiteWorkspaceExecutionContext,
+  siteWorkspaceFollowupText,
+} from "../_shared/agentSiteWorkspaceTools.ts";
+import { siteStepActivityWriter } from "./siteStepActivity.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -98,8 +104,12 @@ interface RequestBody {
    * confirm response carries the next step instead.
    */
   continuation?: "server";
-  /** #3355 P3: confirmed from Website setup — return the next gap. */
-  workflow_context?: "website_setup";
+  /**
+   * #3355 P3: confirmed from Website setup — return the next gap.
+   * #4453: "website_workspace" is the workspace's own confirm (no setup
+   * follow-on); the plan's result is the whole answer.
+   */
+  workflow_context?: "website_setup" | "website_workspace";
   /** #4389 AR-13: the brand the Host has selected when it confirms. */
   brand_id?: string;
 }
@@ -1253,12 +1263,30 @@ async function handleConfirmAction(args: {
   // Execute
   let result: unknown;
   try {
-    result = await tool.executor(finalArgs, userClient, userId, {
+    const executionContext: SiteWorkspaceExecutionContext = {
       // Immutable server context: never copied into editable_args/tool_args.
       // #1972's receipt-backed dispatcher binds this UUID to the confirmed args.
       operationId: pending.id,
       retry: pending.status === "executing",
-    });
+      // #4453 Website workspace: each step of a confirmed plan is one
+      // activity row on the proposing turn (the Host shows it live).
+      ...(tool.name === SITE_CHANGE_SET_TOOL
+        ? {
+          onSiteStep: siteStepActivityWriter({
+            client: pendingStateClient,
+            userId,
+            conversationId: pending.conversation_id,
+            pendingActionId: pending.id,
+          }),
+        }
+        : {}),
+    };
+    result = await tool.executor(
+      finalArgs,
+      userClient,
+      userId,
+      executionContext,
+    );
   } catch (rawErr: any) {
     // #3355 P1 (D-9): a deterministic publish/money refusal from the database
     // rolled the whole RPC back. Type it so it is terminal and worded, never
@@ -1459,9 +1487,13 @@ async function handleConfirmAction(args: {
   const websiteSetupFollowup = liveRun
     ? null
     : websiteSetupApprovedWriteFollowup(tool.name);
+  // #4453 Website workspace: what happened to the plan is said by the
+  // server from the result (applied, put back, or a request sent), never by
+  // a model continuation.
+  const siteWorkspaceFollowup = siteWorkspaceFollowupText(tool.name, result);
   if (
     pending.conversation_id && !deterministicEventTaskFinished &&
-    !websiteSetupFollowup && !liveRun
+    !websiteSetupFollowup && !siteWorkspaceFollowup && !liveRun
   ) {
     const { data: loopEnabled, error: loopFlagError } = await userClient.rpc(
       "ari_agent_loop_enabled",
@@ -1540,21 +1572,30 @@ async function handleConfirmAction(args: {
     ? buildFollowupText(tool.name, result)
     : websiteSetupFollowup
     ? websiteSetupFollowup
+    : siteWorkspaceFollowup
+    ? siteWorkspaceFollowup
     : continuationHasScopeFailure
     ? buildFollowupText(tool.name, result)
     // #3355 rework 3 (R3-9): a continuation whose words could not be shown
     // safely, or were all claims the records do not back, says the server's
     // own receipt line.
     : continuation?.text || buildFollowupText(tool.name, result);
+  // #4453: a plan that was put back saved nothing, so it gets no "Saved in
+  // Mingla" receipt; the follow-up line says which step stopped it.
+  const siteChangeSetNotApplied = tool.name === SITE_CHANGE_SET_TOOL &&
+    (result as { status?: unknown } | null)?.status !== "applied";
   // #3355 P1 (D-6): the owner copy gate is the last word on follow-up text.
   const followupText = rawFollowupText
     ? assertOwnerCopy(sanitizeAriUserFacingDiagnostics(rawFollowupText), {
-      fallback: "That's saved.",
+      // Never "saved" for a plan that was not applied.
+      fallback: siteChangeSetNotApplied
+        ? "That change could not be applied to your draft."
+        : "That's saved.",
       surface: "confirm_followup",
       mode: "prose",
     })
     : undefined;
-  const rendition = buildToolReceiptRendition({
+  const rendition = siteChangeSetNotApplied ? null : buildToolReceiptRendition({
     toolName: tool.name,
     result,
     toolArgs: finalArgs,

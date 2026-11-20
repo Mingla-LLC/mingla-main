@@ -33,6 +33,7 @@ import {
   normalizeCurrency,
 } from "../../utils/currency";
 import { Button } from "../ui/Button";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 
 const loadDiscountService = () => import("../../services/discountService");
 const DISCOUNT_QUERY_ROOT = "brand-discounts";
@@ -150,8 +151,24 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
   const [scheduleFrom, setScheduleFrom] = useState("11:00");
   const [scheduleTo, setScheduleTo] = useState("14:00");
   const [saved, setSaved] = useState(false);
+  // #4453 — the host changed a sale setting here and has not saved it: that
+  // holds a brand switch. Cleared when the saved settings are read back and
+  // when a save lands. (The "discounts allowed" switch saves at once.)
+  const [touched, setTouched] = useState(false);
+  const touch =
+    <T,>(set: (value: T) => void) =>
+    (value: T): void => {
+      setTouched(true);
+      set(value);
+    };
+  useUnsavedChangesGuard({
+    dirty: touched,
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
 
   useEffect(() => {
+    setTouched(false);
     if (priceRow !== undefined) setAllowed(priceRow.discountsAllowed);
     const currentSale =
       priceRow?.currentSaleCents ?? existingSale?.valueMinor ?? null;
@@ -255,6 +272,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
             : { action: saleOn ? "edit" : "end" },
         );
         setSaved(true);
+        setTouched(false);
       },
     },
     client,
@@ -287,7 +305,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
         </View>
         <Switch
           value={saleOn}
-          onValueChange={setSaleOn}
+          onValueChange={touch(setSaleOn)}
           testID={`${testID}-sale`}
         />
       </View>
@@ -296,7 +314,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
           <Text style={styles.fieldLabel}>Sale price ({code})</Text>
           <TextInput
             value={salePrice}
-            onChangeText={setSalePrice}
+            onChangeText={touch(setSalePrice)}
             keyboardType="decimal-pad"
             placeholder="0.00"
             placeholderTextColor={color.text3}
@@ -319,7 +337,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
               ).map(([value, label]) => (
                 <Pressable
                   key={value}
-                  onPress={() => setLimitMode(value)}
+                  onPress={() => touch(setLimitMode)(value)}
                   accessibilityRole="radio"
                   accessibilityLabel={label}
                   accessibilityState={{ checked: limitMode === value }}
@@ -343,7 +361,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
           {limitMode === "date" || !countLimit ? (
             <TextInput
               value={endsAt}
-              onChangeText={setEndsAt}
+              onChangeText={touch(setEndsAt)}
               placeholder="End date (YYYY-MM-DDTHH:mm), optional"
               placeholderTextColor={color.text3}
               style={styles.input}
@@ -352,7 +370,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
           ) : (
             <TextInput
               value={endsAfterCount}
-              onChangeText={setEndsAfterCount}
+              onChangeText={touch(setEndsAfterCount)}
               keyboardType="number-pad"
               placeholder="Number sold"
               placeholderTextColor={color.text3}
@@ -366,7 +384,7 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
                 <Text style={styles.label}>Repeat weekly schedule</Text>
                 <Switch
                   value={scheduleOn}
-                  onValueChange={setScheduleOn}
+                  onValueChange={touch(setScheduleOn)}
                   testID={`${testID}-schedule`}
                 />
               </View>
@@ -378,13 +396,14 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
                       return (
                         <Pressable
                           key={`${day}-${index}`}
-                          onPress={() =>
+                          onPress={() => {
+                            setTouched(true);
                             setScheduleDays((current) =>
                               selected
                                 ? current.filter((value) => value !== day)
                                 : [...current, day],
-                            )
-                          }
+                            );
+                          }}
                           accessibilityRole="checkbox"
                           accessibilityLabel={`${label} weekly schedule`}
                           accessibilityState={{ checked: selected }}
@@ -402,14 +421,14 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
                   <View style={styles.times}>
                     <TextInput
                       value={scheduleFrom}
-                      onChangeText={setScheduleFrom}
+                      onChangeText={touch(setScheduleFrom)}
                       placeholder="From 11:00"
                       style={styles.timeInput}
                     />
                     <Text style={styles.help}>to</Text>
                     <TextInput
                       value={scheduleTo}
-                      onChangeText={setScheduleTo}
+                      onChangeText={touch(setScheduleTo)}
                       placeholder="To 14:00"
                       style={styles.timeInput}
                     />

@@ -76,6 +76,12 @@ INSERT INTO issue_3055_input (name, body) VALUES
   -- (introduced_by issue_4453) that are not ari_cert requirements in the
   -- 164-row historical census; they are projected out by id below. Their runtime and authorization contracts are covered by their
   -- owning issue suites.
+  -- [TEST-MOD-APPROVED #4453] The Website workspace adds three more
+  -- ari.sites.* capabilities (read_workspace, propose_change_set,
+  -- team_request; introduced_by issue_4453) on the same footing: listed in the
+  -- ledger, not ari_cert requirements in the 164-row historical census, and
+  -- projected out by id below. Without this the ledger held 167 ids against
+  -- 164 requirement rows.
   ('ledger', jsonb_set(
     :'issue_3055_ledger'::jsonb,
     '{capabilities}',
@@ -99,7 +105,10 @@ INSERT INTO issue_3055_input (name, body) VALUES
          'ari.sites.propose_design_pass',
          'ari.sites.propose_page',
          'ari.sites.propose_chrome',
-         'ari.sites.answer_page_question'
+         'ari.sites.answer_page_question',
+         'ari.sites.read_workspace',
+         'ari.sites.propose_change_set',
+         'ari.sites.team_request'
        ))
   )::text);
 

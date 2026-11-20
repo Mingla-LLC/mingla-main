@@ -234,7 +234,13 @@ export function DesignSection(): React.ReactElement {
   );
 }
 
-function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; onChoose: (key: string) => void; disabled: boolean }): React.ReactElement {
+export function DesignCard({ design, onChoose, disabled, hint }: {
+  design: DesignDefinition;
+  onChoose: (key: string) => void;
+  disabled: boolean;
+  /** #4453 workspace — autosave has no "before saving": the workspace words the hint itself. */
+  hint?: string;
+}): React.ReactElement {
   const ctx = useWebsite();
   // Each tile's headline is drawn in that design's own heading font (web).
   const drawable = useFontSpecimens(ctx.controller.siteId, DESIGN_KEYS.map((key) => DESIGNS[key].fonts.display.family));
@@ -246,7 +252,7 @@ function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; 
   return (
     <Card testID="design-designs">
       <CardTitle>Design</CardTitle>
-      <Hint style={styles.cardHint}>Switching keeps all your words, photos and pages. Colours and fonts reset to the new design&apos;s, and you can undo before saving.</Hint>
+      <Hint style={styles.cardHint}>{hint ?? "Switching keeps all your words, photos and pages. Colours and fonts reset to the new design\u2019s, and you can undo before saving."}</Hint>
       <View style={styles.tiles} role="radiogroup" accessibilityLabel="Design">
         {keys.map((key) => {
           const option = DESIGNS[key];
@@ -303,7 +309,7 @@ function DesignCard({ design, onChoose, disabled }: { design: DesignDefinition; 
   );
 }
 
-function CoverCard({ disabled }: { disabled: boolean }): React.ReactElement {
+export function CoverCard({ disabled }: { disabled: boolean }): React.ReactElement {
   const ctx = useWebsite();
   const cover = useSiteCover(ctx.controller.siteId);
   const setCover = useSetSiteCover(ctx.controller.siteId);
@@ -360,12 +366,14 @@ function CoverCard({ disabled }: { disabled: boolean }): React.ReactElement {
   );
 }
 
-function ColoursCard({ design, resolved, tokens, disabled, onTokens }: {
+export function ColoursCard({ design, resolved, tokens, disabled, onTokens, guard }: {
   design: DesignDefinition;
   resolved: ReturnType<typeof resolveTokens>;
   tokens: OwnerTokenOverrides;
   disabled: boolean;
   onTokens: (next: OwnerTokenOverrides) => void;
+  /** #4453 workspace — hard-to-read text blocks Publish there, so the only way on is the fix. */
+  guard?: boolean;
 }): React.ReactElement {
   const { toast } = useWebsite();
   const drawn = designSwatches(design);
@@ -412,16 +420,16 @@ function ColoursCard({ design, resolved, tokens, disabled, onTokens }: {
                       {suggestion ? (
                         <>
                           <View style={[styles.warnSwatch, { backgroundColor: suggestion }]} />
-                          <WButton label={`Use ${suggestion}`} size="sm" onPress={() => {
+                          <WButton label={guard ? "Fix it" : `Use ${suggestion}`} accessibilityLabel={guard ? `Fix it: use ${suggestion}` : undefined} size="sm" onPress={() => {
                             const next = setSwatch(tokens, swatch, suggestion);
                             if (next) onTokens(next);
                           }} disabled={disabled} testID={`readability-use-${item.role}`} />
                         </>
                       ) : null}
-                      <WButton label="Keep mine" variant="ghost" size="sm" onPress={() => {
+                      {guard ? null : <WButton label="Keep mine" variant="ghost" size="sm" onPress={() => {
                         setKept((previous) => new Set([...previous, warning.pair]));
                         toast("Kept as you chose. The warning stays in your publish checks; it never blocks publishing.");
-                      }} testID={`readability-keep-${item.role}`} />
+                      }} testID={`readability-keep-${item.role}`} />}
                     </View>
                   ) : null}
                 </View>
@@ -513,7 +521,7 @@ function SwatchRow({ swatch, label, where, hex, disabled, onSet }: {
   );
 }
 
-function FontsCard({ design, fonts, disabled, onFonts }: {
+export function FontsCard({ design, fonts, disabled, onFonts }: {
   design: DesignDefinition;
   fonts: OwnerFontOverrides;
   disabled: boolean;
@@ -626,9 +634,9 @@ function FontPicker({ slot, current, onPick }: { slot: OwnerFontSlot; current: s
   );
 }
 
-function ShapeRow({ label, field, options, tokens, onTokens, disabled }: {
+export function ShapeRow({ label, field, options, tokens, onTokens, disabled }: {
   label: string;
-  field: "button_shape" | "radius" | "motion";
+  field: "button_shape" | "radius" | "motion" | "heading_case";
   options: readonly [string, string][];
   tokens: OwnerTokenOverrides;
   onTokens: (next: OwnerTokenOverrides) => void;

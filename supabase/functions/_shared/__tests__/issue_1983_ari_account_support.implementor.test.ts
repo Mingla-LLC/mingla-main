@@ -393,7 +393,7 @@ Deno.test("#1983 implementor: update_ari_prefs patch keys", async () => {
 });
 
 Deno.test("#1983 implementor: PROMPT_VERSION v22 advertises prefs + business deletion", () => {
-  assertEquals(PROMPT_VERSION, "v39"); // #4453 PR 2 booking lock website rules on top of #4238 W5 v38
+  assertEquals(PROMPT_VERSION, "v40"); // #4453 Website workspace rules and tools on top of v39
   const prompt = buildSystemPrompt(null, [], { injectStrictReminder: false });
   assert(prompt.includes("push or in_app") || prompt.includes("push|in_app"));
   assert(prompt.includes("business.*"));

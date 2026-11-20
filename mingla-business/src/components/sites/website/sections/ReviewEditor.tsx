@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useWebsite } from "../WebsiteContext";
 import { Card, CardTitle, Field, Hint, SectionHead, Skeleton, Toggle, WButton, ui } from "../ui";
@@ -13,7 +13,7 @@ import {
   type ReviewDetail,
 } from "../../../../sites/contentApi";
 import { REVIEW_CONFIRM_ADMIN_ONLY, REVIEW_CONFIRM_HELP, REVIEW_CONFIRM_TEXT } from "../../../../sites/websiteCopy";
-import { ConflictBanner, DeleteEntry, EditorCrumb, OfferingPicker, saveErrorMessage, useEditorChrome } from "./EditorKit";
+import { ConflictBanner, DeleteEntry, EditorCrumb, OfferingPicker, editorFormChanged, saveErrorMessage, useEditorChrome } from "./EditorKit";
 import { useQueryClient } from "@tanstack/react-query";
 import { brandSiteKeys } from "../../../../sites/brandSiteKeys";
 
@@ -56,7 +56,9 @@ export function ReviewEditor({ entryId }: { entryId: string | "new" }): React.Re
   const entry = useContentEntry<ReviewDetail>(controller.siteId, "testimonials", isNew ? null : entryId);
   const save = useSaveContentEntry(controller.siteId, "testimonials");
   const remove = useContentRowActions(controller.siteId, "testimonials").remove;
-  const [form, setForm] = useState<Form | null>(isNew ? { quote: "", reviewer: "", date: today(), trip: null, source: "", confirmed: false, enabled: false } : null);
+  // #4453 — a new review's empty form, kept: what "changed" is measured against.
+  const [blank] = useState<Form>(() => ({ quote: "", reviewer: "", date: today(), trip: null, source: "", confirmed: false, enabled: false }));
+  const [form, setForm] = useState<Form | null>(isNew ? blank : null);
   const [conflict, setConflict] = useState<BrandSiteContentConflict | null>(null);
   const [errors, setErrors] = useState<{ quote?: string; reviewer?: string; source?: string }>({});
   const [busy, setBusy] = useState(false);
@@ -111,7 +113,9 @@ export function ReviewEditor({ entryId }: { entryId: string | "new" }): React.Re
       setBusy(false);
     }
   };
-  useEditorChrome({ isNew, saving: busy, disabled: readOnly || form === null, onSave: () => { void doSave(); }, onCancel: () => ctx.go({ kind: "section", section: "reviews" }) });
+  // #4453 — the saved copy: the review as last read, or the empty form.
+  const opened = useMemo<Form | null>(() => (isNew ? blank : entry.data ? formOf(entry.data) : null), [blank, entry.data, isNew]);
+  useEditorChrome({ isNew, saving: busy, disabled: readOnly || form === null, changed: editorFormChanged(form, opened), onSave: () => { void doSave(); }, onCancel: () => ctx.go({ kind: "section", section: "reviews" }) });
 
   if (!isNew && entry.isLoading) return <View role="status" accessibilityLabel="Loading this review"><Skeleton height={32} width="40%" style={{ marginBottom: 16 }} /><Skeleton height={300} /></View>;
   if (!isNew && (entry.isError || !form)) {

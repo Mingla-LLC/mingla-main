@@ -373,6 +373,8 @@ const typeToPreference: Record<string, string> = {
   "explorer.support_reply": "messages",
   "explorer.support_status_changed": "messages",
   "explorer.support_product_update": "messages",
+  // #4453 — "your website change is ready" (v2 outbox category).
+  "business.website_request_ready": "messages",
   "re_engagement": "marketing",
   "re_engagement_3d": "marketing",
   "re_engagement_7d": "marketing",

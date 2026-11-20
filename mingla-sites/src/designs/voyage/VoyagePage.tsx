@@ -1,8 +1,8 @@
-import { Fragment } from "react";
 import { showsDraftHints } from "../../lib/previewPublication";
 import type { ArtifactV2 } from "../../contracts/generated/artifactV2.ts";
 import { isSafeHref } from "../../contracts/generated/safety.ts";
 import { pickVariant } from "../../components/v2/Blocks";
+import { PreviewSection } from "../../components/v2/PreviewSection";
 import { SiteRuntimeClient } from "../../components/SiteRuntimeClient";
 import { headerCta, headerWordmark, homePage, siteNavigation, type ArtifactPage } from "../../lib/pageRouting";
 import type { LiveOfferings } from "../../lib/offeringCards";
@@ -69,10 +69,13 @@ export function VoyagePage({ artifact, page, live, forms, entry, detail, saveDat
     const ctx: VoyageContext = { artifact, page: current, live, forms, analytics, saveData, preview: showsDraftHints(artifact.publication_id) };
     // #4453 milestone 5 — the hand-off sheet and the sticky phone bar (shared library).
     booking = <PageBookingChrome ctx={ctx as SharedContext} />;
+    const marked = current.previewSectionIds !== undefined;
     content = current.blocks.map((raw, index) => {
       const block = raw as unknown as VoyageBlock;
       const Variant = pickVariant(VOYAGE_BLOCK_VARIANTS, raw);
-      return Variant ? <Fragment key={`${block.type}-${index}`}><Variant block={block} index={index} ctx={ctx} /></Fragment> : null;
+      // #4453 website workspace — in the owner's private preview every block is findable (no visual change: PreviewSection).
+      if (marked) return <PreviewSection key={`${block.type}-${index}`} marked>{Variant ? <Variant block={block} index={index} ctx={ctx} /> : null}</PreviewSection>;
+      return Variant ? <PreviewSection key={`${block.type}-${index}`} marked={false}><Variant block={block} index={index} ctx={ctx} /></PreviewSection> : null;
     });
   }
   /*

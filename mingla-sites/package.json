@@ -11,6 +11,7 @@
     "test": "vitest run",
     "goldens:render": "GOLDENS_RENDER_DIR=/tmp/mingla-sites-goldens-html vitest run e2e/goldens/render.test.tsx",
     "goldens": "node e2e/goldens/goldens.mjs",
+    "verify:preview-bridge": "PROD_SMOKE_DIR=${PROD_SMOKE_DIR:-/tmp/mingla-sites-preview-bridge} vitest run e2e/prod-smoke/fixtures.test.ts && PROD_SMOKE_DIR=${PROD_SMOKE_DIR:-/tmp/mingla-sites-preview-bridge} node e2e/preview-bridge/verify.mjs",
     "smoke:prod": "PROD_SMOKE_DIR=${PROD_SMOKE_DIR:-/tmp/mingla-sites-prod-smoke} vitest run e2e/prod-smoke/fixtures.test.ts && PROD_SMOKE_DIR=${PROD_SMOKE_DIR:-/tmp/mingla-sites-prod-smoke} node e2e/prod-smoke/smoke.mjs",
     "smoke:prod:ys": "PROD_SMOKE_DIR=${PROD_SMOKE_DIR:-/tmp/mingla-sites-prod-smoke-ys} && mkdir -p $PROD_SMOKE_DIR && (cd ../mingla-site-cms && YS_COMPOSED_OUT=$PROD_SMOKE_DIR npx vitest run --maxWorkers=2 src/lib/ysComposed.issue4453.test.ts) && PROD_SMOKE_DIR=$PROD_SMOKE_DIR node e2e/prod-smoke/smoke.mjs --fixture ys"
   },

@@ -26,6 +26,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
+import { nextRowTap } from "./rowTap";
 import {
   Animated,
   Platform,
@@ -708,11 +709,17 @@ export function BusinessNotificationsScreen({
     () => new Set<string>(),
   );
 
-  // Tap contract (SPEC §4.C.4): mark-read on first interaction + toggle expand.
-  // Tapping NO LONGER navigates — navigation is via the expanded "Open" button.
+  // Tap contract (SPEC §4.C.4): mark-read on first interaction + expand to the
+  // full text. #4453 — a second tap on an open row goes where the notification
+  // points (the same place as its "Open" button) instead of folding it shut;
+  // a row with nowhere to go still folds.
   const handlePress = useCallback(
     (n: BusinessNotification): void => {
       void markAsRead(n.id);
+      if (nextRowTap(expandedIds.has(n.id), Boolean(n.deep_link && onOpenDeepLink)) === "open") {
+        onOpenDeepLink?.(n.deep_link as string, n);
+        return;
+      }
       setExpandedIds((prev) => {
         const next = new Set(prev);
         if (next.has(n.id)) next.delete(n.id);
@@ -720,10 +727,10 @@ export function BusinessNotificationsScreen({
         return next;
       });
     },
-    [markAsRead],
+    [expandedIds, markAsRead, onOpenDeepLink],
   );
 
-  // Secondary "Open" action (from the expanded card) — the only navigate path.
+  // "Open" on the expanded card: the labelled way to the same place.
   const handleOpen = useCallback(
     (n: BusinessNotification): void => {
       if (n.deep_link && onOpenDeepLink) {

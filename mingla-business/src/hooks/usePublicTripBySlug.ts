@@ -33,6 +33,7 @@ import { themeInputFromFields } from "@mingla/offering-rendering/themeResolver";
 import { publicTripInstallmentSchedule } from "@mingla/offering-rendering/tripInstallmentCapability";
 
 import { supabase } from "../services/supabase";
+import { resolveOfferingBookable } from "../services/brandCanCollect";
 import { tripKeys } from "./useTrips";
 import type {
   Trip,
@@ -266,17 +267,12 @@ interface PublicTripPayload {
 // resolveBookable (publicExperienceService.ts): a PAID trip is bookable iff its
 // brand can collect (anon-granted pg_brand_can_collect RPC). FREE ⇒ true. On RPC
 // error fail CLOSED for paid supply; free never reaches this RPC.
-const resolveTripBookable = async (
+// #4518 — one owner (`brandCanCollect.ts`): a failed read is retried and is
+// never shown as "the organizer is finishing payment setup".
+const resolveTripBookable = (
   brandId: string,
   isPaid: boolean,
-): Promise<boolean> => {
-  if (!isPaid) return true;
-  const { data, error } = await supabase.rpc("pg_brand_can_collect", {
-    p_brand_id: brandId,
-  });
-  if (error !== null) return false;
-  return data === true;
-};
+): Promise<boolean> => resolveOfferingBookable(brandId, isPaid);
 
 const DISABLED_KEY = ["trips", "__public_disabled__"] as const;
 
