@@ -13,6 +13,8 @@ import type { VenueDayBooking } from "../../../types/venueOffers";
 
 const serverMoney = {
   localDate: "2026-11-21",
+  currencyCode: "NGN",
+  otherCurrency: false,
   paidInMinor: 124000000,
   paidIn: { online: 82000000, atVenue: 30000000, members: 0, tableDeposits: 15000000, refunded: 3000000 },
   forTodayPaidMinor: 96000000,
@@ -23,11 +25,18 @@ describe("#4490 07-E today's money", () => {
   it("parses the server's money day exactly", () => {
     const m = parseVenueDayMoney(serverMoney);
     expect(m).toEqual({
+      currencyCode: "NGN",
+      otherCurrency: false,
       paidInMinor: 124000000,
       paidIn: serverMoney.paidIn,
       forTodayPaidMinor: 96000000,
       forToday: serverMoney.forToday,
     });
+  });
+
+  it("N128: the server's currency and the other-currency flag are read", () => {
+    expect(parseVenueDayMoney({ ...serverMoney, otherCurrency: true })?.otherCurrency).toBe(true);
+    expect(parseVenueDayMoney({ ...serverMoney, currencyCode: undefined })?.currencyCode).toBeNull();
   });
 
   it("an absent or malformed money read is null (the tiles show -- and Retry)", () => {

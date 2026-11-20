@@ -626,6 +626,10 @@ export interface VenueDayMoneyParts {
 
 /** #4490 07-E — "Paid in today" and "For today's bookings". */
 export interface VenueDayMoney {
+  /** N128: the currency every sum is in (the venue's); null on an older read. */
+  currencyCode: string | null;
+  /** N128: the day also had money in another currency, which is not added in. */
+  otherCurrency: boolean;
   /** Money received that service day, for any date. */
   paidInMinor: number;
   paidIn: VenueDayMoneyParts;

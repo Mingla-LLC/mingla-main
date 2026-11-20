@@ -150,6 +150,17 @@ BEGIN
   IF (m->'paidIn'->>'atVenue')::bigint <> 500 THEN RAISE EXCEPTION 'E-6 FAIL: a back-dated cash day moved %', m; END IF;
   RAISE NOTICE 'PASS  E-6 cash after midnight counts on the night (service day); a chosen day stays';
 
+  -- E-7 (N128) money in another currency is never added in; the day says so.
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.stay_payment_attempts (id, group_id, provider, attempt_ordinal, amount_minor, currency_code, idempotency_key, request_hash, state, succeeded_at)
+    VALUES (gen_random_uuid(), g_future, 'stripe', 2, 999, 'GBP', 'idem-att-gbp', repeat('a', 64), 'succeeded', v_noon);
+  SET LOCAL session_replication_role = origin;
+  m := public.issue_4490_venue_money_day(v_venue, v_today);
+  IF (m->'paidIn'->>'online')::bigint <> 75000 OR (m->>'otherCurrency')::boolean IS NOT TRUE OR m->>'currencyCode' <> 'NGN' THEN
+    RAISE EXCEPTION 'E-7 FAIL: a GBP payment leaked into the NGN day %', m;
+  END IF;
+  RAISE NOTICE 'PASS  E-7 another currency is not summed in (otherCurrency flagged)';
+
   -- E-3 venue_day carries the money; collected_on is gone
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
   PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);

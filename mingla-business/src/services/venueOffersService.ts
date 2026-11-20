@@ -1715,5 +1715,12 @@ export function parseVenueDayMoney(raw: unknown): VenueDayMoney | null {
   if (paidIn === null || forToday === null || !Number.isFinite(paidInMinor) || !Number.isFinite(forTodayPaidMinor)) {
     return null;
   }
-  return { paidInMinor, paidIn, forTodayPaidMinor, forToday };
+  return {
+    currencyCode: typeof r.currencyCode === "string" && r.currencyCode.length > 0 ? r.currencyCode : null,
+    otherCurrency: r.otherCurrency === true,
+    paidInMinor,
+    paidIn,
+    forTodayPaidMinor,
+    forToday,
+  };
 }

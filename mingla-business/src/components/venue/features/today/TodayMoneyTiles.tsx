@@ -36,7 +36,7 @@ export function TodayMoneyTiles({
   money: m,
   loading = false,
   isToday,
-  currency,
+  currency: currencyProp,
   dateLine,
   onRetry,
   onOpenOrders,
@@ -44,6 +44,8 @@ export function TodayMoneyTiles({
 }: TodayMoneyTilesProps): React.ReactElement {
   const [open, setOpen] = useState<TodayMoneyTile | null>(null);
   const failed = !loading && m === null;
+  // N128: every sum is in the venue's currency, as the server reports it.
+  const currency = m?.currencyCode ?? currencyProp;
 
   const tile = (kind: TodayMoneyTile): React.ReactElement => {
     const copy = todayMoneyCopy(kind, isToday);
@@ -96,6 +98,11 @@ export function TodayMoneyTiles({
                 <Text style={styles.totalLabel}>{money(total, currency)}</Text>
               </View>
             </View>
+            {m !== null && m.otherCurrency ? (
+              <Text style={styles.sub} testID="venue-today-money-other-currency">
+                Some money that day was in another currency and isn&apos;t in these numbers.
+              </Text>
+            ) : null}
             {/* [TRANSITIONAL] #4490 spec 07 §12.4: food and drink takings are in Orders; exits when spec 08 O-close ships Close the day (this line and button then point there). */}
             <Text style={styles.sub}>Food and drink sales aren&apos;t in this number. See them in Orders.</Text>
             {onOpenOrders !== undefined ? (

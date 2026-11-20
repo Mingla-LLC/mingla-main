@@ -38,12 +38,19 @@ DECLARE
   v_f_at_venue bigint;
   v_f_tables bigint;
   v_f_refunded bigint;
+  v_cur text;
+  v_other boolean;
 BEGIN
+  -- N128: money is summed in the venue's currency only (its brand's
+  -- default_currency); rows in any other currency are never added in, and
+  -- otherCurrency says the day had some.
+  SELECT upper(b.default_currency) INTO v_cur
+  FROM public.venue_listings v JOIN public.brands b ON b.id = v.brand_id WHERE v.id = p_venue_id;
   -- (a) online, by the service day the payment succeeded
   SELECT COALESCE(sum(a.amount_minor), 0)::bigint INTO v_online
   FROM public.stay_payment_attempts a
   JOIN public.stay_reservation_groups g ON g.id = a.group_id
-  WHERE g.venue_id = p_venue_id AND a.state = 'succeeded'
+  WHERE g.venue_id = p_venue_id AND a.state = 'succeeded' AND upper(a.currency_code) = v_cur
     AND public.issue_4490_venue_service_date(p_venue_id, a.succeeded_at) = p_local_date;
   -- (b) at the venue (cash, transfer, card at the venue, pay-by-code).
   -- N127: one day rule for every source, the venue's service day. paid_on is
@@ -54,7 +61,7 @@ BEGIN
   SELECT COALESCE(sum(o.amount_minor), 0)::bigint INTO v_at_venue
   FROM public.venue_offline_payments o
   JOIN public.stay_reservation_groups g ON g.id = o.group_id
-  WHERE g.venue_id = p_venue_id
+  WHERE g.venue_id = p_venue_id AND upper(o.currency_code) = v_cur
     AND CASE
           WHEN o.paid_on = (o.created_at AT TIME ZONE public.issue_4490_venue_timezone(p_venue_id))::date
             THEN public.issue_4490_venue_service_date(p_venue_id, o.created_at)
@@ -63,7 +70,7 @@ BEGIN
   -- (c) membership periods paid at the venue (these write no offline payment row)
   SELECT COALESCE(sum(m.amount_minor), 0)::bigint INTO v_members
   FROM public.venue_membership_periods m
-  WHERE m.paid_via = 'venue' AND m.paid_at IS NOT NULL
+  WHERE m.paid_via = 'venue' AND m.paid_at IS NOT NULL AND upper(m.currency_code) = v_cur
     AND public.issue_4490_member_venue(m.subscription_id) = p_venue_id
     AND public.issue_4490_venue_service_date(p_venue_id, m.paid_at) = p_local_date;
   -- (d) table deposits paid that day. A deposit refunded later flips to
@@ -72,6 +79,7 @@ BEGIN
   SELECT COALESCE(sum(r.fee_cents), 0)::bigint INTO v_tables
   FROM public.reservations r
   WHERE r.venue_id = p_venue_id AND r.payment_status IN ('paid', 'refunded') AND COALESCE(r.fee_cents, 0) > 0
+    AND upper(COALESCE(r.fee_currency, v_cur)) = v_cur
     AND public.issue_4490_venue_service_date(p_venue_id, r.created_at) = p_local_date;
   -- (e) refunds raised that day
   SELECT
@@ -79,9 +87,10 @@ BEGIN
               JOIN public.stay_reservation_groups g ON g.id = f.group_id
               WHERE g.venue_id = p_venue_id
                 AND f.state IN ('submitted', 'processing', 'succeeded', 'manual_reconciliation')
+                AND upper(f.currency_code) = v_cur
                 AND public.issue_4490_venue_service_date(p_venue_id, f.created_at) = p_local_date), 0)
   + COALESCE((SELECT sum(sr.buyer_refund_requested_cents) FROM public.source_refunds sr
-              WHERE sr.source_type = 'venue_reservation' AND sr.venue_id = p_venue_id
+              WHERE sr.source_type = 'venue_reservation' AND sr.venue_id = p_venue_id AND upper(sr.currency) = v_cur
                 -- N125: a refund that failed or ended with no refund due moved no money.
                 AND sr.buyer_state NOT IN ('failed_terminal', 'cancelled_no_refund_due')
                 AND public.issue_4490_venue_service_date(p_venue_id, sr.requested_at) = p_local_date), 0)
@@ -97,23 +106,25 @@ BEGIN
   )
   SELECT
     COALESCE((SELECT sum(a.amount_minor) FROM public.stay_payment_attempts a
-              WHERE a.group_id IN (SELECT id FROM day_groups) AND a.state = 'succeeded'), 0),
+              WHERE a.group_id IN (SELECT id FROM day_groups) AND a.state = 'succeeded' AND upper(a.currency_code) = v_cur), 0),
     COALESCE((SELECT sum(o.amount_minor) FROM public.venue_offline_payments o
-              WHERE o.group_id IN (SELECT id FROM day_groups)), 0),
+              WHERE o.group_id IN (SELECT id FROM day_groups) AND upper(o.currency_code) = v_cur), 0),
     COALESCE((SELECT sum(f.amount_minor) FROM public.stay_refunds f
               WHERE f.group_id IN (SELECT id FROM day_groups)
-                AND f.state IN ('submitted', 'processing', 'succeeded', 'manual_reconciliation')), 0)
+                AND f.state IN ('submitted', 'processing', 'succeeded', 'manual_reconciliation')
+                AND upper(f.currency_code) = v_cur), 0)
   INTO v_f_online, v_f_at_venue, v_f_refunded;
 
   WITH day_tables AS (
     SELECT r.id, r.fee_cents FROM public.reservations r
     WHERE r.venue_id = p_venue_id AND r.payment_status IN ('paid', 'refunded') AND COALESCE(r.fee_cents, 0) > 0
+    AND upper(COALESCE(r.fee_currency, v_cur)) = v_cur
       AND public.issue_4490_venue_service_date(p_venue_id, r.reserved_for) = p_local_date
   )
   SELECT
     COALESCE((SELECT sum(fee_cents) FROM day_tables), 0),
     v_f_refunded + COALESCE((SELECT sum(sr.buyer_refund_requested_cents) FROM public.source_refunds sr
-              WHERE sr.source_type = 'venue_reservation' AND sr.venue_id = p_venue_id
+              WHERE sr.source_type = 'venue_reservation' AND sr.venue_id = p_venue_id AND upper(sr.currency) = v_cur
                 -- N125: a refund that failed or ended with no refund due moved no money.
                 AND sr.buyer_state NOT IN ('failed_terminal', 'cancelled_no_refund_due')
                 -- N124: production writes source_id = the checkout session and
@@ -121,8 +132,24 @@ BEGIN
                 AND sr.subject_id IN (SELECT id FROM day_tables)), 0)
   INTO v_f_tables, v_f_refunded;
 
+  SELECT EXISTS (
+      SELECT 1 FROM public.stay_payment_attempts a JOIN public.stay_reservation_groups g ON g.id = a.group_id
+      WHERE g.venue_id = p_venue_id AND a.state = 'succeeded' AND upper(a.currency_code) <> v_cur
+        AND public.issue_4490_venue_service_date(p_venue_id, a.succeeded_at) = p_local_date)
+    OR EXISTS (
+      SELECT 1 FROM public.venue_offline_payments o JOIN public.stay_reservation_groups g ON g.id = o.group_id
+      WHERE g.venue_id = p_venue_id AND upper(o.currency_code) <> v_cur AND o.paid_on BETWEEN p_local_date - 1 AND p_local_date + 1)
+    OR EXISTS (
+      SELECT 1 FROM public.venue_membership_periods m
+      WHERE m.paid_via = 'venue' AND m.paid_at IS NOT NULL AND upper(m.currency_code) <> v_cur
+        AND public.issue_4490_member_venue(m.subscription_id) = p_venue_id
+        AND public.issue_4490_venue_service_date(p_venue_id, m.paid_at) = p_local_date)
+  INTO v_other;
+
   RETURN jsonb_build_object(
     'localDate', p_local_date,
+    'currencyCode', v_cur,
+    'otherCurrency', v_other,
     'paidInMinor', v_online + v_at_venue + v_members + v_tables - v_refunded,
     'paidIn', jsonb_build_object(
       'online', v_online, 'atVenue', v_at_venue, 'members', v_members,
