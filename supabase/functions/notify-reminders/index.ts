@@ -17,6 +17,11 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  type FormRequestDeps,
+  runAutoFormReminders,
+} from "../_shared/brandFormRequests.ts";
+import { dispatchV2, type MinimalClient } from "../_shared/notifyV2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,6 +53,8 @@ export interface ReminderAdmin {
 
 export interface ReminderDeps {
   createAdmin?: (url: string, serviceKey: string) => ReminderAdmin;
+  /** #4514: the notify v2 dispatcher the brand form reminder sends with. */
+  dispatch?: FormRequestDeps["dispatch"];
 }
 
 export async function handler(
@@ -111,10 +118,31 @@ export async function handler(
     }
   }
 
+  // #4514 wave 4 (decision 13): the optional brand form reminder, two days
+  // before, AFTER the buyer and reservation reminders above, which it never
+  // changes or blocks. It sends directly rather than through the outbox because
+  // a text or email carries the guest's personal form link, a credential that is
+  // never stored. Nothing due: one read, nothing written, the response unchanged.
+  const formReminders = await runAutoFormReminders({
+    rpc: async (fn, args) => {
+      const { data, error } = await admin.rpc(fn, args);
+      return { data, error: error === null ? null : { message: error.message } };
+    },
+    dispatch: deps.dispatch ??
+      ((input) => dispatchV2(admin as unknown as MinimalClient, input)),
+  }).catch((error: unknown) => {
+    hadError = true;
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[notify-reminders] brand form reminders failed:", message);
+    return { error: message };
+  });
+
   // Surface partial failure (no silent failure) but never throw — the cron should
   // keep running and retry next tick; idempotency makes retries safe.
   return json(
-    { ok: !hadError, enqueued: results, windowMinutes },
+    formReminders === null
+      ? { ok: !hadError, enqueued: results, windowMinutes }
+      : { ok: !hadError, enqueued: results, windowMinutes, formReminders },
     hadError ? 207 : 200,
   );
 }
