@@ -1749,10 +1749,10 @@ $t$;
 -- FAILS-ON-REVERT (review fixes): deleting the stale-claim UPDATE in claim_batch fails
 -- T-W4-QUEUE-2; deleting the brand_form_text_window delay fails T-W4-QUIET-2; deleting the cap
 -- RAISE fails T-W4-CAP-1; replacing brand_form_guest_dates with the page's next date fails
--- T-W4-DATES-2 and T-W4-DATES-4; restoring the phone and email branches of
--- brand_form_person_key fails T-W4-PERSON-0 and T-W4-PERSON-1; deleting the text-limit split in
--- brand_form_auto_reminders_due fails T-W4-AUTOCAP-1 and -2; deleting the event_started check in
--- claim_batch fails T-W4-STARTED-1 and -2.
+-- T-W4-DATES-2 and T-W4-DATES-4; restoring the phone and email person key (the 5-argument
+-- brand_form_person_key and its caller) fails T-W4-AUD-1b; deleting the text-limit split in
+-- brand_form_auto_reminders_due fails T-W4-AUTOCAP-1; deleting the event_started check in
+-- claim_batch fails T-W4-STARTED-1 (each measured on a clone of the replayed database).
 DO $t$
 DECLARE v_t text; v_f text;
 BEGIN
