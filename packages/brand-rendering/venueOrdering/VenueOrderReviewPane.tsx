@@ -301,7 +301,7 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
         </Pressable>
       </View>
       <Text style={[styles.headChip, { color: palette.tertiaryText }]}>
-        {venueOrderHandoverChip(config)}
+        {venueOrderHandoverChip(config, pickup)}
       </Text>
 
       {/* ── the basket ──────────────────────────────────────────────────── */}

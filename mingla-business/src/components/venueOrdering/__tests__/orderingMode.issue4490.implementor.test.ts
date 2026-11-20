@@ -4,7 +4,8 @@
  *
  * Fails-on-revert: restoring `venueOrderingIsCounterPickup` to
  * `spotState !== "ok"` fails the counter and pickup cases; dropping the
- * `pickup` spread in venueOrderCreateBody fails the wire case.
+ * `pickup` spread in venueOrderCreateBody fails the wire case; dropping the
+ * counter check in venueOrderHandoverChip fails the review-header case.
  */
 jest.mock("../../../services/supabase", () => ({ supabase: { rpc: jest.fn(), functions: { invoke: jest.fn() } } }));
 
@@ -13,6 +14,7 @@ import {
   venueOrderCreateBody,
 } from "@mingla/brand-rendering/venueOrdering/venueOrderingWire";
 import {
+  venueOrderHandoverChip,
   venueOrderingFulfilmentLine,
   venueOrderingIsCounterPickup,
   venueOrderingOffersPickup,
@@ -65,6 +67,14 @@ describe("#4490 07-D ordering mode", () => {
     );
     // pickup is ignored where the venue does not offer the choice
     expect(venueOrderingIsCounterPickup(state("table"), true)).toBe(false);
+  });
+
+  it("the review header names the counter, never the table, when the order is collected", () => {
+    // Regression (round 1 review): counter mode said "Ordering for B1"-style table words.
+    expect(venueOrderHandoverChip(state("counter"))).toBe("Collect from the counter");
+    expect(venueOrderHandoverChip(state("both"), true)).toBe("Collect from the counter");
+    expect(venueOrderHandoverChip(state("both"))).toBe("Ordering for Table 6");
+    expect(venueOrderHandoverChip(state("table"))).toBe("Ordering for Table 6");
   });
 
   it("no scanned spot stays a counter order", () => {

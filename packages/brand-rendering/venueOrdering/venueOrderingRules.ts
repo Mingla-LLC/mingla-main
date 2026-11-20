@@ -435,9 +435,13 @@ export function venueOrderProgressCopy(
   }
 }
 
-/** The one-line chip that says where this basket is going, before it is paid. */
-export function venueOrderHandoverChip(config: VenueOrderingConfig): string {
-  if (config.spotState === "ok" && config.spot !== null) {
+/**
+ * The one-line chip that says where this basket is going, before it is paid.
+ * #4490 07-D — a scanned spot whose order goes to the counter (Collect at the
+ * counter, or I'll collect it in Both) says the counter, never the table.
+ */
+export function venueOrderHandoverChip(config: VenueOrderingConfig, pickup = false): string {
+  if (config.spotState === "ok" && config.spot !== null && !venueOrderingIsCounterPickup(config, pickup)) {
     const label = config.spot.label;
     return label !== null && label.trim() !== ""
       ? `Ordering for ${label.trim()}`

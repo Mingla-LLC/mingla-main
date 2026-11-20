@@ -28,6 +28,7 @@ import type { PublicMenuGroup } from "@mingla/brand-rendering";
 import {
   isoDayFromMondayZero,
   venueOrderingCanOrder,
+  venueOrderingIsCounterPickup,
   venueOrderingMenuGroups,
   venueOrderingNotice,
 } from "@mingla/brand-rendering/venueOrdering";
@@ -125,6 +126,8 @@ export const BuyerVenueOrderingNotice: React.FC<
   if (!venueOrderingCanOrder(ordering.config)) return null;
   const label =
     ordering.config.spotState === "ok" &&
+    // #4490 07-D — a counter order at a scanned spot names the counter.
+    !venueOrderingIsCounterPickup(ordering.config, ordering.pickup) &&
     ordering.config.spot?.label !== null &&
     ordering.config.spot?.label !== undefined
       ? `Ordering for ${ordering.config.spot.label}`
@@ -542,7 +545,9 @@ export const BuyerVenueOrderingBar: React.FC<
   }, [docked, onBottomBarChange]);
   if (!shown) return null;
   const spotLabel =
-    ordering.config.spotState === "ok" ? ordering.config.spot?.label ?? null : null;
+    ordering.config.spotState === "ok" && !venueOrderingIsCounterPickup(ordering.config, ordering.pickup)
+      ? ordering.config.spot?.label ?? null
+      : null;
   return (
     <VenueOrderingStickyBar
       count={ordering.cart.count}

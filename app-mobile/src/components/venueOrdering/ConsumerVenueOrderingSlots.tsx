@@ -34,6 +34,7 @@ import type { PublicMenuGroup } from "@mingla/brand-rendering";
 import {
   isoDayFromMondayZero,
   venueOrderingCanOrder,
+  venueOrderingIsCounterPickup,
   venueOrderingMenuGroups,
   venueOrderingNotice,
 } from "@mingla/brand-rendering/venueOrdering";
@@ -217,6 +218,8 @@ export const ConsumerVenueOrderingNotice: React.FC<
     <VenueOrderingSpotChip
       label={
         ordering.config.spotState === "ok" &&
+        // #4490 07-D — a counter order at a scanned spot names the counter.
+        !venueOrderingIsCounterPickup(ordering.config, ordering.pickup) &&
         ordering.config.spot?.label !== null &&
         ordering.config.spot?.label !== undefined
           ? `Ordering for ${ordering.config.spot.label}`
