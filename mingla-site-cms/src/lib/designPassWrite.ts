@@ -26,6 +26,35 @@ function pageData(page: ComposeV2Page, tenantId: string): AnyDoc {
   };
 }
 
+type MenuRow = { label?: unknown; target_type?: unknown; page?: unknown; url?: unknown; children?: unknown };
+const menuKey = (row: MenuRow | null | undefined): unknown => {
+  if (!row || typeof row !== "object") return null;
+  const page = row.page && typeof row.page === "object" ? (row.page as AnyDoc).id : row.page;
+  return [
+    row.label ?? null,
+    row.target_type ?? null,
+    page === undefined || page === null ? null : String(page),
+    row.url ?? null,
+    (Array.isArray(row.children) ? row.children : []).map((child) => menuKey(child as MenuRow)),
+  ];
+};
+
+/**
+ * #4453 — true when the header Studio would write is the one already there,
+ * row ids aside. Gameland Lagos's live Rebuild (2026-11-19) wrote a new menu
+ * version identical but for row ids, so Host showed "1 change: The menu or
+ * footer changed" that publishing would not change. Only the fields the write
+ * sends are compared (an absent field is left as it is).
+ */
+export function sameMenu(current: AnyDoc, next: AnyDoc): boolean {
+  const rows = (value: unknown) => (Array.isArray(value) ? value : []).map((row) => menuKey(row as MenuRow));
+  if ((current.wordmark ?? null) !== (next.wordmark ?? null)) return false;
+  if (JSON.stringify(rows(current.items)) !== JSON.stringify(rows(next.items))) return false;
+  if ("header_cta" in next && JSON.stringify(menuKey(current.header_cta as MenuRow)) !== JSON.stringify(menuKey(next.header_cta as MenuRow))) return false;
+  if ("header_variant" in next && (current.header_variant ?? null) !== (next.header_variant ?? null)) return false;
+  return true;
+}
+
 /** Whether every block on a stored page is still an unreviewed Draft (Ari's pass may replace it). */
 export function pageAllDraft(page: AnyDoc): boolean {
   const blocks = Array.isArray(page.blocks) ? page.blocks as AnyDoc[] : [];
@@ -52,10 +81,10 @@ export async function writeComposition(
     created.push(page.key);
   }
   const updates = [
-    ...(result.fillHome ? [{ id: idBySlug.get(""), page: result.fillHome }] : []),
-    ...result.replace,
+    ...(result.fillHome ? [{ id: idBySlug.get(""), page: result.fillHome, filled: true }] : []),
+    ...result.replace.map((entry) => ({ ...entry, filled: false })),
   ];
-  for (const { id, page } of updates) {
+  for (const { id, page, filled } of updates) {
     const stored = pages.find((candidate) => String(candidate.id) === id);
     if (!id || !stored) continue;
     await req.payload.update({
@@ -66,7 +95,8 @@ export async function writeComposition(
       draft: true,
       data: { blocks: page.blocks, title: page.title, revision: stored.revision } as never,
     });
-    (page.key === "home" ? created : replaced).push(page.key);
+    // An empty Home filled is created; any page whose Drafts were replaced (Home included) is replaced.
+    (filled ? created : replaced).push(page.key);
   }
 
   const navigation = (await req.payload.find({
@@ -97,7 +127,7 @@ export async function writeComposition(
     ...(result.header_variant ? { header_variant: result.header_variant } : {}),
   };
   if (navigation) {
-    await req.payload.update({ collection: "navigation", id: navigation.id as string, overrideAccess: true, req: internal, draft: true, data: navData as never });
+    if (!sameMenu(navigation, navData)) await req.payload.update({ collection: "navigation", id: navigation.id as string, overrideAccess: true, req: internal, draft: true, data: navData as never });
   } else {
     await req.payload.create({ collection: "navigation", overrideAccess: true, req: internal, draft: true, data: { tenant: tenantId, label: "Main navigation", ...navData } as never });
   }

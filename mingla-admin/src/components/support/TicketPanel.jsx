@@ -10,6 +10,8 @@ import { Spinner } from "../ui/Spinner";
 import { Select } from "../crm/fields";
 import { SupportThread } from "./SupportThread";
 import { SupportComposer } from "./SupportComposer";
+import { WebsiteRequestBox } from "./WebsiteRequestBox";
+import { isWebsiteRequestTicket } from "../../lib/websiteRequestModel";
 import { replyTargetLabel } from "./supportComposerModel";
 import { PRIORITY_OPTIONS, STATUS_BADGE, STATUS_LABEL, TOPIC_LABEL, deviceLine } from "./supportOptions";
 import { productPrefillDetails, BOARD_COLUMNS, STAGE_LABEL, stageIndex } from "./productBoardModel";
@@ -105,11 +107,13 @@ function ProductBox({ ticket, signal, messages, onSendToProduct }) {
 /**
  * Props: ticket, profilesById, brandsById, staffRoster, signal, myUserId,
  * acting, onClose, onClaim, onSetStatus, onSetPriority, onSendToProduct,
- * onChanged (reload the inbox), onError(title, message), onSessionExpired.
+ * onChanged (reload the inbox), onError(title, message), onSessionExpired,
+ * onWebsiteReady(note) (#4453: "Ready for review" on a website change request).
  */
 export function TicketPanel({
   ticket, profilesById, brandsById, signal, myUserId, acting,
   onClose, onClaim, onSetStatus, onSetPriority, onSendToProduct, onChanged, onError, onSessionExpired,
+  onWebsiteReady,
 }) {
   const [messages, setMessages] = useState([]);
   const [factsOpen, setFactsOpen] = useState(true);
@@ -199,6 +203,19 @@ export function TicketPanel({
           {ticket.imported_from === "beta_feedback" && <Badge variant="outline">From beta feedback</Badge>}
         </div>
       </div>
+
+      {isWebsiteRequestTicket(ticket) && (
+        <WebsiteRequestBox
+          key={ticket.id}
+          ticket={ticket}
+          profilesById={profilesById}
+          onReady={async (note) => {
+            const result = await onWebsiteReady?.(note);
+            if (result?.ok) await load();
+            return result;
+          }}
+        />
+      )}
 
       <div className="flex items-center justify-between border-b border-[var(--gray-200)] px-4 py-1.5">
         <span className="text-xs font-medium text-[var(--color-text-tertiary)]">Details</span>

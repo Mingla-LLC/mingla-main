@@ -17,6 +17,7 @@ import {
   resolveCoreToCmsSigner,
 } from "../_shared/sitesSecurity.ts";
 import { observeSitesRequest } from "../_shared/sitesObservability.ts";
+import { isDesignKey } from "../_shared/siteContracts/designs.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { handleSitePlanRoute, planFailureFromRpc } from "./sitePlan.ts";
 import { handleSiteContentRoute } from "./siteContent.ts";
@@ -24,6 +25,7 @@ import { handleSiteShareRoute } from "./siteShare.ts";
 import { ARI_CMS_ACTIONS, ARI_DESIGNER_ACTIONS, ariFailureFrom, siteEvidence } from "./siteAri.ts";
 import { brandFlagOn, composeFacts, DESIGN_PASS_ACTIONS, liveFingerprints, planFormat } from "./designPass.ts";
 import { ARI_PAGE_ACTIONS } from "./ariPage.ts";
+import { WORKSPACE_ARI_ACTIONS } from "./siteWorkspace.ts";
 import { BOOKING_IDENTITY_CAPABILITY, bookingLockRefusal, publicationActionScope } from "./bookingLock.ts";
 import { unreviewedRefusal } from "./reviewGate.ts";
 
@@ -653,7 +655,10 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
       );
       if (setupError) return planFailureFromRpc(setupError.message, operationId);
       const designKey = (setup as { design_key?: unknown } | null)?.design_key;
-      if (designKey !== "atelier" && designKey !== "voyage") {
+      // #4453 — every registered design provisions (Core SQL, plan save,
+      // Studio and the renderer already accept all of them); a null or
+      // unknown key is still refused.
+      if (!isDesignKey(designKey)) {
         return sitesFailure("INVALID_STATE", 409, operationId);
       }
       // #2829 — an optional owner-confirmed label; otherwise Core derives it
@@ -962,6 +967,8 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         payload.add_page = true;
         payload.review_drafts = true;
       }
+      // #4453 website workspace — a section Ari changes there always starts Draft, for the owner to read.
+      if (WORKSPACE_ARI_ACTIONS.has(action)) payload.review_drafts = true;
       const studio = await callCmsRaw(db.service, {
         siteId,
         operationId,

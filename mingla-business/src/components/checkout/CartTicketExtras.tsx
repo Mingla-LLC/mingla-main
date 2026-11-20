@@ -30,19 +30,19 @@ import {
   type PublicTicketExtra,
 } from "@mingla/offering-rendering/ticketExtrasCart";
 
-import { color } from "./checkoutTheme";
+import { checkoutValue, color } from "./checkoutTheme";
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
 import type { TicketStub } from "../../store/draftEventStore";
 import { formatCurrency } from "../../utils/currency";
 import { useCart, type CartLine } from "./CartContext";
 
-const THEME: TicketExtrasPickerTheme = {
+const extrasTheme = checkoutValue((): TicketExtrasPickerTheme => ({
   accent: color.accent,
   textPrimary: color.text1,
   textSecondary: color.text2,
   textTertiary: color.text3,
   border: color.lineStrong,
-};
+}));
 
 export interface CartTicketExtrasProps {
   ticket: TicketStub;
@@ -142,7 +142,7 @@ export const CartTicketExtras: React.FC<CartTicketExtrasProps> = ({
       formatMoney={(cents) => formatCurrency(cents, currency, true)}
       dateCaption={dateCaption}
       soldOut={(extra) => extraSoldOutOnLine(extra, lineDates)}
-      theme={THEME}
+      theme={extrasTheme()}
       testID={`issue-3281-cart-extras-${ticket.id}`}
     />
   );

@@ -132,9 +132,15 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD-APPROVED #4238] Re-derived after #4238 added the locally declared
   // Host ads wiring gate (issue-4238-host-ads-wiring, +2 batch:A executions:
   // self-test and plain). Read off the plan command as above.
-  executions: 1063,
-  loadsSeconds: [385.7, 385.8, 385.8],
-  counts: [353, 355, 355],
+  // [TEST-MOD-APPROVED #3645] Re-derived after #3645 added the locally declared
+  // payout hold stamp fail-closed gate (issue-3645-payout-hold-stamp-fail-closed,
+  // +2 batch:A executions: self-test and plain). Read off the plan command as above.
+  // [TEST-MOD #4518] Re-derived after #4518 added the locally declared
+  // checkout one-colour-owner gate (issue-4518-checkout-one-colour-owner,
+  // +2 batch:A executions: self-test and plain). Read off the plan command as above.
+  executions: 1067,
+  loadsSeconds: [385.9, 385.9, 385.9],
+  counts: [355, 356, 356],
 });
 
 const tempDir = (label) =>

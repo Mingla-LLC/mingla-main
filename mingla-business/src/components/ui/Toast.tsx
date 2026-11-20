@@ -45,7 +45,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { Gesture } from "react-native-gesture-handler";
 
-import { color, radius, shadow, size, space, type } from "../../constants/designSystem";
+import { radius, shadow, size, space, type } from "../../constants/designSystem";
+import { color, themed, themedStyles } from "../../theme/surfaceTokens";
 
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
@@ -98,12 +99,12 @@ interface KindTokens {
   iconFg: string;
 }
 
-const KIND_TOKENS: Record<ToastKind, KindTokens> = {
+const kindTokens = themed((): Record<ToastKind, KindTokens> => ({
   success: { icon: "check", iconBg: color.success, iconFg: color.ink },
   info: { icon: "bell", iconBg: color.fill.step, iconFg: color.text1 },
   warn: { icon: "flag", iconBg: color.warning, iconFg: color.ink },
   error: { icon: "close", iconBg: color.danger, iconFg: color.onDanger },
-};
+}));
 
 /**
  * Toast registers itself in the store while visible and renders nothing (or
@@ -281,8 +282,6 @@ const ToastWeb: React.FC<ToastItemProps> = ({ entry, placement }) => {
   );
 };
 
-/** #4490 D8 — never a button around buttons on web. */
-export const TOAST_CARD_ROLE: "button" | "none" = Platform.OS === "web" ? "none" : "button";
 
 interface ToastCardProps {
   entry: ToastEntry;
@@ -293,8 +292,13 @@ interface ToastCardProps {
 }
 
 const ToastCard: React.FC<ToastCardProps> = ({ entry, onPressIn, onPressOut, onHoverIn, onHoverOut }) => {
-  const tokens = KIND_TOKENS[entry.kind];
+  const tokens = kindTokens()[entry.kind];
   const { action, onDismiss } = entry;
+  // #4453: on web a "button" role draws a <button>, and the action and close
+  // buttons inside it are <button>s too ("<button> cannot be a descendant of
+  // <button>"). There the card is a plain clickable surface, out of the tab
+  // order, and the close button is the keyboard and screen-reader way to dismiss.
+  const web = Platform.OS === "web";
   return (
     // ORCH-0789: tap-anywhere-on-card dismisses; onDismiss is idempotent.
     <Pressable
@@ -303,11 +307,8 @@ const ToastCard: React.FC<ToastCardProps> = ({ entry, onPressIn, onPressOut, onH
       onPressOut={onPressOut}
       onHoverIn={onHoverIn}
       onHoverOut={onHoverOut}
-      // #4490 D8 — on web a role="button" card around the close and action
-      // buttons rendered a <button> inside a <button> (invalid HTML, a
-      // hydration warning). The card still dismisses on click; on web the
-      // close button is the one keyboard/screen-reader control.
-      accessibilityRole={TOAST_CARD_ROLE}
+      accessibilityRole={web ? undefined : "button"}
+      tabIndex={web ? -1 : 0}
       accessibilityLabel="Dismiss notification"
       style={[styles.cardShadow, shadow.toast]}
     >
@@ -349,7 +350,7 @@ const ToastCard: React.FC<ToastCardProps> = ({ entry, onPressIn, onPressOut, onH
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   inlineRoot: {
     position: "absolute",
     top: space[10],
@@ -417,6 +418,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     backgroundColor: color.fill.tile,
   },
-});
+}));
 
 export default Toast;

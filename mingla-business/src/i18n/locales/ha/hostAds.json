@@ -31,7 +31,9 @@
         "title": "Fita daga mai ginawa?",
         "body": "An ajiye daftarinka. Ci gaba daga Tallata kowane lokaci.",
         "leave": "Fita",
-        "keep": "Ci gaba da gyarawa"
+        "keep": "Ci gaba da gyarawa",
+        "uploading_one": "Ana ci gaba da ɗora bidiyo {{count}}. Idan ka fita, ɗorawar za ta tsaya.",
+        "uploading_other": "Ana ci gaba da ɗora bidiyo {{count}}. Idan ka fita, ɗorawar za ta tsaya."
       },
       "goal": {
         "sales": "Sayar da tikiti",
@@ -245,7 +247,7 @@
         "launchShort": "Fara",
         "topUp": "Ƙara {{amount}}",
         "blockOffline": "Haɗa don farawa",
-        "blockLaunch": "Farawa na bukatar izinin farawa. {{name}} zai iya fara ta.",
+        "blockLaunch": "Ƙaddamarwa na buƙatar mai shi ko admin. Tambayi {{name}}.",
         "blockFund": "Farawa na bukatar izinin kiredit ɗin talla. {{name}} zai iya fara ta.",
         "theOwner": "Mai shi",
         "blockChecking": "Ana duba tallarka da kowace manhaja",
@@ -271,7 +273,15 @@
         "cancelBody": "Ba a kashe komai ba. Kuɗin da aka riƙe zai koma kiredit ɗin tallarka.",
         "keepAd": "Bar ta",
         "cancelled": "An soke tallar. Kuɗin da aka riƙe ya koma kiredit ɗin tallarka.",
-        "alreadyBuilt": "An riga an saita wannan talla a wata manhaja, don haka ba za a iya soke ta a nan ba. Nemi taimako kuma Mingla za ta warware."
+        "alreadyBuilt": "An riga an saita wannan talla a wata manhaja, don haka ba za a iya soke ta a nan ba. Nemi taimako kuma Mingla za ta warware.",
+        "waitUploads_one": "Ana ci gaba da shirya bidiyo {{count}}. Ka jira, ko ka cire su.",
+        "waitUploads_other": "Ana ci gaba da shirya bidiyo {{count}}. Ka jira, ko ka cire su.",
+        "rightsMissing": "Saka alama a wannan akwati don ƙaddamarwa. Yana tabbatar kana da haƙƙin waɗannan bidiyo da hotuna.",
+        "runWithoutBuyers": "Gudanar ba tare da cire masu saye na baya ba",
+        "runThisWay": "Gudanar da shi haka",
+        "visitsQuestionYet": "{{app}} ba zai iya nufin {{unit}} a wannan alama ba tukuna, don haka zai nufi mutanen da za su iya ziyartar shafinka.",
+        "visitsQuestionCannot": "{{app}} ba zai iya nufin {{unit}} ba, don haka zai nufi mutanen da za su iya ziyartar shafinka.",
+        "aimVisits": "Nufi ziyarar shafi"
       },
       "rights": {
         "title": "Haƙƙoƙin kafofi",
@@ -307,6 +317,78 @@
         "generic": "Bai yi aiki ba. Sake gwadawa.",
         "freeEvent": "Wannan shafi kyauta ne, don haka tallar yanzu tana neman rajista.",
         "checkFirst": "Sake duba tallarka bayan canje-canjenka."
+      },
+      "media": {
+        "inThisAd": "A cikin wannan talla",
+        "count": "{{n}} cikin 5",
+        "countFew": "{{n}} cikin 5 · Idan aka sami 3 ko fiye, manhajoji suna da ƙarin abin gwadawa",
+        "library": "Ɗakin ajiyarka",
+        "libraryHint": "Taɓa + don amfani da ɗaya a wannan talla.",
+        "emptyAd": "Babu komai a wannan talla tukuna. Ƙara bidiyo, ko ka taɓa + a kan ɗaya daga ɗakin ajiyarka.",
+        "select": "Zaɓa",
+        "cancelSelect": "Soke",
+        "add": "Ƙara bidiyo",
+        "full": "Talla yana ɗaukar 5",
+        "addHint": "Zaɓi har {{n}} kuma · da yawa a lokaci ɗaya · kowanne daga daƙiƙa 5 zuwa 60",
+        "fullHint": "Cire ɗaya don ƙara wani.",
+        "retry": "Sake gwadawa",
+        "emptyTitle": "Ƙara bidiyo 1 zuwa 5",
+        "emptyBody": "Zaɓi da yawa a lokaci ɗaya. Ana ɗora su ana shirya su a baya yayin da kake ci gaba.",
+        "emptySpec": "Tsaye 9:16 · kowanne daga daƙiƙa 5 zuwa 60",
+        "uploading": "Ana ɗorawa {{percent}}%",
+        "uploadingNoPct": "Ana ɗorawa",
+        "preparing": "Ana shiryawa · {{elapsed}} · yawanci kasa da minti ɗaya",
+        "fitPending": "Daidaito zai bayyana idan ya shirya",
+        "failedNetwork": "Ɗorawa ta tsaya",
+        "failedNetworkNote": "Duba haɗinka",
+        "failedFile": "Ba a iya amfani da wannan bidiyo ba",
+        "failedFileNote": "Gwada wani bidiyo",
+        "refused": {
+          "unsupported": "Ba a iya amfani da wannan nau'in fayil ba",
+          "tooShort": "Ya fi daƙiƙa 5 gajarta",
+          "tooLong": "Ya fi minti 1 tsayi",
+          "tooLarge": "Ya fi 100 MB girma",
+          "unreadable": "Ba a iya karanta wannan bidiyo ba"
+        },
+        "fixLength": "Yanke shi zuwa daƙiƙa 5–60, sannan ka sake ƙara shi",
+        "fixOther": "Zaɓi wani bidiyo",
+        "photo": "Hoto",
+        "photoFit": "Hoto · Facebook & Instagram kawai",
+        "untitled": "Bidiyo",
+        "remove": "Cire {{name}} daga wannan talla",
+        "cancelUpload": "Soke ɗora {{name}}",
+        "clear": "Share {{name}}",
+        "use": "Yi amfani da {{name}} a wannan talla",
+        "useFull": "Talla yana ɗaukar 5. Cire ɗaya tukuna.",
+        "toLibrary_one": "Wannan talla yana ɗaukar 5, don haka {{count}} ya shiga ɗakin ajiyarka. Ana ɗora shi a can.",
+        "toLibrary_other": "Wannan talla yana ɗaukar 5, don haka {{count}} sun shiga ɗakin ajiyarka. Ana ɗora su a can.",
+        "repeat": "Ana ƙara {{name}} tuni.",
+        "removed": "An cire {{name}} daga wannan talla. Yana nan a ɗakin ajiyarka.",
+        "removedMany": "An cire {{count}} daga wannan talla. Suna nan a ɗakin ajiyarka.",
+        "cancelled": "An soke ɗora {{name}}.",
+        "undo": "Dawo da shi",
+        "selectSummary": "Saka alama a bidiyo don cire su daga wannan talla ko ka adana su a ma'aji.",
+        "selected": "An zaɓi {{count}}",
+        "removeSel": "Cire {{count}} daga talla",
+        "removeSelNone": "Cire daga talla",
+        "archiveSel": "Adana {{count}} a ma'aji",
+        "done": "An gama",
+        "archiveTitle_one": "Adana bidiyo {{count}} daga ɗakin ajiyarka a ma'aji?",
+        "archiveTitle_other": "Adana bidiyo {{count}} daga ɗakin ajiyarka a ma'aji?",
+        "archiveBody": "Suna barin ɗakin ajiyar alamarka, don haka sabon talla ba zai iya amfani da su ba. Tallan da ke gudana suna riƙe su. Za ka iya dawo da su nan take bayan haka.",
+        "archiveConfirm": "Adana a ma'aji",
+        "keep": "Riƙe",
+        "archived": "An adana {{count}} daga ɗakin ajiyarka a ma'aji.",
+        "archiveFailed": "Ba a iya adanawa ba. Babu abin da ya canza. Sake gwadawa.",
+        "dupTitle": "{{name}} yana ɗakin ajiyarka tuni",
+        "dupBody": "Suna da tsawo ɗaya da wanda ka ƙara a baya.",
+        "dupUse": "Yi amfani da wanda ke ɗakin ajiyarka",
+        "dupUpload": "Sake ɗorawa",
+        "dupFull": "Wannan talla yana ɗaukar 5. {{name}} yana nan a ɗakin ajiyarka.",
+        "draftNotReady": "Ana ci gaba da adana daftarinka. Sake gwadawa nan da ɗan lokaci.",
+        "pickFailed": "Ba a iya buɗe bidiyonka ba. Sake gwadawa.",
+        "pending_one": "Ana ci gaba da shirya bidiyo {{count}}. Na gaba zai buɗe idan ɗaya ya shirya.",
+        "pending_other": "Ana ci gaba da shirya bidiyo {{count}}. Na gaba zai buɗe idan ɗaya ya shirya."
       }
     },
     "manage": {
@@ -318,7 +400,9 @@
         "label": "Tace tallace-tallace",
         "all": "Duka",
         "running": "Ana gudana",
-        "ended": "Sun ƙare"
+        "ended": "Sun ƙare",
+        "review": "Ana dubawa",
+        "drafts": "Zayyanai"
       },
       "credit": {
         "label": "Kuɗin talla",
@@ -333,7 +417,10 @@
         "error": "Ba a iya loda kuɗin tallanka ba. Tallace-tallacenka suna ci gaba.",
         "added": "An ƙara kuɗi.",
         "notAdded": "Biyanka ya dawo amma ba a ƙara kuɗin ba tukuna. Sake gwadawa ko nemi taimako.",
-        "cancelled": "An soke biyan. Ba a ƙara kuɗi ba."
+        "cancelled": "An soke biyan. Ba a ƙara kuɗi ba.",
+        "topUpNeedsRole": "Ƙara kuɗi na mai shi ne, admin ko Kuɗi.",
+        "withdrawNeedsRole": "Cire kuɗi na mai shi ne ko Kuɗi. Tambayi {{name}}.",
+        "theOwner": "mai shi"
       },
       "tools": {
         "compare": "Kwatanta tallace-tallacenka",
@@ -354,7 +441,11 @@
         "ends": "Idan ya ƙare",
         "endsV": "Ragowar ya zauna a matsayin kuɗi",
         "withdraw": "Cirewa",
-        "withdrawV": "Yana komawa hanyar da ka biya, tare da kuɗin Mingla"
+        "withdrawV": "Yana komawa hanyar da ka biya, tare da kuɗin Mingla",
+        "whoLaunches": "Ƙara kuɗi ka ƙaddamar",
+        "whoLaunchesV": "Mai shi da admin",
+        "whoWithdraws": "Cire kuɗin talla",
+        "whoWithdrawsV": "Mai shi da Kuɗi"
       },
       "list": {
         "errorTitle": "Ba a iya loda tallace-tallacenka ba",
@@ -372,7 +463,18 @@
         "colResults": "Sakamako",
         "colEach": "Kowanne",
         "open": "Buɗe {{name}}",
-        "draftLine": "An ajiye daftari · ci gaba daga inda ka tsaya"
+        "draftLine": "An ajiye daftari · ci gaba daga inda ka tsaya",
+        "reviewLine": "Kowace manhaja tana fara duba tallarka. Ba a kashe komai sai an nuna shi.",
+        "appShowing": "{{app}}: ana nunawa",
+        "appChecking": "{{app}}: ana dubawa",
+        "appNotApproved": "{{app}}: ba a amince ba",
+        "deleteDraftA11y": "Goge zayyana {{name}}",
+        "deleteTitle": "A goge wannan zayyanar?",
+        "deleteBody": "Za a goge “{{name}}” gaba ɗaya. Ba za a caje komai ba kuma kuɗin talla naka zai kasance yadda yake.",
+        "deleteConfirm": "Goge zayyana",
+        "deleteKeep": "A bar ta",
+        "draftDeleted": "An goge zayyana",
+        "deleteFailed": "Ba a iya goge wannan zayyanar ba. Ja ƙasa don sabuntawa ka sake gwadawa."
       },
       "unit": {
         "sales": "tikiti",
@@ -393,7 +495,8 @@
         "partRejected": "Yana gudana · {{count}} ba a amince ba",
         "draft": "Daftari",
         "attention": "Yana buƙatar dubawa",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Yana gudana · ana duba {{apps}}"
       },
       "reason": {
         "soldOut": "An sayar da duka",

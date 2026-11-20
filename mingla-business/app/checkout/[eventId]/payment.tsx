@@ -59,8 +59,8 @@ import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import { space, materials } from "../../../src/constants/designSystem";
-import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
+import { space } from "../../../src/constants/designSystem";
+import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout Pay CTA, matching the public page.
 import {

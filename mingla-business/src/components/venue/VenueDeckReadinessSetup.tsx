@@ -137,6 +137,12 @@ export interface VenueDeckReadinessSetupProps {
   initialGallery?: string[];
   /** #3655 — route Back / beforeRemove consults this for staged drafts. */
   leaveHandleRef?: React.MutableRefObject<VenueDeckLeaveHandle | null>;
+  /**
+   * #4453 — told whenever "has unsaved deck changes" flips, so the route can
+   * react to it (the leave handle above is a ref: reading it re-renders
+   * nothing). False again when this unmounts.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 // META-ORCH-1009 Sub-E: required venue gallery bounds (mirror the edge GALLERY_MIN
@@ -278,6 +284,7 @@ export function VenueDeckReadinessSetup({
   initialCover = null,
   initialGallery = EMPTY_GALLERY,
   leaveHandleRef,
+  onDirtyChange,
 }: VenueDeckReadinessSetupProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   // #1558 — a NULL category is `uncategorised`, a named key with its own row in
@@ -590,6 +597,13 @@ export function VenueDeckReadinessSetup({
     selectedVibes,
     website,
   ]);
+
+  // #4453 — the route holds a brand switch while this is true.
+  useEffect(() => {
+    if (onDirtyChange === undefined) return undefined;
+    onDirtyChange(formDirty);
+    return (): void => onDirtyChange(false);
+  }, [formDirty, onDirtyChange]);
 
   useEffect(() => {
     if (leaveHandleRef === undefined) return;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useWebsite } from "../WebsiteContext";
 import { Card, CardTitle, Field, Hint, SectionHead, Segmented, Skeleton, Toggle, WButton, ui } from "../ui";
@@ -13,7 +13,7 @@ import {
   type StoryDetail,
 } from "../../../../sites/contentApi";
 import type { RichTextDoc } from "../../../../../../packages/site-contracts/src/richText.ts";
-import { ConflictBanner, DeleteEntry, EditorCrumb, RichTextEditor, saveErrorMessage, useEditorChrome } from "./EditorKit";
+import { ConflictBanner, DeleteEntry, EditorCrumb, RichTextEditor, editorFormChanged, saveErrorMessage, useEditorChrome } from "./EditorKit";
 
 import { color } from "../../../../constants/designSystem";
 type Form = {
@@ -61,7 +61,9 @@ export function StoryEditor({ entryId }: { entryId: string | "new" }): React.Rea
   const categories = useStoryCategories(controller.siteId);
   const save = useSaveContentEntry(controller.siteId, "stories");
   const remove = useContentRowActions(controller.siteId, "stories").remove;
-  const [form, setForm] = useState<Form | null>(isNew ? { title: "", category: null, date: today(), featured: null, excerpt: "", content: null, enabled: false } : null);
+  // #4453 — a new story's empty form, kept: what "changed" is measured against.
+  const [blank] = useState<Form>(() => ({ title: "", category: null, date: today(), featured: null, excerpt: "", content: null, enabled: false }));
+  const [form, setForm] = useState<Form | null>(isNew ? blank : null);
   const [conflict, setConflict] = useState<BrandSiteContentConflict | null>(null);
   const [error, setError] = useState<string | null>(null);
   const readOnly = lock.heldByOther;
@@ -93,7 +95,9 @@ export function StoryEditor({ entryId }: { entryId: string | "new" }): React.Rea
       },
     });
   };
-  useEditorChrome({ isNew, saving: save.isPending, disabled: readOnly || form === null, onSave: () => doSave(), onCancel: () => ctx.go({ kind: "section", section: "stories" }) });
+  // #4453 — the saved copy: the story as last read, or the empty form.
+  const opened = useMemo<Form | null>(() => (isNew ? blank : entry.data ? formOf(entry.data) : null), [blank, entry.data, isNew]);
+  useEditorChrome({ isNew, saving: save.isPending, disabled: readOnly || form === null, changed: editorFormChanged(form, opened), onSave: () => doSave(), onCancel: () => ctx.go({ kind: "section", section: "stories" }) });
 
   if (!isNew && entry.isLoading) return <View role="status" accessibilityLabel="Loading this story"><Skeleton height={32} width="40%" style={{ marginBottom: 16 }} /><Skeleton height={300} /></View>;
   if (!isNew && (entry.isError || !form)) {

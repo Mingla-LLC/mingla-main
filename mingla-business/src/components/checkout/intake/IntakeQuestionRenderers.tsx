@@ -49,10 +49,10 @@ import DateTimePicker, {
 
 import {
   radius,
-  color,
   space,
   type,
 } from "../../../constants/designSystem";
+import { color, themedStyles } from "../../../theme/surfaceTokens";
 import { GlassCard } from "../../ui/GlassCard";
 import { Icon } from "../../ui/Icon";
 // issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
@@ -1120,7 +1120,7 @@ void _useEffectMarker;
 // Styles
 // ---------------------------------------------------------------------------
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   formWrap: {
     gap: space[6],
   },
@@ -1409,6 +1409,6 @@ const styles = StyleSheet.create({
     color: color.accent,
     fontWeight: "600",
   },
-});
+}));
 
 export default IntakeFormRenderer;

@@ -77,7 +77,11 @@ test("B-03 — a NOT-FOUND is cached too; a FAILURE never is", async () => {
 
 test("B-04 — slug addressing works and reaches the RPC with the right args", async () => {
   let seen = null;
-  const handler = load(async (_fn, body) => { seen = body; return { id: EVENT_ID }; });
+  // #4518 — the handler now also asks two buy-gate reads; pin the BUNDLE read.
+  const handler = load(async (fn, body) => {
+    if (fn === "pg_direct_event_checkout_bundle") seen = body;
+    return { id: EVENT_ID };
+  });
   const res = mockRes();
   await handler({ query: { brandSlug: "gogi", eventSlug: "we-go-again" } }, res);
   assert.equal(res.statusCode, 200);
@@ -108,7 +112,11 @@ test("B-05 — exactly one addressing mode; malformed input never reaches the RP
 
 test("B-06 — repeated query keys arrive as arrays and take the first", async () => {
   let seen = null;
-  const handler = load(async (_fn, body) => { seen = body; return { id: EVENT_ID }; });
+  // #4518 — the handler now also asks two buy-gate reads; pin the BUNDLE read.
+  const handler = load(async (fn, body) => {
+    if (fn === "pg_direct_event_checkout_bundle") seen = body;
+    return { id: EVENT_ID };
+  });
   const res = mockRes();
   await handler({ query: { eventId: [EVENT_ID, "junk"] } }, res);
   assert.equal(res.statusCode, 200);

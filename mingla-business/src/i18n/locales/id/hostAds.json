@@ -31,7 +31,9 @@
         "title": "Keluar dari panduan?",
         "body": "Drafmu tersimpan. Lanjutkan kapan saja dari Promosikan.",
         "leave": "Keluar",
-        "keep": "Lanjut mengedit"
+        "keep": "Lanjut mengedit",
+        "uploading_one": "{{count}} video masih diunggah. Kalau kamu keluar, unggahan berhenti.",
+        "uploading_other": "{{count}} video masih diunggah. Kalau kamu keluar, unggahan berhenti."
       },
       "goal": {
         "sales": "Jual tiket",
@@ -245,7 +247,7 @@
         "launchShort": "Luncurkan",
         "topUp": "Isi ulang {{amount}}",
         "blockOffline": "Sambungkan untuk meluncurkan",
-        "blockLaunch": "Meluncurkan butuh akses peluncuran. {{name}} bisa meluncurkannya.",
+        "blockLaunch": "Meluncurkan butuh pemilik atau admin. Tanya {{name}}.",
         "blockFund": "Meluncurkan butuh akses ke kredit Iklan. {{name}} bisa meluncurkannya.",
         "theOwner": "Pemilik",
         "blockChecking": "Memeriksa iklanmu dengan setiap aplikasi",
@@ -271,7 +273,15 @@
         "cancelBody": "Belum ada yang terpakai. Uang yang ditahan kembali ke kredit Iklanmu.",
         "keepAd": "Tetap simpan",
         "cancelled": "Iklan dibatalkan. Uang yang ditahan sudah kembali ke kredit Iklanmu.",
-        "alreadyBuilt": "Iklan ini sudah disiapkan di sebuah aplikasi, jadi tidak bisa dibatalkan di sini. Minta bantuan dan Mingla akan mengurusnya."
+        "alreadyBuilt": "Iklan ini sudah disiapkan di sebuah aplikasi, jadi tidak bisa dibatalkan di sini. Minta bantuan dan Mingla akan mengurusnya.",
+        "waitUploads_one": "{{count}} video masih disiapkan. Tunggu atau hapus.",
+        "waitUploads_other": "{{count}} video masih disiapkan. Tunggu atau hapus.",
+        "rightsMissing": "Centang kotak ini untuk meluncurkan. Ini menegaskan kamu punya hak atas video dan foto ini.",
+        "runWithoutBuyers": "Jalankan tanpa mengecualikan pembeli sebelumnya",
+        "runThisWay": "Jalankan seperti ini",
+        "visitsQuestionYet": "{{app}} belum bisa membidik {{unit}} untuk merek ini, jadi akan membidik orang yang kemungkinan mengunjungi halamanmu.",
+        "visitsQuestionCannot": "{{app}} tidak bisa membidik {{unit}}, jadi akan membidik orang yang kemungkinan mengunjungi halamanmu.",
+        "aimVisits": "Bidik kunjungan halaman"
       },
       "rights": {
         "title": "Hak media",
@@ -307,6 +317,78 @@
         "generic": "Tidak berhasil. Coba lagi.",
         "freeEvent": "Halaman ini gratis, jadi iklan sekarang menargetkan pendaftaran.",
         "checkFirst": "Periksa iklanmu lagi setelah perubahan."
+      },
+      "media": {
+        "inThisAd": "Di iklan ini",
+        "count": "{{n}} dari 5",
+        "countFew": "{{n}} dari 5 · Dengan 3 atau lebih, aplikasi punya lebih banyak untuk dicoba",
+        "library": "Pustakamu",
+        "libraryHint": "Ketuk + untuk memakai satu di iklan ini.",
+        "emptyAd": "Belum ada apa pun di iklan ini. Tambah video atau ketuk + pada video dari pustakamu.",
+        "select": "Pilih",
+        "cancelSelect": "Batal",
+        "add": "Tambah video",
+        "full": "Iklan ini muat 5",
+        "addHint": "Pilih hingga {{n}} lagi · beberapa sekaligus · masing-masing 5 sampai 60 detik",
+        "fullHint": "Hapus satu untuk menambah yang lain.",
+        "retry": "Coba lagi",
+        "emptyTitle": "Tambah 1 sampai 5 video",
+        "emptyBody": "Pilih beberapa sekaligus. Video diunggah dan disiapkan di latar belakang sementara kamu lanjut.",
+        "emptySpec": "Vertikal 9:16 · masing-masing 5 sampai 60 detik",
+        "uploading": "Mengunggah {{percent}}%",
+        "uploadingNoPct": "Mengunggah",
+        "preparing": "Menyiapkan · {{elapsed}} · biasanya kurang dari semenit",
+        "fitPending": "Kecocokan muncul saat siap",
+        "failedNetwork": "Unggahan berhenti",
+        "failedNetworkNote": "Periksa koneksimu",
+        "failedFile": "Video ini tidak bisa dipakai",
+        "failedFileNote": "Coba klip lain",
+        "refused": {
+          "unsupported": "Jenis file ini tidak bisa dipakai",
+          "tooShort": "Lebih pendek dari 5 detik",
+          "tooLong": "Lebih panjang dari 1 menit",
+          "tooLarge": "Lebih besar dari 100 MB",
+          "unreadable": "Video ini tidak bisa dibaca"
+        },
+        "fixLength": "Potong jadi 5–60 detik, lalu tambahkan lagi",
+        "fixOther": "Pilih klip lain",
+        "photo": "Foto",
+        "photoFit": "Foto · hanya Facebook & Instagram",
+        "untitled": "Video",
+        "remove": "Hapus {{name}} dari iklan ini",
+        "cancelUpload": "Batalkan unggahan {{name}}",
+        "clear": "Bersihkan {{name}}",
+        "use": "Pakai {{name}} di iklan ini",
+        "useFull": "Iklan ini muat 5. Hapus satu dulu.",
+        "toLibrary_one": "Iklan ini muat 5, jadi {{count}} masuk ke pustakamu. Sedang diunggah di sana.",
+        "toLibrary_other": "Iklan ini muat 5, jadi {{count}} masuk ke pustakamu. Sedang diunggah di sana.",
+        "repeat": "{{name}} sedang ditambahkan.",
+        "removed": "{{name}} dihapus dari iklan ini. Tetap ada di pustakamu.",
+        "removedMany": "{{count}} dihapus dari iklan ini. Tetap ada di pustakamu.",
+        "cancelled": "Unggahan {{name}} dibatalkan.",
+        "undo": "Urungkan",
+        "selectSummary": "Centang video untuk menghapusnya dari iklan ini atau mengarsipkannya.",
+        "selected": "{{count}} dipilih",
+        "removeSel": "Hapus {{count}} dari iklan",
+        "removeSelNone": "Hapus dari iklan",
+        "archiveSel": "Arsipkan {{count}}",
+        "done": "Selesai",
+        "archiveTitle_one": "Arsipkan {{count}} video dari pustakamu?",
+        "archiveTitle_other": "Arsipkan {{count}} video dari pustakamu?",
+        "archiveBody": "Video keluar dari pustaka mereknya, jadi iklan baru tidak bisa memakainya. Iklan yang sudah berjalan tetap memakainya. Kamu bisa mengurungkannya tepat setelahnya.",
+        "archiveConfirm": "Arsipkan",
+        "keep": "Simpan",
+        "archived": "{{count}} diarsipkan dari pustakamu.",
+        "archiveFailed": "Gagal mengarsipkan. Tidak ada yang berubah. Coba lagi.",
+        "dupTitle": "{{name}} sudah ada di pustakamu",
+        "dupBody": "Nama dan durasi sama dengan yang pernah kamu tambahkan.",
+        "dupUse": "Pakai yang ada di pustakamu",
+        "dupUpload": "Unggah lagi",
+        "dupFull": "Iklan ini muat 5. {{name}} tetap ada di pustakamu.",
+        "draftNotReady": "Drafmu masih disimpan. Coba lagi sebentar.",
+        "pickFailed": "Tidak bisa membuka videomu. Coba lagi.",
+        "pending_one": "{{count}} klip masih disiapkan. Berikutnya terbuka saat satu klip siap.",
+        "pending_other": "{{count}} klip masih disiapkan. Berikutnya terbuka saat satu klip siap."
       }
     },
     "manage": {
@@ -318,7 +400,9 @@
         "label": "Filter iklan",
         "all": "Semua",
         "running": "Berjalan",
-        "ended": "Selesai"
+        "ended": "Selesai",
+        "review": "Sedang ditinjau",
+        "drafts": "Draf"
       },
       "credit": {
         "label": "Kredit iklan",
@@ -333,7 +417,10 @@
         "error": "Kredit iklan tidak bisa dimuat. Iklanmu tetap berjalan.",
         "added": "Kredit ditambahkan.",
         "notAdded": "Pembayaranmu kembali tapi kredit belum ditambahkan. Coba lagi atau minta bantuan.",
-        "cancelled": "Pembayaran dibatalkan. Tidak ada kredit yang ditambahkan."
+        "cancelled": "Pembayaran dibatalkan. Tidak ada kredit yang ditambahkan.",
+        "topUpNeedsRole": "Isi saldo hanya untuk pemilik, admin, atau Keuangan.",
+        "withdrawNeedsRole": "Penarikan hanya untuk pemilik atau Keuangan. Tanya {{name}}.",
+        "theOwner": "pemilik"
       },
       "tools": {
         "compare": "Bandingkan iklanmu",
@@ -354,7 +441,11 @@
         "ends": "Saat selesai",
         "endsV": "Sisanya tetap jadi kredit",
         "withdraw": "Tarik",
-        "withdrawV": "Kembali ke cara kamu membayar, termasuk biaya"
+        "withdrawV": "Kembali ke cara kamu membayar, termasuk biaya",
+        "whoLaunches": "Isi saldo dan luncurkan",
+        "whoLaunchesV": "Pemilik dan admin",
+        "whoWithdraws": "Tarik kredit",
+        "whoWithdrawsV": "Pemilik dan Keuangan"
       },
       "list": {
         "errorTitle": "Iklanmu tidak bisa dimuat",
@@ -372,7 +463,18 @@
         "colResults": "Hasil",
         "colEach": "Per unit",
         "open": "Buka {{name}}",
-        "draftLine": "Draf tersimpan · lanjutkan dari terakhir kali"
+        "draftLine": "Draf tersimpan · lanjutkan dari terakhir kali",
+        "reviewLine": "Setiap aplikasi memeriksa iklanmu dulu. Tidak ada biaya sampai iklan tampil.",
+        "appShowing": "{{app}}: tampil",
+        "appChecking": "{{app}}: sedang diperiksa",
+        "appNotApproved": "{{app}}: tidak disetujui",
+        "deleteDraftA11y": "Hapus draf {{name}}",
+        "deleteTitle": "Hapus draf ini?",
+        "deleteBody": "“{{name}}” akan dihapus selamanya. Tidak ada biaya dan kredit iklanmu tetap sama.",
+        "deleteConfirm": "Hapus draf",
+        "deleteKeep": "Simpan saja",
+        "draftDeleted": "Draf dihapus",
+        "deleteFailed": "Draf tidak bisa dihapus. Tarik ke bawah untuk memuat ulang lalu coba lagi."
       },
       "unit": {
         "sales": "tiket",
@@ -393,7 +495,8 @@
         "partRejected": "Berjalan · {{count}} tidak disetujui",
         "draft": "Draf",
         "attention": "Perlu dicek",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Berjalan · {{apps}} sedang ditinjau"
       },
       "reason": {
         "soldOut": "Habis terjual",

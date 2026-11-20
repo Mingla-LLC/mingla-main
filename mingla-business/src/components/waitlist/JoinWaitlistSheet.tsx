@@ -11,10 +11,9 @@ import {
 import {
   radius as radiusTokens,
   space,
-  color,
   type,
-  materials,
 } from "../../constants/designSystem";
+import { color, materials, themedStyles } from "../../theme/surfaceTokens";
 import { useJoinWaitlistMutation } from "../../hooks/useJoinWaitlistMutation";
 import { phoneStartCountryForCurrency } from "../../utils/phoneStartCountryForCurrency";
 import { Button } from "../ui/Button";
@@ -277,7 +276,7 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   body: {
     paddingHorizontal: space[6],
     paddingTop: space[6],
@@ -396,4 +395,4 @@ const styles = StyleSheet.create({
     paddingBottom: space[6],
     zIndex: 10,
   },
-});
+}));

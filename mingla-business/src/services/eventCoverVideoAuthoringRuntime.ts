@@ -13,3 +13,9 @@
 export { CoverPicker } from "../components/ui/CoverPicker";
 export * from "./eventCoverVideoProcessingService";
 export * from "./eventCoverVideoPreparedSource";
+// #4238 B7: the Host ad media step's background uploads and multi-picker ride
+// the same boundary, so the shared transport never hoists into `__common`.
+export { HostAdVideoUploadSlot } from "../components/marketing/ads/HostAdVideoUploadSlot";
+export { launchAdVideosPicker } from "../components/marketing/ads/hostAdVideoPicker";
+export { revokeCoverPickedAssets } from "../components/ui/coverPickerDeviceMedia";
+export { normalizePickerDurationMs } from "../components/ui/coverPickerVideoTrimUpload";

@@ -113,6 +113,7 @@ import {
   normalizeMetaExcludedGeo,
   normalizeMetaLocales,
   buildMetaInterestFlexibleSpec,
+  fillMetaPlacementsFromVerticalVideo,
   metaFetchPixelLastFired,
   type MetaPlacementAsset,
   type MetaPlacementAssets,
@@ -967,14 +968,16 @@ async function resolvePaidSocialCreativeMedia(
           assets[ratio] = { kind: "image", imageUrl: row.source_url.trim() };
         }
       }
+      // #4238: a vertical-only video fills the square and 4:5 slots itself.
+      const filled = fillMetaPlacementsFromVerticalVideo(assets);
       if (
         (["1:1", "4:5", "9:16"] as MetaPlacementRatio[]).some((ratio) =>
-          !assets[ratio]
+          !filled[ratio]
         )
       ) {
         throw new Error(`stage_creative_meta_coverage:${creativeId}`);
       }
-      media.metaPlacementAssets = assets as MetaPlacementAssets;
+      media.metaPlacementAssets = filled as MetaPlacementAssets;
     } else if (input.platform === "snapchat") {
       if (!ref || typeof ref.external_ref !== "string" || !ref.external_ref) {
         throw new Error(`stage_creative_not_prepared:${creativeId}`);
@@ -6414,6 +6417,11 @@ serve(async (req: Request): Promise<Response> => {
       } satisfies MetaPlacementAsset;
     }
   }
+  // #4238: a vertical-only video fills the square and 4:5 slots itself.
+  Object.assign(
+    resolvedPlacementAssets,
+    fillMetaPlacementsFromVerticalVideo(resolvedPlacementAssets),
+  );
   const missingMetaRatios = requiredMetaRatios.filter((ratio) =>
     !resolvedPlacementAssets[ratio]
   );

@@ -11,7 +11,8 @@ import {
 } from "../../lib/previewArtifact";
 import { requestHost, resolveHostSite } from "../../lib/publication";
 import { loadPageExtras } from "../../lib/pageExtras";
-import { PreviewTokenBridge } from "../../components/PreviewTokenBridge";
+import { PreviewBridge } from "../../components/PreviewBridge";
+import { loadPreviewSectionIds } from "../../lib/previewSections";
 import { runtimeConfig } from "../../lib/config";
 import { PreviewLinkScope, type PreviewScope } from "../../components/PreviewLinks";
 import { withPreviewDetailKey, withPreviewMediaKey, withPreviewOfferingKey } from "../../lib/previewMedia";
@@ -96,6 +97,8 @@ export default async function PreviewPage({
         }}>
           <SitePageView artifact={artifact} page={detailed.page} previewKey={parsed.key} live={withPreviewOfferingKey(detailed.live, parsed.key)} detail={withPreviewDetailKey(detailed.detail, parsed.key)} saveData={wantsLessData(incomingDetail)} nonce={incomingDetail.get("x-nonce") ?? undefined} />
         </PreviewLinkScope>
+        {/* #4453 website workspace — an offering page has no sections to pick, but it still answers the workspace (ready, scroll, colours). */}
+        <PreviewBridge localMode={previewLocalMode()} pagePath={previewPath} sections={[]} />
       </div>
     );
   }
@@ -104,14 +107,26 @@ export default async function PreviewPage({
   // #2829 W4/W5 — a draft's live grids show the brand's offerings as they are
   // now (the snapshot inside the preview artifact when Core is unreachable);
   // its forms are shown switched off (a preview never sends).
-  const { live, forms } = await loadPageExtras({
-    site: { site_id: artifact.site_id },
-    artifact,
-    page: resolved.page,
-    entry,
-    search: params,
-    preview: true,
-  });
+  /*
+   * #4453 website workspace (build contract D) — which Studio section drew
+   * each block of this page, from the list Studio stores beside the preview
+   * artifact. Only a page of sections has one (a destination or story page
+   * does not). Null (an older Studio, a failed read) means no section marks:
+   * the page is drawn exactly as before.
+   */
+  const [{ live, forms }, sectionIds] = await Promise.all([
+    loadPageExtras({
+      site: { site_id: artifact.site_id },
+      artifact,
+      page: resolved.page,
+      entry,
+      search: params,
+      preview: true,
+    }),
+    resolved.kind === "page" ? loadPreviewSectionIds(parsed, resolved.page) : Promise.resolve(null),
+  ]);
+  const page = sectionIds ? { ...resolved.page, previewSectionIds: sectionIds } : resolved.page;
+  const sections = sectionIds ? resolved.page.blocks.map((block, index) => ({ id: sectionIds[index] ?? "", type: String(block.type) })) : [];
   const incoming = await headers();
   const scope: PreviewScope = {
     target: {
@@ -128,10 +143,10 @@ export default async function PreviewPage({
         Private preview — not live. Publishing is always a separate confirmation.
       </p>
       <PreviewLinkScope scope={scope}>
-        <SitePageView artifact={artifact} page={resolved.page} previewKey={parsed.key} live={withPreviewOfferingKey(live, parsed.key)} forms={forms} entry={entry} saveData={wantsLessData(incoming)} nonce={incoming.get("x-nonce") ?? undefined} />
+        <SitePageView artifact={artifact} page={page} previewKey={parsed.key} live={withPreviewOfferingKey(live, parsed.key)} forms={forms} entry={entry} saveData={wantsLessData(incoming)} nonce={incoming.get("x-nonce") ?? undefined} />
       </PreviewLinkScope>
-      {/* #2829 W9r — unsaved colours/shape/motion from the Business app's Website design. */}
-      <PreviewTokenBridge localMode={previewLocalMode()} />
+      {/* #4453 website workspace — the workspace's bridge (it also applies #2829 W9r's unsaved colours, shape and motion). */}
+      <PreviewBridge localMode={previewLocalMode()} pagePath={previewPath} sections={sections} />
     </div>
   );
 }

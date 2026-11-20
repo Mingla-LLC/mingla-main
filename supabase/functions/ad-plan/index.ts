@@ -79,6 +79,7 @@ import {
   validateHostOptimization,
 } from "../_shared/adHostGoal.ts";
 import { hostAdCapabilities } from "../_shared/hostAdCapabilities.ts";
+import { hostAdPastBuyersLine } from "../_shared/hostAdWidening.ts";
 import {
   cachedSalesReadiness,
   cachedSignupsReadiness,
@@ -1515,6 +1516,37 @@ export function stripClientAudienceRefs(
   return clean;
 }
 
+/**
+ * #4238 honest Review: an app that can't leave out the brand's past buyers
+ * yet (no left-out list on that app, or it isn't ready) gets one plain line
+ * with the count, and an exact verdict becomes broader. With 0 past buyers
+ * there is nobody to leave out: no line and no broader verdict.
+ */
+export function applyPastBuyersQuestion(
+  compiled: { platform: string; verdict: string; wideningSummary: string[] }[],
+  input: {
+    wantsExclude: boolean;
+    excludeNotReady: readonly string[];
+    excludeMemberCount: number;
+  },
+): void {
+  if (!input.wantsExclude || !(input.excludeMemberCount > 0)) return;
+  for (const row of compiled) {
+    if (
+      !["meta", "tiktok", "snapchat"].includes(row.platform) ||
+      input.excludeNotReady.includes(row.platform)
+    ) {
+      row.wideningSummary.push(
+        hostAdPastBuyersLine(
+          APP_NAMES[row.platform] ?? row.platform,
+          input.excludeMemberCount,
+        ),
+      );
+      if (row.verdict === "exact") row.verdict = "broader";
+    }
+  }
+}
+
 /** Ready provider ids per platform for the version's selected audiences. */
 export async function resolvePlanAudienceRefs(
   db: Db,
@@ -1529,6 +1561,11 @@ export async function resolvePlanAudienceRefs(
   excludeIdsByPlatform: Partial<Record<Platform, string[]>>;
   /** #4238: apps where the left-out list is not ready (a plain note, not a block). */
   excludeNotReady: Platform[];
+  /**
+   * #4238 honest Review: people in this brand's own left-out audiences
+   * (ad_list_audiences.member_count). 0 means there is nobody to leave out.
+   */
+  excludeMemberCount: number;
 }> {
   const selection = asRecord(canonicalPlan.audience_selection);
   const includeKeys = Array.isArray(selection?.include_keys)
@@ -1553,10 +1590,11 @@ export async function resolvePlanAudienceRefs(
       keys,
       excludeIdsByPlatform,
       excludeNotReady,
+      excludeMemberCount: 0,
     };
   }
   const { data: defs, error } = await db.from("ad_list_audiences")
-    .select("id,audience_key,owner_kind,brand_id,kind,display_name,lookalike_country,status")
+    .select("id,audience_key,owner_kind,brand_id,kind,display_name,lookalike_country,status,member_count")
     .in("audience_key", keys);
   if (error) throw error;
   const rows = (defs ?? []) as Record<string, unknown>[];
@@ -1610,7 +1648,20 @@ export async function resolvePlanAudienceRefs(
       }
     }
   }
-  return { idsByPlatform, notReady, keys, excludeIdsByPlatform, excludeNotReady };
+  const excludeMemberCount = owned
+    .filter((row) => excludeKeys.includes(String(row.audience_key)))
+    .reduce((sum, row) => {
+      const count = Number(row.member_count);
+      return sum + (Number.isFinite(count) && count > 0 ? Math.trunc(count) : 0);
+    }, 0);
+  return {
+    idsByPlatform,
+    notReady,
+    keys,
+    excludeIdsByPlatform,
+    excludeNotReady,
+    excludeMemberCount,
+  };
 }
 
 function canonicalizePlan(
@@ -3893,22 +3944,14 @@ export async function handleAdPlan(
       )
     );
     // #4238: an app that can't leave out past buyers says so (wider, never
-    // a block).
-    const wantsExclude = Array.isArray(
-      asRecord(version.canonical_plan.audience_selection)?.exclude_keys,
-    );
-    for (const row of compiled) {
-      if (!wantsExclude) break;
-      if (
-        !["meta", "tiktok", "snapchat"].includes(row.platform) ||
-        audienceRefs.excludeNotReady.includes(row.platform)
-      ) {
-        row.wideningSummary.push(
-          `${APP_NAMES[row.platform] ?? row.platform} can't leave out people who already bought yet, so they may see your ad.`,
-        );
-        if (row.verdict === "exact") row.verdict = "broader";
-      }
-    }
+    // a block), only when there are past buyers to leave out.
+    applyPastBuyersQuestion(compiled, {
+      wantsExclude: Array.isArray(
+        asRecord(version.canonical_plan.audience_selection)?.exclude_keys,
+      ),
+      excludeNotReady: audienceRefs.excludeNotReady,
+      excludeMemberCount: audienceRefs.excludeMemberCount,
+    });
     // A selected audience that is not ready on a platform blocks that
     // platform with a plain reason, through the existing blocked-state path.
     for (const row of compiled) {

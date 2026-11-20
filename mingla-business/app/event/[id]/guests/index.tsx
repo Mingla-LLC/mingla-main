@@ -725,6 +725,8 @@ export default function EventGuestsListRoute(): React.ReactElement {
           onExport={(input) => { void handleGuestRosterExport(input); }}
           onAddGuests={canAddGuests ? () => openAddSheet() : undefined}
           onOpenPrivateLinks={canManageTicketLinks ? () => setLinksSheetOpen(true) : undefined}
+          timeZone={event?.timezone ?? null}
+          showBookedStarts={event?.event_type === "experience"}
         />
         {addSheetNode}
         {linksSheetNode}

@@ -31,7 +31,9 @@
         "title": "Rời trình tạo?",
         "body": "Bản nháp đã được lưu. Tiếp tục từ Quảng bá bất cứ lúc nào.",
         "leave": "Rời đi",
-        "keep": "Tiếp tục chỉnh sửa"
+        "keep": "Tiếp tục chỉnh sửa",
+        "uploading_one": "{{count}} video vẫn đang tải lên. Nếu bạn thoát, việc tải sẽ dừng.",
+        "uploading_other": "{{count}} video vẫn đang tải lên. Nếu bạn thoát, việc tải sẽ dừng."
       },
       "goal": {
         "sales": "Bán vé",
@@ -245,7 +247,7 @@
         "launchShort": "Chạy",
         "topUp": "Nạp {{amount}}",
         "blockOffline": "Hãy kết nối để chạy",
-        "blockLaunch": "Chạy cần quyền chạy. {{name}} có thể chạy.",
+        "blockLaunch": "Chạy quảng cáo cần chủ sở hữu hoặc quản trị viên. Hãy hỏi {{name}}.",
         "blockFund": "Chạy cần quyền dùng tín dụng quảng cáo. {{name}} có thể chạy.",
         "theOwner": "Chủ sở hữu",
         "blockChecking": "Đang kiểm tra quảng cáo với từng ứng dụng",
@@ -271,7 +273,15 @@
         "cancelBody": "Chưa chi gì. Tiền đã giữ sẽ trở về tín dụng quảng cáo của bạn.",
         "keepAd": "Giữ lại",
         "cancelled": "Đã hủy quảng cáo. Tiền đã giữ đã trở về tín dụng quảng cáo của bạn.",
-        "alreadyBuilt": "Quảng cáo này đã được thiết lập trên một ứng dụng nên không thể hủy ở đây. Hãy nhận trợ giúp và Mingla sẽ xử lý."
+        "alreadyBuilt": "Quảng cáo này đã được thiết lập trên một ứng dụng nên không thể hủy ở đây. Hãy nhận trợ giúp và Mingla sẽ xử lý.",
+        "waitUploads_one": "{{count}} video vẫn đang được chuẩn bị. Hãy chờ hoặc xóa nó.",
+        "waitUploads_other": "{{count}} video vẫn đang được chuẩn bị. Hãy chờ hoặc xóa nó.",
+        "rightsMissing": "Đánh dấu ô này để chạy. Bạn xác nhận mình có quyền với các video và ảnh này.",
+        "runWithoutBuyers": "Chạy mà không loại trừ người từng mua",
+        "runThisWay": "Chạy theo cách này",
+        "visitsQuestionYet": "{{app}} chưa thể nhắm tới {{unit}} cho thương hiệu này, nên sẽ nhắm tới những người có khả năng ghé trang của bạn.",
+        "visitsQuestionCannot": "{{app}} không thể nhắm tới {{unit}}, nên sẽ nhắm tới những người có khả năng ghé trang của bạn.",
+        "aimVisits": "Nhắm tới lượt ghé trang"
       },
       "rights": {
         "title": "Quyền tư liệu",
@@ -307,6 +317,78 @@
         "generic": "Không thành công. Hãy thử lại.",
         "freeEvent": "Trang này miễn phí nên quảng cáo giờ nhắm đến lượt đăng ký.",
         "checkFirst": "Hãy kiểm tra lại quảng cáo sau khi thay đổi."
+      },
+      "media": {
+        "inThisAd": "Trong quảng cáo này",
+        "count": "{{n}} trên 5",
+        "countFew": "{{n}} trên 5 · Từ 3 trở lên giúp các ứng dụng có thêm lựa chọn để thử",
+        "library": "Thư viện của bạn",
+        "libraryHint": "Chạm + để dùng một mục trong quảng cáo này.",
+        "emptyAd": "Quảng cáo này chưa có gì. Thêm video hoặc chạm + ở một mục trong thư viện.",
+        "select": "Chọn",
+        "cancelSelect": "Hủy",
+        "add": "Thêm video",
+        "full": "Quảng cáo chứa được 5",
+        "addHint": "Chọn thêm tối đa {{n}} · nhiều video cùng lúc · mỗi video 5 đến 60 giây",
+        "fullHint": "Xóa một video để thêm video khác.",
+        "retry": "Thử lại",
+        "emptyTitle": "Thêm 1 đến 5 video",
+        "emptyBody": "Chọn nhiều video cùng lúc. Chúng tải lên và được chuẩn bị ở nền trong khi bạn tiếp tục.",
+        "emptySpec": "Dọc 9:16 · mỗi video 5 đến 60 giây",
+        "uploading": "Đang tải lên {{percent}}%",
+        "uploadingNoPct": "Đang tải lên",
+        "preparing": "Đang chuẩn bị · {{elapsed}} · thường chưa đến một phút",
+        "fitPending": "Độ vừa khung hiện khi sẵn sàng",
+        "failedNetwork": "Việc tải lên đã dừng",
+        "failedNetworkNote": "Kiểm tra kết nối của bạn",
+        "failedFile": "Không dùng được video này",
+        "failedFileNote": "Thử một đoạn khác",
+        "refused": {
+          "unsupported": "Loại tệp này không dùng được",
+          "tooShort": "Ngắn hơn 5 giây",
+          "tooLong": "Dài hơn 1 phút",
+          "tooLarge": "Lớn hơn 100 MB",
+          "unreadable": "Không đọc được video này"
+        },
+        "fixLength": "Cắt còn 5–60 giây rồi thêm lại",
+        "fixOther": "Chọn một đoạn khác",
+        "photo": "Ảnh",
+        "photoFit": "Ảnh · chỉ Facebook & Instagram",
+        "untitled": "Video",
+        "remove": "Xóa {{name}} khỏi quảng cáo này",
+        "cancelUpload": "Hủy tải lên {{name}}",
+        "clear": "Bỏ {{name}}",
+        "use": "Dùng {{name}} trong quảng cáo này",
+        "useFull": "Quảng cáo chứa được 5. Hãy xóa một video trước.",
+        "toLibrary_one": "Quảng cáo này chứa được 5, nên {{count}} video đã vào thư viện của bạn. Chúng đang tải lên ở đó.",
+        "toLibrary_other": "Quảng cáo này chứa được 5, nên {{count}} video đã vào thư viện của bạn. Chúng đang tải lên ở đó.",
+        "repeat": "{{name}} đang được thêm rồi.",
+        "removed": "Đã xóa {{name}} khỏi quảng cáo này. Nó vẫn ở trong thư viện của bạn.",
+        "removedMany": "Đã xóa {{count}} khỏi quảng cáo này. Chúng vẫn ở trong thư viện của bạn.",
+        "cancelled": "Đã hủy tải lên {{name}}.",
+        "undo": "Hoàn tác",
+        "selectSummary": "Đánh dấu video để xóa khỏi quảng cáo này hoặc lưu trữ.",
+        "selected": "Đã chọn {{count}}",
+        "removeSel": "Xóa {{count}} khỏi quảng cáo",
+        "removeSelNone": "Xóa khỏi quảng cáo",
+        "archiveSel": "Lưu trữ {{count}}",
+        "done": "Xong",
+        "archiveTitle_one": "Lưu trữ {{count}} video khỏi thư viện của bạn?",
+        "archiveTitle_other": "Lưu trữ {{count}} video khỏi thư viện của bạn?",
+        "archiveBody": "Chúng rời khỏi thư viện thương hiệu của bạn, nên quảng cáo mới không dùng được. Quảng cáo đang chạy vẫn giữ chúng. Bạn có thể hoàn tác ngay sau đó.",
+        "archiveConfirm": "Lưu trữ",
+        "keep": "Giữ lại",
+        "archived": "Đã lưu trữ {{count}} khỏi thư viện của bạn.",
+        "archiveFailed": "Không lưu trữ được. Không có gì thay đổi. Hãy thử lại.",
+        "dupTitle": "{{name}} đã có trong thư viện của bạn",
+        "dupBody": "Cùng tên và độ dài với một video bạn đã thêm trước đó.",
+        "dupUse": "Dùng video trong thư viện",
+        "dupUpload": "Tải lên lại",
+        "dupFull": "Quảng cáo này chứa được 5. {{name}} vẫn ở trong thư viện của bạn.",
+        "draftNotReady": "Bản nháp vẫn đang được lưu. Hãy thử lại sau giây lát.",
+        "pickFailed": "Không mở được video của bạn. Hãy thử lại.",
+        "pending_one": "{{count}} đoạn vẫn đang được chuẩn bị. Nút Tiếp theo mở khi có một đoạn sẵn sàng.",
+        "pending_other": "{{count}} đoạn vẫn đang được chuẩn bị. Nút Tiếp theo mở khi có một đoạn sẵn sàng."
       }
     },
     "manage": {
@@ -318,7 +400,9 @@
         "label": "Lọc quảng cáo",
         "all": "Tất cả",
         "running": "Đang chạy",
-        "ended": "Đã kết thúc"
+        "ended": "Đã kết thúc",
+        "review": "Đang xét duyệt",
+        "drafts": "Bản nháp"
       },
       "credit": {
         "label": "Tín dụng quảng cáo",
@@ -333,7 +417,10 @@
         "error": "Không tải được tín dụng quảng cáo. Quảng cáo của bạn vẫn chạy.",
         "added": "Đã thêm tín dụng.",
         "notAdded": "Thanh toán đã quay lại nhưng tín dụng chưa được thêm. Hãy thử lại hoặc nhờ trợ giúp.",
-        "cancelled": "Đã hủy thanh toán. Không có tín dụng nào được thêm."
+        "cancelled": "Đã hủy thanh toán. Không có tín dụng nào được thêm.",
+        "topUpNeedsRole": "Nạp tiền cần chủ sở hữu, quản trị viên hoặc Tài chính.",
+        "withdrawNeedsRole": "Rút tiền dành cho chủ sở hữu hoặc Tài chính. Hãy hỏi {{name}}.",
+        "theOwner": "chủ sở hữu"
       },
       "tools": {
         "compare": "So sánh quảng cáo",
@@ -354,7 +441,11 @@
         "ends": "Khi kết thúc",
         "endsV": "Phần còn lại giữ làm tín dụng",
         "withdraw": "Rút",
-        "withdrawV": "Về lại cách bạn đã trả, gồm cả phí"
+        "withdrawV": "Về lại cách bạn đã trả, gồm cả phí",
+        "whoLaunches": "Nạp tiền và chạy",
+        "whoLaunchesV": "Chủ sở hữu và quản trị viên",
+        "whoWithdraws": "Rút tín dụng",
+        "whoWithdrawsV": "Chủ sở hữu và Tài chính"
       },
       "list": {
         "errorTitle": "Không tải được quảng cáo",
@@ -372,7 +463,18 @@
         "colResults": "Kết quả",
         "colEach": "Mỗi cái",
         "open": "Mở {{name}}",
-        "draftLine": "Đã lưu bản nháp · tiếp tục từ chỗ bạn dừng"
+        "draftLine": "Đã lưu bản nháp · tiếp tục từ chỗ bạn dừng",
+        "reviewLine": "Mỗi ứng dụng sẽ xét duyệt quảng cáo của bạn trước. Không tốn tiền cho đến khi quảng cáo hiển thị.",
+        "appShowing": "{{app}}: đang hiển thị",
+        "appChecking": "{{app}}: đang kiểm tra",
+        "appNotApproved": "{{app}}: không được duyệt",
+        "deleteDraftA11y": "Xóa bản nháp {{name}}",
+        "deleteTitle": "Xóa bản nháp này?",
+        "deleteBody": "“{{name}}” sẽ bị xóa vĩnh viễn. Không tính phí và tín dụng quảng cáo của bạn giữ nguyên.",
+        "deleteConfirm": "Xóa bản nháp",
+        "deleteKeep": "Giữ lại",
+        "draftDeleted": "Đã xóa bản nháp",
+        "deleteFailed": "Không thể xóa bản nháp. Kéo xuống để làm mới rồi thử lại."
       },
       "unit": {
         "sales": "vé",
@@ -393,7 +495,8 @@
         "partRejected": "Đang chạy · {{count}} không được duyệt",
         "draft": "Bản nháp",
         "attention": "Cần xem lại",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Đang chạy · {{apps}} đang xét duyệt"
       },
       "reason": {
         "soldOut": "Hết vé",

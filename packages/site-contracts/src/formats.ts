@@ -118,7 +118,8 @@ export const FORMAT_PRIMARY_ACTION: Readonly<Record<FormatKey, FormatAction>> = 
   art: { label: "Get tickets", short: "Tickets", route: "event" },
   trips: { label: "Book this trip", short: "Book a trip", route: "trip" },
   events: { label: "Buy tickets", short: "Tickets", route: "event" },
-  experiences: { label: "Book a session", short: "Book", route: "experience" },
+  // #4453 — neutral for any experience brand (an arcade as much as a sound bath).
+  experiences: { label: "Book now", short: "Book", route: "experience" },
 };
 
 /* ───────────────────────── sections ───────────────────────── */
@@ -147,14 +148,23 @@ const s = (type: BlockType, options?: SectionOptions, extras?: readonly SectionE
  * v2 §4.2 — each format's Home, in order. A section is placed only when
  * eligible (§6.4); v2.1 §1.1's `page_links` teaser sits before
  * `newsletter_signup` (milestone 7b).
+ *
+ * #4453 booking-first Home (Seth, 2026-11-18, after Gameland Lagos's live
+ * Home opened on a plain header and two paragraphs of manifesto): every
+ * format that sells a booking opens with the hero, then its booking block
+ * (the listing grid and its times, the table times and menu, or the next
+ * event and its tickets). A secondary format's offering or booking sections
+ * follow straight after that block (composeFormat.ts), then the value
+ * points, how it works, pictures and reviews, hours, questions, and the
+ * sign-up last. The owner's long "who / why" text no longer sits on these
+ * Homes (the hero carries the "why"; About keeps the bio).
  */
 export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]>> = {
   restaurants: [
     s("hero", undefined, ["booking_bar", "show_rating"]),
-    s("marquee"),
-    s("rich_text", undefined, undefined, "kitchen story"),
     s("availability", { source: "venue_slots" }, undefined, "table times"),
     s("menu_board"),
+    s("marquee"),
     s("offering_grid", { kind: "event", mode: "upcoming" }, undefined, "ticketed dinners"),
     s("gallery"),
     s("testimonials", { from_collection: true }),
@@ -165,11 +175,10 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
   ],
   hotels: [
     s("hero", undefined, ["booking_bar", "show_rating"]),
-    s("marquee"),
-    s("rich_text"),
     s("offering_grid", { kind: "stay", mode: "upcoming" }, undefined, "rooms"),
     s("availability", { source: "stay_nights" }, undefined, "nightly rates"),
-    s("feature_cards"),
+    s("marquee"),
+    s("feature_cards", undefined, undefined, "value points"),
     s("gallery"),
     s("testimonials", { from_collection: true }),
     s("hours_location", undefined, undefined, "arrival"),
@@ -179,10 +188,11 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
   ],
   play: [
     s("hero", undefined, ["booking_bar", "show_rating"]),
-    s("marquee"),
     s("offering_grid", { kind: "experience", mode: "upcoming" }, undefined, "lanes, rooms, parties"),
-    s("availability", { source: "experience" }, undefined, "session times"),
-    s("feature_cards"),
+    s("availability", { source: "experience" }, undefined, "times you can book"),
+    s("marquee"),
+    s("feature_cards", undefined, undefined, "value points"),
+    s("process_steps"),
     s("gallery"),
     s("offering_history"),
     s("testimonials", { from_collection: true }),
@@ -221,9 +231,9 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
   ],
   events: [
     s("hero", undefined, ["show_rating"]),
-    s("marquee"),
-    s("ticket_tiers", undefined, undefined, "next headline event"),
     s("offering_grid", { kind: "event", mode: "upcoming" }),
+    s("ticket_tiers", undefined, undefined, "next headline event"),
+    s("marquee"),
     s("gallery"),
     s("offering_history", undefined, undefined, "past nights"),
     s("testimonials", { from_collection: true }),
@@ -233,19 +243,26 @@ export const FORMAT_RECIPES: Readonly<Record<FormatKey, readonly FormatSection[]
   ],
   experiences: [
     s("hero", undefined, ["booking_bar", "fact_badge", "show_rating"]),
-    s("marquee"),
-    s("rich_text"),
     s("offering_grid", { kind: "experience", mode: "upcoming" }),
+    s("availability", { source: "experience" }, undefined, "times you can book"),
+    s("marquee"),
+    s("feature_cards", undefined, undefined, "value points"),
     s("process_steps"),
-    s("availability", { source: "experience" }, undefined, "session times"),
-    s("destination_grid"),
     s("gallery"),
     s("testimonials", { from_collection: true }),
+    s("hours_location"),
     s("faq"),
     s("page_links", { links: "teaser" }),
     s("newsletter_signup"),
   ],
 };
+
+/**
+ * #4453 booking-first Home — the section types that make a format's booking
+ * block (the run right after the hero). A secondary format's Home sections
+ * are placed straight after this run.
+ */
+export const HOME_BOOKING_TYPES: readonly BlockType[] = ["offering_grid", "availability", "ticket_tiers", "menu_board", "venue_reservation"];
 
 /** The Home sections a secondary format contributes: its first eligible offering or booking section (≤ 2). */
 export const SECONDARY_HOME_TYPES: readonly BlockType[] = ["offering_grid", "availability", "ticket_tiers", "menu_board"];
@@ -329,7 +346,8 @@ export const FORMAT_PAGE_SETS: Readonly<Record<FormatKey, readonly FormatPage[]>
     page("about", "About", [s("rich_text", { page: "about" }), s("feature_cards"), s("newsletter_signup")]),
   ],
   experiences: [
-    page("sessions", "Sessions", [s("offering_grid", { kind: "experience", mode: "upcoming" }), s("process_steps")], { planned: "experiences", listing: true, collection: "experiences" }),
+    // #4453 — the slugs `sessions` and `book-a-session` stay (existing sites route on them); the words are neutral.
+    page("sessions", "Experiences", [s("offering_grid", { kind: "experience", mode: "upcoming" }), s("process_steps")], { planned: "experiences", listing: true, collection: "experiences" }),
     page("book-a-session", "Book", [s("availability", { source: "experience" }), s("faq")]),
     page("visit", "Visit", [s("destination_grid"), s("hours_location"), s("facts_table")]),
     page("about", "About", [s("rich_text", { page: "about" }), s("gallery"), s("testimonials", { from_collection: true })]),
@@ -435,7 +453,7 @@ const FORMAT_NOUN: Readonly<Record<FormatKey, string>> = {
   art: "a gallery or studio",
   trips: "group trips",
   events: "events and nights out",
-  experiences: "sessions and experiences",
+  experiences: "experiences and activities",
 };
 
 /** The fixed words shown when an owner picks an "avoid" style (D6). Never blocks. */

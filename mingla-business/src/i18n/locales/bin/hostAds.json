@@ -31,7 +31,9 @@
         "title": "Kpaa vbe emwi ọ ru ọ?",
         "body": "Ẹkpẹti ruẹ ye rre. Tobọ ẹre vbe Ru ọ ye ẹvbo ẹghẹ hia.",
         "leave": "Kpaa",
-        "keep": "Ye ru ẹre"
+        "keep": "Ye ru ẹre",
+        "uploading_one": "Ẹ ma gba vidio {{count}} ghi kpe. Ọ vbe wẹ ku, o ghi gba na ma yan.",
+        "uploading_other": "Ẹ ma gba vidio {{count}} ghi kpe. Ọ vbe wẹ ku, o ghi gba na ma yan."
       },
       "goal": {
         "sales": "Khiẹn tiketi",
@@ -245,7 +247,7 @@
         "launchShort": "Tobọ",
         "topUp": "Ye {{amount}}",
         "blockOffline": "Ru intanẹt ne u tobọ",
-        "blockLaunch": "Ọ hoo ẹtọ ne a tobọ. {{name}} sẹtin tobọ ẹre.",
+        "blockLaunch": "Ẹ kpaọ ghi onọ nwe ya admin. Ghi {{name}}.",
         "blockFund": "Ọ hoo ẹtọ igho ẹvbo. {{name}} sẹtin tobọ ẹre.",
         "theOwner": "Ọmwa ne ọ mwẹ ẹre",
         "blockChecking": "A ye ghe ẹvbo ruẹ vbe emwi ọkpa ọkpa",
@@ -271,7 +273,15 @@
         "cancelBody": "A i mu emwi ọkpa. Igho ne a mu ghi kpaa dee igho ẹvbo ruẹ.",
         "keepAd": "Mu ẹre",
         "cancelled": "A mu ẹvbo na rre. Igho ne a mu kpaa dee igho ẹvbo ruẹ.",
-        "alreadyBuilt": "A ma ru ẹvbo na vbe emwi, a i sẹtin mu ẹre rre evba. Gualọ ukpamaren, Mingla ghi ru ẹre."
+        "alreadyBuilt": "A ma ru ẹvbo na vbe emwi, a i sẹtin mu ẹre rre evba. Gualọ ukpamaren, Mingla ghi ru ẹre.",
+        "waitUploads_one": "Ẹ ma kpaọ vidio {{count}} ghi kpe. Gbe ro, ya ha vbe ze ke.",
+        "waitUploads_other": "Ẹ ma kpaọ vidio {{count}} ghi kpe. Gbe ro, ya ha vbe ze ke.",
+        "rightsMissing": "Ve ọkpa na kpa ra yi dẹ. O ma zẹ vbe wẹ ni ẹtin vbe vidio vbe foto na.",
+        "runWithoutBuyers": "Gbaa vbe ẹvbo ẹre ghi ze ọ ghi ke",
+        "runThisWay": "Gbaa vbe ọ",
+        "visitsQuestionYet": "{{app}} ma ghi ya {{unit}} vbe brand na, ya o ma ya ọmwa nọ ghi ya vbe ẹfọ wẹ.",
+        "visitsQuestionCannot": "{{app}} ma ya {{unit}}, ya o ma ya ọmwa nọ ghi ya vbe ẹfọ wẹ.",
+        "aimVisits": "Ya vbe ẹvbo ẹfọ"
       },
       "rights": {
         "title": "Ẹtọ emwi",
@@ -307,6 +317,78 @@
         "generic": "Ọ i ru ẹre ma. Ru ẹre vbe ọkpa.",
         "freeEvent": "Ẹkpẹti na ọre ọfẹ, ẹvbo na ye gualọ ọmwa ne ọ gbẹn eni.",
         "checkFirst": "Ghe ẹvbo ruẹ vbe ọkpa vbe u wanrẹn ẹre fu."
+      },
+      "media": {
+        "inThisAd": "Vbe ẹkhoe na",
+        "count": "{{n}} vbe 5",
+        "countFew": "{{n}} vbe 5 · Vbe ọ ghi vbe 3 ya ọ gie, apps na ma ni ọ gha rẹn",
+        "library": "Ọgbaisi ẹre wẹ",
+        "libraryHint": "Ya + ya vbe ọkpa vbe ẹkhoe na.",
+        "emptyAd": "Ọ ghi ni nọ vbe ẹkhoe na. Ze vidio, ya ya + vbe ọkpa vbe ọgbaisi ẹre wẹ.",
+        "select": "Ghọ",
+        "cancelSelect": "Ghi tae",
+        "add": "Ze vidio",
+        "full": "Ẹkhoe na ma ghọ 5",
+        "addHint": "Ghọ ya sẹ {{n}} ọzọ · ghi ra vbe ọkpa · ọ vbe ọkpa 5 sẹ 60 seconds",
+        "fullHint": "Ze ọkpa ke ya ze ọzọ.",
+        "retry": "Rhie ọzọ",
+        "emptyTitle": "Ze vidio 1 sẹ 5",
+        "emptyBody": "Ghọ ghi ra vbe ọkpa. Ẹ ma gba ra, ẹ ma kpaọ ra vbe ẹyi, wẹ vbe sẹ vbe ọ.",
+        "emptySpec": "Ẹdẹ 9:16 · ọ vbe ọkpa 5 sẹ 60 seconds",
+        "uploading": "Ẹ ma gba {{percent}}%",
+        "uploadingNoPct": "Ẹ ma gba",
+        "preparing": "Ẹ ma kpaọ · {{elapsed}} · ọ ma vbe ghi dẹ minit ọkpa",
+        "fitPending": "Ẹfit ma ni vbe ọ ghi kpaọ",
+        "failedNetwork": "Ẹgba na ma yan",
+        "failedNetworkNote": "Ghi ni ẹkpẹti wẹ",
+        "failedFile": "Ma ya vidio na",
+        "failedFileNote": "Rhie klip ọzọ",
+        "refused": {
+          "unsupported": "Ma ya ẹtẹ faịl na",
+          "tooShort": "Ọ ma gbe 5 seconds",
+          "tooLong": "Ọ ma ghi 1 minit",
+          "tooLarge": "Ọ ma ghi 100 MB",
+          "unreadable": "Ma ni vidio na"
+        },
+        "fixLength": "Gbe ya sẹ 5–60 seconds, ya ze ke",
+        "fixOther": "Ghọ klip ọzọ",
+        "photo": "Foto",
+        "photoFit": "Foto · Facebook & Instagram ghẹ",
+        "untitled": "Vidio",
+        "remove": "Ze {{name}} ke vbe ẹkhoe na",
+        "cancelUpload": "Ghi tae ẹgba {{name}}",
+        "clear": "Nọ {{name}}",
+        "use": "Ya {{name}} vbe ẹkhoe na",
+        "useFull": "Ẹkhoe na ma ghọ 5. Ze ọkpa ke ghẹ.",
+        "toLibrary_one": "Ẹkhoe na ma ghọ 5, ya {{count}} ma yi ọgbaisi ẹre wẹ. Ẹ ma gba ọ vbe ọ.",
+        "toLibrary_other": "Ẹkhoe na ma ghọ 5, ya {{count}} ma yi ọgbaisi ẹre wẹ. Ẹ ma gba ra vbe ọ.",
+        "repeat": "Ẹ ma ze {{name}} ghi kpe.",
+        "removed": "Ma ze {{name}} ke vbe ẹkhoe na. Ọ vbe ọgbaisi ẹre wẹ.",
+        "removedMany": "Ma ze {{count}} ke vbe ẹkhoe na. Ra vbe ọgbaisi ẹre wẹ.",
+        "cancelled": "Ma ghi tae ẹgba {{name}}.",
+        "undo": "Vbe ke",
+        "selectSummary": "Ve ọkpa vbe vidio ya ze ra ke vbe ẹkhoe na ya kpa ra vbe ẹrẹ.",
+        "selected": "Ma ghọ {{count}}",
+        "removeSel": "Ze {{count}} ke vbe ẹkhoe",
+        "removeSelNone": "Ze ke vbe ẹkhoe",
+        "archiveSel": "Kpa {{count}} vbe ẹrẹ",
+        "done": "Ọ ma kpaọ",
+        "archiveTitle_one": "Kpa vidio {{count}} vbe ọgbaisi ẹre wẹ vbe ẹrẹ?",
+        "archiveTitle_other": "Kpa vidio {{count}} vbe ọgbaisi ẹre wẹ vbe ẹrẹ?",
+        "archiveBody": "Ra ma ke vbe ọgbaisi brand wẹ, ya ẹkhoe ọhuan ma ya ra. Ẹkhoe nọ ma ghi ghi ya ra. Wẹ ghi vbe ke vbe ọ ghi kpaọ.",
+        "archiveConfirm": "Kpa vbe ẹrẹ",
+        "keep": "Kpe",
+        "archived": "Ma kpa {{count}} vbe ọgbaisi ẹre wẹ vbe ẹrẹ.",
+        "archiveFailed": "Ma kpa vbe ẹrẹ. Ọ ghi gbe ọ ghẹ. Rhie ọzọ.",
+        "dupTitle": "{{name}} vbe ọgbaisi ẹre wẹ ghi kpe",
+        "dupBody": "Ẹvbo ẹre vbe ẹgbe ọkpa vbe nọ wẹ ze vbe ẹyi.",
+        "dupUse": "Ya nọ vbe ọgbaisi ẹre wẹ",
+        "dupUpload": "Gba ọ ọzọ",
+        "dupFull": "Ẹkhoe na ma ghọ 5. {{name}} vbe ọgbaisi ẹre wẹ.",
+        "draftNotReady": "Ẹ ma kpa draft wẹ ghi kpe. Rhie ọzọ vbe ẹyi.",
+        "pickFailed": "Ma ghi vbe vidio wẹ. Rhie ọzọ.",
+        "pending_one": "Ẹ ma kpaọ klip {{count}} ghi kpe. Ẹkpẹ ma ghi vbe ọkpa ghi kpaọ.",
+        "pending_other": "Ẹ ma kpaọ klip {{count}} ghi kpe. Ẹkpẹ ma ghi vbe ọkpa ghi kpaọ."
       }
     },
     "manage": {
@@ -318,7 +400,9 @@
         "label": "Họn ẹkpẹti",
         "all": "Hia",
         "running": "Ọ ye rre",
-        "ended": "Ọ wa fo"
+        "ended": "Ọ wa fo",
+        "review": "A ye ghe ẹre",
+        "drafts": "Ẹmwẹ ne a mu ye ẹgbẹ"
       },
       "credit": {
         "label": "Igho ẹkpẹti",
@@ -333,7 +417,10 @@
         "error": "Ma sẹtin re igho ẹkpẹti ruẹ. Ẹkpẹti ruẹ ye rre.",
         "added": "A ye igho ye ọre.",
         "notAdded": "Igho ruẹ werriẹ rre, sokpan a i ma ye igho ẹkpẹti ye ọre. Tobọ ẹre ra gualọ ukpamaren.",
-        "cancelled": "A gbe igho na fua. A i ye igho ye ọre."
+        "cancelled": "A gbe igho na fua. A i ye igho ye ọre.",
+        "topUpNeedsRole": "Ze ego vbe ọ ya onọ nwe, admin ya Ego.",
+        "withdrawNeedsRole": "Ke ego vbe ọ ya onọ nwe ya Ego. Ghi {{name}}.",
+        "theOwner": "onọ nwe"
       },
       "tools": {
         "compare": "Mu ẹkpẹti ruẹ dọ ẹdẹ",
@@ -354,7 +441,11 @@
         "ends": "Ẹghẹ ne ọ wa fo",
         "endsV": "Ẹmwẹ ne ọ ke, ọ khian ye igho ẹkpẹti",
         "withdraw": "Hae igho",
-        "withdrawV": "Ọ werriẹ ye ehe ne u ya hiẹnro, kevbe igho Mingla"
+        "withdrawV": "Ọ werriẹ ye ehe ne u ya hiẹnro, kevbe igho Mingla",
+        "whoLaunches": "Ze ego ya kpaọ",
+        "whoLaunchesV": "Onọ nwe vbe admin",
+        "whoWithdraws": "Ke ego",
+        "whoWithdrawsV": "Onọ nwe vbe Ego"
       },
       "list": {
         "errorTitle": "Ma sẹtin re ẹkpẹti ruẹ",
@@ -372,7 +463,18 @@
         "colResults": "Emwi ne ọ re",
         "colEach": "Ọkpa ọkpa",
         "open": "Rhie {{name}} nuẹ",
-        "draftLine": "A mu ẹre ye ẹgbẹ · tobọ ẹre vbe ehe ne u ya kpa"
+        "draftLine": "A mu ẹre ye ẹgbẹ · tobọ ẹre vbe ehe ne u ya kpa",
+        "reviewLine": "Each app checks your ad first. Nothing is spent until it shows.",
+        "appShowing": "{{app}}: showing",
+        "appChecking": "{{app}}: checking",
+        "appNotApproved": "{{app}}: not approved",
+        "deleteDraftA11y": "Delete draft {{name}}",
+        "deleteTitle": "Delete this draft?",
+        "deleteBody": "“{{name}}” goes away for good. Nothing is charged and your Ads credit stays as it is.",
+        "deleteConfirm": "Delete draft",
+        "deleteKeep": "Keep it",
+        "draftDeleted": "Draft deleted",
+        "deleteFailed": "Couldn't delete this draft. Pull down to refresh and try again."
       },
       "unit": {
         "sales": "tiketi",
@@ -393,7 +495,8 @@
         "partRejected": "Ọ ye rre · {{count}} a i rhie",
         "draft": "Ẹmwẹ ne a mu ye ẹgbẹ",
         "attention": "Ọ gualọ ughe",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Ọ ye rre · {{apps}} a ye ghe ẹre"
       },
       "reason": {
         "soldOut": "A khiẹn ẹre fo",

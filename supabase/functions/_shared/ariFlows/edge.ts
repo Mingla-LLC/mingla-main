@@ -527,7 +527,18 @@ async function readExperienceRow(
       has_point: typeof stop.lat === "number" && typeof stop.lng === "number",
       has_place_id: !!text(stop.place_id),
     })),
-    is_free: ticket?.is_free === true,
+    // #3645 bundle 2C — the host's choice, the server's rule
+    // (issue_3645_experience_is_free): a priced option means paid; else the
+    // stored choice; else the first option (rows saved before the choice).
+    // A row the server reads as unknown (no ticket, no whole price) is not
+    // free here, as the writers treat a missing is_free (COALESCE(.., false)).
+    is_free: ticketPriceCents > 0
+      ? false
+      : typeof meta.is_free === "boolean"
+      ? meta.is_free
+      : ticket != null
+      ? ticket.is_free === true
+      : row.whole_price_cents === 0,
     whole_price_cents: typeof row.whole_price_cents === "number"
       ? row.whole_price_cents
       : null,

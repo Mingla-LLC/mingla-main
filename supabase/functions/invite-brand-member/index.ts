@@ -3,8 +3,9 @@
 // AUTHENTICATED edge function (verify_jwt=true in config.toml). The Business
 // app POSTs an invite from /brand/[id]/team. The function:
 //   1. extracts auth.uid() from the JWT,
-//   2. enforces brand_admin+ rank via biz_brand_effective_rank (stricter
-//      check for role='brand_owner': caller MUST already be the brand_owner),
+//   2. enforces brand_admin+ rank via biz_brand_effective_rank; #4238:
+//      finance_manager and brand_owner invites need the brand owner
+//      (brands.account_id), and nobody invites their own email,
 //   3. validates inputs,
 //   4. mints a 32-byte URL-safe random token, stores SHA-256(token), and
 //      INSERTs into brand_invitations via service role (the inline RLS
@@ -18,7 +19,7 @@
 //   → 201 { invitation_id }
 //   → 400 { error:'validation', fields?:string[] }
 //   → 401 { error:'unauthenticated' }
-//   → 403 { error:'forbidden' }
+//   → 403 { error:'forbidden', reason?:'rank'|'owner_only_role'|'self_role_change' }
 //   → 404 { error:'brand_not_found' }
 //   → 409 { error:'already_invited' }
 //   → 502 { error:'email_send_failed' }
@@ -116,7 +117,51 @@ const VALID_ROLES = new Set([
 const NAME_MAX = 100;
 
 const RANK_BRAND_ADMIN = 50;
-const RANK_BRAND_OWNER = 60;
+
+// #4238 — roles only the brand owner (brands.account_id) may grant. The
+// database enforces the same rule on brand_invitations
+// (brand_invitations_grant_guard, invariant I-4238-TEAM-GRANTS).
+export const OWNER_ONLY_INVITE_ROLES: ReadonlySet<string> = new Set([
+  "brand_owner",
+  "finance_manager",
+]);
+
+export type InviteRoleRefusal =
+  | "rank"
+  | "owner_only_role"
+  | "self_role_change";
+
+export type InviteRoleDecision =
+  | { ok: true }
+  | { ok: false; reason: InviteRoleRefusal };
+
+/**
+ * #4238 — who may send this invitation.
+ * - Brand admins and above may invite (rank >= brand_admin).
+ * - finance_manager and brand_owner are owner-only.
+ * - Nobody invites their own email: accepting would change their own role.
+ */
+export function inviteRoleDecision(input: {
+  callerRank: number;
+  isOwner: boolean;
+  role: string;
+  inviterEmail: string;
+  inviteeEmail: string;
+}): InviteRoleDecision {
+  if (!input.isOwner && input.callerRank < RANK_BRAND_ADMIN) {
+    return { ok: false, reason: "rank" };
+  }
+  if (OWNER_ONLY_INVITE_ROLES.has(input.role) && !input.isOwner) {
+    return { ok: false, reason: "owner_only_role" };
+  }
+  const inviter = input.inviterEmail.trim().toLowerCase();
+  if (
+    inviter.length > 0 && inviter === input.inviteeEmail.trim().toLowerCase()
+  ) {
+    return { ok: false, reason: "self_role_change" };
+  }
+  return { ok: true };
+}
 
 export interface InvitePayload {
   brand_id: string;
@@ -270,6 +315,7 @@ function escHtml(s: string): string {
 }
 
 const PG_UNIQUE_VIOLATION = "23505";
+const PG_INSUFFICIENT_PRIVILEGE = "42501";
 
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
@@ -321,10 +367,9 @@ export async function handler(req: Request): Promise<Response> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // Permission gate: rank ≥ brand_admin. For role='brand_owner', tighter
-    // gate: caller MUST be the current brand_owner (rank 60). The RPC enforces
-    // the same constraint defensively but this gives clean 403 vs ambiguous
-    // 5xx.
+    // Permission gate: rank ≥ brand_admin. The owner-only roles and the
+    // self-invitation rule (#4238) are checked after the brand lookup below,
+    // against brands.account_id.
     const { data: rankRow, error: rankErr } = await service.rpc(
       "biz_brand_effective_rank",
       { p_brand_id: payload.brand_id, p_user_id: userId },
@@ -338,10 +383,7 @@ export async function handler(req: Request): Promise<Response> {
     }
     const callerRank = typeof rankRow === "number" ? rankRow : 0;
     if (callerRank < RANK_BRAND_ADMIN) {
-      return json({ error: "forbidden" }, 403);
-    }
-    if (payload.role === "brand_owner" && callerRank < RANK_BRAND_OWNER) {
-      return json({ error: "forbidden" }, 403);
+      return json({ error: "forbidden", reason: "rank" }, 403);
     }
 
     // Brand lookup for the email template + 404 surface.
@@ -351,7 +393,9 @@ export async function handler(req: Request): Promise<Response> {
     // forgot the partner_setup flag in the request body.
     const { data: brandRow, error: brandErr } = await service
       .from("brands")
-      .select("id, name, cover_media_url, cover_media_type, partner_setup")
+      .select(
+        "id, name, cover_media_url, cover_media_type, partner_setup, account_id",
+      )
       .eq("id", payload.brand_id)
       .is("deleted_at", null)
       .maybeSingle();
@@ -364,6 +408,18 @@ export async function handler(req: Request): Promise<Response> {
     }
     if (!brandRow) {
       return json({ error: "brand_not_found" }, 404);
+    }
+
+    // #4238 — owner-only roles and no self-invitation.
+    const decision = inviteRoleDecision({
+      callerRank,
+      isOwner: brandRow.account_id === userId,
+      role: payload.role,
+      inviterEmail,
+      inviteeEmail: payload.invitee_email,
+    });
+    if (!decision.ok) {
+      return json({ error: "forbidden", reason: decision.reason }, 403);
     }
 
     if (payload.role === "venue_staff") {
@@ -442,6 +498,10 @@ export async function handler(req: Request): Promise<Response> {
       .select("id")
       .single();
     if (insertErr) {
+      if (insertErr.code === PG_INSUFFICIENT_PRIVILEGE) {
+        // #4238 — brand_invitations_grant_guard refused the grant.
+        return json({ error: "forbidden" }, 403);
+      }
       if (insertErr.code === PG_UNIQUE_VIOLATION) {
         // Extremely unlikely token-hash collision; treat as transient.
         return json({ error: "server" }, 500);

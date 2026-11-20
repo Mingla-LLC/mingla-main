@@ -608,6 +608,15 @@ export function phase3dContractDigest(manifest) {
 // #4389 tester: registered the setup-polish tester adversarial pg17 suite (with sidecar); MANIFEST.json phase3eContractSha256 matches.
 // #4389 setup polish: skipped 20280808004389 in the #1931 pre-landing template replay (needs brand_readiness_catalog from the skipped 20280307003355); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4389 merge of main after #4453: kept main's #4453 rows and skip lines beside the #4389 rows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4238 merge of main after #4453 and #4389: kept main's rows, listed the two #4238 migrations after them; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 payout gaps: listed migration 20280809003645 in the #1857, #1931 and #2117 replay inventories and its pg17 suite, hunk guard and sidecars in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 payout gaps PR checks: skipped 20280809003645 by exact filename in the #1931 and #2117 filtered template replays (the #2492 closure gate: it re-emits payout readers over occurrence_key / provider_fee_minor, which only skipped migrations create); re-sealed.
+// #3645 merge of main after #4389: kept main's #4453 and #4389 rows and skip lines, listed 20280809003645 after them and kept its #1931 and #2117 skip lines; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 merge of main after #4238: kept main's two #4238 rows after 20280809003645; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
+// #4453 Website workspace (team requests): listed migrations 20281119004453 and 20281119014453 in the #1857, #1931 and #2117 replay inventories and their two implementor pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
+// #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows (filename order) and both sides' pg17 suites; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4490 P1-1 implementor: listed migrations 20280809004490 (venue spaces + features) and 20280809054490 (#2099 pin owner) after 20280808004389 in the #1857, #1931 and #2117 lanes, registered the P1 features pg17 suite (with sidecar) in the #1931 and #2117 inventories, skipped the pin owner on the filtered #1931 template replay, and added both migrations to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
 // #4490 P1-2 implementor: listed migration 20280809014490 (hours: windows, special days) between 20280809004490 and the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 hours pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
 // #4490 P1-3 implementor: listed migration 20280809024490 (events.venue_id/space_id/space_use + issue_4490_set_event_venue) before the #2099 pin owner in the #1857, #1931 and #2117 lanes, registered the P1 event-venue pg17 suite (with sidecar) in the #1931 and #2117 inventories, and added the migration to the #2099 provider path scope; MANIFEST.json phase3eContractSha256 matches.
@@ -632,7 +641,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 fix round 1: features at create, presets, restore, member payments, hours flag, collected today; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 fix round 2: copy an offer as a draft, runs until, schedule saves keep selling; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 fix round 3: an event takes its space, combinations, calendar part in use; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "14535d7deb38750f401ceb4a98651426a173ed7f24d0bfb4343cf22a241dc1ac";
+// #4490 merge of main (#3645, #4238, #4226, #4453 rows): kept main's rows and skip lines beside the #4490 rows in filename order; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "e62f0e8220b8553bb454788082494184f9dfb65e569a3a5e8b52dd91fc38c286";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

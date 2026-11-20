@@ -1,5 +1,6 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useContext, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { WorkspaceRouteContext } from "../ui/hostShellContext";
 import { useRouter } from "expo-router";
 
 import {
@@ -12,6 +13,9 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useBrandListState } from "../../hooks/useBrandListShim";
 import { usePickBrand } from "../../hooks/usePickBrand";
+// #4453 — a pick opens the same screen for the chosen brand.
+import { useWorkspaceBrandSwitch } from "../../hooks/useWorkspaceBrandSwitch";
+import { filterBrandsByQuery, showsBrandSearch } from "../../utils/brandSearch";
 // #4389 N3 — draft and free-only rows from the setup checklist.
 import { useBrandSetupStates } from "../../hooks/useBrandSetupStates";
 import { BRAND_SWITCHER_COPY } from "./brandSwitcherCopy";
@@ -27,6 +31,7 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { TopSheet } from "../ui/TopSheet";
 import { BrandMark } from "./BrandMark";
+import { BrandSearchField } from "./BrandSearchField";
 
 export interface BrandSwitcherSheetProps {
   visible: boolean;
@@ -47,6 +52,16 @@ export interface BrandSwitcherSheetProps {
   testID?: string;
 }
 
+/**
+ * #4453 — the least width a row's switch target (mark, name, check) keeps
+ * beside the row's buttons. On a 375pt phone the row is about 320 wide and
+ * Continue needs about 90, so the name was left "go…" / "Young & …"; below
+ * this the buttons wrap under the name instead (phones up to about 400pt
+ * wide). Mark 40 + gaps 32 + check 44 leave the name at least ~130 beside
+ * the buttons, on up to two lines, and the whole row once they have wrapped.
+ */
+export const ROW_PICK_BASIS = 248;
+
 export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   visible,
   onClose,
@@ -61,8 +76,17 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
   const brands = brandList.brands;
   const followerCounts = useBrandFollowerCounts(brands.map((brand) => brand.id));
   const { user } = useAuth();
-  const currentBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  const storeBrandId = useCurrentBrandStore((s) => s.currentBrandId);
+  // #4453 — on a route that names its brand, that brand is the ticked one.
+  const currentBrandId = useContext(WorkspaceRouteContext).routeBrandId ?? storeBrandId;
+  // The pick itself is still usePickBrand (select now, save as the default in
+  // the background); #4453 decides WHEN it lands and which screen opens.
   const pickBrand = usePickBrand(onDefaultBrandSaveError);
+  const switchTo = useWorkspaceBrandSwitch({ pickBrand });
+  // #4453 — a search field above 8 brands.
+  const [query, setQuery] = useState("");
+  const searchable = showsBrandSearch(brands.length);
+  const shownBrands = searchable ? filterBrandsByQuery(brands, query) : brands;
   const router = useRouter();
   // #4389 I-4389-NO-MODAL-ON-OVERLAY — brand creation is never embedded in
   // this non-modal TopSheet any more. Opening the setup flow (and its bank
@@ -107,11 +131,14 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
         onClose();
         return;
       }
-      pickBrand(brand);
+      // #4453 — on a brand-scoped screen this opens the same screen for the
+      // chosen brand; elsewhere it only changes the current brand.
+      void switchTo(brand).then((outcome) => {
+        if (outcome !== "held") onPicked?.(brand);
+      });
       onClose();
-      onPicked?.(brand);
     },
-    [onBeforePick, onClose, onPicked, pickBrand],
+    [onBeforePick, onClose, onPicked, switchTo],
   );
 
   return (
@@ -135,12 +162,25 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                 <Text style={styles.emptyText}>Loading your brands…</Text>
               </View>
             ) : (
+              <>
+              {searchable ? (
+                <View style={styles.search}>
+                  <BrandSearchField value={query} onChangeText={setQuery} testID="brand-switcher-search" />
+                </View>
+              ) : null}
               <ScrollView
                 style={styles.scrollArea}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
               >
-                {brands.map((brand) => {
+                {shownBrands.length === 0 ? (
+                  <Text style={styles.emptyText} testID="brand-switcher-no-match">
+                    {`No brand matches "${query.trim()}".`}
+                  </Text>
+                ) : null}
+                {shownBrands.map((brand) => {
                   const isActive = currentBrandId === brand.id;
                   const followerTotal = followerCounts.data?.[brand.id];
                   const followerLine =
@@ -206,7 +246,9 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           testID={`brand-switcher-mark-${brand.id}`}
                         />
                         <View style={styles.brandTextCol}>
-                          <Text style={styles.brandName} numberOfLines={1}>
+                          {/* #4453 — the name is what a row is for: up to two
+                              lines, never "go…" beside its buttons. */}
+                          <Text style={styles.brandName} numberOfLines={2}>
                             {brand.displayName}
                           </Text>
                           {setupRest !== null ? (
@@ -237,6 +279,13 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           </View>
                         ) : null}
                       </Pressable>
+                        {/* #4453 — the row's own buttons, kept together. On a
+                            wide sheet they sit beside the name; where that
+                            would leave the name less than ROW_PICK_BASIS
+                            (a 375pt phone) they drop to a line of their own
+                            under it, at the row's trailing edge. */}
+                        {setupRest !== null || canDiscard ? (
+                        <View style={styles.rowActions} testID={`brand-switcher-actions-${brand.id}`}>
                         {setupRest !== null ? (
                           <Pressable
                             onPress={() => openSetup(brand)}
@@ -267,6 +316,8 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                             <Icon name="moreH" size={16} color={color.text3} />
                           </Pressable>
                         ) : null}
+                        </View>
+                        ) : null}
                       </View>
                       {/* Issue #1835 — PER-ROW gate, deliberately not a
                           sheet-level one. The switcher lists every brand you can
@@ -292,6 +343,7 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                   );
                 })}
               </ScrollView>
+              </>
             )}
             <View style={styles.footer}>
               <Button
@@ -325,6 +377,7 @@ const styles = StyleSheet.create({
   rowMenuBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center", marginLeft: -space[1] },
   rowContinueLabel: { ...type.caption, color: color.text1, fontWeight: "600" },
   host: { flex: 1 },
+  search: { paddingHorizontal: space[5], paddingBottom: space[3] },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -377,8 +430,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   // The row box keeps its look; the switch target fills it up to the pill.
-  brandRowSplit: { padding: 0, paddingRight: space[4], gap: space[2] },
-  rowPick: { flex: 1, minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], paddingRight: 0 },
+  // #4453 — the row wraps: the switch target asks for ROW_PICK_BASIS, and
+  // the buttons move under it when the sheet cannot give it that beside them.
+  brandRowSplit: { padding: 0, paddingRight: space[4], gap: 0, columnGap: space[2], flexWrap: "wrap" },
+  rowPick: { flexGrow: 1, flexShrink: 1, flexBasis: ROW_PICK_BASIS, minWidth: 0, minHeight: 64, flexDirection: "row", alignItems: "center", gap: space[4], padding: space[4], paddingRight: 0 },
+  // Trailing edge on either line; the padding is the breathing room under
+  // the pill when it sits on a line of its own.
+  rowActions: { flexDirection: "row", alignItems: "center", gap: space[2], marginLeft: "auto", paddingVertical: space[2] },
   brandTextCol: { flex: 1, minWidth: 0 },
   brandName: { fontSize: type.body.fontSize, lineHeight: type.body.lineHeight, fontWeight: "600", color: color.text1 },
   brandSub: { fontSize: type.caption.fontSize, lineHeight: type.caption.lineHeight, color: color.text3 },
@@ -387,3 +445,7 @@ const styles = StyleSheet.create({
 });
 
 export default BrandSwitcherSheet;
+
+// #4453 — the desktop brand menu ships in this module's chunk (see
+// WorkspaceBrandSwitcher.tsx: one import target, one chunk, nothing hoisted).
+export { WorkspaceBrandMenu } from "./WorkspaceBrandMenu";

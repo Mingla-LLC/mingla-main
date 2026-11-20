@@ -609,7 +609,9 @@ Deno.test("the flow row's ticket price is the highest live option, not the first
     EVENT,
   );
   assert(row);
-  assertEquals(row.is_free, true);
+  // [TEST-MOD-APPROVED #3645] bundle 2C: a priced option means paid, so the
+  // free first option no longer makes the experience read free.
+  assertEquals(row.is_free, false);
   assertEquals(row.whole_price_cents, null);
   assertEquals(row.ticket_price_cents, 2_500_000);
 });

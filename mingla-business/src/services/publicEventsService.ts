@@ -19,6 +19,8 @@ import {
 import { readBundleHideRemainingCount } from "@mingla/offering-rendering/remainingCountVisibility";
 
 import { supabase } from "./supabase";
+import { isTransportFailure, resolveOfferingBookable } from "./brandCanCollect";
+import { noteUnrestrictedCheckout } from "./checkoutAccessHints";
 import type { PublicTierPricing } from "./publicTierPricingService";
 // issue #2160 — the shared occurrence shape. The direct `event_dates` READ in
 // that module is deleted; only the TYPE survives, because it is the contract
@@ -1641,30 +1643,28 @@ const ticketsArePaidOnline = (tickets: PublicTicketTypeRecord[]): boolean =>
       t.priceGbp > 0,
   );
 
-// Resolve whether a PAID offering's brand can charge via the canonical
-// pg_brand_can_collect RPC (anon-granted by the #1919 migration). FREE ⇒ true.
-// On RPC error fail CLOSED for paid supply; free never reaches this RPC.
-const resolveEventBookable = async (
+// #4518 — the brand read has ONE owner (`brandCanCollect.ts`). A failed read
+// is "unknown", retried, and never shown as "the organizer is finishing
+// payment setup"; only a server "no" closes paid supply.
+const resolveEventBookable = (
   brandId: string,
   isPaid: boolean,
-): Promise<boolean> => {
-  if (!isPaid) return true;
-  const { data, error } = await supabase.rpc("pg_brand_can_collect", {
-    p_brand_id: brandId,
-  });
-  if (error !== null) return false;
-  return data === true;
-};
+  known?: boolean,
+): Promise<boolean> => resolveOfferingBookable(brandId, isPaid, known);
 
 // Batched readiness for a set of brand ids (the brand-page event feed drop).
-// Returns the subset that CAN charge. On error returns an empty set so the
-// caller can fail closed for paid rows.
+// Returns the subset that CAN charge. A server error returns an empty set so
+// the caller fails closed for paid rows. #4518 — a request that never got an
+// answer returns EVERY id: a weak connection must not make a brand's paid
+// events vanish from its page (the server still decides at checkout).
 const fetchReadyBrandIds = async (brandIds: string[]): Promise<Set<string>> => {
   if (brandIds.length === 0) return new Set<string>();
   const { data, error } = await supabase.rpc("pg_brands_can_collect", {
     p_brand_ids: brandIds,
   });
-  if (error !== null) return new Set<string>();
+  if (error !== null) {
+    return isTransportFailure(error) ? new Set<string>(brandIds) : new Set<string>();
+  }
   return new Set<string>(
     ((data ?? []) as { brand_id: string }[])
       .map((r) => r.brand_id)
@@ -1968,9 +1968,17 @@ const detailFromDirectBundle = async (
     typeof payload.googlePlaceId === "string" && payload.googlePlaceId.length > 0
       ? payload.googlePlaceId
       : null;
+  // #4518 N1 — the same-origin bundle carries the two answers the Buy button
+  // waits on, so a public sale needs no second hostname to enable buying.
+  if (payload.checkoutAccessMode === "unrestricted") {
+    noteUnrestrictedCheckout(String(payload.id));
+  }
   const bookable = await resolveEventBookable(
     String(payload.brandId),
     ticketsArePaidOnline(tickets),
+    typeof payload.brandCanCollect === "boolean"
+      ? payload.brandCanCollect
+      : undefined,
   );
   return {
     event,

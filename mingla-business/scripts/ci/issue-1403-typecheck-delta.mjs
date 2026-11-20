@@ -607,8 +607,22 @@ const selfTest = () => {
   return 0;
 };
 
+// The whole business graph is near Node's default heap: on 2026-11-19 main's
+// compiler aborted (exit 134) out of memory. The batch runner strips
+// NODE_OPTIONS (#4420), so the heap is raised on the compiler's own command.
+const TSC_HEAP_MB = 6144;
+
+const compilerCommand = (businessRoot) => {
+  const tscBin = path.join(businessRoot, "node_modules", "typescript", "bin", "tsc");
+  if (fs.existsSync(tscBin)) {
+    return [process.execPath, [`--max-old-space-size=${TSC_HEAP_MB}`, tscBin]];
+  }
+  return ["npx", ["tsc"]];
+};
+
 const runCompiler = (businessRoot) => {
-  const run = spawnSync("npx", ["tsc", "--noEmit", "--pretty", "false"], {
+  const [command, prefix] = compilerCommand(businessRoot);
+  const run = spawnSync(command, [...prefix, "--noEmit", "--pretty", "false"], {
     cwd: businessRoot,
     encoding: "utf8",
     maxBuffer: 50 * 1024 * 1024,

@@ -90,6 +90,68 @@ function relationId(value: unknown): string | null {
   return typeof value === "object" ? String((value as AnyDoc).id ?? "") || null : String(value);
 }
 
+/*
+ * #4453 — the fields a block carries that are never words a visitor reads:
+ * Studio's hidden Draft stamp (`review`: its ISO time "2026-11-18T22:11:13.266Z"
+ * read as the claims '11', '13.266', and so on, on every Draft block, found
+ * live on Gameland Lagos), ids, layout and Payload bookkeeping, and pictures.
+ */
+const MACHINE_BLOCK_KEYS: ReadonlySet<string> = new Set(["blockType", "variant", "id", "blockName", "review", "media", "video", "poster"]);
+const MACHINE_KEY_RE = /(?:href|url|_id|variant|blockType|id)$/i;
+/**
+ * #4453 — a stored reference (a destination, testimonial or offering id)
+ * under a key the catalogue does not name is never copy. Young and Stamped's
+ * Places grid stores each destination as `{ destination: <uuid> }`, and 29
+ * fragments of those ids ("36353", "945") were flagged as claims Mingla
+ * cannot back.
+ */
+const UUID_VALUE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The visitor-facing words of one block (or one list row). A field the block
+ * catalogue names is read only when it holds words (text and rich text, and
+ * the words inside its lists); its enums, ids, links, numbers and switches
+ * are never copy. A field the catalogue does not name is read as before,
+ * minus the machine fields above.
+ */
+function blockWords(value: AnyDoc, fields: Readonly<Record<string, FieldSpec>> | null, push: (text: string) => void): void {
+  const loose = (inner: unknown, key: string): void => {
+    if (MACHINE_BLOCK_KEYS.has(key)) return;
+    if (typeof inner === "string") {
+      if (inner.trim() && !MACHINE_KEY_RE.test(key) && !UUID_VALUE_RE.test(inner.trim())) push(inner);
+    } else if (Array.isArray(inner)) inner.forEach((row) => loose(row, key));
+    else if (inner && typeof inner === "object") {
+      if ((inner as AnyDoc).root) {
+        const text = lexicalText(inner).join("");
+        if (text) push(text);
+      } else for (const [child, deeper] of Object.entries(inner)) loose(deeper, child);
+    }
+  };
+  for (const [key, inner] of Object.entries(value)) {
+    if (MACHINE_BLOCK_KEYS.has(key)) continue;
+    const spec = fields?.[key];
+    if (!spec) {
+      loose(inner, key);
+      continue;
+    }
+    if (spec.kind === "text" || spec.kind === "rich_text") {
+      if (typeof inner === "string") {
+        if (inner.trim()) push(inner);
+      } else if (inner && typeof inner === "object" && (inner as AnyDoc).root) {
+        const text = lexicalText(inner).join("");
+        if (text) push(text);
+      }
+    } else if (spec.kind === "list") {
+      for (const row of Array.isArray(inner) ? inner : []) {
+        if (row && typeof row === "object" && !Array.isArray(row)) blockWords(row as AnyDoc, spec.item, push);
+      }
+    } else if (spec.kind === "media_list") {
+      // A picture's own words (its alt text) are still copy.
+      loose(inner, key);
+    }
+  }
+}
+
 /** Every visitor-facing piece of text on the draft's pages, with where it sits. */
 function pageTexts(pages: readonly AnyDoc[], paths: Map<string, string>): TextHit[] {
   const hits: TextHit[] = [];
@@ -99,21 +161,9 @@ function pageTexts(pages: readonly AnyDoc[], paths: Map<string, string>): TextHi
     if (typeof page.title === "string") hits.push({ text: page.title, page_path, where: "page title" });
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       const type = String(block?.blockType ?? "");
-      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} block ${index + 1}`;
-      const visit = (value: unknown, key: string) => {
-        if (typeof value === "string" && value.trim() && !/(?:href|url|_id|variant|blockType|id)$/i.test(key)) hits.push({ text: value, page_path, where });
-        else if (Array.isArray(value)) value.forEach((row) => visit(row, key));
-        else if (value && typeof value === "object") {
-          if ((value as AnyDoc).root) {
-            const text = lexicalText(value).join("");
-            if (text) hits.push({ text, page_path, where });
-          } else for (const [child, inner] of Object.entries(value)) visit(inner, child);
-        }
-      };
-      for (const [key, value] of Object.entries(block ?? {})) {
-        if (["blockType", "variant", "id", "blockName", "media", "video", "poster"].includes(key)) continue;
-        visit(value, key);
-      }
+      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} section ${index + 1}`;
+      const fields = isBlockType(type) ? BLOCK_CATALOG[type].fields as Readonly<Record<string, FieldSpec>> : null;
+      blockWords((block ?? {}) as AnyDoc, fields, (text) => hits.push({ text, page_path, where }));
     }
   }
   return hits;
@@ -149,7 +199,7 @@ function pageLinks(pages: readonly AnyDoc[], paths: Map<string, string>): Array<
     const page_path = paths.get(String(page.id)) ?? null;
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       const type = String(block?.blockType ?? "");
-      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} block ${index + 1}`;
+      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} section ${index + 1}`;
       const visit = (value: unknown, key: string) => {
         if (typeof value === "string" && /(?:^href$|_href$|^url$|directions_url|map_url)/.test(key) && value.trim()) links.push({ href: value.trim(), page_path, where });
         else if (Array.isArray(value)) value.forEach((row) => visit(row, key));
@@ -203,7 +253,7 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
       if (!isBlockType(type)) continue;
       const headingSpec = (BLOCK_CATALOG[type].fields as Record<string, FieldSpec>).heading;
       if (headingSpec && "required" in headingSpec && headingSpec.required && !(typeof block.heading === "string" && block.heading.trim())) {
-        words.push({ message: `${placeLabel({ page_path: paths.get(String(page.id)) ?? null, where: `${BLOCK_CATALOG[type].label} block ${index + 1}` })} has an empty heading`, page_path: paths.get(String(page.id)) ?? null, section: "pages" });
+        words.push({ message: `${placeLabel({ page_path: paths.get(String(page.id)) ?? null, where: `${BLOCK_CATALOG[type].label} section ${index + 1}` })} has an empty heading`, page_path: paths.get(String(page.id)) ?? null, section: "pages" });
       }
     }
   }
@@ -233,7 +283,7 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
     const page_path = paths.get(String(page.id)) ?? null;
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       const type = String(block?.blockType ?? "") as BlockType;
-      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} block ${index + 1}`;
+      const where = `${isBlockType(type) ? BLOCK_CATALOG[type].label : type} section ${index + 1}`;
       if (type === "hero") checkPicture(relationId(block.media), page_path, where, "hero", false, null);
       if (type === "media_feature") checkPicture(relationId(block.media), page_path, where, "media_feature", true, block.alt);
       if (type === "video_feature") checkPicture(relationId(block.poster), page_path, where, "video_feature", false, null);
@@ -313,7 +363,7 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
     const page_path = paths.get(String(page.id)) ?? null;
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       if (block?.blockType !== "hero") continue;
-      const where = `Hero block ${index + 1}`;
+      const where = `Top of the page, section ${index + 1}`;
       const lines = (Array.isArray(block.heading_lines) ? block.heading_lines : []).map((row: AnyDoc) => String(row?.text ?? "")).filter(Boolean);
       const headline = lines.length ? lines.join(" ") : String(block.heading ?? "");
       if (headline.length > headlineMax) phone.push({ message: `${placeLabel({ page_path, where })}: the headline is ${headline.length} characters; on a phone this design fits about ${headlineMax}`, page_path, section: "pages" });
@@ -325,7 +375,7 @@ export function runDesignChecks(input: DesignCheckInput): DesignCheckResult[] {
     }
     for (const [index, block] of (Array.isArray(page.blocks) ? page.blocks : []).entries()) {
       const label = typeof block?.cta_label === "string" ? block.cta_label : typeof block?.label === "string" && /(?:cta|menu_link|contact_handoff)/.test(String(block?.blockType)) ? block.label : null;
-      if (label && label.length > PHONE_BUTTON_LABEL_MAX) phone.push({ message: `${placeLabel({ page_path, where: `${String(block.blockType)} block ${index + 1}` })}: the button “${label}” is too long to tap easily on a phone`, page_path, section: "pages" });
+      if (label && label.length > PHONE_BUTTON_LABEL_MAX) phone.push({ message: `${placeLabel({ page_path, where: `${String(block.blockType)} section ${index + 1}` })}: the button “${label}” is too long to tap easily on a phone`, page_path, section: "pages" });
     }
   }
   const menuItems = Array.isArray(input.navigation?.items) ? input.navigation!.items.length : 0;

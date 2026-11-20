@@ -31,7 +31,9 @@
         "title": "Assistent verlassen?",
         "body": "Dein Entwurf ist gespeichert. Du kannst ihn jederzeit unter Bewerben fortsetzen.",
         "leave": "Verlassen",
-        "keep": "Weiter bearbeiten"
+        "keep": "Weiter bearbeiten",
+        "uploading_one": "{{count}} Video wird noch hochgeladen. Wenn du gehst, stoppt der Upload.",
+        "uploading_other": "{{count}} Videos werden noch hochgeladen. Wenn du gehst, stoppen die Uploads."
       },
       "goal": {
         "sales": "Tickets verkaufen",
@@ -245,7 +247,7 @@
         "launchShort": "Starten",
         "topUp": "{{amount}} aufladen",
         "blockOffline": "Verbinde dich, um zu starten",
-        "blockLaunch": "Zum Starten braucht man Startzugriff. {{name}} kann sie starten.",
+        "blockLaunch": "Zum Starten braucht es den Inhaber oder einen Admin. Frag {{name}}.",
         "blockFund": "Zum Starten braucht man Zugriff auf das Anzeigenguthaben. {{name}} kann sie starten.",
         "theOwner": "Der Inhaber",
         "blockChecking": "Deine Anzeige wird mit jeder App geprüft",
@@ -271,7 +273,15 @@
         "cancelBody": "Es wurde nichts ausgegeben. Das reservierte Geld geht zurück in dein Anzeigenguthaben.",
         "keepAd": "Behalten",
         "cancelled": "Anzeige abgebrochen. Das reservierte Geld ist wieder in deinem Anzeigenguthaben.",
-        "alreadyBuilt": "Diese Anzeige ist bereits in einer App eingerichtet und kann hier nicht abgebrochen werden. Hol dir Hilfe, Mingla kümmert sich darum."
+        "alreadyBuilt": "Diese Anzeige ist bereits in einer App eingerichtet und kann hier nicht abgebrochen werden. Hol dir Hilfe, Mingla kümmert sich darum.",
+        "waitUploads_one": "{{count}} Video wird noch vorbereitet. Warte oder entferne es.",
+        "waitUploads_other": "{{count}} Videos werden noch vorbereitet. Warte oder entferne sie.",
+        "rightsMissing": "Setze das Häkchen, um zu starten. Damit bestätigst du, dass du die Rechte an diesen Videos und Fotos hast.",
+        "runWithoutBuyers": "Ohne Ausschluss früherer Käufer schalten",
+        "runThisWay": "So schalten",
+        "visitsQuestionYet": "{{app}} kann bei dieser Marke noch nicht auf {{unit}} zielen, daher zielt es auf Leute, die wahrscheinlich deine Seite besuchen.",
+        "visitsQuestionCannot": "{{app}} kann nicht auf {{unit}} zielen, daher zielt es auf Leute, die wahrscheinlich deine Seite besuchen.",
+        "aimVisits": "Auf Seitenbesuche zielen"
       },
       "rights": {
         "title": "Medienrechte",
@@ -307,6 +317,78 @@
         "generic": "Das hat nicht geklappt. Versuche es erneut.",
         "freeEvent": "Diese Seite ist kostenlos, daher zielt die Anzeige jetzt auf Anmeldungen.",
         "checkFirst": "Prüfe deine Anzeige nach deinen Änderungen erneut."
+      },
+      "media": {
+        "inThisAd": "In dieser Anzeige",
+        "count": "{{n}} von 5",
+        "countFew": "{{n}} von 5 · Mit 3 oder mehr können die Apps mehr ausprobieren",
+        "library": "Deine Bibliothek",
+        "libraryHint": "Tippe auf +, um eins in dieser Anzeige zu nutzen.",
+        "emptyAd": "In dieser Anzeige ist noch nichts. Füge Videos hinzu oder tippe in deiner Bibliothek auf +.",
+        "select": "Auswählen",
+        "cancelSelect": "Abbrechen",
+        "add": "Videos hinzufügen",
+        "full": "Die Anzeige fasst 5",
+        "addHint": "Wähle bis zu {{n}} weitere · mehrere auf einmal · je 5 bis 60 Sekunden",
+        "fullHint": "Entferne eins, um ein weiteres hinzuzufügen.",
+        "retry": "Nochmal versuchen",
+        "emptyTitle": "1 bis 5 Videos hinzufügen",
+        "emptyBody": "Wähle mehrere auf einmal. Sie werden im Hintergrund hochgeladen und vorbereitet, während du weitermachst.",
+        "emptySpec": "Hochkant 9:16 · je 5 bis 60 Sekunden",
+        "uploading": "Wird hochgeladen {{percent}}%",
+        "uploadingNoPct": "Wird hochgeladen",
+        "preparing": "Wird vorbereitet · {{elapsed}} · meist unter einer Minute",
+        "fitPending": "Format wird gezeigt, wenn bereit",
+        "failedNetwork": "Upload gestoppt",
+        "failedNetworkNote": "Prüfe deine Verbindung",
+        "failedFile": "Dieses Video geht nicht",
+        "failedFileNote": "Probiere einen anderen Clip",
+        "refused": {
+          "unsupported": "Dieser Dateityp geht nicht",
+          "tooShort": "Kürzer als 5 Sekunden",
+          "tooLong": "Länger als 1 Minute",
+          "tooLarge": "Größer als 100 MB",
+          "unreadable": "Dieses Video ließ sich nicht lesen"
+        },
+        "fixLength": "Kürze es auf 5–60 Sekunden und füge es dann wieder hinzu",
+        "fixOther": "Wähle einen anderen Clip",
+        "photo": "Foto",
+        "photoFit": "Foto · nur Facebook & Instagram",
+        "untitled": "Video",
+        "remove": "{{name}} aus dieser Anzeige entfernen",
+        "cancelUpload": "Upload von {{name}} abbrechen",
+        "clear": "{{name}} entfernen",
+        "use": "{{name}} in dieser Anzeige nutzen",
+        "useFull": "Die Anzeige fasst 5. Entferne zuerst eins.",
+        "toLibrary_one": "Diese Anzeige fasst 5, daher ging {{count}} in deine Bibliothek. Es wird dort hochgeladen.",
+        "toLibrary_other": "Diese Anzeige fasst 5, daher gingen {{count}} in deine Bibliothek. Sie werden dort hochgeladen.",
+        "repeat": "{{name}} wird schon hinzugefügt.",
+        "removed": "{{name}} aus dieser Anzeige entfernt. Es bleibt in deiner Bibliothek.",
+        "removedMany": "{{count}} aus dieser Anzeige entfernt. Sie bleiben in deiner Bibliothek.",
+        "cancelled": "Upload von {{name}} abgebrochen.",
+        "undo": "Rückgängig",
+        "selectSummary": "Wähle Videos, um sie aus dieser Anzeige zu entfernen oder zu archivieren.",
+        "selected": "{{count}} ausgewählt",
+        "removeSel": "{{count}} aus Anzeige entfernen",
+        "removeSelNone": "Aus Anzeige entfernen",
+        "archiveSel": "{{count}} archivieren",
+        "done": "Fertig",
+        "archiveTitle_one": "{{count}} Video aus deiner Bibliothek archivieren?",
+        "archiveTitle_other": "{{count}} Videos aus deiner Bibliothek archivieren?",
+        "archiveBody": "Sie verlassen die Bibliothek deiner Marke, daher kann keine neue Anzeige sie nutzen. Laufende Anzeigen behalten sie. Du kannst das gleich danach rückgängig machen.",
+        "archiveConfirm": "Archivieren",
+        "keep": "Behalten",
+        "archived": "{{count}} aus deiner Bibliothek archiviert.",
+        "archiveFailed": "Archivieren ging nicht. Nichts wurde geändert. Versuche es nochmal.",
+        "dupTitle": "{{name}} ist schon in deiner Bibliothek",
+        "dupBody": "Gleicher Name und gleiche Länge wie eins, das du schon hinzugefügt hast.",
+        "dupUse": "Das aus deiner Bibliothek nutzen",
+        "dupUpload": "Nochmal hochladen",
+        "dupFull": "Diese Anzeige fasst 5. {{name}} bleibt in deiner Bibliothek.",
+        "draftNotReady": "Dein Entwurf wird noch gespeichert. Versuche es gleich nochmal.",
+        "pickFailed": "Deine Videos ließen sich nicht öffnen. Versuche es nochmal.",
+        "pending_one": "{{count}} Clip wird noch vorbereitet. „Weiter“ öffnet sich, sobald einer bereit ist.",
+        "pending_other": "{{count}} Clips werden noch vorbereitet. „Weiter“ öffnet sich, sobald einer bereit ist."
       }
     },
     "manage": {
@@ -318,7 +400,9 @@
         "label": "Anzeigen filtern",
         "all": "Alle",
         "running": "Laufend",
-        "ended": "Beendet"
+        "ended": "Beendet",
+        "review": "In Prüfung",
+        "drafts": "Entwürfe"
       },
       "credit": {
         "label": "Anzeigenguthaben",
@@ -333,7 +417,10 @@
         "error": "Dein Anzeigenguthaben konnte nicht geladen werden. Deine Anzeigen laufen weiter.",
         "added": "Anzeigenguthaben hinzugefügt.",
         "notAdded": "Deine Zahlung ist zurückgekommen, aber das Guthaben wurde noch nicht hinzugefügt. Versuch es erneut oder hol dir Hilfe.",
-        "cancelled": "Zahlung abgebrochen. Es wurde kein Guthaben hinzugefügt."
+        "cancelled": "Zahlung abgebrochen. Es wurde kein Guthaben hinzugefügt.",
+        "topUpNeedsRole": "Aufladen geht nur für den Inhaber, Admins oder Finanzen.",
+        "withdrawNeedsRole": "Auszahlen geht nur für den Inhaber oder Finanzen. Frag {{name}}.",
+        "theOwner": "den Inhaber"
       },
       "tools": {
         "compare": "Deine Anzeigen vergleichen",
@@ -354,7 +441,11 @@
         "ends": "Am Ende",
         "endsV": "Bleibt der Rest als Guthaben",
         "withdraw": "Auszahlen",
-        "withdrawV": "Zurück an deine Zahlungsart, mit Gebühr"
+        "withdrawV": "Zurück an deine Zahlungsart, mit Gebühr",
+        "whoLaunches": "Aufladen und starten",
+        "whoLaunchesV": "Der Inhaber und Admins",
+        "whoWithdraws": "Guthaben auszahlen",
+        "whoWithdrawsV": "Der Inhaber und Finanzen"
       },
       "list": {
         "errorTitle": "Deine Anzeigen konnten nicht geladen werden",
@@ -372,7 +463,18 @@
         "colResults": "Ergebnisse",
         "colEach": "Je",
         "open": "{{name}} öffnen",
-        "draftLine": "Entwurf gespeichert · mach dort weiter, wo du aufgehört hast"
+        "draftLine": "Entwurf gespeichert · mach dort weiter, wo du aufgehört hast",
+        "reviewLine": "Jede App prüft deine Anzeige zuerst. Bis sie ausgespielt wird, wird nichts ausgegeben.",
+        "appShowing": "{{app}}: wird gezeigt",
+        "appChecking": "{{app}}: wird geprüft",
+        "appNotApproved": "{{app}}: nicht genehmigt",
+        "deleteDraftA11y": "Entwurf {{name}} löschen",
+        "deleteTitle": "Diesen Entwurf löschen?",
+        "deleteBody": "„{{name}}“ wird endgültig gelöscht. Es wird nichts berechnet und dein Anzeigenguthaben bleibt unverändert.",
+        "deleteConfirm": "Entwurf löschen",
+        "deleteKeep": "Behalten",
+        "draftDeleted": "Entwurf gelöscht",
+        "deleteFailed": "Der Entwurf konnte nicht gelöscht werden. Zum Aktualisieren nach unten ziehen und erneut versuchen."
       },
       "unit": {
         "sales": "Tickets",
@@ -393,7 +495,8 @@
         "partRejected": "Läuft · {{count}} nicht freigegeben",
         "draft": "Entwurf",
         "attention": "Bitte ansehen",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Läuft · {{apps}} in Prüfung"
       },
       "reason": {
         "soldOut": "Ausverkauft",

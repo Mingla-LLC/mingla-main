@@ -35,7 +35,6 @@ import Animated, {
 } from "react-native-reanimated";
 
 import {
-  color,
   durations,
   motion,
   shadow as shadowTokens,
@@ -43,6 +42,7 @@ import {
   type,
 } from "../../constants/designSystem";
 import { useTouchFloor } from "../../hooks/useTouchFloor";
+import { color, themedStyles } from "../../theme/surfaceTokens";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 
 import { GlassChrome } from "./GlassChrome";
@@ -237,7 +237,7 @@ export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome(
   );
 });
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => StyleSheet.create({
   glass: {
     overflow: "visible",
   },
@@ -265,6 +265,6 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     fontWeight: type.label.fontWeight,
   },
-});
+}));
 
 export default IconChrome;

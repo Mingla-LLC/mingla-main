@@ -31,7 +31,9 @@
         "title": "作成画面を閉じますか？",
         "body": "下書きは保存済みです。宣伝からいつでも続けられます。",
         "leave": "閉じる",
-        "keep": "編集を続ける"
+        "keep": "編集を続ける",
+        "uploading_one": "{{count}}本の動画をアップロード中です。離れるとアップロードが止まります。",
+        "uploading_other": "{{count}}本の動画をアップロード中です。離れるとアップロードが止まります。"
       },
       "goal": {
         "sales": "チケットを売る",
@@ -245,7 +247,7 @@
         "launchShort": "開始",
         "topUp": "{{amount}}をチャージ",
         "blockOffline": "接続すると開始できます",
-        "blockLaunch": "開始には開始の権限が必要です。{{name}}が開始できます。",
+        "blockLaunch": "開始にはオーナーか管理者が必要です。{{name}}に頼んでください。",
         "blockFund": "開始には広告クレジットへのアクセスが必要です。{{name}}が開始できます。",
         "theOwner": "オーナー",
         "blockChecking": "各アプリで広告を確認中",
@@ -271,7 +273,15 @@
         "cancelBody": "まだ何も使われていません。確保したお金は広告クレジットに戻ります。",
         "keepAd": "キャンセルしない",
         "cancelled": "広告をキャンセルしました。確保したお金は広告クレジットに戻りました。",
-        "alreadyBuilt": "この広告はすでにアプリで設定済みのため、ここではキャンセルできません。ヘルプに連絡すればMinglaが対応します。"
+        "alreadyBuilt": "この広告はすでにアプリで設定済みのため、ここではキャンセルできません。ヘルプに連絡すればMinglaが対応します。",
+        "waitUploads_one": "{{count}}本の動画を準備中です。待つか、削除してください。",
+        "waitUploads_other": "{{count}}本の動画を準備中です。待つか、削除してください。",
+        "rightsMissing": "開始するにはこのボックスにチェックを入れてください。これらの動画と写真の権利があることの確認になります。",
+        "runWithoutBuyers": "過去の購入者を除外せずに配信",
+        "runThisWay": "この設定で配信",
+        "visitsQuestionYet": "{{app}}はこのブランドではまだ{{unit}}を狙えないので、ページを訪れそうな人を狙います。",
+        "visitsQuestionCannot": "{{app}}は{{unit}}を狙えないので、ページを訪れそうな人を狙います。",
+        "aimVisits": "ページ訪問を狙う"
       },
       "rights": {
         "title": "メディアの権利",
@@ -307,6 +317,78 @@
         "generic": "うまくいきませんでした。もう一度試してください。",
         "freeEvent": "このページは無料なので、広告は申し込みを目指すように変わりました。",
         "checkFirst": "変更後にもう一度広告を確認してください。"
+      },
+      "media": {
+        "inThisAd": "この広告",
+        "count": "{{n}} / 5",
+        "countFew": "{{n}} / 5 · 3本以上あると、アプリが試せる選択肢が増えます",
+        "library": "ライブラリ",
+        "libraryHint": "＋をタップして、この広告で使います。",
+        "emptyAd": "この広告にはまだ何もありません。動画を追加するか、ライブラリの動画の＋をタップしてください。",
+        "select": "選択",
+        "cancelSelect": "キャンセル",
+        "add": "動画を追加",
+        "full": "広告に入るのは5本まで",
+        "addHint": "あと{{n}}本まで選べます · まとめて選べます · 1本5〜60秒",
+        "fullHint": "別のを追加するには、1本削除してください。",
+        "retry": "もう一度試す",
+        "emptyTitle": "動画を1〜5本追加",
+        "emptyBody": "まとめて選べます。続けている間に、裏でアップロードと準備が進みます。",
+        "emptySpec": "縦型 9:16 · 1本5〜60秒",
+        "uploading": "アップロード中 {{percent}}%",
+        "uploadingNoPct": "アップロード中",
+        "preparing": "準備中 · {{elapsed}} · たいてい1分以内",
+        "fitPending": "準備ができるとフィットが表示されます",
+        "failedNetwork": "アップロードが止まりました",
+        "failedNetworkNote": "接続を確認してください",
+        "failedFile": "この動画は使えませんでした",
+        "failedFileNote": "別のクリップを試してください",
+        "refused": {
+          "unsupported": "このファイル形式は使えません",
+          "tooShort": "5秒より短いです",
+          "tooLong": "1分より長いです",
+          "tooLarge": "100 MBより大きいです",
+          "unreadable": "この動画を読み込めませんでした"
+        },
+        "fixLength": "5〜60秒に切り詰めてから、もう一度追加してください",
+        "fixOther": "別のクリップを選んでください",
+        "photo": "写真",
+        "photoFit": "写真 · Facebook & Instagramのみ",
+        "untitled": "動画",
+        "remove": "この広告から{{name}}を外す",
+        "cancelUpload": "{{name}}のアップロードをキャンセル",
+        "clear": "{{name}}を消去",
+        "use": "この広告で{{name}}を使う",
+        "useFull": "広告に入るのは5本までです。先に1本削除してください。",
+        "toLibrary_one": "この広告に入るのは5本までなので、{{count}}本はライブラリに入りました。そこでアップロード中です。",
+        "toLibrary_other": "この広告に入るのは5本までなので、{{count}}本はライブラリに入りました。そこでアップロード中です。",
+        "repeat": "{{name}}はすでに追加中です。",
+        "removed": "この広告から{{name}}を外しました。ライブラリには残ります。",
+        "removedMany": "この広告から{{count}}本を外しました。ライブラリには残ります。",
+        "cancelled": "{{name}}のアップロードをキャンセルしました。",
+        "undo": "元に戻す",
+        "selectSummary": "動画にチェックを入れて、この広告から外すかアーカイブします。",
+        "selected": "{{count}}件選択中",
+        "removeSel": "{{count}}本を広告から外す",
+        "removeSelNone": "広告から外す",
+        "archiveSel": "{{count}}本をアーカイブ",
+        "done": "完了",
+        "archiveTitle_one": "ライブラリから{{count}}本の動画をアーカイブしますか？",
+        "archiveTitle_other": "ライブラリから{{count}}本の動画をアーカイブしますか？",
+        "archiveBody": "ブランドのライブラリから外れるので、新しい広告では使えなくなります。すでに配信中の広告はそのまま使います。直後なら元に戻せます。",
+        "archiveConfirm": "アーカイブ",
+        "keep": "残す",
+        "archived": "ライブラリから{{count}}本をアーカイブしました。",
+        "archiveFailed": "アーカイブできませんでした。何も変わっていません。もう一度試してください。",
+        "dupTitle": "{{name}}はすでにライブラリにあります",
+        "dupBody": "以前追加したものと名前も長さも同じです。",
+        "dupUse": "ライブラリのものを使う",
+        "dupUpload": "もう一度アップロード",
+        "dupFull": "この広告に入るのは5本までです。{{name}}はライブラリに残ります。",
+        "draftNotReady": "下書きを保存中です。少し待ってからもう一度試してください。",
+        "pickFailed": "動画を開けませんでした。もう一度試してください。",
+        "pending_one": "{{count}}本のクリップを準備中です。1本できたら「次へ」が開きます。",
+        "pending_other": "{{count}}本のクリップを準備中です。1本できたら「次へ」が開きます。"
       }
     },
     "manage": {
@@ -318,7 +400,9 @@
         "label": "広告を絞り込む",
         "all": "すべて",
         "running": "配信中",
-        "ended": "終了"
+        "ended": "終了",
+        "review": "審査中",
+        "drafts": "下書き"
       },
       "credit": {
         "label": "広告クレジット",
@@ -333,7 +417,10 @@
         "error": "広告クレジットを読み込めませんでした。広告は配信を続けています。",
         "added": "クレジットを追加しました。",
         "notAdded": "支払いは戻りましたが、クレジットはまだ追加されていません。もう一度試すか、ヘルプを利用してください。",
-        "cancelled": "支払いをキャンセルしました。クレジットは追加されていません。"
+        "cancelled": "支払いをキャンセルしました。クレジットは追加されていません。",
+        "topUpNeedsRole": "チャージできるのは、オーナー、管理者、経理です。",
+        "withdrawNeedsRole": "出金できるのは、オーナーか経理です。{{name}}に頼んでください。",
+        "theOwner": "オーナー"
       },
       "tools": {
         "compare": "広告を比較",
@@ -354,7 +441,11 @@
         "ends": "終了時",
         "endsV": "残りはクレジットとして残ります",
         "withdraw": "引き出し",
-        "withdrawV": "支払った方法に戻ります（手数料込み）"
+        "withdrawV": "支払った方法に戻ります（手数料込み）",
+        "whoLaunches": "チャージして開始",
+        "whoLaunchesV": "オーナーと管理者",
+        "whoWithdraws": "クレジットを出金",
+        "whoWithdrawsV": "オーナーと経理"
       },
       "list": {
         "errorTitle": "広告を読み込めませんでした",
@@ -372,7 +463,18 @@
         "colResults": "成果",
         "colEach": "1件あたり",
         "open": "{{name}} を開く",
-        "draftLine": "下書きを保存しました · 続きから再開できます"
+        "draftLine": "下書きを保存しました · 続きから再開できます",
+        "reviewLine": "各アプリがまず広告を審査します。表示されるまで費用はかかりません。",
+        "appShowing": "{{app}}：表示中",
+        "appChecking": "{{app}}：審査中",
+        "appNotApproved": "{{app}}：承認されませんでした",
+        "deleteDraftA11y": "下書き「{{name}}」を削除",
+        "deleteTitle": "この下書きを削除しますか？",
+        "deleteBody": "「{{name}}」は完全に削除されます。料金はかからず、広告クレジットもそのままです。",
+        "deleteConfirm": "下書きを削除",
+        "deleteKeep": "残す",
+        "draftDeleted": "下書きを削除しました",
+        "deleteFailed": "下書きを削除できませんでした。下に引いて更新し、もう一度お試しください。"
       },
       "unit": {
         "sales": "枚",
@@ -393,7 +495,8 @@
         "partRejected": "配信中 · {{count}} 件未承認",
         "draft": "下書き",
         "attention": "確認が必要",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "配信中 · {{apps}}は審査中"
       },
       "reason": {
         "soldOut": "完売",

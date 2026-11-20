@@ -31,7 +31,9 @@
         "title": "Uscire dalla procedura?",
         "body": "La bozza è salvata. Riprendila da Promuovi quando vuoi.",
         "leave": "Esci",
-        "keep": "Continua a modificare"
+        "keep": "Continua a modificare",
+        "uploading_one": "{{count}} video è ancora in caricamento. Se esci, si interrompe.",
+        "uploading_other": "{{count}} video sono ancora in caricamento. Se esci, si interrompono."
       },
       "goal": {
         "sales": "Vendere biglietti",
@@ -245,7 +247,7 @@
         "launchShort": "Avvia",
         "topUp": "Ricarica {{amount}}",
         "blockOffline": "Connettiti per avviare",
-        "blockLaunch": "Per avviare serve l’accesso di avvio. {{name}} può avviarlo.",
+        "blockLaunch": "Per lanciare serve il proprietario o un admin. Chiedi a {{name}}.",
         "blockFund": "Per avviare serve l’accesso al credito pubblicitario. {{name}} può avviarlo.",
         "theOwner": "Il proprietario",
         "blockChecking": "Controllo del tuo annuncio con ogni app",
@@ -271,7 +273,15 @@
         "cancelBody": "Non è stato speso nulla. I soldi bloccati tornano nel tuo credito pubblicitario.",
         "keepAd": "Tienilo",
         "cancelled": "Annuncio annullato. I soldi bloccati sono tornati nel tuo credito pubblicitario.",
-        "alreadyBuilt": "Questo annuncio è già configurato su un’app, quindi non si può annullare qui. Chiedi aiuto e Mingla se ne occupa."
+        "alreadyBuilt": "Questo annuncio è già configurato su un’app, quindi non si può annullare qui. Chiedi aiuto e Mingla se ne occupa.",
+        "waitUploads_one": "{{count}} video è ancora in preparazione. Aspetta o toglilo.",
+        "waitUploads_other": "{{count}} video sono ancora in preparazione. Aspetta o toglili.",
+        "rightsMissing": "Spunta questa casella per lanciare. Conferma che hai i diritti su questi video e foto.",
+        "runWithoutBuyers": "Pubblica senza escludere i precedenti acquirenti",
+        "runThisWay": "Pubblica così",
+        "visitsQuestionYet": "{{app}} non può ancora puntare a {{unit}} per questo brand, quindi punterà a persone che probabilmente visiteranno la tua pagina.",
+        "visitsQuestionCannot": "{{app}} non può puntare a {{unit}}, quindi punterà a persone che probabilmente visiteranno la tua pagina.",
+        "aimVisits": "Punta alle visite alla pagina"
       },
       "rights": {
         "title": "Diritti sui media",
@@ -307,6 +317,78 @@
         "generic": "Non ha funzionato. Riprova.",
         "freeEvent": "Questa pagina è gratuita, quindi ora l’annuncio punta alle iscrizioni.",
         "checkFirst": "Ricontrolla l’annuncio dopo le modifiche."
+      },
+      "media": {
+        "inThisAd": "In questo annuncio",
+        "count": "{{n}} su 5",
+        "countFew": "{{n}} su 5 · Con 3 o più, le app hanno più da provare",
+        "library": "La tua libreria",
+        "libraryHint": "Tocca + per usarne uno in questo annuncio.",
+        "emptyAd": "Ancora niente in questo annuncio. Aggiungi video o tocca + su uno della tua libreria.",
+        "select": "Seleziona",
+        "cancelSelect": "Annulla",
+        "add": "Aggiungi video",
+        "full": "L'annuncio ne contiene 5",
+        "addHint": "Scegline fino a {{n}} in più · anche più insieme · da 5 a 60 secondi l'uno",
+        "fullHint": "Toglierne uno per aggiungerne un altro.",
+        "retry": "Riprova",
+        "emptyTitle": "Aggiungi da 1 a 5 video",
+        "emptyBody": "Scegline più di uno insieme. Si caricano e si preparano in background mentre continui.",
+        "emptySpec": "Verticale 9:16 · da 5 a 60 secondi l'uno",
+        "uploading": "Caricamento {{percent}}%",
+        "uploadingNoPct": "Caricamento",
+        "preparing": "Preparazione · {{elapsed}} · di solito meno di un minuto",
+        "fitPending": "L'adattamento appare quando è pronto",
+        "failedNetwork": "Caricamento interrotto",
+        "failedNetworkNote": "Controlla la connessione",
+        "failedFile": "Non posso usare questo video",
+        "failedFileNote": "Prova un altro clip",
+        "refused": {
+          "unsupported": "Questo tipo di file non si può usare",
+          "tooShort": "Più corto di 5 secondi",
+          "tooLong": "Più lungo di 1 minuto",
+          "tooLarge": "Più grande di 100 MB",
+          "unreadable": "Non riesco a leggere questo video"
+        },
+        "fixLength": "Accorcialo a 5–60 secondi, poi aggiungilo di nuovo",
+        "fixOther": "Scegli un altro clip",
+        "photo": "Foto",
+        "photoFit": "Foto · solo Facebook & Instagram",
+        "untitled": "Video",
+        "remove": "Togli {{name}} da questo annuncio",
+        "cancelUpload": "Annulla il caricamento di {{name}}",
+        "clear": "Cancella {{name}}",
+        "use": "Usa {{name}} in questo annuncio",
+        "useFull": "L'annuncio ne contiene 5. Togline prima uno.",
+        "toLibrary_one": "Questo annuncio ne contiene 5, quindi {{count}} è andato nella tua libreria. Si sta caricando lì.",
+        "toLibrary_other": "Questo annuncio ne contiene 5, quindi {{count}} sono andati nella tua libreria. Si stanno caricando lì.",
+        "repeat": "{{name}} è già in aggiunta.",
+        "removed": "{{name}} tolto da questo annuncio. Resta nella tua libreria.",
+        "removedMany": "{{count}} tolti da questo annuncio. Restano nella tua libreria.",
+        "cancelled": "Caricamento di {{name}} annullato.",
+        "undo": "Annulla",
+        "selectSummary": "Spunta i video per toglierli da questo annuncio o archiviarli.",
+        "selected": "{{count}} selezionati",
+        "removeSel": "Togli {{count}} dall'annuncio",
+        "removeSelNone": "Togli dall'annuncio",
+        "archiveSel": "Archivia {{count}}",
+        "done": "Fatto",
+        "archiveTitle_one": "Archiviare {{count}} video dalla tua libreria?",
+        "archiveTitle_other": "Archiviare {{count}} video dalla tua libreria?",
+        "archiveBody": "Escono dalla libreria del tuo brand, quindi nessun nuovo annuncio potrà usarli. Gli annunci già attivi li tengono. Puoi annullare subito dopo.",
+        "archiveConfirm": "Archivia",
+        "keep": "Tieni",
+        "archived": "{{count}} archiviati dalla tua libreria.",
+        "archiveFailed": "Impossibile archiviare. Non è cambiato nulla. Riprova.",
+        "dupTitle": "{{name}} è già nella tua libreria",
+        "dupBody": "Stesso nome e stessa durata di uno che hai aggiunto prima.",
+        "dupUse": "Usa quello nella tua libreria",
+        "dupUpload": "Caricalo di nuovo",
+        "dupFull": "Questo annuncio ne contiene 5. {{name}} resta nella tua libreria.",
+        "draftNotReady": "La tua bozza si sta ancora salvando. Riprova tra un attimo.",
+        "pickFailed": "Non riesco ad aprire i tuoi video. Riprova.",
+        "pending_one": "{{count}} clip è ancora in preparazione. Avanti si apre quando uno è pronto.",
+        "pending_other": "{{count}} clip sono ancora in preparazione. Avanti si apre quando uno è pronto."
       }
     },
     "manage": {
@@ -318,7 +400,9 @@
         "label": "Filtra annunci",
         "all": "Tutti",
         "running": "Attivi",
-        "ended": "Terminati"
+        "ended": "Terminati",
+        "review": "In revisione",
+        "drafts": "Bozze"
       },
       "credit": {
         "label": "Credito annunci",
@@ -333,7 +417,10 @@
         "error": "Impossibile caricare il tuo credito annunci. I tuoi annunci restano attivi.",
         "added": "Credito aggiunto.",
         "notAdded": "Il pagamento è tornato ma il credito non è ancora stato aggiunto. Riprova o chiedi aiuto.",
-        "cancelled": "Pagamento annullato. Nessun credito aggiunto."
+        "cancelled": "Pagamento annullato. Nessun credito aggiunto.",
+        "topUpNeedsRole": "Ricaricare è per il proprietario, gli admin o la Finanza.",
+        "withdrawNeedsRole": "Prelevare è per il proprietario o la Finanza. Chiedi a {{name}}.",
+        "theOwner": "il proprietario"
       },
       "tools": {
         "compare": "Confronta i tuoi annunci",
@@ -354,7 +441,11 @@
         "ends": "Alla fine",
         "endsV": "Il resto resta come credito",
         "withdraw": "Prelievo",
-        "withdrawV": "Torna al metodo con cui hai pagato, commissione inclusa"
+        "withdrawV": "Torna al metodo con cui hai pagato, commissione inclusa",
+        "whoLaunches": "Ricarica e lancia",
+        "whoLaunchesV": "Il proprietario e gli admin",
+        "whoWithdraws": "Preleva credito",
+        "whoWithdrawsV": "Il proprietario e la Finanza"
       },
       "list": {
         "errorTitle": "Impossibile caricare i tuoi annunci",
@@ -372,7 +463,18 @@
         "colResults": "Risultati",
         "colEach": "Ciascuno",
         "open": "Apri {{name}}",
-        "draftLine": "Bozza salvata · riprendi da dove eri rimasto"
+        "draftLine": "Bozza salvata · riprendi da dove eri rimasto",
+        "reviewLine": "Ogni app controlla prima il tuo annuncio. Non si spende nulla finché non viene mostrato.",
+        "appShowing": "{{app}}: mostrato",
+        "appChecking": "{{app}}: in controllo",
+        "appNotApproved": "{{app}}: non approvato",
+        "deleteDraftA11y": "Elimina bozza {{name}}",
+        "deleteTitle": "Eliminare questa bozza?",
+        "deleteBody": "“{{name}}” verrà eliminata per sempre. Non viene addebitato nulla e il tuo credito annunci resta invariato.",
+        "deleteConfirm": "Elimina bozza",
+        "deleteKeep": "Tienila",
+        "draftDeleted": "Bozza eliminata",
+        "deleteFailed": "Impossibile eliminare la bozza. Trascina verso il basso per aggiornare e riprova."
       },
       "unit": {
         "sales": "biglietti",
@@ -393,7 +495,8 @@
         "partRejected": "Attivo · {{count}} non approvati",
         "draft": "Bozza",
         "attention": "Da controllare",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Attivo · {{apps}} in revisione"
       },
       "reason": {
         "soldOut": "Esaurito",

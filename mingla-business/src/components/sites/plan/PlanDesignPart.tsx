@@ -45,6 +45,8 @@ export function PlanDesignPart({
   const keys = lookPickerKeys(planState.styleLibrary, stored);
   const format = planState.styleLibrary ? planFormatOf(planState.plan) : null;
   const choiceFit = choice ? styleFitLabel(format, choice) : null;
+  // The styles a preview can be asked for (Core refuses an "avoid" style).
+  const previewQueue = keys.filter((key) => styleFitLabel(format, key)?.fit !== "avoid");
   const readOnly = forcedReadOnly || ctx.lock.heldByOther || planState.site?.paused === true;
   // #4453 — the picked style's live preview: beside the picker on desktop web,
   // in a sheet on phone and narrow screens.
@@ -175,7 +177,7 @@ export function PlanDesignPart({
       </View>
       {wide ? (
         <View style={styles.previewColumn}>
-          <PlanStylePreview brandId={brandId} brandName={ctx.brandName} planState={planState} style={choice} wide />
+          <PlanStylePreview brandId={brandId} brandName={ctx.brandName} planState={planState} style={choice} wide queue={previewQueue} />
         </View>
       ) : null}
       </View>
@@ -188,6 +190,7 @@ export function PlanDesignPart({
               planState={planState}
               style={choice}
               wide={false}
+              queue={previewQueue}
               // The sheet is 90% of the screen: leave room for the title row, the buttons and breathing room.
               frameMaxHeight={Math.max(280, Math.round(height * 0.9) - 230)}
             />

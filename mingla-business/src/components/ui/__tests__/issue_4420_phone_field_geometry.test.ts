@@ -45,7 +45,9 @@ describe("#4420 PhoneField geometry", () => {
   });
 
   test("the field takes the Input fill; the picker keeps an opaque surface", () => {
-    expect(input).toContain("const BACKGROUND = color.fill.input;");
+    // [TEST-MOD #4518] the fill is read when the sheet is built, not frozen
+    // at import, so a host-themed checkout can re-point it. Same token.
+    expect(input).toContain("backgroundColor: color.fill.input,");
     expect(BUSINESS_SHEET_PHONE_THEME.fieldBackground).toBe(color.fill.input);
     expect(BUSINESS_SHEET_PHONE_THEME.backgroundPrimary).toBe(color.canvas);
     expect(BUSINESS_SHEET_PHONE_THEME.borderError).toBe(edge.ringError.borderColor);

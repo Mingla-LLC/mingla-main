@@ -114,19 +114,22 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
   // #4130: the Users page and its client-side segment tabs are gone. People
   // shows the server's segments (explorer / host / both / incomplete /
   // internal) with counts the server made, never a fabricated number.
-  it("People exposes the server's segments as tabs", () => {
-    const lib = read("src/lib/peopleSegments.js");
-    for (const seg of ["explorer", "host", "both", "incomplete", "internal"]) {
-      assert.match(lib, new RegExp(`segment:\\s*"${seg}"`), `segment tab ${seg} present`);
+  // #4226 Phase 2: People shows journey tabs (Explorers, Hosts, Both apps,
+  // Signing up, No account yet, Staff and test) whose counts the server
+  // makes with the same filter Email uses, never a fabricated number.
+  it("People exposes the server's journey tabs", () => {
+    const lib = read("src/lib/peopleFilter.js");
+    for (const track of ["explorers", "hosts", "both", "signing_up", "no_account", "internal"]) {
+      assert.match(lib, new RegExp(`track:\\s*"${track}"`), `journey tab ${track} present`);
     }
     const page = read("src/pages/PeoplePage.jsx");
-    assert.match(page, /PEOPLE_TABS/);
-    assert.match(page, /peopleTabLabel\(t, countsError \? null : counts\)/);
+    assert.match(page, /JOURNEY_TABS/);
   });
 
-  it("People reads segments and counts from the admin RPCs", () => {
+  it("People reads its lists, counts and filter options from the admin RPCs", () => {
     const svc = read("src/services/peopleService.js");
-    assert.match(svc, /rpc\("admin_people_segments"\)/);
-    assert.match(svc, /rpc\("admin_list_people", \{\s*p_segment: segment,/);
+    assert.match(svc, /rpc\("admin_people_filter", \{ p_filters: filter \|\| \{\} \}, \{ count: "exact" \}\)/);
+    assert.match(svc, /rpc\("admin_people_facets"/);
+    assert.match(svc, /rpc\("admin_people_filter_counts"/);
   });
 });

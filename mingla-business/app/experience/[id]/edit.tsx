@@ -269,7 +269,9 @@ function detailToInitialDraft(
         : 0,
     ),
     priceOptions,
-    isFree: exp.ticket?.isFree ?? false,
+    // #3645 bundle 2C — the host's choice, not the first option's price: a
+    // paid draft saved at 0 stays paid (and is asked for a price).
+    isFree: exp.isFree ?? exp.ticket?.isFree ?? false,
     capacity:
       exp.ticket === null || exp.ticket.isUnlimited || exp.ticket.quantityTotal === null
         ? "20"

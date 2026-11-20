@@ -3,10 +3,11 @@
 -- Proves:
 --   1. cancel_event_refund_prepare flips scheduled installments to cancelled and
 --      returns installments_cancelled.
---   2. With issue_2036_installment_payout_ready() = false (default), a collected
---      ready installment does NOT attach into payout_release_items.
---   3. Temporarily flipping the readiness gate to true inside the transaction
---      lets the dark sweep attach source_type = order_installment.
+--   2. With issue_2036_installment_payout_ready() forced false inside the
+--      transaction, a collected ready installment does NOT attach into
+--      payout_release_items (the switch still gates the arm).
+--   3. With the gate true (shipped since 20280809003645) and the Stripe fee
+--      snapshot present, the dark sweep attaches source_type = order_installment.
 
 BEGIN;
 
@@ -99,10 +100,18 @@ BEGIN
     113, 0, 'ready'
   );
 
-  -- Readiness defaults false: ready row must NOT attach.
-  IF public.issue_2036_installment_payout_ready() IS NOT FALSE THEN
-    RAISE EXCEPTION 'pr5_readiness_must_default_false';
+  -- #3645: the switch ships on (20280809003645). Force it off inside this
+  -- transaction to prove it still gates the arm.
+  IF public.issue_2036_installment_payout_ready() IS NOT TRUE THEN
+    RAISE EXCEPTION 'pr5_readiness_must_ship_on';
   END IF;
+  CREATE OR REPLACE FUNCTION public.issue_2036_installment_payout_ready()
+  RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+  AS $ready$ SELECT false; $ready$;
+  -- A Stripe instalment's fee snapshot (the sweep captures it from the charge).
+  INSERT INTO public.payout_source_fee_snapshots(source_type, source_id, provider_fee_cents)
+  VALUES ('order_installment', v_inst_b, 250);
 
   PERFORM public.run_payout_release_dark_sweep(v_now);
   SELECT count(*) INTO v_count
@@ -203,10 +212,9 @@ BEGIN
       53, 0, 'ready'
     );
 
-  CREATE OR REPLACE FUNCTION public.issue_2036_installment_payout_ready()
-  RETURNS boolean
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
-  AS $ready$ SELECT true; $ready$;
+  -- #3645: the switch ships on; Stripe instalments wait for their fee snapshots.
+  INSERT INTO public.payout_source_fee_snapshots(source_type, source_id, provider_fee_cents)
+  VALUES ('order_installment', v_inst_1, 146), ('order_installment', v_inst_2, 132);
 
   PERFORM public.run_payout_release_dark_sweep(v_now);
 

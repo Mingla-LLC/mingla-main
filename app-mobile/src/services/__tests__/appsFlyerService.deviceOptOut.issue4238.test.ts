@@ -82,6 +82,13 @@ function makeWorld(optOut: boolean, serverHasOptOutColumn = true) {
     },
     "./oneLinkResolver": { resolveOneLinkDestination: () => null, OneLinkDestination: undefined },
     "./nativeAdAttributionService": { captureNativeOneLinkAttribution: async () => {} },
+    "./peopleJourneyService": {
+      clearPeopleJourneyState: () => {},
+      dropHeldInstallConversion: () => {},
+      getHeldInstallConversion: () => null,
+      holdInstallConversion: () => {},
+      sendHeldInstallAttribution: async () => "held",
+    },
     "../store/appStore": {
       useAppStore: {
         getState: () => ({ analyticsOptOut: world.optOut }),

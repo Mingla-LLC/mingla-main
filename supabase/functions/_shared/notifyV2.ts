@@ -53,7 +53,9 @@ import {
 import {
   isIssue4382SupportCategory,
   issue4382DeepLinkValid,
+  issue4382EmailCta,
   issue4382ProviderSafeKeys,
+  ISSUE_4382_EMAIL_CATEGORIES,
   ISSUE_4382_SUPPORT_CATEGORIES,
 } from "./issue4382SupportNotifications.ts";
 // #3682 wave 3 — the brand invite email's button and manage note.
@@ -695,6 +697,7 @@ export async function dispatchV2(
   // Admin page for the item, derived from the validated link only.
   const emailCta = input.email_cta ??
     issue3988EmailCta(input.category_key, input.deep_link, input.payload) ??
+    issue4382EmailCta(input.category_key, input.payload) ??
     issue4111EmailCta(input.category_key, input.payload) ??
     brandReachEmailCta(input.category_key, input.payload);
   for (const channel of requestedChannels) {
@@ -863,7 +866,8 @@ export async function dispatchV2(
           (input.category_key === "business.community_announcement" ||
             input.category_key === "business.support_new_ticket" ||
             ISSUE_3988_EMAIL_CATEGORIES.includes(input.category_key) ||
-            ISSUE_4111_EMAIL_CATEGORIES.includes(input.category_key))
+            ISSUE_4111_EMAIL_CATEGORIES.includes(input.category_key) ||
+            ISSUE_4382_EMAIL_CATEGORIES.includes(input.category_key))
         ? "no_confirmed_email"
         : "no_contact";
       await completeChannel(

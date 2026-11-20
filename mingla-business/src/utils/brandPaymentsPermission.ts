@@ -5,8 +5,15 @@
  *
  * SERVER SOURCE OF TRUTH (#3660):
  *
- *   biz_can_manage_payments_for_brand = effective rank >= brand_owner
- *     → bank connect / detach / onboard mutate
+ *   Payouts mutate (bank connect / detach / onboard) = brand_owner only,
+ *     enforced at the edge by `requirePaymentsManager` +
+ *     `BRAND_PAYMENTS_ROLES` (stripeEdgeAuth.ts). That is what
+ *     `canManageBrandPayments` mirrors.
+ *
+ *   NOT the SQL `biz_can_manage_payments_for_brand`, which is wider
+ *   (biz_is_brand_admin_plus OR accepted finance_manager) and gates other
+ *   money actions such as refunds and Ads credit top-up. Host Ads credit
+ *   reads the server's own capabilities (#4238), never this mirror.
  *
  *   biz_can_view_payments_for_brand =
  *         biz_is_brand_admin_plus

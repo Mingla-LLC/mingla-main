@@ -31,7 +31,9 @@
         "title": "Leave the builder?",
         "body": "Your draft is saved. Pick it up from Promote any time.",
         "leave": "Leave",
-        "keep": "Keep editing"
+        "keep": "Keep editing",
+        "uploading_one": "{{count}} video is still uploading. Leaving stops it.",
+        "uploading_other": "{{count}} videos are still uploading. Leaving stops them."
       },
       "goal": {
         "sales": "Sell tickets",
@@ -245,7 +247,7 @@
         "launchShort": "Launch",
         "topUp": "Top up {{amount}}",
         "blockOffline": "Connect to launch",
-        "blockLaunch": "Launching needs launch access. {{name}} can launch it.",
+        "blockLaunch": "Launching needs the owner or an admin. Ask {{name}}.",
         "blockFund": "Launching needs access to Ads credit. {{name}} can launch it.",
         "theOwner": "The owner",
         "blockChecking": "Checking your ad with each app",
@@ -271,7 +273,15 @@
         "cancelBody": "Nothing has been spent. The money held goes back to your Ads credit.",
         "keepAd": "Keep it",
         "cancelled": "Ad cancelled. The money held is back in your Ads credit.",
-        "alreadyBuilt": "This ad is already set up on an app, so it can't be cancelled here. Get help and Mingla will sort it."
+        "alreadyBuilt": "This ad is already set up on an app, so it can't be cancelled here. Get help and Mingla will sort it.",
+        "waitUploads_one": "{{count}} video is still getting ready. Wait, or remove it.",
+        "waitUploads_other": "{{count}} videos are still getting ready. Wait, or remove them.",
+        "rightsMissing": "Tick this box to launch. It confirms you have the rights to these videos and photos.",
+        "runWithoutBuyers": "Run without leaving out past buyers",
+        "runThisWay": "Run it this way",
+        "visitsQuestionYet": "{{app}} can't aim for {{unit}} on this brand yet, so it will aim for people likely to visit your page.",
+        "visitsQuestionCannot": "{{app}} can't aim for {{unit}}, so it will aim for people likely to visit your page.",
+        "aimVisits": "Aim for page visits"
       },
       "rights": {
         "title": "Media rights",
@@ -307,6 +317,78 @@
         "generic": "That didn't work. Try again.",
         "freeEvent": "This page is free, so the ad now aims for sign-ups.",
         "checkFirst": "Check your ad again after your changes."
+      },
+      "media": {
+        "inThisAd": "In this ad",
+        "count": "{{n}} of 5",
+        "countFew": "{{n}} of 5 · 3 or more gives the apps more to try",
+        "library": "Your library",
+        "libraryHint": "Tap + to use one in this ad.",
+        "emptyAd": "Nothing in this ad yet. Add videos, or tap + on one from your library.",
+        "select": "Select",
+        "cancelSelect": "Cancel",
+        "add": "Add videos",
+        "full": "The ad holds 5",
+        "addHint": "Pick up to {{n}} more · several at once · 5 to 60 seconds each",
+        "fullHint": "Remove one to add another.",
+        "retry": "Try again",
+        "emptyTitle": "Add 1 to 5 videos",
+        "emptyBody": "Pick several at once. They upload and get ready in the background while you keep going.",
+        "emptySpec": "Vertical 9:16 · 5 to 60 seconds each",
+        "uploading": "Uploading {{percent}}%",
+        "uploadingNoPct": "Uploading",
+        "preparing": "Getting it ready · {{elapsed}} · usually under a minute",
+        "fitPending": "Fit shows when ready",
+        "failedNetwork": "Upload stopped",
+        "failedNetworkNote": "Check your connection",
+        "failedFile": "Couldn't use this video",
+        "failedFileNote": "Try another clip",
+        "refused": {
+          "unsupported": "This file type can't be used",
+          "tooShort": "Shorter than 5 seconds",
+          "tooLong": "Longer than 1 minute",
+          "tooLarge": "Bigger than 100 MB",
+          "unreadable": "Couldn't read this video"
+        },
+        "fixLength": "Trim it to 5–60 seconds, then add it again",
+        "fixOther": "Pick another clip",
+        "photo": "Photo",
+        "photoFit": "Photo · Facebook & Instagram only",
+        "untitled": "Video",
+        "remove": "Remove {{name}} from this ad",
+        "cancelUpload": "Cancel upload of {{name}}",
+        "clear": "Clear {{name}}",
+        "use": "Use {{name}} in this ad",
+        "useFull": "The ad holds 5. Remove one first.",
+        "toLibrary_one": "This ad holds 5, so {{count}} went to your library. It's uploading there.",
+        "toLibrary_other": "This ad holds 5, so {{count}} went to your library. They're uploading there.",
+        "repeat": "{{name}} is already being added.",
+        "removed": "Removed {{name}} from this ad. It stays in your library.",
+        "removedMany": "Removed {{count}} from this ad. They stay in your library.",
+        "cancelled": "Upload of {{name}} cancelled.",
+        "undo": "Undo",
+        "selectSummary": "Tick videos to remove them from this ad or archive them.",
+        "selected": "{{count}} selected",
+        "removeSel": "Remove {{count}} from ad",
+        "removeSelNone": "Remove from ad",
+        "archiveSel": "Archive {{count}}",
+        "done": "Done",
+        "archiveTitle_one": "Archive {{count}} video from your library?",
+        "archiveTitle_other": "Archive {{count}} videos from your library?",
+        "archiveBody": "They leave your brand's library, so no new ad can use them. Ads already running keep them. You can undo this straight after.",
+        "archiveConfirm": "Archive",
+        "keep": "Keep",
+        "archived": "Archived {{count}} from your library.",
+        "archiveFailed": "Couldn't archive. Nothing changed. Try again.",
+        "dupTitle": "{{name}} is already in your library",
+        "dupBody": "Same name and length as one you added before.",
+        "dupUse": "Use the one in your library",
+        "dupUpload": "Upload it again",
+        "dupFull": "This ad holds 5. {{name}} stays in your library.",
+        "draftNotReady": "Your draft is still saving. Try again in a moment.",
+        "pickFailed": "Couldn't open your videos. Try again.",
+        "pending_one": "{{count}} clip is still getting ready. Next opens when one is ready.",
+        "pending_other": "{{count}} clips are still getting ready. Next opens when one is ready."
       }
     },
     "manage": {
@@ -318,7 +400,9 @@
         "label": "Filter ads",
         "all": "All",
         "running": "Running",
-        "ended": "Ended"
+        "ended": "Ended",
+        "review": "In review",
+        "drafts": "Drafts"
       },
       "credit": {
         "label": "Ads credit",
@@ -333,7 +417,10 @@
         "error": "Couldn't load your Ads credit. Your ads keep running.",
         "added": "Ads credit added.",
         "notAdded": "Your payment came back but the credit wasn't added yet. Try again, or get help.",
-        "cancelled": "Payment cancelled. No credit was added."
+        "cancelled": "Payment cancelled. No credit was added.",
+        "topUpNeedsRole": "Topping up needs the owner, an admin or Finance.",
+        "withdrawNeedsRole": "Withdrawing is for the owner or Finance. Ask {{name}}.",
+        "theOwner": "the owner"
       },
       "tools": {
         "compare": "Compare your ads",
@@ -354,7 +441,11 @@
         "ends": "When it ends",
         "endsV": "The rest stays as credit",
         "withdraw": "Withdraw",
-        "withdrawV": "Back to how you paid, fee included"
+        "withdrawV": "Back to how you paid, fee included",
+        "whoLaunches": "Top up and launch",
+        "whoLaunchesV": "The owner and admins",
+        "whoWithdraws": "Withdraw credit",
+        "whoWithdrawsV": "The owner and Finance"
       },
       "list": {
         "errorTitle": "Couldn't load your ads",
@@ -372,7 +463,18 @@
         "colResults": "Results",
         "colEach": "Each",
         "open": "Open {{name}}",
-        "draftLine": "Saved draft · pick up where you left off"
+        "draftLine": "Saved draft · pick up where you left off",
+        "reviewLine": "Each app checks your ad first. Nothing is spent until it shows.",
+        "appShowing": "{{app}}: showing",
+        "appChecking": "{{app}}: checking",
+        "appNotApproved": "{{app}}: not approved",
+        "deleteDraftA11y": "Delete draft {{name}}",
+        "deleteTitle": "Delete this draft?",
+        "deleteBody": "“{{name}}” goes away for good. Nothing is charged and your Ads credit stays as it is.",
+        "deleteConfirm": "Delete draft",
+        "deleteKeep": "Keep it",
+        "draftDeleted": "Draft deleted",
+        "deleteFailed": "Couldn't delete this draft. Pull down to refresh and try again."
       },
       "unit": {
         "sales": "tickets",
@@ -393,7 +495,8 @@
         "partRejected": "Running · {{count}} not approved",
         "draft": "Draft",
         "attention": "Needs a look",
-        "with": "{{status}} · {{reason}}"
+        "with": "{{status}} · {{reason}}",
+        "runningPartReview": "Running · {{apps}} in review"
       },
       "reason": {
         "soldOut": "Sold out",

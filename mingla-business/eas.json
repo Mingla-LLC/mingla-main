@@ -63,7 +63,8 @@
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "false",
         "EXPO_PUBLIC_ONESIGNAL_APP_ID": "4505e476-6b2a-424d-906f-d751614980bf",
-        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com"
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com",
+        "MINGLA_TAP_TO_PAY_ENTITLEMENT": "1"
       }
     },
     "production-apk": {
@@ -80,6 +81,9 @@
       "ios": {
         "simulator": true,
         "buildConfiguration": "Release"
+      },
+      "env": {
+        "MINGLA_TAP_TO_PAY_ENTITLEMENT": "0"
       }
     }
   },

@@ -252,3 +252,22 @@ export function setupDraftState(input: {
   if (input.composeFailed) return { kind: "failed", retry: "compose" };
   return input.approved ? { kind: "building" } : { kind: "not_ready" };
 }
+
+/**
+ * #4453 — whether the draft-ready screen offers "Rebuild my pages": the
+ * owner's rank may manage the site, nobody else holds the setup lock, and the
+ * site is not paused. Core still re-checks the rank and the approved plan.
+ */
+export function canRebuildPages(input: { canManage: boolean | undefined; lockHeldByOther: boolean; paused: boolean | undefined }): boolean {
+  return input.canManage === true && !input.lockHeldByOther && input.paused !== true;
+}
+
+/**
+ * #4453 — how many Draft sections still wait for review on enabled pages.
+ * Studio refuses a publish while any remain (UNREVIEWED_SECTIONS), and Core
+ * reports that only as a generic failure, so Publish waits for zero.
+ */
+export function unreviewedSectionCount(status: { pages: ReadonlyArray<{ enabled: boolean; count: number }> } | null | undefined): number {
+  if (!status) return 0;
+  return status.pages.reduce((sum, page) => sum + (page.enabled && page.count > 0 ? page.count : 0), 0);
+}

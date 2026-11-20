@@ -28,7 +28,9 @@ export const TENANT_MEDIA_HOLDERS: readonly CollectionConfig[] = [
 /** Tenant collections that are not site content (they never hold site media). */
 // #2829 W9b — the work log and the design-check runs hold no media and are
 // written only by Studio's signed endpoints (no Studio or REST write access).
-export const NON_CONTENT_TENANT_COLLECTIONS: readonly string[] = ["media", "publication-jobs", "work-log", "design-check-runs"];
+// #4453 website workspace — the undo history holds snapshots of drafts (never
+// the draft itself) and is likewise written only by the signed endpoints.
+export const NON_CONTENT_TENANT_COLLECTIONS: readonly string[] = ["media", "publication-jobs", "work-log", "design-check-runs", "draft-changes"];
 
 /**
  * Every media id the tenant's draft content uses anywhere — every page (never

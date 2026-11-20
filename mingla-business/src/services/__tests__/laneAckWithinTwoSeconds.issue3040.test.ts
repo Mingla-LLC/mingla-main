@@ -27,6 +27,8 @@ type AuthListener = (event: string, session: { access_token: string; expires_at:
 const mockAuthListeners: AuthListener[] = [];
 
 jest.mock("../supabase", () => ({
+  // [TEST-MOD #4518] the lane POST goes through the shared database fetch.
+  supabaseFetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
   laneEdgeEndpoint: {
     functionsUrl: "https://project.supabase.co/functions/v1",
     anonKey: "anon-key",

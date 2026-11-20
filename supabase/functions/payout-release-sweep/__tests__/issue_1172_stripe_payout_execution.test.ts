@@ -157,6 +157,8 @@ Deno.test("handler remains dark while the execution flag is unset", async () => 
           rpcNames.push(name);
           return Promise.resolve({
             data: name === "list_missing_payout_source_fees" ||
+                // Issue #3645: paid stays are their own fee-candidate family.
+                name === "list_missing_stay_provider_fees" ||
                 name === "claim_payout_release_alerts" ||
                 // Issue #3645 PR8 (append-only)
                 name === "surface_payout_releases_waiting_for_bank" ||
@@ -187,6 +189,8 @@ Deno.test("handler remains dark while the execution flag is unset", async () => 
   assertEquals((await response.json()).dark, true);
   assertEquals(rpcNames, [
     "list_missing_payout_source_fees",
+    // Issue #3645: the stay fee-candidate family is read after the others.
+    "list_missing_stay_provider_fees",
     "run_payout_release_dark_sweep",
     "surface_payout_releases_waiting_for_bank",
     "claim_brand_payout_pause_notices",
@@ -221,7 +225,11 @@ Deno.test("enabled test path records one accepted payout with exact amount and k
       createAdmin: (() => ({
         rpc: (name: string, args: Record<string, unknown>) => {
           rpcNames.push(name);
-          if (name === "list_missing_payout_source_fees") {
+          if (
+            name === "list_missing_payout_source_fees" ||
+            // Issue #3645: paid stays are their own fee-candidate family.
+            name === "list_missing_stay_provider_fees"
+          ) {
             return Promise.resolve({ data: [], error: null });
           }
           if (name === "run_payout_release_dark_sweep") {

@@ -24,6 +24,7 @@ import {
   type AgentChatResponse,
   type AgentMessage,
   type AriFirstRunHint,
+  type AriSiteFocus,
   type AriFlowAnswer,
   type AriFlowState,
   fetchMessages,
@@ -111,7 +112,7 @@ export function samePendingAction(
 }
 
 type AriSurface = "main" | "website";
-type AriWorkflowContext = "website_setup" | null;
+type AriWorkflowContext = "website_setup" | "website_workspace" | null;
 
 export interface AriEditableTurn {
   text: string;
@@ -188,6 +189,8 @@ export interface UseAgentChatResult {
   clearErrorMessage: () => void;
   setSurface: (surface: AriSurface) => void;
   setWorkflowContext: (context: AriWorkflowContext) => void;
+  /** #4453 — the section Ari was opened from (null: the whole website). */
+  setSiteFocus: (focus: AriSiteFocus | null) => void;
 }
 
 /** #2830 P4 — the owner's bubble when Website setup opens (server-pinned). */
@@ -198,7 +201,9 @@ type TurnPayload = {
   choice_response?: AgentChoiceSubmissionV2;
   flow_answer?: AriFlowAnswer;
   attachment_ids?: string[];
-  workflow_context?: "website_setup";
+  workflow_context?: "website_setup" | "website_workspace";
+  /** #4453 — the selected section; travels with a Website workspace turn. */
+  site_focus?: AriSiteFocus;
   website_setup_kickoff?: { part?: string };
   /** #4304 — first-run context; travels with the turn so a retry keeps it. */
   first_run?: AriFirstRunHint;
@@ -390,6 +395,7 @@ export function useAgentChat(
   const sendIntentRef = useRef<AriClientIntentRecord | null>(null);
   const surfaceRef = useRef<AriSurface>("main");
   const workflowContextRef = useRef<AriWorkflowContext>(null);
+  const siteFocusRef = useRef<AriSiteFocus | null>(null);
   const brandEpoch = useRef(0);
   const previousBrandId = useRef(brandId);
   const sameFrameLock = useRef(false);
@@ -439,6 +445,9 @@ export function useAgentChat(
     },
     [],
   );
+  const setSiteFocus = useCallback((focus: AriSiteFocus | null): void => {
+    siteFocusRef.current = focus;
+  }, []);
 
   useEffect(() => {
     if (previousBrandId.current === brandId) return;
@@ -1135,6 +1144,10 @@ export function useAgentChat(
           ...(workflowContextRef.current
             ? { workflow_context: workflowContextRef.current }
             : {}),
+          ...(workflowContextRef.current === "website_workspace" &&
+              siteFocusRef.current
+            ? { site_focus: siteFocusRef.current }
+            : {}),
           ...(options?.firstRun ? { first_run: options.firstRun } : {}),
         },
         attachments,
@@ -1601,5 +1614,6 @@ export function useAgentChat(
     clearErrorMessage,
     setSurface,
     setWorkflowContext,
+    setSiteFocus,
   };
 }

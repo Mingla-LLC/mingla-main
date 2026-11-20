@@ -121,14 +121,22 @@ describe("#4453 composer v2 — each format on a full fixture (SC-F2, SC-N4)", (
 
 describe("#4453 composer v2 — an empty brand (SC-F2)", () => {
   for (const format of FORMAT_KEYS) {
-    it(`${format}: only always-eligible sections, and every page without content left out`, () => {
+    it(`${format}: only always-eligible sections; a ticked offering's page waits with a sign-up, every other empty page is left out`, () => {
       const result = composeFormatSite(empty(format))!;
       for (const page of result.pages) {
         for (const block of page.blocks) expect(ALWAYS.has(block.blockType), `${page.key}:${block.blockType}`).toBe(true);
       }
       expect(result.pages[0]!.blocks.map((block) => block.blockType)).toEqual(["page_header", "newsletter_signup"]);
-      // No page is just a header and a form: a page with no real section is left out with its menu item.
-      for (const page of result.pages.slice(1)) {
+      // #4453 (Seth, 19 Nov) — Host promises "Each tick gets a page on your
+      // site, even before it has anything on it": the ticked offering's
+      // listing page is placed with "Be the first to hear". Any other page
+      // with no real section is left out with its menu item.
+      const ticked = FORMAT_PAGE_SETS[format].find((entry) => entry.listing && entry.planned)!;
+      const waiting = result.pages.find((page) => page.key === ticked.key)!;
+      expect(waiting, `${format}: the ticked page`).toBeTruthy();
+      expect(waiting.blocks.find((block) => block.blockType === "newsletter_signup")?.heading).toBe("Be the first to hear");
+      expect(result.left_out_pages.map((entry) => entry.key)).not.toContain(ticked.key);
+      for (const page of result.pages.slice(1).filter((page) => page.key !== ticked.key)) {
         expect(page.blocks.some((block) => !["page_header", "cta", "contact_form", "newsletter_signup"].includes(block.blockType))).toBe(true);
       }
       expect(result.menu.items.map((item) => item.slug)).toEqual(result.pages.slice(1).map((page) => page.slug));

@@ -132,6 +132,13 @@ export interface ExperienceDetail {
   ticket: ExperienceTicketRow | null;
   /** issue #3281 R2 — all sellable options (ticket first = default). */
   tickets?: ExperienceTicketRow[];
+  /**
+   * issue #3645 bundle 2C — the host's paid/free choice (experienceIsFree,
+   * the same rule as the server's issue_3645_experience_is_free). Optional
+   * only so historical fixtures remain source-compatible; read it instead of
+   * `ticket.isFree`, which is the first option's price, not the choice.
+   */
+  isFree?: boolean;
   dates: ExperienceDateRow[];
   /**
    * #1022 — raw theme override. null = fully inherited from the brand.
@@ -287,6 +294,27 @@ function brandSlugOf(brands: RawEventRow["brands"]): string | null {
 const EXPERIENCE_DETAIL_SELECT =
   "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_poster_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, theme_gradient_override, refund_policy, capacity_scope, booking_spacing_minutes, min_notice_minutes, brands(slug)";
 
+/**
+ * issue #3645 bundle 2C — whether an experience is free, the same rule as the
+ * server's issue_3645_experience_is_free: any live option priced above 0
+ * means paid; else the host's stored choice (theme.experience_meta.is_free);
+ * else the derived value for rows saved before the choice was stored (the
+ * first option, then a whole price of 0). Where the server reads unknown
+ * (NULL: no ticket and no whole price) this answers false, as the writers
+ * treat a missing is_free (COALESCE(is_free, false)): the wizard then asks
+ * for a price or the free switch.
+ */
+export function experienceIsFree(
+  storedChoice: unknown,
+  tickets: readonly { priceCents: number; isFree: boolean }[],
+  wholePriceCents: number | null,
+): boolean {
+  if (tickets.some((t) => t.priceCents > 0)) return false;
+  if (typeof storedChoice === "boolean") return storedChoice;
+  const first = tickets[0];
+  return first !== undefined ? first.isFree : wholePriceCents === 0;
+}
+
 export async function getExperienceDetail(
   eventId: string,
 ): Promise<ExperienceDetail | null> {
@@ -403,6 +431,7 @@ export async function getExperienceDetail(
   const ticket = tickets[0];
 
   return {
+    isFree: experienceIsFree(meta.is_free, tickets, raw.whole_price_cents),
     id: raw.id,
     brandId: raw.brand_id,
     brandSlug: brandSlugOf(raw.brands),

@@ -704,3 +704,114 @@ describe("XS — detail read, edit-route seed, reject copy", () => {
     );
   });
 });
+
+// [TEST-MOD-APPROVED #3645] bundle 2C adds this case to the mounted-wizard
+// harness above: a saved paid experience whose first option is free (Kids 0
+// beside Adult, as Ari can make) now loads as paid, and the wizard must keep
+// its saved option prices instead of copying the whole price into Kids.
+describe("#3645 2C — a paid experience whose first option is free keeps its option prices", () => {
+  test("on mount the whole price is not copied into the free first option", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { emptyPriceOption } = require("../experienceWizardTypes");
+    const draft = {
+      ...seed(),
+      isFree: false,
+      wholePriceMajor: "5000.00",
+      priceOptions: [
+        emptyPriceOption({ ticketTypeId: "t-kids", name: "Kids", priceMajor: "0.00" }),
+        emptyPriceOption({ ticketTypeId: "t-adult", name: "Adult", priceMajor: "5000.00" }),
+      ],
+    } as ExperienceWizardInitialDraft;
+    const tree = await mount(
+      <ExperienceCreatorWizard brandId="brand-3284" onComplete={jest.fn()} initialDraft={draft} />,
+    );
+    await toPricing(tree);
+    // The price fields by their labels (the lead one is the whole price).
+    const priceOf = (label: string): unknown =>
+      tree.root.findAll(
+        (n) => n.props.accessibilityLabel === label && n.props.value !== undefined,
+      )[0]?.props.value;
+    expect(textOf(tree)).toContain("Kids");
+    expect(priceOf("Whole experience price")).toBe("0.00");
+    expect(priceOf("Price for option 2")).toBe("5000.00");
+    await unmount(tree);
+  });
+});
+
+// [TEST-MOD-APPROVED #3645] bundle 2C review follow-ups, on the same harness.
+describe("#3645 2C — saved option prices stay coherent", () => {
+  const optionsDraft = (over: Record<string, unknown>) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { emptyPriceOption } = require("../experienceWizardTypes");
+    return {
+      ...seed(),
+      isFree: false,
+      ...over,
+      priceOptions: (over.priceOptions as Array<Record<string, unknown>>).map((o) =>
+        emptyPriceOption(o),
+      ),
+    } as ExperienceWizardInitialDraft;
+  };
+  const priceOf = (tree: Renderer, label: string): unknown =>
+    tree.root.findAll(
+      (n) => n.props.accessibilityLabel === label && n.props.value !== undefined,
+    )[0]?.props.value;
+  const onPricing = (tree: Renderer): boolean =>
+    tree.root.findAll(
+      (n) => typeof n.type === "string" && n.props.testID === "experience-pricing-refund-card",
+    ).length > 0;
+
+  test("removing the last paid option of a paid experience blocks Continue", async () => {
+    const tree = await mount(
+      <ExperienceCreatorWizard
+        brandId="brand-3284"
+        onComplete={jest.fn()}
+        initialDraft={optionsDraft({
+          wholePriceMajor: "5000.00",
+          priceOptions: [
+            { ticketTypeId: "t-kids", name: "Kids", priceMajor: "0.00" },
+            { ticketTypeId: "t-adult", name: "Adult", priceMajor: "5000.00" },
+          ],
+        })}
+      />,
+    );
+    await toPricing(tree);
+    const remove = tree.root.findAll(
+      (n) => n.props.accessibilityLabel === "Remove price" && typeof n.props.onPress === "function",
+    );
+    expect(remove.length).toBeGreaterThan(0);
+    await press(remove[remove.length - 1]);
+    await pressButton(tree, "Continue");
+    await settle();
+    // Only Kids 0 is left behind a 5000 total: no price, so it stays here.
+    expect(onPricing(tree)).toBe(true);
+    await unmount(tree);
+  });
+
+  test("a per-stop seed still pairs the lead option with the whole price on mount", async () => {
+    const tree = await mount(
+      <ExperienceCreatorWizard
+        brandId="brand-3284"
+        onComplete={jest.fn()}
+        initialDraft={optionsDraft({
+          pricingMode: "per_stop",
+          stops: [{ ...stop(1), priceMajor: "2500" }, { ...stop(2), priceMajor: "2500" }],
+          wholePriceMajor: "0.00",
+          priceOptions: [{ ticketTypeId: "t-std", name: "Standard", priceMajor: "5000.00" }],
+        })}
+      />,
+    );
+    await toPricing(tree);
+    await press(
+      tree.root.findAll(
+        (n) =>
+          n.props.accessibilityLabel === "One price for the whole experience" &&
+          typeof n.props.onPress === "function",
+      )[0],
+    );
+    await settle();
+    // Switching to one price shows the backing whole price, not a stale 5000.
+    expect(priceOf(tree, "Whole experience price")).not.toBe("5000.00");
+    await unmount(tree);
+  });
+});

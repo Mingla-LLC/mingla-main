@@ -11,8 +11,12 @@
  * colour is a site token (var(--c-*)); type families are the font slots;
  * radii scale with var(--radius-scale) and the button with
  * var(--button-radius). Rotated stickers never widen the page (the page
- * clips sideways overflow). Scoped under [data-design="pop"]. Immutable: a
- * change is 2.css.
+ * clips sideways overflow). Scoped under [data-design="pop"].
+ *
+ * Edited in place, not bumped to 2.css: the artifact validator requires a
+ * published artifact's design version to equal the contract's, so a bump
+ * would fail every Pop site published on version 1 until it is republished.
+ * The file is served with max-age=0, so an edit reaches visitors on deploy.
  */
 @layer base, components;
 
@@ -196,6 +200,66 @@
   [data-design="pop"] .mg-page .mg-mq { transform: rotate(-2deg); }
   [data-design="pop"] .mg-page .mg-btn { box-shadow: 3px 3px 0 var(--c-ink-strong); }
   [data-design="pop"] .mg-page .mg-nl-photo { border-radius: calc(26px * var(--radius-scale, 1)); }
+}
+
+/* ---------- polish (#4453, found on Gameland's live site) ----------
+ * Headings were 75 px on every section and 115 px on the sign-up, cards ran
+ * about 1,050 px tall (a full portrait picture plus a 400-character blurb),
+ * tilted cards read as misaligned, and the bookable-times section sat 60 px
+ * left of every other section. Covers stay portrait (4:5): only the copy
+ * under them is trimmed.
+ */
+:root[data-design="pop"] {
+  --mg-h2-size: clamp(30px, 3.8vw, 56px);
+  --mg-h1-size: clamp(36px, 5vw, 74px);
+  --mg-man-size: clamp(20px, 2vw, 30px);
+  --mg-sec-pad: clamp(56px, 7vw, 104px);
+}
+/* one content edge: the times section keeps the page width like every other */
+[data-design="pop"] .mg-page .mg-slots .mg-wrap { max-width: var(--mg-max); }
+/* section heads: a smaller gap under the heading */
+[data-design="pop"] .mg-page .mg-sec-head { margin-bottom: clamp(24px, 3vw, 40px); }
+/* page header without a photo: a band sized to its heading, not to the screen */
+[data-design="pop"] .mg-page .mg-phd:not(.mg-phd--photo) { min-height: 0; }
+[data-design="pop"] .mg-page .mg-phd:not(.mg-phd--photo) .mg-phd__inner { padding-block: clamp(120px, 12vw, 160px) clamp(40px, 5vw, 64px); }
+[data-design="pop"] .mg-page .mg-phd__h { max-width: 18ch; }
+/* intro text: a readable measure */
+[data-design="pop"] .mg-page .mg-manifesto__big { max-width: 30em; }
+[data-design="pop"] .mg-page .mg-manifesto__big { line-height: 1.22; }
+[data-design="pop"] .mg-page .mg-manifesto__big p + p { margin-top: .9em; font: 500 clamp(17px, 1.35vw, 20px)/1.6 var(--body); letter-spacing: 0; color: var(--mg-body); max-width: 40em; }
+/* sign-up heading in the same scale as the rest of the page */
+[data-design="pop"] .mg-page .mg-nl-photo h2 { font-size: clamp(34px, 4.6vw, 68px); }
+/* cards: straight, a quieter title, a three-line blurb, a thinner edge */
+[data-design="pop"] .mg-page .mg-ocards { gap: clamp(20px, 2.4vw, 32px); align-items: start; }
+[data-design="pop"] .mg-page .mg-ocard:nth-child(n) { transform: none; }
+[data-design="pop"] .mg-page .mg-ocard:hover { transform: translateY(-6px); box-shadow: 10px 10px 0 var(--c-accent-400); }
+[data-design="pop"] .mg-page :is(.mg-ocard, .mg-rcard, .mg-htable, .mg-stat) { border-width: 2px; box-shadow: 5px 5px 0 var(--c-ink-strong); }
+[data-design="pop"] .mg-page .mg-ocard__b { padding: 20px 22px 22px; gap: 8px; }
+[data-design="pop"] .mg-page .mg-ocard h3 { font-size: clamp(20px, 1.7vw, 24px); line-height: 1.15; letter-spacing: -.02em; }
+[data-design="pop"] .mg-page .mg-ocard__blurb { font-size: 15px; line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+[data-design="pop"] .mg-page .mg-ocard__row { padding-top: 14px; }
+[data-design="pop"] .mg-page .mg-ocard .mg-price { font-size: 22px; }
+/* phones: cards become a swipe row (one and a bit on screen) instead of a column three screens long */
+@media (max-width: 720px) {
+  [data-design="pop"] .mg-page .mg-ocards:has(> .mg-ocard + .mg-ocard) { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; gap: 16px; margin-inline: calc(-1 * var(--mg-gutter)); padding: 4px var(--mg-gutter) 14px; scroll-padding-inline: var(--mg-gutter); scrollbar-width: none; }
+  [data-design="pop"] .mg-page .mg-ocards:has(> .mg-ocard + .mg-ocard)::-webkit-scrollbar { display: none; }
+  [data-design="pop"] .mg-page .mg-ocards:has(> .mg-ocard + .mg-ocard) > .mg-ocard { flex: 0 0 min(80vw, 320px); scroll-snap-align: start; }
+  [data-design="pop"] .mg-page :is(.mg-ocard, .mg-rcard, .mg-htable, .mg-stat) { box-shadow: 4px 4px 0 var(--c-ink-strong); }
+  [data-design="pop"] .mg-page .mg-ocard__b { padding: 16px 18px 18px; }
+}
+
+/* no cover: a bubblegum sticker face with the title (never an empty pink box) */
+[data-design="pop"] .mg-page .mg-ph-none { background: var(--c-highlight-200); color: var(--c-ink-strong); background-image: radial-gradient(color-mix(in srgb, var(--c-ink-strong) 14%, transparent) 1.6px, transparent 1.7px); background-size: 18px 18px; }
+[data-design="pop"] .mg-page .mg-ph-none__t { font-weight: 900; padding: .1em .2em .14em; background: var(--c-surface); border: var(--pp-edge); border-radius: .3em; box-shadow: 4px 4px 0 var(--c-ink-strong); transform: rotate(-2deg); }
+/* one card (the next event): a spotlight — picture beside the copy, not a lone narrow card */
+@media (min-width: 721px) {
+  [data-design="pop"] .mg-page .mg-ocards--c1 { grid-template-columns: minmax(0, 1fr); }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard .mg-ph { aspect-ratio: 4 / 5; max-height: 560px; height: 100%; }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard .mg-ocard__b { padding: clamp(24px, 3vw, 44px); justify-content: center; gap: 12px; }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard h3 { font-size: clamp(26px, 2.6vw, 40px); }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard .mg-ocard__blurb { -webkit-line-clamp: 4; line-clamp: 4; font-size: 16px; }
+  [data-design="pop"] .mg-page .mg-ocards--c1 > .mg-ocard .mg-ocard__row { margin-top: 8px; }
 }
 
 /* phones: a wide display name must never push the call to action or the menu button off screen (found on the production build: Pop's menu button sat at 406-454 px on a 375 px phone) */

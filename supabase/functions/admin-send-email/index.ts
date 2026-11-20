@@ -249,18 +249,21 @@ function legacySegmentAudience(
  * no account can be reached. Everyone is the whole list. Filters live in
  * ./audience.ts.
  */
-async function loadDirectoryRows(
+export async function loadDirectoryRows(
   supabase: ServiceClient,
   audience: AudienceDefinition | null,
 ): Promise<DirectoryRow[]> {
   const rows: DirectoryRow[] = [];
   for (let offset = 0;; offset += RECIPIENT_PAGE_SIZE) {
-    let query = supabase
-      .rpc("admin_people_directory")
+    // #4226 Phase 2: a People filter reads the one shared filter function.
+    const peopleFilter = audience?.mode === "people";
+    let query = (peopleFilter
+      ? supabase.rpc("admin_people_filter", { p_filters: audience?.people ?? {} })
+      : supabase.rpc("admin_people_directory"))
       .select(DIRECTORY_COLUMNS)
       .order("person_key", { ascending: true })
       .range(offset, offset + RECIPIENT_PAGE_SIZE - 1);
-    if (audience) query = applyDirectoryFilters(query, audience);
+    if (audience && !peopleFilter) query = applyDirectoryFilters(query, audience);
     const { data, error } = await query;
     if (error) throw new Error(`audience_query_failed:${error.message}`);
     const page = (data ?? []) as DirectoryRow[];

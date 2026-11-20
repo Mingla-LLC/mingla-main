@@ -37,6 +37,7 @@ import { AriRefusal, type AriActionContext } from "./ariSiteActions";
 import type { WorkLogCite } from "../contracts/generated/ariToolSchemas.ts";
 import type { PayloadRequest } from "payload";
 import { createHash } from "node:crypto";
+import { LOOK_KEYS, PAGE_ABSENT, latestToolGroup, pageSnapshot, pickSnapshot, recordChanges, type ChangeRow } from "./draftHistory";
 
 type AnyDoc = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -52,6 +53,12 @@ type Deps = {
   writeWorkLog: (ctx: AriActionContext, entry: { part: string; decision: string; cites: readonly WorkLogCite[]; tool: string; target: string | null; revision: string | null }) => Promise<string>;
   assertCites: (ctx: AriActionContext, cites: unknown) => Promise<WorkLogCite[]>;
   decisionOf: (value: unknown) => string;
+  /**
+   * #4453 booking-first Home — the hero's picture from the brand's own Mingla
+   * offerings (heroPictureImport.ts), asked only by the writing pass and only
+   * when the site has no hero picture and no photo. Absent: no import.
+   */
+  heroPicture?: (ctx: AriActionContext, next: SignedDesignPass["facts"]["next_offering"]) => Promise<string | null>;
 };
 
 function refuse(code: string, extra: Record<string, unknown> = {}): never {
@@ -171,7 +178,7 @@ async function releaseDesignPass(ctx: AriActionContext, claim: DesignPassClaim):
   }
 }
 
-async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, design: DesignKey, settings: AnyDoc, canMoveBases = false): Promise<ComposeV2Input> {
+async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, design: DesignKey, settings: AnyDoc, canMoveBases = false, heroPicture?: Deps["heroPicture"]): Promise<ComposeV2Input> {
   if (!signed.plan) refuse("VALIDATION_FAILED", { problems: ["the website plan is not set up yet"] });
   const brand = ctx.evidence?.brand;
   const description = (brand?.description ?? "").trim();
@@ -187,7 +194,8 @@ async function composeInput(ctx: AriActionContext, signed: SignedDesignPass, des
   };
   const home = pages.find((page) => !page.parent && (page.slug ?? "") === "");
   const heroMedia = (Array.isArray(home?.blocks) ? home!.blocks as AnyDoc[] : []).find((block) => block.blockType === "hero")?.media;
-  const coverId = heroMedia ? String(typeof heroMedia === "object" ? heroMedia.id : heroMedia) : null;
+  let coverId = heroMedia ? String(typeof heroMedia === "object" ? heroMedia.id : heroMedia) : null;
+  if (!coverId && records.photos.length === 0 && heroPicture) coverId = await heroPicture(ctx, signed.facts.next_offering);
   const { inventory, sources } = inventoryAndSources({ signed, records, offerings_selected: signed.plan.offerings_selected, brand: composeBrand, cover_media_id: coverId });
   return {
     plan: signed.plan,
@@ -227,6 +235,65 @@ function takenStyles(base: ComposeV2Input, styles: readonly DesignKey[], live: S
     if (result && similarLiveSites(result.fingerprint, live) > 0) taken.add(style);
   }
   return taken;
+}
+
+/** The menu fields a design pass may write. */
+const PASS_MENU_KEYS = ["items", "header_cta", "wordmark", "header_variant"] as const;
+/** The look, plus the listing addresses a pass may move on a never-published site. */
+const PASS_LOOK_KEYS = [...LOOK_KEYS, "routes"] as const;
+
+type PassSnapshot = { pages: AnyDoc[]; settings: AnyDoc | null; navigation: AnyDoc | null };
+
+async function designPassSnapshot(ctx: AriActionContext): Promise<PassSnapshot> {
+  const one = async (collection: "site-settings" | "navigation") =>
+    ((await ctx.req.payload.find({ collection, overrideAccess: true, draft: true, depth: 0, limit: 1, where: { tenant: { equals: ctx.tenantId } } })).docs[0] as AnyDoc | undefined) ?? null;
+  const [pages, settings, navigation] = await Promise.all([
+    findAllTenantPages(ctx.scoped, ctx.tenantId, { overrideAccess: true }),
+    one("site-settings"),
+    one("navigation"),
+  ]);
+  return { pages: pages as unknown as AnyDoc[], settings, navigation };
+}
+
+/** What a pass changed, one row per page, the look and the menu (a page it created was "absent" before). */
+function designPassRows(before: PassSnapshot, after: PassSnapshot): ChangeRow[] {
+  const was = new Map(before.pages.map((page) => [String(page.id), page]));
+  const rows: ChangeRow[] = after.pages.map((page) => {
+    const old = was.get(String(page.id));
+    return {
+      target: "page" as const,
+      targetId: String(page.id),
+      label: `${old ? "Redesign" : "Add"} ${String(page.title ?? "a page")}`,
+      before: old ? pageSnapshot(old) : { ...PAGE_ABSENT },
+      after: pageSnapshot(page),
+    };
+  });
+  if (before.settings && after.settings) {
+    rows.push({ target: "look", targetId: null, label: "Change the style", before: pickSnapshot(before.settings, PASS_LOOK_KEYS), after: pickSnapshot(after.settings, PASS_LOOK_KEYS) });
+  }
+  if (before.navigation && after.navigation) {
+    rows.push({ target: "menu", targetId: null, label: "Change the menu", before: pickSnapshot(before.navigation, PASS_MENU_KEYS), after: pickSnapshot(after.navigation, PASS_MENU_KEYS) });
+  }
+  return rows;
+}
+
+/**
+ * Deletes a design-pass claim made before `finishedAt` (the moment the pass it guarded was undone). The
+ * claim's expiry says when it was made, so a claim made later (another pass, now running) survives.
+ */
+async function clearFinishedClaim(ctx: AriActionContext, nonce: string, finishedAt: string): Promise<void> {
+  const finished = Date.parse(finishedAt);
+  if (!Number.isFinite(finished)) return;
+  try {
+    await ctx.req.payload.delete({
+      collection: "gateway-nonces",
+      overrideAccess: true,
+      where: { nonce: { equals: nonce }, expires_at: { less_than: new Date(finished + DESIGN_PASS_CLAIM_TTL_MS).toISOString() } },
+    });
+  } catch (error) {
+    // Not swallowed: logged; the claim then refuses the pass until it expires on its own.
+    console.error("[design-pass] could not clear a finished claim", nonce, error);
+  }
 }
 
 export async function runDesignPassAction(action: string, args: AnyDoc, ctx: AriActionContext, deps: Deps): Promise<Record<string, unknown>> {
@@ -277,7 +344,7 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
     if (!isStyleKey(design) || !styles.includes(design)) refuse("VALIDATION_FAILED", { problems: ["design_key is not one of the styles Ari may use"] });
     // The current draft starts at the site's last publish (null: never published, so detail bases may move).
     const draftSince = await currentDraftSince(ctx);
-    const base = await composeInput(ctx, signed, design, settings, draftSince === null);
+    const base = await composeInput(ctx, signed, design, settings, draftSince === null, deps.heroPicture);
     const composed: ComposeV2Result | null = composeFormatSite(base);
     if (!composed) refuse("VALIDATION_FAILED", { problems: ["tick what the brand offers in the website plan first"] });
     // I-SITES-ARI-NEVER-PICKS-AVOID — Ari never proposes an avoid style; owners may (Your look, with a warning).
@@ -292,9 +359,22 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
         ...(draftSince ? [{ createdAt: { greater_than: draftSince } }] : []),
       ] },
     });
-    if (earlier.docs.length > 0) refuse("DESIGN_PASS_ALREADY_RUN");
+    if (earlier.docs.length > 0) {
+      /*
+       * #4453 website workspace (build contract B) — the pass may run again once the previous one was
+       * PUBLISHED (a new draft: no row after `draftSince`) or UNDONE, never twice on the same live draft
+       * state. "Undone" is the undo history's word for it: the last pass's change set is no longer applied.
+       * A pass from before the history existed has no change set, so it still counts as run.
+       */
+      const last = await latestToolGroup(ctx, "propose_site_design_pass", draftSince);
+      if (!last || last.state === "applied") refuse("DESIGN_PASS_ALREADY_RUN");
+      // That pass finished (it was undone after), so a claim it left behind guards nothing. A claim made
+      // AFTER the undo belongs to another pass now in flight and is kept.
+      await clearFinishedClaim(ctx, designPassClaimKey(ctx.tenantId, draftSince), last.changed_at);
+    }
     const claim = await claimDesignPass(ctx, draftSince);
     try {
+      const before = await designPassSnapshot(ctx);
       const similar = similarLiveSites(composed.fingerprint, signed.live_fingerprints);
       // The design and (v2.1 §1.2) the detail bases the listing pages need, written before the pages.
       const settingsChange: AnyDoc = {
@@ -306,6 +386,14 @@ export async function runDesignPassAction(action: string, args: AnyDoc, ctx: Ari
       }
       const written = await writeComposition(ctx.req, ctx.scoped, ctx.tenantId, composed);
       const id = await deps.writeWorkLog(ctx, { part: "composition", decision, cites, tool: "propose_site_design_pass", target: `design:${design}`, revision: null });
+      // #4453 website workspace — the whole pass is one undoable change set.
+      await recordChanges(
+        { req: ctx.req, scoped: ctx.scoped, tenantId: ctx.tenantId, userId: ctx.userId.toLowerCase() },
+        "ari",
+        designPassRows(before, await designPassSnapshot(ctx)),
+        { groupId: null, groupLabel: "Ari designed your website" },
+        "propose_site_design_pass",
+      );
       return {
         design,
         format: composed.format,

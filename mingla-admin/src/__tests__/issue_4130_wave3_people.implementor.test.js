@@ -15,10 +15,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPersonActions, personActionErrorMessage, CONFIRM_WORDS } from "../lib/personActions.js";
+import { JOURNEY_TABS, journeyTabFor } from "../lib/peopleFilter.js";
 import {
-  PEOPLE_TABS,
-  peopleTabFor,
-  peopleTabLabel,
   personDisplayName,
   gotAsFarAs,
   signInMethodLabel,
@@ -184,14 +182,16 @@ describe("#4130 W3: the browser-side delete is gone", () => {
 });
 
 describe("#4130 W3: People words", () => {
-  it("the approved tabs, in order, with server counts", () => {
-    // #4226 adds "Ticket buyers, no app" and "Host contacts, no app" after Staff and test.
-    assert.deepEqual(PEOPLE_TABS.map((t) => t.id), ["explorers", "hosts", "both", "incomplete", "internal", "ticket-buyers", "host-contacts"]);
-    assert.equal(peopleTabFor("hosts").segment, "host");
-    assert.equal(peopleTabFor("constructor").id, "explorers", "unknown or inherited keys fall back");
-    assert.equal(peopleTabLabel(PEOPLE_TABS[0], { explorer: 42 }), "Explorers · 42");
-    assert.equal(peopleTabLabel(PEOPLE_TABS[0], null), "Explorers", "no count until the server answers");
-    assert.equal(peopleTabLabel(PEOPLE_TABS[4], { internal: "x" }), "Staff and test");
+  // #4226 Phase 2 (D10, D11) replaces the five boxes with journey tabs; the
+  // server counts each tab with the same filter Email uses.
+  it("the approved tabs, in order, and old addresses fall back", () => {
+    assert.deepEqual(JOURNEY_TABS.map((t) => t.id), ["explorers", "hosts", "both", "signing", "noaccount", "staff"]);
+    assert.equal(journeyTabFor("hosts").track, "hosts");
+    assert.equal(journeyTabFor("constructor").id, "explorers", "unknown or inherited keys fall back");
+    assert.equal(journeyTabFor("incomplete").id, "signing", "the old Didn't finish sign-up address");
+    assert.equal(journeyTabFor("internal").id, "staff");
+    const page = read("pages/PeoplePage.jsx");
+    assert.match(page, /getPeopleFilterCounts\(Object\.fromEntries\(JOURNEY_TABS\.map/, "tab counts come from the server filter");
   });
   it("names, sign-in and how far an unfinished sign-up got", () => {
     assert.equal(personDisplayName({ name: "  " }), "No name yet");

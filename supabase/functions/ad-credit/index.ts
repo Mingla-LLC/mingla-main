@@ -9,6 +9,7 @@
  * Actions:
  *   quote_top_up    — fee split + min/max (auth required; no brand gate)
  *   quote_withdraw  — estimate only; live refund uses FIFO lots at apply
+ *                     (#4238: owner or Finance, ad_can_withdraw_credit)
  *   start_top_up    — create platform PI (native) or Checkout Session (web)
  *   apply_top_up    — after payment succeeds (payment_ref or checkout_session_id)
  *   apply_withdraw  — debit wallet via FIFO lots; returns refund_cents
@@ -33,6 +34,10 @@ import {
   quoteWithdraw,
 } from "../_shared/adMoney.ts";
 import { resolveAdBrandCurrency } from "../_shared/adCurrencyAuthority.ts";
+import {
+  adCreditWithdrawAuthority,
+  hostAdCapabilities,
+} from "../_shared/hostAdCapabilities.ts";
 import {
   adCreditTopUpMetadata,
   buildAdCreditPaystackReference,
@@ -153,6 +158,27 @@ function buildAdCreditCheckoutReturnUrls(
   };
 }
 
+/**
+ * #4238 ads roles: withdrawing Ads credit is for the brand owner or an
+ * accepted finance_manager (ad_can_withdraw_credit). Returns the refusal, or
+ * null when allowed. A failed check refuses (fail closed).
+ */
+async function withdrawAuthorityDenied(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  brandId: string,
+  userId: string,
+): Promise<Response | null> {
+  const answer = await adCreditWithdrawAuthority(supabase, brandId, userId);
+  if (answer === "error") {
+    return json({ error: "internal_error" }, 500);
+  }
+  if (answer !== "allowed") {
+    return json({ error: "forbidden", detail: "permission_denied" }, 403);
+  }
+  return null;
+}
+
 /** Adapter so the shared name lookup never sees the supabase client types. */
 // deno-lint-ignore no-explicit-any
 type NameDb = { from: (table: string) => any };
@@ -189,6 +215,30 @@ serve(async (req: Request): Promise<Response> => {
   const action = typeof body.action === "string" ? body.action : "";
 
   if (action === "quote_withdraw") {
+    // #4238 ads roles: withdrawing is for the owner or Finance. The quote is
+    // checked against the same authority as apply_withdraw when the app sends
+    // the brand.
+    // [TRANSITIONAL] a request without brand_id still gets the arithmetic-only
+    // estimate (no brand data) so app builds from before this change keep
+    // their withdraw sheet — exit: once the live app base sends brand_id,
+    // make brand_id required here.
+    if (body.brand_id !== undefined) {
+      const quoteBrandId = typeof body.brand_id === "string"
+        ? body.brand_id
+        : "";
+      if (!UUID_REGEX.test(quoteBrandId)) {
+        return json(
+          { error: "validation_error", detail: "brand_id_invalid_uuid" },
+          400,
+        );
+      }
+      const denied = await withdrawAuthorityDenied(
+        supabase,
+        quoteBrandId,
+        user.id,
+      );
+      if (denied) return denied;
+    }
     const creditCents = typeof body.credit_cents === "number"
       ? body.credit_cents
       : NaN;
@@ -267,9 +317,13 @@ serve(async (req: Request): Promise<Response> => {
       .eq("brand_id", brandId)
       .order("created_at", { ascending: false })
       .limit(50);
+    // #4238 ads roles: who may top up and withdraw, from the same authority
+    // each action uses (the Ads credit card reads these, not a role mirror).
+    const capabilities = await hostAdCapabilities(supabase, brandId, user.id);
     return json({
       wallet: wallet ?? null,
       history: history ?? [],
+      capabilities,
       // #4238: the top-up buttons start at the minimum quoteTopUp accepts.
       top_up_limits: authority.ok
         ? adCreditTopUpLimits(authority.currency)
@@ -354,6 +408,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // Mutating actions: owner / brand_admin / finance_manager (not event_manager).
+  // Withdraw additionally needs ad_can_withdraw_credit (owner or Finance).
   const { data: canManage, error: manageErr } = await supabase.rpc(
     "biz_can_manage_payments_for_brand",
     { p_brand_id: brandId, p_user_id: user.id },
@@ -727,6 +782,9 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   if (action === "apply_withdraw") {
+    // #4238 ads roles: owner or Finance only (narrower than top-up).
+    const denied = await withdrawAuthorityDenied(supabase, brandId, user.id);
+    if (denied) return denied;
     const creditCents = typeof body.credit_cents === "number"
       ? body.credit_cents
       : NaN;

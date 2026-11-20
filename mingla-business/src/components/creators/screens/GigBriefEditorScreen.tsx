@@ -78,6 +78,12 @@ import {
 import { formatCurrencyRound } from "../../../utils/currency";
 import { blastHubHref } from "../../../components/marketing/marketingSubNavTabs";
 import { color, radius, space } from "../../../constants/designSystem";
+import { useUnsavedChangesGuard } from "../../../hooks/useUnsavedChangesGuard";
+
+/** #4453 — is the brief different from the one this screen opened with? */
+export function briefChanged(form: BriefForm, opened: BriefForm | null): boolean {
+  return opened !== null && JSON.stringify(form) !== JSON.stringify(opened);
+}
 
 const SHARE_OPTIONS = [5, 10, 15, 20] as const;
 /** A tall brief box with its label and a character count under it. */
@@ -146,6 +152,9 @@ export default function GigBriefEditor(): React.ReactElement {
   const [cities, setCities] = useState<GigCity[]>([]);
   const [cityQuery, setCityQuery] = useState("");
   const [form, setForm] = useState<BriefForm>(emptyBrief);
+  // #4453 — the brief as this screen opened it (empty, prefilled from the gig
+  // being edited, or from "book again"): what "changed" is measured against.
+  const [openedForm, setOpenedForm] = useState<BriefForm | null>(null);
   const [ready, setReady] = useState(false);
   const [touched, setTouched] = useState(false);
   const [serverErrors, setServerErrors] = useState<BriefErrors>({});
@@ -179,7 +188,7 @@ export default function GigBriefEditor(): React.ReactElement {
       setCities(nextCities);
       setListingId(nextListingId);
       setListing(nextListing);
-      setForm(() => {
+      const opened = ((): BriefForm => {
         if (source) {
           const prefill = briefFromGig(source, currency);
           // Book again starts fresh dates; edit keeps them.
@@ -200,7 +209,9 @@ export default function GigBriefEditor(): React.ReactElement {
           cityId:
             matchCity(nextCities, nextListing?.cityName ?? null)?.id ?? null,
         };
-      });
+      })();
+      setForm(opened);
+      setOpenedForm(opened);
       setReady(true);
     })();
     return () => {
@@ -298,6 +309,15 @@ export default function GigBriefEditor(): React.ReactElement {
       setBusy(false);
     }
   };
+
+  // #4453 — a brief with unsaved writing holds a brand switch (the same screen
+  // for another brand would open empty and this brief would be gone, unsaid).
+  // Close, Back and Android back keep the paths ProgramScreen gives them.
+  useUnsavedChangesGuard({
+    dirty: ready && briefChanged(form, openedForm),
+    onRequestLeave: () => undefined,
+    hardwareBack: false,
+  });
 
   const togglePlatform = (platform: BriefPlatform) =>
     update(
