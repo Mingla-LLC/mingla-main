@@ -1,3 +1,4 @@
+// MINGLA-INVARIANT: I-4514-DOOR-LINE-CAPS | issue #4514 | every door answer line (ticket scan and name admit) shows at most 3 answers, each cut to 60 characters, and an unanswered form is a line, never a refusal (_shared/__tests__/issue_4514_door_line.implementor.test.ts).
 // #4514 §6 — the door line, built once on the server for the ticket scan and
 // the name admit (decisions 8, 14, 15, 16). Guards I-4514-DOOR-LINE-CAPS
 // (_shared/doorBookedStart.ts). Moved from the scanner's jest suite when the

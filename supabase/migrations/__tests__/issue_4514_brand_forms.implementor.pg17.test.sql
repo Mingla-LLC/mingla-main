@@ -1,4 +1,14 @@
 \set ON_ERROR_STOP on
+-- MINGLA-INVARIANT: I-4514-ONE-PERSON-ONE-RESPONSE | issue #4514 | one person has one response per form across link, RSVP, order and sign-in, and a link edit of any existing answer needs the one-time code (T-PERSON here; helper in the migration).
+-- MINGLA-INVARIANT: I-4514-FORM-RESPONSES-BRAND-SCOPED | issue #4514 | a host of another brand, anon and a signed-in guest read no brand form responses through any RPC or table (T-GRANT, T-RESP here).
+-- MINGLA-INVARIANT: I-4514-FORM-VERSIONS-IMMUTABLE | issue #4514 | published versions are never updated or deleted (T-IMM here; trigger in the migration).
+-- MINGLA-INVARIANT: I-4514-DOOR-READ-ONE-GUEST-OF-THIS-EVENT | issue #4514 | scanner-role staff read answers only for one guest of the scanned event per call, only the marked line (both versions) when the host switch is off (T-DOOR here).
+-- MINGLA-INVARIANT: I-4514-FORM-REQUEST-NO-INVITE | issue #4514 | a form request (Ask, Remind, the automatic reminder) writes no invite, no invite delivery attempt and no access grant, and leaves guest status and invite counts unchanged (pg17 T-W4-D17; Deno issue_4514_form_requests).
+-- MINGLA-INVARIANT: I-4514-FORM-REQUEST-THROTTLE | issue #4514 | one form request per person per form per 24 hours (a queued, claimed or sent row for the same person key), enforced in brand_form_request_enqueue under the brand lock (pg17 T-W4-THROTTLE, T-W4-CONC).
+-- MINGLA-INVARIANT: I-4514-FORM-REQUEST-QUEUED | issue #4514 | form requests are delivered from the queue in pages of at most 100 by brand_form_request_claim_batch; a stale claim is retried or failed, never left blocking (pg17 T-W4-QUEUE).
+-- MINGLA-INVARIANT: I-4514-CHECKOUT-FORM-ONE-VISIBILITY-RULE | issue #4514 | the checkout form read (brand_form_checkout_form) and the required-answers check (brand_form_checkout_check / _stash) decide whether the page's form applies with this ONE rule, from the credential the buyer already presents to ticket-checkout-create, so a buyer is never refused for a form they cannot see (pg17 T-CHECKOUT-VIS).
+-- MINGLA-INVARIANT: I-4514-FINALIZE-TRIGGER-CANNOT-BLOCK-CHECKOUT | issue #4514 | brand_form_finalize_checkout_answers runs only when a session's order_id is set, does one primary-key probe of brand_form_checkout_answers, does nothing when there is no stash, never waits on a lock (NOWAIT row lock on this session's own stash row, try-only person lock) and catches every error inside a guarded block, logging it and leaving the order finalize untouched (pg17 T-FINALIZE-SAFE).
+-- MINGLA-INVARIANT: I-4514-PURGE-CANNOT-ABORT-4452-RETENTION | issue #4514 | the line this migration appends to issue_4452_forms_retention calls brand_form_checkout_answers_purge(), which deletes only from brand_form_checkout_answers and catches its own errors (WARNING, returns -1), so it can never roll back #4452's retention DELETEs in the same job transaction; the job's original statements stay byte-for-byte (pg17 T-CHECKOUT-PURGE).
 -- #4514 wave 1 brand forms: executable PostgreSQL 17 proof, after the full migration replay.
 --
 -- T-GRANT  SC-21  anon and signed-in have no write grant on any brand_form_* table; a direct
@@ -49,10 +59,6 @@
 -- Fix-wave fails-on-revert: deleting the recognition check in brand_form_code_begin fails
 -- T-FIX-BEGIN-5 (code started for Ike).
 --
--- MINGLA-INVARIANT: I-4514-ONE-PERSON-ONE-RESPONSE | issue #4514 | one person has one response per form across link, RSVP, order and sign-in, and a link edit of any existing answer needs the one-time code (T-PERSON here; helper in the migration).
--- MINGLA-INVARIANT: I-4514-FORM-RESPONSES-BRAND-SCOPED | issue #4514 | a host of another brand, anon and a signed-in guest read no brand form responses through any RPC or table (T-GRANT, T-RESP here).
--- MINGLA-INVARIANT: I-4514-FORM-VERSIONS-IMMUTABLE | issue #4514 | published versions are never updated or deleted (T-IMM here; trigger in the migration).
--- MINGLA-INVARIANT: I-4514-DOOR-READ-ONE-GUEST-OF-THIS-EVENT | issue #4514 | scanner-role staff read answers only for one guest of the scanned event per call, only the marked line (both versions) when the host switch is off (T-DOOR here).
 --
 -- FAILS-ON-REVERT: dropping the both-versions EXISTS in brand_form_door_answers fails T-DOOR-2;
 -- dropping the link.form_id check in brand_form_submit_core fails T-LINK-1; dropping the
