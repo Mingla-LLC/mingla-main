@@ -493,7 +493,7 @@ CREATE TABLE public.brand_form_attachments (
   auto_remind boolean NOT NULL DEFAULT false,
   -- Wave 4: the channels the automatic reminder may use after push ("Push first,
   -- free; then only the channels ticked above"). Free channels by default.
-  auto_remind_channels text[] NOT NULL DEFAULT ARRAY['email', 'push']
+  auto_remind_channels text[] NOT NULL DEFAULT ARRAY['email']
     CHECK (auto_remind_channels <@ ARRAY['email', 'push', 'sms']::text[] AND cardinality(auto_remind_channels) >= 1),
   created_by  uuid NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
@@ -1109,6 +1109,7 @@ BEGIN
        + (SELECT count(*) FROM public.orders o WHERE o.event_id = p_event_id AND o.payment_status IN ('paid', 'partial_refund'))
     INTO v_guests;
   RETURN jsonb_build_object('attachmentId', v_id, 'mode', p_mode, 'autoRemind', COALESCE(p_auto_remind, false),
+    'autoRemindChannels', (SELECT to_jsonb(a.auto_remind_channels) FROM public.brand_form_attachments a WHERE a.id = v_id),
     'formStatus', v_f.status, 'replacedAttachmentId', v_current, 'existingGuests', v_guests,
     -- Wave 3 (C12): signed up and not answered; only a live form asks anyone.
     'earlierGuests', CASE WHEN v_f.status = 'live'
@@ -2217,13 +2218,41 @@ $fn$;
 -- record is a brand_form_request_sends row carrying a brand form link (kind
 -- 'person', token hashed by brand_form_link_issue); nothing here reads or writes
 -- brand_offering_invites, their delivery attempts, marketing send groups, RSVP
--- status or private-event access. The edge (guest-roster-actions form ops, and
--- notify-reminders for the automatic reminder) sends through the existing
--- notify v2 dispatcher, so consent, suppression and the per-market SMS switches
--- apply as they do to RSVP and ticket messages.
+-- status or private-event access. The edge sends through the existing notify v2
+-- dispatcher, so consent, suppression and the per-market SMS switches apply as
+-- they do to RSVP and ticket messages.
+--
+-- Wave 4 review fixes: the sends table is also the queue. A host's Ask or
+-- Remind and the automatic reminder only write 'queued' rows (one per person);
+-- brand_form_request_claim_batch hands out pages of 25 (FOR UPDATE SKIP LOCKED)
+-- to guest-roster-actions and notify-reminders, which resume after any crash: a
+-- 'claimed' row left by a dead request is retried after 10 minutes (3 tries,
+-- then 'failed'), so it never blocks the guest for 24 hours. Texts wait for
+-- 9am-9pm in the page's own time zone. Guests with no reachable contact are
+-- written as 'unreachable' (counted, never dropped). Push and the Explorer inbox
+-- row wait for the Explorer /form route; contact routes are text then email.
 --
 -- MINGLA-INVARIANT: I-4514-FORM-REQUEST-NO-INVITE | issue #4514 | a form request (Ask, Remind, the automatic reminder) writes no invite, no invite delivery attempt and no access grant, and leaves guest status and invite counts unchanged (pg17 T-W4-D17; Deno issue_4514_form_requests).
--- MINGLA-INVARIANT: I-4514-FORM-REQUEST-THROTTLE | issue #4514 | one form request per guest per form per 24 hours, enforced in brand_form_request_claim under the person lock (pg17 T-W4-THROTTLE).
+-- MINGLA-INVARIANT: I-4514-FORM-REQUEST-THROTTLE | issue #4514 | one form request per person per form per 24 hours (a queued, claimed or sent row for the same person key), enforced in brand_form_request_enqueue under the brand lock (pg17 T-W4-THROTTLE, T-W4-CONC).
+-- MINGLA-INVARIANT: I-4514-FORM-REQUEST-QUEUED | issue #4514 | form requests are delivered from the queue in pages of at most 100 by brand_form_request_claim_batch; a stale claim is retried or failed, never left blocking (pg17 T-W4-QUEUE).
+
+-- Decision 13: one automatic reminder per page and date, two days before each
+-- guest's own date. 'held_form_closed' is decision 10 (held, host told).
+CREATE TABLE public.brand_form_auto_reminder_runs (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  attachment_id uuid NOT NULL REFERENCES public.brand_form_attachments(id) ON DELETE CASCADE,
+  form_id       uuid NOT NULL REFERENCES public.brand_forms(id) ON DELETE CASCADE,
+  event_id      uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+  starts_at     timestamptz NOT NULL,
+  outcome       text NOT NULL CHECK (outcome IN ('sending', 'sent', 'failed', 'held_form_closed')),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  settled_at    timestamptz,
+  CONSTRAINT brand_form_auto_reminder_runs_once UNIQUE (attachment_id, starts_at)
+);
+ALTER TABLE public.brand_form_auto_reminder_runs ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.brand_form_auto_reminder_runs FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT, INSERT, UPDATE ON public.brand_form_auto_reminder_runs TO service_role;
+
 CREATE TABLE public.brand_form_request_sends (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   form_id       uuid NOT NULL REFERENCES public.brand_forms(id) ON DELETE CASCADE,
@@ -2233,10 +2262,18 @@ CREATE TABLE public.brand_form_request_sends (
   rsvp_id       uuid REFERENCES public.event_rsvps(id) ON DELETE CASCADE,
   order_id      uuid REFERENCES public.orders(id) ON DELETE CASCADE,
   link_id       uuid REFERENCES public.brand_form_links(id) ON DELETE SET NULL,
+  run_id        uuid REFERENCES public.brand_form_auto_reminder_runs(id) ON DELETE SET NULL,
+  person_key    text NOT NULL CHECK (length(person_key) BETWEEN 3 AND 400),
   kind          text NOT NULL CHECK (kind IN ('ask', 'remind', 'auto')),
+  route         text[] NOT NULL DEFAULT ARRAY[]::text[] CHECK (route <@ ARRAY['push', 'sms', 'email']::text[]),
   channel       text CHECK (channel IN ('push', 'sms', 'email')),
-  status        text NOT NULL DEFAULT 'claimed' CHECK (status IN ('claimed', 'sent', 'failed', 'unreachable')),
+  status        text NOT NULL DEFAULT 'queued'
+                  CHECK (status IN ('queued', 'claimed', 'sent', 'failed', 'skipped', 'unreachable')),
   safe_reason   text CHECK (safe_reason ~ '^[a-z0-9_]{1,64}$'),
+  starts_at     timestamptz,
+  not_before    timestamptz NOT NULL DEFAULT now(),
+  claimed_at    timestamptz,
+  attempts      integer NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 10),
   created_by    uuid,
   created_at    timestamptz NOT NULL DEFAULT now(),
   settled_at    timestamptz,
@@ -2244,27 +2281,17 @@ CREATE TABLE public.brand_form_request_sends (
 );
 CREATE INDEX brand_form_request_sends_rsvp_idx ON public.brand_form_request_sends (form_id, rsvp_id, created_at DESC) WHERE rsvp_id IS NOT NULL;
 CREATE INDEX brand_form_request_sends_order_idx ON public.brand_form_request_sends (form_id, order_id, created_at DESC) WHERE order_id IS NOT NULL;
+CREATE INDEX brand_form_request_sends_person_idx ON public.brand_form_request_sends (form_id, person_key, created_at DESC);
+CREATE INDEX brand_form_request_sends_queue_idx ON public.brand_form_request_sends (not_before, created_at) WHERE status IN ('queued', 'claimed');
+CREATE INDEX brand_form_request_sends_brand_texts_idx ON public.brand_form_request_sends (brand_id, created_at DESC) WHERE route[1] = 'sms';
+CREATE INDEX brand_form_request_sends_event_idx ON public.brand_form_request_sends (form_id, event_id, created_at DESC);
+CREATE UNIQUE INDEX brand_form_request_sends_auto_once ON public.brand_form_request_sends (run_id, person_key) WHERE run_id IS NOT NULL;
 ALTER TABLE public.brand_form_request_sends ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.brand_form_request_sends FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE ON public.brand_form_request_sends TO service_role;
 
--- Decision 13: one automatic reminder per page, two days before. One row per
--- attachment makes it once; 'held_form_closed' is decision 10 (held, host told).
-CREATE TABLE public.brand_form_auto_reminder_runs (
-  attachment_id uuid PRIMARY KEY REFERENCES public.brand_form_attachments(id) ON DELETE CASCADE,
-  form_id       uuid NOT NULL REFERENCES public.brand_forms(id) ON DELETE CASCADE,
-  event_id      uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
-  starts_at     timestamptz NOT NULL,
-  outcome       text NOT NULL CHECK (outcome IN ('sending', 'sent', 'held_form_closed')),
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  settled_at    timestamptz
-);
-ALTER TABLE public.brand_form_auto_reminder_runs ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.brand_form_auto_reminder_runs FROM PUBLIC, anon, authenticated, service_role;
-GRANT SELECT, INSERT, UPDATE ON public.brand_form_auto_reminder_runs TO service_role;
-
--- The two notify v2 categories: the guest's request (push to an account; text or
--- email to the contact on file) and the host's "reminder held" notice.
+-- The two notify v2 categories: the guest's request (text or email to the
+-- contact on file with their link) and the host's "reminder held" notice.
 INSERT INTO public.notification_categories(key, section, is_transactional, urgency, default_channels, reach_mode)
 VALUES ('brand_form_request', 'RSVP', true, 'normal', ARRAY['inapp', 'push', 'email', 'sms'], 'reach_once'),
        ('business.brand_form_reminder_held', 'support', true, 'normal', ARRAY['inapp', 'push'], 'reach_once')
@@ -2272,14 +2299,137 @@ ON CONFLICT (key) DO UPDATE SET section = EXCLUDED.section, is_transactional = E
   urgency = EXCLUDED.urgency, default_channels = EXCLUDED.default_channels, reach_mode = EXCLUDED.reach_mode,
   active = true;
 
+-- The per-brand daily limit on form request texts (rolling 24 hours).
+CREATE FUNCTION public.brand_form_request_text_cap() RETURNS integer
+LANGUAGE sql IMMUTABLE SET search_path = ''
+AS $fn$ SELECT 300 $fn$;
+
+-- Texts queued, being sent or sent for a brand in the last 24 hours.
+CREATE FUNCTION public.brand_form_request_texts_today(p_brand_id uuid) RETURNS integer
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+  SELECT count(*)::integer FROM public.brand_form_request_sends s
+   WHERE s.brand_id = p_brand_id AND s.route[1] = 'sms' AND s.status IN ('queued', 'claimed', 'sent')
+     AND s.created_at > now() - interval '24 hours'
+$fn$;
+
+-- One person, one key: the signed-in account, else the phone, else the email,
+-- else the booking. The 24-hour throttle and the de-duplication of one person
+-- with several RSVPs or orders key on it.
+CREATE FUNCTION public.brand_form_person_key(p_user_id uuid, p_phone text, p_email text, p_kind text, p_id uuid)
+RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path = ''
+AS $fn$
+  SELECT CASE WHEN p_user_id IS NOT NULL THEN 'u:' || p_user_id::text
+              WHEN NULLIF(btrim(p_phone), '') IS NOT NULL THEN 'p:' || btrim(p_phone)
+              WHEN NULLIF(btrim(p_email), '') IS NOT NULL THEN 'e:' || lower(btrim(p_email))
+              ELSE 's:' || p_kind || ':' || p_id::text END
+$fn$;
+
+-- The contact route for one guest: a text before an email, each only when the
+-- host ticked it and the dispatcher's consent and suppression gate allows it.
+CREATE FUNCTION public.brand_form_request_route(p_phone text, p_email text, p_channels text[])
+RETURNS text[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+  SELECT ARRAY(SELECT v.c FROM (VALUES
+      (1, 'sms', p_phone IS NOT NULL AND 'sms' = ANY (p_channels)
+                 AND public.can_send(NULL, 'brand_form_request', 'sms', p_phone)),
+      (2, 'email', p_email IS NOT NULL AND 'email' = ANY (p_channels)
+                   AND public.can_send(NULL, 'brand_form_request', 'email', p_email))) v(o, c, ok)
+    WHERE v.ok ORDER BY v.o)
+$fn$;
+
+-- Quiet hours: the first moment at or after p_at between 9am and 9pm in p_tz
+-- (an unknown zone reads as UTC). Texts are delayed, never sent at night.
+CREATE FUNCTION public.brand_form_text_window(p_tz text, p_at timestamptz) RETURNS timestamptz
+LANGUAGE plpgsql STABLE SET search_path = ''
+AS $fn$
+DECLARE
+  v_tz text := COALESCE(NULLIF(btrim(p_tz), ''), 'UTC');
+  v_local timestamp;
+  v_hour integer;
+BEGIN
+  BEGIN
+    v_local := p_at AT TIME ZONE v_tz;
+  EXCEPTION WHEN OTHERS THEN
+    v_tz := 'UTC';
+    v_local := p_at AT TIME ZONE 'UTC';
+  END;
+  v_hour := extract(hour FROM v_local)::integer;
+  IF v_hour >= 9 AND v_hour < 21 THEN RETURN p_at; END IF;
+  RETURN (date_trunc('day', v_local) + CASE WHEN v_hour >= 21 THEN interval '1 day' ELSE interval '0' END
+          + interval '9 hours') AT TIME ZONE v_tz;
+END;
+$fn$;
+
+-- Every current guest of a page for one form (going RSVPs; paid or partly
+-- refunded orders), optionally narrowed to named guests, with the contact on
+-- file, whether they answered and their person key. One row per booking; the
+-- callers keep one row per person.
+CREATE FUNCTION public.brand_form_request_guests(p_form_id uuid, p_event_id uuid, p_subjects jsonb DEFAULT NULL)
+RETURNS TABLE (g_kind text, g_id uuid, g_user_id uuid, g_name text, g_answered boolean,
+               g_phone text, g_email text, g_person_key text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+  WITH guests AS (
+    SELECT 'rsvp'::text AS kind, x.id, x.user_id, x.guest_name AS name,
+           EXISTS (SELECT 1 FROM public.brand_form_responses r WHERE r.form_id = p_form_id
+                    AND (r.rsvp_id = x.id OR (x.user_id IS NOT NULL AND r.user_id = x.user_id))) AS answered
+      FROM public.event_rsvps x WHERE x.event_id = p_event_id AND x.rsvp_status = 'going'
+    UNION ALL
+    SELECT 'order', o.id, o.buyer_user_id, o.buyer_name,
+           EXISTS (SELECT 1 FROM public.brand_form_responses r WHERE r.form_id = p_form_id
+                    AND (r.order_id = o.id OR (o.buyer_user_id IS NOT NULL AND r.user_id = o.buyer_user_id)))
+      FROM public.orders o WHERE o.event_id = p_event_id AND o.payment_status IN ('paid', 'partial_refund')
+  ), picked AS (
+    SELECT g.*, public.brand_form_subject_contact(g.kind, g.id) AS contact FROM guests g
+     WHERE p_subjects IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements(p_subjects) s
+                                          WHERE s->>'kind' = g.kind AND lower(s->>'id') = g.id::text)
+  )
+  SELECT p.kind, p.id, p.user_id, p.name, p.answered, p.contact->>'phone', p.contact->>'email',
+         public.brand_form_person_key(p.user_id, p.contact->>'phone', p.contact->>'email', p.kind, p.id)
+    FROM picked p
+$fn$;
+
+-- Each guest's own start time (the #3281 per-ticket-date pattern): an
+-- experience order's booked slot; else each date on the order's tickets; else
+-- (an RSVP, or an order with no dated ticket) the page's next date. Cancelled
+-- dates never count.
+CREATE FUNCTION public.brand_form_guest_dates(p_kind text, p_id uuid, p_event_id uuid)
+RETURNS SETOF timestamptz
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $fn$
+  WITH booked AS (
+    SELECT o.booked_start_at AS at FROM public.orders o JOIN public.events e ON e.id = o.event_id
+     WHERE p_kind = 'order' AND o.id = p_id AND e.event_type = 'experience' AND o.booked_start_at IS NOT NULL
+  ), ticketed AS (
+    SELECT DISTINCT ed.start_at AS at FROM public.tickets t
+      JOIN public.ticket_event_dates ted ON ted.ticket_id = t.id
+      JOIN public.event_dates ed ON ed.id = ted.event_date_id AND ed.event_id = p_event_id
+     WHERE p_kind = 'order' AND t.order_id = p_id AND ed.cancelled_at IS NULL
+       AND NOT EXISTS (SELECT 1 FROM booked)
+  )
+  SELECT b.at FROM booked b
+  UNION ALL
+  SELECT t.at FROM ticketed t
+  UNION ALL
+  SELECT min(ed.start_at) FROM public.event_dates ed
+   WHERE ed.event_id = p_event_id AND ed.start_at > now() AND ed.cancelled_at IS NULL
+     AND NOT EXISTS (SELECT 1 FROM booked) AND NOT EXISTS (SELECT 1 FROM ticketed)
+  HAVING min(ed.start_at) IS NOT NULL
+$fn$;
+
 -- Who a request for one form on one page would reach (service role). The actor
 -- needs event manager and up (C5); the form must be live and attached to the
 -- page. Audience 'unanswered' (default) or 'everyone'; p_subjects narrows it to
--- named guests ([{kind:'rsvp'|'order', id}], at most 500). Answered uses the one
--- person rule (brand_form_unanswered_count); throttled is a claimed or sent
--- request in the last 24 hours. At most 500 recipients (the roster cap).
+-- named guests ([{kind:'rsvp'|'order', id}], at most 500). One row per person;
+-- 'route' is the contact route for the ticked channels (empty: can't reach);
+-- 'throttled' is a queued, claimed or sent request to the same person in the
+-- last 24 hours. At most 500 people (the roster cap).
 CREATE FUNCTION public.brand_form_request_audience(
-  p_actor_id uuid, p_form_id uuid, p_event_id uuid, p_audience text DEFAULT 'unanswered', p_subjects jsonb DEFAULT NULL
+  p_actor_id uuid, p_form_id uuid, p_event_id uuid, p_audience text DEFAULT 'unanswered',
+  p_subjects jsonb DEFAULT NULL, p_channels text[] DEFAULT ARRAY['email', 'sms']
 ) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
@@ -2289,6 +2439,8 @@ DECLARE
   v_att uuid;
   v_rows jsonb;
   v_n integer;
+  v_ch text[] := ARRAY(SELECT DISTINCT c FROM unnest(COALESCE(p_channels, ARRAY[]::text[])) c WHERE c IN ('sms', 'email'));
+  v_window timestamptz;
 BEGIN
   IF p_audience IS NULL OR p_audience NOT IN ('unanswered', 'everyone') THEN
     RAISE EXCEPTION 'audience_invalid' USING ERRCODE = '22023';
@@ -2299,7 +2451,7 @@ BEGIN
                     OR COALESCE(s->>'id', '') !~ '^[0-9a-fA-F-]{36}$')) THEN
     RAISE EXCEPTION 'subjects_invalid' USING ERRCODE = '22023';
   END IF;
-  SELECT e.id, e.brand_id, e.title, e.deleted_at, e.status INTO v_e FROM public.events e WHERE e.id = p_event_id;
+  SELECT e.id, e.brand_id, e.title, e.deleted_at, e.status, e.timezone INTO v_e FROM public.events e WHERE e.id = p_event_id;
   IF NOT FOUND OR v_e.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'event_not_found' USING ERRCODE = 'P0002'; END IF;
   IF p_actor_id IS NOT NULL
      AND public.biz_brand_effective_rank(v_e.brand_id, p_actor_id) < public.biz_role_rank('event_manager') THEN
@@ -2313,111 +2465,226 @@ BEGIN
   IF v_f.status <> 'live' THEN
     RAISE EXCEPTION '%', CASE WHEN v_f.status = 'draft' THEN 'form_not_live' ELSE 'form_closed' END USING ERRCODE = '22023';
   END IF;
-  WITH guests AS (
-    SELECT 'rsvp'::text AS kind, x.id, x.user_id, x.guest_name AS name,
-           EXISTS (SELECT 1 FROM public.brand_form_responses r WHERE r.form_id = p_form_id
-                    AND (r.rsvp_id = x.id OR (x.user_id IS NOT NULL AND r.user_id = x.user_id))) AS answered
-      FROM public.event_rsvps x WHERE x.event_id = p_event_id AND x.rsvp_status = 'going'
-    UNION ALL
-    SELECT 'order', o.id, o.buyer_user_id, o.buyer_name,
-           EXISTS (SELECT 1 FROM public.brand_form_responses r WHERE r.form_id = p_form_id
-                    AND (r.order_id = o.id OR (o.buyer_user_id IS NOT NULL AND r.user_id = o.buyer_user_id)))
-      FROM public.orders o WHERE o.event_id = p_event_id AND o.payment_status IN ('paid', 'partial_refund')
+  WITH people AS (
+    SELECT DISTINCT ON (g.g_person_key) g.*
+      FROM public.brand_form_request_guests(p_form_id, p_event_id, p_subjects) g
+     ORDER BY g.g_person_key, g.g_answered DESC, g.g_kind, g.g_id
   ), picked AS (
-    SELECT g.* FROM guests g
-     WHERE (p_audience = 'everyone' OR NOT g.answered)
-       AND (p_subjects IS NULL OR EXISTS (SELECT 1 FROM jsonb_array_elements(p_subjects) s
-                                          WHERE s->>'kind' = g.kind AND lower(s->>'id') = g.id::text))
+    SELECT p.* FROM people p WHERE p_audience = 'everyone' OR NOT p.g_answered
   )
   SELECT count(*)::integer,
          COALESCE(jsonb_agg(jsonb_build_object(
-           'kind', p.kind, 'id', p.id, 'userId', p.user_id, 'name', public.brand_form_short_name(p.name),
-           'email', c.contact->>'email', 'phone', c.contact->>'phone', 'answered', p.answered,
-           -- The same consent and suppression gate the dispatcher applies (opted out of texts).
-           'smsAllowed', c.contact->>'phone' IS NOT NULL
-                         AND public.can_send(NULL, 'brand_form_request', 'sms', c.contact->>'phone'),
-           'emailAllowed', c.contact->>'email' IS NOT NULL
-                           AND public.can_send(NULL, 'brand_form_request', 'email', c.contact->>'email'),
+           'kind', p.g_kind, 'id', p.g_id, 'userId', p.g_user_id, 'name', public.brand_form_short_name(p.g_name),
+           'personKey', p.g_person_key, 'email', p.g_email, 'phone', p.g_phone, 'answered', p.g_answered,
+           'route', to_jsonb(public.brand_form_request_route(p.g_phone, p.g_email, v_ch)),
+           -- Opted out of texts: a phone on file the consent gate refuses.
+           'smsOptedOut', p.g_phone IS NOT NULL AND 'sms' = ANY (v_ch)
+                          AND NOT public.can_send(NULL, 'brand_form_request', 'sms', p.g_phone),
            'throttled', EXISTS (SELECT 1 FROM public.brand_form_request_sends s
-                                 WHERE s.form_id = p_form_id AND s.status IN ('claimed', 'sent')
-                                   AND s.created_at > now() - interval '24 hours'
-                                   AND (s.rsvp_id = p.id OR s.order_id = p.id)))
-           ORDER BY p.kind, p.id), '[]'::jsonb)
+                                 WHERE s.form_id = p_form_id AND s.person_key = p.g_person_key
+                                   AND s.status IN ('queued', 'claimed', 'sent')
+                                   AND s.created_at > now() - interval '24 hours'))
+           ORDER BY p.g_kind, p.g_id), '[]'::jsonb)
     INTO v_n, v_rows
-    FROM picked p CROSS JOIN LATERAL (SELECT public.brand_form_subject_contact(p.kind, p.id) AS contact) c;
+    FROM picked p;
   IF v_n > 500 THEN RAISE EXCEPTION 'audience_too_large' USING ERRCODE = '22023'; END IF;
+  v_window := public.brand_form_text_window(v_e.timezone, now());
   RETURN jsonb_build_object('formId', p_form_id, 'eventId', p_event_id, 'attachmentId', v_att,
     'brandId', v_e.brand_id, 'eventTitle', v_e.title, 'formName', v_f.name,
     'brandName', (SELECT b.name FROM public.brands b WHERE b.id = v_e.brand_id),
+    'eventStartsAt', (SELECT min(d.start_at) FROM public.event_dates d
+                       WHERE d.event_id = p_event_id AND d.start_at > now() AND d.cancelled_at IS NULL),
+    'textsToday', public.brand_form_request_texts_today(v_e.brand_id),
+    'textCap', public.brand_form_request_text_cap(),
+    'textsWaitUntil', CASE WHEN v_window > now() THEN v_window END,
     'recipients', v_rows);
 END;
 $fn$;
 
--- Claim one guest's request and mint their personal link, atomically under the
--- person lock (service role). Not claimed: throttled (a claimed or sent request
--- for this guest and form in the last 24 hours), not_a_guest (no longer going or
--- paid), answered (Remind and the automatic reminder reach only people who have
--- not answered), form_closed. The link is brand_form_link_issue's (decision 17:
--- no invite, no access grant).
-CREATE FUNCTION public.brand_form_request_claim(
-  p_form_id uuid, p_event_id uuid, p_subject jsonb, p_kind text, p_actor_id uuid DEFAULT NULL
+-- Queue a host's Ask or Remind (service role; guest-roster-actions after the
+-- cost checks). Under the brand lock, so two Asks at once queue each person
+-- once and the daily text limit cannot be overrun. Writes one 'queued' row per
+-- reachable person (texts wait for 9am in the page's time zone) and one
+-- 'unreachable' row per person with no route; skips throttled people and, for
+-- Remind, people who answered. Over the daily text limit: form_request_text_cap.
+CREATE FUNCTION public.brand_form_request_enqueue(
+  p_actor_id uuid, p_form_id uuid, p_event_id uuid, p_kind text, p_audience text,
+  p_subjects jsonb, p_channels text[]
 ) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
-  v_kind text := p_subject->>'kind';
-  v_id uuid;
-  v_f public.brand_forms;
+  v_aud jsonb;
   v_brand uuid;
-  v_att uuid;
-  v_send uuid;
-  v_link jsonb;
-  v_answered boolean;
+  v_tz text;
+  v_new_texts integer;
+  v_queued integer := 0;
+  v_unreachable integer := 0;
+  v_throttled integer := 0;
+  v_answered integer := 0;
+  v_waiting integer := 0;
 BEGIN
-  IF p_kind IS NULL OR p_kind NOT IN ('ask', 'remind', 'auto') THEN
+  IF p_kind IS NULL OR p_kind NOT IN ('ask', 'remind') THEN
     RAISE EXCEPTION 'kind_invalid' USING ERRCODE = '22023';
   END IF;
-  IF COALESCE(v_kind, '') NOT IN ('rsvp', 'order') OR COALESCE(p_subject->>'id', '') !~ '^[0-9a-fA-F-]{36}$' THEN
-    RAISE EXCEPTION 'subject_invalid' USING ERRCODE = '22023';
+  IF p_actor_id IS NULL THEN RAISE EXCEPTION 'brand_form_forbidden' USING ERRCODE = '42501'; END IF;
+  -- Checks the role, the form and the page (and raises their errors).
+  v_aud := public.brand_form_request_audience(p_actor_id, p_form_id, p_event_id,
+             CASE WHEN p_kind = 'remind' THEN 'unanswered' ELSE p_audience END, p_subjects, p_channels);
+  v_brand := (v_aud->>'brandId')::uuid;
+  PERFORM pg_advisory_xact_lock(hashtextextended('brand_form_request:' || v_brand::text, 4514));
+  -- Read again under the lock: a concurrent Ask has committed by now.
+  v_aud := public.brand_form_request_audience(p_actor_id, p_form_id, p_event_id,
+             CASE WHEN p_kind = 'remind' THEN 'unanswered' ELSE p_audience END, p_subjects, p_channels);
+  SELECT e.timezone INTO v_tz FROM public.events e WHERE e.id = p_event_id;
+  SELECT count(*) FILTER (WHERE throttled),
+         count(*) FILTER (WHERE NOT throttled AND answered AND p_kind = 'remind'),
+         count(*) FILTER (WHERE NOT throttled AND NOT (answered AND p_kind = 'remind') AND route[1] = 'sms')
+    INTO v_throttled, v_answered, v_new_texts
+    FROM (SELECT r->>'kind' AS kind, (r->>'id')::uuid AS id, r->>'personKey' AS person_key,
+                 (r->>'answered')::boolean AS answered, (r->>'throttled')::boolean AS throttled,
+                 ARRAY(SELECT jsonb_array_elements_text(r->'route')) AS route, (r->>'smsOptedOut')::boolean AS opted_out
+            FROM jsonb_array_elements(v_aud->'recipients') r) x;
+  IF v_new_texts > 0
+     AND public.brand_form_request_texts_today(v_brand) + v_new_texts > public.brand_form_request_text_cap() THEN
+    RAISE EXCEPTION 'form_request_text_cap' USING ERRCODE = 'P0001';
   END IF;
-  v_id := (p_subject->>'id')::uuid;
-  PERFORM pg_advisory_xact_lock(public.brand_form_person_lock_key(p_form_id, v_kind, v_id));
-  SELECT * INTO v_f FROM public.brand_forms WHERE id = p_form_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'form_not_found' USING ERRCODE = 'P0002'; END IF;
-  IF v_f.status <> 'live' THEN RETURN jsonb_build_object('claimed', false, 'reason', 'form_closed'); END IF;
-  SELECT e.brand_id INTO v_brand FROM public.events e WHERE e.id = p_event_id AND e.deleted_at IS NULL;
-  IF v_brand IS NULL OR v_brand <> v_f.brand_id THEN RAISE EXCEPTION 'form_not_on_event' USING ERRCODE = '42501'; END IF;
-  SELECT a.id INTO v_att FROM public.brand_form_attachments a
-   WHERE a.event_id = p_event_id AND a.form_id = p_form_id AND a.detached_at IS NULL;
-  IF v_att IS NULL THEN RAISE EXCEPTION 'form_not_on_event' USING ERRCODE = '42501'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.event_rsvps x WHERE v_kind = 'rsvp' AND x.id = v_id
-                    AND x.event_id = p_event_id AND x.rsvp_status = 'going')
-     AND NOT EXISTS (SELECT 1 FROM public.orders o WHERE v_kind = 'order' AND o.id = v_id
-                        AND o.event_id = p_event_id AND o.payment_status IN ('paid', 'partial_refund')) THEN
-    RETURN jsonb_build_object('claimed', false, 'reason', 'not_a_guest');
-  END IF;
-  IF EXISTS (SELECT 1 FROM public.brand_form_request_sends s
-              WHERE s.form_id = p_form_id AND s.status IN ('claimed', 'sent')
-                AND s.created_at > now() - interval '24 hours'
-                AND (s.rsvp_id = v_id OR s.order_id = v_id)) THEN
-    RETURN jsonb_build_object('claimed', false, 'reason', 'throttled');
-  END IF;
-  IF p_kind IN ('remind', 'auto') THEN
-    v_answered := (public.brand_form_person_response(p_form_id, v_kind, v_id, p_event_id)).id IS NOT NULL;
-    IF v_answered THEN RETURN jsonb_build_object('claimed', false, 'reason', 'answered'); END IF;
-  END IF;
-  v_link := public.brand_form_link_issue(p_form_id, p_event_id, jsonb_build_object('kind', v_kind, 'id', v_id), p_actor_id);
   INSERT INTO public.brand_form_request_sends (form_id, attachment_id, event_id, brand_id, rsvp_id, order_id,
-                                               link_id, kind, created_by)
-  VALUES (p_form_id, v_att, p_event_id, v_brand, CASE WHEN v_kind = 'rsvp' THEN v_id END,
-          CASE WHEN v_kind = 'order' THEN v_id END, (v_link->>'linkId')::uuid, p_kind, p_actor_id)
-  RETURNING id INTO v_send;
-  RETURN jsonb_build_object('claimed', true, 'sendId', v_send, 'linkId', v_link->>'linkId', 'token', v_link->>'token');
+         person_key, kind, route, status, safe_reason, not_before, created_by, settled_at)
+  SELECT p_form_id, (v_aud->>'attachmentId')::uuid, p_event_id, v_brand,
+         CASE WHEN x.kind = 'rsvp' THEN x.id END, CASE WHEN x.kind = 'order' THEN x.id END,
+         x.person_key, p_kind, x.route,
+         CASE WHEN cardinality(x.route) = 0 THEN 'unreachable' ELSE 'queued' END,
+         CASE WHEN cardinality(x.route) > 0 THEN NULL WHEN x.opted_out THEN 'sms_opted_out' ELSE 'no_contact' END,
+         CASE WHEN x.route[1] = 'sms' THEN public.brand_form_text_window(v_tz, now()) ELSE now() END,
+         p_actor_id, CASE WHEN cardinality(x.route) = 0 THEN now() END
+    FROM (SELECT r->>'kind' AS kind, (r->>'id')::uuid AS id, r->>'personKey' AS person_key,
+                 (r->>'answered')::boolean AS answered, (r->>'throttled')::boolean AS throttled,
+                 ARRAY(SELECT jsonb_array_elements_text(r->'route')) AS route, (r->>'smsOptedOut')::boolean AS opted_out
+            FROM jsonb_array_elements(v_aud->'recipients') r) x
+   WHERE NOT x.throttled AND NOT (x.answered AND p_kind = 'remind');
+  SELECT count(*) FILTER (WHERE NOT throttled AND NOT (answered AND p_kind = 'remind') AND cardinality(route) > 0),
+         count(*) FILTER (WHERE NOT throttled AND NOT (answered AND p_kind = 'remind') AND cardinality(route) = 0),
+         count(*) FILTER (WHERE NOT throttled AND NOT (answered AND p_kind = 'remind') AND route[1] = 'sms'
+                            AND public.brand_form_text_window(v_tz, now()) > now())
+    INTO v_queued, v_unreachable, v_waiting
+    FROM (SELECT r->>'kind' AS kind, (r->>'id')::uuid AS id, r->>'personKey' AS person_key,
+                 (r->>'answered')::boolean AS answered, (r->>'throttled')::boolean AS throttled,
+                 ARRAY(SELECT jsonb_array_elements_text(r->'route')) AS route, (r->>'smsOptedOut')::boolean AS opted_out
+            FROM jsonb_array_elements(v_aud->'recipients') r) x;
+  RETURN jsonb_build_object('queued', v_queued, 'unreachable', v_unreachable, 'throttled', v_throttled,
+    'answered', v_answered, 'textsQueued', v_new_texts, 'waitingForMorning', v_waiting);
 END;
 $fn$;
 
--- Record how a claimed request went (service role). A failed or unreachable
--- request does not count toward the throttle, so the host can try again.
+-- Hand out the next page of queued requests (service role; the drain in
+-- guest-roster-actions and notify-reminders). First: a 'claimed' row older than
+-- 10 minutes (its request died) goes back to the queue, or fails after 3 tries;
+-- a queued row older than 24 hours fails ('expired'); an automatic-reminder run
+-- with nothing left settles as 'sent' (or 'failed' when nothing was sent and
+-- something failed). Then up to p_limit due rows, each re-checked under the
+-- person lock (form still live, still a guest, Remind and automatic: not yet
+-- answered, texts inside 9am-9pm local) and given a fresh personal link. With
+-- p_form_id and p_event_id, only that page's requests (the host's own send).
+CREATE FUNCTION public.brand_form_request_claim_batch(
+  p_limit integer DEFAULT 25, p_form_id uuid DEFAULT NULL, p_event_id uuid DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v_row record;
+  v_out jsonb := '[]'::jsonb;
+  v_link jsonb;
+  v_contact jsonb;
+  v_subject_kind text;
+  v_subject_id uuid;
+  v_window timestamptz;
+BEGIN
+  IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 100 THEN
+    RAISE EXCEPTION 'limit_invalid' USING ERRCODE = '22023';
+  END IF;
+  UPDATE public.brand_form_request_sends
+     SET status = CASE WHEN attempts >= 3 THEN 'failed' ELSE 'queued' END,
+         safe_reason = CASE WHEN attempts >= 3 THEN 'claim_expired' ELSE 'claim_retried' END,
+         settled_at = CASE WHEN attempts >= 3 THEN now() END,
+         not_before = now()
+   WHERE status = 'claimed' AND claimed_at < now() - interval '10 minutes';
+  UPDATE public.brand_form_request_sends
+     SET status = 'failed', safe_reason = 'expired', settled_at = now()
+   WHERE status = 'queued' AND created_at < now() - interval '24 hours';
+  UPDATE public.brand_form_auto_reminder_runs r
+     SET outcome = CASE WHEN EXISTS (SELECT 1 FROM public.brand_form_request_sends s WHERE s.run_id = r.id AND s.status = 'sent')
+                          OR NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends s WHERE s.run_id = r.id AND s.status = 'failed')
+                        THEN 'sent' ELSE 'failed' END,
+         settled_at = now()
+   WHERE r.outcome = 'sending'
+     AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends s WHERE s.run_id = r.id AND s.status IN ('queued', 'claimed'));
+
+  FOR v_row IN
+    SELECT s.id, s.form_id, s.event_id, s.rsvp_id, s.order_id, s.kind, s.route, s.created_by, s.starts_at,
+           f.status AS form_status, e.timezone AS tz, e.title AS event_title, b.name AS brand_name
+      FROM public.brand_form_request_sends s
+      JOIN public.brand_forms f ON f.id = s.form_id
+      JOIN public.events e ON e.id = s.event_id
+      JOIN public.brands b ON b.id = s.brand_id
+     WHERE s.status = 'queued' AND s.not_before <= now()
+       AND (p_form_id IS NULL OR s.form_id = p_form_id) AND (p_event_id IS NULL OR s.event_id = p_event_id)
+     ORDER BY s.not_before, s.created_at
+     LIMIT p_limit
+     FOR UPDATE OF s SKIP LOCKED
+  LOOP
+    v_subject_kind := CASE WHEN v_row.rsvp_id IS NOT NULL THEN 'rsvp' ELSE 'order' END;
+    v_subject_id := COALESCE(v_row.rsvp_id, v_row.order_id);
+    PERFORM pg_advisory_xact_lock(public.brand_form_person_lock_key(v_row.form_id, v_subject_kind, v_subject_id));
+    IF v_row.form_status <> 'live' THEN
+      UPDATE public.brand_form_request_sends SET status = 'skipped', safe_reason = 'form_closed', settled_at = now()
+       WHERE id = v_row.id;
+      CONTINUE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.event_rsvps x WHERE x.id = v_row.rsvp_id
+                      AND x.event_id = v_row.event_id AND x.rsvp_status = 'going')
+       AND NOT EXISTS (SELECT 1 FROM public.orders o WHERE o.id = v_row.order_id
+                          AND o.event_id = v_row.event_id AND o.payment_status IN ('paid', 'partial_refund')) THEN
+      UPDATE public.brand_form_request_sends SET status = 'skipped', safe_reason = 'not_a_guest', settled_at = now()
+       WHERE id = v_row.id;
+      CONTINUE;
+    END IF;
+    IF v_row.kind IN ('remind', 'auto')
+       AND (public.brand_form_person_response(v_row.form_id, v_subject_kind, v_subject_id, v_row.event_id)).id IS NOT NULL THEN
+      UPDATE public.brand_form_request_sends SET status = 'skipped', safe_reason = 'answered', settled_at = now()
+       WHERE id = v_row.id;
+      CONTINUE;
+    END IF;
+    IF v_row.route[1] = 'sms' THEN
+      v_window := public.brand_form_text_window(v_row.tz, now());
+      IF v_window > now() THEN
+        UPDATE public.brand_form_request_sends SET not_before = v_window WHERE id = v_row.id;
+        CONTINUE;
+      END IF;
+    END IF;
+    v_contact := public.brand_form_subject_contact(v_subject_kind, v_subject_id);
+    v_link := public.brand_form_link_issue(v_row.form_id, v_row.event_id,
+                jsonb_build_object('kind', v_subject_kind, 'id', v_subject_id), v_row.created_by);
+    UPDATE public.brand_form_request_sends
+       SET status = 'claimed', claimed_at = now(), attempts = attempts + 1, link_id = (v_link->>'linkId')::uuid
+     WHERE id = v_row.id;
+    v_out := v_out || jsonb_build_array(jsonb_build_object(
+      'sendId', v_row.id, 'token', v_link->>'token', 'formId', v_row.form_id, 'eventId', v_row.event_id,
+      'kind', v_row.kind, 'subjectKind', v_subject_kind, 'subjectId', v_subject_id,
+      'userId', COALESCE((SELECT x.user_id FROM public.event_rsvps x WHERE x.id = v_row.rsvp_id),
+                         (SELECT o.buyer_user_id FROM public.orders o WHERE o.id = v_row.order_id)),
+      'route', to_jsonb(v_row.route), 'phone', v_contact->>'phone', 'email', v_contact->>'email',
+      'brandName', v_row.brand_name, 'eventTitle', v_row.event_title, 'eventTimezone', v_row.tz,
+      'startsAt', COALESCE(v_row.starts_at, (SELECT min(d.start_at) FROM public.event_dates d
+                                             WHERE d.event_id = v_row.event_id AND d.start_at > now()
+                                               AND d.cancelled_at IS NULL))));
+  END LOOP;
+  RETURN v_out;
+END;
+$fn$;
+
+-- Record how a claimed request went (service role). A failed request does not
+-- count toward the throttle, so the host can try again.
 CREATE FUNCTION public.brand_form_request_settle(
   p_send_id uuid, p_channel text, p_status text, p_reason text DEFAULT NULL
 ) RETURNS boolean
@@ -2438,17 +2705,19 @@ END;
 $fn$;
 
 -- The page's automatic reminder switch (decision 13), on the Responses page and
--- the "Ask earlier guests?" sheet. Event manager and up (C5).
+-- the "Ask earlier guests?" sheet. Event manager and up (C5). Push is dropped
+-- until the Explorer /form route ships; at least text or email remains.
 CREATE FUNCTION public.biz_brand_form_set_auto_remind(
-  p_attachment_id uuid, p_on boolean, p_channels text[] DEFAULT ARRAY['email', 'push']
+  p_attachment_id uuid, p_on boolean, p_channels text[] DEFAULT ARRAY['email']
 ) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
   v_a public.brand_form_attachments;
-  v_ch text[] := ARRAY(SELECT DISTINCT x FROM unnest(COALESCE(p_channels, ARRAY[]::text[])) x ORDER BY x);
+  v_ch text[] := ARRAY(SELECT DISTINCT x FROM unnest(COALESCE(p_channels, ARRAY[]::text[])) x
+                        WHERE x <> 'push' ORDER BY x);
 BEGIN
-  IF cardinality(v_ch) = 0 OR NOT v_ch <@ ARRAY['email', 'push', 'sms']::text[] THEN
+  IF (COALESCE(p_channels, ARRAY[]::text[]) <@ ARRAY['email', 'push', 'sms']::text[]) IS NOT TRUE OR cardinality(v_ch) = 0 THEN
     RAISE EXCEPTION 'channels_invalid' USING ERRCODE = '22023';
   END IF;
   SELECT * INTO v_a FROM public.brand_form_attachments WHERE id = p_attachment_id FOR UPDATE;
@@ -2461,77 +2730,188 @@ BEGIN
    WHERE id = p_attachment_id;
   RETURN jsonb_build_object('attachmentId', p_attachment_id, 'autoRemind', COALESCE(p_on, false), 'channels', to_jsonb(v_ch),
     'remindAt', (SELECT min(d.start_at) - interval '2 days' FROM public.event_dates d
-                  WHERE d.event_id = v_a.event_id AND d.start_at > now()));
+                  WHERE d.event_id = v_a.event_id AND d.start_at > now() AND d.cancelled_at IS NULL));
 END;
 $fn$;
 
--- The automatic reminders that are due (service role; notify-reminders, every
--- five minutes). Due: an active attachment with auto_remind on, on a scheduled or
--- live page whose next date starts in (now + 46 h, now + 48 h], with no run yet.
--- A live form: a 'sending' run is written and the page returned to send. A closed
--- or archived form: the run is held ('held_form_closed') and the attaching host
--- is told through the notify outbox (decision 10). A draft form asks nobody and
--- writes nothing. When nothing is due this writes nothing and returns [].
+-- The automatic reminders that are due (service role; notify-reminders, on its
+-- five-minute cron). For each active attachment with the switch on, on a
+-- scheduled or live page: the guests whose OWN date (brand_form_guest_dates)
+-- starts in (now + 46 h, now + 48 h]. A live form: one run per page and date
+-- and one 'queued' (or 'unreachable') row per person who has not answered and
+-- was not asked in the last 24 hours, on the ticked text and email channels;
+-- the drain sends them. A closed or archived form: the run is held
+-- ('held_form_closed') and the attaching host (else the brand's account) is
+-- told through the notify outbox with a link to the form (decision 10). A
+-- draft form asks nobody. Nothing due: nothing written.
 CREATE FUNCTION public.brand_form_auto_reminders_due() RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $fn$
 DECLARE
-  v_row record;
-  v_out jsonb := '[]'::jsonb;
+  v_a record;
+  v_d record;
+  v_run uuid;
+  v_ch text[];
+  v_n integer;
+  v_runs integer := 0;
+  v_queued integer := 0;
+  v_held integer := 0;
 BEGIN
-  FOR v_row IN
-    SELECT a.id AS attachment_id, a.form_id, a.event_id, a.brand_id, a.created_by, a.auto_remind_channels,
-           f.status AS form_status,
-           f.name AS form_name, e.title AS event_title, nd.start_at
+  FOR v_a IN
+    SELECT a.id AS attachment_id, a.form_id, a.event_id, a.brand_id, a.auto_remind_channels,
+           COALESCE(a.created_by, b.account_id) AS host_id,
+           f.status AS form_status, f.name AS form_name, e.title AS event_title, e.timezone AS tz
       FROM public.brand_form_attachments a
       JOIN public.brand_forms f ON f.id = a.form_id
       JOIN public.events e ON e.id = a.event_id
-      CROSS JOIN LATERAL (SELECT min(d.start_at) AS start_at FROM public.event_dates d
-                           WHERE d.event_id = a.event_id AND d.start_at > now()) nd
+      JOIN public.brands b ON b.id = a.brand_id
      WHERE a.detached_at IS NULL AND a.auto_remind
        AND e.deleted_at IS NULL AND e.status IN ('scheduled', 'live')
        AND f.status <> 'draft'
-       AND nd.start_at > now() + interval '46 hours' AND nd.start_at <= now() + interval '48 hours'
-       AND NOT EXISTS (SELECT 1 FROM public.brand_form_auto_reminder_runs r WHERE r.attachment_id = a.id)
+       AND EXISTS (SELECT 1 FROM public.event_dates d WHERE d.event_id = a.event_id
+                    AND d.start_at > now() + interval '46 hours' AND d.start_at <= now() + interval '48 hours'
+                   UNION ALL
+                   SELECT 1 FROM public.orders o WHERE o.event_id = a.event_id AND o.booked_start_at IS NOT NULL
+                    AND o.booked_start_at > now() + interval '46 hours' AND o.booked_start_at <= now() + interval '48 hours')
      ORDER BY a.id
      FOR UPDATE OF a SKIP LOCKED
   LOOP
-    IF v_row.form_status = 'live' THEN
+    -- Push waits for the Explorer /form route: text and email only.
+    v_ch := ARRAY(SELECT c FROM unnest(v_a.auto_remind_channels) c WHERE c IN ('sms', 'email'));
+    FOR v_d IN
+      SELECT DISTINCT d.at AS starts_at
+        FROM public.brand_form_request_guests(v_a.form_id, v_a.event_id, NULL) g
+        CROSS JOIN LATERAL public.brand_form_guest_dates(g.g_kind, g.g_id, v_a.event_id) d(at)
+       WHERE d.at > now() + interval '46 hours' AND d.at <= now() + interval '48 hours'
+       ORDER BY 1
+    LOOP
+      IF v_a.form_status <> 'live' THEN
+        INSERT INTO public.brand_form_auto_reminder_runs (attachment_id, form_id, event_id, starts_at, outcome, settled_at)
+        VALUES (v_a.attachment_id, v_a.form_id, v_a.event_id, v_d.starts_at, 'held_form_closed', now())
+        ON CONFLICT (attachment_id, starts_at) DO NOTHING;
+        IF FOUND THEN
+          v_held := v_held + 1;
+          IF v_a.host_id IS NOT NULL THEN
+            INSERT INTO public.notification_outbox (category_key, user_id, brand_id, payload, idempotency_key)
+            VALUES ('business.brand_form_reminder_held', v_a.host_id, v_a.brand_id,
+                    jsonb_build_object('form_id', v_a.form_id, 'event_id', v_a.event_id, 'brand_id', v_a.brand_id,
+                                       'form_name', v_a.form_name, 'event_title', v_a.event_title,
+                                       'deep_link', 'mingla-business://marketing/forms/' || v_a.form_id::text || '/responses'),
+                    'brand_form_reminder_held:' || v_a.attachment_id::text || ':'
+                      || extract(epoch FROM v_d.starts_at)::bigint::text)
+            ON CONFLICT (idempotency_key) DO NOTHING;
+          END IF;
+        END IF;
+        CONTINUE;
+      END IF;
       INSERT INTO public.brand_form_auto_reminder_runs (attachment_id, form_id, event_id, starts_at, outcome)
-      VALUES (v_row.attachment_id, v_row.form_id, v_row.event_id, v_row.start_at, 'sending')
-      ON CONFLICT (attachment_id) DO NOTHING;
-      IF FOUND THEN
-        v_out := v_out || jsonb_build_array(jsonb_build_object('attachmentId', v_row.attachment_id,
-          'formId', v_row.form_id, 'eventId', v_row.event_id, 'channels', to_jsonb(v_row.auto_remind_channels)));
+      VALUES (v_a.attachment_id, v_a.form_id, v_a.event_id, v_d.starts_at, 'sending')
+      ON CONFLICT (attachment_id, starts_at) DO NOTHING
+      RETURNING id INTO v_run;
+      IF v_run IS NULL THEN
+        SELECT r.id INTO v_run FROM public.brand_form_auto_reminder_runs r
+         WHERE r.attachment_id = v_a.attachment_id AND r.starts_at = v_d.starts_at AND r.outcome <> 'held_form_closed';
+        IF v_run IS NULL THEN CONTINUE; END IF;
+      ELSE
+        v_runs := v_runs + 1;
       END IF;
-    ELSE
-      INSERT INTO public.brand_form_auto_reminder_runs (attachment_id, form_id, event_id, starts_at, outcome, settled_at)
-      VALUES (v_row.attachment_id, v_row.form_id, v_row.event_id, v_row.start_at, 'held_form_closed', now())
-      ON CONFLICT (attachment_id) DO NOTHING;
-      IF FOUND THEN
-        INSERT INTO public.notification_outbox (category_key, user_id, brand_id, payload, idempotency_key)
-        VALUES ('business.brand_form_reminder_held', v_row.created_by, v_row.brand_id,
-                jsonb_build_object('form_id', v_row.form_id, 'event_id', v_row.event_id, 'brand_id', v_row.brand_id,
-                                   'form_name', v_row.form_name, 'event_title', v_row.event_title),
-                'brand_form_reminder_held:' || v_row.attachment_id::text)
-        ON CONFLICT (idempotency_key) DO NOTHING;
+      WITH due AS (
+        SELECT DISTINCT ON (g.g_person_key) g.*
+          FROM public.brand_form_request_guests(v_a.form_id, v_a.event_id, NULL) g
+         WHERE EXISTS (SELECT 1 FROM public.brand_form_guest_dates(g.g_kind, g.g_id, v_a.event_id) d(at)
+                        WHERE d.at = v_d.starts_at)
+         ORDER BY g.g_person_key, g.g_answered DESC, g.g_kind, g.g_id
+      ), ins AS (
+        INSERT INTO public.brand_form_request_sends (form_id, attachment_id, event_id, brand_id, rsvp_id, order_id,
+               run_id, person_key, kind, route, status, safe_reason, starts_at, not_before, settled_at)
+        SELECT v_a.form_id, v_a.attachment_id, v_a.event_id, v_a.brand_id,
+               CASE WHEN x.g_kind = 'rsvp' THEN x.g_id END, CASE WHEN x.g_kind = 'order' THEN x.g_id END,
+               v_run, x.g_person_key, 'auto', x.route,
+               CASE WHEN cardinality(x.route) = 0 THEN 'unreachable' ELSE 'queued' END,
+               CASE WHEN cardinality(x.route) = 0 THEN 'no_contact' END,
+               v_d.starts_at,
+               CASE WHEN x.route[1] = 'sms' THEN public.brand_form_text_window(v_a.tz, now()) ELSE now() END,
+               CASE WHEN cardinality(x.route) = 0 THEN now() END
+          FROM (SELECT due.*, public.brand_form_request_route(due.g_phone, due.g_email, v_ch) AS route FROM due) x
+         WHERE NOT x.g_answered
+           AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends s
+                            WHERE s.form_id = v_a.form_id AND s.person_key = x.g_person_key
+                              AND s.status IN ('queued', 'claimed', 'sent')
+                              AND s.created_at > now() - interval '24 hours')
+        ON CONFLICT (run_id, person_key) WHERE run_id IS NOT NULL DO NOTHING
+        RETURNING 1
+      )
+      SELECT count(*)::integer INTO v_n FROM ins;
+      v_queued := v_queued + v_n;
+      IF v_n > 0 THEN
+        UPDATE public.brand_form_auto_reminder_runs SET outcome = 'sending', settled_at = NULL
+         WHERE id = v_run AND outcome IN ('sent', 'failed');
       END IF;
-    END IF;
+      v_run := NULL;
+    END LOOP;
   END LOOP;
-  RETURN v_out;
+  RETURN jsonb_build_object('runs', v_runs, 'queued', v_queued, 'held', v_held);
 END;
 $fn$;
 
--- Close a 'sending' run once the edge has sent it (service role).
-CREATE FUNCTION public.brand_form_auto_reminder_settle(p_attachment_id uuid) RETURNS boolean
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+-- The host's delivery log for one form on one page (event manager and up, C5):
+-- each request with its guest, how it went out (or why not) and the automatic
+-- reminder runs. Optionally one guest. Never the link or the contact.
+CREATE FUNCTION public.biz_brand_form_request_log(
+  p_form_id uuid, p_event_id uuid, p_subject jsonb DEFAULT NULL, p_limit integer DEFAULT 100
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $fn$
-DECLARE v_n integer;
+DECLARE
+  v_brand uuid;
+  v_kind text;
+  v_id uuid;
 BEGIN
-  UPDATE public.brand_form_auto_reminder_runs SET outcome = 'sent', settled_at = now()
-   WHERE attachment_id = p_attachment_id AND outcome = 'sending';
-  GET DIAGNOSTICS v_n = ROW_COUNT;
-  RETURN v_n = 1;
+  IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 500 THEN
+    RAISE EXCEPTION 'limit_invalid' USING ERRCODE = '22023';
+  END IF;
+  IF p_subject IS NOT NULL THEN
+    IF jsonb_typeof(p_subject) <> 'object' OR COALESCE(p_subject->>'kind', '') NOT IN ('rsvp', 'order')
+       OR COALESCE(p_subject->>'id', '') !~ '^[0-9a-fA-F-]{36}$' THEN
+      RAISE EXCEPTION 'subject_invalid' USING ERRCODE = '22023';
+    END IF;
+    v_kind := p_subject->>'kind';
+    v_id := (p_subject->>'id')::uuid;
+  END IF;
+  SELECT f.brand_id INTO v_brand FROM public.brand_forms f WHERE f.id = p_form_id;
+  IF v_brand IS NULL OR NOT EXISTS (SELECT 1 FROM public.events e WHERE e.id = p_event_id AND e.brand_id = v_brand) THEN
+    RAISE EXCEPTION 'form_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  PERFORM public.brand_form_require_rank(v_brand, 'event_manager');
+  RETURN jsonb_build_object(
+    'sends', COALESCE((
+      SELECT jsonb_agg(jsonb_build_object(
+               'id', s.id, 'kind', s.kind, 'subjectKind', CASE WHEN s.rsvp_id IS NOT NULL THEN 'rsvp' ELSE 'order' END,
+               'subjectId', COALESCE(s.rsvp_id, s.order_id),
+               'name', public.brand_form_short_name(COALESCE(x.guest_name, o.buyer_name)),
+               'channel', COALESCE(s.channel, s.route[1]), 'status', s.status, 'reason', s.safe_reason,
+               'notBefore', s.not_before, 'createdAt', s.created_at, 'settledAt', s.settled_at)
+             ORDER BY s.created_at DESC, s.id)
+        FROM (SELECT * FROM public.brand_form_request_sends s0
+               WHERE s0.form_id = p_form_id AND s0.event_id = p_event_id
+                 AND (v_kind IS NULL OR (v_kind = 'rsvp' AND s0.rsvp_id = v_id) OR (v_kind = 'order' AND s0.order_id = v_id))
+               ORDER BY s0.created_at DESC, s0.id LIMIT p_limit) s
+        LEFT JOIN public.event_rsvps x ON x.id = s.rsvp_id
+        LEFT JOIN public.orders o ON o.id = s.order_id), '[]'::jsonb),
+    'counts', (SELECT jsonb_build_object(
+                 'queued', count(*) FILTER (WHERE s.status IN ('queued', 'claimed')),
+                 'sent', count(*) FILTER (WHERE s.status = 'sent'),
+                 'failed', count(*) FILTER (WHERE s.status = 'failed'),
+                 'unreachable', count(*) FILTER (WHERE s.status = 'unreachable'),
+                 'skipped', count(*) FILTER (WHERE s.status = 'skipped'))
+                 FROM public.brand_form_request_sends s
+                WHERE s.form_id = p_form_id AND s.event_id = p_event_id
+                  AND (v_kind IS NULL OR (v_kind = 'rsvp' AND s.rsvp_id = v_id) OR (v_kind = 'order' AND s.order_id = v_id))),
+    'runs', CASE WHEN v_kind IS NOT NULL THEN '[]'::jsonb ELSE COALESCE((
+      SELECT jsonb_agg(jsonb_build_object('startsAt', r.starts_at, 'outcome', r.outcome,
+               'createdAt', r.created_at, 'settledAt', r.settled_at) ORDER BY r.starts_at DESC)
+        FROM public.brand_form_auto_reminder_runs r
+       WHERE r.form_id = p_form_id AND r.event_id = p_event_id), '[]'::jsonb) END);
 END;
 $fn$;
 
@@ -2589,12 +2969,20 @@ REVOKE ALL ON FUNCTION
   public.biz_brand_form_counts(uuid),
   public.brand_form_earlier_guests(uuid, uuid),
   public.brand_form_roster_export_answers(uuid),
-  public.brand_form_request_audience(uuid, uuid, uuid, text, jsonb),
-  public.brand_form_request_claim(uuid, uuid, jsonb, text, uuid),
+  public.brand_form_request_text_cap(),
+  public.brand_form_request_texts_today(uuid),
+  public.brand_form_person_key(uuid, text, text, text, uuid),
+  public.brand_form_request_route(text, text, text[]),
+  public.brand_form_text_window(text, timestamptz),
+  public.brand_form_request_guests(uuid, uuid, jsonb),
+  public.brand_form_guest_dates(text, uuid, uuid),
+  public.brand_form_request_audience(uuid, uuid, uuid, text, jsonb, text[]),
+  public.brand_form_request_enqueue(uuid, uuid, uuid, text, text, jsonb, text[]),
+  public.brand_form_request_claim_batch(integer, uuid, uuid),
   public.brand_form_request_settle(uuid, text, text, text),
   public.biz_brand_form_set_auto_remind(uuid, boolean, text[]),
   public.brand_form_auto_reminders_due(),
-  public.brand_form_auto_reminder_settle(uuid)
+  public.biz_brand_form_request_log(uuid, uuid, jsonb, integer)
 FROM PUBLIC, anon, authenticated;
 
 -- Pure validators: the builder may check a draft before saving.
@@ -2616,7 +3004,8 @@ GRANT EXECUTE ON FUNCTION
   public.biz_brand_form_responses(uuid, uuid, text, integer, integer),
   public.biz_brand_form_responses_export(uuid, uuid),
   public.biz_brand_form_counts(uuid),
-  public.biz_brand_form_set_auto_remind(uuid, boolean, text[])
+  public.biz_brand_form_set_auto_remind(uuid, boolean, text[]),
+  public.biz_brand_form_request_log(uuid, uuid, jsonb, integer)
 TO authenticated, service_role;
 -- Public and guest reads.
 GRANT EXECUTE ON FUNCTION public.public_brand_form_for_event(uuid) TO anon, authenticated, service_role;
@@ -2655,11 +3044,18 @@ GRANT EXECUTE ON FUNCTION
   public.brand_form_code_settle(uuid, text, text, boolean),
   public.brand_form_earlier_guests(uuid, uuid),
   public.brand_form_roster_export_answers(uuid),
-  public.brand_form_request_audience(uuid, uuid, uuid, text, jsonb),
-  public.brand_form_request_claim(uuid, uuid, jsonb, text, uuid),
+  public.brand_form_request_text_cap(),
+  public.brand_form_request_texts_today(uuid),
+  public.brand_form_person_key(uuid, text, text, text, uuid),
+  public.brand_form_request_route(text, text, text[]),
+  public.brand_form_text_window(text, timestamptz),
+  public.brand_form_request_guests(uuid, uuid, jsonb),
+  public.brand_form_guest_dates(text, uuid, uuid),
+  public.brand_form_request_audience(uuid, uuid, uuid, text, jsonb, text[]),
+  public.brand_form_request_enqueue(uuid, uuid, uuid, text, text, jsonb, text[]),
+  public.brand_form_request_claim_batch(integer, uuid, uuid),
   public.brand_form_request_settle(uuid, text, text, text),
-  public.brand_form_auto_reminders_due(),
-  public.brand_form_auto_reminder_settle(uuid)
+  public.brand_form_auto_reminders_due()
 TO service_role;
 
 COMMENT ON FUNCTION public.brand_form_submit_core(jsonb) IS '#4514: the only writer of brand_form_responses (service role; brand-form-submit). See BUILD CONTRACT v2 §3.5 and the wave 1 implementation report on #4514 for codes.';

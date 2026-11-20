@@ -1711,24 +1711,33 @@ BEGIN
 END
 $t$;
 
--- ═══ Wave 4: sending ══════════════════════════════════════════════════════════
+-- ═══ Wave 4: sending (with the wave 4 review fixes) ══════════════════════════
 -- T-W4-GRANT   the new tables have RLS on and no client grant; the send functions are
---              service-role only; the auto-remind switch is the one signed-in call.
+--              service-role only; the switch and the delivery log are the signed-in calls.
 -- T-W4-AUD     C5: event manager and up reads the audience, a marketing manager is refused;
 --              'unanswered' leaves out the guest who answered, 'everyone' keeps him; a named
---              guest narrows it; a closed form refuses.
--- T-W4-D17     decision 17: a claim writes a person brand form link and one send row and no
---              invite, invite delivery attempt, send group or private access grant, and leaves
---              guest status and invite counts unchanged.
--- T-W4-THROTTLE  one request per guest per form per 24 hours; a failed one does not count;
---              after 24 hours a new one is allowed; Remind refuses a guest who answered.
--- T-W4-AUTO    decision 13: the switch (event manager+), once per page two days before, push
---              plus the ticked channels; nothing due writes nothing; decision 10: a closed
---              form is held and the host told through the outbox.
--- FAILS-ON-REVERT (wave 4): deleting the 24-hour EXISTS in brand_form_request_claim fails
--- T-W4-THROTTLE-2; deleting the 'answered' check fails T-W4-THROTTLE-5; deleting the run row
--- NOT EXISTS and the IF FOUND gate in brand_form_auto_reminders_due fails T-W4-AUTO-3b; a claim
--- that changes the guest's RSVP status fails T-W4-D17-4.
+--              guest narrows it; one row per person; the route is text then email.
+-- T-W4-D17     decision 17: queueing and claiming write a person brand form link and one send
+--              row and no invite, invite delivery attempt, send group or private access grant,
+--              and leave guest status and invite counts unchanged.
+-- T-W4-THROTTLE  one request per person per form per 24 hours; a failed one does not count;
+--              after 24 hours a new one is allowed; Remind skips a guest who answered.
+-- T-W4-CONC    two Asks at once: enqueue holds the brand lock, so the second sees the first.
+-- T-W4-QUEUE   pages of at most p_limit; a stale claim is retried, then failed after 3 tries;
+--              a queued row older than 24 hours fails; nobody is blocked for 24 hours.
+-- T-W4-QUIET   texts wait for 9am-9pm in the page's time zone; email is not delayed.
+-- T-W4-CAP     the per-brand daily text limit refuses a send that would go over it.
+-- T-W4-AUTO    decision 13: push is dropped from the switch; due once per page and date two
+--              days before; a run with nothing left settles; a stuck run fails visibly;
+--              decision 10: a closed form is held and the host told with a link.
+-- T-W4-DATES   each guest's own date: a multi-date page reminds only the guest on the date in
+--              the window (not the later date, not a past date); an experience uses
+--              booked_start_at.
+-- T-W4-LOG     the host delivery log: event manager and up, names and outcomes, never a link.
+-- FAILS-ON-REVERT (review fixes): deleting the stale-claim UPDATE in claim_batch fails
+-- T-W4-QUEUE-2; deleting the brand_form_text_window delay fails T-W4-QUIET-2; deleting the cap
+-- RAISE fails T-W4-CAP-1; replacing brand_form_guest_dates with the page's next date fails
+-- T-W4-DATES-2 and T-W4-DATES-4.
 DO $t$
 DECLARE v_t text; v_f text;
 BEGIN
@@ -1739,16 +1748,42 @@ BEGIN
       AND NOT has_table_privilege('anon', 'public.' || v_t, 'SELECT'),
       'T-W4-GRANT RLS on and no client grant on ' || v_t);
   END LOOP;
-  FOREACH v_f IN ARRAY ARRAY['public.brand_form_request_audience(uuid,uuid,uuid,text,jsonb)',
-      'public.brand_form_request_claim(uuid,uuid,jsonb,text,uuid)', 'public.brand_form_request_settle(uuid,text,text,text)',
-      'public.brand_form_auto_reminders_due()', 'public.brand_form_auto_reminder_settle(uuid)'] LOOP
+  FOREACH v_f IN ARRAY ARRAY['public.brand_form_request_audience(uuid,uuid,uuid,text,jsonb,text[])',
+      'public.brand_form_request_enqueue(uuid,uuid,uuid,text,text,jsonb,text[])',
+      'public.brand_form_request_claim_batch(integer,uuid,uuid)', 'public.brand_form_request_settle(uuid,text,text,text)',
+      'public.brand_form_auto_reminders_due()', 'public.brand_form_request_guests(uuid,uuid,jsonb)',
+      'public.brand_form_guest_dates(text,uuid,uuid)', 'public.brand_form_request_route(text,text,text[])'] LOOP
     PERFORM pg_temp.f_assert(NOT has_function_privilege('authenticated', v_f, 'EXECUTE')
       AND NOT has_function_privilege('anon', v_f, 'EXECUTE') AND has_function_privilege('service_role', v_f, 'EXECUTE'),
       'T-W4-GRANT service role only: ' || v_f);
   END LOOP;
-  PERFORM pg_temp.f_assert(has_function_privilege('authenticated', 'public.biz_brand_form_set_auto_remind(uuid,boolean,text[])', 'EXECUTE')
-    AND NOT has_function_privilege('anon', 'public.biz_brand_form_set_auto_remind(uuid,boolean,text[])', 'EXECUTE'),
-    'T-W4-GRANT the auto-remind switch is signed-in only');
+  FOREACH v_f IN ARRAY ARRAY['public.biz_brand_form_set_auto_remind(uuid,boolean,text[])',
+      'public.biz_brand_form_request_log(uuid,uuid,jsonb,integer)'] LOOP
+    PERFORM pg_temp.f_assert(has_function_privilege('authenticated', v_f, 'EXECUTE')
+      AND NOT has_function_privilege('anon', v_f, 'EXECUTE'), 'T-W4-GRANT signed-in only: ' || v_f);
+  END LOOP;
+END
+$t$;
+
+-- Two time zones for the quiet-hours checks: one where it is now midday, one where it is night.
+CREATE TEMP TABLE f4514_tz AS
+SELECT (SELECT name FROM pg_timezone_names WHERE extract(hour FROM now() AT TIME ZONE name) BETWEEN 11 AND 18
+         AND name LIKE 'Etc/GMT%' ORDER BY name LIMIT 1) AS day_tz,
+       (SELECT name FROM pg_timezone_names WHERE extract(hour FROM now() AT TIME ZONE name) BETWEEN 1 AND 6
+         AND name LIKE 'Etc/GMT%' ORDER BY name LIMIT 1) AS night_tz;
+UPDATE public.events SET timezone = (SELECT day_tz FROM f4514_tz) WHERE id = (SELECT id FROM f4514 WHERE k = 'e10');
+
+DO $t$
+BEGIN
+  PERFORM pg_temp.f_assert(public.brand_form_text_window('UTC', '2028-01-01 15:00Z') = '2028-01-01 15:00Z'
+      AND public.brand_form_text_window('UTC', '2028-01-01 23:30Z') = '2028-01-02 09:00Z'
+      AND public.brand_form_text_window('UTC', '2028-01-01 05:00Z') = '2028-01-01 09:00Z'
+      AND public.brand_form_text_window('America/New_York', '2028-01-01 12:00Z') = '2028-01-01 14:00Z'
+      AND public.brand_form_text_window('Not/AZone', '2028-01-01 23:30Z') = '2028-01-02 09:00Z',
+    'T-W4-QUIET-1 the text window: daytime unchanged, night moves to 9am local, an unknown zone reads as UTC');
+  PERFORM pg_temp.f_assert(public.brand_form_person_key(NULL, ' +12025551002 ', 'A@x.test', 'rsvp', gen_random_uuid()) = 'p:+12025551002'
+      AND public.brand_form_person_key(NULL, NULL, ' A@X.test', 'rsvp', gen_random_uuid()) = 'e:a@x.test',
+    'T-W4-PERSON-0 one person key: account, else phone, else email');
 END
 $t$;
 
@@ -1765,15 +1800,19 @@ BEGIN
   PERFORM pg_temp.f_assert(jsonb_array_length(v->'recipients') = 2
     AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'recipients') r WHERE (r->>'id')::uuid = v_rw),
     'T-W4-AUD-1 unanswered: the 2 who have not answered, not Wes (' || (v->'recipients')::text || ')');
-  PERFORM pg_temp.f_assert((SELECT bool_and(r->>'phone' IS NOT NULL AND (r->>'smsAllowed')::boolean AND (r->>'emailAllowed')::boolean)
-                              FROM jsonb_array_elements(v->'recipients') r),
-    'T-W4-AUD-1b each recipient carries the contact on file and the consent gate');
+  PERFORM pg_temp.f_assert((SELECT bool_and(r->'route' = '["sms", "email"]'::jsonb AND r->>'personKey' LIKE 'p:+1202555%')
+                              FROM jsonb_array_elements(v->'recipients') r)
+      AND (v->>'textCap')::integer = 300 AND (v->>'textsToday')::integer = 0,
+    'T-W4-AUD-1b each person: the route text then email, a person key, the daily text limit (' || v::text || ')');
+  v := public.brand_form_request_audience((SELECT id FROM f4514 WHERE k = 'em_a'), v_w, v_e10, 'unanswered', NULL, ARRAY['email']);
+  PERFORM pg_temp.f_assert((SELECT bool_and(r->'route' = '["email"]'::jsonb) FROM jsonb_array_elements(v->'recipients') r),
+    'T-W4-AUD-1c email only: the route is email');
   v := public.brand_form_request_audience((SELECT id FROM f4514 WHERE k = 'em_a'), v_w, v_e10, 'everyone', NULL);
   PERFORM pg_temp.f_assert(jsonb_array_length(v->'recipients') = 3, 'T-W4-AUD-2 everyone going: 3');
   v := public.brand_form_request_audience((SELECT id FROM f4514 WHERE k = 'em_a'), v_w, v_e10, 'everyone',
-         jsonb_build_array(jsonb_build_object('kind', 'rsvp', 'id', v_rv)));
-  PERFORM pg_temp.f_assert(jsonb_array_length(v->'recipients') = 1 AND (v->'recipients'->0->>'id')::uuid = v_rv,
-    'T-W4-AUD-3 a named guest narrows it to that guest');
+         jsonb_build_array(jsonb_build_object('kind', 'rsvp', 'id', v_rw)));
+  PERFORM pg_temp.f_assert(jsonb_array_length(v->'recipients') = 1 AND (v->'recipients'->0->>'id')::uuid = v_rw,
+    'T-W4-AUD-3 a named guest who answered is reached with audience everyone (Ask again)');
   PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.brand_form_request_audience(%L, %L, %L, %L, NULL)',
       (SELECT id FROM f4514 WHERE k = 'mm_a'), v_w, v_e10, 'unanswered')) LIKE '42501:brand_form_forbidden%',
     'T-W4-AUD-4 C5: a marketing manager cannot send (event manager and up)');
@@ -1784,7 +1823,7 @@ BEGIN
 END
 $t$;
 
--- T-W4-D17 and T-W4-THROTTLE
+-- T-W4-D17, T-W4-THROTTLE, T-W4-PERSON, T-W4-CONC, T-W4-QUEUE
 DO $t$
 DECLARE
   v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
@@ -1792,7 +1831,9 @@ DECLARE
   v_rw uuid := (SELECT id FROM f4514 WHERE k = 'rw');
   v_rv uuid := (SELECT id FROM f4514 WHERE k = 'rv');
   v_em uuid := (SELECT id FROM f4514 WHERE k = 'em_a');
-  v_before text; v_after text; v jsonb; v2 jsonb; v_link public.brand_form_links;
+  v_val jsonb := jsonb_build_array(jsonb_build_object('kind', 'rsvp', 'id', v_rv));
+  v_twin uuid := gen_random_uuid();
+  v_before text; v_after text; v jsonb; v_c jsonb; v_link public.brand_form_links; v_send uuid; v_key bigint;
 BEGIN
   SELECT concat_ws('|',
     (SELECT count(*) FROM public.brand_offering_invites),
@@ -1803,17 +1844,31 @@ BEGIN
          ELSE (SELECT count(*)::text FROM public.private_event_access_grants) END)
     INTO v_before;
   SET LOCAL ROLE service_role;
-  v := public.brand_form_request_claim(v_w, v_e10, jsonb_build_object('kind', 'rsvp', 'id', v_rv), 'ask', v_em);
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone', v_val, ARRAY['email']);
+  v_key := hashtextextended('brand_form_request:' || (SELECT brand_id FROM public.events WHERE id = v_e10)::text, 4514);
+  PERFORM pg_temp.f_assert(EXISTS (SELECT 1 FROM pg_locks l WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid()
+                                    AND ((l.classid::bigint << 32) | l.objid::bigint) = v_key AND l.granted),
+    'T-W4-CONC-1 enqueue holds the brand lock until the transaction ends (two Asks at once queue in turn)');
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 1 AND (SELECT count(*) FROM public.brand_form_request_sends s
+      WHERE s.rsvp_id = v_rv AND s.status = 'queued' AND s.link_id IS NULL AND s.route = ARRAY['email']) = 1,
+    'T-W4-QUEUE-1 the Ask only queues Val (no link yet): ' || v::text);
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone', v_val, ARRAY['email']);
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 0 AND (v->>'throttled')::integer = 1
+      AND (SELECT count(*) FROM public.brand_form_request_sends s WHERE s.rsvp_id = v_rv) = 1,
+    'T-W4-CONC-2 the second Ask sees the first: Val is queued once');
+  v := public.brand_form_request_claim_batch(100);
+  v_c := (SELECT x FROM jsonb_array_elements(v) x WHERE (x->>'subjectId')::uuid = v_rv);
   RESET ROLE;
-  PERFORM pg_temp.f_assert((v->>'claimed')::boolean AND v->>'token' ~ '^[0-9a-f]{64}$', 'T-W4-D17-1 the ask claims Val and mints her link');
-  SELECT * INTO v_link FROM public.brand_form_links WHERE id = (v->>'linkId')::uuid;
+  PERFORM pg_temp.f_assert(v_c IS NOT NULL AND v_c->>'token' ~ '^[0-9a-f]{64}$' AND v_c->'route' = '["email"]'::jsonb
+      AND v_c->>'email' = 'f4514-v@example.test' AND v_c->>'brandName' = 'Brand A',
+    'T-W4-D17-1 the drain claims Val, mints her link and hands the route, contact and brand name');
+  v_send := (v_c->>'sendId')::uuid;
+  SELECT * INTO v_link FROM public.brand_form_links WHERE id = (SELECT link_id FROM public.brand_form_request_sends WHERE id = v_send);
   PERFORM pg_temp.f_assert(v_link.kind = 'person' AND v_link.form_id = v_w AND v_link.rsvp_id = v_rv
-      AND v_link.token_hash = public.brand_form_token_hash(v->>'token') AND v_link.token_hash <> v->>'token',
+      AND v_link.token_hash = public.brand_form_token_hash(v_c->>'token') AND v_link.token_hash <> v_c->>'token',
     'T-W4-D17-2 a person link for exactly Val on this form, stored only as a hash');
-  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends s
-                             WHERE s.id = (v->>'sendId')::uuid AND s.link_id = v_link.id AND s.rsvp_id = v_rv
-                               AND s.kind = 'ask' AND s.status = 'claimed') = 1,
-    'T-W4-D17-3 one send row carries the form link reference');
+  PERFORM pg_temp.f_assert((SELECT status = 'claimed' AND attempts = 1 FROM public.brand_form_request_sends WHERE id = v_send),
+    'T-W4-D17-3 the send row is claimed, first try');
   SELECT concat_ws('|',
     (SELECT count(*) FROM public.brand_offering_invites),
     (SELECT count(*) FROM public.brand_offering_invite_delivery_attempts),
@@ -1824,29 +1879,106 @@ BEGIN
     INTO v_after;
   PERFORM pg_temp.f_assert(v_before = v_after,
     'T-W4-D17-4 no invite, attempt, send group or access grant; guest status unchanged (' || v_before || ' = ' || v_after || ')');
-  -- Throttle
+  -- A request whose edge request died: retried after 10 minutes, failed after 3 tries.
+  UPDATE public.brand_form_request_sends SET claimed_at = now() - interval '11 minutes' WHERE id = v_send;
   SET LOCAL ROLE service_role;
-  v2 := public.brand_form_request_claim(v_w, v_e10, jsonb_build_object('kind', 'rsvp', 'id', v_rv), 'remind', v_em);
-  PERFORM pg_temp.f_assert(NOT (v2->>'claimed')::boolean AND v2->>'reason' = 'throttled',
-    'T-W4-THROTTLE-2 a second request to Val within 24 hours is throttled (' || v2::text || ')');
+  v := public.brand_form_request_claim_batch(100);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v) x WHERE (x->>'sendId')::uuid = v_send)
+      AND (SELECT status = 'claimed' AND attempts = 2 FROM public.brand_form_request_sends WHERE id = v_send),
+    'T-W4-QUEUE-2 a stale claim goes back to the queue and is sent again (second try)');
+  UPDATE public.brand_form_request_sends SET claimed_at = now() - interval '11 minutes', attempts = 3 WHERE id = v_send;
+  SET LOCAL ROLE service_role;
+  PERFORM public.brand_form_request_claim_batch(100);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((SELECT status = 'failed' AND safe_reason = 'claim_expired' FROM public.brand_form_request_sends WHERE id = v_send),
+    'T-W4-QUEUE-3 after 3 tries the stale claim fails, so it no longer blocks Val');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'remind', 'unanswered', v_val, ARRAY['email']);
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 1, 'T-W4-THROTTLE-4 a failed request does not count: the host can try again');
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'remind', 'unanswered', v_val, ARRAY['email']);
+  PERFORM pg_temp.f_assert((v->>'throttled')::integer = 1 AND (v->>'queued')::integer = 0,
+    'T-W4-THROTTLE-2 a second request to Val within 24 hours is throttled (' || v::text || ')');
   v := public.brand_form_request_audience(v_em, v_w, v_e10, 'unanswered', NULL);
   PERFORM pg_temp.f_assert((SELECT (r->>'throttled')::boolean FROM jsonb_array_elements(v->'recipients') r WHERE (r->>'id')::uuid = v_rv),
     'T-W4-THROTTLE-3 the preview marks Val throttled');
-  PERFORM public.brand_form_request_settle((SELECT id FROM public.brand_form_request_sends WHERE rsvp_id = v_rv ORDER BY created_at DESC LIMIT 1),
-    'sms', 'failed', 'sms_not_delivered');
-  v2 := public.brand_form_request_claim(v_w, v_e10, jsonb_build_object('kind', 'rsvp', 'id', v_rv), 'remind', v_em);
-  PERFORM pg_temp.f_assert((v2->>'claimed')::boolean, 'T-W4-THROTTLE-4 a failed request does not count: the host can try again');
   RESET ROLE;
   UPDATE public.brand_form_request_sends SET created_at = now() - interval '25 hours' WHERE rsvp_id = v_rv;
   SET LOCAL ROLE service_role;
-  v2 := public.brand_form_request_claim(v_w, v_e10, jsonb_build_object('kind', 'rsvp', 'id', v_rv), 'remind', v_em);
-  PERFORM pg_temp.f_assert((v2->>'claimed')::boolean, 'T-W4-THROTTLE-4b after 24 hours a new request is allowed');
-  v2 := public.brand_form_request_claim(v_w, v_e10, jsonb_build_object('kind', 'rsvp', 'id', v_rw), 'remind', v_em);
-  PERFORM pg_temp.f_assert(NOT (v2->>'claimed')::boolean AND v2->>'reason' = 'answered',
-    'T-W4-THROTTLE-5 Remind never reaches Wes, who answered (' || v2::text || ')');
-  v2 := public.brand_form_request_claim(v_w, v_e10, jsonb_build_object('kind', 'order', 'id', (SELECT id FROM f4514 WHERE k = 'o1')), 'ask', v_em);
+  PERFORM public.brand_form_request_claim_batch(100);
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE rsvp_id = v_rv AND status = 'queued') = 0,
+    'T-W4-QUEUE-4 a queued request older than 24 hours fails as expired');
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'remind', 'unanswered', v_val, ARRAY['email']);
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 1, 'T-W4-THROTTLE-4b after 24 hours a new request is allowed');
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'remind', 'unanswered',
+         jsonb_build_array(jsonb_build_object('kind', 'rsvp', 'id', v_rw)), ARRAY['email']);
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 0
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends WHERE rsvp_id = v_rw),
+    'T-W4-THROTTLE-5 Remind never reaches Wes, who answered (' || v::text || ')');
+  PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.brand_form_request_enqueue(%L, %L, %L, %L, %L, NULL, %L)',
+      (SELECT id FROM f4514 WHERE k = 'mm_a'), v_w, v_e10, 'ask', 'unanswered', '{email}')) LIKE '42501:%',
+    'T-W4-AUD-6 C5: a marketing manager cannot queue');
   RESET ROLE;
-  PERFORM pg_temp.f_assert(v2 IS NULL OR NOT (v2->>'claimed')::boolean, 'T-W4-D17-5 an order of another event is not a guest here');
+  -- One person, two RSVPs (the same phone): one row in the audience, one request.
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.event_rsvps(id, event_id, user_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (v_twin, v_e10, NULL, 'Val Again', 'f4514-v2@example.test', '+12025551002', 'going', 'approved');
+  PERFORM set_config('session_replication_role', 'origin', true);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_audience(v_em, v_w, v_e10, 'everyone', NULL);
+  PERFORM pg_temp.f_assert(jsonb_array_length(v->'recipients') = 3
+      AND (SELECT (r->>'throttled')::boolean FROM jsonb_array_elements(v->'recipients') r WHERE r->>'personKey' = 'p:+12025551002'),
+    'T-W4-PERSON-1 Val''s two RSVPs are one person, and the throttle follows the person');
+  RESET ROLE;
+  INSERT INTO f4514 VALUES ('rv2', v_twin);
+END
+$t$;
+
+-- T-W4-QUIET and T-W4-CAP
+DO $t$
+DECLARE
+  v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v_ri uuid := (SELECT id FROM f4514 WHERE k = 'ri');
+  v_ba uuid := (SELECT id FROM f4514 WHERE k = 'ba');
+  v_em uuid := (SELECT id FROM f4514 WHERE k = 'em_a');
+  v_ike jsonb := jsonb_build_array(jsonb_build_object('kind', 'rsvp', 'id', v_ri));
+  v jsonb; v_send uuid;
+BEGIN
+  UPDATE public.events SET timezone = (SELECT night_tz FROM f4514_tz) WHERE id = v_e10;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone', v_ike, ARRAY['sms', 'email']);
+  RESET ROLE;
+  SELECT id INTO v_send FROM public.brand_form_request_sends WHERE rsvp_id = v_ri AND status = 'queued';
+  PERFORM pg_temp.f_assert((v->>'waitingForMorning')::integer = 1
+      AND (SELECT not_before > now() + interval '1 hour' AND route = ARRAY['sms', 'email'] FROM public.brand_form_request_sends WHERE id = v_send),
+    'T-W4-QUIET-2 at night in the page''s time zone the text waits for 9am (' || v::text || ')');
+  UPDATE public.brand_form_request_sends SET not_before = now() WHERE id = v_send;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_claim_batch(100);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v) x WHERE (x->>'sendId')::uuid = v_send)
+      AND (SELECT status = 'queued' AND not_before > now() FROM public.brand_form_request_sends WHERE id = v_send),
+    'T-W4-QUIET-3 the drain re-checks the hour and keeps the text queued');
+  UPDATE public.events SET timezone = (SELECT day_tz FROM f4514_tz) WHERE id = v_e10;
+  UPDATE public.brand_form_request_sends SET not_before = now() WHERE id = v_send;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_claim_batch(100);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(EXISTS (SELECT 1 FROM jsonb_array_elements(v) x WHERE (x->>'sendId')::uuid = v_send),
+    'T-W4-QUIET-4 in the daytime the text goes out');
+  -- The daily text limit: 300 texts already today.
+  DELETE FROM public.brand_form_request_sends WHERE rsvp_id = v_ri;
+  INSERT INTO public.brand_form_request_sends (form_id, event_id, brand_id, rsvp_id, person_key, kind, route, status)
+  SELECT v_w, v_e10, v_ba, v_ri, 'p:cap' || g, 'ask', ARRAY['sms'], 'sent' FROM generate_series(1, 300) g;
+  SET LOCAL ROLE service_role;
+  PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.brand_form_request_enqueue(%L, %L, %L, %L, %L, %L, %L)',
+      v_em, v_w, v_e10, 'ask', 'everyone', v_ike::text, '{sms,email}')) LIKE '%form_request_text_cap%',
+    'T-W4-CAP-1 over the daily text limit: refused');
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone', v_ike, ARRAY['email']);
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 1, 'T-W4-CAP-2 email still goes (the limit is on texts)');
+  RESET ROLE;
+  DELETE FROM public.brand_form_request_sends WHERE person_key LIKE 'p:cap%';
 END
 $t$;
 
@@ -1856,13 +1988,14 @@ DECLARE
   v_e10 uuid := (SELECT id FROM f4514 WHERE k = 'e10');
   v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
   v_att uuid := (SELECT a.id FROM public.brand_form_attachments a WHERE a.event_id = v_e10 AND a.detached_at IS NULL);
-  v jsonb; v_out_before integer; v_runs integer;
+  v jsonb; v_out_before integer; v_run uuid;
 BEGIN
+  DELETE FROM public.brand_form_request_sends;
   SET LOCAL ROLE service_role;
   v := public.brand_form_auto_reminders_due();
   RESET ROLE;
-  PERFORM pg_temp.f_assert(v = '[]'::jsonb AND NOT EXISTS (SELECT 1 FROM public.brand_form_auto_reminder_runs),
-    'T-W4-AUTO-0 off by default: nothing due, nothing written');
+  PERFORM pg_temp.f_assert(v = '{"held": 0, "runs": 0, "queued": 0}'::jsonb AND NOT EXISTS (SELECT 1 FROM public.brand_form_auto_reminder_runs),
+    'T-W4-AUTO-0 off by default: nothing due, nothing written (' || v::text || ')');
   PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.biz_brand_form_set_auto_remind(%L, true)', v_att)) LIKE '42501:%',
@@ -1870,46 +2003,145 @@ BEGIN
   RESET ROLE;
   PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'em_a'));
   SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.biz_brand_form_set_auto_remind(%L, true, %L)', v_att, '{push}')) LIKE '22023:%',
+    'T-W4-AUTO-1b push alone is refused while the Explorer form screen is not built');
   v := public.biz_brand_form_set_auto_remind(v_att, true, ARRAY['push', 'sms']);
   RESET ROLE;
-  PERFORM pg_temp.f_assert((v->>'autoRemind')::boolean AND v->'channels' = '["push", "sms"]'::jsonb,
-    'T-W4-AUTO-2 an event manager switches it on with push and texts');
-  -- The page's only date is 3 days out: not yet due.
+  PERFORM pg_temp.f_assert((v->>'autoRemind')::boolean AND v->'channels' = '["sms"]'::jsonb,
+    'T-W4-AUTO-2 an event manager switches it on; push is dropped, texts stored (' || v::text || ')');
   PERFORM set_config('session_replication_role', 'replica', true);
   INSERT INTO public.event_dates (event_id, start_at, end_at, timezone, is_master)
   VALUES (v_e10, now() + interval '72 hours', now() + interval '75 hours', 'UTC', true);
   PERFORM set_config('session_replication_role', 'origin', true);
   SET LOCAL ROLE service_role;
-  PERFORM pg_temp.f_assert(public.brand_form_auto_reminders_due() = '[]'::jsonb, 'T-W4-AUTO-2b three days out: not due');
+  PERFORM pg_temp.f_assert((public.brand_form_auto_reminders_due()->>'runs')::integer = 0, 'T-W4-AUTO-2b three days out: not due');
   RESET ROLE;
   UPDATE public.event_dates SET start_at = now() + interval '47 hours', end_at = now() + interval '50 hours' WHERE event_id = v_e10;
   SET LOCAL ROLE service_role;
   v := public.brand_form_auto_reminders_due();
-  PERFORM pg_temp.f_assert(jsonb_array_length(v) = 1 AND (v->0->>'attachmentId')::uuid = v_att
-      AND v->0->'channels' = '["push", "sms"]'::jsonb,
-    'T-W4-AUTO-3 two days before: due once, with the ticked channels (' || v::text || ')');
-  PERFORM pg_temp.f_assert(public.brand_form_auto_reminders_due() = '[]'::jsonb, 'T-W4-AUTO-3b never twice');
-  PERFORM pg_temp.f_assert(public.brand_form_auto_reminder_settle(v_att), 'T-W4-AUTO-3c the run settles as sent');
+  PERFORM pg_temp.f_assert((v->>'runs')::integer = 1 AND (v->>'queued')::integer = 2
+      AND (SELECT count(*) FROM public.brand_form_request_sends s WHERE s.kind = 'auto' AND s.route = ARRAY['sms']
+             AND s.status = 'queued' AND s.event_id = v_e10) = 2,
+    'T-W4-AUTO-3 two days before: one run, Val and Ike queued on texts, Wes (answered) left out (' || v::text || ')');
+  v := public.brand_form_auto_reminders_due();
+  PERFORM pg_temp.f_assert((v->>'queued')::integer = 0 AND (v->>'runs')::integer = 0
+      AND (SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto') = 2, 'T-W4-AUTO-3b never twice');
+  v := public.brand_form_request_claim_batch(100);
+  PERFORM public.brand_form_request_settle((x->>'sendId')::uuid, 'sms', 'sent', NULL) FROM jsonb_array_elements(v) x;
+  PERFORM public.brand_form_request_claim_batch(100);
   RESET ROLE;
-  -- Decision 10: a closed form's reminder is held and the host told.
+  PERFORM pg_temp.f_assert((SELECT outcome = 'sent' AND settled_at IS NOT NULL FROM public.brand_form_auto_reminder_runs WHERE attachment_id = v_att),
+    'T-W4-AUTO-3c the run settles as sent once nothing is left in the queue');
+  -- A run stuck with undelivered rows for a day: the rows fail and the run shows failed.
+  SELECT id INTO v_run FROM public.brand_form_auto_reminder_runs WHERE attachment_id = v_att;
+  UPDATE public.brand_form_auto_reminder_runs SET outcome = 'sending', settled_at = NULL WHERE id = v_run;
+  UPDATE public.brand_form_request_sends SET status = 'queued', created_at = now() - interval '25 hours' WHERE run_id = v_run;
+  SET LOCAL ROLE service_role;
+  PERFORM public.brand_form_request_claim_batch(100);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((SELECT outcome = 'failed' FROM public.brand_form_auto_reminder_runs WHERE id = v_run)
+      AND (SELECT bool_and(status = 'failed' AND safe_reason = 'expired') FROM public.brand_form_request_sends WHERE run_id = v_run),
+    'T-W4-AUTO-3d a stuck run is closed as failed, visibly, never left at sending');
+  -- Decision 10: a closed form's reminder is held and the host told with a link.
+  DELETE FROM public.brand_form_request_sends;
   DELETE FROM public.brand_form_auto_reminder_runs WHERE attachment_id = v_att;
   UPDATE public.brand_forms SET status = 'closed', closed_at = now() WHERE id = v_w;
   SELECT count(*) INTO v_out_before FROM public.notification_outbox WHERE category_key = 'business.brand_form_reminder_held';
   SET LOCAL ROLE service_role;
   v := public.brand_form_auto_reminders_due();
   RESET ROLE;
-  SELECT count(*) INTO v_runs FROM public.brand_form_auto_reminder_runs WHERE attachment_id = v_att AND outcome = 'held_form_closed';
-  PERFORM pg_temp.f_assert(v = '[]'::jsonb AND v_runs = 1
+  PERFORM pg_temp.f_assert((v->>'held')::integer = 1 AND (v->>'queued')::integer = 0
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends)
       AND (SELECT count(*) FROM public.notification_outbox WHERE category_key = 'business.brand_form_reminder_held'
              AND user_id = (SELECT created_by FROM public.brand_form_attachments WHERE id = v_att)
-             AND idempotency_key = 'brand_form_reminder_held:' || v_att::text) = v_out_before + 1,
-    'T-W4-AUTO-4 a closed form: held, nothing sent, the attaching host told once');
-  SET LOCAL ROLE service_role;
-  PERFORM pg_temp.f_assert(public.brand_form_request_claim(v_w, v_e10,
-      jsonb_build_object('kind', 'rsvp', 'id', (SELECT id FROM f4514 WHERE k = 'rv')), 'ask', NULL)->>'reason' = 'form_closed',
-    'T-W4-AUTO-5 no request goes out on a closed form');
-  RESET ROLE;
+             AND payload->>'deep_link' = 'mingla-business://marketing/forms/' || v_w::text || '/responses'
+             AND idempotency_key LIKE 'brand_form_reminder_held:' || v_att::text || ':%') = v_out_before + 1,
+    'T-W4-AUTO-4 a closed form: held, nothing sent, the attaching host told once with a link to the form');
   UPDATE public.brand_forms SET status = 'live', closed_at = NULL WHERE id = v_w;
+  UPDATE public.brand_form_attachments SET auto_remind = false WHERE id = v_att;
+END
+$t$;
+
+-- T-W4-DATES: each guest's own date (a multi-date page and an experience).
+DO $t$
+DECLARE
+  v_ba uuid := (SELECT id FROM f4514 WHERE k = 'ba');
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v_em uuid := (SELECT id FROM f4514 WHERE k = 'em_a');
+  v_e12 uuid := gen_random_uuid(); v_e13 uuid := gen_random_uuid();
+  v_d0 uuid := gen_random_uuid(); v_d1 uuid := gen_random_uuid(); v_d2 uuid := gen_random_uuid();
+  v_oa uuid := gen_random_uuid(); v_ob uuid := gen_random_uuid(); v_oc uuid := gen_random_uuid();
+  v_ox uuid := gen_random_uuid(); v_oy uuid := gen_random_uuid();
+  v_ta uuid := gen_random_uuid(); v_tb uuid := gen_random_uuid(); v_tc uuid := gen_random_uuid();
+  v jsonb;
+BEGIN
+  DELETE FROM public.brand_form_request_sends;
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES (v_e12, v_ba, 'Many dates twelve', 'f4514-e12', 'event', 'scheduled', 'public', 'UTC', 'USD'),
+         (v_e13, v_ba, 'Experience thirteen', 'f4514-e13', 'experience', 'scheduled', 'public', 'UTC', 'USD');
+  INSERT INTO public.event_dates (id, event_id, start_at, end_at, timezone, is_master)
+  VALUES (v_d0, v_e12, now() - interval '1 day', now() - interval '20 hours', 'UTC', false),
+         (v_d1, v_e12, now() + interval '47 hours', now() + interval '50 hours', 'UTC', true),
+         (v_d2, v_e12, now() + interval '96 hours', now() + interval '99 hours', 'UTC', false);
+  INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_name, buyer_email, buyer_phone_e164,
+    total_cents, currency, payment_method, payment_status, source, is_door_sale, booked_start_at)
+  VALUES (v_oa, v_e12, NULL, 'Ada Day One', 'f4514-da@example.test', '+12025551201', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false, NULL),
+         (v_ob, v_e12, NULL, 'Ben Day Two', 'f4514-db@example.test', '+12025551202', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false, NULL),
+         (v_oc, v_e12, NULL, 'Cy Past Day', 'f4514-dc@example.test', '+12025551203', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false, NULL),
+         (v_ox, v_e13, NULL, 'Xi Booked Soon', 'f4514-xs@example.test', '+12025551204', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false, now() + interval '47 hours'),
+         (v_oy, v_e13, NULL, 'Yu Booked Later', 'f4514-yl@example.test', '+12025551205', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false, now() + interval '10 days');
+  INSERT INTO public.tickets(id, order_id, ticket_type_id, event_id, attendee_name, attendee_email, qr_code, status, created_at, transferred_at, holder_user_id)
+  VALUES (v_ta, v_oa, gen_random_uuid(), v_e12, 'Ada', NULL, 'f4514-qr-da', 'valid', now(), NULL, NULL),
+         (v_tb, v_ob, gen_random_uuid(), v_e12, 'Ben', NULL, 'f4514-qr-db', 'valid', now(), NULL, NULL),
+         (v_tc, v_oc, gen_random_uuid(), v_e12, 'Cy', NULL, 'f4514-qr-dc', 'valid', now(), NULL, NULL);
+  INSERT INTO public.ticket_event_dates (ticket_id, event_date_id) VALUES (v_ta, v_d1), (v_tb, v_d2), (v_tc, v_d0);
+  INSERT INTO public.brand_form_attachments (form_id, brand_id, event_id, mode, auto_remind, auto_remind_channels, created_by)
+  VALUES (v_w, v_ba, v_e12, 'after_purchase', true, ARRAY['email'], v_em),
+         (v_w, v_ba, v_e13, 'after_purchase', true, ARRAY['email'], v_em);
+  PERFORM set_config('session_replication_role', 'origin', true);
+  PERFORM pg_temp.f_assert((SELECT array_agg(d ORDER BY d) FROM public.brand_form_guest_dates('order', v_oa, v_e12) d)
+                             = ARRAY[(SELECT start_at FROM public.event_dates WHERE id = v_d1)]
+      AND (SELECT array_agg(d) FROM public.brand_form_guest_dates('order', v_ox, v_e13) d)
+             = ARRAY[(SELECT booked_start_at FROM public.orders WHERE id = v_ox)],
+    'T-W4-DATES-1 a guest''s own date: the ticket''s date, the experience''s booked slot');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_auto_reminders_due();
+  RESET ROLE;
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE event_id = v_e12) = 1
+      AND EXISTS (SELECT 1 FROM public.brand_form_request_sends WHERE order_id = v_oa AND kind = 'auto'
+                    AND starts_at = (SELECT start_at FROM public.event_dates WHERE id = v_d1)),
+    'T-W4-DATES-2 a multi-date page: only Ada (her date is in two days) is reminded, not Ben (later) or Cy (past)');
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_auto_reminder_runs WHERE event_id = v_e12) = 1,
+    'T-W4-DATES-3 one run for that page and date');
+  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE event_id = v_e13) = 1
+      AND EXISTS (SELECT 1 FROM public.brand_form_request_sends WHERE order_id = v_ox AND kind = 'auto'),
+    'T-W4-DATES-4 an experience: Xi (booked in two days) is reminded, Yu (booked in ten) is not');
+  INSERT INTO f4514 VALUES ('e12', v_e12), ('e13', v_e13);
+END
+$t$;
+
+-- T-W4-LOG: the host delivery log.
+DO $t$
+DECLARE
+  v_e12 uuid := (SELECT id FROM f4514 WHERE k = 'e12');
+  v_w uuid := (SELECT id FROM f4514 WHERE k = 'form_w');
+  v jsonb;
+BEGIN
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'em_a'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_request_log(v_w, v_e12);
+  RESET ROLE;
+  PERFORM pg_temp.f_assert(jsonb_array_length(v->'sends') = 1 AND v->'sends'->0->>'name' IS NOT NULL
+      AND v->'sends'->0->>'status' = 'queued' AND v->'sends'->0->>'channel' = 'email'
+      AND (v->'counts'->>'queued')::integer = 1 AND jsonb_array_length(v->'runs') = 1
+      AND v::text NOT LIKE '%example.test%' AND v::text NOT LIKE '%token%',
+    'T-W4-LOG-1 an event manager reads each guest''s request, outcome and the runs; no contact, no link (' || v::text || ')');
+  PERFORM pg_temp.f_as((SELECT id FROM f4514 WHERE k = 'mm_a'));
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.biz_brand_form_request_log(%L, %L)', v_w, v_e12)) LIKE '42501:%',
+    'T-W4-LOG-2 C5: a marketing manager cannot read the delivery log');
+  RESET ROLE;
 END
 $t$;
 
