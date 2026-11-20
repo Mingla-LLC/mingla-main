@@ -1217,5 +1217,12 @@ SELECT public.t4490_service();
 SELECT public.t4490_ok((public.issue_4490_booking_projection(public.t4490_id('g_x'), NULL)->>'state') = 'request_expired'
   AND public.issue_4490_booking_projection(public.t4490_id('g_x'), NULL) ? 'hire',
   'H-23d the guest read renders every state (here: expired) with the hire block');
+-- N150 (#4490): issue_4490_enqueue_offer_event is a #1529 populating producer that writes an
+-- explicit NULL country_code (the row's contact is an email; no SMS leg can
+-- reach a handset from it). Assert it on the rows this suite enqueued.
+SELECT public.t4490_service();
+SELECT public.t4490_ok((SELECT count(*) FROM public.notification_outbox WHERE category_key IN ('venue_request_received','venue_request_action_needed','venue_payment_required','venue_request_declined','venue_request_expired')) > 0
+  AND NOT EXISTS (SELECT 1 FROM public.notification_outbox WHERE category_key IN ('venue_request_received','venue_request_action_needed','venue_payment_required','venue_request_declined','venue_request_expired') AND country_code IS NOT NULL),
+  'H-24 the #4490 outbox rows carry an explicit NULL country_code (#1529)');
 SELECT public.t4490_reset();
 ROLLBACK;

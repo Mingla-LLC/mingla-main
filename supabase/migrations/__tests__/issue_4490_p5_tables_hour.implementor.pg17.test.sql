@@ -784,5 +784,12 @@ SELECT public.t4490_expect($q$SELECT public.issue_4490_flexible_window(gen_rando
 SELECT public.t4490_expect($q$SELECT public.issue_4490_table_slot_occupancy(gen_random_uuid(), now(), 2)$q$, '42501', NULL,
   'T-10h anon cannot call the occupancy helper');
 SELECT public.t4490_expect($q$SELECT * FROM public.venue_table_joins$q$, '42501', NULL, 'T-10i anon cannot read joins');
+-- N150 (#4490): issue_4490_enqueue_waitlist_message is a #1529 populating producer that writes an
+-- explicit NULL country_code (the row's contact is an email; no SMS leg can
+-- reach a handset from it). Assert it on the rows this suite enqueued.
+SELECT public.t4490_service();
+SELECT public.t4490_ok((SELECT count(*) FROM public.notification_outbox WHERE category_key LIKE 'venue\_waitlist\_%') > 0
+  AND NOT EXISTS (SELECT 1 FROM public.notification_outbox WHERE category_key LIKE 'venue\_waitlist\_%' AND country_code IS NOT NULL),
+  'T-11 the #4490 outbox rows carry an explicit NULL country_code (#1529)');
 SELECT public.t4490_reset();
 ROLLBACK;

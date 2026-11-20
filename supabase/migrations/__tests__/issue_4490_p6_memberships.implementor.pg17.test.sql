@@ -862,6 +862,13 @@ SELECT public.t4490_reset();
 SELECT public.t4490_as('44906000-0000-4000-8000-000000000005');
 SELECT public.t4490_expect($q$SELECT public.issue_4490_membership_billing_run(now(), 10)$q$, '42501', NULL,
   'M-13f nobody signed in can run the billing clock');
+-- N150 (#4490): issue_4490_member_enqueue and issue_4490_enqueue_offer_event is a #1529 populating producer that writes an
+-- explicit NULL country_code (the row's contact is an email; no SMS leg can
+-- reach a handset from it). Assert it on the rows this suite enqueued.
+SELECT public.t4490_service();
+SELECT public.t4490_ok((SELECT count(*) FROM public.notification_outbox WHERE category_key IN ('venue_membership_paid','venue_membership_renewal','venue_booking_confirmed')) > 0
+  AND NOT EXISTS (SELECT 1 FROM public.notification_outbox WHERE category_key IN ('venue_membership_paid','venue_membership_renewal','venue_booking_confirmed') AND country_code IS NOT NULL),
+  'M-14 the #4490 outbox rows carry an explicit NULL country_code (#1529)');
 SELECT public.t4490_reset();
 
 ROLLBACK;
