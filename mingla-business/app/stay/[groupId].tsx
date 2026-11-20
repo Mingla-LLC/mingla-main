@@ -26,6 +26,7 @@ import {
 } from "../../src/analytics/publicParityWebAdapter";
 import { StayStripePayment } from "../../src/components/stay/StayStripePayment";
 import { useStayReservationGroup } from "../../src/hooks/useStayGuest";
+import { VenueClaimCard, parseVenueHandoff } from "../../src/components/venue/offers/VenueAppHandoff";
 import { StayGuestError, stayGuestService } from "../../src/services/stayGuestService";
 import { StayOtherContactNotice } from "../../src/components/stay/StayOtherContactNotice";
 import { SecurePaymentHandoff } from "../../src/components/offering/LazyPublicParts";
@@ -321,6 +322,18 @@ export default function StayReservationRoute(): React.ReactElement {
           }}
         />
       )}
+      {/* #4490 Explorer W1: the app card (signed-in page; kind stay_group). */}
+      {query.data ? (
+        <VenueClaimCard
+          handoff={parseVenueHandoff(query.data)}
+          kind="booking"
+          email={user?.email ?? null}
+          phone={null}
+          analyticsSurface="stay_reservation"
+          brandSlug={null}
+          venueSlug={null}
+        />
+      ) : null}
       {query.isFetching && !query.isLoading ? (
         <ActivityIndicator color={palette.accent} />
       ) : null}

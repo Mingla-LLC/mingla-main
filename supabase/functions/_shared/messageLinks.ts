@@ -15,7 +15,9 @@ export type BuyerLinkKind =
   | "venue_order"
   | "ticket"
   | "waitlist_offer"
-  // #4490 Explorer W1: venue claim kinds (download fallback kept).
+  // #4490 Explorer W1: venue claim kinds (download fallback kept); stay_group
+  // for the signed-in /stay page's app card.
+  | "stay_group"
   | "venue_booking"
   | "venue_membership"
   | "venue_waitlist"

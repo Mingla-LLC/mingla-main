@@ -9,6 +9,7 @@ import type { ClaimLinkAdmin } from "./claimLink.ts";
 import { resolveBuyerLink } from "./messageLinks.ts";
 
 export type VenueClaimKind =
+  | "stay_group"
   | "venue_booking"
   | "venue_membership"
   | "venue_waitlist"

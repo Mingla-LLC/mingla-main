@@ -91,3 +91,10 @@ describe("#4490 W1 text me the link and the waitlist card", () => {
     expect(read("offers/VisitBooking.tsx")).toMatch(/textLink=\{\{ groupId, token: token \?\? null \}\}/);
   });
 });
+
+describe("#4490 W1 /stay", () => {
+  test("H-8 the signed-in stay page shows the claim card from its own read", () => {
+    const page = fs.readFileSync(path.join(__dirname, "../../../../app/stay/[groupId].tsx"), "utf8");
+    expect(page).toMatch(/<VenueClaimCard\s+handoff=\{parseVenueHandoff\(query\.data\)\}\s+kind="booking"/);
+  });
+});

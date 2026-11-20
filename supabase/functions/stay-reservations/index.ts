@@ -5,6 +5,14 @@ import {
   type StayPaymentSession,
 } from "../_shared/stayPaymentProvider.ts";
 import { emailAdapter } from "../_shared/adapters/emailAdapter.ts";
+import type { ClaimLinkAdmin } from "../_shared/claimLink.ts";
+import {
+  NO_VENUE_CLAIM,
+  type VenueClaim,
+  venueClaimFor,
+  venueFlagOn,
+  withClaim,
+} from "../_shared/venueAppHandoff.ts";
 import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
 const corsHeaders = {
@@ -1157,6 +1165,34 @@ export async function handleStayReservations(
     action: body.action,
     requestId,
   }));
+  // #4490 Explorer W1: the signed-in /stay page still offers the app (spec 06
+  // W1 web item 1). The caller's own read above already proved access; the
+  // claim link is minted with the service client while VENUE_APP_HANDOFF is
+  // on (kind stay_group), else { shortUrl: null, code: null }.
+  if (
+    body.action === "get_group" && data && typeof data === "object" &&
+    !Array.isArray(data)
+  ) {
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    let claim: VenueClaim = NO_VENUE_CLAIM;
+    if (serviceKey && typeof payload.groupId === "string") {
+      const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
+        createClient(url, serviceKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        }) as unknown as RpcClient;
+      claim = await venueClaimFor(
+        service as unknown as ClaimLinkAdmin,
+        await venueFlagOn(service, "VENUE_APP_HANDOFF"),
+        "stay_group",
+        payload.groupId,
+      );
+    }
+    return json(200, {
+      kind: "success",
+      data: withClaim(data, claim),
+      requestId,
+    });
+  }
   return json(200, { kind: "success", data, requestId });
 }
 
