@@ -1,54 +1,52 @@
 import React from "react";
-import { Platform } from "react-native";
 
 import { DateField } from "../DateField";
 
-type PickerProps = {
-  value: Date;
-  onChange: (event: { type: string }, date?: Date) => void;
-};
+jest.mock("../Sheet", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Pressable } = require("react-native") as typeof import("react-native");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const R = require("react") as typeof React;
+  return {
+    Sheet: ({ visible, onClose, testID, children }: { visible: boolean; onClose: () => void; testID?: string; children: React.ReactNode }) =>
+      visible
+        ? R.createElement(
+            R.Fragment,
+            null,
+            R.createElement(Pressable, { testID: testID?.replace(/-sheet$/, "-close"), onPress: onClose }),
+            children,
+          )
+        : null,
+  };
+});
+jest.mock("../Icon", () => ({ Icon: () => null }));
 
-let lastPickerProps: PickerProps | null = null;
-
-jest.mock("@react-native-community/datetimepicker", () => ({
-  __esModule: true,
-  default: (props: PickerProps) => {
-    lastPickerProps = props;
-    return null;
-  },
-}));
-
-// react-test-renderer intentionally has no declarations in this workspace.
+type Node = { props: Record<string, unknown> };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => {
-    root: {
-      findAll: (
-        predicate: (n: { props: Record<string, unknown> }) => boolean,
-      ) => { props: Record<string, unknown> }[];
-    };
+    root: { findAll: (predicate: (n: Node) => boolean) => Node[] };
     unmount: () => void;
   };
-  act: (callback: () => void) => void;
+  act: (callback: () => void | Promise<void>) => Promise<void> & void;
 };
 
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-const setOS = (os: "ios" | "android"): void => {
-  (Platform as { OS: string }).OS = os;
-};
+type Tree = ReturnType<typeof TestRenderer.create>;
 
-const mount = (onChangeValue: jest.Mock) => {
-  let tree!: ReturnType<typeof TestRenderer.create>;
-  TestRenderer.act(() => {
+const mount = async (onChangeValue: jest.Mock, value = "2027-03-12"): Promise<Tree> => {
+  let tree!: Tree;
+  await TestRenderer.act(async () => {
     tree = TestRenderer.create(
       <DateField
         label="Start"
         accessibilityLabel="Start date"
-        value="2027-03-12"
+        value={value}
         onChangeValue={onChangeValue}
+        timeZone="Africa/Lagos"
         testID="df"
       />,
     );
@@ -56,79 +54,59 @@ const mount = (onChangeValue: jest.Mock) => {
   return tree;
 };
 
-const press = (
-  tree: ReturnType<typeof TestRenderer.create>,
-  testID: string,
-): void => {
-  TestRenderer.act(() => {
+const press = async (tree: Tree, testID: string): Promise<void> => {
+  await TestRenderer.act(async () => {
     const hit = tree.root.findAll(
       (n) => n.props.testID === testID && typeof n.props.onPress === "function",
     )[0];
+    if (hit === undefined) throw new Error(`nothing pressable with testID ${testID}`);
     (hit.props.onPress as () => void)();
   });
 };
 
-const fire = (type: string, date?: Date): void => {
-  TestRenderer.act(() => {
-    lastPickerProps?.onChange({ type }, date);
-  });
-};
+const open = (tree: Tree): boolean =>
+  tree.root.findAll((n) => n.props.testID === "df-calendar-next").length > 0;
 
-describe("issue #4523 DateField month navigation never closes the picker", () => {
-  beforeEach(() => {
-    lastPickerProps = null;
-  });
-
-  it("iOS: native events never commit or close; Done commits the last draft once", () => {
-    setOS("ios");
+describe("issue #4523 Host DateField uses the Mingla calendar", () => {
+  it("opens the calendar; changing month many times never closes it or commits", async () => {
     const onChangeValue = jest.fn();
-    const tree = mount(onChangeValue);
-    press(tree, "df");
-    expect(lastPickerProps).not.toBeNull();
+    const tree = await mount(onChangeValue);
+    expect(open(tree)).toBe(false);
+    await press(tree, "df");
+    expect(open(tree)).toBe(true);
 
-    fire("set", new Date(2027, 3, 12));
-    fire("set", new Date(2027, 4, 12));
-    fire("dismissed");
-    fire("set", new Date(2027, 5, 12));
+    for (let i = 0; i < 14; i += 1) await press(tree, "df-calendar-next");
+    for (let i = 0; i < 14; i += 1) await press(tree, "df-calendar-prev");
 
-    expect(lastPickerProps).not.toBeNull();
+    expect(open(tree)).toBe(true);
     expect(onChangeValue).not.toHaveBeenCalled();
-
-    press(tree, "df-done");
-    expect(onChangeValue).toHaveBeenCalledTimes(1);
-    expect(onChangeValue).toHaveBeenCalledWith("2027-06-12");
-    // Picker unmounted: no Done button left.
-    expect(tree.root.findAll((n) => n.props.testID === "df-done")).toHaveLength(0);
   });
 
-  it("iOS: Cancel closes without committing", () => {
-    setOS("ios");
+  it("a day tap commits YYYY-MM-DD once and closes", async () => {
     const onChangeValue = jest.fn();
-    const tree = mount(onChangeValue);
-    press(tree, "df");
-    fire("set", new Date(2027, 4, 12));
-    press(tree, "df-cancel");
-    expect(onChangeValue).not.toHaveBeenCalled();
-    expect(tree.root.findAll((n) => n.props.testID === "df-cancel")).toHaveLength(0);
-  });
-
-  it("Android: set commits and closes; dismissed closes without committing", () => {
-    setOS("android");
-    const onChangeValue = jest.fn();
-    let tree = mount(onChangeValue);
-    press(tree, "df");
-    fire("set", new Date(2027, 3, 20));
+    const tree = await mount(onChangeValue);
+    await press(tree, "df");
+    await press(tree, "df-calendar-next");
+    await press(tree, "df-calendar-day-2027-04-20");
     expect(onChangeValue).toHaveBeenCalledTimes(1);
     expect(onChangeValue).toHaveBeenCalledWith("2027-04-20");
-    TestRenderer.act(() => tree.unmount());
+    expect(open(tree)).toBe(false);
+  });
 
-    onChangeValue.mockClear();
-    lastPickerProps = null;
-    tree = mount(onChangeValue);
-    press(tree, "df");
-    expect(lastPickerProps).not.toBeNull();
-    fire("dismissed");
+  it("closing without a pick leaves the value alone", async () => {
+    const onChangeValue = jest.fn();
+    const tree = await mount(onChangeValue);
+    await press(tree, "df");
+    await press(tree, "df-close");
     expect(onChangeValue).not.toHaveBeenCalled();
-    expect(tree.root.findAll((n) => n.props.testID === "df-done")).toHaveLength(0);
+    expect(open(tree)).toBe(false);
+  });
+
+  it("an unset value shows the placeholder, never today's date", async () => {
+    const tree = await mount(jest.fn(), "");
+    const texts = tree.root
+      .findAll((n) => typeof n.props.children === "string")
+      .map((n) => n.props.children as string);
+    expect(texts).toContain("Choose a date");
   });
 });

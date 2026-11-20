@@ -36,6 +36,10 @@ export type CalendarIconName = "calendar" | "chevron-left" | "chevron-right" | "
 export interface CalendarSheetProps {
   visible: boolean;
   onClose: () => void;
+  /** The dialog title. The host's sheet renders it, with its own close button. */
+  title: string;
+  /** Accessibility label for the close button. */
+  closeLabel: string;
   children: ReactNode;
   testID?: string;
 }
@@ -64,6 +68,8 @@ export interface CalendarCommon {
   placeholder?: string;
   disabled?: boolean;
   error?: string | null;
+  /** Error border without a message (callers that show their own text). */
+  invalid?: boolean;
   hint?: string;
   weekStartsOn?: 0 | 1;
   testID?: string;

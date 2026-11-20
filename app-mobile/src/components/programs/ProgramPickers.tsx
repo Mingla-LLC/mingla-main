@@ -1,15 +1,18 @@
 /**
  * #3872 — native pickers for the Creator and Local screens. Nothing here is a
  * typed date, time, currency or country: dates use the platform date picker,
- * ranges and in-window days use a small calendar grid, choices open a sheet.
+ * dates, ranges and in-window days use the shared Mingla calendar
+ * (@mingla/calendar), choices open a sheet.
  */
 import React, { useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { CalendarEmbed, CalendarField, DateRangeField as CalendarDateRangeField } from '@mingla/calendar/CalendarField';
 import { Icon } from '../ui/Icon';
 import { BottomSheetTextInput } from '../ui/BaseBottomSheet';
-import { PROGRAM_COLORS as C, ProgramButton, ProgramSheet, SelectField, programStyles as s } from './ProgramUi';
-import { formatDateRange, formatShortDate, formatTime, parseDay, toDayString } from '../../utils/programFormat';
+import { PROGRAM_COLORS as C, ProgramSheet, SelectField, programStyles as s } from './ProgramUi';
+import { formatTime, toDayString } from '../../utils/programFormat';
+import { EXPLORER_CALENDAR_CONFIG, deviceTimeZone, useExplorerCalendarLabels } from '../calendar/explorerCalendarConfig';
 
 // ── Choice sheet (dropdowns) ───────────────────────────────────────────────
 
@@ -63,33 +66,18 @@ export function ChoiceField<T extends string>({ label, title, placeholder, optio
   </>;
 }
 
-// ── Date (native picker) ───────────────────────────────────────────────────
+// ── Date (Mingla calendar) ─────────────────────────────────────────────────
 
-export function DateField({ label, value, onChange, placeholder = 'Choose date', minimumDate, maximumDate, error, hint, sheetTitle, initialDate }: {
+// #4523: dates are picked on the shared Mingla calendar (@mingla/calendar), the
+// same one Host uses. Changing month never closes it or moves the value.
+export function DateField({ label, value, onChange, placeholder = 'Choose date', minimumDate, maximumDate, error, hint, sheetTitle }: {
   label?: string; value: string | null; onChange: (day: string) => void; placeholder?: string; minimumDate?: Date; maximumDate?: Date;
-  error?: string | null; hint?: string; sheetTitle?: string; initialDate?: Date;
+  error?: string | null; hint?: string; sheetTitle?: string;
 }): React.ReactElement {
-  const [open, setOpen] = useState(false);
-  const selected = parseDay(value) ?? initialDate ?? maximumDate ?? new Date();
-  const [draft, setDraft] = useState<Date>(selected);
-  const display = value ? formatShortDate(value, new Date(0)) : null;
-  const openPicker = (): void => { setDraft(parseDay(value) ?? initialDate ?? maximumDate ?? new Date()); setOpen(true); };
-  const onAndroid = (event: DateTimePickerEvent, date?: Date): void => {
-    setOpen(false);
-    if (event.type === 'set' && date) onChange(toDayString(date));
-  };
-  return <>
-    <SelectField label={label} value={display} placeholder={placeholder} onPress={openPicker} error={error} icon="calendar-outline" />
-    {hint && !error ? <Text style={s.fieldHint}>{hint}</Text> : null}
-    {Platform.OS === 'android' ? (open ? <DateTimePicker value={draft} mode="date" display="default" minimumDate={minimumDate} maximumDate={maximumDate} onChange={onAndroid} /> : null) : (
-      <ProgramSheet visible={open} onClose={() => setOpen(false)} title={sheetTitle ?? label ?? 'Choose a date'} snapPoints={['58%']}
-        footer={<ProgramButton label="Done" onPress={() => { onChange(toDayString(draft)); setOpen(false); }} />}>
-        <DateTimePicker value={draft} mode="date" display="spinner" themeVariant="dark" textColor="#FFFFFF" minimumDate={minimumDate} maximumDate={maximumDate}
-          onChange={(_e, date) => { if (date) setDraft(date); }} style={styles.spinner} />
-        {hint ? <Text style={s.copy}>{hint}</Text> : null}
-      </ProgramSheet>
-    )}
-  </>;
+  const labels = useExplorerCalendarLabels();
+  return <CalendarField label={label ?? sheetTitle ?? labels.choose_date} value={value ?? ''} onChange={(day) => { if (day !== '') onChange(day); }}
+    placeholder={placeholder} min={minimumDate ? toDayString(minimumDate) : undefined} max={maximumDate ? toDayString(maximumDate) : undefined}
+    error={error} hint={hint} timeZone={deviceTimeZone()} labels={labels} config={EXPLORER_CALENDAR_CONFIG} />;
 }
 
 // ── Time ───────────────────────────────────────────────────────────────────
@@ -120,75 +108,27 @@ export function Chip({ label, selected = false, onPress, icon, disabled }: { lab
   </Pressable>;
 }
 
-// ── Calendar grid (single day inside a window, or a range) ────────────────
+// ── Calendar (single day inside a window, or a range) ─────────────────────
 
-const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-
-function monthMatrix(year: number, month: number): Array<Array<Date | null>> {
-  const first = new Date(year, month, 1);
-  const lead = (first.getDay() + 6) % 7; // Monday first
-  const days = new Date(year, month + 1, 0).getDate();
-  const cells: Array<Date | null> = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => new Date(year, month, i + 1))];
-  while (cells.length % 7) cells.push(null);
-  const rows: Array<Array<Date | null>> = [];
-  for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
-  return rows;
-}
-
-const dayKey = (d: Date): string => toDayString(d);
-
-export function CalendarGrid({ start, end, onPick, minDate, maxDate, mode = 'single' }: {
-  start: string | null; end?: string | null; onPick: (day: string) => void; minDate?: string | null; maxDate?: string | null; mode?: 'single' | 'range';
+/** One day inside a window, embedded in the screen. The month arrows only move the view. */
+export function CalendarGrid({ start, onPick, minDate, maxDate }: {
+  start: string | null; onPick: (day: string) => void; minDate?: string | null; maxDate?: string | null;
 }): React.ReactElement {
-  const initial = parseDay(start) ?? parseDay(minDate) ?? new Date();
-  const [cursor, setCursor] = useState(new Date(initial.getFullYear(), initial.getMonth(), 1));
-  const min = parseDay(minDate);
-  const max = parseDay(maxDate);
-  const a = parseDay(start);
-  const b = mode === 'range' ? parseDay(end) : a;
-  const rows = monthMatrix(cursor.getFullYear(), cursor.getMonth());
-  const title = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(cursor);
-  const canPrev = !min || new Date(cursor.getFullYear(), cursor.getMonth(), 0) >= new Date(min.getFullYear(), min.getMonth(), 1);
-  const canNext = !max || new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1) <= max;
-  return <View style={styles.calendar}>
-    <View style={s.rowLine}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Previous month" disabled={!canPrev} onPress={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} hitSlop={10} style={!canPrev && s.disabled}><Icon name="chevron-back" size={18} color={C.text} /></Pressable>
-      <Text style={s.strong}>{title}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Next month" disabled={!canNext} onPress={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} hitSlop={10} style={!canNext && s.disabled}><Icon name="chevron-forward" size={18} color={C.text} /></Pressable>
-    </View>
-    <View style={styles.week}>{WEEKDAYS.map((d, i) => <Text key={i} style={styles.weekday}>{d}</Text>)}</View>
-    {rows.map((row, r) => <View key={r} style={styles.week}>{row.map((day, i) => {
-      if (!day) return <View key={i} style={styles.cell} />;
-      const outside = (min && day < min) || (max && day > max);
-      const isStart = a && dayKey(day) === dayKey(a);
-      const isEnd = b && dayKey(day) === dayKey(b);
-      const inRange = a && b && day > a && day < b;
-      return <Pressable key={i} accessibilityRole="button" accessibilityLabel={formatShortDate(day)} accessibilityState={{ selected: Boolean(isStart || isEnd), disabled: Boolean(outside) }}
-        disabled={Boolean(outside)} onPress={() => onPick(dayKey(day))}
-        style={[styles.cell, inRange && styles.cellRange, (isStart || isEnd) && styles.cellOn, outside && styles.cellOff]}>
-        <Text style={[styles.cellText, (isStart || isEnd) && { color: '#171411', fontWeight: '900' }, outside && { color: C.faint }]}>{day.getDate()}</Text>
-      </Pressable>;
-    })}</View>)}
-  </View>;
+  const labels = useExplorerCalendarLabels();
+  return <CalendarEmbed mode="single" label={labels.choose_date} value={start ?? ''} onChange={(day) => { if (day !== '') onPick(day); }}
+    min={minDate ?? undefined} max={maxDate ?? undefined} timeZone={deviceTimeZone()} labels={labels} config={EXPLORER_CALENDAR_CONFIG}
+    onDone={noop} onCancel={noop} />;
 }
 
-/** Start/end range picked on one calendar: first tap starts, second tap ends. */
+const noop = (): void => undefined;
+
+/** Start/end range picked on one calendar: first tap starts, second tap ends, Done commits. */
 export function DateRangeField({ label, start, end, onChange, minDate, maxDate, error }: {
   label?: string; start: string | null; end: string | null; onChange: (range: { start: string; end: string }) => void; minDate?: string | null; maxDate?: string | null; error?: string | null;
 }): React.ReactElement {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<{ start: string | null; end: string | null }>({ start, end });
-  const pick = (day: string): void => {
-    setDraft((cur) => (!cur.start || cur.end || day < cur.start ? { start: day, end: null } : { start: cur.start, end: day }));
-  };
-  return <>
-    <SelectField label={label} value={start && end ? formatDateRange(start, end) : null} placeholder="Choose dates" icon="calendar-outline" onPress={() => { setDraft({ start, end }); setOpen(true); }} error={error} />
-    <ProgramSheet visible={open} onClose={() => setOpen(false)} title={label ?? 'Choose dates'} snapPoints={['72%']}
-      footer={<ProgramButton label={draft.start && draft.end ? `Use ${formatDateRange(draft.start, draft.end)}` : 'Pick a start and end date'} disabled={!draft.start || !draft.end}
-        onPress={() => { if (draft.start && draft.end) { onChange({ start: draft.start, end: draft.end }); setOpen(false); } }} />}>
-      <CalendarGrid mode="range" start={draft.start} end={draft.end} onPick={pick} minDate={minDate} maxDate={maxDate} />
-    </ProgramSheet>
-  </>;
+  const labels = useExplorerCalendarLabels();
+  return <CalendarDateRangeField label={label ?? labels.choose_dates} value={{ start: start ?? '', end: end ?? '' }} onChange={onChange} unit="days"
+    min={minDate ?? undefined} max={maxDate ?? undefined} error={error} timeZone={deviceTimeZone()} labels={labels} config={EXPLORER_CALENDAR_CONFIG} />;
 }
 
 // ── Stars, segmented, check rows ───────────────────────────────────────────
@@ -232,19 +172,10 @@ const styles = StyleSheet.create({
   search: { marginBottom: 0 },
   choice: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 12, borderRadius: 12 },
   choiceOn: { backgroundColor: C.accentSoft },
-  spinner: { alignSelf: 'stretch', height: 216 },
   timeWrap: { width: '100%', alignItems: 'center' },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 38, borderRadius: 999, borderWidth: 1, borderColor: C.border, backgroundColor: C.field, paddingHorizontal: 14 },
   chipOn: { borderColor: C.accentBorder, backgroundColor: C.accentSoft },
   chipText: { color: C.text, fontSize: 14, fontWeight: '700' },
-  calendar: { gap: 8 },
-  week: { flexDirection: 'row' },
-  weekday: { flex: 1, textAlign: 'center', color: C.faint, fontSize: 12, fontWeight: '700' },
-  cell: { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 999, margin: 1 },
-  cellOn: { backgroundColor: C.accent },
-  cellRange: { backgroundColor: C.accentSoft, borderRadius: 8 },
-  cellOff: { opacity: 0.4 },
-  cellText: { color: C.text, fontSize: 15, fontWeight: '600' },
   stars: { flexDirection: 'row', gap: 6 },
   segmented: { flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: C.field, borderWidth: 1, borderColor: C.border },
   segment: { flex: 1, minHeight: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },

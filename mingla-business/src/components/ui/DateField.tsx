@@ -1,45 +1,26 @@
 /**
- * DateField — the business app's ONE Platform-gated calendar date control.
- * Issue #1503 [stay-date-pickers], SPEC §4.5.
+ * DateField — the Host app's calendar date control.
+ * Issue #1503 [stay-date-pickers] (origin), reworked for #4523 [one-calendar].
  *
- * WHY THIS EXISTS: issue #1027 shipped `WebDateTimeInput`, a real visible HTML5
- * input, but it is WEB-ONLY by construction (raw DOM `<input>`, no
- * `Platform.OS` branch). Every caller therefore has to hand-roll the other half
- * of the pair — `@react-native-community/datetimepicker` on iOS/Android — and
- * the Stay surfaces simply never did, leaving operators typing `2026-12-24`
- * into a numeric keypad. This component closes that generically:
+ * Since #4523 this is a thin wrapper over `@mingla/calendar`'s CalendarField,
+ * so every Host surface (iOS, Android, web) shows the same Mingla calendar:
+ * changing month never closes it, a day tap commits once and closes. The OS
+ * date spinner / inline picker and the browser `<input type="date">` this file
+ * used to render are gone.
  *
- *     Platform.OS === "web"  -> <WebDateTimeInput type="date" … />   (reused)
- *     Platform.OS !== "web"  -> Pressable + <DateTimePicker mode="date" … />
- *
- * VALUE CONTRACT (binding, SPEC §5): `value` and `onChangeValue` are ALWAYS a
+ * VALUE CONTRACT (unchanged): `value` and `onChangeValue` are ALWAYS a
  * venue/operator-local calendar date `YYYY-MM-DD`, or `""` for unset. A `Date`
- * object never crosses this boundary. All parsing/formatting is delegated to
- * `@mingla/brand-rendering/stayDateRules` — the app -> package direction is the
- * legal one, and it is the whole point of that shared module: no surface
- * computes a date itself.
+ * never crosses this boundary.
  *
- * A top-level `import DateTimePicker` is deliberate and matches the six
- * existing #1027 consumers (e.g. trip/BookingDeadlinePicker.tsx:21-23), which
- * import it unconditionally and gate at render.
- *
- * INVARIANTS: I-PROPOSED-1027-WEB-NATIVE-DATE-INPUT,
- *             I-PROPOSED-1503-STAY-DATES-ARE-PICKED-NOT-TYPED.
+ * INVARIANT: I-4523-DATES-ARE-PICKED (declared in the strict-grep gate).
  */
 
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
-import {
-  formatStayDate,
-  formatStayDateLong,
-  parseStayDate,
-} from "@mingla/brand-rendering/stayDateRules";
-import React, { useCallback, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { CalendarField } from "@mingla/calendar/CalendarField";
+import React from "react";
+import { Platform } from "react-native";
 
-import { color, radius, type } from "../../constants/designSystem";
-import { WebDateTimeInput } from "./WebDateTimeInput";
+import { detectDeviceTimezone } from "../../utils/timezones";
+import { HOST_CALENDAR_CONFIG } from "./calendarHostConfig";
 
 export interface DateFieldProps {
   /** Visible label rendered above the control. */
@@ -54,11 +35,16 @@ export interface DateFieldProps {
   min?: string;
   /** Optional inclusive upper bound, `YYYY-MM-DD`. */
   max?: string;
-  /** Placeholder shown on native when `value` is `""`. */
+  /** Placeholder shown when `value` is `""`. */
   placeholder?: string;
   disabled?: boolean;
   hasError?: boolean;
   testID?: string;
+  /**
+   * IANA zone the date is in (brand or venue zone). Drives "today" and the
+   * zone line in the calendar footer.
+   */
+  timeZone?: string;
 }
 
 export function DateField({
@@ -68,173 +54,32 @@ export function DateField({
   accessibilityLabel,
   min,
   max,
-  placeholder = "Choose a date",
+  placeholder,
   disabled = false,
   hasError = false,
   testID,
+  // [TRANSITIONAL] falls back to the device zone — the seven current callers do
+  // not pass a brand or venue zone yet; exit: each caller passes `timeZone`
+  // (the #4523 later slices migrate them).
+  timeZone = detectDeviceTimezone(),
 }: DateFieldProps): React.ReactElement {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  // #4523 slice 1 interim — replaced by @mingla/calendar in slice 3.
-  // iOS only: the inline calendar writes here, never to the caller. Month and
-  // year changes raise the same native event as a day tap, so the picker may
-  // not commit or close on an event; only Done commits and only Done/Cancel close.
-  const [draft, setDraft] = useState<Date | null>(null);
-
-  const closePicker = useCallback((): void => {
-    setPickerOpen(false);
-    setDraft(null);
-  }, []);
-
-  const handleNativePick = useCallback(
-    (event: DateTimePickerEvent, selected?: Date): void => {
-      if (Platform.OS === "ios") {
-        // The inline calendar stays on screen. A "dismissed" event is not a
-        // close request here either (it can fire while paging months).
-        if (event.type === "set" && selected !== undefined) setDraft(selected);
-        return;
-      }
-      // Android's dialog owns its own lifecycle — close on every event,
-      // including a back-press dismissal.
-      setPickerOpen(false);
-      if (event.type === "dismissed" || selected === undefined) return;
-      onChangeValue(formatStayDate(selected));
-    },
-    [onChangeValue],
-  );
-
-  if (Platform.OS === "web") {
-    return (
-      <View style={styles.host}>
-        <Text style={styles.label}>{label}</Text>
-        <WebDateTimeInput
-          type="date"
-          value={value}
-          min={min}
-          max={max}
-          disabled={disabled}
-          hasError={hasError}
-          ariaLabel={accessibilityLabel}
-          testID={testID}
-          onChangeValue={onChangeValue}
-        />
-      </View>
-    );
-  }
-
-  const anchor =
-    (value === "" ? null : parseStayDate(value)) ??
-    (min === undefined ? null : parseStayDate(min)) ??
-    new Date();
-
   return (
-    <View style={styles.host}>
-      <Text style={styles.label}>{label}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${accessibilityLabel}, currently ${formatStayDateLong(value)}`}
-        accessibilityState={{ disabled }}
-        disabled={disabled}
-        onPress={() => setPickerOpen(true)}
-        testID={testID}
-        style={[
-          styles.row,
-          hasError ? styles.rowError : null,
-          disabled ? styles.rowDisabled : null,
-        ]}
-      >
-        <Text style={value === "" ? styles.rowPlaceholder : styles.rowValue}>
-          {value === "" ? placeholder : formatStayDateLong(value)}
-        </Text>
-      </Pressable>
-      {pickerOpen ? (
-        <DateTimePicker
-          value={draft ?? anchor}
-          mode="date"
-          display={Platform.OS === "ios" ? "inline" : "default"}
-          minimumDate={min === undefined ? undefined : (parseStayDate(min) ?? undefined)}
-          maximumDate={max === undefined ? undefined : (parseStayDate(max) ?? undefined)}
-          themeVariant="dark"
-          onChange={handleNativePick}
-        />
-      ) : null}
-      {pickerOpen && Platform.OS === "ios" ? (
-        <View style={styles.actions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Cancel, ${accessibilityLabel}`}
-            onPress={closePicker}
-            testID={testID === undefined ? undefined : `${testID}-cancel`}
-            style={styles.action}
-          >
-            <Text style={styles.actionText}>Cancel</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Done, ${accessibilityLabel}`}
-            onPress={() => {
-              onChangeValue(formatStayDate(draft ?? anchor));
-              closePicker();
-            }}
-            testID={testID === undefined ? undefined : `${testID}-done`}
-            style={styles.action}
-          >
-            <Text style={styles.actionText}>Done</Text>
-          </Pressable>
-        </View>
-      ) : null}
-    </View>
+    <CalendarField
+      label={label}
+      accessibilityLabel={accessibilityLabel}
+      value={value}
+      onChange={onChangeValue}
+      min={min}
+      max={max}
+      placeholder={placeholder}
+      disabled={disabled}
+      invalid={hasError}
+      testID={testID}
+      timeZone={timeZone}
+      clearable={Platform.OS === "web"}
+      config={HOST_CALENDAR_CONFIG}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  host: {
-    gap: 2,
-  },
-  label: {
-    ...type.small,
-    color: color.text2,
-  },
-  // Mirrors WebDateTimeInput's BASE_STYLE so the two halves of the pair look
-  // identical: 48pt tall, 1px glass border, dark glass fill, 16px primary text.
-  row: {
-    minHeight: 48,
-    justifyContent: "center",
-    paddingHorizontal: 14,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: color.line,
-    backgroundColor: color.fill.inset,
-  },
-  rowError: {
-    borderColor: color.errorText,
-  },
-  rowDisabled: {
-    opacity: 0.45,
-  },
-  rowValue: {
-    fontSize: 16,
-    color: color.text1,
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 8,
-  },
-  action: {
-    minHeight: 44,
-    minWidth: 44,
-    justifyContent: "center",
-    paddingHorizontal: 14,
-  },
-  actionText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: color.text1,
-  },
-  rowPlaceholder: {
-    fontSize: 16,
-    color: color.text4,
-  },
-});
 
 export default DateField;

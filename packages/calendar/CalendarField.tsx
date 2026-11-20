@@ -7,7 +7,7 @@
  * the shared modules into the eager chunk).
  */
 import React, { Suspense, useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 
 import { useCalendarConfig } from "./config";
 import { parseCalendarDate } from "./core/calendarDate";
@@ -46,7 +46,7 @@ interface ShellProps extends CalendarCommon {
 }
 
 function Shell(props: ShellProps): React.ReactElement {
-  const { label, accessibilityLabel, displayText, disabled = false, error = null, hint, testID, mode } = props;
+  const { label, accessibilityLabel, displayText, disabled = false, error = null, invalid = false, hint, testID, mode } = props;
   const config: CalendarConfig = useCalendarConfig(props.config);
   const styles: CalendarStyles = useMemo(() => createCalendarStyles(config.tokens), [config.tokens]);
   const labels: CalendarLabels = useMemo(() => mergeLabels(props.labels), [props.labels]);
@@ -80,7 +80,7 @@ function Shell(props: ShellProps): React.ReactElement {
         onHoverIn={preloadCalendarSurface}
         onFocus={preloadCalendarSurface}
         testID={testID}
-        style={[styles.row, error !== null && error !== "" && styles.rowError, disabled && styles.rowDisabled]}
+        style={[styles.row, (invalid || (error !== null && error !== "")) && styles.rowError, disabled && styles.rowDisabled]}
       >
         <Text style={filled ? styles.rowValue : styles.rowPlaceholder} numberOfLines={1}>
           {filled ? displayText : placeholder}
@@ -95,28 +95,15 @@ function Shell(props: ShellProps): React.ReactElement {
         <Text style={styles.hintText}>{hint}</Text>
       ) : null}
       {props.clearButton ?? null}
-      <Sheet visible={open} onClose={close} testID={testID === undefined ? undefined : `${testID}-sheet`}>
+      <Sheet
+        visible={open}
+        onClose={close}
+        title={title}
+        closeLabel={labels.close}
+        testID={testID === undefined ? undefined : `${testID}-sheet`}
+      >
         {open ? (
-          <View style={styles.sheetBody}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle} accessibilityRole="header">
-                {title}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={labels.close}
-                hitSlop={8}
-                onPress={close}
-                testID={testID === undefined ? undefined : `${testID}-close`}
-                style={styles.navButton}
-              >
-                {renderIcon !== undefined ? (
-                  renderIcon("close", config.tokens.text, 18)
-                ) : (
-                  <Text style={styles.navGlyph}>×</Text>
-                )}
-              </Pressable>
-            </View>
+          <ScrollView contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
             <Suspense
               fallback={
                 <View style={styles.loading}>
@@ -126,12 +113,16 @@ function Shell(props: ShellProps): React.ReactElement {
             >
               {props.renderSurface(close)}
             </Suspense>
-          </View>
+          </ScrollView>
         ) : null}
       </Sheet>
     </View>
   );
 }
+
+/** The surface's own testID prefix; never the trigger's, so ids stay unique. */
+const surfaceId = (testID: string | undefined): string | undefined =>
+  testID === undefined ? undefined : `${testID}-calendar`;
 
 type CommonOnly = Omit<CalendarCommon, "label"> & { label: string };
 
@@ -158,7 +149,7 @@ export function CalendarField(props: CalendarFieldProps): React.ReactElement {
       mode="single"
       displayText={dateText(value, common.locale)}
       renderSurface={(close) => (
-        <LazySurface {...common} mode="single" value={value} onChange={onChange} clearable={clearable} onDone={close} onCancel={close} />
+        <LazySurface {...common} testID={surfaceId(common.testID)} mode="single" value={value} onChange={onChange} clearable={clearable} onDone={close} onCancel={close} />
       )}
     />
   );
@@ -180,7 +171,7 @@ export function DobField(props: DobFieldProps): React.ReactElement {
       mode="dob"
       displayText={dateText(value, common.locale)}
       renderSurface={(close) => (
-        <LazySurface {...common} mode="dob" value={value} onChange={onChange} maxAge={maxAge} minAge={minAge} onDone={close} onCancel={close} />
+        <LazySurface {...common} testID={surfaceId(common.testID)} mode="dob" value={value} onChange={onChange} maxAge={maxAge} minAge={minAge} onDone={close} onCancel={close} />
       )}
     />
   );
@@ -217,6 +208,7 @@ export function DateRangeField(props: DateRangeFieldProps): React.ReactElement {
       renderSurface={(close) => (
         <LazySurface
           {...common}
+          testID={surfaceId(common.testID)}
           mode="range"
           value={value}
           onChange={onChange}
@@ -256,6 +248,7 @@ export function DateTimeField(props: DateTimeFieldProps): React.ReactElement {
       renderSurface={(close) => (
         <LazySurface
           {...common}
+          testID={surfaceId(common.testID)}
           mode="datetime"
           value={value}
           onChange={onChange}
@@ -267,5 +260,27 @@ export function DateTimeField(props: DateTimeFieldProps): React.ReactElement {
         />
       )}
     />
+  );
+}
+
+/**
+ * The bare surface for embedding inside a screen's own layout (a plan panel, a
+ * "pick a day" step). Same lazy chunk as the fields; the loading state is a
+ * spinner, never a blank gap.
+ */
+export function CalendarEmbed(props: CalendarSurfaceProps): React.ReactElement {
+  const config = useCalendarConfig(props.config);
+  const styles = useMemo(() => createCalendarStyles(config.tokens), [config.tokens]);
+  const labels = useMemo(() => mergeLabels(props.labels), [props.labels]);
+  return (
+    <Suspense
+      fallback={
+        <View style={styles.loading}>
+          <ActivityIndicator accessibilityLabel={labels.loading} />
+        </View>
+      }
+    >
+      <LazySurface {...props} />
+    </Suspense>
   );
 }
