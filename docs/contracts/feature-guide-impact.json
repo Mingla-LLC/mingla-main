@@ -257,7 +257,11 @@
         "mingla-business/src/hooks/useRevealedFieldErrors.ts",
         "mingla-business/src/payments/openPaymentPage.ts",
         "mingla-business/src/payments/paymentSheetAppearance.ts",
-        "supabase/functions/_shared/stripeWebhookRetry.ts"
+        "supabase/functions/_shared/stripeWebhookRetry.ts",
+        "mingla-business/api/event-calendar.js",
+        "mingla-business/src/components/event/AddToCalendarChooser.tsx",
+        "mingla-business/src/components/event/useAddToCalendar.tsx",
+        "mingla-business/src/constants/publicUrls.ts"
       ]
     },
     {
@@ -3495,7 +3499,10 @@
         "packages/offering-rendering/OfferingGlassContext.tsx",
         "packages/offering-rendering/OfferingSectionTitle.tsx",
         "packages/offering-rendering/offeringCalendar.cjs",
-        "packages/offering-rendering/offeringFrameMetrics.ts"
+        "packages/offering-rendering/offeringFrameMetrics.ts",
+        "packages/offering-rendering/calendarChooser.ts",
+        "packages/offering-rendering/offeringCalendar.d.cts",
+        "packages/offering-rendering/offeringCalendar.ts"
       ]
     },
     {
