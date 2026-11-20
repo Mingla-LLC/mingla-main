@@ -4530,6 +4530,7 @@
       "capability_key": "account-notification-settings",
       "paths": [
         "mingla-business/app/account/notifications.tsx",
+        "app-mobile/src/services/permissionOrchestrator.ts",
         "app-mobile/src/i18n/locales/ar/settings.json",
         "app-mobile/src/i18n/locales/bin/settings.json",
         "app-mobile/src/i18n/locales/bn/settings.json",
