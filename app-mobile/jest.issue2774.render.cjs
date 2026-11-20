@@ -22,6 +22,7 @@ module.exports = {
       __dirname,
       "src/test/reactI18next.render.mock.cjs",
     ),
+    "^@mingla/calendar/(.*)$": path.resolve(__dirname, "../packages/calendar/$1"),
     "^@mingla/offering-rendering/(.*)$": path.resolve(
       __dirname,
       "../packages/offering-rendering/$1",
@@ -202,5 +203,10 @@ module.exports = {
     // issue #4473 device pass — one dark Done bar, in-sheet country picker,
     // per-kind shared notes, channel hint, keyboard closed before results.
     "**/__tests__/issue_4473_device_fixes.implementor.render.test.tsx",
+    // issue #4523 — the program pickers use the shared Mingla calendar: month
+    // changes never close it, a day tap picks once, a range commits on Done.
+    "**/__tests__/issue_4523_program_pickers_calendar.implementor.render.test.tsx",
+    // issue #4523 — Creator date of birth: year grid, three taps, 18+ only.
+    "**/__tests__/issue_4523_creator_dob.implementor.render.test.tsx",
   ],
 };

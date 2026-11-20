@@ -98,6 +98,7 @@
     "@mingla/brand-assets": "file:../packages/brand-assets",
     "@mingla/help-content": "file:../packages/help-content",
     "@mingla/brand-rendering": "file:../packages/brand-rendering",
+    "@mingla/calendar": "file:../packages/calendar",
     "@mingla/card-identity": "file:../packages/card-identity",
     "@mingla/location-input": "file:../packages/location-input",
     "@mingla/offering-rendering": "file:../packages/offering-rendering",

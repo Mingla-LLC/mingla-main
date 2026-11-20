@@ -82,6 +82,11 @@ export function StayDateRangeField({
   testID,
 }: StayDateRangeFieldProps): BrandRenderingReactElement {
   const [openField, setOpenField] = useState<OpenField>(null);
+  // #4523 slice 1 interim — replaced by @mingla/calendar in slice 8.
+  // iOS only: the inline calendar writes to this draft; month and year changes
+  // raise the same native event as a day tap, so only Done commits and only
+  // Done/Cancel close it.
+  const [draft, setDraft] = useState<Date | null>(null);
   const checkOutDisabled = disabled || value.checkIn === "";
 
   const anchor = (field: "check_in" | "check_out"): Date => {
@@ -94,22 +99,36 @@ export function StayDateRangeField({
     );
   };
 
-  const handlePicked = (
-    event: DateTimePickerEvent,
-    selected?: Date,
-  ): void => {
-    const field = openField;
-    // Android renders a modal dialog that owns its own lifecycle: close on every
-    // event, including a back-press dismissal.
+  const closePicker = (): void => {
     setOpenField(null);
-    if (field === null) return;
-    if (event.type === "dismissed" || selected === undefined) return;
+    setDraft(null);
+  };
+
+  const commit = (field: "check_in" | "check_out", selected: Date): void => {
     const picked = formatStayDate(selected);
     if (field === "check_in") {
       onChange(applyCheckInChange(value, picked), "check_in");
     } else {
       onChange(applyCheckOutChange(value, picked), "check_out");
     }
+  };
+
+  const handlePicked = (
+    event: DateTimePickerEvent,
+    selected?: Date,
+  ): void => {
+    const field = openField;
+    if (Platform.OS === "ios") {
+      // The inline calendar stays open; "dismissed" can fire while paging.
+      if (event.type === "set" && selected !== undefined) setDraft(selected);
+      return;
+    }
+    // Android renders a modal dialog that owns its own lifecycle: close on every
+    // event, including a back-press dismissal.
+    setOpenField(null);
+    if (field === null) return;
+    if (event.type === "dismissed" || selected === undefined) return;
+    commit(field, selected);
   };
 
   return (
@@ -139,7 +158,7 @@ export function StayDateRangeField({
       </View>
       {openField !== null ? (
         <DateTimePicker
-          value={anchor(openField)}
+          value={draft ?? anchor(openField)}
           mode="date"
           display={Platform.OS === "ios" ? "inline" : "default"}
           minimumDate={
@@ -155,6 +174,35 @@ export function StayDateRangeField({
           themeVariant={palette.glassTint}
           onChange={handlePicked}
         />
+      ) : null}
+      {openField !== null && Platform.OS === "ios" ? (
+        <View style={styles.actions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Cancel date choice"
+            onPress={closePicker}
+            testID={`${testID ?? ""}stay-date-cancel`}
+            style={styles.action}
+          >
+            <Text style={[styles.rowValue, { color: palette.secondaryText }]}>
+              Cancel
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Done, confirm date"
+            onPress={() => {
+              commit(openField, draft ?? anchor(openField));
+              closePicker();
+            }}
+            testID={`${testID ?? ""}stay-date-done`}
+            style={styles.action}
+          >
+            <Text style={[styles.rowValue, { color: palette.primaryText }]}>
+              Done
+            </Text>
+          </Pressable>
+        </View>
       ) : null}
       {errorText !== null ? (
         <Text
@@ -232,5 +280,12 @@ const styles = StyleSheet.create({
   },
   rowValue: { fontSize: 14, fontWeight: "600" },
   disabled: { opacity: 0.28 },
+  actions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  action: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
   errorText: { color: "#ef4444", fontSize: 13, lineHeight: 18 },
 });

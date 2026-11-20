@@ -139,6 +139,34 @@ if (!/import\(\s*"[^"]*fonts\/googleFontsCatalog\.json"\s*\)/.test(fontTab)) {
   violations.push(`${FONT_TAB} no longer loads the font catalogue through a dynamic import().`);
 }
 
+// (4) issue #4523 — the calendar surface is the package's one lazy chunk. Only
+// files INSIDE packages/calendar may statically import CalendarSurface,
+// CalendarGrid, TimeList or core/keyboard (`import type` is erased and allowed);
+// a static import anywhere else hoists the grid, keyboard and time list into
+// the eager chunk. Consumers use the deep trigger specifiers instead.
+const HEAVY_CALENDAR = /(?:CalendarSurface|CalendarGrid|TimeList|core\/keyboard)["']/;
+const staticImportOf = /(^|\n)\s*(import|export)\s+(?!type\b)[^;]*?from\s*["']([^"']*)["']|require\(\s*["']([^"']*)["']\s*\)/g;
+for (const rel of [...SOURCE_ROOTS, "mingla-admin/src", "mingla-sites/src", "mingla-marketing/app", "mingla-marketing/components"].flatMap(walkSources)) {
+  if (rel.startsWith("packages/calendar/")) continue;
+  const src = stripComments(read(rel));
+  if (!/calendar/i.test(src)) continue;
+  for (const match of src.matchAll(staticImportOf)) {
+    const specifier = match[3] ?? match[4] ?? "";
+    // The eager-surface field variant is for the ONE host that owns the lazy boundary.
+    if (/@mingla\/calendar\/CalendarFieldEager/.test(specifier) && rel !== "mingla-business/src/components/ui/HostCalendarBody.tsx") {
+      violations.push(
+        `${rel} statically imports \`${specifier}\` — only mingla-business/src/components/ui/HostCalendarBody.tsx (the single lazy owner) may (#4523).`,
+      );
+    }
+    if (/@mingla\/calendar/.test(specifier) && HEAVY_CALENDAR.test(`${specifier}"`)) {
+      violations.push(
+        `${rel} statically imports \`${specifier}\` — the calendar surface, grid, time list and keyboard are ` +
+          "the lazy chunk; import the field triggers (@mingla/calendar/CalendarField) instead (#4523).",
+      );
+    }
+  }
+}
+
 if (violations.length) {
   console.error("\nFAIL [I-1047-BIZ-BUNDLE-BUDGET-DEFERRAL]:");
   for (const v of violations) console.error(`  x ${v}`);

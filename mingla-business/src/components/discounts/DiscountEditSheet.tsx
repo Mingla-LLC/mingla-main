@@ -1,6 +1,5 @@
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import {
-  Platform,
   Pressable,
   StyleSheet,
   Switch,
@@ -8,9 +7,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -31,7 +27,7 @@ import type {
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
-import { WebDateTimeInput } from "../ui/WebDateTimeInput";
+import { HostDateTimeField } from "../ui/HostCalendarFields";
 import { DiscountScopePicker } from "./DiscountScopePicker";
 
 /**
@@ -672,107 +668,23 @@ const DiscountDateTimeField: React.FC<{
   testID: string;
   onChange: (value: string | null) => void;
 }> = ({ label, value, min, optional = false, testID, onChange }) => {
-  const [picker, setPicker] = useState<"date" | "time" | null>(null);
-  const parsed = value === null ? null : new Date(value);
-  const current =
-    parsed !== null && Number.isFinite(parsed.getTime()) ? parsed : null;
-
-  const updateNative =
-    (part: "date" | "time") =>
-    (event: DateTimePickerEvent, selected?: Date): void => {
-      if (Platform.OS === "android") setPicker(null);
-      if (event.type === "dismissed" || selected === undefined) return;
-      const next = current === null ? new Date() : new Date(current);
-      if (part === "date") {
-        next.setFullYear(
-          selected.getFullYear(),
-          selected.getMonth(),
-          selected.getDate(),
-        );
-      } else {
-        next.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
-      }
-      onChange(next.toISOString());
-    };
-
+  // The saved value is still an ISO instant, converted through the same two
+  // helpers as before (SC-9: the saved payload does not change).
+  const local = localDateTimeValue(value);
+  const minLocal = min === undefined ? "" : localDateTimeValue(min);
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>
-        {label}
-        {optional ? " (optional)" : ""}
-      </Text>
-      {Platform.OS === "web" ? (
-        <WebDateTimeInput
-          type="datetime-local"
-          value={localDateTimeValue(value)}
-          min={min === undefined ? undefined : localDateTimeValue(min)}
-          ariaLabel={`${label} date and time`}
-          testID={testID}
-          onChangeValue={(next) => onChange(isoFromLocalDateTime(next))}
-        />
-      ) : (
-        <View style={styles.nativeDateWrap}>
-          <View style={styles.nativeDateButtons}>
-            <Pressable
-              onPress={() => setPicker("date")}
-              accessibilityRole="button"
-              accessibilityLabel={`Choose ${label.toLowerCase()} date`}
-              style={styles.nativeDateButton}
-            >
-              <Text style={styles.nativeDateText}>
-                {current?.toLocaleDateString() ?? "Choose date"}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setPicker("time")}
-              accessibilityRole="button"
-              accessibilityLabel={`Choose ${label.toLowerCase()} time`}
-              style={styles.nativeDateButton}
-            >
-              <Text style={styles.nativeDateText}>
-                {current?.toLocaleTimeString(undefined, {
-                  hour: "numeric",
-                  minute: "2-digit",
-                }) ?? "Choose time"}
-              </Text>
-            </Pressable>
-            {optional && value !== null ? (
-              <Pressable
-                onPress={() => onChange(null)}
-                accessibilityRole="button"
-                accessibilityLabel={`Clear ${label.toLowerCase()}`}
-                style={styles.clearDateButton}
-              >
-                <Text style={styles.clearDateText}>Clear</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {picker !== null ? (
-            <>
-              <DateTimePicker
-                value={current ?? new Date()}
-                mode={picker}
-                display={Platform.OS === "ios" ? "spinner" : "default"}
-                minimumDate={
-                  picker === "date" && min !== undefined
-                    ? new Date(min)
-                    : undefined
-                }
-                onChange={updateNative(picker)}
-                themeVariant="dark"
-              />
-              {Platform.OS === "ios" ? (
-                <Button
-                  label="Done"
-                  size="sm"
-                  variant="ghost"
-                  onPress={() => setPicker(null)}
-                />
-              ) : null}
-            </>
-          ) : null}
-        </View>
-      )}
+      <HostDateTimeField
+        label={`${label}${optional ? " (optional)" : ""}`}
+        accessibilityLabel={`${label} date and time`}
+        placeholder={optional ? "Not set" : undefined}
+        value={{ date: local.slice(0, 10), time: local.slice(11, 16) }}
+        min={minLocal === "" ? undefined : minLocal.slice(0, 10)}
+        minTime={minLocal === "" ? undefined : minLocal.slice(11, 16)}
+        onChangeValue={(next) => onChange(isoFromLocalDateTime(`${next.date}T${next.time}`))}
+        onClear={optional ? () => onChange(null) : undefined}
+        testID={testID}
+      />
     </View>
   );
 };
@@ -887,33 +799,6 @@ const styles = StyleSheet.create({
   radioText: { fontSize: 14, color: color.text1 },
   dateRow: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   dateColumn: { flex: 1, minWidth: 220 },
-  nativeDateWrap: { gap: space[1] },
-  nativeDateButtons: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space[1],
-  },
-  nativeDateButton: {
-    flexGrow: 1,
-    minHeight: 46,
-    justifyContent: "center",
-    paddingHorizontal: space[2],
-    borderWidth: 1,
-    borderColor: edge.ringInputFocus.borderColor,
-    borderRadius: radius.md,
-    backgroundColor: color.fill.inset,
-  },
-  nativeDateText: {
-    color: color.text1,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  clearDateButton: {
-    minHeight: 46,
-    justifyContent: "center",
-    paddingHorizontal: space[1],
-  },
-  clearDateText: { color: color.text1, fontSize: 13, fontWeight: "700" },
   switchRow: { flexDirection: "row", alignItems: "center", gap: space[4] },
   switchCopy: { flex: 1, gap: 3 },
   two: { flexDirection: "row", gap: space[2] },

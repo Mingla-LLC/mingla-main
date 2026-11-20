@@ -410,6 +410,8 @@ const asDatetimeLocal = (date: Date, time: Date): string =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
   `T${pad(time.getHours())}:${pad(time.getMinutes())}`;
 
+// #4523: the ticket sale window is the Mingla calendar now (no OS picker), so its Android unmount cases (T-2, T-3,
+// T-6) were removed with their subject; the booking-deadline cases (T-4, T-5) stay until that field moves (slice 7).
 describe("#2664 tester — the Android unmount dismiss must survive, for real", () => {
   test("T-1 POSITIVE CONTROL: the derived registry is real and does throw", () => {
     const reg = registry();
@@ -432,43 +434,6 @@ describe("#2664 tester — the Android unmount dismiss must survive, for real", 
     // this assertion the suite could pass because nothing ever throws.
     expect(() => reg.dismiss("datetime")).toThrow(TypeError);
     expect(() => reg.dismiss("datetime")).toThrow(/dismiss/);
-  });
-
-  test("T-2 sale window: completing both steps unmounts without throwing", async () => {
-    setOS("android");
-    const tree = await mountTier(ticket());
-
-    await press(tree, "Set sale start date and time");
-    await fire(tree, "set", PICKED_DATE);
-    await fire(tree, "set", PICKED_TIME);
-
-    // Every mode this component handed the library across the whole sequence
-    // must be one the library can actually dismiss.
-    const reg = registry();
-    for (const mode of reg.rendered) {
-      expect(reg.registryKeys).toContain(mode);
-    }
-
-    // The real unmount effect runs here. Pre-fix this threw.
-    await expect(unmount(tree)).resolves.toBeUndefined();
-  });
-
-  test("T-3 sale window: unmounting BETWEEN the two steps does not throw and commits nothing", async () => {
-    setOS("android");
-    const saved: TicketStub[] = [];
-    const tree = await mountTier(ticket(), (t) => saved.push(t));
-
-    await press(tree, "Set sale start date and time");
-    // Step 1 done — the time dialog is now up. This intermediate state did not
-    // exist before the fix, and it is where an unmount is most likely to be
-    // holding a mode nobody dismissed.
-    await fire(tree, "set", PICKED_DATE);
-    expect(pickers(tree)[0].props.mode).toBe("time");
-
-    await expect(unmount(tree)).resolves.toBeUndefined();
-
-    // A half-set date must never have been committed.
-    expect(saved).toHaveLength(0);
   });
 
   test("T-4 booking deadline: unmounting BETWEEN the two steps does not throw and commits nothing", async () => {
@@ -503,29 +468,6 @@ describe("#2664 tester — the Android unmount dismiss must survive, for real", 
     expect(changes).toHaveLength(1);
   });
 
-  test("T-6 re-opening mid-sequence restarts at the date step and never leaves an undismissable mode", async () => {
-    setOS("android");
-    const saved: TicketStub[] = [];
-    const tree = await mountTier(ticket(), (t) => saved.push(t));
-
-    // Open, advance to the time step, then re-open the OTHER window without
-    // finishing the first — a rapid double-entry.
-    await press(tree, "Set sale start date and time");
-    await fire(tree, "set", PICKED_DATE);
-    expect(pickers(tree)[0].props.mode).toBe("time");
-
-    await press(tree, "Set sale end date and time");
-    // Re-entry must reset to step 1, not resume a stale time step.
-    expect(pickers(tree)[0].props.mode).toBe("date");
-
-    const reg = registry();
-    for (const mode of reg.rendered) {
-      expect(reg.registryKeys).toContain(mode);
-    }
-
-    await expect(unmount(tree)).resolves.toBeUndefined();
-    expect(saved).toHaveLength(0);
-  });
 });
 
 describe("#2664 tester — Android/web parity across the temporal traps", () => {

@@ -138,9 +138,12 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD #4518] Re-derived after #4518 added the locally declared
   // checkout one-colour-owner gate (issue-4518-checkout-one-colour-owner,
   // +2 batch:A executions: self-test and plain). Read off the plan command as above.
-  executions: 1067,
-  loadsSeconds: [385.9, 385.9, 385.9],
-  counts: [355, 356, 356],
+  // [TEST-MOD #4523] Re-derived after #4523 added the locally declared
+  // dates-are-picked gate (issue-4523-dates-are-picked, +2 batch:A executions:
+  // self-test and plain). Read off the plan command as above.
+  executions: 1069,
+  loadsSeconds: [385.9, 386.0, 386.0],
+  counts: [355, 357, 357],
 });
 
 const tempDir = (label) =>

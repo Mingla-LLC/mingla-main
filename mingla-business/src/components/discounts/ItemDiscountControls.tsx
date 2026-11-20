@@ -33,6 +33,7 @@ import {
   normalizeCurrency,
 } from "../../utils/currency";
 import { Button } from "../ui/Button";
+import { HostDateTimeField } from "../ui/HostCalendarFields";
 import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 
 const loadDiscountService = () => import("../../services/discountService");
@@ -359,12 +360,13 @@ export const ItemDiscountControls: React.FC<ItemDiscountControlsProps> = ({
             </View>
           ) : null}
           {limitMode === "date" || !countLimit ? (
-            <TextInput
-              value={endsAt}
-              onChangeText={touch(setEndsAt)}
-              placeholder="End date (YYYY-MM-DDTHH:mm), optional"
-              placeholderTextColor={color.text3}
-              style={styles.input}
+            <HostDateTimeField
+              label="End date and time (optional)"
+              accessibilityLabel="Discount end date and time"
+              placeholder="No end date"
+              value={{ date: endsAt.slice(0, 10), time: endsAt.slice(11, 16) }}
+              onChangeValue={(next) => touch(setEndsAt)(`${next.date}T${next.time}`)}
+              onClear={() => touch(setEndsAt)("")}
               testID={`${testID}-ends-at`}
             />
           ) : (

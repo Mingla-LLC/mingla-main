@@ -60,6 +60,15 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
       ReactActual.createElement(ReactActual.Fragment, null, children),
   };
 });
+// #4523: the date rows are `DateField` (the Mingla calendar, loaded lazily). It is a host stub here so the test
+// drives the SAME commit path (onChangeValue -> commitPickerValue) the calendar uses.
+jest.mock("../../ui/DateField", () => {
+  const ReactActual = require("react") as typeof React;
+  return {
+    __esModule: true,
+    DateField: (props: Record<string, unknown>) => ReactActual.createElement("DateFieldStub", props),
+  };
+});
 jest.mock("../../ui/Sheet", () => ({ __esModule: true, Sheet: (): null => null }));
 jest.mock("../../ui/Icon", () => ({ __esModule: true, Icon: (): null => null }));
 jest.mock("../../ui/Button", () => ({
@@ -151,24 +160,16 @@ describe("issue #1027 Thread B — When step renders visible native web date/tim
     }
   });
 
-  test("T1a — Date row is a real, visible <input type='date'> (dismissable) whose change commits draft.date + endsAtUtc", async () => {
+  test("T1a — the Date row is the Mingla calendar (no <input type='date'>); picking a day commits draft.date + endsAtUtc (#4523)", async () => {
     await mount();
-    const dateInputs = inputsOfType("date");
-    expect(dateInputs).toHaveLength(1);
-    const dateInput = dateInputs[0];
+    expect(inputsOfType("date")).toHaveLength(0);
+    const fields = (tree as Tree).root
+      .findAll((n) => n.type === "DateFieldStub")
+      .filter((n) => n.props.testID === "creator-when-date");
+    expect(fields).toHaveLength(1);
 
-    // Hit-testable + dismissable: an in-flow input, NOT the old hidden bridge.
-    const style = dateInput.props.style as Record<string, unknown>;
-    expect(style.pointerEvents).toBeUndefined();
-    expect(style.opacity).not.toBe(0);
-    expect(dateInput.props["data-testid"]).toBe("creator-when-date-web");
-
-    // Selecting a date commits the value (Seth's "date does not stick / can't
-    // close" symptom — a real input commits on change and closes on click-out).
     await TestRenderer.act(async () => {
-      (dateInput.props.onChange as (e: { target: { value: string } }) => void)({
-        target: { value: "2026-08-01" },
-      });
+      (fields[0].props.onChangeValue as (value: string) => void)("2026-08-01");
     });
     const datePatch = updates.find((p) => p.date !== undefined);
     expect(datePatch?.date).toBe("2026-08-01");
