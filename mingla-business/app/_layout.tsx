@@ -144,6 +144,11 @@ import { shouldRequestAttNow } from "../src/utils/attRequestTiming";
 import { shouldDisplayForegroundBusinessNotification } from "../src/utils/brandGroupNotificationForeground";
 import { syncBusinessMediaLanguage } from "../src/i18n";
 import { installFieldFocusCss } from "../src/components/ui/fieldFocusCss";
+import { installWebDocumentCss } from "../src/utils/webDocumentCss";
+
+// #4420 D1: the page is the dark canvas and never bounces, from the first
+// paint (web only: native has no document, so this does nothing there).
+installWebDocumentCss();
 
 // Sub-B: a tap that arrives before auth is stashed here + replayed post-login
 // (mirrors the consumer deferred-deeplink pattern). Keyed in AsyncStorage so a

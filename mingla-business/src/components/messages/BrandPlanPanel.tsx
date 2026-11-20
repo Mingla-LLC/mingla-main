@@ -48,6 +48,12 @@ const MAX_DOTS = 3;
 const SHEET_GONE_SAFETY_MS = 3000;
 // The sheet unmounts this long after it is hidden (SheetMobile UNMOUNT_DELAY_MS; web 220).
 const SHEET_UNMOUNT_MS = 280;
+// #4420 design: a status pill's tone (done green, in progress amber, booked blue).
+const STATE_TONE: Record<string, "ok" | "wip" | "sch"> = {
+  done: "ok", posted: "ok", happened: "ok",
+  doing: "wip", being_made: "wip", in_review: "wip",
+  scheduled: "sch", on_mingla: "sch", live: "sch",
+};
 const KNOWN_STATES = new Set(["planned", "being_made", "in_review", "scheduled", "posted", "todo", "doing", "done", "live", "draft", "happened", "on_mingla"]);
 
 export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): React.ReactElement {
@@ -162,19 +168,33 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
     const stateWords = KNOWN_STATES.has(item.state) ? t(`plan.state_${item.state}`) : item.state_words;
     const byWords = item.mine ? t("plan.by_you") : item.by === "host" ? t("plan.by_team") : t("plan.by_mingla");
     const liveUrl = item.live_url && isBrandPlanLink(item.live_url) ? item.live_url : null;
+    const tone = STATE_TONE[item.state];
+    const isToday = item.on === today;
     return (
       <Pressable
         key={`${item.kind}-${item.id}`}
         onLongPress={item.can_edit ? () => openMenu(item) : undefined}
-        style={styles.row}
+        style={[styles.row, item.on < today && styles.rowPast]}
         testID={`brand-plan-item-${item.id}`}
+        accessibilityLabel={`${item.title}, ${itemDay(item.on)}, ${t(`plan.kind_${item.kind}`)}, ${stateWords}, ${byWords}`}
       >
         <View style={styles.rowTop}>
+          {/* #4420 design: the date tile; today is the white tile. */}
+          <View style={[styles.dateTile, isToday && styles.dateTileToday]} accessibilityElementsHidden>
+            <Text style={[styles.dateTileDay, isToday && styles.dateTileTextToday]}>{Number(item.on.slice(8))}</Text>
+            <Text style={[styles.dateTileWeekday, isToday && styles.dateTileTextToday]}>{dayWords(item.on, { weekday: "short" })}</Text>
+          </View>
           <View style={styles.rowCopy}>
             <Text style={styles.rowTitle}>{item.title}</Text>
-            <Text style={styles.rowMeta}>{`${t(`plan.kind_${item.kind}`)} · ${itemDay(item.on)} · ${byWords}`}</Text>
+            <View style={styles.rowPills}>
+              <View style={styles.kindPill}><Text style={styles.kindPillText}>{t(`plan.kind_${item.kind}`)}</Text></View>
+              <View style={[styles.chip, tone === "ok" && styles.chipOk, tone === "wip" && styles.chipWip, tone === "sch" && styles.chipSch]}>
+                <View style={[styles.chipDot, tone === "ok" && styles.dotOk, tone === "wip" && styles.dotWip, tone === "sch" && styles.dotSch]} />
+                <Text style={[styles.chipText, tone === "ok" && styles.chipTextOk, tone === "wip" && styles.chipTextWip, tone === "sch" && styles.chipTextSch]}>{stateWords}</Text>
+              </View>
+              <Text style={styles.rowMeta}>{byWords}</Text>
+            </View>
           </View>
-          <View style={styles.chip}><Text style={styles.chipText}>{stateWords}</Text></View>
           {item.can_edit ? (
             <Pressable accessibilityRole="button" accessibilityLabel={t("plan.menu_a11y", { title: item.title })} hitSlop={4} onPress={() => openMenu(item)} style={styles.menuButton} testID={`brand-plan-menu-${item.id}`}>
               <Icon name="moreH" size={18} color={color.text2} />
@@ -253,12 +273,15 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
               accessibilityLabel={t("plan.day_a11y", { date: dayWords(day, { weekday: "long", day: "numeric", month: "long" }), n: list.length })}
               accessibilityState={{ selected: pickedDay === day }}
               onPress={() => setPickedDay(day)}
-              style={[styles.dayCell, pickedDay === day && styles.dayCellPicked]}
+              style={[styles.dayCell, day === today && styles.dayCellToday, pickedDay === day && styles.dayCellPicked]}
               testID={`brand-plan-day-${day}`}
             >
-              <Text style={[styles.dayNumber, !day.startsWith(month) && styles.dayNumberOther, day === today && styles.dayNumberToday]}>{Number(day.slice(8))}</Text>
+              <Text style={[styles.dayNumber, !day.startsWith(month) && styles.dayNumberOther, day === today && styles.dayNumberToday, day === today && styles.dateTileTextToday]}>{Number(day.slice(8))}</Text>
               <View style={styles.dots}>
-                {list.slice(0, MAX_DOTS).map((item) => <View key={`${item.kind}-${item.id}`} style={styles.dot} />)}
+                {list.slice(0, MAX_DOTS).map((item) => {
+                  const tone = STATE_TONE[item.state];
+                  return <View key={`${item.kind}-${item.id}`} style={[styles.dot, tone === "ok" && styles.dotOk, tone === "wip" && styles.dotWip, tone === "sch" && styles.dotSch, day === today && styles.dotOnToday]} />;
+                })}
                 {extra > 0 ? <Text style={styles.dotMore}>{t("plan.more", { n: extra })}</Text> : null}
               </View>
             </Pressable>
@@ -302,6 +325,11 @@ export function BrandPlanPanel({ brandId, compact = false, onBack }: Props): Rea
               </View>
             </View>
           ) : null}
+          {/* #4420 design: who sees the plan. */}
+          <View style={styles.privateNote} testID="brand-plan-private-note">
+            <Icon name="shield" size={13} color={color.text3} />
+            <Text style={styles.privateNoteText}>{t("plan.private_note")}</Text>
+          </View>
           <View accessibilityRole="tablist" style={styles.tabs}>
             {(["timeline", "calendar"] as const).map((value) => (
               <Pressable key={value} accessibilityRole="tab" accessibilityLabel={t(`plan.seg_${value}`)} accessibilityState={{ selected: segment === value }} onPress={() => setSegment(value)} style={[styles.tab, segment === value && styles.tabActive]} testID={`brand-plan-seg-${value}`}>
@@ -378,13 +406,37 @@ const styles = StyleSheet.create({
   skeleton: { height: 72, borderRadius: radius.lg, backgroundColor: color.fill.inset },
   week: { gap: space[2] },
   weekLabel: { color: color.text3, fontSize: 12, fontWeight: "800" },
-  row: { gap: space[1], padding: space[4], borderRadius: radius.lg, borderWidth: 1, borderColor: color.lineStrong, backgroundColor: color.fill.tile },
+  row: { gap: space[1], padding: space[3], borderRadius: 20, borderWidth: 1, borderColor: color.line, borderTopColor: color.lineStrong, backgroundColor: color.card },
   rowTop: { flexDirection: "row", alignItems: "flex-start", gap: space[2] },
   rowCopy: { flex: 1, minWidth: 0, gap: 4 },
   rowTitle: { color: color.text1, fontSize: 15, lineHeight: 20, fontWeight: "700" },
   rowMeta: { color: color.text3, fontSize: 12, lineHeight: 16 },
-  chip: { paddingHorizontal: space[2], paddingVertical: 2, borderRadius: radius.full, backgroundColor: color.fill.pressed },
-  chipText: { color: color.text2, fontSize: 11, fontWeight: "700" },
+  chip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: space[2], paddingVertical: 2, borderRadius: radius.full, backgroundColor: color.fill.tile },
+  chipText: { color: color.text2, fontSize: 12, fontWeight: "600" },
+  // #4420 design: status tones, date tiles, kind pill, private note.
+  chipOk: { backgroundColor: color.successTint },
+  chipWip: { backgroundColor: color.warningTint },
+  chipSch: { backgroundColor: color.infoTint },
+  chipTextOk: { color: color.successText },
+  chipTextWip: { color: color.warningText },
+  chipTextSch: { color: color.infoText },
+  chipDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: color.text3 },
+  dotOk: { backgroundColor: color.success },
+  dotWip: { backgroundColor: color.warning },
+  dotSch: { backgroundColor: color.info },
+  dotOnToday: { backgroundColor: color.ink },
+  rowPast: { opacity: 0.75 },
+  rowPills: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 2 },
+  kindPill: { paddingHorizontal: space[2], paddingVertical: 2, borderRadius: radius.full, borderWidth: 1, borderColor: color.lineStrong },
+  kindPillText: { color: color.text2, fontSize: 12, fontWeight: "600" },
+  dateTile: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile },
+  dateTileToday: { backgroundColor: color.paper },
+  dateTileDay: { color: color.text1, fontSize: 17, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  dateTileWeekday: { color: color.text3, fontSize: 11, fontWeight: "600", marginTop: 1 },
+  dateTileTextToday: { color: color.ink },
+  dayCellToday: { backgroundColor: color.paper },
+  privateNote: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: space[4], paddingTop: space[2] },
+  privateNoteText: { color: color.text3, fontSize: 12 },
   menuButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   rowLinks: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: space[2] },
   linkButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: space[4], borderRadius: radius.full, backgroundColor: color.fill.tile },

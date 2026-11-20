@@ -37,7 +37,7 @@ Deno.test("U-3 real Google ids still anchor the link (ChIJ, Ej, Gh)", () => {
     assertEquals(normalizeGooglePlaceId(id), id);
     assertEquals(
       buildMapsDeepLink({ geo: PIN, label: "Didi Museum", googlePlaceId: id, platform: "web" })?.url,
-      `${BASE}&query_place_id=${id}`,
+      `https://www.google.com/maps/search/?api=1&query=Didi%20Museum&query_place_id=${id}`,
     );
   }
 });

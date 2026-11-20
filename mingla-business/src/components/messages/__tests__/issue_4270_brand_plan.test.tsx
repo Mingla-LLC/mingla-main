@@ -734,10 +734,12 @@ describe("source contracts", () => {
     expect(panel).not.toMatch(/\bKeyboard\b/);
   });
   it("the pill is only for the brand's own team on a phone, and the rail order is People, Plan, Media", () => {
-    expect(chat).toContain('const planBrandId = canBrand && group ? group.brand_id : null;');
+    // #4420 SC-12: support staff read the plan too (server keeps writes rank-based).
+    expect(chat).toContain('const planBrandId = group ? group.brand_id : null;');
     // #4304: the pill shows whenever the details rail does not (phones and
     // desktop windows too narrow for three panes).
-    expect(chat).toContain("{!showRail && planBrandId ? (");
+    // #4420 SC-17: the pill also shows on desktop while the rail is collapsed.
+    expect(chat).toContain("{!showRail && planBrandId && openPlan ? (");
     expect(chat).toContain('testID="brand-plan-pill"');
     // #4304: the rail tabs render through the shared BrandGroupRailTabRow.
     const rail = chat.slice(chat.indexOf("<BrandGroupRailTabRow"));
@@ -748,7 +750,8 @@ describe("source contracts", () => {
     expect(people).toBeLessThan(planTab);
     expect(planTab).toBeLessThan(media);
     expect(chat).toContain('requestedGallery === "1" ? "media" : "plan"');
-    expect(chat).toContain('desktopDetailTab === "plan" && !planBrandId ? "people"');
+    // #4420 D4: the rule also sends a Guests-side Media tab to People.
+    expect(chat).toContain('(desktopDetailTab === "plan" && !planBrandId) || (desktopDetailTab === "media" && !mediaShown) ? "people"');
   });
   it("#4304: the People pane has no inner People | Media tab row (one tab row in the rail)", () => {
     // Live check on #4270: wide web showed two tab rows on the People tab.

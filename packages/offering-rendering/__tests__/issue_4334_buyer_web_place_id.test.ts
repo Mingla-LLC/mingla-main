@@ -23,11 +23,11 @@ const event = (googlePlaceId: string | null, hidden = false) => ({
   googlePlaceId,
 });
 
-Deno.test("B-1 web link bytes: query_place_id when the event has an id, coordinates only otherwise", () => {
+Deno.test("B-1 web link bytes: label + query_place_id when the event has an id, coordinates only otherwise", () => {
   const withId = buildMapsDeepLink({ ...selectVenueMapsTarget(event(ID))!, platform: "web" });
   assertEquals(
     withId?.url,
-    "https://www.google.com/maps/search/?api=1&query=6.4325387,3.4236889&query_place_id=ChIJ0Wq9hS_1OxARsFOw5qkW6Y0",
+    "https://www.google.com/maps/search/?api=1&query=Didi%20Museum%2C%20175%20Akin%20Adesola%20St&query_place_id=ChIJ0Wq9hS_1OxARsFOw5qkW6Y0",
   );
   const without = buildMapsDeepLink({ ...selectVenueMapsTarget(event(null))!, platform: "web" });
   assertEquals(without?.url, "https://www.google.com/maps/search/?api=1&query=6.4325387,3.4236889");

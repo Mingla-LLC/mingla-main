@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4420",
+  "suite": {
+    "id": "issue-4420-event-calendar-route",
+    "class": "business-node22-ignore-scripts",
+    "originPaths": [
+      "mingla-business/api/**",
+      "mingla-business/server/**",
+      "mingla-business/vercel.json",
+      "packages/offering-rendering/**"
+    ],
+    "steps": [
+      {
+        "name": "Buyer web: calendar.ics serves the one-event file and 404s for no end, drafts and unknown slugs",
+        "cwd": "mingla-business",
+        "run": "node --test api/__tests__/issue_4420_event_calendar_route.implementor.test.js",
+        "commandId": "assert:issue-4420-event-calendar-route:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node --test api/__tests__/issue_4420_event_calendar_route.implementor.test.js"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4420",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "business-node22-ignore-scripts",
+    "cwd": "mingla-business",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "mingla-business/api/__tests__/issue_4420_event_calendar_route.implementor.test.js"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: business-node22-ignore-scripts",
+    "timingSeconds": {
+      "p50": 1,
+      "p95": 2,
+      "evidence": "Local targeted run 2026-11-19"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 180
+  }
+}

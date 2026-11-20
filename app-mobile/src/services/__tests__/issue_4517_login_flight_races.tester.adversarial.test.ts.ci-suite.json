@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4517_login_flight_races.tester.adversarial.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4517-login-flight-races-tester-adversarial",
+  "profile": "deno-2-unit",
+  "permissions": [
+    "read"
+  ]
+}

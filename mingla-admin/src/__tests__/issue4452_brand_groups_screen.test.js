@@ -78,6 +78,6 @@ describe("#4452 T-7.2 Brand groups is its own screen", () => {
     delete globalThis.window;
     const sidebar = read("components/layout/Sidebar.jsx");
     assert.match(sidebar, /window\.addEventListener\(BRAND_GROUP_WAITING_EVENT, onWaiting\)/);
-    assert.match(sidebar, /item\.id === "brand-groups" \? groupsWaiting : 0/);
+    assert.match(sidebar, /item\.id === "brand-groups" \? groupsWaiting : item\.id === "messages" \? messages\.count \|\| 0 : 0/);
   });
 });

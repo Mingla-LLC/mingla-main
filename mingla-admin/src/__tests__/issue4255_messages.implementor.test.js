@@ -94,7 +94,7 @@ describe("M-1 the Messages button in the top bar", () => {
   const button = stripComments(read("components/messages/MessagesButton.jsx"));
   it("sits between Search and Live, on every page", () => {
     const search = header.indexOf("onClick={onOpenSearch}");
-    const messages = header.indexOf("<MessagesButton />");
+    const messages = header.indexOf("<MessagesButton ");
     const live = header.indexOf("Live\n");
     assert.ok(search > 0 && messages > search && live > messages, "Search, then Messages, then Live");
   });
@@ -106,15 +106,14 @@ describe("M-1 the Messages button in the top bar", () => {
   it("the top bar never wraps", () => {
     const bar = header.slice(header.indexOf("<header"), header.indexOf(">", header.indexOf("<header")));
     assert.equal(/flex-wrap/.test(bar), false);
-    assert.equal(/flex-wrap/.test(header.slice(header.indexOf('className="ml-auto flex shrink-0'), header.indexOf("<MessagesButton />"))), false);
+    assert.equal(/flex-wrap/.test(header.slice(header.indexOf('className="ml-auto flex shrink-0'), header.indexOf("<MessagesButton "))), false);
   });
-  it("one badge, said in words for screen readers; the panel is 440px, top right", () => {
+  it("one badge, said in words for screen readers; the button opens the page", () => {
     assert.equal(messagesButtonLabel(0), "Messages");
     assert.equal(messagesButtonLabel(7), "Messages, 7 unread");
     assert.match(button, /aria-label=\{label\}/);
-    assert.match(button, /w-\[min\(440px,calc\(100vw-24px\)\)\]/);
-    assert.match(button, /fixed bottom-3 right-3/);
-    assert.match(button, /Open full page/);
+    // #4517: no floating panel any more (the header blur collapsed it): the button opens the page.
+    assert.equal(/fixed|Open full page|MessagesBody/.test(button), false);
   });
 });
 
@@ -164,7 +163,7 @@ describe("M-3 #/notifications redirects to #/messages", () => {
     assert.match(app, /messages: MessagesPage,/);
     assert.equal(/notifications: NotificationsPage/.test(app), false);
     assert.equal(fs.existsSync(path.join(SRC, "pages", "NotificationsPage.jsx")), false);
-    assert.deepEqual(HEADER_PAGE_ITEMS.find((i) => i.id === "messages"), { id: "messages", label: "Messages" });
+    assert.equal(HEADER_PAGE_ITEMS.some((i) => i.id === "messages"), false, "#4517: Messages is a menu entry, not a header-only page");
   });
   it("a team chat mention's link opens that chat", () => {
     assert.equal(threadFromSearch(`thread=${THREAD}`), THREAD);
@@ -181,7 +180,7 @@ describe("M-4 the Notifications menu item and its icon are gone", () => {
   it("no menu item is Notifications", () => {
     assert.equal(items.some((i) => i.id === "notifications" || i.label === "Notifications"), false);
     assert.equal(items.some((i) => i.icon === "Bell"), false);
-    assert.deepEqual(NAV_GROUPS.find((g) => g.label === "Home").items.map((i) => i.id), ["overview", "work-board"]);
+    assert.deepEqual(NAV_GROUPS.find((g) => g.label === "Home").items.map((i) => i.id), ["overview", "messages", "work-board"]);
   });
   it("Bell is neither registered nor imported in the Sidebar, and every menu icon still resolves", () => {
     const sidebar = read("components/layout/Sidebar.jsx");
