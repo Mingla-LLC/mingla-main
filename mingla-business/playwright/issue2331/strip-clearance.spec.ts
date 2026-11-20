@@ -188,33 +188,30 @@ test.describe("#2331 I-PRIVACY-BAR-NEVER-OCCLUDES on Host web (edge-based)", () 
     });
   }
 
+  // The signed-in host home opens a real react-native-web Modal on arrival
+  // (the "Meet Ari" introduction): its body portal must end at the strip.
   test("a react-native-web Modal ends at the strip, and the strip stays on top", async ({ browser }) => {
     test.setTimeout(300_000);
     const findings: Finding[] = [];
     for (const size of [{ width: 375, height: 667 }, { width: 1280, height: 800 }]) {
-      const where = { page: "event share modal", size: `${size.width}x${size.height}` };
-      const context = await newContext(browser, size.width, size.height, false);
+      const where = { page: "host home modal", size: `${size.width}x${size.height}` };
+      const context = await newContext(browser, size.width, size.height, true);
       const page = await context.newPage();
-      await page.goto(`${APP}/e/${BRAND_SLUG}/${EVENT_SLUG}`, { waitUntil: "domcontentloaded" });
-      await settle(page);
-      const opened = await page.evaluate(() => {
-        // Any RN-web Modal portal: open the first control that mounts one.
-        return document.querySelectorAll('[aria-modal="true"]').length;
-      });
-      const trigger = page.getByRole("button", { name: /share/i }).first();
-      if ((await trigger.count()) > 0) {
-        await trigger.click({ trial: false }).catch(() => undefined);
-        await page.waitForTimeout(900);
-      }
+      await page.goto(`${APP}/home`, { waitUntil: "domcontentloaded" });
+      await expect(page.locator('body > div [aria-modal="true"][role="dialog"]').first()).toBeVisible({ timeout: 30_000 });
+      await page.waitForTimeout(800);
       const modal = await page.evaluate(() => {
-        const portal = Array.from(document.body.children).find((node) => node.querySelector(':scope > div [aria-modal="true"]') !== null);
+        const portal = Array.from(document.body.children).find(
+          (node) => node.id !== "root" && node.querySelector(':scope > div [aria-modal="true"]') !== null,
+        );
         if (portal === undefined) return null;
         const r = portal.getBoundingClientRect();
-        return { top: r.top, bottom: r.bottom };
+        return { top: r.top, bottom: r.bottom, position: getComputedStyle(portal).position };
       });
-      expect(modal, `${where.size}: a Modal opened (${opened} before)`).not.toBeNull();
+      expect(modal, `${where.size}: the RN-web Modal portal`).not.toBeNull();
+      expect(modal?.position).toBe("fixed");
       const strip = await page.locator(".mps").boundingBox();
-      expect(Math.abs((modal?.bottom ?? 0) - (strip?.y ?? -1))).toBeLessThanOrEqual(0.5);
+      expect(Math.abs((modal?.bottom ?? 0) - (strip?.y ?? -1)), where.size).toBeLessThanOrEqual(0.5);
       await check(page, findings, where, "modal open");
       await context.close();
     }

@@ -170,14 +170,15 @@ export async function scrollEverythingToEnd(page: Page): Promise<number> {
     let count = 0;
     const scroller = document.scrollingElement;
     if (scroller !== null && scroller.scrollHeight > scroller.clientHeight + 1) {
-      scroller.scrollTop = scroller.scrollHeight;
+      // "instant": a page's `scroll-behavior: smooth` must not leave it mid-way.
+      scroller.scrollTo({ top: scroller.scrollHeight, behavior: "instant" });
       count += 1;
     }
     for (const node of Array.from(document.querySelectorAll<HTMLElement>("*"))) {
       if (node.closest(".mpb")) continue;
       const style = getComputedStyle(node);
       if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1) {
-        node.scrollTop = node.scrollHeight;
+        node.scrollTo({ top: node.scrollHeight, behavior: "instant" });
         node.dispatchEvent(new Event("scroll"));
         count += 1;
       }
