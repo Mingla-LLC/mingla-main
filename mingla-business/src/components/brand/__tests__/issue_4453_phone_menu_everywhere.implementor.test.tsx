@@ -67,7 +67,7 @@ jest.mock("../../ui/BrandChip", () => {
   const { Pressable } = require("react-native");
   return {
     BrandChip: (p: { onPress: () => void; testID?: string }) => (
-      <Pressable testID={p.testID} onPress={p.onPress} accessibilityRole="button" />
+      <Pressable testID={p.testID} onPress={p.onPress} accessibilityRole="button" accessibilityLabel="Switch brand" />
     ),
   };
 });
