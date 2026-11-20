@@ -25,7 +25,10 @@ import {
   type FormRequestDeps,
   runAutoFormReminders,
 } from "../_shared/brandFormRequests.ts";
-import type { DispatchV2Input, DispatchV2Result } from "../_shared/notifyV2.ts";
+import type {
+  FormDispatchInput as DispatchV2Input,
+  FormDispatchResult as DispatchV2Result,
+} from "../_shared/brandFormDispatchTypes.ts";
 import { isExactServiceBearer } from "../_shared/legacyEmailIdempotency.ts";
 
 const corsHeaders = {

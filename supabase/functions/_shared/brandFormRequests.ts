@@ -18,7 +18,10 @@
 // counter) live in brandFormRequestPreview.ts, so notify-reminders never pulls
 // the SMS adapter into its bundle.
 
-import type { DispatchV2Input, DispatchV2Result } from "./notifyV2.ts";
+import type {
+  FormDispatchInput as DispatchV2Input,
+  FormDispatchResult as DispatchV2Result,
+} from "./brandFormDispatchTypes.ts";
 import {
   BRAND_FORM_REQUEST_CATEGORY,
   brandFormEmailCta,
