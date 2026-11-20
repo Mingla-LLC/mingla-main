@@ -16,6 +16,8 @@ import path from "node:path";
 jest.mock("@react-native-community/datetimepicker", () => ({ __esModule: true, default: () => null }));
 // The owner also renders the file upload question (native pickers); not under test here.
 jest.mock("../IntakeQuestionFileUpload", () => ({ IntakeQuestionFileUpload: () => null }));
+// Wave 5: the lazy owner also exports the checkout step (expo-router); not under test here.
+jest.mock("../CheckoutQuestionsStep", () => ({ CheckoutQuestionsStep: () => null, PurchaseFormHandoff: () => null }));
 
 import {
   formStylesFor,
@@ -56,6 +58,10 @@ describe("#4514 — the renderers live in @mingla/form-rendering", () => {
     expect(owner).toContain("renderFileUpload=");
   });
 
+  const CHUNK_ONLY = [
+    "checkout/intake/CheckoutQuestionsStep.tsx",
+    "services/checkoutBrandFormService.ts",
+  ];
   test("no Host module imports the renderers or their owner statically (they would be hoisted into the eager bundle)", () => {
     const bizRoot = path.join(ROOT, "mingla-business");
     const offenders: string[] = [];
@@ -73,6 +79,18 @@ describe("#4514 — the renderers live in @mingla/form-rendering", () => {
         if (rel.endsWith("checkout/intake/formRenderingPrimitives.tsx")) continue;
         if (rel.endsWith("checkout/intake/IntakeQuestionFileUpload.tsx")) continue;
         const src = readFileSync(full, "utf8");
+        // Wave 5: the checkout step and its service are IN the owner's chunk;
+        // the check below proves only the owner reaches them statically.
+        for (const inChunk of CHUNK_ONLY) {
+          if (rel.endsWith(inChunk)) continue;
+          const base = inChunk.split("/").pop()!.replace(/\.tsx?$/, "");
+          if (!rel.endsWith("checkout/intake/formRenderingPrimitives.tsx")
+              && !CHUNK_ONLY.some((f) => rel.endsWith(f))
+              && new RegExp(`import\\s+(?!type\\b)[^;]*?from\\s+"[^"]*/${base}"`).test(src)) {
+            offenders.push(`${rel} -> ${base}`);
+          }
+        }
+        if (CHUNK_ONLY.some((f) => rel.endsWith(f))) continue;
         if (/import\s+(?!type\b)[^;]*?from\s+"(?:@mingla\/form-rendering|[^"]*\/formRenderingPrimitives|[^"]*\/IntakeQuestionFileUpload)"/.test(src)) {
           offenders.push(rel);
         }
