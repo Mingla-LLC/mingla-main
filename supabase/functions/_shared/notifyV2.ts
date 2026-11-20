@@ -60,6 +60,11 @@ import {
 } from "./issue4382SupportNotifications.ts";
 // #3682 wave 3 — the brand invite email's button and manage note.
 import { brandReachEmailCta } from "./brandReachMessages.ts";
+import {
+  brandFormDeepLinkValid,
+  brandFormProviderSafeKeys,
+  isBrandFormCategory,
+} from "./brandFormNotify.ts";
 // #4255 W4 — Mingla team pushes to the Host app (chat, mentions, decisions).
 import {
   isTeamNotifyCategory,
@@ -286,6 +291,8 @@ function validDeepLink(
   if (isIssue4382SupportCategory(category)) {
     return issue4382DeepLinkValid(category, deepLink, payload);
   }
+  // #4514 wave 4: form requests and the held notice carry no deep link yet.
+  if (isBrandFormCategory(category)) return brandFormDeepLinkValid(deepLink);
   if (category === "business.community_roadmap_updated") {
     return deepLink === "mingla-business://community/roadmap";
   }
@@ -372,6 +379,10 @@ export function providerSafePayload(
   }
   if (isIssue4382SupportCategory(category)) {
     return pick(issue4382ProviderSafeKeys());
+  }
+  // #4514 wave 4: ids only; the personal form link never reaches the provider.
+  if (isBrandFormCategory(category)) {
+    return pick(brandFormProviderSafeKeys(category));
   }
   // #4063 — consumer purchase, RSVP, and Stay payloads contain the contact and
   // message-rendering facts needed by email/SMS. None of those facts belong in

@@ -38,7 +38,22 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
-serve(async (req) => {
+/** The one database call this function makes per lead bucket (injectable for tests). */
+export interface ReminderAdmin {
+  rpc: (
+    fn: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+}
+
+export interface ReminderDeps {
+  createAdmin?: (url: string, serviceKey: string) => ReminderAdmin;
+}
+
+export async function handler(
+  req: Request,
+  deps: ReminderDeps = {},
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -54,13 +69,15 @@ serve(async (req) => {
     return json({ error: "server_misconfigured" }, 500);
   }
 
-  const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
+  const admin: ReminderAdmin = deps.createAdmin
+    ? deps.createAdmin(SUPABASE_URL, SERVICE_KEY)
+    : createClient(SUPABASE_URL, SERVICE_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
 
   const lead24h = envInt("REMINDER_LEAD_24H_HOURS", 24);
   const lead2h = envInt("REMINDER_LEAD_2H_HOURS", 2);
@@ -100,4 +117,6 @@ serve(async (req) => {
     { ok: !hadError, enqueued: results, windowMinutes },
     hadError ? 207 : 200,
   );
-});
+}
+
+if (import.meta.main) serve((req) => handler(req));
