@@ -419,6 +419,10 @@ button. Treat either log line after the install as a failed install.
    `scripts/deploy-supabase-functions.sh --project-ref gqnoajqerqhnvulmnyvv --merged-commit <sha> --function resend-webhook --ad-input <0600-file>`.
    The setter's strict parser rejects a non-canonical key, a bad kid, or a kid or key equal to any
    other slot in the envelope. Then shred the input file.
+   **Trap:** run `scripts/deploy-supabase-functions.sh --sites-input` (and every governed input flag) from a
+   real path. In a checkout under `/tmp` (a symlink to `/private/tmp` on macOS) the Node steps skip their
+   main block, print nothing and exit 0, so nothing deploys. Always read back the function version
+   afterwards (seen 2026-11-19, #3381).
 5. Verify with a synthetic web booking, never a real guest: the confirmation email shows **Manage
    or cancel**, the link opens the booking, and neither log line from above appears.
 
