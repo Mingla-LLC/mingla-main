@@ -402,6 +402,11 @@ $fn$;
 -- restored the same way. It also DROPS issue_3720_update_internal_thread and
 -- issue_3988_reassign_internal_thread with the staff-thread table; they are
 -- re-created here from section B for the replay and dropped again after T4.
+-- [TEST-MOD-APPROVED #4490] #4490 P3
+-- (20280809144490_issue_4490_p3_packages_deposits.sql) re-defines
+-- issue_1388_guard_state_transition (an active venue-booking commitment may
+-- move window or change guests inside a governed booking change), so it is
+-- put back and restored the same way.
 -------------------------------------------------------------------------------
 CREATE TEMP TABLE t4134_superseded AS
 SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS def_md5
@@ -416,7 +421,8 @@ SELECT p.oid, pg_temp.t4134_def(p.oid) AS def, md5(pg_temp.t4134_def(p.oid)) AS 
                  'public.issue_3720_set_next_update(text,uuid,integer,timestamp with time zone,text)'::regprocedure,
                  'public.issue_3720_link_product_signal_source(uuid,integer,text,uuid)'::regprocedure,
                  'public.issue_3720_update_product_signal(uuid,integer,text,text,timestamp with time zone,text,text)'::regprocedure,
-                 'public.issue_3720_save_product_avengers_review(uuid,integer,text,text,text,text[],text,text,text,text,text,text)'::regprocedure);
+                 'public.issue_3720_save_product_avengers_review(uuid,integer,text,text,text,text[],text,text,text,text,text,text)'::regprocedure,
+                 'public.issue_1388_guard_state_transition()'::regprocedure);
 
 BEGIN;
 SET LOCAL search_path TO pg_catalog, pg_temp;
@@ -1912,6 +1918,154 @@ BEGIN
   );
 
   RETURN v_revision;
+END;
+$function$
+;
+CREATE OR REPLACE FUNCTION public.issue_1388_guard_state_transition()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO ''
+AS $function$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'stay_history_immutable' USING ERRCODE = '55000';
+  END IF;
+  IF TG_TABLE_NAME = 'stay_quotes' THEN
+    IF OLD.status <> NEW.status AND NOT (
+      (OLD.status = 'building' AND NEW.status = 'active')
+      OR (
+        OLD.status = 'active'
+        AND NEW.status IN ('expired', 'consumed')
+      )
+    ) THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'stay_reservation_groups' THEN
+    IF OLD.state <> NEW.state AND NOT (
+       (
+         OLD.state = 'instant_payment_pending'
+         AND NEW.state IN (
+           'finalizing', 'cancelled', 'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'request_pending'
+         AND NEW.state IN (
+           'approved_payment_required',
+           'declined',
+           'request_expired',
+           'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'approved_payment_required'
+         AND NEW.state IN (
+           'finalizing',
+           'request_expired',
+           'cancelled',
+           'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'finalizing'
+         AND NEW.state IN ('confirmed', 'reconciliation_required')
+       )
+       OR (
+         OLD.state = 'confirmed'
+         AND NEW.state IN (
+           'partially_cancelled', 'cancelled', 'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'partially_cancelled'
+         AND NEW.state IN ('cancelled', 'reconciliation_required')
+       )
+       OR (
+         OLD.state = 'reconciliation_required'
+         AND NEW.state IN (
+           'finalizing',
+           'confirmed',
+           'partially_cancelled',
+           'cancelled'
+         )
+       )
+    ) THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'stay_reservation_lines' THEN
+    IF OLD.state <> NEW.state AND NOT (
+       (
+         OLD.state = 'payment_pending'
+         AND NEW.state IN (
+           'confirmed', 'cancelled', 'expired', 'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'request_pending'
+         AND NEW.state IN (
+           'approved_payment_required',
+           'declined',
+           'expired',
+           'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'approved_payment_required'
+         AND NEW.state IN (
+           'confirmed', 'cancelled', 'expired', 'reconciliation_required'
+         )
+       )
+       OR (
+         OLD.state = 'confirmed'
+         AND NEW.state IN ('cancelled', 'reconciliation_required')
+       )
+       OR (
+         OLD.state = 'reconciliation_required'
+         AND NEW.state IN ('confirmed', 'cancelled')
+       )
+    ) THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'stay_inventory_holds' THEN
+    IF NEW.id <> OLD.id
+       OR NEW.group_id <> OLD.group_id
+       OR NEW.created_at <> OLD.created_at THEN
+      RAISE EXCEPTION 'stay_hold_identity_immutable' USING ERRCODE = '55000';
+    END IF;
+    IF OLD.state <> NEW.state AND NOT (
+      (
+        OLD.state = 'active'
+        AND NEW.state IN (
+          'converted', 'released', 'expired', 'reconciliation_required'
+        )
+      )
+      OR (
+        OLD.state = 'reconciliation_required'
+        AND NEW.state IN ('converted', 'released')
+      )
+    ) THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  ELSIF TG_TABLE_NAME = 'stay_inventory_commitments' THEN
+    IF NEW.id <> OLD.id
+       OR NEW.group_id <> OLD.group_id
+       OR NEW.reservation_line_id <> OLD.reservation_line_id
+       OR NEW.resource_type <> OLD.resource_type
+       OR NEW.offering_id <> OLD.offering_id
+       OR NEW.room_date IS DISTINCT FROM OLD.room_date
+       OR NEW.place_window_id IS DISTINCT FROM OLD.place_window_id
+       OR NEW.quantity <> OLD.quantity
+       OR NEW.exclusive_unit_id IS DISTINCT FROM OLD.exclusive_unit_id
+       OR NEW.created_at <> OLD.created_at THEN
+      RAISE EXCEPTION 'stay_commitment_identity_immutable'
+        USING ERRCODE = '55000';
+    END IF;
+    IF OLD.state <> NEW.state
+       AND NOT (OLD.state = 'active' AND NEW.state = 'released') THEN
+      RAISE EXCEPTION 'stay_invalid_transition' USING ERRCODE = 'PT409';
+    END IF;
+  END IF;
+  RETURN NEW;
 END;
 $function$
 ;
