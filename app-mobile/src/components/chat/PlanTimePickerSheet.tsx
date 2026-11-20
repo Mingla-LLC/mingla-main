@@ -14,11 +14,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useTranslation } from "react-i18next";
+import { CalendarEmbed } from "@mingla/calendar/CalendarField";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
+import { deviceTimeZone, DARK_INLINE_CALENDAR_CONFIG, useExplorerCalendarLabels } from "../calendar/explorerInlineCalendar";
 import { Icon } from "../ui/Icon";
 import { chatTokens } from "../../constants/chatTokens";
 import { dateKey, isFutureSlot, slotToDate, timeKey, type PlanFormSlot } from "./planModel";
 
+const noopDone = (): void => undefined;
 const PILL_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 };
 
 function dateLabel(date: string, locale: string): string | null {
@@ -42,6 +45,7 @@ export function PlanDateTimeFields({
   testIDPrefix?: string;
 }): React.ReactElement {
   const { t, i18n } = useTranslation(["chat", "common"]);
+  const calendarLabels = useExplorerCalendarLabels();
   const [open, setOpen] = useState<"date" | "time" | null>(null);
   const today = useMemo(() => new Date(), []);
   const pickerValue = slotToDate({ date: value.date || dateKey(today), time: value.time || "19:00" }) ?? today;
@@ -50,9 +54,9 @@ export function PlanDateTimeFields({
   const apply = (mode: "date" | "time", picked: Date) => {
     onChange(mode === "date" ? { ...value, date: dateKey(picked) } : { ...value, time: timeKey(picked) });
   };
-  const onAndroid = (mode: "date" | "time") => (event: DateTimePickerEvent, picked?: Date) => {
+  const onAndroidTime = (event: DateTimePickerEvent, picked?: Date) => {
     setOpen(null);
-    if (event.type === "set" && picked) apply(mode, picked);
+    if (event.type === "set" && picked) apply("time", picked);
   };
 
   return (
@@ -87,36 +91,53 @@ export function PlanDateTimeFields({
           </Text>
         </TouchableOpacity>
       </View>
-      {open && Platform.OS === "android" ? (
+      {open === "date" ? (
+        <View style={styles.spinnerWrap}>
+          {/* #4523: the date is picked on the shared Mingla calendar; changing month only moves the view. */}
+          <CalendarEmbed
+            mode="single"
+            label={t("chat:plan_when_label")}
+            value={value.date}
+            onChange={(day) => {
+              if (day === "") return;
+              onChange({ ...value, date: day });
+              setOpen(null);
+            }}
+            min={dateKey(today)}
+            timeZone={deviceTimeZone()}
+            labels={calendarLabels}
+            config={DARK_INLINE_CALENDAR_CONFIG}
+            testID={`${testIDPrefix}-calendar`}
+            onDone={noopDone}
+            onCancel={() => setOpen(null)}
+          />
+        </View>
+      ) : null}
+      {open === "time" && Platform.OS === "android" ? (
         <DateTimePicker
           value={pickerValue}
-          mode={open}
+          mode="time"
           display="default"
-          minimumDate={open === "date" ? today : undefined}
-          minuteInterval={open === "time" ? 15 : undefined}
-          onChange={onAndroid(open)}
+          minuteInterval={15}
+          onChange={onAndroidTime}
         />
       ) : null}
-      {open && Platform.OS !== "android" ? (
+      {open === "time" && Platform.OS !== "android" ? (
         <View style={styles.spinnerWrap}>
           <DateTimePicker
             value={pickerValue}
-            mode={open}
+            mode="time"
             display="spinner"
             themeVariant="dark"
             textColor="#FFFFFF"
-            minimumDate={open === "date" ? today : undefined}
-            minuteInterval={open === "time" ? 15 : undefined}
+            minuteInterval={15}
             onChange={(_event, picked) => {
-              if (picked) apply(open, picked);
+              if (picked) apply("time", picked);
             }}
           />
           <TouchableOpacity
             style={styles.spinnerDone}
-            onPress={() => {
-              if (open === "date" && !value.date) apply("date", pickerValue);
-              setOpen(null);
-            }}
+            onPress={() => setOpen(null)}
             accessibilityRole="button"
             accessibilityLabel={t("common:done")}
           >

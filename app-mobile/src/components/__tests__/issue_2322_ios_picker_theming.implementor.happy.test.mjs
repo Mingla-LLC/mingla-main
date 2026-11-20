@@ -205,15 +205,11 @@ test("T-1: every iOS-capable <DateTimePicker> in app-mobile pins its appearance"
 
 test("T-1b: the registry cannot go vacuous", () => {
   const sites = pickerRegistry();
+  // #4523: dates moved to the Mingla calendar, so only the time-only pickers remain.
   assert.ok(
-    sites.length >= 9,
-    `expected at least 9 <DateTimePicker> call sites in app-mobile, found ${sites.length}. ` +
+    sites.length >= 3,
+    `expected at least 3 <DateTimePicker> call sites in app-mobile, found ${sites.length}. ` +
       "A registry that finds nothing passes T-1 for free — that is the dark-gate class of #2113.",
-  );
-  const spinners = sites.filter((s) => s.iosSpinner);
-  assert.ok(
-    spinners.length >= 3,
-    `expected at least 3 iOS spinner pickers, found ${spinners.length}`,
   );
   assert.ok(
     sites.some((s) => s.androidOnly),
@@ -221,32 +217,19 @@ test("T-1b: the registry cannot go vacuous", () => {
   );
 });
 
-test("T-5: the Android-only exemption is real and narrow", () => {
-  const sites = pickerRegistry();
-  const androidOnly = sites.filter((s) => s.androidOnly).map((s) => `${s.file}:${s.line}`);
-  const expectedExempt = [
-    "app-mobile/src/components/activity/ProposeDateTimeModal.tsx",
-    "app-mobile/src/components/expandedCard/ActionButtons.tsx",
-    "app-mobile/src/components/expandedCard/ConsumerIntakeForm.tsx",
-  ];
-  for (const f of expectedExempt) {
-    assert.ok(
-      androidOnly.some((s) => s.startsWith(`${f}:`)),
-      `${f} has a display="default" Android-only picker that must stay exempt from T-1`,
-    );
+test("T-5: the date wheels are gone — onboarding, reschedule, schedule and intake pick dates on the Mingla calendar (#4523)", () => {
+  for (const rel of [
+    "src/components/OnboardingFlow.tsx",
+    "src/components/PostExperienceModal.tsx",
+    "src/components/expandedCard/ActionButtons.tsx",
+    "src/components/expandedCard/ConsumerIntakeForm.tsx",
+    "src/components/activity/ProposeDateTimeModal.tsx",
+  ]) {
+    const source = read(path.join(APP_MOBILE, rel));
+    const dateWheels = (source.match(/<DateTimePicker\b[\s\S]*?\/>/g) ?? []).filter((el) => /mode\s*=\s*["'](date|datetime)["']/.test(el) || !/mode\s*=/.test(el));
+    assert.equal(dateWheels.length, 0, `${rel} must not render an OS date picker any more`);
+    assert.match(source, /<CalendarEmbed\b/, `${rel} must use the shared Mingla calendar`);
   }
-  // The exemption must not swallow the fixed sites.
-  for (const broken of ["OnboardingFlow.tsx", "PostExperienceModal.tsx"]) {
-    assert.equal(
-      androidOnly.some((s) => s.includes(broken)),
-      false,
-      `${broken}'s pickers are iOS-capable and must NOT be classified Android-only`,
-    );
-  }
-  assert.ok(
-    androidOnly.length < sites.length,
-    "if every site were exempt, T-1 would be unfalsifiable",
-  );
 });
 
 // ── T-2 ────────────────────────────────────────────────────────────────────────
@@ -288,197 +271,15 @@ test("T-2: the declared light appearance owns the final Info.plist value", () =>
   );
 });
 
-// ── OQ-1: executed, not grepped ────────────────────────────────────────────────
-// These tests EXTRACT the real handler bodies out of OnboardingFlow.tsx and RUN
-// them against a stub. A string match would pass against a fix that reads right and
-// behaves wrong; executing the shipped source cannot.
-
-function balancedBody(source, from) {
-  // `from` is the index of the opening `{` of a function body.
-  let depth = 0;
-  for (let j = from; j < source.length; j++) {
-    if (source[j] === "{") depth++;
-    else if (source[j] === "}") {
-      depth--;
-      if (depth === 0) return source.slice(from + 1, j);
-    }
-  }
-  throw new Error("unbalanced function body");
-}
-
-function dobRegion() {
-  const src = read(ONBOARDING);
-  const start = src.indexOf("onboarding:details.dob_label");
-  assert.notEqual(start, -1, "could not find the DOB field in OnboardingFlow.tsx");
-  const end = src.indexOf("── STEP 2 ──", start);
-  assert.notEqual(end, -1, "could not find the end of onboarding step 1");
-  return src.slice(start, end);
-}
-
-function onPressBodies(region) {
-  const bodies = [];
-  const marker = "onPress={() => {";
-  let i = 0;
-  while ((i = region.indexOf(marker, i)) !== -1) {
-    const braceAt = i + marker.length - 1;
-    bodies.push(balancedBody(region, braceAt));
-    i += marker.length;
-  }
-  return bodies;
-}
-
-const DEFAULT_BIRTHDAY = new Date(2000, 0, 1);
-const CHOSEN_BIRTHDAY = new Date(1994, 5, 17);
-
-function harness() {
-  const region = dobRegion();
-  const bodies = onPressBodies(region);
-
-  const openBody = bodies.find((b) => b.includes("setShowDatePicker(true)"));
-  const doneBody = bodies.find(
-    (b) => b.includes("setShowDatePicker(false)") && b.includes("pendingBirthdayRef"),
-  );
-  assert.ok(openBody, "could not extract the DOB field's open handler");
-  assert.ok(doneBody, "could not extract the iOS Done handler");
-
-  const picker = extractElements(region, "DateTimePicker")[0];
-  assert.ok(picker, "could not find the DOB <DateTimePicker>");
-  const onChangeAttr = attr(picker.text, "onChange");
-  assert.ok(onChangeAttr && !onChangeAttr.literal, "could not extract the DOB onChange handler");
-  const arrow = onChangeAttr.value;
-  const onChangeBody = balancedBody(arrow, arrow.indexOf("{", arrow.indexOf("=>")));
-  const valueExpr = attr(picker.text, "value");
-  assert.ok(valueExpr && !valueExpr.literal, "could not extract the DOB picker's `value` expression");
-
-  return { openBody, doneBody, onChangeBody, valueExpr: valueExpr.value };
-}
-
-function makeRuntime(initialBirthday) {
-  const state = {
-    data: { userBirthday: initialBirthday },
-    pickerOpen: false,
-    pickerTouched: false,
-    setDataCalls: 0,
-  };
-  const env = {
-    pendingBirthdayRef: { current: "NEVER-INITIALISED" },
-    BIRTHDAY_PICKER_DEFAULT: DEFAULT_BIRTHDAY,
-    Platform: { OS: "ios" },
-    setShowDatePicker: (v) => { state.pickerOpen = v; },
-    // [TEST-MOD-APPROVED #4063] The production picker now tracks whether the
-    // wheel was deliberately moved so its Done control cannot silently accept
-    // the visible fallback date. Keep the extracted-handler harness complete.
-    setBirthdayPickerTouched: (v) => { state.pickerTouched = v; },
-    setData: (updater) => {
-      state.setDataCalls += 1;
-      state.data = typeof updater === "function" ? updater(state.data) : updater;
-    },
-    get data() { return state.data; },
-  };
-  const run = (body, extra = {}) => {
-    const scope = { ...env, ...extra };
-    // `data` is a getter on env; spread has already resolved it, which is what the
-    // handlers see at call time anyway.
-    scope.data = state.data;
-    const fn = new Function(...Object.keys(scope), `"use strict";\n${body}`);
-    return fn(...Object.values(scope));
-  };
-  return { state, env, run };
-}
-
-test("OQ-1: opening the wheel and tapping Done WITHOUT scrolling stores no birthday", () => {
-  const { openBody, doneBody } = harness();
-  const { state, env, run } = makeRuntime(undefined);
-
-  run(openBody);
-  assert.equal(state.pickerOpen, true, "the field must still open the picker");
-  assert.equal(
-    env.pendingBirthdayRef.current,
-    null,
-    "opening the DOB field must leave NO pending value. Seeding the ref with " +
-      "BIRTHDAY_PICKER_DEFAULT is what made Done commit 2000-01-01 as if the user had chosen it (#2322 OQ-1).",
-  );
-
-  run(doneBody);
-  assert.equal(
-    state.setDataCalls,
-    0,
-    "Done on an untouched wheel must not write to onboarding state",
-  );
-  assert.equal(
-    state.data.userBirthday,
-    undefined,
-    "a user who never moved the wheel must not end up with a stored birthday — " +
-      "it feeds profiles.birthday and buildOccasions()",
-  );
-  assert.equal(state.pickerOpen, false, "Done must still close the picker");
-});
-
-test("OQ-1: the CTA stays blocked when no birthday was chosen", () => {
-  const src = read(ONBOARDING);
-  const at = src.indexOf("case 'details':");
-  assert.notEqual(at, -1, "could not find the step-1 CTA case in OnboardingFlow.tsx");
-  const rest = src.slice(at + "case 'details':".length);
-  // The whole case body, up to whichever comes first: the next case or a break.
-  const nextCase = rest.indexOf("case '");
-  const body = rest.slice(0, nextCase === -1 ? 400 : nextCase);
-  assert.match(
-    body,
-    /disabled:\s*!data\.userBirthday/,
-    "the step-1 'Let's go' CTA must remain gated on a REAL birthday. Combined with the " +
-      "test above, an untouched wheel now leaves the CTA disabled instead of unblocking it " +
-      "with a value nobody picked.",
-  );
-});
-
-test("OQ-1: the wheel still SHOWS 01/01/2000, so the control looks normal", () => {
-  const { valueExpr } = harness();
-  const scope = {
-    pendingBirthdayRef: { current: null },
-    data: { userBirthday: undefined },
-    BIRTHDAY_PICKER_DEFAULT: DEFAULT_BIRTHDAY,
-  };
-  const resolved = new Function(
-    ...Object.keys(scope),
-    `"use strict"; return (${valueExpr});`,
-  )(...Object.values(scope));
-  assert.equal(
-    resolved,
-    DEFAULT_BIRTHDAY,
-    "with nothing pending and nothing stored the picker must still display " +
-      "BIRTHDAY_PICKER_DEFAULT. The fix removes the silent COMMIT, not the visible default.",
-  );
-});
-
-test("OQ-1: scrolling the wheel and then tapping Done DOES store the chosen date", () => {
-  const { openBody, doneBody, onChangeBody } = harness();
-  const { state, run } = makeRuntime(undefined);
-
-  run(openBody);
-  run(onChangeBody, { _event: { type: "set" }, selectedDate: CHOSEN_BIRTHDAY });
-  run(doneBody);
-
-  assert.equal(
-    state.data.userBirthday,
-    CHOSEN_BIRTHDAY,
-    "a birthday the user actually scrolled to must still commit on Done — the fix must not " +
-      "make Done permanently inert",
-  );
-});
-
-test("OQ-1: re-opening an already-set birthday and tapping Done preserves it", () => {
-  const { openBody, doneBody } = harness();
-  const existing = new Date(1988, 10, 3);
-  const { state, run } = makeRuntime(existing);
-
-  run(openBody);
-  run(doneBody);
-
-  assert.equal(
-    state.data.userBirthday,
-    existing,
-    "Done on an untouched re-opened picker must leave the stored birthday alone, not clear it",
-  );
+// ── OQ-1 (rewritten for #4523) ────────────────────────────────────────────────
+// The birthday wheel (and its "Done on an untouched wheel commits nothing" rule) is gone:
+// the birthday is picked on the Mingla calendar's year grid and ONLY a day tap sets it,
+// so the "Let's go" CTA still cannot be unblocked by a birthday nobody picked.
+test("OQ-1: onboarding sets the birthday only from a picked day, through the dob calendar", () => {
+  const source = read(ONBOARDING);
+  assert.match(source, /<CalendarEmbed[\s\S]*mode="dob"/);
+  assert.doesNotMatch(source, /pendingBirthdayRef|BIRTHDAY_PICKER_DEFAULT/);
+  assert.match(source, /disabled: !data\.userBirthday/); // the CTA is still gated on a chosen birthday
 });
 
 // ── Registration ───────────────────────────────────────────────────────────────
