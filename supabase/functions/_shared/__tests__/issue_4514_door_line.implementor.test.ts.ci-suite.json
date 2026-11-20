@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/_shared/__tests__/issue_4514_door_line.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4514-door-line-implementor",
+  "profile": "deno-2-unit"
+}

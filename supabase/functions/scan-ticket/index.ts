@@ -38,13 +38,17 @@ export type ScanTicketDeps = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // #4514 wave 6 — "See all answers" opens the full answers only for a ticket
-// this same person scanned at this event, recently, and that the door let in
-// (or had already let in). The SQL read checks door authority, the host switch,
+// this same person scanned (or admitted by name: the same scan_events receipt)
+// at this event, recently, and that the door let in (or had already let in). The SQL read checks door authority, the host switch,
 // rank, one current guest of this event, the rate limit and logs the read.
 export const DOOR_FULL_ANSWERS_WINDOW_MS = 30 * 60 * 1000;
 const ADMITTED = new Set(["success", "duplicate"]);
 
 type QueryResult = { data: unknown; error: unknown };
+
+const nameAdmit = (metadata: unknown): boolean =>
+  metadata !== null && typeof metadata === "object" &&
+  (metadata as { via?: unknown }).via === "name_search";
 
 async function doorFullAnswers(
   supabase: ScanTicketClient,
@@ -59,7 +63,7 @@ async function doorFullAnswers(
   }
   const scan = await supabase
     .from("scan_events")
-    .select("ticket_id, event_id, scanner_user_id, scan_result, scanned_at")
+    .select("ticket_id, event_id, scanner_user_id, scan_result, scanned_at, metadata")
     .eq("id", scanId)
     .maybeSingle() as QueryResult;
   if (scan.error) {
@@ -72,6 +76,7 @@ async function doorFullAnswers(
     scanner_user_id?: unknown;
     scan_result?: unknown;
     scanned_at?: unknown;
+    metadata?: unknown;
   } | null;
   const scannedAt = typeof row?.scanned_at === "string" ? Date.parse(row.scanned_at) : NaN;
   if (
@@ -98,7 +103,9 @@ async function doorFullAnswers(
     p_actor_id: actorId,
     p_event_id: eventId,
     p_subject: { kind: "order", id: orderId, ticketId: row.ticket_id },
-    p_via: "scan",
+    // A name admit's receipt is the same scan_events row (biz_ticket_admit_by_id
+    // runs biz_ticket_scan and tags it), so the read log says where it came from.
+    p_via: nameAdmit(row.metadata) ? "search" : "scan",
   });
   if (error) {
     const message = String((error as { message?: unknown }).message ?? "");

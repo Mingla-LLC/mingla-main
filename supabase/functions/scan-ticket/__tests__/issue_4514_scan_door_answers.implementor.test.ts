@@ -16,6 +16,9 @@ type Settle = (signal?: AbortSignal) => Promise<{ data: unknown; error: unknown 
 type Call = { fn: string; args: Record<string, unknown> };
 
 const LINE = { state: "answered", formName: "Performers", fullAnswers: true, items: [{ label: "Performing", value: "Yes" }] };
+// The door gets the line ready to show (the server owns the 3 / 60 rule).
+const SHOWN = { state: "answered", header: null, lines: ["Performing: Yes"], fullAnswers: true };
+const UNAVAILABLE = { state: "unavailable", header: null, lines: ["Answers unavailable"], fullAnswers: false };
 
 function harness(opts: {
   scan?: Record<string, unknown>;
@@ -73,7 +76,7 @@ const silence = <T>(fn: () => Promise<T>) => {
 Deno.test("#4514 scan: the door line rides on an admitted ticket, read for that ticket at this event", async () => {
   const h = harness({ scan: success });
   const body = await (await h.handler(post(scanBody))).json();
-  assertEquals(body, { ...success, doorAnswers: LINE });
+  assertEquals(body, { ...success, doorAnswers: SHOWN });
   const read = h.calls.find((c) => c.fn === "brand_form_door_answers");
   assertEquals(read?.args, { p_actor_id: ACTOR, p_event_id: EVENT, p_subject: { kind: "order", id: ORDER, ticketId: TICKET } });
 });
@@ -81,7 +84,7 @@ Deno.test("#4514 scan: the door line rides on an admitted ticket, read for that 
 Deno.test("#4514 scan: already scanned repeats the line", async () => {
   const dup = { ...success, result: "duplicate" };
   const body = await (await harness({ scan: dup }).handler(post(scanBody))).json();
-  assertEquals(body, { ...dup, doorAnswers: LINE });
+  assertEquals(body, { ...dup, doorAnswers: SHOWN });
 });
 
 Deno.test("#4514 scan: nothing to show keeps the body byte-identical", async () => {
@@ -96,13 +99,13 @@ Deno.test("#4514 scan: an unanswered form never blocks entry: the result stays s
   assertEquals(res.status, 200);
   const body = await res.json();
   assertEquals(body.result, "success");
-  assertEquals(body.doorAnswers, notAnswered);
+  assertEquals(body.doorAnswers, { state: "not_answered", header: null, lines: ["Questions not answered"], fullAnswers: false });
 });
 
 Deno.test("#4514 scan: a failed answers read is 'unavailable' and the scan answer is unchanged", async () => {
   const h = harness({ scan: success, door: () => Promise.resolve({ data: null, error: { message: "boom" } }) });
   const body = await silence(async () => await (await h.handler(post(scanBody))).json());
-  assertEquals(body, { ...success, doorAnswers: { state: "unavailable" } });
+  assertEquals(body, { ...success, doorAnswers: UNAVAILABLE });
 });
 
 Deno.test("#4514 scan: a stalled answers read never slows the scan past the door deadline", async () => {
@@ -116,7 +119,7 @@ Deno.test("#4514 scan: a stalled answers read never slows the scan past the door
   const started = Date.now();
   const body = await silence(async () => await (await h.handler(post(scanBody))).json());
   assert(Date.now() - started < 1000);
-  assertEquals(body, { ...success, doorAnswers: { state: "unavailable" } });
+  assertEquals(body, { ...success, doorAnswers: UNAVAILABLE });
 });
 
 Deno.test("#4514 scan: refused results never read answers", async () => {
@@ -145,6 +148,25 @@ Deno.test("#4514 see all answers: the scanned guest at this event, through the c
     p_via: "scan",
   });
   assert(!h.calls.some((c) => c.fn === "biz_ticket_scan"), "opening answers never scans again");
+});
+
+Deno.test("#4514 see all answers: a name admit's receipt (same scan_events row) opens it, logged as a search", async () => {
+  const h = harness({ scanRow: { ...scanRow, metadata: { source: "manual-admit", via: "name_search" } } });
+  const res = await h.handler(post(fullBody));
+  assertEquals(res.status, 200);
+  assertEquals(h.calls.find((c) => c.fn === "brand_form_door_full_answers")?.args.p_via, "search");
+});
+
+Deno.test("#4514 see all answers: a name admit by someone else, or too long ago, is refused", async () => {
+  const meta = { metadata: { via: "name_search" } };
+  for (const row of [
+    { ...scanRow, ...meta, scanner_user_id: "99999999-9999-4999-8999-999999999999" },
+    { ...scanRow, ...meta, scanned_at: new Date(NOW - DOOR_FULL_ANSWERS_WINDOW_MS - 1000).toISOString() },
+  ]) {
+    const h = harness({ scanRow: row });
+    assertEquals((await h.handler(post(fullBody))).status, 403);
+    assert(!h.calls.some((c) => c.fn === "brand_form_door_full_answers"));
+  }
 });
 
 Deno.test("#4514 see all answers: only for a scan this person made here, recently, that let the guest in", async () => {
