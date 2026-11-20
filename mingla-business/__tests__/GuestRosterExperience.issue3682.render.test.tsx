@@ -35,6 +35,14 @@ const mockQuery: Record<string, unknown> = {
 };
 const mockAccountInvites: { data: unknown } = { data: undefined };
 
+// #4514: the roster's answers chip, panel and "Ask guests" row load from the
+// forms lazy owner (expo-router, auth); stubbed like the other children so
+// this proof stays on the roster. The forms suites cover those parts.
+jest.mock("../src/components/forms/formsOwner", () => ({
+  GuestAnswersChip: () => null,
+  GuestAnswersPanel: () => null,
+  GuestFormRequestRow: () => null,
+}));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
