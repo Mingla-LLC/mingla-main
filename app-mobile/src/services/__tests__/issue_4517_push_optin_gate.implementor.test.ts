@@ -2,7 +2,7 @@
 //
 // #4517 — Explorer false "notifications turned off" alert after Allow.
 //
-// MINGLA-INVARIANT: push optIn never runs on an unanswered or denied permission.
+// MINGLA-INVARIANT: I-4517-PUSH-OPTIN-GATED | issue #4517 | push optIn never runs on an unanswered or denied notification permission
 //
 // The SDK rule modelled by the mock (OneSignal iOS 5.8): pushSubscription.optIn()
 // raises the OS prompt when the user was never asked, and raises the Settings

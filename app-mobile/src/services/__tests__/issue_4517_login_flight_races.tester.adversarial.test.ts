@@ -2,7 +2,7 @@
 //
 // #4517 tester adversarial suite: races the implementor's suite does not cover.
 //
-// MINGLA-INVARIANT: push optIn never runs on an unanswered or denied permission.
+// Attacks the push opt-in gate declared in issue_4517_push_optin_gate.implementor.test.ts.
 //
 // Angle: the OS prompt is answered WHILE OneSignal.login is still in flight, a
 // login fails then retries, the permission read throws, and a user switch

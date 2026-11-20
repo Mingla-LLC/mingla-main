@@ -3,9 +3,7 @@
 // #4517 (amendment) — an already-onboarded, signed-in user who was never asked
 // for notifications gets the gated request once per app session on reaching home.
 //
-// MINGLA-INVARIANT: push optIn never runs on an unanswered or denied permission,
-// and the OS prompt is raised at most once per session by the shared single-flight
-// gate (the post-onboarding call and the returning-user call cannot double-prompt).
+// MINGLA-INVARIANT: I-4517-PUSH-PROMPT-ONCE | issue #4517 | the OS notification prompt is raised at most once per app session by the shared single-flight gate, so the post-onboarding and returning-user calls cannot double-prompt
 //
 // Loads the REAL permissionOrchestrator.ts with its imports rewritten to data:
 // stub modules (read access only).
