@@ -123,6 +123,9 @@ jest.mock("../TripCreatorStep4Pricing", () => ({
 jest.mock("../InstallmentScheduleDisplay", () => ({ InstallmentScheduleDisplay: () => null }));
 jest.mock("../EditPublishedTripIntakeAccordion", () => ({ EditPublishedTripIntakeAccordion: () => null }));
 jest.mock("../EditAfterPublishTripBanner", () => ({ EditAfterPublishTripBanner: () => null }));
+// #4514: the lazy "Guest questions" row is its own owner (useBrandForms, auth);
+// stubbed like the other section children so this proof stays on the screen.
+jest.mock("../../forms/formsOwner", () => ({ GuestQuestionsRow: () => null }));
 jest.mock("../../ui/CoverPickerSheet", () => ({ CoverPickerSheet: () => null }));
 jest.mock("../../ui/EventCoverMedia", () => ({ EventCoverMedia: () => null }));
 

@@ -291,7 +291,7 @@ export default function BrandFormLinkScreen({
             <View style={styles.appCard}>
               <Text style={styles.appTitle}>{LINK_COPY.appTitle}</Text>
               <Text style={styles.muted}>{LINK_COPY.appBody}</Text>
-              <Pressable onPress={openApp} accessibilityRole="link" testID="brand-form-link-open-app">
+              <Pressable onPress={openApp} accessibilityRole="link" accessibilityLabel={LINK_COPY.openInApp} testID="brand-form-link-open-app">
                 <Text style={styles.link}>{LINK_COPY.openInApp}</Text>
               </Pressable>
             </View>
@@ -453,7 +453,7 @@ export default function BrandFormLinkScreen({
         {p.form.identity !== null ? (
           <View style={styles.identityRow}>
             <Text style={styles.muted}>{LINK_COPY.answeringAs(p.form.identity)} · </Text>
-            <Pressable onPress={() => notYou(!p.notYouOpen)} accessibilityRole="button" testID="brand-form-link-not-you">
+            <Pressable onPress={() => notYou(!p.notYouOpen)} accessibilityRole="button" accessibilityLabel={LINK_COPY.notYou} accessibilityState={{ expanded: p.notYouOpen }} testID="brand-form-link-not-you">
               <Text style={styles.link}>{LINK_COPY.notYou}</Text>
             </Pressable>
           </View>

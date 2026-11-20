@@ -1040,6 +1040,16 @@
       "capability_keys": []
     },
     {
+      "pattern": "/form/[formId]",
+      "params": [
+        "formId"
+      ],
+      "title": "Form",
+      "title_source": "path",
+      "file": "mingla-business/app/form/[formId].tsx",
+      "capability_keys": []
+    },
+    {
       "pattern": "/g/[token]",
       "params": [
         "token"
@@ -1218,6 +1228,34 @@
       "capability_keys": [
         "programs-creators"
       ]
+    },
+    {
+      "pattern": "/marketing/forms",
+      "params": [],
+      "title": "Forms",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/forms/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/marketing/forms/[formId]",
+      "params": [
+        "formId"
+      ],
+      "title": "Forms",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/forms/[formId]/index.tsx",
+      "capability_keys": []
+    },
+    {
+      "pattern": "/marketing/forms/[formId]/responses",
+      "params": [
+        "formId"
+      ],
+      "title": "Responses",
+      "title_source": "path",
+      "file": "mingla-business/app/(tabs)/marketing/forms/[formId]/responses.tsx",
+      "capability_keys": []
     },
     {
       "pattern": "/marketing/people",
