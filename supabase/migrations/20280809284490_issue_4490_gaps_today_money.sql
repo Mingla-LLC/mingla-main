@@ -45,11 +45,21 @@ BEGIN
   JOIN public.stay_reservation_groups g ON g.id = a.group_id
   WHERE g.venue_id = p_venue_id AND a.state = 'succeeded'
     AND public.issue_4490_venue_service_date(p_venue_id, a.succeeded_at) = p_local_date;
-  -- (b) at the venue (cash, transfer, card at the venue, pay-by-code)
+  -- (b) at the venue (cash, transfer, card at the venue, pay-by-code).
+  -- N127: one day rule for every source, the venue's service day. paid_on is
+  -- written as the calendar day by default, so cash taken at 01:00 after a
+  -- 02:00 close would land on the next day; when paid_on is that default (the
+  -- calendar day the row was recorded), the service day of the recording time
+  -- is used. A paid_on staff chose for another day is kept as chosen.
   SELECT COALESCE(sum(o.amount_minor), 0)::bigint INTO v_at_venue
   FROM public.venue_offline_payments o
   JOIN public.stay_reservation_groups g ON g.id = o.group_id
-  WHERE g.venue_id = p_venue_id AND o.paid_on = p_local_date;
+  WHERE g.venue_id = p_venue_id
+    AND CASE
+          WHEN o.paid_on = (o.created_at AT TIME ZONE public.issue_4490_venue_timezone(p_venue_id))::date
+            THEN public.issue_4490_venue_service_date(p_venue_id, o.created_at)
+          ELSE o.paid_on
+        END = p_local_date;
   -- (c) membership periods paid at the venue (these write no offline payment row)
   SELECT COALESCE(sum(m.amount_minor), 0)::bigint INTO v_members
   FROM public.venue_membership_periods m

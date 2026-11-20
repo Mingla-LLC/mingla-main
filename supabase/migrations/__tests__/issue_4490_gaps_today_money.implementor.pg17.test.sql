@@ -8,7 +8,8 @@
 -- collected_on is gone.  E-4 a stranger and anon cannot call it.  E-5 another venue's money is not counted.
 --
 -- FAILS-ON-REVERT (seen 20 Nov): without 20280809284490 issue_4490_venue_money_day does not exist (E-1 fails)
--- and venue_day still returns collectedToday (E-3 fails).
+-- and venue_day still returns collectedToday (E-3 fails). N127 E-6 (seen 20 Nov): with paid_on as a calendar day,
+-- 01:00 cash after a 02:00 close lands on tomorrow and E-6 fails.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -85,8 +86,8 @@ BEGIN
     (gen_random_uuid(), g_other, 'paystack', 1, 70000, 'NGN', 'idem-att-4', repeat('a', 64), 'succeeded', v_noon),
     (gen_random_uuid(), g_property, 'paystack', 1, 1, 'NGN', 'idem-att-5', repeat('a', 64), 'failed', NULL);
   -- (b) gate cash for tonight's booking
-  INSERT INTO public.venue_offline_payments (group_id, amount_minor, currency_code, method, paid_on, idempotency_key, request_hash)
-    VALUES (g_today, 20000, 'NGN', 'cash', v_today, 'idem-off-1', repeat('a', 64));
+  INSERT INTO public.venue_offline_payments (group_id, amount_minor, currency_code, method, paid_on, idempotency_key, request_hash, created_at)
+    VALUES (g_today, 20000, 'NGN', 'cash', v_today, 'idem-off-1', repeat('a', 64), v_noon);
   -- (c) a member paid at the venue today
   INSERT INTO public.venue_membership_periods (subscription_id, sequence, period_start, period_end, amount_minor, currency_code, due_at, status, paid_via, paid_at, paid_method)
     VALUES (v_sub, 1, v_noon, v_noon + interval '1 month', 40000, 'NGN', v_noon, 'paid', 'venue', v_noon, 'cash');
@@ -130,6 +131,24 @@ BEGIN
   m := public.issue_4490_venue_money_day(v_other, v_today);
   IF (m->>'paidInMinor')::bigint <> 70000 THEN RAISE EXCEPTION 'E-5 FAIL: other venue %', m; END IF;
   RAISE NOTICE 'PASS  E-5 another day and another venue keep their own money';
+
+  -- E-6 (N127) one day rule: the other venue closes at 02:00. Cash recorded at
+  -- 01:00 after tonight (calendar paid_on = tomorrow, the writer's default)
+  -- counts on tonight's service day; cash staff dated for yesterday stays there.
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.brand_hours (brand_id, venue_id, weekday, open_time, close_time)
+    SELECT v_brand, v_other, wd, time '18:00', time '02:00' FROM generate_series(0, 6) wd;
+  INSERT INTO public.venue_offline_payments (group_id, amount_minor, currency_code, method, paid_on, idempotency_key, request_hash, created_at) VALUES
+    (g_other, 3000, 'NGN', 'cash', v_today + 1, 'idem-off-late', repeat('a', 64), v_noon + interval '13 hours'),
+    (g_other, 500, 'NGN', 'cash', v_today - 1, 'idem-off-back', repeat('a', 64), v_noon);
+  SET LOCAL session_replication_role = origin;
+  m := public.issue_4490_venue_money_day(v_other, v_today);
+  IF (m->'paidIn'->>'atVenue')::bigint <> 3000 THEN RAISE EXCEPTION 'E-6 FAIL: 01:00 cash not on tonight %', m; END IF;
+  m := public.issue_4490_venue_money_day(v_other, v_today + 1);
+  IF (m->'paidIn'->>'atVenue')::bigint <> 0 THEN RAISE EXCEPTION 'E-6 FAIL: 01:00 cash counted tomorrow %', m; END IF;
+  m := public.issue_4490_venue_money_day(v_other, v_today - 1);
+  IF (m->'paidIn'->>'atVenue')::bigint <> 500 THEN RAISE EXCEPTION 'E-6 FAIL: a back-dated cash day moved %', m; END IF;
+  RAISE NOTICE 'PASS  E-6 cash after midnight counts on the night (service day); a chosen day stays';
 
   -- E-3 venue_day carries the money; collected_on is gone
   PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
