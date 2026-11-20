@@ -29,7 +29,16 @@
           { "/": "/e/*", "comment": "Consumer app public event links" },
           { "/": "/t/*", "comment": "Consumer app public trip links" },
           { "/": "/exp/*", "comment": "Consumer app public experience links" },
-          { "/": "/attendance/claim", "comment": "Consumer app attendance claim handoff" }
+          { "/": "/attendance/claim", "comment": "Consumer app attendance claim handoff" },
+          { "/": "/visit/*", "?": { "paid": "*" }, "exclude": true, "comment": "#4490 web payment return stays on the web" },
+          { "/": "/visit/plan/*", "exclude": true, "comment": "#4490 plan renewal pays on the web" },
+          { "/": "/stay/pay/*", "exclude": true, "comment": "#4490 stay payment link stays on the web" },
+          { "/": "/reserve/*/confirm*", "exclude": true, "comment": "#4490 table booking confirm stays on the web" },
+          { "/": "/o/venue/*", "exclude": true, "comment": "#4490 table QR ordering stays on the web" },
+          { "/": "/visit/*", "comment": "#4490 venue booking and waitlist links" },
+          { "/": "/stay/*", "comment": "#4490 stay booking links" },
+          { "/": "/o/*", "comment": "#4490 venue order links" },
+          { "/": "/reserve/*/manage*", "comment": "#4490 table booking manage links" }
         ]
       }
     ]

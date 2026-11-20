@@ -115,15 +115,21 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "enquiry",
   "exp",
   "local",
+  // #4490 Explorer W1: venue web links the app now serves (/o/<id>).
+  "o",
   "p",
   // #3872 — Payout account (Earnings and Local link here).
   "payout",
   "purchases",
+  // #4490 Explorer W1: /reserve/<brand>/manage opens on the web in-app.
+  "reserve",
   "s",
   "stay",
   // #4382 — Help & Support and support request threads.
   "support",
   "t",
+  // #4490 Explorer W1: /visit/<id> and /visit/waitlist/<id>.
+  "visit",
 ]);
 
 /** `scheme:` prefix per RFC 3986. Anything without one is a relative path (R-1). */

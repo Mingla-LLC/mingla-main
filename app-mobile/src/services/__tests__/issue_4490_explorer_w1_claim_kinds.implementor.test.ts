@@ -2,12 +2,17 @@
  * #4490 Explorer W1 — the app keeps venue claim rows and routes them.
  * FAILS-ON-REVERT: drop venue_booking from CLAIM_KINDS and W1-A1 fails.
  */
-import { expect, jest, test } from "@jest/globals";
-jest.mock("../../lib/secureStoreSafe", () => ({ secureDeleteItem: jest.fn(), secureGetItem: jest.fn(), secureSetItem: jest.fn() }));
+// Jest globals, typed locally (app-mobile has no /jest in its tsconfig).
+interface W1Matchers { toBe(v: unknown): void; toEqual(v: unknown): void; toBeNull(): void }
+declare const describe: (name: string, body: () => void) => void;
+declare const test: (name: string, body: () => void) => void;
+declare const expect: ((v: unknown) => W1Matchers) & { arrayContaining(v: unknown[]): unknown };
+declare const jest: { mock(path: string, factory: () => unknown): void; fn(): () => unknown };
+jest.mock("../../lib/secureStoreSafe", () => ({ secureDeleteItem: () => undefined, secureGetItem: () => undefined, secureSetItem: () => undefined }));
 jest.mock("@mingla/phone-input/phoneNumber", () => ({ formatPhoneNational: (v: string) => v }));
 jest.mock("../../constants/countries", () => ({ COUNTRIES: [] }));
 jest.mock("../../utils/zoneLabel", () => ({ formatStartsAtLabel: () => "" }));
-jest.mock("../supabase", () => ({ supabase: {}, reactivateExplorerForVerifiedSession: jest.fn() }));
+jest.mock("../supabase", () => ({ supabase: {}, reactivateExplorerForVerifiedSession: () => undefined }));
 import { parseClaimedEntries } from "../attendanceClaimService";
 import { claimedEntryPath } from "../../components/purchases/missingTicketModel";
 import { PURCHASE_DEEP_LINK_KINDS } from "../deepLinkService";
