@@ -104,7 +104,9 @@ BEGIN
     v_f_refunded + COALESCE((SELECT sum(sr.buyer_refund_requested_cents) FROM public.source_refunds sr
               WHERE sr.source_type = 'venue_reservation' AND sr.venue_id = p_venue_id
                 AND sr.buyer_state <> 'failed_terminal'
-                AND sr.source_id IN (SELECT id FROM day_tables)), 0)
+                -- N124: production writes source_id = the checkout session and
+                -- subject_id = the reservation.
+                AND sr.subject_id IN (SELECT id FROM day_tables)), 0)
   INTO v_f_tables, v_f_refunded;
 
   RETURN jsonb_build_object(

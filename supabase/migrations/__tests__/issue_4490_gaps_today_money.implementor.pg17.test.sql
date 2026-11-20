@@ -97,7 +97,8 @@ BEGIN
   INSERT INTO public.source_refunds (source_type, source_id, subject_id, brand_id, venue_id, refund_kind, requested_by_type, reason, provider,
       currency, original_charge_cents, buyer_refund_requested_cents, organizer_refund_liability_cents, platform_fee_absorption_cents,
       idempotency_key, buyer_state, requested_at, provider_payment_reference)
-    VALUES ('venue_reservation', r_today, r_today, v_brand, v_venue, 'venue_eligible_cancel', 'guest', 'changed plans', 'paystack',
+    -- N124 (TEST-MOD-APPROVED #4490): production-shaped: source_id = the checkout session, subject_id = the reservation.
+    VALUES ('venue_reservation', gen_random_uuid(), r_today, v_brand, v_venue, 'venue_eligible_cancel', 'guest', 'changed plans', 'paystack',
       'NGN', 15000, 3000, 3000, 0, 'idem-sr-1', 'queued', v_noon, 'ref-table-deposit-1');
   -- (e) a stay refund raised today on tonight's booking
   INSERT INTO public.stay_refunds (group_id, payment_attempt_id, cancel_preview_id, requested_by_type, reason, state, amount_minor, currency_code, provider, idempotency_key, created_at)
