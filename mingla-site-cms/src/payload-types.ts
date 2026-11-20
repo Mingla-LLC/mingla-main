@@ -83,6 +83,7 @@ export interface Config {
     'font-assets': FontAsset;
     'work-log': WorkLog;
     'design-check-runs': DesignCheckRun;
+    'draft-changes': DraftChange;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -106,6 +107,7 @@ export interface Config {
     'font-assets': FontAssetsSelect<false> | FontAssetsSelect<true>;
     'work-log': WorkLogSelect<false> | WorkLogSelect<true>;
     'design-check-runs': DesignCheckRunsSelect<false> | DesignCheckRunsSelect<true>;
+    'draft-changes': DraftChangesSelect<false> | DraftChangesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -2107,6 +2109,55 @@ export interface DesignCheckRun {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "draft-changes".
+ */
+export interface DraftChange {
+  id: string;
+  tenant?: (string | null) | Tenant;
+  group_id: string;
+  seq: number;
+  label: string;
+  group_label?: string | null;
+  actor: 'user' | 'ari' | 'team';
+  actor_user_id?: string | null;
+  target: 'page' | 'look' | 'menu';
+  target_id?: string | null;
+  before?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  after?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  state: 'applied' | 'undone' | 'superseded';
+  merge_key?: string | null;
+  tool?: string | null;
+  operation_id?: string | null;
+  result?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -2192,6 +2243,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'design-check-runs';
         value: string | DesignCheckRun;
+      } | null)
+    | ({
+        relationTo: 'draft-changes';
+        value: string | DraftChange;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -3297,6 +3352,30 @@ export interface DesignCheckRunsSelect<T extends boolean = true> {
   results?: T;
   warning_count?: T;
   run_by?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "draft-changes_select".
+ */
+export interface DraftChangesSelect<T extends boolean = true> {
+  tenant?: T;
+  group_id?: T;
+  seq?: T;
+  label?: T;
+  group_label?: T;
+  actor?: T;
+  actor_user_id?: T;
+  target?: T;
+  target_id?: T;
+  before?: T;
+  after?: T;
+  state?: T;
+  merge_key?: T;
+  tool?: T;
+  operation_id?: T;
+  result?: T;
   updatedAt?: T;
   createdAt?: T;
 }

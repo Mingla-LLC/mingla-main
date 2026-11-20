@@ -380,6 +380,15 @@ async function failureFromInvokeError(error: unknown): Promise<BrandSitesError> 
   }
 }
 
+/**
+ * How long a website request may stay unanswered. A service that accepts a
+ * request and never answers would otherwise leave a screen loading for ever;
+ * after this the caller is told the service isn't answering and can retry.
+ * (Core gives up on Studio after a few seconds, so a healthy answer is far
+ * inside this.)
+ */
+export const SITES_REQUEST_TIMEOUT_MS = 30_000;
+
 async function invoke<T>(
   route: string,
   method: "GET" | "POST" | "DELETE",
@@ -388,7 +397,7 @@ async function invoke<T>(
 ): Promise<T> {
   const { data, error } = await supabase.functions.invoke<SitesEnvelope<T>>(
     functionName,
-    { body: { route, method, ...payload } },
+    { body: { route, method, ...payload }, timeout: SITES_REQUEST_TIMEOUT_MS },
   );
   if (error !== null) throw await failureFromInvokeError(error);
   if (!data || data.ok !== true) throw brandSitesErrorFrom(null, data);

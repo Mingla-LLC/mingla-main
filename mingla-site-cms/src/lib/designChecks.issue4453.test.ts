@@ -64,3 +64,28 @@ describe("#4453 truth check skips machine fields", () => {
     expect(truth.status).toBe("pass");
   });
 });
+
+describe("#4453 a check never says \"block\" to the owner", () => {
+  it("names the place as a section (the workspace's result card and Publish panel show these lines)", () => {
+    const checks = runDesignChecks({
+      pages: [{
+        id: "p1", slug: "", title: "Home", enabled: true,
+        blocks: [
+          { blockType: "hero", heading: "", media: "m-1", ctas: [{ label: "Reserve your table for the whole family tonight", href: "/book" }], review: stamp },
+          { blockType: "feature_cards", heading: "Why us", cards: [{ title: "The best arcade in town", body: "Lorem ipsum dolor sit amet" }], review: stamp },
+          { blockType: "media_feature", heading: "Our room", media: "m-1", review: stamp },
+        ],
+      }],
+      settings: { design: "pop" },
+      navigation: { items: [] },
+      media: [{ id: "m-1", width: 640, height: 480, alt: "" }],
+      content: {},
+      evidence: { offerings: [], brand_texts: ["Gameland Lagos"] },
+      owner_texts: [],
+    });
+    const messages = checks.flatMap((check) => check.items.map((item) => item.message));
+    expect(messages.length).toBeGreaterThan(0);
+    expect(messages.join("\n")).toMatch(/section \d/);
+    for (const message of messages) expect(message).not.toMatch(/\bblocks?\b/i);
+  });
+});

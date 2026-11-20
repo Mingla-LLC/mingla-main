@@ -73,6 +73,7 @@ import { useAuth } from "../../../src/context/AuthContext";
 // #3259 — names the signed-in account on the empty branch below and offers the
 // wrong-account escape. Owns the await-before-navigate ordering.
 import { useSwitchAccount } from "../../../src/hooks/useSwitchAccount";
+import { useUnsavedChangesGuard } from "../../../src/hooks/useUnsavedChangesGuard";
 import { useVenuePipelineState } from "../../../src/hooks/useBrandPlacePipelineState";
 import { useBrand } from "../../../src/hooks/useBrands";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
@@ -180,6 +181,8 @@ export default function VenueManagementPage(): React.ReactElement {
     }
     proceed();
   }, [requestLeave, router, setPendingLeaveFocus]);
+  // #4453 — unsaved venue edits hold a brand switch. Android back keeps its own path (#3655).
+  useUnsavedChangesGuard({ dirty: venueDirtyModules.size > 0, onRequestLeave: handleBack, hardwareBack: false });
 
   // ----- public-page actions (#1483) -----
   // `venue_public_view` is defined `WHERE claim_status = 'verified'`, so any

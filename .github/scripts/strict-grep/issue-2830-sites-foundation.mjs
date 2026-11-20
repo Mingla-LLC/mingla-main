@@ -186,6 +186,10 @@ const ARI_TOOL_ROLES = {
   // #4453 milestone 11 — "Add a page with Ari" (on-path only; Core checks SITES_ARI_ADD_PAGE).
   propose_site_page: "marketing_manager",
   answer_site_page_question: "marketing_manager",
+  // #4453 Website workspace — the snapshot, the one plan, the team request (on-path only; Core re-checks rank 20).
+  get_site_workspace: "marketing_manager",
+  propose_site_change_set: "marketing_manager",
+  propose_website_team_request: "marketing_manager",
   confirm_site_review: "brand_admin",
   propose_trip_guide_update: "event_manager",
   create_site_preview: "marketing_manager",
@@ -768,7 +772,11 @@ export function violations(files) {
     // availability answer (entitlement + live rank, pinned in the Core
     // migration below); an error or a "no" redirects out.
     "const availability = useBrandSiteAvailability(safeBrandId, canCheckAvailability);",
-    "const websiteAvailable: boolean | null = availability.isError\n    ? false",
+    // #4453 retarget: a "no" from Core still redirects out; a Core that cannot
+    // be reached shows "try again" on the Website screen instead of bouncing
+    // the owner to the brand page with no reason given.
+    "const websiteAvailable: boolean | null = availability.isError\n    ? (availabilityDown ? null : false)",
+    "const availabilityDown = availability.isError && !websiteRefusal(availability.error);",
     "const capabilities = capabilitiesFrom(availability.data);",
     "if (!capabilities.canCreate || provisionOperation === null) return;",
     "useBrandSitePreview",
@@ -1106,7 +1114,16 @@ export function violations(files) {
     const ALLOWED_DYNAMIC = new Set([
       "mingla-business/app/(tabs)/ari.tsx",
       "mingla-business/src/components/sites/setup/WebsiteSetupScreen.tsx",
+      // #4453 — the Website workspace's Ari panel takes Ari's chat hooks
+      // through the same module (a third dynamic importer of the SAME target
+      // is still one chunk). Measured when it imported the hooks statically
+      // instead: __common 2,743,812 B to 2,808,468 B, of which 51.9 KB was
+      // Ari's chat graph.
+      "mingla-business/src/components/sites/website/workspace/ariRuntime.ts",
     ]);
+    // #4453 — the same rule for the pieces of that chunk the workspace uses:
+    // no Website file may import them as values (types are free).
+    const ARI_CHUNK_MODULES = /^import\s+(?!type\b)[^;]*?from\s+"[^"]*(?:hooks\/useAgentChat|hooks\/useConfirmPendingAction|ari\/agentChoices|services\/ariTurnService)"/m;
     const walk = (dir) => {
       const found = [];
       let entries = [];
@@ -1124,6 +1141,14 @@ export function violations(files) {
       return found;
     };
     const dynamicImporters = [];
+    for (const file of [...walk("mingla-business/src/components/sites/website"), ...walk("mingla-business/src/sites")]) {
+      if (ARI_CHUNK_MODULES.test(fs.readFileSync(path.join(ROOT, file), "utf8"))) {
+        failures.push(
+          `AriChatScreen import boundary: ${file} imports part of Ari's chat chunk statically. ` +
+            `Take it through components/sites/website/workspace/ariRuntime.ts, or Metro moves Ari's chat graph into __common.`,
+        );
+      }
+    }
     for (const file of [...walk("mingla-business/app"), ...walk("mingla-business/src/components/sites")]) {
       // Strip comments: docblocks name the module on purpose.
       const body = fs.readFileSync(path.join(ROOT, file), "utf8")

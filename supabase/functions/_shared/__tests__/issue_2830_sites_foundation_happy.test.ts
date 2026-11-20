@@ -115,11 +115,16 @@ Deno.test("#2830 Ari registry exposes exactly the approved website tools", () =>
       "get_site_operation_status",
       "list_site_versions",
       "rollback_site",
+      // #4453 Website workspace — the snapshot, the one plan, the team request (on-path only).
+      "get_site_workspace",
+      "propose_site_change_set",
+      "propose_website_team_request",
     ]),
     "Ari Website tool registry drifted",
   );
   // #4453 milestone 7 — get_site_design_brief is read-only; 13→14.
-  assert(SITE_AGENT_READ_ONLY.size === 14, "Ari read-only set drifted");
+  // #4453 Website workspace — get_site_workspace is read-only; 14→15.
+  assert(SITE_AGENT_READ_ONLY.size === 15, "Ari read-only set drifted");
   for (const tool of SITE_AGENT_TOOLS) {
     assert(
       (tool.parameters as { additionalProperties?: unknown }).additionalProperties === false,

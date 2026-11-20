@@ -235,6 +235,9 @@ const BOUNDARY: Record<string, () => unknown> = {
       return casServer !== null ? casServer.revision : `rev-read-${revisionReads}`;
     },
   }),
+  // #4453 — the wizard registers its step save with the brand switcher: both real.
+  useUnsavedChangesGuard: () => jest.requireActual("../../../hooks/useUnsavedChangesGuard"),
+  tripWizardBrandSwitch: () => jest.requireActual("../../../utils/tripWizardBrandSwitch"),
   tripSaveQueue: () => ({
     ...realQueue,
     createTripSaveQueue: (ms?: number) =>
@@ -1177,5 +1180,100 @@ describe("(h) a video applied behind the wizard is never a false conflict", () =
     expect(onStep(tree, "TripCreatorStep2Itinerary")).toBe(true);
     expect(row.coverMediaUrl).toBe(VIDEO_URL);
     expect(row.coverMediaType).toBe("video");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #4453 — the brand switcher asks the wizard to save its step first. The
+// wizard is the real one (as everywhere in this file); the switcher's side is
+// played by calling the function the wizard registered, the way
+// `unsavedWorkHoldsSwitch` does.
+// FAILS-ON-REVERT: drop the wizard's registration and (i) finds no flusher.
+// ---------------------------------------------------------------------------
+
+describe("(i) #4453 a brand switch saves the step through the same queue, or holds", () => {
+  const { unsavedWork } = jest.requireActual("../../../hooks/useUnsavedChangesGuard") as {
+    unsavedWork: { screens: number; flushers?: Set<() => Promise<boolean>> };
+  };
+  const askWizard = async (): Promise<boolean> => {
+    const flushers = [...(unsavedWork.flushers ?? [])];
+    expect(flushers).toHaveLength(1);
+    let safe!: boolean;
+    await act(async () => {
+      safe = await flushers[0]();
+    });
+    return safe;
+  };
+
+  test("the step is saved once, with the revision the wizard holds, and the switch may go on", async () => {
+    const tree = await mountWizard();
+    expect(callsNamed("basics")).toHaveLength(0);
+
+    await expect(askWizard()).resolves.toBe(true);
+    expect(callsNamed("basics")).toHaveLength(1);
+    expect(callsNamed("basics")[0].revisionAtCall).toBe(LOADED_REVISION);
+    expect(wire.maxInFlight).toBe(1);
+    // It did not leave or change step by itself: the switcher does the leaving.
+    expect(onExit).not.toHaveBeenCalled();
+    expect(onStep(tree, "TripCreatorStep1Basics")).toBe(true);
+  });
+
+  test("a save that fails holds the switch, and the header says the step is not saved", async () => {
+    behaviours.basics = async () => {
+      throw postgrestError("trip_graph_invalid", "22023");
+    };
+    const tree = await mountWizard();
+    await expect(askWizard()).resolves.toBe(false);
+    expect(callsNamed("basics")).toHaveLength(1);
+    expect(screenText(tree)).toContain("Not saved — your changes are kept here");
+    expect(onStep(tree, "TripCreatorStep1Basics")).toBe(true);
+  });
+
+  test("a trip that changed somewhere else holds the switch and is not saved over", async () => {
+    behaviours.basics = async () => {
+      throw postgrestError("trip_revision_conflict", "PT409");
+    };
+    const tree = await mountWizard();
+    await expect(askWizard()).resolves.toBe(false);
+    expect(screenText(tree)).toContain(CONFLICT_COPY);
+    // Asked again: still held, and nothing more is sent.
+    await expect(askWizard()).resolves.toBe(false);
+    expect(callsNamed("basics")).toHaveLength(1);
+  });
+
+  test("asked during Continue's save: it waits for that save, then saves nothing twice at once", async () => {
+    const gate = deferred();
+    behaviours.basics = () => gate.promise;
+    const tree = await mountWizard();
+    await tap(tree, "Continue");
+    await settle();
+    expect(callsNamed("basics")).toHaveLength(1);
+
+    const flushers = [...(unsavedWork.flushers ?? [])];
+    let answer: boolean | null = null;
+    await act(async () => {
+      void flushers[0]().then((safe) => {
+        answer = safe;
+      });
+    });
+    await settle();
+    // Still waiting: no second save beside the first.
+    expect(answer).toBeNull();
+    expect(wire.maxInFlight).toBe(1);
+
+    delete behaviours.basics;
+    gate.resolve();
+    await settle(120);
+    expect(answer).toBe(true);
+    expect(wire.maxInFlight).toBe(1);
+  });
+
+  test("the wizard takes its function away when it closes", async () => {
+    await mountWizard();
+    expect([...(unsavedWork.flushers ?? [])]).toHaveLength(1);
+    await act(async () => {
+      mounted.splice(0).forEach((tree) => tree.unmount());
+    });
+    expect([...(unsavedWork.flushers ?? [])]).toHaveLength(0);
   });
 });
