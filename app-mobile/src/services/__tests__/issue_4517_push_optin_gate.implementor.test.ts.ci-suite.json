@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/services/__tests__/issue_4517_push_optin_gate.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4517-push-optin-gate-implementor",
+  "profile": "deno-2-unit",
+  "permissions": [
+    "read"
+  ]
+}

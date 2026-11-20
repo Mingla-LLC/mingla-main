@@ -126,6 +126,9 @@ const CLASSIFIED: Record<string, Row> = {
   // [TEST-MOD-APPROVED #4420] Add to calendar on the public event page opens
   // Google Calendar's prefilled event as a new top-level page.
   'https://calendar.google.com': { verdict: 'navigation', why: 'Add to Google Calendar link (offeringCalendar), opened as a top-level navigation' },
+  // [TEST-MOD-APPROVED #4420] The Add to calendar chooser's Outlook row opens
+  // Outlook's prefilled compose page as a new top-level page.
+  'https://outlook.live.com': { verdict: 'navigation', why: 'Add to Outlook link (offeringCalendar), opened as a top-level navigation' },
   'https://x.com': { verdict: 'navigation', why: 'social link' },
   'https://twitter.com': { verdict: 'navigation', why: 'social link' },
   'https://facebook.com': { verdict: 'navigation', why: 'social link' },

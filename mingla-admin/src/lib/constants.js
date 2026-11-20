@@ -129,10 +129,12 @@ export const NAV_GROUPS = [
     label: "Home",
     items: [
       { id: "overview",                  label: "Dashboard",          icon: "LayoutDashboard" },
+      // #4517: Messages (the page the top-bar button also opens) sits right
+      // under Dashboard; its entry carries the unread count.
+      { id: "messages",                  label: "Messages",           icon: "MessageSquareText" },
       // #4270 (D20): the Work entry carries the count of your own open cards
       // due today or overdue.
       { id: "work-board",                label: "Work",               icon: "SquareKanban" },
-      // #4255 W4: Notifications left the menu for Messages in the top bar.
     ],
   },
   {
@@ -243,8 +245,6 @@ export const NAV_GROUPS = [
 export const HEADER_PAGE_ITEMS = [
   { id: "agent", label: "My agent" },
   { id: "guide", label: "Guide" },
-  // #4255 W4: Messages (the top-bar button; #/messages is its full page).
-  { id: "messages", label: "Messages" },
 ];
 
 // Backward-compatible flat list (used by AppShell.currentTitle)
