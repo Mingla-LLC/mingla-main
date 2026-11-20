@@ -17,14 +17,17 @@ export interface EventVenueCover {
   venueName: string;
 }
 
-export function useEventVenueCover(eventId: string | null): EventVenueCover | null {
+export function useEventVenueCover(
+  eventId: string | null,
+  noun: "event" | "experience" = "event",
+): EventVenueCover | null {
   const { isAuthReady } = useAuth();
   const validEventId = eventId !== null && UUID.test(eventId) ? eventId : null;
   const linkQuery = useQuery({
     queryKey: validEventId !== null ? venueFeatureKeys.eventVenue(validEventId) : ["eventVenueLink", "disabled"],
     enabled: isAuthReady && validEventId !== null,
     staleTime: 30_000,
-    queryFn: () => fetchEventVenueLink(validEventId as string, "event"),
+    queryFn: () => fetchEventVenueLink(validEventId as string, noun),
   });
   const venueId = linkQuery.data?.venueId ?? null;
   const venueQuery = useVenueListing(venueId);

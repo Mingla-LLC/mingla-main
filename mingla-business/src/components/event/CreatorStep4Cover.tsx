@@ -32,8 +32,7 @@ import type { CoverTarget } from "../ui/coverTarget";
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 import { useBrand } from "../../hooks/useBrands";
-import { useEventVenueCover } from "../../hooks/useEventVenueCover";
-import { copyVenueCoverToEvent, venueCoverPatch } from "../../services/eventCoverMediaService";
+import { VenueCoverButton, type VenueCoverPatch } from "../ui/VenueCoverButton";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheetLazy";
 import { buildDraftThemePreview } from "../theme/themePreviewContent";
@@ -220,19 +219,11 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
   // event row id + brand + apply mode.
   const coverRowId = serverRowId ?? localDraftRowId;
 
-  // #4490 07-L — "Use {Venue}'s cover" for an event at one of the brand's venues.
-  const venueCover = useEventVenueCover(coverRowId.startsWith("d_") ? null : coverRowId);
-  const [venueCoverState, setVenueCoverState] = useState<"idle" | "copying" | "applied" | "error">("idle");
-  const applyVenueCover = useCallback((): void => {
-    if (venueCover === null || venueCoverState === "copying") return;
-    setVenueCoverState("copying");
-    void copyVenueCoverToEvent(coverRowId, venueCover.venueId)
-      .then((copied) => {
-        handleCoverChange({ ...venueCoverPatch(copied, venueCover.venueName), coverGallery: draft.coverGallery });
-        setVenueCoverState("applied");
-      })
-      .catch(() => setVenueCoverState("error"));
-  }, [coverRowId, draft.coverGallery, handleCoverChange, venueCover, venueCoverState]);
+  // #4490 07-L — "Use {Venue}'s cover": applied like a device upload.
+  const applyVenueCover = useCallback(
+    (patch: VenueCoverPatch): void => handleCoverChange({ ...patch, coverGallery: draft.coverGallery }),
+    [draft.coverGallery, handleCoverChange],
+  );
   // The picker may only open against a real server row. While the row is being
   // prepared (or has failed to prepare) the button says so instead of opening a
   // sheet that can only produce a 400.
@@ -312,31 +303,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
           }
           testID="cover-step-add-cover"
         />
-        {venueCover !== null ? (
-          <Button
-            label={venueCoverState === "copying" ? "Copying the cover…" : `Use ${venueCover.venueName}'s cover`}
-            leadingIcon="home"
-            variant="secondary"
-            size="md"
-            shape="square"
-            disabled={!coverReady || venueCoverState === "copying"}
-            loading={venueCoverState === "copying"}
-            onPress={applyVenueCover}
-            accessibilityLabel={`Use ${venueCover.venueName}'s cover for this event`}
-            style={styles.venueCoverButton}
-            testID="cover-step-use-venue-cover"
-          />
-        ) : null}
-        {venueCoverState === "applied" && venueCover !== null ? (
-          <Text style={styles.creditText} testID="cover-step-venue-cover-applied">
-            Copied from {venueCover.venueName}
-          </Text>
-        ) : null}
-        {venueCoverState === "error" ? (
-          <Text style={styles.prepareErrorText} accessibilityLiveRegion="polite" testID="cover-step-venue-cover-error">
-            Couldn&apos;t use the venue&apos;s cover. Try again or upload one.
-          </Text>
-        ) : null}
+        <VenueCoverButton rowId={coverRowId} noun="event" disabled={!coverReady} onApply={applyVenueCover} />
         {/* issue #3040 — the server row could not be created. This used to be a
             `console.warn` and an inert sheet; it is now a real, named error
             with a control the user can actually reach. */}
@@ -453,7 +420,6 @@ const styles = StyleSheet.create({
     color: color.text2,
     textAlign: "center",
   },
-  venueCoverButton: { marginTop: space[2] },
   prepareError: {
     marginTop: space[2],
     gap: space[1],

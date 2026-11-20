@@ -64,6 +64,30 @@ BEGIN
   IF NOT v_failed THEN RAISE EXCEPTION 'L-3 FAIL: a replaced venue video was accepted'; END IF;
   RAISE NOTICE 'PASS  L-3 a replaced venue video is refused';
 
+  -- L-5 a cover made in the venue wizard (venue_draft job, no venue id) is accepted too
+  UPDATE public.venue_listings SET cover_media_url = 'https://media.example.test/venue-4490/draft.mp4',
+    cover_media_poster_url = 'https://media.example.test/venue-4490/draft.jpg' WHERE id = v_venue;
+  SET LOCAL session_replication_role = replica;
+  INSERT INTO public.event_cover_video_jobs (brand_id, draft_owner_key, target_kind, requested_by, provider, status, apply_mode,
+      trim_start_ms, trim_end_ms, processed_url, processed_poster_url, processed_mime_type, processed_bytes, processed_duration_ms)
+    VALUES (v_brand, 'venue-wizard-4490', 'venue_draft', v_owner, 'bunny', 'ready', 'draft_auto', 0, 6000,
+      'https://media.example.test/venue-4490/draft.mp4', 'https://media.example.test/venue-4490/draft.jpg', 'video/mp4', 1000000, 6000);
+  SET LOCAL session_replication_role = origin;
+  PERFORM public.assert_event_cover_selection_source(v_event, v_brand, 'https://media.example.test/venue-4490/draft.mp4', 'video',
+    'https://media.example.test/venue-4490/draft.jpg', 'upload', NULL);
+  RAISE NOTICE 'PASS  L-5 a venue wizard (venue_draft) video cover is accepted';
+  -- L-6 a ready video job of ANOTHER brand never counts
+  SET LOCAL session_replication_role = replica;
+  UPDATE public.event_cover_video_jobs SET brand_id = gen_random_uuid() WHERE draft_owner_key = 'venue-wizard-4490';
+  SET LOCAL session_replication_role = origin;
+  v_failed := false;
+  BEGIN PERFORM public.assert_event_cover_selection_source(v_event, v_brand, 'https://media.example.test/venue-4490/draft.mp4', 'video',
+    'https://media.example.test/venue-4490/draft.jpg', 'upload', NULL);
+  EXCEPTION WHEN OTHERS THEN v_failed := SQLERRM = 'cover_selection_source_unverified';
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'L-6 FAIL: another brand''s video job was accepted'; END IF;
+  RAISE NOTICE 'PASS  L-6 another brand''s video job is refused';
+
   -- L-4 no new provider
   IF pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname = 'events_cover_media_provider_check')) LIKE '%venue%' THEN
     RAISE EXCEPTION 'L-4 FAIL: a venue provider value was added';
