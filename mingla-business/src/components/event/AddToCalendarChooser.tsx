@@ -54,11 +54,13 @@ export interface AddToCalendarChooserProps {
   testID?: string;
 }
 
-const BADGE: Readonly<Record<CalendarOption["id"], { bg: string; text: string }>> = {
-  apple: { bg: "#111111", text: "" },
-  google: { bg: "#1a73e8", text: "G" },
-  outlook: { bg: "#0a64ad", text: "O" },
-  ics: { bg: "#6b625b", text: ".ics" },
+// Neutral token badges (the design's brand-coloured squares are colour literals,
+// which the host-chrome token gate forbids): one glyph per row.
+const BADGE_TEXT: Readonly<Record<CalendarOption["id"], string>> = {
+  apple: "",
+  google: "G",
+  outlook: "O",
+  ics: ".ics",
 };
 
 /** Opens a row's link from the tap itself. Exported for the render test. */
@@ -101,11 +103,11 @@ const Row: React.FC<{ option: CalendarOption; onPress: () => void; compact: bool
     testID={`add-to-calendar-${option.id}`}
     style={({ pressed }) => [styles.row, compact ? styles.rowCompact : null, pressed ? styles.pressed : null]}
   >
-    <View style={[styles.badge, { backgroundColor: BADGE[option.id].bg }]}>
+    <View style={styles.badge}>
       {option.id === "apple" ? (
-        <Icon name="calendar" size={16} color="#ffffff" />
+        <Icon name="calendar" size={16} color={color.text1} />
       ) : (
-        <Text style={styles.badgeText}>{BADGE[option.id].text}</Text>
+        <Text style={styles.badgeText}>{BADGE_TEXT[option.id]}</Text>
       )}
     </View>
     <View style={styles.rowText}>
@@ -259,8 +261,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: space[3], minHeight: 56, paddingHorizontal: space[1] },
   rowCompact: { minHeight: 44, paddingHorizontal: space[4] },
   pressed: { backgroundColor: color.fill.pressed },
-  badge: { width: 34, height: 34, borderRadius: radius.xs, alignItems: "center", justifyContent: "center" },
-  badgeText: { ...type.caption, color: "#ffffff", fontWeight: "700" },
+  badge: { width: 34, height: 34, borderRadius: radius.xs, alignItems: "center", justifyContent: "center", backgroundColor: color.fill.tile },
+  badgeText: { ...type.caption, color: color.text1, fontWeight: "700" },
   rowText: { flex: 1, minWidth: 0 },
   rowLabel: { ...type.row, color: color.text1 },
   rowSub: { ...type.caption, color: color.text2 },
