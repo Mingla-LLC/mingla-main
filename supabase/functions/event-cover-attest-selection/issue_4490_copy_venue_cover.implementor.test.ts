@@ -40,3 +40,16 @@ Deno.test("07-L storage paths parse; traversal and foreign URLs do not", () => {
   assertEquals(storageObjectOf("https://x.supabase.co/storage/v1/object/public/brand_covers/../event_covers/a.jpg"), null);
   assertEquals(storageObjectOf("https://images.pexels.com/photo.jpg"), null);
 });
+
+// N122 (P0): only the event brand's own brand_covers objects are copied.
+// Fails-on-revert: deleting the brand_covers/<brand>/ check in
+// venueCoverRefusal lets both URLs below through.
+Deno.test("N122 a private bucket or another brand's cover is not copyable", () => {
+  const base = "https://x.supabase.co/storage/v1/object/public/";
+  const r = (url: string, type = "image", poster: string | null = null) =>
+    venueCoverRefusal({ rank: 40, managerRank: 40, event, venue: { ...venue, cover_media_url: url, cover_media_type: type, cover_media_poster_url: poster }, venueId: "v1" });
+  assertEquals(r(`${base}support-attachments/u/secret.png`), "venue_cover_not_copyable");
+  assertEquals(r(`${base}brand_covers/b2/v9/cover.jpg`), "venue_cover_not_copyable");
+  assertEquals(r(`${base}brand_covers/b1/v1/c.gif`, "gif", `${base}ticket-pdfs/x.png`), "venue_cover_not_copyable");
+  assertEquals(r(`${base}brand_covers/b1/v1/c.gif`, "gif", `${base}brand_covers/b1/v1/p.jpg`), null);
+});

@@ -194,6 +194,23 @@ export const venueCoverRefusal = (input: {
   ) {
     return "venue_has_no_cover";
   }
+  // N122 (P0): the copy runs with the service role, and a venue cover URL is
+  // host-supplied text. Only the brand's own venue cover objects
+  // (brand_covers/<event brand>/...) may ever be copied: the cover and, for a
+  // GIF, its poster. Anything else (a private bucket, another brand's folder)
+  // is refused before any download. A video is never copied (returned as is,
+  // and the SQL video branch checks it against a ready job of the brand).
+  if (input.venue.cover_media_type !== "video") {
+    const owned = (url: string | null): boolean => {
+      const o = storageObjectOf(url);
+      return o !== null && o.bucket === "brand_covers" && input.event !== null &&
+        input.event.brand_id !== null && o.path.startsWith(`${input.event.brand_id}/`);
+    };
+    if (!owned(input.venue.cover_media_url)) return "venue_cover_not_copyable";
+    if (input.venue.cover_media_type === "gif" && !owned(input.venue.cover_media_poster_url)) {
+      return "venue_cover_not_copyable";
+    }
+  }
   return null;
 };
 
