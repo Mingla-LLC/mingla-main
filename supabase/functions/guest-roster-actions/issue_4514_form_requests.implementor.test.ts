@@ -1,13 +1,14 @@
 // #4514 wave 4 — Ask guests to answer and Remind (guest-roster-actions form ops),
 // with the wave 4 review fixes.
 //
-// Pins: no push while the Explorer /form screen is missing (texts and emails
-// carry the guest's own link; a guest with no contact is counted, never
-// dropped); the host's send only queues and then drains this page in pages of
-// 25, resumable after a crash or a partial failure; cost counts real segments
-// (emoji and accented letters), refuses texts with no price unless the host
-// confirmed, and refuses a send over the brand's daily text limit; a request
-// calls only form-request SQL (decision 17: never an invite RPC).
+// Pins: push only where the server says it will be tried (#4541 R3.1/R3.2: the
+// BRAND_FORMS_PUSH switch and the person's app; texts and emails carry the
+// guest's own link; a guest with no contact is counted, never dropped); the
+// host's send only queues and then drains this page in pages of 25, resumable
+// after a crash or a partial failure; cost counts real segments (emoji and
+// accented letters), refuses texts with no price unless the host confirmed;
+// #4541 R5.4: over the daily text limit texts are off for the send, never a
+// refusal; a request calls only form-request SQL (decision 17: never an invite RPC).
 import {
   assert,
   assertEquals,
@@ -15,7 +16,6 @@ import {
 import { handleFormRequest, isFormRequestBody } from "./formRequest.ts";
 import {
   drainFormRequests,
-  FORM_REQUEST_PUSH_ENABLED,
   type FormRequestRecipient,
   routeFor,
 } from "../_shared/brandFormRequests.ts";
@@ -49,6 +49,7 @@ const guest = (
   answered: false,
   throttled: false,
   route: [],
+  pushOk: false,
   smsOptedOut: false,
   ...over,
 });
@@ -67,6 +68,9 @@ const audience = (
   textsToday: 0,
   textCap: 300,
   textsWaitUntil: null,
+  pushAvailable: false,
+  monthlyTextCap: null,
+  textsLeftThisMonth: null,
   recipients,
   ...over,
 });
@@ -168,13 +172,14 @@ const body = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-Deno.test("#4514 body: Remind targets people who have not answered; unknown keys refused; push refused while the form screen is missing", () => {
+Deno.test("#4514 body: Remind targets people who have not answered; unknown keys refused; push is accepted (the server drops it while switched off)", () => {
   assert(isFormRequestBody(body()));
   assert(!isFormRequestBody(body({ kind: "remind", audience: "everyone" })));
   assert(!isFormRequestBody(body({ extra: 1 })));
-  assertEquals(FORM_REQUEST_PUSH_ENABLED, false);
-  assert(!isFormRequestBody(body({ channels: ["push"] })));
-  assert(!isFormRequestBody(body({ channels: ["push", "email"] })));
+  // #4541 R3.1: the switch lives in the database, not in this body check.
+  assert(isFormRequestBody(body({ channels: ["push"] })));
+  assert(isFormRequestBody(body({ channels: ["push", "email"] })));
+  assert(!isFormRequestBody(body({ channels: ["push", "push"] })));
   assert(isFormRequestBody(body({ confirmUnpriced: true })));
   assert(
     !isFormRequestBody({
@@ -187,11 +192,15 @@ Deno.test("#4514 body: Remind targets people who have not answered; unknown keys
   );
 });
 
-Deno.test("#4514 route: no push even for an account; the server's contact route (text, then email) narrowed to the ticked channels", () => {
+Deno.test("#4514 route: push only where the server says it will be tried; then the contact route (text, then email) narrowed to the ticked channels", () => {
   const app = guest(1, { userId: id(7), route: ["sms", "email"] });
+  // An account alone is not enough (#4541 R3.2): the server's pushOk decides.
   assertEquals(routeFor(app, ["push", "sms", "email"]), ["sms", "email"]);
   assertEquals(routeFor(app, ["push", "email"]), ["email"]);
   assertEquals(routeFor(guest(2, { userId: id(8) }), ["push", "sms"]), []);
+  const ready = guest(3, { userId: id(9), route: ["sms", "email"], pushOk: true });
+  assertEquals(routeFor(ready, ["push", "sms", "email"]), ["push", "sms", "email"]);
+  assertEquals(routeFor(ready, ["sms", "email"]), ["sms", "email"]);
 });
 
 Deno.test("#4514 preview: reachable, opted out of texts and can't reach are counted, never dropped", () => {
@@ -257,7 +266,8 @@ Deno.test("#4514 send: decision 17 — only form-request SQL; it queues, then dr
   // Only form-request SQL (plus the #4541 R1.8 off-switch read, once per drain).
   assert(
     fns.every((f) =>
-      f.startsWith("brand_form_request_") || f === "brand_forms_switched_off"
+      f.startsWith("brand_form_request_") || f === "brand_forms_switched_off" ||
+      f === "brand_form_push_settings"
     ),
     fns.join(),
   );
@@ -451,12 +461,22 @@ Deno.test("#4514 cost: texts with no price are refused unless the host confirms;
   assert(h2.rpcs.some((c) => c.fn === "brand_form_request_enqueue"));
 });
 
-Deno.test("#4514 cap: over the brand's daily text limit nothing is queued; the database refusal maps to the same code", async () => {
-  const recipients = [guest(1, { phone: "+12025550101", route: ["sms"] })];
+Deno.test("#4514 cap: over the brand's daily text limit texts are off for the send (#4541 R5.4), never a refusal; the old database refusal still maps to text_cap", async () => {
+  const recipients = [guest(1, { phone: "+12025550101", route: ["sms", "email"], email: "a@example.test" })];
   const h = harness({ recipients, audienceOver: { textsToday: 300 } });
-  const r = await handleFormRequest(body(), ACTOR, h.deps);
-  assertEquals([r.status, r.body.code, r.body.textCap], [409, "text_cap", 300]);
-  assert(!h.rpcs.some((c) => c.fn === "brand_form_request_enqueue"));
+  const p = await handleFormRequest(
+    { ...body(), operation: "form_preview", expectedCostMinor: undefined, currency: undefined },
+    ACTOR,
+    h.deps,
+  );
+  assertEquals(p.status, 200);
+  assertEquals(p.body.textsOff, { reason: "daily_cap", needed: 1, remaining: 0 });
+  assertEquals([p.body.textsThisSendUses, p.body.estimatedCostMinor], [0, 0]);
+  // Today's meaning is kept for Host 1.3.x, which refuses on it.
+  assertEquals(p.body.overTextCap, true);
+  const r = await handleFormRequest(body({ expectedCostMinor: 0 }), ACTOR, h.deps);
+  assertEquals(r.status, 200);
+  assert(h.rpcs.some((c) => c.fn === "brand_form_request_enqueue"));
   const h2 = harness({
     recipients,
     enqueue: { data: null, error: { message: "form_request_text_cap" } },

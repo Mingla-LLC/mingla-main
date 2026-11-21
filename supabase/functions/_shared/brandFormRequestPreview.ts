@@ -52,6 +52,8 @@ export function requestSmsSegments(
   );
 }
 
+export type TextsOffReason = "monthly_allowance" | "daily_cap";
+
 export interface FormRequestPreview {
   selectedCount: number;
   reachableCount: number;
@@ -65,14 +67,32 @@ export interface FormRequestPreview {
   currency: string | null;
   textsToday: number;
   textCap: number;
+  /**
+   * Today's meaning, kept for Host 1.3.x (it refuses the send on it). New
+   * sheets ignore it: over a limit texts are off instead (textsOff).
+   */
   overTextCap: boolean;
   textsWaitUntil: string | null;
+  /** #4541 R3.1: BRAND_FORMS_PUSH is on ("Push: not available yet" when false). */
+  pushAvailable: boolean;
+  /** #4541 R5.5: the shared monthly text allowance (null: no limit). */
+  monthlyTextCap: number | null;
+  textsLeftThisMonth: number | null;
+  /** The texts this send will use (0 when texts are off). */
+  textsThisSendUses: number;
+  textsTodayUsed: number;
+  dailyTextCap: number;
+  /** Texts are off for this send: email and push still go. */
+  textsOff: { reason: TextsOffReason; needed: number; remaining: number } | null;
 }
 
 /**
  * Reach and cost before sending. A text is counted for every person whose
  * route includes one. Unpriced countries or mixed currencies: no amount, never
- * a guess (the send then needs the host's explicit confirmation).
+ * a guess (the send then needs the host's explicit confirmation). #4541 R5.4:
+ * when the texts needed are more than the month (or today) has left, texts are
+ * off for the whole send, exactly as brand_form_request_enqueue decides: the
+ * preview is computed without texts and says why.
  */
 export function previewFormRequest(
   audience: FormRequestAudience,
@@ -80,6 +100,63 @@ export function previewFormRequest(
   rates: readonly SmsRateV1[] | null,
   kind: FormRequestKind = "ask",
 ): FormRequestPreview {
+  const first = reach(audience, channels, rates, kind);
+  const dailyLeft = Math.max(audience.textCap - audience.textsToday, 0);
+  let textsOff: FormRequestPreview["textsOff"] = null;
+  if (first.smsCount > 0) {
+    if (
+      audience.textsLeftThisMonth !== null &&
+      first.smsCount > audience.textsLeftThisMonth
+    ) {
+      textsOff = {
+        reason: "monthly_allowance",
+        needed: first.smsCount,
+        remaining: audience.textsLeftThisMonth,
+      };
+    } else if (first.smsCount > dailyLeft) {
+      textsOff = { reason: "daily_cap", needed: first.smsCount, remaining: dailyLeft };
+    }
+  }
+  const sent = textsOff === null
+    ? first
+    : reach(audience, channels.filter((c) => c !== "sms"), rates, kind);
+  return {
+    ...sent,
+    textsToday: audience.textsToday,
+    textCap: audience.textCap,
+    overTextCap: first.smsCount > 0 &&
+      audience.textsToday + first.smsCount > audience.textCap,
+    textsWaitUntil: sent.smsCount > 0 ? audience.textsWaitUntil : null,
+    pushAvailable: audience.pushAvailable,
+    monthlyTextCap: audience.monthlyTextCap,
+    textsLeftThisMonth: audience.textsLeftThisMonth,
+    textsThisSendUses: sent.smsCount,
+    textsTodayUsed: audience.textsToday,
+    dailyTextCap: audience.textCap,
+    textsOff,
+  };
+}
+
+type Reach = Pick<
+  FormRequestPreview,
+  | "selectedCount"
+  | "reachableCount"
+  | "throttledCount"
+  | "smsOptedOutCount"
+  | "unreachableCount"
+  | "perChannelReachable"
+  | "smsCount"
+  | "smsSegments"
+  | "estimatedCostMinor"
+  | "currency"
+>;
+
+function reach(
+  audience: FormRequestAudience,
+  channels: readonly FormRequestChannel[],
+  rates: readonly SmsRateV1[] | null,
+  kind: FormRequestKind,
+): Reach {
   const per: Record<FormRequestChannel, number> = { push: 0, sms: 0, email: 0 };
   let reachable = 0, throttled = 0, optedOut = 0, unreachable = 0, smsCount = 0;
   let costNumer = 0;
@@ -135,10 +212,5 @@ export function previewFormRequest(
       ? Math.ceil(costNumer)
       : null,
     currency: smsCount === 0 ? null : priced ? currency : null,
-    textsToday: audience.textsToday,
-    textCap: audience.textCap,
-    overTextCap: smsCount > 0 &&
-      audience.textsToday + smsCount > audience.textCap,
-    textsWaitUntil: smsCount > 0 ? audience.textsWaitUntil : null,
   };
 }

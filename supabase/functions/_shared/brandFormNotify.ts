@@ -6,9 +6,10 @@
 //                                      the contact on file carries the guest's
 //                                      personal link, which only ever travels in
 //                                      the anonymous contact path (no inbox row,
-//                                      the ledger keeps no body). Push is off
-//                                      until the Explorer /form route ships
-//                                      (FORM_REQUEST_PUSH_ENABLED).
+//                                      the ledger keeps no body). #4541: a push
+//                                      (and its inbox row) carries only a deep
+//                                      link built from ids, behind the
+//                                      BRAND_FORMS_PUSH database switch.
 //   business.brand_form_reminder_held  the automatic reminder was held because
 //                                      the form had closed (decision 10).
 //
@@ -30,6 +31,14 @@ interface Rendered {
   sms: string;
 }
 
+/** A brand or event name for the lock screen: 40 characters, no address or "@". */
+function pushName(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const cleaned = value.replace(/[a-z][a-z0-9+.-]*:\/\/\S*/gi, " ").replace(/\S*@\S*/g, " ")
+    .replace(/\bt=\S*/gi, " ");
+  return plain(cleaned, 40);
+}
+
 function plain(value: unknown, max: number): string {
   if (typeof value !== "string") return "";
   const text = value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -47,8 +56,53 @@ export function brandFormLinkValid(url: unknown): url is string {
 /** Ids only reach the push provider; names and links stay with Mingla. */
 export function brandFormProviderSafeKeys(category: string): string[] {
   return category === BRAND_FORM_REQUEST_CATEGORY
-    ? ["form_id", "event_id", "rsvp_id", "order_id"]
+    ? ["form_id", "event_id", "rsvp_id", "order_id", "rsvp_guest_id"]
     : ["form_id", "event_id", "brand_id"];
+}
+
+const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * #4541 R3.3: the form request push's deep link, built only from ids. Orders and
+ * RSVPs open their purchase page with the form named in the query: app 1.3.x
+ * ignores the extra parameters and opens the ticket or pass (scenario 7); a new
+ * build opens the form over it. A claimed plus-one has no purchase page of its
+ * own, so it opens the form route (1.3.x falls back to its type route).
+ */
+export function brandFormRequestPushDeepLink(p: {
+  formId: string;
+  eventId: string;
+  subjectKind: "rsvp" | "rsvp_guest" | "order";
+  subjectId: string;
+}): string {
+  if (![p.formId, p.eventId, p.subjectId].every((v) => ID.test(v))) {
+    throw new Error("brand_form_push_link_ids");
+  }
+  return p.subjectKind === "rsvp_guest"
+    ? `mingla://form/${p.formId}?event=${p.eventId}&as=rsvp_guest&sid=${p.subjectId}&from=push`
+    : `mingla://purchases/${p.subjectKind}/${p.subjectId}?form=${p.formId}&event=${p.eventId}`;
+}
+
+/** The one deep link a form request may carry: the one its own payload ids build. */
+function brandFormRequestDeepLinkValid(
+  deepLink: string,
+  payload: Record<string, unknown>,
+): boolean {
+  const formId = payload.form_id, eventId = payload.event_id;
+  if (typeof formId !== "string" || typeof eventId !== "string") return false;
+  const subject = typeof payload.order_id === "string"
+    ? { subjectKind: "order" as const, subjectId: payload.order_id }
+    : typeof payload.rsvp_id === "string"
+    ? { subjectKind: "rsvp" as const, subjectId: payload.rsvp_id }
+    : typeof payload.rsvp_guest_id === "string"
+    ? { subjectKind: "rsvp_guest" as const, subjectId: payload.rsvp_guest_id }
+    : null;
+  if (subject === null) return false;
+  try {
+    return deepLink === brandFormRequestPushDeepLink({ formId, eventId, ...subject });
+  } catch {
+    return false;
+  }
 }
 
 /** The host's link to the form's Responses page (the held-reminder notice). */
@@ -57,9 +111,9 @@ export function brandFormHeldDeepLink(formId: string): string {
 }
 
 /**
- * The request opens no deep link (the Explorer `/form` route ships later); the
- * held notice opens the form's Responses page in the Host app, for its own
- * form only.
+ * #4541 R3.3: a request opens only the deep link its own ids build
+ * (brandFormRequestPushDeepLink); the held notice opens the form's Responses
+ * page in the Host app, for its own form only.
  */
 export function brandFormDeepLinkValid(
   category: string,
@@ -67,6 +121,9 @@ export function brandFormDeepLinkValid(
   payload: Record<string, unknown> = {},
 ): boolean {
   if (deepLink === null || deepLink === undefined) return true;
+  if (category === BRAND_FORM_REQUEST_CATEGORY) {
+    return brandFormRequestDeepLinkValid(deepLink, payload);
+  }
   return category === BRAND_FORM_REMINDER_HELD_CATEGORY &&
     typeof payload.form_id === "string" &&
     /^[0-9a-f-]{36}$/.test(payload.form_id) &&
@@ -133,8 +190,18 @@ export function renderBrandFormMessage(
     ? `${brand} has a few questions about ${event}${day ? ` on ${day}` : ""}.`
     : `${brand} has a few questions.`;
   const link = brandFormLinkValid(payload.form_url) ? payload.form_url : null;
+  // #4541 R3.6: the lock screen. Names cut to 40 characters; never a link, a
+  // token, a contact, an answer or a question (an "@" or a web address in a
+  // name is dropped).
+  const pBrand = pushName(payload.brand_name) || "The host";
+  const pEvent = pushName(payload.event_title);
+  const remind = payload.request_kind === "remind" || payload.request_kind === "auto";
+  const about = pEvent ? ` about ${pEvent}${day ? ` on ${day}` : ""}` : "";
+  const pushBody = remind
+    ? `Still to answer: a few questions${about}.`
+    : `${pBrand} has a few questions${about}. Tap to answer.`;
   return {
-    push: { title: `Questions from ${brand}`, body: `${ask} Tap to answer.` },
+    push: { title: `Questions from ${pBrand}`, body: pushBody },
     email: {
       subject: `${brand} has a few questions`,
       body: link

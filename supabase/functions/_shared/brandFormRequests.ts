@@ -25,14 +25,26 @@ import type {
 import {
   BRAND_FORM_REQUEST_CATEGORY,
   brandFormEmailCta,
+  brandFormRequestPushDeepLink,
 } from "./brandFormNotify.ts";
 import { countryFromE164 } from "./e164Country.ts";
 
-// [TRANSITIONAL] Push (and with it the Explorer inbox row) is off for form
-// requests: "Tap to answer" would open nothing until the Explorer /form screen
-// exists. Exit condition: the Explorer /form route ships; then set this to true
-// and push is tried first again for guests with an account (free, no link).
-export const FORM_REQUEST_PUSH_ENABLED = false;
+// #4541 R3.1: push is a database switch, not a code constant. BRAND_FORMS_PUSH
+// (off until Seth turns it on) and BRAND_FORMS_PUSH_EMAIL_ALONGSIDE (on during the
+// rollout) are read once per drain through brand_form_push_settings. The SQL
+// decides per person whether push is tried (brand_form_push_eligible: the app
+// said in the last 45 days that it opens the form), at preview and again at
+// claim; a claimed route starts with "push" only then.
+export interface FormRequestPushSettings {
+  push: boolean;
+  emailAlongside: boolean;
+}
+
+/** Push off and email alongside on: what a missing or unreadable switch means. */
+export const PUSH_SETTINGS_OFF: FormRequestPushSettings = {
+  push: false,
+  emailAlongside: true,
+};
 
 export type ContactChannel = "sms" | "email";
 export type FormRequestChannel = "push" | ContactChannel;
@@ -44,11 +56,26 @@ export const FORM_LINK_ORIGIN = "https://host.usemingla.com";
 export const FORM_REQUEST_PAGE = 25;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** The channels a host may tick today (push only once the Explorer form screen ships). */
+/**
+ * The channels a host may tick. #4541 R3.1: "push" is always accepted; while
+ * BRAND_FORMS_PUSH is off the server silently removes it (the preview then
+ * reads "Push: not available yet").
+ */
 export function allowedRequestChannels(): FormRequestChannel[] {
-  return FORM_REQUEST_PUSH_ENABLED
-    ? ["push", "sms", "email"]
-    : ["sms", "email"];
+  return ["push", "sms", "email"];
+}
+
+/** The push switches, read once per drain. An unreadable read never turns push on. */
+export async function readPushSettings(
+  deps: Pick<FormRequestDeps, "rpc">,
+): Promise<FormRequestPushSettings> {
+  const read = await deps.rpc("brand_form_push_settings", {});
+  if (read.error !== null || typeof read.data !== "object" || read.data === null) {
+    console.error("[brand-form-request] push settings unreadable: push off");
+    return PUSH_SETTINGS_OFF;
+  }
+  const d = read.data as Record<string, unknown>;
+  return { push: d.push === true, emailAlongside: d.emailAlongside !== false };
 }
 
 /** #4541 R1.15: a claimed plus-one is its own subject (rsvp_guest). */
@@ -68,6 +95,8 @@ export interface FormRequestRecipient {
   throttled: boolean;
   /** The contact route the server chose for the ticked channels (text before email). */
   route: ContactChannel[];
+  /** #4541 R3.2: push will be tried first (switch on, push ticked, the person's app can open the form). */
+  pushOk: boolean;
   smsOptedOut: boolean;
 }
 
@@ -82,6 +111,11 @@ export interface FormRequestAudience {
   textsToday: number;
   textCap: number;
   textsWaitUntil: string | null;
+  /** #4541 R3.1: BRAND_FORMS_PUSH is on. */
+  pushAvailable: boolean;
+  /** #4541 R5.5: the brand's one monthly text budget (null: no limit). */
+  monthlyTextCap: number | null;
+  textsLeftThisMonth: number | null;
   recipients: FormRequestRecipient[];
 }
 
@@ -103,6 +137,14 @@ const contactRoute = (v: unknown): ContactChannel[] =>
   Array.isArray(v)
     ? v.filter((c): c is ContactChannel => c === "sms" || c === "email")
     : [];
+const intOrNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null;
+/** A claimed route: push (only first, as the claim puts it) then the contact route. */
+const claimedRoute = (v: unknown): FormRequestChannel[] => {
+  if (!Array.isArray(v)) return [];
+  const contact = contactRoute(v);
+  return v[0] === "push" ? ["push", ...contact] : contact;
+};
 
 /** The audience read, checked field by field (a malformed row is refused, never guessed). */
 export function parseAudience(value: unknown): FormRequestAudience {
@@ -138,6 +180,7 @@ export function parseAudience(value: unknown): FormRequestAudience {
       answered: r.answered === true,
       throttled: r.throttled === true,
       route: contactRoute(r.route),
+      pushOk: r.pushOk === true,
       smsOptedOut: r.smsOptedOut === true,
     };
   });
@@ -152,24 +195,25 @@ export function parseAudience(value: unknown): FormRequestAudience {
     textsToday: int(v.textsToday),
     textCap: int(v.textCap),
     textsWaitUntil: str(v.textsWaitUntil),
+    pushAvailable: v.pushAvailable === true,
+    monthlyTextCap: intOrNull(v.monthlyTextCap),
+    textsLeftThisMonth: intOrNull(v.textsLeftThisMonth),
     recipients,
   };
 }
 
 /**
  * The channels tried for one guest, in order (the first that sends wins): push
- * to their account only while FORM_REQUEST_PUSH_ENABLED, then the server's
- * contact route (text before email) narrowed to the ticked channels. Empty:
- * they can't be reached.
+ * when the server said it will be tried (pushOk: the switch, push ticked, an
+ * app that opens the form), then the server's contact route (text before
+ * email) narrowed to the ticked channels. Empty: they can't be reached.
  */
 export function routeFor(
-  r: { userId: string | null; route: readonly ContactChannel[] },
+  r: { pushOk?: boolean; route: readonly ContactChannel[] },
   channels: readonly FormRequestChannel[],
 ): FormRequestChannel[] {
   const out: FormRequestChannel[] = [];
-  if (
-    FORM_REQUEST_PUSH_ENABLED && channels.includes("push") && r.userId !== null
-  ) out.push("push");
+  if (channels.includes("push") && r.pushOk === true) out.push("push");
   for (const c of r.route) if (channels.includes(c)) out.push(c);
   return out;
 }
@@ -183,7 +227,10 @@ export interface ClaimedRequest {
   subjectKind: FormRequestSubjectKind;
   subjectId: string;
   userId: string | null;
-  route: ContactChannel[];
+  /** #4541: ask, remind or the automatic reminder (the push wording). */
+  kind: FormRequestKind;
+  /** "push" first only when the claim decided the person's app can open the form. */
+  route: FormRequestChannel[];
   phone: string | null;
   email: string | null;
   brandName: string;
@@ -213,7 +260,8 @@ export function parseClaimed(value: unknown): ClaimedRequest | null {
     subjectKind: v.subjectKind,
     subjectId: v.subjectId,
     userId: str(v.userId),
-    route: contactRoute(v.route),
+    kind: v.kind === "remind" || v.kind === "auto" ? v.kind : "ask",
+    route: claimedRoute(v.route),
     phone: str(v.phone),
     email: str(v.email),
     brandName: str(v.brandName) ?? "",
@@ -240,14 +288,21 @@ function delivered(
   );
 }
 
-/** Send one claimed request on its route until one channel sends, then settle it. */
+/**
+ * Send one claimed request on its route until one channel sends, then settle it.
+ * #4541 R3.4: push first when the claim put it there and BRAND_FORMS_PUSH is on.
+ * A delivered push is followed by the email (the same personal link) while
+ * BRAND_FORMS_PUSH_EMAIL_ALONGSIDE is on, never by a text; a push that did not
+ * deliver continues as today (text, then email). The push carries only a deep
+ * link built from ids (R3.3) and no link, token or contact (R3.6).
+ */
 export async function sendClaimed(
   deps: FormRequestDeps,
   c: ClaimedRequest,
+  settings: FormRequestPushSettings = PUSH_SETTINGS_OFF,
 ): Promise<boolean> {
-  const route = routeFor(
-    { userId: c.userId, route: c.route },
-    allowedRequestChannels(),
+  const route = c.route.filter((ch) =>
+    ch !== "push" || (settings.push && c.userId !== null)
   );
   const formUrl = `${FORM_LINK_ORIGIN}/form/${c.formId}#t=${c.token}`;
   const payload: Record<string, unknown> = {
@@ -262,8 +317,25 @@ export async function sendClaimed(
     event_title: c.eventTitle,
     event_date: c.startsAt,
     event_timezone: c.eventTimezone,
+    request_kind: c.kind,
   };
+  const sendContact = async (channel: ContactChannel, contact: string) =>
+    await deps.dispatch({
+      user_id: null,
+      contact,
+      country_code: channel === "sms" ? countryFromE164(c.phone) : null,
+      category_key: BRAND_FORM_REQUEST_CATEGORY,
+      payload: { ...payload, form_url: formUrl },
+      idempotency_key: `brand_form_request:${c.sendId}:${channel}`,
+      email_cta: channel === "email"
+        ? brandFormEmailCta(BRAND_FORM_REQUEST_CATEGORY, {
+          ...payload,
+          form_url: formUrl,
+        })
+        : undefined,
+    });
   let sentOn: FormRequestChannel | null = null;
+  let withEmail = false;
   let lastReason = route.length === 0 ? "no_contact" : "not_delivered";
   for (const channel of route) {
     const contact = channel === "sms"
@@ -278,23 +350,16 @@ export async function sendClaimed(
           user_id: c.userId,
           category_key: BRAND_FORM_REQUEST_CATEGORY,
           payload,
+          deep_link: brandFormRequestPushDeepLink({
+            formId: c.formId,
+            eventId: c.eventId,
+            subjectKind: c.subjectKind,
+            subjectId: c.subjectId,
+          }),
           idempotency_key: `brand_form_request:${c.sendId}:push`,
           requested_channel: "push",
         })
-        : await deps.dispatch({
-          user_id: null,
-          contact,
-          country_code: channel === "sms" ? countryFromE164(c.phone) : null,
-          category_key: BRAND_FORM_REQUEST_CATEGORY,
-          payload: { ...payload, form_url: formUrl },
-          idempotency_key: `brand_form_request:${c.sendId}:${channel}`,
-          email_cta: channel === "email"
-            ? brandFormEmailCta(BRAND_FORM_REQUEST_CATEGORY, {
-              ...payload,
-              form_url: formUrl,
-            })
-            : undefined,
-        });
+        : await sendContact(channel, contact as string);
       if (delivered(result, channel)) {
         sentOn = channel;
         break;
@@ -304,11 +369,20 @@ export async function sendClaimed(
       lastReason = `${channel}_dispatch_failed`;
     }
   }
+  if (sentOn === "push" && settings.emailAlongside && c.email !== null) {
+    try {
+      withEmail = delivered(await sendContact("email", c.email), "email");
+    } catch {
+      withEmail = false;
+    }
+    if (!withEmail) console.error("[brand-form-request] email alongside push not delivered", c.sendId);
+  }
   const settled = await deps.rpc("brand_form_request_settle", {
     p_send_id: c.sendId,
     p_channel: sentOn ?? route[route.length - 1] ?? null,
     p_status: sentOn !== null ? "sent" : "failed",
-    p_reason: sentOn !== null ? null : lastReason,
+    // The delivery log shows both channels when the email went alongside the push.
+    p_reason: sentOn === null ? lastReason : withEmail ? "push_and_email" : null,
   });
   if (settled.error !== null) {
     console.error("[brand-form-request] settle failed", c.sendId);
@@ -350,6 +424,8 @@ export async function drainFormRequests(
     throw new Error(`brand_forms_switched_off: ${off.error.message}`);
   }
   if (off.data === true) return { ...out, paused: true };
+  // #4541 R3.1: the push switches, once per run.
+  const settings = await readPushSettings(deps);
   while (now() - start < opts.budgetMs) {
     const claim = await deps.rpc("brand_form_request_claim_batch", {
       p_limit: FORM_REQUEST_PAGE,
@@ -367,7 +443,7 @@ export async function drainFormRequests(
     const valid = items.filter((i): i is ClaimedRequest => i !== null);
     for (let i = 0; i < valid.length; i += 5) {
       const results = await Promise.all(
-        valid.slice(i, i + 5).map((c) => sendClaimed(deps, c)),
+        valid.slice(i, i + 5).map((c) => sendClaimed(deps, c, settings)),
       );
       for (const ok of results) {
         if (ok) out.sent += 1;

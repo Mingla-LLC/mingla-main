@@ -1845,7 +1845,7 @@ $t$;
 -- T-W4-QUEUE   pages of at most p_limit; a stale claim is retried, then failed after 3 tries;
 --              a queued row older than 24 hours fails; nobody is blocked for 24 hours.
 -- T-W4-QUIET   texts wait for 9am-9pm in the page's time zone; email is not delayed.
--- T-W4-CAP     the per-brand daily text limit refuses a send that would go over it.
+-- T-W4-CAP     over the per-brand daily text limit, texts are off for the send (#4541 R5.4).
 -- T-W4-AUTO    decision 13: push is dropped from the switch; due once per page and date two
 --              days before; a run with nothing left settles; a stuck run fails visibly;
 --              decision 10: a closed form is held and the host told with a link.
@@ -1858,16 +1858,16 @@ $t$;
 -- T-W4-PERSON  the person key is the account, else the booking, never the phone or email:
 --              two guests sharing a phone each get their own request and link; one account
 --              with an RSVP and an order is one person (N5).
--- T-W4-AUTOCAP the automatic reminder keeps to the daily text limit: texts only up to what is
---              left; past it the email on the route goes ('text_cap'), else 'skipped'
---              ('text_cap'), and the log shows it (N2).
+-- T-W4-AUTOCAP the automatic reminder keeps to the text limits: #4541 R5.4, when a run needs
+--              more texts than are left, texts are off for the run; the email on the route
+--              goes ('text_cap' / 'no_texts_left'), else 'skipped', and the log shows it (N2).
 -- T-W4-AUTOLOCK the automatic reminder queues under the brand lock that enqueue takes, and an
 --              Ask and the reminder never both reach one person inside 24 hours (N3).
 -- T-W4-STARTED a request whose guest date has started is skipped at claim ('event_started') (N4).
 -- T-W4-DATES-0 brand_form_guest_dates is static SQL (no EXECUTE) and the columns it reads exist (N6).
 -- FAILS-ON-REVERT (review fixes): deleting the stale-claim UPDATE in claim_batch fails
 -- T-W4-QUEUE-2; deleting the brand_form_text_window delay fails T-W4-QUIET-2; deleting the cap
--- RAISE fails T-W4-CAP-1; replacing brand_form_guest_dates with the page's next date fails
+-- texts-off rule fails T-W4-CAP-1; replacing brand_form_guest_dates with the page's next date fails
 -- T-W4-DATES-2 and T-W4-DATES-4; restoring the phone and email person key (the 5-argument
 -- brand_form_person_key and its caller) fails T-W4-AUD-1b; deleting the text-limit split in
 -- brand_form_auto_reminders_due fails T-W4-AUTOCAP-1; deleting the event_started check in
@@ -2158,9 +2158,18 @@ BEGIN
   INSERT INTO public.brand_form_request_sends (form_id, event_id, brand_id, rsvp_id, person_key, kind, route, status)
   SELECT v_w, v_e10, v_ba, v_ri, 'p:cap' || g, 'ask', ARRAY['sms'], 'sent' FROM generate_series(1, 300) g;
   SET LOCAL ROLE service_role;
-  PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.brand_form_request_enqueue(%L, %L, %L, %L, %L, %L, %L)',
-      v_em, v_w, v_e10, 'ask', 'everyone', v_ike::text, '{sms,email}')) LIKE '%form_request_text_cap%',
-    'T-W4-CAP-1 over the daily text limit: refused');
+  -- #4541 R5.4 (section 24 item B): over the daily cap the send is no longer
+  -- refused; texts are off for that send and email still goes.
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone', v_ike, ARRAY['sms', 'email']);
+  -- The 300 texts also count against the brand's monthly allowance, which may be
+  -- the smaller limit; either way texts are off (the M-B suite pins each reason).
+  PERFORM pg_temp.f_assert(v->'textsOff'->>'reason' IN ('daily_cap', 'monthly_allowance') AND (v->>'queued')::integer = 1
+      AND (SELECT route = ARRAY['email'] AND safe_reason IN ('text_cap', 'no_texts_left') FROM public.brand_form_request_sends
+            WHERE rsvp_id = v_ri AND status = 'queued'),
+    'T-W4-CAP-1 over the daily text limit: texts off for the send, email still goes (' || v::text || ')');
+  RESET ROLE;
+  DELETE FROM public.brand_form_request_sends WHERE rsvp_id = v_ri AND status = 'queued';
+  SET LOCAL ROLE service_role;
   v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone', v_ike, ARRAY['email']);
   PERFORM pg_temp.f_assert((v->>'queued')::integer = 1, 'T-W4-CAP-2 email still goes (the limit is on texts)');
   RESET ROLE;
@@ -2244,11 +2253,15 @@ BEGIN
   SET LOCAL ROLE service_role;
   v := public.brand_form_auto_reminders_due();
   RESET ROLE;
-  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued' AND route = ARRAY['sms']) = 1
+  -- #4541 R5.4: the run needs three texts and one is left, so texts are off for
+  -- the whole run (the same rule as a send): text-only guests are skipped with
+  -- the reason. The 299 texts also count against the monthly allowance, which
+  -- may be the smaller limit (no_texts_left); the M-B suite pins each reason.
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued')
       AND (SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'skipped'
-             AND safe_reason = 'text_cap' AND route = ARRAY['sms'] AND settled_at IS NOT NULL) = 2
-      AND public.brand_form_request_texts_today((SELECT brand_id FROM public.events WHERE id = v_e10)) = 300,
-    'T-W4-AUTOCAP-1 one text left: one guest texted, two skipped with text_cap, the limit is not overrun');
+             AND safe_reason IN ('text_cap', 'no_texts_left') AND route = ARRAY['sms'] AND settled_at IS NOT NULL) = 3
+      AND public.brand_form_request_texts_today((SELECT brand_id FROM public.events WHERE id = v_e10)) = 299,
+    'T-W4-AUTOCAP-1 one text left for three: texts off for the run, three skipped with the reason, the limit is not overrun');
   -- No texts left, text and email ticked: guests with an email get the email
   -- (marked text_cap); Vic, whose email bounced, is skipped.
   DELETE FROM public.brand_form_request_sends WHERE kind = 'auto';
@@ -2264,8 +2277,8 @@ BEGIN
   v := public.brand_form_auto_reminders_due();
   RESET ROLE;
   PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued'
-                              AND route = ARRAY['email'] AND safe_reason = 'text_cap') = 2
-      AND (SELECT status = 'skipped' AND safe_reason = 'text_cap' FROM public.brand_form_request_sends
+                              AND route = ARRAY['email'] AND safe_reason IN ('text_cap', 'no_texts_left')) = 2
+      AND (SELECT status = 'skipped' AND safe_reason IN ('text_cap', 'no_texts_left') FROM public.brand_form_request_sends
             WHERE kind = 'auto' AND rsvp_id = (SELECT id FROM f4514 WHERE k = 'rv2'))
       AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued' AND route[1] = 'sms'),
     'T-W4-AUTOCAP-2 no texts left: Val and Ike get the email (text_cap), Vic with no email route is skipped (text_cap)');
@@ -2278,9 +2291,9 @@ BEGIN
   v := public.biz_brand_form_request_log(v_w, v_e10, NULL, 500);
   RESET ROLE;
   PERFORM pg_temp.f_assert((SELECT count(*) FROM jsonb_array_elements(v->'sends') x
-                             WHERE x->>'kind' = 'auto' AND x->>'reason' = 'text_cap' AND x->>'status' = 'sent' AND x->>'channel' = 'email') = 2
+                             WHERE x->>'kind' = 'auto' AND x->>'reason' IN ('text_cap', 'no_texts_left') AND x->>'status' = 'sent' AND x->>'channel' = 'email') = 2
       AND (SELECT count(*) FROM jsonb_array_elements(v->'sends') x
-            WHERE x->>'kind' = 'auto' AND x->>'reason' = 'text_cap' AND x->>'status' = 'skipped' AND x->>'channel' = 'sms') = 1,
+            WHERE x->>'kind' = 'auto' AND x->>'reason' IN ('text_cap', 'no_texts_left') AND x->>'status' = 'skipped' AND x->>'channel' = 'sms') = 1,
     'T-W4-AUTOCAP-3 the delivery log shows who was emailed instead and who was skipped for the text limit');
   DELETE FROM public.channel_suppressions WHERE contact = 'f4514-v2@example.test';
   UPDATE public.brand_form_attachments SET auto_remind_channels = ARRAY['sms'] WHERE id = v_att;

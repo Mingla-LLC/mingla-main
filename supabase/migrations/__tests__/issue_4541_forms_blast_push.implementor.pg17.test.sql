@@ -1,0 +1,442 @@
+-- MINGLA-INVARIANT: I-4541-ONE-TEXT-BUDGET | issue #4541 | form-request texts and Blast texts draw from one monthly text budget per brand, counted by Blast's own allowance functions under one lock (blast_cap), so together they never exceed it; over it, a form send goes without texts and is never refused (T-18, T-18-RACE).
+-- MINGLA-INVARIANT: I-4541-FORM-PUSH-APP-READY | issue #4541 | a form request is tried by push only while BRAND_FORMS_PUSH is on and the person's app reported in the last 45 days that it opens the form, decided again at claim (T-19).
+-- #4541 M-B (20281122014541_issue_4541_forms_blast_push.sql): PostgreSQL 17 proof after the full replay.
+-- Run as supabase_admin (the race sections open two dblink sessions, as issue_0871 does).
+--
+-- T-19  push: the switch, the capability report, eligibility at preview and again at claim (SC-26)
+-- T-18  one text budget: the form counter in Blast's usage and check, texts off over the monthly
+--       allowance and over the daily cap, the reason kept in the log, lock order (SC-37, SC-38)
+-- T-42  every client-called RPC called the way the app calls it; service-role-only functions refused
+-- T-18-RACE two sessions (SC-39): a Blast confirm and a form send for one brand never both pass
+--       when together they exceed the allowance, in either order, and never deadlock
+--
+-- FAILS-ON-REVERT: dropping the brand_form_push_eligible test from the claim fails T-19c;
+-- dropping the form term from biz_assert_brand_blast_allowance_v1 fails T-18b; dropping it from
+-- biz_brand_blast_usage_v1 fails T-18a; dropping the texts-off rule fails T-18c/T-18d;
+-- dropping the blast_cap lock from brand_form_request_enqueue fails T-18-RACE-1.
+
+CREATE EXTENSION IF NOT EXISTS dblink;
+
+CREATE OR REPLACE FUNCTION pg_temp.ok(p_ok boolean, p_label text)
+RETURNS void LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF NOT COALESCE(p_ok, false) THEN
+    RAISE EXCEPTION 'issue #4541 M-B FAIL: %', p_label;
+  END IF;
+  RAISE NOTICE 'PASS  %', p_label;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION pg_temp.err(p_sql text)
+RETURNS text LANGUAGE plpgsql AS $fn$
+BEGIN
+  EXECUTE p_sql;
+  RETURN 'ok';
+EXCEPTION WHEN OTHERS THEN
+  RETURN SQLSTATE || ':' || SQLERRM;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION pg_temp.as_user(p_user uuid)
+RETURNS void LANGUAGE plpgsql AS $fn$
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub', COALESCE(p_user::text, ''), true);
+  PERFORM set_config('request.jwt.claims',
+    CASE WHEN p_user IS NULL THEN json_build_object('role', 'anon')::text
+         ELSE json_build_object('sub', p_user, 'role', 'authenticated')::text END, true);
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION pg_temp.u(p_tag text)
+RETURNS uuid LANGUAGE sql IMMUTABLE AS $fn$ SELECT md5('i4541mb:' || p_tag)::uuid $fn$;
+
+-- A time zone where it is now daytime, so texts are not held for the morning.
+CREATE TEMP TABLE i4541mb_tz AS
+SELECT (SELECT name FROM pg_timezone_names WHERE extract(hour FROM now() AT TIME ZONE name) BETWEEN 11 AND 18
+         AND name LIKE 'Etc/GMT%' ORDER BY name LIMIT 1) AS day_tz;
+
+-- The fixture, as a function so the committed race section can build its own brand.
+CREATE OR REPLACE FUNCTION pg_temp.mb_fixture(p_k text) RETURNS void LANGUAGE plpgsql AS $fn$
+DECLARE
+  v_def jsonb := '{"schema":"mingla.brand_form.v1","title":"Guest questions","intro":"One question","questions":[{"id":"45419100-0000-4000-8000-000000000101","position":0,"type":"short_text","label":"Dietary needs","required":true}]}'::jsonb;
+  v_tag text;
+BEGIN
+  FOREACH v_tag IN ARRAY ARRAY['owner','u1','u2','u3','u4','u5'] LOOP
+    INSERT INTO auth.users(id, email) VALUES (pg_temp.u(p_k || v_tag), 'i4541mb-' || p_k || v_tag || '@example.test');
+    INSERT INTO public.profiles(id, email, display_name, first_name, last_name)
+    VALUES (pg_temp.u(p_k || v_tag), 'i4541mb-' || p_k || v_tag || '@example.test', initcap(v_tag) || ' Person',
+            initcap(v_tag), 'Person')
+    ON CONFLICT (id) DO NOTHING;
+  END LOOP;
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.brands(id, account_id, name, slug, default_currency)
+  VALUES (pg_temp.u(p_k || 'brand'), pg_temp.u(p_k || 'owner'), 'Issue 4541 MB ' || p_k, 'i4541mb-' || p_k, 'USD');
+  INSERT INTO public.brand_team_members(brand_id, user_id, role, accepted_at)
+  VALUES (pg_temp.u(p_k || 'brand'), pg_temp.u(p_k || 'owner'), 'brand_owner', now());
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility, timezone, currency)
+  VALUES (pg_temp.u(p_k || 'e'), pg_temp.u(p_k || 'brand'), 'MB night', 'i4541mb-e-' || p_k, 'rsvp', 'scheduled', 'public',
+          (SELECT day_tz FROM i4541mb_tz), 'USD');
+  INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+  VALUES (pg_temp.u(p_k || 'e'), now() + interval '9 days', now() + interval '9 days 4 hours', 'UTC', true);
+  -- u1, u3, u4 have a phone and an email; u2 a phone only; u5 an email only.
+  INSERT INTO public.event_rsvps(id, event_id, user_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
+  VALUES (pg_temp.u(p_k || 'r1'), pg_temp.u(p_k || 'e'), pg_temp.u(p_k || 'u1'), 'Una One', 'i4541mb-' || p_k || 'r1@example.test', '+12025558001', 'going', 'approved'),
+         (pg_temp.u(p_k || 'r2'), pg_temp.u(p_k || 'e'), pg_temp.u(p_k || 'u2'), 'Ula Two', NULL, '+12025558002', 'going', 'approved'),
+         (pg_temp.u(p_k || 'r3'), pg_temp.u(p_k || 'e'), pg_temp.u(p_k || 'u3'), 'Uma Three', 'i4541mb-' || p_k || 'r3@example.test', '+12025558003', 'going', 'approved'),
+         (pg_temp.u(p_k || 'r4'), pg_temp.u(p_k || 'e'), pg_temp.u(p_k || 'u4'), 'Uri Four', 'i4541mb-' || p_k || 'r4@example.test', '+12025558004', 'maybe', 'approved'),
+         (pg_temp.u(p_k || 'r5'), pg_temp.u(p_k || 'e'), pg_temp.u(p_k || 'u5'), 'Ugo Five', 'i4541mb-' || p_k || 'r5@example.test', NULL, 'going', 'approved');
+  INSERT INTO public.brand_forms(id, brand_id, name, status, draft, created_by, updated_by)
+  VALUES (pg_temp.u(p_k || 'F'), pg_temp.u(p_k || 'brand'), 'MB questions', 'draft', v_def, pg_temp.u(p_k || 'owner'), pg_temp.u(p_k || 'owner'));
+  INSERT INTO public.brand_form_versions(id, form_id, version, definition, definition_sha256, published_by)
+  VALUES (pg_temp.u(p_k || 'Fv'), pg_temp.u(p_k || 'F'), 1, v_def, encode(digest(v_def::text, 'sha256'), 'hex'), pg_temp.u(p_k || 'owner'));
+  UPDATE public.brand_forms SET status = 'live', live_version_id = pg_temp.u(p_k || 'Fv') WHERE id = pg_temp.u(p_k || 'F');
+  INSERT INTO public.brand_form_attachments(id, form_id, brand_id, event_id, mode, created_by)
+  VALUES (pg_temp.u(p_k || 'a'), pg_temp.u(p_k || 'F'), pg_temp.u(p_k || 'brand'), pg_temp.u(p_k || 'e'), 'required_step', pg_temp.u(p_k || 'owner'));
+  INSERT INTO public.marketing_audiences (id, account_id, brand_id, name, query_definition, is_system_generated)
+  VALUES (pg_temp.u(p_k || 'aud'), pg_temp.u(p_k || 'owner'), pg_temp.u(p_k || 'brand'), 'Your Book',
+          jsonb_build_object('kind', 'all_brand_people', 'brand_id', pg_temp.u(p_k || 'brand')::text), true);
+  PERFORM set_config('session_replication_role', 'origin', true);
+END;
+$fn$;
+
+-- A confirmed Blast text send of p_n recipients this month (what a Blast confirm writes).
+CREATE OR REPLACE FUNCTION pg_temp.mb_blast_sms(p_k text, p_n integer) RETURNS void LANGUAGE plpgsql AS $fn$
+DECLARE v_c uuid := gen_random_uuid();
+BEGIN
+  INSERT INTO public.marketing_campaigns (id, account_id, brand_id, audience_id, name, channel, channel_payload, status)
+  VALUES (v_c, pg_temp.u(p_k || 'owner'), pg_temp.u(p_k || 'brand'), pg_temp.u(p_k || 'aud'), 'Texts', 'sms',
+          '{"kind":"sms","body":"Hi"}'::jsonb, 'sent');
+  INSERT INTO public.marketing_book_send_executions (
+    brand_id, campaign_id, actor_id, client_request_id, quote_version, quote_hash,
+    content_hash, selected_count, reachable_count, suppressed_count, unavailable_count,
+    sms_segment_count, estimated_cost_minor, currency, cost_kind, ratebook_ids,
+    source_references, quoted_at, scheduled_for, send_mode)
+  VALUES (pg_temp.u(p_k || 'brand'), v_c, pg_temp.u(p_k || 'owner'), gen_random_uuid(), 1, repeat('a', 64), repeat('b', 64),
+          p_n, p_n, 0, 0, p_n, NULL, NULL, 'not_metered', '[]'::jsonb, '[]'::jsonb, now(), now(), 'now');
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION pg_temp.subj(p_k text, VARIADIC p_tags text[]) RETURNS jsonb LANGUAGE sql AS $fn$
+  SELECT jsonb_agg(jsonb_build_object('kind', 'rsvp', 'id', pg_temp.u(p_k || t))) FROM unnest(p_tags) t
+$fn$;
+
+BEGIN;
+
+SELECT pg_temp.mb_fixture('x');
+
+-- ═══ T-19 push: switch, capability, eligibility (SC-26) ═══════════════════════════
+DO $t$
+DECLARE v jsonb; v_r text; v_send uuid;
+BEGIN
+  -- The app's report, as the signed-in user; refused for anon and other apps.
+  PERFORM pg_temp.as_user(pg_temp.u('xu1'));
+  SET LOCAL ROLE authenticated;
+  PERFORM public.brand_form_report_capability('explorer', 'ios', '1.4.0', 1);
+  v_r := pg_temp.err($$SELECT public.brand_form_report_capability('business', 'ios', '1.4.0', 1)$$);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v_r LIKE '22023:app_invalid%', 'T-19 only the Explorer app reports (' || v_r || ')');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.brand_form_push_capable
+                              WHERE user_id = pg_temp.u('xu1') AND app_version = '1.4.0' AND screen_version = 1),
+    'T-19 the capability report is stored for the caller');
+  PERFORM pg_temp.as_user(NULL);
+  SET LOCAL ROLE anon;
+  v_r := pg_temp.err($$SELECT public.brand_form_report_capability('explorer', 'ios', '1.4.0', 1)$$);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v_r LIKE '42501%', 'T-19 anon cannot report (' || v_r || ')');
+  INSERT INTO public.brand_form_push_capable (user_id, platform, app_version, screen_version, last_seen_at)
+  VALUES (pg_temp.u('xu3'), 'android', '1.4.0', 1, now() - interval '50 days'),
+         (pg_temp.u('xu4'), 'ios', '1.4.0', 1, now());
+
+  -- Off by default: push is silently removed.
+  PERFORM pg_temp.ok(NOT (public.brand_form_push_settings()->>'push')::boolean
+      AND (public.brand_form_push_settings()->>'emailAlongside')::boolean,
+    'T-19 BRAND_FORMS_PUSH ships off, email alongside on');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_audience(pg_temp.u('xowner'), pg_temp.u('xF'), pg_temp.u('xe'), 'everyone', NULL, ARRAY['push', 'email']);
+  RESET ROLE;
+  PERFORM pg_temp.ok(NOT (v->>'pushAvailable')::boolean
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'recipients') r WHERE (r->>'pushOk')::boolean),
+    'T-19 SC-26 switched off: nobody is pushed');
+
+  UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'BRAND_FORMS_PUSH';
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_audience(pg_temp.u('xowner'), pg_temp.u('xF'), pg_temp.u('xe'), 'everyone', NULL, ARRAY['push', 'email']);
+  RESET ROLE;
+  PERFORM pg_temp.ok((v->>'pushAvailable')::boolean
+      AND (SELECT array_agg(r->>'id' ORDER BY r->>'id') FROM jsonb_array_elements(v->'recipients') r WHERE (r->>'pushOk')::boolean)
+          = (SELECT array_agg(x ORDER BY x) FROM unnest(ARRAY[pg_temp.u('xr1')::text, pg_temp.u('xr4')::text]) x),
+    'T-19a SC-26 switched on: only people whose app can open the form (seen in 45 days) are pushed');
+
+  -- Queue: u1 by push (+email), u2 phone only with email ticked: nobody to reach.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_enqueue(pg_temp.u('xowner'), pg_temp.u('xF'), pg_temp.u('xe'), 'ask', 'everyone',
+         pg_temp.subj('x', 'r1', 'r2'), ARRAY['push', 'email']);
+  RESET ROLE;
+  PERFORM pg_temp.ok((v->>'queued')::integer = 1 AND (v->>'unreachable')::integer = 1
+      AND (SELECT try_push AND route = ARRAY['email'] FROM public.brand_form_request_sends WHERE rsvp_id = pg_temp.u('xr1'))
+      AND (SELECT status = 'unreachable' FROM public.brand_form_request_sends WHERE rsvp_id = pg_temp.u('xr2')),
+    'T-19b the queue keeps push as a flag beside the contact route (' || v::text || ')');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_claim_batch(100, pg_temp.u('xF'), pg_temp.u('xe'));
+  RESET ROLE;
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM jsonb_array_elements(v) x
+                              WHERE (x->>'subjectId')::uuid = pg_temp.u('xr1')
+                                AND x->'route' = '["push","email"]'::jsonb AND (x->>'userId')::uuid = pg_temp.u('xu1')),
+    'T-19b the claim puts push first for an app-ready person (' || v::text || ')');
+
+  -- Push only for u4, then u4's app goes quiet before the claim: decided again.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_enqueue(pg_temp.u('xowner'), pg_temp.u('xF'), pg_temp.u('xe'), 'ask', 'everyone',
+         pg_temp.subj('x', 'r4'), ARRAY['push']);
+  RESET ROLE;
+  SELECT id INTO v_send FROM public.brand_form_request_sends WHERE rsvp_id = pg_temp.u('xr4');
+  PERFORM pg_temp.ok((SELECT status = 'queued' AND try_push AND route = '{}'::text[] FROM public.brand_form_request_sends WHERE id = v_send),
+    'T-19c a push-only request is queued for an app-ready person');
+  UPDATE public.brand_form_push_capable SET last_seen_at = now() - interval '46 days' WHERE user_id = pg_temp.u('xu4');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_claim_batch(100, pg_temp.u('xF'), pg_temp.u('xe'));
+  RESET ROLE;
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v) x WHERE (x->>'sendId')::uuid = v_send)
+      AND (SELECT status = 'unreachable' AND safe_reason = 'push_not_ready' FROM public.brand_form_request_sends WHERE id = v_send),
+    'T-19c SC-26 eligibility is decided again at claim: no push for an app not seen in 45 days');
+  -- Switched off again: the claim never pushes.
+  UPDATE public.brand_form_push_capable SET last_seen_at = now() WHERE user_id = pg_temp.u('xu4');
+  UPDATE public.brand_form_request_sends SET status = 'queued', safe_reason = NULL, settled_at = NULL WHERE id = v_send;
+  UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'BRAND_FORMS_PUSH';
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_claim_batch(100, pg_temp.u('xF'), pg_temp.u('xe'));
+  RESET ROLE;
+  PERFORM pg_temp.ok((SELECT status = 'unreachable' FROM public.brand_form_request_sends WHERE id = v_send),
+    'T-19c with the switch off the claim never pushes');
+  DELETE FROM public.brand_form_request_sends WHERE form_id = pg_temp.u('xF');
+END;
+$t$;
+
+-- ═══ T-18 one text budget (SC-37, SC-38) ══════════════════════════════════════════
+DO $t$
+DECLARE v jsonb; v_r text; v_src text; v_send uuid;
+BEGIN
+  INSERT INTO public.brand_messaging_limits (brand_id, email_monthly, sms_monthly, reason)
+  VALUES (pg_temp.u('xbrand'), 1000, 6, 'i4541mb');
+  -- Two form texts this month count; a push, a failure and last month's do not.
+  INSERT INTO public.brand_form_request_sends (form_id, event_id, brand_id, rsvp_id, person_key, kind, route, status, channel, created_at)
+  VALUES (pg_temp.u('xF'), pg_temp.u('xe'), pg_temp.u('xbrand'), pg_temp.u('xr1'), 'p:t1', 'ask', ARRAY['sms'], 'sent', 'sms', now()),
+         (pg_temp.u('xF'), pg_temp.u('xe'), pg_temp.u('xbrand'), pg_temp.u('xr1'), 'p:t2', 'ask', ARRAY['sms', 'email'], 'queued', NULL, now()),
+         (pg_temp.u('xF'), pg_temp.u('xe'), pg_temp.u('xbrand'), pg_temp.u('xr1'), 'p:t3', 'ask', ARRAY['sms'], 'sent', 'push', now()),
+         (pg_temp.u('xF'), pg_temp.u('xe'), pg_temp.u('xbrand'), pg_temp.u('xr1'), 'p:t4', 'ask', ARRAY['sms'], 'failed', 'sms', now()),
+         (pg_temp.u('xF'), pg_temp.u('xe'), pg_temp.u('xbrand'), pg_temp.u('xr1'), 'p:t5', 'ask', ARRAY['sms'], 'sent', 'sms',
+          (date_trunc('month', timezone('utc', now())) AT TIME ZONE 'utc') - interval '1 hour');
+  PERFORM pg_temp.ok(public.brand_form_request_texts_this_month(pg_temp.u('xbrand')) = 2,
+    'T-18 form texts this month: one text per person, push, failed and last month''s not counted');
+  -- A Blast of 1 text this month too.
+  PERFORM pg_temp.mb_blast_sms('x', 1);
+  v := public.biz_brand_blast_usage_v1(pg_temp.u('xowner'), pg_temp.u('xbrand'));
+  PERFORM pg_temp.ok((v->>'smsUsed')::integer = 3 AND (v->>'smsRemaining')::integer = 3 AND (v->>'smsCap')::integer = 6,
+    'T-18a SC-37 Blast''s own usage counts the form texts (' || v::text || ')');
+  PERFORM pg_temp.ok((public.brand_form_sms_month_state(pg_temp.u('xbrand'))->>'used')::integer = (v->>'smsUsed')::integer
+      AND (public.brand_form_sms_month_state(pg_temp.u('xbrand'))->>'remaining')::integer = 3,
+    'T-18a the form send reads exactly the number Blast reads');
+  v_r := pg_temp.err(format($$SELECT public.biz_assert_brand_blast_allowance_v1(%L, 'sms', 4)$$, pg_temp.u('xbrand')));
+  PERFORM pg_temp.ok(v_r LIKE 'P0001:book_blast_monthly_cap_exceeded%',
+    'T-18b SC-37 a Blast that needs more than is left after form texts is blocked by Blast''s own check (' || v_r || ')');
+  PERFORM pg_temp.ok(pg_temp.err(format($$SELECT public.biz_assert_brand_blast_allowance_v1(%L, 'sms', 3)$$, pg_temp.u('xbrand'))) = 'ok',
+    'T-18b a Blast within what is left passes');
+
+  -- SC-38: an Ask needing 4 texts with 3 left goes by email (and push) only.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_enqueue(pg_temp.u('xowner'), pg_temp.u('xF'), pg_temp.u('xe'), 'ask', 'everyone',
+         pg_temp.subj('x', 'r1', 'r2', 'r3', 'r4', 'r5'), ARRAY['sms', 'email']);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->'textsOff' = jsonb_build_object('reason', 'monthly_allowance', 'needed', 4, 'remaining', 3)
+      AND (v->>'queued')::integer = 4 AND (v->>'skippedNoTexts')::integer = 1 AND (v->>'textsQueued')::integer = 0,
+    'T-18c SC-38 over the monthly allowance texts are off for the send; it is never refused (' || v::text || ')');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.brand_form_request_sends WHERE form_id = pg_temp.u('xF') AND kind = 'ask'
+                        AND status = 'queued' AND route = ARRAY['email'] AND safe_reason = 'no_texts_left'
+                        AND rsvp_id IN (pg_temp.u('xr1'), pg_temp.u('xr3'), pg_temp.u('xr4'))) = 3
+      AND (SELECT status = 'skipped' AND safe_reason = 'no_texts_left' AND settled_at IS NOT NULL
+             FROM public.brand_form_request_sends WHERE rsvp_id = pg_temp.u('xr2') AND kind = 'ask' AND person_key NOT LIKE 'p:%')
+      AND (SELECT status = 'queued' AND safe_reason IS NULL FROM public.brand_form_request_sends
+            WHERE rsvp_id = pg_temp.u('xr5') AND person_key NOT LIKE 'p:%'),
+    'T-18c the log says why: emailed instead (no_texts_left), the phone-only guest skipped');
+  PERFORM pg_temp.ok(public.brand_form_request_texts_this_month(pg_temp.u('xbrand')) = 2,
+    'T-18c the allowance is not overrun (no new texts)');
+  -- The reason survives settle when the email goes.
+  DELETE FROM public.brand_form_request_sends WHERE person_key LIKE 'p:%';
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_claim_batch(100, pg_temp.u('xF'), pg_temp.u('xe'));
+  SELECT (x->>'sendId')::uuid INTO v_send FROM jsonb_array_elements(v) x WHERE (x->>'subjectId')::uuid = pg_temp.u('xr1');
+  PERFORM public.brand_form_request_settle(v_send, 'email', 'sent', NULL);
+  RESET ROLE;
+  PERFORM pg_temp.ok((SELECT safe_reason = 'no_texts_left' AND channel = 'email' FROM public.brand_form_request_sends WHERE id = v_send)
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(v) x WHERE x->>'textsOffReason' = 'no_texts_left'),
+    'T-18c the delivery log keeps "Not texted: no texts left this month"');
+
+  -- The daily cap: a big monthly allowance, 299 texts in the last day, 4 needed.
+  DELETE FROM public.brand_form_request_sends WHERE form_id = pg_temp.u('xF');
+  UPDATE public.brand_messaging_limits SET sms_monthly = 100000 WHERE brand_id = pg_temp.u('xbrand');
+  INSERT INTO public.brand_form_request_sends (form_id, event_id, brand_id, rsvp_id, person_key, kind, route, status, channel)
+  SELECT pg_temp.u('xF'), pg_temp.u('xe'), pg_temp.u('xbrand'), pg_temp.u('xr1'), 'p:d' || g, 'ask', ARRAY['sms'], 'sent', 'sms'
+    FROM generate_series(1, 299) g;
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_enqueue(pg_temp.u('xowner'), pg_temp.u('xF'), pg_temp.u('xe'), 'ask', 'everyone',
+         pg_temp.subj('x', 'r1', 'r2', 'r3', 'r4'), ARRAY['sms', 'email']);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->'textsOff'->>'reason' = 'daily_cap' AND (v->'textsOff'->>'remaining')::integer = 1
+      AND (v->>'queued')::integer = 3 AND (v->>'skippedNoTexts')::integer = 1
+      AND (SELECT count(*) FROM public.brand_form_request_sends WHERE safe_reason = 'text_cap' AND person_key NOT LIKE 'p:%') = 4,
+    'T-18d over the 300-a-day cap: the same rule, reason text_cap (' || v::text || ')');
+  DELETE FROM public.brand_form_request_sends WHERE form_id = pg_temp.u('xF');
+
+  -- Within both limits: texts go, counted once each.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_request_enqueue(pg_temp.u('xowner'), pg_temp.u('xF'), pg_temp.u('xe'), 'ask', 'everyone',
+         pg_temp.subj('x', 'r1', 'r2'), ARRAY['sms', 'email']);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->'textsOff' = 'null'::jsonb AND (v->>'textsQueued')::integer = 2,
+    'T-18 within the limits texts go (' || v::text || ')');
+
+  -- R5.2 lock order: blast_cap before the brand's request lock, in both writers.
+  FOR v_src IN SELECT p.prosrc FROM pg_proc p
+                WHERE p.oid IN ('public.brand_form_request_enqueue(uuid,uuid,uuid,text,text,jsonb,text[])'::regprocedure,
+                                'public.brand_form_auto_reminders_due()'::regprocedure) LOOP
+    PERFORM pg_temp.ok(position('''blast_cap:''' IN v_src) > 0
+        AND position('''blast_cap:''' IN v_src) < position('''brand_form_request:''' IN v_src),
+      'T-18 R5.2 blast_cap is taken first');
+  END LOOP;
+END;
+$t$;
+
+-- ═══ T-42 client-called RPCs; service-role-only functions refused ════════════════
+DO $t$
+DECLARE v_sig text; v_r text;
+BEGIN
+  FOREACH v_sig IN ARRAY ARRAY['public.brand_form_push_settings()', 'public.brand_form_push_eligible(uuid)',
+    'public.brand_form_request_texts_this_month(uuid)', 'public.brand_form_sms_month_state(uuid)'] LOOP
+    PERFORM pg_temp.ok(has_function_privilege('service_role', v_sig, 'EXECUTE')
+        AND NOT has_function_privilege('anon', v_sig, 'EXECUTE')
+        AND NOT has_function_privilege('authenticated', v_sig, 'EXECUTE'),
+      'T-42 service role only: ' || v_sig);
+    PERFORM pg_temp.ok((SELECT p.prosecdef AND p.proconfig = ARRAY['search_path=""'] FROM pg_proc p WHERE p.oid = v_sig::regprocedure),
+      'T-42 definer with an empty search path: ' || v_sig);
+  END LOOP;
+  PERFORM pg_temp.ok(has_function_privilege('authenticated', 'public.brand_form_report_capability(text,text,text,integer)', 'EXECUTE')
+      AND NOT has_function_privilege('anon', 'public.brand_form_report_capability(text,text,text,integer)', 'EXECUTE'),
+    'T-42 the capability report: authenticated, never anon');
+  PERFORM pg_temp.ok(NOT has_table_privilege('authenticated', 'public.brand_form_push_capable', 'SELECT')
+      AND NOT has_table_privilege('anon', 'public.brand_form_push_capable', 'SELECT'),
+    'T-42 the capability table has no client grant');
+  PERFORM pg_temp.as_user(pg_temp.u('xu2'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.err($$SELECT public.brand_form_report_capability('explorer', 'android', '1.4.1', 1)$$);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v_r = 'ok', 'T-42 brand_form_report_capability as the signed-in app user (' || v_r || ')');
+END;
+$t$;
+
+ROLLBACK;
+
+-- ═══ T-18-RACE two sessions, one budget (SC-39) ═══════════════════════════════════
+-- Committed fixtures (a dblink session sees only committed rows); removed at the end.
+BEGIN;
+SELECT pg_temp.mb_fixture('race');
+INSERT INTO public.brand_messaging_limits (brand_id, email_monthly, sms_monthly, reason)
+VALUES (pg_temp.u('racebrand'), 1000, 3, 'i4541mb race');
+COMMIT;
+
+SELECT dblink_connect('i4541mb_a', format('dbname=%s user=%s password=postgres host=127.0.0.1', current_database(), current_user));
+SELECT dblink_connect('i4541mb_b', format('dbname=%s user=%s password=postgres host=127.0.0.1', current_database(), current_user));
+
+-- RACE-1: a Blast confirm (check + execution row, 3 texts = all that is left) holds the
+-- lock; a form send needing 2 texts waits, then sees the Blast and goes without texts.
+SELECT dblink_exec('i4541mb_a', 'BEGIN');
+SELECT * FROM dblink('i4541mb_a', format($$SELECT public.biz_assert_brand_blast_allowance_v1(%L, 'sms', 3)::text$$, pg_temp.u('racebrand'))) AS t(r text);
+SELECT dblink_exec('i4541mb_a', format($$
+  WITH c AS (INSERT INTO public.marketing_campaigns (account_id, brand_id, audience_id, name, channel, channel_payload, status)
+             VALUES (%L, %L, %L, 'Race', 'sms', '{"kind":"sms","body":"Hi"}'::jsonb, 'sent') RETURNING id)
+  INSERT INTO public.marketing_book_send_executions (
+    brand_id, campaign_id, actor_id, client_request_id, quote_version, quote_hash, content_hash, selected_count,
+    reachable_count, suppressed_count, unavailable_count, sms_segment_count, estimated_cost_minor, currency, cost_kind,
+    ratebook_ids, source_references, quoted_at, scheduled_for, send_mode)
+  SELECT %L, c.id, %L, gen_random_uuid(), 1, repeat('a', 64), repeat('b', 64), 3, 3, 0, 0, 3, NULL, NULL,
+         'not_metered', '[]'::jsonb, '[]'::jsonb, now(), now(), 'now' FROM c$$,
+  pg_temp.u('raceowner'), pg_temp.u('racebrand'), pg_temp.u('raceaud'), pg_temp.u('racebrand'), pg_temp.u('raceowner')));
+SELECT dblink_send_query('i4541mb_b', format($$SELECT public.brand_form_request_enqueue(%L, %L, %L, 'ask', 'everyone', %L::jsonb, ARRAY['sms', 'email'])::text$$,
+  pg_temp.u('raceowner'), pg_temp.u('raceF'), pg_temp.u('racee'), pg_temp.subj('race', 'r1', 'r3')::text));
+SELECT pg_sleep(0.5);
+DO $race$
+BEGIN
+  PERFORM pg_temp.ok(dblink_is_busy('i4541mb_b') = 1,
+    'T-18-RACE-1 the form send waits on the shared blast_cap lock while the Blast confirm is open');
+END;
+$race$;
+SELECT dblink_exec('i4541mb_a', 'COMMIT');
+CREATE TEMP TABLE i4541mb_race1 AS SELECT * FROM dblink_get_result('i4541mb_b') AS t(result text);
+-- Clear the connection for the next query (the empty final result).
+SELECT count(*) FROM dblink_get_result('i4541mb_b') AS t(result text);
+DO $race$
+DECLARE v jsonb := (SELECT result::jsonb FROM i4541mb_race1);
+BEGIN
+  PERFORM pg_temp.ok(v->'textsOff'->>'reason' = 'monthly_allowance' AND (v->>'textsQueued')::integer = 0
+      AND public.brand_form_request_texts_this_month(pg_temp.u('racebrand')) = 0
+      AND (public.brand_form_sms_month_state(pg_temp.u('racebrand'))->>'used')::integer = 3,
+    'T-18-RACE-1 SC-39 the Blast and the form send never both pass: the form send goes without texts (' || v::text || ')');
+END;
+$race$;
+
+-- RACE-2: the other order. A form send (2 texts of 3) holds the lock; a Blast check for
+-- 2 texts waits, then is refused by Blast's own check.
+SELECT dblink_exec('i4541mb_a', format($$DELETE FROM public.brand_form_request_sends WHERE brand_id = %L$$, pg_temp.u('racebrand')));
+SELECT dblink_exec('i4541mb_a', format($$SET session_replication_role = replica; DELETE FROM public.marketing_book_send_executions WHERE brand_id = %L; DELETE FROM public.marketing_campaigns WHERE brand_id = %L AND name = 'Race'; SET session_replication_role = origin$$,
+  pg_temp.u('racebrand'), pg_temp.u('racebrand')));
+SELECT dblink_exec('i4541mb_a', 'BEGIN');
+SELECT * FROM dblink('i4541mb_a', format($$SELECT public.brand_form_request_enqueue(%L, %L, %L, 'ask', 'everyone', %L::jsonb, ARRAY['sms', 'email'])::text$$,
+  pg_temp.u('raceowner'), pg_temp.u('raceF'), pg_temp.u('racee'), pg_temp.subj('race', 'r1', 'r3')::text)) AS t(result text);
+SELECT dblink_send_query('i4541mb_b', format($$SELECT public.biz_assert_brand_blast_allowance_v1(%L, 'sms', 2)::text$$, pg_temp.u('racebrand')));
+SELECT pg_sleep(0.5);
+DO $race$
+BEGIN
+  PERFORM pg_temp.ok(dblink_is_busy('i4541mb_b') = 1,
+    'T-18-RACE-2 the Blast check waits on the same lock while the form send is open');
+END;
+$race$;
+SELECT dblink_exec('i4541mb_a', 'COMMIT');
+CREATE TEMP TABLE i4541mb_race2 (msg text);
+DO $race$
+DECLARE v_msg text;
+BEGIN
+  BEGIN
+    PERFORM * FROM dblink_get_result('i4541mb_b') AS t(r text);
+    v_msg := 'ok';
+  EXCEPTION WHEN OTHERS THEN
+    v_msg := SQLERRM;
+  END;
+  INSERT INTO i4541mb_race2 VALUES (v_msg);
+  PERFORM pg_temp.ok(v_msg LIKE '%book_blast_monthly_cap_exceeded%'
+      AND public.brand_form_request_texts_this_month(pg_temp.u('racebrand')) = 2,
+    'T-18-RACE-2 SC-39 the form texts took the budget first; the Blast is refused by its own check (' || v_msg || ')');
+END;
+$race$;
+
+-- Clean up the committed fixture.
+SELECT dblink_exec('i4541mb_a', format($$
+  SET session_replication_role = replica;
+  DELETE FROM public.brand_form_request_sends WHERE brand_id = %1$L;
+  DELETE FROM public.brand_form_links WHERE form_id = %2$L;
+  DELETE FROM public.marketing_book_send_executions WHERE brand_id = %1$L;
+  DELETE FROM public.marketing_campaigns WHERE brand_id = %1$L;
+  DELETE FROM public.marketing_audiences WHERE brand_id = %1$L;
+  DELETE FROM public.brand_messaging_limits WHERE brand_id = %1$L;
+  DELETE FROM public.brand_form_attachments WHERE form_id = %2$L;
+  DELETE FROM public.brand_form_versions WHERE form_id = %2$L;
+  DELETE FROM public.brand_forms WHERE id = %2$L;
+  DELETE FROM public.event_rsvps WHERE event_id = %3$L;
+  DELETE FROM public.event_dates WHERE event_id = %3$L;
+  DELETE FROM public.events WHERE id = %3$L;
+  DELETE FROM public.brand_team_members WHERE brand_id = %1$L;
+  DELETE FROM public.brands WHERE id = %1$L;
+  DELETE FROM public.profiles WHERE email LIKE 'i4541mb-race%%';
+  DELETE FROM auth.users WHERE email LIKE 'i4541mb-race%%';
+  SET session_replication_role = origin$$,
+  pg_temp.u('racebrand'), pg_temp.u('raceF'), pg_temp.u('racee')));
+SELECT dblink_disconnect('i4541mb_a');
+SELECT dblink_disconnect('i4541mb_b');

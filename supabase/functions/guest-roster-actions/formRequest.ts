@@ -2,9 +2,11 @@
 // and "Remind" from the guest list answers drawer, the Responses page and the
 // "Ask earlier guests?" prompt. Preview shows reach and cost; send repeats the
 // read, refuses a cost that grew, a text with no price the host did not
-// confirm, and a send over the brand's daily text limit, then only queues the
+// confirm, then only queues the
 // requests (brand_form_request_enqueue) and drains this page's queue for a
-// bounded stretch; notify-reminders' drain sends whatever is left. Decision
+// bounded stretch; notify-reminders' drain sends whatever is left. #4541 R5.4:
+// a text limit (the shared monthly allowance or today's 300) turns texts off
+// for the send instead of refusing it. Decision
 // 17: no invite, a brand form link per guest, a 24-hour per-person throttle in
 // SQL. The roster's reminder and retry operations are untouched.
 
@@ -146,7 +148,8 @@ export async function handleFormRequest(
   budgetMs = FORM_SEND_DRAIN_BUDGET_MS,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const channels = [...body.channels].sort() as FormRequestChannel[];
-  const contactChannels = channels.filter((c) => c !== "push");
+  // #4541 R3.1: push goes to the server too; it drops push while the
+  // BRAND_FORMS_PUSH switch is off.
   const audienceKind = body.kind === "remind" ? "unanswered" : body.audience;
   const read = await deps.rpc("brand_form_request_audience", {
     p_actor_id: actorId,
@@ -154,7 +157,7 @@ export async function handleFormRequest(
     p_event_id: body.eventId,
     p_audience: audienceKind,
     p_subjects: body.subjects ?? null,
-    p_channels: contactChannels,
+    p_channels: channels,
   });
   if (read.error !== null) {
     const e = audienceError(read.error.message);
@@ -180,9 +183,9 @@ export async function handleFormRequest(
       body: { ok: false, code: "no_recipients", ...preview },
     };
   }
-  if (preview.overTextCap) {
-    return { status: 409, body: { ok: false, code: "text_cap", ...preview } };
-  }
+  // #4541 R5.4: a text limit never refuses the send: over the monthly
+  // allowance or today's 300, texts are off for this send (preview.textsOff)
+  // and email and push still go.
   // Texts with no price: only when the host explicitly confirmed it.
   if (
     preview.smsCount > 0 && preview.estimatedCostMinor === null &&
@@ -212,7 +215,7 @@ export async function handleFormRequest(
     p_kind: body.kind,
     p_audience: audienceKind,
     p_subjects: body.subjects ?? null,
-    p_channels: contactChannels,
+    p_channels: channels,
   });
   if (queued.error !== null) {
     if (queued.error.message.includes("form_request_text_cap")) {
@@ -256,6 +259,9 @@ export async function handleFormRequest(
       failed: drained.failed,
       pending: Math.max(queuedCount - drained.sent - drained.failed, 0),
       waitingForMorning: n(q.waitingForMorning),
+      textsOff: typeof q.textsOff === "object" && q.textsOff !== null
+        ? q.textsOff
+        : null,
       skipped: {
         throttled: n(q.throttled),
         answered: n(q.answered),
