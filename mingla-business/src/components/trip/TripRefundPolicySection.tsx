@@ -1,0 +1,128 @@
+/**
+ * #4522 — refund terms in the 4-step builder: three presets and "No refunds" as
+ * chips, "Custom…" opening the existing editor, and the "Deposit is
+ * non-refundable" switch. The policy it writes is the one the server already
+ * validates (`refund_policy`, with the optional `deposit_non_refundable` key from
+ * the slice 1 refund keys); a policy without the rule is byte-identical to
+ * today's.
+ */
+
+import React, { useCallback, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
+
+import { color, space, type } from "../../constants/designSystem";
+import type { RefundPolicy } from "../../services/refundPolicyModel";
+import { Switch } from "../ui/Switch";
+import { TripBuilderChip } from "./TripBuilderChip";
+// issue #3284 [bundle budget] — the editor loads in its own chunk (ORCH-1083).
+import { LazyRefundPolicyEditor as RefundPolicyEditor } from "./LazyRefundPolicyEditor";
+import {
+  REFUND_CHIPS,
+  applyRefundChip,
+  refundChipOf,
+  withDepositNonRefundable,
+  type RefundChipKey,
+} from "./tripBuilderV2Model";
+
+export interface TripRefundPolicySectionProps {
+  value: RefundPolicy | null;
+  onChange: (next: RefundPolicy | null) => void;
+  disabled?: boolean;
+}
+
+export const TripRefundPolicySection: React.FC<TripRefundPolicySectionProps> = ({
+  value,
+  onChange,
+  disabled = false,
+}) => {
+  const selected = refundChipOf(value);
+  const [customOpen, setCustomOpen] = useState<boolean>(selected === "custom");
+  const depositOn = value?.deposit_non_refundable === true;
+
+  const pick = useCallback(
+    (key: RefundChipKey): void => {
+      if (key === "custom") {
+        setCustomOpen(true);
+        return;
+      }
+      setCustomOpen(false);
+      onChange(applyRefundChip(value, key));
+    },
+    [onChange, value],
+  );
+
+  return (
+    <View style={styles.host} testID="trip-refund-section">
+      <Text accessibilityRole="header" style={styles.title}>
+        Refunds
+      </Text>
+      <View style={styles.row}>
+        {REFUND_CHIPS.map((chip) => (
+          <TripBuilderChip
+            key={chip.key}
+            label={chip.label}
+            selected={customOpen ? chip.key === "custom" : selected === chip.key}
+            disabled={disabled}
+            onPress={() => pick(chip.key)}
+            testID={`trip-refund-chip-${chip.key}`}
+          />
+        ))}
+      </View>
+      {customOpen ? (
+        <RefundPolicyEditor
+          value={value}
+          onChange={(next) =>
+            // The deposit rule survives an edit made in the full editor.
+            onChange(next === null ? null : withDepositNonRefundable(next, depositOn))
+          }
+        />
+      ) : null}
+      <View style={styles.switchRow}>
+        <View style={styles.switchText}>
+          <Text style={styles.switchLabel}>Deposit is non-refundable</Text>
+          <Text style={styles.switchSub}>
+            {value === null
+              ? "Choose a refund option first."
+              : "Travelers see this before they pay."}
+          </Text>
+        </View>
+        <Switch
+          value={depositOn}
+          onValueChange={(next) => onChange(withDepositNonRefundable(value, next))}
+          disabled={disabled || value === null}
+          accessibilityLabel="Deposit is non-refundable"
+          testID="trip-deposit-non-refundable"
+        />
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  host: { gap: space[3] },
+  title: {
+    fontSize: type.h2.fontSize,
+    lineHeight: type.h2.lineHeight,
+    fontWeight: "600",
+    color: color.text1,
+  },
+  row: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space[4],
+    minHeight: 56,
+  },
+  switchText: { flex: 1, gap: 2 },
+  switchLabel: {
+    fontSize: type.body.fontSize,
+    lineHeight: type.body.lineHeight,
+    color: color.text1,
+  },
+  switchSub: {
+    fontSize: type.small.fontSize,
+    lineHeight: type.small.lineHeight,
+    color: color.text2,
+  },
+});

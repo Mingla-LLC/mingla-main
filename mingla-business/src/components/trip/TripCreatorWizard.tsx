@@ -207,8 +207,13 @@ import {
   TripBuilderSectionTitle,
   TripPublishChecklist,
 } from "./TripBuilderV2Parts";
+import { TripEarningsCard } from "./TripEarningsCard";
+import { TripInclusionChips } from "./TripInclusionChips";
+import { TripQuestionLibrary } from "./TripQuestionLibrary";
+import { TripPreviewPane, TripPreviewPeek } from "./TripBuilderPreview";
 import {
   AUTOSAVE_DEBOUNCE_MS,
+  PREVIEW_PANE_MIN_WIDTH,
   BUILDER_STEP_COUNT,
   BUILDER_STEP_TITLES,
   autosavePillState,
@@ -819,7 +824,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut } = useAuth();
-  const { isWideDesktop } = useResponsiveLayout();
+  const { isWideDesktop, width: viewportWidth } = useResponsiveLayout();
   // #3645 PR11c — Organiser Terms before first paid listing publish.
   const {
     blockPaidPublishUntilAccepted,
@@ -1114,6 +1119,20 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
   // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — Step 5 autosave hooks.
   const updateRefundPolicyMutation = useUpdateRefundPolicy();
   const updateBookingDeadlineMutation = useUpdateBookingDeadline();
+  // ORCH-0880 — one writer for a package's traveler questions: the schema builder
+  // and (#4522) the question library both go through it, so the dirty set that
+  // `autosaveStep6` reads is always right.
+  const handleIntakeSchemaChange = useCallback(
+    (ticketTypeId: string, next: IntakeSchema | null): void => {
+      setStep6Draft((prev) => {
+        const cloned = new Map(prev);
+        cloned.set(ticketTypeId, next);
+        return cloned;
+      });
+      dirtyTierIdsRef.current = new Set([...dirtyTierIdsRef.current, ticketTypeId]);
+    },
+    [],
+  );
   // ORCH-0880 [Tr5 Traveler Intake Forms] — Step 6 query + mutation.
   const intakeSchemasQuery = useTripIntakeSchemasByEvent(trip.id);
   const upsertIntakeSchemaMutation = useUpsertTripIntakeSchema();
@@ -2766,6 +2785,15 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         review: step === 8,
       };
 
+  const showPreviewPane =
+    V2 && isWideDesktop && (viewportWidth ?? 0) >= PREVIEW_PANE_MIN_WIDTH;
+  const fromPriceMinor = useMemo<number | null>(() => {
+    const prices = step4Draft.packages
+      .map((p) => Math.round((parseFloat(p.priceMajor) || 0) * 100))
+      .filter((c) => c > 0);
+    return prices.length > 0 ? Math.min(...prices) : null;
+  }, [step4Draft.packages]);
+
   const renderDesktopAppRail = (): React.ReactElement => (
     <View style={styles.desktopAppRail}>
       <View style={styles.desktopRailBrandMark}>
@@ -3009,6 +3037,13 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               onShowToast={showToast}
             />
           ) : null}
+          {V2 && shows.inclusions ? (
+            <TripInclusionChips
+              items={inclusionsDraft}
+              onChange={setInclusionsDraft}
+              disabled={submitting}
+            />
+          ) : null}
           {shows.inclusions ? (
             <TripCreatorStep3Inclusions
               items={inclusionsDraft}
@@ -3042,13 +3077,31 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               tripStartIso={step1Draft.startAt}
               brandTimezone={trip.timezone ?? null}
               disabled={submitting}
+              builderV2={V2}
             />
           ) : null}
+          {V2 && shows.policy ? <TripEarningsCard draft={step4Draft} /> : null}
           {/* ORCH-0880 [Tr5 Traveler Intake Forms] — Step 6 per-tier intake
               schema builder + live preview. Per-tier state lives in step6Draft;
               touch tracking lives in dirtyTierIdsRef so autosaveStep6 only
               writes the tiers the planner actually changed. */}
           {V2 && shows.intake ? <TripBuilderSectionTitle title="Traveler questions" /> : null}
+          {V2 && shows.intake ? (
+            <TripQuestionLibrary
+              tiers={trip.pricingTiers}
+              unsavedPackageCount={
+                step4Draft.packages.filter(
+                  (p) =>
+                    p.ticketTypeId === null &&
+                    !createdTierIdsByKeyRef.current.has(p.key),
+                ).length
+              }
+              schemasByTier={step6Draft}
+              onSchemaChange={handleIntakeSchemaChange}
+              onNotice={showToast}
+              disabled={submitting}
+            />
+          ) : null}
           {shows.intake ? (
             <TripCreatorStep6Intake
               ticketTypes={trip.pricingTiers}
@@ -3060,17 +3113,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
                   ),
                 )
               }
-              onSchemaChange={(ticketTypeId, next) => {
-                setStep6Draft((prev) => {
-                  const cloned = new Map(prev);
-                  cloned.set(ticketTypeId, next);
-                  return cloned;
-                });
-                dirtyTierIdsRef.current = new Set([
-                  ...dirtyTierIdsRef.current,
-                  ticketTypeId,
-                ]);
-              }}
+              onSchemaChange={handleIntakeSchemaChange}
               disabled={submitting}
             />
           ) : null}
@@ -3118,6 +3161,17 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           ) : null}
         </View>
       </ScrollView>
+
+      {/* #4522 — phones and narrow web: the preview peek bar above the dock. */}
+      {V2 && !showPreviewPane && !keyboardVisible ? (
+        <TripPreviewPeek
+          trip={previewTrip}
+          brand={brand}
+          themeOverrides={step1Draft.themeOverrides}
+          fromPriceMinor={fromPriceMinor}
+          currency={step4Draft.currency}
+        />
+      ) : null}
 
       {/* Dock — sleek floating glass card. Hidden when keyboard up. */}
       {keyboardVisible ? null : (
@@ -3231,6 +3285,16 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         </GlassCard>
       )}
         </View>
+        {/* #4522 — wide web (>= 1180px): the live preview pane beside the form. */}
+        {showPreviewPane ? (
+          <View style={styles.previewPaneWrap}>
+            <TripPreviewPane
+              trip={previewTrip}
+              brand={brand}
+              themeOverrides={step1Draft.themeOverrides}
+            />
+          </View>
+        ) : null}
       </View>
 
       {/* Overlays at root — discard ConfirmDialog, publish ConfirmDialog, Toast wrap */}
@@ -3319,6 +3383,10 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
 const styles = StyleSheet.create({
   host: {
     flex: 1,
+  },
+  previewPaneWrap: {
+    width: 340,
+    flexShrink: 0,
   },
   topBarRightRow: {
     flexDirection: "row",

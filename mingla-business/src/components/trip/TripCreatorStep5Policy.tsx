@@ -30,6 +30,7 @@ import { BookingDeadlinePicker } from "./BookingDeadlinePicker";
 // never import ./RefundPolicyEditor statically here.
 import { LazyRefundPolicyEditor as RefundPolicyEditor } from "./LazyRefundPolicyEditor";
 import { GlassCard } from "../ui/GlassCard";
+import { TripRefundPolicySection } from "./TripRefundPolicySection";
 import { ExtraGuestsField } from "../ui/ExtraGuestsField";
 import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 
@@ -51,6 +52,8 @@ export interface TripCreatorStep5PolicyProps {
   /** Operator's brand timezone — used by BookingDeadlinePicker for display label. */
   brandTimezone: string | null;
   disabled?: boolean;
+  /** #4522 — the 4-step builder: refund chips and the deposit switch replace the editor card. */
+  builderV2?: boolean;
 }
 
 // ORCH-1339 — local ToggleRow mirroring the CreatorStep6Settings visual pattern
@@ -100,6 +103,7 @@ export const TripCreatorStep5Policy: React.FC<TripCreatorStep5PolicyProps> = ({
   tripStartIso,
   brandTimezone,
   disabled = false,
+  builderV2 = false,
 }) => {
   // Q1 (#3827) — locked on while the guest list is private (an older private
   // trip saved before this rule keeps an unlocked switch in its real state).
@@ -107,10 +111,18 @@ export const TripCreatorStep5Policy: React.FC<TripCreatorStep5PolicyProps> = ({
   return (
     <View style={styles.container}>
       <GlassCard variant="base" padding={space[4]} radius="lg">
-        <RefundPolicyEditor
-          value={draft.refundPolicy}
-          onChange={(next) => onChange({ refundPolicy: next })}
-        />
+        {builderV2 ? (
+          <TripRefundPolicySection
+            value={draft.refundPolicy}
+            onChange={(next) => onChange({ refundPolicy: next })}
+            disabled={disabled}
+          />
+        ) : (
+          <RefundPolicyEditor
+            value={draft.refundPolicy}
+            onChange={(next) => onChange({ refundPolicy: next })}
+          />
+        )}
       </GlassCard>
 
       <GlassCard variant="base" padding={space[4]} radius="lg">

@@ -47,7 +47,7 @@ export const TripBuilderAutosavePill: React.FC<TripBuilderAutosavePillProps> = (
       testID="trip-builder-save-pill"
     >
       {state.kind === "saved" ? (
-        <Icon name="check" size={12} color={color.success} />
+        <Icon name="check" size={12} color={color.successText} />
       ) : null}
       <Text style={[styles.pillText, failed ? styles.pillTextFailed : null]}>
         {state.label}
@@ -234,7 +234,8 @@ const styles = StyleSheet.create({
   checkFixText: {
     fontSize: type.small.fontSize,
     fontWeight: "600",
-    color: color.accent,
+    color: color.text1,
+    textDecorationLine: "underline",
   },
   unlockLine: {
     marginTop: space[3],

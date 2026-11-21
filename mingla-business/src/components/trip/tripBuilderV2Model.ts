@@ -433,6 +433,21 @@ export function addLibraryQuestion(
   return deps.bump({ ...base, questions: [...base.questions, question] });
 }
 
+/** Removes a library question by label; null when the form is left empty (cleared). */
+export function removeLibraryQuestion(
+  schema: IntakeSchema | null,
+  label: string,
+  bump: (s: IntakeSchema) => IntakeSchema,
+): IntakeSchema | null {
+  if (schema === null) return null;
+  const want = label.trim().toLowerCase();
+  const kept = schema.questions
+    .filter((q) => q.label.trim().toLowerCase() !== want)
+    .map((q, i) => ({ ...q, position: i }));
+  if (kept.length === schema.questions.length) return schema;
+  return kept.length === 0 ? null : bump({ ...schema, questions: kept });
+}
+
 // ---------------------------------------------------------------------------
 // Earnings card (spec §9.6) — the numbers come from pricingPreview, never made up
 // ---------------------------------------------------------------------------
@@ -440,7 +455,6 @@ export function addLibraryQuestion(
 export interface EarningsInput {
   /** Package price in minor units (cents/kobo). */
   priceMinor: number;
-  spots: number | null;
   /** null = the brand's rate could not be read: no fee rows are invented. */
   takeRateBps: number | null;
   serviceFeeBps?: number;
@@ -450,10 +464,12 @@ export interface EarningsInput {
 
 export interface EarningsRows {
   priceMinor: number;
+  /** The Mingla fee (take rate + service fee) the host pays out of the price. */
   feeMinor: number;
+  /** The part of the fee added to the buyer's price instead. */
+  feePassedMinor: number;
   vatMinor: number | null;
   receiveMinor: number;
-  atSpots: { spots: number; receiveMinor: number } | null;
 }
 
 /** null when the rate is unknown ("We'll show your earnings once your payout settings load."). */
@@ -469,14 +485,32 @@ export function computeEarningsRows(input: EarningsInput): EarningsRows | null {
   const hasVat = input.vatRateBps !== null && input.vatRateBps !== undefined && input.vatRateBps > 0;
   return {
     priceMinor: r.baseCents,
-    feeMinor: r.miglaFeeCents + r.serviceFeeCents,
+    feeMinor: r.absorbed.miglaFeeCents + r.absorbed.serviceFeeCents,
+    feePassedMinor: r.passed.miglaFeeCents + r.passed.serviceFeeCents,
     vatMinor: hasVat ? r.taxCents : null,
     receiveMinor: r.youKeepCents,
-    atSpots:
-      input.spots !== null && input.spots > 0
-        ? { spots: input.spots, receiveMinor: r.youKeepCents * input.spots }
-        : null,
   };
+}
+
+/**
+ * "At {spots} travelers": what the host receives if every spot on every priced
+ * package sells, each package at its own price. Packages with no spots set are
+ * left out (never assumed).
+ */
+export function earningsAtFullCapacity(
+  packages: ReadonlyArray<{ priceMinor: number; spots: number | null }>,
+  base: Omit<EarningsInput, "priceMinor">,
+): { spots: number; receiveMinor: number } | null {
+  let spots = 0;
+  let receive = 0;
+  for (const p of packages) {
+    if (p.spots === null || p.spots <= 0 || p.priceMinor <= 0) continue;
+    const rows = computeEarningsRows({ ...base, priceMinor: p.priceMinor });
+    if (rows === null) return null;
+    spots += p.spots;
+    receive += rows.receiveMinor * p.spots;
+  }
+  return spots > 0 ? { spots, receiveMinor: receive } : null;
 }
 
 // ---------------------------------------------------------------------------
