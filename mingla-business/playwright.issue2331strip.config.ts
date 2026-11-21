@@ -6,7 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
 //     fallback by playwright/issue2331/static-server.mjs.
 //   • usemingla.com: the real production Next build of ../mingla-marketing
 //     (`next start`; built first when no build is present).
-// Web Build Check runs this after the #2771 lane (see .github/workflows/web-build-check.yml).
+// Web Build Check runs this after the #2771 lane.
 export default defineConfig({
   testDir: "./playwright",
   testMatch: /issue2331(?:-marketing)?\/strip-clearance\.spec\.ts$/,

@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-PRIVACY-BAR-NEVER-OCCLUDES | issue #2331 | Edge-based: on every listed usemingla.com page, at every size and rotation, from domcontentloaded through settled, scrolled to the bottom, Options open and each overlay open, the privacy strip is the full-width bottom band of height var(--mingla-privacy-strip), no fixed or sticky layer intersects it (nor any content at scroll-bottom), and nothing paints over it.
+// Enforces I-PRIVACY-BAR-NEVER-OCCLUDES (declared in mingla-business/playwright/issue2331/strip-clearance.spec.ts): Edge-based: on every listed usemingla.com page, at every size and rotation, from domcontentloaded through settled, scrolled to the bottom, Options open and each overlay open, the privacy strip is the full-width bottom band of height var(--mingla-privacy-strip), no fixed or sticky layer intersects it (nor any content at scroll-bottom), and nothing paints over it.
 //
 // Runs against the REAL production build of ../mingla-marketing (`next start`,
 // see playwright.issue2331strip.config.ts). Every third-party origin is aborted.

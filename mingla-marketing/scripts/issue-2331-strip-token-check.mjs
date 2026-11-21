@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-PRIVACY-BAR-NEVER-OCCLUDES | issue #2331 | Static leg: every fixed layer in mingla-marketing that reaches the bottom of the viewport ends at the privacy strip's top edge via var(--mingla-privacy-strip).
+// Enforces I-PRIVACY-BAR-NEVER-OCCLUDES (declared in mingla-business/playwright/issue2331/strip-clearance.spec.ts): Static leg: every fixed layer in mingla-marketing that reaches the bottom of the viewport ends at the privacy strip's top edge via var(--mingla-privacy-strip).
 //
 // usemingla.com keeps document scrolling, so a `position: fixed` layer resolves
 // against the viewport and the strip (fixed, bottom 0, top z-layer) would cover
