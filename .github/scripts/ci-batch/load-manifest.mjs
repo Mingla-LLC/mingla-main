@@ -374,11 +374,13 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4514 brand forms: the #1931 filtered template replay no longer skips the brand forms migration (the #2492 gate credits CREATE TABLE columns of applied migrations); re-sealed.
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed.
+// #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the #1857, #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 template replay (#4508, which it builds on, is skipped there); re-sealed.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed.
 // #4522 slice 13 switch on: registered 20281121014522_issue_4522_switch_on.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281120104522 and 20281121014522 on the filtered #1931 replay and for all #4522 migrations on the filtered #2117 replay (their md5 drift guards need bodies those lanes skip); re-sealed.
 // #3281 S4 free parents and add-on refunds: registered 20281121023281_issue_3281_add_on_free_parent_refunds.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121023281 on the filtered #1931 and #2117 replays
-export const BOOTSTRAP_SHA256 = "c07209c552064b0394eb76a11d480dc9228d4d918b45c2cb65140dbed33f265b";
+// #4522 merge of main after #4541: kept the #4541 migration, pg17 rows and #1931 skip beside the #3281/#4522 rows and skips; re-sealed.
+export const BOOTSTRAP_SHA256 = "8f37a5a0fb7a13d294f55091e629bca38c83957170181e4f05460f3e692a4717";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

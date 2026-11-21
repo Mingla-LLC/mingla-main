@@ -252,7 +252,7 @@ export interface BrandFormResponseRow {
   updatedAt: string;
   subject: { kind: string; id: string | null; name: string | null };
   /** Wave 3: a signed-in answer's RSVP and orders at this page (null without a page). */
-  holder: { rsvpId: string | null; orderIds: string[] } | null;
+  holder: { rsvpId: string | null; rsvpGuestId?: string | null; orderIds: string[] } | null;
 }
 
 export interface BrandFormNotAnswered {
@@ -623,6 +623,7 @@ const parseResponseRow = (value: unknown): BrandFormResponseRow => {
     holder: isRecord(r.holder)
       ? {
         rsvpId: strOrNull(r.holder.rsvpId),
+        rsvpGuestId: strOrNull(r.holder.rsvpGuestId),
         orderIds: Array.isArray(r.holder.orderIds)
           ? r.holder.orderIds.filter((x): x is string => typeof x === "string")
           : [],

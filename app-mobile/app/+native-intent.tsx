@@ -66,7 +66,18 @@ const OWNED_LINK_HOSTS: ReadonlySet<string> = new Set([
 const OWNED_LINK_SCHEMES: ReadonlySet<string> = new Set(["com.mingla.app.v2"]);
 
 /**
- * First path segments that exist as routes in `app-mobile/app/`.
+ * Routes deliberately admitted before their screen ships in this checkout.
+ *
+ * #4541 decision 11 stages `/form/{id}` in the native intent map, while the
+ * Explorer `/form` screen and iPhone AASA claim ship separately. Keeping this
+ * exception named, exact, and test-only exported prevents it becoming a loose
+ * bypass of the route-tree anti-drift gate.
+ */
+const STAGED_NATIVE_INTENT_SEGMENTS: ReadonlySet<string> = new Set(["form"]);
+
+/**
+ * First path segments that exist as routes in `app-mobile/app/`, plus the one
+ * explicitly staged segment above.
  *
  * DERIVED by enumerating the real `app/` tree, NOT copied from anywhere: every
  * top-level entry, minus expo-router specials (`_layout`, `+not-found`,
@@ -101,7 +112,8 @@ const OWNED_LINK_SCHEMES: ReadonlySet<string> = new Set(["com.mingla.app.v2"]);
  * client-side) — see the `case 'board'` comment in `deepLinkService.ts`.
  *
  * Kept honest by T-7 (`issue_2180_native_intent.implementor.happy.test.ts`), which
- * re-enumerates the tree and fails the build on any drift.
+ * re-enumerates the tree and fails the build on any drift or any additional
+ * staged exception.
  */
 const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "b",
@@ -116,6 +128,8 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   // #4508 2.3 — an event by id (the friend-is-going push).
   "event",
   "exp",
+  // #4541 — staged before the separately-owned Explorer /form screen.
+  ...STAGED_NATIVE_INTENT_SEGMENTS,
   "local",
   "p",
   // #3872 — Payout account (Earnings and Local link here).
@@ -203,5 +217,6 @@ export const __test__ = {
   OWNED_LINK_HOSTS,
   OWNED_LINK_SCHEMES,
   SERVED_ROUTE_SEGMENTS,
+  STAGED_NATIVE_INTENT_SEGMENTS,
   HOME,
 };

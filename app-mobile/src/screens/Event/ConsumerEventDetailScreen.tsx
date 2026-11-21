@@ -59,6 +59,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import {
+  carryOverRsvpAnswers,
+  rsvpFormMissingRequiredIds,
+  isRsvpFormErrorCode,
+} from "@mingla/offering-rendering/rsvpBrandForm";
 import * as Haptics from "expo-haptics";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -95,6 +100,7 @@ import {
   type MapsAppId,
   type MapsOpenTarget,
   type RsvpSubmitResult,
+  type RsvpBrandFormAnswers,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
 // issue #2468 — the ONE host effect that opens a maps deep link.
@@ -141,9 +147,11 @@ import {
 import {
   fetchRsvpMomentum,
   fetchRsvpPassPdf,
+  fetchDeckRsvpBrandForm,
   lookupRsvpGuest,
   submitDeckRsvp,
 } from "../../services/rsvpDeckService";
+
 import type {
   RsvpFriendOption,
   RsvpGuestLookupResult,
@@ -169,7 +177,7 @@ import {
   mapConsumerEventToFoundation,
   type ConsumerEventFoundationModel,
 } from "../../hooks/useConsumerEventFoundation";
-import { circleKeys, purchaseKeys, socialProofKeys } from "../../hooks/queryKeys";
+import { brandFormKeys, circleKeys, purchaseKeys, socialProofKeys } from "../../hooks/queryKeys";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
 import { fetchSocialProof } from "../../services/socialProofService";
 // ORCH-1342 (D6) — the cold-route seed-by-slug read (anon
@@ -221,6 +229,13 @@ import {
   ticketOffChosenDays,
 } from "../../components/expandedCard/ticketDayScope";
 import { ticketsWithNoDateOnSale } from "@mingla/offering-rendering/noDateOnSale";
+
+const RsvpBrandFormQuestions = React.lazy(
+  () => import("../../components/forms/RsvpBrandFormQuestions"),
+);
+
+// #4541 — readiness is computed from the page and answers; the renderer's report is not used for gating.
+const noopRsvpMissing = (_ids: string[]): void => {};
 
 const ACCENT = "#FF6B35";
 const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
@@ -1048,6 +1063,53 @@ export default function ConsumerEventDetailScreen({
     });
   }, [isRsvp, ticketBoxY]);
 
+  // #4541 — form read and answer state stay on the RSVP surface so an edge
+  // refusal (changed/invalid form) never clears what the guest typed.
+  const rsvpBrandFormQuery = useQuery({
+    queryKey: brandFormKeys.rsvpForm(seed?.eventId ?? null),
+    enabled: isRsvp && seed !== null,
+    staleTime: 30_000,
+    queryFn: () => fetchDeckRsvpBrandForm((seed as NonNullable<typeof seed>).eventId),
+  });
+  const rsvpBrandFormPage = rsvpBrandFormQuery.data ?? null;
+  const [rsvpFormAnswers, setRsvpFormAnswers] = useState<RsvpBrandFormAnswers>({});
+  const rsvpFormSeenRef = useRef<string | null>(null);
+  useEffect(() => {
+    // A different form resets the answers; a new version of the same form
+    // (the host edited it mid-typing) keeps the answers whose question remains.
+    const seen = rsvpFormSeenRef.current;
+    rsvpFormSeenRef.current = rsvpBrandFormPage?.formId ?? null;
+    setRsvpFormAnswers((prev) =>
+      rsvpBrandFormPage === null || seen !== rsvpBrandFormPage.formId
+        ? Object.keys(prev).length === 0
+          ? prev
+          : {}
+        : carryOverRsvpAnswers(prev, rsvpBrandFormPage),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on form and version ids on purpose
+  }, [rsvpBrandFormPage?.formId, rsvpBrandFormPage?.versionId]);
+  // Read failed with nothing cached: the RSVP goes without the capability
+  // marker (`undefined`), so the server completes it as "to answer".
+  const rsvpFormReadFailed =
+    rsvpBrandFormQuery.isError && rsvpBrandFormQuery.data === undefined;
+  const rsvpFormReadPending = isRsvp && seed !== null && rsvpBrandFormQuery.isPending;
+  const rsvpFormMissing = useMemo(
+    () => rsvpFormMissingRequiredIds(rsvpBrandFormPage, rsvpFormAnswers),
+    [rsvpBrandFormPage, rsvpFormAnswers],
+  );
+  const rsvpBrandFormPayload = useMemo(
+    () => rsvpFormReadFailed
+      ? undefined
+      : rsvpBrandFormPage === null
+        ? null
+        : {
+            formId: rsvpBrandFormPage.formId,
+            versionId: rsvpBrandFormPage.versionId,
+            answers: rsvpFormAnswers,
+          },
+    [rsvpFormReadFailed, rsvpBrandFormPage, rsvpFormAnswers],
+  );
+
   // ORCH-1163 [rsvp-shared-body] — the onSubmit wrapper handed to
   // useRsvpOfferingState. The shared body/dock own all the submit/dialog/contact
   // state + toasts now; this wrapper just bridges to the consumer write
@@ -1066,17 +1128,31 @@ export default function ConsumerEventDetailScreen({
     }): Promise<RsvpSubmitResult> => {
       if (seed === null) throw new Error("rsvp_not_open");
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const result = await submitDeckRsvp(
-        seed.eventId,
-        input.rsvpStatus,
-        input.guests,
-        {
-          name: input.guestName,
-          email: input.guestEmail,
-          phone: input.guestPhone,
-          phoneCountryIso: input.guestPhoneCountryIso,
-        },
-      );
+      let result: Awaited<ReturnType<typeof submitDeckRsvp>>;
+      try {
+        result = await submitDeckRsvp(
+          seed.eventId,
+          input.rsvpStatus,
+          input.guests,
+          {
+            name: input.guestName,
+            email: input.guestEmail,
+            phone: input.guestPhone,
+            phoneCountryIso: input.guestPhoneCountryIso,
+          },
+          rsvpBrandFormPayload,
+        );
+      } catch (error) {
+        // The host changed the form (or the answers were refused): refetch it so
+        // the guest sees the current questions; typed answers whose question
+        // still exists are kept by the version effect.
+        if (error instanceof Error && isRsvpFormErrorCode(error.message)) {
+          void queryClient.invalidateQueries({
+            queryKey: brandFormKeys.rsvpForm(seed.eventId),
+          });
+        }
+        throw error;
+      }
       if (result.status === "going") {
         captureExplorerSearchOutcome("rsvp_complete", {
           audience: "explorer",
@@ -1084,6 +1160,10 @@ export default function ConsumerEventDetailScreen({
           action_state: "succeeded",
           content_kind: "event",
         });
+      }
+      // #4541 — the guest's pending-questions list now has this RSVP.
+      if (user !== null) {
+        void queryClient.invalidateQueries({ queryKey: brandFormKeys.myPending(user.id) });
       }
       // Refresh the live going-count after a successful own-submit.
       void queryClient.invalidateQueries({
@@ -1107,7 +1187,7 @@ export default function ConsumerEventDetailScreen({
         guests: result.guests,
       };
     },
-    [seed, queryClient],
+    [seed, queryClient, rsvpBrandFormPayload, user],
   );
 
   // issue #4508 1.2a — the live match under the guest number field.
@@ -1550,6 +1630,37 @@ export default function ConsumerEventDetailScreen({
   // A profile can briefly lag the auth store during an account transition.
   // Only the current account's canonical defaults may seed its new RSVP owner.
   const rsvpProfile = user !== null && profile?.id === user.id ? profile : null;
+  const rsvpQuestionsNode = rsvpFormReadFailed
+    ? (
+      <View style={{ marginTop: 16, gap: 8 }} accessibilityRole="alert">
+        <Text style={{ color: palette.tertiaryText, fontSize: 14 }}>
+          Questions couldn&apos;t load. You can RSVP now and answer later.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Try again"
+          onPress={() => void rsvpBrandFormQuery.refetch()}
+          hitSlop={8}
+        >
+          <Text style={{ color: palette.primaryText, fontSize: 14, fontWeight: "600" }}>
+            Try again
+          </Text>
+        </Pressable>
+      </View>
+    )
+    : rsvpBrandFormPage === null
+    ? null
+    : (
+      <React.Suspense fallback={<View style={{ minHeight: 120 }} />}>
+        <RsvpBrandFormQuestions
+          page={rsvpBrandFormPage}
+          answers={rsvpFormAnswers}
+          onAnswersChange={setRsvpFormAnswers}
+          onMissingChange={noopRsvpMissing}
+          palette={palette}
+        />
+      </React.Suspense>
+    );
   const rsvpState = useRsvpOfferingState({
     event: rsvpPublicEvent,
     brand: rsvpBrand,
@@ -1565,6 +1676,9 @@ export default function ConsumerEventDetailScreen({
     renderPhoneField: renderRsvpPhoneField,
     onDownloadPass: handleDownloadRsvpPass,
     onSubmit: rsvpOnSubmit,
+    questionsNode: rsvpQuestionsNode,
+    questionsRequired: rsvpFormReadPending || rsvpBrandFormPage?.mode === "required_step",
+    questionsReady: !rsvpFormReadPending && rsvpFormMissing.length === 0,
     guestLookup: rsvpGuestLookup,
     // issue #4508 R2 — the friends search field is sheet-aware too.
     guestInputComponent: RsvpSheetTextInput,

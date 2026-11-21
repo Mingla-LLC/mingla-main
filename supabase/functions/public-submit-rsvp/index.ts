@@ -56,6 +56,11 @@ import {
 // so this function does not take on the adapter's secret-bundle reads.
 import { countryFromE164 } from "../_shared/e164Country.ts";
 import { handleGuestOp, isGuestOp } from "./guestOps.ts";
+import {
+  isRsvpBrandFormRefusal,
+  parseRsvpBrandForm,
+  rsvpBrandFormRefusal,
+} from "./brandFormRsvp.ts";
 // #4508 R-4 — the caller's address, read the one way the repo reads it.
 import { requestClientIp } from "../_shared/ticketLinkToken.ts";
 // #4508 R-9 — a plus-one's pass name follows the 1.11 rule.
@@ -81,6 +86,9 @@ interface SubmitRsvpRequest {
   guests?: unknown;
   // #4238 W2-5 — the web browser's ad match keys + click id (web only).
   ad_context?: unknown;
+  /** #4541 — capability marker and optional answers for the attached form. */
+  brandFormStep?: unknown;
+  brandForm?: unknown;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -213,10 +221,19 @@ export const handler = async (req: Request): Promise<Response> => {
         "plusCount",
         "guests",
         "ad_context",
+        "brandFormStep",
+        "brandForm",
       ].includes(key)
     )
   ) {
     return json(400, { error: "rsvp_payload_invalid" });
+  }
+
+  const parsedBrandForm = parseRsvpBrandForm(
+    body as unknown as Record<string, unknown>,
+  );
+  if (isRsvpBrandFormRefusal(parsedBrandForm)) {
+    return json(parsedBrandForm.status, parsedBrandForm.body);
   }
 
   const eventId = typeof body.eventId === "string" ? body.eventId.trim() : "";
@@ -427,7 +444,7 @@ export const handler = async (req: Request): Promise<Response> => {
     },
   });
   if (gate !== null) return json(gate.status, gate.body);
-  const { data, error } = await admin.rpc("submit_event_rsvp_with_delivery", {
+  const { data, error } = await admin.rpc("submit_event_rsvp_with_form", {
     p_event_id: eventId,
     p_user_id: userId,
     p_guest_name: guestName.length > 0 ? guestName : null,
@@ -438,9 +455,15 @@ export const handler = async (req: Request): Promise<Response> => {
     p_guests: normalizedGuests,
     p_qr_token_pepper: qrPepper,
     p_guest_phone_country_iso: guestPhoneCountryIso,
+    p_capable: parsedBrandForm.capable,
+    p_form: parsedBrandForm.form,
   }).setHeader("x-mingla-rsvp-client", inviterClient);
 
   if (error !== null) {
+    const formRefusal = rsvpBrandFormRefusal(error);
+    if (formRefusal !== null) {
+      return json(formRefusal.status, formRefusal.body);
+    }
     switch (error.code) {
       case "P1901":
         console.warn(

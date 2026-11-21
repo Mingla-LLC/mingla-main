@@ -3,8 +3,9 @@ node_modules/
 dist/
 web-build/
 expo-env.d.ts
-ios/
-android/
+# Anchored: a bare `ios/` also drops modules/*/ios (#4389).
+/ios/
+/android/
 .kotlin/
 *.orig.*
 *.jks

@@ -67,6 +67,8 @@ describe("#4514 — the renderers live in @mingla/form-rendering", () => {
     // Wave 6: "See all answers" on the ticket scan result and its read model.
     "scanner/DoorAnswersSheet.tsx",
     "scanner/doorFullAnswersModel.ts",
+    // #4541: the RSVP page questions, re-exported by the owner (guest side only).
+    "forms/RsvpBrandFormQuestions.tsx",
   ];
   test("no Host module imports the renderers or their owner statically (they would be hoisted into the eager bundle)", () => {
     const bizRoot = path.join(ROOT, "mingla-business");

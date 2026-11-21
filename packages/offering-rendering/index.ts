@@ -729,6 +729,15 @@ export type {
   ThemeFontValue,
   ThemeInput,
 } from "./designTokens";
+// #4541 — types only. The parser and helpers are imported by subpath
+// ("@mingla/offering-rendering/rsvpBrandForm") so they stay out of every
+// bundle that only needs the shared RSVP body.
+export type {
+  RsvpBrandFormPage,
+  RsvpBrandFormPayload,
+  RsvpBrandFormAnswers,
+  RsvpBrandFormDefinition,
+} from "./rsvpBrandForm";
 
 // Issue #3859 runtime contracts are intentionally available through explicit
 // package subpaths instead of this broad rendering barrel. Re-exporting them

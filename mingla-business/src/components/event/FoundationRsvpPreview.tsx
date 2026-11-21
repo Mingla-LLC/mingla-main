@@ -151,6 +151,9 @@ export interface FoundationRsvpPreviewProps {
   onDownloadPass?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["onDownloadPass"];
   onOpenClaim?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["onOpenClaim"];
   renderClaimBody?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["renderClaimBody"];
+  questionsNode?: React.ReactNode;
+  questionsRequired?: boolean;
+  questionsReady?: boolean;
   contentBottomInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
@@ -204,6 +207,9 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     onDownloadPass,
     onOpenClaim,
     renderClaimBody,
+    questionsNode,
+    questionsRequired,
+    questionsReady,
     contentBottomInset = 96,
     onScroll: onScrollProp,
     onScrollViewLayout,
@@ -309,6 +315,9 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     passPresentation: "claim",
     onOpenClaim,
     renderClaimBody,
+    questionsNode,
+    questionsRequired,
+    questionsReady,
     onOpenBrand,
     onOpenMaps,
     onCopyAddress,

@@ -42,6 +42,16 @@ import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 
+/** A server-backed draft id is a UUID; a local draft id is `d_…`. */
+const SERVER_EVENT_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const GuestQuestionsRow = React.lazy(() =>
+  import("../forms/formsOwner").then((module) => ({
+    default: module.GuestQuestionsRow,
+  })),
+);
+
 const ROW_BG = Platform.select({
   ios: color.fill.inset,
   android: materials.control.solidFill,
@@ -281,6 +291,26 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
           : undefined
       }
     >
+      {/* #4541 — the draft RSVP owns the same attachment row as published RSVP
+          edit. The attachment RPC saves independently from the draft graph. */}
+      {SERVER_EVENT_ID_RE.test(draft.id) ? (
+        <React.Suspense fallback={null}>
+          <GuestQuestionsRow
+            eventId={draft.id}
+            brandId={draft.brandId}
+            kind="rsvp"
+            testID="rsvp-guest-questions-row"
+          />
+        </React.Suspense>
+      ) : (
+        <Text
+          style={{ ...type.body, color: color.text2, marginBottom: space[3] }}
+          testID="rsvp-guest-questions-unsaved"
+        >
+          Save your RSVP page to add guest questions.
+        </Text>
+      )}
+
       {/* 1. Capacity */}
       <ToggleRow
         label="Limit the guest list"

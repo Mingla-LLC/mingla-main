@@ -634,12 +634,14 @@ export function phase3dContractDigest(manifest) {
 // #4514 brand forms: removed the exact-filename skip of 20281120034514 from the #1931 filtered template replay (the #2492 gate now credits applied CREATE TABLE columns); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the replay inventories; skipped it by exact filename on the filtered #1931 template replay (it reads event_rsvp_guests columns only the skipped 20281119014508 creates); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed;
 // MANIFEST.json phase3eContractSha256 matches.
 // #4522 slice 13 switch on: registered 20281121014522_issue_4522_switch_on.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281120104522 and 20281121014522 on the filtered #1931 replay and for all #4522 migrations on the filtered #2117 replay (their md5 drift guards need bodies those lanes skip); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3281 S4 free parents and add-on refunds: registered 20281121023281_issue_3281_add_on_free_parent_refunds.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121023281 on the filtered #1931 and #2117 replays
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "00852df1db8dadbe630acc2665e779673a2b5f536e7f336d4e82487b8abd6ded";
+// #4522 merge of main after #4541: kept the #4541 migration, pg17 rows and #1931 skip beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "acfde9364e0cbc30fbc05721e0ea44c7b0c0505b97b875044bb54d9f5640a1b9";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1145,12 +1147,20 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // first-party @mingla/calendar file dependency and its lockfile link.
 // [TEST-MOD-APPROVED #4514] Re-banked after Host declared @mingla/form-rendering
 // (file:../packages/form-rendering, the one question model) and its three
-// lockfile link entries. The integrated authority carries both first-party
-// package links.
+// lockfile link entries. app-mobile is unchanged.
+// [TEST-MOD-APPROVED #4389] Re-banked both package.json files after each
+// build-production-* script was prefixed with the store build guard
+// (scripts/release/store-build-guard.cjs). Dependencies and lockfiles unchanged.
+// [TEST-MOD-APPROVED #4541] Re-banked app-mobile after the Explorer app declared
+// @mingla/form-rendering (file:../packages/form-rendering, the one question
+// model) and its two lockfile link entries. No other package version moved.
+// [TEST-MOD-APPROVED #4522] Re-banked after merging main: the integrated
+// authority carries @mingla/calendar and @mingla/form-rendering in both apps
+// plus the #4389 store build guard prefixes.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "df93d3730ad0456fe5bb6b79b038359a393b89530160129943056377b1b62e99",
-  "app-mobile/package-lock.json": "2f983c42fc4d6f4a7b56810fb459ec2bd791b0767d89c84716ea0abf88521fed",
-  "mingla-business/package.json": "0f739e2e9cac7a0249d07850206f8bb162586278be0205c24576d470da15ef39",
+  "app-mobile/package.json": "77f4c9b0a293fceee7befe7c1e88d210499d53285b03aaa0a57a22f47d0fc0fc",
+  "app-mobile/package-lock.json": "f122e88a4cf3ea5b2511a92a31e898bf56571d115def21233e3b830b6199760e",
+  "mingla-business/package.json": "63934c96beb3762c9a8ead26b7bd6e2c45380190e63453848e91d92b02d34e45",
   "mingla-business/package-lock.json": "9111e13815ad504f0b5db09a4c4bd369cd2e3794a78ae1193dea19f1284d1f99",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and

@@ -196,17 +196,30 @@ export async function readDoorAnswers(
   ticketId: string | null,
   signal: AbortSignal,
 ): Promise<DoorAnswersView | null> {
-  if (!UUID.test(eventId) || !UUID.test(orderId)) return null;
+  return await readDoorAnswersForSubject(
+    client,
+    actorId,
+    eventId,
+    { kind: "order", id: orderId, ...(ticketId !== null && UUID.test(ticketId) ? { ticketId } : {}) },
+    signal,
+  );
+}
+
+/** #4541 — the same server-built door line for an RSVP or claimed RSVP guest. */
+export async function readDoorAnswersForSubject(
+  client: DoorReadClient,
+  actorId: string,
+  eventId: string,
+  subject: { kind: "rsvp" | "rsvp_guest" | "order"; id: string; ticketId?: string },
+  signal: AbortSignal,
+): Promise<DoorAnswersView | null> {
+  if (!UUID.test(eventId) || !UUID.test(subject.id)) return null;
   try {
     const result = await client
       .rpc("brand_form_door_answers", {
         p_actor_id: actorId,
         p_event_id: eventId,
-        p_subject: {
-          kind: "order",
-          id: orderId,
-          ...(ticketId !== null && UUID.test(ticketId) ? { ticketId } : {}),
-        },
+        p_subject: subject,
       })
       .abortSignal(signal) as QueryResult;
     if (result.error) {

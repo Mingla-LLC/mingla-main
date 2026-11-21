@@ -2047,6 +2047,7 @@
         "mingla-admin/src/components/AppIdentityReadinessPanel.jsx",
         "mingla-admin/src/components/app-readiness/AppDownloadReadinessPanel.jsx",
         "app-mobile/app.json",
+        "app-mobile/package.json",
         "app-mobile/src/hooks/useRevenueCat.ts",
         "app-mobile/src/payments/checkoutAdTracking.ts",
         "app-mobile/src/services/analyticsOptOut.ts",
@@ -3059,6 +3060,7 @@
         "mingla-business/app.config.js",
         "mingla-business/app.json",
         "mingla-business/eas.json",
+        "mingla-business/.easignore",
         "mingla-business/app/(tabs)/account.tsx",
         "mingla-business/app/_layout.tsx",
         "mingla-business/app/account/tap-to-pay.tsx",
@@ -5680,6 +5682,28 @@
       "paths": [
         "supabase/functions/brand-people-export-worker/index.ts",
         "supabase/functions/brand-people-export/csv.ts"
+      ]
+    },
+    {
+      "capability_key": "rsvp-create",
+      "paths": [
+        "app-mobile/app/+native-intent.tsx",
+        "app-mobile/src/components/forms/RsvpBrandFormQuestions.tsx",
+        "app-mobile/src/components/forms/RsvpFormWebDateInput.native.tsx",
+        "app-mobile/src/components/forms/RsvpFormWebDateInput.web.tsx",
+        "mingla-business/src/components/checkout/intake/publicRsvpFormKeys.ts",
+        "mingla-business/src/components/forms/RsvpBrandFormQuestions.tsx",
+        "mingla-business/src/services/publicRsvpBrandForm.ts",
+        "packages/offering-rendering/rsvpBrandForm.ts",
+        "supabase/functions/public-submit-rsvp/brandFormRsvp.ts",
+        "supabase/migrations/20281121004541_issue_4541_rsvp_brand_forms.sql"
+      ]
+    },
+    {
+      "capability_key": "events-check-in",
+      "paths": [
+        "supabase/functions/scan-rsvp/doorAnswers.ts",
+        "supabase/functions/scan-rsvp/index.ts"
       ]
     }
   ]
