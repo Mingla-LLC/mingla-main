@@ -1139,10 +1139,13 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // [TEST-MOD-APPROVED #4514] Re-banked after Host declared @mingla/form-rendering
 // (file:../packages/form-rendering, the one question model) and its three
 // lockfile link entries. app-mobile is unchanged.
+// [TEST-MOD-APPROVED #4389] Re-banked both package.json files after each
+// build-production-* script was prefixed with the store build guard
+// (scripts/release/store-build-guard.cjs). Dependencies and lockfiles unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "fcdf6302f7944b01a48ddb2111b2d3deed82644b519c7c9a2bc673e31a30aae6",
+  "app-mobile/package.json": "d7dbb5805cab015bfb51c28b1895473ad792eb5601cbfe77a06804b0124122b0",
   "app-mobile/package-lock.json": "40bac6aff5ba88ab90debc72a88f0b106bf2d2e4dc0234f20b054d2ae9786edf",
-  "mingla-business/package.json": "a8c48f2b31535cdc075333d848af83c902b8437cde1cfcefa1e1e3a5ff703be2",
+  "mingla-business/package.json": "504036f1f62da1a272df5864287efce79eda6d03d2dcf380fecf43b1436f906b",
   "mingla-business/package-lock.json": "0bc52863b9c33e013d200020dedaa5035f4f17f590387eb1247830ca279792d2",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
