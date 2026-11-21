@@ -10,9 +10,11 @@ import { Platform } from "react-native";
 
 import { detectDeviceTimezone } from "../../utils/timezones";
 import { HOST_CALENDAR_CONFIG } from "./calendarHostConfig";
-import type { DateFieldProps } from "./DateField";
-import type { HostDateTimeFieldProps } from "./HostCalendarFields";
-import type { HostDateRangeFieldProps } from "./HostDateRangeField";
+import type {
+  DateFieldProps,
+  HostDateRangeFieldProps,
+  HostDateTimeFieldProps,
+} from "./hostCalendarFieldProps";
 
 export function DateBody({
   label,

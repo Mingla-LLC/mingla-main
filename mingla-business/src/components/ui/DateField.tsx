@@ -20,31 +20,9 @@
  */
 
 import { lazyHostField } from "./HostCalendarPlaceholder";
+import type { DateFieldProps } from "./hostCalendarFieldProps";
 
-export interface DateFieldProps {
-  /** Visible label rendered above the control. */
-  label: string;
-  /** `YYYY-MM-DD`, or `""` for unset. Never a Date. */
-  value: string;
-  /** Fires with `YYYY-MM-DD` (or `""` when cleared on web). */
-  onChangeValue: (value: string) => void;
-  /** Required — this replaces a labelled input. */
-  accessibilityLabel: string;
-  /** Optional inclusive lower bound, `YYYY-MM-DD`. */
-  min?: string;
-  /** Optional inclusive upper bound, `YYYY-MM-DD`. */
-  max?: string;
-  /** Placeholder shown when `value` is `""`. */
-  placeholder?: string;
-  disabled?: boolean;
-  hasError?: boolean;
-  testID?: string;
-  /**
-   * IANA zone the date is in (brand or venue zone). Drives "today" and the
-   * zone line in the calendar footer.
-   */
-  timeZone?: string;
-}
+export type { DateFieldProps } from "./hostCalendarFieldProps";
 
 export const DateField = lazyHostField<DateFieldProps>(
   () => import("./HostCalendarBody").then((m) => ({ default: m.DateBody })),

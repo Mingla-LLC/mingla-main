@@ -174,6 +174,7 @@ export const PaymentPlanEditorV2: React.FC<PaymentPlanEditorV2Props> = ({
             <Pressable
               key={mode}
               accessibilityRole="tab"
+              accessibilityLabel={mode === "amount" ? "Amount" : "Percent"}
               accessibilityState={{ selected }}
               onPress={() => {
                 if (selected) return;
@@ -237,6 +238,7 @@ export const PaymentPlanEditorV2: React.FC<PaymentPlanEditorV2Props> = ({
             key={count}
             onPress={() => setCount(count)}
             accessibilityRole="button"
+            accessibilityLabel={`${count} payments`}
             accessibilityState={{ selected: value.count === count }}
             style={[styles.pill, value.count === count && styles.pillOn]}
             testID={`trip-plan-v2-count-${count}`}

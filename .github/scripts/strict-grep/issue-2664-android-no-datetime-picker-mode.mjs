@@ -100,17 +100,25 @@ const repoRoot = path.resolve(__dirname, "../../..");
  * `minElements` is the floor on picker elements, set below today's measured
  * count to leave room for genuine refactors but far above zero.
  */
+//
+// #4523 moved every DATE choice in both apps onto the shared Mingla calendar
+// (`@mingla/calendar`, which renders no native picker), so the native picker
+// census legitimately fell: Host 20 -> 10 (TicketTierEditSheet,
+// BookingDeadlinePicker, the composer schedule sheet and others now use the
+// calendar), Explorer 12 -> 6. The floors below were re-derived from those
+// measured counts with the same headroom policy; what remains native is time
+// selection, which is exactly where a `mode="datetime"` could come back.
 const SCAN_ROOTS = [
-  // measured: 2113 files, 20 elements, 11 importing files
-  { path: "mingla-business/src", minFiles: 1500, minElements: 15 },
+  // measured after #4523: 4579 files, 10 elements, 4 importing files
+  { path: "mingla-business/src", minFiles: 1500, minElements: 8 },
   // measured: 216 files, 0 elements. DELIBERATELY KEPT at minElements 0.
   // This is the Expo Router route layer; it renders no picker today, so a naive
   // "every root must contribute" rule would red on arrival. It stays in the
   // sweep because a picker added to a route file must still be covered, and
   // `minFiles` still proves the root was opened.
   { path: "mingla-business/app", minFiles: 100, minElements: 0 },
-  // measured: 781 files, 12 elements, 6 importing files
-  { path: "app-mobile/src", minFiles: 500, minElements: 8 },
+  // measured after #4523: 1377 files, 6 elements, 4 importing files
+  { path: "app-mobile/src", minFiles: 500, minElements: 5 },
   // measured: 214 files, 1 element, 1 importing file
   { path: "packages", minFiles: 100, minElements: 1 },
 ];
@@ -125,10 +133,17 @@ const SKIP_DIRS = new Set([
 
 const PACKAGE_ID = "@react-native-community/datetimepicker";
 
-/** Files #2664 fixed. Each must still resolve at least one element (C-3). */
+/**
+ * Files that must each still resolve at least one element (C-3). The two files
+ * #2664 fixed (TicketTierEditSheet, BookingDeadlinePicker) no longer render a
+ * native picker since #4523 moved their dates to the shared calendar, so the
+ * census now points at the surfaces that still pair a calendar date with a
+ * native time picker — the shape most likely to regress to `mode="datetime"`.
+ */
 const CENSUS_FILES = [
-  "mingla-business/src/components/event/TicketTierEditSheet.tsx",
-  "mingla-business/src/components/trip/BookingDeadlinePicker.tsx",
+  "mingla-business/src/components/event/CreatorStep2When.tsx",
+  "mingla-business/src/components/event/MultiDateOverrideSheet.tsx",
+  "app-mobile/src/components/activity/ProposeDateTimeModal.tsx",
 ];
 
 // ---------------------------------------------------------------------------

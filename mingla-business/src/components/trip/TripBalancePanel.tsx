@@ -111,6 +111,7 @@ export function TripBalancePanel({
               <Pressable
                 key={option.key}
                 accessibilityRole="radio"
+                accessibilityLabel={option.label}
                 accessibilityState={{ checked: selected }}
                 onPress={() => onChoice(option.key)}
                 style={({ pressed }) => [

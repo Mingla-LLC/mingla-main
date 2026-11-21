@@ -4,17 +4,10 @@
  * from adding a trip-only export to eager __common; the calendar body still
  * loads only when the field opens.
  */
-import { lazyHostField, type HostFieldBase } from "./HostCalendarPlaceholder";
+import { lazyHostField } from "./HostCalendarPlaceholder";
+import type { HostDateRangeFieldProps } from "./hostCalendarFieldProps";
 
-export interface HostDateRangeFieldProps extends HostFieldBase {
-  /** `YYYY-MM-DD` both ends; "" while not chosen. */
-  value: { start: string; end: string };
-  onChangeValue: (value: { start: string; end: string }) => void;
-  accessibilityLabel: string;
-  min?: string;
-  max?: string;
-  timeZone?: string;
-}
+export type { HostDateRangeFieldProps } from "./hostCalendarFieldProps";
 
 /** A range of days (trip dates, stay dates). Stays open until Done. */
 export const HostDateRangeField = lazyHostField<HostDateRangeFieldProps>(

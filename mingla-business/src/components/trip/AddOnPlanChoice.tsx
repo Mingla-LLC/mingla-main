@@ -85,6 +85,7 @@ const Choice: React.FC<{
 }> = ({ label, selected, disabled, onPress, testID }) => (
   <Pressable
     accessibilityRole="radio"
+    accessibilityLabel={label}
     accessibilityState={{ checked: selected, disabled }}
     aria-checked={selected}
     disabled={disabled}

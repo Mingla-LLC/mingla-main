@@ -19,13 +19,25 @@ import { formatCurrency } from "../../utils/currency";
 import { configuredVatRateBps } from "../../utils/pricingTaxContext";
 import { GlassCard } from "../ui/GlassCard";
 import { computeEarningsRows, earningsAtFullCapacity } from "./tripEarnings";
-import type { Step4Draft } from "./TripCreatorStep4Pricing";
 
 export const EARNINGS_LOADING_COPY =
   "We'll show your earnings once your payout settings load.";
 
+/**
+ * The slice of the Step 4 draft this card reads. Declared structurally (not
+ * imported from TripCreatorStep4Pricing) so the pricing step → lazy chunk →
+ * card edge stays one-way: importing the step's type closed a require cycle.
+ */
 export interface TripEarningsCardProps {
-  draft: Pick<Step4Draft, "packages" | "currency" | "pricingSwitches">;
+  draft: {
+    packages: ReadonlyArray<{ priceMajor: string; capacity: number | null }>;
+    currency: string;
+    pricingSwitches: {
+      passTax: boolean | null;
+      passMinglaFee: boolean | null;
+      passServiceFee: boolean | null;
+    };
+  };
 }
 
 const minorOf = (priceMajor: string): number =>

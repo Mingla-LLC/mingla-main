@@ -229,6 +229,7 @@ const PlanRadio: React.FC<{
 }> = ({ title, detail, selected, disabled, onPress, testID }) => (
   <Pressable
     accessibilityRole="radio"
+    accessibilityLabel={`${title}. ${detail}`}
     accessibilityState={{ checked: selected, disabled }}
     aria-checked={selected}
     onPress={onPress}

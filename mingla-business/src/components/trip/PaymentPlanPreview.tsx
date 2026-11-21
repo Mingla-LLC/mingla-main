@@ -122,6 +122,7 @@ export const PaymentPlanPreview: React.FC<PaymentPlanPreviewProps> = ({
           <Pressable
             key={days}
             accessibilityRole="button"
+            accessibilityLabel={`${days} days before`}
             accessibilityState={{ selected: leadDays === days }}
             onPress={() => setLeadDays(days)}
             style={[styles.chip, leadDays === days && styles.chipOn]}
