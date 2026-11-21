@@ -355,7 +355,7 @@ describe("S-10 an open Create ticket panel and another conversation", () => {
     assert.match(src, /sidePanelOnSwitch\(\{ sideKind: open\?\.kind \|\| null, dirty: createDirtyRef\.current, same \}\)/);
     assert.match(src, /window\.confirm\(DISCARD_TICKET_WORDS\)/);
     assert.match(src, /!switchSelection\(\{ conversationId: p\.conversationId, reportedId: p\.reportedId \}\)/, "the address and Back or Forward");
-    assert.match(src, /const select = useCallback\(\(row\) => \{\n    switchSelection\(/, "a row click");
+    assert.match(src, /const select = useCallback\(\(row\) => \{\n {4}switchSelection\(/, "a row click");
     assert.doesNotMatch(src, /setSelected\(\{ conversationId: (id|p\.conversationId)/, "no path sets the selection around the decision");
     assert.match(src, /onDirtyChange=\{\(dirty\) => \{ createDirtyRef\.current = dirty; \}\}/);
     assert.match(read("components/support/CreateTicketPanel.jsx"), /onDirtyChange=\{onDirtyChange\}/);
