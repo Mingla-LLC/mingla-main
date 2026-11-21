@@ -108,6 +108,16 @@ export async function getOrder(orderId) {
   return supabase.rpc("admin_get_order", { p_order_id: orderId });
 }
 
+/**
+ * #3281 S4 — the order's add-on lines with what is already refunded:
+ * [{ id, name, quantity, unit_price_cents, total_cents, refunded_quantity, refunded_cents }].
+ */
+export async function getOrderAddOnLines(orderId) {
+  const { data, error } = await supabase.rpc("admin_order_add_on_lines", { p_order_id: orderId });
+  if (error) throw new Error(error.message || "Failed to load the order's add-ons.");
+  return Array.isArray(data) ? data : [];
+}
+
 /** Read-only 30-day discount and margin rollup, grouped by currency. */
 export async function getDiscountMarginSummary(from, to) {
   const { data, error } = await supabase.rpc("admin_discount_margin_summary", {

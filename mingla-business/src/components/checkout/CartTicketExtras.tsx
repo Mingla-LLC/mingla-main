@@ -54,6 +54,25 @@ export interface CartTicketExtrasProps {
   currency: string;
 }
 
+/** #3281 S4 — the cart note when every ticket is free and the add-ons are not. */
+export const FREE_PARENT_ADD_ONS_NOTE = "The ticket is free; you only pay for the add-ons.";
+
+/**
+ * #3281 S4 — the free-parent note, or null. Shown only once the server has
+ * priced the cart (the quote's extras total), so it never guesses: every line
+ * with tickets is free, and the add-ons cost something.
+ */
+export const freeParentAddOnsNote = (
+  lines: readonly Pick<CartLine, "isFree" | "quantity">[],
+  extrasTotalCents: number | null | undefined,
+): string | null => {
+  const held = lines.filter((line) => line.quantity > 0);
+  if (held.length === 0 || !held.every((line) => line.isFree)) return null;
+  return typeof extrasTotalCents === "number" && extrasTotalCents > 0
+    ? FREE_PARENT_ADD_ONS_NOTE
+    : null;
+};
+
 // In the date's own timezone, so the day named is the day being bought.
 const shortDay = (iso: string, timeZone: string): string => {
   const options: Intl.DateTimeFormatOptions = {

@@ -52,6 +52,8 @@ import {
 } from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+// #3281 S4 — the same add-on picker the event cart uses.
+import { CartTicketExtras } from "../../../src/components/checkout/CartTicketExtras";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // experience checkout too (the event checkout already does; trips/experiences
 // didn't, undercounting started checkouts). Web-only (native no-op via .web split).
@@ -92,7 +94,12 @@ const ticketToStub = (ticket: PublicExperienceTicket): TicketStub => ({
   saleStartAt: null,
   saleEndAt: null,
   availableAt: "online" as TicketAvailableAt,
+  // #3281 S4 — the ticket's add-ons ride the stub, as on the event cart.
+  buyerExtras: ticket.buyerExtras,
 });
+
+// #3281 S4 — add-on dates follow the chosen slot; the picker reads the cart's.
+const NO_OCCURRENCES: readonly never[] = [];
 
 const allDatesPast = (isos: string[], nowMs: number = Date.now()): boolean => {
   const valid = isos
@@ -159,6 +166,7 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
 
   const {
     lines,
+    eventDateIds,
     quoteStatus,
     setLineQuantity,
     setEventDateId,
@@ -458,6 +466,14 @@ export default function CheckoutExperienceTicketScreen(): React.ReactElement {
                 quantity: next,
               })
             }
+          />
+          <CartTicketExtras
+            ticket={stub}
+            line={line}
+            eventDateIds={eventDateIds}
+            occurrences={NO_OCCURRENCES}
+            allDaysPass={false}
+            currency={stub.currency ?? experience.ticket?.currency ?? "USD"}
           />
         </ScrollView>
 

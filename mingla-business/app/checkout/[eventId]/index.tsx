@@ -78,7 +78,10 @@ import {
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { CheckoutCoverFallback } from "../../../src/components/checkout/CheckoutCoverFallback";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
-import { CartTicketExtras } from "../../../src/components/checkout/CartTicketExtras";
+import {
+  CartTicketExtras,
+  freeParentAddOnsNote,
+} from "../../../src/components/checkout/CartTicketExtras";
 import {
   extrasRefusalCopy,
   extrasRefusalIn,
@@ -241,6 +244,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
 
   const {
     lines,
+    quote,
     quoteStatus,
     quoteErrorCode,
     eventDateIds,
@@ -253,6 +257,11 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const extrasRefusal =
     quoteStatus === "error"
       ? extrasRefusalCopy(extrasRefusalIn(quoteErrorCode))
+      : null;
+  // issue #3281 S4 — a free ticket with paid add-ons: say what is being paid for.
+  const freeParentNote =
+    quoteStatus === "ready"
+      ? freeParentAddOnsNote(lines, quote?.extrasTotalCents)
       : null;
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
   const waitlistSheetOpened = useRef(false);
@@ -881,6 +890,15 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                 />
               ))
             : null}
+          {freeParentNote !== null ? (
+            <Text
+              style={styles.freeParentNote}
+              testID="issue-3281-free-parent-note"
+              accessibilityLiveRegion="polite"
+            >
+              {freeParentNote}
+            </Text>
+          ) : null}
           {extrasRefusal !== null ? (
             <Text
               style={styles.extrasRefusal}
@@ -966,6 +984,11 @@ const styles = checkoutStyles(() => StyleSheet.create({
   hiddenOnWide: { display: "none" },
   extrasRefusal: {
     color: color.danger,
+    fontSize: 14,
+    marginTop: space[2],
+  },
+  freeParentNote: {
+    color: color.text2,
     fontSize: 14,
     marginTop: space[2],
   },

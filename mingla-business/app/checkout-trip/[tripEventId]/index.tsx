@@ -69,6 +69,8 @@ import {
 } from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+// #3281 S4 — the same add-on picker the event cart uses, under each package.
+import { CartTicketExtras } from "../../../src/components/checkout/CartTicketExtras";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // trip checkout too (the event checkout already does; trips/experiences didn't,
 // undercounting started checkouts). Web-only (native no-op via the .web split).
@@ -120,7 +122,13 @@ const tierToTicketStub = (tier: TripPricingTier): TicketStub => ({
   saleStartAt: null,
   saleEndAt: null,
   availableAt: "online" as TicketAvailableAt,
+  // #3281 S4 — the package's add-ons ride the stub, as on the event cart.
+  buyerExtras: tier.buyerExtras,
 });
+
+// #3281 S4 — a trip is one run: no per-date add-on scoping on its cart.
+const NO_EVENT_DATES: readonly string[] = [];
+const NO_OCCURRENCES: readonly never[] = [];
 
 const isTripPast = (endAtIso: string | null): boolean => {
   if (endAtIso === null) return false;
@@ -711,6 +719,16 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
                           ? paymentPlanChoice
                           : "full"),
                     })
+                  }
+                />
+                <CartTicketExtras
+                  ticket={ticket}
+                  line={lines.find((line) => line.ticketTypeId === ticket.id)}
+                  eventDateIds={NO_EVENT_DATES}
+                  occurrences={NO_OCCURRENCES}
+                  allDaysPass={false}
+                  currency={
+                    ticket.currency ?? trip.pricingTiers[0]?.currency ?? "USD"
                   }
                 />
               </View>
