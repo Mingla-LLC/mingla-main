@@ -284,7 +284,21 @@ describe("#1957 event HTTPS app links — tester adversarial", () => {
     const negated = components
       .filter((component) => component.exclude === true)
       .map((component) => component["/"]);
-    expect(negated).toEqual([]);
+    // TEST-MOD-APPROVED #4490 (Explorer W1, N161): spec 06 W1 web 4 requires
+    // exactly these five exclusions, listed before the /visit, /stay, /o and
+    // /reserve claims, so web-only pages stay on the web. Nothing else may be
+    // excluded, and never a Consumer guest route (/b /e /t /exp /attendance).
+    expect(negated).toEqual([
+      "/visit/*",
+      "/visit/plan/*",
+      "/stay/pay/*",
+      "/reserve/*/confirm*",
+      "/o/venue/*",
+    ]);
+    const visitPaid = components.find(
+      (component) => component.exclude === true && component["/"] === "/visit/*",
+    ) as { "?"?: Record<string, string> } | undefined;
+    expect(visitPaid?.["?"]).toEqual({ paid: "*" });
   });
 
   it("A6: the retired business.usemingla.com does not reappear in native config or either served AASA", () => {
