@@ -485,7 +485,7 @@ function buildOrderSections(bundle, onViewSubscriber, money, addOns) {
 
 // Mounted only while open (parent gates with `refundOpen &&`), so picks reset on
 // each open without a setState-in-effect.
-function RefundModal({ onClose, order, lineItems, addOnLines, onRefunded, provider }) {
+function RefundModal({ onClose, order, lineItems, addOnLines, onRefunded, onNotice, provider }) {
   const [qtys, setQtys] = useState({});
   const [addOnQtys, setAddOnQtys] = useState({});
   const [idempotencyKey, setIdempotencyKey] = useState(createAdminRefundIdempotencyKey);
@@ -555,7 +555,8 @@ function RefundModal({ onClose, order, lineItems, addOnLines, onRefunded, provid
       throw new Error(described.message || body?.detail || error.message || "Refund failed.");
     }
     // #3281 S5: a spread add-on with nothing paid yet comes off the plan only.
-    onRefunded?.(planRemovalNotice(data, formatMoney, order.currency));
+    onNotice?.(planRemovalNotice(data, formatMoney, order.currency));
+    onRefunded?.();
   };
 
   const inputClass = [
@@ -783,10 +784,8 @@ export function BusinessOrdersPage() {
             order={order}
             lineItems={bundle?.line_items || []}
             addOnLines={addOns?.lines || []}
-            onRefunded={(notice) => {
-              setRefundNotice(notice ?? null);
-              loadOrder(selectedOrderId);
-            }}
+            onRefunded={() => loadOrder(selectedOrderId)}
+            onNotice={setRefundNotice}
             provider={money?.provider}
           />
         )}
