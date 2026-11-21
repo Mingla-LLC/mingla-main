@@ -649,7 +649,9 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 07 round 1 tester suites (N130); MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 N147: finalize refuses a foreign payment reference; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 explorer W1: handoff and app-only pass; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "daa02440ecc546383e7d1adfbe456e8c5959e53c7b548df6a7cc12951c4dc24d";
+// issue #4490 round 3: coworking requests, yearly plans, member door codes, multi-day passes and their pg17 proofs registered; MANIFEST.json phase3eContractSha256 matches.
+// issue #4490 rounds 2 and 3: remaining venue gap migrations and pg17 proofs registered; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "c632de4ba235b8f87642e60e63b23187b779bf7f47b5aeee53fa23ef49ebc683";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

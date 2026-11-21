@@ -121,6 +121,80 @@ GRANT EXECUTE ON FUNCTION public.issue_4490_pass_admitted_on(uuid, date),
 REVOKE ALL ON FUNCTION public.issue_4490_assert_multi_day_option(),
   public.issue_4490_assert_multi_day_offer() FROM PUBLIC, anon, authenticated;
 
+-- A zero-value offer never visits a payment provider. Convert its inventory
+-- hold and confirm it in the same transaction that creates the booking, so
+-- the ordinary confirmed-state trigger issues the pass and the confirmation
+-- event follows the same notification path as a paid booking.
+CREATE OR REPLACE FUNCTION public.issue_4490_confirm_free_offer(p_group_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_group public.stay_reservation_groups%ROWTYPE;
+  v_hold public.stay_inventory_holds%ROWTYPE;
+BEGIN
+  IF NOT public.issue_1389_service_role() THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO v_group FROM public.stay_reservation_groups
+  WHERE id = p_group_id FOR UPDATE;
+  IF NOT FOUND OR v_group.total_minor <> 0
+     OR v_group.state <> 'instant_payment_pending'
+     OR v_group.payment_collection <> 'mingla' THEN
+    RETURN;
+  END IF;
+  SELECT * INTO v_hold FROM public.stay_inventory_holds
+  WHERE group_id = p_group_id FOR UPDATE;
+  IF NOT FOUND OR v_hold.state <> 'active' OR v_hold.expires_at <= now() THEN
+    RAISE EXCEPTION 'offer_hold_expired' USING ERRCODE = 'PT409';
+  END IF;
+
+  UPDATE public.stay_reservation_groups
+  SET state = 'finalizing', version = version + 1, updated_at = now()
+  WHERE id = p_group_id;
+  INSERT INTO public.stay_inventory_commitments (
+    group_id, reservation_line_id, resource_type, offering_id,
+    room_date, place_window_id, quantity, exclusive_unit_id
+  )
+  SELECT p_group_id, s.reservation_line_id, s.resource_type, s.offering_id,
+         s.room_date, s.place_window_id, s.quantity, s.exclusive_unit_id
+  FROM public.stay_inventory_hold_slices s
+  WHERE s.hold_id = v_hold.id
+  ORDER BY s.resource_type, s.offering_id, s.room_date,
+           s.place_window_id, s.exclusive_unit_id
+  ON CONFLICT DO NOTHING;
+  IF (SELECT count(*) FROM public.stay_inventory_commitments c
+      WHERE c.group_id = p_group_id)
+     <> (SELECT count(*) FROM public.stay_inventory_hold_slices s
+         WHERE s.hold_id = v_hold.id) THEN
+    RAISE EXCEPTION 'offer_invalid_transition' USING ERRCODE = 'PT409';
+  END IF;
+  UPDATE public.stay_inventory_holds
+  SET state = 'converted', reason = 'free_offer', version = version + 1,
+      updated_at = now()
+  WHERE id = v_hold.id;
+  UPDATE public.stay_reservation_lines
+  SET state = 'confirmed', version = version + 1, updated_at = now()
+  WHERE group_id = p_group_id AND state = 'payment_pending';
+  UPDATE public.stay_reservation_groups
+  SET state = 'confirmed', version = version + 1, updated_at = now()
+  WHERE id = p_group_id;
+  INSERT INTO public.stay_reservation_events (
+    group_id, event_type, actor_type, idempotency_key, safe_metadata
+  ) VALUES (
+    p_group_id, 'stay_reservation_confirmed', 'guest',
+    'free-offer:' || p_group_id,
+    jsonb_build_object('amountMinor', '0', 'freeOffer', true)
+  ) ON CONFLICT (group_id, idempotency_key) DO NOTHING;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4490_confirm_free_offer(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_confirm_free_offer(uuid)
+  TO service_role;
+
 -- Checked patches refuse a changed predecessor instead of silently leaving a
 -- partially wired contract.
 CREATE FUNCTION pg_temp.issue_4490_patch(
@@ -172,6 +246,18 @@ SELECT pg_temp.issue_4490_patch(
       RAISE EXCEPTION 'multi_day_pass_invalid' USING ERRCODE = '22023';
     END IF;
     IF COALESCE(p_payload->>'guestMin', '')$new$
+);
+
+-- Free prices have no payment provider return to finalize them. The P6
+-- member-credit path may already have confirmed a zero-total booking; this
+-- helper is deliberately a no-op in that state.
+SELECT pg_temp.issue_4490_patch(
+  'public.issue_4490_create_offer_group(uuid,uuid,jsonb,text,uuid,bytea,text)'::regprocedure,
+  $old$  PERFORM public.issue_4490_member_spend(v_id);
+  RETURN public.issue_4490_booking_projection(v_id, NULL);$old$,
+  $new$  PERFORM public.issue_4490_member_spend(v_id);
+  PERFORM public.issue_4490_confirm_free_offer(v_id);
+  RETURN public.issue_4490_booking_projection(v_id, NULL);$new$
 );
 
 SELECT pg_temp.issue_4490_patch(

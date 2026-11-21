@@ -136,6 +136,15 @@ BEGIN
       AND EXISTS (SELECT 1 FROM jsonb_array_elements(v->'options') row
                   WHERE row->>'id' = v_option::text AND row->>'passDays' = '3' AND row->>'passWindowDays' = '3'),
     'F-1a Host option write and projection carry 3-in-3');
+  v := public.issue_4490_manage_offer('upsert_price_option',
+    '4490f000-0000-4000-9000-0000000000a1',
+    jsonb_build_object('offerId', v_offer, 'name', 'Free 3-Day Pass', 'unit', 'guest',
+      'guestMin', 1, 'guestMax', 1, 'priceMinor', 0, 'passDays', 3, 'passWindowDays', 3),
+    v_version, 'f-option-free');
+  v_version := (v->>'version')::bigint;
+  SELECT (row->>'id')::uuid INTO v_option FROM jsonb_array_elements(v->'options') row
+  WHERE row->>'name' = 'Free 3-Day Pass';
+  INSERT INTO t4490f_ids VALUES ('free_option', v_option);
   PERFORM public.t4490f_reset();
   PERFORM public.t4490f_service();
   PERFORM public.t4490f_expect(
@@ -203,6 +212,8 @@ SELECT public.t4490f_service();
 DO $buy$
 DECLARE
   v_group uuid;
+  v_quote jsonb;
+  v_booking jsonb;
 BEGIN
   v_group := public.t4490f_buy('three', 2);
   INSERT INTO t4490f_passes SELECT 'three', v_group, p.id, public.t4490f_qr(v_group)
@@ -224,6 +235,30 @@ BEGIN
   v_group := public.t4490f_buy('night', 1);
   INSERT INTO t4490f_passes SELECT 'night', v_group, p.id, public.t4490f_qr(v_group)
   FROM public.venue_passes p WHERE p.group_id = v_group;
+
+  v_quote := public.issue_4490_quote_offer(
+    public.t4490f_id('offer'),
+    public.t4490f_win(public.issue_4490_venue_local_date('4490f000-0000-4000-9000-0000000000a1') + 1),
+    jsonb_build_array(jsonb_build_object(
+      'priceOptionId', public.t4490f_id('free_option'), 'guests', 1)),
+    public.t4490f_key('cart:free'), NULL, 'quote-free');
+  v_booking := public.issue_4490_create_offer_group(
+    '4490f000-0000-4000-9000-0000000000f0', (v_quote->>'quoteId')::uuid,
+    '{"name":"Free Flex","email":"free-flex@example.test"}'::jsonb,
+    public.t4490f_key('cart:free'), NULL,
+    sha256(convert_to('token:free', 'UTF8')), 'hold-free');
+  PERFORM public.t4490f_ok(
+    v_booking->>'state' = 'confirmed'
+      AND EXISTS (SELECT 1 FROM public.venue_passes p
+                  WHERE p.group_id = (v_booking->>'groupId')::uuid AND p.days_allowed = 3)
+      AND EXISTS (SELECT 1 FROM public.stay_inventory_holds h
+                  WHERE h.group_id = (v_booking->>'groupId')::uuid
+                    AND h.state = 'converted' AND h.reason = 'free_offer')
+      AND EXISTS (SELECT 1 FROM public.stay_inventory_commitments c
+                  WHERE c.group_id = (v_booking->>'groupId')::uuid)
+      AND NOT EXISTS (SELECT 1 FROM public.stay_payment_attempts a
+                      WHERE a.group_id = (v_booking->>'groupId')::uuid),
+    'F-1a3 a free multi-day offer confirms and issues its pass without a payment provider');
 END
 $buy$;
 
@@ -421,9 +456,15 @@ BEGIN
       AND has_table_privilege('service_role', 'public.venue_pass_days', 'SELECT')
       AND NOT has_function_privilege('authenticated',
         'public.issue_4490_pass_admitted_on(uuid,date)', 'EXECUTE')
+      AND has_function_privilege('service_role',
+        'public.issue_4490_confirm_free_offer(uuid)', 'EXECUTE')
+      AND NOT has_function_privilege('authenticated',
+        'public.issue_4490_confirm_free_offer(uuid)', 'EXECUTE')
+      AND NOT has_function_privilege('anon',
+        'public.issue_4490_confirm_free_offer(uuid)', 'EXECUTE')
       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_policy
                       WHERE polrelid = 'public.venue_pass_days'::regclass),
-    'F-4c pass days are RLS-on and service-role only');
+    'F-4c pass days and free confirmation are service-role only');
 END
 $f4$;
 

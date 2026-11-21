@@ -392,7 +392,9 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 07 round 1 tester suites (N130); re-sealed.
 // issue #4490 N147: finalize refuses a foreign payment reference; re-sealed.
 // issue #4490 explorer W1: handoff and app-only pass; re-sealed.
-export const BOOTSTRAP_SHA256 = "3ed6811421e3604e72e3a2f0780c2916947f3ff9dfd55edae8e9eab97ba9baad";
+// issue #4490 round 3: coworking requests, yearly plans, member door codes, multi-day passes and their pg17 proofs registered; re-sealed.
+// issue #4490 rounds 2 and 3: remaining venue gap migrations and pg17 proofs registered; re-sealed.
+export const BOOTSTRAP_SHA256 = "27fa924d152991d0689b35eef3da45d223050769fb97f2ba04addfb00e698726";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
