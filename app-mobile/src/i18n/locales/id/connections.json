@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Gagal menghapus. Coba lagi.",
   "brand_guests_leave_title": "Keluar dari Tamu {{brand}}?",
   "brand_guests_leave_body": "Pemesanan baru tidak akan menambahkanmu lagi. Kamu bisa bergabung lagi dari pemesananmu.",
-  "brand_guests_left_toast": "Kamu keluar dari Tamu {{brand}}. Kamu bisa bergabung lagi dari pemesananmu."
+  "brand_guests_left_toast": "Kamu keluar dari Tamu {{brand}}. Kamu bisa bergabung lagi dari pemesananmu.",
+  "af_send_yourself_title": "Kirim sendiri juga",
+  "af_send_yourself_body": "Pesan darimu paling ampuh. Tautan sama dengan SMS kami.",
+  "af_copy_message": "Salin pesan",
+  "af_message_copied": "Pesan disalin"
 }

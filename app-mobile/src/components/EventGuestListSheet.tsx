@@ -707,11 +707,29 @@ export function EventGuestListSheet({
       // copy distinct from #871's party-size fact so private and unlinked rows
       // retain their established hierarchy.
       const city = item.isNamed ? cityFor(guest.location) : null;
-      const party = `party of ${guest.partySize}`;
+      // #4508 D-2.4 — "+N guests": the inviter's plus-ones who have not
+      // claimed yet (already counted in partySize, never named).
+      const unclaimed =
+        typeof guest.unclaimedGuestCount === "number" && guest.unclaimedGuestCount > 0
+          ? Math.floor(guest.unclaimedGuestCount)
+          : 0;
+      const party =
+        unclaimed > 0
+          ? `party of ${guest.partySize} · +${unclaimed} ${unclaimed === 1 ? "guest" : "guests"}`
+          : `party of ${guest.partySize}`;
+      // #4508 2.4 — "Brought by {name}" only when the server row carries it.
+      const broughtBy =
+        item.isNamed && typeof guest.broughtByName === "string" && guest.broughtByName.trim().length > 0
+          ? `Brought by ${guest.broughtByName.trim()}`
+          : null;
       const line2 = item.isYou
         ? "You"
         : item.isNamed
-          ? city
+          ? broughtBy !== null
+            ? city !== null
+              ? `${city} · ${broughtBy}`
+              : broughtBy
+            : city
           : guest.isMinglaUser
             ? "Keeping it low-key"
             : "Not on Mingla";
@@ -754,9 +772,8 @@ export function EventGuestListSheet({
       const a11yLabel = item.isYou
         ? `${name}, you`
         : item.isNamed
-          ? city !== null
-            ? `${name}, ${city}`
-            : name
+          ? (city !== null ? `${name}, ${city}` : name) +
+            (broughtBy !== null ? `, ${broughtBy}` : "")
           : guest.isMinglaUser
             ? "Someone, keeping it low-key"
             : "Guest, not on Mingla";

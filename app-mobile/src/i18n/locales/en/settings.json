@@ -105,7 +105,9 @@
         "reminders": "Activity reminders",
         "reminders_hint": "Nudges about your activity."
       }
-    }
+    },
+    "friends_going": "Friends going out",
+    "friends_going_hint": "When a close friend is going to an event"
   },
   "quiet_hours": {
     "title": "Quiet Hours",

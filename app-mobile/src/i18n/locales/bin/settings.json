@@ -51,7 +51,9 @@
         "brand_offering_invite": "Ẹse vbe ẹghe ne u lele",
         "brand_offering_invite_hint": "Ẹghe ne ẹghe ra ọmwa ru ẹse gu ẹwe."
       }
-    }
+    },
+    "friends_going": "Friends going out",
+    "friends_going_hint": "When a close friend is going to an event"
   },
   "quiet_hours": {
     "title": "Ẹghẹ Ifuẹko",

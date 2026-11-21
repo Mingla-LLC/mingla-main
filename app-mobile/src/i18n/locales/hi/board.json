@@ -29,7 +29,8 @@
     "deleteFailed": "हटाना विफल", "deleteFailedMsg": "यह सेशन हटाया नहीं जा सका।",
     "permissionDeleteBoard": "केवल सेशन बनाने वाला या एडमिन इस सेशन को हटा सकते हैं।",
     "deleteSessionTitle": "सेशन हटाएं", "deleteSessionMsg": "क्या आप \"{{name}}\" को हटाना चाहते हैं? यह पूर्ववत नहीं किया जा सकता और सभी कार्ड, वोट और चर्चाएं स्थायी रूप से हटा दी जाएंगी।",
-    "leaveSessionTitle": "बोर्ड छोड़ें", "leaveSessionMsg": "क्या आप \"{{name}}\" छोड़ना चाहते हैं?", "namePlaceholder": "सेशन का नाम दें"
+    "leaveSessionTitle": "बोर्ड छोड़ें", "leaveSessionMsg": "क्या आप \"{{name}}\" छोड़ना चाहते हैं?", "namePlaceholder": "सेशन का नाम दें",
+    "sessionShareMessage": "मैंने तुम्हें Mingla पर \"{{name}}\" में जोड़ा है। यहाँ जुड़ो: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "चर्चा", "cardDiscussion": "कार्ड चर्चा", "errorLoadMsg": "संदेश लोड विफल",

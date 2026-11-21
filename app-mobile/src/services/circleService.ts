@@ -37,7 +37,8 @@ function isRelationshipSource(value: string | null | undefined): value is Circle
     value === 'friend' ||
     value === 'friend_of_friend' ||
     value === 'co_attendee' ||
-    value === 'mixed';
+    value === 'mixed' ||
+    value === 'rsvp_guest';
 }
 
 function isRelationshipContextType(

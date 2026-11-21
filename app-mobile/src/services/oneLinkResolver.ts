@@ -66,12 +66,19 @@ export type OneLinkDestination =
    * deep_link_sub2 so the joiner is connected to whoever shared it.
    */
   | { kind: 'group_invite'; groupToken: string; shareToken?: string; referralCode?: string }
+  /**
+   * Issue #4508 — an RSVP guest's link ("{Inviter} saved you a spot"): the
+   * guest's claim code in deep_link_sub1 (claim-link alphabet, 10 chars).
+   */
+  | { kind: 'rsvp_guest'; code: string }
   | null;
 
 const OPAQUE_SHARE_ID_RE = /^[a-f0-9]{36}$/;
 const CONTENT_SHARE_CODE_RE = /^[0-9A-Za-z]{16}$/;
 const REFERRAL_CODE_RE = /^[0-9A-Za-z][0-9A-Za-z-]{0,63}$/;
 const CLAIM_CODE_RE = /^[0-9A-Za-z]{10}$/;
+// Issue #4508 — claim codes are minted from 0-9 plus Crockford letters.
+const RSVP_GUEST_CODE_RE = /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{10}$/;
 const FRIEND_INVITE_TOKEN_RE = /^[0-9a-f]{32,64}$/;
 // Issue #4261 — friend_share_links / group_invite_links tokens (16 random bytes, hex).
 const LINK_TOKEN_RE = /^[0-9a-f]{32}$/;
@@ -195,6 +202,13 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
       case 'claim':
         if (!CLAIM_CODE_RE.test(sub1)) return null;
         return { kind: 'claim', code: sub1.toUpperCase() };
+
+      case 'rsvp_guest': {
+        // Issue #4508 — never a half-formed code.
+        const code = sub1.toUpperCase();
+        if (!RSVP_GUEST_CODE_RE.test(code)) return null;
+        return { kind: 'rsvp_guest', code };
+      }
 
       default:
         // Unknown discriminator — log, never guess (SPEC §B.2).

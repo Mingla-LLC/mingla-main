@@ -8,6 +8,26 @@
 
 \set ON_ERROR_STOP on
 
+-- This reproduction reapplies historical #3040 migrations that recreate the
+-- cover-video read policy. Preserve the fully replayed policy text so cleanup
+-- restores only that object. Reapplying the whole #4423 batch here used to
+-- overwrite unrelated policies that later migrations intentionally changed
+-- (including #4508's guest-phone privacy rule).
+CREATE TEMP TABLE issue_3040_saved_cover_video_policy AS
+SELECT qual
+FROM pg_policies
+WHERE schemaname = 'public'
+  AND tablename = 'event_cover_video_jobs'
+  AND policyname = 'Authorized managers can read cover video jobs';
+
+DO $saved_policy_exists$
+BEGIN
+  IF (SELECT count(*) FROM issue_3040_saved_cover_video_policy) <> 1 THEN
+    RAISE EXCEPTION '#3040 expected exactly one cover-video read policy to preserve';
+  END IF;
+END
+$saved_policy_exists$;
+
 -- Issue #3040 (B-4, 20271108003040) made identity validation INSERT-only, so
 -- the canonical chain no longer reproduces the production rejection this
 -- suite proves. Rebuild the trigger exactly as production had it when the
@@ -187,8 +207,30 @@ DELETE FROM auth.users WHERE id='30400000-0000-4000-8000-000000000101';
 -- Issue #3801: cover_video_apply_once was rebuilt again (a draft keeps its
 -- revision through a cover video apply); restore that latest definition too.
 \ir ../20271231303801_issue_3801_draft_cover_video_keeps_revision.sql
--- Issue #4423: Wave 4b rewrote a cover video job policy the re-applies above
--- recreate; restore its current form too.
-\ir ../20280707324423_issue_4423_w4b_rls_batch3_commerce.sql
+-- Restore only the cover-video policy the historical #3040 replays recreate.
+-- Its saved terminal text already includes #4423's init-plan wrappers and any
+-- later writer; replaying all 66 policies in that batch clobbers newer truth.
+DO $restore_cover_video_policy$
+DECLARE
+  v_qual text;
+BEGIN
+  SELECT qual INTO STRICT v_qual FROM issue_3040_saved_cover_video_policy;
+  EXECUTE format(
+    'ALTER POLICY %I ON public.event_cover_video_jobs USING (%s)',
+    'Authorized managers can read cover video jobs',
+    v_qual
+  );
+
+  IF (SELECT qual FROM pg_policies
+      WHERE schemaname = 'public'
+        AND tablename = 'event_cover_video_jobs'
+        AND policyname = 'Authorized managers can read cover video jobs')
+     IS DISTINCT FROM v_qual THEN
+    RAISE EXCEPTION '#3040 failed to restore the terminal cover-video read policy';
+  END IF;
+END
+$restore_cover_video_policy$;
+
+DROP TABLE issue_3040_saved_cover_video_policy;
 
 \echo 'issue_3040_deleted_event_backfill_bridge.implementor.pg17: PASS'

@@ -91,7 +91,6 @@ import {
   RsvpOfferingFloatingBar,
   useRsvpOfferingState,
   type RsvpOfferingConfig,
-  type RsvpGuestContact,
   type RsvpPhoneFieldRenderer,
   type MapsAppId,
   type MapsOpenTarget,
@@ -100,9 +99,24 @@ import {
 } from "@mingla/offering-rendering";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
-import { copyAddressText } from "../../utils/copyAddressText";
 import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
+// #4508 P4 — one spoken name for the phone field.
+import { phoneFieldAccessibilityLabel } from "@mingla/phone-input/accessibilityLabel";
 import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
+// issue #4508 R5 — a guest's number: the shared phone field's own parser.
+import { resolveRsvpGuestPhone } from "../../utils/rsvpGuestPhone";
+// issue #4508 R2 — the sheet-aware input for the RSVP guest fields.
+import {
+  RsvpSheetFieldContext,
+  RsvpSheetTextInput,
+  type RsvpSheetFieldHandlers,
+} from "../../components/rsvpGuest/RsvpSheetTextInput";
+// issue #4508 P3 — a claimed guest pass shows as such on the event page.
+import { RsvpGuestPassCard } from "../../components/rsvpGuest/RsvpGuestPassCard";
+import { RsvpPassSheet } from "../../components/activity/RsvpPassSheet";
+import { useMyGoingRsvps } from "../../hooks/useCalendarEntries";
+import type { ConsumerRsvpRow } from "../../services/calendarService";
+import { claimedGuestPassFor } from "../../utils/rsvpGuestPassState";
 
 import {
   BaseBottomSheet,
@@ -127,8 +141,16 @@ import {
 import {
   fetchRsvpMomentum,
   fetchRsvpPassPdf,
+  lookupRsvpGuest,
   submitDeckRsvp,
 } from "../../services/rsvpDeckService";
+import type {
+  RsvpFriendOption,
+  RsvpGuestLookupResult,
+  RsvpGuestPayload,
+} from "@mingla/offering-rendering/rsvpGuestParty";
+import { useUserCircle } from "../../hooks/useUserCircle";
+import { copyAddressText } from "../../utils/copyAddressText";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
 import {
@@ -205,6 +227,12 @@ const SHEET_SNAP_POINTS = glass.bottomSheet.snapPoints as unknown as (
   | string
   | number
 )[];
+/** issue #4508 R2 — where a focused RSVP guest field sits, below the top of
+ * the sheet's scroll area (clears the status bar and the floating close and
+ * share buttons), and the extra content room while it has focus. */
+const RSVP_GUEST_FIELD_TOP = 104;
+const RSVP_GUEST_FIELD_ROOM = 480;
+const RSVP_GUEST_FIELD_REVEAL_DELAY_MS = 300;
 const SHEET_INITIAL_INDEX = 1; // open at the 90% snap (full view)
 
 interface ConsumerEventDetailScreenProps {
@@ -352,6 +380,10 @@ const openMapsForTarget = (
 // reaches here — it renders no copy button at all.
 const copyAddressForTarget = (text: string): Promise<void> =>
   copyAddressText(text);
+
+// issue #4508 — public-submit-rsvp accepts a friend picked from the list as
+// { userId } (contract v2, C1), so the friends route is on.
+const RSVP_FRIEND_GUESTS_SERVER_READY = true;
 
 export default function ConsumerEventDetailScreen({
   seed: seedProp = null,
@@ -526,6 +558,51 @@ export default function ConsumerEventDetailScreen({
   const handleScrollLayout = useCallback((_e: LayoutChangeEvent): void => {
     // No-op: no visibility math (bar persistent).
   }, []);
+
+  // issue #4508 R2 — an RSVP guest field (number or friend search) gained
+  // focus: gorhom raises the sheet with the keyboard (BottomSheetTextInput),
+  // and this scrolls the field to sit RSVP_GUEST_FIELD_TOP below the top of
+  // the sheet's scroll area, so the row under it (live preview, first
+  // friends, Add) stays above the keyboard on a small phone. The field and
+  // the scroll area are measured together, so the sheet's own movement
+  // cancels out. While a guest field has focus the content gets extra room
+  // at the bottom, so a field near the end can still scroll that high.
+  const [rsvpGuestFieldFocused, setRsvpGuestFieldFocused] = useState(false);
+  // issue #4508 P3 — the viewer's claimed guest pass for this event (their own
+  // RSVP, if any, wins). Read from the same going list the Calendar shows.
+  const myGoingRsvps = useMyGoingRsvps(user?.id);
+  const claimedGuestPass = claimedGuestPassFor<ConsumerRsvpRow>(
+    myGoingRsvps.data,
+    seed?.eventId ?? null,
+  );
+  const [guestPassOpen, setGuestPassOpen] = useState(false);
+  const rsvpSheetFieldHandlers = useMemo<RsvpSheetFieldHandlers>(() => ({
+    onFocusChange: setRsvpGuestFieldFocused,
+    reveal: (field: unknown): void => {
+      type Measurable = {
+        measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+        getNativeScrollRef?: () => Measurable | null;
+      };
+      const node = field as Measurable | null;
+      const scroll = detailScrollRef.current as Measurable | null;
+      const host = typeof scroll?.measureInWindow === "function"
+        ? scroll
+        : scroll?.getNativeScrollRef?.() ?? null;
+      if (typeof node?.measureInWindow !== "function" || typeof host?.measureInWindow !== "function") {
+        return;
+      }
+      // After the keyboard and the sheet have started moving (the pattern
+      // PreferencesSheet uses for its sheet field).
+      setTimeout(() => {
+        node.measureInWindow?.((_fx: number, fieldY: number) => {
+          host.measureInWindow?.((_hx: number, hostY: number) => {
+            const target = motionScrollY.current + (fieldY - hostY) - RSVP_GUEST_FIELD_TOP;
+            detailScrollRef.current?.scrollTo({ y: Math.max(target, 0), animated: true });
+          });
+        });
+      }, RSVP_GUEST_FIELD_REVEAL_DELAY_MS);
+    },
+  }), []);
 
   const eventId = seed?.eventId ?? null;
   const ticketsQuery = usePublicEventTickets(
@@ -835,15 +912,37 @@ export default function ConsumerEventDetailScreen({
         pickerPresentation="overlay"
         value={args.rawValue}
         countryCode={args.countryCode}
+        // issue #4508 R5 — a guest's number is anyone's, anywhere: the shared
+        // field's parser. The inviter's own number keeps the #1857 authority.
         onChangePhone={(raw: string) =>
-          args.onChangeRawValue(raw, resolveUserPhoneE164(raw, args.countryCode))}
+          args.onChangeRawValue(
+            raw,
+            args.role === "plus_one"
+              ? resolveRsvpGuestPhone(raw, args.countryCode)
+              : resolveUserPhoneE164(raw, args.countryCode),
+          )}
         onChangeCountry={(iso: string) =>
-          args.onChangeCountry(iso, resolveUserPhoneE164(args.rawValue, iso))}
-        error={args.emptyRequired
-          ? "Required"
-          : args.invalid
-            ? "Select a country and enter a valid phone number."
-            : null}
+          args.onChangeCountry(
+            iso,
+            args.role === "plus_one"
+              ? resolveRsvpGuestPhone(args.rawValue, iso)
+              : resolveUserPhoneE164(args.rawValue, iso),
+          )}
+        // issue #4508 R2 — the guest number lives in the event sheet: the
+        // sheet-aware input, and only the app-wide Done bar (the field's own
+        // iOS bar stacked a second one on top of it).
+        {...(args.role === "plus_one"
+          ? { inputComponent: RsvpSheetTextInput, showDoneAccessory: false }
+          : {})}
+        error={args.errorText !== undefined
+          ? args.errorText
+          : args.emptyRequired
+            ? "Required"
+            : args.invalid
+              ? "Select a country and enter a valid phone number."
+              : null}
+        disableAutofill={args.disableAutofill === true}
+        onSubmitEditing={args.onSubmitEditing}
         disabled={args.disabled}
         theme={rsvpPhoneTheme}
         required={args.required}
@@ -852,7 +951,7 @@ export default function ConsumerEventDetailScreen({
         countryButtonAccessibilityLabel={args.countryCode === null
           ? "Select country"
           : `${args.label} country, ${getCountryByCode(args.countryCode)?.name ?? args.countryCode}, tap to change`}
-        phoneInputAccessibilityLabel={`${args.label} phone number`}
+        phoneInputAccessibilityLabel={phoneFieldAccessibilityLabel(args.label)}
         onBlur={args.onBlur}
       />
     </View>
@@ -963,7 +1062,7 @@ export default function ConsumerEventDetailScreen({
       guestPhone: string;
       guestPhoneCountryIso?: string | null;
       plusCount: number;
-      guests: RsvpGuestContact[];
+      guests: RsvpGuestPayload[];
     }): Promise<RsvpSubmitResult> => {
       if (seed === null) throw new Error("rsvp_not_open");
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1005,9 +1104,41 @@ export default function ConsumerEventDetailScreen({
         confirmationToken: result.confirmationToken,
         credentials: result.credentials,
         anonymousRecovery: result.anonymousRecovery,
+        guests: result.guests,
       };
     },
     [seed, queryClient],
+  );
+
+  // issue #4508 1.2a — the live match under the guest number field.
+  const rsvpGuestLookup = useCallback(
+    async (phone: string): Promise<RsvpGuestLookupResult> => {
+      if (seed === null) throw new Error("unavailable");
+      return lookupRsvpGuest(seed.eventId, phone);
+    },
+    [seed],
+  );
+  // issue #4508 1.4 — "Or from your friends" reads the already-loaded circle
+  // (no network call per keystroke). Friends and close friends only. A picked
+  // friend is sent as { userId }; the server resolves their number.
+  const rsvpFriendGuestsReady = RSVP_FRIEND_GUESTS_SERVER_READY;
+  const rsvpCircle = useUserCircle(
+    rsvpFriendGuestsReady && user !== null ? user.id : null,
+  );
+  const rsvpGuestFriends = useMemo<RsvpFriendOption[] | undefined>(
+    () =>
+      rsvpFriendGuestsReady && user !== null
+        ? rsvpCircle.people
+            .filter((p) => p.tier === "close" || p.tier === "friend")
+            .map((p) => ({
+              userId: p.userId,
+              displayName: p.displayName?.trim() || p.username || "Friend",
+              username: p.username,
+              avatarUrl: p.avatarUrl,
+              closeFriend: p.tier === "close",
+            }))
+        : undefined,
+    [rsvpFriendGuestsReady, user, rsvpCircle.people],
   );
 
   // handleBuy ported VERBATIM (behavior) from EBES handleBuy — same buyer
@@ -1434,6 +1565,14 @@ export default function ConsumerEventDetailScreen({
     renderPhoneField: renderRsvpPhoneField,
     onDownloadPass: handleDownloadRsvpPass,
     onSubmit: rsvpOnSubmit,
+    guestLookup: rsvpGuestLookup,
+    // issue #4508 R2 — the friends search field is sheet-aware too.
+    guestInputComponent: RsvpSheetTextInput,
+    guestFriends: rsvpGuestFriends,
+    guestFriendsLoading: rsvpCircle.isLoading && rsvpGuestFriends !== undefined,
+    guestFriendsError: rsvpCircle.isError ? "Couldn't load your friends." : null,
+    onRetryGuestFriends: () => void rsvpCircle.refetch(),
+    onCopyText: copyAddressText,
     onChipIn: handleChipIn,
     onOpenBrand: (slug: string) => router.push(`/b/${slug}` as never),
     onOpenMaps: openMapsForTarget,
@@ -1864,9 +2003,17 @@ export default function ConsumerEventDetailScreen({
           style={styles.nativeScroll}
           contentContainerStyle={[
             styles.nativeScrollContent,
-            { paddingBottom: scrollPaddingBottom },
+            {
+              paddingBottom: rsvpGuestFieldFocused
+                ? scrollPaddingBottom + RSVP_GUEST_FIELD_ROOM
+                : scrollPaddingBottom,
+            },
           ]}
           showsVerticalScrollIndicator={false}
+          // issue #4508 P3 / R2 — with the keyboard up, a tap on a button in
+          // the sheet (Add, a friend, a country row in the picker this sheet
+          // hosts) runs on the first tap instead of only closing the keyboard.
+          keyboardShouldPersistTaps="handled"
           onScroll={handleScroll}
           scrollEventThrottle={16}
           onLayout={handleScrollLayout}
@@ -1980,6 +2127,14 @@ export default function ConsumerEventDetailScreen({
               />
               </>
             ) : (
+              <RsvpSheetFieldContext.Provider value={rsvpSheetFieldHandlers}>
+              {claimedGuestPass !== null ? (
+                <RsvpGuestPassCard
+                  invitedBy={claimedGuestPass.invitedBy}
+                  palette={palette}
+                  onOpenPass={() => setGuestPassOpen(true)}
+                />
+              ) : null}
               <RsvpOfferingBody
                 event={rsvpPublicEvent}
                 brand={rsvpBrand}
@@ -2001,8 +2156,16 @@ export default function ConsumerEventDetailScreen({
                 onCopyAddress={copyAddressForTarget}
                 staticMapUrl={rsvpBodyStaticMapUrl}
                 state={rsvpState}
+                // #4508 round 8: a claimed guest holds a pass, so the page shows
+                // that pass (the card above) instead of the RSVP adder and the
+                // Going / Maybe / Can't go box, as for an attendee with a pass.
+                hideDecisionBox={claimedGuestPass !== null}
+                // #4508 round 9: and the address the pass shows, never
+                // "Address shared after you RSVP".
+                passHolderAddress={claimedGuestPass?.venue.locationText ?? null}
                 testID="orch-1163-consumer-rsvp-body"
               />
+              </RsvpSheetFieldContext.Provider>
             )}
           </View>
         </BottomSheetScrollView>
@@ -2054,7 +2217,7 @@ export default function ConsumerEventDetailScreen({
             the SAME bottom-overlay slot — BYTE-IDENTICAL wrapper to the event branch
             (styles.nativeFloatWrap, zIndex:60, bottom:floatBarBottom) so the z-order
             + float positioning match the standard event page on consumer too. */}
-        {isRsvp ? (
+        {isRsvp && claimedGuestPass !== null ? null : isRsvp ? (
           <View
             style={[styles.nativeFloatWrap, { bottom: floatBarBottom }]}
             pointerEvents="box-none"
@@ -2089,6 +2252,14 @@ export default function ConsumerEventDetailScreen({
           </View>
         ) : null}
       </BaseBottomSheet>
+
+      {claimedGuestPass !== null ? (
+        <RsvpPassSheet
+          visible={guestPassOpen}
+          onClose={() => setGuestPassOpen(false)}
+          row={claimedGuestPass}
+        />
+      ) : null}
 
       {/* Reserve opens the cart DIRECTLY (NEVER EBES). Sibling BaseBottomSheet
           root in the same fragment. The checkout request is byte-identical to the

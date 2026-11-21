@@ -18,7 +18,9 @@ export type RsvpTemplateKey =
   | "rsvp_waitlist_promoted"
   | "rsvp_approved"
   | "rsvp_denied"
-  | "rsvp_removed";
+  | "rsvp_removed"
+  // Issue #4508 2.1 — one reminder to a brought guest who has not claimed.
+  | "rsvp_guest_reminder";
 
 export interface RsvpCopy {
   title: string;
@@ -131,6 +133,18 @@ export function copyFor(
         body: "The host removed you from this event.",
         sms: fitTitleToSegment(
           (title) => `Mingla: The host removed you from ${title}.`,
+          event,
+        ),
+      };
+    // Issue #4508 — reached only when the guest context could not be read;
+    // the worker normally renders this row from guestInvite.ts.
+    case "rsvp_guest_reminder":
+      return {
+        title: `Your pass for ${event} is waiting`,
+        body: "Your pass is waiting in the Mingla app.",
+        sms: fitTitleToSegment(
+          (title) =>
+            `Mingla: your pass for ${title} tomorrow is waiting: ${smsLink}`,
           event,
         ),
       };

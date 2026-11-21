@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Не удалось убрать. Попробуйте ещё раз.",
   "brand_guests_leave_title": "Выйти из «Гости {{brand}}»?",
   "brand_guests_leave_body": "Новые бронирования не добавят вас снова. Вернуться можно из бронирования.",
-  "brand_guests_left_toast": "Вы вышли из «Гости {{brand}}». Вернуться можно из бронирования."
+  "brand_guests_left_toast": "Вы вышли из «Гости {{brand}}». Вернуться можно из бронирования.",
+  "af_send_yourself_title": "Отправьте и сами",
+  "af_send_yourself_body": "Сообщение от вас работает лучше всего. Та же ссылка, что и в нашем SMS.",
+  "af_copy_message": "Копировать сообщение",
+  "af_message_copied": "Сообщение скопировано"
 }

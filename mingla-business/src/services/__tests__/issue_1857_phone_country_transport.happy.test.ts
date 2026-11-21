@@ -64,12 +64,7 @@ describe("#1857 business transport country authority", () => {
       guestPhone: "0712345678",
       guestPhoneCountryIso: "NG",
       guests: [
-        {
-          name: "Plus One",
-          email: "plus@example.com",
-          phone: "02079460018",
-          phoneCountryIso: "GB",
-        },
+        { phone: "02079460018", phoneCountryIso: "GB" },
       ],
       plusCount: 1,
     });

@@ -71,7 +71,8 @@
     "deleteSessionMsg": "Weet je zeker dat je \"{{name}}\" wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt en alle kaarten, stemmen en discussies worden permanent verwijderd.",
     "leaveSessionTitle": "Bord verlaten",
     "leaveSessionMsg": "Weet je zeker dat je \"{{name}}\" wilt verlaten?",
-    "namePlaceholder": "Voer sessienaam in"
+    "namePlaceholder": "Voer sessienaam in",
+    "sessionShareMessage": "Ik heb je toegevoegd aan \"{{name}}\" op Mingla. Doe hier mee: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Discussie",

@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Não foi possível remover. Tente novamente.",
   "brand_guests_leave_title": "Sair de Convidados de {{brand}}?",
   "brand_guests_leave_body": "Novas reservas não vão adicioná-lo de novo. Você pode voltar pela sua reserva.",
-  "brand_guests_left_toast": "Você saiu de Convidados de {{brand}}. Pode voltar pela sua reserva."
+  "brand_guests_left_toast": "Você saiu de Convidados de {{brand}}. Pode voltar pela sua reserva.",
+  "af_send_yourself_title": "Envie você também",
+  "af_send_yourself_body": "Uma mensagem sua funciona melhor. O mesmo link do nosso SMS.",
+  "af_copy_message": "Copiar mensagem",
+  "af_message_copied": "Mensagem copiada"
 }

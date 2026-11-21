@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "ลบไม่สำเร็จ ลองอีกครั้ง",
   "brand_guests_leave_title": "ออกจากผู้เข้าร่วม {{brand}} ไหม",
   "brand_guests_leave_body": "การจองใหม่จะไม่เพิ่มคุณกลับเข้ามา คุณกลับเข้าร่วมได้จากการจองของคุณ",
-  "brand_guests_left_toast": "คุณออกจากผู้เข้าร่วม {{brand}} แล้ว กลับเข้าร่วมได้จากการจองของคุณ"
+  "brand_guests_left_toast": "คุณออกจากผู้เข้าร่วม {{brand}} แล้ว กลับเข้าร่วมได้จากการจองของคุณ",
+  "af_send_yourself_title": "ส่งเองด้วย",
+  "af_send_yourself_body": "ข้อความจากคุณได้ผลที่สุด ลิงก์เดียวกับ SMS ของเรา",
+  "af_copy_message": "คัดลอกข้อความ",
+  "af_message_copied": "คัดลอกข้อความแล้ว"
 }

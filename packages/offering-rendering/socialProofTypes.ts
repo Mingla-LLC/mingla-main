@@ -91,6 +91,19 @@ export type PeerGuestRow = {
   isMinglaUser: boolean;
   isAnonymous: boolean;
   partySize: number;
+  /**
+   * issue #4508 D-2.4 — on a claimed plus-one's own row (shown only once they
+   * claimed and while their Show me as going is on): the inviter's first
+   * name, when the inviter is someone this viewer may see by name.
+   * Absent/null ⇒ nothing is shown.
+   */
+  broughtByName?: string | null;
+  /**
+   * issue #4508 D-2.4 — on an inviter's row: how many people they are
+   * bringing who have not claimed yet (never named publicly). Already
+   * inside partySize; shown as "+N guests". Absent/0 ⇒ nothing is shown.
+   */
+  unclaimedGuestCount?: number;
 };
 
 /**

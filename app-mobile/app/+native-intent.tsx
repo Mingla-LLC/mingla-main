@@ -113,12 +113,16 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "e",
   "earnings",
   "enquiry",
+  // #4508 2.3 — an event by id (the friend-is-going push).
+  "event",
   "exp",
   "local",
   "p",
   // #3872 — Payout account (Earnings and Local link here).
   "payout",
   "purchases",
+  // #4508 — an RSVP guest's claim screen ("{Inviter} saved you a spot").
+  "rsvp-guest",
   "s",
   "stay",
   // #4382 — Help & Support and support request threads.

@@ -14,6 +14,14 @@ const PATHS = {
   pickerBehavior: "packages/phone-input/pickerPresentation.ts",
   phoneDeclaration: "packages/card-identity/phone.d.mts",
   rsvp: "packages/offering-rendering/RsvpOfferingBody.tsx",
+  // #4508: plus-ones are one number field plus a party; the per-guest phone
+  // fields this gate used to pin are gone.
+  // #4508 (Host web bundle split): the guest payload builder moved to
+  // rsvpGuestCopy.ts and the guest number field to the lazy party block.
+  // #4508 round 9 (boot trim): each guest's payload is set by the on-demand
+  // guest model (guestPayloadOf), so the transport lives there now.
+  rsvpParty: "packages/offering-rendering/rsvpGuestPartyModel.ts",
+  rsvpPartyBlock: "packages/offering-rendering/RsvpGuestPartyBlock.tsx",
   stay: "packages/brand-rendering/StayGuestBooking.tsx",
   rsvpEdge: "supabase/functions/public-submit-rsvp/index.ts",
   stayEdge: "supabase/functions/stay-reservations/index.ts",
@@ -52,10 +60,10 @@ export function violations(files) {
   need(files.pickerBehavior, 'return platform !== "web"', "no web haptics", failures);
   need(files.pickerBehavior, 'return countryWasSelected ? "phone" : "country"', "picker close focus", failures);
   need(files.phoneDeclaration, "export function resolveUserPhoneE164(", "declaration adapter append", failures);
-  need(files.rsvp, "phoneCountryIso: null", "RSVP independent state", failures);
-  need(files.rsvp, "key={g.id}", "RSVP stable identity", failures);
-  need(files.rsvp, "phoneCountryIso: g.phoneCountryIso", "RSVP transport", failures);
-  need(files.rsvp, "markRsvpPhoneTouchedById(rows, g.id)", "RSVP blur isolation", failures);
+  need(files.rsvpPartyBlock, "p.setNumberCountry(isoCode)", "RSVP independent state", failures);
+  need(files.rsvpPartyBlock, "key={guest.key}", "RSVP stable identity", failures);
+  need(files.rsvpParty, "{ phone: g.phone, phoneCountryIso: g.phoneCountryIso }", "RSVP transport", failures);
+  need(files.rsvpPartyBlock, "disableAutofill: true", "RSVP guest number never offers the own number", failures);
   need(files.rsvp, "showValidationErrors || primaryPhoneTouched", "RSVP primary blur", failures);
   forbid(files.rsvp, 'defaultPhoneCountry ?? "US"', "RSVP inferred default", failures);
   need(files.stay, "...(cleanPhone && phoneCountryIso ? { phoneCountryIso } : {})", "Stay transport", failures);
@@ -123,7 +131,7 @@ function selfTest() {
   if (baseline.length) throw new Error(`baseline invalid:\n${baseline.join("\n")}`);
   const mutations = [
     ["adapter", "if (STRICT_E164.test(trimmed)) return trimmed", "if (false) return trimmed"],
-    ["rsvp", "key={g.id}", "key={i}"],
+    ["rsvpPartyBlock", "key={guest.key}", "key={String(index)}"],
     ["rsvpEdge", "const PHONE_RE = /^\\+[1-9][0-9]{7,14}$/", "const PHONE_RE = /digits/"],
     ["reservationEdge", "buyer_phone_country_iso: buyerPhoneCountryIso", "buyer_phone_country_iso: null"],
     ["migration", "v_session.buyer_phone_country_iso", "NULL::text"],
@@ -132,7 +140,9 @@ function selfTest() {
     ["migration", "DROP FUNCTION public.pg_create_guest_reservation(", "-- old overload retained\n--"],
     ["pickerBehavior", 'return platform !== "web"', "return true"],
     ["pickerBehavior", 'if (input.key === "Escape") return "close"', "if (false) return null"],
-    ["rsvp", "markRsvpPhoneTouchedById(rows, g.id)", "rows"],
+    ["rsvpParty", "{ phone: g.phone, phoneCountryIso: g.phoneCountryIso }", "{ phone: g.phone, phoneCountryIso: null }"],
+    ["rsvpPartyBlock", "disableAutofill: true", "disableAutofill: false"],
+    ["rsvpPartyBlock", "p.setNumberCountry(isoCode)", "p.setNumberCountry(null)"],
     ["gate", `${LOCAL_DECLARATION_PREFIX}I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 | issue #1857 |`, "phone-country declaration removed"],
   ];
   for (const fingerprint of [

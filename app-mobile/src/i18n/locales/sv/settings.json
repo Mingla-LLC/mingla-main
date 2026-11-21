@@ -51,7 +51,9 @@
         "brand_offering_invite": "Inbjudningar från ställen du följer",
         "brand_offering_invite_hint": "När ett ställe eller en värd bjuder in dig till något."
       }
-    }
+    },
+    "friends_going": "Vänner som går ut",
+    "friends_going_hint": "När en nära vän ska på ett evenemang"
   },
   "quiet_hours": {
     "title": "Quiet Hours",

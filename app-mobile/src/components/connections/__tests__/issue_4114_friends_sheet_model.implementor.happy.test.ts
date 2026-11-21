@@ -76,7 +76,13 @@ Deno.test("M-1 Add a friend: found → by id, not on Mingla → by phone, the re
 });
 
 Deno.test("M-2 the outcome: texted only on sent; the limit flag is carried", () => {
-  assertEquals(addFriendOutcome({ tier: 3, smsStatus: "sent" }), { kind: "invite_texted", pairingLimitReached: false }, "sent → Invite texted");
+  assertEquals(addFriendOutcome({ tier: 3, smsStatus: "sent" }), { kind: "invite_texted", inviteLink: null, pairingLimitReached: false }, "sent → Invite texted");
+  // #4508 2.2 — a texted invite keeps its link for "Send it yourself too".
+  assertEquals(
+    addFriendOutcome({ tier: 3, smsStatus: "sent", inviteLink: "https://go.usemingla.com/w36m/x" }),
+    { kind: "invite_texted", inviteLink: "https://go.usemingla.com/w36m/x", pairingLimitReached: false },
+    "sent keeps the link",
+  );
   assertEquals(
     addFriendOutcome({ tier: 3, smsStatus: "failed", inviteLink: "https://go.usemingla.com/w36m?x=1" }),
     { kind: "invite_not_texted", inviteLink: "https://go.usemingla.com/w36m?x=1", pairingLimitReached: false },

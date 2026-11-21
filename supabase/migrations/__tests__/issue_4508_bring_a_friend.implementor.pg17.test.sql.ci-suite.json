@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4508_bring_a_friend.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4508-bring-a-friend-implementor",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}
