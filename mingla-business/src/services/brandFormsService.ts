@@ -458,14 +458,14 @@ async function fetchEventNames(
   if (eventIds.length === 0) return out;
   const supabase = await getSupabase();
   const { data, error } = await supabase
-    // orch-strict-grep-allow events-type-filter — #4514: reads only the name and kind of events a form is attached to; a form attaches to any offering kind (RSVP, event, experience, trip) by design.
+    // orch-strict-grep-allow events-type-filter — #4514: reads only the title and kind of events a form is attached to; a form attaches to any offering kind (RSVP, event, experience, trip) by design.
     .from("events")
-    .select("id, name, event_type")
+    .select("id, title, event_type")
     .in("id", [...eventIds]);
   if (error !== null) return failFrom(error, "Couldn't load the pages this form is on. Try again.");
   for (const row of (data ?? []) as unknown[]) {
     if (!isRecord(row) || typeof row.id !== "string") continue;
-    out.set(row.id, { name: strOrNull(row.name), type: strOrNull(row.event_type) });
+    out.set(row.id, { name: strOrNull(row.title), type: strOrNull(row.event_type) });
   }
   return out;
 }
