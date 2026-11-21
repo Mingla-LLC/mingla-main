@@ -86,7 +86,6 @@
 // v39 (#4453 PR 2): booking lock — every website button goes to this brand's
 // own Mingla pages or a page of the site; question forms never take bookings.
 import { SITE_WORKSPACE_PROMPT_RULES } from "./agentSiteWorkspaceTools.ts";
-import { ariHelpVideoCatalogueLines } from "./ariHelpVideos.ts";
 
 // v40 (#4453 Website workspace): get_site_workspace, propose_site_change_set
 // and propose_website_team_request, and the workspace rules a turn sent from
@@ -102,21 +101,6 @@ export const ARI_ESCALATION_GUIDANCE = `CHANGE OF APPROACH — this host is stuc
 - Answer what they asked in one or two sentences from the search_mingla_guide result: name the exact screen and the next tap.
 - Do not say you can't do it unless the guide says it is not available; never repeat an earlier answer word for word.
 - Do not offer to contact anyone yourself: the app adds the "Ask the Mingla team" option under your reply.`;
-/**
- * #4420 (part 2 §4.4) — added to the system instruction only on a turn the
- * Host app's Help & Support screen sends (workflow_context "help_support").
- * Every other turn's prompt is unchanged.
- */
-export function ariHelpSupportPromptBlock(): string {
-  return `\n\nHELP & SUPPORT — this turn comes from the Host app's Help & Support screen:
-- Answer from the Mingla Feature Guide (search_mingla_guide) and the HELP VIDEOS list below. Keep it short.
-- Offer a video only when one on the list matches the question: call show_help_video with its slug. The app shows the card and its link; never write a help video link or slug in your reply.
-- Never describe or promise a video that is not on the list.
-- When you are unsure, or the host needs a person (a payment, an account problem, something broken), say they can tap "Talk to a person" below.
-HELP VIDEOS (slug — title):
-${ariHelpVideoCatalogueLines()}`;
-}
-
 /**
  * #3355 Wave B (B3) — Ari's capability index: one `- name — what it does`
  * line per registered tool. It is no longer pasted into the system prompt
@@ -305,7 +289,6 @@ export const ARI_CAPABILITY_INDEX = `CAPABILITIES (your tools):
 - inspect_public_social_profile — inspect a public social profile when the platform permits public access
 - search_capabilities — search Ari's live Mingla capability map before claiming something is unavailable
 - search_mingla_guide — search the Mingla Feature Guide for what Mingla can do, who can use it, the exact steps and limits (status decides how to say it)
-- show_help_video — show one Mingla help video from the help catalogue as a card (Help & Support only)
 - request_tools — load only the bounded toolsets needed for the current step
 - get_onboarding_plan — read the caller's resumable onboarding plan
 - update_onboarding_plan — create or advance the caller's versioned onboarding plan

@@ -24,20 +24,6 @@ import {
 import { assertCanCollect, isUuid } from "../agentToolHelpers.ts";
 import { DOMAIN_READ_ONLY, MONEY_CONFIRM_TOOLS } from "../agentDomainTools.ts";
 import type { BrandSummary } from "../agentSystemPrompt.ts";
-import {
-  ARI_HELP_SUPPORT_ONLY_TOOLS,
-  ariHelpSupportToolAllowed,
-} from "../ariHelpVideos.ts";
-
-/**
- * Screen-scoped tools: offered only when the chat itself declares its screen,
- * so they are deliberately NOT in the capability map that search_capabilities
- * reads on every chat. show_help_video is offered only when the chat declares
- * workflow_context "help_support" (decision on #4420, 2026-11-21). Exactly
- * this list; the test below fails if a name here is not actually gated off
- * every other chat, so this can never hide an ordinary tool.
- */
-const SCREEN_SCOPED_TOOLS: readonly string[] = ["show_help_video"];
 
 function brand(id: string, name: string): BrandSummary {
   return {
@@ -78,37 +64,13 @@ Deno.test("#3355 every registered tool is discoverable through Ari's capability 
   assertStringIncludes(caps, "search_capabilities");
   assertStringIncludes(caps, "request_tools");
   for (const tool of AGENT_TOOLS) {
-    const findable = searchAriCapabilities(tool.name, 20).some((match) =>
-      match.name === tool.name
-    );
-    if (SCREEN_SCOPED_TOOLS.includes(tool.name)) {
-      // A screen-scoped tool must stay out of the map (no ordinary chat can
-      // discover it)...
-      assert(!findable, `${tool.name} is screen-scoped but discoverable`);
-      continue;
-    }
-    assert(findable, `missing searchable capability for ${tool.name}`);
-  }
-});
-
-Deno.test("#4420 the screen-scoped exemption is exactly show_help_video, and it is really gated", () => {
-  assertEquals([...SCREEN_SCOPED_TOOLS], ["show_help_video"]);
-  for (const name of SCREEN_SCOPED_TOOLS) {
-    // ...it is a registered tool...
-    assert(findTool(name), `${name} is not a registered tool`);
-    // ...and the help_support gate removes it from every other chat.
     assert(
-      ARI_HELP_SUPPORT_ONLY_TOOLS.has(name),
-      `${name} is exempt but not screen-gated`,
+      searchAriCapabilities(tool.name, 20).some((match) =>
+        match.name === tool.name
+      ),
+      `missing searchable capability for ${tool.name}`,
     );
-    assertEquals(ariHelpSupportToolAllowed(name, false), false, name);
-    assertEquals(ariHelpSupportToolAllowed(name, true), true, name);
   }
-  // Every gated tool is on the exemption list, and nothing else is.
-  assertEquals(
-    [...ARI_HELP_SUPPORT_ONLY_TOOLS].sort(),
-    [...SCREEN_SCOPED_TOOLS].sort(),
-  );
 });
 
 Deno.test("#1970 happy: richer prompt context injects offerings + payout + summary", () => {

@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-10-31T03:20:00Z",
-    "registered_tool_count": 200,
-    "capability_count": 212,
+    "registered_tool_count": 199,
+    "capability_count": 211,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 199,
+      "registered_unverified": 198,
       "broken": 0,
       "guided_handoff": 8,
       "unsupported": 0,
@@ -9114,41 +9114,6 @@
       ],
       "confidence": "high",
       "verified_at": "2026-11-10"
-    },
-    {
-      "id": "ari.capabilities.show_help_video",
-      "domain": "capabilities",
-      "outcome": "Show one Mingla help video from the help catalogue as a card on the Help & Support screen",
-      "safety": "read",
-      "required_role": "self",
-      "confirmation": "none",
-      "surfaces": ["business_ios", "business_android", "business_web"],
-      "provenance": { "phase": "post_1986", "introduced_by": "issue_4420" },
-      "owners": {
-        "ui": ["mingla-business/src/screens/ari/AriChatScreen.tsx"],
-        "source": [
-          {
-            "path": "supabase/functions/_shared/agentAri10xTools.ts",
-            "symbol": "const showHelpVideo"
-          }
-        ]
-      },
-      "ari_tool": "show_help_video",
-      "status": "registered_unverified",
-      "evidence": [
-        {
-          "tier": "regression",
-          "sha": "ca1c7858dcea3f8e264fad4047440ded597bd0c7",
-          "reference": "issue_4420_ari_help_videos.implementor.test.ts: catalogue parity, unknown-slug refusal and the help_support gate (lands in the commit after this SHA on branch 4420-polish-pass)",
-          "guard_role": "implementor"
-        }
-      ],
-      "owning_issues": [4420],
-      "blockers": [
-        "No exact-revision runtime evidence on all required Business surfaces"
-      ],
-      "confidence": "high",
-      "verified_at": "2026-11-21"
     },
     {
       "id": "ari.capabilities.request_tools",

@@ -25,11 +25,6 @@ import {
 import { SITE_AGENT_TOOLS } from "./agentSiteTools.ts";
 import { READINESS_TOOLS } from "./agentReadinessTools.ts";
 import { STRIPE_SUPPORTED_COUNTRIES } from "./stripeSupportedCountries.ts";
-import {
-  helpVideoCard,
-  helpVideoForAri,
-  SHOW_HELP_VIDEO_TOOL,
-} from "./ariHelpVideos.ts";
 // #3355: the payout-country list lives in a leaf so the flow engine's money
 // gate reads it without importing these tools (and their web research).
 import {
@@ -780,41 +775,6 @@ function guideList(value: unknown): string[] {
       .slice(0, 12)
     : [];
 }
-
-// #4420 (part 2 §4.4): one help video from the generated catalogue, as a
-// card. Offered only on a help_support turn (ariHelpVideos.ts gate). The
-// card's slug, title and URL come from the catalogue, never from the model's
-// words; a slug outside it is refused and no card is shown
-// (I-4420-ARI-VIDEO-FROM-CATALOGUE).
-const showHelpVideo: AgentToolDefinition = {
-  name: "show_help_video",
-  description:
-    "Show the host one Mingla help video as a card they can open. Use only a slug from the HELP VIDEOS list, and only when that video matches what they asked. Never describe a video that is not on the list.",
-  parameters: {
-    type: "object",
-    additionalProperties: false,
-    required: ["slug"],
-    properties: {
-      slug: { type: "string", minLength: 1, maxLength: 120 },
-    },
-  },
-  executor: (args) => {
-    const video = helpVideoForAri(args.slug);
-    if (!video) {
-      return Promise.reject(
-        new ToolError(
-          "HELP_VIDEO_UNKNOWN",
-          "That help video is not in the Mingla help catalogue.",
-          {
-            user_reason: "Ari doesn't have a help video for that.",
-            next_step: null,
-          },
-        ),
-      );
-    }
-    return Promise.resolve(helpVideoCard(video));
-  },
-};
 
 const searchMinglaGuide: AgentToolDefinition = {
   name: "search_mingla_guide",
@@ -2290,7 +2250,6 @@ export const ARI_10X_TOOLS: AgentToolDefinition[] = [
   inspectPublicSocialProfile,
   searchCapabilities,
   searchMinglaGuide,
-  showHelpVideo,
   requestTools,
   getOnboardingPlan,
   updateOnboardingPlan,
@@ -2317,7 +2276,6 @@ export const ARI_10X_READ_ONLY = new Set([
   "inspect_public_social_profile",
   "search_capabilities",
   "search_mingla_guide",
-  SHOW_HELP_VIDEO_TOOL,
   "request_tools",
   "get_onboarding_plan",
   "list_memory_notes",

@@ -146,7 +146,6 @@ export const TOOL_CAPABILITY_KEYS: Readonly<Record<string, string>> = Object
     request_account_deletion: "account-delete",
     create_support_ticket: "help-support",
     manage_support_inbox: "help-support",
-    show_help_video: "help-support",
     get_brand_site: "sites-brand-website",
     get_site_plan: "sites-brand-website",
     create_site_draft: "sites-brand-website",
