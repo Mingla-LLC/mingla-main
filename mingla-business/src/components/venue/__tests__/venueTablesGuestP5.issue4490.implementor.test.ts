@@ -94,6 +94,15 @@ describe("the seat map", () => {
     expect(booth.holdTotal).toBe("N80,000 to hold it for 4");
     expect(pickMoneyLines(option({ holdPerGuestMinor: null, holdMinor: null }), 4, naira)).toEqual({ hold: null, minSpend: null, holdTotal: null });
   });
+  it("calls a flat or minimum-spend-share charge an amount to hold this table", () => {
+    const flat = option({ holdPerGuestMinor: null, holdMinor: 2500000 });
+    expect(tableA11y(flat, false, naira)).toContain("N25,000 to hold this table");
+    expect(pickMoneyLines(flat, 4, naira)).toEqual({
+      hold: "Comes off your bill.",
+      holdTotal: "N25,000 to hold this table",
+      minSpend: null,
+    });
+  });
   it("names a joined pair", () => {
     expect(optionTitle(option({ kind: "join", names: ["B1", "B2"], capacity: 8 }))).toBe("B1 + B2 · joined, seats 8");
   });

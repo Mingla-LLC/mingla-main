@@ -468,6 +468,9 @@ describe("#3387 — the guest is told why, not the generic failure", () => {
         guestReservationFailureCopy("deposit_amount_unconfigured"),
       ),
     ).resolves.toMatch(/smaller party or contact the venue/);
+    expect(guestReservationFailureCopy("amount_too_large")).toBe(
+      "This table's deposit is above what one payment can take. Ask the venue.",
+    );
   });
 
   test("the public reservation form uses that mapping on a failed create", () => {

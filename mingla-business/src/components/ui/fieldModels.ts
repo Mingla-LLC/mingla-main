@@ -155,6 +155,8 @@ export const FULL_DAY_MINUTES = 1440;
 export interface SelectOption<T> {
   value: T;
   label: string;
+  disabled?: boolean;
+  helper?: string;
 }
 
 /** "15 min", "1 hour", "1 hour 30 min", "2 hours", "Full day". */

@@ -38,6 +38,10 @@ export function venueWriteErrorCopy(
       return `Turn on ${joinFeatureLabels(keysFrom(detail))} first.`;
     case "feature_has_dependents":
       return `Turn off ${joinFeatureLabels(keysFrom(detail))} first.`;
+    case "table_deposit_uses_min_spend": {
+      const count = Math.max(1, Number(detail) || 1);
+      return `${count} ${count === 1 ? "table takes" : "tables take"} a share of the minimum spend as a deposit. Change ${count === 1 ? "its" : "their"} deposit first.`;
+    }
     case "feature_not_available":
       return "This feature isn't available yet.";
     case "feature_managed":

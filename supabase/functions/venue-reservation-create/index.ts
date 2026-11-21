@@ -75,7 +75,7 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
-import { tablePickStatus } from "./tablePick.ts";
+import { tableHoldCharge, tablePickStatus } from "./tablePick.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
 import { mintClaimLink } from "../_shared/claimLink.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
@@ -549,8 +549,11 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     if (termsError !== null) {
       return jsonResponse({ error: "table_not_found" }, 404);
     }
-    const hold = Number((terms as Record<string, unknown> | null)?.holdMinor);
-    tableHoldCents = Number.isFinite(hold) && hold > 0 ? Math.round(hold) : 0;
+    const hold = tableHoldCharge(
+      (terms as Record<string, unknown> | null)?.holdMinor,
+    );
+    if (hold.error !== null) return jsonResponse({ error: hold.error }, 409);
+    tableHoldCents = hold.amountMinor;
   }
 
   // ── (3) Evaluate the deposit_threshold capacity rule (fee may be REQUIRED). ──

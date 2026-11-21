@@ -3,7 +3,7 @@
  * words and the payload `issue_4490_manage_table` takes (only changed fields
  * on an update). Unit-tested.
  */
-import type { TableFields, VenueFloorTable } from "../../../../services/venueFloorService";
+import type { TableDepositMode, TableFields, VenueFloorTable } from "../../../../services/venueFloorService";
 import type { TableShape } from "./floorModel";
 
 export interface TableDraft {
@@ -14,8 +14,10 @@ export interface TableDraft {
   /** 1 = any party. */
   minParty: number;
   minSpendMinor: number | null;
-  holdOn: boolean;
+  depositMode: TableDepositMode;
   holdPerGuestMinor: number | null;
+  holdPerTableMinor: number | null;
+  holdShareBps: number | null;
   guestPickable: boolean;
   combinable: boolean;
   joinsWith: string[];
@@ -36,8 +38,10 @@ export function tableDraftFrom(
       capacity: defaults.like?.capacity ?? 4,
       minParty: 1,
       minSpendMinor: null,
-      holdOn: false,
+      depositMode: "venue_rule",
       holdPerGuestMinor: null,
+      holdPerTableMinor: null,
+      holdShareBps: null,
       guestPickable: true,
       combinable: false,
       joinsWith: [],
@@ -52,8 +56,10 @@ export function tableDraftFrom(
     capacity: table.capacity,
     minParty: table.minParty ?? 1,
     minSpendMinor: table.minSpendMinor > 0 ? table.minSpendMinor : null,
-    holdOn: table.depositPerGuestMinor !== null && table.depositPerGuestMinor > 0,
+    depositMode: table.depositMode,
     holdPerGuestMinor: table.depositPerGuestMinor,
+    holdPerTableMinor: table.depositFlatMinor,
+    holdShareBps: table.depositShareBps,
     guestPickable: table.guestPickable,
     combinable: table.combinable,
     joinsWith: [...table.joinsWith],
@@ -75,7 +81,17 @@ export function tableDraftIssues(d: TableDraft): TableDraftIssues {
     name: name.length === 0 ? "Give the table a name." : name.length > 60 ? "Keep the name to 60 characters." : null,
     space: d.spaceId === null ? "Pick the space this table is in." : null,
     minParty: d.minParty > d.capacity ? "The smallest party can't be more than the seats." : null,
-    hold: d.holdOn && (d.holdPerGuestMinor === null || d.holdPerGuestMinor <= 0) ? "Enter the hold per guest, or switch the hold off." : null,
+    hold:
+      d.depositMode === "per_guest" && (d.holdPerGuestMinor === null || d.holdPerGuestMinor <= 0)
+        ? "Enter an amount above zero."
+        : d.depositMode === "per_table" && (d.holdPerTableMinor === null || d.holdPerTableMinor <= 0)
+          ? "Enter an amount above zero."
+          : d.depositMode === "min_spend_share" && (d.minSpendMinor === null || d.minSpendMinor <= 0)
+            ? "Set a minimum spend first."
+            : d.depositMode === "min_spend_share"
+                && (d.holdShareBps === null || d.holdShareBps < 500 || d.holdShareBps > 10000 || d.holdShareBps % 500 !== 0)
+              ? "Pick a share from 5% to 100%."
+              : null,
   };
 }
 
@@ -94,7 +110,10 @@ export function tablePayload(d: TableDraft, saved: VenueFloorTable | null, opts:
     guestPickable: d.guestPickable,
     combinable: d.combinable,
     accessible: d.accessible,
-    depositPerGuestMinor: d.holdOn ? (d.holdPerGuestMinor ?? 0) : null,
+    depositMode: d.depositMode,
+    depositPerGuestMinor: d.depositMode === "per_guest" ? d.holdPerGuestMinor : null,
+    depositFlatMinor: d.depositMode === "per_table" ? d.holdPerTableMinor : null,
+    depositShareBps: d.depositMode === "min_spend_share" ? d.holdShareBps : null,
     reservationPolicy: d.walkInOnly ? "walk_in_only" : "reservable",
     joinsWith: d.combinable ? [...d.joinsWith].sort() : [],
   };
@@ -111,6 +130,27 @@ export function tablePayload(d: TableDraft, saved: VenueFloorTable | null, opts:
   // A switch away from "can be joined" also clears the pairs.
   if (!d.combinable && saved.joinsWith.length > 0) out.joinsWith = [];
   return out;
+}
+
+/** The server uses this same round-half-up formula; this value is display only. */
+export function tableDepositShareMinor(minSpendMinor: number | null, shareBps: number | null): number | null {
+  if (minSpendMinor === null || minSpendMinor <= 0 || shareBps === null || shareBps <= 0) return null;
+  return Math.floor((minSpendMinor * shareBps + 5000) / 10000);
+}
+
+/** Host list copy for a table's chosen deposit type. */
+export function tableDepositLine(table: VenueFloorTable, money: (minor: number) => string): string | null {
+  switch (table.depositMode) {
+    case "per_guest":
+      return table.depositPerGuestMinor !== null ? `${money(table.depositPerGuestMinor)} a guest` : null;
+    case "per_table":
+      return table.depositFlatMinor !== null ? `${money(table.depositFlatMinor)} a table` : null;
+    case "min_spend_share":
+      return table.depositShareBps !== null ? `${table.depositShareBps / 100}% of minimum spend` : null;
+    case "venue_rule":
+    default:
+      return null;
+  }
 }
 
 export function tableDraftDirty(

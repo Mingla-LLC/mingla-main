@@ -180,6 +180,8 @@ export interface NumberStepperProps {
   value: number;
   min: number;
   max: number;
+  /** Tap/accessibility step. Defaults to 1. */
+  step?: number;
   onChange: (next: number) => void;
   /** Suffixed: `-adjust` (label), `-dec`, `-value` (field), `-inc`. */
   testID?: string;
@@ -192,6 +194,7 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
   value,
   min,
   max,
+  step = 1,
   onChange,
   testID,
   stacked: stackedProp,
@@ -246,11 +249,11 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
           ? null
           : parseTypedCount(editTextRef.current);
       const base = typed === null ? value : clampCount(typed, min, max);
-      const next = stepCount(base, direction, 1, min, max);
+      const next = stepCount(base, direction, step, min, max);
       if (editTextRef.current !== null) setEditing(String(next));
       if (next !== value) onChange(next);
     },
-    [max, min, onChange, setEditing, value],
+    [max, min, onChange, setEditing, step, value],
   );
 
   const startHold = useCallback(
@@ -259,8 +262,8 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
       let running = clampCount(value, min, max);
       let repeats = 0;
       const tick = (): void => {
-        const { intervalMs, step } = holdRepeatStep(repeats);
-        const next = stepCount(running, direction, step, min, max);
+        const repeat = holdRepeatStep(repeats);
+        const next = stepCount(running, direction, repeat.step * step, min, max);
         if (next === running) {
           holdTimerRef.current = null;
           return;
@@ -269,11 +272,11 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
         repeats += 1;
         if (editTextRef.current !== null) setEditing(String(next));
         onChangeRef.current(next);
-        holdTimerRef.current = setTimeout(tick, intervalMs);
+        holdTimerRef.current = setTimeout(tick, repeat.intervalMs);
       };
       tick();
     },
-    [max, min, setEditing, stopHold, value],
+    [max, min, setEditing, step, stopHold, value],
   );
 
   const commitTyped = useCallback(() => {

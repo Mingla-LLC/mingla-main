@@ -74,13 +74,18 @@ export function SelectSheet<T extends string | number>({
                     onChange(option.value);
                     setOpen(false);
                   }}
+                  disabled={option.disabled === true}
                   accessibilityRole="radio"
-                  accessibilityState={{ checked: on }}
+                  accessibilityState={{ checked: on, disabled: option.disabled === true }}
                   accessibilityLabel={option.label}
-                  style={[styles.option, on && styles.optionOn]}
+                  accessibilityHint={option.helper}
+                  style={[styles.option, on && styles.optionOn, option.disabled === true && styles.disabled]}
                   testID={testID !== undefined ? `${testID}-option-${String(option.value)}` : undefined}
                 >
-                  <Text style={[styles.optionText, on && styles.optionTextOn]}>{option.label}</Text>
+                  <View style={styles.optionCopy}>
+                    <Text style={[styles.optionText, on && styles.optionTextOn]}>{option.label}</Text>
+                    {option.helper !== undefined ? <Text style={styles.optionHelper}>{option.helper}</Text> : null}
+                  </View>
                   {on ? <Icon name="check" size={16} color={color.text1} /> : null}
                 </Pressable>
               );
@@ -126,4 +131,6 @@ const styles = StyleSheet.create({
   optionOn: { backgroundColor: color.accentLine },
   optionText: { ...type.body, color: color.text2 },
   optionTextOn: { color: color.text1, fontWeight: "600" },
+  optionCopy: { flex: 1, minWidth: 0, gap: 2 },
+  optionHelper: { ...type.caption, color: color.text3 },
 });

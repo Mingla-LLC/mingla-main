@@ -10,6 +10,7 @@ import { randomId } from "../utils/randomId";
 import { supabase } from "./supabase";
 
 export type FloorTableShape = "round" | "rect" | "booth" | "sofa" | "high_top";
+export type TableDepositMode = "venue_rule" | "per_guest" | "per_table" | "min_spend_share";
 
 export class VenueFloorError extends Error {
   readonly code: string;
@@ -59,8 +60,11 @@ export interface VenueFloorTable {
   accessible: boolean;
   guestPickable: boolean;
   minSpendMinor: number;
-  /** null = the venue's usual deposit rule. */
+  depositMode: TableDepositMode;
+  /** Kept for installed clients and per-guest display. Null in every other mode. */
   depositPerGuestMinor: number | null;
+  depositFlatMinor: number | null;
+  depositShareBps: number | null;
   reservationPolicy: "reservable" | "walk_in_only" | "approval_required";
   isActive: boolean;
   sortOrder: number;
@@ -134,6 +138,14 @@ export function mapFloorTable(v: unknown): VenueFloorTable {
   const t = obj(v);
   const shape = str(t.shape, "rect");
   const policy = str(t.reservationPolicy, "reservable");
+  const depositPerGuestMinor = numOrNull(t.depositPerGuestMinor);
+  const rawDepositMode = str(t.depositMode);
+  const depositMode: TableDepositMode =
+    rawDepositMode === "per_guest" || rawDepositMode === "per_table" || rawDepositMode === "min_spend_share"
+      ? rawDepositMode
+      : depositPerGuestMinor !== null && depositPerGuestMinor > 0
+        ? "per_guest"
+        : "venue_rule";
   return {
     id: str(t.id),
     venueId: str(t.venueId),
@@ -152,7 +164,10 @@ export function mapFloorTable(v: unknown): VenueFloorTable {
     accessible: t.accessible === true,
     guestPickable: t.guestPickable !== false,
     minSpendMinor: num(t.minSpendMinor),
-    depositPerGuestMinor: numOrNull(t.depositPerGuestMinor),
+    depositMode,
+    depositPerGuestMinor,
+    depositFlatMinor: numOrNull(t.depositFlatMinor),
+    depositShareBps: numOrNull(t.depositShareBps),
     reservationPolicy:
       policy === "walk_in_only" || policy === "approval_required" ? policy : "reservable",
     isActive: t.isActive !== false,
@@ -229,7 +244,10 @@ export interface TableFields {
   accessible?: boolean;
   guestPickable?: boolean;
   minSpendMinor?: number;
+  depositMode?: TableDepositMode;
   depositPerGuestMinor?: number | null;
+  depositFlatMinor?: number | null;
+  depositShareBps?: number | null;
   reservationPolicy?: "reservable" | "walk_in_only" | "approval_required";
   joinsWith?: string[];
 }

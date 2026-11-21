@@ -91,7 +91,10 @@ BEGIN
     -- [TEST-MOD-APPROVED #4490] fix round 1 (20280809224490) last-writes the guest
     -- writer: the slot is checked on its service day (a past-midnight time belongs
     -- to the evening before); phone-country validation and grants are unchanged.
-    ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)', '08b6c5359374f58132eeff46dbd7f1cd'),
+    -- [TEST-MOD-APPROVED #4490] spec 07 B (20280809314490) last-writes the same
+    -- signature so every positive table hold (not only per-guest holds) requires
+    -- payment. Phone-country validation, SECURITY DEFINER and grants are unchanged.
+    ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text,uuid[],uuid)', '2ee2090a42f7c9787b15c403be591484'),
     ('public.pg_finalize_guest_reservation(uuid,text)', '277c7c86ee9d901dbbddf1c3991727f0'),
     -- 20270327001773_issue_1773_reservation_stay_ingest.sql is the legitimate current last writer of these two definitions.
     ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)', 'eddd993b656af66cd75f588a5df64b5f'),

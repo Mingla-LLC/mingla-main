@@ -60,7 +60,11 @@ export function tableA11y(option: GuestTableOption, selected: boolean, money: (m
   else if (option.status === "not_pickable") parts.push("the venue chooses this table");
   else parts.push("doesn't fit your party");
   if (option.minSpendMinor > 0) parts.push(`spend at least ${money(option.minSpendMinor)}`);
-  if (option.holdPerGuestMinor !== null && option.holdPerGuestMinor > 0) parts.push(`${money(option.holdPerGuestMinor)} a guest to hold it`);
+  if (option.holdPerGuestMinor !== null && option.holdPerGuestMinor > 0) {
+    parts.push(`${money(option.holdPerGuestMinor)} a guest to hold it`);
+  } else if (option.holdMinor !== null && option.holdMinor > 0) {
+    parts.push(`${money(option.holdMinor)} to hold this table`);
+  }
   return parts.join(", ");
 }
 
@@ -78,8 +82,18 @@ export function pickMoneyLines(option: GuestTableOption | null, party: number, m
   const per = option.holdPerGuestMinor;
   const total = option.holdMinor ?? (per !== null ? per * party : null);
   return {
-    hold: per !== null && per > 0 ? `${money(per)} a guest holds it and comes off your bill.` : null,
-    holdTotal: total !== null && total > 0 ? `${money(total)} to hold it for ${party}` : null,
+    hold:
+      per !== null && per > 0
+        ? `${money(per)} a guest holds it and comes off your bill.`
+        : total !== null && total > 0
+          ? "Comes off your bill."
+          : null,
+    holdTotal:
+      total !== null && total > 0
+        ? per !== null && per > 0
+          ? `${money(total)} to hold it for ${party}`
+          : `${money(total)} to hold this table`
+        : null,
     minSpend: option.minSpendMinor > 0 ? `Spend at least ${money(option.minSpendMinor)} on food and drinks. It's settled at the venue.` : null,
   };
 }

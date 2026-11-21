@@ -11,6 +11,23 @@ type RpcClient = {
   ) => PromiseLike<{ data: unknown; error: unknown }>;
 };
 
+export const TABLE_HOLD_PAYMENT_MAX_MINOR = 2147483647;
+
+/** The database owns the hold amount; the edge only enforces one-payment size. */
+export function tableHoldCharge(raw: unknown): {
+  amountMinor: number;
+  error: "amount_too_large" | null;
+} {
+  const hold = Number(raw);
+  if (Number.isFinite(hold) && hold > TABLE_HOLD_PAYMENT_MAX_MINOR) {
+    return { amountMinor: 0, error: "amount_too_large" };
+  }
+  return {
+    amountMinor: Number.isFinite(hold) && hold > 0 ? Math.round(hold) : 0,
+    error: null,
+  };
+}
+
 export async function tablePickStatus(
   supabase: RpcClient,
   venueId: string,

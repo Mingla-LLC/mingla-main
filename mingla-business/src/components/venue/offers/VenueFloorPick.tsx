@@ -85,7 +85,11 @@ export function VenueFloorPick({ palette, options, spacePlans, selectedKey, onSe
             {[
               tableWord(o, selected),
               o.minSpendMinor > 0 ? `spend at least ${money(o.minSpendMinor)}` : null,
-              o.holdPerGuestMinor !== null && o.holdPerGuestMinor > 0 ? `${money(o.holdPerGuestMinor)} a guest to hold` : null,
+              o.holdPerGuestMinor !== null && o.holdPerGuestMinor > 0
+                ? `${money(o.holdPerGuestMinor)} a guest to hold`
+                : o.holdMinor !== null && o.holdMinor > 0
+                  ? `${money(o.holdMinor)} to hold this table`
+                  : null,
             ]
               .filter(Boolean)
               .join(" · ")}

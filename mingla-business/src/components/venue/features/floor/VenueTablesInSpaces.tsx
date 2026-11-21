@@ -11,6 +11,7 @@
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
 
 import { color, radius, space, type } from "../../../../constants/designSystem";
 import { useBrandCurrency } from "../../../../hooks/useBrandCurrency";
@@ -31,7 +32,7 @@ import type { VenueModuleLeaveHandle } from "../../venueLeaveContract";
 import { FloorEditor } from "./FloorEditor";
 import { seatsLine, SHAPE_LABEL } from "./floorModel";
 import { TableForm } from "./TableForm";
-import { nextTableNameAfter } from "./tableDraft";
+import { nextTableNameAfter, tableDepositLine } from "./tableDraft";
 
 export interface VenueTablesInSpacesProps {
   brandId: string | null;
@@ -281,6 +282,7 @@ export const VenueTablesInSpaces = forwardRef<VenueModuleLeaveHandle, VenueTable
                     {[
                       SHAPE_LABEL[t.shape],
                       seatsLine(t.capacity, t.minParty),
+                      tableDepositLine(t, (minor) => formatVenueMoney(minor, currency ?? "NGN", 2)),
                       t.combinable ? `joins ${t.joinsWith.length > 0 ? t.joinsWith.map((id) => allTables.find((x) => x.id === id)?.name ?? "").filter(Boolean).join(", ") : "nothing yet"}` : null,
                       t.reservationPolicy === "walk_in_only" ? "walk-ins only" : null,
                     ]

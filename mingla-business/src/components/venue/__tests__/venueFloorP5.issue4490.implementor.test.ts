@@ -29,7 +29,14 @@ import {
   UNDO_LIMIT,
   type Placement,
 } from "../features/floor/floorModel";
-import { nextTableName, tableDraftFrom, tableDraftIssues, tablePayload } from "../features/floor/tableDraft";
+import {
+  nextTableName,
+  tableDepositLine,
+  tableDepositShareMinor,
+  tableDraftFrom,
+  tableDraftIssues,
+  tablePayload,
+} from "../features/floor/tableDraft";
 import { waitlistWantsLine } from "../features/floor/waitlistHostModel";
 import {
   hourDraftFrom,
@@ -168,23 +175,52 @@ describe("the floor read and the table form", () => {
   it("sends only what changed on an update, and min spend only when that feature is on", () => {
     const table = mapFloorTable(raw.spaces[0]?.tables[0]) as VenueFloorTable;
     const d = tableDraftFrom(table, { spaceId: "s1" });
-    expect(d.holdOn).toBe(true);
+    expect(d.depositMode).toBe("per_guest");
     expect(tablePayload(d, table, { minSpendOn: true })).toEqual({});
     expect(tablePayload({ ...d, capacity: 6 }, table, { minSpendOn: true })).toEqual({ capacity: 6 });
     expect(tablePayload({ ...d, minSpendMinor: 8000000 }, table, { minSpendOn: false })).toEqual({});
     expect(tablePayload({ ...d, combinable: false }, table, { minSpendOn: true })).toEqual({ combinable: false, joinsWith: [] });
     const created = tablePayload(tableDraftFrom(null, { spaceId: "s1", name: "T1" }), null, { minSpendOn: false });
-    expect(created).toMatchObject({ name: "T1", spaceId: "s1", capacity: 4, shape: "round", depositPerGuestMinor: null, reservationPolicy: "reservable" });
+    expect(created).toMatchObject({
+      name: "T1",
+      spaceId: "s1",
+      capacity: 4,
+      shape: "round",
+      depositMode: "venue_rule",
+      depositPerGuestMinor: null,
+      depositFlatMinor: null,
+      depositShareBps: null,
+      reservationPolicy: "reservable",
+    });
     expect(created).not.toHaveProperty("minSpendMinor");
   });
   it("checks the form in plain words", () => {
     const d = tableDraftFrom(null, { spaceId: null });
-    const issues = tableDraftIssues({ ...d, minParty: 6, capacity: 4, holdOn: true, holdPerGuestMinor: null });
+    const issues = tableDraftIssues({ ...d, minParty: 6, capacity: 4, depositMode: "per_guest", holdPerGuestMinor: null });
     expect(issues.name).toBe("Give the table a name.");
     expect(issues.space).toBe("Pick the space this table is in.");
     expect(issues.minParty).toMatch(/smallest party/);
-    expect(issues.hold).toMatch(/hold per guest/);
+    expect(issues.hold).toBe("Enter an amount above zero.");
     expect(nextTableName(["T1", "t2", "B1"])).toBe("T3");
+  });
+  it("builds each table deposit mode, clears the other amounts, and labels the floor row", () => {
+    const table = mapFloorTable(raw.spaces[0]?.tables[0]) as VenueFloorTable;
+    const base = tableDraftFrom(table, { spaceId: "s1" });
+    expect(base.depositMode).toBe("per_guest");
+    expect(tableDepositLine(table, (m) => `N${m}`)).toBe("N500000 a guest");
+
+    expect(tablePayload({ ...base, depositMode: "per_table", holdPerTableMinor: 900000 }, table, { minSpendOn: true })).toMatchObject({
+      depositMode: "per_table",
+      depositPerGuestMinor: null,
+      depositFlatMinor: 900000,
+    });
+    expect(tablePayload({ ...base, depositMode: "min_spend_share", minSpendMinor: 1002, holdShareBps: 2500 }, table, { minSpendOn: true })).toMatchObject({
+      depositMode: "min_spend_share",
+      depositPerGuestMinor: null,
+      depositShareBps: 2500,
+    });
+    expect(tableDepositShareMinor(1001, 2500)).toBe(250);
+    expect(tableDepositShareMinor(1002, 2500)).toBe(251);
   });
 });
 

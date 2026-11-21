@@ -431,7 +431,15 @@ export function floorErrorCopy(code: string): string {
     case "min_spend_tables_off":
       return "Turn on Minimum-spend tables in Settings first, then set a minimum spend.";
     case "table_hold_invalid":
-      return "Enter the hold as an amount per guest.";
+      return "Enter an amount above zero for this deposit.";
+    case "table_deposit_mode_invalid":
+      return "Pick how guests pay the deposit for this table.";
+    case "table_deposit_needs_min_spend":
+      return "Set a minimum spend first.";
+    case "table_deposit_needs_min_spend_tables":
+      return "Turn on Minimum-spend tables in Settings first.";
+    case "table_deposit_uses_min_spend":
+      return "1 table takes a share of the minimum spend as a deposit. Change its deposit first.";
     case "table_join_invalid":
       return "Only tables in the same space that can be joined can be paired.";
     case "table_not_found":

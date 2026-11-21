@@ -9,11 +9,12 @@
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
 
 import { color, space, type } from "../../../../constants/designSystem";
 import { useTouchFloor } from "../../../../hooks/useTouchFloor";
 import { useManageVenueTable } from "../../../../hooks/useVenueTables";
-import type { VenueFloorTable } from "../../../../services/venueFloorService";
+import type { TableDepositMode, VenueFloorTable } from "../../../../services/venueFloorService";
 import { BrandSwitch } from "../../../ui/BrandSwitch";
 import { Button } from "../../../ui/Button";
 import { Input } from "../../../ui/Input";
@@ -27,6 +28,7 @@ import {
   tableDraftFrom,
   tableDraftIssues,
   tableDraftValid,
+  tableDepositShareMinor,
   tablePayload,
   type TableDraft,
 } from "./tableDraft";
@@ -35,6 +37,13 @@ const LazyConfirmDialog = React.lazy(async () => {
   const mod = await import("../../../ui/ConfirmDialog");
   return { default: mod.ConfirmDialog };
 });
+
+const DEPOSIT_OPTIONS: ReadonlyArray<{ value: TableDepositMode; label: string }> = [
+  { value: "venue_rule", label: "Your usual deposit rule" },
+  { value: "per_guest", label: "Per guest" },
+  { value: "per_table", label: "Per table" },
+  { value: "min_spend_share", label: "Share of the minimum spend" },
+];
 
 export interface TableFormProps {
   brandId: string | null;
@@ -130,6 +139,8 @@ export function TableForm({
   }, [dirty, onDirtyChange]);
 
   const issues = tableDraftIssues(draft);
+  const shareReady = features.minSpendTables && (draft.minSpendMinor ?? 0) > 0;
+  const shareMinor = tableDepositShareMinor(draft.minSpendMinor, draft.holdShareBps);
   const patch = (next: Partial<TableDraft>): void => {
     setDraft((d) => ({ ...d, ...next }));
     setError(null);
@@ -251,17 +262,26 @@ export function TableForm({
           ) : null}
         </View>
       )}
-      <SwitchRow
-        title="Hold per guest"
-        hint={draft.holdOn ? "Guests pay this per guest to book the table. It comes off their bill." : "Off: booking this table uses your usual deposit rule."}
-        value={draft.holdOn}
-        onChange={(holdOn) => patch({ holdOn })}
+      <SelectSheet<TableDepositMode>
+        label="Deposit to book this table"
+        value={draft.depositMode}
+        options={DEPOSIT_OPTIONS.map((option) =>
+          option.value === "min_spend_share"
+            ? {
+                ...option,
+                disabled: !shareReady,
+                helper: !shareReady ? "Turn on Minimum spend tables and set a minimum spend first." : undefined,
+              }
+            : option,
+        )}
+        onChange={(depositMode) => patch({ depositMode })}
         disabled={!canEdit}
-        testID={`${testID}-hold-on`}
+        hasError={showErrors && issues.hold !== null}
+        testID={`${testID}-deposit-mode`}
       />
-      {draft.holdOn ? (
+      {draft.depositMode === "per_guest" ? (
         <MoneyField
-          label="Hold per guest"
+          label="Per guest"
           valueMinor={draft.holdPerGuestMinor}
           onChangeMinor={(holdPerGuestMinor) => patch({ holdPerGuestMinor })}
           currency={currency}
@@ -269,7 +289,34 @@ export function TableForm({
           error={showErrors ? issues.hold : null}
           testID={`${testID}-hold`}
         />
+      ) : draft.depositMode === "per_table" ? (
+        <MoneyField
+          label="Per table"
+          valueMinor={draft.holdPerTableMinor}
+          onChangeMinor={(holdPerTableMinor) => patch({ holdPerTableMinor })}
+          currency={currency}
+          disabled={!canEdit}
+          error={showErrors ? issues.hold : null}
+          testID={`${testID}-hold-table`}
+        />
+      ) : draft.depositMode === "min_spend_share" ? (
+        <View style={styles.depositShare}>
+          <NumberStepper
+            label="Share of the minimum spend (%)"
+            value={(draft.holdShareBps ?? 500) / 100}
+            min={5}
+            max={100}
+            step={5}
+            onChange={(percent) => patch({ holdShareBps: Math.round(percent / 5) * 500 })}
+            testID={`${testID}-hold-share`}
+          />
+          {shareMinor !== null ? (
+            <Text style={styles.depositTotal}>{`= ${formatVenueMoney(shareMinor, currency ?? "NGN", 2)} to hold`}</Text>
+          ) : null}
+          {showErrors && issues.hold !== null ? <Text style={styles.error}>{issues.hold}</Text> : null}
+        </View>
       ) : null}
+      <Text style={styles.hint}>Paid when they book. Take it off their bill at the venue.</Text>
 
       <Text style={styles.section}>Booking</Text>
       {features.pickATable ? (
@@ -318,7 +365,7 @@ export function TableForm({
           <Text style={styles.label}>Joins with</Text>
           {joinCandidates.length === 0 ? (
             <Text style={styles.hint}>
-              No other table in this space can be joined yet. Switch on "Can be joined" on the table next to it.
+              No other table in this space can be joined yet. Switch on ‘Can be joined’ on the table next to it.
             </Text>
           ) : (
             <View style={styles.chips} accessibilityLabel="Joins with">
@@ -409,6 +456,8 @@ const styles = StyleSheet.create({
   switchText: { flex: 1, gap: 2 },
   switchTitle: { ...type.row, color: color.text1 },
   offLine: { gap: space[2], alignItems: "flex-start" },
+  depositShare: { gap: space[1] },
+  depositTotal: { ...type.row, color: color.text1 },
   joins: { gap: space[2] },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2], justifyContent: "flex-end", marginTop: space[2] },
 });

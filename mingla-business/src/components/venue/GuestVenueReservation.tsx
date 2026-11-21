@@ -741,7 +741,7 @@ function GuestVenueReservationBody({
           .join(" · "),
         holdLine:
           moneyLines.holdTotal !== null
-            ? `${moneyLines.holdTotal.replace(/ to hold it for \d+$/, "")} comes off your bill.`
+            ? `${moneyLines.holdTotal}. Comes off your bill.`
             : null,
         minSpendLine: moneyLines.minSpend,
         savedAt: Date.now(),
@@ -1546,7 +1546,7 @@ function GuestVenueReservationBody({
                     <Text
                       style={[styles.body, { color: palette.secondaryText }]}
                     >
-                      {pickedLive !== null && pickedLive.holdPerGuestMinor !== null && pickedLive.holdPerGuestMinor > 0 ? "Table hold" : "Deposit"}
+                      {pickedLive !== null && pickedLive.holdMinor !== null && pickedLive.holdMinor > 0 ? "Table hold" : "Deposit"}
                     </Text>
                     <Text
                       style={[

@@ -1,6 +1,10 @@
 // #4490 P5 — the guest's table pick is read from the same map the guest sees.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { tablePickStatus } from "./tablePick.ts";
+import {
+  TABLE_HOLD_PAYMENT_MAX_MINOR,
+  tableHoldCharge,
+  tablePickStatus,
+} from "./tablePick.ts";
 
 const VENUE = "00000000-4490-4000-8000-0000000000a1";
 const T1 = "00000000-4490-4000-8000-0000000000b1";
@@ -55,4 +59,16 @@ Deno.test("an empty map means pick a table is off", async () => {
     await tablePickStatus(client([]), VENUE, "2026-11-21T19:00:00Z", 2, [T1]),
     "table_pick_unavailable",
   );
+});
+
+Deno.test("the database total is charged unless it exceeds one-payment size", () => {
+  assertEquals(tableHoldCharge("2500000"), {
+    amountMinor: 2500000,
+    error: null,
+  });
+  assertEquals(tableHoldCharge(null), { amountMinor: 0, error: null });
+  assertEquals(tableHoldCharge(TABLE_HOLD_PAYMENT_MAX_MINOR + 1), {
+    amountMinor: 0,
+    error: "amount_too_large",
+  });
 });
