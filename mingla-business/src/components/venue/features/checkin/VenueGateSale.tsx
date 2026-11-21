@@ -14,7 +14,7 @@ import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 import { color, space, type } from "../../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../../hooks/useResponsiveLayout";
-import { useSellAtGate } from "../../../../hooks/useVenueCheckIns";
+import { useSellAtGate, useSellGuestListAtGate } from "../../../../hooks/useVenueCheckIns";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
 import { copyPublicUrl } from "../../../../utils/sharePublicUrl";
 import type { GateMethod, GateSaleResult, VenueBookingSettings, VenueOffer } from "../../../../types/venueOffers";
@@ -59,6 +59,8 @@ export interface VenueGateSaleProps {
   /** Start with this offer selected (e.g. "Sell walk-in entry" after a wrong-day scan). */
   initialOfferId?: string | null;
   onSold: (result: GateSaleResult, summary: string) => void;
+  /** 07-I: use the same gate-sale flow, fixed to the configured reduced Entry price. */
+  guestListSale?: { entryId: string; count: number; priceOptionId: string; guestName: string } | null;
 }
 
 export function VenueGateSale({
@@ -72,10 +74,12 @@ export function VenueGateSale({
   walkInLine,
   initialOfferId = null,
   onSold,
+  guestListSale = null,
 }: VenueGateSaleProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const { height } = useWindowDimensions();
   const sell = useSellAtGate(brandId, venueId);
+  const sellGuestList = useSellGuestListAtGate(brandId, venueId);
   const [offerId, setOfferId] = useState<string | null>(initialOfferId ?? offers[0]?.id ?? null);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [method, setMethod] = useState<GateMethod>("cash");
@@ -90,10 +94,13 @@ export function VenueGateSale({
 
   useEffect(() => {
     if (!visible) return;
-    setOfferId(initialOfferId ?? offers[0]?.id ?? null);
-    setCounts({});
+    const guestOffer = guestListSale === null
+      ? null
+      : offers.find((candidate) => candidate.options.some((option) => option.id === guestListSale.priceOptionId)) ?? null;
+    setOfferId(guestOffer?.id ?? initialOfferId ?? offers[0]?.id ?? null);
+    setCounts(guestListSale === null ? {} : { [guestListSale.priceOptionId]: guestListSale.count });
     setMethod("cash");
-    setName("");
+    setName(guestListSale?.guestName ?? "");
     setEmail("");
     setError(null);
     setPayUrl(null);
@@ -107,12 +114,16 @@ export function VenueGateSale({
   const offer = offers.find((o) => o.id === offerId) ?? offers[0] ?? null;
   const clock = venueClock(settings?.timezone ?? "Africa/Lagos");
   const sellable = useMemo(
-    () => (offer === null ? [] : offer.options.filter((o) => optionSellableNow(o, clock))),
+    () => (offer === null
+      ? []
+      : guestListSale === null
+        ? offer.options.filter((o) => optionSellableNow(o, clock))
+        : offer.options.filter((o) => o.id === guestListSale.priceOptionId)),
     // clock is read once per render; options change only with the offer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [offer],
+    [guestListSale, offer],
   );
-  const notNow = offer === null ? [] : offer.options.filter((o) => !sellable.includes(o));
+  const notNow = offer === null || guestListSale !== null ? [] : offer.options.filter((o) => !sellable.includes(o));
   const estimate = gateEstimate({
     options: sellable,
     counts,
@@ -122,7 +133,8 @@ export function VenueGateSale({
   });
   const vatPct = settings?.vatRateBps != null ? `${settings.vatRateBps / 100}%` : "";
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const canTake = offer !== null && estimate.guests > 0 && !sell.isPending && (method !== "pay_link" || emailOk);
+  const selling = guestListSale === null ? sell.isPending : sellGuestList.isPending;
+  const canTake = offer !== null && estimate.guests > 0 && !selling && (method !== "pay_link" || emailOk);
   const takeLabel =
     method === "pay_link"
       ? `Show pay code · ${money(estimate.totalMinor, currency)}`
@@ -131,17 +143,28 @@ export function VenueGateSale({
   const take = (): void => {
     if (offer === null || !canTake) return;
     setError(null);
-    sell.mutate(
-      {
-        offeringId: offer.id,
-        lines: estimate.lines.length === 0 ? [] : sellable.filter((o) => (counts[o.id] ?? 0) > 0).map((o) => ({ priceOptionId: o.id, guests: counts[o.id] ?? 0 })),
-        method,
-        buyer: {
-          ...(name.trim().length > 0 ? { name: name.trim() } : {}),
-          ...(email.trim().length > 0 ? { email: email.trim() } : {}),
-        },
-        idempotencyKey: attemptKey,
-      },
+    const buyer = {
+      ...(name.trim().length > 0 ? { name: name.trim() } : {}),
+      ...(email.trim().length > 0 ? { email: email.trim() } : {}),
+    };
+    const input = guestListSale === null
+      ? {
+          offeringId: offer.id,
+          lines: estimate.lines.length === 0 ? [] : sellable.filter((o) => (counts[o.id] ?? 0) > 0).map((o) => ({ priceOptionId: o.id, guests: counts[o.id] ?? 0 })),
+          method,
+          buyer,
+          idempotencyKey: attemptKey,
+        }
+      : {
+          entryId: guestListSale.entryId,
+          count: guestListSale.count,
+          method,
+          buyer,
+          idempotencyKey: attemptKey,
+        };
+    const mutation = guestListSale === null ? sell : sellGuestList;
+    mutation.mutate(
+      input as never,
       {
         onSuccess: (result) => {
           const summary = estimate.lines.map((l) => `${l.name} × ${l.guests}`).join(", ");
@@ -172,7 +195,7 @@ export function VenueGateSale({
   const body = payUrlProof !== null ? (
     <View style={styles.payBody} testID="gate-sale-pay-code">
       <Text style={styles.title}>Ask them to scan this</Text>
-      <Text style={styles.meta}>They pay {payTotal} on their phone. Their pass appears once it&apos;s paid; scan it to check them in.</Text>
+      <Text style={styles.meta}>{guestListSale === null ? `They pay ${payTotal} on their phone. Their pass appears once it's paid; scan it to check them in.` : `They pay ${payTotal} on their phone. Their guest-list arrival is checked in when payment completes.`}</Text>
       <VenuePayQr url={payUrlProof} size={Math.min(240, Math.round(height * 0.3))} testID="gate-sale-qr" />
       <Button
         label={copyState === "copied" ? "Link copied" : "Copy link"}
@@ -202,7 +225,7 @@ export function VenueGateSale({
         <Banner tone="info" title="Nothing to sell at the gate" body="Publish an Entry offer first. Live Entry can be sold here from the places kept for walk-ins." />
       ) : (
         <>
-          {offers.length > 1 ? (
+          {offers.length > 1 && guestListSale === null ? (
             <Segmented
               options={offers.map((o) => ({ key: o.id, label: o.name }))}
               value={offer?.id ?? offers[0].id}
@@ -219,14 +242,18 @@ export function VenueGateSale({
           ) : null}
           {sellable.map((o) => (
             <View key={o.id} style={styles.line}>
-              <NumberStepper
-                label={o.name}
-                value={counts[o.id] ?? 0}
-                min={0}
-                max={Math.min(o.guestMax, 50)}
-                onChange={(n) => setCounts((c) => ({ ...c, [o.id]: n }))}
-                testID={`gate-sale-count-${o.id}`}
-              />
+              {guestListSale === null ? (
+                <NumberStepper
+                  label={o.name}
+                  value={counts[o.id] ?? 0}
+                  min={0}
+                  max={Math.min(o.guestMax, 50)}
+                  onChange={(n) => setCounts((c) => ({ ...c, [o.id]: n }))}
+                  testID={`gate-sale-count-${o.id}`}
+                />
+              ) : (
+                <Text style={styles.label}>{o.name} × {guestListSale.count}</Text>
+              )}
               <Text style={styles.hint}>
                 {money(priceNow(o, clock), currency)} each{o.eligibility !== null ? ` · check ${o.eligibility.label}` : ""}
               </Text>
@@ -300,7 +327,7 @@ export function VenueGateSale({
       </View>
     ) : (
       <View style={styles.footer}>
-        <Button label="Cancel" variant="secondary" size="lg" onPress={onClose} disabled={sell.isPending} testID="gate-sale-cancel" />
+        <Button label="Cancel" variant="secondary" size="lg" onPress={onClose} disabled={selling} testID="gate-sale-cancel" />
         <View style={styles.grow}>
           <Button
             label={takeLabel}
@@ -309,7 +336,7 @@ export function VenueGateSale({
             fullWidth
             onPress={take}
             disabled={!canTake}
-            loading={sell.isPending}
+            loading={selling}
             testID="gate-sale-take"
           />
         </View>

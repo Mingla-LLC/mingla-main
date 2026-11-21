@@ -155,6 +155,13 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     group: "bookings",
     summary: "Requests to answer and deposits to collect.",
   },
+  guestlist: {
+    id: "guestlist",
+    label: "Guest list",
+    band: "booking",
+    group: "bookings",
+    summary: "Names for the door, promoter links and entry terms.",
+  },
   members: {
     id: "members",
     label: "Members",
@@ -328,6 +335,8 @@ export const BUILT_MODULES: ReadonlySet<VenueModule> = new Set<VenueModule>([
   // P4: private hire — Calendar and Requests.
   "calendar",
   "requests",
+  // 07 I: private list management and promoter links.
+  "guestlist",
   // P6: memberships — Members (plans live inside it).
   "members",
   "checkin",
@@ -410,6 +419,7 @@ export function venueUsesSpaces(rawInput: VenueNavInput): boolean {
     // P3/P4: group packages and private hire are sold from Offers too.
     featureOn(input.features, "group_packages") ||
     featureOn(input.features, "private_hire") ||
+    featureOn(input.features, "guest_list") ||
     // P5: by the hour sells from Offers; tables live in spaces.
     featureOn(input.features, "by_the_hour") ||
     featureOn(input.features, "floor_plan") ||
@@ -429,7 +439,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
   const tables = featureOn(features, "table_reservations");
   const anyBooking = BOOKING_FEATURES.some((key) => featureOn(features, key));
   // P6: members come in through the same door (Check-in) and count on Today.
-  const door = anyBooking || featureOn(features, "memberships");
+  const door = anyBooking || featureOn(features, "memberships") || featureOn(features, "guest_list");
   const usesSpaces = venueUsesSpaces(input);
 
   const candidates: Array<[VenueModule, boolean]> = usesSpaces
@@ -444,6 +454,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
           "requests",
           featureOn(features, "private_hire") || input.hasRequestOffers === true,
         ],
+        ["guestlist", featureOn(features, "guest_list")],
         // P5 (reconciliation 35): tables live under Spaces › Tables, so the
         // Tables module leaves this layout; `?module=tables` is an alias that
         // opens Spaces on its Tables view (see `resolveTablesAlias`).

@@ -181,6 +181,10 @@ const LazyVenueCheckInModule = React.lazy(async () => {
   const mod = await import("./features/checkin/VenueCheckInModule");
   return { default: mod.VenueCheckInModule };
 });
+const LazyVenueGuestListModule = React.lazy(async () => {
+  const mod = await import("./features/guestlist/VenueGuestListModule");
+  return { default: mod.VenueGuestListModule };
+});
 // #4490 P4 — Requests and Calendar (private hire), own lazy boundaries.
 const LazyVenueRequestsModule = React.lazy(async () => {
   const mod = await import("./features/requests/VenueRequestsModule");
@@ -953,6 +957,19 @@ export function VenueSuiteShell({
           }
         >
           <LazyVenueCheckInModule brandId={brandId} venueId={venueId} />
+        </React.Suspense>
+      );
+    }
+    if (activeModule === "guestlist") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueGuestListModule brandId={brandId} venueId={venueId} />
         </React.Suspense>
       );
     }

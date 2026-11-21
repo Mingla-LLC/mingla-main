@@ -16,9 +16,11 @@ import { useAuth } from "../context/AuthContext";
 import {
   admitMemberCode,
   admitPass,
+  admitGuestList,
   fetchCheckInList,
   scanPass,
   sellAtGate,
+  sellGuestListAtGate,
   undoCheckIn,
 } from "../services/venueOffersService";
 import type {
@@ -55,6 +57,7 @@ function useInvalidateDoor(brandId: string | null, venueId: string | null): () =
     if (brandId === null || venueId === null) return;
     void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.checkInsAll(brandId, venueId) });
     void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.dayAll(brandId, venueId) });
+    void queryClient.invalidateQueries({ queryKey: venueFeatureKeys.guestListsAll(brandId, venueId) });
   };
 }
 
@@ -62,6 +65,7 @@ export type DoorAction =
   | { kind: "scan"; qrPayload: string; idChecked?: boolean; admitCount?: number }
   | { kind: "admit"; passId: string; count?: number; idChecked?: boolean }
   | { kind: "admit_code"; memberCode: string; guests?: number }
+  | { kind: "admit_guest_list"; entryId: string; count?: number }
   | { kind: "undo"; logId: string };
 
 export function useDoorAction(
@@ -81,7 +85,34 @@ export function useDoorAction(
       if (action.kind === "admit_code") {
         return admitMemberCode({ venueId, memberCode: action.memberCode, guests: action.guests });
       }
+      if (action.kind === "admit_guest_list") {
+        return admitGuestList({ venueId, entryId: action.entryId, count: action.count });
+      }
       return undoCheckIn({ venueId, logId: action.logId });
+    },
+    onSettled: invalidate,
+  });
+}
+
+export function useSellGuestListAtGate(
+  brandId: string | null,
+  venueId: string | null,
+): UseMutationResult<
+  GateSaleResult,
+  Error,
+  {
+    entryId: string;
+    count: number;
+    method: GateMethod;
+    buyer?: { name?: string; email?: string; phone?: string };
+    idempotencyKey: string;
+  }
+> {
+  const invalidate = useInvalidateDoor(brandId, venueId);
+  return useMutation({
+    mutationFn: (input) => {
+      if (venueId === null) throw new Error("venue_required");
+      return sellGuestListAtGate({ venueId, ...input });
     },
     onSettled: invalidate,
   });

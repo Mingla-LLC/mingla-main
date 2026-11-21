@@ -97,6 +97,8 @@ export const BUILT_FEATURES: ReadonlySet<VenueFeatureKey> = new Set<VenueFeature
   "menu",
   "table_ordering",
   "events_here",
+  // 07 I: host list, promoter link and door admission.
+  "guest_list",
   // P6: memberships (monthly plans, members, member check-in).
   "memberships",
   "stays",

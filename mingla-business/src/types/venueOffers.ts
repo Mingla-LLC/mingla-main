@@ -619,6 +619,8 @@ export interface VenueDay {
   bookings: VenueDayBooking[];
   /** #4490 P6 — members checked in today (0 when the venue has none). */
   membersIn?: number;
+  /** #4490 07-I — listed names and arrivals for this service day. */
+  guestList?: { names: number; in: number };
   /**
    * #4490 07-E: the day's money, computed only on the server
    * (issue_4490_venue_money_day). Null when the read carried none.
@@ -709,6 +711,82 @@ export interface CheckInMember {
   checkedInAt: string | null;
 }
 
+/** #4490 07-I — one private guest-list name. */
+export interface VenueGuestListEntry {
+  id: string;
+  venueId: string;
+  localDate: string;
+  eventId: string | null;
+  guestName: string;
+  plusOnes: number;
+  phone: string | null;
+  note: string | null;
+  addedByKind: "staff" | "promoter";
+  promoterId: string | null;
+  promoterName: string | null;
+  arrived: number;
+  arrivedAt: string | null;
+  status: "on_list" | "removed";
+  version: number;
+  createdAt: string | null;
+}
+
+export interface VenueGuestListPrice {
+  optionId: string;
+  offeringId: string;
+  name: string;
+  priceMinor: number;
+  currencyCode: string | null;
+}
+
+export interface VenueGuestListTerms {
+  venueId: string;
+  freeUntil: string | null;
+  reducedUntil: string | null;
+  reducedPriceOptionId: string | null;
+  reducedPrice: VenueGuestListPrice | null;
+  plusOnesMax: number;
+  closesMinutesBefore: number;
+  version: number;
+  opensAt: string | null;
+  closesAt: string | null;
+}
+
+export interface VenueGuestListPromoter {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  namesPerNight: number | null;
+  active: boolean;
+  version: number;
+  names: number;
+  in: number;
+}
+
+export interface VenueGuestListDay {
+  venueId: string;
+  localDate: string;
+  terms: VenueGuestListTerms;
+  entries: VenueGuestListEntry[];
+  promoters: VenueGuestListPromoter[];
+  counts: { names: number; in: number };
+}
+
+export interface PromoterGuestListNight {
+  localDate: string;
+  terms: VenueGuestListTerms;
+  entries: VenueGuestListEntry[];
+}
+
+export interface PromoterGuestListPage {
+  promoter: { id: string; name: string; namesPerNight: number | null };
+  venue: { id: string; name: string };
+  today: string;
+  lastDate: string;
+  nights: PromoterGuestListNight[];
+}
+
 /** #4490 P6 — who a member scan was about. */
 export interface ScanMember {
   subscriptionId: string;
@@ -727,6 +805,8 @@ export interface CheckInList {
   tickets: CheckInTicket[];
   /** #4490 P6 — members of this venue's plans who can come in today. */
   members: CheckInMember[];
+  /** #4490 07-I — listed names for this service day. */
+  guestList: VenueGuestListEntry[];
   totals: { passes: number; admits: number; admitted: number };
 }
 
@@ -741,14 +821,16 @@ export type ScanResultCode =
   | "id_required"
   | "days_used"
   | "day_full"
-  | "undone";
+  | "undone"
+  | "sell"
+  | "list_closed_for_price";
 
 export interface ScanOutcome {
   result: ScanResultCode;
   admitted: number | null;
   logId: string | null;
   balanceDueMinor: number;
-  kind: "pass" | "event_ticket" | "member";
+  kind: "pass" | "event_ticket" | "member" | "guest_list";
   pass: CheckInPass | null;
   /** #4490 P6 — set when the code was a member pass (kind "member"). */
   member?: ScanMember | null;
@@ -757,6 +839,11 @@ export interface ScanOutcome {
   ticketHolder: string | null;
   ticketName: string | null;
   venueName: string | null;
+  guestListEntry?: VenueGuestListEntry | null;
+  guestListEntryId?: string | null;
+  priceOptionId?: string | null;
+  offeringId?: string | null;
+  count?: number;
 }
 
 export type GateMethod = "cash" | "transfer" | "pay_link";

@@ -49,6 +49,12 @@ function timeOf(iso: string | null, timezone?: string): string | null {
 }
 
 function subjectOf(outcome: ScanOutcome): string | null {
+  if (outcome.kind === "guest_list") {
+    const entry = outcome.guestListEntry ?? null;
+    return entry === null
+      ? null
+      : `${entry.guestName} · Guest list × ${1 + entry.plusOnes}`;
+  }
   if (outcome.kind === "member") {
     const m = outcome.member ?? null;
     if (m === null) return null;
@@ -158,6 +164,40 @@ function memberResultView(outcome: ScanOutcome, subject: string | null): CheckIn
 
 export function checkInResultView(outcome: ScanOutcome, timezone?: string): CheckInResultView {
   const subject = subjectOf(outcome);
+  if (outcome.kind === "guest_list") {
+    if (outcome.result === "admitted") {
+      const n = outcome.admitted ?? outcome.count ?? 1;
+      return {
+        state: "ok",
+        tone: "success",
+        title: "Guest list checked in",
+        subject,
+        body: `${n === 1 ? "1 guest" : `${n} guests`} in.`,
+        primary: "scan_next",
+        secondary: outcome.logId !== null ? "undo" : null,
+      };
+    }
+    if (outcome.result === "undone") {
+      return {
+        state: "undone",
+        tone: "neutral",
+        title: "Check-in undone",
+        subject,
+        body: "They're back on the guest list as still to arrive.",
+        primary: "scan_next",
+        secondary: null,
+      };
+    }
+    return {
+      state: "not_yet",
+      tone: "warning",
+      title: "List price has ended",
+      subject,
+      body: "Sell normal Entry instead.",
+      primary: "close",
+      secondary: "sell_walk_in",
+    };
+  }
   if (outcome.kind === "member") return memberResultView(outcome, subject);
   const pass = outcome.pass;
   switch (outcome.result) {

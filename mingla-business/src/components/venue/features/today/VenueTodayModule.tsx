@@ -46,7 +46,9 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule, showRequests 
   const [date, setDate] = useState<string | null>(null);
   const dayQuery = useVenueDay(brandId, venueId, date, { live: date === null });
   // #4490 P6 — members who came in today (one visit a day).
-  const membersOn = useVenueFeatures(brandId, venueId).data?.features.memberships.enabled === true;
+  const features = useVenueFeatures(brandId, venueId).data?.features;
+  const membersOn = features?.memberships.enabled === true;
+  const guestListOn = features?.guest_list.enabled === true;
   const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const openScan = (): void => {
@@ -163,6 +165,15 @@ export function VenueTodayModule({ brandId, venueId, onOpenModule, showRequests 
             sub={isToday ? "Checked in today" : "Checked in that day"}
             style={styles.tile}
             testID="venue-today-tile-members"
+          />
+        ) : null}
+        {guestListOn ? (
+          <KpiTile
+            label="On the list"
+            value={day.guestList?.names ?? 0}
+            sub={`${day.guestList?.in ?? 0} in`}
+            style={styles.tile}
+            testID="venue-today-tile-guest-list"
           />
         ) : null}
         {balances.count > 0 ? (

@@ -54,6 +54,11 @@ export function filterVenueModulesForCapabilities(
     allowed.add("requests");
     allowed.add("checkin");
   }
+  // 07-I: the full list editor (terms, names and promoter links) is a
+  // manage-bookings surface. Door-only staff see the same names in Check-in.
+  if (capabilities.includes("venue.manage_bookings")) {
+    allowed.add("guestlist");
+  }
   // #4490 P6 — memberships: plans, members, pause/end.
   if (capabilities.includes("venue.manage_members")) {
     allowed.add("members");

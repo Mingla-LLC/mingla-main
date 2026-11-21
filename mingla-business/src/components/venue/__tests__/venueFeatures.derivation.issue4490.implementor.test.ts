@@ -101,7 +101,7 @@ describe("feature layout — a venue with spaces", () => {
     // TEST-MOD-APPROVED #4490 — P2 ships Offers, Today and Check-in.
     // TEST-MOD-APPROVED #4490 P4 — Calendar and Requests ship with private hire.
     // TEST-MOD-APPROVED #4490 P6-2 — Members ships with memberships, so every module is built now.
-    for (const built of ["offers", "today", "checkin", "calendar", "requests", "members"]) {
+    for (const built of ["offers", "today", "checkin", "calendar", "requests", "guestlist", "members"]) {
       expect(modules).toContain(built);
     }
     expect(modules[0]).toBe("overview");
@@ -175,6 +175,8 @@ describe("dependencies (mirror of the server cascade)", () => {
       "menu",
       "table_ordering",
       "min_spend_tables",
+      // TEST-MOD-APPROVED #4490 07-I — private guest lists are built.
+      "guest_list",
       // TEST-MOD-APPROVED #4490 P6-2 — memberships are built and switchable.
       "memberships",
       "events_here",
@@ -216,6 +218,14 @@ describe("capabilities (#4188 scoped staff + venue.*)", () => {
   it("the check-in-only role sees no unbuilt module and no money surface", () => {
     // TEST-MOD-APPROVED #4490 — a table-only venue has no Today/Check-in (conflict 34).
     expect(filterVenueModulesForCapabilities(featureNav, true, ["venue.check_in"])).toEqual([]);
+  });
+  it("guest-list management belongs only to manage-bookings staff", () => {
+    const nav = deriveVenueNav({ features: featureSetFrom({ guest_list: true }), activeSpaceCount: 0 });
+    expect(nav).toEqual(expect.arrayContaining(["guestlist", "today", "checkin"]));
+    expect(filterVenueModulesForCapabilities(nav, true, ["venue.manage_bookings"])).toEqual(
+      expect.arrayContaining(["guestlist"]),
+    );
+    expect(filterVenueModulesForCapabilities(nav, true, ["venue.check_in"])).not.toContain("guestlist");
   });
   it("restaurant reservations staff keep exactly what they had", () => {
     // TEST-MOD-APPROVED #4490 P5-2 — their tables now live under Spaces › Tables.

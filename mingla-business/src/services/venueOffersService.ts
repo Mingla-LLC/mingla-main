@@ -66,6 +66,11 @@ import type {
   VenueCalendar,
   VenueRequest,
   VenueRequestsList,
+  VenueGuestListDay,
+  VenueGuestListEntry,
+  VenueGuestListPromoter,
+  VenueGuestListTerms,
+  PromoterGuestListPage,
 } from "../types/venueOffers";
 
 // ---------------------------------------------------------------------------
@@ -1080,6 +1085,7 @@ export async function setCapacityOverride(input: {
 export function mapVenueDay(v: unknown): VenueDay {
   const d = obj(v);
   const check = obj(d.checkIn);
+  const guestList = obj(d.guestList);
   return {
     localDate: str(d.localDate),
     timezone: str(d.timezone, "Africa/Lagos"),
@@ -1117,6 +1123,7 @@ export function mapVenueDay(v: unknown): VenueDay {
     }),
     checkIn: { passes: num(check.passes), expected: num(check.expected), admitted: num(check.admitted) },
     membersIn: num(d.membersIn),
+    guestList: { names: num(guestList.names), in: num(guestList.in) },
     money: parseVenueDayMoney(d.money),
     bookings: arr(d.bookings).map((b): VenueDayBooking => {
       const r = obj(b);
@@ -1142,6 +1149,163 @@ export function mapVenueDay(v: unknown): VenueDay {
       };
     }),
   };
+}
+
+export function mapGuestListEntry(v: unknown): VenueGuestListEntry {
+  const e = obj(v);
+  return {
+    id: str(e.id),
+    venueId: str(e.venueId),
+    localDate: str(e.localDate),
+    eventId: strOrNull(e.eventId),
+    guestName: str(e.guestName, "Guest"),
+    plusOnes: num(e.plusOnes),
+    phone: strOrNull(e.phone),
+    note: strOrNull(e.note),
+    addedByKind: e.addedByKind === "promoter" ? "promoter" : "staff",
+    promoterId: strOrNull(e.promoterId),
+    promoterName: strOrNull(e.promoterName),
+    arrived: num(e.arrived),
+    arrivedAt: strOrNull(e.arrivedAt),
+    status: e.status === "removed" ? "removed" : "on_list",
+    version: num(e.version),
+    createdAt: strOrNull(e.createdAt),
+  };
+}
+
+export function mapGuestListTerms(v: unknown): VenueGuestListTerms {
+  const t = obj(v);
+  const price = t.reducedPrice === null || t.reducedPrice === undefined ? null : obj(t.reducedPrice);
+  return {
+    venueId: str(t.venueId),
+    freeUntil: strOrNull(t.freeUntil),
+    reducedUntil: strOrNull(t.reducedUntil),
+    reducedPriceOptionId: strOrNull(t.reducedPriceOptionId),
+    reducedPrice:
+      price === null
+        ? null
+        : {
+            optionId: str(price.optionId),
+            offeringId: str(price.offeringId),
+            name: str(price.name),
+            priceMinor: num(price.priceMinor),
+            currencyCode: strOrNull(price.currencyCode),
+          },
+    plusOnesMax: num(t.plusOnesMax, 3),
+    closesMinutesBefore: num(t.closesMinutesBefore, 60),
+    version: num(t.version),
+    opensAt: strOrNull(t.opensAt),
+    closesAt: strOrNull(t.closesAt),
+  };
+}
+
+function mapGuestListPromoter(v: unknown): VenueGuestListPromoter {
+  const p = obj(v);
+  return {
+    id: str(p.id),
+    name: str(p.name),
+    phone: strOrNull(p.phone),
+    email: strOrNull(p.email),
+    namesPerNight: numOrNull(p.namesPerNight),
+    active: p.active !== false,
+    version: num(p.version),
+    names: num(p.names),
+    in: num(p.in),
+  };
+}
+
+export function mapGuestListDay(v: unknown): VenueGuestListDay {
+  const d = obj(v);
+  const counts = obj(d.counts);
+  return {
+    venueId: str(d.venueId),
+    localDate: str(d.localDate),
+    terms: mapGuestListTerms(d.terms),
+    entries: arr(d.entries).map(mapGuestListEntry),
+    promoters: arr(d.promoters).map(mapGuestListPromoter),
+    counts: { names: num(counts.names), in: num(counts.in) },
+  };
+}
+
+export async function fetchGuestListDay(venueId: string, localDate: string | null): Promise<VenueGuestListDay> {
+  const { data, error } = await supabase.rpc("issue_4490_guest_list_day", {
+    p_venue_id: venueId,
+    p_local_date: localDate,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return mapGuestListDay(data);
+}
+
+export type ManageGuestListAction =
+  | "set_terms"
+  | "add_entry"
+  | "edit_entry"
+  | "remove_entry"
+  | "add_promoter"
+  | "edit_promoter"
+  | "new_promoter_link"
+  | "pause_promoter";
+
+export async function manageGuestList(input: {
+  venueId: string;
+  action: ManageGuestListAction;
+  payload: Record<string, unknown>;
+  expectedVersion?: number | null;
+}): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.rpc("issue_4490_manage_guest_list", {
+    p_action: input.action,
+    p_venue_id: input.venueId,
+    p_payload: input.payload,
+    p_expected_version: input.expectedVersion ?? null,
+    p_idempotency_key: `guest-list-${input.action}-${randomId()}`,
+  });
+  if (error !== null) throw toVenueOfferError(error);
+  return obj(data);
+}
+
+function mapPromoterGuestListPage(v: unknown): PromoterGuestListPage {
+  const d = obj(v);
+  const promoter = obj(d.promoter);
+  const venue = obj(d.venue);
+  return {
+    promoter: { id: str(promoter.id), name: str(promoter.name), namesPerNight: numOrNull(promoter.namesPerNight) },
+    venue: { id: str(venue.id), name: str(venue.name) },
+    today: str(d.today),
+    lastDate: str(d.lastDate),
+    nights: arr(d.nights).map((n) => {
+      const night = obj(n);
+      return {
+        localDate: str(night.localDate),
+        terms: mapGuestListTerms(night.terms),
+        entries: arr(night.entries).map(mapGuestListEntry),
+      };
+    }),
+  };
+}
+
+async function promoterGuestListEdge(body: Record<string, unknown>): Promise<unknown> {
+  const { data, error } = await supabase.functions.invoke("venue-guest-list", { body });
+  if (error) throw await edgeError(error as { message?: string; context?: unknown });
+  const envelope = obj(data);
+  if (envelope.kind !== "success") throw new VenueOfferError(str(envelope.code, "guest_list_failed"));
+  return envelope.data;
+}
+
+export async function fetchPromoterGuestList(token: string): Promise<PromoterGuestListPage> {
+  return mapPromoterGuestListPage(await promoterGuestListEdge({ action: "get", token }));
+}
+
+export async function writePromoterGuestList(input: {
+  token: string;
+  action: "add" | "remove";
+  localDate: string;
+  guestName?: string;
+  plusOnes?: number;
+  phone?: string;
+  entryId?: string;
+}): Promise<VenueGuestListEntry> {
+  const data = obj(await promoterGuestListEdge(input));
+  return mapGuestListEntry(data.entry);
 }
 
 export async function fetchVenueDay(venueId: string, localDate: string | null): Promise<VenueDay> {
@@ -1252,6 +1416,7 @@ export async function fetchCheckInList(venueId: string, localDate: string | null
         checkedInAt: strOrNull(r.checkedInAt),
       };
     }),
+    guestList: arr(data.guestList).map(mapGuestListEntry),
   };
 }
 
@@ -1267,6 +1432,8 @@ const SCAN_RESULTS: readonly ScanResultCode[] = [
   "days_used",
   "day_full",
   "undone",
+  "sell",
+  "list_closed_for_price",
 ];
 
 export function mapScanOutcome(v: unknown): ScanOutcome {
@@ -1281,7 +1448,7 @@ export function mapScanOutcome(v: unknown): ScanOutcome {
     admitted: numOrNull(d.admitted ?? d.undid),
     logId: strOrNull(d.logId),
     balanceDueMinor: num(d.balanceDueMinor),
-    kind: d.kind === "event_ticket" ? "event_ticket" : d.kind === "member" ? "member" : "pass",
+    kind: d.kind === "event_ticket" ? "event_ticket" : d.kind === "member" ? "member" : d.kind === "guest_list" ? "guest_list" : "pass",
     member:
       member === null
         ? null
@@ -1299,7 +1466,25 @@ export function mapScanOutcome(v: unknown): ScanOutcome {
     ticketHolder: ticket === null ? null : strOrNull(ticket.holderName),
     ticketName: ticket === null ? null : strOrNull(ticket.ticketName),
     venueName: strOrNull(d.venueName),
+    guestListEntry: d.entry === undefined || d.entry === null ? null : mapGuestListEntry(d.entry),
+    guestListEntryId: strOrNull(d.guestListEntryId),
+    priceOptionId: strOrNull(d.priceOptionId),
+    offeringId: strOrNull(d.offeringId),
+    count: num(d.count),
   };
+}
+
+export async function admitGuestList(input: {
+  venueId: string;
+  entryId: string;
+  count?: number;
+}): Promise<ScanOutcome> {
+  return mapScanOutcome(await checkIn<unknown>({
+    action: "admit_guest_list",
+    venueId: input.venueId,
+    entryId: input.entryId,
+    count: input.count,
+  }));
 }
 
 export async function scanPass(input: {
@@ -1376,6 +1561,34 @@ export async function sellAtGate(input: {
       idempotencyKey: input.idempotencyKey,
     }),
   );
+  const booking = obj(data.booking);
+  return {
+    method: input.method,
+    passId: strOrNull(data.passId),
+    totalMinor: num(booking.totalMinor),
+    currencyCode: strOrNull(booking.currencyCode),
+    reference: strOrNull(booking.reference),
+    payUrl: strOrNull(data.payUrl),
+  };
+}
+
+export async function sellGuestListAtGate(input: {
+  venueId: string;
+  entryId: string;
+  count: number;
+  method: GateMethod;
+  buyer?: { name?: string; email?: string; phone?: string };
+  idempotencyKey: string;
+}): Promise<GateSaleResult> {
+  const data = obj(await checkIn<unknown>({
+    action: "sell_guest_list",
+    venueId: input.venueId,
+    entryId: input.entryId,
+    count: input.count,
+    method: input.method,
+    buyer: input.buyer,
+    idempotencyKey: input.idempotencyKey,
+  }));
   const booking = obj(data.booking);
   return {
     method: input.method,

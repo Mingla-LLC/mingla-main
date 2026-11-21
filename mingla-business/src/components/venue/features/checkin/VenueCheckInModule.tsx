@@ -25,7 +25,7 @@ import { useVenueFeatures } from "../../../../hooks/useVenueFeatures";
 import { useVenueEditAccess } from "../../../../hooks/useVenueEditAccess";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
 import { useAdmitMember } from "../../../../hooks/useVenueMembers";
-import type { CheckInMember, CheckInPass, CheckInTicket, ScanOutcome, VenueOffer } from "../../../../types/venueOffers";
+import type { CheckInMember, CheckInPass, CheckInTicket, ScanOutcome, VenueGuestListEntry, VenueOffer } from "../../../../types/venueOffers";
 import { Banner } from "../../../ui/Banner";
 import { Button } from "../../../ui/Button";
 import { CenteredState } from "../../../ui/CenteredState";
@@ -54,12 +54,13 @@ const LazyToast = React.lazy(async () => {
   return { default: mod.Toast };
 });
 
-type Filter = "all" | "entry" | "hour" | "events" | "members";
+type Filter = "all" | "entry" | "hour" | "events" | "members" | "guestlist";
 
 type Row =
   | { kind: "pass"; key: string; pass: CheckInPass }
   | { kind: "ticket"; key: string; ticket: CheckInTicket }
-  | { kind: "member"; key: string; member: CheckInMember };
+  | { kind: "member"; key: string; member: CheckInMember }
+  | { kind: "guestlist"; key: string; entry: VenueGuestListEntry };
 
 /** "18:30" in the venue's own timezone (not the device's). */
 function timeOf(iso: string | null, timezone?: string): string | null {
@@ -108,6 +109,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const featureSet = useVenueFeatures(brandId, venueId).data?.features;
   const hourOn = featureSet?.by_the_hour?.enabled === true;
   const membersOn = featureSet?.memberships?.enabled === true;
+  const guestListOn = featureSet?.guest_list?.enabled === true;
   const [search, setSearch] = useState("");
   const [scanOpen, setScanOpen] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
@@ -121,6 +123,12 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const [scanError, setScanError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [sale, setSale] = useState<{ open: boolean; offerId: string | null }>({ open: false, offerId: null });
+  const [guestListSale, setGuestListSale] = useState<{
+    entryId: string;
+    count: number;
+    priceOptionId: string;
+    guestName: string;
+  } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const busyRef = useRef(false);
 
@@ -143,6 +151,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
     const hours: Row[] = allPasses.filter(isHour);
     const tickets: Row[] = (list?.tickets ?? []).map((ticket) => ({ kind: "ticket", key: `t-${ticket.ticketId}`, ticket }));
     const members: Row[] = (list?.members ?? []).map((member) => ({ kind: "member", key: `m-${member.subscriptionId}`, member }));
+    const guestList: Row[] = (list?.guestList ?? []).map((entry) => ({ kind: "guestlist", key: `g-${entry.id}`, entry }));
     const all =
       filter === "entry"
         ? passes
@@ -152,11 +161,17 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
             ? tickets
             : filter === "members"
               ? members
-              : [...allPasses, ...members, ...tickets];
+              : filter === "guestlist"
+                ? guestList
+                : [...allPasses, ...guestList, ...members, ...tickets];
     const needle = search.trim().toLowerCase();
     if (needle.length === 0) return all;
     return all.filter((r) =>
-      r.kind === "pass"
+      r.kind === "guestlist"
+        ? r.entry.guestName.toLowerCase().includes(needle) ||
+          (r.entry.phone ?? "").toLowerCase().includes(needle) ||
+          (r.entry.promoterName ?? "").toLowerCase().includes(needle)
+        : r.kind === "pass"
         ? r.pass.holderName.toLowerCase().includes(needle) ||
           (r.pass.reference ?? "").toLowerCase().includes(needle) ||
           r.pass.offerName.toLowerCase().includes(needle)
@@ -164,7 +179,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
           ? r.member.holderName.toLowerCase().includes(needle) || r.member.planName.toLowerCase().includes(needle)
           : r.ticket.holderName.toLowerCase().includes(needle) || r.ticket.eventTitle.toLowerCase().includes(needle),
     );
-  }, [filter, hourOn, list?.members, list?.passes, list?.tickets, search]);
+  }, [filter, hourOn, list?.guestList, list?.members, list?.passes, list?.tickets, search]);
 
   const runDoor = useCallback(
     (action: Parameters<typeof door.mutate>[0], onDone?: (o: ScanOutcome) => void): void => {
@@ -318,6 +333,37 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
       runDoor({ kind: "admit", passId: pass.passId }, () => setScanOpen(true));
     },
     [runDoor],
+  );
+
+  const admitGuestListRow = useCallback(
+    (entry: VenueGuestListEntry): void => {
+      const count = Math.max(1, 1 + entry.plusOnes - entry.arrived);
+      setRowError(null);
+      setOutcome(null);
+      runDoor({ kind: "admit_guest_list", entryId: entry.id, count }, (next) => {
+        if (next.result === "sell" && next.priceOptionId !== null && next.priceOptionId !== undefined) {
+          setOutcome(null);
+          setGuestListSale({
+            entryId: entry.id,
+            count: next.count ?? count,
+            priceOptionId: next.priceOptionId,
+            guestName: entry.guestName,
+          });
+          setSale({ open: true, offerId: next.offeringId ?? null });
+          return;
+        }
+        if (next.result === "list_closed_for_price") {
+          setOutcome(null);
+          setRowError("List price has ended. Sell normal Entry instead.");
+          const walkIn = liveOffers.find((offer) => offer.entryStyle === "walk_in") ?? liveOffers[0] ?? null;
+          setGuestListSale(null);
+          setSale({ open: true, offerId: walkIn?.id ?? null });
+          return;
+        }
+        setScanOpen(true);
+      });
+    },
+    [liveOffers, runDoor],
   );
 
   // ---------------------------------------------------------------- states
@@ -596,6 +642,38 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
     ) : (
       <GlassCard variant="base" padding={0} contentStyle={styles.listCard} testID="venue-checkin-list">
         {rows.map((r, index) => {
+          if (r.kind === "guestlist") {
+            const entry = r.entry;
+            const total = 1 + entry.plusOnes;
+            const inNow = entry.arrived >= total;
+            return (
+              <View key={r.key} style={[styles.row, index > 0 ? styles.rowBorder : null]} testID={`venue-checkin-guest-list-${entry.id}`}>
+                <View style={styles.cellText}>
+                  <View style={styles.memberName}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>{entry.guestName}</Text>
+                    <Pill variant="info">Guest list</Pill>
+                  </View>
+                  <Text style={styles.meta} numberOfLines={2}>
+                    {entry.promoterName ?? "Venue team"}{entry.phone ? ` · ${entry.phone}` : ""}{entry.note ? ` · ${entry.note}` : ""}
+                  </Text>
+                </View>
+                <Text style={styles.guests}>{entry.arrived > 0 ? `${entry.arrived} of ${total}` : total}</Text>
+                {inNow ? (
+                  <Pill variant="ok">In</Pill>
+                ) : (
+                  <Button
+                    label="Check in"
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => admitGuestListRow(entry)}
+                    disabled={door.isPending}
+                    accessibilityLabel={`Check in ${entry.guestName} from the guest list`}
+                    testID={`venue-checkin-guest-list-admit-${entry.id}`}
+                  />
+                )}
+              </View>
+            );
+          }
           if (r.kind === "member") {
             const m = r.member;
             return (
@@ -737,10 +815,11 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         </View>
         <Segmented
           options={[
-            { key: "all", label: "Everyone", count: list.passes.length + list.tickets.length + (list.members ?? []).length },
+            { key: "all", label: "Everyone", count: list.passes.length + list.tickets.length + (list.members ?? []).length + (list.guestList ?? []).length },
             { key: "entry", label: "Entry", count: hourOn ? list.passes.filter((p) => p.offerKind !== "by_the_hour").length : list.passes.length },
             ...(hourOn ? [{ key: "hour" as const, label: "By the hour", count: list.passes.filter((p) => p.offerKind === "by_the_hour").length }] : []),
             ...(membersOn || (list.members ?? []).length > 0 ? [{ key: "members" as const, label: "Members", count: (list.members ?? []).length }] : []),
+            ...(guestListOn || (list.guestList ?? []).length > 0 ? [{ key: "guestlist" as const, label: "Guest list", count: (list.guestList ?? []).length }] : []),
             { key: "events", label: "Events", count: list.tickets.length },
           ]}
           value={filter}
@@ -787,17 +866,22 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
       <VenueBookingSheet brandId={brandId} venueId={venueId} groupId={openBooking} onClose={() => setOpenBooking(null)} />
       <VenueGateSale
         visible={sale.open}
-        onClose={() => setSale({ open: false, offerId: null })}
+        onClose={() => {
+          setSale({ open: false, offerId: null });
+          setGuestListSale(null);
+        }}
         brandId={brandId}
         venueId={venueId}
         offers={liveOffers}
         settings={offersQuery.data?.settings ?? null}
         currency={currency}
-        walkInLine={walkInLine}
+        walkInLine={guestListSale === null ? walkInLine : null}
         initialOfferId={sale.offerId}
+        guestListSale={guestListSale}
         onSold={(result, summary) => {
           if (result.method !== "pay_link") {
             setSale({ open: false, offerId: null });
+            setGuestListSale(null);
           }
           setToast(summary);
         }}

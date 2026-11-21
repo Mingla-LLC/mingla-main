@@ -53,6 +53,7 @@ export type VenueModule =
   | "today"
   | "calendar"
   | "requests"
+  | "guestlist"
   | "members"
   | "checkin";
 
