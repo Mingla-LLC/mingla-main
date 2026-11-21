@@ -69,6 +69,12 @@ UPDATE public.order_installments SET status = 'superseded', superseded_at = now(
  WHERE order_id = '45220008-0000-4000-8000-0000000000a1' AND ordinal = 1;
 -- A legacy order: no v2 terms.
 SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000a2', NULL, NULL);
+-- A true single-payment legacy order above the int4 × 100 overflow threshold.
+INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents,
+  currency, payment_method, payment_status, source, installment_plan_root, stripe_payment_intent_id)
+VALUES ('45220008-0000-4000-8000-0000000000a5', '45220008-0000-4000-8000-000000000020',
+  'single-refund-buyer@example.test', 'Single Refund Buyer', '+2348000000004', 30000000,
+  'NGN', 'online_card', 'paid', 'online_checkout', false, 'pi_single_refund_overflow');
 
 -- A. SC-14: a traveler's cancel refunds the flexible payment and keeps the deposit.
 DO $$
@@ -132,6 +138,20 @@ BEGIN
   IF (v_c->>'refund_total_cents')::bigint <> 30000000
      OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_c->'per_payment_refund') r WHERE r ? 'deposit_non_refundable_cents') THEN
     RAISE EXCEPTION 'C-1 a legacy refund changed: %', v_c;
+  END IF;
+END $$;
+
+-- C2. Fails on revert: the old int4 multiplication raises integer out of
+--     range before the division for a ₦300,000 refund at 100%.
+DO $$
+DECLARE v_c jsonb;
+BEGIN
+  v_c := public.biz_compute_refund_for_cancel('45220008-0000-4000-8000-0000000000a5');
+  IF NOT COALESCE((v_c->>'ok')::boolean, false)
+     OR (v_c->>'paid_total_cents')::bigint <> 30000000
+     OR (v_c->>'refund_total_cents')::bigint <> 30000000
+     OR (v_c->'per_payment_refund'->0->>'refund_cents')::bigint <> 30000000 THEN
+    RAISE EXCEPTION 'C2-1 large single-payment refund must not overflow: %', v_c;
   END IF;
 END $$;
 

@@ -13,7 +13,9 @@
 --     deposit in full (D-9).
 -- Re-emitted (md5 drift-guarded):
 --   biz_compute_refund_for_cancel (20280204003645) — a traveler's cancel keeps
---     the deposit's trip part when the v2 terms froze deposit_non_refundable.
+--     the deposit's trip part when the v2 terms froze deposit_non_refundable;
+--     every percentage calculation widens before multiplying, so large legacy
+--     and v2 refunds cannot overflow the orders integer column.
 --   biz_cancel_trip_booking_begin (20280204003645) — marks the actor so an
 --     operator cancel refunds that deposit (D-9).
 
@@ -123,7 +125,7 @@ BEGIN
         'ordinal', v_installment.ordinal,
         'source_pi', v_installment.stripe_payment_intent_id,
         'paid_cents', v_installment.amount_cents,
-        'refund_cents', FLOOR(v_installment.amount_cents * v_tier_pct / 100.0)::bigint,
+        'refund_cents', FLOOR(v_installment.amount_cents::numeric * v_tier_pct / 100.0)::bigint,
         'currency', v_installment.currency
       );
     END LOOP;
@@ -146,7 +148,7 @@ BEGIN
       'ordinal', 0,
       'source_pi', v_order.stripe_payment_intent_id,
       'paid_cents', v_order.total_cents,
-      'refund_cents', FLOOR((v_order.total_cents - v_deposit_kept) * v_tier_pct / 100.0)::bigint,
+      'refund_cents', FLOOR((v_order.total_cents - v_deposit_kept)::numeric * v_tier_pct / 100.0)::bigint,
       'currency', v_order.currency,
       'note', 'deposit'
     ) || CASE WHEN v_deposit_kept > 0
@@ -159,7 +161,7 @@ BEGIN
       'ordinal', 0,
       'source_pi', v_order.stripe_payment_intent_id,
       'paid_cents', v_order.total_cents,
-      'refund_cents', FLOOR(v_order.total_cents * v_tier_pct / 100.0)::bigint,
+      'refund_cents', FLOOR(v_order.total_cents::numeric * v_tier_pct / 100.0)::bigint,
       'currency', v_order.currency
     ));
   END IF;
