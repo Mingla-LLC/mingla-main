@@ -519,14 +519,24 @@ export function purchaseReminderDeepLink(
   const payload = (row.payload as Record<string, unknown> | null) ?? {};
   const category = String(row.category_key ?? "");
   const route = category === "buyer_event_reminder"
-    ? { kind: "order", id: payload.order_id }
+    ? { kind: "order", id: payload.order_id, door: true }
     : category === "buyer_reservation_reminder"
-    ? { kind: "reservation", id: payload.reservation_id }
+    ? { kind: "reservation", id: payload.reservation_id, door: true }
+    // #4490 Explorer W2: a guest's venue message opens that booking, plan or
+    // waitlist place in Purchases (never the venue's own people's messages).
+    : isVenueBookingCategory(category) && !isVenueHostCategory(category)
+    ? { kind: "venue_booking", id: payload.venue_group_id, door: false }
+    : isVenueMembershipCategory(category)
+    ? { kind: "venue_membership", id: payload.subscription_id, door: false }
+    : isVenueWaitlistCategory(category)
+    ? { kind: "venue_waitlist", id: payload.waitlist_id, door: false }
     : null;
   if (route === null || typeof route.id !== "string") return null;
   const id = route.id.trim();
   if (!PURCHASE_ROUTE_ID.test(id)) return null;
-  return `com.mingla.app.v2://purchases/${route.kind}/${id}?door=1`;
+  return `com.mingla.app.v2://purchases/${route.kind}/${id}${
+    route.door ? "?door=1" : ""
+  }`;
 }
 
 export async function resolveGenericBuyerMessageLink(

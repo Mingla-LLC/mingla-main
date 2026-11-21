@@ -48,6 +48,8 @@ export const VENUE_VISIT_CATEGORIES = new Set([
   "venue_hold_expiring",
   "venue_request_declined",
   "venue_request_expired",
+  // #4490 Explorer W2: visit reminders.
+  "venue_visit_reminder",
 ]);
 
 export function isLocalSupabaseUrl(url: string): boolean {
@@ -181,6 +183,12 @@ const CTA: Record<string, { label: string; note: string }> = {
     label: "See your request",
     note: "Your booking page shows what happened. The link is private to you.",
   },
+  // #4490 Explorer W2: the visit reminder reuses the confirmation's words.
+  venue_visit_reminder: {
+    label: "See your pass",
+    note:
+      "Your pass is on your booking page. Show its code at the gate. The link is private to you, so please don't forward this email.",
+  },
 };
 
 /**
@@ -235,6 +243,7 @@ const VENUE_PASS_CATEGORIES = new Set([
   "venue_booking_changed",
   "venue_balance_paid",
   "venue_membership_paid",
+  "venue_visit_reminder",
 ]);
 
 const CLAIM_URL_RE = /^https:\/\/usemingla\.com\/c\/[0-9A-Z]{10}$/;

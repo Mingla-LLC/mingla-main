@@ -195,6 +195,8 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     venue_hold_expiring: ["venue_group_id", "venue_id"],
     venue_request_declined: ["venue_group_id", "venue_id"],
     venue_request_expired: ["venue_group_id", "venue_id"],
+    // #4490 Explorer W2 — visit reminders: opaque ids only.
+    venue_visit_reminder: ["venue_group_id", "venue_id"],
     // #4490 P5 — guest waitlist: opaque ids only (no token, no contact).
     venue_waitlist_joined: ["waitlist_id", "venue_id"],
     venue_table_opened: ["waitlist_id", "venue_id"],

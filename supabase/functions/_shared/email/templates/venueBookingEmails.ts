@@ -31,6 +31,8 @@ export const VENUE_BOOKING_CATEGORIES = new Set([
   "venue_request_declined",
   "venue_request_expired",
   "venue_request_action_needed",
+  // #4490 Explorer W2: the day-before and two-hours-before visit reminders.
+  "venue_visit_reminder",
 ]);
 
 /** Messages to the venue's own people (never carry the guest's booking link). */
@@ -259,6 +261,27 @@ export function renderVenueBookingMessage(
           [date, text(payload.visit_time)].filter(Boolean).join(" ")
         }. Your pass is in the Mingla app: ${venueAppLinkDisplay(payload)}`
         : `${venue}: you're in${on}.${refLine} Your pass is in your email.`,
+    };
+  }
+  if (categoryKey === "venue_visit_reminder") {
+    // #4490 Explorer W2 (spec 06 §6): "{venue} tomorrow at {time}" /
+    // "{venue} in 2 hours"; body "Your pass is in Purchases."
+    const time = text(payload.visit_time);
+    const soon = text(payload.reminder_reason) === "2h";
+    const when = soon
+      ? "in 2 hours"
+      : time
+      ? `tomorrow at ${time}`
+      : "tomorrow";
+    const title = `${venue} ${when}`;
+    return {
+      push: { title, body: "Your pass is in Purchases." },
+      email: {
+        subject: title,
+        body:
+          `Your ${offer} at ${venue} is ${when}.${refLine} Your pass is in Purchases in the Mingla app.`,
+      },
+      sms: `${venue}: your booking is ${when}.${refLine}`,
     };
   }
   if (categoryKey === "venue_booking_cancelled") {
