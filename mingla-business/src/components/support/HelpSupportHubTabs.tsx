@@ -57,6 +57,9 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
                 : tab.label
             }
             accessibilityState={{ selected: isActive }}
+            // react-native-web reads aria-selected, not accessibilityState, so
+            // the web tab says which one is selected too (#4420 rework 2).
+            aria-selected={isActive}
             hitSlop={6}
           >
             <Text

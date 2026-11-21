@@ -141,7 +141,9 @@ export const SupportColumn: React.FC<SupportColumnProps> = ({
                 key={option}
                 onPress={() => select(option)}
                 accessibilityRole="radio"
-                accessibilityState={{ selected }}
+                accessibilityState={{ selected, checked: selected }}
+                // A radio's state is "checked"; react-native-web reads aria-checked (#4420 rework 2).
+                aria-checked={selected}
                 accessibilityLabel={hubCopy(`support.${option}`)}
                 testID={`support-mode-${option}`}
                 style={({ pressed }) => [styles.segment, selected && styles.segmentOn, pressed && !selected && styles.pressed]}

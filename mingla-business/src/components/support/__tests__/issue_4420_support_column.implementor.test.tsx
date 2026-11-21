@@ -66,6 +66,7 @@ const mockInvalidate = jest.fn();
 jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQueries: mockInvalidate }) }));
 
 import { SupportColumn } from "../SupportColumn";
+import { HelpSupportHubTabs } from "../HelpSupportHubTabs";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
@@ -195,5 +196,30 @@ describe("#4420 Support column", () => {
     expect(mockHandOver).toHaveBeenLastCalledWith(expect.objectContaining({ previous: progress }));
     expect(selectedMode(renderer)).toBe("person");
     await TestRenderer.act(async () => renderer.unmount());
+  });
+  // #4420 rework 2 (P3-4). FAILS-ON-REVERT: drop aria-checked / aria-selected
+  // and the web build exposes no selected state; this block fails.
+  test("5. the Ari / A person switch and the phone tabs expose their selected state", async () => {
+    const renderer = await mount();
+    const segments = (id: string): Node =>
+      renderer.root.findAll((node) => node.props.testID === id && node.props.accessibilityRole === "radio" && typeof node.type !== "string")[0];
+    expect(segments("support-mode-ari").props).toMatchObject({ "aria-checked": true, accessibilityState: { selected: true, checked: true } });
+    expect(segments("support-mode-person").props).toMatchObject({ "aria-checked": false, accessibilityState: { selected: false, checked: false } });
+    await press(renderer, "support-mode-person");
+    expect(segments("support-mode-person").props["aria-checked"]).toBe(true);
+    expect(segments("support-mode-ari").props["aria-checked"]).toBe(false);
+    await TestRenderer.act(async () => renderer.unmount());
+
+    let tabs!: Renderer;
+    await TestRenderer.act(async () => {
+      tabs = TestRenderer.create(<HelpSupportHubTabs active="support" onChange={jest.fn()} announcementsBadge={2} />);
+    });
+    const tabNodes = tabs.root.findAll((node) => node.props.accessibilityRole === "tab" && typeof node.props.onPress === "function" && typeof node.type !== "string");
+    expect(tabNodes).toHaveLength(2);
+    expect(tabNodes.map((node) => [node.props["aria-selected"], (node.props.accessibilityState as { selected: boolean }).selected])).toEqual([
+      [false, false],
+      [true, true],
+    ]);
+    await TestRenderer.act(async () => tabs.unmount());
   });
 });
