@@ -372,6 +372,15 @@ export const ENTRY_STEPS: ReadonlyArray<{ id: EntryStepId; label: string }> = [
   { id: "review", label: "Review" },
 ];
 
+/** A clickable wizard step must not bypass the save for the step being edited. */
+export function shouldSaveEntryStepBeforeNavigation(
+  dirty: boolean,
+  current: EntryStepId,
+  next: EntryStepId,
+): boolean {
+  return dirty && current !== "review" && current !== next;
+}
+
 /** The first problem on a step, in plain words (null = the step is complete). */
 export function entryStepIssue(step: EntryStepId, draft: EntryDraft): string | null {
   if (step === "basics") {

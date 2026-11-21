@@ -83,6 +83,7 @@ import {
   readinessLine,
   refundSummary,
   schedulePayload,
+  shouldSaveEntryStepBeforeNavigation,
   timeRangeLabel,
   timedDayTotal,
   timedSessionPreview,
@@ -413,6 +414,24 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
     [],
   );
 
+  const navigateToStep = useCallback(
+    async (index: number): Promise<void> => {
+      const next = ENTRY_STEPS[index];
+      if (next === undefined || index === stepIndex) return;
+      if (shouldSaveEntryStepBeforeNavigation(dirty, step.id, next.id)) {
+        const issue = issueFor(step.id);
+        if (issue !== null) {
+          setShowErrors((s) => ({ ...s, [step.id]: true }));
+          return;
+        }
+        const ok = await runSave(step.id);
+        if (!ok) return;
+      }
+      goTo(index);
+    },
+    [dirty, goTo, issueFor, runSave, step.id, stepIndex],
+  );
+
   const handleContinue = useCallback(async (): Promise<void> => {
     if (draft === null) return;
     if (step.id === "review") {
@@ -653,7 +672,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
   const footer = (
     <StepperFooter
       previousLabel={stepIndex > 0 ? ENTRY_STEPS[stepIndex - 1].label : undefined}
-      onBack={stepIndex > 0 ? () => goTo(stepIndex - 1) : undefined}
+      onBack={stepIndex > 0 ? () => void navigateToStep(stepIndex - 1) : undefined}
       backDisabled={saving}
       continueLabel={continueLabel}
       onContinue={() => void handleContinue()}
@@ -721,7 +740,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
               layout="list"
               furthestValidIndex={furthest}
               onStepPress={(i) => {
-                if (i <= furthest && !saving) goTo(i);
+                if (i <= furthest && !saving) void navigateToStep(i);
               }}
               testID="entry-editor-steps"
             />
@@ -745,7 +764,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
         layout="chips"
         furthestValidIndex={furthest}
         onStepPress={(i) => {
-          if (i <= furthest && !saving) goTo(i);
+          if (i <= furthest && !saving) void navigateToStep(i);
         }}
         sheetTitle="Steps"
         testID="entry-editor-steps"
@@ -1216,6 +1235,7 @@ function ReviewStep({
         ...(o.limitHours ? [timeRangeLabel(o.startTime, o.endTime) ?? ""] : []),
         `up to ${o.guestMax} on one booking`,
         ...(o.idCheck ? [`${o.idLabel.trim() || "ID"} checked at the gate`] : []),
+        ...(o.multiDay ? [multiDayPassSummary(o.passDays, o.passWindowDays)] : []),
         ...(o.busyRules.length > 0 ? [`${o.busyRules.length} busy-time ${o.busyRules.length === 1 ? "price" : "prices"}`] : []),
       ]
         .filter((x) => x.length > 0)

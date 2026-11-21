@@ -7,6 +7,7 @@ import {
   multiDayPassSummary,
   optionIssues,
   optionPayload,
+  shouldSaveEntryStepBeforeNavigation,
 } from "../features/offers/offersModel";
 import { checkInResultView } from "../features/checkin/venueCheckInResult";
 import { mapScanOutcome } from "../../../services/venueOffersService";
@@ -39,6 +40,23 @@ describe("multi-day entry passes", () => {
     expect(source).toContain("max={60}");
     expect(source).toContain("max={365}");
     expect(source).toContain('entryStyle !== "timed_session"');
+  });
+
+  it("saves a dirty price step before the host jumps to Review", () => {
+    expect(shouldSaveEntryStepBeforeNavigation(true, "prices", "review")).toBe(true);
+    expect(shouldSaveEntryStepBeforeNavigation(true, "review", "prices")).toBe(false);
+    expect(shouldSaveEntryStepBeforeNavigation(false, "prices", "review")).toBe(false);
+
+    const source = readFileSync(join(__dirname, "..", "features/offers/EntryEditor.tsx"), "utf8");
+    expect(source).toContain("const navigateToStep = useCallback");
+    expect(source).toContain("await runSave(step.id)");
+    expect(source).toContain("void navigateToStep(i)");
+    expect(source).toContain("onBack={stepIndex > 0 ? () => void navigateToStep(stepIndex - 1) : undefined}");
+  });
+
+  it("restates a multi-day option on Review before it is saved", () => {
+    const source = readFileSync(join(__dirname, "..", "features/offers/EntryEditor.tsx"), "utf8");
+    expect(source).toContain('...(o.multiDay ? [multiDayPassSummary(o.passDays, o.passWindowDays)] : [])');
   });
 
   it("labels the guest price and pass progress in plain words", () => {
