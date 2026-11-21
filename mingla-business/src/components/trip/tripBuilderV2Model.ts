@@ -535,6 +535,16 @@ export function instantFromWall(date: string, time: string, timeZone: string): s
   }
 }
 
+/**
+ * Today's date in a zone, `YYYY-MM-DD`. Here and not `@mingla/calendar`'s
+ * `todayInZone`: the wizard's chunk must not import the calendar package, whose
+ * helpers the lazy calendar chunk shares (a module two chunks import is hoisted
+ * into the business-web boot payload; ORCH-1083).
+ */
+export function todayInZoneDay(timeZone: string, now: Date = new Date()): string {
+  return wallInZone(now.toISOString(), timeZone)?.date ?? now.toISOString().slice(0, 10);
+}
+
 /** Why a deadline cannot be saved, or null. `now` is the real current time. */
 export function deadlineProblem(
   deadlineIso: string,

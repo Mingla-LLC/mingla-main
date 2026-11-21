@@ -3035,6 +3035,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               brandId={trip.brandId}
               eventId={trip.id}
               onShowToast={showToast}
+              builderV2={V2}
+              startAt={step1Draft.startAt}
             />
           ) : null}
           {V2 && shows.inclusions ? (
@@ -3319,16 +3321,28 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
         visible={pendingDayTrim !== null}
         onClose={handleKeepDatesAfterTrimQuestion}
         onConfirm={handleConfirmDayTrim}
-        title="Remove part of your itinerary?"
+        title={
+          V2 && pendingDayTrim !== null
+            ? pendingDayTrim.atRisk.length === 1
+              ? `Remove Day ${pendingDayTrim.atRisk[0].ordinal}?`
+              : `Remove ${pendingDayTrim.atRisk.length} days?`
+            : "Remove part of your itinerary?"
+        }
         description={
           pendingDayTrim !== null
-            ? describeItineraryDaysAtRisk(pendingDayTrim.atRisk)
+            ? V2
+              ? pendingDayTrim.atRisk.length === 1
+                ? "Its plan will be deleted."
+                : "Their plans will be deleted."
+              : describeItineraryDaysAtRisk(pendingDayTrim.atRisk)
             : ""
         }
         confirmLabel={
-          pendingDayTrim !== null && pendingDayTrim.atRisk.length > 1
-            ? "Remove days"
-            : "Remove day"
+          V2
+            ? "Remove"
+            : pendingDayTrim !== null && pendingDayTrim.atRisk.length > 1
+              ? "Remove days"
+              : "Remove day"
         }
         cancelLabel="Keep dates"
         destructive
