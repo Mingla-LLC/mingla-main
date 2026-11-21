@@ -45,6 +45,7 @@ import { Input } from "../../ui/Input";
 import { EntryButton, EntryNote, EntryProblem, EntrySectionLabel, entryStyles } from "./EntryUi";
 import { GuestDetailsCard, useGuestDetails } from "./GuestDetails";
 import { HireForm } from "./HireForm";
+import { ExtrasList } from "./ExtrasList";
 import { revealFocusedField } from "./revealFocusedField";
 import { useHireSelection } from "./useHireSelection";
 
@@ -85,6 +86,7 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
   const [note, setNote] = useState("");
   const [siteVisit, setSiteVisit] = useState(false);
   const [overtime, setOvertime] = useState(0);
+  const [pickedExtras, setPickedExtras] = useState<string[]>([]);
   const [focused, setFocused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -101,7 +103,7 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
     if (siteVisit) out.siteVisit = true;
     return out;
   }, [occasion, note, siteVisit]);
-  const quoteKey = `${choice?.windowId ?? ""}|${choice?.priceOptionId ?? ""}|${choice?.guests ?? 0}|${overtime}|${choice?.startsAt ?? ""}|${choice?.minutes ?? 0}`;
+  const quoteKey = `${choice?.windowId ?? ""}|${choice?.priceOptionId ?? ""}|${choice?.guests ?? 0}|${overtime}|${[...pickedExtras].sort().join(",")}|${choice?.startsAt ?? ""}|${choice?.minutes ?? 0}`;
   const latest = useRef(quoteKey);
   latest.current = quoteKey;
   const askQuote = async (withAnswers: boolean): Promise<HireQuote | null> => {
@@ -119,6 +121,7 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
         priceOptionId: choice.priceOptionId,
         guests: choice.guests,
         overtimeHours: choice.startsAt !== undefined ? 0 : overtime,
+        extras: pickedExtras.map((id) => ({ id })),
         answers: withAnswers ? answers : {},
         cartKey,
         idempotencyKey: `venue-offer:quote:${randomId()}`,
@@ -308,6 +311,23 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
             />
           </View>
         </>
+      ) : null}
+      {offer !== null && offer !== undefined ? (
+        <ExtrasList
+          palette={palette}
+          theme={theme}
+          extras={offer.extras}
+          picked={pickedExtras}
+          onToggle={(id) =>
+            setPickedExtras((current) =>
+              current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+            )
+          }
+          currencyCode={offer.currencyCode}
+          exponent={offer.exponent}
+          label="ADD TO YOUR BOOKING"
+          testID="issue-4490-hire-request-extras"
+        />
       ) : null}
       <EntrySectionLabel palette={palette}>{`Anything ${venueName} should know?`}</EntrySectionLabel>
       <Input

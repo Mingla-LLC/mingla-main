@@ -434,7 +434,7 @@ export function inclusionsPayload(draft: PackageDraft): Array<Record<string, unk
   });
 }
 
-export function extrasPayload(draft: PackageDraft): Array<Record<string, unknown>> {
+export function extrasPayload(draft: Pick<PackageDraft, "extras">): Array<Record<string, unknown>> {
   return draft.extras.map((e) => ({
     ...(e.id !== null ? { id: e.id } : {}),
     name: e.name.trim(),

@@ -100,7 +100,8 @@ import { draftKey, offerErrorCopy, refundSummary, vatLine } from "./offersModel"
 import { weekdaysSummary } from "../../../ui/fieldModels";
 import { useBrandHours } from "../../../../hooks/useBrandHours";
 import { openingHoursDefault } from "../hoursModel";
-import { CHANGE_CUTOFFS, ONLINE_PAYMENTS_OFF } from "./packageModel";
+import { CHANGE_CUTOFFS, ONLINE_PAYMENTS_OFF, extrasPayload } from "./packageModel";
+import { ExtrasEditor } from "./ExtrasEditor";
 
 const RAIL_MIN_WIDTH = 1280;
 const COLUMN_OPTION_CARD = { flexBasis: "auto" as const, flexGrow: 0 };
@@ -133,10 +134,12 @@ export interface HireEditorProps {
   onOpenSpaces?: () => void;
   /** Brand payments setup (shown when the brand can't take payments online). */
   onOpenPayments?: () => void;
+  /** [TRANSITIONAL] blocked on #4514 — shared offer-form attach row. */
+  questionsSource?: React.ReactNode;
 }
 
 export const HireEditor = forwardRef<VenueModuleLeaveHandle, HireEditorProps>(function HireEditor(
-  { brandId, venueId, venueName, offerId, onClose, onOpenSettings, onOpenSpaces, onOpenPayments },
+  { brandId, venueId, venueName, offerId, onClose, onOpenSettings, onOpenSpaces, onOpenPayments, questionsSource },
   ref,
 ): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
@@ -357,6 +360,27 @@ export const HireEditor = forwardRef<VenueModuleLeaveHandle, HireEditorProps>(fu
             payload: { offerId: id0, extraGuestMinor: wantExtra, overtimeMinorPerHour: wantOvertime },
             expectedVersion: current.version,
           });
+        }
+        const wanted = extrasPayload(draft);
+        const saved = current.extras.map((extra) => ({
+          id: extra.id,
+          name: extra.name,
+          priceMinor: extra.priceMinor,
+          per: extra.per,
+        }));
+        if (JSON.stringify(wanted) !== JSON.stringify(saved)) {
+          current = await manageVenueHire({
+            venueId,
+            action: "set_extras",
+            payload: { offerId: id0, extras: wanted },
+            expectedVersion: current.version,
+          });
+          const fresh = current;
+          setDraft((value) =>
+            value === null
+              ? value
+              : { ...value, extras: value.extras.map((extra, index) => ({ ...extra, id: fresh.extras[index]?.id ?? extra.id })) },
+          );
         }
       }
 
@@ -643,7 +667,7 @@ export const HireEditor = forwardRef<VenueModuleLeaveHandle, HireEditorProps>(fu
       ) : null}
       {step.id === "extras" ? <ExtrasStep {...stepProps} /> : null}
       {step.id === "terms" ? <TermsStep {...stepProps} /> : null}
-      {step.id === "book" ? <BookStep {...stepProps} venueName={venueName} /> : null}
+      {step.id === "book" ? <BookStep {...stepProps} venueName={venueName} questionsSource={questionsSource} /> : null}
       {step.id === "review" ? (
         <ReviewStep
           draft={draft}
@@ -1250,7 +1274,17 @@ function ExtrasStep({ draft, patch, showErrors, disabled, currency }: StepProps)
           testID="hire-overtime-price"
         />
       ) : null}
-      <Text style={styles.hint}>Anything else, like food, drinks or staff, you can add to the price when you answer a request.</Text>
+      <ExtrasEditor
+        title="Paid extras"
+        helper="Paid add-ons, like a cake table, food, drinks or staff. Guests tick the ones they want."
+        extras={draft.extras}
+        onChange={(extras) => patch({ extras })}
+        currency={currency}
+        disabled={disabled}
+        showErrors={showErrors}
+        testIDPrefix="hire-paid-extra"
+        addTestID="hire-add-paid-extra"
+      />
     </View>
   );
 }
@@ -1400,10 +1434,17 @@ function TermsStep({ draft, patch, showErrors, disabled, currency }: StepProps):
   );
 }
 
-function BookStep({ draft, patch, disabled, venueName }: StepProps & { venueName: string }): React.ReactElement {
+function BookStep({
+  draft,
+  patch,
+  disabled,
+  venueName,
+  questionsSource,
+}: StepProps & { venueName: string; questionsSource?: React.ReactNode }): React.ReactElement {
   return (
     <View style={styles.stepBody} testID="hire-step-book">
       <StepHead title="How guests book" />
+      {questionsSource}
       <View style={styles.options}>
         <OptionCard
           label="Request first"

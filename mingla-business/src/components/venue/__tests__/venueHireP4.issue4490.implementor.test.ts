@@ -24,6 +24,7 @@ import {
   termsPayload,
   type HireDraft,
 } from "../features/offers/hireModel";
+import { extrasPayload } from "../features/offers/packageModel";
 import {
   approveWords,
   closedWords,
@@ -90,6 +91,27 @@ describe("P4-2 hire editor model", () => {
     expect(d.approvedPaymentMinutes).toBe(4320);
     expect(d.sessions.map((s) => s.label)).toEqual(["Full day"]);
     expect(d.damageDepositMinor).toBeNull();
+    expect(d.extras).toEqual([]);
+  });
+
+  it("reads, validates and writes paid hire extras without changing their durable ids", () => {
+    const saved = hireDraftFrom({
+      extras: [
+        { id: "projector", name: "Projector", priceMinor: 2500000, per: "booking" },
+        { id: "welcome-drink", name: "Welcome drink", priceMinor: 150000, per: "guest" },
+      ],
+    } as never);
+    expect(saved.extras.map(({ id, name, priceMinor, per }) => ({ id, name, priceMinor, per }))).toEqual([
+      { id: "projector", name: "Projector", priceMinor: 2500000, per: "booking" },
+      { id: "welcome-drink", name: "Welcome drink", priceMinor: 150000, per: "guest" },
+    ]);
+    expect(extrasPayload(saved)).toEqual([
+      { id: "projector", name: "Projector", priceMinor: 2500000, per: "booking" },
+      { id: "welcome-drink", name: "Welcome drink", priceMinor: 150000, per: "guest" },
+    ]);
+    expect(hireStepIssue("extras", { ...saved, extras: [{ ...saved.extras[0], name: "" }] }, [])).toBe(
+      "An extra: Name this extra",
+    );
   });
 
   it("lists spaces then combinations with their summed capacity, and marks unhirable ones", () => {

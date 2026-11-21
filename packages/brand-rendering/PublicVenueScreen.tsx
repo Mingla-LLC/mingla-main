@@ -607,6 +607,11 @@ export interface PublicVenueScreenProps {
    */
   overviewSlot?: (context: PublicVenueThemedContext) => BrandRenderingReactNode;
   /**
+   * [TRANSITIONAL] blocked on #4514 — a venue-level custom-form section.
+   * No host passes it until the shared renderer lands, so it draws no UI now.
+   */
+  formSection?: (context: PublicVenueThemedContext) => BrandRenderingReactNode;
+  /**
    * #4347 wave 4 — a host-owned pinned action bar that REPLACES the page's own
    * reserve bar (see `PublicVenueActionBarContext`). Absent ⇒ unchanged.
    */
@@ -1303,6 +1308,7 @@ export const PublicVenueScreen = ({
   onOpenMaps,
   onCopyAddress,
   overviewSlot,
+  formSection,
   actionBar,
   actionBarHeight = 0,
   features = null,
@@ -2814,7 +2820,16 @@ export const PublicVenueScreen = ({
   // venue's own voice first), or first when the category has no About.
   const overviewSlotNode =
     overviewSlot === undefined ? null : overviewSlot(themedSlotContext);
+  const formSectionNode =
+    formSection === undefined ? null : formSection(themedSlotContext);
   const overviewHasAbout = profile.overview.includes("about");
+  const formSectionAfter = profile.overview.reduce(
+    (last, sectionId, index) =>
+      sectionId === "about" || sectionId === "location" || sectionId === "hours"
+        ? index
+        : last,
+    -1,
+  );
 
   // issue #4420 — native has no CSS sticky, so once the in-flow tab strip
   // scrolls under the glass header a pinned copy shows there (web keeps the
@@ -2922,7 +2937,7 @@ export const PublicVenueScreen = ({
                 {overviewSlotNode}
               </React.Fragment>
             ) : null}
-            {profile.overview.map((sectionId) => {
+            {profile.overview.map((sectionId, index) => {
               const Section = VENUE_SECTIONS[sectionId];
               return (
                 <React.Fragment key={sectionId}>
@@ -2930,9 +2945,13 @@ export const PublicVenueScreen = ({
                   {overviewSlotNode !== null && sectionId === "about"
                     ? overviewSlotNode
                     : null}
+                  {formSectionNode !== null && index === formSectionAfter
+                    ? formSectionNode
+                    : null}
                 </React.Fragment>
               );
             })}
+            {formSectionNode !== null && formSectionAfter < 0 ? formSectionNode : null}
           </View>
         }
         menu={menuBlock}

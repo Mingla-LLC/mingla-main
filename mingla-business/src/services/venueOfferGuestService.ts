@@ -140,6 +140,7 @@ export const venueOfferGuestService = {
     priceOptionId: string;
     guests: number;
     overtimeHours: number;
+    extras: Array<{ id: string }>;
     answers: Record<string, string | boolean>;
     cartKey: string;
     idempotencyKey: string;
@@ -158,7 +159,7 @@ export const venueOfferGuestService = {
             ...(input.overtimeHours > 0 ? { overtimeHours: input.overtimeHours } : {}),
           },
         ],
-        extras: [],
+        extras: input.extras,
         answers: input.answers,
         cartKey: input.cartKey,
         idempotencyKey: input.idempotencyKey,

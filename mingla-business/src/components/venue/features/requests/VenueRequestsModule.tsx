@@ -90,6 +90,17 @@ interface QuoteEdit {
   note: string;
 }
 
+/** The server's editable base is the whole pre-tax hire amount, extras included. */
+function hireBaseMinor(booking: VenueBookingDetail | null | undefined): number | null {
+  if (booking?.hire === null || booking?.hire === undefined) return null;
+  return (
+    booking.hire.hireMinor +
+    booking.hire.extraGuestMinor +
+    booking.hire.overtimeMinor +
+    booking.extras.reduce((sum, extra) => sum + extra.amountMinor, 0)
+  );
+}
+
 export function VenueRequestsModule({ brandId, venueId, onOpenModule, initialGroupId = null }: VenueRequestsModuleProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
   const insets = useSafeAreaInsets();
@@ -331,6 +342,7 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
   const first = r.guestName.split(" ")[0] ?? r.guestName;
   const canAnswer = access.canManageBookings;
   const canEditPrice = access.canManageMoney && (b?.hire !== null && b?.hire !== undefined);
+  const originalBaseMinor = hireBaseMinor(b);
 
   // The request holding the same space that day (for "next in line" words).
   const blocker = useMemo(() => {
@@ -348,11 +360,11 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
   }, [all, r]);
 
   const preview =
-    b !== undefined && b.hire !== null
+    b !== undefined && b.hire !== null && originalBaseMinor !== null
       ? quotePreview({
           totalDueMinor: b.totalDueMinor,
-          hireMinor: b.hire.hireMinor,
-          newHireMinor: quote?.baseMinor ?? b.hire.hireMinor,
+          hireMinor: originalBaseMinor,
+          newHireMinor: quote?.baseMinor ?? originalBaseMinor,
           taxMinor: b.taxMinor,
           vatMode: b.vatMode,
           vatRateBps: settings?.vatRateBps ?? null,
@@ -439,9 +451,16 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
       quoteRows.push({ key: "agreed", label: `${h.placeName ?? "Hire"} · agreed price${b.taxMinor > 0 ? " (with VAT)" : ""}`, value: money(b.totalDueMinor - h.damageDepositMinor, currency) });
       if (h.damageDepositMinor > 0) quoteRows.push({ key: "damage", label: "Refundable damage deposit", value: money(h.damageDepositMinor, currency) });
     }
-    if (!agreed) quoteRows.push({ key: "hire", label: `${h.placeName ?? "Hire"}${h.sessionLabel !== null ? ` · ${h.sessionLabel.toLowerCase()}` : ""}`, value: money(base, currency) });
-    if (!agreed && h.extraGuests > 0) quoteRows.push({ key: "extra", label: `${h.extraGuests} extra guests`, value: money(h.extraGuestMinor, currency) });
-    if (!agreed && h.overtimeHours > 0) quoteRows.push({ key: "over", label: `${h.overtimeHours} hours running over`, value: money(h.overtimeMinor, currency) });
+    if (!agreed && quote !== null) {
+      quoteRows.push({ key: "hire", label: "Hire and extras · edited", value: money(base, currency) });
+    } else if (!agreed) {
+      quoteRows.push({ key: "hire", label: `${h.placeName ?? "Hire"}${h.sessionLabel !== null ? ` · ${h.sessionLabel.toLowerCase()}` : ""}`, value: money(base, currency) });
+      if (h.extraGuests > 0) quoteRows.push({ key: "extra", label: `${h.extraGuests} extra guests`, value: money(h.extraGuestMinor, currency) });
+      if (h.overtimeHours > 0) quoteRows.push({ key: "over", label: `${h.overtimeHours} hours running over`, value: money(h.overtimeMinor, currency) });
+      for (const extra of b.extras) {
+        quoteRows.push({ key: `picked-extra-${extra.id}`, label: extra.name, value: money(extra.amountMinor, currency) });
+      }
+    }
     if (!agreed && preview.vatMinor > 0) quoteRows.push({ key: "vat", label: b.vatMode === "included" ? "Includes VAT" : "VAT", value: money(preview.vatMinor, currency) });
     if (!agreed && h.damageDepositMinor > 0) quoteRows.push({ key: "damage", label: "Refundable damage deposit", value: money(h.damageDepositMinor, currency) });
     quoteRows.push({ key: "total", label: "Total", value: money(isPending ? preview.totalMinor : b.totalDueMinor, currency), strong: true });
@@ -690,7 +709,7 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
                   action: "approve",
                   groupId: r.groupId,
                   expectedVersion: b?.version ?? r.version,
-                  quoteEdit: quote !== null && b?.hire !== null && b?.hire !== undefined && quote.baseMinor !== b.hire.hireMinor ? { baseMinor: quote.baseMinor, note: quote.note } : null,
+                  quoteEdit: quote !== null && originalBaseMinor !== null && quote.baseMinor !== originalBaseMinor ? { baseMinor: quote.baseMinor, note: quote.note } : null,
                   note: quote !== null && quote.note.trim().length > 0 ? quote.note : null,
                 },
                 { toast: "" },
@@ -831,19 +850,20 @@ function QuoteSheet({
   onSave: (q: QuoteEdit) => void;
 }): React.ReactElement {
   const hire = booking?.hire ?? null;
-  const [base, setBase] = useState<number | null>(initial?.baseMinor ?? hire?.hireMinor ?? null);
+  const originalBaseMinor = hireBaseMinor(booking);
+  const [base, setBase] = useState<number | null>(initial?.baseMinor ?? originalBaseMinor);
   const [note, setNote] = useState(initial?.note ?? "");
   useEffect(() => {
     if (!visible) return;
-    setBase(initial?.baseMinor ?? hire?.hireMinor ?? null);
+    setBase(initial?.baseMinor ?? originalBaseMinor);
     setNote(initial?.note ?? "");
-  }, [visible, initial, hire?.hireMinor]);
+  }, [visible, initial, originalBaseMinor]);
   const p =
-    booking !== null && hire !== null
+    booking !== null && hire !== null && originalBaseMinor !== null
       ? quotePreview({
           totalDueMinor: booking.totalDueMinor,
-          hireMinor: hire.hireMinor,
-          newHireMinor: base ?? hire.hireMinor,
+          hireMinor: originalBaseMinor,
+          newHireMinor: base ?? originalBaseMinor,
           taxMinor: booking.taxMinor,
           vatMode: booking.vatMode,
           vatRateBps,
@@ -857,13 +877,21 @@ function QuoteSheet({
       <PickerSheetHead title={`Quote for ${first}`} onClose={onClose} plain={wide} />
       <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetBody} keyboardShouldPersistTaps="handled">
         <MoneyField
-          label={`${hire?.placeName ?? "Hire"} price`}
+          label="Hire and extras"
           valueMinor={base}
           onChangeMinor={setBase}
           currency={currency}
           error={invalid ? "Enter the price" : null}
           testID="venue-request-quote-price"
         />
+        {booking !== null && booking.extras.length > 0 ? (
+          <View style={styles.field} testID="venue-request-quote-included-extras">
+            <Text style={styles.fieldLabel}>Included in this amount</Text>
+            {booking.extras.map((extra) => (
+              <Text key={extra.id} style={styles.meta}>{`Includes ${extra.name} · ${money(extra.amountMinor, currency)}`}</Text>
+            ))}
+          </View>
+        ) : null}
         <Text style={styles.meta}>Lower it to take money off, or raise it to cover anything you add (food, drinks, staff).</Text>
         <View style={styles.field}>
           <Text style={styles.fieldLabel}>Note to {first}</Text>

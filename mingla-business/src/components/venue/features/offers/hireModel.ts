@@ -14,6 +14,7 @@ import type { HireCharge, HireHoursYouSet, RefundRung, VenueOffer } from "../../
 import type { VenueSpace, VenueSpaceCombination } from "../../../../services/venueFeaturesService";
 import { weekdaysSummary } from "../../../ui/fieldModels";
 import { draftKey, minutesBeforeLabel, money, refundSummary } from "./offersModel";
+import { extraIssue, type ExtraDraft } from "./packageModel";
 
 // ---------------------------------------------------------------- steps
 
@@ -200,6 +201,8 @@ export interface HireDraft {
   extraGuestMinor: number | null;
   overtimeOn: boolean;
   overtimeMinorPerHour: number | null;
+  /** Paid add-ons guests choose while requesting the hire. */
+  extras: ExtraDraft[];
   depositOn: boolean;
   depositKind: "percent" | "fixed";
   depositPercent: number;
@@ -299,6 +302,13 @@ export function hireDraftFrom(offer: VenueOffer | null): HireDraft {
     extraGuestMinor: h?.extraGuestMinor ?? null,
     overtimeOn: h?.overtimeMinorPerHour !== null && h?.overtimeMinorPerHour !== undefined,
     overtimeMinorPerHour: h?.overtimeMinorPerHour ?? null,
+    extras: (offer?.extras ?? []).map((extra) => ({
+      key: draftKey("extra"),
+      id: extra.id,
+      name: extra.name,
+      priceMinor: extra.priceMinor,
+      per: extra.per,
+    })),
     depositOn: deposit === null ? true : deposit.kind !== "none",
     depositKind: deposit?.kind === "fixed" ? "fixed" : "percent",
     depositPercent: deposit?.kind === "percent" && deposit.value !== null ? Math.round(deposit.value / 100) : 50,
@@ -437,6 +447,10 @@ export function hireStepIssue(step: HireStepId, draft: HireDraft, places: readon
     }
     case "extras":
       if (draft.extraGuestOn && (draft.extraGuestMinor === null || draft.extraGuestMinor <= 0)) return "Enter the price per extra guest";
+      for (const extra of draft.extras) {
+        const issue = extraIssue(extra);
+        if (issue !== null) return `${extra.name.trim() || "An extra"}: ${issue}`;
+      }
       return null;
     case "terms":
       if (draft.depositOn && draft.depositKind === "percent" && (draft.depositPercent < 1 || draft.depositPercent > 99)) {
@@ -678,6 +692,7 @@ export function hireReviewItems(
         [
           draft.extraGuestOn && draft.extraGuestMinor !== null ? `${money(draft.extraGuestMinor, currency)} per extra guest` : null,
           draft.overtimeOn && draft.overtimeMinorPerHour !== null ? `${money(draft.overtimeMinorPerHour, currency)} per hour running over` : null,
+          ...draft.extras.map((extra) => `${extra.name.trim()} · ${money(extra.priceMinor ?? 0, currency)} per ${extra.per}`),
         ]
           .filter(Boolean)
           .join(" · ") || "None",

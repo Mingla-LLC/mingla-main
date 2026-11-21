@@ -23,7 +23,7 @@ import {
   type EntryOfferDetail,
   type EntryQuote,
 } from "./entryModel";
-import { parsePayPlan, type PayPlan } from "./packageModel";
+import { parsePayPlan, type PackageExtraView, type PackageQuoteExtra, type PayPlan } from "./packageModel";
 
 type Json = Record<string, unknown>;
 const isJson = (value: unknown): value is Json =>
@@ -84,6 +84,7 @@ export interface HireOfferDetail extends EntryOfferDetail {
   damageDepositMinor: number;
   extraGuestMinor: number | null;
   overtimeMinorPerHour: number | null;
+  extras: PackageExtraView[];
   spaces: HireSpaceView[];
   combinations: Array<{ id: string; name: string; spaceIds: string[] }>;
   rows: HireRowView[];
@@ -135,6 +136,15 @@ export function parseHireOfferDetail(raw: unknown): HireOfferDetail | null {
   }
   const dep = isJson(raw.deposit) ? raw.deposit : {};
   const charge = h.charge === "min_spend" || h.charge === "per_guest" ? h.charge : "hire_fee";
+  const extras: PackageExtraView[] = [];
+  for (const row of Array.isArray(raw.extras) ? raw.extras : []) {
+    if (!isJson(row)) continue;
+    const id = asText(row.id);
+    const name = asText(row.name);
+    const priceMinor = asMinor(row.priceMinor);
+    if (id === null || name === null || priceMinor === null) continue;
+    extras.push({ id, name, priceMinor, per: row.per === "guest" ? "guest" : "booking" });
+  }
   return {
     ...base,
     kind: "private_hire",
@@ -144,6 +154,7 @@ export function parseHireOfferDetail(raw: unknown): HireOfferDetail | null {
     damageDepositMinor: asMinor(h.damageDepositMinor) ?? 0,
     extraGuestMinor: asMinor(h.extraGuestMinor),
     overtimeMinorPerHour: asMinor(h.overtimeMinorPerHour),
+    extras,
     spaces: (Array.isArray(h.spaces) ? h.spaces : []).filter(isJson).flatMap((s) => {
       const id = asText(s.id);
       const name = asText(s.name);
@@ -455,6 +466,8 @@ export interface HireQuote extends EntryQuote {
   extraGuestMinor: number;
   overtimeHours: number;
   overtimeMinor: number;
+  extrasMinor: number;
+  extras: PackageQuoteExtra[];
   damageDepositMinor: number;
   requestResponseHours: number;
   payPlan: PayPlan;
@@ -464,6 +477,19 @@ export function parseHireQuote(raw: unknown): HireQuote | null {
   const base = parseEntryQuote(raw);
   if (base === null || !isJson(raw) || !isJson(raw.hire)) return null;
   const h = raw.hire;
+  const extras: PackageQuoteExtra[] = [];
+  for (const extra of Array.isArray(raw.extras) ? raw.extras : []) {
+    if (!isJson(extra)) continue;
+    const id = asText(extra.id);
+    if (id === null) continue;
+    extras.push({
+      id,
+      name: asText(extra.name) ?? "",
+      per: extra.per === "guest" ? "guest" : "booking",
+      qty: asInt(extra.qty) ?? 1,
+      amountMinor: asMinor(extra.amountMinor) ?? 0,
+    });
+  }
   return {
     ...base,
     mode: raw.mode === "instant" ? "instant" : "request",
@@ -475,6 +501,8 @@ export function parseHireQuote(raw: unknown): HireQuote | null {
     extraGuestMinor: asMinor(h.extraGuestMinor) ?? 0,
     overtimeHours: asInt(h.overtimeHours) ?? 0,
     overtimeMinor: asMinor(h.overtimeMinor) ?? 0,
+    extrasMinor: asMinor(h.extrasMinor) ?? extras.reduce((sum, extra) => sum + extra.amountMinor, 0),
+    extras,
     damageDepositMinor: asMinor(h.damageDepositMinor) ?? 0,
     requestResponseHours: asInt(h.requestResponseHours) ?? 48,
     payPlan: parsePayPlan(h.payPlan),
@@ -496,6 +524,9 @@ export function hireSummaryLines(q: HireQuote, exponent: number): HireSummaryLin
   ];
   if (q.extraGuests > 0) lines.push({ key: "extra", label: `${q.extraGuests} extra guests`, value: m(q.extraGuestMinor) });
   if (q.overtimeHours > 0) lines.push({ key: "over", label: `${q.overtimeHours} extra ${q.overtimeHours === 1 ? "hour" : "hours"}`, value: m(q.overtimeMinor) });
+  for (const extra of q.extras) {
+    lines.push({ key: `extra-${extra.id}`, label: extra.name, value: m(extra.amountMinor) });
+  }
   if (q.vatMode === "added" && q.taxMinor > 0) {
     lines.push({ key: "vat", label: `VAT ${q.vatRatePct}%`, value: m(q.taxMinor) });
   } else if (q.vatMode === "included" && q.vatAmountMinor > 0) {
@@ -701,6 +732,7 @@ export interface HireBookingView {
   extraGuestMinor: number;
   overtimeHours: number;
   overtimeMinor: number;
+  extras: PackageQuoteExtra[];
   damageDepositMinor: number;
   occasion: string | null;
   note: string | null;
@@ -798,6 +830,19 @@ export function parseHireBooking(raw: unknown): HireBookingView | null {
   if (!isJson(raw) || !isJson(raw.hire)) return null;
   const h = raw.hire;
   const total = asMinor(raw.totalMinor) ?? 0;
+  const extras: PackageQuoteExtra[] = [];
+  for (const extra of Array.isArray(raw.extras) ? raw.extras : []) {
+    if (!isJson(extra)) continue;
+    const id = asText(extra.id);
+    if (id === null) continue;
+    extras.push({
+      id,
+      name: asText(extra.name) ?? "",
+      per: extra.per === "guest" ? "guest" : "booking",
+      qty: asInt(extra.qty) ?? 1,
+      amountMinor: asMinor(extra.amountMinor) ?? 0,
+    });
+  }
   return {
     placeName: asText(h.placeName),
     sessionLabel: asText(h.sessionLabel),
@@ -809,6 +854,7 @@ export function parseHireBooking(raw: unknown): HireBookingView | null {
     extraGuestMinor: asMinor(h.extraGuestMinor) ?? 0,
     overtimeHours: asInt(h.overtimeHours) ?? 0,
     overtimeMinor: asMinor(h.overtimeMinor) ?? 0,
+    extras,
     damageDepositMinor: asMinor(h.damageDepositMinor) ?? 0,
     occasion: asText(h.occasion),
     note: asText(h.note),

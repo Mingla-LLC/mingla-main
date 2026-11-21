@@ -36,6 +36,10 @@ const OFFER = {
   minorUnitExponent: 2,
   vat: { mode: "added", ratePct: 7.5 },
   confirmationMode: "request",
+  extras: [
+    { id: "projector", name: "Projector", priceMinor: 2500000, per: "booking" },
+    { id: "welcome-drink", name: "Welcome drink", priceMinor: 150000, per: "guest" },
+  ],
   options: [{ id: "o1", name: "The Lounge Side · 60–150 guests", unit: "booking", guestMin: 60, guestMax: 150, priceMinor: 700000000 }],
   deposit: { kind: "percent", value: 5000, balanceDueDaysBefore: 14 },
   venue: { name: "Gameland QA", timezone: "Africa/Lagos" },
@@ -64,6 +68,10 @@ describe("P4-3 hire offer and days", () => {
     const o = parseHireOfferDetail(OFFER);
     expect(o).not.toBeNull();
     expect(o?.mode).toBe("request");
+    expect(o?.extras).toEqual([
+      { id: "projector", name: "Projector", priceMinor: 2500000, per: "booking" },
+      { id: "welcome-drink", name: "Welcome drink", priceMinor: 150000, per: "guest" },
+    ]);
     expect(hireGuestRange(o!)).toEqual({ min: 60, max: 500 });
     expect(parseHireOfferDetail({ ...OFFER, kind: "entry" })).toBeNull();
   });
@@ -113,8 +121,12 @@ describe("P4-3 quote and request", () => {
     totalMinor: 752500000,
     vat: { mode: "added", ratePct: 7.5, amountMinor: 52500000 },
     lines: [],
+    extras: [
+      { id: "projector", name: "Projector", per: "booking", qty: 1, amountMinor: 2500000 },
+      { id: "welcome-drink", name: "Welcome drink", per: "guest", qty: 120, amountMinor: 18000000 },
+    ],
     mode: "request",
-    hire: { placeName: "The Lounge Side", guests: 120, hireMinor: 700000000, damageDepositMinor: 0, requestResponseHours: 48, payPlan: { payModes: ["deposit", "full"], depositMinor: 376250000, depositKind: "percent", depositValue: 5000 } },
+    hire: { placeName: "The Lounge Side", guests: 120, hireMinor: 700000000, extrasMinor: 20500000, damageDepositMinor: 0, requestResponseHours: 48, payPlan: { payModes: ["deposit", "full"], depositMinor: 376250000, depositKind: "percent", depositValue: 5000 } },
   })!;
 
   it("says nothing is paid yet and what holds the date (the server's deposit)", () => {
@@ -124,6 +136,8 @@ describe("P4-3 quote and request", () => {
     );
     expect(hireSummaryLines(quote, 2).map((l) => `${l.label}=${l.value}`)).toEqual([
       "The Lounge Side · 120 guests=₦7,000,000",
+      "Projector=₦25,000",
+      "Welcome drink=₦180,000",
       "VAT 7.5%=₦525,000",
       "Total=₦7,525,000",
     ]);
@@ -203,5 +217,23 @@ describe("P4-3 booking state card", () => {
     expect(hireTrackerSteps("request_pending", "Gameland QA", h).find((s) => s.current)?.label).toBe("Gameland QA says yes");
     expect(hireTrackerSteps("confirmed", "Gameland QA", h).find((s) => s.current)?.label).toBe("You pay the rest");
     expect(parseHireBooking({ hire: null })).toBeNull();
+  });
+
+  it("keeps the chosen extras on the booking snapshot", () => {
+    const h = parseHireBooking(
+      raw(
+        {
+          extras: [
+            { id: "projector", name: "Projector", per: "booking", qty: 1, amountMinor: 2500000 },
+            { id: "welcome-drink", name: "Welcome drink", per: "guest", qty: 120, amountMinor: 18000000 },
+          ],
+        },
+        { extrasMinor: 20500000 },
+      ),
+    )!;
+    expect(h.extras).toEqual([
+      { id: "projector", name: "Projector", per: "booking", qty: 1, amountMinor: 2500000 },
+      { id: "welcome-drink", name: "Welcome drink", per: "guest", qty: 120, amountMinor: 18000000 },
+    ]);
   });
 });

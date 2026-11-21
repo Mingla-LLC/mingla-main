@@ -435,7 +435,7 @@ function mapHoursYouSet(v: unknown): HireHoursYouSet | null {
   };
 }
 
-export type ManageHireAction = "set_spaces" | "set_price_row" | "set_sessions" | "set_terms" | "set_booking" | "set_flexible";
+export type ManageHireAction = "set_spaces" | "set_price_row" | "set_sessions" | "set_terms" | "set_booking" | "set_flexible" | "set_extras";
 
 export async function manageVenueHire(input: {
   venueId: string;

@@ -284,6 +284,7 @@ export function HireFacts({
   const edited = bookedTotalMinor !== null && bookedTotalMinor !== totalDueMinor;
   const moneyRows: Array<{ k: string; v: string; strong?: boolean }> = edited
     ? [
+        ...hire.extras.map((extra) => ({ k: `Extras · ${extra.name}`, v: money(extra.amountMinor) })),
         { k: taxMinor > 0 ? "Agreed price (with VAT)" : "Agreed price", v: money(totalDueMinor - hire.damageDepositMinor) },
         ...(hire.damageDepositMinor > 0 ? [{ k: "Refundable damage deposit", v: money(hire.damageDepositMinor) }] : []),
         { k: "Total", v: money(totalDueMinor), strong: true },
@@ -294,6 +295,7 @@ export function HireFacts({
     { k: "Hire", v: money(hire.hireMinor) },
     ...(hire.extraGuests > 0 ? [{ k: `${hire.extraGuests} extra guests`, v: money(hire.extraGuestMinor) }] : []),
     ...(hire.overtimeHours > 0 ? [{ k: `${hire.overtimeHours} extra hours`, v: money(hire.overtimeMinor) }] : []),
+    ...hire.extras.map((extra) => ({ k: `Extras · ${extra.name}`, v: money(extra.amountMinor) })),
     ...(taxMinor > 0 ? [{ k: vatMode === "included" ? "Includes VAT" : "VAT", v: money(taxMinor) }] : []),
     ...(hire.damageDepositMinor > 0 ? [{ k: "Refundable damage deposit", v: money(hire.damageDepositMinor) }] : []),
     { k: "Total", v: money(totalDueMinor), strong: true },

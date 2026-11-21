@@ -102,6 +102,34 @@ Deno.test("hire_options lists the places for one session without any identity", 
   assertEquals(bad.status, 400);
 });
 
+// [TEST-MOD-APPROVED #4490] Spec 07-C: the existing quote edge is the guest's
+// only path from HireRequest to the private-hire extras priced by PostgreSQL.
+Deno.test("a private-hire quote forwards every chosen extra to the database", async () => {
+  resetVenueOffersRateLimitForTests();
+  const calls: Call[] = [];
+  const handle = createVenueOffersHandler({ client: fake(calls, null, null) });
+  const extras = [{ id: "projector" }, { id: "welcome-drink" }];
+  const res = await handle(
+    post({
+      action: "quote",
+      offeringId: OFFER,
+      windowId: WINDOW,
+      lines: [{
+        priceOptionId: "00000000-4490-4000-8000-0000000000d9",
+        guests: 10,
+      }],
+      extras,
+      answers: { occasion: "Team day" },
+      cartKey: "c".repeat(32),
+      idempotencyKey: "hire-extras-quote",
+    }, ANON),
+  );
+  assertEquals(res.status, 200);
+  const quote = calls.find((call) => call.name === "issue_4490_quote_offer");
+  assertEquals(quote?.params.p_extras, extras);
+  assertEquals(quote?.params.p_answers, { occasion: "Team day" });
+});
+
 Deno.test("withdraw needs the booking token when signed out", async () => {
   resetVenueOffersRateLimitForTests();
   const calls: Call[] = [];

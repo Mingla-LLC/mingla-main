@@ -61,9 +61,7 @@ import {
   START_EVERY_OPTIONS,
   changeRulesPayload,
   depositChoiceLabel,
-  emptyExtra,
   emptyTier,
-  extraIssue,
   extrasPayload,
   groupCap,
   inclusionIssue,
@@ -85,11 +83,11 @@ import {
   type PackageDraft,
   type PackageStepId,
 } from "./packageModel";
+import { ExtrasEditor } from "./ExtrasEditor";
 
 const RAIL_MIN_WIDTH = 1280;
 const COLUMN_OPTION_CARD = { flexBasis: "auto" as const, flexGrow: 0 };
 const MAX_INCLUSIONS = 30;
-const MAX_EXTRAS = 20;
 const MAX_TIERS = 6;
 
 const LazyConfirmDialog = React.lazy(async () => {
@@ -121,10 +119,12 @@ export interface PackageEditorProps {
   onOpenPayments?: () => void;
   /** The venue's Menu (from the menu picker's empty state). */
   onOpenMenu?: () => void;
+  /** [TRANSITIONAL] blocked on #4514 — shared offer-form attach row. */
+  questionsSource?: React.ReactNode;
 }
 
 export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorProps>(function PackageEditor(
-  { brandId, venueId, venueName, offerId, onClose, onOpenSettings, onOpenPayments, onOpenMenu },
+  { brandId, venueId, venueName, offerId, onClose, onOpenSettings, onOpenPayments, onOpenMenu, questionsSource },
   ref,
 ): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
@@ -572,7 +572,7 @@ export const PackageEditor = forwardRef<VenueModuleLeaveHandle, PackageEditorPro
         <IncludedStep {...stepProps} currency={currency} onAddFromMenu={(replaceKey) => setMenuPick({ replaceKey })} />
       ) : null}
       {step.id === "where" ? <WhereStep {...stepProps} pool={pool} sharedWith={sharedWith.map((o) => o.name)} /> : null}
-      {step.id === "rules" ? <RulesStep {...stepProps} currency={currency} /> : null}
+      {step.id === "rules" ? <RulesStep {...stepProps} currency={currency} questionsSource={questionsSource} /> : null}
       {step.id === "review" ? (
         <ReviewStep
           draft={draft}
@@ -1012,66 +1012,17 @@ function IncludedStep({
         <Button label="Guests choose one" variant="secondary" size="sm" leadingIcon="plus" onPress={() => patch({ inclusions: [...draft.inclusions, newInclusion("choice")] })} disabled={disabled || full} testID="package-add-choice" />
       </View>
 
-      <Text style={styles.sectionLabel}>Extras guests can add</Text>
-      <Text style={styles.hint}>Paid add-ons, like a cake table or an extra hour. Guests tick the ones they want.</Text>
-      {draft.extras.map((extra, index) => {
-        const issue = showErrors ? extraIssue(extra) : null;
-        const update2 = (next: Partial<typeof extra>): void =>
-          patch({ extras: draft.extras.map((e) => (e.key === extra.key ? { ...e, ...next } : e)) });
-        return (
-          <View key={extra.key} style={styles.subCard} testID={`package-extra-${index}`}>
-            <Input
-              value={extra.name}
-              onChangeText={(name) => update2({ name: name.slice(0, 80) })}
-              placeholder="e.g. Cake table"
-              accessibilityLabel="Extra name"
-              disabled={disabled}
-              error={issue === "Name this extra" ? issue : null}
-              testID={`package-extra-name-${index}`}
-            />
-            <View style={styles.inlineRow}>
-              <View style={styles.grow}>
-                <MoneyField
-                  label="Price"
-                  valueMinor={extra.priceMinor}
-                  onChangeMinor={(priceMinor) => update2({ priceMinor })}
-                  currency={currency}
-                  disabled={disabled}
-                  error={issue === "Enter a price" ? issue : null}
-                  testID={`package-extra-price-${index}`}
-                />
-              </View>
-              <View style={styles.grow}>
-                <Text style={styles.label}>Charged</Text>
-                <Segmented
-                  options={[
-                    { key: "booking", label: "Per booking" },
-                    { key: "guest", label: "Per guest" },
-                  ]}
-                  value={extra.per}
-                  onChange={(per) => update2({ per })}
-                  accessibilityLabel="How the extra is charged"
-                  testID={`package-extra-per-${index}`}
-                />
-              </View>
-            </View>
-            <View>
-              <Button label="Remove extra" variant="ghost" size="sm" onPress={() => patch({ extras: draft.extras.filter((e) => e.key !== extra.key) })} disabled={disabled} />
-            </View>
-          </View>
-        );
-      })}
-      <View>
-        <Button
-          label="Add an extra"
-          variant="secondary"
-          size="md"
-          leadingIcon="plus"
-          onPress={() => patch({ extras: [...draft.extras, emptyExtra()] })}
-          disabled={disabled || draft.extras.length >= MAX_EXTRAS}
-          testID="package-add-extra"
-        />
-      </View>
+      <ExtrasEditor
+        title="Extras guests can add"
+        helper="Paid add-ons, like a cake table or an extra hour. Guests tick the ones they want."
+        extras={draft.extras}
+        onChange={(extras) => patch({ extras })}
+        currency={currency}
+        disabled={disabled}
+        showErrors={showErrors}
+        testIDPrefix="package-extra"
+        addTestID="package-add-extra"
+      />
     </View>
   );
 }
@@ -1149,7 +1100,7 @@ function WhereStep({ draft, patch, showErrors, disabled, pool, sharedWith }: Ste
       </View>
       {times.length > 1 && draft.startEvery < draft.durationMinutes ? (
         <Text style={styles.hint} testID="package-start-overlap">
-          A new group can start before the last one ends. That's fine when you have room for both.
+          {"A new group can start before the last one ends. That's fine when you have room for both."}
         </Text>
       ) : null}
       <LeadTimeSelect
@@ -1166,12 +1117,20 @@ function WhereStep({ draft, patch, showErrors, disabled, pool, sharedWith }: Ste
   );
 }
 
-function RulesStep({ draft, patch, showErrors, disabled, currency }: StepProps & { currency: string | null }): React.ReactElement {
+function RulesStep({
+  draft,
+  patch,
+  showErrors,
+  disabled,
+  currency,
+  questionsSource,
+}: StepProps & { currency: string | null; questionsSource?: React.ReactNode }): React.ReactElement {
   const issue = packageStepIssue("rules", draft, null);
   const choice = depositChoiceLabel(draft, currency);
   return (
     <View style={styles.stepBody} testID="package-step-rules">
       <StepHead title="Deposit and rules" sub="What guests pay up front, and what happens if plans change." />
+      {questionsSource}
       <Text style={styles.label}>Deposit</Text>
       <Segmented
         options={[

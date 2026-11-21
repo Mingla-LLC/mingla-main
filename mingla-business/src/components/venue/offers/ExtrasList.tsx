@@ -22,6 +22,7 @@ export interface ExtrasListProps {
   exponent: number;
   /** Extras already on the booking (the pass page): shown as "Added". */
   added?: readonly string[];
+  label?: string;
   testID?: string;
 }
 
@@ -34,12 +35,13 @@ export function ExtrasList({
   currencyCode,
   exponent,
   added = [],
+  label = "EXTRAS",
   testID = "issue-4490-extras",
 }: ExtrasListProps): React.ReactElement | null {
   if (extras.length === 0) return null;
   return (
     <View style={styles.wrap} testID={testID}>
-      <Text style={[styles.label, { color: palette.tertiaryText }]}>EXTRAS</Text>
+      <Text style={[styles.label, { color: palette.tertiaryText }]}>{label}</Text>
       {extras.map((e) => {
         const on = picked.includes(e.id);
         const price = `${formatVenueMoney(e.priceMinor, currencyCode, exponent)} ${e.per === "guest" ? "a guest" : "a booking"}`;
