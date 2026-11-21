@@ -4,9 +4,24 @@
  * fails; drop the venue_booking detail route from claimedEntryPath and W2-R1
  * fails; drop the three fetchers' throw and W2-F2 fails.
  */
-import { describe, expect, jest, test } from "@jest/globals";
+// Jest globals, typed locally (app-mobile has no jest types in its tsconfig).
+type RpcResult = { data: unknown; error: { message: string } | null };
+interface W2Matchers {
+  toBe(v: unknown): void;
+  toEqual(v: unknown): void;
+  toBeNull(): void;
+  not: { toBeNull(): void };
+  rejects: { toThrow(v: string): Promise<void> };
+}
+declare const describe: (name: string, body: () => void) => void;
+declare const test: (name: string, body: () => void | Promise<void>) => void;
+declare const expect: ((v: unknown) => W2Matchers) & { arrayContaining(v: unknown[]): unknown };
+declare const jest: {
+  mock(path: string, factory: () => unknown): void;
+  fn(): { (fn: string): Promise<RpcResult>; mockImplementation(f: (fn: string) => Promise<RpcResult>): void };
+};
 
-const mockRpc = jest.fn<(fn: string) => Promise<{ data: unknown; error: { message: string } | null }>>();
+const mockRpc = jest.fn();
 jest.mock("../../../services/supabase", () => ({
   supabase: { rpc: (fn: string) => mockRpc(fn) },
   reactivateExplorerForVerifiedSession: () => undefined,
