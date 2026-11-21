@@ -293,7 +293,7 @@ export default function ConsumerExperienceDetailScreen({
   const [checkoutTerminalOutcome, setCheckoutTerminalOutcome] =
     useState<NativeCheckoutOutcome | null>(null);
   const terminalSuccessCloseRef = useRef<(() => void) | null>(null);
-  const [sentTicket, setSentTicket] = useState<{ buyerFirstName: string | null } | null>(null);
+  const [sentTicket, setSentTicket] = useState<{ buyerFirstName: string | null; orderId?: string } | null>(null);
   const [muted, setMuted] = useState<boolean>(true);
   // issue #868 [cover-gallery], M.1b — single owner of the shown hero item (shared
   // by the cover pager + the row). Before the early-returns to preserve hook order.
@@ -395,7 +395,7 @@ export default function ConsumerExperienceDetailScreen({
             outcome.attachedToAccount,
           );
           if (landing.kind === "sent") {
-            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+            setSentTicket({ buyerFirstName: landing.buyerFirstName, orderId: outcome.orderId });
           } else {
             router.push(landing.href as never);
           }
@@ -781,6 +781,9 @@ export default function ConsumerExperienceDetailScreen({
           ...(payload.intakeFormData.length > 0
             ? { intakeFormData: payload.intakeFormData }
             : {}),
+          // #4541 R2.10 — the host's questions: marker and answers.
+          ...(payload.brandFormStep === 1 ? { brandFormStep: 1 as const } : {}),
+          ...(payload.brandForm !== undefined ? { brandForm: payload.brandForm } : {}),
           // ORCH-1072 — thread the chosen occurrence; omitted on the null path →
           // request byte-identical to a one-off / no-date experience.
           ...(selectedEventDateId !== null
@@ -929,7 +932,7 @@ export default function ConsumerExperienceDetailScreen({
             payload.buyer.name,
           );
           if (landing.kind === "sent") {
-            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+            setSentTicket({ buyerFirstName: landing.buyerFirstName, orderId: result.orderId });
           } else {
             router.push(landing.href as never);
           }
@@ -1667,6 +1670,7 @@ export default function ConsumerExperienceDetailScreen({
           slot was selected (selectedEventDateId). */}
       <TicketCartSheet
         visible={cartVisible}
+        brandFormQuestions
         eventId={seed.eventId}
         tickets={ticketsQuery.data}
         fallbackCurrency={seed.currency}
@@ -1693,6 +1697,7 @@ export default function ConsumerExperienceDetailScreen({
 
       <NativeCheckoutSentSheet
         buyerFirstName={sentTicket?.buyerFirstName ?? null}
+        orderId={sentTicket?.orderId ?? null}
         onDone={() => setSentTicket(null)}
         visible={sentTicket !== null}
       />

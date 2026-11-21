@@ -63,7 +63,9 @@ import {
   carryOverRsvpAnswers,
   rsvpFormMissingRequiredIds,
   isRsvpFormErrorCode,
+  rsvpQuestionsPage,
 } from "@mingla/offering-rendering/rsvpBrandForm";
+import { useTranslation } from "react-i18next";
 import * as Haptics from "expo-haptics";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
@@ -147,10 +149,12 @@ import {
 import {
   fetchRsvpMomentum,
   fetchRsvpPassPdf,
-  fetchDeckRsvpBrandForm,
   lookupRsvpGuest,
   submitDeckRsvp,
 } from "../../services/rsvpDeckService";
+// #4541 R1.14 — the RSVP page's form is read through the edge, never the
+// server-only database function.
+import { fetchPageForm } from "../../services/brandFormService";
 
 import type {
   RsvpFriendOption,
@@ -490,7 +494,7 @@ export default function ConsumerEventDetailScreen({
   const [checkoutTerminalOutcome, setCheckoutTerminalOutcome] =
     useState<NativeCheckoutOutcome | null>(null);
   const terminalSuccessCloseRef = useRef<(() => void) | null>(null);
-  const [sentTicket, setSentTicket] = useState<{ buyerFirstName: string | null } | null>(null);
+  const [sentTicket, setSentTicket] = useState<{ buyerFirstName: string | null; orderId?: string } | null>(null);
   // issue #868 [cover-gallery], M.1b — single owner of the shown hero item
   // (0 = cover, i = gallery[i-1]) shared by the cover pager + the row. Placed with
   // the other hooks (before the loading early-returns) to preserve hook order.
@@ -638,7 +642,7 @@ export default function ConsumerEventDetailScreen({
             outcome.attachedToAccount,
           );
           if (landing.kind === "sent") {
-            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+            setSentTicket({ buyerFirstName: landing.buyerFirstName, orderId: outcome.orderId });
           } else {
             router.push(landing.href as never);
           }
@@ -1065,13 +1069,17 @@ export default function ConsumerEventDetailScreen({
 
   // #4541 — form read and answer state stay on the RSVP surface so an edge
   // refusal (changed/invalid form) never clears what the guest typed.
+  const { t: tForms } = useTranslation("forms");
   const rsvpBrandFormQuery = useQuery({
     queryKey: brandFormKeys.rsvpForm(seed?.eventId ?? null),
     enabled: isRsvp && seed !== null,
     staleTime: 30_000,
-    queryFn: () => fetchDeckRsvpBrandForm((seed as NonNullable<typeof seed>).eventId),
+    queryFn: () => fetchPageForm((seed as NonNullable<typeof seed>).eventId),
   });
-  const rsvpBrandFormPage = rsvpBrandFormQuery.data ?? null;
+  // Questions drawn on the page; an "After they RSVP" form draws one line.
+  const rsvpBrandFormPage = rsvpQuestionsPage(rsvpBrandFormQuery.data);
+  const rsvpAfterRsvpForm =
+    rsvpBrandFormQuery.data?.mode === "after_purchase" ? rsvpBrandFormQuery.data : null;
   const [rsvpFormAnswers, setRsvpFormAnswers] = useState<RsvpBrandFormAnswers>({});
   const rsvpFormSeenRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1284,6 +1292,9 @@ export default function ConsumerEventDetailScreen({
           ...(payload.eventDateIds !== undefined && payload.eventDateIds.length > 0
             ? { eventDateIds: payload.eventDateIds }
             : {}),
+          // #4541 R2.10 — the host's questions: marker and answers.
+          ...(payload.brandFormStep === 1 ? { brandFormStep: 1 as const } : {}),
+          ...(payload.brandForm !== undefined ? { brandForm: payload.brandForm } : {}),
           // issue #2265 — feed the cart sheet's pending copy.
           onPhase: setCheckoutPhase,
         });
@@ -1385,7 +1396,7 @@ export default function ConsumerEventDetailScreen({
             payload.buyer.name,
           );
           if (landing.kind === "sent") {
-            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+            setSentTicket({ buyerFirstName: landing.buyerFirstName, orderId: result.orderId });
           } else {
             router.push(landing.href as never);
           }
@@ -1634,19 +1645,26 @@ export default function ConsumerEventDetailScreen({
     ? (
       <View style={{ marginTop: 16, gap: 8 }} accessibilityRole="alert">
         <Text style={{ color: palette.tertiaryText, fontSize: 14 }}>
-          Questions couldn&apos;t load. You can RSVP now and answer later.
+          {tForms("rsvpLoadFailed")}
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Try again"
+          accessibilityLabel={tForms("tryAgain")}
           onPress={() => void rsvpBrandFormQuery.refetch()}
           hitSlop={8}
         >
           <Text style={{ color: palette.primaryText, fontSize: 14, fontWeight: "600" }}>
-            Try again
+            {tForms("tryAgain")}
           </Text>
         </Pressable>
       </View>
+    )
+    : rsvpAfterRsvpForm !== null
+    ? (
+      // #4541 R1.3 — "After they RSVP": the questions come after the reply.
+      <Text style={{ color: palette.secondaryText, fontSize: 14, marginTop: 16 }} testID="issue-4541-rsvp-after-notice">
+        {tForms("afterRsvpNotice", { brand: rsvpBrand?.displayName || tForms("theHost") })}
+      </Text>
     )
     : rsvpBrandFormPage === null
     ? null
@@ -2381,6 +2399,7 @@ export default function ConsumerEventDetailScreen({
           taxCalculationId, NO paymentPlanChoice (events have no plan). */}
       <TicketCartSheet
         visible={cartVisible}
+        brandFormQuestions
         eventId={seed.eventId}
         tickets={cartTickets}
         extrasTickets={canonicalQuery.data?.event.tickets}
@@ -2415,6 +2434,7 @@ export default function ConsumerEventDetailScreen({
 
       <NativeCheckoutSentSheet
         buyerFirstName={sentTicket?.buyerFirstName ?? null}
+        orderId={sentTicket?.orderId ?? null}
         onDone={() => setSentTicket(null)}
         visible={sentTicket !== null}
       />
