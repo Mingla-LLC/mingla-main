@@ -192,6 +192,39 @@ const CTA: Record<string, { label: string; note: string }> = {
 };
 
 /**
+ * #4490 Explorer W2 (spec 06 W2 item 6): the web pay link a membership renewal
+ * TEXT carries ("Pay here: {link}"). Only for a service-role caller, the
+ * renewal category, and exactly the member page link of the SAME member the
+ * payload names, on the expected origin (the same checks as the email
+ * button). Transit only: notify-dispatch passes it to the text and nowhere
+ * else. Undefined for anything else (the text then goes without a web link).
+ */
+export function trustedVenueMemberPayUrl(input: {
+  serviceCaller: boolean;
+  categoryKey: unknown;
+  payload: Record<string, unknown>;
+  visitUrl: unknown;
+  origin: string;
+}): string | undefined {
+  if (String(input.categoryKey ?? "") !== "venue_membership_renewal") {
+    return undefined;
+  }
+  if (input.visitUrl === undefined || input.visitUrl === null) return undefined;
+  const subscriptionId = venueMemberUrlSubscriptionId(
+    input.visitUrl,
+    input.origin,
+  );
+  if (
+    !input.serviceCaller || subscriptionId === null ||
+    String(input.payload.subscription_id ?? "").toLowerCase() !==
+      subscriptionId
+  ) {
+    return undefined;
+  }
+  return input.visitUrl as string;
+}
+
+/**
  * The email button notify-dispatch may render for a venue booking: only for a
  * service-role caller, a venue booking category, and exactly the visit link of
  * the SAME booking the payload names, on the expected origin. Anything else is

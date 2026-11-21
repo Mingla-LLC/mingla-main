@@ -18,6 +18,7 @@ import {
   smsProviderForDestination,
 } from "./adapters/smsAdapter.ts";
 import { renderCategoryMessage } from "./notifyTemplates.ts";
+import { venueMembershipRenewalSms } from "./email/templates/venueMembershipEmails.ts";
 import type { RenderedMessage } from "./notifyTemplates.ts";
 import {
   type PersistedOfferingPushV1,
@@ -121,6 +122,14 @@ export interface DispatchV2Input {
    * booking manage link it carries is a credential.
    */
   email_cta?: EmailCtaInput;
+  /**
+   * #4490 Explorer W2 — the member's web pay link for a membership renewal
+   * TEXT ("Pay here: {link}", spec 06 §6). Set solely by notify-dispatch after
+   * it validated a service-role caller's member link. Like email_cta it is
+   * never copied into the payload, the inbox row, push data or the delivery
+   * ledger: the link carries the member token.
+   */
+  venue_sms_pay_url?: string;
 }
 
 export interface EmailCtaInput {
@@ -848,7 +857,12 @@ export async function dispatchV2(
         const r = await smsAdapter.send({
           to: contactPhone,
           brandName,
-          message: rendered.sms,
+          // #4490 Explorer W2: a renewal text carries the web pay link.
+          message: venueMembershipRenewalSms(
+            input.category_key,
+            input.payload,
+            input.venue_sms_pay_url,
+          ) ?? rendered.sms,
           countryCode: input.country_code,
         });
         await completeChannel(
@@ -1819,7 +1833,12 @@ async function dispatchAnon(
       const r = await smsAdapter.send({
         to: contactPhone!,
         brandName,
-        message: rendered.sms,
+        // #4490 Explorer W2: a renewal text carries the web pay link.
+        message: venueMembershipRenewalSms(
+          input.category_key,
+          input.payload,
+          input.venue_sms_pay_url,
+        ) ?? rendered.sms,
         countryCode: input.country_code,
       });
       await updateGuestDelivery(

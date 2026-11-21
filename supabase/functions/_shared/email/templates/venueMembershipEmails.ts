@@ -276,12 +276,17 @@ export function renderVenueMembershipMessage(
     }. Pay before then to keep your place.${money}${codeLine}\n\nNothing is charged by itself: you pay from your member page. If you'd rather stop, you can leave there too.`;
   return {
     push: {
+      // Spec 06 §6 (renewal push): "Your {plan} renews on {date}" /
+      // "Pay {amount} to keep it. Tap to see your pass." (push opens the
+      // member pass in the app).
       title: restart
         ? `Start your ${plan} again`
         : `${yearlyReminder ? "Reminder: " : ""}Your ${plan} renews${
           renewsOn ? ` on ${renewsOn}` : " soon"
         }`,
-      body: `Pay${total ? ` ${total}` : ""} from your member page.`,
+      body: restart
+        ? `Pay${total ? ` ${total}` : ""} from your member page.`
+        : `Pay${total ? ` ${total}` : ""} to keep it. Tap to see your pass.`,
     },
     email: {
       subject: restart
@@ -293,13 +298,36 @@ export function renderVenueMembershipMessage(
         : `Your ${plan} renews${renewsOn ? ` on ${renewsOn}` : " soon"}`,
       body,
     },
-    // #4490 Explorer W1 (§6): with the app link, "Pay here: {link}".
-    sms: venueAppLinkDisplay(payload) && renewsOn && !restart
-      ? `Mingla: your ${plan} at ${venue} renews on ${renewsOn}. Pay here: ${
-        venueAppLinkDisplay(payload)
-      }`
-      : `${venue}: your ${plan} renews${
+    // Spec 06 §6 / W2 item 6: "Pay here: {link}" with the app link when the
+    // handoff is on; otherwise notify-dispatch puts in the web pay link built
+    // at send time (venueMembershipRenewalSms), which never rides the payload.
+    sms: venueMembershipRenewalSms(categoryKey, payload, null) ??
+      `${venue}: your ${plan} renews${
         renewsOn ? ` on ${renewsOn}` : " soon"
       }. Pay from your member page.`,
   };
+}
+
+/**
+ * Spec 06 §6 renewal text: "Mingla: your {plan} at {venue} renews on {date}.
+ * Pay here: {link}". The link is the app link when the handoff gave one, else
+ * `payUrl`, the member's web pay page (`/visit/plan/<id>#t=…`) that
+ * notify-dispatch built and checked at send time; it is passed here in transit
+ * only and never stored in the payload, the inbox or the delivery ledger.
+ * Null when this is not a renewal-on-a-date text or there is no link.
+ */
+export function venueMembershipRenewalSms(
+  categoryKey: string,
+  payload: Json,
+  payUrl: string | null | undefined,
+): string | null {
+  if (categoryKey !== "venue_membership_renewal") return null;
+  const step = text(payload.step);
+  if (["approval", "due", "reminder", "restart"].includes(step)) return null;
+  const renewsOn = venueEmailDate(text(payload.period_start_date));
+  const link = venueAppLinkDisplay(payload) || text(payUrl);
+  if (!renewsOn || !link) return null;
+  const venue = text(payload.venue_name) || "the venue";
+  const plan = text(payload.plan_name) || "membership";
+  return `Mingla: your ${plan} at ${venue} renews on ${renewsOn}. Pay here: ${link}`;
 }

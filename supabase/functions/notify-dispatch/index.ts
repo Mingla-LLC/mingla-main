@@ -38,6 +38,7 @@ import {
 import { trustedReservationManageCta } from "../_shared/venueReservationManageLink.ts";
 import {
   resolveVenueVisitOrigin,
+  trustedVenueMemberPayUrl,
   trustedVenueVisitCta,
 } from "../_shared/venueOfferVisitLink.ts";
 // #4111 — consent provenance for the automatic transactional consent row.
@@ -705,6 +706,17 @@ serve(async (req) => {
             // #4490 Explorer W1: "Open in Mingla" leads when a claim link came.
             appUrl: payload.venue_app_url,
           }),
+        // #4490 Explorer W2: the renewal text's web pay link (transit only).
+        venue_sms_pay_url: trustedVenueMemberPayUrl({
+          serviceCaller: isExactServiceBearer(
+            authHeader,
+            SUPABASE_SERVICE_ROLE_KEY,
+          ),
+          categoryKey: payload.category_key,
+          payload: (payload.payload ?? {}) as Record<string, unknown>,
+          visitUrl: payload.venue_visit_url,
+          origin: resolveVenueVisitOrigin((name) => Deno.env.get(name)),
+        }),
       };
       if (!v2Input.idempotency_key) {
         return jsonResponse({
