@@ -28,7 +28,7 @@
     "lifecycle": "batched-active",
     "ownerIssue": "#4420",
     "runtime": {
-      "name": "Support chat inbox: derived labels, Open and Resolved, internal notes never in previews, addresses, Create ticket side panel with no automatic owner, writes unchanged",
+      "name": "node",
       "version": "20"
     },
     "setupProfile": "admin-node20-install",
