@@ -117,5 +117,28 @@
     "status": "Status",
     "status_closed": "Closed",
     "next_update": "Next update"
+  },
+  "handover": {
+    "from_ari": "From my chat with Ari: {{text}}",
+    "photo_only_subject": "Photo from a chat with Ari",
+    "photo_only_message": "From my chat with Ari: I sent a photo.",
+    "photo_not_sent": "One photo could not be sent. Add it again here.",
+    "photos_not_sent": "{{count}} photos could not be sent. Add them again here.",
+    "reason_type_or_size": "Support takes PNG, JPEG, WebP or HEIC photos up to 10 MB.",
+    "reason_not_ready": "Ari was still checking it.",
+    "reason_unavailable": "It is no longer available.",
+    "reason_too_many": "Too many photos were waiting to send.",
+    "reason_closed": "The conversation had closed.",
+    "reason_failed": "Something went wrong while copying it.",
+    "files_skipped": "Files that are not photos stay with Ari. Add them here if the team needs them.",
+    "failed": "We couldn't hand this over to the team. Nothing was sent. Try again.",
+    "photos_failed": "Your words reached the team, but the photos did not. Try again."
+  },
+  "person": {
+    "past": "Past conversations",
+    "past_back": "Back to the conversation",
+    "new": "New conversation",
+    "loading": "Loading your conversation",
+    "dismiss": "Dismiss"
   }
 }

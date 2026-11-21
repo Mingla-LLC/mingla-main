@@ -194,6 +194,7 @@ import type {
 } from "../../services/hostAdPlanService";
 import { loadHostAdPlanService } from "./hostAdKitService";
 import { randomUuid } from "../../utils/randomId";
+import { HELP_SUPPORT_PERSON_ROUTE } from "../../constants/supportHostFacing";
 import { adTileFitLine } from "../../components/marketing/ads/hostAdTileFit";
 import { hostOptimizationByPlatform } from "../../services/hostAdPlanService";
 
@@ -3577,7 +3578,7 @@ export default function HostAdCreateRoute(): React.ReactElement {
                         label={hb("getHelp")}
                         variant="ghost"
                         size="sm"
-                        onPress={() => router.push("/account/support" as never)}
+                        onPress={() => router.push(HELP_SUPPORT_PERSON_ROUTE as never)}
                       />
                     </View>
                   </>

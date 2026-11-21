@@ -46,6 +46,13 @@ import { useRouter } from "expo-router";
 import { supabase } from "./supabase";
 import { mixpanelService } from "./mixpanelService";
 import { useCurrentBrandStore } from "../store/currentBrandStore";
+import {
+  HELP_AND_SUPPORT_ROUTE,
+  helpSupportAnnouncementRoute,
+} from "../constants/supportHostFacing";
+
+/** #4420 — an announcement link whose id is not a real one: the list. */
+const HELP_SUPPORT_ANNOUNCEMENTS_ROUTE = `${HELP_AND_SUPPORT_ROUTE}?tab=announcements`;
 
 export interface BusinessPushData {
   type?: string;
@@ -202,22 +209,17 @@ export function parseBusinessDeepLink(
       const conversationId = rest[0];
       return conversationId ? `/messages/${conversationId}` : "/messages";
     }
+    // #4420 — Community left the Host app. Its old links open Help & Support:
+    // an announcement opens in place; roadmap, idea and question links land
+    // on the screen's default (unread news first, then Support).
     case "community": {
       const sub = rest[0];
-      if (sub === "roadmap") {
-        return "/account/support?tab=community&section=roadmap";
-      }
       if (sub === "announcement" && rest[1]) {
         return UUID_RE.test(rest[1])
-          ? `/account/support?tab=community&announcementId=${rest[1]}`
-          : "/account/support?tab=community";
+          ? helpSupportAnnouncementRoute(rest[1])
+          : HELP_SUPPORT_ANNOUNCEMENTS_ROUTE;
       }
-      if (sub === "post" && rest[1]) {
-        return UUID_RE.test(rest[1])
-          ? `/account/support?tab=community&communityPost=${rest[1]}`
-          : "/account/support?tab=community";
-      }
-      return "/account/support?tab=community";
+      return HELP_AND_SUPPORT_ROUTE;
     }
     // Issue #1791 (#1767 Phase 3, SPEC #1788 P-54): the venue head. BEFORE this
     // case existed, `mingla-business://venue/{id}/orders` returned null and fell
@@ -359,12 +361,13 @@ export function resolveBusinessNavTarget(
       const announcementId = (data.announcementId ?? data.announcement_id) as
         string | undefined;
       return announcementId && UUID_RE.test(announcementId)
-        ? `/account/support?tab=community&announcementId=${announcementId}`
-        : "/account/support?tab=community";
+        ? helpSupportAnnouncementRoute(announcementId)
+        : HELP_SUPPORT_ANNOUNCEMENTS_ROUTE;
     }
 
+    // #4420 — the roadmap left the Host app; the screen's default instead.
     case "business.community_roadmap_updated":
-      return "/account/support?tab=community&section=roadmap";
+      return HELP_AND_SUPPORT_ROUTE;
 
     // META-ORCH-1104: support reply / new-ticket → the support thread. The
     // ticket id rides data.ticketId (notify-support payload) or relatedId.

@@ -40,8 +40,12 @@ import {
   type,
 } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
-import { HELP_AND_SUPPORT_ROUTE, SUPPORT_HOST_FACING_AGENT } from "../../constants/supportHostFacing";
-import { supportTicketKeys } from "../../hooks/useSupportTickets";
+import {
+  HELP_AND_SUPPORT_ROUTE,
+  HELP_SUPPORT_NEW_CONVERSATION_ROUTE,
+  SUPPORT_HOST_FACING_AGENT,
+} from "../../constants/supportHostFacing";
+import { supportTicketKeys } from "../../hooks/supportTicketKeys";
 import {
   SupportSendError,
   getOwnSupportTicket,
@@ -90,6 +94,17 @@ interface SupportThreadCoreProps {
   KeyboardWrap: KeyboardWrapComponent;
   /** Opened from the staff console: show internal notes, send as staff. */
   staffMode?: boolean;
+  /**
+   * #4420 — inside Help & Support's "A person" pane: no route of its own, so
+   * "back" opens the pane's past conversations and "Start a new request"
+   * opens the pane's form. No details pane (the pane is already a column).
+   */
+  embedded?: SupportThreadEmbedding;
+}
+
+export interface SupportThreadEmbedding {
+  onShowPast: () => void;
+  onStartNew: () => void;
 }
 
 interface ThreadData {
@@ -129,6 +144,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
   ticketId,
   KeyboardWrap,
   staffMode = false,
+  embedded,
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -206,13 +222,21 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
   }, [conversationId, ticketId, refresh]);
 
   const handleBack = useCallback((): void => {
+    if (embedded) {
+      embedded.onShowPast();
+      return;
+    }
     if (router.canGoBack()) router.back();
     else router.replace((staffMode ? "/support/inbox" : HELP_AND_SUPPORT_ROUTE) as never);
-  }, [router, staffMode]);
+  }, [embedded, router, staffMode]);
 
   const handleStartNew = useCallback((): void => {
-    router.replace(`${HELP_AND_SUPPORT_ROUTE}?tab=support&new=1` as never);
-  }, [router]);
+    if (embedded) {
+      embedded.onStartNew();
+      return;
+    }
+    router.replace(HELP_SUPPORT_NEW_CONVERSATION_ROUTE as never);
+  }, [embedded, router]);
 
   const handleAddImages = useCallback(async (): Promise<void> => {
     try {
@@ -288,14 +312,14 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
   // #4420 — on wide desktop the thread sits in its own pane with the
   // "Ticket" details pane beside it (mockup support-ticket__thread). Phone
   // and narrow web keep the single column.
-  const showDetailsPane = isWideDesktop && ticket !== null && !isLoading && !isError;
+  const showDetailsPane = isWideDesktop && ticket !== null && !isLoading && !isError && !embedded;
   const details = ticket !== null ? supportTicketDetails(ticket, { staffMode }) : [];
   const threadColumn = (
     <>
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={supportCopy("thread.back")}
+          accessibilityLabel={embedded ? supportCopy("person.past") : supportCopy("thread.back")}
           onPress={handleBack}
           style={styles.iconButton}
         >
@@ -329,7 +353,7 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
       ) : ticket === null ? (
         <View style={styles.state}>
           <Text style={styles.stateText}>{supportCopy("thread.not_found")}</Text>
-          <Button label={supportCopy("thread.back")} onPress={handleBack} variant="secondary" />
+          <Button label={embedded ? supportCopy("person.past") : supportCopy("thread.back")} onPress={handleBack} variant="secondary" />
         </View>
       ) : (
         <>
@@ -528,6 +552,15 @@ export const SupportThreadCore: React.FC<SupportThreadCoreProps> = ({
     </>
   );
 
+  if (embedded) {
+    return (
+      <View style={styles.embedded} testID="support-thread-embedded">
+        {threadColumn}
+        <SupportImageViewer url={viewerUrl} onClose={() => setViewerUrl(null)} />
+      </View>
+    );
+  }
+
   return (
     <SafeScreen style={[styles.screen, showDetailsPane && styles.screenDesktop]}>
       {showDetailsPane ? (
@@ -557,6 +590,9 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: color.card,
+  },
+  embedded: {
+    flex: 1,
   },
   screenDesktop: {
     backgroundColor: color.canvas,

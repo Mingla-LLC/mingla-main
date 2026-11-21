@@ -1,5 +1,7 @@
 /**
- * #3720 Slice G — Community · Support · Guides segmented control.
+ * #4420 — Help & Support's two tabs on a phone: Announcements and Support.
+ * (Desktop shows both as columns, so it has no tabs.) Replaces #3720's
+ * Community · Support · Guides control.
  */
 
 import React from "react";
@@ -9,36 +11,36 @@ import {
   color,
   space,
 } from "../../constants/designSystem";
-import type { HelpSupportTabId } from "../../utils/helpSupportLastTab";
+import type { HelpSupportTab } from "./helpSupportRoute";
+import { hubCopy } from "./helpSupportHubCopy";
 
 type TabDef = {
-  id: HelpSupportTabId;
+  id: HelpSupportTab;
   label: string;
 };
 
 const TABS: readonly TabDef[] = [
-  { id: "community", label: "Community" },
-  { id: "support", label: "Support" },
-  { id: "guides", label: "Guides" },
+  { id: "announcements", label: hubCopy("tabs.announcements") },
+  { id: "support", label: hubCopy("tabs.support") },
 ];
 
 export type HelpSupportHubTabsProps = {
-  active: HelpSupportTabId;
-  onChange: (tab: HelpSupportTabId) => void;
-  /** Unread announcements — shown as a count on Community. */
-  communityBadge?: number;
+  active: HelpSupportTab;
+  onChange: (tab: HelpSupportTab) => void;
+  /** Unread announcements, shown as a count on Announcements ("9+" cap). */
+  announcementsBadge?: number;
 };
 
 export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
   active,
   onChange,
-  communityBadge = 0,
+  announcementsBadge = 0,
 }) => (
-  <View style={styles.host} accessibilityRole="tablist">
+  <View style={styles.host} accessibilityRole="tablist" accessibilityLabel={hubCopy("tabs.label")}>
     <View style={styles.bar}>
       {TABS.map((tab) => {
         const isActive = tab.id === active;
-        const showBadge = tab.id === "community" && communityBadge > 0;
+        const showBadge = tab.id === "announcements" && announcementsBadge > 0;
         return (
           <Pressable
             key={tab.id}
@@ -51,7 +53,7 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
             accessibilityRole="tab"
             accessibilityLabel={
               showBadge
-                ? `${tab.label}, ${communityBadge} unread`
+                ? hubCopy("tabs.unread", { label: tab.label, count: announcementsBadge })
                 : tab.label
             }
             accessibilityState={{ selected: isActive }}
@@ -69,7 +71,7 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
             {showBadge ? (
               <View style={styles.badge} accessibilityElementsHidden>
                 <Text style={styles.badgeText}>
-                  {communityBadge > 9 ? "9+" : String(communityBadge)}
+                  {announcementsBadge > 9 ? "9+" : String(announcementsBadge)}
                 </Text>
               </View>
             ) : null}
