@@ -4935,12 +4935,17 @@
         "mingla-business/src/hooks/useSupportTickets.ts",
         "mingla-business/src/i18n/locales/en/hostSupport.json",
         "mingla-business/src/services/supportService.ts",
-        "mingla-business/src/components/support/CommunityConversationsPanel.tsx",
         "mingla-business/src/components/support/CommunityMarkdown.tsx",
-        "mingla-business/src/components/support/CommunityTabPanel.tsx",
-        "mingla-business/src/components/support/GuidePlayerModal.tsx",
-        "mingla-business/src/components/support/GuidesTabPanel.tsx",
-        "mingla-business/src/components/support/HelpSupportHubTabs.tsx"
+        "mingla-business/src/components/support/HelpSupportHubTabs.tsx",
+        "mingla-business/src/components/support/AnnouncementsPanel.tsx",
+        "mingla-business/src/components/support/SupportColumn.tsx",
+        "mingla-business/src/components/support/SupportPersonPane.tsx",
+        "mingla-business/src/components/support/helpSupportHubCopy.ts",
+        "mingla-business/src/components/support/helpSupportRoute.ts",
+        "mingla-business/src/components/support/supportHandover.ts",
+        "mingla-business/src/hooks/supportTicketKeys.ts",
+        "mingla-business/src/i18n/locales/en/hostSupport.hub.json",
+        "mingla-business/src/services/supportHandoverService.ts"
       ]
     },
     {

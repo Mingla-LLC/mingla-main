@@ -262,7 +262,8 @@ export const RULES = [
   ...[
     "app/(tabs)/_layout.tsx",
     "src/components/ui/DesktopSidebar.tsx",
-    "app/account/support.tsx",
+    // #4420 step 7 — the Help page's own rail was dead code (the root shell
+    // draws the sidebar) and left with the rebuild; its Ari mark is below.
     "src/components/trip/TripCreatorWizard.tsx",
     "src/components/rsvp/RsvpCreatorWizard.tsx",
     "src/components/event/EventCreatorWizard.tsx",
@@ -422,6 +423,38 @@ export const RULES = [
     why: "the price option card spaces its children through contentStyle (GlassCard style cannot reach children, #1532)",
     has: [/contentStyle=\{styles\.optionContent\}\s*\n\s*testID=\{`experience-price-option-/, /optionContent: \{\s*gap: space\[2\],\s*\}/],
   },
+  // ---- Help & Support (#4420 step 7; behaviour in support/__tests__/issue_4420_help_support_entry, issue_4420_support_handover, support/__tests__/issue_4420_support_column) ----
+  {
+    file: "src/components/support/SupportColumn.tsx",
+    why: "the Support switch's Ari mark is the Ari orb (Icon name=\"ari\" draws HomeAriOrb), never a new drawing; the column reaches both sides only through the lazy boundaries",
+    has: [/<Icon name="ari"/, "LazySupportAriChat", "LazySupportPersonPane", "loadSupportScreens", "openHelpCentre(HELP_CENTRE_URL)"],
+    lacks: [/<Svg\b/, /from "[^"]*AriOrb"/, /from "[^"]*(?:AriChatScreen|SupportThread|SupportPersonPane|supportService|supportRequestModel|supportHandoverService)"/, /\bTextInput\b/, /React\.lazy\(/],
+  },
+  {
+    file: "app/account/support.tsx",
+    why: "spec 4.3: the route statically imports only the shell; Ari's chat and the conversation load lazily",
+    has: ["AnnouncementsPanel", "SupportColumn", "HelpSupportHubTabs", "resolveHelpSupportEntry", "useCommunityUnreadCount"],
+    lacks: [/from "[^"]*(?:AriChatScreen|SupportThread|SupportPersonPane|SupportTabPanel|supportService|supportRequestModel|supportHandoverService|helpSupportLastTab|CommunityTabPanel|GuidesTabPanel)"/, /React\.lazy\(/, /\bTextInput\b/, "community-floating-action"],
+  },
+  {
+    file: "src/components/support/LazySupportScreens.tsx",
+    why: "the two Help & Support sides are sibling top-level boundaries; Ari's is the same module the Ari tab loads (one chunk)",
+    has: ['import("../../screens/ari/AriChatScreen")', 'import("./supportScreens")', "export const LazySupportAriChat", "export const LazySupportPersonPane"],
+    lacks: [/React\.lazy\(/, /from "[^"]*AriChatScreen"/],
+  },
+  ...[
+    "src/components/support/AnnouncementsPanel.tsx",
+    "src/components/support/HelpSupportHubTabs.tsx",
+    "src/components/support/helpSupportRoute.ts",
+    "src/components/support/helpSupportHubCopy.ts",
+    "src/components/support/supportHandover.ts",
+    "src/components/support/SupportPersonPane.tsx",
+    "src/hooks/supportTicketKeys.ts",
+  ].map((file) => ({
+    file,
+    why: "no lazy boundary nested inside the support feature (it hoists shared modules into __common); the shell keeps AsyncStorage and expo modules off the boot path",
+    lacks: [/React\.lazy\(/, /from "@react-native-async-storage\/async-storage"/, /from "expo-(?!router)[^"]*"/],
+  })),
 ];
 
 // ---- No raw Alert.alert (I-4420-NO-RAW-ALERT) ----

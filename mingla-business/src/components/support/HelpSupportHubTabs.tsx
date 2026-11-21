@@ -1,7 +1,7 @@
 /**
  * #4420 — Help & Support's two tabs on a phone: Announcements and Support.
  * (Desktop shows both as columns, so it has no tabs.) Replaces #3720's
- * Community · Support · Guides control.
+ * three-tab control.
  */
 
 import React from "react";
