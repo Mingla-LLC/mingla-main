@@ -252,7 +252,8 @@ Deno.test("operator surfaces show truthful and complete RSVP states", () => {
     "Checking pass…",
     "You're offline. Reconnect and scan again.",
     'AppState.addEventListener("change"',
-    "active={isAppActive}",
+    // #4541: the camera also pauses while the host reads a guest's answers.
+    "active={isAppActive && answersTarget === null}",
   ]) assert(scanner.includes(token), `scanner lifecycle state missing ${token}`);
   assert(
     !scanner.includes("summary.data?.checkedIn ?? 0"),

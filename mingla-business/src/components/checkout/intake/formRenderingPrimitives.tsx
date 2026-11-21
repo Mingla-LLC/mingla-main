@@ -34,6 +34,9 @@ import { businessFormPrimitives } from "./businessFormPrimitives";
 /** #4514 wave 6: "See all answers" on the ticket scan result (read-only renderer). */
 export { DoorAnswersSheet } from "../../scanner/DoorAnswersSheet";
 
+/** #4541: the brand form questions on the public RSVP page. */
+export { RsvpBrandFormQuestions } from "../../forms/RsvpBrandFormQuestions";
+
 /** #4514 wave 5: the checkout Questions step and the after-purchase hand-off. */
 export { CheckoutQuestionsStep, PurchaseFormHandoff } from "./CheckoutQuestionsStep";
 

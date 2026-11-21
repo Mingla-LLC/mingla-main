@@ -56,6 +56,8 @@ export interface DoorAnswersSheetProps {
   /** The scan this person just made (scan_events id). */
   scanId: string;
   guestName: string;
+  /** RSVP receipts live in scan-rsvp; tickets keep the existing scan-ticket lane. */
+  functionName?: "scan-ticket" | "scan-rsvp";
 }
 
 const noop = (): void => undefined;
@@ -66,6 +68,7 @@ export const DoorAnswersSheet: React.FC<DoorAnswersSheetProps> = ({
   eventId,
   scanId,
   guestName,
+  functionName = "scan-ticket",
 }) => {
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const live = useRef(true);
@@ -79,7 +82,7 @@ export const DoorAnswersSheet: React.FC<DoorAnswersSheetProps> = ({
   const fetchAnswers = useCallback(async (): Promise<void> => {
     setLoad({ kind: "loading" });
     try {
-      const { data, error } = await supabase.functions.invoke("scan-ticket", {
+      const { data, error } = await supabase.functions.invoke(functionName, {
         body: { action: "door_full_answers", eventId, scanId },
       });
       if (error) {
@@ -94,7 +97,7 @@ export const DoorAnswersSheet: React.FC<DoorAnswersSheetProps> = ({
       console.error("[door] full answers failed", e instanceof Error ? e.message : "unknown");
       if (live.current) setLoad({ kind: "error", scanRequired: false });
     }
-  }, [eventId, scanId]);
+  }, [eventId, functionName, scanId]);
 
   useEffect(() => {
     void fetchAnswers();

@@ -30,14 +30,15 @@ import { useFormsToast } from "./useFormsToast";
 export interface GuestAnswersRowRef {
   eventId: string;
   rsvpId: string | null;
+  rsvpGuestId?: string | null;
   orderIds: readonly string[];
 }
 
 /** The chip before a row's other pills. Draws nothing while loading, on error, or with no form. */
-export const GuestAnswersChip: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpId, orderIds }) => {
+export const GuestAnswersChip: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpId, rsvpGuestId, orderIds }) => {
   const answers = useRosterAnswers(eventId);
   if (answers.data === undefined || answers.data === null) return null;
-  const state = chipForRow(answers.data, { rsvpId, orderIds });
+  const state = chipForRow(answers.data, { rsvpId, rsvpGuestId, orderIds });
   const label = chipLabel(state);
   if (label === null) return null;
   return (
@@ -55,7 +56,7 @@ const formatDate = (iso: string): string => {
 };
 
 /** The answers section in the guest's detail drawer: every question, read-only, with the version. */
-export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpId, orderIds }) => {
+export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpId, rsvpGuestId, orderIds }) => {
   const answers = useRosterAnswers(eventId);
   // Wave 4: Remind this guest (not answered) or ask again, through the send sheet.
   const [asking, setAsking] = useState(false);
@@ -72,7 +73,7 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
   }
   const index = answers.data;
   if (index === undefined || index === null) return null;
-  const state = chipForRow(index, { rsvpId, orderIds });
+  const state = chipForRow(index, { rsvpId, rsvpGuestId, orderIds });
   if (state.kind === "none") return null;
   if (state.kind === "not_loaded") {
     return (
@@ -98,7 +99,7 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
       ) : (
         <Text style={styles.muted}>{chipLabel(state)}</Text>
       )}
-      {index.page.form.status === "live" && (rsvpId !== null || orderIds.length > 0) ? (
+      {index.page.form.status === "live" && (rsvpId !== null || rsvpGuestId || orderIds.length > 0) ? (
         <Button
           label={response === null ? FORM_REQUEST_COPY.remindOne : FORM_REQUEST_COPY.askOne}
           variant="secondary"
@@ -107,7 +108,7 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
           testID="guest-answers-ask"
         />
       ) : null}
-      {rsvpId !== null || orderIds.length > 0 ? (
+      {rsvpId !== null || rsvpGuestId || orderIds.length > 0 ? (
         <Button
           label={FORM_REQUEST_LOG_COPY.open}
           variant="secondary"
@@ -121,7 +122,7 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
         <FormRequestLog
           formId={index.page.form.id}
           eventId={eventId}
-          subject={rsvpId !== null ? { kind: "rsvp", id: rsvpId } : { kind: "order", id: orderIds[0] ?? "" }}
+          subject={rsvpGuestId ? { kind: "rsvp_guest", id: rsvpGuestId } : rsvpId !== null ? { kind: "rsvp", id: rsvpId } : { kind: "order", id: orderIds[0] ?? "" }}
         />
       ) : null}
       {asking ? (
@@ -131,7 +132,7 @@ export const GuestAnswersPanel: React.FC<GuestAnswersRowRef> = ({ eventId, rsvpI
           formId={index.page.form.id}
           eventId={eventId}
           mode={response === null ? "remind" : "ask"}
-          subjects={rsvpId !== null ? [{ kind: "rsvp", id: rsvpId }] : orderIds.map((id) => ({ kind: "order" as const, id }))}
+          subjects={rsvpGuestId ? [{ kind: "rsvp_guest", id: rsvpGuestId }] : rsvpId !== null ? [{ kind: "rsvp", id: rsvpId }] : orderIds.map((id) => ({ kind: "order" as const, id }))}
           notify={show}
         />
       ) : null}

@@ -280,8 +280,8 @@ Deno.test("#4238 W2-5 the fire runs after the response when waitUntil exists, el
 
 Deno.test("#4238 W2-5 public-submit-rsvp accepts ad_context and schedules the fire after the RPC", async () => {
   const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assertEquals(/"guests",\s*"ad_context",\s*\]\.includes\(key\)/.test(source), true);
-  const rpc = source.indexOf('admin.rpc("submit_event_rsvp_with_delivery"');
+  assertEquals(/"guests",\s*"ad_context",[\s\S]*?\]\.includes\(key\)/.test(source), true);
+  const rpc = source.indexOf('admin.rpc("submit_event_rsvp_with_form"');
   const fire = source.indexOf("await scheduleRsvpAdConversion(");
   assertEquals(rpc > 0 && fire > rpc, true);
   assertEquals(source.includes("adContext: parseRsvpAdContext(body.ad_context, req)"), true);

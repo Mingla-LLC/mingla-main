@@ -87,7 +87,9 @@ export function violations(files) {
 
   const submit = files.submit ?? "";
   for (const token of [
-    'admin.rpc("submit_event_rsvp_with_delivery"',
+    // #4541: the edge calls the atomic RSVP + answers wrapper, which calls
+    // submit_event_rsvp_with_delivery inside the same transaction.
+    'admin.rpc("submit_event_rsvp_with_form"',
     "verifiedUserEmail",
     '.select("display_name,email,phone")',
     "provisionPassEntities",

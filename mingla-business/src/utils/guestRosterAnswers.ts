@@ -47,6 +47,7 @@ export interface RosterAnswerIndex {
   formName: string;
   page: BrandFormResponsesPage;
   byRsvp: Map<string, BrandFormResponseRow>;
+  byRsvpGuest: Map<string, BrandFormResponseRow>;
   byOrder: Map<string, BrandFormResponseRow>;
   notAnswered: Map<string, BrandFormNotAnswered>;
   /** More answers exist than were read (the read cap): unmatched guests are "not loaded", not "none". */
@@ -84,26 +85,59 @@ export function indexRosterAnswers(
   truncated: boolean = false,
 ): RosterAnswerIndex {
   const byRsvp = new Map<string, BrandFormResponseRow>();
+  const byRsvpGuest = new Map<string, BrandFormResponseRow>();
   const byOrder = new Map<string, BrandFormResponseRow>();
   for (const row of page.rows) {
     if (!row.verified) continue; // an unverified open-link answer never shows on a guest
     if (row.subject.kind === "rsvp" && row.subject.id !== null) byRsvp.set(row.subject.id, row);
+    if (row.subject.kind === "rsvp_guest" && row.subject.id !== null) byRsvpGuest.set(row.subject.id, row);
     if (row.subject.kind === "order" && row.subject.id !== null) byOrder.set(row.subject.id, row);
     if (row.holder !== null) {
-      if (row.holder.rsvpId !== null && !byRsvp.has(row.holder.rsvpId)) byRsvp.set(row.holder.rsvpId, row);
+      // A plus-one's own answer never lands on the inviter's row.
+      if (row.subject.kind !== "rsvp_guest" && row.holder.rsvpId !== null && !byRsvp.has(row.holder.rsvpId)) {
+        byRsvp.set(row.holder.rsvpId, row);
+      }
+      const holderGuestId = row.holder.rsvpGuestId ?? null;
+      if (holderGuestId !== null && !byRsvpGuest.has(holderGuestId)) byRsvpGuest.set(holderGuestId, row);
       for (const id of row.holder.orderIds) if (!byOrder.has(id)) byOrder.set(id, row);
     }
   }
   const notAnswered = new Map<string, BrandFormNotAnswered>();
   for (const n of page.notAnswered) notAnswered.set(`${n.kind}:${n.id}`, n);
-  return { formName, page, byRsvp, byOrder, notAnswered, truncated };
+  return { formName, page, byRsvp, byRsvpGuest, byOrder, notAnswered, truncated };
 }
 
 /** The chip for one guest list row. */
 export function chipForRow(
   index: RosterAnswerIndex,
-  row: { rsvpId: string | null; orderIds: readonly string[] },
+  row: { rsvpId: string | null; rsvpGuestId?: string | null; orderIds: readonly string[] },
 ): GuestAnswersChipState {
+  // #4541: a claimed plus-one is an independent holder. Once its exact pass id
+  // is present, never fall back to the inviter RSVP or an order on the row.
+  if (row.rsvpGuestId) {
+    const guestFound = index.byRsvpGuest.get(row.rsvpGuestId);
+    if (guestFound !== undefined) {
+      return {
+        kind: "answered",
+        viaLink: guestFound.viaLink,
+        earlierVersion: guestFound.earlierVersion,
+        response: guestFound,
+      };
+    }
+    const guestMissing = index.notAnswered.get(`rsvp_guest:${row.rsvpGuestId}`);
+    if (guestMissing !== undefined) {
+      return { kind: "not_answered", addedByHost: guestMissing.addedByHost };
+    }
+    if (index.truncated) return { kind: "not_loaded" };
+    // The original #4514 notAnswered payload predates claimed RSVP guests. A
+    // complete page with no exact response means this pass is independently
+    // pending; expose Ask without borrowing the inviter's answer.
+    if (index.page.form.status === "live") {
+      return { kind: "not_answered", addedByHost: false };
+    }
+    return { kind: "none" };
+  }
+
   const found = (row.rsvpId !== null ? index.byRsvp.get(row.rsvpId) : undefined) ??
     row.orderIds.map((id) => index.byOrder.get(id)).find((r) => r !== undefined);
   if (found !== undefined) {

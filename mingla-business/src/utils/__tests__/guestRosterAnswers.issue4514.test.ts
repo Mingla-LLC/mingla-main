@@ -9,6 +9,7 @@
 import type { BrandFormResponseRow, BrandFormResponsesPage } from "../../services/brandFormsService";
 import { chipForRow, chipLabel, indexRosterAnswers, loadRosterAnswers } from "../guestRosterAnswers";
 import { brandFormKeys } from "../../hooks/brandFormKeys";
+import { publicRsvpFormKeys } from "../../components/checkout/intake/publicRsvpFormKeys";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -75,6 +76,69 @@ describe("guest list answers chip", () => {
   });
 });
 
+describe("#4541 claimed plus-one answers", () => {
+  const inviter = row({
+    responseId: "inviter-answer",
+    subject: { kind: "rsvp", id: "rsvp-inviter", name: "Inviter" },
+    answers: { q1: "Inviter answer" },
+  });
+  const plusOne = row({
+    responseId: "plus-one-answer",
+    subject: { kind: "rsvp_guest", id: "guest-claimed", name: "Claimed guest" },
+    answers: { q1: "Plus-one answer" },
+  });
+
+  it("indexes and returns the exact claimed pass, never the inviter", () => {
+    const index = indexRosterAnswers("Open mic", page([inviter, plusOne], []));
+    const state = chipForRow(index, {
+      rsvpId: "rsvp-inviter",
+      rsvpGuestId: "guest-claimed",
+      orderIds: [],
+    });
+    expect(state.kind).toBe("answered");
+    if (state.kind === "answered") {
+      expect(state.response.responseId).toBe("plus-one-answer");
+      expect(state.response.answers.q1).toBe("Plus-one answer");
+    }
+  });
+
+  it("shows Ask for an unanswered claimed pass instead of borrowing the inviter answer", () => {
+    const index = indexRosterAnswers("Open mic", page([inviter], []));
+    expect(chipForRow(index, {
+      rsvpId: "rsvp-inviter",
+      rsvpGuestId: "guest-unanswered",
+      orderIds: [],
+    })).toEqual({ kind: "not_answered", addedByHost: false });
+  });
+
+  it("a plus-one response whose holder carries the inviter's rsvpId never answers the inviter row", () => {
+    const withHolder = row({
+      responseId: "plus-one-holder",
+      subject: { kind: "rsvp_guest", id: "guest-claimed", name: "Claimed guest" },
+      holder: { rsvpId: "inviter-1", orderIds: [] },
+      answers: { q1: "Plus-one answer" },
+    });
+    const index = indexRosterAnswers("Open mic", page([withHolder], []));
+    expect(chipForRow(index, { rsvpId: "inviter-1", orderIds: [] })).not.toMatchObject({
+      kind: "answered",
+    });
+    expect(chipForRow(index, {
+      rsvpId: "inviter-1",
+      rsvpGuestId: "guest-claimed",
+      orderIds: [],
+    }).kind).toBe("answered");
+  });
+
+  it("does not claim unanswered when the response page was truncated", () => {
+    const index = indexRosterAnswers("Open mic", page([inviter], []), true);
+    expect(chipForRow(index, {
+      rsvpId: "rsvp-inviter",
+      rsvpGuestId: "guest-beyond-cap",
+      orderIds: [],
+    })).toEqual({ kind: "not_loaded" });
+  });
+});
+
 // Fix wave (review finding 2): the guest list used to read only the first 200
 // answers, so guests after row 200 silently showed no chip.
 // FAILS-ON-REVERT: reading one page only leaves rsvp-449 without "Answered".
@@ -121,5 +185,23 @@ describe("brand forms query keys", () => {
     expect(brandFormKeys.idle("roster-answers")).toEqual(["brand-forms", "roster-answers", "none"]);
     const hooks = fs.readFileSync(path.join(__dirname, "../../hooks/useBrandForms.ts"), "utf8");
     expect(hooks).not.toMatch(/\[\s*"brand-forms"/);
+  });
+
+  // #4541: the RSVP form reads on the buyer page and in the Explorer app.
+  it("the RSVP form reads take their keys from the factory, never inline", () => {
+    expect(publicRsvpFormKeys.forEvent("ev-1")).toEqual(["brand-forms", "public-rsvp", "ev-1"]);
+    const read = (rel: string): string => fs.readFileSync(path.join(__dirname, "../../../..", rel), "utf8");
+    const inlineFormKey = /queryKey:\s*\[\s*["'][^"']*(brand-form|my-pending)/;
+    const surfaces = [
+      "mingla-business/src/components/event/PublicEventPage.tsx",
+      "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
+      "app-mobile/src/components/activity/RsvpPassSheet.tsx",
+    ];
+    for (const rel of surfaces) expect(read(rel)).not.toMatch(inlineFormKey);
+    expect(read(surfaces[0])).toContain("publicRsvpFormKeys.forEvent(");
+    expect(read(surfaces[1])).toContain("brandFormKeys.rsvpForm(");
+    expect(read(surfaces[2])).toContain("brandFormKeys.myPending(");
+    const explorerKeys = read("app-mobile/src/hooks/queryKeys.ts");
+    expect(explorerKeys).toMatch(/export const brandFormKeys = \{\s*all: \['brand-forms'\]/);
   });
 });

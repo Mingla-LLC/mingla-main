@@ -13,7 +13,7 @@ export type FormRequestKind = "ask" | "remind";
 export type FormRequestAudience = "unanswered" | "everyone";
 
 export interface FormRequestSubject {
-  kind: "rsvp" | "order";
+  kind: "rsvp" | "rsvp_guest" | "order";
   id: string;
 }
 
@@ -63,7 +63,7 @@ export interface FormRequestResult {
 export interface FormRequestLogRow {
   id: string;
   kind: "ask" | "remind" | "auto";
-  subjectKind: "rsvp" | "order";
+  subjectKind: "rsvp" | "rsvp_guest" | "order";
   subjectId: string;
   name: string;
   channel: FormRequestChannel | "push" | null;
@@ -258,7 +258,7 @@ export function parseFormRequestLog(value: unknown): FormRequestLog {
     return [{
       id: row.id,
       kind,
-      subjectKind: row.subjectKind === "order" ? "order" : "rsvp",
+      subjectKind: row.subjectKind === "order" ? "order" : row.subjectKind === "rsvp_guest" ? "rsvp_guest" : "rsvp",
       subjectId: typeof row.subjectId === "string" ? row.subjectId : "",
       name: typeof row.name === "string" && row.name.length > 0 ? row.name : "Guest",
       channel,

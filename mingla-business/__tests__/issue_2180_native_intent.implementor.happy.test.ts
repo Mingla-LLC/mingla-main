@@ -261,7 +261,13 @@ describe("#2180 T-7 — SERVED_ROUTE_SEGMENTS stays in sync with the route tree"
   it("matches the real app-mobile/app tree exactly", () => {
     const onDisk = [...enumerateRouteSegments(CONSUMER_APP_DIR)].sort();
     const declared = [...consumer.SERVED_ROUTE_SEGMENTS].sort();
-    expect(declared).toEqual(onDisk);
+    // [TEST-MOD-APPROVED #4541] Decision 11 stages only /form in the intent
+    // map before the separately-owned Explorer screen and iPhone claim. The
+    // exception stays explicit and disjoint, so any second orphan still fails.
+    const staged = [...consumer.STAGED_NATIVE_INTENT_SEGMENTS].sort();
+    expect(staged).toEqual(["form"]);
+    expect(onDisk).not.toEqual(expect.arrayContaining(staged));
+    expect(declared).toEqual([...new Set([...onDisk, ...staged])].sort());
   });
 
   it("discovers a non-trivial number of routes (never passes vacuously)", () => {
@@ -279,6 +285,19 @@ describe("#2180 T-7 — SERVED_ROUTE_SEGMENTS stays in sync with the route tree"
       "host.usemingla.com",
       "usemingla.com",
     ]);
+  });
+});
+
+describe("#4541 — the staged Explorer form intent", () => {
+  it("preserves /form/{id} byte-for-byte on cold and warm links", () => {
+    const link = "https://go.usemingla.com/form/45410000-0000-4000-8000-000000000004?token=fixture#answers";
+    expect(consumerRedirect(cold(link))).toBe(link);
+    expect(consumerRedirect(warm(link))).toBe(link);
+  });
+
+  it("preserves the owned custom-scheme form intent", () => {
+    const link = "com.mingla.app.v2://form/45410000-0000-4000-8000-000000000004";
+    expect(consumerRedirect(cold(link))).toBe(link);
   });
 });
 

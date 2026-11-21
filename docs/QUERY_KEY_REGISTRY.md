@@ -171,6 +171,8 @@ the client never estimates a discounted refund amount.
 
 ### brandFormKeys (hooks/brandFormKeys.ts) — issue #4514
 
+The Explorer app has its own `brandFormKeys` in `app-mobile/src/hooks/queryKeys.ts` (#4541): `rsvpForm(eventId \| null)` is `['brand-forms', 'rsvp-form', eventId ?? 'none']` and `myPending(userId \| null)` is `['brand-forms', 'my-pending', userId ?? 'none']`.
+
 | Sub-key | Shape |
 |---------|-------|
 | `all` | `['brand-forms']` |
@@ -180,6 +182,7 @@ the client never estimates a discounted refund amount.
 | `responses(formId, eventId \| null, filter)` | `['brand-forms', 'responses', formId, eventId ?? 'all', filter]` |
 | `tile(eventId)` | `['brand-forms', 'tile', eventId]` |
 | `counts(brandId)` | `['brand-forms', 'counts', brandId]` (wave 3: answered and to-answer per form and per page) |
+| `publicRsvpFormKeys.forEvent(eventId)` (src/components/checkout/intake/publicRsvpFormKeys.ts) | `['brand-forms', 'public-rsvp', eventId]` (#4541: the questions on the public RSVP page; a leaf module so the eager public page does not import this factory; refetched when the RSVP is refused with a form code) |
 | `rosterAnswers(eventId)` | `['brand-forms', 'roster-answers', eventId]` (wave 3: the guest list's answers chip and drawer for one page) |
 | `requestPreview(formId, eventId, kind, audience, channels, subjects)` | `['brand-forms', 'request-preview', formId, eventId, kind, audience, channels, subjects]` (wave 4: reach and cost before Ask guests to answer / Remind; `staleTime: 0`; channels and subjects are sorted, joined ids, never contacts or tokens) |
 | `requestLog(formId, eventId, subject)` | `['brand-forms', 'request-log', formId, eventId, subject]` (wave 4 review: the host delivery log, sends and failures per guest and the automatic reminder runs; `subject` is `all` or `kind:id`; never contacts or tokens) |

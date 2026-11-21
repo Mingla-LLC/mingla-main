@@ -3,6 +3,12 @@ import { RsvpRpcError } from "./rsvpRpcFailure";
 
 export type RsvpScanResult = "success" | "duplicate" | "not_found" |
   "wrong_event" | "not_eligible" | "revoked" | "not_yet_open" | "event_ended";
+export interface RsvpDoorAnswers {
+  state: "answered" | "not_answered" | "unavailable";
+  header: string | null;
+  lines: string[];
+  fullAnswers: boolean;
+}
 export interface RsvpScanResponse {
   result: RsvpScanResult;
   scanId: string | null;
@@ -18,7 +24,32 @@ export interface RsvpScanResponse {
   nextStartAt: string | null;
   lastEndAt: string | null;
   checkedInAt: string | null;
+  /** #4541 — optional, server-built and never changes the admission result. */
+  doorAnswers?: RsvpDoorAnswers | null;
 }
+/** #4541 — a malformed door-answers payload becomes `null`; it never breaks an admitted result. */
+export function parseDoorAnswers(value: unknown): RsvpDoorAnswers | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  const state = row.state;
+  if (state !== "answered" && state !== "not_answered" && state !== "unavailable") return null;
+  if (!Array.isArray(row.lines) || !row.lines.every((line) => typeof line === "string")) return null;
+  if (row.header !== null && row.header !== undefined && typeof row.header !== "string") return null;
+  if (typeof row.fullAnswers !== "boolean") return null;
+  return {
+    state,
+    header: typeof row.header === "string" ? row.header : null,
+    lines: row.lines as string[],
+    fullAnswers: row.fullAnswers,
+  };
+}
+
+function withSafeDoorAnswers(data: unknown): RsvpScanResponse {
+  const body = (data ?? {}) as RsvpScanResponse;
+  if (body.doorAnswers === undefined) return body;
+  return { ...body, doorAnswers: parseDoorAnswers(body.doorAnswers) };
+}
+
 export class ScanRsvpError extends Error {
   constructor(readonly code: string) { super(code); this.name = "ScanRsvpError"; }
 }
@@ -37,7 +68,7 @@ export async function scanRsvp(eventId: string, qrPayload: string): Promise<Rsvp
     } catch { /* keep safe code */ }
     throw new ScanRsvpError(code);
   }
-  return data as RsvpScanResponse;
+  return withSafeDoorAnswers(data);
 }
 
 export async function fetchRsvpCheckinSummary(eventId: string): Promise<{
@@ -60,5 +91,5 @@ export async function checkInRsvpGuestByHand(guestId: string): Promise<RsvpScanR
     p_guest_id: guestId,
   });
   if (error !== null) throw new RsvpRpcError(error, "rsvp_guest_check_in_failed");
-  return (data ?? {}) as RsvpScanResponse;
+  return withSafeDoorAnswers(data);
 }

@@ -357,7 +357,7 @@ Deno.test("P1-2 / C3 wiring: the submit sends the client key and passes willText
   const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
   assert(
     /\.setHeader\("x-mingla-rsvp-client", inviterClient\)/.test(src) &&
-      /submit_event_rsvp_with_delivery/.test(src),
+      /submit_event_rsvp_with_form/.test(src),
     "the submit RPC carries the signed-out inviter's key header",
   );
   assert(
@@ -483,7 +483,7 @@ Deno.test("R-1 wiring: signed out, no invite link is minted for a guest", async 
 Deno.test("R-1 wiring: the count runs before the submit, with the client key", async () => {
   const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
   const gateAt = src.indexOf("await signedOutGuestGate(");
-  const submitAt = src.indexOf('admin.rpc("submit_event_rsvp_with_delivery"');
+  const submitAt = src.indexOf('admin.rpc("submit_event_rsvp_with_form"');
   assert(
     gateAt > 0 && submitAt > gateAt &&
       /"rsvp_guest_signed_out_attempt",[\s\S]{0,120}\.setHeader\("x-mingla-rsvp-client", inviterClient\)/
@@ -604,7 +604,7 @@ Deno.test("T1 wiring: the refusal runs before contact parsing, guest parsing and
   const refusal = src.indexOf("const signedOutRefusal = signedOutGuestRefusal(");
   assert(
     refusal > 0 && refusal < src.indexOf("const parsedGuests = parseGuests(") &&
-      refusal < src.indexOf('admin.rpc("submit_event_rsvp_with_delivery"') &&
+      refusal < src.indexOf('admin.rpc("submit_event_rsvp_with_form"') &&
       refusal < src.indexOf('"rsvp_guest_signed_out_attempt"'),
     "the refusal comes first",
   );
