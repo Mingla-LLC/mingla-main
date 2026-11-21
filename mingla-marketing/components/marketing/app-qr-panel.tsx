@@ -140,7 +140,7 @@ export function AppQrPanel({ open, onClose }: AppQrPanelProps) {
           role="dialog"
           aria-modal="true"
           aria-labelledby={headingId}
-          className="fixed inset-0 z-[200] flex items-center justify-center px-4"
+          className="fixed inset-0 bottom-[var(--mingla-privacy-strip)] z-[200] flex items-center justify-center px-4"
           style={{
             background: 'rgba(8,9,12,0.55)',
             backdropFilter: 'blur(12px)',

@@ -51,7 +51,9 @@
         "brand_offering_invite": "Приглашения от мест, на которые вы подписаны",
         "brand_offering_invite_hint": "Когда место или организатор приглашает вас куда-то."
       }
-    }
+    },
+    "friends_going": "Друзья выходят",
+    "friends_going_hint": "Когда близкий друг идёт на мероприятие"
   },
   "quiet_hours": {
     "title": "Quiet Hours",

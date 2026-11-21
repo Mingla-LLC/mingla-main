@@ -9,6 +9,7 @@
  * ORCH-1150: do NOT merge back into the event/ticket path. See SPEC §5.4.
  */
 
+import { cleanText, normalisePlusGuests, type RsvpPlusGuest } from "../utils/rsvpGuestDisplay";
 import { supabase } from "./supabase";
 import { createGuestRosterRequestId } from "./guestRosterService";
 import { RsvpRpcError } from "./rsvpRpcFailure";
@@ -47,7 +48,9 @@ export interface RsvpGuest {
   checkedInAt: string | null;
   checkedInBy: string | null;
   plusCheckedInCount: number;
-  plusCheckins: Array<{ id: string; name: string; checkedInAt: string | null; checkedInBy: string | null }>;
+  // #4508 — each plus-one carries the server's display name (never empty),
+  // who invited them, and whether they claimed their pass.
+  plusCheckins: RsvpPlusGuest[];
 }
 
 interface RsvpGuestRow {
@@ -73,9 +76,7 @@ interface RsvpGuestRow {
   checked_in_at: string | null;
   checked_in_by: string | null;
   plus_checked_in_count: number | null;
-  plus_checkins: Array<{
-    id: string; name: string; checkedInAt: string | null; checkedInBy: string | null;
-  }> | null;
+  plus_checkins: unknown;
 }
 
 const rowToGuest = (r: RsvpGuestRow): RsvpGuest => ({
@@ -94,19 +95,16 @@ const rowToGuest = (r: RsvpGuestRow): RsvpGuest => ({
   // ORCH-1334 — resolved identity/provenance. Defensive fallbacks keep older
   // cached rows (pre-migration shape) from crashing the mapper: displayName falls
   // back to the raw guest_name, source to a user_id-derived binary.
-  displayName:
-    typeof r.display_name === "string" && r.display_name.length > 0
-      ? r.display_name
-      : r.guest_name,
+  displayName: cleanText(r.display_name) ?? cleanText(r.guest_name) ?? "Guest",
   username: r.username ?? null,
   avatarUrl: r.avatar_url ?? null,
-  email: r.email ?? r.guest_email ?? null,
-  phone: r.phone ?? null,
+  email: cleanText(r.email) ?? cleanText(r.guest_email),
+  phone: cleanText(r.phone),
   source: r.source ?? (r.user_id !== null ? "app" : "web"),
   checkedInAt: r.checked_in_at ?? null,
   checkedInBy: r.checked_in_by ?? null,
   plusCheckedInCount: r.plus_checked_in_count ?? 0,
-  plusCheckins: r.plus_checkins ?? [],
+  plusCheckins: normalisePlusGuests(r.plus_checkins),
 });
 
 export const listRsvpGuests = async (eventId: string): Promise<RsvpGuest[]> => {

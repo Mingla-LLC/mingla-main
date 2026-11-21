@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Ọ ma sẹ. Gha dọ ẹre ọvbehe.",
   "brand_guests_leave_title": "U gha kpa vbe {{brand}} Guests?",
   "brand_guests_leave_body": "Booking nọ kpẹrẹ ma gha rri ruẹ dẹ. U sẹtin werriẹ la vbe booking ruẹ.",
-  "brand_guests_left_toast": "U kpa vbe {{brand}} Guests. U sẹtin werriẹ la vbe booking ruẹ."
+  "brand_guests_left_toast": "U kpa vbe {{brand}} Guests. U sẹtin werriẹ la vbe booking ruẹ.",
+  "af_send_yourself_title": "Send it yourself too",
+  "af_send_yourself_body": "A message from you lands best. Same link as our text.",
+  "af_copy_message": "Copy message",
+  "af_message_copied": "Message copied"
 }

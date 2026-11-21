@@ -127,12 +127,12 @@ export function stripComments(src) {
 const A1_CHECKS = [
   { id: "A1a", protects: "links-experience.tsx:317 <main> className",
     desc: "`h-[100svh]` single dynamic-viewport height (optionally less the privacy inset)",
-    re: /h-\[(?:calc\()?100svh(?:-var\(--mingla-privacy-inset,0px\)\))?\]/ },
+    re: /h-\[(?:calc\()?100svh(?:-var\(--mingla-privacy-strip\)\))?\]/ },
   { id: "A1b", protects: "links-experience.tsx:317 <main> className",
     desc: "`overflow-hidden` no-scrollbar guard", re: /overflow-hidden/ },
   { id: "A1c", protects: "links-experience.tsx:319 inline style",
     desc: "inline `height: '100dvh'` (optionally less the privacy inset)",
-    re: /height:\s*['"](?:calc\()?100dvh(?: - var\(--mingla-privacy-inset, 0px\)\))?['"]/ },
+    re: /height:\s*['"](?:calc\()?100dvh(?: - var\(--mingla-privacy-strip\)\))?['"]/ },
   { id: "A1d", protects: "links-experience.tsx:332 content column",
     desc: "`min-h-0` + `flex-1` co-occurring in one className (fit-to-viewport band)",
     re: /\bmin-h-0\b[^'"]*\bflex-1\b|\bflex-1\b[^'"]*\bmin-h-0\b/ },
@@ -144,21 +144,22 @@ const A1_CHECKS = [
 // its ABSENCE on /links. Every other surface is out of #4318's scope.
 const A2A_CHECKS = [
   { id: "A2a-inset", protects: "links-experience.tsx <main> inline height",
-    desc: "inline `height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))'`",
-    re: /height:\s*['"]calc\(100dvh - var\(--mingla-privacy-inset, 0px\)\)['"]/ },
+    desc: "inline `height: 'calc(100dvh - var(--mingla-privacy-strip))'`",
+    re: /height:\s*['"]calc\(100dvh - var\(--mingla-privacy-strip\)\)['"]/ },
   { id: "A2a-link", protects: "links-experience.tsx (no Privacy choices text link, #4318)",
     desc: "no `<PrivacyChoicesLink` / `privacy-choices-link` on /links",
     re: /^(?![\s\S]*(?:<PrivacyChoicesLink\b|privacy-choices-link))[\s\S]*$/ },
 ];
 
-// The bar is never suppressed by route, and it writes its live height.
+// The bar is never suppressed by route, and its band is the CSS constant
+// --mingla-privacy-strip: nothing measures it (#2331).
 const A2B_CHECKS = [
   { id: "A2b-no-suppression", protects: "consent-banner.tsx visibility",
     desc: "no route-based suppression (`shouldRenderConsentBanner` / `SUPPRESSED_CONSENT_ROUTES` absent)",
     re: /^(?![\s\S]*(?:shouldRenderConsentBanner|SUPPRESSED_CONSENT_ROUTES))[\s\S]*$/ },
-  { id: "A2b-inset", protects: "consent-banner.tsx inset writer",
-    desc: "the live height is written to `--mingla-privacy-inset` via a ResizeObserver",
-    re: /setProperty\(PRIVACY_INSET_PROPERTY[\s\S]*new ResizeObserver\(measure\)/ },
+  { id: "A2b-band", protects: "consent-banner.tsx band constant",
+    desc: "the band is the CSS constant `--mingla-privacy-strip` and no ResizeObserver measures it",
+    re: /^(?![\s\S]*new ResizeObserver)[\s\S]*:root\{\$\{PRIVACY_STRIP_PROPERTY\}:calc\(28px/ },
 ];
 
 const A3_CHECKS = [
@@ -245,23 +246,21 @@ const SELF_TEST_FAMILIES = [
       {
         checks: A2A_CHECKS,
         clean:
-          `style={{ height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))' }}\n` +
+          `style={{ height: 'calc(100dvh - var(--mingla-privacy-strip))' }}\n` +
           `<nav aria-label="Mingla on social">x</nav>`,
         // #4318: the Privacy choices text link re-added to /links -> flags.
         violated:
-          `style={{ height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))' }}\n` +
+          `style={{ height: 'calc(100dvh - var(--mingla-privacy-strip))' }}\n` +
           `<PrivacyChoicesLink className="x" />`,
       },
       {
         checks: A2B_CHECKS,
         clean:
-          `document.documentElement.style.setProperty(PRIVACY_INSET_PROPERTY, px)\n` +
-          `const observer = new ResizeObserver(measure)`,
+          "const BAR_CSS = `:root{${PRIVACY_STRIP_PROPERTY}:calc(28px + max(env(safe-area-inset-bottom,0px),0px))}`",
         // A route suppression re-introduced -> also flags (the bar must show on /links).
         violated:
           `const visible = shouldRenderConsentBanner(pathname)\n` +
-          `document.documentElement.style.setProperty(PRIVACY_INSET_PROPERTY, px)\n` +
-          `const observer = new ResizeObserver(measure)`,
+          "const BAR_CSS = `:root{${PRIVACY_STRIP_PROPERTY}:calc(28px`",
       },
     ],
   },

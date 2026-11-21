@@ -11,7 +11,7 @@
  * and replaced by an "Ask {host} to update" note (only the primary owns the RSVP).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -21,7 +21,7 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { BaseBottomSheet } from "../ui/BaseBottomSheet";
+import { BaseBottomSheet, BottomSheetScrollView } from "../ui/BaseBottomSheet";
 import QRCode from "react-native-qrcode-svg";
 import { useQueryClient } from "@tanstack/react-query";
 import * as FileSystem from "expo-file-system/legacy";
@@ -30,10 +30,14 @@ import * as Sharing from "expo-sharing";
 import { Icon } from "../ui/Icon";
 import type { ConsumerRsvpRow } from "../../services/calendarService";
 import {
-  fetchRsvpPartyPasses,
+  fetchRsvpPartyDetails,
   fetchRsvpPassPdf,
   submitDeckRsvp,
+  type RsvpPartyGuestStatus,
 } from "../../services/rsvpDeckService";
+// issue #4508 1.24 / 2.5 — the people you brought, Nudge, and Bring someone too.
+import { RsvpBringSomeone, RsvpPartyInvites } from "./RsvpPartyInvites";
+import { normalizeCityCountry } from "@mingla/offering-rendering/normalizeCityCountry";
 import type { RsvpPassCredential } from "@mingla/offering-rendering";
 import { useAppStore } from "../../store/appStore";
 import { toastManager } from "../ui/Toast";
@@ -45,6 +49,7 @@ import { openMapsTarget } from "../../utils/openMapsTarget";
 // ORCH-0877 — centralized consumer-side date formatter.
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import { postHogService } from "../../services/postHogService";
+import { PURCHASE_SHEET_KEYBOARD_TOOLBAR } from "../purchases/SheetKeyboardDoneBar";
 
 interface RsvpPassSheetProps {
   visible: boolean;
@@ -111,6 +116,8 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
         }
       : null, [row.displayName, row.guestId, row.qrCode, row.rsvpId]);
   const [credentials, setCredentials] = useState<RsvpPassCredential[]>([]);
+  const [partyGuests, setPartyGuests] = useState<RsvpPartyGuestStatus[]>([]);
+  const [canBring, setCanBring] = useState(false);
 
   const pageWidth = Math.max(0, windowWidth - SHEET_HORIZONTAL_PADDING * 2);
   const qrSize = Math.max(160, Math.min(pageWidth - 32, 360));
@@ -121,13 +128,34 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
     (item) => item.entityId === selectedEntityId,
   ) ?? credentials[0] ?? null;
 
+  // #4508 round 9: the purchase sheets' reveal (SendTicketSheet,
+  // AddIdentitySheet): once the keyboard has risen, scroll the sheet to its end
+  // so the "Bring someone too" field and its Cancel / Add row sit above the
+  // keyboard on first focus.
+  const scrollRef = useRef<React.ElementRef<typeof BottomSheetScrollView>>(null);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealBringForm = useCallback((): void => {
+    if (revealTimer.current) clearTimeout(revealTimer.current);
+    revealTimer.current = setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 280);
+  }, []);
+  useEffect(() => () => {
+    if (revealTimer.current) clearTimeout(revealTimer.current);
+  }, []);
+
   const loadParty = useCallback((): void => {
     if (!visible || !fallbackCredential || isPending) return;
     setPartyLoading(true);
     setPartyError(null);
-    void fetchRsvpPartyPasses(row.rsvpId)
-      .then((party) => {
+    void fetchRsvpPartyDetails(row.rsvpId)
+      .then((details) => {
+        const party = details.credentials;
         setCredentials(party);
+        setPartyGuests(details.guests);
+        // issue #4508 2.5 / C2 — only a claimed guest, only when the host
+        // allows it; read from the guest's own pass row.
+        setCanBring(isGuest && row.guestId !== null && details.guestsCanBring);
         if (party.length === 0) {
           setPartyError("This RSVP pass is no longer active.");
           return;
@@ -138,14 +166,18 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
       })
       .catch(() => {
         setCredentials([]);
+        setPartyGuests([]);
+        setCanBring(false);
         setPartyError("Couldn't verify this RSVP pass.");
       })
       .finally(() => setPartyLoading(false));
-  }, [fallbackCredential, isPending, row.rsvpId, visible]);
+  }, [fallbackCredential, isGuest, isPending, row.guestId, row.rsvpId, visible]);
 
   useEffect(() => {
     if (!visible) return;
     setCredentials([]);
+    setPartyGuests([]);
+    setCanBring(false);
     setSelectedEntityId(row.guestId ?? row.rsvpId);
     loadParty();
   }, [fallbackCredential, loadParty, row.guestId, row.rsvpId, visible]);
@@ -155,6 +187,13 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
     masterEndAtUtc: row.masterDateEndUtc,
     timezone: row.timezone,
   });
+  // issue #4508 — the ready-made message (city-level area only).
+  const inviteMessage = useMemo(() => ({
+    eventName: row.eventTitle,
+    dateLine,
+    area: row.venue.isOnline ? null : normalizeCityCountry(row.venue.locationText ?? null),
+    online: row.venue.isOnline,
+  }), [row.eventTitle, dateLine, row.venue.isOnline, row.venue.locationText]);
 
   /*
     #2468 — the local `buildMapsQueryUrl` is DELETED; this now goes through the
@@ -306,8 +345,14 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
       theme="dark"
       snapPoints={RSVP_PASS_SNAP_POINTS}
       wrapInRNModal
+      // #4508 round 8: the "Bring someone too" number field is the sheet's only
+      // input and carries its own dark Done bar on iOS (part of the keyboard,
+      // so the sheet sits above it); the shared light pill stacked a second
+      // bar over the field. Android keeps the shared dark bar.
+      keyboardToolbar={PURCHASE_SHEET_KEYBOARD_TOOLBAR}
       backgroundStyle={RSVP_PASS_BACKGROUND_STYLE}
       scrollMode="scroll"
+      scrollProps={{ ref: scrollRef, keyboardShouldPersistTaps: "handled" }}
       accessibilityLabel={`RSVP pass for ${row.eventTitle}`}
     >
       <InAppBrowserProvider>
@@ -344,7 +389,7 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
         {partyError ? (
           <View style={styles.partyErrorRow}>
             <Text style={styles.partyError}>{partyError}</Text>
-            <Pressable onPress={loadParty} accessibilityRole="button">
+            <Pressable onPress={loadParty} accessibilityRole="button" accessibilityLabel="Try loading this pass again">
               <Text style={styles.partyRetry}>Try again</Text>
             </Pressable>
           </View>
@@ -430,6 +475,16 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
               <Text style={styles.cancelButtonLabel}>{sharing ? "Preparing…" : "Share"}</Text>
             </Pressable>
           </View>
+        ) : null}
+
+        {!isGuest ? <RsvpPartyInvites guests={partyGuests} message={inviteMessage} /> : null}
+        {isGuest && canBring && row.guestId !== null ? (
+          <RsvpBringSomeone
+            guestId={row.guestId}
+            message={inviteMessage}
+            onAdded={loadParty}
+            onFieldFocus={revealBringForm}
+          />
         ) : null}
 
         {isGuest ? (

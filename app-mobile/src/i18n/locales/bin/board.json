@@ -71,7 +71,8 @@
     "deleteSessionMsg": "U r\u1eb9 h\u1ecdo ne u gha hian \"{{name}}\" kua? Emwin na i gha h\u1ecdo gha rhi\u1eb9 vbe ikadi, ivotu, vbe aro hia gha kua.",
     "leaveSessionTitle": "Rhi\u1eb9 Ib\u1ecddi",
     "leaveSessionMsg": "U r\u1eb9 h\u1ecdo ne u gha rhi\u1eb9 \"{{name}}\"?",
-    "namePlaceholder": "T\u1eb9n eva n\u1eb9 isesh\u1ecdon"
+    "namePlaceholder": "T\u1eb9n eva n\u1eb9 isesh\u1ecdon",
+    "sessionShareMessage": "I've added you to \"{{name}}\" on Mingla. Join here: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Aro",

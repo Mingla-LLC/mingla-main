@@ -46,9 +46,25 @@ interface PhoneInputProps {
   placeholder?: string;
   /** #4473 — the host opens its own country picker (see @mingla/phone-input). */
   onRequestCountryPicker?: () => void;
+  /** #4508 — someone else's number: no own-number autofill. */
+  disableAutofill?: boolean;
+  /** #4508 — the done key also runs this (an RSVP guest number is added). */
+  onSubmitEditing?: () => void;
 }
 
-export const PhoneInput: React.FC<PhoneInputProps> = ({ placeholder, ...props }) => {
+/**
+ * #4508 round 8 — the Explorer app always has a keyboard Done bar: the
+ * app-wide one (app/_layout.tsx) or a wrapInRNModal sheet's own. The shared
+ * field's own iOS bar therefore stacked a second one on top of it, so here it
+ * is off unless a host asks for it: a sheet whose window has no shared bar
+ * (keyboardToolbar "none" on iOS: the purchase sheets and the RSVP pass sheet)
+ * passes `showDoneAccessory` so its field keeps exactly one bar.
+ */
+export const PhoneInput: React.FC<PhoneInputProps> = ({
+  placeholder,
+  showDoneAccessory = false,
+  ...props
+}) => {
   const { t } = useTranslation("onboarding");
 
   const iconRenderer = useCallback<IconRenderer>(
@@ -89,6 +105,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({ placeholder, ...props })
   return (
     <PackagePhoneInput
       {...props}
+      showDoneAccessory={showDoneAccessory}
       iconRenderer={iconRenderer}
       labels={labels}
     />

@@ -51,7 +51,9 @@
         "brand_offering_invite": "你关注的地点发来的邀请",
         "brand_offering_invite_hint": "当某个地点或主办方邀请你参加活动时。"
       }
-    }
+    },
+    "friends_going": "好友出门",
+    "friends_going_hint": "当好友要去参加活动时"
   },
   "quiet_hours": {
     "title": "免打扰时段",

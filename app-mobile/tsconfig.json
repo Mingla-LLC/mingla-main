@@ -4,6 +4,7 @@
     "strict": true,
     "jsx": "react-jsx",
     "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
     "allowSyntheticDefaultImports": true,
     "paths": {
       "@/*": [

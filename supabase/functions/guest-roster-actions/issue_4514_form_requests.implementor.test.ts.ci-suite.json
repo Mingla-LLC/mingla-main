@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/guest-roster-actions/issue_4514_form_requests.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4514-form-requests",
+  "profile": "deno-2-unit"
+}

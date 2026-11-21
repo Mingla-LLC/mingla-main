@@ -15,7 +15,7 @@ import { chatTokens } from "../../constants/chatTokens";
 import { getCountryByCode, getDefaultCountryCode } from "../../constants/countries";
 import { useDebouncedValue, usePhoneLookup } from "../../hooks/usePhoneLookup";
 import { inviteByPhone } from "../../services/sessionInviteService";
-import { showInviteNotTextedAlert } from "../../utils/inviteNotTextedAlert";
+import { showInviteNotTextedAlert, showInviteTextedAlert } from "../../utils/inviteNotTextedAlert";
 import { getDisplayName } from "../../utils/getDisplayName";
 import { buildPendingCollabPhoneE164, isPendingCollabPhoneValid } from "../connections/pendingCollabChatUtils";
 
@@ -84,16 +84,20 @@ export function GroupPhoneInvite({
       onInvited?.();
       // Issue #4114 QA run 2: a cold invite whose text did not go out says so.
       if (outcome.kind === "cold" && !outcome.texted) {
-        showInviteNotTextedAlert(t, outcome.phoneE164, outcome.inviteLink);
+        showInviteNotTextedAlert(t, outcome.phoneE164, outcome.inviteLink, sessionName);
         return;
       }
+      // #4508 2.2 — texted: offer Copy message / Share with this plan's link.
+      if (outcome.kind === "cold") {
+        showInviteTextedAlert(t, outcome.phoneE164, outcome.inviteLink, sessionName);
+        return;
+      }
+      // A person already on Mingla: invited in the app.
       Alert.alert(
         t("board:boardSettingsDropdown.invited"),
-        outcome.kind === "warm"
-          ? outcome.displayName
-            ? t("board:boardSettingsDropdown.invitedUser", { name: outcome.displayName })
-            : t("board:boardSettingsDropdown.inviteSent")
-          : t("board:boardSettingsDropdown.invitedTextSent", { phone: outcome.phoneE164 }),
+        outcome.displayName
+          ? t("board:boardSettingsDropdown.invitedUser", { name: outcome.displayName })
+          : t("board:boardSettingsDropdown.inviteSent"),
       );
     } catch (error) {
       setPhoneError(error instanceof Error ? error.message : t("chat:group_action_failed"));

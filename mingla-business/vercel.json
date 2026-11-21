@@ -231,6 +231,12 @@
       ]
     },
     {
+      "source": "/form/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/home/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }

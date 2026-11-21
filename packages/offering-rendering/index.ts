@@ -236,6 +236,22 @@ export type {
   RsvpPhoneFieldRenderArgs,
   RsvpPhoneFieldRenderer,
 } from "./RsvpOfferingBody";
+// issue #4508 — "Who's coming with you?": number-only guests, friends route,
+// the success screen's invite card, and the shared copy / share helpers.
+// The guest model's functions (RSVP_PARTY_COPY, buildGuestPayload,
+// parseSubmittedGuests, buildGuestInviteMessage, shareInviteText ...) are
+// imported by deep path ("@mingla/offering-rendering/rsvpGuestCopy",
+// ".../rsvpGuestParty", ".../inviteShare") so this eager barrel never carries
+// them into the boot payload; only their types are re-exported here.
+export type {
+  GuestInviteMessageInput,
+  RsvpFriendOption,
+  RsvpGuestLookup,
+  RsvpGuestLookupResult,
+  RsvpGuestPayload,
+  RsvpPartyGuest,
+  RsvpSubmittedGuest,
+} from "./rsvpGuestParty";
 export type { RsvpGoingConfirmDialogProps } from "./RsvpGoingConfirmDialog";
 // ORCH-1163-R3 — the floating-bar "Add your details" modal (self-sufficient
 // contact + +1 forms; one decision owner, two entry points).

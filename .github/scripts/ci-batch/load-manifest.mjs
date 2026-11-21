@@ -359,13 +359,24 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
 // #4453 Website workspace (team requests): listed migrations 20281119004453 (website team requests) and 20281119014453 (workspace content ranks, audit vocabulary, Ari step events) after 20281118014238 in the #1857, #1931 and #2117 lanes and registered their two implementor pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed. The unmerged #4490 branch also adds rows and re-seals: whichever merges second re-seals again.
 // #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed.
+// #4508: registered the bring-a-friend RSVP migrations and their pg17 suites in the #1857, #1931 and #2117 inventories.
+// #4508 tester: register issue_4508_bring_a_friend.tester.adversarial.pg17.test.sql (and its .ci-suite.json) beside the implementor proof in #1931 and #2117; re-sealed.
+// #4508 tester retest: register issue_4508_one_place.tester.retest.pg17.test.sql (and its .ci-suite.json) beside the other #4508 proofs in #1931 and #2117; re-sealed.
+// #4508 merge of main after #4226: listed the two #4508 migrations after main's 20281118024226 row and kept both lanes' skip lines; re-sealed.
 // #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows in the #1857, #1931 and #2117 lanes; re-sealed.
 // #3645 bundle 2e-1 (merge of main): registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed.
+// #4508 merge of main after #3645 2e-1 and #4453: listed the #3645, #4453 and #4508 migrations in filename order in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order) in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 merge of main after #3645 bundle 2e-1: kept main's 20281119003645 row before the three #4420 rows (filename order); re-sealed.
 // #4420 1931 replay: skipped 20281120014420_issue_4420_brand_guest_activity.sql by exact filename on the filtered #1931 temp replay (it calls issue_4459_is_brand_team, defined only by the skipped 20280805004459; #2492 closure); re-sealed.
-// #4522 slice 12: registered the live plan-versus-price guard migration and its pg17 proof (with sidecar) in the replay inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "c2e88f4a9c96ccfeecc33ad7c336b010f2601430de2432f2d8e135a21239616d";
+// #4508 merge of main after #4420: kept main's three #4420 migration rows and its #1931 skip line beside the #4508 rows (filename order); re-sealed.
+// #4514 merge of main after #4420: kept the three #4420 rows before the 20281120034514 row (filename order) and #4420's 20281120014420 skip;
+// #4514 brand forms: the #1931 filtered template replay no longer skips the brand forms migration (the #2492 gate credits CREATE TABLE columns of applied migrations); re-sealed.
+// #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
+// #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed.
+// #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
+// decisions, restored #3281/#4522 rows and proofs, then re-sealed.
+export const BOOTSTRAP_SHA256 = "0560e4db0dab6631fc22af286a4816cd68f5babe590636c078b0101f4c9a6c6f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

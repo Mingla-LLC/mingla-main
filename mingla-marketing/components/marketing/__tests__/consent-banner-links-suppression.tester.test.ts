@@ -4,7 +4,7 @@
 // [TEST-MOD-APPROVED #2331] #905 suppressed the consent banner on /links
 // because a floating card covered the CTAs there. #2331 replaces that rule
 // with I-PRIVACY-BAR-NEVER-OCCLUDES: one slim full-width bar on EVERY route,
-// and /links sizes itself to calc(100dvh - var(--mingla-privacy-inset)).
+// and /links sizes itself to calc(100dvh - var(--mingla-privacy-strip)).
 // Attacks the inset writer and the slim, never-wrapping collapsed row.
 //
 // Run from mingla-marketing/ (repo tsc+node pattern, no lib module needed):
@@ -30,21 +30,22 @@ const provider = stripComments(`${read('components/marketing/posthog-provider.ts
 const SUITE = '#2331 marketing privacy bar mechanics (tester)'
 
 const cases: ReadonlyArray<[string, () => void]> = [
-  ['the bar writes its live height to --mingla-privacy-inset and resets it to 0px', () => {
-    assert(/new ResizeObserver\(measure\)/.test(banner), 'the bar must observe its own size')
-    assert(/setProperty\(PRIVACY_INSET_PROPERTY/.test(banner), 'the bar must write the inset property')
-    assert(/writeInset\(0\)/.test(banner), 'hiding the bar must reset the inset to 0px')
+  // [TEST-MOD-APPROVED #2331] The band is a CSS constant; nothing measures it.
+  ['the strip band is the CSS constant --mingla-privacy-strip; nothing measures or writes it', () => {
+    assert(!/ResizeObserver|writeInset|setProperty\(/.test(banner), 'no JS may measure the strip or write the variable')
+    assert(banner.includes("PRIVACY_STRIP_PROPERTY = '--mingla-privacy-strip'"), 'the one variable name')
   }],
   ['the document scroll area gets the same bottom padding', () => {
-    assert(banner.includes('body{padding-bottom:var(${PRIVACY_INSET_PROPERTY},0px)}'), 'body must pad by the inset so the last line can scroll clear')
+    assert(banner.includes('body{padding-bottom:var(--mingla-privacy-strip)}'), 'body must pad by the band so the last line can scroll clear')
   }],
   // #4318 (Seth): the collapsed 44px row is replaced by one 28px strip.
   // #4452 (approved): the inset is clamped with max(…,0px) so a negative or
   // missing env value never shrinks the strip below 28px.
   ['the strip is one full-bleed 28px line (plus the safe area) at the very bottom', () => {
     assert(banner.includes('.mps{position:fixed;left:0;right:0;bottom:0;'), 'the strip is full-bleed at the bottom')
-    assert(banner.includes('height:calc(28px + max(env(safe-area-inset-bottom,0px),0px))'), 'the strip is 28px plus the safe area')
-    assert(banner.includes(':root{${PRIVACY_INSET_PROPERTY}:calc(28px + max(env(safe-area-inset-bottom,0px),0px))}'), 'the inset holds the strip height before hydration')
+    assert(banner.includes('height:var(--mingla-privacy-strip)'), 'the strip is exactly the band')
+    assert(banner.includes(':root{${PRIVACY_STRIP_PROPERTY}:calc(28px + max(env(safe-area-inset-bottom,0px),0px))}'), 'the band is 28px plus the safe area, from the first paint')
+    assert(banner.includes('z-index:2147483000'), 'the strip is on the top z-layer')
   }],
   ['the privacy policy link stays absolute (career.usemingla.com rewrites paths)', () => {
     assert(banner.includes('href={`${SITE_ORIGIN}/privacy-policy`}'), 'privacy policy must be absolute')

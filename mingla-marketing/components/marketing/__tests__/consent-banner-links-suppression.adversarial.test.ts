@@ -4,7 +4,7 @@
 // [TEST-MOD-APPROVED #2331] #905 suppressed the consent banner on /links
 // because a floating card covered the CTAs there. #2331 replaces that rule
 // with I-PRIVACY-BAR-NEVER-OCCLUDES: one slim full-width bar on EVERY route,
-// and /links sizes itself to calc(100dvh - var(--mingla-privacy-inset)).
+// and /links sizes itself to calc(100dvh - var(--mingla-privacy-strip)).
 // Attacks the data rule: on unless turned off, the copy, and the storage key.
 //
 // Run from mingla-marketing/ (repo tsc+node pattern, no lib module needed):

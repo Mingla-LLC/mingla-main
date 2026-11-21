@@ -51,7 +51,9 @@
         "brand_offering_invite": "フォロー中のお店からの招待",
         "brand_offering_invite_hint": "お店やホストからイベントなどに招待されたとき。"
       }
-    }
+    },
+    "friends_going": "友だちのお出かけ",
+    "friends_going_hint": "親しい友だちがイベントに行くとき"
   },
   "quiet_hours": {
     "title": "おやすみモード",

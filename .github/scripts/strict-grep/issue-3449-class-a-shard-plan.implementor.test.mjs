@@ -144,9 +144,12 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD-APPROVED #4522] Re-derived after #4522 added the locally declared
   // flex-claim guard (issue-4522-flex-claim-guard, +2 batch:A executions:
   // self-test and plain). Read off the plan command as above.
-  executions: 1071,
-  loadsSeconds: [386.0, 386.0, 386.1],
-  counts: [356, 357, 358],
+  // [TEST-MOD #4514] Re-derived after #4514 added the locally declared
+  // brand forms one-question-model gate (i-4514-one-question-model, +2 batch:A
+  // executions: self-test and plain). Read off the plan command as above.
+  executions: 1073,
+  loadsSeconds: [386.1, 386.1, 386.1],
+  counts: [357, 358, 358],
 });
 
 const tempDir = (label) =>

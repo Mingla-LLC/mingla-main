@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-PRIVACY-BAR-NEVER-OCCLUDES | issue #2331 | The privacy strip is always shown and every visible control on every mingla-business web route owns the point at its own centre; the strip is full-bleed and the app root ends above it via --mingla-privacy-inset.
+// #2331 — I-PRIVACY-BAR-NEVER-OCCLUDES is declared on its edge-based gate, ./strip-clearance.spec.ts; this suite keeps the strip-on-every-route and data-rule proofs.
 //
 // #2331 → #4318 implementor happy path. The bar is now one permanent 28px
 // "Privacy & ad choices" strip (no first-visit banner, no OK, no toast).
@@ -17,11 +17,11 @@ import {
   EVENT_SLUG,
   PAGES,
   SIZES,
-  auditOcclusion,
   install,
   scrollToEnd,
   vendorsSeen,
 } from "./harness";
+import { auditStrip } from "./stripAudit";
 
 const ALL_VENDORS = ["posthog", "ga", "meta", "tiktok", "snap", "reddit"] as const;
 const PIXELS = ["meta", "tiktok", "snap", "reddit"] as const;
@@ -37,13 +37,12 @@ for (const size of SIZES) {
       await page.waitForTimeout(target.signedIn === true ? 5000 : 1500);
       for (const phase of ["top", "scrolled to the end"] as const) {
         if (phase !== "top") await scrollToEnd(page);
-        const report = await auditOcclusion(page);
+        // [TEST-MOD-APPROVED #2331] The edge-based audit replaces the centre-point one.
+        const report = await auditStrip(page, { host: true, allowStaticUnder: false });
         const where = `${target.name} @ ${size.width}x${size.height} (${phase})`;
-        expect(report.barWidth, where).toBe(report.innerWidth);
-        expect(Math.round(report.barHeight), where).toBe(28);
-        expect(report.inset, where).toBe("28px");
+        expect(Math.round(report.stripHeight), where).toBe(28);
         expect(report.checked, where).toBeGreaterThan(0);
-        expect(report.covered, where).toEqual([]);
+        expect(report.violations, where).toEqual([]);
       }
       await context.close();
     }

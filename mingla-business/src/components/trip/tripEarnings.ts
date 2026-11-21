@@ -70,4 +70,3 @@ export function earningsAtFullCapacity(
   }
   return spots > 0 ? { spots, receiveMinor: receive } : null;
 }
-

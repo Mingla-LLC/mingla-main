@@ -52,13 +52,15 @@
 :is([data-landing], :root) .fk-success h2, :is([data-landing], :root) .fk-success h1 { font-family: var(--font-landing-serif, 'Instrument Serif', Georgia, serif); font-weight: 400; font-size: 34px; line-height: 1.05; margin: 8px 0; }
 :is([data-landing], :root) .fk-big-tick { display: inline-flex; width: 44px; height: 44px; border-radius: 999px; background: #eb7825; color: #fff; align-items: center; justify-content: center; font-size: 22px; }
 
-/* #4452 §2.4 — pop-ups: centre (desktop), side panel (desktop), sheet (phones). */
-:is([data-landing], :root) .pu-scrim { position: fixed; inset: 0; z-index: 90; background: rgba(15, 15, 14, 0.55); display: flex; align-items: center; justify-content: center; }
+/* #4452 §2.4 — pop-ups: centre (desktop), side panel (desktop), sheet (phones).
+   #2331 (I-PRIVACY-BAR-NEVER-OCCLUDES): every layer ends at the privacy strip's
+   top edge; the centre pop-up fits above it and scrolls inside. */
+:is([data-landing], :root) .pu-scrim { position: fixed; inset: 0 0 var(--mingla-privacy-strip) 0; z-index: 90; background: rgba(15, 15, 14, 0.55); display: flex; align-items: center; justify-content: center; }
 :is([data-landing], :root) .pu { position: relative; box-sizing: border-box; background: #fff; color: #111110; display: grid; overflow: hidden; animation: pu-in 240ms cubic-bezier(.2, .8, .2, 1) both; }
 :is([data-landing], :root) .pu:focus { outline: none; }
-:is([data-landing], :root) .pu-centre { width: min(1040px, calc(100vw - 48px)); height: min(720px, calc(100dvh - 48px)); border-radius: 28px; grid-template-columns: 0.8fr 1.2fr; }
-:is([data-landing], :root) .pu-side { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100vw); border-radius: 0; grid-template-rows: auto 1fr; }
-:is([data-landing], :root) .pu-sheet { position: fixed; left: 0; right: 0; top: 5dvh; bottom: var(--mingla-privacy-inset, 0px); border-radius: 22px 22px 0 0; }
+:is([data-landing], :root) .pu-centre { width: min(1040px, calc(100vw - 48px)); height: min(720px, calc(100dvh - var(--mingla-privacy-strip) - 48px)); max-height: calc(100% - 48px); border-radius: 28px; grid-template-columns: 0.8fr 1.2fr; }
+:is([data-landing], :root) .pu-side { position: fixed; top: 0; right: 0; bottom: var(--mingla-privacy-strip); width: min(520px, 100vw); border-radius: 0; grid-template-rows: auto 1fr; }
+:is([data-landing], :root) .pu-sheet { position: fixed; left: 0; right: 0; top: 5dvh; bottom: var(--mingla-privacy-strip); border-radius: 22px 22px 0 0; }
 :is([data-landing], :root) .pu-photo { background-size: cover; background-position: center; }
 :is([data-landing], :root) .pu-pane { display: flex; flex-direction: column; min-height: 0; }
 :is([data-landing], :root) .pu-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #e7e3da; }

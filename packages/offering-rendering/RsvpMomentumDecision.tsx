@@ -185,6 +185,11 @@ export interface RsvpMomentumDecisionProps {
    */
   hideStepper?: boolean;
   /**
+   * issue #4508 1.7 — the unresolved Going button's text ("RSVP for 3" when
+   * the guest is bringing people). Absent ⇒ "Going".
+   */
+  goingIdleLabel?: string;
+  /**
    * The host row (avatar + "Hosted by X") for the sticky-panel. Optional —
    * RsvpPublicBody renders its own brand chip in the body on phone.
    */
@@ -337,6 +342,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
   showMomentum,
   showDecision = true,
   hideStepper = false,
+  goingIdleLabel = "Going",
   privateGuestList = false,
   hideRemainingCount = false,
   extraGuestCount = 0,
@@ -464,7 +470,7 @@ export const RsvpMomentumDecision: React.FC<RsvpMomentumDecisionProps> = ({
           ? "On the waitlist"
           : submitting
             ? "Saving…"
-            : "Going";
+            : goingIdleLabel;
 
   // issue #4420 — the inline mount (with the momentum) gets the roomy big
   // answers; the compact floating card keeps its one-row three buttons.

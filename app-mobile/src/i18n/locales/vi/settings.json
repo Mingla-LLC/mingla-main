@@ -51,7 +51,9 @@
         "brand_offering_invite": "Lời mời từ địa điểm bạn theo dõi",
         "brand_offering_invite_hint": "Khi một địa điểm hoặc chủ nhà mời bạn tham gia."
       }
-    }
+    },
+    "friends_going": "Bạn bè đi chơi",
+    "friends_going_hint": "Khi một người bạn thân đi dự sự kiện"
   },
   "quiet_hours": {
     "title": "Giờ im lặng",

@@ -476,6 +476,8 @@ export interface DraftEvent {
   rsvpAllowPlusOnes: boolean;
   /** ORCH-1150 — max extra guests per RSVP when plus-ones allowed; 0 when off. */
   rsvpPlusOnesMax: number;
+  /** #4508 — a plus-one may add their own guests once they claim their pass. Off by default (matches events.rsvp_guests_can_bring). */
+  rsvpGuestsCanBring?: boolean;
   /** ORCH-1150 — start a waitlist when capacity is hit. */
   rsvpWaitlistEnabled: boolean;
   /** ORCH-1150 — auto-approve vs approve-each. */

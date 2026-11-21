@@ -71,7 +71,8 @@
     "deleteSessionMsg": "Kuna tabbata kuna so ku share \"{{name}}\"? Ba za a iya soke wannan ba kuma dukan katuna, ƙuri'u, da tattaunawa za a share su har abada.",
     "leaveSessionTitle": "Bar Allo",
     "leaveSessionMsg": "Kuna tabbata kuna so ku bar \"{{name}}\"?",
-    "namePlaceholder": "Shigar da sunan zama"
+    "namePlaceholder": "Shigar da sunan zama",
+    "sessionShareMessage": "I've added you to \"{{name}}\" on Mingla. Join here: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Tattaunawa",

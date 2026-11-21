@@ -203,6 +203,12 @@ const BUILDER_SECTIONS: readonly SectionConfig[] = [
   { key: "travelers", step: 4, label: BUILDER_STEP_TITLES[4] },
 ];
 
+// #4514 — the "Guest questions" row in the Travelers section loads on demand,
+// so it adds nothing to the eager web bundle.
+const GuestQuestionsRow = React.lazy(() =>
+  import("../forms/formsOwner").then((m) => ({ default: m.GuestQuestionsRow })),
+);
+
 const SAVE_PROCESSING_MS = 800;
 const TOAST_NAV_DELAY_MS = 600;
 
@@ -1868,6 +1874,17 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             <>
               <TripBuilderSectionTitle title="Traveler questions" />
               {renderSectionBody("intake")}
+              {/* #4514 — brand-form Guest questions keep their own lazy owner
+                  and RPC. They sit with the other traveler questions but are
+                  not part of this screen's Save changes transaction. */}
+              <React.Suspense fallback={null}>
+                <GuestQuestionsRow
+                  eventId={trip.id}
+                  brandId={trip.brandId}
+                  kind="trip"
+                  testID="edit-guest-questions-row"
+                />
+              </React.Suspense>
               {Platform.OS === "web" ? (
                 <>
                   <TripBuilderSectionTitle title="Eligible buyers" />
@@ -1890,6 +1907,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       handleInclusionsChange,
       renderSectionBody,
       submitting,
+      trip.brandId,
       trip.id,
     ],
   );

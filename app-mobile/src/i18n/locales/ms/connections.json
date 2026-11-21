@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Gagal membuang. Cuba lagi.",
   "brand_guests_leave_title": "Tinggalkan Tetamu {{brand}}?",
   "brand_guests_leave_body": "Tempahan baharu tidak akan menambah anda semula. Anda boleh sertai semula dari tempahan anda.",
-  "brand_guests_left_toast": "Anda telah meninggalkan Tetamu {{brand}}. Anda boleh sertai semula dari tempahan anda."
+  "brand_guests_left_toast": "Anda telah meninggalkan Tetamu {{brand}}. Anda boleh sertai semula dari tempahan anda.",
+  "af_send_yourself_title": "Hantar sendiri juga",
+  "af_send_yourself_body": "Mesej daripada anda paling berkesan. Pautan sama seperti SMS kami.",
+  "af_copy_message": "Salin mesej",
+  "af_message_copied": "Mesej disalin"
 }

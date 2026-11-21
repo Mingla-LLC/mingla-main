@@ -41,6 +41,13 @@ export interface ServerScanResult {
   extras?: unknown;
   /** issue #3281 — ISO start the guest booked; absent when none. */
   bookedStartAt?: string | null;
+  /**
+   * #4514 §6 — the guest's door line, ready to show: `{state, header, lines,
+   * fullAnswers}` with state "answered", "not_answered" or "unavailable"
+   * (the server owns the 3 / 60 rule); absent when there is nothing to show.
+   * Never stored in scanStore.
+   */
+  doorAnswers?: unknown;
 }
 
 export type ScanTicketErrorCode =

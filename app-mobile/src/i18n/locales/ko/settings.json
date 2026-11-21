@@ -51,7 +51,9 @@
         "brand_offering_invite": "팔로우한 장소의 초대",
         "brand_offering_invite_hint": "장소나 호스트가 나를 초대할 때."
       }
-    }
+    },
+    "friends_going": "친구들의 외출",
+    "friends_going_hint": "친한 친구가 이벤트에 갈 때"
   },
   "quiet_hours": {
     "title": "조용한 시간",

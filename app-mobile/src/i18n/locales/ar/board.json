@@ -71,7 +71,8 @@
     "deleteSessionMsg": "هل أنت متأكد أنك تريد حذف \"{{name}}\"؟ لا يمكن التراجع عن هذا الإجراء وسيتم حذف جميع البطاقات والأصوات والنقاشات نهائياً.",
     "leaveSessionTitle": "مغادرة اللوحة",
     "leaveSessionMsg": "هل أنت متأكد أنك تريد مغادرة \"{{name}}\"؟",
-    "namePlaceholder": "أدخل اسم الجلسة"
+    "namePlaceholder": "أدخل اسم الجلسة",
+    "sessionShareMessage": "أضفتك إلى \"{{name}}\" على Mingla. انضم من هنا: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "نقاش",

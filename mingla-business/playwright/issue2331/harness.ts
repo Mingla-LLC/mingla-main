@@ -165,79 +165,9 @@ export const PAGES: ReadonlyArray<{ name: string; url: string; signedIn?: boolea
   { name: "host notifications (signed in)", url: `${APP}/notifications`, signedIn: true },
 ];
 
-export interface OcclusionReport {
-  barWidth: number;
-  innerWidth: number;
-  barHeight: number;
-  inset: string;
-  checked: number;
-  covered: Array<{ label: string; hit: string; x: number; y: number }>;
-}
-
-/**
- * I-PRIVACY-BAR-NEVER-OCCLUDES: for every visible button/link outside the bar,
- * the top element at its visible centre is never the privacy bar (nor empty). "Visible" = its rect clipped by every overflow ancestor
- * and the viewport is non-empty; sheets/dialogs are excluded by construction
- * (none is open).
- */
-export async function auditOcclusion(page: Page): Promise<OcclusionReport> {
-  return page.evaluate(() => {
-    // #4318 — the bar is the permanent "Privacy & ad choices" strip.
-    const bar = document.querySelector<HTMLElement>("[data-testid='privacy-strip']");
-    const barRect = bar?.getBoundingClientRect();
-    const controls = Array.from(
-      document.querySelectorAll<HTMLElement>("button, a[href], [role='button'], [role='link'], input[type='checkbox']"),
-    ).filter((node) => bar === null || !bar.contains(node));
-    const covered: Array<{ label: string; hit: string; x: number; y: number }> = [];
-    let checked = 0;
-    for (const node of controls) {
-      const style = getComputedStyle(node);
-      if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity) === 0) continue;
-      // Inline links that wrap have several boxes: use the first line's box.
-      const boxes = node.getClientRects();
-      let rect = boxes.length > 1 ? boxes[0] : node.getBoundingClientRect();
-      let left = Math.max(rect.left, 0);
-      let top = Math.max(rect.top, 0);
-      let right = Math.min(rect.right, window.innerWidth);
-      let bottom = Math.min(rect.bottom, window.innerHeight);
-      for (let parent = node.parentElement; parent !== null; parent = parent.parentElement) {
-        const ps = getComputedStyle(parent);
-        if (/(hidden|auto|scroll|clip)/.test(ps.overflowX + ps.overflowY)) {
-          rect = parent.getBoundingClientRect();
-          left = Math.max(left, rect.left);
-          top = Math.max(top, rect.top);
-          right = Math.min(right, rect.right);
-          bottom = Math.min(bottom, rect.bottom);
-        }
-        if (ps.position === "fixed") break;
-      }
-      if (right - left < 2 || bottom - top < 2) continue;
-      checked += 1;
-      const x = (left + right) / 2;
-      const y = (top + bottom) / 2;
-      const hit = document.elementsFromPoint(x, y)[0];
-      // Only the privacy bar is under test: a page's own overlapping layers
-      // (a sticky action over scrolled content) are that page's design.
-      const underBar = bar !== null && hit !== undefined && bar.contains(hit);
-      if (hit === undefined || underBar) {
-        covered.push({
-          label: (node.getAttribute("aria-label") ?? node.textContent ?? node.tagName).trim().slice(0, 60),
-          hit: hit === undefined ? "none" : `${hit.tagName}${hit.closest("[data-testid='privacy-strip']") ? " (privacy strip)" : ""}`,
-          x: Math.round(x),
-          y: Math.round(y),
-        });
-      }
-    }
-    return {
-      barWidth: barRect?.width ?? -1,
-      innerWidth: window.innerWidth,
-      barHeight: barRect?.height ?? -1,
-      inset: getComputedStyle(document.documentElement).getPropertyValue("--mingla-privacy-inset").trim(),
-      checked,
-      covered,
-    };
-  });
-}
+// #2331 — the centre-point `auditOcclusion` is retired (Constitution rule 8):
+// it sampled only the middle of each control and missed a 6px edge overlap.
+// The edge-based audit is ./stripAudit.ts (I-PRIVACY-BAR-NEVER-OCCLUDES).
 
 export const vendorsSeen = (rec: Recorder, since = 0): Set<Vendor> =>
   new Set(rec.vendor.filter((entry) => entry.at >= since).map((entry) => entry.vendor));

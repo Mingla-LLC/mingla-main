@@ -147,6 +147,9 @@ jest.mock("../EditAfterPublishTripBanner", () => ({
   EditAfterPublishTripBanner: () => null,
 }));
 jest.mock("../../ui/EventCoverMedia", () => ({ EventCoverMedia: () => null }));
+// #4514: the lazy "Guest questions" row is its own owner (useBrandForms, auth);
+// stubbed like the other section children so this proof stays on the screen.
+jest.mock("../../forms/formsOwner", () => ({ GuestQuestionsRow: () => null }));
 
 // CoverPickerSheet — adversarial stub. Surfaces `visible` via a testID ONLY when
 // visible===true, AND exposes the real `onClose` prop behind a pressable so the

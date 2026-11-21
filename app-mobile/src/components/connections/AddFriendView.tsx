@@ -30,6 +30,7 @@ import { useFriendShareLink, useResetFriendShareLink, useSharePersonalInvite } f
 import { COUNTRIES } from "../../constants/countries";
 import { glass } from "../../constants/designSystem";
 import { HapticFeedback } from "../../utils/hapticFeedback";
+import { copyAddressText } from "../../utils/copyAddressText";
 import { ChatAvatar } from "./ChatAvatar";
 import {
   addFriendCard,
@@ -83,6 +84,7 @@ export function AddFriendView({
   const { t } = useTranslation(["connections", "common"]);
   const sendPairRequest = useSendPairRequest();
   const [sent, setSent] = useState<Sent | null>(null);
+  const [copied, setCopied] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
   const digits = phoneNumber.replace(/\D/g, "");
@@ -147,6 +149,7 @@ export function AddFriendView({
     try {
       const response = await sendPairRequest.mutateAsync(body);
       HapticFeedback.success();
+      setCopied(false);
       setSent({
         outcome: addFriendOutcome(response),
         name: card.kind === "found" ? card.name : "",
@@ -160,6 +163,7 @@ export function AddFriendView({
   }, [card, debouncedPhoneE164, sendPairRequest, onRequestSent, t]);
 
   const handleAddAnother = useCallback(() => {
+    setCopied(false);
     setSent(null);
     setSendError(null);
     onPhoneNumberChange("");
@@ -210,6 +214,40 @@ export function AddFriendView({
             </View>
           </View>
         )}
+        {/* #4508 2.2 — the text went out: the same "Send it yourself too" card
+            as the RSVP success screen, with this invite's own link. */}
+        {outcome.kind === "invite_texted" && outcome.inviteLink ? (
+          <View style={styles.pasteCard} testID="issue-4508-add-friend-paste">
+            <Text style={styles.statusTitle}>{t("connections:af_send_yourself_title")}</Text>
+            <Text style={styles.statusBody}>{t("connections:af_send_yourself_body")}</Text>
+            <View style={styles.pasteActions}>
+              <Pressable
+                onPress={() => {
+                  const message = t("connections:af_share_message", { link: outcome.inviteLink });
+                  copyAddressText(message).then(
+                    () => setCopied(true),
+                    () => void shareInvite(outcome.inviteLink),
+                  );
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={t("connections:af_copy_message")}
+                style={[styles.shareButton, styles.pasteButton]}
+              >
+                <Text style={styles.shareButtonText}>
+                  {copied ? t("connections:af_message_copied") : t("connections:af_copy_message")}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void shareInvite(outcome.inviteLink)}
+                accessibilityRole="button"
+                accessibilityLabel={t("connections:af_share")}
+                style={[styles.shareButton, styles.pasteButton]}
+              >
+                <Text style={styles.shareButtonText}>{t("connections:af_share")}</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
         {outcome.pairingLimitReached && outcome.kind === "request_sent" ? (
           <LimitCard name={sent.name} onSeePlus={onSeePlus} />
         ) : null}
@@ -669,6 +707,16 @@ const styles = StyleSheet.create({
     minHeight: 36,
     justifyContent: "center",
   },
+  pasteCard: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    padding: 14,
+    marginTop: 10,
+    gap: 2,
+  },
+  pasteActions: { flexDirection: "row", gap: 8, marginTop: 10 },
+  pasteButton: { flex: 1, minHeight: 44, alignItems: "center" },
   shareButtonText: {
     color: ink.ink,
     fontSize: 13,

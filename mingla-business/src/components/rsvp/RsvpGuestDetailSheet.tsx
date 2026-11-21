@@ -33,6 +33,15 @@ import { Sheet } from "../ui/Sheet";
 // the console-root sibling Toast (which iOS New-Arch drops as a second modal on
 // the screen-root VC while the sheet modal is up). Mirrors #1356 CoverPickerSheet.
 import { Toast } from "../ui/Toast";
+import {
+  canCheckInByHand,
+  claimStatusLabel,
+  invitedByLine,
+  manualCheckInLabel,
+  hostPlusGuestLabel,
+  plusGuestCheckedInLine,
+  type RsvpPlusGuest,
+} from "../../utils/rsvpGuestDisplay";
 import type {
   RsvpApprovalValue,
   RsvpGuest,
@@ -167,7 +176,13 @@ export interface RsvpGuestDetailSheetProps {
   // below (this Sheet's own modal VC), which iOS stacks, instead of the
   // console-root sibling Toast, which iOS drops while the sheet modal is up.
   notice: string | null;
+  /** #4508 - "error" (default) or "success" for the in-sheet notice. */
+  noticeKind?: "error" | "success";
   onNoticeDismiss: () => void;
+  /** #4508 - admit an unclaimed plus-one by hand. */
+  onCheckInGuest?: (guest: RsvpPlusGuest) => void;
+  /** #4508 - the plus-one whose check-in call is in flight, if any. */
+  checkingInGuestId?: string | null;
   contributionId?: string | null;
   refund?: SourceRefundSummary | null;
   onRefundContribution?: (contributionId: string) => void;
@@ -183,7 +198,10 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
   onRemove,
   isActionPending,
   notice,
+  noticeKind = "error",
   onNoticeDismiss,
+  onCheckInGuest,
+  checkingInGuestId = null,
   contributionId = null,
   refund = null,
   onRefundContribution,
@@ -249,6 +267,88 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
               <Text style={styles.value}>
                 Bringing {guest.plusCount} {guest.plusCount === 1 ? "guest" : "guests"}
               </Text>
+            </View>
+          ) : null}
+
+          {/* #4508 1.25 — the people this guest brought: display name, who
+              invited them, and whether they claimed their pass. */}
+          {guest.plusCheckins.length > 0 ? (
+            <View style={styles.block}>
+              <SectionLabel>GUESTS</SectionLabel>
+              {guest.plusCheckins.map((pg) => {
+                const invited = invitedByLine(pg.invitedByName);
+                // #4508 - only an unclaimed plus-one who is not in yet can be
+                // admitted by hand; a claimed guest scans their own pass.
+                const byHand =
+                  onCheckInGuest !== undefined && canCheckInByHand(pg);
+                // #4508 N-5: "Ada's guest · 0199" until the guest claims.
+                const label = hostPlusGuestLabel(pg, pg.invitedByName);
+                const checkingIn = checkingInGuestId === pg.id;
+                // #4508 T4: the row itself says so once the guest is in.
+                const checkedInLine = plusGuestCheckedInLine(pg);
+                return (
+                  <View key={pg.id} style={styles.plusGroup}>
+                  <View
+                    style={styles.plusRow}
+                    accessible
+                    accessibilityLabel={`${label}, ${claimStatusLabel(pg.claimed).toLowerCase()}${
+                      invited !== null ? `. ${invited}` : ""
+                    }${checkedInLine !== null ? `. ${checkedInLine}` : ""}`}
+                    testID={`rsvp-plus-guest-${pg.id}`}
+                  >
+                    <View style={styles.plusRowText}>
+                      <Text style={styles.value} numberOfLines={1}>
+                        {label}
+                      </Text>
+                      {invited !== null ? (
+                        <Text style={styles.meta} numberOfLines={1}>
+                          {invited}
+                        </Text>
+                      ) : null}
+                      {checkedInLine !== null ? (
+                        <Text
+                          style={[styles.meta, { color: color.success }]}
+                          numberOfLines={1}
+                          testID={`rsvp-plus-checked-in-${pg.id}`}
+                        >
+                          {checkedInLine}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View
+                      style={[
+                        styles.badge,
+                        pg.claimed
+                          ? { backgroundColor: color.accentTint, borderColor: color.accentLine }
+                          : { backgroundColor: color.infoTint, borderColor: WEB_BADGE_BORDER },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.badgeText,
+                          { color: pg.claimed ? APP_BADGE_TEXT : WEB_BADGE_TEXT },
+                        ]}
+                      >
+                        {claimStatusLabel(pg.claimed)}
+                      </Text>
+                    </View>
+                  </View>
+                  {byHand ? (
+                    <Button
+                      label={manualCheckInLabel(pg.invitedByName)}
+                      variant="secondary"
+                      size="md"
+                      fullWidth
+                      loading={checkingIn}
+                      disabled={checkingInGuestId !== null}
+                      onPress={() => onCheckInGuest?.(pg)}
+                      accessibilityLabel={`${manualCheckInLabel(pg.invitedByName)} to check in ${label}`}
+                      testID={`rsvp-plus-checkin-${pg.id}`}
+                    />
+                  ) : null}
+                  </View>
+                );
+              })}
             </View>
           ) : null}
 
@@ -357,7 +457,7 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
           deferred. I-SUB-SHEET-INSIDE-PARENT. */}
       <Toast
         visible={notice !== null}
-        kind="error"
+        kind={noticeKind}
         message={notice ?? ""}
         onDismiss={onNoticeDismiss}
         testID="rsvp-guest-detail-notice"
@@ -415,6 +515,15 @@ const styles = StyleSheet.create({
     lineHeight: type.small.lineHeight,
     color: color.text2,
   },
+  plusGroup: { gap: space[2] },
+  plusRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space[2],
+  },
+  plusRowText: { flex: 1, gap: 2 },
   contactRow: {
     minHeight: 44,
     justifyContent: "center",

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/ticket-checkout-create/__tests__/issue_4514_checkout_form.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4514-checkout-form",
+  "profile": "deno-2-unit",
+  "permissions": [
+    "env",
+    "read"
+  ]
+}

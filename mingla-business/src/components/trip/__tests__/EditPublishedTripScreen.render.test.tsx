@@ -113,9 +113,9 @@ jest.mock("../../../services/supabase", () => ({
   supabase: { functions: { invoke: jest.fn(async () => ({ data: null, error: null })) } },
 }));
 
-// Heavy non-basics accordion bodies + modals: stub to trivial views. They are
-// NOT rendered while openSection === "basics" (the default), but they are
-// imported at module top so their native deps must not load. ChangeSummaryModal
+// Heavy builder-section bodies + modals: stub to trivial views. The screen
+// imports them at module top, so their native deps must not load in this proof.
+// ChangeSummaryModal
 // is stubbed to surface its `visible` prop via a testID so we can assert the
 // gate's downstream effect (modal open / not open) at runtime.
 jest.mock("../TripCreatorStep2Itinerary", () => ({ TripCreatorStep2Itinerary: () => null }));
@@ -137,6 +137,9 @@ jest.mock("../../ui/Stepper", () => ({ Stepper: () => null }));
 jest.mock("../InstallmentScheduleDisplay", () => ({ InstallmentScheduleDisplay: () => null }));
 jest.mock("../EditPublishedTripIntakeAccordion", () => ({ EditPublishedTripIntakeAccordion: () => null }));
 jest.mock("../EditAfterPublishTripBanner", () => ({ EditAfterPublishTripBanner: () => null }));
+// #4514: the lazy "Guest questions" row is its own owner (useBrandForms, auth);
+// stubbed like the other section children so this proof stays on the screen.
+jest.mock("../../forms/formsOwner", () => ({ GuestQuestionsRow: () => null }));
 jest.mock("../../ui/LazyCoverPickerSheet", () => ({ CoverPickerSheet: () => null }));
 jest.mock("../../ui/EventCoverMedia", () => ({ EventCoverMedia: () => null }));
 

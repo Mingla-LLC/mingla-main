@@ -529,8 +529,9 @@ describe("issue #3047 — a terminal RPC failure never renders as silence", () =
       "rsvp",
       "RsvpGuestConsole.tsx",
     );
-    // Six onError sites: row approve/deny, remove, bulk, sheet approve/deny.
-    expect((console_.match(/rsvpRpcFailureCopy\(error,/g) ?? []).length).toBe(6);
+    // Seven onError sites: row approve/deny, remove, bulk, sheet approve/deny,
+    // and (#4508) checking a plus-one in by hand.
+    expect((console_.match(/rsvpRpcFailureCopy\(error,/g) ?? []).length).toBe(7);
     expect(console_).not.toMatch(/onError: \(\) =>/);
   });
 });

@@ -100,6 +100,7 @@
     "@mingla/brand-rendering": "file:../packages/brand-rendering",
     "@mingla/calendar": "file:../packages/calendar",
     "@mingla/card-identity": "file:../packages/card-identity",
+    "@mingla/form-rendering": "file:../packages/form-rendering",
     "@mingla/location-input": "file:../packages/location-input",
     "@mingla/offering-rendering": "file:../packages/offering-rendering",
     "@mingla/payments-native": "file:../packages/payments-native",

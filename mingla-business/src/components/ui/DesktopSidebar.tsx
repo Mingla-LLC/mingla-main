@@ -65,6 +65,8 @@ const MARKETING_ICONS: Record<string, IconName> = {
   ads: "rocket",
   creators: "users",
   referrals: "gift",
+  // #4514 — Forms (host-built guest questions) sits after Referrals in Promote.
+  forms: "list",
   // #4389 P4/P5 — People is the contact book (`notebook`), never Account's
   // `user` (Creators keeps `users`), so the rail shows no two identical glyphs.
   people: "notebook",
@@ -263,8 +265,9 @@ const styles = StyleSheet.create({
     position: "fixed" as unknown as "absolute",
     top: 0,
     left: 0,
-    // #2331 — ends above the privacy bar (I-PRIVACY-BAR-NEVER-OCCLUDES).
-    bottom: "var(--mingla-privacy-inset, 0px)" as unknown as number,
+    // #2331 — fixed inside the app root, which ends at the privacy strip's
+    // top edge (I-PRIVACY-BAR-NEVER-OCCLUDES).
+    bottom: 0,
     backgroundColor: materials.chrome.solidFill,
     borderRightWidth: StyleSheet.hairlineWidth,
     borderRightColor: color.line,

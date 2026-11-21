@@ -200,6 +200,12 @@ test("blocked tab storage keeps the fresh accepted reply in memory", async () =>
 
 test("logout clears typed contacts, plus-one drafts and a pending confirmation before anonymous interaction", async () => {
   const tree = await mount({ identity: "account-a" });
+  // [#4508] a plus-one is added by number ("Who's coming with you?"), and
+  // [#4508 fix round 4/5, behaviour changed on purpose] only while signed in:
+  // the draft is made before the logout, which must clear it.
+  await act(async () => { nodes(tree, "issue-4508-rsvp-guest-phone-plain")[0].props.onChangeText("+1 555 987 6543"); });
+  await act(async () => { nodes(tree, "issue-4508-rsvp-party-number-add")[0].props.onPress(); });
+  expect(state.plusCount).toBe(1);
   await act(async () => { nodes(tree, "orch-1150-rsvp-going")[0].props.onPress(); });
   expect((state.confirmDialog as React.ReactElement<{ children: React.ReactElement<any> }>).props.children.props.visible).toBe(true);
   await update(tree, { empty: true });
@@ -207,8 +213,9 @@ test("logout clears typed contacts, plus-one drafts and a pending confirmation b
   expect(nodes(tree, "orch-1150-rsvp-name")[0].props.value).toBe("");
   expect(nodes(tree, "orch-1150-rsvp-email")[0].props.value).toBe("");
   expect(nodes(tree, "orch-1150-rsvp-phone")[0].props.value).toBe("");
-  await act(async () => { nodes(tree, "orch-1157-rsvp-plus-plus")[0].props.onPress(); });
-  expect(state.plusCount).toBe(1);
+  expect(state.plusCount).toBe(0);
+  // Signed out, there is no plus-one field to type into.
+  expect(nodes(tree, "issue-4508-rsvp-guest-phone-plain")).toHaveLength(0);
   await update(tree, { identity: "account-b" }); expect(state.plusCount).toBe(0);
   await act(async () => { state.onMaybe(); });
   expect(onSubmit.mock.calls[0][0]).toMatchObject({ guestName: "account-b", guests: [], plusCount: 0 });

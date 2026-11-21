@@ -94,7 +94,7 @@ export const ToastHost: React.FC<ToastHostProps> = ({ layer = "overlay", open = 
     >
       <View
         pointerEvents="box-none"
-        style={stacked ? [styles.stack, Platform.OS === "web" ? webStackBottom : null] : [styles.top, { top: topOffset }]}
+        style={stacked ? styles.stack : [styles.top, { top: topOffset }]}
       >
         {shown.map((entry) => (
           <ToastItem key={entry.id} entry={entry} placement={stacked ? "stack" : "top"} />
@@ -109,11 +109,6 @@ const webFixed = {
   zIndex: 2147483647,
 } as unknown as ViewStyle;
 
-// I-PRIVACY-BAR-NEVER-OCCLUDES: a bottom-pinned layer sits above the privacy bar.
-const webStackBottom = {
-  bottom: `calc(var(--mingla-privacy-inset, 0px) + ${space[6]}px)`,
-} as unknown as ViewStyle;
-
 const styles = StyleSheet.create({
   top: {
     position: "absolute",
@@ -122,6 +117,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     alignItems: "center",
   },
+  // I-PRIVACY-BAR-NEVER-OCCLUDES: on web the host is fixed inside the app root,
+  // which ends at the privacy strip's top edge, so this bottom clears it.
   stack: {
     position: "absolute",
     right: space[6],

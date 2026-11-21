@@ -29,6 +29,7 @@ describe("Blast sub-nav", () => {
       "Ads",
       "Creators",
       "Referrals",
+      "Forms",
       "People",
       "Templates",
     ]);

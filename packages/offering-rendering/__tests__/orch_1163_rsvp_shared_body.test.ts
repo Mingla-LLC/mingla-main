@@ -9,7 +9,7 @@
 //     assert fails.
 //   - delete the `orch-1167-date-row` full-width row → §0 canonical-order assert fails.
 //   - delete the `RsvpGoingConfirmDialog`/`confirmOpen` wiring → FLOW-A assert fails.
-//   - delete the per-guest `orch-1163-rsvp-guest-` fields → FLOW-B assert fails.
+//   - drop the guests from the write (buildGuestPayload) → FLOW-B assert fails.
 
 import {
   assert,
@@ -119,17 +119,23 @@ Deno.test("ORCH-1163 §G — dialog/popup copy + package isolation (no designSys
   }
 });
 
-// ── FLOW B — per-guest plus-one contacts (name+email+phone), not a bare count ──
-Deno.test("ORCH-1163 §H — FLOW B: per-guest contact mini-forms, guests array, contactReady gate", () => {
-  assertStringIncludes(body, "orch-1163-rsvp-guest-");
-  assertStringIncludes(body, "RsvpGuestContact");
-  // body owns the per-guest stepper (hideStepper on the momentum unit) + guests array.
+// ── FLOW B — plus-ones are a party of real people, not a bare count ──
+// [#4508] Each plus-one used to be a name + email + phone mini-form
+// (`orch-1163-rsvp-guest-<i>-*`). Issue #4508 replaced them with "Who's coming
+// with you?": a guest is just a phone number (or a friend), sent as
+// `{ phone, phoneCountryIso }` by the guest model (each guest's payload). What this test pins is
+// unchanged in spirit: the body owns the guests (hideStepper on the momentum
+// unit), the party gates the decision, and the guests ride the write.
+Deno.test("ORCH-1163 §H — FLOW B: the body owns the party, guests ride the write", () => {
+  assertStringIncludes(body, 'testID="orch-1163-rsvp-guests"');
+  assertStringIncludes(body, "RsvpGuestPartyBlock");
   assertStringIncludes(body, "hideStepper");
   assertStringIncludes(body, "guestsValid");
-  // primary + every guest must be reachable.
+  // primary + the party must be ready.
   assertStringIncludes(body, "contactReady = primaryValid && guestsValid");
-  // guests submitted with the write.
-  assertStringIncludes(body, "guests: submittedGuests");
+  // guests submitted with the write, number-only.
+  // #4508 round 8: each guest carries its payload (set by the guest model).
+  assertStringIncludes(body, "guests: config.allowPlusOnes ? submittedGuests.map((g) => g.payload) : []");
 });
 
 // ── address privacy mirrors the event leg (city-only until going/maybe) ──

@@ -880,7 +880,15 @@ export const createTicketCheckout = async (
             purchaseTermsAccepted: true,
           }
         : {}),
-      buyer: input.buyer,
+      // #4514 wave 5 (C1) — `brandFormStep: 1` is the capability marker (this
+      // client shows the Questions step; mirrors BRAND_FORM_CHECKOUT_STEP in
+      // supabase/functions/_shared/brandFormsContract.ts). The step's answers
+      // travel top-level, never inside `buyer` (an undefined key is not
+      // serialized). Kept inline: it is the only brand form code on the eager
+      // path (the bundle budget, #4514 review).
+      buyer: { ...input.buyer, brandForm: undefined },
+      brandFormStep: 1,
+      brandForm: input.buyer.brandForm,
       ...(typeof input.discountCode === "string" &&
       input.discountCode.length > 0
         ? { discountCode: input.discountCode }

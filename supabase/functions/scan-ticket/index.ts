@@ -8,6 +8,7 @@ import {
 import {
   type DoorReadClient,
   readBookedStart,
+  readDoorAnswers,
   readScanExtras,
   withDoorFields,
 } from "../_shared/doorBookedStart.ts";
@@ -31,7 +32,91 @@ export type ScanTicketDeps = {
   client: () => ScanTicketClient;
   pepper: () => string;
   deadlineMs?: number;
+  now?: () => number;
 };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// #4514 wave 6 — "See all answers" opens the full answers only for a ticket
+// this same person scanned (or admitted by name: the same scan_events receipt)
+// at this event, recently, and that the door let in (or had already let in). The SQL read checks door authority, the host switch,
+// rank, one current guest of this event, the rate limit and logs the read.
+export const DOOR_FULL_ANSWERS_WINDOW_MS = 30 * 60 * 1000;
+const ADMITTED = new Set(["success", "duplicate"]);
+
+type QueryResult = { data: unknown; error: unknown };
+
+const nameAdmit = (metadata: unknown): boolean =>
+  metadata !== null && typeof metadata === "object" &&
+  (metadata as { via?: unknown }).via === "name_search";
+
+async function doorFullAnswers(
+  supabase: ScanTicketClient,
+  actorId: string,
+  body: Record<string, unknown>,
+  now: () => number,
+): Promise<Response> {
+  const eventId = typeof body.eventId === "string" ? body.eventId : "";
+  const scanId = typeof body.scanId === "string" ? body.scanId : "";
+  if (!UUID.test(eventId) || !UUID.test(scanId)) {
+    return jsonResponse({ error: "door_answers_payload_required" }, 400);
+  }
+  const scan = await supabase
+    .from("scan_events")
+    .select("ticket_id, event_id, scanner_user_id, scan_result, scanned_at, metadata")
+    .eq("id", scanId)
+    .maybeSingle() as QueryResult;
+  if (scan.error) {
+    console.error("[scan-ticket] door answers scan read failed");
+    return jsonResponse({ error: "door_answers_failed" }, 500);
+  }
+  const row = scan.data as {
+    ticket_id?: unknown;
+    event_id?: unknown;
+    scanner_user_id?: unknown;
+    scan_result?: unknown;
+    scanned_at?: unknown;
+    metadata?: unknown;
+  } | null;
+  const scannedAt = typeof row?.scanned_at === "string" ? Date.parse(row.scanned_at) : NaN;
+  if (
+    row === null || row.scanner_user_id !== actorId || row.event_id !== eventId ||
+    typeof row.scan_result !== "string" || !ADMITTED.has(row.scan_result) ||
+    typeof row.ticket_id !== "string" || Number.isNaN(scannedAt) ||
+    now() - scannedAt > DOOR_FULL_ANSWERS_WINDOW_MS
+  ) {
+    // One answer for every refusal: never says whether a scan exists.
+    return jsonResponse({ error: "door_answers_scan_required" }, 403);
+  }
+  const ticket = await supabase
+    .from("tickets")
+    .select("order_id")
+    .eq("id", row.ticket_id)
+    .eq("event_id", eventId)
+    .maybeSingle() as QueryResult;
+  const orderId = (ticket.data as { order_id?: unknown } | null)?.order_id;
+  if (ticket.error || typeof orderId !== "string") {
+    console.error("[scan-ticket] door answers ticket read failed");
+    return jsonResponse({ error: "door_answers_failed" }, 500);
+  }
+  const { data, error } = await supabase.rpc("brand_form_door_full_answers", {
+    p_actor_id: actorId,
+    p_event_id: eventId,
+    p_subject: { kind: "order", id: orderId, ticketId: row.ticket_id },
+    // A name admit's receipt is the same scan_events row (biz_ticket_admit_by_id
+    // runs biz_ticket_scan and tags it), so the read log says where it came from.
+    p_via: nameAdmit(row.metadata) ? "search" : "scan",
+  });
+  if (error) {
+    const message = String((error as { message?: unknown }).message ?? "");
+    if (/forbidden|subject_other_event|subject_not_current/.test(message)) {
+      return jsonResponse({ error: "door_answers_forbidden" }, 403);
+    }
+    console.error("[scan-ticket] door answers read failed");
+    return jsonResponse({ error: "door_answers_failed" }, 500);
+  }
+  return jsonResponse(data ?? { state: "no_form" });
+}
 
 export function createHandler(deps: ScanTicketDeps) {
   return async (req: Request): Promise<Response> => {
@@ -47,6 +132,9 @@ export function createHandler(deps: ScanTicketDeps) {
     if (userError || !userData.user) return jsonResponse({ error: "auth_required" }, 401);
 
     const body = await req.json().catch(() => ({}));
+    if (body !== null && typeof body === "object" && body.action === "door_full_answers") {
+      return await doorFullAnswers(supabase, userData.user.id, body, deps.now ?? Date.now);
+    }
     const eventId = typeof body.eventId === "string" ? body.eventId : "";
     const qrPayload = typeof body.qrPayload === "string" ? body.qrPayload : "";
     if (!eventId || !qrPayload) return jsonResponse({ error: "scan_payload_required" }, 400);
@@ -76,8 +164,14 @@ export function createHandler(deps: ScanTicketDeps) {
     // slow or failed read never changes the answer, and an order with neither
     // keeps the body byte-identical. The booked-start read is pinned to this
     // event: on `wrong_event` the RPC names another event's order.
+    //
+    // #4514 §6 — the guest's door line rides alongside, inside the same
+    // deadline, only for a ticket the door let in (or had let in). It can
+    // never change the scan result: a failed or slow read is "unavailable".
     const scan = data as Record<string, unknown> | null;
     const orderId = typeof scan?.orderId === "string" ? scan.orderId : null;
+    const admitted = typeof scan?.result === "string" && ADMITTED.has(scan.result);
+    const ticketId = typeof scan?.ticketId === "string" ? scan.ticketId : null;
     if (scan !== null && orderId !== null) {
       const deadline = new AbortController();
       const timer = setTimeout(
@@ -85,11 +179,14 @@ export function createHandler(deps: ScanTicketDeps) {
         deps.deadlineMs ?? DOOR_EXTRAS_DEADLINE_MS,
       );
       try {
-        const [extras, booked] = await Promise.all([
+        const [extras, booked, doorAnswers] = await Promise.all([
           readScanExtras(supabase, userData.user.id, eventId, orderId, deadline.signal),
           readBookedStart(supabase, eventId, orderId, deadline.signal),
+          admitted
+            ? readDoorAnswers(supabase, userData.user.id, eventId, orderId, ticketId, deadline.signal)
+            : Promise.resolve(null),
         ]);
-        return jsonResponse(withDoorFields(scan, extras, booked));
+        return jsonResponse(withDoorFields(scan, extras, booked, doorAnswers));
       } finally {
         clearTimeout(timer);
       }

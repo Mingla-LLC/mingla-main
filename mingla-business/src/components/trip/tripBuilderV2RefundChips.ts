@@ -72,4 +72,3 @@ export function withDepositNonRefundable(
   const { deposit_non_refundable: _drop, ...rest } = base;
   return on ? { ...rest, deposit_non_refundable: true } : rest;
 }
-

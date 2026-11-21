@@ -372,7 +372,7 @@ export function audit(base = repoRoot) {
   required(l5Mutations, "-- @l5-verify: SELECT is_called FROM public.l5_fired /* issue_1772_terminal_rsvp */", "L-5 mutation witness", failures);
   required(pgWorkflow, "L-5 subjects: 25", "L-5 subject total", failures);
   required(pgWorkflow, 'psql call sites in the workflow: $call_sites', "L-5 call-site discovery", failures);
-  required(issue1773SqlTest, "6fd8b31bf22cb58eabf49c889a55d6df", "#1773 current writer fingerprint", failures);
+  required(issue1773SqlTest, "c16055658e7e77503a20b12b48934717", "#1773 current writer fingerprint", failures);
 
   let secretManifest;
   try { secretManifest = JSON.parse(secretManifestText); } catch { failures.push("secret manifest is invalid JSON"); }

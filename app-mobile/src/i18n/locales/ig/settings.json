@@ -51,7 +51,9 @@
         "brand_offering_invite": "Akwụkwọ ịkpọ òkù sitere n’ebe ị na-eso",
         "brand_offering_invite_hint": "Mgbe otu ebe ma ọ bụ onye nnabata kpọrọ gị òkù."
       }
-    }
+    },
+    "friends_going": "Friends going out",
+    "friends_going_hint": "When a close friend is going to an event"
   },
   "quiet_hours": {
     "title": "Oge Jụụ",

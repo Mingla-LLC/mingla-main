@@ -1,8 +1,9 @@
 // MINGLA-INVARIANT: I-4522-PUBLISHED-EDITOR-PARITY | issue #4522 | Published trip editing uses the four builder sections, asks for a reason only for the approved buyer-affecting changes, and validates v2 plans against each live package price.
 /**
  * #4522 slice 12 — fails on revert if the old seven accordions return, the
- * reason becomes unconditional, questions ask for prose again, v2 is written
- * under the legacy key, or plan validation moves after the review/RPC.
+ * reason becomes unconditional, questions ask for prose again, the brand-form
+ * row disappears from Travelers, v2 is written under the legacy key, or plan
+ * validation moves after the review/RPC.
  */
 
 import fs from "node:fs";
@@ -70,6 +71,21 @@ describe("#4522 — published editor parity", () => {
     expect(intake).toContain("reason: NON_BUYER_EDIT_AUDIT_REASON");
     expect(intake).not.toContain("Reason for change");
     expect(intake).not.toContain("reasonDialogVisible");
+  });
+
+  test("keeps #4514 brand-form questions lazy and inside Travelers", () => {
+    expect(screen).toContain('import("../forms/formsOwner")');
+    expect(screen).toContain("default: m.GuestQuestionsRow");
+    expect(screen).toContain('testID="edit-guest-questions-row"');
+    expect(screen).toContain('kind="trip"');
+    expect(screen).toContain("brandId={trip.brandId}");
+
+    const intakeIndex = screen.indexOf('{renderSectionBody("intake")}');
+    const questionsIndex = screen.indexOf("<GuestQuestionsRow", intakeIndex);
+    const buyerIndex = screen.indexOf("<EventTicketCheckoutAccessCard", questionsIndex);
+    expect(intakeIndex).toBeGreaterThan(-1);
+    expect(questionsIndex).toBeGreaterThan(intakeIndex);
+    expect(buyerIndex).toBeGreaterThan(questionsIndex);
   });
 
   test("edits every existing package and serializes exactly one plan shape", () => {

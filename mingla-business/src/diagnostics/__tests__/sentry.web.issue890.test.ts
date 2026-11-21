@@ -18,12 +18,20 @@ import { init, captureException } from "../sentry";
 const mockInit = jest.fn();
 const mockCaptureException = jest.fn((): string => "evt_890");
 const mockAddBreadcrumb = jest.fn();
+const hooks: Record<string, (x: Record<string, unknown>) => void> = {};
+const mockGetClient = jest.fn(() => ({
+  on: (name: string, cb: (x: Record<string, unknown>) => void) => {
+    hooks[name] = cb;
+    return () => undefined;
+  },
+}));
 
 jest.mock("@sentry/browser", () => ({
   __esModule: true,
   init: mockInit,
   captureException: mockCaptureException,
   addBreadcrumb: mockAddBreadcrumb,
+  getClient: mockGetClient,
 }));
 
 // Flush the dynamic-import().then() chain (two microtask/macrotask turns).
@@ -59,6 +67,31 @@ describe("#890 web Sentry shim (lazy @sentry/browser)", () => {
     init({ dsn: DSN });
     await flush();
     expect(captureException(new Error("boom"))).toBe("evt_890");
+  });
+
+  // #4514 fix wave (review finding 4): a guest form link token ("#t=" + 64 hex)
+  // never reaches an error report or a breadcrumb.
+  // FAILS-ON-REVERT: not registering the scrub hooks leaves the token.
+  it("init() scrubs a form link token from events and breadcrumbs", async () => {
+    init({ dsn: DSN });
+    await flush();
+    const tok = "ab".repeat(32);
+    const url = `https://host.usemingla.com/form/f1#t=${tok}`;
+    const event: Record<string, unknown> = {
+      request: { url },
+      transaction: `/form/f1#t=${tok}`,
+      breadcrumbs: [{ category: "navigation", data: { from: "/", to: url } }],
+    };
+    hooks.beforeSendEvent(event);
+    expect(JSON.stringify(event)).not.toContain(tok);
+    expect((event.request as { url: string }).url).toBe("https://host.usemingla.com/form/f1#t=[redacted]");
+    const crumb: Record<string, unknown> = { category: "fetch", message: `GET ${url}`, data: { url } };
+    hooks.beforeAddBreadcrumb(crumb);
+    expect(JSON.stringify(crumb)).not.toContain(tok);
+    // Anything else passes through untouched.
+    const other: Record<string, unknown> = { message: "#t=short", data: { n: 1 } };
+    hooks.beforeAddBreadcrumb(other);
+    expect(other).toEqual({ message: "#t=short", data: { n: 1 } });
   });
 
   it("init({}) with no DSN never loads the SDK (safe no-op)", async () => {

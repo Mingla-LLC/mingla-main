@@ -37,6 +37,14 @@ export const MIN_RANK = {
   EXPORT_BRAND_BOOK: BRAND_ROLE_RANK.brand_admin, // 50
   // #2830 — Website workspace read/access floor shared with Core.
   WEBSITE_WORKSPACE: 20, // marketing_manager; exact Core mirror
+  // #4514 (contract correction C5) — brand forms. Reading the Responses page
+  // matches the Promote tab gate (marketing manager and up); the export, Ask,
+  // Remind and attaching a form to a page match the existing roster RPCs
+  // (event manager and up). Server: biz_brand_form_responses (marketing_manager),
+  // biz_brand_form_responses_export / biz_brand_form_attach (event_manager).
+  READ_FORM_RESPONSES: BRAND_ROLE_RANK.marketing_manager, // 20
+  EXPORT_FORM_RESPONSES: BRAND_ROLE_RANK.event_manager, // 40
+  ATTACH_FORM_TO_PAGE: BRAND_ROLE_RANK.event_manager, // 40
   // 13b expansion targets (defined now for forward-compat; not used in 13a):
   EDIT_PERMISSIONS_OVERRIDE: BRAND_ROLE_RANK.brand_admin, // 50 — 13b
   ASSIGN_EVENT_MANAGER_TO_EVENT: BRAND_ROLE_RANK.brand_admin, // 50 — 13b

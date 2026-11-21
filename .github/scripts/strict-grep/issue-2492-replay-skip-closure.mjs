@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-PROPOSED-4514-CREATE-TABLE-COLUMNS-APPLIED | issue #4514 | A column declared in a CREATE TABLE of a migration the lane applies counts as available; skipped migrations' CREATE TABLE columns credit nothing, and neither do table constraints, CREATE TABLE AS or PARTITION OF.
 // #2492 [a migration on main fails the #1931 clean replay] — the class guard.
 //
 // Enforces I-PROPOSED-2492-FILTERED-REPLAY-SKIP-CLOSURE:
@@ -332,6 +333,66 @@ function bareName(raw) {
   return parts[parts.length - 1].toLowerCase();
 }
 
+const TABLE_CONSTRAINT_WORDS = new Set([
+  "constraint",
+  "primary",
+  "unique",
+  "check",
+  "foreign",
+  "exclude",
+  "like",
+]);
+
+/**
+ * #4514: the column names declared in the `( ... )` list that starts at `pos`
+ * (just after a CREATE TABLE name). Returns [] when the next token is not `(`
+ * (`AS ...`, `PARTITION OF ...`, `OF type`), which fails closed: nothing is
+ * credited. Splits on depth-0 commas so defaults and CHECKs with nested
+ * parentheses or commas stay inside their column. Table constraints
+ * (CONSTRAINT, PRIMARY KEY, UNIQUE, CHECK, FOREIGN KEY, EXCLUDE, LIKE) are not
+ * columns. A quoted identifier is always a column.
+ */
+export function createTableColumns(top, pos) {
+  let i = pos;
+  while (i < top.length && /\s/.test(top[i])) i++;
+  if (top[i] !== "(") return [];
+  let depth = 0;
+  let itemStart = i + 1;
+  const items = [];
+  let closed = false;
+  for (let j = i; j < top.length; j++) {
+    const ch = top[j];
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) {
+        items.push(top.slice(itemStart, j));
+        closed = true;
+        break;
+      }
+    } else if (ch === "," && depth === 1) {
+      items.push(top.slice(itemStart, j));
+      itemStart = j + 1;
+    }
+  }
+  if (!closed) return [];
+  const cols = [];
+  const identRe = new RegExp(`^\\s*(${IDENT})`);
+  for (const item of items) {
+    const im = identRe.exec(item);
+    if (!im) continue;
+    const raw = im[1];
+    if (raw.startsWith('"')) {
+      cols.push(bareName(raw));
+      continue;
+    }
+    const word = raw.toLowerCase();
+    if (TABLE_CONSTRAINT_WORDS.has(word)) continue;
+    cols.push(word);
+  }
+  return cols;
+}
+
 /**
  * Parse one migration. Returns the definitions it makes and the set of
  * identifiers it references in create-time-validated contexts.
@@ -400,7 +461,17 @@ export function parseMigration(name, rawSql) {
     `\\bCREATE\\s+(?:UNLOGGED\\s+|TEMP\\s+|TEMPORARY\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${QUALIFIED})`,
     "gi",
   );
-  while ((m = tableRe.exec(top))) definitions.add(`table:${bareName(m[1])}`);
+  // #4514: columns declared inside a CREATE TABLE list are kept apart from
+  // `definitions`. They only ever count as available when the lane APPLIES the
+  // migration (see analyseTrees); a skipped migration's CREATE TABLE columns
+  // credit nothing, because a skipped table is already caught through table:<name>.
+  const createdCols = new Set();
+  while ((m = tableRe.exec(top))) {
+    definitions.add(`table:${bareName(m[1])}`);
+    for (const col of createTableColumns(top, m.index + m[0].length)) {
+      createdCols.add(`col:${col}`);
+    }
+  }
   // #4130: read EVERY `ADD COLUMN` clause of an ALTER TABLE statement, not only
   // the first. `ALTER TABLE public.orders ADD COLUMN a …, ADD COLUMN
   // refunded_amount_cents …;` (orch_0787) defines both columns; reading only
@@ -434,7 +505,7 @@ export function parseMigration(name, rawSql) {
     while ((hit = idRe.exec(region))) referenced.add(hit[0].toLowerCase());
   }
 
-  return { name, definitions, referenced, bodiesUnchecked, unresolved };
+  return { name, definitions, createdCols, referenced, bodiesUnchecked, unresolved };
 }
 
 // ---------------------------------------------------------------------------
@@ -762,6 +833,7 @@ export function analyseTrees({ workflows, migrations }) {
           });
         }
         for (const object of info.definitions) filteredChain.add(object);
+        for (const object of info.createdCols) filteredChain.add(object);
       }
       for (const object of info.definitions) trueChain.add(object);
     }

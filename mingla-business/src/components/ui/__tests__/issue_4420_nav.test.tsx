@@ -109,7 +109,7 @@ describe("#4420 B6 — desktop sidebar", () => {
     const { groups, account } = buildSidebarGroups(visibleTabsForRank(TABS, BRAND_ROLE_RANK.event_manager));
     expect(groups.map((g) => g.title)).toEqual([null, "Promote", "Audience"]);
     expect(groups[0].items.map((i) => i.key)).toEqual(["home", "hub", "ari"]);
-    expect(groups[1].items.map((i) => i.key)).toEqual(["overview", "campaigns", "ads", "creators", "referrals"]);
+    expect(groups[1].items.map((i) => i.key)).toEqual(["overview", "campaigns", "ads", "creators", "referrals", "forms"]);
     expect(groups[2].items.map((i) => i.key)).toEqual(["people", "templates"]);
     expect(account?.path).toBe("/(tabs)/account");
     const allKeys = groups.flatMap((g) => g.items.map((i) => i.key));

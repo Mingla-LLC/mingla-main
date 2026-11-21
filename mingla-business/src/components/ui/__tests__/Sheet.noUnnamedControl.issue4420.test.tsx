@@ -30,6 +30,9 @@ jest.mock("../../../hooks/useResponsiveLayout", () => ({
   useResponsiveLayout: () => ({ isWideDesktop: true }),
 }));
 jest.mock("../escapeLayerStack", () => ({ useEscapeLayer: () => undefined }));
+// #4508 T4: the desktop card now mounts its own ToastHost (above the card);
+// this suite isolates the card, so the toast layer (reanimated) is stubbed.
+jest.mock("../ToastHost", () => ({ ToastHost: () => null }));
 jest.mock("../SheetMobile", () => ({
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   Sheet: (props: { children: React.ReactNode }) => require("react").createElement("MobileSheetProbe", null, props.children),

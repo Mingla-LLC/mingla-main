@@ -124,9 +124,12 @@ insert into w4b_expected (tablename, policyname, cmd, permissive, roles, qual, w
    FROM (event_rsvps r
      JOIN events e ON ((e.id = r.event_id)))
   WHERE ((r.id = event_rsvp_guests.rsvp_id) AND (biz_brand_effective_rank(e.brand_id, auth.uid()) >= biz_role_rank(''event_manager''::text)))))', null),
-  ('event_rsvp_guests', 'event_rsvp_guests_owner_read', 'SELECT', 'PERMISSIVE', 'public', '((EXISTS ( SELECT 1
+  -- #4508 (R-3) last-writes this policy on purpose: the party owner no longer
+  -- reads a friend picked from the friends list (whose proven number the
+  -- server resolved). Pinned here as the replayed schema now carries it.
+  ('event_rsvp_guests', 'event_rsvp_guests_owner_read', 'SELECT', 'PERMISSIVE', 'public', '(((EXISTS ( SELECT 1
    FROM event_rsvps r
-  WHERE ((r.id = event_rsvp_guests.rsvp_id) AND (r.user_id = auth.uid())))) OR (matched_user_id = auth.uid()))', null),
+  WHERE ((r.id = event_rsvp_guests.rsvp_id) AND (r.user_id = auth.uid())))) AND (NOT added_from_friend)) OR (matched_user_id = auth.uid()))', null),
   ('event_rsvps', 'event_rsvps_guest_insert_own', 'INSERT', 'PERMISSIVE', 'public', null, '((user_id = auth.uid()) AND (EXISTS ( SELECT 1
    FROM events e
   WHERE ((e.id = event_rsvps.event_id) AND (e.event_type = ''rsvp''::text) AND (e.status = ANY (ARRAY[''scheduled''::text, ''live''::text])) AND (e.deleted_at IS NULL)))))'),

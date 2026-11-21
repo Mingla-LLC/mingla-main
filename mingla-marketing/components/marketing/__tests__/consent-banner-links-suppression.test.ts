@@ -4,7 +4,7 @@
 // [TEST-MOD-APPROVED #2331] #905 suppressed the consent banner on /links
 // because a floating card covered the CTAs there. #2331 replaces that rule
 // with I-PRIVACY-BAR-NEVER-OCCLUDES: one slim full-width bar on EVERY route,
-// and /links sizes itself to calc(100dvh - var(--mingla-privacy-inset)).
+// and /links sizes itself to calc(100dvh - var(--mingla-privacy-strip)).
 // Proves /links shows the bar and ends above it.
 //
 // Run from mingla-marketing/ (repo tsc+node pattern, no lib module needed):
@@ -41,8 +41,8 @@ const cases: ReadonlyArray<[string, () => void]> = [
     assert(/data-testid="privacy-strip"/.test(banner), 'the strip renders')
   }],
   ['/links sizes itself above the bar', () => {
-    assert(links.includes("height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))'"), '/links must subtract the privacy inset from 100dvh')
-    assert(links.includes('h-[calc(100svh-var(--mingla-privacy-inset,0px))]'), '/links svh fallback must subtract the inset too')
+    assert(links.includes("height: 'calc(100dvh - var(--mingla-privacy-strip))'"), '/links must subtract the privacy band from 100dvh')
+    assert(links.includes('h-[calc(100svh-var(--mingla-privacy-strip))]'), '/links svh fallback must subtract the band too')
   }],
   // #4318 (Seth, feedback 15): the separate "Privacy choices" text link comes off
   // /links and every other page; the bar is the one place to choose, and it

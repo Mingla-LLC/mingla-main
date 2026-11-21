@@ -85,6 +85,12 @@ type ScreenProps = {
   contentStyle?: StyleProp<ViewStyle>;
   /** #4445: lets a form scroll to its first error (see useScrollToFirstError). */
   scrollRef?: React.Ref<ScrollView>;
+  /**
+   * #4508 R2: room kept between the focused field and the keyboard's Done bar,
+   * for a form whose button sits right under its field. Default: the app's
+   * clearance plus the Done bar (SmartScrollView).
+   */
+  keyboardBottomOffset?: number;
 };
 
 /**
@@ -99,7 +105,7 @@ type ScreenProps = {
  * field. The footer stays mounted and is only hidden while typing, so the scroll
  * frame never changes size while the keyboard moves.
  */
-export function ProgramScreen({ title, children, footer, right, onBack, refreshing, onRefresh, contentStyle, scrollRef }: ScreenProps): React.ReactElement {
+export function ProgramScreen({ title, children, footer, right, onBack, refreshing, onRefresh, contentStyle, scrollRef, keyboardBottomOffset }: ScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const typing = useKeyboardIsVisible();
   return <View style={[styles.safe, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
@@ -107,6 +113,7 @@ export function ProgramScreen({ title, children, footer, right, onBack, refreshi
     <ProgramHeader title={title} right={right} onBack={onBack} />
     <SmartScrollView
       ref={scrollRef}
+      bottomOffset={keyboardBottomOffset}
       style={styles.flex}
       contentContainerStyle={[styles.content, contentStyle, !footer && { paddingBottom: 48 + insets.bottom }]}
       automaticallyAdjustContentInsets={false}

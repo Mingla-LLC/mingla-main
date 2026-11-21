@@ -361,4 +361,3 @@ export function Calendar(props: CalendarProps): React.ReactElement {
     </div>
   );
 }
-

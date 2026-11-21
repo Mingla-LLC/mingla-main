@@ -409,7 +409,8 @@ export interface SendResponseLike {
 
 export type AddFriendOutcome =
   | { kind: "request_sent"; pairingLimitReached: boolean }
-  | { kind: "invite_texted"; pairingLimitReached: boolean }
+  // #4508 2.2 — the texted invite keeps its link for "Send it yourself too".
+  | { kind: "invite_texted"; inviteLink: string | null; pairingLimitReached: boolean }
   | { kind: "invite_not_texted"; inviteLink: string | null; pairingLimitReached: boolean };
 
 /** "Invite texted" ONLY when the server says the text went. */
@@ -417,7 +418,7 @@ export function addFriendOutcome(response: SendResponseLike): AddFriendOutcome {
   const pairingLimitReached = Boolean(response.pairingLimitReached || response.friendOnly);
   if (response.tier === 3) {
     return response.smsStatus === "sent"
-      ? { kind: "invite_texted", pairingLimitReached }
+      ? { kind: "invite_texted", inviteLink: response.inviteLink ?? null, pairingLimitReached }
       : { kind: "invite_not_texted", inviteLink: response.inviteLink ?? null, pairingLimitReached };
   }
   return { kind: "request_sent", pairingLimitReached };

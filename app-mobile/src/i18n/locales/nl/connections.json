@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Verwijderen mislukt. Probeer opnieuw.",
   "brand_guests_leave_title": "{{brand}} Gasten verlaten?",
   "brand_guests_leave_body": "Nieuwe boekingen voegen je niet opnieuw toe. Je kunt via je boeking weer meedoen.",
-  "brand_guests_left_toast": "Je hebt {{brand}} Gasten verlaten. Je kunt via je boeking weer meedoen."
+  "brand_guests_left_toast": "Je hebt {{brand}} Gasten verlaten. Je kunt via je boeking weer meedoen.",
+  "af_send_yourself_title": "Stuur het ook zelf",
+  "af_send_yourself_body": "Een bericht van jou komt het best aan. Dezelfde link als in onze sms.",
+  "af_copy_message": "Bericht kopiëren",
+  "af_message_copied": "Bericht gekopieerd"
 }

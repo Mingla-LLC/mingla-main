@@ -6,7 +6,7 @@
 
    Ink band, small white wordmark (26px), four columns, then the tagline and
    the cross-link. Its bottom padding clears the #4318 privacy strip by
-   --mingla-privacy-inset; the footer itself is never fixed.
+   --mingla-privacy-strip; the footer itself is never fixed.
    Contrast: every text colour on ink is at least 4.5:1 (AA).
 --------------------------------------------------------------------------- */
 
@@ -17,7 +17,7 @@
   color: #fff;
   font-family: var(--font-landing-sans, inherit);
   line-height: 1.5;
-  padding: 72px 0 calc(48px + var(--mingla-privacy-inset, 0px));
+  padding: 72px 0 calc(48px + var(--mingla-privacy-strip));
   -webkit-font-smoothing: antialiased;
 }
 [data-site-footer] *,

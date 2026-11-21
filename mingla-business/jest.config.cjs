@@ -126,6 +126,8 @@ module.exports = {
     "issue_3281_scan_result_date_copy\\.implementor\\.test\\.ts$", // DENO test — deno2-discovered suite; never jest
     "issue_3281_guest_csv_day_order\\.implementor\\.test\\.ts$", // DENO test — deno2-discovered suite; never jest
     "issue_3281_by_date_quantities\\.implementor\\.test\\.ts$", // DENO test — deno2-discovered suite; never jest
+    "issue_4508_rsvp_guest_display\\.implementor\\.test\\.ts$", // DENO test — deno2-discovered suite; never jest
+    "issue_4508_host_guest_checkin\\.implementor\\.test\\.ts$", // DENO test — deno2-discovered suite; never jest
     "issue_2321_business_retained_copy\\.tester\\.adversarial\\.test\\.ts$", // DENO test — runs in ci-batch:issue-2321-account-deletion-tests (the batched suite that replaced the retired wrapper at #2439 Phase 3C cutover), never jest
     "issue_3660_delete_blocked_panel\\.tester\\.adversarial\\.test\\.ts$", // DENO test — runs in the Stripe Deno lane of the Supabase migrations workflow (the #2321 batch suite for the same route is sealed), never jest
     "issue_1984_ari_analytics_response_card\\.deno\\.test\\.ts$", // DENO test — Stripe/Ari Deno lane; never jest
@@ -421,6 +423,11 @@ module.exports = {
     // issue #1023 — the shared ThemeEntranceAnimation imports the motion package
     // by name from packages/ (no node_modules there). Resolution repair only.
     "^@mingla/theme-animations$": "<rootDir>/../packages/theme-animations/index.ts",
+    // #4514 — the question renderers moved to packages/form-rendering (no
+    // node_modules there): resolve the package and its datetimepicker peer to
+    // this app's real copies. Resolution repair only; a suite's jest.mock wins.
+    "^@mingla/form-rendering$": "<rootDir>/../packages/form-rendering/index.ts",
+    "^@react-native-community/datetimepicker$": "<rootDir>/node_modules/@react-native-community/datetimepicker",
     // issue #1023 wave 2 — the shared offering bodies import expo-linear-gradient
     // (gradient fills) from packages/, and its ESM build cannot run under node.
     // A lightweight manual mock that renders a `LinearGradient` host element;

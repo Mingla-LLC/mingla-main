@@ -4,7 +4,10 @@ export type CircleRelationshipSource =
   | 'friend'
   | 'friend_of_friend'
   | 'co_attendee'
-  | 'mixed';
+  | 'mixed'
+  // #4508 1.23 — a close friend made when they claimed the RSVP pass you
+  // saved them ("Close friend" · "through {event}").
+  | 'rsvp_guest';
 export type CircleRelationshipContextType = 'user' | 'event' | 'trip';
 
 export interface CirclePerson {
