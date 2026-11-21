@@ -498,7 +498,7 @@ $t$;
 
 -- ───────────────────────────── T-CREATE ─────────────────────────────
 do $t$
-declare v text; j jsonb;
+declare v text; j jsonb; j_brand uuid;
 begin
   -- Support staff (abi, also on the Work board) from a conversation; picks tao as owner.
   v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
@@ -528,6 +528,57 @@ begin
     jsonb_build_object('type', 'idea', 'title', 'T4420 Self owned idea', 'what_is_wrong', 'An idea with nobody to watch it at all.',
       'product_area', 'Home', 'owners', jsonb_build_array(pg_temp.email('abi'))), 'T4420-create-0002'));
   perform pg_temp.chk('T-CREATE', 'a ticket needs a watcher, as any card', (v::jsonb->>'status') || '/' || (v::jsonb->'fixes' @> '[{"field":"watchers"}]')::text, 'refused/true');
+  perform pg_temp.chk('T-CREATE', 'the refusal says the card rule in its words',
+    (v::jsonb->'fixes' @> '[{"field":"watchers","message":"A card has one watcher, who is not the owner."}]')::text, 'true');
+  -- Rework 2 (P1-A): the form's default is the creator as owner; with the
+  -- watcher picked in the form's Watcher field the ticket is made.
+  v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
+    jsonb_build_object('type', 'bug', 'title', 'T4420 Self owned bug with a watcher', 'what_is_wrong', 'The creator owns it and picked a watcher.',
+      'product_area', 'Home', 'created_from', 'board', 'owners', jsonb_build_array(pg_temp.email('abi')), 'watchers', jsonb_build_array(pg_temp.email('tao'))), 'T4420-create-0012'));
+  perform pg_temp.chk('T-CREATE', 'creator = owner with a watcher picked: made', v::jsonb->>'status', 'added');
+  perform pg_temp.chk('T-CREATE', 'creator = owner: owner and watcher are the ones sent',
+    array_to_string(public.ops_card_people((v::jsonb->'card'->>'id')::uuid, 'owner'), ',') || '/' || array_to_string(public.ops_card_people((v::jsonb->'card'->>'id')::uuid, 'watcher'), ','),
+    pg_temp.email('abi') || '/' || pg_temp.email('tao'));
+  -- The watcher is the owner: refused with the card rule's words, nothing made.
+  v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
+    jsonb_build_object('type', 'bug', 'title', 'T4420 Owner watches own ticket', 'what_is_wrong', 'The owner was also named as the watcher.',
+      'product_area', 'Home', 'owners', jsonb_build_array(pg_temp.email('abi')), 'watchers', jsonb_build_array(pg_temp.email('abi'))), 'T4420-create-0013'));
+  perform pg_temp.chk('T-CREATE', 'watcher = owner is refused like any card',
+    (v::jsonb->>'status') || '/' || (v::jsonb->'fixes' @> '[{"field":"watchers","message":"A card has one watcher, who is not the owner."}]')::text
+      || '/' || (select count(*)::text from public.ops_work_cards where title = 'T4420 Owner watches own ticket'), 'refused/true/0');
+  -- Creator not the owner, no watcher sent: the creator watches.
+  v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
+    jsonb_build_object('type', 'task', 'title', 'T4420 Owned by someone else', 'what_is_wrong', 'The creator gives it to another person.',
+      'product_area', 'Home', 'owners', jsonb_build_array(pg_temp.email('seth'))), 'T4420-create-0014'));
+  perform pg_temp.chk('T-CREATE', 'creator not owner: made and the creator watches',
+    (v::jsonb->>'status') || '/' || array_to_string(public.ops_card_people((v::jsonb->'card'->>'id')::uuid, 'watcher'), ','), 'added/' || pg_temp.email('abi'));
+  -- The same rule from a conversation (Support Create ticket) and from a Brand group.
+  v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
+    jsonb_build_object('type', 'bug', 'title', 'T4420 Self owned from a conversation', 'what_is_wrong', 'Support staff own it and picked a watcher.',
+      'product_area', 'Guests', 'created_from', 'conversation', 'conversation_ids', jsonb_build_array(pg_temp.id('ST2')),
+      'owners', jsonb_build_array(pg_temp.email('abi')), 'watchers', jsonb_build_array(pg_temp.email('seth'))), 'T4420-create-0015'));
+  perform pg_temp.chk('T-CREATE', 'from a conversation, creator = owner with a watcher: made', v::jsonb->>'status', 'added');
+  v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
+    jsonb_build_object('type', 'bug', 'title', 'T4420 Self owned from a conversation, no watcher', 'what_is_wrong', 'Support staff own it and picked nobody.',
+      'product_area', 'Guests', 'created_from', 'conversation', 'conversation_ids', jsonb_build_array(pg_temp.id('ST2')),
+      'owners', jsonb_build_array(pg_temp.email('abi'))), 'T4420-create-0016'));
+  perform pg_temp.chk('T-CREATE', 'from a conversation, creator = owner and no watcher: refused',
+    (v::jsonb->>'status') || '/' || (v::jsonb->'fixes' @> '[{"field":"watchers"}]')::text, 'refused/true');
+  insert into public.creator_accounts (id) values (pg_temp.uid('seth')) on conflict (id) do nothing;
+  insert into public.brands (id, account_id, name, slug, payment_provider, pricing_region, pricing_currency, default_currency, contact_email)
+  values (gen_random_uuid(), pg_temp.uid('seth'), 'T4420 Brand', 't4420-brand-' || substr(md5(random()::text), 1, 8), 'stripe', 'US', 'USD', 'USD', 't4420-brand@example.test')
+  returning id into j_brand;
+  v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
+    jsonb_build_object('type', 'idea', 'title', 'T4420 Self owned from a Brand group', 'what_is_wrong', 'A brand group asked for this; the creator owns it.',
+      'product_area', 'Brand groups', 'created_from', 'brand_group', 'brand_id', j_brand,
+      'owners', jsonb_build_array(pg_temp.email('abi')), 'watchers', jsonb_build_array(pg_temp.email('tao'))), 'T4420-create-0017'));
+  perform pg_temp.chk('T-CREATE', 'from a Brand group, creator = owner with a watcher: made', v::jsonb->>'status', 'added');
+  v := pg_temp.person('abi', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
+    jsonb_build_object('type', 'idea', 'title', 'T4420 Self owned from a Brand group, no watcher', 'what_is_wrong', 'A brand group asked; nobody was picked to watch.',
+      'product_area', 'Brand groups', 'created_from', 'brand_group', 'brand_id', j_brand,
+      'owners', jsonb_build_array(pg_temp.email('abi'))), 'T4420-create-0018'));
+  perform pg_temp.chk('T-CREATE', 'from a Brand group, creator = owner and no watcher: refused',
+    (v::jsonb->>'status') || '/' || (v::jsonb->'fixes' @> '[{"field":"watchers"}]')::text, 'refused/true');
   -- Support-only member (no Work board).
   v := pg_temp.person('sue', format('select public.ops_ticket_create(%L::jsonb, %L)::text',
     jsonb_build_object('type', 'question', 'title', 'T4420 Payout question from a host', 'what_is_wrong', 'The host asks when the payout arrives.',
@@ -666,7 +717,8 @@ begin
   perform pg_temp.chk('T-MORE', 'similar open tickets by title words', v::jsonb->0->>'title', 'T4420 Payout question from a host');
   perform pg_temp.chk('T-MORE', 'similar gives titles and counts only', (select string_agg(k, ',' order by k) from jsonb_object_keys(v::jsonb->0) k), 'id,number,reporter_count,title,type');
   v := pg_temp.person('sue', format('select public.issue_4420_conversation_tickets(array[%L, %L]::uuid[])::text', pg_temp.id('ST1'), pg_temp.id('ST2')));
-  perform pg_temp.chk('T-MORE', 'inbox chips: one per ticket per conversation', jsonb_array_length(v::jsonb)::text, '3');
+  -- 4: TK on ST1 and ST2, TK2 on ST2, and the rework 2 self-owned ticket on ST2.
+  perform pg_temp.chk('T-MORE', 'inbox chips: one per ticket per conversation', jsonb_array_length(v::jsonb)::text, '4');
   v := pg_temp.person('sue', format('select public.issue_4420_conversation_search(%L)::text', (select ticket_number::text from public.support_tickets where id = pg_temp.id('ST2'))));
   perform pg_temp.chk('T-MORE', 'search by conversation number', v::jsonb->0->>'id', pg_temp.id('ST2')::text);
   v := pg_temp.person('seth', format('select public.issue_4420_ticket_signal_ensure(%L)::text', pg_temp.id('TK3')));

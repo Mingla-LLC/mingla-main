@@ -7,8 +7,10 @@
 // Rules this file holds (Seth's decisions, 2026-11-21):
 //   * the person making a ticket CHOOSES its owner, like any card; there is no
 //     automatic owner and no owner lock;
-//   * the server adds the creator as watcher when they are not the owner, so
-//     the form never sends a watcher;
+//   * a ticket has exactly one watcher who is not the owner, like any card
+//     (#4398). The form has the card form's Watcher field; the creator is
+//     filled in as watcher only when they are not the owner, and the form is
+//     not sent without a valid watcher;
 //   * a ticket without a due date is due in 7 days: the form shows that date
 //     filled in, and the person may change it;
 //   * agents never create tickets (the form is a person's).
@@ -72,9 +74,35 @@ export function ticketChipWords(card) {
 }
 
 /**
- * The call's ticket object. The owner is what the person picked (like any
- * card); no watcher is sent (the server makes the creator the watcher when
- * they are not the owner). `conversationIds` are the source conversations.
+ * The #4398 watcher rule, worded exactly as the server's ops_people_check
+ * fix for the watchers field.
+ */
+export const WATCHER_RULE_WORDS = "A card has one watcher, who is not the owner.";
+
+const clean = (list) => (Array.isArray(list) ? list.filter(Boolean) : []);
+const same = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+
+/** The watcher a new ticket form starts with: the creator, only when they are not the owner. */
+export function initialTicketWatchers(owners, me) {
+  const o = clean(owners);
+  return me && o.length > 0 && !o.some((x) => same(x, me)) ? [me] : [];
+}
+
+/**
+ * The watcher after the owner changes. A watcher who became the owner is
+ * dropped; an empty watcher is filled with the creator when they are not the
+ * new owner; the creator filled in that way is dropped when they become the
+ * owner. A watcher the person picked otherwise stays.
+ */
+export function nextTicketWatchers(nextOwners, watchers, me) {
+  const o = clean(nextOwners);
+  const w = clean(watchers).filter((x) => !o.some((y) => same(x, y)));
+  return w.length > 0 ? w : initialTicketWatchers(o, me);
+}
+
+/**
+ * The call's ticket object. The owner and the watcher are what the person
+ * picked (like any card). `conversationIds` are the source conversations.
  */
 export function buildTicketPayload(form, { createdFrom = "board" } = {}) {
   const f = form || {};
@@ -84,7 +112,8 @@ export function buildTicketPayload(form, { createdFrom = "board" } = {}) {
     what_is_wrong: String(f.whatIsWrong || "").trim(),
     product_area: String(f.productArea || "").trim(),
     created_from: createdFrom,
-    owners: Array.isArray(f.owners) ? f.owners.filter(Boolean) : [],
+    owners: clean(f.owners),
+    watchers: clean(f.watchers),
   };
   if (f.due) out.due_on = f.due;
   const ids = Array.isArray(f.conversationIds) ? f.conversationIds.filter(Boolean) : [];
@@ -103,6 +132,8 @@ export function ticketFormProblems(form) {
   if (String(f.whatIsWrong || "").trim().length < WRONG_MIN) problems.what_is_wrong = `Say what is wrong in at least ${WRONG_MIN} characters.`;
   if (!String(f.productArea || "").trim()) problems.product_area = "Pick the product area.";
   if (!Array.isArray(f.owners) || f.owners.filter(Boolean).length < 1) problems.owner = "Choose who owns this ticket.";
+  const w = clean(f.watchers);
+  if (w.length !== 1 || clean(f.owners).some((o) => same(o, w[0]))) problems.watchers = WATCHER_RULE_WORDS;
   return problems;
 }
 

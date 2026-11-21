@@ -1,7 +1,8 @@
 // Issue #4420 (step 4) — make a ticket from the Work board ("+ New", then
 // Ticket). A ticket is a Work card labelled Ticket: Type, Title, What is wrong,
-// Product area, the Owner (chosen by the person making it, like any card) and a
-// due date filled in at 7 days. As the title is typed, similar open tickets are
+// Product area, the Owner and the Watcher (chosen by the person making it, with
+// the card form's fields and the #4398 one-owner-one-watcher rule) and a due
+// date filled in at 7 days. As the title is typed, similar open tickets are
 // offered first, each with "Link here" (when a source conversation is attached)
 // or "Open". The server checks everything; a refused ticket keeps the form
 // filled and says what to fix next to each field.
@@ -18,6 +19,8 @@ import {
   buildTicketPayload,
   defaultTicketDue,
   fixesByField,
+  initialTicketWatchers,
+  nextTicketWatchers,
   shouldSearchSimilar,
   similarWords,
   ticketFormProblems,
@@ -55,6 +58,10 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
   const [productArea, setProductArea] = useState(initialProductArea);
   // The person making the ticket picks its owner, like any card; they usually suggest themselves.
   const [owners, setOwners] = useState(me ? [me] : []);
+  // One watcher who is not the owner, like any card: the creator is filled in
+  // only when they are not the owner; otherwise the person picks one.
+  const [watchers, setWatchers] = useState(() => initialTicketWatchers(me ? [me] : [], me));
+  const changeOwners = (next) => { setOwners(next); setWatchers((w) => nextTicketWatchers(next, w, me)); };
   // Due is filled in at 7 days and editable; clearing it leaves the server's 7-day default.
   const [due, setDue] = useState(() => defaultTicketDue(today));
   const [source, setSource] = useState(conversation);
@@ -65,8 +72,8 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
   const [touched, setTouched] = useState(false);
   const keyRef = useRef({ key: null, value: null });
 
-  const form = { type, title, whatIsWrong, productArea, owners, due, conversationIds: source ? [source.id] : [], brandId };
-  const payload = useMemo(() => buildTicketPayload(form, { createdFrom: source && createdFrom === "board" ? "conversation" : createdFrom }), [type, title, whatIsWrong, productArea, owners, due, source, brandId, createdFrom]); // eslint-disable-line react-hooks/exhaustive-deps
+  const form = { type, title, whatIsWrong, productArea, owners, watchers, due, conversationIds: source ? [source.id] : [], brandId };
+  const payload = useMemo(() => buildTicketPayload(form, { createdFrom: source && createdFrom === "board" ? "conversation" : createdFrom }), [type, title, whatIsWrong, productArea, owners, watchers, due, source, brandId, createdFrom]); // eslint-disable-line react-hooks/exhaustive-deps
   const problems = touched ? ticketFormProblems(form) : {};
   const serverWords = refused?.status === "refused" ? fixesByField(refused.fixes) : {};
   const wordsFor = (field) => serverWords[field] || problems[field] || "";
@@ -119,7 +126,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
       if (answer?.status === "added") {
         setRefused(null);
         keyRef.current = { key: null, value: null };
-        addToast({ variant: "success", title: `Ticket ${ticketNumber(answer.card?.number)} made`, description: owners.some((o) => o !== me) ? "The owner was told." : undefined });
+        addToast({ variant: "success", title: `Ticket ${ticketNumber(answer.card?.number)} made`, description: [...owners, ...watchers].some((o) => o !== me) ? "The people on it were told." : undefined });
         onCreated?.(answer.card);
       } else if (answer?.status === "duplicate") {
         setRefused(null);
@@ -135,7 +142,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
     }
   };
 
-  const unplaced = refused?.status === "refused" ? (refused.fixes || []).filter((f) => !["type", "title", "what_is_wrong", "product_area", "due_on", "owners"].includes(f.field)) : [];
+  const unplaced = refused?.status === "refused" ? (refused.fixes || []).filter((f) => !["type", "title", "what_is_wrong", "product_area", "due_on", "owners", "watchers"].includes(f.field)) : [];
 
   return (
     <form onSubmit={submit} noValidate data-ticket-form="" className="flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 shadow-[var(--shadow-sm)]">
@@ -226,9 +233,13 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-1">
           <PeopleField id="new-ticket-owner" label="Owner" single value={owners} team={team} me={directory.me || me}
-            suggested={[directory.me || me].filter(Boolean)} min={1} onChange={(next) => setOwners(next)} />
+            suggested={[directory.me || me].filter(Boolean)} exclude={watchers} min={1} onChange={changeOwners} />
           <FieldError id="ticket-owner-error" words={wordsFor("owner") || wordsFor("owners")} />
-          <span className="text-[12px] text-[var(--color-text-tertiary)]">You watch it unless you own it.</span>
+        </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <PeopleField id="new-ticket-watcher" label="Watcher" single min={0} hint="One watcher, who is not the owner. They confirm the card is done."
+            value={watchers} team={team} me={directory.me || me} suggested={[directory.me || me].filter(Boolean)} exclude={owners} onChange={(next) => setWatchers(next)} />
+          <FieldError id="ticket-watcher-error" words={wordsFor("watchers")} />
         </div>
         <label className="flex min-w-0 flex-col gap-1">
           <span className={LABEL}>Due</span>

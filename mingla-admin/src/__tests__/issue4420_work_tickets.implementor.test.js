@@ -1,5 +1,5 @@
 // MINGLA-INVARIANT: I-4420-NOTES-STAFF-ONLY-UI | issue #4420 | the Work board never renders a ticket's linked conversations (messages, photos, internal notes) from an answer that is not Support access; everyone else sees only the reporter count and "Support access needed to read these conversations".
-// MINGLA-INVARIANT: I-4420-TICKET-OWNER-CHOSEN-UI | issue #4420 | the ticket form sends the owner the person chose (like any card) and no watcher; no automatic owner and no owner lock is drawn or sent.
+// MINGLA-INVARIANT: I-4420-TICKET-OWNER-CHOSEN-UI | issue #4420 | the ticket form sends the owner and the one watcher the person chose with the card form's fields and the server's one-watcher-not-the-owner rule; no automatic owner and no owner lock is drawn or sent.
 // MINGLA-INVARIANT: I-4420-ORDINARY-CARD-FORM-UNCHANGED | issue #4420 | the add-card form, its payload and its linked-record kinds are exactly the card form, with nothing about tickets in it.
 //
 // Issue #4420 (step 4) — Ticket cards on the Admin Work board.
@@ -43,6 +43,9 @@ import {
   shouldSearchSimilar,
   ticketChipWords,
   ticketFormProblems,
+  initialTicketWatchers,
+  nextTicketWatchers,
+  WATCHER_RULE_WORDS,
   workMenuCount,
   ticketsNotAlreadyDue,
   isTicketCard,
@@ -197,11 +200,11 @@ describe("T-2 tickets are in Board, Today, This week and This month", () => {
 });
 
 describe("T-3 the ticket form: the creator chooses the owner", () => {
-  const form = { type: "bug", title: "Payout shows twice", whatIsWrong: "A host sees the same payout twice in the list.", productArea: "Host app · Payouts", owners: ["tao@x.test"], due: "2026-11-28" };
-  it("sends the owner the person chose and no watcher", () => {
+  const form = { type: "bug", title: "Payout shows twice", whatIsWrong: "A host sees the same payout twice in the list.", productArea: "Host app · Payouts", owners: ["tao@x.test"], watchers: ["seth@x.test"], due: "2026-11-28" };
+  it("sends the owner and the watcher the person chose", () => {
     const p = buildTicketPayload(form);
     assert.deepEqual(p.owners, ["tao@x.test"]);
-    assert.equal(Object.hasOwn(p, "watchers"), false, "the server makes the creator the watcher when they are not the owner");
+    assert.deepEqual(p.watchers, ["seth@x.test"]);
     assert.equal(p.type, "bug");
     assert.equal(p.what_is_wrong, form.whatIsWrong);
     assert.equal(p.created_from, "board");
@@ -519,3 +522,81 @@ describe("T-9 (rework 1, P3-a) Send to GitHub never shows a code", () => {
     assert.doesNotMatch(section, /e\?\.message|error\.message/);
   });
 });
+
+// P1-A (rework 2): the ticket form against the #4398 rule as the migrations
+// write it. FAILS-ON-REVERT: without the Watcher field the default form (the
+// creator as owner) sends no watcher and is refused by the server.
+describe("T-3b the ticket form's default request meets the server's watcher rule", () => {
+  const ROOT = path.resolve(SRC, "../..");
+  const MIG = path.join(ROOT, "supabase/migrations");
+  const sqlFiles = fs.readdirSync(MIG).filter((f) => f.endsWith(".sql")).sort();
+  const newest = (name) => sqlFiles.filter((f) => new RegExp(`CREATE (?:OR REPLACE )?FUNCTION public\\.${name}\\(`).test(fs.readFileSync(path.join(MIG, f), "utf8"))).pop();
+  const fnBody = (file, name) => {
+    const text = fs.readFileSync(path.join(MIG, file), "utf8");
+    const heads = [...text.matchAll(new RegExp(`CREATE (?:OR REPLACE )?FUNCTION public\\.${name}\\(`, "g"))];
+    const at = heads[heads.length - 1].index;
+    return text.slice(at, text.indexOf("\n$", text.indexOf("BEGIN", at)) + 1 || undefined);
+  };
+  const peopleFile = newest("ops_people_check");
+  const people = fnBody(peopleFile, "ops_people_check");
+  const ticket = fnBody(newest("ops_ticket_create"), "ops_ticket_create");
+  const ruleWords = /'watchers', 'message', '(A card has one watcher[^']*)'/.exec(people)?.[1];
+  const allowedKeys = /k NOT IN \(([^)]*)\)/.exec(ticket)?.[1].match(/'([a-z_]+)'/g).map((k) => k.slice(1, -1));
+  const ME = "seth@x.test";
+  const filled = { type: "bug", title: "Payout shows twice", whatIsWrong: "A host sees the same payout twice in the list.", productArea: "Host app · Payouts", due: "2026-11-28" };
+  // The rule as read from ops_people_check: exactly one watcher, never the owner.
+  const meetsServerRule = (p) => {
+    const w = (p.watchers || []).filter((x) => !(p.owners || []).includes(x));
+    return w.length === 1;
+  };
+
+  it("reads the rule from the newest ops_people_check: one watcher, who is not the owner", () => {
+    assert.ok(peopleFile, "ops_people_check is defined in a migration");
+    assert.match(people, /cardinality\(v_watchers\) <> 1/, "exactly one watcher");
+    assert.match(people, /NOT v_email = ANY \(v_owners\) AND NOT v_email = ANY \(v_watchers\)/, "an owner is never counted as the watcher");
+    assert.equal(ruleWords, WATCHER_RULE_WORDS, "the form says what the server says");
+  });
+  it("ops_ticket_create takes the watcher from the request and checks it with the card validator", () => {
+    assert.ok(allowedKeys.includes("watchers"));
+    assert.match(ticket, /v_watchers := p_ticket->'watchers'/);
+    assert.match(ticket, /'watchers', v_watchers/);
+    assert.match(ticket, /public\.ops_validate_card\(v_item, 'add'/);
+  });
+  it("the default form (the creator owns it) starts with no watcher and is not sent until one is picked", () => {
+    const owners = [ME];
+    const watchers = initialTicketWatchers(owners, ME);
+    assert.deepEqual(watchers, [], "the owner cannot also be the watcher");
+    const def = { ...filled, owners, watchers };
+    assert.equal(ticketFormProblems(def).watchers, WATCHER_RULE_WORDS, "blocked before sending, in the server's words");
+    assert.equal(meetsServerRule(buildTicketPayload(def)), false, "the server would refuse it too");
+    const picked = { ...def, watchers: ["tao@x.test"] };
+    assert.deepEqual(ticketFormProblems(picked), {});
+    const p = buildTicketPayload(picked);
+    assert.ok(Object.keys(p).every((k) => allowedKeys.includes(k)), `every key is one ops_ticket_create takes: ${Object.keys(p)}`);
+    assert.equal(meetsServerRule(p), true);
+  });
+  it("from Support and Brand groups the same request shape is sent", () => {
+    for (const createdFrom of ["conversation", "brand_group"]) {
+      const p = buildTicketPayload({ ...filled, owners: [ME], watchers: ["tao@x.test"], conversationIds: ["c1"], brandId: "b1" }, { createdFrom });
+      assert.ok(Object.keys(p).every((k) => allowedKeys.includes(k)));
+      assert.equal(meetsServerRule(p), true);
+    }
+  });
+  it("the creator is filled in as watcher only when they are not the owner", () => {
+    assert.deepEqual(initialTicketWatchers(["tao@x.test"], ME), [ME]);
+    assert.deepEqual(nextTicketWatchers(["tao@x.test"], [], ME), [ME], "owner moved away from me: I watch");
+    assert.deepEqual(nextTicketWatchers([ME], [ME], ME), [], "owner moved to me: I stop watching");
+    assert.deepEqual(nextTicketWatchers(["abi@x.test"], ["tao@x.test"], ME), ["tao@x.test"], "a picked watcher stays");
+    assert.deepEqual(nextTicketWatchers(["tao@x.test"], ["tao@x.test"], ME), [ME], "a watcher who became the owner is replaced by the creator");
+    assert.ok(ticketFormProblems({ ...filled, owners: ["tao@x.test"], watchers: ["tao@x.test"] }).watchers, "watcher = owner is refused");
+  });
+  it("the form draws the card form's Watcher field and routes owner changes through the rule", () => {
+    const src = code("components/ops/TicketForm.jsx");
+    assert.match(src, /label="Watcher" single min=\{0\} hint="One watcher, who is not the owner\. They confirm the card is done\."/);
+    assert.match(code("components/ops/WorkAddForm.jsx"), /hint="One watcher, who is not the owner\. They confirm the card is done\."/, "same words as the card form");
+    assert.match(src, /onChange=\{changeOwners\}/);
+    assert.match(src, /words=\{wordsFor\("watchers"\)\}/);
+    assert.doesNotMatch(src, /You watch it unless you own it/);
+  });
+});
+
