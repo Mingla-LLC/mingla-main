@@ -123,6 +123,9 @@ $vacuity$;
 --     22 -> 25 for #4111, 25 -> 35 for #3872, 35 -> 39 for #2829, and 39 -> 42 for #4271, and 42 -> 43 -> 44 for #4255, and 44 -> 45 for #4420, and 45 -> 46 for #4453, and 46 -> 49 for #4490.
 --     [TEST-MOD-APPROVED #4490] N150: the three #4490 venue-offer writers add
 --     three; a PG17 replay of the #4490 branch measures 50 writers in all.
+--     [TEST-MOD-APPROVED #4490] Explorer W2: issue_4490_offer_sweep now also
+--     writes (visit reminders), so the branch measures one more; the floor
+--     stays a floor.
 --     The floor is the number that ACTUALLY exists in the catalog, so a
 --     producer DISAPPEARING is caught as well as
 --     one appearing. At the old floor of 8 any of #3720's three new producers
@@ -197,6 +200,8 @@ $ratchet$;
 --       issue_4490_enqueue_waitlist_message → explicit NULL (#4490 waitlist; email)
 --       issue_4490_member_enqueue           → explicit NULL (#4490 memberships; email)
 --       issue_4490_text_claim_link          → mingla_e164_country(v_phone) (#4490 W1 text)
+--       issue_4490_offer_sweep              → explicit NULL (#4490 W2 visit reminders;
+--                                             in-app, push, email; no SMS channel)
 --
 --     PUSH-ONLY — the #3872 notification producers write only in-app/push
 --     categories and deliberately do not carry an SMS country. They are still
@@ -264,7 +269,12 @@ DECLARE
     -- [TEST-MOD-APPROVED #4490] Explorer W1: "Text me the link" writes one SMS
     -- row to the guest phone on file with mingla_e164_country(phone);
     -- issue_4490_explorer_w1_handoff.implementor.pg17 (T-4) asserts NG.
-    'issue_4490_text_claim_link'
+    'issue_4490_text_claim_link',
+    -- [TEST-MOD-APPROVED #4490] Explorer W2: the offer sweep queues the
+    -- venue_visit_reminder rows (in-app, push, email; no SMS channel) with an
+    -- explicit NULL country_code; issue_4490_explorer_w2_purchases
+    -- implementor pg17 (R-2) asserts the NULL.
+    'issue_4490_offer_sweep'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -422,7 +432,12 @@ DECLARE
     -- [TEST-MOD-APPROVED #4490] Explorer W1: "Text me the link" writes one SMS
     -- row to the guest phone on file with mingla_e164_country(phone);
     -- issue_4490_explorer_w1_handoff.implementor.pg17 (T-4) asserts NG.
-    'issue_4490_text_claim_link'
+    'issue_4490_text_claim_link',
+    -- [TEST-MOD-APPROVED #4490] Explorer W2: the offer sweep queues the
+    -- venue_visit_reminder rows (in-app, push, email; no SMS channel) with an
+    -- explicit NULL country_code; issue_4490_explorer_w2_purchases
+    -- implementor pg17 (R-2) asserts the NULL.
+    'issue_4490_offer_sweep'
   ];
   v_missing text;
 BEGIN

@@ -350,7 +350,9 @@ BEGIN
       AND EXISTS (
         SELECT 1
           FROM jsonb_array_elements(v_result->'claimed') item
-         WHERE item->>'kind' = 'stay_group'
+         -- [TEST-MOD-APPROVED #4490] Explorer W2 (20280809434490): a venue
+         -- offer booking is now reported as venue_booking, not stay_group.
+         WHERE item->>'kind' = 'venue_booking'
            AND (item->>'id')::uuid = public.t4490_id('booking')
       ),
     'C-2 the sweep reports the claimed booking'

@@ -393,7 +393,12 @@ DECLARE
     -- [TEST-MOD-APPROVED #4490] Explorer W1: "Text me the link" writes one SMS
     -- row to the guest phone on file with mingla_e164_country(phone);
     -- issue_4490_explorer_w1_handoff.implementor.pg17 (T-4) asserts NG.
-    'issue_4490_text_claim_link'
+    'issue_4490_text_claim_link',
+    -- [TEST-MOD-APPROVED #4490] Explorer W2: the offer sweep queues the
+    -- venue_visit_reminder rows (in-app, push, email; no SMS channel) with an
+    -- explicit NULL country_code; issue_4490_explorer_w2_purchases
+    -- implementor pg17 (R-2) asserts the NULL.
+    'issue_4490_offer_sweep'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
