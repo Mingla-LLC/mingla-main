@@ -58,6 +58,7 @@ import {
   venueBookingExtraRows,
   venueBookingGuests,
   venueBookingMoneyRows,
+  venueBookingPayNote,
   venueBookingPlaceLine,
   venueBookingProgress,
   venueBookingStateLabel,
@@ -192,6 +193,7 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
   const when = venueBookingWhenLine(booking);
   const progress = venueBookingProgress(booking);
   const placeLine = venueBookingPlaceLine(booking);
+  const payNote = venueBookingPayNote(booking);
   const now = venueBookingGuests(booking);
   const isLive = booking.state === "confirmed" || booking.state === "partially_cancelled";
   const canCancel = isLive || booking.state === "request_pending" || booking.state === "approved_payment_required";
@@ -337,12 +339,13 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
           <Row key={r.label} label={r.label} value={r.value} />
         ))}
       </View>
-      {booking.balanceDueMinor > 0 ? (
-        // [TRANSITIONAL] W4 (spec 06 §3) adds "Pay the rest" in the app;
-        // exits when the native venue checkout sheet ships. Until then the
-        // balance is paid from the booking page link in the guest's email.
+      {payNote !== null ? (
+        // [TRANSITIONAL] W4 (spec 06 §3) adds "Pay the rest" and an approved
+        // hire's deposit payment in the app; exits when the native venue
+        // checkout sheet ships. Until then both are paid from the booking page
+        // link in the guest's email (venueBookingPayNote).
         <Text style={styles.caption} testID="venue-booking-pay-rest-note">
-          Pay the rest from your booking page.
+          {payNote}
         </Text>
       ) : null}
       {booking.policyText !== null ? <Text style={styles.caption}>{booking.policyText}</Text> : null}
@@ -383,6 +386,10 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
 
       <View style={styles.actions}>
         {canChange && guests === null && preview === null ? (
+          // [TRANSITIONAL] "Change" is the guest-count change only (spec 06 W2
+          // deviation 7): moving the date needs W4's date and session pickers,
+          // and a change that costs more needs W4's in-app payment; exits when
+          // W4 (native venue checkout) ships the date move and the top-up.
           <Action label="Change" onPress={() => void stepGuests(now)} testID="venue-booking-change" />
         ) : null}
         {canCancel && preview === null && guests === null ? (

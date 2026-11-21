@@ -199,6 +199,23 @@ export function venueBookingMoneyRows(b: VenueBooking): VenueMoneyRow[] {
   return rows;
 }
 
+/**
+ * Where the guest pays what is still owed, until the app can take the payment
+ * itself: a balance ("Pay the rest from your booking page.") or an approved
+ * private hire's deposit ("Pay from your booking page.", the approval text's
+ * wording). Null when nothing is owed now.
+ * [TRANSITIONAL] spec 06 W4 (native venue checkout) adds "Pay the rest" and the
+ * deposit payment in the app; exits when W4's checkout sheet ships, which then
+ * replaces this pointer with a pay button for both cases.
+ */
+export function venueBookingPayNote(b: VenueBooking): string | null {
+  if (b.state === "approved_payment_required" && b.amountDueNowMinor > 0) {
+    return "Pay from your booking page.";
+  }
+  if (b.balanceDueMinor > 0) return "Pay the rest from your booking page.";
+  return null;
+}
+
 /** Extras and a hire's damage deposit, each with the server's amount. */
 export function venueBookingExtraRows(b: VenueBooking): VenueMoneyRow[] {
   const money = (minor: number): string => formatVenueMoney(minor, b.currencyCode, b.exponent);
