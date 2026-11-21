@@ -16,12 +16,19 @@ import { formatStartsAtLabel } from "../../utils/zoneLabel";
 export function claimedEntryPath(entry: ClaimedEntry): string {
   if (
     entry.routeKind === "order" || entry.routeKind === "rsvp" ||
-    entry.routeKind === "reservation" || entry.routeKind === "venue_order" ||
-    // #4490 Explorer W1: venue bookings, plans, waitlist places, Till receipts.
+    entry.routeKind === "reservation" || entry.routeKind === "venue_order"
+  ) {
+    return `/purchases/${entry.routeKind}/${encodeURIComponent(entry.routeId)}`;
+  }
+  // #4490 Explorer W1 (N157): venue bookings, plans, waitlist places and Till
+  // receipts open the Purchases list, never a detail route that cannot show
+  // them yet. [TRANSITIONAL] list, not detail: exit when W2 adds the
+  // /purchases/<venue kind>/<id> detail bodies (then route like order above).
+  if (
     entry.routeKind === "venue_booking" || entry.routeKind === "venue_membership" ||
     entry.routeKind === "venue_waitlist" || entry.routeKind === "venue_till_sale"
   ) {
-    return `/purchases/${entry.routeKind}/${encodeURIComponent(entry.routeId)}`;
+    return "/purchases";
   }
   if (entry.routeKind === "held_ticket") {
     return `/purchases/order/${encodeURIComponent(entry.routeId)}`;

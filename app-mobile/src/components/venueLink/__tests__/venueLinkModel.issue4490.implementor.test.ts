@@ -16,9 +16,9 @@ const T = "A".repeat(43);
 
 describe("#4490 W1 venue links in the app", () => {
   test("L-1 owned opens Purchases; /o always opens the order", () => {
-    expect(decideVenueLink({ kind: "visit", id: ID, webUrl: WEB, owned: true, token: null, paidReturn: false })).toEqual({ kind: "purchases", path: `/purchases/venue_booking/${ID}` });
+    expect(decideVenueLink({ kind: "visit", id: ID, webUrl: WEB, owned: true, token: null, paidReturn: false })).toEqual({ kind: "purchases", path: "/purchases" });
     expect(decideVenueLink({ kind: "order", id: ID, webUrl: WEB, owned: false, token: null, paidReturn: false })).toEqual({ kind: "purchases", path: `/purchases/order/${ID}` });
-    expect(purchasesPathFor("waitlist", ID)).toBe(`/purchases/venue_waitlist/${ID}`);
+    expect(purchasesPathFor("waitlist", ID)).toBe("/purchases");
   });
   test("L-2 a token link reads the booking (token from the fragment only)", () => {
     expect(tokenFromFragment(`#t=${T}`)).toBe(T);

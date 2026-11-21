@@ -33,8 +33,10 @@ export function isVenueLinkId(id: string | null | undefined): id is string {
 export function purchasesPathFor(kind: VenueLinkKind, id: string): string | null {
   if (!isVenueLinkId(id)) return null;
   const lower = id.toLowerCase();
-  if (kind === "visit") return `/purchases/venue_booking/${lower}`;
-  if (kind === "waitlist") return `/purchases/venue_waitlist/${lower}`;
+  // N157: [TRANSITIONAL] the Purchases list until W2 adds the venue detail
+  // bodies (exit: route to /purchases/venue_booking|venue_waitlist/<id>).
+  if (kind === "visit") return "/purchases";
+  if (kind === "waitlist") return "/purchases";
   if (kind === "order") return `/purchases/order/${lower}`;
   return null;
 }

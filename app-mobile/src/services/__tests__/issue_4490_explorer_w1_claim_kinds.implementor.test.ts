@@ -15,7 +15,7 @@ jest.mock("../../utils/zoneLabel", () => ({ formatStartsAtLabel: () => "" }));
 jest.mock("../supabase", () => ({ supabase: {}, reactivateExplorerForVerifiedSession: () => undefined }));
 import { parseClaimedEntries } from "../attendanceClaimService";
 import { claimedEntryPath } from "../../components/purchases/missingTicketModel";
-import { PURCHASE_DEEP_LINK_KINDS } from "../deepLinkService";
+import { executeDeepLink, PURCHASE_DEEP_LINK_KINDS } from "../deepLinkService";
 
 const row = (kind: string, routeKind: string, noun: string) => ({
   kind, id: "g1", routeKind, routeId: "0a1b2c3d-4490-4000-8000-0000000000c1", offeringType: "venue", noun,
@@ -33,13 +33,21 @@ test("W1-A1 venue claim rows are kept with nouns the app already knows", () => {
   expect(out.map((e) => e.kind)).toEqual(["venue_booking", "venue_membership", "venue_waitlist", "venue_till_sale"]);
 });
 
-test("W1-A2 each venue route kind opens its Purchases detail", () => {
+test("W1-A2 each venue route kind opens Purchases (the list until W2 adds detail bodies; N157)", () => {
   for (const k of ["venue_booking", "venue_membership", "venue_waitlist", "venue_till_sale"]) {
     const [e] = parseClaimedEntries([row(k, k, "pass")]);
-    expect(claimedEntryPath(e)).toBe(`/purchases/${k}/0a1b2c3d-4490-4000-8000-0000000000c1`);
+    expect(claimedEntryPath(e)).toBe("/purchases");
   }
 });
 
 test("W1-A3 push and return-page links may open the venue kinds", () => {
   expect(PURCHASE_DEEP_LINK_KINDS).toEqual(expect.arrayContaining(["venue_booking", "venue_membership", "venue_waitlist", "venue_till_sale"]));
+});
+
+test("W1-A4 N157: a venue purchase link opens the Purchases list (no dead detail)", () => {
+  const opened: string[] = [];
+  const handlers = { openRouterPath: (p: string) => { opened.push(p); }, setCurrentPage: () => undefined };
+  executeDeepLink({ kind: "purchase", purchaseKind: "venue_booking", purchaseId: "0a1b2c3d-4490-4000-8000-0000000000c1", door: false } as never, handlers as never);
+  executeDeepLink({ kind: "purchase", purchaseKind: "order", purchaseId: "0a1b2c3d-4490-4000-8000-0000000000c1", door: false } as never, handlers as never);
+  expect(opened).toEqual(["/purchases", "/purchases/order/0a1b2c3d-4490-4000-8000-0000000000c1"]);
 });

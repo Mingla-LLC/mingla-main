@@ -548,6 +548,12 @@ export function executeDeepLink(
       break;
 
     case 'purchase': {
+      // #4490 Explorer W1 (N157): venue kinds open the Purchases list until W2
+      // adds their detail bodies. [TRANSITIONAL] exit: drop this branch in W2.
+      if (dest.purchaseKind.startsWith('venue_') && dest.purchaseKind !== 'venue_order') {
+        handlers.openRouterPath?.('/purchases');
+        break;
+      }
       const suffix = new URLSearchParams();
       if (dest.door) suffix.set('door', '1');
       if (dest.ticketId) suffix.set('ticket', dest.ticketId);
