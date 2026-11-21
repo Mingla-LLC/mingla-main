@@ -245,7 +245,7 @@ describe("B-7 Due today for you", () => {
     assert.deepEqual(dueTodayState({ data: { due_today_mine: 2, overdue_mine: 3 } }), { status: "ready", dueToday: 2, overdue: 3 });
     assert.deepEqual(dueTodayState({ data: null, error: new Error("x") }), { status: "error", dueToday: null, overdue: null });
     const hook = code("hooks/useReviewCount.js");
-    assert.match(hook, /cards: work\.status === "ready" \? work\.dueToday \+ work\.overdue : null,/);
+    assert.match(hook, /cards: work\.status === "ready" \? workMenuCount\(work\.dueToday \+ work\.overdue, ticketsNew\) : null,/);
     const page = code("pages/OverviewPage.jsx");
     assert.match(page, /<Kpi\s+label="Due today for you"\s+note=\{`\$\{Number\(review\.overdue \|\| 0\)\.toLocaleString\(\)\} overdue`\}/);
     assert.match(page, /<KpiFailed label="Due today for you"/);

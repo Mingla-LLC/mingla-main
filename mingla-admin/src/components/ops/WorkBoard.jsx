@@ -44,6 +44,7 @@ import {
   subtaskProgress,
 } from "../../lib/workBoardModel";
 import { draftItemTitle } from "../../lib/workViews";
+import { TicketChip } from "./TicketChip";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:anywhere] hyphens-none";
@@ -88,8 +89,10 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
       {card.parent && <span className={`text-[11px] text-[var(--color-text-tertiary)] ${WORDS}`}>↳ #{card.parent.number} {card.parent.title}</span>}
       <span className={`line-clamp-2 text-[13px] font-semibold leading-snug text-[var(--color-text-primary)] ${WORDS}`}>{card.title}</span>
       <DuePill card={card} today={today} />
-      {(isTagged(card) || card.goal || left !== null || card.auto) && (
+      {(isTagged(card) || card.goal || left !== null || card.auto || card.kind === "ticket") && (
         <span className="flex min-w-0 flex-wrap items-center gap-1">
+          {/* #4420: a ticket sits beside ordinary cards with a Ticket chip */}
+          <TicketChip card={card} />
           {isTagged(card) && <span className="rounded-full bg-[var(--color-brand-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-brand-700)]">{personReasonLabel(card)}</span>}
           {isTagged(card) && draftsReady > 0 && <span data-draft-ready="" className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">Draft ready</span>}
           {left !== null && <span data-release-left="" className="rounded-full bg-[var(--color-info-50)] px-2 py-px text-[11px] font-semibold text-[var(--color-info-700)]">{left} of {card.release_items.length} left</span>}

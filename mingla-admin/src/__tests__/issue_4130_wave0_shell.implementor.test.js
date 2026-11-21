@@ -311,7 +311,7 @@ describe("#4130 W0-7: the Work entry counts only your own waiting cards", () => 
     assert.equal(sidebar.includes('item.id === "drafts"'), false);
     const hook = stripComments(read("hooks/useReviewCount.js"));
     // #4270 (D20): the count is your own open cards due today or overdue.
-    assert.ok(hook.includes('cards: work.status === "ready" ? work.dueToday + work.overdue : null,'));
+    assert.ok(hook.includes('cards: work.status === "ready" ? workMenuCount(work.dueToday + work.overdue, ticketsNew) : null,'));
     assert.ok(hook.includes("dueTodayState({ enabled, data: counts.data, error: counts.error })"));
     assert.ok(hook.includes('canOpenPage(access, "work-board")'));
     assert.ok(/needs_person_mine/.test(hook) && /draft_needed_mine/.test(hook) && /wording_mine/.test(hook), "only the _mine counts");

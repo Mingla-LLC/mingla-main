@@ -39,6 +39,7 @@ import { WorkHeader } from "../components/ops/WorkHeader";
 import { ArchiveColumnDialog, CloseCardDialog } from "../components/ops/BoardDialogs";
 import { WorkCardDrawer } from "../components/ops/WorkCardDrawer";
 import { WorkAddForm } from "../components/ops/WorkAddForm";
+import { TicketForm } from "../components/ops/TicketForm";
 import { PeriodView } from "../components/ops/WorkViews";
 import { loadPeriod, loadToday } from "../components/ops/workToday";
 import { DraftsPage } from "./DraftsPage";
@@ -59,7 +60,7 @@ import { canChangeColumns, liveColumns, moveErrorWords, moveLocally, planMove } 
 import { parseWorkView, periodWindow, splitDrafts, standupPeople, standupRows, standupText, workFilter } from "../lib/workViews";
 
 // Panel one is one of these at a time; opening one closes the others and panel two.
-const FIRST_PANEL_KEYS = ["card", "add", "draft", "record", "drafts", "plan"];
+const FIRST_PANEL_KEYS = ["card", "add", "newticket", "draft", "record", "drafts", "plan"];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const BOARD_LIMIT = 300;
@@ -73,6 +74,8 @@ export function WorkBoardPage() {
   const goalId = UUID_RE.test(params.get("goal") || "") ? params.get("goal").toLowerCase() : null;
   const focus = params.get("focus") === "1";
   const planning = params.get("plan") === "1";
+  // #4420: "+ New", then Ticket, opens the ticket form beside the board.
+  const newTicket = params.get("newticket") === "1";
   const addColumn = UUID_RE.test(params.get("addcol") || "") ? params.get("addcol") : null;
   const stack = usePanelStack(search, setSearch);
   const online = useOnline();
@@ -108,7 +111,7 @@ export function WorkBoardPage() {
   const [archiveBusy, setArchiveBusy] = useState(false);
 
   // My waiting message drafts that no open card carries sit at the top of the first Not started column.
-  const showDrafts = onBoard && who === "all" && !view.show && !view.linked && !goalId && (!ownerFilter || ownerFilter === people.me);
+  const showDrafts = onBoard && who === "all" && !view.show && !view.linked && !view.type && !goalId && (!ownerFilter || ownerFilter === people.me);
   const myDrafts = useOpsPoll(() => drafts.listDrafts({ state: "waiting", limit: 100 }), { key: `${access?.email || ""}|board-drafts`, intervalMs: 30_000, enabled: showDrafts });
   const refetchDrafts = myDrafts.refetch;
   useEffect(() => {
@@ -134,21 +137,21 @@ export function WorkBoardPage() {
     setSearch(p.toString(), opts);
   };
   const isAdmin = !!config.data?.me?.can_override;
-  const filters = { owner: ownerFilter, show: view.show, linked: view.linked, q: view.q, me: people.me, today, reasonsOf: cardReasons, isAdmin };
+  const filters = { owner: ownerFilter, show: view.show, linked: view.linked, type: view.type, q: view.q, me: people.me, today, reasonsOf: cardReasons, isAdmin };
   const setFilter = (patch) => go(patch, { replace: true });
-  const filtersOn = !!(view.owner || view.show || view.linked || view.q || params.get("who"));
-  const clearFilters = () => { setTyped(""); go({ owner: null, show: null, linked: null, q: null, who: null }, { replace: true }); };
+  const filtersOn = !!(view.owner || view.show || view.linked || view.type || view.q || params.get("who"));
+  const clearFilters = () => { setTyped(""); go({ owner: null, show: null, linked: null, type: null, q: null, who: null }, { replace: true }); };
 
   const openCard = (id) => go({ card: id });
   const closeDrawer = () => {
     const id = query.card;
-    go({ card: null, add: null, draft: null, record: null, drafts: null, plan: null, side: null, focus: null, addcol: null });
+    go({ card: null, add: null, newticket: null, draft: null, record: null, drafts: null, plan: null, side: null, focus: null, addcol: null });
     if (id) requestAnimationFrame(() => document.querySelector(`[data-card-id="${id}"]`)?.focus?.());
   };
 
   const allCards = list.data?.cards || [];
-  const cards = useMemo(() => workFilter(allCards, filters), [allCards, filters.owner, filters.show, filters.linked, filters.q, filters.me, filters.today, filters.isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
-  const periodCards = useMemo(() => workFilter(period.data?.cards || [], filters), [period.data, filters.owner, filters.show, filters.linked, filters.q, filters.me, filters.today, filters.isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cards = useMemo(() => workFilter(allCards, filters), [allCards, filters.owner, filters.show, filters.linked, filters.type, filters.q, filters.me, filters.today, filters.isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
+  const periodCards = useMemo(() => workFilter(period.data?.cards || [], filters), [period.data, filters.owner, filters.show, filters.linked, filters.type, filters.q, filters.me, filters.today, filters.isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
   const late = cards.filter((c) => c.overdue).length;
   const draftRows = Array.isArray(myDrafts.data?.drafts) ? myDrafts.data.drafts : [];
   const split = splitDrafts(showDrafts ? draftRows : [], cards);
@@ -242,6 +245,17 @@ export function WorkBoardPage() {
         onOpenCard={(id) => id && go({ add: null, addcol: null, card: id })}
       />
     </Drawer>
+  ) : newTicket ? (
+    <Drawer open onClose={() => go({ newticket: null })} title="New ticket">
+      <TicketForm
+        key="newticket"
+        config={config.data}
+        online={online}
+        onCancel={() => go({ newticket: null })}
+        onCreated={(card) => { go({ newticket: null, card: card.id }); refreshAll(); }}
+        onOpenCard={(id) => id && go({ newticket: null, card: id })}
+      />
+    </Drawer>
   ) : view.draft || view.record || view.allDrafts ? (
     <Drawer open onClose={closeDrawer} title={view.allDrafts ? "All my message drafts" : view.record ? "Message drafts for this host or creator" : "Message draft"}>
       <DraftsPage key={view.draft || view.record || "all"} embedded={{ search: view.draft ? `draft=${view.draft}` : view.record ? `record=${view.record}` : "" }} />
@@ -267,6 +281,9 @@ export function WorkBoardPage() {
         onShow={(v) => setFilter({ show: v })}
         linked={view.linked}
         onLinked={(v) => setFilter({ linked: v })}
+        type={view.type}
+        onType={(v) => setFilter({ type: v })}
+        onNewTicket={() => go({ newticket: true })}
         onClear={clearFilters}
         filtersOn={filtersOn}
         showSubtasks={showSubtasks}
@@ -307,7 +324,7 @@ export function WorkBoardPage() {
               <WorkBoard
                 columns={columns}
                 cards={cards}
-                info={view.show || view.linked ? null : list.data?.status_columns || null}
+                info={view.show || view.linked || view.type ? null : list.data?.status_columns || null}
                 today={today}
                 selectedId={query.card}
                 onSelect={(card) => openCard(card.id)}

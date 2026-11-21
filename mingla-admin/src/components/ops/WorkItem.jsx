@@ -2,6 +2,7 @@
 import { forwardRef } from "react";
 import { Avatars, OpsChip } from "./OpsChip";
 import { agentName, closeKindLabel, dayLabel, isTagged, personReasonLabel } from "../../lib/opsModel";
+import { TicketChip } from "./TicketChip";
 
 export const WorkItem = forwardRef(function WorkItem({ card, selected, onSelect }, ref) {
   const due = card.overdue ? `Overdue · ${dayLabel(card.due_on)}` : `Due ${dayLabel(card.due_on)}`;
@@ -26,6 +27,7 @@ export const WorkItem = forwardRef(function WorkItem({ card, selected, onSelect 
       </span>
       <span className="flex min-w-0 flex-wrap items-center gap-1.5">
         <span className={`text-[12px] ${card.overdue ? "font-semibold text-[var(--color-error-700)]" : "text-[var(--color-text-tertiary)]"}`}>{card.status === "done" ? closeKindLabel(card.close_kind) : due}</span>
+        <TicketChip card={card} />
         {card.kind === "gate_live" && <OpsChip tone="info">Gate</OpsChip>}
         {card.blocked && <OpsChip tone="error">Blocked</OpsChip>}
         {isTagged(card) && <OpsChip tone="warning">{personReasonLabel(card)}</OpsChip>}

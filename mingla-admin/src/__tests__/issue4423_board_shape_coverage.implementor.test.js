@@ -29,6 +29,8 @@ export const BOARD_FIELDS = [
   "revision", "archived",
   // read by the board's filters and draft split (lib/workViews.js), not in the spec's first list
   "links", "anchor", "instructions", "proof",
+  // #4420: the Ticket chip and the Type filter read kind and the ticket object (the server sends both in every shape)
+  "kind", "ticket",
 ];
 
 // In the spec's list, read by none of the board files. The server may send them.
@@ -45,6 +47,7 @@ const FILES = [
   "components/ops/workToday.js",
   "lib/dueLabel.js",
   "lib/workViews.js",
+  "lib/ticketModel.js",
   "lib/teamPulse.js",
   "pages/TeamDashboardPage.jsx",
 ];

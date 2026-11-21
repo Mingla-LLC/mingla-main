@@ -17,6 +17,7 @@ import { LoadError } from "../ui/LoadError";
 import { AgentActivity } from "./AgentActivity";
 import { opsErrorWords } from "../../lib/opsModel";
 import { PERIOD_BUCKETS, eventVerb, feedTime, periodRows, periodShown } from "../../lib/workViews";
+import { TicketChip } from "./TicketChip";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:anywhere]";
@@ -49,7 +50,7 @@ export function PeriodList({ bucket, cards, expanded, onToggle, onOpenCard }) {
           {shown.map((c) => (
             <li key={c.id} className="min-w-0">
               <button type="button" data-card-id={c.id} onClick={() => onOpenCard(c.id)} className={`min-h-9 w-full rounded-md px-1.5 py-1 text-left text-[12.5px] font-medium text-[var(--color-text-primary)] hover:bg-[var(--gray-50)] ${WORDS} ${FOCUS}`}>
-                {c.title}
+                <TicketChip card={c} compact /> {c.title}
               </button>
             </li>
           ))}

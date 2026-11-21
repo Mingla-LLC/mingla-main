@@ -29,6 +29,9 @@ import { AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
+import { useAuth } from "../../context/AuthContext";
+import { isFullAdmin } from "../../lib/access";
+import { TicketSections } from "./TicketSections";
 import { useOpsCard } from "../../hooks/useOpsCard";
 import { useCardUploads } from "../../hooks/useCardFiles";
 import * as ops from "../../services/opsService";
@@ -37,6 +40,7 @@ import {
   personReasonLabel,
   isTagged,
   roadmapDraftHref,
+  DETAIL_LINK_KINDS,
   addDays,
   agentName,
   agentPromptFor,
@@ -144,6 +148,7 @@ function PeopleChip({ id, label, people, field }) {
 // the wording card's link to another page is not shown there.
 export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBack, onClose, onOpenSide = null, focus = false, onFocus = null, onOpenCard = null, columns: givenColumns = null }) {
   const { addToast } = useToast();
+  const { access } = useAuth();
   const read = useOpsCard(cardId);
   const card = read.data?.card || null;
   const directory = usePeopleDirectory();
@@ -695,6 +700,9 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             )}
           </section>
 
+          {/* #4420: a ticket's type, reporters, conversations and Send to GitHub, above the Description */}
+          {card.kind === "ticket" && <TicketSections card={card} canEdit={canEdit} isOperator={isFullAdmin(access)} locked={locked} onChanged={refresh} />}
+
           {/* (5) Description */}
           <section aria-labelledby={`desc-${card.id}`} data-card-description="" className="flex min-w-0 flex-col gap-1.5">
             <div className="flex min-w-0 items-center justify-between gap-2">
@@ -736,6 +744,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             )}
             {linking && (
               <RecordPicker
+                kinds={DETAIL_LINK_KINDS}
                 onClose={() => setLinking(false)}
                 onPick={async (pick) => {
                   const answer = await update({ links: [...(card.links || []).map((x) => ({ kind: x.kind, id: x.id })), { kind: pick.kind, id: pick.id }] }, `${pick.label} linked`);

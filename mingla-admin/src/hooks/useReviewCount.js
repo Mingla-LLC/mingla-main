@@ -10,6 +10,7 @@ import { todayIso } from "../lib/opsModel";
 import { useDraftCountValue } from "./useDraftCounts";
 import { useOpsPoll } from "./useOpsWork";
 import { dueTodayState } from "../lib/opsModel";
+import { workMenuCount } from "../lib/ticketModel";
 
 export const REVIEW_CHANGED = "mingla:ops-review-changed";
 
@@ -24,12 +25,17 @@ export function useReviewCount() {
   // #4130: Needs you (#/drafts) was retired into Work; the count follows it.
   const enabled = canOpenPage(access, "work-board");
   const counts = useOpsPoll(() => ops.fetchMyCounts(todayIso()), { key: access?.email || "", intervalMs: 30_000, enabled });
+  // #4420: open tickets I own still in To do (ops_ticket_counts); a failed
+  // read counts none and never hides the cards count.
+  const tickets = useOpsPoll(() => ops.fetchTicketCounts(), { key: `${access?.email || ""}|ticket-counts`, intervalMs: 30_000, enabled });
   const refetchCounts = counts.refetch;
+  const refetchTickets = tickets.refetch;
   useEffect(() => {
-    const refresh = () => { refetchCounts?.({ quiet: true }); };
+    const refresh = () => { refetchCounts?.({ quiet: true }); refetchTickets?.({ quiet: true }); };
     window.addEventListener(REVIEW_CHANGED, refresh);
     return () => window.removeEventListener(REVIEW_CHANGED, refresh);
-  }, [refetchCounts]);
+  }, [refetchCounts, refetchTickets]);
+  const ticketsNew = Number(tickets.data?.tickets_new_mine || 0);
   const waiting = Number(drafts.data?.waiting || 0);
   const needsPerson = Number(counts.data?.needs_person_mine || 0);
   const draftNeeded = Number(counts.data?.draft_needed_mine || 0);
@@ -45,7 +51,9 @@ export function useReviewCount() {
   const work = dueTodayState({ enabled, data: counts.data, error: counts.error });
   return {
     waiting, needsPerson, draftNeeded, wording,
-    cards: work.status === "ready" ? work.dueToday + work.overdue : null,
+    // #4420: the Work count includes tickets I own that are still new.
+    cards: work.status === "ready" ? workMenuCount(work.dueToday + work.overdue, ticketsNew) : null,
+    ticketsNew,
     dueToday: work.dueToday,
     overdue: work.overdue,
     cardsLoaded: work.status !== "loading",
