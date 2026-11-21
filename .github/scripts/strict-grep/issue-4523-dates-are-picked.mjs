@@ -47,6 +47,8 @@ export const SCAN_ROOTS = [
 /** Counted ratchet. Only ever lowered. */
 export const ALLOWLIST = {
   // #4514 moved the intake question renderers (3 hits) into the shared form renderer and its Host primitives; same 3 hits, not new ones.
+  // #4541 (via main) added the Explorer RSVP custom-form web date input; checkpoint 17 (#4523 custom-form calendar wiring) moves it onto the calendar.
+  "app-mobile/src/components/forms/RsvpFormWebDateInput.web.tsx": 1,
   "mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx": 1,
   "mingla-business/src/components/event/CreatorStep2When.tsx": 1,
   "mingla-business/src/components/event/MultiDateOverrideSheet.tsx": 1,
@@ -279,6 +281,18 @@ if (process.argv.includes("--self-test")) {
   cmp("allowlist count down fails", { "a.tsx": 1 }, 1);
   cmp("unlisted file fails", { "a.tsx": 2, "b.tsx": 1 }, 1);
   cmp("listed file with zero hits fails", {}, 1);
+
+  // The #4541 RSVP web date input is allowlisted at exactly the hits its source has today.
+  const rsvpWebDate = "app-mobile/src/components/forms/RsvpFormWebDateInput.web.tsx";
+  if (ALLOWLIST[rsvpWebDate] !== 1) fail.push(`${rsvpWebDate} allowlist entry is ${ALLOWLIST[rsvpWebDate]}, expected 1`);
+  if (fs.existsSync(path.join(ROOT, rsvpWebDate))) {
+    const got = checkSource(rsvpWebDate, fs.readFileSync(path.join(ROOT, rsvpWebDate), "utf8")).length;
+    if (got !== ALLOWLIST[rsvpWebDate]) fail.push(`${rsvpWebDate} has ${got} hit(s) but the allowlist says ${ALLOWLIST[rsvpWebDate]}`);
+  }
+  expectHits("the RSVP web date input shape fails without the allowlist", rsvpWebDate, '<input type="date" value={value} onChange={onChange} />', 1);
+  const rsvpOnly = { [rsvpWebDate]: ALLOWLIST[rsvpWebDate] };
+  if (compareWithAllowlist({ [rsvpWebDate]: 1 }, rsvpOnly).length !== 0) fail.push("the RSVP web date input is covered by the shipped allowlist");
+  if (compareWithAllowlist({ [rsvpWebDate]: 2 }, rsvpOnly).length === 0) fail.push("a second date input in the RSVP web file fails");
 
   const goodNav = "const onNavigateMonth = useCallback((delta) => { setVisible(delta); }, []);\n  const onNavigateYears = 1;";
   const badNav = "const onNavigateMonth = useCallback((delta) => { props.onDone(); }, []);\n  const onNavigateYears = 1;";
