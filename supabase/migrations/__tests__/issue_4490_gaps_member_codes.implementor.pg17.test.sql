@@ -85,10 +85,10 @@ INSERT INTO public.brands (
 INSERT INTO public.venue_listings (
   id, brand_id, slug, name, lat, lng, venue_category, claim_status, country_code
 ) VALUES
-  ('44909000-0000-4000-9000-0000000000a1', '44909000-0000-4000-9000-000000000010', 'member-code-a1', 'Member Code One', 6.45, 3.41, 'coworking', 'verified', 'NG'),
-  ('44909000-0000-4000-9000-0000000000a2', '44909000-0000-4000-9000-000000000010', 'member-code-a2', 'Member Code Two', 6.46, 3.42, 'coworking', 'verified', 'NG'),
-  ('44909000-0000-4000-9000-0000000000a3', '44909000-0000-4000-9000-000000000010', 'member-code-a3', 'Member Code Three', 6.47, 3.43, 'coworking', 'verified', 'NG'),
-  ('44909000-0000-4000-9000-0000000000a4', '44909000-0000-4000-9000-000000000010', 'member-code-a4', 'Member Code Four', 6.48, 3.44, 'coworking', 'verified', 'NG');
+  ('44909000-0000-4000-9000-0000000000a1', '44909000-0000-4000-9000-000000000010', 'membercodea1', 'Member Code One', 6.45, 3.41, 'coworking', 'verified', 'NG'),
+  ('44909000-0000-4000-9000-0000000000a2', '44909000-0000-4000-9000-000000000010', 'membercodea2', 'Member Code Two', 6.46, 3.42, 'coworking', 'verified', 'NG'),
+  ('44909000-0000-4000-9000-0000000000a3', '44909000-0000-4000-9000-000000000010', 'membercodea3', 'Member Code Three', 6.47, 3.43, 'coworking', 'verified', 'NG'),
+  ('44909000-0000-4000-9000-0000000000a4', '44909000-0000-4000-9000-000000000010', 'membercodea4', 'Member Code Four', 6.48, 3.44, 'coworking', 'verified', 'NG');
 
 CREATE TEMP TABLE t4490m_ids (k text PRIMARY KEY, v uuid) ON COMMIT DROP;
 GRANT ALL ON t4490m_ids TO PUBLIC;
@@ -188,15 +188,21 @@ DECLARE
   v_version bigint;
   v_code text;
 BEGIN
-  SELECT version INTO v_version FROM public.venue_membership_subscriptions WHERE id = public.t4490m_id('request');
+  v_version := (public.issue_4490_venue_member(public.t4490m_id('request'))->>'version')::bigint;
   v := public.issue_4490_manage_member(public.t4490m_id('request'), 'approve_request', '{}'::jsonb,
     v_version, 'm-approve-chi');
+  v_code := v->>'memberCode';
+  PERFORM public.t4490m_reset();
+  PERFORM public.t4490m_service();
   SELECT member_code INTO v_code FROM public.venue_membership_subscriptions WHERE id = public.t4490m_id('request');
   PERFORM public.t4490m_ok(v_code ~ '^[2-9A-HJ-NP-Z]{6}$' AND v->>'memberCode' = v_code
       AND EXISTS (SELECT 1 FROM public.notification_outbox
                   WHERE payload->>'subscription_id' = public.t4490m_id('request')::text
                     AND payload->>'step' = 'approval' AND payload->>'member_code' = v_code),
     'M-2c approval assigns the code before the approval email is queued');
+
+  PERFORM public.t4490m_reset();
+  PERFORM public.t4490m_as('44909000-0000-4000-8000-000000000001');
   PERFORM public.t4490m_ok(
     public.issue_4490_venue_member(public.t4490m_id('request'))->>'memberCode' = v_code,
     'M-2d the Host member panel receives the display code');
@@ -280,11 +286,11 @@ END
 $m4venue$;
 SELECT public.t4490m_reset();
 
-SELECT public.t4490m_as('44909000-0000-4000-8000-000000000005');
-SELECT public.t4490m_expect($q$SELECT public.issue_4490_admit_member_by_code(
-    '44909000-0000-4000-9000-0000000000a1', 'ZZZ992', 0,
-    '44909000-0000-4000-8000-000000000005')$q$,
-  '42501', NULL, 'M-4c authenticated callers cannot bypass the staff edge function');
-SELECT public.t4490m_reset();
+SELECT public.t4490m_ok(
+  NOT has_function_privilege('authenticated',
+        'public.issue_4490_admit_member_by_code(uuid,text,integer,uuid)', 'EXECUTE')
+    AND NOT has_function_privilege('anon',
+        'public.issue_4490_admit_member_by_code(uuid,text,integer,uuid)', 'EXECUTE'),
+  'M-4c signed-in and signed-out callers cannot bypass the staff edge function');
 
 ROLLBACK;

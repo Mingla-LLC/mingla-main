@@ -88,7 +88,7 @@ INSERT INTO public.venue_listings (
   id, brand_id, slug, name, lat, lng, venue_category, claim_status, country_code
 ) VALUES (
   '44908000-0000-4000-9000-0000000000a1', '44908000-0000-4000-9000-000000000010',
-  'kora-k-4490', 'Kora Works', 6.45, 3.41, 'coworking', 'verified', 'NG'
+  'korak4490', 'Kora Works', 6.45, 3.41, 'coworking', 'verified', 'NG'
 );
 
 CREATE TEMP TABLE t4490k_ids (k text PRIMARY KEY, v uuid) ON COMMIT DROP;
@@ -228,8 +228,9 @@ BEGIN
     '44908000-0000-4000-a000-000000000002', public.t4490k_id('request_plan'),
     '{"name":"Bola Request","email":"bola-request@example.test"}'::jsonb, NULL,
     public.t4490k_hash('cart-bola'), NULL, public.t4490k_tok('bola'), 'k-join-bola');
-  INSERT INTO t4490k_ids VALUES ('request_sub', (v->>'subscriptionId')::uuid);
-  PERFORM public.t4490k_ok(v->>'status' = 'requested' AND v->'paymentDue' = 'null'::jsonb,
+  INSERT INTO t4490k_ids VALUES ('request_sub', '44908000-0000-4000-a000-000000000002');
+  PERFORM public.t4490k_ok(v->>'subscriptionId' = '44908000-0000-4000-a000-000000000002'
+      AND v->>'status' = 'requested' AND v->'paymentDue' = 'null'::jsonb,
     'K-3d a yearly request still waits for approval without payment');
 END
 $k3$;
@@ -261,6 +262,11 @@ DECLARE
   v_steps text[];
 BEGIN
   SELECT current_period_end INTO v_end FROM public.venue_membership_subscriptions WHERE id = public.t4490k_id('year_sub');
+  -- Keep the independent approval fixture open while this block advances the
+  -- billing clock almost a year for the active member.
+  UPDATE public.venue_membership_subscriptions
+  SET created_at = v_end
+  WHERE id = public.t4490k_id('request_sub');
   PERFORM public.issue_4490_membership_billing_run(v_end - interval '30 days', 500);
   PERFORM public.issue_4490_membership_billing_run(v_end - interval '30 days', 500);
   SELECT id INTO v_open FROM public.venue_membership_periods
@@ -292,8 +298,6 @@ DO $k5$
 DECLARE
   v jsonb := public.issue_4490_admin_memberships('44908000-0000-4000-9000-0000000000a1');
   v_host jsonb := public.issue_4490_venue_members('44908000-0000-4000-9000-0000000000a1', 'all');
-  v_door jsonb := public.issue_4490_check_in_list(
-    '44908000-0000-4000-9000-0000000000a1', current_date, '44908000-0000-4000-8000-000000000001');
 BEGIN
   PERFORM public.t4490k_ok(EXISTS (
       SELECT 1 FROM jsonb_array_elements(v->'plans') p
@@ -309,12 +313,21 @@ BEGIN
       SELECT 1 FROM jsonb_array_elements(v_host->'members') m
       WHERE m->>'planPeriod' = 'year'),
     'K-5c Host member rows carry the yearly billing noun');
+END
+$k5$;
+SELECT public.t4490k_reset();
+SELECT public.t4490k_service();
+DO $k5d$
+DECLARE
+  v_door jsonb := public.issue_4490_check_in_list(
+    '44908000-0000-4000-9000-0000000000a1', current_date, '44908000-0000-4000-8000-000000000001');
+BEGIN
   PERFORM public.t4490k_ok(EXISTS (
       SELECT 1 FROM jsonb_array_elements(v_door->'members') m
       WHERE m->>'planPeriod' = 'year'),
-    'K-5d the door list carries the yearly billing noun');
+    'K-5d the service-only door list carries the yearly billing noun');
 END
-$k5$;
+$k5d$;
 SELECT public.t4490k_reset();
 
 -- Host approval opens the request's first year, due in three days.
@@ -330,12 +343,17 @@ BEGIN
   SELECT * INTO v_period FROM public.venue_membership_periods WHERE subscription_id = public.t4490k_id('request_sub');
   PERFORM public.t4490k_ok(
     v_period.period_end AT TIME ZONE 'Africa/Lagos'
-      = (v_period.period_start AT TIME ZONE 'Africa/Lagos') + interval '1 year'
-      AND v_period.due_at BETWEEN now() + interval '2 days 23 hours' AND now() + interval '3 days 1 hour'
-      AND EXISTS (SELECT 1 FROM public.notification_outbox
-                  WHERE payload->>'subscription_id' = public.t4490k_id('request_sub')::text
-                    AND payload->>'step' = 'approval' AND payload->>'period' = 'year'),
-    'K-6 approval opens the first yearly payment for three days with yearly copy data');
+      = (v_period.period_start AT TIME ZONE 'Africa/Lagos') + interval '1 year',
+    'K-6a approval opens a full calendar-year period');
+  PERFORM public.t4490k_ok(
+    v_period.due_at BETWEEN now() + interval '2 days 23 hours' AND now() + interval '3 days 1 hour',
+    'K-6b approval leaves the payment link open for three days');
+  PERFORM public.t4490k_service();
+  PERFORM public.t4490k_ok(
+    EXISTS (SELECT 1 FROM public.notification_outbox
+            WHERE payload->>'subscription_id' = public.t4490k_id('request_sub')::text
+              AND payload->>'step' = 'approval' AND payload->>'period' = 'year'),
+    'K-6c approval notification carries yearly copy data');
 END
 $k6$;
 SELECT public.t4490k_reset();

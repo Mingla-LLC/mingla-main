@@ -85,8 +85,8 @@ INSERT INTO public.brands (
 INSERT INTO public.venue_listings (
   id, brand_id, slug, name, lat, lng, venue_category, claim_status, country_code
 ) VALUES
-  ('44907000-0000-4000-9000-0000000000a1', '44907000-0000-4000-9000-000000000010', 'kora-g-4490', 'Kora Works', 6.45, 3.41, 'coworking', 'verified', 'NG'),
-  ('44907000-0000-4000-9000-0000000000a2', '44907000-0000-4000-9000-000000000010', 'other-g-4490', 'Other Works', 6.46, 3.42, 'coworking', 'verified', 'NG');
+  ('44907000-0000-4000-9000-0000000000a1', '44907000-0000-4000-9000-000000000010', 'korag4490', 'Kora Works', 6.45, 3.41, 'coworking', 'verified', 'NG'),
+  ('44907000-0000-4000-9000-0000000000a2', '44907000-0000-4000-9000-000000000010', 'otherg4490', 'Other Works', 6.46, 3.42, 'coworking', 'verified', 'NG');
 
 CREATE TEMP TABLE t4490g_ids (k text PRIMARY KEY, v uuid) ON COMMIT DROP;
 GRANT ALL ON t4490g_ids TO PUBLIC;
@@ -148,6 +148,7 @@ BEGIN
   v := public.issue_4490_membership_plans(a1);
   PERFORM public.t4490g_ok(v->'spaces' @> jsonb_build_array(jsonb_build_object('id', v_desk, 'name', 'Desk 12')),
     'G-1d the Host editor receives this venue''s spaces');
+  PERFORM public.t4490g_service();
   v_public := public.issue_4490_public_memberships(a1, ARRAY['memberships']);
   PERFORM public.t4490g_ok(v_public->'plans'->0->>'joinMode' = 'request'
       AND (v_public->'plans'->0->>'assignedDeskAvailable')::boolean
@@ -206,8 +207,13 @@ BEGIN
 
   -- The request may have waited before approval. Its new three-day clock is
   -- measured from the decision, not from the original request.
+  -- Keep the independent capacity contender open while the billing clock is
+  -- advanced so G-3d exercises the full-plan guard rather than request expiry.
   PERFORM public.t4490g_reset();
   PERFORM public.t4490g_service();
+  UPDATE public.venue_membership_subscriptions
+  SET created_at = v_period.due_at
+  WHERE id = public.t4490g_id('bola');
   PERFORM public.issue_4490_membership_billing_run(v_period.due_at - interval '1 minute', 500);
   PERFORM public.t4490g_reset();
   PERFORM public.t4490g_as('44907000-0000-4000-8000-000000000001');

@@ -299,7 +299,7 @@ SELECT pg_temp.issue_4490_patch(
   $old$      public.issue_4490_month_after(v_sub.start_on::timestamp AT TIME ZONE public.issue_4490_venue_timezone(v_venue),
         public.issue_4490_venue_timezone(v_venue)),$old$,
   $new$      public.issue_4490_period_after(v_sub.start_on::timestamp AT TIME ZONE public.issue_4490_venue_timezone(v_venue),
-        public.issue_4490_venue_timezone(v_venue), p.period)$new$
+        public.issue_4490_venue_timezone(v_venue), p.period),$new$
 );
 
 -- The renderer must know whether its plain-language noun is month or year.
