@@ -154,3 +154,45 @@ Deno.test("send-installment-reminder adds the link; manual charge refuses while 
     'return jsonResponse({ ok: false, error: "flex_payment_in_flight" }, 409);',
   );
 });
+
+Deno.test("pre-charge and dunning senders mint and pass the optional balance link", async () => {
+  const source = await read("../../../ticket-confirmation-dispatch/index.ts");
+  assertStringIncludes(
+    source,
+    'import { balanceLinkUrlForOrder } from "../_shared/installments/balanceLinks.ts";',
+  );
+
+  const lifecycleStart = source.indexOf(
+    "async function handleInstallmentLifecycleEmail(",
+  );
+  const dunningStart = source.indexOf(
+    "async function handleInstallmentDunning(",
+    lifecycleStart,
+  );
+  const paidInFullStart = source.indexOf(
+    "async function handleInstallmentPaidInFull(",
+    dunningStart,
+  );
+  assert(lifecycleStart >= 0 && dunningStart > lifecycleStart);
+  assert(paidInFullStart > dunningStart);
+
+  const lifecycle = source.slice(lifecycleStart, dunningStart);
+  const dunning = source.slice(dunningStart, paidInFullStart);
+  for (
+    const [label, handler] of [
+      ["pre-charge", lifecycle],
+      ["dunning", dunning],
+    ] as const
+  ) {
+    assertStringIncludes(
+      handler,
+      "const balanceUrl = await balanceLinkUrlForOrder(supabase, orderId);",
+      `${label} must mint an eligible order's balance link`,
+    );
+    assertStringIncludes(
+      handler,
+      "balanceUrl,",
+      `${label} must pass the link to its renderer`,
+    );
+  }
+});

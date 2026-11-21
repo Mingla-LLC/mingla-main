@@ -67,6 +67,7 @@ import { renderInstallmentDuplicateRefundedEmail } from "../_shared/email/instal
 import { renderInstallmentPayLinkEmail } from "../_shared/email/installmentPayLinkEmail.ts";
 import { renderInstallmentPlanPaidInFullEmail } from "../_shared/email/installmentPlanPaidInFullEmail.ts";
 import { renderInstallmentPreChargeNoticeEmail } from "../_shared/email/installmentPreChargeNoticeEmail.ts";
+import { balanceLinkUrlForOrder } from "../_shared/installments/balanceLinks.ts";
 import { renderWaitlistSpotOpenEmail } from "../_shared/email/templates/waitlistSpotOpen.ts";
 import { renderWaitlistSpotOpenSms } from "../_shared/sms/templates/waitlistSpotOpen.ts";
 import {
@@ -1042,6 +1043,9 @@ async function handleInstallmentLifecycleEmail(
   const brandName = order.events.brands.name ?? "your host";
   let rendered: { subject: string; html: string; text: string };
   if (kind === "installment_pre_charge_notice") {
+    // issue #4522 — only an eligible v2 flex plan receives this link; the
+    // helper fails closed to null, leaving every other notice unchanged.
+    const balanceUrl = await balanceLinkUrlForOrder(supabase, orderId);
     rendered = renderInstallmentPreChargeNoticeEmail({
       buyerName: order.buyer_name,
       tripTitle,
@@ -1051,6 +1055,7 @@ async function handleInstallmentLifecycleEmail(
       dueAt: String(body.dueAt ?? row.due_at),
       timezone: order.events.timezone ?? null,
       cardLast4: typeof body.cardLast4 === "string" ? body.cardLast4 : null,
+      balanceUrl,
     });
   } else if (kind === "installment_pay_link") {
     const url = typeof body.payUrl === "string" ? body.payUrl : "";
@@ -1139,6 +1144,9 @@ async function handleInstallmentDunning(
     next_retry_at: string | null;
   };
 
+  // issue #4522 — dunning offers the same optional balance payment route as
+  // reminders and pre-charge notices, without changing legacy plan emails.
+  const balanceUrl = await balanceLinkUrlForOrder(supabase, orderId);
   const rendered = renderInstallmentDunningEmail({
     recipient: { name: order.buyer_name, email: order.buyer_email },
     trip: { title: order.events.title ?? "your trip" },
@@ -1155,6 +1163,7 @@ async function handleInstallmentDunning(
       contactEmail: order.events.brands.contact_email,
     },
     order: { shortId: shortId(order.id) },
+    balanceUrl,
   });
 
   assertNotResendSandbox(rendered.from);
