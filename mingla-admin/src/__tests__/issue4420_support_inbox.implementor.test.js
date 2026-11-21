@@ -1,6 +1,6 @@
-// MINGLA-INVARIANT: I-4420-INBOX-LABELS-DERIVED: every label on a Support conversation is derived in lib/supportInboxModel.js from the row and the tickets linked to it; none is stored in the browser.
-// MINGLA-INVARIANT: I-4420-NOTES-NEVER-IN-PREVIEW: an internal note never reaches a list preview, a suggested customer line or a ticket pre-fill.
-// MINGLA-INVARIANT: I-4420-CREATE-TICKET-NO-AUTO-OWNER: Create ticket from a conversation passes the conversation as the source and never offers or sends an automatic owner; the person chooses.
+// MINGLA-INVARIANT: I-4420-INBOX-LABELS-DERIVED | issue #4420 | every label on a Support conversation is derived in lib/supportInboxModel.js from the row and the tickets linked to it; none is stored in the browser.
+// MINGLA-INVARIANT: I-4420-NOTES-NEVER-IN-PREVIEW | issue #4420 | an internal note never reaches a list preview, a suggested customer line or a ticket pre-fill.
+// MINGLA-INVARIANT: I-4420-CREATE-TICKET-NO-AUTO-OWNER | issue #4420 | Create ticket from a conversation passes the conversation as the source and never offers or sends an automatic owner; the person chooses.
 //
 // Issue #4420 (step 5) — the Admin Support chat inbox.
 //

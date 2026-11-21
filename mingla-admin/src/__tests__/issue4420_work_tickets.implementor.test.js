@@ -1,6 +1,6 @@
-// MINGLA-INVARIANT: I-4420-NOTES-STAFF-ONLY-UI: the Work board never renders a ticket's linked conversations (messages, photos, internal notes) from an answer that is not Support access; everyone else sees only the reporter count and "Support access needed to read these conversations".
-// MINGLA-INVARIANT: I-4420-TICKET-OWNER-CHOSEN-UI: the ticket form sends the owner the person chose (like any card) and no watcher; no automatic owner and no owner lock is drawn or sent.
-// MINGLA-INVARIANT: I-4420-ORDINARY-CARD-FORM-UNCHANGED: the add-card form, its payload and its linked-record kinds are exactly the card form, with nothing about tickets in it.
+// MINGLA-INVARIANT: I-4420-NOTES-STAFF-ONLY-UI | issue #4420 | the Work board never renders a ticket's linked conversations (messages, photos, internal notes) from an answer that is not Support access; everyone else sees only the reporter count and "Support access needed to read these conversations".
+// MINGLA-INVARIANT: I-4420-TICKET-OWNER-CHOSEN-UI | issue #4420 | the ticket form sends the owner the person chose (like any card) and no watcher; no automatic owner and no owner lock is drawn or sent.
+// MINGLA-INVARIANT: I-4420-ORDINARY-CARD-FORM-UNCHANGED | issue #4420 | the add-card form, its payload and its linked-record kinds are exactly the card form, with nothing about tickets in it.
 //
 // Issue #4420 (step 4) — Ticket cards on the Admin Work board.
 //
