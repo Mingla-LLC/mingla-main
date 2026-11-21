@@ -80,7 +80,10 @@ const isCartLine = (value: unknown): value is CartLine => {
     typeof v.quantity === "number" &&
     typeof v.unitPrice === "number" &&
     typeof v.currency === "string" &&
-    typeof v.isFree === "boolean"
+    typeof v.isFree === "boolean" &&
+    (v.addonPaymentMode === undefined ||
+      v.addonPaymentMode === "today" ||
+      v.addonPaymentMode === "spread")
   );
 };
 

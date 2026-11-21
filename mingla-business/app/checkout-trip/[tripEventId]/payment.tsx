@@ -193,6 +193,7 @@ function CheckoutTripPaymentScreenContent({
     paymentPlanChoice,
     setPaymentPlanChoice,
     setLinePaymentPlanChoice,
+    setAddonPaymentMode,
     checkoutAttemptIdFor,
     resetCheckoutAttempt,
   } = useCart();
@@ -238,6 +239,22 @@ function CheckoutTripPaymentScreenContent({
     });
   }, [lines, trip]);
   const v2CheckoutActive = v2PlanLines.length > 0;
+  const hasSelectedAddOns = lines.some(
+    (line) => (line.addOns?.length ?? 0) > 0,
+  );
+  const addonPaymentMode =
+    lines.find(
+      (line) =>
+        (line.addOns?.length ?? 0) > 0 &&
+        line.addonPaymentMode !== undefined,
+    )?.addonPaymentMode ??
+    quote?.addonPaymentMode ??
+    "today";
+  const quotedAddOnTotalCents =
+    Number.isInteger(quote?.extrasTotalCents) &&
+    Number(quote?.extrasTotalCents) > 0
+      ? Number(quote?.extrasTotalCents)
+      : null;
   // Legacy Business-native still renders one scalar plan editor. Web never
   // uses this as money authority; each line below owns its own schedule.
   const projectedSchedule = planLines[0]?.schedule ?? null;
@@ -343,6 +360,8 @@ function CheckoutTripPaymentScreenContent({
       l.ticketTypeId,
       l.quantity,
       l.paymentPlanChoice ?? "full",
+      l.addOns ?? null,
+      l.addonPaymentMode ?? null,
     ]),
     intakeFormData: intakeFormDataArray,
   });
@@ -380,6 +399,8 @@ function CheckoutTripPaymentScreenContent({
           isFree: l.isFree,
           quantity: l.quantity,
           paymentPlanChoice: l.paymentPlanChoice ?? "full",
+          addOns: l.addOns,
+          addonPaymentMode: l.addonPaymentMode,
         });
       }
       setBuyer(payload.buyer);
@@ -996,6 +1017,19 @@ function CheckoutTripPaymentScreenContent({
                   quote?.paymentPlanV2?.installmentSchedule?.fullPriceCents)
             }
             lockedChargeSchedule={quote?.installmentChargeSchedule}
+            addOnPlan={
+              paymentPlanChoice === "installments" && hasSelectedAddOns
+                ? {
+                    totalCents: quotedAddOnTotalCents,
+                    currency: quote?.currency ?? totals.currency,
+                    value: addonPaymentMode,
+                    onChange: setAddonPaymentMode,
+                    loading:
+                      quoteStatus === "loading" || quoteStatus === "idle",
+                    disabled: processing,
+                  }
+                : undefined
+            }
             flexEnabled={v2FlexEnabled}
             daysUntilDeparture={daysUntilDeparture}
             timeZone={trip.timezone}

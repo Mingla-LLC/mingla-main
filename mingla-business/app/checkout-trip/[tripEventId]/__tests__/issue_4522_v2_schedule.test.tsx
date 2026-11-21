@@ -9,7 +9,10 @@ import React from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { decodeTicketQuotePlanV2 } from "@mingla/offering-rendering/ticketQuotePlanV2Contract";
+import {
+  decodeTicketQuoteAddOnPaymentMode,
+  decodeTicketQuotePlanV2,
+} from "@mingla/offering-rendering/ticketQuotePlanV2Contract";
 import { decodeTripPaymentPlanV2 } from "@mingla/offering-rendering/tripPlanV2Contract";
 import { tripPlanV2PublicSummary } from "@mingla/offering-rendering/TripPlanV2PublicSummary";
 import type { TripOfferingTier } from "@mingla/offering-rendering/tripOfferingTypes";
@@ -18,6 +21,7 @@ import {
   TripPlanV2CheckoutChoice,
   tripPlanV2AvailabilityCopy,
 } from "../../../../src/components/trip/TripPlanV2CheckoutChoice";
+import { AddOnPlanChoice } from "../../../../src/components/trip/AddOnPlanChoice";
 import { paidCheckoutErrorMessage } from "../../../../src/services/ticketCheckoutService";
 
 type Rendered = {
@@ -86,6 +90,19 @@ const ticketQuoteServiceSource = readFileSync(
     "src",
     "services",
     "ticketQuoteService.ts",
+  ),
+  "utf8",
+);
+const ticketCheckoutServiceSource = readFileSync(
+  join(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "..",
+    "src",
+    "services",
+    "ticketCheckoutService.ts",
   ),
   "utf8",
 );
@@ -166,6 +183,8 @@ describe("#4522 v2 quote truth", () => {
         countGiven: 3,
       }),
     ).toBeUndefined();
+    expect(decodeTicketQuoteAddOnPaymentMode("spread")).toBe("spread");
+    expect(decodeTicketQuoteAddOnPaymentMode("later")).toBeUndefined();
     expect(
       decodeTicketQuotePlanV2({
         ...RAW_PLAN,
@@ -299,6 +318,29 @@ describe("#4522 v2 checkout choice", () => {
     unmount(tree);
   });
 
+  test("add-ons default to pay today and the segmented choice emits spread once", () => {
+    const onChange = jest.fn();
+    const tree = mount(
+      <AddOnPlanChoice
+        totalCents={60000}
+        currency="USD"
+        value="today"
+        onChange={onChange}
+      />,
+    );
+    const text = JSON.stringify(tree.toJSON());
+    expect(text).toContain("Add-ons ($600.00)");
+    expect(text).toContain("Pay today");
+    expect(text).toContain("Spread over my plan");
+    const choice = tree.root.findByProps({
+      testID: "trip-addon-plan-choice-spread",
+    });
+    TestRenderer.act(() => (choice.props.onPress as () => void)());
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith("spread");
+    unmount(tree);
+  });
+
   test("the screen updates quote scalar and every eligible create line", () => {
     const start = paymentRoute.indexOf("const setV2PaymentChoice");
     const end = paymentRoute.indexOf("// ORCH-0880", start);
@@ -316,14 +358,24 @@ describe("#4522 v2 checkout choice", () => {
     expect(ticketQuoteServiceSource).toContain(
       "decodeTicketQuotePlanV2(quote.paymentPlanV2)",
     );
+    expect(ticketQuoteServiceSource).toContain(
+      "addonPaymentMode: line.addonPaymentMode",
+    );
+    expect(ticketCheckoutServiceSource).toContain(
+      "? line.addonPaymentMode",
+    );
+    expect(paymentRoute).toContain("setAddonPaymentMode");
+    expect(paymentRoute).toContain("addOnPlan={");
     const reducerStart = cartSource.indexOf('case "SET_PAYMENT_PLAN_CHOICE"');
     const reducerEnd = cartSource.indexOf(
       'case "SET_EVENT_DATE_ID"',
       reducerStart,
     );
     const reducerWindow = cartSource.slice(reducerStart, reducerEnd);
-    expect(reducerWindow.match(/quoteStatus:/g)).toHaveLength(2);
-    expect(reducerWindow.match(/quote:\s*null/g)).toHaveLength(2);
+    expect(reducerWindow.match(/quoteStatus:/g)).toHaveLength(3);
+    expect(reducerWindow.match(/quote:\s*null/g)).toHaveLength(3);
+    expect(cartSource).toContain('case "SET_ADDON_PAYMENT_MODE"');
+    expect(cartSource).toContain("addonPaymentMode: action.choice");
   });
 });
 

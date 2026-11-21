@@ -65,6 +65,8 @@ export const quoteTicketCheckout = async (
       byDate: line.byDate,
       // issue #3281 — extras ride their ticket's line; absent keeps the body.
       addOns: line.addOns,
+      // issue #4522 — one cart choice copied onto its add-on lines.
+      addonPaymentMode: line.addonPaymentMode,
     })),
     surface: input.surface,
     ...(input.ticketLinkToken !== undefined && input.ticketLinkToken.length > 0
@@ -104,6 +106,20 @@ export const quoteTicketCheckout = async (
         ).then(({ decodeTicketQuotePlanV2 }) =>
           decodeTicketQuotePlanV2(quote.paymentPlanV2),
         );
+  const addonPaymentMode =
+    quote.addonPaymentMode === undefined
+      ? undefined
+      : await import(
+          "@mingla/offering-rendering/ticketQuotePlanV2Contract"
+        ).then(({ decodeTicketQuoteAddOnPaymentMode }) =>
+          decodeTicketQuoteAddOnPaymentMode(quote.addonPaymentMode),
+        );
+  if (
+    quote.addonPaymentMode !== undefined &&
+    addonPaymentMode === undefined
+  ) {
+    throw new Error("addon_payment_mode_invalid");
+  }
   const planTotalBuyerCents = installmentPlanBuyerTotal(
     quote.buyerTotalCents,
     schedule,
@@ -116,6 +132,9 @@ export const quoteTicketCheckout = async (
     ...(paymentPlanV2 === undefined
       ? { paymentPlanV2: undefined }
       : { paymentPlanV2 }),
+    ...(addonPaymentMode === undefined
+      ? { addonPaymentMode: undefined }
+      : { addonPaymentMode }),
     planTotalBuyerCents,
   };
 };

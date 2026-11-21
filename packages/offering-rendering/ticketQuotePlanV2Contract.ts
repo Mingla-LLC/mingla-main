@@ -36,6 +36,12 @@ export interface TicketQuotePlanV2 {
   installmentSchedule: TicketQuotePlanV2Schedule | null;
 }
 
+export function decodeTicketQuoteAddOnPaymentMode(
+  value: unknown,
+): "today" | "spread" | undefined {
+  return value === "today" || value === "spread" ? value : undefined;
+}
+
 const AVAILABILITIES: ReadonlySet<string> = new Set([
   "plan",
   "full_deposit",

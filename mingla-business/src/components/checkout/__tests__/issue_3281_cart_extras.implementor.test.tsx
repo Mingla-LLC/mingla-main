@@ -100,6 +100,32 @@ describe("#3281 cart extras", () => {
 
     await act(async () => tree.unmount());
   });
+
+  test("the add-on plan choice changes quote and attempt identity on every selected add-on line", async () => {
+    let tree!: RenderTree;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <CartProvider>
+          <Probe />
+        </CartProvider>,
+      );
+    });
+    await act(async () =>
+      addTicket(2, [{ addOnId: DINNER, quantity: 2 }]),
+    );
+    await act(async () => latestCart!.setBuyer({ termsAccepted: true }));
+    const todayAttempt = attemptId();
+
+    await act(async () => latestCart!.setAddonPaymentMode("spread"));
+    expect(latestCart!.lines[0].addonPaymentMode).toBe("spread");
+    expect(latestCart!.quote).toBeNull();
+    expect(latestCart!.quoteStatus).toBe("loading");
+    expect(attemptId()).not.toBe(todayAttempt);
+
+    await act(async () => addTicket(2, []));
+    expect(latestCart!.lines[0].addonPaymentMode).toBeUndefined();
+    await act(async () => tree.unmount());
+  });
 });
 
 const quoteInput = (addOns?: Array<{ addOnId: string; quantity: number }>) =>
@@ -120,6 +146,12 @@ const quoteInput = (addOns?: Array<{ addOnId: string; quantity: number }>) =>
     ],
   }) as unknown as TicketQuoteInput;
 
+const spreadQuoteInput = () => {
+  const value = quoteInput([{ addOnId: DINNER, quantity: 2 }]);
+  value.lines[0].addonPaymentMode = "spread";
+  return value;
+};
+
 describe("#3281 quote extras", () => {
   beforeEach(() => {
     request.mockReset();
@@ -130,7 +162,7 @@ describe("#3281 quote extras", () => {
     await quoteTicketCheckout(quoteInput([{ addOnId: DINNER, quantity: 2 }])).catch(
       () => undefined,
     );
-    const lines = request.mock.calls[0][0].lines as Array<Record<string, unknown>>;
+    const lines = request.mock.calls[0][0].lines as Record<string, unknown>[];
     expect(lines[0].addOns).toEqual([{ addOnId: DINNER, quantity: 2 }]);
   });
 
@@ -142,6 +174,17 @@ describe("#3281 quote extras", () => {
   test("other extras are another quote", () => {
     expect(ticketQuoteKeys.detail(quoteInput([{ addOnId: DINNER, quantity: 1 }]))).not.toEqual(
       ticketQuoteKeys.detail(quoteInput([{ addOnId: DINNER, quantity: 2 }])),
+    );
+  });
+
+  test("the add-on payment choice rides the line and changes the quote key", async () => {
+    await quoteTicketCheckout(spreadQuoteInput()).catch(() => undefined);
+    const lines = request.mock.calls[0][0].lines as Record<string, unknown>[];
+    expect(lines[0].addonPaymentMode).toBe("spread");
+    expect(ticketQuoteKeys.detail(spreadQuoteInput())).not.toEqual(
+      ticketQuoteKeys.detail(
+        quoteInput([{ addOnId: DINNER, quantity: 2 }]),
+      ),
     );
   });
 });

@@ -32,6 +32,7 @@ import type { ReactNode } from "react";
 import {
   createCheckoutAttemptId,
   createCheckoutAttemptTracker,
+  type CheckoutAddOnPaymentMode,
   type CheckoutAddOnRequest,
   type CheckoutClientAttemptInput,
   type CheckoutLinePlanChoice,
@@ -80,6 +81,8 @@ export interface CartLine {
   byDate?: Readonly<Record<string, number>>;
   /** issue #3281 — extras on this line; the server prices them. */
   addOns?: readonly CheckoutAddOnRequest[];
+  /** issue #4522 — one cart choice, copied onto its selected add-on lines. */
+  addonPaymentMode?: CheckoutAddOnPaymentMode;
 }
 
 export interface BuyerDetails {
@@ -294,6 +297,7 @@ type CartAction =
       paymentPlanChoice?: CheckoutLinePlanChoice;
       byDate?: Readonly<Record<string, number>>;
       addOns?: readonly CheckoutAddOnRequest[];
+      addonPaymentMode?: CheckoutAddOnPaymentMode;
     }
   | { type: "SET_BUYER"; patch: Partial<BuyerDetails> }
   | { type: "SET_DISCOUNT_CODE"; code: string | null }
@@ -312,6 +316,10 @@ type CartAction =
       type: "SET_LINE_PAYMENT_PLAN_CHOICE";
       ticketTypeId: string;
       choice: CheckoutLinePlanChoice;
+    }
+  | {
+      type: "SET_ADDON_PAYMENT_MODE";
+      choice: CheckoutAddOnPaymentMode;
     }
   // ORCH-1138 Leg 3 — set/clear the chosen experience occurrence.
   | { type: "SET_EVENT_DATE_ID"; eventDateId: string | null }
@@ -374,6 +382,7 @@ const reducer = (state: CartState, action: CartAction): CartState => {
         paymentPlanChoice,
         byDate,
         addOns,
+        addonPaymentMode,
       } = action;
       const normalizedCurrency = currency.toUpperCase();
       const existingCurrency = state.lines[0]?.currency;
@@ -414,6 +423,10 @@ const reducer = (state: CartState, action: CartAction): CartState => {
               isFree,
               paymentPlanChoice: paymentPlanChoice ?? "full",
               byDate,
+              ...(addOns !== undefined ? { addOns } : {}),
+              ...(addonPaymentMode !== undefined
+                ? { addonPaymentMode }
+                : {}),
             },
           ],
         };
@@ -435,7 +448,17 @@ const reducer = (state: CartState, action: CartAction): CartState => {
                   : {}),
                 byDate,
                 // issue #3281 — undefined keeps the line's extras; [] clears them.
-                ...(addOns && { addOns }),
+                ...(addOns !== undefined
+                  ? {
+                      addOns,
+                      ...(addOns.length === 0
+                        ? { addonPaymentMode: undefined }
+                        : {}),
+                    }
+                  : {}),
+                ...(addonPaymentMode !== undefined
+                  ? { addonPaymentMode }
+                  : {}),
               }
             : l,
         ),
@@ -497,6 +520,23 @@ const reducer = (state: CartState, action: CartAction): CartState => {
         ),
       };
     }
+    case "SET_ADDON_PAYMENT_MODE": {
+      if (!state.lines.some((line) => (line.addOns?.length ?? 0) > 0)) {
+        return state;
+      }
+      return {
+        ...state,
+        quote: null,
+        quoteStatus: "loading",
+        quoteErrorCode: null,
+        checkoutReview: null,
+        lines: state.lines.map((line) =>
+          (line.addOns?.length ?? 0) > 0
+            ? { ...line, addonPaymentMode: action.choice }
+            : line,
+        ),
+      };
+    }
     case "SET_EVENT_DATE_ID":
       return { ...state, eventDateId: action.eventDateId };
     case "SET_EVENT_DATE_IDS":
@@ -533,6 +573,7 @@ export interface CartContextValue extends CartState {
     byDate?: Readonly<Record<string, number>>;
     /** issue #3281 — sets an existing line's extras; undefined keeps them, [] clears. */
     addOns?: readonly CheckoutAddOnRequest[];
+    addonPaymentMode?: CheckoutAddOnPaymentMode;
   }) => void;
   setBuyer: (patch: Partial<BuyerDetails>) => void;
   setDiscountCode: (code: string | null) => void;
@@ -561,6 +602,7 @@ export interface CartContextValue extends CartState {
     ticketTypeId: string,
     choice: CheckoutLinePlanChoice,
   ) => void;
+  setAddonPaymentMode: (choice: CheckoutAddOnPaymentMode) => void;
   checkoutAttemptIdFor: (input: {
     eventId: string;
     surface: "web" | "mobile-web" | "native";
@@ -621,6 +663,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       paymentPlanChoice?: CheckoutLinePlanChoice;
       byDate?: Readonly<Record<string, number>>;
       addOns?: readonly CheckoutAddOnRequest[];
+      addonPaymentMode?: CheckoutAddOnPaymentMode;
     }): void => {
       dispatch({ type: "SET_LINE_QUANTITY", ...params });
     },
@@ -687,6 +730,13 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const setLinePaymentPlanChoice = useCallback(
     (ticketTypeId: string, choice: CheckoutLinePlanChoice): void => {
       dispatch({ type: "SET_LINE_PAYMENT_PLAN_CHOICE", ticketTypeId, choice });
+    },
+    [],
+  );
+
+  const setAddonPaymentMode = useCallback(
+    (choice: CheckoutAddOnPaymentMode): void => {
+      dispatch({ type: "SET_ADDON_PAYMENT_MODE", choice });
     },
     [],
   );
@@ -769,6 +819,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       clearIntakeTierData,
       setPaymentPlanChoice,
       setLinePaymentPlanChoice,
+      setAddonPaymentMode,
       checkoutAttemptIdFor,
       resetCheckoutAttempt,
       intakeUploadSessionId: intakeUploadSessionRef.current,
@@ -791,6 +842,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       clearIntakeTierData,
       setPaymentPlanChoice,
       setLinePaymentPlanChoice,
+      setAddonPaymentMode,
       checkoutAttemptIdFor,
       resetCheckoutAttempt,
       setEventDateId,

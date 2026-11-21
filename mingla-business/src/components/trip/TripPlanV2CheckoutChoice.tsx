@@ -17,6 +17,10 @@ import type {
 import { space } from "../../constants/designSystem";
 import { color, themedStyles } from "../../theme/surfaceTokens";
 import { formatCurrency } from "../../utils/currency";
+import {
+  AddOnPlanChoice,
+  type AddOnPlanChoiceProps,
+} from "./AddOnPlanChoice";
 
 export type TripPlanV2CheckoutChoiceValue = "full" | "installments";
 
@@ -28,6 +32,7 @@ export interface TripPlanV2CheckoutChoiceProps {
   dueTodayCents: number | undefined;
   fullPriceCents: number | undefined;
   lockedChargeSchedule?: InstallmentChargeSchedule;
+  addOnPlan?: AddOnPlanChoiceProps;
   flexEnabled: boolean;
   daysUntilDeparture: number;
   timeZone: string;
@@ -83,6 +88,7 @@ export const TripPlanV2CheckoutChoice: React.FC<
   dueTodayCents,
   fullPriceCents,
   lockedChargeSchedule,
+  addOnPlan,
   flexEnabled,
   daysUntilDeparture,
   timeZone,
@@ -101,6 +107,9 @@ export const TripPlanV2CheckoutChoice: React.FC<
         <Text style={s.kicker}>HOW YOU PAY</Text>
         <View style={s.skeletonWide} />
         <View style={s.skeletonShort} />
+        {addOnPlan !== undefined ? (
+          <AddOnPlanChoice {...addOnPlan} loading disabled />
+        ) : null}
         <Text style={s.loadingText}>Working out your payments…</Text>
       </View>
     );
@@ -178,6 +187,11 @@ export const TripPlanV2CheckoutChoice: React.FC<
           accessibilityRole="list"
           accessibilityLabel="Payment schedule"
         >
+          {addOnPlan !== undefined &&
+          addOnPlan.totalCents !== null &&
+          addOnPlan.totalCents > 0 ? (
+            <AddOnPlanChoice {...addOnPlan} />
+          ) : null}
           <ScheduleRow label="Today" amount={depositLabel} />
           {installments.map((installment) => (
             <ScheduleRow

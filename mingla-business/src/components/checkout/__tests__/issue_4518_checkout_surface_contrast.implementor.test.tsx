@@ -414,6 +414,12 @@ describe.each(THEMES)("#4518 — checkout is readable on %s", (_name, palette) =
           currency="USD"
           dueTodayCents={22000}
           fullPriceCents={110000}
+          addOnPlan={{
+            totalCents: 12000,
+            currency: "USD",
+            value: "today",
+            onChange: () => undefined,
+          }}
           flexEnabled
           daysUntilDeparture={90}
           timeZone="America/New_York"
@@ -424,6 +430,9 @@ describe.each(THEMES)("#4518 — checkout is readable on %s", (_name, palette) =
     expect(found.map((entry) => entry.text)).toEqual(expect.arrayContaining([
       "HOW YOU PAY",
       "Pay in full",
+      "Add-ons ($120.00)",
+      "Pay today",
+      "Spread over my plan",
       "You booked closer to the trip, so your plan has fewer payments.",
       "You can pay more at any time from My trip.",
       "We’ll remind you before each payment.",

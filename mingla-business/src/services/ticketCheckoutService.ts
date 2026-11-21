@@ -902,6 +902,9 @@ export const createTicketCheckout = async (
         // issue #3281 — extras only on v2, whose attempt id covers them; the
         // v1 idempotency key reads only tickets and quantities.
         addOns: isCheckoutV2 ? line.addOns : undefined,
+        addonPaymentMode: isCheckoutV2
+          ? line.addonPaymentMode
+          : undefined,
         ...(isCheckoutV2
           ? { paymentPlanChoice: explicitV2PlanChoice(line.ticketTypeId) }
           : {}),
