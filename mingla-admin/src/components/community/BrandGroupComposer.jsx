@@ -1,6 +1,6 @@
 // Issue #4270 (Wave 7) — the composer: quick replies (they fill the box, they
 // never send), the reply strip, the select bar for selected messages (Create
-// product signal, Add to plan, Make a work card), files, the message box and
+// ticket, #4420, Add to plan, Make a work card), files, the message box and
 // Send (Ctrl or Cmd + Enter). The line under it says who the brand team sees.
 import { Plus, X } from "lucide-react";
 
@@ -19,7 +19,7 @@ export function BrandGroupComposer({
       {selectedCount > 0 ? (
         <div data-select-bar="" role="toolbar" aria-label="Selected messages" className="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-[var(--color-text-primary)] px-3 py-2 text-[var(--color-background-primary)]">
           <span className="mr-auto text-[13px] font-semibold">{selectedCount} {selectedCount === 1 ? "message" : "messages"} selected</span>
-          <button type="button" className={`${BAR_BUTTON} bg-[var(--color-background-primary)] text-[var(--color-text-primary)]`} onClick={onSelectSignal}>Create product signal</button>
+          <button type="button" className={`${BAR_BUTTON} bg-[var(--color-background-primary)] text-[var(--color-text-primary)]`} onClick={onSelectSignal}>Create ticket</button>
           {canPlanActions && <button type="button" className={`${BAR_BUTTON} bg-[var(--color-background-primary)] text-[var(--color-text-primary)]`} onClick={onSelectPlan}>Add to plan</button>}
           {canPlanActions && <button type="button" className={`${BAR_BUTTON} bg-[var(--color-background-primary)] text-[var(--color-text-primary)]`} onClick={onSelectWork}>Make a work card</button>}
           <button type="button" className={`${BAR_BUTTON} text-[var(--color-background-primary)] underline`} onClick={onSelectCancel}>Cancel</button>

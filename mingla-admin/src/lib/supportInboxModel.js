@@ -276,6 +276,27 @@ export function ticketPrefill(ticket, messages = []) {
   };
 }
 
+/**
+ * #4420 (step 6) — "Create ticket" from a Brand group (it replaced Send to
+ * Product): the ticket links the brand (created_from brand_group, which the
+ * server requires to name the brand) and quotes the chosen messages in What
+ * is wrong. `lines` are "Name: message" strings, the first one the message
+ * the person picked. Returns null when there is no brand to link.
+ */
+export function brandGroupTicketPrefill({ brandId, brandName, lines } = {}) {
+  if (typeof brandId !== "string" || !brandId) return null;
+  const quoted = (Array.isArray(lines) ? lines : []).map((l) => String(l || "").trim()).filter(Boolean);
+  const name = oneLine(brandName, 80) || "Brand group";
+  const firstMessage = String(quoted[0] || "").replace(/^[^:]{1,80}:\s*/, "");
+  const header = `From the ${name} Brand group:`;
+  return {
+    brandId,
+    title: oneLine(`${name}: ${firstMessage}`, 160),
+    whatIsWrong: `${header}\n${quoted.map((l) => `> ${l.replace(/\s+/g, " ")}`).join("\n")}`.slice(0, 4000),
+    label: `${name} Brand group`,
+  };
+}
+
 /** The line a person might send the customer once a ticket exists. Never carries a note. */
 export function customerLineFor(number) {
   return `Thanks for flagging this. We have logged it as ticket T${number} and the team is on it. We will update you here.`;
