@@ -2044,6 +2044,7 @@
         "mingla-admin/src/components/AppIdentityReadinessPanel.jsx",
         "mingla-admin/src/components/app-readiness/AppDownloadReadinessPanel.jsx",
         "app-mobile/app.json",
+        "app-mobile/package.json",
         "app-mobile/src/hooks/useRevenueCat.ts",
         "app-mobile/src/payments/checkoutAdTracking.ts",
         "app-mobile/src/services/analyticsOptOut.ts",

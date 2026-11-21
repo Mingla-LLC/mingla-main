@@ -5,6 +5,7 @@
  *
  * Every test here fails when its change is reverted (recorded on the issue).
  */
+// MINGLA-INVARIANT: I-4389-STORE-BUILD-FROM-LATEST-MAIN | issue #4389 | Every build-production script runs scripts/release/store-build-guard.cjs, which refuses unless HEAD is the freshly fetched origin/main and the repo is clean.
 // MINGLA-INVARIANT: I-4389-EAS-UPLOAD-KEEPS-LOCAL-MODULES | issue #4389 | No .easignore pattern drops a local Expo module's native folder, so the iPhone build links MinglaTapToPayEducation and Tap to Pay can show.
 // MINGLA-INVARIANT: I-4389-TAP-ADMIN-PATH-IS-REAL | issue #4389 | Apple 3.8.1: the "ask an admin" message names a place in the app that really opens Tap to Pay setup.
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
@@ -942,5 +943,34 @@ describe("#4389: the EAS upload keeps local native modules", () => {
     expect(root.ignores("mingla-business/ios/Podfile")).toBe(true);
     expect(root.ignores("app-mobile/android/build.gradle")).toBe(true);
     expect(matcher(path.join(BIZ_ROOT, ".easignore")).ignores("ios/Podfile")).toBe(true);
+  });
+});
+
+describe("#4389: store builds come only from the latest main", () => {
+  const REPO_ROOT = path.join(BIZ_ROOT, "..");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { storeBuildVerdict } = require(path.join(REPO_ROOT, "scripts/release/store-build-guard.cjs")) as {
+    storeBuildVerdict: (i: { headSha: string; mainSha: string; porcelain: string; fetchError?: string | null }) => { ok: boolean };
+  };
+  const A = "a".repeat(40);
+  const B = "b".repeat(40);
+
+  test("only a clean checkout of the fetched origin/main may build", () => {
+    expect(storeBuildVerdict({ headSha: A, mainSha: A, porcelain: "" }).ok).toBe(true);
+    expect(storeBuildVerdict({ headSha: A, mainSha: B, porcelain: "" }).ok).toBe(false);
+    expect(storeBuildVerdict({ headSha: A, mainSha: A, porcelain: " M app.json" }).ok).toBe(false);
+    expect(storeBuildVerdict({ headSha: A, mainSha: A, porcelain: "?? stray.png" }).ok).toBe(false);
+    expect(storeBuildVerdict({ headSha: A, mainSha: A, porcelain: "", fetchError: "offline" }).ok).toBe(false);
+  });
+
+  test("every production build script in both apps runs the guard first", () => {
+    for (const app of ["app-mobile", "mingla-business"]) {
+      const scripts = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, app, "package.json"), "utf8")).scripts as Record<string, string>;
+      const production = Object.entries(scripts).filter(([, cmd]) => /eas build[^&]*--profile production\b/.test(cmd));
+      expect(production.length).toBeGreaterThanOrEqual(2);
+      for (const [name, cmd] of production) {
+        expect([app, name, cmd.startsWith("node ../scripts/release/store-build-guard.cjs && ")]).toEqual([app, name, true]);
+      }
+    }
   });
 });
