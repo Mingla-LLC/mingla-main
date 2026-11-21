@@ -33,22 +33,38 @@ const privacyReaderSource = () => [
 //
 // I-PRIVACY-BAR-NEVER-OCCLUDES (#2331): the strip owns a fixed band at the
 // bottom, `--mingla-privacy-strip`, a CSS constant set once here and never
-// written by JS. On Host web the app root is a fixed box that ends at the
-// strip's top edge and, through `contain:layout`, is the containing block of
-// every `position:fixed` layer inside it, so `bottom:0` there means "just
-// above the strip". The strip, its sheet and scrim are siblings of #root
-// (outside it) and sit on the top z-layer. react-native-web Modal (0.21)
-// portals a bare <div> to <body> whose grandchild is the `aria-modal` View:
-// the `body>div:has(>div [aria-modal="true"])` rule gives that portal the same
-// box. A body-level `aria-modal` layer (the phone country picker portal) ends
-// at the strip too.
+// written by JS. Two document states, decided by CSS alone:
+//   * A document the Expo app does not own (the server-rendered public page
+//     before takeover or when the app fails to boot, the /s/ and /p/ share
+//     pages) scrolls like a normal page: `body` is padded by the band so the
+//     last line clears the strip (the marketing model).
+//   * A document the Expo app owns carries index.html's `style#expo-reset`
+//     (in the SPA shell from the first byte; added by the #3214 boot hand-off
+//     at takeover). There the app root is a fixed box that ends at the strip's
+//     top edge and, through `contain:layout`, is the containing block of every
+//     `position:fixed` layer inside it, so `bottom:0` there means "just above
+//     the strip". #root itself never scrolls (`overflow:clip`): if it did, the
+//     overflow of its fixed layers (a 1000px parallax backdrop) would become
+//     scroll range and every pinned bar would scroll with it. A screen taller
+//     than the box scrolls in the app's own root view (`#root>div`), which is
+//     NOT the containing block of the fixed layers, so they stay pinned. react-native-web Modal (0.21) portals a bare <div> to <body>;
+//     its child is the fixed animation container and the `aria-modal` View
+//     sits inside that: `body>div:has(>div [aria-modal="true"])` gives that
+//     portal the same box. A body-level `aria-modal` layer (the phone country
+//     picker portal) ends at the strip too.
+// The strip, its sheet and scrim are siblings of #root (outside it) and sit on
+// the top z-layer.
+const APP = "html:has(style#expo-reset)";
 const PRIVACY_HOST_SHELL_CSS_LINES = [
   ":root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}",
-  "html,body{height:100%;overflow:hidden}",
-  "#root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow-y:auto;overscroll-behavior:contain}",
-  "body>div:has(>div [aria-modal=\"true\"]){position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);contain:layout;z-index:9999;pointer-events:none}",
-  ":where(body>div:has(>div [aria-modal=\"true\"]))>div{pointer-events:auto}",
-  "body>[aria-modal=\"true\"]{bottom:var(--mingla-privacy-strip)!important}",
+  "body{padding-bottom:var(--mingla-privacy-strip)}",
+  `${APP},${APP} body{height:100%;overflow:hidden}`,
+  `${APP} body{padding-bottom:0}`,
+  `${APP} #root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow:hidden;overflow:clip}`,
+  `${APP} #root>div{overflow-y:auto;overscroll-behavior:contain}`,
+  `${APP} body>div:has(>div [aria-modal="true"]){position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);contain:layout;z-index:9999;pointer-events:none}`,
+  `:where(${APP} body>div:has(>div [aria-modal="true"]))>div{pointer-events:auto}`,
+  `${APP} body>[aria-modal="true"]{bottom:var(--mingla-privacy-strip)!important}`,
 ];
 
 // The strip and its sheet: the same on every document that carries the strip,
@@ -87,16 +103,9 @@ const PRIVACY_BAR_CSS_LINES = [
   "@media (prefers-reduced-motion:reduce){.mpb{animation:none}.mpb-switch,.mpb-switch::after{transition:none}}",
 ];
 
-// The whole Host web stylesheet: the shell box plus the strip.
+// The whole stylesheet: both document states plus the strip.
 const privacyBarCss = () => [...PRIVACY_HOST_SHELL_CSS_LINES, ...PRIVACY_BAR_CSS_LINES].join("\n");
 
-// #2331 — a document that scrolls itself (the standalone /s/ and /p/ share
-// pages): the constant and the strip, and the body's last line clears the band.
-const privacyStripDocumentCss = () => [
-  PRIVACY_HOST_SHELL_CSS_LINES[0],
-  ...PRIVACY_BAR_CSS_LINES,
-  "body{padding-bottom:var(--mingla-privacy-strip)}",
-].join("\n");
 
 // #4318 — the strip's rules in their own <style>, under the id the app's strip
 // (ConsentBanner.web.tsx STYLE_ID) looks for. The public boot hand-off drops
@@ -188,6 +197,5 @@ module.exports = {
   privacyBarRuntimeSource,
   privacyBarStyleElement,
   privacyReaderSource,
-  privacyStripDocumentCss,
   privacyStripMarkup,
 };

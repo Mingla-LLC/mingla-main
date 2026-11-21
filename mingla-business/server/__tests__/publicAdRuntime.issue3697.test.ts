@@ -252,7 +252,7 @@ describe("#3697 / #2331 public arrival runtime", () => {
     expect(html).not.toContain("Ad privacy choices");
     expect(html).not.toContain("Opt out of ad tracking");
     expect(html).toContain(
-      "#root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow-y:auto;overscroll-behavior:contain}",
+      "html:has(style#expo-reset) #root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow:hidden;overflow:clip}",
     );
   });
 

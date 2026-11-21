@@ -60,9 +60,11 @@ describe("#2331 privacy bar / reserve composition", () => {
     // The app root is the fixed box that ends at the strip's top edge (the
     // reserve action rises with it) and scrolls a screen that no longer fits;
     // no rule styles the root's children.
-    expect(banner).toContain("#root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);");
-    expect(banner).not.toMatch(/#root>/);
-    expect(banner).not.toContain("padding-bottom:var(--mingla-privacy-strip)");
+    expect(banner).toContain("html:has(style#expo-reset) #root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);");
+    // The only rule on the root's child lets a too-tall screen scroll in it.
+    expect(banner.match(/#root>/g)).toHaveLength(1);
+    // A document the app owns does not pad the body (the box already ends at the strip).
+    expect(banner).toContain("html:has(style#expo-reset) body{padding-bottom:0}");
     expect(banner).not.toContain("ResizeObserver");
     expect(banner).not.toContain("choiceLinkHost");
     expect(banner).not.toContain("Ad privacy choices");

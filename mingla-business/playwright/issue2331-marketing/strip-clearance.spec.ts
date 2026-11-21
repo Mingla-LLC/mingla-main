@@ -18,9 +18,17 @@ const CAREERS = SITE.replace("127.0.0.1", "career.localhost");
 // The internal preview routes (/event-preview, /trip-preview, /venue-preview)
 // and the design-preview banner are not public pages: they are the explicit
 // exception, matching the static check's allowlist.
-const PAGES: ReadonlyArray<{ name: string; url: string; overlays: Array<"forms" | "landing-sheet" | "page-system"> }> = [
-  { name: "home", url: `${SITE}/`, overlays: ["forms", "landing-sheet"] },
-  { name: "host", url: `${SITE}/host`, overlays: ["forms", "landing-sheet"] },
+// `full`: every size plus both rotations for the pages with the most fixed
+// layers (home and host: nav, menu, hero overlays, form pop-ups, hand-off
+// sheet). The rest run at the three layout breakpoints.
+const BREAKPOINTS = [
+  { width: 375, height: 667 },
+  { width: 1024, height: 768 },
+  { width: 1280, height: 800 },
+] as const;
+const PAGES: ReadonlyArray<{ name: string; url: string; overlays: Array<"forms" | "landing-sheet" | "page-system">; full?: boolean }> = [
+  { name: "home", url: `${SITE}/`, overlays: ["forms", "landing-sheet"], full: true },
+  { name: "host", url: `${SITE}/host`, overlays: ["forms", "landing-sheet"], full: true },
   { name: "links", url: `${SITE}/links`, overlays: [] },
   { name: "city hub", url: `${SITE}/cities/lagos`, overlays: ["page-system"] },
   { name: "help", url: `${SITE}/help`, overlays: [] },
@@ -42,6 +50,15 @@ async function newContext(browser: Browser, width: number, height: number): Prom
     return host === "127.0.0.1" || host.endsWith("localhost") ? route.fallback() : route.abort("blockedbyclient");
   });
   return context;
+}
+
+// Ready signal instead of fixed waits: load, fonts, two animation frames.
+async function ready(page: Page): Promise<void> {
+  await page.waitForLoadState("load").catch(() => undefined);
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
 }
 
 async function check(page: Page, findings: Finding[], where: { page: string; size: string }, state: string, allowStaticUnder: boolean): Promise<void> {
@@ -66,7 +83,7 @@ async function mountOverlay(page: Page, kind: string): Promise<void> {
     host.innerHTML = html[which] ?? "";
     document.body.appendChild(host);
   }, kind);
-  await page.waitForTimeout(350);
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 }
 
 async function unmountOverlays(page: Page): Promise<void> {
@@ -91,27 +108,25 @@ async function auditOverlays(page: Page, findings: Finding[], where: { page: str
 }
 
 test.describe("#2331 I-PRIVACY-BAR-NEVER-OCCLUDES on usemingla.com (edge-based)", () => {
-  test.describe.configure({ mode: "serial" });
-
   for (const target of PAGES) {
-    test(`${target.name}: every size, rotation and state`, async ({ browser }) => {
+    test(`${target.name}: ${target.full === true ? "every size, rotation" : "each breakpoint"} and state`, async ({ browser }) => {
       test.setTimeout(600_000);
       const findings: Finding[] = [];
-      for (const size of VIEWPORTS) {
+      for (const size of target.full === true ? VIEWPORTS : BREAKPOINTS) {
         const where = { page: target.name, size: `${size.width}x${size.height}` };
         const context = await newContext(browser, size.width, size.height);
         const page = await context.newPage();
         await page.goto(target.url, { waitUntil: "domcontentloaded" });
         // Mid-page, static content may pass under the strip (document scroll).
         await check(page, findings, where, "domcontentloaded", true);
-        await page.waitForLoadState("load").catch(() => undefined);
-        await page.waitForTimeout(1500);
+        await ready(page);
         await check(page, findings, where, "settled", true);
         await scrollEverythingToEnd(page);
         await check(page, findings, where, "scrolled to the bottom", false);
         // Options open: the sheet sits on the strip.
         await page.locator(".mps").click();
-        await page.waitForTimeout(450);
+        await page.locator(".mpb:not([hidden])").waitFor();
+        await page.waitForTimeout(250); // the sheet's 0.2s entrance
         const sheet = await page.locator(".mpb:not([hidden])").boundingBox();
         const strip = await page.locator(".mps").boundingBox();
         if (sheet === null || strip === null || Math.abs(sheet.y + sheet.height - strip.y) > 0.5) {
@@ -119,27 +134,26 @@ test.describe("#2331 I-PRIVACY-BAR-NEVER-OCCLUDES on usemingla.com (edge-based)"
         }
         await check(page, findings, where, "options open", true);
         await page.keyboard.press("Escape");
-        await page.waitForTimeout(300);
         // The site menu, opened for real where the page has one.
         const menu = page.getByRole("button", { name: "Open menu" }).first();
         if ((await menu.count()) > 0 && (await menu.isVisible())) {
           await menu.click();
-          await page.waitForTimeout(600);
+          await page.waitForTimeout(350); // the drawer's slide-in
           await check(page, findings, where, "menu open", true);
           await page.keyboard.press("Escape");
-          await page.waitForTimeout(400);
+          await page.waitForTimeout(250);
         }
         await auditOverlays(page, findings, where, target.overlays);
         await context.close();
       }
-      for (const rotation of ROTATIONS) {
+      for (const rotation of target.full === true ? ROTATIONS : []) {
         const where = { page: target.name, size: `${rotation.from.width}x${rotation.from.height} -> ${rotation.to.width}x${rotation.to.height}` };
         const context = await newContext(browser, rotation.from.width, rotation.from.height);
         const page = await context.newPage();
         await page.goto(target.url, { waitUntil: "load" });
-        await page.waitForTimeout(1200);
+        await ready(page);
         await page.setViewportSize(rotation.to);
-        await page.waitForTimeout(800);
+        await ready(page);
         await check(page, findings, where, "rotated", true);
         await scrollEverythingToEnd(page);
         await check(page, findings, where, "rotated, scrolled to the bottom", false);

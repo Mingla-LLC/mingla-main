@@ -5,14 +5,16 @@
 // against the viewport and the strip (fixed, bottom 0, top z-layer) would cover
 // its bottom 28px. Each such layer therefore uses the one shared bottom edge,
 // `var(--mingla-privacy-strip)`. This check fails on any fixed layer in
-// app/ or components/ that touches the bottom (CSS `bottom: 0` / `inset: 0`,
-// Tailwind `bottom-0` / `inset-0` / `inset-y-0`, or an inline style object with
-// `inset: 0` / `bottom: 0`) without that token. The browser gate
+// app/ or components/ that is anchored to the bottom by ANY offset or is full
+// height (CSS `bottom:<any>` / `inset` / `100vh|dvh|svh|lvh`; Tailwind
+// `bottom-*` / `inset-*` / `inset-y-*` / `h-screen` / `h-dvh`, with or without
+// a variant prefix such as `md:`; inline `{ position: 'fixed', bottom: 16 }`)
+// without that token. The browser gate
 // (mingla-business/playwright/issue2331-marketing/strip-clearance.spec.ts)
 // proves the rendered result.
 //
 // Exceptions: the internal preview routes (not public pages) and the strip's
-// own rule (`.mps`, which IS the band).
+// own rule (`.mps`, which IS the band). Nothing else is allowlisted.
 //
 // Usage: node scripts/issue-2331-strip-token-check.mjs [--self-test]
 
@@ -34,11 +36,29 @@ export const ALLOWLIST = [
 ];
 
 const FIXED_CSS = /position\s*:\s*fixed\b/;
-const BOTTOM_CSS = /(?:^|[;{\s])(?:bottom\s*:\s*0(?:px)?\s*(?:[;}!]|$)|inset\s*:\s*0(?:px)?\s*(?:[;}!]|$)|inset\s*:\s*\S+\s+\S+\s+0(?:px)?\s+\S+|inset\s*:\s*\S+\s+\S+\s+0(?:px)?\s*(?:[;}!]|$)|inset-block\s*:\s*0)/;
-const TW_FIXED = /(?:^|\s)fixed(?=\s|$)/;
-const TW_BOTTOM = /(?:^|\s)(?:bottom-0|inset-0|inset-y-0)(?=\s|$)/;
+// Anchored to the bottom by ANY offset (bottom:0, bottom:12px, inset:0, an
+// inset whose 3rd value is not auto, inset-block-end), or a full-height layer
+// (100vh / dvh / svh / lvh).
+/** Is a declaration block anchored to the bottom by any offset? */
+function bottomAnchoredCss(decls) {
+  for (const m of decls.matchAll(/(?:^|[;{\s])(bottom|inset|inset-block|inset-block-end)\s*:\s*([^;}]+)/g)) {
+    const prop = m[1];
+    const parts = m[2].replace(/!important/, '').trim().split(/\s+(?![^(]*\))/);
+    let bottom = parts[0];
+    if (prop === 'inset') bottom = parts.length >= 3 ? parts[2] : parts[0];
+    if (prop === 'inset-block') bottom = parts.length >= 2 ? parts[1] : parts[0];
+    if (bottom !== undefined && bottom !== 'auto') return true;
+  }
+  return false;
+}
+const FULL_HEIGHT_CSS = /(?:^|[;{\s])(?:min-|max-)?height\s*:\s*[^;}]*\b100(?:vh|dvh|svh|lvh)\b/;
+// Tailwind, after dropping variant prefixes (md:, lg:, focus:, ...).
+const TW_BOTTOM = /^(?:-?bottom-(?!auto$)\S+|inset-(?!x-)\S+|inset-y-\S+|(?:min-|max-)?h-(?:screen|dvh|svh|lvh|\[100(?:vh|dvh|svh|lvh)\]))$/;
 const INLINE_FIXED = /position\s*:\s*['"]fixed['"]/;
-const INLINE_BOTTOM = /(?:^|[{,\s])(?:bottom|inset)\s*:\s*(?:0|['"]0(?:px)?['"])\s*(?=[,}\s])/;
+const INLINE_BOTTOM = /(?:^|[{,\s])(?:bottom\s*:(?!\s*['"]auto['"])\s*[^,}\s]+|inset\s*:\s*[^,}]+|(?:min|max)?[hH]eight\s*:\s*['"][^'"]*100(?:vh|dvh|svh|lvh)[^'"]*['"])/;
+
+/** Class tokens of a string, without variant prefixes (`md:fixed` -> `fixed`). */
+const twTokens = (value) => value.split(/\s+/).filter(Boolean).map((token) => token.slice(token.lastIndexOf(':') + 1));
 
 /** Rule blocks of a CSS text (selector + declarations), nesting-aware. */
 function cssBlocks(raw) {
@@ -73,7 +93,7 @@ export function violationsIn(file, text) {
     for (const block of cssBlocks(source.text)) {
       // Only the declarations directly in this block (strip nested blocks).
       const own = block.body.replace(/\{[^{}]*\}/g, "");
-      if (!FIXED_CSS.test(own) || !BOTTOM_CSS.test(own) || own.includes(TOKEN)) continue;
+      if (!FIXED_CSS.test(own) || !(bottomAnchoredCss(own) || FULL_HEIGHT_CSS.test(own)) || own.includes(TOKEN)) continue;
       if (/^\.mps$/.test(block.selector.replace(/\s+/g, ""))) continue;
       found.push({ file, line: lineOf(text, source.offset + block.at), what: `CSS \`${block.selector}\` is fixed at the bottom without var(${TOKEN})` });
     }
@@ -82,7 +102,8 @@ export function violationsIn(file, text) {
   // Tailwind class strings (any quoted string literal).
   for (const match of text.matchAll(/(['"`])((?:(?!\1)[^\\\n]|\\.)*)\1/g)) {
     const value = match[2];
-    if (!TW_FIXED.test(value) || !TW_BOTTOM.test(value) || value.includes(TOKEN)) continue;
+    const tokens = twTokens(value);
+    if (!tokens.includes('fixed') || !tokens.some((token) => TW_BOTTOM.test(token)) || value.includes(TOKEN)) continue;
     found.push({ file, line: lineOf(text, match.index), what: `class "${value.slice(0, 90)}" is fixed at the bottom without bottom-[var(${TOKEN})]` });
   }
   // Inline style objects: `{ position: 'fixed', inset: 0 }`.
@@ -137,6 +158,21 @@ function selfTest() {
     ["a.tsx", '<div className="absolute inset-0" />', 0],
     ["a.tsx", "<div style={{ position: 'fixed', inset: 0 }} />", 1],
     ["a.tsx", "<div style={{ position: 'fixed', top: 0, bottom: 'var(--mingla-privacy-strip)' }} />", 0],
+    // #2331 D4 — any bottom offset, full-height layers, variants, inline offsets.
+    ["a.tsx", '<button className="fixed bottom-4 right-4" />', 1],
+    ["a.tsx", '<div className="fixed inset-x-0 bottom-2" />', 1],
+    ["a.css", ".x { position: fixed; right: 0; bottom: 12px; }", 1],
+    ["a.tsx", '<aside className="fixed top-0 left-0 h-screen w-80" />', 1],
+    ["a.css", ".x { position: fixed; top: 0; height: 100dvh; }", 1],
+    ["a.tsx", '<div className="md:fixed md:inset-0" />', 1],
+    ["a.tsx", "<div style={{ position: 'fixed', bottom: 16 }} />", 1],
+    ["a.tsx", "<div style={{ position: 'fixed', top: 0, height: '100vh' }} />", 1],
+    ["a.tsx", '<div className="fixed bottom-[var(--mingla-privacy-strip)] right-4" />', 0],
+    ["a.tsx", '<div className="fixed top-4 right-4" />', 0],
+    ["a.tsx", '<div className="fixed bottom-auto top-0" />', 0],
+    ["a.css", ".x { position: fixed; top: 0; bottom: auto; }", 0],
+    ["a.css", ".x { position: fixed; top: calc(100vh - 40px); }", 0],
+    ["a.tsx", '<section className="relative h-screen" />', 0],
   ];
   let failed = 0;
   for (const [file, text, expected] of cases) {

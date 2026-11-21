@@ -47,6 +47,7 @@ import {
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Gesture, GestureHandlerRootView } from "react-native-gesture-handler";
+import { sheetAnchorMetrics } from "./sheetAnchorMetrics";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -722,6 +723,21 @@ interface WebViewportMetrics {
   visibleBottomGap: number;
 }
 
+/** #2331 — the privacy strip's band when it bounds the Modal box, else 0. */
+const privacyStripBand = (): number => {
+  const g = globalThis as unknown as {
+    document?: {
+      querySelector?: (selector: string) => { offsetHeight?: number } | null;
+    };
+    CSS?: { supports?: (condition: string) => boolean };
+  };
+  const supportsHas = g.CSS?.supports?.("selector(:has(a))") === true;
+  const appOwned = g.document?.querySelector?.("style#expo-reset") != null;
+  if (!supportsHas || !appOwned) return 0;
+  const height = g.document?.querySelector?.(".mps")?.offsetHeight;
+  return typeof height === "number" && height > 0 ? height : 0;
+};
+
 const useWebViewportMetrics = (fallbackHeight: number): WebViewportMetrics => {
   const read = (): WebViewportMetrics => {
     if (Platform.OS !== "web") {
@@ -752,12 +768,13 @@ const useWebViewportMetrics = (fallbackHeight: number): WebViewportMetrics => {
       g.visualViewport.offsetTop > 0
         ? g.visualViewport.offsetTop
         : 0;
-    return {
-      visibleHeight: visible,
-      layoutHeight: inner,
-      offsetTop,
-      visibleBottomGap: Math.max(inner - (offsetTop + visible), 0),
-    };
+    // #2331 (I-PRIVACY-BAR-NEVER-OCCLUDES) — the Modal's box ends at the
+    // privacy strip's top edge, not at the layout bottom, wherever the portal
+    // rule applies (`:has()` support and an app-owned document). The strip's
+    // own layout height is that band (a CSS constant, 28px + safe area), so the
+    // anchor is `innerHeight − band`; without it the panel would float the
+    // band's height above the keyboard and its top would sit under the edge.
+    return sheetAnchorMetrics({ inner, visible, offsetTop, band: privacyStripBand() });
   };
   const [metrics, setMetrics] = useState<WebViewportMetrics>(read);
   useEffect(() => {

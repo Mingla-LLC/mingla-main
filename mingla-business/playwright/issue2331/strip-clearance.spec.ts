@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-PRIVACY-BAR-NEVER-OCCLUDES | issue #2331 | Edge-based: on every Host web page, at every size and rotation, from domcontentloaded through settled, scrolled-to-end, Options open and a modal open, the privacy strip is the full-width bottom band of height var(--mingla-privacy-strip), nothing inside #root reaches below its top edge, no painted element intersects it, and nothing paints over it.
+// MINGLA-INVARIANT: I-PRIVACY-BAR-NEVER-OCCLUDES | issue #2331 | Edge-based: on every Host web page, at every size and rotation, from domcontentloaded through settled, scrolled-to-end, Options open and a modal open, the privacy strip is the full-width bottom band of height var(--mingla-privacy-strip), nothing inside #root reaches below its top edge (measured unclipped by #root), no painted element intersects it, nothing paints over it, and every pinned layer keeps its rect through a real wheel and a scroll of every scroller (#root included).
 //
 // Runs against a REAL `expo export -p web` with the post-export injector
 // applied (the band and strip ship in the first HTML), served by
@@ -8,7 +8,7 @@
 import { expect, test, type Browser, type BrowserContext, type Page, type Route } from "@playwright/test";
 import { eventRow } from "../issue3416-retest/mockBackend";
 import { HOST_USER } from "./harness";
-import { auditStrip, PHONE_UA, ROTATIONS, scrollEverythingToEnd, VIEWPORTS, type StripViolation } from "./stripAudit";
+import { auditPinned, auditStrip, PHONE_UA, ROTATIONS, scrollEverythingToEnd, VIEWPORTS, type StripViolation } from "./stripAudit";
 
 const APP = process.env.ISSUE_2331_STRIP_HOST_URL ?? "http://127.0.0.1:43233";
 const BRAND_SLUG = "lantern";
@@ -21,17 +21,27 @@ const TICKETED_SLUG = "ticketed-night";
 const TICKETED_ID = "00000000-0000-4000-8000-0000000002a2";
 const TICKET_ID = "00000000-0000-4000-8000-0000000002c1";
 
-const PAGES: ReadonlyArray<{ name: string; path: string; signedIn?: boolean; expectAtDesktop?: string }> = [
-  { name: "landing", path: "/" },
+// `full`: every size plus both rotations (the high-risk pages: the SPA shell,
+// the page with the desktop Buy bar, and the signed-in shell with its
+// sidebar, bottom nav and Modal). The rest run at the three layout
+// breakpoints (phone, tablet-landscape, desktop): the audit is size-independent
+// and layouts only change at those breakpoints.
+const PAGES: ReadonlyArray<{ name: string; path: string; signedIn?: boolean; expectAtDesktop?: string; full?: boolean }> = [
+  { name: "landing", path: "/", full: true },
   { name: "sign-in", path: "/auth" },
   { name: "event (RSVP)", path: `/e/${BRAND_SLUG}/${EVENT_SLUG}` },
-  { name: "event (ticketed, Buy bar)", path: `/e/${BRAND_SLUG}/${TICKETED_SLUG}`, expectAtDesktop: "orch-1167-event-floating-bar" },
+  { name: "event (ticketed, Buy bar)", path: `/e/${BRAND_SLUG}/${TICKETED_SLUG}`, expectAtDesktop: "orch-1167-event-floating-bar", full: true },
   { name: "brand", path: `/b/${BRAND_SLUG}` },
   { name: "venue", path: `/b/${BRAND_SLUG}/v/main` },
   { name: "experience", path: `/exp/${BRAND_SLUG}/tasting` },
   { name: "order confirmation", path: `/o/${ORDER_ID}` },
-  { name: "host home (signed in)", path: "/home", signedIn: true },
+  { name: "host home (signed in)", path: "/home", signedIn: true, full: true },
 ];
+const BREAKPOINTS = [
+  { width: 375, height: 667 },
+  { width: 1024, height: 768 },
+  { width: 1280, height: 800 },
+] as const;
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -128,9 +138,17 @@ async function check(page: Page, findings: Finding[], where: { page: string; siz
   if (result.violations.length > 0) findings.push({ ...where, state, violations: result.violations.slice(0, 6) });
 }
 
+// Ready signal instead of a fixed wait: the load event, fonts, a quiet
+// network (bounded), the app's strip mounted (the server copy removed), and
+// two animation frames for the last layout pass.
 async function settle(page: Page): Promise<void> {
   await page.waitForLoadState("load").catch(() => undefined);
-  await page.waitForTimeout(2500);
+  await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => undefined);
+  await page.waitForFunction(() => document.querySelectorAll(".mps").length === 1 && document.querySelector("[data-mingla-ssr-privacy-strip]") === null, undefined, { timeout: 15_000 }).catch(() => undefined);
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
 }
 
 async function auditPage(page: Page, findings: Finding[], where: { page: string; size: string }, expectTestId?: string): Promise<void> {
@@ -140,11 +158,15 @@ async function auditPage(page: Page, findings: Finding[], where: { page: string;
     await expect(page.locator(`[data-testid="${expectTestId}"]`).first()).toBeVisible({ timeout: 20_000 });
   }
   await check(page, findings, where, "settled");
+  // Pinned stays pinned: a real wheel and every scroller (#root included).
+  const moved = await auditPinned(page);
+  if (moved.length > 0) findings.push({ ...where, state: "pinned stays pinned", violations: moved.slice(0, 6) });
   await scrollEverythingToEnd(page);
   await check(page, findings, where, "scrolled to end");
   // Options open: the sheet and scrim sit on the strip, the strip stays on top.
   await page.locator(".mps").click();
-  await page.waitForTimeout(500);
+  await page.locator(".mpb:not([hidden])").waitFor();
+  await page.waitForTimeout(250); // the sheet's 0.2s entrance
   const sheet = await page.locator(".mpb:not([hidden])").boundingBox();
   const strip = await page.locator(".mps").boundingBox();
   if (sheet === null || strip === null || Math.abs(sheet.y + sheet.height - strip.y) > 0.5) {
@@ -152,17 +174,14 @@ async function auditPage(page: Page, findings: Finding[], where: { page: string;
   }
   await check(page, findings, where, "options open");
   await page.keyboard.press("Escape");
-  await page.waitForTimeout(300);
 }
 
 test.describe("#2331 I-PRIVACY-BAR-NEVER-OCCLUDES on Host web (edge-based)", () => {
-  test.describe.configure({ mode: "serial" });
-
   for (const target of PAGES) {
-    test(`${target.name}: every size, rotation and state`, async ({ browser }) => {
+    test(`${target.name}: ${target.full === true ? "every size, rotation" : "each breakpoint"} and state`, async ({ browser }) => {
       test.setTimeout(600_000);
       const findings: Finding[] = [];
-      for (const size of VIEWPORTS) {
+      for (const size of target.full === true ? VIEWPORTS : BREAKPOINTS) {
         const where = { page: target.name, size: `${size.width}x${size.height}` };
         const context = await newContext(browser, size.width, size.height, target.signedIn === true);
         const page = await context.newPage();
@@ -171,14 +190,15 @@ test.describe("#2331 I-PRIVACY-BAR-NEVER-OCCLUDES on Host web (edge-based)", () 
         await auditPage(page, findings, where, size.width >= 1024 ? target.expectAtDesktop : undefined);
         await context.close();
       }
-      for (const rotation of ROTATIONS) {
+      for (const rotation of target.full === true ? ROTATIONS : []) {
         const where = { page: target.name, size: `${rotation.from.width}x${rotation.from.height} -> ${rotation.to.width}x${rotation.to.height}` };
         const context = await newContext(browser, rotation.from.width, rotation.from.height, target.signedIn === true);
         const page = await context.newPage();
         await page.goto(`${APP}${target.path}`, { waitUntil: "domcontentloaded" });
         await settle(page);
         await page.setViewportSize(rotation.to);
-        await page.waitForTimeout(800);
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        await page.waitForTimeout(300);
         await check(page, findings, where, "rotated");
         await scrollEverythingToEnd(page);
         await check(page, findings, where, "rotated, scrolled to end");

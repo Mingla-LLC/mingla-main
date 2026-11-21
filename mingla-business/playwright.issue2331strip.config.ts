@@ -10,10 +10,12 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./playwright",
   testMatch: /issue2331(?:-marketing)?\/strip-clearance\.spec\.ts$/,
-  fullyParallel: false,
+  // Each page is its own test; three workers run host and marketing pages side
+  // by side (the strip audit is read-only, and every test has its own context).
+  fullyParallel: true,
   forbidOnly: true,
   retries: 0,
-  workers: 1,
+  workers: 3,
   timeout: 600_000,
   expect: { timeout: 20_000 },
   reporter: [["list"]],

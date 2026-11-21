@@ -13,8 +13,11 @@
  *      by its overflow ancestors (marketing mid-scroll: static in-flow content
  *      may pass under the strip; fixed and sticky layers never may);
  *   3. (Host) any element inside #root ends below the strip's top edge
- *      (beyond the same 0.5px, after clipping);
- *   4. the strip is not the top element at 5 points along it.
+ *      (beyond the same 0.5px), clipped only by scrollers inside #root;
+ *   4. the strip is not the top element at 5 points along it;
+ *   5. (Host, auditPinned) a fixed layer inside #root moves when anything
+ *      scrolls (a real wheel, and every scroller including #root).
+ * Rule 3 measures WITHOUT #root's own clip: the box hides what it cuts off.
  */
 import type { Page } from "@playwright/test";
 
@@ -26,7 +29,7 @@ export interface StripAuditOptions {
 }
 
 export interface StripViolation {
-  rule: 1 | 2 | 3 | 4;
+  rule: 1 | 2 | 3 | 4 | 5;
   detail: string;
 }
 
@@ -86,14 +89,16 @@ export async function auditStrip(page: Page, options: StripAuditOptions): Promis
     // A rect clipped by every overflow ancestor that really clips it: a fixed
     // layer escapes every scroller between it and the box that captures fixed
     // descendants (the viewport, or on Host the contained #root).
-    const clipped = (node: Element): { left: number; top: number; right: number; bottom: number } => {
+    // `stopAt`: clip only by scrollers strictly inside it (rule 3 measures what
+    // #root's own clip would hide, so #root must not clip it first).
+    const clipped = (node: Element, stopAt: Element | null = null): { left: number; top: number; right: number; bottom: number } => {
       const r = node.getBoundingClientRect();
       let left = Math.max(r.left, 0);
       let top = Math.max(r.top, 0);
       let right = Math.min(r.right, window.innerWidth);
-      let bottom = Math.min(r.bottom, viewportHeight);
+      let bottom = stopAt === null ? Math.min(r.bottom, viewportHeight) : r.bottom;
       let escaping = getComputedStyle(node).position === "fixed";
-      for (let parent = node.parentElement; parent !== null && parent !== document.body; parent = parent.parentElement) {
+      for (let parent = node.parentElement; parent !== null && parent !== document.body && parent !== stopAt; parent = parent.parentElement) {
         const ps = getComputedStyle(parent);
         if (escaping) {
           if (!capturesFixed(ps)) continue;
@@ -127,6 +132,11 @@ export async function auditStrip(page: Page, options: StripAuditOptions): Promis
       return `${node.tagName.toLowerCase()}${id}${testId ? `[data-testid=${testId}]` : ""}${cls}${text ? ` "${text}"` : ""}`;
     };
 
+    const decorative = (node: Element, style: CSSStyleDeclaration): boolean => {
+      if (style.pointerEvents !== "none") return false;
+      if ((node.textContent ?? "").trim().length > 0) return false;
+      return node.querySelector("a[href],button,input,select,textarea,[tabindex],[role=button],[role=link]") === null;
+    };
     const root = document.getElementById("root");
     let checked = 0;
     for (const node of Array.from(document.body.querySelectorAll("*"))) {
@@ -137,10 +147,19 @@ export async function auditStrip(page: Page, options: StripAuditOptions): Promis
       const box = clipped(node);
       if (box.right - box.left <= EPS || box.bottom - box.top <= EPS) continue;
       checked += 1;
-      // Rule 3 — on Host, nothing inside #root reaches below the strip's top edge.
-      if (opts.host && root !== null && root.contains(node) && box.bottom > sr.top + EPS) {
-        violations.push({ rule: 3, detail: `${describe(node)} ends at ${box.bottom.toFixed(1)}, below the strip top ${sr.top.toFixed(1)}` });
-        continue;
+      // Rule 3 — on Host, nothing inside #root reaches below the strip's top
+      // edge, measured WITHOUT #root's own clip (which would hide the defect):
+      // a fixed layer cut off by the box (bottom:-20px, height:100vh) or in-flow
+      // content that no inner scroller can reach both fail here. Content inside
+      // an inner ScrollView is clipped by that scroller and stays reachable.
+      // Decorative layers (no pointer events, no text, nothing focusable) may
+      // bleed: the box clips them and nothing is lost.
+      if (opts.host && root !== null && root.contains(node)) {
+        const inner = clipped(node, root);
+        if (inner.bottom > sr.top + EPS && inner.bottom - inner.top > EPS && !decorative(node, style)) {
+          violations.push({ rule: 3, detail: `${describe(node)} ends at ${inner.bottom.toFixed(1)} inside #root, below the strip top ${sr.top.toFixed(1)}` });
+          continue;
+        }
       }
       if (!paints(node, style)) continue;
       const overlap = Math.min(box.bottom, sr.bottom) - Math.max(box.top, sr.top);
@@ -164,6 +183,80 @@ export async function auditStrip(page: Page, options: StripAuditOptions): Promis
   }, options);
 }
 
+/**
+ * Rule 5 (Host) — pinned stays pinned. Every visible `position:fixed` layer
+ * inside #root (the Buy bar, PinnedBottomBar, DesktopSidebar, BottomNav, the
+ * header) keeps its rect through a real mouse wheel and a programmatic scroll
+ * of every scroller, #root and the document included. #root is the containing
+ * block of these layers, so if #root could scroll they would scroll with it.
+ */
+export async function auditPinned(page: Page): Promise<StripViolation[]> {
+  const before = await page.evaluate(() => {
+    const root = document.getElementById("root");
+    if (root === null) return [];
+    const out: Array<{ key: string; label: string; rect: [number, number, number, number] }> = [];
+    let n = 0;
+    for (const node of Array.from(root.querySelectorAll<HTMLElement>("*"))) {
+      const style = getComputedStyle(node);
+      if (style.position !== "fixed" || style.display === "none" || style.visibility !== "visible") continue;
+      // Only the outermost fixed layer of a stack.
+      let nested = false;
+      for (let p = node.parentElement; p !== null && p !== root; p = p.parentElement) {
+        if (getComputedStyle(p).position === "fixed") { nested = true; break; }
+      }
+      if (nested) continue;
+      const r = node.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      // Decorative backdrops (no pointer events, no text, nothing focusable)
+      // may move by design (scroll parallax); bars, rails and nav may not.
+      const interactive = node.querySelector("a[href],button,input,select,textarea,[tabindex],[role=button],[role=link]") !== null;
+      if (style.pointerEvents === "none" && !interactive && (node.textContent ?? "").trim().length === 0) continue;
+      const key = `pin-${n++}`;
+      node.setAttribute("data-issue2331-pin", key);
+      const label = `${node.tagName.toLowerCase()}${node.getAttribute("data-testid") ? `[data-testid=${node.getAttribute("data-testid")}]` : ""} "${(node.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 30)}"`;
+      out.push({ key, label, rect: [r.left, r.top, r.right, r.bottom] });
+    }
+    return out;
+  });
+  if (before.length === 0) return [];
+  const viewport = page.viewportSize() ?? { width: 1280, height: 800 };
+  await page.mouse.move(viewport.width / 2, viewport.height / 3);
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(250);
+  await page.evaluate(() => {
+    const scrollers: Element[] = [];
+    if (document.scrollingElement !== null) scrollers.push(document.scrollingElement);
+    const root = document.getElementById("root");
+    if (root !== null) scrollers.push(root);
+    for (const node of Array.from(document.querySelectorAll("*"))) {
+      if (node.closest(".mpb")) continue;
+      if (/(auto|scroll|hidden)/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight + 1) scrollers.push(node);
+    }
+    for (const node of scrollers) {
+      node.scrollTo({ top: node.scrollHeight, behavior: "instant" });
+      node.dispatchEvent(new Event("scroll"));
+    }
+  });
+  await page.waitForTimeout(250);
+  const after = await page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLElement>("[data-issue2331-pin]")).map((node) => {
+      const r = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return { key: node.getAttribute("data-issue2331-pin") ?? "", shown: style.display !== "none" && style.visibility === "visible" && r.width >= 1, rect: [r.left, r.top, r.right, r.bottom] as [number, number, number, number] };
+    }),
+  );
+  const violations: StripViolation[] = [];
+  for (const pin of before) {
+    const now = after.find((entry) => entry.key === pin.key);
+    if (now === undefined || !now.shown) continue;
+    const moved = Math.max(...pin.rect.map((value, i) => Math.abs(value - now.rect[i])));
+    if (moved > 0.5) {
+      violations.push({ rule: 5, detail: `${pin.label} moved ${moved.toFixed(1)}px when the page scrolled (${pin.rect.map((v) => v.toFixed(0)).join(",")} -> ${now.rect.map((v) => v.toFixed(0)).join(",")})` });
+    }
+  }
+  return violations;
+}
+
 /** Scroll every scroll owner (and the document) to its end; return how many moved. */
 export async function scrollEverythingToEnd(page: Page): Promise<number> {
   const moved = await page.evaluate(() => {
@@ -185,7 +278,7 @@ export async function scrollEverythingToEnd(page: Page): Promise<number> {
     }
     return count;
   });
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(300);
   return moved;
 }
 

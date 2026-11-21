@@ -10,7 +10,6 @@ import { join } from "path";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const runtime = require("../../../server/publicPrivacyRuntime.js") as {
   privacyBarCss: () => string;
-  privacyStripDocumentCss: () => string;
   privacyBarRuntimeSource: () => string;
   privacyBarCollapsedRuntimeSource: () => string;
 };
@@ -25,8 +24,9 @@ function reactBarCss(): string {
 }
 
 const STRIP = ":root{--mingla-privacy-strip:calc(28px + env(safe-area-inset-bottom,0px))}";
+const APP = "html:has(style#expo-reset)";
 const ROOT_BOX =
-  "#root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow-y:auto;overscroll-behavior:contain}";
+  `${APP} #root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow:hidden;overflow:clip}`;
 
 describe("#2331 privacy strip stylesheet parity", () => {
   it("the server copy equals the React copy rule for rule", () => {
@@ -34,7 +34,7 @@ describe("#2331 privacy strip stylesheet parity", () => {
   });
 
   it("the strip's band is one CSS constant, and the strip is exactly that band", () => {
-    for (const css of [runtime.privacyBarCss(), reactBarCss(), runtime.privacyStripDocumentCss()]) {
+    for (const css of [runtime.privacyBarCss(), reactBarCss()]) {
       expect(css).toContain(STRIP);
       expect(css).toMatch(/\.mps\{position:fixed;left:0;right:0;bottom:0;z-index:2147483000;[^}]*height:var\(--mingla-privacy-strip\);/);
       // The label can never wrap or grow the band.
@@ -47,24 +47,32 @@ describe("#2331 privacy strip stylesheet parity", () => {
     }
   });
 
-  it("the app root is the fixed, layout-contained box that ends at the strip's top edge", () => {
+  it("once the app owns the document, the app root is the fixed, contained box that ends at the strip", () => {
     for (const css of [runtime.privacyBarCss(), reactBarCss()]) {
-      expect(css).toContain("html,body{height:100%;overflow:hidden}");
+      expect(css).toContain(`${APP},${APP} body{height:100%;overflow:hidden}`);
       expect(css).toContain(ROOT_BOX);
       // react-native-web Modal's body portal gets the same box.
       expect(css).toContain(
-        'body>div:has(>div [aria-modal="true"]){position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);contain:layout;z-index:9999;pointer-events:none}',
+        `${APP} body>div:has(>div [aria-modal="true"]){position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);contain:layout;z-index:9999;pointer-events:none}`,
       );
-      expect(css).toContain('body>[aria-modal="true"]{bottom:var(--mingla-privacy-strip)!important}');
-      expect(css).not.toMatch(/#root>/);
+      expect(css).toContain(`${APP} body>[aria-modal="true"]{bottom:var(--mingla-privacy-strip)!important}`);
+      // #root never scrolls; a screen taller than the box scrolls in the app's
+      // root view, which does not hold the fixed layers' containing block.
+      expect(css).toContain("overflow:hidden;overflow:clip}");
+      expect(css).toContain(`${APP} #root>div{overflow-y:auto;overscroll-behavior:contain}`);
+      expect(css.match(/#root>/g)).toHaveLength(1);
     }
   });
 
-  it("a document that scrolls itself pads the body instead of boxing #root", () => {
-    const css = runtime.privacyStripDocumentCss();
-    expect(css).toContain("body{padding-bottom:var(--mingla-privacy-strip)}");
-    expect(css).not.toContain("#root{");
-    expect(css).not.toContain("html,body{height:100%;overflow:hidden}");
+  it("a document the app does not own (#3214 plain page, share pages) scrolls with the body padded by the band", () => {
+    const lines = runtime.privacyBarCss().split("\n");
+    expect(lines).toContain("body{padding-bottom:var(--mingla-privacy-strip)}");
+    // Every rule that stops document scrolling or boxes #root is keyed on expo-reset.
+    for (const line of lines) {
+      if (/overflow:hidden|#root\{|position:fixed;top:0;left:0;right:0;bottom:var/.test(line) && !line.startsWith(".mp")) {
+        expect(line.startsWith(APP) || line.startsWith(`:where(${APP}`)).toBe(true);
+      }
+    }
   });
 
   it("nothing measures the strip or writes the variable (Constitution rule 8)", () => {
