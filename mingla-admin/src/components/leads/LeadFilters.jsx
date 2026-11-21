@@ -6,6 +6,7 @@ import { SlidersHorizontal } from "lucide-react";
 import { SearchInput } from "../ui/SearchInput";
 import { Button } from "../ui/Button";
 import { LABELS, SOURCES, EMAIL_STATUS_LABELS, querySet } from "../../lib/leadsModel";
+import { CalendarInput } from "@mingla/calendar-web";
 
 function Chip({ active, children, onClick }) {
   return (
@@ -84,10 +85,10 @@ export function LeadFilters({ search, onSearch, q, onQ, fixed = {}, forms = [] }
             </select>
           </label>
           <label className="flex flex-col gap-1 text-xs font-semibold text-[var(--color-text-secondary)]">From
-            <input type="date" className={field} value={p.get("from") || ""} onChange={(e) => set("from", e.target.value)} />
+            <CalendarInput mode="date" className={field} value={p.get("from") || ""} onChange={(e) => set("from", e.target.value)} />
           </label>
           <label className="flex flex-col gap-1 text-xs font-semibold text-[var(--color-text-secondary)]">To
-            <input type="date" className={field} value={p.get("to") || ""} onChange={(e) => set("to", e.target.value)} />
+            <CalendarInput mode="date" className={field} value={p.get("to") || ""} onChange={(e) => set("to", e.target.value)} />
           </label>
           <label className="flex flex-col gap-1 text-xs font-semibold text-[var(--color-text-secondary)]">UTM source
             <input className={field} defaultValue={p.get("utm_source") || ""} onBlur={(e) => set("utm_source", e.target.value.trim())} />

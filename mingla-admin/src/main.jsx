@@ -7,6 +7,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { initSentry } from "./diagnostics/sentry";
 import App from "./App";
 import "./globals.css";
+import "@mingla/calendar-web/calendar.css";
 
 // Crash reporting (#1322). Init once at the client entry, before render, so the
 // global window.onerror / onunhandledrejection handlers are live app-wide even

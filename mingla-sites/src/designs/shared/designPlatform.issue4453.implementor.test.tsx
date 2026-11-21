@@ -536,7 +536,8 @@ describe("#4453 SC-D6 the JavaScript this PR adds stays in budget", () => {
   });
   it("adds no runtime dependency (no GSAP, D2)", () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as { dependencies: Record<string, string> };
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(["next", "react", "react-dom"]);
+    // #4523: the one addition is the first-party Mingla calendar (a linked workspace package, no third-party code).
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["@mingla/calendar-web", "next", "react", "react-dom"]);
     for (const file of ["src/designs/shared/motion.ts", "src/designs/shared/interactive.tsx", "src/designs/shared/chrome/HeaderClient.tsx"]) {
       expect(fs.readFileSync(path.join(process.cwd(), file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/gsap|ScrollTrigger/i);
     }

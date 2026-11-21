@@ -6,10 +6,12 @@
     "id": "issue-4523-one-calendar",
     "class": "business-node22-ignore-scripts",
     "originPaths": [
+      "mingla-business/jest.issue4523.cfg.cjs",
+      "mingla-business/jest.orch1118.babel.cjs",
       "mingla-business/src/components/ui/**",
-      "packages/calendar/**",
       "packages/brand-rendering/**",
-      "mingla-business/jest.issue4523.cfg.cjs"
+      "packages/calendar-web/**",
+      "packages/calendar/**"
     ],
     "steps": [
       {
@@ -43,6 +45,7 @@
       "mingla-business/src/components/ui/__tests__/issue_4523_datefield_month_nav.test.tsx",
       "mingla-business/src/components/ui/__tests__/issue_4523_host_datetime_field.test.tsx",
       "packages/brand-rendering/__tests__/issue_4523_stay_range_month_nav.test.tsx",
+      "packages/calendar-web/__tests__/calendarWeb.test.tsx",
       "packages/calendar/__tests__/core.calendar.test.ts",
       "packages/calendar/__tests__/monthNavigationNeverCloses.test.tsx"
     ],

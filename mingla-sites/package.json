@@ -16,6 +16,7 @@
     "smoke:prod:ys": "PROD_SMOKE_DIR=${PROD_SMOKE_DIR:-/tmp/mingla-sites-prod-smoke-ys} && mkdir -p $PROD_SMOKE_DIR && (cd ../mingla-site-cms && YS_COMPOSED_OUT=$PROD_SMOKE_DIR npx vitest run --maxWorkers=2 src/lib/ysComposed.issue4453.test.ts) && PROD_SMOKE_DIR=$PROD_SMOKE_DIR node e2e/prod-smoke/smoke.mjs --fixture ys"
   },
   "dependencies": {
+    "@mingla/calendar-web": "file:../packages/calendar-web",
     "next": "16.4.5",
     "react": "19.2.6",
     "react-dom": "19.2.6"

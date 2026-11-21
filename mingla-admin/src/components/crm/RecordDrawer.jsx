@@ -44,6 +44,7 @@ import {
 import { buildCrmHash } from "../../lib/crmUrl";
 import { getRecord } from "../../services/crmService";
 import { useRecordDraftCount } from "../../hooks/useDrafts";
+import { CalendarInput } from "@mingla/calendar-web";
 
 // What someone typed on a card that could not be sent before the card went
 // away (they left the page). Kept in memory only, by card id, so opening the
@@ -858,8 +859,8 @@ export function RecordDrawer({
                 <input type="text" maxLength={200} placeholder="What happens next" {...textProps("next_action")} />
               </Field>
               <Field label="Due" htmlFor={fid("due_on")} error={fieldError("due_on")}>
-                <input
-                  type="date"
+                <CalendarInput
+                  mode="date"
                   id={fid("due_on")}
                   value={val("due_on")}
                   disabled={locked}
@@ -984,8 +985,8 @@ export function RecordDrawer({
                 <input type="text" maxLength={200} placeholder="What happens next" {...textProps("next_action")} />
               </Field>
               <Field label="Due" htmlFor={fid("due_on")} error={fieldError("due_on")}>
-                <input
-                  type="date"
+                <CalendarInput
+                  mode="date"
                   id={fid("due_on")}
                   value={val("due_on")}
                   disabled={locked}

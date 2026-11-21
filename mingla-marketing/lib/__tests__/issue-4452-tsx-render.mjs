@@ -82,5 +82,8 @@ export const TOOL_STUBS = {
   '@/components/forms/form-events': "globalThis.__formEvents = []; module.exports = { formEvent(name, form, extra) { globalThis.__formEvents.push([name, extra]) } }",
   '@/lib/links-src': "module.exports = { toolAttribution(c) { return { pid: c, campaign: c } } }",
   '@/components/ui/button': "module.exports = { buttonClasses() { return 'btn' } }",
+  // #4523: the Mingla calendar needs a browser; a plain button stands in so the tool markup still renders.
+  '@mingla/calendar-web': "const React = require('react'); module.exports = { CalendarInput: function CalendarInput(p) { return React.createElement('button', { type: 'button', id: p.id, className: p.className, 'data-calendar-mode': p.mode }, p.value || p.placeholder || '') } }",
+  '@mingla/calendar-web/calendar.css': 'module.exports = {}',
   'framer-motion': "const React = require('react'); const tag = (t) => function M(p) { const { initial, animate, whileInView, viewport, transition, ...rest } = p; return React.createElement(t, rest) }; module.exports = { motion: new Proxy({}, { get: (_, t) => tag(t) }), useReducedMotion: () => true }",
 }

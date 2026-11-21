@@ -20,7 +20,8 @@ import * as Location from 'expo-location'
 import * as Haptics from 'expo-haptics'
 import { Icon } from './ui/Icon'
 // WhatsAppLogo: available from './ui/BrandIcons' if needed for OTP channel UI
-import DateTimePicker from '@react-native-community/datetimepicker'
+import { CalendarEmbed } from '@mingla/calendar/CalendarField'
+import { deviceTimeZone, LIGHT_INLINE_CALENDAR_CONFIG, useExplorerCalendarLabels } from './calendar/explorerInlineCalendar'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useAppStore } from '../store/appStore'
@@ -149,6 +150,10 @@ import { explorerAnalyticsOptedOut } from '../services/analyticsOptOut'
  *  [ORCH-1028 Part-2 R-2] live width helper — pass the current window width. */
 const intentCardWidth = (winWidth: number): number => (winWidth - 48 - 6) / 2
 
+function birthdayToDay(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 function formatBirthdayDisplay(date: Date): string {
   const day = date.getDate().toString().padStart(2, '0')
   const month = (date.getMonth() + 1).toString().padStart(2, '0')
@@ -157,8 +162,6 @@ function formatBirthdayDisplay(date: Date): string {
 }
 
 // ─── Stable Date Boundaries ───
-const MIN_BIRTHDAY_DATE = new Date(1906, 0, 1)  // 120 years ago ceiling
-const BIRTHDAY_PICKER_DEFAULT = new Date(2000, 0, 1)  // fallback starting position for Step 1 picker
 
 const DEFAULT_PERSON_DATE = (() => {
   const d = new Date()
@@ -1102,17 +1105,12 @@ const OnboardingFlow = ({
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [prefsSaveError, setPrefsSaveError] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
-  const [birthdayPickerTouched, setBirthdayPickerTouched] = useState(false)
+  const calendarLabels = useExplorerCalendarLabels()
   // saving state removed — save handlers (Path A/B) deleted
   const [showCountryPicker, setShowCountryPicker] = useState(false)
   const [showCustomTravelTime, setShowCustomTravelTime] = useState(false)
   const [customTravelInput, setCustomTravelInput] = useState('')
   const warmPoolPromiseRef = useRef<Promise<void> | null>(null)
-
-  // Pending date for the Step 1 birthday picker.
-  // Holds the in-progress date while the user is scrolling.
-  // Only committed to `data` when the "Done" button is pressed.
-  const pendingBirthdayRef = useRef<Date | null>(null)
 
   // ─── Persist Onboarding Data to AsyncStorage ───
   // Debounced: saves 500ms after the last data change to avoid excessive writes
@@ -1131,7 +1129,6 @@ const OnboardingFlow = ({
   useEffect(() => {
     if (navState.subStep !== 'details') {
       setShowDatePicker(false)
-      setBirthdayPickerTouched(false)
     }
   }, [navState.subStep])
 
@@ -2848,18 +2845,7 @@ const OnboardingFlow = ({
           <Text style={[styles.fieldLabel, { marginTop: spacing.lg }]}>{t('onboarding:details.dob_label')}</Text>
           <Pressable
             style={styles.detailsPickerButton}
-            onPress={() => {
-              // [#2322 OQ-1] Open with NO pending value. The wheel still SHOWS
-              // BIRTHDAY_PICKER_DEFAULT (01/01/2000) through the `value` fallback below, so the
-              // control looks normal — but seeding the ref made "Done" commit that date as if the
-              // user had chosen it, which also unblocked the "Let's go" CTA (`disabled:
-              // !data.userBirthday`) with a birthday nobody picked. It then fed buildOccasions().
-              // The ref is now written ONLY by onChange, so Done on an untouched wheel commits
-              // nothing. Re-opening when a birthday is already set keeps it: Done just closes.
-              pendingBirthdayRef.current = null
-              setBirthdayPickerTouched(false)
-              setShowDatePicker(true)
-            }}
+            onPress={() => setShowDatePicker(true)}
           >
             <Text style={[
               styles.detailsPickerText,
@@ -2874,73 +2860,26 @@ const OnboardingFlow = ({
 
           {showDatePicker && (
             <View style={{ marginTop: spacing.sm }}>
-              {/* [ORCH-1028 REWORK F-3] iOS "Done" sits ABOVE the spinner as a toolbar
-                  row (directly under the DOB field), so it is never occluded by the
-                  fixed bottom CTA bar on short viewports (iPhone SE 3). The spinner
-                  renders below it. Android uses its own native modal/confirm — no row. */}
-              {Platform.OS === 'ios' && (
-                <Pressable
-                  style={{
-                    alignItems: 'flex-end',
-                    paddingHorizontal: spacing.md,
-                    paddingVertical: spacing.sm,
-                  }}
-                  onPress={() => {
-                    const dateToCommit = pendingBirthdayRef.current
-                    if (dateToCommit) {
-                      setData((p) => ({ ...p, userBirthday: dateToCommit }))
-                      pendingBirthdayRef.current = null
-                    }
-                    setShowDatePicker(false)
-                  }}
-                  disabled={!data.userBirthday && !birthdayPickerTouched}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('common:done')}
-                  accessibilityState={{ disabled: !data.userBirthday && !birthdayPickerTouched }}
-                >
-                  <Text style={{
-                    ...typography.md,
-                    fontWeight: fontWeights.semibold,
-                    color: !data.userBirthday && !birthdayPickerTouched
-                      ? colors.text.tertiary
-                      : colors.primary[600],
-                  }}>{t('common:done')}</Text>
-                </Pressable>
-              )}
-              {Platform.OS === 'ios' && !data.userBirthday && !birthdayPickerTouched ? (
-                <Text style={styles.fieldHelperText}>
-                  {t('onboarding:details.dob_picker_helper')}
-                </Text>
-              ) : null}
-              {/* [#2322] themeVariant/textColor are LOAD-BEARING — do not delete them as
-                  "redundant on a light-only app". Installed builds do not gain the native
-                  withForcedLightAppearance repair until a store update, and a future config-plugin
-                  regression must not make this wheel unreadable again. Unthemed, it draws
-                  UIColor.label — near-white in Dark Mode — onto this hard-coded light card, and the
-                  user scrolls and commits a birthday they cannot read. */}
-              <DateTimePicker
-                value={pendingBirthdayRef.current || data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
-                mode="date"
-                display={Platform.OS === 'android' ? 'default' : 'spinner'}
-                minimumDate={MIN_BIRTHDAY_DATE}
-                maximumDate={new Date()}
-                themeVariant="light"
-                textColor={colors.text.primary}
-                onChange={(_event, selectedDate) => {
-                  if (Platform.OS === 'android') {
-                    // Android spinner fires once on confirm/dismiss
-                    if (_event.type === 'set' && selectedDate) {
-                      setData((p) => ({ ...p, userBirthday: selectedDate }))
-                    }
-                    setShowDatePicker(false)
-                    return
-                  }
-                  // iOS spinner fires on every scroll
-                  if (selectedDate) {
-                    pendingBirthdayRef.current = selectedDate
-                    setBirthdayPickerTouched(true)
-                  }
+              {/* #4523: the birthday is picked on the shared Mingla calendar's year grid (year,
+                  then month, then day). Changing year or month only moves the view; a day tap is
+                  the only thing that sets the birthday, so "Let's go" cannot be unblocked by a
+                  birthday nobody picked. */}
+              <CalendarEmbed
+                mode="dob"
+                label={t('onboarding:details.dob_label')}
+                value={data.userBirthday ? birthdayToDay(data.userBirthday) : ''}
+                onChange={(day) => {
+                  if (day === '') return
+                  const [y, m, d] = day.split('-').map(Number)
+                  setData((p) => ({ ...p, userBirthday: new Date(y, m - 1, d, 12, 0, 0, 0) }))
+                  setShowDatePicker(false)
                 }}
+                timeZone={deviceTimeZone()}
+                labels={calendarLabels}
+                config={LIGHT_INLINE_CALENDAR_CONFIG}
+                testID="onboarding-dob-calendar"
+                onDone={() => setShowDatePicker(false)}
+                onCancel={() => setShowDatePicker(false)}
               />
             </View>
           )}

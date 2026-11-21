@@ -17,16 +17,16 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
+import { CalendarEmbed } from "@mingla/calendar/CalendarField";
+import { deviceTimeZone, DARK_INLINE_CALENDAR_CONFIG, useExplorerCalendarLabels } from "../calendar/explorerInlineCalendar";
+
+const noopDone = (): void => undefined;
 import * as DocumentPicker from "expo-document-picker";
 
 import { Icon } from "../ui/Icon";
@@ -330,13 +330,6 @@ function formatDateForDisplay(iso: string): string {
   }
 }
 
-function dateToIso(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 const DateRenderer: React.FC<RendererProps> = ({
   question,
   value,
@@ -346,42 +339,12 @@ const DateRenderer: React.FC<RendererProps> = ({
 }) => {
   const iso = typeof value === "string" ? value : "";
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
-  const [pendingDate, setPendingDate] = useState<Date | null>(null);
+  const calendarLabels = useExplorerCalendarLabels();
 
   const openPicker = useCallback(() => {
     if (disabled) return;
-    const seed =
-      iso.length > 0
-        ? (() => {
-            const [y, m, d] = iso.split("-").map((p) => parseInt(p, 10));
-            return new Date(y, m - 1, d);
-          })()
-        : new Date();
-    setPendingDate(seed);
     setPickerOpen(true);
-  }, [iso, disabled]);
-
-  const handlePickerChange = useCallback(
-    (_event: DateTimePickerEvent, selected?: Date) => {
-      if (Platform.OS === "android") {
-        setPickerOpen(false);
-        if (selected !== undefined) onChange(dateToIso(selected));
-        return;
-      }
-      if (selected !== undefined) setPendingDate(selected);
-    },
-    [onChange],
-  );
-
-  const handleSetIos = useCallback(() => {
-    if (pendingDate !== null) onChange(dateToIso(pendingDate));
-    setPickerOpen(false);
-  }, [pendingDate, onChange]);
-
-  const handleCancelIos = useCallback(() => {
-    setPickerOpen(false);
-    setPendingDate(null);
-  }, []);
+  }, [disabled]);
 
   const display = formatDateForDisplay(iso);
 
@@ -410,51 +373,21 @@ const DateRenderer: React.FC<RendererProps> = ({
         </Text>
         <Icon name="calendar" size={18} color={TEXT_SECONDARY} strokeWidth={2} />
       </Pressable>
-      {pickerOpen && Platform.OS === "ios" ? (
-        <View style={styles.iosPickerWrap}>
-          <DateTimePicker
-            value={pendingDate ?? new Date()}
-            mode="date"
-            display="spinner"
-            onChange={handlePickerChange}
-            themeVariant="dark"
-            textColor={TEXT_PRIMARY}
-            style={styles.iosPicker}
-          />
-          <View style={styles.iosPickerActions}>
-            <Pressable
-              onPress={handleCancelIos}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel date selection"
-              style={({ pressed }) => [
-                styles.iosPickerCancel,
-                pressed && styles.rowPressed,
-              ]}
-            >
-              <Text style={styles.iosPickerCancelLabel}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSetIos}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Set date"
-              style={({ pressed }) => [
-                styles.iosPickerSet,
-                pressed && styles.rowPressed,
-              ]}
-            >
-              <Text style={styles.iosPickerSetLabel}>Set date</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-      {pickerOpen && Platform.OS === "android" ? (
-        <DateTimePicker
-          value={pendingDate ?? new Date()}
-          mode="date"
-          display="default"
-          onChange={handlePickerChange}
+      {pickerOpen ? (
+        <CalendarEmbed
+          mode="single"
+          label={question.label}
+          value={iso}
+          onChange={(day) => {
+            onChange(day);
+            setPickerOpen(false);
+          }}
+          timeZone={deviceTimeZone()}
+          labels={calendarLabels}
+          config={DARK_INLINE_CALENDAR_CONFIG}
+          testID={`intake-date-${question.id}`}
+          onDone={noopDone}
+          onCancel={() => setPickerOpen(false)}
         />
       ) : null}
     </IntakeQuestionShell>
@@ -937,54 +870,6 @@ const styles = StyleSheet.create({
   },
   placeholderText: {
     color: TEXT_QUATERNARY,
-  },
-  iosPickerWrap: {
-    marginTop: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: FIELD_BORDER,
-    backgroundColor: FIELD_BG,
-    overflow: "hidden",
-  },
-  iosPicker: {
-    backgroundColor: "transparent",
-  },
-  iosPickerActions: {
-    flexDirection: "row",
-    gap: 8,
-    padding: 8,
-    borderTopWidth: 1,
-    borderTopColor: FIELD_BORDER,
-  },
-  iosPickerCancel: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: FIELD_BORDER,
-    backgroundColor: "transparent",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 44,
-  },
-  iosPickerCancelLabel: {
-    fontSize: 14,
-    color: TEXT_SECONDARY,
-    fontWeight: "500",
-  },
-  iosPickerSet: {
-    flex: 2,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: ACCENT,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 44,
-  },
-  iosPickerSetLabel: {
-    fontSize: 14,
-    color: "#ffffff",
-    fontWeight: "600",
   },
   uploadList: { gap: 8 },
   uploadRow: {

@@ -21,6 +21,7 @@ import { errorWords, regionName, stageLabel } from "../../lib/crmModel";
 import { BRAND_ROLE_WORDS, todayIso } from "../../lib/opsModel";
 import { planDay } from "../../lib/brandPlan";
 import { initialsOf, personName } from "../../lib/brandGroupInbox";
+import { CalendarInput } from "@mingla/calendar-web";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:normal] hyphens-none";
@@ -169,7 +170,7 @@ function PipelineFields({ record, online, onSaved }) {
       </label>
       <label className="flex min-w-0 flex-col gap-1" htmlFor={`rail-due-${record.id}`}>
         <span className={LABEL}>Next action due</span>
-        <input id={`rail-due-${record.id}`} type="date" value={due} disabled={!online || busy === "due_on"}
+        <CalendarInput id={`rail-due-${record.id}`} mode="date" value={due} disabled={!online || busy === "due_on"}
           onChange={(e) => setDue(e.target.value)} onBlur={() => void save("due_on", due)} className={INPUT} />
       </label>
       {problem && <p role="alert" className="text-[12.5px] text-[var(--color-error-700)]">{problem}</p>}

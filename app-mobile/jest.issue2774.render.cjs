@@ -208,5 +208,7 @@ module.exports = {
     "**/__tests__/issue_4523_program_pickers_calendar.implementor.render.test.tsx",
     // issue #4523 — Creator date of birth: year grid, three taps, 18+ only.
     "**/__tests__/issue_4523_creator_dob.implementor.render.test.tsx",
+    // issue #4523 — Explorer inline calendars: stay dates and plan date never move on a month change.
+    "**/__tests__/issue_4523_explorer_inline_calendars.implementor.render.test.tsx",
   ],
 };
