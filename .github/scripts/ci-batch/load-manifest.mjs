@@ -374,7 +374,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4514 brand forms: the #1931 filtered template replay no longer skips the brand forms migration (the #2492 gate credits CREATE TABLE columns of applied migrations); re-sealed.
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed.
-export const BOOTSTRAP_SHA256 = "048982773d6824f01c21c26b46622de9090a9e598aabce04167cd42b7ff22cf0";
+// #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the #1857, #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 template replay (#4508, which it builds on, is skipped there); re-sealed.
+export const BOOTSTRAP_SHA256 = "0ca935d4003fd816e236e3dc97dcfe99202fe44debbc99af5ad71c3ba3901476";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

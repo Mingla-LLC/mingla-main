@@ -49,6 +49,7 @@ import {
   ScanRsvpError,
   fetchRsvpCheckinSummary,
   scanRsvp,
+  type RsvpDoorAnswers,
   type RsvpScanResult,
 } from "../../services/scanRsvpService";
 import { postHogService } from "../../services/postHogService";
@@ -63,6 +64,12 @@ import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
+
+const DoorAnswersSheet = React.lazy(() =>
+  import("../checkout/intake/formRenderingPrimitives").then((module) => ({
+    default: module.DoorAnswersSheet,
+  })),
+);
 
 // ---- Helpers --------------------------------------------------------
 
@@ -124,6 +131,9 @@ interface ResultOverlayState {
   kind: RsvpScanResult;
   message: string;
   detail?: string;
+  doorAnswers?: RsvpDoorAnswers | null;
+  scanId?: string | null;
+  guestName?: string;
 }
 
 interface ResultOverlaySpec {
@@ -209,6 +219,10 @@ export default function ScannerCameraRoute(): React.ReactElement {
   const [permission, requestPermission] = useCameraPermissions();
 
   const [overlay, setOverlay] = useState<ResultOverlayState | null>(null);
+  const [answersTarget, setAnswersTarget] = useState<{
+    scanId: string;
+    guestName: string;
+  } | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isAppActive, setIsAppActive] = useState<boolean>(
     AppState.currentState === "active",
@@ -305,7 +319,7 @@ export default function ScannerCameraRoute(): React.ReactElement {
       overlayVisibleRef.current = true;
       setOverlay(next);
       AccessibilityInfo.announceForAccessibility(
-        [next.message, next.detail].filter(Boolean).join(". "),
+        [next.message, next.detail, ...(next.doorAnswers?.lines ?? [])].filter(Boolean).join(". "),
       );
       if (reduceMotionRef.current) {
         // Cycle 17c §F.2 — instant set when reduce-motion ON.
@@ -373,6 +387,9 @@ export default function ScannerCameraRoute(): React.ReactElement {
               kind,
               message: `${scanAttendeeName(result)} checked in`,
               detail: scanDetailLine(result.entityType, result.invitedByName),
+              doorAnswers: result.doorAnswers,
+              scanId: result.scanId,
+              guestName: scanAttendeeName(result),
             });
             void Haptics.notificationAsync(
               Haptics.NotificationFeedbackType.Success,
@@ -410,7 +427,14 @@ export default function ScannerCameraRoute(): React.ReactElement {
           } else {
             message = "RSVP invite not found";
           }
-          showResult({ kind, message, detail });
+          showResult({
+            kind,
+            message,
+            detail,
+            doorAnswers: result.doorAnswers,
+            scanId: result.scanId,
+            guestName: scanAttendeeName(result),
+          });
           // Warning tone for recoverable states (duplicate + the two new
           // time-window states); Error tone for the not-recoverable ones.
           void Haptics.notificationAsync(
@@ -607,9 +631,9 @@ export default function ScannerCameraRoute(): React.ReactElement {
       <View style={styles.cameraWrap}>
         <CameraView
           style={StyleSheet.absoluteFill}
-          active={isAppActive}
+          active={isAppActive && answersTarget === null}
           barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-          onBarcodeScanned={isAppActive && !isProcessing
+          onBarcodeScanned={isAppActive && answersTarget === null && !isProcessing
             ? handleBarcodeScanned
             : undefined}
           accessibilityLabel="QR scanner camera viewport"
@@ -652,9 +676,10 @@ export default function ScannerCameraRoute(): React.ReactElement {
             ]}
             pointerEvents="auto"
           >
+            <View style={styles.overlayCard}>
             <Pressable
               onPress={dismissOverlay}
-              style={styles.overlayCard}
+              style={styles.overlayDismiss}
               accessibilityRole="button"
               accessibilityLabel="Dismiss scan result"
             >
@@ -679,6 +704,31 @@ export default function ScannerCameraRoute(): React.ReactElement {
                 </Text>
               ) : null}
             </Pressable>
+            {overlay.doorAnswers ? (
+              <View style={styles.overlayAnswers}>
+                {overlay.doorAnswers?.header ? (
+                  <Text style={styles.overlayAnswersHeader}>{overlay.doorAnswers.header}</Text>
+                ) : null}
+                {overlay.doorAnswers?.lines.map((line, index) => (
+                  <Text key={`${index}-${line}`} style={styles.overlayAnswerLine} numberOfLines={2}>
+                    {line}
+                  </Text>
+                ))}
+                {overlay.doorAnswers?.fullAnswers && overlay.scanId && overlay.guestName ? (
+                  <Button
+                    label="See all answers"
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => {
+                      setAnswersTarget({ scanId: overlay.scanId!, guestName: overlay.guestName! });
+                      dismissOverlay();
+                    }}
+                    testID="rsvp-door-see-all-answers"
+                  />
+                ) : null}
+              </View>
+            ) : null}
+            </View>
           </Animated.View>
         ) : null}
       </View>
@@ -727,6 +777,18 @@ export default function ScannerCameraRoute(): React.ReactElement {
           )
         ) : null}
       </View>
+      {answersTarget !== null ? (
+        <React.Suspense fallback={null}>
+          <DoorAnswersSheet
+            visible
+            onClose={() => setAnswersTarget(null)}
+            eventId={event.id}
+            scanId={answersTarget.scanId}
+            guestName={answersTarget.guestName}
+            functionName="scan-rsvp"
+          />
+        </React.Suspense>
+      ) : null}
     </View>
   );
 }
@@ -929,6 +991,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space[2],
   },
+  overlayDismiss: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    gap: space[2],
+  },
+  overlayAnswers: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    gap: space[2],
+  },
   overlayIconBadge: {
     width: 64,
     height: 64,
@@ -945,6 +1017,17 @@ const styles = StyleSheet.create({
   overlayDetail: {
     fontSize: 13,
     color: color.text2,
+    textAlign: "center",
+  },
+  overlayAnswersHeader: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: color.text2,
+    textAlign: "center",
+  },
+  overlayAnswerLine: {
+    fontSize: 13,
+    color: color.text1,
     textAlign: "center",
   },
   logHost: {

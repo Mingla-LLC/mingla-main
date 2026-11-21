@@ -13,6 +13,7 @@ export const brandFormKeys = {
   tile: (eventId: string) => ["brand-forms", "tile", eventId] as const,
   counts: (brandId: string) => ["brand-forms", "counts", brandId] as const,
   rosterAnswers: (eventId: string) => ["brand-forms", "roster-answers", eventId] as const,
+  /** #4541: the questions a guest answers on the public RSVP page. */
   /** Wave 4: reach and cost of one "Ask guests to answer" / "Remind" before sending. */
   requestPreview: (formId: string, eventId: string, kind: string, audience: string, channels: string, subjects: string) =>
     ["brand-forms", "request-preview", formId, eventId, kind, audience, channels, subjects] as const,

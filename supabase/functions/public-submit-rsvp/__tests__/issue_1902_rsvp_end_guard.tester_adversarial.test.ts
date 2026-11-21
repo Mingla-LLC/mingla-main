@@ -48,7 +48,9 @@ Deno.test({
         }
         if (
           url.pathname ===
-            "/rest/v1/rpc/submit_event_rsvp_with_delivery"
+            // #4541: the edge now calls the atomic RSVP + answers wrapper,
+            // which calls the #4508 delivery RPC inside the same transaction.
+            "/rest/v1/rpc/submit_event_rsvp_with_form"
         ) {
           const body = await request.json() as Record<string, unknown>;
           upstreamCalls.push({

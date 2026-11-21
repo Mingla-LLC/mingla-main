@@ -167,6 +167,18 @@ export const brandEnquiryKeys = {
   brandIdentity: (ref: string) => [...brandEnquiryKeys.all, 'brandIdentity', ref] as const,
 };
 
+// #4541 — brand forms a guest answers in the Explorer app. The ONE key factory
+// for these reads (Constitution #4); no screen writes a form key inline.
+export const brandFormKeys = {
+  all: ['brand-forms'] as const,
+  /** The questions attached to one RSVP page. */
+  rsvpForm: (eventId: string | null) =>
+    [...brandFormKeys.all, 'rsvp-form', eventId ?? 'none'] as const,
+  /** The signed-in guest's forms still waiting for an answer. */
+  myPending: (userId: string | null) =>
+    [...brandFormKeys.all, 'my-pending', userId ?? 'none'] as const,
+};
+
 // Issue #4261 — plans in chats (chat plans and deck matches share one entity).
 // `conversation` is the one list read per plan chat; realtime and every plan
 // mutation invalidate it.

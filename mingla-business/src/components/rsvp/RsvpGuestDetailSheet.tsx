@@ -187,6 +187,9 @@ export interface RsvpGuestDetailSheetProps {
   refund?: SourceRefundSummary | null;
   onRefundContribution?: (contributionId: string) => void;
   isRefundPending?: boolean;
+  /** #4541 — lazy form answer panels owned by the console/forms chunk. */
+  answersPanel?: React.ReactNode;
+  renderPlusAnswers?: (guest: RsvpPlusGuest) => React.ReactNode;
 }
 
 export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
@@ -206,6 +209,8 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
   refund = null,
   onRefundContribution,
   isRefundPending = false,
+  answersPanel = null,
+  renderPlusAnswers,
 }) => {
   // The Sheet stays mounted through its close animation, during which `guest`
   // may already be null — render an empty body then (the Sheet animates out).
@@ -251,6 +256,8 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
             </Text>
             <Text style={styles.meta}>{formatRsvpTime(guest.createdAt)}</Text>
           </View>
+
+          {answersPanel}
 
           {/* STATUS */}
           <View style={styles.block}>
@@ -333,6 +340,7 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
                       </Text>
                     </View>
                   </View>
+                  {pg.claimed ? renderPlusAnswers?.(pg) : null}
                   {byHand ? (
                     <Button
                       label={manualCheckInLabel(pg.invitedByName)}

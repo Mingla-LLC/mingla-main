@@ -591,6 +591,23 @@ const renderPublicEventPage = (
           }),
           viewerNameFromUser: () => null,
         };
+      // #4541 Harness registration only — ADDITION, no assertion changed. The
+      // RSVP questions read and its helpers are outside the close-callback
+      // contract; the fixture is a ticketed event, so the read stays disabled.
+      case "@mingla/offering-rendering/rsvpBrandForm":
+        return {
+          carryOverRsvpAnswers: () => ({}),
+          isRsvpFormErrorCode: () => false,
+          rsvpFormMissingRequiredIds: () => [],
+        };
+      case "../../services/publicRsvpBrandForm":
+        return { fetchPublicRsvpBrandForm: async () => null };
+      case "../checkout/intake/publicRsvpFormKeys":
+        return {
+          publicRsvpFormKeys: {
+            forEvent: (eventId: string) => ["brand-forms", "public-rsvp", eventId],
+          },
+        };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

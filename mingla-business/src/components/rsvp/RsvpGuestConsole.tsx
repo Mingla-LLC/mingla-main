@@ -66,6 +66,16 @@ import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
 import { useEventRsvpContributionRefunds } from "../../hooks/useRsvpContributionRefunds";
 import { requestRsvpContributionRefund } from "../../services/sourceRefundService";
 
+const GuestAnswersChip = React.lazy(() =>
+  import("../forms/formsOwner").then((module) => ({ default: module.GuestAnswersChip })),
+);
+const GuestAnswersPanel = React.lazy(() =>
+  import("../forms/formsOwner").then((module) => ({ default: module.GuestAnswersPanel })),
+);
+const GuestFormRequestRow = React.lazy(() =>
+  import("../forms/formsOwner").then((module) => ({ default: module.GuestFormRequestRow })),
+);
+
 const ROW_BG = Platform.select({
   ios: color.fill.inset,
   android: materials.control.solidFill,
@@ -486,6 +496,9 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
               {g.plusCount > 0 ? <Text style={styles.plusChip}>  +{g.plusCount}</Text> : null}
             </Text>
             <View style={styles.metaRow}>
+              <React.Suspense fallback={null}>
+                <GuestAnswersChip eventId={eventId} rsvpId={g.id} orderIds={[]} />
+              </React.Suspense>
               <SourceBadge source={g.source} />
               {g.email !== null || g.phone !== null ? (
                 <Text style={styles.guestContact} numberOfLines={1} ellipsizeMode="tail">
@@ -510,7 +523,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         </View>
       </View>
     ),
-    [contributionByRsvp, handleSelectGuest],
+    [contributionByRsvp, eventId, handleSelectGuest],
   );
 
   const renderHeader = (): React.ReactElement => (
@@ -554,6 +567,9 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + space[7] }]}
         showsVerticalScrollIndicator={false}
       >
+        <React.Suspense fallback={null}>
+          <GuestFormRequestRow eventId={eventId} eventTitle={eventTitle} />
+        </React.Suspense>
         <View style={styles.checkinFilters} accessible accessibilityLabel="Check-in filters">
           {([
             ["all", "All"],
@@ -706,6 +722,21 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
           : null}
         onRefundContribution={handleRefundContribution}
         isRefundPending={refundPendingId !== null}
+        answersPanel={sheetGuest === null ? null : (
+          <React.Suspense fallback={null}>
+            <GuestAnswersPanel eventId={eventId} rsvpId={sheetGuest.id} orderIds={[]} />
+          </React.Suspense>
+        )}
+        renderPlusAnswers={(plusGuest) => (
+          <React.Suspense fallback={null}>
+            <GuestAnswersPanel
+              eventId={eventId}
+              rsvpId={null}
+              rsvpGuestId={plusGuest.id}
+              orderIds={[]}
+            />
+          </React.Suspense>
+        )}
       />
 
       <ConfirmDialog

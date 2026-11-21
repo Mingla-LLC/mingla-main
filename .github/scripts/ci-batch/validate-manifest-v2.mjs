@@ -634,7 +634,8 @@ export function phase3dContractDigest(manifest) {
 // #4514 brand forms: removed the exact-filename skip of 20281120034514 from the #1931 filtered template replay (the #2492 gate now credits applied CREATE TABLE columns); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b6db463549ddc6ee2dd30ea6b5bae131dc30dca514376213f61d5a6da709136d";
+// #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the replay inventories; skipped it by exact filename on the filtered #1931 template replay (it reads event_rsvp_guests columns only the skipped 20281119014508 creates); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "732eedc73cd011e15ad10636f1ba634867f807f9ef11e4857ee13faa638df65a";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1142,9 +1143,12 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // [TEST-MOD-APPROVED #4389] Re-banked both package.json files after each
 // build-production-* script was prefixed with the store build guard
 // (scripts/release/store-build-guard.cjs). Dependencies and lockfiles unchanged.
+// [TEST-MOD-APPROVED #4541] Re-banked app-mobile after the Explorer app declared
+// @mingla/form-rendering (file:../packages/form-rendering, the one question
+// model) and its two lockfile link entries. No other package version moved.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "d7dbb5805cab015bfb51c28b1895473ad792eb5601cbfe77a06804b0124122b0",
-  "app-mobile/package-lock.json": "40bac6aff5ba88ab90debc72a88f0b106bf2d2e4dc0234f20b054d2ae9786edf",
+  "app-mobile/package.json": "ad4a34a147b3b2452825f458f2cef7aefd8b83a47804876be9a1277c0ef13b8f",
+  "app-mobile/package-lock.json": "6cc33c2879c6ff793d07584641a632b7404714608e256a7c37395e9042833485",
   "mingla-business/package.json": "504036f1f62da1a272df5864287efce79eda6d03d2dcf380fecf43b1436f906b",
   "mingla-business/package-lock.json": "0bc52863b9c33e013d200020dedaa5035f4f17f590387eb1247830ca279792d2",
 });
