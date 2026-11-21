@@ -6,7 +6,9 @@
 --    patch in 20280809364490, kept): a venue offer booking is reported as
 --    kind/routeKind venue_booking, offering type venue, noun pass; membership
 --    months attach silently; two new loops attach venue memberships and open
---    waitlist places to the account that proved the contact.
+--    waitlist places to the account that proved the contact (a plan is
+--    announced as a pass only when it carries one: active, payment_due,
+--    grace; see the loop for which plan states attach).
 -- 2. issue_4473_share_purchases_by_verified_identity (latest
 --    20280805004473): the stay block ignores venue offer bookings.
 -- 3. New issue_4490_my_waitlist_entries() for the app's Purchases list.
@@ -14,7 +16,8 @@
 --    the venue are listed too (membership months still excluded).
 -- 5. Category venue_visit_reminder; issue_4490_offer_sweep (latest
 --    20280809184490) queues one reminder a day before and one 2 hours before
---    the first slice of a confirmed booking, behind VENUE_VISIT_REMINDERS.
+--    the first slice of a live booking (confirmed or partly cancelled), once
+--    per booking time, fairly across runs, behind VENUE_VISIT_REMINDERS.
 -- 6. venue_membership_renewal reaches push and SMS as well.
 -- Static SQL. Local stack only until Seth approves a production migration.
 
@@ -401,16 +404,31 @@ BEGIN
   v_more := v_more OR v_pass_count = 25;
 
   -- #4490 Explorer W2: venue memberships bought without an account.
+  -- Attached: plans that carry a member pass (active, payment_due, grace),
+  -- paid plans that are lapsed or paused (they restart by paying), a plan
+  -- request awaiting the venue, and a plan still inside its first-payment
+  -- window (joined, or approved by the venue, and not yet closed by the
+  -- billing run: the same clock as issue_4490_membership_billing_run).
+  -- Only the first three are announced as a pass; the rest are reported with
+  -- the noun 'booking' ("Your booking is here"), never as a pass that does
+  -- not exist. Declined, cancelled and never-paid plans past their window
+  -- are not attached.
   v_pass_count := 0;
   FOR v_row IN
     SELECT s.id, vl.id AS venue_id, p.name AS title, vl.name AS venue_name,
-           s.current_period_start AS starts_at
+           s.current_period_start AS starts_at, s.status
       FROM public.venue_membership_subscriptions s
       JOIN public.venue_membership_plans p ON p.id = s.plan_id
       LEFT JOIN public.venue_listings vl
         ON vl.id = public.issue_4490_plan_venue(s.plan_id)
      WHERE s.user_id IS NULL
-       AND s.status <> 'cancelled'
+       AND (s.status IN ('active', 'payment_due', 'grace', 'lapsed', 'paused', 'requested')
+         OR (s.status = 'pending'
+           AND (CASE WHEN s.decided_at IS NOT NULL THEN s.decided_at + interval '3 days'
+                     ELSE s.created_at + interval '2 days' END > now()
+             OR EXISTS (SELECT 1 FROM public.venue_membership_periods mp
+                          JOIN public.stay_payment_attempts a ON a.group_id = mp.group_id
+                         WHERE mp.subscription_id = s.id AND a.state IN ('pending', 'ambiguous')))))
        AND (lower(btrim(s.member_email)) = ANY(v_emails)
          OR s.member_phone = ANY(v_phones))
        AND public.account_owns_contact(
@@ -428,7 +446,8 @@ BEGIN
     v_claimed := v_claimed || jsonb_build_array(jsonb_build_object(
       'kind', 'venue_membership', 'id', v_row.id,
       'routeKind', 'venue_membership', 'routeId', v_row.id,
-      'offeringType', 'venue', 'noun', 'pass',
+      'offeringType', 'venue',
+      'noun', CASE WHEN v_row.status IN ('active', 'payment_due', 'grace') THEN 'pass' ELSE 'booking' END,
       'title', coalesce(v_row.title, 'Membership'), 'orderLabel', NULL,
       'startsAt', v_row.starts_at,
       'timezone', public.issue_4490_venue_timezone(v_row.venue_id),
@@ -1012,8 +1031,6 @@ DECLARE
   v_released integer := 0;
   v_deposits integer := 0;
   v_visit_reminders integer := 0;
-  v_when text;
-  v_email text;
 BEGIN
   IF NOT public.issue_1389_service_role() THEN
     RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
@@ -1143,13 +1160,23 @@ BEGIN
   -- #4490 Explorer W2: "your visit is soon" reminders, a day before and two
   -- hours before the first slice starts (venue time is carried by the
   -- window's own timestamp; a multi-day pass is reminded for its first day
-  -- only). Confirmed bookings only, once each per booking (the outbox key),
-  -- and never late: a reminder whose moment had already passed when the
-  -- booking was made, or that the next reminder has overtaken, is skipped.
+  -- only). Live bookings only (confirmed, or partly cancelled with guests
+  -- still confirmed); once each per booking time: the outbox key carries the
+  -- slice start, so a booking moved to a new time is reminded again for the
+  -- new time and never twice for the same one. Never late: a reminder whose
+  -- moment had already passed when the booking was made (or last moved), or
+  -- that the next reminder has overtaken, is skipped.
+  -- Fair across runs: only bookings whose due reminder is not queued yet and
+  -- that have somewhere to send it are taken, soonest start first, so each
+  -- run moves on to the next p_limit bookings and none is starved. Worst
+  -- case with a backlog of N due reminders: they drain p_limit per run,
+  -- soonest visit first; a day-before reminder still waiting when the
+  -- two-hour mark arrives is replaced by the two-hour one.
   IF public.issue_4490_flag_on('VENUE_VISIT_REMINDERS') THEN
     FOR v_row IN
       SELECT g.id, g.user_id, g.brand_id, g.venue_id, g.public_reference, g.offer_kind,
-             g.currency_code, g.created_at, g.guest_snapshot, s.starts_at
+             g.currency_code, g.guest_snapshot, s.starts_at, d.v_when, k.v_key,
+             NULLIF(lower(btrim(COALESCE(g.guest_snapshot->>'email', ''))), '') AS v_email
       FROM public.stay_reservation_groups g
       CROSS JOIN LATERAL (
         SELECT min(w.starts_at) AS starts_at
@@ -1157,26 +1184,38 @@ BEGIN
         JOIN public.stay_place_windows w ON w.id = public.issue_4490_line_window_id(l.id)
         WHERE l.group_id = g.id AND l.state = 'confirmed'
       ) s
+      CROSS JOIN LATERAL (
+        SELECT GREATEST(g.created_at, COALESCE((
+          SELECT max(e.created_at) FROM public.stay_reservation_events e
+          WHERE e.group_id = g.id AND e.event_type = 'stay_offer_changed'
+            AND e.safe_metadata->>'action' = 'move_date'), g.created_at)) AS booked_at
+      ) b
+      CROSS JOIN LATERAL (
+        SELECT CASE
+          WHEN now() >= s.starts_at - interval '2 hours'
+            THEN CASE WHEN b.booked_at <= s.starts_at - interval '2 hours' THEN '2h' END
+          WHEN b.booked_at <= s.starts_at - interval '24 hours' THEN '24h'
+        END AS v_when
+      ) d
+      CROSS JOIN LATERAL (
+        SELECT 'venue_visit_reminder:' || g.id || ':' || d.v_when || ':'
+               || floor(extract(epoch FROM s.starts_at))::bigint AS v_key
+      ) k
       WHERE g.offer_kind IS NOT NULL AND g.offer_kind <> 'membership'
-        AND g.state = 'confirmed'
+        AND g.state IN ('confirmed', 'partially_cancelled')
         AND s.starts_at > now()
         AND s.starts_at <= now() + interval '24 hours'
+        AND d.v_when IS NOT NULL
+        AND (g.user_id IS NOT NULL
+          OR NULLIF(btrim(COALESCE(g.guest_snapshot->>'email', '')), '') IS NOT NULL)
+        AND NOT EXISTS (SELECT 1 FROM public.notification_outbox o WHERE o.idempotency_key = k.v_key)
       ORDER BY s.starts_at, g.id
       LIMIT v_limit
     LOOP
-      v_when := CASE
-        WHEN now() >= v_row.starts_at - interval '2 hours'
-          THEN CASE WHEN v_row.created_at <= v_row.starts_at - interval '2 hours' THEN '2h' END
-        WHEN v_row.created_at <= v_row.starts_at - interval '24 hours' THEN '24h'
-      END;
-      v_email := NULLIF(lower(btrim(COALESCE(v_row.guest_snapshot->>'email', ''))), '');
-      IF v_when IS NULL OR (v_email IS NULL AND v_row.user_id IS NULL) THEN
-        CONTINUE;
-      END IF;
       INSERT INTO public.notification_outbox (
         category_key, user_id, contact, brand_id, payload, idempotency_key, country_code
       ) VALUES (
-        'venue_visit_reminder', v_row.user_id, v_email, v_row.brand_id,
+        'venue_visit_reminder', v_row.user_id, v_row.v_email, v_row.brand_id,
         jsonb_build_object(
           'venue_group_id', v_row.id,
           'public_reference', v_row.public_reference,
@@ -1184,8 +1223,8 @@ BEGIN
           'offer_kind', v_row.offer_kind,
           'currency', v_row.currency_code,
           'starts_at', v_row.starts_at,
-          'reminder_reason', v_when),
-        'venue_visit_reminder:' || v_row.id || ':' || v_when, NULL
+          'reminder_reason', v_row.v_when),
+        v_row.v_key, NULL
       ) ON CONFLICT (idempotency_key) DO NOTHING;
       GET DIAGNOSTICS v_inserted = ROW_COUNT;
       v_visit_reminders := v_visit_reminders + v_inserted;
