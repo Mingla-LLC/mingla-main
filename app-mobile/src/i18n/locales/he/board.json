@@ -71,7 +71,8 @@
     "deleteSessionMsg": "בטוח שאתה רוצה למחוק את \"{{name}}\"? פעולה זו לא ניתנת לביטול וכל הכרטיסים, ההצבעות והדיונים יימחקו לצמיתות.",
     "leaveSessionTitle": "עזוב לוח",
     "leaveSessionMsg": "בטוח שאתה רוצה לעזוב את \"{{name}}\"?",
-    "namePlaceholder": "הזן שם סשן"
+    "namePlaceholder": "הזן שם סשן",
+    "sessionShareMessage": "הוספתי אותך ל\"{{name}}\" ב-Mingla. הצטרפו כאן: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "דיון",

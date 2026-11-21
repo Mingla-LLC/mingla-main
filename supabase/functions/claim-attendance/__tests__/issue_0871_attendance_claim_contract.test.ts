@@ -845,7 +845,11 @@ Deno.test("#871 guest sheet exposes close, party size, offline recovery and acti
   const sheet = read("app-mobile/src/components/EventGuestListSheet.tsx");
   assertStringIncludes(sheet, 'accessibilityLabel="Close guest list"');
   assertStringIncludes(sheet, "width: 44");
-  assertStringIncludes(sheet, "const party = `party of ${guest.partySize}`");
+  assertStringIncludes(sheet, ': `party of ${guest.partySize}`;');
+  assertStringIncludes(
+    sheet,
+    '`party of ${guest.partySize} · +${unclaimed} ${unclaimed === 1 ? "guest" : "guests"}`',
+  );
   assertStringIncludes(sheet, "Retry after reconnect");
   assertStringIncludes(sheet, 'color: "#111827"');
   assert(

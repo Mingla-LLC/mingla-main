@@ -263,27 +263,22 @@ describe("#3380 adversarial — Can't go", () => {
 });
 
 describe("#3380 adversarial — plus-ones", () => {
-  it("an unfinished guest still blocks Going (no dialog); a finished list is sent intact with the phone", async () => {
+  // [#4508] a plus-one is just a phone number now ("Who's coming with you?");
+  // there is no unfinished guest form to block Going. The number is added,
+  // then sent number-only alongside the account phone the dialog asks for.
+  it("an added guest number is sent number-only, with the phone the confirm step asks for", async () => {
     const onSubmit = jest.fn(async () => accepted);
     const tree = await mount({ cfg: plusConfig, accountPhoneOnFile: false, onSubmit });
 
-    await press(byTestID(tree, "orch-1157-rsvp-plus-plus")[0]);
-    await press(byTestID(tree, "orch-1150-rsvp-going")[0]);
-    // Guest 1 is empty: the page reveals the fields; the dialog stays shut.
-    expect(dialog().visible).toBe(false);
-    expect(onSubmit).not.toHaveBeenCalled();
-
     await act(async () => {
-      (byTestID(tree, "orch-1163-rsvp-guest-0-name")[0].props.onChangeText as (v: string) => void)("Grace Hopper");
-    });
-    await act(async () => {
-      (byTestID(tree, "orch-1163-rsvp-guest-0-email")[0].props.onChangeText as (v: string) => void)(
-        "grace@example.invalid",
-      );
+      lastCall((c) => c.role === "plus_one").onChangeCountry("US", null);
     });
     await act(async () => {
       lastCall((c) => c.role === "plus_one").onChangeRawValue("555 987 6543", "+15559876543");
     });
+    // The guest field never offers the device's own number.
+    expect(lastCall((c) => c.role === "plus_one").disableAutofill).toBe(true);
+    await press(byTestID(tree, "issue-4508-rsvp-party-number-add")[0]);
 
     // Only the primary phone is missing now: the confirm step asks for it.
     await press(byTestID(tree, "orch-1150-rsvp-going")[0]);
@@ -299,9 +294,7 @@ describe("#3380 adversarial — plus-ones", () => {
         rsvpStatus: "going",
         guestPhone: "+2348031234567",
         plusCount: 1,
-        guests: [
-          expect.objectContaining({ name: "Grace Hopper", email: "grace@example.invalid", phone: "+15559876543" }),
-        ],
+        guests: [{ phone: "+15559876543", phoneCountryIso: "US" }],
       }),
     );
   });

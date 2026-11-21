@@ -75,7 +75,26 @@ BEGIN
   -- mutate search_path inside a subtransaction, prove the guard fails, then
   -- let the exception handler roll the mutation back before the next case.
   FOR v_expected IN SELECT * FROM (VALUES
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '7bc2a30ab5d3e7a790f6695381b96b4d'),
+    -- #4508 last-writes submit_event_rsvp (20281119014508): number-only plus-ones,
+    -- the server plus-one limit, own/duplicate/listed/released refusals, the
+    -- 24-hour inviter cap, and guest rows kept across a re-submit; the wave A
+    -- rework adds friend guests by account, signed-out caps per address,
+    -- per-number holds and willText. The second rework gives a signed-out
+    -- caller one refusal code and no account or reason, locks each guest
+    -- number before counting it, and holds texts past the signed-out daily
+    -- ceiling. The third rework (2026-11-19) answers a signed-out caller's
+    -- already-listed or released number like a new one (no row, no guest id),
+    -- and counts the signed-out ceiling under a lock. Fix round 4
+    -- (2026-11-19): a plus-one needs a signed-in inviter (signed-out guests
+    -- refused after the #1902 boundary), an own RSVP replaces an unclaimed
+    -- guest row of the same account, the inviter's cap is serialized by a
+    -- lock, and removed claimed guests are listed for a notice. Fix round 6
+    -- (2026-11-19): round 5's claim at submit for old-contract guests is
+    -- removed; no guest is claimed at submit, whatever the payload shape.
+    -- Fix round 8 (2026-11-19): the answer's displayName for a guest is only a
+    -- real name (matched account or typed), never "<Inviter>'s guest".
+    -- The #1857 phone authority lines are unchanged.
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'f7de2bbbdabefb4347fb7af7406f6687'),
     -- #4063 last-writes this wrapper so approved RSVPs receive only a pass,
     -- while pending/other outcomes retain acknowledgement delivery.
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'c043d726559b59db1ea641ff4b5503de'),
@@ -118,12 +137,17 @@ BEGIN
     END IF;
   END LOOP;
 
-  IF md5(pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))<>'498565615bd834f1d3efa95fb3d4552c' THEN
+  -- [TEST-MOD-APPROVED #4508] #4508 (S3) is the current last writer of the
+  -- worker's derived entry point: re-created from 20270305001770 with only the
+  -- rsvp_plus_one SELECT changed (no account and no server-resolved friend
+  -- number before the plus-one claims). The fingerprint HAD to move; the
+  -- deliberate-drift self-test below still proves it moves with the body.
+  IF md5(pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))<>'20aebc0302940997a7ad90c992f7c1e2' THEN
     RAISE EXCEPTION 'issue_1857_derived_fingerprint_baseline_failed';
   END IF;
   BEGIN
     ALTER FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid) SET search_path TO issue_1857_deliberate_drift;
-    IF md5(pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))<>'498565615bd834f1d3efa95fb3d4552c' THEN
+    IF md5(pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))<>'20aebc0302940997a7ad90c992f7c1e2' THEN
       RAISE EXCEPTION USING ERRCODE='P1857',MESSAGE='issue_1857_derived_definition_changed';
     END IF;
     RAISE EXCEPTION 'issue_1857_derived_mutation_survived';

@@ -154,8 +154,11 @@ describe("ORCH-1186 — Fix 5 keyboard Done bar gated on visibility", () => {
     expect(kbBizSrc).toMatch(/showArrows=\{false\}/);
   });
 
-  test("consumer: KeyboardToolbarRoot gated on useKeyboardState().isVisible", () => {
-    expect(kbConsumerSrc).toMatch(/useKeyboardState\(\)/);
+  test("consumer: KeyboardToolbarRoot gated on the ordered-event visibility hook", () => {
+    expect(kbConsumerSrc).toMatch(
+      /import \{ useKeyboardIsVisible \} from "\.\/useKeyboardIsVisible"/,
+    );
+    expect(kbConsumerSrc).toMatch(/useKeyboardIsVisible\(\)/);
     expect(kbConsumerSrc).toMatch(/if \(!isVisible\) return null/);
     expect(kbConsumerSrc).toMatch(/showArrows=\{false\}/);
   });

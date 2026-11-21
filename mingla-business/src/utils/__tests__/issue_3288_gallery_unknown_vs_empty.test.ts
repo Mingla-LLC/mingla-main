@@ -151,6 +151,7 @@ const FULL_ROW: Required<ServerDraftEventRow> = {
   theme_font_override: null,
   theme_animation_override: null,
   theme_gradient_override: null,
+  rsvp_guests_can_bring: false,
 };
 
 const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({

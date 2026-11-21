@@ -96,9 +96,11 @@ BEGIN
      v_other, 'Other', 'issue-4251-other@example.test', '+12025554252',
      'going', 'approved', 1);
 
-  INSERT INTO public.event_rsvp_guests(id, rsvp_id, name, email, phone, matched_user_id)
+  INSERT INTO public.event_rsvp_guests(
+    id, rsvp_id, name, email, phone, matched_user_id, claimed_at
+  )
   VALUES ('42510000-0000-4000-8000-000000000051', '42510000-0000-4000-8000-000000000043',
-          'Viewer', 'issue-4251-viewer@example.test', '+12025554251', v_viewer);
+          'Viewer', 'issue-4251-viewer@example.test', '+12025554251', v_viewer, now());
 END;
 $fixtures$;
 

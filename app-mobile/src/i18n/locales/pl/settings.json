@@ -51,7 +51,9 @@
         "brand_offering_invite": "Zaproszenia od miejsc, które obserwujesz",
         "brand_offering_invite_hint": "Gdy miejsce lub gospodarz zaprasza cię na coś."
       }
-    }
+    },
+    "friends_going": "Wyjścia znajomych",
+    "friends_going_hint": "Gdy bliski znajomy idzie na wydarzenie"
   },
   "quiet_hours": {
     "title": "Quiet Hours",

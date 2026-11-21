@@ -3,11 +3,11 @@
 import React from "react";
 import {
   KeyboardToolbar,
-  useKeyboardState,
   type KeyboardToolbarProps,
 } from "react-native-keyboard-controller";
 
 import { colors } from "../constants/colors";
+import { useKeyboardIsVisible } from "./useKeyboardIsVisible";
 
 type KeyboardToolbarTheme = NonNullable<KeyboardToolbarProps["theme"]>;
 
@@ -30,8 +30,10 @@ export const MINGLA_KEYBOARD_TOOLBAR_THEME: KeyboardToolbarTheme = {
 // for when the consumer native build ships. Without the keyboard up, the
 // library's KeyboardToolbar rests at the TOP of the window → an off-white "Done"
 // bar parked at the top of input-less sheets. Render nothing until a keyboard is
-// visible; the Done bar still appears whenever a keyboard opens. useKeyboardState
-// reads the nearest per-window KeyboardProvider.
+// visible; the Done bar still appears whenever a keyboard opens.
+// #4508 round 9: visibility comes from useKeyboardIsVisible (keyboard events in
+// iOS's real order); the library's useKeyboardState hid the bar after a picker
+// closed because a late keyboardDidHide outlived the next keyboardWillShow.
 // #4473 — a dark surface (e.g. a dark bottom sheet) asks for the dark bar
 // whatever the system appearance, so a light pill never floats over it.
 const MINGLA_KEYBOARD_TOOLBAR_DARK_THEME: KeyboardToolbarTheme = {
@@ -42,7 +44,7 @@ const MINGLA_KEYBOARD_TOOLBAR_DARK_THEME: KeyboardToolbarTheme = {
 export const KeyboardToolbarRoot: React.FC<{ tone?: "system" | "dark" }> = ({
   tone = "system",
 }) => {
-  const { isVisible } = useKeyboardState();
+  const isVisible = useKeyboardIsVisible();
   if (!isVisible) return null;
   return (
     <KeyboardToolbar

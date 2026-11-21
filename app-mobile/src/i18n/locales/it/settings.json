@@ -51,7 +51,9 @@
         "brand_offering_invite": "Inviti dai luoghi che segui",
         "brand_offering_invite_hint": "Quando un luogo o un host ti invita a qualcosa."
       }
-    }
+    },
+    "friends_going": "Amici che escono",
+    "friends_going_hint": "Quando un amico stretto va a un evento"
   },
   "quiet_hours": {
     "title": "Ore di Silenzio",

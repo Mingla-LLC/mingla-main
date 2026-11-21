@@ -21,6 +21,9 @@ import {
   type ClaimLinkPlatform,
   type ClaimLinkResolveResult,
 } from '@/lib/claim-link-client'
+// issue #4508 1.17 — the same /c/<code> link may be an RSVP guest's invite.
+import { resolveRsvpGuest, type RsvpGuestLanding as RsvpGuest } from '@/lib/rsvp-guest-client'
+import { RsvpGuestLanding, RSVP_GUEST_COPY } from './RsvpGuestLanding'
 
 const DOWNLOAD_URL = 'https://usemingla.com/download'
 
@@ -50,12 +53,22 @@ function PrimaryLink({ href, label }: { href: string; label: string }) {
 export function ClaimLinkClient({ code, platform }: ClaimLinkClientProps) {
   const router = useRouter()
   const [resolved, setResolved] = useState<ClaimLinkResolveResult | null>(null)
+  const [rsvpGuest, setRsvpGuest] = useState<RsvpGuest | null>(null)
   const [handoff, setHandoff] = useState<HandoffState>({ kind: 'idle' })
 
   useEffect(() => {
     const controller = new AbortController()
-    void resolveClaimLink(code, controller.signal).then((result) => {
+    // issue #4508 — asked together; an RSVP guest link wins when it is one.
+    void Promise.all([
+      resolveClaimLink(code, controller.signal),
+      resolveRsvpGuest(code, controller.signal),
+    ]).then(([result, guest]) => {
       if (controller.signal.aborted) return
+      if (guest.kind === 'guest') {
+        setRsvpGuest(guest.guest)
+        setResolved(result)
+        return
+      }
       if (result.kind === 'redirect') {
         window.location.replace(result.url)
         return
@@ -121,6 +134,20 @@ export function ClaimLinkClient({ code, platform }: ClaimLinkClientProps) {
       ),
     }
   }, [resolved])
+
+  if (rsvpGuest !== null) {
+    return (
+      <ClaimShell
+        title={
+          rsvpGuest.status === 'open'
+            ? RSVP_GUEST_COPY.savedSpot(rsvpGuest.inviterName)
+            : 'Your Mingla invite'
+        }
+      >
+        <RsvpGuestLanding code={code} guest={rsvpGuest} platform={platform} />
+      </ClaimShell>
+    )
+  }
 
   if (resolved === null || resolved.kind === 'redirect') {
     return <ClaimShell title="Opening your Mingla link…" />

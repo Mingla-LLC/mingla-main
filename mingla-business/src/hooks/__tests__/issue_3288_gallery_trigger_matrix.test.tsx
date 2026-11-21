@@ -121,6 +121,8 @@ const EVENT_COLUMNS = new Set([
   // issue #1023 wave 2 — the events table now has the gradient column (applied
   // 2026-11-07); the draft select names it.
   "theme_gradient_override",
+  // #4508 - the draft select names the guests-can-bring column.
+  "rsvp_guests_can_bring",
 ]);
 
 const fromEvents = (): Record<string, unknown> => {

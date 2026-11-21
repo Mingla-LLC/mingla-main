@@ -619,15 +619,22 @@ export function phase3dContractDigest(manifest) {
 // #3645 bundle 2C: registered the paid/free choice migration in the #1857, #1931 and #2117 lanes and its pg17 suite and declared patches (with sidecar) in the #1931 and #2117 inventories, and skipped it on the filtered #1931 temp replay and the #2117 phase-1 chain (its precondition needs 20280801003645, which those lanes skip).
 // #4453 Website workspace (team requests): listed migrations 20281119004453 and 20281119014453 in the #1857, #1931 and #2117 replay inventories and their two implementor pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed.
 // #4226 tester suites: registered the people journey tester and retest pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4508: registered the bring-a-friend RSVP migrations and their pg17 suites in the #1857, #1931 and #2117 inventories.
+// #4508: skipped 20281119014508 by exact filename on the filtered #1931 template replay (#2492 closure: it reads claim_links, which only the skipped #4063 migration creates); re-sealed.
+// #4508 tester retest: registered issue_4508_one_place.tester.retest.pg17.test.sql in the #1931 and #2117 inventories; re-sealed.
+// #4508 merge of main after #4226: kept main's #4226 row and skip line beside the #4508 rows; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4453 merge of main after #4226: kept main's 20281118024226 row before the two #4453 rows (filename order) and both sides' pg17 suites; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3645 bundle 2e-1 (merge of main): registered the payout claim snapshots migration in the #1857, #1931 and #2117 lanes and its pg17 suite (with sidecar) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4508 merge of main after #3645 2e-1 and #4453: kept both sides' rows in filename order and both sides' pg17 suites; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 merge of main after #3645 bundle 2e-1: kept main's 20281119003645 row before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 1931 replay: skipped 20281120014420_issue_4420_brand_guest_activity.sql by exact filename on the filtered #1931 temp replay (it calls issue_4459_is_brand_team, defined only by the skipped 20280805004459; #2492 closure); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4508 merge of main after #4420: kept both sides' rows and both #1931 skip lines (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4514 merge of main after #4420: kept the three #4420 rows before the 20281120034514 row (filename order) and #4420's 20281120014420 skip;
 // #4514 brand forms: removed the exact-filename skip of 20281120034514 from the #1931 filtered template replay (the #2492 gate now credits applied CREATE TABLE columns); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "49d38f08e86ae05e74b72dc9334443c4fe0a15299a7b8e75d9424d846ef76a96";
+// #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "b6db463549ddc6ee2dd30ea6b5bae131dc30dca514376213f61d5a6da709136d";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

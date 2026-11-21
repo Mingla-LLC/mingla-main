@@ -208,7 +208,10 @@ Deno.test("#4238 W2-6 fireAdConversion threads the touch's click-id type to the 
     seen[channel] = sendInput;
     return Promise.resolve({ channel, status: "sent" as const });
   };
-  await fireAdConversion(client, { orderId: "order-4238-braid" }, {
+  await fireAdConversion(client, {
+    orderId: "order-4238-braid",
+    eventTimeMs: Date.parse("2026-11-15T08:00:00.000Z"),
+  }, {
     senders: {
       meta: record("meta"),
       tiktok: record("tiktok"),

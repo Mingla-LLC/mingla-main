@@ -1611,7 +1611,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       guestPhone: string;
       guestPhoneCountryIso?: string | null;
       plusCount: number;
-      guests: Array<{ name: string; email: string; phone: string }>;
+      // issue #4508 — number-only guests.
+      guests: import("@mingla/offering-rendering").RsvpGuestPayload[];
     }): Promise<{
       status: "going" | "not_going" | "waitlisted" | "maybe";
       approvalStatus: "pending" | "approved";
@@ -1620,6 +1621,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       credentials: import("@mingla/offering-rendering").RsvpPassCredential[];
       anonymousRecovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
       claim: { shortUrl: string | null; code: string | null } | null;
+      guests: import("@mingla/offering-rendering").RsvpSubmittedGuest[];
     }> => {
       // ORCH-1291 [rsvp-chip-in] — remember the just-submitted guest contact so an
       // anon web chip-in (a SEPARATE voluntary action AFTER the free RSVP) can
@@ -1672,6 +1674,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       return result;
     },
     [engagementScope, event.id, event.currency, event.brandId],
+  );
+  // issue #4508 1.2a / 1.8 — the live match under the guest number field. A
+  // signed-out visitor learns only whether the number is on Mingla.
+  const rsvpGuestLookup = useCallback(
+    (phone: string) =>
+      import("../../services/rsvpGuestLookup").then((m) =>
+        m.lookupPublicRsvpGuest(event.id, phone),
+      ),
+    [event.id],
   );
 
   // ── An anonymous guest's own reply, kept for this browser tab ──
@@ -2049,6 +2060,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
+          guestLookup={rsvpGuestLookup}
+          // issue #4508 T1 — signed out, "Bring someone" points to the app
+          // with this event's own download / deep link (the claim fallback).
+          onGetApp={() => handleOpenRsvpClaim(null)}
+          // issue #4508 1.15 — "Send it yourself too": the same clipboard as
+          // Copy address; Share uses navigator.share (clipboard fallback).
+          onCopyText={copyAddressForTarget}
           onOpenClaim={handleOpenRsvpClaim}
           // ORCH-1163-R3 — this FLOATING_BAR_CLEARANCE + insets.bottom expression is
           // the scroll-runway FLOOR (byte-identical to the event page). The RSVP bar

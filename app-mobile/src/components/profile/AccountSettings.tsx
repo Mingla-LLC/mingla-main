@@ -186,6 +186,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
     messages: true,
     collaboration_invites: true,
     marketing: true,
+    friends_going: true,
   });
   const [dmBypassQuietHours, setDmBypassQuietHours] = useState(false);
   const [isLoadingNotifPrefs, setIsLoadingNotifPrefs] = useState(false);
@@ -341,6 +342,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
             messages: data.messages ?? true,
             collaboration_invites: data.collaboration_invites ?? true,
             marketing: data.marketing ?? true,
+            // #4508 2.3 — absent on a server without the column: on (the default).
+            friends_going: (data as { friends_going?: boolean | null }).friends_going ?? true,
           });
           setDmBypassQuietHours((data as any).dm_bypass_quiet_hours ?? false);
         }
@@ -943,6 +946,18 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 <Toggle
                   value={notifPrefs.push_enabled ?? true}
                   onToggle={() => updateNotifPref('push_enabled', !notifPrefs.push_enabled)}
+                />
+              </View>
+
+              {/* #4508 2.3 — "{Name} is going to {event}" pushes from close friends. */}
+              <View style={[styles.row, styles.rowMultiline]} testID="issue-4508-friends-going-row">
+                <View style={styles.rowLabelWrap}>
+                  <Text style={styles.rowLabel}>{t('settings:notifications.friends_going')}</Text>
+                  <Text style={styles.rowHint}>{t('settings:notifications.friends_going_hint')}</Text>
+                </View>
+                <Toggle
+                  value={notifPrefs.friends_going ?? true}
+                  onToggle={() => updateNotifPref('friends_going', !(notifPrefs.friends_going ?? true))}
                 />
               </View>
 

@@ -77,7 +77,10 @@ describe("#1376 Bug 2 — approve/deny error Toast is nested inside the detail s
     expect(insideSheet).toContain('testID="rsvp-guest-detail-notice"');
     // Driven by the new notice prop — an error kind, shown iff notice !== null.
     expect(insideSheet).toMatch(/visible=\{notice !== null\}/);
-    expect(insideSheet).toMatch(/kind="error"/);
+    // [#4508 changed on purpose] the same nested Toast also carries the
+    // check-in success notice, so its kind is a prop that defaults to error.
+    expect(insideSheet).toMatch(/kind=\{noticeKind\}/);
+    expect(sheetSrc).toMatch(/noticeKind = "error",/);
     expect(insideSheet).toMatch(/message=\{notice \?\? ""\}/);
     expect(insideSheet).toMatch(/onDismiss=\{onNoticeDismiss\}/);
   });

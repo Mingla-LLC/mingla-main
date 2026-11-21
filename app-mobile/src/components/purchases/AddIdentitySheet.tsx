@@ -683,6 +683,8 @@ export function AddIdentitySheet({
                     required
                     smartEntry
                     testID="add-identity-phone"
+                    // #4508: this sheet has no shared bar on iOS; the field keeps its own.
+                    showDoneAccessory
                     theme={PURCHASE_SHEET_PHONE_THEME}
                     value={phoneInput}
                   />
