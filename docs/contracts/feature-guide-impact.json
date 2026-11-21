@@ -324,6 +324,7 @@
       "capability_key": "staff-feature-guide",
       "paths": [
         "mingla-admin/src/components/community/FeatureGuidePanel.jsx",
+        "mingla-admin/src/pages/communications/FeatureGuidePage.jsx",
         "mingla-admin/src/services/featureGuideService.js",
         "supabase/functions/_shared/opsBridges.ts",
         "supabase/functions/product-avengers-sync/index.ts",
@@ -2426,7 +2427,7 @@
       "paths": [
         "mingla-admin/src/lib/communitySupportAccess.js",
         "mingla-admin/src/lib/communitySupportCapabilityContract.js",
-        "mingla-admin/src/pages/CommunitySupportPage.jsx"
+        "mingla-admin/src/pages/SupportPage.jsx"
       ]
     },
     {
@@ -3236,6 +3237,7 @@
         "mingla-admin/src/components/community/BrandGroupSidePanel.jsx",
         "mingla-admin/src/components/community/BrandGroupStrip.jsx",
         "mingla-admin/src/components/community/BrandGroupThread.jsx",
+        "mingla-admin/src/components/community/BrandGroupTicketModal.jsx",
         "mingla-admin/src/components/community/BrandGroupsPanel.jsx",
         "mingla-admin/src/components/community/HostCardEmptyState.jsx",
         "mingla-admin/src/components/community/PlanActivityCard.jsx",
@@ -4578,7 +4580,6 @@
         "mingla-admin/src/components/communications/SchedulePicker.jsx",
         "mingla-admin/src/components/communications/ScheduleTime.jsx",
         "mingla-admin/src/components/community/FailedPushBanner.jsx",
-        "mingla-admin/src/components/community/RoadmapPanel.jsx",
         "mingla-admin/src/lib/communications.js",
         "mingla-admin/src/lib/communicationsErrors.js",
         "mingla-admin/src/lib/pushDestinations.js",
@@ -4587,7 +4588,6 @@
         "mingla-admin/src/pages/communications/CommunicationsOverviewPage.jsx",
         "mingla-admin/src/pages/communications/LinksPage.jsx",
         "mingla-admin/src/pages/communications/PushPage.jsx",
-        "mingla-admin/src/pages/communications/RoadmapPage.jsx",
         "mingla-admin/src/services/communicationsService.js",
         "supabase/functions/_shared/adminPushDestinations.ts",
         "supabase/functions/notify-outbox-drain/index.ts",
@@ -4909,13 +4909,12 @@
       "paths": [
         "mingla-admin/src/components/community/ProductInboxPanel.jsx",
         "mingla-admin/src/components/support/ProductCardPanel.jsx",
-        "mingla-admin/src/components/support/SendToProductModal.jsx",
         "mingla-admin/src/components/support/productBoardModel.js",
         "mingla-admin/src/services/productAvengersService.js",
         "mingla-admin/src/lib/brandGroupWaiting.js",
         "mingla-admin/src/lib/communitySupportCapabilityContract.js",
         "mingla-admin/src/lib/supportCommunityTabs.js",
-        "mingla-admin/src/pages/CommunitySupportPage.jsx",
+        "mingla-admin/src/pages/SupportPage.jsx",
         "mingla-admin/src/pages/communications/BrandGroupsPage.jsx"
       ]
     },

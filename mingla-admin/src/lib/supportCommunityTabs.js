@@ -1,19 +1,19 @@
-// Issue #4130 (Wave 6) — the old Community & Support console is two pages now:
-// Support (the inbox and the Support team) and Community (what hosts ask for
-// and talk about).
+// Issue #4130 (Wave 6) — the old Community & Support console became two pages,
+// Support and Community. Issue #4420 retired Community and the Roadmap screen:
+// Support keeps the inbox and People and roles; the Feature guide is its own
+// Communications screen; what hosts suggest and report becomes a ticket on the
+// Work board.
 //
 // Issue #4383 — what we TELL hosts and explorers (Email, Blog, Links page,
-// Announcements, Roadmap) left these two pages for their own screens in the
-// Communications menu group. COMMUNICATIONS_TAB_PAGES below is how an old tab
-// address finds its new screen: delete a row and old bookmarks, email alerts
-// and Work links to that tab land on the wrong page.
+// Announcements) has its own Communications screens. COMMUNICATIONS_TAB_PAGES
+// below is how an old tab address finds its new screen.
 //
-// Pure module: no React, no Supabase. The two pages, the address redirects in
-// lib/adminRoutes.js and the plain node / Deno tests all read it.
+// Pure module: no React, no Supabase. The Support page, the address redirects
+// in lib/adminRoutes.js and the plain node / Deno tests all read it.
 //
-// Every tab keeps its id from the console, so each one keeps its row in
-// communitySupportCapabilityContract.js and the access area that row names:
-// moving a tab between pages never changes who may see it.
+// Every redirect below is data: delete a row and old bookmarks, email alerts
+// and Work links to that tab land on the wrong page (the #4420 redirect test
+// walks every row).
 
 /** The Support page's tabs, in order. The first is the default. */
 export const SUPPORT_PAGE_TABS = Object.freeze([
@@ -22,32 +22,20 @@ export const SUPPORT_PAGE_TABS = Object.freeze([
   Object.freeze({ id: "team", label: "People and roles" }),
 ]);
 
-/** The Community page's tabs, in order. #4383: it opens on Ideas. */
-export const COMMUNITY_PAGE_TABS = Object.freeze([
-  Object.freeze({ id: "ideas", label: "Ideas from hosts" }),
-  Object.freeze({ id: "questions", label: "Questions" }),
-  Object.freeze({ id: "moderation", label: "Moderation" }),
-  // #4111 — kept next to Moderation; shown only to the Community area
-  // (community_can('moderate')) and Admins.
-  Object.freeze({ id: "enquiry-reports", label: "Reported enquiries" }),
-  Object.freeze({ id: "feature-guide", label: "Feature guide" }),
-  // #4383: renamed to match #4382's Product board (the tab id is unchanged).
-  Object.freeze({ id: "product", label: "Product board" }),
-]);
-
 /**
  * #4383 — an old Support / Community / console tab id -> the Communications
  * screen (page id) that now holds it. Each screen is a single page, so the
  * old `tab` is dropped and every other query value is kept:
  *   "#/support?tab=blog&view=editor&post=X" -> "#/blog?view=editor&post=X"
  * lib/adminRoutes.js TAB_PAGE_REDIRECTS reads this map; do not restate it.
+ * #4420: Roadmap left this map (its screen is retired; see
+ * RETIRED_TAB_REDIRECTS).
  */
 export const COMMUNICATIONS_TAB_PAGES = Object.freeze({
   email: "email",
   blog: "blog",
   links: "links",
   announcements: "announcements",
-  roadmap: "roadmap",
   // #4452 §7.2: Brand groups left Community for its own screen.
   "brand-groups": "brand-groups",
 });
@@ -59,12 +47,35 @@ export function communicationsPageForTab(tabId) {
     : null;
 }
 
-export const SUPPORT_COMMUNITY_PAGE_TABS = Object.freeze({
-  support: SUPPORT_PAGE_TABS,
-  community: COMMUNITY_PAGE_TABS,
+// #4420 — where the Community page's retired tabs (and the retired Roadmap
+// screen) send an old address. `page` is the new page, `set` the query values
+// it opens with, and `keep` whether the old address's other query values are
+// carried over (only where the new page reads the same values).
+//   - Ideas, Questions, Moderation and the Product board: what hosts suggest
+//     and report is a Ticket on the Work board now.
+//   - Reported enquiries: they arrive in the Support inbox, under Reported.
+//   - Feature guide: moved unchanged to its own Communications screen.
+//   - Roadmap: the screen is retired; what we tell hosts is Announcements.
+const WORK_TICKETS = Object.freeze({ page: "work-board", set: Object.freeze({ type: "tickets" }), keep: false });
+
+export const RETIRED_TAB_REDIRECTS = Object.freeze({
+  ideas: WORK_TICKETS,
+  questions: WORK_TICKETS,
+  moderation: WORK_TICKETS,
+  product: WORK_TICKETS,
+  "enquiry-reports": Object.freeze({ page: "support", set: Object.freeze({ filter: "reported" }), keep: true }),
+  "feature-guide": Object.freeze({ page: "feature-guide", set: Object.freeze({}), keep: true }),
+  roadmap: Object.freeze({ page: "announcements", set: Object.freeze({}), keep: false }),
 });
 
-/** The tabs of the Support or Community page, or null for any other page. */
+/** Where an address with no usable tab lands: the Support inbox. */
+export const RETIRED_DEFAULT_REDIRECT = Object.freeze({ page: "support", set: Object.freeze({}), keep: true });
+
+export const SUPPORT_COMMUNITY_PAGE_TABS = Object.freeze({
+  support: SUPPORT_PAGE_TABS,
+});
+
+/** The tabs of the Support page, or null for any other page. */
 export function pageTabsFor(pageId) {
   return typeof pageId === "string" && Object.hasOwn(SUPPORT_COMMUNITY_PAGE_TABS, pageId)
     ? SUPPORT_COMMUNITY_PAGE_TABS[pageId]
@@ -72,14 +83,14 @@ export function pageTabsFor(pageId) {
 }
 
 /**
- * The page that now holds a console tab, or null: "support", "community", or
- * (#4383) the Communications screen's own page id.
+ * The page that now holds a console tab, or null: "support", a
+ * Communications screen, or (#4420) the page a retired tab redirects to.
  */
 export function pageForConsoleTab(tabId) {
   const screen = communicationsPageForTab(tabId);
   if (screen) return screen;
   if (SUPPORT_PAGE_TABS.some((tab) => tab.id === tabId)) return "support";
-  if (COMMUNITY_PAGE_TABS.some((tab) => tab.id === tabId)) return "community";
+  if (typeof tabId === "string" && Object.hasOwn(RETIRED_TAB_REDIRECTS, tabId)) return RETIRED_TAB_REDIRECTS[tabId].page;
   return null;
 }
 
@@ -93,33 +104,53 @@ function queryOf(hash) {
   }
 }
 
-/**
- * Where an old #/community-support address goes. Its tab picks the page;
- * no tab, Overview (retired), Availability (now the Support header switch)
- * and anything unknown open Support's inbox. Every other query value
- * (ticket=, signal=, card=, …) is kept, so email alerts and Work links that
- * were sent before the split still land on the right tab.
- *   "#/community-support?tab=roadmap&card=x" -> "#/roadmap?card=x" (#4383)
- *   "#/community-support?tab=support&ticket=t" -> "#/support?ticket=t"
- */
-export function consoleRedirectHash(hash) {
-  const params = queryOf(hash);
-  const tab = params.get("tab") || "";
-  const page = pageForConsoleTab(tab) || "support";
-  // #4383: a Communications screen has no tabs, so its old tab is dropped.
-  const pageTabs = pageTabsFor(page);
-  const keepTab = Boolean(pageTabs) && Boolean(pageForConsoleTab(tab)) && tab !== pageTabs[0].id;
-  params.delete("tab");
+function hashFor(page, setValues, rest) {
   const next = new URLSearchParams();
-  if (keepTab) next.set("tab", tab);
-  for (const [key, value] of params) next.append(key, value);
+  for (const [key, value] of Object.entries(setValues || {})) next.set(key, value);
+  if (rest) for (const [key, value] of rest) if (!next.has(key)) next.append(key, value);
   const query = next.toString();
   return `#/${page}${query ? `?${query}` : ""}`;
 }
 
 /**
- * The tab an address asks a Support/Community page for, or the page's first
- * tab when it names none or names one that page does not have.
+ * The new address of an old Support / Community / console address, from its
+ * tab. Never null: an unknown or missing tab opens the Support inbox.
+ *   "#/community-support?tab=support&ticket=t" -> "#/support?ticket=t"
+ *   "#/community?tab=product&signal=s"          -> "#/work-board?type=tickets"
+ *   "#/community?tab=feature-guide"             -> "#/feature-guide"
+ */
+export function consoleRedirectHash(hash) {
+  const params = queryOf(hash);
+  const tab = params.get("tab") || "";
+  params.delete("tab");
+  // #4383: a Communications screen has no tabs, so its old tab is dropped.
+  const screen = communicationsPageForTab(tab);
+  if (screen) return hashFor(screen, null, params);
+  // Support's own tabs keep their tab (the inbox is its first, so it needs none).
+  if (SUPPORT_PAGE_TABS.some((t) => t.id === tab)) {
+    return hashFor("support", tab === SUPPORT_PAGE_TABS[0].id ? null : { tab }, params);
+  }
+  if (Object.hasOwn(RETIRED_TAB_REDIRECTS, tab)) {
+    const rule = RETIRED_TAB_REDIRECTS[tab];
+    return hashFor(rule.page, rule.set, rule.keep ? params : null);
+  }
+  // #4452 (B1): Brand groups once wrote #/community?group=… with no tab.
+  if (!tab && (params.has("group") || params.has("brand"))) return hashFor("brand-groups", null, params);
+  return hashFor(RETIRED_DEFAULT_REDIRECT.page, RETIRED_DEFAULT_REDIRECT.set, RETIRED_DEFAULT_REDIRECT.keep ? params : null);
+}
+
+/**
+ * #4420 — an old Roadmap screen address (#/roadmap, #/roadmap?card=…) opens
+ * Announcements; the roadmap card it named has no screen any more.
+ */
+export function roadmapRedirectHash() {
+  const rule = RETIRED_TAB_REDIRECTS.roadmap;
+  return hashFor(rule.page, rule.set, null);
+}
+
+/**
+ * The tab an address asks the Support page for, or its first tab when it
+ * names none or names one that page does not have.
  */
 export function pageTabFromHash(hash, pageId) {
   const tabs = pageTabsFor(pageId);
@@ -128,7 +159,7 @@ export function pageTabFromHash(hash, pageId) {
   return tabs.some((tab) => tab.id === requested) ? requested : tabs[0].id;
 }
 
-/** The address of one tab of the Support or Community page. */
+/** The address of one tab of the Support page. */
 export function pageTabHash(pageId, tabId) {
   const tabs = pageTabsFor(pageId) || [];
   if (!tabs.some((tab) => tab.id === tabId) || tabs[0]?.id === tabId) return `#/${pageId}`;

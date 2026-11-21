@@ -9,7 +9,7 @@ import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import * as ops from "../../services/opsService";
-import { isRoadmapApproval, opsErrorWords, spendQueueCards, personActionFor, proofBadge, REVIEW_GROUPS, reviewGroupOf, roadmapDraftHref, runwayLabel, dayLabel, todayIso } from "../../lib/opsModel";
+import { isRoadmapApproval, opsErrorWords, spendQueueCards, personActionFor, proofBadge, REVIEW_GROUPS, reviewGroupOf, runwayLabel, dayLabel, todayIso } from "../../lib/opsModel";
 import { useOpsPoll } from "../../hooks/useOpsWork";
 import { TwoColumn } from "./TwoColumn";
 import { revealDetail } from "./revealDetail";
@@ -103,7 +103,6 @@ export function ReviewQueue({ selectedId, onSelect, online, onChanged, hideHosts
             {personActionFor(card)?.action === "mark_sent" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("mark_sent")}>Mark sent</Button>}
             {personActionFor(card)?.action === "approve_spend" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("approve_spend")}>Approve spend</Button>}
             {personActionFor(card)?.action === "mark_published" && <Button className="min-h-11" disabled={!online || busy} onClick={() => setForm("mark_published")}>Mark published</Button>}
-            {roadmapDraftHref(card) && <a href={roadmapDraftHref(card)} className={`inline-flex min-h-11 items-center rounded-lg bg-[var(--color-brand-800)] px-4 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-900)] ${FOCUS}`}>Open the draft in Roadmap</a>}
             {isRoadmapApproval(card) && <Button variant="secondary" className="min-h-11" disabled={!online || busy} onClick={() => setForm(form === "close" ? "" : "close")}>Close with proof</Button>}
             <Button variant="secondary" className="min-h-11" disabled={!online || busy} onClick={() => setForm("sendback")}>Send back</Button>
             <a href={`#/work-board?card=${card.id}`} className={`inline-flex min-h-11 items-center rounded-lg px-3 text-[13px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open on the Work board</a>

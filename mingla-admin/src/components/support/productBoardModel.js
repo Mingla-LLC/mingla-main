@@ -1,3 +1,8 @@
+// [TRANSITIONAL] #4420: the Product board is retired and no screen mounts
+// this any more. It stays only because a Deno suite outside this change's lane
+// (supabase/functions/product-avengers-sync, bridge test) still reads the
+// board's source files. Exit: delete this file in the change that retargets
+// that suite to the ticket GitHub section (components/ops/TicketGithubSection).
 // #4382 Wave 3 — the Product board's rules, with no React in them.
 //
 // Five columns (New, Triaged, Planned, Shipped, Told). Won't do is a filter,

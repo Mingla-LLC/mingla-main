@@ -54,7 +54,7 @@ import {
   communitySupportCapabilities,
   communitySupportTabsForAccess,
 } from "../lib/communitySupportAccess.js";
-import { COMMUNITY_PAGE_TABS, SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
+import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
 
@@ -438,28 +438,22 @@ describe("#4382 W3: Tell reporters can be sent once", () => {
 });
 
 // ── Who runs the Product board (D3) ─────────────────────────────────────────
-describe("#4382 W3: a founding partner runs the Product board", () => {
-  const allTabs = [...SUPPORT_PAGE_TABS, ...COMMUNITY_PAGE_TABS];
+// [TEST-MOD #4420] The Product board is retired (I-4382-PRODUCT-BOARD-COLUMNS
+// and I-4382-TELL-REPORTERS-ONCE-UI retire with it): no screen or tab shows
+// it, and no role gets it back. Its rows stay stored; tickets replace it.
+describe("#4382 W3: the retired Product board is shown to nobody", () => {
   const partner = {
     role: "partner",
     status: "active",
     areas: ["admin_console", "community_support", "community_support_support", "community_support_community"],
   };
-  const plainSupport = { role: "growth", status: "active", areas: ["community_support", "community_support_support"] };
-
-  it("an active founding partner (role partner, admin console) sees the Product board", () => {
-    assert.ok(allTabs.some((tab) => tab.id === "product"), "the Product board is a console tab");
+  it("no Support tab is the Product board, for any seat", () => {
+    assert.equal(SUPPORT_PAGE_TABS.some((tab) => tab.id === "product"), false);
+    assert.equal(communitySupportTabsForAccess(partner, SUPPORT_PAGE_TABS).some((tab) => tab.id === "product"), false);
     assert.equal(communitySupportCapabilities(partner).isAdmin, true);
-    assert.ok(communitySupportTabsForAccess(partner, allTabs).some((tab) => tab.id === "product"));
   });
-
-  it("plain Support staff, and a partner whose seat is not active, do not", () => {
-    assert.equal(communitySupportTabsForAccess(plainSupport, allTabs).some((tab) => tab.id === "product"), false);
-    assert.ok(communitySupportTabsForAccess(plainSupport, allTabs).some((tab) => tab.id === "support"));
-    assert.equal(communitySupportTabsForAccess({ ...partner, status: "revoked" }, allTabs).some((tab) => tab.id === "product"), false);
-  });
-
-  it("the page mounts the board on the same admin-console capability", () => {
-    assert.match(read("pages/CommunitySupportPage.jsx"), /activeTab === "product" && capabilities\.isAdmin && <ProductInboxPanel \/>/);
+  it("no page mounts the board", () => {
+    assert.equal(read("pages/SupportPage.jsx").includes("ProductInboxPanel"), false);
+    assert.equal(read("App.jsx").includes("ProductInboxPanel"), false);
   });
 });

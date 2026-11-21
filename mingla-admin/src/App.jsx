@@ -32,13 +32,15 @@ import { TeamDashboardPage } from "./pages/TeamDashboardPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { PricingPage } from "./pages/PricingPage";
-// #4130 Wave 6 — the #3720 Community & Support console, split into two pages.
-import { CommunityPage, SupportPage } from "./pages/CommunitySupportPage";
+// #4420 — Support (the inbox and People and roles). Community is retired; its
+// old addresses redirect (lib/adminRoutes.js).
+import { SupportPage } from "./pages/SupportPage";
 // #4383 — Communications: what we tell hosts and explorers, each its own screen.
 import { CommunicationsOverviewPage } from "./pages/communications/CommunicationsOverviewPage";
 import { PushPage } from "./pages/communications/PushPage";
 import { AnnouncementsPage } from "./pages/communications/AnnouncementsPage";
-import { RoadmapPage } from "./pages/communications/RoadmapPage";
+// #4420 — the Feature guide's own screen (the Roadmap screen is retired).
+import { FeatureGuidePage } from "./pages/communications/FeatureGuidePage";
 import { EmailPage } from "./pages/EmailPage";
 import { BlogPage } from "./pages/communications/BlogPage";
 import { LinksPage } from "./pages/communications/LinksPage";
@@ -119,17 +121,18 @@ const PAGES = {
   inbound: InboundLeadsPage,
   "content-calendar": ContentCalendarPage,
   "team-dashboard": TeamDashboardPage,
-  // ── Support ── #4130 Wave 6: the old Community & Support console is two
-  // pages; #/community-support redirects by tab (lib/adminRoutes.js).
+  // ── Support ── #4130 Wave 6 split the Community & Support console; #4420
+  // retired Community. #/community and #/community-support redirect by tab
+  // (lib/adminRoutes.js).
   support: SupportPage,
-  community: CommunityPage,
   // ── Communications ── #4383: Email, Blog and Links page came out of
-  // Support, Announcements and Roadmap out of Community; their old tab
-  // addresses redirect here (lib/adminRoutes.js TAB_PAGE_REDIRECTS).
+  // Support, Announcements out of Community; their old tab addresses
+  // redirect here (lib/adminRoutes.js). #4420: the Roadmap screen is retired
+  // (#/roadmap opens Announcements) and the Feature guide is its own screen.
   communications: CommunicationsOverviewPage,
   push: PushPage,
   announcements: AnnouncementsPage,
-  roadmap: RoadmapPage,
+  "feature-guide": FeatureGuidePage,
   email: EmailPage,
   blog: BlogPage,
   links: LinksPage,

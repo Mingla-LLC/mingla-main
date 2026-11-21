@@ -36,7 +36,8 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
   it("registers the Support page in App.jsx PAGES, opening on the SupportDeskPage inbox", () => {
     const app = read("src/App.jsx");
     assert.match(app, /support:\s*SupportPage/);
-    const page = read("src/pages/CommunitySupportPage.jsx");
+    // [TEST-MOD #4420] the Support page has its own file now (Community retired).
+    const page = read("src/pages/SupportPage.jsx");
     assert.match(page, /import\s*\{\s*SupportDeskPage\s*\}\s*from\s*["']\.\/SupportDeskPage["']/);
     assert.match(page, /activeTab === "support" && \(\s*<SupportDeskPage embedded/);
   });

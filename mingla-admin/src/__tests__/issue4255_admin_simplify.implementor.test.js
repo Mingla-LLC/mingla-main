@@ -185,7 +185,10 @@ describe("S-1 the side panels", () => {
     ]) {
       assert.ok(code(file).includes("<SideLink") && code(file).includes(side), `${file} opens ${side} in panel two`);
     }
-    assert.match(code("components/ops/WorkDetail.jsx"), /draftHref && <a href=\{draftHref\} target="_blank"/, "the Roadmap draft opens in a new tab, so the card is kept");
+    // [TEST-MOD #4420] the Roadmap screen is retired, so the card no longer
+    // links to it; the wording is approved on the card itself (CardWording).
+    assert.doesNotMatch(code("components/ops/WorkDetail.jsx"), /draftHref|Open the draft in Roadmap/, "no link to the retired Roadmap screen");
+    assert.match(code("components/ops/WorkDetail.jsx"), /<CardWording card=\{card\}/, "the wording is approved on the card");
   });
 
   it("the address keeps panel one and names panel two; odd values never open anything", () => {

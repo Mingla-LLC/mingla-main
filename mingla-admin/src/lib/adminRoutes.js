@@ -13,7 +13,7 @@
 //     tab shows; who may see a tab is that old page's access (lib/access.js).
 
 import { hashPageId, hashSearch } from "./crmUrl.js";
-import { COMMUNICATIONS_TAB_PAGES, consoleRedirectHash } from "./supportCommunityTabs.js";
+import { COMMUNICATIONS_TAB_PAGES, consoleRedirectHash, roadmapRedirectHash } from "./supportCommunityTabs.js";
 
 /** The query value a hub uses to say which tab is open. */
 export const HUB_TAB_PARAM = "tab";
@@ -58,9 +58,13 @@ export const RETIRED_PAGE_REDIRECTS = Object.freeze({
 
 // Retired page id -> the function that works out its new address from the
 // whole old one (#4130 Wave 6: the Community & Support console's tab picks
-// Support or Community; lib/supportCommunityTabs.js).
+// the page; lib/supportCommunityTabs.js). #4420: Community and the Roadmap
+// screen are retired too; Community's tab picks the page the same way, and
+// every Roadmap address opens Announcements.
 const SPLIT_PAGE_REDIRECTS = Object.freeze({
   "community-support": consoleRedirectHash,
+  community: consoleRedirectHash,
+  roadmap: roadmapRedirectHash,
 });
 
 function splitRedirectFor(pageId) {
@@ -96,9 +100,10 @@ export function redirectFor(pageId) {
 // A tab of a live page that became its own page again (#4130, Seth's call:
 // Careers is its own menu item). page -> tab -> new page. The page itself is
 // not retired: only an address naming that tab moves.
-// #4383: Email, Blog and Links page left Support, and Announcements and
-// Roadmap left Community, for their own Communications screens
-// (lib/supportCommunityTabs.js COMMUNICATIONS_TAB_PAGES is the one list).
+// #4383: Email, Blog and Links page left Support for their own
+// Communications screens (lib/supportCommunityTabs.js COMMUNICATIONS_TAB_PAGES
+// is the one list). #4420: Community is a retired page now, so its tabs are
+// redirected by SPLIT_PAGE_REDIRECTS above.
 function communicationsTabsOn(pageTabIds) {
   return Object.freeze(Object.fromEntries(pageTabIds.map((tab) => [tab, COMMUNICATIONS_TAB_PAGES[tab]])));
 }
@@ -106,7 +111,6 @@ function communicationsTabsOn(pageTabIds) {
 export const TAB_PAGE_REDIRECTS = Object.freeze({
   admin: Object.freeze({ careers: "careers" }),
   support: communicationsTabsOn(["email", "blog", "links"]),
-  community: communicationsTabsOn(["announcements", "roadmap", "brand-groups"]),
 });
 
 function tabRedirect(hash) {

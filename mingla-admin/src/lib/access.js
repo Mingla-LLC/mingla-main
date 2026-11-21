@@ -81,6 +81,11 @@ export const PAGE_ADDITIONAL_AREAS = Object.freeze({
   // #4452 §7.2: Brand groups keeps exactly the access its Community tab had
   // (the Support area; its issue_3720_* / issue_4270_* RPCs gate on it).
   "brand-groups": Object.freeze([SUPPORT_OPERATIONS_AREA]),
+  // #4420: the Feature guide left Community for its own Communications
+  // screen with exactly the access its tab had: the Support area (and full
+  // admins through admin_console). Writing evidence stays admin-only inside
+  // the screen (canManage), as before.
+  "feature-guide": Object.freeze([SUPPORT_OPERATIONS_AREA]),
   // #4452 §7.0: Forms and Website pages open to forms_can_view (admins and
   // partners through admin_console, the Website editor role, and growth /
   // beta_leads read-only). Every write RPC checks forms_can_edit again; the
@@ -128,11 +133,16 @@ export const PAGE_ACCESS_UNION = Object.freeze({
   // #4383: Support keeps the inbox and People and roles only, so it carries
   // the console's access exactly. A teammate who only writes email and blog
   // no longer sees a Support entry: nothing left in it was theirs.
+  // #4420: Community is retired (its old addresses redirect).
   support: Object.freeze(["community-support"]),
-  community: Object.freeze(["community-support"]),
   // #4383: the Communications Overview is open to whoever can open any of
-  // its screens, and lists only the kinds that person may open.
-  communications: Object.freeze(["push", "announcements", "roadmap", "email", "blog", "links"]),
+  // its screens, and lists only the kinds that person may open. #4420: the
+  // Roadmap screen is retired. The Overview keeps its own access: Roadmap was
+  // full admins only (the default), and full admins still open Push and
+  // Announcements, so nobody loses the Overview. The Feature guide joins the
+  // list; it is the Support area, which Links page already admits, so
+  // nobody gains it either (tested).
+  communications: Object.freeze(["push", "announcements", "email", "blog", "links", "feature-guide"]),
 });
 
 export const TEAM_NAV_GROUP = {

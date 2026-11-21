@@ -39,7 +39,6 @@ import {
   personActionFor,
   personReasonLabel,
   isTagged,
-  roadmapDraftHref,
   DETAIL_LINK_KINDS,
   addDays,
   agentName,
@@ -300,7 +299,6 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const thisWeek = mondayOf(today);
   const weeks = Array.from(new Set([card.sprint?.starts_on, ...[0, 7, 14, 21, 28].map((d) => addDays(thisWeek, d))].filter(Boolean))).sort();
   const action = personActionFor(card);
-  const draftHref = roadmapDraftHref(card);
   const tagged = isTagged(card);
   const closed = card.status === "done";
   const column = columns.find((c) => c.id === card.status_id) || card.column || null;
@@ -483,7 +481,6 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                 </Popover>
               )}
               {tagged && <OpsChip tone="warning">{personReasonLabel(card)}</OpsChip>}
-              {draftHref && <a href={draftHref} target="_blank" rel="noopener" title="Opens in a new tab, so this card stays as it is" className={`inline-flex h-9 items-center rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open the draft in Roadmap</a>}
               {(busy === "save" || busy === "start" || busy === "move") && <span role="status" className="text-[12px] text-[var(--color-text-tertiary)]">Saving…</span>}
             </div>
             {trouble && !card.archived && (
