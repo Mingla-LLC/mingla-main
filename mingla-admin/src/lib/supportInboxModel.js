@@ -312,3 +312,19 @@ export function createTicketButton(linked = []) {
 }
 
 export { ticketNumberLabel };
+
+/**
+ * #4420 (rework 2): what happens to the side panel when another conversation
+ * is opened (a row click, the address, Back or Forward, a new conversation).
+ *   "keep"  the same conversation: nothing changes;
+ *   "close" a ticket summary, or a Create ticket form nobody has typed in:
+ *           the panel closes (it is never re-filled for the new conversation);
+ *   "ask"   a Create ticket form with edits: ask before discarding them.
+ */
+export function sidePanelOnSwitch({ sideKind = null, dirty = false, same = false } = {}) {
+  if (same || !sideKind) return "keep";
+  if (sideKind === "create" && dirty) return "ask";
+  return "close";
+}
+
+export const DISCARD_TICKET_WORDS = "Discard the ticket you started? What you typed in Create ticket will be lost.";

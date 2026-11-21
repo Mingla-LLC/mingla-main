@@ -43,9 +43,10 @@ function FieldError({ id, words }) {
  * Props: config (ops config: me, team), online, headingRef, onCreated(card),
  * onCancel, onOpenCard(id), and optionally the conversation the ticket comes
  * from: conversation { id, label }, createdFrom ("board" | "conversation" |
- * "brand_group"), brandId, initialTitle, initialWhatIsWrong, initialType, initialProductArea.
+ * "brand_group"), brandId, initialTitle, initialWhatIsWrong, initialType, initialProductArea,
+ * and onDirtyChange(dirty): told when the form gains or loses edits.
  */
-export function TicketForm({ config, online, headingRef, onCreated, onCancel, onOpenCard, conversation = null, createdFrom = "board", brandId = null, initialTitle = "", initialWhatIsWrong = "", initialType = "bug", initialProductArea = "" }) {
+export function TicketForm({ config, online, headingRef, onCreated, onCancel, onOpenCard, onDirtyChange, conversation = null, createdFrom = "board", brandId = null, initialTitle = "", initialWhatIsWrong = "", initialType = "bug", initialProductArea = "" }) {
   const { addToast } = useToast();
   const directory = usePeopleDirectory();
   const team = directory.people.length ? directory.people : (config?.team || []);
@@ -75,6 +76,11 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
   const form = { type, title, whatIsWrong, productArea, owners, watchers, due, conversationIds: source ? [source.id] : [], brandId };
   const payload = useMemo(() => buildTicketPayload(form, { createdFrom: source && createdFrom === "board" ? "conversation" : createdFrom }), [type, title, whatIsWrong, productArea, owners, watchers, due, source, brandId, createdFrom]); // eslint-disable-line react-hooks/exhaustive-deps
   const problems = touched ? ticketFormProblems(form) : {};
+  // Edits: the form differs from how it opened (a side panel asks before discarding them).
+  const snapshot = JSON.stringify(form);
+  const [openedAs] = useState(snapshot);
+  const dirty = snapshot !== openedAs;
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const serverWords = refused?.status === "refused" ? fixesByField(refused.fixes) : {};
   const wordsFor = (field) => serverWords[field] || problems[field] || "";
 

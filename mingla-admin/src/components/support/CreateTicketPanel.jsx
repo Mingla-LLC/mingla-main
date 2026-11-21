@@ -17,9 +17,10 @@ import { ticketNumber } from "../../lib/ticketModel";
 /**
  * Props: ticket (the conversation), messages (its thread, for the pre-fill),
  * onClose, onMade({ number, id }) after a ticket is made, onLinked(cardId)
- * after "Link here" or an existing ticket was opened.
+ * after "Link here" or an existing ticket was opened, onDirtyChange(dirty)
+ * whenever the form gains or loses edits (the page asks before discarding them).
  */
-export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked }) {
+export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked, onDirtyChange }) {
   const config = useOpsConfig();
   const { addToast } = useToast();
   const [done, setDone] = useState(null);
@@ -71,7 +72,8 @@ export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked 
             initialType={prefill.type}
             initialProductArea={prefill.productArea}
             onCancel={onClose}
-            onCreated={(card) => { setDone({ number: card?.number, id: card?.id }); onMade?.(card); }}
+            onDirtyChange={onDirtyChange}
+            onCreated={(card) => { onDirtyChange?.(false); setDone({ number: card?.number, id: card?.id }); onMade?.(card); }}
             onOpenCard={(id) => { if (id) { setDone({ number: null, id }); onLinked?.(id); } }}
           />
         )}

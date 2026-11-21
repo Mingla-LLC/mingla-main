@@ -51,11 +51,13 @@ import {
   inboxViewCoverage,
 } from "../lib/supportTicketMetrics";
 import {
+  DISCARD_TICKET_WORDS,
   conversationRow,
   hashForSelection,
   inboxParamsFromHash,
   needsReplyCount,
   reportedRow,
+  sidePanelOnSwitch,
   splitInbox,
 } from "../lib/supportInboxModel";
 import {
@@ -123,6 +125,26 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   // The side panel beside the thread: Create ticket, or a linked ticket's summary.
   const [side, setSide] = useState(null);
+  // #4420 rework 2: whether the open Create ticket form has edits, and the
+  // latest selection and panel for the address listener below.
+  const createDirtyRef = useRef(false);
+  const latestRef = useRef({ selected, side });
+  useEffect(() => {
+    latestRef.current = { selected, side };
+    if (side?.kind !== "create") createDirtyRef.current = false;
+  }, [selected, side]);
+  // Opening another conversation never re-fills a Create ticket form: an
+  // untouched one closes; one with edits asks first. Returns false when the
+  // person keeps their form (the selection does not change).
+  const switchSelection = useCallback((next) => {
+    const { selected: cur, side: open } = latestRef.current;
+    const same = cur.conversationId === next.conversationId && cur.reportedId === next.reportedId;
+    const decision = sidePanelOnSwitch({ sideKind: open?.kind || null, dirty: createDirtyRef.current, same });
+    if (decision === "ask" && !window.confirm(DISCARD_TICKET_WORDS)) return false;
+    if (decision !== "keep") { setSide(null); createDirtyRef.current = false; }
+    setSelected(next);
+    return true;
+  }, []);
 
   const loadLinked = useCallback(async (rows) => {
     const ids = rows.map((t) => t.id);
@@ -207,13 +229,17 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   useEffect(() => {
     const onHash = () => {
       const p = inboxParamsFromHash(window.location.hash);
-      if (p.conversationId || p.reportedId) setSelected({ conversationId: p.conversationId, reportedId: p.reportedId });
+      if ((p.conversationId || p.reportedId) && !switchSelection({ conversationId: p.conversationId, reportedId: p.reportedId })) {
+        // Kept the form: the address names the conversation still open.
+        window.history.replaceState(null, "", hashForSelection(window.location.hash, latestRef.current.selected));
+        return;
+      }
       if (p.chip) setChip(p.chip);
       if (p.showResolved) setResolvedOpen(true);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+  }, [switchSelection]);
 
   // A conversation the loaded list does not hold (an old resolved one) is read by id.
   const inList = selected.conversationId ? tickets.find((t) => t.id === selected.conversationId) || null : null;
@@ -249,10 +275,9 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   const showError = useCallback((title, description) => addToast({ variant: "error", title, description }), [addToast]);
 
   const select = useCallback((row) => {
-    setSide(null);
-    setSelected(row.kind === "reported" ? { conversationId: null, reportedId: row.id } : { conversationId: row.id, reportedId: null });
-  }, []);
-  const closeSelection = useCallback(() => { setSide(null); setSelected({ conversationId: null, reportedId: null }); }, []);
+    switchSelection(row.kind === "reported" ? { conversationId: null, reportedId: row.id } : { conversationId: row.id, reportedId: null });
+  }, [switchSelection]);
+  const closeSelection = useCallback(() => { switchSelection({ conversationId: null, reportedId: null }); }, [switchSelection]);
 
   const handleClaim = useCallback(async () => {
     if (!selectedTicket) return;
@@ -479,6 +504,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
               ticket={selectedTicket}
               messages={side.messages}
               onClose={() => setSide(null)}
+              onDirtyChange={(dirty) => { createDirtyRef.current = dirty; }}
               onMade={() => { void loadLinked(tickets); }}
               onLinked={() => { void loadLinked(tickets); }}
             />
@@ -503,7 +529,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
           await loadQueue();
           setChip("");
           setSearch("");
-          setSelected({ conversationId: id, reportedId: null });
+          switchSelection({ conversationId: id, reportedId: null });
         }}
         onError={handleWorkflowError}
       />

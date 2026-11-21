@@ -39,6 +39,8 @@ import {
   rowPreview,
   rowTitle,
   reportedRow,
+  sidePanelOnSwitch,
+  DISCARD_TICKET_WORDS,
   splitInbox,
   ticketPrefill,
 } from "../lib/supportInboxModel.js";
@@ -333,5 +335,30 @@ describe("S-9 (rework 1, P3-c) the Create ticket panel is in view at 1024 px", (
     assert.match(page, /data-side-backdrop=""[\s\S]{0,200}xl:hidden/);
     assert.match(page, /e\.key === "Escape" && !e\.defaultPrevented\) setSide\(null\)/);
     assert.match(page, /<CreateTicketPanel[\s\S]{0,200}onClose=\{\(\) => setSide\(null\)\}/);
+  });
+});
+
+// P3-2 (rework 2): opening another conversation never re-fills an open Create
+// ticket form. FAILS-ON-REVERT: without sidePanelOnSwitch the import fails;
+// without the page wiring the source assertions fail.
+describe("S-10 an open Create ticket panel and another conversation", () => {
+  it("an untouched form closes; one with edits asks; the same conversation keeps it", () => {
+    assert.equal(sidePanelOnSwitch({ sideKind: "create", dirty: false }), "close");
+    assert.equal(sidePanelOnSwitch({ sideKind: "create", dirty: true }), "ask");
+    assert.equal(sidePanelOnSwitch({ sideKind: "create", dirty: true, same: true }), "keep");
+    assert.equal(sidePanelOnSwitch({ sideKind: "summary", dirty: true }), "close", "a summary has nothing to lose");
+    assert.equal(sidePanelOnSwitch({ sideKind: null }), "keep");
+    assert.match(DISCARD_TICKET_WORDS, /Discard the ticket you started\?/);
+  });
+  it("every way of opening a conversation goes through the decision", () => {
+    const src = read("pages/SupportDeskPage.jsx");
+    assert.match(src, /sidePanelOnSwitch\(\{ sideKind: open\?\.kind \|\| null, dirty: createDirtyRef\.current, same \}\)/);
+    assert.match(src, /window\.confirm\(DISCARD_TICKET_WORDS\)/);
+    assert.match(src, /!switchSelection\(\{ conversationId: p\.conversationId, reportedId: p\.reportedId \}\)/, "the address and Back or Forward");
+    assert.match(src, /const select = useCallback\(\(row\) => \{\n    switchSelection\(/, "a row click");
+    assert.doesNotMatch(src, /setSelected\(\{ conversationId: (id|p\.conversationId)/, "no path sets the selection around the decision");
+    assert.match(src, /onDirtyChange=\{\(dirty\) => \{ createDirtyRef\.current = dirty; \}\}/);
+    assert.match(read("components/support/CreateTicketPanel.jsx"), /onDirtyChange=\{onDirtyChange\}/);
+    assert.match(read("components/ops/TicketForm.jsx"), /useEffect\(\(\) => \{ onDirtyChange\?\.\(dirty\); \}, \[dirty, onDirtyChange\]\);/);
   });
 });
