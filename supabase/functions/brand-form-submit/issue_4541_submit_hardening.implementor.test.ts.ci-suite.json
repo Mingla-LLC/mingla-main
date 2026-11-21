@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/brand-form-submit/issue_4541_submit_hardening.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4541-submit-hardening",
+  "profile": "deno-2-unit"
+}

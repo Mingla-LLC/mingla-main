@@ -21,8 +21,7 @@ function deps(answer?: { data: unknown; error: { message: string } | null }) {
   const lines: string[] = [];
   const db: BrandFormSubmitDb = {
     switchedOff: () => Promise.resolve(false),
-    countAttempts: () => Promise.resolve({ ip10m: 0, ip24h: 0 }),
-    recordAttempt: () => Promise.resolve(),
+    attemptAdmit: () => Promise.resolve({ allowed: true }),
     userFromBearer: () =>
       Promise.reject(new Error("link_read never reads a bearer")),
     submitCore: () => Promise.reject(new Error("submit core must not run")),

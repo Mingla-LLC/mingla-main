@@ -23,8 +23,7 @@ function deps(opts: {
   const bearers: string[] = [];
   const db: BrandFormSubmitDb = {
     switchedOff: () => Promise.resolve(false),
-    countAttempts: () => Promise.resolve({ ip10m: 0, ip24h: 0 }),
-    recordAttempt: () => Promise.resolve(),
+    attemptAdmit: () => Promise.resolve({ allowed: true }),
     userFromBearer: (jwt: string) => {
       bearers.push(jwt);
       return Promise.resolve(opts.user ?? null);

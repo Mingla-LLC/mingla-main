@@ -109,9 +109,12 @@ export type BrandFormSubmitErrorCode =
   | "link_revoked"
   | "code_required"
   | "not_holder"
+  | "not_current"
   | "form_not_on_event"
   | "subject_unavailable"
   | "credential_invalid"
+  | "open_reply_limit"
+  | "bot_check_failed"
   | "server_error";
 
 export interface BrandFormSubmitError {
@@ -146,9 +149,15 @@ export const BRAND_FORM_ERROR_STATUS: Readonly<
   link_revoked: 403,
   code_required: 403,
   not_holder: 403,
+  // #4541 R1.4: an RSVP, plus-one or order that is no longer current.
+  not_current: 403,
   form_not_on_event: 403,
   subject_unavailable: 422,
   credential_invalid: 400,
+  // #4541 R4.5: a form's daily limit of replies from people we cannot identify.
+  open_reply_limit: 429,
+  // #4541 R8.5: an Unknown reply without a valid bot ticket.
+  bot_check_failed: 422,
   server_error: 500,
 };
 
@@ -166,9 +175,11 @@ export const BRAND_FORM_CORE_CODES: readonly BrandFormSubmitErrorCode[] = [
   "link_revoked",
   "code_required",
   "not_holder",
+  "not_current",
   "form_not_on_event",
   "subject_unavailable",
   "credential_invalid",
+  "open_reply_limit",
 ];
 
 /**

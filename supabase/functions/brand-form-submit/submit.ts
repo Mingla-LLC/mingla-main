@@ -3,26 +3,26 @@
 //
 // Order of operations (each step names its failure response):
 //   1 origin (403; native apps send no Origin) · 2 method (405) · 3 body ≤ 32 KB (413)
-//   · 4 JSON shape (400 bad_request) · 5 the database off switch (503 forms_paused)
-//   · 6 rate limit per salted IP hash, 20 / 10 min and 100 / 24 h over all forms
-//   (429, nothing written) · 7 who: a personal link token, else a signed-in user
+//   · 4 JSON shape (400 bad_request) · 5 #4541 R8.4: one atomic admission per
+//   request per salted address hash (brand_form_attempt_admit, 20 / 10 min and
+//   100 / 24 h over all forms; 429), before any other database work · 6 the
+//   database off switch (503 forms_paused) · 7 who: a personal link token, else a signed-in user
 //   (401 sign_in_required) · 8 answers the database cannot store (NUL, a lone
 //   surrogate, nested values: 422 form_answers_invalid) · 9 brand_form_submit_core
 //   (SQL; a data exception it raises is 422 form_answers_invalid, never 500)
 //   · 10 response.
 //
-// The client address is read exactly as forms-submit reads it (the first
-// x-forwarded-for hop). Its salt is not a constant in the repo: it is derived from
-// the platform's service-role key with the shared #3201 derivation
-// (_shared/derivedSecret.ts), so no new secret or env var exists.
+// #4541 R8.4: the client address is the one the platform's edge sets
+// (_shared/platformClientIp.ts), never a caller-supplied x-forwarded-for hop.
+// Its salt is not a constant in the repo: it is derived from the platform's
+// service-role key with the shared #3201 derivation (_shared/derivedSecret.ts),
+// so no new secret or env var exists.
 //
 // Logs carry the outcome and the form id only: never a token, an answer or a contact.
 
 import {
   BRAND_FORM_ERROR_STATUS,
   BRAND_FORM_MAX_BODY_BYTES,
-  BRAND_FORM_PER_IP_10MIN,
-  BRAND_FORM_PER_IP_24H,
   type BrandFormSubmitError,
   type BrandFormSubmitErrorCode,
   type BrandFormSubmitSuccess,
@@ -59,6 +59,16 @@ import {
   type LinkReadDeps,
   parseLinkReadRequest,
 } from "./linkRead.ts";
+import {
+  handlePageForm,
+  isPageFormOp,
+  type PageFormDeps,
+  parsePageFormRequest,
+} from "./pageForm.ts";
+import {
+  platformClientIp,
+  UNKNOWN_CLIENT_IP,
+} from "../_shared/platformClientIp.ts";
 
 /** The derivation label for this limiter's salt (one label per purpose, #3201). */
 export const IP_SALT_LABEL = "brand-form-submit-ip-salt";
@@ -79,14 +89,21 @@ export interface CoreError {
   code?: string | null;
 }
 
+/** #4541 R8.4: submit 20 / 100, read 60 / 600, unknown 2,000 / 20,000 (10 min / 24 h). */
+export type AttemptBucket = "submit" | "read" | "unknown";
+
 export interface BrandFormSubmitDb {
   switchedOff(): Promise<boolean>;
-  countAttempts(ipHash: string): Promise<{ ip10m: number; ip24h: number }>;
-  recordAttempt(
+  /**
+   * #4541 R8.4: one atomic admission (brand_form_attempt_admit): counts the
+   * address's bucket and records this request under one lock. A refused or
+   * failed request still counts, because the row is written here.
+   */
+  attemptAdmit(
     ipHash: string,
     formId: string | null,
-    outcome: "accepted" | "rejected" | "rate_limited" | "paused",
-  ): Promise<void>;
+    bucket: AttemptBucket,
+  ): Promise<{ allowed: boolean }>;
   /** The signed-in user behind a bearer token, or null (anon key, expired, absent). */
   userFromBearer(jwt: string): Promise<string | null>;
   submitCore(
@@ -107,6 +124,8 @@ export interface BrandFormSubmitDeps {
   checkout?: Pick<CheckoutFormDeps, "checkoutForm" | "hashTicketLink">;
   /** The link page's read, so brand_form_my_response is never anon-executable (./linkRead.ts). */
   linkRead?: Pick<LinkReadDeps, "myResponse">;
+  /** #4541 R1.14: the RSVP page's form read (./pageForm.ts). */
+  page?: Pick<PageFormDeps, "pageForm" | "botTicketKey">;
 }
 
 export function corsFor(origin: string | null): Record<string, string> | null {
@@ -175,10 +194,29 @@ function bearerOf(req: Request): string | null {
   return m ? m[1].trim() : null;
 }
 
-/** The same read as forms-submit: the first x-forwarded-for hop, else "unknown". */
-export function clientIp(req: Request): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    "unknown";
+let unknownIpLogged = false;
+
+/** Tests only: forget that this instance already logged an unknown address. */
+export function __resetUnknownIpLogForTest(): void {
+  unknownIpLogged = false;
+}
+
+/**
+ * #4541 R8.4: the admission bucket for this address. With no platform address
+ * every caller lands in one generous "unknown" bucket (logged once per
+ * instance), so a platform header change can never lock everyone out silently.
+ */
+export function attemptBucket(
+  ip: string,
+  kind: "submit" | "read",
+  log: (line: string) => void,
+): AttemptBucket {
+  if (ip !== UNKNOWN_CLIENT_IP) return kind;
+  if (!unknownIpLogged) {
+    unknownIpLogged = true;
+    log("[brand-form-submit] ip_unknown");
+  }
+  return "unknown";
 }
 
 export async function handleBrandFormSubmit(
@@ -266,6 +304,38 @@ export async function handleBrandFormSubmit(
       return fail("server_error", cors);
     }
   }
+  // #4541 R1.14: {op:"page_form"} is the RSVP page (web and Explorer) reading
+  // its form through this edge (./pageForm.ts): the read is service-role only.
+  if (isPageFormOp(raw)) {
+    const pageReq = parsePageFormRequest(raw);
+    if (!pageReq || !deps.page) return fail("bad_request", cors);
+    try {
+      const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
+      const ip = platformClientIp(req);
+      const ipHash = await hashIp(ip, salt);
+      const admit = await deps.db.attemptAdmit(
+        ipHash,
+        null,
+        attemptBucket(ip, "read", log),
+      );
+      if (!admit.allowed) {
+        log("[brand-form-submit] page_form rate_limited");
+        return fail("rate_limited", cors);
+      }
+      const result = await handlePageForm(pageReq, { log, ...deps.page });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] page_form server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
   // {op:"link_read"} is the link page reading its form with the personal token
   // (./linkRead.ts): the read is service-role only, never anon PostgREST.
   if (isLinkReadOp(raw)) {
@@ -294,7 +364,7 @@ export async function handleBrandFormSubmit(
     try {
       if (await deps.db.switchedOff()) return fail("forms_paused", cors);
       const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
-      const ipHash = await hashIp(clientIp(req), salt);
+      const ipHash = await hashIp(platformClientIp(req), salt);
       const result = await handleCodeRequest(codeReq, ipHash, {
         log,
         ...deps.code,
@@ -317,21 +387,22 @@ export async function handleBrandFormSubmit(
 
   try {
     const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
-    const ipHash = await hashIp(clientIp(req), salt);
-    // C8: the emergency off switch lives in the database.
-    if (await deps.db.switchedOff()) {
-      await deps.db.recordAttempt(ipHash, body.formId, "paused");
-      log(`[brand-form-submit] paused form=${body.formId}`);
-      return fail("forms_paused", cors);
-    }
-    const counts = await deps.db.countAttempts(ipHash);
-    if (
-      counts.ip10m >= BRAND_FORM_PER_IP_10MIN ||
-      counts.ip24h >= BRAND_FORM_PER_IP_24H
-    ) {
-      await deps.db.recordAttempt(ipHash, body.formId, "rate_limited");
+    const ip = platformClientIp(req);
+    const ipHash = await hashIp(ip, salt);
+    // #4541 R8.4: one atomic admission, before any other database work.
+    const admit = await deps.db.attemptAdmit(
+      ipHash,
+      body.formId,
+      attemptBucket(ip, "submit", log),
+    );
+    if (!admit.allowed) {
       log(`[brand-form-submit] rate_limited form=${body.formId}`);
       return fail("rate_limited", cors);
+    }
+    // C8: the emergency off switch lives in the database.
+    if (await deps.db.switchedOff()) {
+      log(`[brand-form-submit] paused form=${body.formId}`);
+      return fail("forms_paused", cors);
     }
 
     let userId: string | null = null;
@@ -341,12 +412,10 @@ export async function handleBrandFormSubmit(
     }
     const payload = corePayload(body, userId);
     if (!payload) {
-      await deps.db.recordAttempt(ipHash, body.formId, "rejected");
       return fail("sign_in_required", cors);
     }
     const unstorable = unstorableAnswerErrors(body.answers);
     if (unstorable.length > 0) {
-      await deps.db.recordAttempt(ipHash, body.formId, "rejected");
       log(
         `[brand-form-submit] refused code=form_answers_invalid form=${body.formId}`,
       );
@@ -356,7 +425,6 @@ export async function handleBrandFormSubmit(
     const { data, error } = await deps.db.submitCore(payload);
     if (error) {
       const code = coreErrorCode(error.message, error.code);
-      await deps.db.recordAttempt(ipHash, body.formId, "rejected");
       log(`[brand-form-submit] refused code=${code} form=${body.formId}`);
       const detail = parseDetail(error.details);
       const extra: Partial<BrandFormSubmitError> = {};
@@ -379,7 +447,6 @@ export async function handleBrandFormSubmit(
       log(`[brand-form-submit] core_shape form=${body.formId}`);
       return fail("server_error", cors);
     }
-    await deps.db.recordAttempt(ipHash, body.formId, "accepted");
     log(
       `[brand-form-submit] accepted form=${body.formId} created=${
         String(data.created)

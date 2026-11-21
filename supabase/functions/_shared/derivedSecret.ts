@@ -34,6 +34,8 @@ export const SCOPED_SECRET_LABELS = {
   /** Shared by beta-access-lead-submit and careers-apply, by design (#3201). */
   betaLeadIpSalt: "beta-lead-ip-salt",
   adminSourceRefundCursor: "admin-source-refund-cursor-hmac",
+  /** #4541 R8.5: the brand form bot ticket for replies from people we cannot identify. */
+  brandFormBotTicket: "brand-form-bot-ticket",
 } as const;
 
 /** Below this, a root is not a safe HMAC key — refuse rather than derive. */

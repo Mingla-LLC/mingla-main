@@ -17,11 +17,14 @@
 // the existing OFFERING_INVITE_TOKEN_PEPPER, exactly as ticket-checkout-create does.
 // The link page's read ({op:"link_read"}, ./linkRead.ts) calls
 // brand_form_my_response with the service role: that function is not anon-executable.
+// #4541 R1.14: the RSVP page's read ({op:"page_form"}, ./pageForm.ts) calls
+// public_brand_form_for_event the same way (service role only, no grant change).
+// #4541 R8.4: the address is the platform-set one (_shared/platformClientIp.ts) and
+// each request takes one atomic admission (brand_form_attempt_admit).
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { type BrandFormSubmitDb, handleBrandFormSubmit } from "./submit.ts";
-import { BRAND_FORM_PER_IP_10MIN } from "../_shared/brandFormsContract.ts";
 import type { CodeDeps } from "./code.ts";
 import {
   checkVerification,
@@ -44,39 +47,22 @@ export function restSubmitDb(supabase: Client): BrandFormSubmitDb {
       if (error) throw new Error("switch_read_failed");
       return data === true;
     },
-    async countAttempts(ipHash: string) {
-      const since10 = new Date(Date.now() - 10 * 60_000).toISOString();
-      const since24 = new Date(Date.now() - 24 * 3_600_000).toISOString();
-      const a = await supabase.from("brand_form_submit_attempts").select("id", {
-        count: "exact",
-        head: true,
-      })
-        .eq("ip_hash", ipHash).in("outcome", ["accepted", "rejected"]).gte(
-          "created_at",
-          since10,
-        );
-      const b = await supabase.from("brand_form_submit_attempts").select("id", {
-        count: "exact",
-        head: true,
-      })
-        .eq("ip_hash", ipHash).in("outcome", ["accepted", "rejected"]).gte(
-          "created_at",
-          since24,
-        );
-      // Fail closed: a counting error is treated as over the limit.
-      if (a.error || b.error) {
-        return { ip10m: BRAND_FORM_PER_IP_10MIN, ip24h: 0 };
-      }
-      return { ip10m: a.count ?? 0, ip24h: b.count ?? 0 };
-    },
-    async recordAttempt(ipHash, formId, outcome) {
-      const { error } = await supabase.from("brand_form_submit_attempts")
-        .insert({ ip_hash: ipHash, form_id: formId, outcome });
+    async attemptAdmit(ipHash, formId, bucket) {
+      // #4541 R8.4: one atomic count-and-record per request. Fail closed: an
+      // admission error is treated as over the limit.
+      const { data, error } = await supabase.rpc("brand_form_attempt_admit", {
+        p_ip_hash: ipHash,
+        p_form_id: formId,
+        p_bucket: bucket,
+      });
       if (error) {
-        console.error(
-          `[brand-form-submit] attempt_write_failed outcome=${outcome}`,
-        );
+        console.error(`[brand-form-submit] attempt_admit_failed bucket=${bucket}`);
+        return { allowed: false };
       }
+      return {
+        allowed: !!data && typeof data === "object" &&
+          (data as Record<string, unknown>).allowed === true,
+      };
     },
     async userFromBearer(jwt: string) {
       const { data, error } = await supabase.auth.getUser(jwt);
@@ -186,6 +172,18 @@ export async function handler(req: Request): Promise<Response> {
           p_event_id: null,
           p_token: token,
           p_challenge_id: challengeId,
+        });
+        return {
+          data,
+          error: error ? { message: String(error.message ?? "") } : null,
+        };
+      },
+    },
+    page: {
+      // #4541 R1.14: the RSVP page's form read, as the service role.
+      async pageForm(eventId) {
+        const { data, error } = await supabase.rpc("public_brand_form_for_event", {
+          p_event_id: eventId,
         });
         return {
           data,

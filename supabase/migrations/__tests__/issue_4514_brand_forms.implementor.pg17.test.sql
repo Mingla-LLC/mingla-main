@@ -1138,6 +1138,9 @@ DECLARE
   v jsonb; v_before jsonb; v_r text; v_n integer;
   c_yes constant jsonb := '{"11111111-1111-4111-8111-111111111111":"yes","22222222-2222-4222-8222-222222222222":"Juggling"}';
 BEGIN
+  -- #4541 R8.3: sc6 is invited scan-only staff (event_scanners, no brand role),
+  -- who read full answers only when the host also allows invited staff.
+  UPDATE public.brand_forms SET door_full_answers_invited = true WHERE id = v_p;
   SET LOCAL ROLE service_role;
   -- Cam (RSVP) and Quill (order) answer while current.
   PERFORM public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'answers', c_yes,
@@ -1278,14 +1281,18 @@ BEGIN
   PERFORM pg_temp.f_assert(EXISTS (SELECT 1 FROM pg_locks l WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid()
       AND ((l.classid::bigint << 32) | l.objid::bigint) = hashtextextended('brand_form_door_reads:' || v_sc6::text, 0)),
     'T-DOORX-5 the full read holds the per-actor lock (taken before counting)');
-  -- Repeated real calls: 60 pass (one was logged above), then the limit.
-  FOR i IN 1..60 LOOP
+  -- Repeated real calls. #4541 R8.3 changed the limits for invited scan-only
+  -- staff (sc6): at most 3 full reads of one guest per actor per day (and 20
+  -- reads per 10 minutes; managers keep 60). So the 4th read of Pat is refused.
+  FOR i IN 1..6 LOOP
     v := public.brand_form_door_full_answers(v_sc6, v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_rp), 'search');
     v_states := v_states || (v->>'state');
   END LOOP;
-  PERFORM pg_temp.f_assert(v_states[59] = 'answered' AND v_states[60] = 'rate_limited'
-    AND (SELECT count(*) FROM public.brand_form_door_reads WHERE actor_id = v_sc6 AND result <> 'rate_limited') = 60,
-    'T-DOORX repeated calls hit the limit at 60 per 10 minutes (' || array_to_string(v_states[58:60], ',') || ')');
+  PERFORM pg_temp.f_assert(v_states[1:3] = ARRAY['answered', 'answered', 'answered']
+    AND v_states[4:6] = ARRAY['rate_limited', 'rate_limited', 'rate_limited']
+    AND (SELECT count(*) FROM public.brand_form_door_reads
+          WHERE actor_id = v_sc6 AND subject_id = v_rp AND result = 'full') = 3,
+    'T-DOORX repeated calls hit the per-guest limit at 3 full reads (' || array_to_string(v_states, ',') || ')');
   RESET ROLE;
 END
 $t$;
@@ -1794,11 +1801,20 @@ BEGIN
      WHERE e.slug LIKE 'f4514-%'
   ), old AS (
     SELECT p.form_id, p.event_id,
+           -- #4541 R1.4/R1.5: current holders only (approved Going or Maybe, paid or
+           -- partly refunded orders), claimed plus-ones counted, and guests the host
+           -- added (door sale, import, comp) never "to answer". Written inline here
+           -- as an independent oracle for the function's rule.
            (SELECT count(*) FROM public.event_rsvps x
-             WHERE x.event_id = p.event_id AND x.rsvp_status = 'going'
+             WHERE x.event_id = p.event_id AND x.rsvp_status IN ('going', 'maybe') AND x.approval_status = 'approved'
                AND (public.brand_form_find_response(p.form_id, 'rsvp', x.id)).id IS NULL)::integer
+         + (SELECT count(*) FROM public.event_rsvp_guests g JOIN public.event_rsvps x ON x.id = g.rsvp_id
+             WHERE x.event_id = p.event_id AND x.rsvp_status IN ('going', 'maybe') AND x.approval_status = 'approved'
+               AND g.claimed_at IS NOT NULL AND g.matched_user_id IS NOT NULL
+               AND (public.brand_form_find_response(p.form_id, 'rsvp_guest', g.id)).id IS NULL)::integer
          + (SELECT count(*) FROM public.orders o
              WHERE o.event_id = p.event_id AND o.payment_status IN ('paid', 'partial_refund')
+               AND NOT (o.source IN ('door_sale', 'manual_import', 'comp') OR COALESCE(o.is_door_sale, false))
                AND (public.brand_form_find_response(p.form_id, 'order', o.id)).id IS NULL)::integer AS n
       FROM pairs p
   )
@@ -3011,40 +3027,41 @@ BEGIN
   VALUES (v_form, v_ver, v_ba, v_ea, v_oa, c_ok || jsonb_build_object('99999999-9999-4999-8999-999999999999', 'gone'), 'page');
   INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, event_id, rsvp_id, answers, source)
   VALUES (v_form, v_ver, v_ba, v_er, v_rr, c_ok, 'page');
+  -- #4541 R1.1 replaced OP-5 here: an answer given at ANOTHER event no longer
+  -- counts as "answered" at checkout (it is shown as an editable prefill), and
+  -- the finalize is insert-only per order (I-4541-CHECKOUT-ANSWER-INSERT-ONLY).
   SET LOCAL ROLE service_role;
-  v := public.brand_form_checkout_check(v_eb, true, NULL, v_ub, NULL);
-  PERFORM pg_temp.f_assert(v->>'outcome' = 'answered',
-    'T-W7-PERSON-1 answered through an order elsewhere: no refusal without answers (' || v::text || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, NULL, %L, NULL)$$, v_eb, v_ub));
+  PERFORM pg_temp.f_assert(v_r LIKE '22023:form_answers_required%',
+    'T-W7-PERSON-1 answered through an order on another page: asked again here (' || v_r || ')');
   v := public.brand_form_checkout_form(v_eb, v_ub, NULL);
-  PERFORM pg_temp.f_assert((v->>'answered')::boolean IS TRUE AND v->'prefill'->'answers' = c_ok
-      AND v->'prefill'->>'versionId' = v_ver::text,
-    'T-W7-PREFILL the read opens prefilled with the live questions only (' || COALESCE(v->>'prefill', 'null') || ')');
-  -- T-W7-PERSON-2: answered through an RSVP.
-  v := public.brand_form_checkout_check(v_eb, true, NULL, v_ur, NULL);
-  PERFORM pg_temp.f_assert(v->>'outcome' = 'answered',
-    'T-W7-PERSON-2 answered through an RSVP: no refusal without answers (' || v::text || ')');
-  PERFORM pg_temp.f_assert((public.brand_form_checkout_form(v_eb, v_ur, NULL)->>'answered')::boolean IS TRUE,
-    'T-W7-PERSON-2 the read says answered for the RSVP guest');
+  PERFORM pg_temp.f_assert((v->>'answered')::boolean IS FALSE AND (v->>'answeredHere')::boolean IS FALSE
+      AND v->'prefill'->'answers' = c_ok AND v->'prefill'->>'versionId' = v_ver::text,
+    'T-W7-PREFILL the read opens prefilled (editable) with the live questions only (' || COALESCE(v->>'prefill', 'null') || ')');
+  -- T-W7-PERSON-2: answered through an RSVP at another event: asked again too.
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, NULL, %L, NULL)$$, v_eb, v_ur));
+  PERFORM pg_temp.f_assert(v_r LIKE '22023:form_answers_required%',
+    'T-W7-PERSON-2 answered through an RSVP at another event: asked again here (' || v_r || ')');
+  PERFORM pg_temp.f_assert((public.brand_form_checkout_form(v_eb, v_ur, NULL)->>'answered')::boolean IS FALSE,
+    'T-W7-PERSON-2 the read says not answered here for the RSVP guest of another event');
   -- T-W7-PREFILL: a returning buyer's stale version on a required step is form_changed.
   v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, %L::jsonb, %L, NULL)$$, v_eb,
            jsonb_build_object('formId', v_form, 'versionId', gen_random_uuid(), 'answers', c_new), v_ub));
   PERFORM pg_temp.f_assert(v_r LIKE 'PT409:form_changed%', 'T-W7-PREFILL a stale version from a returning buyer is form_changed (' || v_r || ')');
-  -- T-W7-PERSON-3: new answers at checkout update the one response.
+  -- T-W7-PERSON-3 (#4541 SC-1): new answers at checkout B become order B's own
+  -- response; order A's response is unchanged.
   v := public.brand_form_checkout_stash(v_sb, v_eb, true,
          jsonb_build_object('formId', v_form, 'versionId', v_ver, 'answers', c_new), v_ub, NULL);
-  PERFORM pg_temp.f_assert(v->>'outcome' = 'stash', 'T-W7-PERSON-3 a returning buyer''s edit is stashed (' || v::text || ')');
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'stash', 'T-W7-PERSON-3 a returning buyer''s answers are stashed (' || v::text || ')');
   RESET ROLE;
   UPDATE public.ticket_checkout_sessions SET order_id = v_ob, status = 'paid_completed' WHERE id = v_sb;
   SELECT * INTO v_resp FROM public.brand_form_responses WHERE form_id = v_form AND order_id = v_oa;
-  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE order_id = v_ob)
-      AND (SELECT count(*) FROM public.brand_form_responses r
-             WHERE r.form_id = v_form AND (r.order_id IN (v_oa, v_ob) OR r.user_id = v_ub)) = 1
-      AND v_resp.answers->>'22222222-2222-4222-8222-222222222222' = 'Unicycle'
-      AND v_resp.edit_count = 1 AND v_resp.version_id = v_ver
+  PERFORM pg_temp.f_assert(EXISTS (SELECT 1 FROM public.brand_form_responses WHERE order_id = v_ob
+                                     AND answers->>'22222222-2222-4222-8222-222222222222' = 'Unicycle')
+      AND v_resp.answers = c_ok || jsonb_build_object('99999999-9999-4999-8999-999999999999', 'gone')
+      AND v_resp.edit_count = 0 AND v_resp.event_id = v_ea
       AND NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sb),
-    'T-W7-PERSON-3 the finalize updates the person''s one response and writes no second row');
-  PERFORM pg_temp.f_assert((public.brand_form_find_response(v_form, 'order', v_ob)).id = v_resp.id,
-    'T-W7-PERSON-3 the new order shows the person''s one response');
+    'T-W7-PERSON-3 the finalize inserts order B''s response and leaves order A''s untouched');
 
   -- T-FINALIZE-SAFE-1: a primary-key lookup on the stash.
   PERFORM pg_temp.f_assert(EXISTS (
@@ -3104,7 +3121,9 @@ BEGIN
   -- T-1.3c assumes) and its command is the original, trimmed, plus exactly one line.
   SELECT command INTO v_cmd FROM cron.job WHERE jobname = 'issue_4452_forms_retention';
   PERFORM pg_temp.f_assert(v_cmd IS NOT NULL, 'T-PURGE-SAFE-2 the #4452 retention job exists');
-  PERFORM pg_temp.f_assert(v_cmd = rtrim(v_old_cmd, E' \n') || E'\n    SELECT public.brand_form_checkout_answers_purge();\n  ',
+  -- #4541 R1.6 (M-A) appends its own one line after this one: the retention purge.
+  PERFORM pg_temp.f_assert(v_cmd = rtrim(v_old_cmd, E' \n') || E'\n    SELECT public.brand_form_checkout_answers_purge();'
+                                   || E'\n    SELECT public.brand_form_retention_purge();\n  ',
     'T-PURGE-SAFE-2 new command = original trimmed + exactly one appended line (' || v_cmd || ')');
   PERFORM pg_temp.f_assert(left(v_cmd, length(rtrim(v_old_cmd, E' \n'))) = rtrim(v_old_cmd, E' \n'),
     'T-PURGE-SAFE-2 the original statements are byte-for-byte unchanged');

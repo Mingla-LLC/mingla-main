@@ -126,6 +126,9 @@ BEGIN
   INSERT INTO public.brand_form_versions(id, form_id, version, definition, definition_sha256, published_by)
   VALUES (v_version, v_form, 1, v_def, encode(digest(v_def::text, 'sha256'), 'hex'), v_owner);
   UPDATE public.brand_forms SET status = 'live', live_version_id = v_version WHERE id = v_form;
+  -- #4541 R8.3: the scanner here is invited scan-only staff (event_scanners, no
+  -- brand role), who read full answers only when the host also allows invited staff.
+  UPDATE public.brand_forms SET door_full_answers_invited = true WHERE id = v_form;
   INSERT INTO public.brand_form_attachments(id, form_id, brand_id, event_id, mode, created_by)
   VALUES (v_attachment, v_form, v_brand, v_event, 'required_step', v_owner);
 

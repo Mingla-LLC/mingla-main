@@ -13,8 +13,6 @@ import {
 } from "./submit.ts";
 import {
   BRAND_FORM_ERROR_STATUS,
-  BRAND_FORM_PER_IP_10MIN,
-  BRAND_FORM_PER_IP_24H,
   coreErrorCode,
   corePayload,
   parseSubmitRequest,
@@ -36,7 +34,8 @@ interface Fake {
 
 function fake(opts: {
   off?: boolean;
-  counts?: { ip10m: number; ip24h: number };
+  /** #4541 R8.4: the atomic admission's answer (default: admitted). */
+  admit?: boolean;
   user?: string | null;
   core?: (
     p: Record<string, unknown>,
@@ -50,10 +49,11 @@ function fake(opts: {
   const logs: string[] = [];
   const db: BrandFormSubmitDb = {
     switchedOff: () => Promise.resolve(opts.off === true),
-    countAttempts: () => Promise.resolve(opts.counts ?? { ip10m: 0, ip24h: 0 }),
-    recordAttempt: (_h, _f, outcome) => {
-      attempts.push(outcome);
-      return Promise.resolve();
+    // #4541 R8.4: one admission row per request (its bucket), written before
+    // any other database work; the old count-then-record pair is gone.
+    attemptAdmit: (_h, _f, bucket) => {
+      attempts.push(bucket);
+      return Promise.resolve({ allowed: opts.admit !== false });
     },
     userFromBearer: () =>
       Promise.resolve(opts.user === undefined ? USER : opts.user),
@@ -118,7 +118,8 @@ Deno.test("T-OK a signed-in holder's answer is saved through the core with their
     rsvpId: RSVP,
   });
   assertEquals(f.cores[0].source, "page");
-  assertEquals(f.attempts, ["accepted"]);
+  // #4541 R8.4: the admission row (accepted/rejected are no longer recorded separately).
+  assertEquals(f.attempts, ["unknown"]);
 });
 
 Deno.test("T-AUTH no token and no sign-in: 401 and the core is never called", async () => {
@@ -161,7 +162,8 @@ Deno.test("T-LINK SC-22 a token for another form is refused (403) and nothing is
   );
   assertEquals(r.status, 403);
   assertEquals(r.body.error, "link_wrong_form");
-  assertEquals(f.attempts, ["rejected"]);
+  // #4541 R8.4: a refused submit still counts (its admission row was written first).
+  assertEquals(f.attempts, ["unknown"]);
 });
 
 Deno.test("T-LINK SC-20 an existing answer through a link needs the code", async () => {
@@ -204,24 +206,18 @@ Deno.test("T-PAUSED SC-23 the database off switch answers 503 before anything el
   assertEquals(f.cores.length, 0);
 });
 
-Deno.test("T-RATE SC-23 over 20 per 10 minutes or 100 per 24 hours: 429 and nothing written", async () => {
-  for (
-    const counts of [{ ip10m: BRAND_FORM_PER_IP_10MIN, ip24h: 0 }, {
-      ip10m: 0,
-      ip24h: BRAND_FORM_PER_IP_24H,
-    }]
-  ) {
-    const f = fake({ counts });
-    const r = await run(
-      f,
-      post({ formId: FORM, answers: ANSWERS }, { authorization: "Bearer jwt" }),
-    );
-    assertEquals(r.status, 429);
-    assertEquals(f.cores.length, 0);
-    assertEquals(f.attempts, ["rate_limited"]);
-  }
-  assertEquals(BRAND_FORM_PER_IP_10MIN, 20);
-  assertEquals(BRAND_FORM_PER_IP_24H, 100);
+Deno.test("T-RATE SC-23 a request the admission refuses: 429 and the core is never called", async () => {
+  // #4541 R8.4: the limits (20 / 10 min, 100 / 24 h) are counted atomically in
+  // SQL (brand_form_attempt_admit, proved by the M-A pg17 suite T-11).
+  const f = fake({ admit: false });
+  const r = await run(
+    f,
+    post({ formId: FORM, answers: ANSWERS }, { authorization: "Bearer jwt" }),
+  );
+  assertEquals(r.status, 429);
+  assertEquals(r.body.error, "rate_limited");
+  assertEquals(f.cores.length, 0);
+  assertEquals(f.attempts, ["unknown"]);
 });
 
 Deno.test("T-CORE every core refusal maps to its status, with its details", async () => {
