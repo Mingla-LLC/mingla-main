@@ -5487,6 +5487,7 @@
         "supabase/functions/brand-form-submit/function-policy.json",
         "supabase/functions/brand-form-submit/index.ts",
         "supabase/functions/brand-form-submit/submit.ts",
+        "supabase/functions/brand-form-submit/linkRead.ts",
         "supabase/functions/notify-reminders/index.ts",
         "supabase/migrations/20281120034514_issue_4514_brand_forms.sql"
       ]
