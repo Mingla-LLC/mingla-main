@@ -8,32 +8,71 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { color, space, type } from "../../constants/designSystem";
+import { color, radius, space, type } from "../../constants/designSystem";
 import type { RefundPolicy } from "../../services/refundPolicyModel";
+import { Icon } from "../ui/Icon";
 import { Switch } from "../ui/Switch";
-import { TripBuilderChip } from "./TripBuilderChip";
-// issue #3284 [bundle budget] — the editor loads in its own chunk (ORCH-1083).
-import { LazyRefundPolicyEditor as RefundPolicyEditor } from "./LazyRefundPolicyEditor";
 import {
   REFUND_CHIPS,
   applyRefundChip,
   refundChipOf,
   withDepositNonRefundable,
   type RefundChipKey,
-} from "./tripBuilderV2Model";
+} from "./tripBuilderV2RefundChips";
+
+// A chip drawn like TripBuilderChip. Not imported from it: the inclusion chips and
+// the question library (the wizard's chunk) share TripBuilderChip, and a module
+// two chunks import is hoisted into the business-web boot payload (ORCH-1083).
+const RefundChip: React.FC<{
+  label: string;
+  selected: boolean;
+  disabled: boolean;
+  onPress: () => void;
+  testID: string;
+}> = ({ label, selected, disabled, onPress, testID }) => (
+  <Pressable
+    onPress={onPress}
+    disabled={disabled}
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    accessibilityState={{ selected, disabled }}
+    hitSlop={4}
+    style={({ pressed }) => [
+      styles.chip,
+      selected ? styles.chipOn : null,
+      pressed ? styles.chipPressed : null,
+      disabled ? styles.chipDisabled : null,
+    ]}
+    testID={testID}
+  >
+    <View style={styles.chipRow}>
+      {selected ? <Icon name="check" size={14} color={color.textStrong} /> : null}
+      <Text style={[styles.chipLabel, selected ? styles.chipLabelOn : null]}>{label}</Text>
+    </View>
+  </Pressable>
+);
 
 export interface TripRefundPolicySectionProps {
   value: RefundPolicy | null;
   onChange: (next: RefundPolicy | null) => void;
   disabled?: boolean;
+  /**
+   * The full editor for "Custom…". Supplied by `RefundPolicyEditor` (this
+   * section loads inside its chunk), so no second import of it exists.
+   */
+  renderCustomEditor: (
+    value: RefundPolicy | null,
+    onChange: (next: RefundPolicy | null) => void,
+  ) => React.ReactNode;
 }
 
 export const TripRefundPolicySection: React.FC<TripRefundPolicySectionProps> = ({
   value,
   onChange,
   disabled = false,
+  renderCustomEditor,
 }) => {
   const selected = refundChipOf(value);
   const [customOpen, setCustomOpen] = useState<boolean>(selected === "custom");
@@ -58,7 +97,7 @@ export const TripRefundPolicySection: React.FC<TripRefundPolicySectionProps> = (
       </Text>
       <View style={styles.row}>
         {REFUND_CHIPS.map((chip) => (
-          <TripBuilderChip
+          <RefundChip
             key={chip.key}
             label={chip.label}
             selected={customOpen ? chip.key === "custom" : selected === chip.key}
@@ -68,15 +107,12 @@ export const TripRefundPolicySection: React.FC<TripRefundPolicySectionProps> = (
           />
         ))}
       </View>
-      {customOpen ? (
-        <RefundPolicyEditor
-          value={value}
-          onChange={(next) =>
+      {customOpen
+        ? renderCustomEditor(value, (next) =>
             // The deposit rule survives an edit made in the full editor.
-            onChange(next === null ? null : withDepositNonRefundable(next, depositOn))
-          }
-        />
-      ) : null}
+            onChange(next === null ? null : withDepositNonRefundable(next, depositOn)),
+          )
+        : null}
       <View style={styles.switchRow}>
         <View style={styles.switchText}>
           <Text style={styles.switchLabel}>Deposit is non-refundable</Text>
@@ -99,6 +135,26 @@ export const TripRefundPolicySection: React.FC<TripRefundPolicySectionProps> = (
 };
 
 const styles = StyleSheet.create({
+  chip: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: space[4],
+    borderRadius: radius.full,
+    backgroundColor: color.fill.inset,
+    borderWidth: 1,
+    borderColor: color.line,
+  },
+  chipOn: { backgroundColor: color.fill.step, borderColor: color.textStrong },
+  chipPressed: { opacity: 0.8 },
+  chipDisabled: { opacity: 0.45 },
+  chipRow: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  chipLabel: {
+    fontSize: type.chip.fontSize,
+    lineHeight: type.chip.lineHeight,
+    fontWeight: type.chip.fontWeight,
+    color: color.text2,
+  },
+  chipLabelOn: { color: color.textStrong },
   host: { gap: space[3] },
   title: {
     fontSize: type.h2.fontSize,

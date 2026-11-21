@@ -28,17 +28,18 @@ import {
   INCLUSION_CHIPS,
   PREVIEW_UPDATE_DELAY_MS,
   addLibraryQuestion,
-  applyRefundChip,
-  computeEarningsRows,
-  earningsAtFullCapacity,
   inclusionChipOn,
-  refundChipOf,
   removeLibraryQuestion,
   toggleInclusionChip,
-  withDepositNonRefundable,
   TRAVELER_QUESTION_LIBRARY,
   MAX_INTAKE_QUESTIONS,
 } from "../tripBuilderV2Model";
+import {
+  applyRefundChip,
+  refundChipOf,
+  withDepositNonRefundable,
+} from "../tripBuilderV2RefundChips";
+import { computeEarningsRows, earningsAtFullCapacity } from "../tripEarnings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -175,15 +176,16 @@ describe("refund chips and the deposit rule", () => {
       "TripRefundPolicySection.tsx",
       {
         ...CORE,
-        LazyRefundPolicyEditor: () => ({ LazyRefundPolicyEditor: leaf("EditorProbe") }),
-        refundPolicyModel: () => jest.requireActual("../../../services/refundPolicyModel"),
+        tripBuilderV2RefundChips: () => jest.requireActual("../tripBuilderV2RefundChips"),
       },
     ).TripRefundPolicySection;
 
+    const renderCustomEditor = (value: unknown, onChange: unknown): React.ReactElement =>
+      React.createElement("EditorProbe", { value, onChange });
     const mount = (value: unknown, onChange: (n: unknown) => void) => {
       let t!: ReturnType<typeof TestRenderer.create>;
       act(() => {
-        t = TestRenderer.create(React.createElement(Section, { value, onChange }));
+        t = TestRenderer.create(React.createElement(Section, { value, onChange, renderCustomEditor }));
       });
       return t;
     };
@@ -507,14 +509,31 @@ describe("wiring", () => {
     expect(wizard.match(/onSchemaChange=\{handleIntakeSchemaChange\}/g)?.length).toBe(2);
   });
 
-  test("the refund chips replace the editor card only in the builder", () => {
+  test("the refund chips render inside the editor's own chunk, only in the builder", () => {
     const policy = read("TripCreatorStep5Policy.tsx");
-    expect(policy).toContain("{builderV2 ? (\n          <TripRefundPolicySection");
-    expect(policy).toContain("<RefundPolicyEditor");
+    expect(policy).toContain("builderV2={builderV2}");
+    expect(policy).not.toContain("TripRefundPolicySection");
+    const editor = read("RefundPolicyEditor.tsx");
+    expect(editor).toContain("props.builderV2 === true ?");
+    expect(editor).toContain("<RefundPolicyEditorClassic {...props} />");
+  });
+
+  test("boot payload: nothing the wizard's chunk imports pulls a lazy chunk's module into __common", () => {
+    // ORCH-1083: a module two lazy chunks import is hoisted into the boot payload.
+    const wizardSide = [
+      "tripBuilderV2Model.ts", "TripBuilderV2Parts.tsx", "TripInclusionChips.tsx",
+      "TripQuestionLibrary.tsx", "TripBuilderPreview.tsx", "TripCreatorWizard.tsx",
+    ].map(read).join("\n");
+    expect(wizardSide).not.toMatch(
+      /from\s+["'][^"']*(refundPolicyModel|pricingPreview|tripEarnings|tripBuilderV2RefundChips)["']/,
+    );
+    // The earnings card and the cost section share one chunk module.
+    expect(read("TripEarningsCard.tsx")).toContain('import("../pricing/WhoCoversCostsChunk")');
+    expect(fs.readFileSync(path.join(TRIP_DIR, "..", "pricing", "LazyWhoCoversCostsSection.tsx"), "utf8")).toContain('import("./WhoCoversCostsChunk")');
   });
 
   test("the earnings card reads the brand's real rate and the shared switches, with no invented default", () => {
-    const card = read("TripEarningsCard.tsx");
+    const card = read("TripEarningsCardBody.tsx");
     expect(card).toContain("brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS");
     expect(card).toContain("resolveSwitches(");
     expect(card).toContain("EARNINGS_LOADING_COPY");
@@ -523,7 +542,7 @@ describe("wiring", () => {
 
   test("no orange on the builder's new surfaces (accent is for Create and progress)", () => {
     for (const f of [
-      "TripBuilderChip.tsx", "TripInclusionChips.tsx", "TripRefundPolicySection.tsx", "TripEarningsCard.tsx",
+      "TripBuilderChip.tsx", "TripInclusionChips.tsx", "TripRefundPolicySection.tsx", "TripEarningsCard.tsx", "TripEarningsCardBody.tsx",
       "TripQuestionLibrary.tsx", "TripBuilderPreview.tsx", "TripBuilderV2Parts.tsx", "TripStartGate.tsx",
     ]) {
       expect(read(f)).not.toMatch(/color\.accent/);

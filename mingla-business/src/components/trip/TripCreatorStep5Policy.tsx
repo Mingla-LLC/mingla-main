@@ -30,7 +30,6 @@ import { BookingDeadlinePicker } from "./BookingDeadlinePicker";
 // never import ./RefundPolicyEditor statically here.
 import { LazyRefundPolicyEditor as RefundPolicyEditor } from "./LazyRefundPolicyEditor";
 import { GlassCard } from "../ui/GlassCard";
-import { TripRefundPolicySection } from "./TripRefundPolicySection";
 import { ExtraGuestsField } from "../ui/ExtraGuestsField";
 import { HIDE_REMAINING_LOCKED_SUB } from "../../constants/guestListPrivacy";
 
@@ -111,18 +110,14 @@ export const TripCreatorStep5Policy: React.FC<TripCreatorStep5PolicyProps> = ({
   return (
     <View style={styles.container}>
       <GlassCard variant="base" padding={space[4]} radius="lg">
-        {builderV2 ? (
-          <TripRefundPolicySection
-            value={draft.refundPolicy}
-            onChange={(next) => onChange({ refundPolicy: next })}
-            disabled={disabled}
-          />
-        ) : (
-          <RefundPolicyEditor
-            value={draft.refundPolicy}
-            onChange={(next) => onChange({ refundPolicy: next })}
-          />
-        )}
+        {/* #4522 — the 4-step builder's refund chips render inside the editor's
+            own chunk (RefundPolicyEditor `builderV2`). */}
+        <RefundPolicyEditor
+          value={draft.refundPolicy}
+          onChange={(next) => onChange({ refundPolicy: next })}
+          builderV2={builderV2}
+          disabled={disabled}
+        />
       </GlassCard>
 
       <GlassCard variant="base" padding={space[4]} radius="lg">

@@ -2,8 +2,11 @@
  * #4522 — the pure rules behind the 4-step trip builder (flag `tripBuilderV2`).
  *
  * No React, no react-native, no network: the step map, the publish checklist,
- * the autosave pill, the inclusion chips, the refund chips, the traveler
- * question library, the earnings card's numbers and the dated-itinerary helpers.
+ * the autosave pill, the inclusion chips, the traveler question library and the
+ * dated-itinerary helpers. The refund chips live in `tripBuilderV2RefundChips.ts`
+ * and the earnings numbers in `tripEarnings.ts`: each imports a module that a lazy
+ * chunk also owns (the refund presets, the fee preview), so keeping them out of
+ * this file keeps those modules out of the business-web boot payload (ORCH-1083).
  * The screens in `TripBuilderV2Parts.tsx` only draw what is decided here, so
  * every rule is testable without a renderer.
  *
@@ -11,11 +14,6 @@
  * every publish blocker is a checklist item that names the step to fix it in.
  */
 
-import { computePreview, type PreviewSwitches } from "../../utils/pricingPreview";
-import type { RefundPolicy } from "../../services/refundPolicyModel";
-import {
-  NO_REFUNDS_POLICY,
-} from "../../services/refundPolicyModel";
 import type {
   IntakeQuestion,
   IntakeSchema,
@@ -307,73 +305,6 @@ export function toggleInclusionChip(
 }
 
 // ---------------------------------------------------------------------------
-// Refund chips (spec §9.3 step 3; keys from the slice 1 refund policy)
-// ---------------------------------------------------------------------------
-
-export type RefundChipKey = "full_30" | "half_14" | "none" | "custom";
-
-export const REFUND_CHIPS: ReadonlyArray<{ key: RefundChipKey; label: string }> = [
-  { key: "full_30", label: "Full refund until 30 days before" },
-  { key: "half_14", label: "50% until 14 days before" },
-  { key: "none", label: "No refunds" },
-  { key: "custom", label: "Custom…" },
-];
-
-const FULL_30: RefundPolicy = {
-  kind: "custom",
-  tiers: [
-    { days_before_start: 30, refund_pct: 100 },
-    { days_before_start: 0, refund_pct: 0 },
-  ],
-};
-const HALF_14: RefundPolicy = {
-  kind: "custom",
-  tiers: [
-    { days_before_start: 14, refund_pct: 50 },
-    { days_before_start: 0, refund_pct: 0 },
-  ],
-};
-
-const sameTiers = (a: RefundPolicy, b: RefundPolicy): boolean =>
-  JSON.stringify(a.tiers) === JSON.stringify(b.tiers);
-
-/** Which chip a stored policy reads as; anything else reads as Custom. */
-export function refundChipOf(policy: RefundPolicy | null): RefundChipKey | null {
-  if (policy === null) return null;
-  if (policy.no_refunds === true || sameTiers(policy, NO_REFUNDS_POLICY)) return "none";
-  if (sameTiers(policy, FULL_30)) return "full_30";
-  if (sameTiers(policy, HALF_14)) return "half_14";
-  return "custom";
-}
-
-/**
- * The policy a preset chip writes. "No refunds" writes the one 0% tier every
- * buyer surface already renders; the `no_refunds` flag is not written until a
- * buyer surface renders it (the offering reader holds it as unknown today).
- * The deposit rule survives a chip change.
- */
-export function applyRefundChip(
-  current: RefundPolicy | null,
-  key: Exclude<RefundChipKey, "custom">,
-): RefundPolicy {
-  const base = key === "full_30" ? FULL_30 : key === "half_14" ? HALF_14 : NO_REFUNDS_POLICY;
-  const base2: RefundPolicy = { kind: base.kind, tiers: base.tiers.map((t) => ({ ...t })) };
-  return current?.deposit_non_refundable === true
-    ? { ...base2, deposit_non_refundable: true }
-    : base2;
-}
-
-/** The key is written only when on, so a policy without the rule stays byte-identical. */
-export function withDepositNonRefundable(
-  policy: RefundPolicy | null,
-  on: boolean,
-): RefundPolicy {
-  const base: RefundPolicy = policy ?? { kind: "custom", tiers: [{ days_before_start: 0, refund_pct: 0 }] };
-  const { deposit_non_refundable: _drop, ...rest } = base;
-  return on ? { ...rest, deposit_non_refundable: true } : rest;
-}
-
-// ---------------------------------------------------------------------------
 // Traveler question library (spec §9.8)
 // ---------------------------------------------------------------------------
 
@@ -449,71 +380,6 @@ export function removeLibraryQuestion(
 }
 
 // ---------------------------------------------------------------------------
-// Earnings card (spec §9.6) — the numbers come from pricingPreview, never made up
-// ---------------------------------------------------------------------------
-
-export interface EarningsInput {
-  /** Package price in minor units (cents/kobo). */
-  priceMinor: number;
-  /** null = the brand's rate could not be read: no fee rows are invented. */
-  takeRateBps: number | null;
-  serviceFeeBps?: number;
-  switches: PreviewSwitches;
-  vatRateBps?: number | null;
-}
-
-export interface EarningsRows {
-  priceMinor: number;
-  /** The Mingla fee (take rate + service fee) the host pays out of the price. */
-  feeMinor: number;
-  /** The part of the fee added to the buyer's price instead. */
-  feePassedMinor: number;
-  vatMinor: number | null;
-  receiveMinor: number;
-}
-
-/** null when the rate is unknown ("We'll show your earnings once your payout settings load."). */
-export function computeEarningsRows(input: EarningsInput): EarningsRows | null {
-  if (input.takeRateBps === null) return null;
-  const r = computePreview({
-    baseCents: input.priceMinor,
-    switches: input.switches,
-    effectiveTakeRateBps: input.takeRateBps,
-    serviceFeeBps: input.serviceFeeBps,
-    vatRateBps: input.vatRateBps,
-  });
-  const hasVat = input.vatRateBps !== null && input.vatRateBps !== undefined && input.vatRateBps > 0;
-  return {
-    priceMinor: r.baseCents,
-    feeMinor: r.absorbed.miglaFeeCents + r.absorbed.serviceFeeCents,
-    feePassedMinor: r.passed.miglaFeeCents + r.passed.serviceFeeCents,
-    vatMinor: hasVat ? r.taxCents : null,
-    receiveMinor: r.youKeepCents,
-  };
-}
-
-/**
- * "At {spots} travelers": what the host receives if every spot on every priced
- * package sells, each package at its own price. Packages with no spots set are
- * left out (never assumed).
- */
-export function earningsAtFullCapacity(
-  packages: ReadonlyArray<{ priceMinor: number; spots: number | null }>,
-  base: Omit<EarningsInput, "priceMinor">,
-): { spots: number; receiveMinor: number } | null {
-  let spots = 0;
-  let receive = 0;
-  for (const p of packages) {
-    if (p.spots === null || p.spots <= 0 || p.priceMinor <= 0) continue;
-    const rows = computeEarningsRows({ ...base, priceMinor: p.priceMinor });
-    if (rows === null) return null;
-    spots += p.spots;
-    receive += rows.receiveMinor * p.spots;
-  }
-  return spots > 0 ? { spots, receiveMinor: receive } : null;
-}
-
-// ---------------------------------------------------------------------------
 // Peek sheet + preview freshness
 // ---------------------------------------------------------------------------
 
@@ -522,3 +388,165 @@ export const PREVIEW_PANE_MIN_WIDTH = 1180;
 export const PREVIEW_PEEK_COLLAPSED_HEIGHT = 88;
 /** The preview follows the draft within this many milliseconds (spec §9.4). */
 export const PREVIEW_UPDATE_DELAY_MS = 300;
+
+// ---------------------------------------------------------------------------
+// Trip dates, the dated itinerary and the booking deadline (slice 11)
+// ---------------------------------------------------------------------------
+
+const MS_PER_DAY = 86_400_000;
+
+/** `YYYY-MM-DD` of a stored trip date. Trip dates are calendar dates stored at UTC. */
+export function tripDayOf(iso: string | null): string {
+  if (iso === null) return "";
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : "";
+}
+
+const dayMs = (day: string): number => Date.parse(`${day}T00:00:00.000Z`);
+
+/** Nights between two `YYYY-MM-DD` days (end after start); null when either is unset or the order is wrong. */
+export function nightsBetweenDays(start: string, end: string): number | null {
+  const a = dayMs(start);
+  const b = dayMs(end);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null;
+  return Math.round((b - a) / MS_PER_DAY);
+}
+
+/** "5 days · 4 nights" (the itinerary has nights + 1 days), or null when the range is not set. */
+export function describeTripLength(start: string, end: string): string | null {
+  const nights = nightsBetweenDays(start, end);
+  if (nights === null) return null;
+  const days = nights + 1;
+  return `${days} ${days === 1 ? "day" : "days"} · ${nights} ${nights === 1 ? "night" : "nights"}`;
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** "Day 1 · Fri 12 Mar": the date a day falls on, from the trip's first day. */
+export function dayDateLabel(ordinal: number, startAt: string | null): string {
+  const start = dayMs(tripDayOf(startAt));
+  if (!Number.isFinite(start) || ordinal < 1) return `Day ${ordinal}`;
+  const d = new Date(start + (ordinal - 1) * MS_PER_DAY);
+  return `Day ${ordinal} · ${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
+/**
+ * Moves one day's content to another slot. The slots (Day 1, Day 2 ... and the
+ * dates behind them) stay where they are; a seeded "Day N" title follows its
+ * slot, a title the host wrote travels with its content.
+ */
+export function reorderDays<T extends { ordinal: number; title: string }>(
+  days: ReadonlyArray<T>,
+  from: number,
+  to: number,
+): T[] {
+  if (from === to || from < 0 || to < 0 || from >= days.length || to >= days.length) {
+    return [...days];
+  }
+  const next = [...days];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next.map((d, i) => {
+    const ordinal = i + 1;
+    const seeded = d.title === `Day ${d.ordinal}`;
+    return { ...d, ordinal, title: seeded ? `Day ${ordinal}` : d.title };
+  });
+}
+
+/** Where a dragged card lands, from the heights of the cards and how far it was dragged. */
+export function dragTargetIndex(
+  heights: ReadonlyArray<number>,
+  gap: number,
+  from: number,
+  dy: number,
+): number {
+  let index = from;
+  let remaining = dy;
+  if (dy > 0) {
+    while (index < heights.length - 1 && remaining > heights[index + 1] / 2) {
+      remaining -= heights[index + 1] + gap;
+      index += 1;
+    }
+  } else if (dy < 0) {
+    while (index > 0 && -remaining > heights[index - 1] / 2) {
+      remaining += heights[index - 1] + gap;
+      index -= 1;
+    }
+  }
+  return index;
+}
+
+// -- booking deadline in the trip's time zone --------------------------------
+
+const wallParts = (ms: number, timeZone: string): Record<string, string> => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(new Date(ms));
+  const out: Record<string, string> = {};
+  for (const p of parts) out[p.type] = p.value;
+  return out;
+};
+
+/** The wall clock an instant shows in a zone: `{ date: "YYYY-MM-DD", time: "HH:mm" }`. */
+export function wallInZone(iso: string, timeZone: string): { date: string; time: string } | null {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  try {
+    const p = wallParts(ms, timeZone);
+    return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The instant a wall clock is in a zone. The zone's offset is read a day before
+ * and a day after, so a wall time next to a clock change resolves correctly: a
+ * time that happens twice (clocks go back) is the first one; a time that never
+ * happens (clocks go forward) lands just after the gap.
+ */
+export function instantFromWall(date: string, time: string, timeZone: string): string | null {
+  const base = Date.parse(`${date}T${time}:00.000Z`);
+  if (!Number.isFinite(base)) return null;
+  try {
+    const offsetAt = (ms: number): number => {
+      const p = wallParts(ms, timeZone);
+      return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute) - Math.floor(ms / 60_000) * 60_000;
+    };
+    const candidates = Array.from(
+      new Set([base - offsetAt(base - MS_PER_DAY), base - offsetAt(base + MS_PER_DAY)]),
+    );
+    const showsWall = (ms: number): boolean => {
+      const p = wallParts(ms, timeZone);
+      return `${p.year}-${p.month}-${p.day}` === date && `${p.hour}:${p.minute}` === time;
+    };
+    const exact = candidates.filter(showsWall);
+    const chosen = exact.length > 0 ? Math.min(...exact) : Math.max(...candidates);
+    return new Date(chosen).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+/** Why a deadline cannot be saved, or null. `now` is the real current time. */
+export function deadlineProblem(
+  deadlineIso: string,
+  tripStartIso: string | null,
+  now: number,
+): string | null {
+  const ms = Date.parse(deadlineIso);
+  if (!Number.isFinite(ms)) return "That deadline is not a real date and time.";
+  if (ms <= now) return "Deadline must be in the future.";
+  if (tripStartIso !== null) {
+    const start = Date.parse(tripStartIso);
+    if (Number.isFinite(start) && ms >= start) return "Deadline must be before trip starts.";
+  }
+  return null;
+}
