@@ -129,10 +129,26 @@ BEGIN
     jsonb_build_object('name', 'Tolu Adebayo', 'email', 'Tolu@Example.test', 'phone', '+2348030004821', 'phoneCountryIso', 'NG'),
     public.t4490_key('cart:w1'), NULL, sha256(convert_to('tok:w1', 'UTF8')), 'hold-w1-key');
   INSERT INTO t4490_ids VALUES ('booking', (v_g->>'groupId')::uuid);
+  -- Pay it (prepare + bind + finalize: the webhook / confirm_return path).
+  v := public.issue_4490_prepare_offer_payment((v_g->>'groupId')::uuid, sha256(convert_to('tok:w1', 'UTF8')), NULL,
+    'pay-key-w1-key', (SELECT version FROM public.stay_reservation_groups WHERE id = (v_g->>'groupId')::uuid));
+  PERFORM public.issue_1389_bind_payment_attempt((v->>'attemptId')::uuid,
+    'mingla_stay_' || replace(v->>'attemptId', '-', ''), NULL, NULL);
+  PERFORM public.issue_1389_finalize_payment('paystack', 'evt-w1', 'charge.success',
+    'mingla_stay_' || replace(v->>'attemptId', '-', ''), 'ch-w1', (v->>'amountMinor')::bigint, 'NGN', 0, NULL);
+  -- A second booking left held (not paid).
+  v_q := public.issue_4490_quote_offer(public.t4490_id('offer'), v_win,
+    jsonb_build_array(jsonb_build_object('priceOptionId', public.t4490_id('walkin'), 'guests', 1)),
+    public.t4490_key('cart:w1h'), NULL, 'quote-w1h');
+  v_g := public.issue_4490_create_offer_group(gen_random_uuid(), (v_q->>'quoteId')::uuid,
+    jsonb_build_object('name', 'Held Guest', 'email', 'held-w1@example.test', 'phone', '+2348030004822', 'phoneCountryIso', 'NG'),
+    public.t4490_key('cart:w1h'), NULL, sha256(convert_to('tok:w1h', 'UTF8')), 'hold-w1h-key');
+  INSERT INTO t4490_ids VALUES ('held', (v_g->>'groupId')::uuid);
   v := public.issue_4490_membership_join(gen_random_uuid(), public.t4490_id('plan'),
     jsonb_build_object('name', 'Amaka Obi', 'email', 'amaka-w1@example.test'), NULL,
     public.t4490_key('cart:m1'), NULL, sha256(convert_to('mtok:w1', 'UTF8')), 'join-w1-key');
   INSERT INTO t4490_ids VALUES ('member', COALESCE((v->>'subscriptionId')::uuid, (v->>'id')::uuid));
+  INSERT INTO t4490_ids VALUES ('member_pending', NULL);
   INSERT INTO public.venue_waitlist (id, brand_id, venue_id, guest_name, guest_email, party_size, status, source,
     desired_date, desired_from, desired_to, manage_token_hash)
   VALUES ('44936000-0000-4000-a000-0000000000e1', '44936000-0000-4000-9000-000000000010', a1, 'Bisi Ade',
@@ -153,6 +169,11 @@ BEGIN
   PERFORM public.t4490_ok(v->>'code' ~ '^[0-9A-Z]{10}$', 'K-1a venue_booking mints a claim code');
   v2 := public.mint_claim_link('venue_booking', public.t4490_id('booking'));
   PERFORM public.t4490_ok(v2->>'code' = v->>'code', 'K-1b a second mint returns the same code');
+  PERFORM public.t4490_expect(format('SELECT public.mint_claim_link(%L, %L)', 'venue_membership', public.t4490_id('member')),
+    'P0002', 'claim_subject_not_found', 'N-1 an unpaid (pending) membership gets no claim link');
+  UPDATE public.venue_membership_subscriptions
+     SET status = 'active', started_at = now(), current_period_start = now(), current_period_end = now() + interval '30 days'
+   WHERE id = public.t4490_id('member');
   v := public.mint_claim_link('venue_membership', public.t4490_id('member'));
   PERFORM public.t4490_ok(v->>'code' IS NOT NULL, 'K-1c venue_membership mints');
   v := public.mint_claim_link('venue_waitlist', public.t4490_id('wait'));
@@ -163,6 +184,11 @@ BEGIN
     'P0002', 'claim_subject_not_found', 'K-3 venue_till_sale is a known kind with no subject until Till payments exist');
   PERFORM public.t4490_expect(format('SELECT public.mint_claim_link(%L, %L)', 'venue_booking', public.t4490_id('member')),
     'P0002', 'claim_subject_not_found', 'K-4 a venue_booking link needs an offer booking');
+  -- N156: no claim link for a booking without a pass.
+  PERFORM public.t4490_expect(format('SELECT public.mint_claim_link(%L, %L)', 'venue_booking', public.t4490_id('held')),
+    'P0002', 'claim_subject_not_found', 'N-2 a held, unpaid booking gets no claim link');
+  PERFORM public.t4490_ok(public.issue_4063_claim_subject('venue_booking', public.t4490_id('held')) IS NULL,
+    'N-3 the held booking resolves to nothing');
   PERFORM public.t4490_ok((SELECT count(*) = 3 FROM public.claim_links WHERE subject_kind IN ('venue_booking','venue_membership','venue_waitlist')
     AND subject_id IN (public.t4490_id('booking'), public.t4490_id('member'), public.t4490_id('wait'))), 'K-5 three claim rows stored');
 END
@@ -249,6 +275,25 @@ BEGIN
   PERFORM public.issue_4490_text_claim_link(public.t4490_id('booking'), sha256(convert_to('tok:w1', 'UTF8')), NULL);
   PERFORM public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('booking'), sha256(convert_to('tok:w1', 'UTF8'))),
     'P0001', 'claim_text_limit', 'T-5 a fourth text is refused');
+  PERFORM public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('held'), sha256(convert_to('tok:w1h', 'UTF8'))),
+    'P0001', 'claim_text_not_confirmed', 'N-4 a held, unpaid booking is never texted "your pass is in the app"');
+  ALTER TABLE public.stay_reservation_groups DISABLE TRIGGER USER;
+  UPDATE public.stay_reservation_groups SET state = 'reconciliation_required' WHERE id = public.t4490_id('held');
+  PERFORM public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('held'), sha256(convert_to('tok:w1h', 'UTF8'))),
+    'P0001', 'claim_text_not_confirmed', 'N-5 reconciliation_required is refused');
+  PERFORM public.t4490_ok(public.issue_4063_claim_subject('venue_booking', public.t4490_id('held')) IS NULL,
+    'N-6 reconciliation_required resolves to nothing');
+  UPDATE public.stay_reservation_groups SET state = 'cancelled' WHERE id = public.t4490_id('held');
+  PERFORM public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('held'), sha256(convert_to('tok:w1h', 'UTF8'))),
+    'P0001', 'claim_text_not_confirmed', 'N-7 cancelled is refused');
+  UPDATE public.stay_reservation_groups SET state = 'request_expired' WHERE id = public.t4490_id('held');
+  PERFORM public.t4490_ok(public.issue_4063_claim_subject('venue_booking', public.t4490_id('held')) IS NULL,
+    'N-8 an expired request resolves to nothing');
+  UPDATE public.stay_reservation_groups SET state = 'cancelled' WHERE id = public.t4490_id('booking');
+  PERFORM public.t4490_ok(public.issue_4063_claim_subject('venue_booking', public.t4490_id('booking')) IS NULL,
+    'N-9 a cancelled booking (once confirmed) no longer resolves');
+  UPDATE public.stay_reservation_groups SET state = 'confirmed' WHERE id = public.t4490_id('booking');
+  ALTER TABLE public.stay_reservation_groups ENABLE TRIGGER USER;
 END
 $t$;
 

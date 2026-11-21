@@ -89,12 +89,14 @@ export const TEXT_LINK_COPY = {
   sent: (last4: string | null) => (last4 ? `Sent to •••${last4}.` : "Sent."),
   limit: "We've already texted this link 3 times. Use the link in your email.",
   noPhone: "There's no phone number on this booking. Use the link in your email.",
+  notConfirmed: "This booking isn't confirmed yet, so there's no pass to send.",
   failed: "We couldn't send the text. Try again.",
 } as const;
 
 export function textLinkErrorCopy(code: string): string {
   if (code === "claim_text_limit") return TEXT_LINK_COPY.limit;
   if (code === "claim_text_no_phone") return TEXT_LINK_COPY.noPhone;
+  if (code === "claim_text_not_confirmed") return TEXT_LINK_COPY.notConfirmed;
   return TEXT_LINK_COPY.failed;
 }
 

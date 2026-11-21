@@ -135,6 +135,7 @@ const SAFE_CODES = [
   "claim_text_unavailable",
   "claim_text_no_phone",
   "claim_text_limit",
+  "claim_text_not_confirmed",
   "offer_hold_expired",
   "offer_payment_already_pending",
   "offer_payment_already_paid",

@@ -83,6 +83,7 @@ describe("#4490 W1 text me the link and the waitlist card", () => {
     expect(textLinkErrorCopy("claim_text_limit")).toBe("We've already texted this link 3 times. Use the link in your email.");
     expect(textLinkErrorCopy("claim_text_no_phone")).toBe("There's no phone number on this booking. Use the link in your email.");
     expect(textLinkErrorCopy("offer_request_failed")).toBe("We couldn't send the text. Try again.");
+    expect(textLinkErrorCopy("claim_text_not_confirmed")).toBe("This booking isn't confirmed yet, so there's no pass to send.");
     expect(TEXT_LINK_COPY.sent("4821")).toBe("Sent to •••4821.");
   });
   test("H-7 the waitlist page shows the claim card for an open place", () => {

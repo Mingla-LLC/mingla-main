@@ -236,7 +236,11 @@ BEGIN
       LEFT JOIN public.brands b ON b.id = g.brand_id
       LEFT JOIN public.stay_place_windows w ON w.id = public.issue_4490_group_window_id(g.id)
       WHERE g.id = p_subject_id
-        AND g.offer_kind IS NOT NULL AND g.offer_kind <> 'membership';
+        AND g.offer_kind IS NOT NULL AND g.offer_kind <> 'membership'
+        -- N156: a pass exists only for a paid, live booking. Held, unpaid,
+        -- reconciliation_required, declined, expired and cancelled bookings
+        -- resolve to nothing, so no claim link is minted for them.
+        AND g.state IN ('confirmed', 'partially_cancelled');
 
     -- #4490 explorer W1: a membership (the plan name is the title).
     WHEN 'venue_membership' THEN
@@ -260,7 +264,8 @@ BEGIN
       LEFT JOIN public.stay_offerings o ON o.id = p.offering_id
       LEFT JOIN public.venue_listings v ON v.id = o.venue_id
       LEFT JOIN public.brands b ON b.id = s.brand_id
-      WHERE s.id = p_subject_id;
+      -- N156: only a paid membership has a member pass.
+      WHERE s.id = p_subject_id AND s.status IN ('active', 'payment_due', 'grace');
 
     -- #4490 explorer W1: an open place in a venue's line.
     WHEN 'venue_waitlist' THEN
@@ -727,6 +732,10 @@ BEGIN
   END IF;
   IF NOT public.issue_4490_flag_on('VENUE_APP_HANDOFF') THEN
     RAISE EXCEPTION 'claim_text_unavailable' USING ERRCODE = 'P0001';
+  END IF;
+  -- N156: no "your pass is in the app" text for a booking without a pass.
+  IF v_group.state NOT IN ('confirmed', 'partially_cancelled') THEN
+    RAISE EXCEPTION 'claim_text_not_confirmed' USING ERRCODE = 'P0001';
   END IF;
   v_phone := public.mingla_e164_normalize(NULLIF(v_group.guest_snapshot->>'phone', ''));
   IF v_phone IS NULL THEN
