@@ -67,6 +67,7 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
   const liveOffers = (offersQuery.data?.offers ?? []).filter((o) => o.status === "live" && o.kind === "entry");
   const pool = dayQuery.data?.pools[0] ?? null;
   const admitted = dayQuery.data?.checkIn.admitted ?? 0;
+  const timezone = listQuery.data?.timezone ?? dayQuery.data?.timezone;
 
   const run = useCallback(
     (action: Parameters<typeof door.mutate>[0]): void => {
@@ -76,7 +77,7 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
       door.mutate(action, {
         onSuccess: (o) => {
           setOutcome(o);
-          const tone = checkInResultView(o).tone;
+          const tone = checkInResultView(o, timezone).tone;
           void Haptics.notificationAsync(
             tone === "success"
               ? Haptics.NotificationFeedbackType.Success
@@ -94,7 +95,7 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
         },
       });
     },
-    [door],
+    [door, timezone],
   );
 
   const onScanned = useCallback(
@@ -158,7 +159,7 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
     else if (venueId !== null) router.replace(`/venue/${venueId}?module=checkin` as never);
   };
 
-  const view = outcome !== null ? checkInResultView(outcome) : null;
+  const view = outcome !== null ? checkInResultView(outcome, timezone) : null;
   const label = (a: CheckInAction): string =>
     a === "undo" ? "Undo" : a === "scan_next" ? "Scan next" : a === "id_seen" ? "ID seen · check in" : a === "sell_walk_in" ? "Sell walk-in entry" : "Close";
 

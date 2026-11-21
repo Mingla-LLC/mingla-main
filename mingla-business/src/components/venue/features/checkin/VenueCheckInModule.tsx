@@ -356,7 +356,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const ticketsIn = list.tickets.reduce((s, t) => s + t.admittedCount, 0);
 
   // -------------------------------------------------------------- scan UI
-  const view = outcome !== null ? checkInResultView(outcome) : null;
+  const view = outcome !== null ? checkInResultView(outcome, list.timezone) : null;
   const actionLabel = (a: CheckInAction): string =>
     a === "undo"
       ? "Undo"

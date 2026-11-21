@@ -71,7 +71,10 @@ describe("venueCheckInResult", () => {
   });
 
   it("already_used → already_in with the time; void, not_yet, wrong_venue, not_found, undone all have words", () => {
-    expect(checkInResultView(outcome("already_used")).state).toBe("already_in");
+    const already = checkInResultView(outcome("already_used", {
+      pass: pass({ lastAdmittedAt: "2026-11-21T11:56:00Z" }),
+    }), "Africa/Lagos");
+    expect(already).toMatchObject({ state: "already_in", body: "Everyone on this pass came in at 12:56." });
     expect(checkInResultView(outcome("void")).title).toBe("Cancelled pass");
     expect(checkInResultView(outcome("not_yet")).title).toBe("Too early");
     expect(checkInResultView(outcome("wrong_venue", { venueName: "Gameland Lagos", pass: null })).body).toBe(

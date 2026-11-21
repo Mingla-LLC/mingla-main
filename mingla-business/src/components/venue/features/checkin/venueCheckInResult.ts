@@ -31,10 +31,20 @@ export interface CheckInResultView {
   secondary: CheckInAction | null;
 }
 
-function timeOf(iso: string | null): string | null {
+function timeOf(iso: string | null, timezone?: string): string | null {
   if (iso === null) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(d);
+  } catch {
+    // A malformed legacy venue zone must not hide the admission time.
+  }
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
@@ -146,7 +156,7 @@ function memberResultView(outcome: ScanOutcome, subject: string | null): CheckIn
   }
 }
 
-export function checkInResultView(outcome: ScanOutcome): CheckInResultView {
+export function checkInResultView(outcome: ScanOutcome, timezone?: string): CheckInResultView {
   const subject = subjectOf(outcome);
   if (outcome.kind === "member") return memberResultView(outcome, subject);
   const pass = outcome.pass;
@@ -212,7 +222,7 @@ export function checkInResultView(outcome: ScanOutcome): CheckInResultView {
       };
     }
     case "already_used": {
-      const at = timeOf(pass?.lastAdmittedAt ?? null);
+      const at = timeOf(pass?.lastAdmittedAt ?? null, timezone);
       return {
         state: "already_in",
         tone: "warning",
