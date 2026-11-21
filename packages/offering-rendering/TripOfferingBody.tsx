@@ -109,6 +109,14 @@ import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
+// #4522 — one lazy owner for the public v2-plan disclosure. The feature stays
+// out of eager Host web and the chunk is requested only for a tier with a plan.
+const LazyTripPlanV2PublicSummary = React.lazy(() =>
+  import("./TripPlanV2PublicSummary").then((module) => ({
+    default: module.TripPlanV2PublicSummary,
+  })),
+);
+
 if (
   Platform.OS === "android" &&
   UIManager.setLayoutAnimationEnabledExperimental !== undefined
@@ -820,6 +828,9 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                         : undefined
                     }
                     currency={data.currency}
+                    depositNonRefundable={
+                      data.refundPolicy?.deposit_non_refundable === true
+                    }
                   />
                 ))}
 
@@ -995,6 +1006,7 @@ const TripPackageRow: React.FC<{
   planChoice: TripPaymentPlanChoice;
   onChangePlanChoice?: (value: TripPaymentPlanChoice) => void;
   currency: string;
+  depositNonRefundable: boolean;
 }> = ({
   tier,
   palette,
@@ -1006,6 +1018,7 @@ const TripPackageRow: React.FC<{
   planChoice,
   onChangePlanChoice,
   currency,
+  depositNonRefundable,
 }) => {
   const isSoldOut =
     tier.isUnlimited === false &&
@@ -1076,6 +1089,16 @@ const TripPackageRow: React.FC<{
           <Text style={[styles.pkgCap, surface.tertiaryText]}>
             {remainingLabel}
           </Text>
+          {tier.paymentPlanV2 !== null &&
+          tier.paymentPlanV2 !== undefined ? (
+            <React.Suspense fallback={null}>
+              <LazyTripPlanV2PublicSummary
+                tier={tier}
+                palette={palette}
+                depositNonRefundable={depositNonRefundable}
+              />
+            </React.Suspense>
+          ) : null}
           <LazySaleAvailabilityText
             active={listPriceLabel !== null}
             remaining={tier.saleRemaining}

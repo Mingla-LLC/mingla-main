@@ -96,6 +96,14 @@ export const quoteTicketCheckout = async (
   const schedule = decodeInstallmentChargeSchedule(
     quote.installmentChargeSchedule,
   );
+  const paymentPlanV2 =
+    quote.paymentPlanV2 === undefined
+      ? undefined
+      : await import(
+          "@mingla/offering-rendering/ticketQuotePlanV2Contract"
+        ).then(({ decodeTicketQuotePlanV2 }) =>
+          decodeTicketQuotePlanV2(quote.paymentPlanV2),
+        );
   const planTotalBuyerCents = installmentPlanBuyerTotal(
     quote.buyerTotalCents,
     schedule,
@@ -105,6 +113,9 @@ export const quoteTicketCheckout = async (
     ...(schedule === undefined
       ? { installmentChargeSchedule: undefined }
       : { installmentChargeSchedule: schedule }),
+    ...(paymentPlanV2 === undefined
+      ? { paymentPlanV2: undefined }
+      : { paymentPlanV2 }),
     planTotalBuyerCents,
   };
 };

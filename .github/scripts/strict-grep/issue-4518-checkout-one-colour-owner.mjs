@@ -54,6 +54,7 @@ export const SHARED_PARTS = [
   "src/components/ui/Toast.tsx",
   "src/components/ui/WebDateTimeInput.tsx",
   "src/components/trip/InstallmentScheduleDisplay.tsx",
+  "src/components/trip/TripPlanV2CheckoutChoice.tsx",
   "src/components/trip/TripPaymentChoice.tsx",
   "src/components/waitlist/JoinWaitlistSheet.tsx",
 ];

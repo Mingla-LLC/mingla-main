@@ -475,10 +475,21 @@ const reducer = (state: CartState, action: CartAction): CartState => {
       return { ...state, intakeFormData: next };
     }
     case "SET_PAYMENT_PLAN_CHOICE":
-      return { ...state, paymentPlanChoice: action.choice };
+      return {
+        ...state,
+        paymentPlanChoice: action.choice,
+        quote: null,
+        quoteStatus: state.lines.length > 0 ? "loading" : "idle",
+        quoteErrorCode: null,
+        checkoutReview: null,
+      };
     case "SET_LINE_PAYMENT_PLAN_CHOICE": {
       return {
         ...state,
+        quote: null,
+        quoteStatus: state.lines.length > 0 ? "loading" : "idle",
+        quoteErrorCode: null,
+        checkoutReview: null,
         lines: state.lines.map((line) =>
           line.ticketTypeId === action.ticketTypeId
             ? { ...line, paymentPlanChoice: action.choice }

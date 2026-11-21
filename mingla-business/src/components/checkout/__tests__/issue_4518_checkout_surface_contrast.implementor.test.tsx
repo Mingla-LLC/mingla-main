@@ -383,6 +383,61 @@ describe.each(THEMES)("#4518 — checkout is readable on %s", (_name, palette) =
     tree.unmount();
   });
 
+  test("the v2 trip-plan choice stays readable inside every checkout palette", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- load after setting the active palette for this case.
+    const { TripPlanV2CheckoutChoice } = require("../../trip/TripPlanV2CheckoutChoice") as typeof import("../../trip/TripPlanV2CheckoutChoice");
+    const tree = mount(
+      <View style={{ backgroundColor: color.canvas }}>
+        <TripPlanV2CheckoutChoice
+          plan={{
+            availability: "plan",
+            countOffered: 3,
+            countGiven: 2,
+            finalDueAt: "2027-05-01T13:00:00Z",
+            installmentSchedule: {
+              fullPriceCents: 100000,
+              depositCents: 20000,
+              currency: "USD",
+              planVersion: 2,
+              availability: "plan",
+              countOffered: 3,
+              countGiven: 2,
+              finalDueAt: "2027-05-01T13:00:00Z",
+              installments: [
+                { ordinal: 1, pct: 40, amountCents: 40000, dueAt: "2027-03-01T14:00:00Z", addonPortionCents: 0, sourceTicketTypeId: "tier" },
+                { ordinal: 2, pct: 40, amountCents: 40000, dueAt: "2027-05-01T13:00:00Z", addonPortionCents: 0, sourceTicketTypeId: "tier" },
+              ],
+            },
+          }}
+          value="installments"
+          onChange={() => undefined}
+          currency="USD"
+          dueTodayCents={22000}
+          fullPriceCents={110000}
+          flexEnabled
+          daysUntilDeparture={90}
+          timeZone="America/New_York"
+        />
+      </View>,
+    );
+    const found = measureText(tree.root, color.canvas);
+    expect(found.map((entry) => entry.text)).toEqual(expect.arrayContaining([
+      "HOW YOU PAY",
+      "Pay in full",
+      "You booked closer to the trip, so your plan has fewer payments.",
+      "You can pay more at any time from My trip.",
+      "We’ll remind you before each payment.",
+    ]));
+    expect(found.filter((entry) => entry.ratio < TEXT_MIN)).toEqual([]);
+    const outlines = tree.root.findAll(
+      (node: Instance) =>
+        typeof node.type === "string" &&
+        flat(node.props.style).borderColor === color.controlOutline,
+    );
+    expect(outlines.length).toBeGreaterThan(0);
+    tree.unmount();
+  });
+
   test.each(["primary", "secondary", "ghost"] as const)(
     "a %s button's label is readable, enabled and disabled (rendered)",
     (variant) => {

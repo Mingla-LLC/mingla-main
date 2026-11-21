@@ -48,6 +48,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { space } from "../../../src/constants/designSystem";
 import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
@@ -76,6 +77,7 @@ import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { Toast } from "../../../src/components/ui/Toast";
 import { TripPaymentChoice } from "../../../src/components/trip/TripPaymentChoice";
 import { InstallmentScheduleDisplay } from "../../../src/components/trip/InstallmentScheduleDisplay";
+import { TripPlanV2CheckoutChoice } from "../../../src/components/trip/TripPlanV2CheckoutChoice";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 
 import {
@@ -92,6 +94,11 @@ import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
 import { CheckoutHeader, CheckoutStatusBanner } from "../../../src/components/checkout/CheckoutHeader";
 import { BUYER_CONNECTION_COPY } from "../../../src/components/buyer/buyerConnectionCopy";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
+import {
+  BuyerConnectionNotice,
+  preloadBuyerConnectionNotice,
+} from "../../../src/components/buyer/BuyerConnectionNotice";
+import { featureFlags } from "../../../src/config/featureFlags";
 import { tripFunnelTotalSteps, tripPaymentStepIndex } from "./tripFunnelSteps";
 // issue #3351 [free trip intake loop] — the flattener and the presence probe
 // both live in the step-order owner now, so the trip route holds exactly one
@@ -152,6 +159,7 @@ function CheckoutTripPaymentScreenContent({
 }: CheckoutTripPaymentScreenContentProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ tripEventId: string }>();
   const tripEventId =
     typeof params.tripEventId === "string" ? params.tripEventId : null;
@@ -171,6 +179,7 @@ function CheckoutTripPaymentScreenContent({
     discountCode,
     quote,
     quoteStatus,
+    quoteErrorCode,
     checkoutReview,
     setQuoteState,
     setCheckoutReview,
@@ -207,10 +216,32 @@ function CheckoutTripPaymentScreenContent({
       return schedule === null ? [] : [{ line, tier, schedule }];
     });
   }, [lines, trip]);
+  // issue #4522 — v2 is a server-quoted cart plan. It is buyer-web only in
+  // this slice and remains completely inert while the bundled flag is dark.
+  const v2PlanLines = React.useMemo(() => {
+    if (!featureFlags.tripPlanV2 || Platform.OS !== "web" || trip === null) {
+      return [];
+    }
+    return lines.flatMap((line) => {
+      const tier = trip.pricingTiers.find(
+        (candidate) => candidate.ticketTypeId === line.ticketTypeId,
+      );
+      const plan = tier?.paymentPlan;
+      return tier !== undefined &&
+        plan !== null &&
+        plan !== undefined &&
+        "v" in plan &&
+        plan.v === 2 &&
+        line.quantity > 0
+        ? [{ line, tier, plan }]
+        : [];
+    });
+  }, [lines, trip]);
+  const v2CheckoutActive = v2PlanLines.length > 0;
   // Legacy Business-native still renders one scalar plan editor. Web never
   // uses this as money authority; each line below owns its own schedule.
   const projectedSchedule = planLines[0]?.schedule ?? null;
-  const isPlanActive = planLines.length > 0;
+  const isPlanActive = planLines.length > 0 || v2CheckoutActive;
   const planChoiceByTier = React.useMemo<
     Record<string, "full" | "installments">
   >(
@@ -228,16 +259,44 @@ function CheckoutTripPaymentScreenContent({
   const installmentPlanLines = planLines.filter(
     ({ line }) => planChoiceByTier[line.ticketTypeId] === "installments",
   );
-  const isUsingInstallments = installmentPlanLines.length > 0;
+  const isUsingInstallments =
+    installmentPlanLines.length > 0 ||
+    (v2CheckoutActive && paymentPlanChoice === "installments");
+  const legacyInstallmentCta =
+    isUsingInstallments && projectedSchedule !== null;
+  const installmentCtaActive =
+    legacyInstallmentCta || (isUsingInstallments && v2CheckoutActive);
   const payLinkPlan = quote?.installmentChargeSchedule;
   const dueTodayCents = payLinkPlan !== undefined
     ? (quote?.buyerTotalCents ?? 0)
     : (quote?.dueTodayNetCents ?? 0);
-  const futureInstallmentCount = payLinkPlan?.payments.length ??
-    installmentPlanLines.reduce(
-      (count, entry) => count + entry.schedule.installments.length,
-      0,
-    );
+  const futureInstallmentCount = v2CheckoutActive
+    ? (quote?.paymentPlanV2?.countGiven ?? 0)
+    : (payLinkPlan?.payments.length ??
+      installmentPlanLines.reduce(
+        (count, entry) => count + entry.schedule.installments.length,
+        0,
+      ));
+  const v2FlexEnabled = v2PlanLines.some(
+    ({ plan }) => plan.flex?.enabled === true,
+  );
+  const daysUntilDeparture = React.useMemo(() => {
+    const starts = Date.parse(trip?.businessTrip.startAt ?? "");
+    return Number.isFinite(starts)
+      ? Math.max(0, Math.ceil((starts - Date.now()) / 86_400_000))
+      : 0;
+  }, [trip?.businessTrip.startAt]);
+  const setV2PaymentChoice = useCallback(
+    (choice: "full" | "installments"): void => {
+      // The scalar drives the side-effect-free quote preview. The line values
+      // are the #3859 checkout-v2 create contract. Both change in one gesture.
+      setPaymentPlanChoice(choice);
+      for (const { line } of v2PlanLines) {
+        setLinePaymentPlanChoice(line.ticketTypeId, choice);
+      }
+    },
+    [setLinePaymentPlanChoice, setPaymentPlanChoice, v2PlanLines],
+  );
 
   // ORCH-0880 [Tr5 Traveler Intake Forms] — flatten per-tier intake answers
   // (keyed by ticket_type_id in CartContext) into the array shape expected
@@ -264,6 +323,8 @@ function CheckoutTripPaymentScreenContent({
   );
   const [successToast, setSuccessToast] = useState<boolean>(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  useEffect(preloadBuyerConnectionNotice, []);
 
   // ----- issue #2190 [paid-checkout-redirect]: one create per checkout -----
   // Mirrors #2188 on the event payment screen. Held in a ref (not state)
@@ -757,6 +818,32 @@ function CheckoutTripPaymentScreenContent({
     );
   }
 
+  if (v2CheckoutActive && quoteStatus === "error") {
+    const connection = isConnectionFailure(
+      new Error(quoteErrorCode ?? "Failed to fetch"),
+    );
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={paymentStepIndex}
+          totalSteps={totalSteps}
+          title="Review & pay"
+          onBack={handleBack}
+        />
+        <BuyerConnectionNotice
+          variant={connection ? "connection" : "server"}
+          onRetry={() =>
+            queryClient.invalidateQueries({
+              queryKey: ["ticket-checkout-quote"],
+            })
+          }
+          onBack={handleBack}
+          testID="checkout-trip-payment-connection-notice"
+        />
+      </View>
+    );
+  }
+
   if (checkoutReview !== null) {
     return (
       <View style={styles.host}>
@@ -895,7 +982,27 @@ function CheckoutTripPaymentScreenContent({
 
         {/* #3859 — web edits each eligible package independently. Native keeps
             its existing single v1 choice until preview + create migrate together. */}
-        {Platform.OS === "web" ? (
+        {v2CheckoutActive ? (
+          <TripPlanV2CheckoutChoice
+            plan={quote?.paymentPlanV2}
+            value={paymentPlanChoice}
+            onChange={setV2PaymentChoice}
+            currency={quote?.currency ?? totals.currency}
+            dueTodayCents={quote?.buyerTotalCents}
+            fullPriceCents={
+              paymentPlanChoice === "full"
+                ? quote?.buyerTotalCents
+                : (quote?.planTotalBuyerCents ??
+                  quote?.paymentPlanV2?.installmentSchedule?.fullPriceCents)
+            }
+            lockedChargeSchedule={quote?.installmentChargeSchedule}
+            flexEnabled={v2FlexEnabled}
+            daysUntilDeparture={daysUntilDeparture}
+            timeZone={trip.timezone}
+            loading={quoteStatus === "loading" || quoteStatus === "idle"}
+            disabled={processing}
+          />
+        ) : Platform.OS === "web" ? (
           planLines.map(({ line, tier, schedule }) => (
             <View key={line.ticketTypeId}>
               <Text style={styles.summaryLabel}>{line.ticketName}</Text>
@@ -976,7 +1083,9 @@ function CheckoutTripPaymentScreenContent({
             the last in-product surface to set buyer expectations about
             the deposit + future-installment auto-charge schedule.
             Constitution #3 — no silent failures. */}
-        {isPlanActive && isUsingInstallments ? (
+        {isPlanActive &&
+        isUsingInstallments &&
+        (!v2CheckoutActive || quoteStatus === "ready") ? (
           <View
             style={styles.planBanner}
             accessibilityRole="alert"
@@ -1008,7 +1117,9 @@ function CheckoutTripPaymentScreenContent({
             </Text>
           </View>
         ) : null}
-        {isPlanActive && !isUsingInstallments ? (
+        {isPlanActive &&
+        !isUsingInstallments &&
+        (!v2CheckoutActive || quoteStatus === "ready") ? (
           <View
             style={[styles.planBanner, styles.fullPayBanner]}
             accessibilityRole="alert"
@@ -1055,7 +1166,9 @@ function CheckoutTripPaymentScreenContent({
           // cart CTA deliberately says "today" because mixed carts also include
           // full-pay lines in the aggregate amount.
           label={
-            isUsingInstallments && projectedSchedule !== null
+            v2CheckoutActive && quoteStatus !== "ready"
+              ? "Working out your payments…"
+              : installmentCtaActive
               ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today`
               : `Pay ${displayAllIn}`
           }
@@ -1063,12 +1176,16 @@ function CheckoutTripPaymentScreenContent({
           variant="primary"
           size="lg"
           fullWidth
-          loading={processing}
+          loading={
+            processing || (v2CheckoutActive && quoteStatus === "loading")
+          }
           // ORCH-1130 Fix #2 — no "Calculate tax" gate; Pay is enabled
           // immediately (only blocked while a charge is in flight).
           disabled={processing || quoteStatus !== "ready" || quote === null}
           accessibilityLabel={
-            isUsingInstallments && projectedSchedule !== null
+            v2CheckoutActive && quoteStatus !== "ready"
+              ? "Working out your payments"
+              : installmentCtaActive
               ? `Pay ${formatQuoteMoney(dueTodayCents, quote?.currency ?? totals.currency)} today with card`
               : `Pay ${displayAllIn} with card`
           }

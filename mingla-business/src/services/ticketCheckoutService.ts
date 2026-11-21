@@ -775,6 +775,9 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
     return PRIVATE_TICKET_LINK_INACTIVE_MESSAGE;
   }
   if (code === "ticket_link_full") return PRIVATE_TICKET_LINK_FULL_MESSAGE;
+  if (code === "installment_schedule_past_due_at_booking") {
+    return "This plan's first payment date has passed. Choose Pay in full.";
+  }
   // issue #3281 — booked-start refusals arrive as bare error codes on paid too.
   {
     const bookedStartCopy = checkoutRefusalRaiseMessage(code);

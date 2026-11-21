@@ -126,15 +126,18 @@ describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
     // [TEST-MOD-APPROVED #3859] Any installment line activates mixed-cart
     // disclosure; when every line is full-pay, both disclosure and due-today CTA
     // disappear together.
-    expect(paymentSource).toContain(
-      "const isUsingInstallments = installmentPlanLines.length > 0;",
+    // [TEST-MOD-APPROVED #4522] The disclosure now covers either a legacy
+    // projected line or the feature-gated database-planned v2 cart. Toggling
+    // every eligible source back to full must still make this false.
+    expect(paymentSource).toMatch(
+      /const isUsingInstallments =\s*installmentPlanLines\.length > 0 \|\|\s*\(v2CheckoutActive && paymentPlanChoice === "installments"\)/,
     );
     expect(paymentSource).toMatch(/\{isUsingInstallments\s*\?\s*\(/);
     expect(paymentSource).toMatch(
-      /isPlanActive\s*&&\s*isUsingInstallments\s*\?\s*\(/,
+      /isPlanActive\s*&&\s*isUsingInstallments\s*&&[\s\S]{0,120}\?\s*\(/,
     );
     expect(paymentSource).toMatch(
-      /isPlanActive\s*&&\s*!isUsingInstallments\s*\?\s*\(/,
+      /isPlanActive\s*&&\s*!isUsingInstallments\s*&&[\s\S]{0,120}\?\s*\(/,
     );
     expect(paymentSource).toContain("Paid in full today");
     // [TEST-MOD-APPROVED ORCH-1062] REPAIR: the copy is unchanged but now wraps

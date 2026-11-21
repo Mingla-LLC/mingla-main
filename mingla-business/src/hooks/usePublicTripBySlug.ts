@@ -45,6 +45,7 @@ import type {
 } from "../services/tripsService";
 import { coerceTripDayMedia } from "../services/tripsService";
 import { sumTripPackageSpots } from "../services/tripPackages";
+import { featureFlags } from "../config/featureFlags";
 
 // ORCH-1138 B1 — map raw brand/trip theme columns into a guarded ThemeInput.
 // Mirrors publicEventsService.asThemeInput EXACTLY (reuses the package guards;
@@ -328,6 +329,15 @@ export const usePublicTripBySlug = (
       }
       if (data === null || data === undefined) return null;
       const p = data as RpcTripPayload;
+      const decodePaymentPlanV2 =
+        featureFlags.tripPlanV2 &&
+        (p.tiers ?? []).some(
+          (tier) => tier.tierMetadata?.payment_plan !== undefined,
+        )
+          ? await import(
+              "@mingla/offering-rendering/tripPlanV2Contract"
+            ).then(({ decodeTripPaymentPlanV2 }) => decodeTripPaymentPlanV2)
+          : null;
 
       // #4518 — the same-origin bundle carries the buy-gate answers. Only
       // trusted from the bundle (the RPC fallback never has them).
@@ -367,6 +377,8 @@ export const usePublicTripBySlug = (
           ticketsRemaining: t.isUnlimited ? null : (t.ticketsRemaining ?? null),
           isUnlimited: t.isUnlimited === true,
           installmentSchedule: asInstallmentSchedule(t.installments),
+          paymentPlan:
+            decodePaymentPlanV2?.(t.tierMetadata?.payment_plan) ?? null,
           // META-ORCH-1174 Leg B2 — per-package description from tier_metadata.
           description:
             typeof (t.tierMetadata as Record<string, unknown> | null)?.description ===
@@ -383,6 +395,10 @@ export const usePublicTripBySlug = (
         installmentSchedule: publicTripInstallmentSchedule(
           p.installmentCapabilityAvailable,
           tier.installmentSchedule,
+        ),
+        paymentPlan: publicTripInstallmentSchedule(
+          p.installmentCapabilityAvailable,
+          tier.paymentPlan,
         ),
       }));
 

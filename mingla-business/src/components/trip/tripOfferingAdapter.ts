@@ -23,6 +23,7 @@ import {
 } from "@mingla/offering-rendering/tripGuide";
 
 import type { Trip, TripPricingTier } from "../../services/tripsService";
+import { featureFlags } from "../../config/featureFlags";
 import type { TripPreviewBrand } from "./TripPreview";
 
 // META-ORCH-1174 Leg A.3 — "N days · M nights" now derives via the SHARED
@@ -50,7 +51,17 @@ function coerceRefundPolicy(raw: unknown): TripRefundPolicyShape | null {
     obj.kind === "custom"
       ? obj.kind
       : "custom";
-  return { kind, tiers };
+  return {
+    kind,
+    tiers,
+    ...(typeof (raw as { deposit_non_refundable?: unknown })
+      .deposit_non_refundable === "boolean"
+      ? {
+          deposit_non_refundable: (raw as { deposit_non_refundable: boolean })
+            .deposit_non_refundable,
+        }
+      : {}),
+  };
 }
 
 /**
@@ -171,6 +182,14 @@ export function buildTripOfferingData(
         isUnlimited: t.isUnlimited,
         ticketsRemaining: t.ticketsRemaining,
         installmentSchedule: t.installmentSchedule ?? null,
+        paymentPlanV2:
+          featureFlags.tripPlanV2 &&
+          t.paymentPlan !== null &&
+          t.paymentPlan !== undefined &&
+          "v" in t.paymentPlan &&
+          t.paymentPlan.v === 2
+            ? t.paymentPlan
+            : null,
       };
     }),
     currency: tier?.currency ?? "USD",
