@@ -202,5 +202,15 @@ module.exports = {
     // issue #4473 device pass — one dark Done bar, in-sheet country picker,
     // per-kind shared notes, channel hint, keyboard closed before results.
     "**/__tests__/issue_4473_device_fixes.implementor.render.test.tsx",
+    // issue #4541 — the Explorer form screen, questions card, hand-off, draft
+    // and sign-out, deep links and the form route, the app checkout's
+    // questions (marker, answers, refusals), the RSVP read through the edge.
+    "**/__tests__/BrandFormScreen.issue4541.test.tsx",
+    "**/__tests__/QuestionsCard.issue4541.test.tsx",
+    "**/__tests__/FormHandoff.issue4541.test.tsx",
+    "**/__tests__/authCleanup.formDrafts.issue4541.test.ts",
+    "**/__tests__/deepLink.form.issue4541.test.ts",
+    "**/__tests__/nativeCheckout.brandForm.issue4541.test.ts",
+    "**/__tests__/brandFormService.issue4541.test.ts",
   ],
 };

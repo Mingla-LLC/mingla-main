@@ -1674,6 +1674,26 @@ function AppContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, isLoadingAuth, showOnboardingFlow]);
 
+  // #4541 — once signed in: reopen a form held through sign-in (R2.3
+  // S-SIGNIN) and tell the server, at most daily, that this phone can open
+  // the form screen (R2.11; a failure is ignored).
+  useEffect(() => {
+    if (!isAuthenticated || isLoadingAuth || showOnboardingFlow) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { takePendingFormRoute, reportFormCapabilityDaily } = await import("../src/components/forms/formsStartup");
+        const { default: Constants } = await import("expo-constants");
+        const path = await takePendingFormRoute();
+        if (path !== null && !cancelled) router.push(path as never);
+        await reportFormCapabilityDaily(Platform.OS, Constants.expoConfig?.version);
+      } catch (e) {
+        console.warn("[forms] signed-in startup skipped", e instanceof Error ? e.name : "unknown");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isAuthenticated, isLoadingAuth, showOnboardingFlow]);
+
   // Get friends from useFriends hook for session creation
   const { friends: dbFriends, fetchFriends, loadFriendRequests, friendRequests } = useFriends();
   
