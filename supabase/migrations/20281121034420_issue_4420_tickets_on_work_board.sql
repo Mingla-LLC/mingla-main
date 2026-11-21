@@ -15,9 +15,10 @@
 -- Also in this migration (spec part 3 section 13, as amended on #4420 by
 -- Seth's answers of 2026-11-21):
 --   * the "roadmap updated" notice is retired (new notices refused, pending
---     scheduled ones cancelled) and the GitHub bridge stops drafting
---     "approve the Recently shipped wording" cards; open ones are closed by
---     the system. Every roadmap row stays stored and readable.
+--     scheduled ones cancelled). The shipped-wording pipeline stays: the
+--     GitHub bridge still drafts "Recently shipped" cards and opens their
+--     approval cards, because approved wordings answer "what shipped".
+--     Every roadmap row stays stored and readable.
 --   * nothing moves from the Product board; no default ticket owner.
 --
 -- Additive: no table, column, function or policy is dropped. Three CHECK
@@ -851,79 +852,6 @@ BEGIN
 END;
 $function$;
 
--- From its latest definition (20280626014398, #4398). #4420: Bridge D (drafting Recently shipped cards and
--- their approval cards) stops; everything else is unchanged.
-CREATE OR REPLACE FUNCTION public.ops_github_bridges()
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
-AS $function$
-DECLARE
-  c_actor constant text := 'system@usemingla.com'; c public.ops_work_cards; n public.ops_work_cards; v_before jsonb; v_event uuid;
-  v_list text; v_cnt integer; v_unblocked integer := 0; v_suggested integer := 0; v_drafted integer := 0; v_closed integer := 0;
-  v_issue integer; v_rc_title text; v_rc_body text; v_cap_title text; v_cap_outcome text; v_title text; v_body text; v_draft uuid; v_res jsonb; v_boss text := public.ops_owner_email();
-  v_words text; l record;
-BEGIN
-  -- B5 (Bridge E): a card waiting for GitHub unblocks when every linked
-  -- issue or pull request is Live. Its status does not change.
-  FOR c IN SELECT w.* FROM public.ops_work_cards w
-            WHERE w.status <> 'done' AND w.archived_at IS NULL AND w.blocked AND w.blocked_kind = 'github'
-              AND EXISTS (SELECT 1 FROM public.ops_work_github g WHERE g.card_id = w.id)
-              AND NOT EXISTS (SELECT 1 FROM public.ops_work_github g WHERE g.card_id = w.id AND NOT public.ops_github_live(g.number))
-            ORDER BY w.number LOOP
-    BEGIN
-      SELECT string_agg('#' || g.number, ', ' ORDER BY g.number), count(*) INTO v_list, v_cnt FROM public.ops_work_github g WHERE g.card_id = c.id;
-      v_words := format('%s %s Live', v_list, CASE WHEN v_cnt > 1 THEN 'are' ELSE 'is' END);
-      v_before := public.ops_card_snapshot(c.id);
-      UPDATE public.ops_work_cards w SET blocked = false, blocked_kind = NULL, blocked_reason = NULL,
-             revision = revision + 1, updated_by = c_actor, updated_via = 'system', updated_at = now()
-       WHERE w.id = c.id AND w.blocked_kind = 'github' RETURNING w.* INTO n;
-      CONTINUE WHEN n.id IS NULL;
-      v_event := public.ops_card_event(c.id, c_actor, 'system', 'unblocked', format('Unblocked: %s.', v_words), v_before,
-        public.ops_card_snapshot(c.id), c.revision, n.revision);
-      PERFORM public.ops_log_write(c_actor, 'system', 'unblocked', 'info', c.id, 'work_card', c.id,
-        format('Card %s unblocked: %s.', n.number, v_words), jsonb_build_object('github', v_list));
-      PERFORM public.ops_notify_people(c.id, v_event, public.ops_card_people(c.id, NULL), c_actor,
-        format('%s. "%s" can go ahead.', v_words, n.title), 'bot');
-      v_unblocked := v_unblocked + 1;
-    EXCEPTION WHEN others THEN RAISE WARNING 'ops_github_bridges: unblocking card % stopped (% %)', c.id, SQLSTATE, SQLERRM;
-    END;
-  END LOOP;
-
-  -- B6: roadmap stage suggestions.
-  BEGIN
-    v_suggested := public.ops_roadmap_suggest(NULL);
-  EXCEPTION WHEN others THEN RAISE WARNING 'ops_github_bridges: roadmap suggestions stopped (% %)', SQLSTATE, SQLERRM;
-  END;
-
-  -- B4 (Bridge D) retired in #4420: the roadmap is retired, so no new
-  -- "Recently shipped" draft and no new approval card. Drafts and cards made
-  -- before stay stored; the loop below still closes any approval card whose
-  -- draft a person published or archived.
-
-  -- The approval card closes itself once a person has published the draft
-  -- or archived it as not needed. #3980 W2 rework 4: the draft is the one
-  -- Bridge D recorded for the card's issue (ops_roadmap_shipped_draft), not
-  -- whatever the card's editable links point at, so adding, swapping or
-  -- removing a link never closes the card or keeps it open.
-  FOR l IN SELECT w.id, rc.status FROM public.ops_work_cards w
-             JOIN public.community_roadmap_cards rc ON rc.id = public.ops_roadmap_shipped_draft(w.auto_key)
-            WHERE w.auto_key LIKE 'roadmap\_shipped:%' AND w.status <> 'done' AND w.archived_at IS NULL
-              AND rc.status IN ('published', 'archived') LOOP
-    BEGIN
-      PERFORM public.ops_auto_card_close(l.id,
-        CASE WHEN l.status = 'published' THEN 'A person published the Recently shipped card.' ELSE 'A person marked the Recently shipped card not needed.' END,
-        jsonb_build_array(jsonb_build_object('text', 'Checked by Mingla on the Community roadmap.')));
-      v_closed := v_closed + 1;
-    EXCEPTION WHEN others THEN RAISE WARNING 'ops_github_bridges: closing approval card % stopped (% %)', l.id, SQLSTATE, SQLERRM;
-    END;
-  END LOOP;
-
-  RETURN jsonb_build_object('unblocked', v_unblocked, 'suggested', v_suggested, 'drafted', v_drafted, 'approvals_closed', v_closed);
-END;
-$function$;
-
 -- ─────────────────────────────────────────────────────────────────────────
 -- 5. Ticket functions
 -- ─────────────────────────────────────────────────────────────────────────
@@ -1376,6 +1304,10 @@ CREATE OR REPLACE FUNCTION public.community_notify_roadmap_change(p_request_key 
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
 BEGIN
+  -- Admins only, as before (from 20280608004383); then refused: retired.
+  IF NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
   RAISE EXCEPTION 'retired: The roadmap updated notice was retired in #4420.' USING ERRCODE = '22023';
 END;
 $$;
@@ -1383,6 +1315,10 @@ CREATE OR REPLACE FUNCTION public.issue_4383_roadmap_schedule_notice(p_scheduled
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $$
 BEGIN
+  -- Admins only, as before (from 20280608004383); then refused: retired.
+  IF NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
   RAISE EXCEPTION 'retired: The roadmap updated notice was retired in #4420.' USING ERRCODE = '22023';
 END;
 $$;
@@ -1427,17 +1363,3 @@ WITH c AS (
 INSERT INTO public.community_audit_log (actor_user_id, action, entity_type, entity_id, metadata)
 SELECT NULL, 'cancel_roadmap_notice', 'community_roadmap_notice', c.id, jsonb_build_object('reason', 'Roadmap retired (#4420)')
   FROM c;
-
--- Open "approve the Recently shipped wording" cards close as system. Their
--- drafted roadmap cards are left exactly as they are.
-DO $$
-DECLARE r record;
-BEGIN
-  FOR r IN SELECT w.id FROM public.ops_work_cards w
-            WHERE w.auto_key LIKE 'roadmap\_shipped:%' AND w.status <> 'done' AND w.archived_at IS NULL
-            ORDER BY w.number LOOP
-    PERFORM public.ops_auto_card_close(r.id, 'Roadmap retired (#4420).',
-      jsonb_build_array(jsonb_build_object('text', 'Closed by Mingla: the roadmap was retired in #4420.')));
-  END LOOP;
-END;
-$$;

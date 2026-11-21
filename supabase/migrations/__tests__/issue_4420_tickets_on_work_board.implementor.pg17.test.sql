@@ -693,10 +693,46 @@ begin
   perform pg_temp.lk('T-MORE', 'the roadmap updated notice is refused', v, 'ERR:22023:retired:%');
   v := pg_temp.person('seth', 'select public.issue_4383_roadmap_schedule_notice(now() + interval ''1 day'', ''UTC'')::text');
   perform pg_temp.lk('T-MORE', 'scheduling a roadmap notice is refused', v, 'ERR:22023:retired:%');
-  perform pg_temp.chk('T-MORE', 'the GitHub bridge no longer opens approval cards',
-    (pg_get_functiondef('public.ops_github_bridges()'::regprocedure) like '%roadmap_shipped:issue-%')::text, 'false');
+  -- The shipped-wording pipeline stays (#4420 keeps it): Bridge D still
+  -- drafts and opens approval cards, and an approved draft closes its card.
+  perform pg_temp.chk('T-MORE', 'Bridge D still drafts Recently shipped cards and opens approval cards',
+    (pg_get_functiondef('public.ops_github_bridges()'::regprocedure) like '%ops_roadmap_draft_add(v_title, v_body, v_issue)%'
+     and pg_get_functiondef('public.ops_github_bridges()'::regprocedure) like '%roadmap_shipped:issue-%')::text, 'true');
   perform pg_temp.chk('T-MORE', 'no scheduled roadmap notice is left waiting',
     (select count(*)::text from public.community_roadmap_notices_scheduled where status = 'scheduled'), '0');
+end;
+$t$;
+
+-- ───────────────────────────── T-WORDING ─────────────────────────────
+-- An approval card is still made the way Bridge D makes it, and a person
+-- approving (publishing) the draft still closes it on the next bridge run.
+do $t$
+declare v_draft uuid; v_res jsonb; v_card uuid; v_main uuid;
+begin
+  -- Automatic cards go under a main task (#4398 routes); this suite's fallback.
+  insert into public.ops_work_cards (title, instructions, done_means, due_on, due_source, sprint_id, created_by, updated_by)
+  values ('T4420 Main task for automatic cards', 'Where this suite''s automatic cards go.', 'Never closed.', current_date + 60, 'explicit',
+          public.ops_sprint_ensure(current_date), 'system@usemingla.com', 'system@usemingla.com') returning id into v_main;
+  insert into public.ops_work_people (card_id, email, role, added_by) values
+    (v_main, pg_temp.email('seth'), 'owner', 'system@usemingla.com'), (v_main, pg_temp.email('abi'), 'watcher', 'system@usemingla.com');
+  update public.ops_settings set value = jsonb_build_object('routes', '{}'::jsonb, 'fallback', v_main) where key = 'auto_card_routes';
+  v_draft := public.ops_roadmap_draft_add('T4420 Guest list export on Safari', 'Now live: the guest list exports on Safari.', 944201);
+  v_res := public.ops_auto_card_upsert('roadmap_shipped:issue-944201', jsonb_build_object(
+    'title', 'Approve "Recently shipped": T4420 Guest list export on Safari',
+    'instructions', 'Check the wording of the drafted Recently shipped card and publish it, or say it is not needed. Nothing reaches hosts until you publish it. You can also write an announcement from it.',
+    'done_means', 'The card is published or marked not needed.',
+    'due_on', public.ops_today(NULL) + 2, 'person_reason', 'publish',
+    'links', jsonb_build_array(jsonb_build_object('kind', 'roadmap_card', 'id', v_draft)),
+    'github', jsonb_build_array('#944201')), 'task', NULL);
+  select w.id into v_card from public.ops_work_cards w where w.auto_key = 'roadmap_shipped:issue-944201' and w.archived_at is null;
+  perform pg_temp.chk('T-WORDING', 'an approval card can still be created', (v_card is not null and (select status from public.ops_work_cards where id = v_card) <> 'done')::text, 'true');
+  perform pg_temp.chk('T-WORDING', 'the draft is found for the card', (public.ops_roadmap_shipped_draft('roadmap_shipped:issue-944201') = v_draft)::text, 'true');
+  update public.community_roadmap_cards set status = 'published' where id = v_draft;
+  perform public.ops_github_bridges();
+  perform pg_temp.chk('T-WORDING', 'approving the wording closes the approval card',
+    (select status || '/' || close_kind from public.ops_work_cards where id = v_card), 'done/system');
+  perform pg_temp.chk('T-WORDING', 'the approved wording stays stored and readable',
+    (select public_title from public.community_roadmap_cards where id = v_draft), 'T4420 Guest list export on Safari');
 end;
 $t$;
 

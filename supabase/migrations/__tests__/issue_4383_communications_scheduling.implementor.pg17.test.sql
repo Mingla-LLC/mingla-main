@@ -399,41 +399,47 @@ begin
   perform pg_temp.chk('T16', 'a draft card takes a go-live time', v->>'go_live_timezone' = 'Africa/Lagos', v::text);
   v := public.issue_4383_roadmap_unschedule_card('43830000-0000-4000-f000-000000000002');
   perform pg_temp.chk('T16', 'and can be unscheduled', v->'go_live_at' = 'null'::jsonb, v::text);
-  v_n1 := (public.issue_4383_roadmap_schedule_notice(now() + interval '1 day', 'Africa/Lagos')->>'id')::uuid;
-  v_n2 := (public.issue_4383_roadmap_schedule_notice(now() + interval '1 day', 'Africa/Lagos')->>'id')::uuid;
+  -- #4420: the roadmap updated notice is retired. Scheduling one is refused;
+  -- a notice scheduled before #4420 still cancels, and one left due is never
+  -- sent (the runner marks it failed). The six T17 checks below replace the
+  -- six that pinned sending; T16 (roadmap cards) is unchanged.
+  v_e := pg_temp.err($$select public.issue_4383_roadmap_schedule_notice(now() + interval '1 day', 'Africa/Lagos')$$);
+  perform pg_temp.chk('T17', 'scheduling a roadmap notice is refused (retired in #4420)', v_e like '22023 retired:%', v_e);
+  reset role;
+  insert into public.community_roadmap_notices_scheduled (scheduled_for, timezone, created_by)
+  values (now() + interval '1 day', 'Africa/Lagos', pg_temp.uid('admin')) returning id into v_n1;
+  insert into public.community_roadmap_notices_scheduled (scheduled_for, timezone, created_by)
+  values (now() + interval '1 day', 'Africa/Lagos', pg_temp.uid('admin')) returning id into v_n2;
+  perform pg_temp.act('admin');
+  set local role authenticated;
   v := public.issue_4383_roadmap_cancel_notice(v_n2);
-  perform pg_temp.chk('T17', 'a scheduled notice cancels', v->>'status' = 'cancelled', v::text);
+  perform pg_temp.chk('T17', 'a notice scheduled before #4420 still cancels', v->>'status' = 'cancelled', v::text);
   reset role;
 
   -- Make the card and the first notice due.
   update public.community_roadmap_cards set go_live_at = now() - interval '1 second', go_live_timezone = 'UTC' where id = '43830000-0000-4000-f000-000000000001';
   update public.community_roadmap_notices_scheduled set scheduled_for = now() - interval '1 second' where id = v_n1;
-  -- Another roadmap notice went out within the last 60 seconds.
-  insert into public.community_notification_campaigns (kind, request_key, created_at) values ('roadmap_update', gen_random_uuid(), now() - interval '10 seconds');
   v := public.issue_4383_fire_due_communications();
   perform pg_temp.chk('T16', 'the runner publishes the card', (v->>'roadmap_cards_live')::int = 1
     and (select status = 'published' and go_live_at is null from public.community_roadmap_cards where id = '43830000-0000-4000-f000-000000000001'), v::text);
-  perform pg_temp.chk('T17', 'the notice waits behind the 60 s limit', (v->>'roadmap_notices_waiting')::int = 1
-    and (select status = 'scheduled' from public.community_roadmap_notices_scheduled where id = v_n1), v::text);
-  update public.community_notification_campaigns set created_at = now() - interval '2 minutes' where kind = 'roadmap_update';
-  v := public.issue_4383_fire_due_communications();
-  perform pg_temp.chk('T17', 'it fires on a later minute', (v->>'roadmap_notices_sent')::int = 1
-    and (select status = 'sent' and campaign_id is not null from public.community_roadmap_notices_scheduled where id = v_n1), v::text);
-  perform pg_temp.chk('T17', 'with the existing roadmap notice to each host',
-    (select count(*) from public.notification_outbox o join public.community_roadmap_notices_scheduled n on o.payload->>'campaign_id' = n.campaign_id::text
-      where n.id = v_n1 and o.category_key = 'business.community_roadmap_updated') = 2, null);
+  perform pg_temp.chk('T17', 'a notice left due is not sent: the runner marks it failed', (v->>'roadmap_notices_failed')::int = 1
+    and (v->>'roadmap_notices_sent')::int = 0
+    and (select status = 'failed' and last_error like 'retired:%' and campaign_id is null from public.community_roadmap_notices_scheduled where id = v_n1), v::text);
+  perform pg_temp.chk('T17', 'no roadmap notice reaches any host',
+    (select count(*) from public.notification_outbox o where o.category_key = 'business.community_roadmap_updated'
+       and o.created_at >= now() - interval '1 hour') = 0, null);
   perform pg_temp.act('admin');
   set local role authenticated;
   v_e := pg_temp.err(format($$select public.issue_4383_roadmap_cancel_notice(%L)$$, v_n1));
-  perform pg_temp.chk('T17', 'cancelling a sent notice is PT409', v_e like 'PT409 already_sent%', v_e);
+  perform pg_temp.chk('T17', 'cancelling a notice that is no longer scheduled is PT409', v_e like 'PT409 already_sent%', v_e);
   v_e := pg_temp.err($$select public.issue_4383_roadmap_unschedule_card('43830000-0000-4000-f000-000000000001')$$);
   perform pg_temp.chk('T16', 'unscheduling a card that went live is PT409', v_e like 'PT409 already_published%', v_e);
   v := public.issue_4383_roadmap_scheduled_list();
   perform pg_temp.chk('T16', 'the 3720 column contract holds: go-live columns readable, internal_note not',
     has_column_privilege('authenticated', 'public.community_roadmap_cards', 'go_live_at', 'SELECT')
     and not has_column_privilege('authenticated', 'public.community_roadmap_cards', 'internal_note', 'SELECT'), null);
-  perform pg_temp.chk('T17', 'the scheduled list shows the sent notice and no live card',
-    jsonb_array_length(v->'cards') = 0 and exists (select 1 from jsonb_array_elements(v->'notices') n where n->>'id' = v_n1::text and n->>'status' = 'sent'), v::text);
+  perform pg_temp.chk('T17', 'the scheduled list shows the failed notice and no live card',
+    jsonb_array_length(v->'cards') = 0 and exists (select 1 from jsonb_array_elements(v->'notices') n where n->>'id' = v_n1::text and n->>'status' = 'failed'), v::text);
   reset role;
 end;
 $t$;
