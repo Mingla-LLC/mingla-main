@@ -20,7 +20,7 @@ export type CheckInAction =
 
 export interface CheckInResultView {
   /** UI state id (B's names). */
-  state: "ok" | "needs_id" | "wrong_day" | "already_in" | "not_yet" | "void" | "wrong_venue" | "not_found" | "undone";
+  state: "ok" | "needs_id" | "wrong_day" | "already_in" | "not_yet" | "void" | "wrong_venue" | "not_found" | "days_used" | "day_full" | "undone";
   tone: CheckInTone;
   title: string;
   /** Who and what ("Adaobi Nwosu · Walk-in × 2"). */
@@ -50,9 +50,11 @@ function subjectOf(outcome: ScanOutcome): string | null {
   }
   const pass = outcome.pass;
   if (pass === null) return null;
-  return pass.offerKind === "by_the_hour"
+  const base = pass.offerKind === "by_the_hour"
     ? `${pass.holderName} · ${pass.offerName}`
     : `${pass.holderName} · ${pass.offerName} × ${pass.admits}`;
+  const daysAllowed = pass.daysAllowed ?? 1;
+  return daysAllowed > 1 ? `${base} · Day ${pass.dayNumber ?? 1} of ${daysAllowed}` : base;
 }
 
 /** #4490 P6 — a member pass or a member from the list. */
@@ -193,6 +195,7 @@ export function checkInResultView(outcome: ScanOutcome): CheckInResultView {
     }
     case "wrong_day": {
       const day = pass?.dayLabel ?? null;
+      const multiDay = (pass?.daysAllowed ?? 1) > 1;
       return {
         state: "wrong_day",
         tone: "danger",
@@ -200,7 +203,9 @@ export function checkInResultView(outcome: ScanOutcome): CheckInResultView {
         subject,
         body:
           day !== null
-            ? `This pass is for ${day}. It stays valid for that day.`
+            ? multiDay
+              ? day
+              : `This pass is for ${day}. It stays valid for that day.`
             : "This isn't for today. It stays valid for its own day.",
         primary: "close",
         secondary: "sell_walk_in",
@@ -218,13 +223,37 @@ export function checkInResultView(outcome: ScanOutcome): CheckInResultView {
         secondary: null,
       };
     }
+    case "days_used":
+      return {
+        state: "days_used",
+        tone: "warning",
+        title: "All days used",
+        subject,
+        body: `All ${pass?.daysAllowed ?? 0} days used.`,
+        primary: "scan_next",
+        secondary: "sell_walk_in",
+      };
+    case "day_full":
+      return {
+        state: "day_full",
+        tone: "warning",
+        title: "Today is full",
+        subject,
+        body: "Today is full. This pass can be used on another valid day.",
+        primary: "scan_next",
+        secondary: "sell_walk_in",
+      };
     case "not_yet":
       return {
         state: "not_yet",
         tone: "warning",
         title: "Too early",
         subject,
-        body: "This session hasn't opened yet. Ask them to come back at their start time.",
+        body: (pass?.daysAllowed ?? 1) > 1
+          ? pass?.dayLabel !== null && pass?.dayLabel !== undefined
+            ? `${pass.dayLabel}. It hasn't started yet.`
+            : "This pass hasn't started yet."
+          : "This session hasn't opened yet. Ask them to come back at their start time.",
         primary: "scan_next",
         secondary: null,
       };

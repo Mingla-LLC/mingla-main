@@ -50,6 +50,8 @@ export interface EntryPriceOption {
   priceMinor: number;
   /** #4490 P3 — "booking" = one price for the whole group. */
   unit?: "guest" | "booking";
+  passDays?: number | null;
+  passWindowDays?: number | null;
 }
 
 export interface EntryRefundRung {
@@ -113,6 +115,8 @@ export function parseEntryOfferDetail(raw: unknown): EntryOfferDetail | null {
       idCheckLabel: isJson(row.eligibility) ? asText(row.eligibility.label) : null,
       priceMinor,
       unit: row.unit === "booking" ? "booking" : "guest",
+      passDays: asInt(row.passDays),
+      passWindowDays: asInt(row.passWindowDays),
     });
   }
   const policy = isJson(raw.policy) ? raw.policy : null;
@@ -647,6 +651,8 @@ export interface EntryQuoteLine {
   taxMinor: number;
   totalMinor: number;
   idCheckLabel: string | null;
+  passDays?: number | null;
+  passWindowDays?: number | null;
 }
 
 export interface EntryQuote {
@@ -688,6 +694,8 @@ export function parseEntryQuote(raw: unknown): EntryQuote | null {
       taxMinor: asMinor(line.taxMinor) ?? 0,
       totalMinor: asMinor(line.totalMinor) ?? 0,
       idCheckLabel: asText(line.idCheckLabel),
+      passDays: asInt(line.passDays),
+      passWindowDays: asInt(line.passWindowDays),
     });
   }
   const policy = isJson(raw.policy) ? raw.policy : null;
@@ -799,6 +807,9 @@ export interface EntryPass {
   idCheckLabel: string | null;
   idCheckCount: number;
   qrPayload: string | null;
+  daysAllowed?: number;
+  daysUsed?: number;
+  validUntilLocalDate?: string | null;
 }
 
 export interface EntryBooking {
@@ -885,6 +896,9 @@ export function parseEntryBooking(raw: unknown): EntryBooking | null {
       idCheckLabel: asText(pass.idCheckLabel),
       idCheckCount: asInt(pass.idCheckCount) ?? 0,
       qrPayload: asText(pass.qrPayload),
+      daysAllowed: Math.max(1, asInt(pass.daysAllowed) ?? 1),
+      daysUsed: Math.max(0, asInt(pass.daysUsed) ?? 0),
+      validUntilLocalDate: asText(pass.validUntilLocalDate),
     });
   }
   const quoteLike = parseEntryQuote({
@@ -1150,6 +1164,24 @@ export function passIdLine(pass: EntryPass | undefined): string | null {
   if (pass === undefined || pass.idCheckLabel === null) return null;
   const n = pass.idCheckCount > 0 ? pass.idCheckCount : 1;
   return `Bring a ${pass.idCheckLabel} for ${guestsText(n)}.`;
+}
+
+/** "10-Day Flex · any 10 days in 60" or the unchanged single-day name. */
+export function entryOptionName(option: EntryPriceOption): string {
+  if (option.passDays == null || option.passWindowDays == null) return option.name;
+  const rule = option.passDays === option.passWindowDays
+    ? `${option.passDays} days in a row`
+    : `any ${option.passDays} days in ${option.passWindowDays}`;
+  return `${option.name} · ${rule}`;
+}
+
+/** "Day 3 of 10 · valid until Sat 16 Jan" after the third admission day. */
+export function passProgressLine(pass: EntryPass | undefined): string | null {
+  const allowed = pass?.daysAllowed ?? 1;
+  const until = pass?.validUntilLocalDate ?? null;
+  if (pass === undefined || allowed <= 1 || until === null) return null;
+  const day = Math.min(allowed, Math.max(1, pass.daysUsed ?? 0));
+  return `Day ${day} of ${allowed} · valid until ${entryDateLabel(until)}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

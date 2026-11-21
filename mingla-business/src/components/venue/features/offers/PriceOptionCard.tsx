@@ -20,7 +20,8 @@ import { SelectSheet } from "../../../ui/SelectSheet";
 import { TimeField } from "../../../ui/TimeField";
 import { WeekdayChips } from "../../../ui/WeekdayChips";
 import { MenuTextCounter } from "../../MenuTextCounter";
-import { draftKey, optionIssues, optionNameOrDefault, type BusyRuleDraft, type PriceOptionDraft } from "./offersModel";
+import type { EntryStyle } from "../../../../types/venueOffers";
+import { draftKey, multiDayPassSummary, optionIssues, optionNameOrDefault, type BusyRuleDraft, type PriceOptionDraft } from "./offersModel";
 
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
@@ -43,6 +44,7 @@ export interface PriceOptionCardProps {
   currency: string | null;
   /** The venue's day limit (bounds "most guests"); 0 = not set yet. */
   dailyLimit: number;
+  entryStyle: EntryStyle;
   showErrors: boolean;
   canRemove: boolean;
   disabled?: boolean;
@@ -55,6 +57,7 @@ export function PriceOptionCard({
   option,
   currency,
   dailyLimit,
+  entryStyle,
   showErrors,
   canRemove,
   disabled = false,
@@ -151,6 +154,46 @@ export function PriceOptionCard({
         />
         {showErrors && issues.guestMax !== null ? <Text style={styles.error}>{issues.guestMax}</Text> : null}
       </View>
+
+      {entryStyle !== "timed_session" ? (
+        <View style={styles.subCard} testID={`${tid}-multi-day`}>
+          <View style={styles.switchRow}>
+            <View style={styles.grow}>
+              <Text style={styles.switchTitle}>Good for more than one day</Text>
+              <Text style={styles.hint}>The guest picks the start day. Later days use space when they check in.</Text>
+            </View>
+            <BrandSwitch
+              value={option.multiDay}
+              onValueChange={(multiDay) => patch({ multiDay })}
+              disabled={disabled}
+              accessibilityLabel="Good for more than one day"
+              testID={`${tid}-multi-day-switch`}
+            />
+          </View>
+          {option.multiDay ? (
+            <View style={styles.field}>
+              <NumberStepper
+                label="Days"
+                value={option.passDays}
+                min={2}
+                max={60}
+                onChange={(passDays) => patch({ passDays, passWindowDays: Math.max(passDays, option.passWindowDays) })}
+                testID={`${tid}-pass-days`}
+              />
+              <NumberStepper
+                label="Within"
+                value={option.passWindowDays}
+                min={option.passDays}
+                max={365}
+                onChange={(passWindowDays) => patch({ passWindowDays })}
+                testID={`${tid}-pass-window-days`}
+              />
+              <Text style={styles.hint}>{multiDayPassSummary(option.passDays, option.passWindowDays, true)}</Text>
+              {showErrors && issues.pass !== null ? <Text style={styles.error}>{issues.pass}</Text> : null}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* #4490 fix 2 (N77): the extras row sits ABOVE what it adds and its
           buttons never disappear (an added extra reads "added" and is off),

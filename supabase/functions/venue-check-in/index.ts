@@ -26,8 +26,8 @@
 //            balance, shown as a QR on this device (check-in rights)
 //
 // Scan results: admitted, already_used, wrong_day, not_yet, void, not_found,
-// wrong_venue, id_required (ask "ID checked?" and scan again with
-// idChecked: true).
+// wrong_venue, days_used, day_full, and id_required (ask "ID checked?" and
+// scan again with idChecked: true).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";

@@ -23,6 +23,7 @@ import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 import {
   entryDateLabel,
   entryDayNotice,
+  entryOptionName,
   idCheckNote,
   optionUnavailableLine,
   stepCount,
@@ -203,7 +204,7 @@ export function EntryPicker({
               >
                 <View style={styles.optionText}>
                   <Text style={[styles.optionName, themeBoldFace(theme), { color: palette.primaryText }]}>
-                    {row.option.name}
+                    {entryOptionName(row.option)}
                   </Text>
                   <Text style={[styles.optionDetail, { color: palette.secondaryText }]}>{detail}</Text>
                   {!row.usable && selection.selectedDate !== null ? (

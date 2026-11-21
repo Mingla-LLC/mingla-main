@@ -161,6 +161,8 @@ function mapOption(v: unknown): VenuePriceOption {
     version: num(o.version, 1),
     priceMinor: num(o.priceMinor),
     priceVersionId: strOrNull(o.priceVersionId),
+    passDays: numOrNull(o.passDays),
+    passWindowDays: numOrNull(o.passWindowDays),
   };
 }
 
@@ -1200,6 +1202,11 @@ export function mapPass(v: unknown): CheckInPass {
     source: strOrNull(p.source),
     time: strOrNull(p.time),
     lastAdmittedAt: strOrNull(p.lastAdmittedAt),
+    daysAllowed: Math.max(1, num(p.daysAllowed, 1)),
+    daysUsed: Math.max(0, num(p.daysUsed)),
+    dayNumber: Math.max(1, num(p.dayNumber, 1)),
+    allDaysUsed: p.allDaysUsed === true,
+    validUntilLocalDate: strOrNull(p.validUntilLocalDate),
     // Gate sales are paid at the door (see mapVenueDay): nothing to take again.
     balanceDueMinor: str(p.source) === "gate" || str(p.source) === "gate_sale" ? 0 : num(p.balanceDueMinor),
     totalDueMinor: num(p.totalDueMinor),
@@ -1257,6 +1264,8 @@ const SCAN_RESULTS: readonly ScanResultCode[] = [
   "not_found",
   "wrong_venue",
   "id_required",
+  "days_used",
+  "day_full",
   "undone",
 ];
 

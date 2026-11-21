@@ -49,6 +49,7 @@ import {
   holdUntilText,
   passHeadline,
   passIdLine,
+  passProgressLine,
   passWindowLine,
   refundPreviewWords,
   orderLinesByOptions,
@@ -731,6 +732,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
       const pass = booking.passes.find((p) => p.status === "valid") ?? booking.passes[0];
       const windowLine = passWindowLine(booking, hourFacts !== null ? "front_desk" : "gate");
       const idLine = passIdLine(pass);
+      const progressLine = passProgressLine(pass);
       const allIn = pass !== undefined && pass.admittedCount >= pass.admits && pass.admits > 0;
       main = (
         <View style={styles.column} testID="issue-4490-visit-pass">
@@ -791,6 +793,9 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
             {windowLine !== null ? (
               <Text style={[styles.small, styles.centerText, { color: palette.secondaryText }]}>{windowLine}</Text>
             ) : null}
+            {progressLine !== null ? (
+              <Text style={[styles.small, styles.centerText, { color: palette.secondaryText }]}>{progressLine}</Text>
+            ) : null}
             {allIn ? (
               <Text style={[styles.small, { color: tones.success.text }]}>Everyone on this pass is checked in.</Text>
             ) : null}
@@ -819,7 +824,7 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
               <ActionRow palette={palette} icon="calendarPlus" label="Add to calendar" detail={null} onPress={addToCalendar} testID="issue-4490-visit-calendar" />
             ) : null}
             <ActionRow palette={palette} icon="share" label="Tell your guests" detail="One pass for everyone" onPress={() => void tellGuests()} testID="issue-4490-visit-share" />
-            {booking.paymentCollection === "mingla" && (pass?.admittedCount ?? 0) === 0 ? (
+            {booking.paymentCollection === "mingla" && (pass?.daysUsed ?? 0) === 0 && (pass?.admittedCount ?? 0) === 0 ? (
               <ActionRow
                 palette={palette}
                 icon="refund"
@@ -828,6 +833,9 @@ export function VisitBooking({ groupId, paidReturn, safeTop, safeBottom }: Visit
                 onPress={() => void askCancel()}
                 testID="issue-4490-visit-cancel"
               />
+            ) : null}
+            {(pass?.daysAllowed ?? 1) > 1 ? (
+              <Text style={[styles.caption, { color: palette.tertiaryText }]}>Unused days aren&apos;t refunded.</Text>
             ) : null}
           </View>
           {shared !== null ? <Text style={[styles.caption, { color: palette.secondaryText }]}>{shared}</Text> : null}

@@ -74,6 +74,7 @@ import {
   entryStyleLabel,
   ladderForDraft,
   money,
+  multiDayPassSummary,
   offerErrorCopy,
   optionChanged,
   optionDraftFrom,
@@ -638,6 +639,7 @@ export const EntryEditor = forwardRef<VenueModuleLeaveHandle, EntryEditorProps>(
                   ? ` · ${timeRangeLabel(o.startTime, o.endTime)}`
                   : ""}
                 {o.idCheck ? ` · bring your ${o.idLabel.trim().length > 0 ? o.idLabel.trim() : "ID"}` : ""}
+                {o.multiDay ? ` · ${multiDayPassSummary(o.passDays, o.passWindowDays)}` : ""}
               </Text>
             </View>
             <Text style={styles.previewPrice}>{o.free ? "Free" : o.priceMinor === null ? "—" : money(o.priceMinor, currency)}</Text>
@@ -824,7 +826,12 @@ function BasicsStep({ draft, patch, showErrors, disabled }: StepProps): React.Re
             label={s.label}
             helper={s.helper}
             selected={draft.style === s.key}
-            onPress={() => patch({ style: s.key })}
+            onPress={() => patch({
+              style: s.key,
+              options: s.key === "timed_session"
+                ? draft.options.map((option) => ({ ...option, multiDay: false }))
+                : draft.options,
+            })}
             disabled={disabled}
             testID={`entry-style-${s.key}`}
             style={COLUMN_OPTION_CARD}
@@ -860,6 +867,7 @@ function PricesStep({
           option={option}
           currency={currency}
           dailyLimit={draft.dailyLimit}
+          entryStyle={draft.style}
           showErrors={showErrors}
           canRemove={draft.options.length > 1}
           disabled={disabled}

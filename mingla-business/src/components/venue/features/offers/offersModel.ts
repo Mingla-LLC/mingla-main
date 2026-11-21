@@ -148,6 +148,9 @@ export interface PriceOptionDraft {
   endTime: string;
   /** Most guests on one booking of this price. */
   guestMax: number;
+  multiDay: boolean;
+  passDays: number;
+  passWindowDays: number;
   busyRules: BusyRuleDraft[];
 }
 
@@ -196,6 +199,9 @@ export function emptyOptionDraft(name = ""): PriceOptionDraft {
     startTime: "",
     endTime: "",
     guestMax: 10,
+    multiDay: false,
+    passDays: 2,
+    passWindowDays: 2,
     busyRules: [],
   };
 }
@@ -215,6 +221,9 @@ export function optionDraftFrom(option: VenuePriceOption): PriceOptionDraft {
     startTime: option.startTime ?? "",
     endTime: option.endTime ?? "",
     guestMax: option.guestMax,
+    multiDay: option.passDays != null,
+    passDays: option.passDays ?? 2,
+    passWindowDays: option.passWindowDays ?? option.passDays ?? 2,
     busyRules: option.busyRules.map((r) => ({
       key: draftKey("busy"),
       weekdays: r.weekdays,
@@ -312,6 +321,7 @@ export interface OptionIssues {
   idLabel: string | null;
   guestMax: string | null;
   busy: string | null;
+  pass: string | null;
 }
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -339,6 +349,12 @@ export function optionIssues(option: PriceOptionDraft, dailyLimit: number | null
           ? `Can't be more than your ${dailyLimit.toLocaleString("en-GB")} guests a day`
           : null,
     busy: busyBad ? "Each busy-time price needs days, a start, an end and a price" : null,
+    pass:
+      option.multiDay && (option.passDays < 2 || option.passDays > 60)
+        ? "Days must be between 2 and 60"
+        : option.multiDay && (option.passWindowDays < option.passDays || option.passWindowDays > 365)
+          ? "Within must be at least Days, and no more than 365"
+          : null,
   };
 }
 
@@ -427,6 +443,10 @@ export function optionPayload(option: PriceOptionDraft, sortOrder: number): Reco
     sortOrder,
   };
   if (option.id !== null) payload.optionId = option.id;
+  if (option.multiDay) {
+    payload.passDays = option.passDays;
+    payload.passWindowDays = option.passWindowDays;
+  }
   if (option.limitHours) {
     payload.startTime = option.startTime;
     payload.endTime = option.endTime;
@@ -546,9 +566,19 @@ export function optionSummary(option: VenuePriceOption, currency: string | null)
   const hours = timeRangeLabel(option.startTime, option.endTime);
   if (hours !== null) parts.push(hours);
   if (option.eligibility !== null) parts.push(`${option.eligibility.label} checked at the gate`);
+  if (option.passDays != null && option.passWindowDays != null) {
+    parts.push(multiDayPassSummary(option.passDays, option.passWindowDays));
+  }
   // #4490 fix 2 (N77): the most guests on one booking.
   parts.push(`up to ${option.guestMax} on one booking`);
   return parts.join(" · ");
+}
+
+export function multiDayPassSummary(days: number, windowDays: number, capital = false): string {
+  const text = days === windowDays
+    ? `${days} days in a row`
+    : `any ${days} days within ${windowDays} days from the start day`;
+  return capital ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
 }
 
 /** Lowest price label for the list ("₦4,000 per guest", "from ₦4,000"). */

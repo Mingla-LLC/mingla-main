@@ -45,6 +45,9 @@ export interface VenuePriceOption {
   version: number;
   priceMinor: number;
   priceVersionId: string | null;
+  /** F: null = one service day; otherwise N admissions days inside the window. */
+  passDays?: number | null;
+  passWindowDays?: number | null;
 }
 
 export interface RefundRung {
@@ -666,6 +669,11 @@ export interface CheckInPass {
   source: string | null;
   time: string | null;
   lastAdmittedAt: string | null;
+  daysAllowed?: number;
+  daysUsed?: number;
+  dayNumber?: number;
+  allDaysUsed?: boolean;
+  validUntilLocalDate?: string | null;
   /** #4490 P3 — money still owed on the booking (0 when paid up). */
   balanceDueMinor?: number;
   totalDueMinor?: number;
@@ -731,6 +739,8 @@ export type ScanResultCode =
   | "not_found"
   | "wrong_venue"
   | "id_required"
+  | "days_used"
+  | "day_full"
   | "undone";
 
 export interface ScanOutcome {
