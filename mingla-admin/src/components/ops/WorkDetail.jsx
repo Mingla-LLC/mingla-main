@@ -76,6 +76,7 @@ import { DraftKeptNote, SideLink, usePanelLinks } from "../ui/PanelStack";
 import { usePanelDraft } from "../../hooks/usePanelDraft";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
 import { linkSide, sideHref } from "../../lib/panelStack";
+import { isTicketCard, ticketNumber } from "../../lib/ticketModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
@@ -392,7 +393,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                 <span aria-hidden="true">›</span>
               </span>
             ))}
-            <span className="shrink-0 font-semibold text-[var(--color-text-secondary)]">#{card.number}</span>
+            <span className="shrink-0 font-semibold text-[var(--color-text-secondary)]">{isTicketCard(card) ? ticketNumber(card.number) : `#${card.number}`}</span>
             {column && <span className="truncate">· {GROUP_LABELS[column.grp] || ""}</span>}
             {saveState && <span role="status" className="ml-2 shrink-0 text-[12px]">{saveState}</span>}
           </nav>
@@ -698,7 +699,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
           </section>
 
           {/* #4420: a ticket's type, reporters, conversations and Send to GitHub, above the Description */}
-          {card.kind === "ticket" && <TicketSections card={card} canEdit={canEdit} isOperator={isFullAdmin(access)} locked={locked} onChanged={refresh} />}
+          {isTicketCard(card) && <TicketSections card={card} canEdit={canEdit} isOperator={isFullAdmin(access)} locked={locked} onChanged={refresh} />}
 
           {/* (5) Description */}
           <section aria-labelledby={`desc-${card.id}`} data-card-description="" className="flex min-w-0 flex-col gap-1.5">

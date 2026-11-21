@@ -10,6 +10,7 @@
 // Words: a customer thread is a "conversation"; "ticket" means only the Work card.
 import { lastSpeaker, isOverdueTicket, ticketSearchText, ticketNumberLabel } from "./supportTicketMetrics.js";
 import { TOPIC_LABEL } from "../components/support/supportOptions.js";
+import { ticketNumber } from "./ticketModel.js";
 
 /** The quick chips over the list (a conversation can match several). */
 export const INBOX_CHIPS = Object.freeze([
@@ -58,7 +59,7 @@ export function needsReply(ticket) {
 }
 
 function ticketChipText(linked) {
-  const base = `Ticket T${linked.number}`;
+  const base = `Ticket ${ticketNumber(linked.number)}`;
   return linked.status === "done" ? `${base} closed` : base;
 }
 
@@ -299,14 +300,14 @@ export function brandGroupTicketPrefill({ brandId, brandName, lines } = {}) {
 
 /** The line a person might send the customer once a ticket exists. Never carries a note. */
 export function customerLineFor(number) {
-  return `Thanks for flagging this. We have logged it as ticket T${number} and the team is on it. We will update you here.`;
+  return `Thanks for flagging this. We have logged it as ticket ${ticketNumber(number)} and the team is on it. We will update you here.`;
 }
 
 /** The header's ticket button: "Create ticket", or the number of the first linked ticket. */
 export function createTicketButton(linked = []) {
   const first = Array.isArray(linked) && linked.length ? linked[0] : null;
   return first
-    ? { text: `Ticket T${first.number}`, linked: true }
+    ? { text: `Ticket ${ticketNumber(first.number)}`, linked: true }
     : { text: "Create ticket", linked: false };
 }
 

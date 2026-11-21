@@ -5,14 +5,14 @@
 // changes nothing.
 import { X } from "lucide-react";
 import { Button } from "../ui/Button";
-import { ticketTypeLabel } from "../../lib/ticketModel";
+import { ticketNumber, ticketTypeLabel } from "../../lib/ticketModel";
 
 const STATUS_WORDS = Object.freeze({ todo: "To do", doing: "In progress", person: "With a person", done: "Done" });
 
 /** Props: linked ({ card_id, number, title, type, status }), onClose. */
 export function TicketSummaryPanel({ linked, onClose }) {
   return (
-    <aside aria-label={`Ticket T${linked.number}`} data-ticket-summary="" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] lg:h-[calc(100vh-180px)]">
+    <aside aria-label={`Ticket ${ticketNumber(linked.number)}`} data-ticket-summary="" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] lg:h-[calc(100vh-180px)]">
       <div className="flex items-center justify-between gap-2 border-b border-[var(--gray-200)] px-4 py-3">
         <p className="text-sm font-semibold text-[var(--color-text-primary)]">Ticket T{linked.number}</p>
         <Button size="sm" variant="ghost" icon={X} onClick={onClose} aria-label="Close ticket summary" />

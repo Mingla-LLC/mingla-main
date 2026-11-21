@@ -23,7 +23,7 @@ import {
   savePublicProductReview,
 } from "../../services/productAvengersService";
 import { opsErrorWords } from "../../lib/opsModel";
-import { githubSectionState } from "../../lib/ticketModel";
+import { githubErrorWords, githubSectionState } from "../../lib/ticketModel";
 
 const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]";
 const PRODUCTS = ["Business", "Explorer", "Both", "Platform"];
@@ -91,13 +91,13 @@ function Workflow({ card, signalId, disabled, onChanged }) {
       await load();
       if (mirror) await onChanged?.();
     } catch (e) {
-      addToast({ variant: "error", title: "That didn’t finish", description: e?.token ? opsErrorWords(e) : e?.message });
+      addToast({ variant: "error", title: "That didn’t finish", description: e?.token ? opsErrorWords(e) : githubErrorWords(e) });
     } finally {
       setBusy(false);
     }
   };
 
-  if (error && !ws) return <p role="alert" className="text-[13px] text-[var(--color-error-700)]">{error.message || "Couldn’t load the GitHub state."} <button type="button" onClick={load} className="font-semibold underline">Try again</button></p>;
+  if (error && !ws) return <p role="alert" className="text-[13px] text-[var(--color-error-700)]">Couldn’t load the GitHub state. Check your connection and try again. <button type="button" onClick={load} className="font-semibold underline">Try again</button></p>;
   if (!ws || !review) return <p className="text-[13px] text-[var(--color-text-tertiary)]">Loading…</p>;
   const item = ws.item;
   const revision = ws.review?.revision || 0;

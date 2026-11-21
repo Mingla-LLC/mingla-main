@@ -29,8 +29,9 @@ export const BOARD_FIELDS = [
   "revision", "archived",
   // read by the board's filters and draft split (lib/workViews.js), not in the spec's first list
   "links", "anchor", "instructions", "proof",
-  // #4420: the Ticket chip and the Type filter read kind and the ticket object (the server sends both in every shape)
-  "kind", "ticket",
+  // #4420: the Ticket chip and the Type filter read the ticket object, which the server sends for tickets
+  // only in every shape. The board shape has NO kind (rework 1, P1-1): reading card.kind here is a bug.
+  "ticket",
 ];
 
 // In the spec's list, read by none of the board files. The server may send them.

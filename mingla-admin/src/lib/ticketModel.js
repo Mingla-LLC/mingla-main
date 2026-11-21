@@ -36,9 +36,20 @@ export function ticketTypeLabel(value) {
   return TICKET_TYPES.find((t) => t.value === value)?.label || "";
 }
 
-/** A card that is a ticket, with its ticket object (the card's JSON carries it for tickets only). */
+/**
+ * THE one test for "this Work card is a ticket" (filter, chip, views, detail,
+ * menu count). The server adds the `ticket` key to a card's JSON for tickets
+ * only, in every shape (full, board, board_text, and the single card); the
+ * board shape carries no `kind`, so `kind` must never be read for this.
+ */
 export function isTicketCard(card) {
-  return !!card && card.kind === "ticket";
+  return !!card && typeof card === "object" && Object.prototype.hasOwnProperty.call(card, "ticket");
+}
+
+/** THE one way a ticket's number is written: "T12" (the card's own number). */
+export function ticketNumber(number) {
+  const n = Number(number);
+  return Number.isInteger(n) && n > 0 ? `T${n}` : "T?";
 }
 
 /** The date a ticket without a chosen date is due: today plus 7 days, as YYYY-MM-DD. */
@@ -53,7 +64,7 @@ export function ticketChipWords(card) {
   const reporters = Number(t.reporter_count) || 0;
   return {
     label: "Ticket",
-    number: `T${card.number}`,
+    number: ticketNumber(card.number),
     type: ticketTypeLabel(t.type),
     reporters,
     reporterWords: reporters > 0 ? `${reporters} ${reporters === 1 ? "reporter" : "reporters"}` : "",
@@ -117,7 +128,7 @@ export function shouldSearchSimilar(title) {
 /** The similar-ticket row's words: "T12 · Bug · 3 reporters". */
 export function similarWords(row) {
   const reporters = Number(row?.reporter_count) || 0;
-  return [`T${row?.number}`, ticketTypeLabel(row?.type), `${reporters} ${reporters === 1 ? "reporter" : "reporters"}`].filter(Boolean).join(" · ");
+  return [ticketNumber(row?.number), ticketTypeLabel(row?.type), `${reporters} ${reporters === 1 ? "reporter" : "reporters"}`].filter(Boolean).join(" · ");
 }
 
 export const SUPPORT_ACCESS_WORDS = "Support access needed to read these conversations";
@@ -176,6 +187,41 @@ export function conversationHref(id) {
 export const GITHUB_LOCKED_WORDS = "Only product operators send tickets to GitHub.";
 export const GITHUB_TASK_WORDS = "A task ticket uses the GitHub field on the card.";
 
+/**
+ * The Send to GitHub steps answer with bare codes ("acceptance_criteria_required").
+ * A person never sees a code: each known one becomes what is missing and where
+ * to fix it; anything else gets one plain sentence.
+ */
+export const GITHUB_ERROR_WORDS = Object.freeze({
+  acceptance_criteria_required: "Add at least one line under “Acceptance criteria · one per line”, then save again.",
+  product_fields_required: "Pick the Product, Theme, Priority, Estimate, Horizon and Quarter, then save again.",
+  public_review_required: "Save the public review first: title, problem, outcome and acceptance criteria.",
+  create_uses_reviewed_fields_only: "Save the public review first. GitHub only gets the saved wording.",
+  search_uses_reviewed_fields_only: "Save the public review first. The search only uses the saved wording.",
+  candidate_search_required: "Search GitHub for matching issues first.",
+  candidate_decisions_required: "For each issue found, choose it or say why it doesn’t fit, then try again.",
+  candidate_reason_required: "Say why this issue doesn’t fit in “Why this issue doesn’t fit”.",
+  candidate_search_and_no_fit_reason_required: "Search GitHub first, then say in “Why none of these fits” (at least 20 characters) why no issue fits.",
+  no_fit_reason_required: "Say in “Why none of these fits” (at least 20 characters) why no issue fits.",
+  selected_candidate_required: "Choose the matching issue first.",
+  selected_candidate_must_be_linked: "Link the issue you chose first.",
+  candidate_not_found: "That issue is no longer in the search results. Search again.",
+  product_operator_required: GITHUB_LOCKED_WORDS,
+  not_authorized: GITHUB_LOCKED_WORDS,
+  stale_revision: "Someone else changed this ticket. Reload it and try again.",
+  invalid_expected_revision: "Someone else changed this ticket. Reload it and try again.",
+  signal_not_found: "This ticket’s GitHub record wasn’t found. Reload the ticket and try again.",
+});
+export const GITHUB_ERROR_FALLBACK = "GitHub didn’t take that. Check the fields above and try again. If it keeps happening, tell the engineering team.";
+
+export function githubErrorWords(error) {
+  const text = String(error?.message ?? error ?? "");
+  for (const word of text.match(/[a-z][a-z_]*[a-z]/g) || []) {
+    if (Object.prototype.hasOwnProperty.call(GITHUB_ERROR_WORDS, word)) return GITHUB_ERROR_WORDS[word];
+  }
+  return GITHUB_ERROR_FALLBACK;
+}
+
 export function githubSectionState(card, { isOperator = false } = {}) {
   if (!isTicketCard(card)) return { mode: "none" };
   if (card.ticket?.type === "task") return { mode: "task", words: GITHUB_TASK_WORDS };
@@ -194,7 +240,7 @@ export function workMenuCount(dueCards, ticketsNew) {
  * A ticket I own in To do is already in the due-today and overdue counts when
  * its date has come. This counts only the owned To do tickets that are NOT yet
  * due (no date, or a later one), so each card is counted once in the menu.
- * `cards` is my To do list (kind and due_on are all it reads); `raw` is
+ * `cards` is my To do list (board shape: the ticket key, status and due_on are all it reads); `raw` is
  * ops_ticket_counts' answer and caps the result.
  */
 export function ticketsNotAlreadyDue(cards, today, raw) {
@@ -202,7 +248,7 @@ export function ticketsNotAlreadyDue(cards, today, raw) {
   if (!Array.isArray(cards) || !(ceiling > 0)) return 0;
   const todayKey = String(today || "").slice(0, 10);
   const n = cards.filter((c) => {
-    if (c?.kind !== "ticket" || c?.status !== "todo") return false;
+    if (!isTicketCard(c) || c?.status !== "todo") return false;
     const due = c?.due_on ? String(c.due_on).slice(0, 10) : "";
     return !due || !todayKey || due > todayKey;
   }).length;

@@ -4,6 +4,7 @@
 //
 // Pure module: no React, no Supabase. The page, the views and a plain node
 // test read it.
+import { isTicketCard } from "./ticketModel.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -79,10 +80,6 @@ export function parseWorkView(search) {
   };
 }
 
-/** #4420: a ticket is a Work card of kind "ticket". */
-export function isTicket(card) {
-  return !!card && card.kind === "ticket";
-}
 
 function linkKinds(card) {
   const kinds = new Set((Array.isArray(card?.links) ? card.links : []).map((l) => l?.kind));
@@ -127,8 +124,8 @@ export function workFilter(cards, { owner = null, show = "", linked = "", type =
       const num = String(c.number ?? "");
       if (!hay.includes(needle) && needle !== num && needle !== `card ${num}`) return false;
     }
-    if (type === "tickets" && !isTicket(c)) return false;
-    if (type === "cards" && isTicket(c)) return false;
+    if (type === "tickets" && !isTicketCard(c)) return false;
+    if (type === "cards" && isTicketCard(c)) return false;
     if (linked) {
       const kinds = linkKinds(c);
       if (linked === "calendar" ? !(kinds.has("event") || kinds.has("expected") || kinds.has("content")) : !kinds.has(linked === "support" ? "support_conversation" : linked)) return false;

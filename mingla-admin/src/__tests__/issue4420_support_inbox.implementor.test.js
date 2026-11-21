@@ -252,7 +252,7 @@ describe("S-5 Create ticket", () => {
   });
   it("shows the ticket number, that it is on the Work board, and the line for the customer; sends nothing", () => {
     const panel = read("components/support/CreateTicketPanel.jsx");
-    assert.match(panel, /Ticket T\$\{done\.number\} is made/);
+    assert.match(panel, /Ticket \$\{ticketNumber\(done\.number\)\} is made/);
     assert.match(panel, /It is on the Work board/);
     assert.match(panel, /Nothing was sent to the customer/);
     assert.doesNotMatch(panel, /sendSupportMessage|support-send/);

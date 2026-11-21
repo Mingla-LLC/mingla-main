@@ -8,7 +8,7 @@ import { Button } from "../ui/Button";
 import { useToast } from "../../context/ToastContext";
 import * as ops from "../../services/opsService";
 import { opsErrorWords } from "../../lib/opsModel";
-import { TICKET_TYPES, ticketTypeLabel } from "../../lib/ticketModel";
+import { TICKET_TYPES, isTicketCard, ticketTypeLabel } from "../../lib/ticketModel";
 import { PRODUCT_AREAS } from "../support/supportOptions";
 import { TicketConversations } from "./TicketConversations";
 import { TicketGithubSection } from "./TicketGithubSection";
@@ -66,7 +66,7 @@ function TypeAndArea({ card, canEdit, onChanged }) {
 
 /** Props: card (a ticket), canEdit, isOperator (product operator), locked, onChanged. */
 export function TicketSections({ card, canEdit, isOperator, locked = false, onChanged }) {
-  if (!card || card.kind !== "ticket" || !card.ticket) return null;
+  if (!isTicketCard(card) || !card.ticket) return null;
   return (
     <div data-ticket-sections="" className="flex min-w-0 flex-col gap-4">
       <TypeAndArea card={card} canEdit={canEdit && card.status !== "done"} onChanged={onChanged} />

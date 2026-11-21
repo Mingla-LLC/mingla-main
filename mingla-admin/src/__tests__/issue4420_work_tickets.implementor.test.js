@@ -28,7 +28,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { WORK_LINKED, WORK_TYPE, isTicket, parseWorkView, periodBucket, periodRows, periodWindow, workFilter } from "../lib/workViews.js";
+import { WORK_LINKED, WORK_TYPE, parseWorkView, periodBucket, periodRows, periodWindow, workFilter } from "../lib/workViews.js";
 import { activeFilterCount } from "../lib/workBoardModel.js";
 import { DETAIL_LINK_KINDS, LINK_KINDS } from "../lib/opsModel.js";
 import {
@@ -45,6 +45,10 @@ import {
   ticketFormProblems,
   workMenuCount,
   ticketsNotAlreadyDue,
+  isTicketCard,
+  ticketNumber,
+  githubErrorWords,
+  GITHUB_ERROR_FALLBACK,
 } from "../lib/ticketModel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -56,9 +60,57 @@ const code = (rel) => strip(read(rel));
 const SETH = { email: "seth@x.test", name: "Seth" };
 const TAO = { email: "tao@x.test", name: "Taofeek" };
 const link = (kind, id = "x") => ({ kind, id, label: kind });
-const ticket = (extra = {}) => ({ id: "t1", number: 12, title: "Payout shows twice", kind: "ticket", status: "todo", owners: [TAO], watchers: [SETH], due_on: "2026-11-28",
-  links: [link("support_conversation", "c1")], ticket: { type: "bug", product_area: "Host app · Payouts", created_from: "conversation", reporter_count: 2, source_signal_id: null }, ...extra });
-const card = (extra = {}) => ({ id: "c1", number: 7, title: "Edit the video", kind: "task", status: "todo", owners: [TAO], watchers: [SETH], due_on: "2026-11-28", links: [link("host", "h1")], ...extra });
+// #4420 rework 1 (P1-1): the fixtures are the REAL board shape. The first
+// pass hand-made rows with `kind: "ticket"`, a key the board shape does not
+// carry, so the Type filter, the chip and the views passed here while the live
+// board showed no tickets. BOARD_KEYS is read from the migration's own
+// ops_cards_json('board') body (the `common` object), and every fixture below
+// must have exactly those keys (plus `ticket` for a ticket): see T-7.
+const MIGRATION = path.resolve(SRC, "../../supabase/migrations/20281121034420_issue_4420_tickets_on_work_board.sql");
+function topLevelKeys(expr) {
+  // Keys of each top-level jsonb_build_object( ... ) in a `||` chain.
+  const keys = [];
+  let i = 0;
+  while ((i = expr.indexOf("jsonb_build_object(", i)) !== -1) {
+    let depth = 0; let arg = ""; let argIndex = 0; let inStr = false;
+    for (let j = i + "jsonb_build_object".length; j < expr.length; j += 1) {
+      const ch = expr[j];
+      if (inStr) { arg += ch; if (ch === "'") inStr = false; continue; }
+      if (ch === "'") { inStr = true; arg += ch; continue; }
+      if (ch === "(") { depth += 1; if (depth === 1) continue; }
+      if (ch === ")") { depth -= 1; if (depth === 0) { i = j; break; } }
+      if (ch === "," && depth === 1) {
+        if (argIndex % 2 === 0) keys.push(arg.trim().replace(/^'|'$/g, ""));
+        argIndex += 1; arg = ""; continue;
+      }
+      arg += ch;
+    }
+    i += 1;
+  }
+  return keys;
+}
+const SQL = fs.readFileSync(MIGRATION, "utf8").replace(/--[^\n]*/g, "");
+const CARDS_JSON = SQL.slice(SQL.lastIndexOf("FUNCTION public.ops_cards_json("));
+const COMMON = CARDS_JSON.slice(CARDS_JSON.indexOf("jsonb_build_object(\n        'id', p.id"), CARDS_JSON.indexOf(") AS common") + 1);
+const BOARD_KEYS = topLevelKeys(COMMON);
+const FULL_EXTRA = CARDS_JSON.slice(CARDS_JSON.indexOf("CASE WHEN p_shape = 'full' THEN"), CARDS_JSON.indexOf("WHEN p_shape = 'board_text'"));
+const FULL_KEYS = topLevelKeys(FULL_EXTRA);
+
+/** One board-shape row exactly as ops_cards_json(..., 'board') returns it. */
+function boardRow(over = {}) {
+  const base = {
+    id: "c1", number: 7, title: "Edit the video", status: "todo", blocked: false, person_reason: null, tag: null, anchor: null,
+    due_on: "2026-11-28", overdue: false, owners: [TAO], watchers: [SETH], links: [link("host", "h1")], proof: null, closed_at: null,
+    working: null, revision: 1, auto: false, auto_kind: null, archived: false, status_id: null, parent: null, depth: 0, position: 1,
+    estimate_minutes: null, subtasks: { total: 0, done: 0 }, files_count: 0, thread_count: 0, goal: null, review: null,
+    sent_back: null, release_items: null,
+  };
+  return { ...base, ...over };
+}
+// A ticket's board row: the same keys plus `ticket` (ops_ticket_json), and NO `kind`.
+const ticket = (extra = {}) => boardRow({ id: "t1", number: 12, title: "Payout shows twice", links: [link("support_conversation", "c1")],
+  ticket: { type: "bug", product_area: "Host app · Payouts", created_from: "conversation", reporter_count: 2, source_signal_id: null }, ...extra });
+const card = (extra = {}) => boardRow(extra);
 
 describe("T-1 the Type filter and Linked to: Support conversations", () => {
   it("lists the options in the approved words", () => {
@@ -226,8 +278,8 @@ describe("T-4 the Ticket chip", () => {
   });
   it("an ordinary card has no chip", () => {
     assert.equal(ticketChipWords(card()), null);
-    assert.equal(isTicket(card()), false);
-    assert.equal(isTicket(ticket()), true);
+    assert.equal(isTicketCard(card()), false);
+    assert.equal(isTicketCard(ticket()), true);
     assert.equal(ticketChipWords(null), null);
   });
 });
@@ -274,7 +326,7 @@ describe("T-5 ticket detail: reporters, conversations, Send to GitHub", () => {
     assert.match(src, /ops\.updateTicket\(card\.id, \{ type, product_area: area\.trim\(\) \}, card\.revision\)/);
     assert.match(code("services/opsService.js"), /supabase\.rpc\("ops_ticket_update", \{ p_card_id: cardId, p_changes: changes, p_expected_revision: revision \}\)/);
     const detail = code("components/ops/WorkDetail.jsx");
-    assert.match(detail, /card\.kind === "ticket" && <TicketSections/);
+    assert.match(detail, /isTicketCard\(card\) && <TicketSections/);
   });
   it("Send to GitHub: task tickets use the card's field; non-operators see it off with the reason; operators send", () => {
     assert.equal(githubSectionState(card(), { isOperator: true }).mode, "none");
@@ -329,7 +381,7 @@ describe("T-6 ordinary cards behave as before", () => {
   });
   it("an ordinary card's face, list row and filters are unchanged", () => {
     const board = code("components/ops/WorkBoard.jsx");
-    assert.match(board, /\|\| card\.auto \|\| card\.kind === "ticket"\) && \(/);
+    assert.match(board, /\|\| card\.auto \|\| isTicketCard\(card\)\) && \(/);
     assert.equal(workFilter([card()], { show: "watch", me: "seth@x.test" }).length, 1);
     assert.equal(workFilter([card()], { type: "cards", linked: "host" }).length, 1);
   });
@@ -350,7 +402,7 @@ describe("T-6 ordinary cards behave as before", () => {
 // Part A (#4420): the Work count never counts a ticket twice.
 describe("Work count counts each ticket once", () => {
   const today = "2026-11-21";
-  const t = (due_on, status = "todo") => ({ kind: "ticket", status, due_on });
+  const t = (due_on, status = "todo") => ticket({ status, due_on });
   it("a To do ticket already due or overdue is not added again", () => {
     assert.equal(ticketsNotAlreadyDue([t("2026-11-21"), t("2026-11-10")], today, 2), 0);
   });
@@ -366,5 +418,104 @@ describe("Work count counts each ticket once", () => {
   it("the hook feeds ticketsNew from the de-duplicated count", () => {
     const hook = read("hooks/useReviewCount.js");
     assert.match(hook, /const ticketsNew = ticketsNotAlreadyDue\(/);
+  });
+});
+
+describe("T-7 (rework 1, P1-1) the REAL board shape drives the Type filter, the chip, every view and the menu count", () => {
+  const NOW = new Date(2026, 10, 18, 10, 0, 0);
+  it("the fixtures are exactly the server's board shape: no kind, and ticket only on a ticket", () => {
+    assert.ok(BOARD_KEYS.length > 25, `parsed the board keys from the migration (${BOARD_KEYS.length})`);
+    assert.ok(!BOARD_KEYS.includes("kind"), "the board shape carries no kind");
+    assert.ok(!BOARD_KEYS.includes("ticket"), "ticket is not a common key");
+    assert.ok(FULL_KEYS.includes("kind"), "only the full shape carries kind");
+    assert.deepEqual(Object.keys(card()).sort(), [...BOARD_KEYS].sort());
+    assert.deepEqual(Object.keys(ticket()).sort(), [...BOARD_KEYS, "ticket"].sort());
+    assert.match(CARDS_JSON, /CASE WHEN p\.kind = 'ticket' THEN jsonb_build_object\('ticket', public\.ops_ticket_json\(p\.id\)\) ELSE '\{\}'::jsonb END AS ticket_part/,
+      "the server adds `ticket` for tickets only, in every shape");
+  });
+  it("one predicate: a board ticket, a full ticket and a ticket whose ticket row is missing are tickets; cards are not", () => {
+    assert.equal(isTicketCard(ticket()), true);
+    assert.equal(isTicketCard({ ...ticket(), kind: "ticket" }), true, "full shape");
+    assert.equal(isTicketCard(boardRow({ ticket: null })), true, "ops_ticket_json null still marks a ticket");
+    for (const k of ["task", "gate_live", "promo"]) assert.equal(isTicketCard({ ...card(), kind: k }), false, k);
+    assert.equal(isTicketCard(card()), false);
+    assert.equal(isTicketCard(null), false);
+  });
+  it("Type: Tickets lists the board ticket, Type: Cards does not, the old Product address view too", () => {
+    const rows = [ticket(), card(), card({ id: "c2", number: 8, links: [link("support_conversation", "c9")] })];
+    assert.deepEqual(workFilter(rows, { type: "tickets" }).map((c) => c.id), ["t1"]);
+    assert.deepEqual(workFilter(rows, { type: "cards" }).map((c) => c.id), ["c1", "c2"]);
+    assert.deepEqual(workFilter(rows, { ...parseWorkView("type=tickets&linked=support") }).map((c) => c.id), ["t1"]);
+  });
+  it("the chip shows on the board row", () => {
+    assert.deepEqual(ticketChipWords(ticket()), { label: "Ticket", number: "T12", type: "Bug", reporters: 2, reporterWords: "2 reporters" });
+    assert.equal(ticketChipWords(card()), null);
+  });
+  it("Board, Today, This week and This month all keep the ticket after Type: Tickets", () => {
+    const rows = [ticket({ status: "doing", due_on: "2026-11-18" }), card({ status: "doing", due_on: "2026-11-18" })];
+    const only = workFilter(rows, { type: "tickets" });
+    assert.deepEqual(only.map((c) => c.id), ["t1"], "Board");
+    for (const view of ["today", "week", "month"]) {
+      const { totals } = periodRows(only, periodWindow(view, NOW), [TAO]);
+      assert.equal(totals.doing, 1, view);
+    }
+  });
+  it("the menu count counts a board-shape To do ticket that is not yet due", () => {
+    assert.equal(ticketsNotAlreadyDue([ticket({ due_on: "2026-12-05" }), card({ due_on: "2026-12-05" })], "2026-11-21", 5), 1);
+  });
+  it("no Admin source decides 'is a ticket' from kind, or by hand", () => {
+    const offenders = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) { if (e.name !== "__tests__" && e.name !== "node_modules") walk(full); continue; }
+        if (!/\.(jsx?|tsx?)$/.test(e.name)) continue;
+        const text = strip(fs.readFileSync(full, "utf8"));
+        if (/(card|c|row|item)\??\.kind\s*[!=]==?\s*["']ticket["']/.test(text)) offenders.push(path.relative(SRC, full));
+      }
+    };
+    walk(SRC);
+    assert.deepEqual(offenders, []);
+  });
+});
+
+describe("T-8 (rework 1, P3-b) one ticket number format", () => {
+  it("ticketNumber writes the card's own number as T<n>", () => {
+    assert.equal(ticketNumber(12), "T12");
+    assert.equal(ticketNumber("3"), "T3");
+    assert.equal(ticketNumber(undefined), "T?");
+    assert.equal(ticketNumber(0), "T?");
+  });
+  it("the toast, inbox, summary, side panel, Brand groups, chip and card header use it; nobody writes T${...} by hand", () => {
+    const files = ["components/ops/TicketForm.jsx", "components/support/CreateTicketPanel.jsx", "components/support/TicketSummaryPanel.jsx",
+      "components/support/TicketPanel.jsx", "components/community/BrandGroupsPanel.jsx", "lib/supportInboxModel.js", "components/ops/WorkDetail.jsx"];
+    for (const f of files) {
+      const text = code(f);
+      assert.match(text, /ticketNumber\(/, f);
+      // WorkDetail's T${kit_step} is the launch-kit step ("T-3"), not a ticket.
+      const hand = text.replace(/T\$\{card\.kit_step/g, "").match(/T\$\{/g);
+      assert.equal(hand, null, `${f} formats a ticket number by hand`);
+    }
+    assert.match(code("components/ops/WorkDetail.jsx"), /isTicketCard\(card\) \? ticketNumber\(card\.number\) : `#\$\{card\.number\}`/, "a ticket's header says T<n>, a card's #<n>");
+  });
+});
+
+describe("T-9 (rework 1, P3-a) Send to GitHub never shows a code", () => {
+  it("known codes become what to do and where", () => {
+    assert.match(githubErrorWords(new Error("acceptance_criteria_required")), /Acceptance criteria/);
+    assert.match(githubErrorWords({ message: "product_fields_required" }), /Product, Theme, Priority/);
+    assert.match(githubErrorWords(new Error("no_fit_reason_required")), /Why none of these fits/);
+  });
+  it("unknown codes and empty errors get the plain sentence, never the code", () => {
+    assert.equal(githubErrorWords(new Error("some_new_code")), GITHUB_ERROR_FALLBACK);
+    assert.equal(githubErrorWords(undefined), GITHUB_ERROR_FALLBACK);
+    for (const words of [githubErrorWords(new Error("acceptance_criteria_required")), githubErrorWords(new Error("x_y"))]) {
+      assert.doesNotMatch(words, /[a-z]+_[a-z_]+/);
+    }
+  });
+  it("the section's toast and load error use it, not e.message", () => {
+    const section = code("components/ops/TicketGithubSection.jsx");
+    assert.match(section, /e\?\.token \? opsErrorWords\(e\) : githubErrorWords\(e\)/);
+    assert.doesNotMatch(section, /e\?\.message|error\.message/);
   });
 });

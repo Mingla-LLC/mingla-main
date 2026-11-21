@@ -21,6 +21,7 @@ import {
   shouldSearchSimilar,
   similarWords,
   ticketFormProblems,
+  ticketNumber,
 } from "../../lib/ticketModel";
 import { PRODUCT_AREAS } from "../support/supportOptions";
 import { PeopleField } from "../people/PeopleField";
@@ -96,7 +97,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
     try {
       const read = await ops.getWork(row.id);
       const answer = await ops.linkTicketConversation(row.id, source.id, read?.card?.revision);
-      addToast({ variant: "success", title: answer?.changed === false ? `Already a reporter on T${row.number}` : `Added as a reporter on T${row.number}` });
+      addToast({ variant: "success", title: answer?.changed === false ? `Already a reporter on ${ticketNumber(row.number)}` : `Added as a reporter on ${ticketNumber(row.number)}` });
       onOpenCard?.(row.id);
     } catch (error) {
       addToast({ variant: "error", title: "Couldn’t link here", description: opsErrorWords(error) });
@@ -118,7 +119,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
       if (answer?.status === "added") {
         setRefused(null);
         keyRef.current = { key: null, value: null };
-        addToast({ variant: "success", title: `Ticket T${answer.card?.number} made`, description: owners.some((o) => o !== me) ? "The owner was told." : undefined });
+        addToast({ variant: "success", title: `Ticket ${ticketNumber(answer.card?.number)} made`, description: owners.some((o) => o !== me) ? "The owner was told." : undefined });
         onCreated?.(answer.card);
       } else if (answer?.status === "duplicate") {
         setRefused(null);

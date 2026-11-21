@@ -44,6 +44,7 @@ import {
   subtaskProgress,
 } from "../../lib/workBoardModel";
 import { draftItemTitle } from "../../lib/workViews";
+import { isTicketCard } from "../../lib/ticketModel";
 import { TicketChip } from "./TicketChip";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -89,7 +90,7 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
       {card.parent && <span className={`text-[11px] text-[var(--color-text-tertiary)] ${WORDS}`}>↳ #{card.parent.number} {card.parent.title}</span>}
       <span className={`line-clamp-2 text-[13px] font-semibold leading-snug text-[var(--color-text-primary)] ${WORDS}`}>{card.title}</span>
       <DuePill card={card} today={today} />
-      {(isTagged(card) || card.goal || left !== null || card.auto || card.kind === "ticket") && (
+      {(isTagged(card) || card.goal || left !== null || card.auto || isTicketCard(card)) && (
         <span className="flex min-w-0 flex-wrap items-center gap-1">
           {/* #4420: a ticket sits beside ordinary cards with a Ticket chip */}
           <TicketChip card={card} />

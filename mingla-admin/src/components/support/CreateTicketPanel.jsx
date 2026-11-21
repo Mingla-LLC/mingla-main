@@ -12,6 +12,7 @@ import { TicketForm } from "../ops/TicketForm";
 import { useOpsConfig } from "../../hooks/useOpsConfig";
 import { useToast } from "../../context/ToastContext";
 import { customerLineFor, ticketPrefill } from "../../lib/supportInboxModel";
+import { ticketNumber } from "../../lib/ticketModel";
 
 /**
  * Props: ticket (the conversation), messages (its thread, for the pre-fill),
@@ -45,7 +46,7 @@ export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {done ? (
           <div role="status" data-ticket-made="" className="flex flex-col gap-3 rounded-xl bg-[var(--color-success-50)] p-4 text-sm text-[var(--color-success-700)]">
-            <p className="flex items-center gap-2 font-semibold"><Check className="h-4 w-4" aria-hidden="true" />{done.number ? `Ticket T${done.number} is made` : "Linked to the ticket"}</p>
+            <p className="flex items-center gap-2 font-semibold"><Check className="h-4 w-4" aria-hidden="true" />{done.number ? `Ticket ${ticketNumber(done.number)} is made` : "Linked to the ticket"}</p>
             <p>It is on the Work board, and this conversation is linked to it as a reporter.</p>
             {done.number ? (
               <div className="flex flex-col gap-1.5 rounded-lg bg-[var(--color-background-primary)] p-3 text-[var(--color-text-primary)]">

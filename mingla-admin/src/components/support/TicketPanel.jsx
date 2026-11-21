@@ -22,6 +22,7 @@ import { LabelChips } from "./InboxLabels";
 import { listTicketThread, signAttachmentUrls } from "../../services/supportDeskService";
 import { supabase } from "../../lib/supabase";
 import { formatDateTime } from "../../lib/formatters";
+import { ticketNumber } from "../../lib/ticketModel";
 
 const STATUS_OPTIONS = ["new", "open", "pending", "resolved", "closed"].map((value) => ({ value, label: STATUS_LABEL[value] }));
 
@@ -120,7 +121,7 @@ export function TicketPanel({
               <Button size="sm" variant="secondary" icon={UserCheck} loading={acting} disabled={acting} onClick={onClaim}>Take it</Button>
             )}
             {ticketButton.linked ? (
-              <Button size="sm" variant="secondary" aria-label={`Open ticket T${linkedTickets[0].number}`} onClick={() => onOpenLinkedTicket?.(linkedTickets[0])}>{ticketButton.text}</Button>
+              <Button size="sm" variant="secondary" aria-label={`Open ticket ${ticketNumber(linkedTickets[0].number)}`} onClick={() => onOpenLinkedTicket?.(linkedTickets[0])}>{ticketButton.text}</Button>
             ) : (
               <Button size="sm" variant="primary" disabled={createOpen} onClick={() => onCreateTicket?.(messages)}>{ticketButton.text}</Button>
             )}

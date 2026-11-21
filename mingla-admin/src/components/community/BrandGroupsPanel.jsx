@@ -80,6 +80,7 @@ import { BrandGroupComposer } from "./BrandGroupComposer";
 import { BrandGroupRail } from "./BrandGroupRail";
 import { BrandGroupSidePanel } from "./BrandGroupSidePanel";
 import { subscribePageReturn } from "../../lib/pageReturn";
+import { ticketNumber } from "../../lib/ticketModel";
 
 /** The page this panel is drawn on, and so the address it reads and writes. */
 export const BRAND_GROUPS_PAGE_ID = "brand-groups";
@@ -943,7 +944,7 @@ export function BrandGroupsPanel({ onCounts }) {
         onCreated={(card) => {
           setTicketPrefill(null);
           setSelectedMessageIds([]);
-          addToast({ variant: "success", title: card?.number ? `Ticket T${card.number} is on the Work board` : "Ticket made", description: "Nothing was sent to the brand." });
+          addToast({ variant: "success", title: card?.number ? `Ticket ${ticketNumber(card.number)} is on the Work board` : "Ticket made", description: "Nothing was sent to the brand." });
         }}
         onOpenCard={(id) => {
           setTicketPrefill(null);
