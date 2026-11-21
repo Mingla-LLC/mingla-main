@@ -282,12 +282,6 @@ export interface TripPricingTier {
   ticketsRemaining: number | null;
   isUnlimited: boolean;
   /**
-   * #3281 S4 — the package's add-ons as the public reader returns them
-   * (`extras`, parsed by the shared cart). Absent until the trip reader carries
-   * add-ons (#3281 S2); the picker then shows nothing.
-   */
-  buyerExtras?: unknown;
-  /**
    * ORCH-0873 [Tr3 Stage 2 UI] — extracted from
    * tier_metadata.installments JSONB for convenient typed access by the
    * trip wizard's PaymentPlanEditor. Null when the trip has no payment

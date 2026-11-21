@@ -75,11 +75,6 @@ export type PublicExperiencePriceBasis = "person" | "group" | "block";
 export interface PublicExperienceTicket {
   /** ticket_types.id — the line a buyer purchases through ticket-checkout-create. */
   ticketTypeId: string;
-  /**
-   * #3281 S4 — this ticket's add-ons as the reader returns them (`extras`),
-   * parsed by the shared cart. Absent until the reader carries add-ons (#3281 S2).
-   */
-  buyerExtras?: unknown;
   name: string;
   priceCents: number;
   currency: string;
@@ -426,7 +421,6 @@ function mapRpcTicket(
     isUnlimited: t.isUnlimited === true,
     isFree: t.isFree === true || (t.priceCents ?? 0) === 0,
     ticketsRemaining: t.ticketsRemaining ?? null,
-    ...(t.extras !== undefined ? { buyerExtras: t.extras } : {}),
     priceAllInGbp:
       t.isFree === true || (t.priceCents ?? 0) === 0
         ? null
@@ -722,8 +716,6 @@ interface RpcExpStop {
 }
 interface RpcExpTicket {
   ticketTypeId: string;
-  /** #3281 — present only when the ticket has an add-on (reader rule). */
-  extras?: unknown;
   name: string;
   priceCents: number;
   allInCents: number | null;
