@@ -328,3 +328,19 @@ export function sidePanelOnSwitch({ sideKind = null, dirty = false, same = false
 }
 
 export const DISCARD_TICKET_WORDS = "Discard the ticket you started? What you typed in Create ticket will be lost.";
+
+/** The least height the third-column side panel is given, so its form stays usable. */
+export const SIDE_PANEL_MIN_HEIGHT = 320;
+/** The gap kept under the side panel, above the bottom of the window. */
+export const SIDE_PANEL_BOTTOM_GAP = 12;
+
+/**
+ * #4420 (rework 2, P3-3): the third-column side panel's height from where its
+ * top is and how tall the window is, so its header and its Create / Cancel
+ * row are in view (the form scrolls inside). Never below the minimum.
+ */
+export function sidePanelFitHeight(top, viewportHeight) {
+  const t = Number.isFinite(top) ? Math.max(0, top) : 0;
+  const vh = Number.isFinite(viewportHeight) ? viewportHeight : 0;
+  return Math.max(SIDE_PANEL_MIN_HEIGHT, Math.floor(vh - t - SIDE_PANEL_BOTTOM_GAP));
+}

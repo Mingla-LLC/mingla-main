@@ -40,6 +40,8 @@ import {
   rowTitle,
   reportedRow,
   sidePanelOnSwitch,
+  sidePanelFitHeight,
+  SIDE_PANEL_MIN_HEIGHT,
   DISCARD_TICKET_WORDS,
   splitInbox,
   ticketPrefill,
@@ -360,5 +362,30 @@ describe("S-10 an open Create ticket panel and another conversation", () => {
     assert.match(src, /onDirtyChange=\{\(dirty\) => \{ createDirtyRef\.current = dirty; \}\}/);
     assert.match(read("components/support/CreateTicketPanel.jsx"), /onDirtyChange=\{onDirtyChange\}/);
     assert.match(read("components/ops/TicketForm.jsx"), /useEffect\(\(\) => \{ onDirtyChange\?\.\(dirty\); \}, \[dirty, onDirtyChange\]\);/);
+  });
+});
+
+// P3-3 (rework 2): at 1280 x 800 the third-column Create ticket panel fits the
+// window; its header and Make ticket / Cancel row stay in view and the form
+// scrolls inside. FAILS-ON-REVERT: without sidePanelFitHeight the import fails;
+// without the wiring the source assertions fail.
+describe("S-11 the third-column Create ticket panel fits a 1280 x 800 window", () => {
+  it("the panel is as tall as the room under its top, never taller", () => {
+    // The tester measured the panel's top at about 316 px and its bottom 136 px
+    // below an 800 px window (the old fixed calc(100vh - 180px)).
+    const h = sidePanelFitHeight(316, 800);
+    assert.equal(h, 472);
+    assert.ok(316 + h <= 800, "the bottom is inside the window");
+    assert.equal(sidePanelFitHeight(-200, 800), 788, "scrolled past: the whole window less the gap");
+    assert.equal(sidePanelFitHeight(700, 800), SIDE_PANEL_MIN_HEIGHT, "never squeezed below the minimum");
+  });
+  it("the panel measures itself at 1280 px and wider, and keeps the actions in view", () => {
+    const panel = read("components/support/CreateTicketPanel.jsx");
+    assert.match(panel, /window\.matchMedia\?\.\("\(min-width: 1280px\)"\)/);
+    assert.match(panel, /sidePanelFitHeight\(el\.getBoundingClientRect\(\)\.top, window\.innerHeight\)/);
+    assert.match(panel, /style=\{fitHeight \? \{ height: fitHeight \} : undefined\}/);
+    assert.match(panel, /min-h-0 flex-1 overflow-y-auto/, "the body scrolls inside the panel");
+    assert.match(panel, /\n {12}stickyActions\n/);
+    assert.match(read("components/ops/TicketForm.jsx"), /stickyActions \? "sticky bottom-0/);
   });
 });

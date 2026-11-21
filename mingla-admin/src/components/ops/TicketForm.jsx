@@ -44,9 +44,11 @@ function FieldError({ id, words }) {
  * onCancel, onOpenCard(id), and optionally the conversation the ticket comes
  * from: conversation { id, label }, createdFrom ("board" | "conversation" |
  * "brand_group"), brandId, initialTitle, initialWhatIsWrong, initialType, initialProductArea,
- * and onDirtyChange(dirty): told when the form gains or loses edits.
+ * onDirtyChange(dirty): told when the form gains or loses edits, and
+ * stickyActions: keep Make ticket / Cancel in view at the bottom of a
+ * scrolling side panel.
  */
-export function TicketForm({ config, online, headingRef, onCreated, onCancel, onOpenCard, onDirtyChange, conversation = null, createdFrom = "board", brandId = null, initialTitle = "", initialWhatIsWrong = "", initialType = "bug", initialProductArea = "" }) {
+export function TicketForm({ config, online, headingRef, onCreated, onCancel, onOpenCard, onDirtyChange, stickyActions = false, conversation = null, createdFrom = "board", brandId = null, initialTitle = "", initialWhatIsWrong = "", initialType = "bug", initialProductArea = "" }) {
   const { addToast } = useToast();
   const directory = usePeopleDirectory();
   const team = directory.people.length ? directory.people : (config?.team || []);
@@ -269,7 +271,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div data-ticket-actions="" className={`flex flex-wrap gap-2 ${stickyActions ? "sticky bottom-0 -mx-4 -mb-4 rounded-b-xl border-t border-[var(--gray-200)] bg-[var(--color-background-primary)] px-4 py-3" : ""}`}>
         <Button type="submit" className="min-h-11" loading={busy} disabled={!online || busy}>Make ticket</Button>
         <Button type="button" variant="ghost" className="min-h-11" onClick={onCancel}>Cancel</Button>
       </div>
