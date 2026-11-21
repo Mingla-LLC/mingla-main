@@ -189,3 +189,22 @@ export function workMenuCount(dueCards, ticketsNew) {
   const b = Number(ticketsNew);
   return (Number.isFinite(a) ? a : 0) + (Number.isFinite(b) && b > 0 ? b : 0);
 }
+
+/**
+ * A ticket I own in To do is already in the due-today and overdue counts when
+ * its date has come. This counts only the owned To do tickets that are NOT yet
+ * due (no date, or a later one), so each card is counted once in the menu.
+ * `cards` is my To do list (kind and due_on are all it reads); `raw` is
+ * ops_ticket_counts' answer and caps the result.
+ */
+export function ticketsNotAlreadyDue(cards, today, raw) {
+  const ceiling = Number(raw);
+  if (!Array.isArray(cards) || !(ceiling > 0)) return 0;
+  const todayKey = String(today || "").slice(0, 10);
+  const n = cards.filter((c) => {
+    if (c?.kind !== "ticket" || c?.status !== "todo") return false;
+    const due = c?.due_on ? String(c.due_on).slice(0, 10) : "";
+    return !due || !todayKey || due > todayKey;
+  }).length;
+  return Math.min(n, ceiling);
+}

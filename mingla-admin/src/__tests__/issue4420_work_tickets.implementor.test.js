@@ -44,6 +44,7 @@ import {
   ticketChipWords,
   ticketFormProblems,
   workMenuCount,
+  ticketsNotAlreadyDue,
 } from "../lib/ticketModel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -343,5 +344,27 @@ describe("T-6 ordinary cards behave as before", () => {
     assert.match(hook, /tickets\.data\?\.tickets_new_mine/);
     assert.match(code("services/opsService.js"), /supabase\.rpc\("ops_ticket_counts"\)/);
     assert.match(code("components/layout/Sidebar.jsx"), /item\.id === "work-board" \? reviewCount\.cards \|\| 0/);
+  });
+});
+
+// Part A (#4420): the Work count never counts a ticket twice.
+describe("Work count counts each ticket once", () => {
+  const today = "2026-11-21";
+  const t = (due_on, status = "todo") => ({ kind: "ticket", status, due_on });
+  it("a To do ticket already due or overdue is not added again", () => {
+    assert.equal(ticketsNotAlreadyDue([t("2026-11-21"), t("2026-11-10")], today, 2), 0);
+  });
+  it("undated and later tickets are added; cards and other statuses are not", () => {
+    const cards = [t(null), t("2026-11-25"), t("2026-11-21"), { kind: "task", status: "todo", due_on: null }, t(null, "doing")];
+    assert.equal(ticketsNotAlreadyDue(cards, today, 3), 2);
+  });
+  it("never exceeds the server count; no list or no tickets adds nothing", () => {
+    assert.equal(ticketsNotAlreadyDue([t(null), t(null)], today, 1), 1);
+    assert.equal(ticketsNotAlreadyDue(undefined, today, 2), 0);
+    assert.equal(ticketsNotAlreadyDue([t(null)], today, 0), 0);
+  });
+  it("the hook feeds ticketsNew from the de-duplicated count", () => {
+    const hook = read("hooks/useReviewCount.js");
+    assert.match(hook, /const ticketsNew = ticketsNotAlreadyDue\(/);
   });
 });
