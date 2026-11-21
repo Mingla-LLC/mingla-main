@@ -28,6 +28,7 @@ import {
   tableDraftFrom,
   tableDraftIssues,
   tableDraftValid,
+  tableDepositModePatch,
   tableDepositShareMinor,
   tablePayload,
   type TableDraft,
@@ -274,7 +275,9 @@ export function TableForm({
               }
             : option,
         )}
-        onChange={(depositMode) => patch({ depositMode })}
+        onChange={(depositMode) =>
+          patch(tableDepositModePatch(draft, depositMode))
+        }
         disabled={!canEdit}
         hasError={showErrors && issues.hold !== null}
         testID={`${testID}-deposit-mode`}

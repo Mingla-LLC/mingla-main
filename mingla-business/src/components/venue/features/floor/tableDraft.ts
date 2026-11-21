@@ -100,6 +100,20 @@ export function tableDraftValid(d: TableDraft): boolean {
   return i.name === null && i.space === null && i.minParty === null && i.hold === null;
 }
 
+/** A newly selected share starts at the same visible 5% value the stepper shows. */
+export function tableDepositModePatch(
+  d: Pick<TableDraft, "holdShareBps">,
+  depositMode: TableDepositMode,
+): Pick<TableDraft, "depositMode" | "holdShareBps"> {
+  return {
+    depositMode,
+    holdShareBps:
+      depositMode === "min_spend_share"
+        ? (d.holdShareBps ?? 500)
+        : d.holdShareBps,
+  };
+}
+
 /** The fields to send. On an update only what changed (the server keeps the rest). */
 export function tablePayload(d: TableDraft, saved: VenueFloorTable | null, opts: { minSpendOn: boolean }): TableFields {
   const full: TableFields = {

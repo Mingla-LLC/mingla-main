@@ -32,6 +32,7 @@ import {
 import {
   nextTableName,
   tableDepositLine,
+  tableDepositModePatch,
   tableDepositShareMinor,
   tableDraftFrom,
   tableDraftIssues,
@@ -221,6 +222,22 @@ describe("the floor read and the table form", () => {
     });
     expect(tableDepositShareMinor(1001, 2500)).toBe(250);
     expect(tableDepositShareMinor(1002, 2500)).toBe(251);
+  });
+
+  // [TEST-MOD-APPROVED #4490] The share selector and its visible 5% default
+  // must update one state value; otherwise Add table refuses an untouched 5%.
+  it("initializes the visible 5% minimum-spend share when that mode is selected", () => {
+    const draft = {
+      ...tableDraftFrom(null, { spaceId: "s1", name: "B1" }),
+      minSpendMinor: 4_000_000,
+      ...tableDepositModePatch({ holdShareBps: null }, "min_spend_share"),
+    };
+    expect(draft.holdShareBps).toBe(500);
+    expect(tableDepositShareMinor(draft.minSpendMinor, draft.holdShareBps)).toBe(
+      200_000,
+    );
+    expect(tableDraftIssues(draft).hold).toBeNull();
+    expect(tablePayload(draft, null, { minSpendOn: true }).depositShareBps).toBe(500);
   });
 });
 
