@@ -1,3 +1,4 @@
+import { SiteDateInput } from "../../../components/v2/SiteDateInput";
 import type { RichTextDoc } from "../../../contracts/generated/richText.ts";
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
 import { HeroBackgroundVideo } from "../../../components/v2/HeroBackgroundVideo";
@@ -50,8 +51,8 @@ export function TripSearch({ action, id }: { action: string; id: string }) {
   return (
     <SiteSearchForm action={action} className="mg-bk" aria-label="Search trips" data-mg-in="">
       <label htmlFor={`${id}-where`}><span className="mg-bk__k">Where</span><input id={`${id}-where`} name="where" type="search" maxLength={80} /></label>
-      <label htmlFor={`${id}-from`}><span className="mg-bk__k">From</span><input id={`${id}-from`} name="from" type="date" /></label>
-      <label htmlFor={`${id}-to`}><span className="mg-bk__k">To</span><input id={`${id}-to`} name="to" type="date" /></label>
+      <label htmlFor={`${id}-from`}><span className="mg-bk__k">From</span><SiteDateInput id={`${id}-from`} name="from" /></label>
+      <label htmlFor={`${id}-to`}><span className="mg-bk__k">To</span><SiteDateInput id={`${id}-to`} name="to" /></label>
       <button type="submit" className="mg-btn"><span>Search</span><Arrow /></button>
     </SiteSearchForm>
   );

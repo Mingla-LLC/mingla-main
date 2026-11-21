@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- covers are served by the token-bound /om route (immutable, same origin). */
+import { SiteDateInput } from "../../../components/v2/SiteDateInput";
 import { isSafeHref } from "../../../contracts/generated/safety.ts";
 import type { SiteDestination } from "../../../contracts/generated/collections.ts";
 import { TrackedLink } from "../../../components/TrackedLink";
@@ -39,8 +40,8 @@ export function GridShell({ block, index, ctx, className, children }: SharedBloc
   const filters = block.show_filters === true ? (
     <SiteSearchForm action={pageHref} className="mg-bk mg-bk--panel" aria-label={`Search ${noun}`}>
       <label htmlFor={`${id}-where`}><span className="mg-bk__k">Where</span><input id={`${id}-where`} name="where" type="search" maxLength={80} defaultValue={ctx.live?.filters.where ?? undefined} /></label>
-      <label htmlFor={`${id}-from`}><span className="mg-bk__k">From</span><input id={`${id}-from`} name="from" type="date" defaultValue={ctx.live?.filters.from ?? undefined} /></label>
-      <label htmlFor={`${id}-to`}><span className="mg-bk__k">To</span><input id={`${id}-to`} name="to" type="date" defaultValue={ctx.live?.filters.to ?? undefined} /></label>
+      <label htmlFor={`${id}-from`}><span className="mg-bk__k">From</span><SiteDateInput id={`${id}-from`} name="from" defaultValue={ctx.live?.filters.from ?? undefined} /></label>
+      <label htmlFor={`${id}-to`}><span className="mg-bk__k">To</span><SiteDateInput id={`${id}-to`} name="to" defaultValue={ctx.live?.filters.to ?? undefined} /></label>
       <button type="submit" className="mg-btn"><span>Search</span><Arrow /></button>
     </SiteSearchForm>
   ) : null;

@@ -42,8 +42,6 @@ export const SCAN_ROOTS = [
   "app-mobile/src",
   "mingla-admin/src",
   "mingla-sites/src",
-  "mingla-marketing/app",
-  "mingla-marketing/components",
 ];
 
 /** Counted ratchet. Only ever lowered. */
@@ -56,14 +54,6 @@ export const ALLOWLIST = {
   "mingla-business/src/components/trip/PaymentPlanEditor.tsx": 2,
   "mingla-business/src/components/trip/TripCreatorStep1Basics.tsx": 2,
   "mingla-business/src/components/venue/MenuCategorySheet.tsx": 1,
-  "mingla-sites/src/components/v2/LiveOfferingGrid.tsx": 2,
-  "mingla-sites/src/designs/shared/blocks/Booking.tsx": 4,
-  "mingla-sites/src/designs/shared/blocks/Hero.tsx": 2,
-  "mingla-sites/src/designs/shared/blocks/Offerings.tsx": 2,
-  "mingla-sites/src/designs/voyage/blocks/TripFilters.tsx": 2,
-  "mingla-marketing/app/tools/events/EventPredictorExperience.tsx": 1,
-  "mingla-marketing/app/tools/trips/TripQuoterExperience.tsx": 1,
-  "mingla-marketing/components/forms/form-renderer.tsx": 1,
   "packages/brand-rendering/StayDateRangeField.native.tsx": 1,
   "packages/brand-rendering/StayDateRangeField.tsx": 2,
 };

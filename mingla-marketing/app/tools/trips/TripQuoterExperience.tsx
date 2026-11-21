@@ -10,6 +10,8 @@
 // is asked about a coach between stops and rooms (asked because groups over 15
 // need transport); the quote is then re-priced per person with them.
 
+import { CalendarInput } from '@mingla/calendar-web'
+import '@mingla/calendar-web/calendar.css'
 import { useState } from 'react'
 import { PreviewGate } from '../_preview/PreviewGate'
 import { Choice, CitySearch, FollowupBlock, ResearchScreen, RunError, StillNeed, ToolField, ToolPage } from '../_template/ToolPage'
@@ -223,7 +225,7 @@ export function TripQuoterExperience({ embedded = false }: { readonly embedded?:
         </ToolField>
 
         <ToolField label="Start date" htmlFor="tp-date">
-          <input id="tp-date" className="fk-input" type="date" value={startDate} min={todayStr} onChange={(e) => setStartDate(e.target.value)} />
+          <CalendarInput id="tp-date" className="fk-input" mode="date" value={startDate} min={todayStr} aria-label="Start date" onChange={(e) => setStartDate(e.target.value)} />
         </ToolField>
 
         <div className="tp-two">

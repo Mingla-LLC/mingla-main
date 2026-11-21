@@ -13,8 +13,8 @@
  */
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 
-import { formatLongDate, mergeLabels, type CalendarLabels } from "../../calendar/core/labels";
-import { parseCalendarDate } from "../../calendar/core/calendarDate";
+import { formatLongDate, mergeLabels, type CalendarLabels } from "../core/labels";
+import { parseCalendarDate } from "../core/calendarDate";
 import { Calendar, type CalendarMode } from "./Calendar";
 
 export interface CalendarChange {

@@ -17,8 +17,8 @@ import {
   parseCalendarDate,
   todayInZone,
   type CalendarDate,
-} from "../../calendar/core/calendarDate";
-import { reduceKeyboard } from "../../calendar/core/keyboard";
+} from "../core/calendarDate";
+import { reduceKeyboard } from "../core/keyboard";
 import {
   dayA11yLabel,
   formatLongDate,
@@ -29,9 +29,9 @@ import {
   monthTitle,
   weekdayInitials,
   type CalendarLabels,
-} from "../../calendar/core/labels";
-import { isDisabled, monthMatrix } from "../../calendar/core/monthGrid";
-import { clampToBounds, daysCovered, nextRange, nights } from "../../calendar/core/rangeRules";
+} from "../core/labels";
+import { isDisabled, monthMatrix } from "../core/monthGrid";
+import { clampToBounds, daysCovered, nextRange, nights } from "../core/rangeRules";
 
 export type CalendarMode = "date" | "datetime" | "range";
 export interface RangeValue {

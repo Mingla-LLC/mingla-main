@@ -43,6 +43,7 @@
     "test:issue-4452": "node scripts/issue-4452-site-manifest.check.mjs --self-test && node --test lib/__tests__/issue-4452-cta.implementor.test.mjs lib/__tests__/issue-4452-privacy-bar.implementor.test.mjs lib/__tests__/issue-4452-site-blocks.implementor.test.mjs lib/__tests__/issue-4452-rework-ui.implementor.test.mjs lib/__tests__/issue-4452-main-baseline.implementor.test.mjs"
   },
   "dependencies": {
+    "@mingla/calendar-web": "file:../packages/calendar-web",
     "@next/third-parties": "^15.1.6",
     "clsx": "^2.1.1",
     "framer-motion": "^11.15.0",

@@ -11,6 +11,8 @@
 // hides the ticket price and asks the RSVP goal and no-show history (asked
 // because it's free); the forecast is then the show-up rate and RSVPs to aim for.
 
+import { CalendarInput } from '@mingla/calendar-web'
+import '@mingla/calendar-web/calendar.css'
 import { useState } from 'react'
 import { PreviewGate } from '../_preview/PreviewGate'
 import { Choice, CitySearch, FollowupBlock, ResearchScreen, RunError, StillNeed, ToolField, ToolPage } from '../_template/ToolPage'
@@ -251,7 +253,7 @@ export function EventPredictorExperience({ embedded = false }: { readonly embedd
 
         <div className="tp-two">
           <ToolField label="Date" htmlFor="ev-date">
-            <input id="ev-date" className="fk-input" type="date" value={date} min={todayStr} onChange={(e) => setDate(e.target.value)} />
+            <CalendarInput id="ev-date" className="fk-input" mode="date" value={date} min={todayStr} aria-label="Date" onChange={(e) => setDate(e.target.value)} />
           </ToolField>
           <ToolField label="Start time" htmlFor="ev-time">
             <input id="ev-time" className="fk-input" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
