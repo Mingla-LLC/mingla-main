@@ -6,6 +6,7 @@ export {
   IntakeFormRenderer,
   type IntakeFormRendererProps,
   IntakeQuestionDate,
+  IntakeQuestionHelper,
   IntakeQuestionLongText,
   type IntakeQuestionMultiChoiceProps,
   IntakeQuestionMultiChoice,
@@ -20,6 +21,7 @@ export {
   SHORT_TEXT_MAX,
 } from "./QuestionRenderers";
 export * from "./brandFormRules";
+export { DEFAULT_FORM_RENDERING_COPY, resolveFormCopy } from "./formCopy";
 export {
   type BrandCoverProps,
   BrandFormRenderer,

@@ -12,10 +12,10 @@
  * server does. A door question carries "Shown to door staff" under its label.
  */
 
-import type { FormAnswerValue, FormQuestion, FormSchema } from "./types";
+import { DEFAULT_FORM_RENDERING_COPY } from "./formCopy";
+import type { FormAnswerValue, FormQuestion, FormRenderingCopy, FormSchema } from "./types";
 
-export const SHOWN_TO_DOOR_STAFF = "Shown to door staff";
-export const ANSWERS_SEEN_LINE = "The host and their door staff can see your answers.";
+export { ANSWERS_SEEN_LINE, SHOWN_TO_DOOR_STAFF } from "./formCopy";
 
 export type BrandFormQuestionType =
   | "short_text"
@@ -108,14 +108,17 @@ export function visibleAnswers(def: BrandFormDefinitionShape, answers: BrandAnsw
 export const hasDoorQuestions = (def: BrandFormDefinitionShape): boolean =>
   def.questions.some((q) => q.show_at_door === true);
 
-const toFormQuestion = (q: BrandFormQuestionDef, index: number): FormQuestion => {
+type RulesCopy = Pick<FormRenderingCopy, "shownToDoorStaff" | "untitledQuestion">;
+
+const toFormQuestion = (q: BrandFormQuestionDef, index: number, copy: RulesCopy): FormQuestion => {
   const lines: string[] = [];
   if (typeof q.help === "string" && q.help.trim().length > 0) lines.push(q.help.trim());
-  if (q.show_at_door === true) lines.push(SHOWN_TO_DOOR_STAFF);
+  // #4541 R6.3: the frame draws this line with the eye mark (matched on these words).
+  if (q.show_at_door === true) lines.push(copy.shownToDoorStaff);
   const out: FormQuestion = {
     id: q.id,
     type: q.type,
-    label: q.label.length > 0 ? q.label : "Untitled question",
+    label: q.label.length > 0 ? q.label : copy.untitledQuestion,
     required: q.required,
     position: index,
   };
@@ -124,9 +127,16 @@ const toFormQuestion = (q: BrandFormQuestionDef, index: number): FormQuestion =>
   return out;
 };
 
-/** The list the renderer draws for these answers (visible questions only). */
-export function rendererSchema(def: BrandFormDefinitionShape, answers: BrandAnswers): FormSchema {
-  return { questions: visibleQuestions(def, answers).map(toFormQuestion) };
+/**
+ * The list the renderer draws for these answers (visible questions only).
+ * `copy` is the injected words (#4541 R2.12); absent, the English defaults.
+ */
+export function rendererSchema(
+  def: BrandFormDefinitionShape,
+  answers: BrandAnswers,
+  copy: RulesCopy = DEFAULT_FORM_RENDERING_COPY,
+): FormSchema {
+  return { questions: visibleQuestions(def, answers).map((q, i) => toFormQuestion(q, i, copy)) };
 }
 
 const labelOf = (q: BrandFormQuestionDef, id: string): string | null =>
