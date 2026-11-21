@@ -5,7 +5,7 @@ import {
 } from "@mingla/offering-rendering/discountQuote";
 
 import { supabase } from "./supabase";
-import { extrasRefusalIn } from "@mingla/offering-rendering/ticketExtrasCart";
+import { extrasRefusalIn } from "@mingla/offering-rendering/ticketExtrasRefusal";
 import { extractFunctionErrorFields } from "../utils/edgeFunctionError";
 
 export interface TicketQuoteInput {

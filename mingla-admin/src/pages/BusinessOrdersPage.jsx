@@ -21,7 +21,7 @@ import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { listOrders, getOrder, getOrdersOverview, getOrderAddOnLines } from "../services/adminMoneyService";
-import { addOnRows, addOnLinesBody, addOnSummary } from "../lib/orderAddOnRefunds";
+import { addOnRows, addOnLinesBody, addOnSummary, planRemovalNotice, SPREAD_ADD_ON_NOTE } from "../lib/orderAddOnRefunds";
 import { formatMoneyMinor } from "../lib/moneyFormat";
 import { describeAdminRefundError } from "../lib/adminRefundError";
 import { LoadError } from "../components/ui/LoadError";
@@ -535,7 +535,7 @@ function RefundModal({ onClose, order, lineItems, addOnLines, onRefunded, provid
       .map((r) => ({ order_line_item_id: r.id, quantity: r.qty, amount_cents: r.amount }));
     const addOnBody = addOnLinesBody(addOns);
     if (lines.length === 0 && !addOnBody.addOnLines) throw new Error("Pick at least one item to refund.");
-    const { error } = await refundOrder({
+    const { data, error } = await refundOrder({
       order_id: order.id,
       lines,
       ...addOnBody,
@@ -554,7 +554,8 @@ function RefundModal({ onClose, order, lineItems, addOnLines, onRefunded, provid
       if (described.keySpent) setIdempotencyKey(createAdminRefundIdempotencyKey());
       throw new Error(described.message || body?.detail || error.message || "Refund failed.");
     }
-    onRefunded?.();
+    // #3281 S5: a spread add-on with nothing paid yet comes off the plan only.
+    onRefunded?.(planRemovalNotice(data, formatMoney, order.currency));
   };
 
   const inputClass = [
@@ -633,6 +634,9 @@ function RefundModal({ onClose, order, lineItems, addOnLines, onRefunded, provid
               <span className="block text-xs text-[var(--color-text-tertiary)]">
                 {formatMoney(r.unit, order.currency)} ea · {r.remaining} refundable
               </span>
+              {r.spread && (
+                <span className="block text-xs text-[var(--color-text-tertiary)]">{SPREAD_ADD_ON_NOTE}</span>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <input
@@ -669,6 +673,8 @@ export function BusinessOrdersPage() {
   const [refundOpen, setRefundOpen] = useState(false);
   const [money, setMoney] = useState(null);
   const [addOns, setAddOns] = useState(null);
+  // #3281 S5: what the last refund did when it only took an add-on off the plan.
+  const [refundNotice, setRefundNotice] = useState(null);
   const [initialStatus] = useState(() => statusFromHash());
 
   useEffect(() => {
@@ -763,7 +769,10 @@ export function BusinessOrdersPage() {
         />
         {bundle && REFUNDABLE_STATUSES.includes(order.payment_status) && !isFreeOrder(order) && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">
-            <Button variant="danger" size="md" onClick={() => setRefundOpen(true)}>
+            {refundNotice && (
+              <span role="status" className="mr-auto text-sm text-[var(--color-text-secondary)]">{refundNotice}</span>
+            )}
+            <Button variant="danger" size="md" onClick={() => { setRefundNotice(null); setRefundOpen(true); }}>
               Issue refund
             </Button>
           </div>
@@ -774,7 +783,10 @@ export function BusinessOrdersPage() {
             order={order}
             lineItems={bundle?.line_items || []}
             addOnLines={addOns?.lines || []}
-            onRefunded={() => loadOrder(selectedOrderId)}
+            onRefunded={(notice) => {
+              setRefundNotice(notice ?? null);
+              loadOrder(selectedOrderId);
+            }}
             provider={money?.provider}
           />
         )}

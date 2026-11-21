@@ -4,14 +4,14 @@
  * the add-ons above zero, and never otherwise.
  *
  * Fails on revert: drop the every-line-free check or the priced-total check in
- * `freeParentAddOnsNote` (src/components/checkout/CartTicketExtras.tsx) -> red.
+ * `freeParentAddOnsNote` (src/components/checkout/freeParentAddOnsNote.ts) -> red.
  */
 import { describe, expect, test } from "@jest/globals";
 
 import {
   FREE_PARENT_ADD_ONS_NOTE,
   freeParentAddOnsNote,
-} from "../CartTicketExtras";
+} from "../freeParentAddOnsNote";
 
 const free = { isFree: true, quantity: 1 };
 const paid = { isFree: false, quantity: 1 };

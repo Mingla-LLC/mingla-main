@@ -78,14 +78,11 @@ import {
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { CheckoutCoverFallback } from "../../../src/components/checkout/CheckoutCoverFallback";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
-import {
-  CartTicketExtras,
-  freeParentAddOnsNote,
-} from "../../../src/components/checkout/CartTicketExtras";
+import { freeParentAddOnsNote } from "../../../src/components/checkout/freeParentAddOnsNote";
 import {
   extrasRefusalCopy,
   extrasRefusalIn,
-} from "@mingla/offering-rendering/ticketExtrasCart";
+} from "@mingla/offering-rendering/ticketExtrasRefusal";
 // ORCH-0850 [End-not-start parity systemic]: route the past gate through the
 // canonical helper. Pre-0850 local `computeIsPast` used `new Date(event.date)
 // + 24h < Date.now()` which fired at 8pm EDT on the start day for any
@@ -112,6 +109,16 @@ const CheckoutDiscountCodeField = React.lazy(() =>
     (module) => ({ default: module.CheckoutDiscountCodeField }),
   ),
 );
+// #3281 — the add-on picker loads on use, only for a ticket that carries
+// add-ons: one chunk shared with the trip and experience carts, never in the
+// boot payload.
+const CartTicketExtras = React.lazy(() =>
+  import("../../../src/components/checkout/CartTicketExtras").then(
+    (module) => ({ default: module.CartTicketExtras }),
+  ),
+);
+const ticketHasAddOns = (buyerExtras: unknown): boolean =>
+  Array.isArray(buyerExtras) && buyerExtras.length > 0;
 
 const sortByDisplayOrder = (a: TicketStub, b: TicketStub): number =>
   a.displayOrder - b.displayOrder;
@@ -865,30 +872,37 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
                         })
                       }
                     />
-                    <CartTicketExtras
-                      ticket={ticket}
-                      line={line}
-                      eventDateIds={eventDateIds}
-                      occurrences={occurrences}
-                      allDaysPass={publicEventQuery.data?.allDaysPass === true}
-                      currency={ticket.currency ?? event.currency ?? "GBP"}
-                    />
+                    {ticketHasAddOns(ticket.buyerExtras) ? (
+                      <React.Suspense fallback={null}>
+                        <CartTicketExtras
+                          ticket={ticket}
+                          line={line}
+                          eventDateIds={eventDateIds}
+                          occurrences={occurrences}
+                          allDaysPass={publicEventQuery.data?.allDaysPass === true}
+                          currency={ticket.currency ?? event.currency ?? "GBP"}
+                        />
+                      </React.Suspense>
+                    ) : null}
                   </View>
                 );
               })}
           {/* issue #3281 — per-date carts pick extras once per ticket, after the dates. */}
           {eventDateIds.length >= 2 && !sameTicketsForEveryDate
-            ? visibleTickets.map((ticket) => (
-                <CartTicketExtras
-                  key={`extras-${ticket.id}`}
-                  ticket={ticket}
-                  line={lines.find((l) => l.ticketTypeId === ticket.id)}
-                  eventDateIds={eventDateIds}
-                  occurrences={occurrences}
-                  allDaysPass={publicEventQuery.data?.allDaysPass === true}
-                  currency={ticket.currency ?? event.currency ?? "GBP"}
-                />
-              ))
+            ? visibleTickets.map((ticket) =>
+                ticketHasAddOns(ticket.buyerExtras) ? (
+                  <React.Suspense key={`extras-${ticket.id}`} fallback={null}>
+                    <CartTicketExtras
+                      ticket={ticket}
+                      line={lines.find((l) => l.ticketTypeId === ticket.id)}
+                      eventDateIds={eventDateIds}
+                      occurrences={occurrences}
+                      allDaysPass={publicEventQuery.data?.allDaysPass === true}
+                      currency={ticket.currency ?? event.currency ?? "GBP"}
+                    />
+                  </React.Suspense>
+                ) : null,
+              )
             : null}
           {freeParentNote !== null ? (
             <Text

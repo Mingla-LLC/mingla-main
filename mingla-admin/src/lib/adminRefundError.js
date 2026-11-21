@@ -19,6 +19,10 @@ export function adminRefundErrorCopy(code, refundOutcome = null) {
     case "add_on_line_overrefund": return "That's more of this add-on than is left to refund.";
     case "add_on_line_not_found": return "That add-on isn't on this order any more. Reload the order and try again.";
     case "add_on_refunds_off": return "Refunding an add-on on its own isn't available yet.";
+    // #3281 S5: an add-on spread over a trip plan.
+    case "add_on_plan_open_use_cancel": return "This trip is still being paid in instalments. Cancel the booking to give everything back.";
+    case "add_on_plan_changed":
+    case "balance_payment_in_flight": return "A payment on this plan is going through right now. Try again in a few minutes.";
     case "refund_failed": return "The refund didn't go through, so nothing was refunded. Try again.";
     case "stripe_declined":
       return refundOutcome === "unknown"

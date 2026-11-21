@@ -15,13 +15,12 @@ import {
   extrasCartDates,
   extrasLineDates,
   extrasParentCount,
-  extrasRefusalCopy,
-  extrasRefusalIn,
   extraSoldOutOnLine,
   fitExtrasToLine,
   parsePublicTicketExtras,
   withExtraQuantity,
 } from "../ticketExtrasCart.ts";
+import { extrasRefusalCopy, extrasRefusalIn } from "../ticketExtrasRefusal.ts";
 import {
   checkoutClientAttemptFingerprint,
   normalizeCheckoutV2Lines,

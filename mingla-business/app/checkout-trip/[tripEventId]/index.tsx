@@ -69,6 +69,7 @@ import {
 } from "../../../src/components/buyer/BuyerConnectionNotice";
 import { isConnectionFailure } from "../../../src/services/connectionFailure";
 import { QuantityRow } from "../../../src/components/checkout/QuantityRow";
+import { featureFlags } from "../../../src/config/featureFlags";
 // META-ORCH-1187 P2 — buyer-web funnel parity: fire `web_checkout_started` on the
 // trip checkout too (the event checkout already does; trips/experiences didn't,
 // undercounting started checkouts). Web-only (native no-op via the .web split).
@@ -84,6 +85,19 @@ const CheckoutDiscountCodeField = React.lazy(() =>
     (module) => ({ default: module.CheckoutDiscountCodeField }),
   ),
 );
+
+// #3281 — the event cart's add-on picker, loaded on use: its chunk is fetched
+// only when the add-ons flag is on and a package carries add-ons, so nothing
+// joins the boot payload or this route until then (the S2 readers carry them).
+const CartTicketExtras = React.lazy(() =>
+  import("../../../src/components/checkout/CartTicketExtras").then(
+    (module) => ({ default: module.CartTicketExtras }),
+  ),
+);
+
+/** #3281 — true only when the flag is on and the reader sent add-ons. */
+const showAddOnPicker = (buyerExtras: unknown): boolean =>
+  featureFlags.extras && Array.isArray(buyerExtras) && buyerExtras.length > 0;
 
 /**
  * Convert a TripPricingTier (DB shape) to a TicketStub (QuantityRow's
@@ -120,7 +134,13 @@ const tierToTicketStub = (tier: TripPricingTier): TicketStub => ({
   saleStartAt: null,
   saleEndAt: null,
   availableAt: "online" as TicketAvailableAt,
+  // #3281 — the package's add-ons ride the stub, as on the event cart.
+  buyerExtras: tier.buyerExtras,
 });
+
+// #3281 — a trip is one run: no per-date add-on scoping on its cart.
+const NO_EVENT_DATES: readonly string[] = [];
+const NO_OCCURRENCES: readonly never[] = [];
 
 const isTripPast = (endAtIso: string | null): boolean => {
   if (endAtIso === null) return false;
@@ -713,6 +733,24 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
                     })
                   }
                 />
+                {showAddOnPicker(ticket.buyerExtras) ? (
+                  <React.Suspense fallback={null}>
+                    <CartTicketExtras
+                      ticket={ticket}
+                      line={lines.find(
+                        (line) => line.ticketTypeId === ticket.id,
+                      )}
+                      eventDateIds={NO_EVENT_DATES}
+                      occurrences={NO_OCCURRENCES}
+                      allDaysPass={false}
+                      currency={
+                        ticket.currency ??
+                        trip.pricingTiers[0]?.currency ??
+                        "USD"
+                      }
+                    />
+                  </React.Suspense>
+                ) : null}
               </View>
             );
           })}
