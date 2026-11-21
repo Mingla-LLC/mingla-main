@@ -7,6 +7,7 @@
     "class": "business-node22-ignore-scripts",
     "originPaths": [
       "mingla-business/jest.issue4523.cfg.cjs",
+      "mingla-business/jest.orch1118.babel.cjs",
       "mingla-business/src/components/ui/**",
       "packages/brand-rendering/**",
       "packages/calendar-web/**",

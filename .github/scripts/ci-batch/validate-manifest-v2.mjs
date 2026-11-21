@@ -1126,11 +1126,13 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // [TEST-MOD-APPROVED #3643] Re-banked all four after the advisory-floor overrides
 // (glob@^13, minimatch@^9/^10, uuid, markdown-it floor; app-mobile
 // image-size + the Metro image-size patch) and in-range JS updates. No framework majors.
+// [TEST-MOD-APPROVED #4523] Re-banked after both apps declared the reviewed
+// first-party @mingla/calendar file dependency and its lockfile link.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
-  "app-mobile/package.json": "fcdf6302f7944b01a48ddb2111b2d3deed82644b519c7c9a2bc673e31a30aae6",
-  "app-mobile/package-lock.json": "40bac6aff5ba88ab90debc72a88f0b106bf2d2e4dc0234f20b054d2ae9786edf",
-  "mingla-business/package.json": "317e03276578841eff1f4840aa448907b32790111bb866e54023f982d0f01903",
-  "mingla-business/package-lock.json": "b4d1f5f1849fbc2857b358d57ae9d0c0d95b868da76d562c55f24059b29f01ea",
+  "app-mobile/package.json": "df93d3730ad0456fe5bb6b79b038359a393b89530160129943056377b1b62e99",
+  "app-mobile/package-lock.json": "2f983c42fc4d6f4a7b56810fb459ec2bd791b0767d89c84716ea0abf88521fed",
+  "mingla-business/package.json": "46a6be5cec9b1bf029aae42755e2c6a189c401a29ac08bc5534f397275efbb66",
+  "mingla-business/package-lock.json": "f87f071dd19d12ad5c2227b0fe60caee02e582c46e218dcb9113e8d6458d51a8",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
