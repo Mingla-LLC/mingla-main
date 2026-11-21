@@ -10,6 +10,8 @@ import type {
   MemberStatus,
   MemberTimelineEvent,
   MembershipPlan,
+  MembershipJoinMode,
+  MembershipPlanPeriod,
   VenueMemberDetail,
   VenueMemberRow,
 } from "../../../../types/venueMembers";
@@ -75,6 +77,10 @@ export function memberStatusWords(status: MemberStatus, leavingOn: string | null
       return { label: "Lapsed", variant: "error" };
     case "paused":
       return { label: "Paused", variant: "muted" };
+    case "requested":
+      return { label: "Requested", variant: "info" };
+    case "declined":
+      return { label: "Declined", variant: "muted" };
     case "pending":
       return { label: "Joining", variant: "draft" };
     case "cancelled":
@@ -86,10 +92,28 @@ export function memberStatusWords(status: MemberStatus, leavingOn: string | null
   }
 }
 
-export type MemberFilter = "all" | "active" | "payment_due" | "grace" | "lapsed" | "paused" | "leaving" | "joining" | "ended";
+/** Request rows are decisions, not memberships with billing/end controls. */
+export function memberRequestState(status: MemberStatus): boolean {
+  return status === "requested" || status === "declined";
+}
 
-export const MEMBER_FILTERS: ReadonlyArray<{ key: MemberFilter; label: string }> = [
+export function memberCanEnd(
+  status: MemberStatus,
+  canManage: boolean,
+  leaving: VenueMemberDetail["leaving"],
+): boolean {
+  return canManage && status !== "cancelled" && !memberRequestState(status) && leaving === null;
+}
+
+export function memberCanAssignDesk(status: MemberStatus): boolean {
+  return status === "active" || status === "payment_due" || status === "grace";
+}
+
+export type MemberFilter = "all" | "requests" | "active" | "payment_due" | "grace" | "lapsed" | "paused" | "leaving" | "joining" | "ended";
+
+export const MEMBER_FILTERS: readonly { key: MemberFilter; label: string }[] = [
   { key: "all", label: "All" },
+  { key: "requests", label: "Requests" },
   { key: "active", label: "Active" },
   { key: "payment_due", label: "Payment due" },
   { key: "grace", label: "In grace" },
@@ -105,6 +129,8 @@ export function memberMatches(row: VenueMemberRow, filter: MemberFilter): boolea
   switch (filter) {
     case "all":
       return true;
+    case "requests":
+      return row.status === "requested";
     case "active":
       return row.status === "active" && row.leavingOn === null;
     case "payment_due":
@@ -118,9 +144,9 @@ export function memberMatches(row: VenueMemberRow, filter: MemberFilter): boolea
     case "leaving":
       return row.leavingOn !== null && row.status !== "cancelled";
     case "joining":
-      return row.status === "pending";
+      return row.status === "pending" || row.status === "requested";
     case "ended":
-      return row.status === "cancelled";
+      return row.status === "cancelled" || row.status === "declined";
     default: {
       const never: never = filter;
       return never;
@@ -132,6 +158,8 @@ export function memberMatches(row: VenueMemberRow, filter: MemberFilter): boolea
 export function memberRowLine(row: VenueMemberRow, timeZone: string): string {
   const day = (iso: string | null): string => memberDay(iso, timeZone) ?? "—";
   if (row.status === "cancelled") return "Membership ended";
+  if (row.status === "declined") return "Request declined";
+  if (row.status === "requested") return "Waiting for the venue to reply";
   if (row.status === "pending") return "First month not paid yet";
   if (row.leavingOn !== null) return `Leaving ${day(row.leavingOn)}`;
   if (row.status === "paused") return "Paused until they pay to start again";
@@ -296,6 +324,9 @@ export interface PlanDraft {
   name: string;
   summary: string;
   priceMinor: number | null;
+  period: MembershipPlanPeriod;
+  joinMode: MembershipJoinMode;
+  deskSpaceIds: string[];
   entryIncluded: boolean;
   entryOfferingId: string | null;
   guestPasses: number;
@@ -318,6 +349,9 @@ export function planDraftFrom(plan: MembershipPlan | null, defaults?: { entryOff
     name: plan?.name ?? "",
     summary: plan?.summary ?? "",
     priceMinor: plan?.priceMinor ?? null,
+    period: plan?.period ?? "month",
+    joinMode: plan?.joinMode ?? "instant",
+    deskSpaceIds: plan?.deskSpaceIds ?? [],
     entryIncluded: plan?.entryIncluded ?? (defaults?.entryOfferingId ?? null) !== null,
     entryOfferingId: plan?.entryOfferingId ?? defaults?.entryOfferingId ?? null,
     guestPasses: plan?.guestPasses ?? 0,
@@ -343,6 +377,9 @@ export function planPayload(d: PlanDraft, planId: string | null): Record<string,
     summary: d.summary.trim().length > 0 ? d.summary.trim() : null,
     inclusions: d.inclusions.map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 6),
     priceMinor: d.priceMinor,
+    period: d.period,
+    joinMode: d.joinMode,
+    deskSpaceIds: d.deskSpaceIds,
     entryIncluded: d.entryIncluded && d.entryOfferingId !== null,
     entryOfferingId: d.entryIncluded ? d.entryOfferingId : null,
     roomHours: d.roomHours,
@@ -364,6 +401,7 @@ export interface PlanIssues {
   entry: string | null;
   discount: string | null;
   inclusions: string | null;
+  desks: string | null;
 }
 
 export function planIssues(d: PlanDraft): PlanIssues {
@@ -379,11 +417,12 @@ export function planIssues(d: PlanDraft): PlanIssues {
     entry: d.entryIncluded && d.entryOfferingId === null ? "Pick the Entry offer members get in on" : null,
     discount: d.discountPercent > 0 && d.discountKinds.length === 0 ? "Pick what the member price applies to" : null,
     inclusions: lines.length > 6 ? "Up to 6 lines" : lines.some((l) => l.length > 80) ? "Keep each line under 80 characters" : null,
+    desks: d.deskSpaceIds.length > 500 ? "Pick no more than 500 assignable desks" : null,
   };
 }
 
 export function planIssueList(i: PlanIssues): string[] {
-  return [i.name, i.price, i.entry, i.discount, i.inclusions].filter((x): x is string => x !== null);
+  return [i.name, i.price, i.entry, i.discount, i.inclusions, i.desks].filter((x): x is string => x !== null);
 }
 
 /**
@@ -417,6 +456,12 @@ export function planTermsLine(d: Pick<PlanDraft, "minMonths" | "noticeDays" | "g
   return parts.join(" · ");
 }
 
+export function planJoinLine(plan: Pick<PlanDraft, "joinMode" | "deskSpaceIds">): string {
+  const parts = [plan.joinMode === "request" ? "By request" : "Join and pay"];
+  if (plan.deskSpaceIds.length > 0) parts.push("Assigned desk available");
+  return parts.join(" · ");
+}
+
 export const MIN_MONTH_OPTIONS = [1, 2, 3, 6, 12].map((n) => ({ value: n, label: n === 1 ? "None" : `${n} months` }));
 export const NOTICE_OPTIONS = [0, 7, 14, 30, 60].map((n) => ({ value: n, label: n === 0 ? "None" : `${n} days` }));
 export const GRACE_OPTIONS = [0, 3, 5, 7, 10, 14].map((n) => ({ value: n, label: n === 0 ? "None" : `${n} days` }));
@@ -436,6 +481,9 @@ const PLAN_ERRORS: Readonly<Record<string, string>> = {
   plan_guest_passes_invalid: "Guest passes must be between 0 and 100 a month.",
   plan_discount_invalid: "The member price must be 0% to 100% off, on the kinds you pick.",
   plan_max_members_invalid: "The member limit must be between 1 and 100,000.",
+  plan_join_mode_invalid: "Choose whether guests join and pay or ask first.",
+  plan_desks_invalid: "Pick only spaces at this venue as assignable desks.",
+  plan_desks_in_use: "Unassign this desk from its current member before removing it from the plan.",
   plan_terms_invalid: "Check the minimum months, notice, grace and email days.",
   plan_not_found: "This plan no longer exists. Reload Plans.",
   plan_archived: "This plan is archived and can't be changed.",
@@ -459,6 +507,11 @@ const MEMBER_ERRORS: Readonly<Record<string, string>> = {
   membership_not_paused: "This membership isn't paused.",
   membership_nothing_to_pay: "Nothing is owed on this membership right now.",
   member_link_too_soon: "The payment link was sent less than 10 minutes ago. Try again shortly.",
+  member_request_not_open: "This request has already been decided.",
+  member_request_plan_full: "This plan is full now, so the request can't be approved.",
+  member_desk_not_allowed: "Pick a desk offered by this member's plan.",
+  member_desk_not_assignable: "A desk can only be assigned to a current or joining member.",
+  desk_taken: "That desk is already booked. Pick another desk.",
   offer_payment_already_pending: "The member is paying online right now. Wait a few minutes, then check again.",
   membership_not_found: "This member couldn't be found. Reload the list.",
   member_guest_passes_used_up: "No guest passes left this month. The guests can buy entry instead.",

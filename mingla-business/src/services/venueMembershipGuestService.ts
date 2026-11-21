@@ -39,6 +39,7 @@ export interface MembershipJoinResult {
   raw: unknown;
   subscriptionId: string;
   memberToken: string | null;
+  status: string | null;
 }
 
 export interface MembershipPayRedirect {
@@ -71,6 +72,7 @@ export const venueMembershipGuestService = {
       raw,
       subscriptionId,
       memberToken: typeof raw.memberToken === "string" ? raw.memberToken : null,
+      status: typeof raw.status === "string" ? raw.status : null,
     };
   },
 

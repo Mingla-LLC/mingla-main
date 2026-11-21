@@ -14,7 +14,20 @@ import {
   readVenueOfferBookingToken,
 } from "../../../utils/venueOfferBookingTokens";
 
-export type GuestMemberStatus = "pending" | "active" | "payment_due" | "grace" | "lapsed" | "paused" | "cancelled";
+export type GuestMemberStatus = "pending" | "active" | "payment_due" | "grace" | "lapsed" | "paused" | "requested" | "declined" | "cancelled";
+
+/** A by-request join never opens the payment provider before Host approval. */
+export function membershipJoinNeedsPayment(
+  joinMode: "instant" | "request",
+  resultStatus: string | null,
+): boolean {
+  return joinMode === "instant" && resultStatus !== "requested";
+}
+
+/** Benefits and member prices start only after the first period is paid. */
+export function membershipBenefitsAvailable(status: GuestMemberStatus): boolean {
+  return status === "active" || status === "payment_due" || status === "grace";
+}
 
 export interface GuestMember {
   subscriptionId: string;
@@ -35,6 +48,8 @@ export interface GuestMember {
     discountKinds: string[];
     hourOfferingIds: string[];
     entryOfferingId: string | null;
+    period: "month" | "year";
+    joinMode: "instant" | "request";
   };
   terms: { minMonths: number | null; noticeDays: number | null; graceDays: number | null; renewalNoticeDays: number | null };
   venue: { id: string; name: string; slug: string | null; brandSlug: string | null; brandName: string | null; timezone: string };
@@ -46,6 +61,8 @@ export interface GuestMember {
   renewsOn: string | null;
   renewalEmailOn: string | null;
   canCheckIn: boolean;
+  assignedSpace: { id: string; name: string } | null;
+  requestReplyBy: string | null;
   paymentDue: {
     periodId: string;
     amountMinor: number;
@@ -83,7 +100,7 @@ const num = (v: unknown, fallback = 0): number => {
 };
 const numOrNull = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
-const STATUSES: readonly GuestMemberStatus[] = ["pending", "active", "payment_due", "grace", "lapsed", "paused", "cancelled"];
+const STATUSES: readonly GuestMemberStatus[] = ["pending", "active", "payment_due", "grace", "lapsed", "paused", "requested", "declined", "cancelled"];
 
 /** The member read (guest view); null when it isn't one. */
 export function parseGuestMember(raw: unknown): GuestMember | null {
@@ -118,6 +135,8 @@ export function parseGuestMember(raw: unknown): GuestMember | null {
       discountKinds: strings(plan.discountKinds),
       hourOfferingIds: strings(plan.hourOfferingIds),
       entryOfferingId: strOrNull(plan.entryOfferingId),
+      period: plan.interval === "year" ? "year" : "month",
+      joinMode: plan.joinMode === "request" ? "request" : "instant",
     },
     terms: {
       minMonths: numOrNull(terms.minMonths),
@@ -140,6 +159,11 @@ export function parseGuestMember(raw: unknown): GuestMember | null {
     renewsOn: strOrNull(m.renewsOn),
     renewalEmailOn: strOrNull(m.renewalEmailOn),
     canCheckIn: m.canCheckIn === true,
+    assignedSpace:
+      m.assignedSpace === null || m.assignedSpace === undefined
+        ? null
+        : { id: str(obj(m.assignedSpace).id), name: str(obj(m.assignedSpace).name) },
+    requestReplyBy: strOrNull(m.requestReplyBy),
     paymentDue:
       due === null
         ? null
@@ -218,7 +242,7 @@ export function hoursLeftWords(hours: number): string {
 
 export interface GuestMemberState {
   /** Guest words per the contract: Active · Payment due · Paused · Left (+ joining). */
-  label: "Active" | "Payment due" | "Paused" | "Left" | "Not started";
+  label: "Active" | "Payment due" | "Paused" | "Left" | "Not started" | "Requested" | "Declined";
   tone: "success" | "warning" | "error" | "neutral";
   title: string;
   line: string;
@@ -234,6 +258,20 @@ export function guestMemberState(m: GuestMember): GuestMemberState {
         tone: "warning",
         title: "Pay your first month to start",
         line: "Your membership starts as soon as the first month is paid.",
+      };
+    case "requested":
+      return {
+        label: "Requested",
+        tone: "neutral",
+        title: "Request sent",
+        line: `${m.venue.name} will reply${m.requestReplyBy !== null ? ` by ${day(m.requestReplyBy)}` : " before you pay"}.`,
+      };
+    case "declined":
+      return {
+        label: "Declined",
+        tone: "neutral",
+        title: `${m.venue.name} can't take you on this plan right now`,
+        line: "No payment was taken.",
       };
     case "active":
       if (m.leaving !== null) {
@@ -288,6 +326,7 @@ export function guestMemberState(m: GuestMember): GuestMemberState {
 export function payLabel(m: GuestMember, totalWords: string | null): string {
   const amount = totalWords !== null ? ` ${totalWords}` : "";
   if (m.status === "pending") return `Pay${amount} and start`;
+  if (m.status === "requested" || m.status === "declined") return "No payment due";
   if (m.status === "lapsed" || m.status === "paused") return `Pay${amount} to start again`;
   return `Pay${amount}`;
 }
@@ -344,7 +383,7 @@ export function planGiveLines(p: {
 }
 
 /** The three plain lines on joining: today, each month, a skipped month. */
-export function howYouPayLines(input: { firstMonth: string | null; renewalNoticeDays: number; graceDays: number; minMonths: number; noticeDays: number }): Array<{ title: string; body: string }> {
+export function howYouPayLines(input: { firstMonth: string | null; renewalNoticeDays: number; graceDays: number; minMonths: number; noticeDays: number }): { title: string; body: string }[] {
   const leave =
     input.minMonths > 1
       ? `You can leave after ${input.minMonths} months${input.noticeDays > 0 ? ` with ${input.noticeDays} days' notice` : ""}.`

@@ -48,6 +48,7 @@ import {
   hoursLeftWords,
   memberDayWords,
   memberGuestErrorCopy,
+  membershipBenefitsAvailable,
   monthTotal,
   monthWords,
   parseGuestMember,
@@ -299,7 +300,9 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
   const passMonth = monthWords(member.currentPeriodStart ?? member.activeUntil, tz);
   const toneInk = state.tone === "success" ? tones.success.text : state.tone === "warning" ? tones.warning.text : state.tone === "error" ? tones.error.text : palette.primaryText;
   const hourTab = page?.features.includes("by_the_hour") === true && page.offers.some((o) => o.kind === "by_the_hour");
-  const canBookRoom = member.status !== "cancelled" && member.status !== "lapsed" && member.status !== "paused" && member.status !== "pending" && hourTab && (member.plan.roomHours > 0 || member.plan.discountKinds.includes("by_the_hour"));
+  const canBookRoom = membershipBenefitsAvailable(member.status)
+    && hourTab
+    && (member.plan.roomHours > 0 || member.plan.discountKinds.includes("by_the_hour"));
   const gives = planGiveLines(member.plan);
 
   const statusCard = (
@@ -392,7 +395,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
                 : "Your pass won't open the door until this month is paid."}
         </Text>
       </View>
-    ) : handoff.passInApp ? (
+    ) : handoff.passInApp && member.status !== "requested" && member.status !== "declined" ? (
       <VenuePassInAppBlock palette={palette} theme={theme} />
     ) : null;
   const claimCard = (
@@ -415,6 +418,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
       {member.credits.guestPassesPerMonth > 0 ? (
         <Fact palette={palette} label="Guest passes" value={`${member.credits.guestPassesLeft} left`} />
       ) : null}
+      {member.assignedSpace !== null ? <Fact palette={palette} label="Your desk" value={member.assignedSpace.name} /> : null}
       {member.activeUntil !== null ? <Fact palette={palette} label="Paid until" value={day(member.activeUntil)} /> : null}
       {member.renewsOn !== null && (member.status === "active" || member.status === "payment_due" || member.status === "grace") && Date.parse(member.renewsOn) > Date.now() - 86_400_000 ? (
         <Fact

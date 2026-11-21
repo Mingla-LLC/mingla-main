@@ -91,6 +91,7 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
   const plan = savedPlan !== null && savedPlan.id === currentId ? savedPlan : listPlan;
   const entryOffers = useMemo(() => state?.entryOffers ?? [], [state?.entryOffers]);
   const hourOffers = useMemo(() => state?.hourOffers ?? [], [state?.hourOffers]);
+  const spaces = useMemo(() => state?.spaces ?? [], [state?.spaces]);
   const defaults = { entryOfferingId: entryOffers.length === 1 ? entryOffers[0]?.id ?? null : null };
   const [draft, setDraft] = useState<PlanDraft>(() => planDraftFrom(plan, defaults));
   const [baseline, setBaseline] = useState<string>(() => JSON.stringify(planDraftFrom(plan, defaults)));
@@ -321,6 +322,26 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
           </View>
 
           <View style={styles.section}>
+            <Text style={styles.sectionTitle}>How people join</Text>
+            <SelectSheet
+              label="Joining"
+              value={draft.joinMode}
+              options={[
+                { value: "instant" as const, label: "Join and pay" },
+                { value: "request" as const, label: "Ask to join" },
+              ]}
+              onChange={(joinMode) => patch({ joinMode })}
+              disabled={archived}
+              testID="plan-editor-join-mode"
+            />
+            <Text style={styles.hint}>
+              {draft.joinMode === "request"
+                ? `Guests send a request without paying. ${venueName} approves first, then they have 3 days to pay their first month.`
+                : "Guests pay their first month when they join."}
+            </Text>
+          </View>
+
+          <View style={styles.section}>
             <Text style={styles.sectionTitle}>What&apos;s included</Text>
             <View style={styles.switchRow}>
               <View style={styles.switchText}>
@@ -482,6 +503,33 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
             {draft.limitMembers ? (
               <NumberStepper label="Most members" value={draft.maxMembers} min={1} max={100000} onChange={(maxMembers) => patch({ maxMembers })} testID="plan-editor-max-members" />
             ) : null}
+            <View style={styles.inset}>
+              <Text style={styles.label}>Desks you can assign</Text>
+              {spaces.length === 0 ? (
+                <Text style={styles.hint}>Add spaces before assigning a dedicated desk to a member.</Text>
+              ) : (
+                <View style={styles.chips}>
+                  {spaces.map((spaceOption) => (
+                    <Chip
+                      key={spaceOption.id}
+                      label={spaceOption.name}
+                      selected={draft.deskSpaceIds.includes(spaceOption.id)}
+                      onPress={() =>
+                        patch({
+                          deskSpaceIds: draft.deskSpaceIds.includes(spaceOption.id)
+                            ? draft.deskSpaceIds.filter((id) => id !== spaceOption.id)
+                            : [...draft.deskSpaceIds, spaceOption.id],
+                        })
+                      }
+                      disabled={archived}
+                      testID={`plan-editor-desk-${spaceOption.id}`}
+                    />
+                  ))}
+                </View>
+              )}
+              <Text style={styles.hint}>A desk assigned to a member is held for them until they leave, lapse, pause or you unassign it.</Text>
+              {showErrors && issues.desks !== null ? <Text style={styles.error}>{issues.desks}</Text> : null}
+            </View>
           </View>
 
           <View style={styles.section}>
@@ -523,6 +571,8 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
             ) : (
               <Text style={styles.hint}>Add what&apos;s included above.</Text>
             )}
+            <Text style={styles.hint}>{draft.joinMode === "request" ? "Ask to join · the venue approves before payment" : "Join and pay"}</Text>
+            {draft.deskSpaceIds.length > 0 ? <Text style={styles.hint}>An assigned desk may be available.</Text> : null}
           </View>
         </View>
       </ScrollView>

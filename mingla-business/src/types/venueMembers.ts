@@ -6,6 +6,8 @@
  */
 
 export type MembershipPlanStatus = "draft" | "live" | "paused" | "archived";
+export type MembershipPlanPeriod = "month" | "year";
+export type MembershipJoinMode = "instant" | "request";
 
 /** Server member statuses (A §3.6 + backend deviation 2: `lapsed`). */
 export type MemberStatus =
@@ -15,6 +17,8 @@ export type MemberStatus =
   | "grace"
   | "lapsed"
   | "paused"
+  | "requested"
+  | "declined"
   | "cancelled";
 
 export type MemberDiscountKind = "entry" | "group_package" | "private_hire" | "by_the_hour";
@@ -27,6 +31,10 @@ export interface MembershipPlan {
   inclusions: string[];
   priceMinor: number;
   currencyCode: string;
+  period: MembershipPlanPeriod;
+  joinMode: MembershipJoinMode;
+  deskSpaceIds: string[];
+  deskSpaces: { id: string; name: string }[];
   entryIncluded: boolean;
   entryOfferingId: string | null;
   entryOfferName: string | null;
@@ -54,12 +62,13 @@ export interface MembershipPlansState {
   venueId: string;
   featureOn: boolean;
   canManage: boolean;
-  entryOffers: Array<{ id: string; name: string }>;
-  hourOffers: Array<{ id: string; name: string }>;
+  entryOffers: { id: string; name: string }[];
+  hourOffers: { id: string; name: string }[];
+  spaces: { id: string; name: string }[];
   plans: MembershipPlan[];
 }
 
-export type MembersServerFilter = "all" | "active" | "payment_due" | "paused" | "ended" | "pending";
+export type MembersServerFilter = "all" | "active" | "payment_due" | "paused" | "ended" | "pending" | "requests";
 
 export interface VenueMemberRow {
   subscriptionId: string;
@@ -77,6 +86,7 @@ export interface VenueMemberRow {
   guestPassesLeft: number;
   inToday: boolean;
   amountDueMinor: number | null;
+  assignedSpaceName: string | null;
   version: number;
   joinedAt: string | null;
 }
@@ -156,6 +166,9 @@ export interface VenueMemberDetail {
     roomHours: number;
     guestPasses: number;
     discountBps: number;
+    period: MembershipPlanPeriod;
+    joinMode: MembershipJoinMode;
+    deskSpaces: { id: string; name: string }[];
   };
   terms: { priceMinor: number | null; minMonths: number | null; noticeDays: number | null; graceDays: number | null };
   venue: { id: string; name: string; timezone: string };
@@ -165,6 +178,8 @@ export interface VenueMemberDetail {
   renewsOn: string | null;
   renewalEmailOn: string | null;
   canCheckIn: boolean;
+  assignedSpace: { id: string; name: string } | null;
+  deskBookedFrom: string | null;
   paymentDue: MemberPaymentDue | null;
   leaving: { endsAt: string; by: string | null } | null;
   pausing: { from: string; by: string | null } | null;
@@ -195,4 +210,8 @@ export type ManageMemberAction =
   | { action: "cancel"; when: "now" | "period_end"; reason: string }
   | { action: "undo_cancel" }
   | { action: "send_link" }
+  | { action: "approve_request" }
+  | { action: "decline_request"; reason?: string }
+  | { action: "assign_desk"; spaceId: string }
+  | { action: "unassign_desk" }
   | { action: "mark_paid"; method: "cash" | "transfer" | "card_at_venue" | "other"; note?: string; periodId?: string };

@@ -12,12 +12,9 @@ import { venueAppLinkDisplay } from "./venueBookingEmails.ts";
 // is built by notify-outbox-drain when the email is sent and travels in the
 // dispatch body only, as the email's one button.
 //
-// DRAFT COPY — NOT YET APPROVED. Reconciliation §7 item 3: the renewal email
-// wording awaits Seth. These words follow the approved design's renewal email
-// and the coworking billing decision (an email with a link each month; no
-// card is charged by itself) and must be replaced by Seth's words before P6
-// ships. Rules kept: plain words, the numbers, one button, no raw codes, no
-// payment provider names.
+// COPY APPROVED BY SETH — 21 Nov 2026. Period-aware wording says that no
+// membership renews or is charged by itself. Rules kept: plain words, the
+// numbers, one button, no raw codes, no payment-provider names.
 // ===========================================================================
 import { venueEmailDate, venueEmailMoney } from "./venueBookingEmails.ts";
 
@@ -162,6 +159,14 @@ export function renderVenueMembershipMessage(
   }
 
   if (categoryKey === "venue_membership_ended") {
+    if (step === "declined") {
+      const body = `${hi}${venue} can't take you on ${plan} right now. No payment was taken.`;
+      return {
+        push: { title: `Your ${plan} request`, body: `${venue} can't take you on this plan right now.` },
+        email: { subject: `Your ${plan} request at ${venue}`, body },
+        sms: `${venue}: we can't take you on ${plan} right now. No payment was taken.`,
+      };
+    }
     if (step === "leaving") {
       const body = `${hi}You're leaving ${plan} at ${venue}.${
         endsOn ? ` Your membership ends on ${endsOn};` : ""
@@ -188,6 +193,16 @@ export function renderVenueMembershipMessage(
   }
 
   // venue_membership_renewal
+  if (step === "approval") {
+    const body = `${hi}You're approved for ${plan} at ${venue}. Pay${
+      total ? ` ${total}` : ""
+    } within 3 days to start.${money}\n\nNothing renews or is charged by itself.`;
+    return {
+      push: { title: `You're approved for ${plan}`, body: `Pay within 3 days to start at ${venue}.` },
+      email: { subject: `You're approved for ${plan} at ${venue}`, body },
+      sms: `${venue}: you're approved for ${plan}. Pay within 3 days to start.`,
+    };
+  }
   if (step === "due") {
     const body =
       `${hi}Your ${plan} membership at ${venue} renews today and this month isn't paid yet.${money}\n\nYou can still come in${

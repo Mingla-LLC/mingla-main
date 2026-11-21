@@ -3,6 +3,8 @@
 // payment provider; the member token is derived from the member id and only
 // re-derived when it matches the stored hash; the email button is trusted only
 // for the same member, from the service role, on the expected origin.
+// TEST-MOD-APPROVED #4490: spec 07 G adds approval and decline steps to this
+// issue-owned membership message matrix.
 import {
   assert,
   assertEquals,
@@ -55,6 +57,10 @@ Deno.test("renewal email: the date, the month's money and no provider name", () 
 });
 
 Deno.test("due, reminder, lapsed, paid and ended read in plain words", () => {
+  const approved = renderVenueMembershipMessage("venue_membership_renewal", { ...PAYLOAD, step: "approval" });
+  assertEquals(approved.email.subject, "You're approved for Hot desk at Kora Works");
+  assert(approved.email.body.includes("Pay ₦91,375 within 3 days to start"));
+  assert(approved.email.body.includes("Nothing renews or is charged by itself"));
   const due = renderVenueMembershipMessage("venue_membership_renewal", { ...PAYLOAD, step: "due" });
   assert(due.email.body.includes("You can still come in until Tue 8 Dec"));
   const reminder = renderVenueMembershipMessage("venue_membership_renewal", { ...PAYLOAD, step: "reminder" });
@@ -68,6 +74,9 @@ Deno.test("due, reminder, lapsed, paid and ended read in plain words", () => {
   assertEquals(renewal.email.subject, "Your Hot desk is paid until Fri 1 Jan");
   const leaving = renderVenueMembershipMessage("venue_membership_ended", { ...PAYLOAD, step: "leaving" });
   assertEquals(leaving.email.subject, "You're leaving Hot desk on Tue 1 Dec");
+  const declined = renderVenueMembershipMessage("venue_membership_ended", { ...PAYLOAD, step: "declined" });
+  assertEquals(declined.email.subject, "Your Hot desk request at Kora Works");
+  assert(declined.email.body.includes("No payment was taken"));
   // The shared renderer routes the member categories here.
   assertEquals(renderCategoryMessage("venue_membership_lapsed", PAYLOAD).email.subject, lapsed.email.subject);
 });

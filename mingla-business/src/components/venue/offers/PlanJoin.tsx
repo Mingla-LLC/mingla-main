@@ -39,6 +39,7 @@ import {
   howYouPayLines,
   memberGuestErrorCopy,
   memberPagePath,
+  membershipJoinNeedsPayment,
   monthTotal,
   pctWords,
   planGiveLines,
@@ -125,6 +126,10 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
         rememberVenueMember(brandSlug, venueSlug, result.subscriptionId);
         current = { subscriptionId: result.subscriptionId, token: result.memberToken };
         setJoined(current);
+        if (!membershipJoinNeedsPayment(plan.joinMode, result.status)) {
+          router.replace(memberPagePath(result.subscriptionId) as never);
+          return;
+        }
       }
       const payment = await venueMembershipGuestService.pay({
         subscriptionId: current.subscriptionId,
@@ -203,10 +208,20 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
 
   const gives = plan !== null ? planGiveLines(plan) : [];
   const steps = plan !== null
-    ? howYouPayLines({ firstMonth: monthName, renewalNoticeDays: plan.renewalNoticeDays, graceDays: plan.graceDays, minMonths: plan.minMonths, noticeDays: plan.noticeDays })
+    ? plan.joinMode === "request"
+      ? [
+          { title: "Today", body: "Ask to join. Nothing is paid yet." },
+          { title: "If approved", body: `We email you a link. Pay your first ${plan.period} within 3 days to start.` },
+          { title: `Each ${plan.period} after`, body: `We email a payment link ${plan.renewalNoticeDays} days ahead. Nothing renews or is charged by itself.` },
+        ]
+      : howYouPayLines({ firstMonth: monthName, renewalNoticeDays: plan.renewalNoticeDays, graceDays: plan.graceDays, minMonths: plan.minMonths, noticeDays: plan.noticeDays })
     : [];
   const totalWords = total !== null ? money(total.totalMinor) : null;
-  const payLabel = busy ? "Opening payment…" : totalWords !== null ? `Pay ${totalWords} and join` : "Join";
+  const payLabel = busy
+    ? plan?.joinMode === "request" ? "Sending request…" : "Opening payment…"
+    : plan?.joinMode === "request"
+      ? "Ask to join"
+      : totalWords !== null ? `Pay ${totalWords} and join` : "Join";
 
   const summaryCard = (
     <View style={[entryStyles.card, { backgroundColor: palette.card, borderColor: palette.panelBorder }]} testID="issue-4490-plan-join-summary">
@@ -225,13 +240,17 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
           ) : null}
           <View style={[styles.rule, { backgroundColor: palette.panelBorder }]} />
           <View style={styles.line}>
-            <Text style={[styles.totalText, { color: palette.primaryText }]}>Total today</Text>
+            <Text style={[styles.totalText, { color: palette.primaryText }]}>{plan.joinMode === "request" ? "First payment, if approved" : "Total today"}</Text>
             <Text style={[styles.totalText, { color: palette.primaryText }]}>{money(total.totalMinor)}</Text>
           </View>
           {total.mode === "included" ? (
             <Text style={[styles.caption, { color: palette.tertiaryText }]}>{`Includes VAT ${pctWords(total.ratePct)} (${money(total.taxMinor)})`}</Text>
           ) : null}
-          <Text style={[styles.caption, { color: palette.tertiaryText }]}>{`Then ${money(total.totalMinor)} a month, paid from an emailed link.`}</Text>
+          <Text style={[styles.caption, { color: palette.tertiaryText }]}>
+            {plan.joinMode === "request"
+              ? "No payment is taken with your request. The venue approves first."
+              : `Then ${money(total.totalMinor)} a ${plan.period}, paid from an emailed link.`}
+          </Text>
         </>
       ) : (
         <Text style={[styles.small, { color: palette.secondaryText }]}>Loading the plan…</Text>
@@ -277,7 +296,9 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
           testID="issue-4490-plan-join-start"
         />
         <Text style={[styles.small, { color: palette.secondaryText }]}>
-          {startOn === today ? "Starts today, as soon as you've paid." : `Starts ${entryDateLabel(startOn)}. You pay for the first month now.`}
+          {plan?.joinMode === "request"
+            ? `Requested start: ${entryDateLabel(startOn)}. The venue replies before you pay.`
+            : startOn === today ? "Starts today, as soon as you've paid." : `Starts ${entryDateLabel(startOn)}. You pay for the first month now.`}
         </Text>
       </View>
       {!wide ? summaryCard : null}
@@ -311,7 +332,7 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
           testID="issue-4490-plan-join-pay"
         />
         <Text style={[styles.caption, styles.center, { color: palette.tertiaryText }]} testID="issue-4490-plan-join-reason">
-          {blocker ?? "No card is saved. Card, bank transfer or USSD on the secure payment page."}
+          {blocker ?? (plan?.joinMode === "request" ? `${venueQuery.data?.name ?? "The venue"} will reply before any payment.` : "No card is saved. Card, bank transfer or USSD on the secure payment page.")}
         </Text>
       </View>
     </View>
@@ -354,8 +375,8 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
             palette={palette}
             theme={theme}
             title={totalWords ?? ""}
-            subtitle="First month today"
-            ctaLabel={busy ? "Opening…" : "Pay and join"}
+            subtitle={plan?.joinMode === "request" ? "No payment today" : "First month today"}
+            ctaLabel={busy ? (plan?.joinMode === "request" ? "Sending…" : "Opening…") : plan?.joinMode === "request" ? "Ask to join" : "Pay and join"}
             onPress={() => void pay()}
             enabled={blocker === null && !busy}
             ctaAccessibilityLabel={payLabel}

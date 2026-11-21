@@ -24,6 +24,7 @@ import { Icon, type IconName } from "../../../ui/Icon";
 import { Input } from "../../../ui/Input";
 import { PickerSheetHead } from "../../../ui/PickerSheetHead";
 import { Pill, Segmented } from "../../../ui/Pill";
+import { SelectSheet } from "../../../ui/SelectSheet";
 import { Sheet } from "../../../ui/Sheet";
 import { Skeleton } from "../../../ui/Skeleton";
 import { Timeline } from "../../../ui/Timeline";
@@ -32,14 +33,17 @@ import {
   billingSteps,
   hoursWords,
   memberDay,
+  memberCanEnd,
+  memberCanAssignDesk,
   memberErrorCopy,
   memberMonth,
+  memberRequestState,
   memberStatusWords,
   periodWords,
   timelineWords,
 } from "./membersModel";
 
-type Mode = "view" | "pay" | "pause" | "end";
+type Mode = "view" | "pay" | "pause" | "end" | "request" | "desk";
 
 export interface MemberPanelProps {
   brandId: string | null;
@@ -151,6 +155,36 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
       </View>
     );
   }
+  if (mode === "request") {
+    return (
+      <View style={styles.body}>
+        <PickerSheetHead title={`${m.memberName}'s request`} onClose={onClose} plain={plainHead} />
+        <RequestDecisionForm
+          m={m}
+          busy={manage.isPending}
+          error={error}
+          onBack={() => { setError(null); setMode("view"); }}
+          onApprove={() => act({ action: "approve_request" }, `${m.memberName} is approved`)}
+          onDecline={(reason) => act({ action: "decline_request", ...(reason.length > 0 ? { reason } : {}) }, `${m.memberName}'s request was declined`)}
+        />
+      </View>
+    );
+  }
+  if (mode === "desk") {
+    return (
+      <View style={styles.body}>
+        <PickerSheetHead title={`Assign a desk to ${m.memberName}`} onClose={onClose} plain={plainHead} />
+        <DeskForm
+          m={m}
+          busy={manage.isPending}
+          error={error}
+          onBack={() => { setError(null); setMode("view"); }}
+          onSubmit={(spaceId) => act({ action: "assign_desk", spaceId }, `Desk assigned to ${m.memberName}`)}
+          onUnassign={() => act({ action: "unassign_desk" }, `${m.memberName}'s desk was unassigned`)}
+        />
+      </View>
+    );
+  }
   if (mode === "pause") {
     return (
       <View style={styles.body}>
@@ -192,7 +226,8 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
   const steps = billingSteps(m);
   const due = m.paymentDue;
   const ended = m.status === "cancelled";
-  const facts: Array<{ key: string; label: string; value: string }> = [
+  const requestState = memberRequestState(m.status);
+  const facts: { key: string; label: string; value: string }[] = [
     { key: "plan", label: "Plan", value: `${m.plan.name} · ${money(m.terms.priceMinor ?? m.plan.priceMinor, m.plan.currencyCode)} a month` },
     { key: "since", label: "Member since", value: memberMonth(m.startedAt ?? m.createdAt, tz) ?? "Not started yet" },
     { key: "until", label: ended ? "Ended" : "Paid until", value: ended ? day(m.endedAt) : m.activeUntil !== null ? day(m.activeUntil) : "Not paid yet" },
@@ -203,12 +238,13 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
       ? [{ key: "passes", label: "Guest passes", value: `${m.credits.guestPassesLeft} of ${m.credits.guestPassesPerMonth} left` }]
       : []),
     { key: "contact", label: "Contact", value: [m.email, m.phone].filter(Boolean).join(" · ") || "—" },
+    ...(m.assignedSpace !== null ? [{ key: "desk", label: "Desk", value: m.assignedSpace.name }] : []),
     ...(m.terms.minMonths !== null && m.terms.minMonths > 1 ? [{ key: "min", label: "Minimum", value: `${m.terms.minMonths} months` }] : []),
     ...(m.terms.noticeDays !== null && m.terms.noticeDays > 0 ? [{ key: "notice", label: "Notice", value: `${m.terms.noticeDays} days` }] : []),
   ];
   const canPause = m.canManage && m.status === "active" && m.pausing === null && m.leaving === null;
   const canResume = m.canManage && (m.status === "paused" || m.pausing !== null);
-  const canEnd = m.canManage && !ended && m.leaving === null;
+  const canEnd = memberCanEnd(m.status, m.canManage, m.leaving);
   const canKeep = m.canManage && m.leaving !== null && !ended;
   const canLink = m.canManage && due !== null && !ended && m.email !== null;
   const canPay = m.canManageMoney && due !== null && !ended && !due.paying;
@@ -226,6 +262,10 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
           <Banner tone="danger" title="Not paid: their pass doesn't open the door" body="It starts again as soon as they pay. Send the link, or mark it paid if they paid you." testID="venue-member-lapsed" />
         ) : m.status === "payment_due" || m.status === "grace" ? (
           <Banner tone="warning" title="This month isn't paid yet" body={`They can still check in until ${day(due?.graceEndsAt)}.`} testID="venue-member-due" />
+        ) : m.status === "requested" ? (
+          <Banner tone="info" title="Membership request" body={`${m.memberName} has not paid. Approve the request first, then they have 3 days to pay their first ${m.plan.period}.`} />
+        ) : m.status === "declined" ? (
+          <Banner tone="info" title="Request declined" body="No payment was taken and this person is not a member." />
         ) : m.leaving !== null && !ended ? (
           <Banner tone="info" title={`Leaving ${day(m.leaving.endsAt)}`} body={m.leaving.by === "member" ? "They asked to leave. Their pass works until then." : "The venue ended this membership from that day."} />
         ) : null}
@@ -240,34 +280,57 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
           ))}
         </View>
 
-        <View style={styles.section} testID="venue-member-billing">
-          <Text style={styles.sectionLabel}>{due !== null ? `Month from ${day(due.periodStart)}` : "Billing"}</Text>
-          <Timeline items={steps.map((s) => ({ key: s.key, title: s.title, meta: s.meta, state: s.state }))} />
-          {due !== null ? (
-            <Text style={styles.meta}>{`${money(due.amountMinor, due.currencyCode)} for the month, plus VAT if the venue adds it.`}</Text>
-          ) : null}
-          {due?.paying ? <Text style={styles.meta}>They opened the payment page a moment ago. Check back in a few minutes.</Text> : null}
-          {canLink || canPay ? (
-            <View style={styles.actionRow}>
-              {canPay ? <Button label="Mark as paid" variant="secondary" size="md" leadingIcon="cash" onPress={() => { setError(null); setMode("pay"); }} testID="venue-member-mark-paid" /> : null}
-              {canLink ? (
-                <Button
-                  label="Send payment link"
-                  variant="primary"
-                  size="md"
-                  leadingIcon="send"
-                  loading={manage.isPending}
-                  onPress={() => act({ action: "send_link" }, `Payment link sent to ${m.email ?? m.memberName}`)}
-                  testID="venue-member-send-link"
-                />
-              ) : null}
-            </View>
-          ) : due !== null && !ended && !m.canManageMoney ? (
-            <Text style={styles.meta}>Only people who handle money for this venue can mark a month paid.</Text>
-          ) : null}
-        </View>
+        {m.status === "requested" && m.canManage ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Request</Text>
+            <Button label="Review request" variant="primary" size="md" onPress={() => setMode("request")} testID="venue-member-review-request" />
+          </View>
+        ) : null}
 
-        {m.canManage && !ended ? (
+        {m.canManage && memberCanAssignDesk(m.status) && m.plan.deskSpaces.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Desk</Text>
+            {m.deskBookedFrom !== null ? <Banner tone="warning" title={`${m.assignedSpace?.name ?? "This desk"} is booked from ${day(m.deskBookedFrom)}`} body="Pick another desk before then." /> : null}
+            <ActionLine
+              icon="location"
+              label={m.assignedSpace === null ? "Assign a desk" : "Change desk"}
+              detail={m.assignedSpace?.name ?? "Pick a free desk from this plan"}
+              onPress={() => setMode("desk")}
+              testID="venue-member-desk"
+            />
+          </View>
+        ) : null}
+
+        {!requestState ? (
+          <View style={styles.section} testID="venue-member-billing">
+            <Text style={styles.sectionLabel}>{due !== null ? `Month from ${day(due.periodStart)}` : "Billing"}</Text>
+            <Timeline items={steps.map((s) => ({ key: s.key, title: s.title, meta: s.meta, state: s.state }))} />
+            {due !== null ? (
+              <Text style={styles.meta}>{`${money(due.amountMinor, due.currencyCode)} for the month, plus VAT if the venue adds it.`}</Text>
+            ) : null}
+            {due?.paying ? <Text style={styles.meta}>They opened the payment page a moment ago. Check back in a few minutes.</Text> : null}
+            {canLink || canPay ? (
+              <View style={styles.actionRow}>
+                {canPay ? <Button label="Mark as paid" variant="secondary" size="md" leadingIcon="cash" onPress={() => { setError(null); setMode("pay"); }} testID="venue-member-mark-paid" /> : null}
+                {canLink ? (
+                  <Button
+                    label="Send payment link"
+                    variant="primary"
+                    size="md"
+                    leadingIcon="send"
+                    loading={manage.isPending}
+                    onPress={() => act({ action: "send_link" }, `Payment link sent to ${m.email ?? m.memberName}`)}
+                    testID="venue-member-send-link"
+                  />
+                ) : null}
+              </View>
+            ) : due !== null && !ended && !m.canManageMoney ? (
+              <Text style={styles.meta}>Only people who handle money for this venue can mark a month paid.</Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {canResume || canPause || canKeep || canEnd ? (
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Membership</Text>
             {canResume ? (
@@ -348,7 +411,74 @@ function ActionLine({ icon, label, detail, onPress, danger = false, testID }: { 
   );
 }
 
-const METHODS: ReadonlyArray<{ key: "cash" | "transfer" | "card_at_venue" | "other"; label: string }> = [
+function RequestDecisionForm({
+  m,
+  busy,
+  error,
+  onBack,
+  onApprove,
+  onDecline,
+}: {
+  m: VenueMemberDetail;
+  busy: boolean;
+  error: string | null;
+  onBack: () => void;
+  onApprove: () => void;
+  onDecline: (reason: string) => void;
+}): React.ReactElement {
+  const [reason, setReason] = useState("");
+  return (
+    <View style={styles.form} testID="venue-member-request-form">
+      <Text style={styles.meta}>{`Approve ${m.memberName} for ${m.plan.name}. We will email a link to pay their first ${m.plan.period}; it expires after 3 days.`}</Text>
+      <Input value={reason} onChangeText={(value) => setReason(value.slice(0, 300))} placeholder="Reason if declining (optional)" accessibilityLabel="Decline reason" testID="venue-member-decline-reason" />
+      {error !== null ? <Text style={styles.error} accessibilityRole="alert">{error}</Text> : null}
+      <View style={styles.footerRow}>
+        <Button label="Back" variant="ghost" size="md" onPress={onBack} />
+        <Button label="Decline" variant="secondary" size="md" loading={busy} onPress={() => onDecline(reason.trim())} testID="venue-member-decline" />
+        <Button label="Approve" variant="primary" size="md" loading={busy} onPress={onApprove} testID="venue-member-approve" />
+      </View>
+    </View>
+  );
+}
+
+function DeskForm({
+  m,
+  busy,
+  error,
+  onBack,
+  onSubmit,
+  onUnassign,
+}: {
+  m: VenueMemberDetail;
+  busy: boolean;
+  error: string | null;
+  onBack: () => void;
+  onSubmit: (spaceId: string) => void;
+  onUnassign: () => void;
+}): React.ReactElement {
+  const [spaceId, setSpaceId] = useState<string | null>(m.assignedSpace?.id ?? null);
+  return (
+    <View style={styles.form} testID="venue-member-desk-form">
+      <Text style={styles.meta}>The desk stays held for this member while their membership is active or in its payment grace period.</Text>
+      <SelectSheet
+        label="Desk"
+        value={spaceId}
+        options={m.plan.deskSpaces.map((spaceOption) => ({ value: spaceOption.id, label: spaceOption.name }))}
+        onChange={setSpaceId}
+        placeholder="Pick a desk"
+        testID="venue-member-desk-select"
+      />
+      {error !== null ? <Text style={styles.error} accessibilityRole="alert">{error}</Text> : null}
+      <View style={styles.footerRow}>
+        <Button label="Back" variant="ghost" size="md" onPress={onBack} />
+        {m.assignedSpace !== null ? <Button label="Unassign" variant="secondary" size="md" loading={busy} onPress={onUnassign} testID="venue-member-desk-unassign" /> : null}
+        <Button label="Assign desk" variant="primary" size="md" loading={busy} disabled={spaceId === null} onPress={() => { if (spaceId !== null) onSubmit(spaceId); }} testID="venue-member-desk-submit" />
+      </View>
+    </View>
+  );
+}
+
+const METHODS: readonly { key: "cash" | "transfer" | "card_at_venue" | "other"; label: string }[] = [
   { key: "transfer", label: "Transfer" },
   { key: "cash", label: "Cash" },
   { key: "card_at_venue", label: "Card" },

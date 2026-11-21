@@ -54,10 +54,10 @@ export function VenuePlansPane({
       return undefined;
     }
     onBookingBarChange({
-      title: open.length === 1 ? `${cheapest.name} · ${money(cheapest.priceMinor)} a month` : `Plans from ${money(cheapest.priceMinor)} a month`,
+      title: open.length === 1 ? `${cheapest.name} · ${money(cheapest.priceMinor)} a ${cheapest.period}` : `Plans from ${money(cheapest.priceMinor)}`,
       // #4490 fix 3 (N87) — short enough for the docked bar's one line.
       subtitle: "Starts today · no auto-renew",
-      ctaLabel: open.length === 1 ? "Join" : `Join ${cheapest.name}`,
+      ctaLabel: cheapest.joinMode === "request" ? "Ask to join" : open.length === 1 ? "Join" : `Join ${cheapest.name}`,
       enabled: true,
       onPress: () => router.push(planJoinPath(brandSlug, venueSlug, cheapest.id) as never),
     });
@@ -103,7 +103,7 @@ export function VenuePlansPane({
               <Text style={[styles.name, themeBoldFace(theme), { color: palette.primaryText }]}>{plan.name}</Text>
               <Text style={[styles.price, themeBoldFace(theme), { color: palette.primaryText }]}>
                 {money(plan.priceMinor)}
-                <Text style={[styles.small, { color: palette.secondaryText }]}> a month</Text>
+                <Text style={[styles.small, { color: palette.secondaryText }]}>{` a ${plan.period}`}</Text>
               </Text>
             </View>
             {plan.summary !== null ? <Text style={[styles.small, { color: palette.secondaryText }]}>{plan.summary}</Text> : null}
@@ -116,10 +116,11 @@ export function VenuePlansPane({
             {plan.minMonths > 1 ? (
               <Text style={[styles.caption, { color: palette.tertiaryText }]}>{`${plan.minMonths} months minimum`}</Text>
             ) : null}
+            {plan.assignedDeskAvailable ? <Text style={[styles.caption, { color: palette.tertiaryText }]}>An assigned desk may be available.</Text> : null}
             <EntryButton
               palette={palette}
               theme={theme}
-              label={plan.full ? "Full right now" : `Join ${plan.name}`}
+              label={plan.full ? "Full right now" : plan.joinMode === "request" ? "Ask to join" : `Join ${plan.name}`}
               disabled={plan.full}
               onPress={() => router.push(planJoinPath(brandSlug, venueSlug, plan.id) as never)}
               testID={`issue-4490-plan-join-${plan.id}`}
@@ -128,7 +129,7 @@ export function VenuePlansPane({
         );
       })}
       <EntryNote palette={palette} icon="mail" testID="issue-4490-plans-note">
-        You pay the first month today. Each month after, we email you a link to pay the next one. Nothing renews by itself.
+        Nothing renews or is charged by itself. Instant plans take the first payment when you join; request plans wait for the venue to approve you first.
       </EntryNote>
     </View>
   );

@@ -169,6 +169,9 @@ export interface VenueFeaturePlanView {
   name: string;
   summary: string | null;
   priceMinor: number;
+  period: "month" | "year";
+  joinMode: "instant" | "request";
+  assignedDeskAvailable: boolean;
   /** What's included, as the host wrote it (≤ 6 lines). */
   inclusions: string[];
   entryIncluded: boolean;
@@ -192,7 +195,7 @@ export interface PublicVenueFeaturesView {
   minorUnitExponent: number;
   offers: VenueFeatureOfferView[];
   tables: VenueFeatureTablesView | null;
-  memberships: { fromMinor: number; interval: "month"; plans?: VenueFeaturePlanView[] } | null;
+  memberships: { fromMinor: number; interval: "month" | "year"; plans?: VenueFeaturePlanView[] } | null;
   /** #4490 P6 — the venue's VAT (for showing a plan's monthly total before joining). */
   vat?: { mode: "added" | "included" | "none"; ratePct: number } | null;
   events: VenueFeatureEventView[];
@@ -214,6 +217,9 @@ export function parsePlan(raw: unknown): VenueFeaturePlanView | null {
     name: raw.name,
     summary: typeof raw.summary === "string" && raw.summary.length > 0 ? raw.summary : null,
     priceMinor: price,
+    period: raw.interval === "year" ? "year" : "month",
+    joinMode: raw.joinMode === "request" ? "request" : "instant",
+    assignedDeskAvailable: raw.assignedDeskAvailable === true,
     inclusions: (Array.isArray(raw.inclusions) ? raw.inclusions : []).filter((l): l is string => typeof l === "string" && l.length > 0).slice(0, 6),
     entryIncluded: raw.entryIncluded === true,
     roomHours: n(raw.roomHours, 0),
@@ -452,7 +458,7 @@ export function parsePublicVenueFeatures(
       memberships !== null && asInt(memberships.fromMinor) !== null
         ? {
             fromMinor: memberships.fromMinor as number,
-            interval: "month",
+            interval: memberships.interval === "year" ? "year" : "month",
             plans: (Array.isArray(memberships.plans) ? memberships.plans : [])
               .map(parsePlan)
               .filter((p): p is VenueFeaturePlanView => p !== null),

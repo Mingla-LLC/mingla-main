@@ -7,6 +7,8 @@
  * nav and capability gate with Memberships, the Plans tab, the floor-plan
  * overlap check, the by-the-hour line words and move rule.
  */
+// TEST-MOD-APPROVED #4490: the plan/member fixtures now carry the additive
+// request-mode, plan-period and dedicated-desk fields owned by this issue.
 import {
   billingSteps,
   memberErrorCopy,
@@ -62,6 +64,10 @@ function plan(over: Partial<MembershipPlan> = {}): MembershipPlan {
     inclusions: ["Power and fast internet"],
     priceMinor: NAIRA(85000),
     currencyCode: "NGN",
+    period: "month",
+    joinMode: "instant",
+    deskSpaceIds: [],
+    deskSpaces: [],
     entryIncluded: true,
     entryOfferingId: "e1",
     entryOfferName: "Day pass",
@@ -103,6 +109,7 @@ function row(over: Partial<VenueMemberRow> = {}): VenueMemberRow {
     guestPassesLeft: 2,
     inToday: false,
     amountDueMinor: null,
+    assignedSpaceName: null,
     version: 1,
     joinedAt: "2026-11-19T10:00:00Z",
     ...over,
@@ -129,6 +136,9 @@ describe("P6-2 plan draft and checks", () => {
       summary: null,
       inclusions: [],
       priceMinor: 8500000,
+      period: "month",
+      joinMode: "instant",
+      deskSpaceIds: [],
       entryIncluded: false,
       entryOfferingId: null,
       roomHours: 0,

@@ -18,12 +18,14 @@ import type {
   ManageMemberAction,
   ManagePlanAction,
   MemberDiscountKind,
+  MembershipJoinMode,
   MemberPaymentDue,
   MemberPeriod,
   MemberPeriodStatus,
   MemberStatus,
   MembersServerFilter,
   MembershipPlan,
+  MembershipPlanPeriod,
   MembershipPlanStatus,
   MembershipPlansState,
   VenueMemberDetail,
@@ -45,8 +47,10 @@ const numOrNull = (v: unknown): number | null =>
   v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null;
 const strings = (v: unknown): string[] => arr(v).filter((x): x is string => typeof x === "string");
 
-const MEMBER_STATUSES: readonly MemberStatus[] = ["pending", "active", "payment_due", "grace", "lapsed", "paused", "cancelled"];
+const MEMBER_STATUSES: readonly MemberStatus[] = ["pending", "active", "payment_due", "grace", "lapsed", "paused", "requested", "declined", "cancelled"];
 const PLAN_STATUSES: readonly MembershipPlanStatus[] = ["draft", "live", "paused", "archived"];
+const PLAN_PERIODS: readonly MembershipPlanPeriod[] = ["month", "year"];
+const JOIN_MODES: readonly MembershipJoinMode[] = ["instant", "request"];
 const DISCOUNT_KINDS: readonly MemberDiscountKind[] = ["entry", "group_package", "private_hire", "by_the_hour"];
 const PERIOD_STATUSES: readonly MemberPeriodStatus[] = ["scheduled", "link_sent", "paid", "overdue", "void"];
 
@@ -58,6 +62,8 @@ export function mapMemberStatus(v: unknown): MemberStatus {
 export function mapMembershipPlan(v: unknown): MembershipPlan {
   const p = obj(v);
   const status = str(p.status) as MembershipPlanStatus;
+  const period = str(p.interval) as MembershipPlanPeriod;
+  const joinMode = str(p.joinMode) as MembershipJoinMode;
   return {
     id: str(p.id),
     venueId: str(p.venueId),
@@ -66,6 +72,15 @@ export function mapMembershipPlan(v: unknown): MembershipPlan {
     inclusions: strings(p.inclusions),
     priceMinor: num(p.priceMinor),
     currencyCode: str(p.currencyCode, "NGN"),
+    period: PLAN_PERIODS.includes(period) ? period : "month",
+    joinMode: JOIN_MODES.includes(joinMode) ? joinMode : "instant",
+    deskSpaceIds: strings(p.deskSpaceIds),
+    deskSpaces: arr(p.deskSpaces)
+      .map((space) => {
+        const row = obj(space);
+        return { id: str(row.id), name: str(row.name) };
+      })
+      .filter((space) => space.id.length > 0),
     entryIncluded: p.entryIncluded === true,
     entryOfferingId: strOrNull(p.entryOfferingId),
     entryOfferName: strOrNull(p.entryOfferName),
@@ -104,6 +119,7 @@ export function mapMembershipPlans(v: unknown): MembershipPlansState {
     canManage: d.canManage === true,
     entryOffers: arr(d.entryOffers).map(idName).filter((o) => o.id.length > 0),
     hourOffers: arr(d.hourOffers).map(idName).filter((o) => o.id.length > 0),
+    spaces: arr(d.spaces).map(idName).filter((o) => o.id.length > 0),
     plans: arr(d.plans).map(mapMembershipPlan),
   };
 }
@@ -126,6 +142,7 @@ export function mapMemberRow(v: unknown): VenueMemberRow {
     guestPassesLeft: num(m.guestPassesLeft),
     inToday: m.inToday === true,
     amountDueMinor: numOrNull(m.amountDueMinor),
+    assignedSpaceName: strOrNull(m.assignedSpaceName),
     version: num(m.version, 1),
     joinedAt: strOrNull(m.joinedAt),
   };
@@ -213,6 +230,18 @@ export function mapMemberDetail(v: unknown): VenueMemberDetail {
       roomHours: num(plan.roomHours),
       guestPasses: num(plan.guestPasses),
       discountBps: num(plan.discountBps),
+      period: PLAN_PERIODS.includes(str(plan.interval) as MembershipPlanPeriod)
+        ? (str(plan.interval) as MembershipPlanPeriod)
+        : "month",
+      joinMode: JOIN_MODES.includes(str(plan.joinMode) as MembershipJoinMode)
+        ? (str(plan.joinMode) as MembershipJoinMode)
+        : "instant",
+      deskSpaces: arr(plan.deskSpaces)
+        .map((space) => {
+          const row = obj(space);
+          return { id: str(row.id), name: str(row.name) };
+        })
+        .filter((space) => space.id.length > 0),
     },
     terms: {
       priceMinor: numOrNull(terms.priceMinor),
@@ -227,6 +256,11 @@ export function mapMemberDetail(v: unknown): VenueMemberDetail {
     renewsOn: strOrNull(m.renewsOn),
     renewalEmailOn: strOrNull(m.renewalEmailOn),
     canCheckIn: m.canCheckIn === true,
+    assignedSpace:
+      m.assignedSpace === null || m.assignedSpace === undefined
+        ? null
+        : { id: str(obj(m.assignedSpace).id), name: str(obj(m.assignedSpace).name) },
+    deskBookedFrom: strOrNull(m.deskBookedFrom),
     paymentDue: mapPaymentDue(m.paymentDue),
     leaving: leaving === null ? null : { endsAt: str(leaving.endsAt), by: strOrNull(leaving.by) },
     pausing: pausing === null ? null : { from: str(pausing.from), by: strOrNull(pausing.by) },
