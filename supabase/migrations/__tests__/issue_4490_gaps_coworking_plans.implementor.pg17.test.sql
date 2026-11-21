@@ -204,19 +204,31 @@ BEGIN
                             WHERE subscription_id = public.t4490g_id('ada')),
     'G-3b approval creates exactly one payment period');
 
+  -- The request may have waited before approval. Its new three-day clock is
+  -- measured from the decision, not from the original request.
+  PERFORM public.t4490g_reset();
+  PERFORM public.t4490g_service();
+  PERFORM public.issue_4490_membership_billing_run(v_period.due_at - interval '1 minute', 500);
+  PERFORM public.t4490g_reset();
+  PERFORM public.t4490g_as('44907000-0000-4000-8000-000000000001');
+  PERFORM public.t4490g_ok(
+    (SELECT status = 'pending' FROM public.venue_membership_subscriptions WHERE id = public.t4490g_id('ada'))
+      AND (SELECT status = 'link_sent' FROM public.venue_membership_periods WHERE id = v_period.id),
+    'G-3c an approved request stays open for the promised three days');
+
   SELECT version INTO v_bola_version FROM public.venue_membership_subscriptions WHERE id = public.t4490g_id('bola');
   PERFORM public.t4490g_expect(format($q$SELECT public.issue_4490_manage_member(%L, 'approve_request', '{}'::jsonb,
       %s, 'g-approve-bola')$q$, public.t4490g_id('bola'), v_bola_version),
-    'PT409', 'member_request_plan_full', 'G-3c the second request cannot be approved after the place is taken');
+    'PT409', 'member_request_plan_full', 'G-3d the second request cannot be approved after the place is taken');
   v := public.issue_4490_manage_member(public.t4490g_id('bola'), 'decline_request',
     '{"reason":"No desks left"}'::jsonb, v_bola_version, 'g-decline-bola');
   PERFORM public.t4490g_ok(v->>'status' = 'declined'
       AND NOT EXISTS (SELECT 1 FROM public.venue_membership_periods WHERE subscription_id = public.t4490g_id('bola')),
-    'G-3d declining takes no payment');
+    'G-3e declining takes no payment');
   v := public.issue_4490_venue_members(a1, 'ended');
   PERFORM public.t4490g_ok(EXISTS (SELECT 1 FROM jsonb_array_elements(v->'members') m
       WHERE m->>'subscriptionId' = public.t4490g_id('bola')::text AND m->>'status' = 'declined'),
-    'G-3e a declined request is kept in the closed Host history');
+    'G-3f a declined request is kept in the closed Host history');
 END
 $g3$;
 SELECT public.t4490g_reset();
