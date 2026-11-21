@@ -123,7 +123,7 @@ export async function handleInstallmentPaymentSucceeded(
     })
     .eq("id", installmentId)
     .in("status", ["scheduled", "failed"]) // tolerate the case where cron already wrote failed before webhook arrived
-    .select("id, order_id, ordinal, amount_cents")
+    .select("id, order_id, ordinal, amount_cents, kind")
     .maybeSingle();
 
   if (error) {
@@ -184,7 +184,7 @@ export async function handleInstallmentPaymentSucceeded(
     const { data: existing, error: existingError } = await supabase
       .from("order_installments")
       .select(
-        "id, amount_cents, status, payout_accounting_state, application_fee_amount_cents",
+        "id, amount_cents, status, payout_accounting_state, application_fee_amount_cents, kind",
       )
       .eq("id", installmentId)
       .maybeSingle();
@@ -207,6 +207,10 @@ export async function handleInstallmentPaymentSucceeded(
     const feesMissing = existingRow.application_fee_amount_cents == null;
     if (accountingState !== "ready" || feesMissing) {
       await recordProviderSaleOrThrow(Number(existingRow.amount_cents ?? 0));
+    }
+    // issue #4522 — a replay finishes a settle a crash interrupted (idempotent).
+    if (existingStatus === "collected") {
+      await settleFlexPaymentIfFlex(supabase, installmentId, existingRow.kind);
     }
     console.log(
       `[installment-webhook] payment_intent.succeeded for ${installmentId} — replay accounting ok`,
@@ -235,6 +239,12 @@ export async function handleInstallmentPaymentSucceeded(
   // catch up on replay).
   await recordProviderSaleOrThrow(
     Number((updated as Record<string, unknown>).amount_cents ?? 0),
+  );
+  // issue #4522 — a flexible payment re-spreads the open balance, once.
+  await settleFlexPaymentIfFlex(
+    supabase,
+    installmentId,
+    (updated as Record<string, unknown>).kind,
   );
 
   // Check if this was the LAST installment for the order → fire "fully paid" confirmation.
@@ -285,6 +295,62 @@ export async function handleInstallmentPaymentSucceeded(
   return brandId;
 }
 
+/**
+ * issue #4522 — after a flexible ("pay any amount") payment is collected, the
+ * open planned rows are re-spread once (`issue_4522_settle_flex_payment` is
+ * idempotent on replay). Throws so the webhook inbox retries on failure. A
+ * planned row (kind `scheduled`) is untouched, byte for byte.
+ */
+export async function settleFlexPaymentIfFlex(
+  supabase: SupabaseClient,
+  installmentId: string,
+  kind: unknown,
+): Promise<void> {
+  if (kind !== "flex") return;
+  const { data, error } = await supabase.rpc("issue_4522_settle_flex_payment", {
+    p_installment_id: installmentId,
+  });
+  const result = (data ?? null) as { ok?: boolean; reason?: string } | null;
+  if (error !== null || result === null || result.ok !== true) {
+    throw new Error(
+      `issue_4522_settle_flex_payment failed: ${
+        error?.message ?? result?.reason ?? "unknown"
+      }`,
+    );
+  }
+}
+
+/** issue #4522 — record a flexible payment's failure, then close the row. */
+export async function closeFailedFlexPayment(
+  supabase: SupabaseClient,
+  installmentId: string,
+  piId: string | null,
+  failureReason: string,
+): Promise<void> {
+  const { error: failError } = await supabase
+    .from("order_installments")
+    .update({
+      status: "failed",
+      stripe_payment_intent_id: piId,
+      failed_at: new Date().toISOString(),
+      failure_reason: failureReason,
+      next_retry_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", installmentId)
+    .eq("kind", "flex")
+    .eq("status", "scheduled");
+  if (failError !== null) {
+    throw new Error(`flex failure update failed: ${failError.message}`);
+  }
+  const { error } = await supabase.rpc("issue_4522_close_failed_flex", {
+    p_installment_id: installmentId,
+  });
+  if (error !== null) {
+    throw new Error(`issue_4522_close_failed_flex failed: ${error.message}`);
+  }
+}
+
 export async function handleInstallmentPaymentFailed(
   supabase: SupabaseClient,
   event: StripeWebhookEvent,
@@ -311,7 +377,7 @@ export async function handleInstallmentPaymentFailed(
   // that case the webhook's job is to confirm + ensure dunning fires.
   const { data: existing, error: fetchError } = await supabase
     .from("order_installments")
-    .select("id, order_id, ordinal, retry_count, status, due_at")
+    .select("id, order_id, ordinal, retry_count, status, due_at, kind")
     .eq("id", installmentId)
     .maybeSingle();
   if (fetchError !== null) {
@@ -319,6 +385,12 @@ export async function handleInstallmentPaymentFailed(
   }
   if (existing === null) {
     console.log(`[installment-webhook] payment_intent.payment_failed for unknown installment ${installmentId}`);
+    return brandId;
+  }
+  // issue #4522 — a failed flexible payment is closed, never retried, and
+  // sends no dunning: the planned rows it would have paid are unchanged.
+  if (String((existing as Record<string, unknown>).kind ?? "") === "flex") {
+    await closeFailedFlexPayment(supabase, installmentId, piId, failureReason);
     return brandId;
   }
 

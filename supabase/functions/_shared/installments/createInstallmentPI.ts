@@ -14,6 +14,7 @@ import {
 } from "https://esm.sh/@supabase/supabase-js@2";
 import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
+import { installmentKeyVersionSuffix } from "./installmentIdempotencyKey.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
 import {
   MAX_RETRY_ATTEMPTS,
@@ -43,6 +44,8 @@ export type InstallmentRow = {
   due_at: string;
   status: string;
   retry_count: number;
+  /** issue #4522 — bumped by each rebalance; absent on older selects (0). */
+  schedule_version?: number | null;
   stripe_payment_intent_id: string | null;
 };
 
@@ -151,7 +154,7 @@ async function loadInstallmentContext(
   const { data: installment } = await supabase
     .from("order_installments")
     .select(
-      "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id",
+      "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id, schedule_version",
     )
     .eq("id", installmentId)
     .maybeSingle();
@@ -319,8 +322,10 @@ export async function createInstallmentPI(
     minglaApplicationFeeAmountCents,
     { shareMinor: referralShareMinor },
   );
+  // issue #4522 — version 0 keeps today's key; a rebalanced row adds `:v<n>`.
   const idempotencyKey =
-    `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}`;
+    `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}` +
+    installmentKeyVersionSuffix(installment.schedule_version);
 
   try {
     // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg; SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.

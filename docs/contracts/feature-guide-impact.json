@@ -5219,7 +5219,14 @@
         "packages/offering-rendering/tripPlanV2Math.ts",
         "packages/offering-rendering/tripInstallmentCapability.ts",
         "supabase/functions/ticket-checkout-create/tripPlanV2Contract.ts",
-        "supabase/functions/ticket-checkout-create/index.ts"
+        "supabase/functions/ticket-checkout-create/index.ts",
+        "supabase/migrations/20281120074522_issue_4522_flex_payments.sql",
+        "supabase/functions/trip-balance-pay/index.ts",
+        "supabase/functions/_shared/installments/installmentIdempotencyKey.ts",
+        "supabase/functions/_shared/installments/createInstallmentPI.ts",
+        "supabase/functions/_shared/installments/paystackInstallmentWebhook.ts",
+        "supabase/functions/_shared/installmentWebhookHandlers.ts",
+        "supabase/functions/process-scheduled-installments/index.ts"
       ]
     },
     {

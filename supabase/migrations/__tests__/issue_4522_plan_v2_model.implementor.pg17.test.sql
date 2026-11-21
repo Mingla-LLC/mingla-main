@@ -267,6 +267,7 @@ BEGIN
 END $$;
 
 -- S1-12 order_installments: superseded, flex and the one-open-flex index.
+-- (flex_client_key arrives with M3, 20281120074522; this suite runs after the full chain.)
 DO $$
 DECLARE
   v_order uuid := gen_random_uuid();
@@ -295,17 +296,17 @@ BEGIN
     RAISE EXCEPTION 'S1-12 an add-on portion above the amount must fail, got %', v_raised;
   END IF;
   v_raised := pg_temp.raised(format(
-    'INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider, collection_method, kind)
-     VALUES (%L, 2, 500, %L, now(), %L, %L, %L, %L)', v_order, 'USD', 'scheduled', 'stripe', 'auto_card', 'flex'));
+    'INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider, collection_method, kind, flex_client_key)
+     VALUES (%L, 2, 500, %L, now(), %L, %L, %L, %L, %L)', v_order, 'USD', 'scheduled', 'stripe', 'auto_card', 'flex', 'client-key-s1-a'));
   IF v_raised NOT LIKE '23514:%flex_has_allocation%' THEN
     RAISE EXCEPTION 'S1-12 a flex row without line_allocation must fail, got %', v_raised;
   END IF;
   INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
-    collection_method, kind, line_allocation)
-  VALUES (v_order, 2, 500, 'USD', now(), 'scheduled', 'stripe', 'auto_card', 'flex', '[]');
+    collection_method, kind, line_allocation, flex_client_key)
+  VALUES (v_order, 2, 500, 'USD', now(), 'scheduled', 'stripe', 'auto_card', 'flex', '[]', 'client-key-s1-b');
   v_raised := pg_temp.raised(format(
-    'INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider, collection_method, kind, line_allocation)
-     VALUES (%L, 3, 500, %L, now(), %L, %L, %L, %L, %L)', v_order, 'USD', 'scheduled', 'stripe', 'auto_card', 'flex', '[]'));
+    'INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider, collection_method, kind, line_allocation, flex_client_key)
+     VALUES (%L, 3, 500, %L, now(), %L, %L, %L, %L, %L, %L)', v_order, 'USD', 'scheduled', 'stripe', 'auto_card', 'flex', '[]', 'client-key-s1-c'));
   IF v_raised NOT LIKE '23505:%uq_order_one_open_flex%' THEN
     RAISE EXCEPTION 'S1-12 a second open flex row must fail, got %', v_raised;
   END IF;

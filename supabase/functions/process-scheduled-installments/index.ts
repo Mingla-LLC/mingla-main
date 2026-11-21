@@ -282,6 +282,8 @@ async function passBNotices(
       orders!inner(cancelled_at,buyer_user_id,payment_card_last4,events!inner(status,brand_id,title))`,
     )
     .eq("status", "scheduled")
+    // issue #4522 — a flexible payment is never noticed, charged or retried here.
+    .eq("kind", "scheduled")
     .is("cancelled_at", null)
     .is("pre_charge_notice_sent_at", null)
     .is("orders.cancelled_at", null)
@@ -379,7 +381,7 @@ async function passCDueAndRetry(
     orders!inner(cancelled_at,events!inner(status))`;
   const { data: dueRows, error: dueError } = await supabase
     .from("order_installments").select(select)
-    .eq("status", "scheduled").is("cancelled_at", null).is(
+    .eq("status", "scheduled").eq("kind", "scheduled").is("cancelled_at", null).is(
       "in_flight_attempt_id",
       null,
     )
@@ -390,7 +392,7 @@ async function passCDueAndRetry(
   }
   const { data: retryRows, error: retryError } = await supabase
     .from("order_installments").select(select)
-    .eq("status", "failed").is("cancelled_at", null).is(
+    .eq("status", "failed").eq("kind", "scheduled").is("cancelled_at", null).is(
       "in_flight_attempt_id",
       null,
     )

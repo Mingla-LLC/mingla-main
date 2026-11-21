@@ -123,6 +123,38 @@ async function loadAttempt(
 }
 
 /**
+ * issue #4522 — settle a collected flexible payment (re-spread the balance
+ * once). NULL for a planned row, which is untouched. Throws so the webhook
+ * inbox retries.
+ */
+async function settleFlexIfFlex(
+  supabase: SupabaseClient,
+  installmentId: string,
+): Promise<{ paidInFull: boolean } | null> {
+  const { data: row, error: rowError } = await supabase
+    .from("order_installments").select("kind").eq("id", installmentId)
+    .maybeSingle();
+  if (rowError !== null) {
+    throw new Error(`instalment kind load failed: ${rowError.message}`);
+  }
+  if ((row as { kind?: string } | null)?.kind !== "flex") return null;
+  const { data, error } = await supabase.rpc("issue_4522_settle_flex_payment", {
+    p_installment_id: installmentId,
+  });
+  const result = (data ?? null) as
+    | { ok?: boolean; reason?: string; paidInFull?: boolean }
+    | null;
+  if (error !== null || result === null || result.ok !== true) {
+    throw new Error(
+      `issue_4522_settle_flex_payment failed: ${
+        error?.message ?? result?.reason ?? "unknown"
+      }`,
+    );
+  }
+  return { paidInFull: result.paidInFull === true };
+}
+
+/**
  * Apply a VERIFIED Paystack success to its instalment attempt. Idempotent:
  * webhook retries, the pay page's status check and the cron reconcile may all
  * call it for the same reference. Throws on anything retryable so the webhook
@@ -196,11 +228,21 @@ export async function handleInstallmentPaystackCharge(
     await refundInstallmentAttempt(supabase, attempt.id, deps);
     return { status: "installment_refund_due", installmentId: attempt.installment_id };
   }
-  if (outcome === "replayed") return { status: "installment_replayed", installmentId: attempt.installment_id };
+  if (outcome === "replayed") {
+    // issue #4522 — a replay finishes a settle a crash interrupted (idempotent).
+    await settleFlexIfFlex(supabase, attempt.installment_id);
+    return { status: "installment_replayed", installmentId: attempt.installment_id };
+  }
   if (outcome !== "collected") throw new Error(`unexpected instalment outcome ${outcome}`);
 
   const orderId = String(result.order_id ?? "");
-  if (Number(result.remaining ?? 1) === 0 && orderId !== "") {
+  // issue #4522 — a flexible payment re-spreads the open balance first, so
+  // "paid in full" is judged on the rows that are left.
+  const flexSettle = await settleFlexIfFlex(supabase, attempt.installment_id);
+  const paidInFull = flexSettle !== null
+    ? flexSettle.paidInFull
+    : Number(result.remaining ?? 1) === 0;
+  if (paidInFull && orderId !== "") {
     await deps.dispatchBuyerEmail("installment_plan_paid_in_full", { orderId });
   }
 

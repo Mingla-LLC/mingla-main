@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/trip-balance-pay/__tests__/issue_4522_trip_balance_pay.test.ts",
+  "lane": "stripe-deno",
+  "orderKey": "issue-4522-05-trip-balance-pay",
+  "profile": "deno-1.46-stripe"
+}
