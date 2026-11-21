@@ -16,7 +16,7 @@ import { Skeleton } from "../ui/Skeleton";
 import { LoadError } from "../ui/LoadError";
 import { AgentActivity } from "./AgentActivity";
 import { opsErrorWords } from "../../lib/opsModel";
-import { PERIOD_BUCKETS, eventVerb, feedTime, periodRows, periodShown } from "../../lib/workViews";
+import { PERIOD_BUCKETS, eventVerb, feedTime, filterFeed, periodRows, periodShown } from "../../lib/workViews";
 import { TicketChip } from "./TicketChip";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
@@ -107,7 +107,7 @@ function WhatChanged({ feed, onOpenCard }) {
   return (
     <SectionCard title="What changed" subtitle="last 24 hours">
       {entries.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-secondary)]">Nothing changed on any card in the last 24 hours. Changes appear here as people and agents work.</p>
+        <p className="text-[13px] text-[var(--color-text-secondary)]">{feed?.filtered ? "Nothing changed on these cards in the last 24 hours." : "Nothing changed on any card in the last 24 hours. Changes appear here as people and agents work."}</p>
       ) : (
         <ul className="flex min-w-0 flex-col divide-y divide-[var(--gray-100)]">
           {entries.map((e) => (
@@ -121,7 +121,7 @@ function WhatChanged({ feed, onOpenCard }) {
           ))}
         </ul>
       )}
-      {feed?.truncated && <p className="mt-2 text-[12px] text-[var(--color-text-tertiary)]">Showing the newest {entries.length} of {feed.total} changes.</p>}
+      {feed?.truncated && <p className="mt-2 text-[12px] text-[var(--color-text-tertiary)]">{feed.filtered ? `Only the newest changes were checked against these filters (${feed.total} changes in all).` : `Showing the newest ${entries.length} of ${feed.total} changes.`}</p>}
     </SectionCard>
   );
 }
@@ -144,7 +144,7 @@ export function PeriodView({ win, read, cards, people, onOpenCard }) {
       <PeriodBody win={win} cards={cards} people={people} onOpenCard={onOpenCard} truncated={!!read.data?.truncated} />
       {win.view === "today" && (
         <>
-          <WhatChanged feed={read.data?.feed} onOpenCard={onOpenCard} />
+          <WhatChanged feed={filterFeed(read.data?.feed, read.data?.cards, cards)} onOpenCard={onOpenCard} />
           <AgentActivity />
         </>
       )}

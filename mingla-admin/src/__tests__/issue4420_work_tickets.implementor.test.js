@@ -28,7 +28,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { WORK_LINKED, WORK_TYPE, parseWorkView, periodBucket, periodRows, periodWindow, workFilter } from "../lib/workViews.js";
+import { WORK_LINKED, WORK_TYPE, filterFeed, parseWorkView, periodBucket, periodRows, periodWindow, workFilter } from "../lib/workViews.js";
 import { activeFilterCount } from "../lib/workBoardModel.js";
 import { DETAIL_LINK_KINDS, LINK_KINDS } from "../lib/opsModel.js";
 import {
@@ -600,3 +600,27 @@ describe("T-3b the ticket form's default request meets the server's watcher rule
   });
 });
 
+// P3-1 (rework 2): "What changed" follows the page's filters. FAILS-ON-REVERT:
+// without filterFeed the import fails; without the WorkViews wiring the source
+// assertion fails.
+describe("T-7 What changed follows Type, Linked to, Show and search", () => {
+  const tk = { id: "t1", kind: "ticket", ticket: { type: "bug" }, title: "Payout twice", status: "doing", owners: [], watchers: [], links: [] };
+  const cd = { id: "c1", kind: null, title: "Call the venue", status: "doing", owners: [], watchers: [], links: [] };
+  const feed = { entries: [{ id: "e1", card: { id: "t1" } }, { id: "e2", card: { id: "c1" } }, { id: "e3", card: { id: "gone" } }], truncated: false, total: 3 };
+  const ids = (f) => f.entries.map((e) => e.id);
+  it("Type: Tickets shows only ticket changes, Cards only card changes", () => {
+    assert.deepEqual(ids(filterFeed(feed, [tk, cd], workFilter([tk, cd], { type: "tickets" }))), ["e1"]);
+    assert.deepEqual(ids(filterFeed(feed, [tk, cd], workFilter([tk, cd], { type: "cards" }))), ["e2"]);
+  });
+  it("search narrows it the same way", () => {
+    assert.deepEqual(ids(filterFeed(feed, [tk, cd], workFilter([tk, cd], { q: "venue" }))), ["e2"]);
+  });
+  it("no filter: every entry stays, even one whose card the period did not load", () => {
+    const out = filterFeed(feed, [tk, cd], workFilter([tk, cd], {}));
+    assert.deepEqual(ids(out), ["e1", "e2", "e3"]);
+    assert.equal(out.filtered, false);
+  });
+  it("the Today view passes the filtered cards to the feed", () => {
+    assert.match(code("components/ops/WorkViews.jsx"), /<WhatChanged feed=\{filterFeed\(read\.data\?\.feed, read\.data\?\.cards, cards\)\}/);
+  });
+});

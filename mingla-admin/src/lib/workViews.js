@@ -160,6 +160,28 @@ export function standupSince(now = new Date()) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, 9, 0, 0, 0);
 }
 
+/**
+ * #4420 (rework 2): the "What changed" feed under the page's filters. The
+ * server already narrows it by owner; Type, Linked to, Show and search are the
+ * page's own filters, so an entry stays only when its card is one the filtered
+ * period shows. `allCards` is the period's unfiltered cards (Today's window
+ * starts yesterday 09:00, so it holds every card changed in the last 24 hours);
+ * an entry whose card is not among them cannot be checked, and is kept only
+ * when the filters hid nothing.
+ */
+export function filterFeed(feed, allCards, shownCards) {
+  if (!feed || !Array.isArray(feed.entries)) return feed;
+  const all = new Set((Array.isArray(allCards) ? allCards : []).map((c) => c?.id).filter(Boolean));
+  const shown = new Set((Array.isArray(shownCards) ? shownCards : []).map((c) => c?.id).filter(Boolean));
+  const narrowed = shown.size < all.size;
+  const entries = feed.entries.filter((e) => {
+    const id = e?.card?.id;
+    if (shown.has(id)) return true;
+    return !narrowed && !all.has(id);
+  });
+  return { ...feed, entries, filtered: narrowed };
+}
+
 /** The last 24 hours: what the "What changed" feed covers. */
 export function lastDaySince(now = new Date()) {
   return new Date(at(now).getTime() - 86_400_000);
