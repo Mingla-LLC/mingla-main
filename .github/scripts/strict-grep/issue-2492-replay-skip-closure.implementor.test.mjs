@@ -24,3 +24,51 @@ test("every ADD COLUMN clause contributes a definition", () => {
   const result = parseMigration("fixture.sql", "ALTER TABLE public.events ADD COLUMN one text, ADD COLUMN two text, ADD COLUMN three text, ADD COLUMN four text;");
   for (const name of ["one","two","three","four"]) assert.ok(result.definitions.has(`col:${name}`));
 });
+// #4514: CREATE TABLE columns of an APPLIED migration count as available; a skipped migration's never do.
+const fn = (col, tbl = "t") => `CREATE FUNCTION public.f() RETURNS int LANGUAGE sql AS $$ SELECT ${col} FROM public.${tbl} $$;`;
+test("a column from an applied CREATE TABLE is not blamed on a skipped ADD COLUMN of another table", () => {
+  const workflows = { fixture: loop };
+  const m = {
+    "001_base.sql": "CREATE TABLE public.t(x int, buyer_name text);",
+    "002_skip.sql": "ALTER TABLE public.other ADD COLUMN buyer_name text;",
+    "003_reader.sql": fn("buyer_name"),
+  };
+  assert.deepEqual(analyseTrees({ workflows, migrations: m }).violations, []);
+});
+test("real breaks still fail: skipped ADD COLUMN, skipped CREATE TABLE reader, and a skipped CREATE TABLE column that is also skipped ADD COLUMN", () => {
+  const workflows = { fixture: loop };
+  const viaAlter = {
+    "001_base.sql": "CREATE TABLE public.t(x int);",
+    "002_skip.sql": "ALTER TABLE public.t ADD COLUMN only_alter text;",
+    "003_reader.sql": fn("only_alter"),
+  };
+  assert.ok(analyseTrees({ workflows, migrations: viaAlter }).violations.some(v => v.check === "C-1" && v.message.includes("only_alter")));
+  const viaTable = {
+    "001_base.sql": "CREATE TABLE public.t(x int);",
+    "002_skip.sql": "CREATE TABLE public.hidden(x int, only_hidden text);",
+    "003_reader.sql": fn("only_hidden", "hidden"),
+  };
+  assert.ok(analyseTrees({ workflows, migrations: viaTable }).violations.some(v => v.check === "C-1" && v.message.includes("hidden")));
+  const both = {
+    "001_base.sql": "CREATE TABLE public.t(x int);",
+    "002_skip.sql": "CREATE TABLE public.hidden(dup_col text);\nALTER TABLE public.t ADD COLUMN dup_col text;",
+    "003_reader.sql": fn("dup_col"),
+  };
+  assert.ok(analyseTrees({ workflows, migrations: both }).violations.some(v => v.check === "C-1" && v.message.includes("dup_col")));
+});
+test("CREATE TABLE constraints, AS and PARTITION OF are not credited as columns", () => {
+  const sql = `CREATE TABLE public.a (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "Quoted Col" text,
+    price numeric CHECK (price > 0 AND price < greatest(1, 2)),
+    CONSTRAINT con_name CHECK (id IS NOT NULL),
+    UNIQUE (id, price),
+    FOREIGN KEY (id) REFERENCES public.z(id),
+    EXCLUDE USING gist (price WITH =),
+    LIKE public.other
+  );
+  CREATE TABLE public.b AS SELECT 1 AS from_as;
+  CREATE TABLE public.c PARTITION OF public.a FOR VALUES IN (1);`;
+  const cols = [...parseMigration("f.sql", sql).createdCols].sort();
+  assert.deepEqual(cols, ["col:id", "col:price", "col:quoted col"]);
+});

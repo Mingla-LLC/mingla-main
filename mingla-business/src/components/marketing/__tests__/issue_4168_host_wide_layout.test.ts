@@ -14,6 +14,8 @@ describe("#4168 Host wide-screen design contract", () => {
       ads: expect.objectContaining({ label: "Create an ad", href: "/(tabs)/marketing/ads/create" }),
       creators: expect.objectContaining({ label: "Hire a creator" }),
       referrals: expect.objectContaining({ label: "Create offer" }),
+      // [TEST-MOD #4514] Forms joined Promote after Referrals.
+      forms: expect.objectContaining({ label: "Create a form", href: "/(tabs)/marketing/forms?action=create" }),
       people: expect.objectContaining({ label: "Import people", href: "/(tabs)/people/import?returnTo=marketingPeople" }),
       templates: expect.objectContaining({ label: "New template", href: "/(tabs)/marketing/templates/new" }),
     });

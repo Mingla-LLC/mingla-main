@@ -86,6 +86,8 @@ import {
 } from "../../../src/hooks/useTrips";
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { canPerformAction } from "../../../src/utils/permissionGates";
+import { ActionTile } from "../../../src/components/event/ActionTile";
 import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 // ORCH-0873 [Tr3 Stage 2 UI] — Money tab data.
@@ -178,6 +180,19 @@ const TRIP_DRAFT_DELETE_DESCRIPTION =
 const TRIP_DRAFT_DELETE_HAS_BOOKINGS_COPY =
   "This trip has bookings, so it wasn't cancelled. Nothing was changed. Email support@usemingla.com for help.";
 const TRIP_CANCEL_ERROR = "Could not cancel trip. Try again.";
+
+// #4514 — the "Guest questions" tile, its data hook and the attach sheet load
+// on demand through the one forms owner, so none of it is in the eager Host
+// web bundle. While the chunk loads, the cell shows the labelled, disabled tile
+// (a moment, never a dead tap).
+const GuestQuestionsTile = React.lazy(() =>
+  import("../../../src/components/forms/formsOwner").then((m) => ({
+    default: m.GuestQuestionsTile,
+  })),
+);
+const guestQuestionsTileLoading = (
+  <ActionTile fill disabled icon="list" label="Guest questions" sub="Loading…" onPress={() => undefined} />
+);
 
 export default function TripDashboardRoute(): React.ReactElement {
   const router = useRouter();
@@ -610,7 +625,30 @@ export default function TripDashboardRoute(): React.ReactElement {
     groupChatTile,
     ...pick(["blasts"]),
     ...(promoteTile !== null ? [promoteTile] : []),
-    ...pick(["guests", "orders", "insights"]),
+    ...pick(["guests"]),
+    // #4514 — "Guest questions": after Travelers, before Orders (marketing
+    // manager and up; scanners never see it).
+    ...(canPerformAction(currentBrandRole.rank, "READ_FORM_RESPONSES") && !currentBrandRole.isLoading && !currentBrandRole.isError && currentBrandRole.role !== null
+      ? [
+          {
+            key: "guestQuestions",
+            icon: "list",
+            label: "Guest questions",
+            onPress: () => undefined,
+            node: (
+              <React.Suspense fallback={guestQuestionsTileLoading}>
+                <GuestQuestionsTile
+                  eventId={trip.id}
+                  brandId={trip.brandId}
+                  kind="trip"
+                  testID="trip-tile-guest-questions"
+                />
+              </React.Suspense>
+            ),
+          } satisfies OfferingTile,
+        ]
+      : []),
+    ...pick(["orders", "insights"]),
   ];
   const tripMoreTiles: OfferingTile[] = [
     ...pick(["reconciliation"]),

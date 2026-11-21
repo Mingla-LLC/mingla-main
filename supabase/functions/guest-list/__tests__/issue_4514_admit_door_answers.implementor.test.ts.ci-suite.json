@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/guest-list/__tests__/issue_4514_admit_door_answers.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4514-admit-door-answers-implementor",
+  "profile": "deno-2-unit"
+}

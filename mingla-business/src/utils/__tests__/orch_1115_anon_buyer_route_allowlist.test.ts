@@ -264,6 +264,8 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/pay/",
       // #4420 — token-authorized staff-made Stay payment link.
       "/stay/pay/",
+      // #4514 — a brand form's personal link (token in the URL fragment).
+      "/form/",
     ]);
   });
 

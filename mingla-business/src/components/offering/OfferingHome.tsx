@@ -85,6 +85,11 @@ export interface OfferingTile {
   accessibilityLabel?: string;
   testID?: string;
   onPress: () => void;
+  /**
+   * #4514 — a tile that draws itself (the lazily loaded "Guest questions"
+   * tile). Drawn in the tile's own cell instead of the plain ActionTile.
+   */
+  node?: React.ReactNode;
 }
 
 export interface OfferingTilePageProps {
@@ -105,18 +110,22 @@ function TileRows({ tiles }: { tiles: readonly OfferingTile[] }): React.ReactEle
         const cells = tiles.slice(row * COLUMNS, row * COLUMNS + COLUMNS);
         return (
           <View key={cells.map((c) => c.key).join("-")} style={styles.tileRow}>
-            {cells.map((tile) => (
-              <ActionTile
-                key={tile.key}
-                fill
-                icon={tile.icon}
-                label={tile.label}
-                sub={tile.sub}
-                accessibilityLabel={tile.accessibilityLabel}
-                testID={tile.testID}
-                onPress={tile.onPress}
-              />
-            ))}
+            {cells.map((tile) =>
+              tile.node !== undefined ? (
+                <React.Fragment key={tile.key}>{tile.node}</React.Fragment>
+              ) : (
+                <ActionTile
+                  key={tile.key}
+                  fill
+                  icon={tile.icon}
+                  label={tile.label}
+                  sub={tile.sub}
+                  accessibilityLabel={tile.accessibilityLabel}
+                  testID={tile.testID}
+                  onPress={tile.onPress}
+                />
+              ),
+            )}
             {/* A short last row keeps its cells the same width. */}
             {Array.from({ length: COLUMNS - cells.length }, (_, pad) => (
               <View key={`pad-${pad}`} style={styles.tilePad} />

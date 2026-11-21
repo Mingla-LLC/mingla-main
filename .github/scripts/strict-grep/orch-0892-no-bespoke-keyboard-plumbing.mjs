@@ -120,7 +120,27 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(__dirname, "../../..");
-export const SCAN_ROOTS = [resolve(REPO_ROOT, "mingla-business")];
+// #4514 — the workspace packages Host renders from (`@mingla/<name>` resolves to
+// `packages/<name>`) are part of the import graph: a screen whose fields come
+// from a package renderer (trip checkout's questions, from
+// `@mingla/form-rendering`) must still be seen as hosting an input. Package
+// files are GRAPH-ONLY: they decide which Host files render an input, but the
+// patterns are reported only for files under REPORT_ROOT (the packages are
+// shared with the Explorer app, which has its own keyboard rules).
+//
+// The graph reaches the packages Host draws FIELDS from (PACKAGE_GRAPH). Add a
+// package here when a Host screen starts drawing inputs from it. Widening this
+// to every package (or following every on-demand edge below) is the right end
+// state but, measured on 2026-11-19, newly flags two screens owned elsewhere
+// (`app/stay/[groupId].tsx` via @mingla/brand-rendering, and
+// `src/components/venue/insights/VenueInsightsModule.tsx` via a lazy
+// CompetitorWatchSection): recorded on #4514 for their owners.
+export const REPORT_ROOT = "mingla-business";
+export const PACKAGE_GRAPH = ["form-rendering"];
+export const SCAN_ROOTS = [
+  resolve(REPO_ROOT, "mingla-business"),
+  ...PACKAGE_GRAPH.map((name) => resolve(REPO_ROOT, "packages", name)),
+];
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -531,6 +551,67 @@ function parseValueImports(text) {
   return out;
 }
 
+/**
+ * #4514 — named re-exports (`export { A, B as C } from "x"`) and star
+ * re-exports (`export * from "x"`). A barrel such as a package `index.ts`
+ * renders nothing itself, so a name imported through it is followed to the
+ * module that defines it before the "renders an input" check.
+ */
+const RE_REEXPORT_NAMED = /export\s+(?!type\b)\{([^}]*)\}\s*from\s*["']([^"']+)["']/g;
+const RE_REEXPORT_STAR = /export\s+\*\s+from\s*["']([^"']+)["']/g;
+
+function parseReExports(text) {
+  const named = new Map(); // exported name -> { specifier, imported }
+  const star = [];
+  RE_REEXPORT_NAMED.lastIndex = 0;
+  let m;
+  while ((m = RE_REEXPORT_NAMED.exec(text)) !== null) {
+    for (const rawPart of m[1].split(",")) {
+      const part = rawPart.trim();
+      if (part.length === 0 || /^type\s/.test(part)) continue;
+      const asMatch = part.match(/^(\S+)\s+as\s+(\S+)$/);
+      const imported = asMatch ? asMatch[1] : part;
+      const exported = asMatch ? asMatch[2] : part;
+      named.set(exported, { specifier: m[2], imported });
+    }
+  }
+  RE_REEXPORT_STAR.lastIndex = 0;
+  while ((m = RE_REEXPORT_STAR.exec(text)) !== null) star.push(m[1]);
+  return { named, star };
+}
+
+/**
+ * #4514 — on-demand components: `const X = React.lazy(() => import("y")...)`
+ * (or `lazy(...)`, `async () => { const mod = await import("y"); ... }`).
+ * The member handed to `default` (`m.Name` / `mod.Name`) is the component; a
+ * bare `import("y")` whose default export is the component binds `default`.
+ * Without this a screen that loads its field-bearing child on demand would
+ * be invisible to pattern 4 — the hole a lazy split opens on any form screen.
+ */
+const RE_LAZY_BINDING =
+  /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:React\s*\.\s*)?lazy\s*\(/g;
+
+function parseLazyBindings(text) {
+  const out = [];
+  RE_LAZY_BINDING.lastIndex = 0;
+  let m;
+  while ((m = RE_LAZY_BINDING.exec(text)) !== null) {
+    // The lazy(...) call: walk to its matching close paren.
+    let depth = 1;
+    let i = m.index + m[0].length;
+    for (; i < text.length && depth > 0; i += 1) {
+      if (text[i] === "(") depth += 1;
+      else if (text[i] === ")") depth -= 1;
+    }
+    const call = text.slice(m.index + m[0].length, i);
+    const spec = call.match(/import\s*\(\s*["']([^"']+)["']\s*\)/);
+    if (!spec) continue;
+    const member = call.match(/default\s*:\s*[A-Za-z_$][\w$]*\s*\.\s*([A-Za-z_$][\w$]*)/);
+    out.push({ local: m[1], specifier: spec[1], imported: member ? member[1] : "default" });
+  }
+  return out;
+}
+
 const RESOLVE_SUFFIXES = [
   ".tsx",
   ".ts",
@@ -545,16 +626,22 @@ const RESOLVE_SUFFIXES = [
 ];
 
 /**
- * Relative and `@/` specifiers only — everything else (node_modules, workspace
- * packages) is outside the scan domain and therefore cannot be proven to render
- * an input from inside this gate.
+ * Relative, `@/` and workspace-package (`@mingla/<name>[/<path>]` →
+ * `packages/<name>[/<path>]`, #4514) specifiers. Everything else
+ * (node_modules) is outside the scan domain and therefore cannot be proven to
+ * render an input from inside this gate.
  */
-function resolveSpecifier(fromFile, specifier, known) {
+const RE_WORKSPACE_PACKAGE = /^@mingla\/([A-Za-z0-9_.-]+)(\/.*)?$/;
+
+function resolveSpecifier(fromFile, specifier, known, repoRoot = REPO_ROOT) {
   let base;
+  const workspace = specifier.match(RE_WORKSPACE_PACKAGE);
   if (specifier.startsWith(".")) {
     base = resolve(dirname(fromFile), specifier);
   } else if (specifier.startsWith("@/")) {
     base = resolve(REPO_ROOT, "mingla-business", specifier.slice(2));
+  } else if (workspace) {
+    base = resolve(repoRoot, "packages", workspace[1] + (workspace[2] ?? ""));
   } else {
     return null;
   }
@@ -819,8 +906,42 @@ export function scanKeyboardPlumbing({
       stripped: clean(raw),
       flow: blankBoundaries(blanked),
       imports: parseValueImports(clean(raw)),
+      reExports: parseReExports(clean(raw)),
+      lazy: parseLazyBindings(clean(raw)),
     });
   }
+
+  // #4514 — follow a name through barrels (named and star re-exports) to the
+  // module that defines it. Bounded by the file count; a cycle stops at the
+  // last module reached.
+  const DEFINES = (text, name) =>
+    new RegExp(
+      `export\\s+(?:default\\s+)?(?:const|let|function|class)\\s+${escapeRe(name)}\\b`,
+    ).test(text);
+  const followName = (path, name) => {
+    let at = path;
+    let wanted = name;
+    for (let hops = 0; hops < files.length; hops += 1) {
+      const doc = docs.get(at);
+      if (doc === undefined) return at;
+      const hop = doc.reExports.named.get(wanted);
+      if (hop !== undefined) {
+        const next = resolveSpecifier(at, hop.specifier, known, repoRoot);
+        if (next === null) return at;
+        at = next;
+        wanted = hop.imported;
+        continue;
+      }
+      if (DEFINES(doc.stripped, wanted)) return at;
+      const starHit = doc.reExports.star
+        .map((spec) => resolveSpecifier(at, spec, known, repoRoot))
+        .find((next) => next !== null && docs.has(next) &&
+          (DEFINES(docs.get(next).stripped, wanted) || docs.get(next).reExports.named.has(wanted)));
+      if (starHit === undefined) return at;
+      at = starHit;
+    }
+    return at;
+  };
 
   // ---- H1: derive "renders a focusable input" over the import graph. -----
   // Leaf-seeded, closed upward to a fixed point with NO depth cap. This is the
@@ -833,28 +954,71 @@ export function scanKeyboardPlumbing({
   for (const [path, doc] of docs) {
     const map = new Map();
     for (const imp of doc.imports) {
-      const resolved = resolveSpecifier(path, imp.specifier, known);
+      const resolved = resolveSpecifier(path, imp.specifier, known, repoRoot);
       if (resolved === null) continue;
-      for (const name of imp.names) map.set(name, resolved);
+      for (const binding of imp.bindings) {
+        map.set(
+          binding.local,
+          binding.kind === "named" ? followName(resolved, binding.imported) : resolved,
+        );
+      }
     }
     componentModule.set(path, map);
   }
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const [path, doc] of docs) {
-      if (providesInput.has(path)) continue;
-      const map = componentModule.get(path);
-      for (const name of renderedComponentsIn(doc.flow)) {
-        const target = map.get(name);
-        if (target !== undefined && providesInput.has(target)) {
-          providesInput.add(path);
-          changed = true;
-          break;
+  const closeUpward = () => {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const [path, doc] of docs) {
+        if (providesInput.has(path)) continue;
+        const map = componentModule.get(path);
+        for (const name of renderedComponentsIn(doc.flow)) {
+          const target = map.get(name);
+          if (target !== undefined && providesInput.has(target)) {
+            providesInput.add(path);
+            changed = true;
+            break;
+          }
         }
       }
     }
+  };
+  closeUpward();
+
+  // #4514 — on-demand edges. A `React.lazy(() => import(owner))` binding is
+  // followed when the owner renders its fields from a PACKAGE_GRAPH package
+  // (a renderer owner, e.g. trip checkout's questions). See PACKAGE_GRAPH for
+  // why every lazy edge is not followed yet.
+  const packagesRoot = resolve(repoRoot, "packages");
+  const rendersFromPackage = (path) => {
+    const doc = docs.get(path);
+    const map = componentModule.get(path);
+    if (doc === undefined || map === undefined) return false;
+    for (const name of renderedComponentsIn(doc.flow)) {
+      const target = map.get(name);
+      if (
+        target !== undefined &&
+        target.startsWith(`${packagesRoot}/`) &&
+        providesInput.has(target)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+  let addedLazy = false;
+  for (const [path, doc] of docs) {
+    for (const lazy of doc.lazy) {
+      const resolved = resolveSpecifier(path, lazy.specifier, known, repoRoot);
+      if (resolved === null) continue;
+      const target =
+        lazy.imported === "default" ? resolved : followName(resolved, lazy.imported);
+      if (!rendersFromPackage(target)) continue;
+      componentModule.get(path).set(lazy.local, target);
+      addedLazy = true;
+    }
   }
+  if (addedLazy) closeUpward();
 
   const warnings = [];
   let scanned = 0;
@@ -865,8 +1029,10 @@ export function scanKeyboardPlumbing({
   };
 
   for (const path of files) {
-    scanned += 1;
     const relPath = relative(repoRoot, path);
+    // Graph-only (a workspace package): it fed the import graph above.
+    if (!relPath.startsWith(`${REPORT_ROOT}/`)) continue;
+    scanned += 1;
     if (SAFELIST.has(relPath)) {
       safelisted += 1;
       continue;
@@ -1102,6 +1268,31 @@ export const CleanScreen = () => (
 import React from "react";
 import { TextInput } from "react-native";
 export const Input = (props) => <TextInput {...props} />;
+`,
+};
+
+
+const PACKAGE_RENDERER_FIXTURE = {
+  "/orch-0892-self-test/packages/form-kit/index.ts": `
+export * from "./types";
+export { FormRenderer, type FormRendererProps } from "./Renderers";
+`,
+  "/orch-0892-self-test/packages/form-kit/types.ts": `
+export interface FormQuestion { id: string }
+`,
+  "/orch-0892-self-test/packages/form-kit/Renderers.tsx": `
+import React from "react";
+import { TextInput, View } from "react-native";
+export const FormRenderer = () => (
+  <View>
+    <TextInput value="" onChangeText={() => undefined} />
+  </View>
+);
+`,
+  [`${FIXTURE_ROOT}/src/components/checkout/intake/rendererOwner.tsx`]: `
+import React from "react";
+import { FormRenderer } from "@mingla/form-kit";
+export const OwnedForm = () => <FormRenderer />;
 `,
 };
 
@@ -1345,9 +1536,94 @@ export const NamespaceContainer = () => (
 `,
     },
   },
+  {
+    id: "G-4514-PKG",
+    why: "#4514 — a screen whose fields come from a workspace package renderer (`@mingla/<name>`, through its barrel) must be seen as hosting an input; the trip checkout questions screen went invisible when its renderer moved into packages/form-rendering",
+    expect: /bare react-native container/,
+    files: {
+      ...PACKAGE_RENDERER_FIXTURE,
+      [`${FIXTURE_ROOT}/app/checkout-trip/intake.tsx`]: `
+import React from "react";
+import { ScrollView } from "react-native";
+import { FormRenderer } from "@mingla/form-kit";
+
+export default function Intake() {
+  return (
+    <ScrollView>
+      <FormRenderer />
+    </ScrollView>
+  );
+}
+`,
+    },
+  },
+  {
+    id: "G-4514-LAZY",
+    why: "#4514 — the same screen loading the renderer ON DEMAND through its lazy owner (`React.lazy(() => import(owner).then((m) => ({ default: m.X })))`) must still be seen as hosting an input",
+    expect: /bare react-native container/,
+    files: {
+      ...PACKAGE_RENDERER_FIXTURE,
+      [`${FIXTURE_ROOT}/app/checkout-trip/intake.tsx`]: `
+import React from "react";
+import { ScrollView } from "react-native";
+
+const OwnedForm = React.lazy(() =>
+  import("../../src/components/checkout/intake/rendererOwner").then((m) => ({
+    default: m.OwnedForm,
+  })),
+);
+
+export default function Intake() {
+  return (
+    <ScrollView>
+      <React.Suspense fallback={null}>
+        <OwnedForm />
+      </React.Suspense>
+    </ScrollView>
+  );
+}
+`,
+    },
+  },
 ];
 
 const NEGATIVE_FIXTURES = [
+  {
+    id: "G-4514-LAZY-OK",
+    why: "#4514 — the on-demand renderer inside the SmartScrollView wrapper is the correct shape, and a workspace package file is graph-only (never reported)",
+    files: {
+      ...PACKAGE_RENDERER_FIXTURE,
+      "/orch-0892-self-test/packages/form-kit/Scroller.tsx": `
+import React from "react";
+import { ScrollView, TextInput } from "react-native";
+export const Scroller = () => (
+  <ScrollView>
+    <TextInput value="" onChangeText={() => undefined} />
+  </ScrollView>
+);
+`,
+      [`${FIXTURE_ROOT}/app/checkout-trip/intake.tsx`]: `
+import React from "react";
+import { ScrollView } from "../../src/wrappers/SmartScrollView";
+
+const OwnedForm = React.lazy(() =>
+  import("../../src/components/checkout/intake/rendererOwner").then((m) => ({
+    default: m.OwnedForm,
+  })),
+);
+
+export default function Intake() {
+  return (
+    <ScrollView>
+      <React.Suspense fallback={null}>
+        <OwnedForm />
+      </React.Suspense>
+    </ScrollView>
+  );
+}
+`,
+    },
+  },
   {
     id: "G-4273-OK",
     why: "#4273 — the same children host through the wrapper is the correct shape",
@@ -1531,7 +1807,7 @@ function runCli() {
   });
 
   console.log("\nORCH-0892 no-bespoke-keyboard-plumbing informational gate");
-  console.log(`Scanned ${scanned} .ts/.tsx files under mingla-business/.\n`);
+  console.log(`Scanned ${scanned} .ts/.tsx files under mingla-business/ (import graph includes packages/${PACKAGE_GRAPH.join(", packages/")}).\n`);
   console.log(
     `  ${safelisted} file(s) explicitly safelisted (Sheet / KeyboardRoot / KeyboardToolbarRoot / SmartScrollView / useKeyboardIsVisible)`,
   );

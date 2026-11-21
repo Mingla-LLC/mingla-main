@@ -22,6 +22,13 @@
  * go red — the screen keeps showing "Payment received".
  */
 
+// #4514 wave 5 — the forms lazy owner (Questions step, after-purchase hand-off)
+// loads native renderers jest does not transform; this suite does not test it.
+jest.mock("../../../../src/components/checkout/intake/formRenderingPrimitives", () => ({
+  CheckoutQuestionsStep: () => null,
+  PurchaseFormHandoff: () => null,
+}));
+
 import React from "react";
 
 (

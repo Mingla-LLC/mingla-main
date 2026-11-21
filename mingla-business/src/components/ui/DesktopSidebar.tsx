@@ -65,6 +65,8 @@ const MARKETING_ICONS: Record<string, IconName> = {
   ads: "rocket",
   creators: "users",
   referrals: "gift",
+  // #4514 — Forms (host-built guest questions) sits after Referrals in Promote.
+  forms: "list",
   // #4389 P4/P5 — People is the contact book (`notebook`), never Account's
   // `user` (Creators keeps `users`), so the rail shows no two identical glyphs.
   people: "notebook",

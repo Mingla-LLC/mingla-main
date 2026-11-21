@@ -2,7 +2,9 @@
 // The raw code is sent once and is never persisted.
 
 export interface ContactCodeRandom {
-  getRandomValues<T extends ArrayBufferView>(array: T): T;
+  // Only Uint8Array is ever filled (#4514: the wider generic did not type-check
+  // `crypto` as the default under deno 1.46, which the edge lanes run).
+  getRandomValues(array: Uint8Array): Uint8Array;
 }
 
 export function generateContactCode(

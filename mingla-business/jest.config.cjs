@@ -419,6 +419,11 @@ module.exports = {
     // issue #1023 — the shared ThemeEntranceAnimation imports the motion package
     // by name from packages/ (no node_modules there). Resolution repair only.
     "^@mingla/theme-animations$": "<rootDir>/../packages/theme-animations/index.ts",
+    // #4514 — the question renderers moved to packages/form-rendering (no
+    // node_modules there): resolve the package and its datetimepicker peer to
+    // this app's real copies. Resolution repair only; a suite's jest.mock wins.
+    "^@mingla/form-rendering$": "<rootDir>/../packages/form-rendering/index.ts",
+    "^@react-native-community/datetimepicker$": "<rootDir>/node_modules/@react-native-community/datetimepicker",
     // issue #1023 wave 2 — the shared offering bodies import expo-linear-gradient
     // (gradient fills) from packages/, and its ESM build cannot run under node.
     // A lightweight manual mock that renders a `LinearGradient` host element;

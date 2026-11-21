@@ -260,6 +260,12 @@ export interface ExperienceCreatorWizardProps {
    * above the wizard header, pushing the stepper down the screen.
    */
   identityTopSlot?: React.ReactNode;
+  /**
+   * #4514 — a route-owned row shown at the bottom of the Cover step on a live
+   * edit (the "Guest questions" row sits after Cover). It saves through its
+   * own RPC, not through "Save changes".
+   */
+  coverBottomSlot?: React.ReactNode;
 }
 
 
@@ -417,6 +423,7 @@ export const ExperienceCreatorWizard: React.FC<
   liveSoldCount,
   initialStep,
   identityTopSlot = null,
+  coverBottomSlot = null,
   liveBuyerNoticeLine,
   savedToastFor,
 }) => {
@@ -2299,6 +2306,7 @@ export const ExperienceCreatorWizard: React.FC<
             onThemeChange={handleThemeChange}
           />
         ) : null}
+        {step === 5 && coverBottomSlot !== null ? coverBottomSlot : null}
 
         {inviteEnabled && step === 6 ? (
           <InvitePeopleStep eventId={experienceId} brandId={brandId} eventType="experience"

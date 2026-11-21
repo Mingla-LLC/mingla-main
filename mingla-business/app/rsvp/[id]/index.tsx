@@ -90,6 +90,19 @@ const deriveScreenStatus = (event: LiveEvent): EventStatus => {
 const goingKindForStatus = (status: EventStatus): "live" | "past" =>
   status === "past" ? "past" : "live";
 
+// #4514 — the "Guest questions" tile, its data hook and the attach sheet load
+// on demand through the one forms owner, so none of it is in the eager Host
+// web bundle. While the chunk loads, the cell shows the labelled, disabled tile
+// (a moment, never a dead tap).
+const GuestQuestionsTile = React.lazy(() =>
+  import("../../../src/components/forms/formsOwner").then((m) => ({
+    default: m.GuestQuestionsTile,
+  })),
+);
+const guestQuestionsTileLoading = (
+  <ActionTile fill disabled icon="list" label="Guest questions" sub="Loading…" onPress={() => undefined} />
+);
+
 export default function RsvpDetailScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -112,6 +125,13 @@ export default function RsvpDetailScreen(): React.ReactElement {
     !currentBrandRole.isError &&
     currentBrandRole.role !== null &&
     !isScannerOnlyRank(currentBrandRole.rank);
+  // #4514 — marketing manager and up; scanners never see "Guest questions".
+  const showGuestQuestions =
+    brand !== null &&
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    canPerformAction(currentBrandRole.rank, "READ_FORM_RESPONSES");
 
   // ----- Going-count source (SPEC F-2) -------------------------------
   // useManagedEventRoute → fetchBusinessEventById returns rsvpGoingCount: 0,
@@ -501,8 +521,21 @@ export default function RsvpDetailScreen(): React.ReactElement {
               onPress={handleBlasts}
             />
           </View>
-          {promote.enabled || canShowListingInsights ? (
+          {showGuestQuestions || promote.enabled || canShowListingInsights ? (
           <View style={styles.tileRow}>
+            {/* #4514 — third row, first cell: after Blast, before Promote. It
+                fills the row's empty cell, so the first row keeps the locked
+                door order. */}
+            {showGuestQuestions && brand !== null ? (
+              <React.Suspense fallback={guestQuestionsTileLoading}>
+                <GuestQuestionsTile
+                  eventId={event.serverEventId ?? event.id}
+                  brandId={brand.id}
+                  kind="rsvp"
+                  testID="rsvp-tile-guest-questions"
+                />
+              </React.Suspense>
+            ) : null}
             {promote.enabled ? (
               <ActionTile
                 fill
@@ -529,7 +562,10 @@ export default function RsvpDetailScreen(): React.ReactElement {
             {Array.from(
               {
                 length:
-                  3 - (promote.enabled ? 1 : 0) - (canShowListingInsights ? 1 : 0),
+                  3 -
+                  (showGuestQuestions ? 1 : 0) -
+                  (promote.enabled ? 1 : 0) -
+                  (canShowListingInsights ? 1 : 0),
               },
               (_, pad) => (
                 <View key={`pad-${pad}`} style={styles.tilePad} />

@@ -79,6 +79,19 @@ export interface IntakeQuestion {
   max?: number;
   /** number: integer-only flag. */
   integer_only?: boolean;
+  /**
+   * #4514 brand forms only — the trip builder never sets these (its feature
+   * flags are off). `option_ids` is parallel to `options`: a stable id per
+   * option so "Show only if" keeps pointing at the same option after a rename
+   * or a reorder.
+   */
+  option_ids?: string[];
+  /** #4514: show this question only after an earlier single-choice answer. */
+  show_if?: { question_id: string; option_id: string };
+  /** #4514: this answer shows to door staff when the guest is scanned. */
+  show_at_door?: boolean;
+  /** #4514: optional short label for the door line (16 chars). */
+  door_label?: string;
 }
 
 export interface IntakeSchema {

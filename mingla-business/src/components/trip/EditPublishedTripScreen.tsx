@@ -209,6 +209,12 @@ const SECTIONS: readonly SectionConfig[] = [
   { key: "settings", label: "Settings" },
 ];
 
+// #4514 — the "Guest questions" row (after Intake form, before Settings) loads
+// on demand, so it adds nothing to the eager web bundle.
+const GuestQuestionsRow = React.lazy(() =>
+  import("../forms/formsOwner").then((m) => ({ default: m.GuestQuestionsRow })),
+);
+
 const SAVE_PROCESSING_MS = 800;
 const TOAST_NAV_DELAY_MS = 600;
 
@@ -2238,7 +2244,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           const isOpen = openSection === sec.key;
           const isEdited = editedSectionKeys.has(sec.key);
           return (
-            <View key={sec.key} style={styles.sectionCard}>
+            <React.Fragment key={sec.key}>
+            <View style={styles.sectionCard}>
               <Pressable
                 onPress={() => handleToggleSection(sec.key)}
                 accessibilityRole="button"
@@ -2270,6 +2277,19 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 </View>
               ) : null}
             </View>
+            {/* #4514 — "Guest questions": after Intake form, before Settings. Its
+                own RPC saves it; it is not part of "Save changes". */}
+            {sec.key === "intake" ? (
+              <React.Suspense fallback={null}>
+                <GuestQuestionsRow
+                  eventId={trip.id}
+                  brandId={trip.brandId}
+                  kind="trip"
+                  testID="edit-guest-questions-row"
+                />
+              </React.Suspense>
+            ) : null}
+            </React.Fragment>
           );
         })}
 

@@ -137,6 +137,21 @@ import { CreatorStep6SettingsLazy, RsvpStep5SetupLazy } from "./lazySettingsStep
 // makes Metro hoist it into the eager `__common` chunk that EVERY buyer
 // downloads before anything renders — for a control only a brand owner ever
 // sees. Same treatment, and same reason, as SeeWhosGoingGate.
+// #4514 — the "Guest questions" row (and its attach sheet) loads on demand, so
+// it adds nothing to the eager web bundle.
+const GuestQuestionsRow = React.lazy(() =>
+  import("../forms/formsOwner").then((m) => ({ default: m.GuestQuestionsRow })),
+);
+
+/**
+ * #4514 — where the "Guest questions" row sits: right after "Tickets" on a
+ * ticketed event (before Settings) and right after "RSVP" on an RSVP, the last
+ * section. The row is not a draft section (it saves through its own RPC, not
+ * "Save changes"), so it is not in the section lists. Kept here, beside its
+ * only caller, so the shared section module (eager) does not grow.
+ */
+const guestQuestionsAfterSection = (rsvpMode: boolean): SectionKey =>
+  rsvpMode ? "rsvp-setup" : "tickets";
 const EventTicketCheckoutAccessCard = React.lazy(() =>
   import("./EventTicketCheckoutAccessCard").then((m) => ({
     default: m.EventTicketCheckoutAccessCard,
@@ -2021,7 +2036,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           const isEdited = editedSectionKeys.has(sec.key);
           const hasErrors = showErrors && sectionErrors[sec.key].length > 0;
           return (
-            <View key={sec.key} style={styles.sectionCard}>
+            <React.Fragment key={sec.key}>
+            <View style={styles.sectionCard}>
               <Pressable
                 onPress={() => handleToggleSection(sec.key)}
                 accessibilityRole="button"
@@ -2056,6 +2072,20 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                 </View>
               ) : null}
             </View>
+            {/* #4514 — "Guest questions": after Tickets (before Settings) on an
+                event, after RSVP (the last section) on an RSVP. Its own RPC
+                saves it; it is not part of "Save changes". */}
+            {sec.key === guestQuestionsAfterSection(rsvpMode) && brandId !== null ? (
+              <React.Suspense fallback={null}>
+                <GuestQuestionsRow
+                  eventId={liveEvent.serverEventId ?? liveEvent.id}
+                  brandId={brandId}
+                  kind={rsvpMode ? "rsvp" : "event"}
+                  testID="edit-guest-questions-row"
+                />
+              </React.Suspense>
+            ) : null}
+            </React.Fragment>
           );
         })}
 

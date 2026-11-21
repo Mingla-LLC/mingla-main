@@ -156,6 +156,19 @@ const deriveScreenStatus = (event: LiveEvent): EventStatus => {
   return lifecycle === "cancelled" ? "past" : lifecycle;
 };
 
+// #4514 — the "Guest questions" tile, its data hook and the attach sheet load
+// on demand through the one forms owner, so none of it is in the eager Host
+// web bundle. While the chunk loads, the cell shows the labelled, disabled tile
+// (a moment, never a dead tap).
+const GuestQuestionsTile = React.lazy(() =>
+  import("../../../src/components/forms/formsOwner").then((m) => ({
+    default: m.GuestQuestionsTile,
+  })),
+);
+const guestQuestionsTileLoading = (
+  <ActionTile fill disabled icon="list" label="Guest questions" sub="Loading…" onPress={() => undefined} />
+);
+
 export default function EventDetailScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const { isWideDesktop } = useResponsiveLayout();
@@ -1038,6 +1051,12 @@ export default function EventDetailScreen(): React.ReactElement {
                   edit: canEditEvent,
                   promote: promoteEnabled,
                   insights: canShowListingInsights,
+                  // #4514 — marketing manager and up; scanners never see it.
+                  guestQuestions:
+                    !currentBrandRole.isLoading &&
+                    !currentBrandRole.isError &&
+                    currentBrandRole.role !== null &&
+                    canPerformAction(currentBrandRole.rank, "READ_FORM_RESPONSES"),
                   dates: event.whenMode === "multi_date",
                   doorSales: event.inPersonPaymentsEnabled === true,
                   brandPage: brand !== null,
@@ -1127,6 +1146,17 @@ export default function EventDetailScreen(): React.ReactElement {
                           onPress={handleGuests}
                         />
                       );
+                    case "guestQuestions":
+                      return brand !== null ? (
+                        <React.Suspense key={key} fallback={guestQuestionsTileLoading}>
+                          <GuestQuestionsTile
+                            eventId={event.serverEventId ?? event.id}
+                            brandId={brand.id}
+                            kind="event"
+                            testID="event-tile-guest-questions"
+                          />
+                        </React.Suspense>
+                      ) : null;
                     case "orders":
                       return (
                         <ActionTile

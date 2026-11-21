@@ -28,6 +28,8 @@ export interface ActionTileProps {
   fill?: boolean;
   accessibilityLabel?: string;
   testID?: string;
+  /** #4514: a tile that is still loading its chunk (a transient, labelled state). */
+  disabled?: boolean;
   onPress: () => void;
 }
 
@@ -44,10 +46,13 @@ export const ActionTile: React.FC<ActionTileProps> = ({
   fill = false,
   accessibilityLabel,
   testID,
+  disabled = false,
   onPress,
 }) => (
   <Pressable
     onPress={onPress}
+    disabled={disabled}
+    accessibilityState={disabled ? { disabled: true } : undefined}
     accessibilityRole="button"
     accessibilityLabel={accessibilityLabel ?? label}
     testID={testID}

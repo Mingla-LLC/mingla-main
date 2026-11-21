@@ -54,6 +54,7 @@ jest.mock("@sentry/browser", () => {
     init: mockInit,
     captureException: mockCaptureException,
     addBreadcrumb: mockAddBreadcrumb,
+    getClient: () => undefined,
   };
 });
 
