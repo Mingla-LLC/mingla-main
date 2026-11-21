@@ -20,7 +20,6 @@
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 import { openPrivacyChoices, PRIVACY_CHOICES_EVENT } from "./privacyChoices";
 import { usePrivacyState } from "./usePrivacyState.web";
@@ -31,6 +30,13 @@ export const PRIVACY_POLICY_URL = "https://usemingla.com/privacy-policy";
 export const PRIVACY_STRIP_LABEL = "Privacy & ad choices";
 export const PRIVACY_SAVED_LABEL = "Saved";
 const STYLE_ID = "mingla-privacy-bar-style";
+
+// react-dom ships with react-native-web on web but this package carries no
+// @types/react-dom, so the one function used here is typed locally.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { createPortal } = require("react-dom") as {
+  createPortal: (children: React.ReactNode, container: Element) => React.ReactPortal;
+};
 const PANEL_ID = "mingla-privacy-panel";
 const SAVED_MS = 1800;
 

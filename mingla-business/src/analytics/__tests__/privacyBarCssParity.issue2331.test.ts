@@ -74,7 +74,7 @@ describe("#2331 privacy strip stylesheet parity", () => {
   });
 
   it("the React strip renders outside #root and the SPA shell ships the band from the first paint", () => {
-    expect(BANNER_SOURCE).toContain('import { createPortal } from "react-dom";');
+    expect(BANNER_SOURCE).toContain('const { createPortal } = require("react-dom") as {');
     expect(BANNER_SOURCE).toMatch(/return createPortal\([\s\S]*document\.body,\n  \);\n\}/);
     expect(HTML_SHELL).toContain('`<style id="${PRIVACY_BAR_STYLE_ID}">${privacyBarCss()}</style>`');
     expect(HTML_SHELL).toContain('.replace(\'<div id="root"></div>\', `<div id="root"></div>${PRIVACY_BODY}`)');
