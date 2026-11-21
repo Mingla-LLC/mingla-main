@@ -3971,7 +3971,8 @@
         "mingla-business/playwright/issue2331/stripAudit.ts",
         "mingla-business/playwright/issue2769/index.html",
         "mingla-business/scripts/inject-mobile-blur-css.mjs",
-        "mingla-marketing/scripts/issue-2331-strip-token-check.mjs"
+        "mingla-marketing/scripts/issue-2331-strip-token-check.mjs",
+        "mingla-business/playwright/issue2768/index.html"
       ]
     },
     {
