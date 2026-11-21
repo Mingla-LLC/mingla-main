@@ -29,7 +29,8 @@
     "deleteFailed": "Pemadaman gagal", "deleteFailedMsg": "Tidak dapat memadam sesi ini.",
     "permissionDeleteBoard": "Hanya pencipta sesi atau admin boleh memadam sesi ini.",
     "deleteSessionTitle": "Padam Sesi", "deleteSessionMsg": "Pasti mahu memadam \"{{name}}\"? Tindakan ini tidak boleh dibatalkan dan semua kad, undian, dan perbincangan akan dipadam secara kekal.",
-    "leaveSessionTitle": "Tinggalkan Papan", "leaveSessionMsg": "Pasti mahu meninggalkan \"{{name}}\"?", "namePlaceholder": "Masukkan nama sesi"
+    "leaveSessionTitle": "Tinggalkan Papan", "leaveSessionMsg": "Pasti mahu meninggalkan \"{{name}}\"?", "namePlaceholder": "Masukkan nama sesi",
+    "sessionShareMessage": "Saya tambah awak ke \"{{name}}\" di Mingla. Sertai di sini: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Perbincangan", "cardDiscussion": "Perbincangan Kad", "errorLoadMsg": "Gagal memuatkan mesej",

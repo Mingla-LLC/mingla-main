@@ -53,6 +53,13 @@ const BusinessBadge: React.FC<{ hasBusinessApp: boolean }> = ({ hasBusinessApp }
   </View>
 );
 
+/** #4508 1.23 — "through {event}" for a close friend made through an RSVP. */
+export function circleThroughLine(person: CirclePerson): string | null {
+  if (person.relationshipSource !== 'rsvp_guest') return null;
+  const title = person.relationshipContextTitle?.trim();
+  return title ? `through ${title}` : null;
+}
+
 export const CircleAvatarTile: React.FC<CircleAvatarTileProps> = ({
   person,
   size = CIRCLE_AVATAR_DIAMETER,
@@ -63,6 +70,8 @@ export const CircleAvatarTile: React.FC<CircleAvatarTileProps> = ({
   const displayName = useMemo(() => getDisplayName(person), [person]);
   const initials = useMemo(() => getInitials(person), [person]);
   const relationshipLabel = person.relationshipLabel;
+  // #4508 1.23 — a close friend made through an RSVP says which event.
+  const throughLine = circleThroughLine(person);
   const ringColor = CIRCLE_TIER_RING_COLORS[person.tier];
   const innerSize = size - ringThickness * 2;
 
@@ -72,7 +81,7 @@ export const CircleAvatarTile: React.FC<CircleAvatarTileProps> = ({
       style={styles.tile}
       testID={`circle-avatar-tile-${person.userId}`}
       accessibilityRole="button"
-      accessibilityLabel={`View ${displayName}'s profile, ${relationshipLabel}`}
+      accessibilityLabel={`View ${displayName}'s profile, ${relationshipLabel}${throughLine ? `, ${throughLine}` : ''}`}
     >
       <View
         style={[
@@ -134,6 +143,11 @@ export const CircleAvatarTile: React.FC<CircleAvatarTileProps> = ({
         <Text style={styles.relationshipText} numberOfLines={1}>
           {relationshipLabel}
         </Text>
+        {throughLine ? (
+          <Text style={styles.relationshipText} numberOfLines={1} testID={`circle-through-${person.userId}`}>
+            {throughLine}
+          </Text>
+        ) : null}
       </View>
     </Pressable>
   );

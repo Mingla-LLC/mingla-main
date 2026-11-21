@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Nie udało się usunąć. Spróbuj ponownie.",
   "brand_guests_leave_title": "Opuścić Gości {{brand}}?",
   "brand_guests_leave_body": "Nowe rezerwacje nie dodadzą cię ponownie. Możesz wrócić ze swojej rezerwacji.",
-  "brand_guests_left_toast": "Opuściłeś Gości {{brand}}. Możesz wrócić ze swojej rezerwacji."
+  "brand_guests_left_toast": "Opuściłeś Gości {{brand}}. Możesz wrócić ze swojej rezerwacji.",
+  "af_send_yourself_title": "Wyślij też sam",
+  "af_send_yourself_body": "Wiadomość od ciebie działa najlepiej. Ten sam link co w naszym SMS-ie.",
+  "af_copy_message": "Kopiuj wiadomość",
+  "af_message_copied": "Skopiowano wiadomość"
 }

@@ -190,8 +190,11 @@ BEGIN
   -- A local-format phone cannot be matched safely and is dropped, not guessed.
   INSERT INTO public.event_rsvps(event_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
   VALUES (v_event_a, 'T RSVP', 't4238-rsvp@mingla-fixture.org', '08030004300', 'going', 'approved') RETURNING id INTO v_rsvp;
-  INSERT INTO public.event_rsvp_guests(rsvp_id, name, email, phone)
-  VALUES (v_rsvp, 'T Plus One', 't4238-plusone@mingla-fixture.org', '+2348030004301');
+  -- [TEST-MOD-APPROVED #4508] J: a plus-one enters a brand ad audience only
+  -- once they claim their pass, so the fixture plus-one is a claimed one
+  -- (the unclaimed case is proved in the #4508 implementor suite).
+  INSERT INTO public.event_rsvp_guests(rsvp_id, name, email, phone, claimed_at)
+  VALUES (v_rsvp, 'T Plus One', 't4238-plusone@mingla-fixture.org', '+2348030004301', now());
   INSERT INTO public.event_rsvps(event_id, guest_name, guest_email, guest_phone, rsvp_status, approval_status)
   VALUES (v_event_a, 'T Not Going', 't4238-notgoing@mingla-fixture.org', '+2348030004302', 'not_going', 'approved');
   -- Brand B guest.

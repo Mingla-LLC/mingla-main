@@ -1970,6 +1970,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           (changedKeys.has("rsvpCapacity") ||
             changedKeys.has("rsvpAllowPlusOnes") ||
             changedKeys.has("rsvpPlusOnesMax") ||
+            changedKeys.has("rsvpGuestsCanBring") ||
             changedKeys.has("rsvpWaitlistEnabled") ||
             changedKeys.has("rsvpApprovalMode") ||
             changedKeys.has("rsvpDiscoverable") ||

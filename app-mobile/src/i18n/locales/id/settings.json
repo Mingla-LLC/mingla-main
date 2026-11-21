@@ -51,7 +51,9 @@
         "brand_offering_invite": "Undangan dari tempat yang kamu ikuti",
         "brand_offering_invite_hint": "Saat tempat atau host mengundangmu ke sesuatu."
       }
-    }
+    },
+    "friends_going": "Teman yang pergi",
+    "friends_going_hint": "Saat teman dekat pergi ke sebuah acara"
   },
   "quiet_hours": {
     "title": "Jam Tenang",

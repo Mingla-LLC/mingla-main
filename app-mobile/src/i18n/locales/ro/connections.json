@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "Nu s-a putut elimina. Încearcă din nou.",
   "brand_guests_leave_title": "Părăsești Invitații {{brand}}?",
   "brand_guests_leave_body": "Rezervările noi nu te vor adăuga din nou. Poți reveni din rezervarea ta.",
-  "brand_guests_left_toast": "Ai părăsit Invitații {{brand}}. Poți reveni din rezervarea ta."
+  "brand_guests_left_toast": "Ai părăsit Invitații {{brand}}. Poți reveni din rezervarea ta.",
+  "af_send_yourself_title": "Trimite-l și tu",
+  "af_send_yourself_body": "Un mesaj de la tine ajunge cel mai bine. Același link ca în SMS-ul nostru.",
+  "af_copy_message": "Copiază mesajul",
+  "af_message_copied": "Mesaj copiat"
 }

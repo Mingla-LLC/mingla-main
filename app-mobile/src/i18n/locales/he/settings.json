@@ -51,7 +51,9 @@
         "brand_offering_invite": "הזמנות ממקומות שאתם עוקבים אחריהם",
         "brand_offering_invite_hint": "כשמקום או מארח מזמינים אתכם למשהו."
       }
-    }
+    },
+    "friends_going": "חברים יוצאים",
+    "friends_going_hint": "כשחבר קרוב הולך לאירוע"
   },
   "quiet_hours": {
     "title": "שעות שקט",

@@ -51,7 +51,9 @@
         "brand_offering_invite": "Einladungen von Orten, denen du folgst",
         "brand_offering_invite_hint": "Wenn ein Ort oder Gastgeber dich zu etwas einlädt."
       }
-    }
+    },
+    "friends_going": "Freunde unterwegs",
+    "friends_going_hint": "Wenn ein enger Freund zu einem Event geht"
   },
   "quiet_hours": {
     "title": "Ruhezeiten",

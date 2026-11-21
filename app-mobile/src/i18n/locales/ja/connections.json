@@ -196,5 +196,9 @@
   "brand_guests_remove_failed": "削除できませんでした。もう一度お試しください。",
   "brand_guests_leave_title": "{{brand}} ゲストを退出しますか？",
   "brand_guests_leave_body": "新しい予約で再び追加されることはありません。予約から再参加できます。",
-  "brand_guests_left_toast": "{{brand}} ゲストを退出しました。予約から再参加できます。"
+  "brand_guests_left_toast": "{{brand}} ゲストを退出しました。予約から再参加できます。",
+  "af_send_yourself_title": "自分からも送ろう",
+  "af_send_yourself_body": "あなたからのメッセージがいちばん届きます。SMSと同じリンクです。",
+  "af_copy_message": "メッセージをコピー",
+  "af_message_copied": "メッセージをコピーしました"
 }

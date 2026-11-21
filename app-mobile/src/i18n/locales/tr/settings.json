@@ -51,7 +51,9 @@
         "brand_offering_invite": "Takip ettiğin mekânlardan davetler",
         "brand_offering_invite_hint": "Bir mekân ya da ev sahibi seni bir şeye davet ettiğinde."
       }
-    }
+    },
+    "friends_going": "Dışarı çıkan arkadaşlar",
+    "friends_going_hint": "Yakın bir arkadaşın bir etkinliğe gittiğinde"
   },
   "quiet_hours": {
     "title": "Quiet Hours",

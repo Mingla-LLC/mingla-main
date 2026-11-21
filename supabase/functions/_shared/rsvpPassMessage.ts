@@ -3,6 +3,7 @@
 import type { PurchaseBodyInput } from "./email/purchaseBody.ts";
 import { purchaseEmailCopy } from "./email/purchaseCopy.ts";
 import { renderBuyerSms } from "./sms/buyerSms.ts";
+import { inviterForText } from "./rsvpInviterName.ts";
 
 /** Issue #4422 — why the guest holds a pass, so the text can say so. */
 export type RsvpPassReason = "going" | "approved" | "spot_opened";
@@ -33,6 +34,11 @@ export interface RsvpPassMessage {
 export function buildRsvpPassMessage(
   input: RsvpPassMessageInput,
 ): RsvpPassMessage {
+  // #4508 R-11: the lead's name is free text a signed-out inviter typed; the
+  // guest's email and text carry it only through the inviter-name rule.
+  const leadName = input.guest && input.leadName
+    ? inviterForText(input.leadName)
+    : input.leadName;
   const copy = purchaseEmailCopy({
     template: input.reason === "spot_opened" ? "rsvp_promoted" : "rsvp_on_list",
     title: input.title,
@@ -56,8 +62,8 @@ export function buildRsvpPassMessage(
         hostOrVenue: input.brandName,
         when: input.when,
         place: input.place,
-        lines: input.guest && input.leadName
-          ? [`${input.leadName} added you to the list.`]
+        lines: input.guest && leadName
+          ? [`${leadName} added you to the list.`]
           : undefined,
       },
     },
@@ -72,7 +78,7 @@ export function buildRsvpPassMessage(
         : "S4",
       {
         title: input.title,
-        lead: input.leadName,
+        lead: leadName,
         date: input.date,
         time: input.time,
         link: input.smsLink,

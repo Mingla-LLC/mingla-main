@@ -34,6 +34,11 @@ export interface RsvpGoingConfirmDialogProps {
   eventName: string;
   dateLine: string;
   plusGuests: Array<{ name: string }>;
+  /**
+   * issue #4508 1.7 — one row per person brought: name or number, with
+   * "Gets a text and a pass". Present ⇒ replaces the one-line "Bringing" text.
+   */
+  guestRows?: Array<{ key: string; label: string; line: string }>;
   submitting: boolean;
   errorText: string | null;
   /**
@@ -54,6 +59,7 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
   eventName,
   dateLine,
   plusGuests,
+  guestRows,
   submitting,
   errorText,
   contactSlot = null,
@@ -63,7 +69,7 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
   const boldFamily = boldFontFamily(theme);
   const boldFace = themeFontFace(boldFamily);
   const bringingLine =
-    plusGuests.length > 0
+    guestRows === undefined && plusGuests.length > 0
       ? `Bringing ${plusGuests.length}: ${plusGuests
           .map((g) => g.name)
           .filter((n) => n.trim().length > 0)
@@ -101,6 +107,27 @@ export const RsvpGoingConfirmDialog: React.FC<RsvpGoingConfirmDialogProps> = ({
             <Text style={[styles.body, { color: palette.secondaryText }]}>
               {bringingLine}
             </Text>
+          ) : null}
+
+          {guestRows !== undefined && guestRows.length > 0 ? (
+            <View
+              style={[styles.guestRows, { borderColor: palette.panelBorder }]}
+              testID="issue-4508-rsvp-confirm-guests"
+            >
+              {guestRows.map((row) => (
+                <View key={row.key} style={styles.guestRow}>
+                  <Text
+                    style={[styles.guestLabel, { color: palette.primaryText, ...boldFace }]}
+                    numberOfLines={1}
+                  >
+                    {row.label}
+                  </Text>
+                  <Text style={[styles.guestLine, { color: palette.secondaryText }]}>
+                    {row.line}
+                  </Text>
+                </View>
+              ))}
+            </View>
           ) : null}
 
           {contactSlot}
@@ -167,6 +194,10 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: "900", letterSpacing: -0.3, marginBottom: 10 },
   body: { fontSize: 15, lineHeight: 21, marginBottom: 8 },
+  guestRows: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 4, marginBottom: 6 },
+  guestRow: { paddingVertical: 8, gap: 2 },
+  guestLabel: { fontSize: 15, fontWeight: "800" },
+  guestLine: { fontSize: 13 },
   errorText: { color: "#e5484d", fontSize: 13, marginTop: 4, marginBottom: 4 },
   primaryBtn: {
     flexDirection: "row",

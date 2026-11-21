@@ -419,6 +419,7 @@ const eventFromRow = (
     rsvpCapacity: number | null;
     rsvpAllowPlusOnes: boolean;
     rsvpPlusOnesMax: number;
+    rsvpGuestsCanBring: boolean;
     rsvpWaitlistEnabled: boolean;
     rsvpApprovalMode: "auto" | "manual";
     rsvpDiscoverable: boolean;
@@ -461,6 +462,7 @@ const eventFromRow = (
     rsvpCapacity: rsvpMeta?.rsvpCapacity ?? null,
     rsvpAllowPlusOnes: rsvpMeta?.rsvpAllowPlusOnes ?? false,
     rsvpPlusOnesMax: rsvpMeta?.rsvpPlusOnesMax ?? 0,
+    rsvpGuestsCanBring: rsvpMeta?.rsvpGuestsCanBring ?? false,
     rsvpWaitlistEnabled: rsvpMeta?.rsvpWaitlistEnabled ?? false,
     rsvpApprovalMode: rsvpMeta?.rsvpApprovalMode ?? "auto",
     rsvpDiscoverable: rsvpMeta?.rsvpDiscoverable ?? false,
@@ -628,6 +630,7 @@ const detailFromRow = async (
     rsvpCapacity: number | null;
     rsvpAllowPlusOnes: boolean;
     rsvpPlusOnesMax: number;
+    rsvpGuestsCanBring: boolean;
     rsvpWaitlistEnabled: boolean;
     rsvpApprovalMode: "auto" | "manual";
     rsvpDiscoverable: boolean;
@@ -686,6 +689,7 @@ export const fetchBusinessEventsForBrand = async (
       rsvpCapacity: number | null;
       rsvpAllowPlusOnes: boolean;
       rsvpPlusOnesMax: number;
+      rsvpGuestsCanBring: boolean;
       rsvpWaitlistEnabled: boolean;
       rsvpApprovalMode: "auto" | "manual";
       rsvpDiscoverable: boolean;
@@ -704,7 +708,7 @@ export const fetchBusinessEventsForBrand = async (
     const typesResp = await supabase
       .from("events")
       .select(
-        "id, event_type, rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents, refund_policy",
+        "id, event_type, rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_guests_can_bring, rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents, refund_policy",
       )
       .in("id", ids);
     if (typesResp.error !== null) throw typesResp.error;
@@ -716,6 +720,7 @@ export const fetchBusinessEventsForBrand = async (
       rsvp_capacity: number | null;
       rsvp_allow_plus_ones: boolean | null;
       rsvp_plus_ones_max: number | null;
+      rsvp_guests_can_bring: boolean | null;
       rsvp_waitlist_enabled: boolean | null;
       rsvp_approval_mode: "auto" | "manual" | null;
       rsvp_discoverable: boolean | null;
@@ -736,6 +741,7 @@ export const fetchBusinessEventsForBrand = async (
           rsvpCapacity: r.rsvp_capacity ?? null,
           rsvpAllowPlusOnes: r.rsvp_allow_plus_ones ?? false,
           rsvpPlusOnesMax: r.rsvp_plus_ones_max ?? 0,
+          rsvpGuestsCanBring: r.rsvp_guests_can_bring ?? false,
           rsvpWaitlistEnabled: r.rsvp_waitlist_enabled ?? false,
           rsvpApprovalMode: r.rsvp_approval_mode ?? "auto",
           rsvpDiscoverable: r.rsvp_discoverable ?? false,
@@ -839,7 +845,7 @@ export const fetchBusinessEventById = async (
     .from("events")
     .select(
       "id, event_type, pass_tax, pass_mingla_fee, pass_service_fee, " +
-        "rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, " +
+        "rsvp_capacity, rsvp_allow_plus_ones, rsvp_plus_ones_max, rsvp_guests_can_bring, " +
         "rsvp_waitlist_enabled, rsvp_approval_mode, rsvp_discoverable, " +
         "rsvp_contribution_enabled, rsvp_contribution_suggested_cents, rsvp_contribution_min_cents, " +
         // issue #3284 — the refund terms the edit surface diffs and gates against.
@@ -864,6 +870,7 @@ export const fetchBusinessEventById = async (
     rsvp_capacity?: number | null;
     rsvp_allow_plus_ones?: boolean | null;
     rsvp_plus_ones_max?: number | null;
+    rsvp_guests_can_bring?: boolean | null;
     rsvp_waitlist_enabled?: boolean | null;
     rsvp_approval_mode?: "auto" | "manual" | null;
     rsvp_discoverable?: boolean | null;
@@ -891,6 +898,7 @@ export const fetchBusinessEventById = async (
           rsvpCapacity: probeRow.rsvp_capacity ?? null,
           rsvpAllowPlusOnes: probeRow.rsvp_allow_plus_ones ?? false,
           rsvpPlusOnesMax: probeRow.rsvp_plus_ones_max ?? 0,
+          rsvpGuestsCanBring: probeRow.rsvp_guests_can_bring ?? false,
           rsvpWaitlistEnabled: probeRow.rsvp_waitlist_enabled ?? false,
           rsvpApprovalMode: probeRow.rsvp_approval_mode ?? "auto",
           rsvpDiscoverable: probeRow.rsvp_discoverable ?? false,

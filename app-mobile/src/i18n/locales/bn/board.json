@@ -32,7 +32,8 @@
     "deleteSessionTitle": "সেশন মুছুন",
     "deleteSessionMsg": "আপনি কি \"{{name}}\" মুছে ফেলতে চান? এটি পূর্বাবস্থায় ফেরানো যাবে না এবং সমস্ত কার্ড, ভোট ও আলোচনা স্থায়ীভাবে মুছে যাবে।",
     "leaveSessionTitle": "বোর্ড ছেড়ে দিন", "leaveSessionMsg": "আপনি কি \"{{name}}\" ছেড়ে দিতে চান?",
-    "namePlaceholder": "সেশনের নাম দিন"
+    "namePlaceholder": "সেশনের নাম দিন",
+    "sessionShareMessage": "আমি তোমাকে Mingla-তে \"{{name}}\"-এ যোগ করেছি। এখানে যোগ দাও: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "আলোচনা", "cardDiscussion": "কার্ড আলোচনা", "errorLoadMsg": "বার্তা লোড করতে ব্যর্থ",

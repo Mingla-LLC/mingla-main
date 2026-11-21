@@ -159,7 +159,9 @@ export function violations(files) {
   need(files.body ?? "", "requirePrimaryContact", "Explorer contact completion", failures);
   need(files.explorer ?? "", 'requirePrimaryContact: user !== null', "Explorer contact completion wiring", failures);
   for (const token of [
-    "fetchRsvpPartyPasses",
+    // #4508: the same fetch_user_rsvp_party_passes read, now also carrying
+    // each guest's claim and invite status for the inviter.
+    "fetchRsvpPartyDetails",
     'testID="issue-1447-calendar-party-tabs"',
     'testID="issue-1447-calendar-rsvp-download"',
     'testID="issue-1447-calendar-rsvp-share"',

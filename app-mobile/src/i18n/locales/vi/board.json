@@ -29,7 +29,8 @@
     "deleteFailed": "Xóa thất bại", "deleteFailedMsg": "Không thể xóa phiên này.",
     "permissionDeleteBoard": "Chỉ người tạo phiên hoặc quản trị viên mới có thể xóa phiên này.",
     "deleteSessionTitle": "Xóa phiên", "deleteSessionMsg": "Bạn có chắc muốn xóa \"{{name}}\"? Hành động này không thể hoàn tác và tất cả thẻ, bình chọn, thảo luận sẽ bị xóa vĩnh viễn.",
-    "leaveSessionTitle": "Rời bảng", "leaveSessionMsg": "Bạn có chắc muốn rời \"{{name}}\"?", "namePlaceholder": "Nhập tên phiên"
+    "leaveSessionTitle": "Rời bảng", "leaveSessionMsg": "Bạn có chắc muốn rời \"{{name}}\"?", "namePlaceholder": "Nhập tên phiên",
+    "sessionShareMessage": "Mình đã thêm bạn vào \"{{name}}\" trên Mingla. Tham gia tại đây: {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Thảo luận", "cardDiscussion": "Thảo luận thẻ", "errorLoadMsg": "Tải tin nhắn thất bại",

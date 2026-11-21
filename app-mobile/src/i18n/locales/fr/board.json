@@ -71,7 +71,8 @@
     "deleteSessionMsg": "Êtes-vous sûr de vouloir supprimer « {{name}} » ? Cette action est irréversible et toutes les cartes, votes et discussions seront supprimés définitivement.",
     "leaveSessionTitle": "Quitter le tableau",
     "leaveSessionMsg": "Êtes-vous sûr de vouloir quitter « {{name}} » ?",
-    "namePlaceholder": "Entrer le nom de la session"
+    "namePlaceholder": "Entrer le nom de la session",
+    "sessionShareMessage": "Je t'ai ajouté à « {{name}} » sur Mingla. Rejoins ici : {{link}}"
   },
   "cardDiscussionModal": {
     "discussion": "Discussion",

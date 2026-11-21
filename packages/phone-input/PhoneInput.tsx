@@ -153,6 +153,17 @@ export interface PhoneInputProps {
    * an omitted object keeps the defaults (app-mobile is unchanged).
    */
   metrics?: PhoneInputMetrics;
+  /**
+   * Issue #4508 — a field for SOMEONE ELSE's number (an RSVP guest): never
+   * offer the device's own number (no telephoneNumber / tel autofill, Android
+   * autofill off). Off by default.
+   */
+  disableAutofill?: boolean;
+  /**
+   * Issue #4508 — the keyboard's done key (and the iOS "Done" toolbar) also
+   * runs this after dismissing. Absent ⇒ done only dismisses.
+   */
+  onSubmitEditing?: () => void;
 }
 
 export interface PhoneInputMetrics {
@@ -195,8 +206,20 @@ export const PhoneInput = ({
   inputComponent,
   smartEntry = false,
   metrics,
+  disableAutofill = false,
+  onSubmitEditing,
 }: PhoneInputProps): React.ReactElement => {
   const [focused, setFocused] = useState(false);
+  const dismissAndSubmit = (): void => {
+    Keyboard.dismiss();
+    onSubmitEditing?.();
+  };
+  // Issue #4508 — a field with its own done action gets its own toolbar, so
+  // "Done" on one field never runs another field's action.
+  const accessoryId =
+    onSubmitEditing !== undefined
+      ? `${PHONE_ACCESSORY_ID}-${testID ?? "submit"}`
+      : PHONE_ACCESSORY_ID;
   const [pickerVisible, setPickerVisible] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   // ORCH-1299 — resolve the effective picker surface once. `'overlay'` only
@@ -469,13 +492,24 @@ export const PhoneInput = ({
           value={value}
           onChangeText={handleChangeText}
           keyboardType="phone-pad"
-          returnKeyType="done"
+          // #4508 — iOS gives a phone-pad field asking for "done" with no
+          // inputAccessoryViewID its own native Done toolbar (Fabric
+          // setDefaultInputAccessoryView); a host that owns the Done bar
+          // turned ours off, so ask for "default" there. Android keeps "done".
+          returnKeyType={Platform.OS === "ios" && !showDoneAccessory ? "default" : "done"}
           maxLength={maxLength ?? (smartEntry ? 32 : 15)}
           {...(smartEntry
             ? {
                 textContentType: "telephoneNumber" as const,
                 autoComplete: "tel" as const,
                 selection: pendingSelection,
+              }
+            : {})}
+          {...(disableAutofill
+            ? {
+                textContentType: "none" as const,
+                autoComplete: "off" as const,
+                importantForAutofill: "no" as const,
               }
             : {})}
           placeholder={labels.phonePlaceholder}
@@ -489,10 +523,10 @@ export const PhoneInput = ({
             setFocused(false);
             onBlur?.();
           }}
-          onSubmitEditing={Keyboard.dismiss}
+          onSubmitEditing={dismissAndSubmit}
           blurOnSubmit
           inputAccessoryViewID={
-            Platform.OS === "ios" && showDoneAccessory ? PHONE_ACCESSORY_ID : undefined
+            Platform.OS === "ios" && showDoneAccessory ? accessoryId : undefined
           }
           accessibilityLabel={`${phoneInputAccessibilityLabel ?? labels.phoneInputAccessibilityLabel}${required ? ", required" : ""}`}
           accessibilityState={{ disabled }}
@@ -539,10 +573,10 @@ export const PhoneInput = ({
       ) : null}
 
       {Platform.OS === "ios" && showDoneAccessory ? (
-        <InputAccessoryView nativeID={PHONE_ACCESSORY_ID}>
+        <InputAccessoryView nativeID={accessoryId}>
           <View style={accessoryBarStyle}>
             <TouchableOpacity
-              onPress={Keyboard.dismiss}
+              onPress={dismissAndSubmit}
               style={styles.doneButton}
               accessibilityRole="button"
               accessibilityLabel={labels.doneButton}

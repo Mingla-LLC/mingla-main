@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/utils/__tests__/issue_4508_explorer_round6.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4508-explorer-round6",
+  "profile": "deno-2-unit"
+}

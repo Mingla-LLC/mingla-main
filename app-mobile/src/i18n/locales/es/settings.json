@@ -51,7 +51,9 @@
         "brand_offering_invite": "Invitaciones de lugares que sigues",
         "brand_offering_invite_hint": "Cuando un lugar o anfitrión te invita a algo."
       }
-    }
+    },
+    "friends_going": "Amigos que salen",
+    "friends_going_hint": "Cuando un amigo cercano va a un evento"
   },
   "quiet_hours": {
     "title": "Horas de silencio",

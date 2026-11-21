@@ -77,3 +77,30 @@ export function buildFriendInviteSms(senderName: string, link: string): string {
   // scanned again.
   return FRIEND_INVITE_SMS_TEMPLATE.replace(/\{name\}|\{link\}/g, (token) => (token === "{name}" ? name : link));
 }
+
+// Issue #4508 — the RSVP guest link. A guest brought to an RSVP by number is
+// texted their claim code (the usemingla.com/c/<code> short link, one SMS
+// segment). The app-install route for that same code is this OneLink:
+// `deep_link_value=rsvp_guest`, `deep_link_sub1=<claim code>`. It sits under
+// a child path of the template because the live AASA claims `/w36m/*`, not the
+// bare `/w36m` root (see claim-link). Without a valid code it degrades to a
+// plain install link, never a half-formed rsvp_guest payload.
+const CLAIM_CODE_RE = /^[0-9ABCDEFGHJKMNPQRSTVWXYZ]{10}$/;
+
+export function buildRsvpGuestOneLink(input: {
+  code?: string | null;
+  campaign?: string;
+}): string {
+  const params = new URLSearchParams({
+    pid: "rsvp_guest",
+    c: input.campaign ?? "rsvp_guest_sms",
+  });
+  const code = typeof input.code === "string"
+    ? input.code.trim().toUpperCase()
+    : "";
+  if (CLAIM_CODE_RE.test(code)) {
+    params.set("deep_link_value", "rsvp_guest");
+    params.set("deep_link_sub1", code);
+  }
+  return `${EXPLORER_ONELINK_BASE}/rsvp?${params.toString()}`;
+}

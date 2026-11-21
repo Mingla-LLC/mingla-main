@@ -51,7 +51,9 @@
         "brand_offering_invite": "Gayyata daga wuraren da kake bi",
         "brand_offering_invite_hint": "Lokacin da wani wuri ko mai shirya taro ya gayyace ka."
       }
-    }
+    },
+    "friends_going": "Friends going out",
+    "friends_going_hint": "When a close friend is going to an event"
   },
   "quiet_hours": {
     "title": "Lokutan Natsuwa",

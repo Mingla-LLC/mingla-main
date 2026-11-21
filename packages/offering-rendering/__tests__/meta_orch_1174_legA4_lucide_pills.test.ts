@@ -116,8 +116,9 @@ Deno.test("§2 RsvpOfferingBody swaps date/where/stepper glyphs to lucide", () =
   assertStringIncludes(factRows, "<Calendar"); // date row
   assertStringIncludes(factRows, "<Globe"); // online
   assertStringIncludes(rsvp, "<MapPin"); // location pin
-  assertStringIncludes(rsvp, "<Minus"); // +1 stepper –
-  assertStringIncludes(rsvp, "<Plus"); // +1 stepper +
+  // [#4508] the +1 stepper is gone ("Who's coming with you?" adds people by
+  // number), so its lucide Minus / Plus are gone with it; no bare glyphs return.
+  assert(!rsvp.includes("<Minus") && !rsvp.includes("<Plus"), "no +1 stepper in the RSVP body");
   // The date/where geometric glyphs are gone entirely.
   for (const glyph of ["◷", "◯", "⌖"]) {
     assert(!rsvp.includes(glyph), `RsvpOfferingBody must not keep the "${glyph}" glyph`);

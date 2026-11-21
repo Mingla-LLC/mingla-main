@@ -51,7 +51,9 @@
         "brand_offering_invite": "Uitnodigingen van plekken die je volgt",
         "brand_offering_invite_hint": "Als een plek of host je ergens voor uitnodigt."
       }
-    }
+    },
+    "friends_going": "Vrienden die uitgaan",
+    "friends_going_hint": "Als een goede vriend naar een evenement gaat"
   },
   "quiet_hours": {
     "title": "Stille uren",

@@ -155,3 +155,18 @@ export const buildRsvpValidationHint = (
     });
   return `Add ${joinList(parts)} above to RSVP.`;
 };
+
+// ── issue #4508 "Who's coming with you?": the pieces the eager RSVP body needs.
+// The rest of the guest-party model (live preview, friend search, invite text)
+// lives in rsvpGuestParty.ts, which only the lazily loaded guest block, the
+// success card and the Explorer app import, so it stays out of the boot payload.
+// Round 8: the number check and the submit payload moved there too (each guest
+// now carries its own `payload`), leaving only the button label here.
+
+// (The limit and own-number refusals, and the confirm dialog's per-guest line,
+// live with the guest model in rsvpGuestPartyModel.ts: only on-demand code
+// shows them.)
+
+/** The primary button: "Going" alone, "RSVP for N" with guests (N counts you). */
+export const rsvpGoingButtonLabel = (guestCount: number): string =>
+  guestCount > 0 ? `RSVP for ${guestCount + 1}` : "Going";
