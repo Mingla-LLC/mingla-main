@@ -447,6 +447,54 @@ describe.each(THEMES)("#4518 — checkout is readable on %s", (_name, palette) =
     tree.unmount();
   });
 
+  test("the pay-toward-balance panel stays readable inside every checkout palette", () => {
+    const { TripBalancePanel } = require("../../trip/TripBalancePanel") as typeof import("../../trip/TripBalancePanel");
+    const tree = mount(
+      <View style={{ backgroundColor: color.canvas }}>
+        <TripBalancePanel
+          amountMinor={30000}
+          balance={{
+            orderId: "order-1",
+            currency: "USD",
+            depositMinor: 20000,
+            paidMinor: 40000,
+            remainingMinor: 90000,
+            totalMinor: 130000,
+            canPayAnyAmount: true,
+            minPaymentMinor: 10000,
+            paymentInFlight: false,
+            nextPayment: { installmentId: "i1", dueAt: "2027-03-01T00:00:00Z", amountMinor: 30000 },
+            openRows: [
+              { installmentId: "i1", dueAt: "2027-03-01T00:00:00Z", amountMinor: 30000 },
+              { installmentId: "i2", dueAt: "2027-04-01T00:00:00Z", amountMinor: 60000 },
+            ],
+            history: [{ installmentId: "deposit", kind: "deposit", status: "collected", amountMinor: 40000 }],
+          }}
+          busy={false}
+          choice="next"
+          customAmount=""
+          onChoice={() => undefined}
+          onCustomAmount={() => undefined}
+          onPay={() => undefined}
+          tripTitle="Lagos Weekend"
+        />
+      </View>,
+    );
+    const found = measureText(tree.root, color.canvas);
+    expect(found.map((entry) => entry.text)).toEqual(expect.arrayContaining([
+      "Balance remaining",
+      "Choose what to pay",
+      "Minimum",
+      "Next payment",
+      "Pay it all",
+      "Other amount",
+      "Your remaining payments update after you pay",
+      "Paid so far",
+    ]));
+    expect(found.filter((entry) => entry.ratio < QUIET_TEXT_MIN)).toEqual([]);
+    tree.unmount();
+  });
+
   test.each(["primary", "secondary", "ghost"] as const)(
     "a %s button's label is readable, enabled and disabled (rendered)",
     (variant) => {

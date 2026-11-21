@@ -71,11 +71,19 @@ SELECT pg_temp.seed_order('45220005-0000-4000-8000-0000000000a3', false);
 
 -- A. With the switch off nothing starts.
 DO $$
+DECLARE v_balance jsonb;
 BEGIN
+  v_balance := public.issue_4522_balance('45220005-0000-4000-8000-0000000000a1');
+  IF (v_balance->>'canPayAnyAmount')::boolean IS DISTINCT FROM false
+     OR v_balance->>'minPaymentMinor' IS NOT NULL
+     OR (v_balance->'nextPayment'->>'amountMinor')::bigint <> 30000000
+     OR v_balance->'openRows'->0->>'planLineId' <> '45220005-0000-4000-8000-000000000030' THEN
+    RAISE EXCEPTION 'A-1 switch off must keep every buyer entry point inert: %', v_balance;
+  END IF;
   IF pg_temp.raised($q$SELECT public.issue_4522_begin_flex_payment('45220005-0000-4000-8000-0000000000a1',
        70000000, 90000000, 'client-key-0001', 'pay_link')$q$)
      IS DISTINCT FROM 'P0001:payment_plan_v2_unavailable' THEN
-    RAISE EXCEPTION 'A-1 switch off must refuse flexible payments';
+    RAISE EXCEPTION 'A-2 switch off must refuse flexible payments';
   END IF;
 END $$;
 
@@ -85,7 +93,7 @@ AS $fn$ SELECT true $fn$;
 
 -- B. Refusals, each by name.
 DO $$
-DECLARE v_case record; v_raised text;
+DECLARE v_case record; v_raised text; v_fixed jsonb;
 BEGIN
   FOR v_case IN SELECT * FROM (VALUES
     ('a3', 70000000, 90000000, 'P0001:plan_not_flexible'),
@@ -106,6 +114,17 @@ BEGIN
     RAISE EXCEPTION 'B-2 an unpaid deposit must refuse';
   END IF;
   UPDATE public.orders SET payment_status = 'paid' WHERE id = '45220005-0000-4000-8000-0000000000a2';
+
+  -- Fixed v2 plans still let the buyer pay the next due date or the full
+  -- balance. Only an arbitrary third amount is refused as plan_not_flexible.
+  v_fixed := public.issue_4522_begin_flex_payment(
+    '45220005-0000-4000-8000-0000000000a3', 30000000, 90000000,
+    'client-fixed-next', 'pay_link');
+  PERFORM public.issue_4522_close_failed_flex((v_fixed->>'installmentId')::uuid);
+  v_fixed := public.issue_4522_begin_flex_payment(
+    '45220005-0000-4000-8000-0000000000a3', 90000000, 90000000,
+    'client-fixed-full', 'pay_link');
+  PERFORM public.issue_4522_close_failed_flex((v_fixed->>'installmentId')::uuid);
 END $$;
 
 -- C. SC-5 / I-4522-4: one open flexible payment per order; the same key replays.

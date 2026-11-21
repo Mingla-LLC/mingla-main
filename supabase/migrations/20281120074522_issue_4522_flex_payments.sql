@@ -352,12 +352,19 @@ BEGIN
    WHERE order_id = p_order_id AND status IN ('collected', 'refunded');
   v_flexible := COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) = 2
     AND COALESCE((v_order.payment_plan_terms->>'flex_enabled')::boolean, false)
+    AND public.issue_4522_plan_v2_enabled()
     AND v_order.cancelled_at IS NULL AND v_event.status <> 'cancelled' AND v_remaining > 0;
   v_min := least(COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, v_remaining), v_remaining);
-  SELECT jsonb_build_object('installmentId', id, 'dueAt', due_at, 'amountMinor', amount_cents, 'status', status)
-    INTO v_next FROM public.order_installments
+  SELECT jsonb_build_object(
+      'installmentId', min(id::text),
+      'dueAt', due_at,
+      'amountMinor', sum(amount_cents),
+      'status', CASE WHEN bool_or(status = 'failed') THEN 'failed' ELSE 'scheduled' END)
+    INTO v_next
+    FROM public.order_installments
    WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
-   ORDER BY due_at, id LIMIT 1;
+   GROUP BY due_at
+   ORDER BY due_at LIMIT 1;
   RETURN jsonb_build_object(
     'orderId', v_order.id,
     'eventId', v_order.event_id,
@@ -374,7 +381,8 @@ BEGIN
                        OR public.issue_4522_order_has_open_attempt(p_order_id),
     'nextPayment', v_next,
     'openRows', COALESCE((SELECT jsonb_agg(jsonb_build_object('installmentId', id, 'dueAt', due_at,
-        'amountMinor', amount_cents, 'addonPortionMinor', addon_portion_minor, 'status', status)
+        'amountMinor', amount_cents, 'addonPortionMinor', addon_portion_minor,
+        'planLineId', ticket_type_id, 'status', status)
         ORDER BY due_at, id) FROM public.order_installments
        WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')), '[]'),
     'history', COALESCE((SELECT jsonb_agg(jsonb_build_object('installmentId', id, 'kind', kind,
@@ -457,6 +465,8 @@ DECLARE
   v_ordinal integer;
   v_id uuid;
   v_min bigint;
+  v_flexible boolean;
+  v_next_due bigint;
 BEGIN
   IF p_method IS NULL OR p_method NOT IN ('auto_card', 'pay_link') THEN
     RAISE EXCEPTION 'invalid_attempt_method' USING ERRCODE = '22023';
@@ -471,10 +481,10 @@ BEGIN
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
   IF v_order.cancelled_at IS NOT NULL THEN RAISE EXCEPTION 'order_cancelled' USING ERRCODE = 'P0001'; END IF;
   IF v_event_status = 'cancelled' THEN RAISE EXCEPTION 'event_cancelled' USING ERRCODE = 'P0001'; END IF;
-  IF COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) <> 2
-     OR NOT COALESCE((v_order.payment_plan_terms->>'flex_enabled')::boolean, false) THEN
+  IF COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) <> 2 THEN
     RAISE EXCEPTION 'plan_not_flexible' USING ERRCODE = 'P0001';
   END IF;
+  v_flexible := COALESCE((v_order.payment_plan_terms->>'flex_enabled')::boolean, false);
   IF v_order.payment_status IS DISTINCT FROM 'paid' THEN
     RAISE EXCEPTION 'deposit_not_paid' USING ERRCODE = 'P0001';
   END IF;
@@ -506,7 +516,18 @@ BEGIN
   IF p_amount_minor IS NULL OR p_amount_minor <= 0 OR p_amount_minor > v_remaining THEN
     RAISE EXCEPTION 'flex_amount_invalid' USING ERRCODE = '22023';
   END IF;
-  v_min := least(COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, 0), v_remaining);
+  SELECT COALESCE(sum(amount_cents), 0) INTO v_next_due
+    FROM public.order_installments
+   WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
+     AND due_at = (SELECT min(due_at) FROM public.order_installments
+                    WHERE order_id = p_order_id AND kind = 'scheduled'
+                      AND status IN ('scheduled', 'failed'));
+  IF NOT v_flexible AND p_amount_minor NOT IN (v_next_due, v_remaining) THEN
+    RAISE EXCEPTION 'plan_not_flexible' USING ERRCODE = 'P0001';
+  END IF;
+  v_min := CASE WHEN v_flexible
+    THEN least(COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, 0), v_remaining)
+    ELSE 0 END;
   IF p_amount_minor < v_min THEN
     RAISE EXCEPTION 'flex_amount_below_minimum' USING ERRCODE = '22023', DETAIL = v_min::text;
   END IF;

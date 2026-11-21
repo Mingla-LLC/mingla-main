@@ -22,9 +22,24 @@ function post(body: Record<string, unknown>, jwt?: string): Request {
   });
 }
 
-function world(provider: "stripe" | "paystack", beginError?: string) {
+function world(
+  provider: "stripe" | "paystack",
+  beginError?: string,
+  switchEnabled = true,
+) {
   return fakeSupabase({
     rpc: (name) => {
+      if (name === "issue_4522_resolve_balance_link") {
+        return {
+          data: {
+            state: "payable",
+            order_id: ORDER,
+            trip_title: "Lagos Weekend",
+            brand_name: "Mingla Trips",
+          },
+          error: null,
+        };
+      }
       if (name === "issue_4522_begin_flex_payment") {
         return beginError ? { data: null, error: { message: beginError } } : {
           data: {
@@ -36,13 +51,40 @@ function world(provider: "stripe" | "paystack", beginError?: string) {
           error: null,
         };
       }
+      if (name === "issue_4522_plan_v2_enabled") {
+        return { data: switchEnabled, error: null };
+      }
       if (name === "issue_4522_balance") {
         return {
           data: {
             orderId: ORDER,
+            currency: "USD",
+            depositMinor: 20000,
+            paidMinor: 40000,
             remainingMinor: 90000,
+            totalMinor: 130000,
             canPayAnyAmount: true,
+            minPaymentMinor: 10000,
+            paymentInFlight: false,
+            nextPayment: {
+              installmentId: "next-1",
+              dueAt: "2027-03-01T00:00:00Z",
+              amountMinor: 30000,
+            },
+            openRows: [],
+            history: [],
             terms: { v: 2 },
+          },
+          error: null,
+        };
+      }
+      if (name === "issue_3645_begin_installment_attempt") {
+        return {
+          data: {
+            ok: true,
+            attempt_id: "attempt-1",
+            reference: "ref-4522",
+            amount_cents: 70000,
           },
           error: null,
         };
@@ -61,9 +103,17 @@ function world(provider: "stripe" | "paystack", beginError?: string) {
           data: {
             id: ORDER,
             buyer_email: "b@example.test",
+            payment_status: "paid",
+            cancelled_at: null,
             stripe_customer_id_on_connected_account: "cus_1",
             saved_payment_method_id: "pm_1",
-            events: { brand_id: BRAND },
+            payment_card_last4: "4242",
+            events: {
+              brand_id: BRAND,
+              status: "scheduled",
+              title: "Lagos Weekend",
+              brands: { name: "Mingla Trips" },
+            },
           },
           error: null,
         };
@@ -93,6 +143,12 @@ const deps = (fake: ReturnType<typeof world>, calls: Array<unknown>) => ({
       jwt === "buyer-jwt" ? BUYER : jwt === "other-jwt" ? "someone-else" : null,
     ),
   stripe: (): StripeLike => ({
+    ephemeralKeys: {
+      create: (params, options) => {
+        calls.push({ ephemeralKey: { params, options } });
+        return Promise.resolve({ secret: "ek_test_balance" });
+      },
+    },
     paymentIntents: {
       create: (params, options) => {
         calls.push({ params, options });
@@ -114,6 +170,7 @@ const deps = (fake: ReturnType<typeof world>, calls: Array<unknown>) => ({
     calls.push({ paystackCharge: input.installmentId });
     return Promise.resolve({ outcome: "collected" as never });
   },
+  publishableKey: () => "pk_test_balance",
 });
 
 Deno.test("no JWT and no token is refused; a stranger gets the same answer as a missing order", async () => {
@@ -144,13 +201,15 @@ Deno.test("the buyer sees their balance", async () => {
   const body = await res.json();
   assertEquals(body.balance.remainingMinor, 90000);
   assertEquals("terms" in body.balance, false);
+  assertEquals(body.tripTitle, "Lagos Weekend");
+  assertEquals(body.brandName, "Mingla Trips");
+  assertEquals(body.provider, "stripe");
+  assertEquals(body.savedCardLast4, "4242");
 });
 
 Deno.test("Stripe: a direct charge on the connected account with the instalment fee and the flex key", async () => {
   const fake = world("stripe");
-  const calls: Array<
-    { params: Record<string, unknown>; options: Record<string, unknown> }
-  > = [];
+  const calls: unknown[] = [];
   const res = await handleTripBalancePay(
     post({
       action: "start",
@@ -163,9 +222,30 @@ Deno.test("Stripe: a direct charge on the connected account with the instalment 
     deps(fake, calls),
   );
   assertEquals(res.status, 200);
-  assertEquals((await res.json()).clientSecret, "pi_flex_secret");
-  assertEquals(calls.length, 1);
-  const { params, options } = calls[0];
+  const response = await res.json();
+  assertEquals(response.clientSecret, "pi_flex_secret");
+  assertEquals(response.publishableKey, "pk_test_balance");
+  assertEquals(response.customerId, "cus_1");
+  assertEquals(response.customerEphemeralKeySecret, "ek_test_balance");
+  assertEquals(calls.length, 2);
+  const ephemeral = calls.find((value) =>
+    typeof value === "object" && value !== null && "ephemeralKey" in value
+  ) as {
+    ephemeralKey: {
+      params: Record<string, unknown>;
+      options: Record<string, unknown>;
+    };
+  };
+  assertEquals(ephemeral.ephemeralKey.params, { customer: "cus_1" });
+  assertEquals(ephemeral.ephemeralKey.options.stripeAccount, "acct_1");
+  assertEquals(
+    ephemeral.ephemeralKey.options.idempotencyKey,
+    "mingla_flex_ephkey:acct_1:cus_1:client-key-001",
+  );
+  const payment = calls.find((value) =>
+    typeof value === "object" && value !== null && "params" in value
+  ) as { params: Record<string, unknown>; options: Record<string, unknown> };
+  const { params, options } = payment;
   assertEquals(params.amount, 70000);
   assertEquals(params.currency, "usd");
   assertEquals(params.customer, "cus_1");
@@ -186,6 +266,41 @@ Deno.test("Stripe: a direct charge on the connected account with the instalment 
     c.name === "issue_4522_begin_flex_payment"
   );
   assertEquals(begin?.args.p_method, "auto_card");
+});
+
+Deno.test("Stripe app payment fails closed before PI creation when saved-card customer config is unavailable", async () => {
+  const fake = world("stripe");
+  let piCalls = 0;
+  const res = await handleTripBalancePay(
+    post({
+      action: "start",
+      orderId: ORDER,
+      amountMinor: 70000,
+      expectedRemainingMinor: 90000,
+      clientKey: "client-key-no-eph",
+      method: "new_card",
+    }, "buyer-jwt"),
+    {
+      ...deps(fake, []),
+      stripe: (): StripeLike => ({
+        ephemeralKeys: {
+          create: () => Promise.resolve({ secret: null }),
+        },
+        paymentIntents: {
+          create: () => {
+            piCalls += 1;
+            return Promise.reject(new Error("must_not_create"));
+          },
+        },
+      }),
+    },
+  );
+  assertEquals(res.status, 502);
+  assertEquals(piCalls, 0);
+  assertEquals(
+    fake.rpcCalls.some((call) => call.name === "issue_4522_close_failed_flex"),
+    true,
+  );
 });
 
 Deno.test("a database refusal keeps its name and nothing reaches the provider", async () => {
@@ -239,6 +354,60 @@ Deno.test("Paystack: a saved card charges the flexible row; a new card in the ap
   assertEquals(
     String(body.url).endsWith(`/pay/balance/${"a".repeat(43)}`),
     true,
+  );
+});
+
+Deno.test("Paystack app handoff stays inert while the server switch is off", async () => {
+  const fake = world("paystack", undefined, false);
+  const res = await handleTripBalancePay(
+    post({
+      action: "start",
+      orderId: ORDER,
+      amountMinor: 70000,
+      expectedRemainingMinor: 90000,
+      clientKey: "client-key-off",
+      method: "new_card",
+    }, "buyer-jwt"),
+    { ...deps(fake, []), mintToken: () => "z".repeat(43) },
+  );
+  assertEquals(res.status, 409);
+  assertEquals((await res.json()).error, "payment_plan_v2_unavailable");
+  assertEquals(
+    fake.rpcCalls.some((call) => call.name === "issue_4522_issue_balance_link"),
+    false,
+  );
+});
+
+Deno.test("Paystack balance-link return carries the starting balance so a failed attempt cannot look paid", async () => {
+  const fake = world("paystack");
+  let callbackUrl = "";
+  const token = "b".repeat(43);
+  const res = await handleTripBalancePay(
+    post({
+      action: "start",
+      token,
+      amountMinor: 70000,
+      expectedRemainingMinor: 90000,
+      clientKey: "client-key-005",
+      method: "new_card",
+    }),
+    {
+      ...deps(fake, []),
+      initialize: (input) => {
+        callbackUrl = input.callbackUrl ?? "";
+        return Promise.resolve({
+          authorization_url: "https://checkout.paystack.com/approved",
+          access_code: "access-1",
+          reference: "ref-4522",
+        });
+      },
+    },
+  );
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).kind, "redirect");
+  assertEquals(
+    callbackUrl,
+    `https://host.usemingla.com/pay/balance/${token}?return=1&expected=90000`,
   );
 });
 

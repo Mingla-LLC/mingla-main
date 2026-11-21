@@ -10,6 +10,7 @@ function fakeSupabase(input: {
   links: RowMap[];
   rows?: Record<string, unknown>;
   begin?: RowMap;
+  balance?: RowMap;
 }) {
   const calls: Array<{ name: string; args: RowMap }> = [];
   const links = [...input.links];
@@ -54,6 +55,9 @@ function fakeSupabase(input: {
           data: input.begin ?? { ok: false, reason: "attempt_in_flight" },
           error: null,
         });
+      }
+      if (name === "issue_4522_balance") {
+        return Promise.resolve({ data: input.balance ?? null, error: null });
       }
       return Promise.resolve({ data: { ok: true }, error: null });
     },
@@ -136,6 +140,59 @@ Deno.test("#3645 pay-link view returns only display-safe fields", async () => {
   ) {
     if (text.includes(secret)) throw new Error(`response leaked ${secret}`);
   }
+});
+
+Deno.test("#4522 a flexible installment view mints one display-safe balance credential", async () => {
+  const fake = fakeSupabase({
+    links: [{
+      state: "payable",
+      installment_id: "inst-flex",
+      purpose: "pay",
+      trip_title: "Lagos Weekend",
+      amount_cents: 25000,
+      currency: "NGN",
+    }],
+    rows: { order_installments: { order_id: "order-flex" } },
+    balance: { canPayAnyAmount: true, remainingMinor: 90000 },
+  });
+  const response = await handleInstallmentPayLink(
+    request("F".repeat(43), "view"),
+    { supabase: fake.client, mintToken: () => "Z".repeat(43) },
+  );
+  assertEquals(await response.json(), {
+    state: "payable",
+    purpose: "pay",
+    tripTitle: "Lagos Weekend",
+    amountCents: 25000,
+    currency: "NGN",
+    balance: {
+      flexEnabled: true,
+      remainingMinor: 90000,
+      token: "Z".repeat(43),
+    },
+  });
+  assertEquals(
+    fake.calls.some((call) => call.name === "issue_4522_issue_balance_link"),
+    true,
+  );
+});
+
+Deno.test("#4522 the optional balance affordance fails closed while flex is off", async () => {
+  const fake = fakeSupabase({
+    links: [{ state: "payable", installment_id: "inst-off", purpose: "pay" }],
+    rows: { order_installments: { order_id: "order-off" } },
+    balance: { canPayAnyAmount: false, remainingMinor: 90000 },
+  });
+  const response = await handleInstallmentPayLink(
+    request("G".repeat(43), "view"),
+    { supabase: fake.client, mintToken: () => "Y".repeat(43) },
+  );
+  const body = await response.json();
+  assertEquals("balance" in body, false);
+  assertEquals(
+    fake.calls.some((call) => call.name === "issue_4522_issue_balance_link"),
+    false,
+  );
 });
 
 Deno.test("#3645 approve start reuses a fresh paused provider URL without minting an attempt", async () => {

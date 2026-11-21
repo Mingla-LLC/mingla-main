@@ -23,6 +23,11 @@ export interface InstallmentPayLinkView {
   ordinal?: number;
   totalPayments?: number;
   cardLast4?: string;
+  balance?: {
+    flexEnabled: true;
+    remainingMinor: number;
+    token: string;
+  };
 }
 
 export class InstallmentPayLinkError extends Error {

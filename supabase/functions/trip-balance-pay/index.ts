@@ -43,7 +43,8 @@ import {
   paystackVerifyTransaction,
 } from "../_shared/paystack.ts";
 import { paystackChannelsForCountry } from "../_shared/paymentProvider.ts";
-import { stripeTicketCheckout } from "../_shared/stripe.ts";
+import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
+import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import {
   jsonResponse,
   serviceClient,
@@ -54,7 +55,18 @@ type Action = "view" | "start" | "status";
 type Method = "saved_card" | "new_card";
 
 /** The Stripe surface this function uses (injectable for tests). */
-export type StripeLike = FlexPaymentIntentStripe;
+export type StripeLike = FlexPaymentIntentStripe & {
+  ephemeralKeys: {
+    create(
+      params: { customer: string },
+      options: {
+        apiVersion: string;
+        stripeAccount: string;
+        idempotencyKey: string;
+      },
+    ): Promise<{ secret?: string | null }>;
+  };
+};
 
 export interface TripBalancePayDeps {
   supabase: SupabaseClient;
@@ -67,6 +79,7 @@ export interface TripBalancePayDeps {
   chargePaystack: typeof chargePaystackInstallment;
   feeRate: typeof resolveInstallmentFeeRate;
   mintToken: () => string;
+  publishableKey: () => string;
 }
 
 export const CLIENT_KEY_PATTERN = /^[A-Za-z0-9_-]{8,120}$/;
@@ -179,6 +192,7 @@ export async function handleTripBalancePay(
     chargePaystack: depsIn.chargePaystack ?? chargePaystackInstallment,
     feeRate: depsIn.feeRate ?? resolveInstallmentFeeRate,
     mintToken: depsIn.mintToken ?? (() => mintPayLinkToken()),
+    publishableKey: depsIn.publishableKey ?? resolvePublishableKey,
   };
   const { supabase } = deps;
   const now = deps.now();
@@ -186,6 +200,9 @@ export async function handleTripBalancePay(
   // ── Who is asking: a balance-link token, or the order's own buyer. ──────
   const token = typeof body.token === "string" ? body.token : null;
   let orderId: string | null = null;
+  let credentialState = "payable";
+  let tokenTripTitle: string | undefined;
+  let tokenBrandName: string | undefined;
   let rateKey: string;
   if (token !== null) {
     if (!PAY_LINK_TOKEN_PATTERN.test(token)) {
@@ -210,9 +227,13 @@ export async function handleTripBalancePay(
     if (link.state === "expired") {
       return jsonResponse({ error: "balance_link_expired" }, 410);
     }
-    if (link.state !== "payable") {
-      return jsonResponse({ state: link.state });
-    }
+    credentialState = String(link.state);
+    tokenTripTitle = typeof link.trip_title === "string"
+      ? link.trip_title
+      : undefined;
+    tokenBrandName = typeof link.brand_name === "string"
+      ? link.brand_name
+      : undefined;
     orderId = String(link.order_id);
   } else {
     const auth = req.headers.get("authorization") ?? "";
@@ -243,15 +264,64 @@ export async function handleTripBalancePay(
     return (data ?? null) as Record<string, unknown> | null;
   };
 
+  const loadPresentation = async (): Promise<Record<string, unknown>> => {
+    const { data: row } = await supabase.from("orders")
+      .select(
+        "payment_card_last4,events!inner(title,brands(name))",
+      )
+      .eq("id", orderId).maybeSingle();
+    const order = (row ?? {}) as Record<string, unknown>;
+    const event =
+      (Array.isArray(order.events) ? order.events[0] : order.events) as
+        | Record<string, unknown>
+        | undefined;
+    const brand =
+      (Array.isArray(event?.brands) ? event?.brands[0] : event?.brands) as
+        | Record<string, unknown>
+        | undefined;
+    const { data: providerRow } = await supabase.from("order_installments")
+      .select("provider")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const provider = (providerRow as { provider?: unknown } | null)?.provider;
+    const last4 = order.payment_card_last4;
+    return {
+      ...(tokenTripTitle ?? event?.title
+        ? { tripTitle: String(tokenTripTitle ?? event?.title) }
+        : {}),
+      ...(tokenBrandName ?? brand?.name
+        ? { brandName: String(tokenBrandName ?? brand?.name) }
+        : {}),
+      ...(provider === "stripe" || provider === "paystack" ? { provider } : {}),
+      ...(typeof last4 === "string" && /^[0-9]{4}$/.test(last4)
+        ? { savedCardLast4: last4 }
+        : {}),
+    };
+  };
+
   if (action === "view") {
     const balance = await loadBalance();
     if (balance === null) {
       return jsonResponse({ error: "balance_not_found" }, 404);
     }
-    return jsonResponse({ state: "payable", balance: publicBalance(balance) });
+    return jsonResponse({
+      state: credentialState,
+      ...(await loadPresentation()),
+      balance: publicBalance(balance),
+    });
   }
 
   if (action === "status") {
+    if (credentialState !== "payable") {
+      const balance = await loadBalance();
+      return jsonResponse({
+        state: credentialState,
+        ...(await loadPresentation()),
+        balance: balance === null ? null : publicBalance(balance),
+      });
+    }
     const { data: open } = await supabase.from("order_installments")
       .select("id")
       .eq("order_id", orderId).eq("kind", "flex").in("status", [
@@ -283,10 +353,18 @@ export async function handleTripBalancePay(
     }
     const balance = await loadBalance();
     return jsonResponse({
-      state: "payable",
+      state: credentialState,
+      ...(await loadPresentation()),
       paymentInFlight: balance?.paymentInFlight === true,
       balance: balance === null ? null : publicBalance(balance),
     });
+  }
+
+  if (credentialState !== "payable") {
+    return jsonResponse(
+      { error: "payment_not_due", state: credentialState },
+      409,
+    );
   }
 
   // ── start ─────────────────────────────────────────────────────────────
@@ -305,7 +383,7 @@ export async function handleTripBalancePay(
 
   const { data: orderRow, error: orderError } = await supabase.from("orders")
     .select(
-      "id,buyer_email,stripe_customer_id_on_connected_account,saved_payment_method_id,events!inner(brand_id)",
+      "id,buyer_email,payment_status,cancelled_at,stripe_customer_id_on_connected_account,saved_payment_method_id,events!inner(brand_id,status)",
     )
     .eq("id", orderId).maybeSingle();
   if (orderError !== null || orderRow === null) {
@@ -329,6 +407,47 @@ export async function handleTripBalancePay(
   // A buyer in the app with no saved Paystack card finishes on the balance
   // page: mint a link and send them there (the page starts the payment).
   if (provider === "paystack" && method === "new_card" && token === null) {
+    if (order.cancelled_at !== null || event?.status === "cancelled") {
+      return jsonResponse({ error: "order_cancelled" }, 409);
+    }
+    if (order.payment_status !== "paid") {
+      return jsonResponse({ error: "deposit_not_paid" }, 409);
+    }
+    const { data: enabled, error: switchError } = await supabase.rpc(
+      "issue_4522_plan_v2_enabled",
+    );
+    if (switchError !== null || enabled !== true) {
+      return jsonResponse({ error: "payment_plan_v2_unavailable" }, 409);
+    }
+    const current = await loadBalance();
+    if (current === null) {
+      return jsonResponse({ error: "balance_not_found" }, 404);
+    }
+    const remaining = Number(current.remainingMinor);
+    const next = (current.nextPayment ?? null) as
+      | { amountMinor?: unknown }
+      | null;
+    const nextAmount = Number(next?.amountMinor);
+    const flexible = current.canPayAnyAmount === true;
+    const minimum = Number(current.minPaymentMinor ?? 0);
+    if (remaining !== expectedRemainingMinor) {
+      return jsonResponse(
+        { error: "balance_changed", detail: String(remaining) },
+        409,
+      );
+    }
+    if (amountMinor > remaining) {
+      return jsonResponse({ error: "flex_amount_invalid" }, 422);
+    }
+    if (flexible && amountMinor < minimum) {
+      return jsonResponse(
+        { error: "flex_amount_below_minimum", detail: String(minimum) },
+        422,
+      );
+    }
+    if (!flexible && amountMinor !== nextAmount && amountMinor !== remaining) {
+      return jsonResponse({ error: "plan_not_flexible" }, 409);
+    }
     const fresh = deps.mintToken();
     const { data: issued, error: issueError } = await supabase.rpc(
       "issue_4522_issue_balance_link",
@@ -403,8 +522,28 @@ export async function handleTripBalancePay(
       { shareMinor: referralShare },
     );
     try {
+      const stripe = deps.stripe();
+      let customerEphemeralKeySecret: string | null = null;
+      if (token === null) {
+        const ephemeralKey = await stripe.ephemeralKeys.create(
+          { customer },
+          {
+            apiVersion: STRIPE_API_VERSION,
+            stripeAccount,
+            idempotencyKey:
+              `mingla_flex_ephkey:${stripeAccount}:${customer}:${clientKey}`,
+          },
+        );
+        customerEphemeralKeySecret = typeof ephemeralKey.secret === "string" &&
+            ephemeralKey.secret.length > 0
+          ? ephemeralKey.secret
+          : null;
+        if (customerEphemeralKeySecret === null) {
+          throw new Error("ephemeral_key_missing");
+        }
+      }
       const pi = await createFlexPaymentIntent({
-        stripe: deps.stripe(),
+        stripe,
         installmentId,
         orderId: String(orderId),
         brandId,
@@ -432,6 +571,10 @@ export async function handleTripBalancePay(
         clientSecret: pi.client_secret,
         paymentIntentId: pi.id,
         stripeAccountId: stripeAccount,
+        publishableKey: deps.publishableKey(),
+        ...(customerEphemeralKeySecret !== null
+          ? { customerId: customer, customerEphemeralKeySecret }
+          : {}),
         replayed: flex.replayed === true,
       });
     } catch {
@@ -482,7 +625,7 @@ export async function handleTripBalancePay(
       currency: "NGN",
       reference: String(attempt.reference),
       callbackUrl:
-        `${PRODUCTION_BUSINESS_WEB_ORIGIN}/pay/balance/${token}?return=1`,
+        `${PRODUCTION_BUSINESS_WEB_ORIGIN}/pay/balance/${token}?return=1&expected=${expectedRemainingMinor}`,
       channels: paystackChannelsForCountry("NG"),
       metadata: {
         mingla_installment_id: installmentId,

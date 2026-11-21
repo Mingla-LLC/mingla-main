@@ -90,3 +90,11 @@ export const FEATURE_FLAG_PER_CONTEXT_DECK_STATE: boolean = true;
  * Default: __DEV__ only.
  */
 export const FEATURE_FLAG_ACCOUNT_SIDE_TOGGLE: boolean = __DEV__;
+
+/**
+ * Issue #4522 — Explorer trip balance card and pay-toward-balance screen.
+ * Default false: the server switch and release approval must be live first.
+ * Exit: remove after the approved OTA has one clean rollout window.
+ */
+export const FEATURE_FLAG_TRIP_BALANCE: boolean =
+  process.env.EXPO_PUBLIC_FF_TRIP_BALANCE === "true";

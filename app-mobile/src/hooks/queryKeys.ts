@@ -84,6 +84,13 @@ export const purchaseKeys = {
     [...purchaseKeys.all, "lastClaim", userId] as const,
 };
 
+// Issue #4522 — one balance key factory. Collection invalidates both this
+// detail and purchaseKeys.all so the receipt and schedule cannot diverge.
+export const tripBalanceKeys = {
+  all: ["tripBalance"] as const,
+  detail: (orderId: string) => [...tripBalanceKeys.all, orderId] as const,
+};
+
 // #4382 Wave 5 — Help & Support (support tickets, owned by the requester).
 export const supportKeys = {
   all: ["support"] as const,
