@@ -96,6 +96,15 @@ describe("F3 a new wizard step starts at the top", () => {
   });
 });
 
+describe("ci-ok row admission keeps Undo available", () => {
+  it("opens the durable result panel after a list-row admission instead of acknowledging only with a toast", () => {
+    const src = read("src/components/venue/features/checkin/VenueCheckInModule.tsx");
+    const admitRow = src.match(/const admitRow = useCallback\([\s\S]*?\n  \);/)?.[0] ?? "";
+    expect(admitRow).toContain('runDoor({ kind: "admit", passId: pass.passId }, () => setScanOpen(true));');
+    expect(admitRow).not.toContain("setToast");
+  });
+});
+
 describe("F1 Open Terms and tax is a button, not a text link", () => {
   it("uses the secondary button, not ghost", () => {
     const src = read("src/components/venue/features/offers/EntryEditor.tsx");

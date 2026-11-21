@@ -313,10 +313,9 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         setScanOpen(true);
         return;
       }
-      runDoor({ kind: "admit", passId: pass.passId }, (o) => {
-        if (o.result === "admitted") setToast(`${pass.holderName} checked in`);
-        else setScanOpen(true);
-      });
+      // A row admission needs the same durable result as a scan: the operator
+      // must be able to undo a mistaken tap before moving to the next guest.
+      runDoor({ kind: "admit", passId: pass.passId }, () => setScanOpen(true));
     },
     [runDoor],
   );
