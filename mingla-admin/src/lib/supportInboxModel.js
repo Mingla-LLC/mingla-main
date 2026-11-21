@@ -4,8 +4,8 @@
 // node test read it. Every label a conversation shows is WORKED OUT here from
 // the row (and the tickets linked to it); nothing is stored client-side.
 //
-// MINGLA-INVARIANT: I-4420-INBOX-LABELS-DERIVED | issue #4420 | every label on a Support conversation is derived in this module from the row and the tickets linked to it (Host or Explorer, topic, Needs reply, Waiting on customer, Reported, Website request, Ticket T-n, Resolved); none is stored in the browser.
-// MINGLA-INVARIANT: I-4420-NOTES-NEVER-IN-PREVIEW | issue #4420 | an internal note never reaches a list preview, a suggested customer line or a ticket pre-fill; only customer-visible messages do.
+// Invariant I-4420-INBOX-LABELS-DERIVED (declared in src/__tests__/issue4420_support_inbox.implementor.test.js): every label on a Support conversation is derived in this module from the row and the tickets linked to it (Host or Explorer, topic, Needs reply, Waiting on customer, Reported, Website request, Ticket T-n, Resolved); none is stored in the browser.
+// Invariant I-4420-NOTES-NEVER-IN-PREVIEW (declared in src/__tests__/issue4420_support_inbox.implementor.test.js): an internal note never reaches a list preview, a suggested customer line or a ticket pre-fill; only customer-visible messages do.
 //
 // Words: a customer thread is a "conversation"; "ticket" means only the Work card.
 import { lastSpeaker, isOverdueTicket, ticketSearchText, ticketNumberLabel } from "./supportTicketMetrics.js";

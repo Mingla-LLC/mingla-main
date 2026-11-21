@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4420-OLD-ADDRESSES-LAND | issue #4420 | every retired Community, console and Roadmap address is rewritten to a page that exists, never a blank page; the table in lib/supportCommunityTabs.js RETIRED_TAB_REDIRECTS is the one source.
+// MINGLA-INVARIANT: I-4420-OLD-ADDRESSES-LAND | issue #4420 | every old Community, console and Roadmap address is rewritten to a page that exists, never a blank page; the table in lib/supportCommunityTabs.js RETIRED_TAB_REDIRECTS is the one source.
 // MINGLA-INVARIANT: I-4420-FEATURE-GUIDE-ACCESS-UNCHANGED | issue #4420 | the Feature guide screen opens to exactly who could open its old Community tab (full admins and the Support area), and nobody gains or loses Support, Announcements or the Communications Overview.
 // MINGLA-INVARIANT: I-4420-NO-DEAD-ROUTE | issue #4420 | every menu id and every App route names a page component imported from a file that exists.
 //
