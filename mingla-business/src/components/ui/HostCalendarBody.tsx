@@ -4,7 +4,7 @@
  * the surface and the Host config) is this one chunk, loaded by the single
  * React.lazy per field wrapper in `HostCalendarPlaceholder.lazyHostField`.
  */
-import { CalendarField, DateTimeField } from "@mingla/calendar/CalendarFieldEager";
+import { CalendarField, DateRangeField, DateTimeField } from "@mingla/calendar/CalendarFieldEager";
 import React from "react";
 import { Platform } from "react-native";
 
@@ -12,6 +12,7 @@ import { detectDeviceTimezone } from "../../utils/timezones";
 import { HOST_CALENDAR_CONFIG } from "./calendarHostConfig";
 import type { DateFieldProps } from "./DateField";
 import type { HostDateTimeFieldProps } from "./HostCalendarFields";
+import type { HostDateRangeFieldProps } from "./HostDateRangeField";
 
 export function DateBody({
   label,
@@ -79,6 +80,39 @@ export function DateTimeBody({
       minTime={minTime}
       maxTime={maxTime}
       timeStepMinutes={timeStepMinutes}
+      placeholder={placeholder}
+      disabled={disabled}
+      invalid={hasError}
+      testID={testID}
+      timeZone={timeZone}
+      defaultOpen={openOnMount}
+      config={HOST_CALENDAR_CONFIG}
+    />
+  );
+}
+
+export function DateRangeBody({
+  label,
+  value,
+  onChangeValue,
+  accessibilityLabel,
+  min,
+  max,
+  placeholder,
+  disabled = false,
+  hasError = false,
+  testID,
+  timeZone = detectDeviceTimezone(),
+  openOnMount = false,
+}: HostDateRangeFieldProps & { openOnMount?: boolean }): React.ReactElement {
+  return (
+    <DateRangeField
+      label={label}
+      accessibilityLabel={accessibilityLabel}
+      value={value}
+      onChange={onChangeValue}
+      min={min}
+      max={max}
       placeholder={placeholder}
       disabled={disabled}
       invalid={hasError}

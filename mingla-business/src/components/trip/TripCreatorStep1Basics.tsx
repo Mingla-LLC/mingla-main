@@ -16,24 +16,17 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 // #4334 — from its own file: the package index would pull the address field into this screen.
 import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesService";
 import {
-  Modal,
-  Platform,
-  Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 
 import {
   radius as radiusTokens,
   color,
   space,
   type,
-  scrim,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { useBrand } from "../../hooks/useBrands";
@@ -52,15 +45,12 @@ import {
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import type { LocationSelectionState } from "@mingla/location-input";
+import { HostDateRangeField } from "../ui/HostDateRangeField";
 import {
   calendarDateToInputValue,
-  calendarDateToPickerDate,
-  formatCalendarDate,
   inputValueToCalendarIso,
-  pickerDateToCalendarIso,
-  pickerDateToInputValue,
-  todayInputValue,
 } from "../../utils/calendarDate";
+import { describeTripLength, todayInZoneDay } from "./tripBuilderV2Model";
 // ORCH-1118 — trip location must have a confirmed automatically resolved
 // coordinate before publish/save.
 import {
@@ -77,6 +67,8 @@ import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-renderin
 
 export interface Step1Draft {
   title: string;
+  /** #4522 — trip description (the 4-step builder's step 1); absent on older drafts. */
+  description?: string;
   startAt: string | null; // ISO 8601 (e.g. "2026-03-12T00:00:00.000Z")
   endAt: string | null;
   destinationPlaceId: string | null;
@@ -146,6 +138,12 @@ export interface TripCreatorStep1BasicsProps {
    * over a video the server is about to apply.
    */
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
+  /**
+   * #4522 — the 4-step builder: shows the Description field under the title and
+   * focuses the title or description when a checklist item jumps here.
+   */
+  builderV2?: boolean;
+  focusField?: "title" | "description" | null;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker now
   // uses the keyboard-controller library's KAV wrap instead.
 }
@@ -153,36 +151,10 @@ export interface TripCreatorStep1BasicsProps {
 const INPUT_BORDER = color.lineStrong;
 const INPUT_BG = color.fill.inset;
 
-// Issue #3801 — trip start/end are CALENDAR DATES stored at UTC. Every read
-// and write below goes through utils/calendarDate so the day is the same in
-// every device timezone. These used to read the stored instant with the
-// device's local clock, which showed 12 November as 11 November in New York
-// and, on native, wrote the shifted day back when the host tapped Done.
-function isoToHtml5Date(iso: string | null): string {
-  return calendarDateToInputValue(iso);
-}
-
-function htmlDateToIso(value: string, isEnd: boolean): string | null {
-  return inputValueToCalendarIso(value, isEnd);
-}
-
-function formatDateDisplay(iso: string | null): string {
-  return formatCalendarDate(iso);
-}
-
-/** The local day to open a native picker on when no date is stored yet. */
-function todayPickerDate(): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
-}
-
-/** True when the stored end day falls before the given calendar day. */
-function endIsBefore(endIso: string | null, day: string): boolean {
-  const end = calendarDateToInputValue(endIso);
-  return end.length > 0 && end < day;
-}
-
-type PickerMode = "start" | "end" | null;
+// Issue #3801 — trip start/end are CALENDAR DATES stored at UTC. The range field
+// below reads and writes them as `YYYY-MM-DD` through utils/calendarDate, so the
+// day is the same in every device timezone. (#4522 / #4523: one calendar, no
+// browser date input and no native date spinner.)
 
 export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   draft,
@@ -194,7 +166,15 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   showAddressErrors = false,
   timeZone,
   onCoverVideoProcessingChange,
+  builderV2 = false,
+  focusField = null,
 }) => {
+  const titleInputRef = useRef<TextInput | null>(null);
+  const descriptionInputRef = useRef<TextInput | null>(null);
+  useEffect(() => {
+    if (focusField === "title") titleInputRef.current?.focus();
+    else if (focusField === "description") descriptionInputRef.current?.focus();
+  }, [focusField]);
   const [departureSelectionState, setDepartureSelectionState] =
     useState<LocationSelectionState>(
       draft.departureLocationText?.trim() &&
@@ -425,84 +405,10 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   useEffect(() => {
     if (disabled && activeSheet === "theme") setActiveSheet("none");
   }, [disabled, activeSheet]);
-  const [pickerMode, setPickerMode] = useState<PickerMode>(null);
-  const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
-
-  const handleOpenPicker = useCallback(
-    (mode: "start" | "end"): void => {
-      if (disabled === true) return;
-      // Seed the picker with the STORED calendar day, as a local day. Tapping
-      // Done without touching the wheel must leave the stored day unchanged.
-      const current =
-        mode === "start"
-          ? calendarDateToPickerDate(draft.startAt)
-          : calendarDateToPickerDate(draft.endAt);
-      const fallback =
-        mode === "end"
-          ? (calendarDateToPickerDate(draft.startAt) ?? todayPickerDate())
-          : todayPickerDate();
-      setTempPickerValue(current ?? fallback);
-      setPickerMode(mode);
-    },
-    [disabled, draft.startAt, draft.endAt],
-  );
-
-  // Write the LOCAL day the picker returned as that calendar day at UTC (the
-  // same value the web date input writes). Picking a start after the current
-  // end moves the end to the same day.
-  const commitPickedDay = useCallback(
-    (picked: Date, mode: "start" | "end"): void => {
-      const iso = pickerDateToCalendarIso(picked, mode === "end");
-      if (iso === null) return;
-      if (mode === "end") {
-        onChange({ endAt: iso });
-        return;
-      }
-      const pickedDay = pickerDateToInputValue(picked);
-      if (endIsBefore(draft.endAt, pickedDay)) {
-        onChange({ startAt: iso, endAt: pickerDateToCalendarIso(picked, true) });
-      } else {
-        onChange({ startAt: iso });
-      }
-    },
-    [draft.endAt, onChange],
-  );
-
-  const handlePickerChange = useCallback(
-    (event: DateTimePickerEvent, selected?: Date): void => {
-      // Android: 'set' commits + auto-dismisses; 'dismissed' cancels.
-      // iOS spinner emits 'set' on every wheel-stop; we commit on Done tap.
-      if (Platform.OS === "android") {
-        if (event.type === "dismissed") {
-          setPickerMode(null);
-          setTempPickerValue(null);
-          return;
-        }
-        if (selected !== undefined && pickerMode !== null) {
-          commitPickedDay(selected, pickerMode);
-        }
-        setPickerMode(null);
-        setTempPickerValue(null);
-        return;
-      }
-      // iOS: just store the wheel value; commit on Done press.
-      if (selected !== undefined) setTempPickerValue(selected);
-    },
-    [commitPickedDay, pickerMode],
-  );
-
-  const handleIosCommit = useCallback((): void => {
-    if (tempPickerValue !== null && pickerMode !== null) {
-      commitPickedDay(tempPickerValue, pickerMode);
-    }
-    setPickerMode(null);
-    setTempPickerValue(null);
-  }, [commitPickedDay, pickerMode, tempPickerValue]);
-
-  const pickerMinDate =
-    pickerMode === "end"
-      ? (calendarDateToPickerDate(draft.startAt) ?? todayPickerDate())
-      : todayPickerDate();
+  const tripZone = timeZone ?? "UTC";
+  const startDay = calendarDateToInputValue(draft.startAt);
+  const endDay = calendarDateToInputValue(draft.endAt);
+  const tripLength = describeTripLength(startDay, endDay);
 
   return (
     <View style={styles.host}>
@@ -514,105 +420,64 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <TextInput
           value={draft.title}
           onChangeText={(v) => onChange({ title: v })}
-          placeholder="e.g. Tulum Yoga Retreat — March 2026"
+          placeholder="e.g. Tulum Yoga Retreat"
           placeholderTextColor={color.text3}
           editable={!disabled}
           accessibilityLabel="Trip title"
           style={styles.textInput}
           testID="trip-step1-title"
+          ref={titleInputRef}
         />
       </View>
 
-      {/* Dates */}
-      <View style={styles.dateRow}>
-        <View style={[styles.fieldGroup, styles.dateField]}>
-          <Text style={styles.fieldLabel}>Start date</Text>
-          {Platform.OS === "web" ? (
-            React.createElement("input" as any, {
-              type: "date",
-              value: isoToHtml5Date(draft.startAt),
-              min: todayInputValue(),
-              disabled: disabled,
-              onChange: (
-                e: { target: { value: string } },
-              ) => {
-                const v = e.target.value;
-                const iso = htmlDateToIso(v, false);
-                if (iso === null) return;
-                if (endIsBefore(draft.endAt, v)) {
-                  onChange({ startAt: iso, endAt: htmlDateToIso(v, true) });
-                } else {
-                  onChange({ startAt: iso });
-                }
-              },
-              "data-testid": "trip-step1-start-web",
-              style: webDateInputStyle,
-            })
-          ) : (
-            <Pressable
-              onPress={() => handleOpenPicker("start")}
-              disabled={disabled}
-              style={styles.dateButton}
-              accessibilityRole="button"
-              accessibilityLabel="Pick start date"
-              testID="trip-step1-start"
-            >
-              <Text
-                style={
-                  draft.startAt === null
-                    ? styles.dateButtonPlaceholder
-                    : styles.dateButtonValue
-                }
-              >
-                {draft.startAt === null
-                  ? "Tap to pick"
-                  : formatDateDisplay(draft.startAt)}
-              </Text>
-            </Pressable>
-          )}
+      {/* #4522 — description (4-step builder). A buyer-facing paragraph; the
+          publish checklist asks for 20+ characters. */}
+      {builderV2 ? (
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Description</Text>
+          <TextInput
+            ref={descriptionInputRef}
+            value={draft.description ?? ""}
+            onChangeText={(v) => onChange({ description: v })}
+            placeholder="What is this trip, who is it for, and what will travelers remember?"
+            placeholderTextColor={color.text3}
+            editable={!disabled}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+            accessibilityLabel="Trip description"
+            style={[styles.textInput, styles.descriptionInput]}
+            testID="trip-step1-description"
+          />
+          <Text style={styles.descriptionCount}>
+            {(draft.description ?? "").trim().length} characters · 20 or more to publish
+          </Text>
         </View>
-        <View style={[styles.fieldGroup, styles.dateField]}>
-          <Text style={styles.fieldLabel}>End date</Text>
-          {Platform.OS === "web" ? (
-            React.createElement("input" as any, {
-              type: "date",
-              value: isoToHtml5Date(draft.endAt),
-              min:
-                draft.startAt !== null
-                  ? isoToHtml5Date(draft.startAt)
-                  : todayInputValue(),
-              disabled: disabled,
-              onChange: (e: { target: { value: string } }) => {
-                const v = e.target.value;
-                const iso = htmlDateToIso(v, true);
-                if (iso !== null) onChange({ endAt: iso });
-              },
-              "data-testid": "trip-step1-end-web",
-              style: webDateInputStyle,
-            })
-          ) : (
-            <Pressable
-              onPress={() => handleOpenPicker("end")}
-              disabled={disabled}
-              style={styles.dateButton}
-              accessibilityRole="button"
-              accessibilityLabel="Pick end date"
-              testID="trip-step1-end"
-            >
-              <Text
-                style={
-                  draft.endAt === null
-                    ? styles.dateButtonPlaceholder
-                    : styles.dateButtonValue
-                }
-              >
-                {draft.endAt === null
-                  ? "Tap to pick"
-                  : formatDateDisplay(draft.endAt)}
-              </Text>
-            </Pressable>
-          )}
-        </View>
+      ) : null}
+
+      {/* Dates — one range calendar (#4523); nights counted for the host. */}
+      <View style={styles.fieldGroup}>
+        <HostDateRangeField
+          label="Trip dates"
+          accessibilityLabel="Trip dates"
+          value={{ start: startDay, end: endDay }}
+          onChangeValue={(range) => {
+            const start = inputValueToCalendarIso(range.start, false);
+            const end = inputValueToCalendarIso(range.end, true);
+            if (start === null || end === null) return;
+            onChange({ startAt: start, endAt: end });
+          }}
+          min={todayInZoneDay(tripZone)}
+          timeZone={tripZone}
+          disabled={disabled}
+          placeholder="Choose start and end dates"
+          testID="trip-step1-dates"
+        />
+        {tripLength !== null ? (
+          <Text style={styles.descriptionCount} testID="trip-step1-dates-length">
+            {tripLength}
+          </Text>
+        ) : null}
       </View>
 
       {/* ORCH-1016 — Departing from (origin city) via the address picker
@@ -884,52 +749,6 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         galleryEnabled
       />
 
-      {/* iOS picker modal */}
-      {Platform.OS === "ios" && pickerMode !== null && tempPickerValue !== null ? (
-        <Modal
-          transparent
-          animationType="fade"
-          visible={pickerMode !== null}
-          onRequestClose={handleIosCommit}
-        >
-          <View style={styles.iosModalBackdrop}>
-            <View style={styles.iosPickerSheet}>
-              <View style={styles.iosPickerDoneRow}>
-                <Button
-                  label="Done"
-                  variant="primary"
-                  size="md"
-                  onPress={handleIosCommit}
-                />
-              </View>
-              <View style={styles.iosPickerWrap}>
-                <DateTimePicker
-                  value={tempPickerValue}
-                  mode="date"
-                  display="spinner"
-                  onChange={handlePickerChange}
-                  minimumDate={pickerMinDate}
-                  themeVariant="dark"
-                  textColor={color.text1}
-                  style={styles.iosPicker}
-                />
-              </View>
-            </View>
-          </View>
-        </Modal>
-      ) : null}
-
-      {/* Android dialog */}
-      {Platform.OS === "android" && pickerMode !== null && tempPickerValue !== null ? (
-        <DateTimePicker
-          value={tempPickerValue}
-          mode="date"
-          display="default"
-          onChange={handlePickerChange}
-          minimumDate={pickerMinDate}
-        />
-      ) : null}
-
       {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the host root View. */}
       <ThemeSheet
         visible={activeSheet === "theme"}
@@ -942,21 +761,6 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
       />
     </View>
   );
-};
-
-const webDateInputStyle = {
-  height: 48,
-  paddingLeft: 14,
-  paddingRight: 14,
-  borderRadius: 8,
-  backgroundColor: INPUT_BG,
-  borderWidth: 1,
-  borderColor: INPUT_BORDER,
-  borderStyle: "solid" as const,
-  color: color.text1,
-  fontSize: 16,
-  width: "100%",
-  boxSizing: "border-box" as const,
 };
 
 const styles = StyleSheet.create({
@@ -999,57 +803,16 @@ const styles = StyleSheet.create({
     color: color.text1,
     fontSize: type.body.fontSize,
   },
-  dateRow: {
-    flexDirection: "row",
-    gap: space[2],
+  descriptionInput: {
+    height: undefined,
+    minHeight: 112,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
-  dateField: {
-    flex: 1,
-  },
-  dateButton: {
-    height: 48,
-    paddingHorizontal: 14,
-    borderRadius: radiusTokens.md,
-    overflow: "hidden",
-    backgroundColor: INPUT_BG,
-    borderWidth: 1,
-    borderColor: INPUT_BORDER,
-    justifyContent: "center",
-  },
-  dateButtonPlaceholder: {
-    fontSize: type.body.fontSize,
+  descriptionCount: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
     color: color.text3,
-  },
-  dateButtonValue: {
-    fontSize: type.body.fontSize,
-    color: color.text1,
-    fontWeight: "500",
-  },
-  iosModalBackdrop: {
-    flex: 1,
-    backgroundColor: scrim.modal,
-    justifyContent: "flex-end",
-  },
-  iosPickerSheet: {
-    backgroundColor: color.canvas,
-    borderTopLeftRadius: radiusTokens.lg,
-    borderTopRightRadius: radiusTokens.lg,
-    paddingBottom: space[7],
-    paddingTop: space[4],
-  },
-  iosPickerDoneRow: {
-    paddingHorizontal: space[6],
-    paddingBottom: space[4],
-    alignItems: "flex-end",
-  },
-  iosPickerWrap: {
-    height: 220,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iosPicker: {
-    height: 220,
-    width: "100%",
   },
 });
 

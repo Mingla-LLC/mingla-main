@@ -6,8 +6,8 @@
  * Tr2 (ORCH-0859). Per SPEC §4.8 Step 2.
  */
 
-import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useRef, useState } from "react";
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 
 import {
   radius as radiusTokens,
@@ -16,6 +16,8 @@ import {
   type,
 } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
+import { TripDayDragHandle } from "./TripDayDragHandle";
+import { dayDateLabel, dragTargetIndex, reorderDays } from "./tripBuilderV2Model";
 import { TripDayEditor, type TripDayDraft } from "./TripDayEditor";
 import { TripDayMediaSheet } from "./TripDayMediaSheet";
 import { tripDayMediaKey } from "./tripDayTileModel";
@@ -42,7 +44,18 @@ export interface TripCreatorStep2ItineraryProps {
   editMode?: {
     totalConfirmedOrders: number;
   };
+  /**
+   * #4522 — the 4-step builder: days are labelled with their dates, the day
+   * count follows the trip dates (no Add a day, no Delete) and a day's plan can
+   * be dragged to another day.
+   */
+  builderV2?: boolean;
+  /** The trip's first day (stored UTC calendar date), for the day labels. */
+  startAt?: string | null;
 }
+
+/** Gap between day cards; the drag maths needs it. */
+const DAY_GAP = space[4];
 
 export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps> = ({
   days,
@@ -51,7 +64,19 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
   brandId,
   eventId,
   onShowToast,
+  builderV2 = false,
+  startAt = null,
 }) => {
+  // #4522 — a drag in progress: which card and how far it has moved.
+  const [drag, setDrag] = useState<{ index: number; dy: number } | null>(null);
+  const heightsRef = useRef<number[]>([]);
+  const handleCardLayout = useCallback((index: number, e: LayoutChangeEvent): void => {
+    heightsRef.current[index] = e.nativeEvent.layout.height;
+  }, []);
+  const moveDay = (from: number, to: number): void => {
+    if (to < 0 || to >= days.length || from === to) return;
+    onChange(reorderDays(days, from, to));
+  };
   // ORCH-1119 — index of the day whose media picker is open (null = closed).
   const [mediaSheetDayIndex, setMediaSheetDayIndex] = useState<number | null>(
     null,
@@ -129,6 +154,10 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
 
   const handleSwap = (a: number, b: number): void => {
     if (a < 0 || b < 0 || a >= days.length || b >= days.length) return;
+    if (builderV2) {
+      moveDay(a, b);
+      return;
+    }
     const next = [...days];
     [next[a], next[b]] = [next[b], next[a]];
     onChange(next.map((d, i) => ({ ...d, ordinal: i + 1 })));
@@ -137,22 +166,50 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
   return (
     <View style={styles.host}>
       <Text style={styles.helper}>
-        Add a card per day. Travelers see this on the public trip page.
+        {builderV2
+          ? "One card per day of your trip. Drag a card to move its plan to another day."
+          : "Add a card per day. Travelers see this on the public trip page."}
       </Text>
 
       {days.length === 0 ? (
         <View style={styles.emptyState}>
           <Icon name="calendar" size={32} color={color.text3} />
-          <Text style={styles.emptyText}>No days yet. Add your first day below.</Text>
+          <Text style={styles.emptyText}>
+            {builderV2
+              ? "Choose your trip dates in Trip and a card appears for each day."
+              : "No days yet. Add your first day below."}
+          </Text>
         </View>
       ) : (
         <View style={styles.daysList}>
           {days.map((day, index) => (
-            <TripDayEditor
+            <View
               key={`day-${index}-${day.ordinal}`}
+              onLayout={(e) => handleCardLayout(index, e)}
+              style={drag?.index === index ? [styles.dragging, { transform: [{ translateY: drag.dy }] }] : null}
+            >
+            <TripDayEditor
               day={day}
               index={index}
               total={days.length}
+              dateLabel={builderV2 ? dayDateLabel(day.ordinal, startAt) : undefined}
+              dayCountLocked={builderV2}
+              dragHandle={
+                builderV2 ? (
+                  <TripDayDragHandle
+                    dayLabel={dayDateLabel(day.ordinal, startAt)}
+                    disabled={disabled === true || days.length < 2}
+                    onDragStart={() => setDrag({ index, dy: 0 })}
+                    onDragMove={(dy) => setDrag({ index, dy })}
+                    onDragEnd={(dy) => {
+                      setDrag(null);
+                      moveDay(index, dragTargetIndex(heightsRef.current, DAY_GAP, index, dy));
+                    }}
+                    onStep={(dir) => moveDay(index, index + dir)}
+                    testID={`trip-step2-day-${index}-drag`}
+                  />
+                ) : undefined
+              }
               onChange={(patch) => handleDayChange(index, patch)}
               onDelete={() => handleDelete(index)}
               onMoveUp={() => handleSwap(index, index - 1)}
@@ -175,10 +232,12 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
                   : undefined
               }
             />
+            </View>
           ))}
         </View>
       )}
 
+      {builderV2 ? null : (
       <Pressable
         onPress={handleAddDay}
         disabled={disabled}
@@ -191,6 +250,7 @@ export const TripCreatorStep2Itinerary: React.FC<TripCreatorStep2ItineraryProps>
         <Icon name="plus" size={16} color={color.accent} />
         <Text style={styles.addBtnText}>Add a day</Text>
       </Pressable>
+      )}
 
       {/* ORCH-1119 — per-day media picker. Rendered as a JSX child of the parent
           host (I-SUB-SHEET-INSIDE-PARENT). One sheet instance keyed to the
@@ -240,7 +300,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   daysList: {
-    gap: space[4],
+    gap: DAY_GAP,
+  },
+  dragging: {
+    zIndex: 10,
+    elevation: 10,
+    opacity: 0.95,
   },
   addBtn: {
     flexDirection: "row",
