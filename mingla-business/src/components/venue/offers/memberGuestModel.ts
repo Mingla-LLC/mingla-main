@@ -32,6 +32,7 @@ export function membershipBenefitsAvailable(status: GuestMemberStatus): boolean 
 export interface GuestMember {
   subscriptionId: string;
   status: GuestMemberStatus;
+  memberCode: string | null;
   memberName: string;
   /** #4490 fix 3 (N87) — the member's own email (their own view only). */
   memberEmail?: string | null;
@@ -120,6 +121,7 @@ export function parseGuestMember(raw: unknown): GuestMember | null {
   return {
     subscriptionId: m.subscriptionId,
     status: STATUSES.includes(status) ? status : "pending",
+    memberCode: strOrNull(m.memberCode),
     memberName: str(m.memberName, "Member"),
     memberEmail: typeof m.memberEmail === "string" && m.memberEmail.length > 0 ? m.memberEmail : null,
     plan: {

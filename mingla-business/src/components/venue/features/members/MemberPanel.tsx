@@ -29,6 +29,7 @@ import { Sheet } from "../../../ui/Sheet";
 import { Skeleton } from "../../../ui/Skeleton";
 import { Timeline } from "../../../ui/Timeline";
 import { money } from "../offers/offersModel";
+import { formatVenueMemberCode } from "../../../../utils/venueMemberCode";
 import {
   billingSteps,
   hoursWords,
@@ -227,8 +228,12 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
   const due = m.paymentDue;
   const ended = m.status === "cancelled";
   const requestState = memberRequestState(m.status);
+  const memberCode = formatVenueMemberCode(m.memberCode);
   const facts: { key: string; label: string; value: string }[] = [
     { key: "plan", label: "Plan", value: `${m.plan.name} · ${money(m.terms.priceMinor ?? m.plan.priceMinor, m.plan.currencyCode)} a ${m.plan.period}` },
+    ...(memberCode !== null
+      ? [{ key: "member-code", label: "Member code", value: memberCode }]
+      : []),
     { key: "since", label: "Member since", value: memberMonth(m.startedAt ?? m.createdAt, tz) ?? "Not started yet" },
     { key: "until", label: ended ? "Ended" : "Paid until", value: ended ? day(m.endedAt) : m.activeUntil !== null ? day(m.activeUntil) : "Not paid yet" },
     ...(m.credits.roomHoursPerMonth > 0 && !ended

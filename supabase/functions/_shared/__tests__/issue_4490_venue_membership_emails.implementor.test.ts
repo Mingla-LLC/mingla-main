@@ -3,8 +3,8 @@
 // payment provider; the member token is derived from the member id and only
 // re-derived when it matches the stored hash; the email button is trusted only
 // for the same member, from the service role, on the expected origin.
-// TEST-MOD-APPROVED #4490: spec 07 G adds approval and decline steps to this
-// issue-owned membership message matrix.
+// TEST-MOD-APPROVED #4490: spec 07 G/M adds approval/decline steps and the
+// member's approved fallback door code to this issue-owned message matrix.
 import {
   assert,
   assertEquals,
@@ -41,6 +41,7 @@ const PAYLOAD = {
   grace_ends_on: "2026-12-08",
   paid_through: "2027-01-01",
   ends_on: "2026-12-01",
+  member_code: "K7P4QX",
 };
 
 Deno.test("renewal email: the date, the month's money and no provider name", () => {
@@ -92,6 +93,17 @@ Deno.test("due, reminder, lapsed, paid and ended read in plain words", () => {
   assert(declined.email.body.includes("No payment was taken"));
   // The shared renderer routes the member categories here.
   assertEquals(renderCategoryMessage("venue_membership_lapsed", PAYLOAD).email.subject, lapsed.email.subject);
+});
+
+Deno.test("join, approval and renewal emails show the member code with display spacing", () => {
+  const first = renderVenueMembershipMessage("venue_membership_paid", { ...PAYLOAD, step: "first" });
+  const approved = renderVenueMembershipMessage("venue_membership_renewal", { ...PAYLOAD, step: "approval" });
+  const renewal = renderVenueMembershipMessage("venue_membership_renewal", { ...PAYLOAD, step: "renewal" });
+  const paid = renderVenueMembershipMessage("venue_membership_paid", { ...PAYLOAD, step: "renewal" });
+  for (const message of [first, approved, renewal, paid]) {
+    assert(message.email.body.includes("Can’t scan? Your code: K7P 4QX"));
+    assert(!message.email.body.includes("K7P4QX"));
+  }
 });
 
 Deno.test("the member token is derived from the member id and re-derived only when it matches", async () => {

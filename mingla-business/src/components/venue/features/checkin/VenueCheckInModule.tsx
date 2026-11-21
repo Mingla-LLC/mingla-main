@@ -12,7 +12,7 @@
  * gate sale it is allowed to make).
  */
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 
 import { color, radius, space, type } from "../../../../constants/designSystem";
@@ -33,8 +33,7 @@ import { GlassCard } from "../../../ui/GlassCard";
 import { Icon } from "../../../ui/Icon";
 import { Input } from "../../../ui/Input";
 import { KpiTile } from "../../../ui/KpiTile";
-import { Segmented } from "../../../ui/Pill";
-import { Pill } from "../../../ui/Pill";
+import { Pill, Segmented } from "../../../ui/Pill";
 import { PickerSheetHead } from "../../../ui/PickerSheetHead";
 import { Sheet } from "../../../ui/Sheet";
 import { Skeleton } from "../../../ui/Skeleton";
@@ -48,6 +47,7 @@ import { VenueGroupCheckIn, needsGroupStep, passIdFromCode } from "./VenueGroupC
 import { VenueBookingSheet } from "../bookings/VenueBookingSheet";
 import { money } from "../offers/offersModel";
 import { shortBookingReference } from "../../../../utils/venueBookingReference";
+import { normalizeVenueMemberCode } from "../../../../utils/venueMemberCode";
 
 const LazyToast = React.lazy(async () => {
   const mod = await import("../../../ui/Toast");
@@ -113,6 +113,9 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraNote, setCameraNote] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  const [memberCode, setMemberCode] = useState("");
+  const [memberCodeFocused, setMemberCodeFocused] = useState(false);
+  const memberCodeInput = useRef<TextInput | null>(null);
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
   const [lastQr, setLastQr] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -193,10 +196,19 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
     setOutcome(null);
     setScanError(null);
     setCode("");
+    setMemberCode("");
     setCameraNote(null);
     setCameraOn(scanCameraSupported());
     setScanOpen(true);
   }, [router, venueId]);
+
+  const submitMemberCode = useCallback((): void => {
+    if (memberCode.length !== 6) {
+      setScanError("Type all 6 characters from the member's code.");
+      return;
+    }
+    runDoor({ kind: "admit_code", memberCode }, () => setMemberCode(""));
+  }, [memberCode, runDoor]);
 
   const submitCode = useCallback(
     (raw: string): void => {
@@ -481,6 +493,60 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
           </View>
           {scanCameraSupported() && !cameraOn ? (
             <Button label="Use the camera" variant="ghost" size="sm" leadingIcon="scan" onPress={() => { setCameraNote(null); setCameraOn(true); }} />
+          ) : null}
+          {membersOn ? (
+            <View style={styles.memberCodeSection} testID="venue-checkin-member-code-section">
+              <View style={styles.memberCodeCopy}>
+                <Text style={styles.rowTitle}>Type a code</Text>
+                <Text style={styles.hint}>Use the 6 characters shown below their member pass.</Text>
+              </View>
+              <View style={styles.memberCodeRow}>
+                <Pressable
+                  accessible={false}
+                  style={styles.memberCodePressable}
+                  onPress={() => memberCodeInput.current?.focus()}
+                >
+                  <View style={styles.memberCodeBoxes} pointerEvents="none">
+                    {Array.from({ length: 6 }, (_, index) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.memberCodeBox,
+                          memberCodeFocused && index === Math.min(memberCode.length, 5)
+                            ? styles.memberCodeBoxFocused
+                            : null,
+                        ]}
+                      >
+                        <Text style={styles.memberCodeCharacter}>{memberCode[index] ?? ""}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <TextInput
+                    ref={memberCodeInput}
+                    value={memberCode}
+                    onChangeText={(value) => setMemberCode(normalizeVenueMemberCode(value))}
+                    onFocus={() => setMemberCodeFocused(true)}
+                    onBlur={() => setMemberCodeFocused(false)}
+                    onSubmitEditing={submitMemberCode}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    returnKeyType="go"
+                    accessibilityLabel="Six-character member code"
+                    testID="venue-checkin-member-code"
+                    style={styles.memberCodeInput}
+                  />
+                </Pressable>
+                <Button
+                  label="Check member"
+                  variant="secondary"
+                  size="md"
+                  onPress={submitMemberCode}
+                  loading={door.isPending}
+                  disabled={memberCode.length !== 6}
+                  testID="venue-checkin-member-code-submit"
+                />
+              </View>
+            </View>
           ) : null}
         </>
       ) : (
@@ -775,6 +841,24 @@ const styles = StyleSheet.create({
   sheetScroll: { paddingBottom: space[10] },
   scanBody: { gap: space[3] },
   codeRow: { flexDirection: "row", gap: space[2], alignItems: "flex-start" },
+  memberCodeSection: { gap: space[2], borderTopWidth: 1, borderTopColor: color.line, paddingTop: space[3] },
+  memberCodeCopy: { gap: 2 },
+  memberCodeRow: { flexDirection: "row", alignItems: "center", gap: space[2], flexWrap: "wrap" },
+  memberCodePressable: { position: "relative" },
+  memberCodeBoxes: { flexDirection: "row", gap: space[1] },
+  memberCodeBox: {
+    width: 38,
+    height: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: color.line,
+    borderRadius: radius.sm,
+    backgroundColor: color.fill.tile,
+  },
+  memberCodeBoxFocused: { borderColor: color.lineStrong },
+  memberCodeCharacter: { ...type.h2, color: color.text1 },
+  memberCodeInput: { ...StyleSheet.absoluteFillObject, opacity: 0 },
   result: { alignItems: "center", gap: space[3], paddingVertical: space[2] },
   resultIcon: {
     width: 64,

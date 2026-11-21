@@ -155,6 +155,7 @@ export interface MemberPaymentDue {
 export interface VenueMemberDetail {
   subscriptionId: string;
   status: MemberStatus;
+  memberCode: string | null;
   memberName: string;
   email: string | null;
   phone: string | null;

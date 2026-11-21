@@ -14,6 +14,7 @@ import {
 
 import { useAuth } from "../context/AuthContext";
 import {
+  admitMemberCode,
   admitPass,
   fetchCheckInList,
   scanPass,
@@ -60,6 +61,7 @@ function useInvalidateDoor(brandId: string | null, venueId: string | null): () =
 export type DoorAction =
   | { kind: "scan"; qrPayload: string; idChecked?: boolean; admitCount?: number }
   | { kind: "admit"; passId: string; count?: number; idChecked?: boolean }
+  | { kind: "admit_code"; memberCode: string; guests?: number }
   | { kind: "undo"; logId: string };
 
 export function useDoorAction(
@@ -75,6 +77,9 @@ export function useDoorAction(
       }
       if (action.kind === "admit") {
         return admitPass({ venueId, passId: action.passId, count: action.count, idChecked: action.idChecked });
+      }
+      if (action.kind === "admit_code") {
+        return admitMemberCode({ venueId, memberCode: action.memberCode, guests: action.guests });
       }
       return undoCheckIn({ venueId, logId: action.logId });
     },

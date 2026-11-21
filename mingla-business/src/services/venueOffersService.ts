@@ -1328,6 +1328,22 @@ export async function admitPass(input: {
   );
 }
 
+/** A member's six-character fallback code, scoped by the server to this venue. */
+export async function admitMemberCode(input: {
+  venueId: string;
+  memberCode: string;
+  guests?: number;
+}): Promise<ScanOutcome> {
+  return mapScanOutcome(
+    await checkIn<unknown>({
+      action: "admit_code",
+      venueId: input.venueId,
+      memberCode: input.memberCode,
+      guests: input.guests ?? 0,
+    }),
+  );
+}
+
 export async function undoCheckIn(input: { venueId: string; logId: string }): Promise<ScanOutcome> {
   return mapScanOutcome(await checkIn<unknown>({ action: "undo", venueId: input.venueId, logId: input.logId }));
 }

@@ -31,6 +31,7 @@ import { VenueOfferGuestError } from "../../../services/venueOfferGuestService";
 import { venueMembershipGuestService } from "../../../services/venueMembershipGuestService";
 import { useThemeFont } from "../../../theme/useThemeFont";
 import { randomId } from "../../../utils/randomId";
+import { formatVenueMemberCode } from "../../../utils/venueMemberCode";
 import {
   adoptFragmentToken,
   readVenueOfferBookingToken,
@@ -307,6 +308,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
     && hourTab
     && (member.plan.roomHours > 0 || member.plan.discountKinds.includes("by_the_hour"));
   const gives = planGiveLines(member.plan);
+  const memberCode = formatVenueMemberCode(member.memberCode);
 
   const statusCard = (
     <View style={[entryStyles.card, { backgroundColor: palette.card, borderColor: palette.panelBorder }]} testID="issue-4490-member-status">
@@ -383,6 +385,11 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
         <View style={member.pass.valid ? null : styles.dim}>
           <VenueOfferPassQr payload={member.pass.qrPayload} size={wide ? 200 : 220} testID="issue-4490-member-qr" />
         </View>
+        {memberCode !== null ? (
+          <Text style={[styles.memberCode, { color: palette.primaryText }]} testID="issue-4490-member-code">
+            {`Can’t scan? Your code: ${memberCode}`}
+          </Text>
+        ) : null}
         <Text style={[styles.cardTitle, themeBoldFace(theme), { color: palette.primaryText }]}>
           {`${member.plan.name}${passPeriod !== null && member.pass.valid ? ` · ${passPeriod}` : ""}`}
         </Text>
@@ -611,6 +618,7 @@ const styles = StyleSheet.create({
   leftCol: { flex: 1, minWidth: 0, gap: space[4] },
   rightCol: { width: 380 },
   passCard: { alignItems: "center", paddingVertical: space[6] },
+  memberCode: { ...type.row, textAlign: "center", letterSpacing: 1 },
   dim: { opacity: 0.35 },
   statusHead: { flexDirection: "row" },
   pill: { ...type.label, borderWidth: 1, borderRadius: radius.full, paddingHorizontal: space[3], paddingVertical: space[1] },

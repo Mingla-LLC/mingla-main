@@ -220,6 +220,7 @@ export function mapMemberDetail(v: unknown): VenueMemberDetail {
   return {
     subscriptionId: str(m.subscriptionId),
     status: mapMemberStatus(m.status),
+    memberCode: strOrNull(m.memberCode),
     memberName: str(m.memberName, "Member"),
     email: strOrNull(m.email),
     phone: strOrNull(m.phone),

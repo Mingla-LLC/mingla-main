@@ -322,6 +322,8 @@ export function doorErrorCopy(code: string, detail: string | null = null): strin
       return "Selling at the gate isn't switched on for your brand yet.";
     case "rate_limited":
       return "Too many tries in a row. Wait a moment, then try again.";
+    case "member_code_rate_limited":
+      return "Too many wrong codes. Scan the pass or try again in 10 minutes.";
     case "network":
       return "You're offline or the connection dropped. Try again.";
     // #4490 P6 — members.

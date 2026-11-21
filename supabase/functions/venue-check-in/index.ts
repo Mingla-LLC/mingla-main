@@ -12,6 +12,8 @@
 //            member's guest passes) } — a member from the list (#4490 P6);
 //            a member's pass code goes through `scan` (admitCount = the
 //            member plus guests)
+//   admit_code { venueId, memberCode, guests? (0..20) } — the six-character
+//            fallback printed below a member pass (#4490 M)
 //   undo   { venueId, logId }
 //   sell   { venueId, offeringId, lines:[{priceOptionId, guests}], method:
 //            "cash" | "transfer" | "pay_link", buyer?: {name, email?, phone?},
@@ -45,6 +47,7 @@ export const corsHeaders = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MEMBER_CODE = /^[2-9A-HJ-NP-Z]{6}$/;
 
 const SAFE_CODES = [
   "not_authorized",
@@ -76,6 +79,7 @@ const SAFE_CODES = [
   "balance_link_unavailable",
   "member_guest_passes_used_up",
   "member_guests_day_full",
+  "member_code_rate_limited",
 ];
 
 type RpcError = { message?: string; code?: string; details?: string };
@@ -124,6 +128,8 @@ function statusFor(error: RpcError): number {
     case "PT409":
     case "23505":
       return 409;
+    case "PT429":
+      return 429;
     case "P0001":
       return 422;
     default:
@@ -298,6 +304,30 @@ export function createVenueCheckInHandler(deps: VenueCheckInDeps = {}) {
         p_guests: guests,
         p_scanner_user_id: userId,
       });
+      return error ? failure(error) : json(200, { kind: "success", data });
+    }
+
+    if (action === "admit_code") {
+      const memberCode = str(body.memberCode).toUpperCase().replace(
+        /[\s-]+/g,
+        "",
+      );
+      const guests = body.guests ?? 0;
+      if (
+        !MEMBER_CODE.test(memberCode) || !Number.isInteger(guests) ||
+        (guests as number) < 0 || (guests as number) > 20
+      ) {
+        return json(400, { code: "invalid_request" });
+      }
+      const { data, error } = await client.rpc(
+        "issue_4490_admit_member_by_code",
+        {
+          p_venue_id: venueId,
+          p_code: memberCode,
+          p_guests: guests,
+          p_scanner_user_id: userId,
+        },
+      );
       return error ? failure(error) : json(200, { kind: "success", data });
     }
 
