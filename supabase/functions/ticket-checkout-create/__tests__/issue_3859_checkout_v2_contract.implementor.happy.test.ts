@@ -448,8 +448,9 @@ Deno.test("#3281 the session's extras join the bound total and the bind lines", 
   const source = Deno.readTextFileSync(
     new URL("../index.ts", import.meta.url),
   );
+  // #3281 S5: spread add-ons already on the plan rows are not charged today.
   assert(source.includes(
-    "const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents;",
+    "const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents -\n        addOnScheduledCents;",
   ));
   assert(source.includes("p_due_today_cents: dueTodayCents,"));
   assert(source.includes(

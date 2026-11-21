@@ -23,6 +23,14 @@ export interface TripPlanV2ContractPlan {
   dueTodayListCents: number;
   scheduled: TripPlanV2ScheduledPayment[];
   hasInstallments: boolean;
+  /**
+   * issue #3281 S5 — true only when the database planned this session's
+   * add-ons onto the plan (add_on_rollout.plan_enabled on). False keeps the
+   * legacy rule: add-ons never ride a plan.
+   */
+  addOnsOnPlan: boolean;
+  /** issue #3281 S5 — the `spread` add-on cents already on the rows (0 otherwise). */
+  addOnScheduledCents: number;
   /** Top-level schedule facts the buyer surfaces read. */
   summary: {
     planVersion: 2;
@@ -104,11 +112,28 @@ export function parseTripPlanV2ContractPlan(
       });
     }
   }
+  const addOnsOnPlan = data.addOnsOnPlan === true;
+  const addOnScheduledCents = addOnsOnPlan
+    ? wholeNumber(data.addonScheduledCents)
+    : 0;
+  if (addOnScheduledCents === null || addOnScheduledCents < 0) {
+    throw new TripPlanV2ContractError();
+  }
+  // The spread add-on cents on the rows must be exactly the rows' add-on shares.
+  if (
+    addOnsOnPlan &&
+    scheduled.reduce((sum, row) => sum + row.addonPortionCents, 0) !==
+      addOnScheduledCents
+  ) {
+    throw new TripPlanV2ContractError();
+  }
   return {
     dueTodayCents: dueTodayNetCents,
     dueTodayListCents,
     scheduled,
     hasInstallments: scheduled.length > 0,
+    addOnsOnPlan,
+    addOnScheduledCents,
     summary: {
       planVersion: 2,
       availability: typeof data.availability === "string"
@@ -119,4 +144,20 @@ export function parseTripPlanV2ContractPlan(
       finalDueAt: typeof data.finalDueAt === "string" ? data.finalDueAt : null,
     },
   };
+}
+
+/**
+ * issue #3281 S5 — may this contract session's add-ons ride its plan?
+ * "none": no add-ons, or no plan rows (add-ons are paid today in full).
+ * "on_plan": the database planned them (plan_enabled on, v2 plan).
+ * "refuse": add-ons with plan rows the database did not plan them onto — the
+ * legacy `extras_not_on_installments` refusal, byte for byte.
+ */
+export function addOnsRideContractPlan(
+  planV2: TripPlanV2ContractPlan | null,
+  extrasTotalCents: number,
+  hasInstallments: boolean,
+): "none" | "on_plan" | "refuse" {
+  if (extrasTotalCents <= 0 || !hasInstallments) return "none";
+  return planV2 !== null && planV2.addOnsOnPlan ? "on_plan" : "refuse";
 }

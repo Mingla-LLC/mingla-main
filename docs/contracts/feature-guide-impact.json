@@ -112,6 +112,7 @@
         "supabase/functions/admin-refund-order/index.ts",
         "supabase/functions/admin-reconcile-ticket-refund/index.ts",
         "supabase/functions/refund-order/index.ts",
+        "supabase/functions/_shared/refundServerLines.ts",
         "supabase/migrations/20280305003281_issue_3281_webhook_fee_unknown.sql",
         "supabase/functions/_shared/ticketRefundStripeThrow.ts",
         "supabase/functions/_shared/paystackRefunds.ts",
@@ -194,6 +195,7 @@
         "app-mobile/src/services/ticketQuoteService.ts",
         "app-mobile/src/hooks/useTicketQuote.ts",
         "supabase/functions/ticket-checkout-create/checkoutSessionLines.ts",
+        "supabase/functions/ticket-checkout-create/addOnLineDescriptions.ts",
         "mingla-business/app/checkout/[eventId]/index.tsx",
         "mingla-business/app/checkout/[eventId]/buyer.tsx",
         "mingla-business/src/components/checkout/CartContext.tsx",
@@ -225,6 +227,7 @@
         "supabase/migrations/20280315003281_issue_3281_public_extras.sql",
         "supabase/migrations/20281120043281_issue_3281_add_on_links.sql",
         "supabase/migrations/20281121023281_issue_3281_add_on_free_parent_refunds.sql",
+        "supabase/migrations/20281121033281_issue_3281_add_on_plan_choice.sql",
         "mingla-business/app/checkout/[eventId]/payment.tsx",
         "mingla-business/src/components/checkout/CartTicketExtras.tsx",
         "mingla-business/src/components/checkout/TicketQuoteController.tsx",
@@ -1695,6 +1698,7 @@
         "supabase/migrations/20280314003281_issue_3281_extras_authoring.sql",
         "supabase/migrations/20281120043281_issue_3281_add_on_links.sql",
         "supabase/migrations/20281121023281_issue_3281_add_on_free_parent_refunds.sql",
+        "supabase/migrations/20281121033281_issue_3281_add_on_plan_choice.sql",
         "mingla-business/src/config/featureFlags.ts",
         "mingla-business/src/components/event/CreatorStep3Where.tsx",
         "mingla-business/src/constants/providerMinimumCharges.ts",
@@ -1893,7 +1897,8 @@
       "capability_key": "staff-orders-money",
       "paths": [
         "mingla-admin/src/pages/BusinessOrdersPage.jsx",
-        "mingla-admin/src/lib/adminRefundError.js"
+        "mingla-admin/src/lib/adminRefundError.js",
+        "mingla-admin/src/lib/orderAddOnRefunds.js"
       ]
     },
     {

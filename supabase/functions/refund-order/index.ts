@@ -36,6 +36,7 @@ import {
   addOnRefundRpcError,
   isRefundLineRequest,
   parseAddOnRefundLines,
+  planRemovalOnlyResponse,
   refundRpcLines,
   type RefundLineRequest,
   serverRefundLines,
@@ -217,6 +218,10 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   const pending = pendingResult as Record<string, unknown>;
+  // Issue #3281 S5 — a spread add-on taken off the trip plan before any of it
+  // was collected: nothing to refund, so no provider call and no commit.
+  const planRemoval = planRemovalOnlyResponse(pending);
+  if (planRemoval !== null) return jsonResponse(planRemoval);
   const refundId = String(pending.refund_id ?? "");
   const amountCents = Number(pending.amount_cents ?? 0);
   const currency = String(pending.currency ?? "GBP");

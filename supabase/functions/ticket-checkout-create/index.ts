@@ -159,11 +159,17 @@ import {
 } from "../../../packages/offering-rendering/tripInstallmentCapability.ts";
 import { resolveIntakeUploadSessionId } from "./intakeUploadSession.ts";
 import {
+  addOnsRideContractPlan,
   parseTripPlanV2ContractPlan,
   tierRowsCarryPlanV2,
   type TripPlanV2ContractPlan,
 } from "./tripPlanV2Contract.ts";
 import { formatMoneyCents } from "../_shared/stripeEdgeAuth.ts";
+import {
+  addOnLineDescriptions,
+  hostedLineDescription,
+  paystackAddOnCustomFields,
+} from "./addOnLineDescriptions.ts";
 // Issue #4271 — door pay code: the guest pays a host-made code on their phone.
 import {
   doorChargeMatchesCode,
@@ -2807,6 +2813,11 @@ export const createTicketCheckoutCreateHandler = (
           ...(requested?.addOns !== undefined
             ? { addOns: requested.addOns }
             : {}),
+          // issue #3281 S5 — so is how they ride a v2 plan (absent keeps
+          // every fingerprint and RPC body byte-identical).
+          ...(requested?.addonPaymentMode !== undefined
+            ? { addonPaymentMode: requested.addonPaymentMode }
+            : {}),
           expectedQuantity: requested === undefined
             ? undefined
             : expectedSessionLineQuantity(requested, sessionDayScope),
@@ -2843,6 +2854,9 @@ export const createTicketCheckoutCreateHandler = (
             p_lines: canonicalLines.map((line) => ({
               ticketTypeId: line.ticketTypeId,
               paymentPlanChoice: line.paymentPlanChoice,
+              ...(line.addonPaymentMode !== undefined
+                ? { addonPaymentMode: line.addonPaymentMode }
+                : {}),
             })),
           },
         );
@@ -2899,17 +2913,28 @@ export const createTicketCheckoutCreateHandler = (
         throw error;
       }
 
-      // issue #3281 — the session priced the extras; they are paid today in
-      // full and never ride a plan, so they add to both totals.
+      // issue #3281 — the session priced the extras. Without a plan they are
+      // paid today in full. On a v2 plan they ride it only when the database
+      // planned them (#3281 S5, add_on_rollout.plan_enabled): `spread` add-on
+      // cents already sit on the rows, the rest join today's charge.
       const extrasTotalCents = Number(session.extrasTotalCents ?? 0);
       if (!Number.isInteger(extrasTotalCents) || extrasTotalCents < 0) {
         return await checkoutReviewResponse("lines");
       }
-      if (extrasTotalCents > 0 && computedPlan.hasInstallments) {
+      const addOnsOnPlan = addOnsRideContractPlan(
+        planV2,
+        extrasTotalCents,
+        computedPlan.hasInstallments,
+      );
+      if (addOnsOnPlan === "refuse") {
         return refuse({ error: "extras_not_on_installments" }, 422);
       }
-      checkoutListSubtotalCents += extrasTotalCents;
-      const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents;
+      const addOnScheduledCents = addOnsOnPlan === "on_plan" && planV2 !== null
+        ? planV2.addOnScheduledCents
+        : 0;
+      checkoutListSubtotalCents += extrasTotalCents - addOnScheduledCents;
+      const dueTodayCents = computedPlan.dueTodayCents + extrasTotalCents -
+        addOnScheduledCents;
       const fullPriceCents = canonicalLines.reduce(
         (sum, line) => sum + line.totalCents,
         0,
@@ -2918,7 +2943,11 @@ export const createTicketCheckoutCreateHandler = (
       const installmentSchedule = computedPlan.hasInstallments
         ? {
           fullPriceCents,
-          depositCents: computedPlan.dueTodayCents,
+          // issue #3281 S5 — with add-ons on the plan, today's charge is the
+          // deposit (today add-ons included); otherwise unchanged.
+          depositCents: addOnsOnPlan === "on_plan"
+            ? dueTodayCents
+            : computedPlan.dueTodayCents,
           currency,
           installments: computedPlan.scheduled,
           // issue #4522 — v2 schedule facts (absent for legacy plans).
@@ -2972,6 +3001,10 @@ export const createTicketCheckoutCreateHandler = (
             paymentPlanChoice: line.paymentPlanChoice,
             ...(line.byDate !== undefined ? { byDate: line.byDate } : {}),
             ...(line.addOns !== undefined ? { addOns: line.addOns } : {}),
+            // issue #3281 S5 — the bind re-plans the add-ons with this choice.
+            ...(line.addonPaymentMode !== undefined
+              ? { addonPaymentMode: line.addonPaymentMode }
+              : {}),
           })),
           p_due_today_cents: dueTodayCents,
           p_full_price_cents: fullPriceCents,
@@ -4200,6 +4233,14 @@ export const createTicketCheckoutCreateHandler = (
                 mingla_installment_count: String(psInstallmentCharges.length),
               }
               : {}),
+            // issue #3281 — one "Add-on: {name} × {qty}" field per add-on;
+            // absent for a cart without add-ons (byte-identical metadata).
+            ...((): { custom_fields?: ReturnType<typeof paystackAddOnCustomFields> } => {
+              const fields = paystackAddOnCustomFields(
+                addOnLineDescriptions(session.extras),
+              );
+              return fields.length === 0 ? {} : { custom_fields: fields };
+            })(),
           },
           // #1178 [ng-split-removal] — split to the organiser subaccount ONLY for
           // an UNSTAMPED brand that has a subaccount (pass it + the flat Mingla
@@ -4745,20 +4786,26 @@ export const createTicketCheckoutCreateHandler = (
                       : {}),
                     product_data: {
                       name: `Tickets — ${eventName}`,
-                      ...(checkoutListSubtotalCents > totalCents
-                        ? {
-                          description: `Includes ${
-                            checkoutDiscounts.map((entry) => entry.name).join(
-                              ", ",
-                            )
-                          } (−${
-                            formatMoneyCents(
-                              checkoutListSubtotalCents - totalCents,
-                              currency,
-                            )
-                          })`,
-                        }
-                        : {}),
+                      // issue #3281 — the discount note, then one
+                      // "Add-on: {name} × {qty}" per add-on; omitted when
+                      // there is neither (byte-identical to before).
+                      ...((): { description?: string } => {
+                        const description = hostedLineDescription(
+                          checkoutListSubtotalCents > totalCents
+                            ? `Includes ${
+                              checkoutDiscounts.map((entry) => entry.name)
+                                .join(", ")
+                            } (−${
+                              formatMoneyCents(
+                                checkoutListSubtotalCents - totalCents,
+                                currency,
+                              )
+                            })`
+                            : null,
+                          addOnLineDescriptions(session.extras),
+                        );
+                        return description === undefined ? {} : { description };
+                      })(),
                     },
                   },
                   quantity: 1,
