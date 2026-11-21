@@ -12,6 +12,26 @@ const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   refunded: "Refunded",
   valid: "Ready",
+  // #4490 Explorer W2 — venue bookings, plans and waitlist places.
+  partially_cancelled: "Partly cancelled",
+  request_pending: "Requested",
+  requested: "Requested",
+  approved_payment_required: "Pay to hold your date",
+  declined: "Declined",
+  request_expired: "Request closed",
+  instant_payment_pending: "Payment pending",
+  finalizing: "Payment pending",
+  reconciliation_required: "Checking payment",
+  active: "Active",
+  payment_due: "Payment due",
+  grace: "Payment due",
+  lapsed: "Paused",
+  paused: "Paused",
+  waiting: "Waiting",
+  notified: "Table ready",
+  converted: "Booked",
+  expired: "Ended",
+  lost: "Left",
 };
 
 export function purchaseKindLabel(kind: PurchaseKind): string {
@@ -26,6 +46,12 @@ export function purchaseKindLabel(kind: PurchaseKind): string {
       return "Receipt";
     case "stay":
       return "Stay";
+    case "venue_booking":
+      return "Pass";
+    case "venue_membership":
+      return "Plan";
+    case "venue_waitlist":
+      return "Waitlist";
   }
 }
 
@@ -39,8 +65,11 @@ export function purchaseStatusLabel(status: string): string {
 export function purchaseCountLabel(item: PurchaseTimelineItem): string {
   const noun = item.kind === "order"
     ? "ticket"
-    : item.kind === "rsvp"
+    : item.kind === "rsvp" || item.kind === "venue_booking" ||
+        item.kind === "venue_waitlist"
     ? "guest"
+    : item.kind === "venue_membership"
+    ? "plan"
     : item.kind === "reservation"
     ? "person"
     : item.kind === "stay"

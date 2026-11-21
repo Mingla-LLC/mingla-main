@@ -35,6 +35,10 @@ import {
 } from "@mingla/offering-rendering";
 
 import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
+import {
+  isVenuePurchaseKind,
+  VenuePurchaseDetail,
+} from "../../../src/components/purchases/VenuePurchaseDetail";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
 import { EarnBySharingCard } from "../../../src/components/wallet/EarnBySharingCard";
@@ -94,6 +98,10 @@ const KINDS = new Set<PurchaseKind>([
   "reservation",
   "venue_order",
   "stay",
+  // #4490 Explorer W2 — venue bookings (passes), plans and waitlist places.
+  "venue_booking",
+  "venue_membership",
+  "venue_waitlist",
 ]);
 
 const TICKET_MAPS_PALETTE: ThemePalette = {
@@ -741,6 +749,12 @@ export default function PurchaseDetailRoute(): React.ReactElement {
               <Text style={styles.retryText}>{t("error.retry")}</Text>
             </Pressable>
           </View>
+        ) : isVenuePurchaseKind(item.kind) && userId !== null ? (
+          <VenuePurchaseDetail
+            item={item}
+            openDoor={firstParam(params.door) === "1"}
+            userId={userId}
+          />
         ) : shared ? (
           <SharedPurchaseDetail
             item={item}

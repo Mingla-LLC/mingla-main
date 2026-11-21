@@ -54,7 +54,9 @@ Deno.test("#4265 P-3 every Profile section query uses the revisit window", () =>
   const purchasesCard = code(read("src/components/profile/PurchasesCard.tsx"));
   assert(purchasesCard.includes("usePurchases(userId, { staleTime: PROFILE_REVISIT_STALE_MS })"));
   const purchases = dense(read("src/hooks/usePurchases.ts"));
-  assertEquals((purchases.match(/staleTime,refetchOnWindowFocus:true,refetchOnMount:true,/g) ?? []).length, 5, "all five purchase lists (incl. #4473 shared) take the caller's window");
+  // [TEST-MOD-APPROVED #4490] Explorer W2 adds three lists (venue bookings,
+  // plans, waitlist places); every one still takes the caller's window.
+  assertEquals((purchases.match(/staleTime,refetchOnWindowFocus:true,refetchOnMount:true,/g) ?? []).length, 8, "all eight purchase lists (incl. #4473 shared and #4490 venue items) take the caller's window");
   assert(purchases.includes("conststaleTime=options?.staleTime??60_000;"), "the Purchases screen keeps 60 s");
 
   const creator = code(read("src/components/profile/CreatorProgramsSection.tsx"));

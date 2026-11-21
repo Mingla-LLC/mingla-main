@@ -4,7 +4,17 @@ import { supabase } from "./supabase";
 import type {
   PurchaseOrderSource,
   PurchaseRsvpSource,
+  PurchaseVenueBookingSource,
+  PurchaseVenueMembershipSource,
+  PurchaseVenueWaitlistSource,
 } from "../utils/purchaseTimeline";
+import {
+  parseVenueBookings,
+  parseVenueMembers,
+  parseVenueWaitlistPlaces,
+  venueBookingGuests,
+  venueBookingSpan,
+} from "../components/purchases/venuePurchaseModel";
 
 export interface PurchaseTicket {
   id: string;
@@ -561,4 +571,72 @@ export async function fetchMyRsvps(
  */
 export async function fetchMyVenueOrders(): Promise<[]> {
   return [];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #4490 Explorer W2 — venue bookings (passes), plans and waitlist places.
+// Each read is the signed-in caller's own (the RPCs refuse anon). A failed
+// read throws: Purchases shows that source's error line and Retry, never a
+// blank list.
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function rpcList(fn: string): Promise<unknown> {
+  const { data, error } = await supabase.rpc(fn);
+  if (error) throw new Error(`${fn} failed: ${error.message}`);
+  return data;
+}
+
+export async function fetchMyVenueBookings(): Promise<PurchaseVenueBookingSource[]> {
+  return parseVenueBookings(await rpcList("issue_4490_my_offer_bookings")).map(
+    (booking): PurchaseVenueBookingSource => {
+      const span = venueBookingSpan(booking);
+      return {
+        id: booking.groupId,
+        title: booking.venue.name || "Venue",
+        brandName: booking.venue.brandName,
+        venueLine: booking.offer.name || null,
+        startAt: span.startsAt,
+        endAt: span.endsAt,
+        timezone: booking.venue.timezone ?? "UTC",
+        state: booking.state,
+        guests: venueBookingGuests(booking),
+        totalMinor: booking.totalMinor,
+        refundedMinor: booking.refundedMinor,
+        currency: booking.currencyCode,
+        raw: booking,
+      };
+    },
+  );
+}
+
+export async function fetchMyMemberships(): Promise<PurchaseVenueMembershipSource[]> {
+  return parseVenueMembers(await rpcList("issue_4490_my_memberships")).map(
+    (member): PurchaseVenueMembershipSource => ({
+      id: member.subscriptionId,
+      title: member.planName,
+      brandName: member.venue.brandName,
+      venueLine: member.venue.name,
+      startAt: member.startedAt ?? member.createdAt,
+      endAt: member.activeUntil,
+      timezone: member.venue.timezone,
+      status: member.status,
+      raw: member,
+    }),
+  );
+}
+
+export async function fetchMyWaitlistEntries(): Promise<PurchaseVenueWaitlistSource[]> {
+  return parseVenueWaitlistPlaces(
+    await rpcList("issue_4490_my_waitlist_entries"),
+  ).map((place): PurchaseVenueWaitlistSource => ({
+    id: place.id,
+    title: place.venueName,
+    venueLine: null,
+    startAt: place.startsAt,
+    createdAt: place.createdAt,
+    timezone: place.timezone,
+    status: place.status,
+    partySize: place.partySize,
+    raw: place,
+  }));
 }

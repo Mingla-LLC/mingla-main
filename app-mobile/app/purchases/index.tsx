@@ -58,6 +58,11 @@ export default function PurchasesRoute(): React.ReactElement {
     );
   };
 
+  // #4490 Explorer W2 (spec 06 W4 rule 4): on Purchases focus, a live venue
+  // checkout recovery pointer is confirmed (confirm_return) and cleared.
+  // [TRANSITIONAL] not wired yet: exits when W4 adds the venue recovery
+  // pointer (mingla_venue_checkout_recovery_v1 in nativeCheckoutRecovery.ts);
+  // then run that check here on focus, next to the list refetch.
   const refresh = async (): Promise<void> => {
     await purchases.refetch();
     if (userId) await runClaimSweep(userId, "pull_to_refresh");

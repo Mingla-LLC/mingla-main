@@ -33,21 +33,29 @@ test("W1-A1 venue claim rows are kept with nouns the app already knows", () => {
   expect(out.map((e) => e.kind)).toEqual(["venue_booking", "venue_membership", "venue_waitlist", "venue_till_sale"]);
 });
 
-test("W1-A2 each venue route kind opens Purchases (the list until W2 adds detail bodies; N157)", () => {
-  for (const k of ["venue_booking", "venue_membership", "venue_waitlist", "venue_till_sale"]) {
+// [TEST-MOD-APPROVED #4490] Explorer W2 closes N157: the three venue kinds
+// now open their own Purchases detail; Till receipts still open the list.
+test("W1-A2 venue route kinds open their detail; Till receipts open the list (W2, N157)", () => {
+  for (const k of ["venue_booking", "venue_membership", "venue_waitlist"]) {
     const [e] = parseClaimedEntries([row(k, k, "pass")]);
-    expect(claimedEntryPath(e)).toBe("/purchases");
+    expect(claimedEntryPath(e)).toBe(`/purchases/${k}/0a1b2c3d-4490-4000-8000-0000000000c1`);
   }
+  const [till] = parseClaimedEntries([row("venue_till_sale", "venue_till_sale", "receipt")]);
+  expect(claimedEntryPath(till)).toBe("/purchases");
 });
 
 test("W1-A3 push and return-page links may open the venue kinds", () => {
   expect(PURCHASE_DEEP_LINK_KINDS).toEqual(expect.arrayContaining(["venue_booking", "venue_membership", "venue_waitlist", "venue_till_sale"]));
 });
 
-test("W1-A4 N157: a venue purchase link opens the Purchases list (no dead detail)", () => {
+// [TEST-MOD-APPROVED #4490] Explorer W2: venue_booking opens its detail now.
+test("W1-A4 N157: a venue purchase link opens its detail (W2)", () => {
   const opened: string[] = [];
   const handlers = { openRouterPath: (p: string) => { opened.push(p); }, setCurrentPage: () => undefined };
   executeDeepLink({ kind: "purchase", purchaseKind: "venue_booking", purchaseId: "0a1b2c3d-4490-4000-8000-0000000000c1", door: false } as never, handlers as never);
   executeDeepLink({ kind: "purchase", purchaseKind: "order", purchaseId: "0a1b2c3d-4490-4000-8000-0000000000c1", door: false } as never, handlers as never);
-  expect(opened).toEqual(["/purchases", "/purchases/order/0a1b2c3d-4490-4000-8000-0000000000c1"]);
+  expect(opened).toEqual([
+    "/purchases/venue_booking/0a1b2c3d-4490-4000-8000-0000000000c1",
+    "/purchases/order/0a1b2c3d-4490-4000-8000-0000000000c1",
+  ]);
 });

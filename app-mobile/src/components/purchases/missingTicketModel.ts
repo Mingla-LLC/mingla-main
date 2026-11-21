@@ -16,18 +16,18 @@ import { formatStartsAtLabel } from "../../utils/zoneLabel";
 export function claimedEntryPath(entry: ClaimedEntry): string {
   if (
     entry.routeKind === "order" || entry.routeKind === "rsvp" ||
-    entry.routeKind === "reservation" || entry.routeKind === "venue_order"
+    entry.routeKind === "reservation" || entry.routeKind === "venue_order" ||
+    // #4490 Explorer W2 (N157 closed): venue bookings, plans and waitlist
+    // places open their own Purchases detail (the pass, the plan, the place).
+    entry.routeKind === "venue_booking" || entry.routeKind === "venue_membership" ||
+    entry.routeKind === "venue_waitlist"
   ) {
     return `/purchases/${entry.routeKind}/${encodeURIComponent(entry.routeId)}`;
   }
-  // #4490 Explorer W1 (N157): venue bookings, plans, waitlist places and Till
-  // receipts open the Purchases list, never a detail route that cannot show
-  // them yet. [TRANSITIONAL] list, not detail: exit when W2 adds the
-  // /purchases/<venue kind>/<id> detail bodies (then route like order above).
-  if (
-    entry.routeKind === "venue_booking" || entry.routeKind === "venue_membership" ||
-    entry.routeKind === "venue_waitlist" || entry.routeKind === "venue_till_sale"
-  ) {
+  // #4490 Explorer W1: Till receipts open the Purchases list.
+  // [TRANSITIONAL] list, not detail: exits when spec 08 adds the Till receipt
+  // detail (then route it like the venue kinds above).
+  if (entry.routeKind === "venue_till_sale") {
     return "/purchases";
   }
   if (entry.routeKind === "held_ticket") {

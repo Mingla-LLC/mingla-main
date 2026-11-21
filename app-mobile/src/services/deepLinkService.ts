@@ -548,9 +548,10 @@ export function executeDeepLink(
       break;
 
     case 'purchase': {
-      // #4490 Explorer W1 (N157): venue kinds open the Purchases list until W2
-      // adds their detail bodies. [TRANSITIONAL] exit: drop this branch in W2.
-      if (dest.purchaseKind.startsWith('venue_') && dest.purchaseKind !== 'venue_order') {
+      // #4490 Explorer W2 (N157 closed): venue bookings, plans and waitlist
+      // places open their own detail below. Till receipts open the Purchases
+      // list. [TRANSITIONAL] exits when spec 08 adds the Till receipt detail.
+      if (dest.purchaseKind === 'venue_till_sale') {
         handlers.openRouterPath?.('/purchases');
         break;
       }
