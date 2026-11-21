@@ -2038,42 +2038,6 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           restoredRsvp={restoredRsvp}
           replyIdentity={user?.id ?? null}
           recoveryNotice={recoveryNotice}
-          questionsNode={
-            rsvpFormReadFailed ? (
-              <View
-                style={{ marginTop: 16, gap: 8 }}
-                accessibilityRole="alert"
-                testID="issue-4541-rsvp-questions-failed"
-              >
-                <Text style={{ color: palette.secondaryText, fontSize: 14 }}>
-                  Questions couldn&apos;t load. You can RSVP now and answer later.
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Try again"
-                  onPress={() => void rsvpBrandFormQuery.refetch()}
-                  hitSlop={8}
-                >
-                  <Text style={{ color: palette.primaryText, fontSize: 14, fontWeight: "600" }}>
-                    Try again
-                  </Text>
-                </Pressable>
-              </View>
-            ) : rsvpBrandFormPage === null ? null : (
-              <React.Suspense fallback={<View style={{ minHeight: 120 }} />}>
-                <RsvpBrandFormQuestions
-                  page={rsvpBrandFormPage}
-                  answers={rsvpFormAnswers}
-                  onAnswersChange={setRsvpFormAnswers}
-                  onMissingChange={noopRsvpMissing}
-                />
-              </React.Suspense>
-            )
-          }
-          questionsRequired={
-            rsvpFormReadPending || rsvpBrandFormPage?.mode === "required_step"
-          }
-          questionsReady={!rsvpFormReadPending && rsvpFormMissing.length === 0}
           onRsvpResolved={handleRsvpResolved}
           onRecoveryRetry={retryRecovery}
           // A Stripe return lands with ?contribution=paid: show the inline
@@ -2194,6 +2158,42 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           safeAreaTop={insets.top}
           safeAreaBottom={insets.bottom}
           testID="orch-1150-rsvp-public"
+          questionsNode={
+            rsvpFormReadFailed ? (
+              <View
+                style={{ marginTop: 16, gap: 8 }}
+                accessibilityRole="alert"
+                testID="issue-4541-rsvp-questions-failed"
+              >
+                <Text style={{ color: palette.secondaryText, fontSize: 14 }}>
+                  Questions couldn&apos;t load. You can RSVP now and answer later.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Try again"
+                  onPress={() => void rsvpBrandFormQuery.refetch()}
+                  hitSlop={8}
+                >
+                  <Text style={{ color: palette.primaryText, fontSize: 14, fontWeight: "600" }}>
+                    Try again
+                  </Text>
+                </Pressable>
+              </View>
+            ) : rsvpBrandFormPage === null ? null : (
+              <React.Suspense fallback={<View style={{ minHeight: 120 }} />}>
+                <RsvpBrandFormQuestions
+                  page={rsvpBrandFormPage}
+                  answers={rsvpFormAnswers}
+                  onAnswersChange={setRsvpFormAnswers}
+                  onMissingChange={noopRsvpMissing}
+                />
+              </React.Suspense>
+            )
+          }
+          questionsRequired={
+            rsvpFormReadPending || rsvpBrandFormPage?.mode === "required_step"
+          }
+          questionsReady={!rsvpFormReadPending && rsvpFormMissing.length === 0}
         />
 
         {addToCalendarChooser}
