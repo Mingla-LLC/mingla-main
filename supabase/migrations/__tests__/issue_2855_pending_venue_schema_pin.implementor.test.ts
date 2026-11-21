@@ -29,7 +29,7 @@ const ORIGINAL_PATH =
 const FORWARD_PATH =
   "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql";
 const CURRENT_PIN_PATH =
-  "supabase/migrations/20280809104490_issue_4490_p2_pending_venue_repin.sql";
+  "supabase/migrations/20280809444490_issue_4490_guest_list_pending_venue_repin.sql";
 const COVER_VIDEO_PATH =
   "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql";
 const COMPETITOR_PATH =
@@ -61,8 +61,12 @@ const NEW_PIN =
 // (20280809104490), which advances the pin over the venue offer lanes
 // (booking settings, pools, overrides, price options, offer spaces, passes,
 // check-in log); they stay disallowed. It carries the P1 owner's rewrites.
+// [TEST-MOD-APPROVED #4490] guest list: the current pin owner is the guest
+// list repin (20280809444490), which advances the pin over the guest list
+// lanes added by 20280809414490 (terms, promoters, entries); they stay
+// disallowed. It carries the P1 owner's rewrites like the P2 owner did.
 const CURRENT_HASHES = [
-  "e52c7f88bca9e64e6b70b426f4bd293302f34f7b7b55d1acf9bf996a1dcacb37",
+  "ab750f8323008afae8076dedc3a30de0357431d945a9a65662d534b4b6ce755f",
 ] as const;
 const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
@@ -448,7 +452,7 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
   const originalName =
     "20270418002099_issue_2099_pending_venue_identity_correction.sql";
   const forwardName = "20270610002855_issue_2855_pending_venue_schema_pin.sql";
-  const currentPinName = "20280809104490_issue_4490_p2_pending_venue_repin.sql";
+  const currentPinName = "20280809444490_issue_4490_guest_list_pending_venue_repin.sql";
   assert.equal(count(d4, originalName), 2, "D4 must replay the original twice");
   assert.equal(
     count(d4, forwardName),

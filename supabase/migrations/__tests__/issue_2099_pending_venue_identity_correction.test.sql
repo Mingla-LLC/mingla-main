@@ -83,8 +83,8 @@ BEGIN
   p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
   IF p->>'ok'<>'true' OR NOT COALESCE(
     p->>'schema_fingerprint' IN (
-      -- [TEST-MOD-APPROVED #4490] P2 repin (20280809104490): the venue offer lanes advance the reviewed pin.
-      'e52c7f88bca9e64e6b70b426f4bd293302f34f7b7b55d1acf9bf996a1dcacb37'
+      -- [TEST-MOD-APPROVED #4490] guest list repin (20280809444490): the guest list lanes (20280809414490) advance the reviewed pin.
+      'ab750f8323008afae8076dedc3a30de0357431d945a9a65662d534b4b6ce755f'
     ),
     false
   ) THEN

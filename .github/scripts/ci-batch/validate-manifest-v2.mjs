@@ -657,7 +657,8 @@ export function phase3dContractDigest(manifest) {
 // toward #4490 Stay venue features and filtered-lane registration; MANIFEST.json phase3eContractSha256 matches.
 // toward #4490 Stay venue features expectedFiles registration; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 explorer W2: purchases sweep, reads and visit reminders; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "1bfdaeb8d42a6bdc68bf1fc0ba57dc9f547f3d78383946014c47dbde70fd4a66";
+// issue #4490 W2 fix 1: guest list pin owner 20280809444490 registered; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "061369096864b93412ab880c9f9f0931bff51c4ef8479c69db0ac798a972a63b";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

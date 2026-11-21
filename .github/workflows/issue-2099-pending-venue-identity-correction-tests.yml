@@ -28,6 +28,10 @@ on:
       - "supabase/migrations/20280809084490_issue_4490_p2_offer_checkout.sql"
       - "supabase/migrations/20280809094490_issue_4490_p2_check_in.sql"
       - "supabase/migrations/20280809104490_issue_4490_p2_pending_venue_repin.sql"
+      # issue #4490 guest list — the guest list lanes and their pin owner (now
+      # the current pin owner D4 replays).
+      - "supabase/migrations/20280809414490_issue_4490_gaps_guest_list.sql"
+      - "supabase/migrations/20280809444490_issue_4490_guest_list_pending_venue_repin.sql"
       # issue #2648 — the four files below are READ by
       # issue_2855_pending_venue_schema_pin.implementor.test.ts, which this
       # workflow runs, and none of them were listed here. So inputs that decide
@@ -411,14 +415,14 @@ jobs:
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -f - < supabase/migrations/20280809104490_issue_4490_p2_pending_venue_repin.sql
+            -f - < supabase/migrations/20280809444490_issue_4490_guest_list_pending_venue_repin.sql
           after_second="$(snapshot)"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -f - < supabase/migrations/20280809104490_issue_4490_p2_pending_venue_repin.sql
+            -f - < supabase/migrations/20280809444490_issue_4490_guest_list_pending_venue_repin.sql
           after_third="$(snapshot)"
           test "$before" = "$after_second"
           test "$after_second" = "$after_third"
