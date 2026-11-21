@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "base_url": "https://usemingla.com/help/",
+  "videos": [
+    {
+      "slug": "getting-the-apps",
+      "episode": 1,
+      "title": "Getting the apps",
+      "blurb": "Where to find Mingla and Mingla Host, and which one you need.",
+      "duration": "0:46",
+      "chapter": "getting-started",
+      "intents": [
+        "Get set up"
+      ]
+    },
+    {
+      "slug": "sign-up-and-create-a-brand",
+      "episode": 2,
+      "title": "Sign up and create your brand",
+      "blurb": "Your account, then the brand people actually see — name, contact, cover and colours.",
+      "duration": "3:55",
+      "chapter": "getting-started",
+      "intents": [
+        "Get set up"
+      ]
+    },
+    {
+      "slug": "connect-a-bank-and-get-paid",
+      "episode": 3,
+      "title": "Connect a bank and get paid",
+      "blurb": "Stripe for most countries, Paystack for Nigeria — and why your address, not a menu, picks the rail.",
+      "duration": "1:58",
+      "chapter": "getting-started",
+      "intents": [
+        "Get set up",
+        "Get paid"
+      ]
+    },
+    {
+      "slug": "sell-tickets-to-a-one-night-event",
+      "episode": 4,
+      "title": "Sell tickets to a one-night event",
+      "blurb": "A one-night event from start to finish: the seven steps, a ticket priced in dollars, and the live page it ends on.",
+      "duration": "2:38",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "sell-tickets-to-an-event-in-nigeria",
+      "episode": 5,
+      "title": "Sell tickets to an event in Nigeria",
+      "blurb": "The same seven steps on a Nigerian brand — a Lagos timezone, a ticket priced in naira, and Paystack underneath.",
+      "duration": "2:37",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "sell-tickets-to-a-multi-day-event",
+      "episode": 6,
+      "title": "Sell tickets to a multi-day event",
+      "blurb": "Three dates on one event page, priced per day, so a guest buys a pass for each day they choose.",
+      "duration": "3:16",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "sell-tickets-to-a-multi-day-event-in-nigeria",
+      "episode": 7,
+      "title": "Sell tickets to a multi-day event in Nigeria",
+      "blurb": "A two-night weekend in Lagos on one page — a Lagos timezone, per-day passes in naira, and guests picking their days.",
+      "duration": "3:15",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "sell-tickets-to-a-weekly-event",
+      "episode": 8,
+      "title": "Sell tickets to a weekly event",
+      "blurb": "An event that happens every week: choose Recurring, set a weekly pattern, and decide when the run ends.",
+      "duration": "3:09",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "sell-tickets-to-an-online-event",
+      "episode": 9,
+      "title": "Sell tickets to an online event",
+      "blurb": "A ticketed stream: the format set to Online, a link instead of an address, and an unlimited pass sold online only.",
+      "duration": "3:13",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "sell-tickets-to-an-online-event-from-nigeria",
+      "episode": 10,
+      "title": "Sell tickets to an online event from Nigeria",
+      "blurb": "A live-streamed event on a Nigerian brand — Lagos time, a stream link, and a pass priced in naira and sold online only.",
+      "duration": "2:48",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "sell-tickets-to-a-hybrid-event-in-nigeria",
+      "episode": 11,
+      "title": "Sell tickets to a hybrid event in Nigeria",
+      "blurb": "One event with two ways in — a public address and a private stream link, a capped room tier and an uncapped stream pass.",
+      "duration": "3:08",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "sell-tickets-to-a-hybrid-event-in-new-york",
+      "episode": 12,
+      "title": "Sell tickets to a hybrid event in New York",
+      "blurb": "The same hybrid event on a US brand and Stripe — an address the public sees, a stream link only ticket holders get, and two tickets that behave differently.",
+      "duration": "3:00",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "run-a-free-rsvp-night",
+      "episode": 13,
+      "title": "Run a free RSVP night",
+      "blurb": "No tickets, just a list — cap the numbers, let guests bring extras, approve people automatically or one at a time, and take an optional chip-in.",
+      "duration": "2:18",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "create-an-unlisted-rsvp-event-in-nigeria",
+      "episode": 14,
+      "title": "Create an unlisted RSVP event in Nigeria",
+      "blurb": "An invite-style RSVP night in Lagos: cap the room, approve every guest, hide the public details and share an Unlisted link.",
+      "duration": "2:33",
+      "chapter": "creating",
+      "intents": [
+        "Take RSVPs"
+      ]
+    },
+    {
+      "slug": "create-a-recurring-event-in-nigeria",
+      "episode": 15,
+      "title": "Create a recurring event in Nigeria",
+      "blurb": "A weekly Lagos event with eight Sunday dates, a ₦100 Rooftop Pass, Paystack payouts and a street address that stays private until purchase.",
+      "duration": "2:40",
+      "chapter": "creating",
+      "intents": [
+        "Sell tickets"
+      ]
+    },
+    {
+      "slug": "create-and-submit-your-venue",
+      "episode": 16,
+      "title": "Create and submit your venue",
+      "blurb": "Create a complete Brooklyn venue listing with saved hours, six photos, a true video cover, public details and reservations, then submit it to Mingla for review.",
+      "duration": "2:38",
+      "chapter": "creating",
+      "intents": [
+        "Run a venue"
+      ]
+    },
+    {
+      "slug": "polish-your-listing-and-go-live",
+      "episode": 17,
+      "title": "Polish your listing and go live",
+      "blurb": "Polish a venue listing while it is in review, correct its hours, check the video cover, gallery and public details, save honest venue-fit answers, then verify the approved Live on Mingla page.",
+      "duration": "2:05",
+      "chapter": "creating",
+      "intents": [
+        "Run a venue"
+      ]
+    },
+    {
+      "slug": "build-your-menu",
+      "episode": 18,
+      "title": "Build your menu",
+      "blurb": "Build a venue menu in Mingla Host: categories, dishes with a guest price and a private cost, choices, a service window and a cheaper smaller portion, then reorder, 86 a dish and check the public menu.",
+      "duration": "4:03",
+      "chapter": "creating",
+      "intents": [
+        "Run a venue"
+      ]
+    },
+    {
+      "slug": "build-your-guest-list-and-groups",
+      "episode": 19,
+      "title": "Build your guest list and groups",
+      "blurb": "Build your guest list in Mingla Host: add a person by hand, import a CSV after checking the preview, gather people into a group, then start an email or SMS campaign to that group.",
+      "duration": "1:40",
+      "chapter": "selling",
+      "intents": [
+        "Market to customers"
+      ]
+    },
+    {
+      "slug": "send-a-campaign-to-a-group",
+      "episode": 20,
+      "title": "Send a campaign to a group",
+      "blurb": "Send an email campaign to a group in Mingla Host: pick the audience, write and format the email, add an event card and a link, send it after the review, then open the sent campaign to see how it did.",
+      "duration": "1:40",
+      "chapter": "selling",
+      "intents": [
+        "Market to customers"
+      ]
+    }
+  ]
+}

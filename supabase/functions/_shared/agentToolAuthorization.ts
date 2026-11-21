@@ -296,6 +296,9 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   search_capabilities: role("self", "none"),
   // #3355 Wave B (B1): the Feature Guide is product knowledge, not tenant data.
   search_mingla_guide: role("self", "none"),
+  // #4420: a help video from the generated catalogue; product knowledge,
+  // no tenant data. Offered only on a help_support turn.
+  show_help_video: role("self", "none"),
   request_tools: role("self", "none"),
   get_onboarding_plan: role("self", "optional_brand"),
   update_onboarding_plan: role("self", "optional_brand"),

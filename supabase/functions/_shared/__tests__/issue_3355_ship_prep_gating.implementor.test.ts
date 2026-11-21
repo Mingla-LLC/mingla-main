@@ -78,9 +78,14 @@ const MAIN_PROMPT_DIGESTS: Record<string, string> = {
 // paths and types the experience stop, price option and create stop schemas;
 // the digest is recomputed the same way. The off path's prompt digests and
 // per-message selections are unchanged.
+// #4420: show_help_video joins the registry on both paths (190→191) but is
+// offered only on a help_support turn; with it removed, the off path's
+// declarations hash to the pre-#4420 digest, so nothing else moved.
 const MAIN_DECLARATIONS_DIGEST =
+  "458d7fd434878178f3d28241fc81e64910ad5f045352f6604534c95f6021f59f";
+const MAIN_DECLARATION_COUNT = 191;
+const PRE_4420_DECLARATIONS_DIGEST =
   "4b8e1dd5fff12858ba2d72f8b3f04eb7a7ad52a006257daa268bf62e7674b00f";
-const MAIN_DECLARATION_COUNT = 190;
 /** origin/main's selectAriTools(inferAriToolsets(m), 12, m) names. */
 const MAIN_SELECTION: Record<string, string[]> = {
   "Create a discount code FAVY10 for 10% off until 19 December": [
@@ -281,6 +286,12 @@ Deno.test("ship-prep 1: switch OFF declares origin/main's tools, in order, with 
   const off = ariTurnToolDeclarations(ariTurnAgentTools(false), false);
   assertEquals(off.length, MAIN_DECLARATION_COUNT);
   assertEquals(await sha256(JSON.stringify(off)), MAIN_DECLARATIONS_DIGEST);
+  assertEquals(
+    await sha256(
+      JSON.stringify(off.filter((tool) => tool.name !== "show_help_video")),
+    ),
+    PRE_4420_DECLARATIONS_DIGEST,
+  );
   const on = ariTurnToolDeclarations(ariTurnAgentTools(true), true);
   assertEquals(on, ariToolDeclarations(AGENT_TOOLS));
   assertNotEquals(await sha256(JSON.stringify(on)), MAIN_DECLARATIONS_DIGEST);

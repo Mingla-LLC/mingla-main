@@ -20,6 +20,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import {
   AgentUserProfile,
   ARI_ESCALATION_GUIDANCE,
+  ariHelpSupportPromptBlock,
   BrandSummary,
   BusinessContext,
   OfferingSummary,
@@ -30,6 +31,11 @@ import {
   ariPromptVersionFor,
   buildAriTurnSystemPrompt,
 } from "../_shared/agentSystemPromptLegacy.ts";
+import {
+  ARI_HELP_SUPPORT_CONTEXT,
+  ariHelpSupportToolAllowed,
+  withAriHelpSupportTools,
+} from "../_shared/ariHelpVideos.ts";
 import {
   ariTurnAgentTools,
   ariTurnToolDeclarations,
@@ -441,7 +447,7 @@ interface RequestBody {
   choice_response?: AgentChoiceSubmissionV2;
   attachment_ids?: string[];
   ari_ui?: unknown;
-  workflow_context?: "website_setup" | "website_workspace";
+  workflow_context?: "website_setup" | "website_workspace" | "help_support";
   /** #4453: the section the owner opened Ari from (Website workspace only). */
   site_focus?: unknown;
   /**
@@ -1244,10 +1250,15 @@ async function handle(req: Request): Promise<Response> {
   if (
     body.workflow_context !== undefined &&
     body.workflow_context !== "website_setup" &&
-    body.workflow_context !== SITE_WORKSPACE_CONTEXT
+    body.workflow_context !== SITE_WORKSPACE_CONTEXT &&
+    body.workflow_context !== ARI_HELP_SUPPORT_CONTEXT
   ) {
     return errorResponse(400, "BAD_REQUEST", "workflow_context is invalid");
   }
+  // #4420: the Host app's Help & Support screen. Only this context offers
+  // show_help_video and adds the help rules to the prompt; every other turn
+  // (every older Host build) is offered and may call exactly what it was.
+  const helpSupport = body.workflow_context === ARI_HELP_SUPPORT_CONTEXT;
   // #4453 Website workspace: the selected section is app context, checked
   // field by field; it is only accepted on a workspace turn.
   const siteFocus = body.site_focus === undefined || body.site_focus === null
@@ -3008,7 +3019,7 @@ async function handle(req: Request): Promise<Response> {
           ? firstRun
           : null,
       },
-    );
+    ) + (helpSupport ? ariHelpSupportPromptBlock() : "");
 
     let currentAttachmentParts: GeminiContentMessage["parts"] = [];
     if (attachmentIds.length > 0) {
@@ -3853,6 +3864,13 @@ ${boundedAgentContext}
           SITE_WORKSPACE_TURN_TOOLS.includes(tool.name)
         );
       }
+      // #4420: help-only tools are offered on a help_support turn and on no
+      // other, whatever selected them (toolsets, the intent read's target).
+      selectedTools = withAriHelpSupportTools(
+        selectedTools,
+        turnTools,
+        helpSupport,
+      );
       const startFlowOffered = startFlowAllowed && !websiteSetupBoundary;
       const startFlowDeclarations = startFlowOffered
         ? [ARI_START_FLOW_DECLARATION]
@@ -4211,6 +4229,10 @@ ${boundedAgentContext}
               ? "flow"
               : "unknown";
           }
+          // #4420: a help-only tool off help_support is unknown, as before.
+          if (!ariHelpSupportToolAllowed(call.name, helpSupport)) {
+            return "unknown";
+          }
           const tool = findAriTurnTool(call.name, understandFirst);
           if (!tool) return "unknown";
           if (isAriTurnAgentStateCall(call.name, understandFirst)) {
@@ -4355,7 +4377,9 @@ ${boundedAgentContext}
             }
             : null),
         executeTool: async (call) => {
-          const tool = findAriTurnTool(call.name, understandFirst);
+          const tool = ariHelpSupportToolAllowed(call.name, helpSupport)
+            ? findAriTurnTool(call.name, understandFirst)
+            : undefined;
           if (!tool) {
             throw new ToolError(
               "UNKNOWN_TOOL",
@@ -4406,10 +4430,15 @@ ${boundedAgentContext}
                 12,
                 semanticMessage,
               );
-              compileGeminiToolDeclarations(
-                ariTurnToolDeclarations(candidateTools, understandFirst),
+              const gatedTools = withAriHelpSupportTools(
+                candidateTools,
+                turnTools,
+                helpSupport,
               );
-              selectedTools = candidateTools;
+              compileGeminiToolDeclarations(
+                ariTurnToolDeclarations(gatedTools, understandFirst),
+              );
+              selectedTools = gatedTools;
             }
             const { data: toolMessageId, error: toolMessageError } =
               await serviceClient.rpc("append_agent_chat_tool_result", {
@@ -4545,7 +4574,12 @@ ${boundedAgentContext}
             resumed: true,
           });
         }
-        const tool = findAriTurnTool(loopResult.toolCall.name, understandFirst);
+        const tool = ariHelpSupportToolAllowed(
+            loopResult.toolCall.name,
+            helpSupport,
+          )
+          ? findAriTurnTool(loopResult.toolCall.name, understandFirst)
+          : undefined;
         if (!tool) {
           return errorResponse(
             500,
@@ -5135,7 +5169,9 @@ ${boundedAgentContext}
       return await commitModelFlowStart(gemini.toolCall.args);
     }
     if (gemini.toolCall) {
-      let tool = findAriTurnTool(gemini.toolCall.name, understandFirst);
+      let tool = ariHelpSupportToolAllowed(gemini.toolCall.name, helpSupport)
+        ? findAriTurnTool(gemini.toolCall.name, understandFirst)
+        : undefined;
       if (!tool) {
         return errorResponse(
           500,
