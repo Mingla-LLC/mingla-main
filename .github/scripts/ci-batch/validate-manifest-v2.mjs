@@ -654,7 +654,8 @@ export function phase3dContractDigest(manifest) {
 // toward #4490 guest list registration; MANIFEST.json phase3eContractSha256 matches.
 // toward #4490 guest list filtered-lane registration; MANIFEST.json phase3eContractSha256 matches.
 // toward #4490 guest list filtered-lane registration; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "90c8aff29c3cb87d9e3a95c58142eace93ba58d919136b4ddb0a9a683cc2ccb6";
+// toward #4490 Stay venue features and filtered-lane registration; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "4bbb50e8c1a77adcbb061d8b8b8dc275d917b3ae669b827eb34b91b0daf48739";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

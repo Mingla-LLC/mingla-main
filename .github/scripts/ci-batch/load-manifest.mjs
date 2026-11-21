@@ -397,7 +397,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // toward #4490 guest list registration; re-sealed.
 // toward #4490 guest list filtered-lane registration; re-sealed.
 // toward #4490 guest list filtered-lane registration; re-sealed.
-export const BOOTSTRAP_SHA256 = "5d2f4e9ad3388013fa1f54fec49ddeb6566cddf2131ce6b462294efcf442c2e3";
+// toward #4490 Stay venue features and filtered-lane registration; re-sealed.
+export const BOOTSTRAP_SHA256 = "5cd8c48b5c6f7c91d0115df097aeeade27c4410c2a01e5dbc015ba8a060fbac6";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

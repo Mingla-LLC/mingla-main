@@ -3,11 +3,11 @@
 -- 20280809064490 — venue.* capabilities can be granted, for every venue type.
 -- BEGIN ... ROLLBACK.
 --
--- MINGLA-INVARIANT: I-4490-VENUE-GRANTS-EVERY-TYPE | issue #4490 | a brand admin can give scoped staff venue.* (and restaurant.*) capabilities on any non-stay venue; a Stay takes stay.* only; unknown capabilities are refused.
+-- MINGLA-INVARIANT: I-4490-VENUE-GRANTS-EVERY-TYPE | issue #4490 | a brand admin can give scoped staff venue.* and restaurant.* capabilities on every venue type; a Stay may combine them with stay.*; unknown capabilities are refused.
 --
 -- G-1  venue.manage_offers on a play venue is granted, and the staff member can then add a space there.
 -- G-2  restaurant.* with venue.* on a club venue is granted (profile kitchen_bar / custom).
--- G-3  a Stay still refuses venue.* and restaurant.*; stay.* still works.
+-- G-3  a Stay accepts venue.*, restaurant.* and stay.* together; front_desk with stay.* still works.
 -- G-4  an unknown capability, an empty list and a front_desk profile on a play venue are refused.
 -- G-5  authority unchanged: an event manager cannot grant; the grant replaces all earlier grants.
 -- G-6  scope: the granted staff cannot manage spaces at a venue they were not granted.
@@ -118,17 +118,15 @@ BEGIN
 END
 $g2$;
 
--- G-3 a Stay keeps stay.* only ----------------------------------------------------------------
-SELECT public.t4490_expect($$SELECT public.issue_4188_set_member_venue_grants('44906000-0000-4000-9000-000000000010','44906000-0000-4000-c000-000000000003',
-  '[{"venueId":"44906000-0000-4000-9000-0000000000a3","profile":"custom","capabilities":["venue.check_in"]}]'::jsonb)$$,
-  '22023', 'invalid_venue_grants', 'G-3a a Stay refuses venue.*');
-SELECT public.t4490_expect($$SELECT public.issue_4188_set_member_venue_grants('44906000-0000-4000-9000-000000000010','44906000-0000-4000-c000-000000000003',
-  '[{"venueId":"44906000-0000-4000-9000-0000000000a3","profile":"custom","capabilities":["restaurant.view_orders"]}]'::jsonb)$$,
-  '22023', 'invalid_venue_grants', 'G-3b a Stay refuses restaurant.*');
+-- G-3 a Stay combines its Stays and venue-feature capabilities ---------------------------------
+SELECT public.t4490_ok(
+  (public.issue_4188_set_member_venue_grants('44906000-0000-4000-9000-000000000010','44906000-0000-4000-c000-000000000003',
+    '[{"venueId":"44906000-0000-4000-9000-0000000000a3","profile":"restaurant_manager","capabilities":["stay.view_reservations","restaurant.view_orders","venue.check_in"]}]'::jsonb)->>'venueCount')::int = 1,
+  'G-3a a Stay combines stay.*, restaurant.* and venue.*');
 SELECT public.t4490_ok(
   (public.issue_4188_set_member_venue_grants('44906000-0000-4000-9000-000000000010','44906000-0000-4000-c000-000000000003',
     '[{"venueId":"44906000-0000-4000-9000-0000000000a3","profile":"front_desk","capabilities":["stay.view_reservations"]}]'::jsonb)->>'venueCount')::int = 1,
-  'G-3c a Stay still takes stay.* with front_desk');
+  'G-3b a Stay still takes stay.* with front_desk');
 
 -- G-4 refusals ----------------------------------------------------------------------------------
 SELECT public.t4490_expect($$SELECT public.issue_4188_set_member_venue_grants('44906000-0000-4000-9000-000000000010','44906000-0000-4000-c000-000000000003',

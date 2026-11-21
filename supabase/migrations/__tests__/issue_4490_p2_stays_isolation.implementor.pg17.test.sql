@@ -4,7 +4,7 @@
 -- MINGLA-INVARIANT: I-4490-OFFER-AUTHORING | issue #4490 | price options are always named by the host, a live offer has its feature on, a policy, a schedule and (entry) a day limit at least its largest option, and turning a feature off pauses its live offers.
 --
 -- E-1 catalog: RLS, grants, service-only checkout RPCs, entry is built.
--- E-2 authoring: no default option name, stale write, guest_max over the day limit, idempotency, feature gate, pause on feature off, day limit for one date, permissions, Stay venues refused.
+-- E-2 authoring: no default option name, stale write, guest_max over the day limit, idempotency, feature gate, pause on feature off, day limit for one date, permissions, Stay venues accepted.
 -- S   Stays isolation: VB- reference, Stays guest list, Stays quote, Stays prepare, rail guard on attempts / previews, discovery, row guards.
 --
 -- FAILS-ON-REVERT: drop issue_4490_guard_offer_money_rows -> S-4c; restore the stay-only integrity guard -> fixture create_draft (stay_venue_brand_mismatch).
@@ -324,9 +324,10 @@ SELECT public.t4490_expect($$SELECT public.issue_4490_list_offers('44907000-0000
 SELECT public.t4490_as(NULL);
 SELECT public.t4490_expect($$SELECT count(*) FROM public.venue_capacity_pools$$, '42501', NULL, 'E-2q anon cannot read pools');
 SELECT public.t4490_as('44907000-0000-4000-8000-000000000001');
-SELECT public.t4490_expect($$SELECT public.issue_4490_manage_offer('create_draft', '44907000-0000-4000-9000-0000000000a3',
-  '{"kind":"entry","name":"Pool day","entryStyle":"day_pass"}'::jsonb, NULL, 'p2-e2-stay')$$,
-  'P0001', 'offer_not_on_stay_venue', 'E-2r a Stay venue cannot sell venue offers (first build)');
+SELECT public.t4490_ok(
+  (public.issue_4490_manage_offer('create_draft', '44907000-0000-4000-9000-0000000000a3',
+    '{"kind":"entry","name":"Pool day","entryStyle":"day_pass"}'::jsonb, NULL, 'p2-e2-stay')->>'kind') = 'entry',
+  'E-2r a Stay venue can also create a venue offer');
 SELECT public.t4490_ok(jsonb_array_length(public.issue_4490_list_offers('44907000-0000-4000-9000-0000000000a1')->'offers') = 1,
   'E-2s the owner lists the venue''s offers');
 SELECT public.t4490_reset();
@@ -399,11 +400,13 @@ SELECT public.t4490_ok(NOT EXISTS (
     SELECT 1 FROM public.pg_public_stays_discover(NULL, NULL, NULL, 1, 0, 1, NULL, NULL, NULL, 50, 0) d
     WHERE to_jsonb(d)::text LIKE '%44907000-0000-4000-9000-0000000000a1%'),
   'S-5 Stays discovery does not list the offer venue');
-SELECT public.t4490_expect($$INSERT INTO public.stay_offerings (venue_id, brand_id, kind, name, status, confirmation_mode,
+INSERT INTO public.stay_offerings (venue_id, brand_id, kind, name, status, confirmation_mode,
   inventory_basis, capacity, place_pricing_basis, entry_style)
   VALUES ('44907000-0000-4000-9000-0000000000a3', '44907000-0000-4000-9000-000000000010', 'entry', 'x', 'draft', 'instant',
-          'shared_capacity', 10, 'per_guest', 'walk_in')$$,
-  '23514', 'offer_not_on_stay_venue', 'S-6 an offer row cannot sit on a Stay venue');
+          'shared_capacity', 10, 'per_guest', 'walk_in');
+SELECT public.t4490_ok(EXISTS (SELECT 1 FROM public.stay_offerings
+  WHERE venue_id = '44907000-0000-4000-9000-0000000000a3' AND kind = 'entry' AND name = 'x'),
+  'S-6 an offer row can sit beside Stays rows on a Stay venue');
 SELECT public.t4490_expect($$INSERT INTO public.stay_offerings (venue_id, brand_id, kind, name, status, confirmation_mode,
   inventory_basis, capacity, place_pricing_basis)
   VALUES ('44907000-0000-4000-9000-0000000000a1', '44907000-0000-4000-9000-000000000010', 'place', 'x', 'draft', 'instant',
