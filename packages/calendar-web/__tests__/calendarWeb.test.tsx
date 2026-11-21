@@ -2,6 +2,7 @@ import React from "react";
 
 import { Calendar } from "../src/Calendar";
 import { CalendarInput } from "../src/CalendarInput";
+import { choosePlacement } from "../src/placement";
 
 type Node = { type: unknown; props: Record<string, unknown> };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -141,5 +142,17 @@ describe("issue #4523 calendar-web", () => {
     const tree = mount(<CalendarInput mode="datetime" value="" timeZone="Africa/Lagos" id="p" />);
     const label = byId(tree, "p-button")[0].props["aria-label"] as string;
     expect(label).toContain("not set");
+  });
+
+  it("popover placement: below when it fits, above when only that fits, never off the right edge", () => {
+    const base = { popoverHeight: 380, popoverWidth: 320, viewportHeight: 800, viewportWidth: 1200, triggerLeft: 100 };
+    expect(choosePlacement({ ...base, triggerTop: 100, triggerBottom: 140 })).toEqual({ vertical: "below", horizontal: "start" });
+    // A trigger near the bottom of a drawer: 800 - 700 = 100px below, 660px above.
+    expect(choosePlacement({ ...base, triggerTop: 660, triggerBottom: 700 })).toEqual({ vertical: "above", horizontal: "start" });
+    // Fits neither way: the side with more room.
+    expect(choosePlacement({ ...base, viewportHeight: 500, triggerTop: 200, triggerBottom: 240 }).vertical).toBe("below");
+    expect(choosePlacement({ ...base, viewportHeight: 500, triggerTop: 300, triggerBottom: 340 }).vertical).toBe("above");
+    // A trigger near the right edge aligns to its end.
+    expect(choosePlacement({ ...base, triggerTop: 100, triggerBottom: 140, triggerLeft: 1000 }).horizontal).toBe("end");
   });
 });

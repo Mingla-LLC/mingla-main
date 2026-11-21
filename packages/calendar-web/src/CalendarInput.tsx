@@ -11,11 +11,12 @@
  * - Escape closes it and focus returns to the button; outside click closes it and
  *   discards the draft. Changing month never closes it.
  */
-import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { formatLongDate, mergeLabels, type CalendarLabels } from "../core/labels";
 import { parseCalendarDate } from "../core/calendarDate";
 import { Calendar, type CalendarMode } from "./Calendar";
+import { choosePlacement, type Placement } from "./placement";
 
 export interface CalendarChange {
   target: { value: string; name: string | undefined };
@@ -88,6 +89,8 @@ export const CalendarInput = React.forwardRef<HTMLButtonElement, CalendarInputPr
     [forwardedRef],
   );
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const [placement, setPlacement] = useState<Placement>({ vertical: "below", horizontal: "start" });
 
   const close = useCallback((): void => {
     setOpen(false);
@@ -100,6 +103,28 @@ export const CalendarInput = React.forwardRef<HTMLButtonElement, CalendarInputPr
     props.onChange?.({ target: { value: next, name }, currentTarget: { value: next, name } });
     close();
   };
+
+  // Flip above (and right-align) when the popover would run off the viewport, so it never
+  // overflows a drawer's or the page's edge. Measured after it is in the DOM, before paint.
+  useLayoutEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    const trigger = buttonRef.current;
+    const popover = popoverRef.current;
+    if (trigger === null || popover === null) return;
+    const t = trigger.getBoundingClientRect();
+    const p = popover.getBoundingClientRect();
+    setPlacement(
+      choosePlacement({
+        triggerTop: t.top,
+        triggerBottom: t.bottom,
+        triggerLeft: t.left,
+        popoverHeight: p.height,
+        popoverWidth: p.width,
+        viewportHeight: window.innerHeight,
+        viewportWidth: window.innerWidth,
+      }),
+    );
+  }, [open]);
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return undefined;
@@ -142,7 +167,9 @@ export const CalendarInput = React.forwardRef<HTMLButtonElement, CalendarInputPr
       {name !== undefined ? <input type="hidden" name={name} value={value} /> : null}
       {open ? (
         <div
-          className="mc-input__popover"
+          ref={popoverRef}
+          className={`mc-input__popover${placement.vertical === "above" ? " mc-input__popover--above" : ""}${placement.horizontal === "end" ? " mc-input__popover--end" : ""}`}
+          data-placement={`${placement.vertical}-${placement.horizontal}`}
           onClick={(event) => {
             // Inside a <label>, a click on non-interactive popover content would re-activate the trigger.
             if (!(event.target instanceof HTMLElement) || event.target.closest("button") === null) event.preventDefault();
