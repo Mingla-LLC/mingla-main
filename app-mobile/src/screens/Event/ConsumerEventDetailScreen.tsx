@@ -115,6 +115,7 @@ import {
 import { RsvpGuestPassCard } from "../../components/rsvpGuest/RsvpGuestPassCard";
 import { RsvpPassSheet } from "../../components/activity/RsvpPassSheet";
 import { useMyGoingRsvps } from "../../hooks/useCalendarEntries";
+import type { ConsumerRsvpRow } from "../../services/calendarService";
 import { claimedGuestPassFor } from "../../utils/rsvpGuestPassState";
 
 import {
@@ -570,7 +571,10 @@ export default function ConsumerEventDetailScreen({
   // issue #4508 P3 — the viewer's claimed guest pass for this event (their own
   // RSVP, if any, wins). Read from the same going list the Calendar shows.
   const myGoingRsvps = useMyGoingRsvps(user?.id);
-  const claimedGuestPass = claimedGuestPassFor(myGoingRsvps.data, seed?.eventId ?? null);
+  const claimedGuestPass = claimedGuestPassFor<ConsumerRsvpRow>(
+    myGoingRsvps.data,
+    seed?.eventId ?? null,
+  );
   const [guestPassOpen, setGuestPassOpen] = useState(false);
   const rsvpSheetFieldHandlers = useMemo<RsvpSheetFieldHandlers>(() => ({
     onFocusChange: setRsvpGuestFieldFocused,

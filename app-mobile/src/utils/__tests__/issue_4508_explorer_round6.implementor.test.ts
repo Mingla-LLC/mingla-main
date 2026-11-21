@@ -79,7 +79,8 @@ Deno.test("P3-1: a claimed guest pass shows as the viewer's state on the event p
   assertEquals(guestPassHeadline("Rita Okafor"), "You're going with Rita");
   assertEquals(guestPassHeadline("Rita O."), "You're going with Rita");
   assertEquals(guestPassHeadline(null), "You're going");
-  assert(screen.includes("claimedGuestPassFor(myGoingRsvps.data, seed?.eventId ?? null)"));
+  assert(screen.includes("claimedGuestPassFor<ConsumerRsvpRow>("));
+  assert(screen.includes("myGoingRsvps.data,\n    seed?.eventId ?? null,"));
   assert(/claimedGuestPass !== null \? \(\s*<RsvpGuestPassCard/.test(screen));
   assert(/<RsvpPassSheet\s+visible=\{guestPassOpen\}/.test(screen));
 });
