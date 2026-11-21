@@ -5234,7 +5234,9 @@
         "supabase/functions/_shared/email/installmentDunningEmail.ts",
         "supabase/functions/_shared/email/installmentPreChargeNoticeEmail.ts",
         "supabase/functions/send-installment-reminder/index.ts",
-        "supabase/functions/manual-charge-installment/index.ts"
+        "supabase/functions/manual-charge-installment/index.ts",
+        "supabase/migrations/20281120094522_issue_4522_refunds_payouts.sql",
+        "supabase/functions/cancel-trip-booking/index.ts"
       ]
     },
     {

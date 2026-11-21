@@ -33,6 +33,10 @@ import {
   payLinkTokenHashHex,
 } from "../_shared/installments/installmentPayLinks.ts";
 import { chargePaystackInstallment } from "../_shared/installments/chargePaystackInstallment.ts";
+import {
+  createFlexPaymentIntent,
+  type FlexPaymentIntentStripe,
+} from "../_shared/installments/createInstallmentPI.ts";
 import { handleInstallmentPaystackCharge } from "../_shared/installments/paystackInstallmentWebhook.ts";
 import {
   paystackInitializeTransaction,
@@ -50,14 +54,7 @@ type Action = "view" | "start" | "status";
 type Method = "saved_card" | "new_card";
 
 /** The Stripe surface this function uses (injectable for tests). */
-export interface StripeLike {
-  paymentIntents: {
-    create(
-      params: Record<string, unknown>,
-      options: { idempotencyKey: string; stripeAccount: string },
-    ): Promise<{ id: string; client_secret: string | null; status: string }>;
-  };
-}
+export type StripeLike = FlexPaymentIntentStripe;
 
 export interface TripBalancePayDeps {
   supabase: SupabaseClient;
@@ -406,29 +403,22 @@ export async function handleTripBalancePay(
       { shareMinor: referralShare },
     );
     try {
-      // orch-strict-grep-allow stripe-no-idempotency-key — the idempotency key IS passed in the options argument: one key per flexible payment's client key (flex:<order>:<clientKey>).
-      const pi = await deps.stripe().paymentIntents.create(
-        {
-          amount: amountMinor,
-          currency,
-          customer,
-          ...(method === "saved_card" && typeof savedPm === "string"
-            ? { payment_method: savedPm }
-            : {}),
-          payment_method_types: ["card"],
-          ...(fee > 0 ? { application_fee_amount: fee } : {}),
-          metadata: {
-            mingla_installment_id: installmentId,
-            mingla_order_id: String(orderId),
-            mingla_brand_id: brandId,
-            mingla_flex: "1",
-          },
-        },
-        {
-          idempotencyKey: flexPaymentIdempotencyKey(String(orderId), clientKey),
-          stripeAccount,
-        },
-      );
+      const pi = await createFlexPaymentIntent({
+        stripe: deps.stripe(),
+        installmentId,
+        orderId: String(orderId),
+        brandId,
+        amountMinor,
+        currency,
+        customer,
+        savedPaymentMethodId:
+          method === "saved_card" && typeof savedPm === "string"
+            ? savedPm
+            : null,
+        applicationFeeMinor: fee,
+        idempotencyKey: flexPaymentIdempotencyKey(String(orderId), clientKey),
+        stripeAccount,
+      });
       await supabase.from("order_installments")
         .update({
           stripe_payment_intent_id: pi.id,

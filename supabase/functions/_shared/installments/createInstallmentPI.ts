@@ -575,3 +575,64 @@ export async function createInstallmentPI(
     };
   }
 }
+
+/**
+ * issue #4522 — the PaymentIntent for a flexible ("pay any amount") payment on
+ * a v2 trip plan. Lives here because this file is the one owner of instalment
+ * PaymentIntents (I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER).
+ *
+ * Unlike a planned row it is buyer-present: the PaymentIntent is created
+ * unconfirmed and the buyer confirms it (PaymentSheet / Payment Element), so
+ * 3-D Secure can run. The flexible row was opened by
+ * issue_4522_begin_flex_payment, which is the claim (it blocks the cron);
+ * the webhook settles or closes it through the same metadata as any
+ * instalment. One idempotency key per flexible payment's client key.
+ */
+export interface FlexPaymentIntentStripe {
+  paymentIntents: {
+    create(
+      params: Record<string, unknown>,
+      options: { idempotencyKey: string; stripeAccount: string },
+    ): Promise<{ id: string; client_secret: string | null; status: string }>;
+  };
+}
+
+export async function createFlexPaymentIntent(input: {
+  stripe: FlexPaymentIntentStripe;
+  installmentId: string;
+  orderId: string;
+  brandId: string;
+  amountMinor: number;
+  currency: string;
+  customer: string;
+  savedPaymentMethodId: string | null;
+  applicationFeeMinor: number;
+  idempotencyKey: string;
+  stripeAccount: string;
+}): Promise<{ id: string; client_secret: string | null; status: string }> {
+  // orch-strict-grep-allow stripe-no-idempotency-key — the idempotency key IS passed in the options argument: one key per flexible payment's client key (flex:<order>:<clientKey>).
+  return await input.stripe.paymentIntents.create(
+    {
+      amount: input.amountMinor,
+      currency: input.currency,
+      customer: input.customer,
+      ...(input.savedPaymentMethodId !== null
+        ? { payment_method: input.savedPaymentMethodId }
+        : {}),
+      payment_method_types: ["card"],
+      ...(input.applicationFeeMinor > 0
+        ? { application_fee_amount: input.applicationFeeMinor }
+        : {}),
+      metadata: {
+        mingla_installment_id: input.installmentId,
+        mingla_order_id: input.orderId,
+        mingla_brand_id: input.brandId,
+        mingla_flex: "1",
+      },
+    },
+    {
+      idempotencyKey: input.idempotencyKey,
+      stripeAccount: input.stripeAccount,
+    },
+  );
+}

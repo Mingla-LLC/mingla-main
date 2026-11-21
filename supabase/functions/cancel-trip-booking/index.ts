@@ -422,9 +422,15 @@ serve(async (req: Request): Promise<Response> => {
         return jsonResponse({ error: "forbidden" }, 403);
       }
     }
+    // issue #4522 — computed for this actor, so a host's preview includes a
+    // non-refundable deposit exactly as begin will (D-9).
     const { data: computeData, error: computeErr } = await supabase.rpc(
-      "biz_compute_refund_for_cancel",
-      { p_order_id: orderId, p_cancel_at: new Date().toISOString() },
+      "issue_4522_compute_refund_for_cancel_as",
+      {
+        p_order_id: orderId,
+        p_cancel_at: new Date().toISOString(),
+        p_actor_kind: actorKind ?? "buyer",
+      },
     );
     if (computeErr) {
       console.error("[cancel-trip-booking] preview compute failed", computeErr);
@@ -518,8 +524,8 @@ serve(async (req: Request): Promise<Response> => {
   // therefore retain Paystack's full-reversal/replay shape.
   if (paymentProvider === "paystack") {
     const { data: floorData, error: floorError } = await supabase.rpc(
-      "biz_compute_refund_for_cancel",
-      { p_order_id: orderId, p_cancel_at: cancelAt },
+      "issue_4522_compute_refund_for_cancel_as",
+      { p_order_id: orderId, p_cancel_at: cancelAt, p_actor_kind: actorKind },
     );
     const floorCompute = (floorData as ComputeRpcResult | null) ?? {
       ok: false,

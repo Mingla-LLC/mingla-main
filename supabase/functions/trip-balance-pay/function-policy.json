@@ -6,9 +6,14 @@
   "gateway_reason": "#4522 a trip buyer pays toward their balance either signed in (the function verifies the Supabase JWT and that the user is the order's buyer) or from a reminder-email link authenticated by a one-time high-entropy token whose hash is resolved by a service-role RPC; raw tokens and card details are never persisted, logged or returned.",
   "env": {
     "migration_fallback_top_level": [],
-    "optional_top_level": [],
+    "optional_top_level": [
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "STRIPE_PUBLISHABLE_KEY",
+      "app.qr_token_pepper"
+    ],
     "required_bundle_fields": {},
     "required_top_level": [
+      "RESEND_API_KEY",
       "SENTRY_DSN",
       "SENTRY_ENVIRONMENT"
     ]

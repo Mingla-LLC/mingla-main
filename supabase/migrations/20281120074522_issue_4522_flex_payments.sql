@@ -540,6 +540,7 @@ BEGIN
   END IF;
 
   SELECT COALESCE(max(ordinal), 0) + 1 INTO v_ordinal FROM public.order_installments WHERE order_id = p_order_id;
+  -- orch-strict-grep-allow tr3-schedule-currency-pinned — a flexible row takes the currency of the order's own open rows (v_currency), which checkout pinned from the session.
   INSERT INTO public.order_installments (
     order_id, ordinal, amount_cents, currency, due_at, status, provider, collection_method,
     kind, flex_client_key, line_allocation, addon_portion_minor, ticket_type_id,
