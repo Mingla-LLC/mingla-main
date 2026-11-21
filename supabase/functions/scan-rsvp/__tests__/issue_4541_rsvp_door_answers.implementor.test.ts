@@ -44,7 +44,8 @@ Deno.test("#4541 full answers require this actor's admitted scan in the last 30 
     scanned_at: new Date(now - RSVP_DOOR_FULL_ANSWERS_WINDOW_MS).toISOString(),
   };
   assert(ownsRecentAdmittedScan(base, ACTOR, EVENT, now));
-  assert(ownsRecentAdmittedScan({ ...base, outcome: "duplicate" }, ACTOR, EVENT, now));
+  // #4541 R8.3: a duplicate scan is no longer a receipt (fresh admissions only).
+  assertEquals(ownsRecentAdmittedScan({ ...base, outcome: "duplicate" }, ACTOR, EVENT, now), false);
   assertEquals(ownsRecentAdmittedScan({ ...base, scanner_user_id: PRIMARY }, ACTOR, EVENT, now), false);
   assertEquals(ownsRecentAdmittedScan({ ...base, requested_event_id: PRIMARY }, ACTOR, EVENT, now), false);
   assertEquals(ownsRecentAdmittedScan({ ...base, outcome: "not_found" }, ACTOR, EVENT, now), false);

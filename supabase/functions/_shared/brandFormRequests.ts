@@ -51,8 +51,14 @@ export function allowedRequestChannels(): FormRequestChannel[] {
     : ["sms", "email"];
 }
 
+/** #4541 R1.15: a claimed plus-one is its own subject (rsvp_guest). */
+export type FormRequestSubjectKind = "rsvp" | "rsvp_guest" | "order";
+
+const isSubjectKind = (v: unknown): v is FormRequestSubjectKind =>
+  v === "rsvp" || v === "rsvp_guest" || v === "order";
+
 export interface FormRequestRecipient {
-  kind: "rsvp" | "order";
+  kind: FormRequestSubjectKind;
   id: string;
   userId: string | null;
   personKey: string;
@@ -117,7 +123,7 @@ export function parseAudience(value: unknown): FormRequestAudience {
       unknown
     >;
     if (
-      (r.kind !== "rsvp" && r.kind !== "order") || typeof r.id !== "string" ||
+      !isSubjectKind(r.kind) || typeof r.id !== "string" ||
       !UUID.test(r.id) || typeof r.personKey !== "string"
     ) {
       throw new Error("form_request_audience_invalid");
@@ -174,7 +180,7 @@ export interface ClaimedRequest {
   token: string;
   formId: string;
   eventId: string;
-  subjectKind: "rsvp" | "order";
+  subjectKind: FormRequestSubjectKind;
   subjectId: string;
   userId: string | null;
   route: ContactChannel[];
@@ -196,7 +202,7 @@ export function parseClaimed(value: unknown): ClaimedRequest | null {
     typeof v.token !== "string" || !/^[0-9a-f]{64}$/.test(v.token) ||
     typeof v.formId !== "string" || !UUID.test(v.formId) ||
     typeof v.eventId !== "string" || !UUID.test(v.eventId) ||
-    (v.subjectKind !== "rsvp" && v.subjectKind !== "order") ||
+    !isSubjectKind(v.subjectKind) ||
     typeof v.subjectId !== "string" || !UUID.test(v.subjectId)
   ) return null;
   return {
@@ -249,6 +255,8 @@ export async function sendClaimed(
     event_id: c.eventId,
     ...(c.subjectKind === "rsvp"
       ? { rsvp_id: c.subjectId }
+      : c.subjectKind === "rsvp_guest"
+      ? { rsvp_guest_id: c.subjectId }
       : { order_id: c.subjectId }),
     brand_name: c.brandName,
     event_title: c.eventTitle,
@@ -314,6 +322,8 @@ export interface DrainOutcome {
   failed: number;
   /** True when the time budget ran out with pages still coming. */
   more: boolean;
+  /** #4541 R1.8: the forms off switch was on, so nothing was claimed or sent. */
+  paused?: boolean;
 }
 
 /**
@@ -333,6 +343,13 @@ export async function drainFormRequests(
   const now = opts.now ?? Date.now;
   const start = now();
   const out: DrainOutcome = { pages: 0, sent: 0, failed: 0, more: false };
+  // #4541 R1.8: the off switch stops texts, pushes and emails too. Read once per
+  // run; switched on, nothing is claimed and every queued row stays queued.
+  const off = await deps.rpc("brand_forms_switched_off", {});
+  if (off.error !== null) {
+    throw new Error(`brand_forms_switched_off: ${off.error.message}`);
+  }
+  if (off.data === true) return { ...out, paused: true };
   while (now() - start < opts.budgetMs) {
     const claim = await deps.rpc("brand_form_request_claim_batch", {
       p_limit: FORM_REQUEST_PAGE,

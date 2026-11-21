@@ -59,6 +59,7 @@ import { handleGuestOp, isGuestOp } from "./guestOps.ts";
 import {
   isRsvpBrandFormRefusal,
   parseRsvpBrandForm,
+  rsvpBrandFormHandoff,
   rsvpBrandFormRefusal,
 } from "./brandFormRsvp.ts";
 // #4508 R-4 — the caller's address, read the one way the repo reads it.
@@ -645,6 +646,13 @@ export const handler = async (req: Request): Promise<Response> => {
 
   return json(200, {
     rsvpId: result.rsvpId ?? null,
+    // #4541 R1.3: the after-RSVP form hand-off ({formId, token}) or null.
+    brandFormHandoff: await rsvpBrandFormHandoff(admin, {
+      rsvpId: result.rsvpId,
+      eventId,
+      status: result.status ?? rsvpStatus,
+      approvalStatus: result.approvalStatus ?? "approved",
+    }),
     status: result.status ?? rsvpStatus,
     approvalStatus: result.approvalStatus ?? "approved",
     capacityFull: result.capacityFull ?? false,

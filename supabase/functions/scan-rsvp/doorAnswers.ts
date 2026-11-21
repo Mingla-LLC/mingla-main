@@ -5,6 +5,8 @@ export const RSVP_DOOR_FULL_ANSWERS_WINDOW_MS = 30 * 60 * 1000;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ADMITTED = new Set(["success", "duplicate"]);
+// #4541 R8.3: only a fresh admission by this actor is a receipt for full answers.
+export const RSVP_DOOR_FULL_ANSWERS_RECEIPTS: ReadonlySet<string> = new Set(["success"]);
 
 export type RsvpDoorSubject = { kind: "rsvp" | "rsvp_guest"; id: string };
 
@@ -24,7 +26,7 @@ export function rsvpDoorSubjectFromScanResult(
   return null;
 }
 
-/** Full answers require this actor's recent admitted scan of this event. */
+/** Full answers require this actor's recent fresh admission (success) at this event. */
 export function ownsRecentAdmittedScan(
   row: Record<string, unknown> | null,
   actorId: string,
@@ -33,6 +35,7 @@ export function ownsRecentAdmittedScan(
 ): boolean {
   const scannedAt = typeof row?.scanned_at === "string" ? Date.parse(row.scanned_at) : NaN;
   return row !== null && row.scanner_user_id === actorId && row.requested_event_id === eventId &&
-    typeof row.outcome === "string" && ADMITTED.has(row.outcome) && !Number.isNaN(scannedAt) &&
+    typeof row.outcome === "string" && RSVP_DOOR_FULL_ANSWERS_RECEIPTS.has(row.outcome) &&
+    !Number.isNaN(scannedAt) &&
     nowMs >= scannedAt && nowMs - scannedAt <= RSVP_DOOR_FULL_ANSWERS_WINDOW_MS;
 }

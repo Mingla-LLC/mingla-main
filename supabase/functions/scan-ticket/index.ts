@@ -39,10 +39,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // #4514 wave 6 — "See all answers" opens the full answers only for a ticket
 // this same person scanned (or admitted by name: the same scan_events receipt)
-// at this event, recently, and that the door let in (or had already let in). The SQL read checks door authority, the host switch,
+// at this event, recently, and that the door let in on that scan (#4541 R8.3: a
+// fresh admission only, never a duplicate). The SQL read checks door authority, the host switch,
 // rank, one current guest of this event, the rate limit and logs the read.
 export const DOOR_FULL_ANSWERS_WINDOW_MS = 30 * 60 * 1000;
 const ADMITTED = new Set(["success", "duplicate"]);
+// #4541 R8.3: only a fresh admission by this actor is a receipt for full answers;
+// a duplicate scan no longer is (it may repeat an old ticket on purpose).
+export const DOOR_FULL_ANSWERS_RECEIPTS: ReadonlySet<string> = new Set(["success"]);
 
 type QueryResult = { data: unknown; error: unknown };
 
@@ -81,7 +85,7 @@ async function doorFullAnswers(
   const scannedAt = typeof row?.scanned_at === "string" ? Date.parse(row.scanned_at) : NaN;
   if (
     row === null || row.scanner_user_id !== actorId || row.event_id !== eventId ||
-    typeof row.scan_result !== "string" || !ADMITTED.has(row.scan_result) ||
+    typeof row.scan_result !== "string" || !DOOR_FULL_ANSWERS_RECEIPTS.has(row.scan_result) ||
     typeof row.ticket_id !== "string" || Number.isNaN(scannedAt) ||
     now() - scannedAt > DOOR_FULL_ANSWERS_WINDOW_MS
   ) {

@@ -28,7 +28,8 @@ export interface FormRequestBody {
   kind: "ask" | "remind";
   audience: FormRequestAudienceKind;
   channels: FormRequestChannel[];
-  subjects?: Array<{ kind: "rsvp" | "order"; id: string }>;
+  /** #4541 R1.15: a claimed plus-one (rsvp_guest) can be asked on its own. */
+  subjects?: Array<{ kind: "rsvp" | "rsvp_guest" | "order"; id: string }>;
   expectedCostMinor?: number | null;
   currency?: string | null;
   /** The host confirmed sending texts that have no price yet (server-checked). */
@@ -81,6 +82,7 @@ export function isFormRequestBody(value: unknown): value is FormRequestBody {
         typeof x === "object" && x !== null && !Array.isArray(x) &&
         Object.keys(x).every((k) => k === "kind" || k === "id") &&
         ((x as Record<string, unknown>).kind === "rsvp" ||
+          (x as Record<string, unknown>).kind === "rsvp_guest" ||
           (x as Record<string, unknown>).kind === "order") &&
         typeof (x as Record<string, unknown>).id === "string" &&
         UUID.test((x as Record<string, unknown>).id as string)
@@ -128,6 +130,9 @@ export function audienceError(
   message: string,
 ): { code: string; status: number } {
   if (FORBIDDEN.test(message)) return { code: "forbidden", status: 403 };
+  // #4541 R1.8: the forms off switch stops new requests (Host: "Forms are paused
+  // right now. Try again later.").
+  if (message.includes("forms_paused")) return { code: "forms_paused", status: 503 };
   const known = KNOWN.find((k) => message.includes(k));
   return known !== undefined
     ? { code: known, status: 409 }

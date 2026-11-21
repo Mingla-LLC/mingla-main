@@ -138,6 +138,10 @@ function harness(opts: {
         if (fn === "brand_form_request_claim_batch") {
           return Promise.resolve({ data: pages.shift() ?? [], error: null });
         }
+        // #4541 R1.8: the drain reads the forms off switch once per run.
+        if (fn === "brand_forms_switched_off") {
+          return Promise.resolve({ data: false, error: null });
+        }
         return Promise.resolve({ data: true, error: null });
       },
       dispatch: (input: DispatchV2Input) => {
@@ -250,7 +254,14 @@ Deno.test("#4514 send: decision 17 — only form-request SQL; it queues, then dr
   assertEquals(r.body.sent, 2);
   assertEquals(r.body.status, "sent");
   const fns = h.rpcs.map((c) => c.fn);
-  assert(fns.every((f) => f.startsWith("brand_form_request_")), fns.join());
+  // Only form-request SQL (plus the #4541 R1.8 off-switch read, once per drain).
+  assert(
+    fns.every((f) =>
+      f.startsWith("brand_form_request_") || f === "brand_forms_switched_off"
+    ),
+    fns.join(),
+  );
+  assertEquals(fns.filter((f) => f === "brand_forms_switched_off").length, 1);
   const claim = h.rpcs.find((c) => c.fn === "brand_form_request_claim_batch");
   assertEquals(claim?.args, {
     p_limit: 25,

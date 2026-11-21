@@ -1417,7 +1417,9 @@
       "migration_fallback_top_level": [],
       "optional_top_level": [],
       "required_bundle_fields": {},
-      "required_top_level": []
+      "required_top_level": [
+        "RESEND_API_KEY"
+      ]
     },
     "notify-session-lock": {
       "migration_fallback_top_level": [],
