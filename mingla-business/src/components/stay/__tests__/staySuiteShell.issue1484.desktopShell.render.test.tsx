@@ -56,6 +56,8 @@ interface RenderNode {
 interface RenderTree {
   root: RenderNode;
   unmount: () => void;
+  // [TEST-MOD-APPROVED #4490] fix round 5: typed, as T-1g and T-1n re-render.
+  update: (element: React.ReactElement) => void;
 }
 const TestRenderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => RenderTree;
@@ -214,9 +216,24 @@ jest.mock("../../../hooks/useVenueReservationSettings", () => ({
   }),
   useSetReservationsEnabled: () => ({ mutate: jest.fn(), isPending: false }),
 }));
+// [TEST-MOD-APPROVED #4490] the store mock now also carries setRequestLeave so the
+// shell's page-exit gate can be captured and driven by the leave tests below.
+type MockRequestLeave =
+  | ((proceed: () => void, restoreFocus?: () => void) => void)
+  | null;
+let mockRequestLeave: MockRequestLeave = null;
+// [TEST-MOD-APPROVED #4490] fix round 5: the Table reservations times view
+// reports unsaved hours / table rules through the store's dirtyModules.
+let mockDirtyModules = new Set<string>();
 jest.mock("../../../store/venueSuiteStore", () => ({
-  useVenueSuiteStore: (selector: (s: { sync: () => void }) => unknown) =>
-    selector({ sync: () => undefined }),
+  useVenueSuiteStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({
+      sync: () => undefined,
+      setRequestLeave: (fn: MockRequestLeave) => {
+        mockRequestLeave = fn;
+      },
+      dirtyModules: mockDirtyModules,
+    }),
 }));
 
 // ---- Workspace module bodies — stubbed; this suite asserts on the SHELL. ----
@@ -227,6 +244,60 @@ const stub = (id: string): (() => React.ReactElement) => {
   Stub.displayName = `Stub_${id}`;
   return Stub;
 };
+let mockOffersDirty = false;
+// [TEST-MOD-APPROVED #4490] fix round 5: Offers' props are captured so its
+// "open reservations" link can be driven (cross-link mapping, spec 07 13).
+let mockOffersProps: Record<string, unknown> | null = null;
+// [TEST-MOD-APPROVED #4490] J fix 2 (R4J-N4): count Offers mounts so a resize
+// across the desktop breakpoint can prove the open module is NOT remounted.
+let mockOffersMounts = 0;
+jest.mock("../../venue/features/offers/VenueOffersModule", () => {
+  const ReactLocal = jest.requireActual("react");
+  const RN = jest.requireActual("react-native");
+  const VenueOffersModule = ReactLocal.forwardRef(
+    (props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+      mockOffersProps = props;
+      ReactLocal.useEffect(() => {
+        mockOffersMounts += 1;
+      }, []);
+      ReactLocal.useImperativeHandle(ref, () => ({
+        isDirty: () => mockOffersDirty,
+        changedLabels: () => ["Offer details"],
+        isValid: () => true,
+        save: async () => undefined,
+        discard: () => {
+          mockOffersDirty = false;
+        },
+      }));
+      return ReactLocal.createElement(
+        RN.Text,
+        { testID: "stub-offers" },
+        "offers",
+      );
+    },
+  );
+  return { VenueOffersModule };
+});
+// [TEST-MOD-APPROVED #4490] R4J fix 3: stub the lazily imported Requests
+// module so T-1h can prove a cold `?module=requests` deep link renders it.
+let mockRequestsProps: Record<string, unknown> | null = null;
+jest.mock("../../venue/features/requests/VenueRequestsModule", () => {
+  const ReactLocal = jest.requireActual("react");
+  const RN = jest.requireActual("react-native");
+  return {
+    VenueRequestsModule: (props: Record<string, unknown>) => {
+      mockRequestsProps = props;
+      return ReactLocal.createElement(RN.Text, { testID: "stub-requests" }, "requests");
+    },
+  };
+});
+jest.mock("../../ui/ConfirmDialog", () => {
+  const ReactLocal = jest.requireActual("react");
+  return {
+    ConfirmDialog: (props: Record<string, unknown>) =>
+      ReactLocal.createElement("ConfirmDialog", props),
+  };
+});
 jest.mock("../StayInventoryManager", () => ({
   StayInventoryManager: stub("inventory"),
 }));
@@ -251,11 +322,53 @@ jest.mock("../../venue/VenueTablesModule", () => ({
 jest.mock("../../venue/VenueAvailabilityModule", () => ({
   VenueAvailabilityModule: stub("availability"),
 }));
-jest.mock("../../venue/VenueReservationsModule", () => ({
-  VenueReservationsModule: stub("venue-reservations"),
-}));
+// [TEST-MOD-APPROVED #4490] fix round 5: the venue Reservations stub records its
+// props (onEditFloor) and the Availability & pricing stub (Table times and
+// rules on a Stay) exposes a leave handle whose requestLeave is observable.
+let mockVenueReservationsProps: Record<string, unknown> | null = null;
+jest.mock("../../venue/VenueReservationsModule", () => {
+  const ReactLocal = jest.requireActual("react");
+  const RN = jest.requireActual("react-native");
+  return {
+    VenueReservationsModule: (props: Record<string, unknown>) => {
+      mockVenueReservationsProps = props;
+      return ReactLocal.createElement(
+        RN.Text,
+        { testID: "stub-venue-reservations" },
+        "venue-reservations",
+      );
+    },
+  };
+});
+let mockTableTimesHold = false;
+const mockTableTimesRequestLeave = jest.fn();
+let mockTableTimesProps: Record<string, unknown> | null = null;
+jest.mock("../../venue/features/VenueAvailabilityPricingModule", () => {
+  const ReactLocal = jest.requireActual("react");
+  const RN = jest.requireActual("react-native");
+  const VenueAvailabilityPricingModule = ReactLocal.forwardRef(
+    (props: Record<string, unknown>, ref: React.Ref<unknown>) => {
+      mockTableTimesProps = props;
+      ReactLocal.useImperativeHandle(ref, () => ({
+        requestLeave: (proceed: () => void, restoreFocus?: () => void) => {
+          mockTableTimesRequestLeave(proceed, restoreFocus);
+          if (!mockTableTimesHold) proceed();
+        },
+      }));
+      return ReactLocal.createElement(
+        RN.Text,
+        { testID: "stub-table-times" },
+        "table-times",
+      );
+    },
+  );
+  return { VenueAvailabilityPricingModule };
+});
 jest.mock("../../venue/VenueWaitlistModule", () => ({
   VenueWaitlistModule: stub("waitlist"),
+}));
+jest.mock("../../venue/features/VenueTypeAndFeaturesPanel", () => ({
+  VenueTypeAndFeaturesPanel: stub("venue-type-and-features"),
 }));
 // [TEST-MOD-APPROVED #3645] settled accepted — shell layout subject stays shell geometry.
 jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
@@ -266,13 +379,36 @@ jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
   ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
     "Accept the Organiser Terms, then tap Publish again.",
 }));
+// [TEST-MOD-APPROVED #4490] fix round 5: access is switchable so the
+// capability-scoped Table reservations / Waitlist rules can be proven.
+let mockVenueAccess: { scoped: boolean; capabilities: string[] } = {
+  scoped: false,
+  capabilities: [],
+};
 jest.mock("../../../hooks/useMyVenueAccess", () => ({
   useMyVenueAccess: () => ({
-    data: { scoped: false, capabilities: [] },
+    data: mockVenueAccess,
     isLoading: false,
     isFetched: true,
     isError: false,
   }),
+}));
+let mockStayFeaturesState: unknown = undefined;
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  useVenueFeatures: (_brandId: string | null, venueId: string | null) => ({
+    data: venueId === "venue-1484" ? mockStayFeaturesState : undefined,
+    isLoading: false,
+    isFetched: true,
+    isError: false,
+    refetch: jest.fn(),
+  }),
+  useSetVenueFeature: () => ({ mutate: jest.fn(), isPending: false }),
+}));
+jest.mock("../../../services/venueFeaturesService", () => ({
+  VenueFeatureError: class VenueFeatureError extends Error {
+    code = "test";
+    detail = null;
+  },
 }));
 
 import {
@@ -281,8 +417,22 @@ import {
   venueRailWidth,
   space,
 } from "../../../constants/designSystem";
-import { StaySuiteShell } from "../StaySuiteShell";
+import {
+  STAY_FEATURE_MODULE_ORDER,
+  StaySuiteShell,
+  stayTargetForVenueModule,
+} from "../StaySuiteShell";
 import { VenueSuiteShell } from "../../venue/VenueSuiteShell";
+import { featureSetFrom } from "../../../types/venueFeatures";
+import { unsavedWork } from "../../../hooks/useUnsavedChangesGuard";
+
+/** Same question the brand switcher asks: does any flusher refuse to leave? */
+async function unsavedWorkHoldsSwitch(): Promise<boolean> {
+  for (const flush of [...(unsavedWork.flushers ?? [])]) {
+    if (!(await flush())) return true;
+  }
+  return false;
+}
 
 type Flat = Record<string, unknown>;
 
@@ -356,7 +506,11 @@ function pageStyleProp(tree: RenderTree): unknown {
       (
         StyleSheet.flatten(candidate.props.contentContainerStyle as never) as
           Flat | undefined
-      )?.paddingBottom !== undefined,
+      )?.paddingBottom !== undefined &&
+      (
+        StyleSheet.flatten(candidate.props.contentContainerStyle as never) as
+          Flat | undefined
+      )?.alignSelf !== undefined,
   );
   return node?.props.contentContainerStyle;
 }
@@ -412,7 +566,10 @@ function pageMeasure(tree: RenderTree): Flat | undefined {
         (StyleSheet.flatten(node.props.contentContainerStyle as never) ??
           {}) as Flat,
     )
-    .find((flat: Flat) => flat.paddingBottom !== undefined);
+    .find(
+      (flat: Flat) =>
+        flat.paddingBottom !== undefined && flat.alignSelf !== undefined,
+    );
 }
 
 const STAY_PROPS = {
@@ -447,7 +604,8 @@ function railLabels(tree: RenderTree, prefix: string): string[] {
     .filter(
       (node) =>
         typeof node.props?.testID === "string" &&
-        (node.props.testID as string).startsWith(prefix),
+        (node.props.testID as string).startsWith(prefix) &&
+        node.props.accessibilityRole === "tab",
     )
     .forEach((node) => {
       const id = node.props.testID as string;
@@ -462,6 +620,17 @@ function railLabels(tree: RenderTree, prefix: string): string[] {
 
 beforeEach(() => {
   mockIsWideDesktop = true;
+  mockStayFeaturesState = undefined;
+  mockOffersDirty = false;
+  mockOffersMounts = 0;
+  mockRequestLeave = null;
+  mockDirtyModules = new Set<string>();
+  mockOffersProps = null;
+  mockVenueReservationsProps = null;
+  mockTableTimesHold = false;
+  mockTableTimesRequestLeave.mockClear();
+  mockTableTimesProps = null;
+  mockVenueAccess = { scoped: false, capabilities: [] };
 });
 
 describe("#1484 — Stay suite adopts the shared desktop shell", () => {
@@ -492,6 +661,585 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
       ).toHaveLength(0);
     }
     expect(testIdsMatching(r, /^stay-module-/)).toHaveLength(0);
+  });
+
+  it("T-1b — a Stay appends enabled feature modules after its five own pages", async () => {
+    mockStayFeaturesState = {
+      venueId: "venue-1484",
+      brandId: "brand-1484",
+      venueCategory: "stay",
+      version: 1,
+      activeSpaceCount: 1,
+      // [TEST-MOD-APPROVED #4490] fix round 5 (spec 07 13): every feature
+      // destination on, so all twelve show in the decided order.
+      features: featureSetFrom({
+        entry: true,
+        private_hire: true,
+        memberships: true,
+        menu: true,
+        guest_list: true,
+        table_reservations: true,
+        waitlist: true,
+      }),
+      flags: { reads: true, writes: true },
+    };
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+
+    expect(railLabels(r, "stay-rail-")).toEqual([
+      "Overview",
+      "Rooms & Places",
+      "Availability & pricing",
+      "Reservations",
+      "Settings",
+      "Offers",
+      "Spaces",
+      "Today",
+      "Calendar",
+      "Requests",
+      "Table reservations",
+      "Waitlist",
+      "Members",
+      "Check-in",
+      "Menu",
+      "Orders",
+      "Guest list",
+    ]);
+  });
+
+  it("T-1c — an unsaved feature edit is held before switching Stay modules", async () => {
+    mockStayFeaturesState = {
+      venueId: "venue-1484",
+      brandId: "brand-1484",
+      venueCategory: "stay",
+      version: 1,
+      activeSpaceCount: 1,
+      features: featureSetFrom({ entry: true }),
+      flags: { reads: true, writes: true },
+    };
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    await press(pressableWithTestId(r, "stay-rail-offers"));
+    expect(hostWithTestId(r, "stub-offers")).toBeTruthy();
+
+    mockOffersDirty = true;
+    await press(pressableWithTestId(r, "stay-rail-settings"));
+
+    expect(hostWithTestId(r, "stay-suite-leave-dialog")).toBeTruthy();
+    expect(hostWithTestId(r, "stub-offers")).toBeTruthy();
+  });
+
+  it("T-1d — D3: a page exit with an unsaved feature edit opens the leave dialog", async () => {
+    mockStayFeaturesState = {
+      venueId: "venue-1484",
+      brandId: "brand-1484",
+      venueCategory: "stay",
+      version: 1,
+      activeSpaceCount: 1,
+      features: featureSetFrom({ entry: true }),
+      flags: { reads: true, writes: true },
+    };
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    await press(pressableWithTestId(r, "stay-rail-offers"));
+    expect(mockRequestLeave).not.toBeNull();
+
+    // Clean: proceeds at once.
+    const cleanProceed = jest.fn();
+    await TestRenderer.act(() => {
+      (mockRequestLeave as NonNullable<MockRequestLeave>)(cleanProceed);
+    });
+    expect(cleanProceed).toHaveBeenCalledTimes(1);
+
+    // Dirty: held, dialog open; Keep editing restores focus and does not proceed.
+    mockOffersDirty = true;
+    const proceed = jest.fn();
+    const restoreFocus = jest.fn();
+    await TestRenderer.act(() => {
+      (mockRequestLeave as NonNullable<MockRequestLeave>)(proceed, restoreFocus);
+    });
+    expect(proceed).not.toHaveBeenCalled();
+    const dialog = hostWithTestId(r, "stay-suite-leave-dialog");
+    await TestRenderer.act(() => {
+      (dialog.props.onClose as () => void)();
+    });
+    expect(restoreFocus).toHaveBeenCalledTimes(1);
+    expect(proceed).not.toHaveBeenCalled();
+
+    // Discard runs proceed.
+    await TestRenderer.act(() => {
+      (mockRequestLeave as NonNullable<MockRequestLeave>)(proceed);
+    });
+    await TestRenderer.act(() => {
+      (hostWithTestId(r, "stay-suite-leave-dialog").props.onDiscard as () => void)();
+    });
+    expect(proceed).toHaveBeenCalledTimes(1);
+
+    // Unmount clears the gate so a later non-Stay venue is not left with it.
+    await TestRenderer.act(() => {
+      r.unmount();
+    });
+    expect(mockRequestLeave).toBeNull();
+  });
+
+  it("T-1e — D3: a dirty feature edit cancels beforeunload and holds a brand switch", async () => {
+    mockStayFeaturesState = {
+      venueId: "venue-1484",
+      brandId: "brand-1484",
+      venueCategory: "stay",
+      version: 1,
+      activeSpaceCount: 1,
+      features: featureSetFrom({ entry: true }),
+      flags: { reads: true, writes: true },
+    };
+    const g = globalThis as unknown as Record<string, unknown>;
+    const listeners: Record<string, (event: unknown) => void> = {};
+    const prevAdd = g.addEventListener;
+    const prevRemove = g.removeEventListener;
+    g.addEventListener = (type: string, fn: (event: unknown) => void) => {
+      listeners[type] = fn;
+    };
+    g.removeEventListener = (type: string) => {
+      delete listeners[type];
+    };
+    try {
+      const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+      await press(pressableWithTestId(r, "stay-rail-offers"));
+      expect(typeof listeners.beforeunload).toBe("function");
+
+      const clean = { preventDefault: jest.fn(), returnValue: "" };
+      listeners.beforeunload(clean);
+      expect(clean.preventDefault).not.toHaveBeenCalled();
+      expect(await unsavedWorkHoldsSwitch()).toBe(false);
+
+      mockOffersDirty = true;
+      const dirty = { preventDefault: jest.fn(), returnValue: "" };
+      listeners.beforeunload(dirty);
+      expect(dirty.preventDefault).toHaveBeenCalledTimes(1);
+      expect(await unsavedWorkHoldsSwitch()).toBe(true);
+      mockOffersDirty = false;
+    } finally {
+      g.addEventListener = prevAdd;
+      g.removeEventListener = prevRemove;
+    }
+  });
+
+  it("T-1f — D2: a refused deep link tells the route once; a matching one does not", async () => {
+    mockStayFeaturesState = {
+      venueId: "venue-1484",
+      brandId: "brand-1484",
+      venueCategory: "stay",
+      version: 1,
+      activeSpaceCount: 1,
+      features: featureSetFrom({ entry: true }),
+      flags: { reads: true, writes: true },
+    };
+    const refused = jest.fn();
+    await mount(
+      <StaySuiteShell
+        {...STAY_PROPS}
+        requestedModule="bogus"
+        onModuleChange={refused}
+      />,
+    );
+    expect(refused).toHaveBeenCalledTimes(1);
+    expect(refused).toHaveBeenCalledWith("overview");
+
+    const matching = jest.fn();
+    await mount(
+      <StaySuiteShell
+        {...STAY_PROPS}
+        initialModule="settings"
+        requestedModule="settings"
+        onModuleChange={matching}
+      />,
+    );
+    expect(matching).not.toHaveBeenCalled();
+  });
+
+  it("T-1f2 — R4J-N8: Stay-only deep links open their workspace and leave the address alone", async () => {
+    mockStayFeaturesState = {
+      venueId: "venue-1484",
+      brandId: "brand-1484",
+      venueCategory: "stay",
+      version: 1,
+      activeSpaceCount: 1,
+      features: featureSetFrom({ entry: true }),
+      flags: { reads: true, writes: true },
+    };
+    for (const key of ["rooms_places", "availability_pricing"]) {
+      const told = jest.fn();
+      // The route's venue-module parser hands the shell "overview" for these.
+      const r = await mount(
+        <StaySuiteShell
+          {...STAY_PROPS}
+          initialModule="overview"
+          requestedModule={key}
+          onModuleChange={told}
+        />,
+      );
+      expect(hostWithTestId(r, "stub-inventory")).toBeTruthy();
+      expect(told).not.toHaveBeenCalled();
+    }
+    const alias = jest.fn();
+    const a = await mount(
+      <StaySuiteShell
+        {...STAY_PROPS}
+        initialModule="overview"
+        requestedModule="availability"
+        onModuleChange={alias}
+      />,
+    );
+    expect(hostWithTestId(a, "stub-inventory")).toBeTruthy();
+    // The alias is normalised once, so the address carries the real key.
+    expect(alias).toHaveBeenCalledTimes(1);
+    expect(alias).toHaveBeenCalledWith("availability_pricing");
+
+    const bogus = jest.fn();
+    const b = await mount(
+      <StaySuiteShell
+        {...STAY_PROPS}
+        initialModule="overview"
+        requestedModule="bogus"
+        onModuleChange={bogus}
+      />,
+    );
+    expect(testIdsMatching(b, /^stub-inventory$/)).toHaveLength(0);
+    expect(bogus).toHaveBeenCalledTimes(1);
+    expect(bogus).toHaveBeenCalledWith("overview");
+  });
+
+  it("T-1h — R4J retest: a cold `?module=requests` deep link with Private hire on renders Requests", async () => {
+    mockStayFeaturesState = {
+      venueId: "venue-1484",
+      brandId: "brand-1484",
+      venueCategory: "stay",
+      version: 1,
+      activeSpaceCount: 0,
+      features: featureSetFrom({ private_hire: true }),
+      flags: { reads: true, writes: true },
+    };
+    for (const wide of [true, false]) {
+      mockIsWideDesktop = wide;
+      mockRequestsProps = null;
+      const told = jest.fn();
+      const r = await mount(
+        <StaySuiteShell
+          {...STAY_PROPS}
+          initialModule="requests"
+          requestedModule="requests"
+          onModuleChange={told}
+        />,
+      );
+      expect(hostWithTestId(r, "stub-requests")).toBeTruthy();
+      expect(mockRequestsProps).toMatchObject({ venueId: "venue-1484", initialGroupId: null });
+      expect(told).not.toHaveBeenCalled();
+    }
+    mockIsWideDesktop = true;
+  });
+
+  it("T-1g — R4J-N4: crossing the breakpoint keeps the open module and its open leave dialog", async () => {
+    mockStayFeaturesState = {
+      venueId: "venue-1484",
+      brandId: "brand-1484",
+      venueCategory: "stay",
+      version: 1,
+      activeSpaceCount: 1,
+      features: featureSetFrom({ entry: true }),
+      flags: { reads: true, writes: true },
+    };
+    mockIsWideDesktop = true;
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    await press(pressableWithTestId(r, "stay-rail-offers"));
+    expect(hostWithTestId(r, "stub-offers")).toBeTruthy();
+    expect(mockOffersMounts).toBe(1);
+
+    // An unsaved edit, then a module switch: the leave dialog holds it.
+    mockOffersDirty = true;
+    await press(pressableWithTestId(r, "stay-rail-overview"));
+    expect(hostWithTestId(r, "stay-suite-leave-dialog")).toBeTruthy();
+
+    // Desktop -> phone while the dialog is open: chrome swaps, module stays.
+    mockIsWideDesktop = false;
+    await TestRenderer.act(async () => {
+      r.update(<StaySuiteShell {...STAY_PROPS} />);
+    });
+    expect(testIdsMatching(r, /^stay-rail-/)).toHaveLength(0);
+    expect(hostWithTestId(r, "stay-module-offers")).toBeTruthy();
+    expect(hostWithTestId(r, "stub-offers")).toBeTruthy();
+    expect(mockOffersMounts).toBe(1);
+    const dialog = hostWithTestId(r, "stay-suite-leave-dialog");
+    expect(dialog.props.description).toContain("Offer details");
+
+    // Keep editing: still the same Offers instance with its draft.
+    await TestRenderer.act(() => {
+      (dialog.props.onClose as () => void)();
+    });
+    expect(hostWithTestId(r, "stub-offers")).toBeTruthy();
+    expect(mockOffersMounts).toBe(1);
+
+    // Phone -> desktop: still not remounted.
+    mockIsWideDesktop = true;
+    await TestRenderer.act(async () => {
+      r.update(<StaySuiteShell {...STAY_PROPS} />);
+    });
+    expect(hostWithTestId(r, "stay-rail-offers")).toBeTruthy();
+    expect(hostWithTestId(r, "stub-offers")).toBeTruthy();
+    expect(mockOffersMounts).toBe(1);
+  });
+
+  // ---- #4490 spec 07 13 (fix round 5): Table reservations + Waitlist. ----
+  const tablesStay = (
+    features: Parameters<typeof featureSetFrom>[0],
+  ): Record<string, unknown> => ({
+    venueId: "venue-1484",
+    brandId: "brand-1484",
+    venueCategory: "stay",
+    version: 1,
+    activeSpaceCount: 1,
+    features: featureSetFrom(features),
+    flags: { reads: true, writes: true },
+  });
+  /** Let React.lazy chunks resolve and their Suspense boundaries commit. */
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 3; i += 1) {
+      await TestRenderer.act(async () => {
+        await Promise.resolve();
+      });
+    }
+  }
+
+  it("T-1i — the order constant is the decided twelve", () => {
+    expect(STAY_FEATURE_MODULE_ORDER).toEqual([
+      "offers",
+      "spaces",
+      "today",
+      "calendar",
+      "requests",
+      "table_reservations",
+      "waitlist",
+      "members",
+      "checkin",
+      "menu",
+      "orders",
+      "guestlist",
+    ]);
+  });
+
+  it("T-1j — cold `?module=table_reservations` and `?module=waitlist` open the venue screens; `reservations` stays the Stay's own", async () => {
+    mockStayFeaturesState = tablesStay({ table_reservations: true, waitlist: true });
+    for (const wide of [true, false]) {
+      mockIsWideDesktop = wide;
+      const toldTables = jest.fn();
+      // The route's venue parser does not know `table_reservations`.
+      const t = await mount(
+        <StaySuiteShell
+          {...STAY_PROPS}
+          initialModule="overview"
+          requestedModule="table_reservations"
+          onModuleChange={toldTables}
+        />,
+      );
+      expect(hostWithTestId(t, "stub-venue-reservations")).toBeTruthy();
+      expect(testIdsMatching(t, /^stub-reservations$/)).toHaveLength(0);
+      expect(toldTables).not.toHaveBeenCalled();
+      if (wide) {
+        expect(railLabels(t, "stay-rail-")).toContain("Table reservations");
+      } else {
+        const pill = hostWithTestId(t, "stay-module-table_reservations");
+        expect(pill.props.accessibilityLabel).toBe("Table reservations Stay module");
+        expect(pill.props.accessibilityState).toEqual({ selected: true });
+      }
+
+      const toldWait = jest.fn();
+      const w = await mount(
+        <StaySuiteShell
+          {...STAY_PROPS}
+          initialModule="waitlist"
+          requestedModule="waitlist"
+          onModuleChange={toldWait}
+        />,
+      );
+      expect(hostWithTestId(w, "stub-waitlist")).toBeTruthy();
+      expect(toldWait).not.toHaveBeenCalled();
+
+      const toldStay = jest.fn();
+      const s = await mount(
+        <StaySuiteShell
+          {...STAY_PROPS}
+          initialModule="reservations"
+          requestedModule="reservations"
+          onModuleChange={toldStay}
+        />,
+      );
+      expect(hostWithTestId(s, "stub-reservations")).toBeTruthy();
+      expect(testIdsMatching(s, /^stub-venue-reservations$/)).toHaveLength(0);
+      expect(toldStay).not.toHaveBeenCalled();
+    }
+    mockIsWideDesktop = true;
+  });
+
+  it("T-1k — with the features off the two destinations are hidden and their links fall back to Overview", async () => {
+    mockStayFeaturesState = tablesStay({ entry: true });
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    expect(testIdsMatching(r, /^stay-rail-(table_reservations|waitlist)$/)).toHaveLength(0);
+    for (const key of ["table_reservations", "waitlist"]) {
+      const told = jest.fn();
+      const t = await mount(
+        <StaySuiteShell
+          {...STAY_PROPS}
+          initialModule="overview"
+          requestedModule={key}
+          onModuleChange={told}
+        />,
+      );
+      expect(testIdsMatching(t, /^stub-(venue-reservations|waitlist)$/)).toHaveLength(0);
+      expect(told).toHaveBeenCalledTimes(1);
+      expect(told).toHaveBeenCalledWith("overview");
+    }
+    // Table reservations on, Waitlist off: only Table reservations.
+    mockStayFeaturesState = tablesStay({ table_reservations: true, waitlist: false });
+    const only = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    expect(testIdsMatching(only, /^stay-rail-table_reservations$/)).toHaveLength(1);
+    expect(testIdsMatching(only, /^stay-rail-waitlist$/)).toHaveLength(0);
+  });
+
+  it("T-1l — staff see them exactly when the venue capability allows", async () => {
+    mockStayFeaturesState = tablesStay({
+      entry: true,
+      table_reservations: true,
+      waitlist: true,
+    });
+    // Each grant also carries a Stay page so the landing module is a stub.
+    mockVenueAccess = {
+      scoped: true,
+      capabilities: ["stay.view_reservations", "restaurant.manage_reservations"],
+    };
+    const reservations = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    const reservationRail = testIdsMatching(reservations, /^stay-rail-/);
+    expect(reservationRail).toContain("stay-rail-table_reservations");
+    expect(reservationRail).toContain("stay-rail-waitlist");
+    expect(reservationRail).not.toContain("stay-rail-today");
+    expect(reservationRail).not.toContain("stay-rail-offers");
+
+    mockVenueAccess = {
+      scoped: true,
+      capabilities: ["stay.view_reservations", "venue.view_bookings"],
+    };
+    const door = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    const doorRail = testIdsMatching(door, /^stay-rail-/);
+    expect(doorRail).toContain("stay-rail-today");
+    expect(doorRail).not.toContain("stay-rail-table_reservations");
+    expect(doorRail).not.toContain("stay-rail-waitlist");
+  });
+
+  it("T-1m — shared modules' links land on the Stay destinations", async () => {
+    expect(stayTargetForVenueModule("reservations")).toEqual({
+      module: "table_reservations",
+      tableView: "bookings",
+    });
+    expect(stayTargetForVenueModule("availability")).toEqual({
+      module: "table_reservations",
+      tableView: "times",
+    });
+    expect(stayTargetForVenueModule("waitlist")).toEqual({ module: "waitlist" });
+    expect(stayTargetForVenueModule("settings")).toEqual({ module: "settings" });
+    expect(stayTargetForVenueModule("tables")).toBeNull();
+    expect(stayTargetForVenueModule("insights")).toBeNull();
+
+    mockStayFeaturesState = tablesStay({
+      entry: true,
+      table_reservations: true,
+      waitlist: true,
+    });
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    await press(pressableWithTestId(r, "stay-rail-offers"));
+    await settle();
+    const open = (): ((module: string) => void) =>
+      (mockOffersProps as Record<string, unknown>).onOpenModule as (module: string) => void;
+
+    // Offers › "Table reservations" card asks for the venue `reservations`.
+    await TestRenderer.act(() => open()("reservations"));
+    expect(hostWithTestId(r, "stub-venue-reservations")).toBeTruthy();
+    expect(testIdsMatching(r, /^stub-reservations$/)).toHaveLength(0);
+
+    await press(pressableWithTestId(r, "stay-rail-offers"));
+    await settle();
+    await TestRenderer.act(() => open()("availability"));
+    await settle();
+    expect(hostWithTestId(r, "stub-table-times")).toBeTruthy();
+
+    await press(pressableWithTestId(r, "stay-rail-offers"));
+    await settle();
+    await TestRenderer.act(() => open()("waitlist"));
+    expect(hostWithTestId(r, "stub-waitlist")).toBeTruthy();
+
+    // Nothing to show here: the tap does nothing rather than a wrong page.
+    await press(pressableWithTestId(r, "stay-rail-offers"));
+    await settle();
+    await TestRenderer.act(() => open()("insights"));
+    expect(hostWithTestId(r, "stub-offers")).toBeTruthy();
+
+    // Reservations › Edit floor opens Spaces when Spaces is here.
+    await press(pressableWithTestId(r, "stay-rail-table_reservations"));
+    const editFloor = (mockVenueReservationsProps as Record<string, unknown>)
+      .onEditFloor as (spaceId: string) => void;
+    expect(typeof editFloor).toBe("function");
+  });
+
+  it("T-1n — Table times and rules: reachable from Table reservations, and its leave dialog gates every exit", async () => {
+    mockStayFeaturesState = tablesStay({ table_reservations: true, waitlist: true });
+    const r = await mount(
+      <StaySuiteShell
+        {...STAY_PROPS}
+        initialModule="overview"
+        requestedModule="table_reservations"
+      />,
+    );
+    expect(hostWithTestId(r, "stub-venue-reservations")).toBeTruthy();
+    await press(pressableWithTestId(r, "stay-table-view-times"));
+    await settle();
+    expect(hostWithTestId(r, "stub-table-times")).toBeTruthy();
+    expect(mockTableTimesProps).toMatchObject({
+      brandId: "brand-1484",
+      venueId: "venue-1484",
+      showTableTimes: true,
+      tableReservationsOn: true,
+      canEditHours: true,
+    });
+
+    // Unsaved hours or rules: a rail switch asks the module, which holds.
+    mockTableTimesHold = true;
+    await press(pressableWithTestId(r, "stay-rail-overview"));
+    expect(mockTableTimesRequestLeave).toHaveBeenCalledTimes(1);
+    expect(hostWithTestId(r, "stub-table-times")).toBeTruthy();
+
+    // Header Back goes through the same module gate.
+    const back = jest.fn();
+    await TestRenderer.act(() => {
+      (mockRequestLeave as NonNullable<MockRequestLeave>)(back);
+    });
+    expect(mockTableTimesRequestLeave).toHaveBeenCalledTimes(2);
+    expect(back).not.toHaveBeenCalled();
+
+    // Back to the bookings tab also asks first.
+    await press(pressableWithTestId(r, "stay-table-view-bookings"));
+    expect(mockTableTimesRequestLeave).toHaveBeenCalledTimes(3);
+    expect(hostWithTestId(r, "stub-table-times")).toBeTruthy();
+
+    // Unsaved state also holds a brand switch.
+    mockDirtyModules = new Set(["availability"]);
+    await TestRenderer.act(async () => {
+      r.update(<StaySuiteShell {...STAY_PROPS} requestedModule="table_reservations" />);
+    });
+    expect(await unsavedWorkHoldsSwitch()).toBe(true);
+    mockDirtyModules = new Set<string>();
+    await TestRenderer.act(async () => {
+      r.update(<StaySuiteShell {...STAY_PROPS} requestedModule="table_reservations" />);
+    });
+    expect(await unsavedWorkHoldsSwitch()).toBe(false);
+
+    // Clean: the switch goes through.
+    mockTableTimesHold = false;
+    await press(pressableWithTestId(r, "stay-rail-overview"));
+    expect(testIdsMatching(r, /^stub-table-times$/)).toHaveLength(0);
   });
 
   it("T-2 — desktopCentered has NO maxWidth, keeps the anchor + gutters", async () => {
@@ -546,7 +1294,7 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     expectUncapped(pageStyleProp(overview));
 
     // Settings — an editable form keeps the readable measure, left-anchored.
-    overview.unmount();
+    await TestRenderer.act(() => overview.unmount());
     const settings = await mount(<StaySuiteShell {...STAY_PROPS} />);
     await press(pressableWithTestId(settings, "stay-rail-settings"));
     expectCappedAt(pageStyleProp(settings), suiteFormMaxWidth);

@@ -17982,6 +17982,7 @@
         "supabase/migrations/20280809394490_issue_4490_gaps_member_codes.sql",
         "supabase/migrations/20280809404490_issue_4490_gaps_multi_day_passes.sql",
         "supabase/migrations/20280809414490_issue_4490_gaps_guest_list.sql",
+        "supabase/migrations/20280809424490_issue_4490_gaps_stay_features.sql",
         "supabase/migrations/20281118004238_issue_4238_team_role_grants.sql",
         "supabase/migrations/20281118014238_issue_4238_ads_roles.sql",
         "supabase/migrations/20281118024226_issue_4226_people_journey.sql",
@@ -19910,6 +19911,7 @@
         "supabase/migrations/20280809394490_issue_4490_gaps_member_codes.sql",
         "supabase/migrations/20280809404490_issue_4490_gaps_multi_day_passes.sql",
         "supabase/migrations/20280809414490_issue_4490_gaps_guest_list.sql",
+        "supabase/migrations/20280809424490_issue_4490_gaps_stay_features.sql",
         "supabase/migrations/20281118004238_issue_4238_team_role_grants.sql",
         "supabase/migrations/20281118014238_issue_4238_ads_roles.sql",
         "supabase/migrations/20281118024226_issue_4226_people_journey.sql",
@@ -21692,6 +21694,8 @@
         "supabase/migrations/__tests__/issue_4490_gaps_party_type_optional.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_gaps_space_layouts.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_gaps_space_layouts.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4490_gaps_stay_features.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4490_gaps_stay_features.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_gaps_table_deposits.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_gaps_table_deposits.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_gaps_today_money.implementor.pg17.test.sql",
@@ -25649,6 +25653,7 @@
         "supabase/migrations/20280809394490_issue_4490_gaps_member_codes.sql",
         "supabase/migrations/20280809404490_issue_4490_gaps_multi_day_passes.sql",
         "supabase/migrations/20280809414490_issue_4490_gaps_guest_list.sql",
+        "supabase/migrations/20280809424490_issue_4490_gaps_stay_features.sql",
         "supabase/migrations/20281118004238_issue_4238_team_role_grants.sql",
         "supabase/migrations/20281118014238_issue_4238_ads_roles.sql",
         "supabase/migrations/20281118024226_issue_4226_people_journey.sql",
@@ -27431,6 +27436,8 @@
         "supabase/migrations/__tests__/issue_4490_gaps_party_type_optional.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_gaps_space_layouts.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_gaps_space_layouts.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4490_gaps_stay_features.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4490_gaps_stay_features.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_gaps_table_deposits.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4490_gaps_table_deposits.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4490_gaps_today_money.implementor.pg17.test.sql",
@@ -54789,5 +54796,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "4bbb50e8c1a77adcbb061d8b8b8dc275d917b3ae669b827eb34b91b0daf48739"
+  "phase3eContractSha256": "ea5be40f19d2da3863ec2362dfb198965bf9890b0d89567191f20cf45779c719"
 }

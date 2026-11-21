@@ -63,7 +63,10 @@ beforeEach(() => { mockSettings = { data: undefined, isError: false }; useVenueS
 afterEach(async () => { await Renderer.act(async () => { mounted.splice(0).forEach(tree => tree.unmount()); }); });
 // [TEST-MOD-APPROVED #4490] — modules hidden for this venue (no spaces yet, or
 // a phase not shipped) are accepted links that land on Overview instead.
-const HIDDEN_FOR_CLASSIC_VENUE: VenueModule[] = ["offers", "spaces", "today", "calendar", "requests", "members", "checkin"];
+// [TEST-MOD-APPROVED #4490] 07-I: Guest list shows only with the guest_list
+// feature, which this harness never enables (features fall back to the old
+// reservations switch), so a guestlist link lands on Overview like the others.
+const HIDDEN_FOR_CLASSIC_VENUE: VenueModule[] = ["offers", "spaces", "today", "calendar", "requests", "members", "checkin", "guestlist"];
 test.each(HIDDEN_FOR_CLASSIC_VENUE)("%s link to a venue that does not show it lands on Overview", async module => {
   mockSettings = { data: { reservationsEnabled: true }, isError: false };
   await mount(parseVenueModuleParam(module)!);

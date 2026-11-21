@@ -149,7 +149,9 @@ describe("D9 — the wizard's Features step", () => {
     // TEST-MOD-APPROVED #4490 P6-2 — the play preset lists table ordering (it never starts on) and memberships is built.
     expect(rows.usual).toEqual(["entry", "group_packages", "private_hire", "menu", "table_ordering", "events_here"]);
     // TEST-MOD-APPROVED #4490 P5-2 — by the hour, floor plan, pick a table and minimum-spend tables are built.
-    expect(rows.more).toEqual(["by_the_hour", "table_reservations", "floor_plan", "pick_a_table", "min_spend_tables", "memberships", "waitlist"]);
+    // TEST-MOD-APPROVED #4490 07-I — Guest list is built and is an optional
+    // starting feature for a play venue.
+    expect(rows.more).toEqual(["by_the_hour", "table_reservations", "floor_plan", "pick_a_table", "min_spend_tables", "guest_list", "memberships", "waitlist"]);
     let on = chosenStartingFeatures("play", null);
     on = toggleStartingFeature(on, "menu", false);
     on = toggleStartingFeature(on, "waitlist", true);
@@ -167,6 +169,16 @@ describe("D9 — the wizard's Features step", () => {
     // TEST-MOD-APPROVED #4490 P5-2 — coworking starts with by the hour (meeting rooms) now it is built.
     // TEST-MOD-APPROVED #4490 P6-2 — coworking starts with memberships now they are built.
     expect(typeStartingFeatures("coworking")).toEqual(["entry", "by_the_hour", "private_hire", "memberships"]);
+  });
+  it("a Stay keeps every starting feature the host explicitly chose", () => {
+    expect(
+      chosenStartingFeatures("stay", [
+        "entry",
+        "private_hire",
+        "menu",
+        "memberships",
+      ]),
+    ).toEqual(["entry", "private_hire", "menu", "memberships"]);
   });
 });
 
@@ -249,5 +261,31 @@ describe("D30 — every switch that moved is named", () => {
   it("plain Saved when nothing else moved", () => {
     const set = featureSetFrom({ menu: true });
     expect(featureSavedLine(set, otherChangedFeatures(set, set, "menu"))).toBe("Saved");
+  });
+});
+
+describe("Stay workspace round 4J — source shape", () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require("fs") as typeof import("fs");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require("path") as typeof import("path");
+  const read = (rel: string): string =>
+    fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", rel), "utf8");
+
+  it("D1: Stay Settings keeps the features panel single-column; the panel defaults to auto", () => {
+    const stay = read("src/components/stay/StaySuiteShell.tsx");
+    const panel = read("src/components/venue/features/VenueTypeAndFeaturesPanel.tsx");
+    expect(stay).toContain('layout="stacked"');
+    expect(panel).toContain('layout = "auto"');
+    // [TEST-MOD-APPROVED #4490] J fix 2 (R4J-N2): the layout itself is proved
+    // by a real react-native-web render (stayDesktopWidth.issue1484.web.render
+    // N2-a..c); this only pins that Stay asks for the stacked layout.
+  });
+
+  it("D3: the Stay shell registers the page-exit gate through the store and clears it", () => {
+    const stay = read("src/components/stay/StaySuiteShell.tsx");
+    expect(stay).toContain("setRequestLeave(requestLeave)");
+    expect(stay).toContain("setRequestLeave(null)");
+    expect(stay).toContain('"beforeunload"');
   });
 });

@@ -175,6 +175,15 @@ jest.mock("../StayReservationsModule", () => ({
 jest.mock("../StayStaffAvailabilityModule", () => ({
   StayStaffAvailabilityModule: (): null => null,
 }));
+// [TEST-MOD-APPROVED #4490] fix round 5 (spec 07 13): the Stay shell imports the
+// venue Reservations and Waitlist screens statically (bundle: same as the venue
+// route), so they are stubbed here like VenueMenuModule.
+jest.mock("../../venue/VenueReservationsModule", () => ({
+  VenueReservationsModule: (): null => null,
+}));
+jest.mock("../../venue/VenueWaitlistModule", () => ({
+  VenueWaitlistModule: (): null => null,
+}));
 jest.mock("../../venue/VenueMenuModule", () => ({
   VenueMenuModule: (): null => null,
 }));
@@ -194,6 +203,18 @@ jest.mock("../../../hooks/useMyVenueAccess", () => ({
     isFetched: true,
     isError: false,
   }),
+}));
+jest.mock("../../../hooks/useVenueFeatures", () => ({
+  useVenueFeatures: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetched: true,
+    isError: false,
+    refetch: jest.fn(),
+  }),
+}));
+jest.mock("../../venue/features/VenueTypeAndFeaturesPanel", () => ({
+  VenueTypeAndFeaturesPanel: () => null,
 }));
 
 import { suiteFormMaxWidth } from "../../../constants/designSystem";

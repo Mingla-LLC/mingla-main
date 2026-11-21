@@ -203,6 +203,15 @@ jest.mock("../StayReservationsModule", () => ({
 jest.mock("../StayStaffAvailabilityModule", () => ({
   StayStaffAvailabilityModule: (): null => null,
 }));
+// [TEST-MOD-APPROVED #4490] fix round 5 (spec 07 13): the Stay shell imports the
+// venue Reservations and Waitlist screens statically (bundle: same as the venue
+// route), so they are stubbed here like VenueMenuModule.
+jest.mock("../../venue/VenueReservationsModule", () => ({
+  VenueReservationsModule: (): null => null,
+}));
+jest.mock("../../venue/VenueWaitlistModule", () => ({
+  VenueWaitlistModule: (): null => null,
+}));
 jest.mock("../../venue/VenueMenuModule", () => ({
   VenueMenuModule: (): null => null,
 }));
@@ -222,6 +231,42 @@ jest.mock("../../../hooks/useMyVenueAccess", () => ({
     isFetched: true,
     isError: false,
   }),
+}));
+// [TEST-MOD-APPROVED #4490] J fix 2 (R4J-N2): the features mock can now hand
+// the REAL VenueTypeAndFeaturesPanel a loaded feature set (the Stay shell's
+// own reads still see `undefined`, as before) plus inert mutation hooks.
+let mockPanelFeatures: unknown = undefined;
+jest.mock("../../../hooks/useVenueFeatures", () => {
+  const idle = () => ({ mutate: jest.fn(), isPending: false });
+  return {
+    useVenueFeatures: () => ({
+      data: mockPanelFeatures,
+      isLoading: false,
+      isFetched: true,
+      isError: false,
+      refetch: jest.fn(),
+    }),
+    useSetVenueFeature: idle,
+    useApplyFeaturePreset: idle,
+  };
+});
+jest.mock("../../venue/features/VenueTypeAndFeaturesPanel", () => ({
+  VenueTypeAndFeaturesPanel: () => null,
+}));
+jest.mock("../../../hooks/useVenueListings", () => ({
+  useVenueListing: () => ({
+    data: { venueCategory: "stay", claimStatus: "verified" },
+  }),
+}));
+jest.mock("../../../hooks/useVenueEditAccess", () => ({
+  useVenueEditAccess: () => ({ canSwitchFeatures: true }),
+}));
+jest.mock("../../../services/venueFeaturesService", () => ({
+  VenueFeatureError: class VenueFeatureError extends Error {},
+}));
+jest.mock("../../../hooks/useVenueDetailsEdit", () => ({
+  useUpdateVenueIdentityInReview: () => ({ mutate: jest.fn() }),
+  useSubmitVenueDetailsChangeRequest: () => ({ mutate: jest.fn() }),
 }));
 
 import { stayPageMaxWidth } from "../../../constants/designSystem";
@@ -482,5 +527,80 @@ describe("#1484 — the desktop uncap survives the react-native-web resolver", (
     const phone = renderWeb();
     expect(alignAtoms(desktop.html, desktop.css)).toContain("flex-start");
     expect(alignAtoms(phone.html, phone.css)).toContain("center");
+  });
+});
+
+/**
+ * #4490 J fix 2 (R4J-N2) — the "Venue type and features" panel inside Stay
+ * Settings. The tester measured the panel box ending at y=609 while its switch
+ * rows ran to ~930, so the Spaces card and the pinned Save bar painted over
+ * Menu and Table ordering (dead taps). Cause: each feature card carried
+ * `flex: 1` (flex-basis 0) in a COLUMN inside the settings scroller.
+ *
+ * These render the REAL panel (`jest.requireActual`, bypassing the shell-level
+ * null mock) through RNW's style compiler and read the emitted atomic classes.
+ * What this proves: in the stacked layout neither card nor the grid carries a
+ * `flex` / `flex-grow` declaration or a row direction, and the same cards DO
+ * carry `flex:1` in the ordinary wide two-column layout (so the assertion
+ * discriminates). What it cannot prove: jsdom/SSR has no layout engine, so the
+ * painted heights and the pinned-bar clearance remain a browser check.
+ */
+describe("#4490 J — Stay Settings features panel takes its natural height", () => {
+  const { VenueTypeAndFeaturesPanel: RealPanel } = jest.requireActual(
+    "../../venue/features/VenueTypeAndFeaturesPanel",
+  ) as typeof import("../../venue/features/VenueTypeAndFeaturesPanel");
+  const feature = { enabled: false, version: 1, needs: [] as string[] };
+  const loaded = {
+    venueCategory: "stay",
+    activeSpaceCount: 0,
+    features: new Proxy({}, { get: () => feature }),
+  };
+
+  function renderPanel(layout: "auto" | "stacked"): { html: string; css: string } {
+    const name = `Issue4490J_${renderCount++}`;
+    const Wrapper = (): React.ReactElement => (
+      <RealPanel brandId="brand-1484" venueId="venue-1484" layout={layout} />
+    );
+    AppRegistry.registerComponent(name, () => Wrapper);
+    const app = AppRegistry.getApplication(name);
+    return {
+      html: ReactDOMServer.renderToStaticMarkup(app.element),
+      css: ReactDOMServer.renderToStaticMarkup(app.getStyleElement()),
+    };
+  }
+
+  afterEach(() => {
+    mockPanelFeatures = undefined;
+  });
+
+  it("N2-a stacked (Stay Settings): the feature cards and grid have no flex sizing", () => {
+    mockIsWideDesktop = true;
+    mockPanelFeatures = loaded;
+    const { html, css } = renderPanel("stacked");
+    // Vacuity guard: the real panel rendered its rows, not a loading/error state.
+    expect(html).toContain('data-testid="venue-feature-switch-menu"');
+    for (const id of ["venue-features-usual", "venue-features-more"]) {
+      const classes = classesFor(html, id);
+      expect(declaration(css, classes, "flex")).toBeNull();
+      expect(classes.some((c) => c.startsWith("r-flex-"))).toBe(false);
+      expect(classes.some((c) => c.startsWith("r-flexGrow-"))).toBe(false);
+    }
+    expect(declaration(css, classesFor(html, "venue-features-grid"), "flex-direction")).not.toBe("row");
+  });
+
+  it("N2-b the ordinary wide layout still shares one row (the check discriminates)", () => {
+    mockIsWideDesktop = true;
+    mockPanelFeatures = loaded;
+    const { html, css } = renderPanel("auto");
+    expect(declaration(css, classesFor(html, "venue-features-grid"), "flex-direction")).toBe("row");
+    expect(declaration(css, classesFor(html, "venue-features-usual"), "flex")).toBe("1");
+  });
+
+  it("N2-c phone width, stacked: still no flex sizing on the cards", () => {
+    mockIsWideDesktop = false;
+    mockPanelFeatures = loaded;
+    const { html, css } = renderPanel("stacked");
+    expect(declaration(css, classesFor(html, "venue-features-usual"), "flex")).toBeNull();
+    expect(declaration(css, classesFor(html, "venue-features-more"), "flex")).toBeNull();
   });
 });

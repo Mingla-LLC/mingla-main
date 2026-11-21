@@ -571,6 +571,10 @@ export default function VenueManagementPage(): React.ReactElement {
           venueName={venue.name}
           venueApproved={venue.claimStatus === "verified"}
           overviewHeader={localReviewsPanel}
+          initialModule={initialModule ?? "overview"}
+          initialItemId={initialItemId}
+          requestedModule={requestedModule ?? null}
+          onModuleChange={handleModuleChange}
         />
       ) : (
         <VenueSuiteShell

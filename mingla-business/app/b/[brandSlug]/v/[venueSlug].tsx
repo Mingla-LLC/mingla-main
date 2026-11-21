@@ -332,14 +332,10 @@ function PublicVenueRouteBody(): React.ReactElement {
   // Exact venue-owned menu — fetched only once the venue resolves (a
   // not-found page needs no menu round-trip).
   const menusQuery = usePublicMenus(
-    venue !== null &&
-        venue.venueCategory !== "stay" &&
-        typeof brandSlug === "string"
+    venue !== null && typeof brandSlug === "string"
       ? brandSlug
       : null,
-    venue !== null &&
-        venue.venueCategory !== "stay" &&
-        typeof venueSlug === "string"
+    venue !== null && typeof venueSlug === "string"
       ? venueSlug
       : null,
   );
@@ -347,10 +343,10 @@ function PublicVenueRouteBody(): React.ReactElement {
   // §6.7 reserve display gate — place-keyed, anon-safe. Disabled without a
   // linked place; error → not reservable (fail closed, no dead CTA).
   const reservableQuery = usePublicVenueReservable(
-    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
+    venue?.placePoolId ?? null,
   );
   const discoveryPriceQuery = usePublicVenueDiscoveryPrice(
-    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
+    venue?.placePoolId ?? null,
   );
 
   const menuGroups = menusQuery.data ?? EMPTY_MENU_GROUPS;

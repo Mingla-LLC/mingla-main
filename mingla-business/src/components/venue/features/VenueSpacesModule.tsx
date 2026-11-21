@@ -353,6 +353,16 @@ export const VenueSpacesModule = forwardRef<VenueModuleLeaveHandle, VenueSpacesM
       ) : null}
     </View>
   );
+  const staySeparationHint =
+    venueQuery.data?.venueCategory === "stay" ? (
+      <Text
+        style={styles.staySeparationHint}
+        testID="venue-spaces-stay-separation"
+      >
+        Rooms and places you sell as stays are separate. Don't add the same
+        cabana twice.
+      </Text>
+    ) : null;
 
   const sheets = (
     <>
@@ -399,6 +409,7 @@ export const VenueSpacesModule = forwardRef<VenueModuleLeaveHandle, VenueSpacesM
     return (
       <View style={styles.host} testID="venue-spaces-empty">
         {header}
+        {staySeparationHint}
         <GlassCard variant="base" padding={space[5]} contentStyle={styles.emptyCard}>
           <Text style={styles.emptyTitle}>{VENUE_FEATURES_COPY.spacesEmptyTitle}</Text>
           <Text style={styles.emptyBody}>{VENUE_FEATURES_COPY.spacesEmptyBody}</Text>
@@ -585,6 +596,7 @@ export const VenueSpacesModule = forwardRef<VenueModuleLeaveHandle, VenueSpacesM
   return (
     <View style={styles.host} testID="venue-spaces-module">
       {header}
+      {staySeparationHint}
       {view === "tables" ? (
         <VenueTablesInSpaces
           ref={tablesRef}
@@ -612,6 +624,7 @@ const styles = StyleSheet.create({
   headerTitleRow: { flexDirection: "row", alignItems: "center", gap: space[3], flexWrap: "wrap" },
   headerActions: { flexDirection: "row", gap: space[2], flexWrap: "wrap" },
   title: { ...type.h1, color: color.text1 },
+  staySeparationHint: { ...type.small, color: color.text2 },
   emptyCard: { gap: space[2], alignItems: "flex-start" },
   emptyTitle: { ...type.h2, color: color.text1 },
   emptyBody: { ...type.small, color: color.text2 },

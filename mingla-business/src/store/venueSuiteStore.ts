@@ -44,6 +44,15 @@ interface VenueSuiteState {
    * Calls `proceed` immediately when clean; otherwise opens the leave dialog.
    */
   requestLeave: ((proceed: () => void, restoreFocus?: () => void) => void) | null;
+  /**
+   * Stay installs its own gate for its feature modules without touching the
+   * venue module state above (Stay draws no store-driven pill row).
+   */
+  setRequestLeave: (
+    requestLeave:
+      | ((proceed: () => void, restoreFocus?: () => void) => void)
+      | null,
+  ) => void;
   pendingLeaveFocus: (() => void) | null;
   setPendingLeaveFocus: (restoreFocus: (() => void) | null) => void;
   takePendingLeaveFocus: () => (() => void) | null;
@@ -97,6 +106,7 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
   },
   selectModule: null,
   requestLeave: null,
+  setRequestLeave: (requestLeave) => set({ requestLeave }),
   pendingLeaveFocus: null,
   setPendingLeaveFocus: (pendingLeaveFocus) => set({ pendingLeaveFocus }),
   savedFlash: null,

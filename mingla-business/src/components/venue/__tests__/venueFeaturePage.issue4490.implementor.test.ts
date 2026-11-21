@@ -137,6 +137,30 @@ describe("the worked table", () => {
     expect(page.showWays).toBe(false);
   });
 
+  test("a Stay keeps Rooms first and appends enabled feature tabs", () => {
+    const page = deriveVenuePage(
+      view(["stays", "entry", "menu"], {
+        offers: [
+          offer({
+            kind: "entry",
+            name: "Pool day",
+            fromMinor: naira(15000),
+            entryStyle: "day_pass",
+          }),
+        ],
+      }),
+      ctx(),
+    );
+    expect(page.tabs).toEqual(["overview", "rooms", "entry", "menu"]);
+    expect(page.lead).toMatchObject({
+      kind: "stays",
+      tab: "rooms",
+      ctaLabel: "Reserve this Stay",
+    });
+    expect(page.labels).toEqual({});
+    expect(page.showWays).toBe(false);
+  });
+
   test("Bar: tables with a minimum spend, groups, hire, menu", () => {
     const v = view(
       ["table_reservations", "floor_plan", "pick_a_table", "min_spend_tables", "group_packages", "private_hire", "menu"],

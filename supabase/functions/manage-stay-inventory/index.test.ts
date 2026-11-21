@@ -206,3 +206,30 @@ Deno.test("publish requires a positive optimistic version before any RPC", async
   assertEquals(response.status, 422);
   assertEquals(created, false);
 });
+
+Deno.test("#4490: an unreadable row id is a plain invalid-input refusal, not a server error", async () => {
+  const response = await handleManageStayInventory(
+    new Request("http://local/manage-stay-inventory", {
+      method: "POST",
+      headers: { authorization: "Bearer test-token" },
+      body: JSON.stringify({
+        action: "update_offering",
+        venueId,
+        expectedVersion: 2,
+        payload: { offeringId: " not-a-uuid ", name: "Suite" },
+      }),
+    }),
+    {
+      createRpcClient: () => ({
+        rpc: () =>
+          Promise.resolve({
+            data: null,
+            error: { code: "22023", message: "stay_invalid_payload" },
+          }),
+      }),
+    },
+  );
+  const body = await response.json();
+  assertEquals(response.status, 422);
+  assertEquals(body.code, "stay_invalid_payload");
+});

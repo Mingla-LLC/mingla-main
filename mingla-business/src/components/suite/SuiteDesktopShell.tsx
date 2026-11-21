@@ -93,6 +93,17 @@ export interface SuiteDesktopShellProps {
    */
   railLabel?: string;
   testID?: string;
+  /**
+   * #4490 J fix 2 (R4J-N4) — the STACKED presentation for a caller that wants
+   * its workspace to survive a resize across the desktop breakpoint. When set,
+   * the rail column is replaced by this header (the caller's pill band) and the
+   * host / centred / workspace views stack in one column. The workspace stays
+   * at the SAME element path as in the desktop presentation, so React keeps
+   * the open module (and its unsaved draft) mounted when the width crosses
+   * 1024px. Leaving it undefined renders the desktop layout byte-identically.
+   * The caller still owns the gate (I-DESKTOP-GATE-VIA-HOOK).
+   */
+  stackedHeader?: React.ReactNode;
 }
 
 interface FocusCapable {
@@ -138,8 +149,32 @@ export function SuiteDesktopShell({
   railTestIdPrefix,
   railLabel = "Sections",
   testID,
+  stackedHeader,
 }: SuiteDesktopShellProps): React.ReactElement {
   const grouped = modules.some((module) => module.group !== undefined);
+  if (stackedHeader !== undefined) {
+    return (
+      <View style={styles.stackedHost} testID={testID}>
+        <View style={styles.stackedColumn}>
+          <View style={styles.stackedHeader}>{stackedHeader}</View>
+          <View style={styles.stackedWorkspace}>
+            {workspaceSelfScrolls ? (
+              children
+            ) : (
+              <ScrollView
+                contentContainerStyle={[
+                  styles.desktopScroll,
+                  { paddingBottom: scrollBottomPad },
+                ]}
+              >
+                {children}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }
   return (
     <View style={styles.desktopHost} testID={testID}>
       <View style={styles.desktopCentered}>
@@ -629,6 +664,12 @@ const styles = StyleSheet.create({
   desktopScroll: {
     // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.
   },
+  // #4490 R4J-N4 — the stacked presentation: a plain column the caller's
+  // header sits above. Same view count and order as the desktop tree.
+  stackedHost: { flex: 1 },
+  stackedColumn: { flex: 1 },
+  stackedHeader: { flexShrink: 0 },
+  stackedWorkspace: { flex: 1 },
 });
 
 export default SuiteDesktopShell;

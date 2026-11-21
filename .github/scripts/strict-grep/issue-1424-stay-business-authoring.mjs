@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// MINGLA-INVARIANT: I-1424-STAY-BUSINESS-AUTHORING | issue #1424 | Stay authoring is flag-gated, Stay-only in its five core destinations and server-owned for currency and publish; the venue Menu, Reservations and Waitlist screens reach a Stay only as the feature-driven Menu, Table reservations and Waitlist destinations, each imported once and rendered only for its own destination, statically like the venue route already loads them, and table times only through the same lazy Availability & pricing chunk, so the Stay shell adds nothing to the eager web bundle (#4490 spec 07 J and 13).
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -51,13 +52,96 @@ function forbid(source, token, label, failures) {
   if (source.includes(token)) failures.push(`${label}: forbidden ${token}`);
 }
 
+// [TEST-MOD-APPROVED #4490] fix round 5 (spec 07 13): the Stay shell shows
+// three venue screens as feature destinations. They are imported STATICALLY:
+// the venue route chunk already holds them through VenueSuiteShell, and a
+// React.lazy import would make each its own async chunk, which Expo's web
+// serializer answers by hoisting the shared closure into the EAGER __common
+// chunk (fix round 4 measured +58,157 B raw for Menu alone). Table times come
+// through the ordinary shell's own lazy Availability & pricing chunk.
+const STAY_VENUE_SCREENS = [
+  { name: "VenueMenuModule", destination: "menu" },
+  { name: "VenueReservationsModule", destination: "table_reservations" },
+  { name: "VenueWaitlistModule", destination: "waitlist" },
+];
+const TABLE_TIMES_PATH = "../venue/features/VenueAvailabilityPricingModule";
+
+function listBody(source, name) {
+  const start = source.indexOf(`const ${name}`);
+  if (start < 0) return null;
+  const end = source.indexOf("];", start);
+  return end < 0 ? null : source.slice(start, end);
+}
+
+function escapeRe(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** The `if (activeModule === "<key>")` block a source offset sits in. */
+function destinationAt(source, offset) {
+  const before = source.slice(0, offset);
+  const matches = [...before.matchAll(/if \(activeModule === "([a-z_]+)"\) \{/g)];
+  return matches.length === 0 ? null : matches[matches.length - 1][1];
+}
+
+function checkFeatureVenueScreens(shell, failures) {
+  const label = "Stay feature-driven venue screens";
+  for (const { name, destination } of STAY_VENUE_SCREENS) {
+    const specifier = `../venue/${name}`;
+    const importLine = `import { ${name} } from "${specifier}";`;
+    if (new RegExp(`import\\(\\s*["']${escapeRe(specifier)}["']`).test(shell)) {
+      failures.push(
+        `${label}: ${name} must not be dynamically imported (React.lazy hoists it into the eager __common chunk; import it statically like VenueSuiteShell)`,
+      );
+    }
+    if (!shell.includes(name)) continue;
+    if (shell.split(importLine).length - 1 !== 1) {
+      failures.push(`${label}: expected exactly one ${importLine}`);
+    }
+    const rest = shell.split(importLine).join("");
+    const uses = [...rest.matchAll(new RegExp(`\\b${name}\\b`, "g"))];
+    const renders = [...rest.matchAll(new RegExp(`<${name}\\b`, "g"))];
+    if (uses.length !== 1 || renders.length !== 1) {
+      failures.push(
+        `${label}: forbidden ${name} outside its one import and its one ${destination} render`,
+      );
+      continue;
+    }
+    if (destinationAt(rest, renders[0].index) !== destination) {
+      failures.push(
+        `${label}: ${name} must render once, only for activeModule === "${destination}"`,
+      );
+    }
+  }
+  if (shell.includes("VenueAvailabilityPricingModule")) {
+    if (shell.split(`await import("${TABLE_TIMES_PATH}")`).length - 1 !== 1) {
+      failures.push(`${label}: table times load through exactly one lazy import of ${TABLE_TIMES_PATH}`);
+    }
+    if (new RegExp(`from ["']${escapeRe(TABLE_TIMES_PATH)}["']`).test(shell)) {
+      failures.push(`${label}: table times must not be a static import (it is its own lazy chunk)`);
+    }
+  }
+  const core = listBody(shell, "CORE_MODULES");
+  const feature = listBody(shell, "STAY_FEATURE_MODULE_ORDER");
+  if (core === null || /"(menu|orders|table_reservations|waitlist)"/.test(core)) {
+    failures.push(`${label}: menu, orders, table reservations and waitlist must not be Stay core destinations`);
+  }
+  for (const key of ["menu", "table_reservations", "waitlist"]) {
+    if (feature === null || !feature.includes(`"${key}"`)) {
+      failures.push(`${label}: ${key} must come from STAY_FEATURE_MODULE_ORDER`);
+    }
+  }
+}
+
 export function check(files, plans = effectiveSuites()) {
   const failures = [];
 
   for (const token of [
     'id: "stay"',
     'label: "Stay"',
-    "Hotels, resorts & short stays",
+    // [TEST-MOD-APPROVED #4490] nine-venue defect N14 (fix round 1): the Stay
+    // card reads "and", not "&", like every other type description.
+    "Hotels, resorts and short stays",
     "includeStay = false",
     'value === "stay"',
   ]) {
@@ -126,9 +210,17 @@ export function check(files, plans = effectiveSuites()) {
   ]) {
     need(files.shell ?? "", token, "Stay management readiness", failures);
   }
-  for (const token of ['id: "menu"', 'label: "Menus"', "VenueMenuModule", "StayMenuModule"]) {
+  // [TEST-MOD-APPROVED #4490] spec 07 J (approved 19 Nov 2026) adds Menu and
+  // Orders to a Stay as feature-driven destinations that reuse the venue
+  // modules; spec 07 13 (21 Nov 2026) adds Table reservations and Waitlist.
+  // What still holds: no Menus core tab, no Stay-owned menu rail, and each
+  // venue screen imported once and rendered only for its feature destination.
+  // Fix round 5 replaced "lazy only" with "static, like the venue route": the
+  // lazy form hoisted Menu into the eager bundle (see STAY_VENUE_SCREENS).
+  for (const token of ['id: "menu"', 'label: "Menus"', "StayMenuModule"]) {
     forbid(files.shell ?? "", token, "Stay-only menu ownership", failures);
   }
+  checkFeatureVenueScreens(files.shell ?? "", failures);
   forbid(
     files.shell ?? "",
     'currencyCode ?? "USD"',
@@ -282,6 +374,66 @@ function selfTest() {
       '{ id: "settings", label: "Settings", icon: "settings" }',
       '{ id: "menu", label: "Menus", icon: "menu" },\n  { id: "settings", label: "Settings", icon: "settings" }',
       'label: "Menus"',
+    ],
+    [
+      "shell",
+      'import { StayActionBar } from "./StayActionBar";',
+      'import { StayActionBar } from "./StayActionBar";\nimport { VenueMenuModule } from "../venue/VenueMenuModule";',
+      'expected exactly one import { VenueMenuModule }',
+    ],
+    [
+      "shell",
+      'import { VenueMenuModule } from "../venue/VenueMenuModule";',
+      'const LazyVenueMenuModule = React.lazy(async () => {\n  const mod = await import("../venue/VenueMenuModule");\n  return { default: mod.VenueMenuModule };\n});',
+      "VenueMenuModule must not be dynamically imported",
+    ],
+    [
+      "shell",
+      'import { VenueReservationsModule } from "../venue/VenueReservationsModule";',
+      'const LazyVenueReservationsModule = React.lazy(() => import("../venue/VenueReservationsModule").then((m) => ({ default: m.VenueReservationsModule })));',
+      "VenueReservationsModule must not be dynamically imported",
+    ],
+    [
+      "shell",
+      'if (activeModule === "waitlist") {',
+      'if (activeModule === "overview") {',
+      'VenueWaitlistModule must render once, only for activeModule === "waitlist"',
+    ],
+    [
+      "shell",
+      '  "table_reservations",\n  "waitlist",\n',
+      '  "waitlist",\n',
+      "table_reservations must come from STAY_FEATURE_MODULE_ORDER",
+    ],
+    [
+      "shell",
+      'import { Tabs } from "../ui/Tabs";',
+      'import { Tabs } from "../ui/Tabs";\nimport { VenueAvailabilityPricingModule as StaticTableTimes } from "../venue/features/VenueAvailabilityPricingModule";',
+      "table times must not be a static import",
+    ],
+    [
+      "shell",
+      '{ id: "settings", label: "Settings", icon: "settings" },\n];',
+      '{ id: "settings", label: "Settings", icon: "settings" },\n  { id: "orders", label: "Orders", icon: "receipt" },\n];',
+      "must not be Stay core destinations",
+    ],
+    [
+      "shell",
+      '{ id: "settings", label: "Settings", icon: "settings" },\n];',
+      '{ id: "settings", label: "Settings", icon: "settings" },\n  { id: "table_reservations", label: "Table reservations", icon: "calendar" },\n];',
+      "must not be Stay core destinations",
+    ],
+    [
+      "shell",
+      'if (activeModule === "menu") {',
+      'if (activeModule === "overview") {',
+      "only for activeModule",
+    ],
+    [
+      "picker",
+      "Hotels, resorts and short stays",
+      "Hotels, resorts & short stays",
+      "Hotels, resorts and short stays",
     ],
     [
       "edge",

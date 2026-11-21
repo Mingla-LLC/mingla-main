@@ -181,6 +181,9 @@ function errorResponse(
     "stay_dst_fold",
     "fx_snapshot_stale",
     "fx_unavailable",
+    // #4490: a row id the uuid type cannot read is refused as invalid input
+    // (422), never a server error.
+    "stay_invalid_payload",
     // issue #3645 — biz_publish_stay refuses a member who has not accepted the
     // current Organiser Terms. Last in the list so every older code keeps the
     // match it had; the Host app opens the acceptance sheet on this code.

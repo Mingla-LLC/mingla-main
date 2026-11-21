@@ -62,13 +62,24 @@ interface PendingSwitch {
 export interface VenueTypeAndFeaturesPanelProps {
   brandId: string | null;
   venueId: string | null;
+  /** Stay has its own shell, so its Spaces destination is not in the venue store. */
+  onOpenSpaces?: () => void;
+  /**
+   * "stacked" keeps the cards in one column even on wide desktop. Stay Settings
+   * hosts this panel in a narrow form column, where two columns squeeze the
+   * switch rows. Default "auto" is the ordinary venue layout.
+   */
+  layout?: "auto" | "stacked";
 }
 
 export function VenueTypeAndFeaturesPanel({
   brandId,
   venueId,
+  onOpenSpaces,
+  layout = "auto",
 }: VenueTypeAndFeaturesPanelProps): React.ReactElement {
   const { isWideDesktop } = useResponsiveLayout();
+  const wideGrid = isWideDesktop && layout !== "stacked";
   const featuresQuery = useVenueFeatures(brandId, venueId);
   const venueQuery = useVenueListing(venueId);
   const access = useVenueEditAccess(brandId, venueId);
@@ -207,6 +218,10 @@ export function VenueTypeAndFeaturesPanel({
 
   const openSpaces = (): void => {
     if (venueId !== null) requestSpaces(venueId);
+    if (onOpenSpaces !== undefined) {
+      onOpenSpaces();
+      return;
+    }
     selectModule?.("spaces");
   };
 
@@ -306,8 +321,21 @@ export function VenueTypeAndFeaturesPanel({
         <Text style={styles.rowNote}>Only brand owners and admins can switch features.</Text>
       ) : null}
 
-      <View style={[styles.grid, isWideDesktop && styles.gridWide]}>
-        <GlassCard variant="base" padding={space[4]} style={styles.gridCol} contentStyle={styles.section}>
+      {/* #4490 J fix 2 (R4J-N2): `flex: 1` only shares a ROW. In a column it
+          sets a zero flex-basis, so inside a scroller (Stay Settings) each card
+          collapsed below its rows and the Spaces card and pinned Save bar
+          painted over the lower switches. A column card takes its natural height. */}
+      <View
+        style={[styles.grid, wideGrid && styles.gridWide]}
+        testID="venue-features-grid"
+      >
+        <GlassCard
+          variant="base"
+          padding={space[4]}
+          style={wideGrid ? styles.gridCol : undefined}
+          contentStyle={styles.section}
+          testID="venue-features-usual"
+        >
           <Text style={styles.sectionLabel}>
             {typeOption !== null ? `Usual for ${typeOption.label.toLowerCase()} venues` : "Usual for venues like yours"}
           </Text>
@@ -317,7 +345,13 @@ export function VenueTypeAndFeaturesPanel({
             usualKeys.map(renderRow)
           )}
         </GlassCard>
-        <GlassCard variant="base" padding={space[4]} style={styles.gridCol} contentStyle={styles.section}>
+        <GlassCard
+          variant="base"
+          padding={space[4]}
+          style={wideGrid ? styles.gridCol : undefined}
+          contentStyle={styles.section}
+          testID="venue-features-more"
+        >
           <Text style={styles.sectionLabel}>More you can switch on</Text>
           {moreKeys.map(renderRow)}
         </GlassCard>

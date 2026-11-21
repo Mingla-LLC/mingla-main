@@ -655,17 +655,21 @@ BEGIN
   FROM public.brand_team_members
   WHERE brand_id = '41880000-0000-4000-9000-000000000010'
     AND user_id = '41880000-0000-4000-8000-000000000004';
+  -- [TEST-MOD-APPROVED #4490] spec 07 J lets a Stay venue's staff hold the
+  -- restaurant and venue capabilities of its enabled features, so a
+  -- restaurant capability on a Stay is now valid. The denial this block
+  -- guards stays: a capability no venue knows is still refused on a Stay.
   BEGIN
     PERFORM public.issue_4188_set_member_venue_grants(
       '41880000-0000-4000-9000-000000000010',
       v_member_id,
       jsonb_build_array(jsonb_build_object(
         'venueId', '41880000-0000-4000-9000-000000000011',
-        'profile', 'restaurant_manager',
-        'capabilities', jsonb_build_array('restaurant.manage_menu')
+        'profile', 'custom',
+        'capabilities', jsonb_build_array('venue.everything')
       ))
     );
-    RAISE EXCEPTION 'restaurant_capability_was_assigned_to_stay';
+    RAISE EXCEPTION 'unknown_capability_was_assigned_to_stay';
   EXCEPTION WHEN invalid_parameter_value THEN
     IF SQLERRM <> 'invalid_venue_grants' THEN RAISE; END IF;
   END;
