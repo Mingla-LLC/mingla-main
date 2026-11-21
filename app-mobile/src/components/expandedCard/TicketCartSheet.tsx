@@ -122,6 +122,8 @@ import {
 } from "./ticketDayScope";
 import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
+// #4541 R2.10 — the questions block's report (type only; the block is lazy).
+import type { CheckoutQuestionsState } from "../forms/CheckoutQuestionsBlock";
 import { useTicketQuote } from "../../hooks/useTicketQuote";
 import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
 import {
@@ -163,6 +165,10 @@ import {
   uploadTripIntakeFile,
   validateAnswerAgainstSchema,
 } from "../../services/tripIntakeSchemaService";
+// #4541 R2.8 / R2.10 — the questions block and the after-purchase hand-off,
+// loaded on use (they reach expo-router and AsyncStorage).
+const CheckoutQuestionsBlock = React.lazy(() => import("../forms/CheckoutQuestionsBlock"));
+const FormHandoffBlock = React.lazy(() => import("../forms/FormHandoffBlock"));
 
 // ORCH-1138 [content-sized cart] — the cart sheet now SIZES TO ITS CONTENT via
 // gorhom's dynamic sizing (`enableDynamicSizing` + `maxDynamicContentSize` set on
@@ -345,6 +351,14 @@ export interface TicketCartCheckoutPayload {
   intakeUploadSessionId?: string;
   /** #2230: omitted for every single-date/trip/experience checkout. */
   eventDateIds?: string[];
+  /** #4541 R2.10 — the capability marker, once the questions read succeeded. */
+  brandFormStep?: 1;
+  /** #4541 R2.10 — answers to the page's form (never for answeredHere). */
+  brandForm?: {
+    formId: string;
+    versionId: string;
+    answers: Record<string, string | string[] | null>;
+  };
 }
 
 export interface TicketCartMultiDaySelection {
@@ -379,6 +393,11 @@ export interface TicketCartSheetProps {
   fallbackCurrency: string;
   /** Seed the cart with this tier at quantity 1 on open. */
   initialTicketTypeId: string | null;
+  /**
+   * #4541 R2.10 — events and experiences ask the host's questions here.
+   * Omitted (trips) → no block, no marker: trip forms are after-purchase only.
+   */
+  brandFormQuestions?: boolean;
   /**
    * ORCH-1138 rework (§4.C.6) — seed the cart line at this quantity on open
    * (the open-daily PARTY SIZE → cart quantity; I-1, never a new line item).
@@ -531,6 +550,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   installmentNoteByTicketId,
   multiDaySelection = null,
   hideRemainingCount = false,
+  brandFormQuestions = false,
   quoteEventDateId = null,
   quoteBookedStartAt = null,
   quoteBookedEndAt = null,
@@ -587,6 +607,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
   const signedInBuyer =
     typeof buyerUserId === "string" && buyerUserId.length > 0;
+  // #4541 R2.10 — what the questions block reports; ready when there is none.
+  const [formQuestions, setFormQuestions] = useState<CheckoutQuestionsState>({ ready: true, hint: null });
+  const [formHintVisible, setFormHintVisible] = useState<boolean>(false);
+  const questionsActive = brandFormQuestions && visible && signedInBuyer;
+  const questionsReady = !questionsActive || formQuestions.ready;
   // #3859 P1 — Explorer checkout is authenticated. A missing id means auth is
   // unresolved or expired, never that native should expose buyer-web's
   // anonymous identity form.
@@ -1110,9 +1135,17 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         ...(quoteEventDateIds.length > 0
           ? { eventDateIds: quoteEventDateIds }
           : {}),
+        ...(questionsActive && formQuestions.brandFormStep === 1
+          ? { brandFormStep: 1 as const }
+          : {}),
+        ...(questionsActive && formQuestions.brandForm !== undefined
+          ? { brandForm: formQuestions.brandForm }
+          : {}),
       };
     },
     [
+      formQuestions,
+      questionsActive,
       contactValidation.normalized,
       discountCode,
       intakeAnswers,
@@ -1179,6 +1212,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
+    // #4541 R2.10 — the host's required questions come last, before payment.
+    if (!questionsReady) {
+      setFormHintVisible(true);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
 
     // ORCH-1016 REWORK (D2) — required-field validation BEFORE payment.
     // Mirrors the business validator AND the edge fn's required gate so the
@@ -1237,6 +1276,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     quoteIsReady,
     multiDaySelection,
     onCheckout,
+    questionsReady,
   ]);
 
   // Derived render-state per design §5.
@@ -1301,7 +1341,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     contactEditorVisible ||
     !contactValidation.isValid ||
     !termsAccepted ||
-    !quoteIsReady;
+    !quoteIsReady ||
+    !questionsReady;
   const ctaPressDisabled =
     isSubmitting ||
     !signedInBuyer ||
@@ -1858,6 +1899,19 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
                   : terminalOutcome.message}
           </Text>
         )}
+        {/* #4541 R2.8 — "You're in. One more thing." (after-purchase forms). */}
+        {terminalOutcome.outcome === "succeeded" &&
+        terminalOutcome.attachedToAccount !== false &&
+        signedInBuyer ? (
+          <React.Suspense fallback={null}>
+            <FormHandoffBlock
+              kind="order"
+              subjectId={terminalOutcome.orderId}
+              from="purchase"
+              onBeforeAnswer={handleCancel}
+            />
+          </React.Suspense>
+        ) : null}
         {terminalOutcome.outcome === "succeeded" ? successFooter : null}
       </View>
     );
@@ -2438,6 +2492,21 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           </View>
         ) : null}
 
+        {/* #4541 R2.10 — the host's questions (events and experiences), after
+            the contact and before the payment plan and totals. */}
+        {questionsActive ? (
+          <React.Suspense fallback={null}>
+            <CheckoutQuestionsBlock
+              eventId={eventId}
+              enabled={questionsActive}
+              disabled={isSubmitting}
+              highlight={formHintVisible}
+              onStateChange={setFormQuestions}
+              onBackToEvent={handleCancel}
+            />
+          </React.Suspense>
+        ) : null}
+
         {quote?.installmentChargeSchedule !== undefined ? (
           <View style={styles.installmentQuoteCard}>
             <Text style={styles.sectionLabel}>PAYMENT PLAN</Text>
@@ -2732,6 +2801,23 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             <Text style={styles.ctaLabel}>{ctaLabel}</Text>
           )}
         </Pressable>
+        {/* #4541 R2.10 — one reason at a time: the questions are the last. */}
+        {questionsActive &&
+        !isSubmitting &&
+        formQuestions.hint !== null &&
+        !missingRequiredDay &&
+        !totals.isEmpty &&
+        contactValidation.isValid &&
+        !contactEditorVisible &&
+        termsAccepted ? (
+          <Text
+            style={styles.formQuestionsHint}
+            accessibilityLiveRegion="polite"
+            testID="checkout-questions-hint"
+          >
+            {formQuestions.hint}
+          </Text>
+        ) : null}
       </View>
     ) : renderState === "empty" ||
       renderState === "sold_out" ||
@@ -3414,6 +3500,13 @@ const styles = StyleSheet.create({
   },
   ctaButtonDisabled: {
     opacity: 0.5,
+  },
+  formQuestionsHint: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 8,
+    textAlign: "center",
   },
   ctaButtonPressed: {
     opacity: 0.85,

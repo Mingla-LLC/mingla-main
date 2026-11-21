@@ -56,11 +56,14 @@ import {
   CHECKOUT_PAGE_EXPIRED_MESSAGE,
   CHECKOUT_RECHECK_FAILED_MESSAGE,
   CHECKOUT_TICKETS_NOT_ISSUED_MESSAGE,
+  CHECKOUT_UPDATE_APP_MESSAGE,
   nativeCheckoutBookedStartRaiseMessage,
   nativeCheckoutErrorMessage,
   nativeCheckoutExtrasRaiseMessage,
   nativePaystackReturnMessage,
 } from "./checkoutErrorMessages";
+// #4541 R2.10 — pure store (no React, no native modules).
+import { reportCheckoutFormRefusal } from "../components/forms/checkoutFormRefusal";
 import {
   clearNativeCheckoutRecoveryFor,
   createNativeCheckoutRecoveryPointer,
@@ -195,6 +198,18 @@ export interface NativeCheckoutInput {
   }>;
   /** #3859 private upload draft; required whenever intakeFormData is sent. */
   intakeUploadSessionId?: string;
+  /**
+   * #4541 R2.10 — the brand form capability marker (C1): sent for events and
+   * experiences once the cart's questions read succeeded (including "no
+   * form"), so this build's orders stop completing as "to answer".
+   */
+  brandFormStep?: 1;
+  /** #4541 R2.10 — answers to the page's live form, only when there are any. */
+  brandForm?: {
+    formId: string;
+    versionId: string;
+    answers: Record<string, string | string[] | null>;
+  };
   // ORCH-1130 [public trip page payment-structure] / DISC-1130-A consent fix —
   // the buyer's explicit pay-full vs pay-over-time choice for a plan trip.
   // Forwarded as the `payment_plan_choice` body key (already accepted by
@@ -1180,6 +1195,12 @@ export const useNativeCheckoutFlow = (): ((
             }
             : {}),
           ...(input.taxCalculationId ? { taxCalculationId: input.taxCalculationId } : {}),
+          // #4541 R2.10 — the questions marker and answers (omitted by trips
+          // and by a cart whose questions read failed).
+          ...(input.brandFormStep === 1 ? { brandFormStep: 1 } : {}),
+          ...(input.brandFormStep === 1 && input.brandForm !== undefined
+            ? { brandForm: input.brandForm }
+            : {}),
           // ORCH-1072: forward the chosen occurrence only when present — the
           // edge fn validates it (future + belongs to event + not sold out) and
           // persists it; absent → unchanged single-date path.
@@ -1255,6 +1276,18 @@ export const useNativeCheckoutFlow = (): ((
               : null,
         };
         return { outcome: "review", review };
+      }
+      // #4541 R2.10 — a refusal by the host's questions is explained in the
+      // cart's questions block, beside the answers (nothing was charged).
+      const formRefused = reportCheckoutFormRefusal(
+        input.eventId,
+        token,
+        refusalDetail,
+        refusalBody,
+      );
+      if (formRefused && refusalDetail === "brand_form_step_invalid") {
+        console.warn("[nativeCheckout] brand form marker refused");
+        return { outcome: "failed", message: CHECKOUT_UPDATE_APP_MESSAGE, token };
       }
       const raiseCopy = nativeCheckoutBookedStartRaiseMessage(
         refusalDetail,
