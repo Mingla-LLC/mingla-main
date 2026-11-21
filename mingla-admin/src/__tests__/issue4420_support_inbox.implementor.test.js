@@ -314,3 +314,24 @@ describe("S-6 writes are unchanged and the retired desk code is gone", () => {
     assert.ok(read("../../supabase/migrations/20281121034420_issue_4420_tickets_on_work_board.sql").includes("FUNCTION public.issue_4420_conversation_tickets(p_support_ticket_ids uuid[])"));
   });
 });
+
+describe("S-9 (rework 1, P3-c) the Create ticket panel is in view at 1024 px", () => {
+  const page = read("pages/SupportDeskPage.jsx");
+  const slot = (page.match(/const SIDE_SLOT = "([^"]+)"/) || [])[1] || "";
+  const cls = slot.split(/\s+/);
+  it("below xl (no third column) the slot is a fixed panel on the right edge, full height, not stacked under the thread", () => {
+    for (const c of ["fixed", "inset-y-0", "right-0", "w-full", "max-w-[420px]", "[&>aside]:h-full"]) assert.ok(cls.includes(c), c);
+    assert.ok(!cls.some((c) => /^lg:col-start/.test(c)), "no lg grid placement that drops it under the thread");
+  });
+  it("at xl it is the third grid column again, as before", () => {
+    for (const c of ["xl:static", "xl:col-start-3", "xl:w-auto", "xl:max-w-none", "xl:p-0", "xl:shadow-none"]) assert.ok(cls.includes(c), c);
+    assert.match(page, /xl:grid-cols-\[minmax\(300px,380px\)_minmax\(0,1fr\)_minmax\(340px,420px\)\]/);
+  });
+  it("both side panels use the slot; it is dismissible by backdrop, Escape and the panel's own Cancel", () => {
+    assert.equal((page.match(/data-side-slot="" className=\{SIDE_SLOT\}/g) || []).length, 2);
+    assert.match(page, /data-side-backdrop="" onClick=\{\(\) => setSide\(null\)\}/);
+    assert.match(page, /data-side-backdrop=""[\s\S]{0,200}xl:hidden/);
+    assert.match(page, /e\.key === "Escape" && !e\.defaultPrevented\) setSide\(null\)/);
+    assert.match(page, /<CreateTicketPanel[\s\S]{0,200}onClose=\{\(\) => setSide\(null\)\}/);
+  });
+});

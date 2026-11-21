@@ -79,6 +79,13 @@ function chunk(values, size) {
   return out;
 }
 
+
+// #4420 rework (P3-c): the Create ticket / ticket summary slot. Under xl it is a
+// fixed panel on the right edge, fully in view without scrolling; at xl it is
+// the page's third grid column, as before.
+const SIDE_SLOT = "fixed inset-y-0 right-0 flex w-full max-w-[420px] min-w-0 flex-col bg-[var(--color-background-primary)] p-3 shadow-[var(--shadow-xl)] [&>aside]:h-full xl:static xl:col-start-3 xl:block xl:w-auto xl:max-w-none xl:bg-transparent xl:p-0 xl:shadow-none xl:[&>aside]:h-[calc(100vh-180px)]";
+const SIDE_SLOT_STYLE = { zIndex: "var(--z-modal)" };
+
 export function SupportDeskPage({ embedded = false, canManageAgents = true, onCounts } = {}) {
   const { addToast } = useToast();
   const { session, signOut } = useAuth();
@@ -341,6 +348,13 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   const brandOptions = useMemo(() => Object.values(brandsById).sort((a, b) => String(a.name).localeCompare(String(b.name))), [brandsById]);
   const description = `Every conversation with hosts and explorers. ${badge} ${badge === 1 ? "needs" : "need"} a reply.`;
   const showSide = Boolean(side && selectedTicket);
+  // #4420 rework (P3-c): Escape closes the side panel (it overlays the thread under xl).
+  useEffect(() => {
+    if (!showSide) return undefined;
+    const onKey = (e) => { if (e.key === "Escape" && !e.defaultPrevented) setSide(null); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showSide]);
   const selectedKey = selectedReported ? `reported:${selectedReported.id}` : selected.conversationId;
 
   return (
@@ -451,8 +465,16 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
           )}
         </div>
 
+        {showSide ? (
+          // #4420 rework (P3-c): below 1280 px there is no third column, so the
+          // side panel slides over the thread from the right (like the Work
+          // card drawer) instead of stacking under the fold. The dimmed
+          // backdrop and the panel's own Cancel / Close both dismiss it.
+          <button type="button" aria-label="Close the side panel" data-side-backdrop="" onClick={() => setSide(null)}
+            className="fixed inset-0 h-full w-full cursor-default bg-black/40 xl:hidden" style={{ zIndex: "var(--z-modal)" }} />
+        ) : null}
         {showSide && side.kind === "create" ? (
-          <div className="min-w-0 lg:col-start-2 xl:col-start-3">
+          <div data-side-slot="" className={SIDE_SLOT} style={SIDE_SLOT_STYLE}>
             <CreateTicketPanel
               ticket={selectedTicket}
               messages={side.messages}
@@ -463,7 +485,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
           </div>
         ) : null}
         {showSide && side.kind === "summary" ? (
-          <div className="min-w-0 lg:col-start-2 xl:col-start-3">
+          <div data-side-slot="" className={SIDE_SLOT} style={SIDE_SLOT_STYLE}>
             <TicketSummaryPanel linked={side.linked} onClose={() => setSide(null)} />
           </div>
         ) : null}
