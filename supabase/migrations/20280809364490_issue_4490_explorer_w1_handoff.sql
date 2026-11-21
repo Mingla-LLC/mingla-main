@@ -760,3 +760,79 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.issue_4490_text_claim_link(uuid, bytea, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4490_text_claim_link(uuid, bytea, uuid) TO service_role;
+
+-- N162: the verified-identity sweep has always attached anonymous Stays by
+-- setting stay_reservation_groups.user_id, but #4490's latest immutable-row
+-- guard froze that ownership link along with the booking snapshot. Keep the
+-- money, guest, answer and inventory snapshots immutable; permit only the
+-- one-way NULL -> verified owner attachment on a live booking. The sweep also
+-- skips unpaid and closed groups, so one matching reconciliation hold cannot
+-- abort every other purchase claim for the account.
+CREATE FUNCTION pg_temp.issue_4490_w1_patch(
+  p_sig regprocedure,
+  p_old text,
+  p_new text
+)
+RETURNS void
+LANGUAGE plpgsql
+AS $patch$
+DECLARE
+  v_def text := pg_get_functiondef(p_sig);
+  v_old_count integer;
+  v_new_count integer;
+BEGIN
+  v_old_count := (length(v_def) - length(replace(v_def, p_old, '')))
+    / length(p_old);
+  v_new_count := (length(v_def) - length(replace(v_def, p_new, '')))
+    / length(p_new);
+  IF v_new_count = 1 AND v_old_count = 0 THEN
+    RETURN;
+  END IF;
+  IF v_old_count <> 1 OR v_new_count <> 0 THEN
+    RAISE EXCEPTION
+      'issue_4490 W1 patch precondition failed for %: old %, new %',
+      p_sig, v_old_count, v_new_count;
+  END IF;
+  EXECUTE replace(v_def, p_old, p_new);
+END;
+$patch$;
+
+SELECT pg_temp.issue_4490_w1_patch(
+  'public.issue_1388_guard_immutable_rows()'::regprocedure,
+  $old$ELSIF TG_TABLE_NAME = 'stay_reservation_groups' THEN
+    IF NEW.id <> OLD.id
+       OR NEW.public_reference <> OLD.public_reference
+       OR NEW.quote_id <> OLD.quote_id
+       OR NEW.user_id IS DISTINCT FROM OLD.user_id
+       OR NEW.actor_key_hash <> OLD.actor_key_hash$old$,
+  $new$ELSIF TG_TABLE_NAME = 'stay_reservation_groups' THEN
+    IF NEW.id <> OLD.id
+       OR NEW.public_reference <> OLD.public_reference
+       OR NEW.quote_id <> OLD.quote_id
+       OR (
+         NEW.user_id IS DISTINCT FROM OLD.user_id
+         AND NOT (
+           OLD.user_id IS NULL
+           AND NEW.user_id IS NOT NULL
+           AND NEW.state IS NOT DISTINCT FROM OLD.state
+           AND NEW.state IN ('confirmed', 'partially_cancelled')
+           AND public.account_owns_contact(
+             NEW.user_id,
+             OLD.guest_snapshot->>'email',
+             OLD.guest_snapshot->>'phone'
+           )
+         )
+       )
+       OR NEW.actor_key_hash <> OLD.actor_key_hash$new$
+);
+
+SELECT pg_temp.issue_4490_w1_patch(
+  'public.claim_attendance_by_verified_identity(uuid)'::regprocedure,
+  $old$     WHERE g.user_id IS NULL
+       AND (lower(btrim(g.guest_snapshot->>'email')) = ANY(v_emails)$old$,
+  $new$     WHERE g.user_id IS NULL
+       AND g.state IN ('confirmed', 'partially_cancelled')
+       AND (lower(btrim(g.guest_snapshot->>'email')) = ANY(v_emails)$new$
+);
+
+DROP FUNCTION pg_temp.issue_4490_w1_patch(regprocedure, text, text);

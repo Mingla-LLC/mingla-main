@@ -2,6 +2,7 @@
 --
 -- MINGLA-INVARIANT: I-4490-VENUE-CLAIM-NOUNS-KNOWN | issue #4490 | every venue claim subject resolves with a noun the Explorer app already knows (pass, pass, booking, receipt), and a stay_group link never resolves a venue offer booking.
 -- MINGLA-INVARIANT: I-4490-PASS-IN-APP-FOLLOWS-FLAG | issue #4490 | the booking and member projections report passInApp from VENUE_PASS_APP_ONLY and never produce a QR without a pepper.
+-- MINGLA-INVARIANT: I-4490-VERIFIED-STAY-OWNER-ATTACH | issue #4490 | a confirmed anonymous Stay or venue booking may move from no owner to the account that proved its stored contact, exactly once; unpaid groups are skipped and ownership cannot transfer.
 --
 -- K claim kinds. S subjects. P projections. A authority.
 --
@@ -313,5 +314,76 @@ SELECT public.t4490_expect(format('SELECT public.mint_claim_link(%L, %L)', 'venu
 SELECT public.t4490_expect(format('SELECT public.issue_4490_text_claim_link(%L, %L::bytea, NULL)', public.t4490_id('booking'), sha256(convert_to('tok:w1', 'UTF8'))),
   '42501', NULL, 'A-5 a signed-in user cannot queue a text directly');
 SELECT public.t4490_reset();
+
+-- ===========================================================================
+-- C: a proved buyer can claim a confirmed Stay/venue booking exactly once.
+--    Unpaid groups are skipped and an owner can never be replaced.
+-- ===========================================================================
+INSERT INTO auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+VALUES
+  ('44936000-0000-4000-8000-0000000000c1', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'claimant-4490@example.test', now(), now()),
+  ('44936000-0000-4000-8000-0000000000c2', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'held-claimant-4490@example.test', now(), now()),
+  ('44936000-0000-4000-8000-0000000000c3', '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'stranger-4490@example.test', now(), now());
+INSERT INTO public.account_claim_contacts (user_id, channel, value, verified_via)
+VALUES
+  ('44936000-0000-4000-8000-0000000000c1', 'email', 'tolu@example.test', 'email_code'),
+  ('44936000-0000-4000-8000-0000000000c2', 'email', 'held-w1@example.test', 'email_code');
+
+DO $c$
+DECLARE
+  v_result jsonb;
+BEGIN
+  v_result := public.claim_attendance_by_verified_identity(
+    '44936000-0000-4000-8000-0000000000c1'
+  );
+  PERFORM public.t4490_ok(
+    (SELECT user_id = '44936000-0000-4000-8000-0000000000c1'::uuid
+       FROM public.stay_reservation_groups
+      WHERE id = public.t4490_id('booking')),
+    'C-1 verified purchase email attaches the confirmed booking'
+  );
+  PERFORM public.t4490_ok(
+    (v_result->>'count')::integer >= 1
+      AND EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements(v_result->'claimed') item
+         WHERE item->>'kind' = 'stay_group'
+           AND (item->>'id')::uuid = public.t4490_id('booking')
+      ),
+    'C-2 the sweep reports the claimed booking'
+  );
+
+  v_result := public.claim_attendance_by_verified_identity(
+    '44936000-0000-4000-8000-0000000000c2'
+  );
+  PERFORM public.t4490_ok(
+    (v_result->>'count')::integer = 0
+      AND (SELECT user_id IS NULL
+             FROM public.stay_reservation_groups
+            WHERE id = public.t4490_id('held')),
+    'C-3 an unpaid booking is skipped instead of aborting the sweep'
+  );
+
+  PERFORM public.t4490_expect(
+    format(
+      'UPDATE public.stay_reservation_groups SET user_id = %L::uuid WHERE id = %L::uuid',
+      '44936000-0000-4000-8000-0000000000c3', public.t4490_id('booking')
+    ),
+    '55000', 'stay_group_snapshot_immutable',
+    'C-4 a claimed booking cannot move to another account'
+  );
+  PERFORM public.t4490_expect(
+    format(
+      'UPDATE public.stay_reservation_groups SET user_id = %L::uuid WHERE id = %L::uuid',
+      '44936000-0000-4000-8000-0000000000c3', public.t4490_id('held')
+    ),
+    '55000', 'stay_group_snapshot_immutable',
+    'C-5 an unproved account cannot claim a booking directly'
+  );
+END
+$c$;
 
 ROLLBACK;
