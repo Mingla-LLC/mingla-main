@@ -24,6 +24,8 @@ export interface RsvpPassMessageInput {
   time: string;
   when: string;
   place: string | null;
+  /** Issue #4548 — the event has a guest pack (adds the pointer line). */
+  guestPack?: boolean;
 }
 
 export interface RsvpPassMessage {
@@ -57,6 +59,7 @@ export function buildRsvpPassMessage(
         phoneLast4: input.recipientPhoneLast4,
       },
       buttonUrl: input.buttonUrl,
+      ...(input.guestPack === true ? { guestPack: true } : {}),
       details: {
         title: input.title,
         hostOrVenue: input.brandName,

@@ -157,6 +157,9 @@ function install(world: World, seen: Seen): () => void {
             : json({ message: "redirect_invalid", code: "22023" }, 400);
         }
         if (leaf === "issue_4422_claim_unreached_guest_alerts") return json([]);
+        // #4548: the pass email asks whether the event has a guest pack (a
+        // yes/no); this journey's event has none, so no pointer line.
+        if (leaf === "event_guest_pack_exists") return json(false);
         if (
           leaf === "can_send" ||
           leaf === "mark_rsvp_notification_provider_io" ||

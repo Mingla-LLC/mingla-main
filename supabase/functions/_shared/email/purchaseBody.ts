@@ -3,6 +3,7 @@
 import { formatMoneyFromCents, formatMoneyOrFree } from "./currency.ts";
 import { MINGLA_APP_LINK_URL } from "./appLink.ts";
 import { escapeHtml } from "./escape.ts";
+import { GUEST_PACK_POINTER_LINE } from "../guestPackPointer.ts";
 import type { PurchaseEmailCopy } from "./purchaseCopy.ts";
 import { SHELL_TOKENS } from "./shell.ts";
 
@@ -66,6 +67,11 @@ export interface PurchaseBodyInput {
   receipt?: PurchaseReceipt | null;
   /** Issue #4422 — add the "get the Mingla app" line after the promise. */
   appLink?: boolean;
+  /**
+   * Issue #4548 — the event has a guest pack: add the fixed pointer line
+   * above the button. A boolean only: the pack's content never reaches email.
+   */
+  guestPack?: boolean;
 }
 
 export interface PurchaseBodyResult {
@@ -260,6 +266,14 @@ export function renderPurchaseBody(
       escapeHtml(input.copy.buttonLabel)
     }</a></td></tr></table>`
     : "";
+  // #4548 — only an email for an event with a guest pack gains the line, and
+  // only above a real button, so every other purchase email stays identical.
+  const showGuestPack = input.guestPack === true && buttonHtml !== "";
+  const guestPackHtml = showGuestPack
+    ? `<p style="margin:24px 0 0 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${
+      escapeHtml(GUEST_PACK_POINTER_LINE)
+    }</p>`
+    : "";
   const details = input.details ? renderDetails(input.details) : null;
   const receipt = input.receipt ? renderReceipt(input.receipt) : null;
   const html =
@@ -279,7 +293,7 @@ ${
         ? `<p style="margin:0 0 14px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${claim.html}</p>`
         : ""
     }
-${buttonHtml}${details?.html ?? ""}${receipt?.html ?? ""}`;
+${guestPackHtml}${buttonHtml}${details?.html ?? ""}${receipt?.html ?? ""}`;
 
   const text = [
     input.copy.heading,
@@ -292,6 +306,7 @@ ${buttonHtml}${details?.html ?? ""}${receipt?.html ?? ""}`;
       ]
       : []),
     ...(claim ? ["", claim.text] : []),
+    ...(showGuestPack ? ["", GUEST_PACK_POINTER_LINE] : []),
     ...(input.copy.buttonLabel && buttonUrl
       ? ["", `${input.copy.buttonLabel}: ${buttonUrl}`]
       : []),
