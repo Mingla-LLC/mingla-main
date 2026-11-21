@@ -100,6 +100,17 @@ INSERT INTO public.venue_spaces (id, venue_id, brand_id, name, setting, capacity
 INSERT INTO public.venue_spaces (venue_id, brand_id, name, capacity_standing, is_active, archived_at) VALUES
   ('44904000-0000-4000-9000-0000000000a1', '44904000-0000-4000-9000-000000000010', 'Old Shed', 10, false, now());
 
+-- [TEST-MOD-APPROVED #4490] W2 fix 1: guest list shipped too (20280809414490), so
+-- every feature is built and none is left to be P-5a's unbuilt example. The
+-- filter is still proven: for this transaction the built list is every feature
+-- except guest list (a stand-in for a phase that has not shipped). It is set
+-- here, before the first page read, because PostgreSQL keeps a SQL function's
+-- plan (with this IMMUTABLE list folded in) for the rest of the transaction.
+-- No other assertion reads guest list. Same assertions.
+CREATE OR REPLACE FUNCTION public.issue_4490_built_features()
+RETURNS text[] LANGUAGE sql IMMUTABLE SET search_path = '' AS $f$
+  SELECT array_remove(public.issue_4490_feature_keys(), 'guest_list'); $f$;
+
 -- P-1 grants -------------------------------------------------------------------------
 SELECT public.t4490_ok(
   has_function_privilege('anon', 'public.pg_public_venue_page(text,text)', 'EXECUTE')
@@ -149,6 +160,8 @@ SELECT public.t4490_ok(
 
 -- P-5 features filter -------------------------------------------------------------------
 -- [TEST-MOD-APPROVED #4490] P2-P6 shipped entry, group packages, private hire, by the hour and memberships; the unbuilt example is now guest list.
+-- [TEST-MOD-APPROVED #4490] W2 fix 1: the built list is the stand-in set before
+-- P-1 (guest list left out), see there.
 INSERT INTO public.venue_features (venue_id, brand_id, feature_key, enabled) VALUES
   ('44904000-0000-4000-9000-0000000000a1', '44904000-0000-4000-9000-000000000010', 'guest_list', true),
   ('44904000-0000-4000-9000-0000000000a1', '44904000-0000-4000-9000-000000000010', 'events_here', true),

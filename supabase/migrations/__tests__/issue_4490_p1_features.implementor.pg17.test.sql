@@ -199,8 +199,17 @@ $t3e$;
 SELECT public.t4490_reset();
 SELECT public.t4490_ok(NOT ordering_enabled, 'T-3f cascade off wrote ordering_enabled = false')
 FROM public.venue_ordering_settings WHERE venue_id = '44900000-0000-4000-9000-0000000000a1';
-SELECT public.t4490_as('44900000-0000-4000-8000-000000000001');
 -- [TEST-MOD-APPROVED #4490] memberships shipped in P6; guest list (ruled out of the first build) is the unbuilt example now.
+-- [TEST-MOD-APPROVED #4490] W2 fix 1: guest list shipped too (20280809414490), so
+-- every feature is built and none is left to be the unbuilt example. The guard
+-- is still proven: for this transaction the built list is every feature except
+-- guest list (a stand-in for a phase that has not shipped), as the P-3+ block
+-- below already does with every feature. Same assertions, same codes.
+SELECT public.t4490_reset();
+CREATE OR REPLACE FUNCTION public.issue_4490_built_features()
+RETURNS text[] LANGUAGE sql IMMUTABLE SET search_path = '' AS $f$
+  SELECT array_remove(public.issue_4490_feature_keys(), 'guest_list'); $f$;
+SELECT public.t4490_as('44900000-0000-4000-8000-000000000001');
 SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1','guest_list',true,NULL,NULL,NULL,'t3-pick-1',true)$$,
   'P0001', 'feature_not_available:guest_list', 'T-3g a feature whose phase has not shipped cannot be switched on (even by cascade)');
 SELECT public.t4490_expect($$SELECT public.issue_4490_set_venue_feature('44900000-0000-4000-9000-0000000000a1','guest_list',true,NULL,NULL,NULL,'t3-guest-1')$$,
