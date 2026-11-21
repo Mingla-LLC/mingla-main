@@ -48,6 +48,22 @@ const ADMITTED = new Set(["success", "duplicate"]);
 // a duplicate scan no longer is (it may repeat an old ticket on purpose).
 export const DOOR_FULL_ANSWERS_RECEIPTS: ReadonlySet<string> = new Set(["success"]);
 
+/**
+ * #4541 review fix 1: the scan response offers "See all answers" only when this
+ * scan is itself a receipt (a fresh admission). A duplicate scan would only meet
+ * "scan their ticket again" on tap, so its flag is turned off here (Host 1.3.0
+ * hides the button whenever the flag is false, with no app update).
+ */
+export function doorAnswersForScanResult<T extends { fullAnswers: boolean }>(
+  doorAnswers: T | null,
+  scanResult: unknown,
+): T | null {
+  if (doorAnswers === null || !doorAnswers.fullAnswers) return doorAnswers;
+  return typeof scanResult === "string" && DOOR_FULL_ANSWERS_RECEIPTS.has(scanResult)
+    ? doorAnswers
+    : { ...doorAnswers, fullAnswers: false };
+}
+
 type QueryResult = { data: unknown; error: unknown };
 
 const nameAdmit = (metadata: unknown): boolean =>
@@ -190,7 +206,12 @@ export function createHandler(deps: ScanTicketDeps) {
             ? readDoorAnswers(supabase, userData.user.id, eventId, orderId, ticketId, deadline.signal)
             : Promise.resolve(null),
         ]);
-        return jsonResponse(withDoorFields(scan, extras, booked, doorAnswers));
+        return jsonResponse(withDoorFields(
+          scan,
+          extras,
+          booked,
+          doorAnswersForScanResult(doorAnswers, scan.result),
+        ));
       } finally {
         clearTimeout(timer);
       }

@@ -1619,6 +1619,13 @@ BEGIN
   IF NOT FOUND THEN RETURN 'skipped'; END IF;
   SELECT s.order_id INTO v_order FROM public.ticket_checkout_sessions s WHERE s.id = p_checkout_session_id;
   IF v_order IS NULL THEN RETURN 'skipped'; END IF;
+  -- Review fix 4: an order that is no longer paid (refunded or cancelled before
+  -- the sweep reached it) never gains an answer row; its stash is dropped.
+  IF NOT EXISTS (SELECT 1 FROM public.orders o
+                  WHERE o.id = v_order AND o.payment_status IN ('paid', 'partial_refund')) THEN
+    DELETE FROM public.brand_form_checkout_answers WHERE checkout_session_id = p_checkout_session_id;
+    RETURN 'skipped';
+  END IF;
   IF NOT pg_try_advisory_xact_lock(public.brand_form_person_lock_key(v_s.form_id, 'order', v_order)) THEN
     RETURN 'busy';
   END IF;
@@ -1677,8 +1684,10 @@ $fn$;
 -- ago and are still here (a busy lock or an error at finalize). One row per
 -- sub-transaction; SKIP LOCKED and try-locks only, so the sweep never waits on
 -- a live checkout or a guest's edit. stuck: rows tried 5 times or 30 minutes old.
+-- Review fix 6: a short lock_timeout, so a row lock held by a refund (the
+-- answer's foreign key reads the order row) is a "busy" retry, never a wait.
 CREATE FUNCTION public.brand_form_checkout_answers_retry(p_limit integer DEFAULT 50) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = '' SET lock_timeout = '2s'
 AS $fn$
 DECLARE
   v_row record; v_outcome text;
@@ -1708,7 +1717,12 @@ BEGIN
            WHERE checkout_session_id = v_row.checkout_session_id;
         END IF;
       END IF;
-    EXCEPTION WHEN OTHERS THEN
+    EXCEPTION WHEN lock_not_available THEN
+      v_skipped := v_skipped + 1;
+      UPDATE public.brand_form_checkout_answers
+         SET retry_count = LEAST(retry_count + 1, 1000), last_error = 'busy'
+       WHERE checkout_session_id = v_row.checkout_session_id;
+    WHEN OTHERS THEN
       v_failed := v_failed + 1;
       BEGIN
         UPDATE public.brand_form_checkout_answers
@@ -1933,8 +1947,11 @@ DECLARE
   v_out jsonb := '{}'::jsonb; v_n integer; v_m integer;
 BEGIN
   BEGIN
+    -- Review fix 2: an account-level answer (user_id) counts for the brand's
+    -- later pages too, so it is never purged by its first page's end; it is
+    -- purged 12 months after its last change, in the next step.
     DELETE FROM public.brand_form_responses r
-     WHERE r.event_id IS NOT NULL
+     WHERE r.event_id IS NOT NULL AND r.user_id IS NULL
        AND COALESCE((SELECT max(d.end_at) FROM public.event_dates d WHERE d.event_id = r.event_id),
                     (SELECT e.deleted_at FROM public.events e WHERE e.id = r.event_id))
            < now() - interval '12 months';
@@ -1945,7 +1962,7 @@ BEGIN
   v_out := v_out || jsonb_build_object('endedEventResponses', v_n);
   BEGIN
     DELETE FROM public.brand_form_responses r
-     WHERE r.event_id IS NULL AND r.updated_at < now() - interval '12 months';
+     WHERE (r.event_id IS NULL OR r.user_id IS NOT NULL) AND r.updated_at < now() - interval '12 months';
     GET DIAGNOSTICS v_n = ROW_COUNT;
   EXCEPTION WHEN OTHERS THEN
     RAISE WARNING '#4541 retention: page-less responses failed: % (%)', SQLERRM, SQLSTATE; v_n := -1;

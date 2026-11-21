@@ -141,9 +141,12 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD #4514] Re-derived after #4514 added the locally declared
   // brand forms one-question-model gate (i-4514-one-question-model, +2 batch:A
   // executions: self-test and plain). Read off the plan command as above.
-  executions: 1069,
-  loadsSeconds: [385.9, 386.0, 386.0],
-  counts: [355, 357, 357],
+  // [TEST-MOD #4541] Re-derived after #4541 added the locally declared
+  // no-client-service-role-rpc gate (issue-4541-no-client-service-role-rpc,
+  // +2 batch:A executions: self-test and plain). Read off the plan command as above.
+  executions: 1071,
+  loadsSeconds: [386.0, 386.0, 386.1],
+  counts: [356, 357, 358],
 });
 
 const tempDir = (label) =>

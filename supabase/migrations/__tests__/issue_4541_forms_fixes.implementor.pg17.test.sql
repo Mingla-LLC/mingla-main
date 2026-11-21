@@ -799,7 +799,10 @@ BEGIN
         AND NOT has_function_privilege('authenticated', v_sig, 'EXECUTE'),
       'T-13 service role only: ' || v_sig);
     PERFORM pg_temp.ok((SELECT p.prosecdef OR p.provolatile = 'i' FROM pg_proc p WHERE p.oid = v_sig::regprocedure)
-        AND (SELECT p.proconfig FROM pg_proc p WHERE p.oid = v_sig::regprocedure) = ARRAY['search_path=""'],
+        -- An empty search path; the retry sweep alone also carries its 2 s lock_timeout (RF-6).
+        AND (SELECT 'search_path=""' = ANY (p.proconfig)
+                    AND cardinality(array_remove(array_remove(p.proconfig, 'search_path=""'), 'lock_timeout=2s')) = 0
+               FROM pg_proc p WHERE p.oid = v_sig::regprocedure),
       'T-13 definer with an empty search path: ' || v_sig);
   END LOOP;
   FOREACH v_sig IN ARRAY ARRAY[
@@ -897,6 +900,100 @@ BEGIN
     PERFORM pg_temp.ok(v_r LIKE '42501:permission denied%', 'T-42 anon is refused: ' || left(v_call, 60));
   END LOOP;
   RESET ROLE;
+END;
+$t$;
+
+-- ═══ Wave 1 review fixes (RF-2, RF-4, RF-5, RF-6) ═══════════════════════════════
+-- FAILS-ON-REVERT: dropping "r.user_id IS NULL" from the ended-event purge fails RF-2a;
+-- dropping the payment-status check in brand_form_promote_stash fails RF-4; dropping the
+-- manager limit (60) fails RF-5; dropping SET lock_timeout or the lock_not_available
+-- handler in brand_form_checkout_answers_retry fails RF-6.
+DO $t$
+DECLARE v jsonb; v_live uuid; v_stale uuid; i integer;
+BEGIN
+  -- RF-2: an account-level answer first given at a page that ended 12 months and a day
+  -- ago still counts for the brand's later pages; only 12 months without a change purges it.
+  v_live := pg_temp.resp(pg_temp.u('F'), pg_temp.u('Fv'), pg_temp.u('e13'), 'user', pg_temp.u('b3'), 'Still mine');
+  v_stale := pg_temp.resp(pg_temp.u('F'), pg_temp.u('Fv'), pg_temp.u('e13'), 'user', pg_temp.u('b4'), 'Long untouched');
+  UPDATE public.brand_form_responses SET updated_at = now() - interval '13 months' WHERE id = v_stale;
+  PERFORM pg_temp.ok(public.brand_form_person_row_at_event(pg_temp.u('F'), pg_temp.u('b3'), pg_temp.u('e1')) = v_live,
+    'RF-2 the account-level answer counts at the brand''s upcoming page');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_retention_purge();
+  RESET ROLE;
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.brand_form_responses WHERE id = v_live),
+    'RF-2a an account-level answer is not purged by its first page''s end (' || v::text || ')');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE id = v_stale),
+    'RF-2b an account-level answer unchanged for 12 months is purged');
+
+  -- RF-4: a stash whose order was refunded before the sweep reached it is dropped, no answer.
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_name, buyer_email, buyer_phone_e164,
+    total_cents, currency, payment_method, payment_status, source, is_door_sale)
+  VALUES (pg_temp.u('o_ref2'), pg_temp.u('e1'), pg_temp.u('ug1'), 'Gia Going', 'i4541ma-go@example.test',
+          '+12025559001', 1000, 'USD', 'online_card', 'refunded', 'online_checkout', false);
+  INSERT INTO public.ticket_checkout_sessions(id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164,
+    idempotency_key, expires_at, status, total_cents, currency, buyer_user_id, order_id)
+  VALUES (pg_temp.u('s_ref'), pg_temp.u('e1'), pg_temp.u('brand'), 'Gia Going', 'i4541ma-go@example.test',
+          '+12025559001', 'i4541ma-sref', now() + interval '1 hour', 'paid_completed', 1000, 'USD',
+          pg_temp.u('ug1'), pg_temp.u('o_ref2'));
+  PERFORM set_config('session_replication_role', 'origin', true);
+  INSERT INTO public.brand_form_checkout_answers (checkout_session_id, event_id, form_id, version_id, answers, updated_at)
+  VALUES (pg_temp.u('s_ref'), pg_temp.u('e1'), pg_temp.u('F'), pg_temp.u('Fv'), pg_temp.ans('Refunded'), now() - interval '3 minutes');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_answers_retry(50);
+  RESET ROLE;
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE order_id = pg_temp.u('o_ref2'))
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = pg_temp.u('s_ref')),
+    'RF-4 a refunded order never gains an answer; its stash is dropped (' || v::text || ')');
+
+  -- RF-6: the sweep never waits on a lock. A lock timeout is a busy retry, not a failure.
+  PERFORM pg_temp.ok((SELECT 'lock_timeout=2s' = ANY (p.proconfig) FROM pg_proc p
+                       WHERE p.oid = 'public.brand_form_checkout_answers_retry(integer)'::regprocedure),
+    'RF-6 the retry sweep runs with a 2 second lock_timeout');
+  PERFORM set_config('session_replication_role', 'replica', true);
+  INSERT INTO public.orders(id, event_id, buyer_user_id, buyer_name, buyer_email, buyer_phone_e164,
+    total_cents, currency, payment_method, payment_status, source, is_door_sale)
+  VALUES (pg_temp.u('o_lk'), pg_temp.u('e1'), pg_temp.u('uh2'), 'Hal Two', 'i4541ma-h2@example.test',
+          '+12025559009', 1000, 'USD', 'online_card', 'paid', 'online_checkout', false);
+  INSERT INTO public.ticket_checkout_sessions(id, event_id, brand_id, buyer_name, buyer_email, buyer_phone_e164,
+    idempotency_key, expires_at, status, total_cents, currency, buyer_user_id, order_id)
+  VALUES (pg_temp.u('s_lk'), pg_temp.u('e1'), pg_temp.u('brand'), 'Hal Two', 'i4541ma-h2@example.test',
+          '+12025559009', 'i4541ma-slk', now() + interval '1 hour', 'paid_completed', 1000, 'USD',
+          pg_temp.u('uh2'), pg_temp.u('o_lk'));
+  PERFORM set_config('session_replication_role', 'origin', true);
+  INSERT INTO public.brand_form_checkout_answers (checkout_session_id, event_id, form_id, version_id, answers, updated_at)
+  VALUES (pg_temp.u('s_lk'), pg_temp.u('e1'), pg_temp.u('F'), pg_temp.u('Fv'), pg_temp.ans('Busy'), now() - interval '3 minutes');
+  CREATE FUNCTION pg_temp.ma_locked() RETURNS trigger LANGUAGE plpgsql AS $b$
+  BEGIN RAISE EXCEPTION 'canceling statement due to lock timeout' USING ERRCODE = '55P03'; END; $b$;
+  EXECUTE 'CREATE TRIGGER ma_locked BEFORE INSERT ON public.brand_form_responses FOR EACH ROW EXECUTE FUNCTION pg_temp.ma_locked()';
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_checkout_answers_retry(50);
+  RESET ROLE;
+  EXECUTE 'DROP TRIGGER ma_locked ON public.brand_form_responses';
+  PERFORM pg_temp.ok((v->>'failed')::integer = 0 AND (v->>'skipped')::integer >= 1
+      AND (SELECT last_error FROM public.brand_form_checkout_answers WHERE checkout_session_id = pg_temp.u('s_lk')) = 'busy',
+    'RF-6 a lock timeout is counted busy and left for the next sweep (' || v::text || ')');
+  DELETE FROM public.brand_form_checkout_answers WHERE checkout_session_id = pg_temp.u('s_lk');
+
+  -- RF-5: the per-actor limits. Managers: 60 reads per 10 minutes (the 21st passes, the
+  -- 61st is refused). Team scanners: 20 (covered in T-10).
+  DELETE FROM public.brand_form_door_reads WHERE actor_id = pg_temp.u('em');
+  INSERT INTO public.brand_form_door_reads (actor_id, event_id, subject_kind, subject_id, via, result)
+  SELECT pg_temp.u('em'), pg_temp.u('er'), 'rsvp', gen_random_uuid(), 'scan', 'line_only' FROM generate_series(1, 25);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_door_full_answers(pg_temp.u('em'), pg_temp.u('er'), jsonb_build_object('kind', 'rsvp', 'id', pg_temp.u('r_go')), 'search');
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->>'state' <> 'rate_limited', 'RF-5 a manager''s 26th read in 10 minutes still passes (' || v::text || ')');
+  INSERT INTO public.brand_form_door_reads (actor_id, event_id, subject_kind, subject_id, via, result)
+  SELECT pg_temp.u('em'), pg_temp.u('er'), 'rsvp', gen_random_uuid(), 'scan', 'line_only' FROM generate_series(1, 34);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_door_full_answers(pg_temp.u('em'), pg_temp.u('er'), jsonb_build_object('kind', 'rsvp', 'id', pg_temp.u('r_maybe')), 'search');
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->>'state' = 'rate_limited', 'RF-5 a manager''s 61st read in 10 minutes is rate_limited (' || v::text || ')');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.brand_form_door_reads WHERE actor_id = pg_temp.u('em')
+                       AND created_at > now() - interval '10 minutes') = 61,
+    'RF-5 the refused read is logged too');
 END;
 $t$;
 

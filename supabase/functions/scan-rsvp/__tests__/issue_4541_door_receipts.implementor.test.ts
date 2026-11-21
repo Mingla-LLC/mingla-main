@@ -34,3 +34,27 @@ Deno.test("T-DUP SC-47 a duplicate scan is not a receipt, though it still draws 
     { kind: "rsvp", id: PRIMARY },
   );
 });
+
+// #4541 review fix 1 (BLOCKER): a duplicate RSVP scan must not offer "See all
+// answers" (Host 1.3.0 shows the button whenever fullAnswers is true).
+// FAILS-ON-REVERT: dropping rsvpDoorAnswersForScanResult from index.ts fails T-FLAG-SRC;
+// letting a duplicate keep the flag fails T-FLAG-DUP.
+import { rsvpDoorAnswersForScanResult } from "../doorAnswers.ts";
+
+const view = { state: "answered", lines: ["Diet: vegan"], fullAnswers: true };
+
+Deno.test("T-FLAG-DUP a duplicate RSVP scan never offers See all answers", () => {
+  assertEquals(rsvpDoorAnswersForScanResult(view, "duplicate")?.fullAnswers, false);
+  assertEquals(rsvpDoorAnswersForScanResult(view, "duplicate")?.lines, ["Diet: vegan"]);
+});
+
+Deno.test("T-FLAG-FRESH a fresh RSVP admission keeps the flag", () => {
+  assertEquals(rsvpDoorAnswersForScanResult(view, "success")?.fullAnswers, true);
+  assertEquals(rsvpDoorAnswersForScanResult(null, "success"), null);
+});
+
+Deno.test("T-FLAG-SRC the RSVP scan response passes the door answers through the gate", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(src.includes("rsvpDoorAnswersForScanResult(doorAnswers, result.result)"));
+  assert(!/result = \{ \.\.\.result, doorAnswers \}/.test(src));
+});

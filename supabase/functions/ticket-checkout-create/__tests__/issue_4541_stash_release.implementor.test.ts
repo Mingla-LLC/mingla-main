@@ -34,12 +34,27 @@ interface Update {
   is: Array<[string, unknown]>;
 }
 
-function client(stash: { data: unknown; error: { message: string; details?: string } | null }) {
+/** A session row as the database holds it; the update applies only when every filter matches. */
+type SessionRow = Record<string, unknown>;
+const UNPAID: SessionRow = {
+  id: SESSION,
+  status: "pending",
+  order_id: null,
+  stripe_payment_intent_id: null,
+  stripe_checkout_session_id: null,
+  provider_attempt_id: null,
+};
+
+function client(
+  stash: { data: unknown; error: { message: string; details?: string } | null },
+  row: SessionRow = { ...UNPAID },
+) {
   const updates: Update[] = [];
   const rpcs: string[] = [];
   return {
     updates,
     rpcs,
+    row,
     rpc(name: string, _args: Record<string, unknown>) {
       rpcs.push(name);
       return Promise.resolve(stash);
@@ -49,6 +64,7 @@ function client(stash: { data: unknown; error: { message: string; details?: stri
       const chain = {
         update(values: Record<string, unknown>) {
           u.values = values;
+          updates.push(u);
           return chain;
         },
         eq(col: string, val: unknown) {
@@ -57,8 +73,14 @@ function client(stash: { data: unknown; error: { message: string; details?: stri
         },
         is(col: string, val: unknown) {
           u.is.push([col, val]);
-          updates.push(u);
-          return Promise.resolve({ error: null });
+          return chain;
+        },
+        // Awaiting the builder runs the update against the row, like PostgREST.
+        then(resolve: (v: { error: null }) => void) {
+          const matches = u.eq.every(([c, v]) => row[c] === v) &&
+            u.is.every(([c, v]) => row[c] === v);
+          if (matches) Object.assign(row, u.values);
+          resolve({ error: null });
         },
       };
       return chain;
@@ -90,7 +112,13 @@ function assertReleased(c: ReturnType<typeof client>, reason: string) {
   assertEquals(u.values.failure_reason, reason);
   assert(Date.parse(String(u.values.expires_at)) <= Date.now());
   assertEquals(u.eq, [["id", SESSION]]);
-  assertEquals(u.is, [["order_id", null]]);
+  assertEquals(u.is, [
+    ["order_id", null],
+    ["stripe_payment_intent_id", null],
+    ["stripe_checkout_session_id", null],
+    ["provider_attempt_id", null],
+  ]);
+  assertEquals(c.row.status, "failed");
 }
 
 Deno.test("SC-14 a stash database error answers 409 brand_form_stash_failed and releases the session", async () => {
@@ -133,8 +161,40 @@ Deno.test("SC-14 a kept stash (or a finalized replay) continues and releases not
   assertEquals(c.updates.length, 0);
 });
 
-Deno.test("releaseUnpaidSession never touches a session that has its order", async () => {
+Deno.test("releaseUnpaidSession releases an unpaid session", async () => {
   const c = client({ data: null, error: null });
   await releaseUnpaidSession(c, SESSION, "queue_join_failed");
   assertReleased(c, "queue_join_failed");
+});
+
+// #4541 review fix 3: a client retry with the same idempotency key can return a
+// session that already carries a payment reference. A stash refusal then must
+// answer its refusal WITHOUT releasing the session (the payment may still
+// complete; releasing would free held stock and oversell).
+// FAILS-ON-REVERT: deleting any of the three payment-reference filters in
+// releaseUnpaidSession fails T-PAID (that row is then marked failed).
+Deno.test("T-PAID a session with a payment reference is never released by a stash refusal", async () => {
+  for (const ref of [
+    { stripe_payment_intent_id: "pi_123" },
+    { stripe_payment_intent_id: "mingla_45410000-0000-4000-8000-0000000005e1" },
+    { stripe_checkout_session_id: "cs_123" },
+    { provider_attempt_id: "45410000-0000-4000-8000-0000000005a9" },
+    { order_id: "45410000-0000-4000-8000-0000000005a8" },
+  ]) {
+    const row = { ...UNPAID, ...ref };
+    const c = client({ data: null, error: { message: "could not write" } }, row);
+    const res = await stashBrandFormOrRelease(c, {
+      checkoutSessionId: SESSION,
+      eventId: EVENT,
+      parsed: PARSED,
+      buyerUserId: null,
+      ticketLinkHash: null,
+      checkOutcome: "stash",
+    }, respond);
+    assert(res !== null);
+    assertEquals(res.status, 409);
+    assertEquals(await res.json(), { error: "brand_form_stash_failed" });
+    assertEquals(row.status, "pending", JSON.stringify(ref));
+    assertEquals(row.expires_at, undefined);
+  }
 });

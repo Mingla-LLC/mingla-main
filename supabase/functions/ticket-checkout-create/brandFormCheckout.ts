@@ -249,7 +249,7 @@ type CheckoutClient = any;
  * holds are counted from status and expires_at; private ticket-link units are
  * counted the same way). Used for an infinity hold that never joined the queue
  * (#2947) and, #4541 R1.13, for every stash refusal below. Never touches a
- * session that already has its order.
+ * session that already has its order or any payment reference.
  */
 export async function releaseUnpaidSession(
   client: CheckoutClient,
@@ -266,7 +266,15 @@ export async function releaseUnpaidSession(
       updated_at: now,
     })
     .eq("id", checkoutSessionId)
-    .is("order_id", null) ?? { error: null };
+    .is("order_id", null)
+    // #4541 review fix 3: a session that already has a payment reference (a
+    // card payment intent or a Paystack reference, both kept in
+    // stripe_payment_intent_id; a hosted checkout session; or a claimed
+    // provider attempt) may still be paid. It is never released: the caller
+    // returns its refusal and the payment's own outcome settles the session.
+    .is("stripe_payment_intent_id", null)
+    .is("stripe_checkout_session_id", null)
+    .is("provider_attempt_id", null) ?? { error: null };
   if (error) {
     console.error("[ticket-checkout-create] session release failed", {
       reason,

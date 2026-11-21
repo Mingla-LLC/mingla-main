@@ -76,3 +76,29 @@ Deno.test("T-DUP SC-47 a duplicate scan is not a receipt", async () => {
   assertEquals(h.calls.length, 0);
   assertEquals([...DOOR_FULL_ANSWERS_RECEIPTS], ["success"]);
 });
+
+// #4541 review fix 1 (BLOCKER): Host 1.3.0 shows "See all answers" whenever the
+// scan response says fullAnswers: true. A duplicate scan is not a receipt, so it
+// must never carry the flag, or the host loops on "scan their ticket again".
+// FAILS-ON-REVERT: dropping doorAnswersForScanResult from the scan response fails T-FLAG-SRC;
+// letting a duplicate keep the flag fails T-FLAG-DUP.
+import { doorAnswersForScanResult } from "../index.ts";
+
+const view = { state: "answered", header: null, lines: ["Diet: vegan"], fullAnswers: true };
+
+Deno.test("T-FLAG-DUP a duplicate scan never offers See all answers", () => {
+  assertEquals(doorAnswersForScanResult(view, "duplicate")?.fullAnswers, false);
+  assertEquals(doorAnswersForScanResult(view, "duplicate")?.lines, ["Diet: vegan"]);
+  assertEquals(doorAnswersForScanResult(view, undefined)?.fullAnswers, false);
+});
+
+Deno.test("T-FLAG-FRESH a fresh admission keeps the host's flag", () => {
+  assertEquals(doorAnswersForScanResult(view, "success")?.fullAnswers, true);
+  assertEquals(doorAnswersForScanResult({ ...view, fullAnswers: false }, "success")?.fullAnswers, false);
+  assertEquals(doorAnswersForScanResult(null, "success"), null);
+});
+
+Deno.test("T-FLAG-SRC the scan response passes the door answers through the gate", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assert(/withDoorFields\(\s*scan,\s*extras,\s*booked,\s*doorAnswersForScanResult\(doorAnswers, scan\.result\),?\s*\)/.test(src));
+});

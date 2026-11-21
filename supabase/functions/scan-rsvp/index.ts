@@ -8,6 +8,7 @@ import {
 import {
   ownsRecentAdmittedScan,
   RSVP_DOOR_ANSWERS_DEADLINE_MS,
+  rsvpDoorAnswersForScanResult,
   rsvpDoorSubjectFromScanResult,
 } from "./doorAnswers.ts";
 
@@ -165,7 +166,8 @@ serve(async (req) => {
         subject,
         deadline.signal,
       );
-      if (doorAnswers !== null) result = { ...result, doorAnswers };
+      const shown = rsvpDoorAnswersForScanResult(doorAnswers, result.result);
+      if (shown !== null) result = { ...result, doorAnswers: shown };
     } finally {
       clearTimeout(timer);
     }

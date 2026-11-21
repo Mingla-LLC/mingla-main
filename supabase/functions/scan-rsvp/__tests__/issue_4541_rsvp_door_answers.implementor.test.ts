@@ -68,7 +68,9 @@ Deno.test("#4541 admission stays independent of the 1.5 second optional door rea
   assert(scanCall >= 0 && subjectRead > scanCall && optionalRead > subjectRead);
   assertStringIncludes(source, "const deadline = new AbortController()");
   assertStringIncludes(source, "setTimeout(() => deadline.abort(), RSVP_DOOR_ANSWERS_DEADLINE_MS)");
-  assertStringIncludes(source, "if (doorAnswers !== null) result = { ...result, doorAnswers }");
+  // #4541 review fix 1: the line rides on the scan through the receipt gate.
+  assertStringIncludes(source, "const shown = rsvpDoorAnswersForScanResult(doorAnswers, result.result);");
+  assertStringIncludes(source, "if (shown !== null) result = { ...result, doorAnswers: shown };");
   assert(!source.includes("return respond({ error: \"door_answers_failed\" }, 500);\n    } finally"),
     "the optional line read must not replace an admitted scan with an error");
 });
