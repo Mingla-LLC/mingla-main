@@ -8,6 +8,15 @@ const builder = join(packageRoot, "scripts/build-invite-critical-entry.mjs");
 
 type ScriptKind = "runtime" | "common" | "index" | "extra";
 
+// #2331 — every exported index.html carries the lean strip after #root (scripts/inject-mobile-blur-css.mjs).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const privacyRuntime = require("../server/publicPrivacyRuntime.js") as {
+  privacyBarCollapsedMarkup: () => string;
+  privacyBarCollapsedRuntimeSource: () => string;
+};
+const htmlShellStrip =
+  `${privacyRuntime.privacyBarCollapsedMarkup()}<script id="mingla-privacy-strip-shell">${privacyRuntime.privacyBarCollapsedRuntimeSource()}__minglaPrivacyBar();</script>`;
+
 function scriptTag(kind: ScriptKind): string {
   return `<script nonce="nonce-${kind}" data-order="${kind}" src="/_expo/static/js/web/${kind}-922.js?v=independent" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>`;
 }
@@ -19,7 +28,7 @@ function makeExport(order: ScriptKind[] = ["runtime", "common", "index"]): strin
   for (const kind of new Set(order)) writeFileSync(join(jsDir, `${kind}-922.js`), `/* ${kind} */`);
   writeFileSync(
     join(dir, "index.html"),
-    `<!doctype html><html><body><div id="root"></div>${order.map(scriptTag).join("")}<span id="tail"></span></body></html>`,
+    `<!doctype html><html><body><div id="root"></div>${htmlShellStrip}${order.map(scriptTag).join("")}<span id="tail"></span></body></html>`,
   );
   return dir;
 }

@@ -161,7 +161,7 @@ export const RULES = [
     why: "every pinned chat screen is capped clear of the privacy strip",
     has: ["webPrivacyMaxHeight()"],
   })),
-  { file: "src/components/messages/webViewportPin.ts", why: "the pin reads the privacy inset", has: ["--mingla-privacy-inset"] },
+  { file: "src/components/messages/webViewportPin.ts", why: "the pin is capped by the app root, which ends at the privacy strip (#2331)", has: ['document.getElementById("root")'] },
   {
     file: "src/components/programs/ProgramKit.tsx",
     why: "a long program row value wraps instead of crushing the row title",

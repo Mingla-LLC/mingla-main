@@ -132,7 +132,7 @@ test('canonical footer: columns, tagline, cross-link, and no "Privacy choices"',
   assert.match(code(read('components/site/host-page.tsx')), /<SiteFooter surface="host" \/>/)
   assert.match(code(read('components/landing/icp-landing.tsx')), /<SiteFooter surface="host" \/>/)
   const css = code(read('components/marketing/site-footer.css'))
-  assert.match(css, /padding: 72px 0 calc\(48px \+ var\(--mingla-privacy-inset, 0px\)\)/, 'clears the #4318 strip')
+  assert.match(css, /padding: 72px 0 calc\(48px \+ var\(--mingla-privacy-strip\)\)/, 'clears the #4318 strip')
   assert.doesNotMatch(css, /position:\s*fixed/)
 })
 

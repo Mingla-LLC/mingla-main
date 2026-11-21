@@ -411,8 +411,8 @@ export function LinksExperience({ src, nowIso, pins }: LinksExperienceProps) {
       id="main"
       ref={rootRef}
       data-fitted={fitted ? '1' : '0'}
-      className={cn(styles.lk, 'h-[calc(100svh-var(--mingla-privacy-inset,0px))] overflow-hidden')}
-      style={{ height: 'calc(100dvh - var(--mingla-privacy-inset, 0px))' }}
+      className={cn(styles.lk, 'h-[calc(100svh-var(--mingla-privacy-strip))] overflow-hidden')}
+      style={{ height: 'calc(100dvh - var(--mingla-privacy-strip))' }}
     >
       {/* Without scripts the fit never runs: show everything rather than nothing. */}
       <noscript>

@@ -315,7 +315,7 @@ html:has([data-landing]) body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(25px + clamp(28px, 5vh, 56px) + var(--mingla-privacy-inset, 0px));
+  bottom: calc(25px + clamp(28px, 5vh, 56px) + var(--mingla-privacy-strip));
 }
 [data-landing] .lp-hero h1 {
   font-family: var(--serif);
@@ -860,7 +860,7 @@ html:has([data-landing]) body {
   --line: rgba(17, 17, 16, 0.12);
   --out: cubic-bezier(0.22, 1, 0.36, 1);
   position: fixed;
-  inset: 0;
+  inset: 0 0 var(--mingla-privacy-strip) 0;
   z-index: 100;
   background: rgba(17, 17, 16, 0.5);
   display: flex;

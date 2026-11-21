@@ -472,7 +472,8 @@ const layout = (page: Page) => page.evaluate(() => {
     html: document.documentElement.getBoundingClientRect().height,
     root: root ? root.getBoundingClientRect().height : -1,
     // #4318 — the permanent privacy strip's height (its inset).
-    inset: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mingla-privacy-inset')) || 0,
+    // #2331 — the band is the CSS constant --mingla-privacy-strip: the strip's own height.
+      inset: document.querySelector('.mps')?.getBoundingClientRect().height ?? 0,
     stripBottom: document.querySelector('[data-testid="privacy-strip"]')?.getBoundingClientRect().bottom ?? -1,
     scrollers: Array.from(document.querySelectorAll('#root *'))
       .filter((element) => /(auto|scroll)/.test(getComputedStyle(element).overflowY))
@@ -720,7 +721,7 @@ test.describe('#3214 tester adversarial — desktop width', () => {
     expect(Math.round(measured.stripBottom)).toBe(800)
     expect(measured.html).toBe(measured.viewport)
     // The handed-over scroll owner: #root itself while the strip holds the
-    // inset (html[data-mingla-privacy-bar="shown"] #root{overflow-y:auto}),
+    // band (#root{position:fixed;...;overflow-y:auto}, #2331),
     // or a scroll area inside it.
     const owner = await page.evaluate(() => {
       const root = document.getElementById('root')

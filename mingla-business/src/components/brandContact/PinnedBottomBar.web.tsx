@@ -3,9 +3,10 @@
  * must NEVER be covered (tester P1-1: at 375px the floating "Ad privacy
  * choices" button sat on top of Send).
  *
- * Two layers, so it works before and after #2331's full-width privacy bar:
- *   1. bottom = var(--mingla-privacy-inset, 0px) — #2331's contract: its bar
- *      publishes its height there and the composer sits on top of it.
+ * Two layers:
+ *   1. bottom = 0 — #2331 (I-PRIVACY-BAR-NEVER-OCCLUDES): the app root is the
+ *      fixed, layout-contained box that ends at the privacy strip's top edge,
+ *      so `position: fixed; bottom: 0` here already sits on the strip.
  *   2. a measured lift — anything else floating over the composer's footprint
  *      (today: the "Ad privacy choices" button or the consent card; tomorrow:
  *      whatever floats there) is found with document.elementsFromPoint, and
@@ -128,7 +129,7 @@ export function PinnedBottomBar({ background, children, onLiftChange }: PinnedBo
     position: "fixed",
     left: 0,
     right: 0,
-    bottom: `calc(var(--mingla-privacy-inset, 0px) + ${lift}px)`,
+    bottom: lift,
     zIndex: 20,
     background,
   };

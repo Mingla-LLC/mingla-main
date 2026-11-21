@@ -25,7 +25,12 @@ test('the strip is fixed to bottom:0 with the safe-area inset height and its own
   const mps = banner.match(/\.mps\{[^}]*\}/)?.[0] ?? ''
   assert.match(mps, /position:fixed/)
   assert.match(mps, /bottom:0;/)
-  assert.match(mps, /height:calc\(28px \+ max\(env\(safe-area-inset-bottom,0px\),0px\)\)/)
+  // [TEST-MOD-APPROVED #2331] The strip is exactly the band token, and the token
+  // is the safe-area-aware 28px + inset (clamped at 0), from the first paint.
+  assert.match(mps, /height:var\(--mingla-privacy-strip\)/)
+  assert.match(banner, /:root\{\$\{PRIVACY_STRIP_PROPERTY\}:calc\(28px \+ max\(env\(safe-area-inset-bottom,0px\),0px\)\)\}/)
+  assert.match(banner, /PRIVACY_STRIP_PROPERTY = '--mingla-privacy-strip'/)
+  assert.match(mps, /z-index:2147483000/)
   assert.match(mps, /transform:translateZ\(0\)/)
   assert.doesNotMatch(mps, /transition/)
 })

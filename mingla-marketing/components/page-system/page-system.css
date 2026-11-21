@@ -641,7 +641,7 @@
 .ps-host-acquisition-desktop a:hover { background: rgba(255, 255, 255, .15); }
 .ps-host-acquisition-trigger { display: none; cursor: pointer; }
 
-.ps-host-sheet-layer { position: fixed; inset: 0; z-index: 130; }
+.ps-host-sheet-layer { position: fixed; inset: 0 0 var(--mingla-privacy-strip) 0; z-index: 130; }
 .ps-host-sheet-backdrop { position: absolute; inset: 0; border: 0; background: rgba(8, 9, 12, .68); }
 .ps-host-sheet {
   position: absolute;
@@ -771,7 +771,7 @@
 .ps-catalogue-image-fallback img { width: 58px; height: 58px; border-radius: 17px; }
 .ps-catalogue-empty, .ps-detail-missing { padding: 60px 28px; border-radius: 28px; text-align: center; background: var(--page-sunken); }
 
-.ps-detail-layer { position: fixed; inset: 0; z-index: 140; }
+.ps-detail-layer { position: fixed; inset: 0 0 var(--mingla-privacy-strip) 0; z-index: 140; }
 .ps-detail-backdrop { position: absolute; inset: 0; background: rgba(5,5,7,.72); }
 .ps-detail-panel { position: absolute; inset: 12px 12px 12px auto; width: min(95vw, 720px); overflow-y: auto; border-radius: 32px; color: var(--page-ink); background: var(--page-raised); box-shadow: 0 30px 100px rgba(0,0,0,.4); }
 .ps-detail-panel[data-kind='plan'] { width: min(95vw, 880px); }

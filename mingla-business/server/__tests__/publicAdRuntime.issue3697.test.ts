@@ -252,7 +252,7 @@ describe("#3697 / #2331 public arrival runtime", () => {
     expect(html).not.toContain("Ad privacy choices");
     expect(html).not.toContain("Opt out of ad tracking");
     expect(html).toContain(
-      "#root{box-sizing:border-box;height:calc(100% - var(--mingla-privacy-inset,0px))}",
+      "html:has(style#expo-reset) #root{position:fixed;top:0;left:0;right:0;bottom:var(--mingla-privacy-strip);box-sizing:border-box;height:auto!important;contain:layout;overflow:hidden;overflow:clip}",
     );
   });
 
@@ -283,7 +283,7 @@ describe("#3697 / #2331 public arrival runtime", () => {
       "https://business.usemingla.com/e/acme/signal-night": true,
     });
     expect(runtime.bar.hidden).toBe(true);
-    expect(runtime.inset.at(-1)).toBe("28px");
+    expect(runtime.inset).toEqual([]); // [TEST-MOD-APPROVED #2331] the band is a CSS constant, never written
     runtime.strip.click();
     expect(runtime.parts.analytics.checked).toBe(true);
     expect(runtime.parts.ads.checked).toBe(true);
@@ -298,7 +298,7 @@ describe("#3697 / #2331 public arrival runtime", () => {
     expect(runtime.insertedScripts.every((script) => script.removed)).toBe(true);
     expect(runtime.bar.hidden).toBe(true);
     expect(runtime.parts.label.textContent).toBe("Saved");
-    expect(runtime.inset.at(-1)).toBe("28px");
+    expect(runtime.inset).toEqual([]); // [TEST-MOD-APPROVED #2331] the band is a CSS constant, never written
   });
 
   test("preserves every provider link identity and drops unrelated secrets", () => {

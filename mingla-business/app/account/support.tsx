@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   floatingActionPressed: { opacity: 0.86, transform: [{ scale: 0.98 }] },
   floatingActionText: { ...type.btnSm, color: color.ink, fontWeight: "800" },
   toastWrap: { position: "absolute", top: 80, left: 0, right: 0, zIndex: 100, elevation: 12 },
-  appRail: { position: "fixed" as unknown as "absolute", top: 0, left: 0, bottom: "var(--mingla-privacy-inset, 0px)" as unknown as number, width: DESKTOP_RAIL_WIDTH, alignItems: "center", paddingVertical: space[6], gap: space[2], borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: color.line, zIndex: 50 },
+  appRail: { position: "fixed" as unknown as "absolute", top: 0, left: 0, bottom: 0, width: DESKTOP_RAIL_WIDTH, alignItems: "center", paddingVertical: space[6], gap: space[2], borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: color.line, zIndex: 50 },
   brandLogo: { width: 40, height: 40, marginBottom: space[4] },
   appRailItem: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 2 },
   appRailLabel: { color: color.text2, fontSize: 9, lineHeight: 11 },

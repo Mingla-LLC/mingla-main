@@ -1,8 +1,8 @@
 /**
  * #4111 — a bar pinned to the bottom of the screen (the /m/{token} composer).
  * Native: an ordinary last child of a full-height column. The web sibling
- * (`PinnedBottomBar.web.tsx`) pins it with `position: fixed` and lifts it above
- * the buyer-web privacy bar via `--mingla-privacy-inset` (#2331).
+ * (`PinnedBottomBar.web.tsx`) pins it with `position: fixed` inside the app
+ * root, which ends at the buyer-web privacy strip's top edge (#2331).
  */
 import React from "react";
 import { View } from "react-native";

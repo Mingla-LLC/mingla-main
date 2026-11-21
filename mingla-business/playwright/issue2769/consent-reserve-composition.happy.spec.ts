@@ -18,8 +18,9 @@ async function hitOwnsCentre(page: Page, testId: string): Promise<boolean> {
   });
 }
 
+// #2331 — the band is the CSS constant --mingla-privacy-strip; the strip is exactly that tall.
 const inset = (page: Page): Promise<string> =>
-  page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mingla-privacy-inset").trim());
+  page.evaluate(() => `${Math.round(document.querySelector(".mps")?.getBoundingClientRect().height ?? 0)}px`);
 
 for (const viewport of [{ width: 360, height: 640 }, { width: 390, height: 844 }]) {
   test(`${viewport.width}x${viewport.height}: strip and reserve action coexist; the action owns its tap; no banner`, async ({ page }) => {
