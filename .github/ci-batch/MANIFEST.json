@@ -17957,6 +17957,7 @@
         "supabase/migrations/20281120074522_issue_4522_flex_payments.sql",
         "supabase/migrations/20281120084522_issue_4522_missed_rollover.sql",
         "supabase/migrations/20281120094522_issue_4522_refunds_payouts.sql",
+        "supabase/migrations/20281120104522_issue_4522_live_plan_price_guard.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19855,6 +19856,7 @@
         "supabase/migrations/20281120074522_issue_4522_flex_payments.sql",
         "supabase/migrations/20281120084522_issue_4522_missed_rollover.sql",
         "supabase/migrations/20281120094522_issue_4522_refunds_payouts.sql",
+        "supabase/migrations/20281120104522_issue_4522_live_plan_price_guard.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -21614,6 +21616,8 @@
         "supabase/migrations/__tests__/issue_4473_shared_source_changes.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_flex_payments.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_flex_payments.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_live_plan_price_guard.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_live_plan_price_guard.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_missed_rollover.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_missed_rollover.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_plan_v2_checkout.implementor.pg17.test.sql",
@@ -25500,6 +25504,7 @@
         "supabase/migrations/20281120074522_issue_4522_flex_payments.sql",
         "supabase/migrations/20281120084522_issue_4522_missed_rollover.sql",
         "supabase/migrations/20281120094522_issue_4522_refunds_payouts.sql",
+        "supabase/migrations/20281120104522_issue_4522_live_plan_price_guard.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -27259,6 +27264,8 @@
         "supabase/migrations/__tests__/issue_4473_shared_source_changes.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_flex_payments.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_flex_payments.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_live_plan_price_guard.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_live_plan_price_guard.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_missed_rollover.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_missed_rollover.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_plan_v2_checkout.implementor.pg17.test.sql",
@@ -54563,5 +54570,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "e99bd5972a0532165becfe3991760454776cadec0e42f0f8a8d41126e2122b76"
+  "phase3eContractSha256": "a916000216428365e1b29fb5d42016566456d9d8ff52b1547981c4263751a18c"
 }

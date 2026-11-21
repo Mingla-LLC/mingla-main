@@ -139,9 +139,15 @@ export interface TripCreatorStep4PricingProps {
   paymentPlansAvailable: boolean;
   tripStartAt: string | null;
   timeZone: string | null;
-  /** Temporary seam until slice 12 upgrades the published-trip save command. */
+  /** Keeps saved v2 plans visible while a caller's persistence path is read-only. */
   v2PlanAuthoringLocked?: boolean;
   v2PlanAuthoringLockedReason?: string;
+  /** Published trips may edit existing packages but this RPC cannot add/delete them. */
+  allowPackageStructureChanges?: boolean;
+  /** Published package capacity is not part of the atomic live-trip command. */
+  allowCapacityChange?: boolean;
+  /** The live command preserves, but cannot toggle, the stored shared-plan bit. */
+  showSharePaymentPlanControl?: boolean;
 }
 
 export const TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY =
@@ -189,6 +195,8 @@ interface PackageCardProps {
   onSharePaymentPlanChange: (next: boolean) => void;
   v2PlanAuthoringLocked: boolean;
   v2PlanAuthoringLockedReason?: string;
+  allowCapacityChange: boolean;
+  showSharePaymentPlanControl: boolean;
   /** Whether a Remove control is shown (false when only 1 package remains). */
   canRemove: boolean;
   onPatch: (patch: Partial<Step4Package>) => void;
@@ -208,6 +216,8 @@ const PackageCard: React.FC<PackageCardProps> = ({
   onSharePaymentPlanChange,
   v2PlanAuthoringLocked,
   v2PlanAuthoringLockedReason,
+  allowCapacityChange,
+  showSharePaymentPlanControl,
   canRemove,
   onPatch,
   onRemove,
@@ -377,22 +387,31 @@ const PackageCard: React.FC<PackageCardProps> = ({
 
       <View style={styles.fieldGroup}>
         <Text style={styles.fieldLabel}>Spots in this package</Text>
-        <TextInput
-          value={pkg.capacity === null ? "" : String(pkg.capacity)}
-          onChangeText={(v) => {
-            const digits = v.replace(/[^0-9]/g, "");
-            onPatch({
-              capacity: digits.length > 0 ? parseInt(digits, 10) : null,
-            });
-          }}
-          placeholder="e.g. 20"
-          placeholderTextColor={color.text3}
-          keyboardType="number-pad"
-          editable={disabled !== true}
-          accessibilityLabel={`Package ${index + 1} spots`}
-          style={styles.textInput}
-          testID={`trip-step4-capacity-${index}`}
-        />
+        {allowCapacityChange ? (
+          <TextInput
+            value={pkg.capacity === null ? "" : String(pkg.capacity)}
+            onChangeText={(v) => {
+              const digits = v.replace(/[^0-9]/g, "");
+              onPatch({
+                capacity: digits.length > 0 ? parseInt(digits, 10) : null,
+              });
+            }}
+            placeholder="e.g. 20"
+            placeholderTextColor={color.text3}
+            keyboardType="number-pad"
+            editable={disabled !== true}
+            accessibilityLabel={`Package ${index + 1} spots`}
+            style={styles.textInput}
+            testID={`trip-step4-capacity-${index}`}
+          />
+        ) : (
+          <View
+            style={styles.readonlyField}
+            testID={`trip-step4-capacity-readonly-${index}`}
+          >
+            <Text style={styles.readonlyValue}>{pkg.capacity ?? "No limit"}</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.fieldGroup}>
@@ -562,7 +581,7 @@ const PackageCard: React.FC<PackageCardProps> = ({
               packageCount={packageCount}
               sharePaymentPlan={sharePaymentPlan}
               onSharePaymentPlanChange={onSharePaymentPlanChange}
-              showShareControl={index === 0}
+              showShareControl={showSharePaymentPlanControl && index === 0}
               model={TRIP_PLAN_V2_EDITOR_RUNTIME}
             />
           </React.Suspense>
@@ -593,6 +612,9 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   timeZone,
   v2PlanAuthoringLocked = false,
   v2PlanAuthoringLockedReason,
+  allowPackageStructureChanges = true,
+  allowCapacityChange = true,
+  showSharePaymentPlanControl = true,
 }) => {
   const brand = useCurrentBrand();
   const router = useRouter();
@@ -605,8 +627,9 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   const pricesAwaitingReentry = packages.some(
     (p) => p.priceNeedsReentry === true && p.priceMajor.trim().length === 0,
   );
-  const canAdd = packages.length < MAX_TRIP_PACKAGES;
-  const canRemoveAny = packages.length > 1;
+  const canAdd =
+    allowPackageStructureChanges && packages.length < MAX_TRIP_PACKAGES;
+  const canRemoveAny = allowPackageStructureChanges && packages.length > 1;
 
   // Live preview base for the WhoCoversCosts section = MIN package price
   // (the "From" price buyers see). 0 when no priced packages.
@@ -758,37 +781,45 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
           onSharePaymentPlanChange={handleSharePaymentPlanChange}
           v2PlanAuthoringLocked={v2PlanAuthoringLocked}
           v2PlanAuthoringLockedReason={v2PlanAuthoringLockedReason}
+          allowCapacityChange={allowCapacityChange}
+          showSharePaymentPlanControl={showSharePaymentPlanControl}
           canRemove={canRemoveAny}
           onPatch={(patch) => patchPackage(pkg.key, patch)}
           onRemove={() => handleRequestRemove(pkg.key)}
         />
       ))}
 
-      <Pressable
-        onPress={handleAddPackage}
-        disabled={disabled === true || !canAdd}
-        accessibilityRole="button"
-        accessibilityLabel="Add package"
-        accessibilityState={{ disabled: disabled === true || !canAdd }}
-        style={[styles.addPackageBtn, !canAdd && styles.addPackageBtnDisabled]}
-        testID="trip-step4-add-package"
-      >
-        <Icon
-          name="plus"
-          size={18}
-          color={canAdd ? color.accent : color.text3}
-        />
-        <Text
-          style={[
-            styles.addPackageText,
-            !canAdd && styles.addPackageTextDisabled,
-          ]}
+      {allowPackageStructureChanges ? (
+        <Pressable
+          onPress={handleAddPackage}
+          disabled={disabled === true || !canAdd}
+          accessibilityRole="button"
+          accessibilityLabel="Add package"
+          accessibilityState={{ disabled: disabled === true || !canAdd }}
+          style={[styles.addPackageBtn, !canAdd && styles.addPackageBtnDisabled]}
+          testID="trip-step4-add-package"
         >
-          {canAdd
-            ? "Add package"
-            : `Up to ${MAX_TRIP_PACKAGES} packages per trip`}
+          <Icon
+            name="plus"
+            size={18}
+            color={canAdd ? color.accent : color.text3}
+          />
+          <Text
+            style={[
+              styles.addPackageText,
+              !canAdd && styles.addPackageTextDisabled,
+            ]}
+          >
+            {canAdd
+              ? "Add package"
+              : `Up to ${MAX_TRIP_PACKAGES} packages per trip`}
+          </Text>
+        </Pressable>
+      ) : (
+        <Text style={styles.footnote} testID="trip-step4-package-structure-locked">
+          Package capacity and package count stay fixed after publishing.
         </Text>
-      </Pressable>
+      )}
 
       <Text style={styles.footnote}>
         Currency comes from your brand setup and can&apos;t be changed here.

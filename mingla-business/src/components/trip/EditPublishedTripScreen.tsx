@@ -1,26 +1,22 @@
 /**
- * EditPublishedTripScreen — sectioned full edit-after-publish surface for
- * trips (ORCH-0876). Trip-side mirror of `EditPublishedScreen.tsx`.
+ * EditPublishedTripScreen — full edit-after-publish surface for trips
+ * (ORCH-0876, #4522). Trip-side mirror of `EditPublishedScreen.tsx`.
  *
  * Replaces the published-trip path through TripCreatorWizard, which is
  * create-mode-shaped (5-step linear with publish dock + autosave per step
  * transition). Once a trip is `scheduled` or `live`, the operator instead
- * lands on this 6-section accordion that consumes the existing wizard
- * step bodies via local edit state.
+ * lands on this four-section builder-parity page. The sections are always
+ * mounted in one scroll and reuse the create builder's field components.
  *
- * Sections (one expanded at a time):
- *   1. Basics      → title + description (editable)
- *   2. Itinerary   → TripCreatorStep2Itinerary
- *   3. Inclusions  → TripCreatorStep3Inclusions
- *   4. Pricing     → TripCreatorStep4Pricing (with editMode.soldCountForTier)
- *   5. Cover       → shared <CoverPicker>
- *   6. Settings    → read-only refund-policy + booking-deadline snapshot
+ * Sections: Trip, Itinerary, Pricing, and Travelers. Desktop adds the same
+ * left-side step rail as create; mobile keeps the same single-scroll order.
  *
  * Save flow:
  *   1. Compute LiveTripPatch via local-state → diff against `trip`
  *   2. Empty patch → toast "No changes to save."
  *   3. Otherwise → ChangeSummaryModal opens with field/day/inclusion/tier
- *      diffs + severity + required reason input + entityLabel="trip"
+ *      diffs + severity + entityLabel="trip". The reason field appears only
+ *      for the buyer-affecting changes approved in #4522 §9.10.
  *   4. Modal Confirm → handleConfirmSave(reason) → client-side
  *      validateLiveTripFieldUpdate fast-path → server `biz_update_live_trip`
  *      RPC via `useUpdateLiveTripFields` mutation
@@ -50,10 +46,8 @@ import React, {
 } from "react";
 import {
   Platform,
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
@@ -83,19 +77,8 @@ import {
   shouldConfirmLeave,
   UNSAVED_CHANGES_DIALOG,
 } from "../../utils/unsavedChangesGuard";
-// issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
-// LAZY (ORCH-1083 boot budget): the card is mounted by THREE separate lazy
-// route chunks (Event, Trip and Experience management), so a static import
-// makes Metro hoist it into the eager `__common` chunk that EVERY buyer
-// downloads before anything renders — for a control only a brand owner ever
-// sees. Same treatment, and same reason, as SeeWhosGoingGate.
-const EventTicketCheckoutAccessCard = React.lazy(() =>
-  import("../event/EventTicketCheckoutAccessCard").then((m) => ({
-    default: m.EventTicketCheckoutAccessCard,
-  })),
-);
-import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
+import { Stepper, type StepperStep } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
 import { type CoverPatch } from "../ui/CoverPicker";
 import { CoverPickerSheet } from "../ui/LazyCoverPickerSheet";
@@ -139,7 +122,11 @@ import {
   type TripPricingTierDiff,
   type TripEditSeverity,
 } from "../../utils/tripAdapter";
-import { validateLiveTripFieldUpdate } from "../../utils/publishedTripEditGuards";
+import {
+  liveTripEditNeedsBuyerReason,
+  NON_BUYER_EDIT_AUDIT_REASON,
+  validateLiveTripFieldUpdate,
+} from "../../utils/publishedTripEditGuards";
 import { useUpdateLiveTripFields } from "../../hooks/useTrips";
 import { useTripHasWebPurchases } from "../../hooks/useTripHasWebPurchases";
 import {
@@ -147,24 +134,14 @@ import {
   notifyTripChanged,
 } from "../../services/tripChangeNotifier";
 
-// ORCH-1118 — published-edit departure + destination must be confirmed address
-// picks before save. Swap the legacy plain TextInputs for the shared picker.
-import { AddressInput } from "../location/AddressInput";
-// #4334 — from its own file: the package index would pull the address field into this screen.
-import { precisionFromPlaceDetails } from "@mingla/location-input/src/placesService";
-import {
-  advanceLocationRequestGeneration,
-  isFreeTextResolveStale,
-  isLocationRequestGenerationCurrent,
-  resolveFreeTextLocation,
-} from "../../utils/resolveApproxLocation";
-import type { LocationSelectionState } from "@mingla/location-input";
 import {
   departureLocationValidated,
   destinationLocationValidated,
-  TRIP_DEPARTURE_PICK_ERROR,
-  TRIP_DESTINATION_PICK_ERROR,
 } from "./tripLocationValidated";
+import {
+  TripCreatorStep1Basics,
+  type Step1Draft,
+} from "./TripCreatorStep1Basics";
 import { TripCreatorStep2Itinerary } from "./TripCreatorStep2Itinerary";
 import { TripCreatorStep3Inclusions } from "./TripCreatorStep3Inclusions";
 import {
@@ -181,33 +158,49 @@ import type { EventCoverMediaType } from "../../store/draftEventStore";
 import type { EventCoverMediaProvider } from "../../types/eventCoverProvider";
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 import { useTripInstallmentCapability } from "../../hooks/useTripInstallmentCapability";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { TripBuilderSectionTitle } from "./TripBuilderV2Parts";
+import { BUILDER_STEP_TITLES, type BuilderStep } from "./tripBuilderV2Model";
+import { TripInclusionChips } from "./TripInclusionChips";
+import { TripEarningsCard } from "./TripEarningsCard";
+import { validateTripPackages } from "./tripPackagesValidation";
+
+// issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
+// LAZY (ORCH-1083 boot budget): the card is mounted by THREE separate lazy
+// route chunks (Event, Trip and Experience management), so a static import
+// makes Metro hoist it into the eager `__common` chunk that EVERY buyer
+// downloads before anything renders — for a control only a brand owner ever
+// sees. Same treatment, and same reason, as SeeWhosGoingGate.
+const EventTicketCheckoutAccessCard = React.lazy(() =>
+  import("../event/EventTicketCheckoutAccessCard").then((m) => ({
+    default: m.EventTicketCheckoutAccessCard,
+  })),
+);
 
 // ---- Section configuration -----------------------------------------
 
-type SectionKey =
-  | "basics"
+type LegacySectionKey =
+  | "trip"
   | "itinerary"
   | "inclusions"
   | "pricing"
   | "cover"
-  // ORCH-0880 [Tr5 Traveler Intake Forms] — new accordion section.
   | "intake"
   | "settings";
 
+type BuilderSectionKey = "trip" | "itinerary" | "pricing" | "travelers";
+
 interface SectionConfig {
-  key: SectionKey;
+  key: BuilderSectionKey;
+  step: BuilderStep;
   label: string;
 }
 
-const SECTIONS: readonly SectionConfig[] = [
-  { key: "basics", label: "Basics" },
-  { key: "itinerary", label: "Itinerary" },
-  { key: "inclusions", label: "Inclusions" },
-  { key: "pricing", label: "Pricing" },
-  { key: "cover", label: "Cover" },
-  // ORCH-0880 — sits between Cover and Settings per DESIGN §6.
-  { key: "intake", label: "Intake form" },
-  { key: "settings", label: "Settings" },
+const BUILDER_SECTIONS: readonly SectionConfig[] = [
+  { key: "trip", step: 1, label: BUILDER_STEP_TITLES[1] },
+  { key: "itinerary", step: 2, label: BUILDER_STEP_TITLES[2] },
+  { key: "pricing", step: 3, label: BUILDER_STEP_TITLES[3] },
+  { key: "travelers", step: 4, label: BUILDER_STEP_TITLES[4] },
 ];
 
 const SAVE_PROCESSING_MS = 800;
@@ -242,7 +235,6 @@ interface LocalTripEditState {
   // approximate; null means unset. Carried into theme.business_trip.* on save.
   destinationCoordinatePrecision: "exact" | "approximate" | null;
   departureCoordinatePrecision: "exact" | "approximate" | null;
-  capacity: number | null;
   // Itinerary
   days: TripDayDraft[];
   // Inclusions
@@ -303,7 +295,6 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
     // Issue #1363 — precision is transient capture-side (existing coord present).
     destinationCoordinatePrecision: null,
     departureCoordinatePrecision: null,
-    capacity: trip.businessTrip.capacity,
     days: trip.days.map((d) => ({
       ordinal: d.ordinal,
       title: d.title,
@@ -316,33 +307,38 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
       item: i.item,
       ordinal: i.ordinal,
     })),
-    // META-ORCH-1174 Leg B2 — Step4Draft is now N-package. EditPublishedTripScreen
-    // (the B4 edit-published path) remains SINGLE-package: seed exactly one
-    // package from the trip's first tier so the existing single-tier edit flow
-    // is byte-for-byte preserved. Multi-package edit-published is B4 scope.
+    // #4522 slice 12 — the published editor shows every existing package. The
+    // live command does not create/delete tiers, so structure controls are
+    // hidden below; names, descriptions, prices and plans use the shared body.
     pricing: {
-      packages: [
-        {
+      packages:
+        trip.pricingTiers.length > 0
+          ? trip.pricingTiers.map((tier) => ({
+              key: makePackageKey(),
+              ticketTypeId: tier.ticketTypeId,
+              name: tier.tierName,
+              priceMajor: (tier.priceCents / 100).toFixed(2),
+              description: tier.description ?? "",
+              capacity: tier.quantityTotal,
+              paymentPlan:
+                tier.paymentPlan ?? tier.installmentSchedule ?? null,
+              // The approved rule locks plan changes after the first booking.
+              // A per-tier count is not exposed on this screen, so apply the
+              // trip's server snapshot conservatively to every package.
+              soldCount: trip.ticketsSoldCount,
+            }))
+          : [{
           key: makePackageKey(),
-          ticketTypeId: firstTier?.ticketTypeId ?? null,
-          name: firstTier?.tierName ?? "Standard",
-          priceMajor:
-            firstTier === undefined
-              ? ""
-              : (firstTier.priceCents / 100).toFixed(2),
-          description: firstTier?.description ?? "",
-          // Issue #3801 — this package's OWN spots. The trip total is the sum
-          // of every package and must not be shown as one package's spots.
-          capacity:
-            firstTier !== undefined
-              ? firstTier.quantityTotal
-              : trip.businessTrip.capacity,
-          paymentPlan:
-            firstTier?.paymentPlan ?? firstTier?.installmentSchedule ?? null,
-          soldCount: 0,
-        },
-      ],
+          ticketTypeId: null,
+          name: "Standard",
+          priceMajor: "",
+          description: "",
+          capacity: trip.businessTrip.capacity,
+          paymentPlan: null,
+          soldCount: trip.ticketsSoldCount,
+        }],
       currency: firstTier?.currency ?? "USD",
+      sharePaymentPlan: trip.sharePaymentPlan ?? false,
       // ORCH-1006 — seed switches from events.pass_* (NULL = inherit).
       pricingSwitches: {
         passTax: trip.pricingSwitches?.passTax ?? null,
@@ -436,7 +432,6 @@ function buildLiveTripPatch(
     departureCountryCode: string | null;
     destinationCoordinatePrecision: "exact" | "approximate" | null;
     departureCoordinatePrecision: "exact" | "approximate" | null;
-    capacity: number | null;
   }> = {};
   if (state.startAt !== trip.businessTrip.startAt) bt.startAt = state.startAt;
   if (state.endAt !== trip.businessTrip.endAt) bt.endAt = state.endAt;
@@ -499,9 +494,6 @@ function buildLiveTripPatch(
   if (state.departureCoordinatePrecision !== null) {
     bt.departureCoordinatePrecision = state.departureCoordinatePrecision;
   }
-  if (state.capacity !== trip.businessTrip.capacity) {
-    bt.capacity = state.capacity;
-  }
   // #4334 — a moved pin always carries its place id (null for none), so the
   // same place re-picked onto refined coordinates reaches the pin-keeping
   // command (biz_repick_update_trip_live_command) and keeps its id; a pin
@@ -520,7 +512,7 @@ function buildLiveTripPatch(
   // remove, reorder) sets daysChanged → patch.days → biz_update_live_trip §5b
   // persists media. Media is additive (never a refund-gate ordinal drop).
   const mediaSig = (
-    m: ReadonlyArray<{ url: string; type: "image" | "video" }> | undefined,
+    m: readonly { url: string; type: "image" | "video" }[] | undefined,
   ): string => (m ?? []).map((x) => `${x.url}|${x.type}`).join(",");
   const oldDaysSig = JSON.stringify(
     trip.days
@@ -596,44 +588,74 @@ function buildLiveTripPatch(
     .filter((d) => d.status === "removed")
     .map((d) => d.key);
 
-  // Pricing tiers — single-tier model (B4 multi-tier is a later leg). Only emit
-  // when tier_name or price_cents or installmentSchedule differs from the trip's
-  // current tier. META-ORCH-1174 Leg B2 — read the sole edited package.
-  const editPkg = state.pricing.packages[0];
-  const newPriceCents = Math.round(
-    (parseFloat(editPkg?.priceMajor ?? "") || 0) * 100,
+  // #4522 slice 12 — edit every existing package. When one tier changes the
+  // live RPC's sales gate interprets omitted tiers as deletions, so send a
+  // ticket-id entry for EVERY current tier while keeping unchanged fields
+  // absent. Metadata changes preserve unrelated keys and enforce exactly one
+  // plan shape (`payment_plan` v2 OR legacy `installments`).
+  const editPackageByTicketType = new Map(
+    state.pricing.packages.flatMap((pkg) =>
+      pkg.ticketTypeId === null ? [] : [[pkg.ticketTypeId, pkg] as const],
+    ),
   );
-  const firstTier = trip.pricingTiers[0];
-  const tierNameChanged =
-    firstTier !== undefined &&
-    editPkg !== undefined &&
-    editPkg.name.trim().length > 0 &&
-    editPkg.name.trim() !== firstTier.tierName;
-  const tierPriceChanged =
-    firstTier !== undefined && newPriceCents !== firstTier.priceCents;
-  const oldPlanSig = JSON.stringify(
-    firstTier?.paymentPlan ?? firstTier?.installmentSchedule ?? null,
+  let anyTierChanged = false;
+  const nextTierInputs = trip.pricingTiers.map<TripPricingTierInput>(
+    (oldTier) => {
+      const editPkg = editPackageByTicketType.get(oldTier.ticketTypeId);
+      const input: TripPricingTierInput = {
+        ticket_type_id: oldTier.ticketTypeId,
+      };
+      // The server snapshot owns membership. A missing/corrupt local row must
+      // never be interpreted by the RPC as deleting an existing live tier.
+      if (editPkg === undefined) return input;
+      const tierName = editPkg.name.trim();
+      const newPriceCents = Math.round(
+        (parseFloat(editPkg.priceMajor) || 0) * 100,
+      );
+      const description = editPkg.description.trim();
+      const tierNameChanged =
+        tierName.length > 0 && tierName !== oldTier.tierName;
+      const tierPriceChanged = newPriceCents !== oldTier.priceCents;
+      const tierDescriptionChanged =
+        description !== (oldTier.description ?? "").trim();
+      const oldPlan = oldTier.paymentPlan ?? oldTier.installmentSchedule ?? null;
+      const tierPlanChanged =
+        JSON.stringify(oldPlan) !== JSON.stringify(editPkg.paymentPlan);
+
+      if (tierNameChanged) input.tier_name = tierName;
+      if (tierPriceChanged) input.price_cents = newPriceCents;
+      if (tierDescriptionChanged || tierPlanChanged) {
+        const {
+          installments: _oldInstallments,
+          payment_plan: _oldPaymentPlan,
+          description: _oldDescription,
+          ...metadataWithoutEditedFields
+        } = oldTier.tierMetadata;
+        const metadata: Record<string, unknown> = {
+          ...metadataWithoutEditedFields,
+          ...(description.length > 0 ? { description } : {}),
+        };
+        if (editPkg.paymentPlan !== null) {
+          if (isTripPaymentPlanV2(editPkg.paymentPlan)) {
+            metadata.payment_plan = editPkg.paymentPlan;
+          } else {
+            metadata.installments = editPkg.paymentPlan;
+          }
+        }
+        input.tier_metadata = metadata;
+      }
+      if (
+        tierNameChanged ||
+        tierPriceChanged ||
+        tierDescriptionChanged ||
+        tierPlanChanged
+      ) {
+        anyTierChanged = true;
+      }
+      return input;
+    },
   );
-  const newPlanSig = JSON.stringify(editPkg?.paymentPlan ?? null);
-  const tierPlanChanged = oldPlanSig !== newPlanSig;
-  if (
-    firstTier !== undefined &&
-    editPkg !== undefined &&
-    (tierNameChanged || tierPriceChanged || tierPlanChanged)
-  ) {
-    const tierMetadata: Record<string, unknown> = {};
-    if (editPkg.paymentPlan !== null) {
-      tierMetadata.installments = editPkg.paymentPlan;
-    }
-    patch.pricing_tiers = [
-      {
-        ticket_type_id: firstTier.ticketTypeId,
-        tier_name: tierNameChanged ? editPkg.name.trim() : undefined,
-        price_cents: tierPriceChanged ? newPriceCents : undefined,
-        tier_metadata: tierPlanChanged ? tierMetadata : undefined,
-      } as TripPricingTierInput,
-    ];
-  }
+  if (anyTierChanged) patch.pricing_tiers = nextTierInputs;
   const pricingTierDiffs =
     patch.pricing_tiers !== undefined
       ? computeTripPricingTierDiffs(trip.pricingTiers, patch.pricing_tiers)
@@ -772,6 +794,7 @@ interface ModalState {
   inclusionDiffs: TripInclusionDiff[];
   pricingTierDiffs: TripPricingTierDiff[];
   severity: TripEditSeverity;
+  reasonRequired: boolean;
 }
 
 export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = ({
@@ -796,51 +819,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   // #4420 — the state the editor was last seeded with (see the close guard).
   const seededEditStateRef = useRef<LocalTripEditState>(initialState);
 
-  // Issue #3291 — rank-only proximity for both address fields. A published
-  // trip already holds its own departure + destination points (publish
-  // requires both), so they lead, then the trip's time zone. The brand point
-  // is not read here: this screen mounts no brand query (its route passes only
-  // `trip`), and the trip's own points outrank a brand HQ for trip search.
-  const editDeparturePoint = {
-    lat: editState.departureLat,
-    lng: editState.departureLng,
-  };
-  const editDestinationPoint = {
-    lat: editState.destinationLat,
-    lng: editState.destinationLng,
-  };
-
-  const [departureSelectionState, setDepartureSelectionState] =
-    useState<LocationSelectionState>(
-      editState.departureLocationText?.trim() &&
-          editState.departureLat !== null &&
-          editState.departureLng !== null
-        ? "selected"
-        : "editing",
-    );
-  const [destinationSelectionState, setDestinationSelectionState] =
-    useState<LocationSelectionState>(
-      editState.destinationLocationText?.trim() &&
-          editState.destinationLat !== null &&
-          editState.destinationLng !== null
-        ? "selected"
-        : "editing",
-    );
-  // Issue #1363 P3-2 — latest-wins guards: the text currently committed to each
-  // field, so a superseded free-text geocode can't patch a stale coordinate.
-  const committedDepartureRef = useRef(editState.departureLocationText ?? "");
-  const committedDestinationRef = useRef(editState.destinationLocationText ?? "");
-  const departureRequestGenerationRef = useRef(0);
-  const destinationRequestGenerationRef = useRef(0);
-  const departureContextRef = useRef<{
-    city: string | null;
-    countryCode: string | null;
-  }>({ city: null, countryCode: null });
-  const destinationContextRef = useRef<{
-    city: string | null;
-    countryCode: string | null;
-  }>({ city: null, countryCode: null });
-
   // ORCH-0876 P1-1 (QA rework, 2026-05-19): only re-seed local edit state
   // when the route lands on a DIFFERENT trip.id, not on every prop reference
   // change. The previous unguarded `useEffect([trip])` fired on every React
@@ -861,10 +839,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     }
   }, [trip]);
 
-  // #4420: the Eligible buyers section card's own open state (web only).
-  const [buyersOpen, setBuyersOpen] = useState<boolean>(false);
-  const [openSection, setOpenSection] = useState<SectionKey | null>("basics");
-
   // ORCH-1118 — reveal the inline "pick from suggestions" error on a
   // departure/destination field after a blocked Save attempt.
   const [showEditAddressErrors, setShowEditAddressErrors] =
@@ -878,6 +852,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     inclusionDiffs: [],
     pricingTierDiffs: [],
     severity: "additive",
+    reasonRequired: false,
   });
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [coverPickerVisible, setCoverPickerVisible] = useState<boolean>(false);
@@ -897,33 +872,38 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   // SmartScrollView handles focused-input scroll. dock-hide via hook.
   const keyboardVisible = useKeyboardIsVisible();
   const scrollViewRef = useRef<ScrollView | null>(null);
+  const { isWideDesktop } = useResponsiveLayout();
+  const [activeBuilderSection, setActiveBuilderSection] =
+    useState<BuilderSectionKey>("trip");
+  const builderSectionOffsetsRef = useRef<Record<BuilderSectionKey, number>>({
+    trip: 0,
+    itinerary: 0,
+    pricing: 0,
+    travelers: 0,
+  });
+  const scrollToBuilderSection = useCallback((key: BuilderSectionKey): void => {
+    setActiveBuilderSection(key);
+    scrollViewRef.current?.scrollTo({
+      y: Math.max(0, builderSectionOffsetsRef.current[key] - space[4]),
+      animated: true,
+    });
+  }, []);
 
   // ---- Web purchases predicate (drives SMS-channel flag) ----
   const hasWebPurchaseOrders = useTripHasWebPurchases(trip.id);
 
-  // ---- Sold-count snapshot — single tier per ORCH-0859 ----
-  // The biz_trip_sold_count_by_tier helper exists in the migration but the
-  // hook layer isn't pulling it pre-flight; for the client-side fast-path
-  // we conservatively check via tier's recorded snapshot (zero by default).
-  // The server-side refund-gate is the canonical guard regardless.
+  // ---- Sold-count snapshot ----
+  // The route already carries the server's trip-wide sold count. Until it also
+  // exposes per-tier counts, apply it to every tier: that conservatively locks
+  // every live package after the first booking while the RPC remains canonical.
   const soldCountByTier = useMemo<Record<string, number>>(() => {
-    // [TRANSITIONAL] — server is canonical. Future: wire a useTripSoldCounts
-    // hook calling biz_trip_sold_count_by_tier and pre-flight the gate.
-    // Exit condition: trip-orders ledger ships (post-Tr4).
     const out: Record<string, number> = {};
     for (const tier of trip.pricingTiers) {
-      out[tier.ticketTypeId] = 0;
+      out[tier.ticketTypeId] = trip.ticketsSoldCount;
     }
     return out;
-  }, [trip.pricingTiers]);
-  const totalConfirmedOrders = useMemo<number>(
-    () =>
-      Object.values(soldCountByTier).reduce(
-        (sum: number, n: number) => sum + n,
-        0,
-      ),
-    [soldCountByTier],
-  );
+  }, [trip.pricingTiers, trip.ticketsSoldCount]);
+  const totalConfirmedOrders = trip.ticketsSoldCount;
 
   // ---- Patch + diffs computation ----
   const computed = useMemo<PatchComputeResult>(
@@ -958,24 +938,22 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   );
 
   // ---- Section "edited" indicator ----
-  const editedSectionKeys = useMemo<Set<SectionKey>>(() => {
-    const out = new Set<SectionKey>();
+  const editedSectionKeys = useMemo<Set<BuilderSectionKey>>(() => {
+    const out = new Set<BuilderSectionKey>();
     const p = computed.patch;
-    if (p.title !== undefined || p.description !== undefined) out.add("basics");
+    if (p.title !== undefined || p.description !== undefined) out.add("trip");
     if (p.theme !== undefined) {
-      // theme touches Basics (capacity is a Pricing-mirror) + Itinerary
-      // shown as Basics edit for the operator's mental model.
-      out.add("basics");
+      out.add("trip");
     }
     if (p.days !== undefined) out.add("itinerary");
-    if (p.inclusions !== undefined) out.add("inclusions");
+    if (p.inclusions !== undefined) out.add("itinerary");
     if (p.pricing_tiers !== undefined) out.add("pricing");
     if (
       p.cover_media_url !== undefined ||
       p.cover_media_type !== undefined ||
       p.cover_media_provider !== undefined
     ) {
-      out.add("cover");
+      out.add("trip");
     }
     // ORCH-1120 — Settings dirtiness now flows through the parent patch diff
     // (controlled editor); the single bottom Save button owns the save.
@@ -984,143 +962,28 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       p.booking_deadline !== undefined ||
       p.bookings_closed !== undefined
     ) {
-      out.add("settings");
+      out.add("pricing");
     }
+    if (computed.guestPrivacyChanged !== null) out.add("travelers");
     return out;
   }, [computed]);
 
   // ---- Update handlers ----
-  const updateBasics = useCallback(
-    (patch: Partial<LocalTripEditState>): void => {
-      setEditState((prev) => ({ ...prev, ...patch }));
+  const handleStep1Change = useCallback(
+    (patch: Partial<Step1Draft>): void => {
+      // Cover and theme are deliberately hidden in the shared basics body;
+      // the published screen owns the complete cover metadata patch below.
+      const {
+        coverMediaUrl: _coverMediaUrl,
+        coverMediaPosterUrl: _coverMediaPosterUrl,
+        coverMediaType: _coverMediaType,
+        coverGallery: _coverGallery,
+        themeOverrides: _themeOverrides,
+        ...basicsPatch
+      } = patch;
+      setEditState((prev) => ({ ...prev, ...basicsPatch }));
     },
     [],
-  );
-  const resolveDeparture = useCallback(
-    (rawLabel: string): void => {
-      const generation = advanceLocationRequestGeneration(
-        departureRequestGenerationRef,
-      );
-      committedDepartureRef.current = rawLabel;
-      setDepartureSelectionState("resolving");
-      updateBasics({
-        departureLocationText: rawLabel,
-        departurePlaceId: null,
-        departureLat: null,
-        departureLng: null,
-        departureCity: null,
-        departureCountryCode: null,
-        departureCoordinatePrecision: null,
-      });
-      void (async () => {
-        try {
-          const resolution = await resolveFreeTextLocation(
-            rawLabel,
-            departureContextRef.current,
-          );
-          if (
-            !isLocationRequestGenerationCurrent(
-              departureRequestGenerationRef,
-              generation,
-            ) ||
-            isFreeTextResolveStale(rawLabel, committedDepartureRef.current)
-          ) return;
-          if (resolution.status === "needs_context") {
-            setDepartureSelectionState("needs_context");
-            return;
-          }
-          const approx = resolution.location;
-          updateBasics({
-            departureLat: approx.lat,
-            departureLng: approx.lng,
-            departureCity: approx.city,
-            departureCountryCode: approx.countryCode,
-            departureCoordinatePrecision: "approximate",
-            // #4334 — the place the typed address resolved to; saved with the pin.
-            departurePlaceId: approx.placeId,
-          });
-          departureContextRef.current = {
-            city: approx.city,
-            countryCode: approx.countryCode,
-          };
-          setDepartureSelectionState("selected");
-        } catch {
-          if (
-            isLocationRequestGenerationCurrent(
-              departureRequestGenerationRef,
-              generation,
-            ) &&
-            !isFreeTextResolveStale(rawLabel, committedDepartureRef.current)
-          ) {
-            setDepartureSelectionState("error");
-          }
-        }
-      })();
-    },
-    [updateBasics],
-  );
-  const resolveDestination = useCallback(
-    (rawLabel: string): void => {
-      const generation = advanceLocationRequestGeneration(
-        destinationRequestGenerationRef,
-      );
-      committedDestinationRef.current = rawLabel;
-      setDestinationSelectionState("resolving");
-      updateBasics({
-        destinationLocationText: rawLabel,
-        destinationPlaceId: null,
-        destinationLat: null,
-        destinationLng: null,
-        destinationCity: null,
-        destinationCountryCode: null,
-        destinationCoordinatePrecision: null,
-      });
-      void (async () => {
-        try {
-          const resolution = await resolveFreeTextLocation(
-            rawLabel,
-            destinationContextRef.current,
-          );
-          if (
-            !isLocationRequestGenerationCurrent(
-              destinationRequestGenerationRef,
-              generation,
-            ) ||
-            isFreeTextResolveStale(rawLabel, committedDestinationRef.current)
-          ) return;
-          if (resolution.status === "needs_context") {
-            setDestinationSelectionState("needs_context");
-            return;
-          }
-          const approx = resolution.location;
-          updateBasics({
-            destinationLat: approx.lat,
-            destinationLng: approx.lng,
-            destinationCity: approx.city,
-            destinationCountryCode: approx.countryCode,
-            destinationCoordinatePrecision: "approximate",
-            // #4334 — the place the typed address resolved to; saved with the pin.
-            destinationPlaceId: approx.placeId,
-          });
-          destinationContextRef.current = {
-            city: approx.city,
-            countryCode: approx.countryCode,
-          };
-          setDestinationSelectionState("selected");
-        } catch {
-          if (
-            isLocationRequestGenerationCurrent(
-              destinationRequestGenerationRef,
-              generation,
-            ) &&
-            !isFreeTextResolveStale(rawLabel, committedDestinationRef.current)
-          ) {
-            setDestinationSelectionState("error");
-          }
-        }
-      })();
-    },
-    [updateBasics],
   );
   const handleDaysChange = useCallback(
     (days: TripDayDraft[]): void => {
@@ -1193,10 +1056,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     setEditState((prev) => ({ ...prev, hideRemainingCount: next }));
   }, []);
 
-  const handleToggleSection = useCallback((key: SectionKey): void => {
-    setOpenSection((prev) => (prev === key ? null : key));
-  }, []);
-
   // ---- Save flow ----
   const handleSavePress = useCallback((): void => {
     const { patch } = computed;
@@ -1240,7 +1099,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     }
     // Title required if provided
     if (patch.title !== undefined && patch.title.length === 0) {
-      setOpenSection("basics");
+      scrollToBuilderSection("trip");
       showToast("Trip title can't be empty.");
       return;
     }
@@ -1264,8 +1123,17 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       )
     ) {
       setShowEditAddressErrors(true);
-      setOpenSection("basics");
+      scrollToBuilderSection("trip");
       showToast("Pick the trip's departure and destination from the suggestions.");
+      return;
+    }
+    // #4522 — use the same package/plan validator as create, against the live
+    // edited price. This catches amount deposits, custom totals and flex
+    // minimums before a review can reach the server.
+    const packageValidation = validateTripPackages(editState.pricing.packages);
+    if (!packageValidation.ok) {
+      scrollToBuilderSection("pricing");
+      showToast(packageValidation.reason ?? "Check every package and payment plan.");
       return;
     }
     const changedKeys = Object.keys(patch);
@@ -1282,9 +1150,18 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       inclusionDiffs: computed.inclusionDiffs,
       pricingTierDiffs: computed.pricingTierDiffs,
       severity,
+      reasonRequired: liveTripEditNeedsBuyerReason(trip, patch),
     });
     // ORCH-1339 — trip.id + router feed the toggle-only direct-persist branch.
-  }, [computed, tripFieldDiffs, showToast, editState, trip.id, router]);
+  }, [
+    computed,
+    tripFieldDiffs,
+    showToast,
+    editState,
+    trip,
+    router,
+    scrollToBuilderSection,
+  ]);
 
   // ---- Map rejection result to dialog content ----
   const buildRejectDialog = useCallback(
@@ -1471,6 +1348,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       setSubmitting(true);
       await sleep(SAVE_PROCESSING_MS);
       const { patch } = computed;
+      const auditReason = modal.reasonRequired
+        ? reason
+        : NON_BUYER_EDIT_AUDIT_REASON;
 
       // Client-side UX fast-path mirror of the RPC's refund-gate.
       const preflight = validateLiveTripFieldUpdate(
@@ -1478,9 +1358,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         patch,
         soldCountByTier,
         totalConfirmedOrders,
-        reason,
+        auditReason,
       );
-      if (!preflight.ok) {
+      if (preflight.ok === false) {
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
         setRejectDialog(buildRejectDialog(preflight));
@@ -1566,7 +1446,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         return;
       }
 
-      if (!result.ok) {
+      if (result.ok === false) {
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
         setRejectDialog(buildRejectDialog(result));
@@ -1634,6 +1514,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       buildRejectDialog,
       router,
       showToast,
+      modal.reasonRequired,
     ],
   );
 
@@ -1675,299 +1556,49 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
 
   // ---- Section body renderer ----
   const renderSectionBody = useCallback(
-    (key: SectionKey): React.ReactNode => {
+    (key: LegacySectionKey): React.ReactNode => {
       switch (key) {
-        case "basics":
+        case "trip":
           return (
-            <View style={styles.basicsFields}>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Title</Text>
-                <TextInput
-                  value={editState.title}
-                  onChangeText={(v) => updateBasics({ title: v })}
-                  placeholder="Trip title"
-                  placeholderTextColor={color.text3}
-                  style={styles.textInput}
-                  accessibilityLabel="Trip title"
-                  testID="edit-trip-title"
-                />
-              </View>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Description</Text>
-                <TextInput
-                  value={editState.description ?? ""}
-                  onChangeText={(v) =>
-                    updateBasics({
-                      description: v.trim().length === 0 ? null : v,
-                    })
-                  }
-                  placeholder="Optional — what makes this trip special"
-                  placeholderTextColor={color.text3}
-                  style={[styles.textInput, styles.textArea]}
-                  multiline
-                  numberOfLines={4}
-                  accessibilityLabel="Trip description"
-                  testID="edit-trip-description"
-                />
-              </View>
-              {/* ORCH-1118 — Departing from (origin), ABOVE Destination. The
-                  shared selected-address field resolves a coordinate
-                  automatically; typing nulls the structured fields. The
-                  ORCH-1016 trigger syncs
-                  theme.business_trip.departureLocationText/Lat/Lng →
-                  events.departure_text/geo (unchanged). testID lives on the
-                  wrapping View (the picker wrapper takes no testID prop). */}
-              <View style={styles.fieldGroup} testID="edit-trip-departure">
-                <Text style={styles.fieldLabel}>Departing from</Text>
-                <AddressInput
-                  value={editState.departureLocationText ?? ""}
-                  accessibilityLabel="Departing from"
-                  placeholder="e.g. Washington, DC, USA"
-                  allowFreeText
-                  selectionState={departureSelectionState}
-                  selectedLabel={editState.departureLocationText ?? ""}
-                  proximitySources={{
-                    draftPoint: [editDeparturePoint, editDestinationPoint],
-                    timeZone: trip.timezone,
-                  }}
-                  onChangeText={(v) => {
-                    advanceLocationRequestGeneration(
-                      departureRequestGenerationRef,
-                    );
-                    departureContextRef.current = {
-                      city: null,
-                      countryCode: null,
-                    };
-                    committedDepartureRef.current = v;
-                    updateBasics({
-                      departureLocationText: v.trim().length === 0 ? null : v,
-                      departurePlaceId: null,
-                      departureLat: null,
-                      departureLng: null,
-                      departureCity: null,
-                      departureCountryCode: null,
-                      departureCoordinatePrecision: null,
-                    });
-                  }}
-                  onFreeText={resolveDeparture}
-                  onPick={(place, selectedLabel) => {
-                    advanceLocationRequestGeneration(
-                      departureRequestGenerationRef,
-                    );
-                    const label = selectedLabel ?? place.formattedAddress;
-                    committedDepartureRef.current = label;
-                    updateBasics({
-                      departurePlaceId: place.placeId,
-                      departureLocationText: label,
-                      departureLat: place.location.lat,
-                      departureLng: place.location.lng,
-                      departureCity: place.city,
-                      departureCountryCode: place.countryCode,
-                      // #4334 F-7 — a real pick: READ the precision (#1629).
-                      departureCoordinatePrecision: precisionFromPlaceDetails(place),
-                    });
-                    departureContextRef.current = {
-                      city: place.city,
-                      countryCode: place.countryCode,
-                    };
-                    setDepartureSelectionState("selected");
-                  }}
-                  onChangeSelected={() => {
-                    advanceLocationRequestGeneration(
-                      departureRequestGenerationRef,
-                    );
-                    departureContextRef.current = {
-                      city: null,
-                      countryCode: null,
-                    };
-                    committedDepartureRef.current =
-                      editState.departureLocationText ?? "";
-                    setDepartureSelectionState("editing");
-                    updateBasics({
-                      departurePlaceId: null,
-                      departureLat: null,
-                      departureLng: null,
-                      departureCity: null,
-                      departureCountryCode: null,
-                      departureCoordinatePrecision: null,
-                    });
-                  }}
-                  onClear={() => {
-                    advanceLocationRequestGeneration(
-                      departureRequestGenerationRef,
-                    );
-                    departureContextRef.current = {
-                      city: null,
-                      countryCode: null,
-                    };
-                    committedDepartureRef.current = "";
-                    setDepartureSelectionState("editing");
-                    updateBasics({
-                      departurePlaceId: null,
-                      departureLocationText: null,
-                      departureLat: null,
-                      departureLng: null,
-                      departureCity: null,
-                      departureCountryCode: null,
-                      departureCoordinatePrecision: null,
-                    });
-                  }}
-                  error={
-                    showEditAddressErrors &&
-                    !departureLocationValidated(
-                      editState.departureLocationText,
-                      editState.departurePlaceId,
-                      editState.departureLat,
-                      editState.departureLng,
-                    )
-                      ? TRIP_DEPARTURE_PICK_ERROR
-                      : undefined
-                  }
-                />
-              </View>
-              <View style={styles.fieldGroup} testID="edit-trip-destination">
-                <Text style={styles.fieldLabel}>Destination</Text>
-                <AddressInput
-                  value={editState.destinationLocationText ?? ""}
-                  accessibilityLabel="Destination"
-                  placeholder="e.g. Tulum, Quintana Roo, Mexico"
-                  allowFreeText
-                  selectionState={destinationSelectionState}
-                  selectedLabel={editState.destinationLocationText ?? ""}
-                  proximitySources={{
-                    draftPoint: [editDestinationPoint, editDeparturePoint],
-                    timeZone: trip.timezone,
-                  }}
-                  onChangeText={(v) => {
-                    advanceLocationRequestGeneration(
-                      destinationRequestGenerationRef,
-                    );
-                    destinationContextRef.current = {
-                      city: null,
-                      countryCode: null,
-                    };
-                    committedDestinationRef.current = v;
-                    updateBasics({
-                      destinationLocationText: v.trim().length === 0 ? null : v,
-                      destinationPlaceId: null,
-                      destinationLat: null,
-                      destinationLng: null,
-                      destinationCity: null,
-                      destinationCountryCode: null,
-                      destinationCoordinatePrecision: null,
-                    });
-                  }}
-                  onFreeText={resolveDestination}
-                  onPick={(place, selectedLabel) => {
-                    advanceLocationRequestGeneration(
-                      destinationRequestGenerationRef,
-                    );
-                    const label = selectedLabel ?? place.formattedAddress;
-                    committedDestinationRef.current = label;
-                    updateBasics({
-                      destinationPlaceId: place.placeId,
-                      destinationLocationText: label,
-                      destinationLat: place.location.lat,
-                      destinationLng: place.location.lng,
-                      destinationCity: place.city,
-                      destinationCountryCode: place.countryCode,
-                      // #4334 F-7 — a real pick: READ the precision (#1629).
-                      destinationCoordinatePrecision: precisionFromPlaceDetails(place),
-                    });
-                    destinationContextRef.current = {
-                      city: place.city,
-                      countryCode: place.countryCode,
-                    };
-                    setDestinationSelectionState("selected");
-                  }}
-                  onChangeSelected={() => {
-                    advanceLocationRequestGeneration(
-                      destinationRequestGenerationRef,
-                    );
-                    destinationContextRef.current = {
-                      city: null,
-                      countryCode: null,
-                    };
-                    committedDestinationRef.current =
-                      editState.destinationLocationText ?? "";
-                    setDestinationSelectionState("editing");
-                    updateBasics({
-                      destinationPlaceId: null,
-                      destinationLat: null,
-                      destinationLng: null,
-                      destinationCity: null,
-                      destinationCountryCode: null,
-                      destinationCoordinatePrecision: null,
-                    });
-                  }}
-                  onClear={() => {
-                    advanceLocationRequestGeneration(
-                      destinationRequestGenerationRef,
-                    );
-                    destinationContextRef.current = {
-                      city: null,
-                      countryCode: null,
-                    };
-                    committedDestinationRef.current = "";
-                    setDestinationSelectionState("editing");
-                    updateBasics({
-                      destinationPlaceId: null,
-                      destinationLocationText: null,
-                      destinationLat: null,
-                      destinationLng: null,
-                      destinationCity: null,
-                      destinationCountryCode: null,
-                      destinationCoordinatePrecision: null,
-                    });
-                  }}
-                  error={
-                    showEditAddressErrors &&
-                    !destinationLocationValidated(
-                      editState.destinationLocationText,
-                      editState.destinationPlaceId,
-                      editState.destinationLat,
-                      editState.destinationLng,
-                    )
-                      ? TRIP_DESTINATION_PICK_ERROR
-                      : undefined
-                  }
-                />
-              </View>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Capacity</Text>
-                {trip.pricingTiers.length > 1 ? (
-                  // Issue #3801 — with several packages the trip total is the
-                  // sum of their spots. One number here cannot say which
-                  // package it belongs to, so the total is shown, not edited.
-                  <Text
-                    style={styles.capacityReadOnly}
-                    testID="edit-trip-capacity-total"
-                  >
-                    {editState.capacity === null
-                      ? `No overall limit across ${trip.pricingTiers.length} packages.`
-                      : `${editState.capacity} traveler${editState.capacity === 1 ? "" : "s"} across ${trip.pricingTiers.length} packages. Spots are set per package.`}
-                  </Text>
-                ) : (
-                  <TextInput
-                    value={
-                      editState.capacity === null ? "" : String(editState.capacity)
-                    }
-                    onChangeText={(v) => {
-                      const n = parseInt(v.replace(/[^0-9]/g, ""), 10);
-                      updateBasics({
-                        capacity: Number.isFinite(n) && n > 0 ? n : null,
-                      });
-                    }}
-                    placeholder="12"
-                    placeholderTextColor={color.text3}
-                    keyboardType="number-pad"
-                    style={styles.textInput}
-                    accessibilityLabel="Trip capacity"
-                    testID="edit-trip-capacity"
-                  />
-                )}
-              </View>
-            </View>
+            <TripCreatorStep1Basics
+              draft={{
+                title: editState.title,
+                description: editState.description ?? "",
+                startAt: editState.startAt,
+                endAt: editState.endAt,
+                destinationPlaceId: editState.destinationPlaceId,
+                destinationLocationText: editState.destinationLocationText,
+                destinationLat: editState.destinationLat,
+                destinationLng: editState.destinationLng,
+                destinationCity: editState.destinationCity,
+                destinationCountryCode: editState.destinationCountryCode,
+                departurePlaceId: editState.departurePlaceId,
+                departureLocationText: editState.departureLocationText,
+                departureLat: editState.departureLat,
+                departureLng: editState.departureLng,
+                departureCity: editState.departureCity,
+                departureCountryCode: editState.departureCountryCode,
+                destinationCoordinatePrecision:
+                  editState.destinationCoordinatePrecision,
+                departureCoordinatePrecision:
+                  editState.departureCoordinatePrecision,
+                coverMediaUrl: editState.coverMediaUrl,
+                coverMediaPosterUrl: editState.coverMediaPosterUrl,
+                coverMediaType: editState.coverMediaType,
+                coverGallery: editState.coverGallery,
+                themeOverrides: null,
+              }}
+              onChange={handleStep1Change}
+              disabled={submitting}
+              brandId={trip.brandId}
+              tripEventId={trip.id}
+              onShowToast={showToast}
+              showAddressErrors={showEditAddressErrors}
+              timeZone={trip.timezone}
+              builderV2
+              showCoverPicker={false}
+              showThemeControl={false}
+            />
           );
         case "itinerary":
           return (
@@ -1996,11 +1627,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           );
         case "pricing": {
           const firstTier = trip.pricingTiers[0];
-          const soldCountForTier =
-            firstTier === undefined
-              ? 0
-              : (soldCountByTier[firstTier.ticketTypeId] ?? 0);
-          // META-ORCH-1174 Leg B2 — sole edited package (single-package B4).
           const editPkg = editState.pricing.packages[0];
           // ORCH-0882 [Render Payment Plan Disclosure on Trip Buyer +
           // Planner Surfaces] — planner-variant live preview below the
@@ -2032,26 +1658,18 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   },
                   new Date(),
                 );
-          // META-ORCH-1174 Leg B2 — pass the per-package sold count via the
-          // package's `soldCount` so the single edited package shows the
-          // post-sale price lock. (B4 multi-package edit comes later.)
-          const lockedPackages = editState.pricing.packages.map((p, idx) =>
-            idx === 0 ? { ...p, soldCount: soldCountForTier } : p,
-          );
           return (
             <View>
               <TripCreatorStep4Pricing
-                draft={{ ...editState.pricing, packages: lockedPackages }}
+                draft={editState.pricing}
                 onChange={handlePricingChange}
                 disabled={submitting}
                 paymentPlansAvailable={paymentPlansAvailable}
-                tripStartAt={trip.businessTrip.startAt}
+                tripStartAt={editState.startAt}
                 timeZone={trip.timezone}
-                // #4522 slice 3: the draft command is v2-aware. The published
-                // command becomes v2-aware with slice 12; until then, never
-                // expose a control whose save would serialize the wrong key.
-                v2PlanAuthoringLocked
-                v2PlanAuthoringLockedReason="Payment plan changes unlock with the new published-trip editor. Your saved plan is kept."
+                allowPackageStructureChanges={false}
+                allowCapacityChange={false}
+                showSharePaymentPlanControl={false}
               />
               {plannerPreviewSchedule !== null ? (
                 <View style={styles.plannerPlanPreviewWrap}>
@@ -2127,10 +1745,11 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           );
         case "intake":
           // ORCH-0880 [Tr5 Traveler Intake Forms] — Intake form accordion
-          // body. Self-contained: owns its query, mutation, reason dialog,
-          // and toast. Per DESIGN §6 + I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-
-          // PERSISTS-TO-DB — writes route through biz_update_live_trip RPC
-          // with reason text (10-200 chars) via upsertTripIntakeSchema.
+          // body. Self-contained: owns its query, mutation, and toast. Per
+          // DESIGN §6 + I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-PERSISTS-TO-DB,
+          // writes route through biz_update_live_trip via
+          // upsertTripIntakeSchema and receive the neutral audit reason used
+          // for buyer-safe edits.
           return (
             <EditPublishedTripIntakeAccordion
               eventId={trip.id}
@@ -2142,11 +1761,12 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           // read-only snapshot + "use the wizard" hint is replaced by a live,
           // sales-gated editor. REWORK (2026-06-12): the accordion is now a
           // PURE CONTROLLED EDITOR — its three values lift into editState and
-          // the screen's single bottom Save button owns the diff, reason prompt
-          // (ChangeSummaryModal), gate (biz_update_live_trip), and reject path
-          // (buildRejectDialog). All writes route through biz_update_live_trip
-          // (the accordion never calls refundPolicyService); refund-class
-          // rejects render through this screen's ConfirmDialog via handleConfirmSave.
+          // the screen's single bottom Save button owns the diff, conditional
+          // reason prompt (ChangeSummaryModal), gate (biz_update_live_trip),
+          // and reject path (buildRejectDialog). All writes route through
+          // biz_update_live_trip (the accordion never calls
+          // refundPolicyService); refund-class rejects render through this
+          // screen's ConfirmDialog via handleConfirmSave.
           return (
             <EditPublishedTripSettingsAccordion
               refundPolicy={editState.refundPolicy}
@@ -2163,7 +1783,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
               onHideRemainingCountChange={handleHideRemainingCountChange}
               extraGuestCount={editState.extraGuestCount}
               onExtraGuestCountChange={handleExtraGuestCountChange}
-              tripStartIso={trip.businessTrip.startAt}
+              tripStartIso={editState.startAt}
               brandTimezone={trip.timezone}
               affectedOrderCount={totalConfirmedOrders}
               submitting={submitting}
@@ -2178,10 +1798,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     [
       editState,
       showEditAddressErrors,
-      departureSelectionState,
-      destinationSelectionState,
-      resolveDeparture,
-      resolveDestination,
       // ORCH-1122 [trip-edit cover dead-tap] — the cover section body renders
       // <CoverPickerSheet visible={coverPickerVisible}> and the "Change cover"
       // button inside this memoized callback. Omitting coverPickerVisible left
@@ -2191,7 +1807,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       // Adding it as a dep re-mints the body when the flag flips. (The
       // setCoverPickerVisible setter is referentially stable and needs no dep.)
       coverPickerVisible,
-      updateBasics,
+      handleStep1Change,
       handleDaysChange,
       handleInclusionsChange,
       handlePricingChange,
@@ -2199,7 +1815,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       handleCoverChange,
       submitting,
       totalConfirmedOrders,
-      soldCountByTier,
       trip,
       showToast,
       // ORCH-1120 — Settings controlled-editor wiring.
@@ -2210,7 +1825,89 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       // stale-closure class: the memoized body renders the two switches).
       handlePrivateGuestListChange,
       handleHideRemainingCountChange,
+      handleExtraGuestCountChange,
     ],
+  );
+
+  const renderBuilderSectionBody = useCallback(
+    (key: BuilderSectionKey): React.ReactNode => {
+      switch (key) {
+        case "trip":
+          return (
+            <>
+              {renderSectionBody("trip")}
+              <TripBuilderSectionTitle title="Cover" />
+              {renderSectionBody("cover")}
+            </>
+          );
+        case "itinerary":
+          return (
+            <>
+              {renderSectionBody("itinerary")}
+              <TripBuilderSectionTitle title="Inclusions" />
+              <TripInclusionChips
+                items={editState.inclusions}
+                onChange={handleInclusionsChange}
+                disabled={submitting}
+              />
+              {renderSectionBody("inclusions")}
+            </>
+          );
+        case "pricing":
+          return (
+            <>
+              <TripBuilderSectionTitle title="Packages and prices" />
+              {renderSectionBody("pricing")}
+              <TripBuilderSectionTitle title="Cancellation and booking deadline" />
+              {renderSectionBody("settings")}
+              <TripEarningsCard draft={editState.pricing} />
+            </>
+          );
+        case "travelers":
+          return (
+            <>
+              <TripBuilderSectionTitle title="Traveler questions" />
+              {renderSectionBody("intake")}
+              {Platform.OS === "web" ? (
+                <>
+                  <TripBuilderSectionTitle title="Eligible buyers" />
+                  <React.Suspense fallback={null}>
+                    <EventTicketCheckoutAccessCard eventId={trip.id} embedded />
+                  </React.Suspense>
+                </>
+              ) : null}
+            </>
+          );
+        default: {
+          const _exhaust: never = key;
+          return _exhaust;
+        }
+      }
+    },
+    [
+      editState.inclusions,
+      editState.pricing,
+      handleInclusionsChange,
+      renderSectionBody,
+      submitting,
+      trip.id,
+    ],
+  );
+
+  const builderStepperSteps = useMemo<StepperStep[]>(
+    () =>
+      BUILDER_SECTIONS.map((section) => ({
+        id: section.key,
+        label: section.label,
+        state:
+          section.key === activeBuilderSection
+            ? "current"
+            : editedSectionKeys.has(section.key)
+              ? "done"
+              : "todo",
+        description: editedSectionKeys.has(section.key) ? "Edited" : undefined,
+      })),
+    [activeBuilderSection, editedSectionKeys],
   );
 
   // ---- Render ----
@@ -2233,95 +1930,89 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         <View style={styles.chromeRightSlot} />
       </View>
 
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 120 },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-      >
-        <EditAfterPublishTripBanner />
-
-        {SECTIONS.map((sec) => {
-          const isOpen = openSection === sec.key;
-          const isEdited = editedSectionKeys.has(sec.key);
-          return (
-            <View key={sec.key} style={styles.sectionCard}>
-              <Pressable
-                onPress={() => handleToggleSection(sec.key)}
-                accessibilityRole="button"
-                accessibilityLabel={`${sec.label} section${
-                  isOpen ? " (expanded)" : " (collapsed)"
-                }`}
-                style={({ pressed }) => [
-                  styles.sectionHeader,
-                  pressed && styles.sectionHeaderPressed,
-                ]}
-              >
-                <View style={styles.sectionHeaderLeft}>
-                  <Text style={styles.sectionLabel}>{sec.label}</Text>
-                  {isEdited ? (
-                    <View style={styles.editedBadge}>
-                      <Text style={styles.editedBadgeText}>Edited</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <Icon
-                  name={isOpen ? "chevU" : "chevD"}
-                  size={16}
-                  color={color.text3}
-                />
-              </Pressable>
-              {isOpen ? (
-                <View style={styles.sectionBody}>
-                  {renderSectionBody(sec.key)}
-                </View>
-              ) : null}
-            </View>
-          );
-        })}
-
-        {/* issue #2101 [named-buyer checkout] — the SAME shared configuration
-            card as the Event and Experience management surfaces (one service
-            owner; no per-offering-type policy logic). Web-only by filename
-            resolution: the .native.tsx sibling is a typed null renderer. */}
-        {Platform.OS === "web" ? (
-          // #4420: the same collapsible section card as the sections above
-          // (it read as a raw form under them).
-          <View style={styles.sectionCard}>
-            <Pressable
-              onPress={() => setBuyersOpen((open) => !open)}
-              accessibilityRole="button"
-              accessibilityLabel={`Eligible buyers section${buyersOpen ? " (expanded)" : " (collapsed)"}`}
-              style={({ pressed }) => [
-                styles.sectionHeader,
-                pressed && styles.sectionHeaderPressed,
-              ]}
-              testID="eligible-buyers-section-header"
-            >
-              <View style={styles.sectionHeaderLeft}>
-                <Text style={styles.sectionLabel}>Eligible buyers</Text>
-              </View>
-              <Icon
-                name={buyersOpen ? "chevU" : "chevD"}
-                size={16}
-                color={color.text3}
-              />
-            </Pressable>
-            {buyersOpen ? (
-              <View style={styles.sectionBody}>
-                <React.Suspense fallback={null}>
-                  <EventTicketCheckoutAccessCard eventId={trip.id} embedded />
-                </React.Suspense>
-              </View>
-            ) : null}
+      <View style={styles.editorShell}>
+        {isWideDesktop ? (
+          <View style={styles.builderRail} testID="edit-trip-builder-rail">
+            <Text style={styles.builderRailEyebrow}>Edit published trip</Text>
+            <Text style={styles.builderRailTitle} numberOfLines={2}>
+              {editState.title.trim().length > 0 ? editState.title : "Untitled trip"}
+            </Text>
+            <Stepper
+              layout="list"
+              steps={builderStepperSteps}
+              currentIndex={Math.max(
+                0,
+                BUILDER_SECTIONS.findIndex(
+                  (section) => section.key === activeBuilderSection,
+                ),
+              )}
+              furthestValidIndex={BUILDER_SECTIONS.length - 1}
+              onStepPress={(index) => {
+                const section = BUILDER_SECTIONS[index];
+                if (section !== undefined) scrollToBuilderSection(section.key);
+              }}
+              testID="edit-trip-builder-steps"
+            />
           </View>
         ) : null}
-      </ScrollView>
+
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            isWideDesktop ? styles.scrollContentWide : null,
+            { paddingBottom: insets.bottom + 120 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(event) => {
+            const y = event.nativeEvent.contentOffset.y + 96;
+            let active: BuilderSectionKey = BUILDER_SECTIONS[0].key;
+            for (const section of BUILDER_SECTIONS) {
+              if (builderSectionOffsetsRef.current[section.key] <= y) {
+                active = section.key;
+              }
+            }
+            setActiveBuilderSection(active);
+          }}
+        >
+          <EditAfterPublishTripBanner />
+
+          {BUILDER_SECTIONS.map((section) => {
+            const isEdited = editedSectionKeys.has(section.key);
+            return (
+              <View
+                key={section.key}
+                style={styles.sectionCard}
+                testID={`edit-trip-builder-section-${section.key}`}
+                onLayout={(event) => {
+                  builderSectionOffsetsRef.current[section.key] =
+                    event.nativeEvent.layout.y;
+                }}
+              >
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionHeaderLeft}>
+                    <Text accessibilityRole="header" style={styles.sectionLabel}>
+                      {section.label}
+                    </Text>
+                    {isEdited ? (
+                      <View style={styles.editedBadge}>
+                        <Text style={styles.editedBadgeText}>Edited</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+                <View style={styles.sectionBody}>
+                  {renderBuilderSectionBody(section.key)}
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       {/* Sticky Save dock */}
       {!keyboardVisible ? (
@@ -2357,6 +2048,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         onConfirm={handleConfirmSave}
         submitting={submitting}
         entityLabel="trip"
+        reasonRequired={modal.reasonRequired}
+        reasonPrompt="What changed and why? Travelers will see this."
       />
 
       {/* Refund-first reject dialog */}
@@ -2429,17 +2122,55 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
-  scrollContent: {
-    paddingHorizontal: space[4] + 8,
-    paddingTop: space[4],
+  editorShell: {
+    flex: 1,
+    flexDirection: "row",
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 1280,
   },
-  sectionCard: {
-    marginBottom: space[2],
+  builderRail: {
+    width: 280,
+    marginLeft: space[6],
+    marginTop: space[4],
+    marginBottom: 120,
+    padding: space[4],
+    gap: space[3],
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
     borderColor: color.line,
     backgroundColor: color.fill.inset,
-    overflow: "hidden",
+  },
+  builderRailEyebrow: {
+    fontSize: type.caption.fontSize,
+    lineHeight: type.caption.lineHeight,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: color.text3,
+  },
+  builderRailTitle: {
+    fontSize: type.h2.fontSize,
+    lineHeight: type.h2.lineHeight,
+    fontWeight: "600",
+    color: color.text1,
+  },
+  scrollContent: {
+    paddingHorizontal: space[4] + 8,
+    paddingTop: space[4],
+  },
+  scrollContentWide: {
+    width: "100%",
+    maxWidth: 760,
+    alignSelf: "center",
+  },
+  sectionCard: {
+    marginBottom: space[4],
+    borderRadius: radiusTokens.lg,
+    borderWidth: 1,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+    overflow: "visible",
   },
   sectionHeader: {
     flexDirection: "row",
@@ -2448,9 +2179,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     paddingVertical: space[4],
     minHeight: 56,
-  },
-  sectionHeaderPressed: {
-    backgroundColor: color.fill.inset,
   },
   sectionHeaderLeft: {
     flexDirection: "row",
@@ -2484,45 +2212,11 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     paddingBottom: space[4],
   },
-  basicsFields: {
-    gap: space[4],
-    paddingTop: space[2],
-  },
-  fieldGroup: {
-    gap: space[1],
-  },
   fieldLabel: {
     fontSize: type.caption.fontSize,
     lineHeight: type.caption.lineHeight,
     fontWeight: "600",
     color: color.text2,
-  },
-  capacityReadOnly: {
-    fontSize: type.small.fontSize,
-    lineHeight: type.small.lineHeight,
-    color: color.text2,
-  },
-  // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
-  editAddressHint: {
-    fontSize: type.caption.fontSize,
-    lineHeight: type.caption.lineHeight,
-    color: color.warning,
-  },
-  textInput: {
-    height: 48,
-    paddingHorizontal: 14,
-    borderRadius: radiusTokens.md,
-    backgroundColor: color.fill.inset,
-    borderWidth: 1,
-    borderColor: color.lineStrong,
-    color: color.text1,
-    fontSize: type.body.fontSize,
-  },
-  textArea: {
-    height: 100,
-    paddingTop: 12,
-    paddingBottom: 12,
-    textAlignVertical: "top",
   },
   coverWrap: {
     paddingTop: space[2],

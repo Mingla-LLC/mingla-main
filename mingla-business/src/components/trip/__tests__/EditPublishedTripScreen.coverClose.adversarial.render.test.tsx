@@ -82,6 +82,9 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
 jest.mock("../../../wrappers/useKeyboardIsVisible", () => ({
   useKeyboardIsVisible: () => false,
 }));
+jest.mock("../../../hooks/useResponsiveLayout", () => ({
+  useResponsiveLayout: () => ({ isWideDesktop: false }),
+}));
 
 jest.mock("../../../hooks/useTrips", () => ({
   useUpdateLiveTripFields: () => ({
@@ -114,9 +117,18 @@ jest.mock("../../../services/supabase", () => ({
 jest.mock("../TripCreatorStep2Itinerary", () => ({
   TripCreatorStep2Itinerary: () => null,
 }));
+jest.mock("../TripCreatorStep1Basics", () => ({
+  TripCreatorStep1Basics: () => null,
+}));
 jest.mock("../TripCreatorStep3Inclusions", () => ({
   TripCreatorStep3Inclusions: () => null,
 }));
+jest.mock("../TripInclusionChips", () => ({ TripInclusionChips: () => null }));
+jest.mock("../TripEarningsCard", () => ({ TripEarningsCard: () => null }));
+jest.mock("../EditPublishedTripSettingsAccordion", () => ({
+  EditPublishedTripSettingsAccordion: () => null,
+}));
+jest.mock("../../ui/Stepper", () => ({ Stepper: () => null }));
 jest.mock("../TripCreatorStep4Pricing", () => ({
   TripCreatorStep4Pricing: () => null,
   // #1486 — EditPublishedTripScreen.tsx also imports makePackageKey from this
@@ -141,7 +153,7 @@ jest.mock("../../ui/EventCoverMedia", () => ({ EventCoverMedia: () => null }));
 // test can drive the close path the production body wired
 // (onClose={() => setCoverPickerVisible(false)}). This reads/drives the EXACT
 // props the real memoized body passes — no screen state is mocked.
-jest.mock("../../ui/CoverPickerSheet", () => {
+jest.mock("../../ui/LazyCoverPickerSheet", () => {
   const RN = require("react-native");
   return {
     CoverPickerSheet: ({ visible, onClose }: any) =>
@@ -189,12 +201,13 @@ jest.mock("../../ui/IconChrome", () => {
 });
 jest.mock("../../ui/ConfirmDialog", () => ({ ConfirmDialog: () => null }));
 jest.mock("../../ui/CoverPicker", () => ({ CoverPicker: () => null }));
-jest.mock("../../event/ChangeSummaryModal", () => ({
+jest.mock("../../event/LazyChangeSummaryModal", () => ({
   ChangeSummaryModal: () => null,
 }));
 
 // ---- Imports AFTER mocks ----
 
+// eslint-disable-next-line import/no-unresolved -- provisioned by the dedicated render workflow
 import { render, screen, fireEvent } from "@testing-library/react-native";
 import { EditPublishedTripScreen } from "../EditPublishedTripScreen";
 import type { Trip } from "../../../services/tripsService";
@@ -264,10 +277,8 @@ describe("ORCH-1122 ADVERSARIAL — CoverPickerSheet two-way binding (close re-m
   it("after opening, firing the sheet onClose RE-CLOSES it (visible flips back to false → sheet unmounts)", async () => {
     await render(<EditPublishedTripScreen trip={makeTripWithCover()} />);
 
-    // Expand the Cover accordion. Cover EXISTS → button label is "Change cover";
-    // the accessibilityLabel selector is shared across both label paths.
-    await fireEvent.press(screen.getByLabelText("Cover section (collapsed)"));
-
+    // All four builder sections are mounted. Cover EXISTS → button label is
+    // "Change cover"; the accessibility label is shared across label paths.
     const coverButton = screen.getByLabelText(COVER_BUTTON_LABEL);
     expect(coverButton).toBeTruthy();
     // Confirm we are on the cover-EXISTS branch (distinct from the happy-path

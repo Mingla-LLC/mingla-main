@@ -114,6 +114,14 @@ export interface ChangeSummaryModalProps {
    * as emailed.
    */
   whenChangeRefused?: boolean;
+  /**
+   * #4522 — some live-trip edits are logged but do not affect what a traveler
+   * bought. Those reviews omit the reason field entirely. Defaults to true so
+   * every existing event/RSVP consumer keeps its current contract.
+   */
+  reasonRequired?: boolean;
+  /** Optional buyer-facing prompt shown above the required reason field. */
+  reasonPrompt?: string;
 }
 
 export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
@@ -132,6 +140,8 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
   buyerNoticeStatus,
   buyerNoticeNoun = "buyers",
   whenChangeRefused = false,
+  reasonRequired = true,
+  reasonPrompt = "Why are you making this change?",
 }) => {
   const [reason, setReason] = useState<string>("");
   // issue #3827 — only a KNOWN zero relaxes anything.
@@ -147,6 +157,7 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
 
   const trimmedLen = reason.trim().length;
   const reasonValid =
+    !reasonRequired ||
     (trimmedLen >= REASON_MIN && trimmedLen <= REASON_MAX) ||
     (noBuyers && trimmedLen === 0);
 
@@ -284,54 +295,57 @@ export const ChangeSummaryModal: React.FC<ChangeSummaryModalProps> = ({
             </View>
           )}
 
-          {/* Required reason input */}
-          <View style={styles.reasonSection}>
-            {noBuyers ? (
-              <Text style={styles.reasonLabel}>Reason (optional)</Text>
-            ) : (
-              <Text style={styles.reasonLabel}>
-                Why are you making this change? <Text style={styles.required}>*</Text>
-              </Text>
-            )}
-            <View
-              style={[
-                styles.reasonInputWrap,
-                trimmedLen > 0 && !reasonValid ? styles.reasonInputError : null,
-              ]}
-            >
-              <TextInput
-                value={reason}
-                onChangeText={setReason}
-                placeholder="e.g. Venue change due to weather; updating ticket prices for next phase; correcting typo"
-                placeholderTextColor={color.text4}
-                multiline
-                numberOfLines={4}
-                maxLength={REASON_MAX}
-                style={styles.reasonInput}
-                editable={!submitting}
-                accessibilityLabel="Reason for change"
-              />
-            </View>
-            <View style={styles.reasonMetaRow}>
-              <Text
+          {/* #4522: buyer-safe trip edits still show their diff and audit note,
+              but do not ask the host to manufacture a traveler-facing reason. */}
+          {reasonRequired ? (
+            <View style={styles.reasonSection}>
+              {noBuyers ? (
+                <Text style={styles.reasonLabel}>Reason (optional)</Text>
+              ) : (
+                <Text style={styles.reasonLabel}>
+                  {reasonPrompt} <Text style={styles.required}>*</Text>
+                </Text>
+              )}
+              <View
                 style={[
-                  styles.reasonHelper,
-                  trimmedLen >= REASON_MIN
-                    ? styles.reasonHelperOk
-                    : null,
+                  styles.reasonInputWrap,
+                  trimmedLen > 0 && !reasonValid ? styles.reasonInputError : null,
                 ]}
               >
-                {noBuyers && trimmedLen === 0
-                  ? `Optional. Min ${REASON_MIN} characters if you add one`
-                  : trimmedLen < REASON_MIN
-                    ? `Min ${REASON_MIN} characters`
-                    : "Looks good"}
-              </Text>
-              <Text style={styles.reasonCount}>
-                {trimmedLen} / {REASON_MAX}
-              </Text>
+                <TextInput
+                  value={reason}
+                  onChangeText={setReason}
+                  placeholder="e.g. Venue change due to weather; updating ticket prices for next phase; correcting typo"
+                  placeholderTextColor={color.text4}
+                  multiline
+                  numberOfLines={4}
+                  maxLength={REASON_MAX}
+                  style={styles.reasonInput}
+                  editable={!submitting}
+                  accessibilityLabel="Reason for change"
+                />
+              </View>
+              <View style={styles.reasonMetaRow}>
+                <Text
+                  style={[
+                    styles.reasonHelper,
+                    trimmedLen >= REASON_MIN
+                      ? styles.reasonHelperOk
+                      : null,
+                  ]}
+                >
+                  {noBuyers && trimmedLen === 0
+                    ? `Optional. Min ${REASON_MIN} characters if you add one`
+                    : trimmedLen < REASON_MIN
+                      ? `Min ${REASON_MIN} characters`
+                      : "Looks good"}
+                </Text>
+                <Text style={styles.reasonCount}>
+                  {trimmedLen} / {REASON_MAX}
+                </Text>
+              </View>
             </View>
-          </View>
+          ) : null}
 
           {/* Footer note */}
           {footerCopy.length > 0 ? (

@@ -624,7 +624,8 @@ export function phase3dContractDigest(manifest) {
 // #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 merge of main after #3645 bundle 2e-1: kept main's 20281119003645 row before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 1931 replay: skipped 20281120014420_issue_4420_brand_guest_activity.sql by exact filename on the filtered #1931 temp replay (it calls issue_4459_is_brand_team, defined only by the skipped 20280805004459; #2492 closure); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "e99bd5972a0532165becfe3991760454776cadec0e42f0f8a8d41126e2122b76";
+// #4522 slice 12: registered the live plan-versus-price guard migration and its pg17 proof (with sidecar) in the replay inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "a916000216428365e1b29fb5d42016566456d9d8ff52b1547981c4263751a18c";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -364,7 +364,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order) in the #1857, #1931 and #2117 lanes; re-sealed.
 // #4420 merge of main after #3645 bundle 2e-1: kept main's 20281119003645 row before the three #4420 rows (filename order); re-sealed.
 // #4420 1931 replay: skipped 20281120014420_issue_4420_brand_guest_activity.sql by exact filename on the filtered #1931 temp replay (it calls issue_4459_is_brand_team, defined only by the skipped 20280805004459; #2492 closure); re-sealed.
-export const BOOTSTRAP_SHA256 = "086844a26109407bd78b819433ad8b02307c78a6a06d7cc5a47b823196080b29";
+// #4522 slice 12: registered the live plan-versus-price guard migration and its pg17 proof (with sidecar) in the replay inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "c2e88f4a9c96ccfeecc33ad7c336b010f2601430de2432f2d8e135a21239616d";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

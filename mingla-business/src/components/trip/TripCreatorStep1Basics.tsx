@@ -144,6 +144,10 @@ export interface TripCreatorStep1BasicsProps {
    */
   builderV2?: boolean;
   focusField?: "title" | "description" | null;
+  /** #4522 — published editing reuses this body but owns the full cover patch. */
+  showCoverPicker?: boolean;
+  /** Published editing does not currently persist offering theme overrides. */
+  showThemeControl?: boolean;
   // ORCH-0892-A: legacy wizard-scroll-ref prop removed. CoverPicker now
   // uses the keyboard-controller library's KAV wrap instead.
 }
@@ -168,6 +172,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   onCoverVideoProcessingChange,
   builderV2 = false,
   focusField = null,
+  showCoverPicker = true,
+  showThemeControl = true,
 }) => {
   const titleInputRef = useRef<TextInput | null>(null);
   const descriptionInputRef = useRef<TextInput | null>(null);
@@ -671,35 +677,37 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           video now ENABLED on trips. Step 1 persists url + type via
           updateTripBasics; EditPublishedTripScreen handles the full 7-field
           patch via biz_update_live_trip.) */}
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Cover</Text>
-        <View style={styles.coverPreview}>
-          <EventCoverMedia
-            hue={0}
-            mediaUrl={draft.coverMediaUrl}
-            mediaType={draft.coverMediaType}
-            radius={12}
-            label="trip cover"
-            height={180}
-            muted={true}
-            showAudioControl={draft.coverMediaType === "video"}
+      {showCoverPicker ? (
+        <View style={styles.fieldGroup}>
+          <Text style={styles.fieldLabel}>Cover</Text>
+          <View style={styles.coverPreview}>
+            <EventCoverMedia
+              hue={0}
+              mediaUrl={draft.coverMediaUrl}
+              mediaType={draft.coverMediaType}
+              radius={12}
+              label="trip cover"
+              height={180}
+              muted={true}
+              showAudioControl={draft.coverMediaType === "video"}
+            />
+          </View>
+          <Button
+            label={
+              typeof draft.coverMediaUrl === "string" && draft.coverMediaUrl.length > 0
+                ? "Change cover"
+                : "Add cover"
+            }
+            leadingIcon="upload"
+            variant="secondary"
+            size="md"
+            shape="square"
+            onPress={() => setActiveSheet("cover")}
+            disabled={disabled}
+            accessibilityLabel="Add cover photo, GIF, or video"
           />
         </View>
-        <Button
-          label={
-            typeof draft.coverMediaUrl === "string" && draft.coverMediaUrl.length > 0
-              ? "Change cover"
-              : "Add cover"
-          }
-          leadingIcon="upload"
-          variant="secondary"
-          size="md"
-          shape="square"
-          onPress={() => setActiveSheet("cover")}
-          disabled={disabled}
-          accessibilityLabel="Add cover photo, GIF, or video"
-        />
-      </View>
+      ) : null}
 
       {/* #1022 M4 — direct child of styles.host (gap: space[4] = 16pt),
           NOT inside the cover fieldGroup (gap: space[1] = 4pt, wrong).
@@ -707,58 +715,64 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           the row lands at the end exactly like Event/RSVP. Step 1 already
           overflows its viewport, so the step scrolls and the row is reached
           by scrolling — that is expected, not a defect. */}
-      <ThemeControlRow
-        value={draft.themeOverrides}
-        onChange={handleThemeChange}
-        scope="offering"
-        brandTheme={brandQuery.data?.theme ?? null}
-        brandThemeStatus={brandThemeStatus}
-        disabled={disabled}
-        onPress={() => setActiveSheet("theme")}
-        testID="trip-theme-control-row"
-      />
+      {showThemeControl ? (
+        <ThemeControlRow
+          value={draft.themeOverrides}
+          onChange={handleThemeChange}
+          scope="offering"
+          brandTheme={brandQuery.data?.theme ?? null}
+          brandThemeStatus={brandThemeStatus}
+          disabled={disabled}
+          onPress={() => setActiveSheet("theme")}
+          testID="trip-theme-control-row"
+        />
+      ) : null}
 
       {/* ORCH-0989 — unified cover sheet, JSX child of this host
           (I-SUB-SHEET-INSIDE-PARENT). Video ENABLED on trips. */}
-      <CoverPickerSheet
-        visible={coverPickerVisible}
-        onClose={() => setActiveSheet("none")}
-        target={{
-          kind: "trip",
-          brandId,
-          eventRowId: tripEventId,
-          coverMediaApplyMode: "draft_auto",
-        }}
-        initial={{
-          coverMediaUrl: draft.coverMediaUrl,
-          coverMediaPosterUrl: draft.coverMediaPosterUrl ?? null,
-          coverMediaType: draft.coverMediaType,
-          coverMediaProvider: null,
-          coverMediaSourceUrl: null,
-          coverMediaCredit: null,
-          coverMediaCreditUrl: null,
-          coverMediaAlt: null,
-          // issue #868 [cover-gallery] — seed the manager from the trip draft.
-          coverGallery: draft.coverGallery ?? [],
-        }}
-        onCoverChange={handleCoverChange}
-        onShowToast={handleCoverToast}
-        onCoverVideoProcessingChange={onCoverVideoProcessingChange}
-        disabled={disabled}
-        // issue #3319 — `handleCoverChange` saves `coverGallery` into the trip draft.
-        galleryEnabled
-      />
+      {showCoverPicker ? (
+        <CoverPickerSheet
+          visible={coverPickerVisible}
+          onClose={() => setActiveSheet("none")}
+          target={{
+            kind: "trip",
+            brandId,
+            eventRowId: tripEventId,
+            coverMediaApplyMode: "draft_auto",
+          }}
+          initial={{
+            coverMediaUrl: draft.coverMediaUrl,
+            coverMediaPosterUrl: draft.coverMediaPosterUrl ?? null,
+            coverMediaType: draft.coverMediaType,
+            coverMediaProvider: null,
+            coverMediaSourceUrl: null,
+            coverMediaCredit: null,
+            coverMediaCreditUrl: null,
+            coverMediaAlt: null,
+            // issue #868 [cover-gallery] — seed the manager from the trip draft.
+            coverGallery: draft.coverGallery ?? [],
+          }}
+          onCoverChange={handleCoverChange}
+          onShowToast={handleCoverToast}
+          onCoverVideoProcessingChange={onCoverVideoProcessingChange}
+          disabled={disabled}
+          // issue #3319 — `handleCoverChange` saves `coverGallery` into the trip draft.
+          galleryEnabled
+        />
+      ) : null}
 
       {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the host root View. */}
-      <ThemeSheet
-        visible={activeSheet === "theme"}
-        onClose={() => setActiveSheet("none")}
-        value={draft.themeOverrides}
-        onChange={handleThemeChange}
-        scope="offering"
-        brandTheme={brandQuery.data?.theme ?? null}
-        testID="trip-theme-sheet"
-      />
+      {showThemeControl ? (
+        <ThemeSheet
+          visible={activeSheet === "theme"}
+          onClose={() => setActiveSheet("none")}
+          value={draft.themeOverrides}
+          onChange={handleThemeChange}
+          scope="offering"
+          brandTheme={brandQuery.data?.theme ?? null}
+          testID="trip-theme-sheet"
+        />
+      ) : null}
     </View>
   );
 };

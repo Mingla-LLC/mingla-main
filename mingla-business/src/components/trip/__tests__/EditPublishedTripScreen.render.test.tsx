@@ -73,6 +73,9 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
 jest.mock("../../../wrappers/useKeyboardIsVisible", () => ({
   useKeyboardIsVisible: () => false,
 }));
+jest.mock("../../../hooks/useResponsiveLayout", () => ({
+  useResponsiveLayout: () => ({ isWideDesktop: false }),
+}));
 
 // react-query mutation + web-purchases hook used at the top of the screen.
 jest.mock("../../../hooks/useTrips", () => ({
@@ -90,6 +93,11 @@ jest.mock("../../../hooks/useTripHasWebPurchases", () => ({
 jest.mock("../../../hooks/useTripInstallmentCapability", () => ({
   useTripInstallmentCapability: () => ({ data: false }),
 }));
+jest.mock("../../../hooks/useBrands", () => ({
+  useBrand: () => ({ data: null }),
+}));
+jest.mock("../../theme/ThemeControlRow", () => ({ ThemeControlRow: () => null }));
+jest.mock("../../theme/ThemeSheetLazy", () => ({ ThemeSheet: () => null }));
 
 // Trip-change notifier (fire-and-forget network) — no-op.
 jest.mock("../../../services/tripChangeNotifier", () => ({
@@ -120,10 +128,16 @@ jest.mock("../TripCreatorStep4Pricing", () => ({
   // function" — and nothing noticed, because no workflow ran these suites.
   makePackageKey: () => "issue1486-test-package-key",
 }));
+jest.mock("../TripInclusionChips", () => ({ TripInclusionChips: () => null }));
+jest.mock("../TripEarningsCard", () => ({ TripEarningsCard: () => null }));
+jest.mock("../EditPublishedTripSettingsAccordion", () => ({
+  EditPublishedTripSettingsAccordion: () => null,
+}));
+jest.mock("../../ui/Stepper", () => ({ Stepper: () => null }));
 jest.mock("../InstallmentScheduleDisplay", () => ({ InstallmentScheduleDisplay: () => null }));
 jest.mock("../EditPublishedTripIntakeAccordion", () => ({ EditPublishedTripIntakeAccordion: () => null }));
 jest.mock("../EditAfterPublishTripBanner", () => ({ EditAfterPublishTripBanner: () => null }));
-jest.mock("../../ui/CoverPickerSheet", () => ({ CoverPickerSheet: () => null }));
+jest.mock("../../ui/LazyCoverPickerSheet", () => ({ CoverPickerSheet: () => null }));
 jest.mock("../../ui/EventCoverMedia", () => ({ EventCoverMedia: () => null }));
 
 // Native-heavy chrome primitives (Sheet→expo-blur→expo-modules-core, etc.).
@@ -158,8 +172,9 @@ jest.mock("../../ui/IconChrome", () => {
 });
 jest.mock("../../ui/ConfirmDialog", () => ({ ConfirmDialog: () => null }));
 jest.mock("../../ui/CoverPicker", () => ({ CoverPicker: () => null }));
+jest.mock("../../ui/HostDateRangeField", () => ({ HostDateRangeField: () => null }));
 
-jest.mock("../../event/ChangeSummaryModal", () => {
+jest.mock("../../event/LazyChangeSummaryModal", () => {
   const RN = require("react-native");
   return {
     ChangeSummaryModal: ({ visible }: { visible: boolean }) =>
@@ -169,6 +184,7 @@ jest.mock("../../event/ChangeSummaryModal", () => {
 
 // ---- Imports AFTER mocks ----
 
+// eslint-disable-next-line import/no-unresolved -- provisioned by the dedicated render workflow
 import { render, screen, fireEvent } from "@testing-library/react-native";
 import { EditPublishedTripScreen } from "../EditPublishedTripScreen";
 import {
@@ -341,7 +357,7 @@ describe("ORCH-1118 — EditPublishedTripScreen RENDER PROOF (runtime mount)", (
 
     // Non-empty patch via a benign title edit (does not touch the location gate).
     await fireEvent.changeText(
-      screen.getByTestId("edit-trip-title"),
+      screen.getByTestId("trip-step1-title"),
       "The Sone — Summer",
     );
 
@@ -356,7 +372,7 @@ describe("ORCH-1118 — EditPublishedTripScreen RENDER PROOF (runtime mount)", (
 
     // Non-empty patch via a benign title edit; both gates pass ⇒ modal opens.
     await fireEvent.changeText(
-      screen.getByTestId("edit-trip-title"),
+      screen.getByTestId("trip-step1-title"),
       "The Sone — Summer",
     );
 

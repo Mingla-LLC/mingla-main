@@ -261,6 +261,8 @@ describe("editor interaction and lazy ownership", () => {
     expect(service).toContain("installments: _stripExistingV1");
     expect(service).toContain("payment_plan: _stripExistingV2");
     expect(service).toContain("share_payment_plan: patch.sharePaymentPlan === true");
-    expect(publishedEditor).toContain("v2PlanAuthoringLocked");
+    expect(publishedEditor).not.toContain("v2PlanAuthoringLocked");
+    expect(publishedEditor).toContain("metadata.payment_plan = editPkg.paymentPlan");
+    expect(publishedEditor).toContain("validateTripPackages(editState.pricing.packages)");
   });
 });
