@@ -17,3 +17,5 @@ export { GuestQuestionsRow } from "./GuestQuestionsRow";
 export { GuestQuestionsTile } from "./GuestQuestionsTile";
 export { GuestAnswersChip, GuestAnswersPanel } from "./GuestAnswers";
 export { GuestFormRequestRow } from "./GuestFormRequestRow";
+/** #4541 R1.9: answers on guest detail and order detail. */
+export { GuestAnswersCard } from "./GuestAnswersCard";

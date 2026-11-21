@@ -31,7 +31,8 @@ describe("counts", () => {
     expect(rpc).toHaveBeenCalledWith("biz_brand_form_counts", { p_brand_id: "b1" });
     expect(out).toEqual({
       forms: [{ formId: "f1", answered: 4, toAnswer: 2, pages: 1 }],
-      pages: [{ eventId: "e1", formId: "f1", answered: 4, toAnswer: 2 }],
+      // #4541 R1.2 (added on purpose): `notAsked` is null when the server sends none.
+      pages: [{ eventId: "e1", formId: "f1", answered: 4, toAnswer: 2, notAsked: null }],
     });
   });
 

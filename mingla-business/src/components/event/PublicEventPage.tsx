@@ -155,9 +155,17 @@ const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
 // is the actual complaint in #2135. Measured: inline +1,212 B vs sheet
 // +10,238 B. See MultiDateDayChooser's header for the full rationale.
 const MultiDateDayChooser = React.lazy(() => import("./MultiDateDayChooser"));
+// The ONE import() of the guest forms owner on this page (#4514 bundle rule):
+// both the RSVP questions and the #4541 "After they RSVP" hand-off load from it.
+const loadFormRendering = () => import("../checkout/intake/formRenderingPrimitives");
 const RsvpBrandFormQuestions = React.lazy(() =>
-  import("../checkout/intake/formRenderingPrimitives").then((module) => ({
+  loadFormRendering().then((module) => ({
     default: module.RsvpBrandFormQuestions,
+  })),
+);
+const RsvpFormHandoff = React.lazy(() =>
+  loadFormRendering().then((module) => ({
+    default: module.PurchaseFormHandoff,
   })),
 );
 import {
@@ -694,7 +702,20 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     staleTime: 30_000,
     queryFn: () => fetchPublicRsvpBrandForm(event.id),
   });
-  const rsvpBrandFormPage = rsvpBrandFormQuery.data ?? null;
+  // #4541 R1.3: the read is questions on the page, or an "After they RSVP" notice.
+  const rsvpBrandFormRead = rsvpBrandFormQuery.data ?? null;
+  const rsvpBrandFormPage =
+    rsvpBrandFormRead !== null && rsvpBrandFormRead.mode !== "after_purchase"
+      ? rsvpBrandFormRead
+      : null;
+  const rsvpAfterRsvpNotice =
+    rsvpBrandFormRead !== null && rsvpBrandFormRead.mode === "after_purchase"
+      ? rsvpBrandFormRead.notice
+      : null;
+  // #4541 R1.3: the guest's own form link, returned with a current RSVP.
+  const [rsvpFormHandoff, setRsvpFormHandoff] = useState<
+    { formId: string; token: string } | null
+  >(null);
   const refetchRsvpBrandForm = rsvpBrandFormQuery.refetch;
   const [rsvpFormAnswers, setRsvpFormAnswers] = useState<RsvpBrandFormAnswers>({});
   const rsvpFormSeenRef = useRef<string | null>(null);
@@ -1716,6 +1737,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         }
         throw error;
       }
+      // #4541 R1.3: only an approved Going or Maybe is handed the form; a
+      // pending or waitlisted RSVP gets its card once it is approved.
+      setRsvpFormHandoff(
+        result.approvalStatus === "approved" &&
+          (result.status === "going" || result.status === "maybe")
+          ? (result.brandFormHandoff ?? null)
+          : null,
+      );
       captureWeb("rsvp_acknowledgement_viewed", {
         surface: "anonymous_web",
         status: result.status,
@@ -1750,6 +1779,28 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       rsvpBrandFormPayload,
     ],
   );
+  // #4541 R1.3 — "After they RSVP": the one-line notice where the questions
+  // would sit, and the hand-off block the success popup draws (a node: the
+  // shared packages import nothing from forms).
+  const rsvpAfterRsvpNoticeNode =
+    rsvpAfterRsvpNotice === null ? null : (
+      <Text
+        style={{ marginTop: 16, color: palette.secondaryText, fontSize: 14 }}
+        testID="issue-4541-rsvp-after-notice"
+      >
+        {rsvpAfterRsvpNotice}
+      </Text>
+    );
+  const rsvpFormHandoffNode =
+    rsvpFormHandoff === null ? null : (
+      <React.Suspense fallback={null}>
+        <RsvpFormHandoff
+          handoff={rsvpFormHandoff}
+          strip="rsvp"
+          brandName={brand?.displayName ?? null}
+        />
+      </React.Suspense>
+    );
   // issue #4508 1.2a / 1.8 — the live match under the guest number field. A
   // signed-out visitor learns only whether the number is on Mingla.
   const rsvpGuestLookup = useCallback(
@@ -2179,7 +2230,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
                   </Text>
                 </Pressable>
               </View>
-            ) : rsvpBrandFormPage === null ? null : (
+            ) : rsvpBrandFormPage === null ? rsvpAfterRsvpNoticeNode : (
               <React.Suspense fallback={<View style={{ minHeight: 120 }} />}>
                 <RsvpBrandFormQuestions
                   page={rsvpBrandFormPage}
@@ -2194,6 +2245,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             rsvpFormReadPending || rsvpBrandFormPage?.mode === "required_step"
           }
           questionsReady={!rsvpFormReadPending && rsvpFormMissing.length === 0}
+          formHandoff={rsvpFormHandoffNode}
         />
 
         {addToCalendarChooser}

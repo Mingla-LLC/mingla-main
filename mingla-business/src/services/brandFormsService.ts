@@ -205,6 +205,8 @@ export interface BrandFormRow {
   draftRev: number;
   liveVersionId: string | null;
   doorFullAnswers: boolean;
+  /** #4541 R8.3: invited scan-only staff may open full answers too (off by default). */
+  doorFullAnswersInvited: boolean;
   updatedAt: string;
   closedAt: string | null;
 }
@@ -413,6 +415,7 @@ const parseFormRow = (value: unknown): BrandFormRow => {
     draftRev: num(r.draft_rev, "form.draft_rev"),
     liveVersionId: strOrNull(r.live_version_id),
     doorFullAnswers: bool(r.door_full_answers, true),
+    doorFullAnswersInvited: bool(r.door_full_answers_invited, false),
     updatedAt: str(r.updated_at, "form.updated_at"),
     closedAt: strOrNull(r.closed_at),
   };
@@ -437,8 +440,10 @@ const parseAttachment = (
   };
 };
 
+// #4541 R8.3: `door_full_answers_invited` arrives with the M-A migration, which
+// is applied to production before this ships (spec §21 step 1).
 const FORM_COLUMNS =
-  "id, brand_id, name, status, draft, draft_rev, live_version_id, door_full_answers, updated_at, closed_at";
+  "id, brand_id, name, status, draft, draft_rev, live_version_id, door_full_answers, door_full_answers_invited, updated_at, closed_at";
 const ATTACHMENT_COLUMNS = "id, form_id, event_id, mode, auto_remind, auto_remind_channels";
 
 /** Stored reminder channels, push dropped (it waits for the Explorer form screen). */
@@ -813,6 +818,20 @@ export const reopenBrandForm = (formId: string): Promise<BrandFormStatus> =>
 export const archiveBrandForm = (formId: string): Promise<BrandFormStatus> =>
   statusRpc("biz_brand_form_archive", formId, "Couldn't archive the form. Try again.");
 
+/** #4541 R8.3: "Invited door staff can too" (event manager and up; the server checks). */
+export async function setBrandFormDoorInvited(formId: string, on: boolean): Promise<boolean> {
+  const supabase = await getSupabase();
+  // [TRANSITIONAL] #4541 wave 1 server — `biz_brand_form_set_door_invited(p_form_id, p_on)`
+  // (M-A). The reply shape is not fixed by the spec: a `doorFullAnswersInvited`
+  // boolean is read when present, else the requested value. Exit: M-A on the branch.
+  const { data, error } = await supabase.rpc("biz_brand_form_set_door_invited", {
+    p_form_id: formId,
+    p_on: on,
+  });
+  if (error !== null) return failFrom(error, "Couldn't change that setting. Try again.");
+  return isRecord(data) ? bool(data.doorFullAnswersInvited, on) : on;
+}
+
 export async function setBrandFormDoorFullAnswers(formId: string, on: boolean): Promise<boolean> {
   const supabase = await getSupabase();
   const { data, error } = await supabase.rpc("biz_brand_form_set_door_full_answers", {
@@ -893,6 +912,11 @@ export interface BrandFormPageCount {
   formId: string;
   answered: number;
   toAnswer: number;
+  /**
+   * #4541 R1.2: current guests with no answer who were never sent the form.
+   * Live forms only; null when the server did not say (older server).
+   */
+  notAsked: number | null;
 }
 
 export interface BrandFormCounts {
@@ -920,6 +944,7 @@ export async function fetchBrandFormCounts(brandId: string): Promise<BrandFormCo
         formId: str(x.formId, "counts.page.formId"),
         answered: count(x.answered),
         toAnswer: count(x.toAnswer),
+        notAsked: typeof x.notAsked === "number" ? count(x.notAsked) : null,
       };
     }),
   };
@@ -935,6 +960,8 @@ export interface GuestQuestionsTileData {
   published: boolean;
   answered: number;
   notAnswered: number;
+  /** #4541 R1.2: of those, never asked (0 when unknown). */
+  notAsked: number;
 }
 
 /**
@@ -947,7 +974,7 @@ export async function fetchGuestQuestionsTile(eventId: string): Promise<GuestQue
   if (found === null) return null;
   const published = found.form.liveVersionId !== null;
   if (!published || found.form.status === "draft") {
-    return { attachment: found.attachment, form: found.form, published, answered: 0, notAnswered: 0 };
+    return { attachment: found.attachment, form: found.form, published, answered: 0, notAnswered: 0, notAsked: 0 };
   }
   // Wave 3: the one counts read (per page), not a page of responses.
   const counts = await fetchBrandFormCounts(found.form.brandId);
@@ -958,5 +985,99 @@ export async function fetchGuestQuestionsTile(eventId: string): Promise<GuestQue
     published,
     answered: here?.answered ?? 0,
     notAnswered: here?.toAnswer ?? 0,
+    notAsked: here?.notAsked ?? 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// #4541 R1.9 — one guest's answers (guest detail and order detail)
+// ---------------------------------------------------------------------------
+
+export type GuestAnswersSubjectKind = "rsvp" | "rsvp_guest" | "order";
+
+export type GuestAnswersCardData =
+  | { state: "none" }
+  | { state: "not_answered" }
+  | {
+      state: "answered";
+      formName: string;
+      versionLabel: string | null;
+      answeredAt: string | null;
+      isCurrentVersion: boolean;
+      items: Array<{ label: string; value: string }>;
+    };
+
+/** The server payload of `biz_brand_form_guest_answers`. Pure; exported for tests. */
+export function parseGuestAnswers(data: unknown): GuestAnswersCardData {
+  const r = rec(data, "guestAnswers");
+  if (r.state === "none") return { state: "none" };
+  if (r.state === "not_answered") return { state: "not_answered" };
+  return {
+    state: "answered",
+    formName: str(r.formName, "guestAnswers.formName"),
+    versionLabel: strOrNull(r.versionLabel),
+    answeredAt: strOrNull(r.answeredAt),
+    isCurrentVersion: bool(r.isCurrentVersion, true),
+    items: arr(r.items ?? [], "guestAnswers.items").map((it) => {
+      const x = rec(it, "guestAnswers.item");
+      return { label: str(x.label, "guestAnswers.item.label"), value: typeof x.value === "string" ? x.value : "" };
+    }),
+  };
+}
+
+export async function fetchGuestAnswers(
+  eventId: string,
+  subject: { kind: GuestAnswersSubjectKind; id: string },
+): Promise<GuestAnswersCardData> {
+  const supabase = await getSupabase();
+  // [TRANSITIONAL] #4541 wave 1 server — `biz_brand_form_guest_answers(p_event_id,
+  // p_subject jsonb {kind, id})` (M-A, R1.9). Exit: M-A on the branch (T-42 green).
+  const { data, error } = await supabase.rpc("biz_brand_form_guest_answers", {
+    p_event_id: eventId,
+    p_subject: { kind: subject.kind, id: subject.id },
+  });
+  if (error !== null) return failFrom(error, "Couldn't load answers. Try again");
+  return parseGuestAnswers(data);
+}
+
+// ---------------------------------------------------------------------------
+// #4541 R8.3 — who opened full answers at the door (event manager and up)
+// ---------------------------------------------------------------------------
+
+export interface DoorReadRow {
+  at: string;
+  actorName: string | null;
+  guestName: string | null;
+  via: string | null;
+  result: string | null;
+}
+
+/** The server payload of `biz_brand_form_door_reads`. Pure; exported for tests. */
+export function parseDoorReads(data: unknown): DoorReadRow[] {
+  return arr(data ?? [], "doorReads").map((row) => {
+    const r = rec(row, "doorReads[]");
+    return {
+      at: str(r.at, "doorReads.at"),
+      actorName: strOrNull(r.actorName),
+      guestName: strOrNull(r.guestName),
+      via: strOrNull(r.via),
+      result: strOrNull(r.result),
+    };
+  });
+}
+
+export const DOOR_READS_PAGE = 50;
+
+export async function fetchDoorReads(eventId: string, before: string | null = null): Promise<DoorReadRow[]> {
+  const supabase = await getSupabase();
+  // [TRANSITIONAL] #4541 wave 1 server — `biz_brand_form_door_reads(p_event_id,
+  // p_limit, p_before)` returning `[{at, actorName, guestName, via, result}]`
+  // (M-A, R8.3). Exit: M-A on the branch (T-42 green).
+  const { data, error } = await supabase.rpc("biz_brand_form_door_reads", {
+    p_event_id: eventId,
+    p_limit: DOOR_READS_PAGE,
+    p_before: before,
+  });
+  if (error !== null) return failFrom(error, "Couldn't load who opened answers. Try again.");
+  return parseDoorReads(data);
 }

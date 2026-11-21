@@ -36,6 +36,7 @@ import {
   useReopenBrandForm,
   useSaveBrandFormDraft,
   useSetDoorFullAnswers,
+  useSetDoorInvited,
 } from "../../hooks/useBrandForms";
 import { useBrand } from "../../hooks/useBrands";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
@@ -113,6 +114,7 @@ export const BrandFormBuilderScreen: React.FC = () => {
   const reopen = useReopenBrandForm();
   const archive = useArchiveBrandForm();
   const doorFull = useSetDoorFullAnswers();
+  const doorInvited = useSetDoorInvited();
   const { show, toast } = useFormsToast();
   // Wave 4 (C12): publishing on live pages with guests asks "Ask earlier guests?", one page at a time.
   const [earlierQueue, setEarlierQueue] = useState<Array<{ eventId: string; count: number }>>([]);
@@ -298,6 +300,18 @@ export const BrandFormBuilderScreen: React.FC = () => {
     [formId, doorFull, show],
   );
 
+  // #4541 R8.3: invited scan-only staff (off by default; needs the switch above on).
+  const handleDoorInvited = useCallback(
+    (on: boolean): void => {
+      if (formId === null) return;
+      doorInvited.mutate(
+        { formId, on },
+        { onError: (error) => show("error", errorSentence(error, "Couldn't change that setting. Try again.")) },
+      );
+    },
+    [formId, doorInvited, show],
+  );
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) router.back();
     else router.replace("/(tabs)/marketing/forms" as never);
@@ -409,6 +423,19 @@ export const BrandFormBuilderScreen: React.FC = () => {
               disabled={doorFull.isPending}
               accessibilityLabel={FORMS_COPY.doorFullTitle}
               testID="brand-form-door-full-switch"
+            />
+          </View>
+          <View style={styles.switchRow} testID="brand-form-door-invited-row">
+            <View style={styles.switchText}>
+              <Text style={styles.switchTitle}>{FORMS_COPY.doorInvitedTitle}</Text>
+              <Text style={styles.switchLine}>{FORMS_COPY.doorInvitedLine}</Text>
+            </View>
+            <Switch
+              value={form.doorFullAnswers && form.doorFullAnswersInvited}
+              onValueChange={handleDoorInvited}
+              disabled={doorInvited.isPending || !form.doorFullAnswers}
+              accessibilityLabel={FORMS_COPY.doorInvitedTitle}
+              testID="brand-form-door-invited-switch"
             />
           </View>
         {form.status !== "live" ? (

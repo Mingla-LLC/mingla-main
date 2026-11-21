@@ -6,8 +6,9 @@
  * version"), and Not answered. Marketing managers and up read; Export needs
  * an event manager or above (contract correction C5) and is hidden below it.
  *
- * Ask / Remind and "Ask guests to answer" belong to a later wave; this screen
- * draws no control for them.
+ * #4541: under All pages the Not answered tab adds up the per-page counts
+ * (R6.2) and lists each page; a page with guests who were never asked shows
+ * "Ask them" (R1.2); event managers get a Door tab, the door-read log (R8.3).
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -23,6 +24,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import {
+  useBrandFormCounts,
   useBrandFormDetail,
   useBrandFormResponses,
   useCloseBrandForm,
@@ -43,14 +45,22 @@ import { Chip, Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Tabs } from "../ui/Tabs";
-import { FORM_REQUEST_COPY, FORM_REQUEST_LOG_COPY, FORMS_COPY, modeLabel } from "./brandFormsCopy";
+import {
+  FORM_REQUEST_COPY,
+  FORM_REQUEST_LOG_COPY,
+  FORMS_COPY,
+  modeLabel,
+  notAnsweredTabLabel,
+} from "./brandFormsCopy";
+import { DoorReadLog } from "./DoorReadLog";
 import { FormRequestLog } from "./FormRequestLog";
 import { FormRequestSheet, type FormRequestSheetMode } from "./FormRequestSheet";
 import { FormsNotice } from "./FormsNotice";
 import { GuestQuestionsSheet } from "./GuestQuestionsSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
 
-type RTab = "summary" | "responses" | "not_answered";
+type RTab = "summary" | "responses" | "not_answered" | "door";
+
 
 const formatWhen = (iso: string): string => {
   const d = new Date(iso);
@@ -131,6 +141,14 @@ export const BrandFormResponsesScreen: React.FC = () => {
   const [changeOpen, setChangeOpen] = useState<boolean>(false);
 
   const responses = useBrandFormResponses({ formId, eventId, filter: "all" });
+  // #4541 R6.2 / R1.2: the per-page counts (already the forms list's read).
+  const counts = useBrandFormCounts(detail.data?.form.brandId ?? null);
+  const pageCounts = useMemo(
+    () => (counts.data === undefined ? null : counts.data.pages.filter((p) => p.formId === formId)),
+    [counts.data, formId],
+  );
+  const notAskedHere =
+    eventId === null ? 0 : (pageCounts?.find((p) => p.eventId === eventId)?.notAsked ?? 0);
   const page = responses.data;
   const canExport = role.rank >= MIN_RANK.EXPORT_FORM_RESPONSES && eventId !== null;
   // C5 puts Export, Ask, Remind and attach at one rank (event manager and up); the edge re-checks.
@@ -138,6 +156,9 @@ export const BrandFormResponsesScreen: React.FC = () => {
   const canRead = role.isLoading || role.rank >= MIN_RANK.READ_FORM_RESPONSES;
   // "Change or remove" is the attach sheet: event manager and up, for one page.
   const canChange = canAttachGuestQuestions(role.rank) && attachment !== null;
+  // #4541 R8.3: the door-read log, event manager and up, for one page.
+  const showDoor = canAttachGuestQuestions(role.rank) && eventId !== null;
+  const shownTab: RTab = tab === "door" && !showDoor ? "summary" : tab;
   const attachKind: GuestQuestionsPageKind =
     attachment?.eventType === "rsvp"
       ? "rsvp"
@@ -244,7 +265,9 @@ export const BrandFormResponsesScreen: React.FC = () => {
           testID="brand-form-responses-error"
         />
       );
-    } else if (tab === "summary") {
+    } else if (shownTab === "door" && eventId !== null) {
+      tabBody = <DoorReadLog eventId={eventId} />;
+    } else if (shownTab === "summary") {
       tabBody =
         summaries.length === 0 ? (
           <EmptyState illustration="list" title={FORMS_COPY.noAnswersYet} description={FORMS_COPY.noAnswersBody} />
@@ -255,7 +278,7 @@ export const BrandFormResponsesScreen: React.FC = () => {
             ))}
           </View>
         );
-    } else if (tab === "responses") {
+    } else if (shownTab === "responses") {
       tabBody =
         rows.length === 0 ? (
           <EmptyState illustration="list" title={FORMS_COPY.noAnswersYet} description={FORMS_COPY.noAnswersBody} />
@@ -283,13 +306,49 @@ export const BrandFormResponsesScreen: React.FC = () => {
           </GlassCard>
         );
     } else if (eventId === null) {
-      tabBody = <Text style={styles.hint}>{FORMS_COPY.notAnsweredNeedsPage}</Text>;
+      // #4541 R6.2: each page with its own "to answer" and View.
+      tabBody =
+        pageCounts === null || attachments.length === 0 ? (
+          <Text style={styles.hint}>{FORMS_COPY.notAnsweredNeedsPage}</Text>
+        ) : (
+          <GlassCard variant="base" radius="lg" padding={space[2]} testID="brand-form-not-answered-pages">
+            {attachments.map((a) => {
+              const n = pageCounts.find((p) => p.eventId === a.eventId)?.toAnswer ?? 0;
+              const title = a.eventName ?? FORMS_COPY.untitledPage;
+              return (
+                <View key={a.id} style={styles.row} testID={`brand-form-not-answered-page-${a.eventId}`}>
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowName}>{FORMS_COPY.pageToAnswer(title, n)}</Text>
+                  </View>
+                  <Button
+                    label={FORMS_COPY.view}
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => setPickedEvent(a.eventId)}
+                    accessibilityLabel={`${FORMS_COPY.view} ${title}`}
+                    testID={`brand-form-not-answered-view-${a.eventId}`}
+                  />
+                </View>
+              );
+            })}
+          </GlassCard>
+        );
     } else {
+      const notAskedBanner =
+        notAskedHere > 0 ? (
+          <FormsNotice
+            tone="info"
+            title={FORMS_COPY.notAskedBanner(notAskedHere)}
+            action={canAsk ? { label: FORMS_COPY.askThem, onPress: () => setRequest({ mode: "ask" }) } : undefined}
+            testID="brand-form-not-asked"
+          />
+        ) : null;
       tabBody =
         notAnswered.length === 0 ? (
           <EmptyState illustration="check" title={FORMS_COPY.allAnsweredTitle} description={FORMS_COPY.allAnsweredBody} />
         ) : (
           <View style={styles.summaryGrid}>
+            {notAskedBanner}
             <Text style={styles.hint}>{FORMS_COPY.notAnsweredHeadline(notAnswered.length)}</Text>
             {canAsk ? (
               <Button
@@ -403,9 +462,17 @@ export const BrandFormResponsesScreen: React.FC = () => {
           items={[
             { key: "summary", label: FORMS_COPY.tabSummary },
             { key: "responses", label: FORMS_COPY.tabResponses(page?.total ?? 0) },
-            { key: "not_answered", label: FORMS_COPY.tabNotAnswered(notAnswered.length) },
+            {
+              key: "not_answered",
+              label: notAnsweredTabLabel({
+                allPages: eventId === null,
+                pageNotAnswered: notAnswered.length,
+                pageCounts: counts.isError ? null : pageCounts,
+              }),
+            },
+            ...(showDoor ? [{ key: "door" as const, label: FORMS_COPY.tabDoor }] : []),
           ]}
-          value={tab}
+          value={shownTab}
           onChange={setTab}
           testID="brand-form-responses-tabs"
         />

@@ -90,6 +90,7 @@ export type FormRequestErrorCode =
   | "preview_stale_cost"
   | "cost_unpriced"
   | "text_cap"
+  | "forms_paused"
   | "network_error"
   | "invalid_response"
   | "unknown";
@@ -113,6 +114,8 @@ const ERROR_COPY: Record<FormRequestErrorCode, string> = {
   preview_stale_cost: "The cost changed. Check the new estimate and send again.",
   cost_unpriced: "Some texts have no price yet. Tick the box to send them anyway, or untick Text.",
   text_cap: "That's over today's limit for form texts. Send by email, or text the rest tomorrow.",
+  // #4541 R1.8: the off switch stops sending too.
+  forms_paused: "Forms are paused right now. Try again later.",
   network_error: "Couldn't reach Mingla. Check your connection and try again.",
   invalid_response: "Something went wrong reading the reply. Try again.",
   unknown: "Couldn't send. Try again.",

@@ -61,6 +61,14 @@ import {
   confirmTicketCheckout,
 } from "../../../src/services/ticketCheckoutService";
 import { mintClaimLinkHandoff } from "../../../src/services/claimLinkService";
+
+// #4541 R1.3 — a trip's "After they purchase": the same hand-off as the
+// ticket confirm screen, loaded through the ONE forms lazy owner.
+const PurchaseFormHandoff = React.lazy(() =>
+  import("../../../src/components/checkout/intake/formRenderingPrimitives").then(
+    (module) => ({ default: module.PurchaseFormHandoff }),
+  ),
+);
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
 import {
@@ -573,6 +581,12 @@ function CheckoutTripConfirmScreenInner({
           body={youreInLine(result.receipt, trip.title.trim().length > 0 ? trip.title : "your trip", { one: "place", many: "places" })}
           testID="checkout-youre-in-hero"
         />
+        <React.Suspense fallback={null}>
+          <PurchaseFormHandoff
+            checkoutSessionId={result.checkoutSessionId ?? null}
+            buyerStatusToken={result.buyerStatusToken ?? null}
+          />
+        </React.Suspense>
 
         <BuyerClaimCard
           kind="booking"

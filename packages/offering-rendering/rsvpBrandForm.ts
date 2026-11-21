@@ -62,6 +62,56 @@ export function parseRsvpBrandFormPage(value: unknown): RsvpBrandFormPage | null
   };
 }
 
+/**
+ * #4541 R1.3 — an "After they RSVP" form: nothing is asked on the page; the
+ * page shows one line, and the guest is handed the form after the RSVP.
+ */
+export interface RsvpBrandFormAfterRsvp {
+  active: true;
+  mode: "after_purchase";
+  formId: string;
+  /** The one-line notice under the RSVP choices. */
+  notice: string;
+}
+
+/** The page's form read: questions on the page, an after-RSVP notice, or nothing. */
+export type RsvpBrandFormRead = RsvpBrandFormPage | RsvpBrandFormAfterRsvp;
+
+/** "{brand} will ask a few questions after you sign up" (R1.3, exact words). */
+export function rsvpAfterRsvpNotice(brandName: string | null | undefined): string {
+  const name = typeof brandName === "string" && brandName.trim().length > 0 ? brandName.trim() : "The host";
+  return `${name} will ask a few questions after you sign up`;
+}
+
+/**
+ * #4541 R1.3 — the page parser that keeps "After they RSVP". A question page
+ * parses exactly as `parseRsvpBrandFormPage`; an after_purchase page returns
+ * its notice. `parseRsvpBrandFormPage` still returns question pages only, so
+ * every surface that draws questions keeps its type.
+ */
+export function parseRsvpBrandFormRead(value: unknown): RsvpBrandFormRead | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (row.active === true && row.mode === "after_purchase") {
+    if (typeof row.formId !== "string" || !UUID.test(row.formId)) return null;
+    const brand = row.brand && typeof row.brand === "object" && !Array.isArray(row.brand)
+      ? row.brand as Record<string, unknown>
+      : {};
+    return {
+      active: true,
+      mode: "after_purchase",
+      formId: row.formId.toLowerCase(),
+      notice: rsvpAfterRsvpNotice(typeof brand.displayName === "string" ? brand.displayName : null),
+    };
+  }
+  return parseRsvpBrandFormPage(value);
+}
+
+/** Narrow a read to a page that draws questions (null for none or after-RSVP). */
+export function rsvpQuestionsPage(read: RsvpBrandFormRead | null | undefined): RsvpBrandFormPage | null {
+  return read !== null && read !== undefined && read.mode !== "after_purchase" ? read : null;
+}
+
 export function rsvpBrandFormPayload(
   page: RsvpBrandFormPage | null,
   answers: RsvpBrandFormAnswers,

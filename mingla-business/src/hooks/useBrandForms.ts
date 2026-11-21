@@ -21,6 +21,8 @@ import {
   detachBrandForm,
   fetchBrandForm,
   fetchBrandFormCounts,
+  fetchDoorReads,
+  fetchGuestAnswers,
   fetchBrandFormResponses,
   fetchBrandForms,
   fetchEventAttachment,
@@ -29,7 +31,11 @@ import {
   reopenBrandForm,
   saveBrandFormDraft,
   setBrandFormDoorFullAnswers,
+  setBrandFormDoorInvited,
   type AttachInput,
+  type DoorReadRow,
+  type GuestAnswersCardData,
+  type GuestAnswersSubjectKind,
   type AttachResult,
   type BrandFormAttachment,
   type BrandFormCounts,
@@ -164,6 +170,41 @@ export function useGuestQuestionsTileData(
   });
 }
 
+/** #4541 R1.9: one guest's answers for the page's active form (marketing manager and up). */
+export function useGuestAnswers(
+  eventId: string | null,
+  subject: { kind: GuestAnswersSubjectKind; id: string } | null,
+  enabled = true,
+): UseQueryResult<GuestAnswersCardData> {
+  const ready = useReady();
+  return useQuery<GuestAnswersCardData>({
+    queryKey:
+      eventId === null || subject === null
+        ? brandFormKeys.idle("guest-answers")
+        : brandFormKeys.guestAnswers(eventId, subject.kind, subject.id),
+    enabled: ready && eventId !== null && subject !== null && enabled,
+    staleTime: 15_000,
+    queryFn: () => {
+      if (eventId === null || subject === null) throw new Error("subject_required");
+      return fetchGuestAnswers(eventId, subject);
+    },
+  });
+}
+
+/** #4541 R8.3: the latest door reads of full answers on one page (event manager and up). */
+export function useDoorReads(eventId: string | null, enabled = true): UseQueryResult<DoorReadRow[]> {
+  const ready = useReady();
+  return useQuery<DoorReadRow[]>({
+    queryKey: eventId === null ? brandFormKeys.idle("door-reads") : brandFormKeys.doorReads(eventId),
+    enabled: ready && eventId !== null && enabled,
+    staleTime: 15_000,
+    queryFn: () => {
+      if (eventId === null) throw new Error("event_required");
+      return fetchDoorReads(eventId);
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
@@ -230,6 +271,17 @@ export function useSetDoorFullAnswers(): UseMutationResult<boolean, Error, { for
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { formId: string; on: boolean }) => setBrandFormDoorFullAnswers(v.formId, v.on),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: brandFormKeys.all });
+    },
+  });
+}
+
+/** #4541 R8.3: "Invited door staff can too". */
+export function useSetDoorInvited(): UseMutationResult<boolean, Error, { formId: string; on: boolean }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { formId: string; on: boolean }) => setBrandFormDoorInvited(v.formId, v.on),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: brandFormKeys.all });
     },

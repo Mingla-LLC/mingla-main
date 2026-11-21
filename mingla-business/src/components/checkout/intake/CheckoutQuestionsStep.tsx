@@ -27,17 +27,30 @@
  *   - Answers are kept on screen through a refusal; a newer version of the
  *     form drops only the answers of questions that no longer exist.
  *
+ * #4541 R1.1: a buyer who already answered for THIS event (`answeredHere`)
+ * sees those answers read-only under "You've answered these. You can change
+ * them from your ticket.", Continue is on, and no answers are sent (the marker
+ * still is). Checkout never edits an earlier answer.
+ *
  * PurchaseFormHandoff (confirm screens): asks for the buyer's own form link
  * and opens `/form/{formId}` (web: the token goes through sessionStorage, read
  * once by the link page; native: the web link). Never an invite.
+ * #4541 R1.3: a pre-minted mode (`handoff` + `strip: "rsvp"`) for the RSVP
+ * success popup: the server already minted the link, so it skips the mint and
+ * shows "You're in. One more thing from {brand}." with Answer now and Later.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Platform, StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import type { BrandAnswers } from "@mingla/form-rendering";
-import { BrandFormRenderer, BrandHeader } from "@mingla/form-rendering";
+import type { BrandAnswers, BrandFormDefinitionShape } from "@mingla/form-rendering";
+import {
+  answerDisplayText,
+  BrandFormRenderer,
+  BrandHeader,
+  visibleQuestions,
+} from "@mingla/form-rendering";
 
 import { space, type } from "../../../constants/designSystem";
 import { checkoutFormKeys } from "./checkoutFormKeys";
@@ -114,7 +127,25 @@ export function canContinueStep(input: {
 }): boolean {
   if (input.submitting || input.loading) return false;
   if (input.form === null) return true;
+  // #4541 R1.1: answered for this event already: nothing to type here.
+  if (input.form.answeredHere) return true;
   return input.form.mode !== "required_step" || !input.missing;
+}
+
+/**
+ * #4541 R1.1: the read-only rows for an answer this buyer already gave for this
+ * event (visible questions with an answer, in order). Pure; exported for tests.
+ */
+export function answeredHereRows(
+  definition: BrandFormDefinitionShape,
+  answers: BrandAnswers,
+): Array<{ id: string; label: string; value: string }> {
+  const rows: Array<{ id: string; label: string; value: string }> = [];
+  for (const q of visibleQuestions(definition, answers)) {
+    const value = answerDisplayText(q, answers[q.id]);
+    if (value !== null) rows.push({ id: q.id, label: q.label, value });
+  }
+  return rows;
 }
 
 export interface CheckoutQuestionsStepProps {
@@ -195,6 +226,14 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
   const [missing, setMissing] = useState<boolean>(true);
   const handleMissing = useCallback((ids: string[]): void => setMissing(ids.length > 0), []);
   const answers = useMemo(() => (form ? answersForForm(form, value) : {}), [form, value]);
+  const answeredHere = form?.answeredHere === true;
+  const answeredRows = useMemo(
+    () =>
+      form !== null && form.answeredHere && form.definition !== null
+        ? answeredHereRows(form.definition, answersForForm(form, null))
+        : [],
+    [form],
+  );
   const formRef = useRef(form);
   formRef.current = form;
   const handleAnswers = useCallback(
@@ -223,7 +262,7 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
   });
   // After a failed Try again the copy stops asking for another one.
   const retryExhausted = recovery === "back_to_event";
-  const reason = !loadFailed && required && missing ? CHECKOUT_FORM_COPY.needsAnswers : null;
+  const reason = !loadFailed && required && missing && !answeredHere ? CHECKOUT_FORM_COPY.needsAnswers : null;
   const refusalLine = loadFailed
     ? null
     : refusedWithoutForm
@@ -231,8 +270,9 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
         ? CHECKOUT_FORM_COPY.retryFailed
         : CHECKOUT_FORM_COPY.noFormRefused
       : checkoutFormRefusalCopy(refusal);
+  // #4541 R1.1: answered here sends no answers (the server ignores them anyway).
   const payload = (): CheckoutBrandFormAnswers | null =>
-    form !== null && form.versionId !== null
+    form !== null && form.versionId !== null && !form.answeredHere
       ? { formId: form.formId, versionId: form.versionId, answers }
       : null;
 
@@ -285,7 +325,21 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
           testID="checkout-questions-back-to-event"
         />
       ) : null}
-      {form !== null && form.definition !== null ? (
+      {form !== null && form.definition !== null && answeredHere ? (
+        <View style={styles.answered} testID="checkout-questions-answered-here">
+          <Text style={styles.title} numberOfLines={2}>
+            {form.name}
+          </Text>
+          <Text style={styles.note}>{CHECKOUT_FORM_COPY.answeredHere}</Text>
+          {answeredRows.map((row) => (
+            <View key={row.id} style={styles.answeredRow}>
+              <Text style={styles.answeredLabel}>{row.label}</Text>
+              <Text style={styles.answeredValue}>{row.value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {form !== null && form.definition !== null && !answeredHere ? (
         <>
           <Text style={styles.title} numberOfLines={2}>
             {form.name}
@@ -318,7 +372,7 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
             {reason}
           </Text>
         ) : null}
-        {!required && form !== null ? (
+        {!required && form !== null && !answeredHere ? (
           <Button
             label={CHECKOUT_FORM_COPY.skip}
             variant="ghost"
@@ -337,10 +391,23 @@ export const CheckoutQuestionsStep: React.FC<CheckoutQuestionsStepProps> = ({
   );
 };
 
-export interface PurchaseFormHandoffProps {
-  checkoutSessionId: string | null;
-  buyerStatusToken: string | null;
-}
+/**
+ * Checkout mode (confirm screens): mint the buyer's link from the session.
+ * Pre-minted mode (#4541 R1.3, the RSVP success popup): the server already
+ * returned `{formId, token}` with the RSVP, so nothing is minted here.
+ */
+export type PurchaseFormHandoffProps =
+  | {
+      checkoutSessionId: string | null;
+      buyerStatusToken: string | null;
+      handoff?: undefined;
+    }
+  | {
+      handoff: { formId: string; token: string };
+      strip: "rsvp";
+      /** The brand on the page, for "One more thing from {brand}." */
+      brandName: string | null;
+    };
 
 /** Review fix 4: handed-off sessions this app run (native, or no storage). */
 const handedOff = new Set<string>();
@@ -369,7 +436,90 @@ export function markPurchaseHandedOff(checkoutSessionId: string): void {
  * "After they purchase": once per checkout session, ask for the buyer's form
  * link and open it. Renders a one-line fallback only when the link could not be had.
  */
-export const PurchaseFormHandoff: React.FC<PurchaseFormHandoffProps> = ({
+export const PurchaseFormHandoff: React.FC<PurchaseFormHandoffProps> = (props) =>
+  props.handoff !== undefined ? (
+    <PreMintedFormHandoff handoff={props.handoff} brandName={props.brandName} />
+  ) : (
+    <CheckoutFormHandoff
+      checkoutSessionId={props.checkoutSessionId}
+      buyerStatusToken={props.buyerStatusToken}
+    />
+  );
+
+/** The guest's own form link (`#t=` is read by the link page and never sent to a server). */
+export const formLinkPath = (formId: string, token: string): string =>
+  `/form/${encodeURIComponent(formId)}#t=${encodeURIComponent(token)}`;
+
+/**
+ * #4541 R1.3: "You're in. One more thing from {brand}." with Answer now and
+ * Later. Both keep the RSVP confirmation on screen: on web the form opens in a
+ * new tab; on a phone it opens the web link. After either, the block goes away.
+ */
+const PreMintedFormHandoff: React.FC<{
+  handoff: { formId: string; token: string };
+  brandName: string | null;
+}> = ({ handoff, brandName }) => {
+  const [settled, setSettled] = useState<boolean>(false);
+  const [failed, setFailed] = useState<boolean>(false);
+  if (settled) return null;
+  const path = formLinkPath(handoff.formId, handoff.token);
+  const answerNow = (): void => {
+    if (Platform.OS === "web") {
+      const opened = globalThis.open?.(path, "_blank", "noopener");
+      if (opened === null || opened === undefined) {
+        // A blocked new tab: open it here instead (the RSVP is already saved).
+        try {
+          globalThis.location?.assign(path);
+        } catch (error) {
+          console.error("[rsvp-form-handoff] could not open the form", error);
+          setFailed(true);
+          return;
+        }
+      }
+      setSettled(true);
+      return;
+    }
+    Linking.openURL(`https://host.usemingla.com${path}`)
+      .then(() => setSettled(true))
+      .catch((error: unknown) => {
+        console.error("[rsvp-form-handoff] could not open the form", error);
+        setFailed(true);
+      });
+  };
+  return (
+    <View style={styles.handoff} testID="rsvp-form-handoff">
+      <Text style={styles.handoffStrip} accessibilityRole="header">
+        {CHECKOUT_FORM_COPY.rsvpHandoffStrip(brandName)}
+      </Text>
+      {failed ? (
+        <Text style={styles.note} accessibilityRole="alert" testID="rsvp-form-handoff-failed">
+          {CHECKOUT_FORM_COPY.purchaseLinkFailed}
+        </Text>
+      ) : null}
+      <View style={styles.handoffActions}>
+        <Button
+          label={CHECKOUT_FORM_COPY.answerNow}
+          variant="primary"
+          size="md"
+          onPress={answerNow}
+          testID="rsvp-form-handoff-answer"
+        />
+        <Button
+          label={CHECKOUT_FORM_COPY.later}
+          variant="ghost"
+          size="md"
+          onPress={() => setSettled(true)}
+          testID="rsvp-form-handoff-later"
+        />
+      </View>
+    </View>
+  );
+};
+
+const CheckoutFormHandoff: React.FC<{
+  checkoutSessionId: string | null;
+  buyerStatusToken: string | null;
+}> = ({
   checkoutSessionId,
   buyerStatusToken,
 }) => {
@@ -422,5 +572,12 @@ const styles = checkoutStyles(() =>
     note: { ...type.small, color: color.text2 },
     refusal: { ...type.small, color: color.errorText },
     footer: { gap: space[2], marginTop: space[2] },
+    answered: { gap: space[2] },
+    answeredRow: { gap: 2 },
+    answeredLabel: { ...type.small, color: color.text2 },
+    answeredValue: { ...type.body, color: color.text1 },
+    handoff: { gap: space[2] },
+    handoffStrip: { ...type.body, color: color.text1, fontWeight: "600" },
+    handoffActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   }),
 );

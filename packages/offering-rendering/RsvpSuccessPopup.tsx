@@ -92,6 +92,12 @@ export interface RsvpSuccessPopupProps {
    * guest on a chip-in-enabled event (SC-2); absent otherwise → no change.
    */
   chipInPanel?: React.ReactNode;
+  /**
+   * #4541 R1.3 / R2.8 — the "After they RSVP" hand-off block, rendered by the
+   * host app (web: the forms owner's PurchaseFormHandoff; app: its block) and
+   * drawn under the status. This package imports nothing from forms.
+   */
+  formHandoff?: React.ReactNode;
   onDownloadPass?: (
     credential: RsvpPassCredential,
     recovery: RsvpAnonymousRecovery | null,
@@ -133,6 +139,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
     showCalendarNudge,
     onClose,
     chipInPanel,
+    formHandoff,
     onDownloadPass,
     passPresentation = "qr",
     claim,
@@ -278,6 +285,12 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
             >
               {title}
             </Text>
+
+            {formHandoff !== undefined && formHandoff !== null ? (
+              <View style={styles.formHandoffWrap} testID="issue-4541-rsvp-form-handoff">
+                {formHandoff}
+              </View>
+            ) : null}
 
             {passPresentation === "claim" ? (
               renderClaimBody !== undefined ? (
@@ -600,6 +613,7 @@ const styles = StyleSheet.create({
   downloadText: { fontSize: 14, fontWeight: "800" },
   downloadError: { color: "#d14343", fontSize: 12, textAlign: "center" },
   chipInWrap: { marginTop: 16 },
+  formHandoffWrap: { marginTop: 12, marginBottom: 4 },
   doneBtn: {
     alignItems: "center",
     justifyContent: "center",

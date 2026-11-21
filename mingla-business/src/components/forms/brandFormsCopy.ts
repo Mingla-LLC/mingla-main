@@ -8,15 +8,15 @@
  * (Design v2 to v8 on #4514).
  */
 
-import type { BrandFormMode } from "../../services/brandFormsService";
-
 export const FORMS_COPY = {
   // Forms list
   listTitle: "Forms",
   createForm: "Create a form",
   emptyTitle: "No forms yet",
-  emptyBody:
-    "Build one form, then add it to any RSVP, event, experience or trip. Guests answer once; you see answers next to each guest.",
+  // #4541 R6.1: the shared tab action is the only "Create a form" button.
+  emptyBody: "No forms yet. Make one with Create a form, then add it to any page.",
+  createFormCompact: "New",
+  formsHeading: (n: number): string => `${n} ${n === 1 ? "form" : "forms"}`,
   notOnAnyPage: "Not on any page yet",
   publishToAdd: "Publish it to add it to a page",
   continueEditing: "Continue editing",
@@ -67,6 +67,9 @@ export const FORMS_COPY = {
   doorFullTitle: "Door staff can open full answers",
   doorFullLine: "Turn off for private questions. Door staff will then see only the answers you marked.",
   doorFullScope: "For the whole form · managers can always open answers",
+  // #4541 R8.3: invited scan-only staff are off unless the host turns this on.
+  doorInvitedTitle: "Invited door staff can too",
+  doorInvitedLine: "Off: people you invited only to scan see the marked answers only.",
   loadFailedTitle: "Couldn't load this form",
   savedToast: "Draft saved.",
   publishedToast: "Published. Guests now see this version.",
@@ -108,6 +111,17 @@ export const FORMS_COPY = {
   tabSummary: "Summary",
   tabResponses: (n: number): string => `Responses (${n})`,
   tabNotAnswered: (n: number): string => `Not answered (${n})`,
+  // #4541 R6.2: under All pages while the counts load or failed (never "(0)").
+  tabNotAnsweredPlain: "Not answered",
+  pageToAnswer: (title: string, n: number): string => `${title} · ${n} to answer`,
+  untitledPage: "Untitled page",
+  view: "View",
+  // #4541 R1.2: guests who were never asked (booked on an app that couldn't show the questions).
+  notAskedBanner: (m: number): string =>
+    `${m} ${m === 1 ? "guest hasn't" : "guests haven't"} been asked yet.`,
+  askThem: "Ask them",
+  // #4541 R8.3: who opened full answers at the door (event managers and up).
+  tabDoor: "Door",
   changeOrRemove: "Change or remove",
   exportCsv: "Export CSV",
   exporting: "Preparing…",
@@ -132,25 +146,18 @@ export const FORMS_COPY = {
   moreAnswers: "Showing the latest answers.",
 } as const;
 
-export interface ModeCopy {
-  value: BrandFormMode;
-  label: string;
-  line: string;
-}
-
-/** The three timing choices, in the order they are shown. Exact copy. */
-export const GUEST_QUESTION_MODES: readonly ModeCopy[] = [
-  { value: "optional_on_page", label: "On the page, optional", line: "Guests can answer if they want." },
-  { value: "required_step", label: "On the page, required", line: "Guests must answer before they finish." },
-  { value: "after_purchase", label: "After they purchase", line: "Guests are taken to the form right after." },
-];
-
-/** The label for a mode; "After they RSVP" on RSVP pages. */
-export function modeLabel(mode: BrandFormMode, isRsvp: boolean): string {
-  if (mode === "after_purchase" && isRsvp) return "After they RSVP";
-  const found = GUEST_QUESTION_MODES.find((m) => m.value === mode);
-  return found?.label ?? "On the page, required";
-}
+/**
+ * #4541 R1.2: the timing choices and their lines have ONE home,
+ * utils/guestQuestionModes.ts (re-exported by utils/guestQuestionsModel.ts).
+ * Re-exported here so screens keep one import; never repeated.
+ */
+export {
+  GUEST_QUESTION_MODES,
+  modeLabel,
+  modeLine,
+  notAskedLine,
+  type ModeCopy,
+} from "../../utils/guestQuestionModes";
 
 export const ATTACH_COPY = {
   rowTitle: "Guest questions",
@@ -198,6 +205,21 @@ export function formCountsLine(c: { answered: number; toAnswer: number } | undef
   return c.toAnswer > 0
     ? `${FORMS_COPY.answeredCount(c.answered)} · ${FORMS_COPY.toAnswerCount(c.toAnswer)}`
     : FORMS_COPY.answeredCount(c.answered);
+}
+
+/**
+ * #4541 R6.2: the Not answered tab's label. Under All pages it adds up each
+ * page's "to answer" from the counts read; while that read loads or failed it
+ * has no number (never a wrong "(0)"). Pure; exported for tests.
+ */
+export function notAnsweredTabLabel(input: {
+  allPages: boolean;
+  pageNotAnswered: number;
+  pageCounts: ReadonlyArray<{ toAnswer: number }> | null;
+}): string {
+  if (!input.allPages) return FORMS_COPY.tabNotAnswered(input.pageNotAnswered);
+  if (input.pageCounts === null) return FORMS_COPY.tabNotAnsweredPlain;
+  return FORMS_COPY.tabNotAnswered(input.pageCounts.reduce((sum, p) => sum + p.toAnswer, 0));
 }
 
 /** #4514 wave 4 — Ask guests to answer, Remind, the earlier-guests prompt (§4.6, §4.7). */
@@ -258,6 +280,8 @@ export const FORM_REQUEST_COPY = {
     `Sent to ${sent}. ${failed} couldn't be reached; try them again later.`,
   noneSentToast: "Nothing was sent. Try again later.",
   sendFailed: "Couldn't send. Try again.",
+  // #4541 R1.8: the off switch also stops sending.
+  formsPaused: "Forms are paused right now. Try again later.",
   autoRemindTitle: "Remind people who haven't answered",
   autoRemindLine: (event: string, day: string | null): string =>
     `One reminder 2 days before each guest's date for ${event}${day !== null ? ` (next: ${day})` : ""}, by the channels ticked above.`,
@@ -304,4 +328,26 @@ export const FORM_REQUEST_LOG_COPY = {
     `Automatic reminder for ${date}: ${
       outcome === "sent" ? "sent" : outcome === "failed" ? "failed" : outcome === "held_form_closed" ? "held, the form was closed" : "sending"
     }`,
+} as const;
+
+/** #4541 R8.3: the host's door-read log ("Door" tab on Responses). */
+export const DOOR_READS_COPY = {
+  title: "Who opened answers at the door",
+  loading: "Loading…",
+  failed: "Couldn't load who opened answers.",
+  retry: "Try again",
+  empty: "No one has opened answers at the door yet.",
+  row: (staff: string, guest: string, time: string): string => `${staff} opened ${guest}'s answers · ${time}`,
+  someone: "Someone",
+  aGuest: "a guest",
+} as const;
+
+/** #4541 R1.9: the answers on guest detail and order detail. */
+export const GUEST_ANSWERS_CARD_COPY = {
+  title: (form: string): string => `Answers to ${form}`,
+  loading: "Loading answers…",
+  failed: "Couldn't load answers. Try again",
+  retry: "Try again",
+  notAnswered: "Not answered",
+  earlierVersion: "Answered an earlier version",
 } as const;
