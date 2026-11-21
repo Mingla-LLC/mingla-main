@@ -141,9 +141,12 @@ const EXPECTED_PLAN = Object.freeze({
   // [TEST-MOD #4523] Re-derived after #4523 added the locally declared
   // dates-are-picked gate (issue-4523-dates-are-picked, +2 batch:A executions:
   // self-test and plain). Read off the plan command as above.
-  executions: 1069,
-  loadsSeconds: [385.9, 386.0, 386.0],
-  counts: [355, 357, 357],
+  // [TEST-MOD-APPROVED #4522] Re-derived after #4522 added the locally declared
+  // flex-claim guard (issue-4522-flex-claim-guard, +2 batch:A executions:
+  // self-test and plain). Read off the plan command as above.
+  executions: 1071,
+  loadsSeconds: [386.0, 386.0, 386.1],
+  counts: [356, 357, 358],
 });
 
 const tempDir = (label) =>
