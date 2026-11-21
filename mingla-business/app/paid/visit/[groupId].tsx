@@ -1,3 +1,4 @@
+// orch-strict-grep-allow safearea-on-fullscreen-routes — renders AppPaymentReturn, which pads its root with useSafeAreaInsets (top and bottom)
 /** #4490 Explorer W1 — the app's payment return page (see AppPaymentReturn). */
 import React from "react";
 import { useLocalSearchParams } from "expo-router";

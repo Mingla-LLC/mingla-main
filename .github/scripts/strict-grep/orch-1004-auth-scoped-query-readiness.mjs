@@ -50,6 +50,9 @@ const hooksDir = path.join(root, "mingla-business/src/hooks");
 // ── Auth-scoped hook files (relative to mingla-business/src/hooks). Each MUST
 //    fold isAuthReady into its query `enabled`. (SPEC ORCH-1004 Part 1.)
 const AUTH_SCOPED_HOOK_FILES = [
+  // #4490 07 guest list — the Host guest list read (issue_4490 guest list RPCs,
+  // auth.uid() venue grant check). Folds isAuthReady into enabled.
+  "useVenueGuestList.ts",
   // #2829 W4 — the trip guide editor read (biz_get_trip_guide, auth.uid()
   // rank check). Folds isAuthReady into enabled.
   "useTripGuide.ts",

@@ -119,7 +119,7 @@ export interface PackageEditorProps {
   onOpenPayments?: () => void;
   /** The venue's Menu (from the menu picker's empty state). */
   onOpenMenu?: () => void;
-  /** [TRANSITIONAL] blocked on #4514 — shared offer-form attach row. */
+  /** [TRANSITIONAL] blocked on #4514 — shared offer-form attach row; exits when #4514 ships it. */
   questionsSource?: React.ReactNode;
 }
 

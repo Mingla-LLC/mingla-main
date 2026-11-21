@@ -136,7 +136,7 @@ export interface HireEditorProps {
   onOpenSpaces?: () => void;
   /** Brand payments setup (shown when the brand can't take payments online). */
   onOpenPayments?: () => void;
-  /** [TRANSITIONAL] blocked on #4514 — shared offer-form attach row. */
+  /** [TRANSITIONAL] blocked on #4514 — shared offer-form attach row; exits when #4514 ships it. */
   questionsSource?: React.ReactNode;
 }
 

@@ -90,7 +90,7 @@ export interface VenueDetailsEditorProps {
   canMutate: boolean;
   /** The brand's country, the phone picker's last start fallback. */
   brandCountryCode?: string | null;
-  /** [TRANSITIONAL] blocked on #4514 — host-provided “Add a form” row. */
+  /** [TRANSITIONAL] blocked on #4514 — host-provided “Add a form” row; exits when #4514 ships the shared offer-form attach row. */
   formAttachRow?: React.ReactNode;
 }
 

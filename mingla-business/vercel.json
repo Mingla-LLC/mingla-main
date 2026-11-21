@@ -296,6 +296,12 @@
       ]
     },
     {
+      "source": "/paid/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/pending-brand-invite/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
@@ -375,6 +381,12 @@
     },
     {
       "source": "/venue/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
+      "source": "/visit/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
       ]
