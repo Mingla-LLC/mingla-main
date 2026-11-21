@@ -8,8 +8,10 @@ const read = (relative: string) => Deno.readTextFileSync(new URL(relative, root)
 
 Deno.test("#3720 Admin gives scoped Support staff the Brand groups tab", () => {
   const access = read("lib/communitySupportAccess.js");
-  const page = read("pages/CommunitySupportPage.jsx");
-  assertStringIncludes(access, 'allowed.add("brand-groups")');
+  // [TEST-MOD #4420] Community is retired (pages/SupportPage.jsx replaced the
+  // shared frame); Brand groups is gated by its screen's area in lib/access.js.
+  const page = read("pages/SupportPage.jsx");
+  assert(!access.includes('allowed.add("brand-groups")'), "no console tab any more");
   // #4452 §7.2: Brand groups is its own Communications screen, for the same
   // Support area (lib/access.js); Community no longer draws it.
   assertStringIncludes(read("lib/access.js"), '"brand-groups": Object.freeze([SUPPORT_OPERATIONS_AREA]),');
@@ -32,8 +34,9 @@ Deno.test("#3720 Admin Brand groups use guarded RPCs and realtime read/message s
   // #4270 W7: the actions and the composer's words live in their own components.
   const thread = read("components/community/BrandGroupThread.jsx");
   const composer = read("components/community/BrandGroupComposer.jsx");
-  assertStringIncludes(thread, "Create product signal");
-  assertStringIncludes(composer, "Create product signal");
+  // [TEST-MOD #4420] Send to Product became Create ticket (Product board retired).
+  assertStringIncludes(thread, "Create ticket");
+  assertStringIncludes(composer, "Create ticket");
   assertStringIncludes(composer, "Replying as <strong");
   assertStringIncludes(composer, "{replyingAs} · Mingla Support</strong> · the brand team gets a push");
   assertStringIncludes(panel, 'replyingAs={myName || "you"}');

@@ -55,7 +55,7 @@ Deno.test("#3720 availability: a confirmed change shows the server's answer", as
 });
 
 Deno.test("#3720 availability: the header switch uses the guarded change and shows its message", async () => {
-  const page = await read("pages/CommunitySupportPage.jsx");
+  const page = await read("pages/SupportPage.jsx"); // [TEST-MOD #4420] Support's own file (Community retired)
   assertMatch(page, /import \{ changeSupportAvailability \} from "\.\.\/lib\/supportAvailability"/);
   const toggle = page.match(/async function toggleAvailability\(next\) \{[\s\S]*?\n  \}\n/)?.[0] ?? "";
   assert(toggle, "toggleAvailability present");

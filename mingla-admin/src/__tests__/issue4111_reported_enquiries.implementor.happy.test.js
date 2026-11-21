@@ -13,11 +13,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, describe, it } from "node:test";
+import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { createServer } from "vite";
 import {
   INITIAL_REPORTED_ENQUIRIES_STATE,
   REPORTED_ENQUIRIES_EMPTY_COPY,

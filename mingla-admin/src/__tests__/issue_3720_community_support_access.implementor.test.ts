@@ -17,7 +17,7 @@ import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
 const read = (relative: string) =>
   Deno.readTextFile(new URL(`../${relative}`, import.meta.url));
-const page = await read("pages/CommunitySupportPage.jsx");
+const page = await read("pages/SupportPage.jsx"); // [TEST-MOD #4420] Support's own file (Community retired)
 const support = await read("pages/SupportDeskPage.jsx");
 const auth = await read("context/AuthContext.jsx");
 
@@ -78,7 +78,7 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
       tabs,
     )
       .map((tab: { id: string }) => tab.id),
-    ["moderation"],
+    [] /* [TEST-MOD #4420] Moderation retired with Community */,
   );
   assertEquals(
     communitySupportTabsForAccess(
@@ -90,7 +90,7 @@ Deno.test("full admins retain all tabs while scoped assignments see only safe ta
       ),
       tabs,
     ).map((tab: { id: string }) => tab.id),
-    ["moderation", "support"],
+    ["support"], // [TEST-MOD #4420] Moderation retired with Community
   );
   // #4130 Wave 6: a page opens on its first tab the person may see; for
   // Support staff that is the inbox.
@@ -112,10 +112,9 @@ Deno.test("the page applies scoped tabs and keeps staff-management admin-only", 
   );
   // [TEST-MOD-APPROVED #3988] The teammate Overview now shows their fused
   // Community and Support role cards instead of the old Moderation-only note.
-  assertMatch(
-    page,
-    /You're a Support teammate: you work both Community and Support\./,
-  );
+  // [TEST-MOD #4420] Community is retired, so the teammate line names Support only.
+  assertMatch(page, /Your assigned Host support workspace\./);
+  assertNotMatch(page, /work both Community and Support/);
   assertMatch(support, /canManageAgents\s*=\s*true/);
   assertMatch(support, /\{canManageAgents && \(/);
   assertNotMatch(support, /canManageAgents\s*\|\|\s*public\.is_admin_user/);
