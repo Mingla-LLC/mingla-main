@@ -87,4 +87,3 @@ export const submittedGuestStatus = (
   }
   return g.onMingla ? "Text on its way, and a note in their app" : "Text on its way";
 };
-

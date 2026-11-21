@@ -19,5 +19,3 @@ export const rsvpGuestRowLabel = (
   if (name.length > 0) return last4 !== null ? `${name} · ${last4}` : name;
   return last4 !== null ? `Number ending ${last4}` : "Your guest";
 };
-
-

@@ -57,4 +57,3 @@ export const shareInviteText = async (
   await Share.share({ message: text });
   return "shared";
 };
-

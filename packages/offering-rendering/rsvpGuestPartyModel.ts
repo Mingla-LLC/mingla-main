@@ -415,6 +415,3 @@ export interface GuestInviteMessageInput {
   online: boolean;
   link: string;
 }
-
-
-

@@ -21,4 +21,3 @@ export const rsvpGuestBringMessage = (code: string): string => {
   if (code.includes("rsvp_payload_invalid")) return "Bringing someone isn't available yet. Try again soon.";
   return "We couldn't add them just now. Try again.";
 };
-
