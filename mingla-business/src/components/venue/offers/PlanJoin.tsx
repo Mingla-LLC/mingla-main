@@ -38,6 +38,7 @@ import { GuestDetailsCard, useGuestDetails } from "./GuestDetails";
 import {
   howYouPayLines,
   memberGuestErrorCopy,
+  memberPeriodRangeWords,
   memberPagePath,
   membershipJoinNeedsPayment,
   monthTotal,
@@ -94,9 +95,12 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
     else d.setUTCMonth(d.getUTCMonth() + 1);
     return d.toISOString().slice(0, 10);
   })();
-  const short = (iso: string): string => entryDateLabel(iso).replace(/^\w+ /, "");
-  const firstPeriod = `your first ${plan?.period ?? "month"}, ${short(startOn)} to ${short(periodEnd)}`;
-  const periodRange = `${short(startOn)} – ${short(periodEnd)}`;
+  const fallbackShort = (iso: string): string => entryDateLabel(iso).replace(/^\w+ /, "");
+  const firstPeriodRange = memberPeriodRangeWords(startOn, periodEnd, tz, { weekday: false })
+    ?? `${fallbackShort(startOn)} to ${fallbackShort(periodEnd)}`;
+  const firstPeriod = `your first ${plan?.period ?? "month"}, ${firstPeriodRange}`;
+  const periodRange = memberPeriodRangeWords(startOn, periodEnd, tz, { weekday: false, separator: " – " })
+    ?? `${fallbackShort(startOn)} – ${fallbackShort(periodEnd)}`;
   const blocker: string | null =
     pageQuery.isLoading || venueQuery.isLoading
       ? "Loading the plan…"

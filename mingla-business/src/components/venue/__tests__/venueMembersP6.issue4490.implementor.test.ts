@@ -255,6 +255,24 @@ function detail(over: Partial<VenueMemberDetail> = {}): VenueMemberDetail {
 }
 
 describe("P6-2 the billing timeline (mb-member)", () => {
+  it("an approved request shows its three-day payment window, not the instant-join two-day rule", () => {
+    const request = detail();
+    request.status = "pending";
+    request.plan.joinMode = "request";
+    request.createdAt = "2026-11-21T12:00:00Z";
+    request.paymentDue = {
+      ...request.paymentDue!,
+      dueAt: "2026-11-24T12:00:00Z",
+    };
+    const steps = billingSteps(request, Date.parse("2026-11-21T12:00:00Z"));
+    expect(steps.at(-1)).toEqual({
+      key: "closes",
+      title: "3 days to pay after approval",
+      meta: "Closes if still unpaid after Tue 24 Nov",
+      state: "pending",
+    });
+  });
+
   it("payment due: email sent, reminder sent, can still check in until the grace ends, then it lapses", () => {
     const steps = billingSteps(detail(), Date.parse("2026-11-21T12:00:00Z"));
     expect(steps.map((s) => [s.title, s.meta, s.state])).toEqual([

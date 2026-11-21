@@ -3,6 +3,7 @@ import { parsePlan } from "@mingla/brand-rendering/venueFeaturePage";
 import { mapMembersList, mapMembershipPlan } from "../../../services/venueMembersService";
 import { mapScanOutcome } from "../../../services/venueOffersService";
 import {
+  memberDay,
   planDraftFrom,
   planIncludesLines,
   planErrorCopy,
@@ -14,7 +15,7 @@ import {
   planTermsLine,
   timelineWords,
 } from "../features/members/membersModel";
-import { guestMemberState, howYouPayLines, memberGuestErrorCopy, memberUseLine, parseGuestMember, parseMemberQuote, planGiveLines } from "../offers/memberGuestModel";
+import { guestMemberState, howYouPayLines, memberGuestErrorCopy, memberPeriodRangeWords, memberUseLine, parseGuestMember, parseMemberQuote, planGiveLines } from "../offers/memberGuestModel";
 import { checkInResultView, doorErrorCopy } from "../features/checkin/venueCheckInResult";
 
 describe("#4490 yearly membership plans", () => {
@@ -57,6 +58,9 @@ describe("#4490 yearly membership plans", () => {
     const lines = howYouPayLines({ period: "year", firstPeriod: "your first year", renewalNoticeDays: 30, graceDays: 7, minMonths: 12, noticeDays: 0 });
     expect(lines.map((line) => line.title)).toEqual(["Today", "Each year after", "Skip a year"]);
     expect(lines[1]?.body).toBe("We email you a link 30 days before. Pay it and the year is yours. Nothing renews by itself.");
+    expect(memberPeriodRangeWords("2026-11-21", "2027-11-21", "Africa/Lagos", { weekday: false, separator: " – " })).toBe(
+      "21 Nov 2026 – 21 Nov 2027",
+    );
 
     const member = parseGuestMember({
       subscriptionId: "s",
@@ -86,6 +90,14 @@ describe("#4490 yearly membership plans", () => {
       members: [{ subscriptionId: "s", planId: "p", planName: "Studio year", planPeriod: "year", status: "pending" }],
     }).members[0]!;
     expect(memberRowLine(yearlyRow, "Africa/Lagos")).toBe("First year not paid yet");
+    const renewingYearlyRow = mapMembersList({
+      venueId: "v",
+      localDate: "2026-11-21",
+      tiles: { paymentDue: {} },
+      members: [{ subscriptionId: "s2", planId: "p", planName: "Studio year", planPeriod: "year", status: "active", renewsOn: "2027-11-21" }],
+    }).members[0]!;
+    expect(memberRowLine(renewingYearlyRow, "Africa/Lagos")).toBe("Renews Sun 21 Nov 2027");
+    expect(memberDay("2027-11-21", "Africa/Lagos", true)).toBe("Sun 21 Nov 2027");
     expect(timelineWords({ type: "member_join_closed", by: "system", at: "", periodId: null, detail: null }, "year")).toBe("Join closed: first year never paid");
 
     const outcome = mapScanOutcome({

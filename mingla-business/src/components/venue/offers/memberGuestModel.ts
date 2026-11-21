@@ -203,19 +203,53 @@ export function parseGuestMember(raw: unknown): GuestMember | null {
 
 // ---------------------------------------------------------------- dates
 
-/** "Tue 1 Dec" in the venue's zone (a plain date stays as written). */
-export function memberDayWords(iso: string | null | undefined, timeZone: string): string | null {
+/** "Tue 1 Dec" (or "Tue 1 Dec 2027") in the venue's zone. */
+export function memberDayWords(
+  iso: string | null | undefined,
+  timeZone: string,
+  options: { year?: boolean; weekday?: boolean } = {},
+): string | null {
   if (iso === null || iso === undefined || iso.length === 0) return null;
   const plain = /^\d{4}-\d{2}-\d{2}$/.test(iso);
   const d = plain ? new Date(`${iso}T12:00:00Z`) : new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   try {
-    return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: plain ? "UTC" : timeZone })
+    return new Intl.DateTimeFormat("en-GB", {
+      ...(options.weekday === false ? {} : { weekday: "short" as const }),
+      day: "numeric",
+      month: "short",
+      ...(options.year === true ? { year: "numeric" as const } : {}),
+      timeZone: plain ? "UTC" : timeZone,
+    })
       .format(d)
       .replace(",", "");
   } catch {
     return d.toDateString();
   }
+}
+
+/** A period shows both years when its endpoints are in different years. */
+export function memberPeriodRangeWords(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  timeZone: string,
+  options: { weekday?: boolean; separator?: string } = {},
+): string | null {
+  if (start === null || start === undefined || end === null || end === undefined) return null;
+  const year = (iso: string): string | null => {
+    const plain = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+    const d = plain ? new Date(`${iso}T12:00:00Z`) : new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    try {
+      return new Intl.DateTimeFormat("en-GB", { year: "numeric", timeZone: plain ? "UTC" : timeZone }).format(d);
+    } catch {
+      return null;
+    }
+  };
+  const includeYear = year(start) !== year(end);
+  const from = memberDayWords(start, timeZone, { weekday: options.weekday, year: includeYear });
+  const to = memberDayWords(end, timeZone, { weekday: options.weekday, year: includeYear });
+  return from !== null && to !== null ? `${from}${options.separator ?? " to "}${to}` : null;
 }
 
 /** "December" for the month a payment covers. */

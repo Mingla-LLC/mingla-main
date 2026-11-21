@@ -222,7 +222,8 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
   }
 
   const tz = m.venue.timezone;
-  const day = (iso: string | null | undefined): string => memberDay(iso ?? null, tz) ?? "—";
+  const yearly = m.plan.period === "year";
+  const day = (iso: string | null | undefined): string => memberDay(iso ?? null, tz, yearly) ?? "—";
   const st = memberStatusWords(m.status, m.leaving?.endsAt ?? null);
   const steps = billingSteps(m);
   const due = m.paymentDue;
@@ -365,7 +366,7 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
               <View key={p.periodId} style={styles.lineRow}>
                 <View style={styles.grow}>
                   <Text style={styles.lineTitle}>{`${day(p.start)} – ${day(p.end)}`}</Text>
-                  <Text style={styles.meta}>{periodWords(p, tz)}</Text>
+                  <Text style={styles.meta}>{periodWords(p, tz, yearly)}</Text>
                 </View>
                 <Text style={styles.amount}>{money(p.amountMinor, p.currencyCode)}</Text>
               </View>
@@ -498,7 +499,7 @@ function PayForm({ m, busy, error, onBack, onSubmit }: { m: VenueMemberDetail; b
     <View style={styles.form} testID="venue-member-pay-form">
       <Text style={styles.meta}>
         {due !== null
-          ? `${m.memberName} paid you for the ${m.plan.period} from ${memberDay(due.periodStart, m.venue.timezone) ?? ""}: ${money(due.amountMinor, due.currencyCode)} before VAT. Their membership runs to ${memberDay(due.periodEnd, m.venue.timezone) ?? ""}.`
+          ? `${m.memberName} paid you for the ${m.plan.period} from ${memberDay(due.periodStart, m.venue.timezone, m.plan.period === "year") ?? ""}: ${money(due.amountMinor, due.currencyCode)} before VAT. Their membership runs to ${memberDay(due.periodEnd, m.venue.timezone, m.plan.period === "year") ?? ""}.`
           : "Nothing is owed right now."}
       </Text>
       <Text style={styles.label}>How they paid</Text>
@@ -531,7 +532,7 @@ function WhenForm({
   const hasPaidPeriod = m.activeUntil !== null && Date.parse(m.activeUntil) > Date.now();
   const [when, setWhen] = useState<"now" | "period_end">(hasPaidPeriod ? "period_end" : "now");
   const [reason, setReason] = useState("");
-  const until = memberDay(m.activeUntil, m.venue.timezone);
+  const until = memberDay(m.activeUntil, m.venue.timezone, m.plan.period === "year");
   const needsReason = kind === "end";
   const reasonOk = !needsReason || reason.trim().length >= 3;
   const consequence =

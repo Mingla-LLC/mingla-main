@@ -19,8 +19,12 @@ import { money } from "../offers/offersModel";
 
 // ---------------------------------------------------------------- dates
 
-/** "Tue 1 Dec" in the venue's time zone; null when unreadable. */
-export function memberDay(iso: string | null | undefined, timeZone = "Africa/Lagos"): string | null {
+/** "Tue 1 Dec" (or "Tue 1 Dec 2027") in the venue's time zone. */
+export function memberDay(
+  iso: string | null | undefined,
+  timeZone = "Africa/Lagos",
+  includeYear = false,
+): string | null {
   if (iso === null || iso === undefined || iso.length === 0) return null;
   const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00Z`) : new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
@@ -29,6 +33,7 @@ export function memberDay(iso: string | null | undefined, timeZone = "Africa/Lag
       weekday: "short",
       day: "numeric",
       month: "short",
+      ...(includeYear ? { year: "numeric" as const } : {}),
       timeZone: /^\d{4}-\d{2}-\d{2}$/.test(iso) ? "UTC" : timeZone,
     })
       .format(d)
@@ -156,7 +161,7 @@ export function memberMatches(row: VenueMemberRow, filter: MemberFilter): boolea
 
 /** The list's one line under a member's plan ("Renews Tue 1 Dec", "Leaving Fri 25 Dec"…). */
 export function memberRowLine(row: VenueMemberRow, timeZone: string): string {
-  const day = (iso: string | null): string => memberDay(iso, timeZone) ?? "—";
+  const day = (iso: string | null): string => memberDay(iso, timeZone, row.planPeriod === "year") ?? "—";
   if (row.status === "cancelled") return "Membership ended";
   if (row.status === "declined") return "Request declined";
   if (row.status === "requested") return "Waiting for the venue to reply";
@@ -217,7 +222,7 @@ export interface BillingStep {
 export function billingSteps(m: VenueMemberDetail, now: number = Date.now()): BillingStep[] {
   const tz = m.venue.timezone;
   const period = m.plan.period;
-  const day = (iso: string | null | undefined): string => memberDay(iso ?? null, tz) ?? "—";
+  const day = (iso: string | null | undefined): string => memberDay(iso ?? null, tz, period === "year") ?? "—";
   const out: BillingStep[] = [];
   const due = m.paymentDue;
   if (m.status === "cancelled") {
@@ -227,7 +232,16 @@ export function billingSteps(m: VenueMemberDetail, now: number = Date.now()): Bi
   if (m.status === "pending" && due !== null) {
     out.push({ key: "joined", title: "Joined", meta: day(m.createdAt), state: "done" });
     out.push({ key: "first", title: `First ${period} to pay`, meta: `${money(due.amountMinor, due.currencyCode)} before VAT`, state: "current" });
-    out.push({ key: "closes", title: "Closes if never paid", meta: "2 days after joining", state: "pending" });
+    out.push(
+      m.plan.joinMode === "request"
+        ? {
+            key: "closes",
+            title: "3 days to pay after approval",
+            meta: `Closes if still unpaid after ${day(due.dueAt)}`,
+            state: "pending",
+          }
+        : { key: "closes", title: "Closes if never paid", meta: "2 days after joining", state: "pending" },
+    );
     return out;
   }
   if (due !== null) {
@@ -270,8 +284,12 @@ export function billingSteps(m: VenueMemberDetail, now: number = Date.now()): Bi
 }
 
 /** "Paid online · Tue 1 Dec", "Paid at the venue (cash)", "Payment email sent". */
-export function periodWords(p: VenueMemberDetail["periods"][number], timeZone: string): string {
-  const day = (iso: string | null): string => memberDay(iso, timeZone) ?? "";
+export function periodWords(
+  p: VenueMemberDetail["periods"][number],
+  timeZone: string,
+  includeYear = false,
+): string {
+  const day = (iso: string | null): string => memberDay(iso, timeZone, includeYear) ?? "";
   switch (p.status) {
     case "paid":
       return p.paidVia === "venue"

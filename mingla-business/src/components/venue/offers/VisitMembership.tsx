@@ -294,7 +294,8 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
   }
 
   const tz = member.venue.timezone;
-  const day = (iso: string | null | undefined): string => memberDayWords(iso ?? null, tz) ?? "—";
+  const day = (iso: string | null | undefined): string =>
+    memberDayWords(iso ?? null, tz, { year: member.plan.period === "year" }) ?? "—";
   const state = guestMemberState(member);
   const due = member.paymentDue;
   const total = due !== null ? monthTotal(due.amountMinor, page?.vat ?? null) : null;
