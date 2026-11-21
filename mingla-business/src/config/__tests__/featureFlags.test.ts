@@ -38,6 +38,16 @@ describe("featureFlags", () => {
     expect(flags.isFeatureEnabled("extras")).toBe(true);
   });
 
+  test("#4522 payment-plan v2 stays dark until its Host flag is enabled", async () => {
+    delete process.env.EXPO_PUBLIC_FF_TRIP_PLAN_V2;
+    let flags = await import("../featureFlags");
+    expect(flags.isFeatureEnabled("tripPlanV2")).toBe(false);
+    jest.resetModules();
+    process.env.EXPO_PUBLIC_FF_TRIP_PLAN_V2 = "true";
+    flags = await import("../featureFlags");
+    expect(flags.isFeatureEnabled("tripPlanV2")).toBe(true);
+  });
+
   test("EXPO_PUBLIC_FF_*=false disables feature", async () => {
     process.env.EXPO_PUBLIC_FF_ARI_ENABLED = "false";
     process.env.EXPO_PUBLIC_FF_MARKETING_SEND_ENABLED = "0";

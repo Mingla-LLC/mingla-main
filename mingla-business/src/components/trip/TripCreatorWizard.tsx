@@ -507,7 +507,7 @@ function tierToStep4Package(tier: Trip["pricingTiers"][number]): Step4Package {
     priceMajor: needsReentry ? "" : (tier.priceCents / 100).toFixed(2),
     description: tier.description ?? "",
     capacity: tier.quantityTotal,
-    paymentPlan: tier.installmentSchedule ?? null,
+    paymentPlan: tier.paymentPlan ?? tier.installmentSchedule ?? null,
     // Drafts have no sales; the per-package post-sale lock is server-enforced.
     soldCount: 0,
   };
@@ -533,6 +533,7 @@ export function tripToStep4Draft(trip: Trip): Step4Draft {
   return {
     packages,
     currency,
+    sharePaymentPlan: trip.sharePaymentPlan ?? false,
     // ORCH-1006 — seed switches from events.pass_* (NULL = inherit).
     pricingSwitches: {
       passTax: trip.pricingSwitches?.passTax ?? null,
@@ -743,7 +744,9 @@ export function isTripWizardPristine(
   const initStep4 = tripToStep4Draft(trip);
   if (
     step4PackagesSignature(step4Draft.packages) !==
-    step4PackagesSignature(initStep4.packages)
+      step4PackagesSignature(initStep4.packages) ||
+    (step4Draft.sharePaymentPlan === true) !==
+      (initStep4.sharePaymentPlan === true)
   ) {
     return false;
   }
@@ -1312,6 +1315,9 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
             ? trip.pricingTiers.find((t) => t.ticketTypeId === p.ticketTypeId)
             : undefined;
         const priceCents = Math.round((parseFloat(p.priceMajor) || 0) * 100);
+        const paymentPlan = paymentPlansAvailable ? p.paymentPlan : null;
+        const legacyInstallmentSchedule =
+          paymentPlan !== null && "v" in paymentPlan ? null : paymentPlan;
         return {
           id: persisted?.id ?? `preview-tier-${idx}`,
           eventId: trip.id,
@@ -1323,7 +1329,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
           quantityTotal: p.capacity,
           ticketsRemaining: persisted?.ticketsRemaining ?? null,
           isUnlimited: false,
-          installmentSchedule: paymentPlansAvailable ? p.paymentPlan : null,
+          installmentSchedule: legacyInstallmentSchedule,
+          paymentPlan,
           description:
             p.description.trim().length > 0 ? p.description.trim() : null,
         };
@@ -1364,7 +1371,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     // Map of clientKey → adopted ticketTypeId for the create-then-adopt step.
     const adopted = new Map<string, string>();
 
-    for (const pkg of currentPackages) {
+    for (const [packageIndex, pkg] of currentPackages.entries()) {
       const priceCents = Math.round((parseFloat(pkg.priceMajor) || 0) * 100);
       const capacity = pkg.capacity ?? 1;
       const tierName = pkg.name.trim() || "Standard";
@@ -1385,6 +1392,9 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
             priceCents,
             capacity,
             installmentSchedule: pkg.paymentPlan,
+            ...(packageIndex === 0
+              ? { sharePaymentPlan: step4Draft.sharePaymentPlan === true }
+              : {}),
             description: descriptionPatch.length > 0 ? descriptionPatch : null,
             // Issue #3645 — any typed price (0 included) on a package whose
             // price was cleared removes the "price was cleared" marker.
@@ -1436,6 +1446,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
     }
   }, [
     step4Draft.packages,
+    step4Draft.sharePaymentPlan,
     trip.id,
     revision,
     updatePricingMutation,
@@ -3066,6 +3077,8 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               // pricing step says the draft still saves.
               needsBankToPublish={tripNeedsStripe || tripNeedsBankForInstallments}
               paymentPlansAvailable={paymentPlansAvailable}
+              tripStartAt={step1Draft.startAt}
+              timeZone={trip.timezone ?? null}
             />
           ) : null}
           {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5

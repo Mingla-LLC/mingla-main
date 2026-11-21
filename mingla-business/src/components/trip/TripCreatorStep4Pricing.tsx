@@ -47,6 +47,22 @@ import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 import { MAX_TRIP_PACKAGES } from "./tripPackagesValidation";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 import { pricesClearedNotice } from "../../utils/draftFollowsBrandCurrency";
+import { featureFlags } from "../../config/featureFlags";
+import {
+  convertLegacyPlanToV2,
+  DEFAULT_TRIP_PAYMENT_PLAN_V2,
+  isTripPaymentPlanV2,
+  TRIP_PLAN_V2_EDITOR_RUNTIME,
+  type TripPaymentPlanV2,
+} from "./tripPlanV2EditorModel";
+
+// #4522 — one lazy owner for the complete v2 editor feature. Its preview is a
+// static child inside that chunk; there is no nested lazy boundary.
+const LazyPaymentPlanEditorV2 = React.lazy(() =>
+  import("./PaymentPlanEditorV2").then((module) => ({
+    default: module.PaymentPlanEditorV2,
+  }))
+);
 
 export { MAX_TRIP_PACKAGES };
 
@@ -69,7 +85,7 @@ export interface Step4Package {
   /** Per-package capacity/spots (DEC-D). null = not yet set. */
   capacity: number | null;
   /** Optional per-package payment plan (DEC-F). null = pay-in-full. */
-  paymentPlan: TripInstallmentSchedule | null;
+  paymentPlan: TripInstallmentSchedule | TripPaymentPlanV2 | null;
   /** True once ≥1 buyer has booked THIS package — locks price + plan. */
   soldCount: number;
   /**
@@ -104,6 +120,8 @@ export interface Step4Draft {
     passMinglaFee: boolean | null;
     passServiceFee: boolean | null;
   };
+  /** #4522 — the first v2 plan is copied to every package by the server. */
+  sharePaymentPlan?: boolean;
 }
 
 export interface TripCreatorStep4PricingProps {
@@ -119,6 +137,11 @@ export interface TripCreatorStep4PricingProps {
   needsBankToPublish?: boolean;
   /** False/unknown keeps saved schedules visible but suspended and read-only. */
   paymentPlansAvailable: boolean;
+  tripStartAt: string | null;
+  timeZone: string | null;
+  /** Temporary seam until slice 12 upgrades the published-trip save command. */
+  v2PlanAuthoringLocked?: boolean;
+  v2PlanAuthoringLockedReason?: string;
 }
 
 export const TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY =
@@ -159,6 +182,13 @@ interface PackageCardProps {
   currency: string;
   disabled?: boolean;
   paymentPlansAvailable: boolean;
+  tripStartAt: string | null;
+  timeZone: string | null;
+  packageCount: number;
+  sharePaymentPlan: boolean;
+  onSharePaymentPlanChange: (next: boolean) => void;
+  v2PlanAuthoringLocked: boolean;
+  v2PlanAuthoringLockedReason?: string;
   /** Whether a Remove control is shown (false when only 1 package remains). */
   canRemove: boolean;
   onPatch: (patch: Partial<Step4Package>) => void;
@@ -171,6 +201,13 @@ const PackageCard: React.FC<PackageCardProps> = ({
   currency,
   disabled,
   paymentPlansAvailable,
+  tripStartAt,
+  timeZone,
+  packageCount,
+  sharePaymentPlan,
+  onSharePaymentPlanChange,
+  v2PlanAuthoringLocked,
+  v2PlanAuthoringLockedReason,
   canRemove,
   onPatch,
   onRemove,
@@ -180,25 +217,62 @@ const PackageCard: React.FC<PackageCardProps> = ({
   const priceAwaitingReentry =
     pkg.priceNeedsReentry === true && pkg.priceMajor.trim().length === 0;
   const planEnabled = pkg.paymentPlan !== null;
+  let v2Plan: TripPaymentPlanV2 | null = null;
+  let legacyPlan: TripInstallmentSchedule | null = null;
+  if (pkg.paymentPlan !== null) {
+    if (isTripPaymentPlanV2(pkg.paymentPlan)) {
+      v2Plan = pkg.paymentPlan;
+    } else {
+      legacyPlan = pkg.paymentPlan;
+    }
+  }
   // Post-sale price lock — the server's `tier_price_change_with_sales` refund
   // gate rejects any price change on a sold package; this removes the editable
   // affordance for clarity.
   const priceLocked = pkg.soldCount > 0;
   const planLocked = pkg.soldCount > 0;
   const planSuspended = !paymentPlansAvailable;
+  const sharedFollower = sharePaymentPlan && index > 0;
+  const rollbackLocked = v2Plan !== null && !featureFlags.tripPlanV2;
+  const stagedAuthoringLocked = featureFlags.tripPlanV2 && v2PlanAuthoringLocked;
 
   const handleTogglePlan = useCallback(
     (next: boolean) => {
       if (next === planEnabled) return;
-      if (planLocked || planSuspended) return;
+      if (
+        planLocked ||
+        planSuspended ||
+        sharedFollower ||
+        rollbackLocked ||
+        stagedAuthoringLocked
+      ) return;
       if (next) {
-        onPatch({ paymentPlan: { ...DEFAULT_PAYMENT_PLAN } });
+        onPatch({
+          paymentPlan: featureFlags.tripPlanV2
+            ? {
+                ...DEFAULT_TRIP_PAYMENT_PLAN_V2,
+                deposit: { ...DEFAULT_TRIP_PAYMENT_PLAN_V2.deposit },
+                flex: { enabled: false },
+              }
+            : {
+                ...DEFAULT_PAYMENT_PLAN,
+                installments: DEFAULT_PAYMENT_PLAN.installments.map((row) => ({ ...row })),
+              },
+        });
         return;
       }
       // Toggle-off destroys a configured schedule → confirm.
       setConfirmRemovePlanOpen(true);
     },
-    [onPatch, planEnabled, planLocked, planSuspended],
+    [
+      onPatch,
+      planEnabled,
+      planLocked,
+      planSuspended,
+      sharedFollower,
+      rollbackLocked,
+      stagedAuthoringLocked,
+    ],
   );
 
   const handleConfirmRemovePlan = useCallback(() => {
@@ -354,10 +428,23 @@ const PackageCard: React.FC<PackageCardProps> = ({
           accessibilityLabel={`Package ${index + 1} payment plan toggle`}
           accessibilityState={{
             checked: planEnabled,
-            disabled: disabled === true || planLocked || planSuspended,
+            disabled:
+              disabled === true ||
+              planLocked ||
+              planSuspended ||
+              sharedFollower ||
+              rollbackLocked ||
+              stagedAuthoringLocked,
           }}
           onPress={() => {
-            if (disabled === true || planLocked || planSuspended) return;
+            if (
+              disabled === true ||
+              planLocked ||
+              planSuspended ||
+              sharedFollower ||
+              rollbackLocked ||
+              stagedAuthoringLocked
+            ) return;
             handleTogglePlan(!planEnabled);
           }}
           style={styles.paymentPlanToggleRow}
@@ -367,34 +454,118 @@ const PackageCard: React.FC<PackageCardProps> = ({
             <Text style={styles.paymentPlanSubtitle}>
               {planSuspended
                 ? TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY
-                : planLocked
-                ? "Locked — at least one buyer has booked under this schedule."
-                : planEnabled
-                  ? "Buyer pays a deposit at booking; remaining installments auto-charge on schedule."
-                  : "Collect a deposit at booking, then auto-charge installments on a schedule you set."}
+                : rollbackLocked
+                  ? "The new plan editor is switched off. Your saved plan is kept."
+                  : stagedAuthoringLocked
+                    ? v2PlanAuthoringLockedReason ?? "Your saved plan is kept."
+                    : planLocked
+                      ? "Locked — at least one buyer has booked under this schedule."
+                      : planEnabled
+                        ? "Buyer pays a deposit at booking; remaining installments auto-charge on schedule."
+                        : "Collect a deposit at booking, then auto-charge installments on a schedule you set."}
             </Text>
           </View>
           <Switch
             value={planEnabled}
             onValueChange={handleTogglePlan}
-            disabled={disabled === true || planLocked || planSuspended}
+            disabled={
+              disabled === true ||
+              planLocked ||
+              planSuspended ||
+              sharedFollower ||
+              rollbackLocked ||
+              stagedAuthoringLocked
+            }
             trackColor={{ false: color.fill.step, true: color.accent }}
             thumbColor={color.paper}
             ios_backgroundColor={color.fill.step}
             accessibilityLabel={`Package ${index + 1} payment plan switch`}
           />
         </Pressable>
-        {planEnabled || planLocked ? (
+        {legacyPlan !== null && featureFlags.tripPlanV2 ? (
+          <View style={styles.legacyPlanCard} testID={`trip-plan-v1-summary-${index}`}>
+            <Text style={styles.paymentPlanTitle}>
+              This package uses the older percent plan.
+            </Text>
+            <Text style={styles.paymentPlanSubtitle}>
+              {legacyPlan.deposit_pct}% deposit, then {legacyPlan.installments.length}{" "}
+              installment{legacyPlan.installments.length === 1 ? "" : "s"}.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                onPatch({ paymentPlan: convertLegacyPlanToV2(legacyPlan) })
+              }
+              disabled={
+                planLocked ||
+                planSuspended ||
+                sharedFollower ||
+                disabled === true ||
+                stagedAuthoringLocked
+              }
+              style={styles.convertPlanButton}
+              testID={`trip-plan-v1-convert-${index}`}
+            >
+              <Text style={styles.convertPlanButtonText}>
+                Switch to the new plan setup
+              </Text>
+            </Pressable>
+          </View>
+        ) : legacyPlan !== null ? (
           <PaymentPlanEditor
-            value={pkg.paymentPlan}
+            value={legacyPlan}
             onChange={(next) => onPatch({ paymentPlan: next })}
             totalAmountCents={priceCents}
             currency={currency}
-            locked={planLocked || planSuspended}
+            locked={planLocked || planSuspended || sharedFollower}
             lockedReason={
-              planSuspended ? TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY : undefined
+              planSuspended
+                ? TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY
+                : sharedFollower
+                  ? "Using the payment plan from the first package."
+                  : undefined
             }
           />
+        ) : v2Plan !== null ? (
+          <React.Suspense
+            fallback={
+              <View style={styles.planSkeleton} testID="trip-plan-v2-loading">
+                <Text style={styles.paymentPlanSubtitle}>Loading payment plan…</Text>
+              </View>
+            }
+          >
+            <LazyPaymentPlanEditorV2
+              value={v2Plan}
+              onChange={(next) => onPatch({ paymentPlan: next })}
+              totalAmountMinor={priceCents}
+              currency={currency}
+              tripStartAt={tripStartAt}
+              timeZone={timeZone}
+              locked={
+                planLocked ||
+                planSuspended ||
+                sharedFollower ||
+                rollbackLocked ||
+                stagedAuthoringLocked
+              }
+              lockedReason={
+                planSuspended
+                  ? TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY
+                  : sharedFollower
+                    ? "Using the payment plan from the first package."
+                    : rollbackLocked
+                      ? "The new plan editor is switched off. Your saved plan is kept."
+                      : stagedAuthoringLocked
+                        ? v2PlanAuthoringLockedReason ?? "Your saved plan is kept."
+                        : undefined
+              }
+              packageCount={packageCount}
+              sharePaymentPlan={sharePaymentPlan}
+              onSharePaymentPlanChange={onSharePaymentPlanChange}
+              showShareControl={index === 0}
+              model={TRIP_PLAN_V2_EDITOR_RUNTIME}
+            />
+          </React.Suspense>
         ) : null}
       </View>
 
@@ -418,6 +589,10 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   disabled,
   needsBankToPublish = false,
   paymentPlansAvailable,
+  tripStartAt,
+  timeZone,
+  v2PlanAuthoringLocked = false,
+  v2PlanAuthoringLockedReason,
 }) => {
   const brand = useCurrentBrand();
   const router = useRouter();
@@ -450,10 +625,47 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
 
   const patchPackage = useCallback(
     (key: string, patch: Partial<Step4Package>) => {
+      // The approved multi-package default is shared. Turn it on only when a
+      // brand-new v2 plan is first enabled on the primary package; converting
+      // a legacy package never overwrites distinct legacy plans implicitly.
+      const defaultsNewPlanToShared =
+        featureFlags.tripPlanV2 &&
+        packages.length > 1 &&
+        key === packages[0]?.key &&
+        packages[0]?.paymentPlan === null &&
+        patch.paymentPlan !== null &&
+        patch.paymentPlan !== undefined &&
+        isTripPaymentPlanV2(patch.paymentPlan);
+      const isSharedPlanChange =
+        (draft.sharePaymentPlan === true || defaultsNewPlanToShared) &&
+        key === packages[0]?.key &&
+        Object.prototype.hasOwnProperty.call(patch, "paymentPlan");
       onChange({
+        ...(defaultsNewPlanToShared ? { sharePaymentPlan: true } : {}),
         packages: packages.map((p) =>
-          p.key === key ? { ...p, ...patch } : p,
+          p.key === key
+            ? { ...p, ...patch }
+            : isSharedPlanChange
+              ? { ...p, paymentPlan: patch.paymentPlan ?? null }
+              : p,
         ),
+      });
+    },
+    [draft.sharePaymentPlan, onChange, packages],
+  );
+
+  const handleSharePaymentPlanChange = useCallback(
+    (next: boolean): void => {
+      const firstPlan = packages[0]?.paymentPlan ?? null;
+      onChange({
+        sharePaymentPlan: next,
+        ...(next
+          ? {
+              packages: packages.map((pkg, index) =>
+                index === 0 ? pkg : { ...pkg, paymentPlan: firstPlan }
+              ),
+            }
+          : {}),
       });
     },
     [onChange, packages],
@@ -473,12 +685,15 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
           // Seed capacity from the primary package so the operator has a
           // sensible default; freely editable per-package (DEC-D).
           capacity: packages[0]?.capacity ?? null,
-          paymentPlan: null,
+          paymentPlan:
+            draft.sharePaymentPlan === true
+              ? packages[0]?.paymentPlan ?? null
+              : null,
           soldCount: 0,
         },
       ],
     });
-  }, [canAdd, onChange, packages]);
+  }, [canAdd, draft.sharePaymentPlan, onChange, packages]);
 
   const handleRequestRemove = useCallback(
     (key: string) => {
@@ -536,6 +751,13 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
           currency={draft.currency}
           disabled={disabled}
           paymentPlansAvailable={paymentPlansAvailable}
+          tripStartAt={tripStartAt}
+          timeZone={timeZone}
+          packageCount={packages.length}
+          sharePaymentPlan={draft.sharePaymentPlan === true}
+          onSharePaymentPlanChange={handleSharePaymentPlanChange}
+          v2PlanAuthoringLocked={v2PlanAuthoringLocked}
+          v2PlanAuthoringLockedReason={v2PlanAuthoringLockedReason}
           canRemove={canRemoveAny}
           onPatch={(patch) => patchPackage(pkg.key, patch)}
           onRemove={() => handleRequestRemove(pkg.key)}
@@ -813,6 +1035,37 @@ const styles = StyleSheet.create({
     fontSize: type.caption.fontSize,
     color: color.text3,
     marginTop: 2,
+  },
+  legacyPlanCard: {
+    gap: space[3],
+    padding: space[4],
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: color.line,
+    backgroundColor: color.fill.inset,
+  },
+  convertPlanButton: {
+    alignSelf: "flex-start",
+    minHeight: 42,
+    justifyContent: "center",
+    paddingHorizontal: space[4],
+    borderRadius: radiusTokens.full,
+    borderWidth: 1,
+    borderColor: color.accent,
+    backgroundColor: color.accentTint,
+  },
+  convertPlanButtonText: {
+    fontSize: type.small.fontSize,
+    fontWeight: "700",
+    color: color.accentText,
+  },
+  planSkeleton: {
+    minHeight: 180,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: space[4],
+    borderRadius: radiusTokens.md,
+    backgroundColor: color.fill.inset,
   },
 });
 

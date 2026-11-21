@@ -172,6 +172,7 @@ import {
   makePackageKey,
   type Step4Draft,
 } from "./TripCreatorStep4Pricing";
+import { isTripPaymentPlanV2 } from "./tripPlanV2EditorModel";
 import { InstallmentScheduleDisplay } from "./InstallmentScheduleDisplay";
 import { projectInstallmentSchedule } from "../../utils/installmentScheduleProjection";
 import type { TripDayDraft } from "./TripDayEditor";
@@ -336,7 +337,8 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
             firstTier !== undefined
               ? firstTier.quantityTotal
               : trip.businessTrip.capacity,
-          paymentPlan: firstTier?.installmentSchedule ?? null,
+          paymentPlan:
+            firstTier?.paymentPlan ?? firstTier?.installmentSchedule ?? null,
           soldCount: 0,
         },
       ],
@@ -609,7 +611,9 @@ function buildLiveTripPatch(
     editPkg.name.trim() !== firstTier.tierName;
   const tierPriceChanged =
     firstTier !== undefined && newPriceCents !== firstTier.priceCents;
-  const oldPlanSig = JSON.stringify(firstTier?.installmentSchedule ?? null);
+  const oldPlanSig = JSON.stringify(
+    firstTier?.paymentPlan ?? firstTier?.installmentSchedule ?? null,
+  );
   const newPlanSig = JSON.stringify(editPkg?.paymentPlan ?? null);
   const tierPlanChanged = oldPlanSig !== newPlanSig;
   if (
@@ -2017,7 +2021,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             !paymentPlansAvailable ||
             firstTier === undefined ||
             editPkg === undefined ||
-            editPkg.paymentPlan === null
+            editPkg.paymentPlan === null ||
+            isTripPaymentPlanV2(editPkg.paymentPlan)
               ? null
               : projectInstallmentSchedule(
                   {
@@ -2040,6 +2045,13 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 onChange={handlePricingChange}
                 disabled={submitting}
                 paymentPlansAvailable={paymentPlansAvailable}
+                tripStartAt={trip.businessTrip.startAt}
+                timeZone={trip.timezone}
+                // #4522 slice 3: the draft command is v2-aware. The published
+                // command becomes v2-aware with slice 12; until then, never
+                // expose a control whose save would serialize the wrong key.
+                v2PlanAuthoringLocked
+                v2PlanAuthoringLockedReason="Payment plan changes unlock with the new published-trip editor. Your saved plan is kept."
               />
               {plannerPreviewSchedule !== null ? (
                 <View style={styles.plannerPlanPreviewWrap}>

@@ -22,6 +22,7 @@ import {
 } from "../utils/tripPriceReentry";
 import { supabase } from "./supabase";
 import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
+import type { TripPaymentPlanV2 } from "../../../packages/offering-rendering/tripPlanV2Math";
 import { themeOverridesFromColumns } from "./offeringTheme";
 import type { BrandRole } from "../store/currentBrandStore";
 // META-ORCH-1235 — settle-guarantee for the Hub trips full-screen gate.
@@ -288,6 +289,12 @@ export interface TripPricingTier {
    */
   installmentSchedule: TripInstallmentScheduleData | null;
   /**
+   * #4522 — canonical authored plan. v2 lives here while the legacy
+   * `installmentSchedule` alias stays null so old buyer renderers degrade to
+   * pay-in-full until their dedicated v2 slice lands.
+   */
+  paymentPlan?: TripPaymentPlanData | null;
+  /**
    * META-ORCH-1174 Leg B2 — optional per-package marketing description
    * (e.g. "Includes spa + private transfer"). Persisted to
    * trip_pricing_tiers.tier_metadata.description (free-form jsonb — NO
@@ -326,6 +333,8 @@ export interface TripInstallmentScheduleData {
     fixed_date?: string;
   }>;
 }
+
+export type TripPaymentPlanData = TripInstallmentScheduleData | TripPaymentPlanV2;
 
 export interface TripInclusion {
   id: string;
@@ -421,6 +430,8 @@ export interface Trip {
     passMinglaFee: boolean | null;
     passServiceFee: boolean | null;
   };
+  /** #4522 — first package's v2 plan is shared across every package. */
+  sharePaymentPlan?: boolean;
   /**
    * ORCH-1339 — the two guest-privacy display gates, parsed from
    * theme.business_event.settings.* with false defaults. Optional like
@@ -519,7 +530,9 @@ export interface TripPricingPatch {
    * existing tier_metadata object (single-payment trip). The cron + Stage
    * 1b finalize key off the JSONB presence/shape.
    */
-  installmentSchedule?: TripInstallmentScheduleData | null;
+  installmentSchedule?: TripPaymentPlanData | null;
+  /** #4522 — persisted with the primary package in the same draft graph. */
+  sharePaymentPlan?: boolean;
   /**
    * META-ORCH-1174 Leg B2 — optional per-package description. When the key is
    * PRESENT, the tier_metadata.description value is replaced (null/blank →
@@ -625,6 +638,7 @@ interface EventRow {
   pass_tax?: boolean | null;
   pass_mingla_fee?: boolean | null;
   pass_service_fee?: boolean | null;
+  share_payment_plan?: boolean | null;
   // #1022 — theme override columns. Already returned by getTrip's select("*")
   // and getTripsByBrand's select("*"); only the type + mapper were missing.
   theme_color_override?: string | null;
@@ -668,6 +682,7 @@ function mapTripPricingTier(
   ticketType: TicketTypeRow | undefined,
 ): TripPricingTier {
   const metadata = (row.tier_metadata ?? {}) as Record<string, unknown>;
+  const paymentPlan = extractInstallmentSchedule(metadata);
   return {
     id: row.id,
     eventId: row.event_id,
@@ -681,7 +696,9 @@ function mapTripPricingTier(
     // public-read paths overwrite this via `getPublicTripById`.
     ticketsRemaining: null,
     isUnlimited: ticketType?.is_unlimited ?? false,
-    installmentSchedule: extractInstallmentSchedule(metadata),
+    installmentSchedule:
+      paymentPlan !== null && "v" in paymentPlan ? null : paymentPlan,
+    paymentPlan,
     // META-ORCH-1174 Leg B2 — per-package description from tier_metadata.
     description: extractTierDescription(metadata),
   };
@@ -707,7 +724,22 @@ function extractTierDescription(
  */
 function extractInstallmentSchedule(
   metadata: Record<string, unknown>,
-): TripInstallmentScheduleData | null {
+): TripPaymentPlanData | null {
+  const rawV2 = metadata.payment_plan;
+  if (rawV2 !== null && typeof rawV2 === "object" && !Array.isArray(rawV2)) {
+    const plan = rawV2 as Record<string, unknown>;
+    const deposit = plan.deposit;
+    if (
+      plan.v === 2 &&
+      typeof plan.count === "number" &&
+      typeof plan.final_due_days_before_start === "number" &&
+      deposit !== null &&
+      typeof deposit === "object" &&
+      !Array.isArray(deposit)
+    ) {
+      return rawV2 as TripPaymentPlanV2;
+    }
+  }
   const raw = metadata.installments;
   if (raw === null || raw === undefined || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
@@ -883,6 +915,7 @@ function mapTrip(
       passMinglaFee: event.pass_mingla_fee ?? null,
       passServiceFee: event.pass_service_fee ?? null,
     },
+    sharePaymentPlan: event.share_payment_plan === true,
     // ORCH-1339 — guest-privacy display gates (theme leaf; false defaults).
     guestPrivacy: readGuestPrivacy(event.theme),
   };
@@ -1352,21 +1385,32 @@ export async function updateTripPricing(
     );
   }
 
-  // ORCH-0873 [Tr3 Stage 2 UI]: merge installmentSchedule into
-  // tier_metadata.installments JSONB key. Null → REMOVE the key
-  // (single-payment trip); object → SET the key. Other tier_metadata
-  // keys (any future extensions) are preserved.
+  // #4522 — a tier owns exactly one plan shape. Legacy schedules use
+  // `installments`; v2 uses `payment_plan`. Switching shape removes the other
+  // key in the same canonical graph write, so the server never observes a
+  // payment_plan_shape_conflict between autosaves.
   const existingMetadata =
     (tierRow.tier_metadata ?? {}) as Record<string, unknown>;
   let nextMetadata: Record<string, unknown> = existingMetadata;
   if ("installmentSchedule" in patch) {
-    const { installments: _stripExistingKey, ...metadataWithoutInstallments } =
-      existingMetadata as Record<string, unknown> & { installments?: unknown };
+    const {
+      installments: _stripExistingV1,
+      payment_plan: _stripExistingV2,
+      ...metadataWithoutPlan
+    } = existingMetadata as Record<string, unknown> & {
+      installments?: unknown;
+      payment_plan?: unknown;
+    };
     if (patch.installmentSchedule === null || patch.installmentSchedule === undefined) {
-      nextMetadata = metadataWithoutInstallments;
+      nextMetadata = metadataWithoutPlan;
+    } else if ("v" in patch.installmentSchedule && patch.installmentSchedule.v === 2) {
+      nextMetadata = {
+        ...metadataWithoutPlan,
+        payment_plan: patch.installmentSchedule,
+      };
     } else {
       nextMetadata = {
-        ...metadataWithoutInstallments,
+        ...metadataWithoutPlan,
         installments: patch.installmentSchedule,
       };
     }
@@ -1430,6 +1474,13 @@ export async function updateTripPricing(
         capacity: patch.capacity,
         tier_metadata: nextMetadata,
       }],
+      ...("sharePaymentPlan" in patch
+        ? {
+            settings: {
+              share_payment_plan: patch.sharePaymentPlan === true,
+            },
+          }
+        : {}),
     },
     options,
   );
@@ -1521,7 +1572,11 @@ export async function createTripPricingTier(
     patch.installmentSchedule !== null &&
     patch.installmentSchedule !== undefined
   ) {
-    tierMetadata.installments = patch.installmentSchedule;
+    if ("v" in patch.installmentSchedule && patch.installmentSchedule.v === 2) {
+      tierMetadata.payment_plan = patch.installmentSchedule;
+    } else {
+      tierMetadata.installments = patch.installmentSchedule;
+    }
   }
   // META-ORCH-1174 Leg B2 — persist the optional per-package description.
   if (typeof patch.description === "string" && patch.description.trim().length > 0) {
