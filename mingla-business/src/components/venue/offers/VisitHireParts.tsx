@@ -24,6 +24,7 @@ import {
   type HireBookingView,
   type HireStateCard,
 } from "@mingla/brand-rendering/venueOffers/hireModel";
+import { venueLayoutSummary } from "@mingla/brand-rendering/venueOffers/layoutModel";
 
 import { radius, space, type } from "../../../constants/designSystem";
 import { EntryButton, EntryNote } from "./EntryUi";
@@ -267,6 +268,9 @@ export function HireFacts({
   const money = (m: number): string => formatVenueMoney(m, currencyCode, exponent);
   const rows: Array<{ k: string; v: string; strong?: boolean }> = [
     { k: "Space", v: hire.placeName ?? "—" },
+    ...(hire.layout !== null && hire.layoutCapacity !== null
+      ? [{ k: "Layout", v: venueLayoutSummary(hire.layout, hire.layoutCapacity) }]
+      : []),
     ...(hire.sessionLabel !== null || hire.bookedFrom !== null
       ? [
           {

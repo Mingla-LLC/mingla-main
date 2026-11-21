@@ -18,6 +18,7 @@ import {
   hirePresetFor,
   hireReadinessLine,
   hireStepIssue,
+  layoutsPayload,
   placeKey,
   rowIssues,
   rowPayload,
@@ -55,6 +56,8 @@ import { BUILT_MODULES } from "../venueModules";
 import { BUILT_OFFER_KINDS } from "../../../types/venueOffers";
 import { NEW_OFFER_CARDS } from "../features/offers/offersModel";
 
+// [TEST-MOD-APPROVED #4490] Spec 07-H extends the existing P4 host fixtures
+// and model proof with capacities for every guest-selectable layout.
 const space = (id: string, name: string, standing: number, canBeHired = true): VenueSpace => ({
   id,
   venueId: "v",
@@ -62,6 +65,7 @@ const space = (id: string, name: string, standing: number, canBeHired = true): V
   setting: "covered",
   capacityStanding: standing,
   capacitySeated: null,
+  layouts: [],
   photos: [],
   planShape: null,
   sortOrder: 0,
@@ -118,6 +122,31 @@ describe("P4-2 hire editor model", () => {
     const places = hirePlaces([...SPACES, space("m", "Marquee", 120, false)], COMBOS);
     expect(places.find((p) => p.id === "wg")?.capacity).toBe(300);
     expect(places.find((p) => p.id === "m")?.hirable).toBe(false);
+  });
+
+  it("sums a combination only when every part offers a layout and persists the guest choices", () => {
+    const parts: VenueSpace[] = [
+      { ...space("a", "Hall A", 100), capacitySeated: 60, layouts: [{ layout: "banquet", capacity: 55 }] },
+      { ...space("b", "Hall B", 80), capacitySeated: null, layouts: [{ layout: "banquet", capacity: 45 }] },
+    ];
+    const places = hirePlaces(parts, [{ id: "whole", venueId: "v", name: "Whole Hall", spaceIds: ["a", "b"], version: 1 }]);
+    const whole = places.find((place) => place.id === "whole");
+    expect(whole?.layoutCapacities.banquet).toBe(100);
+    expect(whole?.layoutCapacities.seated).toBeUndefined();
+    const draft = { ...hireDraftFrom(null), combinationIds: ["whole"], layouts: ["banquet" as const] };
+    expect(hireStepIssue("spaces", draft, places)).toBeNull();
+    expect(layoutsPayload(draft)).toEqual({ layouts: ["banquet"] });
+    expect(hireStepIssue("spaces", { ...draft, layouts: ["seated"] }, places)).toMatch(/every chosen layout/);
+  });
+
+  it("does not invent zero-capacity layouts when a stale combination is missing a part", () => {
+    const parts: VenueSpace[] = [
+      { ...space("a", "Hall A", 100), capacitySeated: 60, layouts: [{ layout: "banquet", capacity: 55 }] },
+    ];
+    const places = hirePlaces(parts, [{ id: "whole", venueId: "v", name: "Whole Hall", spaceIds: ["a", "missing"], version: 1 }]);
+    const whole = places.find((place) => place.id === "whole");
+    expect(whole?.hirable).toBe(false);
+    expect(whole?.layoutCapacities).toEqual({});
   });
 
   it("refuses a row above its space's capacity with the space's name (no 50 cap)", () => {
@@ -207,6 +236,8 @@ const request = (over: Partial<VenueRequest>): VenueRequest => ({
   guestPhone: null,
   guests: 120,
   placeName: "The Lounge Side",
+  layout: null,
+  layoutCapacity: null,
   spaceIds: ["l"],
   sessionLabel: "Full day",
   localDate: "2026-12-12",
@@ -435,16 +466,19 @@ describe("P4-2 calendar", () => {
 
 describe("P4-2 service readers", () => {
   it("reads a request row and the hire part of an offer defensively", () => {
-    const r = mapVenueRequest({ groupId: "g", tab: "nonsense", closedReason: "weird", placeStatus: "held", queue: { position: 2, blockedByGuestName: "Ngozi" }, guests: "120" });
+    const r = mapVenueRequest({ groupId: "g", tab: "nonsense", closedReason: "weird", placeStatus: "held", queue: { position: 2, blockedByGuestName: "Ngozi" }, guests: "120", layout: "banquet", layoutCapacity: 120 });
     expect(r.tab).toBe("closed");
     expect(r.closedReason).toBeNull();
     expect(r.placeStatus).toBe("held");
     expect(r.queue?.position).toBe(2);
     expect(r.guests).toBe(120);
-    const h = mapHireTerms({ charge: "min_spend", bookingMode: "instant", rows: [{ optionId: "o", unit: "guest", weekdays: [5, 6, 9] }] });
+    expect([r.layout, r.layoutCapacity]).toEqual(["banquet", 120]);
+    const h = mapHireTerms({ charge: "min_spend", bookingMode: "instant", layouts: ["banquet"], rows: [{ optionId: "o", unit: "guest", weekdays: [5, 6, 9], layoutCapacities: { banquet: 120 } }] });
     expect(h.charge).toBe("min_spend");
     expect(h.bookingMode).toBe("instant");
     expect(h.rows[0].weekdays).toEqual([5, 6]);
+    expect(h.layouts).toEqual(["banquet"]);
+    expect(h.rows[0].layoutCapacities).toEqual({ banquet: 120 });
     expect(h.requestResponseHours).toBe(48);
   });
 });

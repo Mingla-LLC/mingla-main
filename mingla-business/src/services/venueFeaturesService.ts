@@ -8,6 +8,7 @@
 
 import { supabase } from "./supabase";
 import { randomId } from "../utils/randomId";
+import type { OtherVenueLayout } from "@mingla/brand-rendering/venueOffers/layoutModel";
 import {
   SWITCHABLE_FEATURES,
   VENUE_FEATURE_KEYS,
@@ -263,6 +264,7 @@ export interface VenueSpace {
   setting: SpaceSetting;
   capacityStanding: number | null;
   capacitySeated: number | null;
+  layouts: Array<{ layout: OtherVenueLayout; capacity: number }>;
   photos: string[];
   planShape: SpacePlanShape | null;
   /** #4490 P5 — the floor plan's room (`plan_shape.room`), kept when the site plan saves. */
@@ -322,6 +324,17 @@ export function mapVenueSpace(json: unknown): VenueSpace {
     setting,
     capacityStanding: numOrNull(r.capacity_standing),
     capacitySeated: numOrNull(r.capacity_seated),
+    layouts: Array.isArray(r.layouts)
+      ? r.layouts.flatMap((value) => {
+          if (value === null || typeof value !== "object") return [];
+          const row = value as Record<string, unknown>;
+          const layout = row.layout;
+          const capacity = numOrNull(row.capacity);
+          return (layout === "banquet" || layout === "theatre" || layout === "classroom" || layout === "cabaret" || layout === "boardroom") && capacity !== null
+            ? [{ layout, capacity }]
+            : [];
+        })
+      : [],
     photos: photoUrls(r.photos),
     planShape: mapPlanShape(r.plan_shape),
     planRoom:
@@ -349,7 +362,19 @@ export async function fetchVenueSpaces(venueId: string): Promise<VenueSpace[]> {
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
   if (error !== null) throw toVenueFeatureError(error);
-  return (data ?? []).map(mapVenueSpace);
+  const rows = data ?? [];
+  if (rows.length === 0) return [];
+  const { data: layoutRows, error: layoutError } = await supabase
+    .from("venue_space_layouts")
+    .select("space_id, layout, capacity")
+    .in("space_id", rows.map((row: { id: string }) => row.id));
+  if (layoutError !== null) throw toVenueFeatureError(layoutError);
+  return rows.map((row: Record<string, unknown>) =>
+    mapVenueSpace({
+      ...row,
+      layouts: (layoutRows ?? []).filter((layout: { space_id: string }) => layout.space_id === row.id),
+    }),
+  );
 }
 
 export async function fetchVenueSpaceCombinations(venueId: string): Promise<VenueSpaceCombination[]> {
@@ -376,6 +401,7 @@ export interface SpaceDraft {
   setting: SpaceSetting;
   capacityStanding: number | null;
   capacitySeated: number | null;
+  layouts: Array<{ layout: OtherVenueLayout; capacity: number }>;
   photos: string[];
   canBeHired: boolean;
   stepFree: boolean | null;
@@ -388,6 +414,7 @@ export function spaceDraftToPayload(draft: SpaceDraft): Record<string, unknown> 
     setting: draft.setting,
     capacity_standing: draft.capacityStanding,
     capacity_seated: draft.capacitySeated,
+    layouts: draft.layouts.map(({ layout, capacity }) => ({ layout, capacity })),
     photos: draft.photos,
     can_be_hired: draft.canBeHired,
     step_free: draft.stepFree,

@@ -120,6 +120,7 @@ const SAFE_CODES = [
   "offer_wrong_weekday",
   "offer_wrong_time",
   "offer_guests_out_of_range",
+  "offer_group_too_big",
   "offer_sold_out",
   "offer_day_closed",
   "offer_too_soon",
@@ -267,6 +268,21 @@ function rpcFailure(error: RpcError): Response {
       }
     } catch {
       // detail is optional
+    }
+  }
+  if (code === "offer_group_too_big" && error.details) {
+    try {
+      const detail = JSON.parse(error.details);
+      const layouts = new Set(["standing", "seated", "banquet", "theatre", "classroom", "cabaret", "boardroom"]);
+      if (
+        typeof detail?.placeName === "string" && detail.placeName.trim().length > 0 && detail.placeName.length <= 120 &&
+        typeof detail?.capacity === "number" && Number.isInteger(detail.capacity) && detail.capacity >= 1 && detail.capacity <= 100000 &&
+        typeof detail?.layout === "string" && layouts.has(detail.layout)
+      ) {
+        body.detail = { placeName: detail.placeName, capacity: detail.capacity, layout: detail.layout };
+      }
+    } catch {
+      // Safe detail is optional; the client has generic refusal copy.
     }
   }
   return json(code === "offer_request_failed" ? 500 : statusFor(error), body);
@@ -517,6 +533,7 @@ export function publicHireDetail(hire: unknown): Json | null {
     minSpendMinor: hire.minSpendMinor ?? 0,
     extraGuestMinor: hire.extraGuestMinor ?? null,
     overtimeMinorPerHour: hire.overtimeMinorPerHour ?? null,
+    layouts: Array.isArray(hire.layouts) ? hire.layouts : [],
     spaces: list(hire.spaces).map((s) => ({
       id: s.id,
       name: s.name,
@@ -537,6 +554,7 @@ export function publicHireDetail(hire: unknown): Json | null {
       combinationId: r.combinationId ?? null,
       placeName: r.placeName ?? null,
       capacity: r.capacity ?? null,
+      layoutCapacities: isJson(r.layoutCapacities) ? r.layoutCapacities : {},
       guestMin: r.guestMin,
       guestMax: r.guestMax,
       weekdays: r.weekdays ?? null,

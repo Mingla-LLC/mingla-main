@@ -24,6 +24,11 @@ import {
   type EntryQuote,
 } from "./entryModel";
 import { parsePayPlan, type PackageExtraView, type PackageQuoteExtra, type PayPlan } from "./packageModel";
+import {
+  isVenueLayout,
+  venueLayoutCapacityError,
+  type VenueLayout,
+} from "./layoutModel";
 
 type Json = Record<string, unknown>;
 const isJson = (value: unknown): value is Json =>
@@ -62,6 +67,7 @@ export interface HireRowView {
   combinationId: string | null;
   placeName: string;
   capacity: number | null;
+  layoutCapacities: Partial<Record<VenueLayout, number>>;
   guestMin: number;
   guestMax: number;
   weekdays: number[] | null;
@@ -85,6 +91,7 @@ export interface HireOfferDetail extends EntryOfferDetail {
   extraGuestMinor: number | null;
   overtimeMinorPerHour: number | null;
   extras: PackageExtraView[];
+  layouts: VenueLayout[];
   spaces: HireSpaceView[];
   combinations: Array<{ id: string; name: string; spaceIds: string[] }>;
   rows: HireRowView[];
@@ -113,6 +120,11 @@ export function parseHireOfferDetail(raw: unknown): HireOfferDetail | null {
       combinationId: asText(r.combinationId),
       placeName: asText(r.placeName) ?? asText(r.name) ?? "",
       capacity: asInt(r.capacity),
+      layoutCapacities: Object.fromEntries(
+        Object.entries(isJson(r.layoutCapacities) ? r.layoutCapacities : {}).filter(
+          ([layout, capacity]) => isVenueLayout(layout) && asInt(capacity) !== null,
+        ),
+      ) as Partial<Record<VenueLayout, number>>,
       guestMin: Math.max(1, asInt(r.guestMin) ?? 1),
       guestMax: Math.max(1, asInt(r.guestMax) ?? 1),
       weekdays: Array.isArray(r.weekdays) ? r.weekdays.filter((d): d is number => typeof d === "number") : null,
@@ -155,6 +167,7 @@ export function parseHireOfferDetail(raw: unknown): HireOfferDetail | null {
     extraGuestMinor: asMinor(h.extraGuestMinor),
     overtimeMinorPerHour: asMinor(h.overtimeMinorPerHour),
     extras,
+    layouts: (Array.isArray(h.layouts) ? h.layouts : []).filter(isVenueLayout),
     spaces: (Array.isArray(h.spaces) ? h.spaces : []).filter(isJson).flatMap((s) => {
       const id = asText(s.id);
       const name = asText(s.name);
@@ -459,6 +472,8 @@ export function placeUnavailableLine(o: HirePlaceOption): string | null {
 export interface HireQuote extends EntryQuote {
   mode: "request" | "instant";
   placeName: string | null;
+  layout: VenueLayout | null;
+  layoutCapacity: number | null;
   guests: number;
   placeStatus: string | null;
   hireMinor: number;
@@ -494,6 +509,8 @@ export function parseHireQuote(raw: unknown): HireQuote | null {
     ...base,
     mode: raw.mode === "instant" ? "instant" : "request",
     placeName: asText(h.placeName),
+    layout: isVenueLayout(h.layout) ? h.layout : null,
+    layoutCapacity: asInt(h.layoutCapacity),
     guests: asInt(h.guests) ?? 0,
     placeStatus: asText(h.placeStatus),
     hireMinor: asMinor(h.hireMinor) ?? 0,
@@ -722,6 +739,8 @@ export const OCCASIONS: readonly string[] = ["Wedding", "Birthday", "Company day
 
 export interface HireBookingView {
   placeName: string | null;
+  layout: VenueLayout | null;
+  layoutCapacity: number | null;
   sessionLabel: string | null;
   /** The booked hours (current: a moved hire reads its new day). */
   bookedFrom: string | null;
@@ -845,6 +864,8 @@ export function parseHireBooking(raw: unknown): HireBookingView | null {
   }
   return {
     placeName: asText(h.placeName),
+    layout: isVenueLayout(h.layout) ? h.layout : null,
+    layoutCapacity: asInt(h.layoutCapacity),
     sessionLabel: asText(h.sessionLabel),
     bookedFrom: asText(h.bookedFrom),
     bookedTo: asText(h.bookedTo),
@@ -1038,7 +1059,10 @@ export function hireTrackerSteps(state: string, venueName: string, hire: Pick<Hi
 }
 
 /** Plain words for the hire codes (the rest come from the entry copy). */
-export function hireErrorCopy(code: string | null | undefined): string {
+export function hireErrorCopy(
+  code: string | null | undefined,
+  detail: { placeName?: string; capacity?: number; layout?: string } | null = null,
+): string {
   switch (code) {
     case "offer_space_taken":
       return "That space was just taken for that session. Pick another space or day.";
@@ -1046,6 +1070,10 @@ export function hireErrorCopy(code: string | null | undefined): string {
       return "Extra hours aren't available for that session.";
     case "offer_guests_out_of_range":
       return "That number of guests doesn't fit this space. Pick another space or change the number.";
+    case "offer_group_too_big":
+      return detail !== null && typeof detail.placeName === "string" && typeof detail.capacity === "number" && isVenueLayout(detail.layout)
+        ? venueLayoutCapacityError(detail.placeName, detail.capacity, detail.layout)
+        : "That group is too large for this layout. Pick another layout or change the number.";
     case "offer_answer_required":
       return "Tell us the occasion before you send the request.";
     case "offer_invalid_transition":

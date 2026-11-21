@@ -31,6 +31,11 @@ import {
   type HireChoice,
   type HireQuote,
 } from "@mingla/brand-rendering/venueOffers/hireModel";
+import {
+  venueLayoutLabel,
+  venueLayoutSummary,
+  type VenueLayout,
+} from "@mingla/brand-rendering/venueOffers/layoutModel";
 
 import { radius, size, space, type } from "../../../constants/designSystem";
 import { usePublicVenueBySlug } from "../../../hooks/usePublicEvents";
@@ -61,7 +66,11 @@ export interface HireRequestProps {
   safeBottom: number;
 }
 
-type QuoteState = { status: "idle" } | { status: "loading" } | { status: "ready"; quote: HireQuote } | { status: "error"; code: string };
+type QuoteState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; quote: HireQuote }
+  | { status: "error"; code: string; detail: { placeName?: string; capacity?: number; layout?: string } | null };
 
 export function HireRequest(props: HireRequestProps): React.ReactElement {
   const { brandSlug, venueSlug, offerId } = props;
@@ -87,6 +96,7 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
   const [siteVisit, setSiteVisit] = useState(false);
   const [overtime, setOvertime] = useState(0);
   const [pickedExtras, setPickedExtras] = useState<string[]>([]);
+  const [layout, setLayout] = useState<VenueLayout | null>(null);
   const [focused, setFocused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -96,6 +106,18 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
   // ── the live quote ───────────────────────────────────────────────────
   const [quote, setQuote] = useState<QuoteState>({ status: "idle" });
   const choice = selection.choice;
+  const chosenRow = offer?.rows.find((row) => row.optionId === choice?.priceOptionId) ?? null;
+  const availableLayouts = useMemo(
+    () => (offer?.layouts ?? []).flatMap((key) => {
+      const capacity = chosenRow?.layoutCapacities[key];
+      return capacity === undefined ? [] : [{ key, capacity }];
+    }),
+    [chosenRow, offer?.layouts],
+  );
+  useEffect(() => {
+    if (layout !== null && availableLayouts.some((row) => row.key === layout)) return;
+    setLayout(availableLayouts.length === 1 ? availableLayouts[0].key : null);
+  }, [availableLayouts, layout]);
   const answers = useMemo((): Record<string, string | boolean> => {
     const out: Record<string, string | boolean> = {};
     if (occasion !== null) out.occasion = occasion;
@@ -103,11 +125,11 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
     if (siteVisit) out.siteVisit = true;
     return out;
   }, [occasion, note, siteVisit]);
-  const quoteKey = `${choice?.windowId ?? ""}|${choice?.priceOptionId ?? ""}|${choice?.guests ?? 0}|${overtime}|${[...pickedExtras].sort().join(",")}|${choice?.startsAt ?? ""}|${choice?.minutes ?? 0}`;
+  const quoteKey = `${choice?.windowId ?? ""}|${choice?.priceOptionId ?? ""}|${choice?.guests ?? 0}|${layout ?? ""}|${overtime}|${[...pickedExtras].sort().join(",")}|${choice?.startsAt ?? ""}|${choice?.minutes ?? 0}`;
   const latest = useRef(quoteKey);
   latest.current = quoteKey;
   const askQuote = async (withAnswers: boolean): Promise<HireQuote | null> => {
-    if (choice === null || selection.problem !== null) {
+    if (choice === null || selection.problem !== null || ((offer?.layouts.length ?? 0) > 0 && layout === null)) {
       setQuote({ status: "idle" });
       return null;
     }
@@ -120,6 +142,7 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
         ...(choice.startsAt !== undefined && choice.minutes !== undefined ? { startsAt: choice.startsAt, minutes: choice.minutes } : {}),
         priceOptionId: choice.priceOptionId,
         guests: choice.guests,
+        layout,
         overtimeHours: choice.startsAt !== undefined ? 0 : overtime,
         extras: pickedExtras.map((id) => ({ id })),
         answers: withAnswers ? answers : {},
@@ -130,12 +153,12 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
       return next;
     } catch (caught) {
       const code = caught instanceof VenueOfferGuestError ? caught.code : "offer_request_failed";
-      if (latest.current === asked) setQuote({ status: "error", code });
+      if (latest.current === asked) setQuote({ status: "error", code, detail: caught instanceof VenueOfferGuestError ? caught.detail : null });
       return null;
     }
   };
   useEffect(() => {
-    if (choice === null || selection.problem !== null) {
+    if (choice === null || selection.problem !== null || ((offer?.layouts.length ?? 0) > 0 && layout === null)) {
       setQuote({ status: "idle" });
       return undefined;
     }
@@ -149,10 +172,11 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
   const instant = offer?.mode === "instant";
   const blocker: string | null =
     selection.problem ??
+    ((offer?.layouts.length ?? 0) > 0 && layout === null ? "Pick how you'll set up the space." : null) ??
     (quote.status === "loading" || quote.status === "idle"
       ? "Working out your price…"
       : quote.status === "error"
-        ? hireErrorCopy(quote.code)
+        ? hireErrorCopy(quote.code, quote.detail)
         : details.problem);
 
   const send = async (): Promise<void> => {
@@ -258,6 +282,9 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
                     ? `${session.label}${session.times !== null ? ` ${session.times}` : ""}`
                     : null,
                 `${selection.guests.toLocaleString("en-GB")} guests`,
+                layout !== null && chosenRow?.layoutCapacities[layout] !== undefined
+                  ? venueLayoutSummary(layout, chosenRow.layoutCapacities[layout] as number)
+                  : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -276,6 +303,24 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
 
   const aboutCard = (
     <View style={[entryStyles.card, { backgroundColor: palette.card, borderColor: palette.panelBorder }]} testID="issue-4490-hire-request-about">
+      {availableLayouts.length > 0 ? (
+        <>
+          <EntrySectionLabel palette={palette}>How will you set up?</EntrySectionLabel>
+          <OfferingChipRow accessibilityLabel="How will you set up?" testID="issue-4490-hire-request-layouts">
+            {availableLayouts.map((row) => (
+              <OfferingChoiceChip
+                key={row.key}
+                palette={palette}
+                label={`${venueLayoutLabel(row.key)} · up to ${row.capacity.toLocaleString("en-GB")}`}
+                selected={layout === row.key}
+                onPress={() => setLayout(row.key)}
+                role="radio"
+                testID={`issue-4490-hire-layout-${row.key}`}
+              />
+            ))}
+          </OfferingChipRow>
+        </>
+      ) : null}
       <EntrySectionLabel palette={palette}>The occasion</EntrySectionLabel>
       <OfferingChipRow accessibilityLabel="The occasion" testID="issue-4490-hire-request-occasion">
         {OCCASIONS.map((o) => (
@@ -383,7 +428,7 @@ export function HireRequest(props: HireRequestProps): React.ReactElement {
         </>
       ) : quote.status === "error" ? (
         <EntryNote palette={palette} icon="flag" tone="error" testID="issue-4490-hire-request-quote-error">
-          {hireErrorCopy(quote.code)}
+          {hireErrorCopy(quote.code, quote.detail)}
         </EntryNote>
       ) : (
         <Text style={[styles.small, { color: palette.secondaryText }]}>{selection.problem ?? "Working out your price…"}</Text>

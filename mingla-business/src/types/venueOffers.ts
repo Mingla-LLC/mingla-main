@@ -5,6 +5,8 @@
  * Money is always minor units of the brand currency.
  */
 
+import type { VenueLayout } from "@mingla/brand-rendering/venueOffers/layoutModel";
+
 export type VenueOfferKind = "entry" | "group_package" | "private_hire" | "by_the_hour";
 export type EntryStyle = "walk_in" | "day_pass" | "timed_session";
 export type VenueOfferStatus = "draft" | "live" | "paused" | "archived";
@@ -224,6 +226,7 @@ export interface HirePriceRow {
   combinationId: string | null;
   placeName: string;
   capacity: number;
+  layoutCapacities: Partial<Record<VenueLayout, number>>;
   guestMin: number;
   guestMax: number;
   /** 0 = Monday … 6 = Sunday. */
@@ -259,6 +262,7 @@ export interface HireHoursYouSet {
 export interface HireTerms {
   charge: HireCharge;
   bookingMode: "request" | "instant";
+  layouts: VenueLayout[];
   spaces: HireSpace[];
   combinations: HireCombination[];
   rows: HirePriceRow[];
@@ -306,6 +310,8 @@ export interface VenueRequest {
   guestPhone: string | null;
   guests: number;
   placeName: string | null;
+  layout: VenueLayout | null;
+  layoutCapacity: number | null;
   spaceIds: string[];
   sessionLabel: string | null;
   localDate: string;
@@ -476,6 +482,8 @@ export interface StaffActionResult {
 /** The hire part of a booking read (staff and guest). */
 export interface HireBookingFacts {
   placeName: string | null;
+  layout: VenueLayout | null;
+  layoutCapacity: number | null;
   spaceIds: string[];
   combinationId: string | null;
   sessionLabel: string | null;

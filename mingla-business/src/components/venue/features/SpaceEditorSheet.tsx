@@ -6,6 +6,10 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import {
+  OTHER_VENUE_LAYOUTS,
+  type OtherVenueLayout,
+} from "@mingla/brand-rendering/venueOffers/layoutModel";
 
 import { color, space, type } from "../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
@@ -22,6 +26,7 @@ import { ChipInput } from "../../ui/ChipInput";
 import { Input } from "../../ui/Input";
 import { NumberStepper } from "../../ui/NumberStepper";
 import { Segmented } from "../../ui/Pill";
+import { SelectSheet } from "../../ui/SelectSheet";
 import { Sheet } from "../../ui/Sheet";
 import { PickerSheetHead } from "../../ui/PickerSheetHead";
 import { spaceDraftIssues, starterSetting } from "./spaceModel";
@@ -46,6 +51,7 @@ export function emptySpaceDraft(name = "", hireOn = true): SpaceDraft {
     setting: starterSetting(name),
     capacityStanding: null,
     capacitySeated: null,
+    layouts: [],
     photos: [],
     // #4490 N57: only starts "can be hired" when Private hire is on.
     canBeHired: hireOn,
@@ -60,6 +66,7 @@ function draftFromSpace(spaceRow: VenueSpace): SpaceDraft {
     setting: spaceRow.setting,
     capacityStanding: spaceRow.capacityStanding,
     capacitySeated: spaceRow.capacitySeated,
+    layouts: spaceRow.layouts.map((layout) => ({ ...layout })),
     photos: spaceRow.photos,
     canBeHired: spaceRow.canBeHired,
     stepFree: spaceRow.stepFree,
@@ -140,9 +147,9 @@ export function SpaceEditorSheet({
 
   const handleSave = useCallback((): void => {
     setShowErrors(true);
-    if (issues.name !== null || issues.capacity !== null || !canEdit) return;
+    if (issues.name !== null || issues.capacity !== null || issues.layouts !== null || !canEdit) return;
     onSave(draft);
-  }, [canEdit, draft, issues.capacity, issues.name, onSave]);
+  }, [canEdit, draft, issues.capacity, issues.layouts, issues.name, onSave]);
 
   const handleClose = useCallback((): void => {
     if (busy) return;
@@ -159,11 +166,11 @@ export function SpaceEditorSheet({
         <Text style={styles.error} accessibilityLiveRegion="polite" testID="space-editor-error">
           {error}
         </Text>
-      ) : showErrors && (issues.name !== null || issues.capacity !== null) ? (
+      ) : showErrors && (issues.name !== null || issues.capacity !== null || issues.layouts !== null) ? (
         // #4490 D19 — a refused Save always says why beside the button, even
         // when the fields with errors are scrolled out of view.
         <Text style={styles.error} accessibilityLiveRegion="polite" testID="space-editor-issues">
-          {[issues.name !== null ? "Add a name" : null, issues.capacity !== null ? "set how many it fits" : null]
+          {[issues.name !== null ? "Add a name" : null, issues.capacity !== null ? "set how many it fits" : null, issues.layouts !== null ? "check the other layouts" : null]
             .filter((part): part is string => part !== null)
             .join(" and ")
             .replace(/^./, (c) => c.toUpperCase())}
@@ -263,6 +270,71 @@ export function SpaceEditorSheet({
           {showErrors && issues.capacity !== null ? (
             <Text style={styles.error} testID="space-editor-capacity-error">{issues.capacity}</Text>
           ) : null}
+
+          <View style={styles.layouts} testID="space-editor-layouts">
+            <View style={styles.layoutHead}>
+              <View style={styles.switchText}>
+                <Text style={styles.switchTitle}>Other layouts</Text>
+                <Text style={styles.hint}>Add the room setups you offer and how many each holds.</Text>
+              </View>
+              {canEdit && draft.layouts.length < OTHER_VENUE_LAYOUTS.length ? (
+                <Button
+                  label="Add a layout"
+                  variant="ghost"
+                  size="sm"
+                  leadingIcon="plus"
+                  onPress={() => {
+                    const used = new Set(draft.layouts.map((row) => row.layout));
+                    const next = OTHER_VENUE_LAYOUTS.find((row) => !used.has(row.key));
+                    if (next !== undefined) patch({ layouts: [...draft.layouts, { layout: next.key, capacity: 1 }] });
+                  }}
+                  testID="space-editor-layout-add"
+                />
+              ) : null}
+            </View>
+            {draft.layouts.map((row, index) => {
+              const used = new Set(draft.layouts.map((value) => value.layout));
+              const options = OTHER_VENUE_LAYOUTS.map((option) => ({
+                value: option.key,
+                label: option.label,
+                disabled: option.key !== row.layout && used.has(option.key),
+              }));
+              const replace = (next: Partial<{ layout: OtherVenueLayout; capacity: number }>): void =>
+                patch({ layouts: draft.layouts.map((value, i) => (i === index ? { ...value, ...next } : value)) });
+              return (
+                <View key={`${row.layout}-${index}`} style={styles.layoutRow} testID={`space-editor-layout-${index}`}>
+                  <SelectSheet
+                    label="Layout"
+                    value={row.layout}
+                    options={options}
+                    onChange={(layout) => replace({ layout })}
+                    disabled={!canEdit}
+                    testID={`space-editor-layout-${index}-select`}
+                  />
+                  <View style={styles.layoutCapacity}>
+                    <NumberStepper
+                      label="Capacity"
+                      value={row.capacity}
+                      min={1}
+                      max={CAPACITY_MAX}
+                      onChange={(capacity) => canEdit && replace({ capacity })}
+                      testID={`space-editor-layout-${index}-capacity`}
+                    />
+                  </View>
+                  {canEdit ? (
+                    <Button
+                      label="Remove"
+                      variant="ghost"
+                      size="sm"
+                      onPress={() => patch({ layouts: draft.layouts.filter((_value, i) => i !== index) })}
+                      testID={`space-editor-layout-${index}-remove`}
+                    />
+                  ) : null}
+                </View>
+              );
+            })}
+            {showErrors && issues.layouts !== null ? <Text style={styles.error}>{issues.layouts}</Text> : null}
+          </View>
 
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
@@ -381,7 +453,7 @@ export function SpaceEditorSheet({
               setLeaveOpen(false);
               handleSave();
             }}
-            saveDisabled={issues.name !== null || issues.capacity !== null}
+            saveDisabled={issues.name !== null || issues.capacity !== null || issues.layouts !== null}
             saveTestID="space-editor-leave-save"
             discardTestID="space-editor-leave-discard"
             keepTestID="space-editor-leave-keep"
@@ -407,6 +479,10 @@ const styles = StyleSheet.create({
   // side by side without scrolling sideways.
   steppers: { gap: space[2] },
   stepper: { alignSelf: "stretch" },
+  layouts: { gap: space[2], marginTop: space[2] },
+  layoutHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space[2], flexWrap: "wrap" },
+  layoutRow: { gap: space[2], paddingVertical: space[2] },
+  layoutCapacity: { alignSelf: "stretch" },
   switchRow: {
     flexDirection: "row",
     alignItems: "center",

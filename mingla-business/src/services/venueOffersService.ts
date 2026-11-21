@@ -10,6 +10,8 @@
  * (`venueOfferErrorCopy`); a raw code never reaches a screen.
  */
 
+import { isVenueLayout, type VenueLayout } from "@mingla/brand-rendering/venueOffers/layoutModel";
+
 import { supabase } from "./supabase";
 import { randomId } from "../utils/randomId";
 import type {
@@ -357,6 +359,7 @@ export function mapHireTerms(v: unknown): HireTerms {
   return {
     charge: charge === "min_spend" || charge === "per_guest" ? charge : "hire_fee",
     bookingMode: str(h.bookingMode) === "instant" ? "instant" : "request",
+    layouts: arr(h.layouts).filter(isVenueLayout),
     spaces: arr(h.spaces).map((x) => {
       const s = obj(x);
       return {
@@ -379,6 +382,10 @@ export function mapHireTerms(v: unknown): HireTerms {
     }),
     rows: arr(h.rows).map((x) => {
       const r = obj(x);
+      const capacities: Partial<Record<VenueLayout, number>> = {};
+      for (const [layout, capacity] of Object.entries(obj(r.layoutCapacities))) {
+        if (isVenueLayout(layout) && typeof capacity === "number" && Number.isFinite(capacity)) capacities[layout] = capacity;
+      }
       return {
         optionId: str(r.optionId),
         name: str(r.name),
@@ -387,6 +394,7 @@ export function mapHireTerms(v: unknown): HireTerms {
         combinationId: strOrNull(r.combinationId),
         placeName: str(r.placeName),
         capacity: num(r.capacity),
+        layoutCapacities: capacities,
         guestMin: num(r.guestMin, 1),
         guestMax: num(r.guestMax, 1),
         weekdays: weekdays(r.weekdays),
@@ -435,7 +443,7 @@ function mapHoursYouSet(v: unknown): HireHoursYouSet | null {
   };
 }
 
-export type ManageHireAction = "set_spaces" | "set_price_row" | "set_sessions" | "set_terms" | "set_booking" | "set_flexible" | "set_extras";
+export type ManageHireAction = "set_spaces" | "set_price_row" | "set_sessions" | "set_terms" | "set_booking" | "set_flexible" | "set_extras" | "set_layouts";
 
 export async function manageVenueHire(input: {
   venueId: string;
@@ -484,6 +492,8 @@ export function mapVenueRequest(v: unknown): VenueRequest {
     guestPhone: strOrNull(r.guestPhone),
     guests: num(r.guests),
     placeName: strOrNull(r.placeName),
+    layout: isVenueLayout(r.layout) ? r.layout : null,
+    layoutCapacity: numOrNull(r.layoutCapacity),
     spaceIds: arr(r.spaceIds).filter((x): x is string => typeof x === "string"),
     sessionLabel: strOrNull(r.sessionLabel),
     localDate: str(r.localDate),
@@ -808,6 +818,8 @@ export function mapHireBookingFacts(v: unknown): HireBookingFacts | null {
   const charge = str(h.hireCharge);
   return {
     placeName: strOrNull(h.placeName),
+    layout: isVenueLayout(h.layout) ? h.layout : null,
+    layoutCapacity: numOrNull(h.layoutCapacity),
     spaceIds: arr(h.spaceIds).filter((x): x is string => typeof x === "string"),
     combinationId: strOrNull(h.combinationId),
     sessionLabel: strOrNull(h.sessionLabel),

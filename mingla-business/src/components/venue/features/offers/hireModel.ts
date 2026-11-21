@@ -12,6 +12,11 @@
  */
 import type { HireCharge, HireHoursYouSet, RefundRung, VenueOffer } from "../../../../types/venueOffers";
 import type { VenueSpace, VenueSpaceCombination } from "../../../../services/venueFeaturesService";
+import {
+  VENUE_LAYOUTS,
+  venueLayoutLabel,
+  type VenueLayout,
+} from "@mingla/brand-rendering/venueOffers/layoutModel";
 import { weekdaysSummary } from "../../../ui/fieldModels";
 import { draftKey, minutesBeforeLabel, money, refundSummary } from "./offersModel";
 import { extraIssue, type ExtraDraft } from "./packageModel";
@@ -182,6 +187,8 @@ export interface HireDraft {
   summary: string;
   spaceIds: string[];
   combinationIds: string[];
+  /** Fixed room setups guests may choose for this hire. */
+  layouts: VenueLayout[];
   sessions: HireSessionDraft[];
   weekdays: number[];
   flexOn: boolean;
@@ -272,6 +279,7 @@ export function hireDraftFrom(offer: VenueOffer | null): HireDraft {
     summary: offer?.summary ?? "",
     spaceIds: h === null ? [] : h.spaces.filter((s) => !h.combinations.some((c) => c.spaceIds.includes(s.id)) || h.rows.some((r) => r.spaceId === s.id)).map((s) => s.id),
     combinationIds: h === null ? [] : h.combinations.map((c) => c.id),
+    layouts: h?.layouts ?? [],
     sessions:
       h !== null && h.sessions.length > 0
         ? h.sessions.map((s) => ({ key: draftKey("session"), label: s.label, startTime: s.startTime, endTime: s.endTime }))
@@ -338,6 +346,7 @@ export interface HirePlace {
   id: string;
   name: string;
   capacity: number;
+  layoutCapacities: Partial<Record<VenueLayout, number>>;
   /** Plain detail: "Covered · 200 standing" or "The Lounge Side + Green Area North". */
   detail: string;
   hirable: boolean;
@@ -358,6 +367,11 @@ export function hirePlaces(spaces: readonly VenueSpace[], combinations: readonly
     id: s.id,
     name: s.name,
     capacity: spaceCapacity(s),
+    layoutCapacities: {
+      ...(s.capacityStanding !== null ? { standing: s.capacityStanding } : {}),
+      ...(s.capacitySeated !== null ? { seated: s.capacitySeated } : {}),
+      ...Object.fromEntries(s.layouts.map((row) => [row.layout, row.capacity])),
+    },
     detail: [SETTING_WORD[s.setting] ?? null, `fits ${spaceCapacity(s).toLocaleString("en-GB")}`].filter(Boolean).join(" · "),
     hirable: s.canBeHired,
   }));
@@ -370,6 +384,21 @@ export function hirePlaces(spaces: readonly VenueSpace[], combinations: readonly
       id: c.id,
       name: c.name,
       capacity: parts.reduce((n, s) => n + spaceCapacity(s), 0),
+      layoutCapacities: Object.fromEntries(
+        VENUE_LAYOUTS.flatMap(({ key }) => {
+          if (parts.length !== c.spaceIds.length) return [];
+          const capacities = parts.map((part) =>
+            key === "standing"
+              ? part.capacityStanding
+              : key === "seated"
+                ? part.capacitySeated
+                : part.layouts.find((row) => row.layout === key)?.capacity ?? null,
+          );
+          return capacities.every((capacity): capacity is number => capacity !== null)
+            ? [[key, capacities.reduce((total, capacity) => total + capacity, 0)]]
+            : [];
+        }),
+      ),
       detail: `${parts.map((p) => p.name).join(" + ")} · fits ${parts.reduce((n, s) => n + spaceCapacity(s), 0).toLocaleString("en-GB")}`,
       hirable: parts.length === c.spaceIds.length && parts.every((p) => p.canBeHired),
     });
@@ -419,6 +448,9 @@ export function hireStepIssue(step: HireStepId, draft: HireDraft, places: readon
     case "spaces":
       if (draft.name.trim().length === 0) return "Name this offer";
       if (draft.spaceIds.length + draft.combinationIds.length === 0) return "Pick at least one space";
+      if (chosenPlaces(draft, places).some((place) => draft.layouts.some((layout) => place.layoutCapacities[layout] === undefined))) {
+        return "Add every chosen layout to every space in this hire";
+      }
       return null;
     case "times": {
       if (draft.sessions.length === 0) return "Add a session";
@@ -472,6 +504,10 @@ export function hireStepIssue(step: HireStepId, draft: HireDraft, places: readon
 
 export function spacesPayload(draft: HireDraft): Record<string, unknown> {
   return { spaceIds: [...draft.spaceIds], combinationIds: [...draft.combinationIds] };
+}
+
+export function layoutsPayload(draft: Pick<HireDraft, "layouts">): Record<string, unknown> {
+  return { layouts: [...draft.layouts] };
 }
 
 /** "Hours you set" checks, in plain words (null when off or fine). */
@@ -663,6 +699,7 @@ export function hireReviewItems(
   return [
     { key: "name", label: "Name", value: draft.name.trim() || "—" },
     { key: "spaces", label: "Spaces", value: chosen.length > 0 ? chosen.map((p) => p.name).join(", ") : "None yet" },
+    { key: "layouts", label: "Layouts guests can pick", value: draft.layouts.length > 0 ? draft.layouts.map(venueLayoutLabel).join(", ") : "Not asked" },
     { key: "sessions", label: "Sessions", value: [...draft.sessions.map(sessionWords), flexWords(draft)].filter((x): x is string => x !== null).join(", ") },
     { key: "days", label: "Days", value: weekdaysSummary(draft.weekdays) },
     {
@@ -729,6 +766,8 @@ export function hireReadinessLine(reason: string): HireReadinessLine {
       return { text: "Add a price for at least one space.", step: "price" };
     case "hire_price_space_missing":
       return { text: "A price row is on a space this offer no longer uses.", step: "price" };
+    case "layout_capacity_missing":
+      return { text: "Every layout guests can pick needs a capacity on every priced space.", step: "spaces" };
     case "guest_max_over_capacity":
       return { text: "A price row allows more guests than its space holds.", step: "price" };
     case "option_unit_invalid":
@@ -775,6 +814,8 @@ export function hireErrorCopy(code: string, detail: string | null = null): strin
       return "Check setup, cleanup and the prices on this step.";
     case "hire_booking_invalid":
       return "Pick how long you take to reply and how long guests have to pay.";
+    case "hire_layouts_invalid":
+      return "Pick layouts from the fixed list, without repeats.";
     case "deposit_invalid":
       return "Check the deposit: 1% to 99%, or an amount, and when the rest is due.";
     case "offer_kind_invalid":

@@ -27,6 +27,8 @@ import {
   hireErrorCopy,
 } from "@mingla/brand-rendering/venueOffers/hireModel";
 
+// [TEST-MOD-APPROVED #4490] Spec 07-H extends the existing P4 guest fixtures
+// with the fixed layout list, per-place capacity and immutable quote facts.
 const OFFER = {
   id: "11111111-1111-4111-8111-111111111111",
   kind: "private_hire",
@@ -50,10 +52,11 @@ const OFFER = {
     damageDepositMinor: 0,
     extraGuestMinor: null,
     overtimeMinorPerHour: null,
+    layouts: ["banquet"],
     spaces: [{ id: "l", name: "The Lounge Side", setting: "covered" }],
     combinations: [{ id: "wg", name: "Whole Green Area", spaceIds: ["n", "s"] }],
     rows: [
-      { optionId: "o1", name: "x", unit: "booking", spaceId: "l", placeName: "The Lounge Side", capacity: 200, guestMin: 60, guestMax: 150, priceMinor: 700000000 },
+      { optionId: "o1", name: "x", unit: "booking", spaceId: "l", placeName: "The Lounge Side", capacity: 200, layoutCapacities: { banquet: 120 }, guestMin: 60, guestMax: 150, priceMinor: 700000000 },
       { optionId: "o2", name: "y", unit: "booking", combinationId: "gl", placeName: "Green Area + Lounge", capacity: 500, guestMin: 250, guestMax: 500, priceMinor: 1000000000 },
     ],
     sessions: [
@@ -73,6 +76,8 @@ describe("P4-3 hire offer and days", () => {
       { id: "welcome-drink", name: "Welcome drink", priceMinor: 150000, per: "guest" },
     ]);
     expect(hireGuestRange(o!)).toEqual({ min: 60, max: 500 });
+    expect(o?.layouts).toEqual(["banquet"]);
+    expect(o?.rows[0].layoutCapacities).toEqual({ banquet: 120 });
     expect(parseHireOfferDetail({ ...OFFER, kind: "entry" })).toBeNull();
   });
 
@@ -126,11 +131,12 @@ describe("P4-3 quote and request", () => {
       { id: "welcome-drink", name: "Welcome drink", per: "guest", qty: 120, amountMinor: 18000000 },
     ],
     mode: "request",
-    hire: { placeName: "The Lounge Side", guests: 120, hireMinor: 700000000, extrasMinor: 20500000, damageDepositMinor: 0, requestResponseHours: 48, payPlan: { payModes: ["deposit", "full"], depositMinor: 376250000, depositKind: "percent", depositValue: 5000 } },
+    hire: { placeName: "The Lounge Side", layout: "banquet", layoutCapacity: 120, guests: 120, hireMinor: 700000000, extrasMinor: 20500000, damageDepositMinor: 0, requestResponseHours: 48, payPlan: { payModes: ["deposit", "full"], depositMinor: 376250000, depositKind: "percent", depositValue: 5000 } },
   })!;
 
   it("says nothing is paid yet and what holds the date (the server's deposit)", () => {
     expect(hirePayNowMinor(quote)).toBe(376250000);
+    expect([quote.layout, quote.layoutCapacity]).toEqual(["banquet", 120]);
     expect(requestPromise(quote, "Gameland QA", 2)).toBe(
       "Nothing to pay yet. Gameland QA replies within 48 hours. If they say yes, ₦3,762,500 holds your date.",
     );
@@ -165,6 +171,9 @@ describe("P4-3 quote and request", () => {
     });
     expect(parseHireRequestParams({ ...params, k: "group" })).toBeNull();
     expect(hireErrorCopy("offer_space_taken")).not.toMatch(/_/);
+    expect(hireErrorCopy("offer_group_too_big", { placeName: "The Main Hall", capacity: 120, layout: "banquet" })).toBe(
+      "The Main Hall holds 120 seated for a banquet.",
+    );
   });
 });
 
@@ -175,7 +184,7 @@ describe("P4-3 booking state card", () => {
     balanceDueMinor: 731000000,
     depositMinor: 365500000,
     requestDeadline: "2026-11-21T07:00:00Z",
-    hire: { placeName: "The Lounge Side", guests: 120, replyWithinHours: 48, ...hire },
+    hire: { placeName: "The Lounge Side", layout: "banquet", layoutCapacity: 120, guests: 120, replyWithinHours: 48, ...hire },
     ...over,
   });
   const card = (state: string, over: Record<string, unknown> = {}, hire: Record<string, unknown> = {}, amountDueNowMinor = 0, holdUntil: string | null = null) =>
@@ -214,6 +223,7 @@ describe("P4-3 booking state card", () => {
 
   it("walks the tracker: sent → yes → deposit → rest → day", () => {
     const h = parseHireBooking(raw({ balanceDueMinor: 365500000 }))!;
+    expect([h.layout, h.layoutCapacity]).toEqual(["banquet", 120]);
     expect(hireTrackerSteps("request_pending", "Gameland QA", h).find((s) => s.current)?.label).toBe("Gameland QA says yes");
     expect(hireTrackerSteps("confirmed", "Gameland QA", h).find((s) => s.current)?.label).toBe("You pay the rest");
     expect(parseHireBooking({ hire: null })).toBeNull();

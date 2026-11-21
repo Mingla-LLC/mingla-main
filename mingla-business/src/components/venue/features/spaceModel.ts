@@ -13,6 +13,7 @@ import type { VenueFeatureSet } from "../../../types/venueFeatures";
 export interface SpaceDraftIssues {
   name: string | null;
   capacity: string | null;
+  layouts: string | null;
 }
 
 export function spaceDraftIssues(
@@ -30,7 +31,13 @@ export function spaceDraftIssues(
     draft.capacityStanding === null && draft.capacitySeated === null
       ? "Set how many it fits standing, seated, or both."
       : null;
-  return { name: nameIssue, capacity: capacityIssue };
+  const layoutsIssue =
+    draft.layouts.length > 5 || new Set(draft.layouts.map((row) => row.layout)).size !== draft.layouts.length
+      ? "Use each other layout once, up to five."
+      : draft.layouts.some((row) => !Number.isInteger(row.capacity) || row.capacity < 1 || row.capacity > 100_000)
+        ? "Set each layout capacity from 1 to 100,000."
+        : null;
+  return { name: nameIssue, capacity: capacityIssue, layouts: layoutsIssue };
 }
 
 /**

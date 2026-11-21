@@ -27,6 +27,7 @@ import { useVenueOffers } from "../../../../hooks/useVenueOffers";
 import { toVenueOfferError } from "../../../../services/venueOffersService";
 import { venueOfferGuestService } from "../../../../services/venueOfferGuestService";
 import { sessionChipsFor } from "@mingla/brand-rendering/venueOffers/hireModel";
+import { venueLayoutSummary } from "@mingla/brand-rendering/venueOffers/layoutModel";
 import type {
   BookingChangeAction,
   BookingChangeSummary,
@@ -355,6 +356,9 @@ function hireFacts(b: VenueBookingDetail): Array<{ key: string; label: string; v
   if (h === null) return [];
   const out: Array<{ key: string; label: string; value: string }> = [];
   if (h.sessionLabel !== null) out.push({ key: "session", label: "Session", value: h.sessionLabel });
+  if (h.layout !== null && h.layoutCapacity !== null) {
+    out.push({ key: "layout", label: "Layout", value: venueLayoutSummary(h.layout, h.layoutCapacity) });
+  }
   const setup = clockIn(h.setupFrom, b.timezone);
   const cleanup = clockIn(h.cleanupUntil, b.timezone);
   if (setup !== null && cleanup !== null) out.push({ key: "setup", label: "Setup", value: `From ${setup} · cleanup until ${cleanup}` });

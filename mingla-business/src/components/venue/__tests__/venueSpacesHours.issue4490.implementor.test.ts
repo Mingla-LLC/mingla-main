@@ -17,6 +17,8 @@ import {
   spaceUsedFor,
 } from "../features/spaceModel";
 
+// [TEST-MOD-APPROVED #4490] Spec 07-H extends the existing space fixtures and
+// validation matrix with the five fixed other-layout capacity rows.
 const space = (id: string, extra: Partial<VenueSpace> = {}): VenueSpace => ({
   id,
   venueId: "v",
@@ -24,6 +26,7 @@ const space = (id: string, extra: Partial<VenueSpace> = {}): VenueSpace => ({
   setting: "indoor",
   capacityStanding: 100,
   capacitySeated: null,
+  layouts: [],
   photos: [],
   planShape: null,
   sortOrder: 0,
@@ -39,6 +42,7 @@ const draft = (name: string, standing: number | null, seated: number | null) => 
   setting: "indoor" as const,
   capacityStanding: standing,
   capacitySeated: seated,
+  layouts: [],
   photos: [],
   canBeHired: true,
   stepFree: null,
@@ -49,8 +53,14 @@ describe("spaces", () => {
   it("a space needs a name and at least one capacity; no 50 or 500 cap", () => {
     expect(spaceDraftIssues(draft("", 10, null)).name).toMatch(/name/);
     expect(spaceDraftIssues(draft("Lounge", null, null)).capacity).toMatch(/standing, seated/);
-    expect(spaceDraftIssues(draft("Green Area", 5000, null))).toEqual({ name: null, capacity: null });
+    expect(spaceDraftIssues(draft("Green Area", 5000, null))).toEqual({ name: null, capacity: null, layouts: null });
     expect(spaceDraftIssues(draft("lounge", 10, null), ["Lounge"]).name).toMatch(/already/);
+  });
+  it("accepts each fixed other layout once and rejects a duplicate or invalid capacity", () => {
+    const base = draft("Main Hall", 200, 120);
+    expect(spaceDraftIssues({ ...base, layouts: [{ layout: "banquet", capacity: 120 }] }).layouts).toBeNull();
+    expect(spaceDraftIssues({ ...base, layouts: [{ layout: "banquet", capacity: 120 }, { layout: "banquet", capacity: 80 }] }).layouts).toMatch(/once/);
+    expect(spaceDraftIssues({ ...base, layouts: [{ layout: "theatre", capacity: 0 }] }).layouts).toMatch(/1 to 100,000/);
   });
   it("a combination needs a name and two or more different parts, once", () => {
     expect(combinationIssues({ name: "", spaceIds: ["a"] }, [])).toEqual({

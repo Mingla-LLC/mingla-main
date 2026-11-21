@@ -15,6 +15,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { venueLayoutSummary } from "@mingla/brand-rendering/venueOffers/layoutModel";
 
 import { color, radius, space, type } from "../../../../constants/designSystem";
 import { useBrandCurrency } from "../../../../hooks/useBrandCurrency";
@@ -203,7 +204,11 @@ export function VenueRequestsModule({ brandId, venueId, onOpenModule, initialGro
               <View style={styles.rowText}>
                 <Text style={styles.rowTitle} numberOfLines={1}>{r.guestName}</Text>
                 <Text style={styles.meta} numberOfLines={1}>
-                  {[r.placeName ?? r.offerName, `${r.guests.toLocaleString("en-GB")} guests`].join(" · ")}
+                  {[
+                    r.placeName ?? r.offerName,
+                    `${r.guests.toLocaleString("en-GB")} guests`,
+                    r.layout !== null && r.layoutCapacity !== null ? venueLayoutSummary(r.layout, r.layoutCapacity) : null,
+                  ].filter(Boolean).join(" · ")}
                 </Text>
                 <Text style={styles.meta} numberOfLines={1}>{requestDateLine(r, timezone)}</Text>
               </View>
@@ -426,6 +431,11 @@ function RequestDetail({ brandId, venueId, r, all, timezone, venueName, replyHou
     { key: "date", label: "Date", value: requestDateLine(r, timezone) },
     { key: "guests", label: "Guests", value: r.guests.toLocaleString("en-GB") },
   ];
+  const factLayout = b?.hire?.layout ?? r.layout;
+  const factLayoutCapacity = b?.hire?.layoutCapacity ?? r.layoutCapacity;
+  if (factLayout !== null && factLayoutCapacity !== null) {
+    facts.push({ key: "layout", label: "Layout", value: venueLayoutSummary(factLayout, factLayoutCapacity) });
+  }
   if (b?.hire?.setupFrom && b.hire.cleanupUntil) {
     facts.push({
       key: "setup",

@@ -166,6 +166,7 @@ export const VenueSpacesModule = forwardRef<VenueModuleLeaveHandle, VenueSpacesM
               setting: draft.setting,
               capacity_standing: draft.capacityStanding,
               capacity_seated: draft.capacitySeated,
+              layouts: draft.layouts.map(({ layout, capacity }) => ({ layout, capacity })),
               can_be_hired: draft.canBeHired,
               step_free: draft.stepFree,
               amenities: draft.amenities,

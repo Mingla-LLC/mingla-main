@@ -42,7 +42,7 @@ import { Input } from "../../../ui/Input";
 import { MoneyField } from "../../../ui/MoneyField";
 import { NumberStepper, NumberStepperPair } from "../../../ui/NumberStepper";
 import { OptionCard } from "../../../ui/OptionCard";
-import { Segmented } from "../../../ui/Pill";
+import { Chip, Segmented } from "../../../ui/Pill";
 import { SelectSheet } from "../../../ui/SelectSheet";
 import { Skeleton } from "../../../ui/Skeleton";
 import { Stepper, StepperFooter, type StepperStep } from "../../../ui/Stepper";
@@ -91,6 +91,7 @@ import {
   minutesWords,
   sameFlex,
   spacesPayload,
+  layoutsPayload,
   termsPayload,
   type HireDraft,
   type HirePlace,
@@ -102,6 +103,7 @@ import { useBrandHours } from "../../../../hooks/useBrandHours";
 import { openingHoursDefault } from "../hoursModel";
 import { CHANGE_CUTOFFS, ONLINE_PAYMENTS_OFF, extrasPayload } from "./packageModel";
 import { ExtrasEditor } from "./ExtrasEditor";
+import { VENUE_LAYOUTS } from "@mingla/brand-rendering/venueOffers/layoutModel";
 
 const RAIL_MIN_WIDTH = 1280;
 const COLUMN_OPTION_CARD = { flexBasis: "auto" as const, flexGrow: 0 };
@@ -263,6 +265,14 @@ export const HireEditor = forwardRef<VenueModuleLeaveHandle, HireEditorProps>(fu
           JSON.stringify([...(hire?.combinations ?? []).map((c) => c.id)].sort()) === JSON.stringify([...draft.combinationIds].sort());
         if (!sameSpaces) {
           current = await manageVenueHire({ venueId, action: "set_spaces", payload: { offerId: id0, ...spacesPayload(draft) }, expectedVersion: current.version });
+        }
+        if (JSON.stringify(hire?.layouts ?? []) !== JSON.stringify(draft.layouts)) {
+          current = await manageVenueHire({
+            venueId,
+            action: "set_layouts",
+            payload: { offerId: id0, ...layoutsPayload(draft) },
+            expectedVersion: current.version,
+          });
         }
         setDraft((d) => (d === null ? d : { ...d, rows: d.rows.filter((r) => r.place === null || keep.has(r.place)) }));
       }
@@ -799,6 +809,7 @@ function StepHead({ title, sub }: { title: string; sub?: string }): React.ReactE
 
 function SpacesStep({ draft, patch, showErrors, disabled, places, onOpenSpaces }: StepProps & { places: HirePlace[]; onOpenSpaces?: () => void }): React.ReactElement {
   const issue = hireStepIssue("spaces", draft, places);
+  const chosen = chosenPlaces(draft, places);
   const toggle = (p: HirePlace): void => {
     if (p.kind === "space") {
       patch({ spaceIds: draft.spaceIds.includes(p.id) ? draft.spaceIds.filter((x) => x !== p.id) : [...draft.spaceIds, p.id] });
@@ -888,6 +899,26 @@ function SpacesStep({ draft, patch, showErrors, disabled, places, onOpenSpaces }
           <Text style={styles.hint}>
             A booking holds the whole space. Hiring spaces together blocks every space inside, and a hire of one part blocks the combination.
           </Text>
+          <View style={styles.field} testID="hire-layouts">
+            <Text style={styles.sectionLabel}>Layouts guests can pick</Text>
+            <Text style={styles.hint}>Guests see these after they pick a space. Add capacities in Spaces first.</Text>
+            <View style={styles.chips}>
+              {VENUE_LAYOUTS.map((layout) => {
+                const selected = draft.layouts.includes(layout.key);
+                const supported = chosen.length > 0 && chosen.every((place) => place.layoutCapacities[layout.key] !== undefined);
+                return (
+                  <Chip
+                    key={layout.key}
+                    label={layout.label}
+                    selected={selected}
+                    disabled={disabled || (!supported && !selected)}
+                    onPress={() => patch({ layouts: selected ? draft.layouts.filter((value) => value !== layout.key) : [...draft.layouts, layout.key] })}
+                    testID={`hire-layout-${layout.key}`}
+                  />
+                );
+              })}
+            </View>
+          </View>
           {onOpenSpaces !== undefined ? (
             <View>
               <Button label="Add or change spaces" variant="ghost" size="sm" leadingIcon="plus" onPress={onOpenSpaces} testID="hire-manage-spaces" />
@@ -1593,6 +1624,7 @@ const styles = StyleSheet.create({
   hint: { ...type.caption, color: color.text3 },
   error: { ...type.caption, color: color.errorText },
   options: { gap: space[2] },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   inlineRow: { flexDirection: "row", gap: space[3], flexWrap: "wrap", alignItems: "flex-end" },
   grow: { flex: 1, minWidth: 140 },
   subCard: { gap: space[3], padding: space[3], borderRadius: radius.md, borderWidth: 1, borderColor: color.line },
