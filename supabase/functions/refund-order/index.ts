@@ -33,7 +33,10 @@
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import {
+  addOnRefundRpcError,
   isRefundLineRequest,
+  parseAddOnRefundLines,
+  refundRpcLines,
   type RefundLineRequest,
   serverRefundLines,
 } from "../_shared/refundServerLines.ts";
@@ -85,6 +88,8 @@ function mapRpcErrorToHttp(errorMessage: string): {
   detail: string;
 } {
   // ORCH-0787 RPC raises with predictable prefixes (P0001..P0012 + permission_denied + line_overrefund:...)
+  const addOnError = addOnRefundRpcError(errorMessage);
+  if (addOnError !== null) return addOnError;
   const msg = errorMessage.toLowerCase();
   if (msg.includes("permission_denied")) {
     return { code: "permission_denied", status: 403, detail: errorMessage };
@@ -166,8 +171,14 @@ serve(async (req: Request): Promise<Response> => {
     ? body.lines.filter(isRefundLine)
     : [];
 
+  // Issue #3281 S4 — optional add-on lines refunded on their own.
+  const addOnLines = parseAddOnRefundLines(body.addOnLines);
+
   if (!orderId) return jsonResponse({ error: "order_id_required" }, 400);
-  if (lines.length === 0) {
+  if (addOnLines === null) {
+    return jsonResponse({ error: "refund_lines_invalid" }, 400);
+  }
+  if (lines.length === 0 && addOnLines.length === 0) {
     return jsonResponse({ error: "refund_lines_required" }, 400);
   }
   if (reason.trim().length < 10 || reason.trim().length > 200) {
@@ -190,7 +201,7 @@ serve(async (req: Request): Promise<Response> => {
     "biz_refund_order",
     {
       p_order_id: orderId,
-      p_lines: lines,
+      p_lines: refundRpcLines(lines, addOnLines),
       p_reason: reason,
       p_idempotency_key: idempotencyKey,
     },

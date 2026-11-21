@@ -27,7 +27,13 @@
  */
 
 // @ts-ignore — Deno ESM import; types resolved at runtime.
-import { isRefundLineRequest, serverRefundLines } from "../_shared/refundServerLines.ts";
+import {
+  addOnRefundRpcError,
+  isRefundLineRequest,
+  parseAddOnRefundLines,
+  refundRpcLines,
+  serverRefundLines,
+} from "../_shared/refundServerLines.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -78,6 +84,8 @@ const isRefundLine = isRefundLineRequest;
 function mapRpcErrorToHttp(
   errorMessage: string,
 ): { code: string; status: number; detail: string } {
+  const addOnError = addOnRefundRpcError(errorMessage);
+  if (addOnError !== null) return addOnError;
   const msg = errorMessage.toLowerCase();
   if (msg.includes("not_authorized")) {
     return { code: "not_authorized", status: 403, detail: errorMessage };
@@ -160,8 +168,14 @@ serve(async (req: Request): Promise<Response> => {
     ? body.lines.filter(isRefundLine)
     : [];
 
+  // Issue #3281 S4 — optional add-on lines refunded on their own.
+  const addOnLines = parseAddOnRefundLines(body.addOnLines);
+
   if (!orderId) return json({ error: "order_id_required" }, 400);
-  if (lines.length === 0) return json({ error: "refund_lines_required" }, 400);
+  if (addOnLines === null) return json({ error: "refund_lines_invalid" }, 400);
+  if (lines.length === 0 && addOnLines.length === 0) {
+    return json({ error: "refund_lines_required" }, 400);
+  }
   if (reason.trim().length < 10 || reason.trim().length > 200) {
     return json({ error: "reason_invalid_length" }, 400);
   }
@@ -188,7 +202,7 @@ serve(async (req: Request): Promise<Response> => {
   // ── Step 1: validate + insert the pending refund row (service_role twin). ────
   const pendingArgs = {
     p_order_id: orderId,
-    p_lines: lines,
+    p_lines: refundRpcLines(lines, addOnLines),
     p_reason: reason,
     p_idempotency_key: idempotencyKey,
   };

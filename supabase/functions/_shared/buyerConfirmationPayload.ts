@@ -51,6 +51,11 @@ export interface BuyerConfirmationClient {
   ): PromiseLike<{ data: unknown; error: { message?: string } | null }>;
 }
 
+/** issue #3281 S4 — the receipt line for an add-on: "Add-on: {name}". */
+export function addOnReceiptName(name: string): string {
+  return `Add-on: ${name}`;
+}
+
 // issue #3281 — decision 8: a confirmation names what was bought. Read apart
 // from the receipt, so nothing about this read can block a guest's confirmation.
 async function readExtraLines(
@@ -71,8 +76,10 @@ async function readExtraLines(
       });
     }
     if (!Array.isArray(result.data)) return [];
+    // issue #3281 S4 — receipts label each one "Add-on: {name}", so a free
+    // ticket's receipt shows exactly what was paid for.
     return result.data.map((row) => ({
-      name: row.add_on_name_at_order,
+      name: addOnReceiptName(row.add_on_name_at_order),
       qty: Math.max(Math.round(Number(row.quantity ?? 0)), 0),
       amountCents: safeCents(row.total_cents),
     }));

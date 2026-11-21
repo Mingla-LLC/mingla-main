@@ -48,3 +48,50 @@ export function serverRefundLines(pending: Record<string, unknown>): ServerRefun
   }
   return lines;
 }
+
+// Issue #3281 S4 — a host or admin may refund add-on lines on their own. The
+// request field `addOnLines` ([{order_add_on_line_item_id, quantity}]) is
+// optional; the lines ride the refund RPC's p_lines as elements keyed
+// order_add_on_line_item_id (the SQL splits them off and refuses them while
+// add_on_rollout.free_parent_enabled is off). Absent or empty, p_lines is the
+// ticket lines exactly as before.
+export interface AddOnRefundLineRequest {
+  order_add_on_line_item_id: string;
+  quantity: number;
+}
+
+/** [] when the field is absent or empty; null when it is present but malformed. */
+export function parseAddOnRefundLines(value: unknown): AddOnRefundLineRequest[] | null {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return null;
+  const out: AddOnRefundLineRequest[] = [];
+  for (const item of value) {
+    const row = item as Record<string, unknown> | null;
+    if (row === null || typeof row !== "object") return null;
+    const id = row.order_add_on_line_item_id;
+    const quantity = row.quantity;
+    if (typeof id !== "string" || id.length === 0) return null;
+    if (!Number.isInteger(quantity) || Number(quantity) <= 0) return null;
+    out.push({ order_add_on_line_item_id: id, quantity: Number(quantity) });
+  }
+  return out;
+}
+
+/** The refund RPC's p_lines: ticket lines, then any add-on lines. */
+export function refundRpcLines(
+  lines: RefundLineRequest[],
+  addOnLines: AddOnRefundLineRequest[],
+): Array<RefundLineRequest | AddOnRefundLineRequest> {
+  return addOnLines.length === 0 ? lines : [...lines, ...addOnLines];
+}
+
+/** Add-on refund refusals, checked before the ticket-line codes they contain. */
+export function addOnRefundRpcError(
+  errorMessage: string,
+): { code: string; status: number; detail: string } | null {
+  const msg = errorMessage.toLowerCase();
+  for (const code of ["add_on_line_overrefund", "add_on_line_not_found", "add_on_refunds_off"]) {
+    if (msg.includes(code)) return { code, status: 422, detail: errorMessage };
+  }
+  return null;
+}

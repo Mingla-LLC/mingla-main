@@ -203,7 +203,7 @@ Deno.test("#3281 a receipt names the extras bought with the tickets", async () =
   assert(payload !== null);
   assertEquals(payload.receipt.lines, [
     { qty: 2, name: "General admission", amountCents: 2000 },
-    { qty: 1, name: "Friday dinner", amountCents: 3500 },
+    { qty: 1, name: "Add-on: Friday dinner", amountCents: 3500 },
   ]);
 });
 
