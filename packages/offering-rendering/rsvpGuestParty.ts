@@ -28,7 +28,9 @@ export type {
   RsvpPartyGuest,
   RsvpSubmittedGuest,
 } from "./rsvpGuestPartyModel.ts";
-export { rsvpGoingButtonLabel } from "./rsvpGuestCopy.ts";
+/** The primary button: "Going" alone, "RSVP for N" with guests (N counts you). */
+export const rsvpGoingButtonLabel = (guestCount: number): string =>
+  guestCount > 0 ? `RSVP for ${guestCount + 1}` : "Going";
 // (buildGuestPayload and isCompleteE164 live in rsvpGuestPartyModel.ts: this
 // module must never import the guest model, or the success card and the guest
 // block would share it and hoist it into the boot payload.)

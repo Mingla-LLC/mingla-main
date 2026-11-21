@@ -126,9 +126,6 @@ import {
 // Type-only: the snapshot parser stays out of this shared (eager) chunk; only
 // the web page that restores a reply pays for it.
 import type { RsvpGuestSnapshot } from "./rsvpGuestSnapshot";
-// issue #4508 — "Who's coming with you?": a plus-one is a phone number (or a
-// friend), never a name / email / phone mini-form.
-import { rsvpGoingButtonLabel } from "./rsvpGuestCopy";
 import type {
   RsvpFriendOption,
   RsvpGuestLookup,
@@ -963,24 +960,6 @@ export const useRsvpOfferingState = (
     event.venueName,
   ]);
 
-  // issue #4508 1.15 — the parts of "Send it yourself too" known before the
-  // server answers; the link is each guest's own inviteUrl. City-level area
-  // only, so a hidden address never leaks into a pasted message.
-  const guestInviteMessageBase = useMemo(
-    () => ({
-      eventName: event.name,
-      dateLine: event.dateLine,
-      area:
-        event.format === "online"
-          ? null
-          : (normalizeCityCountry(event.address) ??
-            normalizeCityCountry(event.venueName) ??
-            null),
-      online: event.format === "online",
-    }),
-    [event.name, event.dateLine, event.format, event.address, event.venueName],
-  );
-
   const reportResolved = useCallback(
     (
       result: RsvpSubmitResult,
@@ -1401,9 +1380,7 @@ export const useRsvpOfferingState = (
         dateLine: event.dateLine,
         venueLine: venueLineForPopup,
         guestName: isLoggedIn
-          ? brand !== null
-            ? guestName.trim() || "You"
-            : guestName.trim() || "You"
+          ? guestName.trim() || "You"
           : guestName.trim() || guestEmail.trim() || "Guest",
         status:
           result.status === "waitlisted"
@@ -1416,7 +1393,19 @@ export const useRsvpOfferingState = (
         credentials: result.credentials ?? [],
         anonymousRecovery: result.anonymousRecovery ?? [],
         invites: result.guests ?? [],
-        inviteMessage: guestInviteMessageBase,
+        // issue #4508 1.15 — city-level only, so pasted text never leaks a
+        // hidden address; the server supplies each guest's own invite URL.
+        inviteMessage: {
+          eventName: event.name,
+          dateLine: event.dateLine,
+          area:
+            event.format === "online"
+              ? null
+              : (normalizeCityCountry(event.address) ??
+                normalizeCityCountry(event.venueName) ??
+                null),
+          online: event.format === "online",
+        },
       };
       setSuccessDetails(details);
       const phoneDigits = guestPhone.replace(/\D/g, "");
@@ -1452,11 +1441,12 @@ export const useRsvpOfferingState = (
     event.dateLine,
     venueLineForPopup,
     isLoggedIn,
-    brand,
     guestName,
     guestEmail,
     guests,
-    guestInviteMessageBase,
+    event.format,
+    event.address,
+    event.venueName,
     mapErrorCode,
     handleAcquisitionError,
     reportResolved,
@@ -2144,7 +2134,9 @@ const DecisionUnit: React.FC<{
       locked={state.replyLocked}
       contactReady={contactReadyOverride ?? state.contactReady}
       // issue #4508 1.7 — "Going" alone, "RSVP for N" with guests.
-      goingIdleLabel={rsvpGoingButtonLabel(state.plusCount)}
+      goingIdleLabel={
+        state.plusCount > 0 ? `RSVP for ${state.plusCount + 1}` : "Going"
+      }
       onGoing={onGoing ?? state.onGoingTap}
       onMaybe={onMaybe ?? state.onMaybe}
       onNotGoing={onNotGoing ?? state.onNotGoing}
