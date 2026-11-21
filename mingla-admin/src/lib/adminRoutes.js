@@ -13,7 +13,7 @@
 //     tab shows; who may see a tab is that old page's access (lib/access.js).
 
 import { hashPageId, hashSearch } from "./crmUrl.js";
-import { COMMUNICATIONS_TAB_PAGES, consoleRedirectHash, roadmapRedirectHash } from "./supportCommunityTabs.js";
+import { COMMUNICATIONS_TAB_PAGES, consoleRedirectFallback, consoleRedirectHash, roadmapRedirectHash } from "./supportCommunityTabs.js";
 
 /** The query value a hub uses to say which tab is open. */
 export const HUB_TAB_PARAM = "tab";
@@ -155,6 +155,17 @@ export function redirectHash(hash) {
   for (const [key, value] of params) next.append(key, value);
   const query = next.toString();
   return `#/${target.page}${query ? `?${query}` : ""}`;
+}
+
+/**
+ * #4420 — where an old address goes instead when the person may not open the
+ * page redirectHash sends it to, or null (then the usual refusal applies).
+ *   "#/community?tab=product" -> "support"
+ */
+export function redirectFallback(hash) {
+  const page = hashPageId(hash);
+  if (page !== "community" && page !== "community-support") return null;
+  return consoleRedirectFallback(hash);
 }
 
 /** Was this page id retired into another page? */

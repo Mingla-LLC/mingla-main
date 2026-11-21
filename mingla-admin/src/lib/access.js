@@ -218,6 +218,17 @@ export function resolveRoute(requestedId, access, knownPageIds) {
   return { pageId: home, denied: true, requestedId };
 }
 
+/**
+ * #4420 — a route from resolveRoute, except that a refused page that came from an old address with
+ * a fallback (lib/adminRoutes.js redirectFallback) opens the fallback instead,
+ * when this person may open it. Never wider: the fallback is checked the same way.
+ */
+export function applyRouteFallback(route, fallbackId, access, knownPageIds) {
+  if (!route?.denied || typeof fallbackId !== "string" || !fallbackId) return route;
+  const alt = resolveRoute(fallbackId, access, knownPageIds);
+  return !alt.denied && alt.pageId === fallbackId ? { ...alt, requestedId: route.requestedId } : route;
+}
+
 /** The menu for this person: only items they may open; empty groups dropped. */
 export function visibleNavGroups(navGroups, access) {
   return [TEAM_NAV_GROUP, ...(Array.isArray(navGroups) ? navGroups : [])]

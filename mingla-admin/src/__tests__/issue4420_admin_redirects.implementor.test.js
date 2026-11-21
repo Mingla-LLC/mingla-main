@@ -31,7 +31,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { redirectHash, isRetiredPageId } from "../lib/adminRoutes.js";
+import { redirectFallback, redirectHash, isRetiredPageId } from "../lib/adminRoutes.js";
 import {
   RETIRED_TAB_REDIRECTS,
   consoleRedirectHash,
@@ -44,6 +44,8 @@ import {
   COMMUNITY_SUPPORT_AREA,
   SUPPORT_OPERATIONS_AREA,
   canOpenPage,
+  applyRouteFallback,
+  resolveRoute,
 } from "../lib/access.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
@@ -83,10 +85,10 @@ describe("R-1 every old address lands on a page that exists", () => {
   const TABLE = [
     // #/community and each of its six tabs (plus the query values they carried)
     ["#/community", "#/support"],
-    ["#/community?tab=ideas", "#/work-board?type=tickets"],
-    ["#/community?tab=ideas&post=p1", "#/work-board?type=tickets"],
-    ["#/community?tab=questions&post=q1", "#/work-board?type=tickets"],
-    ["#/community?tab=moderation&report=r1", "#/work-board?type=tickets"],
+    ["#/community?tab=ideas", "#/support"],
+    ["#/community?tab=ideas&post=p1", "#/support"],
+    ["#/community?tab=questions&post=q1", "#/support"],
+    ["#/community?tab=moderation&report=r1", "#/support"],
     ["#/community?tab=product", "#/work-board?type=tickets"],
     ["#/community?tab=product&signal=11111111-1111-1111-1111-111111111111", "#/work-board?type=tickets"],
     ["#/community?tab=enquiry-reports", "#/support?filter=reported"],
@@ -105,9 +107,9 @@ describe("R-1 every old address lands on a page that exists", () => {
     ["#/community-support", "#/support"],
     ["#/community-support?tab=support&ticket=t1", "#/support?ticket=t1"],
     ["#/community-support?tab=team", "#/support?tab=team"],
-    ["#/community-support?tab=ideas", "#/work-board?type=tickets"],
-    ["#/community-support?tab=questions", "#/work-board?type=tickets"],
-    ["#/community-support?tab=moderation", "#/work-board?type=tickets"],
+    ["#/community-support?tab=ideas", "#/support"],
+    ["#/community-support?tab=questions", "#/support"],
+    ["#/community-support?tab=moderation", "#/support"],
     ["#/community-support?tab=product&signal=s1", "#/work-board?type=tickets"],
     ["#/community-support?tab=enquiry-reports", "#/support?filter=reported"],
     ["#/community-support?tab=feature-guide", "#/feature-guide"],
@@ -158,6 +160,38 @@ describe("R-1 every old address lands on a page that exists", () => {
       const out = redirectHash(`#/community?tab=${tab}`);
       assert.ok(out.startsWith("#/support"), `${tab} -> ${out}`);
     }
+  });
+});
+
+describe("R-1b Product board addresses fall back to Support without the Work board", () => {
+  // Real seats always hold a home (role_home or admin_console).
+  const home = (p) => ({ ...p, areas: [...p.areas, AREA.ROLE_HOME] });
+  it("only Product board addresses carry a fallback", () => {
+    for (const hash of ["#/community?tab=product", "#/community?tab=product&signal=s1", "#/community-support?tab=product"]) {
+      assert.equal(redirectFallback(hash), "support", hash);
+    }
+    for (const hash of ["#/community?tab=ideas", "#/community", "#/community?tab=feature-guide", "#/roadmap", "#/work-board?type=tickets", "#/support", "", null]) {
+      assert.equal(redirectFallback(hash), null, String(hash));
+    }
+  });
+  it("Support staff without the Work board land on Support, not a refusal", () => {
+    const route = applyRouteFallback(resolveRoute("work-board", home(PERSONAS.supportStaff), ROUTE_IDS), "support", home(PERSONAS.supportStaff), ROUTE_IDS);
+    assert.deepEqual([route.pageId, route.denied], ["support", false]);
+  });
+  it("Work board users still land on Work; nobody is widened", () => {
+    assert.equal(applyRouteFallback(resolveRoute("work-board", home(PERSONAS.crmOnly), ROUTE_IDS), "support", home(PERSONAS.crmOnly), ROUTE_IDS).pageId, "work-board");
+    assert.equal(applyRouteFallback(resolveRoute("work-board", PERSONAS.fullAdmin, ROUTE_IDS), "support", PERSONAS.fullAdmin, ROUTE_IDS).pageId, "work-board");
+    // Neither page open: the usual refusal (home, denied), never the fallback.
+    const none = applyRouteFallback(resolveRoute("work-board", home(PERSONAS.emailWriter), ROUTE_IDS), "support", home(PERSONAS.emailWriter), ROUTE_IDS);
+    assert.equal(none.denied, true);
+    assert.notEqual(none.pageId, "support");
+    // No fallback given: plain resolveRoute.
+    assert.equal(applyRouteFallback(resolveRoute("work-board", home(PERSONAS.supportStaff), ROUTE_IDS), null, home(PERSONAS.supportStaff), ROUTE_IDS).denied, true);
+  });
+  it("App hands the fallback from the old address to the route", () => {
+    const app = read("App.jsx");
+    assert.match(app, /const fallback = redirectFallback\(window\.location\.hash\);\n\s+const requested = getTabFromHash\(\);/);
+    assert.match(app, /applyRouteFallback\(resolved, nav\.fallback, access, PAGE_IDS\)/);
   });
 });
 

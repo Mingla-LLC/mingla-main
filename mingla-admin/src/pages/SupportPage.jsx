@@ -26,11 +26,8 @@ import {
 import { pageTabFromHash, pageTabHash, pageTabsFor } from "../lib/supportCommunityTabs";
 import { hashPageId } from "../lib/crmUrl";
 import { listSupportStaffRoster, setSupportAvailable } from "../services/communityService";
-import {
-  AVAILABLE_OFF_MESSAGE,
-  AVAILABLE_ON_MESSAGE,
-  changeSupportAvailability,
-} from "../lib/supportAvailability";
+import { changeSupportAvailability } from "../lib/supportAvailability";
+import { AVAILABLE_OFF_MESSAGE, AVAILABLE_ON_MESSAGE } from "../lib/supportAvailability";
 
 const PAGE_ID = "support";
 

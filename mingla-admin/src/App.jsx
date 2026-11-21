@@ -12,9 +12,9 @@ import { CommandPalette } from "./components/CommandPalette";
 import { Button } from "./components/ui/Button";
 import { useToast } from "./context/ToastContext";
 import { NAV_ITEMS } from "./lib/constants";
-import { pageTitle, resolveRoute } from "./lib/access";
+import { applyRouteFallback, pageTitle, resolveRoute } from "./lib/access";
 // Issue #4130 (Wave 0) — retired page ids and where they now live.
-import { isRetiredPageId, redirectHash } from "./lib/adminRoutes";
+import { isRetiredPageId, redirectFallback, redirectHash } from "./lib/adminRoutes";
 // #4130 Wave 4a: Hosts and creators and Inbound leads are built pages now.
 import { OutreachPage } from "./pages/HostsAndCreatorsHub";
 import { InboundLeadsPage } from "./pages/InboundLeadsPage";
@@ -243,6 +243,15 @@ function getTabFromHash() {
   return PAGES[hash] ? hash : "overview";
 }
 
+// #4420: the page asked for, and the page to open instead when it is refused
+// (an old Product board address falls back to Support), read before the
+// address is rewritten.
+function readRequest() {
+  const fallback = redirectFallback(window.location.hash);
+  const requested = getTabFromHash();
+  return { requested, fallback: fallback && Object.hasOwn(PAGES, fallback) ? fallback : null };
+}
+
 // Did the address name a real page? Only then is a refusal worth a message.
 // A retired page's address counts as named (it rewrites to its new home).
 function addressNamesPage() {
@@ -327,7 +336,7 @@ export default function App() {
   // and a counter that moves on every navigation (so asking for the same
   // refused page twice is two events).
   const [nav, setNav] = useState(() => ({
-    requested: getTabFromHash(),
+    ...readRequest(),
     named: addressNamesPage(),
     seq: 0,
   }));
@@ -357,7 +366,7 @@ export default function App() {
       }
       setConnectOpen(captureConnectRequest());
       setNav((prev) => ({
-        requested: getTabFromHash(),
+        ...readRequest(),
         named: addressNamesPage(),
         seq: prev.seq + 1,
       }));
@@ -369,9 +378,11 @@ export default function App() {
   // Issue #3802 — the page to show is chosen from what this person may open,
   // never from the address alone. A page they may not open is never mounted.
   const signedIn = !!session && !!access;
-  const route = signedIn
+  const resolved = signedIn
     ? resolveRoute(nav.requested, access, PAGE_IDS)
     : { pageId: null, denied: false, requestedId: nav.requested };
+  // #4420: a refused Work board from an old Product board address opens Support.
+  const route = signedIn ? applyRouteFallback(resolved, nav.fallback, access, PAGE_IDS) : resolved;
 
   // Keep the address honest: when the page shown differs from the one asked
   // for (no address, unknown address, or one outside this person's access),

@@ -50,19 +50,21 @@ export function communicationsPageForTab(tabId) {
 // #4420 — where the Community page's retired tabs (and the retired Roadmap
 // screen) send an old address. `page` is the new page, `set` the query values
 // it opens with, and `keep` whether the old address's other query values are
-// carried over (only where the new page reads the same values).
-//   - Ideas, Questions, Moderation and the Product board: what hosts suggest
-//     and report is a Ticket on the Work board now.
+// carried over (only where the new page reads the same values). `fallback`
+// is where the address goes instead when the person may not open `page`.
+//   - Ideas, Questions and Moderation: hosts bring these to Support now.
+//   - Product board: its work is a Ticket on the Work board; someone without
+//     the Work board lands on Support instead of being turned away.
 //   - Reported enquiries: they arrive in the Support inbox, under Reported.
 //   - Feature guide: moved unchanged to its own Communications screen.
 //   - Roadmap: the screen is retired; what we tell hosts is Announcements.
-const WORK_TICKETS = Object.freeze({ page: "work-board", set: Object.freeze({ type: "tickets" }), keep: false });
+const TO_SUPPORT = Object.freeze({ page: "support", set: Object.freeze({}), keep: false });
 
 export const RETIRED_TAB_REDIRECTS = Object.freeze({
-  ideas: WORK_TICKETS,
-  questions: WORK_TICKETS,
-  moderation: WORK_TICKETS,
-  product: WORK_TICKETS,
+  ideas: TO_SUPPORT,
+  questions: TO_SUPPORT,
+  moderation: TO_SUPPORT,
+  product: Object.freeze({ page: "work-board", set: Object.freeze({ type: "tickets" }), keep: false, fallback: "support" }),
   "enquiry-reports": Object.freeze({ page: "support", set: Object.freeze({ filter: "reported" }), keep: true }),
   "feature-guide": Object.freeze({ page: "feature-guide", set: Object.freeze({}), keep: true }),
   roadmap: Object.freeze({ page: "announcements", set: Object.freeze({}), keep: false }),
@@ -116,7 +118,8 @@ function hashFor(page, setValues, rest) {
  * The new address of an old Support / Community / console address, from its
  * tab. Never null: an unknown or missing tab opens the Support inbox.
  *   "#/community-support?tab=support&ticket=t" -> "#/support?ticket=t"
- *   "#/community?tab=product&signal=s"          -> "#/work-board?type=tickets"
+ *   "#/community?tab=ideas&post=p"              -> "#/support"
+ *   "#/community?tab=product&signal=s"          -> "#/work-board?type=tickets" (Support without the Work board)
  *   "#/community?tab=feature-guide"             -> "#/feature-guide"
  */
 export function consoleRedirectHash(hash) {
@@ -137,6 +140,16 @@ export function consoleRedirectHash(hash) {
   // #4452 (B1): Brand groups once wrote #/community?group=… with no tab.
   if (!tab && (params.has("group") || params.has("brand"))) return hashFor("brand-groups", null, params);
   return hashFor(RETIRED_DEFAULT_REDIRECT.page, RETIRED_DEFAULT_REDIRECT.set, RETIRED_DEFAULT_REDIRECT.keep ? params : null);
+}
+
+/**
+ * #4420 — the page an old address falls back to when the person may not open
+ * the page it redirects to, or null. Only the Product board has one: its
+ * tickets live on the Work board, and anyone else goes to Support.
+ */
+export function consoleRedirectFallback(hash) {
+  const tab = queryOf(hash).get("tab") || "";
+  return Object.hasOwn(RETIRED_TAB_REDIRECTS, tab) ? RETIRED_TAB_REDIRECTS[tab].fallback || null : null;
 }
 
 /**
