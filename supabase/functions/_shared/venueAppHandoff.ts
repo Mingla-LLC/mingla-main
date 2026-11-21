@@ -20,6 +20,8 @@ export interface VenueClaim {
   code: string | null;
   /** N155: a text with this link was actually queued (offer bookings only). */
   texted?: boolean;
+  /** N159: app-link texts still allowed for this booking (0 to 3). */
+  textsLeft?: number;
 }
 
 export const NO_VENUE_CLAIM: VenueClaim = { shortUrl: null, code: null };

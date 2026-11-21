@@ -30,6 +30,8 @@ export interface VenueHandoff {
   passInApp: boolean;
   /** N155: the server saw a text with this link queued for the booking. */
   texted: boolean;
+  /** N159: texts still allowed (the cap is 3); null when unknown. */
+  textsLeft: number | null;
 }
 
 const CLAIM_URL = /^https:\/\/usemingla\.com\/c\/[0-9A-Z]{10}$/;
@@ -51,6 +53,10 @@ export function parseVenueHandoff(raw: unknown): VenueHandoff {
     code: shortUrl !== null ? code : null,
     passInApp: row.passInApp === true,
     texted: shortUrl !== null && claim.texted === true,
+    textsLeft:
+      shortUrl !== null && typeof claim.textsLeft === "number" && Number.isInteger(claim.textsLeft)
+        ? Math.max(0, Math.min(3, claim.textsLeft))
+        : null,
   };
 }
 
@@ -104,12 +110,21 @@ export function textLinkErrorCopy(code: string): string {
 }
 
 /** Desktop only (a phone has the Open button): re-send the app link by text. */
-function TextMeTheLink({ groupId, token }: { groupId: string; token: string | null }): React.ReactElement | null {
+function TextMeTheLink({
+  groupId,
+  token,
+  textsLeft,
+}: {
+  groupId: string;
+  token: string | null;
+  textsLeft: number | null;
+}): React.ReactElement | null {
   const { width } = useWindowDimensions();
-  const [state, setState] = useState<{ phase: "idle" | "sending" | "sent" | "error"; line: string | null }>({
-    phase: "idle",
-    line: null,
-  });
+  // N159: after a reload the cap is already known, so the page says so up front.
+  const [state, setState] = useState<{ phase: "idle" | "sending" | "sent" | "error"; line: string | null }>(
+    textsLeft === 0 ? { phase: "error", line: TEXT_LINK_COPY.limit } : { phase: "idle", line: null },
+  );
+  const capped = textsLeft === 0 || state.line === TEXT_LINK_COPY.limit;
   if (Platform.OS !== "web" || width < 1024) return null;
   const send = async (): Promise<void> => {
     setState({ phase: "sending", line: null });
@@ -128,7 +143,7 @@ function TextMeTheLink({ groupId, token }: { groupId: string; token: string | nu
         variant="secondary"
         size="md"
         onPress={() => void send()}
-        disabled={state.phase === "sending" || state.phase === "sent"}
+        disabled={state.phase === "sending" || state.phase === "sent" || capped}
         testID="issue-4490-text-link-button"
       />
       {state.line !== null ? (
@@ -178,7 +193,7 @@ export function VenueClaimCard({
         analyticsSurface={analyticsSurface}
         fallbackEntity={{ entityType: "event", brandSlug: brandSlug ?? "", entitySlug: venueSlug ?? "" }}
       />
-      {textLink !== undefined && last4 !== null ? <TextMeTheLink groupId={textLink.groupId} token={textLink.token} /> : null}
+      {textLink !== undefined && last4 !== null ? <TextMeTheLink groupId={textLink.groupId} token={textLink.token} textsLeft={handoff.textsLeft} /> : null}
     </View>
   );
 }

@@ -26,12 +26,12 @@ describe("#4490 W1 parseVenueHandoff", () => {
   test("H-1a reads the claim link and the switch", () => {
     expect(
       parseVenueHandoff({ passInApp: true, claim: { shortUrl: "https://usemingla.com/c/K7Q2MX0001", code: "K7Q2MX0001" } }),
-    ).toEqual({ shortUrl: "https://usemingla.com/c/K7Q2MX0001", code: "K7Q2MX0001", passInApp: true, texted: false });
+    ).toEqual({ shortUrl: "https://usemingla.com/c/K7Q2MX0001", code: "K7Q2MX0001", passInApp: true, texted: false, textsLeft: null });
   });
   test("H-1b anything that is not a Mingla claim link is no link (the card hides)", () => {
     expect(parseVenueHandoff({ claim: { shortUrl: "https://evil.example/c/K7Q2MX0001", code: "K7Q2MX0001" } }).shortUrl).toBeNull();
-    expect(parseVenueHandoff({ claim: { shortUrl: null, code: null } })).toEqual({ shortUrl: null, code: null, passInApp: false, texted: false });
-    expect(parseVenueHandoff(null)).toEqual({ shortUrl: null, code: null, passInApp: false, texted: false });
+    expect(parseVenueHandoff({ claim: { shortUrl: null, code: null } })).toEqual({ shortUrl: null, code: null, passInApp: false, texted: false, textsLeft: null });
+    expect(parseVenueHandoff(null)).toEqual({ shortUrl: null, code: null, passInApp: false, texted: false, textsLeft: null });
     expect(parseVenueHandoff({ passInApp: "true" }).passInApp).toBe(false);
   });
   test("H-1c phone last four", () => {
@@ -107,5 +107,15 @@ describe("#4490 W1 N155 'we also texted'", () => {
     expect(parseVenueHandoff({ claim: { ...claim, texted: true } }).texted).toBe(true);
     expect(parseVenueHandoff({ claim: { shortUrl: null, code: null, texted: true } }).texted).toBe(false);
     expect(read("offers/VenueAppHandoff.tsx")).toMatch(/textSent=\{last4 !== null && handoff\.texted\}/);
+  });
+});
+
+describe("#4490 W1 N159 the text cap survives a reload", () => {
+  test("H-10 textsLeft comes from the server and is clamped; 0 starts capped", () => {
+    const claim = { shortUrl: "https://usemingla.com/c/K7Q2MX0001", code: "K7Q2MX0001" };
+    expect(parseVenueHandoff({ claim: { ...claim, textsLeft: 0 } }).textsLeft).toBe(0);
+    expect(parseVenueHandoff({ claim: { ...claim, textsLeft: 9 } }).textsLeft).toBe(3);
+    expect(parseVenueHandoff({ claim }).textsLeft).toBeNull();
+    expect(read("offers/VenueAppHandoff.tsx")).toMatch(/textsLeft === 0 \? \{ phase: "error", line: TEXT_LINK_COPY\.limit \}/);
   });
 });

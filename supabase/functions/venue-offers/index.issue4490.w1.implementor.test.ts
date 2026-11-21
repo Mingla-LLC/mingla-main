@@ -198,6 +198,7 @@ Deno.test("W1-5 claim: null while VENUE_APP_HANDOFF is off, the short link while
     shortUrl: "https://usemingla.com/c/K7Q2MX0001",
     code: "K7Q2MX0001",
     texted: false, // N155: no claim text queued in this fake
+    textsLeft: 3,
   });
   assertEquals(on.calls.find((c) => c.name === "mint_claim_link")?.params, {
     p_subject_kind: "venue_booking",

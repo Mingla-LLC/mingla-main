@@ -639,14 +639,22 @@ export async function claimTexted(
   client: ServiceClient,
   groupId: string,
 ): Promise<boolean> {
+  return (await claimTextCount(client, groupId)) > 0;
+}
+
+/** N159: how many app-link texts were queued for this booking (cap 3). */
+export async function claimTextCount(
+  client: ServiceClient,
+  groupId: string,
+): Promise<number> {
   try {
     const { data, error } = await client.from("notification_outbox")
       .select("id")
       .like("idempotency_key", `venue-claim-text:${groupId}:%`)
-      .limit(1);
-    return !error && Array.isArray(data) && data.length > 0;
+      .limit(3);
+    return !error && Array.isArray(data) ? data.length : 0;
   } catch {
-    return false;
+    return 0;
   }
 }
 
@@ -1094,9 +1102,12 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
           groupId,
         )
         : NO_VENUE_CLAIM;
+      const texts = minted.shortUrl === null
+        ? 0
+        : await claimTextCount(client, groupId);
       const claim = minted.shortUrl === null
         ? minted
-        : { ...minted, texted: await claimTexted(client, groupId) };
+        : { ...minted, texted: texts > 0, textsLeft: Math.max(0, 3 - texts) };
       return json(200, { kind: "success", data: withClaim(data, claim) });
     }
 
