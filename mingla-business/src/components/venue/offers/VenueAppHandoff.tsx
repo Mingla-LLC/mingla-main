@@ -28,6 +28,8 @@ export interface VenueHandoff {
   shortUrl: string | null;
   code: string | null;
   passInApp: boolean;
+  /** N155: the server saw a text with this link queued for the booking. */
+  texted: boolean;
 }
 
 const CLAIM_URL = /^https:\/\/usemingla\.com\/c\/[0-9A-Z]{10}$/;
@@ -48,6 +50,7 @@ export function parseVenueHandoff(raw: unknown): VenueHandoff {
     shortUrl,
     code: shortUrl !== null ? code : null,
     passInApp: row.passInApp === true,
+    texted: shortUrl !== null && claim.texted === true,
   };
 }
 
@@ -171,7 +174,7 @@ export function VenueClaimCard({
         phoneLast4={last4}
         shortUrl={handoff.shortUrl}
         handoff={code === null ? null : { mint: () => mintClaimLinkHandoff(code) }}
-        textSent={last4 !== null}
+        textSent={last4 !== null && handoff.texted}
         analyticsSurface={analyticsSurface}
         fallbackEntity={{ entityType: "event", brandSlug: brandSlug ?? "", entitySlug: venueSlug ?? "" }}
       />

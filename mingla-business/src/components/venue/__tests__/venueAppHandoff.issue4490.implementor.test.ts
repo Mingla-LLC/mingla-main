@@ -26,12 +26,12 @@ describe("#4490 W1 parseVenueHandoff", () => {
   test("H-1a reads the claim link and the switch", () => {
     expect(
       parseVenueHandoff({ passInApp: true, claim: { shortUrl: "https://usemingla.com/c/K7Q2MX0001", code: "K7Q2MX0001" } }),
-    ).toEqual({ shortUrl: "https://usemingla.com/c/K7Q2MX0001", code: "K7Q2MX0001", passInApp: true });
+    ).toEqual({ shortUrl: "https://usemingla.com/c/K7Q2MX0001", code: "K7Q2MX0001", passInApp: true, texted: false });
   });
   test("H-1b anything that is not a Mingla claim link is no link (the card hides)", () => {
     expect(parseVenueHandoff({ claim: { shortUrl: "https://evil.example/c/K7Q2MX0001", code: "K7Q2MX0001" } }).shortUrl).toBeNull();
-    expect(parseVenueHandoff({ claim: { shortUrl: null, code: null } })).toEqual({ shortUrl: null, code: null, passInApp: false });
-    expect(parseVenueHandoff(null)).toEqual({ shortUrl: null, code: null, passInApp: false });
+    expect(parseVenueHandoff({ claim: { shortUrl: null, code: null } })).toEqual({ shortUrl: null, code: null, passInApp: false, texted: false });
+    expect(parseVenueHandoff(null)).toEqual({ shortUrl: null, code: null, passInApp: false, texted: false });
     expect(parseVenueHandoff({ passInApp: "true" }).passInApp).toBe(false);
   });
   test("H-1c phone last four", () => {
@@ -97,5 +97,15 @@ describe("#4490 W1 /stay", () => {
   test("H-8 the signed-in stay page shows the claim card from its own read", () => {
     const page = fs.readFileSync(path.join(__dirname, "../../../../app/stay/[groupId].tsx"), "utf8");
     expect(page).toMatch(/<VenueClaimCard\s+handoff=\{parseVenueHandoff\(query\.data\)\}\s+kind="booking"/);
+  });
+});
+
+describe("#4490 W1 N155 'we also texted'", () => {
+  test("H-9 the card says a text was sent only when the server saw one queued", () => {
+    const claim = { shortUrl: "https://usemingla.com/c/K7Q2MX0001", code: "K7Q2MX0001" };
+    expect(parseVenueHandoff({ claim }).texted).toBe(false);
+    expect(parseVenueHandoff({ claim: { ...claim, texted: true } }).texted).toBe(true);
+    expect(parseVenueHandoff({ claim: { shortUrl: null, code: null, texted: true } }).texted).toBe(false);
+    expect(read("offers/VenueAppHandoff.tsx")).toMatch(/textSent=\{last4 !== null && handoff\.texted\}/);
   });
 });

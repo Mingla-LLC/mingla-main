@@ -629,6 +629,27 @@ export async function settleEarlierPayment(
   return "in_flight";
 }
 
+/**
+ * #4490 Explorer W1 (N155): true only when a text carrying this booking's app
+ * link was actually queued ("Text me the link"). Venue offer confirmations
+ * have no SMS leg, so the page may say "We also texted the link" only then.
+ * A failed read is "not texted" (the card just leaves the line out).
+ */
+export async function claimTexted(
+  client: ServiceClient,
+  groupId: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await client.from("notification_outbox")
+      .select("id")
+      .like("idempotency_key", `venue-claim-text:${groupId}:%`)
+      .limit(1);
+    return !error && Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
   const env = deps.env ?? ((name: string) => Deno.env.get(name));
   return async function handle(req: Request): Promise<Response> {
@@ -1065,7 +1086,7 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
         p_qr_pepper: passPepperFor(qrPepper(env), appOnly, caller, tokenHash),
       });
       if (error) return rpcFailure(error);
-      const claim = data
+      const minted = data
         ? await venueClaimFor(
           client as unknown as ClaimLinkAdmin,
           handoffOn,
@@ -1073,6 +1094,9 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
           groupId,
         )
         : NO_VENUE_CLAIM;
+      const claim = minted.shortUrl === null
+        ? minted
+        : { ...minted, texted: await claimTexted(client, groupId) };
       return json(200, { kind: "success", data: withClaim(data, claim) });
     }
 

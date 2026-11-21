@@ -96,7 +96,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
   }, [subscriptionId]);
 
   // #4490 Explorer W1: the app handoff and the app-only pass switch, read off each member read.
-  const [handoff, setHandoff] = useState<VenueHandoff>({ shortUrl: null, code: null, passInApp: false });
+  const [handoff, setHandoff] = useState<VenueHandoff>({ shortUrl: null, code: null, passInApp: false, texted: false });
   const apply = useCallback((raw: unknown): GuestMember | null => {
     setHandoff(parseVenueHandoff(raw));
     const member = parseGuestMember(raw);

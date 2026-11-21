@@ -18,6 +18,8 @@ export type VenueClaimKind =
 export interface VenueClaim {
   shortUrl: string | null;
   code: string | null;
+  /** N155: a text with this link was actually queued (offer bookings only). */
+  texted?: boolean;
 }
 
 export const NO_VENUE_CLAIM: VenueClaim = { shortUrl: null, code: null };

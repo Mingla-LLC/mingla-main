@@ -197,6 +197,7 @@ Deno.test("W1-5 claim: null while VENUE_APP_HANDOFF is off, the short link while
   assertEquals(on.data.claim, {
     shortUrl: "https://usemingla.com/c/K7Q2MX0001",
     code: "K7Q2MX0001",
+    texted: false, // N155: no claim text queued in this fake
   });
   assertEquals(on.calls.find((c) => c.name === "mint_claim_link")?.params, {
     p_subject_kind: "venue_booking",
@@ -279,4 +280,22 @@ Deno.test("W1-9 text_claim_link: token hash passed, never a typed number; the ow
       .p_user_id,
     OWNER,
   );
+});
+
+Deno.test("W1-10 N155: claim.texted is true only when a claim text row exists for this booking", async () => {
+  const { claimTexted } = await import("./index.ts");
+  let pattern = "";
+  const fake = (rows: unknown[]) => ({
+    from: () => ({
+      select: () => ({
+        like: (_c: string, p: string) => {
+          pattern = p;
+          return { limit: () => Promise.resolve({ data: rows, error: null }) };
+        },
+      }),
+    }),
+  }) as unknown as ServiceClient;
+  assertEquals(await claimTexted(fake([]), GROUP), false);
+  assertEquals(pattern, `venue-claim-text:${GROUP}:%`);
+  assertEquals(await claimTexted(fake([{ id: 1 }]), GROUP), true);
 });
