@@ -1,3 +1,4 @@
+/* eslint-disable import/first */
 /**
  * MINGLA-INVARIANT: I-4420-HELP-ENTRY-NO-DEAD-LINK | issue #4420 | Every Help & Support address, legacy ones included, and every old Community notification link resolves to Announcements or Support; every "Get help" entry lands on Support with "A person" selected.
  *
