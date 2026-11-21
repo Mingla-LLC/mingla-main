@@ -34,7 +34,16 @@ export const WORK_LINKED = Object.freeze([
   Object.freeze({ value: "host", label: "Hosts" }),
   Object.freeze({ value: "creator", label: "Creators" }),
   Object.freeze({ value: "calendar", label: "Calendar" }),
+  // #4420: cards linked to a support conversation (a ticket's reporters).
+  Object.freeze({ value: "support", label: "Support conversations" }),
 ]);
+// #4420: tickets are Work cards of kind "ticket"; this filter splits them from ordinary cards.
+export const WORK_TYPE = Object.freeze([
+  Object.freeze({ value: "", label: "All" }),
+  Object.freeze({ value: "tickets", label: "Tickets" }),
+  Object.freeze({ value: "cards", label: "Cards" }),
+]);
+const TYPE_VALUES = WORK_TYPE.map((o) => o.value).filter(Boolean);
 const SHOW_VALUES = WORK_SHOW.map((o) => o.value).filter(Boolean);
 const LINKED_VALUES = WORK_LINKED.map((o) => o.value).filter(Boolean);
 
@@ -63,10 +72,16 @@ export function parseWorkView(search) {
     q: String(p.get("q") || "").slice(0, 160),
     show,
     linked: LINKED_VALUES.includes(p.get("linked")) ? p.get("linked") : "",
+    type: TYPE_VALUES.includes(p.get("type")) ? p.get("type") : "",
     draft: draft && UUID_RE.test(draft) ? draft : null,
     record: record && UUID_RE.test(record) ? record : null,
     allDrafts: p.get("drafts") === "all",
   };
+}
+
+/** #4420: a ticket is a Work card of kind "ticket". */
+export function isTicket(card) {
+  return !!card && card.kind === "ticket";
 }
 
 function linkKinds(card) {
@@ -100,7 +115,7 @@ export function needsAttention(card, today, reasons = []) {
  * (Show: Cards I watch), `reasonsOf(card)` the card's red reasons (Needs
  * attention), `today` the viewer's YYYY-MM-DD.
  */
-export function workFilter(cards, { owner = null, show = "", linked = "", q = "", me = "", today = "", reasonsOf = null, isAdmin = false } = {}) {
+export function workFilter(cards, { owner = null, show = "", linked = "", type = "", q = "", me = "", today = "", reasonsOf = null, isAdmin = false } = {}) {
   const needle = String(q || "").trim().toLowerCase();
   const mine = String(me || "").toLowerCase();
   const who = String(owner || "").toLowerCase();
@@ -112,9 +127,11 @@ export function workFilter(cards, { owner = null, show = "", linked = "", q = ""
       const num = String(c.number ?? "");
       if (!hay.includes(needle) && needle !== num && needle !== `card ${num}`) return false;
     }
+    if (type === "tickets" && !isTicket(c)) return false;
+    if (type === "cards" && isTicket(c)) return false;
     if (linked) {
       const kinds = linkKinds(c);
-      if (linked === "calendar" ? !(kinds.has("event") || kinds.has("expected") || kinds.has("content")) : !kinds.has(linked)) return false;
+      if (linked === "calendar" ? !(kinds.has("event") || kinds.has("expected") || kinds.has("content")) : !kinds.has(linked === "support" ? "support_conversation" : linked)) return false;
     }
     switch (show) {
       case "watch":

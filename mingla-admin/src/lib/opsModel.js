@@ -171,6 +171,14 @@ export const LINK_KINDS = [
   { value: "expected", label: "Expected" },
 ];
 
+// #4420: a card's detail can also link a support conversation (a ticket's
+// reporters; searched by customer name or conversation number). The add-card
+// form keeps LINK_KINDS as it was.
+export const DETAIL_LINK_KINDS = [
+  ...LINK_KINDS,
+  { value: "support_conversation", label: "Support conversation" },
+];
+
 /** The eleven rules every agent follows, as people read them. */
 export const AGENT_RULES = [
   "Reads the agent log for the records it will touch, and checks the open claims, before any work.",

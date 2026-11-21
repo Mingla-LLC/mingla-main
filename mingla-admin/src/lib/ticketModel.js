@@ -1,0 +1,191 @@
+// Issue #4420 (step 4) — Ticket cards on the Work board.
+//
+// A ticket is an ordinary Work card with kind "ticket" (the database keeps its
+// type, product area and reporters beside it). Pure module: no React, no
+// Supabase. The form, the detail sections and a plain node test read it.
+//
+// Rules this file holds (Seth's decisions, 2026-11-21):
+//   * the person making a ticket CHOOSES its owner, like any card; there is no
+//     automatic owner and no owner lock;
+//   * the server adds the creator as watcher when they are not the owner, so
+//     the form never sends a watcher;
+//   * a ticket without a due date is due in 7 days: the form shows that date
+//     filled in, and the person may change it;
+//   * agents never create tickets (the form is a person's).
+import { addDays } from "./opsModel.js";
+
+export const TICKET_TYPES = Object.freeze([
+  Object.freeze({ value: "bug", label: "Bug" }),
+  Object.freeze({ value: "idea", label: "Idea" }),
+  Object.freeze({ value: "question", label: "Question" }),
+  Object.freeze({ value: "task", label: "Task" }),
+]);
+const TYPE_VALUES = TICKET_TYPES.map((t) => t.value);
+
+export const TICKET_DEFAULT_DUE_DAYS = 7;
+export const TITLE_MIN = 3;
+export const TITLE_MAX = 160;
+export const WRONG_MIN = 10;
+export const WRONG_MAX = 4000;
+export const SIMILAR_MIN_CHARS = 3;
+export const SIMILAR_DEBOUNCE_MS = 300;
+export const TICKET_CONVERSATION_LIMIT = 20;
+
+/** The label of a ticket type ("bug" -> "Bug"); "" for anything else. */
+export function ticketTypeLabel(value) {
+  return TICKET_TYPES.find((t) => t.value === value)?.label || "";
+}
+
+/** A card that is a ticket, with its ticket object (the card's JSON carries it for tickets only). */
+export function isTicketCard(card) {
+  return !!card && card.kind === "ticket";
+}
+
+/** The date a ticket without a chosen date is due: today plus 7 days, as YYYY-MM-DD. */
+export function defaultTicketDue(today) {
+  return addDays(today, TICKET_DEFAULT_DUE_DAYS);
+}
+
+/** The Ticket chip on a card face: "Ticket", T-number, type and reporter count. */
+export function ticketChipWords(card) {
+  if (!isTicketCard(card)) return null;
+  const t = card.ticket || {};
+  const reporters = Number(t.reporter_count) || 0;
+  return {
+    label: "Ticket",
+    number: `T${card.number}`,
+    type: ticketTypeLabel(t.type),
+    reporters,
+    reporterWords: reporters > 0 ? `${reporters} ${reporters === 1 ? "reporter" : "reporters"}` : "",
+  };
+}
+
+/**
+ * The call's ticket object. The owner is what the person picked (like any
+ * card); no watcher is sent (the server makes the creator the watcher when
+ * they are not the owner). `conversationIds` are the source conversations.
+ */
+export function buildTicketPayload(form, { createdFrom = "board" } = {}) {
+  const f = form || {};
+  const out = {
+    type: f.type,
+    title: String(f.title || "").replace(/[\r\n]+/g, " ").trim(),
+    what_is_wrong: String(f.whatIsWrong || "").trim(),
+    product_area: String(f.productArea || "").trim(),
+    created_from: createdFrom,
+    owners: Array.isArray(f.owners) ? f.owners.filter(Boolean) : [],
+  };
+  if (f.due) out.due_on = f.due;
+  const ids = Array.isArray(f.conversationIds) ? f.conversationIds.filter(Boolean) : [];
+  if (ids.length) out.conversation_ids = ids.slice(0, TICKET_CONVERSATION_LIMIT);
+  if (f.brandId) out.brand_id = f.brandId;
+  return out;
+}
+
+/** What is wrong with the form before it is sent (the server checks again and has the last word). */
+export function ticketFormProblems(form) {
+  const f = form || {};
+  const problems = {};
+  if (!TYPE_VALUES.includes(f.type)) problems.type = "Pick a type.";
+  const title = String(f.title || "").trim();
+  if (title.length < TITLE_MIN) problems.title = `Give the ticket a title of at least ${TITLE_MIN} characters.`;
+  if (String(f.whatIsWrong || "").trim().length < WRONG_MIN) problems.what_is_wrong = `Say what is wrong in at least ${WRONG_MIN} characters.`;
+  if (!String(f.productArea || "").trim()) problems.product_area = "Pick the product area.";
+  if (!Array.isArray(f.owners) || f.owners.filter(Boolean).length < 1) problems.owner = "Choose who owns this ticket.";
+  return problems;
+}
+
+/** The refused answer's fixes, by field: { title: "...", what_is_wrong: "..." }. */
+export function fixesByField(fixes) {
+  const out = {};
+  for (const fix of Array.isArray(fixes) ? fixes : []) {
+    const field = typeof fix?.field === "string" ? fix.field : "item";
+    const words = typeof fix?.message === "string" ? fix.message : "";
+    if (words) out[field] = out[field] ? `${out[field]} ${words}` : words;
+  }
+  return out;
+}
+
+/**
+ * Whether to look for similar open tickets for this title: 3+ characters and
+ * the words are not the ones already searched.
+ */
+export function shouldSearchSimilar(title) {
+  return String(title || "").trim().length >= SIMILAR_MIN_CHARS;
+}
+
+/** The similar-ticket row's words: "T12 · Bug · 3 reporters". */
+export function similarWords(row) {
+  const reporters = Number(row?.reporter_count) || 0;
+  return [`T${row?.number}`, ticketTypeLabel(row?.type), `${reporters} ${reporters === 1 ? "reporter" : "reporters"}`].filter(Boolean).join(" · ");
+}
+
+export const SUPPORT_ACCESS_WORDS = "Support access needed to read these conversations";
+
+/**
+ * What the ticket's conversations show, from ops_ticket_conversations:
+ *   { mode: "support", conversations }   Support staff: the messages, photos and notes
+ *   { mode: "count", reporters, words }  anyone else: only how many reporters, never content
+ *   { mode: "error" }                    the read failed
+ * Content is only ever taken from an answer whose access is "support".
+ */
+export function conversationsView(answer) {
+  if (!answer || typeof answer !== "object") return { mode: "error" };
+  if (answer.access === "support") {
+    return { mode: "support", reporters: Number(answer.reporter_count) || 0, conversations: Array.isArray(answer.conversations) ? answer.conversations : [] };
+  }
+  const reporters = Number(answer.reporter_count) || 0;
+  return {
+    mode: "count",
+    reporters,
+    words: `${reporters} ${reporters === 1 ? "reporter" : "reporters"}. ${SUPPORT_ACCESS_WORDS}.`,
+  };
+}
+
+/** A conversation message's label: staff-only notes are marked. */
+export function messageKind(message) {
+  if (message?.is_internal) return "note";
+  if (message?.sender_kind === "customer") return "customer";
+  if (message?.sender_kind === "system") return "system";
+  return "staff";
+}
+
+export function segmentLabel(segment) {
+  return segment === "business" ? "Host" : segment === "explorer" ? "Explorer" : "";
+}
+
+/** "Conversation 12 · Host · Open" for a reporter row. */
+export function reporterRowWords(conversation) {
+  const status = String(conversation?.status || "");
+  const statusWords = status ? status.charAt(0).toUpperCase() + status.slice(1) : "";
+  return [`Conversation ${conversation?.ticket_number ?? ""}`.trim(), segmentLabel(conversation?.segment), statusWords].filter(Boolean).join(" · ");
+}
+
+/** The open-in-Support address of a conversation (both spellings are accepted by Support). */
+export function conversationHref(id) {
+  return `#/support?conversation=${encodeURIComponent(id)}`;
+}
+
+/**
+ * The Send to GitHub section's state (spec section 8):
+ *   task      a task ticket uses the card's own GitHub field
+ *   closed    the ticket is done
+ *   operator  can send: product operators (owner, admin, partner)
+ *   locked    anyone else sees the section with the button off and the words
+ */
+export const GITHUB_LOCKED_WORDS = "Only product operators send tickets to GitHub.";
+export const GITHUB_TASK_WORDS = "A task ticket uses the GitHub field on the card.";
+
+export function githubSectionState(card, { isOperator = false } = {}) {
+  if (!isTicketCard(card)) return { mode: "none" };
+  if (card.ticket?.type === "task") return { mode: "task", words: GITHUB_TASK_WORDS };
+  if (!isOperator) return { mode: "locked", words: GITHUB_LOCKED_WORDS, disabled: true };
+  return { mode: "operator", disabled: false, hasSignal: !!card.ticket?.source_signal_id };
+}
+
+/** The menu's Work count: due-today and overdue cards plus tickets I own still in To do. */
+export function workMenuCount(dueCards, ticketsNew) {
+  const a = Number(dueCards);
+  const b = Number(ticketsNew);
+  return (Number.isFinite(a) ? a : 0) + (Number.isFinite(b) && b > 0 ? b : 0);
+}
