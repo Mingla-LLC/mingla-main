@@ -17,8 +17,15 @@ import {
   requireAccessibleAgentBrand,
   resolveAccessibleAgentBrands,
 } from "../_shared/agentTenantScope.ts";
+import { copyAriAttachmentToSupport } from "./copyToSupport.ts";
 
-type AttachmentAction = "prepare" | "finalize" | "status" | "open" | "discard";
+type AttachmentAction =
+  | "prepare"
+  | "finalize"
+  | "status"
+  | "open"
+  | "discard"
+  | "copy_to_support";
 
 interface PrepareFile {
   filename: string;
@@ -34,6 +41,8 @@ interface RequestBody {
   files?: PrepareFile[];
   attachment_ids?: string[];
   attachment_id?: string;
+  /** #4420 copy_to_support: the caller's support conversation. */
+  ticket_id?: string;
 }
 
 interface AttachmentAuthorityRow {
@@ -234,6 +243,27 @@ Deno.serve(async (request) => {
       { admin, userId },
       body,
     );
+    return response(result.status, result.body);
+  }
+
+  // #4420: Ari to a person — copy the caller's own Ari photo into their own
+  // support conversation, server-side (copyToSupport.ts holds every check).
+  if (body.action === "copy_to_support") {
+    const result = await copyAriAttachmentToSupport({
+      admin,
+      caller: userClient,
+      userId,
+      ariBucket: ARI_ATTACHMENT_BUCKET,
+      canAccessBrand: async (brandId) => {
+        try {
+          const brands = await resolveAccessibleAgentBrands(userClient, userId);
+          requireAccessibleAgentBrand(brands, brandId);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    }, body);
     return response(result.status, result.body);
   }
 
