@@ -428,6 +428,11 @@ function loadWebBuilder(): React.ComponentType<Record<string, unknown>> {
     intakeSchemaService: () => intakeSchemaService,
     IntakeQuestionEditor: () => ({ IntakeQuestionEditor: leaf("IntakeQuestionEditorProbe") }),
     IntakeTypePickerSheet: () => ({ IntakeTypePickerSheet: leaf("IntakeTypePickerSheetProbe") }),
+    // [TEST-MOD #4514] the builder's brand form additions: pure modules and a leaf.
+    IntakeQuestionBrandTags: () => ({ IntakeQuestionBrandTags: (): null => null }),
+    intakeBuilderFeatures: () => jest.requireActual("../intakeBuilderFeatures"),
+    brandFormDefinition: () => jest.requireActual("../../../utils/brandFormDefinition"),
+    brandFormsCopy: () => jest.requireActual("../../forms/brandFormsCopy"),
   };
   const output = ts.transpileModule(
     fs.readFileSync(path.join(TRIP_DIR, "IntakeSchemaBuilder.web.tsx"), "utf8"),

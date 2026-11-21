@@ -7,6 +7,7 @@
 // in app/checkout/[eventId]/payment.tsx), so this hook is never invoked
 // on web; the stub exists so the import resolves cleanly.
 
+import type { CheckoutBrandFormAnswers } from "../components/checkout/CartContext";
 import type { TicketCheckoutReview } from "@mingla/offering-rendering/discountQuote";
 import type {
   CheckoutAddOnRequest,
@@ -36,6 +37,8 @@ export interface NativeCheckoutInput {
     email: string;
     phone: string;
     marketingOptIn?: boolean;
+    /** #4514 wave 5 — the Questions step's answers (sent top-level, never in buyer). */
+    brandForm?: CheckoutBrandFormAnswers | null;
     // ORCH-1130 Fix #2 — buyer address is OPTIONAL. Tax is venue-sourced
     // server-side (events.venue_tax_address); the buyer never types an
     // address (MINGLA-WIDE all-in / WYSIWYP). Retained optional only for

@@ -65,6 +65,7 @@ import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
 import { radius as radiusTokens, space, edge } from "../../../src/constants/designSystem";
+import { eventPublicPath } from "../../../src/constants/publicUrls";
 import { checkoutStyles, color, materials } from "../../../src/components/checkout/checkoutTheme";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
@@ -125,6 +126,7 @@ import { useSteadyQuote } from "../../../src/components/checkout/useSteadyQuote"
 import { useRevealedFieldErrors } from "../../../src/hooks/useRevealedFieldErrors";
 
 import {
+  type CheckoutBrandFormAnswers,
   useCart,
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
@@ -157,6 +159,27 @@ const TicketQuoteSummary = React.lazy(() =>
     (module) => ({ default: module.TicketQuoteSummary }),
   ),
 );
+
+// #4514 wave 5 — the Questions step loads through the ONE forms lazy owner, so
+// none of it is in the eager bundle. Tickets › Details › Questions › Payment.
+const CheckoutQuestionsStep = React.lazy(() =>
+  import("../../../src/components/checkout/intake/formRenderingPrimitives").then(
+    (module) => ({ default: module.CheckoutQuestionsStep }),
+  ),
+);
+// #4514 wave 5 — the refusals that reopen the Questions step. Only these: a
+// server failure of the check or the stash (brand_form_check_failed /
+// brand_form_stash_failed) is the normal retryable error and never opens a step
+// the buyer cannot finish. Inline in each route on purpose: a shared module
+// would land in the eager bundle (the #4514 bundle budget).
+const FORM_REFUSAL = /^(form_answers_required|form_answers_invalid|form_changed)$/;
+const formRefusalOf = (code: unknown): string | null =>
+  typeof code === "string" && FORM_REFUSAL.test(code) ? code : null;
+/** The `questions` param payment sets: the real refusal code ("1" from an older link). */
+const questionsParamRefusal = (param: unknown): string | null =>
+  param === "1" ? "form_answers_required" : formRefusalOf(param);
+const BRAND_FORM_SERVER_FAILURE = /^brand_form_(check|stash)_failed$/;
+const FORM_STEP_NAMES = ["Tickets", "Details", "Questions", "Payment"] as const;
 
 // #4420 — read per render: the tokens follow the host palette.
 const publicBuyerPhoneTheme = (): PhoneInputTheme => ({
@@ -270,6 +293,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   const params = useLocalSearchParams<{
     eventId: string;
     ticketLink?: string;
+    /** #4514 wave 5 — set by payment when the server asked for the questions. */
+    questions?: string;
   }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
   const ticketLinkToken =
@@ -336,6 +361,16 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
    */
   const submitInFlight = useRef<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // #4514 wave 5 — what the page's brand form asks of this checkout.
+  const [formProbe, setFormProbe] = useState<string>("loading");
+  const [formRefusal, setFormRefusal] = useState<string | null>(
+    questionsParamRefusal(params.questions),
+  );
+  const [questionsOpen, setQuestionsOpen] = useState<boolean>(
+    questionsParamRefusal(params.questions) !== null,
+  );
+  const hasFormStep =
+    formProbe === "required" || formProbe === "optional" || formRefusal !== null;
 
   // #3859 — purchase acceptance and optional marketing are independent.
   const termsAccepted = buyer.termsAccepted === true;
@@ -498,6 +533,15 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   }, [hasNoLines, eventId, router]);
 
   // ----- Handlers ---------------------------------------------------
+  // #4514 P3-C — the Questions step's way out once a Try again has failed.
+  const handleBackToEvent = useCallback((): void => {
+    if (event !== null) {
+      router.replace(eventPublicPath({ brandSlug: event.brandSlug, eventSlug: event.eventSlug }) as never);
+    } else if (eventId !== null) {
+      router.replace(`/checkout/${eventId}` as never);
+    }
+  }, [router, event, eventId]);
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
@@ -524,7 +568,10 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     }
   }, [validation.isValid, termsAccepted, revealAllFieldErrors]);
 
-  const handleContinue = useCallback(async (): Promise<void> => {
+  const handleContinue = useCallback(async (
+    // #4514 wave 5 — the Questions step's answers (undefined: no step shown).
+    formAnswers?: CheckoutBrandFormAnswers | null,
+  ): Promise<void> => {
     // Mark all fields touched so any validation errors render
     revealAllFieldErrors();
     if (!validation.isValid) return;
@@ -646,7 +693,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           eventId,
           brandId: event?.brandId ?? brand?.id,
           ...(ticketLinkToken !== null ? { ticketLinkToken } : {}),
-          buyer,
+          buyer:
+            formAnswers === undefined ? buyer : { ...buyer, brandForm: formAnswers },
           lines,
           discountCode,
           quoteDigest: quote.quoteDigest,
@@ -793,6 +841,16 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           setSubmitError(FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE);
           return;
         }
+        // #4514 wave 5 — the server wants the page's questions answered (or
+        // saw another version): reopen the step with the answers kept.
+        // Only the three form refusals: a server failure of the check or the
+        // stash is the normal retryable error below, never a dead-end step.
+        const formCode = formRefusalOf((error as { code?: string } | null)?.code);
+        if (formCode !== null) {
+          setFormRefusal(formCode);
+          setQuestionsOpen(true);
+          return;
+        }
         // issue #2136 — never render a raw runtime string. #2337 — and never
         // render a claim the server did not make: `freeCheckoutErrorMessage` is
         // total AND keys on the bounded token, so an unidentified 409 says
@@ -801,6 +859,12 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         // names which one.
         if (/^extras?_/.test((error as { code?: string } | null)?.code ?? "")) {
           setSubmitError(EXTRAS_CHANGED_MESSAGE);
+          return;
+        }
+        // #4514 — a server failure of the form check or stash happened before
+        // any reservation: the normal retryable error, never the step.
+        if (BRAND_FORM_SERVER_FAILURE.test((error as { code?: string } | null)?.code ?? "")) {
+          setSubmitError(FREE_CHECKOUT_FAILED_MESSAGE);
           return;
         }
         setSubmitError(freeCheckoutErrorMessage(error));
@@ -861,9 +925,36 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     router,
   ]);
 
-  const continueLabel = totals.isFree
+  const finalLabel = totals.isFree
     ? "Reserve free ticket"
     : "Continue to payment";
+  // #4514 wave 5 — with a Questions step, Details only continues to it.
+  const continueLabel = hasFormStep ? "Continue" : finalLabel;
+
+  // #4514 wave 5 — Details › Questions: the same field and terms checks as
+  // the final submit, then the step opens; without a form, submit as before.
+  const handleDetailsContinue = useCallback((): void => {
+    if (!hasFormStep) {
+      void handleContinue();
+      return;
+    }
+    revealAllFieldErrors();
+    if (!validation.isValid) return;
+    if (!termsAccepted) {
+      setConsentHintVisible(true);
+      return;
+    }
+    setQuestionsOpen(true);
+  }, [hasFormStep, handleContinue, revealAllFieldErrors, validation.isValid, termsAccepted]);
+
+  const handleQuestionsContinue = useCallback(
+    (answers: CheckoutBrandFormAnswers | null): void => {
+      setFormRefusal(null);
+      setBuyer({ brandForm: answers });
+      void handleContinue(answers);
+    },
+    [setBuyer, handleContinue],
+  );
 
   // META-ORCH-1161 Sub-A.2 (DEC-186) — single source of the Pay-button gate so
   // the visual disabled state, the pointer-events pass-through, and the
@@ -891,14 +982,70 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     );
   }
 
+  if (questionsOpen && eventId !== null) {
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={2}
+          totalSteps={4}
+          stepNames={FORM_STEP_NAMES}
+          title="A few questions"
+          onBack={() => setQuestionsOpen(false)}
+        />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + space[6] },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <React.Suspense fallback={null}>
+            <CheckoutQuestionsStep
+              eventId={eventId}
+              ticketLinkToken={ticketLinkToken}
+              visible
+              value={buyer.brandForm ?? null}
+              onChange={(next) => setBuyer({ brandForm: next })}
+              onProbe={setFormProbe}
+              refusal={formRefusal}
+              onContinue={handleQuestionsContinue}
+              continueLabel={finalLabel}
+              submitting={submitting}
+              submitError={submitError}
+              onBackToEvent={handleBackToEvent}
+            />
+          </React.Suspense>
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.host}>
       <CheckoutHeader
         stepIndex={1}
-        totalSteps={3}
+        totalSteps={hasFormStep ? 4 : 3}
+        {...(hasFormStep ? { stepNames: FORM_STEP_NAMES } : {})}
         title="Your details"
         onBack={handleBack}
       />
+      {eventId !== null ? (
+        <React.Suspense fallback={null}>
+          <CheckoutQuestionsStep
+            eventId={eventId}
+            ticketLinkToken={ticketLinkToken}
+            visible={false}
+            value={null}
+            onChange={() => undefined}
+            onProbe={setFormProbe}
+            refusal={null}
+            onContinue={() => undefined}
+            continueLabel={finalLabel}
+            submitting={false}
+          />
+        </React.Suspense>
+      ) : null}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -1188,7 +1335,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           <View pointerEvents={continueDisabled ? "none" : "auto"}>
             <Button
               label={continueLabel}
-              onPress={handleContinue}
+              onPress={handleDetailsContinue}
               variant="primary"
               accentColor={ctaAccent}
               accentGradient={ctaAccentGradient}

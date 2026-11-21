@@ -269,7 +269,8 @@ export function violations(files) {
     "url.length === 0 || serviceKey.length === 0", 'error: "forbidden"',
   ]) need(exportWorker, required, "export worker", failures);
   need(files.csv ?? "", "export function csvCell", "export CSV", failures);
-  need(files.csv ?? "", "/^[=+\\-@]/", "export CSV", failures);
+  // #4514: guest-written answers reach this CSV; a leading tab or carriage return is guarded too.
+  need(files.csv ?? "", "/^[=+\\-@\\t\\r]/", "export CSV", failures);
   need(files.audience ?? "", 'kind: "offering_send_group"', "marketing audience", failures);
   need(files.audience ?? "", 'rpc("biz_offering_send_group_audience"', "marketing audience", failures);
 

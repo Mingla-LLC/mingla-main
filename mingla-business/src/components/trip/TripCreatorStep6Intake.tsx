@@ -34,9 +34,23 @@ import type { IntakeSchema } from "../../services/intakeSchemaService";
 import { createEmptyIntakeSchema } from "../../services/intakeSchemaService";
 import type { TripPricingTier } from "../../services/tripsService";
 import { IntakeQuestionPreview } from "./IntakeQuestionPreview";
-import { IntakeSchemaBuilder } from "./IntakeSchemaBuilder";
+import type { IntakeSchemaBuilderProps } from "./IntakeSchemaBuilder";
 // #3372 — naira package prices show "₦", not "NGN" (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+
+// #4514 — the question builder (with its editor and type picker) loads on
+// demand. Trip create, trip edit and the brand form builder each declare this
+// `import()` of the same module, so the builder stays in ONE async chunk; a
+// shared static wrapper module would itself be hoisted into the eager
+// `__common` chunk every Host web visitor downloads first.
+const LazyBuilder = React.lazy(() =>
+  import("./IntakeSchemaBuilder").then((m) => ({ default: m.IntakeSchemaBuilder })),
+);
+const IntakeSchemaBuilder = (props: IntakeSchemaBuilderProps): React.ReactElement => (
+  <React.Suspense fallback={null}>
+    <LazyBuilder {...props} />
+  </React.Suspense>
+);
 
 export interface TripCreatorStep6IntakeProps {
   /** All ticket tiers on the trip (from Trip.pricingTiers). */

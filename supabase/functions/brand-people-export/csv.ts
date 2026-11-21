@@ -4,7 +4,9 @@ export function csvCell(value: unknown): string {
     : Array.isArray(value)
     ? value.join("; ")
     : String(value);
-  if (/^[=+\-@]/.test(rendered)) rendered = `'${rendered}`;
+  // A spreadsheet reads a leading = + - @, tab or carriage return as a formula
+  // (#4514: guest-written answers now reach host CSVs); keep it text.
+  if (/^[=+\-@\t\r]/.test(rendered)) rendered = `'${rendered}`;
   return `"${rendered.replaceAll('"', '""')}"`;
 }
 

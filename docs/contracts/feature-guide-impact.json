@@ -3524,7 +3524,7 @@
         "mingla-business/src/components/checkout/TicketQrCarousel.tsx",
         "mingla-business/src/components/checkout/YoureInFollowCard.tsx",
         "mingla-business/src/components/checkout/intake/IntakeFilePickerChooserSheet.tsx",
-        "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx",
+        "packages/form-rendering/QuestionRenderers.tsx",
         "packages/phone-input/PhoneInput.tsx",
         "packages/phone-input/index.ts",
         "packages/phone-input/tokens.ts",
@@ -5413,6 +5413,171 @@
         "mingla-admin/src/components/support/WebsiteRequestBox.jsx",
         "mingla-admin/src/lib/websiteRequestModel.js",
         "supabase/migrations/20281119004453_issue_4453_website_team_requests.sql"
+      ]
+    },
+    {
+      "capability_key": "trips-intake-forms",
+      "paths": [
+        "mingla-business/app/(tabs)/marketing/forms/[formId]/index.tsx",
+        "mingla-business/app/(tabs)/marketing/forms/[formId]/responses.tsx",
+        "mingla-business/app/(tabs)/marketing/forms/index.tsx",
+        "mingla-business/app/+native-intent.tsx",
+        "mingla-business/app/form/[formId].tsx",
+        "mingla-business/jest.config.cjs",
+        "mingla-business/metro.config.js",
+        "mingla-business/package.json",
+        "mingla-business/src/components/forms/BrandFormBuilderScreen.tsx",
+        "mingla-business/src/components/forms/BrandFormPreview.tsx",
+        "mingla-business/src/components/forms/BrandFormResponsesScreen.tsx",
+        "mingla-business/src/components/forms/BrandFormsListScreen.tsx",
+        "mingla-business/src/components/forms/FormsNotice.tsx",
+        "mingla-business/src/components/forms/brandFormBuilderKit.ts",
+        "mingla-business/src/components/forms/brandFormsCopy.ts",
+        "mingla-business/src/components/forms/formsOwner.ts",
+        "mingla-business/src/components/forms/link/BrandFormLinkScreen.tsx",
+        "mingla-business/src/components/forms/link/brandFormLinkCopy.ts",
+        "mingla-business/src/components/forms/link/brandFormLinkModel.ts",
+        "mingla-business/src/components/forms/useFormsToast.tsx",
+        "mingla-business/src/components/marketing/marketingSubNavTabs.ts",
+        "mingla-business/src/components/marketing/marketingTabActions.ts",
+        "mingla-business/src/components/trip/EditPublishedTripIntakeAccordion.tsx",
+        "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
+        "mingla-business/src/components/trip/IntakeBrandFormFields.tsx",
+        "mingla-business/src/components/trip/IntakeQuestionBrandTags.tsx",
+        "mingla-business/src/components/trip/IntakeQuestionEditor.tsx",
+        "mingla-business/src/components/trip/IntakeQuestionEditor.web.tsx",
+        "mingla-business/src/components/trip/IntakeRequiredToggle.tsx",
+        "mingla-business/src/components/trip/IntakeSchemaBuilder.tsx",
+        "mingla-business/src/components/trip/IntakeSchemaBuilder.web.tsx",
+        "mingla-business/src/components/trip/IntakeTypePickerSheet.tsx",
+        "mingla-business/src/components/trip/TripCreatorStep6Intake.tsx",
+        "mingla-business/src/components/trip/intakeBuilderFeatures.ts",
+        "mingla-business/src/components/ui/DesktopSidebar.tsx",
+        "mingla-business/src/diagnostics/sentry.ts",
+        "mingla-business/src/diagnostics/sentryTokenScrub.ts",
+        "mingla-business/src/hooks/brandFormKeys.ts",
+        "mingla-business/src/hooks/useBrandForms.ts",
+        "mingla-business/src/services/brandFormLinkService.ts",
+        "mingla-business/src/services/brandFormsExportService.ts",
+        "mingla-business/src/services/brandFormsService.ts",
+        "mingla-business/src/services/intakeSchemaService.ts",
+        "mingla-business/src/utils/brandFormDefinition.ts",
+        "mingla-business/src/utils/brandFormHeader.ts",
+        "mingla-business/src/utils/brandFormResponses.ts",
+        "mingla-business/src/utils/coldLoadAuthGates.ts",
+        "mingla-business/src/utils/permissionGates.ts",
+        "mingla-business/tsconfig.json",
+        "mingla-business/vercel.json",
+        "packages/form-rendering/BrandFormView.tsx",
+        "packages/form-rendering/QuestionRenderers.tsx",
+        "packages/form-rendering/brandFormRules.ts",
+        "packages/form-rendering/index.ts",
+        "packages/form-rendering/package.json",
+        "packages/form-rendering/tsconfig.json",
+        "packages/form-rendering/types.ts",
+        "supabase/functions/_shared/brandFormDispatchTypes.ts",
+        "supabase/functions/_shared/brandFormNotify.ts",
+        "supabase/functions/_shared/brandFormsContract.ts",
+        "supabase/functions/_shared/contactCode.ts",
+        "supabase/functions/_shared/issue4111EnquiryNotifications.ts",
+        "supabase/functions/_shared/notifyTemplates.ts",
+        "supabase/functions/_shared/notifyV2.ts",
+        "supabase/functions/_shared/sentryEdge.ts",
+        "supabase/functions/brand-form-submit/code.ts",
+        "supabase/functions/brand-form-submit/function-policy.json",
+        "supabase/functions/brand-form-submit/index.ts",
+        "supabase/functions/brand-form-submit/submit.ts",
+        "supabase/functions/brand-form-submit/linkRead.ts",
+        "supabase/functions/notify-reminders/index.ts",
+        "supabase/migrations/20281120034514_issue_4514_brand_forms.sql"
+      ]
+    },
+    {
+      "capability_key": "checkout-tickets",
+      "paths": [
+        "mingla-business/src/components/checkout/intake/CheckoutQuestionsStep.tsx",
+        "mingla-business/src/components/checkout/intake/IntakeQuestionFileUpload.tsx",
+        "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx",
+        "mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx",
+        "mingla-business/src/components/checkout/intake/checkoutFormCopy.ts",
+        "mingla-business/src/components/checkout/intake/checkoutFormKeys.ts",
+        "mingla-business/src/components/checkout/intake/formRenderingPrimitives.tsx",
+        "mingla-business/src/services/checkoutBrandFormService.ts",
+        "supabase/functions/brand-form-submit/checkoutForm.ts",
+        "supabase/functions/brand-form-submit/purchaseLink.ts",
+        "supabase/functions/ticket-checkout-create/brandFormCheckout.ts"
+      ]
+    },
+    {
+      "capability_key": "checkout-trips-experiences",
+      "paths": [
+        "mingla-business/app/checkout-experience/[experienceEventId]/buyer.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/confirm.tsx",
+        "mingla-business/app/checkout-experience/[experienceEventId]/payment.tsx",
+        "mingla-business/app/checkout-trip/[tripEventId]/intake.tsx"
+      ]
+    },
+    {
+      "capability_key": "events-guest-list",
+      "paths": [
+        "mingla-business/app/event/[id]/index.tsx",
+        "mingla-business/app/experience/[id]/index.tsx",
+        "mingla-business/app/rsvp/[id]/index.tsx",
+        "mingla-business/app/trip/[id]/index.tsx",
+        "mingla-business/src/components/event/ActionTile.tsx",
+        "mingla-business/src/components/event/eventGridTiles.ts",
+        "mingla-business/src/components/forms/FormRequestLog.tsx",
+        "mingla-business/src/components/forms/FormRequestSheet.tsx",
+        "mingla-business/src/components/forms/GuestAnswers.tsx",
+        "mingla-business/src/components/forms/GuestFormRequestRow.tsx",
+        "mingla-business/src/components/forms/GuestQuestionsRow.tsx",
+        "mingla-business/src/components/forms/GuestQuestionsSheet.tsx",
+        "mingla-business/src/components/forms/GuestQuestionsTile.tsx",
+        "mingla-business/src/components/guests/GuestRosterExperience.tsx",
+        "mingla-business/src/components/offering/OfferingHome.tsx",
+        "mingla-business/src/services/brandFormRequestService.ts",
+        "mingla-business/src/services/guestListService.ts",
+        "mingla-business/src/utils/formRequestCost.ts",
+        "mingla-business/src/utils/formRequestLog.ts",
+        "mingla-business/src/utils/guestQuestionsModel.ts",
+        "mingla-business/src/utils/guestRosterAnswers.ts",
+        "supabase/functions/_shared/brandFormRequestPreview.ts",
+        "supabase/functions/_shared/brandFormRequests.ts",
+        "supabase/functions/guest-list/index.ts",
+        "supabase/functions/guest-roster-actions/formRequest.ts",
+        "supabase/functions/guest-roster-actions/index.ts"
+      ]
+    },
+    {
+      "capability_key": "events-check-in",
+      "paths": [
+        "mingla-business/app/event/[id]/scanner/index.tsx",
+        "mingla-business/src/components/scanner/DoorAnswersSheet.tsx",
+        "mingla-business/src/components/scanner/DoorGuestSearchSheet.tsx",
+        "mingla-business/src/components/scanner/doorFullAnswersModel.ts",
+        "mingla-business/src/services/scanTicketService.ts",
+        "supabase/functions/_shared/doorBookedStart.ts",
+        "supabase/functions/scan-ticket/index.ts"
+      ]
+    },
+    {
+      "capability_key": "experiences-create",
+      "paths": [
+        "mingla-business/app/experience/[id]/edit.tsx",
+        "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx"
+      ]
+    },
+    {
+      "capability_key": "events-edit-live",
+      "paths": [
+        "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      ]
+    },
+    {
+      "capability_key": "marketing-people",
+      "paths": [
+        "supabase/functions/brand-people-export-worker/index.ts",
+        "supabase/functions/brand-people-export/csv.ts"
       ]
     }
   ]

@@ -377,7 +377,8 @@ DECLARE
     -- [TEST-MOD-APPROVED #4453] "Ready for review" (bell, push, email; no SMS)
     -- writes an explicit NULL country_code;
     -- issue_4453_website_team_requests.implementor.pg17 asserts it.
-    'issue_4453_website_request_ready'
+    'issue_4453_website_request_ready',
+    'brand_form_auto_reminders_due'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of

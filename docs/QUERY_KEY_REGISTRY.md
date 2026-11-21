@@ -169,6 +169,36 @@ code attempt or token is persisted outside React Query memory.
 confirmation is disabled while the server preview is pending or unavailable;
 the client never estimates a discounted refund amount.
 
+### brandFormKeys (hooks/brandFormKeys.ts) — issue #4514
+
+| Sub-key | Shape |
+|---------|-------|
+| `all` | `['brand-forms']` |
+| `list(brandId)` | `['brand-forms', 'list', brandId]` |
+| `detail(formId)` | `['brand-forms', 'detail', formId]` |
+| `eventAttachment(eventId)` | `['brand-forms', 'event-attachment', eventId]` |
+| `responses(formId, eventId \| null, filter)` | `['brand-forms', 'responses', formId, eventId ?? 'all', filter]` |
+| `tile(eventId)` | `['brand-forms', 'tile', eventId]` |
+| `counts(brandId)` | `['brand-forms', 'counts', brandId]` (wave 3: answered and to-answer per form and per page) |
+| `rosterAnswers(eventId)` | `['brand-forms', 'roster-answers', eventId]` (wave 3: the guest list's answers chip and drawer for one page) |
+| `requestPreview(formId, eventId, kind, audience, channels, subjects)` | `['brand-forms', 'request-preview', formId, eventId, kind, audience, channels, subjects]` (wave 4: reach and cost before Ask guests to answer / Remind; `staleTime: 0`; channels and subjects are sorted, joined ids, never contacts or tokens) |
+| `requestLog(formId, eventId, subject)` | `['brand-forms', 'request-log', formId, eventId, subject]` (wave 4 review: the host delivery log, sends and failures per guest and the automatic reminder runs; `subject` is `all` or `kind:id`; never contacts or tokens) |
+| `checkoutFormKeys.forEvent(eventId, withTicketLink)` (src/components/checkout/intake/checkoutFormKeys.ts) | `['brand-forms', 'checkout', eventId, 'link' \| 'plain']` (wave 5: the page's form as the buyer checkout reads it through brand-form-submit `checkout_form`, with the buyer's checkout credential; `staleTime: 30s`; refetched when checkout-create refuses with a form code, and by the step's Try again) |
+| `idle(read)` | `['brand-forms', read, 'none']` (a read switched off because its id is missing; never fetched) |
+
+**Scoping:** the list is keyed by BRAND, so switching brand never serves another
+brand's forms. No token or answer text enters a key; answers live only in
+React Query memory (never persisted).
+
+**Invalidation rule:** every successful form write (create, save draft,
+publish, close, reopen, archive, door switch, attach, detach, and in wave 4 a form request send and the automatic reminder switch) invalidates
+`brandFormKeys.all`, which refreshes the list, the builder, the page's
+attachment, the Responses page and the manage-page tile together.
+
+**Freshness:** the builder's detail read is `staleTime: 0` and refetches on
+mount, so a stale draft revision is caught by the server (PT409,
+"Someone else changed this form. Reload.") rather than by the cache.
+
 ### brandPaystackKeys (useBrandPaystack.ts) — issue #2418
 
 | Sub-key | Shape |

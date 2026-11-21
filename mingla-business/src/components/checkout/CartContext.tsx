@@ -82,6 +82,13 @@ export interface CartLine {
   addOns?: readonly CheckoutAddOnRequest[];
 }
 
+/** #4514 wave 5 — one form's answers as the Questions step collected them. */
+export interface CheckoutBrandFormAnswers {
+  formId: string;
+  versionId: string;
+  answers: Record<string, string | number | string[] | null>;
+}
+
 export interface BuyerDetails {
   name: string;
   email: string;
@@ -94,6 +101,12 @@ export interface BuyerDetails {
    * opts the buyer in, and the checkout shows a plain notice instead of a box.
    */
   termsAccepted?: boolean;
+  /**
+   * #4514 wave 5 — the buyer's answers to the page's brand form, from the
+   * checkout Questions step. Never sent inside `buyer`: the checkout services
+   * lift it to the top-level `brandForm` field with the `brandFormStep` marker.
+   */
+  brandForm?: CheckoutBrandFormAnswers | null;
   address?: {
     line1: string;
     line2?: string;

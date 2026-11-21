@@ -18,6 +18,8 @@
       "@mingla/phone-input/*": ["../packages/phone-input/*"],
       "@mingla/location-input": ["../packages/location-input"],
       "@mingla/location-input/*": ["../packages/location-input/*"],
+      "@mingla/form-rendering": ["../packages/form-rendering"],
+      "@mingla/form-rendering/*": ["../packages/form-rendering/*"],
       "@mingla/brand-assets": ["../packages/brand-assets"],
       "@mingla/brand-assets/*": ["../packages/brand-assets/*"],
       "@mingla/help-content": ["../packages/help-content"],
@@ -38,6 +40,7 @@
       "react/jsx-dev-runtime": ["./node_modules/@types/react/jsx-dev-runtime.d.ts"],
       "react-native": ["./node_modules/react-native"],
       "react-native-svg": ["./node_modules/react-native-svg"],
+      "@react-native-community/datetimepicker": ["./node_modules/@react-native-community/datetimepicker"],
       "@react-native-async-storage/async-storage": ["./node_modules/@react-native-async-storage/async-storage"],
       "lottie-web/*": ["./node_modules/lottie-web/*"]
     }

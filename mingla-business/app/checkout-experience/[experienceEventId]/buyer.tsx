@@ -69,6 +69,7 @@ import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import {
   createTicketCheckout,
   FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
+  FREE_CHECKOUT_FAILED_MESSAGE,
   freeCheckoutErrorMessage,
   isFreeReservationAlreadyExists,
 } from "../../../src/services/ticketCheckoutService";
@@ -97,6 +98,7 @@ import { useSteadyQuote } from "../../../src/components/checkout/useSteadyQuote"
 import { useRevealedFieldErrors } from "../../../src/hooks/useRevealedFieldErrors";
 
 import {
+  type CheckoutBrandFormAnswers,
   useCart,
   useCartQuoteTotals,
 } from "../../../src/components/checkout/CartContext";
@@ -122,6 +124,27 @@ const TicketQuoteSummary = React.lazy(() =>
     (module) => ({ default: module.TicketQuoteSummary }),
   ),
 );
+
+// #4514 wave 5 — the Questions step loads through the ONE forms lazy owner.
+// Your spot › Details › Questions › Payment.
+const CheckoutQuestionsStep = React.lazy(() =>
+  import("../../../src/components/checkout/intake/formRenderingPrimitives").then(
+    (module) => ({ default: module.CheckoutQuestionsStep }),
+  ),
+);
+// #4514 wave 5 — the refusals that reopen the Questions step. Only these: a
+// server failure of the check or the stash (brand_form_check_failed /
+// brand_form_stash_failed) is the normal retryable error and never opens a step
+// the buyer cannot finish. Inline in each route on purpose: a shared module
+// would land in the eager bundle (the #4514 bundle budget).
+const FORM_REFUSAL = /^(form_answers_required|form_answers_invalid|form_changed)$/;
+const formRefusalOf = (code: unknown): string | null =>
+  typeof code === "string" && FORM_REFUSAL.test(code) ? code : null;
+/** The `questions` param payment sets: the real refusal code ("1" from an older link). */
+const questionsParamRefusal = (param: unknown): string | null =>
+  param === "1" ? "form_answers_required" : formRefusalOf(param);
+const BRAND_FORM_SERVER_FAILURE = /^brand_form_(check|stash)_failed$/;
+const FORM_STEP_NAMES = ["Your spot", "Details", "Questions", "Payment"] as const;
 
 // #4420 — read per render: the tokens follow the host palette.
 const publicBuyerPhoneTheme = (): PhoneInputTheme => ({
@@ -209,7 +232,11 @@ const validate = (
 export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ experienceEventId: string }>();
+  const params = useLocalSearchParams<{
+    experienceEventId: string;
+    /** #4514 wave 5 — set by payment when the server asked for the questions. */
+    questions?: string;
+  }>();
   const experienceEventId =
     typeof params.experienceEventId === "string"
       ? params.experienceEventId
@@ -241,6 +268,16 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
   // enter the free rail. Mirrors checkout/[eventId]/buyer.tsx.
   const submitInFlight = useRef<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // #4514 wave 5 — what the page's brand form asks of this checkout.
+  const [formProbe, setFormProbe] = useState<string>("loading");
+  const [formRefusal, setFormRefusal] = useState<string | null>(
+    questionsParamRefusal(params.questions),
+  );
+  const [questionsOpen, setQuestionsOpen] = useState<boolean>(
+    questionsParamRefusal(params.questions) !== null,
+  );
+  const hasFormStep =
+    formProbe === "required" || formProbe === "optional" || formRefusal !== null;
   const termsAccepted = buyer.termsAccepted === true;
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
   const [authReady, setAuthReady] = useState<boolean>(false);
@@ -350,6 +387,15 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     }
   }, [hasNoLines, experienceEventId, router]);
 
+  // #4514 P3-C — the Questions step's way out once a Try again has failed.
+  const handleBackToEvent = useCallback((): void => {
+    if (experience !== null) {
+      router.replace(`/exp/${experience.brandSlug}/${experience.slug}` as never);
+    } else if (experienceEventId !== null) {
+      router.replace(`/checkout-experience/${experienceEventId}` as never);
+    }
+  }, [router, experience, experienceEventId]);
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
@@ -370,7 +416,10 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     }
   }, [termsAccepted, validation.isValid, revealAllFieldErrors]);
 
-  const handleContinue = useCallback(async (): Promise<void> => {
+  const handleContinue = useCallback(async (
+    // #4514 wave 5 — the Questions step's answers (undefined: no step shown).
+    formAnswers?: CheckoutBrandFormAnswers | null,
+  ): Promise<void> => {
     revealAllFieldErrors();
     if (!validation.isValid) return;
     if (!termsAccepted) {
@@ -417,7 +466,8 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
         const result = await createTicketCheckout({
           eventId: experienceEventId,
           brandId: experience?.brandId,
-          buyer,
+          buyer:
+            formAnswers === undefined ? buyer : { ...buyer, brandForm: formAnswers },
           lines,
           discountCode,
           quoteDigest: quote.quoteDigest,
@@ -474,6 +524,21 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           setSubmitError(FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE);
           return;
         }
+        // #4514 wave 5 — reopen the Questions step, answers kept.
+        // Only the three form refusals: a server failure of the check or the
+        // stash is the normal retryable error below, never a dead-end step.
+        const formCode = formRefusalOf((error as { code?: string } | null)?.code);
+        if (formCode !== null) {
+          setFormRefusal(formCode);
+          setQuestionsOpen(true);
+          return;
+        }
+        // #4514 — a server failure of the form check or stash happened before
+        // any reservation: the normal retryable error, never the step.
+        if (BRAND_FORM_SERVER_FAILURE.test((error as { code?: string } | null)?.code ?? "")) {
+          setSubmitError(FREE_CHECKOUT_FAILED_MESSAGE);
+          return;
+        }
         setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
         submitInFlight.current = false;
@@ -508,9 +573,34 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     experience?.brandId,
   ]);
 
-  const continueLabel = totals.isFree
+  const finalLabel = totals.isFree
     ? "Reserve free spot"
     : "Continue to payment";
+  // #4514 wave 5 — with a Questions step, Details only continues to it.
+  const continueLabel = hasFormStep ? "Continue" : finalLabel;
+
+  const handleDetailsContinue = useCallback((): void => {
+    if (!hasFormStep) {
+      void handleContinue();
+      return;
+    }
+    revealAllFieldErrors();
+    if (!validation.isValid) return;
+    if (!termsAccepted) {
+      setConsentHintVisible(true);
+      return;
+    }
+    setQuestionsOpen(true);
+  }, [hasFormStep, handleContinue, revealAllFieldErrors, validation.isValid, termsAccepted]);
+
+  const handleQuestionsContinue = useCallback(
+    (answers: CheckoutBrandFormAnswers | null): void => {
+      setFormRefusal(null);
+      setBuyer({ brandForm: answers });
+      void handleContinue(answers);
+    },
+    [setBuyer, handleContinue],
+  );
 
   const continueDisabled =
     !authReady ||
@@ -534,14 +624,68 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
     );
   }
 
+  if (questionsOpen && experienceEventId !== null) {
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={2}
+          totalSteps={4}
+          stepNames={FORM_STEP_NAMES}
+          title="A few questions"
+          onBack={() => setQuestionsOpen(false)}
+        />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + space[6] },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <React.Suspense fallback={null}>
+            <CheckoutQuestionsStep
+              eventId={experienceEventId}
+              visible
+              value={buyer.brandForm ?? null}
+              onChange={(next) => setBuyer({ brandForm: next })}
+              onProbe={setFormProbe}
+              refusal={formRefusal}
+              onContinue={handleQuestionsContinue}
+              continueLabel={finalLabel}
+              submitting={submitting}
+              submitError={submitError}
+              onBackToEvent={handleBackToEvent}
+            />
+          </React.Suspense>
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.host}>
       <CheckoutHeader
         stepIndex={1}
-        totalSteps={3}
+        totalSteps={hasFormStep ? 4 : 3}
+        {...(hasFormStep ? { stepNames: FORM_STEP_NAMES } : {})}
         title="Your details"
         onBack={handleBack}
       />
+      {experienceEventId !== null ? (
+        <React.Suspense fallback={null}>
+          <CheckoutQuestionsStep
+            eventId={experienceEventId}
+            visible={false}
+            value={null}
+            onChange={() => undefined}
+            onProbe={setFormProbe}
+            refusal={null}
+            onContinue={() => undefined}
+            continueLabel={finalLabel}
+            submitting={false}
+          />
+        </React.Suspense>
+      ) : null}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
@@ -799,7 +943,7 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           <View pointerEvents={continueDisabled ? "none" : "auto"}>
             <Button
               label={continueLabel}
-              onPress={handleContinue}
+              onPress={handleDetailsContinue}
               variant="primary"
               size="lg"
               fullWidth

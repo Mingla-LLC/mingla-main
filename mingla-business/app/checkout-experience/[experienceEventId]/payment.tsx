@@ -46,6 +46,7 @@ import { isRequiredPhoneValid } from "../../../src/utils/phone";
 import {
   confirmTicketCheckout,
   createTicketCheckout,
+  PAID_CHECKOUT_FAILED_MESSAGE,
   paidCheckoutErrorMessage,
   PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
   ticketCheckoutProviderHandoff,
@@ -106,6 +107,16 @@ const TicketQuoteSummary = React.lazy(() =>
   ),
 );
 
+// #4514 wave 5 — the refusals that reopen the Questions step. Only these: a
+// server failure of the check or the stash (brand_form_check_failed /
+// brand_form_stash_failed) is the normal retryable error and never opens a step
+// the buyer cannot finish. Inline in each route on purpose: a shared module
+// would land in the eager bundle (the #4514 bundle budget).
+const FORM_REFUSAL = /^(form_answers_required|form_answers_invalid|form_changed)$/;
+const formRefusalOf = (code: unknown): string | null =>
+  typeof code === "string" && FORM_REFUSAL.test(code) ? code : null;
+const BRAND_FORM_SERVER_FAILURE = /^brand_form_(check|stash)_failed$/;
+
 export default function CheckoutExperiencePaymentScreen(): React.ReactElement {
   return (
     <Suspense fallback={null}>
@@ -161,6 +172,12 @@ function CheckoutExperiencePaymentScreenContent({
     resetCheckoutAttempt,
   } = useCart();
   const totals = useCartQuoteTotals();
+  // #4514 wave 5 — a page with a Questions step has four steps; the buyer's
+  // answers (or null when skipped) are set only by that step.
+  const formStepProps =
+    buyer.brandForm !== undefined
+      ? ({ stepIndex: 3, totalSteps: 4, stepNames: ["Your spot", "Details", "Questions", "Payment"] } as const)
+      : ({ stepIndex: 2, totalSteps: 3 } as const);
 
   const [restoreChecked, setRestoreChecked] = useState<boolean>(
     Platform.OS !== "web",
@@ -440,11 +457,29 @@ function CheckoutExperiencePaymentScreenContent({
             setPaymentError(null);
             return;
           }
+          // #4514 wave 5 — the server wants the page's questions answered (the
+          // form changed after Details): back to the Questions step, nothing charged.
+          // The real refusal code travels, so the step explains the right thing.
+          // A server failure of the check or the stash is NOT a form refusal:
+          // it is the normal retryable error below.
+          const formCode = formRefusalOf((error as { code?: string } | null)?.code);
+          if (formCode !== null) {
+            router.replace(
+              `/checkout-experience/${experienceEventId}/buyer?questions=${formCode}` as never,
+            );
+            return;
+          }
           // issue #2190 — NEVER render the raw thrown string. supabase-js reports
           // every handled refusal as "Edge Function returned a non-2xx status
           // code"; the mapper is total and turns each bounded case into a
           // sentence that also says whether money moved.
-          const message = paidCheckoutErrorMessage(error);
+          // #4514 — the form check or stash failed on the server before any
+          // charge: the normal retryable error, never the Questions step.
+          const message = BRAND_FORM_SERVER_FAILURE.test(
+            (error as { code?: string } | null)?.code ?? "",
+          )
+            ? PAID_CHECKOUT_FAILED_MESSAGE
+            : paidCheckoutErrorMessage(error);
           setPaymentError(message);
           mixpanelService.track("ticket_checkout_failed", {
             surface,
@@ -484,6 +519,8 @@ function CheckoutExperiencePaymentScreenContent({
             phone: buyer.phone,
             // #4273: buying opts the buyer in; there is no box to untick.
             marketingOptIn: true,
+            // #4514 wave 5 — the Questions step's answers (sent top-level).
+            brandForm: buyer.brandForm ?? null,
           },
           // ORCH-1246 (Apple 4.9) — experience title so the Apple Pay sheet line
           // item shows the product, not the company. Fallback "Ticket" if unloaded.
@@ -638,8 +675,7 @@ function CheckoutExperiencePaymentScreenContent({
     return (
       <View style={styles.host}>
         <CheckoutHeader
-          stepIndex={2}
-          totalSteps={3}
+          {...formStepProps}
           title="Payment"
           onBack={handleBack}
         />
@@ -651,8 +687,7 @@ function CheckoutExperiencePaymentScreenContent({
     return (
       <View style={styles.host}>
         <CheckoutHeader
-          stepIndex={2}
-          totalSteps={3}
+          {...formStepProps}
           title="Review changes"
           onBack={handleBack}
         />
@@ -682,8 +717,7 @@ function CheckoutExperiencePaymentScreenContent({
   return (
     <View style={styles.host}>
       <CheckoutHeader
-        stepIndex={2}
-        totalSteps={3}
+        {...formStepProps}
         title="Payment"
         onBack={handleBack}
       />

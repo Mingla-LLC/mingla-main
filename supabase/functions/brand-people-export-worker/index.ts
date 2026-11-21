@@ -92,6 +92,60 @@ function validateRows(value: unknown): Record<string, unknown>[] {
   );
 }
 
+/**
+ * #4514 wave 3: the guest roster CSV gains one column per question of the page's
+ * brand form (§4.9, "the existing roster CSV plus one column per question and
+ * version"), from brand_form_roster_export_answers. Headers are the question
+ * labels (with the version when the form has more than one), made unique against
+ * the roster columns; values are display text. A page with no form adds nothing.
+ * A failed read fails the export rather than shipping a CSV without its answers.
+ */
+// deno-lint-ignore no-explicit-any -- Edge client has no generated database types.
+export async function rosterFormAnswers(service: any, jobId: string): Promise<{
+  headers: string[];
+  byPerson: Map<string, Record<string, string>>;
+}> {
+  const { data, error } = await service.rpc(
+    "brand_form_roster_export_answers",
+    { p_job_id: jobId },
+  );
+  if (error || data === null || typeof data !== "object") {
+    throw new Error("export_form_answers_failed");
+  }
+  const value = data as { columns?: unknown; rows?: unknown };
+  const columns = Array.isArray(value.columns) ? value.columns : [];
+  const used = new Set<string>(BRAND_BOOK_COLUMNS);
+  const headerByKey = new Map<string, string>();
+  for (const column of columns) {
+    const key = (column as { key?: unknown })?.key;
+    const label = (column as { header?: unknown })?.header;
+    if (typeof key !== "string" || typeof label !== "string") {
+      throw new Error("export_form_answers_failed");
+    }
+    let header = label.trim() || "Question";
+    for (let n = 2; used.has(header); n++) header = `${label.trim()} (${n})`;
+    used.add(header);
+    headerByKey.set(key, header);
+  }
+  const byPerson = new Map<string, Record<string, string>>();
+  const rows = value.rows && typeof value.rows === "object" &&
+      !Array.isArray(value.rows)
+    ? value.rows as Record<string, unknown>
+    : {};
+  for (const [personId, answers] of Object.entries(rows)) {
+    if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
+      continue;
+    }
+    const out: Record<string, string> = {};
+    for (const [key, text] of Object.entries(answers)) {
+      const header = headerByKey.get(key);
+      if (header !== undefined && typeof text === "string") out[header] = text;
+    }
+    byPerson.set(personId, out);
+  }
+  return { headers: [...headerByKey.values()], byPerson };
+}
+
 // deno-lint-ignore no-explicit-any -- Edge client has no generated database types.
 export async function expireFiles(service: any): Promise<number> {
   const now = new Date().toISOString();
@@ -257,7 +311,16 @@ export async function handleExportWorkerRequest(
     if (heartbeatError || heartbeat !== true) {
       throw new Error("export_lease_unproven");
     }
-    const csv = csvFromRows(rows, BRAND_BOOK_COLUMNS);
+    const answers = job.export_kind === "offering_guest_roster"
+      ? await rosterFormAnswers(service, job.id)
+      : { headers: [] as string[], byPerson: new Map() };
+    const csv = csvFromRows(
+      answers.headers.length === 0 ? rows : rows.map((row) => ({
+        ...row,
+        ...(answers.byPerson.get(String(row.personId ?? "")) ?? {}),
+      })),
+      [...BRAND_BOOK_COLUMNS, ...answers.headers],
+    );
     const bytes = new TextEncoder().encode(csv);
     const checksum = await sha256Hex(bytes);
     const storagePath = `brand/${job.brand_id}/${job.id}.csv`;

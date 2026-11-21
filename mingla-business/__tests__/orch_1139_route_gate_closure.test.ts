@@ -139,6 +139,9 @@ const EXPECTED: Record<string, Bucket> = {
   pay: "buyer-exempt",
   // #4111 — /m/{token}, the signed-out guest's enquiry thread.
   m: "buyer-exempt",
+  // #4514 — /form/{formId}#t=…, a brand form's link page (anonymous-tolerant;
+  // the personal-link token rides the fragment). In PUBLIC_BUYER_ROUTE_PREFIXES.
+  form: "buyer-exempt",
   // [TEST-MOD-APPROVED #3827] `/g/{token}` proves possession through its
   // bearer credential and must bypass both ambient-auth and buyer allowlists.
   g: "bearer-exempt",

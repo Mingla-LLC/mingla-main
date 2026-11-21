@@ -20,7 +20,13 @@ import {
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
 import { writeAudit } from "../_shared/audit.ts";
-import { bookedStartValue, readBookedStarts } from "../_shared/doorBookedStart.ts";
+import {
+  bookedStartValue,
+  type DoorAnswersView,
+  doorAnswersUnavailable,
+  readBookedStarts,
+  readDoorAnswers,
+} from "../_shared/doorBookedStart.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -93,6 +99,17 @@ export type GuestListDeps = {
     orderIds: string[],
     signal: AbortSignal,
   ) => Promise<Record<string, string>>;
+  /**
+   * #4514 §6 — the admitted guest's door line, ready to show (the same reader
+   * as a ticket scan). Optional: never throws; null when there is nothing.
+   */
+  doorAnswers?: (
+    actorId: string,
+    eventId: string,
+    orderId: string,
+    ticketId: string | null,
+    signal: AbortSignal,
+  ) => Promise<DoorAnswersView | null>;
   /** Tests only: the optional door reads' deadline (DOOR_EXTRAS_DEADLINE_MS). */
   doorDeadlineMs?: number;
   audit: (entry: {
@@ -385,6 +402,45 @@ const withDeadline = <T>(promise: Promise<T>, ms: number): Promise<T | null> => 
   });
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 };
+
+const DOOR_ADMITTED = new Set(["success", "duplicate"]);
+/** #4514 §6: the admitted guest's door line; never throws, bounded by the door deadline. */
+async function readAdmitDoorAnswers(
+  deps: GuestListDeps,
+  actorId: string,
+  eventId: string,
+  out: Record<string, unknown>,
+): Promise<DoorAnswersView | null> {
+  if (
+    !deps.doorAnswers || typeof out.result !== "string" ||
+    !DOOR_ADMITTED.has(out.result) || !isUuid(out.orderId)
+  ) {
+    return null;
+  }
+  const deadline = new AbortController();
+  try {
+    // Boxed, so "nothing to show" (null) is never mistaken for "too slow".
+    const read = await withDeadline(
+      deps.doorAnswers(
+        actorId,
+        eventId,
+        out.orderId,
+        isUuid(out.ticketId) ? out.ticketId : null,
+        deadline.signal,
+      ).then((line) => ({ line })),
+      deps.doorDeadlineMs ?? DOOR_EXTRAS_DEADLINE_MS,
+    );
+    if (read === null) {
+      deadline.abort();
+      console.error("[guest-list] door answers unavailable");
+      return doorAnswersUnavailable();
+    }
+    return read.line;
+  } catch {
+    console.error("[guest-list] door answers unavailable");
+    return doorAnswersUnavailable();
+  }
+}
 
 // Defence in depth: the door gets exactly these fields, whatever the SQL adds.
 export function projectDoorOrders(orders: unknown): Record<string, unknown>[] {
@@ -712,7 +768,7 @@ export function createHandler(
         });
         if (error) return mapRpcError(error);
         const out = data as Record<string, unknown>;
-        return json({
+        const admitted = {
           ok: true,
           result: out.result,
           ticketId: out.ticketId ?? null,
@@ -722,6 +778,19 @@ export function createHandler(
           nextStartAt: out.nextStartAt ?? null,
           lastEndAt: out.lastEndAt ?? null,
           eventDateId: out.eventDateId ?? null,
+        };
+        // #4514 §6 — the admitted guest's door line, exactly as a ticket scan
+        // shows it. The admission is already recorded above: the read runs
+        // only for a ticket the door let in (or had let in), under the door
+        // deadline, and a failed or slow read is "unavailable". It never
+        // changes the result. The scan receipt id rides along so "See all
+        // answers" can open through the same scan-ticket check.
+        const doorLine = await readAdmitDoorAnswers(deps, actorId, body.eventId, out);
+        if (doorLine === null) return json(admitted);
+        return json({
+          ...admitted,
+          scanId: isUuid(out.scanId) ? out.scanId : null,
+          doorAnswers: doorLine,
         });
       }
     }
@@ -746,6 +815,8 @@ function defaultDeps(): GuestListDeps {
     dispatch: dispatchTicketConfirmation,
     bookedStarts: (eventId, orderIds, signal) =>
       readBookedStarts(service(), eventId, orderIds, signal),
+    doorAnswers: (actorId, eventId, orderId, ticketId, signal) =>
+      readDoorAnswers(service(), actorId, eventId, orderId, ticketId, signal),
     audit: async (entry) => {
       await writeAudit(service(), { ...entry, brand_id: null, before: null });
     },

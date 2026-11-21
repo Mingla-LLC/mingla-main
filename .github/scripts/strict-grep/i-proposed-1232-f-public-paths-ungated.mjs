@@ -91,6 +91,8 @@ const EXPECTED_BUYER = [
   "/pay/",
   // #4420 — /stay/pay/{token}, the signed-out guest's Stay pay link on web.
   "/stay/pay/",
+  // #4514 — /form/{formId}, a brand form's personal link (token in the URL fragment, anon).
+  "/form/",
 ].sort();
 const EXPECTED_CONNECT = [
   "/connect-onboarding",
@@ -154,7 +156,7 @@ function runSelfTest() {
     f++;
   }
   // F3 — prefix snapshot compare
-  const goodCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refund/","/o/","/booking/","/attendance/claim/","/m/","/pay/","/stay/pay/"];`;
+  const goodCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refund/","/o/","/booking/","/attendance/claim/","/m/","/pay/","/stay/pay/","/form/"];`;
   const badCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/"];`;
   const badMissingRefund = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/o/","/booking/","/attendance/claim/"];`;
   const badRefundsLookalike = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refunds/","/o/","/booking/","/attendance/claim/"];`;

@@ -1450,7 +1450,7 @@
         "mingla-business/src/components/ui/WebDateTimeInput.tsx",
         "mingla-business/src/components/event/CreatorStep2When.tsx",
         "mingla-business/src/components/event/MultiDateOverrideSheet.tsx",
-        "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx",
+        "packages/form-rendering/QuestionRenderers.tsx",
         "mingla-business/src/components/trip/PaymentPlanEditor.tsx",
         "mingla-business/src/components/trip/BookingDeadlinePicker.tsx",
         "mingla-business/src/components/marketing/ComposerStepWhen.tsx",
@@ -17951,6 +17951,7 @@
         "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql",
         "supabase/migrations/20281120014420_issue_4420_brand_guest_activity.sql",
         "supabase/migrations/20281120024420_issue_4420_guest_rooms_start_broadcast.sql",
+        "supabase/migrations/20281120034514_issue_4514_brand_forms.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19843,6 +19844,7 @@
         "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql",
         "supabase/migrations/20281120014420_issue_4420_brand_guest_activity.sql",
         "supabase/migrations/20281120024420_issue_4420_guest_rooms_start_broadcast.sql",
+        "supabase/migrations/20281120034514_issue_4514_brand_forms.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -21598,6 +21600,8 @@
         "supabase/migrations/__tests__/issue_4473_shared_holders_gatekeeper.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4473_shared_source_changes.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4473_shared_source_changes.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -22962,13 +22966,13 @@
         {
           "name": "issue-1995-contact-book-blast: Type-check the",
           "cwd": "mingla-business",
-          "run": "set +e\nnpx tsc --noEmit --pretty false > /tmp/issue-1995-tsc.log 2>&1\ntsc_status=$?\nset -e\nif [ \"$tsc_status\" -ne 0 ] && ! grep -q 'error TS' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit \"$tsc_status\"\nfi\nif grep -E 'compose\\.tsx|AudiencePickerSheet\\.tsx|ComposerReviewSheet\\.tsx|marketingCampaignService\\.ts|useBookBlastPreview\\.ts|useResolveAudience\\.ts|parseAudienceParam\\.ts|issue_1995_contact_book_blast\\.happy\\.test\\.tsx|issue_1778_ring_audiences\\.happy\\.test\\.(tsx|ts)|types/marketing\\.ts|marketingOverviewService\\.ts|marketingReportService\\.ts|OverviewMetricCard\\.tsx|marketing/index\\.tsx|marketing/campaigns/\\[id\\]\\.tsx|issue_2714_campaign_open_truth\\.happy\\.test\\.ts' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit 1\nfi\necho \"No TypeScript diagnostics in #1995 or #2714 changed Business files\"\n",
+          "run": "set +e\nnode --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit --pretty false > /tmp/issue-1995-tsc.log 2>&1\ntsc_status=$?\nset -e\nif [ \"$tsc_status\" -ne 0 ] && ! grep -q 'error TS' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit \"$tsc_status\"\nfi\nif grep -E 'compose\\.tsx|AudiencePickerSheet\\.tsx|ComposerReviewSheet\\.tsx|marketingCampaignService\\.ts|useBookBlastPreview\\.ts|useResolveAudience\\.ts|parseAudienceParam\\.ts|issue_1995_contact_book_blast\\.happy\\.test\\.tsx|issue_1778_ring_audiences\\.happy\\.test\\.(tsx|ts)|types/marketing\\.ts|marketingOverviewService\\.ts|marketingReportService\\.ts|OverviewMetricCard\\.tsx|marketing/index\\.tsx|marketing/campaigns/\\[id\\]\\.tsx|issue_2714_campaign_open_truth\\.happy\\.test\\.ts' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit 1\nfi\necho \"No TypeScript diagnostics in #1995 or #2714 changed Business files\"\n",
           "invocation": {
             "kind": "raw-shell",
             "command": "bash",
             "argv": [
               "-c",
-              "set +e\nnpx tsc --noEmit --pretty false > /tmp/issue-1995-tsc.log 2>&1\ntsc_status=$?\nset -e\nif [ \"$tsc_status\" -ne 0 ] && ! grep -q 'error TS' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit \"$tsc_status\"\nfi\nif grep -E 'compose\\.tsx|AudiencePickerSheet\\.tsx|ComposerReviewSheet\\.tsx|marketingCampaignService\\.ts|useBookBlastPreview\\.ts|useResolveAudience\\.ts|parseAudienceParam\\.ts|issue_1995_contact_book_blast\\.happy\\.test\\.tsx|issue_1778_ring_audiences\\.happy\\.test\\.(tsx|ts)|types/marketing\\.ts|marketingOverviewService\\.ts|marketingReportService\\.ts|OverviewMetricCard\\.tsx|marketing/index\\.tsx|marketing/campaigns/\\[id\\]\\.tsx|issue_2714_campaign_open_truth\\.happy\\.test\\.ts' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit 1\nfi\necho \"No TypeScript diagnostics in #1995 or #2714 changed Business files\"\n"
+              "set +e\nnode --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit --pretty false > /tmp/issue-1995-tsc.log 2>&1\ntsc_status=$?\nset -e\nif [ \"$tsc_status\" -ne 0 ] && ! grep -q 'error TS' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit \"$tsc_status\"\nfi\nif grep -E 'compose\\.tsx|AudiencePickerSheet\\.tsx|ComposerReviewSheet\\.tsx|marketingCampaignService\\.ts|useBookBlastPreview\\.ts|useResolveAudience\\.ts|parseAudienceParam\\.ts|issue_1995_contact_book_blast\\.happy\\.test\\.tsx|issue_1778_ring_audiences\\.happy\\.test\\.(tsx|ts)|types/marketing\\.ts|marketingOverviewService\\.ts|marketingReportService\\.ts|OverviewMetricCard\\.tsx|marketing/index\\.tsx|marketing/campaigns/\\[id\\]\\.tsx|issue_2714_campaign_open_truth\\.happy\\.test\\.ts' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit 1\nfi\necho \"No TypeScript diagnostics in #1995 or #2714 changed Business files\"\n"
             ]
           },
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow assertion command byte-for-byte.",
@@ -25470,6 +25474,7 @@
         "supabase/migrations/20281120004420_issue_4420_support_staff_read_brand_plan.sql",
         "supabase/migrations/20281120014420_issue_4420_brand_guest_activity.sql",
         "supabase/migrations/20281120024420_issue_4420_guest_rooms_start_broadcast.sql",
+        "supabase/migrations/20281120034514_issue_4514_brand_forms.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -27225,6 +27230,8 @@
         "supabase/migrations/__tests__/issue_4473_shared_holders_gatekeeper.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4473_shared_source_changes.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4473_shared_source_changes.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_679_brand_follows.test.ts",
         "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
@@ -43684,7 +43691,7 @@
   "commandCapabilities": {
     "schemaVersion": 1,
     "expectedCommands": 721,
-    "registrySha256": "c9eb8e628de718d76da16b3a10e291b6eced9f7643f650b8e162572eddc1339e",
+    "registrySha256": "c8339ed71523a23ffe2e9f2aeb5ccc2276768084f96e8f684c3181ae5117d05e",
     "commands": [
       {
         "id": "assert:issue-1282-google-bespoke-copy-tests:01",
@@ -50373,11 +50380,11 @@
         "executable": "bash",
         "argv": [
           "-c",
-          "set +e\nnpx tsc --noEmit --pretty false > /tmp/issue-1995-tsc.log 2>&1\ntsc_status=$?\nset -e\nif [ \"$tsc_status\" -ne 0 ] && ! grep -q 'error TS' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit \"$tsc_status\"\nfi\nif grep -E 'compose\\.tsx|AudiencePickerSheet\\.tsx|ComposerReviewSheet\\.tsx|marketingCampaignService\\.ts|useBookBlastPreview\\.ts|useResolveAudience\\.ts|parseAudienceParam\\.ts|issue_1995_contact_book_blast\\.happy\\.test\\.tsx|issue_1778_ring_audiences\\.happy\\.test\\.(tsx|ts)|types/marketing\\.ts|marketingOverviewService\\.ts|marketingReportService\\.ts|OverviewMetricCard\\.tsx|marketing/index\\.tsx|marketing/campaigns/\\[id\\]\\.tsx|issue_2714_campaign_open_truth\\.happy\\.test\\.ts' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit 1\nfi\necho \"No TypeScript diagnostics in #1995 or #2714 changed Business files\"\n"
+          "set +e\nnode --max-old-space-size=6144 node_modules/typescript/bin/tsc --noEmit --pretty false > /tmp/issue-1995-tsc.log 2>&1\ntsc_status=$?\nset -e\nif [ \"$tsc_status\" -ne 0 ] && ! grep -q 'error TS' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit \"$tsc_status\"\nfi\nif grep -E 'compose\\.tsx|AudiencePickerSheet\\.tsx|ComposerReviewSheet\\.tsx|marketingCampaignService\\.ts|useBookBlastPreview\\.ts|useResolveAudience\\.ts|parseAudienceParam\\.ts|issue_1995_contact_book_blast\\.happy\\.test\\.tsx|issue_1778_ring_audiences\\.happy\\.test\\.(tsx|ts)|types/marketing\\.ts|marketingOverviewService\\.ts|marketingReportService\\.ts|OverviewMetricCard\\.tsx|marketing/index\\.tsx|marketing/campaigns/\\[id\\]\\.tsx|issue_2714_campaign_open_truth\\.happy\\.test\\.ts' /tmp/issue-1995-tsc.log; then\n  cat /tmp/issue-1995-tsc.log\n  exit 1\nfi\necho \"No TypeScript diagnostics in #1995 or #2714 changed Business files\"\n"
         ],
         "env": null,
         "compound": false,
-        "payloadSha256": "2db759e92891c79ee41ad0ffb2def70c8c918f59b999ae0c15fbf6e33e4cd6d9"
+        "payloadSha256": "75e0979e6576e185e7793b2999df0c843ea5c3c234acf8e4d0f692933678cbeb"
       },
       {
         "id": "assert:issue-2009-published-event-visibility:01",
@@ -54521,5 +54528,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "88388103fb7bf6779ad6104fa9ed19dbfe2d6bea4cbf4d73491c456fba7ab0da"
+  "phase3eContractSha256": "49d38f08e86ae05e74b72dc9334443c4fe0a15299a7b8e75d9424d846ef76a96"
 }

@@ -624,7 +624,10 @@ export function phase3dContractDigest(manifest) {
 // #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 merge of main after #3645 bundle 2e-1: kept main's 20281119003645 row before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 1931 replay: skipped 20281120014420_issue_4420_brand_guest_activity.sql by exact filename on the filtered #1931 temp replay (it calls issue_4459_is_brand_team, defined only by the skipped 20280805004459; #2492 closure); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "88388103fb7bf6779ad6104fa9ed19dbfe2d6bea4cbf4d73491c456fba7ab0da";
+// #4514 merge of main after #4420: kept the three #4420 rows before the 20281120034514 row (filename order) and #4420's 20281120014420 skip;
+// #4514 brand forms: removed the exact-filename skip of 20281120034514 from the #1931 filtered template replay (the #2492 gate now credits applied CREATE TABLE columns); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "49d38f08e86ae05e74b72dc9334443c4fe0a15299a7b8e75d9424d846ef76a96";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
@@ -1126,11 +1129,14 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // [TEST-MOD-APPROVED #3643] Re-banked all four after the advisory-floor overrides
 // (glob@^13, minimatch@^9/^10, uuid, markdown-it floor; app-mobile
 // image-size + the Metro image-size patch) and in-range JS updates. No framework majors.
+// [TEST-MOD-APPROVED #4514] Re-banked after Host declared @mingla/form-rendering
+// (file:../packages/form-rendering, the one question model) and its three
+// lockfile link entries. app-mobile is unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "fcdf6302f7944b01a48ddb2111b2d3deed82644b519c7c9a2bc673e31a30aae6",
   "app-mobile/package-lock.json": "40bac6aff5ba88ab90debc72a88f0b106bf2d2e4dc0234f20b054d2ae9786edf",
-  "mingla-business/package.json": "317e03276578841eff1f4840aa448907b32790111bb866e54023f982d0f01903",
-  "mingla-business/package-lock.json": "b4d1f5f1849fbc2857b358d57ae9d0c0d95b868da76d562c55f24059b29f01ea",
+  "mingla-business/package.json": "a8c48f2b31535cdc075333d848af83c902b8437cde1cfcefa1e1e3a5ff703be2",
+  "mingla-business/package-lock.json": "0bc52863b9c33e013d200020dedaa5035f4f17f590387eb1247830ca279792d2",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
 // transition retained-live-provider -> batched-provider at cutover. The other
