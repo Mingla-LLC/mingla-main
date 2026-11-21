@@ -1,16 +1,14 @@
 // MINGLA-INVARIANT: I-4420-SIDEBAR-FITS | issue #4420 | the desktop side menu (rail and expanded) fits its measured panel height down to 432 px with every group open, never scrolls, and a 14th item still fits.
 /**
  * #4420 — Host web side menu sizing is a pure function of the measured height.
- * FAILS-ON-REVERT: restore the ScrollViews / fixed 48 + 40 sizes and the
- * no-ScrollView source check fails; restore fixed sizes in the sizing
- * functions and the fit assertions fail at 432.
+ * FAILS-ON-REVERT: restore fixed 48 + 40 sizes in the sizing functions and
+ * the fit assertions fail at 432. "No scrolling" in the rail is asserted by
+ * issue_4389_sidebar_rail.implementor.test.tsx (R4, a render-level check).
  *
  *   cd mingla-business && npx jest --maxWorkers=2 \
  *     src/components/ui/__tests__/issue_4420_sidebar_fit.implementor.test.ts
  */
 import { describe, expect, test } from "@jest/globals";
-import * as fs from "fs";
-import * as path from "path";
 
 import {
   EXPANDED_BRAND_ROW_HEIGHT,
@@ -70,14 +68,4 @@ describe("#4420 expanded sidebar sizing", () => {
     const avail = expandedAvailable(532, EXPANDED_BRAND_ROW_HEIGHT);
     expect(expandedLayout(avail, 10, 2, 3).row).toBeGreaterThan(expandedLayout(avail, 12, 2, 3).row);
   });
-});
-
-describe("#4420 no scrolling in either sidebar file", () => {
-  for (const file of ["../DesktopSidebar.tsx", "../DesktopSidebarRail.tsx"]) {
-    test(`${file} has no ScrollView`, () => {
-      const src = fs.readFileSync(path.join(__dirname, file), "utf8");
-      expect(src).not.toMatch(/ScrollView/);
-      expect(src).not.toMatch(/sidebar-rail-scroll/);
-    });
-  }
 });
