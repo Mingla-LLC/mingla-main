@@ -15,6 +15,7 @@ import {
 import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
 import { installmentKeyVersionSuffix } from "./installmentIdempotencyKey.ts";
+import { rollOverMissedPayment } from "./missedRollover.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
 import {
   MAX_RETRY_ATTEMPTS,
@@ -515,8 +516,8 @@ export async function createInstallmentPI(
       stripeErr.message ?? ""
     }`.slice(0, 500);
     const nextRetryCount = installment.retry_count + 1;
-    const willBeAtRisk = nextRetryCount >= MAX_RETRY_ATTEMPTS;
-    const nextRetryAt = willBeAtRisk
+    const lastRetry = nextRetryCount >= MAX_RETRY_ATTEMPTS;
+    const nextRetryAt = lastRetry
       ? null
       : nextRetryAtAfterFailure(installment.due_at, nextRetryCount);
 
@@ -533,6 +534,10 @@ export async function createInstallmentPI(
       .eq("id", installment.id)
       .eq("status", "scheduled");
 
+    // issue #4522 (D-7) — a v2 auto-adjust order rolls the missed payment onto
+    // its later rows; otherwise the booking is flagged at risk as before.
+    const willBeAtRisk = lastRetry &&
+      !(await rollOverMissedPayment(supabase, installment.id));
     if (willBeAtRisk) {
       await supabase
         .from("orders")

@@ -5226,7 +5226,15 @@
         "supabase/functions/_shared/installments/createInstallmentPI.ts",
         "supabase/functions/_shared/installments/paystackInstallmentWebhook.ts",
         "supabase/functions/_shared/installmentWebhookHandlers.ts",
-        "supabase/functions/process-scheduled-installments/index.ts"
+        "supabase/functions/process-scheduled-installments/index.ts",
+        "supabase/migrations/20281120084522_issue_4522_missed_rollover.sql",
+        "supabase/functions/_shared/installments/missedRollover.ts",
+        "supabase/functions/_shared/installments/balanceLinks.ts",
+        "supabase/functions/_shared/email/installmentReminderEmail.ts",
+        "supabase/functions/_shared/email/installmentDunningEmail.ts",
+        "supabase/functions/_shared/email/installmentPreChargeNoticeEmail.ts",
+        "supabase/functions/send-installment-reminder/index.ts",
+        "supabase/functions/manual-charge-installment/index.ts"
       ]
     },
     {

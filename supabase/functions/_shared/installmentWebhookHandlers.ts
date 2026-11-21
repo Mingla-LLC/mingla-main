@@ -34,6 +34,7 @@ import {
   installmentFeeCents,
   resolveInstallmentFeeRate,
 } from "./installments/installmentFeeRate.ts";
+import { rollOverMissedPayment } from "./installments/missedRollover.ts";
 // The one reader of a PaymentIntent's charge id. The router imports this
 // module too; the cycle is safe because both sides only export function
 // declarations and neither calls the other while the module loads.
@@ -403,8 +404,8 @@ export async function handleInstallmentPaymentFailed(
   // failure-event source for off_session PIs needing 3DS challenge).
   const shouldIncrement = currentStatus === "scheduled";
   const nextRetryCount = shouldIncrement ? currentRetryCount + 1 : currentRetryCount;
-  const willBeAtRisk = nextRetryCount >= MAX_RETRY_ATTEMPTS;
-  const nextRetryAt = willBeAtRisk
+  const lastRetry = nextRetryCount >= MAX_RETRY_ATTEMPTS;
+  const nextRetryAt = lastRetry
     ? null
     : nextRetryAtAfterFailure(String(existingRow.due_at), nextRetryCount);
 
@@ -422,6 +423,10 @@ export async function handleInstallmentPaymentFailed(
     .eq("id", installmentId)
     .in("status", ["scheduled", "failed"]);
 
+  // issue #4522 (D-7) — a v2 auto-adjust order rolls the missed payment onto
+  // its later rows; otherwise the booking is flagged at risk as before.
+  const willBeAtRisk = lastRetry &&
+    !(await rollOverMissedPayment(supabase, installmentId));
   if (willBeAtRisk) {
     await supabase
       .from("orders")

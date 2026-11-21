@@ -624,7 +624,7 @@ export function phase3dContractDigest(manifest) {
 // #4420 merge of main after #4453: kept main's two #4453 rows before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 merge of main after #3645 bundle 2e-1: kept main's 20281119003645 row before the three #4420 rows (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 1931 replay: skipped 20281120014420_issue_4420_brand_guest_activity.sql by exact filename on the filtered #1931 temp replay (it calls issue_4459_is_brand_team, defined only by the skipped 20280805004459; #2492 closure); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "d90df95dba752713d17f211e88d7e42bc77921fbfe102750aaa8d9b8144bb096";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "56446b3aaeaf4edb42397dfe93a9276e0a81bd5b5c9749af31e9362f02d5d686";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

@@ -77,10 +77,17 @@ Deno.test("ORCH-0869 cron: at-risk flag flips at retry_count >= MAX_RETRY_ATTEMP
     /MAX_RETRY_ATTEMPTS\s*=\s*3/,
     "MAX_RETRY_ATTEMPTS = 3 per brief AC #9.",
   );
+  // issue #4522 (D-7): the last retry still decides, but a v2 auto-adjust
+  // order first rolls the missed payment onto its later rows; only when that
+  // does not happen is the booking flagged.
   assertMatch(
     HELPER_SOURCE,
-    /willBeAtRisk\s*=\s*nextRetryCount\s*>=\s*MAX_RETRY_ATTEMPTS/,
+    /lastRetry\s*=\s*nextRetryCount\s*>=\s*MAX_RETRY_ATTEMPTS/,
     "at_risk flips when nextRetryCount >= MAX_RETRY_ATTEMPTS, NOT when retry_count alone exceeds.",
+  );
+  assertMatch(
+    HELPER_SOURCE,
+    /willBeAtRisk\s*=\s*lastRetry\s*&&\s*!\(await rollOverMissedPayment\(supabase, installment\.id\)\)/,
   );
   assertStringIncludes(
     HELPER_SOURCE,
@@ -195,9 +202,14 @@ Deno.test("ORCH-0869 webhook handlers: at_risk flag flips at MAX_RETRY_ATTEMPTS"
     /MAX_RETRY_ATTEMPTS\s*=\s*3/,
     "Webhook handler must mirror cron's at-risk threshold.",
   );
+  // issue #4522 (D-7): see the cron test above.
   assertMatch(
     WEBHOOK_HANDLER_SOURCE,
-    /willBeAtRisk\s*=\s*nextRetryCount\s*>=\s*MAX_RETRY_ATTEMPTS/,
+    /lastRetry\s*=\s*nextRetryCount\s*>=\s*MAX_RETRY_ATTEMPTS/,
+  );
+  assertMatch(
+    WEBHOOK_HANDLER_SOURCE,
+    /willBeAtRisk\s*=\s*lastRetry\s*&&\s*!\(await rollOverMissedPayment\(supabase, installmentId\)\)/,
   );
 });
 
