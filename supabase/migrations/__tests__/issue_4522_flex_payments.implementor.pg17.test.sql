@@ -69,6 +69,12 @@ SELECT pg_temp.seed_order('45220005-0000-4000-8000-0000000000a1', true);
 SELECT pg_temp.seed_order('45220005-0000-4000-8000-0000000000a2', true);
 SELECT pg_temp.seed_order('45220005-0000-4000-8000-0000000000a3', false);
 
+-- The full chain ends with M5 (switch on). The switch goes OFF here for this
+-- transaction only, exactly as a kill-switch migration would write it.
+CREATE OR REPLACE FUNCTION public.issue_4522_plan_v2_enabled()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$ SELECT false $fn$;
+
 -- A. With the switch off nothing starts.
 DO $$
 DECLARE v_balance jsonb;

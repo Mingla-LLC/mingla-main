@@ -4,7 +4,7 @@
 -- Issue #4522 slice 1 (M1, 20281120054522): the v2 plan model, the switch,
 -- the validator, the publish guard, the refund-policy keys and the new
 -- order_installments / orders / session columns. Runs after the full chain.
--- The switch is flipped ON only inside this transaction (rolled back).
+-- The switch is set OFF, then ON, only inside this transaction (rolled back).
 
 BEGIN;
 
@@ -41,14 +41,20 @@ LANGUAGE sql IMMUTABLE AS $$
     'custom_amounts_minor', NULL) || p_extra)
 $$;
 
+-- The full chain ends with M5 (switch on). The switch goes OFF here for this
+-- transaction only, exactly as a kill-switch migration would write it.
+CREATE OR REPLACE FUNCTION public.issue_4522_plan_v2_enabled()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$ SELECT false $fn$;
+
 DO $$
 DECLARE
   v_raised text;
   v_case record;
 BEGIN
-  -- S1-01 the switch ships off and only service_role may call it.
+  -- S1-01 the switch (killed) reads off and only service_role may call it.
   IF public.issue_4522_plan_v2_enabled() IS DISTINCT FROM false THEN
-    RAISE EXCEPTION 'S1-01 the v2 switch must ship false';
+    RAISE EXCEPTION 'S1-01 the killed v2 switch must read false';
   END IF;
   IF has_function_privilege('anon', 'public.issue_4522_plan_v2_enabled()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.issue_4522_plan_v2_enabled()', 'EXECUTE')

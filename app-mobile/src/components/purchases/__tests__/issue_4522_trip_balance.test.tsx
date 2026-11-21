@@ -21,8 +21,8 @@ const service = readFileSync(
 const flags = readFileSync(resolve(root, "src/config/featureFlags.ts"), "utf8");
 const keys = readFileSync(resolve(root, "src/hooks/queryKeys.ts"), "utf8");
 
-test("#4522 Explorer balance stays inert and trip-only until the approved env flip", () => {
-  assert.match(flags, /EXPO_PUBLIC_FF_TRIP_BALANCE === "true"/);
+test("#4522 Explorer balance defaults on, keeps an explicit false kill switch and stays trip-only", () => {
+  assert.match(flags, /EXPO_PUBLIC_FF_TRIP_BALANCE !== "false"/);
   assert.match(
     purchase,
     /FEATURE_FLAG_TRIP_BALANCE && order\?\.eventType === "trip"/,

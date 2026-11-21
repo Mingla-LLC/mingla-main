@@ -5310,6 +5310,7 @@
         "supabase/functions/manual-charge-installment/index.ts",
         "supabase/migrations/20281120094522_issue_4522_refunds_payouts.sql",
         "supabase/migrations/20281120104522_issue_4522_live_plan_price_guard.sql",
+        "supabase/migrations/20281121014522_issue_4522_switch_on.sql",
         "supabase/functions/cancel-trip-booking/index.ts"
       ]
     },

@@ -325,9 +325,9 @@ describe("screens", () => {
 describe("wizard wiring", () => {
   const wizard = read("TripCreatorWizard.tsx");
 
-  test("the flag is dark by default and read from featureFlags", () => {
+  test("fails on revert: the builder defaults on while featureFlags keeps its kill switch", () => {
     const flags = readRoot("src/config/featureFlags.ts");
-    expect(flags).toContain('tripBuilderV2: readEnvFlag(process.env.EXPO_PUBLIC_FF_TRIP_BUILDER_V2, false)');
+    expect(flags).toContain('tripBuilderV2: readEnvFlag(process.env.EXPO_PUBLIC_FF_TRIP_BUILDER_V2, true)');
   });
 
   test("one queue: Continue, Back, Close and the background save all go through autosaveCurrentStep -> saveDirtyGroups", () => {

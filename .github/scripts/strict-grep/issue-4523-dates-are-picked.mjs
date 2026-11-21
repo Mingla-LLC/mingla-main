@@ -46,13 +46,15 @@ export const SCAN_ROOTS = [
 
 /** Counted ratchet. Only ever lowered. */
 export const ALLOWLIST = {
-  "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx": 3,
+  // #4514 moved the intake question renderers (3 hits) into the shared form renderer and its Host primitives; same 3 hits, not new ones.
+  "mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx": 1,
   "mingla-business/src/components/event/CreatorStep2When.tsx": 1,
   "mingla-business/src/components/event/MultiDateOverrideSheet.tsx": 1,
   "mingla-business/src/components/programs/TimeField.tsx": 1,
   "mingla-business/src/components/venue/MenuCategorySheet.tsx": 1,
   "packages/brand-rendering/StayDateRangeField.native.tsx": 1,
   "packages/brand-rendering/StayDateRangeField.tsx": 2,
+  "packages/form-rendering/QuestionRenderers.tsx": 2,
 };
 
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs)$/;

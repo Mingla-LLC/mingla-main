@@ -10,6 +10,12 @@
 
 BEGIN;
 
+-- The full chain ends with M5 (switch on). The switch goes OFF here for this
+-- transaction only, exactly as a kill-switch migration would write it.
+CREATE OR REPLACE FUNCTION public.issue_4522_plan_v2_enabled()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$ SELECT false $fn$;
+
 CREATE FUNCTION pg_temp.raised(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
 BEGIN

@@ -57,7 +57,7 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
     () => (value === null ? EMPTY : (wallInZone(value, zone) ?? EMPTY)),
     [value, zone],
   );
-  const tzLabel = timezoneCityName(zone);
+  const tzLabel = timezoneCityName(brandTimezone ?? "UTC");
   const maxDay = tripDayOf(tripStartIso);
 
   const handleToggle = useCallback(

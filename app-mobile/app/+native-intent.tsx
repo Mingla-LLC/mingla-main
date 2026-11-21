@@ -128,6 +128,7 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   // #4382 — Help & Support and support request threads.
   "support",
   "t",
+  "trip-balance",
 ]);
 
 /** `scheme:` prefix per RFC 3986. Anything without one is a relative path (R-1). */

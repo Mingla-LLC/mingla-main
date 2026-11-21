@@ -93,8 +93,8 @@ export const FEATURE_FLAG_ACCOUNT_SIDE_TOGGLE: boolean = __DEV__;
 
 /**
  * Issue #4522 — Explorer trip balance card and pay-toward-balance screen.
- * Default false: the server switch and release approval must be live first.
+ * Default true; an explicit "false" remains the emergency OTA kill switch.
  * Exit: remove after the approved OTA has one clean rollout window.
  */
 export const FEATURE_FLAG_TRIP_BALANCE: boolean =
-  process.env.EXPO_PUBLIC_FF_TRIP_BALANCE === "true";
+  process.env.EXPO_PUBLIC_FF_TRIP_BALANCE !== "false";
