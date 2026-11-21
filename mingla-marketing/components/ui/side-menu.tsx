@@ -131,7 +131,7 @@ export function SideMenu({
             exit={reduced ? { opacity: 0 } : { opacity: 0 }}
             transition={{ duration: reduced ? 0 : 0.24 }}
             onClick={onClose}
-            className="fixed inset-0 z-[100] bg-black/45 backdrop-blur-sm"
+            className="fixed inset-0 bottom-[var(--mingla-privacy-strip)] z-[100] bg-black/45 backdrop-blur-sm"
             aria-hidden="true"
           />
           <motion.div
@@ -145,7 +145,7 @@ export function SideMenu({
             exit={reduced ? { opacity: 0 } : { x: side === 'right' ? '100%' : '-100%' }}
             transition={reduced ? { duration: 0 } : { type: 'spring', damping: 26, stiffness: 260 }}
             className={cn(
-              'fixed inset-y-0 z-[101] flex w-[82vw] max-w-sm flex-col px-3',
+              'fixed inset-y-0 bottom-[var(--mingla-privacy-strip)] z-[101] flex w-[82vw] max-w-sm flex-col px-3',
               side === 'right' ? 'right-0' : 'left-0',
             )}
             style={{

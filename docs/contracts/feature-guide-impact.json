@@ -2002,7 +2002,9 @@
         "mingla-business/src/services/peopleJourneyService.ts",
         "mingla-business/src/services/postHogService.ts",
         "mingla-business/src/services/postHogService.web.ts",
-        "mingla-business/src/services/screenTracking.ts"
+        "mingla-business/src/services/screenTracking.ts",
+        "mingla-business/src/components/brandContact/PinnedBottomBar.tsx",
+        "mingla-business/src/components/brandContact/PinnedBottomBar.web.tsx"
       ]
     },
     {
@@ -2496,7 +2498,11 @@
       "capability_key": "web-download",
       "paths": [
         "mingla-marketing/app/host/get/route.ts",
-        "mingla-marketing/lib/links-src.ts"
+        "mingla-marketing/lib/links-src.ts",
+        "mingla-marketing/components/cutout/primitives.tsx",
+        "mingla-marketing/components/marketing/app-qr-panel.tsx",
+        "mingla-marketing/components/ui/side-menu.tsx",
+        "mingla-marketing/components/ui/video-modal.tsx"
       ]
     },
     {
@@ -3243,6 +3249,7 @@
         "mingla-business/src/components/messages/BrandPlanPanel.tsx",
         "mingla-business/src/components/ui/Sheet.web.tsx",
         "mingla-business/src/components/ui/SheetMobile.tsx",
+        "mingla-business/src/components/ui/sheetAnchorMetrics.ts",
         "mingla-business/src/components/ui/useSheetGone.ts",
         "mingla-business/src/hooks/brandPlanKeys.ts",
         "mingla-business/src/hooks/useBrandPlan.ts",
@@ -4018,7 +4025,13 @@
         "packages/offering-rendering/ParallaxCoverShell.tsx",
         "packages/offering-rendering/index.ts",
         "packages/offering-rendering/pageFooterAccessory.ts",
-        "mingla-marketing/lib/termsContent.ts"
+        "mingla-marketing/lib/termsContent.ts",
+        "mingla-business/playwright.issue2331strip.config.ts",
+        "mingla-business/playwright/issue2331/stripAudit.ts",
+        "mingla-business/playwright/issue2769/index.html",
+        "mingla-business/scripts/inject-mobile-blur-css.mjs",
+        "mingla-marketing/scripts/issue-2331-strip-token-check.mjs",
+        "mingla-business/playwright/issue2768/index.html"
       ]
     },
     {
@@ -4494,7 +4507,8 @@
         "mingla-marketing/app/careers/roles/[slug]/page.tsx",
         "mingla-marketing/app/careers/roles/layout.tsx",
         "mingla-marketing/app/careers/sitemap.xml/route.ts",
-        "mingla-marketing/lib/careers-seo.ts"
+        "mingla-marketing/lib/careers-seo.ts",
+        "mingla-marketing/app/careers/_components/sticky-apply-bar.tsx"
       ]
     },
     {

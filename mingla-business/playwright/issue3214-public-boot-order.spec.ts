@@ -273,7 +273,8 @@ async function layout(page: Page) {
       body: document.body.getBoundingClientRect().height,
       root: root ? root.getBoundingClientRect().height : -1,
       // #2331 — the privacy bar's live height (0 while hidden).
-      inset: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--mingla-privacy-inset')) || 0,
+      // #2331 — the band is the CSS constant --mingla-privacy-strip: the strip's own height.
+      inset: document.querySelector('.mps')?.getBoundingClientRect().height ?? 0,
       barShown: document.querySelector('[data-testid="privacy-strip"]') !== null,
       scrollers,
     }

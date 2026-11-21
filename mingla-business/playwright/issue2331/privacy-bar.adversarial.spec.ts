@@ -8,11 +8,11 @@ import {
   BRAND_SLUG,
   EVENT_SLUG,
   PAGES,
-  auditOcclusion,
   install,
   scrollToEnd,
   vendorsSeen,
 } from "./harness";
+import { auditStrip } from "./stripAudit";
 
 const SHORT = [
   { width: 320, height: 480 },
@@ -33,27 +33,10 @@ for (const size of SHORT) {
       await expect(page.getByTestId("privacy-strip")).toBeVisible();
       await page.waitForTimeout(target.signedIn === true ? 5000 : 1200);
       await scrollToEnd(page);
-      const closed = await auditOcclusion(page);
-      expect(closed.covered, `${target.name} @ ${size.width}x${size.height}`).toEqual([]);
-      // The strip sits below sheets and dialogs (react-native-web's Modal
-      // layer is z 9999): a page that opens its own dialog on arrival (the
-      // signed-in host home) covers the strip by design, so only the page's
-      // own dialog may be on top of it.
-      const top = await page.evaluate(() => {
-        const strip = document.querySelector<HTMLElement>("[data-testid='privacy-strip']")!.getBoundingClientRect();
-        const hit = document.elementFromPoint(strip.left + strip.width / 2, strip.top + strip.height / 2);
-        if (hit?.closest("[data-testid='privacy-strip']")) return "strip";
-        for (let node = hit; node !== null; node = node.parentElement) {
-          const style = getComputedStyle(node);
-          if (style.position === "fixed" && Number(style.zIndex) >= 9999) return "modal";
-        }
-        return "other";
-      });
-      expect(top, `${target.name} @ ${size.width}x${size.height}`).not.toBe("other");
-      if (top === "modal") {
-        await context.close();
-        continue;
-      }
+      // [TEST-MOD-APPROVED #2331] Edge-based audit; the strip is on the top
+      // z-layer, so nothing (a dialog included) paints over it any more.
+      const closed = await auditStrip(page, { host: true, allowStaticUnder: false });
+      expect(closed.violations, `${target.name} @ ${size.width}x${size.height}`).toEqual([]);
       const before = await page.getByTestId("privacy-strip").boundingBox();
       await page.getByTestId("privacy-strip").click();
       const sheet = page.getByTestId("privacy-sheet");
@@ -63,7 +46,7 @@ for (const size of SHORT) {
       const box = (await sheet.boundingBox())!;
       expect(box.y + box.height).toBeLessThanOrEqual(size.height - 28 + 0.5);
       expect(await page.getByTestId("privacy-strip").boundingBox()).toEqual(before);
-      expect((await auditOcclusion(page)).inset).toBe("28px");
+      expect((await auditStrip(page, { host: true, allowStaticUnder: false })).violations).toEqual([]);
       await page.keyboard.press("Escape");
       await expect(sheet).toHaveCount(0);
       await expect(page.getByTestId("privacy-strip")).toBeFocused();
@@ -142,7 +125,7 @@ for (const [choice, on] of [["denied", false], ["granted", true]] as const) {
     await expect(page.getByTestId("privacy-strip")).toBeVisible();
     await expect(page.getByTestId("privacy-sheet")).toHaveCount(0);
     expect(vendorsSeen(rec).size).toBe(on ? 6 : 0);
-    expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--mingla-privacy-inset").trim())).toBe("28px");
+    expect((await page.locator(".mps").boundingBox())?.height).toBe(28);
     await context.close();
   });
 }

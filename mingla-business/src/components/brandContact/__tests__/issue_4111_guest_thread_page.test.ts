@@ -112,12 +112,14 @@ describe("#4111 /m/{token} route contract", () => {
 
   test("the pinned composer clears the privacy bar on web; the message sheet stays at bottom 0", () => {
     const pinnedWeb = source("src/components/brandContact/PinnedBottomBar.web.tsx");
-    // #2331 inset first, plus the measured lift over any floating UI (P1-1).
-    expect(pinnedWeb).toContain("bottom: `calc(var(--mingla-privacy-inset, 0px) + ${lift}px)`");
+    // [TEST-MOD-APPROVED #2331] #root ends at the strip, so bottom is just the
+    // measured lift over any floating UI (P1-1).
+    expect(pinnedWeb).toContain("bottom: lift,");
+    expect(pinnedWeb).not.toContain("--mingla-privacy");
     expect(pinnedWeb).toContain('position: "fixed"');
     const sheet = source("../packages/brand-rendering/enquiry/BrandMessageSheet.tsx");
-    expect(sheet).not.toContain("--mingla-privacy-inset:");
-    expect(sheet).not.toMatch(/var\(--mingla-privacy-inset/);
+    expect(sheet).not.toContain("--mingla-privacy-strip:");
+    expect(sheet).not.toMatch(/var\(--mingla-privacy-strip/);
   });
 });
 

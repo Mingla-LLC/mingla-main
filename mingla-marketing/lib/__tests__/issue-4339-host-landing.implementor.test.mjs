@@ -166,7 +166,7 @@ test('no "Privacy choices" text or link, and no fixed-bottom element of its own'
   assert.match(fixed[0][1].trim(), /^\[data-landing-sheet\]$/)
   assert.match(fixed[0][0], /inset:\s*0/, 'the sheet overlay covers the screen; it is not a bottom bar')
   // The hero clears the #4318 strip by its own inset.
-  assert.match(css, /bottom: calc\(25px \+ clamp\(28px, 5vh, 56px\) \+ var\(--mingla-privacy-inset, 0px\)\)/)
+  assert.match(css, /bottom: calc\(25px \+ clamp\(28px, 5vh, 56px\) \+ var\(--mingla-privacy-strip\)\)/)
 })
 
 test('"Use Mingla Host" resolves through the #4137 seam: phone → Host OneLink, computer → Host sheet', () => {

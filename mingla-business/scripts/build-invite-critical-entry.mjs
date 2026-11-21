@@ -8,16 +8,13 @@ import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 import { createRequire } from "node:module";
 
-// #2331 — the static shell shows the same collapsed privacy bar as the React
-// owner, from the one server-side source. Only the collapsed row fits the
-// shell's byte budget: Options hands off to the app, whose bar opens expanded.
+// #2331 — the static shell shows the same lean privacy strip as every SPA
+// route: scripts/inject-mobile-blur-css.mjs ships the shell box, the strip (a
+// sibling of #root) and its hand-off runtime in the index.html this entry is
+// cut from (it runs first in the vercel.json build). The
+// strip hands off to the app, whose sheet opens expanded.
 const require = createRequire(import.meta.url);
-const {
-  privacyBarCollapsedCss,
-  privacyBarCollapsedMarkup,
-  privacyBarCollapsedRuntimeSource,
-  privacyReaderSource,
-} = require("../server/publicPrivacyRuntime.js");
+const { privacyBarCollapsedMarkup } = require("../server/publicPrivacyRuntime.js");
 
 const ENTRY_NAME = "accept-brand-invitation-entry.html";
 const ENTRY_MARKER = "issue-922-critical-entry";
@@ -161,9 +158,9 @@ function withoutLegacyConsentCss(css) {
 }
 
 /**
- * #2331 — replace the copied consent panel with the slim privacy bar's
- * collapsed row. OK saves `mingla_privacy_v2` and boots the app, which then
- * shows no bar; Options boots the app with its bar already expanded.
+ * #2331 — replace the copied consent panel with the privacy strip the source
+ * index already carries (inject-mobile-blur-css.mjs): drop the panel's rules and markup,
+ * and boot the app when the strip hands off or a choice is saved.
  */
 function withPrivacyBar(payload) {
   let next = payload;
@@ -172,24 +169,14 @@ function withPrivacyBar(payload) {
   const styleEnd = next.indexOf("</style>", styleStart);
   if (styleStart === -1 || styleEnd === -1) fail("#2331 privacy-bar substitution did not apply: critical stylesheet");
   const legacyCss = next.slice(styleStart + styleOpen.length, styleEnd);
-  next = `${next.slice(0, styleStart + styleOpen.length)}${withoutLegacyConsentCss(legacyCss)}${privacyBarCollapsedCss()}${next.slice(styleEnd)}`;
+  next = `${next.slice(0, styleStart + styleOpen.length)}${withoutLegacyConsentCss(legacyCss)}${next.slice(styleEnd)}`;
   next = swapStrict(next, /<section class="i922-consent[\s\S]*?<\/section>/, "", "consent markup");
-  // The bar sits beside the host, not inside it: the host carries a
-  // translateZ(0) layer (mobile blur fix), which would make it the bar's
-  // containing block instead of the viewport.
-  next = swapStrict(next, "</main>';", `</main>${privacyBarCollapsedMarkup()}';`, "privacy bar placement");
   next = swapStrict(next, 'var consent=root.querySelector(".i922-consent");', "", "consent lookup");
   next = swapStrict(
     next,
     /function choose\(choice\)\{[\s\S]*?choose\("denied"\)\}\)\}\);/,
-    'window.addEventListener("mingla:privacy-saved",function(){protect(boot)});window.addEventListener("mingla:privacy-options",function(){protect(boot)});__minglaPrivacyBar();',
+    'window.addEventListener("mingla:privacy-saved",function(){protect(boot)});window.addEventListener("mingla:privacy-options",function(){protect(boot)});',
     "consent decisions",
-  );
-  next = swapStrict(
-    next,
-    'var signIn=root.querySelector(".i922-signin");',
-    `${privacyReaderSource()}${privacyBarCollapsedRuntimeSource()}var signIn=root.querySelector(".i922-signin");`,
-    "privacy runtime",
   );
   next = swapStrict(
     next,
@@ -208,6 +195,8 @@ export function buildCriticalEntry(buildDir) {
   if (html.includes(ENTRY_MARKER)) fail("source index already contains the output marker");
   if (!html.includes('<div id="root"></div>')) fail("source index lacks the Expo root scaffold");
   if (!html.includes("</body>")) fail("source index lacks </body>");
+  // #2331 — the strip is the source index's own (inject-mobile-blur-css.mjs), outside #root.
+  if (!html.includes(privacyBarCollapsedMarkup())) fail("source index lacks the privacy strip (inject-mobile-blur-css.mjs)");
   const scripts = extractEagerScripts(html, buildDir);
   const withoutScripts = removeScripts(html, scripts);
   // The shell markup is assigned through a single-quoted inline-JS string.

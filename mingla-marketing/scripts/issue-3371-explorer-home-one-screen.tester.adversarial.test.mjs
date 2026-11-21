@@ -95,7 +95,7 @@ const STARTUP_TIMEOUT_MS = 240_000
 
 // origin/main 335fbd21f, production build, measured with this file (worst of 8).
 // #4318 (Seth): re-baselined with the permanent 28px "Privacy & ad choices"
-// strip, which now holds --mingla-privacy-inset on every visit (the old
+// strip, which now holds --mingla-privacy-strip on every visit (the old
 // baseline was measured with the bar hidden, inset 0). Every value is the
 // home measured at that strip height; a later change may not make one worse.
 const ORIGIN_MAIN_BASELINE = {

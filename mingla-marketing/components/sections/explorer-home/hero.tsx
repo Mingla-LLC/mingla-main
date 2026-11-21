@@ -137,7 +137,7 @@ function TermsModal({ open, onClose }: TermsModalProps) {
           aria-modal="true"
           aria-labelledby="terms-modal-title"
           onClick={onClose}
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 px-4 py-5 backdrop-blur-xl sm:px-6"
+          className="fixed inset-0 bottom-[var(--mingla-privacy-strip)] z-[120] flex items-center justify-center bg-black/90 px-4 py-5 backdrop-blur-xl sm:px-6"
         >
           <motion.div
             key="terms-panel"
@@ -275,7 +275,7 @@ function PrivacyModal({ open, onClose }: TermsModalProps) {
           aria-modal="true"
           aria-labelledby="privacy-modal-title"
           onClick={onClose}
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 px-4 py-5 backdrop-blur-xl sm:px-6"
+          className="fixed inset-0 bottom-[var(--mingla-privacy-strip)] z-[120] flex items-center justify-center bg-black/90 px-4 py-5 backdrop-blur-xl sm:px-6"
         >
           <motion.div
             key="privacy-panel"
@@ -408,7 +408,7 @@ function SupportModal({ open, onClose }: TermsModalProps) {
           aria-modal="true"
           aria-labelledby="support-modal-title"
           onClick={onClose}
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 px-4 py-5 backdrop-blur-xl sm:px-6"
+          className="fixed inset-0 bottom-[var(--mingla-privacy-strip)] z-[120] flex items-center justify-center bg-black/90 px-4 py-5 backdrop-blur-xl sm:px-6"
         >
           <motion.div
             key="support-panel"
@@ -523,7 +523,7 @@ export function ExplorerHero({ cityKey = DEFAULT_CITY }: ExplorerHeroProps) {
   // #2331 — the one-screen hero ends above the privacy bar, so the chip row
   // at its foot is never under it.
   return (
-    <section className="relative flex h-[calc(100svh-var(--mingla-privacy-inset,0px))] flex-col overflow-hidden px-[clamp(1rem,4vw,2.5rem)]">
+    <section className="relative flex h-[calc(100svh-var(--mingla-privacy-strip))] flex-col overflow-hidden px-[clamp(1rem,4vw,2.5rem)]">
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_62%,rgba(235,120,37,0.16),transparent_34%),radial-gradient(ellipse_at_12%_16%,rgba(235,120,37,0.11),transparent_32%),radial-gradient(ellipse_at_88%_24%,rgba(118,67,38,0.18),transparent_36%),linear-gradient(180deg,#08090b_0%,#0c0d10_50%,#07080a_100%)]" />
         <div className="absolute inset-0 opacity-[0.11] [background-image:linear-gradient(rgba(235,120,37,0.24)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:72px_72px]" />
