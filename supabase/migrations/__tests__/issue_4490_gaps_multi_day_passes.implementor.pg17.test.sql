@@ -7,6 +7,9 @@
 -- FAILS-ON-REVERT: remove venue_pass_days from issue_4490_admit_pass and F-2
 -- fails because two admissions on one day either spend two days or share the
 -- legacy lifetime counter.
+-- FAILS-ON-REVERT: let issue_4490_pass_admitted_on return a single-day pass's
+-- admitted_count for every date and F-5c/F-5d fail because one gate sale today
+-- fills every other day of the pool.
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
@@ -467,6 +470,107 @@ BEGIN
     'F-4c pass days and free confirmation are service-role only');
 END
 $f4$;
+
+-- F-5: a single-day pass counts only on its own service date. Admitting a gate
+-- sale today must not fill yesterday or tomorrow of the same pool, undo
+-- restores it, and a scan after the pass's date keeps counting its own day.
+DO $f5$
+DECLARE
+  v_venue constant uuid := '4490f000-0000-4000-9000-0000000000a1';
+  v_owner constant uuid := '4490f000-0000-4000-8000-000000000001';
+  v_today date := public.issue_4490_venue_local_date('4490f000-0000-4000-9000-0000000000a1');
+  v_venue_row public.venue_listings%ROWTYPE;
+  v_pool uuid := public.t4490f_id('pool');
+  v_before_today record;
+  v_before_next record;
+  v_before_prev record;
+  v_after record;
+  v_list_next_before integer;
+  v_sale jsonb;
+  v_pass uuid;
+  v_group uuid;
+  v_undo jsonb;
+  v_view jsonb;
+  v_one jsonb;
+  v_two jsonb;
+  v_three jsonb;
+  v_ten uuid := (SELECT pass_id FROM t4490f_passes WHERE k = 'ten');
+BEGIN
+  SELECT * INTO v_venue_row FROM public.venue_listings WHERE id = v_venue;
+  UPDATE public.venue_offer_price_options SET pass_days = NULL, pass_window_days = NULL
+  WHERE id = public.t4490f_id('option');
+  SELECT * INTO v_before_today FROM public.issue_4490_pool_day_usage(v_pool, v_today);
+  SELECT * INTO v_before_next FROM public.issue_4490_pool_day_usage(v_pool, v_today + 1);
+  SELECT * INTO v_before_prev FROM public.issue_4490_pool_day_usage(v_pool, v_today - 1);
+  v_list_next_before := (public.issue_4490_check_in_list(v_venue, v_today + 1, v_owner)->'totals'->>'admitted')::integer;
+
+  v_sale := public.issue_4490_gate_sale(v_venue, public.t4490f_id('offer'),
+    jsonb_build_array(jsonb_build_object('priceOptionId', public.t4490f_id('option'), 'guests', 3)),
+    'cash', '{}'::jsonb, 'f5-gate-single', v_owner);
+  v_pass := (v_sale->>'passId')::uuid;
+  SELECT group_id INTO v_group FROM public.venue_passes WHERE id = v_pass;
+  PERFORM public.t4490f_ok(v_sale->'admit'->>'result' = 'admitted'
+      AND (SELECT days_allowed = 1 AND valid_local_date = v_today AND admitted_count = 3
+           FROM public.venue_passes WHERE id = v_pass),
+    'F-5a a gate sale today issues and admits a 3-guest single-day pass');
+  SELECT * INTO v_after FROM public.issue_4490_pool_day_usage(v_pool, v_today);
+  PERFORM public.t4490f_ok(v_after.used = v_before_today.used + 3
+      AND v_after.used_gate = v_before_today.used_gate + 3,
+    'F-5b its own day shows the 3 admitted guests once');
+  SELECT * INTO v_after FROM public.issue_4490_pool_day_usage(v_pool, v_today + 1);
+  PERFORM public.t4490f_ok(v_after.used = v_before_next.used
+      AND v_after.used_gate = v_before_next.used_gate
+      AND v_after.online_left = v_before_next.online_left,
+    'F-5c tomorrow of the same pool is not filled by today''s admitted single-day pass');
+  SELECT * INTO v_after FROM public.issue_4490_pool_day_usage(v_pool, v_today - 1);
+  PERFORM public.t4490f_ok(v_after.used = v_before_prev.used
+      AND v_after.used_gate = v_before_prev.used_gate,
+    'F-5d yesterday of the same pool is not filled either');
+  PERFORM public.t4490f_ok(public.issue_4490_pass_admitted_on(v_pass, v_today) = 3
+      AND public.issue_4490_pass_admitted_on(v_pass, v_today + 1) = 0
+      AND public.issue_4490_pass_admitted_on(v_pass, v_today - 1) = 0
+      AND (public.issue_4490_pass_view(v_pass)->>'admittedCount')::integer = 3
+      AND (public.issue_4490_check_in_list(v_venue, v_today + 1, v_owner)->'totals'->>'admitted')::integer
+          = v_list_next_before,
+    'F-5e admitted-on reads 3 on its own date and 0 on any other; the pass view and tomorrow''s list agree');
+
+  v_undo := public.issue_4490_check_in_undo(v_venue, (v_sale->'admit'->>'logId')::uuid, v_owner);
+  PERFORM public.t4490f_ok(v_undo->>'result' = 'undone'
+      AND (v_undo->'pass'->>'admittedCount')::integer = 0
+      AND public.issue_4490_pass_admitted_on(v_pass, v_today) = 0,
+    'F-5f undo returns the pass to 0 admitted');
+  SELECT * INTO v_after FROM public.issue_4490_pool_day_usage(v_pool, v_today + 1);
+  PERFORM public.t4490f_ok(v_after.used = v_before_next.used AND v_after.online_left = v_before_next.online_left,
+    'F-5g tomorrow is still unaffected after undo');
+
+  -- Past its date: a pass for yesterday that is still inside valid_to (a late
+  -- window, or a past-midnight scan) keeps counting against its own day.
+  UPDATE public.venue_passes SET valid_local_date = v_today - 1,
+    valid_from = now() - interval '1 day', valid_to = now() + interval '1 hour'
+  WHERE id = v_pass;
+  v_one := public.issue_4490_admit_pass(v_venue_row, v_pass, 1, true, v_owner, 'manual');
+  v_two := public.issue_4490_admit_pass(v_venue_row, v_pass, 1, true, v_owner, 'manual');
+  v_three := public.issue_4490_admit_pass(v_venue_row, v_pass, NULL, true, v_owner, 'manual');
+  PERFORM public.t4490f_ok(v_one->>'result' = 'admitted'
+      AND (v_one->'pass'->>'admittedCount')::integer = 1
+      AND v_two->>'result' = 'admitted' AND (v_two->'pass'->>'admittedCount')::integer = 2
+      AND v_three->>'result' = 'admitted' AND (v_three->>'admitted')::integer = 1
+      AND (v_three->'pass'->>'admittedCount')::integer = 3
+      AND (SELECT admitted_count FROM public.venue_passes WHERE id = v_pass) = 3,
+    'F-5h scans after the pass''s own date count against that day and admit exactly the remaining guest');
+  v_view := public.issue_4490_booking_projection(v_group, NULL);
+  PERFORM public.t4490f_ok((v_view->'passes'->0->>'admittedCount')::integer = 3,
+    'F-5i the booking projection shows the single-day pass fully used after its date');
+  SELECT * INTO v_after FROM public.issue_4490_pool_day_usage(v_pool, v_today);
+  PERFORM public.t4490f_ok(v_after.used = v_before_today.used + 3,
+    'F-5j a late scan of yesterday''s pass does not count again on today''s pool');
+
+  -- Multi-day passes keep reading their day rows.
+  PERFORM public.t4490f_ok(public.issue_4490_pass_admitted_on(v_ten, v_today - 1) = 1
+      AND public.issue_4490_pass_admitted_on(v_ten, v_today) = 0,
+    'F-5k a multi-day pass still reads its own day rows');
+END
+$f5$;
 
 SELECT public.t4490f_reset();
 ROLLBACK;

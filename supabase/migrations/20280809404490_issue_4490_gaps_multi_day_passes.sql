@@ -911,6 +911,39 @@ SELECT pg_temp.issue_4490_patch(
                                  FROM public.venue_passes p WHERE p.group_id = v_group.id), 0);$new$
 );
 
+-- A single-day pass belongs to its own service date. Its lifetime counter is
+-- admissions on valid_local_date only, so another date of the same pool never
+-- reads it as used (otherwise one gate sale today fills every future day).
+-- Readers that show a single-day pass's own progress ask for that date, so a
+-- scan after midnight (service date or wall date past valid_local_date, still
+-- before valid_to) keeps counting against the pass's own day.
+SELECT pg_temp.issue_4490_patch(
+  'public.issue_4490_pass_admitted_on(uuid,date)'::regprocedure,
+  $old$  SELECT CASE WHEN p.days_allowed = 1 THEN p.admitted_count$old$,
+  $new$  SELECT CASE WHEN p.days_allowed = 1 THEN
+                CASE WHEN p_local_date = p.valid_local_date THEN p.admitted_count ELSE 0 END$new$
+);
+SELECT pg_temp.issue_4490_patch(
+  'public.issue_4490_admit_pass(public.venue_listings,uuid,integer,boolean,uuid,text)'::regprocedure,
+  $old$  v_admitted := COALESCE(public.issue_4490_pass_admitted_on(v_pass.id, v_today), 0);$old$,
+  $new$  v_admitted := COALESCE(public.issue_4490_pass_admitted_on(v_pass.id,
+    CASE WHEN v_pass.days_allowed = 1 THEN v_pass.valid_local_date ELSE v_today END), 0);$new$
+);
+SELECT pg_temp.issue_4490_patch(
+  'public.issue_4490_pass_view_on(uuid,date)'::regprocedure,
+  $old$    SELECT COALESCE(public.issue_4490_pass_admitted_on(p.id, p_local_date), 0) AS admitted_on,$old$,
+  $new$    SELECT COALESCE(public.issue_4490_pass_admitted_on(p.id,
+             CASE WHEN p.days_allowed = 1 THEN p.valid_local_date ELSE p_local_date END), 0) AS admitted_on,$new$
+);
+SELECT pg_temp.issue_4490_patch(
+  'public.issue_4490_booking_projection(uuid,text)'::regprocedure,
+  $old$        'admittedCount', public.issue_4490_pass_admitted_on(
+          p.id, public.issue_4490_venue_service_date(p.venue_id, now())),$old$,
+  $new$        'admittedCount', public.issue_4490_pass_admitted_on(
+          p.id, CASE WHEN p.days_allowed = 1 THEN p.valid_local_date
+                     ELSE public.issue_4490_venue_service_date(p.venue_id, now()) END),$new$
+);
+
 DROP FUNCTION pg_temp.issue_4490_patch(regprocedure, text, text);
 
 COMMIT;
