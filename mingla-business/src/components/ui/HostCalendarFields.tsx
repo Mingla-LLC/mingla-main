@@ -26,19 +26,3 @@ export const HostDateTimeField = lazyHostField<HostDateTimeFieldProps>(
   () => import("./HostCalendarBody").then((m) => ({ default: m.DateTimeBody })),
   "Choose date and time",
 );
-
-export interface HostDateRangeFieldProps extends HostFieldBase {
-  /** `YYYY-MM-DD` both ends; "" while not chosen. */
-  value: { start: string; end: string };
-  onChangeValue: (value: { start: string; end: string }) => void;
-  accessibilityLabel: string;
-  min?: string;
-  max?: string;
-  timeZone?: string;
-}
-
-/** A range of days (trip dates, stay dates). Stays open until Done. */
-export const HostDateRangeField = lazyHostField<HostDateRangeFieldProps>(
-  () => import("./HostCalendarBody").then((m) => ({ default: m.DateRangeBody })),
-  "Choose start and end dates",
-);

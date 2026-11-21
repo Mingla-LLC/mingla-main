@@ -45,7 +45,7 @@ import {
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import type { LocationSelectionState } from "@mingla/location-input";
-import { HostDateRangeField } from "../ui/HostCalendarFields";
+import { HostDateRangeField } from "../ui/HostDateRangeField";
 import {
   calendarDateToInputValue,
   inputValueToCalendarIso,

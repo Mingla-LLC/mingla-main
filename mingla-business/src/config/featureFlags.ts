@@ -16,11 +16,9 @@ export type FeatureFlagKey =
   | "tripBuilderV2";
 
 function readEnvFlag(raw: string | undefined, defaultEnabled: boolean): boolean {
-  if (raw === undefined || raw === "") {
-    return defaultEnabled;
-  }
-  const normalized = raw.trim().toLowerCase();
-  return normalized !== "false" && normalized !== "0" && normalized !== "off";
+  return raw === undefined || raw === ""
+    ? defaultEnabled
+    : !/^(false|0|off)$/i.test(raw.trim());
 }
 
 export const featureFlags: Readonly<Record<FeatureFlagKey, boolean>> = {

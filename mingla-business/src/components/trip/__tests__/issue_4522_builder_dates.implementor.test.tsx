@@ -415,7 +415,7 @@ describe("the trip files use the one calendar", () => {
   });
 
   test("the range field has its one lazy owner and body", () => {
-    expect(fs.readFileSync(path.join(TRIP_DIR, "..", "ui", "HostCalendarFields.tsx"), "utf8")).toContain("export const HostDateRangeField = lazyHostField");
+    expect(fs.readFileSync(path.join(TRIP_DIR, "..", "ui", "HostDateRangeField.tsx"), "utf8")).toContain("export const HostDateRangeField = lazyHostField");
     expect(fs.readFileSync(path.join(TRIP_DIR, "..", "ui", "HostCalendarBody.tsx"), "utf8")).toContain("export function DateRangeBody");
   });
 
