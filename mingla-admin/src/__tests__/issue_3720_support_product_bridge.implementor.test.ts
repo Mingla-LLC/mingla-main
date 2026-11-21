@@ -13,7 +13,8 @@ import {
   assertMatch,
   assertNotMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { searchOpenItems } from "../components/support/productBoardModel.js";
+// [TEST-MOD #4420] SendToProductModal and productBoardModel were deleted with the
+// Product board; Brand groups and Support make tickets (ops_ticket_*) instead.
 
 const read = (relative: string) => Deno.readTextFile(new URL(`../${relative}`, import.meta.url));
 const page = await read("pages/SupportDeskPage.jsx");
@@ -24,7 +25,7 @@ const metrics = await read("lib/supportTicketMetrics.js");
 const inboxModel = await read("lib/supportInboxModel.js");
 const service = await read("services/supportProductWorkflowService.js");
 const desk = await read("services/supportDeskService.js");
-const sendToProduct = await read("components/support/SendToProductModal.jsx");
+const brandTicket = await read("components/community/BrandGroupTicketModal.jsx");
 const supportSend = await Deno.readTextFile(
   new URL("../../../supabase/functions/support-send/index.ts", import.meta.url),
 );
@@ -68,27 +69,10 @@ Deno.test("workflow writes use gated RPCs and never a browser table mutation", (
   }
 });
 
-Deno.test("Send to Product makes the human review boundary explicit", () => {
-  assertMatch(sendToProduct, /This stays inside Mingla/);
-  assertMatch(sendToProduct, /Nothing goes to GitHub until an admin or founding partner writes public-safe wording in Triage/);
-  assertMatch(sendToProduct, /Is this already on the board\?/);
-  assertNotMatch(sendToProduct, /gh\s+issue|api\.github\.com|github_token/i);
-});
 
 Deno.test("the core workflow is deterministic and does not embed a model service", () => {
-  const source = `${page}\n${panel}\n${composer}\n${service}\n${desk}\n${sendToProduct}`;
+  const source = `${page}\n${panel}\n${composer}\n${service}\n${desk}\n${brandTicket}`;
   assertNotMatch(source, /openai|anthropic|gemini|claude|embedding|vector[_-]?store/i);
-  assertMatch(sendToProduct, /searchOpenItems\(signals, query\)/);
+  assertNotMatch(brandTicket, /gh\s+issue|api\.github\.com|github_token/i);
 });
 
-Deno.test("open-item search is deterministic, skips closed items and needs a shared word", () => {
-  const signals = [
-    { id: "a", state: "new", title: "Payout page shows wrong total", product_area: "Host app · Payouts" },
-    { id: "b", state: "told", title: "Payout balance fixed", product_area: "Host app · Payouts" },
-    { id: "c", state: "planned", title: "Payout balance shows zero", product_area: "Host app" },
-    { id: "d", state: "wont_do", title: "Payout balance colour", product_area: "Host app" },
-  ];
-  assertEquals(searchOpenItems(signals, "payout balance").map((s: { id: string }) => s.id), ["c", "a"]);
-  assertEquals(searchOpenItems(signals, "door scanner"), []);
-  assertEquals(searchOpenItems(signals, ""), []);
-});

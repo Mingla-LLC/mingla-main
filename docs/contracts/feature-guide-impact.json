@@ -4907,9 +4907,7 @@
     {
       "capability_key": "staff-community-support",
       "paths": [
-        "mingla-admin/src/components/community/ProductInboxPanel.jsx",
-        "mingla-admin/src/components/support/ProductCardPanel.jsx",
-        "mingla-admin/src/components/support/productBoardModel.js",
+        "mingla-admin/src/components/ops/TicketGithubSection.jsx",
         "mingla-admin/src/services/productAvengersService.js",
         "mingla-admin/src/lib/brandGroupWaiting.js",
         "mingla-admin/src/lib/communitySupportCapabilityContract.js",

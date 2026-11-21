@@ -4,8 +4,8 @@
 // MINGLA-INVARIANT: I-4382-SUPPORT-UPLOAD-STRIPS-METADATA | issue #4382 | Admin support images are re-encoded through a canvas (longest side <= 2560 px) and refused if EXIF/XMP survives
 // MINGLA-INVARIANT: I-4382-SUPPORT-UPLOAD-LIMITS | issue #4382 | 10 images per message, 10 MB each, images only
 // MINGLA-INVARIANT: I-4382-NOTE-NEVER-WAITS | issue #4382 | A note is isInternal true with no setWaiting; a reply is isInternal false; every desk send is actorMode staff
-// MINGLA-INVARIANT: I-4382-PRODUCT-BOARD-COLUMNS | issue #4382 | Each Product item sits in exactly one of five columns; wont_do only under its filter
-// MINGLA-INVARIANT: I-4382-TELL-REPORTERS-ONCE-UI | issue #4382 | Tell reporters is offered only for a shipped item with unsent Live wording and never while a send is in flight or after one succeeded
+// I-4382-PRODUCT-BOARD-COLUMNS: retired by #4420 with the Product board.
+// I-4382-TELL-REPORTERS-ONCE-UI: retired by #4420 with the Product board (the once-only server function is unchanged).
 // MINGLA-INVARIANT: I-4382-INBOX-ACTIVE-NEVER-PAGED-OUT | issue #4382 | Every new, open or waiting support ticket is loaded into the Admin inbox (up to 2000, with a visible showing-N-of-M note beyond that); only resolved and closed tickets are paged, and a partial view says it is partial.
 //
 // FAILS-ON-REVERT: drop the "customer spoke last" check from the needs view, or count
@@ -41,15 +41,7 @@ import {
   uploadsReady,
 } from "../components/support/supportUploadModel.js";
 import { buildSendBody } from "../components/support/supportComposerModel.js";
-import {
-  BOARD_COLUMNS,
-  columnFor,
-  groupSignals,
-  tellButtonLabel,
-  tellReportersState,
-  PRODUCT_PREFILL_MAX,
-  productPrefillDetails,
-} from "../components/support/productBoardModel.js";
+// [TEST-MOD #4420] components/support/productBoardModel.js was deleted with the Product board.
 import {
   communitySupportCapabilities,
   communitySupportTabsForAccess,
@@ -292,24 +284,11 @@ describe("#4382 W2: every active ticket loads; older ones page in (tester P3d)",
   });
 });
 
-describe("#4382 runtime: Reopened automatically and the Send to Product prefill", () => {
+// [TEST-MOD #4420] the Send to Product prefill left with the modal; Create
+// ticket's pre-fill is pinned in issue4420_support_inbox (ticketPrefill).
+describe("#4382 runtime: Reopened automatically", () => {
   it("the Admin thread shows system lines (the reopen marker) as centred notes", () => {
     assert.match(read("components/support/SupportThread.jsx"), /if \(message\.message_type === "system"[\s\S]{0,120}text-center text-xs italic/);
-  });
-  it("What's wrong starts from the customer's first message, about 500 characters, else the subject", () => {
-    const ticket = { subject: "Map is blank", requester_user_id: "u1" };
-    const messages = [
-      { id: "s", message_type: "system", content: "Reopened automatically", sender_id: null },
-      { id: "n", is_internal: true, content: "note", sender_id: "staff", sender_role_snapshot: "Mingla Support" },
-      { id: "r", content: "We are on it", sender_id: "staff", sender_role_snapshot: "Mingla Support" },
-      { id: "c", content: "  The map   stays blank after I book.  ", sender_id: "u1" },
-      { id: "c2", content: "Second message", sender_id: "u1" },
-    ];
-    assert.equal(productPrefillDetails(ticket, messages), "The map stays blank after I book.");
-    assert.equal(productPrefillDetails(ticket, []), "Map is blank");
-    const long = productPrefillDetails(ticket, [{ id: "l", content: "word ".repeat(200), sender_id: "u1" }]);
-    assert.ok(long.length <= PRODUCT_PREFILL_MAX + 1 && long.endsWith("…"));
-    // [TEST-MOD #4420] the Send to Product box left the thread; "Create ticket" pre-fills through ticketPrefill (issue4420_support_inbox test).
   });
   it("the ticket panel keeps the thread at least ~55% tall with compact, collapsible facts", () => {
     const panel = read("components/support/TicketPanel.jsx");
@@ -358,85 +337,6 @@ describe("#4382 W2: the composer's support-send body", () => {
 });
 
 // ── Product board ───────────────────────────────────────────────────────────
-describe("#4382 W3: the Product board's columns", () => {
-  const signals = [
-    { id: "n1", state: "new", updated_at: "2026-11-10T10:00:00Z" },
-    { id: "n2", state: "new", updated_at: "2026-11-10T11:00:00Z" },
-    { id: "t1", state: "triaged", updated_at: "2026-11-09T10:00:00Z" },
-    { id: "p1", state: "planned", updated_at: "2026-11-09T10:00:00Z" },
-    { id: "s1", state: "shipped", updated_at: "2026-11-09T10:00:00Z" },
-    { id: "k1", state: "told", updated_at: "2026-11-08T10:00:00Z" },
-    { id: "w1", state: "wont_do", updated_at: "2026-11-08T10:00:00Z" },
-    { id: "z1", state: "needs_review", updated_at: "2026-11-08T10:00:00Z" },
-  ];
-
-  it("five columns, in stage order", () => {
-    assert.deepEqual(BOARD_COLUMNS.map((c) => c.label), ["New", "Triaged", "Planned", "Shipped", "Told"]);
-  });
-
-  it("each item sits in one column; Won't do and unknown states sit in none", () => {
-    const groups = groupSignals(signals);
-    assert.deepEqual(Object.fromEntries(Object.entries(groups).map(([k, v]) => [k, v.map((s) => s.id)])), {
-      new: ["n2", "n1"], triaged: ["t1"], planned: ["p1"], shipped: ["s1"], told: ["k1"],
-    });
-    assert.equal(columnFor({ state: "wont_do" }), null);
-    assert.equal(columnFor({ state: "needs_review" }), null);
-  });
-
-  it("the Won't do filter lists only Won't do", () => {
-    assert.deepEqual(groupSignals(signals, { showWontDo: true }).wont_do.map((s) => s.id), ["w1"]);
-  });
-});
-
-// ── Tell reporters, once ────────────────────────────────────────────────────
-describe("#4382 W3: Tell reporters can be sent once", () => {
-  const ticketsById = {
-    t1: { id: "t1", visibility: "person" },
-    t2: { id: "t2", visibility: "brand" },
-    t3: { id: "t3", visibility: "internal" },
-  };
-  const shipped = {
-    state: "shipped",
-    sources: [
-      { source_kind: "support_ticket", source_id: "t1" },
-      { source_kind: "support_ticket", source_id: "t2" },
-      { source_kind: "support_ticket", source_id: "t3" },
-      { source_kind: "community_idea", source_id: "idea-1" },
-    ],
-    drafts: [
-      { id: "d-old", customer_status: "Planned", state: "draft", created_at: "2026-11-01T00:00:00Z" },
-      { id: "d-live", customer_status: "Live", state: "draft", created_at: "2026-11-09T00:00:00Z" },
-    ],
-  };
-
-  it("goes to the customer-visible tickets only, with the Live wording", () => {
-    const state = tellReportersState(shipped, ticketsById);
-    assert.equal(state.canSend, true);
-    assert.deepEqual(state.recipients.map((t) => t.id), ["t1", "t2"]);
-    assert.equal(state.draft.id, "d-live");
-    assert.equal(tellButtonLabel(state.recipients.length), "Send to 2 people");
-    assert.equal(tellButtonLabel(1), "Send to 1 person");
-  });
-
-  it("refuses while sending, after a send, once told, before shipped and with no Live wording", () => {
-    assert.equal(tellReportersState(shipped, ticketsById, { sending: true }).canSend, false);
-    assert.equal(tellReportersState(shipped, ticketsById, { sentOnce: true }).canSend, false);
-    assert.equal(tellReportersState({ ...shipped, state: "told" }, ticketsById).canSend, false);
-    assert.equal(tellReportersState({ ...shipped, state: "planned" }, ticketsById).canSend, false);
-    assert.equal(tellReportersState({ ...shipped, drafts: [{ id: "d", customer_status: "Live", state: "sent" }] }, ticketsById).canSend, false);
-  });
-
-  it("the button is held by that guard and the send calls the once-only server function", () => {
-    const card = read("components/support/ProductCardPanel.jsx");
-    assert.match(card, /const tell = tellReportersState\(signal, ticketsById, \{ sending: telling, sentOnce \}\);/);
-    assert.match(card, /async function sendTell\(\) \{\n\s+if \(!tell\.canSend \|\| !tell\.draft\) return;/);
-    assert.match(card, /disabled=\{!tell\.canSend \|\| busy/);
-    assert.match(card, /const result = await tellProductReporters\(signal\.id, tell\.draft\.id\);\n\s+setSentOnce\(true\);/);
-    assert.match(read("services/productAvengersService.js"), /rpc\("issue_4382_tell_reporters"/);
-    assert.match(read("services/productAvengersService.js"), /rpc\("issue_4382_set_wont_do"/);
-  });
-});
-
 // ── Who runs the Product board (D3) ─────────────────────────────────────────
 // [TEST-MOD #4420] The Product board is retired (I-4382-PRODUCT-BOARD-COLUMNS
 // and I-4382-TELL-REPORTERS-ONCE-UI retire with it): no screen or tab shows

@@ -58,26 +58,9 @@ Deno.test("#3980 W2: the Support thread no longer carries a Product box or an En
   assertNotMatch(page, /fetchTicketEngineering|EngineeringRow|ProductBox|onSendToProduct/);
 });
 
-Deno.test("#3980 W2: the Product Inbox uses the bridge's word when it has the issue", () => {
-  const inbox = read("components/support/ProductCardPanel.jsx");
-  assertMatch(inbox, /\["Engineering", engineering \|\| signal\.item\.board_status \|\| "Todo"\]/);
-  assertMatch(inbox, /item\?\.checked && !item\.not_found/);
-});
 
-Deno.test("#3980 W2: roadmap links and suggestions; apply goes through the existing editor, never a lane write", () => {
-  const panel = read("components/community/RoadmapPanel.jsx");
-  assertMatch(panel, /GitHub suggests: \{roadmapSuggestionWords\(suggestion\)\}/);
-  assertMatch(panel, /Draft from GitHub/);
-  assertMatch(panel, />Link issue</);
-  assertMatch(panel, />Change</);
-  assertMatch(panel, />Remove</);
-  const apply = panel.slice(panel.indexOf("async function applySuggestion"), panel.indexOf("async function dismissSuggestion"));
-  assertMatch(apply, /decideRoadmapSuggestion\(row\.id, "apply"\)/);
-  assertMatch(apply, /upsertRoadmapCard\(\{/);
-  assertMatch(apply, /status: row\.status/);
-  assertEquals(/status: "published"/.test(panel), false);
-});
 
+// [TEST-MOD #4420] two tests left with the deleted Product board card panel and Roadmap panel.
 Deno.test("#3980 W2: the Feature Guide shows what shipped an entry and what it still misses", () => {
   const guide = read("components/community/FeatureGuidePanel.jsx");
   assertMatch(guide, /Shipped by PR #\{shipped\.pr\} on/);
@@ -90,8 +73,11 @@ Deno.test("#3980 W2: every new ops_ call lives in the one ops_ caller", () => {
   for (const fn of ["ops_github_status_list", "ops_ticket_engineering", "ops_roadmap_links_list", "ops_roadmap_link_set",
     "ops_roadmap_suggestion_decide", "ops_release_records_list", "ops_feature_guide_release"]) {
     assert(service.includes(`"${fn}"`), fn);
-    for (const file of ["pages/SupportDeskPage.jsx", "components/support/TicketPanel.jsx", "components/community/RoadmapPanel.jsx", "components/community/FeatureGuidePanel.jsx",
-      "components/community/ProductInboxPanel.jsx", "components/support/ProductCardPanel.jsx", "components/ops/WorkDetail.jsx"]) {
+    // [TEST-MOD #4420] RoadmapPanel, ProductInboxPanel and ProductCardPanel were
+    // deleted (Roadmap screen and Product board retired); the ticket GitHub
+    // section that replaced the board's card is checked in their place.
+    for (const file of ["pages/SupportDeskPage.jsx", "components/support/TicketPanel.jsx", "components/community/FeatureGuidePanel.jsx",
+      "components/ops/TicketGithubSection.jsx", "components/ops/WorkDetail.jsx"]) {
       assertEquals(read(file).includes(`"${fn}"`), false, `${fn} in ${file}`);
     }
   }
