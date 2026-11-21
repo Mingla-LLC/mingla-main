@@ -674,7 +674,7 @@ begin
   v := pg_temp.agent('tao', format('select public.ops_ticket_update(%L, %L::jsonb, %s)::text', pg_temp.id('TK3'),
          '{"type":"question","product_area":"Guest list"}', pg_temp.rev('TK3')));
   perform pg_temp.chk('T-MORE', 'type and product area change (agents update tickets)', v::jsonb->'card'->'ticket'->>'type' || '/' || (v::jsonb->'card'->'ticket'->>'product_area'), 'question/Guest list');
-  v := pg_temp.person('tao', 'select public.ops_my_counts(null)::text');
+  v := pg_temp.person('tao', 'select public.ops_ticket_counts()::text');
   perform pg_temp.chk('T-MORE', 'tickets_new_mine counts open To do tickets I own', v::jsonb->>'tickets_new_mine', '1');
   -- Send to GitHub: a signal on first use, the same one after.
   v := pg_temp.person('tao', format('select public.issue_4420_ticket_signal_ensure(%L)::text', pg_temp.id('TK2')));

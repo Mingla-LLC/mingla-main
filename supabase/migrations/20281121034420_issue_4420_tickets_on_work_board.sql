@@ -72,13 +72,15 @@ CREATE TRIGGER ops_4420_ticket_row_guard BEFORE INSERT OR UPDATE OF card_id ON p
 -- ─────────────────────────────────────────────────────────────────────────
 -- 2. Small helpers
 -- ─────────────────────────────────────────────────────────────────────────
--- The agent acting in this transaction, as crm_ctx() reads it.
+-- The agent acting in this transaction comes from crm_ctx() (agent keys
+-- belong to Work board users); a caller without the Work board has none.
 CREATE FUNCTION public.ops_4420_agent_via() RETURNS text
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
 AS $$
-  SELECT c.agent FROM public.team_agent_calls c
-   WHERE auth.uid() IS NOT NULL AND c.xact_id = pg_current_xact_id_if_assigned() AND c.actor_uid = auth.uid()
-   ORDER BY c.started_at DESC LIMIT 1;
+BEGIN
+  IF auth.uid() IS NULL OR NOT COALESCE(public.admin_team_can('crm'), false) THEN RETURN NULL; END IF;
+  RETURN (SELECT x.via FROM public.crm_ctx() x);
+END;
 $$;
 REVOKE ALL ON FUNCTION public.ops_4420_agent_via() FROM PUBLIC, anon, authenticated;
 
@@ -849,52 +851,6 @@ BEGIN
 END;
 $function$;
 
--- From its latest definition (20280707014423, #4423 W2). #4420: adds tickets_new_mine.
-CREATE OR REPLACE FUNCTION public.ops_my_counts(p_today date DEFAULT NULL::date)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'pg_temp'
-AS $function$
-DECLARE v record; v_today date := public.ops_today(p_today); v_admin boolean := public.is_admin_user();
-        v_wording bigint; v_need_person bigint; v_draft bigint;
-BEGIN
-  SELECT * INTO v FROM public.crm_ctx();
-  -- ops_review_list's wording list.
-  SELECT count(*) INTO v_wording
-    FROM public.ops_work_cards w
-   WHERE v_admin AND v.via IS NULL AND w.archived_at IS NULL AND w.status <> 'done' AND w.auto_key LIKE 'roadmap\_shipped:%';
-  -- ops_review_list's cards (Spend, Publish, Other). A wording card is listed
-  -- under Spend or publish and on What hosts are told; it is counted once, as wording.
-  SELECT count(*) FILTER (WHERE w.auto_key IS NULL OR split_part(w.auto_key, ':', 1) IS DISTINCT FROM 'roadmap_shipped' OR v_wording = 0)
-    INTO v_need_person
-    FROM public.ops_work_cards w
-   WHERE w.archived_at IS NULL AND w.status <> 'done' AND w.person_reason IN ('spend','publish','other')
-     AND (v_admin OR EXISTS (SELECT 1 FROM public.ops_work_people p WHERE p.card_id = w.id AND p.email = v.actor_email));
-  -- ops_review_list's draft_needed list.
-  SELECT count(*) INTO v_draft
-    FROM public.ops_work_cards w
-   WHERE w.archived_at IS NULL AND w.status <> 'done' AND w.person_reason = 'send'
-     AND NOT public.ops_send_draft_waiting(w.id, w.proof)
-     AND (v_admin OR EXISTS (SELECT 1 FROM public.ops_work_people p WHERE p.card_id = w.id AND p.email = v.actor_email));
-  RETURN (SELECT jsonb_build_object(
-    'open_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner'),
-    -- #4270: the tag replaces the status; waiting_on_person_mine stays (= needs_ok_mine) for agents.
-    'waiting_on_person_mine', count(*) FILTER (WHERE w.status <> 'done' AND w.person_reason IS NOT NULL AND p.role = 'owner'),
-    'needs_ok_mine', count(*) FILTER (WHERE w.status <> 'done' AND w.person_reason IS NOT NULL AND p.role = 'owner'),
-    'due_today_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner' AND w.due_on = v_today),
-    'needs_person_mine', v_need_person,
-    'draft_needed_mine', v_draft,
-    'wording_mine', v_wording,
-    'overdue_mine', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'owner' AND w.due_on < v_today),
-    'watching_open', count(*) FILTER (WHERE w.status <> 'done' AND p.role = 'watcher'),
-    -- #4420: open tickets I own still in To do (the menu Work count).
-    'tickets_new_mine', count(*) FILTER (WHERE w.kind = 'ticket' AND w.status = 'todo' AND p.role = 'owner'))
-    FROM public.ops_work_cards w JOIN public.ops_work_people p ON p.card_id = w.id AND p.email = v.actor_email
-   WHERE w.archived_at IS NULL);
-END;
-$function$;
-
 -- From its latest definition (20280626014398, #4398). #4420: Bridge D (drafting Recently shipped cards and
 -- their approval cards) stops; everything else is unchanged.
 CREATE OR REPLACE FUNCTION public.ops_github_bridges()
@@ -1139,6 +1095,20 @@ BEGIN
   v_event := public.ops_card_event(c.id, v.actor_email, v.via, 'updated', format('Ticket: %s, %s.', v_type, v_area), v_before,
     public.ops_card_snapshot(c.id), c.revision, n.revision);
   RETURN jsonb_build_object('card', public.ops_card_json(n, public.ops_today(NULL)), 'event_id', v_event, 'changed', true);
+END;
+$$;
+
+-- The menu Work count: open tickets I own still in To do. Its own function,
+-- so ops_my_counts (read by the agent tools) is unchanged.
+CREATE FUNCTION public.ops_ticket_counts() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE v record;
+BEGIN
+  SELECT * INTO v FROM public.ops_4420_ticket_ctx();
+  RETURN jsonb_build_object('tickets_new_mine', (SELECT count(*) FROM public.ops_work_cards w
+    JOIN public.ops_work_people p ON p.card_id = w.id AND p.email = v.actor_email AND p.role = 'owner'
+   WHERE w.kind = 'ticket' AND w.status = 'todo' AND w.archived_at IS NULL));
 END;
 $$;
 
@@ -1423,6 +1393,7 @@ $$;
 REVOKE ALL ON FUNCTION public.ops_ticket_create(jsonb, text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.ops_ticket_update(uuid, jsonb, bigint) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.ops_ticket_similar(text, integer) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.ops_ticket_counts() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.ops_ticket_link_conversation(uuid, uuid, bigint) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.ops_ticket_conversations(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.issue_4420_conversation_tickets(uuid[]) FROM PUBLIC, anon;
@@ -1433,6 +1404,7 @@ REVOKE ALL ON FUNCTION public.issue_4420_ticket_github_mirror(uuid) FROM PUBLIC,
 GRANT EXECUTE ON FUNCTION public.ops_ticket_create(jsonb, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_ticket_update(uuid, jsonb, bigint) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_ticket_similar(text, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ops_ticket_counts() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_ticket_link_conversation(uuid, uuid, bigint) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.ops_ticket_conversations(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4420_conversation_tickets(uuid[]) TO authenticated;
