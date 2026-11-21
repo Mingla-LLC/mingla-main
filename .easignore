@@ -3,10 +3,14 @@ node_modules/
 **/node_modules/
 .expo/
 **/.expo/
-ios/
-android/
-**/ios/
-**/android/
+# Native folders made by `expo prebuild`, at the repo root and one level down
+# (app-mobile/ios, mingla-business/android, ...). Anchored on purpose: a bare
+# `ios/` or `**/ios/` also drops modules/*/ios, so local Expo modules vanish
+# from EAS builds (#4389: Tap to Pay hidden on every iPhone in 1.3.0).
+/ios/
+/android/
+/*/ios/
+/*/android/
 dist/
 web-build/
 **/web-build/

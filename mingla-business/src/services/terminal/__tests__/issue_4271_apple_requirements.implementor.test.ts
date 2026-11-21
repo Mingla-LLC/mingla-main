@@ -5,6 +5,7 @@
  *
  * Every test here fails when its change is reverted (recorded on the issue).
  */
+// MINGLA-INVARIANT: I-4389-EAS-UPLOAD-KEEPS-LOCAL-MODULES | issue #4389 | No .easignore pattern drops a local Expo module's native folder, so the iPhone build links MinglaTapToPayEducation and Tap to Pay can show.
 // MINGLA-INVARIANT: I-4389-TAP-ADMIN-PATH-IS-REAL | issue #4389 | Apple 3.8.1: the "ask an admin" message names a place in the app that really opens Tap to Pay setup.
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import fs from "node:fs";
@@ -892,5 +893,54 @@ describe("Apple 3.8.1: the admin message points where Tap to Pay lives", () => {
     // #4389 moved Tap to Pay out of the Account tab. If a row comes back there, update the message too.
     expect(TAP_ADMIN_ONLY_COPY.body).not.toMatch(/\bAccount\b/);
     expect(opensSetup("app/(tabs)/account.tsx")).toBe(false);
+  });
+});
+
+describe("#4389: the EAS upload keeps local native modules", () => {
+  // EAS packs the repo through the `ignore` library, reading .easignore at the
+  // repo root. A bare `ios/` there dropped modules/*/ios from 1.3.0 (42), so
+  // MinglaTapToPayEducation was never linked and isTapToPayIphoneEntitled()
+  // read false on every iPhone.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const ignore = require("ignore") as () => { add: (s: string) => unknown; ignores: (p: string) => boolean };
+  const REPO_ROOT = path.join(BIZ_ROOT, "..");
+  const matcher = (file: string) => {
+    const ig = ignore() as { add: (s: string) => unknown; ignores: (p: string) => boolean };
+    ig.add(fs.readFileSync(file, "utf8"));
+    return ig;
+  };
+  const moduleFiles = (): string[] => {
+    const out: string[] = [];
+    const walk = (dir: string): void => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) walk(full);
+        else out.push(path.relative(BIZ_ROOT, full).split(path.sep).join("/"));
+      }
+    };
+    walk(path.join(BIZ_ROOT, "modules"));
+    return out;
+  };
+
+  test("the Tap to Pay module's native files are found", () => {
+    const files = moduleFiles();
+    expect(files).toContain("modules/mingla-tap-to-pay-education/ios/MinglaTapToPayEducation.podspec");
+    expect(files).toContain("modules/mingla-tap-to-pay-education/ios/MinglaTapToPayEducationModule.swift");
+  });
+
+  test("neither .easignore drops any file of a local module", () => {
+    const root = matcher(path.join(REPO_ROOT, ".easignore"));
+    const biz = matcher(path.join(BIZ_ROOT, ".easignore"));
+    for (const rel of moduleFiles()) {
+      expect([rel, root.ignores(`mingla-business/${rel}`)]).toEqual([rel, false]);
+      expect([rel, biz.ignores(rel)]).toEqual([rel, false]);
+    }
+  });
+
+  test("the generated native app folders stay out of the upload", () => {
+    const root = matcher(path.join(REPO_ROOT, ".easignore"));
+    expect(root.ignores("mingla-business/ios/Podfile")).toBe(true);
+    expect(root.ignores("app-mobile/android/build.gradle")).toBe(true);
+    expect(matcher(path.join(BIZ_ROOT, ".easignore")).ignores("ios/Podfile")).toBe(true);
   });
 });
