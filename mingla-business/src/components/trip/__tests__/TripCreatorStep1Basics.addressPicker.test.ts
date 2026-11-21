@@ -116,8 +116,12 @@ describe("ORCH-1118 — create wizard requires confirmed address picks", () => {
     // need a bank (tripNeedsBankForInstallments); every prior term retained.
     // [TEST-MOD-APPROVED #3859] Unsupported provider/plan combinations are a
     // separate hard refusal before any buyer can see the schedule.
+    // [TEST-MOD-APPROVED #4522] The dock Publish button now has a builder
+    // branch and an eight-step branch. The eight-step branch keeps every term;
+    // issue_4522_trip_wizard_flag_off_gates.implementor.test.tsx proves each
+    // one greys out Publish on the mounted wizard.
     expect(w).toMatch(
-      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*tripHasUnsupportedInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
+      /:\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*tripNeedsBankForInstallments\s*\|\|\s*tripHasUnsupportedInstallments\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\|\|\s*!invitePublishReady\s*\|\|\s*checkingInvitePublish\s*\}/,
     );
   });
 });
