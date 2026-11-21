@@ -562,6 +562,8 @@ Deno.test("offer: answers only for an offer the public venue page lists, and onl
             guestMin: 1,
             guestMax: 20,
             priceMinor: 500000,
+            passDays: 3,
+            passWindowDays: 3,
             priceVersionId: "secret-version",
             eligibility: { label: "Student ID", checkAtGate: true },
           }],
@@ -585,6 +587,8 @@ Deno.test("offer: answers only for an offer the public venue page lists, and onl
   const body = await ok.json();
   assertEquals(body.data.options[0].name, "Walk-in");
   assertEquals(body.data.options[0].eligibility, { label: "Student ID" });
+  assertEquals(body.data.options[0].passDays, 3);
+  assertEquals(body.data.options[0].passWindowDays, 3);
   assertEquals(body.data.venue.timezone, "Africa/Lagos");
   assertEquals(body.data.vat.mode, "added");
   const text = JSON.stringify(body);

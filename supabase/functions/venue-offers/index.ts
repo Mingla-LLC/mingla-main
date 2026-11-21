@@ -439,6 +439,8 @@ export function publicOfferDetail(
         ? { label: option.eligibility.label ?? null }
         : null,
       priceMinor: option.priceMinor,
+      passDays: option.passDays ?? null,
+      passWindowDays: option.passWindowDays ?? null,
       sortOrder: option.sortOrder,
     }))
     : [];
