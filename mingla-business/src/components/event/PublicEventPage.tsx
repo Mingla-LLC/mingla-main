@@ -76,8 +76,10 @@ import {
   type EventTerminalSource,
   type MapsAppId,
   type MapsOpenTarget,
+  type RsvpBrandFormAnswers,
   nextEventAcquisitionBoundaryDelayMs,
 } from "@mingla/offering-rendering";
+import { carryOverRsvpAnswers, isRsvpFormErrorCode, rsvpFormMissingRequiredIds } from "@mingla/offering-rendering/rsvpBrandForm";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
 // issue #4420 — Add to calendar, only from a real start and end.
@@ -96,6 +98,9 @@ import {
   EventTicketBox,
   EventAcquisitionNotice,
 } from "@mingla/offering-rendering";
+
+// #4541 — readiness is computed from the page and answers; the renderer's report is not used for gating.
+const noopRsvpMissing = (_ids: string[]): void => {};
 
 const resolveEventAcquisitionState =
   OfferingRendering.resolveEventAcquisitionState ??
@@ -150,10 +155,16 @@ const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
 // is the actual complaint in #2135. Measured: inline +1,212 B vs sheet
 // +10,238 B. See MultiDateDayChooser's header for the full rationale.
 const MultiDateDayChooser = React.lazy(() => import("./MultiDateDayChooser"));
+const RsvpBrandFormQuestions = React.lazy(() =>
+  import("../checkout/intake/formRenderingPrimitives").then((module) => ({
+    default: module.RsvpBrandFormQuestions,
+  })),
+);
 import {
   submitPublicRsvp,
   submitRsvpContribution,
 } from "../../services/rsvpEvents";
+import { fetchPublicRsvpBrandForm } from "../../services/publicRsvpBrandForm";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
 // anon-safe RPC — this page is anon-tolerant). Keys from the entity factory.
 import { useQuery } from "@tanstack/react-query";
@@ -179,6 +190,7 @@ import { TicketCheckoutAccessNotice } from "./TicketCheckoutAccessNotice";
 // into the public event chunk; that shared the Brand page into eager `__common`
 // (+~48KB) via Metro hoist (#3682 / ORCH-1083).
 import { useAuth } from "../../context/AuthContext";
+import { publicRsvpFormKeys } from "../checkout/intake/publicRsvpFormKeys";
 import { useBrandFollow } from "../../hooks/useBrandFollow";
 import { useBrandFollowerCount } from "../../hooks/useBrandFollowerCount";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
@@ -676,6 +688,50 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [resolvedAcquisitionState, serverAcquisitionOverride],
   );
   const isRsvp = event.event_type === "rsvp";
+  const rsvpBrandFormQuery = useQuery({
+    queryKey: publicRsvpFormKeys.forEvent(event.id),
+    enabled: isRsvp,
+    staleTime: 30_000,
+    queryFn: () => fetchPublicRsvpBrandForm(event.id),
+  });
+  const rsvpBrandFormPage = rsvpBrandFormQuery.data ?? null;
+  const refetchRsvpBrandForm = rsvpBrandFormQuery.refetch;
+  const [rsvpFormAnswers, setRsvpFormAnswers] = useState<RsvpBrandFormAnswers>({});
+  const rsvpFormSeenRef = useRef<string | null>(null);
+  useEffect(() => {
+    // A different form resets the answers; a new version of the same form
+    // (the host edited it mid-typing) keeps the answers whose question remains.
+    const seen = rsvpFormSeenRef.current;
+    rsvpFormSeenRef.current = rsvpBrandFormPage?.formId ?? null;
+    setRsvpFormAnswers((prev) =>
+      rsvpBrandFormPage === null || seen !== rsvpBrandFormPage.formId
+        ? Object.keys(prev).length === 0
+          ? prev
+          : {}
+        : carryOverRsvpAnswers(prev, rsvpBrandFormPage),
+    );
+  }, [rsvpBrandFormPage?.formId, rsvpBrandFormPage?.versionId]);
+  // `undefined` while the read failed: no capability marker goes to the server,
+  // so it completes the RSVP as "to answer". `null` = read ok, no form.
+  const rsvpFormReadFailed =
+    rsvpBrandFormQuery.isError && rsvpBrandFormQuery.data === undefined;
+  const rsvpFormReadPending = isRsvp && rsvpBrandFormQuery.isPending;
+  const rsvpFormMissing = useMemo(
+    () => rsvpFormMissingRequiredIds(rsvpBrandFormPage, rsvpFormAnswers),
+    [rsvpBrandFormPage, rsvpFormAnswers],
+  );
+  const rsvpBrandFormPayload = useMemo(
+    () => rsvpFormReadFailed
+      ? undefined
+      : rsvpBrandFormPage === null
+        ? null
+        : {
+            formId: rsvpBrandFormPage.formId,
+            versionId: rsvpBrandFormPage.versionId,
+            answers: rsvpFormAnswers,
+          },
+    [rsvpFormReadFailed, rsvpBrandFormPage, rsvpFormAnswers],
+  );
   const engagementScope = useMemo<OfferingEngagementScope>(
     () => ({ brandId: event.brandId, entityType: "event", entityId: event.id }),
     [event.brandId, event.id],
@@ -1638,16 +1694,28 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       if (input.rsvpStatus !== "not_going") {
         void captureOfferingCta(engagementScope, "rsvp");
       }
-      const result = await submitPublicRsvp({
-        eventId: event.id,
-        rsvpStatus: input.rsvpStatus,
-        guestName: input.guestName,
-        guestEmail: input.guestEmail,
-        guestPhone: input.guestPhone,
-        guestPhoneCountryIso: input.guestPhoneCountryIso,
-        plusCount: input.plusCount,
-        guests: input.guests,
-      });
+      let result: Awaited<ReturnType<typeof submitPublicRsvp>>;
+      try {
+        result = await submitPublicRsvp({
+          eventId: event.id,
+          rsvpStatus: input.rsvpStatus,
+          guestName: input.guestName,
+          guestEmail: input.guestEmail,
+          guestPhone: input.guestPhone,
+          guestPhoneCountryIso: input.guestPhoneCountryIso,
+          plusCount: input.plusCount,
+          guests: input.guests,
+          brandForm: rsvpBrandFormPayload,
+        });
+      } catch (error) {
+        // The host changed the form (or the answers were refused): refetch it so
+        // the guest sees the current questions; typed answers whose question
+        // still exists are kept by the version effect above.
+        if (error instanceof Error && isRsvpFormErrorCode(error.message)) {
+          void refetchRsvpBrandForm();
+        }
+        throw error;
+      }
       captureWeb("rsvp_acknowledgement_viewed", {
         surface: "anonymous_web",
         status: result.status,
@@ -1673,7 +1741,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       }
       return result;
     },
-    [engagementScope, event.id, event.currency, event.brandId],
+    [
+      engagementScope,
+      event.id,
+      event.currency,
+      event.brandId,
+      refetchRsvpBrandForm,
+      rsvpBrandFormPayload,
+    ],
   );
   // issue #4508 1.2a / 1.8 — the live match under the guest number field. A
   // signed-out visitor learns only whether the number is on Mingla.
@@ -1963,6 +2038,42 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           restoredRsvp={restoredRsvp}
           replyIdentity={user?.id ?? null}
           recoveryNotice={recoveryNotice}
+          questionsNode={
+            rsvpFormReadFailed ? (
+              <View
+                style={{ marginTop: 16, gap: 8 }}
+                accessibilityRole="alert"
+                testID="issue-4541-rsvp-questions-failed"
+              >
+                <Text style={{ color: palette.secondaryText, fontSize: 14 }}>
+                  Questions couldn&apos;t load. You can RSVP now and answer later.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Try again"
+                  onPress={() => void rsvpBrandFormQuery.refetch()}
+                  hitSlop={8}
+                >
+                  <Text style={{ color: palette.primaryText, fontSize: 14, fontWeight: "600" }}>
+                    Try again
+                  </Text>
+                </Pressable>
+              </View>
+            ) : rsvpBrandFormPage === null ? null : (
+              <React.Suspense fallback={<View style={{ minHeight: 120 }} />}>
+                <RsvpBrandFormQuestions
+                  page={rsvpBrandFormPage}
+                  answers={rsvpFormAnswers}
+                  onAnswersChange={setRsvpFormAnswers}
+                  onMissingChange={noopRsvpMissing}
+                />
+              </React.Suspense>
+            )
+          }
+          questionsRequired={
+            rsvpFormReadPending || rsvpBrandFormPage?.mode === "required_step"
+          }
+          questionsReady={!rsvpFormReadPending && rsvpFormMissing.length === 0}
           onRsvpResolved={handleRsvpResolved}
           onRecoveryRetry={retryRecovery}
           // A Stripe return lands with ?contribution=paid: show the inline

@@ -162,6 +162,8 @@ export interface SubmitPublicRsvpInput {
   plusCount?: number;
   /** ORCH-1163 §H — per-plus-one contacts; length must equal plusCount. */
   guests?: RsvpGuestContactInput[];
+  /** #4541 — current answers to the form attached to this RSVP page. `undefined` = form read failed (no capability marker); `null` = read ok, no form. */
+  brandForm?: import("@mingla/offering-rendering").RsvpBrandFormPayload | null;
 }
 
 export interface SubmitPublicRsvpResult {
@@ -209,6 +211,13 @@ export const submitPublicRsvp = async (
         guestPhoneCountryIso: input.guestPhoneCountryIso,
         plusCount: input.plusCount ?? 0,
         guests: input.guests ?? [],
+        // #4541 — explicit capability marker. Missing answers are meaningful;
+        // the atomic SQL wrapper decides whether the current form requires them.
+        // `undefined` = the form read did not succeed: send no marker so the
+        // server completes the RSVP as "to answer" (fail-open for old clients).
+        ...(input.brandForm === undefined
+          ? {}
+          : { brandFormStep: 1, brandForm: input.brandForm }),
         // #4238 W2-5: the browser's ad match keys + click id, web only, so the
         // server's free sign-up pairs with the browser's (event_id = rsvpId).
         // Native sends none and the server reports nothing (D20).

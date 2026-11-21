@@ -157,6 +157,12 @@ export const rsvpErrorMessageForCode = (code: string): string => {
     return "You've already RSVP'd with this email. Check that inbox for your RSVP.";
   if (code.includes("rsvp_full")) return "This event just filled up.";
   if (code.includes("rsvp_not_open")) return "RSVPs are closed for this event.";
+  if (code.includes("form_changed"))
+    return "The questions changed. Review your answers and try again.";
+  if (code.includes("form_answers_required"))
+    return "Answer the required questions to continue.";
+  if (code.includes("form_answers_invalid"))
+    return "Review your answers and try again.";
   if (code.includes("rsvp_guest_count_mismatch"))
     return "Re-check each guest's details.";
   if (
@@ -364,6 +370,12 @@ export interface RsvpOfferingBodyProps {
     /** issue #4508 — number-only guests (`{ phone, phoneCountryIso }`). */
     guests: RsvpGuestPayload[];
   }) => Promise<RsvpSubmitResult>;
+  /** #4541 — host-rendered brand-form questions, kept out of this package's app imports. */
+  questionsNode?: React.ReactNode;
+  /** Only required_step blocks Going/Maybe. Optional questions are still shown. */
+  questionsRequired?: boolean;
+  /** True once every currently visible required question has an answer. */
+  questionsReady?: boolean;
   /**
    * issue #4508 1.2a — the live match under the guest number field (the
    * surface calls public-submit-rsvp `guest_lookup`). Throws Error(code) on
@@ -521,6 +533,7 @@ interface RsvpDecisionState {
   guestApproval: "pending" | "approved" | null;
   submitting: boolean;
   contactReady: boolean;
+  decisionReady: boolean;
   plusCount: number;
   errorNode: React.ReactNode;
   subcopy: string | null;
@@ -558,6 +571,7 @@ interface RsvpDecisionState {
 export interface RsvpOfferingState extends RsvpDecisionState {
   contactForm: React.ReactNode;
   guestForms: React.ReactNode;
+  questionsNode: React.ReactNode;
   confirmDialog: React.ReactNode;
   successPopup: React.ReactNode;
   // ORCH-1163-R3 — the floating-bar details modal (portal <Modal>, gorhom-safe).
@@ -940,6 +954,9 @@ export const useRsvpOfferingState = (
   const guestsValid = true;
   // A4-NEW (extended §H.6): primary + every plus-one must be reachable.
   const contactReady = primaryValid && guestsValid;
+  const questionsRequired = props.questionsRequired === true;
+  const questionsReady = !questionsRequired || props.questionsReady === true;
+  const decisionReady = contactReady && questionsReady;
 
   const mapErrorCode = useCallback(rsvpErrorMessageForCode, []);
 
@@ -1105,9 +1122,10 @@ export const useRsvpOfferingState = (
     signedInPhoneNeeded,
     signedInPhoneReady,
   ]);
-  const validationHint =
-    showValidationErrors && !contactReady
-      ? buildRsvpValidationHint(contactIssues)
+  const validationHint = showValidationErrors && !contactReady
+    ? buildRsvpValidationHint(contactIssues)
+    : showValidationErrors && !questionsReady
+      ? "Answer the required questions to continue."
       : (props.recoveryNotice ?? null);
   const recoveryHint =
     validationHint !== null && validationHint === props.recoveryNotice;
@@ -1183,7 +1201,7 @@ export const useRsvpOfferingState = (
     async (rsvpStatus: "not_going" | "maybe"): Promise<void> => {
       if (submitting || !isCurrent()) return;
       if (
-        (rsvpStatus === "maybe" && !contactReady) ||
+        (rsvpStatus === "maybe" && !decisionReady) ||
         // #3380 — the server refuses every status without an account phone.
         (signedInPhoneNeeded && !signedInPhoneReady)
       ) {
@@ -1191,7 +1209,7 @@ export const useRsvpOfferingState = (
         // rendered far below the fields (and under the floating bar).
         setShowValidationErrors(true);
         setErrorMsg(null);
-        revealFirstIssue();
+        if (!contactReady) revealFirstIssue();
         return;
       }
       setErrorMsg(null);
@@ -1216,6 +1234,7 @@ export const useRsvpOfferingState = (
     [
       submitting,
       contactReady,
+      decisionReady,
       signedInPhoneNeeded,
       signedInPhoneReady,
       askForAccountPhone,
@@ -1231,14 +1250,15 @@ export const useRsvpOfferingState = (
   // Going → open the confirmation dialog (when contactReady); else surface errors.
   const onGoingTap = useCallback((): void => {
     if (submitting || !isCurrent() || replyLocked) return;
-    if (!contactReady) {
+    if (!decisionReady) {
       // #3380 — a signed-in guest who only lacks a phone is asked for it inside
       // the confirm step (the dialog shows the phone field).
-      const phoneAskedInConfirm = signedInPhoneNeeded && guestsValid;
+      const phoneAskedInConfirm =
+        !contactReady && signedInPhoneNeeded && guestsValid && questionsReady;
       if (!phoneAskedInConfirm) {
         setShowValidationErrors(true);
         setErrorMsg(null);
-        revealFirstIssue();
+        if (!contactReady) revealFirstIssue();
         return;
       }
     }
@@ -1248,6 +1268,8 @@ export const useRsvpOfferingState = (
   }, [
     submitting,
     contactReady,
+    decisionReady,
+    questionsReady,
     signedInPhoneNeeded,
     guestsValid,
     revealFirstIssue,
@@ -1263,8 +1285,15 @@ export const useRsvpOfferingState = (
   // the decision pinned, to dispatch once the contact + +1 forms are filled.
   const onFloatingGoing = useCallback((): void => {
     if (submitting || !isCurrent()) return;
-    if (contactReady) {
+    if (decisionReady) {
       onGoingTap();
+      return;
+    }
+    if (contactReady && !questionsReady) {
+      setShowValidationErrors(true);
+      setErrorMsg(null);
+      setPendingDecision("going");
+      setDetailsOpen(true);
       return;
     }
     if (signedInPhoneNeeded && guestsValid) {
@@ -1285,6 +1314,8 @@ export const useRsvpOfferingState = (
   }, [
     submitting,
     contactReady,
+    decisionReady,
+    questionsReady,
     signedInPhoneNeeded,
     guestsValid,
     canRevealFields,
@@ -1294,8 +1325,15 @@ export const useRsvpOfferingState = (
 
   const onFloatingMaybe = useCallback((): void => {
     if (submitting || !isCurrent()) return;
-    if (contactReady) {
+    if (decisionReady) {
       void submitDirect("maybe");
+      return;
+    }
+    if (contactReady && !questionsReady) {
+      setShowValidationErrors(true);
+      setErrorMsg(null);
+      setPendingDecision("maybe");
+      setDetailsOpen(true);
       return;
     }
     if (canRevealFields) {
@@ -1305,7 +1343,15 @@ export const useRsvpOfferingState = (
     setErrorMsg(null);
     setPendingDecision("maybe");
     setDetailsOpen(true);
-  }, [submitting, contactReady, canRevealFields, submitDirect, isCurrent]);
+  }, [
+    submitting,
+    contactReady,
+    decisionReady,
+    questionsReady,
+    canRevealFields,
+    submitDirect,
+    isCurrent,
+  ]);
 
   const onFloatingNotGoing = useCallback((): void => {
     if (submitting || !isCurrent()) return;
@@ -1342,7 +1388,9 @@ export const useRsvpOfferingState = (
     setPendingDecision(null);
   }, [isCurrent]);
   const onDetailsContinue = useCallback((): void => {
-    if (!contactReady || !isCurrent()) return;
+    if (
+      (pendingDecision !== "not_going" && !decisionReady) || !isCurrent()
+    ) return;
     const decision = pendingDecision;
     setDetailsOpen(false);
     setPendingDecision(null);
@@ -1355,7 +1403,7 @@ export const useRsvpOfferingState = (
     } else if (decision === "not_going") {
       void submitDirect("not_going");
     }
-  }, [contactReady, pendingDecision, submitDirect, isCurrent]);
+  }, [decisionReady, pendingDecision, submitDirect, isCurrent]);
 
   const onConfirmGoing = useCallback(async (): Promise<void> => {
     if (submitting || !isCurrent()) return;
@@ -1981,9 +2029,14 @@ export const useRsvpOfferingState = (
         theme={theme}
         contactForm={contactForm}
         guestForms={pendingDecision !== "not_going" ? guestForms : null}
+        questionsNode={
+          pendingDecision !== "not_going" ? props.questionsNode ?? null : null
+        }
         errorNode={errorNode}
         continueLabel={detailsContinueLabel}
-        continueEnabled={contactReady}
+        continueEnabled={
+          pendingDecision === "not_going" ? contactReady : decisionReady
+        }
         submitting={submitting}
         onContinue={onDetailsContinue}
         onCancel={closeDetails}
@@ -2033,6 +2086,7 @@ export const useRsvpOfferingState = (
     guestApproval,
     submitting,
     contactReady,
+    decisionReady,
     plusCount,
     errorNode,
     subcopy,
@@ -2052,6 +2106,7 @@ export const useRsvpOfferingState = (
     onFloatingNotGoing,
     contactForm,
     guestForms,
+    questionsNode: props.questionsNode ?? null,
     confirmDialog,
     successPopup,
     detailsModal,
@@ -2132,7 +2187,7 @@ const DecisionUnit: React.FC<{
       waitlistEnabled={config.waitlistEnabled}
       submitting={state.submitting}
       locked={state.replyLocked}
-      contactReady={contactReadyOverride ?? state.contactReady}
+      contactReady={contactReadyOverride ?? state.decisionReady}
       // issue #4508 1.7 — "Going" alone, "RSVP for N" with guests.
       goingIdleLabel={
         state.plusCount > 0 ? `RSVP for ${state.plusCount + 1}` : "Going"
@@ -2186,6 +2241,7 @@ export const RsvpDecisionBox: React.FC<RsvpDecisionBoxProps> = ({
   <View testID={testID ?? "orch-1163-rsvp-inline-box"}>
     {state.contactForm}
     {state.guestForms}
+    {state.questionsNode}
     <DecisionUnit
       palette={palette}
       theme={theme}

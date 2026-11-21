@@ -287,10 +287,19 @@ Deno.test("ADV/I-3 — EVERY SQL enqueue is ON CONFLICT DO NOTHING (count parity
 Deno.test("ADV/C-1 — submit delivery is DB-owned and pass exposure requires going AND approved", () => {
   // [FAILS-ON-REVERT KEY] — the delivery wrapper owns the enqueue transaction;
   // the edge response independently exposes pass material only to admitted rows.
+  // #4541: the edge calls the atomic RSVP + answers wrapper; that wrapper is
+  // what calls the DB-owned delivery RPC, in the same transaction.
   hasIn(
     submit,
-    '.rpc("submit_event_rsvp_with_delivery"',
-    "submit calls the DB-owned delivery wrapper",
+    '.rpc("submit_event_rsvp_with_form"',
+    "submit calls the DB-owned RSVP + answers wrapper",
+  );
+  hasIn(
+    Deno.readTextFileSync(
+      "supabase/migrations/20281121004541_issue_4541_rsvp_brand_forms.sql",
+    ),
+    "public.submit_event_rsvp_with_delivery(",
+    "the wrapper delegates delivery to the DB-owned delivery RPC",
   );
   const gateIdx = submit.indexOf("const passEligible =");
   assert(gateIdx !== -1, "the pass eligibility gate must exist");

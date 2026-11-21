@@ -77,6 +77,8 @@ export interface BrandFormSubmitRequest {
   challengeId?: string | null;
   /** Signed-in holder: answer for this RSVP or order. */
   rsvpId?: string | null;
+  /** Signed-in claimed plus-one: answer only for that claimed guest row. */
+  rsvpGuestId?: string | null;
   orderId?: string | null;
 }
 
@@ -178,6 +180,13 @@ export const BRAND_FORM_CORE_CODES: readonly BrandFormSubmitErrorCode[] = [
  */
 export const BRAND_FORM_CHECKOUT_STEP = 1 as const;
 
+/**
+ * #4541: capability marker for RSVP clients that can render the Questions
+ * block. Without it, required questions never strand an older client: the RSVP
+ * completes and the guest remains in the host's "to answer" audience.
+ */
+export const BRAND_FORM_RSVP_STEP = 1 as const;
+
 /** §3.8 abuse limits. */
 export const BRAND_FORM_MAX_BODY_BYTES = 32 * 1024;
 export const BRAND_FORM_PER_IP_10MIN = 20;
@@ -198,6 +207,7 @@ const BODY_KEYS = new Set([
   "token",
   "challengeId",
   "rsvpId",
+  "rsvpGuestId",
   "orderId",
 ]);
 
@@ -221,13 +231,14 @@ export function parseSubmitRequest(
   const eventId = optionalUuid(r.eventId);
   const challengeId = optionalUuid(r.challengeId);
   const rsvpId = optionalUuid(r.rsvpId);
+  const rsvpGuestId = optionalUuid(r.rsvpGuestId);
   const orderId = optionalUuid(r.orderId);
   if (
-    [versionId, eventId, challengeId, rsvpId, orderId].some((v) =>
+    [versionId, eventId, challengeId, rsvpId, rsvpGuestId, orderId].some((v) =>
       v === undefined
     )
   ) return null;
-  if (rsvpId && orderId) return null;
+  if ([rsvpId, rsvpGuestId, orderId].filter(Boolean).length > 1) return null;
   let token: string | null = null;
   if (r.token !== undefined && r.token !== null) {
     if (typeof r.token !== "string" || !TOKEN_RE.test(r.token)) return null;
@@ -262,6 +273,7 @@ export function parseSubmitRequest(
     token,
     challengeId: challengeId ?? null,
     rsvpId: rsvpId ?? null,
+    rsvpGuestId: rsvpGuestId ?? null,
     orderId: orderId ?? null,
   };
 }
@@ -296,6 +308,7 @@ export function corePayload(
   if (!userId) return null;
   const credential: Record<string, unknown> = { kind: "user", userId };
   if (req.rsvpId) credential.rsvpId = req.rsvpId;
+  if (req.rsvpGuestId) credential.rsvpGuestId = req.rsvpGuestId;
   if (req.orderId) credential.orderId = req.orderId;
   return { ...base, credential };
 }

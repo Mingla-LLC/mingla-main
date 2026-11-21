@@ -45,6 +45,8 @@ export interface RsvpDetailsModalProps {
   contactForm: React.ReactNode;
   /** The per-guest +1 mini-forms node — null for Can't-go (no +1s). */
   guestForms: React.ReactNode;
+  /** #4541 — questions for Going/Maybe; omitted for Can't-go. */
+  questionsNode: React.ReactNode;
   /** The validation/submit error node (shared). */
   errorNode: React.ReactNode;
   /** Primary-button label, decision-aware. */
@@ -62,6 +64,7 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
   theme,
   contactForm,
   guestForms,
+  questionsNode,
   errorNode,
   continueLabel,
   continueEnabled,
@@ -113,6 +116,7 @@ export const RsvpDetailsModal: React.FC<RsvpDetailsModalProps> = ({
           >
             {contactForm}
             {guestForms}
+            {questionsNode}
             {errorNode}
           </ScrollView>
           <Pressable
