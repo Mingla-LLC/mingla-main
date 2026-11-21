@@ -46,7 +46,7 @@ import { AVAILABLE_OFF_MESSAGE, AVAILABLE_ON_MESSAGE } from "../lib/supportAvail
 const PAGE_COPY = {
   support: {
     title: "Support",
-    adminDescription: "Conversations with hosts and explorers, oldest waiting first.",
+    adminDescription: "Conversations with hosts and explorers. The ones that need a reply come first.",
     other: { id: "community", label: "Community" },
   },
   community: {

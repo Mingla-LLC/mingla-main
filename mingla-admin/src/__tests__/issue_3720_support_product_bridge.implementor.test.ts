@@ -21,6 +21,7 @@ const panel = await read("components/support/TicketPanel.jsx");
 const composer = await read("components/support/SupportComposer.jsx");
 const model = await read("components/support/supportComposerModel.js");
 const metrics = await read("lib/supportTicketMetrics.js");
+const inboxModel = await read("lib/supportInboxModel.js");
 const service = await read("services/supportProductWorkflowService.js");
 const desk = await read("services/supportDeskService.js");
 const sendToProduct = await read("components/support/SendToProductModal.jsx");
@@ -29,11 +30,12 @@ const supportSend = await Deno.readTextFile(
 );
 
 Deno.test("the inbox tells customer tickets from staff tickets; staff threads are tickets", () => {
-  assertMatch(metrics, /label: `Staff · \$\{VISIBILITY_LABEL\[ticket\.visibility\] \|\| "Internal"\}`/);
-  assertMatch(metrics, /\{ value: "staff", label: "Staff" \}/);
+  // [TEST-MOD #4420] the origin chip and the Opened-by switch were retired by the chat
+  // inbox; a staff conversation carries a "Staff" label derived in supportInboxModel.
+  assertMatch(inboxModel, /origin === "staff"\) out\.push\(\{ id: "staff", text: "Staff"/);
   assertMatch(panel, /No customer linked/);
   assertNotMatch(`${page}${panel}${desk}`, /support_internal_threads/);
-  assertMatch(page, /table: "support_product_signals"/);
+  // [TEST-MOD #4420] the inbox no longer watches Product signals (no Product box in the thread).
   assertMatch(page, /table: "support_tickets"/);
 });
 

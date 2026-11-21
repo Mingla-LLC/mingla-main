@@ -74,11 +74,12 @@ describe("META-ORCH-1104 Phase 2 — Support desk + segmentation (happy path)", 
     // filter is worked out client-side over every row the desk loads (live
     // chats and staff threads), so there is no .is("assigned_staff_id", null)
     // query; that pin had been stale since #3720 merged the two sources.
-    assert.match(page, /SUPPORT_INBOX_VIEWS\.filter\(\(v\) => v\.group === group\)\.map\(\(option\) =>/);
-    assert.match(page, /supportInboxRows\(tickets, view, ctx\)/);
-    const metrics = read("src/lib/supportTicketMetrics.js");
-    for (const id of ["needs", "mine", "unassigned", "overdue", "waiting", "resolved", "all"]) {
-      assert.match(metrics, new RegExp(`id: "${id}"`), `inbox filter ${id} present`);
+    // [TEST-MOD #4420] the chat inbox: Open / Resolved plus label chips, all worked
+    // out from the loaded rows in lib/supportInboxModel.js.
+    assert.match(page, /splitInbox\(allRows,/);
+    const model = read("src/lib/supportInboxModel.js");
+    for (const id of ["needs", "waiting", "reported", "website", "mine", "unassigned", "overdue"]) {
+      assert.match(model, new RegExp(`id: "${id}"`), `inbox chip ${id} present`);
     }
     // sorted newest-activity-first
     assert.match(service, /\.order\("last_message_at",\s*\{\s*ascending:\s*false\s*\}\)/);

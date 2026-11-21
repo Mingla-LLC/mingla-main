@@ -44,11 +44,7 @@ import {
 } from "../lib/supportCommunityTabs.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
-import {
-  SUPPORT_INBOX_VIEWS,
-  supportInboxCounts,
-  supportInboxRows,
-} from "../lib/supportTicketMetrics.js";
+import { conversationRow, needsReplyCount, splitInbox } from "../lib/supportInboxModel.js";
 import { announcementsWithFailedPushes, pushDelivery } from "../lib/announcementDelivery.js";
 import { isRoadmapHash, roadmapCardFromHash, roadmapDraftHref } from "../lib/opsModel.js";
 
@@ -212,14 +208,14 @@ describe("W6-4 Reported enquiries", () => {
   });
 });
 
-// [TEST-MOD #4382] the inbox's views are now Needs reply, Mine, Unassigned,
-// Overdue, Waiting on customer, Resolved and All, and staff tickets are
-// support_tickets with origin "staff". The rule this suite pins is unchanged:
-// every count is the number of rows that view lists.
+// [TEST-MOD #4420] the eight views and their rail were retired by the chat inbox
+// (Open / Resolved, labels, search). The rule this suite pins is unchanged: the
+// numbers shown (Open, Resolved, the page's Inbox badge) are the number of rows
+// the list holds, worked out from the same rows.
 describe("W6-5 the inbox counts match the inbox", () => {
   const now = Date.parse("2026-10-26T12:00:00Z");
   const ctx = { nowMs: now, me: "s1" };
-  const rows = [
+  const tickets = [
     { id: "i1", origin: "staff", visibility: "internal", status: "open", assigned_staff_id: "s1", last_sender_kind: "staff", last_message_at: "2026-10-26T11:20:00Z", next_update_at: "2026-10-26T18:00:00Z" },
     { id: "t1", origin: "customer", visibility: "person", status: "open", assigned_staff_id: null, last_sender_kind: "customer", last_message_at: "2026-10-25T09:00:00Z", next_update_at: "2026-10-26T10:00:00Z" },
     { id: "t2", origin: "customer", visibility: "brand", status: "pending", assigned_staff_id: "s1", last_sender_kind: "staff", last_message_at: "2026-10-26T08:00:00Z", next_update_at: null },
@@ -227,27 +223,21 @@ describe("W6-5 the inbox counts match the inbox", () => {
     { id: "t4", origin: "customer", visibility: "person", status: "closed", assigned_staff_id: "s1", last_message_at: "2026-10-26T09:00:00Z" },
     { id: "t5", origin: "customer", visibility: "person", status: "new", assigned_staff_id: null, last_sender_kind: null, first_response_at: null, last_message_at: "2026-10-26T10:00:00Z" },
   ];
+  const rows = tickets.map(conversationRow);
 
-  it("each view's count is the number of rows that view lists", () => {
-    const counts = supportInboxCounts(rows, ctx);
-    for (const { id } of SUPPORT_INBOX_VIEWS) {
-      assert.equal(counts[id], supportInboxRows(rows, id, ctx).length, id);
-    }
-    assert.deepEqual(counts, { needs: 2, mine: 2, unassigned: 2, overdue: 1, waiting: 1, website: 0, resolved: 2, all: 6, open: 2 });
-  });
-
-  it("the inbox opens on Needs reply, longest waiting first; Resolved is newest first", () => {
-    assert.equal(SUPPORT_INBOX_VIEWS[0].id, "needs");
-    assert.deepEqual(supportInboxRows(rows, "needs", ctx).map((r) => r.id), ["t1", "t5"]);
-    assert.deepEqual(supportInboxRows(rows, "resolved", ctx).map((r) => r.id), ["t4", "t3"]);
-    assert.deepEqual(supportInboxRows(rows, "overdue", ctx).map((r) => r.id), ["t1"]);
+  it("Open and Resolved hold every row once, and the badge is the Needs reply count", () => {
+    const { open, resolved } = splitInbox(rows, ctx);
+    assert.equal(open.length + resolved.length, rows.length);
+    assert.deepEqual(open.map((r) => r.id), ["t5", "t1", "i1", "t2"]);
+    assert.deepEqual(resolved.map((r) => r.id), ["t4", "t3"]);
+    assert.equal(needsReplyCount(rows), 2);
   });
 
   it("the desk shows those counts and hands them to the page's Inbox badge", () => {
     const desk = read("pages/SupportDeskPage.jsx");
-    assert.match(desk, /const inboxCounts = useMemo\(\(\) => supportInboxCounts\(tickets, ctx\), \[tickets, ctx\]\);/);
-    assert.match(desk, /supportInboxRows\(tickets, view, ctx\)/);
-    assert.match(desk, /onCounts\?\.\(badgeCounts\)/);
+    assert.match(desk, /const inbox = useMemo\(\(\) => splitInbox\(allRows,/);
+    assert.match(desk, /needsReplyCount\(allRows\)/);
+    assert.match(desk, /onCounts\?\.\(\{ open: badge, needs: badge \}\)/);
     assert.match(read("pages/CommunitySupportPage.jsx"), /onCounts=\{onInboxCounts\}/);
     assert.equal(/support: Number\(data\.unanswered_tickets/.test(read("pages/CommunitySupportPage.jsx")), false);
   });

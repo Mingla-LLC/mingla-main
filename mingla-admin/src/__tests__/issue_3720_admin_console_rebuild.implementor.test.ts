@@ -40,7 +40,8 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
   assert(tabs.includes('"brand-groups": "brand-groups"'), "the old Brand groups tab lands on its own screen");
   assertMatch(navigation, /md:hidden/);
   assertMatch(page, /Available for support/);
-  assertMatch(page, /Conversations with hosts and explorers, oldest waiting first[.]/);
+  // [TEST-MOD #4420] the chat inbox lists the ones that need a reply first, not oldest first.
+  assertMatch(page, /Conversations with hosts and explorers. The ones that need a reply come first[.]/);
   assertMatch(page, /What hosts ask for and talk about[.] What we tell them now lives in Communications[.]/);
   assertNotMatch(page, /CutoverPanel|activeTab === "availability"|OverviewPanel/);
   assertMatch(ideas, /not_now/);
@@ -58,9 +59,12 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
   assertMatch(roadmap, /line-clamp-2/);
   // [TEST-MOD #4382] the inbox is a rail of views, a list and a side panel
   // (the old five-column table is gone); on a phone the panel replaces the list.
-  assertMatch(support, /aria-label="Inbox views"/);
+  // [TEST-MOD #4420] the chat inbox: the rail of views became Open / Resolved and
+  // label chips in InboxList; the thread is still the TicketPanel; on a phone the
+  // thread replaces the list.
+  assertMatch(support, /<InboxList/);
   assertMatch(support, /<TicketPanel/);
-  assertMatch(support, /hidden xl:block/);
+  assertMatch(support, /hidden lg:block/);
   // #4383: the sections live in lib/emailViews.js (History is Sent, Send is Write).
   assertMatch(email, /emailViewsFor\(access\)/);
   assertMatch(composer, /userType: "host"/);

@@ -39,19 +39,19 @@ function FieldError({ id, words }) {
  * Props: config (ops config: me, team), online, headingRef, onCreated(card),
  * onCancel, onOpenCard(id), and optionally the conversation the ticket comes
  * from: conversation { id, label }, createdFrom ("board" | "conversation" |
- * "brand_group"), brandId, initialTitle, initialWhatIsWrong.
+ * "brand_group"), brandId, initialTitle, initialWhatIsWrong, initialType, initialProductArea.
  */
-export function TicketForm({ config, online, headingRef, onCreated, onCancel, onOpenCard, conversation = null, createdFrom = "board", brandId = null, initialTitle = "", initialWhatIsWrong = "" }) {
+export function TicketForm({ config, online, headingRef, onCreated, onCancel, onOpenCard, conversation = null, createdFrom = "board", brandId = null, initialTitle = "", initialWhatIsWrong = "", initialType = "bug", initialProductArea = "" }) {
   const { addToast } = useToast();
   const directory = usePeopleDirectory();
   const team = directory.people.length ? directory.people : (config?.team || []);
   const me = config?.me?.email;
   const today = todayIso();
-  const [type, setType] = useState("bug");
+  const [type, setType] = useState(initialType);
   const [title, setTitle] = useState(initialTitle);
   const titleGrow = useAutoGrow(title);
   const [whatIsWrong, setWhatIsWrong] = useState(initialWhatIsWrong);
-  const [productArea, setProductArea] = useState("");
+  const [productArea, setProductArea] = useState(initialProductArea);
   // The person making the ticket picks its owner, like any card; they usually suggest themselves.
   const [owners, setOwners] = useState(me ? [me] : []);
   // Due is filled in at 7 days and editable; clearing it leaves the server's 7-day default.

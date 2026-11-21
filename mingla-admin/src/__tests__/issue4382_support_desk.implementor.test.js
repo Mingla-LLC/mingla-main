@@ -27,17 +27,11 @@ import { describe, it } from "node:test";
 import {
   ACTIVE_TICKET_CAP,
   CLOSED_PAGE_SIZE,
-  OPENED_BY_OPTIONS,
-  SUPPORT_INBOX_VIEWS,
   coverageNote,
   inboxViewCoverage,
-  railCountLabel,
-  isActiveUnassignedTicket,
-  originChip,
-  supportInboxCounts,
-  supportInboxRows,
   ticketNumberLabel,
 } from "../lib/supportTicketMetrics.js";
+import { INBOX_CHIPS, conversationRow, needsReplyCount, rowLabels, splitInbox } from "../lib/supportInboxModel.js";
 import {
   SUPPORT_UPLOAD_LIMITS,
   fitWithin,
@@ -65,7 +59,10 @@ import { COMMUNITY_PAGE_TABS, SUPPORT_PAGE_TABS } from "../lib/supportCommunityT
 const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
 
 // ── Inbox views and counts ──────────────────────────────────────────────────
-describe("#4382 W2: inbox views, Opened by, filters and search", () => {
+// [TEST-MOD #4420] the eight-view rail, the Opened-by switch and the filter bar
+// were retired by the chat inbox (Open / Resolved, labels, search). The rules
+// below are the same rules, asserted through lib/supportInboxModel.js.
+describe("#4382 W2: inbox chips, Open and Resolved, and search", () => {
   const now = Date.parse("2026-11-10T12:00:00Z");
   const me = "staff-me";
   const rows = [
@@ -83,53 +80,38 @@ describe("#4382 W2: inbox views, Opened by, filters and search", () => {
   const brandsById = { "b-lnm": { name: "Lagos Night Market" }, "b-afro": { name: "Afro Fest" } };
   const base = { nowMs: now, me, profilesById, brandsById };
 
-  it("the rail is the approved seven views plus Website changes (#4453), Needs reply first", () => {
-    assert.deepEqual(SUPPORT_INBOX_VIEWS.map((v) => v.id), ["needs", "mine", "unassigned", "overdue", "waiting", "website", "resolved", "all"]);
-    assert.deepEqual(OPENED_BY_OPTIONS.map((o) => o.label), ["Everyone", "Customers", "Staff"]);
+  const inbox = rows.map(conversationRow);
+  const ids = (chip, ctx = base) => splitInbox(inbox, { ...ctx, chip }).open.map((r) => r.id);
+
+  it("the chips are Needs reply, Waiting on customer, Reported, Website, Mine, Unassigned, Overdue", () => {
+    assert.deepEqual(INBOX_CHIPS.map((c) => c.id), ["needs", "waiting", "reported", "website", "mine", "unassigned", "overdue"]);
   });
 
-  it("each view lists exactly the rows its rule names", () => {
-    const ids = (view, ctx = base) => supportInboxRows(rows, view, ctx).map((r) => r.id);
-    assert.deepEqual(ids("needs"), ["g", "d", "b", "a"], "open and the customer spoke last, longest waiting first");
+  it("each chip lists exactly the rows its rule names; Open lists Needs reply first", () => {
+    assert.deepEqual([...ids("needs")].sort(), ["a", "b", "d", "g"], "open and the customer spoke last");
+    assert.deepEqual(ids("needs"), ["a", "b", "d", "g"], "newest activity first");
     assert.deepEqual(ids("mine"), ["d", "c"], "mine and still active (resolved h left out)");
-    assert.deepEqual(ids("unassigned"), ["g", "b"], "nobody owns it and still active (closed i left out)");
+    assert.deepEqual(ids("unassigned"), ["b", "g"], "nobody owns it and still active (closed i left out)");
     assert.deepEqual(ids("overdue"), ["e"], "active and the promised update passed");
-    assert.deepEqual(ids("waiting"), ["f", "e"]);
-    assert.deepEqual(ids("resolved"), ["h", "i"], "newest first");
-    assert.equal(ids("all").length, rows.length);
+    assert.deepEqual(ids("waiting"), ["e", "f"]);
+    const all = splitInbox(inbox, base);
+    assert.deepEqual(all.resolved.map((r) => r.id), ["h", "i"], "newest first");
+    assert.equal(all.open.length + all.resolved.length, rows.length);
+    assert.equal(needsReplyCount(inbox), 4, "the page badge is the Needs reply count");
   });
 
-  it("every count equals the rows shown, under every Opened-by, filter and search", () => {
-    const contexts = [
-      base,
-      { ...base, openedBy: "customer" },
-      { ...base, openedBy: "staff" },
-      { ...base, filters: { priority: "normal" } },
-      { ...base, filters: { owner: "none" } },
-      { ...base, filters: { owner: me } },
-      { ...base, filters: { brand: "b-afro" } },
-      { ...base, filters: { productArea: "Host app · Payouts" } },
-      { ...base, search: "S-1048" },
-      { ...base, search: "lagos" },
-      { ...base, search: "tolu@example" },
-      { ...base, openedBy: "staff", search: "afro" },
-    ];
-    for (const ctx of contexts) {
-      const counts = supportInboxCounts(rows, ctx);
-      for (const { id } of SUPPORT_INBOX_VIEWS) {
-        assert.equal(counts[id], supportInboxRows(rows, id, ctx).length, `${id} under ${JSON.stringify({ ...ctx, profilesById: undefined, brandsById: undefined })}`);
-      }
-      assert.equal(counts.open, counts.needs, "the page badge reads the Needs reply count");
-    }
+  it("search finds S-numbers, people and brands", () => {
+    const found = (search) => { const r = splitInbox(inbox, { ...base, lookups: { profilesById, brandsById }, search }); return [...r.open, ...r.resolved].map((x) => x.id); };
+    assert.deepEqual(found("s-1048"), ["a"]);
+    assert.deepEqual(found("1044"), ["e"]);
+    assert.deepEqual(found("ada"), ["d"]);
+    assert.deepEqual(found("Afro").sort(), ["e", "f"]);
+    assert.deepEqual(found("lagos"), ["a"]);
+    assert.deepEqual(found("tolu@example"), ["a"]);
   });
 
-  it("Opened by splits customer and staff tickets; search finds S-numbers, people and brands", () => {
-    assert.deepEqual(supportInboxCounts(rows, { ...base, openedBy: "staff" }).all, 2);
-    assert.deepEqual(supportInboxCounts(rows, { ...base, openedBy: "staff" }).needs, 0, "a staff ticket never needs a customer reply");
-    assert.deepEqual(supportInboxRows(rows, "all", { ...base, search: "s-1048" }).map((r) => r.id), ["a"]);
-    assert.deepEqual(supportInboxRows(rows, "all", { ...base, search: "1044" }).map((r) => r.id), ["e"]);
-    assert.deepEqual(supportInboxRows(rows, "all", { ...base, search: "ada" }).map((r) => r.id), ["d"]);
-    assert.deepEqual(supportInboxRows(rows, "all", { ...base, search: "Afro" }).map((r) => r.id).sort(), ["e", "f"]);
+  it("a staff conversation never needs a customer reply", () => {
+    assert.equal(rowLabels(inbox.find((r) => r.id === "c")).some((l) => l.id === "needs"), false);
   });
 
   it("a ticket from before #4382 with no last sender: unanswered counts as the customer waiting", () => {
@@ -137,23 +119,20 @@ describe("#4382 W2: inbox views, Opened by, filters and search", () => {
       { id: "x", origin: "customer", status: "new", last_sender_kind: null, first_response_at: null, last_message_at: "2026-11-10T10:00:00Z" },
       { id: "y", origin: "customer", status: "open", last_sender_kind: null, first_response_at: "2026-11-10T10:30:00Z", last_message_at: "2026-11-10T10:30:00Z" },
     ];
-    assert.deepEqual(supportInboxRows(legacy, "needs", base).map((r) => r.id), ["x"]);
+    assert.deepEqual(splitInbox(legacy.map(conversationRow), { ...base, chip: "needs" }).open.map((r) => r.id), ["x"]);
   });
 
-  it("row words: S-number, origin chip and the unassigned rule", () => {
+  it("row words: the S-number and the Host / Explorer / Staff labels", () => {
     assert.equal(ticketNumberLabel({ ticket_number: 1048 }), "S-1048");
-    assert.equal(originChip({ origin: "staff", visibility: "brand" }).label, "Staff · Brand team");
-    assert.equal(originChip({ origin: "staff", visibility: "internal" }).label, "Staff · Internal");
-    assert.equal(originChip({ origin: "customer", requester_segment: "explorer" }).label, "Explorer");
-    assert.equal(originChip({ origin: "customer", requester_segment: "business" }).label, "Host");
-    assert.equal(isActiveUnassignedTicket({ status: "pending", assigned_staff_id: null }), true);
-    assert.equal(isActiveUnassignedTicket({ status: "resolved", assigned_staff_id: null }), false);
+    const first = (t) => rowLabels(conversationRow(t))[0].text;
+    assert.equal(first({ origin: "staff", visibility: "brand", status: "open" }), "Staff");
+    assert.equal(first({ origin: "customer", requester_segment: "explorer", status: "open" }), "Explorer");
+    assert.equal(first({ origin: "customer", requester_segment: "business", status: "open" }), "Host");
   });
 
-  it("the desk counts the same rows it lists, and keeps the props the Support page mounts", () => {
+  it("the desk lists the rows it counts, and keeps the props the Support page mounts", () => {
     const desk = read("pages/SupportDeskPage.jsx");
-    assert.match(desk, /const inboxCounts = useMemo\(\(\) => supportInboxCounts\(tickets, ctx\), \[tickets, ctx\]\);/);
-    assert.match(desk, /const visibleTickets = useMemo\(\(\) => supportInboxRows\(tickets, view, ctx\), \[tickets, view, ctx\]\);/);
+    assert.match(desk, /const inbox = useMemo\(\(\) => splitInbox\(allRows, \{ chip, search, lookups, me: myUserId \}\), \[allRows, chip, search, lookups, myUserId\]\);/);
     assert.match(desk, /export function SupportDeskPage\(\{ embedded = false, canManageAgents = true, onCounts \} = \{\}\)/);
     assert.equal(/NextUpdateModal|ProductInboxModal|InternalTicketModal|support_internal_threads|listInternalSupportThreads/.test(desk), false);
   });
@@ -288,9 +267,7 @@ describe("#4382 W2: every active ticket loads; older ones page in (tester P3d)",
     }
     assert.deepEqual(inboxViewCoverage(loaded, "resolved"), { partial: true, loaded: 300, total: 420, canLoadOlder: true });
     assert.deepEqual(inboxViewCoverage(loaded, "all"), { partial: true, loaded: 340, total: 460, canLoadOlder: true });
-    assert.equal(railCountLabel(12, true), "12+");
-    assert.equal(railCountLabel(12, false), "12");
-    assert.equal(coverageNote(inboxViewCoverage(loaded, "resolved")), "Showing the newest 300 of 420 tickets. Counts cover the loaded tickets only.");
+    assert.equal(coverageNote(inboxViewCoverage(loaded, "resolved")), "Showing the newest 300 of 420 conversations. Counts cover the loaded tickets only.");
     assert.equal(coverageNote(inboxViewCoverage(loaded, "needs")), null);
   });
 
@@ -298,7 +275,7 @@ describe("#4382 W2: every active ticket loads; older ones page in (tester P3d)",
     const capped = { activeLoaded: ACTIVE_TICKET_CAP, activeTotal: ACTIVE_TICKET_CAP + 5, closedLoaded: 0, closedTotal: 0 };
     assert.equal(inboxViewCoverage(capped, "needs").partial, true);
     assert.equal(inboxViewCoverage(capped, "needs").canLoadOlder, false);
-    assert.match(coverageNote(inboxViewCoverage(capped, "needs")), /of 2005 tickets/);
+    assert.match(coverageNote(inboxViewCoverage(capped, "needs")), /of 2005 conversations/);
   });
 
   it("the service loads active tickets with no 300 cap and pages resolved ones", () => {
@@ -310,8 +287,8 @@ describe("#4382 W2: every active ticket loads; older ones page in (tester P3d)",
     assert.match(service, /\.in\("status", DONE_TICKET_STATUSES\)\s*\.order\("last_message_at", \{ ascending: false \}\)\s*\.range\(0, Math\.max\(CLOSED_PAGE_SIZE, closedLimit\) - 1\)/);
     const desk = read("pages/SupportDeskPage.jsx");
     assert.match(desk, /listSupportTickets\(\{ closedLimit: closedLimitRef\.current \}\)/);
-    assert.match(desk, /railCountLabel\(inboxCounts\[option\.id\], inboxViewCoverage\(coverage, option\.id\)\.partial\)/);
-    assert.match(desk, /viewCoverage\.canLoadOlder \?[\s\S]*Load older/);
+    assert.match(desk, /canLoadOlder=\{resolvedCoverage\.canLoadOlder\}/);
+    assert.match(read("components/support/InboxList.jsx"), /canLoadOlder \?[\s\S]*Load older/);
   });
 });
 
@@ -332,8 +309,7 @@ describe("#4382 runtime: Reopened automatically and the Send to Product prefill"
     assert.equal(productPrefillDetails(ticket, []), "Map is blank");
     const long = productPrefillDetails(ticket, [{ id: "l", content: "word ".repeat(200), sender_id: "u1" }]);
     assert.ok(long.length <= PRODUCT_PREFILL_MAX + 1 && long.endsWith("…"));
-    assert.match(read("components/support/TicketPanel.jsx"), /onSendToProduct\(ticket, productPrefillDetails\(ticket, messages\)\)/);
-    assert.match(read("pages/SupportDeskPage.jsx"), /details: \(typeof details === "string" && details\.trim\(\)\) \? details : ticket\.subject,/);
+    // [TEST-MOD #4420] the Send to Product box left the thread; "Create ticket" pre-fills through ticketPrefill (issue4420_support_inbox test).
   });
   it("the ticket panel keeps the thread at least ~55% tall with compact, collapsible facts", () => {
     const panel = read("components/support/TicketPanel.jsx");

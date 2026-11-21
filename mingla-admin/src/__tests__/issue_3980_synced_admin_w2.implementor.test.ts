@@ -8,6 +8,7 @@ import {
   assert,
   assertEquals,
   assertMatch,
+  assertNotMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   githubChipClass,
@@ -48,17 +49,13 @@ Deno.test("#3980 W2: a work card's chips carry the tone, and people switch the G
   assertMatch(detail, /card\.blocked_kind === "github"/);
 });
 
-// [TEST-MOD #4382] the Engineering row moved into the ticket side panel, and
-// the Product tab became the Product board with a card panel.
-Deno.test("#3980 W2: the ticket shows one Engineering row with loading, error and Live words", () => {
+// [TEST-MOD #4420] the Engineering row lived in the Support thread's Product box.
+// The chat inbox has no Product box (a linked Work ticket shows its GitHub issue
+// on the Work card), so the row is retired from TicketPanel. The Product board
+// card panel keeps its own Engineering line (next test).
+Deno.test("#3980 W2: the Support thread no longer carries a Product box or an Engineering row", () => {
   const page = read("components/support/TicketPanel.jsx");
-  assertMatch(page, /fetchTicketEngineering/);
-  assertMatch(page, /Engineering: \{data\.label\} · #\{n\}/);
-  assertMatch(page, /Live: you can tell the host it is fixed\./);
-  assertMatch(page, /Couldn't read engineering status\./);
-  assertMatch(page, />Try again</);
-  assertMatch(page, /if \(!data\?\.linked\) return null;/);
-  assertMatch(page, /rel="noopener noreferrer"/);
+  assertNotMatch(page, /fetchTicketEngineering|EngineeringRow|ProductBox|onSendToProduct/);
 });
 
 Deno.test("#3980 W2: the Product Inbox uses the bridge's word when it has the issue", () => {
