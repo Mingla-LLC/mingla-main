@@ -14,6 +14,10 @@
 //            member plus guests)
 //   admit_code { venueId, memberCode, guests? (0..20) } — the six-character
 //            fallback printed below a member pass (#4490 M)
+//   admit_guest_list { venueId, entryId, count? } — free admit, reduced Entry
+//            sale hand-off, or normal-price fallback (#4490 I)
+//   sell_guest_list { venueId, entryId, count, method, buyer?,
+//            idempotencyKey } — completes the reduced Entry gate sale
 //   undo   { venueId, logId }
 //   sell   { venueId, offeringId, lines:[{priceOptionId, guests}], method:
 //            "cash" | "transfer" | "pay_link", buyer?: {name, email?, phone?},
@@ -80,6 +84,11 @@ const SAFE_CODES = [
   "member_guest_passes_used_up",
   "member_guests_day_full",
   "member_code_rate_limited",
+  "guest_list_entry_not_found",
+  "guest_list_wrong_day",
+  "guest_list_reduced_price_invalid",
+  "guest_list_reduced_window_closed",
+  "guest_list_arrived_invalid",
 ];
 
 type RpcError = { message?: string; code?: string; details?: string };
@@ -329,6 +338,69 @@ export function createVenueCheckInHandler(deps: VenueCheckInDeps = {}) {
         },
       );
       return error ? failure(error) : json(200, { kind: "success", data });
+    }
+
+    if (action === "admit_guest_list") {
+      const entryId = str(body.entryId);
+      const count = body.count;
+      if (
+        !UUID.test(entryId) ||
+        (count !== undefined && count !== null &&
+          (!Number.isInteger(count) || Number(count) < 1 || Number(count) > 11))
+      ) return json(400, { code: "invalid_request" });
+      const { data, error } = await client.rpc(
+        "issue_4490_admit_guest_list",
+        {
+          p_venue_id: venueId,
+          p_entry_id: entryId,
+          p_count: count ?? null,
+          p_scanner_user_id: userId,
+        },
+      );
+      return error ? failure(error) : json(200, { kind: "success", data });
+    }
+
+    if (action === "sell_guest_list") {
+      const entryId = str(body.entryId);
+      const count = body.count;
+      const method = str(body.method);
+      const key = str(body.idempotencyKey);
+      if (
+        !UUID.test(entryId) || !Number.isInteger(count) || Number(count) < 1 ||
+        Number(count) > 11 || !["cash", "transfer", "pay_link"].includes(method) ||
+        !KEY.test(key) ||
+        (body.buyer !== undefined &&
+          (typeof body.buyer !== "object" || Array.isArray(body.buyer)))
+      ) return json(400, { code: "invalid_request" });
+      let groupId: string | null = null;
+      let token: string | null = null;
+      if (method === "pay_link") {
+        groupId = (deps.newGroupId ?? (() => crypto.randomUUID()))();
+        token = (await (deps.issueToken ?? issueVenueOfferBookingToken)({ groupId })).token;
+      }
+      const { data, error } = await client.rpc(
+        "issue_4490_guest_list_gate_sale",
+        {
+          p_venue_id: venueId,
+          p_entry_id: entryId,
+          p_count: count,
+          p_method: method,
+          p_buyer: body.buyer ?? {},
+          p_idempotency_key: key,
+          p_scanner_user_id: userId,
+          p_group_id: groupId,
+          p_buyer_token_hash: token
+            ? `\\x${await venueOfferTokenHashHex(token)}`
+            : null,
+        },
+      );
+      if (error) return failure(error);
+      const result = data as Record<string, unknown>;
+      if (method === "pay_link" && token && !result.replayed) {
+        const booking = result.booking as Record<string, unknown>;
+        result.payUrl = `${returnOrigin(env)}/visit/${booking.groupId}#t=${token}`;
+      }
+      return json(200, { kind: "success", data: result });
     }
 
     if (action === "undo") {
