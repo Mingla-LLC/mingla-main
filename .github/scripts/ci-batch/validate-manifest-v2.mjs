@@ -636,7 +636,8 @@ export function phase3dContractDigest(manifest) {
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the replay inventories; skipped it by exact filename on the filtered #1931 template replay (it reads event_rsvp_guests columns only the skipped 20281119014508 creates); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 tickets on the Work board: listed migration 20281121034420 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "ad09bec482bb27fb873eeac17edd113ead5e4519e2930b8561e476f80e0f5fac";
+// #4420 rework: registered the tester's tickets-on-Work-board pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "329277b0514f30e3525a6fcdd30d3de21a0396ae50fa2bf1205c648f2b2d3c74";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

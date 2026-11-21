@@ -376,7 +376,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed.
 // #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the #1857, #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 template replay (#4508, which it builds on, is skipped there); re-sealed.
 // #4420 tickets on the Work board: listed migration 20281121034420 after 20281121023281 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "6959d5e1e3c6971809006320b86f8843b331eaf0decb50cda57656078992ea1a";
+// #4420 rework: registered the tester's tickets-on-Work-board pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+export const BOOTSTRAP_SHA256 = "fa1fa796e4a37f27b2d251c13cfcaa032920e386b34d9d1f30cba5554b70cd70";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
