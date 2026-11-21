@@ -1,8 +1,8 @@
 /**
- * #4490 P6-3 — joining a monthly plan (`pk-join`), signed out. What you get,
- * how you pay in three plain lines (today, each month, a skipped month), the
+ * #4490 P6-3/K — joining a monthly or yearly plan (`pk-join`), signed out. What you get,
+ * how you pay in three plain lines (today, each period, a skipped period), the
  * start day (a date strip, today up to 60 days ahead), name / email / phone,
- * and the first month's total with VAT. "Pay … and join" joins (the member
+ * and the first period's total with VAT. "Pay … and join" joins (the member
  * token is kept on this device only), then opens the secure payment page;
  * the payment page returns to the member page `/visit/plan/<id>?paid=1`
  * (no token in that address), which confirms the payment on return.
@@ -88,14 +88,15 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
   const [focused, setFocused] = useState(false);
 
   const total = plan !== null ? monthTotal(plan.priceMinor, page?.vat ?? null) : null;
-  const monthEnd = (() => {
+  const periodEnd = (() => {
     const d = new Date(`${startOn}T12:00:00Z`);
-    d.setUTCMonth(d.getUTCMonth() + 1);
+    if (plan?.period === "year") d.setUTCFullYear(d.getUTCFullYear() + 1);
+    else d.setUTCMonth(d.getUTCMonth() + 1);
     return d.toISOString().slice(0, 10);
   })();
   const short = (iso: string): string => entryDateLabel(iso).replace(/^\w+ /, "");
-  const monthName = `your first month, ${short(startOn)} to ${short(monthEnd)}`;
-  const monthRange = `${short(startOn)} – ${short(monthEnd)}`;
+  const firstPeriod = `your first ${plan?.period ?? "month"}, ${short(startOn)} to ${short(periodEnd)}`;
+  const periodRange = `${short(startOn)} – ${short(periodEnd)}`;
   const blocker: string | null =
     pageQuery.isLoading || venueQuery.isLoading
       ? "Loading the plan…"
@@ -214,7 +215,7 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
           { title: "If approved", body: `We email you a link. Pay your first ${plan.period} within 3 days to start.` },
           { title: `Each ${plan.period} after`, body: `We email a payment link ${plan.renewalNoticeDays} days ahead. Nothing renews or is charged by itself.` },
         ]
-      : howYouPayLines({ firstMonth: monthName, renewalNoticeDays: plan.renewalNoticeDays, graceDays: plan.graceDays, minMonths: plan.minMonths, noticeDays: plan.noticeDays })
+      : howYouPayLines({ period: plan.period, firstPeriod, renewalNoticeDays: plan.renewalNoticeDays, graceDays: plan.graceDays, minMonths: plan.minMonths, noticeDays: plan.noticeDays })
     : [];
   const totalWords = total !== null ? money(total.totalMinor) : null;
   const payLabel = busy
@@ -229,7 +230,7 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
       {plan !== null && total !== null ? (
         <>
           <View style={styles.line}>
-            <Text style={[styles.small, { color: palette.secondaryText }]}>{`${plan.name} · ${monthRange}`}</Text>
+            <Text style={[styles.small, { color: palette.secondaryText }]}>{`${plan.name} · ${periodRange}`}</Text>
             <Text style={[styles.small, { color: palette.primaryText }]}>{money(plan.priceMinor)}</Text>
           </View>
           {total.mode === "added" ? (
@@ -298,7 +299,7 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
         <Text style={[styles.small, { color: palette.secondaryText }]}>
           {plan?.joinMode === "request"
             ? `Requested start: ${entryDateLabel(startOn)}. The venue replies before you pay.`
-            : startOn === today ? "Starts today, as soon as you've paid." : `Starts ${entryDateLabel(startOn)}. You pay for the first month now.`}
+            : startOn === today ? "Starts today, as soon as you've paid." : `Starts ${entryDateLabel(startOn)}. You pay for the first ${plan?.period ?? "month"} now.`}
         </Text>
       </View>
       {!wide ? summaryCard : null}
@@ -375,7 +376,7 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
             palette={palette}
             theme={theme}
             title={totalWords ?? ""}
-            subtitle={plan?.joinMode === "request" ? "No payment today" : "First month today"}
+            subtitle={plan?.joinMode === "request" ? "No payment today" : `First ${plan?.period ?? "month"} today`}
             ctaLabel={busy ? (plan?.joinMode === "request" ? "Sending…" : "Opening…") : plan?.joinMode === "request" ? "Ask to join" : "Pay and join"}
             onPress={() => void pay()}
             enabled={blocker === null && !busy}

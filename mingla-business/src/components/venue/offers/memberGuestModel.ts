@@ -1,7 +1,7 @@
 /**
  * #4490 P6-3 — memberships for the guest, pure: the member read
  * (`membership_get`), the words for each state (Active · Payment due ·
- * Paused · Left, plus joining), the join path, the first month's total with
+ * Paused · Left, plus joining), the join path, the first period's total with
  * the venue's VAT, the member's price block from a quote, which member this
  * device knows at a venue, and every refusal in plain words. No React.
  *
@@ -251,13 +251,14 @@ export interface GuestMemberState {
 export function guestMemberState(m: GuestMember): GuestMemberState {
   const tz = m.venue.timezone;
   const day = (iso: string | null | undefined): string => memberDayWords(iso ?? null, tz) ?? "soon";
+  const period = m.plan.period;
   switch (m.status) {
     case "pending":
       return {
         label: "Not started",
         tone: "warning",
-        title: "Pay your first month to start",
-        line: "Your membership starts as soon as the first month is paid.",
+        title: `Pay your first ${period} to start`,
+        line: `Your membership starts as soon as the first ${period} is paid.`,
       };
     case "requested":
       return {
@@ -278,7 +279,7 @@ export function guestMemberState(m: GuestMember): GuestMemberState {
         return { label: "Active", tone: "neutral", title: `You're leaving on ${day(m.leaving.endsAt)}`, line: "Your pass works as usual until then, and nothing more is owed." };
       }
       if (m.pausing !== null) {
-        return { label: "Active", tone: "neutral", title: `Pausing on ${day(m.pausing.from)}`, line: "Your pass works until then. No payment email goes out for the next month." };
+        return { label: "Active", tone: "neutral", title: `Pausing on ${day(m.pausing.from)}`, line: `Your pass works until then. No payment email goes out for the next ${period}.` };
       }
       return { label: "Active", tone: "success", title: "You're a member", line: `Paid until ${day(m.activeUntil)}.` };
     case "payment_due":
@@ -286,14 +287,14 @@ export function guestMemberState(m: GuestMember): GuestMemberState {
       return {
         label: "Payment due",
         tone: "warning",
-        title: "This month's payment is due",
+        title: `This ${period}'s payment is due`,
         line: `You can still come in until ${day(m.paymentDue?.graceEndsAt)}. Pay to keep your place.`,
       };
     case "lapsed":
       return {
         label: "Paused",
         tone: "error",
-        title: "Paused: this month isn't paid",
+        title: `Paused: this ${period} isn't paid`,
         line: "Your pass won't open the door until you pay. Pay and it starts again at once.",
       };
     case "paused":
@@ -301,7 +302,7 @@ export function guestMemberState(m: GuestMember): GuestMemberState {
         label: "Paused",
         tone: "neutral",
         title: "Your membership is paused",
-        line: m.paymentDue !== null ? "Pay for a month and it starts again at once." : "It starts again when you pay for a new month.",
+        line: m.paymentDue !== null ? `Pay for a ${period} and it starts again at once.` : `It starts again when you pay for a new ${period}.`,
       };
     case "cancelled":
       return {
@@ -310,7 +311,7 @@ export function guestMemberState(m: GuestMember): GuestMemberState {
         title: m.endReason === "not_paid" ? "This membership closed" : "Your membership has ended",
         line:
           m.endReason === "not_paid"
-            ? "The first month was never paid. You can join again from the venue's page."
+            ? `The first ${period} was never paid. You can join again from the venue's page.`
             : m.endReason === "cancelled_by_venue"
               ? `${m.venue.name} ended it on ${day(m.endedAt)}.`
               : `It ended on ${day(m.endedAt)}. Thank you for being a member.`,
@@ -364,6 +365,7 @@ export function planGiveLines(p: {
   discountBps: number;
   discountKinds: readonly string[];
   inclusions: readonly string[];
+  period: "month" | "year";
 }): string[] {
   const kindWords: Record<string, string> = {
     entry: "entry",
@@ -373,8 +375,8 @@ export function planGiveLines(p: {
   };
   const out: string[] = [];
   if (p.entryIncluded) out.push("Free entry, any day we're open");
-  if (p.roomHours > 0) out.push(`${hoursLeftWords(p.roomHours)} of meeting rooms a month`);
-  if (p.entryIncluded && p.guestPasses > 0) out.push(`${p.guestPasses} guest ${p.guestPasses === 1 ? "pass" : "passes"} a month`);
+  if (p.roomHours > 0) out.push(`${hoursLeftWords(p.roomHours)} of meeting rooms a ${p.period}`);
+  if (p.entryIncluded && p.guestPasses > 0) out.push(`${p.guestPasses} guest ${p.guestPasses === 1 ? "pass" : "passes"} a ${p.period}`);
   if (p.discountBps > 0 && p.discountKinds.length > 0) {
     out.push(`${Math.round(p.discountBps / 100)}% off ${p.discountKinds.map((k) => kindWords[k] ?? k).join(", ")}`);
   }
@@ -382,19 +384,22 @@ export function planGiveLines(p: {
   return out;
 }
 
-/** The three plain lines on joining: today, each month, a skipped month. */
-export function howYouPayLines(input: { firstMonth: string | null; renewalNoticeDays: number; graceDays: number; minMonths: number; noticeDays: number }): { title: string; body: string }[] {
+/** The three plain lines on joining: today, each period, and a skipped period. */
+export function howYouPayLines(input: { period: "month" | "year"; firstPeriod: string | null; renewalNoticeDays: number; graceDays: number; minMonths: number; noticeDays: number }): { title: string; body: string }[] {
+  const period = input.period;
   const leave =
-    input.minMonths > 1
+    period === "year"
+      ? `You can leave after the first year${input.noticeDays > 0 ? ` with ${input.noticeDays} days' notice` : ""}.`
+      : input.minMonths > 1
       ? `You can leave after ${input.minMonths} months${input.noticeDays > 0 ? ` with ${input.noticeDays} days' notice` : ""}.`
       : input.noticeDays > 0
         ? `Leave any time with ${input.noticeDays} days' notice.`
         : "Leave any time.";
   return [
-    { title: "Today", body: input.firstMonth !== null ? `You pay for ${input.firstMonth}.` : "You pay for your first month." },
-    { title: "Each month after", body: `We email you a link ${input.renewalNoticeDays} days before. Pay it and the month is yours. Nothing renews by itself.` },
+    { title: "Today", body: input.firstPeriod !== null ? `You pay for ${input.firstPeriod}.` : `You pay for your first ${period}.` },
+    { title: `Each ${period} after`, body: `We email you a link ${input.renewalNoticeDays} days before. Pay it and the ${period} is yours. Nothing renews by itself.` },
     {
-      title: "Skip a month",
+      title: `Skip a ${period}`,
       body: `${input.graceDays > 0 ? `You can still come in for ${input.graceDays} days, then your membership pauses until it's paid.` : "Your membership pauses until it's paid."} ${leave}`,
     },
   ];
@@ -406,6 +411,7 @@ export interface MemberQuoteBlock {
   applied: boolean;
   reason: string | null;
   planName: string | null;
+  period: "month" | "year";
   includedMinor: number;
   discountMinor: number;
   roomHoursUsed: number;
@@ -422,6 +428,7 @@ export function parseMemberQuote(raw: unknown): MemberQuoteBlock | null {
     applied: m.applied === true,
     reason: strOrNull(m.reason),
     planName: strOrNull(m.planName),
+    period: m.period === "year" ? "year" : "month",
     includedMinor: num(m.includedMinor),
     discountMinor: num(m.discountMinor),
     roomHoursUsed: num(m.roomHoursUsed),
@@ -431,13 +438,13 @@ export function parseMemberQuote(raw: unknown): MemberQuoteBlock | null {
   };
 }
 
-/** "Uses 2 of your 4 hours this month." */
+/** "Uses 2 of your 4 hours this month/year." */
 export function memberUseLine(b: MemberQuoteBlock, money: (minor: number) => string): string | null {
   if (!b.applied) return b.reason === "nothing_included" ? "Your plan doesn't cover this booking, so it's the usual price." : null;
   const parts: string[] = [];
   if (b.roomHoursUsed > 0) {
     const before = b.roomHoursLeftAfter !== null ? b.roomHoursLeftAfter + b.roomHoursUsed : null;
-    parts.push(before !== null ? `Uses ${hoursLeftWords(b.roomHoursUsed)} of your ${hoursLeftWords(before)} this month` : `Uses ${hoursLeftWords(b.roomHoursUsed)} of your included hours`);
+    parts.push(before !== null ? `Uses ${hoursLeftWords(b.roomHoursUsed)} of your ${hoursLeftWords(before)} this ${b.period}` : `Uses ${hoursLeftWords(b.roomHoursUsed)} of your included hours`);
   }
   if (b.freeAdmissions > 0) parts.push(b.freeAdmissions === 1 ? "Your entry is free" : `${b.freeAdmissions} free entries`);
   if (b.guestPassesUsed > 0) parts.push(`${b.guestPassesUsed} guest ${b.guestPassesUsed === 1 ? "pass" : "passes"} used`);
@@ -531,7 +538,11 @@ const ERRORS: Readonly<Record<string, string>> = {
   membership_request_failed: "That didn't go through. Check your connection and try again.",
 };
 
-export function memberGuestErrorCopy(code: string | null | undefined): string {
+export function memberGuestErrorCopy(code: string | null | undefined, period: "month" | "year" = "month"): string {
   if (code === null || code === undefined) return ERRORS.membership_request_failed as string;
+  if (code === "membership_already_leaving") return `You're already leaving at the end of your paid ${period}.`;
+  if (code === "offer_payment_already_pending") return `A payment for this ${period} is already open. Finish it, or check whether it went through.`;
+  if (code === "offer_payment_already_paid") return `This ${period} is already paid.`;
+  if (code === "member_credits_used_up") return `Your included hours for this ${period} were used meanwhile. Check the price again.`;
   return ERRORS[code] ?? (ERRORS.membership_request_failed as string);
 }

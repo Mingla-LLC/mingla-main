@@ -58,6 +58,7 @@ function subjectOf(outcome: ScanOutcome): string | null {
 /** #4490 P6 — a member pass or a member from the list. */
 function memberResultView(outcome: ScanOutcome, subject: string | null): CheckInResultView {
   const m = outcome.member ?? null;
+  const period = m?.planPeriod ?? "month";
   const due = outcome.paymentDue === true || m?.paymentDue === true;
   switch (outcome.result) {
     case "admitted": {
@@ -69,7 +70,7 @@ function memberResultView(outcome: ScanOutcome, subject: string | null): CheckIn
         title: "Member checked in",
         subject,
         body: `${guests > 0 ? `The member and ${guests === 1 ? "1 guest" : `${guests} guests`} in.` : "The member is in."}${
-          due ? " This month isn't paid yet: remind them to pay from their member page." : ""
+          due ? ` This ${period} isn't paid yet: remind them to pay from their member page.` : ""
         }`,
         primary: "scan_next",
         secondary: outcome.logId !== null ? "undo" : null,
@@ -99,13 +100,13 @@ function memberResultView(outcome: ScanOutcome, subject: string | null): CheckIn
       return {
         state: "void",
         tone: "danger",
-        title: m?.status === "lapsed" ? "Not paid this month" : m?.status === "paused" ? "Membership paused" : "Membership not active",
+        title: m?.status === "lapsed" ? `Not paid this ${period}` : m?.status === "paused" ? "Membership paused" : "Membership not active",
         subject,
         body:
           m?.status === "lapsed"
             ? "Their pass won't open the door until they pay. They can pay from their member page, or buy entry today."
             : m?.status === "paused"
-              ? "It starts again once they pay for a new month. They can buy entry today."
+              ? `It starts again once they pay for a new ${period}. They can buy entry today.`
               : "This membership has ended or was never paid. They can buy entry today.",
         primary: "scan_next",
         secondary: "sell_walk_in",
@@ -326,8 +327,8 @@ export function doorErrorCopy(code: string, detail: string | null = null): strin
     // #4490 P6 — members.
     case "member_guest_passes_used_up":
       return detail !== null && Number(detail) > 0
-        ? `Only ${detail} guest ${Number(detail) === 1 ? "pass is" : "passes are"} left this month.`
-        : "No guest passes left this month. The guests can buy entry instead.";
+        ? `Only ${detail} guest ${Number(detail) === 1 ? "pass is" : "passes are"} left in this billing period.`
+        : "No guest passes left in this billing period. The guests can buy entry instead.";
     case "member_guests_day_full":
       return detail !== null && Number(detail) > 0
         ? `Only ${detail} more ${Number(detail) === 1 ? "guest fits" : "guests fit"} today. The member can still go in.`

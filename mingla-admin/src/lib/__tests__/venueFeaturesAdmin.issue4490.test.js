@@ -97,8 +97,8 @@ test("the read is wired on the venue page with a visible failure state and no wr
 });
 
 // #4490 P6 — labels, never raw keys: offer kinds (membership included), space
-// settings, and the venue's monthly plans.
-test("P6: offer kinds and space settings are labels; plans list with a monthly price", async () => {
+// settings, and the venue's monthly/yearly plans.
+test("P6/K: offer kinds and space settings are labels; plans list with their billing period", async () => {
   const mod = await import("../venueFeaturesAdmin.js");
   assert.equal(mod.offerKindLabel("membership"), "Membership plan");
   assert.equal(mod.offerKindLabel("by_the_hour"), "By the hour");
@@ -108,12 +108,12 @@ test("P6: offer kinds and space settings are labels; plans list with a monthly p
       currencyCode: "NGN",
       minorUnitExponent: 2,
       spaces: [{ id: "s", name: "Boardroom", setting: "indoor", capacitySeated: 10 }],
-      memberships: { plans: [{ id: "p", name: "Hot desk", priceMinor: 8500000, full: false }, { id: "q", name: "Office", priceMinor: 52000000, full: true }] },
+      memberships: { plans: [{ id: "p", name: "Hot desk", priceMinor: 8500000, interval: "month", full: false }, { id: "q", name: "Office", priceMinor: 52000000, interval: "year", full: true }] },
     },
   };
   assert.equal(mod.buildSpaceRows(payload)[0].setting, "Indoor");
   assert.deepEqual(
-    mod.buildPlanRows(payload).map((p) => [p.name, p.price, p.status]),
-    [["Hot desk", "₦85,000 a month", "On sale"], ["Office", "₦520,000 a month", "Full"]],
+    mod.buildPlanRows(payload).map((p) => [p.name, p.price, p.period, p.status]),
+    [["Hot desk", "₦85,000 a month", "Monthly", "On sale"], ["Office", "₦520,000 a year", "Yearly", "Full"]],
   );
 });

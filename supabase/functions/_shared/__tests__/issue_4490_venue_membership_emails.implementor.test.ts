@@ -56,6 +56,19 @@ Deno.test("renewal email: the date, the month's money and no provider name", () 
   }
 });
 
+Deno.test("yearly messages name the year, use the venue in the renewal subject and distinguish the seven-day reminder", () => {
+  const annual = { ...PAYLOAD, period: "year", period_start_date: "2027-12-01", paid_through: "2028-12-01" };
+  const renewal = renderVenueMembershipMessage("venue_membership_renewal", { ...annual, step: "renewal" });
+  assertEquals(renewal.email.subject, "Your year with Kora Works renews on Wed 1 Dec");
+  const reminder = renderVenueMembershipMessage("venue_membership_renewal", { ...annual, step: "year_reminder" });
+  assertEquals(reminder.email.subject, "Reminder: Your year with Kora Works renews on Wed 1 Dec");
+  const approved = renderVenueMembershipMessage("venue_membership_renewal", { ...annual, step: "approval" });
+  assert(approved.email.body.includes("for your first year within 3 days"));
+  const first = renderVenueMembershipMessage("venue_membership_paid", { ...annual, step: "first" });
+  assert(first.email.body.includes("Your first year is paid"));
+  assert(first.email.body.includes("Before each new year"));
+});
+
 Deno.test("due, reminder, lapsed, paid and ended read in plain words", () => {
   const approved = renderVenueMembershipMessage("venue_membership_renewal", { ...PAYLOAD, step: "approval" });
   assertEquals(approved.email.subject, "You're approved for Hot desk at Kora Works");

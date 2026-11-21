@@ -120,6 +120,7 @@ describe("#4490 coworking request plans", () => {
       phone: null,
       planId: "plan-1",
       planName: "Dedicated desk",
+      planPeriod: "month",
       status: "requested",
       activeUntil: null,
       renewsOn: null,

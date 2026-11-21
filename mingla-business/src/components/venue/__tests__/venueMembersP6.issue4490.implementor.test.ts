@@ -88,6 +88,7 @@ function plan(over: Partial<MembershipPlan> = {}): MembershipPlan {
     members: 2,
     activeMembers: 2,
     full: false,
+    periodLocked: false,
     ...over,
   };
 }
@@ -100,6 +101,7 @@ function row(over: Partial<VenueMemberRow> = {}): VenueMemberRow {
     phone: null,
     planId: "p1",
     planName: "Hot desk",
+    planPeriod: "month",
     status: "active",
     activeUntil: "2026-12-19T00:00:00Z",
     renewsOn: "2026-12-19T00:00:00Z",
@@ -324,7 +326,7 @@ describe("P6-3 guest member page model", () => {
     expect(monthTotal(8500000, null)).toEqual({ taxMinor: 0, totalMinor: 8500000, ratePct: 0, mode: "none" });
   });
   it("joining says today, each month and a skipped month in three lines (nothing renews by itself)", () => {
-    const lines = howYouPayLines({ firstMonth: "December", renewalNoticeDays: 7, graceDays: 7, minMonths: 1, noticeDays: 0 });
+    const lines = howYouPayLines({ period: "month", firstPeriod: "December", renewalNoticeDays: 7, graceDays: 7, minMonths: 1, noticeDays: 0 });
     expect(lines.map((l) => l.title)).toEqual(["Today", "Each month after", "Skip a month"]);
     expect(lines[0]?.body).toBe("You pay for December.");
     expect(lines[1]?.body).toMatch(/7 days before.*Nothing renews by itself/);
@@ -339,7 +341,7 @@ describe("P6-3 guest member page model", () => {
     expect(parseMemberQuote({ quoteId: "q" })).toBeNull();
   });
   it("what a plan gives, and the join path", () => {
-    expect(planGiveLines({ entryIncluded: true, roomHours: 4, guestPasses: 2, discountBps: 1000, discountKinds: ["by_the_hour"], inclusions: ["A locker"] })).toEqual([
+    expect(planGiveLines({ entryIncluded: true, roomHours: 4, guestPasses: 2, discountBps: 1000, discountKinds: ["by_the_hour"], inclusions: ["A locker"], period: "month" })).toEqual([
       "Free entry, any day we're open",
       "4 hours of meeting rooms a month",
       "2 guest passes a month",
@@ -418,7 +420,7 @@ describe("P6 the door: member passes", () => {
     expect(again.title).toBe("Already in today");
   });
   it("guest pass refusals are words", () => {
-    expect(doorErrorCopy("member_guest_passes_used_up", "1")).toBe("Only 1 guest pass is left this month.");
+    expect(doorErrorCopy("member_guest_passes_used_up", "1")).toBe("Only 1 guest pass is left in this billing period.");
     expect(doorErrorCopy("member_guests_day_full")).toMatch(/member can still go in/);
   });
 });

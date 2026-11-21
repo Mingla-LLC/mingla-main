@@ -1,10 +1,10 @@
 /**
  * #4490 P6-2 — one member (`mb-member`): plan and price, member since, paid
- * until, what's left this month (room hours, guest passes), the billing
- * timeline (what happened and what happens next), every month with how it
+ * until, what's left this period (room hours, guest passes), the billing
+ * timeline (what happened and what happens next), every period with how it
  * was paid, and visits. People who manage members send the payment link
  * again, pause, resume, end or keep a leaving member; people with money
- * rights mark a month paid at the venue. Each action replaces the body with
+ * rights mark a period paid at the venue. Each action replaces the body with
  * its own short form and asks once with the consequence (no stacked dialog).
  *
  * A side panel on wide web, a sheet on phones (Close + backdrop dismiss).
@@ -115,7 +115,7 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
         onError: (e) => {
           const err = toVenueOfferError(e);
           if (err.code === "stale_write") void query.refetch();
-          setError(memberErrorCopy(err.code, err.detail));
+          setError(memberErrorCopy(err.code, err.detail, m.plan.period));
         },
       },
     );
@@ -148,9 +148,9 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
   if (mode === "pay") {
     return (
       <View style={styles.body}>
-        <PickerSheetHead title="Mark this month paid" onClose={onClose} plain={plainHead} />
+        <PickerSheetHead title={`Mark this ${m.plan.period} paid`} onClose={onClose} plain={plainHead} />
         <PayForm m={m} busy={manage.isPending} error={error} onBack={() => { setError(null); setMode("view"); }} onSubmit={(method, note) =>
-          act({ action: "mark_paid", method, ...(note.length > 0 ? { note } : {}), ...(m.paymentDue !== null ? { periodId: m.paymentDue.periodId } : {}) }, `${m.memberName}'s month is marked paid`)
+          act({ action: "mark_paid", method, ...(note.length > 0 ? { note } : {}), ...(m.paymentDue !== null ? { periodId: m.paymentDue.periodId } : {}) }, `${m.memberName}'s ${m.plan.period} is marked paid`)
         } />
       </View>
     );
@@ -196,7 +196,7 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
           error={error}
           onBack={() => { setError(null); setMode("view"); }}
           onSubmit={(when, reason) =>
-            act({ action: "pause", when, ...(reason.length > 0 ? { reason } : {}) }, when === "now" ? `${m.memberName} is paused` : `${m.memberName} pauses at the end of the month`)
+            act({ action: "pause", when, ...(reason.length > 0 ? { reason } : {}) }, when === "now" ? `${m.memberName} is paused` : `${m.memberName} pauses at the end of the ${m.plan.period}`)
           }
         />
       </View>
@@ -213,7 +213,7 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
           error={error}
           onBack={() => { setError(null); setMode("view"); }}
           onSubmit={(when, reason) =>
-            act({ action: "cancel", when, reason }, when === "now" ? `${m.memberName}'s membership has ended` : `${m.memberName}'s membership ends at the end of the month`)
+            act({ action: "cancel", when, reason }, when === "now" ? `${m.memberName}'s membership has ended` : `${m.memberName}'s membership ends at the end of the ${m.plan.period}`)
           }
         />
       </View>
@@ -228,7 +228,7 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
   const ended = m.status === "cancelled";
   const requestState = memberRequestState(m.status);
   const facts: { key: string; label: string; value: string }[] = [
-    { key: "plan", label: "Plan", value: `${m.plan.name} · ${money(m.terms.priceMinor ?? m.plan.priceMinor, m.plan.currencyCode)} a month` },
+    { key: "plan", label: "Plan", value: `${m.plan.name} · ${money(m.terms.priceMinor ?? m.plan.priceMinor, m.plan.currencyCode)} a ${m.plan.period}` },
     { key: "since", label: "Member since", value: memberMonth(m.startedAt ?? m.createdAt, tz) ?? "Not started yet" },
     { key: "until", label: ended ? "Ended" : "Paid until", value: ended ? day(m.endedAt) : m.activeUntil !== null ? day(m.activeUntil) : "Not paid yet" },
     ...(m.credits.roomHoursPerMonth > 0 && !ended
@@ -239,7 +239,7 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
       : []),
     { key: "contact", label: "Contact", value: [m.email, m.phone].filter(Boolean).join(" · ") || "—" },
     ...(m.assignedSpace !== null ? [{ key: "desk", label: "Desk", value: m.assignedSpace.name }] : []),
-    ...(m.terms.minMonths !== null && m.terms.minMonths > 1 ? [{ key: "min", label: "Minimum", value: `${m.terms.minMonths} months` }] : []),
+    ...(m.terms.minMonths !== null && m.terms.minMonths > 1 ? [{ key: "min", label: "Minimum", value: m.plan.period === "year" ? "1 year" : `${m.terms.minMonths} months` }] : []),
     ...(m.terms.noticeDays !== null && m.terms.noticeDays > 0 ? [{ key: "notice", label: "Notice", value: `${m.terms.noticeDays} days` }] : []),
   ];
   const canPause = m.canManage && m.status === "active" && m.pausing === null && m.leaving === null;
@@ -261,7 +261,7 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
         {m.status === "lapsed" ? (
           <Banner tone="danger" title="Not paid: their pass doesn't open the door" body="It starts again as soon as they pay. Send the link, or mark it paid if they paid you." testID="venue-member-lapsed" />
         ) : m.status === "payment_due" || m.status === "grace" ? (
-          <Banner tone="warning" title="This month isn't paid yet" body={`They can still check in until ${day(due?.graceEndsAt)}.`} testID="venue-member-due" />
+          <Banner tone="warning" title={`This ${m.plan.period} isn't paid yet`} body={`They can still check in until ${day(due?.graceEndsAt)}.`} testID="venue-member-due" />
         ) : m.status === "requested" ? (
           <Banner tone="info" title="Membership request" body={`${m.memberName} has not paid. Approve the request first, then they have 3 days to pay their first ${m.plan.period}.`} />
         ) : m.status === "declined" ? (
@@ -303,10 +303,10 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
 
         {!requestState ? (
           <View style={styles.section} testID="venue-member-billing">
-            <Text style={styles.sectionLabel}>{due !== null ? `Month from ${day(due.periodStart)}` : "Billing"}</Text>
+            <Text style={styles.sectionLabel}>{due !== null ? `${m.plan.period === "year" ? "Year" : "Month"} from ${day(due.periodStart)}` : "Billing"}</Text>
             <Timeline items={steps.map((s) => ({ key: s.key, title: s.title, meta: s.meta, state: s.state }))} />
             {due !== null ? (
-              <Text style={styles.meta}>{`${money(due.amountMinor, due.currencyCode)} for the month, plus VAT if the venue adds it.`}</Text>
+              <Text style={styles.meta}>{`${money(due.amountMinor, due.currencyCode)} for the ${m.plan.period}, plus VAT if the venue adds it.`}</Text>
             ) : null}
             {due?.paying ? <Text style={styles.meta}>They opened the payment page a moment ago. Check back in a few minutes.</Text> : null}
             {canLink || canPay ? (
@@ -325,7 +325,7 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
                 ) : null}
               </View>
             ) : due !== null && !ended && !m.canManageMoney ? (
-              <Text style={styles.meta}>Only people who handle money for this venue can mark a month paid.</Text>
+              <Text style={styles.meta}>{`Only people who handle money for this venue can mark a ${m.plan.period} paid.`}</Text>
             ) : null}
           </View>
         ) : null}
@@ -341,21 +341,21 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
                   m.status !== "paused"
                     ? `Pausing ${day(m.pausing?.from)}`
                     : m.activeUntil !== null && Date.parse(m.activeUntil) > Date.now()
-                      ? `Their paid month runs to ${day(m.activeUntil)}`
-                      : "They pay for a new month to start again"
+                      ? `Paid until ${day(m.activeUntil)}`
+                      : `They pay for a new ${m.plan.period} to start again`
                 } onPress={() => act({ action: "resume" }, `${m.memberName} resumed`)} testID="venue-member-resume" />
             ) : null}
-            {canPause ? <ActionLine icon="pause" label="Pause" detail="Now, or when the paid month ends" onPress={() => { setError(null); setMode("pause"); }} testID="venue-member-pause" /> : null}
+            {canPause ? <ActionLine icon="pause" label="Pause" detail={`Now, or when the paid ${m.plan.period} ends`} onPress={() => { setError(null); setMode("pause"); }} testID="venue-member-pause" /> : null}
             {canKeep ? (
               <ActionLine icon="check" label="Keep them on" detail={`Instead of ending ${day(m.leaving?.endsAt)}`} onPress={() => act({ action: "undo_cancel" }, `${m.memberName} stays on`)} testID="venue-member-keep" />
             ) : null}
-            {canEnd ? <ActionLine icon="close" label="End membership" detail="Now, or when the paid month ends" danger onPress={() => { setError(null); setMode("end"); }} testID="venue-member-end" /> : null}
+            {canEnd ? <ActionLine icon="close" label="End membership" detail={`Now, or when the paid ${m.plan.period} ends`} danger onPress={() => { setError(null); setMode("end"); }} testID="venue-member-end" /> : null}
           </View>
         ) : null}
 
         {m.periods.length > 0 ? (
           <View style={styles.section} testID="venue-member-months">
-            <Text style={styles.sectionLabel}>Months</Text>
+            <Text style={styles.sectionLabel}>{m.plan.period === "year" ? "Years" : "Months"}</Text>
             {m.periods.map((p) => (
               <View key={p.periodId} style={styles.lineRow}>
                 <View style={styles.grow}>
@@ -383,7 +383,7 @@ function MemberBody({ brandId, venueId, subscriptionId, mode, setMode, onClose, 
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>History</Text>
             <Timeline
-              items={[...m.timeline].reverse().slice(0, 12).map((e, i) => ({ key: `${e.type}-${i}`, title: timelineWords(e), meta: day(e.at), state: "done" as const }))}
+              items={[...m.timeline].reverse().slice(0, 12).map((e, i) => ({ key: `${e.type}-${i}`, title: timelineWords(e, m.plan.period), meta: day(e.at), state: "done" as const }))}
             />
           </View>
         ) : null}
@@ -493,7 +493,7 @@ function PayForm({ m, busy, error, onBack, onSubmit }: { m: VenueMemberDetail; b
     <View style={styles.form} testID="venue-member-pay-form">
       <Text style={styles.meta}>
         {due !== null
-          ? `${m.memberName} paid you for the month from ${memberDay(due.periodStart, m.venue.timezone) ?? ""}: ${money(due.amountMinor, due.currencyCode)} before VAT. Their membership runs to ${memberDay(due.periodEnd, m.venue.timezone) ?? ""}.`
+          ? `${m.memberName} paid you for the ${m.plan.period} from ${memberDay(due.periodStart, m.venue.timezone) ?? ""}: ${money(due.amountMinor, due.currencyCode)} before VAT. Their membership runs to ${memberDay(due.periodEnd, m.venue.timezone) ?? ""}.`
           : "Nothing is owed right now."}
       </Text>
       <Text style={styles.label}>How they paid</Text>
@@ -523,8 +523,8 @@ function WhenForm({
   onBack: () => void;
   onSubmit: (when: "now" | "period_end", reason: string) => void;
 }): React.ReactElement {
-  const hasPaidMonth = m.activeUntil !== null && Date.parse(m.activeUntil) > Date.now();
-  const [when, setWhen] = useState<"now" | "period_end">(hasPaidMonth ? "period_end" : "now");
+  const hasPaidPeriod = m.activeUntil !== null && Date.parse(m.activeUntil) > Date.now();
+  const [when, setWhen] = useState<"now" | "period_end">(hasPaidPeriod ? "period_end" : "now");
   const [reason, setReason] = useState("");
   const until = memberDay(m.activeUntil, m.venue.timezone);
   const needsReason = kind === "end";
@@ -532,17 +532,17 @@ function WhenForm({
   const consequence =
     kind === "pause"
       ? when === "now"
-        ? "Their pass stops working now and they get no payment emails. To start again they pay for a new month, or you resume them."
-        : `Their pass works until ${until ?? "the end of the paid month"}, then the membership pauses. No payment email goes out for the next month.`
+        ? `Their pass stops working now and they get no payment emails. To start again they pay for a new ${m.plan.period}, or you resume them.`
+        : `Their pass works until ${until ?? `the end of the paid ${m.plan.period}`}, then the membership pauses. No payment email goes out for the next ${m.plan.period}.`
       : when === "now"
         ? "Their pass stops working now. Nothing is refunded here: settle any refund with them directly."
-        : `Their pass works until ${until ?? "the end of the paid month"}, then the membership ends. No more payment emails.`;
+        : `Their pass works until ${until ?? `the end of the paid ${m.plan.period}`}, then the membership ends. No more payment emails.`;
   return (
     <View style={styles.form} testID={`venue-member-${kind}-form`}>
       <Text style={styles.label}>When</Text>
       <Segmented
         options={[
-          { key: "period_end", label: until !== null && hasPaidMonth ? `On ${until}` : "End of month", disabled: !hasPaidMonth },
+          { key: "period_end", label: until !== null && hasPaidPeriod ? `On ${until}` : `End of ${m.plan.period}`, disabled: !hasPaidPeriod },
           { key: "now", label: "Now" },
         ]}
         value={when}
@@ -562,7 +562,7 @@ function WhenForm({
       <View style={styles.footerRow}>
         <Button label="Back" variant="ghost" size="md" onPress={onBack} />
         <Button
-          label={kind === "pause" ? (when === "now" ? "Pause now" : "Pause at month end") : when === "now" ? "End now" : "End at month end"}
+          label={kind === "pause" ? (when === "now" ? "Pause now" : `Pause at ${m.plan.period} end`) : when === "now" ? "End now" : `End at ${m.plan.period} end`}
           variant={kind === "end" ? "danger" : "primary"}
           size="md"
           loading={busy}

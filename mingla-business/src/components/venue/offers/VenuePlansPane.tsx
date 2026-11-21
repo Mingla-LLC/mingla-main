@@ -1,9 +1,9 @@
 /**
- * #4490 P6-3 — the Plans tab (C §3.6): a card per monthly plan with its name,
- * "{price} a month", what you get (three lines, the rest behind "and more"),
+ * #4490 P6-3/K — the Plans tab (C §3.6): a card per plan with its name,
+ * "{price} a month/year", what you get (three lines, the rest behind "and more"),
  * then Join, which opens the join page. A full plan says so and can't be
- * joined. One plain note says how paying works: the first month today, then
- * an emailed link each month; nothing renews by itself. A guest whose device
+ * joined. One plain note says how paying works: the first period today, then
+ * an emailed link before each renewal; nothing renews by itself. A guest whose device
  * already holds a membership here gets a way back to their member page.
  */
 import React, { useEffect, useMemo, useState } from "react";
@@ -114,7 +114,7 @@ export function VenuePlansPane({
               <Text style={[styles.caption, { color: palette.tertiaryText }]}>{`and ${lines.length - shown.length} more`}</Text>
             ) : null}
             {plan.minMonths > 1 ? (
-              <Text style={[styles.caption, { color: palette.tertiaryText }]}>{`${plan.minMonths} months minimum`}</Text>
+              <Text style={[styles.caption, { color: palette.tertiaryText }]}>{plan.period === "year" ? "1 year minimum" : `${plan.minMonths} months minimum`}</Text>
             ) : null}
             {plan.assignedDeskAvailable ? <Text style={[styles.caption, { color: palette.tertiaryText }]}>An assigned desk may be available.</Text> : null}
             <EntryButton

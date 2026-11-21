@@ -1,5 +1,5 @@
 /**
- * #4490 P6-2 — Plans (`mb-plans`): the venue's monthly plans with price,
+ * #4490 P6-2/K — Plans (`mb-plans`): the venue's monthly and yearly plans with price,
  * what's included, members (of the limit) and status, plus a row menu (Edit,
  * Stop new members / Put back on sale, Archive with a confirm). "New plan"
  * opens the editor. A line links meeting rooms to their By the hour offers.
@@ -51,6 +51,7 @@ function planLines(plan: MembershipPlan): string[] {
       discountPercent: Math.round(plan.discountBps / 100),
       discountKinds: plan.discountKinds,
       inclusions: plan.inclusions,
+      period: plan.period,
     },
     { entryOffer: plan.entryOfferName, hourOffers: plan.hourOfferNames },
   );
@@ -127,7 +128,7 @@ export function PlansView({ brandId, venueId, canEdit, onBack, onEdit, onOpenOff
         <GlassCard variant="base" padding={space[5]} contentStyle={styles.empty} testID="venue-plans-empty">
           <Icon name="award" size={28} color={color.text3} />
           <Text style={styles.emptyTitle}>No plans yet</Text>
-          <Text style={styles.meta}>A plan is a monthly membership: free entry, room hours, guest passes or a member price.</Text>
+          <Text style={styles.meta}>A plan is a monthly or yearly membership: free entry, room hours, guest passes or a member price.</Text>
           {canEdit ? <Button label="New plan" variant="primary" size="md" onPress={() => onEdit(null)} testID="venue-plans-empty-new" /> : null}
         </GlassCard>
       ) : (
@@ -146,7 +147,7 @@ export function PlansView({ brandId, venueId, canEdit, onBack, onEdit, onOpenOff
             const st = planStatusWords(plan);
             const lines = planLines(plan);
             const members = plan.maxMembers !== null ? `${plan.activeMembers} of ${plan.maxMembers}` : `${plan.activeMembers}`;
-            const price = `${money(plan.priceMinor, plan.currencyCode || currency)} a month`;
+            const price = `${money(plan.priceMinor, plan.currencyCode || currency)} a ${plan.period}`;
             return (
               <View key={plan.id} style={[styles.row, index > 0 || isWideDesktop ? styles.rowBorder : null]}>
                 <Pressable

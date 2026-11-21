@@ -3,7 +3,7 @@
  * the words for member states, list filters, the billing timeline, and every
  * server refusal in plain words. No React, no network (unit-tested).
  *
- * Monthly plans only (reconciliation conflict 57). Money in minor units.
+ * Monthly and yearly plans. Money in minor units.
  */
 import type {
   MemberDiscountKind,
@@ -160,7 +160,7 @@ export function memberRowLine(row: VenueMemberRow, timeZone: string): string {
   if (row.status === "cancelled") return "Membership ended";
   if (row.status === "declined") return "Request declined";
   if (row.status === "requested") return "Waiting for the venue to reply";
-  if (row.status === "pending") return "First month not paid yet";
+  if (row.status === "pending") return `First ${row.planPeriod} not paid yet`;
   if (row.leavingOn !== null) return `Leaving ${day(row.leavingOn)}`;
   if (row.status === "paused") return "Paused until they pay to start again";
   if (row.pausingOn !== null) return `Pausing ${day(row.pausingOn)}`;
@@ -194,12 +194,11 @@ const EVENT_WORDS: Readonly<Record<string, string>> = {
   member_pause_started: "Paused",
   member_resumed: "Resumed",
   member_ended: "Membership ended",
-  member_join_closed: "Join closed: first month never paid",
   member_paid_twice: "Paid twice: refund by hand",
 };
 
-export function timelineWords(e: MemberTimelineEvent): string {
-  const base = EVENT_WORDS[e.type] ?? "Updated";
+export function timelineWords(e: MemberTimelineEvent, period: MembershipPlanPeriod = "month"): string {
+  const base = e.type === "member_join_closed" ? `Join closed: first ${period} never paid` : EVENT_WORDS[e.type] ?? "Updated";
   const by = e.by === "staff" ? " by the venue" : e.by === "member" && (e.type === "member_leaving" || e.type === "member_paused") ? " by the member" : "";
   return `${base}${by}`;
 }
@@ -213,10 +212,11 @@ export interface BillingStep {
 
 /**
  * The billing timeline the host reads for a member (design `mb-member`):
- * what happened this month and what happens next. Plain words only.
+ * what happened this billing period and what happens next. Plain words only.
  */
 export function billingSteps(m: VenueMemberDetail, now: number = Date.now()): BillingStep[] {
   const tz = m.venue.timezone;
+  const period = m.plan.period;
   const day = (iso: string | null | undefined): string => memberDay(iso ?? null, tz) ?? "—";
   const out: BillingStep[] = [];
   const due = m.paymentDue;
@@ -226,7 +226,7 @@ export function billingSteps(m: VenueMemberDetail, now: number = Date.now()): Bi
   }
   if (m.status === "pending" && due !== null) {
     out.push({ key: "joined", title: "Joined", meta: day(m.createdAt), state: "done" });
-    out.push({ key: "first", title: "First month to pay", meta: `${money(due.amountMinor, due.currencyCode)} before VAT`, state: "current" });
+    out.push({ key: "first", title: `First ${period} to pay`, meta: `${money(due.amountMinor, due.currencyCode)} before VAT`, state: "current" });
     out.push({ key: "closes", title: "Closes if never paid", meta: "2 days after joining", state: "pending" });
     return out;
   }
@@ -362,11 +362,17 @@ export function planDraftFrom(plan: MembershipPlan | null, defaults?: { entryOff
     inclusions: plan?.inclusions ?? [],
     limitMembers: (plan?.maxMembers ?? null) !== null,
     maxMembers: plan?.maxMembers ?? 20,
-    minMonths: plan?.minMonths ?? 1,
+    minMonths: plan?.period === "year" ? 12 : plan?.minMonths ?? 1,
     noticeDays: plan?.noticeDays ?? 0,
     graceDays: plan?.graceDays ?? 7,
-    renewalNoticeDays: plan?.renewalNoticeDays ?? 7,
+    renewalNoticeDays: plan?.renewalNoticeDays ?? (plan?.period === "year" ? 30 : 7),
   };
+}
+
+/** Apply the host's billing choice and its non-editable period defaults. */
+export function planPeriodDraft(d: PlanDraft, period: MembershipPlanPeriod): PlanDraft {
+  if (period === "year") return { ...d, period, minMonths: 12, renewalNoticeDays: 30 };
+  return { ...d, period, minMonths: 1, renewalNoticeDays: 7 };
 }
 
 /** The server payload (`issue_4490_manage_membership_plan`), never more than it accepts. */
@@ -388,7 +394,7 @@ export function planPayload(d: PlanDraft, planId: string | null): Record<string,
     discountBps: d.discountPercent * 100,
     discountKinds: d.discountPercent > 0 ? d.discountKinds : [],
     maxMembers: d.limitMembers ? d.maxMembers : null,
-    minMonths: d.minMonths,
+    minMonths: d.period === "year" ? 12 : d.minMonths,
     noticeDays: d.noticeDays,
     graceDays: d.graceDays,
     renewalNoticeDays: d.renewalNoticeDays,
@@ -404,15 +410,17 @@ export interface PlanIssues {
   desks: string | null;
 }
 
-export function planIssues(d: PlanDraft): PlanIssues {
+export function planIssues(d: PlanDraft, currency = "NGN"): PlanIssues {
   const lines = d.inclusions.map((l) => l.trim()).filter((l) => l.length > 0);
   return {
     name: d.name.trim().length === 0 ? "Name this plan" : d.name.trim().length > 80 ? "Keep the name under 80 characters" : null,
     price:
       d.priceMinor === null || d.priceMinor <= 0
-        ? "Set the monthly price"
+        ? `Set the ${d.period === "year" ? "yearly" : "monthly"} price`
         : d.priceMinor > 2_147_483_647
-          ? "This price is too large to take in one payment"
+          ? d.period === "year"
+            ? `A yearly price can't be above ${money(2_147_483_647, currency)}`
+            : "This price is too large to take in one payment"
           : null,
     entry: d.entryIncluded && d.entryOfferingId === null ? "Pick the Entry offer members get in on" : null,
     discount: d.discountPercent > 0 && d.discountKinds.length === 0 ? "Pick what the member price applies to" : null,
@@ -430,16 +438,16 @@ export function planIssueList(i: PlanIssues): string[] {
  * entry, room hours, guest passes, the member price, then the host's own lines.
  */
 export function planIncludesLines(
-  p: Pick<PlanDraft, "entryIncluded" | "guestPasses" | "roomHours" | "discountPercent" | "discountKinds" | "inclusions">,
+  p: Pick<PlanDraft, "entryIncluded" | "guestPasses" | "roomHours" | "discountPercent" | "discountKinds" | "inclusions" | "period">,
   names: { entryOffer?: string | null; hourOffers?: string[] } = {},
 ): string[] {
   const out: string[] = [];
   if (p.entryIncluded) out.push(names.entryOffer ? `Free entry (${names.entryOffer})` : "Free entry");
   if (p.roomHours > 0) {
     const rooms = names.hourOffers !== undefined && names.hourOffers.length > 0 ? names.hourOffers.join(", ") : "rooms";
-    out.push(`${hoursWords(p.roomHours)} of ${rooms} a month`);
+    out.push(`${hoursWords(p.roomHours)} of ${rooms} a ${p.period}`);
   }
-  if (p.entryIncluded && p.guestPasses > 0) out.push(`${p.guestPasses} guest ${p.guestPasses === 1 ? "pass" : "passes"} a month`);
+  if (p.entryIncluded && p.guestPasses > 0) out.push(`${p.guestPasses} guest ${p.guestPasses === 1 ? "pass" : "passes"} a ${p.period}`);
   if (p.discountPercent > 0 && p.discountKinds.length > 0) {
     out.push(`${p.discountPercent}% off ${p.discountKinds.map((k) => DISCOUNT_KIND_LABEL[k].toLowerCase()).join(", ")}`);
   }
@@ -448,9 +456,9 @@ export function planIncludesLines(
 }
 
 /** "3-month minimum · 30 days' notice · 7 days' grace". */
-export function planTermsLine(d: Pick<PlanDraft, "minMonths" | "noticeDays" | "graceDays">): string {
+export function planTermsLine(d: Pick<PlanDraft, "period" | "minMonths" | "noticeDays" | "graceDays">): string {
   const parts: string[] = [];
-  parts.push(d.minMonths > 1 ? `${d.minMonths}-month minimum` : "Leave any month");
+  parts.push(d.period === "year" ? "1-year minimum" : d.minMonths > 1 ? `${d.minMonths}-month minimum` : "Leave any month");
   if (d.noticeDays > 0) parts.push(`${d.noticeDays} days' notice`);
   parts.push(d.graceDays > 0 ? `${d.graceDays} days' grace` : "No grace");
   return parts.join(" · ");
@@ -466,6 +474,7 @@ export const MIN_MONTH_OPTIONS = [1, 2, 3, 6, 12].map((n) => ({ value: n, label:
 export const NOTICE_OPTIONS = [0, 7, 14, 30, 60].map((n) => ({ value: n, label: n === 0 ? "None" : `${n} days` }));
 export const GRACE_OPTIONS = [0, 3, 5, 7, 10, 14].map((n) => ({ value: n, label: n === 0 ? "None" : `${n} days` }));
 export const RENEWAL_NOTICE_OPTIONS = [3, 5, 7, 10, 14].map((n) => ({ value: n, label: `${n} days before` }));
+export const YEARLY_RENEWAL_NOTICE_OPTIONS = [7, 14, 21, 30, 45, 60].map((n) => ({ value: n, label: `${n} days before` }));
 export const DISCOUNT_OPTIONS = [0, 5, 10, 15, 20, 25, 30, 50].map((n) => ({ value: n, label: n === 0 ? "No member price" : `${n}% off` }));
 
 // ---------------------------------------------------------------- refusals
@@ -474,17 +483,19 @@ const PLAN_ERRORS: Readonly<Record<string, string>> = {
   plan_name_required: "Name this plan.",
   plan_summary_invalid: "Keep the short description under 300 characters.",
   plan_inclusions_invalid: "Up to 6 lines of what's included, each under 80 characters.",
-  plan_price_invalid: "Set a monthly price above zero (up to about ₦21 million).",
+  plan_price_invalid: "Set a price above zero and no more than ₦21,474,836.47.",
+  plan_period_invalid: "Choose Monthly or Yearly billing.",
+  plan_period_locked: "You can't change how a plan is billed once people have joined.",
   plan_entry_invalid: "Pick an Entry offer of this venue for free entry.",
-  plan_room_hours_invalid: "Room hours must be between 0 and 744 a month.",
+  plan_room_hours_invalid: "Room hours must be 0 to 744 a month, or 0 to 8,784 a year.",
   plan_room_offers_invalid: "Pick By the hour offers of this venue for the included hours.",
-  plan_guest_passes_invalid: "Guest passes must be between 0 and 100 a month.",
+  plan_guest_passes_invalid: "Guest passes must be 0 to 100 a month, or 0 to 1,200 a year.",
   plan_discount_invalid: "The member price must be 0% to 100% off, on the kinds you pick.",
   plan_max_members_invalid: "The member limit must be between 1 and 100,000.",
   plan_join_mode_invalid: "Choose whether guests join and pay or ask first.",
   plan_desks_invalid: "Pick only spaces at this venue as assignable desks.",
   plan_desks_in_use: "Unassign this desk from its current member before removing it from the plan.",
-  plan_terms_invalid: "Check the minimum months, notice, grace and email days.",
+  plan_terms_invalid: "Check the minimum term, notice, grace and payment-email days.",
   plan_not_found: "This plan no longer exists. Reload Plans.",
   plan_archived: "This plan is archived and can't be changed.",
   plan_has_members: "This plan still has members, so it can't be archived. Stop new members instead.",
@@ -526,11 +537,13 @@ export function planErrorCopy(code: string, detail: string | null = null): strin
   return PLAN_ERRORS[key] ?? (code === "offer_not_ready" ? "This plan isn't ready to go on sale yet." : "That didn't save. Try again.");
 }
 
-export function memberErrorCopy(code: string, detail: string | null = null): string {
+export function memberErrorCopy(code: string, detail: string | null = null, period: MembershipPlanPeriod = "month"): string {
   const base = MEMBER_ERRORS[code];
   if (base === undefined) return "That didn't go through. Try again.";
-  if (code === "member_guest_passes_used_up" && detail !== null && Number(detail) > 0) {
-    return `Only ${detail} guest ${Number(detail) === 1 ? "pass is" : "passes are"} left this month.`;
+  if (code === "member_guest_passes_used_up") {
+    return detail !== null && Number(detail) > 0
+      ? `Only ${detail} guest ${Number(detail) === 1 ? "pass is" : "passes are"} left this ${period}.`
+      : `No guest passes left this ${period}. The guests can buy entry instead.`;
   }
   if (code === "member_guests_day_full" && detail !== null && Number(detail) > 0) {
     return `Only ${detail} more ${Number(detail) === 1 ? "guest fits" : "guests fit"} today.`;

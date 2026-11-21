@@ -690,8 +690,9 @@ export interface CheckInMember {
   subscriptionId: string;
   holderName: string;
   planName: string;
+  planPeriod: "month" | "year";
   status: string;
-  /** The month is due or in grace: let them in and remind them. */
+  /** The billing period is due or in grace: let them in and remind them. */
   paymentDue: boolean;
   guestPassesLeft: number;
   inToday: boolean;
@@ -705,6 +706,7 @@ export interface ScanMember {
   subscriptionId: string;
   name: string;
   planName: string;
+  planPeriod: "month" | "year";
   status: string;
   guestPassesLeft: number;
   paymentDue: boolean;
@@ -740,7 +742,7 @@ export interface ScanOutcome {
   pass: CheckInPass | null;
   /** #4490 P6 — set when the code was a member pass (kind "member"). */
   member?: ScanMember | null;
-  /** #4490 P6 — a member whose month is due (let in, remind). */
+  /** #4490 P6/K — a member whose billing period is due (let in, remind). */
   paymentDue?: boolean;
   ticketHolder: string | null;
   ticketName: string | null;

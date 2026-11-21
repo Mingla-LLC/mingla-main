@@ -1,8 +1,8 @@
 /**
  * #4490 P6-3 — the member page `/visit/plan/<id>` (`pkm-pass`): the member's
  * name, the status in plain words, the pass to show at the front desk (QR,
- * the plan and month), what's left this month (room hours, guest passes),
- * when it renews and when the payment email goes out, the month to pay
+ * the plan and paid period), what's left this period (room hours, guest passes),
+ * when it renews and when the payment email goes out, the period to pay
  * ("Pay ₦X", "Pay ₦X to start again", "Pay ₦X and start"), payments made,
  * book a room, leave / stay on, pause / resume.
  *
@@ -184,6 +184,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
   const tones = statusOn(palette);
   const page = pageQuery.data ?? null;
   const currency = member?.plan.currencyCode ?? page?.currencyCode ?? "NGN";
+  const membershipPeriod = member?.plan.period ?? "month";
   const exponent = page?.minorUnitExponent ?? 2;
   const money = (m: number): string => formatVenueMoney(m, currency, exponent);
   const venuePath = member?.venue.brandSlug && member.venue.slug ? `/b/${member.venue.brandSlug}/v/${member.venue.slug}` : null;
@@ -197,7 +198,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
       setHandoffUrl(payment.authorizationUrl);
     } catch (caught) {
       const code = caught instanceof VenueOfferGuestError ? caught.code : "membership_request_failed";
-      setActionError(memberGuestErrorCopy(code));
+      setActionError(memberGuestErrorCopy(code, membershipPeriod));
       void read();
     } finally {
       setBusy(null);
@@ -214,7 +215,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
       setAsking(null);
       setDone(message);
     } catch (caught) {
-      setActionError(memberGuestErrorCopy(caught instanceof VenueOfferGuestError ? caught.code : null));
+      setActionError(memberGuestErrorCopy(caught instanceof VenueOfferGuestError ? caught.code : null, membershipPeriod));
       void read();
     } finally {
       setBusy(null);
@@ -297,7 +298,9 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
   const due = member.paymentDue;
   const total = due !== null ? monthTotal(due.amountMinor, page?.vat ?? null) : null;
   const totalWords = total !== null ? money(total.totalMinor) : null;
-  const passMonth = monthWords(member.currentPeriodStart ?? member.activeUntil, tz);
+  const passPeriod = member.plan.period === "year" && member.activeUntil !== null
+    ? `Paid until ${day(member.activeUntil)}`
+    : monthWords(member.currentPeriodStart ?? member.activeUntil, tz);
   const toneInk = state.tone === "success" ? tones.success.text : state.tone === "warning" ? tones.warning.text : state.tone === "error" ? tones.error.text : palette.primaryText;
   const hourTab = page?.features.includes("by_the_hour") === true && page.offers.some((o) => o.kind === "by_the_hour");
   const canBookRoom = membershipBenefitsAvailable(member.status)
@@ -345,7 +348,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
   const payCard =
     due !== null && member.status !== "cancelled" ? (
       <View style={[entryStyles.card, { backgroundColor: palette.card, borderColor: palette.panelBorder }]} testID="issue-4490-member-pay">
-        <Text style={[styles.label, { color: palette.tertiaryText }]}>{member.status === "pending" ? "YOUR FIRST MONTH" : "THIS MONTH"}</Text>
+        <Text style={[styles.label, { color: palette.tertiaryText }]}>{member.status === "pending" ? `YOUR FIRST ${member.plan.period.toUpperCase()}` : `THIS ${member.plan.period.toUpperCase()}`}</Text>
         <View style={styles.line}>
           <Text style={[styles.small, { color: palette.secondaryText }]}>{`${member.plan.name} · ${day(due.periodStart)} to ${day(due.periodEnd)}`}</Text>
           <Text style={[styles.small, { color: palette.primaryText }]}>{money(due.amountMinor)}</Text>
@@ -364,7 +367,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
         ) : null}
         {due.paying ? (
           <>
-            <EntryNote palette={palette} icon="clock">A payment for this month is open. Finish it, or check whether it went through.</EntryNote>
+            <EntryNote palette={palette} icon="clock">{`A payment for this ${member.plan.period} is open. Finish it, or check whether it went through.`}</EntryNote>
             <EntryButton palette={palette} theme={theme} variant="secondary" label="I've paid: check now" onPress={() => void checkPayment()} busy={busy === "check"} testID="issue-4490-member-check" />
           </>
         ) : (
@@ -381,7 +384,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
           <VenueOfferPassQr payload={member.pass.qrPayload} size={wide ? 200 : 220} testID="issue-4490-member-qr" />
         </View>
         <Text style={[styles.cardTitle, themeBoldFace(theme), { color: palette.primaryText }]}>
-          {`${member.plan.name}${passMonth !== null && member.pass.valid ? ` · ${passMonth}` : ""}`}
+          {`${member.plan.name}${passPeriod !== null && member.pass.valid ? ` · ${passPeriod}` : ""}`}
         </Text>
         <Text style={[styles.small, styles.centerText, { color: member.pass.valid ? palette.secondaryText : tones.error.text }]}>
           {member.pass.valid
@@ -389,10 +392,10 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
               ? "You're checked in today."
               : "Show this at the front desk"
             : member.status === "pending"
-              ? "Your pass opens the door once your first month is paid."
+              ? `Your pass opens the door once your first ${member.plan.period} is paid.`
               : member.startOn !== null && Date.parse(`${member.startOn}T23:59:59Z`) > Date.now() && member.status === "active"
                 ? `Your pass works from ${day(member.startOn)}.`
-                : "Your pass won't open the door until this month is paid."}
+                : `Your pass won't open the door until this ${member.plan.period} is paid.`}
         </Text>
       </View>
     ) : handoff.passInApp && member.status !== "requested" && member.status !== "declined" ? (
@@ -428,7 +431,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
         />
       ) : null}
       {member.startedAt !== null ? <Fact palette={palette} label="Member since" value={day(member.startedAt)} /> : null}
-      {member.terms.minMonths !== null && member.terms.minMonths > 1 ? <Fact palette={palette} label="Minimum" value={`${member.terms.minMonths} months`} /> : null}
+      {member.terms.minMonths !== null && member.terms.minMonths > 1 ? <Fact palette={palette} label="Minimum" value={member.plan.period === "year" ? "1 year" : `${member.terms.minMonths} months`} /> : null}
     </View>
   ) : null;
 
@@ -441,22 +444,22 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
         <View style={styles.infoRow}>
           <Icon name="users" size={20} color={palette.primaryText} />
           <Text style={[styles.small, styles.grow, { color: palette.secondaryText }]}>
-            {`Bring a guest: tell the front desk when you check in. It uses a guest pass (${member.credits.guestPassesLeft} left this month).`}
+            {`Bring a guest: tell the front desk when you check in. It uses a guest pass (${member.credits.guestPassesLeft} left this ${member.plan.period}).`}
           </Text>
         </View>
       ) : null}
       {member.canResume ? (
-        <ActionRow palette={palette} icon="play" label={member.status === "paused" ? "Start again" : "Don't pause"} detail={member.status === "paused" ? "Pay for a month to start" : null} onPress={() => void act("membership_resume", member.status === "paused" ? "Pay below to start again." : "You won't pause. Your next payment email comes as usual.")} testID="issue-4490-member-resume" />
+        <ActionRow palette={palette} icon="play" label={member.status === "paused" ? "Start again" : "Don't pause"} detail={member.status === "paused" ? `Pay for a ${member.plan.period} to start` : null} onPress={() => void act("membership_resume", member.status === "paused" ? "Pay below to start again." : "You won't pause. Your next payment email comes as usual.")} testID="issue-4490-member-resume" />
       ) : null}
       {member.canPause && asking !== "pause" ? (
-        <ActionRow palette={palette} icon="pause" label="Pause after this month" detail={null} onPress={() => { setAsking("pause"); setDone(null); }} testID="issue-4490-member-pause" />
+        <ActionRow palette={palette} icon="pause" label={`Pause after this ${member.plan.period}`} detail={null} onPress={() => { setAsking("pause"); setDone(null); }} testID="issue-4490-member-pause" />
       ) : null}
       {asking === "pause" ? (
         <AskBox
           palette={palette}
           theme={theme}
-          text={`Your pass works until ${day(member.activeUntil)}, then your membership pauses. No payment email goes out for the next month. Start again any time by paying for a month.`}
-          confirmLabel="Pause after this month"
+          text={`Your pass works until ${day(member.activeUntil)}, then your membership pauses. No payment email goes out for the next ${member.plan.period}. Start again any time by paying for a ${member.plan.period}.`}
+          confirmLabel={`Pause after this ${member.plan.period}`}
           busy={busy === "membership_pause"}
           onConfirm={() => void act("membership_pause", `You'll pause on ${day(member.activeUntil)}.`)}
           onCancel={() => setAsking(null)}
@@ -467,7 +470,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
         <ActionRow palette={palette} icon="check" label="Stay on" detail={member.leaving !== null ? `Instead of leaving ${day(member.leaving.endsAt)}` : null} onPress={() => void act("membership_stay", "You're staying on. Your next payment email comes as usual.")} testID="issue-4490-member-stay" />
       ) : null}
       {member.canLeave && asking !== "leave" ? (
-        <ActionRow palette={palette} icon="logout" label={member.status === "pending" ? "Cancel joining" : "Leave"} detail={member.status === "pending" ? "Nothing has been paid" : "At the end of a paid month"} onPress={() => { setAsking("leave"); setDone(null); }} testID="issue-4490-member-leave" />
+        <ActionRow palette={palette} icon="logout" label={member.status === "pending" ? "Cancel joining" : "Leave"} detail={member.status === "pending" ? "Nothing has been paid" : `At the end of a paid ${member.plan.period}`} onPress={() => { setAsking("leave"); setDone(null); }} testID="issue-4490-member-leave" />
       ) : null}
       {asking === "leave" ? (
         <AskBox
@@ -476,7 +479,7 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
           text={
             member.status === "pending"
               ? "Your membership closes now. Nothing has been paid and nothing is owed."
-              : `You leave at the end of a paid month${member.terms.noticeDays !== null && member.terms.noticeDays > 0 ? ` with ${member.terms.noticeDays} days' notice` : ""}${member.terms.minMonths !== null && member.terms.minMonths > 1 ? ` (after your ${member.terms.minMonths}-month minimum)` : ""}. Your pass works as usual until then, and nothing more is owed. You can change your mind before then.`
+              : `You leave at the end of a paid ${member.plan.period}${member.terms.noticeDays !== null && member.terms.noticeDays > 0 ? ` with ${member.terms.noticeDays} days' notice` : ""}${member.terms.minMonths !== null && member.terms.minMonths > 1 ? ` (after your ${member.plan.period === "year" ? "1-year" : `${member.terms.minMonths}-month`} minimum)` : ""}. Your pass works as usual until then, and nothing more is owed. You can change your mind before then.`
           }
           confirmLabel={member.status === "pending" ? "Cancel joining" : "Leave"}
           busy={busy === "membership_leave"}

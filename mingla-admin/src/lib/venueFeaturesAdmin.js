@@ -125,7 +125,7 @@ export function buildOfferRows(payload) {
   }));
 }
 
-/** #4490 P6 — the monthly plans on sale (from the public page block). */
+/** #4490 P6/K — the monthly and yearly plans on sale (from the public page block). */
 export function buildPlanRows(payload) {
   const page = payload?.page ?? {};
   const currency = page.currencyCode ?? null;
@@ -133,7 +133,8 @@ export function buildPlanRows(payload) {
   return asArray(page.memberships?.plans).map((p) => ({
     id: p.id,
     name: p.name,
-    price: `${adminMoney(p.priceMinor, currency, exponent)} a month`,
+    price: `${adminMoney(p.priceMinor, currency, exponent)} a ${p.interval === "year" ? "year" : "month"}`,
+    period: p.interval === "year" ? "Yearly" : "Monthly",
     status: p.full === true ? "Full" : "On sale",
   }));
 }

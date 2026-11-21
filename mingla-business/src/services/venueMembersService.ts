@@ -103,6 +103,7 @@ export function mapMembershipPlan(v: unknown): MembershipPlan {
     members: num(p.members),
     activeMembers: num(p.activeMembers),
     full: p.full === true,
+    periodLocked: p.periodLocked === true,
   };
 }
 
@@ -133,6 +134,9 @@ export function mapMemberRow(v: unknown): VenueMemberRow {
     phone: strOrNull(m.phone),
     planId: str(m.planId),
     planName: str(m.planName),
+    planPeriod: PLAN_PERIODS.includes(str(m.planPeriod) as MembershipPlanPeriod)
+      ? (str(m.planPeriod) as MembershipPlanPeriod)
+      : "month",
     status: mapMemberStatus(m.status),
     activeUntil: strOrNull(m.activeUntil),
     renewsOn: strOrNull(m.renewsOn),

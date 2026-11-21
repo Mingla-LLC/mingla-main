@@ -1,5 +1,5 @@
 /**
- * #4490 P6 — memberships (monthly plans) as the Host reads them. Pure types;
+ * #4490 P6/K — membership plans as the Host reads them. Pure types;
  * the server (`issue_4490_membership_plans`, `issue_4490_venue_members`,
  * `issue_4490_venue_member`) is the authority for every value. Money is in
  * minor units.
@@ -56,6 +56,8 @@ export interface MembershipPlan {
   members: number;
   activeMembers: number;
   full: boolean;
+  /** The billing interval cannot change after the first join/request. */
+  periodLocked: boolean;
 }
 
 export interface MembershipPlansState {
@@ -77,6 +79,7 @@ export interface VenueMemberRow {
   phone: string | null;
   planId: string;
   planName: string;
+  planPeriod: MembershipPlanPeriod;
   status: MemberStatus;
   activeUntil: string | null;
   renewsOn: string | null;

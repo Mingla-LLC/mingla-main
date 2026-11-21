@@ -4,7 +4,7 @@ import { venueAppLinkDisplay } from "./venueBookingEmails.ts";
 //   venue_membership_renewal (steps: renewal 7 days before, due on renewal
 //     day, reminder 3 days after, restart after a pause, resend-* when the
 //     venue sends the link again) · venue_membership_lapsed ·
-//   venue_membership_paid (first month / renewal receipt) ·
+//   venue_membership_paid (first period / renewal receipt) ·
 //   venue_membership_ended (leaving / ended)
 // ---------------------------------------------------------------------------
 // The outbox row carries words and ids (venue and plan names, the member's
@@ -95,6 +95,8 @@ export function renderVenueMembershipMessage(
   const name = text(payload.member_name);
   const hi = name ? `Hi ${name.split(/\s+/)[0]},\n\n` : "";
   const step = text(payload.step);
+  const period = text(payload.period) === "year" ? "year" : "month";
+  const thisPeriod = `this ${period}`;
   const renewsOn = venueEmailDate(text(payload.period_start_date));
   const graceEnds = venueEmailDate(text(payload.grace_ends_on));
   const paidThrough = venueEmailDate(text(payload.paid_through));
@@ -104,7 +106,7 @@ export function renderVenueMembershipMessage(
 
   if (categoryKey === "venue_membership_lapsed") {
     const body =
-      `${hi}We haven't received this month's payment for your ${plan} membership at ${venue}, so it is paused: your pass won't open the door and included hours can't be used.${money}\n\nPay${
+      `${hi}We haven't received ${thisPeriod}'s payment for your ${plan} membership at ${venue}, so it is paused: your pass won't open the door and included hours can't be used.${money}\n\nPay${
         total ? ` ${total}` : ""
       } from your member page and it starts again at once.`;
     return {
@@ -113,18 +115,18 @@ export function renderVenueMembershipMessage(
         body: `Pay${total ? ` ${total}` : ""} to start again at ${venue}.`,
       },
       email: { subject: `Your ${plan} at ${venue} is paused`, body },
-      sms: `${venue}: your ${plan} is paused until this month is paid.`,
+      sms: `${venue}: your ${plan} is paused until ${thisPeriod} is paid.`,
     };
   }
 
   if (categoryKey === "venue_membership_paid") {
     if (step === "first") {
       const body =
-        `${hi}Welcome to ${plan} at ${venue}. Your first month is paid${
+        `${hi}Welcome to ${plan} at ${venue}. Your first ${period} is paid${
           total ? ` (${total})` : ""
         }${
           paidThrough ? ` and your membership runs until ${paidThrough}` : ""
-        }.\n\nYour member pass is on your member page: show its code at the front desk.\n\nBefore each new month we'll email you a link to pay for it. Nothing renews by itself, and you can leave any time from your member page.`;
+        }.\n\nYour member pass is on your member page: show its code at the front desk.\n\nBefore each new ${period} we'll email you a link to pay for it. Nothing renews by itself, and you can leave any time from your member page.`;
       return {
         push: {
           title: `Welcome to ${plan}`,
@@ -196,7 +198,7 @@ export function renderVenueMembershipMessage(
   if (step === "approval") {
     const body = `${hi}You're approved for ${plan} at ${venue}. Pay${
       total ? ` ${total}` : ""
-    } within 3 days to start.${money}\n\nNothing renews or is charged by itself.`;
+    }${period === "year" ? " for your first year" : ""} within 3 days to start.${money}\n\nNothing renews or is charged by itself.`;
     return {
       push: { title: `You're approved for ${plan}`, body: `Pay within 3 days to start at ${venue}.` },
       email: { subject: `You're approved for ${plan} at ${venue}`, body },
@@ -205,7 +207,7 @@ export function renderVenueMembershipMessage(
   }
   if (step === "due") {
     const body =
-      `${hi}Your ${plan} membership at ${venue} renews today and this month isn't paid yet.${money}\n\nYou can still come in${
+      `${hi}Your ${plan} membership at ${venue} renews today and ${thisPeriod} isn't paid yet.${money}\n\nYou can still come in${
         graceEnds ? ` until ${graceEnds}` : ""
       }. Pay${total ? ` ${total}` : ""} from your member page to keep your place.`;
     return {
@@ -219,7 +221,7 @@ export function renderVenueMembershipMessage(
   }
   if (step === "reminder") {
     const body =
-      `${hi}A reminder: this month's payment for your ${plan} membership at ${venue} is still open.${money}\n\n${
+      `${hi}A reminder: ${thisPeriod}'s payment for your ${plan} membership at ${venue} is still open.${money}\n\n${
         graceEnds
           ? `After ${graceEnds} your membership pauses until it is paid.`
           : "Your membership pauses soon if it isn't paid."
@@ -241,14 +243,15 @@ export function renderVenueMembershipMessage(
     };
   }
   const restart = step === "restart";
+  const yearlyReminder = period === "year" && step === "year_reminder";
   const body = restart
-    ? `${hi}Welcome back. Pay for your next month of ${plan} at ${venue} and your membership starts again at once.${money}`
-    : `${hi}Your ${plan} membership at ${venue} renews${
+    ? `${hi}Welcome back. Pay for your next ${period} of ${plan} at ${venue} and your membership starts again at once.${money}`
+    : `${hi}${yearlyReminder ? "A reminder: " : ""}Your ${plan} membership at ${venue} renews${
       renewsOn ? ` on ${renewsOn}` : " soon"
     }. Pay before then to keep your place.${money}\n\nNothing is charged by itself: you pay from your member page. If you'd rather stop, you can leave there too.`;
   return {
     push: {
-      title: restart ? `Start your ${plan} again` : `Your ${plan} renews${
+      title: restart ? `Start your ${plan} again` : `${yearlyReminder ? "Reminder: " : ""}Your ${plan} renews${
         renewsOn ? ` on ${renewsOn}` : " soon"
       }`,
       body: `Pay${total ? ` ${total}` : ""} from your member page.`,
@@ -256,7 +259,9 @@ export function renderVenueMembershipMessage(
     email: {
       subject: restart
         ? `Start your ${plan} at ${venue} again`
-        : `Your ${plan} renews${renewsOn ? ` on ${renewsOn}` : " soon"}`,
+        : period === "year"
+          ? `${yearlyReminder ? "Reminder: " : ""}Your year with ${venue} renews${renewsOn ? ` on ${renewsOn}` : " soon"}`
+          : `Your ${plan} renews${renewsOn ? ` on ${renewsOn}` : " soon"}`,
       body,
     },
     // #4490 Explorer W1 (§6): with the app link, "Pay here: {link}".

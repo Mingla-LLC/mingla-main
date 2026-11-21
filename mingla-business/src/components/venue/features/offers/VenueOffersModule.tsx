@@ -653,7 +653,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
     </>
   );
 
-  // #4490 P6 — monthly plans are sold here too; they are made in Members › Plans.
+  // #4490 P6/K — monthly and yearly plans are made in Members › Plans.
   const plansCard =
     membersOn || livePlans.length > 0 ? (
       <GlassCard variant="base" padding={0} contentStyle={styles.listCard} testID="venue-offers-plans">
@@ -661,7 +661,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
           <View style={styles.cellText}>
             <Text style={styles.rowTitle}>Membership plans</Text>
             <Text style={styles.meta}>
-              {livePlans.length === 0 ? "No plan yet. Members pay one month at a time." : "Monthly plans, paid one month at a time."}
+              {livePlans.length === 0 ? "No plan yet. Members pay one billing period at a time." : "Monthly and yearly plans, paid one period at a time."}
             </Text>
           </View>
           {onOpenMembers !== undefined ? (
@@ -684,7 +684,7 @@ export const VenueOffersModule = forwardRef<VenueModuleLeaveHandle, VenueOffersM
               <View style={styles.cellText}>
                 <Text style={styles.rowTitle} numberOfLines={2}>{plan.name}</Text>
                 <Text style={styles.meta}>
-                  {`${money(plan.priceMinor, plan.currencyCode || currency)} a month · ${plan.activeMembers} ${plan.activeMembers === 1 ? "member" : "members"}`}
+                  {`${money(plan.priceMinor, plan.currencyCode || currency)} a ${plan.period} · ${plan.activeMembers} ${plan.activeMembers === 1 ? "member" : "members"}`}
                 </Text>
               </View>
               <Pill variant={st.variant}>{st.label}</Pill>

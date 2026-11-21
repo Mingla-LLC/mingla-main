@@ -247,7 +247,7 @@ export const VenueMembersModule = forwardRef<VenueModuleLeaveHandle, VenueMember
           {noPlans ? (
             <>
               <Text style={styles.emptyTitle}>No plans yet</Text>
-              <Text style={styles.meta}>Make a monthly plan, put it on sale, and members join from your venue page.</Text>
+              <Text style={styles.meta}>Make a monthly or yearly plan, put it on sale, and members join from your venue page.</Text>
               {canEditPlans ? <Button label="New plan" variant="primary" size="md" onPress={() => setSub({ kind: "plan", planId: null })} testID="venue-members-empty-new-plan" /> : null}
             </>
           ) : filter === "all" ? (
@@ -255,7 +255,7 @@ export const VenueMembersModule = forwardRef<VenueModuleLeaveHandle, VenueMember
               <Text style={styles.emptyTitle}>No members yet</Text>
               <Text style={styles.meta}>
                 {livePlans.length > 0
-                  ? "People join from the Plans tab on your venue page and pay their first month there."
+                  ? "People join from the Plans tab on your venue page and pay their first billing period there."
                   : "Put a plan on sale so people can join from your venue page."}
               </Text>
               {livePlans.length === 0 && canEditPlans ? (
@@ -277,7 +277,7 @@ export const VenueMembersModule = forwardRef<VenueModuleLeaveHandle, VenueMember
               <Text style={[styles.headCell, styles.colName]}>Member</Text>
               <Text style={[styles.headCell, styles.colPlan]}>Plan</Text>
               <Text style={[styles.headCell, styles.colWhen]}>Renews</Text>
-              <Text style={[styles.headCell, styles.colRooms]}>This month</Text>
+              <Text style={[styles.headCell, styles.colRooms]}>This period</Text>
               <Text style={[styles.headCell, styles.colStatus]}>Status</Text>
             </View>
           ) : null}

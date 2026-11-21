@@ -1,15 +1,15 @@
 /**
  * #4490 P6-2 — the membership plan editor (`mb-plans` "New plan"): one
- * screen. Name, the monthly price, what's included (free entry on one Entry
+ * screen. Name, the monthly or yearly price, what's included (free entry on one Entry
  * offer with guest passes, room hours on By the hour offers, a member price
  * on the kinds the host picks, and up to 6 lines of their own), how many
  * members the plan takes, and the terms copied onto each membership when it
  * starts (minimum months, notice, grace, when the payment email goes out).
  *
- * Monthly only. Save draft / Publish; what still stands in the way of
+ * Save draft / Publish; what still stands in the way of
  * publishing is said in plain words (with the switch to turn Memberships on
  * for owners and admins). A price change applies from each member's next
- * month (said under the price). Every write carries the version the host last
+ * billing period (said under the price). Every write carries the version the host last
  * saw; "someone else saved first" offers a reload.
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
@@ -45,12 +45,14 @@ import {
   MIN_MONTH_OPTIONS,
   NOTICE_OPTIONS,
   RENEWAL_NOTICE_OPTIONS,
+  YEARLY_RENEWAL_NOTICE_OPTIONS,
   planDraftFrom,
   planErrorCopy,
   planIncludesLines,
   planIssueList,
   planIssues,
   planPayload,
+  planPeriodDraft,
   type PlanDraft,
 } from "./membersModel";
 
@@ -112,7 +114,7 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
-  const issues = planIssues(draft);
+  const issues = planIssues(draft, currency ?? "NGN");
   const issueList = planIssueList(issues);
   const patch = (next: Partial<PlanDraft>): void => {
     setDraft((d) => ({ ...d, ...next }));
@@ -277,7 +279,7 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
             <Banner
               tone="warning"
               title="Online payments aren't set up"
-              body="Members pay each month online. Set up your brand's payments before people can join."
+              body={`Members pay each ${draft.period} online. Set up your brand's payments before people can join.`}
               testID="plan-editor-payments-off"
             />
           ) : null}
@@ -305,8 +307,20 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Price</Text>
+            <SelectSheet
+              label="Billed"
+              value={draft.period}
+              options={[
+                { value: "month" as const, label: "Monthly" },
+                { value: "year" as const, label: "Yearly" },
+              ]}
+              onChange={(period) => patch(planPeriodDraft(draft, period))}
+              disabled={archived || plan?.periodLocked === true}
+              testID="plan-editor-period"
+            />
+            {plan?.periodLocked === true ? <Text style={styles.hint}>Billing is locked because someone has joined or requested this plan.</Text> : null}
             <MoneyField
-              label="Each month"
+              label={draft.period === "year" ? "Each year" : "Each month"}
               valueMinor={draft.priceMinor}
               onChangeMinor={(priceMinor) => patch({ priceMinor })}
               currency={currency}
@@ -316,8 +330,8 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
             />
             <Text style={styles.hint}>
               {plan !== null && plan.members > 0
-                ? "A new price applies from each member's next month. Members always pay for one month at a time."
-                : "Members pay for one month at a time. VAT follows your Terms and tax."}
+                ? `A new price applies from each member's next ${draft.period}. Members always pay for one ${draft.period} at a time.`
+                : `Members pay for one ${draft.period} at a time. VAT follows your Terms and tax.`}
             </Text>
           </View>
 
@@ -336,8 +350,8 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
             />
             <Text style={styles.hint}>
               {draft.joinMode === "request"
-                ? `Guests send a request without paying. ${venueName} approves first, then they have 3 days to pay their first month.`
-                : "Guests pay their first month when they join."}
+                ? `Guests send a request without paying. ${venueName} approves first, then they have 3 days to pay their first ${draft.period}.`
+                : `Guests pay their first ${draft.period} when they join.`}
             </Text>
           </View>
 
@@ -377,22 +391,22 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
                 />
                 {showErrors && issues.entry !== null ? <Text style={styles.error}>{issues.entry}</Text> : null}
                 <NumberStepper
-                  label="Guest passes a month"
+                  label={`Guest passes a ${draft.period}`}
                   value={draft.guestPasses}
                   min={0}
-                  max={100}
+                  max={draft.period === "year" ? 1200 : 100}
                   onChange={(guestPasses) => patch({ guestPasses })}
                   testID="plan-editor-guest-passes"
                 />
-                <Text style={styles.hint}>A member can bring a guest in free with a pass. Unused passes end with the month.</Text>
+                <Text style={styles.hint}>{`A member can bring a guest in free with a pass. Unused passes end with the ${draft.period}.`}</Text>
               </View>
             ) : null}
 
             <NumberStepper
-              label="Room hours a month"
+              label={`Room hours a ${draft.period}`}
               value={Math.round(draft.roomHours)}
               min={0}
-              max={744}
+              max={draft.period === "year" ? 8784 : 744}
               onChange={(roomHours) => patch({ roomHours })}
               testID="plan-editor-room-hours"
             />
@@ -430,7 +444,7 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
                       />
                     ))}
                   </View>
-                  <Text style={styles.hint}>Members use their hours first; anything over is charged at the room&apos;s price. Unused hours end with the month.</Text>
+                  <Text style={styles.hint}>{`Members use their hours first; anything over is charged at the room's price. Unused hours end with the ${draft.period}.`}</Text>
                 </View>
               )
             ) : null}
@@ -537,20 +551,24 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
             <Text style={styles.hint}>Copied onto each membership when it starts, so later edits never change a deal already made.</Text>
             <View style={styles.row2}>
               <View style={styles.cell}>
-                <SelectSheet label="Minimum stay" value={draft.minMonths} options={MIN_MONTH_OPTIONS} onChange={(minMonths) => patch({ minMonths })} testID="plan-editor-min-months" />
+                {draft.period === "year" ? (
+                  <SelectSheet label="Minimum stay" value={12} options={[{ value: 12, label: "1 year" }]} onChange={() => undefined} disabled testID="plan-editor-min-months" />
+                ) : (
+                  <SelectSheet label="Minimum stay" value={draft.minMonths} options={MIN_MONTH_OPTIONS} onChange={(minMonths) => patch({ minMonths })} testID="plan-editor-min-months" />
+                )}
               </View>
               <View style={styles.cell}>
                 <SelectSheet label="Notice to leave" value={draft.noticeDays} options={NOTICE_OPTIONS} onChange={(noticeDays) => patch({ noticeDays })} testID="plan-editor-notice" />
               </View>
               <View style={styles.cell}>
-                <SelectSheet label="Payment email goes out" value={draft.renewalNoticeDays} options={RENEWAL_NOTICE_OPTIONS} onChange={(renewalNoticeDays) => patch({ renewalNoticeDays })} testID="plan-editor-renewal-notice" />
+                <SelectSheet label="Payment email goes out" value={draft.renewalNoticeDays} options={draft.period === "year" ? YEARLY_RENEWAL_NOTICE_OPTIONS : RENEWAL_NOTICE_OPTIONS} onChange={(renewalNoticeDays) => patch({ renewalNoticeDays })} testID="plan-editor-renewal-notice" />
               </View>
               <View style={styles.cell}>
                 <SelectSheet label="Grace after the due day" value={draft.graceDays} options={GRACE_OPTIONS} onChange={(graceDays) => patch({ graceDays })} testID="plan-editor-grace" />
               </View>
             </View>
             <Text style={styles.hint}>
-              {`Before each month we email a link to pay ${draft.renewalNoticeDays} days ahead. Nothing renews by itself. ${
+              {`Before each ${draft.period} we email a link to pay ${draft.renewalNoticeDays} days ahead. Nothing renews by itself. ${
                 draft.graceDays > 0
                   ? `If it isn't paid, they can still come in for ${draft.graceDays} days, then the membership lapses until it's paid.`
                   : "If it isn't paid on the day, the membership lapses until it's paid."
@@ -562,7 +580,7 @@ export const PlanEditor = forwardRef<VenueModuleLeaveHandle, PlanEditorProps>(fu
             <Text style={styles.sectionTitle}>Guests will see</Text>
             <Text style={styles.previewTitle}>{draft.name.trim() || "Your plan"}</Text>
             <Text style={styles.previewPrice}>
-              {draft.priceMinor !== null && draft.priceMinor > 0 ? `${money(draft.priceMinor, currency)} a month` : "Set a price"}
+              {draft.priceMinor !== null && draft.priceMinor > 0 ? `${money(draft.priceMinor, currency)} a ${draft.period}` : "Set a price"}
             </Text>
             {includes.length > 0 ? (
               includes.map((line) => (
