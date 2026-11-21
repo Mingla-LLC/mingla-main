@@ -13,81 +13,17 @@ import type {
 } from "../../services/brandInvitationsService";
 import type { VenueListing } from "../../services/venueListingsService";
 import { Icon } from "../ui/Icon";
+import {
+  capabilityOptionsFor,
+  isVenueAccessAssignable,
+  profileOptionsFor,
+  VENUE_ACCESS_PROFILES,
+} from "./venueAccessOptions";
 
-type CapabilityOption = {
-  capability: VenueCapability;
-  label: string;
-  categories: readonly string[];
-};
-
-export const VENUE_ACCESS_PROFILES: Record<
-  Exclude<VenueAccessProfile, "custom">,
-  readonly VenueCapability[]
-> = {
-  front_desk: [
-    "stay.view_reservations",
-    "stay.create_reservations",
-    "stay.manage_reservations",
-    "stay.view_availability",
-  ],
-  restaurant_manager: [
-    "restaurant.view_orders",
-    "restaurant.manage_orders",
-    "restaurant.manage_menu",
-    "restaurant.manage_qr",
-    "restaurant.manage_reservations",
-  ],
-  kitchen_bar: ["restaurant.view_orders", "restaurant.manage_orders"],
-};
-
-const PROFILE_OPTIONS: readonly {
-  id: VenueAccessProfile;
-  label: string;
-}[] = [
-  { id: "front_desk", label: "Front desk" },
-  { id: "restaurant_manager", label: "Venue manager" },
-  { id: "kitchen_bar", label: "Kitchen / bar" },
-  { id: "custom", label: "Custom" },
-];
-
-/**
- * #4490 — every venue type except Stay takes the venue capabilities (tables,
- * orders, menu, QR, and the venue.* features). A Stay keeps its own set.
- */
-const NON_STAY_CATEGORIES: readonly string[] = [
-  "restaurant",
-  "play",
-  "creative_and_arts",
-  "bar_lounge",
-  "club",
-  "cafe",
-  "event_space",
-  "coworking",
-];
-
-const CAPABILITY_OPTIONS: readonly CapabilityOption[] = [
-  { capability: "stay.view_reservations", label: "View Stay reservations", categories: ["stay"] },
-  { capability: "stay.create_reservations", label: "Create Stay reservations", categories: ["stay"] },
-  { capability: "stay.manage_reservations", label: "Update or cancel Stay reservations", categories: ["stay"] },
-  { capability: "stay.view_availability", label: "View Stay availability", categories: ["stay"] },
-  { capability: "restaurant.view_orders", label: "View restaurant orders", categories: NON_STAY_CATEGORIES },
-  { capability: "restaurant.manage_orders", label: "Manage restaurant orders", categories: NON_STAY_CATEGORIES },
-  { capability: "restaurant.manage_menu", label: "Manage restaurant menu", categories: NON_STAY_CATEGORIES },
-  { capability: "restaurant.manage_qr", label: "Manage QR ordering spots", categories: NON_STAY_CATEGORIES },
-  { capability: "restaurant.manage_reservations", label: "Manage restaurant reservations", categories: NON_STAY_CATEGORIES },
-  // #4490 — the venue capabilities (every phase has shipped its surfaces).
-  { capability: "venue.manage_offers", label: "Manage offers, spaces and opening hours", categories: NON_STAY_CATEGORIES },
-  { capability: "venue.view_bookings", label: "See bookings, Today and the calendar", categories: NON_STAY_CATEGORIES },
-  { capability: "venue.manage_bookings", label: "Answer requests and change bookings", categories: NON_STAY_CATEGORIES },
-  { capability: "venue.check_in", label: "Check guests in at the door", categories: NON_STAY_CATEGORIES },
-  { capability: "venue.manage_money", label: "Take payments and give refunds", categories: NON_STAY_CATEGORIES },
-  { capability: "venue.manage_members", label: "Manage members and plans", categories: NON_STAY_CATEGORIES },
-];
-
-export function isVenueAccessAssignable(venue: VenueListing): boolean {
-  // #4490 — every venue type can have scoped staff (was Stay and restaurant only).
-  return venue.venueCategory === "stay" || NON_STAY_CATEGORIES.includes(venue.venueCategory);
-}
+export {
+  isVenueAccessAssignable,
+  VENUE_ACCESS_PROFILES,
+} from "./venueAccessOptions";
 
 function categoryLabel(category: string): string {
   return category.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
@@ -162,9 +98,7 @@ export function VenueAccessEditor({
       </Text>
       {assignableVenues.map((venue) => {
         const grant = grants.find((item) => item.venueId === venue.id) ?? null;
-        const applicable = CAPABILITY_OPTIONS.filter((option) =>
-          option.categories.includes(venue.venueCategory),
-        );
+        const applicable = capabilityOptionsFor(venue.venueCategory);
         return (
           <View key={venue.id} style={[styles.card, grant && styles.cardSelected]}>
             <Pressable
@@ -191,12 +125,7 @@ export function VenueAccessEditor({
             {grant ? (
               <View style={styles.grantBody}>
                 <View style={styles.profileRow}>
-                  {PROFILE_OPTIONS.filter((option) =>
-                    option.id === "custom" ||
-                    (venue.venueCategory === "stay"
-                      ? option.id === "front_desk"
-                      : option.id !== "front_desk"),
-                  ).map((option) => (
+                  {profileOptionsFor(venue.venueCategory).map((option) => (
                     <Pressable
                       key={option.id}
                       onPress={() => update(venue, option.id)}

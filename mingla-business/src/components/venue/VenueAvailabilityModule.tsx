@@ -391,13 +391,19 @@ export interface VenueAvailabilityModuleProps {
    * editor sits right above: hide the "Edit hours in Settings" link.
    */
   hideHoursLink?: boolean;
+  /**
+   * #4490 R4J-N23 — "Open tables" for a host that is not the venue suite
+   * (the Stay workspace opens Spaces › Tables itself). Omitted: the store's
+   * module switch, shown only when the venue suite installed one.
+   */
+  onOpenTables?: () => void;
 }
 
 export const VenueAvailabilityModule = forwardRef<
   VenueAvailabilityLeaveHandle,
   VenueAvailabilityModuleProps
 >(function VenueAvailabilityModule(
-  { brandId, venueId = null, testID, hideHoursLink = false },
+  { brandId, venueId = null, testID, hideHoursLink = false, onOpenTables },
   forwardedRef,
 ): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
@@ -1091,14 +1097,18 @@ export const VenueAvailabilityModule = forwardRef<
               <Text style={styles.sectionHint}>
                 The most guests a table takes and the hold per guest are set on each table, in Spaces › Tables.
               </Text>
-              {selectSuiteModule !== null ? (
+              {onOpenTables !== undefined || selectSuiteModule !== null ? (
                 <Button
                   label="Open tables"
                   variant="secondary"
                   size="sm"
                   onPress={() => {
+                    if (onOpenTables !== undefined) {
+                      onOpenTables();
+                      return;
+                    }
                     if (venueId !== null) requestSpacesInSuite(venueId);
-                    selectSuiteModule("tables");
+                    selectSuiteModule?.("tables");
                   }}
                   testID="venue-avail-open-tables"
                 />

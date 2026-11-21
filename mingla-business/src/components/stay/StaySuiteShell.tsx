@@ -122,6 +122,8 @@ import {
   formatLeaveChangedBody,
   type VenueModuleLeaveHandle,
 } from "../venue/venueLeaveContract";
+import { moduleSelfScrolls } from "../venue/venueShellScroll";
+import { featureSetupNeeds } from "../venue/features/featureSetupModel";
 import type { VenueModule } from "../../types/venueReservation";
 import {
   STAY_PAGE_BOTTOM_PAD,
@@ -1352,10 +1354,11 @@ export function StaySuiteShell({
   // "Availability & pricing" does in the ordinary shell.
   const [tableView, setTableView] = useState<"bookings" | "times">("bookings");
   const tableTimesRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
-  // Reservations › "Edit floor" opens Spaces on that space's tables.
+  // Reservations › "Edit floor" opens Spaces on that space's tables; Table
+  // times › "Open tables" opens Spaces › Tables with no space chosen.
   const [spacesTarget, setSpacesTarget] = useState<{
     view: "tables";
-    spaceId: string;
+    spaceId: string | null;
   } | null>(null);
   const [pendingLeave, setPendingLeave] = useState<{
     from: StayModule;
@@ -1394,14 +1397,31 @@ export function StaySuiteShell({
     return scoped;
   }, [venueAccess.capabilities, venueAccess.scoped]);
 
+  // R4J-N23 — the ordinary shell keeps Spaces reachable when the host asked
+  // for it (Settings › "Add spaces"), when a switched-on feature still waits
+  // for a space, and for staff who manage offers. The Stay workspace asks the
+  // same shared rule the same way. It has no classic Tables destination
+  // (§13's twelve), so a feature waiting for TABLES also asks for Spaces:
+  // Spaces › Tables is where a Stay adds them.
+  const spacesRequestedVenueId = useVenueSuiteStore(
+    (s) => s.spacesRequestedVenueId,
+  );
   // The venue modules the ordinary shell would show this person here.
   const allowedVenueModules = useMemo((): ReadonlySet<VenueModule> => {
     if (featuresQuery.data === undefined) return new Set();
+    const setupNeedsSpaces = featureSetupNeeds({
+      features: featuresQuery.data.features,
+      activeSpaceCount: featuresQuery.data.activeSpaceCount,
+    }).some((need) => need.target === "spaces" || need.target === "tables");
     const derived = deriveVenueNav({
       features: featuresQuery.data.features,
       activeSpaceCount: featuresQuery.data.activeSpaceCount,
       venueCategory: "stay",
       noStoredFeatures: hasNoStoredFeatures(featuresQuery.data.features),
+      spacesRequested:
+        spacesRequestedVenueId === venueId ||
+        setupNeedsSpaces ||
+        scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities),
     });
     return new Set(
       filterVenueModulesForCapabilities(
@@ -1410,7 +1430,13 @@ export function StaySuiteShell({
         venueAccess.capabilities,
       ),
     );
-  }, [featuresQuery.data, venueAccess.capabilities, venueAccess.scoped]);
+  }, [
+    featuresQuery.data,
+    spacesRequestedVenueId,
+    venueAccess.capabilities,
+    venueAccess.scoped,
+    venueId,
+  ]);
 
   const featureModules = useMemo(
     () =>
@@ -1608,6 +1634,9 @@ export function StaySuiteShell({
   ]);
 
   const renderWorkspace = (): React.ReactElement => {
+    // R4J-N25 — on a Stay the venue reservations screen is "Table
+    // reservations"; its heading and the waitlist's "seated" note say so.
+    const tableReservationsLabel = stayModuleLabel("table_reservations");
     const lazyFallback = (
       <View style={styles.lazyModuleFallback}>
         <ActivityIndicator color={color.accent} />
@@ -1637,6 +1666,29 @@ export function StaySuiteShell({
     ) {
       return lazyFallback;
     }
+    // R4J-N20 — scroll ownership follows the ordinary venue shell's rule
+    // (`moduleSelfScrolls`). A venue screen that owns its scroll renders
+    // straight into the workspace; every other one sits in the shell's page
+    // ScrollView there, and the Stay workspace has no shell scroll, so it gets
+    // the same page scroll here (with the Stay page's bottom clearance).
+    // Without it Spaces, Today, Check-in, Menu, Orders and Guest list could
+    // not scroll on a Stay at any width.
+    const featurePage = (
+      module: StayFeatureModule,
+      body: React.ReactElement,
+    ): React.ReactElement =>
+      moduleSelfScrolls(STAY_FEATURE_VENUE_MODULE[module]) ? (
+        body
+      ) : (
+        <ScrollView
+          style={styles.flexOne}
+          contentContainerStyle={styles.featurePage}
+          keyboardShouldPersistTaps="handled"
+          testID={`stay-feature-scroll-${module}`}
+        >
+          {body}
+        </ScrollView>
+      );
     if (activeModule === "overview") {
       return (
         <StayOverview
@@ -1653,7 +1705,15 @@ export function StaySuiteShell({
         <StaySettings
           brandId={brandId}
           venueId={venueId}
-          onOpenSpaces={() => openFeatureModule("spaces")}
+          // R4J-N23 — the panel has just asked the store for Spaces
+          // (`requestSpaces`), so Spaces shows on this render even before a
+          // space exists; open it without waiting for the old visible list.
+          onOpenSpaces={() =>
+            requestLeave(() => {
+              setSpacesTarget(null);
+              setActiveModule("spaces");
+            })
+          }
         />
       );
     }
@@ -1681,10 +1741,15 @@ export function StaySuiteShell({
       );
     }
     if (activeModule === "spaces") {
-      return (
+      return featurePage(
+        "spaces",
         <React.Suspense fallback={lazyFallback}>
           <LazyVenueSpacesModule
-            key={spacesTarget === null ? "spaces" : `tables:${spacesTarget.spaceId}`}
+            key={
+              spacesTarget === null
+                ? "spaces"
+                : `tables:${spacesTarget.spaceId ?? "any"}`
+            }
             ref={spacesRef}
             brandId={brandId}
             venueId={venueId}
@@ -1692,11 +1757,12 @@ export function StaySuiteShell({
             initialSpaceId={spacesTarget?.spaceId ?? null}
             onOpenSettings={() => selectModule("settings")}
           />
-        </React.Suspense>
+        </React.Suspense>,
       );
     }
     if (activeModule === "today") {
-      return (
+      return featurePage(
+        "today",
         <React.Suspense fallback={lazyFallback}>
           <LazyVenueTodayModule
             brandId={brandId}
@@ -1706,7 +1772,7 @@ export function StaySuiteShell({
               (module) => module.id === "requests",
             )}
           />
-        </React.Suspense>
+        </React.Suspense>,
       );
     }
     if (activeModule === "calendar") {
@@ -1759,10 +1825,11 @@ export function StaySuiteShell({
       );
     }
     if (activeModule === "checkin") {
-      return (
+      return featurePage(
+        "checkin",
         <React.Suspense fallback={lazyFallback}>
           <LazyVenueCheckInModule brandId={brandId} venueId={venueId} />
-        </React.Suspense>
+        </React.Suspense>,
       );
     }
     if (activeModule === "table_reservations") {
@@ -1788,8 +1855,9 @@ export function StaySuiteShell({
             {tabs}
             <ScrollView
               style={styles.flexOne}
-              contentContainerStyle={styles.tableTimesPage}
+              contentContainerStyle={styles.featurePage}
               keyboardShouldPersistTaps="handled"
+              testID="stay-table-times-scroll"
             >
               <React.Suspense fallback={lazyFallback}>
                 <LazyVenueAvailabilityPricingModule
@@ -1797,6 +1865,19 @@ export function StaySuiteShell({
                   brandId={brandId}
                   venueId={venueId}
                   tableReservationsOn
+                  // R4J-N23 — "Open tables" lands on Spaces › Tables, where a
+                  // Stay adds its tables (Spaces shows while tables are needed).
+                  onOpenTables={
+                    visibleModules.some((module) => module.id === "spaces")
+                      ? () => {
+                          requestLeave(() => {
+                            setSpacesTarget({ view: "tables", spaceId: null });
+                            setActiveModule("spaces");
+                            setTableView("bookings");
+                          });
+                        }
+                      : undefined
+                  }
                   showTableTimes={
                     !venueAccess.scoped ||
                     venueAccess.capabilities.includes("restaurant.manage_reservations")
@@ -1817,6 +1898,14 @@ export function StaySuiteShell({
           <VenueReservationsModule
             brandId={brandId}
             venueId={venueId}
+            title={tableReservationsLabel}
+            // R4J-N20 — on the stacked (phone / tablet) layout the Stay pill
+            // band and venue header leave this screen too little height for
+            // a fixed heading + toolbar above its list (the list measured 0
+            // px at 390x844), so they scroll with the list inside its one
+            // scroll owner. Desktop keeps the ordinary layout.
+            chromeScrollsWithList={!isWideDesktop}
+            scrollBottomPad={STAY_PAGE_BOTTOM_PAD}
             onEditFloor={
               visibleModules.some((module) => module.id === "spaces")
                 ? (spaceId) => {
@@ -1832,32 +1921,35 @@ export function StaySuiteShell({
       );
     }
     if (activeModule === "waitlist") {
-      return (
-        <ScrollView
-          style={styles.flexOne}
-          contentContainerStyle={styles.tableTimesPage}
-          keyboardShouldPersistTaps="handled"
-          testID="stay-waitlist-scroll"
-        >
-          <VenueWaitlistModule brandId={brandId} venueId={venueId} />
-        </ScrollView>
+      return featurePage(
+        "waitlist",
+        <VenueWaitlistModule
+          brandId={brandId}
+          venueId={venueId}
+          reservationsLabel={tableReservationsLabel}
+        />,
       );
     }
     if (activeModule === "menu") {
-      return <VenueMenuModule brandId={brandId} venueId={venueId} />;
+      return featurePage(
+        "menu",
+        <VenueMenuModule brandId={brandId} venueId={venueId} />,
+      );
     }
     if (activeModule === "orders") {
-      return (
+      return featurePage(
+        "orders",
         <React.Suspense fallback={lazyFallback}>
           <LazyVenueOrdersModule brandId={brandId} venueId={venueId} />
-        </React.Suspense>
+        </React.Suspense>,
       );
     }
     if (activeModule === "guestlist") {
-      return (
+      return featurePage(
+        "guestlist",
         <React.Suspense fallback={lazyFallback}>
           <LazyVenueGuestListModule brandId={brandId} venueId={venueId} />
-        </React.Suspense>
+        </React.Suspense>,
       );
     }
     return (
@@ -2096,12 +2188,13 @@ const styles = StyleSheet.create({
   },
   // #1532 D5 — a module is a scroller PLUS a pinned bar, so it needs a
   // positioning host. `flex: 1` so the scroller still fills the workspace.
-  moduleRoot: { flex: 1 },
+  moduleRoot: { flex: 1, minHeight: 0 },
   // §13 — Bookings / Table times and rules, above the Table reservations view.
   tableTabs: { paddingHorizontal: space[4], flexShrink: 0 },
-  // Table times and Waitlist render inside the shell scroll in the ordinary
-  // venue shell; the Stay workspace has none, so they get this one.
-  tableTimesPage: { paddingBottom: STAY_PAGE_BOTTOM_PAD },
+  // The page scroll for venue screens that do not own one (R4J-N20): the
+  // ordinary venue shell gives them its shell ScrollView; the Stay workspace
+  // has none, so `featurePage` and the table times view use this.
+  featurePage: { paddingBottom: STAY_PAGE_BOTTOM_PAD },
   moduleNav: {
     // #1532 defect 4 — chrome does not react to the keyboard. `flexShrink: 0`
     // is belt-and-braces (a bare RN View already defaults to it); what actually

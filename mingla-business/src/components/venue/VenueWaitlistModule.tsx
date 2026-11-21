@@ -63,17 +63,29 @@ const ZONE_LABEL: Record<VenueTableZone, string> = {
   patio: "Patio",
 };
 
+/** The toast after seating a waitlist guest (#4490 R4J-N25). */
+export function seatedToastCopy(name: string, reservationsLabel: string): string {
+  return `${name} is seated. They're in ${reservationsLabel} now.`;
+}
+
 export interface VenueWaitlistModuleProps {
   brandId: string | null;
   /** META-ORCH-1255 — the venue this module is scoped to. */
   venueId?: string | null;
   testID?: string;
+  /**
+   * #4490 R4J-N25 — the name of the screen a seated guest's booking appears
+   * in. A Stay calls it "Table reservations"; the ordinary shell keeps the
+   * default.
+   */
+  reservationsLabel?: string;
 }
 
 export function VenueWaitlistModule({
   brandId,
   venueId = null,
   testID,
+  reservationsLabel = "Reservations",
 }: VenueWaitlistModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
@@ -154,12 +166,12 @@ export function VenueWaitlistModule({
         {
           onSuccess: () => {
             setConverting(null);
-            setToast(`${name} is seated. They're in Reservations now.`);
+            setToast(seatedToastCopy(name, reservationsLabel));
           },
         },
       );
     },
-    [convert, converting],
+    [convert, converting, reservationsLabel],
   );
 
   return (

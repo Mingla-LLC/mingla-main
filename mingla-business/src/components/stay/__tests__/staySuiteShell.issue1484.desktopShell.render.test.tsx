@@ -364,9 +364,41 @@ jest.mock("../../venue/features/VenueAvailabilityPricingModule", () => {
   );
   return { VenueAvailabilityPricingModule };
 });
-jest.mock("../../venue/VenueWaitlistModule", () => ({
-  VenueWaitlistModule: stub("waitlist"),
+// [TEST-MOD-APPROVED #4490] fix round 6 (R4J-N25): the Waitlist stub records
+// its props so the Stay's "seated" label can be proven.
+let mockWaitlistProps: Record<string, unknown> | null = null;
+jest.mock("../../venue/VenueWaitlistModule", () => {
+  const ReactLocal = jest.requireActual("react");
+  const RN = jest.requireActual("react-native");
+  return {
+    VenueWaitlistModule: (props: Record<string, unknown>) => {
+      mockWaitlistProps = props;
+      return ReactLocal.createElement(RN.Text, { testID: "stub-waitlist" }, "waitlist");
+    },
+  };
+});
+// [TEST-MOD-APPROVED #4490] fix round 6 (R4J-N22): Today and Check-in are
+// stubbed so door-only staff can land on them (the real Today pulls auth).
+jest.mock("../../venue/features/today/VenueTodayModule", () => ({
+  VenueTodayModule: stub("today"),
 }));
+jest.mock("../../venue/features/checkin/VenueCheckInModule", () => ({
+  VenueCheckInModule: stub("checkin"),
+}));
+// [TEST-MOD-APPROVED #4490] fix round 6 (R4J-N23): Spaces is stubbed so
+// "Open tables" can be proven to land on Spaces › Tables.
+let mockSpacesProps: Record<string, unknown> | null = null;
+jest.mock("../../venue/features/VenueSpacesModule", () => {
+  const ReactLocal = jest.requireActual("react");
+  const RN = jest.requireActual("react-native");
+  const VenueSpacesModule = ReactLocal.forwardRef(
+    (props: Record<string, unknown>, _ref: React.Ref<unknown>) => {
+      mockSpacesProps = props;
+      return ReactLocal.createElement(RN.Text, { testID: "stub-spaces" }, "spaces");
+    },
+  );
+  return { VenueSpacesModule };
+});
 jest.mock("../../venue/features/VenueTypeAndFeaturesPanel", () => ({
   VenueTypeAndFeaturesPanel: stub("venue-type-and-features"),
 }));
@@ -422,6 +454,7 @@ import {
   StaySuiteShell,
   stayTargetForVenueModule,
 } from "../StaySuiteShell";
+import { STAY_PAGE_BOTTOM_PAD } from "../stayLayoutContracts";
 import { VenueSuiteShell } from "../../venue/VenueSuiteShell";
 import { featureSetFrom } from "../../../types/venueFeatures";
 import { unsavedWork } from "../../../hooks/useUnsavedChangesGuard";
@@ -631,6 +664,8 @@ beforeEach(() => {
   mockTableTimesRequestLeave.mockClear();
   mockTableTimesProps = null;
   mockVenueAccess = { scoped: false, capabilities: [] };
+  mockWaitlistProps = null;
+  mockSpacesProps = null;
 });
 
 describe("#1484 — Stay suite adopts the shared desktop shell", () => {
@@ -1240,6 +1275,113 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     mockTableTimesHold = false;
     await press(pressableWithTestId(r, "stay-rail-overview"));
     expect(testIdsMatching(r, /^stub-table-times$/)).toHaveLength(0);
+  });
+
+
+  // ---- #4490 R4J fix round 6 ----
+  it("T-1o — R4J-N20: Bookings scrolls as one list on the stacked layout; screens without their own scroll get a page scroll", async () => {
+    mockStayFeaturesState = tablesStay({
+      table_reservations: true,
+      waitlist: true,
+      menu: true,
+    });
+    for (const wide of [false, true]) {
+      mockIsWideDesktop = wide;
+      mockVenueReservationsProps = null;
+      const t = await mount(
+        <StaySuiteShell {...STAY_PROPS} requestedModule="table_reservations" />,
+      );
+      expect(hostWithTestId(t, "stub-venue-reservations")).toBeTruthy();
+      // Stacked: the heading and toolbar scroll with the list (the list had
+      // 0 px at 390x844 under the pill band); desktop keeps the ordinary form.
+      expect(mockVenueReservationsProps).toMatchObject({
+        chromeScrollsWithList: !wide,
+        scrollBottomPad: STAY_PAGE_BOTTOM_PAD,
+      });
+      // It owns its scroll (moduleSelfScrolls("reservations")): never nested.
+      expect(testIdsMatching(t, /^stay-feature-scroll-/)).toHaveLength(0);
+      t.unmount();
+    }
+    mockIsWideDesktop = false;
+    for (const [key, stubId] of [
+      ["waitlist", "stub-waitlist"],
+      ["menu", "stub-menu"],
+    ] as const) {
+      const t = await mount(<StaySuiteShell {...STAY_PROPS} requestedModule={key} />);
+      const scroll = hostWithTestId(t, `stay-feature-scroll-${key}`);
+      const flat = (StyleSheet.flatten(scroll.props.style as never) ?? {}) as Flat;
+      expect(flat.flex).toBe(1);
+      const content = (StyleSheet.flatten(
+        nodes(t).find((n) => n.props?.testID === `stay-feature-scroll-${key}` && n.props?.contentContainerStyle !== undefined)
+          ?.props.contentContainerStyle as never,
+      ) ?? {}) as Flat;
+      expect(content.paddingBottom).toBe(STAY_PAGE_BOTTOM_PAD);
+      expect(hostWithTestId(t, stubId)).toBeTruthy();
+      t.unmount();
+    }
+    mockIsWideDesktop = true;
+  });
+
+  it("T-1p — R4J-N25: on a Stay the screens name the destination Table reservations", async () => {
+    mockStayFeaturesState = tablesStay({ table_reservations: true, waitlist: true });
+    const t = await mount(
+      <StaySuiteShell {...STAY_PROPS} requestedModule="table_reservations" />,
+    );
+    expect(mockVenueReservationsProps?.title).toBe("Table reservations");
+    await press(pressableWithTestId(t, "stay-rail-waitlist"));
+    expect(mockWaitlistProps?.reservationsLabel).toBe("Table reservations");
+  });
+
+  it("T-1q — R4J-N22: staff with only venue.check_in on a Stay get the door pages, not the access-unavailable page", async () => {
+    mockStayFeaturesState = tablesStay({ entry: true, table_reservations: true });
+    mockVenueAccess = { scoped: true, capabilities: ["venue.check_in"] };
+    const door = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    expect(testIdsMatching(door, /^stay-access-unavailable$/)).toHaveLength(0);
+    // Same as the ordinary shell: venue.check_in opens Today and Check-in.
+    expect(testIdsMatching(door, /^stay-rail-(?!scroll$)[a-z_]+$/)).toEqual([
+      "stay-rail-today",
+      "stay-rail-checkin",
+    ]);
+
+    // Nothing at this venue uses the door: truly nothing to show.
+    mockStayFeaturesState = tablesStay({ table_reservations: true });
+    const none = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    expect(hostWithTestId(none, "stay-access-unavailable")).toBeTruthy();
+  });
+
+  it("T-1r — R4J-N23: Table reservations with no tables keeps Spaces in reach, and Open tables lands on Spaces › Tables", async () => {
+    const noTables = (needs: string[]): Record<string, unknown> => {
+      const state = tablesStay({ table_reservations: true });
+      const features = state.features as Record<string, Record<string, unknown>>;
+      return {
+        ...state,
+        activeSpaceCount: 0,
+        features: {
+          ...features,
+          table_reservations: { ...features.table_reservations, needs },
+        },
+      };
+    };
+    // Tables exist (nothing needed) and no space: classic nav, no Spaces —
+    // exactly the shared rule.
+    mockStayFeaturesState = noTables([]);
+    const ready = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    expect(testIdsMatching(ready, /^stay-rail-spaces$/)).toHaveLength(0);
+
+    // No tables yet: Spaces shows (tables live in Spaces › Tables on a Stay).
+    mockStayFeaturesState = noTables(["table"]);
+    const r = await mount(
+      <StaySuiteShell {...STAY_PROPS} requestedModule="table_reservations" />,
+    );
+    expect(testIdsMatching(r, /^stay-rail-spaces$/)).toHaveLength(1);
+    await press(pressableWithTestId(r, "stay-table-view-times"));
+    await settle();
+    const openTables = mockTableTimesProps?.onOpenTables as (() => void) | undefined;
+    expect(typeof openTables).toBe("function");
+    await TestRenderer.act(() => (openTables as () => void)());
+    await settle();
+    expect(hostWithTestId(r, "stub-spaces")).toBeTruthy();
+    expect(mockSpacesProps).toMatchObject({ initialView: "tables", initialSpaceId: null });
   });
 
   it("T-2 — desktopCentered has NO maxWidth, keeps the anchor + gutters", async () => {

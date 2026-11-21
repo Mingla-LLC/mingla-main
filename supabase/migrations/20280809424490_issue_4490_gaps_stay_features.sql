@@ -497,6 +497,52 @@ SELECT pg_temp.issue_4490_patch(
   EXCEPTION$new$
 );
 
+-- R4J-N21: the list fields the capability check reads (fees, items[].fees,
+-- nights, windows, units) are read with jsonb_array_* BEFORE the typed id
+-- parse below, so `windows` sent as an object or a string surfaced the raw
+-- "cannot extract elements from an object/scalar" (edge 500). A present list
+-- field that is not a JSON array (JSON null included) is the plain
+-- invalid-payload refusal, after auth and before any row is read or written.
+SELECT pg_temp.issue_4490_patch(
+  'public.biz_manage_stay_inventory(text,uuid,jsonb,bigint,uuid)'::regprocedure,
+  $old$  v_requires_finance := v_action IN ($old$,
+  $new$  IF (p_payload IS NOT NULL AND jsonb_typeof(p_payload) <> 'object')
+     OR EXISTS (
+       SELECT 1
+       FROM unnest(ARRAY['fees', 'items', 'nights', 'windows', 'units']) list_key
+       WHERE p_payload ? list_key
+         AND jsonb_typeof(p_payload->list_key) IS DISTINCT FROM 'array'
+     )
+     OR (
+       jsonb_typeof(p_payload->'items') = 'array'
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(p_payload->'items') item
+         WHERE jsonb_typeof(item) IS DISTINCT FROM 'object'
+            OR (item ? 'fees' AND jsonb_typeof(item->'fees') IS DISTINCT FROM 'array')
+       )
+     )
+     OR (
+       jsonb_typeof(p_payload->'nights') = 'array'
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(p_payload->'nights') night
+         WHERE jsonb_typeof(night) IS DISTINCT FROM 'object'
+       )
+     )
+     OR (
+       jsonb_typeof(p_payload->'windows') = 'array'
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(p_payload->'windows') window_item
+         WHERE jsonb_typeof(window_item) IS DISTINCT FROM 'object'
+       )
+     ) THEN
+    RAISE EXCEPTION 'stay_invalid_payload' USING ERRCODE = '22023';
+  END IF;
+  v_requires_finance := v_action IN ($new$
+);
+
 COMMENT ON FUNCTION public.issue_1387_assert_stay_row_integrity() IS
   '#4490 J: rooms and places remain Stay-only; venue offer kinds may also belong to Stay venues.';
 COMMENT ON FUNCTION public.issue_1388_assert_reservation_scope() IS

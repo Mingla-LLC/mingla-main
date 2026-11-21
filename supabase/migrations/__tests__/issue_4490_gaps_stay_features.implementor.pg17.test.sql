@@ -10,6 +10,9 @@
 -- J-10 to J-14b fail (the Stay screens see the Entry offer and its booking).
 -- Drop the nested-id parse from biz_manage_stay_inventory and J-16f to J-16j
 -- fail with a raw 22P02 (or a different refusal) instead of stay_invalid_payload.
+-- Drop the R4J-N21 list-shape guard and J-16l, J-16m, J-16n, J-16o, J-16p
+-- and J-16q fail with the raw 22023 "cannot extract elements" / "cannot get
+-- array length" message instead of stay_invalid_payload.
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
@@ -474,6 +477,27 @@ SELECT public.t4490j_expect(format($q$SELECT public.biz_manage_stay_inventory('r
 SELECT public.t4490j_expect($q$SELECT public.biz_manage_stay_inventory('resolve_currency_reconciliation',
   '44909000-0000-4000-9000-0000000000a1', '{"reconciliationId":"not-a-uuid","decision":"keep"}'::jsonb, NULL, NULL)$q$,
   '22023', 'stay_invalid_payload', 'J-16j an unparseable reconciliation id is the invalid-payload refusal');
+-- R4J-N21: a list field that is not a list is refused plainly before the
+-- capability check reads it (it used to surface 22023 "cannot extract
+-- elements from an object/scalar", an edge 500).
+SELECT public.t4490j_expect($q$SELECT public.biz_manage_stay_inventory('upsert_place_windows',
+  '44909000-0000-4000-9000-0000000000a1', '{"windows":{"windowId":"x"}}'::jsonb, NULL, NULL)$q$,
+  '22023', 'stay_invalid_payload', 'J-16l windows sent as an object is the invalid-payload refusal');
+SELECT public.t4490j_expect($q$SELECT public.biz_manage_stay_inventory('upsert_place_windows',
+  '44909000-0000-4000-9000-0000000000a1', '{"windows":"x"}'::jsonb, NULL, NULL)$q$,
+  '22023', 'stay_invalid_payload', 'J-16m windows sent as a string is the invalid-payload refusal');
+SELECT public.t4490j_expect($q$SELECT public.biz_manage_stay_inventory('upsert_place_windows',
+  '44909000-0000-4000-9000-0000000000a1', '{"windows":null}'::jsonb, NULL, NULL)$q$,
+  '22023', 'stay_invalid_payload', 'J-16n windows sent as JSON null is the invalid-payload refusal');
+SELECT public.t4490j_expect($q$SELECT public.biz_manage_stay_inventory('upsert_room_nights',
+  '44909000-0000-4000-9000-0000000000a1', '{"nights":{"date":"2030-01-01"}}'::jsonb, NULL, NULL)$q$,
+  '22023', 'stay_invalid_payload', 'J-16o nights sent as an object is the invalid-payload refusal');
+SELECT public.t4490j_expect($q$SELECT public.biz_manage_stay_inventory('create_offering',
+  '44909000-0000-4000-9000-0000000000a1', '{"kind":"place","name":"X","fees":"none"}'::jsonb, NULL, NULL)$q$,
+  '22023', 'stay_invalid_payload', 'J-16p fees sent as a string is the invalid-payload refusal');
+SELECT public.t4490j_expect($q$SELECT public.biz_manage_stay_inventory('bulk_create',
+  '44909000-0000-4000-9000-0000000000a1', '{"items":[{"name":"X","fees":{"a":1}}]}'::jsonb, NULL, NULL)$q$,
+  '22023', 'stay_invalid_payload', 'J-16q an item whose fees is not a list is the invalid-payload refusal');
 SELECT public.t4490j_reset();
 SELECT public.t4490j_ok((SELECT sort_order = 0 AND offering_id = (SELECT place_id FROM t4490j_ids)
                          FROM public.stay_offering_media WHERE id = '44909000-0000-4000-e000-000000000004'),

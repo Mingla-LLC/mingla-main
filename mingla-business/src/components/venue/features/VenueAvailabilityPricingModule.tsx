@@ -77,6 +77,12 @@ export interface VenueAvailabilityPricingModuleProps {
   canEditHours: boolean;
   /** #4490 D25 — the venue takes table reservations (closed-day wording). */
   tableReservationsOn?: boolean;
+  /**
+   * #4490 R4J-N23 — where Table times' "Open tables" goes. A host without the
+   * venue suite store's module switch (the Stay workspace) passes its own;
+   * omitted, the button uses the store as before.
+   */
+  onOpenTables?: () => void;
 }
 
 function errorCopy(context: "hours" | "special_day", error: unknown): string {
@@ -94,7 +100,7 @@ export const VenueAvailabilityPricingModule = forwardRef<
   VenueAvailabilityLeaveHandle,
   VenueAvailabilityPricingModuleProps
 >(function VenueAvailabilityPricingModule(
-  { brandId, venueId, showTableTimes, canEditHours, tableReservationsOn = false },
+  { brandId, venueId, showTableTimes, canEditHours, tableReservationsOn = false, onOpenTables },
   forwardedRef,
 ): React.ReactElement {
   const access = useVenueEditAccess(brandId, venueId);
@@ -458,7 +464,13 @@ export const VenueAvailabilityPricingModule = forwardRef<
       {showTableTimes ? (
         <View style={styles.tableTimes} testID="av-table-times">
           <Text style={styles.sectionLabel}>Table times</Text>
-          <VenueAvailabilityModule ref={tableTimesRef} brandId={brandId} venueId={venueId} hideHoursLink />
+          <VenueAvailabilityModule
+            ref={tableTimesRef}
+            brandId={brandId}
+            venueId={venueId}
+            hideHoursLink
+            onOpenTables={onOpenTables}
+          />
         </View>
       ) : null}
 

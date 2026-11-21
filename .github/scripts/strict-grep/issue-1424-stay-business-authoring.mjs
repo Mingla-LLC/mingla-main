@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-1424-STAY-BUSINESS-AUTHORING | issue #1424 | Stay authoring is flag-gated, Stay-only in its five core destinations and server-owned for currency and publish; the venue Menu, Reservations and Waitlist screens reach a Stay only as the feature-driven Menu, Table reservations and Waitlist destinations, each imported once and rendered only for its own destination, statically like the venue route already loads them, and table times only through the same lazy Availability & pricing chunk, so the Stay shell adds nothing to the eager web bundle (#4490 spec 07 J and 13).
+// MINGLA-INVARIANT: I-1424-STAY-BUSINESS-AUTHORING | issue #1424 | Stay authoring is flag-gated, Stay-only in its five core destinations and server-owned for currency and publish; the venue Menu, Reservations and Waitlist screens reach a Stay only as the feature-driven Menu, Table reservations and Waitlist destinations, each imported once and rendered only for its own destination, statically like the venue route already loads them, and table times only through the same lazy Availability & pricing chunk, so the Stay shell adds nothing to the eager web bundle; each Stay feature destination shows only its own venue module and only when the shared nav and capability filter allow it, the Stay core screens import and render no venue screen, and no venue screen the venue route already holds statically is lazy-loaded by the Stay shell (#4490 spec 07 J and 13).
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -29,6 +29,15 @@ const paths = {
     "mingla-business/src/components/stay/__tests__/stayAuthoring.issue1424.test.ts",
   edgeTest: "supabase/functions/manage-stay-inventory/index.test.ts",
   workflow: ".github/workflows/supabase-migrations-and-stripe-deno.yml",
+  // [TEST-MOD-APPROVED #4490] fix round 6 (R4J-N24): the gate also reads the
+  // shared nav rule, the ordinary venue shell (to know which venue screens the
+  // route chunk holds statically) and the three separate Stay core screens.
+  venueNav: "mingla-business/src/components/venue/venueModules.ts",
+  venueShell: "mingla-business/src/components/venue/VenueSuiteShell.tsx",
+  stayInventory: "mingla-business/src/components/stay/StayInventoryManager.tsx",
+  stayReservations: "mingla-business/src/components/stay/StayReservationsModule.tsx",
+  stayStaffAvailability:
+    "mingla-business/src/components/stay/StayStaffAvailabilityModule.tsx",
 };
 
 const expectedSuites = [
@@ -133,6 +142,141 @@ function checkFeatureVenueScreens(shell, failures) {
   }
 }
 
+// [TEST-MOD-APPROVED #4490] fix round 6 (R4J-N24): three gaps the Round 4J
+// retest proved by mutation.
+//  1. Orders on a Stay only when the venue takes orders: every Stay feature
+//     destination maps to its own venue module (table_reservations to the
+//     venue reservations screen) and is shown only when the shared nav and
+//     capability filter allow that module; visible = core + feature, nothing
+//     spliced in; and the shared rule keeps Orders behind Menu / Table ordering.
+//  2. The Stay core screens stay Stay-only: no venue *Module is statically
+//     imported into the shell except the three feature screens, none renders
+//     inside StayOverview or StaySettings, and the separate core screens
+//     import no venue *Module at all.
+//  3. A venue screen the venue route chunk already holds statically (an
+//     import in VenueSuiteShell) is never React.lazy-loaded by the Stay shell:
+//     that makes a second async chunk and Expo hoists the shared closure into
+//     the eager __common chunk (fix round 5's measured cause).
+const STAY_FEATURE_MAP = {
+  offers: "offers",
+  spaces: "spaces",
+  today: "today",
+  calendar: "calendar",
+  requests: "requests",
+  table_reservations: "reservations",
+  waitlist: "waitlist",
+  members: "members",
+  checkin: "checkin",
+  menu: "menu",
+  orders: "orders",
+  guestlist: "guestlist",
+};
+const VENUE_SCREEN_SPEC = /["'](\.\.\/venue\/(?:[\w-]+\/)*Venue\w*Module)["']/;
+
+function objectBody(source, name) {
+  const start = source.indexOf(`const ${name}`);
+  if (start < 0) return null;
+  const open = source.indexOf("= {", start);
+  const end = source.indexOf("};", open);
+  return open < 0 || end < 0 ? null : source.slice(open, end);
+}
+
+function functionBody(source, name) {
+  const start = source.indexOf(`function ${name}(`);
+  if (start < 0) return null;
+  const next = source.slice(start + 1).search(/\n(?:export )?function [A-Z]/);
+  return next < 0 ? source.slice(start) : source.slice(start, start + 1 + next);
+}
+
+function checkStayFeatureScope(files, failures) {
+  const shell = files.shell ?? "";
+  const label = "Stay feature scope";
+  const map = objectBody(shell, "STAY_FEATURE_VENUE_MODULE");
+  if (map === null) {
+    failures.push(`${label}: missing STAY_FEATURE_VENUE_MODULE`);
+  } else {
+    const pairs = [...map.matchAll(/^\s*([a-z_]+):\s*"([a-z_]+)",?\s*$/gm)]
+      .map(([, key, value]) => `${key}:${value}`)
+      .sort();
+    const expected = Object.entries(STAY_FEATURE_MAP)
+      .map(([key, value]) => `${key}:${value}`)
+      .sort();
+    if (pairs.join(",") !== expected.join(",")) {
+      failures.push(
+        `${label}: each Stay feature destination must show its own venue module (orders shows Orders only, table_reservations the venue reservations screen)`,
+      );
+    }
+  }
+  if (
+    !/FEATURE_MODULES\.filter\(\(module\) =>\s*allowedVenueModules\.has\(STAY_FEATURE_VENUE_MODULE\[module\.id\]\),?\s*\)/
+      .test(shell)
+  ) {
+    failures.push(
+      `${label}: a Stay feature shows only when the shared nav and capability filter allow its venue module (filter bypassed)`,
+    );
+  }
+  if (!/const allowedVenueModules = useMemo\([\s\S]*?filterVenueModulesForCapabilities\(\s*derived,/.test(shell)) {
+    failures.push(`${label}: allowedVenueModules must come from deriveVenueNav through filterVenueModulesForCapabilities`);
+  }
+  if (!/const visibleModules = useMemo\(\(\) => \{\s*return \[\.\.\.coreModules, \.\.\.featureModules\];\s*\}/.test(shell)) {
+    failures.push(`${label}: visible destinations must be exactly the Stay core list then the allowed feature list (nothing spliced in)`);
+  }
+  const nav = files.venueNav ?? "";
+  if (
+    !nav.includes('const orders = featureOn(features, "menu") || featureOn(features, "table_ordering");') ||
+    (nav.match(/\["orders", orders\]/g) ?? []).length !== 2
+  ) {
+    failures.push(`${label}: Orders must stay behind Menu or Table ordering in deriveVenueNav`);
+  }
+
+  // 2. Stay core screens stay Stay-only.
+  const allowedStatic = new Set(STAY_VENUE_SCREENS.map(({ name }) => `../venue/${name}`));
+  for (const match of shell.matchAll(/^import\s+(?!type\b)[^;]*?from\s+["']([^"']+)["'];/gm)) {
+    const specifier = match[1];
+    if (VENUE_SCREEN_SPEC.test(`"${specifier}"`) && !allowedStatic.has(specifier)) {
+      failures.push(`${label}: ${specifier} must not be imported into the Stay shell (only the Menu, Reservations and Waitlist feature screens are)`);
+    }
+  }
+  for (const core of ["StayOverview", "StaySettings"]) {
+    const body = functionBody(shell, core);
+    if (body === null) {
+      failures.push(`${label}: missing ${core}`);
+      continue;
+    }
+    const venueRender = /<(?:Lazy)?Venue\w*Module\b/.exec(body);
+    if (venueRender !== null) {
+      failures.push(`${label}: ${core} must not render a venue screen (${venueRender[0]})`);
+    }
+  }
+  for (const key of ["stayInventory", "stayReservations", "stayStaffAvailability"]) {
+    const source = files[key] ?? "";
+    if (source.length === 0) {
+      failures.push(`${label}: missing ${paths[key]}`);
+      continue;
+    }
+    if (VENUE_SCREEN_SPEC.test(source) && /(?:from|import\()\s*["']\.\.\/venue\/(?:[\w-]+\/)*Venue\w*Module["']/.test(source)) {
+      failures.push(`${label}: ${paths[key]} must not import a venue screen`);
+    }
+  }
+
+  // 3. No lazy load of a venue screen the route chunk holds statically.
+  const venueShell = files.venueShell ?? "";
+  const routeStatic = new Set(
+    [...venueShell.matchAll(/^import\s+(?!type\b)[^;]*?from\s+["']\.\/([^"']+)["'];/gm)]
+      .map(([, rel]) => `../venue/${rel}`),
+  );
+  if (routeStatic.size === 0) {
+    failures.push(`${label}: could not read VenueSuiteShell's static imports`);
+  }
+  for (const match of shell.matchAll(/import\(\s*["'](\.\.\/venue\/[^"']+)["']\s*\)/g)) {
+    if (routeStatic.has(match[1])) {
+      failures.push(
+        `${label}: ${match[1]} must not be lazy-loaded here: VenueSuiteShell imports it statically, so a React.lazy chunk hoists its closure into the eager __common chunk (import it statically)`,
+      );
+    }
+  }
+}
+
 export function check(files, plans = effectiveSuites()) {
   const failures = [];
 
@@ -221,6 +365,7 @@ export function check(files, plans = effectiveSuites()) {
     forbid(files.shell ?? "", token, "Stay-only menu ownership", failures);
   }
   checkFeatureVenueScreens(files.shell ?? "", failures);
+  checkStayFeatureScope(files, failures);
   forbid(
     files.shell ?? "",
     'currencyCode ?? "USD"',
@@ -428,6 +573,74 @@ function selfTest() {
       'if (activeModule === "menu") {',
       'if (activeModule === "overview") {',
       "only for activeModule",
+    ],
+    // [TEST-MOD-APPROVED #4490] fix round 6 (R4J-N24) reversions.
+    ["shell", '  orders: "orders",', '  orders: "offers",', "must show its own venue module"],
+    [
+      "shell",
+      "FEATURE_MODULES.filter((module) =>\n        allowedVenueModules.has(",
+      'FEATURE_MODULES.filter((module) =>\n        module.id === "orders" || allowedVenueModules.has(',
+      "filter bypassed",
+    ],
+    [
+      "shell",
+      "return [...coreModules, ...featureModules];",
+      'return [...coreModules, ...FEATURE_MODULES.filter((module) => module.id === "menu"), ...featureModules];',
+      "nothing spliced in",
+    ],
+    [
+      "venueNav",
+      'const orders = featureOn(features, "menu") || featureOn(features, "table_ordering");',
+      "const orders = true;",
+      "Orders must stay behind Menu",
+    ],
+    [
+      "shell",
+      'import { VenueMenuModule } from "../venue/VenueMenuModule";',
+      'import { VenueMenuModule } from "../venue/VenueMenuModule";\nimport { VenueSettingsModule } from "../venue/VenueSettingsModule";',
+      "../venue/VenueSettingsModule must not be imported into the Stay shell",
+    ],
+    [
+      "shell",
+      '<Text style={styles.pageTitle}>Stay settings</Text>',
+      '<Text style={styles.pageTitle}>Stay settings</Text>\n        <LazyVenueTablesModule brandId={brandId} venueId={venueId} />',
+      "StaySettings must not render a venue screen",
+    ],
+    [
+      "shell",
+      '<Text style={styles.pageTitle}>Stay overview</Text>',
+      '<Text style={styles.pageTitle}>Stay overview</Text>\n          <VenueOrdersModule brandId={brandId} venueId={venueId} />',
+      "StayOverview must not render a venue screen",
+    ],
+    [
+      "stayInventory",
+      'import React',
+      'import { VenueTablesModule } from "../venue/VenueTablesModule";\nimport React',
+      "StayInventoryManager.tsx must not import a venue screen",
+    ],
+    [
+      "stayReservations",
+      'import React',
+      'const LazyTables = React.lazy(() => import("../venue/VenueTablesModule"));\nimport React',
+      "StayReservationsModule.tsx must not import a venue screen",
+    ],
+    [
+      "stayStaffAvailability",
+      'import React',
+      'import { VenueAvailabilityModule } from "../venue/VenueAvailabilityModule";\nimport React',
+      "StayStaffAvailabilityModule.tsx must not import a venue screen",
+    ],
+    [
+      "shell",
+      'const LazyConfirmDialog = React.lazy(async () => {',
+      'const LazyVenueTablesModule = React.lazy(async () => {\n  const mod = await import("../venue/VenueTablesModule");\n  return { default: mod.VenueTablesModule };\n});\nconst LazyConfirmDialog = React.lazy(async () => {',
+      "../venue/VenueTablesModule must not be lazy-loaded here",
+    ],
+    [
+      "shell",
+      'const LazyConfirmDialog = React.lazy(async () => {',
+      'const LazyVenueIntelligenceModule = React.lazy(() => import("../venue/VenueIntelligenceModule"));\nconst LazyConfirmDialog = React.lazy(async () => {',
+      "../venue/VenueIntelligenceModule must not be lazy-loaded here",
     ],
     [
       "picker",

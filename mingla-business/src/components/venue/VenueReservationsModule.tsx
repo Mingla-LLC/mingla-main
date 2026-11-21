@@ -155,6 +155,22 @@ export interface VenueReservationsModuleProps {
   testID?: string;
   /** #4490 P5 — "Edit layout" on the floor opens Spaces › Tables for that space. */
   onEditFloor?: (spaceId: string) => void;
+  /**
+   * #4490 R4J-N25 — the screen heading. A host that names this destination
+   * differently (a Stay calls it "Table reservations") passes its name; the
+   * ordinary venue shell keeps the default.
+   */
+  title?: string;
+  /**
+   * #4490 R4J-N20 — when true the heading, calendar toolbar and view switch
+   * scroll WITH the list (inside the one scroll owner: the Agenda's
+   * SectionList header, or the first child of the mode ScrollView) instead of
+   * sitting fixed above it. For a host whose own chrome above this screen
+   * leaves the list no height on a phone (the Stay pill band). Still exactly
+   * one vertical scroll owner, never a nested one (#2737). Default false:
+   * the ordinary venue shell is unchanged.
+   */
+  chromeScrollsWithList?: boolean;
 }
 
 export function VenueReservationsModule({
@@ -163,6 +179,8 @@ export function VenueReservationsModule({
   scrollBottomPad = 0,
   testID,
   onEditFloor,
+  title = "Reservations",
+  chromeScrollsWithList = false,
 }: VenueReservationsModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
@@ -728,12 +746,14 @@ export function VenueReservationsModule({
       ? null
       : (tableNameById.get(selected.tableId) ?? null);
 
-  return (
-    <View style={styles.host} testID={testID ?? "venue-reservations-module"}>
+  // R4J-N20 — the heading, toolbar, view switch and banners. Either fixed
+  // above the scroll owner (default) or inside it (`chromeScrollsWithList`).
+  const chrome = (
+    <>
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
           <Text style={styles.title} accessibilityRole="header">
-            Reservations
+            {title}
           </Text>
         </View>
         {canMutate ? (
@@ -804,6 +824,17 @@ export function VenueReservationsModule({
           />
         </View>
       ) : null}
+    </>
+  );
+  const scrollChrome = chromeScrollsWithList ? (
+    <View style={styles.scrollChrome} testID="venue-reservations-scroll-chrome">
+      {chrome}
+    </View>
+  ) : null;
+
+  return (
+    <View style={styles.host} testID={testID ?? "venue-reservations-module"}>
+      {chromeScrollsWithList ? null : chrome}
 
       {listView === "floor" && floorOn ? (
         <ScrollView
@@ -815,6 +846,7 @@ export function VenueReservationsModule({
           showsVerticalScrollIndicator={false}
           testID="reservation-floor-scroll"
         >
+          {scrollChrome}
           <React.Suspense fallback={<ActivityIndicator />}>
           <LazyVenueFloorLive
             brandId={brandId}
@@ -841,6 +873,7 @@ export function VenueReservationsModule({
           showsVerticalScrollIndicator={false}
           testID="reservation-tables-scroll"
         >
+          {scrollChrome}
           <ReservationTablesView
             zones={tableZones}
             minuteOfDay={effectiveTableMinute}
@@ -866,6 +899,7 @@ export function VenueReservationsModule({
             { paddingBottom: space[6] + scrollBottomPad },
           ]}
           testID="reservation-calendar-agenda"
+          ListHeaderComponent={scrollChrome}
           renderSectionHeader={({ section }) => (
             <View
               ref={(node) => {
@@ -931,6 +965,7 @@ export function VenueReservationsModule({
           showsVerticalScrollIndicator={false}
           testID="reservation-calendar-mode-scroll"
         >
+          {scrollChrome}
           {showInitialSkeleton ? (
             <CalendarSkeleton mode={effectiveMode} />
           ) : hasBlockingError ? (
@@ -1113,6 +1148,12 @@ const styles = StyleSheet.create({
     ...type.h1,
     color: color.text1,
     textAlign: "center",
+  },
+  // R4J-N20 — the chrome block inside the scroll owner keeps the host's
+  // 16pt rhythm between its rows and before the list.
+  scrollChrome: {
+    gap: space[4],
+    paddingBottom: space[4],
   },
   scrollBody: {
     flex: 1,

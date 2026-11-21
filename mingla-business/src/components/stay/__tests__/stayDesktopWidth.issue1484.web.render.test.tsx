@@ -206,8 +206,14 @@ jest.mock("../StayStaffAvailabilityModule", () => ({
 // [TEST-MOD-APPROVED #4490] fix round 5 (spec 07 13): the Stay shell imports the
 // venue Reservations and Waitlist screens statically (bundle: same as the venue
 // route), so they are stubbed here like VenueMenuModule.
+// [TEST-MOD-APPROVED #4490] fix round 6 (R4J-N20): the Reservations stub
+// records its props (the style chain test reads what the Stay passes).
+let mockWebReservationsProps: Record<string, unknown> | null = null;
 jest.mock("../../venue/VenueReservationsModule", () => ({
-  VenueReservationsModule: (): null => null,
+  VenueReservationsModule: (props: Record<string, unknown>): null => {
+    mockWebReservationsProps = props;
+    return null;
+  },
 }));
 jest.mock("../../venue/VenueWaitlistModule", () => ({
   VenueWaitlistModule: (): null => null,
@@ -602,5 +608,125 @@ describe("#4490 J — Stay Settings features panel takes its natural height", ()
     const { html, css } = renderPanel("stacked");
     expect(declaration(css, classesFor(html, "venue-features-usual"), "flex")).toBeNull();
     expect(declaration(css, classesFor(html, "venue-features-more"), "flex")).toBeNull();
+  });
+});
+
+/**
+ * #4490 R4J-N20 — Stay › Table reservations at phone width (390x844). The
+ * tester measured the Bookings list at 0 px with its rows below the screen.
+ * Cause: the stacked chrome above the screen (top bar, venue band, the ~314
+ * px Stay pill band, the Bookings / Table times tabs) plus the screen's own
+ * heading, toolbar and switch were taller than the viewport, and the list was
+ * the only thing that could shrink. The fix keeps the flex chain intact and
+ * has the screen's heading and toolbar scroll WITH its list on the stacked
+ * layout (`chromeScrollsWithList`).
+ *
+ * What this proves, through RNW's real style compiler: from the Stay shell
+ * root down to the Table reservations host (`stay-table-bookings`) — and down
+ * to a page-scrolled destination (Waitlist, the same ScrollView form the
+ * "Table times and rules" tab uses) — every ancestor emits `flex:1` and
+ * `min-height:0px`, and none carries a fixed `height` or `max-height`; and
+ * the stacked layout asks the screen to scroll its chrome with the list.
+ * What it cannot prove: SSR has no layout engine, so the painted list height
+ * at 390x844 and wheel/touch scrolling remain a browser check. The screen's
+ * own internals are proven in reservationCalendar.issue4490.chromeScroll.
+ */
+describe("#4490 R4J-N20 — Stay Table reservations fills and scrolls the stacked workspace", () => {
+  const { featureSetFrom } = jest.requireActual(
+    "../../../types/venueFeatures",
+  ) as typeof import("../../../types/venueFeatures");
+  const loaded = {
+    venueCategory: "stay",
+    activeSpaceCount: 1,
+    features: featureSetFrom({ table_reservations: true, waitlist: true }),
+  };
+
+  function renderStay(requestedModule: string): { html: string; css: string } {
+    const name = `Issue4490N20_${renderCount++}`;
+    const Wrapper = (): React.ReactElement => (
+      <StaySuiteShell {...PROPS} requestedModule={requestedModule} />
+    );
+    AppRegistry.registerComponent(name, () => Wrapper);
+    const app = AppRegistry.getApplication(name);
+    return {
+      html: ReactDOMServer.renderToStaticMarkup(app.element),
+      css: ReactDOMServer.renderToStaticMarkup(app.getStyleElement()),
+    };
+  }
+
+  /** Class lists of the elements from `fromTestId` down to `toTestId`. */
+  function chain(html: string, fromTestId: string, toTestId: string): string[][] {
+    const stack: string[][] = [];
+    const ids: (string | null)[] = [];
+    const tag = /<(\/?)div\b([^>]*)>/g;
+    let match = tag.exec(html);
+    while (match !== null) {
+      const [, closing, attrs] = match;
+      if (closing === "/") {
+        stack.pop();
+        ids.pop();
+      } else {
+        const cls = /class="([^"]*)"/.exec(attrs)?.[1] ?? "";
+        const id = /data-testid="([^"]*)"/.exec(attrs)?.[1] ?? null;
+        stack.push(cls.split(/\s+/).filter((c) => c.length > 0));
+        ids.push(id);
+        if (id === toTestId) {
+          const from = ids.indexOf(fromTestId);
+          expect(from).toBeGreaterThanOrEqual(0);
+          return stack.slice(from);
+        }
+        if (attrs.trimEnd().endsWith("/")) {
+          stack.pop();
+          ids.pop();
+        }
+      }
+      match = tag.exec(html);
+    }
+    throw new Error(`${toTestId} not rendered`);
+  }
+
+  function expectFillingChain(links: string[][], css: string): void {
+    // Vacuity guard: root, stacked host, column, workspace, destination host.
+    expect(links.length).toBeGreaterThanOrEqual(5);
+    for (const classes of links) {
+      expect(declaration(css, classes, "flex")).toBe("1");
+      expect(declaration(css, classes, "min-height")).toBe("0px");
+      expect(classes.some((c) => c.startsWith("r-height-"))).toBe(false);
+      expect(classes.some((c) => c.startsWith("r-maxHeight-"))).toBe(false);
+    }
+  }
+
+  afterEach(() => {
+    mockPanelFeatures = undefined;
+    mockWebReservationsProps = null;
+  });
+
+  it("N20-1 phone: root → Table reservations host is an unbroken flex:1 / min-height:0 chain", () => {
+    mockIsWideDesktop = false;
+    mockPanelFeatures = loaded;
+    const { html, css } = renderStay("table_reservations");
+    // The pill band renders (stacked branch) and the tabs are present.
+    expect(html).toContain('data-testid="stay-modules-band"');
+    expect(html).toContain('data-testid="stay-table-view-tabs"');
+    expectFillingChain(chain(html, "stay-suite-shell", "stay-table-bookings"), css);
+    // The stacked layout scrolls the screen's heading/toolbar with its list.
+    expect(mockWebReservationsProps).toMatchObject({
+      chromeScrollsWithList: true,
+      title: "Table reservations",
+    });
+  });
+
+  it("N20-2 desktop keeps the ordinary fixed heading (the check discriminates)", () => {
+    mockIsWideDesktop = true;
+    mockPanelFeatures = loaded;
+    renderStay("table_reservations");
+    expect(mockWebReservationsProps).toMatchObject({ chromeScrollsWithList: false });
+  });
+
+  it("N20-3 phone: a page-scrolled destination (Waitlist) fills the workspace the same way", () => {
+    mockIsWideDesktop = false;
+    mockPanelFeatures = loaded;
+    const { html, css } = renderStay("waitlist");
+    expectFillingChain(chain(html, "stay-suite-shell", "stay-feature-scroll-waitlist"), css);
   });
 });
