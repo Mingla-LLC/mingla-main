@@ -228,7 +228,7 @@ describe("#2107 every expo-video player owner registers for the restart release"
         "app-mobile/src/components/signIn/WelcomeVideoBackground.tsx",
         "mingla-business/src/components/auth/WelcomeVideoBackground.native.tsx",
         "mingla-business/src/components/messages/BrandGroupFilePreviewModal.tsx",
-        "mingla-business/src/components/support/GuidePlayerModal.tsx",
+        // [TEST-MOD #4420] The in-app guide player (GuidePlayerModal) was removed, so it is no longer an owner.
         "mingla-business/src/components/ui/FullScreenVideoViewer.tsx",
         "packages/offering-rendering/EventCoverMedia.tsx",
       ]),
