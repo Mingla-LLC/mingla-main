@@ -110,6 +110,10 @@ export const linkTicketConversation = (cardId, supportTicketId, revision) =>
   call(() => supabase.rpc("ops_ticket_link_conversation", { p_card_id: cardId, p_support_ticket_id: supportTicketId, p_expected_revision: revision }));
 export const fetchTicketConversations = (cardId) => call(() => supabase.rpc("ops_ticket_conversations", { p_card_id: cardId }));
 export const fetchTicketCounts = () => call(() => supabase.rpc("ops_ticket_counts"));
+// #4420 (step 5): the Work tickets linked to these conversations (Support staff only).
+export function fetchConversationTickets(supportTicketIds) {
+  return call(() => supabase.rpc("issue_4420_conversation_tickets", { p_support_ticket_ids: supportTicketIds }));
+}
 export const searchConversations = (query) => call(() => supabase.rpc("issue_4420_conversation_search", { p_query: query }));
 export const ensureTicketSignal = (cardId) => call(() => supabase.rpc("issue_4420_ticket_signal_ensure", { p_card_id: cardId }));
 export const mirrorTicketGithub = (cardId) => call(() => supabase.rpc("issue_4420_ticket_github_mirror", { p_card_id: cardId }));

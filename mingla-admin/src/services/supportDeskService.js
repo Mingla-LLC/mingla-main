@@ -113,6 +113,47 @@ export async function listSupportTickets({ closedLimit = CLOSED_PAGE_SIZE } = {}
   };
 }
 
+/**
+ * #4420 (step 5): one conversation by id, for an address that names one the
+ * loaded list does not hold (an old resolved one). Same columns and counts as
+ * the list rows; null when it does not exist or staff cannot read it.
+ */
+export async function getSupportTicket(id) {
+  const row = unwrap(
+    await supabase.from("support_tickets").select(TICKET_COLUMNS).eq("id", id).maybeSingle(),
+    "Couldn't open that conversation",
+  );
+  if (!row) return null;
+  const websiteRequests = await loadWebsiteRequests(row.topic === WEBSITE_TOPIC ? [row.id] : []);
+  return { ...row, image_count: 0, voice_ms: 0, website_request: websiteRequests.get(row.id) || null };
+}
+
+/**
+ * #4420 (step 5): the newest customer-visible message of each conversation, for
+ * the list snippets: { [conversation_id]: message }. Internal notes are never
+ * asked for (is_internal = false) and system lines are skipped, so a note's
+ * words cannot reach a preview. Asks for at most 150 conversations at a time.
+ */
+export async function loadLastPublicMessages(conversationIds) {
+  const ids = [...new Set((conversationIds || []).filter(Boolean))].slice(0, ID_CHUNK);
+  if (ids.length === 0) return {};
+  const rows = unwrap(
+    await supabase
+      .from("messages")
+      .select("conversation_id, content, message_type, is_internal, sender_id, sender_role_snapshot, created_at")
+      .in("conversation_id", ids)
+      .eq("is_internal", false)
+      .is("deleted_at", null)
+      .neq("message_type", "system")
+      .order("created_at", { ascending: false })
+      .limit(ids.length * 6),
+    "Couldn't load the message previews",
+  ) || [];
+  const latest = {};
+  for (const row of rows) if (!latest[row.conversation_id]) latest[row.conversation_id] = row;
+  return latest;
+}
+
 const WEBSITE_REQUEST_COLUMNS = [
   "ticket_id", "brand_id", "site_id", "requested_by", "page_path", "section_id",
   "section_label", "what", "why", "missing_capability", "draft_digest",

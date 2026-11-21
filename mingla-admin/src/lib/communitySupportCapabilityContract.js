@@ -113,7 +113,18 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     // #4453: "Ready for review" on a website change request
     // (issue_4453_website_request_ready, guarded by
     // issue_3720_support_operator_required like the desk's other writes).
-    rpcs: Object.freeze(["admin_people_lookup", "issue_4453_website_request_ready"]),
+    // #4420 (step 5): the chat inbox also lists the Work tickets linked to a
+    // conversation (Support staff only) and shows reported enquiries with
+    // Dismiss and Block everywhere (the same RPCs and the same guard as the
+    // Reported enquiries tab, which the Community page still holds until it retires).
+    rpcs: Object.freeze([
+      "admin_enquiry_block_everywhere",
+      "admin_enquiry_dismiss_report",
+      "admin_list_reported_enquiries",
+      "admin_people_lookup",
+      "issue_4420_conversation_tickets",
+      "issue_4453_website_request_ready",
+    ]),
     // support-send is reached by the ticket panel's composer
     // (components/support/SupportComposer.jsx), not by the page itself.
     functions: Object.freeze(["support-claim", "support-set-status"]),
