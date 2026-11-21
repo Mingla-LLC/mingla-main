@@ -286,8 +286,9 @@ export interface GuestMemberState {
 
 export function guestMemberState(m: GuestMember): GuestMemberState {
   const tz = m.venue.timezone;
-  const day = (iso: string | null | undefined): string => memberDayWords(iso ?? null, tz) ?? "soon";
   const period = m.plan.period;
+  const day = (iso: string | null | undefined): string =>
+    memberDayWords(iso ?? null, tz, { year: period === "year" }) ?? "soon";
   switch (m.status) {
     case "pending":
       return {

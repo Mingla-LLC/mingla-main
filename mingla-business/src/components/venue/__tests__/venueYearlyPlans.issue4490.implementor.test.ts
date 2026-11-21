@@ -74,6 +74,18 @@ describe("#4490 yearly membership plans", () => {
     expect(guestMemberState(member!).title).toBe("Pay your first year to start");
     expect(guestMemberState(member!).line).toBe("Your membership starts as soon as the first year is paid.");
 
+    const active = parseGuestMember({
+      subscriptionId: "active-year",
+      status: "active",
+      memberName: "Ada",
+      plan: { id: "p", name: "Studio year", interval: "year" },
+      venue: { id: "v", name: "Kora", timezone: "Africa/Lagos" },
+      activeUntil: "2027-11-21",
+      credits: {},
+    });
+    expect(active).not.toBeNull();
+    expect(guestMemberState(active!).line).toBe("Paid until Sun 21 Nov 2027.");
+
     const quote = parseMemberQuote({ member: { applied: true, period: "year", roomHoursUsed: 2, roomHoursLeftAfter: 10 } });
     expect(quote).not.toBeNull();
     expect(memberUseLine(quote!, String)).toBe("Uses 2 hours of your 12 hours this year.");
