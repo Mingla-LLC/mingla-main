@@ -85,6 +85,16 @@ export function usePushPermissionMoment(
         // and answered. firedRef keeps this mount from asking twice, and iOS
         // shows its dialog once per install anyway.
         await requestPushPermission();
+        // #4549 P3-3: requestPushPermission() swallows its own errors and
+        // returns false, so its answer cannot tell "declined" from "never
+        // shown". The OS can: once the person answered, it can no longer ask.
+        if (await canRequestPushPermission()) {
+          reportNonFatal(
+            "push.permission_moment",
+            new Error("prompt_not_answered"),
+          );
+          return;
+        }
         await AsyncStorage.setItem(PROMPTED_FLAG_KEY, "1");
       } catch (err) {
         reportNonFatal("push.permission_moment", err);

@@ -14,6 +14,8 @@ const storage = new Map<string, string>();
 const events: string[] = [];
 let ready = true;
 let canAsk = true;
+let promptAnswers = true; // the OS records an answer when the prompt shows
+let promptThrows = false;
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -37,7 +39,9 @@ jest.mock("../../services/oneSignalService", () => ({
   },
   requestPushPermission: async () => {
     events.push("prompt");
-    return true;
+    if (promptThrows) throw new Error("native prompt failed");
+    if (promptAnswers) canAsk = false;
+    return promptAnswers;
   },
 }));
 
@@ -78,6 +82,8 @@ beforeEach(() => {
   events.length = 0;
   ready = true;
   canAsk = true;
+  promptAnswers = true;
+  promptThrows = false;
 });
 
 test("SDK not ready when the brand appears: the flag is not written and nothing is prompted", async () => {
@@ -112,4 +118,19 @@ test("already answered at the OS: never prompted, the answer is recorded", async
 test("no brand yet: nothing happens at all", async () => {
   await launch(null);
   expect(events).toEqual([]);
+});
+
+test("P3-3: a prompt that never showed (call failed quietly) does not write the flag", async () => {
+  promptAnswers = false; // the OS can still ask afterwards
+  await launch();
+  expect(events).toContain("prompt");
+  expect(storage.has(FLAG)).toBe(false);
+  expect(events).toContain("nonfatal:push.permission_moment:prompt_not_answered");
+});
+
+test("P3-3: a prompt call that throws does not write the flag and is reported", async () => {
+  promptThrows = true;
+  await launch();
+  expect(storage.has(FLAG)).toBe(false);
+  expect(events).toContain("nonfatal:push.permission_moment:native prompt failed");
 });
