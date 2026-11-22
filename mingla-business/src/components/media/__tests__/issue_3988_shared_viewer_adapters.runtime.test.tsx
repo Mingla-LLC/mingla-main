@@ -35,7 +35,6 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
   setItem: jest.fn(async () => undefined),
   removeItem: jest.fn(async () => undefined),
 }));
-jest.mock("@mingla/help-content", () => ({ bambooHlsUrl: (id: string) => `https://video.example/${id}.m3u8` }));
 jest.mock("@mingla/offering-rendering/videoPlayerReloadRelease", () => ({
   isVideoPlayerReleasedForReload: () => false,
   registerVideoPlayerForReload: () => jest.fn(),
@@ -57,10 +56,6 @@ const TestRenderer = require("react-test-renderer") as {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { FullScreenVideoViewer } = require("../../ui/FullScreenVideoViewer") as {
   FullScreenVideoViewer: React.ComponentType<Record<string, unknown>>;
-};
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { GuidePlayerModal } = require("../../support/GuidePlayerModal") as {
-  GuidePlayerModal: React.ComponentType<Record<string, unknown>>;
 };
 
 interface Node {
@@ -100,26 +95,6 @@ describe("#3988 shared viewer shell adapters", () => {
     await TestRenderer.act(async () => renderer.unmount());
   });
 
-  it("renders GuidePlayerModal content with top and bottom safe-area padding", async () => {
-    const guide = {
-      slug: "launch-guide",
-      episode: 1,
-      duration: "1:05",
-      title: "Launch your event",
-      blurb: "A quick guide.",
-      bambooEntryId: "entry-1",
-      steps: [{ title: "Open Mingla", body: "Start from the Host home.", links: [] }],
-    };
-    let renderer!: Renderer;
-    await TestRenderer.act(async () => {
-      renderer = TestRenderer.create(<GuidePlayerModal guide={guide} userId="user-a" onClose={jest.fn()} />);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(renderer.root.findAll((node) => node.props.testID === "guide-player-modal").length).toBeGreaterThanOrEqual(1);
-    expect(renderer.root.findAll((node) => node.type === "VideoViewProbe" && node.props.accessibilityLabel === "Launch your event video")).toHaveLength(1);
-    expect(renderer.root.findAll((node) => flatten(node.props.style).paddingTop === 32).length).toBeGreaterThanOrEqual(1);
-    expect(renderer.root.findAll((node) => Number(flatten(node.props.contentContainerStyle).paddingBottom) >= 28).length).toBeGreaterThanOrEqual(1);
-    await TestRenderer.act(async () => renderer.unmount());
-  });
+  // [TEST-MOD #4420] GuidePlayerModal left the Host app with the Guides tab
+  // ("Browse all help videos" opens the Help Centre); its render case went with it.
 });

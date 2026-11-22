@@ -1,0 +1,38 @@
+{
+  "title": "Help & Support",
+  "close": "Back",
+  "opening": "Opening Help & Support",
+  "tabs": {
+    "label": "Help & Support sections",
+    "announcements": "Announcements",
+    "support": "Support",
+    "unread": "{{label}}, {{count}} unread"
+  },
+  "announcements": {
+    "load_error": "We couldn't load announcements just now.",
+    "try_again": "Try again",
+    "empty_title": "No news yet",
+    "empty_body": "When Mingla posts an update, it will show up here.",
+    "unread": "unread",
+    "back": "Back to announcements",
+    "action_heading": "What you need to do",
+    "mark_read_error": "We couldn't mark this as read. It will stay highlighted for now.",
+    "email_title": "Email me announcements",
+    "email_body": "Service notices from Mingla. On by default; turn off anytime. Push stays on.",
+    "email_label": "Email me announcements",
+    "email_error": "Couldn't save that preference. Try again."
+  },
+  "support": {
+    "switch_label": "Who to talk to",
+    "ari": "Ari",
+    "person": "A person",
+    "talk_to_person": "Talk to a person",
+    "talk_to_person_hint": "The Mingla team picks up from what you last asked Ari.",
+    "handing_over": "Handing over",
+    "retry": "Try again",
+    "dismiss": "Dismiss",
+    "browse_videos": "Browse all help videos",
+    "browse_failed": "We couldn't open the Help Centre. Try again.",
+    "handover_unavailable": "We couldn't reach the team just now. Try again."
+  }
+}

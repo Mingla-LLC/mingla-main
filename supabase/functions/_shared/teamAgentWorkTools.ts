@@ -848,6 +848,32 @@ export const WORK_SCREEN_FUNCTION_PARITY: Readonly<
   ops_message_delete: {
     excluded: "a person deletes their own thread message",
   },
+  // #4420: a ticket is a Work card of kind ticket. An agent reads it with
+  // list_work and updates it with update_work like any card; creating a
+  // ticket and linking its support conversations stay with people.
+  ops_ticket_create: {
+    excluded: "people only: tickets are created by a person, decision on #4420",
+  },
+  ops_ticket_update: {
+    excluded:
+      "a person sets a ticket's type and product area; an agent updates the ticket's card with update_work",
+  },
+  ops_ticket_counts: {
+    excluded:
+      "the Admin menu's new-ticket count is for people; an agent reads its own cards with my_work",
+  },
+  ops_ticket_similar: {
+    excluded:
+      "similar tickets help a person while they type a new ticket, which an agent never creates",
+  },
+  ops_ticket_link_conversation: {
+    excluded:
+      "people only: Support staff, in person, link a support conversation to a ticket, decision on #4420",
+  },
+  ops_ticket_conversations: {
+    excluded:
+      "Support staff only: the conversations behind a ticket are read by Support staff in person",
+  },
   ops_message_react: { excluded: "reactions are for people" },
   ops_thread_read: {
     excluded: "an agent reading a thread never clears its person's unread mark",

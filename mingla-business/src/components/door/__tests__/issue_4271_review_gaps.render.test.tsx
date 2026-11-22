@@ -323,7 +323,8 @@ const expectHelpOpensSupport = (root: ReactTestInstance): void => {
     (help[0] as ReactTestInstance).props.onPress();
   });
   expect(mockPush).toHaveBeenCalledTimes(1);
-  expect(mockPush).toHaveBeenCalledWith("/account/support");
+  // [TEST-MOD #4420] "Get help" opens Support with "A person" selected.
+  expect(mockPush).toHaveBeenCalledWith("/account/support?tab=support&mode=person");
 };
 
 beforeEach(() => {

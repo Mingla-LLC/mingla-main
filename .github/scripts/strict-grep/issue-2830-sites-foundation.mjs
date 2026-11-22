@@ -1125,6 +1125,9 @@ export function violations(files) {
       // instead: __common 2,743,812 B to 2,808,468 B, of which 51.9 KB was
       // Ari's chat graph.
       "mingla-business/src/components/sites/website/workspace/ariRuntime.ts",
+      // #4420 — Help & Support's Support column embeds the ordinary Ari chat:
+      // one sibling lazy boundary over the SAME module, so still one chunk.
+      "mingla-business/src/components/support/LazySupportScreens.tsx",
     ]);
     // #4453 — the same rule for the pieces of that chunk the workspace uses:
     // no Website file may import them as values (types are free).
@@ -1154,7 +1157,12 @@ export function violations(files) {
         );
       }
     }
-    for (const file of [...walk("mingla-business/app"), ...walk("mingla-business/src/components/sites")]) {
+    for (const file of [
+      ...walk("mingla-business/app"),
+      ...walk("mingla-business/src/components/sites"),
+      // #4420 — the support feature embeds Ari's chat; hold it to the same rule.
+      ...walk("mingla-business/src/components/support"),
+    ]) {
       // Strip comments: docblocks name the module on purpose.
       const body = fs.readFileSync(path.join(ROOT, file), "utf8")
         .replace(/\/\*[\s\S]*?\*\//g, "")

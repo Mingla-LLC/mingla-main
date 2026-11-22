@@ -375,7 +375,6 @@ const renderStatePage = ({ status, heading, message }) => `<!doctype html>
 // thumbnails, Giphy, Pexels, pixels) and cannot execute.
 const DEFAULT_SUPABASE_ORIGIN = "https://gqnoajqerqhnvulmnyvv.supabase.co";
 const BUNNY_STREAM_ORIGIN = "https://vz-a16fce08-6c6.b-cdn.net";
-const BAMBOO_GUIDES_ORIGIN = "https://cdnapi.bamboo-cloud.com";
 const MINGLA_MARKETING_ORIGIN = "https://usemingla.com";
 
 const originOf = (value, fallback = null) => {
@@ -431,7 +430,6 @@ const publicDocumentCspSources = () => [
   ["font-src", "'self'", "the app's theme fonts (Inter, Poppins, ...) under /assets, and a host's Google Fonts theme font through the same-origin /gfonts proxy"],
   ["media-src", "'self'", "the app's own bundled media"],
   ["media-src", BUNNY_STREAM_ORIGIN, "cover videos (Bunny Stream)"],
-  ["media-src", BAMBOO_GUIDES_ORIGIN, "Host Guide HLS manifests and video segments (Bamboo Video)"],
   ["script-src", "'self'", "the Expo chunks and lazy route chunks"],
   // Kept deliberately, not by default. The inline scripts are server-authored
   // (this handoff runtime; #3187 adds share analytics) and every value they

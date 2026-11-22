@@ -143,7 +143,8 @@ Deno.test("#3980 rework: the To review header counts what the menu badge counts"
   // overdue (ops_my_counts due_today_mine + overdue_mine), read through
   // dueTodayState, so the menu and the Dashboard count the same thing.
   assertMatch(hook, /const work = dueTodayState\(\{ enabled, data: counts\.data, error: counts\.error \}\);/);
-  assertMatch(hook, /cards: work\.status === "ready" \? work\.dueToday \+ work\.overdue : null,/);
+  // #4420: the Work count adds the tickets I own that are still new (ops_ticket_counts).
+  assertMatch(hook, /cards: work\.status === "ready" \? workMenuCount\(work\.dueToday \+ work\.overdue, ticketsNew\) : null,/);
   assertEquals(dueTodayState({ data: { due_today_mine: 3, overdue_mine: 2, waiting_on_person_mine: 9 } }), { status: "ready", dueToday: 3, overdue: 2 });
   // A failed or missing count is an error, never a made-up 0.
   assertEquals(dueTodayState({ data: null, error: new Error("x") }), { status: "error", dueToday: null, overdue: null });

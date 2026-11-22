@@ -9,13 +9,16 @@ const root = new URL("../", import.meta.url);
 const read = (relative: string) => Deno.readTextFileSync(new URL(relative, root));
 
 Deno.test("#3720 Support gets a read-only Feature Guide while Admin keeps evidence controls", () => {
-  const page = read("pages/CommunitySupportPage.jsx");
+  // [TEST-MOD #4420] the Feature guide is its own Communications screen with the
+  // access its tab had (lib/access.js); evidence controls stay admin-only.
+  const page = read("pages/communications/FeatureGuidePage.jsx");
   const access = read("lib/communitySupportAccess.js");
   const panel = read("components/community/FeatureGuidePanel.jsx");
   // #4130 Wave 6: the tab lists live in lib/supportCommunityTabs.js.
-  assertStringIncludes(read("lib/supportCommunityTabs.js"), '{ id: "feature-guide", label: "Feature guide" }');
-  assertStringIncludes(access, 'allowed.add("feature-guide")');
-  assertStringIncludes(page, "<FeatureGuidePanel canManage={capabilities.isAdmin} />");
+  assertStringIncludes(read("lib/constants.js"), 'id: "feature-guide",             label: "Feature guide"');
+  assertStringIncludes(read("lib/access.js"), '"feature-guide": Object.freeze([SUPPORT_OPERATIONS_AREA]),');
+  assert(!access.includes('allowed.add("feature-guide")'), "no console tab any more");
+  assertStringIncludes(page, "<FeatureGuidePanel canManage={isAdmin} />");
   assertStringIncludes(panel, "{canManage && <Button");
   assertStringIncludes(panel, ">New capability</Button>}");
   assertMatch(panel, /Missing, expired, or conflicting proof is shown as Needs review/);

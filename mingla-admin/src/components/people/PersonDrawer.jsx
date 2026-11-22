@@ -90,7 +90,7 @@ function PersonSupportTickets({ userId }) {
         const status = SUPPORT_STATUS[ticket.status] || { label: ticket.status, variant: "default" };
         return (
           <li key={ticket.id} className="flex flex-col gap-1 py-2.5">
-            <a href={`#/support?ticket=${encodeURIComponent(ticket.id)}`} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
+            <a href={`#/support?conversation=${encodeURIComponent(ticket.id)}`} className="font-medium text-[var(--color-brand-600)] underline-offset-2 hover:underline">
               {ticketNumberLabel(ticket)} · {ticket.subject}
             </a>
             <span className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">

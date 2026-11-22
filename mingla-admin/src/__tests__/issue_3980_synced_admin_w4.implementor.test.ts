@@ -78,22 +78,6 @@ Deno.test("#3980 W4 P3-R: the chips and the result words", () => {
   assertEquals(logActionWords("backfill_confirmed"), "confirmed a backfill");
 });
 
-Deno.test("#3980 W4 P3-R: the Roadmap panel shows the disclosure to the owner only, previews first, confirms ticked ready rows once", () => {
-  const panel = code("components/community/RoadmapPanel.jsx");
-  assertMatch(panel, /const canBackfill = !!opsConfig\.data\?\.settings\?\.can_edit;/);
-  // It stays mounted while the cards reload after a confirm, so the result stays on screen.
-  assertMatch(panel, /\{canBackfill \? <RoadmapLinksBackfill cards=\{rows\} onLinked=\{\(\) => void load\(\)\} \/> : null\}/);
-  assertMatch(panel, /<summary[^>]*>[\s\S]*Link roadmap cards to GitHub/);
-  assertMatch(panel, /await previewRoadmapLinks\(links\)/);
-  assertMatch(panel, /const links = chosen\.map\(\(r\) => sent\[r\.i\]\);/);
-  assertMatch(panel, /await confirmRoadmapLinks\(links, confirmKey\)/);
-  assertMatch(panel, /setConfirmKey\(requestKey\("roadmap_links"\)\); setState\("confirm"\);/);
-  assertMatch(panel, /Link selected \(\{chosen\.length\}\)/);
-  assertMatch(panel, /const can = r\.status === "ready" && typeof onToggle === "function";/);
-  const service = read("services/opsService.js");
-  assertMatch(service, /supabase\.rpc\("ops_roadmap_links_preview", \{ p_links: links \}\)/);
-  assertMatch(service, /supabase\.rpc\("ops_roadmap_links_confirm", \{ p_links: links, p_request_key: requestKey \}\)/);
-});
 
 const BRANDS = [
   { brand_id: "b1", name: "Email Brand", action: "link", words: "Link to Host: same email." },
@@ -132,19 +116,21 @@ Deno.test("#3980 W4 P3-B: the Team dashboard panel is the owner's, previews firs
   assertMatch(service, /supabase\.rpc\("ops_brand_cards_confirm", \{ p_brand_ids: brandIds, p_request_key: requestKey \}\)/);
 });
 
-Deno.test("#3980 W4 L: both panels fit a phone: two columns only from lg, wrapping rows, lists scroll inside their box", () => {
-  const panel = code("components/community/RoadmapPanel.jsx");
+// [TEST-MOD #4420] the Roadmap screen (RoadmapPanel, its links backfill) is
+// retired, so its disclosure test left and this layout check keeps the brands
+// panel only. The ops_roadmap_links_* RPCs stay on the server and in the service.
+Deno.test("#3980 W4 L: the brands panel fits a phone: two columns only from lg, wrapping rows, lists scroll inside their box", () => {
   // #4130: the brands panel moved from the Team dashboard to components/ops/TeamSettingsPanels.jsx (Settings renders it).
   const page = code("components/ops/TeamSettingsPanels.jsx");
-  assertMatch(panel, /grid min-w-0 grid-cols-1 gap-4 border-t[^"]* lg:grid-cols-2/);
   assertMatch(page, /grid min-w-0 grid-cols-1 gap-4 px-4 py-3 sm:px-5 lg:grid-cols-\[minmax\(0,2fr\)_minmax\(0,3fr\)\]/);
-  for (const [name, src] of [["RoadmapPanel", panel], ["TeamDashboardPage", page]]) {
-    assertMatch(src, /max-h-\[4[24]0px\] min-w-0 flex-col divide-y divide-\[var\(--gray-100\)\] overflow-y-auto/, name);
-    assertMatch(src, /grid min-w-0 grid-cols-\[auto_minmax\(0,1fr\)\]/, name);
-    const at = src.indexOf(name === "RoadmapPanel" ? "export function RoadmapLinksBackfill" : "function BrandCardsBackfill");
-    assert(at > 0, name);
-    assertNotMatch(src.slice(at, at + 9000), /min-w-\[(?:[5-9]\d\d|\d{4})px\]|overflow-x-auto|bg-white|text-black/, name);
-  }
+  assertMatch(page, /max-h-\[4[24]0px\] min-w-0 flex-col divide-y divide-\[var\(--gray-100\)\] overflow-y-auto/);
+  assertMatch(page, /grid min-w-0 grid-cols-\[auto_minmax\(0,1fr\)\]/);
+  const at = page.indexOf("function BrandCardsBackfill");
+  assert(at > 0);
+  assertNotMatch(page.slice(at, at + 9000), /min-w-\[(?:[5-9]\d\d|\d{4})px\]|overflow-x-auto|bg-white|text-black/);
+  const service = read("services/opsService.js");
+  assertMatch(service, /supabase\.rpc\("ops_roadmap_links_preview", \{ p_links: links \}\)/);
+  assertMatch(service, /supabase\.rpc\("ops_roadmap_links_confirm", \{ p_links: links, p_request_key: requestKey \}\)/);
 });
 
 Deno.test("#3980 W4 P3-0: no migration runs a backfill; the W4 migration only defines the confirms", () => {

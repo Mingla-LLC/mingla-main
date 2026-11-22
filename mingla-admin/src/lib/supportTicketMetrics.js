@@ -1,57 +1,17 @@
-// #4382 Wave 2 — the Support inbox's views, the "Opened by" switch, the
-// filters and search, and their counts.
+// #4382 Wave 2 / #4420 (step 5) — facts about a support conversation row that
+// more than one file reads: active or done, overdue, who spoke last, the
+// S-number, search text, waiting time and how much of the list is loaded.
+// The inbox's labels, Open vs Resolved and its order are in
+// lib/supportInboxModel.js. (The eight views rail, the Opened-by switch and
+// the filter bar were retired by #4420 with the chat inbox.)
 //
-// Every count is worked out from the very rows the inbox would list for that
-// view, after the same Opened-by switch, filters and search, so a count can
-// never disagree with the list under it (#4130 Wave 6 rule, kept).
-//
-// Invariant I-4382-INBOX-COUNTS-EQUAL-ROWS (declared in src/__tests__/issue4382_support_desk.implementor.test.js): Every inbox view count equals the number of rows that view lists under the same Opened-by switch, filters and search
-//
-// The view rules follow the approved design ("Try the inbox"):
-//   Needs reply  open (or new) and the customer spoke last
-//   Mine         mine and still active
-//   Unassigned   nobody owns it and still active
-//   Overdue      still active and the promised next update has passed
-//   Waiting      Waiting on customer (status pending)
-//   Website      #4453: still active and the topic is a website change
-//   Resolved     resolved or closed
-//   All          everything
+// Invariant I-4382-INBOX-ACTIVE-NEVER-PAGED-OUT is declared below.
 
 const ACTIVE_SUPPORT_STATUSES = new Set(["new", "open", "pending"]);
 const DONE_SUPPORT_STATUSES = new Set(["resolved", "closed"]);
 
-/** The inbox views, in rail order. The first is the default. */
-export const SUPPORT_INBOX_VIEWS = Object.freeze([
-  Object.freeze({ id: "needs", label: "Needs reply", group: "Work" }),
-  Object.freeze({ id: "mine", label: "Mine", group: "Work" }),
-  Object.freeze({ id: "unassigned", label: "Unassigned", group: "Work" }),
-  Object.freeze({ id: "overdue", label: "Overdue", group: "Work" }),
-  Object.freeze({ id: "waiting", label: "Waiting on customer", group: "Work" }),
-  // #4453 — owners' website change requests (topic website_change), 24-hour clock.
-  Object.freeze({ id: "website", label: "Website changes", group: "Work" }),
-  Object.freeze({ id: "resolved", label: "Resolved", group: "Done" }),
-  Object.freeze({ id: "all", label: "All tickets", group: "Done" }),
-]);
-
-/** The Opened-by switch. */
-export const OPENED_BY_OPTIONS = Object.freeze([
-  Object.freeze({ value: "all", label: "Everyone" }),
-  Object.freeze({ value: "customer", label: "Customers" }),
-  Object.freeze({ value: "staff", label: "Staff" }),
-]);
-
-export const VISIBILITY_LABEL = Object.freeze({
-  internal: "Internal",
-  person: "Person",
-  brand: "Brand team",
-});
-
 export function isActiveTicket(ticket) {
   return Boolean(ticket && ACTIVE_SUPPORT_STATUSES.has(ticket.status));
-}
-
-export function isActiveUnassignedTicket(ticket) {
-  return Boolean(ticket && !ticket.assigned_staff_id && ACTIVE_SUPPORT_STATUSES.has(ticket.status));
 }
 
 /** Still active, and the update we promised is now late. */
@@ -72,30 +32,6 @@ export function lastSpeaker(ticket) {
   }
   if (ticket?.origin === "staff") return "staff";
   return ticket?.first_response_at ? "staff" : "customer";
-}
-
-export function ticketMatchesView(ticket, view, { me = null, nowMs = Date.now() } = {}) {
-  if (!ticket) return false;
-  switch (view) {
-    case "needs":
-      return (ticket.status === "open" || ticket.status === "new") && lastSpeaker(ticket) === "customer";
-    case "mine":
-      return Boolean(me) && ticket.assigned_staff_id === me && isActiveTicket(ticket);
-    case "unassigned":
-      return isActiveUnassignedTicket(ticket);
-    case "overdue":
-      return isOverdueTicket(ticket, nowMs);
-    case "waiting":
-      return ticket.status === "pending";
-    case "website":
-      return ticket.topic === "website_change" && isActiveTicket(ticket);
-    case "resolved":
-      return DONE_SUPPORT_STATUSES.has(ticket.status);
-    case "all":
-      return true;
-    default:
-      return false;
-  }
 }
 
 /** "S-1048" from a ticket (or "S-…" while the number is unknown). */
@@ -126,88 +62,9 @@ export function ticketSearchText(ticket, { profilesById = {}, brandsById = {} } 
   ].map(normal).filter(Boolean).join(" ");
 }
 
-/**
- * The rows every view starts from: the Opened-by switch, the dropdown filters
- * and the search box. `filters` = { productArea, priority, owner, brand } where
- * "" means any; owner "none" means nobody.
- */
-export function supportInboxBase(rows, {
-  openedBy = "all",
-  filters = {},
-  search = "",
-  profilesById = {},
-  brandsById = {},
-} = {}) {
-  const list = Array.isArray(rows) ? rows : [];
-  const query = normal(search);
-  return list.filter((ticket) => {
-    if (openedBy !== "all" && (ticket.origin || "customer") !== openedBy) return false;
-    if (filters.productArea && ticket.product_area !== filters.productArea) return false;
-    if (filters.priority && ticket.priority !== filters.priority) return false;
-    if (filters.owner === "none" && ticket.assigned_staff_id) return false;
-    if (filters.owner && filters.owner !== "none" && ticket.assigned_staff_id !== filters.owner) return false;
-    if (filters.brand && ticket.brand_id !== filters.brand) return false;
-    if (query && !ticketSearchText(ticket, { profilesById, brandsById }).includes(query)) return false;
-    return true;
-  });
-}
-
 function waitingSince(ticket) {
   const at = Date.parse(ticket?.last_message_at || ticket?.created_at || "");
   return Number.isFinite(at) ? at : 0;
-}
-
-function websiteDueMs(ticket) {
-  const at = Date.parse(ticket?.website_request?.due_at || ticket?.next_update_at || "");
-  return Number.isFinite(at) ? at : Number.MAX_SAFE_INTEGER;
-}
-
-function compareWebsiteRequests(left, right) {
-  const leftReady = left?.website_request?.ready_at ? 1 : 0;
-  const rightReady = right?.website_request?.ready_at ? 1 : 0;
-  if (leftReady !== rightReady) return leftReady - rightReady;
-  return websiteDueMs(left) - websiteDueMs(right) || waitingSince(left) - waitingSince(right);
-}
-
-const OLDEST_FIRST = new Set(["needs", "mine", "unassigned", "overdue", "waiting", "website"]);
-
-/**
- * The rows a view shows. Work still waiting lists the longest-waiting first;
- * Resolved and All list newest activity first.
- */
-export function supportInboxRows(rows, view, ctx = {}) {
-  const nowMs = ctx.nowMs ?? Date.now();
-  const list = supportInboxBase(rows, ctx).filter((row) => ticketMatchesView(row, view, { me: ctx.me, nowMs }));
-  // #4453: website change requests list by their 24-hour clock: the ones
-  // still to do first (soonest due on top), then the ones already marked ready.
-  if (view === "website") return list.sort(compareWebsiteRequests);
-  const oldestFirst = OLDEST_FIRST.has(view);
-  return list.sort((left, right) => (oldestFirst
-    ? waitingSince(left) - waitingSince(right)
-    : waitingSince(right) - waitingSince(left)));
-}
-
-/**
- * { needs, mine, unassigned, overdue, waiting, resolved, all, open } over the
- * inbox's own rows. `open` is the Needs reply count: the Support page's Inbox
- * badge reads it, so the badge matches the default view.
- */
-export function supportInboxCounts(rows, ctx = {}) {
-  const nowMs = ctx.nowMs ?? Date.now();
-  const base = supportInboxBase(rows, ctx);
-  const counts = Object.fromEntries(
-    SUPPORT_INBOX_VIEWS.map(({ id }) => [id, base.filter((row) => ticketMatchesView(row, id, { me: ctx.me, nowMs })).length]),
-  );
-  counts.open = counts.needs;
-  return counts;
-}
-
-/** The chip a row shows for who opened it and who can see it. */
-export function originChip(ticket) {
-  if (ticket?.origin === "staff") {
-    return { kind: "staff", label: `Staff · ${VISIBILITY_LABEL[ticket.visibility] || "Internal"}` };
-  }
-  return { kind: "customer", label: ticket?.requester_segment === "explorer" ? "Explorer" : "Host" };
 }
 
 /** "0:24" from milliseconds. */
@@ -239,7 +96,7 @@ export const DONE_TICKET_STATUSES = Object.freeze([...DONE_SUPPORT_STATUSES]);
 export const ACTIVE_TICKET_CAP = 2000;
 export const CLOSED_PAGE_SIZE = 300;
 
-const WORK_VIEWS = new Set(["needs", "mine", "unassigned", "overdue", "waiting", "website"]);
+const WORK_VIEWS = new Set(["needs", "mine", "unassigned", "overdue", "waiting", "website"]); // open conversations: all of them load
 
 /**
  * { partial, loaded, total, canLoadOlder } for a view, from the load's
@@ -266,13 +123,8 @@ export function inboxViewCoverage(coverage, viewId) {
   };
 }
 
-/** The rail count: the loaded rows, with "+" when the view holds more. */
-export function railCountLabel(count, partial) {
-  return partial ? `${count}+` : String(count);
-}
-
 /** The note above a partial list, or null. */
 export function coverageNote(viewCoverage) {
   if (!viewCoverage?.partial) return null;
-  return `Showing the newest ${viewCoverage.loaded} of ${viewCoverage.total} tickets. Counts cover the loaded tickets only.`;
+  return `Showing the newest ${viewCoverage.loaded} of ${viewCoverage.total} conversations. Counts cover the loaded tickets only.`;
 }

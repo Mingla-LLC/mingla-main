@@ -1,44 +1,52 @@
 /**
- * #3720 Slice G — Community · Support · Guides segmented control.
+ * #4420 — Help & Support's two tabs on a phone: Announcements and Support.
+ * (Desktop shows both as columns, so it has no tabs.) Replaces #3720's
+ * three-tab control.
  */
 
-import React from "react";
+import React, { useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   color,
   space,
 } from "../../constants/designSystem";
-import type { HelpSupportTabId } from "../../utils/helpSupportLastTab";
+import { handleSegmentKeyDown, rovingTabIndex, type HelpSupportTab, type SegmentKeyEvent } from "./helpSupportRoute";
+import { hubCopy } from "./helpSupportHubCopy";
 
 type TabDef = {
-  id: HelpSupportTabId;
+  id: HelpSupportTab;
   label: string;
 };
 
 const TABS: readonly TabDef[] = [
-  { id: "community", label: "Community" },
-  { id: "support", label: "Support" },
-  { id: "guides", label: "Guides" },
+  { id: "announcements", label: hubCopy("tabs.announcements") },
+  { id: "support", label: hubCopy("tabs.support") },
 ];
+const TAB_IDS: readonly HelpSupportTab[] = TABS.map((tab) => tab.id);
 
 export type HelpSupportHubTabsProps = {
-  active: HelpSupportTabId;
-  onChange: (tab: HelpSupportTabId) => void;
-  /** Unread announcements — shown as a count on Community. */
-  communityBadge?: number;
+  active: HelpSupportTab;
+  onChange: (tab: HelpSupportTab) => void;
+  /** Unread announcements, shown as a count on Announcements ("9+" cap). */
+  announcementsBadge?: number;
 };
 
 export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
   active,
   onChange,
-  communityBadge = 0,
-}) => (
-  <View style={styles.host} accessibilityRole="tablist">
+  announcementsBadge = 0,
+}) => {
+  const tabRefs = useRef<Partial<Record<HelpSupportTab, { focus?: () => void } | null>>>({});
+  const focusTab = (id: HelpSupportTab): void => {
+    tabRefs.current[id]?.focus?.();
+  };
+  return (
+  <View style={styles.host} accessibilityRole="tablist" accessibilityLabel={hubCopy("tabs.label")}>
     <View style={styles.bar}>
       {TABS.map((tab) => {
         const isActive = tab.id === active;
-        const showBadge = tab.id === "community" && communityBadge > 0;
+        const showBadge = tab.id === "announcements" && announcementsBadge > 0;
         return (
           <Pressable
             key={tab.id}
@@ -51,10 +59,22 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
             accessibilityRole="tab"
             accessibilityLabel={
               showBadge
-                ? `${tab.label}, ${communityBadge} unread`
+                ? hubCopy("tabs.unread", { label: tab.label, count: announcementsBadge })
                 : tab.label
             }
             accessibilityState={{ selected: isActive }}
+            // react-native-web reads aria-selected, not accessibilityState, so
+            // the web tab says which one is selected too (#4420 rework 2).
+            aria-selected={isActive}
+            // #4420 rework 3 (G6): Space selects, arrows move (web keyboard).
+            // #4420 rework 5 (H2): roving tabindex, focus follows the arrows.
+            ref={(node: unknown) => {
+              tabRefs.current[tab.id] = node as { focus?: () => void } | null;
+            }}
+            {...({
+              onKeyDown: (event: SegmentKeyEvent) => handleSegmentKeyDown(event, TAB_IDS, tab.id, onChange, focusTab),
+              tabIndex: rovingTabIndex(isActive),
+            } as object)}
             hitSlop={6}
           >
             <Text
@@ -69,7 +89,7 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
             {showBadge ? (
               <View style={styles.badge} accessibilityElementsHidden>
                 <Text style={styles.badgeText}>
-                  {communityBadge > 9 ? "9+" : String(communityBadge)}
+                  {announcementsBadge > 9 ? "9+" : String(announcementsBadge)}
                 </Text>
               </View>
             ) : null}
@@ -78,7 +98,8 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
       })}
     </View>
   </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   host: {

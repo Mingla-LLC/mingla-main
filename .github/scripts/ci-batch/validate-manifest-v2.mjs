@@ -635,6 +635,8 @@ export function phase3dContractDigest(manifest) {
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the replay inventories; skipped it by exact filename on the filtered #1931 template replay (it reads event_rsvp_guests columns only the skipped 20281119014508 creates); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 tickets on the Work board: listed migration 20281121034420 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 rework: registered the tester's tickets-on-Work-board pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed;
 // MANIFEST.json phase3eContractSha256 matches.
@@ -644,7 +646,8 @@ export function phase3dContractDigest(manifest) {
 // #3281 S5 add-on plan choice: registered 20281121033281_issue_3281_add_on_plan_choice.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121033281 on the filtered #1931 and #2117 replays
 // #3281 S3 add-on authoring: registered 20281121043281_issue_3281_add_on_authoring.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121043281 on the filtered #1931 and #2117 replays (it needs the S1 links those replays skip); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3281 S2+S6 readers and RSVP add-ons: registered 20281121053281_issue_3281_add_on_readers_and_rsvp.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121053281 on the filtered #1931 and #2117 replays (it needs the S1 links those replays skip); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "0c007b392b4c1e56c8f1cd11eef4c181d56134c6b76e03cfaece5c5afe6d915a";
+// #4522 merge of main after #4420 polish pass: kept the #4420 migration and pg17 rows beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "dbc899590ee50f381719a4e6b7e33a63340bf63bb8c99e49ba46ebde41cddfff";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

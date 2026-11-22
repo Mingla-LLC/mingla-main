@@ -50,9 +50,8 @@ const EXPECTED_IDS_POST_1014 = [
   "inbound",
   "content-calendar",
   "team-dashboard",
-  // Support
+  // Support ([TEST-MOD #4420] Community retired)
   "support",
-  "community",
   // Business
   "people",
   "brands",

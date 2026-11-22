@@ -102,7 +102,8 @@ const EXPECTED_ALLOWLISTED_FILES = [
   "mingla-business/src/components/ui/Input.tsx",
   "mingla-business/src/components/auth/BusinessWelcomeScreen.tsx",
   "mingla-business/src/components/marketing/SmsComposeCard.tsx",
-  "mingla-business/app/account/support.tsx",
+  // [TEST-MOD #4420] app/account/support.tsx dropped its marker: the rebuilt
+  // screen holds no text input (the composers live in the lazy panes).
   "mingla-business/src/components/trip/TripDayEditor.tsx",
   "mingla-business/src/components/groupChat/GroupChatPanel.tsx",
   // NOT listed: src/components/support/SupportThread.native.tsx. It carries the
