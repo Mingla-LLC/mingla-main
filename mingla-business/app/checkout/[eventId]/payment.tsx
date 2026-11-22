@@ -146,7 +146,7 @@ const TicketQuoteSummary = React.lazy(() =>
 // issue #3281 — kept here, not in a shared module, so it stays out of the
 // eager chunk; the tickets step says which extra changed.
 const EXTRAS_CHANGED_MESSAGE =
-  "One of your extras changed. Go back to your tickets to update it.";
+  "One of your add-ons changed. Go back to your tickets to update it.";
 
 // issue #3281 — checkout states whose provider page can still take payment.
 const RESUMABLE_SESSION_STATUSES = new Set([

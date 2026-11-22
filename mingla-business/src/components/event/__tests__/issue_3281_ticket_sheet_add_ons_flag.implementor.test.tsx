@@ -207,7 +207,9 @@ describe("#3281 S3 the ticket sheet and the Add-ons editor", () => {
     const tree = await mount(onSave, "draft");
     expect(rpc).not.toHaveBeenCalled();
     expect(byTestId(tree, "ticket-sheet-add-ons-line")).toHaveLength(0);
-    expect(hasText(tree, "Extras")).toBe(true);
+    // #3281 S7: the per-ticket section's header now reads "Add-ons".
+    expect(hasText(tree, "Add-ons")).toBe(true);
+    expect(hasText(tree, "Extras")).toBe(false);
     expect(hasText(tree, "Friday dinner")).toBe(true);
     await TestRenderer.act(() => {
       (saveButton(tree).props.onPress as () => void)();

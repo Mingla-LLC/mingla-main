@@ -115,7 +115,7 @@ export const nativeCheckoutBookedStartRaiseMessage = (
  * refusal fires inside the create-session RPC before any payment exists.
  */
 export const CHECKOUT_EXTRAS_CHANGED_MESSAGE =
-  "One of your extras changed or sold out. Update your extras and try again — you have not been charged.";
+  "One of your add-ons changed or sold out. Update your add-ons and try again — you have not been charged.";
 
 /** An extras refusal token in `detail` or bare `error`. */
 export const nativeCheckoutExtrasRaiseMessage = (

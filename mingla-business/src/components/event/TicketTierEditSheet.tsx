@@ -889,7 +889,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     block("Pick at least one day, or choose All dates.");
   }
   if (extrasInvalid) {
-    block("Finish or remove the extras marked in red.");
+    block("Finish or remove the add-ons marked in red.");
   }
   const anyBlockerRevealed = saveBlockers.some((blocker) => blocker.revealed);
   const showPriceError = priceInvalid && touched.price;

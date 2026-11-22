@@ -68,7 +68,7 @@ export const TicketExtrasPicker: React.FC<TicketExtrasPickerProps> = ({
       testID={testID}
     >
       <Text style={[styles.heading, { color: theme.textTertiary }]}>
-        Extras
+        Add-ons
       </Text>
       {rows.map((extra) => {
         const quantity =

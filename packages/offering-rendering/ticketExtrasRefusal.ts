@@ -5,13 +5,13 @@
  */
 
 const EXTRAS_REFUSAL_COPY: Record<string, string> = {
-  extras_invalid: "We couldn't read your extras. Change them and try again.",
-  extra_not_available: "One of your extras is no longer on sale. Remove it to continue.",
-  extra_quantity_above_max: "You've picked more of an extra than your tickets allow.",
-  extra_not_on_chosen_days: "One of your extras isn't on the dates you picked.",
-  extra_capacity_exceeded: "One of your extras just sold out. Pick fewer to continue.",
-  extras_need_paid_ticket: "Paid extras need a paid ticket.",
-  extras_not_on_installments: "Extras are paid in full, so they can't go on a payment plan.",
+  extras_invalid: "We couldn't read your add-ons. Change them and try again.",
+  extra_not_available: "One of your add-ons is no longer on sale. Remove it to continue.",
+  extra_quantity_above_max: "You've picked more of an add-on than your tickets allow.",
+  extra_not_on_chosen_days: "One of your add-ons isn't on the dates you picked.",
+  extra_capacity_exceeded: "One of your add-ons just sold out. Pick fewer to continue.",
+  extras_need_paid_ticket: "Paid add-ons need a paid ticket.",
+  extras_not_on_installments: "Add-ons are paid in full, so they can't go on a payment plan.",
 };
 
 /** Buyer copy for a refusal the server names after extras; null for anything else. */
