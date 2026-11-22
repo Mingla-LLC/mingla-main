@@ -231,7 +231,7 @@ export function billingSteps(m: VenueMemberDetail, now: number = Date.now()): Bi
   }
   if (m.status === "pending" && due !== null) {
     out.push({ key: "joined", title: "Joined", meta: day(m.createdAt), state: "done" });
-    out.push({ key: "first", title: `First ${period} to pay`, meta: `${money(due.amountMinor, due.currencyCode)} before VAT`, state: "current" });
+    out.push({ key: "first", title: `First ${period} to pay`, meta: money(due.amountMinor, due.currencyCode), state: "current" });
     out.push(
       m.plan.joinMode === "request"
         ? {
@@ -252,11 +252,11 @@ export function billingSteps(m: VenueMemberDetail, now: number = Date.now()): Bi
     if (reminder !== undefined) out.push({ key: "reminder", title: "Reminder sent", meta: day(reminder.at), state: "done" });
     if (m.status === "lapsed") {
       out.push({ key: "lapsed", title: "Lapsed: can't check in", meta: `Since ${day(due.graceEndsAt)}`, state: "current" });
-      out.push({ key: "restart", title: "Starts again when paid", meta: `${money(due.amountMinor, due.currencyCode)} before VAT`, state: "pending" });
+      out.push({ key: "restart", title: "Starts again when paid", meta: money(due.amountMinor, due.currencyCode), state: "pending" });
       return out;
     }
     if (m.status === "paused") {
-      out.push({ key: "restart", title: "Paused: starts again when paid", meta: `${money(due.amountMinor, due.currencyCode)} before VAT`, state: "current" });
+      out.push({ key: "restart", title: "Paused: starts again when paid", meta: money(due.amountMinor, due.currencyCode), state: "current" });
       return out;
     }
     if (!Number.isNaN(dueAt) && dueAt <= now) {

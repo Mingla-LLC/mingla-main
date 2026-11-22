@@ -519,6 +519,13 @@ export interface EntryOptionRow {
   option: EntryPriceOption;
   /** The price on that day (busy-time prices applied by the server). */
   priceMinor: number;
+  /**
+   * #4490 06-W4 fix 1 (W4-N1): true only when `priceMinor` is the server's
+   * price for the chosen day (and session), from that option's own
+   * `availability` row (the quote's resolver, `issue_4490_option_price_at`).
+   * False = the offer's list price: never shown as the price of a row.
+   */
+  dayPriced: boolean;
   /** False when this price does not apply that day or at that time. */
   usable: boolean;
   /** Why it cannot be used, or the rule that limits it ("Mon to Thu only"). */
@@ -533,9 +540,16 @@ export function entryOptionRows(
   options: readonly EntryPriceOption[],
   date: string | null,
   perOption: ReadonlyMap<string, readonly EntryDayRow[]>,
+  /** #4490 06-W4 fix 1: the chosen session's window (a timed day has one row per session, each priced on its own start). */
+  windowId: string | null = null,
 ): EntryOptionRow[] {
   return options.map((option) => {
-    const dayRow = date === null ? undefined : perOption.get(option.id)?.find((row) => row.localDate === date);
+    const own = perOption.get(option.id);
+    const dayRow =
+      date === null
+        ? undefined
+        : (windowId !== null ? own?.find((row) => row.windowId === windowId) : undefined) ??
+          own?.find((row) => row.localDate === date);
     const weekdayRule = weekdayRuleText(option.weekdays);
     const timeRule =
       option.startTime !== null && option.endTime !== null
@@ -550,6 +564,7 @@ export function entryOptionRows(
     return {
       option,
       priceMinor: dayRow?.priceMinor ?? option.priceMinor,
+      dayPriced: dayRow !== undefined && dayRow.priceMinor !== null,
       usable,
       rule,
     };
@@ -1270,6 +1285,8 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
   offer_booking_not_found: "We couldn't find this booking. The link may be wrong or out of date.",
   offer_hold_expired: "Your hold ran out and the places went back on sale. Start again.",
   offer_payment_already_pending: "A payment for this booking is already in progress. Give it a minute, then check again.",
+  // #4490 06-W4 fix 1 (W4-N3): another device is paying this booking another way right now.
+  offer_payment_mode_conflict: "Something changed while we were saving. Try again.",
   offer_invalid_transition: "This booking can't do that any more. Reload to see where it stands.",
   offer_bank_not_ready: "This venue can't take payments online right now. You can still buy at the gate.",
   offer_payment_details_rejected:

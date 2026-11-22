@@ -499,7 +499,7 @@ function PayForm({ m, busy, error, onBack, onSubmit }: { m: VenueMemberDetail; b
     <View style={styles.form} testID="venue-member-pay-form">
       <Text style={styles.meta}>
         {due !== null
-          ? `${m.memberName} paid you for the ${m.plan.period} from ${memberDay(due.periodStart, m.venue.timezone, m.plan.period === "year") ?? ""}: ${money(due.amountMinor, due.currencyCode)} before VAT. Their membership runs to ${memberDay(due.periodEnd, m.venue.timezone, m.plan.period === "year") ?? ""}.`
+          ? `${m.memberName} paid you for the ${m.plan.period} from ${memberDay(due.periodStart, m.venue.timezone, m.plan.period === "year") ?? ""}: ${money(due.amountMinor, due.currencyCode)}. Their membership runs to ${memberDay(due.periodEnd, m.venue.timezone, m.plan.period === "year") ?? ""}.`
           : "Nothing is owed right now."}
       </Text>
       <Text style={styles.label}>How they paid</Text>

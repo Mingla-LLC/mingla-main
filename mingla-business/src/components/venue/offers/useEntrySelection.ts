@@ -178,8 +178,9 @@ export function useEntrySelection(input: {
     return { ...dayTile, row: sessionRow };
   }, [dayTile, sessions.length, rows, selectedSession?.windowId]);
   const optionRows = useMemo(
-    () => entryOptionRows(offer?.options ?? [], selectedDate, perOption),
-    [offer, selectedDate, perOption],
+    // #4490 06-W4 fix 1 (W4-N1): priced for the chosen session's window.
+    () => entryOptionRows(offer?.options ?? [], selectedDate, perOption, selectedTile?.row?.windowId ?? null),
+    [offer, selectedDate, perOption, selectedTile?.row?.windowId],
   );
 
   // A first visit with nothing chosen starts with one guest on the first price.

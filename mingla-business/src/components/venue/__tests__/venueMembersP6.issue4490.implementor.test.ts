@@ -29,7 +29,6 @@ import {
   howYouPayLines,
   memberGuestErrorCopy,
   memberUseLine,
-  monthTotal,
   parseGuestMember,
   parseMemberQuote,
   payLabel,
@@ -338,10 +337,23 @@ describe("P6-3 guest member page model", () => {
     expect(payLabel(m as NonNullable<typeof m>, "₦150,500")).toBe("Pay ₦150,500 to start again");
     expect(parseGuestMember({ nope: true })).toBeNull();
   });
-  it("the month's total adds VAT the venue adds (D P6: ₦85,000 + ₦6,375 = ₦91,375), includes it when included, none when none", () => {
-    expect(monthTotal(8500000, { mode: "added", ratePct: 7.5 })).toEqual({ taxMinor: 637500, totalMinor: 9137500, ratePct: 7.5, mode: "added" });
-    expect(monthTotal(8500000, { mode: "included", ratePct: 7.5 }).totalMinor).toBe(8500000);
-    expect(monthTotal(8500000, null)).toEqual({ taxMinor: 0, totalMinor: 8500000, ratePct: 0, mode: "none" });
+  // TEST-MOD-APPROVED #4490 (06-W4 fix 1, W4-N2): the browser no longer works VAT out (monthTotal is
+  // gone); the month's base, VAT and total are the server's, read from paymentDue.
+  it("the month's total is the server's (D P6: ₦85,000 + ₦6,375 = ₦91,375), with its VAT breakdown", () => {
+    const m = parseGuestMember({
+      ...raw,
+      paymentDue: { ...(raw as { paymentDue: Record<string, unknown> }).paymentDue, amountMinor: 9137500, baseMinor: 8500000,
+        taxMinor: 637500, feeMinor: 0, totalMinor: 9137500, vatMode: "added", vatRatePct: 7.5 },
+    });
+    expect(m?.paymentDue?.amountMinor).toBe(9137500);
+    expect(m?.paymentDue?.charge).toEqual({ baseMinor: 8500000, feeMinor: 0, taxMinor: 637500, totalMinor: 9137500, vatMode: "added", vatRatePct: 7.5 });
+    const included = parseGuestMember({
+      ...raw,
+      paymentDue: { ...(raw as { paymentDue: Record<string, unknown> }).paymentDue, amountMinor: 8500000, baseMinor: 8500000,
+        taxMinor: 593023, totalMinor: 8500000, vatMode: "included", vatRatePct: 7.5 },
+    });
+    expect(included?.paymentDue?.charge?.totalMinor).toBe(8500000);
+    expect(included?.paymentDue?.charge?.vatMode).toBe("included");
   });
   it("joining says today, each month and a skipped month in three lines (nothing renews by itself)", () => {
     const lines = howYouPayLines({ period: "month", firstPeriod: "December", renewalNoticeDays: 7, graceDays: 7, minMonths: 1, noticeDays: 0 });

@@ -13,6 +13,7 @@ import {
   isVenueOfferBookingToken,
   readVenueOfferBookingToken,
 } from "../../../utils/venueOfferBookingTokens";
+import { parsePlanCharge, type VenuePlanCharge } from "@mingla/brand-rendering/venueFeaturePage";
 
 export type GuestMemberStatus = "pending" | "active" | "payment_due" | "grace" | "lapsed" | "paused" | "requested" | "declined" | "cancelled";
 
@@ -66,7 +67,10 @@ export interface GuestMember {
   requestReplyBy: string | null;
   paymentDue: {
     periodId: string;
+    /** #4490 06-W4 fix 1 (W4-N2): what the payment page charges (VAT and fees included). */
     amountMinor: number;
+    /** The server's breakdown of that amount (`issue_4490_member_charge`); null from an older server. */
+    charge: VenuePlanCharge | null;
     currencyCode: string;
     periodStart: string;
     periodEnd: string;
@@ -172,6 +176,7 @@ export function parseGuestMember(raw: unknown): GuestMember | null {
         : {
             periodId: str(due.periodId),
             amountMinor: num(due.amountMinor),
+            charge: parsePlanCharge(due),
             currencyCode: str(due.currencyCode, "NGN"),
             periodStart: str(due.periodStart),
             periodEnd: str(due.periodEnd),
@@ -376,18 +381,9 @@ export interface VenueVat {
   ratePct: number;
 }
 
-/** The month's VAT and total for display (the server charges its own total). */
-export function monthTotal(priceMinor: number, vat: VenueVat | null | undefined): { taxMinor: number; totalMinor: number; ratePct: number; mode: VenueVat["mode"] } {
-  if (vat === null || vat === undefined || vat.mode === "none" || !(vat.ratePct > 0)) {
-    return { taxMinor: 0, totalMinor: priceMinor, ratePct: 0, mode: "none" };
-  }
-  if (vat.mode === "included") {
-    const tax = Math.round(priceMinor - priceMinor / (1 + vat.ratePct / 100));
-    return { taxMinor: tax, totalMinor: priceMinor, ratePct: vat.ratePct, mode: "included" };
-  }
-  const tax = Math.round((priceMinor * vat.ratePct) / 100);
-  return { taxMinor: tax, totalMinor: priceMinor + tax, ratePct: vat.ratePct, mode: "added" };
-}
+// #4490 06-W4 fix 1 (W4-N2): `monthTotal` (VAT worked out in the browser) is
+// gone. A plan's base, VAT and total are the server's (`plan.charge`,
+// `paymentDue`), the same numbers the payment page charges.
 
 /** "7.5%" */
 export function pctWords(pct: number): string {
@@ -561,6 +557,8 @@ const ERRORS: Readonly<Record<string, string>> = {
   membership_not_paused: "Your membership isn't paused.",
   membership_nothing_to_pay: "Nothing is owed right now. You're paid up.",
   offer_payment_already_pending: "A payment for this month is already open. Finish it, or check whether it went through.",
+  // #4490 06-W4 fix 1 (W4-N3): another device is paying this month another way right now.
+  offer_payment_mode_conflict: "Something changed while we were saving. Try again.",
   offer_payment_already_paid: "This month is already paid.",
   membership_payment_details_rejected: "The payment page didn't accept these details. Check your email address and try again.",
   membership_payment_unavailable: "Online payment isn't available right now. Try again in a few minutes.",

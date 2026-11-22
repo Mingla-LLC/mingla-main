@@ -190,7 +190,7 @@ export function EntryPicker({
         <OfferingPanel palette={palette} testID={`${testID}-options`}>
           {selection.optionRows.map((row) => {
             const count = selection.counts[row.option.id] ?? 0;
-            const detail = [`${money(row.priceMinor)} each`, row.rule].filter(Boolean).join(" · ");
+            const detail = [row.dayPriced ? `${money(row.priceMinor)} each` : null, row.rule].filter(Boolean).join(" · ");
             const others = selection.guests - count;
             const max = Math.min(
               row.option.guestMax,

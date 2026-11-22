@@ -41,7 +41,6 @@ import {
   memberPeriodRangeWords,
   memberPagePath,
   membershipJoinNeedsPayment,
-  monthTotal,
   pctWords,
   planGiveLines,
   rememberVenueMember,
@@ -88,7 +87,8 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
   const [handoffUrl, setHandoffUrl] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
 
-  const total = plan !== null ? monthTotal(plan.priceMinor, page?.vat ?? null) : null;
+  // #4490 06-W4 fix 1 (W4-N2): the server's charge for one payment (the page asks for exactly this).
+  const total = plan?.charge ?? null;
   const periodEnd = (() => {
     const d = new Date(`${startOn}T12:00:00Z`);
     if (plan?.period === "year") d.setUTCFullYear(d.getUTCFullYear() + 1);
@@ -235,11 +235,11 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
         <>
           <View style={styles.line}>
             <Text style={[styles.small, { color: palette.secondaryText }]}>{`${plan.name} · ${periodRange}`}</Text>
-            <Text style={[styles.small, { color: palette.primaryText }]}>{money(plan.priceMinor)}</Text>
+            <Text style={[styles.small, { color: palette.primaryText }]}>{money(total.baseMinor)}</Text>
           </View>
-          {total.mode === "added" ? (
+          {total.vatMode === "added" ? (
             <View style={styles.line}>
-              <Text style={[styles.small, { color: palette.secondaryText }]}>{`VAT ${pctWords(total.ratePct)}`}</Text>
+              <Text style={[styles.small, { color: palette.secondaryText }]}>{`VAT ${pctWords(total.vatRatePct)}`}</Text>
               <Text style={[styles.small, { color: palette.primaryText }]}>{money(total.taxMinor)}</Text>
             </View>
           ) : null}
@@ -248,8 +248,8 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
             <Text style={[styles.totalText, { color: palette.primaryText }]}>{plan.joinMode === "request" ? "First payment, if approved" : "Total today"}</Text>
             <Text style={[styles.totalText, { color: palette.primaryText }]}>{money(total.totalMinor)}</Text>
           </View>
-          {total.mode === "included" ? (
-            <Text style={[styles.caption, { color: palette.tertiaryText }]}>{`Includes VAT ${pctWords(total.ratePct)} (${money(total.taxMinor)})`}</Text>
+          {total.vatMode === "included" ? (
+            <Text style={[styles.caption, { color: palette.tertiaryText }]}>{`Includes VAT ${pctWords(total.vatRatePct)} (${money(total.taxMinor)})`}</Text>
           ) : null}
           <Text style={[styles.caption, { color: palette.tertiaryText }]}>
             {plan.joinMode === "request"

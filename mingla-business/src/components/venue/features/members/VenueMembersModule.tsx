@@ -221,7 +221,7 @@ export const VenueMembersModule = forwardRef<VenueModuleLeaveHandle, VenueMember
         <KpiTile
           label="Payment due"
           value={t.paymentDue.count}
-          sub={t.paymentDue.count > 0 ? `${money(t.paymentDue.amountMinor, currency)} before VAT` : "Everyone is paid up"}
+          sub={t.paymentDue.count > 0 ? money(t.paymentDue.amountMinor, currency) : "Everyone is paid up"}
           style={styles.tile}
           testID="venue-members-tile-due"
         />

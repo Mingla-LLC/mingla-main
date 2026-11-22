@@ -186,6 +186,44 @@ export interface VenueFeaturePlanView {
   renewalNoticeDays: number;
   /** No places left: shown, not joinable. */
   full: boolean;
+  /**
+   * #4490 06-W4 fix 1 (W4-N2): what one payment for this plan charges, the
+   * server's own numbers (`issue_4490_member_charge`: VAT added or included,
+   * fees). Null when the server did not send it: then no total is shown.
+   */
+  charge?: VenuePlanCharge | null;
+}
+
+/** #4490 06-W4 fix 1 (W4-N2): a plan payment's money, in minor units, as the server charges it. */
+export interface VenuePlanCharge {
+  baseMinor: number;
+  feeMinor: number;
+  /** The VAT: added on top (`vatMode` "added") or the part of the base that is VAT ("included"). */
+  taxMinor: number;
+  /** What the payment page asks for. */
+  totalMinor: number;
+  vatMode: "added" | "included" | "none";
+  vatRatePct: number;
+}
+
+/** A server charge block (`plans[].charge`, `plan.charge`, `paymentDue`); null when it is not one. Fail closed. */
+export function parsePlanCharge(raw: unknown): VenuePlanCharge | null {
+  if (!isRecord(raw)) return null;
+  const base = asInt(raw.baseMinor);
+  const total = asInt(raw.totalMinor) ?? asInt(raw.amountMinor);
+  const tax = asInt(raw.taxMinor) ?? 0;
+  const fee = asInt(raw.feeMinor) ?? 0;
+  if (base === null || total === null || base < 0 || total < 0) return null;
+  const rate = typeof raw.vatRatePct === "number" && Number.isFinite(raw.vatRatePct) ? raw.vatRatePct
+    : typeof raw.vatRatePct === "string" && Number.isFinite(Number(raw.vatRatePct)) ? Number(raw.vatRatePct) : 0;
+  return {
+    baseMinor: base,
+    feeMinor: fee,
+    taxMinor: tax,
+    totalMinor: total,
+    vatMode: raw.vatMode === "added" || raw.vatMode === "included" ? raw.vatMode : "none",
+    vatRatePct: rate,
+  };
 }
 
 export interface PublicVenueFeaturesView {
@@ -246,6 +284,7 @@ export function parsePlan(raw: unknown): VenueFeaturePlanView | null {
     graceDays: n(raw.graceDays, 7),
     renewalNoticeDays: n(raw.renewalNoticeDays, 7),
     full: raw.full === true,
+    charge: parsePlanCharge(raw.charge),
   };
 }
 

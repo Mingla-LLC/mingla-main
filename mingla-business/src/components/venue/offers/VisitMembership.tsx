@@ -50,7 +50,6 @@ import {
   memberDayWords,
   memberGuestErrorCopy,
   membershipBenefitsAvailable,
-  monthTotal,
   monthWords,
   parseGuestMember,
   payLabel,
@@ -298,8 +297,9 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
     memberDayWords(iso ?? null, tz, { year: member.plan.period === "year" }) ?? "—";
   const state = guestMemberState(member);
   const due = member.paymentDue;
-  const total = due !== null ? monthTotal(due.amountMinor, page?.vat ?? null) : null;
-  const totalWords = total !== null ? money(total.totalMinor) : null;
+  // #4490 06-W4 fix 1 (W4-N2): the server's amount due and its breakdown (what the page charges).
+  const total = due?.charge ?? null;
+  const totalWords = due !== null ? money(due.amountMinor) : null;
   const passPeriod = member.plan.period === "year" && member.activeUntil !== null
     ? `Paid until ${day(member.activeUntil)}`
     : monthWords(member.currentPeriodStart ?? member.activeUntil, tz);
@@ -354,15 +354,15 @@ export function VisitMembership({ subscriptionId, paidReturn, safeTop, safeBotto
         <Text style={[styles.label, { color: palette.tertiaryText }]}>{member.status === "pending" ? `YOUR FIRST ${member.plan.period.toUpperCase()}` : `THIS ${member.plan.period.toUpperCase()}`}</Text>
         <View style={styles.line}>
           <Text style={[styles.small, { color: palette.secondaryText }]}>{`${member.plan.name} · ${day(due.periodStart)} to ${day(due.periodEnd)}`}</Text>
-          <Text style={[styles.small, { color: palette.primaryText }]}>{money(due.amountMinor)}</Text>
+          <Text style={[styles.small, { color: palette.primaryText }]}>{money(total?.baseMinor ?? due.amountMinor)}</Text>
         </View>
-        {total !== null && total.mode === "added" ? (
+        {total !== null && total.vatMode === "added" ? (
           <View style={styles.line}>
-            <Text style={[styles.small, { color: palette.secondaryText }]}>{`VAT ${pctWords(total.ratePct)}`}</Text>
+            <Text style={[styles.small, { color: palette.secondaryText }]}>{`VAT ${pctWords(total.vatRatePct)}`}</Text>
             <Text style={[styles.small, { color: palette.primaryText }]}>{money(total.taxMinor)}</Text>
           </View>
         ) : null}
-        {total !== null ? (
+        {totalWords !== null ? (
           <View style={styles.line}>
             <Text style={[styles.totalText, { color: palette.primaryText }]}>Total</Text>
             <Text style={[styles.totalText, { color: palette.primaryText }]}>{totalWords}</Text>
