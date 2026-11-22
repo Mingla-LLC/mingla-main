@@ -52,6 +52,8 @@ import { openMapsTarget } from "../../utils/openMapsTarget";
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import { postHogService } from "../../services/postHogService";
 import { PURCHASE_SHEET_KEYBOARD_TOOLBAR } from "../purchases/SheetKeyboardDoneBar";
+// issue #3281 S6 — the add-ons on the guest's own RSVP (its own read).
+import { RsvpPassAddOns } from "./RsvpPassAddOns";
 
 interface RsvpPassSheetProps {
   visible: boolean;
@@ -530,6 +532,8 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
             </Pressable>
           </View>
         ) : null}
+
+        <RsvpPassAddOns rsvpId={row.rsvpId} enabled={visible && !isGuest && !isPending} />
 
         {!isGuest ? <RsvpPartyInvites guests={partyGuests} message={inviteMessage} /> : null}
         {isGuest && canBring && row.guestId !== null ? (
