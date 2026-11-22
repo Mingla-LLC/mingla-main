@@ -1,7 +1,8 @@
 // @ts-nocheck — Deno-runtime locale suite; app-mobile's tsc sweep has no Deno globals.
 const localesRoot = new URL("../locales/", import.meta.url);
 const locales = ["ar", "bin", "bn", "de", "el", "en", "es", "fr", "ha", "he", "hi", "id", "ig", "it", "ja", "ko", "ms", "nl", "pl", "pt", "ro", "ru", "sv", "th", "tr", "uk", "vi", "yo", "zh"] as const;
-const pluralStems = ["filters.show", "count.events", "count.experiences", "count.trips", "count.stays", "guests.value", "card.type.stops"] as const;
+// TEST-MOD-APPROVED #4490 (06-W6a): the Venues count is a plural stem like the other kinds.
+const pluralStems = ["filters.show", "count.events", "count.experiences", "count.trips", "count.stays", "count.venues", "guests.value", "card.type.stops"] as const;
 const coachKeys = ["coach.step4.title", "coach.step4.body_all", "coach.step4.body_subset", "coach.step5.title", "coach.step5.body", "coach.list_two", "coach.list_three", "spotlight.step_counter"] as const;
 
 function selectedDiscoverKey(key: string): boolean {

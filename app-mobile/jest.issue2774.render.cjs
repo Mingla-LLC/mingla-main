@@ -172,6 +172,9 @@ module.exports = {
     // issue #4490 Explorer W5 — deck analytics for hosted venues (is_hosted_venue,
     // deck_lead, venue_id, position_in_deck; venue_checkout_finished).
     "**/__tests__/issue_4490_w5_deck_analytics.implementor.test.ts",
+    // issue #4490 Explorer W6a — Venues in Discover: the kind, the venue card
+    // (model, route with ?tab=, mounted variant), Type of place chips, wiring.
+    "**/__tests__/issue_4490_w6a_discover_venues.implementor.render.test.tsx",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.

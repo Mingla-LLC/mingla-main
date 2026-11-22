@@ -12,6 +12,8 @@
 --
 -- TEST-MOD-APPROVED #4490 (06-W5): the two hosted deck wrappers (20280809460490) are internal
 -- (service role only).
+-- TEST-MOD-APPROVED #4490 (06-W6a): the Discover venue helpers (20280809461490) are internal, and
+-- the four Discover v2 readers that migration patches are listed (internal, as #4073 made them).
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -36,6 +38,10 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('business_publish_rsvp_draft(uuid,jsonb,integer)', 'public'),
   ('claim_attendance_by_verified_identity(uuid)', 'internal'),
   ('correct_pending_venue_identity(uuid,uuid,uuid,timestamp with time zone,text,text,text,text,text,text,text,uuid,text,text,text,uuid)', 'signed_in'),
+  ('discover_v2_city_context(text[],double precision,double precision,double precision,text)', 'internal'),
+  ('discover_v2_facets_exact(text[],double precision,double precision,double precision,text,text,jsonb,text)', 'internal'),
+  ('discover_v2_items(text,text[],double precision,double precision,double precision,text,jsonb,integer,integer)', 'internal'),
+  ('discover_v2_nearest_city(double precision,double precision)', 'internal'),
   ('issue_1387_assert_stay_row_integrity()', 'helper'),
   ('issue_1387_stay_inventory_snapshot(uuid)', 'signed_in'),
   ('issue_1388_assert_reservation_scope()', 'helper'),
@@ -139,6 +145,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_damage_deposit_state(uuid)', 'internal'),
   ('issue_4490_day_closed(uuid,date)', 'internal'),
   ('issue_4490_deposit_plan(uuid,uuid,bigint)', 'internal'),
+  ('issue_4490_discover_venue_candidates(text[],double precision,double precision,double precision)', 'internal'),
   ('issue_4490_duplicate_offer(uuid,uuid,text)', 'signed_in'),
   ('issue_4490_enqueue_offer_event(stay_reservation_events,stay_reservation_groups)', 'internal'),
   ('issue_4490_enqueue_waitlist_message(uuid,text)', 'internal'),
@@ -363,6 +370,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_venue_page_row(uuid)', 'internal'),
   ('issue_4490_venue_service_date(uuid,timestamp with time zone)', 'internal'),
   ('issue_4490_venue_timezone(uuid)', 'internal'),
+  ('issue_4490_venue_type_chip_keys()', 'internal'),
   ('issue_4490_venue_upcoming_events(uuid,timestamp with time zone)', 'internal'),
   ('issue_4490_waitlist_actor_ok(venue_waitlist,bytea,uuid)', 'helper'),
   ('issue_4490_waitlist_position(uuid)', 'internal'),

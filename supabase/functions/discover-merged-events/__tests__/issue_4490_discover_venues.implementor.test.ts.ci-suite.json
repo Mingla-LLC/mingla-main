@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/discover-merged-events/__tests__/issue_4490_discover_venues.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-discover-venues",
+  "profile": "deno-2-unit",
+  "permissions": [
+    "env",
+    "read"
+  ]
+}

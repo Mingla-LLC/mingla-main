@@ -36,7 +36,8 @@ test("A-1423 database negative space excludes non-public and consumed supply", (
 // [TEST-MOD-APPROVED #4073] Coach ownership is now generic to the pill row and
 // filter button; no kind, including Stays, may gain a private coach branch.
 test("A-1423 keeps Stays on the generic one-page coach and kind rails", () => {
-  assert.match(feedTypes, /DISCOVER_KIND_ORDER\s*=\s*\[\s*"events",\s*"experiences",\s*"trips",\s*"stays",?\s*\]/);
+  // TEST-MOD-APPROVED #4490 (06-W6a): Venues is appended after Stays (existing order unchanged).
+  assert.match(feedTypes, /DISCOVER_KIND_ORDER\s*=\s*\[\s*"events",\s*"experiences",\s*"trips",\s*"stays",(?:\s*\/\/[^\n]*)?\s*"venues",?\s*\]/);
   assert.equal([...discover.matchAll(/useCoachMark\(/g)].length, 2);
   assert.match(discover, /const coachPills = useCoachMark\(4, 18\)/);
   assert.match(discover, /const coachFilters = useCoachMark\(5, 18\)/);

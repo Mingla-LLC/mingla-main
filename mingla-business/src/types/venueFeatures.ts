@@ -8,6 +8,8 @@
  * client can explain dependencies before it asks the server to act.
  */
 
+import { VENUE_TYPE_LABELS } from "@mingla/brand-rendering/venueTypeLabels";
+
 export type VenueFeatureKey =
   | "entry"
   | "group_packages"
@@ -228,58 +230,59 @@ export interface VenueTypeOption {
   preset: readonly VenueFeatureKey[];
 }
 
+// #4490 Explorer W6: labels come from the shared owner (same words in Discover and the deck).
 export const VENUE_TYPES: readonly VenueTypeOption[] = [
   {
     key: "restaurant",
-    label: "Restaurant",
+    label: VENUE_TYPE_LABELS.restaurant,
     description: "Food and drink, tables by time",
     preset: ["table_reservations", "waitlist", "menu", "table_ordering"],
   },
   {
     key: "play",
-    label: "Play and games",
+    label: VENUE_TYPE_LABELS.play,
     description: "Games, activities and family fun",
     preset: ["entry", "group_packages", "private_hire", "menu", "table_ordering", "events_here"],
   },
   {
     key: "bar_lounge",
-    label: "Bar and lounge",
+    label: VENUE_TYPE_LABELS.bar_lounge,
     description: "Drinks, tables and nights out",
     preset: ["table_reservations", "min_spend_tables", "private_hire", "menu", "table_ordering", "events_here"],
   },
   {
     key: "club",
-    label: "Club",
+    label: VENUE_TYPE_LABELS.club,
     description: "Entry, tables and big nights",
     preset: ["entry", "table_reservations", "min_spend_tables", "menu", "table_ordering", "events_here"],
   },
   {
     key: "cafe",
-    label: "Cafe",
+    label: VENUE_TYPE_LABELS.cafe,
     description: "Coffee, food, day passes and a room to book",
     preset: ["entry", "by_the_hour", "menu", "table_ordering", "events_here"],
   },
   {
     key: "coworking",
-    label: "Coworking",
+    label: VENUE_TYPE_LABELS.coworking,
     description: "Desks, rooms and day passes",
     preset: ["entry", "by_the_hour", "private_hire", "memberships"],
   },
   {
     key: "event_space",
-    label: "Event space",
+    label: VENUE_TYPE_LABELS.event_space,
     description: "Halls, gardens and rooms to hire",
     preset: ["private_hire", "events_here"],
   },
   {
     key: "creative_and_arts",
-    label: "Creative and arts",
+    label: VENUE_TYPE_LABELS.creative_and_arts,
     description: "Studios, galleries and performance",
     preset: ["entry", "by_the_hour", "private_hire", "memberships", "events_here"],
   },
   {
     key: "stay",
-    label: "Stay",
+    label: VENUE_TYPE_LABELS.stay,
     description: "Hotels, resorts and short stays",
     preset: ["stays"],
   },

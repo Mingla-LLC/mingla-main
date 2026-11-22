@@ -404,7 +404,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 explorer W3: registered migration 20280809454490 (deck card facts) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
 // issue #4490 W3 fix 1: registered migration 20280809459490 (one grant decision per venue function) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
 // issue #4490 explorer W5: hosted deck wrappers migration + suite registered; re-sealed.
-export const BOOTSTRAP_SHA256 = "8d0f7efc07742729735482ec67072b9edb6f8206ae38abe38e5d313a4bfcf7bb";
+// issue #4490 explorer W6a: Discover venues migration + suite registered; re-sealed.
+export const BOOTSTRAP_SHA256 = "9bd5a97809e1fc02a97b92bf35e9ed0b255f8784909fa06aed3860260609c813";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

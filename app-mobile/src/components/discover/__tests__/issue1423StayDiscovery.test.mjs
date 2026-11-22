@@ -15,7 +15,8 @@ const feedTypes = read("../../../types/discoverFeed.ts");
 // [TEST-MOD-APPROVED #4073] The one-page Discover architecture preserves Stay
 // as one generic feed kind instead of retaining the retired inline tab branches.
 test("#1423 keeps Stays in the ordered one-page Discover kind contract", () => {
-  assert.match(feedTypes, /DISCOVER_KIND_ORDER\s*=\s*\[\s*"events",\s*"experiences",\s*"trips",\s*"stays",?\s*\]/);
+  // TEST-MOD-APPROVED #4490 (06-W6a): Venues is appended after Stays (existing order unchanged).
+  assert.match(feedTypes, /DISCOVER_KIND_ORDER\s*=\s*\[\s*"events",\s*"experiences",\s*"trips",\s*"stays",(?:\s*\/\/[^\n]*)?\s*"venues",?\s*\]/);
   assert.match(discover, /DISCOVER_KIND_ORDER\.filter/);
   assert.match(discover, /<DiscoverHeader[\s\S]*visibleKinds=\{visibleKinds\}[\s\S]*onKindSelect=\{switchKind\}/);
   assert.match(store, /discoverSelectedKind: import\('\.\.\/types\/discoverFeed'\)\.DiscoverKind \| null/);

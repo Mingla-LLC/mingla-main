@@ -661,7 +661,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 explorer W3: registered migration 20280809454490 (deck card facts) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 W3 fix 1: registered migration 20280809459490 (one grant decision per venue function) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 explorer W5: hosted deck wrappers migration + suite registered; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "88a89db0b5afc9c569e0408b64d970533c3b20856537c3b843af529837bcdf4e";
+// issue #4490 explorer W6a: Discover venues migration + suite registered; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "b0ca1447cc5c2edd358f71e8f6931c758302e8e0a4535636f9c2be8efc591b05";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

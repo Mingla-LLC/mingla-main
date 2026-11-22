@@ -3,7 +3,7 @@ import { resolveTmClassification } from "../_shared/ticketmasterClassifications.
 import { discoverCurrency } from "../_shared/discoverCurrency.ts";
 import { discoverPriceBandCatalog, discoverPriceBands, type DiscoverPriceBandSpec } from "../_shared/discoverPriceBands.ts";
 import { buildDiscoverV2Key } from "./_v2_key.ts";
-import { DISCOVER_KINDS, type DiscoverV2Request } from "./_v2_types.ts";
+import { DISCOVER_KINDS, VENUE_TYPE_CHIP_KEYS, type DiscoverV2Request } from "./_v2_types.ts";
 import { collapseTicketmasterOccurrences, resolveTicketmasterPool, ticketmasterWindowIsCapped, type TicketmasterPool } from "./_v2_tm_pool.ts";
 
 type RpcClient = {
@@ -17,6 +17,7 @@ const ALLOWED_FILTERS: Record<string, readonly string[]> = {
   experiences: ["when", "goodFor", "price"],
   trips: ["destination", "leavingFrom", "when"],
   stays: ["checkIn", "guests", "propertyKinds"],
+  venues: ["venueTypes"],
 };
 
 function invalid(request: DiscoverV2Request, bands: DiscoverPriceBandSpec | null): string | null {
@@ -25,6 +26,8 @@ function invalid(request: DiscoverV2Request, bands: DiscoverPriceBandSpec | null
   if (!DISCOVER_KINDS.includes(filters.kind)) return "invalid_kind";
   const extra = Object.keys(filters.f).find((key) => !ALLOWED_FILTERS[filters.kind].includes(key));
   if (extra) return `invalid_filter:${extra}`;
+  if (filters.kind === "venues" && filters.f.venueTypes !== undefined &&
+    (!Array.isArray(filters.f.venueTypes) || !isSubsetOf(filters.f.venueTypes, VENUE_TYPE_CHIP_KEYS as readonly string[]))) return "invalid_filter:venueTypes";
   if (filters.kind === "stays" && filters.f.guests !== undefined && (!Number.isInteger(filters.f.guests) || filters.f.guests < 1 || filters.f.guests > 8)) return "guests_out_of_range";
   if (filters.kind === "events") {
     if (filters.f.partyTypes && !isSubsetOf(filters.f.partyTypes, PARTY_TYPE_SLUGS as readonly string[])) return "party_type_slugs_not_canonical";

@@ -12,6 +12,8 @@ const FIELD_BY_GROUP: Record<DiscoverFacetGroup["id"], string> = {
   checkIn: "checkIn",
   propertyKind: "propertyKinds",
   guests: "guests",
+  // #4490 Explorer W6a.
+  venueType: "venueTypes",
 };
 
 export function discoverFilterSelectionCount(filters: DiscoverFiltersV2): number {
@@ -30,6 +32,8 @@ export function discoverCountIsCapped(
 export function selectedDiscoverFilterLabels(
   filters: DiscoverFiltersV2,
   groups: DiscoverFacetGroup[],
+  /** #4490 Explorer W6a: a label owner for groups the server sends as ids (venue types). */
+  labelFor?: (groupId: DiscoverFacetGroup["id"], optionId: string) => string | null,
 ): string[] {
   const out: string[] = [];
   for (const group of groups) {
@@ -37,7 +41,7 @@ export function selectedDiscoverFilterLabels(
     const value = (filters.f as Record<string, unknown>)[field];
     for (const option of group.options) {
       if (value === option.id || (Array.isArray(value) && value.includes(option.id))) {
-        out.push(option.label ?? option.id);
+        out.push(labelFor?.(group.id, option.id) ?? option.label ?? option.id);
       }
     }
   }

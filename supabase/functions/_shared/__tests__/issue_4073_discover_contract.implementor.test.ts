@@ -69,7 +69,8 @@ Deno.test("#4073 rejects every malformed enum domain with 400 before dispatch", 
   };
   const invalidDiscriminants = [
     { label: "operation", request: { ...base, op: "delete", filters: { kind: "events", f: {} } } },
-    { label: "kind", request: { ...base, filters: { kind: "venues", f: {} } } },
+    // TEST-MOD-APPROVED #4490 (06-W6a): "venues" is now a real kind; an unknown kind is still refused.
+    { label: "kind", request: { ...base, filters: { kind: "places", f: {} } } },
   ];
   for (const { label, request } of invalidDiscriminants) {
     const failure = discoverV2ValidationFailure(request);
@@ -90,6 +91,9 @@ Deno.test("#4073 rejects every malformed enum domain with 400 before dispatch", 
     { label: "stay check-in", filters: { kind: "stays", f: { checkIn: "this_month" } } },
     { label: "stay property kind", filters: { kind: "stays", f: { propertyKinds: ["villa"] } } },
     { label: "stay guests", filters: { kind: "stays", f: { guests: 9 } } },
+    // #4490 Explorer W6a: venue types are the eight chip keys ("stay" is not a chip).
+    { label: "venue type", filters: { kind: "venues", f: { venueTypes: ["stay"] } } },
+    { label: "venue type list", filters: { kind: "venues", f: { venueTypes: "club" } } },
     { label: "extra filter", filters: { kind: "events", f: { audience: "everyone" } } },
     { label: "timezone", filters: { kind: "events", f: {} }, deviceTz: "Mars/Olympus" },
   ];
@@ -104,6 +108,7 @@ Deno.test("#4073 rejects every malformed enum domain with 400 before dispatch", 
     { kind: "experiences", f: { when: "tomorrow", goodFor: ["adventurous", "first-date", "romantic", "group-fun"], price: ["free", "band_3"] } },
     { kind: "trips", f: { destination: "place:destination", leavingFrom: "place:departure", when: "next_month" } },
     { kind: "stays", f: { checkIn: "tonight", guests: 8, propertyKinds: ["hotel", "resort", "guest_house", "lodge", "serviced_apartment", "short_stay_apartment", "other"] } },
+    { kind: "venues", f: { venueTypes: ["restaurant", "bar_lounge", "club", "cafe", "play", "coworking", "event_space", "creative_and_arts"] } },
   ];
   for (const filters of valid) {
     assertEquals(discoverV2ValidationFailure({ ...base, filters }), null, `${filters.kind} valid controls pass`);
