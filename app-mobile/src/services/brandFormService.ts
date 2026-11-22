@@ -431,10 +431,9 @@ export async function submitBrandForm(body: SubmitBrandFormBody): Promise<Submit
 }
 
 /**
- * R2.11 — tell the server this phone can open the form screen.
- * [TRANSITIONAL] #4541 wave 4 server: `brand_form_report_capability` arrives
- * with migration M-B; until then the call fails and is ignored (logged once by
- * the caller). Exit: wave 4 commits the RPC.
+ * R2.11 — tell the server this phone can open the form screen
+ * (`brand_form_report_capability`, migration M-B). A failure is ignored by the
+ * caller and logged once.
  */
 export async function reportFormCapability(platform: string, appVersion: string): Promise<void> {
   const { error } = await supabase.rpc("brand_form_report_capability", {
