@@ -821,9 +821,7 @@ export const archiveBrandForm = (formId: string): Promise<BrandFormStatus> =>
 /** #4541 R8.3: "Invited door staff can too" (event manager and up; the server checks). */
 export async function setBrandFormDoorInvited(formId: string, on: boolean): Promise<boolean> {
   const supabase = await getSupabase();
-  // [TRANSITIONAL] #4541 wave 1 server — `biz_brand_form_set_door_invited(p_form_id, p_on)`
-  // (M-A). The reply shape is not fixed by the spec: a `doorFullAnswersInvited`
-  // boolean is read when present, else the requested value. Exit: M-A on the branch.
+  // M-A `biz_brand_form_set_door_invited(p_form_id, p_on)` replies `{doorFullAnswersInvited}`.
   const { data, error } = await supabase.rpc("biz_brand_form_set_door_invited", {
     p_form_id: formId,
     p_on: on,
@@ -1030,8 +1028,7 @@ export async function fetchGuestAnswers(
   subject: { kind: GuestAnswersSubjectKind; id: string },
 ): Promise<GuestAnswersCardData> {
   const supabase = await getSupabase();
-  // [TRANSITIONAL] #4541 wave 1 server — `biz_brand_form_guest_answers(p_event_id,
-  // p_subject jsonb {kind, id})` (M-A, R1.9). Exit: M-A on the branch (T-42 green).
+  // M-A `biz_brand_form_guest_answers(p_event_id, p_subject jsonb {kind, id})` (R1.9).
   const { data, error } = await supabase.rpc("biz_brand_form_guest_answers", {
     p_event_id: eventId,
     p_subject: { kind: subject.kind, id: subject.id },
@@ -1070,9 +1067,8 @@ export const DOOR_READS_PAGE = 50;
 
 export async function fetchDoorReads(eventId: string, before: string | null = null): Promise<DoorReadRow[]> {
   const supabase = await getSupabase();
-  // [TRANSITIONAL] #4541 wave 1 server — `biz_brand_form_door_reads(p_event_id,
-  // p_limit, p_before)` returning `[{at, actorName, guestName, via, result}]`
-  // (M-A, R8.3). Exit: M-A on the branch (T-42 green).
+  // M-A `biz_brand_form_door_reads(p_event_id, p_limit, p_before)` returns
+  // `[{at, actorName, guestName, via, result}]` (R8.3).
   const { data, error } = await supabase.rpc("biz_brand_form_door_reads", {
     p_event_id: eventId,
     p_limit: DOOR_READS_PAGE,

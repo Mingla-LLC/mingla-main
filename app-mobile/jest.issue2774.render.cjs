@@ -212,5 +212,8 @@ module.exports = {
     "**/__tests__/deepLink.form.issue4541.test.ts",
     "**/__tests__/nativeCheckout.brandForm.issue4541.test.ts",
     "**/__tests__/brandFormService.issue4541.test.ts",
+    // issue #4541 A3 — the RSVP success popup hands its close to the
+    // "After they RSVP" block: Answer now closes it, then opens the form.
+    "**/__tests__/rsvpFormHandoff.issue4541.test.tsx",
   ],
 };

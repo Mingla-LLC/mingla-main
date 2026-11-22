@@ -22,9 +22,8 @@ export const fetchPublicRsvpBrandForm = async (
   // Loaded on use: the client is created at module scope in ./supabase, and
   // the public page's render suites mount this page without a backend.
   const { supabase } = await import("./supabase");
-  // [TRANSITIONAL] #4541 wave 1 server — `page_form` returns exactly the
-  // `public_brand_form_for_event` payload as its body (R1.14). Exit: the W1
-  // edge op is on the branch and its Deno test (T-43) is green.
+  // `page_form` returns the `public_brand_form_for_event` payload as its body
+  // (R1.14), plus a `botTicket` the parser ignores.
   const { data, error } = await supabase.functions.invoke("brand-form-submit", {
     body: { op: "page_form", eventId },
   });

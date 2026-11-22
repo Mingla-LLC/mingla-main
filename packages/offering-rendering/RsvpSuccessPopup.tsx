@@ -96,8 +96,11 @@ export interface RsvpSuccessPopupProps {
    * #4541 R1.3 / R2.8 — the "After they RSVP" hand-off block, rendered by the
    * host app (web: the forms owner's PurchaseFormHandoff; app: its block) and
    * drawn under the status. This package imports nothing from forms.
+   * A function receives this popup's own close, so "Answer now" can close the
+   * popup before it opens the form (never a form under a modal), and "Later"
+   * can close it too. A plain node still works.
    */
-  formHandoff?: React.ReactNode;
+  formHandoff?: RsvpFormHandoffSlot;
   onDownloadPass?: (
     credential: RsvpPassCredential,
     recovery: RsvpAnonymousRecovery | null,
@@ -105,6 +108,22 @@ export interface RsvpSuccessPopupProps {
   /** issue #4508 1.15 — host copy / share for "Send it yourself too". */
   onCopyText?: (text: string) => void | Promise<void>;
   onShareText?: (text: string) => void | Promise<void>;
+}
+
+/**
+ * #4541 A3 — the hand-off slot: a node, or a render function given the
+ * popup's close. Exported for the host apps' types and tests.
+ */
+export type RsvpFormHandoffSlot =
+  | React.ReactNode
+  | ((close: () => void) => React.ReactNode);
+
+/** Resolve the slot to a node; a function is called with the popup's close. */
+export function resolveFormHandoff(
+  slot: RsvpFormHandoffSlot | undefined,
+  close: () => void,
+): React.ReactNode {
+  return typeof slot === "function" ? slot(close) : slot;
 }
 
 const Row: React.FC<{
@@ -154,6 +173,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   if (details === null) return null;
+  const handoffNode = resolveFormHandoff(formHandoff, onClose);
 
   const eligibleCredentials = details.credentials.filter(
     (item: RsvpPassCredential) => item.qrCode !== null,
@@ -286,9 +306,9 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
               {title}
             </Text>
 
-            {formHandoff !== undefined && formHandoff !== null ? (
+            {handoffNode !== undefined && handoffNode !== null && handoffNode !== false ? (
               <View style={styles.formHandoffWrap} testID="issue-4541-rsvp-form-handoff">
-                {formHandoff}
+                {handoffNode}
               </View>
             ) : null}
 

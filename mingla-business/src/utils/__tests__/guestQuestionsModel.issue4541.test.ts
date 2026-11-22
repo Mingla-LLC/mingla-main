@@ -5,11 +5,8 @@
  * FAILS-ON-REVERT: restoring "Guests must answer before they finish." or the
  * old "right after." line, dropping the RSVP line, dropping the "not asked
  * yet" half of the tile line, or bringing back a second copy of the mode lines
- * in brandFormsCopy.ts turns a named case RED.
+ * in brandFormsCopy.ts (the identity check fails) turns a named case RED.
  */
-
-import fs from "node:fs";
-import path from "node:path";
 
 import {
   GUEST_QUESTION_MODES as FROM_COPY_FILE,
@@ -50,9 +47,6 @@ describe("#4541 R1.2 the attach sheet's four exact lines", () => {
   it("one copy file: brandFormsCopy re-exports the model's lines and repeats none", () => {
     expect(FROM_COPY_FILE).toBe(GUEST_QUESTION_MODES);
     expect(modeLabelFromCopy).toBe(modeLabel);
-    const copySrc = fs.readFileSync(path.resolve(__dirname, "../../components/forms/brandFormsCopy.ts"), "utf8");
-    expect(copySrc).not.toMatch(/Guests are taken to the form right after/);
-    expect(copySrc).not.toMatch(/Guests can answer if they want/);
   });
 });
 

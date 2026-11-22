@@ -317,6 +317,8 @@ export const FORM_REQUEST_LOG_COPY = {
     no_contact: "no phone or email on file",
     sms_opted_out: "opted out of texts",
     answered: "already answered",
+    /** #4541 R1.4: the server's name since the current-holder rule; `not_a_guest` stays for older rows. */
+    not_current: "no longer going",
     not_a_guest: "no longer going",
     form_closed: "the form closed",
     expired: "not delivered within a day",

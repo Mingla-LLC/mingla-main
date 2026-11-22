@@ -234,6 +234,11 @@ import {
 } from "../../components/expandedCard/ticketDayScope";
 import { ticketsWithNoDateOnSale } from "@mingla/offering-rendering/noDateOnSale";
 
+// #4541 A3 — "After they RSVP": the hand-off block inside the shared RSVP
+// success popup (the same block as the cart's success panel).
+const RsvpFormHandoffBlock = React.lazy(
+  () => import("../../components/forms/FormHandoffBlock"),
+);
 const RsvpBrandFormQuestions = React.lazy(
   () => import("../../components/forms/RsvpBrandFormQuestions"),
 );
@@ -1105,6 +1110,8 @@ export default function ConsumerEventDetailScreen({
     () => rsvpFormMissingRequiredIds(rsvpBrandFormPage, rsvpFormAnswers),
     [rsvpBrandFormPage, rsvpFormAnswers],
   );
+  // #4541 A3 — the RSVP the success popup is showing, for its hand-off block.
+  const [rsvpHandoffId, setRsvpHandoffId] = useState<string | null>(null);
   const rsvpBrandFormPayload = useMemo(
     () => rsvpFormReadFailed
       ? undefined
@@ -1169,6 +1176,12 @@ export default function ConsumerEventDetailScreen({
           content_kind: "event",
         });
       }
+      // #4541 A3 — an "After they RSVP" form hands off from the success popup.
+      setRsvpHandoffId(
+        rsvpAfterRsvpForm !== null && result.status === "going" && result.rsvpId.length > 0
+          ? result.rsvpId
+          : null,
+      );
       // #4541 — the guest's pending-questions list now has this RSVP.
       if (user !== null) {
         void queryClient.invalidateQueries({ queryKey: brandFormKeys.myPending(user.id) });
@@ -1195,7 +1208,7 @@ export default function ConsumerEventDetailScreen({
         guests: result.guests,
       };
     },
-    [seed, queryClient, rsvpBrandFormPayload, user],
+    [seed, queryClient, rsvpBrandFormPayload, rsvpAfterRsvpForm, user],
   );
 
   // issue #4508 1.2a — the live match under the guest number field.
@@ -1679,6 +1692,24 @@ export default function ConsumerEventDetailScreen({
         />
       </React.Suspense>
     );
+  // #4541 A3 — the popup hands its own close in, so "Answer now" closes the
+  // popup first and then opens /form/{formId} (event, as=rsvp, sid) over the
+  // event page; "Later" hides the block. The block shows only for this RSVP's
+  // unanswered live "After they RSVP" form, once.
+  const rsvpFormHandoff = useCallback(
+    (close: () => void): React.ReactNode =>
+      rsvpHandoffId === null || user === null ? null : (
+        <React.Suspense fallback={null}>
+          <RsvpFormHandoffBlock
+            kind="rsvp"
+            subjectId={rsvpHandoffId}
+            from="rsvp"
+            onBeforeAnswer={close}
+          />
+        </React.Suspense>
+      ),
+    [rsvpHandoffId, user],
+  );
   const rsvpState = useRsvpOfferingState({
     event: rsvpPublicEvent,
     brand: rsvpBrand,
@@ -1695,6 +1726,7 @@ export default function ConsumerEventDetailScreen({
     onDownloadPass: handleDownloadRsvpPass,
     onSubmit: rsvpOnSubmit,
     questionsNode: rsvpQuestionsNode,
+    formHandoff: rsvpFormHandoff,
     questionsRequired: rsvpFormReadPending || rsvpBrandFormPage?.mode === "required_step",
     questionsReady: !rsvpFormReadPending && rsvpFormMissing.length === 0,
     guestLookup: rsvpGuestLookup,

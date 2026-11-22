@@ -407,6 +407,8 @@ export type PurchaseFormHandoffProps =
       strip: "rsvp";
       /** The brand on the page, for "One more thing from {brand}." */
       brandName: string | null;
+      /** #4541 A3 — the RSVP success popup's close: "Later" closes the popup. */
+      onClose?: () => void;
     };
 
 /** Review fix 4: handed-off sessions this app run (native, or no storage). */
@@ -438,7 +440,7 @@ export function markPurchaseHandedOff(checkoutSessionId: string): void {
  */
 export const PurchaseFormHandoff: React.FC<PurchaseFormHandoffProps> = (props) =>
   props.handoff !== undefined ? (
-    <PreMintedFormHandoff handoff={props.handoff} brandName={props.brandName} />
+    <PreMintedFormHandoff handoff={props.handoff} brandName={props.brandName} onClose={props.onClose} />
   ) : (
     <CheckoutFormHandoff
       checkoutSessionId={props.checkoutSessionId}
@@ -452,13 +454,15 @@ export const formLinkPath = (formId: string, token: string): string =>
 
 /**
  * #4541 R1.3: "You're in. One more thing from {brand}." with Answer now and
- * Later. Both keep the RSVP confirmation on screen: on web the form opens in a
- * new tab; on a phone it opens the web link. After either, the block goes away.
+ * Later. Answer now keeps the RSVP confirmation on screen: on web the form opens
+ * in a new tab; on a phone it opens the web link. Later closes the popup when
+ * it handed its close in (#4541 A3). After either, the block goes away.
  */
 const PreMintedFormHandoff: React.FC<{
   handoff: { formId: string; token: string };
   brandName: string | null;
-}> = ({ handoff, brandName }) => {
+  onClose?: () => void;
+}> = ({ handoff, brandName, onClose }) => {
   const [settled, setSettled] = useState<boolean>(false);
   const [failed, setFailed] = useState<boolean>(false);
   if (settled) return null;
@@ -508,7 +512,10 @@ const PreMintedFormHandoff: React.FC<{
           label={CHECKOUT_FORM_COPY.later}
           variant="ghost"
           size="md"
-          onPress={() => setSettled(true)}
+          onPress={() => {
+            setSettled(true);
+            onClose?.();
+          }}
           testID="rsvp-form-handoff-later"
         />
       </View>

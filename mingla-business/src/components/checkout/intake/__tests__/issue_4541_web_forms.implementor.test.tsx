@@ -14,7 +14,8 @@
  *
  * FAILS-ON-REVERT: putting `supabase.rpc("public_brand_form_for_event")` back in
  * publicRsvpBrandForm.ts, dropping `answeredHere`, dropping the pre-minted
- * branch, or dropping `brandFormHandoff` from the RSVP reply turns a case RED.
+ * branch, dropping `brandFormHandoff` from the RSVP reply, or dropping the
+ * pre-minted Later's `onClose` call (A3) turns a case RED.
  */
 
 import React from "react";
@@ -173,6 +174,27 @@ describe("#4541 R1.3 After they RSVP", () => {
     expect(tree.root.findAll((n) => n.type === "Text" && n.props.children === "You're in. One more thing from the host.")).toHaveLength(1);
     const later = tree.root.findAll((n) => n.type === "Button" && n.props.testID === "rsvp-form-handoff-later")[0];
     act(() => later?.props.onPress());
+    expect(tree.toJSON()).toBeNull();
+    tree.unmount();
+  });
+
+  test("A3: inside the success popup, Later also closes the popup (the popup's own close)", () => {
+    const closed: string[] = [];
+    let r: { root: Node; toJSON: () => unknown; unmount: () => void } | null = null;
+    act(() => {
+      r = create(
+        <PurchaseFormHandoff
+          handoff={{ formId: FORM, token: "t" }}
+          strip="rsvp"
+          brandName="Sundown"
+          onClose={() => closed.push("popup")}
+        />,
+      );
+    });
+    const tree = r as unknown as { root: Node; toJSON: () => unknown; unmount: () => void };
+    const later = tree.root.findAll((n) => n.type === "Button" && n.props.testID === "rsvp-form-handoff-later")[0];
+    act(() => later?.props.onPress());
+    expect(closed).toEqual(["popup"]);
     expect(tree.toJSON()).toBeNull();
     tree.unmount();
   });

@@ -138,6 +138,7 @@ import type {
   RsvpAnonymousRecovery,
   RsvpConfirmationDetails,
   RsvpPassCredential,
+  RsvpFormHandoffSlot,
 } from "./RsvpSuccessPopup";
 import type { ChipInPanelState } from "./RsvpChipInPanel";
 import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
@@ -376,7 +377,7 @@ export interface RsvpOfferingBodyProps {
    * #4541 R1.3 — host-rendered "After they RSVP" hand-off, drawn in the success
    * popup (RsvpSuccessPopup `formHandoff`). Absent: no block.
    */
-  formHandoff?: React.ReactNode;
+  formHandoff?: RsvpFormHandoffSlot;
   /** Only required_step blocks Going/Maybe. Optional questions are still shown. */
   questionsRequired?: boolean;
   /** True once every currently visible required question has an answer. */

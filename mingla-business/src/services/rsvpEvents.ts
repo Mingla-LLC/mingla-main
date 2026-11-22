@@ -274,9 +274,8 @@ export const submitPublicRsvp = async (
             shortUrl: res.claim.shortUrl ?? null,
             code: res.claim.code ?? null,
           },
-    // [TRANSITIONAL] #4541 wave 1 server — public-submit-rsvp adds
-    // `brandFormHandoff: {formId, token} | null` to its 200 body (R1.3). Exit:
-    // the W1 edge field is on the branch (T-22 green).
+    // #4541 R1.3: public-submit-rsvp's 200 body carries
+    // `brandFormHandoff: {formId, token} | null`.
     brandFormHandoff:
       typeof handoff?.formId === "string" && typeof handoff.token === "string" && handoff.token.length > 0
         ? { formId: handoff.formId, token: handoff.token }

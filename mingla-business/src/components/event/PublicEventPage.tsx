@@ -1791,16 +1791,20 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         {rsvpAfterRsvpNotice}
       </Text>
     );
+  // #4541 A3 — the popup hands its own close in: "Later" closes the popup.
   const rsvpFormHandoffNode =
-    rsvpFormHandoff === null ? null : (
-      <React.Suspense fallback={null}>
-        <RsvpFormHandoff
-          handoff={rsvpFormHandoff}
-          strip="rsvp"
-          brandName={brand?.displayName ?? null}
-        />
-      </React.Suspense>
-    );
+    rsvpFormHandoff === null
+      ? null
+      : (close: () => void): React.ReactNode => (
+          <React.Suspense fallback={null}>
+            <RsvpFormHandoff
+              handoff={rsvpFormHandoff}
+              strip="rsvp"
+              brandName={brand?.displayName ?? null}
+              onClose={close}
+            />
+          </React.Suspense>
+        );
   // issue #4508 1.2a / 1.8 — the live match under the guest number field. A
   // signed-out visitor learns only whether the number is on Mingla.
   const rsvpGuestLookup = useCallback(
