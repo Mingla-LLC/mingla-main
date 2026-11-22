@@ -360,6 +360,24 @@ BEGIN
 END;
 $test$;
 
+-- T-TRIM (retest F3): every leading/trailing whitespace character is trimmed --
+DO $test$
+DECLARE
+  v jsonb;
+BEGIN
+  v := pg_temp.set_as(pg_temp.u('host'), pg_temp.u('event'),
+    U&'\00A0\0009 Ring 4B.' || E'\nSide door.\r\n\t ',
+    jsonb_build_array(jsonb_build_object('label', U&'\3000Map\00A0', 'url', E'\thttps://example.test/m\n')));
+  PERFORM pg_temp.ok(v->>'note' = E'Ring 4B.\nSide door.'
+    AND v->'items'->0 = '{"label":"Map","url":"https://example.test/m"}'::jsonb,
+    'T-TRIM tabs, line breaks and Unicode spaces are trimmed; interior line breaks stay: ' || v::text);
+  v := pg_temp.set_as(pg_temp.u('host'), pg_temp.u('event'), E' \n\t\r ', '[{"label":"Map","url":"https://example.test/m"}]');
+  PERFORM pg_temp.ok(v->'note' = 'null'::jsonb, 'T-TRIM a whitespace-only note is no note');
+  v := pg_temp.set_as(pg_temp.u('host'), pg_temp.u('event'), NULL, E'[{"label":"Map\\tTwo","url":"https://example.test/m"}]');
+  PERFORM pg_temp.ok(v::text LIKE '"ERR 22023 guest_pack_items_invalid%', 'T-TRIM a tab inside a label is refused');
+END;
+$test$;
+
 -- T-DELETE ----------------------------------------------------------------------
 DO $test$
 DECLARE

@@ -20,9 +20,29 @@
 --   * a live shared holder (#4473) of such an RSVP or plus-one.
 -- Pending, waitlisted, refunded and cancelled bookings never read it.
 
+-- ── 0. Whitespace trim ─────────────────────────────────────────────────────
+-- btrim() strips only spaces. Guest pack text is trimmed of every leading and
+-- trailing whitespace character: ASCII space, tab, CR, LF, VT, FF, and the
+-- Unicode spaces (no-break, ogham, en..hair, zero-width, line/paragraph
+-- separators, narrow no-break, medium mathematical, ideographic, BOM).
+CREATE OR REPLACE FUNCTION public.issue_4548_trim(p text)
+RETURNS text
+LANGUAGE sql IMMUTABLE
+SET search_path = ''
+AS $fn$
+  SELECT pg_catalog.regexp_replace(
+    p,
+    '^[\s\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+|[\s\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+$',
+    '', 'g');
+$fn$;
+
+COMMENT ON FUNCTION public.issue_4548_trim(text) IS
+  '#4548: trims all leading/trailing whitespace (ASCII and Unicode spaces) from guest pack text.';
+
 -- ── 1. Link validator ──────────────────────────────────────────────────────
--- An array of 0..5 objects with exactly {label, url}; label trimmed, 1..40
--- characters; url https with a dotted host, no whitespace, at most 2048.
+-- An array of 0..5 objects with exactly {label, url}; label trimmed of all
+-- whitespace, 1..40 characters, no tab or line break inside; url trimmed, https
+-- with a dotted host, no whitespace, at most 2048.
 CREATE OR REPLACE FUNCTION public.event_guest_pack_items_valid(p jsonb)
 RETURNS boolean
 LANGUAGE sql IMMUTABLE
@@ -40,7 +60,9 @@ AS $fn$
               IS DISTINCT FROM ARRAY['label', 'url']::text[] THEN false
          WHEN jsonb_typeof(e.item -> 'label') <> 'string'
            OR jsonb_typeof(e.item -> 'url') <> 'string' THEN false
-         ELSE (e.item ->> 'label') = btrim(e.item ->> 'label')
+         ELSE (e.item ->> 'label') = public.issue_4548_trim(e.item ->> 'label')
+          AND (e.item ->> 'label') !~ '[\t\n\r\v\f\u2028\u2029]'
+          AND (e.item ->> 'url') = public.issue_4548_trim(e.item ->> 'url')
           AND char_length(e.item ->> 'label') BETWEEN 1 AND 40
           AND char_length(e.item ->> 'url') <= 2048
           AND (e.item ->> 'url') ~ '^https://[^\s/]+\.[^\s]+$'
@@ -55,7 +77,8 @@ COMMENT ON FUNCTION public.event_guest_pack_items_valid(jsonb) IS
 -- ── 2. The table (no client grants) ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.event_guest_packs (
   event_id uuid PRIMARY KEY REFERENCES public.events(id) ON DELETE CASCADE,
-  note text CHECK (note IS NULL OR char_length(note) BETWEEN 1 AND 1000),
+  note text CHECK (note IS NULL OR (char_length(note) BETWEEN 1 AND 1000
+                                    AND note = public.issue_4548_trim(note))),
   items jsonb NOT NULL DEFAULT '[]'::jsonb
     CHECK (public.event_guest_pack_items_valid(items)),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -253,7 +276,8 @@ BEGIN
     RAISE EXCEPTION 'guest_pack_unsupported_event_type' USING ERRCODE = '22023';
   END IF;
 
-  v_note := NULLIF(btrim(p_note), '');
+  -- Every leading/trailing whitespace character goes; interior line breaks stay.
+  v_note := NULLIF(public.issue_4548_trim(p_note), '');
   IF v_note IS NOT NULL AND char_length(v_note) > 1000 THEN
     RAISE EXCEPTION 'guest_pack_note_too_long' USING ERRCODE = '22023';
   END IF;
@@ -269,8 +293,8 @@ BEGIN
                  AND jsonb_typeof(e.item -> 'label') = 'string'
                  AND jsonb_typeof(e.item -> 'url') = 'string'
                 THEN e.item || jsonb_build_object(
-                       'label', btrim(e.item ->> 'label'),
-                       'url', btrim(e.item ->> 'url'))
+                       'label', public.issue_4548_trim(e.item ->> 'label'),
+                       'url', public.issue_4548_trim(e.item ->> 'url'))
                 ELSE e.item END
            ORDER BY e.ord), '[]'::jsonb)
     INTO v_items
@@ -319,6 +343,7 @@ COMMENT ON FUNCTION public.event_guest_pack_exists(uuid) IS
   '#4548: whether an event has a guest pack. service_role only: emails add a pointer line and never read the pack.';
 
 -- ── 8. Grants ──────────────────────────────────────────────────────────────
+REVOKE ALL ON FUNCTION public.issue_4548_trim(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.event_guest_pack_items_valid(jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_4548_caller_holds_event(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.pg_my_event_guest_pack(uuid) FROM PUBLIC, anon;
@@ -326,6 +351,7 @@ REVOKE ALL ON FUNCTION public.biz_get_event_guest_pack(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.biz_set_event_guest_pack(uuid, text, jsonb) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.event_guest_pack_exists(uuid) FROM PUBLIC, anon, authenticated;
 
+GRANT EXECUTE ON FUNCTION public.issue_4548_trim(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.event_guest_pack_items_valid(jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_4548_caller_holds_event(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.pg_my_event_guest_pack(uuid) TO authenticated, service_role;
