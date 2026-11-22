@@ -24,6 +24,11 @@ export interface OneSignalNotificationData {
 
 export function initializeOneSignal(): void {}
 
+/** No push on web. Matches native `isPushAvailableInBuild`. */
+export function isPushAvailableInBuild(): boolean {
+  return false;
+}
+
 export function isOneSignalReady(): boolean {
   return false;
 }
@@ -45,15 +50,68 @@ export async function canRequestPushPermission(): Promise<boolean> {
   return false;
 }
 
-/**
- * No-op → resolves. The native twin reads the OS permission and syncs it to a
- * OneSignal tag; with no SDK on web there is no permission state to read and no
- * tag to sync. Matches native `syncPushPermissionTag(): Promise<void>`.
- *
- * THIS is the one `_layout.tsx:654` calls on every tab refocus — its absence was
- * the live TypeError.
- */
-export async function syncPushPermissionTag(): Promise<void> {}
+// #4549 S4: `syncPushPermissionTag` is gone from both twins (the native app no
+// longer writes the account-wide permission tag), so it is gone here too.
+
+// ─── #4549 S1: registration state and repair — no SDK on web ──────────────
+
+export type PushPermissionState = "granted" | "denied" | "not_determined";
+
+export interface PushRegistrationState {
+  sdkReady: boolean;
+  permission: PushPermissionState;
+  canPrompt: boolean;
+  subscriptionIdPresent: boolean;
+  subscriptionId: string | null;
+  tokenPresent: boolean;
+  optedIn: boolean;
+  externalId: string | null;
+}
+
+export type PushRepairStep = "relink" | "resubscribe";
+
+/** No SDK on web: never ready. Matches native `whenOneSignalReady`. */
+export async function whenOneSignalReady(_timeoutMs: number): Promise<boolean> {
+  return false;
+}
+
+/** Matches native `mapNativePermission`; pure, so the same answer on web. */
+export function mapNativePermission(
+  native: number,
+  canPrompt: boolean,
+): PushPermissionState {
+  if (native === 2 || native === 3 || native === 4) return "granted";
+  if (native === 1) return canPrompt ? "not_determined" : "denied";
+  return "not_determined";
+}
+
+/** No SDK on web: the not-ready state. */
+export async function readPushRegistrationState(): Promise<PushRegistrationState> {
+  return {
+    sdkReady: false,
+    permission: "not_determined",
+    canPrompt: false,
+    subscriptionIdPresent: false,
+    subscriptionId: null,
+    tokenPresent: false,
+    optedIn: false,
+    externalId: null,
+  };
+}
+
+/** No SDK on web: nothing to repair. */
+export async function repairPushRegistration(
+  _userId: string,
+  _step: PushRepairStep,
+  _isStillCurrent?: () => boolean,
+): Promise<boolean> {
+  return false;
+}
+
+/** No SDK on web: nothing to cancel; returns a no-op cleanup. */
+export function onOneSignalLogout(_listener: () => void): () => void {
+  return (): void => {};
+}
 
 export function logoutOneSignal(): void {}
 

@@ -54,12 +54,30 @@ describe("ORCH-1378 — appsFlyerService.web shim (T-20)", () => {
 });
 
 describe("ORCH-1380 — oneSignalService.web shim (T-21)", () => {
-  it("EXPORTS syncPushPermissionTag as a callable function (the live every-tab-refocus TypeError)", () => {
-    expect(typeof oneSignalWeb.syncPushPermissionTag).toBe("function");
+  // #4549 S4 rewrote this pair: the native twin no longer exports
+  // syncPushPermissionTag (the account-wide tag is gone) and _layout no longer
+  // calls it, so the web shim must not keep a dead export either. The S1
+  // exports the native twin gained are pinned as runtime calls below.
+  it("no longer exports syncPushPermissionTag, like its native twin (#4549 S4)", () => {
+    expect("syncPushPermissionTag" in oneSignalWeb).toBe(false);
   });
 
-  it("syncPushPermissionTag resolves without throwing, as _layout.tsx:654 calls it", async () => {
-    await expect(oneSignalWeb.syncPushPermissionTag()).resolves.toBeUndefined();
+  it("whenOneSignalReady resolves false on web, never waits (#4549 S1)", async () => {
+    await expect(oneSignalWeb.whenOneSignalReady(15000)).resolves.toBe(false);
+  });
+
+  it("readPushRegistrationState resolves the not-ready state on web (#4549 S1)", async () => {
+    await expect(oneSignalWeb.readPushRegistrationState()).resolves.toMatchObject({
+      sdkReady: false,
+      subscriptionId: null,
+      optedIn: false,
+    });
+  });
+
+  it("repairPushRegistration resolves false on web (#4549 S1)", async () => {
+    await expect(
+      oneSignalWeb.repairPushRegistration("user", "relink"),
+    ).resolves.toBe(false);
   });
 
   it("EXPORTS canRequestPushPermission as a callable function", () => {

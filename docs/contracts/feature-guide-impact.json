@@ -4689,7 +4689,15 @@
         "app-mobile/src/i18n/locales/zh/settings.json",
         "mingla-business/app/notifications.tsx",
         "mingla-business/src/components/notifications/BusinessNotificationsScreen.tsx",
-        "mingla-business/src/components/notifications/rowTap.ts"
+        "mingla-business/src/components/notifications/rowTap.ts",
+        "mingla-business/src/hooks/usePushPermissionMoment.ts",
+        "mingla-business/src/services/pushRegistrationHealth.ts",
+        "mingla-business/src/services/pushRegistrationHealth.web.ts",
+        "supabase/functions/host-push-reconcile/function-policy.json",
+        "supabase/functions/host-push-reconcile/index.ts",
+        "supabase/functions/host-push-reconcile/logic.ts",
+        "supabase/functions/host-push-reconcile/run.ts",
+        "supabase/migrations/20281124004549_issue_4549_host_push_device_health.sql"
       ]
     },
     {
@@ -5156,7 +5164,8 @@
         "mingla-business/app/auth/_layout.tsx",
         "mingla-business/app/auth/callback.tsx",
         "mingla-business/src/components/auth/SignedInNotFoundNotice.tsx",
-        "mingla-business/app/auth/index.tsx"
+        "mingla-business/app/auth/index.tsx",
+        "mingla-business/src/context/AuthContext.tsx"
       ]
     },
     {

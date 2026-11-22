@@ -27,9 +27,13 @@ const BASELINE_SHA256 =
 // [TEST-MOD-APPROVED #4238] the patch is read with --full-index: the short
 // blob ids git prints otherwise grow with the clone's object count (10 hex
 // locally, 9 in CI), so the same patch hashed differently per checkout.
+// #4549 (spec allowlist: the two loginToOneSignal call sites only): the
+// pushRegistrationHealth import, warm restore calling ensurePushRegistration
+// instead of the bare login, and SIGNED_IN adding it after the login. Three
+// hunks; nothing in the #1881 paths.
 const APPROVED_PATCH_SHA256 =
-  "70c22cd70b5b367a1217351feaf4d484d0b0cb9394440462f5612acb7a8279f2";
-const APPROVED_PATCH_HUNKS = 16;
+  "c376a8cc7c1126b42ef5d544dbd44bedcaee8bab98654caba1488443d4a20a51";
+const APPROVED_PATCH_HUNKS = 19;
 
 const SOURCE = fs.readFileSync(
   path.join(REPO_ROOT, AUTH_CONTEXT_PATH),

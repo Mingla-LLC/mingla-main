@@ -43,6 +43,8 @@ import {
   loginToOneSignal,
   logoutOneSignal,
 } from "../services/oneSignalService";
+// #4549 S1 — push registration check and repair (launch, sign-in).
+import { ensurePushRegistration } from "../services/pushRegistrationHealth";
 import {
   classifyBootSessionProbe,
   deriveBusinessAuthStatus,
@@ -673,8 +675,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           postHogService.identify(bootUser.id);
           // ORCH-0808-FOLLOWUP — RevenueCat identity on warm restore. Idempotent.
           revenueCatService.identify(bootUser.id);
-          // ORCH-0808-FOLLOWUP — OneSignal identity on warm restore. Idempotent.
-          loginToOneSignal(bootUser.id);
+          // #4549 S1 — OneSignal identity on warm restore: waits for the SDK
+          // (bounded), checks the link and subscription, repairs and reports.
+          // Replaces the bare login that returned silently before SDK start.
+          void ensurePushRegistration(bootUser.id, "launch");
         })();
       }
     };
@@ -857,6 +861,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               postHogService.identify(userForDeferred.id);
               revenueCatService.identify(userForDeferred.id);
               loginToOneSignal(userForDeferred.id);
+              void ensurePushRegistration(userForDeferred.id, "sign_in");
               if (!afEventFiredRef.current) {
                 afEventFiredRef.current = true;
                 void (async () => {
