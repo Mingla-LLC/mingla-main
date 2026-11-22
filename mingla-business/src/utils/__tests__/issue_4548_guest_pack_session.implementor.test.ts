@@ -21,12 +21,8 @@ import {
   blurGuestPackItemUrl,
   clearGuestPackFields,
   ensureGuestPackLoaded,
-  flushGuestPack,
   getGuestPackSession,
-  guestPackEventIdForDraft,
-  hasPendingGuestPack,
   moveGuestPackItem,
-  releaseGuestPackSession,
   removeGuestPackItem,
   resetAllGuestPackSessions,
   saveGuestPack,
@@ -34,6 +30,13 @@ import {
   setGuestPackItemUrl,
   setGuestPackNote,
 } from "../guestPackSession";
+// The screens only ever import the gate; it forwards to the working copy above.
+import {
+  flushGuestPack,
+  guestPackEventIdForDraft,
+  hasPendingGuestPack,
+  releaseGuestPackSession,
+} from "../guestPackGate";
 
 const fetchMock = fetchEventGuestPack as jest.Mock;
 const saveMock = saveEventGuestPack as jest.Mock;

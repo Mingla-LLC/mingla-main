@@ -28,12 +28,17 @@ describe("save-first wiring", () => {
     const src = read("src/components/event/EditPublishedScreen.tsx");
     expect(src).toMatch(/flushGuestPack\(guestPackId\)/);
     expect(src).toMatch(/if \(!result\.ok\) \{\s*showToast\(result\.message\);\s*return;/);
+    expect(src).toContain("onPress={handleSaveWithGuestPack}");
     expect(src).toContain("guestPackLiveEdit");
   });
 
   test("the Where step renders the editor under the address, not in a payload", () => {
     const where = read("src/components/event/CreatorStep3Where.tsx");
-    expect(where).toContain("<GuestPackEditor");
+    expect(where).toContain("<LazyGuestPackEditor");
+    // never a static import: the editor stays off the eager boot payload
+    expect(where).not.toMatch(/from "\.\/GuestPackEditor"/);
+    const lazy = read("src/components/event/LazyGuestPackEditor.tsx");
+    expect(lazy).toContain('import("./GuestPackEditor")');
     const wizard = read("src/components/event/EventCreatorWizard.tsx");
     // the pack never rides in the draft or publish payload
     expect(wizard).not.toMatch(/guestPack(Note|Items)/);

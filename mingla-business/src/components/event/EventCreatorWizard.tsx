@@ -160,7 +160,7 @@ import {
   guestPackEventIdForDraft,
   hasPendingGuestPack,
   releaseGuestPackSession,
-} from "../../utils/guestPackSession";
+} from "../../utils/guestPackGate";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { CreatorStep5Tickets } from "./LazyCreatorStep5Tickets";
 // issue #3827 — Step 6 loads lazily (see lazySettingsSteps.tsx).

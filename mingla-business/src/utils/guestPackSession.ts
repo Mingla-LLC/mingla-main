@@ -18,6 +18,11 @@ import {
   type SavedGuestPack,
 } from "../services/guestPackService";
 import {
+  notifyGuestPackChanged,
+  setGuestPackDriver,
+  type GuestPackSaveResult,
+} from "./guestPackGate";
+import {
   buildGuestPackPayload,
   checkGuestPackItem,
   checkGuestPackLink,
@@ -56,7 +61,6 @@ export const GUEST_PACK_FIX_BEFORE_SAVING_COPY =
   "Fix the guest pack links before saving.";
 
 const sessions = new Map<string, GuestPackSession>();
-const listeners = new Set<() => void>();
 let keyCounter = 0;
 
 const nextKey = (): string => {
@@ -65,7 +69,7 @@ const nextKey = (): string => {
 };
 
 function emit(): void {
-  for (const listener of Array.from(listeners)) listener();
+  notifyGuestPackChanged();
 }
 
 function put(next: GuestPackSession): void {
@@ -77,13 +81,6 @@ function patch(eventId: string, change: Partial<GuestPackSession>): void {
   const current = sessions.get(eventId);
   if (current === undefined) return;
   put({ ...current, ...change });
-}
-
-export function subscribeGuestPack(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
 }
 
 export function getGuestPackSession(eventId: string): GuestPackSession | undefined {
@@ -150,7 +147,7 @@ export function isGuestPackDirty(session: GuestPackSession | undefined): boolean
 }
 
 /** True when this event has typed pack changes the server does not have yet. */
-export function hasPendingGuestPack(eventId: string | null | undefined): boolean {
+function hasPendingGuestPack(eventId: string | null | undefined): boolean {
   if (eventId === null || eventId === undefined) return false;
   return isGuestPackDirty(sessions.get(eventId));
 }
@@ -278,10 +275,6 @@ export function restoreGuestPackFromBaseline(eventId: string): void {
   });
 }
 
-export type GuestPackSaveResult =
-  | { ok: true; saved: boolean }
-  | { ok: false; reason: "invalid" | "failed"; message: string };
-
 const inFlight = new Map<string, Promise<GuestPackSaveResult>>();
 
 /**
@@ -352,20 +345,6 @@ async function doSave(eventId: string): Promise<GuestPackSaveResult> {
   }
 }
 
-/**
- * The save-first gate for the main buttons: saves a changed pack and says
- * whether the host may go on. No pack, or nothing changed, is an instant yes.
- */
-export async function flushGuestPack(
-  eventId: string | null | undefined,
-): Promise<GuestPackSaveResult> {
-  if (eventId === null || eventId === undefined) return { ok: true, saved: false };
-  if (!hasPendingGuestPack(eventId) && !inFlight.has(eventId)) {
-    return { ok: true, saved: false };
-  }
-  return saveGuestPack(eventId);
-}
-
 export function releaseGuestPackSession(eventId: string | null | undefined): void {
   if (eventId === null || eventId === undefined) return;
   if (sessions.delete(eventId)) emit();
@@ -378,7 +357,16 @@ export function resetAllGuestPackSessions(): void {
   emit();
 }
 
-/** A wizard draft reaches the server on its first autosave; until then its id is local ("d_…"). */
-export function guestPackEventIdForDraft(draftId: string): string | null {
-  return draftId.startsWith("d_") ? null : draftId;
+async function flushOne(eventId: string): Promise<GuestPackSaveResult> {
+  if (!hasPendingGuestPack(eventId) && !inFlight.has(eventId)) {
+    return { ok: true, saved: false };
+  }
+  return saveGuestPack(eventId);
 }
+
+// Registers this working copy with the always-loaded gate the screens call.
+setGuestPackDriver({
+  hasPending: hasPendingGuestPack,
+  flush: flushOne,
+  release: releaseGuestPackSession,
+});

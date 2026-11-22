@@ -135,7 +135,7 @@ import {
   guestPackEventIdForDraft,
   hasPendingGuestPack,
   releaseGuestPackSession,
-} from "../../utils/guestPackSession";
+} from "../../utils/guestPackGate";
 import { CreatorStep4Cover } from "../event/CreatorStep4Cover";
 import { PublishErrorsSheet } from "../event/PublishErrorsSheet";
 // issue #3827 — Step 5 loads lazily (see ../event/lazySettingsSteps.tsx).

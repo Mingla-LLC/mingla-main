@@ -129,7 +129,7 @@ import {
   hasPendingGuestPack,
   releaseGuestPackSession,
   subscribeGuestPack,
-} from "../../utils/guestPackSession";
+} from "../../utils/guestPackGate";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheetLazy";
@@ -813,7 +813,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     (rsvpMode || isServerEditableOnlyPatch(currentPatch));
 
   // ---- Save flow ----
-  const proceedWithSave = useCallback((): void => {
+  const handleSavePress = useCallback((): void => {
     if (!rsvpMode && serverOrdersRead.status !== "ready") {
       showToast("Couldn't load ticket sales. Try again.");
       return;
@@ -910,9 +910,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     () => hasPendingGuestPack(guestPackId),
     () => false,
   );
-  const handleSavePress = useCallback((): void => {
+  const handleSaveWithGuestPack = useCallback((): void => {
     if (!hasPendingGuestPack(guestPackId)) {
-      proceedWithSave();
+      handleSavePress();
       return;
     }
     void flushGuestPack(guestPackId).then((result) => {
@@ -924,9 +924,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         showToast("Guest pack saved.");
         return;
       }
-      proceedWithSave();
+      handleSavePress();
     });
-  }, [guestPackId, proceedWithSave, currentPatch, showToast]);
+  }, [guestPackId, handleSavePress, currentPatch, showToast]);
 
   const invalidateServerEventCaches = useCallback((): void => {
     queryClient.invalidateQueries({
@@ -2203,7 +2203,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           ) : null}
           <Button
             label="Save changes"
-            onPress={handleSavePress}
+            onPress={handleSaveWithGuestPack}
             variant="primary"
             size="lg"
             fullWidth
