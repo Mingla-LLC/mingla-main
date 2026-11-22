@@ -390,7 +390,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281 S6 checkpoint 16 my RSVP add-ons: registered 20281122033281_issue_3281_my_rsvp_add_ons.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281122033281 on the filtered #1931 and #2117 replays; resealed.
 // #4522 checkpoint 22 renumbering: moved the branch's 14 migrations (20281120043281..20281122033281) to 20281123013281..20281123143281 above main's 20281121004541 and 20281121034420, same relative order; expectedFiles re-sorted in the #1857, #1931 and #2117 lanes and the filtered #1931/#2117 exact-filename skips renamed; re-sealed.
 // #4522 rework after tester FAIL (F1-F10): registered the three #4522 tester adversarial pg17 suites (flex_inflight_race, flex_alloc_rollover, discount_plan, with sidecars) in the #1931 and #2117 replay inventories and the #4523 calendar suite's same-day range test; no migration added; re-sealed.
-export const BOOTSTRAP_SHA256 = "707885312660345054aa5380ad3e2b755d684d588a4e24535bfc5662a72f7b1c";
+// #4522 second rework after retest FAIL (N1-N10): registered three #4522 implementor pg17 suites (safeupdate_lifecycle, overpayment_return, custom_discount_exact, with sidecars) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
+export const BOOTSTRAP_SHA256 = "021d1bb8ffd06d97460a10357390f1be92f93e843d323aa3245094782800b770";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -1956,7 +1956,8 @@
         "mingla-admin/src/lib/adminRefundError.js",
         "mingla-admin/src/lib/orderAddOnRefunds.js",
         "mingla-admin/src/services/adminMoneyActService.js",
-        "mingla-admin/src/services/adminMoneyService.js"
+        "mingla-admin/src/services/adminMoneyService.js",
+        "mingla-admin/src/lib/orderOverpayments.js"
       ]
     },
     {
@@ -5469,7 +5470,11 @@
         "packages/offering-rendering/tripPlanV2Contract.ts",
         "packages/offering-rendering/ticketQuotePlanV2Contract.ts",
         "packages/offering-rendering/TripPlanV2PublicSummary.tsx",
-        "supabase/functions/trip-balance-pay/function-policy.json"
+        "supabase/functions/trip-balance-pay/function-policy.json",
+        "supabase/functions/_shared/installments/overpaymentRefunds.ts",
+        "supabase/functions/_shared/installments/overpaymentLane.ts",
+        "supabase/functions/_shared/installments/paidInFullNotice.ts",
+        "supabase/functions/_shared/installments/installmentOpsAlert.ts"
       ]
     },
     {
@@ -5570,7 +5575,11 @@
       "paths": [
         "supabase/functions/_shared/installments/paystackInstallmentWebhook.ts",
         "supabase/functions/installment-pay-link/index.ts",
-        "supabase/migrations/20280809003645_issue_3645_payout_gaps.sql"
+        "supabase/migrations/20280809003645_issue_3645_payout_gaps.sql",
+        "supabase/functions/_shared/installments/overpaymentRefunds.ts",
+        "supabase/functions/_shared/installments/overpaymentLane.ts",
+        "supabase/functions/_shared/installments/paidInFullNotice.ts",
+        "supabase/functions/_shared/installments/installmentOpsAlert.ts"
       ]
     },
     {
