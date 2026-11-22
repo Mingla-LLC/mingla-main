@@ -378,9 +378,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       : null;
   const setupPart = setup ? setup.step : routeSetupPart;
   const websiteSetup = setup !== undefined;
-  // #2830 — Website setup has no tab bar, so nothing here clears one: the
+  // #2830 — Website setup has no tab bar, and neither has Ari embedded in
+  // Help & Support (#4420, withoutTabBar), so nothing here clears one: the
   // composer, its resting lift and the empty hero all read this one value.
-  const BOTTOM_NAV_CLEARANCE_PX = websiteSetup || withoutTabBar ? 0 : TAB_BAR_CLEARANCE_PX;
+  const noTabBar = websiteSetup || withoutTabBar;
+  const BOTTOM_NAV_CLEARANCE_PX = noTabBar ? 0 : TAB_BAR_CLEARANCE_PX;
   // An old address: setup lives on the one setup screen now.
   const legacySetupRoute =
     !setup &&
