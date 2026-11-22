@@ -23,69 +23,41 @@ export function lazyHostField<P extends HostFieldBase>(
   defaultPlaceholder: string,
 ): React.FC<P> {
   const Body = React.lazy(load);
-  const Field: React.FC<P> = (props) => {
+  // One component, no separate row module: this file sits in the Host web boot
+  // payload (#3281 boot room), so the loading row is drawn inline.
+  return (props) => {
     // A tap on the placeholder while the body loads is remembered and opens the
     // calendar the moment the body mounts.
     const [armed, setArmed] = useState(false);
+    const { label, disabled = false, testID } = props;
     return (
       <Suspense
         fallback={
-          <LoadingRow
-            label={props.label}
-            placeholder={props.placeholder ?? defaultPlaceholder}
-            disabled={props.disabled ?? false}
-            hasError={props.hasError ?? false}
-            testID={props.testID}
-            armed={armed}
-            onArm={() => setArmed(true)}
-          />
+          <View style={styles.host}>
+            <Text style={styles.label}>{label}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={label}
+              accessibilityState={{ busy: true, disabled }}
+              disabled={disabled}
+              onPress={() => setArmed(true)}
+              testID={testID === undefined ? undefined : `${testID}-loading`}
+              style={({ pressed }) => [
+                styles.row,
+                props.hasError ? styles.rowError : null,
+                // Pressed (or armed) wins over disabled, as before.
+                pressed || armed ? styles.rowPressed : disabled ? styles.rowDisabled : null,
+              ]}
+            >
+              <Text style={styles.rowPlaceholder}>{props.placeholder ?? defaultPlaceholder}</Text>
+            </Pressable>
+          </View>
         }
       >
         <Body {...props} openOnMount={armed} />
       </Suspense>
     );
   };
-  return Field;
-}
-
-function LoadingRow({
-  label,
-  placeholder,
-  disabled,
-  hasError,
-  testID,
-  armed,
-  onArm,
-}: {
-  label: string;
-  placeholder: string;
-  disabled: boolean;
-  hasError: boolean;
-  testID?: string;
-  armed: boolean;
-  onArm: () => void;
-}): React.ReactElement {
-  return (
-    <View style={styles.host}>
-      <Text style={styles.label}>{label}</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={{ busy: true, disabled }}
-        disabled={disabled}
-        onPress={onArm}
-        testID={testID === undefined ? undefined : `${testID}-loading`}
-        style={({ pressed }) => [
-          styles.row,
-          hasError ? styles.rowError : null,
-          disabled ? styles.rowDisabled : null,
-          pressed || armed ? styles.rowPressed : null,
-        ]}
-      >
-        <Text style={styles.rowPlaceholder}>{placeholder}</Text>
-      </Pressable>
-    </View>
-  );
 }
 
 const styles = StyleSheet.create({

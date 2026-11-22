@@ -724,6 +724,22 @@ function extractTierDescription(
 }
 
 /**
+ * #4522 — a tier's metadata holding exactly one plan shape: legacy schedules
+ * under `installments`, v2 under `payment_plan`. Writing either removes the
+ * other in the same canonical graph write (the server refuses a tier carrying
+ * both: payment_plan_shape_conflict); null or undefined removes both.
+ */
+function withTierPlan(
+  metadata: Record<string, unknown>,
+  plan: TripPaymentPlanData | null | undefined,
+): Record<string, unknown> {
+  const { installments: _v1, payment_plan: _v2, ...rest } = metadata;
+  return plan === null || plan === undefined
+    ? rest
+    : { ...rest, ["v" in plan && plan.v === 2 ? "payment_plan" : "installments"]: plan };
+}
+
+/**
  * ORCH-0873 [Tr3 Stage 2 UI] — extract typed installment schedule from
  * tier_metadata JSONB. Returns null on missing key / malformed shape;
  * the wizard's PaymentPlanEditor treats null as "single-payment trip".
@@ -1397,30 +1413,10 @@ export async function updateTripPricing(
   // payment_plan_shape_conflict between autosaves.
   const existingMetadata =
     (tierRow.tier_metadata ?? {}) as Record<string, unknown>;
-  let nextMetadata: Record<string, unknown> = existingMetadata;
-  if ("installmentSchedule" in patch) {
-    const {
-      installments: _stripExistingV1,
-      payment_plan: _stripExistingV2,
-      ...metadataWithoutPlan
-    } = existingMetadata as Record<string, unknown> & {
-      installments?: unknown;
-      payment_plan?: unknown;
-    };
-    if (patch.installmentSchedule === null || patch.installmentSchedule === undefined) {
-      nextMetadata = metadataWithoutPlan;
-    } else if ("v" in patch.installmentSchedule && patch.installmentSchedule.v === 2) {
-      nextMetadata = {
-        ...metadataWithoutPlan,
-        payment_plan: patch.installmentSchedule,
-      };
-    } else {
-      nextMetadata = {
-        ...metadataWithoutPlan,
-        installments: patch.installmentSchedule,
-      };
-    }
-  }
+  let nextMetadata: Record<string, unknown> =
+    "installmentSchedule" in patch
+      ? withTierPlan(existingMetadata, patch.installmentSchedule)
+      : existingMetadata;
 
   // META-ORCH-1174 Leg B2 — merge per-package description (present-key
   // semantics, mirroring installments). null/blank → strip the key.
@@ -1573,17 +1569,7 @@ export async function createTripPricingTier(
   );
 
   // Build tier_metadata from the optional per-package plan + description.
-  const tierMetadata: Record<string, unknown> = {};
-  if (
-    patch.installmentSchedule !== null &&
-    patch.installmentSchedule !== undefined
-  ) {
-    if ("v" in patch.installmentSchedule && patch.installmentSchedule.v === 2) {
-      tierMetadata.payment_plan = patch.installmentSchedule;
-    } else {
-      tierMetadata.installments = patch.installmentSchedule;
-    }
-  }
+  const tierMetadata = withTierPlan({}, patch.installmentSchedule);
   // META-ORCH-1174 Leg B2 — persist the optional per-package description.
   if (typeof patch.description === "string" && patch.description.trim().length > 0) {
     tierMetadata.description = patch.description.trim();
