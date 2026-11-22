@@ -27,6 +27,10 @@
 -- #4490 (W6-N1), so its line is gone; the two new Discover Venues helpers (the Stays-listed read
 -- and the filtered candidates, W6-N3 / W6-N6) are internal.
 --
+-- TEST-MOD-APPROVED #4490 (08-O1): the Till core (20280809464490) adds 26 functions, all internal
+-- (service role only; the venue-till edge passes the verified user), and patches the #1795 rollup,
+-- which keeps its class (signed-in).
+--
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
 \set ON_ERROR_STOP on
@@ -425,6 +429,33 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('pg_venue_hour_day(uuid,date,integer,uuid)', 'public'),
   ('pg_venue_offer_availability(uuid,date,date,integer,uuid)', 'public'),
   ('pg_venue_order_finalize_payment(uuid,text,integer,text,text,text,integer,text)', 'internal'),
+  ('issue_4490_can_sell(uuid,uuid)', 'internal'),
+  ('issue_4490_can_kitchen(uuid,uuid)', 'internal'),
+  ('issue_4490_is_till_device(uuid,uuid)', 'internal'),
+  ('issue_4490_till_business_date(uuid,timestamp with time zone)', 'internal'),
+  ('issue_4490_till_enabled(uuid)', 'internal'),
+  ('issue_4490_till_sale_projection(uuid)', 'internal'),
+  ('issue_4490_till_lock(uuid,uuid,integer)', 'internal'),
+  ('issue_4490_till_reprice(uuid)', 'internal'),
+  ('issue_4490_till_settings_set(uuid,jsonb,uuid,bigint)', 'internal'),
+  ('issue_4490_till_settings_projection(uuid)', 'internal'),
+  ('issue_4490_till_open(uuid,uuid,uuid,text,uuid,text)', 'internal'),
+  ('issue_4490_till_relabel(uuid,uuid,text,uuid,integer)', 'internal'),
+  ('issue_4490_till_set_server(uuid,uuid,uuid,integer)', 'internal'),
+  ('issue_4490_till_attach_round(uuid,uuid,uuid,integer)', 'internal'),
+  ('issue_4490_till_add_offer_line(uuid,uuid,uuid,jsonb,uuid,text,uuid,integer)', 'internal'),
+  ('issue_4490_till_add_balance_line(uuid,uuid,bigint,uuid,text,integer)', 'internal'),
+  ('issue_4490_till_void(uuid,uuid,uuid,uuid,text,boolean,integer)', 'internal'),
+  ('issue_4490_till_send(uuid,uuid)', 'internal'),
+  ('issue_4490_record_till_offer_payment(uuid,bigint,uuid,text)', 'internal'),
+  ('issue_4490_till_apply_payment(uuid)', 'internal'),
+  ('issue_4490_till_take_payment(uuid,text,bigint,bigint,bigint,uuid,uuid,uuid,integer)', 'internal'),
+  ('issue_4490_till_refund(uuid,bigint,bigint,text,boolean,uuid,uuid,uuid)', 'internal'),
+  ('issue_4490_till_checks(uuid,uuid)', 'internal'),
+  ('issue_4490_till_catalog(uuid,uuid)', 'internal'),
+  ('issue_4490_till_adopt_tab()', 'internal'),
+  ('issue_4490_till_round_added()', 'internal'),
+  ('venue_order_metrics_rollup(uuid,uuid)', 'signed_in'),
   ('preview_pending_venue_identity_correction(uuid)', 'signed_in')
 ;
 

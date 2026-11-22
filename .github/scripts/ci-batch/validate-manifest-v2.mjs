@@ -665,7 +665,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 explorer W6b: deck venue-type chips migration + suite registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 06-W4 fix 1: 20280809462590 (plan charges, one live payment page) + its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 06-W4 fix 2: 20280809462690 (why everything is due now) + its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "d34f30071afd728d51f8b2429277a6fae0ef25499998e396d6a2b4d5dbe312c2";
+// issue #4490 ops O1: Till core migration and suite registered; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "b7cda78de3c191fe84f571bfcfac085341e1fc0c08ccd62c3e5d0c2306c10415";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
