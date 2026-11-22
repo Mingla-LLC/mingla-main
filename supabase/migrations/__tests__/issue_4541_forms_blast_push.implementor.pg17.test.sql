@@ -1,5 +1,5 @@
 -- MINGLA-INVARIANT: I-4541-ONE-TEXT-BUDGET | issue #4541 | form-request texts and Blast texts draw from one monthly text budget per brand, counted by Blast's own allowance functions under one lock (blast_cap), so together they never exceed it; over it, a form send goes without texts and is never refused (T-18, T-18-RACE).
--- MINGLA-INVARIANT: I-4541-BLAST-REPLY-NEVER-ON-GUEST | issue #4541 | a reply from a Blast (a known recipient by a hashed key, or Unknown) is never a guest's answer, never on a page, at the door, on guest detail or in the roster export; typed answers never change who a reply belongs to (T-14, T-15, T-16).
+-- MINGLA-INVARIANT: I-4541-BLAST-REPLY-NEVER-ON-GUEST | issue #4541 | a reply from a Blast (a known recipient by a hashed key, a signed-in person, or Unknown) is never a guest's answer, never on a page, at the door, on guest detail, in the request audience or unanswered count, or in the roster export, and a Blast submit never edits a page answer; typed answers never change who a reply belongs to (T-14, T-15, T-16, T-16b).
 -- MINGLA-INVARIANT: I-4541-FORM-PUSH-APP-READY | issue #4541 | a form request is tried by push only while BRAND_FORMS_PUSH is on and the person's app reported in the last 45 days that it opens the form, decided again at claim (T-19).
 -- #4541 M-B (20281122014541_issue_4541_forms_blast_push.sql): PostgreSQL 17 proof after the full replay.
 -- Run as supabase_admin (the race sections open two dblink sessions, as issue_0871 does).
@@ -9,8 +9,13 @@
 --       allowance and over the daily cap, the reason kept in the log, lock order (SC-37, SC-38)
 -- T-14  Blast reply schema (one owner, never on a page, Unknown never verified)
 -- T-15  Blast submit (SC-32, SC-36): Unknown, signed in, own link (hashed key, code for a second
---       answer, revoked by a newer link), campaign window, open-reply limit; confirm check, hold
--- T-16  never on a guest record or at the door (SC-33)
+--       answer, a newer link leaves the earlier one working), campaign window, open-reply limit;
+--       confirm check, hold
+-- T-16  never on a guest record or at the door (SC-33); T-16b by behaviour: the door, request
+--       audience, unanswered count, guest answers, Responses and the guest's own read show a
+--       guest with only Blast replies (Unknown, own link, signed in) as not answered; a Blast
+--       submit never edits a page answer; a combined email + text Blast keeps both links;
+--       account deletion erases Blast replies and links kept by contact key
 -- T-17  Responses owner filter, hide and undo, old 5-argument call, export, counts (SC-34)
 -- T-42  every client-called RPC called the way the app calls it; service-role-only functions refused
 -- T-18-RACE two sessions (SC-39): a Blast confirm and a form send for one brand never both pass
@@ -21,7 +26,11 @@
 -- biz_brand_blast_usage_v1 fails T-18a; dropping the texts-off rule fails T-18c/T-18d;
 -- dropping the blast_cap lock from brand_form_request_enqueue fails T-18-RACE-1; dropping the
 -- campaign-window check fails T-15 SC-36; dropping the open-reply cap fails T-15 SC-36;
--- dropping the unknown_owner guards fails T-16; dropping name 'Unknown' fails T-17.
+-- dropping name 'Unknown' fails T-17. Review fixes: restoring the 20281121004541
+-- brand_form_user_response fails T-16b (request audience); restoring the user_id-only Blast
+-- lookup or the single one_per_user index fails T-16b (Blast submit edits the page answer);
+-- restoring the revoke in brand_form_link_issue_blast fails T-15 (newer link); dropping the
+-- contact-key deletes from brand_form_erase_person fails T-16b fix 4.
 
 CREATE EXTENSION IF NOT EXISTS dblink;
 
@@ -435,8 +444,14 @@ BEGIN
   RESET ROLE;
   PERFORM pg_temp.ok(v->>'kind' = 'blast' AND v->'channels' = '[]'::jsonb AND (v->>'answered')::boolean,
     'T-15 a Blast link resolves with no code channels (' || v::text || ')');
+  -- Review fix 2: a later mint (a resumed send the provider de-duplicates keeps the first
+  -- link) switches off no earlier link; the earlier link still needs the code to edit.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_link_resolve(v_tok);
+  RESET ROLE;
   v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'link', 'token', v_tok), 'Old link');
-  PERFORM pg_temp.ok(v_r LIKE 'ERR:link_revoked%', 'T-15 R8.2 a new Blast link switches off the earlier one (' || v_r || ')');
+  PERFORM pg_temp.ok(v->>'outcome' = 'ok' AND v_r LIKE 'ERR:code_required%' AND v_tok2 IS NOT NULL,
+    'T-15 a newer Blast link leaves the earlier one working, still behind the code (' || v::text || ' / ' || v_r || ')');
   -- SC-36: the campaign window.
   v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'unknown', 'campaignId', pg_temp.u('cmp_plain')), 'x');
   PERFORM pg_temp.ok(v_r LIKE 'ERR:form_not_on_event%', 'T-15 SC-36 a campaign that did not embed the form is refused');
@@ -461,12 +476,8 @@ BEGIN
                                   WHERE r.campaign_id IS NOT NULL AND r.event_id IS NULL)
       AND (SELECT count(*) FROM public.brand_form_event_responses(pg_temp.u('xF'), NULL) r WHERE r.campaign_id IS NOT NULL) = 4,
     'T-16 SC-33 Blast replies belong to All pages only, never a page');
-  PERFORM pg_temp.ok((SELECT bool_and(p.prosrc ~ 'unknown_owner' AND p.prosrc ~ 'blast_contact_key') FROM pg_proc p
-                       WHERE p.oid IN ('public.brand_form_door_answers(uuid,uuid,jsonb)'::regprocedure,
-                                       'public.brand_form_door_full_answers(uuid,uuid,jsonb,text)'::regprocedure,
-                                       'public.brand_form_roster_export_answers(uuid)'::regprocedure,
-                                       'public.biz_brand_form_guest_answers(uuid,jsonb)'::regprocedure)),
-    'T-16 I-4541-BLAST-REPLY-NEVER-ON-GUEST the door, full read, roster export and guest answers refuse Blast and Unknown rows');
+  -- The door, guest answers, request audience, unanswered count and Responses: see T-16b
+  -- (behaviour, after T-17 so its counts stay as they are).
 
   -- T-17 SC-34: Responses, filter, hide and undo, export, counts.
   PERFORM pg_temp.as_user(pg_temp.u('xowner'));
@@ -572,6 +583,158 @@ BEGIN
       AND v ? 'formReadyAppShare14d' AND (v->'switches') ? 'BRAND_FORMS_PUSH'
       AND strpos(v::text, 'Lee') = 0 AND strpos(v::text, '@example.test') = 0 AND strpos(v::text, 'Mine') = 0,
     'T-42 SC-43 the Admin read: the limit, Blast counts, the form-ready share, never answers or contacts');
+END;
+$t$;
+
+-- ═══ T-16b never a guest's answer, by behaviour (SC-33, review fixes 1, 2 and 4) ═══════
+-- Guests on the required-form page xe: r1 (u1) has an Unknown reply that typed their email
+-- and a Blast reply through their own link (contact key = their RSVP email); r5 (u5) has a
+-- signed-in Blast reply. Every page surface shows both as not answered.
+CREATE OR REPLACE FUNCTION pg_temp.page_submit(p_user uuid, p_text text, p_expected integer DEFAULT NULL)
+RETURNS text LANGUAGE plpgsql AS $fn$
+DECLARE v jsonb;
+BEGIN
+  SET LOCAL ROLE service_role;
+  -- A client that labels a page answer 'blast' still writes a page answer.
+  v := public.brand_form_submit_core(jsonb_build_object('formId', pg_temp.u('xF'), 'source', 'blast',
+         'eventId', pg_temp.u('xe'), 'answers', jsonb_build_object('45419100-0000-4000-8000-000000000101', p_text),
+         'expectedEditCount', p_expected, 'credential', jsonb_build_object('kind', 'user', 'userId', p_user)));
+  RESET ROLE;
+  RETURN v::text;
+EXCEPTION WHEN OTHERS THEN
+  RESET ROLE;
+  RETURN 'ERR:' || SQLERRM;
+END;
+$fn$;
+
+DO $t$
+DECLARE
+  v jsonb; v_r text; v_tok text; v_sms_tok text; v_n integer; v_current integer; v_page uuid; v_blast uuid;
+  v_s1 jsonb := jsonb_build_object('kind', 'rsvp', 'id', pg_temp.u('xr1'));
+  v_s5 jsonb := jsonb_build_object('kind', 'rsvp', 'id', pg_temp.u('xr5'));
+BEGIN
+  -- (b) r1's own Blast link, keyed by their RSVP email (any case), answered.
+  SET LOCAL ROLE service_role;
+  v_tok := (public.brand_form_link_issue_blast(pg_temp.u('xF'), pg_temp.u('cmp'), 'I4541MB-xr1@Example.test', 'Una One'))->>'token';
+  RESET ROLE;
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'link', 'token', v_tok), 'Una by Blast');
+  PERFORM pg_temp.ok(v_r::jsonb->>'ownerKind' = 'blast', 'T-16b r1 answered the Blast through their own link (' || v_r || ')');
+  -- (a) the Unknown reply typing r1's email is from T-15; (c) u5's signed-in reply is from T-15.
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.brand_form_responses WHERE form_id = pg_temp.u('xF') AND user_id = pg_temp.u('xu5')
+                               AND source = 'blast' AND campaign_id = pg_temp.u('cmp'))
+      AND (SELECT count(*) FROM public.brand_form_responses WHERE form_id = pg_temp.u('xF') AND event_id IS NOT NULL) = 0,
+    'T-16b fixture: Blast replies only, no page answers yet');
+
+  -- Door read (as the host): a required form, no answer.
+  PERFORM pg_temp.ok(public.brand_form_door_answers(pg_temp.u('xowner'), pg_temp.u('xe'), v_s1)->>'state' = 'not_answered'
+      AND public.brand_form_door_answers(pg_temp.u('xowner'), pg_temp.u('xe'), v_s5)->>'state' = 'not_answered',
+    'T-16b SC-33 the door shows r1 and r5 as not answered');
+  -- Request audience: both still get Ask / Remind.
+  v := public.brand_form_request_audience(NULL, pg_temp.u('xF'), pg_temp.u('xe'), 'unanswered', NULL, ARRAY['email']);
+  PERFORM pg_temp.ok((SELECT count(*) FROM jsonb_array_elements(v->'recipients') x
+                       WHERE x->>'id' IN (pg_temp.u('xr1')::text, pg_temp.u('xr5')::text)
+                         AND NOT (x->>'answered')::boolean) = 2,
+    'T-16b the unanswered request audience includes r1 and r5 (' || left((v->'recipients')::text, 200) || ')');
+  -- Unanswered count: every current guest (nobody has a page answer).
+  SELECT count(*) INTO v_current FROM public.event_rsvps x
+   WHERE x.event_id = pg_temp.u('xe') AND public.brand_form_subject_current('rsvp', x.id, pg_temp.u('xe'));
+  v_n := public.brand_form_unanswered_count(pg_temp.u('xF'), pg_temp.u('xe'));
+  PERFORM pg_temp.ok(v_n = v_current AND v_current >= 2, 'T-16b the unanswered count leaves no Blast reply out (' || v_n || ' of ' || v_current || ')');
+  -- Guest answers and the page's Responses, as the host.
+  PERFORM pg_temp.as_user(pg_temp.u('xowner'));
+  SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.ok(public.biz_brand_form_guest_answers(pg_temp.u('xe'), v_s1)->>'state' = 'not_answered'
+      AND public.biz_brand_form_guest_answers(pg_temp.u('xe'), v_s5)->>'state' = 'not_answered',
+    'T-16b guest detail shows r1 and r5 as not answered');
+  v := public.biz_brand_form_responses(pg_temp.u('xF'), pg_temp.u('xe'));
+  RESET ROLE;
+  PERFORM pg_temp.ok((v->>'total')::integer = 0
+      AND (SELECT count(*) FROM jsonb_array_elements(v->'notAnswered') x
+            WHERE x->>'id' IN (pg_temp.u('xr1')::text, pg_temp.u('xr5')::text)) = 2,
+    'T-16b the page''s Responses list r1 and r5 under not answered (' || left((v->'notAnswered')::text, 200) || ')');
+  -- The guest's own page read (signed in): nothing answered yet.
+  PERFORM pg_temp.as_user(pg_temp.u('xu5'));
+  SET LOCAL ROLE authenticated;
+  v := public.brand_form_my_response(pg_temp.u('xF'), pg_temp.u('xe'), NULL, NULL);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->>'state' = 'unanswered' AND v->'response' = 'null'::jsonb,
+    'T-16b u5''s own page read does not show their Blast reply (' || left(v::text, 120) || ')');
+
+  -- A Blast submit never alters a page answer: u3 answers the page first ...
+  v_r := pg_temp.page_submit(pg_temp.u('xu3'), 'Page answer');
+  v_page := (v_r::jsonb->>'responseId')::uuid;
+  PERFORM pg_temp.ok(v_page IS NOT NULL AND (SELECT source = 'page' AND event_id = pg_temp.u('xe') FROM public.brand_form_responses WHERE id = v_page),
+    'T-16b a page answer labelled blast by the client is stored as a page answer (' || v_r || ')');
+  -- ... then the Blast: a new Blast reply of its own, the page answer untouched.
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'user', 'userId', pg_temp.u('xu3'), 'campaignId', pg_temp.u('cmp')), 'Blast answer');
+  PERFORM pg_temp.ok(v_r NOT LIKE 'ERR%', 'T-16b SC-33 a signed-in Blast reply is its own new reply, not an edit of the page answer (' || v_r || ')');
+  v_blast := (v_r::jsonb->>'responseId')::uuid;
+  PERFORM pg_temp.ok((v_r::jsonb->>'created')::boolean AND v_blast <> v_page
+      AND (SELECT answers->>'45419100-0000-4000-8000-000000000101' = 'Page answer' AND edit_count = 0
+             FROM public.brand_form_responses WHERE id = v_page),
+    'T-16b SC-33 a signed-in Blast reply never edits the page answer (' || v_r || ')');
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'user', 'userId', pg_temp.u('xu3'), 'campaignId', pg_temp.u('cmp')), 'Blast edit', 0);
+  PERFORM pg_temp.ok((v_r::jsonb->>'responseId')::uuid = v_blast
+      AND (SELECT answers->>'45419100-0000-4000-8000-000000000101' = 'Page answer' FROM public.brand_form_responses WHERE id = v_page),
+    'T-16b the Blast edit changes only the Blast reply (' || v_r || ')');
+  PERFORM pg_temp.as_user(pg_temp.u('xowner'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_guest_answers(pg_temp.u('xe'), jsonb_build_object('kind', 'rsvp', 'id', pg_temp.u('xr3')));
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->>'state' = 'answered' AND v::text LIKE '%Page answer%' AND v::text NOT LIKE '%Blast edit%',
+    'T-16b guest detail shows u3''s page answer, never the Blast reply (' || left(v::text, 160) || ')');
+  -- ... and a page answer after a Blast reply is its own row; the Blast reply stays.
+  v_r := pg_temp.page_submit(pg_temp.u('xu5'), 'Five on the page');
+  PERFORM pg_temp.ok(v_r NOT LIKE 'ERR%' AND (v_r::jsonb->>'created')::boolean
+      AND EXISTS (SELECT 1 FROM public.brand_form_responses WHERE user_id = pg_temp.u('xu5') AND source = 'blast'
+                   AND answers->>'45419100-0000-4000-8000-000000000101' = 'Again'),
+    'T-16b u5 can still answer the page; their Blast reply is left as it was (' || v_r || ')');
+  -- A Blast reply never moves onto a page, nor a page answer into a Blast.
+  v_r := pg_temp.err(format($$UPDATE public.brand_form_responses SET source = 'page' WHERE id = %L$$, v_blast));
+  PERFORM pg_temp.ok(v_r LIKE '42501%response_subject_fixed%', 'T-16b a Blast reply cannot be relabelled a page answer (' || v_r || ')');
+
+  -- Review fix 2: email and text of one combined Blast (one campaign row per channel) mint
+  -- with the same contact key; the email link keeps working after the text link is minted.
+  INSERT INTO public.marketing_campaigns (id, account_id, brand_id, audience_id, name, channel, channel_payload, status, sent_at)
+  VALUES (pg_temp.u('cmp_sms'), pg_temp.u('xowner'), pg_temp.u('xbrand'), pg_temp.u('xaud'), 'Spring news', 'sms',
+          jsonb_build_object('kind', 'sms', 'body', 'Hi', 'embedded_form', jsonb_build_object('form_id', pg_temp.u('xF'))),
+          'sent', now());
+  SET LOCAL ROLE service_role;
+  v_tok := (public.brand_form_link_issue_blast(pg_temp.u('xF'), pg_temp.u('cmp'), 'kim.combo@example.test', 'Kim Combo'))->>'token';
+  v_sms_tok := (public.brand_form_link_issue_blast(pg_temp.u('xF'), pg_temp.u('cmp_sms'), 'kim.combo@example.test', 'Kim Combo'))->>'token';
+  v := public.brand_form_link_resolve(v_tok);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->>'outcome' = 'ok' AND v->>'kind' = 'blast' AND NOT (v->>'answered')::boolean,
+    'T-16b fix 2 the email link still resolves after the text link is minted (' || v::text || ')');
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'link', 'token', v_tok), 'Kim by email');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_link_resolve(v_sms_tok);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v_r NOT LIKE 'ERR%' AND v->>'outcome' = 'ok' AND (v->>'answered')::boolean,
+    'T-16b fix 2 the email link answers and the text link still resolves to the same reply (' || v_r || ')');
+
+  -- Review fix 4: deleting u1's account erases their Blast reply and link kept by contact
+  -- key (answers and name), recomputed per brand; Lee's, Kim's and Unknown replies stay.
+  v_n := (SELECT count(*) FROM public.brand_form_responses WHERE form_id = pg_temp.u('xF') AND unknown_owner);
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_erase_person(pg_temp.u('xu1'));
+  RESET ROLE;
+  PERFORM pg_temp.ok((v->>'blastResponses')::integer = 1 AND (v->>'blastLinks')::integer = 1
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_responses
+                       WHERE blast_contact_key = public.brand_form_blast_contact_key(pg_temp.u('xbrand'), 'i4541mb-xr1@example.test'))
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_links
+                       WHERE blast_contact_key = public.brand_form_blast_contact_key(pg_temp.u('xbrand'), 'i4541mb-xr1@example.test'))
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE owner_label = 'Una One')
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_links WHERE recipient_label = 'Una One')
+      AND EXISTS (SELECT 1 FROM public.brand_form_responses WHERE owner_label = 'Lee Blast')
+      AND EXISTS (SELECT 1 FROM public.brand_form_responses WHERE owner_label = 'Kim Combo')
+      AND (SELECT count(*) FROM public.brand_form_responses WHERE form_id = pg_temp.u('xF') AND unknown_owner) = v_n,
+    'T-16b fix 4 account deletion erases the person''s Blast reply and link kept by contact key (' || v::text || ')');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_erase_person(pg_temp.u('xu5'));
+  RESET ROLE;
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE user_id = pg_temp.u('xu5')),
+    'T-16b fix 4 a signed-in Blast reply goes with the account (' || v::text || ')');
 END;
 $t$;
 

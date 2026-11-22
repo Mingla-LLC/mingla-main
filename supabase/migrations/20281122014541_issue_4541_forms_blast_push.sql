@@ -19,6 +19,11 @@
 --         hashed key, a signed-in person, or Unknown), personal Blast links, the
 --         campaign window, the open-reply limit, hide with undo, never on a guest
 --         record or at the door; R7.1 the Admin numbers and the open-reply limit
+--   Review fixes: source 'blast' marks a Blast reply (checked); brand_form_user_response
+--         never returns one, so a signed-in Blast reply never counts as, or is edited as, a
+--         page answer, and a Blast submit edits only its own campaign's reply; a Blast link
+--         mint switches off no other link; brand_form_erase_person also erases Blast replies
+--         and links kept by contact key
 --
 -- Coordination (#4522): never redefines issue_3872_ticket_quote,
 -- issue_1930_ticket_checkout_create_session_base, issue_1930_ticket_checkout_finalize_base,
@@ -35,8 +40,10 @@
 --   SELECT (SELECT max(version) FROM supabase_migrations.schema_migrations),
 --     (SELECT count(*) FROM public.brand_form_responses),
 --     (SELECT count(*) FROM public.brand_form_links WHERE kind <> 'person'),
---     (SELECT count(*) FROM public.feature_flags WHERE flag_key LIKE 'BRAND_FORMS_PUSH%');
---   expected: M-A's version, any, 0, 0.
+--     (SELECT count(*) FROM public.feature_flags WHERE flag_key LIKE 'BRAND_FORMS_PUSH%'),
+--     (SELECT count(*) FROM public.brand_form_responses WHERE source = 'blast');
+--   expected: M-A's version, any, 0, 0, 0 (any 'blast' row is a page answer and is
+--   relabelled 'page' or 'link' by this file before the Blast checks are added).
 --
 -- ROLLBACK (manual):
 --   Re-run the replaced bodies from git: brand_form_request_audience,
@@ -54,7 +61,11 @@
 --     DELETE FROM public.brand_form_links WHERE kind = 'blast';
 --     restore biz_brand_form_responses (5 arguments), the door, export, counts, guest answers,
 --     roster export, event responses, my_response, link_resolve and submit_core bodies from
---     20281122004541 / 20281120034514, then drop the new columns and restore the
+--     20281122004541 / 20281120034514, brand_form_user_response from 20281121004541 and
+--     brand_form_erase_person from 20281122004541; DROP INDEX
+--     brand_form_responses_one_per_blast_user and brand_form_responses_one_per_user, then
+--     recreate the latter as in 20281120034514; drop the blast_source and blast_no_page
+--     checks, then drop the new columns and restore the
 --     one_subject, verified and links kind/subject constraints from 20281120034514;
 --     ALTER TABLE public.marketing_campaigns DROP COLUMN failure_reason;
 --     DELETE FROM public.notification_categories WHERE key = 'business.blast_form_closed'.
@@ -90,7 +101,10 @@ BEGIN
       ('public.biz_brand_form_responses(uuid,uuid,text,integer,integer)', 'e08048edc17eea20a4c2256193e0b79e'),
       ('public.biz_brand_form_responses_export(uuid,uuid)', 'a9fdfc1c8be1cbf2ab1af838a07032ab'),
       ('public.biz_brand_form_counts(uuid)', 'b323550c6583a97b67563fc08075a09d'),
-      ('public.admin_brand_forms_support(uuid,uuid)', '5b902752838a2fbb5089605c0dbd0533')
+      ('public.admin_brand_forms_support(uuid,uuid)', '5b902752838a2fbb5089605c0dbd0533'),
+      -- review fixes: a Blast reply is never a page answer; account deletion erases Blast replies
+      ('public.brand_form_user_response(uuid,uuid)', 'a00a7d4a632b9d9543455ea799b130ac'),
+      ('public.brand_form_erase_person(uuid)', 'd5990d2dad814f478e61729189ba0d77')
     ) AS v(sig, expected_md5)
   LOOP
     IF (SELECT md5(p.prosrc) FROM pg_proc p WHERE p.oid = r.sig::regprocedure)
@@ -878,6 +892,24 @@ ALTER TABLE public.brand_form_responses
   ADD CONSTRAINT brand_form_responses_blast_ctx CHECK (
     (blast_contact_key IS NULL AND NOT unknown_owner) OR event_id IS NULL),
   ADD CONSTRAINT brand_form_responses_hidden_unknown CHECK (hidden_at IS NULL OR unknown_owner);
+-- A Blast reply is a Blast reply (I-4541-BLAST-REPLY-NEVER-ON-GUEST): source = 'blast' marks
+-- every reply written by brand_form_submit_blast and nothing else, so the mark survives the
+-- campaign being deleted (campaign_id SET NULL). Page answers never carry it: the page submit
+-- stores a client's 'blast' source as 'page' or 'link', and earlier rows are relabelled here.
+UPDATE public.brand_form_responses
+   SET source = CASE WHEN via_link THEN 'link' ELSE 'page' END
+ WHERE source = 'blast';
+ALTER TABLE public.brand_form_responses
+  ADD CONSTRAINT brand_form_responses_blast_source CHECK (
+    (campaign_id IS NULL AND blast_contact_key IS NULL AND NOT unknown_owner) OR source = 'blast'),
+  ADD CONSTRAINT brand_form_responses_blast_no_page CHECK (source <> 'blast' OR event_id IS NULL);
+-- One page answer per person per form, and separately one signed-in Blast reply per person
+-- per form and campaign: a Blast reply never takes, or edits, the page answer's place.
+DROP INDEX public.brand_form_responses_one_per_user;
+CREATE UNIQUE INDEX brand_form_responses_one_per_user
+  ON public.brand_form_responses (form_id, user_id) WHERE user_id IS NOT NULL AND source <> 'blast';
+CREATE UNIQUE INDEX brand_form_responses_one_per_blast_user
+  ON public.brand_form_responses (form_id, campaign_id, user_id) WHERE user_id IS NOT NULL AND source = 'blast';
 CREATE UNIQUE INDEX brand_form_responses_one_per_blast_contact
   ON public.brand_form_responses (form_id, blast_contact_key) WHERE blast_contact_key IS NOT NULL;
 CREATE INDEX brand_form_responses_unknown_idx
@@ -932,7 +964,9 @@ BEGIN
        OR NEW.order_id IS DISTINCT FROM OLD.order_id OR NEW.user_id IS DISTINCT FROM OLD.user_id
        -- #4541 R4.1: who a Blast reply belongs to never changes.
        OR NEW.blast_contact_key IS DISTINCT FROM OLD.blast_contact_key
-       OR NEW.unknown_owner IS DISTINCT FROM OLD.unknown_owner) THEN
+       OR NEW.unknown_owner IS DISTINCT FROM OLD.unknown_owner
+       -- a Blast reply never becomes a page answer, nor a page answer a Blast reply.
+       OR (NEW.source = 'blast') IS DISTINCT FROM (OLD.source = 'blast')) THEN
     RAISE EXCEPTION 'response_subject_fixed' USING ERRCODE = '42501';
   END IF;
   RETURN NEW;
@@ -950,6 +984,102 @@ AS $fn$
   SELECT CASE WHEN p_brand_id IS NULL OR NULLIF(btrim(COALESCE(p_contact_key, '')), '') IS NULL THEN NULL
          ELSE encode(sha256(convert_to('brand_form_blast:' || p_brand_id::text || ':' || lower(btrim(p_contact_key)), 'UTF8')), 'hex')
          END;
+$fn$;
+
+-- Review fix (I-4541-BLAST-REPLY-NEVER-ON-GUEST): a person's account-level answer is
+-- their page answer only. A signed-in Blast reply (source 'blast') is never returned here,
+-- so no page read (door, guest answers, request audience, unanswered count, Responses
+-- "not answered", checkout, my_response) counts it, and no page submit edits it.
+-- Same signature and order as 20281121004541; rewritten as SQL (no row-type variable).
+CREATE OR REPLACE FUNCTION public.brand_form_user_response(p_form_id uuid, p_user_id uuid)
+ RETURNS public.brand_form_responses
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+  SELECT (q.r).* FROM (
+    SELECT r AS r, 1 AS k, r.updated_at AS at, r.id AS rid
+      FROM public.brand_form_responses r
+     WHERE r.form_id = p_form_id AND r.user_id = p_user_id AND r.source <> 'blast'
+    UNION ALL
+    SELECT r, 2, r.updated_at, r.id FROM public.brand_form_responses r
+      JOIN public.orders o ON o.id = r.order_id
+     WHERE r.form_id = p_form_id AND o.buyer_user_id = p_user_id
+    UNION ALL
+    SELECT r, 3, r.updated_at, r.id FROM public.brand_form_responses r
+      JOIN public.event_rsvps e ON e.id = r.rsvp_id
+     WHERE r.form_id = p_form_id AND e.user_id = p_user_id
+    UNION ALL
+    SELECT r, 4, r.updated_at, r.id FROM public.brand_form_responses r
+      JOIN public.event_rsvp_guests g ON g.id = r.rsvp_guest_id
+     WHERE r.form_id = p_form_id AND g.matched_user_id = p_user_id AND g.claimed_at IS NOT NULL
+  ) q
+  WHERE p_form_id IS NOT NULL AND p_user_id IS NOT NULL
+  ORDER BY q.k, q.at DESC, q.rid
+  LIMIT 1;
+$function$;
+
+-- Review fix (R1.6): deleting an account also erases the person's Blast replies and
+-- Blast links (their answers, the recipient's name) that were kept by contact key. The
+-- key is recomputed per brand with brand_form_blast_contact_key, the one formula the
+-- link mint uses, from every address the account holds or used with a brand (the Blast
+-- audience keys a recipient by their order email; a text-only send falls back to the
+-- phone). A signed-in Blast reply goes with user_id as before; Unknown replies were
+-- never anyone's. Must still run before the login is removed.
+CREATE OR REPLACE FUNCTION public.brand_form_erase_person(p_user_id uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
+AS $fn$
+DECLARE
+  v_responses integer; v_links integer; v_sends integer; v_stash integer;
+  v_blast_responses integer; v_blast_links integer; v_keys text[];
+BEGIN
+  IF p_user_id IS NULL THEN RAISE EXCEPTION 'user_required' USING ERRCODE = '22023'; END IF;
+  SELECT COALESCE(array_agg(DISTINCT lower(btrim(a.c))), ARRAY[]::text[]) INTO v_keys
+    FROM (SELECT u.email AS c FROM auth.users u WHERE u.id = p_user_id
+          UNION ALL SELECT p.email FROM public.profiles p WHERE p.id = p_user_id
+          UNION ALL SELECT p.phone FROM public.profiles p WHERE p.id = p_user_id
+          UNION ALL SELECT o.buyer_email FROM public.orders o WHERE o.buyer_user_id = p_user_id
+          UNION ALL SELECT o.buyer_phone_e164 FROM public.orders o WHERE o.buyer_user_id = p_user_id
+          UNION ALL SELECT o.buyer_phone FROM public.orders o WHERE o.buyer_user_id = p_user_id
+          UNION ALL SELECT x.guest_email FROM public.event_rsvps x WHERE x.user_id = p_user_id
+          UNION ALL SELECT x.guest_phone FROM public.event_rsvps x WHERE x.user_id = p_user_id) a
+   WHERE NULLIF(btrim(COALESCE(a.c, '')), '') IS NOT NULL;
+  DELETE FROM public.brand_form_responses r
+   WHERE r.blast_contact_key IS NOT NULL
+     AND r.blast_contact_key IN (SELECT public.brand_form_blast_contact_key(r.brand_id, k.c)
+                                   FROM unnest(v_keys) AS k(c));
+  GET DIAGNOSTICS v_blast_responses = ROW_COUNT;
+  DELETE FROM public.brand_form_links l
+   USING public.brand_forms f
+   WHERE f.id = l.form_id AND l.blast_contact_key IS NOT NULL
+     AND l.blast_contact_key IN (SELECT public.brand_form_blast_contact_key(f.brand_id, k.c)
+                                   FROM unnest(v_keys) AS k(c));
+  GET DIAGNOSTICS v_blast_links = ROW_COUNT;
+  DELETE FROM public.brand_form_responses r
+   WHERE r.user_id = p_user_id
+      OR r.order_id IN (SELECT o.id FROM public.orders o WHERE o.buyer_user_id = p_user_id)
+      OR r.rsvp_id IN (SELECT x.id FROM public.event_rsvps x WHERE x.user_id = p_user_id)
+      OR r.rsvp_guest_id IN (SELECT g.id FROM public.event_rsvp_guests g WHERE g.matched_user_id = p_user_id);
+  GET DIAGNOSTICS v_responses = ROW_COUNT;
+  DELETE FROM public.brand_form_request_sends s
+   WHERE s.order_id IN (SELECT o.id FROM public.orders o WHERE o.buyer_user_id = p_user_id)
+      OR s.rsvp_id IN (SELECT x.id FROM public.event_rsvps x WHERE x.user_id = p_user_id)
+      OR s.rsvp_guest_id IN (SELECT g.id FROM public.event_rsvp_guests g WHERE g.matched_user_id = p_user_id);
+  GET DIAGNOSTICS v_sends = ROW_COUNT;
+  DELETE FROM public.brand_form_links l
+   WHERE l.user_id = p_user_id
+      OR l.order_id IN (SELECT o.id FROM public.orders o WHERE o.buyer_user_id = p_user_id)
+      OR l.rsvp_id IN (SELECT x.id FROM public.event_rsvps x WHERE x.user_id = p_user_id)
+      OR l.rsvp_guest_id IN (SELECT g.id FROM public.event_rsvp_guests g WHERE g.matched_user_id = p_user_id);
+  GET DIAGNOSTICS v_links = ROW_COUNT;
+  DELETE FROM public.brand_form_checkout_answers c
+   USING public.ticket_checkout_sessions t
+   WHERE t.id = c.checkout_session_id AND t.buyer_user_id = p_user_id;
+  GET DIAGNOSTICS v_stash = ROW_COUNT;
+  RETURN jsonb_build_object('responses', v_responses + v_blast_responses, 'links', v_links + v_blast_links,
+                            'requestSends', v_sends, 'checkoutStash', v_stash,
+                            'blastResponses', v_blast_responses, 'blastLinks', v_blast_links);
+END;
 $fn$;
 
 -- R4.5 campaign window: a sent (or sending) campaign of the form's brand that
@@ -1019,8 +1149,13 @@ BEGIN
 END;
 $fn$;
 
--- R4.3 / R8.2: one recipient's personal Blast link. A new link switches off the
--- same recipient's earlier links for this form. 30 days.
+-- R4.3: one recipient's personal Blast link, 30 days. Review fix: it switches off no
+-- other link. Each channel of a combined Blast is its own campaign row minted with the
+-- same contact key, so the email link must keep working after the text link is minted;
+-- another campaign's link is never touched; and a resumed send whose email the provider
+-- de-duplicates still delivers the first link, so a re-mint must not kill it. Every link
+-- of one recipient reads and edits the same reply (by contact key), and a second answer
+-- needs the code, so extra live links never widen what a forwarded link can do.
 CREATE FUNCTION public.brand_form_link_issue_blast(
   p_form_id uuid, p_campaign_id uuid, p_contact_key text, p_recipient_label text
 ) RETURNS jsonb
@@ -1043,9 +1178,6 @@ BEGIN
                                        token_hash, expires_at)
   VALUES (p_form_id, 'blast', p_campaign_id, v_key, v_label, public.brand_form_token_hash(v_token), v_exp)
   RETURNING id INTO v_link;
-  UPDATE public.brand_form_links l SET revoked_at = now()
-   WHERE l.form_id = p_form_id AND l.id <> v_link AND l.revoked_at IS NULL
-     AND l.kind = 'blast' AND l.blast_contact_key = v_key;
   RETURN jsonb_build_object('linkId', v_link, 'token', v_token, 'expiresAt', v_exp, 'formId', p_form_id);
 END;
 $fn$;
@@ -1138,9 +1270,9 @@ BEGIN
     END IF;
   ELSE
     PERFORM pg_advisory_xact_lock(public.brand_form_person_lock_key(v_form, 'user', v_user));
-    -- Only the person's own account-level answer; never a page answer of theirs.
+    -- Only the person's own Blast reply to this campaign; never a page answer of theirs.
     SELECT r.id, r.edit_count INTO v_ex FROM public.brand_form_responses r
-     WHERE r.form_id = v_form AND r.user_id = v_user;
+     WHERE r.form_id = v_form AND r.user_id = v_user AND r.source = 'blast' AND r.campaign_id = v_campaign;
   END IF;
   IF v_kind <> 'unknown' THEN
     v_expected := CASE WHEN jsonb_typeof(p->'expectedEditCount') = 'number'
@@ -1231,6 +1363,11 @@ BEGIN
      OR (v_cred->>'kind' = 'link' AND EXISTS (
            SELECT 1 FROM public.brand_form_link_by_token(v_cred->>'token') l WHERE l.kind = 'blast')) THEN
     RETURN public.brand_form_submit_blast(p, v_f.brand_id, v_version);
+  END IF;
+  -- 'blast' marks Blast replies only (brand_form_responses_blast_source): a page answer
+  -- a client labelled 'blast' is stored as a page or link answer.
+  IF v_source = 'blast' THEN
+    v_source := CASE WHEN v_cred->>'kind' = 'link' THEN 'link' ELSE 'page' END;
   END IF;
 
   IF v_cred->>'kind' = 'link' THEN
@@ -1363,12 +1500,15 @@ CREATE OR REPLACE FUNCTION public.brand_form_link_resolve(p_token text)
  SET search_path TO ''
 AS $function$
 DECLARE
-  v_link public.brand_form_links;
+  v_link record;
   v_subject jsonb;
   v_contact jsonb;
-  v_resp public.brand_form_responses;
+  v_resp_id uuid;
 BEGIN
-  v_link := public.brand_form_link_by_token(p_token);
+  SELECT l.id, l.form_id, l.kind, l.revoked_at, l.expires_at, l.event_id, l.attachment_id,
+         l.campaign_id, l.blast_contact_key, l.recipient_label,
+         public.brand_form_link_subject(l) AS subject
+    INTO v_link FROM public.brand_form_link_by_token(p_token) l;
   IF v_link.id IS NULL THEN RETURN jsonb_build_object('outcome', 'invalid'); END IF;
   IF v_link.revoked_at IS NOT NULL THEN RETURN jsonb_build_object('outcome', 'revoked'); END IF;
   -- #4541 R4.4: a Blast link (its recipient's label; no contact kept, so no code).
@@ -1380,12 +1520,13 @@ BEGIN
                            WHERE r.form_id = v_link.form_id AND r.blast_contact_key = v_link.blast_contact_key),
       'identity', public.brand_form_short_name(v_link.recipient_label), 'channels', '[]'::jsonb);
   END IF;
-  v_subject := public.brand_form_link_subject(v_link);
+  v_subject := v_link.subject;
   v_contact := public.brand_form_subject_contact(v_subject->>'kind', (v_subject->>'id')::uuid);
-  v_resp := public.brand_form_person_response(v_link.form_id, v_subject->>'kind', (v_subject->>'id')::uuid, v_link.event_id);
+  SELECT r.id INTO v_resp_id
+    FROM public.brand_form_person_response(v_link.form_id, v_subject->>'kind', (v_subject->>'id')::uuid, v_link.event_id) r;
   RETURN jsonb_build_object('outcome', 'ok', 'linkId', v_link.id, 'formId', v_link.form_id,
     'eventId', v_link.event_id, 'attachmentId', v_link.attachment_id, 'kind', v_link.kind,
-    'subject', v_subject, 'recognized', v_link.expires_at > now(), 'answered', v_resp.id IS NOT NULL,
+    'subject', v_subject, 'recognized', v_link.expires_at > now(), 'answered', v_resp_id IS NOT NULL,
     'identity', public.brand_form_short_name(v_contact->>'name'),
     'channels', to_jsonb(array_remove(ARRAY[CASE WHEN v_contact->>'email' IS NOT NULL THEN 'email' END,
                                             CASE WHEN v_contact->>'phone' IS NOT NULL THEN 'phone' END], NULL)));
@@ -1544,7 +1685,7 @@ BEGIN
     FROM public.brand_form_find_response(v_a.form_id, v_kind, v_sid) r;
   -- #4541 R4.6 (I-4541-BLAST-REPLY-NEVER-ON-GUEST): a Blast or Unknown reply is never a guest's answer.
   IF v_rid IS NOT NULL AND EXISTS (SELECT 1 FROM public.brand_form_responses x
-       WHERE x.id = v_rid AND (x.unknown_owner OR x.blast_contact_key IS NOT NULL)) THEN
+       WHERE x.id = v_rid AND (x.source = 'blast' OR x.unknown_owner OR x.blast_contact_key IS NOT NULL)) THEN
     v_rid := NULL;
   END IF;
   IF v_ticket IS NOT NULL AND EXISTS (SELECT 1 FROM public.tickets t
@@ -1639,7 +1780,7 @@ BEGIN
       FROM public.brand_form_find_response(v_a.form_id, v_kind, v_sid) r;
   -- #4541 R4.6 (I-4541-BLAST-REPLY-NEVER-ON-GUEST): a Blast or Unknown reply is never a guest's answer.
   IF v_rid IS NOT NULL AND EXISTS (SELECT 1 FROM public.brand_form_responses x
-       WHERE x.id = v_rid AND (x.unknown_owner OR x.blast_contact_key IS NOT NULL)) THEN
+       WHERE x.id = v_rid AND (x.source = 'blast' OR x.unknown_owner OR x.blast_contact_key IS NOT NULL)) THEN
     v_rid := NULL;
   END IF;
     IF v_ticket IS NOT NULL AND EXISTS (SELECT 1 FROM public.tickets t
@@ -1716,7 +1857,7 @@ BEGIN
     FROM public.brand_form_find_response(v_a.form_id, v_kind, v_sid) r;
   -- #4541 R4.6 (I-4541-BLAST-REPLY-NEVER-ON-GUEST): a Blast or Unknown reply is never a guest's answer.
   IF v_rid IS NOT NULL AND EXISTS (SELECT 1 FROM public.brand_form_responses x
-       WHERE x.id = v_rid AND (x.unknown_owner OR x.blast_contact_key IS NOT NULL)) THEN
+       WHERE x.id = v_rid AND (x.source = 'blast' OR x.unknown_owner OR x.blast_contact_key IS NOT NULL)) THEN
     v_rid := NULL;
   END IF;
   IF v_rid IS NULL OR NOT EXISTS (
@@ -1792,7 +1933,7 @@ BEGIN
     FROM answered a
    WHERE (a.r).id IS NOT NULL AND (a.r).verified
      -- #4541 R4.6: a Blast or Unknown reply is never a guest's answer.
-     AND NOT (a.r).unknown_owner AND (a.r).blast_contact_key IS NULL;
+     AND (a.r).source <> 'blast' AND NOT (a.r).unknown_owner AND (a.r).blast_contact_key IS NULL;
   RETURN jsonb_build_object('formId', v_form, 'columns', v_cols, 'rows', v_rows);
 END;
 $function$;
@@ -1808,7 +1949,7 @@ AS $function$
      -- #4541 R4.6/R4.8: a reply from a Blast (no page) belongs to All pages only;
      -- a hidden Unknown reply never counts or exports.
      AND r.hidden_at IS NULL
-     AND NOT (p_event_id IS NOT NULL AND r.campaign_id IS NOT NULL AND r.event_id IS NULL)
+     AND NOT (p_event_id IS NOT NULL AND r.source = 'blast')
      AND CASE
        WHEN r.rsvp_id IS NOT NULL THEN public.brand_form_subject_current('rsvp', r.rsvp_id,
               COALESCE(p_event_id, public.brand_form_subject_event('rsvp', r.rsvp_id)))
