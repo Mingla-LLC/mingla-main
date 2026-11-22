@@ -1,9 +1,11 @@
-// #4382 Wave 2 — the ticket side panel beside the inbox list: header, facts
-// (from / about, owner with Take it, topic, device, next update), the thread
-// with images, voice notes and internal notes, the Product box, and the
-// Reply / Internal note composer.
+// #4382 Wave 2 / #4420 (step 5) — the conversation beside the inbox list:
+// header (name, labels, Create ticket, Resolve or Reopen), facts (from / about,
+// owner with Take it, topic, device, next update), the thread as chat bubbles
+// with images, voice notes, internal notes and system lines, and the
+// Reply / Internal note composer. A conversation is a customer thread; "ticket"
+// means only the Work card linked to it.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLink, UserCheck, X } from "lucide-react";
+import { UserCheck, X } from "lucide-react";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
@@ -14,106 +16,28 @@ import { WebsiteRequestBox } from "./WebsiteRequestBox";
 import { isWebsiteRequestTicket } from "../../lib/websiteRequestModel";
 import { replyTargetLabel } from "./supportComposerModel";
 import { PRIORITY_OPTIONS, STATUS_BADGE, STATUS_LABEL, TOPIC_LABEL, deviceLine } from "./supportOptions";
-import { productPrefillDetails, BOARD_COLUMNS, STAGE_LABEL, stageIndex } from "./productBoardModel";
-import { isOverdueTicket, originChip, ticketNumberLabel } from "../../lib/supportTicketMetrics";
+import { isOverdueTicket } from "../../lib/supportTicketMetrics";
+import { conversationRow, createTicketButton, customerFallbackLine, rowLabels, rowTitle } from "../../lib/supportInboxModel";
+import { LabelChips } from "./InboxLabels";
 import { listTicketThread, signAttachmentUrls } from "../../services/supportDeskService";
-import { fetchTicketEngineering } from "../../services/opsService";
-import { githubChipClass } from "../../lib/opsModel";
 import { supabase } from "../../lib/supabase";
 import { formatDateTime } from "../../lib/formatters";
+import { ticketNumber } from "../../lib/ticketModel";
 
 const STATUS_OPTIONS = ["new", "open", "pending", "resolved", "closed"].map((value) => ({ value, label: STATUS_LABEL[value] }));
 
-// #3980 Wave 2 (Bridge C): one "Engineering" row from the Product item this
-// ticket is linked to. Nothing shows when it is not linked.
-function EngineeringRow({ sourceKind, sourceId }) {
-  const [attempt, setAttempt] = useState(0);
-  const key = `${sourceKind}:${sourceId}:${attempt}`;
-  const [answer, setAnswer] = useState({ key: null, error: null, data: null });
-  useEffect(() => {
-    let live = true;
-    fetchTicketEngineering(sourceKind, sourceId)
-      .then((data) => { if (live) setAnswer({ key, error: null, data }); })
-      .catch((error) => { if (live) setAnswer({ key, error, data: null }); });
-    return () => { live = false; };
-  }, [sourceKind, sourceId, key]);
-  const state = answer.key === key ? answer : { error: null, data: null, loading: true };
-  if (state.loading) {
-    return <div aria-label="Reading engineering status" className="h-4 w-48 animate-pulse rounded bg-[var(--gray-100)]" />;
-  }
-  if (state.error) {
-    return (
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span role="alert" className="text-[var(--color-error-700)]">Couldn't read engineering status.</span>
-        <Button variant="ghost" size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Button>
-      </div>
-    );
-  }
-  const data = state.data;
-  if (!data?.linked) return null;
-  const n = data.issue?.number;
-  return (
-    <div className="flex flex-col gap-1 text-sm">
-      <a href={data.issue?.url} target="_blank" rel="noopener noreferrer" title={data.issue?.title || undefined}
-        className={`inline-flex min-h-8 items-center gap-1 self-start rounded-full px-2.5 font-medium hover:underline ${githubChipClass(data.label)}`}>
-        <span className="break-normal [overflow-wrap:normal]">Engineering: {data.label} · #{n}</span>
-        <ExternalLink aria-hidden="true" className="h-3 w-3 shrink-0" />
-        <span className="sr-only">(opens GitHub in a new tab)</span>
-      </a>
-      {data.live && <p className="text-[var(--color-success-700)]">Live: you can tell the host it is fixed.</p>}
-    </div>
-  );
-}
-
-function ProductBox({ ticket, signal, messages, onSendToProduct }) {
-  if (!signal) {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--gray-200)] p-3 text-sm">
-        <span className="text-[var(--color-text-tertiary)]">Not linked to product work</span>
-        <Button size="sm" variant="secondary" onClick={() => onSendToProduct(ticket, productPrefillDetails(ticket, messages))}>Send to Product</Button>
-      </div>
-    );
-  }
-  const index = stageIndex(signal.state);
-  return (
-    <div className="space-y-2 rounded-xl border border-[var(--color-info-200,#bfdbfe)] bg-[var(--color-info-50)] p-3 text-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <strong className="text-[var(--color-text-primary)]">Product: {STAGE_LABEL[signal.state] || signal.state}</strong>
-        <span className="text-xs text-[var(--color-text-secondary)]">{signal.affected_people} reporter{signal.affected_people === 1 ? "" : "s"}</span>
-      </div>
-      <p className="truncate text-xs text-[var(--color-text-secondary)]">{signal.title}</p>
-      {signal.state === "wont_do" ? (
-        <p className="text-xs text-[var(--color-text-secondary)]">Won't do: {signal.wont_do_reason}</p>
-      ) : (
-        <>
-          <div className="grid grid-cols-5 gap-1" aria-hidden="true">
-            {BOARD_COLUMNS.map((column, i) => (
-              <span key={column.id} className={`h-1.5 rounded-full ${i < index ? "bg-[var(--color-brand-500)]" : "bg-[var(--gray-200)]"}`} />
-            ))}
-          </div>
-          <div className="grid grid-cols-5 gap-1 text-[10px] text-[var(--color-text-tertiary)]">
-            {BOARD_COLUMNS.map((column) => <span key={column.id}>{column.label}</span>)}
-          </div>
-        </>
-      )}
-      <EngineeringRow sourceKind="support_ticket" sourceId={ticket.id} />
-      <a href={`#/community?tab=product&signal=${encodeURIComponent(signal.id)}`} className="inline-block text-xs font-semibold text-[var(--color-brand-600)] underline-offset-2 hover:underline">
-        Open on the Product board
-      </a>
-    </div>
-  );
-}
-
 /**
- * Props: ticket, profilesById, brandsById, staffRoster, signal, myUserId,
- * acting, onClose, onClaim, onSetStatus, onSetPriority, onSendToProduct,
+ * Props: ticket, linkedTickets (the Work tickets linked to this conversation),
+ * profilesById, brandsById, myUserId, acting, createOpen, onClose, onClaim,
+ * onSetStatus, onSetPriority, onCreateTicket(messages), onOpenLinkedTicket(linked),
  * onChanged (reload the inbox), onError(title, message), onSessionExpired,
- * onWebsiteReady(note) (#4453: "Ready for review" on a website change request).
+ * onWebsiteReady(note) (#4453: "Ready for review" on a website change request),
+ * namesHidden (the people lookup was refused: say so instead of "No customer linked").
  */
 export function TicketPanel({
-  ticket, profilesById, brandsById, signal, myUserId, acting,
-  onClose, onClaim, onSetStatus, onSetPriority, onSendToProduct, onChanged, onError, onSessionExpired,
-  onWebsiteReady,
+  ticket, linkedTickets = [], profilesById, brandsById, myUserId, acting, createOpen = false,
+  onClose, onClaim, onSetStatus, onSetPriority, onCreateTicket, onOpenLinkedTicket, onChanged, onError, onSessionExpired,
+  onWebsiteReady, namesHidden = false,
 }) {
   const [messages, setMessages] = useState([]);
   const [factsOpen, setFactsOpen] = useState(true);
@@ -172,7 +96,11 @@ export function TicketPanel({
   const brand = ticket.brand_id ? brandsById[ticket.brand_id] : null;
   const creator = ticket.created_by ? profilesById[ticket.created_by] : null;
   const personName = requester?.display_name || requester?.username || requester?.email || "";
-  const chip = originChip(ticket);
+  const row = conversationRow(ticket);
+  const labels = rowLabels(row, linkedTickets);
+  const title = rowTitle(row, { profilesById, brandsById });
+  const ticketButton = createTicketButton(linkedTickets);
+  const isDone = ticket.status === "resolved" || ticket.status === "closed";
   const overdue = isOverdueTicket(ticket);
   const device = deviceLine(ticket);
   const target = replyTargetLabel(ticket, { personName: personName.split(" ")[0], brandName: brand?.name });
@@ -181,22 +109,33 @@ export function TicketPanel({
     // #4382 runtime P3a: the header, the compact facts and the thread scroll
     // together; the thread keeps at least ~55% of the panel's height and the
     // composer stays pinned at the bottom.
-    <aside aria-label={`Ticket ${ticketNumberLabel(ticket)}`} className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] lg:h-[calc(100vh-180px)]">
+    <aside aria-label={`Conversation ${ticket.ticket_number ?? ""}`} className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] lg:h-[calc(100vh-180px)]">
       <div data-testid="ticket-panel-scroll" className="min-h-0 flex-1 overflow-y-auto">
       <div className="border-b border-[var(--gray-200)] p-4">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-xs text-[var(--color-text-tertiary)]">{ticketNumberLabel(ticket)}</span>
-          <div className="flex items-center gap-1">
-            {!ticket.assigned_staff_id && (
-              <Button size="sm" variant="primary" icon={UserCheck} loading={acting} disabled={acting} onClick={onClaim}>Take it</Button>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-semibold text-[var(--color-text-primary)]">{title}</h3>
+            <p className="truncate text-xs text-[var(--color-text-tertiary)]">Conversation {ticket.ticket_number ?? ""} · {ticket.subject}</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+            {!ticket.assigned_staff_id && !isDone && (
+              <Button size="sm" variant="secondary" icon={UserCheck} loading={acting} disabled={acting} onClick={onClaim}>Take it</Button>
             )}
-            <Button size="sm" variant="ghost" icon={X} onClick={onClose} aria-label="Close ticket" />
+            {ticketButton.linked ? (
+              <Button size="sm" variant="secondary" aria-label={`Open ticket ${ticketNumber(linkedTickets[0].number)}`} onClick={() => onOpenLinkedTicket?.(linkedTickets[0])}>{ticketButton.text}</Button>
+            ) : (
+              <Button size="sm" variant="primary" disabled={createOpen} onClick={() => onCreateTicket?.(messages)}>{ticketButton.text}</Button>
+            )}
+            {isDone ? (
+              <Button size="sm" variant="secondary" loading={acting} disabled={acting} onClick={() => onSetStatus("open")}>Reopen</Button>
+            ) : (
+              <Button size="sm" variant="secondary" loading={acting} disabled={acting} onClick={() => onSetStatus("resolved")}>Resolve</Button>
+            )}
+            <Button size="sm" variant="ghost" icon={X} onClick={onClose} aria-label="Close conversation" />
           </div>
         </div>
-        <h3 className="mt-1 text-base font-semibold text-[var(--color-text-primary)]">{ticket.subject}</h3>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <Badge variant={STATUS_BADGE[ticket.status] || "default"}>{STATUS_LABEL[ticket.status] || ticket.status}</Badge>
-          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${chip.kind === "staff" ? "bg-[#f3e8ff] text-[#6b21a8]" : "bg-[var(--gray-100)] text-[var(--gray-700)]"}`}>{chip.label}</span>
+          <LabelChips labels={labels} onOpenTicket={onOpenLinkedTicket} />
           {ticket.priority === "urgent" && <Badge variant="error">Urgent</Badge>}
           {ticket.priority === "high" && <Badge variant="warning">High</Badge>}
           {overdue && <Badge variant="error">Update overdue</Badge>}
@@ -233,7 +172,7 @@ export function TicketPanel({
       <dl id={`ticket-facts-${ticket.id}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-b border-[var(--gray-200)] px-4 py-2 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
         <dt className="text-[var(--color-text-tertiary)]">{ticket.origin === "staff" ? "About" : "From"}</dt>
         <dd className="min-w-0 truncate text-[var(--color-text-primary)]">
-          {[personName || (ticket.visibility === "brand" ? null : ticket.imported_from === "beta_feedback" ? "Explorer (beta feedback)" : null), brand?.name].filter(Boolean).join(" · ") || "No customer linked"}
+          {[personName || (ticket.visibility === "brand" ? null : ticket.imported_from === "beta_feedback" ? "Explorer (beta feedback)" : null), brand?.name].filter(Boolean).join(" · ") || customerFallbackLine({ hasCustomer: Boolean(ticket.requester_user_id), namesHidden })}
           {requester?.email && <span className="block truncate text-xs text-[var(--color-text-tertiary)]">{requester.email}</span>}
         </dd>
         {ticket.origin === "staff" && (
@@ -290,7 +229,11 @@ export function TicketPanel({
         ) : (
           <SupportThread ticket={ticket} messages={messages} urls={urls} profilesById={profilesById} myUserId={myUserId} />
         )}
-        <ProductBox ticket={ticket} signal={signal} messages={messages} onSendToProduct={onSendToProduct} />
+        {linkedTickets.map((linked) => (
+          <p key={linked.card_id || linked.number} data-system-line="" className="text-center text-xs italic text-[var(--color-text-tertiary)]">
+            Ticket T{linked.number} created{linked.status === "done" ? " and closed" : ""}
+          </p>
+        ))}
         <div ref={bottomRef} />
       </div>
       </div>

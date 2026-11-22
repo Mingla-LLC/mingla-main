@@ -133,7 +133,7 @@ import {
   firstRunGreeting,
   isFirstRunLocked,
 } from "../../utils/firstRunState";
-import type { AriFirstRunHint } from "../../services/agentChatService";
+import type { AgentMessage, AriFirstRunHint } from "../../services/agentChatService";
 import {
   carrySitePromptMessage,
   takeCarriedSitePromptMessage,
@@ -322,11 +322,26 @@ export interface AriChatScreenProps {
     /** The part the run is on, so the form beside it can follow. */
     onFlowStep?: (stepKey: string | null) => void;
   };
+  /**
+   * #4420 — Help & Support's Support column embeds this same chat (no other
+   * behaviour change). It has no tab bar under it, and it reads the visible
+   * conversation so "Talk to a person" can carry the host's last question.
+   */
+  withoutTabBar?: boolean;
+  onConversationChange?: (snapshot: AriConversationSnapshot) => void;
+}
+
+/** #4420 — the conversation as the host currently sees it. */
+export interface AriConversationSnapshot {
+  conversationId: string | null;
+  messages: readonly AgentMessage[];
 }
 
 export const AriChatScreen: React.FC<AriChatScreenProps> = ({
   embedded: embeddedProp = false,
   setup,
+  withoutTabBar = false,
+  onConversationChange,
 }) => {
   const embedded = embeddedProp || setup !== undefined;
   const router = useRouter();
@@ -363,9 +378,11 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
       : null;
   const setupPart = setup ? setup.step : routeSetupPart;
   const websiteSetup = setup !== undefined;
-  // #2830 — Website setup has no tab bar, so nothing here clears one: the
+  // #2830 — Website setup has no tab bar, and neither has Ari embedded in
+  // Help & Support (#4420, withoutTabBar), so nothing here clears one: the
   // composer, its resting lift and the empty hero all read this one value.
-  const BOTTOM_NAV_CLEARANCE_PX = websiteSetup ? 0 : TAB_BAR_CLEARANCE_PX;
+  const noTabBar = websiteSetup || withoutTabBar;
+  const BOTTOM_NAV_CLEARANCE_PX = noTabBar ? 0 : TAB_BAR_CLEARANCE_PX;
   // An old address: setup lives on the one setup screen now.
   const legacySetupRoute =
     !setup &&
@@ -513,6 +530,9 @@ export const AriChatScreen: React.FC<AriChatScreenProps> = ({
     () => chat.setWorkflowContext(websiteSetup ? "website_setup" : null),
     [chat.setWorkflowContext, websiteSetup],
   );
+  React.useEffect(() => {
+    onConversationChange?.({ conversationId: chat.conversationId, messages: chat.messages });
+  }, [chat.conversationId, chat.messages, onConversationChange]);
   const attachments = useAriAttachments({
     brandId: selectedBrandId,
     conversationId: chat.conversationId,

@@ -18,14 +18,22 @@ import React from "react";
 import {
   SupportThreadCore,
   type KeyboardWrapProps,
+  type SupportThreadEmbedding,
 } from "./SupportThreadCore";
 
 const WebKeyboardWrap: React.FC<KeyboardWrapProps> = ({ children }) => (
   <>{children}</>
 );
 
-export const SupportThread: React.FC<{ ticketId: string; staffMode?: boolean }> = ({ ticketId, staffMode = false }) => (
-  <SupportThreadCore ticketId={ticketId} KeyboardWrap={WebKeyboardWrap} staffMode={staffMode} />
+export type SupportThreadProps = {
+  ticketId: string;
+  staffMode?: boolean;
+  /** #4420 — inside Help & Support's "A person" pane. */
+  embedded?: SupportThreadEmbedding;
+};
+
+export const SupportThread: React.FC<SupportThreadProps> = ({ ticketId, staffMode = false, embedded }) => (
+  <SupportThreadCore ticketId={ticketId} KeyboardWrap={WebKeyboardWrap} staffMode={staffMode} embedded={embedded} />
 );
 
 export default SupportThread;

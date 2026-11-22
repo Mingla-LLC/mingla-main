@@ -212,10 +212,11 @@ describe("B-5 the Status dropdown", () => {
       at('data-card-description=""'), at("<CardSubtasks card={card}"), at("<CardFiles card={card}"), at('<Section title="Linked"'), at("<GithubLinks card={card}"),
     ];
     assert.deepEqual([...order].sort((x, y) => x - y), order);
-    for (const kept of ["Assign to me", "Mark blocked", "Push back", "Send back", "Reopen", "Override", "Unblock", "Open the draft in Roadmap", "agentPromptFor(card)", "ops.archiveWork", "<CardWording card={card}", "<WorkingMark", "<RecordPicker", "<GithubWait"]) {
+    for (const kept of ["Assign to me", "Mark blocked", "Push back", "Send back", "Reopen", "Override", "Unblock", "agentPromptFor(card)", "ops.archiveWork", "<CardWording card={card}", "<WorkingMark", "<RecordPicker", "<GithubWait"]) {
       assert.ok(detail.includes(kept), kept);
     }
-    for (const gone of ["<CardDrafts", "<NoteBox", "<CardHistory", "<PlanSteps", '<Section title="Result">', "<Fold "]) assert.ok(!detail.includes(gone), gone);
+    // [TEST-MOD #4420] "Open the draft in Roadmap" left the kept list: the Roadmap screen is retired.
+    for (const gone of ["<CardDrafts", "<NoteBox", "<CardHistory", "<PlanSteps", '<Section title="Result">', "<Fold ", "Open the draft in Roadmap"]) assert.ok(!detail.includes(gone), gone);
   });
 });
 
@@ -245,7 +246,7 @@ describe("B-7 Due today for you", () => {
     assert.deepEqual(dueTodayState({ data: { due_today_mine: 2, overdue_mine: 3 } }), { status: "ready", dueToday: 2, overdue: 3 });
     assert.deepEqual(dueTodayState({ data: null, error: new Error("x") }), { status: "error", dueToday: null, overdue: null });
     const hook = code("hooks/useReviewCount.js");
-    assert.match(hook, /cards: work\.status === "ready" \? work\.dueToday \+ work\.overdue : null,/);
+    assert.match(hook, /cards: work\.status === "ready" \? workMenuCount\(work\.dueToday \+ work\.overdue, ticketsNew\) : null,/);
     const page = code("pages/OverviewPage.jsx");
     assert.match(page, /<Kpi\s+label="Due today for you"\s+note=\{`\$\{Number\(review\.overdue \|\| 0\)\.toLocaleString\(\)\} overdue`\}/);
     assert.match(page, /<KpiFailed label="Due today for you"/);

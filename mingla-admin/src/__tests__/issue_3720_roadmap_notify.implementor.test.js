@@ -6,7 +6,10 @@ import { describe, it } from "node:test";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relative) => readFileSync(join(ROOT, relative), "utf8");
-const panel = read("components/community/RoadmapPanel.jsx");
+// [TEST-MOD #4420] the Roadmap screen (components/community/RoadmapPanel.jsx) is
+// retired, so its two UI checks left with it. The roadmap RPCs stay in the
+// service (Host apps on current builds still read the roadmap) and the
+// announcement campaign checks still apply.
 const announcementPanel = read("components/community/AnnouncementsPanel.jsx");
 const service = read("services/communityService.js");
 
@@ -17,22 +20,6 @@ describe("#3720 roadmap notification is one deliberate campaign action", () => {
     assert.match(service, /community_get_roadmap_notification_status/);
   });
 
-  it("shows an explicit confirmation with audience, channels and destination", () => {
-    assert.match(panel, /Notify roadmap change/);
-    assert.match(panel, /one push and one matching in-app notification/i);
-    assert.match(panel, /No email is sent/);
-    assert.match(panel, /Hosts will land on the Roadmap section/);
-  });
-
-  it("reuses one request key on an ambiguous retry and reports queued, not sent", () => {
-    assert.match(panel, /setNotifyRequestKey\(crypto\.randomUUID\(\)\)/);
-    assert.match(panel, /notifyRoadmapChange\(notifyRequestKey\)/);
-    assert.match(panel, /Notification queued/);
-    assert.doesNotMatch(panel, /Notification sent/);
-  });
-});
-
-describe("#3720 announcement publishing reports delivery truth", () => {
   it("loads the durable announcement campaign status and renders every channel", () => {
     assert.match(service, /community_get_announcement_notification_status/);
     assert.match(announcementPanel, /Latest announcement notification/);

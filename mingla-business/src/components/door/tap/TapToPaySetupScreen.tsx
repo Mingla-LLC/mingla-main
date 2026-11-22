@@ -30,7 +30,7 @@ import {
   space,
   type,
 } from "../../../constants/designSystem";
-import { HELP_AND_SUPPORT_ROUTE } from "../../../constants/supportHostFacing";
+import { HELP_SUPPORT_PERSON_ROUTE } from "../../../constants/supportHostFacing";
 import { loadHasDoorSaleEvent, openDoorSaleFromTapSetup } from "./tapSetupTakePayment";
 import { requestTapLocation, tapLocationStatus } from "../../../services/terminal/tapToPayIosLocation";
 import {
@@ -163,7 +163,7 @@ export const TapToPaySetupScreen = ({
   // "Get help" on every state that isn't a success: the same Help & Support
   // screen as Account → Settings → Help & Support.
   const openHelp = useCallback((): void => {
-    router.push(HELP_AND_SUPPORT_ROUTE as never);
+    router.push(HELP_SUPPORT_PERSON_ROUTE as never);
   }, [router]);
 
   const startPayCode = useCallback(async (): Promise<void> => {

@@ -81,7 +81,12 @@ export function PeopleField({
   // #4398: one person only (a card's owner, or its watcher). Picking someone
   // else changes the person instead of adding a second; the box says Change.
   single = false,
+  // #4420 rework 3 (G8): keep the pick list inside the field's width (a
+  // narrow side panel must not scroll sideways).
+  fitMenu = false,
 }) {
+  // #4420 G8: a fitted list stays inside the field; otherwise it may grow to 24rem.
+  const menuWidth = fitMenu ? "w-full max-w-full" : "w-[max(100%,17rem)] max-w-[min(24rem,calc(100vw-2.5rem))]";
   const autoId = useId();
   const id = givenId || `people-${autoId.replace(/:/g, "")}`;
   const listId = `${id}-list`;
@@ -214,7 +219,7 @@ export function PeopleField({
         />
       </div>
       {open && !locked && (
-        <div id={listId} role="listbox" aria-label={`${label}: pick from the team`} className="absolute left-0 top-full z-30 mt-1.5 max-h-[300px] w-[max(100%,17rem)] max-w-[min(24rem,calc(100vw-2.5rem))] overflow-auto rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1.5 shadow-[var(--shadow-lg)]">
+        <div id={listId} role="listbox" aria-label={`${label}: pick from the team`} className={`absolute left-0 top-full z-30 mt-1.5 max-h-[300px] overflow-auto ${menuWidth} rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-1.5 shadow-[var(--shadow-lg)]`}>
           {groups.suggested.length > 0 && <div role="presentation" className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Suggested</div>}
           {groups.suggested.map((p, i) => row(p, i))}
           {groups.everyone.length > 0 && <div role="presentation" className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">Everyone</div>}

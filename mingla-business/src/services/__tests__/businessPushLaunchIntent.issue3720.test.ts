@@ -5,6 +5,9 @@
  * roadmap push held while pathname is `/` is flushed exactly once after
  * navigation leaves the boot index, landing on
  * `/account/support?tab=community&section=roadmap`.
+ *
+ * [TEST-MOD #4420] the roadmap left the Host app; the same push now lands on
+ * Help & Support's default (`/account/support`). The startup rule is unchanged.
  */
 
 import {
@@ -42,7 +45,7 @@ jest.mock("../../store/currentBrandStore", () => ({
   },
 }));
 
-const ROADMAP_TARGET = "/account/support?tab=community&section=roadmap";
+const ROADMAP_TARGET = "/account/support";
 
 describe("#3720 cold push through boot index → Home", () => {
   beforeEach(() => {

@@ -375,8 +375,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed.
 // #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the #1857, #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 template replay (#4508, which it builds on, is skipped there); re-sealed.
-// #4548 guest pack: registered 20281121014548 and its two pg17 proofs (with sidecars) in the #1857, #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 template replay (#4508 and #4459, which it reads, are skipped there); re-sealed.
-export const BOOTSTRAP_SHA256 = "62fad9292316a92fda815c26b9bac9ba1b62b97f0c6afb10d2034beb9f4f8499";
+// #4420 tickets on the Work board: listed migration 20281121034420 after 20281121023281 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4420 rework: registered the tester's tickets-on-Work-board pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4548 guest pack: registered 20281122004548 and its three pg17 proofs (implementor happy, implementor adversarial, tester adversarial; with sidecars) in the #1857, #1931 and #2117 inventories after #4420's rows; skipped it by exact filename on the filtered #1931 template replay (#4508 and #4459, which it reads, are skipped there); re-sealed.
+export const BOOTSTRAP_SHA256 = "490f27fd4154f52bb0acef5128decc621ba0ae5eb8535ec727913b2aa3a62ecd";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

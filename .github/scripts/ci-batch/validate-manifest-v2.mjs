@@ -635,8 +635,10 @@ export function phase3dContractDigest(manifest) {
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the replay inventories; skipped it by exact filename on the filtered #1931 template replay (it reads event_rsvp_guests columns only the skipped 20281119014508 creates); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-// #4548 guest pack: registered 20281121014548 and its two pg17 proofs (with sidecars) in the replay inventories; skipped it by exact filename on the filtered #1931 template replay (it reads event_rsvp_guests.claimed_at and issue_4459_rsvp_server_approvals, which only the skipped 20281119014508 and 20280805004459 create); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "eeb28f2a299331e7147cdc89938411999089907e77db702c662f2caba303c743";
+// #4420 tickets on the Work board: listed migration 20281121034420 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4420 rework: registered the tester's tickets-on-Work-board pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4548 guest pack: registered 20281122004548 and the implementor happy, implementor adversarial and tester adversarial pg17 proofs (with sidecars) in the replay inventories after #4420's rows; skipped it by exact filename on the filtered #1931 template replay (it reads event_rsvp_guests.claimed_at and issue_4459_rsvp_server_approvals, which only the skipped 20281119014508 and 20280805004459 create); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ff32f98dde683b4cc7b9627b3d1f4bf5fe9df6fe565665d0712aadef919602c0";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

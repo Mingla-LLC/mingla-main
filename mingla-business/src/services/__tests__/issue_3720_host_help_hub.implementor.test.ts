@@ -11,6 +11,11 @@
  *   - Support tab still shows Veronica + ticket start path
  *
  * Fails-on-revert: dropping the hub tabs or Help Centre row turns these red.
+ *
+ * [TEST-MOD #4420] Help & Support became Announcements and Support (Guides,
+ * Roadmap, Ideas and Questions left the Host app). The tab-resolver tests
+ * moved to support/__tests__/issue_4420_help_support_entry; the roadmap read
+ * left with the roadmap; the wiring pins below follow the new files.
  */
 import { describe, expect, jest, test, beforeEach } from "@jest/globals";
 import fs from "node:fs";
@@ -32,15 +37,10 @@ import {
   fetchSupportIsOnline,
   getCommunityEmailPrefEnabled,
   listPublishedAnnouncements,
-  listPublicRoadmap,
   markAnnouncementRead,
   setCommunityEmailPref,
 } from "../communityService";
 import { HELP_CENTRE_URL } from "../../constants/supportHostFacing";
-import {
-  isHelpSupportTabId,
-  resolveInitialHelpSupportTab,
-} from "../../utils/helpSupportLastTab";
 
 const ROOT = path.resolve(__dirname, "../../..");
 const SRC = path.join(ROOT, "src");
@@ -63,53 +63,6 @@ describe("#3720 Host Help & Support hub (implementor)", () => {
   beforeEach(() => {
     fromMock.mockReset();
     rpcMock.mockReset();
-  });
-
-  test("resolveInitialHelpSupportTab: unread wins over last tab", () => {
-    expect(
-      resolveInitialHelpSupportTab({
-        queryTab: null,
-        unreadCount: 2,
-        lastTab: "support",
-      }),
-    ).toBe("community");
-  });
-
-  test("resolveInitialHelpSupportTab: query tab wins over unread", () => {
-    expect(
-      resolveInitialHelpSupportTab({
-        queryTab: "guides",
-        unreadCount: 5,
-        lastTab: "community",
-      }),
-    ).toBe("guides");
-  });
-
-  test("resolveInitialHelpSupportTab: last tab when no unread", () => {
-    expect(
-      resolveInitialHelpSupportTab({
-        queryTab: undefined,
-        unreadCount: 0,
-        lastTab: "guides",
-      }),
-    ).toBe("guides");
-  });
-
-  test("resolveInitialHelpSupportTab: defaults to support", () => {
-    expect(
-      resolveInitialHelpSupportTab({
-        queryTab: "nope",
-        unreadCount: 0,
-        lastTab: null,
-      }),
-    ).toBe("support");
-  });
-
-  test("isHelpSupportTabId accepts only hub ids", () => {
-    expect(isHelpSupportTabId("community")).toBe(true);
-    expect(isHelpSupportTabId("support")).toBe(true);
-    expect(isHelpSupportTabId("guides")).toBe(true);
-    expect(isHelpSupportTabId("email")).toBe(false);
   });
 
   test("listPublishedAnnouncements joins read receipts", async () => {
@@ -159,33 +112,6 @@ describe("#3720 Host Help & Support hub (implementor)", () => {
     expect(await countUnreadAnnouncements()).toBe(1);
   });
 
-  test("listPublicRoadmap reads community_roadmap_public only", async () => {
-    fromMock.mockImplementation((table: unknown) => {
-      expect(table).toBe("community_roadmap_public");
-      return {
-        select: () => ({
-          order: () => ({
-            order: async () => ({
-              data: [
-                {
-                  id: "r1",
-                  public_title: "Soon",
-                  public_body: "Desc",
-                  lane: "now",
-                  sort_order: 0,
-                },
-              ],
-              error: null,
-            }),
-          }),
-        }),
-      };
-    });
-    const cards = await listPublicRoadmap();
-    expect(cards[0]?.public_title).toBe("Soon");
-    expect(cards[0]?.lane).toBe("now");
-  });
-
   test("email pref defaults ON when no row; RPC sets pref", async () => {
     fromMock.mockReturnValue(
       chain({ data: null, error: null }),
@@ -210,39 +136,35 @@ describe("#3720 Host Help & Support hub (implementor)", () => {
     expect(rpcMock).toHaveBeenCalledWith("support_is_online");
   });
 
-  test("hub route mounts Community · Support · Guides", () => {
+  test("hub route mounts Announcements · Support", () => {
     const src = fs.readFileSync(
       path.join(ROOT, "app/account/support.tsx"),
       "utf8",
     );
     expect(src).toMatch(/HelpSupportHubTabs/);
-    expect(src).toMatch(/CommunityTabPanel/);
-    expect(src).toMatch(/SupportTabPanel/);
-    expect(src).toMatch(/GuidesTabPanel/);
+    expect(src).toMatch(/AnnouncementsPanel/);
+    expect(src).toMatch(/SupportColumn/);
     expect(src).toMatch(/useCommunityUnreadCount/);
-    expect(src).toMatch(/resolveInitialHelpSupportTab/);
+    expect(src).toMatch(/resolveHelpSupportEntry/);
   });
 
-  test("hub tabs component labels Community · Support · Guides", () => {
+  test("hub tabs component labels Announcements · Support", () => {
     const src = fs.readFileSync(
       path.join(SRC, "components/support/HelpSupportHubTabs.tsx"),
       "utf8",
     );
-    expect(src).toContain('label: "Community"');
-    expect(src).toContain('label: "Support"');
-    expect(src).toContain('label: "Guides"');
+    expect(src).toContain('hubCopy("tabs.announcements")');
+    expect(src).toContain('hubCopy("tabs.support")');
+    expect(src).not.toContain("Guides");
   });
 
-  test("Guides tab exposes the growing Help Centre video catalogue", () => {
+  test("Support column links to the growing Help Centre video catalogue", () => {
     const src = fs.readFileSync(
-      path.join(SRC, "components/support/GuidesTabPanel.tsx"),
+      path.join(SRC, "components/support/SupportColumn.tsx"),
       "utf8",
     );
-    // [TEST-MOD-APPROVED #4173] The compact redesign names the handoff
-    // "View more videos" while preserving the canonical Help Centre target.
-    expect(src).toContain("View more videos");
     expect(src).toContain("openHelpCentre(HELP_CENTRE_URL)");
-    expect(src).toContain("HELP_CENTRE_URL");
+    expect(src).toContain('hubCopy("support.browse_videos")');
     expect(HELP_CENTRE_URL).toBe("https://usemingla.com/help");
   });
 
@@ -271,14 +193,13 @@ describe("#3720 Host Help & Support hub (implementor)", () => {
     expect(src).toContain("Help & Support");
   });
 
-  test("Community tab wires email pref + roadmap + mark read", () => {
+  test("Announcements wires email pref + mark read", () => {
     const src = fs.readFileSync(
-      path.join(SRC, "components/support/CommunityTabPanel.tsx"),
+      path.join(SRC, "components/support/AnnouncementsPanel.tsx"),
       "utf8",
     );
     expect(src).toMatch(/useCommunityEmailPref/);
-    expect(src).toMatch(/useCommunityRoadmap/);
     expect(src).toMatch(/useMarkAnnouncementRead/);
-    expect(src).toContain("Email me announcements");
+    expect(src).toContain('hubCopy("announcements.email_title")');
   });
 });

@@ -12,9 +12,9 @@ import { CommandPalette } from "./components/CommandPalette";
 import { Button } from "./components/ui/Button";
 import { useToast } from "./context/ToastContext";
 import { NAV_ITEMS } from "./lib/constants";
-import { pageTitle, resolveRoute } from "./lib/access";
+import { applyRouteFallback, pageTitle, resolveRoute } from "./lib/access";
 // Issue #4130 (Wave 0) — retired page ids and where they now live.
-import { isRetiredPageId, redirectHash } from "./lib/adminRoutes";
+import { isRetiredPageId, redirectFallback, redirectHash } from "./lib/adminRoutes";
 // #4130 Wave 4a: Hosts and creators and Inbound leads are built pages now.
 import { OutreachPage } from "./pages/HostsAndCreatorsHub";
 import { InboundLeadsPage } from "./pages/InboundLeadsPage";
@@ -32,13 +32,15 @@ import { TeamDashboardPage } from "./pages/TeamDashboardPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { SubscriptionManagementPage } from "./pages/SubscriptionManagementPage";
 import { PricingPage } from "./pages/PricingPage";
-// #4130 Wave 6 — the #3720 Community & Support console, split into two pages.
-import { CommunityPage, SupportPage } from "./pages/CommunitySupportPage";
+// #4420 — Support (the inbox and People and roles). Community is retired; its
+// old addresses redirect (lib/adminRoutes.js).
+import { SupportPage } from "./pages/SupportPage";
 // #4383 — Communications: what we tell hosts and explorers, each its own screen.
 import { CommunicationsOverviewPage } from "./pages/communications/CommunicationsOverviewPage";
 import { PushPage } from "./pages/communications/PushPage";
 import { AnnouncementsPage } from "./pages/communications/AnnouncementsPage";
-import { RoadmapPage } from "./pages/communications/RoadmapPage";
+// #4420 — the Feature guide's own screen (the Roadmap screen is retired).
+import { FeatureGuidePage } from "./pages/communications/FeatureGuidePage";
 import { EmailPage } from "./pages/EmailPage";
 import { BlogPage } from "./pages/communications/BlogPage";
 import { LinksPage } from "./pages/communications/LinksPage";
@@ -119,17 +121,18 @@ const PAGES = {
   inbound: InboundLeadsPage,
   "content-calendar": ContentCalendarPage,
   "team-dashboard": TeamDashboardPage,
-  // ── Support ── #4130 Wave 6: the old Community & Support console is two
-  // pages; #/community-support redirects by tab (lib/adminRoutes.js).
+  // ── Support ── #4130 Wave 6 split the Community & Support console; #4420
+  // retired Community. #/community and #/community-support redirect by tab
+  // (lib/adminRoutes.js).
   support: SupportPage,
-  community: CommunityPage,
   // ── Communications ── #4383: Email, Blog and Links page came out of
-  // Support, Announcements and Roadmap out of Community; their old tab
-  // addresses redirect here (lib/adminRoutes.js TAB_PAGE_REDIRECTS).
+  // Support, Announcements out of Community; their old tab addresses
+  // redirect here (lib/adminRoutes.js). #4420: the Roadmap screen is retired
+  // (#/roadmap opens Announcements) and the Feature guide is its own screen.
   communications: CommunicationsOverviewPage,
   push: PushPage,
   announcements: AnnouncementsPage,
-  roadmap: RoadmapPage,
+  "feature-guide": FeatureGuidePage,
   email: EmailPage,
   blog: BlogPage,
   links: LinksPage,
@@ -240,6 +243,15 @@ function getTabFromHash() {
   return PAGES[hash] ? hash : "overview";
 }
 
+// #4420: the page asked for, and the page to open instead when it is refused
+// (an old Product board address falls back to Support), read before the
+// address is rewritten.
+function readRequest() {
+  const fallback = redirectFallback(window.location.hash);
+  const requested = getTabFromHash();
+  return { requested, fallback: fallback && Object.hasOwn(PAGES, fallback) ? fallback : null };
+}
+
 // Did the address name a real page? Only then is a refusal worth a message.
 // A retired page's address counts as named (it rewrites to its new home).
 function addressNamesPage() {
@@ -324,7 +336,7 @@ export default function App() {
   // and a counter that moves on every navigation (so asking for the same
   // refused page twice is two events).
   const [nav, setNav] = useState(() => ({
-    requested: getTabFromHash(),
+    ...readRequest(),
     named: addressNamesPage(),
     seq: 0,
   }));
@@ -354,7 +366,7 @@ export default function App() {
       }
       setConnectOpen(captureConnectRequest());
       setNav((prev) => ({
-        requested: getTabFromHash(),
+        ...readRequest(),
         named: addressNamesPage(),
         seq: prev.seq + 1,
       }));
@@ -366,9 +378,11 @@ export default function App() {
   // Issue #3802 — the page to show is chosen from what this person may open,
   // never from the address alone. A page they may not open is never mounted.
   const signedIn = !!session && !!access;
-  const route = signedIn
+  const resolved = signedIn
     ? resolveRoute(nav.requested, access, PAGE_IDS)
     : { pageId: null, denied: false, requestedId: nav.requested };
+  // #4420: a refused Work board from an old Product board address opens Support.
+  const route = signedIn ? applyRouteFallback(resolved, nav.fallback, access, PAGE_IDS) : resolved;
 
   // Keep the address honest: when the page shown differs from the one asked
   // for (no address, unknown address, or one outside this person's access),

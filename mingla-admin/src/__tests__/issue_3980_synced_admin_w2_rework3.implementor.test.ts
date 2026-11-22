@@ -11,63 +11,23 @@
 //       and its "Mark sent" action again (rework 2 put it under "Other" with
 //       no action).
 import { assert, assertEquals, assertMatch } from "https://deno.land/std@0.224.0/assert/mod.ts";
+// [TEST-MOD #4420] the Roadmap screen and its deep-link helpers (isRoadmapHash,
+// roadmapCardFromHash, roadmapDraftHref) are retired; their three tests left.
+// Old roadmap addresses open Announcements (issue4420_admin_redirects).
 import {
-  isRoadmapHash,
   PERSON_ACTIONS,
   personActionFor,
   REVIEW_GROUPS,
   reviewGroupOf,
-  roadmapCardFromHash,
-  roadmapDraftHref,
 } from "../lib/opsModel.js";
 
 const SRC = new URL("../", import.meta.url);
 const read = (path: string) => Deno.readTextFileSync(new URL(path, SRC));
 const ID = "467a79ac-76c5-4b65-bc54-89b52073c574";
 
-Deno.test("#3980 W2 rework 3: only a Community, Roadmap address opens a roadmap card", () => {
-  assertEquals(roadmapCardFromHash(`#/community-support?tab=roadmap&card=${ID}`), ID);
-  assertEquals(roadmapCardFromHash(`#/community-support?card=${ID}&tab=roadmap`), ID, "parameter order does not matter");
-  assertEquals(roadmapCardFromHash(`#/work-board?card=${ID}`), null, "the Work board's ?card= is a work card");
-  assertEquals(roadmapCardFromHash(`#/drafts?tab=spend&card=${ID}`), null, "To review's ?card= is a work card");
-  assertEquals(roadmapCardFromHash(`#/drafts?card=${ID}`), null);
-  assertEquals(roadmapCardFromHash(`#/community-support?tab=support&card=${ID}`), null, "another Community tab");
-  assertEquals(roadmapCardFromHash(`#/community-support?card=${ID}`), null, "no tab is Overview, not Roadmap");
-  assertEquals(roadmapCardFromHash(`#/community-support-x?tab=roadmap&card=${ID}`), null, "a near-miss page");
-  assertEquals(roadmapCardFromHash(`#/other/community-support?tab=roadmap&card=${ID}`), null);
-  assertEquals(roadmapCardFromHash(""), null);
-  assertEquals(roadmapCardFromHash(undefined), null);
-  // The link To review and the Work board build is still read back.
-  const href = roadmapDraftHref({ links: [{ kind: "roadmap_card", id: ID }] })!;
-  assertEquals(roadmapCardFromHash(href), ID);
-  assertEquals(isRoadmapHash(href), true);
-  assertEquals(isRoadmapHash("#/community-support?tab=roadmap"), true);
-  assertEquals(isRoadmapHash(`#/drafts?tab=spend&card=${ID}`), false);
-  assertEquals(isRoadmapHash("#/community-support?tab=overview"), false);
-});
 
-// The listener's decision, exactly as RoadmapPanel runs it on each hashchange.
-function onHash(hash: string) {
-  const leaving = !isRoadmapHash(hash);
-  return { leaving, open: leaving ? null : roadmapCardFromHash(hash) };
-}
 
-Deno.test("#3980 W2 rework 3: Back to To review or moving to the Work board is leaving, never a missing card", () => {
-  for (const hash of [`#/drafts?tab=spend&card=${ID}`, `#/work-board?card=${ID}`, "#/drafts", "#/community-support?tab=support"]) {
-    assertEquals(onHash(hash), { leaving: true, open: null }, hash);
-  }
-  assertEquals(onHash(`#/community-support?tab=roadmap&card=${ID}`), { leaving: false, open: ID });
-  assertEquals(onHash("#/community-support?tab=roadmap"), { leaving: false, open: null });
-});
 
-Deno.test("#3980 W2 rework 3: the Roadmap panel's listener says nothing while the page is closing", () => {
-  const p = read("components/community/RoadmapPanel.jsx");
-  assertMatch(p, /const leavingRef = useRef\(false\);/);
-  assertMatch(p, /const onHash = \(\) => \{\n\s+const hash = window\.location\.hash;\n\s+leavingRef\.current = !isRoadmapHash\(hash\);\n\s+setOpenCardId\(leavingRef\.current \? null : roadmapCardFromHash\(hash\)\);\n\s+\};/);
-  assertMatch(p, /return \(\) => \{\n\s+leavingRef\.current = true;\n\s+window\.removeEventListener\("hashchange", onHash\);\n\s+\};/);
-  assertMatch(p, /if \(!row\) \{\n\s+if \(leavingRef\.current\) return;\n\s+addToast\(\{ variant: "warning", title: "That roadmap card isn’t here any more"/);
-  assert(!/const onHash = \(\) => setOpenCardId\(roadmapCardFromHash\(window\.location\.hash\)\);/.test(p), "the bare listener is gone");
-});
 
 Deno.test("#3980 W2 rework 3: To review's description names roadmap approvals in plain words", () => {
   const d = read("pages/DraftsPage.jsx");

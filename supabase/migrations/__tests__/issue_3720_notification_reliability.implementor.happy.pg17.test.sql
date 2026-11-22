@@ -243,25 +243,20 @@ begin
     v_preview::text
   );
 
-  v_campaign := public.community_notify_roadmap_change(
-    '53720000-0000-4000-8000-000000000131'
-  );
-  insert into t3720n_ids(key, id)
-  values ('first_roadmap_campaign', (v_campaign->>'campaign_id')::uuid);
-  perform pg_temp.ok(
-    'roadmap_one_campaign_for_many_edits',
-    (v_campaign->>'audience_count')::integer = 3,
-    v_campaign::text
-  );
-
-  v_retry := public.community_notify_roadmap_change(
-    '53720000-0000-4000-8000-000000000131'
-  );
-  perform pg_temp.ok(
-    'roadmap_retry_is_same_campaign',
-    (v_retry->>'duplicate')::boolean = true
-    and v_retry->>'campaign_id' = v_campaign->>'campaign_id'
-  );
+  -- #4420: the roadmap updated notice is retired. Asking for it is refused
+  -- and enqueues nothing; roadmap edits above stay silent as before.
+  begin
+    v_campaign := public.community_notify_roadmap_change(
+      '53720000-0000-4000-8000-000000000131'
+    );
+    perform pg_temp.ok('roadmap_notice_retired_4420', false, v_campaign::text);
+  exception when others then
+    perform pg_temp.ok('roadmap_notice_retired_4420', sqlerrm like 'retired:%', sqlerrm);
+  end;
+  select count(*) into v_after
+  from public.notification_outbox
+  where category_key = 'business.community_roadmap_updated';
+  perform pg_temp.ok('roadmap_notice_enqueues_nothing_4420', v_after = v_before);
 end;
 $admin$;
 
@@ -270,10 +265,8 @@ reset role;
 do $first_snapshot_assertions$
 declare
   v_announcement uuid;
-  v_campaign uuid;
 begin
   select id into v_announcement from t3720n_ids where key = 'announcement';
-  select id into v_campaign from t3720n_ids where key = 'first_roadmap_campaign';
   perform pg_temp.ok(
     'announcement_one_outbox_per_host',
     (
@@ -296,63 +289,11 @@ begin
         )
     )
   );
-  perform pg_temp.ok(
-    'roadmap_copy_and_destination_exact',
-    not exists (
-      select 1 from public.notification_outbox
-      where payload->>'campaign_id' = v_campaign::text
-        and (
-          payload->>'title' <> 'Mingla roadmap updated'
-          or payload->>'body' <> 'See what’s new in Now, Next and Later.'
-          or payload->>'deep_link' <> 'mingla-business://community/roadmap'
-          or payload ? 'internal_note'
-          or country_code is not null
-        )
-    )
-  );
 end;
 $first_snapshot_assertions$;
 
--- Recipient rows are the immutable first-campaign snapshot. A later deliberate
--- request key resolves the then-current audience and creates a new campaign.
-update public.community_notification_campaigns
-set created_at = now() - interval '2 minutes'
-where kind = 'roadmap_update'
-  and request_key = '53720000-0000-4000-8000-000000000131';
-
-update public.brand_team_members
-set removed_at = now()
-where user_id = 'c3720000-0000-4000-8000-000000000103'
-  and brand_id = '33720000-0000-4000-8000-000000000111';
-
-select set_config(
-  'request.jwt.claim.sub',
-  'a3720000-0000-4000-8000-000000000101',
-  true
-);
-set local role authenticated;
-
-do $new_campaign$
-declare
-  v_first uuid;
-  v_second jsonb;
-begin
-  select id into v_first
-  from public.community_notification_campaigns
-  where request_key = '53720000-0000-4000-8000-000000000131';
-  v_second := public.community_notify_roadmap_change(
-    '53720000-0000-4000-8000-000000000132'
-  );
-  perform pg_temp.ok(
-    'new_request_key_creates_new_snapshot',
-    (v_second->>'campaign_id')::uuid <> v_first
-    and (v_second->>'audience_count')::integer = 2,
-    v_second::text
-  );
-end;
-$new_campaign$;
-
-reset role;
+-- #4420: the roadmap campaign snapshot checks left with the retired roadmap
+-- updated notice (no roadmap campaign is made any more).
 
 -- An enabled rep receives the operational event even while unavailable.
 select set_config(
@@ -451,7 +392,8 @@ begin
   begin
     perform public.community_notify_roadmap_change(gen_random_uuid());
   exception when others then
-    v_forbidden := sqlstate = '42501' or sqlerrm ilike '%not_authorized%';
+    v_forbidden := sqlstate = '42501' or sqlerrm ilike '%not_authorized%'
+                   or sqlerrm like 'retired:%';  -- #4420: refused for everyone now
   end;
   perform pg_temp.ok('host_cannot_notify_roadmap', v_forbidden);
 end;
@@ -587,7 +529,9 @@ declare
   v_count integer;
 begin
   select count(*) into v_count from t3720n_results;
-  if v_count < 26 then
+  -- #4420: four roadmap campaign checks left with the retired notice; two
+  -- checks prove it is refused and enqueues nothing (26 - 4 + 2).
+  if v_count < 24 then
     raise exception 'too few #3720 notification checks: %', v_count;
   end if;
   select string_agg(name || ': ' || coalesce(detail, 'fail'), E'\n' order by name)

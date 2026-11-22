@@ -59,7 +59,7 @@ export function WordingCard({ card, myName, onDone, onOpenSide = null }) {
         <h2 className={`text-[15px] font-semibold text-[var(--color-text-primary)] ${WORDS}`}>{card.title}</h2>
         <p className={`text-[13px] text-[var(--color-text-secondary)] ${WORDS}`}>Check the wording of the drafted Recently shipped card and publish it, or say it is not needed. Nothing reaches hosts until you publish it.</p>
         {!draft.id ? (
-          <AlertCard variant="warning" title="The drafted roadmap card is gone">Mark it not needed, or open the Roadmap.</AlertCard>
+          <AlertCard variant="warning" title="The drafted roadmap card is gone">Mark it not needed.</AlertCard>
         ) : (
           <>
             <label className="flex min-w-0 flex-col gap-1">

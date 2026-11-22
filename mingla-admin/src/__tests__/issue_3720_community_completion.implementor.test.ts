@@ -24,7 +24,9 @@ Deno.test("#3720 Community moderators receive moderation but not Admin cutover a
     areas: [COMMUNITY_OPERATIONS_AREA],
   }, tabs).map((tab: { id: string }) => tab.id);
   // #4130 Wave 6: Overview was retired, so no area grants it.
-  assertEquals(visible, ["moderation"]);
+  // [TEST-MOD #4420] Moderation retired with Community; a Community moderator
+  // gets no console tab, and still no Admin cutover authority.
+  assertEquals(visible, []);
   const admin = communitySupportTabsForAccess({
     status: "active",
     areas: [AREA.ADMIN_CONSOLE],
@@ -32,22 +34,15 @@ Deno.test("#3720 Community moderators receive moderation but not Admin cutover a
   assertEquals(admin, ["overview", "moderation", "cutover", "email"]);
 });
 
-Deno.test("#3720 moderation and cutover UI use only audited server RPCs", async () => {
-  const [service, moderation, cutover] = await Promise.all([
-    read("services/communityService.js"),
-    read("components/community/ModerationPanel.jsx"),
-    read("components/community/CutoverPanel.jsx"),
-  ]);
+// [TEST-MOD #4420] the Moderation and Cutover panels were deleted (Community
+// retired); the service still reaches only the audited RPCs, and no Admin
+// file writes community tables directly.
+Deno.test("#3720 moderation and cutover use only audited server RPCs", async () => {
+  const service = await read("services/communityService.js");
   assertMatch(service, /issue_3720_community_moderation_queue/);
   assertMatch(service, /issue_3720_community_moderate/);
   assertMatch(service, /issue_3720_community_cutover_status/);
-  assertMatch(moderation, /First-three-post review/);
-  assertMatch(cutover, /Agent seats remain last/);
-  assertNotMatch(`${moderation}\n${cutover}`, /from\(["']community_/);
-  assertNotMatch(
-    `${moderation}\n${cutover}`,
-    /\.insert\(|\.update\(|\.delete\(/,
-  );
+  assertNotMatch(service, /from\(["']community_[a-z_]+["']\)\s*\.(insert|update|delete)\(/);
 });
 
 Deno.test("#3720 cutover gate keeps ClickUp retirement and seats evidence explicit", async () => {

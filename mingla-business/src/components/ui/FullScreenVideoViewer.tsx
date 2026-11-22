@@ -1,8 +1,8 @@
 /**
  * #3040 Appendix A §6 G-05 — "Ready: tap → open viewer".
  *
- * The app's existing full-screen video pattern (BrandGroupFilePreviewModal,
- * GuidePlayerModal): a full-screen `Modal` with an expo-video `VideoView`
+ * The app's existing full-screen video pattern (BrandGroupFilePreviewModal):
+ * a full-screen `Modal` with an expo-video `VideoView`
  * carrying the platform's own controls. expo-video is already in every
  * shipped build, so this adds no native code. Callers load this module lazily,
  * so expo-video never evaluates on a screen that does not open a video.

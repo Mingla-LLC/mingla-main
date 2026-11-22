@@ -215,14 +215,15 @@ begin
     $$select public.issue_4383_announcement_schedule('43839999-0000-4000-e000-000000000001', now() + interval '59 seconds', 'UTC')|scheduled_time_past$$,
     $$select public.issue_4383_announcement_schedule('43839999-0000-4000-e000-000000000001', null, 'UTC')|scheduled_time_past$$,
     $$select public.issue_4383_roadmap_schedule_card('43839999-0000-4000-f000-000000000001', now() - interval '1 second', 'UTC')|scheduled_time_past$$,
-    $$select public.issue_4383_roadmap_schedule_notice(now() - interval '1 day', 'UTC')|scheduled_time_past$$,
+    -- #4420: the roadmap updated notice is retired, so scheduling one is refused outright.
+    $$select public.issue_4383_roadmap_schedule_notice(now() - interval '1 day', 'UTC')|retired$$,
     $$select public.issue_4383_push_save('43839999-0000-4000-c000-000000000001', 'x', 'y', 'both', 'explore', 'community', now() - interval '1 day', 'UTC', 1)|scheduled_time_past$$,
     -- zones
     $$select public.issue_4383_announcement_schedule('43839999-0000-4000-e000-000000000001', now() + interval '1 day', 'Lagos')|invalid_timezone$$,
     $$select public.issue_4383_announcement_schedule('43839999-0000-4000-e000-000000000001', now() + interval '1 day', null)|invalid_timezone$$,
     $$select public.issue_4383_roadmap_schedule_card('43839999-0000-4000-f000-000000000001', now() + interval '1 day', 'africa/lagos')|invalid_timezone$$,
-    $$select public.issue_4383_roadmap_schedule_notice(now() + interval '1 day', '+01:00')|invalid_timezone$$,
-    $$select public.issue_4383_roadmap_schedule_notice(now() + interval '1 day', 'UTC; drop table x')|invalid_timezone$$,
+    $$select public.issue_4383_roadmap_schedule_notice(now() + interval '1 day', '+01:00')|retired$$,
+    $$select public.issue_4383_roadmap_schedule_notice(now() + interval '1 day', 'UTC; drop table x')|retired$$,
     $$select public.issue_4383_push_save(null, 'x', 'y', 'both', 'explore', 'community', now() + interval '1 day', 'Mars/Base', null)|invalid_timezone$$,
     -- stale revision and finished items
     $$select public.issue_4383_push_save('43839999-0000-4000-c000-000000000001', 'x', 'y', 'both', 'explore', 'community', null, 'UTC', 2)|stale_revision$$,

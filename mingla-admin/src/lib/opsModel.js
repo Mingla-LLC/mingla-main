@@ -93,43 +93,13 @@ export function spendQueueCards(cards, hideHostsTold = false) {
 /**
  * The one-tap action a card waiting for a person offers, or null when it
  * offers Close with proof instead. A roadmap approval card closes itself
- * once its draft is published or archived in Community, Roadmap, and a
- * person can close it with proof.
+ * once its wording is published or marked not needed on the card (#4420: the
+ * Roadmap screen is retired; the card's own wording editor is the one place),
+ * and a person can close it with proof.
  */
 export function personActionFor(card) {
   if (isRoadmapApproval(card)) return null;
   return PERSON_ACTIONS[card?.person_reason] || null;
-}
-
-/** Communications, Roadmap with the drafted card open, or null when the card links none. */
-export function roadmapDraftHref(card) {
-  const link = (card?.links || []).find((l) => l?.kind === "roadmap_card" && typeof l.id === "string" && l.id);
-  return link ? `#/roadmap?card=${encodeURIComponent(link.id)}` : null;
-}
-
-// #4383: Roadmap is its own Communications screen (#/roadmap). The two older
-// forms still count, so a Work card or email sent before the move opens the
-// card: #4130 Wave 6's #/community?tab=roadmap and the console's
-// #/community-support?tab=roadmap (App rewrites both to #/roadmap).
-const OLD_ROADMAP_TAB_PAGES = new Set(["#/community", "#/community-support"]);
-
-/** True only for the Roadmap screen, or an old Community address on its Roadmap tab. */
-export function isRoadmapHash(hash) {
-  const [path, query = ""] = String(hash || "").split("?");
-  if (path === "#/roadmap") return true;
-  return OLD_ROADMAP_TAB_PAGES.has(path) && new URLSearchParams(query).get("tab") === "roadmap";
-}
-
-/**
- * The roadmap card a Roadmap address asks to open, or null. Only #/roadmap
- * (or the old #/community / #/community-support with tab=roadmap) counts: the
- * Work board and To review also carry ?card= (a work card), and leaving
- * Roadmap for them must not look like a missing roadmap card.
- */
-export function roadmapCardFromHash(hash) {
-  if (!isRoadmapHash(hash)) return null;
-  const id = new URLSearchParams(String(hash).split("?")[1] || "").get("card");
-  return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }
 
 /**
@@ -169,6 +139,14 @@ export const LINK_KINDS = [
   { value: "event", label: "Event" },
   { value: "content", label: "Content" },
   { value: "expected", label: "Expected" },
+];
+
+// #4420: a card's detail can also link a support conversation (a ticket's
+// reporters; searched by customer name or conversation number). The add-card
+// form keeps LINK_KINDS as it was.
+export const DETAIL_LINK_KINDS = [
+  ...LINK_KINDS,
+  { value: "support_conversation", label: "Support conversation" },
 ];
 
 /** The eleven rules every agent follows, as people read them. */

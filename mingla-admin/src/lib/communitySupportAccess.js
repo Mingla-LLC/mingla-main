@@ -22,27 +22,19 @@ export function communitySupportCapabilities(access) {
   };
 }
 
-// #4130 Wave 6: the Support and Community pages both filter their tabs here;
-// a page opens on the first tab this leaves (lib/supportCommunityTabs.js).
+// #4130 Wave 6: the Support page filters its tabs here; it opens on the first
+// tab this leaves (lib/supportCommunityTabs.js). People and roles is full
+// admins only.
 // #4383: Email, Blog and Links page are their own screens now, gated by
 // lib/access.js PAGE_ADDITIONAL_AREAS (the same areas these tabs had).
 export function communitySupportTabsForAccess(access, tabs) {
-  const { isAdmin, canSupport, canCommunity } = communitySupportCapabilities(access);
+  const { isAdmin, canSupport } = communitySupportCapabilities(access);
   if (isAdmin) return tabs;
 
+  // #4420: Community's tabs are retired (Reported enquiries arrive in the
+  // Support inbox; the Feature guide is its own screen, gated in
+  // lib/access.js). The Support page's own tabs remain.
   const allowed = new Set();
-  if (canCommunity) {
-    allowed.add("ideas");
-    allowed.add("questions");
-    allowed.add("moderation");
-    // #4111: admin_* enquiry-report RPCs guard on issue_4111_is_mingla_staff,
-    // the same people community_can('moderate') admits.
-    allowed.add("enquiry-reports");
-  }
-  if (canSupport) {
-    allowed.add("support");
-    allowed.add("feature-guide");
-    allowed.add("brand-groups");
-  }
+  if (canSupport) allowed.add("support");
   return tabs.filter((tab) => allowed.has(tab.id));
 }

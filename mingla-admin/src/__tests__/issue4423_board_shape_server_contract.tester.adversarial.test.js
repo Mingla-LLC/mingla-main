@@ -81,6 +81,24 @@ const builder = functionSql(newestDefining("ops_cards_json"), "ops_cards_json");
 const shared = builder.slice(builder.indexOf("jsonb_build_object(", builder.indexOf("SELECT p.ord")), builder.indexOf("AS common"));
 const sharedKeys = objectKeys(shared);
 const fullOnly = builder.slice(builder.indexOf("AS common"), builder.indexOf("AS extra"));
+// [TEST-MOD #4420] A card-kind part (e.g. #4420's ticket_part) is concatenated
+// onto common || extra for EVERY shape, so its keys reach the board too. Read
+// each such part from the final aggregate; a part only counts as every-shape
+// when its own SQL never looks at the shape (p_shape / v_full).
+const aggregate = builder.match(/jsonb_agg\(j\.common \|\| j\.extra((?: \|\| j\.[a-z_]+)*) ORDER BY/);
+assert.ok(aggregate, "the final aggregate concatenates common || extra");
+const kindParts = [...aggregate[1].matchAll(/j\.([a-z_]+)/g)].map((m) => m[1]);
+const kindPartKeys = new Set();
+for (const part of kindParts) {
+  const end = builder.indexOf(` AS ${part}`);
+  const start = builder.lastIndexOf(" AS ", end - 1); // the previous part's alias
+  assert.ok(builder.slice(start, start + 4 + 64).match(/^ AS (common|extra|[a-z_]+),/), `part ${part}: previous alias not found`);
+  assert.ok(end > 0 && start > 0, `part ${part} not found`);
+  const partSql = builder.slice(builder.indexOf("\n", start), end);
+  assert.doesNotMatch(partSql, /p_shape|v_full/, `part ${part} depends on the shape`);
+  for (const k of objectKeys(partSql)) kindPartKeys.add(k);
+}
+const everyShapeKeys = new Set([...sharedKeys, ...kindPartKeys]);
 const listSql = functionSql(newestDefining("ops_work_list"), "ops_work_list");
 const serviceSrc = readFileSync(path.join(HERE, "..", "services", "opsService.js"), "utf8");
 
@@ -92,12 +110,12 @@ describe("#4423 tester: the board shape the admin needs is the shape the databas
 
   it("every field the admin board reads is built for every board shape (not only full)", () => {
     const required = BOARD_FIELDS.filter((f) => f !== "instructions");
-    const missing = required.filter((f) => !sharedKeys.has(f));
+    const missing = required.filter((f) => !everyShapeKeys.has(f)); // [TEST-MOD #4420] common or a shape-free card-kind part
     assert.deepEqual(missing, [], `the server's board shape lacks: ${missing.join(", ")}`);
   });
 
   it("drawer-only fields stay out of the shared board object", () => {
-    const leaked = DRAWER_ONLY.filter((f) => sharedKeys.has(f));
+    const leaked = DRAWER_ONLY.filter((f) => everyShapeKeys.has(f)); // [TEST-MOD #4420] card-kind parts stay light too
     assert.deepEqual(leaked, [], `drawer-only fields in the board shape: ${leaked.join(", ")}`);
     for (const f of DRAWER_ONLY) assert.match(fullOnly, new RegExp(`'${f}'`), `full shape still carries ${f}`);
   });

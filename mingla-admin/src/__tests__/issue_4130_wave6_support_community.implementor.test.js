@@ -14,6 +14,12 @@
 //         existing retry path, Admin-only
 //   W6-7  Roadmap links (Work cards) open Community, old links still count
 //
+// [TEST-MOD #4420] Community and the Roadmap screen are retired: their tabs
+// redirect (Support, Work tickets, the Feature guide screen, Announcements),
+// Reported enquiries arrive in the Support inbox, and Work cards no longer link
+// to a Roadmap screen. issue4420_admin_redirects.implementor.test.js pins the
+// full table; this suite keeps pinning what Support still holds.
+//
 // #4383: Email, Blog, Links page, Announcements and Roadmap left these two
 // pages for their own Communications screens; this suite now pins what the
 // two pages still hold, and issue_4383_communications.implementor.test.js
@@ -36,7 +42,6 @@ import {
 } from "../lib/access.js";
 import { isRetiredPageId, redirectHash } from "../lib/adminRoutes.js";
 import {
-  COMMUNITY_PAGE_TABS,
   SUPPORT_PAGE_TABS,
   consoleRedirectHash,
   pageTabFromHash,
@@ -44,13 +49,8 @@ import {
 } from "../lib/supportCommunityTabs.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
-import {
-  SUPPORT_INBOX_VIEWS,
-  supportInboxCounts,
-  supportInboxRows,
-} from "../lib/supportTicketMetrics.js";
+import { conversationRow, needsReplyCount, splitInbox } from "../lib/supportInboxModel.js";
 import { announcementsWithFailedPushes, pushDelivery } from "../lib/announcementDelivery.js";
-import { isRoadmapHash, roadmapCardFromHash, roadmapDraftHref } from "../lib/opsModel.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
@@ -61,26 +61,27 @@ const ids = (tabs) => tabs.map((tab) => tab.id);
 // (Overview retired here; Availability is the Support header switch).
 // #4383: email, blog, announcements and roadmap are Communications screens
 // now (a tab of none), and Community opens on Ideas.
+// [TEST-MOD #4420] each old tab -> its full new address (with x=1 carried);
+// retired tabs drop values their new page does not read.
 const OLD_TAB_HOME = {
-  support: ["support", null],
-  email: ["email", null],
-  blog: ["blog", null],
-  team: ["support", "team"],
-  announcements: ["announcements", null],
-  roadmap: ["roadmap", null],
-  ideas: ["community", null],
-  questions: ["community", "questions"],
-  moderation: ["community", "moderation"],
-  "enquiry-reports": ["community", "enquiry-reports"],
-  "brand-groups": ["brand-groups", null], // #4452 §7.2: its own screen
-  "feature-guide": ["community", "feature-guide"],
-  product: ["community", "product"],
+  support: "#/support?x=1",
+  email: "#/email?x=1",
+  blog: "#/blog?x=1",
+  team: "#/support?tab=team&x=1",
+  announcements: "#/announcements?x=1",
+  roadmap: "#/announcements",
+  ideas: "#/support",
+  questions: "#/support",
+  moderation: "#/support",
+  "enquiry-reports": "#/support?filter=reported&x=1",
+  "brand-groups": "#/brand-groups?x=1", // #4452 §7.2: its own screen
+  "feature-guide": "#/feature-guide?x=1",
+  product: "#/work-board?type=tickets",
 };
 
 describe("W6-1 old console addresses", () => {
   it("every old tab lands on its page and tab, keeping the rest of the address", () => {
-    for (const [tab, [page, newTab]] of Object.entries(OLD_TAB_HOME)) {
-      const expected = `#/${page}?${newTab ? `tab=${newTab}&` : ""}x=1`;
+    for (const [tab, expected] of Object.entries(OLD_TAB_HOME)) {
       assert.equal(redirectHash(`#/community-support?tab=${tab}&x=1`), expected, tab);
       assert.equal(consoleRedirectHash(`#/community-support?x=1&tab=${tab}`), expected, `${tab} (order)`);
     }
@@ -96,30 +97,29 @@ describe("W6-1 old console addresses", () => {
     const id = "00000000-0000-4000-8000-000000000001";
     assert.equal(redirectHash(`#/community-support?tab=support&ticket=${id}`), `#/support?ticket=${id}`);
     assert.equal(redirectHash(`#/community-support?tab=support&thread=${id}`), `#/support?thread=${id}`);
-    assert.equal(redirectHash(`#/community-support?tab=product&signal=${id}`), `#/community?tab=product&signal=${id}`);
-    assert.equal(redirectHash(`#/community-support?tab=roadmap&card=${id}`), `#/roadmap?card=${id}`);
+    // [TEST-MOD #4420] the Product board and Roadmap screen are retired.
+    assert.equal(redirectHash(`#/community-support?tab=product&signal=${id}`), "#/work-board?type=tickets");
+    assert.equal(redirectHash(`#/community-support?tab=roadmap&card=${id}`), "#/announcements");
     assert.equal(redirectHash("#/community-support?tab=team"), "#/support?tab=team");
   });
 });
 
-describe("W6-2 Support and Community are real pages", () => {
-  it("they are no longer redirects; community-support is (#4383: email is a page again)", () => {
+describe("W6-2 Support is a real page; Community is retired (#4420)", () => {
+  it("Support is not a redirect; community-support and (#4420) community are", () => {
     assert.equal(isRetiredPageId("support"), false);
-    assert.equal(isRetiredPageId("community"), false);
+    assert.equal(isRetiredPageId("community"), true);
     assert.equal(redirectHash("#/support?tab=team"), null);
-    assert.equal(redirectHash("#/community?tab=ideas"), null);
+    assert.equal(redirectHash("#/community?tab=ideas"), "#/support");
     assert.equal(isRetiredPageId("community-support"), true);
     assert.equal(redirectHash("#/email"), null);
   });
 
-  it("App maps both pages and no longer maps the console", () => {
+  it("App maps Support from its own file and no longer maps the console or Community", () => {
     const app = read("App.jsx");
-    assert.match(app, /\n\s+support: SupportPage,\n\s+community: CommunityPage,/);
-    assert.equal(/"community-support":/.test(app), false);
-    assert.match(app, /import \{ CommunityPage, SupportPage \} from "\.\/pages\/CommunitySupportPage";/);
-    const page = read("pages/CommunitySupportPage.jsx");
-    assert.match(page, /export function SupportPage\(\) \{\n  return <SupportCommunityConsole pageId="support" \/>;/);
-    assert.match(page, /export function CommunityPage\(\) \{\n  return <SupportCommunityConsole pageId="community" \/>;/);
+    assert.match(app, /\n\s+support: SupportPage,/);
+    assert.equal(/"community-support":|\bcommunity: CommunityPage/.test(app), false);
+    assert.match(app, /import \{ SupportPage \} from "\.\/pages\/SupportPage";/);
+    assert.match(read("pages/SupportPage.jsx"), /export function SupportPage\(\) \{/);
   });
 
   it("each page reads and writes its own tab; the default tab has a bare address", () => {
@@ -128,9 +128,8 @@ describe("W6-2 Support and Community are real pages", () => {
     assert.equal(pageTabFromHash("#/support", "support"), "support");
     assert.equal(pageTabFromHash("#/support?tab=team", "support"), "team");
     assert.equal(pageTabFromHash("#/support?tab=roadmap", "support"), "support");
-    assert.equal(pageTabFromHash("#/community", "community"), "ideas");
+    assert.equal(pageTabFromHash("#/community", "community"), null); // [TEST-MOD #4420] no Community tabs
     assert.equal(pageTabHash("support", "support"), "#/support");
-    assert.equal(pageTabHash("community", "enquiry-reports"), "#/community?tab=enquiry-reports");
     assert.equal(pageTabHash("support", "roadmap"), "#/support");
   });
 });
@@ -150,76 +149,77 @@ describe("W6-3 access is unchanged", () => {
   };
   // What each person saw in the console before the split, content tabs only,
   // plus (#4255) Email and Blog for every teammate.
-  const BEFORE = {
-    // #4318: the Links page tab is new since the split; it follows the
-    // Support area, so Admins and Support teammates gain it and nobody else.
-    admin: [...Object.keys(OLD_TAB_HOME), "links"].sort(),
-    supportTeammate: ["blog", "brand-groups", "email", "enquiry-reports", "feature-guide", "ideas", "links", "moderation", "questions", "support"],
+  // [TEST-MOD #4420] what each person sees now: Community's retired tabs are
+  // gone (ideas, questions, moderation, product; roadmap), Reported enquiries
+  // arrive in the Support inbox, and the Feature guide is its own screen with
+  // the access its tab had. Every surviving tab or screen is unchanged per person.
+  const NOW = {
+    admin: ["announcements", "blog", "brand-groups", "email", "feature-guide", "links", "support", "team"],
+    supportTeammate: ["blog", "brand-groups", "email", "feature-guide", "links", "support"],
     supportOnly: ["blog", "brand-groups", "email", "feature-guide", "links", "support"],
-    communityOnly: ["blog", "email", "enquiry-reports", "ideas", "moderation", "questions"],
+    communityOnly: ["blog", "email"],
     salesOnly: ["blog", "email"],
   };
 
-  it("each person sees exactly the tabs they saw before, split over the two pages and the Communications screens", () => {
+  it("each person sees exactly the surviving tabs and screens they saw before", () => {
     // #4383: a moved tab is now its own screen, opened by canOpenPage.
-    const SCREENS = ["email", "blog", "links", "announcements", "roadmap", "brand-groups"]; // #4452: + Brand groups
+    assert.equal(/\n\s+community: /.test(read("App.jsx")), false, "Community is retired: no route");
+    const SCREENS = ["email", "blog", "links", "announcements", "brand-groups", "feature-guide"]; // #4452: + Brand groups; #4420: + Feature guide
     for (const [who, access] of Object.entries(PEOPLE)) {
       const support = ids(communitySupportTabsForAccess(access, SUPPORT_PAGE_TABS));
-      const community = ids(communitySupportTabsForAccess(access, COMMUNITY_PAGE_TABS));
       const opensSupport = canOpenPage(access, "support");
-      const opensCommunity = canOpenPage(access, "community");
-      assert.equal(opensCommunity, canOpenPage(access, "community-support"), `${who}: Community keeps the old console's access`);
-      assert.equal(opensSupport, opensCommunity, `${who}: Support carries the console's access exactly (#4383)`);
+      assert.equal(opensSupport, canOpenPage(access, "community-support"), `${who}: Support carries the console's access exactly (#4383)`);
       const screens = SCREENS.filter((id) => canOpenPage(access, id));
-      assert.deepEqual([...(opensSupport ? support : []), ...(opensCommunity ? community : []), ...screens].sort(), BEFORE[who], who);
+      assert.deepEqual([...(opensSupport ? support : []), ...screens].sort(), NOW[who], who);
     }
   });
 
   it("Admin-only tabs stay Admin-only; Email and Blog are every teammate's", () => {
-    for (const tab of ["team", "announcements", "roadmap", "product"]) {
+    for (const tab of ["team", "announcements"]) { // [TEST-MOD #4420] roadmap and product rows retired
       assert.equal(COMMUNITY_SUPPORT_TAB_CONTRACT[tab].area, AREA.ADMIN_CONSOLE, tab);
     }
     assert.equal(COMMUNITY_SUPPORT_TAB_CONTRACT.email.area, AREA.EMAIL_DRAFTS);
     assert.equal(COMMUNITY_SUPPORT_TAB_CONTRACT.blog.area, BLOG_AREA);
-    const page = read("pages/CommunitySupportPage.jsx");
+    const page = read("pages/SupportPage.jsx"); // [TEST-MOD #4420] the Support page's own file
     assert.match(page, /communitySupportTabsForAccess\(access, pageTabs\)/);
     assert.match(page, /activeTab === "team" && capabilities\.isAdmin && <TeamRolesPanel/);
-    assert.match(page, /activeTab === "product" && capabilities\.isAdmin && <ProductInboxPanel \/>/);
+    assert.equal(page.includes("ProductInboxPanel"), false); // [TEST-MOD #4420] the Product board is retired
     // #4383: the moved panels are no longer drawn here.
     for (const gone of ["<EmailPage", "<BlogPanel", "<LinksPagePanel", "<AnnouncementsPanel", "<RoadmapPanel", "<FailedPushBanner"]) {
       assert.equal(page.includes(gone), false, gone);
     }
   });
 
-  it("every tab on either page has its contract row, and the two pages hold all the tab rows", () => {
+  it("every Support tab has its contract row, and Support holds all the tab rows", () => {
     assert.deepEqual(
-      [...ids(SUPPORT_PAGE_TABS), ...ids(COMMUNITY_PAGE_TABS)].sort(),
+      ids(SUPPORT_PAGE_TABS).sort(),
       Object.keys(COMMUNITY_SUPPORT_TAB_CONTRACT).filter((id) => ["support", "community"].includes(COMMUNITY_SUPPORT_TAB_CONTRACT[id].page)).sort(),
     );
     assert.equal(Object.hasOwn(COMMUNITY_SUPPORT_TAB_CONTRACT, "overview"), false);
   });
 });
 
+// [TEST-MOD #4420] the Reported enquiries tab retired with Community; the
+// reports arrive in the Support inbox (Reported label), through the same RPCs,
+// which the support row of the contract now names.
 describe("W6-4 Reported enquiries", () => {
-  it("sits right after Moderation on Community and keeps its gate and contract row", () => {
-    const tabs = ids(COMMUNITY_PAGE_TABS);
-    assert.equal(tabs.indexOf("enquiry-reports"), tabs.indexOf("moderation") + 1);
-    assert.equal(COMMUNITY_SUPPORT_TAB_CONTRACT["enquiry-reports"].area, COMMUNITY_OPERATIONS_AREA);
-    assert.deepEqual([...COMMUNITY_SUPPORT_TAB_CONTRACT["enquiry-reports"].rpcs].sort(), [
-      "admin_enquiry_block_everywhere", "admin_enquiry_dismiss_report", "admin_list_reported_enquiries",
-    ]);
-    assert.match(read("pages/CommunitySupportPage.jsx"), /activeTab === "enquiry-reports" && capabilities\.canCommunity && <ReportedEnquiriesPanel \/>/);
+  it("arrive in the Support inbox through the same three RPCs", () => {
+    assert.equal(Object.hasOwn(COMMUNITY_SUPPORT_TAB_CONTRACT, "enquiry-reports"), false);
+    for (const rpc of ["admin_enquiry_block_everywhere", "admin_enquiry_dismiss_report", "admin_list_reported_enquiries"]) {
+      assert.ok(COMMUNITY_SUPPORT_TAB_CONTRACT.support.rpcs.includes(rpc), rpc);
+    }
+    assert.equal(redirectHash("#/community?tab=enquiry-reports"), "#/support?filter=reported");
   });
 });
 
-// [TEST-MOD #4382] the inbox's views are now Needs reply, Mine, Unassigned,
-// Overdue, Waiting on customer, Resolved and All, and staff tickets are
-// support_tickets with origin "staff". The rule this suite pins is unchanged:
-// every count is the number of rows that view lists.
+// [TEST-MOD #4420] the eight views and their rail were retired by the chat inbox
+// (Open / Resolved, labels, search). The rule this suite pins is unchanged: the
+// numbers shown (Open, Resolved, the page's Inbox badge) are the number of rows
+// the list holds, worked out from the same rows.
 describe("W6-5 the inbox counts match the inbox", () => {
   const now = Date.parse("2026-10-26T12:00:00Z");
   const ctx = { nowMs: now, me: "s1" };
-  const rows = [
+  const tickets = [
     { id: "i1", origin: "staff", visibility: "internal", status: "open", assigned_staff_id: "s1", last_sender_kind: "staff", last_message_at: "2026-10-26T11:20:00Z", next_update_at: "2026-10-26T18:00:00Z" },
     { id: "t1", origin: "customer", visibility: "person", status: "open", assigned_staff_id: null, last_sender_kind: "customer", last_message_at: "2026-10-25T09:00:00Z", next_update_at: "2026-10-26T10:00:00Z" },
     { id: "t2", origin: "customer", visibility: "brand", status: "pending", assigned_staff_id: "s1", last_sender_kind: "staff", last_message_at: "2026-10-26T08:00:00Z", next_update_at: null },
@@ -227,29 +227,23 @@ describe("W6-5 the inbox counts match the inbox", () => {
     { id: "t4", origin: "customer", visibility: "person", status: "closed", assigned_staff_id: "s1", last_message_at: "2026-10-26T09:00:00Z" },
     { id: "t5", origin: "customer", visibility: "person", status: "new", assigned_staff_id: null, last_sender_kind: null, first_response_at: null, last_message_at: "2026-10-26T10:00:00Z" },
   ];
+  const rows = tickets.map(conversationRow);
 
-  it("each view's count is the number of rows that view lists", () => {
-    const counts = supportInboxCounts(rows, ctx);
-    for (const { id } of SUPPORT_INBOX_VIEWS) {
-      assert.equal(counts[id], supportInboxRows(rows, id, ctx).length, id);
-    }
-    assert.deepEqual(counts, { needs: 2, mine: 2, unassigned: 2, overdue: 1, waiting: 1, website: 0, resolved: 2, all: 6, open: 2 });
-  });
-
-  it("the inbox opens on Needs reply, longest waiting first; Resolved is newest first", () => {
-    assert.equal(SUPPORT_INBOX_VIEWS[0].id, "needs");
-    assert.deepEqual(supportInboxRows(rows, "needs", ctx).map((r) => r.id), ["t1", "t5"]);
-    assert.deepEqual(supportInboxRows(rows, "resolved", ctx).map((r) => r.id), ["t4", "t3"]);
-    assert.deepEqual(supportInboxRows(rows, "overdue", ctx).map((r) => r.id), ["t1"]);
+  it("Open and Resolved hold every row once, and the badge is the Needs reply count", () => {
+    const { open, resolved } = splitInbox(rows, ctx);
+    assert.equal(open.length + resolved.length, rows.length);
+    assert.deepEqual(open.map((r) => r.id), ["t5", "t1", "i1", "t2"]);
+    assert.deepEqual(resolved.map((r) => r.id), ["t4", "t3"]);
+    assert.equal(needsReplyCount(rows), 2);
   });
 
   it("the desk shows those counts and hands them to the page's Inbox badge", () => {
     const desk = read("pages/SupportDeskPage.jsx");
-    assert.match(desk, /const inboxCounts = useMemo\(\(\) => supportInboxCounts\(tickets, ctx\), \[tickets, ctx\]\);/);
-    assert.match(desk, /supportInboxRows\(tickets, view, ctx\)/);
-    assert.match(desk, /onCounts\?\.\(badgeCounts\)/);
-    assert.match(read("pages/CommunitySupportPage.jsx"), /onCounts=\{onInboxCounts\}/);
-    assert.equal(/support: Number\(data\.unanswered_tickets/.test(read("pages/CommunitySupportPage.jsx")), false);
+    assert.match(desk, /const inbox = useMemo\(\(\) => splitInbox\(allRows,/);
+    assert.match(desk, /needsReplyCount\(allRows\)/);
+    assert.match(desk, /onCounts\?\.\(\{ open: badge, needs: badge \}\)/);
+    assert.match(read("pages/SupportPage.jsx"), /onCounts=\{onInboxCounts\}/);
+    assert.equal(/support: Number\(data\.unanswered_tickets/.test(read("pages/SupportPage.jsx")), false);
   });
 });
 
@@ -285,15 +279,16 @@ describe("W6-6 failed announcement pushes", () => {
   });
 });
 
+// [TEST-MOD #4420] the Roadmap screen is retired: Work cards no longer link to
+// it (the wording is approved on the card), and old Roadmap links open
+// Announcements; the Write an announcement link stays.
 describe("W6-7 Roadmap links", () => {
   const id = "00000000-0000-4000-8000-0000000000aa";
-  it("Work cards link to Roadmap, and old Community and console links still open the card", () => {
-    // #4383: Roadmap is its own Communications screen.
-    assert.equal(roadmapDraftHref({ links: [{ kind: "roadmap_card", id }] }), `#/roadmap?card=${id}`);
-    assert.equal(roadmapCardFromHash(`#/roadmap?card=${id}`), id);
-    assert.equal(roadmapCardFromHash(`#/community?tab=roadmap&card=${id}`), id);
-    assert.equal(roadmapCardFromHash(`#/community-support?tab=roadmap&card=${id}`), id);
-    assert.equal(isRoadmapHash(`#/support?tab=roadmap&card=${id}`), false);
+  it("old Roadmap, Community and console links open Announcements; Work cards keep the announcement link", () => {
+    for (const hash of [`#/roadmap?card=${id}`, `#/community?tab=roadmap&card=${id}`, `#/community-support?tab=roadmap&card=${id}`]) {
+      assert.equal(redirectHash(hash), "#/announcements", hash);
+    }
+    assert.equal(read("lib/opsModel.js").includes("roadmapDraftHref"), false);
     assert.equal(read("components/ops/WordingQueue.jsx").includes('href="#/announcements"'), true);
   });
 });
