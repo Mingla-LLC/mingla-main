@@ -401,7 +401,10 @@ DECLARE
   v_id uuid;
 BEGIN
   SELECT id INTO v_id FROM public.host_push_devices
-   WHERE user_id = '45490000-0000-4000-8000-000000000004' AND provider_subscription_id = 'flood-30';
+   WHERE user_id = '45490000-0000-4000-8000-000000000004' AND provider_subscription_id = 'flood-32';
+  -- flood-32 is the record written last, so the 25-record prune never takes
+  -- it; earlier records share one transaction timestamp and any may go.
+  PERFORM pg_temp.ok(v_id IS NOT NULL, 'T-CLAIM fixture record exists');
   UPDATE public.host_push_devices SET provider_state = 'subscribed' WHERE id = v_id;
   PERFORM pg_temp.ok(NOT public.host_push_claim_provider_delete(v_id, 3),
     'T-CLAIM a subscribed record is never claimed');
