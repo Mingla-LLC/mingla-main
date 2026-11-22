@@ -245,22 +245,29 @@ describe("#4347 adv V — claimed venues: a handful of reads per deck, never per
     // And the hook caches each chunk for 10 minutes.
     const hook = stripComments(read("hooks/useClaimedVenues.ts"));
     expect(hook).toMatch(/staleTime:\s*10 \* 60 \* 1000/);
-    expect(hook).toMatch(/\.from\("venue_public_view"\)/);
-    expect(hook).toMatch(/\.in\("place_pool_id", ids/);
+    // [TEST-MOD-APPROVED #4490] Explorer W3 replaced the venue_public_view
+    // read with the deck facts RPC (same chunks, same keys, same stale time).
+    expect(hook).toMatch(/\.rpc\("pg_deck_venue_facts", \{\s*p_place_ids: ids/);
   });
 
   test("V-3 a row that cannot build both slugs never routes", () => {
-    for (const row of [
-      { place_pool_id: "p", slug: "   ", brand_slug: "b", brand_name: "B" },
-      { place_pool_id: "p", slug: "v", brand_slug: "  ", brand_name: "B" },
-      { place_pool_id: "p", slug: null, brand_slug: "b", brand_name: "B" },
-      { place_pool_id: "p", slug: "v", brand_slug: null, brand_name: "B" },
-      { place_pool_id: 42 as unknown as string, slug: "v", brand_slug: "b", brand_name: "B" },
+    // [TEST-MOD-APPROVED #4490] Explorer W3: rows are now {place_pool_id, facts}
+    // from pg_deck_venue_facts; the same refusals and trimming are pinned.
+    const row = (placePoolId: unknown, venueSlug: unknown, brandSlug: unknown, brandName: unknown) => ({
+      place_pool_id: placePoolId as string,
+      facts: { venueId: "v1", venueSlug, brandSlug, brandName },
+    });
+    for (const bad of [
+      row("p", "   ", "b", "B"),
+      row("p", "v", "  ", "B"),
+      row("p", null, "b", "B"),
+      row("p", "v", null, "B"),
+      row(42, "v", "b", "B"),
     ]) {
-      expect(toClaimedVenue(row)).toBeNull();
+      expect(toClaimedVenue(bad)).toBeNull();
     }
     // Padding is trimmed so the route never carries spaces.
-    expect(toClaimedVenue({ place_pool_id: "p", slug: " v ", brand_slug: " b ", brand_name: " B " })).toEqual({
+    expect(toClaimedVenue(row("p", " v ", " b ", " B "))).toMatchObject({
       placePoolId: "p",
       brandSlug: "b",
       venueSlug: "v",

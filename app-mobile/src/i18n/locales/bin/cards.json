@@ -168,6 +168,8 @@
   "deck.closed_at_arrival": "Ọ gha gbe ẹkpẹti vbe u sẹ",
   "deck.stop_closed_at_arrival": "Ehe ọkpa {{number}} gha gbe ẹkpẹti vbe u sẹ",
   "deck.hosted_by": "{{name}} ọre ọ ru ẹre",
+  "deck.on_tonight": "Ason nẹna",
+  "deck.on_today": "Ẹdẹ nẹna",
   "deck.experience_kicker": "Iyobọ",
   "deck.curated_kicker": "Ehe ne a ghaa",
   "deck.experience_by": "Iyobọ ne {{name}}",

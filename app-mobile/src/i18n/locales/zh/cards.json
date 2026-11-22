@@ -168,6 +168,8 @@
   "deck.closed_at_arrival": "到达时已打烊",
   "deck.stop_closed_at_arrival": "第 {{number}} 站到达时已打烊",
   "deck.hosted_by": "主办方：{{name}}",
+  "deck.on_tonight": "今晚",
+  "deck.on_today": "今天",
   "deck.experience_kicker": "体验",
   "deck.curated_kicker": "精选行程",
   "deck.experience_by": "{{name}} 的体验",

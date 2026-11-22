@@ -168,6 +168,8 @@
   "deck.closed_at_arrival": "مغلق عند وصولك",
   "deck.stop_closed_at_arrival": "المحطة {{number}} مغلقة عند وصولك",
   "deck.hosted_by": "يستضيفها {{name}}",
+  "deck.on_tonight": "الليلة",
+  "deck.on_today": "اليوم",
   "deck.experience_kicker": "تجربة",
   "deck.curated_kicker": "خطة مختارة",
   "deck.experience_by": "تجربة من {{name}}",

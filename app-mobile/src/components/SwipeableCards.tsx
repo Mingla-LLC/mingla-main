@@ -100,7 +100,12 @@ import {
 } from "./deckCard/DeckCardChrome";
 import { deckKickerFor, useDeckFactLabels } from "./deckCard/useDeckFactLabels";
 import { useDeckTextScale, useMinuteClock, usePhotoTapHint, useTopCardPhotoPreload } from "./deckCard/deckCardHooks";
-import { useClaimedVenues } from "../hooks/useClaimedVenues";
+import { useClaimedVenues, type ClaimedVenue } from "../hooks/useClaimedVenues";
+// #4490 Explorer W3 — the card's offer and event chips, worded from the
+// venue's server facts (deep specifier: never the package barrel).
+import { deckBrowsesToday, deckVenueChips, type DeckVenueChips } from "@mingla/brand-rendering/deckVenueChip";
+import { venueMoneyText } from "./venueOffers/venueMoneyText";
+import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
 import { leaveDeckTo } from "./deckCard/deckNavigation";
 import { deckHandoffSave, setDeckVenueHandoff } from "./venuePage/deckVenueHandoff";
 import { LinearGradient } from "expo-linear-gradient";
@@ -352,6 +357,7 @@ function placePlateForCard(
   now: Date,
   labels: DeckFactLabels,
   tileLabels: PlacePlateLabels,
+  offer: { readonly label: string; readonly value: string } | null = null,
 ): PlanPlateContent {
   const distanceLabel =
     card.distance != null ? parseAndFormatDistance(card.distance as any, measurementSystem) : null;
@@ -368,7 +374,22 @@ function placePlateForCard(
     now,
     labels,
     tileLabels,
+    offer,
   );
+}
+
+/**
+ * #4490 Explorer W3 — a claimed venue's chips for this deck render: the offer
+ * (the page's lead, server-priced) and the event chip. Null for a card that is
+ * not a claimed venue.
+ */
+function claimedVenueChipsFor(venue: ClaimedVenue | null | undefined, now: Date): DeckVenueChips | null {
+  return venue ? deckVenueChips(venue.facts, now, venueMoneyText) : null;
+}
+
+/** The plate's offer tile: the lead tab's name over the chip ("Entry" / "Entry from ₦4,000"). */
+function offerTileFor(chips: DeckVenueChips | null): { label: string; value: string } | null {
+  return chips?.offerChip ? { label: chips.offerChip.tabLabel, value: chips.offerChip.label } : null;
 }
 
 /** The pager's photos for any deck card (place, curated plan, host experience). */
@@ -1567,6 +1588,8 @@ export default function SwipeableCards({
     currentRec && !currentRec.cardType && currentRec.placePoolId
       ? claimedVenues.get(currentRec.placePoolId) ?? null
       : null;
+  // #4490 Explorer W3 — what this claimed venue's card says (offer + event).
+  const currentVenueChips = claimedVenueChipsFor(currentClaimedVenue, deckNow);
 
   // #4347 wave 1 — the top card's photo pager, for every card type. The list is
   // decided HERE (one owner) because the tap path that flips it lives here; the
@@ -2508,8 +2531,21 @@ export default function SwipeableCards({
         },
         userPreferences,
       });
+      // #4490 Explorer W3 — the page opens on the card's lead offer.
+      const leadTab = currentVenueChips?.offerChip?.tab ?? null;
+      captureVenueTappedToBook({
+        venueId: currentClaimedVenue.venueId,
+        tab: leadTab,
+        offerKind: currentVenueChips?.offerChip?.offerKind ?? null,
+        source: 'deck_card',
+        positionInDeck: currentCardIndex,
+        isHostedVenue: currentClaimedVenue.isBookable,
+        mode: currentMode === 'solo' ? 'solo' : 'collab',
+      });
       leaveDeckTo(
-        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}`,
+        `/b/${encodeURIComponent(currentClaimedVenue.brandSlug)}/v/${encodeURIComponent(currentClaimedVenue.venueSlug)}${
+          leadTab === null ? '' : `?tab=${encodeURIComponent(leadTab)}`
+        }`,
         { onExternalRoute, push: (path) => router.push(path as never) },
       );
       return;
@@ -3436,6 +3472,7 @@ export default function SwipeableCards({
     deckNow,
     deckFactLabels,
     placeTileLabels,
+    offerTileFor(currentVenueChips),
   );
   const currentPresentation = { ...planPlatePresentation(currentPlacePlate), metaLines: 1 };
 
@@ -3459,6 +3496,13 @@ export default function SwipeableCards({
     : currentRec.cardType === 'curated'
       ? curatedSmartChip((currentRec as unknown as CuratedExperienceCard).stops, curatedStart)
       : null;
+  // #4490 Explorer W3 — one chip per card, in order: closed at arrival, then
+  // the claimed venue's event chip ("On tonight" / "On today", only while the
+  // deck browses today: rule 12), then nothing.
+  const currentEventChip =
+    currentVenueChips?.eventChip && deckBrowsesToday(userPreferences?.date_option)
+      ? currentVenueChips.eventChip
+      : null;
   const currentSmartChip = currentSmartChipModel
     ? {
         tone: currentSmartChipModel.tone,
@@ -3467,7 +3511,15 @@ export default function SwipeableCards({
             ? t('cards:deck.stop_closed_at_arrival', { number: currentSmartChipModel.stopNumber })
             : t('cards:deck.closed_at_arrival'),
       }
-    : null;
+    : currentEventChip !== null
+      ? {
+          tone: 'info' as const,
+          text:
+            currentEventChip === 'On tonight'
+              ? t('cards:deck.on_tonight', { defaultValue: 'On tonight' })
+              : t('cards:deck.on_today', { defaultValue: 'On today' }),
+        }
+      : null;
   const currentTapZoneBottomFor = (cardHeight: number): number =>
     tapZoneBottomY(
       cardHeight,
@@ -3528,6 +3580,8 @@ export default function SwipeableCards({
     currentClaimedVenue
       ? t('cards:deck.hosted_by', { name: currentClaimedVenue.brandName || currentClaimedVenue.brandSlug })
       : null,
+    // #4490 Explorer W3 — the offer the card leads with is spoken too.
+    currentVenueChips?.offerChip?.label ?? null,
     currentPagerCount >= 2
       ? t('cards:deck.photo_position', { index: currentPhotoIndex + 1, count: currentPagerCount })
       : null,
@@ -3691,7 +3745,19 @@ export default function SwipeableCards({
                       photos: [],
                     })
                   : !nextCard.cardType
-                    ? placePlateForCard(nextCard, accountPreferences?.measurementSystem, deckNow, deckFactLabels, placeTileLabels)
+                    ? placePlateForCard(
+                        nextCard,
+                        accountPreferences?.measurementSystem,
+                        deckNow,
+                        deckFactLabels,
+                        placeTileLabels,
+                        offerTileFor(
+                          claimedVenueChipsFor(
+                            nextCard.placePoolId ? claimedVenues.get(nextCard.placePoolId) : null,
+                            deckNow,
+                          ),
+                        ),
+                      )
                     : null;
               const nextPresentation = nextPlanPlate
                 ? { ...planPlatePresentation(nextPlanPlate), metaLines: 1 }

@@ -5,6 +5,12 @@ const NEVER_PERSIST_ROOT_KEYS = new Set([
   "recommendations",
   "phone-lookup",
   "link-consent",
+  // #4490 Explorer W3 — venue facts, features and offer availability are
+  // server state read fresh on every open; never written to the device.
+  "claimedVenues",
+  "venueFeaturesForPlace",
+  "publicVenueFeatures",
+  "venueOfferAvailability",
 ]);
 
 const USER_ID_POSITIONS: Record<string, number[]> = {

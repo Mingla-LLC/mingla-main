@@ -303,6 +303,12 @@ export function placePlateContent(
   now: Date,
   labels: DeckFactLabels,
   tileLabels: PlacePlateLabels,
+  /**
+   * #4490 Explorer W3 — a claimed venue's lead offer ("Entry from ₦4,000",
+   * "Book a table") takes the price-level tile's place: what you can book
+   * there is the decision, not the typical spend. Null keeps today's tiles.
+   */
+  offer: { readonly label: string; readonly value: string } | null = null,
 ): PlanPlateContent {
   const status = statusSpan(
     getOpenStatusAt(
@@ -319,7 +325,11 @@ export function placePlateContent(
   const travel = trimmed(card.travelTime) ?? trimmed(card.distanceLabel);
   if (travel !== null) tiles.push({ key: 'away', label: tileLabels.away, value: travel });
   const price = trimmed(card.priceRange);
-  if (price !== null) tiles.push({ key: 'spend', label: tileLabels.spend, value: price, accent: true });
+  if (offer !== null && trimmed(offer.value) !== null) {
+    tiles.push({ key: 'offer', label: offer.label, value: offer.value, accent: true });
+  } else if (price !== null) {
+    tiles.push({ key: 'spend', label: tileLabels.spend, value: price, accent: true });
+  }
   return {
     kind: 'place',
     route: null,

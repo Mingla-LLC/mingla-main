@@ -168,6 +168,8 @@
   "deck.closed_at_arrival": "到着時には閉店",
   "deck.stop_closed_at_arrival": "スポット{{number}}は到着時に閉店",
   "deck.hosted_by": "主催: {{name}}",
+  "deck.on_tonight": "今夜",
+  "deck.on_today": "今日",
   "deck.experience_kicker": "体験",
   "deck.curated_kicker": "厳選プラン",
   "deck.experience_by": "{{name}}の体験",

@@ -168,6 +168,8 @@
   "deck.closed_at_arrival": "Zamknięte, gdy dotrzesz",
   "deck.stop_closed_at_arrival": "Przystanek {{number}} zamknięty, gdy dotrzesz",
   "deck.hosted_by": "Organizator: {{name}}",
+  "deck.on_tonight": "Dziś wieczorem",
+  "deck.on_today": "Dziś",
   "deck.experience_kicker": "Wydarzenie",
   "deck.curated_kicker": "Wybrany plan",
   "deck.experience_by": "Wydarzenie od {{name}}",

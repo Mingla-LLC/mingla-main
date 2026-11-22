@@ -168,6 +168,8 @@
   "deck.closed_at_arrival": "Закрыто к вашему приезду",
   "deck.stop_closed_at_arrival": "Остановка {{number}} закрыта к вашему приезду",
   "deck.hosted_by": "Организатор: {{name}}",
+  "deck.on_tonight": "Сегодня вечером",
+  "deck.on_today": "Сегодня",
   "deck.experience_kicker": "Мероприятие",
   "deck.curated_kicker": "Подборка",
   "deck.experience_by": "Мероприятие от {{name}}",
