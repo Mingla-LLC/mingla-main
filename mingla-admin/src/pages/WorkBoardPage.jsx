@@ -105,6 +105,9 @@ export function WorkBoardPage() {
   const [typing, setTyping] = useState({ q: view.q, text: view.q });
   const typed = typing.q === view.q ? typing.text : view.q;
   const setTyped = (text) => setTyping({ q: view.q, text });
+  // #4420 rework 4 (F7): whenever the address changes `q` (a redirect, a filter link, Clear), the box follows it; older typing never comes back.
+  const [seenQ, setSeenQ] = useState(view.q);
+  if (seenQ !== view.q) { setSeenQ(view.q); setTyping({ q: view.q, text: view.q }); }
   const [closing, setClosing] = useState(null);
   const [closeBusy, setCloseBusy] = useState(false);
   const [archiving, setArchiving] = useState(null);

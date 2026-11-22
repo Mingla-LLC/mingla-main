@@ -64,3 +64,28 @@ describe("F2 every close path uses the one discard decision", () => {
     assert.ok(body.indexOf("return false") < body.indexOf("setSide(next)"), "the form is kept before anything closes");
   });
 });
+
+import { customerFallbackLine, inboxLookupNotice, NAMES_HIDDEN_LINE } from "../lib/supportInboxModel.js";
+
+describe("F5 the details line when names are hidden", () => {
+  it("says names are hidden for a conversation that has a customer, never 'No customer linked'", () => {
+    assert.equal(customerFallbackLine({ hasCustomer: true, namesHidden: true }), NAMES_HIDDEN_LINE);
+    assert.match(NAMES_HIDDEN_LINE, /^Names aren't shown for your account/);
+    assert.ok(inboxLookupNotice(["people"]).startsWith(NAMES_HIDDEN_LINE), "same wording as the notice");
+  });
+  it("'No customer linked' stays for a conversation with truly no customer, or names that are shown", () => {
+    assert.equal(customerFallbackLine({ hasCustomer: false, namesHidden: true }), "No customer linked");
+    assert.equal(customerFallbackLine({ hasCustomer: true, namesHidden: false }), "No customer linked");
+  });
+  it("the panel and page wire it", () => {
+    assert.match(read("components/support/TicketPanel.jsx"), /customerFallbackLine\(\{ hasCustomer: Boolean\(ticket\.requester_user_id\), namesHidden \}\)/);
+    assert.match(read("pages/SupportDeskPage.jsx"), /setNamesHidden\(lookups\.missing\.includes\("people"\)\)/);
+    assert.match(read("pages/SupportDeskPage.jsx"), /namesHidden=\{namesHidden\}/);
+  });
+});
+
+describe("F7 the Work search box follows the address", () => {
+  it("resets the typed text whenever the address's q changes", () => {
+    assert.match(read("pages/WorkBoardPage.jsx"), /if \(seenQ !== view\.q\) \{ setSeenQ\(view\.q\); setTyping\(\{ q: view\.q, text: view\.q \}\); \}/);
+  });
+});

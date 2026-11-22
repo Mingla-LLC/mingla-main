@@ -17,7 +17,7 @@ import { isWebsiteRequestTicket } from "../../lib/websiteRequestModel";
 import { replyTargetLabel } from "./supportComposerModel";
 import { PRIORITY_OPTIONS, STATUS_BADGE, STATUS_LABEL, TOPIC_LABEL, deviceLine } from "./supportOptions";
 import { isOverdueTicket } from "../../lib/supportTicketMetrics";
-import { conversationRow, createTicketButton, rowLabels, rowTitle } from "../../lib/supportInboxModel";
+import { conversationRow, createTicketButton, customerFallbackLine, rowLabels, rowTitle } from "../../lib/supportInboxModel";
 import { LabelChips } from "./InboxLabels";
 import { listTicketThread, signAttachmentUrls } from "../../services/supportDeskService";
 import { supabase } from "../../lib/supabase";
@@ -31,12 +31,13 @@ const STATUS_OPTIONS = ["new", "open", "pending", "resolved", "closed"].map((val
  * profilesById, brandsById, myUserId, acting, createOpen, onClose, onClaim,
  * onSetStatus, onSetPriority, onCreateTicket(messages), onOpenLinkedTicket(linked),
  * onChanged (reload the inbox), onError(title, message), onSessionExpired,
- * onWebsiteReady(note) (#4453: "Ready for review" on a website change request).
+ * onWebsiteReady(note) (#4453: "Ready for review" on a website change request),
+ * namesHidden (the people lookup was refused: say so instead of "No customer linked").
  */
 export function TicketPanel({
   ticket, linkedTickets = [], profilesById, brandsById, myUserId, acting, createOpen = false,
   onClose, onClaim, onSetStatus, onSetPriority, onCreateTicket, onOpenLinkedTicket, onChanged, onError, onSessionExpired,
-  onWebsiteReady,
+  onWebsiteReady, namesHidden = false,
 }) {
   const [messages, setMessages] = useState([]);
   const [factsOpen, setFactsOpen] = useState(true);
@@ -171,7 +172,7 @@ export function TicketPanel({
       <dl id={`ticket-facts-${ticket.id}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-b border-[var(--gray-200)] px-4 py-2 text-xs sm:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
         <dt className="text-[var(--color-text-tertiary)]">{ticket.origin === "staff" ? "About" : "From"}</dt>
         <dd className="min-w-0 truncate text-[var(--color-text-primary)]">
-          {[personName || (ticket.visibility === "brand" ? null : ticket.imported_from === "beta_feedback" ? "Explorer (beta feedback)" : null), brand?.name].filter(Boolean).join(" · ") || "No customer linked"}
+          {[personName || (ticket.visibility === "brand" ? null : ticket.imported_from === "beta_feedback" ? "Explorer (beta feedback)" : null), brand?.name].filter(Boolean).join(" · ") || customerFallbackLine({ hasCustomer: Boolean(ticket.requester_user_id), namesHidden })}
           {requester?.email && <span className="block truncate text-xs text-[var(--color-text-tertiary)]">{requester.email}</span>}
         </dd>
         {ticket.origin === "staff" && (

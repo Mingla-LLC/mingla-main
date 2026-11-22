@@ -369,6 +369,19 @@ export function inboxLookupsFromResults({ peoplePages = [], brands = null } = {}
   return { profilesById, brandsById, missing };
 }
 
+/** #4420 rework 4 (F5): the details line when no customer name is shown. */
+export const NAMES_HIDDEN_LINE = "Names aren't shown for your account";
+export const NO_CUSTOMER_LINE = "No customer linked";
+
+/**
+ * The "From / About" line's fallback when nothing names the customer: a
+ * conversation that has a customer but whose name the lookup refused says
+ * so; "No customer linked" is only for one that truly has none.
+ */
+export function customerFallbackLine({ hasCustomer = false, namesHidden = false } = {}) {
+  return hasCustomer && namesHidden ? NAMES_HIDDEN_LINE : NO_CUSTOMER_LINE;
+}
+
 /** The one plain notice for lookups that did not load, or null. */
 export function inboxLookupNotice(missing = []) {
   const people = missing.includes("people");

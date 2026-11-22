@@ -118,6 +118,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   const [notice, setNotice] = useState(null);
   // #4420 rework 3 (G1): names or brands that did not load (never an error).
   const [lookupNotice, setLookupNotice] = useState(null);
+  const [namesHidden, setNamesHidden] = useState(false);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState(null);
   // #4382 (tester P3d): every active conversation loads; resolved and closed load in
@@ -200,6 +201,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
       setProfilesById(lookups.profilesById);
       setBrandsById(lookups.brandsById);
       setLookupNotice(inboxLookupNotice(lookups.missing));
+      setNamesHidden(lookups.missing.includes("people"));
       void loadLinked(rows);
       // Snippets for the rows the person sees first (the rest show their subject).
       const first = splitInbox(rows.map(conversationRow), { me: myUserId }).open
@@ -485,6 +487,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
               key={selectedTicket.id}
               ticket={selectedTicket}
               linkedTickets={linkedByConversation[selectedTicket.id] || []}
+              namesHidden={namesHidden}
               profilesById={profilesById}
               brandsById={brandsById}
               myUserId={myUserId}
