@@ -166,6 +166,11 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
   const action = typeof body.action === "string" ? body.action : "";
 
   switch (action) {
+    // [TRANSITIONAL] #4490 spec 08 O1: the order pad's four actions (create,
+    // settle, tab_open, tab_close) serve venues whose Till is off and Host apps
+    // that predate the Till (their tabs appear in the Till's Open checks, T18);
+    // exits when no venue takes staff orders without the Till and no session
+    // is in tab_state settling.
     case "create":
       return await handleStaffCreate(supabase, req, body, userId);
     case "settle":

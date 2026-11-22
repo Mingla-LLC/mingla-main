@@ -137,7 +137,9 @@ describe("issue #1943 venue-local Orders", () => {
     expect(source).not.toContain("All venues");
     expect(source).not.toContain("venueFilter");
     expect(source).toContain("useVenueOrders(scopedBrandId, venueId)");
-    expect(source).toContain("useVenueTabs(scopedBrandId, venueId)");
+    // TEST-MOD-APPROVED #4490 (spec 08 O1): the legacy tabs read still binds to this venue,
+    // and runs only while the order pad is in use (the Till replaces it where it runs).
+    expect(source).toContain("useVenueTabs(usesPad ? scopedBrandId : null, usesPad ? venueId : null)");
     expect(source).toContain("useQrSpots(scopedBrandId, venueId)");
     expect(source).toContain("order.venueId !== venueId");
     expect(source).toContain("tab.venueId !== venueId");

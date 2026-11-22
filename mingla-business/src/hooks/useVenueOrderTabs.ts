@@ -1,5 +1,9 @@
 /**
  * Issue #1792 (#1767 Phase 3b) — waiter-opened TABS (DESIGN D-2 AMENDED, D-11;
+ *
+ * [TRANSITIONAL] #4490 spec 08 O1: used only where the Till is not running
+ * (`venueOrderEntry` = "pad"); exits when every venue runs the Till, and this
+ * file is then deleted with the pad and the tabs card.
  * SPEC #1788 P-2, P-2a, P-16, P-26).
  *
  * WHY TABS ARE NARROW. D-2 kept guests on pay-per-round because a guest opening
