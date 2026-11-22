@@ -73,6 +73,8 @@ import {
   paymentRefundEntries,
 } from "./refundEntries.ts";
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
+import { returnOrderOverpaymentsBestEffort } from "../_shared/installments/overpaymentLane.ts";
+import { overpaymentReturnCents } from "./refundEntries.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -118,6 +120,8 @@ interface ComputeRpcResult {
   currency?: string;
   per_payment_refund?: PerPaymentRefund[];
   deposit_non_refundable_cents?: number;
+  /** issue #4522 (N2) — overpayment returned in full on top of the policy refund. */
+  overpayment_return_cents?: number;
   installments_to_cancel?: Array<
     { installment_id: string; ordinal: number; due_at: string }
   >;
@@ -479,6 +483,12 @@ serve(async (req: Request): Promise<Response> => {
       // issue #4522 — "Deposit is non-refundable": what the cancel keeps.
       ...(depositKeptCents(compute) > 0
         ? { depositKeptCents: depositKeptCents(compute) }
+        : {}),
+      // issue #4522 (N2) — money paid beyond what the trip cost goes back in
+      // full, whatever the tier, through its own refund (never part of
+      // refundTotalCents, which the commit's freshness check compares).
+      ...(overpaymentReturnCents(compute) > 0
+        ? { overpaymentReturnCents: overpaymentReturnCents(compute) }
         : {}),
     });
   }
@@ -1114,8 +1124,19 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  // issue #4522 (N2) — any overpayment still held goes back now, in full,
+  // through its own refund (the sweep retries it if the provider is slow).
+  let overpaymentReturn = 0;
+  if (await planV2SchemaAvailable(supabase)) {
+    const { data: balance } = await supabase.rpc("issue_4522_balance", { p_order_id: orderId });
+    const held = Number((balance as { heldCreditMinor?: unknown } | null)?.heldCreditMinor ?? 0);
+    overpaymentReturn = Number.isSafeInteger(held) && held > 0 ? held : 0;
+    if (overpaymentReturn > 0) await returnOrderOverpaymentsBestEffort(supabase, orderId);
+  }
+
   // Final success response — buyer UI shows success state; operator UI dismisses sheet.
   return jsonResponse({
+    ...(overpaymentReturn > 0 ? { overpaymentReturnCents: overpaymentReturn } : {}),
     ok: true,
     mode: actorKind,
     refundId,

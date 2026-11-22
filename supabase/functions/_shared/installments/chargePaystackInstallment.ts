@@ -16,6 +16,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
 import { formatMoneyFromCents } from "../email/currency.ts";
 import { paystackTicketSplitFields } from "../ngPaystackSplit.ts";
+import { claimPaidInFullNotice } from "./paidInFullNotice.ts";
 import {
   classifyPaystackChargeResponse,
   paystackChargeAuthorization,
@@ -400,7 +401,9 @@ export async function chargePaystackInstallment(input: {
       };
     }
     if (
-      resolved.outcome === "collected" && Number(resolved.remaining ?? 1) === 0
+      resolved.outcome === "collected" && Number(resolved.remaining ?? 1) === 0 &&
+      // issue #4522 (N7) — once per order with the #4522 schema; unchanged before it.
+      await claimPaidInFullNotice(supabase, ctx.orderId, "paystack_saved_card")
     ) {
       await deps.dispatchBuyerEmail("installment_plan_paid_in_full", {
         orderId: ctx.orderId,

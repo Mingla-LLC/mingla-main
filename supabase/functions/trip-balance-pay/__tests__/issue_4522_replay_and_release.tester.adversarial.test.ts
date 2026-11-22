@@ -6,8 +6,8 @@
  * (flex_client_key_reused, 409) before any provider call, and a provider
  * failure on a REPLAYED payment never closes it (it may be live in another
  * tab). Only a payment this request opened is closed.
- * F2: a begin that released an abandoned payment cancels its PaymentIntent,
- * best-effort; a failing cancel never blocks the new payment.
+ * N3 (replaces F2's best-effort cancel): an earlier open payment is checked
+ * with the provider before a new begin and released only on its answer.
  */
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
@@ -106,14 +106,113 @@ Deno.test("F10: replaying a payment that already finished starts nothing new", a
   assertEquals(calls, []);
 });
 
-Deno.test("F2: the released abandoned PaymentIntent is cancelled; a failed cancel never blocks", async () => {
-  for (const failCancel of [false, true]) {
-    const fake = world({ data: { installmentId: FLEX, amountMinor: 70000, currency: "USD", status: "scheduled", replayed: false,
-      released: [{ installmentId: "old-flex", provider: "stripe", stripePaymentIntentId: "pi_abandoned" }] }, error: null });
-    const calls: unknown[] = [];
-    const res = await handleTripBalancePay(start(), deps(fake, calls, false, failCancel));
-    assertEquals(res.status, 200);
-    assertEquals(calls[0], { cancel: "pi_abandoned" });
-    assertEquals(calls[1], { create: 70000 });
+// issue #4522 (N3) — begin asks the provider about an earlier open payment
+// first: only a confirmed cancel releases it; a success is settled through
+// the webhook's own success path; a payment still processing is kept and the
+// new begin answers 409. Time alone never releases anything.
+function worldWithOpen(status: string, opts: { cancelTo?: string; failCancel?: boolean } = {}) {
+  const settled: unknown[] = [];
+  const calls: unknown[] = [];
+  const fake = fakeSupabase({
+    rpc: (name, args) => {
+      if (name === "issue_4522_plan_v2_enabled") return { data: true, error: null };
+      if (name === "issue_4522_flex_payments_to_verify") {
+        return { data: [{ installmentId: "old-flex", orderId: ORDER, provider: "stripe",
+          stripePaymentIntentId: "pi_old", attemptCount: 0, pastCeiling: false }], error: null };
+      }
+      if (name === "issue_4522_release_flex_verified") {
+        calls.push({ release: (args as Record<string, unknown>).p_verified, ref: (args as Record<string, unknown>).p_provider_ref });
+        return { data: { ok: true, released: true }, error: null };
+      }
+      if (name === "issue_4522_begin_flex_payment") {
+        return { data: { installmentId: FLEX, amountMinor: 70000, currency: "USD", status: "scheduled", replayed: false, released: [] }, error: null };
+      }
+      return { data: { ok: true }, error: null };
+    },
+    table: (op) => {
+      if (op.table === "orders" && op.columns === "id") return { data: { id: ORDER }, error: null };
+      if (op.table === "orders") {
+        return { data: { id: ORDER, buyer_email: "b@example.test", payment_status: "paid", cancelled_at: null,
+          stripe_customer_id_on_connected_account: "cus_1", saved_payment_method_id: "pm_1",
+          events: { brand_id: "brand-1", status: "scheduled" } }, error: null };
+      }
+      if (op.table === "order_installments" && op.columns === "provider") return { data: { provider: "stripe" }, error: null };
+      if (op.table === "order_installments") return { data: { referral_share_minor: 0, currency: "USD" }, error: null };
+      if (op.table === "stripe_connect_accounts") return { data: { stripe_account_id: "acct_1" }, error: null };
+      return { data: null, error: null };
+    },
+  });
+  const d = {
+    // deno-lint-ignore no-explicit-any
+    supabase: fake.client as any,
+    userIdFromJwt: () => Promise.resolve(BUYER),
+    stripe: (): StripeLike => ({
+      ephemeralKeys: { create: () => Promise.resolve({ secret: "ek_1" }) },
+      paymentIntents: {
+        retrieve: (id: string) => {
+          calls.push({ retrieve: id });
+          return Promise.resolve({ id, status, metadata: { mingla_installment_id: "old-flex" } });
+        },
+        cancel: (id: string) => {
+          calls.push({ cancel: id });
+          return opts.failCancel ? Promise.reject(new Error("already_succeeded"))
+            : Promise.resolve({ id, status: opts.cancelTo ?? "canceled" });
+        },
+        create: (params: Record<string, unknown>) => {
+          calls.push({ create: params.amount });
+          return Promise.resolve({ id: "pi_new", client_secret: "sec", status: "requires_confirmation" });
+        },
+      },
+    }),
+    settleStripe: (_s: unknown, pi: Record<string, unknown>) => {
+      settled.push(pi.id);
+      return Promise.resolve();
+    },
+    alertOps: () => Promise.resolve(),
+    feeRate: () => Promise.resolve({ totalBps: 450, takeRateBps: 150, source: "brand_override" as const }),
+    publishableKey: () => "pk_test",
+  };
+  return { fake, d, calls, settled };
+}
+
+Deno.test("N3: an earlier payment the buyer abandoned is released only after the provider confirms the cancel", async () => {
+  const { d, calls, settled } = worldWithOpen("requires_payment_method");
+  const res = await handleTripBalancePay(start(), d);
+  assertEquals(res.status, 200);
+  assertEquals(calls.slice(0, 4), [{ retrieve: "pi_old" }, { cancel: "pi_old" },
+    { release: "provider_canceled", ref: "pi_old" }, { create: 70000 }]);
+  assertEquals(settled, []);
+});
+
+Deno.test("N3: an earlier payment that really succeeded is settled, never released", async () => {
+  const { d, calls, settled } = worldWithOpen("succeeded");
+  await handleTripBalancePay(start(), d);
+  assertEquals(settled, ["pi_old"]);
+  assertEquals(calls.some((c) => (c as { release?: string }).release !== undefined), false);
+  assertEquals(calls.some((c) => (c as { cancel?: string }).cancel !== undefined), false);
+});
+
+Deno.test("N3: a cancel that loses to a confirmation reads back the success and settles it", async () => {
+  // The cancel fails (it was just confirmed); the read-back says succeeded.
+  const w = worldWithOpen("requires_confirmation", { failCancel: true });
+  let reads = 0;
+  const base = w.d.stripe();
+  w.d.stripe = () => ({ ...base, paymentIntents: { ...base.paymentIntents,
+    retrieve: (id: string) => {
+      reads += 1;
+      return Promise.resolve({ id, status: reads === 1 ? "requires_confirmation" : "succeeded" });
+    } } });
+  await handleTripBalancePay(start(), w.d);
+  assertEquals(w.settled, ["pi_old"]);
+  assertEquals(w.calls.some((c) => (c as { release?: string }).release !== undefined), false);
+});
+
+Deno.test("N3: a payment still processing is kept (no release, no cancel)", async () => {
+  for (const status of ["processing", "requires_action"]) {
+    const { d, calls, settled } = worldWithOpen(status);
+    await handleTripBalancePay(start(), d);
+    assertEquals(calls.some((c) => (c as { release?: string }).release !== undefined), false, status);
+    assertEquals(calls.some((c) => (c as { cancel?: string }).cancel !== undefined), false, status);
+    assertEquals(settled, [], status);
   }
 });

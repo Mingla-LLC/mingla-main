@@ -45,10 +45,12 @@ import {
 import { paystackChannelsForCountry } from "../_shared/paymentProvider.ts";
 import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
 import {
-  cancelReleasedFlexIntents,
-  type PaymentIntentCanceller,
-  releasedFlexPayments,
+  type FlexStripe,
+  loadFlexPaymentsToVerify,
+  verifyOpenFlexPayments,
 } from "../_shared/installments/flexReclaim.ts";
+import { handleInstallmentPaymentSucceeded } from "../_shared/installmentWebhookHandlers.ts";
+import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import {
@@ -61,7 +63,7 @@ type Action = "view" | "start" | "status";
 type Method = "saved_card" | "new_card";
 
 /** The Stripe surface this function uses (injectable for tests). */
-export type StripeLike = FlexPaymentIntentStripe & PaymentIntentCanceller & {
+export type StripeLike = FlexPaymentIntentStripe & FlexStripe & {
   ephemeralKeys: {
     create(
       params: { customer: string },
@@ -86,6 +88,19 @@ export interface TripBalancePayDeps {
   feeRate: typeof resolveInstallmentFeeRate;
   mintToken: () => string;
   publishableKey: () => string;
+  /** issue #4522 (N3) — the webhook's success path for a verified PaymentIntent. */
+  settleStripe: (supabase: SupabaseClient, paymentIntent: Record<string, unknown>) => Promise<void>;
+  alertOps: (subject: string, paragraphs: string[]) => Promise<void>;
+}
+
+async function defaultSettleStripe(
+  supabase: SupabaseClient,
+  paymentIntent: Record<string, unknown>,
+): Promise<void> {
+  await handleInstallmentPaymentSucceeded(supabase, {
+    type: "payment_intent.succeeded",
+    data: { object: paymentIntent },
+  });
 }
 
 export const CLIENT_KEY_PATTERN = /^[A-Za-z0-9_-]{8,120}$/;
@@ -165,13 +180,21 @@ function publicBalance(
     "minPaymentMinor",
     "paymentInFlight",
     "heldCreditMinor",
+    "overpaymentRefundedMinor",
     "nextPayment",
     "openRows",
     "history",
   ];
-  return Object.fromEntries(
-    keep.filter((k) => k in balance).map((k) => [k, balance[k]]),
-  );
+  // issue #4522 (N6) — the clients show the flexible actions only for a v2
+  // plan; an older instalment plan keeps its schedule as before.
+  const terms = balance.terms as { v?: unknown } | null | undefined;
+  const planVersion = Number.isSafeInteger(terms?.v) ? Number(terms?.v) : 1;
+  return {
+    ...Object.fromEntries(
+      keep.filter((k) => k in balance).map((k) => [k, balance[k]]),
+    ),
+    planVersion,
+  };
 }
 
 export async function handleTripBalancePay(
@@ -202,6 +225,8 @@ export async function handleTripBalancePay(
     feeRate: depsIn.feeRate ?? resolveInstallmentFeeRate,
     mintToken: depsIn.mintToken ?? (() => mintPayLinkToken()),
     publishableKey: depsIn.publishableKey ?? resolvePublishableKey,
+    settleStripe: depsIn.settleStripe ?? defaultSettleStripe,
+    alertOps: depsIn.alertOps ?? installmentOpsAlert,
   };
   const { supabase } = deps;
   const now = deps.now();
@@ -479,6 +504,40 @@ export async function handleTripBalancePay(
     });
   }
 
+  // issue #4522 (N3) — an earlier payment still open on this order is never
+  // released on time alone: ask its provider first, and settle or release it
+  // on the answer. A payment that succeeded is settled now, so the begin below
+  // answers balance_changed and the buyer sees the new balance.
+  try {
+    const open = await loadFlexPaymentsToVerify(supabase, String(orderId), 10);
+    if (open.length > 0) {
+      const stripeAccountForOrder = async (): Promise<string | null> => {
+        const { data: account } = await supabase.from("stripe_connect_accounts")
+          .select("stripe_account_id").eq("brand_id", brandId).is("detached_at", null)
+          .maybeSingle();
+        const id = (account as { stripe_account_id?: unknown } | null)?.stripe_account_id;
+        return typeof id === "string" ? id : null;
+      };
+      await verifyOpenFlexPayments({
+        supabase,
+        stripe: () => deps.stripe(),
+        stripeAccountFor: stripeAccountForOrder,
+        settleStripe: (pi) => deps.settleStripe(supabase, pi),
+        paystackVerify: (reference) => deps.verify(reference),
+        settlePaystack: async (reference, txn) => {
+          await deps.handleCharge(supabase, reference, txn);
+        },
+        alertOps: deps.alertOps,
+      }, open);
+    }
+  } catch (error) {
+    // Unverified stays open: begin answers balance_payment_in_flight.
+    console.warn(JSON.stringify({
+      event: "flex_verify_before_begin_failed",
+      reason: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+    }));
+  }
+
   const { data: begun, error: beginError } = await supabase.rpc(
     "issue_4522_begin_flex_payment",
     {
@@ -547,13 +606,6 @@ export async function handleTripBalancePay(
     );
     try {
       const stripe = deps.stripe();
-      // issue #4522 (F2) — cancel any abandoned payment this begin released
-      // (best-effort; a late confirmation still settles exactly once).
-      await cancelReleasedFlexIntents(
-        stripe,
-        releasedFlexPayments(flex.released),
-        () => Promise.resolve(stripeAccount),
-      );
       let customerEphemeralKeySecret: string | null = null;
       if (token === null) {
         const ephemeralKey = await stripe.ephemeralKeys.create(
@@ -589,12 +641,27 @@ export async function handleTripBalancePay(
         idempotencyKey: flexPaymentIdempotencyKey(String(orderId), clientKey),
         stripeAccount,
       });
-      await supabase.from("order_installments")
+      // issue #4522 (N3) — the id is stored before the payment sheet is handed
+      // out, so "no PaymentIntent on the row" always means nothing was ever
+      // presented to pay. If it cannot be stored, the PaymentIntent is
+      // cancelled and the payment closed: the buyer never gets a sheet.
+      const { error: storeError } = await supabase.from("order_installments")
         .update({
           stripe_payment_intent_id: pi.id,
           updated_at: now.toISOString(),
         })
         .eq("id", installmentId).eq("kind", "flex");
+      if (storeError !== null) {
+        try {
+          await stripe.paymentIntents.cancel(pi.id, {}, {
+            idempotencyKey: `flex-store-failed-cancel:${installmentId}:${pi.id}`,
+            stripeAccount,
+          });
+        } catch {
+          // Unconfirmed and never presented: it cannot be paid by anyone.
+        }
+        throw new Error("payment_intent_store_failed");
+      }
       return jsonResponse({
         kind: "stripe",
         installmentId,

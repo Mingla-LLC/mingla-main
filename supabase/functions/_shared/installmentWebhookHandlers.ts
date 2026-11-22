@@ -36,6 +36,9 @@ import {
 } from "./installments/installmentFeeRate.ts";
 import { rollOverMissedPayment } from "./installments/missedRollover.ts";
 import { planV2SchemaAvailable } from "./installments/planV2Schema.ts";
+import { claimPaidInFullNotice } from "./installments/paidInFullNotice.ts";
+import { returnOrderOverpaymentsBestEffort } from "./installments/overpaymentLane.ts";
+import { installmentOpsAlert } from "./installments/installmentOpsAlert.ts";
 // The one reader of a PaymentIntent's charge id. The router imports this
 // module too; the cycle is safe because both sides only export function
 // declarations and neither calls the other while the module loads.
@@ -231,8 +234,26 @@ export async function handleInstallmentPaymentSucceeded(
         console.warn(
           `[installment-webhook] payment_intent.succeeded for superseded ${installmentId} — held as an overpayment`,
         );
+        const lateOrder = await orderIdOf(supabase, installmentId);
+        if ((lateResult as { alertOps?: boolean }).alertOps === true) {
+          await installmentOpsAlert("Late trip payment for an unexpected amount", [
+            "A traveler's released flexible trip payment was confirmed late for an amount Mingla never asked for.",
+            `Instalment: ${installmentId}`,
+            `PaymentIntent: ${piId}; received: ${String(pi["amount_received"] ?? pi["amount"] ?? "?")}`,
+            "It was recorded and is being refunded in full automatically. The plan was not changed.",
+          ]);
+        }
+        // issue #4522 (N2) — the money goes straight back to the traveler.
+        if (lateOrder !== null) await returnOrderOverpaymentsBestEffort(supabase, lateOrder);
         return brandId;
       }
+      // A released flexible payment confirmed late was collected and settled
+      // just now: its email and any money it held follow the same rules.
+      await afterFlexSettle(
+        supabase,
+        ((lateResult as { settle?: FlexSettleResult }).settle ?? null),
+        "stripe_late_success",
+      );
       ({ data: existing, error: existingError } = await loadReplayRow());
       if (existingError !== null) {
         throw new Error(`installment replay load failed: ${existingError.message}`);
@@ -255,9 +276,12 @@ export async function handleInstallmentPaymentSucceeded(
     if (accountingState !== "ready" || feesMissing) {
       await recordProviderSaleOrThrow(Number(existingRow.amount_cents ?? 0));
     }
-    // issue #4522 — a replay finishes a settle a crash interrupted (idempotent).
+    // issue #4522 — a replay finishes a settle a crash interrupted (idempotent);
+    // a late or retried settlement that completes the balance sends the
+    // paid-in-full email (claimed once per order) and any money held goes back.
     if (existingStatus === "collected") {
-      await settleFlexPaymentIfFlex(supabase, installmentId, existingRow.kind);
+      const settled = await settleFlexPaymentIfFlex(supabase, installmentId, existingRow.kind);
+      await afterFlexSettle(supabase, settled, "stripe_webhook_replay");
     }
     console.log(
       `[installment-webhook] payment_intent.succeeded for ${installmentId} — replay accounting ok`,
@@ -288,11 +312,35 @@ export async function handleInstallmentPaymentSucceeded(
     Number((updated as Record<string, unknown>).amount_cents ?? 0),
   );
   // issue #4522 — a flexible payment re-spreads the open balance, once.
-  await settleFlexPaymentIfFlex(
+  const settled = await settleFlexPaymentIfFlex(
     supabase,
     installmentId,
     (updated as Record<string, unknown>).kind,
   );
+  // issue #4522 (edge case) — a planned charge that landed for more than its
+  // row now owes (re-spread between the cron's claim and the PaymentIntent id
+  // being saved): the row keeps its amount and the excess goes back.
+  if (planV2 && (updated as Record<string, unknown>).kind === "scheduled") {
+    const received = Number(pi["amount_received"] ?? pi["amount"]);
+    const rowAmount = Number((updated as Record<string, unknown>).amount_cents ?? 0);
+    if (Number.isSafeInteger(received) && received > rowAmount) {
+      const { error: excessError } = await supabase.rpc("issue_4522_hold_collected_excess", {
+        p_installment_id: installmentId,
+        p_received_minor: received,
+        p_provider_ref: piId,
+      });
+      if (excessError !== null) {
+        throw new Error(`issue_4522_hold_collected_excess failed: ${excessError.message}`);
+      }
+      await returnOrderOverpaymentsBestEffort(
+        supabase,
+        String((updated as Record<string, unknown>).order_id),
+      );
+    }
+  }
+  if (settled !== null && Number(settled.heldMinor ?? 0) > 0) {
+    await returnOrderOverpaymentsBestEffort(supabase, String(settled.orderId ?? ""));
+  }
 
   // Check if this was the LAST installment for the order → fire "fully paid" confirmation.
   // Simple check: count remaining scheduled/failed installments for the order.
@@ -313,7 +361,11 @@ export async function handleInstallmentPaymentSucceeded(
     .eq("order_id", orderId)
     .in("status", ["scheduled", "failed"]);
 
-  if (countError === null && remainingCount === 0) {
+  if (
+    countError === null && remainingCount === 0 &&
+    // issue #4522 (N7) — once per order with the #4522 schema; unchanged before it.
+    await claimPaidInFullNotice(supabase, orderId, "stripe_webhook")
+  ) {
     // Fire fully-paid notification via existing dispatcher.
     try {
       const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -348,16 +400,26 @@ export async function handleInstallmentPaymentSucceeded(
  * idempotent on replay). Throws so the webhook inbox retries on failure. A
  * planned row (kind `scheduled`) is untouched, byte for byte.
  */
+export interface FlexSettleResult {
+  ok?: boolean;
+  reason?: string;
+  replayed?: boolean;
+  paidInFull?: boolean;
+  completedBalance?: boolean;
+  heldMinor?: number;
+  orderId?: string;
+}
+
 export async function settleFlexPaymentIfFlex(
   supabase: SupabaseClient,
   installmentId: string,
   kind: unknown,
-): Promise<void> {
-  if (kind !== "flex") return;
+): Promise<FlexSettleResult | null> {
+  if (kind !== "flex") return null;
   const { data, error } = await supabase.rpc("issue_4522_settle_flex_payment", {
     p_installment_id: installmentId,
   });
-  const result = (data ?? null) as { ok?: boolean; reason?: string } | null;
+  const result = (data ?? null) as FlexSettleResult | null;
   if (error !== null || result === null || result.ok !== true) {
     throw new Error(
       `issue_4522_settle_flex_payment failed: ${
@@ -365,6 +427,59 @@ export async function settleFlexPaymentIfFlex(
       }`,
     );
   }
+  return result;
+}
+
+/** POST the existing paid-in-full email (same template and dispatcher as the normal path). */
+async function dispatchPaidInFullEmail(orderId: string): Promise<void> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrl !== undefined && serviceKey !== undefined) {
+      await fetch(`${supabaseUrl}/functions/v1/ticket-confirmation-dispatch`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${serviceKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ kind: "installment_plan_paid_in_full", orderId }),
+      });
+    }
+  } catch (err) {
+    console.error(
+      "[installment-webhook] fully-paid notification dispatch failed (non-fatal)",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
+ * issue #4522 (N7 / N2) — after a late, retried or replayed flexible
+ * settlement: the paid-in-full email when the balance is complete (claimed
+ * once per order, never twice), and any money held goes back.
+ */
+export async function afterFlexSettle(
+  supabase: SupabaseClient,
+  settled: FlexSettleResult | null,
+  source: string,
+  sendEmail: (orderId: string) => Promise<void> = dispatchPaidInFullEmail,
+): Promise<void> {
+  if (settled === null) return;
+  const orderId = String(settled.orderId ?? "");
+  if (orderId === "") return;
+  if (Number(settled.heldMinor ?? 0) > 0) {
+    await returnOrderOverpaymentsBestEffort(supabase, orderId);
+  }
+  if (settled.paidInFull === true && await claimPaidInFullNotice(supabase, orderId, source)) {
+    await sendEmail(orderId);
+  }
+}
+
+async function orderIdOf(supabase: SupabaseClient, installmentId: string): Promise<string | null> {
+  const { data } = await supabase.from("order_installments").select("order_id")
+    .eq("id", installmentId).maybeSingle();
+  const id = (data as { order_id?: unknown } | null)?.order_id;
+  return typeof id === "string" ? id : null;
 }
 
 /** issue #4522 — record a flexible payment's failure, then close the row. */

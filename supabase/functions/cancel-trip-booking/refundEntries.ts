@@ -50,6 +50,11 @@ export function depositKeptCents(
   return kept;
 }
 
+/** issue #4522 (N2) — the overpayment a cancel returns in full on top (0 when none). */
+export function overpaymentReturnCents(result: { overpayment_return_cents?: unknown }): number {
+  return isMoney(result.overpayment_return_cents) ? Math.max(0, result.overpayment_return_cents) : 0;
+}
+
 interface RefundComputeClient {
   rpc(
     fn: string,

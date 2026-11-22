@@ -50,11 +50,17 @@ import { handleInstallmentPaystackCharge } from "../_shared/installments/paystac
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import {
-  cancelReleasedFlexIntents,
-  type PaymentIntentCanceller,
-  type ReleasedFlexPayment,
-  releasedFlexPayments,
+  type FlexStripe,
+  loadFlexPaymentsToVerify,
+  verifyOpenFlexPayments,
 } from "../_shared/installments/flexReclaim.ts";
+import {
+  type OverpaymentRefundDeps,
+  returnDueOverpayments,
+} from "../_shared/installments/overpaymentRefunds.ts";
+import { defaultOverpaymentDeps } from "../_shared/installments/overpaymentLane.ts";
+import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
+import { handleInstallmentPaymentSucceeded } from "../_shared/installmentWebhookHandlers.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 
 const DEFAULT_BATCH_LIMIT = 500 as const;
@@ -71,8 +77,12 @@ type SchedulerResult = {
   notices_sent: number;
   reconciled: number;
   unknown: number;
-  /** issue #4522 — abandoned flexible payments released by the sweep. */
-  flex_released?: number;
+  /** issue #4522 (N3) — open flexible payments checked with their provider. */
+  flex_verified?: { settled: number; released: number; in_flight: number; flagged: number; error: number };
+  /** issue #4522 (N2) — overpayments returned to travelers (by outcome). */
+  overpayments?: Record<string, number>;
+  /** issue #4522 (N10) — the v2 steps this run skipped because the schema probe failed. */
+  v2_steps_skipped?: string[];
   errors: Array<{ installment_id: string; reason: string }>;
 };
 
@@ -84,8 +94,13 @@ export interface SchedulerDeps {
   sendPayLink: typeof sendInstallmentPayLink;
   dispatchBuyerEmail: typeof defaultDispatchBuyerEmail;
   sendBuyerPush: typeof defaultSendBuyerPush;
-  /** issue #4522 — cancels released flexible PaymentIntents (best-effort). */
-  stripeCanceller: () => PaymentIntentCanceller;
+  /** issue #4522 (N3) — the Stripe surface that verifies open flexible payments. */
+  flexStripe: () => FlexStripe;
+  /** issue #4522 (N3) — the webhook's success path for a verified PaymentIntent. */
+  settleStripe: (supabase: SupabaseClient, paymentIntent: Record<string, unknown>) => Promise<void>;
+  /** issue #4522 (N2) — the overpayment refund lane. */
+  overpaymentDeps: (supabase: SupabaseClient) => OverpaymentRefundDeps;
+  alertOps: (subject: string, paragraphs: string[]) => Promise<void>;
 }
 
 function rowObject(value: unknown): Record<string, unknown> {
@@ -482,7 +497,15 @@ export async function processScheduledInstallments(
     sendPayLink: sendInstallmentPayLink,
     dispatchBuyerEmail: defaultDispatchBuyerEmail,
     sendBuyerPush: defaultSendBuyerPush,
-    stripeCanceller: () => stripeTicketCheckout() as unknown as PaymentIntentCanceller,
+    flexStripe: () => stripeTicketCheckout() as unknown as FlexStripe,
+    settleStripe: async (client, paymentIntent) => {
+      await handleInstallmentPaymentSucceeded(client, {
+        type: "payment_intent.succeeded",
+        data: { object: paymentIntent },
+      });
+    },
+    overpaymentDeps: defaultOverpaymentDeps,
+    alertOps: installmentOpsAlert,
     ...(input.deps ?? {}),
   };
   const limit =
@@ -501,13 +524,26 @@ export async function processScheduledInstallments(
     unknown: 0,
     errors: [],
   };
-  // issue #4522 (F6) — one question per run: is the #4522 schema applied?
+  // issue #4522 (F6, N10) — one question per run: is the #4522 schema
+  // applied? An unknown probe error is never read as "present": this run
+  // skips only the v2 steps (notices, which would need the kind filter, the
+  // flexible-payment check and the overpayment lane), loudly, and the
+  // pre-#4522 reconcile and charging still run (the SQL claim refuses any
+  // flexible row by itself).
   let planV2: boolean;
+  let probeFailed = false;
   try {
     planV2 = await planV2SchemaAvailable(supabase);
-  } catch {
+  } catch (error) {
+    planV2 = false;
+    probeFailed = true;
     result.errors.push({ installment_id: "scheduler", reason: "schema_probe_failed" });
-    return result;
+    result.v2_steps_skipped = ["notices", "flex_verify", "overpayment_refunds"];
+    console.error(JSON.stringify({
+      event: "issue_4522_schema_probe_failed",
+      reason: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+      skipped: result.v2_steps_skipped,
+    }));
   }
   try {
     await passAReconcile(supabase, result, limit, deps);
@@ -518,7 +554,7 @@ export async function processScheduledInstallments(
     });
   }
   try {
-    await passBNotices(supabase, result, limit, deps, planV2);
+    if (!probeFailed) await passBNotices(supabase, result, limit, deps, planV2);
   } catch {
     result.errors.push({
       installment_id: "scheduler",
@@ -542,11 +578,23 @@ export async function processScheduledInstallments(
   }
   if (planV2 && input.dryRun !== true) {
     try {
-      result.flex_released = await passDReleaseStaleFlex(supabase, limit, deps);
+      result.flex_verified = await passDVerifyOpenFlex(supabase, limit, deps);
     } catch {
       result.errors.push({
         installment_id: "scheduler",
         reason: "flex_sweep_failed",
+      });
+    }
+    try {
+      result.overpayments = await returnDueOverpayments(
+        deps.overpaymentDeps(supabase),
+        null,
+        Math.min(limit, 100),
+      );
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "overpayment_sweep_failed",
       });
     }
   }
@@ -554,30 +602,28 @@ export async function processScheduledInstallments(
 }
 
 /**
- * issue #4522 (F2) — release abandoned flexible payments (past the reclaim
- * window, no attempt in flight) and cancel their Stripe PaymentIntents,
- * best-effort. A cancel that loses the race to a late confirmation is safe:
- * the late success settles through issue_4522_record_late_collection.
+ * issue #4522 (N3) — every open flexible payment past the reclaim window is
+ * checked with its provider: settled when it succeeded, released only when
+ * the provider confirms it was cancelled or failed, kept (and flagged once
+ * past the 24-hour ceiling) otherwise. Never released on time alone.
  */
-async function passDReleaseStaleFlex(
+async function passDVerifyOpenFlex(
   supabase: SupabaseClient,
   limit: number,
   deps: SchedulerDeps,
-): Promise<number> {
-  const { data, error } = await supabase.rpc("issue_4522_sweep_stale_flex", {
-    p_now: deps.now().toISOString(),
-    p_limit: Math.min(limit, 100),
-  });
-  if (error !== null) throw new Error(`flex_sweep_failed:${error.message}`);
-  const released = releasedFlexPayments(data);
-  if (released.some((row) => row.provider === "stripe" && row.stripePaymentIntentId !== null)) {
-    await cancelReleasedFlexIntents(
-      deps.stripeCanceller(),
-      released,
-      (payment: ReleasedFlexPayment) => stripeAccountForOrder(supabase, payment.orderId ?? ""),
-    );
-  }
-  return released.length;
+): Promise<{ settled: number; released: number; in_flight: number; flagged: number; error: number }> {
+  const open = await loadFlexPaymentsToVerify(supabase, null, Math.min(limit, 100));
+  return await verifyOpenFlexPayments({
+    supabase,
+    stripe: deps.flexStripe,
+    stripeAccountFor: (payment) => stripeAccountForOrder(supabase, payment.orderId),
+    settleStripe: (pi) => deps.settleStripe(supabase, pi),
+    paystackVerify: (reference) => deps.verifyPaystack(reference),
+    settlePaystack: async (reference, txn) => {
+      await deps.handlePaystackCharge(supabase, reference, txn);
+    },
+    alertOps: deps.alertOps,
+  }, open);
 }
 
 async function stripeAccountForOrder(

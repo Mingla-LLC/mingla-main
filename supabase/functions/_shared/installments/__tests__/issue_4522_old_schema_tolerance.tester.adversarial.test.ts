@@ -181,12 +181,17 @@ Deno.test("old schema: the cron never filters on kind and never sweeps; new sche
     const fake = client(schemaV2, () => ({ data: [], error: null }));
     // deno-lint-ignore no-explicit-any
     const result = await processScheduledInstallments(fake.client as any, { deps: {
-      stripeCanceller: () => ({ paymentIntents: { cancel: () => Promise.resolve({}) } }),
+      flexStripe: () => ({ paymentIntents: {
+        retrieve: () => Promise.resolve({}),
+        cancel: () => Promise.resolve({}),
+      } }),
     } });
     assertEquals(result.errors, []);
     const filters = fake.tableOps.flatMap((op) => op.filters.map((f) => f[1]));
     assertEquals(filters.includes("kind"), schemaV2);
-    assertEquals(fake.rpcCalls.some((c) => c.name === "issue_4522_sweep_stale_flex"), schemaV2);
+    // issue #4522 (N3 / N2) — the v2 sweeps run only with the v2 schema.
+    assertEquals(fake.rpcCalls.some((c) => c.name === "issue_4522_flex_payments_to_verify"), schemaV2);
+    assertEquals(fake.rpcCalls.some((c) => c.name === "issue_4522_overpayments_due"), schemaV2);
   }
   resetPlanV2SchemaProbeForTests();
 });

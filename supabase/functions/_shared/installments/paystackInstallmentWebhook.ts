@@ -20,8 +20,9 @@ import {
   paystackRefundOutcomeStatus,
   paystackRefundTransaction,
 } from "../paystackRefunds.ts";
-import { sendOpsAlertEmail } from "../stripeOpsAlertEmail.ts";
-import { resolveAlertRecipientValue } from "../secretBundle.ts";
+import { installmentOpsAlert } from "./installmentOpsAlert.ts";
+import { claimPaidInFullNotice } from "./paidInFullNotice.ts";
+import { returnOrderOverpaymentsBestEffort } from "./overpaymentLane.ts";
 import { defaultDispatchBuyerEmail, type DispatchBuyerEmail } from "./installmentPayLinks.ts";
 import { planV2SchemaAvailable } from "./planV2Schema.ts";
 
@@ -73,30 +74,11 @@ export interface InstallmentWebhookDeps {
   alertOps: (subject: string, paragraphs: string[]) => Promise<void>;
 }
 
-async function defaultAlertOps(subject: string, paragraphs: string[]): Promise<void> {
-  const value = resolveAlertRecipientValue("stripe_disputes", "STRIPE_DISPUTE_ALERT_EMAILS");
-  const recipients = Array.isArray(value)
-    ? value.map((v) => String(v).trim()).filter(Boolean)
-    : String(value ?? "").split(",").map((v) => v.trim()).filter(Boolean);
-  if (recipients.length === 0) {
-    console.warn("[installment-paystack] ops alert recipients missing", { subject });
-    return;
-  }
-  try {
-    await sendOpsAlertEmail({ subject, paragraphs, recipients });
-  } catch (err) {
-    console.error("[installment-paystack] ops alert failed", {
-      subject,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
-
 export function defaultInstallmentWebhookDeps(): InstallmentWebhookDeps {
   return {
     createPaystackRefund,
     dispatchBuyerEmail: defaultDispatchBuyerEmail,
-    alertOps: defaultAlertOps,
+    alertOps: installmentOpsAlert,
   };
 }
 
@@ -131,7 +113,7 @@ async function loadAttempt(
 async function settleFlexIfFlex(
   supabase: SupabaseClient,
   installmentId: string,
-): Promise<{ paidInFull: boolean } | null> {
+): Promise<{ paidInFull: boolean; heldMinor: number; orderId: string } | null> {
   // issue #4522 (F6) — before #4522 is applied there are no flexible rows.
   if (!(await planV2SchemaAvailable(supabase))) return null;
   const { data: row, error: rowError } = await supabase
@@ -145,7 +127,7 @@ async function settleFlexIfFlex(
     p_installment_id: installmentId,
   });
   const result = (data ?? null) as
-    | { ok?: boolean; reason?: string; paidInFull?: boolean }
+    | { ok?: boolean; reason?: string; paidInFull?: boolean; heldMinor?: number; orderId?: string }
     | null;
   if (error !== null || result === null || result.ok !== true) {
     throw new Error(
@@ -154,7 +136,28 @@ async function settleFlexIfFlex(
       }`,
     );
   }
-  return { paidInFull: result.paidInFull === true };
+  return {
+    paidInFull: result.paidInFull === true,
+    heldMinor: Number(result.heldMinor ?? 0),
+    orderId: String(result.orderId ?? ""),
+  };
+}
+
+/**
+ * issue #4522 (N2 / N7) — after a flexible settlement: money held goes back
+ * to the traveler, and the paid-in-full email is sent once per order.
+ */
+async function afterPaystackFlexSettle(
+  supabase: SupabaseClient,
+  settled: { paidInFull: boolean; heldMinor: number; orderId: string } | null,
+  source: string,
+  deps: InstallmentWebhookDeps,
+): Promise<void> {
+  if (settled === null || settled.orderId === "") return;
+  if (settled.heldMinor > 0) await returnOrderOverpaymentsBestEffort(supabase, settled.orderId);
+  if (settled.paidInFull && await claimPaidInFullNotice(supabase, settled.orderId, source)) {
+    await deps.dispatchBuyerEmail("installment_plan_paid_in_full", { orderId: settled.orderId });
+  }
 }
 
 /**
@@ -232,8 +235,10 @@ export async function handleInstallmentPaystackCharge(
     return { status: "installment_refund_due", installmentId: attempt.installment_id };
   }
   if (outcome === "replayed") {
-    // issue #4522 — a replay finishes a settle a crash interrupted (idempotent).
-    await settleFlexIfFlex(supabase, attempt.installment_id);
+    // issue #4522 — a replay finishes a settle a crash interrupted (idempotent);
+    // a retried settlement that completes the balance sends the email once.
+    const replaySettle = await settleFlexIfFlex(supabase, attempt.installment_id);
+    await afterPaystackFlexSettle(supabase, replaySettle, "paystack_replay", deps);
     return { status: "installment_replayed", installmentId: attempt.installment_id };
   }
   if (outcome !== "collected") throw new Error(`unexpected instalment outcome ${outcome}`);
@@ -242,10 +247,14 @@ export async function handleInstallmentPaystackCharge(
   // issue #4522 — a flexible payment re-spreads the open balance first, so
   // "paid in full" is judged on the rows that are left.
   const flexSettle = await settleFlexIfFlex(supabase, attempt.installment_id);
+  if (flexSettle !== null && flexSettle.heldMinor > 0) {
+    await returnOrderOverpaymentsBestEffort(supabase, flexSettle.orderId);
+  }
   const paidInFull = flexSettle !== null
     ? flexSettle.paidInFull
     : Number(result.remaining ?? 1) === 0;
-  if (paidInFull && orderId !== "") {
+  // issue #4522 (N7) — once per order with the #4522 schema; unchanged before it.
+  if (paidInFull && orderId !== "" && await claimPaidInFullNotice(supabase, orderId, "paystack_webhook")) {
     await deps.dispatchBuyerEmail("installment_plan_paid_in_full", { orderId });
   }
 
