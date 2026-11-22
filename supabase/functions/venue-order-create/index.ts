@@ -65,7 +65,9 @@ import {
   venueDiscountSnapshot,
   type VenueOrderErrorCode,
   venueOrderErrorCopy,
+  venueOrderChargeCurrency,
   venueOrderErrorStatus,
+  venueOrderProviderFloorRefusal,
   venueOrderIdempotencyKey,
 } from "../_shared/venueOrderPricing.ts";
 import { readBrandPayoutHoldStamp } from "../_shared/payoutHoldStamp.ts";
@@ -125,6 +127,7 @@ function fail(
     venueOrderErrorStatus(code),
   );
 }
+
 
 serve(wrapEdgeHandler("venue-order-create", async (req) => {
   if (req.method === "OPTIONS") {
@@ -740,6 +743,22 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         paymentStatus: String(existing.payment_status),
       });
     }
+  }
+
+  // Issue #3645 (18 Nov payments audit, item 7) — the guest pays `totalCents`
+  // (items, venue charge, any passed fees and tax, tip; after discounts and
+  // after a dropped tip on a free order), so that is what the provider is
+  // asked to charge, in the currency it is charged in. Below the provider's
+  // minimum, refuse here: AFTER the replay above (a retry of an order that
+  // already exists keeps resuming it) and BEFORE the discount reservation,
+  // any row write and any provider call. A free order (0) never reaches it.
+  if (movesMoney) {
+    const refusal = venueOrderProviderFloorRefusal(
+      money.totalCents,
+      venueOrderChargeCurrency(routing.provider, settlementCurrency),
+      "guest",
+    );
+    if (refusal) return jsonResponse(refusal.body, refusal.status);
   }
 
   const orderId = crypto.randomUUID();
