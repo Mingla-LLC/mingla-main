@@ -127,3 +127,96 @@ export async function extractFunctionErrorFields(
     return { token: fallback, detail: null, body: null }
   }
 }
+
+// ─── #4561: send-otp failure contract (pure; shared by both sendOtp callers) ───
+
+export type OtpDeliveryChannel = 'sms' | 'whatsapp' | 'call'
+
+/**
+ * What a failed send means. A body with no recognised `code` (an older
+ * server, a network failure, a gateway page) is the retryable `send_failed`.
+ */
+export type SendOtpFailureCode =
+  | 'channel_unavailable'
+  | 'rate_limited'
+  | 'phone_taken'
+  | 'invalid_number'
+  | 'send_failed'
+
+export interface SendOtpFailure {
+  success: false
+  error: string
+  code: SendOtpFailureCode
+  /** On `channel_unavailable`: the refused channel. */
+  channel?: OtpDeliveryChannel
+  /** On `channel_unavailable`: the channels the server still allows. */
+  alternatives?: OtpDeliveryChannel[]
+}
+
+const SEND_OTP_FAILURE_CODES: readonly SendOtpFailureCode[] = [
+  'channel_unavailable',
+  'rate_limited',
+  'phone_taken',
+  'invalid_number',
+  'send_failed',
+]
+const OTP_CHANNELS: readonly OtpDeliveryChannel[] = ['sms', 'whatsapp', 'call']
+
+function isOtpChannel(value: unknown): value is OtpDeliveryChannel {
+  return typeof value === 'string' && (OTP_CHANNELS as readonly string[]).includes(value)
+}
+
+/** Map a send-otp error body (or none) to a failed result. */
+export function readSendOtpFailure(
+  body: Record<string, unknown> | null,
+  message: string,
+  requestedChannel: OtpDeliveryChannel,
+): SendOtpFailure {
+  const rawCode = body?.code
+  const code: SendOtpFailureCode =
+    typeof rawCode === 'string' && (SEND_OTP_FAILURE_CODES as readonly string[]).includes(rawCode)
+      ? (rawCode as SendOtpFailureCode)
+      : 'send_failed'
+  const result: SendOtpFailure = { success: false, error: message, code }
+  if (code === 'channel_unavailable') {
+    const refused = body?.channel
+    const channel = isOtpChannel(refused) ? refused : requestedChannel
+    const offered = Array.isArray(body?.alternatives) ? (body?.alternatives as unknown[]) : []
+    result.channel = channel
+    result.alternatives = offered.filter(isOtpChannel).filter((c) => c !== channel)
+  }
+  return result
+}
+
+/** The channels the app offers people (WhatsApp is not offered: #4561 D-1). */
+const OFFERED_CHANNELS: readonly OtpDeliveryChannel[] = ['sms', 'call']
+
+/** Add a refused channel to the per-number list, without duplicates. */
+export function withRefusedChannel(
+  refused: readonly OtpDeliveryChannel[],
+  channel: OtpDeliveryChannel,
+): OtpDeliveryChannel[] {
+  return refused.includes(channel) ? [...refused] : [...refused, channel]
+}
+
+/**
+ * What the phone step's main button does for a number, given the channels
+ * already refused for it: text, call, or nothing (both refused).
+ */
+export function phoneStepSendChannel(
+  refused: readonly OtpDeliveryChannel[],
+): OtpDeliveryChannel | null {
+  const left = OFFERED_CHANNELS.filter((c) => !refused.includes(c))
+  return left.length > 0 ? left[0] : null
+}
+
+/** The code screen's "try another way" options for a number. */
+export function otpPickerChannels(
+  refused: readonly OtpDeliveryChannel[],
+): OtpDeliveryChannel[] {
+  return OFFERED_CHANNELS.filter((c) => !refused.includes(c))
+}
+
+/** The support address shown under every Email support button (#4561 Q-2/Q-8). */
+export const SUPPORT_EMAIL = 'support@usemingla.com'
+export const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}`
