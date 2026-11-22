@@ -164,6 +164,8 @@ export function buildExperienceOfferingDataFromDetail(
       t !== null
         ? {
             ticketTypeId: t.ticketTypeId,
+            // #3281 S2 — the ticket's add-ons for the public block.
+            ...(t.buyerExtras !== undefined ? { buyerExtras: t.buyerExtras } : {}),
             name: t.name,
             priceCents: t.priceCents,
             priceAllInCents: t.priceAllInCents,
@@ -190,6 +192,7 @@ export function buildExperienceOfferingDataFromDetail(
       ? {
           options: detail.options.map((opt) => ({
             ticketTypeId: opt.ticketTypeId,
+            ...(opt.buyerExtras !== undefined ? { buyerExtras: opt.buyerExtras } : {}),
             name: opt.name,
             priceCents: opt.priceCents,
             priceAllInCents: opt.priceAllInCents,

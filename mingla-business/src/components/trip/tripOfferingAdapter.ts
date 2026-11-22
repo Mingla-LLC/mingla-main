@@ -155,6 +155,8 @@ export function buildTripOfferingData(
       return {
         id: t.id,
         ticketTypeId: t.ticketTypeId,
+        // #3281 S2 — the package's add-ons for the public block.
+        ...(t.buyerExtras !== undefined ? { buyerExtras: t.buyerExtras } : {}),
         tierName: t.tierName,
         priceCents: t.priceCents,
         // META-ORCH-1174 Leg B3 — server all-in (WYSIWYP). Free tier → null (the

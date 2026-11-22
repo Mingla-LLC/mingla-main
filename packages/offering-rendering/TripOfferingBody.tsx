@@ -38,6 +38,8 @@
  */
 
 import React, { useCallback, useState } from "react";
+// issue #3281 S2 — "Add at checkout:" under each package (off unless `addOns` is passed).
+import { OfferingAddOnsBlock, type OfferingAddOnsDisplay } from "./OfferingAddOnsBlock";
 import {
   LayoutAnimation,
   Platform,
@@ -195,6 +197,8 @@ export interface TripOfferingBodyProps {
    * cover (the premium ParallaxCoverShell frame). Absent ⇒ false (Explorer).
    */
   identityOnCover?: boolean;
+  /** issue #3281 S2 — show each package's add-ons; omitted (default) shows none. */
+  addOns?: OfferingAddOnsDisplay | null;
   testID?: string;
 }
 
@@ -221,6 +225,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   socialProof = null,
   onSeeWhosGoing,
   identityOnCover = false,
+  addOns = null,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -831,6 +836,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                     depositNonRefundable={
                       data.refundPolicy?.deposit_non_refundable === true
                     }
+                    addOns={addOns}
                   />
                 ))}
 
@@ -1007,6 +1013,7 @@ const TripPackageRow: React.FC<{
   onChangePlanChoice?: (value: TripPaymentPlanChoice) => void;
   currency: string;
   depositNonRefundable: boolean;
+  addOns: OfferingAddOnsDisplay | null;
 }> = ({
   tier,
   palette,
@@ -1019,6 +1026,7 @@ const TripPackageRow: React.FC<{
   onChangePlanChoice,
   currency,
   depositNonRefundable,
+  addOns,
 }) => {
   const isSoldOut =
     tier.isUnlimited === false &&
@@ -1208,6 +1216,16 @@ const TripPackageRow: React.FC<{
             testID={`trip-body-pkg-plan-${tier.ticketTypeId}`}
           />
         </View>
+      ) : null}
+      {addOns !== null ? (
+        <OfferingAddOnsBlock
+          enabled
+          addOns={tier.buyerExtras}
+          palette={palette}
+          currency={currency}
+          photoUrl={addOns.photoUrl}
+          testID={`issue-3281-offering-add-ons-${tier.ticketTypeId}`}
+        />
       ) : null}
     </View>
   );

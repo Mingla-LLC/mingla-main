@@ -92,6 +92,8 @@ import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
 // #4518 — trip day pictures take the picture road (one fallback).
 import { OfferingRoutedImage } from "@mingla/offering-rendering/useOfferingImageUri";
+// issue #3281 S2 — each package's add-ons on the public page (flag-gated).
+import { publicAddOnsDisplay } from "../../services/addOnPhotoUrl";
 
 export interface TripPreviewBrand {
   id: string;
@@ -561,6 +563,7 @@ const FoundationTripPreview: React.FC<{
       testID={testID}
     >
       <TripOfferingBody
+        addOns={publicAddOnsDisplay()}
         data={data}
         brand={offeringBrand}
         palette={palette}

@@ -66,6 +66,8 @@ export interface TripInstallmentTemplate {
 export interface TripOfferingTier {
   id: string;
   ticketTypeId: string;
+  /** issue #3281 S2 — the reader's raw `extras` for this package, unparsed. */
+  buyerExtras?: unknown;
   tierName: string;
   priceCents: number;
   /**

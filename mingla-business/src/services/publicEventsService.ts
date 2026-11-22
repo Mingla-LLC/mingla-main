@@ -19,6 +19,7 @@ import {
 import { readBundleHideRemainingCount } from "@mingla/offering-rendering/remainingCountVisibility";
 
 import { supabase } from "./supabase";
+import { featureFlags } from "../config/featureFlags";
 import { isTransportFailure, resolveOfferingBookable } from "./brandCanCollect";
 import { noteUnrestrictedCheckout } from "./checkoutAccessHints";
 import type { PublicTierPricing } from "./publicTierPricingService";
@@ -2581,6 +2582,36 @@ export interface PublicTripDetail {
   brand: PublicTripBrand;
 }
 
+/**
+ * #3281 S2 — the trip checkout reads the trip's tables directly, so each
+ * package's add-ons come from the public trip reader (the one owner of the
+ * public add-on shape). A failed read lists no add-ons; the checkout still
+ * sells the packages.
+ */
+const fetchTripAddOnsByTicketType = async (
+  brandSlug: string,
+  eventSlug: string,
+): Promise<Map<string, unknown>> => {
+  const byId = new Map<string, unknown>();
+  const { data, error } = await supabase.rpc("pg_public_trip_by_slug", {
+    p_brand_slug: brandSlug,
+    p_event_slug: eventSlug,
+  });
+  if (error !== null) {
+    console.warn("[publicEventsService] trip add-ons not read", error.message);
+    return byId;
+  }
+  const tiers = (data as { tiers?: unknown } | null)?.tiers;
+  if (!Array.isArray(tiers)) return byId;
+  for (const tier of tiers) {
+    const row = tier as { ticketTypeId?: unknown; extras?: unknown } | null;
+    if (row !== null && typeof row.ticketTypeId === "string" && row.extras !== undefined) {
+      byId.set(row.ticketTypeId, row.extras);
+    }
+  }
+  return byId;
+};
+
 export const getPublicTripById = async (
   tripEventId: string,
 ): Promise<PublicTripDetail | null> => {
@@ -2687,9 +2718,13 @@ export const getPublicTripById = async (
   // ORCH-0946 — remaining-capacity per ticket_type for the sold-out gate.
   // ORCH-1147 — per-tier server all-in (the SAME single owner as the event
   // path); RPC failure → empty map → base fallback downstream (never blank).
-  const [remainingById, pricingById] = await Promise.all([
+  const [remainingById, pricingById, addOnsById] = await Promise.all([
     fetchTicketTypesRemaining(tripEventId),
     fetchTierPricingCents(tripEventId),
+    // #3281 S2 — each package's add-ons for the trip cart (flag on only).
+    featureFlags.extras
+      ? fetchTripAddOnsByTicketType(String(brand.slug), String(event.slug))
+      : Promise.resolve(new Map<string, unknown>()),
   ]);
 
   const ticketsById = new Map(tickets.map((tt) => [tt.id, tt]));
@@ -2794,10 +2829,12 @@ export const getPublicTripById = async (
       const ticketsRemaining = isUnlimited
         ? null
         : (remainingById.get(t.ticket_type_id) ?? null);
+      const addOns = addOnsById.get(t.ticket_type_id);
       return {
         id: t.id,
         eventId: t.event_id,
         ticketTypeId: t.ticket_type_id,
+        ...(addOns !== undefined ? { buyerExtras: addOns } : {}),
         tierName: t.tier_name,
         tierMetadata: t.tier_metadata ?? {},
         priceCents: tt?.price_cents ?? 0,

@@ -73,6 +73,8 @@ import { ThemeAccentGradientLayer } from "./ThemeAccentFill";
 import { type ResolvedTheme } from "./designTokens";
 // #3372 — naira shows "₦", not "NGN", whatever the engine or locale (#3341 rule).
 import { withCurrencyGlyph } from "./currencyGlyph";
+// issue #3281 S2 — "Add at checkout:" under each option (off unless `addOns` is passed).
+import { OfferingAddOnsBlock, type OfferingAddOnsDisplay } from "./OfferingAddOnsBlock";
 import { priceDecimals, priceFallbackDecimals } from "./priceDecimals";
 import { EventCoverMedia } from "./EventCoverMedia";
 import { StopSpine } from "./StopSpine";
@@ -334,6 +336,8 @@ export interface ExperienceOfferingBodyProps {
    * (Explorer, single-date experiences) ⇒ nothing renders.
    */
   reservePicker?: React.ReactNode;
+  /** issue #3281 S2 — show each price option's add-ons; omitted (default) shows none. */
+  addOns?: OfferingAddOnsDisplay | null;
   testID?: string;
 }
 
@@ -363,6 +367,7 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   rightNow = null as RightNowFacts | null,
   identityOnCover = false,
   reservePicker = undefined as React.ReactNode | undefined,
+  addOns = null as OfferingAddOnsDisplay | null,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -866,7 +871,8 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                   const { label: optLabel } = experienceOptionPriceLabel(opt);
                   const optListLabel = experienceOptionListPriceLabel(opt);
                   return (
-                    <View key={opt.ticketTypeId} style={styles.optionRow}>
+                    <React.Fragment key={opt.ticketTypeId}>
+                    <View style={styles.optionRow}>
                       <Text
                         style={[styles.optionName, surface.primaryText]}
                         numberOfLines={1}
@@ -891,6 +897,17 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
                         </Text>
                       </View>
                     </View>
+                      {addOns !== null ? (
+                        <OfferingAddOnsBlock
+                          enabled
+                          addOns={opt.buyerExtras}
+                          palette={palette}
+                          currency={opt.currency}
+                          photoUrl={addOns.photoUrl}
+                          testID={`issue-3281-offering-add-ons-${opt.ticketTypeId}`}
+                        />
+                      ) : null}
+                    </React.Fragment>
                   );
                 },
               )}

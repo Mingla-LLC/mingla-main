@@ -61,6 +61,8 @@ import {
   parseRsvpBrandForm,
   rsvpBrandFormRefusal,
 } from "./brandFormRsvp.ts";
+// #3281 S6 — free add-ons picked with the RSVP (own module; dark by switch).
+import { parseRsvpAddOns, RSVP_ADD_ONS_RPC, rsvpAddOnRefusal } from "./rsvpAddOns.ts";
 // #4508 R-4 — the caller's address, read the one way the repo reads it.
 import { requestClientIp } from "../_shared/ticketLinkToken.ts";
 // #4508 R-9 — a plus-one's pass name follows the 1.11 rule.
@@ -89,6 +91,8 @@ interface SubmitRsvpRequest {
   /** #4541 — capability marker and optional answers for the attached form. */
   brandFormStep?: unknown;
   brandForm?: unknown;
+  /** #3281 S6 — `[{ addOnId, quantity }]` free add-ons for this RSVP. */
+  rsvpAddOns?: unknown;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -223,6 +227,7 @@ export const handler = async (req: Request): Promise<Response> => {
         "ad_context",
         "brandFormStep",
         "brandForm",
+        "rsvpAddOns",
       ].includes(key)
     )
   ) {
@@ -235,6 +240,8 @@ export const handler = async (req: Request): Promise<Response> => {
   if (isRsvpBrandFormRefusal(parsedBrandForm)) {
     return json(parsedBrandForm.status, parsedBrandForm.body);
   }
+  const parsedAddOns = parseRsvpAddOns(body.rsvpAddOns);
+  if (!parsedAddOns.ok) return json(parsedAddOns.status, parsedAddOns.body);
 
   const eventId = typeof body.eventId === "string" ? body.eventId.trim() : "";
   const rsvpStatus = body.rsvpStatus;
@@ -444,7 +451,8 @@ export const handler = async (req: Request): Promise<Response> => {
     },
   });
   if (gate !== null) return json(gate.status, gate.body);
-  const { data, error } = await admin.rpc("submit_event_rsvp_with_form", {
+  // #3281 S6 — with add-ons, the wrapper submits this same RSVP first.
+  const { data, error } = await admin.rpc(parsedAddOns.addOns === null ? "submit_event_rsvp_with_form" : RSVP_ADD_ONS_RPC, {
     p_event_id: eventId,
     p_user_id: userId,
     p_guest_name: guestName.length > 0 ? guestName : null,
@@ -457,9 +465,12 @@ export const handler = async (req: Request): Promise<Response> => {
     p_guest_phone_country_iso: guestPhoneCountryIso,
     p_capable: parsedBrandForm.capable,
     p_form: parsedBrandForm.form,
+    ...(parsedAddOns.addOns === null ? {} : { p_add_ons: parsedAddOns.addOns }),
   }).setHeader("x-mingla-rsvp-client", inviterClient);
 
   if (error !== null) {
+    const addOnRefusal = parsedAddOns.addOns === null ? null : rsvpAddOnRefusal(error);
+    if (addOnRefusal !== null) return json(addOnRefusal.status, addOnRefusal.body);
     const formRefusal = rsvpBrandFormRefusal(error);
     if (formRefusal !== null) {
       return json(formRefusal.status, formRefusal.body);

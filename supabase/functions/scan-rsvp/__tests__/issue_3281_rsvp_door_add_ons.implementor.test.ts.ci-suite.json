@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/scan-rsvp/__tests__/issue_3281_rsvp_door_add_ons.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-3281-rsvp-door-add-ons",
+  "profile": "deno-2-unit"
+}

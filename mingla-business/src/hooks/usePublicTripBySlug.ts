@@ -164,6 +164,8 @@ interface RpcTripInclusion {
 interface RpcTripTier {
   id: string;
   ticketTypeId: string;
+  /** #3281 S2 — present only when the package has an add-on on sale. */
+  extras?: unknown;
   tierName: string;
   tierMetadata: Record<string, unknown> | null;
   priceCents: number;
@@ -366,6 +368,8 @@ export const usePublicTripBySlug = (
           id: t.id,
           eventId: p.id,
           ticketTypeId: t.ticketTypeId,
+          // #3281 S2 — the package's add-ons, as the reader sent them.
+          ...(t.extras !== undefined ? { buyerExtras: t.extras } : {}),
           tierName: t.tierName,
           tierMetadata: t.tierMetadata ?? {},
           priceCents: t.priceCents ?? 0,

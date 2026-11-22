@@ -184,6 +184,8 @@ import {
 import type { DiscoverTripRow } from "../../services/tripsDiscoveryService";
 import { shareContent } from "../../services/contentShareAdapter";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
+// issue #3281 S2 — each package's add-ons (flag-gated, off by default).
+import { publicAddOnsDisplay } from "../../services/addOnPhotoUrl";
 
 interface ConsumerTripDetailScreenProps {
   brandSlug: string;
@@ -1299,6 +1301,7 @@ export default function ConsumerTripDetailScreen({
                 as dockedReserve so it renders as the LAST body child (flush, no
                 void). The §10 box + this docked bar read the SAME offeringState. */}
             <TripOfferingBody
+              addOns={publicAddOnsDisplay()}
               data={offeringData}
               brand={offeringBrand}
               palette={palette}

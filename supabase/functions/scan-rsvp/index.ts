@@ -10,6 +10,8 @@ import {
   RSVP_DOOR_ANSWERS_DEADLINE_MS,
   rsvpDoorSubjectFromScanResult,
 } from "./doorAnswers.ts";
+// #3281 S6 — the add-ons an admitted RSVP owes (own top-level field).
+import { type DoorAddOnsClient, readRsvpDoorAddOns } from "./doorAddOns.ts";
 
 const headers = {
   "Access-Control-Allow-Origin": "*",
@@ -169,6 +171,11 @@ serve(async (req) => {
     } finally {
       clearTimeout(timer);
     }
+  }
+  if (subject?.kind === "rsvp" && serviceKey) {
+    const service = createClient(url, serviceKey, { auth: { persistSession: false } });
+    const addOns = await readRsvpDoorAddOns(service as unknown as DoorAddOnsClient, subject.id);
+    if (addOns !== null) result = { ...result, addOns };
   }
   console.info(JSON.stringify({
     event: "rsvp_scan_result",
