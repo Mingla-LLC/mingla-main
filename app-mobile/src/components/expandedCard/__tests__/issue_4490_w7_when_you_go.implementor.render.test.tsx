@@ -368,9 +368,19 @@ describe("#4490 W7 — wiring pins (S)", () => {
     expect(read("src/components/purchases/VenuePurchaseDetail.tsx")).toMatch(/\{isLive \? <VenueOnTheDay booking=\{booking\} \/> : null\}/);
   });
 
-  test("S-5 the checkout line is the one unmounted export, marked with its exit", () => {
+  // TEST-MOD-APPROVED #4490 (06-W4): W4 mounted the line (its marker's exit);
+  // S-5 now pins where: the choose step for Entry, Group and By the hour only.
+  test("S-5 the checkout line is mounted on the W4 choose step for Entry, Group and By the hour only", () => {
     const src = read("src/components/venueOffers/VenueCheckoutWhenLine.tsx");
-    expect(src).toMatch(/\[TRANSITIONAL\] blocked on #4490 W4[\s\S]{0,400}exits when W4 mounts <VenueCheckoutWhenLine \/>/);
+    expect(src).not.toMatch(/\[TRANSITIONAL\]/);
+    const choose = read("src/components/venueOffers/VenueCheckoutChoose.tsx");
+    const body = (name: string): string => {
+      const start = choose.indexOf(`export function ${name}(`);
+      const next = choose.indexOf("\nexport function ", start + 1);
+      return choose.slice(start, next < 0 ? undefined : next);
+    };
+    for (const name of ["EntryChoose", "GroupChoose", "HourChoose"]) expect(body(name)).toMatch(/<VenueCheckoutWhenLine /);
+    for (const name of ["HireChoose", "PlanChoose"]) expect(body(name)).not.toMatch(/<VenueCheckoutWhenLine /);
     for (const rel of ["src/components/venueOffers/VenueOfferPane.tsx", "src/components/purchases/VenuePurchaseDetail.tsx", "src/components/ExpandedCardModal.tsx"]) {
       expect(read(rel)).not.toMatch(/VenueCheckoutWhenLine/);
     }
