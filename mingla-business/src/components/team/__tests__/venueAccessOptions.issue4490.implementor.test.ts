@@ -51,7 +51,9 @@ describe("#4490 R4J-N22 venue access options", () => {
   it("ordinary venues are unchanged: no Stay capabilities, the same venue list for every type", () => {
     const restaurant = capabilityOptionsFor("restaurant").map((o) => o.capability);
     expect(restaurant.some((c) => c.startsWith("stay."))).toBe(false);
-    expect(restaurant).toHaveLength(11);
+    // TEST-MOD-APPROVED #4490 (08-O1): + "Sell and send orders" (venue.sell).
+    expect(restaurant).toHaveLength(12);
+    expect(restaurant).toContain("venue.sell");
     for (const type of ["play", "club", "cafe", "coworking", "bar_lounge", "event_space", "creative_and_arts"]) {
       expect(capabilityOptionsFor(type).map((o) => o.capability)).toEqual(restaurant);
     }
@@ -64,16 +66,19 @@ describe("#4490 R4J-N22 venue access options", () => {
     expect(labels).toContain("View Stay reservations");
   });
 
+  // TEST-MOD-APPROVED #4490 (08-O1): every venue also gets the "Till device" profile.
   it("profiles: a Stay keeps Front desk and also gets the venue profiles; others keep theirs", () => {
     expect(profileOptionsFor("stay").map((o) => o.id)).toEqual([
       "front_desk",
       "restaurant_manager",
       "kitchen_bar",
+      "till_device",
       "custom",
     ]);
     expect(profileOptionsFor("restaurant").map((o) => o.id)).toEqual([
       "restaurant_manager",
       "kitchen_bar",
+      "till_device",
       "custom",
     ]);
   });

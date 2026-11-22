@@ -112,7 +112,7 @@ export function VenueTypeAndFeaturesPanel({
 
   const usual = useMemo(() => (category === null ? [] : builtPreset(category)), [category]);
   // #4490 08 O1: the Till's switch appears only once its release flag is on.
-  const tillReleased = useTillReleased().data === true;
+  const tillReleased = useTillReleased();
   const switchable = tillReleased ? [...SWITCHABLE_FEATURES, ...RELEASE_GATED_FEATURES] : SWITCHABLE_FEATURES;
   const usualKeys = switchable.filter((k) => usual.includes(k));
   const moreKeys = switchable.filter((k) => !usual.includes(k));

@@ -152,21 +152,29 @@ const PINS = [
     why: "the door takes a six-box member code",
   },
   // venueGuestListI (spec 07-I)
+  // #4490 08-O1: the gate sale sheet is gone; the reduced price is sold in
+  // the Till's Entry tab, locked to the configured option and party count.
   {
     id: "guest-list-door-sale",
-    file: `${BIZ}/src/components/venue/features/checkin/VenueGateSale.tsx`,
+    file: `${BIZ}/src/components/venue/features/checkin/VenueCheckInModule.tsx`,
     contains: [
-      "offer.options.filter((o) => o.id === guestListSale.priceOptionId)",
-      "{o.name} × {guestListSale.count}",
-      "count: guestListSale.count",
+      "openTill({ offerId: next.offeringId ?? null, priceOptionId: next.priceOptionId, count: next.count ?? count, entryId: entry.id })",
     ],
-    why: "the reduced-price door sale is locked to the configured option and party count",
+    why: "the reduced-price door sale opens the Till with the configured option and party count",
+  },
+  {
+    id: "guest-list-till-locked",
+    file: `${BIZ}/src/components/venue/till/TillScreen.tsx`,
+    contains: [
+      "(o) => o.status === \"active\" && (state?.guestListEntryId == null || (state.counts[o.id] ?? 0) > 0),",
+    ],
+    why: "a guest-list sale in the Till offers only the prefilled reduced option",
   },
   {
     id: "guest-list-sale-action",
-    file: `${BIZ}/src/services/venueOffersService.ts`,
-    contains: ['action: "sell_guest_list"'],
-    why: "the door sale uses the guest-list sale action",
+    file: `${BIZ}/src/services/venueTillService.ts`,
+    contains: ['return saleAction({ action: "add_offer", ...input });', "guestListEntryId: string | null"],
+    why: "the Till's Entry line carries the guest-list name so paying marks the arrival",
   },
   {
     id: "promoter-route-signed-out",

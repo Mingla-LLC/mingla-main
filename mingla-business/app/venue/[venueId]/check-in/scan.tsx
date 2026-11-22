@@ -50,7 +50,7 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
   const brandId = venue?.brandId ?? null;
   // #4490 spec 08 O1: selling at the door happens in the Till; Sell shows only
   // where the Till runs (release flag and the venue's Sell in person feature).
-  const tillReleased = useTillReleased().data === true;
+  const tillReleased = useTillReleased();
   const tillFeatureOn = useVenueFeatures(brandId, venueId).data?.features.till?.enabled === true;
   const canSell = tillReleased && tillFeatureOn;
   const openTill = (offerId: string | null): void => {

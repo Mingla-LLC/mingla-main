@@ -227,6 +227,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useVenueOffers.ts",
   "useVenueDay.ts",
   "useVenueCheckIns.ts",
+  // ── #4490 spec 08 O1 — the Till (catalog, checks, one check), all read
+  //    through venue-till with the staff JWT. Each folds isAuthReady into enabled.
+  "useVenueTill.ts",
   // ── #4490 P3 — one booking with its money and the day-closure preview
   //    (issue_4490_get_booking / preview_day_closure read auth.uid()). Both
   //    fold isAuthReady into enabled.

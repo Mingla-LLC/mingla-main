@@ -113,7 +113,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   // #4490 spec 08 O1: selling at the door happens in the Till (the gate sale
   // sheet is gone). Sell shows only where the Till runs: its release flag on
   // and the venue's Sell in person feature on (no dead taps).
-  const tillReleased = useTillReleased().data === true;
+  const tillReleased = useTillReleased();
   const canSell = tillReleased && featureSet?.till?.enabled === true;
   const openTill = useCallback(
     (prefill: { offerId?: string | null; priceOptionId?: string; count?: number; entryId?: string } = {}): void => {
