@@ -94,7 +94,10 @@ describe("ORCH-1089 signed-in Event Creator wizard parity", () => {
 
     expect(step1).toContain('accessibilityLabel="Event name"');
     expect(step1).toContain('accessibilityLabel="Event description"');
-    expect(step2).toContain('type="date"');
+    // #4523 — dates are picked from the Mingla calendar (the ui/DateField
+    // wrapper), never a browser date box; the time-only rows keep type="time".
+    expect(step2).toContain("<DateField");
+    expect(step2).not.toContain('type="date"');
     expect(step2).toContain('type="time"');
     // issue #1027 Thread B — the hidden-input + showPicker web bridge was
     // replaced by the shared VISIBLE native <input> (WebDateTimeInput). Assert
@@ -105,7 +108,9 @@ describe("ORCH-1089 signed-in Event Creator wizard parity", () => {
     expect(step3).toContain("AddressInput");
     expect(step4).toContain("CoverPickerSheet");
     expect(step5).toContain("TicketTierEditSheet");
-    expect(ticketTierSheet).toContain('type="datetime-local"');
+    // #4523 — sale start/end are Mingla calendar date + time fields.
+    expect(ticketTierSheet).toContain("<HostDateTimeField");
+    expect(ticketTierSheet).not.toContain('type="datetime-local"');
     expect(step6).toContain("Visibility");
     expect(step7).toContain("StripeBlockedCard");
     expect(wizard).toContain("Connect a bank to publish paid tickets.");

@@ -119,7 +119,9 @@ const SWEPT: readonly (readonly [string, string])[] = [
   ["trip/IntakeQuestionEditor.tsx", "optionInput"],
   ["trip/TripCreatorStep1Basics.tsx", "textInput"],
   ["trip/PaymentPlanEditor.tsx", "daysInput"],
-  ["marketing/ComposerStepWhen.tsx", "pickerPill"],
+  // #4523: the schedule's date/time pills became the Mingla calendar field;
+  // the composer's rounded segmented control carries the clip.
+  ["marketing/ComposerStepWhen.tsx", "segmented"],
   ["marketing/AudiencePickerSheet.tsx", "row"],
   // Phase 2 — brand / door / orders / ari / experience
   ["ari/QuickReplyChips.tsx", "chip"],
