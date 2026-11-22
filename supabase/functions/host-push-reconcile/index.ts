@@ -12,7 +12,7 @@
 //
 // The request body is never read: nothing a caller sends changes what a run
 // does, and the provider delete switch is the code constant
-// PROVIDER_DELETE_ENABLED (off).
+// PROVIDER_DELETE_ENABLED (on since #4564, capped per run; see run.ts).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {

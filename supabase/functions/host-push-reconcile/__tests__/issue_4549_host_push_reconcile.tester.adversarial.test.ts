@@ -234,8 +234,10 @@ const refusedSub = (id: string) => ({
 
 // ---------------------------------------------------------------------------
 
-Deno.test("#4549 tester: the delete path is unreachable while the switch is off, whatever the switch is fed", async () => {
-  assertEquals(PROVIDER_DELETE_ENABLED, false);
+Deno.test("#4549 tester: the delete path is unreachable unless deleteEnabled is strictly true, whatever it is fed", async () => {
+  // #4564 turned the bundle switch on (was asserted false under #4549); the
+  // run loop still treats anything but a literal `true` as off.
+  assertEquals(PROVIDER_DELETE_ENABLED, true);
   for (const fed of [undefined, false, "true", 1, {}, [true], "yes"]) {
     const t = rig(() => ({
       status: 200,
@@ -276,7 +278,7 @@ Deno.test("#4549 tester: the delete path is unreachable while the switch is off,
   assertEquals(on.calls.filter((c) => c.method === "DELETE").length, 1);
 });
 
-Deno.test("#4549 tester: index.ts never reads the request body and passes only the off constant", async () => {
+Deno.test("#4549 tester: index.ts never reads the request body and passes only the switch constant", async () => {
   const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
   for (
     const reader of [

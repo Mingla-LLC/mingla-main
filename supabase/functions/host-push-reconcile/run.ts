@@ -16,8 +16,10 @@ import {
   computeAlertSet,
   decideAlert,
   type DeviceRow,
+  freshReadAllowsDelete,
   isStaleRow,
   MAX_CONSECUTIVE_UNAVAILABLE,
+  MAX_PROVIDER_DELETES_PER_RUN,
   MAX_USERS_PER_RUN,
   planUserReconcile,
   PROVIDER_MIN_INTERVAL_MS,
@@ -26,12 +28,15 @@ import {
 } from "./logic.ts";
 
 /**
- * The provider delete switch. OFF, and not readable from a request: nothing a
- * caller sends can turn it on. Turning it on is a reviewed code change after
- * the team-phone test (spec #4549 TP-1) that wires it to the runtime config
- * bundle. Tests pass `deleteEnabled` in-process only.
+ * The provider delete switch. ON since #4564, and not readable from a request:
+ * nothing a caller sends can change it. Turning it off again is a one-line
+ * reviewed code change. Even on, a run deletes at most
+ * MAX_PROVIDER_DELETES_PER_RUN records, only `refused_token` records the #4549
+ * app reported on and took a repair for, 24 h into the repair window, and only
+ * after a fresh provider read at delete time still shows the APNs refusal.
+ * Tests pass `deleteEnabled` in-process.
  */
-export const PROVIDER_DELETE_ENABLED = false;
+export const PROVIDER_DELETE_ENABLED = true;
 
 export interface ReconcileState {
   last_alert_fingerprint: string | null;
@@ -104,7 +109,12 @@ export interface ReconcileSummary {
   rows_updated: number;
   rows_stale_removed: number;
   repairs_requested: number;
-  provider_deletes: number;
+  /** #4564: DELETE calls sent to the provider this run (never above the cap). */
+  provider_deletes_attempted: number;
+  /** #4564: DELETE calls the provider accepted (202, or 404 already gone). */
+  provider_deletes_succeeded: number;
+  /** #4564: deletes the plan wanted but this run did not make (cap, stop, fresh read, claim). */
+  provider_deletes_suppressed: number;
   skipped_users: number;
   stopped:
     | null
@@ -133,7 +143,9 @@ export async function runHostPushReconcile(
     rows_updated: 0,
     rows_stale_removed: 0,
     repairs_requested: 0,
-    provider_deletes: 0,
+    provider_deletes_attempted: 0,
+    provider_deletes_succeeded: 0,
+    provider_deletes_suppressed: 0,
     skipped_users: 0,
     stopped: null,
     alert: "none",
@@ -302,40 +314,143 @@ export async function runHostPushReconcile(
 
     for (const subId of plan.deleteRowKeys) {
       const prior = priorBySub.get(subId);
-      if (!prior || prior.id === null || summary.stopped !== null) continue;
+      if (!prior || prior.id === null) continue;
+      const recordId = prior.id;
+      const planned = plan.rows.find((r) =>
+        r.provider_subscription_id === subId
+      );
+      // #4564: one structured line per delete decision. Record id (our table's
+      // uuid), platform, state, provider status code, HTTP status and outcome;
+      // never a token, an email, an account id or a subscription id.
+      const deleteLog = (
+        outcome: "deleted" | "failed" | "rate_limited" | "suppressed",
+        extra: {
+          statusCode?: number | null;
+          httpStatus?: number | null;
+          reason?: string;
+        } = {},
+      ) => {
+        log(JSON.stringify({
+          event: "host_push_provider_delete",
+          record_id: recordId,
+          platform: prior.platform,
+          state: planned?.provider_state ?? prior.provider_state,
+          status_code: extra.statusCode !== undefined
+            ? extra.statusCode
+            : planned?.provider_status_code ?? null,
+          http_status: extra.httpStatus ?? null,
+          outcome,
+          reason: extra.reason ?? null,
+        }));
+      };
+      const suppress = (reason: string, statusCode?: number | null) => {
+        summary.provider_deletes_suppressed += 1;
+        deleteLog("suppressed", { reason, statusCode });
+      };
+
+      // Fail closed: a stopped run, the deadline or the per-run cap means no
+      // delete, said out loud. The record is not claimed, so it stays eligible.
+      if (summary.stopped !== null) {
+        suppress(`run_stopped_${summary.stopped}`);
+        continue;
+      }
+      if (now() - startedAt >= runDeadlineMs) {
+        await stopFor("deadline");
+        suppress("run_stopped_deadline");
+        continue;
+      }
+      if (summary.provider_deletes_attempted >= MAX_PROVIDER_DELETES_PER_RUN) {
+        suppress("run_cap");
+        continue;
+      }
+
+      // #4564: re-read the provider at delete time; the stored verdict and the
+      // earlier read are not enough. Only a fresh APNs refusal lets it through.
+      let fresh;
+      try {
+        const res = await paced(
+          `${appPath}/users/by/external_id/${encodeURIComponent(userId)}`,
+          "GET",
+        );
+        fresh = classifyViewResponse(
+          res.status,
+          res.body,
+          res.retryAfter,
+          userId,
+        );
+      } catch (err) {
+        fresh = {
+          kind: "unavailable" as const,
+          reason: err instanceof Error ? err.name : "transport_error",
+        };
+      }
+      if (fresh.kind === "rate_limited") {
+        await stopFor("rate_limited", fresh.retryAfterSeconds);
+        suppress("fresh_read_rate_limited");
+        continue;
+      }
+      if (fresh.kind === "auth_error") {
+        await stopFor("auth_error");
+        suppress("fresh_read_auth_error");
+        continue;
+      }
+      if (fresh.kind !== "ok") {
+        suppress(`fresh_read_${fresh.kind}`, null);
+        continue;
+      }
+      const verdict = freshReadAllowsDelete(fresh, subId);
+      if (!verdict.ok) {
+        suppress(`fresh_read_${verdict.reason}`, verdict.statusCode);
+        continue;
+      }
+
       // Claim first: a second concurrent run cannot delete the same record.
       const claimed = await store.claimProviderDelete(
-        prior.id,
+        recordId,
         new Date(now()).toISOString(),
       );
-      if (!claimed) continue;
+      if (!claimed) {
+        suppress("claim_refused", verdict.statusCode);
+        continue;
+      }
+      summary.provider_deletes_attempted += 1;
       try {
         const res = await paced(
           `${appPath}/subscriptions/${encodeURIComponent(subId)}`,
           "DELETE",
         );
         const result = classifyDeleteResponse(res.status, res.retryAfter);
-        if (result.kind === "deleted") summary.provider_deletes += 1;
-        else {
+        if (result.kind === "deleted") {
+          summary.provider_deletes_succeeded += 1;
+          deleteLog("deleted", {
+            statusCode: verdict.statusCode,
+            httpStatus: res.status,
+          });
+        } else {
           // #4549 P3-4: the provider still has the record, so the claim is
           // released and a later run may try again; attempts are capped
           // (MAX_PROVIDER_DELETE_ATTEMPTS) and the 7-day give-up still holds.
-          await store.releaseProviderDelete?.(prior.id);
+          await store.releaseProviderDelete?.(recordId);
           if (result.kind === "rate_limited") {
             await stopFor("rate_limited", result.retryAfterSeconds);
+            deleteLog("rate_limited", {
+              statusCode: verdict.statusCode,
+              httpStatus: res.status,
+            });
           } else {
-            log(JSON.stringify({
-              event: "host_push_provider_delete_failed",
+            deleteLog("failed", {
+              statusCode: verdict.statusCode,
+              httpStatus: res.status,
               reason: result.reason,
-            }));
+            });
           }
         }
       } catch (err) {
-        await store.releaseProviderDelete?.(prior.id);
-        log(JSON.stringify({
-          event: "host_push_provider_delete_failed",
+        await store.releaseProviderDelete?.(recordId);
+        deleteLog("failed", {
+          statusCode: verdict.statusCode,
           reason: err instanceof Error ? err.name : "transport_error",
-        }));
+        });
       }
     }
   }
