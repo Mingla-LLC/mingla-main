@@ -47,7 +47,7 @@ import { retentionCell } from "../lib/dataRoomAnalytics.js";
 import { canOpenPage, normalizeAccess, resolveRoute } from "../lib/access.js";
 import { isInternalEmail } from "../lib/peopleSegments.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
-import { SUPPORT_PAGE_TABS, COMMUNITY_PAGE_TABS } from "../lib/supportCommunityTabs.js";
+import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ORIGINAL_TZ = process.env.TZ;
@@ -392,27 +392,23 @@ describe("T-DROOM and T-SUPP: who sees what", () => {
     assert.equal(resolveRoute("stripe-mode", acc.support, ["stripe-mode"]).denied, true);
   });
 
-  it("Support and Community tabs per role", () => {
+  // [TEST-MOD #4420] Community is retired: its rows became Support's inbox
+  // (Reported), the Feature guide screen, Work tickets and Announcements.
+  it("Support tabs and the Feature guide per role", () => {
     const ids = (a, tabs) => communitySupportTabsForAccess(a, tabs).map((t) => t.id);
     assert.deepEqual(ids(acc.admin, SUPPORT_PAGE_TABS), SUPPORT_PAGE_TABS.map((t) => t.id));
-    assert.deepEqual(ids(acc.admin, COMMUNITY_PAGE_TABS), COMMUNITY_PAGE_TABS.map((t) => t.id));
     // #4383: Email, Blog and Links page are Communications screens now.
     assert.deepEqual(ids(acc.support, SUPPORT_PAGE_TABS), ["support"]);
-    for (const screen of ["email", "blog", "links"]) assert.equal(canOpenPage(acc.support, screen), true, screen);
-    const supportCommunity = ids(acc.support, COMMUNITY_PAGE_TABS);
-    for (const adminOnly of ["announcements", "roadmap", "product"]) {
-      assert.equal(supportCommunity.includes(adminOnly), false, `support teammate sees ${adminOnly}`);
-    }
-    assert.ok(supportCommunity.includes("moderation"));
-    assert.ok(supportCommunity.includes("enquiry-reports"));
+    for (const screen of ["email", "blog", "links", "feature-guide"]) assert.equal(canOpenPage(acc.support, screen), true, screen);
+    for (const adminOnly of ["announcements", "push"]) assert.equal(canOpenPage(acc.support, adminOnly), false, `support teammate opens ${adminOnly}`);
     assert.deepEqual(ids(acc.growth, SUPPORT_PAGE_TABS), []);
     assert.equal(canOpenPage(acc.growth, "support"), false);
+    assert.equal(canOpenPage(acc.growth, "feature-guide"), false);
     for (const screen of ["email", "blog"]) assert.equal(canOpenPage(acc.growth, screen), true, screen);
     assert.equal(canOpenPage(acc.growth, "links"), false);
-    assert.deepEqual(ids(acc.growth, COMMUNITY_PAGE_TABS), []);
-    assert.deepEqual(ids(acc.partner, COMMUNITY_PAGE_TABS), COMMUNITY_PAGE_TABS.map((t) => t.id));
+    assert.equal(canOpenPage(acc.partner, "feature-guide"), true);
     assert.deepEqual(ids(acc.partner, SUPPORT_PAGE_TABS), SUPPORT_PAGE_TABS.map((t) => t.id));
-    assert.deepEqual(ids(acc.invitedAdmin, COMMUNITY_PAGE_TABS), []);
+    assert.equal(canOpenPage(acc.invitedAdmin, "feature-guide"), false);
   });
 });
 

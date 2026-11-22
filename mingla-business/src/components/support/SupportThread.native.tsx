@@ -19,6 +19,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
   SupportThreadCore,
   type KeyboardWrapProps,
+  type SupportThreadEmbedding,
 } from "./SupportThreadCore";
 // #1850 — the lift is budgeted against the DERIVED Done-bar cost, never a literal.
 import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
@@ -37,8 +38,15 @@ const NativeKeyboardWrap: React.FC<KeyboardWrapProps> = ({ children }) => (
   </KeyboardAvoidingView>
 );
 
-export const SupportThread: React.FC<{ ticketId: string; staffMode?: boolean }> = ({ ticketId, staffMode = false }) => (
-  <SupportThreadCore ticketId={ticketId} KeyboardWrap={NativeKeyboardWrap} staffMode={staffMode} />
+export type SupportThreadProps = {
+  ticketId: string;
+  staffMode?: boolean;
+  /** #4420 — inside Help & Support's "A person" pane. */
+  embedded?: SupportThreadEmbedding;
+};
+
+export const SupportThread: React.FC<SupportThreadProps> = ({ ticketId, staffMode = false, embedded }) => (
+  <SupportThreadCore ticketId={ticketId} KeyboardWrap={NativeKeyboardWrap} staffMode={staffMode} embedded={embedded} />
 );
 
 export default SupportThread;

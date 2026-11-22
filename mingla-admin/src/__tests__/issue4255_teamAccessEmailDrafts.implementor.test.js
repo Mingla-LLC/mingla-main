@@ -17,7 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AREA, BLOG_AREA, canOpenPage, isFullAdmin } from "../lib/access.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
-import { COMMUNITY_PAGE_TABS, SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
+import { SUPPORT_PAGE_TABS } from "../lib/supportCommunityTabs.js";
 import { EMAIL_DRAFT_KEY } from "../lib/emailDraftAudience.js";
 import {
   EMAIL_DRAFT_MIGRATED_KEY,
@@ -67,7 +67,8 @@ describe("A — full-admin seats", () => {
   });
 
   it("a Founding partner opens every page an admin opens", () => {
-    for (const page of ["overview", "mingla-money", "settings", "admin", "support", "community", "data-room"]) {
+    // [TEST-MOD #4420] Community retired; the Feature guide is its own page.
+    for (const page of ["overview", "mingla-money", "settings", "admin", "support", "feature-guide", "data-room"]) {
       assert.equal(canOpenPage(person("partner", [...FULL, "data_room", "community_support"]), page),
         canOpenPage(person("admin", [...FULL, "data_room", "community_support"]), page), page);
     }
@@ -89,9 +90,10 @@ describe("B — Email and Blog for every teammate", () => {
     assert.deepEqual(ids(growth, SUPPORT_PAGE_TABS), []);
   });
 
+  // [TEST-MOD #4420] Community is retired; what it held stays closed to them.
   it("Community stays closed to them", () => {
     assert.equal(canOpenPage(growth, "community"), false);
-    assert.deepEqual(ids(growth, COMMUNITY_PAGE_TABS), []);
+    assert.equal(canOpenPage(growth, "feature-guide"), false);
   });
 
   it("without the areas, neither screen opens", () => {

@@ -54,7 +54,7 @@ function MoreMenu({ selected, hasText, onSelect, onSignal, onCopy, onClose }) {
       onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}
       className="absolute right-0 top-full z-10 mt-1 w-56 overflow-hidden rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] py-1 shadow-[var(--shadow-md)]">
       <button ref={first} type="button" role="menuitem" className={item} onClick={() => { onSelect(); onClose(); }}>{selected ? "Unselect" : "Select"}</button>
-      <button type="button" role="menuitem" className={item} onClick={() => { onSignal(); onClose(); }}>Create product signal</button>
+      <button type="button" role="menuitem" className={item} onClick={() => { onSignal(); onClose(); }}>Create ticket</button>
       {hasText && <button type="button" role="menuitem" className={item} onClick={() => { onCopy(); onClose(); }}>Copy text</button>}
     </div>
   );

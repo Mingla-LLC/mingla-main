@@ -8,6 +8,7 @@ import {
   assert,
   assertEquals,
   assertMatch,
+  assertNotMatch,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   githubChipClass,
@@ -48,39 +49,18 @@ Deno.test("#3980 W2: a work card's chips carry the tone, and people switch the G
   assertMatch(detail, /card\.blocked_kind === "github"/);
 });
 
-// [TEST-MOD #4382] the Engineering row moved into the ticket side panel, and
-// the Product tab became the Product board with a card panel.
-Deno.test("#3980 W2: the ticket shows one Engineering row with loading, error and Live words", () => {
+// [TEST-MOD #4420] the Engineering row lived in the Support thread's Product box.
+// The chat inbox has no Product box (a linked Work ticket shows its GitHub issue
+// on the Work card), so the row is retired from TicketPanel. The Product board
+// card panel keeps its own Engineering line (next test).
+Deno.test("#3980 W2: the Support thread no longer carries a Product box or an Engineering row", () => {
   const page = read("components/support/TicketPanel.jsx");
-  assertMatch(page, /fetchTicketEngineering/);
-  assertMatch(page, /Engineering: \{data\.label\} · #\{n\}/);
-  assertMatch(page, /Live: you can tell the host it is fixed\./);
-  assertMatch(page, /Couldn't read engineering status\./);
-  assertMatch(page, />Try again</);
-  assertMatch(page, /if \(!data\?\.linked\) return null;/);
-  assertMatch(page, /rel="noopener noreferrer"/);
+  assertNotMatch(page, /fetchTicketEngineering|EngineeringRow|ProductBox|onSendToProduct/);
 });
 
-Deno.test("#3980 W2: the Product Inbox uses the bridge's word when it has the issue", () => {
-  const inbox = read("components/support/ProductCardPanel.jsx");
-  assertMatch(inbox, /\["Engineering", engineering \|\| signal\.item\.board_status \|\| "Todo"\]/);
-  assertMatch(inbox, /item\?\.checked && !item\.not_found/);
-});
 
-Deno.test("#3980 W2: roadmap links and suggestions; apply goes through the existing editor, never a lane write", () => {
-  const panel = read("components/community/RoadmapPanel.jsx");
-  assertMatch(panel, /GitHub suggests: \{roadmapSuggestionWords\(suggestion\)\}/);
-  assertMatch(panel, /Draft from GitHub/);
-  assertMatch(panel, />Link issue</);
-  assertMatch(panel, />Change</);
-  assertMatch(panel, />Remove</);
-  const apply = panel.slice(panel.indexOf("async function applySuggestion"), panel.indexOf("async function dismissSuggestion"));
-  assertMatch(apply, /decideRoadmapSuggestion\(row\.id, "apply"\)/);
-  assertMatch(apply, /upsertRoadmapCard\(\{/);
-  assertMatch(apply, /status: row\.status/);
-  assertEquals(/status: "published"/.test(panel), false);
-});
 
+// [TEST-MOD #4420] two tests left with the deleted Product board card panel and Roadmap panel.
 Deno.test("#3980 W2: the Feature Guide shows what shipped an entry and what it still misses", () => {
   const guide = read("components/community/FeatureGuidePanel.jsx");
   assertMatch(guide, /Shipped by PR #\{shipped\.pr\} on/);
@@ -93,8 +73,11 @@ Deno.test("#3980 W2: every new ops_ call lives in the one ops_ caller", () => {
   for (const fn of ["ops_github_status_list", "ops_ticket_engineering", "ops_roadmap_links_list", "ops_roadmap_link_set",
     "ops_roadmap_suggestion_decide", "ops_release_records_list", "ops_feature_guide_release"]) {
     assert(service.includes(`"${fn}"`), fn);
-    for (const file of ["pages/SupportDeskPage.jsx", "components/support/TicketPanel.jsx", "components/community/RoadmapPanel.jsx", "components/community/FeatureGuidePanel.jsx",
-      "components/community/ProductInboxPanel.jsx", "components/support/ProductCardPanel.jsx", "components/ops/WorkDetail.jsx"]) {
+    // [TEST-MOD #4420] RoadmapPanel, ProductInboxPanel and ProductCardPanel were
+    // deleted (Roadmap screen and Product board retired); the ticket GitHub
+    // section that replaced the board's card is checked in their place.
+    for (const file of ["pages/SupportDeskPage.jsx", "components/support/TicketPanel.jsx", "components/community/FeatureGuidePanel.jsx",
+      "components/ops/TicketGithubSection.jsx", "components/ops/WorkDetail.jsx"]) {
       assertEquals(read(file).includes(`"${fn}"`), false, `${fn} in ${file}`);
     }
   }

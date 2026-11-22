@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4420_tickets_on_work_board.tester.adversarial.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4420-tickets-on-work-board-tester-adversarial",
+  "profile": "psql-pg17-post-replay",
+  "database": { "database": "postgres", "user": "supabase_admin", "reset": "suite-owned" }
+}

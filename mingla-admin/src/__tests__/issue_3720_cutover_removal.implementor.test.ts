@@ -9,6 +9,7 @@ Deno.test("#3720 retired Cutover links land on the Support inbox", () => {
   assertEquals(redirectHash("#/community-support?tab=cutover"), "#/support");
   assertEquals(pageTabFromHash("#/support?tab=cutover", "support"), "support");
   // #4383: Community opens on Ideas.
-  assertEquals(pageTabFromHash("#/community?tab=cutover", "community"), "ideas");
+  // [TEST-MOD #4420] Community is retired: its address (any tab) opens Support.
+  assertEquals(redirectHash("#/community?tab=cutover"), "#/support");
   assertEquals(redirectHash("#/community-support?tab=support"), "#/support");
 });

@@ -131,9 +131,9 @@ export function headerFit(width) {
   return "compact";
 }
 
-/** How many of the three filters are on. */
-export function activeFilterCount({ owner = null, show = "", linked = "" } = {}) {
-  return [owner, show, linked].filter(Boolean).length;
+/** How many of the filters are on (#4420: Type is the fourth). */
+export function activeFilterCount({ owner = null, show = "", linked = "", type = "" } = {}) {
+  return [owner, show, linked, type].filter(Boolean).length;
 }
 
 // ---------------------------------------------------------------------------

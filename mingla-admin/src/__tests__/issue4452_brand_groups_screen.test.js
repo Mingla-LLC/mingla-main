@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { redirectHash } from "../lib/adminRoutes.js";
-import { COMMUNITY_PAGE_TABS, COMMUNICATIONS_TAB_PAGES } from "../lib/supportCommunityTabs.js";
+import { COMMUNICATIONS_TAB_PAGES, pageTabsFor } from "../lib/supportCommunityTabs.js";
 import { COMMUNITY_SUPPORT_TAB_CONTRACT } from "../lib/communitySupportCapabilityContract.js";
 import { AREA, COMMUNITY_OPERATIONS_AREA, COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA, canOpenPage, normalizeAccess } from "../lib/access.js";
 import { NAV_GROUPS } from "../lib/constants.js";
@@ -50,9 +50,10 @@ describe("#4452 T-7.2 Brand groups is its own screen", () => {
     assert.equal(comms[comms.indexOf("brand-groups") - 1], "links", "right after Links page");
   });
 
+  // [TEST-MOD #4420] Community is retired entirely (no tabs, no page file); Support never draws Brand groups.
   it("Community no longer lists or draws the tab", () => {
-    assert.equal(COMMUNITY_PAGE_TABS.some((t) => t.id === "brand-groups"), false);
-    assert.equal(read("pages/CommunitySupportPage.jsx").includes("<BrandGroupsPanel"), false);
+    assert.equal(pageTabsFor("community"), null);
+    assert.equal(read("pages/SupportPage.jsx").includes("<BrandGroupsPanel"), false);
     assert.equal(COMMUNITY_SUPPORT_TAB_CONTRACT["brand-groups"].page, "brand-groups");
   });
 

@@ -86,12 +86,6 @@ Deno.test("#3720 Admin source has no browser GitHub mutation path and keeps cust
   const service = await Deno.readTextFile(
     new URL("mingla-admin/src/services/productAvengersService.js", root),
   );
-  const panel = await Deno.readTextFile(
-    new URL(
-      "mingla-admin/src/components/community/ProductInboxPanel.jsx",
-      root,
-    ),
-  );
   const migration = await Deno.readTextFile(
     new URL(
       "supabase/migrations/20271031003720_issue_3720_product_avengers_bridge.sql",
@@ -101,17 +95,18 @@ Deno.test("#3720 Admin source has no browser GitHub mutation path and keeps cust
   const edge = await Deno.readTextFile(
     new URL("supabase/functions/product-avengers-sync/index.ts", root),
   );
-  // #4382: the board's card panel holds Triage, GitHub and Tell reporters.
+  // [TEST-MOD #4420] the Product board (ProductInboxPanel, ProductCardPanel)
+  // is retired; its GitHub steps run from a ticket's Send to GitHub section on
+  // the Work board, through the same service and this same function.
   const card = await Deno.readTextFile(
-    new URL("mingla-admin/src/components/support/ProductCardPanel.jsx", root),
+    new URL("mingla-admin/src/components/ops/TicketGithubSection.jsx", root),
   );
   assertNotMatch(
-    `${service}\n${panel}\n${card}`,
+    `${service}\n${card}`,
     /api[.]github[.]com|SPRINT_ROLLOVER_TOKEN|github_token/i,
   );
   assertMatch(service, /invokeWithRefresh\("product-avengers-sync"/);
-  assertMatch(card, /Triage: public wording, existing issue first/);
-  assertMatch(card, /Only this wording can cross into the public GitHub repo/);
+  assertMatch(card, /Only the public wording below can reach the public GitHub repository/);
   // D2: reporters hear only through the once-only Tell reporters function,
   // after an admin approves the wording; nothing else in the browser sends.
   assertMatch(service, /rpc\("issue_4382_tell_reporters"/);

@@ -8,6 +8,7 @@ import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/Br
 
 
 import { color } from "../../../../src/constants/designSystem";
+import { HELP_SUPPORT_PERSON_ROUTE } from "../../../../src/constants/supportHostFacing";
 const param = (value: string | string[] | undefined): string | null =>
   Array.isArray(value) ? value[0] ?? null : value ?? null;
 
@@ -29,7 +30,7 @@ export default function BrandPayoutDetailRoute(): React.ReactElement {
           onOpenSale={(eventId, orderId) => router.push(`/event/${eventId}/orders/${orderId}` as never)}
           onOpenBank={() => router.push(`/brand/${brandId}/payments/onboard` as never)}
           onOpenVerification={() => router.push(`/brand/${brandId}/payments/onboard` as never)}
-          onContactSupport={() => router.push("/account/support?tab=support" as never)}
+          onContactSupport={() => router.push(HELP_SUPPORT_PERSON_ROUTE as never)}
         />
       </BrandPaymentsPermissionGate>
     </View>

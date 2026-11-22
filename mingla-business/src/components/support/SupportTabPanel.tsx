@@ -66,16 +66,47 @@ export type SupportTabPanelProps = {
   onToast: (message: string) => void;
   /** Open straight on the new-request form (the closed thread's "Start a new request"). */
   startNew?: boolean;
+  /**
+   * #4420 — inside Help & Support's "A person" pane a conversation opens in
+   * the pane, not on its own route. Absent: the route, as before.
+   */
+  onOpenTicket?: (ticketId: string) => void;
+  /** #4420 — the pane draws the online line itself above every view. */
+  showOnlineBanner?: boolean;
+  /** #4420 — the pane's wide layout is one column (it already sits in a column). */
+  singleColumn?: boolean;
+};
+
+/** #3720 — "Support is online" / away, from `useSupportIsOnline`. */
+export const SupportOnlineBanner: React.FC = () => {
+  const { online, isLoading } = useSupportIsOnline();
+  if (isLoading) return null;
+  return (
+    <View
+      style={[styles.banner, online ? styles.bannerOnline : styles.bannerAway]}
+      accessibilityRole="text"
+      accessibilityLabel={online ? supportCopy("panel.online") : supportCopy("panel.away")}
+      testID="support-online-banner"
+    >
+      <View style={[styles.bannerDot, online ? styles.bannerDotOnline : styles.bannerDotAway]} />
+      <Text style={styles.bannerText}>
+        {online ? supportCopy("panel.online") : supportCopy("panel.away")}
+      </Text>
+    </View>
+  );
 };
 
 export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
   onToast,
   startNew = false,
+  onOpenTicket,
+  showOnlineBanner = true,
+  singleColumn = false,
 }) => {
   const router = useRouter();
   const { data: tickets, isLoading, isError, refetch } = useSupportTickets();
-  const { online, isLoading: onlineLoading } = useSupportIsOnline();
-  const { isWideDesktop } = useResponsiveLayout();
+  const { isWideDesktop: wideLayout } = useResponsiveLayout();
+  const isWideDesktop = wideLayout && !singleColumn;
   const [composing, setComposing] = useState(startNew);
 
   useEffect(() => {
@@ -84,38 +115,23 @@ export const SupportTabPanel: React.FC<SupportTabPanelProps> = ({
 
   const handleOpenTicket = useCallback(
     (ticketId: string): void => {
-      router.push(`/support/${ticketId}` as never);
+      if (onOpenTicket) onOpenTicket(ticketId);
+      else router.push(`/support/${ticketId}` as never);
     },
-    [router],
+    [onOpenTicket, router],
   );
 
   const handleCreated = useCallback(
     (ticketId: string): void => {
       setComposing(false);
-      router.push(`/support/${ticketId}` as never);
+      handleOpenTicket(ticketId);
     },
-    [router],
+    [handleOpenTicket],
   );
 
   return (
     <View style={styles.col}>
-      {!onlineLoading ? (
-        <View
-          style={[styles.banner, online ? styles.bannerOnline : styles.bannerAway]}
-          accessibilityRole="text"
-          accessibilityLabel={online ? supportCopy("panel.online") : supportCopy("panel.away")}
-        >
-          <View
-            style={[
-              styles.bannerDot,
-              online ? styles.bannerDotOnline : styles.bannerDotAway,
-            ]}
-          />
-          <Text style={styles.bannerText}>
-            {online ? supportCopy("panel.online") : supportCopy("panel.away")}
-          </Text>
-        </View>
-      ) : null}
+      {showOnlineBanner ? <SupportOnlineBanner /> : null}
 
       <View style={[styles.workspace, isWideDesktop && styles.workspaceWide]}>
         <View

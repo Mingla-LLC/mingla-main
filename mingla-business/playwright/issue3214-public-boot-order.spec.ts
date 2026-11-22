@@ -500,7 +500,7 @@ const OBSERVED_SOURCES: Array<[directive: 'script-src' | 'connect-src' | 'frame-
   ['frame-src', 'https://player.mediadelivery.net'],
   ['frame-src', 'https://iframe.mediadelivery.net'],
   ['media-src', 'https://vz-a16fce08-6c6.b-cdn.net'],
-  ['media-src', 'https://cdnapi.bamboo-cloud.com'],
+  // [TEST-MOD #4420] the Bamboo guide-video origin left with the in-app guides.
   ['img-src', 'https://gqnoajqerqhnvulmnyvv.supabase.co'],
 ]
 const NOT_ALLOWED = 'https://issue3214-not-allowed.invalid'

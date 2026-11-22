@@ -99,16 +99,18 @@ describe("parseBusinessDeepLink", () => {
   });
 
   // [TEST-MOD-APPROVED #3720] Push and bell must share the exact Community target.
+  // [TEST-MOD #4420] Community left the Host app: an announcement opens in
+  // Help & Support's Announcements; the roadmap link opens the screen's default.
   test("Community announcement and roadmap land on the intended content", () => {
     expect(
       parseBusinessDeepLink(
         "mingla-business://community/announcement/a3720000-0000-4000-8000-000000000001",
       ),
     ).toBe(
-      "/account/support?tab=community&announcementId=a3720000-0000-4000-8000-000000000001",
+      "/account/support?tab=announcements&announcementId=a3720000-0000-4000-8000-000000000001",
     );
     expect(parseBusinessDeepLink("mingla-business://community/roadmap")).toBe(
-      "/account/support?tab=community&section=roadmap",
+      "/account/support",
     );
   });
 
@@ -230,16 +232,17 @@ describe("resolveBusinessNavTarget — per type", () => {
     ],
     // stripe.* compliance type → payments
     [{ type: "stripe.payout_failed" }, "/brand/brand-123/payments"],
+    // [TEST-MOD #4420] the roadmap left the Host app; the announcement opens in place.
     [
       { type: "business.community_roadmap_updated" },
-      "/account/support?tab=community&section=roadmap",
+      "/account/support",
     ],
     [
       {
         type: "business.community_announcement",
         announcementId: "a3720000-0000-4000-8000-000000000001",
       },
-      "/account/support?tab=community&announcementId=a3720000-0000-4000-8000-000000000001",
+      "/account/support?tab=announcements&announcementId=a3720000-0000-4000-8000-000000000001",
     ],
   ];
 
@@ -259,13 +262,14 @@ describe("resolveBusinessNavTarget — per type", () => {
     );
   });
 
-  test("malformed Community id fails safely to the Community tab", () => {
+  // [TEST-MOD #4420] the Community tab is gone; a malformed id opens Announcements.
+  test("malformed Community id fails safely to Announcements", () => {
     expect(
       resolveBusinessNavTarget({
         type: "business.community_announcement",
         deepLink: "mingla-business://community/announcement/not-a-uuid",
       }),
-    ).toBe("/account/support?tab=community");
+    ).toBe("/account/support?tab=announcements");
   });
 });
 
@@ -316,8 +320,9 @@ describe("processBusinessNotification", () => {
     expect(updateFn).toHaveBeenCalledTimes(1);
     expect(push).not.toHaveBeenCalled();
     expect(stashDeferred).not.toHaveBeenCalled();
+    // [TEST-MOD #4420] the held target is Help & Support's default now.
     expect(holdLaunchTarget).toHaveBeenCalledWith(
-      "/account/support?tab=community&section=roadmap",
+      "/account/support",
     );
   });
 

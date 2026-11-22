@@ -132,9 +132,12 @@ describe("#4111 hostile input to the pure model", () => {
   });
 });
 
-describe("#4111 the panel only talks to the reported-enquiry RPCs", () => {
+// [TEST-MOD #4420] the Reported enquiries tab retired with Community; the
+// same reports arrive in the Support inbox (components/support/
+// ReportedEnquiryThread.jsx, same lib/reportedEnquiries.js logic and RPCs).
+describe("#4111 the inbox thread only talks to the reported-enquiry RPCs", () => {
   it("no direct table reads of brand_enquiries / messages / conversations from Admin", () => {
-    const panel = readFileSync(path.join(SRC, "components/community/ReportedEnquiriesPanel.jsx"), "utf8");
+    const panel = readFileSync(path.join(SRC, "components/support/ReportedEnquiryThread.jsx"), "utf8");
     const service = readFileSync(path.join(SRC, "services/communityService.js"), "utf8");
     const section = service.slice(service.indexOf("Reported enquiries (#4111)"));
     for (const text of [panel, section]) {
@@ -144,18 +147,18 @@ describe("#4111 the panel only talks to the reported-enquiry RPCs", () => {
     assert.deepEqual(rpcs, ["admin_enquiry_block_everywhere", "admin_enquiry_dismiss_report", "admin_list_reported_enquiries"]);
   });
 
-  it("a Support-only or empty access never gets the Reported enquiries tab", () => {
-    const tabs = ["ideas", "questions", "moderation", "enquiry-reports", "support"].map((id) => ({ id }));
+  it("an empty, malformed or inactive access never gets the Support inbox where reports arrive", () => {
+    const tabs = ["support", "team"].map((id) => ({ id }));
     const keysFor = (access) => communitySupportTabsForAccess(access, tabs).map((t) => t.id);
     for (const access of [
       null, undefined, {}, { support: true }, { canSupport: true },
-      { status: "active", areas: [SUPPORT_OPERATIONS_AREA] },
+      { status: "active", areas: [COMMUNITY_OPERATIONS_AREA] },
       { status: "active", areas: "community" },
       { status: "suspended", areas: ["admin_console"] },
     ]) {
-      assert.ok(!keysFor(access).includes("enquiry-reports"), JSON.stringify(access));
+      assert.ok(!keysFor(access).includes("support"), JSON.stringify(access));
     }
-    // The positive control: the Community area does get it.
-    assert.ok(keysFor({ status: "active", areas: [COMMUNITY_OPERATIONS_AREA] }).includes("enquiry-reports"));
+    // The positive control: the Support area (whose staff the RPCs admit) does.
+    assert.ok(keysFor({ status: "active", areas: [SUPPORT_OPERATIONS_AREA] }).includes("support"));
   });
 });

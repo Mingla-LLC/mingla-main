@@ -100,6 +100,23 @@ export const undoWork = (eventId) => call(() => supabase.rpc("ops_work_undo", { 
 export const archiveWork = (id, reason) => call(() => supabase.rpc("ops_work_archive", { p_id: id, p_reason: reason }));
 export const fetchMyCounts = (today) => call(() => supabase.rpc("ops_my_counts", { p_today: today || null }));
 export const listReview = (today) => call(() => supabase.rpc("ops_review_list", { p_today: today || null }));
+// #4420 (step 4): tickets on the Work board. Each of these is a database
+// function added by 20281121034420_issue_4420_tickets_on_work_board.sql.
+export const createTicket = (ticket, requestKey) => call(() => supabase.rpc("ops_ticket_create", { p_ticket: ticket, p_request_key: requestKey }));
+export const updateTicket = (cardId, changes, revision) =>
+  call(() => supabase.rpc("ops_ticket_update", { p_card_id: cardId, p_changes: changes, p_expected_revision: revision }));
+export const similarTickets = (text, limit = 5) => call(() => supabase.rpc("ops_ticket_similar", { p_text: text, p_limit: limit }));
+export const linkTicketConversation = (cardId, supportTicketId, revision) =>
+  call(() => supabase.rpc("ops_ticket_link_conversation", { p_card_id: cardId, p_support_ticket_id: supportTicketId, p_expected_revision: revision }));
+export const fetchTicketConversations = (cardId) => call(() => supabase.rpc("ops_ticket_conversations", { p_card_id: cardId }));
+export const fetchTicketCounts = () => call(() => supabase.rpc("ops_ticket_counts"));
+// #4420 (step 5): the Work tickets linked to these conversations (Support staff only).
+export function fetchConversationTickets(supportTicketIds) {
+  return call(() => supabase.rpc("issue_4420_conversation_tickets", { p_support_ticket_ids: supportTicketIds }));
+}
+export const searchConversations = (query) => call(() => supabase.rpc("issue_4420_conversation_search", { p_query: query }));
+export const ensureTicketSignal = (cardId) => call(() => supabase.rpc("issue_4420_ticket_signal_ensure", { p_card_id: cardId }));
+export const mirrorTicketGithub = (cardId) => call(() => supabase.rpc("issue_4420_ticket_github_mirror", { p_card_id: cardId }));
 export const searchLinks = (kind, query) => call(() => supabase.rpc("ops_link_search", { p_kind: kind, p_query: query }));
 export const fetchRecordSignals = (recordId) => call(() => supabase.rpc("ops_record_signals", { p_record_id: recordId }));
 export const allowOneMore = (recordId, reason) => call(() => supabase.rpc("ops_contact_override", { p_record_id: recordId, p_reason: reason }));

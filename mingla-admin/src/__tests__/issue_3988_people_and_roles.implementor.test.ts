@@ -82,7 +82,7 @@ Deno.test("People and roles reads and writes only through the #3988 RPCs", async
   const [panel, service, page] = await Promise.all([
     read("components/community/TeamRolesPanel.jsx"),
     read("services/communityService.js"),
-    read("pages/CommunitySupportPage.jsx"),
+    read("pages/SupportPage.jsx") /* [TEST-MOD #4420] Support's own file */,
   ]);
   assertEquals(/profiles_with_segment|\.ilike\(|setCommunityStaff|listAdminTeamRoster/.test(panel), false);
   assertEquals(/<option value="agent"|"Agent"|>Agent</.test(panel), false, "no human Agent role");
@@ -134,7 +134,7 @@ Deno.test("the disabled Invite button is described by its hint", async () => {
 Deno.test("own availability changes refresh the People list", async () => {
   const [panel, page] = await Promise.all([
     read("components/community/TeamRolesPanel.jsx"),
-    read("pages/CommunitySupportPage.jsx"),
+    read("pages/SupportPage.jsx") /* [TEST-MOD #4420] Support's own file */,
   ]);
   assertMatch(panel, /useEffect\(\(\) => \{ void load\(\); \}, \[load, refreshKey\]\);/);
   assertMatch(page, /if \(!result\.message\) setPeopleRefreshKey\(\(key\) => key \+ 1\);/);

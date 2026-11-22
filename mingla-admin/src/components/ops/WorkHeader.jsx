@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ClipboardCopy, ListTree, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { MenuItem, Popover } from "./Popover";
 import { activeFilterCount, headerFit } from "../../lib/workBoardModel";
-import { WORK_LINKED, WORK_SHOW, WORK_VIEWS } from "../../lib/workViews";
+import { WORK_LINKED, WORK_SHOW, WORK_TYPE, WORK_VIEWS } from "../../lib/workViews";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 
@@ -67,6 +67,11 @@ export function WorkHeader({
   onShow,
   linked,
   onLinked,
+  // #4420: the Type filter (All, Tickets, Cards) and the New menu (Card or Ticket).
+  // Without onType / onNewTicket the header is exactly what it was.
+  type = "",
+  onType = null,
+  onNewTicket = null,
   onClear,
   filtersOn,
   showSubtasks,
@@ -79,13 +84,14 @@ export function WorkHeader({
   const ref = useRef(null);
   const width = useFrameWidth(ref);
   const fit = forcedFit || headerFit(width);
-  const count = activeFilterCount({ owner, show, linked });
+  const count = activeFilterCount({ owner, show, linked, type });
   const onBoard = view === "board";
   const chips = (
     <>
       <FilterChip name="owner" label="Owner" value={owner || ""} options={ownerOptions} onChange={(v) => onOwner(v || null)} />
       <FilterChip name="show" label="Show" value={show} options={WORK_SHOW} onChange={(v) => onShow(v || null)} />
       <FilterChip name="linked" label="Linked to" value={linked} options={WORK_LINKED} onChange={(v) => onLinked(v || null)} />
+      {onType && <FilterChip name="type" label="Type" value={type} options={WORK_TYPE} onChange={(v) => onType(v || null)} />}
     </>
   );
   const active = WORK_VIEWS.find((v) => v.value === view) || WORK_VIEWS[0];
@@ -141,10 +147,24 @@ export function WorkHeader({
             <ClipboardCopy aria-hidden="true" className="h-4 w-4" />
           </button>
         )}
-        <button type="button" data-new-card="" disabled={!online} onClick={onNewCard} aria-label="New card"
-          className={`inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg bg-[var(--color-brand-500)] px-3 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-600)] disabled:opacity-50 ${FOCUS}`}>
-          <Plus aria-hidden="true" className="h-4 w-4" />{fit === "compact" ? "" : "New card"}
-        </button>
+        {onNewTicket ? (
+          // #4420: "+ New" offers Card (today's form, unchanged) or Ticket.
+          <Popover label="New" role="menu" width="w-44" align="right" dataAttr="new" disabled={!online} rootClassName="shrink-0"
+            button={<span data-new-card="" className="inline-flex items-center gap-1 whitespace-nowrap"><Plus aria-hidden="true" className="h-4 w-4" />{fit === "compact" ? "" : "New"}<ChevronDown aria-hidden="true" className="h-3.5 w-3.5" /></span>}
+            buttonClassName="inline-flex h-9 items-center rounded-lg bg-[var(--color-brand-500)] px-3 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-600)] disabled:opacity-50">
+            {(close) => (
+              <>
+                <MenuItem onClick={() => { onNewCard(); close(); }}>Card</MenuItem>
+                <MenuItem onClick={() => { onNewTicket(); close(); }}>Ticket</MenuItem>
+              </>
+            )}
+          </Popover>
+        ) : (
+          <button type="button" data-new-card="" disabled={!online} onClick={onNewCard} aria-label="New card"
+            className={`inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg bg-[var(--color-brand-500)] px-3 text-[13px] font-semibold text-white hover:bg-[var(--color-brand-600)] disabled:opacity-50 ${FOCUS}`}>
+            <Plus aria-hidden="true" className="h-4 w-4" />{fit === "compact" ? "" : "New card"}
+          </button>
+        )}
       </span>
     </div>
   );

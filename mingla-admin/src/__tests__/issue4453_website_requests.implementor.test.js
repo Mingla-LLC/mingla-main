@@ -17,13 +17,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import {
-  SUPPORT_INBOX_VIEWS,
-  inboxViewCoverage,
-  isOverdueTicket,
-  supportInboxCounts,
-  supportInboxRows,
-} from "../lib/supportTicketMetrics.js";
+import { inboxViewCoverage, isOverdueTicket } from "../lib/supportTicketMetrics.js";
+import { INBOX_CHIPS, conversationRow, rowLabels, splitInbox } from "../lib/supportInboxModel.js";
 import {
   READY_NOTE_MAX,
   WEBSITE_TOPIC,
@@ -76,24 +71,24 @@ describe("#4453: the Website changes view", () => {
   ];
   const base = { nowMs: now, me: "staff-me" };
 
-  it("is in the rail, in the Work group, after Waiting on customer", () => {
-    const ids = SUPPORT_INBOX_VIEWS.map((view) => view.id);
-    assert.equal(ids.indexOf("website"), ids.indexOf("waiting") + 1);
-    const view = SUPPORT_INBOX_VIEWS.find((entry) => entry.id === "website");
-    assert.deepEqual({ ...view }, { id: "website", label: "Website changes", group: "Work" });
+  // [TEST-MOD #4420] the rail is gone: Website is a chip over the Open list and a
+  // "Website request" label on the row. The rules below are unchanged.
+  const inboxRows = rows.map(conversationRow);
+  const webOpen = (ctx) => splitInbox(inboxRows, { ...ctx, chip: "website" }).open.map((r) => r.id);
+
+  it("is a chip after Reported, and a Website request label on its rows", () => {
+    assert.ok(INBOX_CHIPS.some((chip) => chip.id === "website" && chip.label === "Website"));
     assert.equal(TOPIC_LABEL.website_change, "Website change");
+    const labels = rowLabels(inboxRows.find((r) => r.id === "late")).map((l) => l.text);
+    assert.ok(labels.includes("Website request"));
   });
 
   it("lists active tickets with the website topic only: to-do first by due time, then the ready ones", () => {
-    assert.deepEqual(supportInboxRows(rows, "website", base).map((row) => row.id), ["late", "soon", "later", "ready"]);
-    assert.equal(supportInboxCounts(rows, base).website, 4);
+    assert.deepEqual(webOpen(base), ["late", "soon", "later", "ready"]);
   });
 
-  it("its count equals its rows under the Opened-by switch, filters and search", () => {
-    for (const ctx of [base, { ...base, openedBy: "staff" }, { ...base, filters: { brand: "b-1" } }, { ...base, filters: { owner: "none" } }, { ...base, search: "soon" }]) {
-      assert.equal(supportInboxCounts(rows, ctx).website, supportInboxRows(rows, "website", ctx).length);
-    }
-    assert.equal(supportInboxCounts(rows, { ...base, search: "soon" }).website, 1);
+  it("its rows follow the search", () => {
+    assert.deepEqual(webOpen({ ...base, search: "soon" }), ["soon"]);
   });
 
   it("is a work view: every active ticket is loaded, so it never needs Load older", () => {
@@ -101,10 +96,11 @@ describe("#4453: the Website changes view", () => {
     assert.deepEqual(coverage, { partial: false, loaded: 10, total: 10, canLoadOlder: false });
   });
 
-  it("the other views still see website tickets by their own rules", () => {
-    assert.deepEqual(supportInboxRows(rows, "overdue", base).map((row) => row.id), ["late"]);
-    assert.ok(supportInboxRows(rows, "waiting", base).some((row) => row.id === "ready"));
-    assert.ok(supportInboxRows(rows, "resolved", base).some((row) => row.id === "done"));
+  it("the other chips still see website tickets by their own rules", () => {
+    const ids = (chip) => splitInbox(inboxRows, { ...base, chip }).open.map((r) => r.id);
+    assert.deepEqual(ids("overdue"), ["late"]);
+    assert.ok(ids("waiting").includes("ready"));
+    assert.ok(splitInbox(inboxRows, base).resolved.some((r) => r.id === "done"));
   });
 });
 
@@ -185,11 +181,10 @@ describe("#4453: the request details", () => {
     assert.ok(panel.indexOf("<SupportComposer") > panel.indexOf("<WebsiteRequestBox"));
   });
 
-  it("an inbox row shows the clock instead of a second Overdue badge", () => {
-    const desk = read("pages/SupportDeskPage.jsx");
-    assert.match(desk, /const clock = isWebsiteRequestTicket\(t\) \? websiteRequestClock\(t\) : null;/);
-    assert.match(desk, /\{clock && clock\.state !== "done"\s*\? <Badge variant=\{clock\.tone\}>\{clock\.label\}<\/Badge>\s*: isOverdueTicket\(t\) && <Badge variant="error">Overdue<\/Badge>\}/);
-    assert.match(desk, /view === "website" \? "No website change requests are open\."/);
+  it("an inbox row shows the clock", () => {
+    const list = read("components/support/InboxList.jsx");
+    assert.match(list, /const clock = row\.kind === "conversation" && isWebsiteRequestTicket\(row\.ticket\) \? websiteRequestClock\(row\.ticket\) : null;/);
+    assert.match(list, /clock && clock\.state !== "done"/);
   });
 });
 
