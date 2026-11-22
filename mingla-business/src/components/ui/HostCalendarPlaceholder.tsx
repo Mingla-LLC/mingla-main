@@ -11,9 +11,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { color, radius, type } from "../../constants/designSystem";
 
 export interface HostFieldBase {
-  /** Visible label; "" when the caller draws its own (a form question). */
   label: string;
-  accessibilityLabel?: string;
   placeholder?: string;
   disabled?: boolean;
   hasError?: boolean;
@@ -36,10 +34,10 @@ export function lazyHostField<P extends HostFieldBase>(
       <Suspense
         fallback={
           <View style={styles.host}>
-            {label !== "" ? <Text style={styles.label}>{label}</Text> : null}
+            <Text style={styles.label}>{label}</Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={label !== "" ? label : props.accessibilityLabel}
+              accessibilityLabel={label}
               accessibilityState={{ busy: true, disabled }}
               disabled={disabled}
               onPress={() => setArmed(true)}

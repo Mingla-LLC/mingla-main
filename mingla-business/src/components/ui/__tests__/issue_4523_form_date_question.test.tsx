@@ -96,6 +96,30 @@ const textNodesWith = (tree: Tree, value: string): number =>
       (n.props.children === value || (Array.isArray(n.props.children) && (n.props.children as unknown[]).includes(value))),
   ).length;
 
+// FIRST in the file: the lazily loaded calendar body is not loaded yet.
+it("a tap on the row while the calendar is still loading is kept and opens it once loaded (no dead tap)", async () => {
+  let tree!: Tree;
+  TestRenderer.act(() => {
+    tree = TestRenderer.create(
+      <IntakeQuestionDate question={QUESTION} primitives={businessFormPrimitives} value="" onChange={jest.fn()} />,
+    ) as unknown as Tree;
+  });
+  const loading = tree.root.findAll((n) => n.props.testID === "intake-date-loading" && typeof n.props.onPress === "function")[0];
+  expect(loading).toBeDefined();
+  expect(loading.props.accessibilityLabel).toBe("Arrival day");
+  TestRenderer.act(() => {
+    (loading.props.onPress as () => void)();
+  });
+  expect(isOpen(tree)).toBe(false);
+  for (let i = 0; i < 4; i += 1) {
+    await TestRenderer.act(async () => {
+      await Promise.resolve();
+    });
+  }
+  expect(isOpen(tree)).toBe(true);
+  await TestRenderer.act(async () => tree.unmount());
+});
+
 describe.each(["ios", "android", "web"] as const)("#4523 Host form date question on %s", (os) => {
   const realOs = Platform.OS;
   beforeAll(() => {

@@ -128,6 +128,45 @@ export function DateRangeBody({
 }
 
 /**
+ * #4523 — a custom-form date question (form-rendering's injected date input).
+ * The question shell draws the label, so the field's visible label is empty
+ * and the question's label is spoken.
+ */
+export function FormDateBody({
+  value,
+  onChangeValue,
+  accessibilityLabel,
+  disabled = false,
+  hasError = false,
+  testID,
+  openOnMount = false,
+}: {
+  value: string;
+  onChangeValue: (value: string) => void;
+  accessibilityLabel: string;
+  disabled?: boolean;
+  hasError?: boolean;
+  testID?: string;
+  openOnMount?: boolean;
+}): React.ReactElement {
+  return (
+    <CalendarField
+      label=""
+      accessibilityLabel={accessibilityLabel}
+      value={value}
+      onChange={onChangeValue}
+      disabled={disabled}
+      invalid={hasError}
+      testID={testID}
+      timeZone={detectDeviceTimezone()}
+      clearable={Platform.OS === "web"}
+      defaultOpen={openOnMount}
+      config={HOST_CALENDAR_CONFIG}
+    />
+  );
+}
+
+/**
  * #4523 — the stay dates range calendar, drawn inline under the stay rows
  * (`@mingla/brand-rendering` StayDateRangeRows) in the page palette. Done
  * commits the range; Escape closes and keeps the committed dates.

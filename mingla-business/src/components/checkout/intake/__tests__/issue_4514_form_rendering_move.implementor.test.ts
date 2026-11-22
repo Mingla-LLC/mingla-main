@@ -121,8 +121,8 @@ describe("#4514 — the renderers live in @mingla/form-rendering", () => {
     // #4523: the date input is the Host's own Mingla calendar field, not the
     // browser date box (behaviour: ui/__tests__/issue_4523_form_date_question).
     expect(typeof businessFormPrimitives.WebDateTimeInput).toBe("function");
-    expect(read("mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx")).toMatch(
-      /import \{ DateField \} from "\.\.\/\.\.\/ui\/DateField";/,
+    expect(read("mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx")).toContain(
+      'import("../../ui/HostCalendarBody")',
     );
     // #4518: the colours are the active surface tokens (Graphite here): every
     // designSystem colour, plus the surface-only `controlOutline`.
