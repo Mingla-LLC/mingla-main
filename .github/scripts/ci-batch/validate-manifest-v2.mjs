@@ -666,7 +666,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 06-W4 fix 1: 20280809462590 (plan charges, one live payment page) + its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 06-W4 fix 2: 20280809462690 (why everything is due now) + its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O1: Till core migration and suite registered; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b7cda78de3c191fe84f571bfcfac085341e1fc0c08ccd62c3e5d0c2306c10415";
+// issue #4490 ops O1: #2099 repin over the Till lanes registered; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "bfd9c9821fb9e8b38031d8ea9ceecc3ba892433286ce57f328d3a11708e54ca4";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

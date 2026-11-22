@@ -33,7 +33,8 @@ BEGIN
   ) ->> 'schema_fingerprint';
   IF NOT COALESCE(v_live IN (
     -- [TEST-MOD-APPROVED #4490] guest list repin (20280809444490): the guest list lanes (20280809414490) advance the reviewed pin.
-    'ab750f8323008afae8076dedc3a30de0357431d945a9a65662d534b4b6ce755f'
+    -- [TEST-MOD-APPROVED #4490] 08-O1 repin (20280809554490): the Till lanes (20280809464490) advance the reviewed pin.
+    'ea061db24e8b6fab2f80c25a61a07aeb17b730b09f88cfa394a00b6b5d218304'
   ),false) THEN RAISE EXCEPTION 'Local pending-venue dependency seal mismatch: %',v_live; END IF;
   SELECT pg_get_functiondef('public.preview_pending_venue_identity_correction(uuid)'::regprocedure) INTO v_def;
   IF position(left(v_live,32) in v_def)=0 OR position('91042e6f4a170c709d016d9a598d0fae' in v_def)>0 OR position('0b2f6691528759d391240f966a45b350' in v_def)>0 THEN RAISE EXCEPTION 'Local preview pin does not match live reviewed seal'; END IF;

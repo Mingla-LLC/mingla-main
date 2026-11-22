@@ -81,7 +81,8 @@ BEGIN
      OR NOT COALESCE(
        p->>'schema_fingerprint' IN (
          -- [TEST-MOD-APPROVED #4490] guest list repin (20280809444490): the guest list lanes (20280809414490) advance the reviewed pin.
-         'ab750f8323008afae8076dedc3a30de0357431d945a9a65662d534b4b6ce755f'
+         -- [TEST-MOD-APPROVED #4490] 08-O1 repin (20280809554490): the Till lanes (20280809464490) advance the reviewed pin.
+         'ea061db24e8b6fab2f80c25a61a07aeb17b730b09f88cfa394a00b6b5d218304'
        ),
        false
      )
@@ -121,7 +122,8 @@ BEGIN
   IF p->>'ok'<>'true' OR p->>'eligible'<>'true' OR p->>'code' IS NOT NULL
      OR NOT COALESCE(
        p->>'schema_fingerprint' IN (
-         'ab750f8323008afae8076dedc3a30de0357431d945a9a65662d534b4b6ce755f'
+         -- [TEST-MOD-APPROVED #4490] 08-O1 repin (20280809554490): the Till lanes (20280809464490) advance the reviewed pin.
+         'ea061db24e8b6fab2f80c25a61a07aeb17b730b09f88cfa394a00b6b5d218304'
        ),
        false
      )

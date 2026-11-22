@@ -409,7 +409,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 06-W4 fix 1: 20280809462590 (plan charges, one live payment page) + its pg17 suite registered; re-sealed.
 // issue #4490 06-W4 fix 2: 20280809462690 (why everything is due now) + its pg17 suite registered; re-sealed.
 // issue #4490 ops O1: Till core migration and suite registered; re-sealed.
-export const BOOTSTRAP_SHA256 = "ed81b82052bfac077dd55ded89ad2c2eb36dd9b15f8c56fd2597283147b50c72";
+// issue #4490 ops O1: #2099 repin over the Till lanes registered; re-sealed.
+export const BOOTSTRAP_SHA256 = "4267666b793c050a80eb654641f571c2ed4fce19de1736007c48d5c7e36f8d4b";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
