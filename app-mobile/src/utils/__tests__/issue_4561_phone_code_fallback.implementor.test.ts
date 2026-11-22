@@ -1,3 +1,4 @@
+// @ts-nocheck — Deno-runtime suite; app-mobile's tsc sweep has no Deno globals (precedent: #4114).
 /* eslint-disable import/no-unresolved -- Deno-discovered suite; Expo ESLint does not resolve URL imports. */
 /**
  * issue #4561 — the app half of "a refused text never strands a person".
