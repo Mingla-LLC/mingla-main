@@ -24,7 +24,7 @@ import { Chip } from "../../ui/Pill";
 import { Sheet } from "../../ui/Sheet";
 import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { ReceiptStep } from "./ReceiptStep";
-import { TILL_COPY, tillErrorCopy } from "./tillCopy";
+import { TILL_COPY, tillAmountError, tillErrorCopy } from "./tillCopy";
 import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices, type ReceiptChannel } from "./tillModel";
 
 type Step = "choose" | "cash" | "own" | "paid";
@@ -96,7 +96,12 @@ export function PaymentSheet({
     requestId.current = randomId();
   }, [visible]);
 
-  const payAmount = amountMinor !== null && amountMinor > 0 && amountMinor <= due ? amountMinor : due;
+  // O1-B1: the typed amount is what is taken, never quietly swapped for the
+  // balance; an amount above what is left is refused in words and blocks the
+  // methods until it is fixed.
+  const payAmount = amountMinor ?? due;
+  const amountError = tillAmountError(amountMinor, due);
+  const canChooseMethod = amountError === null && payAmount > 0;
   const tips = useMemo(
     () => (tipsEnabled ? tipChoices(foodAndDrinkMinor(sale), tipBpsOptions) : []),
     [sale, tipsEnabled, tipBpsOptions],
@@ -122,7 +127,8 @@ export function PaymentSheet({
     } catch (err) {
       const code = err instanceof TillError ? err.code : "till_failed";
       if (code === "till_check_changed" || code === "till_amount_over_due" || code === "till_nothing_to_pay") {
-        // Nothing moved: refresh the check and start a fresh attempt.
+        // Nothing moved: refresh the check and start a fresh attempt. The typed
+        // amount stays as typed; the field says if it is now more than is left.
         requestId.current = randomId();
         onRefreshSale();
         setStep("choose");
@@ -154,7 +160,7 @@ export function PaymentSheet({
           valueMinor={amountMinor ?? due}
           onChangeMinor={(next) => setAmountMinor(next)}
           currency={currency}
-          error={amountMinor !== null && (amountMinor <= 0 || amountMinor > due) ? tillErrorCopy("till_amount_over_due") : null}
+          error={amountError}
           testID="till-pay-amount"
         />
         {tips.length > 1 ? (
@@ -171,8 +177,8 @@ export function PaymentSheet({
           </View>
         ) : null}
         <View style={styles.methods}>
-          <ListRow title={TILL_COPY.cash} subtitle={TILL_COPY.cashSub} icon="cash" onPress={() => setStep("cash")} testID="till-pay-cash" />
-          <ListRow title={TILL_COPY.ownMachine} subtitle={TILL_COPY.ownMachineSub} icon="keypad" onPress={() => setStep("own")} testID="till-pay-own" />
+          <ListRow title={TILL_COPY.cash} subtitle={TILL_COPY.cashSub} icon="cash" onPress={() => setStep("cash")} disabled={!canChooseMethod} testID="till-pay-cash" />
+          <ListRow title={TILL_COPY.ownMachine} subtitle={TILL_COPY.ownMachineSub} icon="keypad" onPress={() => setStep("own")} disabled={!canChooseMethod} testID="till-pay-own" />
           <ListRow title={TILL_COPY.chargeToRoom} subtitle={TILL_COPY.chargeToRoomLater} icon="home" disabled testID="till-pay-room" />
         </View>
         {error !== null ? <Banner tone="danger" title={error} /> : null}

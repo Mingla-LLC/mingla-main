@@ -59,8 +59,12 @@ describe("#4490 O1 fix 1 — corrections on a part-paid check (O1-N3)", () => {
     expect(rowCanVoid(voided, basketRows(voided)[0])).toBe(false);
   });
 
+  // TEST-MOD-APPROVED #4490 (08-O1 fix 2, O1-B2): the banner is now capped by
+  // what is still refundable on the check's payments, so the fixture carries
+  // the payment the extra money came from.
   it("shows money beyond the new total only once the check has closed", () => {
-    expect(overpaidToRefund(mapTillSale({ ...partPaid, state: "paid", overpaidMinor: 125000 }))).toBe(125000);
+    const paidPayment = { id: "p1", method: "cash", state: "paid", amountMinor: 225000, tipMinor: 0, refundedMinor: 0 };
+    expect(overpaidToRefund(mapTillSale({ ...partPaid, state: "paid", overpaidMinor: 125000, payments: [paidPayment] }))).toBe(125000);
     expect(overpaidToRefund(mapTillSale({ ...partPaid, overpaidMinor: 0 }))).toBe(0);
     expect(overpaidToRefund(null)).toBe(0);
   });

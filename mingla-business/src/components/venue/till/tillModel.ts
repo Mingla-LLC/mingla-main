@@ -275,9 +275,19 @@ export function rowRefundable(row: BasketRow, canManageMoney: boolean): boolean 
   return canManageMoney && row.kind === "offer" && row.lineId !== null && row.lineState === "committed";
 }
 
-/** Money taken beyond what the check now costs (kept to refund, never dropped). */
+/**
+ * Money taken beyond what the check now costs (kept to refund, never dropped).
+ * #4490 08-O1 fix 2 (O1-B2): never more than is still refundable on the
+ * check's payments, so once the extra is refunded the banner goes, even if a
+ * stale read still carries the old figure.
+ */
 export function overpaidToRefund(sale: TillSale | null): number {
-  return sale !== null && sale.state !== "open" ? Math.max(0, sale.overpaidMinor) : 0;
+  if (sale === null || sale.state === "open") return 0;
+  const refundable = sale.payments
+    .filter((p) => p.state === "paid" || p.state === "partially_refunded")
+    // refundedMinor counts the tip too (the server sums amount + tip refunded).
+    .reduce((sum, p) => sum + Math.max(0, p.amountMinor + p.tipMinor - p.refundedMinor), 0);
+  return Math.max(0, Math.min(sale.overpaidMinor, refundable));
 }
 
 export interface MoveTarget {

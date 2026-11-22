@@ -143,72 +143,121 @@ export const TILL_COPY = {
 } as const;
 
 /**
- * Server codes → plain words with a way forward (never a raw code). Strings
- * the spec gives are used as written; the rest reuse the nearest existing
- * Host string (door copy, venueCheckInResult.ts) and are listed for Seth.
+ * #4490 08-O1 fix 2 (O1-B1) — every server code → its own plain words with a
+ * way forward (never a raw code). One row per code, so a refusal can never
+ * borrow another code's words: the overpay refusal used to say "That check
+ * was changed on another device", which is true only of `till_check_changed`.
+ * Strings the spec gives are used as written; the rest reuse the nearest
+ * existing Host string or are new, and are listed for Seth in the fix 2 report.
+ * Codes that are true synonyms share one line on purpose; the copy test pins
+ * exactly which (`TILL_SHARED_COPY`), so any other shared line fails it.
  */
+export const TILL_ERROR_COPY = {
+  // Version and state of the check
+  till_check_changed: "That check was changed on another device. We've refreshed it.",
+  till_check_closed: "This check is closed, so nothing changed. Open Checks to find it.",
+  till_payment_in_progress: "A guest is paying right now. Try again in a few minutes.",
+  till_nothing_to_pay: "There's nothing left to pay on this check.",
+  till_amount_over_due: "That's more than they still owe. Lower the amount.",
+  till_tip_invalid: "That tip can't be taken. Pick another tip or No tip.",
+  till_payment_too_large:
+    "This payment is too large to take in one go. Ask for a smaller deposit, or record it as paid to the venue.",
+  till_not_enabled: "Selling in person is off at this venue.",
+  till_sale_not_found: "We couldn't find that check. It may have been closed on another device.",
+  till_idempotency_conflict: "That was already sent with different details. Start the sale again.",
+  till_invalid_payload: "Check the details and try again.",
+  till_settings_invalid: "Check the settings and try again.",
+  till_settings_changed: "These settings were changed on another device. Open them again.",
+  // Tables, servers, rounds
+  till_spot_has_check: "That table has its own check. Pay or move that one first.",
+  till_spot_not_found: "That table isn't at this venue any more.",
+  till_server_invalid: "That person can't sell at this venue.",
+  till_round_invalid: "That order can't go on this check.",
+  till_item_not_orderable: "This item sold out while you were adding it",
+  till_hold_lapsed: "The hold already ran out. We've loaded the latest.",
+  till_tab_settled_on_pad: "That tab is already closed.",
+  till_round_settled_elsewhere: "That order has already moved on. Pull to refresh.",
+  // Voids
+  till_line_not_found: "That item is no longer on this check.",
+  till_line_paid: "This item is paid. Refund it instead of voiding it.",
+  till_void_needs_money_rights: "Ask someone with money rights to void a sent item.",
+  // Refunds
+  till_payment_not_found: "We couldn't find that payment.",
+  till_refund_method_unavailable: "This payment can't be refunded that way.",
+  till_payment_not_refundable: "This payment has nothing left to refund.",
+  till_refund_over_paid: "That's more than is left on this payment. Lower the amount.",
+  till_refund_tip_last: "Refund the rest of the payment first. Any tip is refunded last.",
+  till_refund_line_invalid: "Only an entry or package can be refunded on its own. Refund food and drink from the payment.",
+  till_line_not_paid: "This line isn't paid yet, so there's nothing to refund. Void it instead.",
+  till_card_refunded_once: "This card payment was already refunded once. Pay the rest back in cash.",
+  // Receipts
+  till_receipt_limit: "This receipt was sent three times, the most we send.",
+  till_receipt_phone_invalid: "Check the mobile number, including the country.",
+  till_receipt_email_invalid: "Check the email address.",
+  till_receipt_not_paid: "A receipt goes out once the payment is taken.",
+  receipt_not_found: "We couldn't find this receipt",
+  // Offers sold in the Till (door copy, venueCheckInResult.ts)
+  offer_sold_out: "Sold out for today, including the places kept for walk-ins.",
+  offer_day_closed: "The venue is closed today, so nothing can be sold.",
+  offer_window_unavailable: "Today isn't on sale for this offer.",
+  offer_not_found: "That offer isn't on sale any more. Close this and try again.",
+  offer_changed: "That offer isn't on sale any more. Close this and try again.",
+  offer_quote_expired: "That offer isn't on sale any more. Close this and try again.",
+  offer_option_unavailable: "That offer isn't on sale any more. Close this and try again.",
+  offers_not_enabled: "Selling at the gate isn't switched on for your brand yet.",
+  offer_guests_out_of_range: "That number of guests is outside this package's group size.",
+  offer_booking_not_found: "We couldn't find that booking.",
+  offer_invalid_transition: "That booking has already moved on, so nothing changed.",
+  offer_amount_over_balance: "That's more than the booking still owes. Lower the amount.",
+  offer_idempotency_conflict: "That booking was already changed with different details. Start again.",
+  // Guest list
+  admit_count_invalid: "That's more guests than are left on this pass.",
+  guest_list_arrived_invalid: "That's more guests than are left on this pass.",
+  guest_list_entry_on_check: "This guest is already on another check.",
+  guest_list_entry_not_found: "That name isn't on today's guest list any more.",
+  guest_list_reduced_window_closed: "List price has ended. Sell normal Entry instead.",
+  guest_list_reduced_price_invalid: "The list price isn't set up for this offer. Sell normal Entry instead.",
+  // Access and transport
+  not_authorized: "You can't do that at this venue. Ask a brand owner or admin for access.",
+  auth_required: "Sign in again to keep selling.",
+  venue_not_found: "This venue was removed.",
+  network: "No connection. Sales are paused until you're back online. Nothing is queued.",
+  till_failed: "That didn't go through. Try again.",
+  unavailable: "That didn't go through. Try again.",
+  invalid_request: "That didn't go through. Try again.",
+  unknown_action: "That didn't go through. Try again.",
+  method_not_allowed: "That didn't go through. Try again.",
+} as const satisfies Record<string, string>;
+
+export type TillErrorCode = keyof typeof TILL_ERROR_COPY;
+
+/**
+ * Codes that share one line because they mean the same thing to the person at
+ * the Till. Any other two codes with the same words fail the copy test.
+ */
+export const TILL_SHARED_COPY: readonly (readonly TillErrorCode[])[] = [
+  ["offer_not_found", "offer_changed", "offer_quote_expired", "offer_option_unavailable"],
+  ["admit_count_invalid", "guest_list_arrived_invalid"],
+  ["till_failed", "unavailable", "invalid_request", "unknown_action", "method_not_allowed"],
+];
+
+function isTillErrorCode(code: string): code is TillErrorCode {
+  return Object.prototype.hasOwnProperty.call(TILL_ERROR_COPY, code);
+}
+
 export function tillErrorCopy(code: string, item: string | null = null): string {
-  switch (code) {
-    case "till_check_changed":
-    case "till_check_closed":
-    case "till_line_not_paid":
-    case "till_refund_line_invalid":
-    case "till_amount_over_due":
-    case "till_nothing_to_pay":
-    case "till_payment_in_progress":
-      return "That check was changed on another device. We've refreshed it.";
-    case "till_item_not_orderable":
-      return "This item sold out while you were adding it";
-    case "till_void_needs_money_rights":
-      return "Ask someone with money rights to void a sent item.";
-    case "till_line_paid":
-    case "till_refund_method_unavailable":
-    case "till_payment_not_refundable":
-      return "Refunds need money rights.";
-    case "till_payment_too_large":
-      return "This payment is too large to take in one go. Ask for a smaller deposit, or record it as paid to the venue.";
-    case "till_spot_has_check":
-      return "That table has its own check. Pay or move that one first.";
-    case "offer_sold_out":
-      return "Sold out for today, including the places kept for walk-ins.";
-    case "offer_day_closed":
-      return "The venue is closed today, so nothing can be sold.";
-    case "offer_window_unavailable":
-      return "Today isn't on sale for this offer.";
-    case "offer_not_found":
-    case "offer_changed":
-    case "offer_quote_expired":
-      return "That offer isn't on sale any more. Close this and try again.";
-    case "offers_not_enabled":
-      return "Selling at the gate isn't switched on for your brand yet.";
-    case "admit_count_invalid":
-    case "guest_list_arrived_invalid":
-      return "That's more guests than are left on this pass.";
-    case "guest_list_entry_on_check":
-      return "This guest is already on another check.";
-    case "offer_option_unavailable":
-      return "That offer isn't on sale any more. Close this and try again.";
-    case "offer_guests_out_of_range":
-      return "That number of guests is outside this package's group size.";
-    case "till_hold_lapsed":
-      return "The hold already ran out. We've loaded the latest.";
-    case "till_tab_settled_on_pad":
-      return "That tab is already closed.";
-    case "till_round_settled_elsewhere":
-      return "That order has already moved on. Pull to refresh.";
-    case "till_card_refunded_once":
-      return "This card payment was already refunded once. Pay the rest back in cash.";
-    case "till_receipt_limit":
-      return "This receipt was sent three times, the most we send.";
-    case "till_receipt_phone_invalid":
-      return "Check the mobile number, including the country.";
-    case "till_receipt_email_invalid":
-      return "Check the email address.";
-    case "till_receipt_not_paid":
-      return "A receipt goes out once the payment is taken.";
-    case "network":
-      return "No connection. Sales are paused until you're back online. Nothing is queued.";
-    default:
-      return item !== null ? `${item}: that didn't go through. Try again.` : "That didn't go through. Try again.";
-  }
+  if (isTillErrorCode(code)) return TILL_ERROR_COPY[code];
+  return item !== null ? `${item}: that didn't go through. Try again.` : TILL_ERROR_COPY.till_failed;
+}
+
+/**
+ * O1-B1 — what the pay sheet's amount field says. A typed amount is never
+ * changed behind the person's back: an amount above what is left (or zero) is
+ * refused in words and the payment cannot start until it is fixed.
+ */
+export function tillAmountError(typedMinor: number | null, dueMinor: number): string | null {
+  if (typedMinor === null) return null;
+  if (typedMinor <= 0) return "Enter an amount above zero.";
+  if (typedMinor > dueMinor) return TILL_ERROR_COPY.till_amount_over_due;
+  return null;
 }
