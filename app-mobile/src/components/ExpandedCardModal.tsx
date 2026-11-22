@@ -89,6 +89,7 @@ import { deckVenueCta } from "./expandedCard/deckVenueCta";
 // #4490 Explorer W3 — Ways to come, What's on and Message {venue} for a claimed venue.
 import { VenueSheetBlocks } from "./expandedCard/VenueSheetBlocks";
 import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
+import { leaveSheetTo } from "./deckCard/deckNavigation";
 import { ImageLightbox } from "./ImageLightbox";
 // issue #2468 / #4347 wave 2 — every maps link on this sheet goes through
 // expandedCard/placeDirections (openPlaceDirections), which wraps the ONE host
@@ -519,6 +520,7 @@ export default function ExpandedCardModal({
   visible,
   target,
   onClose,
+  onExternalRoute,
   onSave,
   onPurchase,
   onShare,
@@ -2067,9 +2069,14 @@ export default function ExpandedCardModal({
                       onPress={() => {
                         // #4490 Explorer W3 — the venue page in the app, on
                         // the lead's tab (its native panes); the sheet closes
-                        // first. The in-app web browser path is deleted.
-                        onClose();
-                        router.push(deckCta.path as never);
+                        // first, then the deck's hand-off (collab: the shared
+                        // deck closes before the push). The in-app web browser
+                        // path is deleted.
+                        leaveSheetTo(deckCta.path, {
+                          closeSheet: onClose,
+                          onExternalRoute,
+                          push: (path) => router.push(path as never),
+                        });
                       }}
                       accessibilityRole="button"
                       accessibilityLabel={t('cards:sheet.open_venue_a11y', {
@@ -2343,10 +2350,13 @@ export default function ExpandedCardModal({
                 place={venueFeatures}
                 tablesReservable={venueReservable === undefined ? null : venueReservable?.reservable === true}
                 venueType={venueFeatures.venueType}
-                onOpenPath={(path) => {
-                  onClose();
-                  router.push(path as never);
-                }}
+                onOpenPath={(path) =>
+                  leaveSheetTo(path, {
+                    closeSheet: onClose,
+                    onExternalRoute,
+                    push: (next) => router.push(next as never),
+                  })
+                }
                 onWayTapped={(row) =>
                   captureVenueTappedToBook({
                     venueId: venueFeatures.venueId ?? '',

@@ -29,11 +29,20 @@ export const PANE_OFFER_KIND: Record<Exclude<VenuePaneKind, "plans">, VenueOffer
   by_the_hour: "by_the_hour",
 };
 
+/** "Sold out today" / "Closed today" while a later day in the window is still open. */
+export type PaneTodayTag = "Sold out today" | "Closed today";
+
 /** One offer's availability read. */
 export type OfferAvailability =
   | { readonly state: "loading" }
   | { readonly state: "error"; readonly offline: boolean }
-  | { readonly state: "ready"; readonly soldOut: boolean };
+  | { readonly state: "ready"; readonly soldOut: boolean; readonly todayTag?: PaneTodayTag | null };
+
+/** What one availability read says about the window and about today. */
+export interface AvailabilitySummary {
+  readonly soldOut: boolean;
+  readonly todayTag: PaneTodayTag | null;
+}
 
 export interface VenuePaneRow {
   readonly id: string;
@@ -42,6 +51,8 @@ export interface VenuePaneRow {
   readonly price: string;
   readonly actionLabel: string;
   readonly soldOut: boolean;
+  /** Today is full or closed while a later day is open (the row stays bookable). */
+  readonly todayTag: PaneTodayTag | null;
   /** Still checking what is left: the button waits (spinner), never a dead tap. */
   readonly checking: boolean;
   readonly offerKind: VenueOfferKind | null;
@@ -83,12 +94,31 @@ export function paneAvailabilityWindow(now: Date, timeZone: string | null | unde
  * out": the page does not claim what it does not know.
  */
 export function soldOutFromAvailability(kind: VenueOfferKind, raw: unknown): boolean {
-  if (kind === "private_hire") {
-    const rows = parseHireDayRows(raw);
-    return !rows.some((r) => r.status === "available") && rows.some((r) => r.status === "taken" || r.status === "held");
+  return availabilitySummary(kind, raw, null).soldOut;
+}
+
+/**
+ * The window (sold out, as above) and today (the venue's own first day of the
+ * window, `today`): "Sold out today" when today has no open time and at least
+ * one full one, "Closed today" when today is closed or not sold, each only
+ * while a LATER day is still open (the guest can pick it; the row stays
+ * bookable). Only the server's day rows are read.
+ */
+export function availabilitySummary(kind: VenueOfferKind, raw: unknown, today: string | null): AvailabilitySummary {
+  const rows: Array<{ localDate: string; status: string }> =
+    kind === "private_hire" ? parseHireDayRows(raw) : parseEntryDayRows(raw);
+  const full = (status: string): boolean =>
+    kind === "private_hire" ? status === "taken" || status === "held" : status === "sold_out" || status === "taken";
+  const soldOut = !rows.some((r) => r.status === "available") && rows.some((r) => full(r.status));
+  if (soldOut || today === null) return { soldOut, todayTag: null };
+  const todays = rows.filter((r) => r.localDate === today);
+  const laterOpen = rows.some((r) => r.localDate > today && r.status === "available");
+  if (!laterOpen || todays.some((r) => r.status === "available")) return { soldOut, todayTag: null };
+  if (todays.some((r) => full(r.status))) return { soldOut, todayTag: "Sold out today" };
+  if (todays.length === 0 || todays.every((r) => r.status === "closed" || r.status === "wrong_weekday")) {
+    return { soldOut, todayTag: "Closed today" };
   }
-  const rows = parseEntryDayRows(raw);
-  return !rows.some((r) => r.status === "available") && rows.some((r) => r.status === "sold_out" || r.status === "taken");
+  return { soldOut, todayTag: null };
 }
 
 function offerPrice(kind: Exclude<VenuePaneKind, "plans">, offer: VenueFeatureOfferView, money: (minor: number) => string): string {
@@ -98,6 +128,8 @@ function offerPrice(kind: Exclude<VenuePaneKind, "plans">, offer: VenueFeatureOf
     case "by_the_hour":
       return `from ${money(offer.fromMinor)} an hour`;
     case "entry":
+      // §6: free entry reads "Free entry", never "from ₦0".
+      return offer.fromMinor === 0 ? "Free entry" : `from ${money(offer.fromMinor)}`;
     case "hire":
       return `from ${money(offer.fromMinor)}`;
     default: {
@@ -142,6 +174,7 @@ export function offerPaneRows(
         price: offerPrice(kind, offer, money),
         actionLabel: offerAction(kind, offer),
         soldOut: read?.state === "ready" && read.soldOut,
+        todayTag: read?.state === "ready" ? read.todayTag ?? null : null,
         checking: read === undefined || read.state === "loading",
         offerKind: offer.kind,
         fromMinor: offer.fromMinor,
@@ -162,6 +195,7 @@ export function planPaneRows(
     actionLabel: "Join",
     // A full plan is shown, not joinable (the page payload's own `full`).
     soldOut: plan.full,
+    todayTag: null,
     checking: false,
     offerKind: null,
     fromMinor: plan.priceMinor,
@@ -238,4 +272,7 @@ export const PANE_COPY = {
   offline: "You're offline. Check your connection and try again.",
   retry: "Try again",
   soldOut: "Sold out",
+  // W3 fix 1: the approved design's row tag, and the venue page's own words.
+  soldOutToday: "Sold out today",
+  closedToday: "Closed today",
 } as const;

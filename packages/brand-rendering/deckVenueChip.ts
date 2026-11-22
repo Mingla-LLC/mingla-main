@@ -14,14 +14,20 @@
  *     shows the lead's own verb and NO amount (never invented);
  *   - the EVENT chip says "On tonight" when something is on now or starts from
  *     17:00 to 04:59 (venue time), "On today" when it starts later today before
- *     17:00. Rooms never lead a card: a Stay with nothing else bookable gets no
- *     offer chip (decision 2).
+ *     17:00. It is decided against `now` at render from the start AND end times
+ *     the facts carry, so a cached row never claims an event that has ended.
+ *     Rooms never lead a card: a Stay with nothing else bookable gets no offer
+ *     chip (decision 2).
+ *   - plans carry their own period ("a month" / "a year"): the server's lead
+ *     plan is the cheapest one a guest can join today, the same one the page
+ *     shows.
  *
  * Pure: no React, no network, no i18n runtime.
  */
 import {
   deriveVenuePage,
   formatVenueMoney,
+  venuePlanPeriodWords,
   venueTabLabel,
   venueTypeLeadsWithTables,
   VENUE_FEATURE_KEYS,
@@ -40,7 +46,10 @@ export interface DeckVenuePriceFrom {
   group_packages: number | null;
   private_hire: number | null;
   by_the_hour: number | null;
-  /** Per month (the cheapest live monthly plan). */
+  /**
+   * The cheapest plan a guest can join today (its period is
+   * `membershipsPeriod`); null when no plan can be joined.
+   */
   memberships: number | null;
 }
 
@@ -58,11 +67,19 @@ export interface DeckVenueFacts {
   features: VenueFeatureKey[];
   isBookable: boolean;
   tablesReservable: boolean;
+  /** Live plans are listed on the page (even when none can be joined today). */
+  plansLive: boolean;
   priceFrom: DeckVenuePriceFrom;
+  /** The period of `priceFrom.memberships`. */
+  membershipsPeriod: "month" | "year" | null;
   currencyCode: string;
   minorUnitExponent: number;
   onTodayStartsAt: string | null;
+  /** The end of the date that starts at `onTodayStartsAt`. */
+  onTodayEndsAt: string | null;
   onTodayLive: boolean;
+  /** When the date running now ends. */
+  onTodayLiveUntil: string | null;
 }
 
 export type DeckVenueEventChip = "On tonight" | "On today";
@@ -74,6 +91,11 @@ export interface DeckVenueOfferChip {
   tabLabel: string;
   /** "Entry from ₦4,000", "Book a table", "Plans from ₦25,000 a month". */
   label: string;
+  /**
+   * The plate tile's value under `tabLabel`, so the tile reads once
+   * ("Entry" over "from ₦4,000", "Plans" over "from ₦25,000 a month").
+   */
+  tileValue: string;
   leadKind: VenueLeadKind;
   /** The offer kind behind the lead (null for tables and plans). */
   offerKind: VenueOfferKind | null;
@@ -106,7 +128,10 @@ export function parseDeckVenueFacts(raw: unknown): DeckVenueFacts | null {
     raw.minorUnitExponent >= 0 && raw.minorUnitExponent <= 4
       ? raw.minorUnitExponent
       : 2;
-  const startsAt = text(raw.onTodayStartsAt);
+  const instant = (value: unknown): string | null => {
+    const at = text(value);
+    return at !== null && !Number.isNaN(Date.parse(at)) ? at : null;
+  };
   return {
     venueId,
     venueName: text(raw.venueName) ?? "",
@@ -121,6 +146,7 @@ export function parseDeckVenueFacts(raw: unknown): DeckVenueFacts | null {
     ),
     isBookable: raw.isBookable === true,
     tablesReservable: raw.tablesReservable === true,
+    plansLive: raw.plansLive === true,
     priceFrom: {
       entry: minor(price.entry),
       group_packages: minor(price.group_packages),
@@ -128,10 +154,13 @@ export function parseDeckVenueFacts(raw: unknown): DeckVenueFacts | null {
       by_the_hour: minor(price.by_the_hour),
       memberships: minor(price.memberships),
     },
+    membershipsPeriod: raw.membershipsPeriod === "year" ? "year" : raw.membershipsPeriod === "month" ? "month" : null,
     currencyCode: text(raw.currencyCode)?.toUpperCase() ?? "NGN",
     minorUnitExponent: exponent,
-    onTodayStartsAt: startsAt !== null && !Number.isNaN(Date.parse(startsAt)) ? startsAt : null,
+    onTodayStartsAt: instant(raw.onTodayStartsAt),
+    onTodayEndsAt: instant(raw.onTodayEndsAt),
     onTodayLive: raw.onTodayLive === true,
+    onTodayLiveUntil: instant(raw.onTodayLiveUntil),
   };
 }
 
@@ -170,10 +199,15 @@ function factsAsView(facts: DeckVenueFacts, withStays: boolean): PublicVenueFeat
     minorUnitExponent: facts.minorUnitExponent,
     offers,
     tables: null,
+    // Live plans lead like the page's, priced or not (a priceless lead shows its verb).
     memberships:
-      facts.priceFrom.memberships === null
+      facts.priceFrom.memberships === null && !facts.plansLive
         ? null
-        : { fromMinor: facts.priceFrom.memberships, interval: "month", plans: [] },
+        : {
+            fromMinor: facts.priceFrom.memberships ?? 0,
+            interval: facts.membershipsPeriod === "year" ? "year" : "month",
+            plans: [],
+          },
     events: [],
     hours: { weekly: [], specialDays: [] },
     spaces: [],
@@ -205,27 +239,36 @@ export function deckVenueOfferChip(
     formatMoney(value, facts.currencyCode, facts.minorUnitExponent);
   const p = facts.priceFrom;
   let label: string;
+  // The tile under the tab's own name: the price part only, so no word repeats.
+  let tileValue: string | null = null;
   let offerKind: VenueOfferKind | null = null;
   switch (lead.kind) {
     case "entry":
       offerKind = "entry";
       label = p.entry === 0 ? "Free entry" : p.entry !== null ? `Entry from ${money(p.entry)}` : lead.ctaLabel;
+      tileValue = p.entry === 0 ? "Free" : p.entry !== null ? `from ${money(p.entry)}` : null;
       break;
     case "group_packages":
       offerKind = "group_package";
       label = p.group_packages !== null ? `Groups from ${money(p.group_packages)}` : lead.ctaLabel;
+      tileValue = p.group_packages !== null ? `from ${money(p.group_packages)}` : null;
       break;
     case "private_hire":
       offerKind = "private_hire";
       label = p.private_hire !== null ? `Hire from ${money(p.private_hire)}` : lead.ctaLabel;
+      tileValue = p.private_hire !== null ? `from ${money(p.private_hire)}` : null;
       break;
     case "by_the_hour":
       offerKind = "by_the_hour";
       label = p.by_the_hour !== null ? `${money(p.by_the_hour)} an hour` : lead.ctaLabel;
+      tileValue = p.by_the_hour !== null ? `from ${money(p.by_the_hour)}` : null;
       break;
-    case "memberships":
-      label = p.memberships !== null ? `Plans from ${money(p.memberships)} a month` : lead.ctaLabel;
+    case "memberships": {
+      const period = venuePlanPeriodWords(facts.membershipsPeriod === "year" ? "year" : "month");
+      label = p.memberships !== null ? `Plans from ${money(p.memberships)} ${period}` : lead.ctaLabel;
+      tileValue = p.memberships !== null ? `from ${money(p.memberships)} ${period}` : null;
       break;
+    }
     case "tables":
       label = "Book a table";
       break;
@@ -234,7 +277,14 @@ export function deckVenueOfferChip(
       return never;
     }
   }
-  return { tab: lead.tab, tabLabel: venueTabLabel(lead.tab, page), label, leadKind: lead.kind, offerKind };
+  return {
+    tab: lead.tab,
+    tabLabel: venueTabLabel(lead.tab, page),
+    label,
+    tileValue: tileValue ?? label,
+    leadKind: lead.kind,
+    offerKind,
+  };
 }
 
 function zonedParts(at: Date, timeZone: string): { date: string; hour: number; minute: number } | null {
@@ -274,23 +324,31 @@ export function venueNightEnd(now: Date, timeZone: string): Date | null {
   return new Date(now.getTime() - sinceMinute + minutes * 60_000);
 }
 
+const isBefore = (now: Date, at: string | null): boolean => {
+  if (at === null) return false;
+  const t = Date.parse(at);
+  return !Number.isNaN(t) && now.getTime() < t;
+};
+
 /**
  * "On tonight": live now, or starting 17:00 today to 04:59 tomorrow (venue
  * time). "On today": starting later today before 17:00. Null when nothing is
- * on before the night ends, or when the venue's zone is unknown (rule 12: no
- * guessed clock).
+ * on before the night ends, when what was on has ended, or when the venue's
+ * zone is unknown (rule 12: no guessed clock). Decided against `now` at
+ * render: the facts are cached, so a start already past counts only while its
+ * end has not passed, and a running date only until its own end.
  */
 export function deckVenueEventChip(facts: DeckVenueFacts, now: Date): DeckVenueEventChip | null {
   if (facts.timezone === null || !isIanaZoneName(facts.timezone)) return null;
-  if (facts.onTodayLive) return "On tonight";
+  if (facts.onTodayLive && isBefore(now, facts.onTodayLiveUntil)) return "On tonight";
   if (facts.onTodayStartsAt === null) return null;
   const startsAt = new Date(facts.onTodayStartsAt);
   if (Number.isNaN(startsAt.getTime())) return null;
   const end = venueNightEnd(now, facts.timezone);
-  // Facts are cached: a start already past still means the event is on now;
-  // a start after tonight's end (cache crossed 05:00) says nothing.
+  // A start after tonight's end (the cache crossed 05:00) says nothing.
   if (end === null || startsAt.getTime() >= end.getTime()) return null;
-  if (startsAt.getTime() <= now.getTime()) return "On tonight";
+  // Started already: on only until that date's own end (unknown end: nothing).
+  if (startsAt.getTime() <= now.getTime()) return isBefore(now, facts.onTodayEndsAt) ? "On tonight" : null;
   const local = zonedParts(startsAt, facts.timezone);
   if (local === null) return null;
   return local.hour >= 17 || local.hour < 5 ? "On tonight" : "On today";
@@ -314,4 +372,23 @@ export function deckVenueChips(
 export function deckBrowsesToday(dateOption: string | null | undefined): boolean {
   if (dateOption === null || dateOption === undefined || dateOption === "") return true;
   return !["this_weekend", "this-weekend", "weekend", "pick_dates", "pick-a-date", "custom"].includes(dateOption);
+}
+
+/**
+ * A shared (collab) deck browses the union of every participant's date window
+ * (`pg_aggregate_collab_prefs.dateWindows`), so it browses only today when
+ * every participant's date option does (spec 06 §5 parity, rule 12). Unknown
+ * session preferences (not loaded yet) claim nothing.
+ */
+export function sessionBrowsesToday(participantPrefs: unknown): boolean {
+  const rows: unknown[] = Array.isArray(participantPrefs)
+    ? participantPrefs
+    : participantPrefs !== null && typeof participantPrefs === "object"
+      ? Object.values(participantPrefs as Record<string, unknown>)
+      : [];
+  if (rows.length === 0) return false;
+  return rows.every((row) => {
+    const option = isRecord(row) ? row.date_option : undefined;
+    return deckBrowsesToday(typeof option === "string" ? option : null);
+  });
 }

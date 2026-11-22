@@ -14,7 +14,7 @@
  * The book button goes through `openVenueOfferCheckout`, the one seam W4's
  * native checkout replaces.
  */
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PublicVenueEntrySlotContext } from "@mingla/brand-rendering/PublicVenueScreen";
 import type { PublicVenueTab } from "@mingla/brand-rendering/publicVenueTabState";
@@ -95,6 +95,9 @@ export function VenueOfferPane({
     [availability.byOffer, context.plans, currency, kind, paneOffers],
   );
   const status = paneStatus(rows, availability.reads);
+  // The hand-off could not open (this build has no buyer web for its backend):
+  // said on the pane, never a silent dead tap.
+  const [handoffFailed, setHandoffFailed] = useState(false);
 
   const book = useCallback(
     (row: VenuePaneRow): void => {
@@ -108,10 +111,11 @@ export function VenueOfferPane({
         isHostedVenue: true,
         mode,
       });
-      openVenueOfferCheckout(
+      const opened = openVenueOfferCheckout(
         { brandSlug, venueSlug, tab: PANE_TAB[kind], offerId: row.id },
         openInMingla,
       );
+      setHandoffFailed(!opened);
     },
     [brandSlug, kind, mode, openInMingla, venueId, venueSlug],
   );
@@ -165,6 +169,11 @@ export function VenueOfferPane({
           </Pressable>
         </View>
       ) : null}
+      {handoffFailed ? (
+        <Text style={[styles.stateLine, { color: palette.secondaryText }]} testID={`venue-pane-${kind}-handoff-error`}>
+          {PANE_COPY.error}
+        </Text>
+      ) : null}
       {rows.map((row) => (
         <View
           key={row.id}
@@ -181,13 +190,20 @@ export function VenueOfferPane({
               </Text>
             ) : null}
             <Text style={[styles.rowPrice, { color: palette.primaryText }]}>{row.price}</Text>
+            {row.todayTag !== null ? (
+              <Text style={[styles.rowTag, { color: palette.secondaryText }]} testID={`venue-pane-tag-${row.id}`}>
+                {row.todayTag === "Sold out today" ? PANE_COPY.soldOutToday : PANE_COPY.closedToday}
+              </Text>
+            ) : null}
           </View>
           <Pressable
             onPress={() => book(row)}
             disabled={row.soldOut || row.checking}
             accessibilityRole="button"
             accessibilityLabel={
-              row.soldOut ? `${row.name}, ${PANE_COPY.soldOut}` : `${row.actionLabel}, ${row.name}, ${row.price}`
+              row.soldOut
+                ? `${row.name}, ${PANE_COPY.soldOut}`
+                : `${row.actionLabel}, ${row.name}, ${row.price}${row.todayTag !== null ? `, ${row.todayTag}` : ""}`
             }
             accessibilityState={{ disabled: row.soldOut || row.checking, busy: row.checking }}
             style={({ pressed }) => [
@@ -240,6 +256,7 @@ const styles = StyleSheet.create({
   rowName: { ...typography.md, fontWeight: fontWeights.semibold },
   rowLine: { ...typography.sm },
   rowPrice: { ...typography.sm, fontWeight: fontWeights.semibold },
+  rowTag: { ...typography.xs, fontWeight: fontWeights.semibold },
   button: {
     minHeight: 44,
     minWidth: 76,

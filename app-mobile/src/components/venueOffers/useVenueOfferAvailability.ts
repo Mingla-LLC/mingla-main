@@ -4,7 +4,8 @@ import type { VenueFeatureOfferView } from "@mingla/brand-rendering/venueFeature
 
 import { getVenueOfferAvailability, VenuePurchaseError } from "../../services/venuePurchaseService";
 import {
-  soldOutFromAvailability,
+  availabilitySummary,
+  type AvailabilitySummary,
   type OfferAvailability,
 } from "./venuePaneModel";
 
@@ -34,10 +35,12 @@ export function useVenueOfferAvailability(
   const results = useQueries({
     queries: offers.map((offer) => ({
       queryKey: venueOfferAvailabilityKeys.offer(offer.id, window.from, window.to),
-      queryFn: async (): Promise<boolean> =>
-        soldOutFromAvailability(
+      // The window's first day is the venue's today (paneAvailabilityWindow).
+      queryFn: async (): Promise<AvailabilitySummary> =>
+        availabilitySummary(
           offer.kind,
           await getVenueOfferAvailability({ offeringId: offer.id, from: window.from, to: window.to }),
+          window.from,
         ),
       staleTime: 60 * 1000,
       retry: 1,
@@ -52,7 +55,7 @@ export function useVenueOfferAvailability(
       if (offer === undefined) return;
       const read: OfferAvailability =
         result.status === "success"
-          ? { state: "ready", soldOut: result.data === true }
+          ? { state: "ready", soldOut: result.data?.soldOut === true, todayTag: result.data?.todayTag ?? null }
           : result.status === "error"
             ? {
                 state: "error",

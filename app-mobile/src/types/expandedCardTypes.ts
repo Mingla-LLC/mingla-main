@@ -300,6 +300,14 @@ export interface ExpandedCardModalProps {
    */
   target: import("./expansion").ExpansionTarget | null;
   onClose: () => void;
+  /**
+   * #4490 W3 fix 1 — the deck host's route hand-off (`leaveDeckTo`). In collab
+   * the deck lives inside CollabDeckSheet's full-screen modal, so a route the
+   * sheet opens (the venue page, its tabs, an event) must close that modal
+   * first or it lands hidden behind it. Surfaces with no deck behind them
+   * (Likes, the calendar) leave it out and push directly.
+   */
+  onExternalRoute?: (path: string) => void;
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;
   onShare: (card: ExpandedCardData) => void;

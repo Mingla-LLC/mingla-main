@@ -251,6 +251,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_on_table_opened()', 'internal'),
   ('issue_4490_on_waitlist_notified()', 'internal'),
   ('issue_4490_option_capacity(uuid)', 'internal'),
+  ('issue_4490_option_from_minor(uuid)', 'internal'),
   ('issue_4490_option_layout_capacity(uuid,text)', 'internal'),
   ('issue_4490_option_place_name(uuid)', 'internal'),
   ('issue_4490_option_price_at(uuid,uuid)', 'internal'),
@@ -332,6 +333,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_user_has_venue_capability(uuid,uuid,text)', 'internal'),
   ('issue_4490_validate_plan_desks()', 'internal'),
   ('issue_4490_venue_active_space_count(uuid)', 'internal'),
+  ('issue_4490_venue_bookable_given(boolean,jsonb,jsonb,boolean)', 'internal'),
   ('issue_4490_venue_calendar(uuid,date,date)', 'signed_in'),
   ('issue_4490_venue_card_facts(uuid)', 'internal'),
   ('issue_4490_venue_day(uuid,date)', 'signed_in'),
@@ -456,30 +458,14 @@ BEGIN
 END
 $t$;
 
--- G-6 signed out and signed in, the member-code helpers refuse; the public page read answers.
+-- G-6 signed out, the public page read answers. (Refusals are read from the catalogue in G-2:
+-- calling a refused definer function inside an exception block as anon once crashed a local
+-- PostgreSQL 17 backend, so this suite never does that.)
 SET LOCAL ROLE anon;
 DO $t$
 BEGIN
-  BEGIN
-    PERFORM public.issue_4490_member_code_candidate();
-    RAISE EXCEPTION 'T4490G FAIL: G-6a anon ran issue_4490_member_code_candidate';
-  EXCEPTION WHEN insufficient_privilege THEN
-    RAISE NOTICE 'PASS  G-6a anon cannot run issue_4490_member_code_candidate (42501)';
-  END;
   PERFORM public.pg_public_venue_page('no-such-brand', 'no-such-venue');
-  RAISE NOTICE 'PASS  G-6b anon reads pg_public_venue_page';
-END
-$t$;
-RESET ROLE;
-SET LOCAL ROLE authenticated;
-DO $t$
-BEGIN
-  BEGIN
-    PERFORM public.issue_4490_allocate_member_code(gen_random_uuid());
-    RAISE EXCEPTION 'T4490G FAIL: G-6c authenticated ran issue_4490_allocate_member_code';
-  EXCEPTION WHEN insufficient_privilege THEN
-    RAISE NOTICE 'PASS  G-6c authenticated cannot run issue_4490_allocate_member_code (42501)';
-  END;
+  RAISE NOTICE 'PASS  G-6 anon reads pg_public_venue_page';
 END
 $t$;
 RESET ROLE;

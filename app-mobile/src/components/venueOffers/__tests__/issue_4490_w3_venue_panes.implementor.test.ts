@@ -267,7 +267,10 @@ describe('#4490 W3 wiring', () => {
     const deck = read('../../SwipeableCards.tsx');
     expect(deck).toMatch(/leadTab === null \? '' : `\?tab=\$\{encodeURIComponent\(leadTab\)\}`/);
     expect(deck).toMatch(/source: 'deck_card'/);
-    expect(deck).toMatch(/currentVenueChips\?\.eventChip && deckBrowsesToday\(userPreferences\?\.date_option\)/);
+    // [TEST-MOD-APPROVED #4490] W3 fix 1 (W3-N11): solo reads the user's own date
+    // option; a shared deck reads the session's dates (pinned in the fix suite W-2).
+    expect(deck).toMatch(/deckBrowsesToday\(userPreferences\?\.date_option\)/);
+    expect(deck).toMatch(/currentVenueChips\?\.eventChip && deckShowsToday/);
     expect(deck).toMatch(/offerTileFor\(currentVenueChips\)/);
   });
   test('G-4 claimed venues read the deck facts RPC rows', () => {

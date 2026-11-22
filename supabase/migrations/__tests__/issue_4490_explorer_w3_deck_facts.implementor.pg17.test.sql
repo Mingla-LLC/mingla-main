@@ -4,9 +4,16 @@
 -- MINGLA-INVARIANT: I-4490-VENUE-BOOKABLE-BY-FEATURE | issue #4490 | a venue is bookable only through a live offer of a switched-on kind (entry, group packages, private hire, by the hour), a live plan with Memberships on, or reservable tables with Table reservations on; rooms alone never count, and a venue offer on a Stay venue counts like any other.
 -- MINGLA-INVARIANT: I-4490-CARD-PRICE-IS-PAGE-PRICE | issue #4490 | a card's "from" price per feature is the smallest live price the venue page itself lists; paused offers and paused plans never price a card.
 --
+-- MINGLA-INVARIANT: I-4490-PLAN-PRICE-WITH-PERIOD | issue #4490 | the card's and the page's plan price is the cheapest plan a guest can join today (an instant plan with room, or any request plan), carried with its own period; a card never prices a plan nobody can join.
+--
 -- F facts read. B bookable. P prices. O on today. E events owner (page payload unchanged). A authority.
+-- N W3 fix round 1: N-3 yearly-only plans, N-4 plan period and joinable, N-5 event end times,
+-- N-7 busy-time prices, N-8 no guessed zone, N-10 one failing venue keeps its row.
 --
 -- FAILS-ON-REVERT: without 20280809454490 every block fails (the functions do not exist).
+-- Fix round 1: the 454490 body before the fix fails N-3a (no yearly plan price), N-4a (the
+-- monthly plan priced a cheaper yearly one), N-5a (no end time), N-7a (base price only),
+-- N-8a (UTC claimed) and N-10a (the whole batch raised).
 \set ON_ERROR_STOP on
 BEGIN;
 INSERT INTO public.feature_flags (flag_key, is_enabled)
@@ -263,7 +270,8 @@ SELECT public.t4490w3_ok(
   'F-7 no contact, owner or address field on any row');
 SELECT public.t4490w3_ok(
   (SELECT bool_and(facts ?& ARRAY['venueId', 'brandSlug', 'brandName', 'venueSlug', 'venueType', 'features', 'isBookable',
-     'priceFrom', 'currencyCode', 'minorUnitExponent', 'onTodayStartsAt', 'onTodayLive']) FROM t4490w3_facts),
+     'priceFrom', 'currencyCode', 'minorUnitExponent', 'onTodayStartsAt', 'onTodayLive',
+     'onTodayEndsAt', 'onTodayLiveUntil', 'plansLive', 'membershipsPeriod']) FROM t4490w3_facts),
   'F-8 every row carries the spec''s card facts');
 SELECT public.t4490w3_as(NULL);
 SELECT public.t4490w3_expect($q$SELECT * FROM public.pg_deck_venue_facts(ARRAY(SELECT gen_random_uuid() FROM generate_series(1, 101)))$q$,
@@ -317,8 +325,9 @@ SELECT public.t4490w3_ok((pg_temp.t4490w3_f(1)->'priceFrom'->>'entry')::bigint =
   (SELECT min((o->>'fromMinor')::bigint) FROM jsonb_array_elements(
      public.pg_public_venue_page('gameland-w3-4490', 'w3entry')->'offers') o WHERE o->>'kind' = 'entry'),
   'P-2 the card''s entry price is the venue page''s own entry price');
-SELECT public.t4490w3_ok((pg_temp.t4490w3_f(1)->'priceFrom'->>'memberships')::bigint = 2500000,
-  'P-3 plans from is the cheapest live monthly plan (the unpublished cheaper plan is ignored)');
+SELECT public.t4490w3_ok((pg_temp.t4490w3_f(1)->'priceFrom'->>'memberships')::bigint = 2500000
+  AND pg_temp.t4490w3_f(1)->>'membershipsPeriod' = 'month',
+  'P-3 plans from is the cheapest live plan a guest can join, with its period (the unpublished cheaper plan is ignored)');
 SELECT public.t4490w3_ok(pg_temp.t4490w3_f(1)->'priceFrom'->'group_packages' = 'null'::jsonb
   AND pg_temp.t4490w3_f(1)->'priceFrom'->'private_hire' = 'null'::jsonb
   AND pg_temp.t4490w3_f(1)->'priceFrom'->'by_the_hour' = 'null'::jsonb,
@@ -388,5 +397,213 @@ SELECT public.t4490w3_reset();
 SELECT public.t4490w3_ok(
   (SELECT p.prosecdef AND p.proconfig @> ARRAY['search_path=""'] FROM pg_proc p WHERE p.oid = 'public.pg_deck_venue_facts(uuid[])'::regprocedure),
   'A-6 the anon read is SECURITY DEFINER with an empty search path');
+
+-- ---------------------------------------------------------------------------
+-- N: W3 fix round 1.
+-- ---------------------------------------------------------------------------
+INSERT INTO public.place_pool (id, name, lat, lng, is_active, is_servable)
+SELECT ('44945000-0000-4000-a000-0000000000' || lpad(n::text, 2, '0'))::uuid, 'W3 place ' || n, 6.45, 3.40, true, true
+FROM generate_series(15, 20) n;
+INSERT INTO public.venue_listings (id, brand_id, slug, name, lat, lng, venue_category, claim_status, country_code, place_pool_id) VALUES
+  ('44945000-0000-4000-9000-0000000000b5', '44945000-0000-4000-9000-000000000010', 'w3yearonly', 'W3 Year Only', 6.45, 3.40, 'coworking', 'verified', 'NG', '44945000-0000-4000-a000-000000000015'),
+  ('44945000-0000-4000-9000-0000000000b6', '44945000-0000-4000-9000-000000000010', 'w3yearcheap', 'W3 Year Cheap', 6.45, 3.40, 'coworking', 'verified', 'NG', '44945000-0000-4000-a000-000000000016'),
+  ('44945000-0000-4000-9000-0000000000b7', '44945000-0000-4000-9000-000000000010', 'w3fullplan', 'W3 Full Plan', 6.45, 3.40, 'coworking', 'verified', 'NG', '44945000-0000-4000-a000-000000000017'),
+  ('44945000-0000-4000-9000-0000000000b8', '44945000-0000-4000-9000-000000000010', 'w3allfull', 'W3 All Full', 6.45, 3.40, 'coworking', 'verified', 'NG', '44945000-0000-4000-a000-000000000018'),
+  ('44945000-0000-4000-9000-0000000000b9', '44945000-0000-4000-9000-000000000010', 'w3busy', 'W3 Busy', 6.45, 3.40, 'play', 'verified', 'NG', '44945000-0000-4000-a000-000000000019'),
+  ('44945000-0000-4000-9000-0000000000ba', '44945000-0000-4000-9000-000000000010', 'w3nozone', 'W3 No Zone', 6.45, 3.40, 'club', 'verified', 'ZZ', '44945000-0000-4000-a000-000000000020');
+
+-- An entry offer with one price option carrying extra option fields (busy rules, weekdays).
+CREATE FUNCTION pg_temp.t4490w3_entry2(p_venue uuid, p_key text, p_price bigint, p_option jsonb)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE
+  v jsonb;
+  v_pool uuid;
+  v_offer uuid;
+BEGIN
+  v := public.issue_4490_manage_capacity_pool('create', p_venue,
+    jsonb_build_object('name', 'Pool ' || p_key, 'dailyLimit', 50, 'keptForWalkIns', 0), NULL, 'w3n-pool-' || p_key);
+  v_pool := (v->>'id')::uuid;
+  v := public.issue_4490_manage_offer('create_draft', p_venue,
+    jsonb_build_object('kind', 'entry', 'name', 'Entry ' || p_key, 'entryStyle', 'walk_in'), NULL, 'w3n-o1-' || p_key);
+  v_offer := (v->>'id')::uuid;
+  v := public.issue_4490_manage_offer('set_pool', p_venue, jsonb_build_object('offerId', v_offer, 'poolId', v_pool),
+    (v->>'version')::bigint, 'w3n-o2-' || p_key);
+  v := public.issue_4490_manage_offer('upsert_price_option', p_venue, jsonb_build_object('offerId', v_offer, 'name', 'Walk-in',
+    'unit', 'guest', 'guestMin', 1, 'guestMax', 20, 'priceMinor', p_price) || p_option, (v->>'version')::bigint, 'w3n-o3-' || p_key);
+  v := public.issue_4490_manage_offer('set_policy', p_venue, jsonb_build_object('offerId', v_offer),
+    (v->>'version')::bigint, 'w3n-o4-' || p_key);
+  v := public.issue_4490_manage_offer('set_schedule', p_venue, jsonb_build_object('offerId', v_offer,
+    'weekdays', jsonb_build_array(0,1,2,3,4,5,6), 'startTime', '09:00', 'endTime', '21:00'),
+    (v->>'version')::bigint, 'w3n-o5-' || p_key);
+  v := public.issue_4490_manage_offer('publish', p_venue, jsonb_build_object('offerId', v_offer),
+    (v->>'version')::bigint, 'w3n-o6-' || p_key);
+  RETURN v_offer;
+END
+$f$;
+CREATE FUNCTION pg_temp.t4490w3_plan(p_venue uuid, p_key text, p_payload jsonb)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE
+  v jsonb;
+BEGIN
+  v := public.issue_4490_manage_membership_plan('create', p_venue,
+    jsonb_build_object('name', 'Plan ' || p_key, 'inclusions', jsonb_build_array('Weekdays')) || p_payload, NULL, 'w3n-plan-' || p_key);
+  v := public.issue_4490_manage_membership_plan('publish', p_venue, jsonb_build_object('planId', (v->>'id')::uuid), 1, 'w3n-pub-' || p_key);
+  RETURN (v->>'id')::uuid;
+END
+$f$;
+-- One just-joined member on a plan (an instant join holds its place while it waits for payment).
+CREATE FUNCTION pg_temp.t4490w3_member(p_plan uuid, p_seed text)
+RETURNS void LANGUAGE sql AS $f$
+  INSERT INTO public.venue_membership_subscriptions (id, plan_id, brand_id, member_name, member_email, member_token_hash,
+    qr_token_hash, status, start_on, terms, actor_key_hash, idempotency_key, request_hash)
+  VALUES (gen_random_uuid(), p_plan, '44945000-0000-4000-9000-000000000010', 'Member ' || p_seed, p_seed || '@example.test',
+    sha256(convert_to('w3n:' || p_seed, 'UTF8')), encode(sha256(convert_to('w3nqr:' || p_seed, 'UTF8')), 'hex'), 'pending',
+    current_date, '{}'::jsonb, encode(sha256(convert_to('w3nactor:' || p_seed, 'UTF8')), 'hex'), 'w3n-member-' || p_seed,
+    encode(sha256(convert_to('w3nreq:' || p_seed, 'UTF8')), 'hex'));
+$f$;
+
+SELECT public.t4490w3_as('44945000-0000-4000-8000-000000000001');
+DO $nfx$
+DECLARE
+  b5 uuid := '44945000-0000-4000-9000-0000000000b5';
+  b6 uuid := '44945000-0000-4000-9000-0000000000b6';
+  b7 uuid := '44945000-0000-4000-9000-0000000000b7';
+  b8 uuid := '44945000-0000-4000-9000-0000000000b8';
+  b9 uuid := '44945000-0000-4000-9000-0000000000b9';
+BEGIN
+  PERFORM public.issue_4490_set_venue_feature(b5, 'memberships', true, NULL, NULL, NULL, 'w3n-b5-m');
+  PERFORM pg_temp.t4490w3_plan(b5, 'b5-year', '{"priceMinor": 20000000, "period": "year"}');
+  PERFORM public.issue_4490_set_venue_feature(b6, 'memberships', true, NULL, NULL, NULL, 'w3n-b6-m');
+  PERFORM pg_temp.t4490w3_plan(b6, 'b6-month', '{"priceMinor": 2500000, "period": "month"}');
+  PERFORM pg_temp.t4490w3_plan(b6, 'b6-year', '{"priceMinor": 1000000, "period": "year"}');
+  PERFORM public.issue_4490_set_venue_feature(b7, 'memberships', true, NULL, NULL, NULL, 'w3n-b7-m');
+  INSERT INTO t4490w3_ids VALUES ('b7_full', pg_temp.t4490w3_plan(b7, 'b7-full', '{"priceMinor": 500000, "maxMembers": 1}'));
+  PERFORM pg_temp.t4490w3_plan(b7, 'b7-request', '{"priceMinor": 3000000, "period": "year", "joinMode": "request"}');
+  PERFORM public.issue_4490_set_venue_feature(b8, 'memberships', true, NULL, NULL, NULL, 'w3n-b8-m');
+  INSERT INTO t4490w3_ids VALUES ('b8_full', pg_temp.t4490w3_plan(b8, 'b8-full', '{"priceMinor": 600000, "maxMembers": 1}'));
+  -- Busy times: a busy price below the base on every day; a second offer whose busy rule
+  -- is on a day the option never sells (it can never apply); a third whose busy price is higher.
+  PERFORM public.issue_4490_set_venue_feature(b9, 'entry', true, NULL, NULL, NULL, 'w3n-b9-e');
+  PERFORM pg_temp.t4490w3_entry2(b9, 'b9-cheap-busy', 400000,
+    '{"busyRules": [{"weekdays": [0,1,2,3,4,5,6], "from": "10:00", "to": "12:00", "amount_minor": 1000}]}');
+  PERFORM pg_temp.t4490w3_entry2(b9, 'b9-never', 300000,
+    '{"weekdays": [1], "busyRules": [{"weekdays": [0], "from": "10:00", "to": "12:00", "amount_minor": 10}]}');
+  PERFORM pg_temp.t4490w3_entry2(b9, 'b9-dear-busy', 350000,
+    '{"busyRules": [{"weekdays": [0,1,2,3,4,5,6], "from": "18:00", "to": "20:00", "amount_minor": 900000}]}');
+  PERFORM public.issue_4490_set_venue_feature('44945000-0000-4000-9000-0000000000ba', 'events_here', true, NULL, NULL, NULL, 'w3n-ba-ev');
+END
+$nfx$;
+SELECT public.t4490w3_reset();
+SELECT pg_temp.t4490w3_member((SELECT v FROM t4490w3_ids WHERE k = 'b7_full'), 'b7-one');
+SELECT pg_temp.t4490w3_member((SELECT v FROM t4490w3_ids WHERE k = 'b8_full'), 'b8-one');
+SELECT pg_temp.t4490w3_event('44945000-0000-4000-9000-0000000000ba', 'w3n-nozone-soon', 'public',
+  now() + interval '5 minutes', now() + interval '1 hour');
+
+CREATE TEMP TABLE t4490w3_facts2 ON COMMIT DROP AS SELECT NULL::uuid AS place_pool_id, NULL::jsonb AS facts WHERE false;
+GRANT ALL ON t4490w3_facts2 TO PUBLIC;
+SELECT public.t4490w3_as(NULL);
+INSERT INTO t4490w3_facts2
+SELECT * FROM public.pg_deck_venue_facts(ARRAY(
+  SELECT ('44945000-0000-4000-a000-0000000000' || lpad(n::text, 2, '0'))::uuid FROM generate_series(1, 20) n));
+SELECT public.t4490w3_reset();
+CREATE FUNCTION pg_temp.t4490w3_g(p_place int) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT facts FROM t4490w3_facts2 WHERE place_pool_id = ('44945000-0000-4000-a000-0000000000' || lpad(p_place::text, 2, '0'))::uuid
+$f$;
+CREATE FUNCTION pg_temp.t4490w3_page(p_venue text) RETURNS jsonb LANGUAGE sql AS $f$
+  SELECT public.pg_public_venue_page('gameland-w3-4490', p_venue)
+$f$;
+
+-- N-3 a venue with only yearly plans prices its card with the yearly plan and its period.
+SELECT public.t4490w3_ok((pg_temp.t4490w3_g(15)->'priceFrom'->>'memberships')::bigint = 20000000
+  AND pg_temp.t4490w3_g(15)->>'membershipsPeriod' = 'year'
+  AND (pg_temp.t4490w3_g(15)->>'plansLive')::boolean AND (pg_temp.t4490w3_g(15)->>'isBookable')::boolean,
+  'N-3a only yearly plans: the card carries the yearly plan with period year');
+SELECT public.t4490w3_ok((pg_temp.t4490w3_page('w3yearonly')->'memberships'->>'fromMinor')::bigint = 20000000
+  AND pg_temp.t4490w3_page('w3yearonly')->'memberships'->>'interval' = 'year',
+  'N-3b the page says the same plan and period');
+
+-- N-4 the cheapest joinable plan leads, with its own period; page and card agree.
+SELECT public.t4490w3_ok((pg_temp.t4490w3_g(16)->'priceFrom'->>'memberships')::bigint = 1000000
+  AND pg_temp.t4490w3_g(16)->>'membershipsPeriod' = 'year',
+  'N-4a a yearly plan cheaper than the monthly one leads the card, as a yearly price');
+SELECT public.t4490w3_ok((pg_temp.t4490w3_page('w3yearcheap')->'memberships'->>'fromMinor')::bigint
+    = (pg_temp.t4490w3_g(16)->'priceFrom'->>'memberships')::bigint
+  AND pg_temp.t4490w3_page('w3yearcheap')->'memberships'->>'interval' = pg_temp.t4490w3_g(16)->>'membershipsPeriod',
+  'N-4b the page''s plan price and period equal the card''s');
+SELECT public.t4490w3_ok((pg_temp.t4490w3_g(17)->'priceFrom'->>'memberships')::bigint = 3000000
+  AND pg_temp.t4490w3_g(17)->>'membershipsPeriod' = 'year'
+  AND (pg_temp.t4490w3_page('w3fullplan')->'memberships'->>'fromMinor')::bigint = 3000000
+  AND (pg_temp.t4490w3_page('w3fullplan')->'memberships'->>'fromJoinable')::boolean,
+  'N-4c a full instant plan is skipped; a request plan counts as joinable (page and card)');
+SELECT public.t4490w3_ok(pg_temp.t4490w3_g(18)->'priceFrom'->'memberships' = 'null'::jsonb
+  AND (pg_temp.t4490w3_g(18)->>'plansLive')::boolean AND (pg_temp.t4490w3_g(18)->>'isBookable')::boolean
+  AND NOT (pg_temp.t4490w3_page('w3allfull')->'memberships'->>'fromJoinable')::boolean,
+  'N-4d every plan full: the card shows plans with no price; the page says nothing is joinable');
+
+-- N-5 end times ride with the facts.
+SELECT public.t4490w3_ok((pg_temp.t4490w3_g(9)->>'onTodayEndsAt')::timestamptz = (SELECT cut FROM t4490w3_cut) + interval '3 hours',
+  'N-5a the next date''s end rides with its start');
+SELECT public.t4490w3_ok((pg_temp.t4490w3_g(11)->>'onTodayLiveUntil')::timestamptz > now()
+  AND (pg_temp.t4490w3_g(11)->>'onTodayLiveUntil')::timestamptz <= now() + interval '1 hour',
+  'N-5b a running event says until when');
+SELECT public.t4490w3_ok(pg_temp.t4490w3_g(9)->'onTodayLiveUntil' = 'null'::jsonb,
+  'N-5c nothing running: no live end');
+
+-- N-7 busy-time prices: the smallest price a guest can pay, on the page and the card.
+SELECT public.t4490w3_ok((pg_temp.t4490w3_g(19)->'priceFrom'->>'entry')::bigint = 1000,
+  'N-7a a cheaper busy-time price is the card''s entry from');
+SELECT public.t4490w3_ok(
+  (SELECT jsonb_object_agg(o->>'name', (o->>'fromMinor')::bigint) FROM jsonb_array_elements(pg_temp.t4490w3_page('w3busy')->'offers') o)
+  = '{"Entry b9-cheap-busy": 1000, "Entry b9-never": 300000, "Entry b9-dear-busy": 350000}'::jsonb,
+  'N-7b the page uses the same rule: cheaper busy price counts, a rule that can never apply does not, a dearer one never raises the from');
+SELECT public.t4490w3_ok((pg_temp.t4490w3_g(19)->'priceFrom'->>'entry')::bigint =
+  (SELECT min((o->>'fromMinor')::bigint) FROM jsonb_array_elements(pg_temp.t4490w3_page('w3busy')->'offers') o WHERE o->>'kind' = 'entry'),
+  'N-7c the card''s entry price is the page''s');
+
+-- N-8 no known zone: no "tonight"; the brand's zone is used when it has one.
+SELECT public.t4490w3_ok(pg_temp.t4490w3_g(20)->'timezone' = 'null'::jsonb
+  AND pg_temp.t4490w3_g(20)->'onTodayStartsAt' = 'null'::jsonb AND NOT (pg_temp.t4490w3_g(20)->>'onTodayLive')::boolean,
+  'N-8a a venue with no zone claims nothing about today');
+UPDATE public.brands SET default_timezone = 'Africa/Lagos' WHERE id = '44945000-0000-4000-9000-000000000010';
+SELECT public.t4490w3_ok(public.issue_4490_venue_card_facts('44945000-0000-4000-9000-0000000000ba')->>'timezone' = 'Africa/Lagos'
+  AND public.issue_4490_venue_card_facts('44945000-0000-4000-9000-0000000000ba')->>'onTodayStartsAt' IS NOT NULL,
+  'N-8b the brand''s default zone is the fallback');
+UPDATE public.brands SET default_timezone = NULL WHERE id = '44945000-0000-4000-9000-000000000010';
+
+-- N-9 one owner for bookable: the card says what issue_4490_venue_is_bookable says.
+SELECT public.t4490w3_ok((SELECT bool_and((f.facts->>'isBookable')::boolean = public.issue_4490_venue_is_bookable((f.facts->>'venueId')::uuid))
+  FROM t4490w3_facts2 f),
+  'N-9 every card''s isBookable equals issue_4490_venue_is_bookable');
+
+-- N-10 one venue whose facts fail keeps its identity row; the rest of the batch is unchanged.
+CREATE OR REPLACE FUNCTION public.issue_4490_venue_upcoming_events(p_venue_id uuid, p_until timestamptz)
+RETURNS TABLE (event_id uuid, event_type text, title text, slug text, space_id uuid, starts_at timestamptz,
+               ends_at timestamptz, live_now boolean, live_until timestamptz)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $f$
+BEGIN
+  IF p_venue_id = '44945000-0000-4000-9000-0000000000a1' THEN
+    RAISE EXCEPTION 'w3 suite: a broken venue';
+  END IF;
+END
+$f$;
+CREATE TEMP TABLE t4490w3_facts3 ON COMMIT DROP AS SELECT NULL::uuid AS place_pool_id, NULL::jsonb AS facts WHERE false;
+GRANT ALL ON t4490w3_facts3 TO PUBLIC;
+SET client_min_messages = error;
+SELECT public.t4490w3_as(NULL);
+INSERT INTO t4490w3_facts3
+SELECT * FROM public.pg_deck_venue_facts(ARRAY(
+  SELECT ('44945000-0000-4000-a000-0000000000' || lpad(n::text, 2, '0'))::uuid FROM generate_series(1, 14) n));
+SELECT public.t4490w3_reset();
+RESET client_min_messages;
+SELECT public.t4490w3_ok((SELECT count(*) FROM t4490w3_facts3) = 10,
+  'N-10a the batch still answers every claimed place');
+SELECT public.t4490w3_ok((SELECT f.facts->>'venueSlug' = 'w3entry' AND f.facts->>'brandSlug' = 'gameland-w3-4490'
+    AND NOT (f.facts->>'isBookable')::boolean AND f.facts->'features' = '[]'::jsonb
+    AND f.facts->'priceFrom'->'entry' = 'null'::jsonb
+  FROM t4490w3_facts3 f WHERE f.place_pool_id = '44945000-0000-4000-a000-000000000001'),
+  'N-10b the failing venue keeps its identity (still claimed) with no chips');
+SELECT public.t4490w3_ok((SELECT (f.facts->>'isBookable')::boolean AND (f.facts->>'tablesReservable')::boolean
+  FROM t4490w3_facts3 f WHERE f.place_pool_id = '44945000-0000-4000-a000-000000000003'),
+  'N-10c a healthy venue in the same batch keeps its facts');
 
 ROLLBACK;

@@ -96,6 +96,9 @@ describe('#4490 deck place sheet main button', () => {
   // [TEST-MOD-APPROVED #4490] Explorer W3: the venue lead opens the venue page
   // IN THE APP (its native tabs); the buyer web `webUrl` path is deleted
   // (rule 8), so this test now pins the in-app path and its absence.
+  // [TEST-MOD-APPROVED #4490] W3 fix 1 (W3-N2): the push now goes through the
+  // deck host's hand-off (leaveSheetTo: the sheet closes, then collab closes the
+  // shared deck before the push), so the source pin names that path.
   test('D-3b W3: a Gameland-like venue gets Buy entry, opening the app venue page on Entry', () => {
     const p = place(['entry', 'events_here'], {
       offers: [{ id: 'o1', kind: 'entry', name: 'Walk-in', fromMinor: 400000, entryStyle: 'walk_in', unit: 'guest', confirmationMode: 'instant' }],
@@ -109,7 +112,7 @@ describe('#4490 deck place sheet main button', () => {
     });
     const modal = fs.readFileSync(path.join(__dirname, '../../ExpandedCardModal.tsx'), 'utf8');
     expect(modal).not.toMatch(/deckCta\.webUrl/);
-    expect(modal).toMatch(/router\.push\(deckCta\.path as never\)/);
+    expect(modal).toMatch(/leaveSheetTo\(deckCta\.path, \{/);
     const cta = fs.readFileSync(path.join(__dirname, '../deckVenueCta.ts'), 'utf8');
     expect(cta).not.toMatch(/host\.usemingla\.com/);
   });

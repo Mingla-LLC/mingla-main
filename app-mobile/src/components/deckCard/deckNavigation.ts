@@ -20,3 +20,17 @@ export function leaveDeckTo(path: string, handlers: LeaveDeckHandlers): void {
   }
   handlers.push(path);
 }
+
+/**
+ * #4490 W3 fix 1 — a route opened from the deck's card sheet: the sheet
+ * closes first, then the route leaves the deck through the same hand-off
+ * (`leaveDeckTo`), so in collab the shared deck's modal closes before the push.
+ */
+export function leaveSheetTo(
+  path: string,
+  handlers: LeaveDeckHandlers & { readonly closeSheet: () => void },
+): void {
+  if (typeof path !== 'string' || path.length === 0) return;
+  handlers.closeSheet();
+  leaveDeckTo(path, handlers);
+}

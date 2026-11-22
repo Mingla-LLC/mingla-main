@@ -10,6 +10,14 @@
  *   D-1       the deck shows the event chip only while browsing today;
  *   P-1/P-2   facts parsing fails closed;
  *   L-1       Plans lead By the hour (decision 13.2); Entry still leads both.
+ *   N-*       W3 fix round 1: plans priced with their own period (N3/N4), a
+ *             cached event that has ended says nothing (N5), free entry (N6),
+ *             the plate tile reads once (N13), a shared deck's dates (N11).
+ *
+ * [TEST-MOD-APPROVED #4490] W3 fix 1: the facts gain plansLive,
+ * membershipsPeriod, onTodayEndsAt and onTodayLiveUntil; the chip gains
+ * tileValue; C-9 now pins what its name says (a priceless plans lead shows the
+ * lead's verb); E-1/E-6/E-7 carry the end times the event chip now needs.
  *
  * FAILS-ON-REVERT: swap the plans/by_the_hour branches in deriveVenuePage back
  * and L-1 fails; drop the stays re-derivation and C-6 fails; drop the 17:00
@@ -18,6 +26,7 @@
 import {
   deckBrowsesToday,
   deckVenueChips,
+  sessionBrowsesToday,
   deckVenueEventChip,
   deckVenueOfferChip,
   parseDeckVenueFacts,
@@ -52,11 +61,15 @@ const facts = (over: Partial<DeckVenueFacts> = {}): DeckVenueFacts => ({
   features: ['entry', 'group_packages', 'events_here'],
   isBookable: true,
   tablesReservable: false,
+  plansLive: false,
   priceFrom: { entry: 400000, group_packages: 1200000, private_hire: null, by_the_hour: null, memberships: null },
+  membershipsPeriod: null,
   currencyCode: 'NGN',
   minorUnitExponent: 2,
   onTodayStartsAt: null,
+  onTodayEndsAt: null,
   onTodayLive: false,
+  onTodayLiveUntil: null,
   ...over,
 });
 // A plain formatter so the test pins the words, not the engine's symbol table.
@@ -65,7 +78,7 @@ const money = (minor: number, code: string, exp: number): string => `${code} ${(
 describe('#4490 W3 deck offer chip', () => {
   test('C-1 entry leads with its server price and opens the Entry tab', () => {
     expect(deckVenueOfferChip(facts(), money)).toEqual({
-      tab: 'entry', tabLabel: 'Entry', label: 'Entry from NGN 4,000', leadKind: 'entry', offerKind: 'entry',
+      tab: 'entry', tabLabel: 'Entry', label: 'Entry from NGN 4,000', tileValue: 'from NGN 4,000', leadKind: 'entry', offerKind: 'entry',
     });
   });
 
@@ -114,10 +127,13 @@ describe('#4490 W3 deck offer chip', () => {
   });
 
   test('C-9 a lead feature with no price is the lead\'s own verb, with no amount', () => {
-    // Plans switched on and bookable, but only a yearly plan: no monthly price.
-    const chip = deckVenueOfferChip(facts({ features: ['memberships'], priceFrom: { entry: null, group_packages: null, private_hire: null, by_the_hour: null, memberships: null } }), money);
-    // No monthly price means no Plans tab in the card's view: no chip rather than a guess.
-    expect(chip).toBeNull();
+    // Plans are live but none can be joined today (every plan full): the server sends no
+    // plan price. The card still leads with Plans, as the page does, with the verb only.
+    const chip = deckVenueOfferChip(facts({ features: ['memberships'], plansLive: true, priceFrom: { entry: null, group_packages: null, private_hire: null, by_the_hour: null, memberships: null } }), money);
+    expect(chip).toMatchObject({ tab: 'plans', label: 'Join', tileValue: 'Join' });
+    expect(chip !== null && /NGN|\d/.test(chip.label)).toBe(false);
+    // No live plans at all: nothing to lead with.
+    expect(deckVenueOfferChip(facts({ features: ['memberships'], plansLive: false, priceFrom: { entry: null, group_packages: null, private_hire: null, by_the_hour: null, memberships: null } }), money)).toBeNull();
     const tables = deckVenueOfferChip(facts({ venueType: 'club', features: ['table_reservations'], tablesReservable: true,
       priceFrom: { entry: null, group_packages: null, private_hire: null, by_the_hour: null, memberships: null } }), money);
     expect(tables?.label).toBe('Book a table');
@@ -131,8 +147,10 @@ describe('#4490 W3 deck offer chip', () => {
 
 describe('#4490 W3 deck event chip', () => {
   // 19:00 Lagos = 18:00Z.
-  test('E-1 live now is "On tonight"', () => {
-    expect(deckVenueEventChip(facts({ onTodayLive: true }), at('2026-11-19T10:00:00Z'))).toBe('On tonight');
+  test('E-1 live now is "On tonight" until that date ends', () => {
+    expect(deckVenueEventChip(facts({ onTodayLive: true, onTodayLiveUntil: '2026-11-19T11:00:00Z' }), at('2026-11-19T10:00:00Z'))).toBe('On tonight');
+    expect(deckVenueEventChip(facts({ onTodayLive: true, onTodayLiveUntil: '2026-11-19T11:00:00Z' }), at('2026-11-19T11:00:00Z'))).toBeNull();
+    expect(deckVenueEventChip(facts({ onTodayLive: true, onTodayLiveUntil: null }), at('2026-11-19T10:00:00Z'))).toBeNull();
   });
   test('E-2 a start at 17:00 local or later is "On tonight"', () => {
     expect(deckVenueEventChip(facts({ onTodayStartsAt: '2026-11-19T16:00:00Z' }), at('2026-11-19T10:00:00Z'))).toBe('On tonight');
@@ -153,16 +171,21 @@ describe('#4490 W3 deck event chip', () => {
     // At 05:00 exactly the next night ends a day later.
     expect(venueNightEnd(at('2026-11-20T04:00:00Z'), LAGOS)?.toISOString()).toBe('2026-11-21T04:00:00.000Z');
   });
-  test('E-6 a cached start that has passed means it is on now', () => {
-    expect(deckVenueEventChip(facts({ onTodayStartsAt: '2026-11-19T12:00:00Z' }), at('2026-11-19T12:30:00Z'))).toBe('On tonight');
+  test('E-6 a cached start that has passed means it is on now, until its own end', () => {
+    expect(deckVenueEventChip(facts({ onTodayStartsAt: '2026-11-19T12:00:00Z', onTodayEndsAt: '2026-11-19T15:00:00Z' }), at('2026-11-19T12:30:00Z'))).toBe('On tonight');
+    // N5: the 10:00 event ended at 13:00; at 20:00 (cache still holding it) it says nothing.
+    expect(deckVenueEventChip(facts({ onTodayStartsAt: '2026-11-19T09:00:00Z', onTodayEndsAt: '2026-11-19T12:00:00Z' }), at('2026-11-19T19:00:00Z'))).toBeNull();
+    // No end known: a start that has passed claims nothing.
+    expect(deckVenueEventChip(facts({ onTodayStartsAt: '2026-11-19T12:00:00Z' }), at('2026-11-19T12:30:00Z'))).toBeNull();
   });
   test('E-7 unknown zone claims nothing (rule 12)', () => {
-    expect(deckVenueEventChip(facts({ timezone: null, onTodayLive: true }), at('2026-11-19T10:00:00Z'))).toBeNull();
-    expect(deckVenueEventChip(facts({ timezone: 'Lagos time', onTodayLive: true }), at('2026-11-19T10:00:00Z'))).toBeNull();
+    const until = '2026-11-19T11:00:00Z';
+    expect(deckVenueEventChip(facts({ timezone: null, onTodayLive: true, onTodayLiveUntil: until }), at('2026-11-19T10:00:00Z'))).toBeNull();
+    expect(deckVenueEventChip(facts({ timezone: 'Lagos time', onTodayLive: true, onTodayLiveUntil: until }), at('2026-11-19T10:00:00Z'))).toBeNull();
   });
   test('E-8 nothing on today is no chip; chips combine', () => {
     expect(deckVenueChips(facts(), at('2026-11-19T10:00:00Z'), money)).toEqual({
-      offerChip: { tab: 'entry', tabLabel: 'Entry', label: 'Entry from NGN 4,000', leadKind: 'entry', offerKind: 'entry' },
+      offerChip: { tab: 'entry', tabLabel: 'Entry', label: 'Entry from NGN 4,000', tileValue: 'from NGN 4,000', leadKind: 'entry', offerKind: 'entry' },
       eventChip: null,
     });
   });
@@ -191,12 +214,20 @@ describe('#4490 W3 facts parsing', () => {
       venueType: 'coworking', timezone: LAGOS, features: ['entry', 'teleport', 'memberships'], isBookable: true,
       tablesReservable: false, priceFrom: { entry: 600000, memberships: 8500000, by_the_hour: -1, private_hire: '5' },
       currencyCode: 'ngn', minorUnitExponent: 2, onTodayStartsAt: 'not a date', onTodayLive: false,
+      plansLive: true, membershipsPeriod: 'year', onTodayEndsAt: '2026-11-19T12:00:00Z', onTodayLiveUntil: 7,
     });
     expect(parsed).toMatchObject({
       features: ['entry', 'memberships'],
       priceFrom: { entry: 600000, memberships: 8500000, by_the_hour: null, private_hire: null, group_packages: null },
       currencyCode: 'NGN',
       onTodayStartsAt: null,
+      plansLive: true,
+      membershipsPeriod: 'year',
+      onTodayEndsAt: '2026-11-19T12:00:00Z',
+      onTodayLiveUntil: null,
+    });
+    expect(parseDeckVenueFacts({ venueId: 'v', venueSlug: 'v', brandSlug: 'b', membershipsPeriod: 'week' })).toMatchObject({
+      membershipsPeriod: null, plansLive: false,
     });
   });
   test('P-2 a row without slugs is not a card', () => {
@@ -229,5 +260,52 @@ describe('#4490 W3 lead order (decision 13.2)', () => {
     expect(deriveVenuePage(view(['entry', 'by_the_hour', 'memberships'], {
       offers: [entry, hourOffer], memberships: { fromMinor: 2500000, interval: 'month' },
     }), { menuTabVisible: false, tablesGate: 'blocked' }).lead?.kind).toBe('entry');
+  });
+});
+
+describe('#4490 W3 fix 1', () => {
+  const none = { entry: null, group_packages: null, private_hire: null, by_the_hour: null, memberships: null };
+  test('N-3 a yearly-only plan is priced with its period on the chip and the tile', () => {
+    const chip = deckVenueOfferChip(facts({ features: ['memberships'], plansLive: true,
+      priceFrom: { ...none, memberships: 20000000 }, membershipsPeriod: 'year' }), money);
+    expect(chip).toMatchObject({ tab: 'plans', label: 'Plans from NGN 200,000 a year', tileValue: 'from NGN 200,000 a year' });
+  });
+  test('N-4 the card and the page read one plan headline with one period', () => {
+    const page = parsePublicVenueFeatures({ features: ['memberships'], spaces: [], currencyCode: 'NGN', minorUnitExponent: 2, offers: [],
+      memberships: { fromMinor: 1000000, interval: 'year', plans: [] } });
+    if (page === null) throw new Error('fixture');
+    const derived = deriveVenuePage(page, { menuTabVisible: false, tablesGate: 'blocked' });
+    const card = deckVenueOfferChip(facts({ features: ['memberships'], plansLive: true,
+      priceFrom: { ...none, memberships: 1000000 }, membershipsPeriod: 'year' }));
+    expect(derived.lead?.row?.value).toBe(card?.label);
+    expect(derived.ways.find((w) => w.tab === 'plans')?.price).toBe(card?.tileValue);
+  });
+  test('N-6 free entry: "Free entry" on the card and the page, "Free" in the tile', () => {
+    const chip = deckVenueOfferChip(facts({ features: ['entry'], priceFrom: { ...none, entry: 0 } }), money);
+    expect(chip).toMatchObject({ label: 'Free entry', tileValue: 'Free' });
+    const page = parsePublicVenueFeatures({ features: ['entry'], spaces: [], currencyCode: 'NGN', minorUnitExponent: 2,
+      offers: [{ id: 'e1', kind: 'entry', name: 'Open night', fromMinor: 0, entryStyle: 'walk_in', unit: 'guest', confirmationMode: 'instant' }] });
+    if (page === null) throw new Error('fixture');
+    const derived = deriveVenuePage(page, { menuTabVisible: false, tablesGate: 'blocked' });
+    expect(derived.lead?.row?.value).toBe('Free entry');
+    expect(derived.ways.find((w) => w.tab === 'entry')?.price).toBe('Free entry');
+  });
+  test('N-13 the plate tile reads once: the tab name over the price part only', () => {
+    expect(deckVenueOfferChip(facts(), money)).toMatchObject({ tabLabel: 'Entry', tileValue: 'from NGN 4,000' });
+    expect(deckVenueOfferChip(facts({ features: ['private_hire'], priceFrom: { ...none, private_hire: 60000000 } }), money))
+      .toMatchObject({ tabLabel: 'Private hire', tileValue: 'from NGN 600,000' });
+    expect(deckVenueOfferChip(facts({ features: ['by_the_hour'], priceFrom: { ...none, by_the_hour: 500000 } }), money))
+      .toMatchObject({ tabLabel: 'By the hour', tileValue: 'from NGN 5,000' });
+    const tables = deckVenueOfferChip(facts({ venueType: 'club', features: ['table_reservations'], tablesReservable: true, priceFrom: none }), money);
+    expect(tables).toMatchObject({ tabLabel: 'Reservations', tileValue: 'Book a table' });
+  });
+  test('N-11 a shared deck shows "On tonight" only when every participant browses today', () => {
+    expect(sessionBrowsesToday({ u1: { date_option: 'today' }, u2: { date_option: null } })).toBe(true);
+    expect(sessionBrowsesToday({ u1: { date_option: 'today' }, u2: { date_option: 'this_weekend' } })).toBe(false);
+    expect(sessionBrowsesToday([{ user_id: 'u1', date_option: 'pick_dates' }])).toBe(false);
+    expect(sessionBrowsesToday([{ user_id: 'u1', date_option: 'today' }])).toBe(true);
+    // Not loaded yet: claim nothing.
+    expect(sessionBrowsesToday(null)).toBe(false);
+    expect(sessionBrowsesToday({})).toBe(false);
   });
 });

@@ -103,7 +103,7 @@ import { useDeckTextScale, useMinuteClock, usePhotoTapHint, useTopCardPhotoPrelo
 import { useClaimedVenues, type ClaimedVenue } from "../hooks/useClaimedVenues";
 // #4490 Explorer W3 — the card's offer and event chips, worded from the
 // venue's server facts (deep specifier: never the package barrel).
-import { deckBrowsesToday, deckVenueChips, type DeckVenueChips } from "@mingla/brand-rendering/deckVenueChip";
+import { deckBrowsesToday, deckVenueChips, sessionBrowsesToday, type DeckVenueChips } from "@mingla/brand-rendering/deckVenueChip";
 import { venueMoneyText } from "./venueOffers/venueMoneyText";
 import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
 import { leaveDeckTo } from "./deckCard/deckNavigation";
@@ -387,9 +387,9 @@ function claimedVenueChipsFor(venue: ClaimedVenue | null | undefined, now: Date)
   return venue ? deckVenueChips(venue.facts, now, venueMoneyText) : null;
 }
 
-/** The plate's offer tile: the lead tab's name over the chip ("Entry" / "Entry from ₦4,000"). */
+/** The plate's offer tile: the lead tab's name over its price, read once ("Entry" / "from ₦4,000"). */
 function offerTileFor(chips: DeckVenueChips | null): { label: string; value: string } | null {
-  return chips?.offerChip ? { label: chips.offerChip.tabLabel, value: chips.offerChip.label } : null;
+  return chips?.offerChip ? { label: chips.offerChip.tabLabel, value: chips.offerChip.tileValue } : null;
 }
 
 /** The pager's photos for any deck card (place, curated plan, host experience). */
@@ -3498,11 +3498,12 @@ export default function SwipeableCards({
       : null;
   // #4490 Explorer W3 — one chip per card, in order: closed at arrival, then
   // the claimed venue's event chip ("On tonight" / "On today", only while the
-  // deck browses today: rule 12), then nothing.
-  const currentEventChip =
-    currentVenueChips?.eventChip && deckBrowsesToday(userPreferences?.date_option)
-      ? currentVenueChips.eventChip
-      : null;
+  // deck browses today: rule 12), then nothing. A shared deck browses the
+  // session's dates (every participant's), not this user's own (§5 parity).
+  const deckShowsToday = isBoardSession
+    ? sessionBrowsesToday(allParticipantPrefs)
+    : deckBrowsesToday(userPreferences?.date_option);
+  const currentEventChip = currentVenueChips?.eventChip && deckShowsToday ? currentVenueChips.eventChip : null;
   const currentSmartChip = currentSmartChipModel
     ? {
         tone: currentSmartChipModel.tone,
@@ -3737,6 +3738,10 @@ export default function SwipeableCards({
               // #4347 round 3 — a single place behind the top card shows the same
               // place plate it will have once promoted. Host experiences keep
               // their plate (Seth: leave them as they are).
+              // #4490 W3: the lead offer tile of a claimed venue behind the top card.
+              const nextOfferTile = offerTileFor(
+                claimedVenueChipsFor(nextCard.placePoolId ? claimedVenues.get(nextCard.placePoolId) : null, deckNow),
+              );
               const nextPlanPlate =
                 nextCard.cardType === 'curated'
                   ? curatedPlanPlate(nextCard as unknown as CuratedExperienceCard, {
@@ -3745,19 +3750,7 @@ export default function SwipeableCards({
                       photos: [],
                     })
                   : !nextCard.cardType
-                    ? placePlateForCard(
-                        nextCard,
-                        accountPreferences?.measurementSystem,
-                        deckNow,
-                        deckFactLabels,
-                        placeTileLabels,
-                        offerTileFor(
-                          claimedVenueChipsFor(
-                            nextCard.placePoolId ? claimedVenues.get(nextCard.placePoolId) : null,
-                            deckNow,
-                          ),
-                        ),
-                      )
+                    ? placePlateForCard(nextCard, accountPreferences?.measurementSystem, deckNow, deckFactLabels, placeTileLabels, nextOfferTile)
                     : null;
               const nextPresentation = nextPlanPlate
                 ? { ...planPlatePresentation(nextPlanPlate), metaLines: 1 }
@@ -4237,6 +4230,9 @@ export default function SwipeableCards({
             : null
         }
         onClose={handleCloseExpandedModal}
+        // #4490 W3 fix 1 — the sheet's venue routes leave the deck through the
+        // deck host's hand-off (collab: close the shared deck, then push).
+        onExternalRoute={onExternalRoute}
         isSaved={
           selectedCardForExpansion
             ? savedCards.some(

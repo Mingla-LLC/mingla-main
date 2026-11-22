@@ -203,6 +203,20 @@ export interface PublicVenueFeaturesView {
   spaces: VenueFeatureSpaceView[];
 }
 
+/**
+ * #4490 W3 fix 1 — the plans headline with its own period: "a month" or
+ * "a year" (the server's `memberships.interval` travels with `fromMinor`).
+ */
+export function venuePlanPeriodWords(interval: "month" | "year"): string {
+  return interval === "year" ? "a year" : "a month";
+}
+
+/** #4490 W3 fix 1 — free entry reads "Free entry" (§6), never "from ₦0". */
+export function venueEntryFromWords(minor: number, money: (minor: number) => string, lead: boolean): string {
+  if (minor === 0) return "Free entry";
+  return lead ? `Entry from ${money(minor)}` : `from ${money(minor)}`;
+}
+
 // ── parsing: wire → read model, fail closed ────────────────────────────────
 
 /** #4490 P6 — a plan row; a row without an id, name or price is dropped. */
@@ -1050,14 +1064,14 @@ export function deriveVenuePage(
       clauses.push(`from ${money(minFrom(hourOffers) as number)} an hour`);
     }
     if (tabSet.has("plans") && view.memberships !== null) {
-      clauses.push(`plans from ${money(view.memberships.fromMinor)} a month`);
+      clauses.push(`plans from ${money(view.memberships.fromMinor)} ${venuePlanPeriodWords(view.memberships.interval)}`);
     }
     lead = {
       kind: "entry",
       tab: "entry",
       ctaLabel: verb,
       row: {
-        value: `Entry from ${money(minFrom(entryOffers) as number)}`,
+        value: venueEntryFromWords(minFrom(entryOffers) as number, money, true),
         detail:
           clauses.length === 0
             ? null
@@ -1097,7 +1111,7 @@ export function deriveVenuePage(
       tab: "plans",
       ctaLabel: "Join",
       row: {
-        value: `Plans from ${money(view.memberships.fromMinor)} a month`,
+        value: `Plans from ${money(view.memberships.fromMinor)} ${venuePlanPeriodWords(view.memberships.interval)}`,
         detail: null,
         actionLabel: "Join",
         icon: "price",
@@ -1166,7 +1180,7 @@ export function deriveVenuePage(
           tab,
           title: "Entry",
           line: first?.summary ?? null,
-          price: `from ${money(minFrom(entryOffers) as number)}`,
+          price: venueEntryFromWords(minFrom(entryOffers) as number, money, false),
         });
         break;
       }
@@ -1215,7 +1229,7 @@ export function deriveVenuePage(
           price:
             view.memberships === null
               ? null
-              : `from ${money(view.memberships.fromMinor)} a month`,
+              : `from ${money(view.memberships.fromMinor)} ${venuePlanPeriodWords(view.memberships.interval)}`,
         });
         break;
       case "reservations":
