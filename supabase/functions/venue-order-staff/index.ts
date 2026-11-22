@@ -247,7 +247,14 @@ async function padGuard(
     return "not_authorized";
   }
   const verdict = String(data ?? "");
-  return (["ok", "not_found", "not_authorized", "session_closed", "till_round", "till_on"]
+  return ([
+      "ok",
+      "not_found",
+      "not_authorized",
+      "session_closed",
+      "till_round",
+      "till_on",
+    ]
       .includes(verdict)
     ? verdict
     : "not_authorized") as PadGuardVerdict;
