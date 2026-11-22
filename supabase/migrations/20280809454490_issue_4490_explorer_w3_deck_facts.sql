@@ -2,13 +2,18 @@
 -- Spec 06 §3 W3 (the spec's number 20280809384490 is taken; this is the next
 -- free number in the #4490 series after 20280809444490). W3 fix round 1 edits
 -- this (unpushed, local-only) file in place.
--- 0. The venue page's own "from" prices (one owner for page and card):
---    issue_4490_option_from_minor(option) is the smallest amount a guest can
---    pay for one active price option (its current price, or a busy-time price
---    that can apply on the option's days and hours, lower or higher);
+-- 0. The venue page's own "from" prices (one owner for page, card and the
+--    Host Offers list). W3 fix 2: issue_4490_offer_from(offer) is the smallest
+--    price checkout really charges for some bookable slot (the quote's own
+--    resolver, issue_4490_option_price_at, now runs on lifted pure helpers
+--    that the set read issue_4490_offer_slot_prices shares), with one unit;
+--    issue_4490_option_price_at, issue_4490_option_window_reason and
+--    issue_4490_window_cutoff are re-emitted from 20280809084490 onto those
+--    helpers (same answers), and issue_4490_day_closed as plpgsql (same
+--    answer, planned once per session);
 --    issue_4490_public_offers is re-emitted from its latest body
---    (20280809144490_issue_4490_p3_packages_deposits.sql) with fromMinor read
---    from it and the brand's collect-online answer worked out once per call;
+--    (20280809144490_issue_4490_p3_packages_deposits.sql) with fromMinor and
+--    unit read from it and the brand's collect-online answer worked out once per call;
 --    issue_4490_public_memberships is re-emitted from its latest body (204490
 --    plus the 374490 and 384490 checked patches) so its headline price is the
 --    cheapest plan a guest can join today (an instant plan with room, or any
@@ -44,54 +49,396 @@ BEGIN;
 SET LOCAL lock_timeout = '5s';
 
 -- ---------------------------------------------------------------------------
--- 0. The page's own "from" prices (one owner for the venue page and the card).
+-- 0. The page's own "from" prices (one owner for the venue page, the card
+--    and the Host Offers list), from the SAME price resolution checkout uses.
 -- ---------------------------------------------------------------------------
--- The smallest amount a guest can pay for one active price option: its current
--- price, or a busy-time price (lower or higher) whose days meet the option's
--- days and whose hours meet the option's hours. Busy-time prices apply by the
--- window's start (issue_4490_option_price_at), so a rule that can never meet the
--- option never prices it. NULL for an archived option or one with no current
--- price.
-CREATE OR REPLACE FUNCTION public.issue_4490_option_from_minor(p_option_id uuid)
+-- W3 fix round 2 (W3-N14): checkout prices an option for one slot with
+-- issue_4490_option_price_at (the first busy rule, by order, whose weekday and
+-- [from, to) hold the slot's LOCAL START, else the current price), after
+-- issue_4490_option_window_reason (the option's days and hours) and the
+-- window's cut-off (issue_4490_window_cutoff). Their bodies are lifted into
+-- three pure helpers below, and those three functions now call them, so the
+-- "from" read and checkout run one body each and cannot disagree.
+
+-- The price an option charges for a slot that starts at p_local_start (venue
+-- time): the first busy rule (array order) whose weekday matches and whose
+-- [from, to) holds the start, else the current price.
+CREATE OR REPLACE FUNCTION public.issue_4490_busy_price(
+  p_busy_rules jsonb,
+  p_amount_minor bigint,
+  p_local_start timestamp
+)
+RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $function$
+  SELECT COALESCE((
+    SELECT (b.rule->>'amount_minor')::bigint
+    FROM jsonb_array_elements(COALESCE(p_busy_rules, '[]'::jsonb)) WITH ORDINALITY AS b(rule, ord)
+    WHERE (extract(isodow FROM p_local_start)::integer - 1) IN (
+            SELECT d::integer FROM jsonb_array_elements_text(b.rule->'weekdays') d)
+      AND p_local_start::time >= (b.rule->>'from')::time
+      AND p_local_start::time < (b.rule->>'to')::time
+    ORDER BY b.ord
+    LIMIT 1
+  ), p_amount_minor);
+$function$;
+
+-- Why an option cannot be bought for a slot on p_local_date starting at
+-- p_local_start (NULL = it can): archived, not on that weekday, or outside the
+-- option's own hours.
+CREATE OR REPLACE FUNCTION public.issue_4490_option_slot_reason(
+  p_status text,
+  p_weekdays smallint[],
+  p_local_start_time time,
+  p_local_end_time time,
+  p_local_date date,
+  p_local_start timestamp
+)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $function$
+  SELECT CASE
+    WHEN p_status IS DISTINCT FROM 'active' THEN 'option_unavailable'
+    WHEN NOT ((extract(isodow FROM p_local_date)::integer - 1)::smallint = ANY(p_weekdays)) THEN 'wrong_weekday'
+    WHEN p_local_start_time IS NOT NULL AND NOT (
+      p_local_start::time >= p_local_start_time
+      AND p_local_start::time < p_local_end_time
+    ) THEN 'wrong_time'
+    ELSE NULL
+  END;
+$function$;
+
+-- The last moment a slot can be bought online: the start for timed sessions
+-- and every non-entry kind, the end for walk-in / day pass; minus the notice.
+CREATE OR REPLACE FUNCTION public.issue_4490_slot_cutoff(
+  p_kind text,
+  p_entry_style text,
+  p_starts_at timestamptz,
+  p_ends_at timestamptz,
+  p_min_notice_minutes integer
+)
+RETURNS timestamptz
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $function$
+  SELECT CASE WHEN p_entry_style = 'timed_session' OR p_kind <> 'entry' THEN p_starts_at ELSE p_ends_at END
+         - make_interval(mins => p_min_notice_minutes);
+$function$;
+
+-- Re-emitted from 20280809084490 (the only body): the same answer, now from
+-- the lifted helpers.
+CREATE OR REPLACE FUNCTION public.issue_4490_option_price_at(
+  p_option_id uuid,
+  p_window_id uuid
+)
 RETURNS bigint
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $function$
-  SELECT LEAST(price.amount_minor, (
-    SELECT min((rule->>'amount_minor')::bigint)
-    FROM jsonb_array_elements(opt.busy_rules) rule
-    WHERE (rule->>'from')::time < (rule->>'to')::time
-      AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(rule->'weekdays') d
-                  WHERE d::smallint = ANY(opt.weekdays))
-      AND (opt.local_start_time IS NULL
-           OR opt.local_start_time >= opt.local_end_time
-           OR ((rule->>'from')::time < opt.local_end_time AND opt.local_start_time < (rule->>'to')::time))
-  ))
+  SELECT public.issue_4490_busy_price(opt.busy_rules, price.amount_minor, w.starts_at AT TIME ZONE r.timezone)
   FROM public.venue_offer_price_options opt
-  JOIN public.stay_price_versions price ON price.price_option_id = opt.id AND price.effective_to IS NULL
-  WHERE opt.id = p_option_id AND opt.status = 'active';
+  JOIN public.stay_price_versions price
+    ON price.price_option_id = opt.id AND price.effective_to IS NULL
+  JOIN public.stay_place_windows w ON w.id = p_window_id AND w.offering_id = opt.offering_id
+  JOIN public.stay_place_schedule_rules r ON r.id = w.schedule_rule_id
+  WHERE opt.id = p_option_id;
 $function$;
-REVOKE ALL ON FUNCTION public.issue_4490_option_from_minor(uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_4490_option_from_minor(uuid) TO service_role;
 
--- Live offers of publicly enabled kinds (latest body 20280809144490); fromMinor
--- now reads issue_4490_option_from_minor, and the brand's collect-online answer
--- is worked out once per call instead of once per offer.
-CREATE OR REPLACE FUNCTION public.issue_4490_public_offers(p_venue_id uuid, p_features text[])
-RETURNS jsonb
+CREATE OR REPLACE FUNCTION public.issue_4490_option_window_reason(p_option_id uuid, p_window_id uuid)
+RETURNS text
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $function$
-  SELECT CASE WHEN NOT public.issue_4490_flag_on('VENUE_OFFERS_READS') THEN '[]'::jsonb ELSE COALESCE((
+  SELECT public.issue_4490_option_slot_reason(opt.status, opt.weekdays, opt.local_start_time, opt.local_end_time,
+                                              w.local_date, w.starts_at AT TIME ZONE r.timezone)
+  FROM public.stay_place_windows w
+  JOIN public.stay_place_schedule_rules r ON r.id = w.schedule_rule_id
+  LEFT JOIN public.venue_offer_price_options opt ON opt.id = p_option_id AND opt.offering_id = w.offering_id
+  WHERE w.id = p_window_id;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.issue_4490_window_cutoff(p_offering_id uuid, p_window_id uuid)
+RETURNS timestamptz
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT public.issue_4490_slot_cutoff(o.kind, o.entry_style, w.starts_at, w.ends_at, o.min_notice_minutes)
+  FROM public.stay_offerings o
+  JOIN public.stay_place_windows w ON w.offering_id = o.id
+  WHERE o.id = p_offering_id AND w.id = p_window_id;
+$function$;
+
+-- Whether an offer's day can sell at all: not a closed special day, not a
+-- weekday whose hours are all closed (issue_4490_day_closed), and not a day
+-- closed on the offer's capacity pool (as issue_4490_pool_day_usage reads it).
+-- Re-emitted from 20280809084490 (its only body) as plpgsql, same answer: an
+-- SQL body is planned again on every call from another function (W3 fix 2
+-- measured ~66 us a call against ~10 us); every availability and "from" read
+-- asks it once per day.
+CREATE OR REPLACE FUNCTION public.issue_4490_day_closed(p_venue_id uuid, p_local_date date)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  RETURN (SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM public.venue_special_hours s
+      WHERE s.venue_id = p_venue_id AND s.local_date = p_local_date AND s.is_closed
+    ) THEN true
+    WHEN EXISTS (
+      SELECT 1 FROM public.venue_special_hours s
+      WHERE s.venue_id = p_venue_id AND s.local_date = p_local_date AND NOT s.is_closed
+    ) THEN false
+    WHEN NOT EXISTS (SELECT 1 FROM public.brand_hours h WHERE h.venue_id = p_venue_id) THEN false
+    ELSE NOT EXISTS (
+      SELECT 1 FROM public.brand_hours h
+      WHERE h.venue_id = p_venue_id
+        AND h.weekday = (extract(isodow FROM p_local_date)::integer - 1)
+        AND NOT COALESCE(h.is_closed, false)
+    )
+  END);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.issue_4490_offer_day_open(p_venue_id uuid, p_pool_id uuid, p_local_date date)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  RETURN NOT public.issue_4490_day_closed(p_venue_id, p_local_date)
+     AND NOT EXISTS (SELECT 1 FROM public.venue_capacity_overrides ov
+                     WHERE ov.pool_id = p_pool_id AND ov.local_date = p_local_date AND ov.closed);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4490_offer_day_open(uuid, uuid, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_offer_day_open(uuid, uuid, date) TO service_role;
+
+-- The slots a guest could book for an offer, each with the price checkout
+-- would charge each active option there. A slot is a window that sells (not
+-- stopped, not a booking block) on an open day (no closed special day, no
+-- closed weekly hours, no closed day on its pool) inside the booking horizon
+-- (and inside p_days venue days when given), whose cut-off has not passed; a
+-- flexible day ("Hours you set", by the hour) offers every start on its length
+-- step from opening that fits the shortest booking, as the flexible window
+-- checkout creates. An option prices a slot only when it can be bought there
+-- (issue_4490_option_slot_reason) with a current price in the brand's currency.
+-- Capacity is not read: "from" is what the venue charges, not who is left.
+-- p_open_days_only false skips the open-day test (issue_4490_offer_day_open)
+-- for a caller that asks it lazily, cheapest slot first.
+CREATE OR REPLACE FUNCTION public.issue_4490_offer_slot_prices(
+  p_offering_id uuid,
+  p_days integer,
+  p_open_days_only boolean DEFAULT true
+)
+RETURNS TABLE (price_option_id uuid, unit text, local_date date, starts_at timestamptz, price_minor bigint)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  -- plpgsql so the plan is prepared once per session (an SQL body is planned
+  -- again on every call from another function).
+  RETURN QUERY
+  WITH o AS (
+    SELECT o.id, o.kind, o.entry_style, o.venue_id, o.capacity_pool_id, o.min_notice_minutes,
+           COALESCE(o.booking_length_step_minutes, 60) AS step,
+           GREATEST(COALESCE(o.booking_length_min_minutes, 60), COALESCE(o.booking_length_step_minutes, 60)) AS min_len,
+           upper(COALESCE(NULLIF(btrim(b.default_currency), ''), 'NGN')) AS currency,
+           (now() AT TIME ZONE COALESCE(s.timezone, 'UTC'))::date AS today,
+           LEAST(COALESCE(s.booking_horizon_days, 365), COALESCE(o.max_advance_days, 730),
+                 COALESCE(p_days, 100000)) AS span
+    FROM public.stay_offerings o
+    JOIN public.brands b ON b.id = o.brand_id
+    LEFT JOIN public.venue_booking_settings s ON s.venue_id = o.venue_id
+    WHERE o.id = p_offering_id
+  ),
+  slots AS MATERIALIZED (
+    -- Windows that sell, on open days (closed special day, closed weekly
+    -- hours, or a closed day on the offer's pool never sell), in range.
+    SELECT o.id AS offering_id, w.local_date, x.starts_at, r.timezone
+    FROM o
+    JOIN public.stay_place_windows w
+      ON w.offering_id = p_offering_id AND NOT w.stop_sell AND NOT w.booked_block
+     AND w.starts_at >= now() - interval '2 days'
+     AND w.starts_at < now() + make_interval(days => o.span + 2)
+     AND w.local_date BETWEEN o.today - 1 AND o.today + o.span
+    JOIN public.stay_place_schedule_rules r ON r.id = w.schedule_rule_id
+    CROSS JOIN LATERAL (
+      -- A fixed window is one slot; a flexible day offers every start on its
+      -- length step from opening that fits the shortest booking.
+      SELECT w.starts_at, w.ends_at WHERE r.mode IS DISTINCT FROM 'flexible'
+      UNION ALL
+      SELECT g, g + make_interval(mins => o.min_len)
+      FROM generate_series(w.starts_at, w.ends_at - make_interval(mins => o.min_len), make_interval(mins => o.step)) g
+      WHERE r.mode = 'flexible' AND r.active
+    ) x
+    WHERE (NOT p_open_days_only OR public.issue_4490_offer_day_open(o.venue_id, o.capacity_pool_id, w.local_date))
+      -- (A slot that starts after now plus the notice is before its cut-off by
+      -- the cut-off's own definition, so the helper is asked only near now.)
+      AND (x.starts_at - make_interval(mins => o.min_notice_minutes) > now()
+           OR (now() >= public.issue_4490_slot_cutoff(o.kind, o.entry_style, x.starts_at, x.ends_at,
+                                                     o.min_notice_minutes)) IS NOT TRUE)
+  )
+  -- (An option with no busy rules charges its current price everywhere, and
+  -- one sold every weekday at any hour fits every slot: the helpers' own
+  -- answers, so they are asked only for options with rules or limits.)
+  SELECT opt.id, opt.unit, s.local_date, s.starts_at,
+         CASE WHEN opt.busy_rules = '[]'::jsonb THEN price.amount_minor
+              ELSE public.issue_4490_busy_price(opt.busy_rules, price.amount_minor, s.starts_at AT TIME ZONE s.timezone) END
+  FROM slots s
+  JOIN public.venue_offer_price_options opt ON opt.offering_id = p_offering_id AND opt.status = 'active'
+  JOIN public.stay_price_versions price
+    ON price.price_option_id = opt.id AND price.offering_id = p_offering_id AND price.effective_to IS NULL
+   AND price.currency_code = (SELECT o.currency FROM o)
+  WHERE (opt.local_start_time IS NULL AND opt.weekdays @> '{0,1,2,3,4,5,6}'::smallint[])
+     OR public.issue_4490_option_slot_reason(opt.status, opt.weekdays, opt.local_start_time, opt.local_end_time,
+                                             s.local_date, s.starts_at AT TIME ZONE s.timezone) IS NULL;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4490_offer_slot_prices(uuid, integer, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_offer_slot_prices(uuid, integer, boolean) TO service_role;
+
+-- An offer's "from" ({fromMinor, unit}): the smallest price checkout charges
+-- for some slot in the next 14 venue days (one week's pattern twice, so every
+-- weekday and every busy rule is met even when one week has a closed day;
+-- the same 14 days the card's "Sold out" reads), else in the whole booking
+-- horizon, else (no slot at all: nothing can be bought) the current price.
+-- Options with an ID check count (spec: Gameland's card says "Entry from
+-- ₦4,000", the Student & NYSC price). Units are never mixed (W3-N17): when the
+-- offer has a per-guest price, "from" is the cheapest per-guest price, unit
+-- 'guest'; otherwise the cheapest price with its own unit (ties: sort order).
+CREATE OR REPLACE FUNCTION public.issue_4490_offer_from(p_offering_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_offer public.stay_offerings%ROWTYPE;
+  r record;
+  v_pass integer;
+  v_closed date[] := '{}';
+BEGIN
+  SELECT * INTO v_offer FROM public.stay_offerings WHERE id = p_offering_id;
+  IF NOT FOUND THEN
+    RETURN NULL;
+  END IF;
+  -- Cheapest slot first (per-guest prices first): the first slot on an open
+  -- day is the answer, so the open-day test runs for one day in the usual case.
+  FOR v_pass IN 1..2 LOOP
+    FOR r IN
+      SELECT s.unit, s.price_minor, s.local_date
+      FROM public.issue_4490_offer_slot_prices(p_offering_id, CASE WHEN v_pass = 1 THEN 14 END, false) s
+      JOIN public.venue_offer_price_options opt ON opt.id = s.price_option_id
+      ORDER BY (s.unit = 'guest') DESC, s.price_minor, opt.sort_order, opt.id, s.local_date
+    LOOP
+      IF r.local_date = ANY(v_closed) THEN
+        CONTINUE;
+      END IF;
+      IF public.issue_4490_offer_day_open(v_offer.venue_id, v_offer.capacity_pool_id, r.local_date) THEN
+        RETURN jsonb_build_object('fromMinor', r.price_minor, 'unit', r.unit);
+      END IF;
+      v_closed := v_closed || r.local_date;
+    END LOOP;
+  END LOOP;
+  -- No slot at all (nothing can be bought now): the current price, so the
+  -- offer still reads; per-guest first, then by price.
+  RETURN (
+    SELECT jsonb_build_object('fromMinor', price.amount_minor, 'unit', opt.unit)
+    FROM public.venue_offer_price_options opt
+    JOIN public.stay_price_versions price ON price.price_option_id = opt.id AND price.effective_to IS NULL
+    WHERE opt.offering_id = p_offering_id AND opt.status = 'active'
+    ORDER BY (opt.unit = 'guest') DESC, price.amount_minor, opt.sort_order, opt.id
+    LIMIT 1);
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4490_offer_from(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_offer_from(uuid) TO service_role;
+
+-- Which offers a guest sees (W3 fix 2: lifted from issue_4490_public_offers
+-- so the card's lean price read and the page read share it): live offers of a
+-- built kind whose feature is publicly on, with offer reads switched on.
+CREATE OR REPLACE FUNCTION public.issue_4490_public_live_offers(p_venue_id uuid, p_features text[])
+RETURNS SETOF public.stay_offerings
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT o.* FROM public.stay_offerings o
+  WHERE public.issue_4490_flag_on('VENUE_OFFERS_READS')
+    AND o.venue_id = p_venue_id AND o.status = 'live'
+    AND o.kind = ANY(public.issue_4490_built_offer_kinds())
+    AND public.issue_4490_offer_kind_feature(o.kind) = ANY(p_features);
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4490_public_live_offers(uuid, text[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_public_live_offers(uuid, text[]) TO service_role;
+
+-- The card's lean read of the same offers: id, kind and "from" (amount and
+-- unit) only, without the page's offer JSON or the collect-online answer
+-- (W3-N9).
+CREATE OR REPLACE FUNCTION public.issue_4490_public_offer_prices(p_venue_id uuid, p_features text[])
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_prices jsonb;
+BEGIN
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('id', o.id, 'kind', o.kind) || COALESCE(f.price, '{}'::jsonb)
+                            ORDER BY o.sort_order, o.created_at), '[]'::jsonb)
+  INTO v_prices
+  FROM public.issue_4490_public_live_offers(p_venue_id, p_features) o
+  CROSS JOIN LATERAL (SELECT public.issue_4490_offer_from(o.id) AS price OFFSET 0) f;
+  RETURN v_prices;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.issue_4490_public_offer_prices(uuid, text[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_public_offer_prices(uuid, text[]) TO service_role;
+
+-- Live offers of publicly enabled kinds (latest body 20280809144490); fromMinor
+-- and unit now read issue_4490_offer_from (the price checkout charges, one
+-- unit), and the brand's collect-online answer is worked out once per call
+-- instead of once per offer.
+CREATE OR REPLACE FUNCTION public.issue_4490_public_offers(p_venue_id uuid, p_features text[])
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_offers jsonb;
+BEGIN
+  -- W3 fix 2: plpgsql so the plan is prepared once per session (the SQL body
+  -- was planned again on every page read).
+  IF NOT public.issue_4490_flag_on('VENUE_OFFERS_READS') THEN
+    RETURN '[]'::jsonb;
+  END IF;
+  SELECT COALESCE((
     WITH live AS (
-      SELECT o.* FROM public.stay_offerings o
-      WHERE o.venue_id = p_venue_id AND o.status = 'live'
-        AND o.kind = ANY(public.issue_4490_built_offer_kinds())
-        AND public.issue_4490_offer_kind_feature(o.kind) = ANY(p_features)
+      SELECT o.* FROM public.issue_4490_public_live_offers(p_venue_id, p_features) o
     ),
     -- One collect-online answer per brand (every live offer here shares it).
     collect AS MATERIALIZED (
@@ -104,11 +451,9 @@ AS $function$
       'entryStyle', o.entry_style,
       'name', o.name,
       'summary', NULLIF(o.summary, ''),
-      'fromMinor', (SELECT min(public.issue_4490_option_from_minor(opt.id)) FROM public.venue_offer_price_options opt
-                    WHERE opt.offering_id = o.id AND opt.status = 'active'),
-      'unit', COALESCE((SELECT opt.unit FROM public.venue_offer_price_options opt
-                        WHERE opt.offering_id = o.id AND opt.status = 'active'
-                        ORDER BY opt.sort_order LIMIT 1), 'guest'),
+      -- W3 fix 2: the price checkout really charges, with its own unit.
+      'fromMinor', (f.price->>'fromMinor')::bigint,
+      'unit', COALESCE(f.price->>'unit', 'guest'),
       'guestMin', (SELECT min(opt.guest_min) FROM public.venue_offer_price_options opt
                    WHERE opt.offering_id = o.id AND opt.status = 'active'),
       'guestMax', (SELECT max(opt.guest_max) FROM public.venue_offer_price_options opt
@@ -125,7 +470,10 @@ AS $function$
       'minNoticeMinutes', o.min_notice_minutes
     ) ORDER BY o.sort_order, o.created_at)
     FROM live o
-  ), '[]'::jsonb) END;
+    CROSS JOIN LATERAL (SELECT public.issue_4490_offer_from(o.id) AS price OFFSET 0) f
+  ), '[]'::jsonb) INTO v_offers;
+  RETURN v_offers;
+END;
 $function$;
 
 
@@ -427,7 +775,8 @@ BEGIN
   END IF;
   SELECT * INTO v_brand FROM public.brands WHERE id = v_venue.brand_id;
   v_features := public.issue_4490_public_features(p_venue_id);
-  v_offers := public.issue_4490_public_offers(p_venue_id, v_features);
+  -- W3 fix 2 (W3-N9): the lean read of the page's own offers and prices.
+  v_offers := public.issue_4490_public_offer_prices(p_venue_id, v_features);
   v_members := public.issue_4490_public_memberships(p_venue_id, v_features);
   v_currency := upper(COALESCE(NULLIF(btrim(v_brand.default_currency), ''), 'NGN'));
   -- The venue's zone from the venue code's own chain (issue_4490_venue_timezone),
@@ -486,8 +835,13 @@ BEGIN
     'priceFrom', jsonb_build_object(
       'entry', (SELECT min((o->>'fromMinor')::bigint) FROM jsonb_array_elements(v_offers) o
                 WHERE o->>'kind' = 'entry' AND o->>'fromMinor' IS NOT NULL),
-      'group_packages', (SELECT min((o->>'fromMinor')::bigint) FROM jsonb_array_elements(v_offers) o
-                WHERE o->>'kind' = 'group_package' AND o->>'fromMinor' IS NOT NULL),
+      -- W3 fix 2 (W3-N17): the page's groups rule, one unit: per-guest
+      -- packages when there are any, else per-booking ones.
+      'group_packages', COALESCE(
+                (SELECT min((o->>'fromMinor')::bigint) FROM jsonb_array_elements(v_offers) o
+                 WHERE o->>'kind' = 'group_package' AND o->>'fromMinor' IS NOT NULL AND o->>'unit' <> 'booking'),
+                (SELECT min((o->>'fromMinor')::bigint) FROM jsonb_array_elements(v_offers) o
+                 WHERE o->>'kind' = 'group_package' AND o->>'fromMinor' IS NOT NULL)),
       'private_hire', (SELECT min((o->>'fromMinor')::bigint) FROM jsonb_array_elements(v_offers) o
                 WHERE o->>'kind' = 'private_hire' AND o->>'fromMinor' IS NOT NULL),
       'by_the_hour', (SELECT min((o->>'fromMinor')::bigint) FROM jsonb_array_elements(v_offers) o
@@ -523,6 +877,7 @@ AS $function$
 DECLARE
   r record;
   v_facts jsonb;
+  v_all jsonb;
 BEGIN
   IF p_place_ids IS NULL OR cardinality(p_place_ids) = 0 THEN
     RETURN;
@@ -530,6 +885,25 @@ BEGIN
   IF cardinality(p_place_ids) > 100 THEN
     RAISE EXCEPTION 'too_many_places' USING ERRCODE = '22023';
   END IF;
+  -- W3 fix 2 (W3-N9): the whole batch in ONE subtransaction; only when some
+  -- venue's facts fail is the batch answered venue by venue (below), so that
+  -- venue alone keeps just its identity row (W3-N10).
+  BEGIN
+    SELECT COALESCE(jsonb_agg(jsonb_build_object('p', x.place_pool_id, 'f', x.facts) ORDER BY x.place_pool_id), '[]'::jsonb)
+    INTO v_all
+    FROM (
+      SELECT v.place_pool_id, public.issue_4490_venue_card_facts(v.id) AS facts
+      FROM public.venue_listings v
+      JOIN public.brands b ON b.id = v.brand_id AND b.deleted_at IS NULL
+      WHERE v.place_pool_id = ANY(p_place_ids)
+        AND v.claim_status = 'verified'
+        AND NOT public.admin_brand_is_internal(b.id)
+    ) x;
+    RETURN QUERY SELECT (e->>'p')::uuid, e->'f' FROM jsonb_array_elements(v_all) e;
+    RETURN;
+  EXCEPTION WHEN OTHERS THEN
+    NULL;  -- fall through: venue by venue
+  END;
   FOR r IN
     SELECT v.id, v.place_pool_id AS place_id, v.slug, v.name, v.venue_category,
            b.id AS brand_id, b.slug AS brand_slug, b.name AS brand_name, b.default_currency
@@ -568,6 +942,59 @@ GRANT EXECUTE ON FUNCTION public.pg_deck_venue_facts(uuid[]) TO anon, authentica
 COMMENT ON FUNCTION public.pg_deck_venue_facts(uuid[]) IS
   '#4490 Explorer W3: deck card facts for claimed places (verified venues of live, non-internal brands; at most 100 ids). Prices are the public page''s own live "from" prices; no contact, owner or buyer data.';
 
+
+-- ---------------------------------------------------------------------------
+-- 7. The Host Offers list (re-emitted from 20280809234490) carries each live
+--    offer's guest "from" (W3 fix 2, W3-N16).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.issue_4490_list_offers(p_venue_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.issue_4490_can_view_venue(p_venue_id) THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  RETURN jsonb_build_object(
+    'venueId', p_venue_id,
+    'canCollectOnline', (SELECT public.issue_4490_can_collect_online(v.brand_id, v.id)
+                         FROM public.venue_listings v WHERE v.id = p_venue_id),
+    'flags', jsonb_build_object(
+      'reads', public.issue_4490_flag_on('VENUE_OFFERS_READS'),
+      'writes', public.issue_4490_flag_on('VENUE_OFFERS_WRITES')),
+    'settings', (
+      SELECT jsonb_build_object(
+        'timezone', s.timezone, 'vatMode', s.vat_mode,
+        'vatRateBps', (SELECT c.vat_rate_bps FROM public.venue_listings v
+                       JOIN public.country_vat_config c ON c.country = upper(v.country_code)
+                       WHERE v.id = p_venue_id),
+        'instantPaymentHoldMinutes', s.instant_payment_hold_minutes,
+        'bookingHorizonDays', s.booking_horizon_days,
+        'bookingState', s.booking_state, 'version', s.version)
+      FROM public.venue_booking_settings s WHERE s.venue_id = p_venue_id),
+    'pools', COALESCE((
+      SELECT jsonb_agg(public.issue_4490_pool_projection(p.id) ORDER BY p.created_at)
+      FROM public.venue_capacity_pools p
+      WHERE p.venue_id = p_venue_id AND p.archived_at IS NULL), '[]'::jsonb),
+    'offers', COALESCE((
+      -- #4490 fix round 1 (B6, N28): a read flag when the offer sells outside
+      -- the venue's opening hours (the offer itself is never changed).
+      -- W3 fix 2 (W3-N16): a live offer carries the "from" guests are shown
+      -- (issue_4490_offer_from, the one owner), so the Host list and the
+      -- guest page say one price.
+      SELECT jsonb_agg(public.issue_4490_offer_projection(o.id) || public.issue_4490_offer_hours_check(o.id)
+                       || jsonb_build_object('guestFrom',
+                            CASE WHEN o.status = 'live' THEN public.issue_4490_offer_from(o.id) END)
+                       ORDER BY o.sort_order, o.created_at)
+      FROM public.stay_offerings o
+      WHERE o.venue_id = p_venue_id AND o.kind NOT IN ('room', 'place', 'membership') AND o.status <> 'archived'), '[]'::jsonb)
+  );
+END;
+$function$;
+
 COMMIT;
 
 -- Reverse (local use only): DROP FUNCTION public.pg_deck_venue_facts(uuid[]),
@@ -576,6 +1003,16 @@ COMMIT;
 --   public.issue_4490_venue_bookable_given(boolean, jsonb, jsonb, boolean);
 --   re-apply issue_4490_venue_page_payload from 20280809204490; then
 --   DROP FUNCTION public.issue_4490_venue_upcoming_events(uuid, timestamptz);
---   re-apply issue_4490_public_offers from 20280809144490 and
+--   re-apply issue_4490_public_offers from 20280809144490,
 --   issue_4490_public_memberships from 20280809204490 + the 374490/384490
---   patches; then DROP FUNCTION public.issue_4490_option_from_minor(uuid).
+--   patches, issue_4490_list_offers from 20280809234490, and
+--   issue_4490_option_price_at, issue_4490_option_window_reason,
+--   issue_4490_window_cutoff and issue_4490_day_closed from 20280809084490;
+--   then DROP FUNCTION public.issue_4490_public_offer_prices(uuid, text[]),
+--   public.issue_4490_public_live_offers(uuid, text[]),
+--   public.issue_4490_offer_from(uuid),
+--   public.issue_4490_offer_slot_prices(uuid, integer, boolean),
+--   public.issue_4490_offer_day_open(uuid, uuid, date),
+--   public.issue_4490_busy_price(jsonb, bigint, timestamp),
+--   public.issue_4490_option_slot_reason(text, smallint[], time, time, date, timestamp),
+--   public.issue_4490_slot_cutoff(text, text, timestamptz, timestamptz, integer).

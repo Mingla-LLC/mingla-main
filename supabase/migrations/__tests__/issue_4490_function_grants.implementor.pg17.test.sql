@@ -6,6 +6,10 @@
 -- only; internal = neither (database functions and the service role only); helper = SECURITY
 -- INVOKER (runs with the caller's own rights; no grant assertion).
 --
+-- TEST-MOD-APPROVED #4490 (W3 fix 2): issue_4490_option_from_minor is gone; the "from" owner
+-- issue_4490_offer_from, its slot read, the live-offers owner and the card's lean price read are internal, the three lifted price helpers are
+-- invoker helpers.
+--
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
 \set ON_ERROR_STOP on
@@ -101,6 +105,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_built_features()', 'helper'),
   ('issue_4490_built_offer_kinds()', 'helper'),
   ('issue_4490_busy_rules_valid(jsonb)', 'helper'),
+  ('issue_4490_busy_price(jsonb,bigint,timestamp without time zone)', 'helper'),
   ('issue_4490_can_check_in(uuid,uuid)', 'internal'),
   ('issue_4490_can_collect_online(uuid,uuid)', 'internal'),
   ('issue_4490_can_manage_money(uuid,uuid)', 'internal'),
@@ -240,6 +245,9 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_my_waitlist_entries()', 'signed_in'),
   ('issue_4490_next_free_dates(uuid,uuid,date,integer)', 'signed_in'),
   ('issue_4490_offer_hours_check(uuid)', 'internal'),
+  ('issue_4490_offer_from(uuid)', 'internal'),
+  ('issue_4490_offer_day_open(uuid,uuid,date)', 'internal'),
+  ('issue_4490_offer_slot_prices(uuid,integer,boolean)', 'internal'),
   ('issue_4490_offer_kind_feature(text)', 'helper'),
   ('issue_4490_offer_projection(uuid)', 'internal'),
   ('issue_4490_offer_readiness(uuid)', 'internal'),
@@ -251,13 +259,13 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_on_table_opened()', 'internal'),
   ('issue_4490_on_waitlist_notified()', 'internal'),
   ('issue_4490_option_capacity(uuid)', 'internal'),
-  ('issue_4490_option_from_minor(uuid)', 'internal'),
   ('issue_4490_option_layout_capacity(uuid,text)', 'internal'),
   ('issue_4490_option_place_name(uuid)', 'internal'),
   ('issue_4490_option_price_at(uuid,uuid)', 'internal'),
   ('issue_4490_option_pricing_unit(text)', 'helper'),
   ('issue_4490_option_spaces(uuid)', 'internal'),
   ('issue_4490_option_window_reason(uuid,uuid)', 'internal'),
+  ('issue_4490_option_slot_reason(text,smallint[],time without time zone,time without time zone,date,timestamp without time zone)', 'helper'),
   ('issue_4490_pass_admitted_on(uuid,date)', 'internal'),
   ('issue_4490_pass_days_used(uuid)', 'internal'),
   ('issue_4490_pass_qr_payload(uuid,text,text)', 'helper'),
@@ -275,6 +283,8 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_preview_day_closure(uuid,date)', 'signed_in'),
   ('issue_4490_prune_table_joins()', 'internal'),
   ('issue_4490_public_features(uuid)', 'internal'),
+  ('issue_4490_public_live_offers(uuid,text[])', 'internal'),
+  ('issue_4490_public_offer_prices(uuid,text[])', 'internal'),
   ('issue_4490_public_memberships(uuid,text[])', 'internal'),
   ('issue_4490_public_offers(uuid,text[])', 'internal'),
   ('issue_4490_public_tables(uuid,text[])', 'internal'),
@@ -354,6 +364,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_waitlist_projection(uuid)', 'internal'),
   ('issue_4490_window_bounds(time without time zone,time without time zone)', 'helper'),
   ('issue_4490_window_cutoff(uuid,uuid)', 'internal'),
+  ('issue_4490_slot_cutoff(text,text,timestamp with time zone,timestamp with time zone,integer)', 'helper'),
   ('issue_4490_window_is_flexible(uuid)', 'internal'),
   ('issue_4490_window_used(uuid)', 'internal'),
   ('issue_4490_windows_valid(jsonb,integer)', 'helper'),

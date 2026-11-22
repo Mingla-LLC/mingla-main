@@ -549,16 +549,315 @@ SELECT public.t4490w3_ok((pg_temp.t4490w3_g(11)->>'onTodayLiveUntil')::timestamp
 SELECT public.t4490w3_ok(pg_temp.t4490w3_g(9)->'onTodayLiveUntil' = 'null'::jsonb,
   'N-5c nothing running: no live end');
 
--- N-7 busy-time prices: the smallest price a guest can pay, on the page and the card.
-SELECT public.t4490w3_ok((pg_temp.t4490w3_g(19)->'priceFrom'->>'entry')::bigint = 1000,
-  'N-7a a cheaper busy-time price is the card''s entry from');
+-- N-7 busy-time prices (W3 fix 2): a busy price counts only where checkout charges it, by the
+-- slot's START. b9-cheap-busy's rule (10:00-12:00) holds no start (every window opens 09:00).
 SELECT public.t4490w3_ok(
   (SELECT jsonb_object_agg(o->>'name', (o->>'fromMinor')::bigint) FROM jsonb_array_elements(pg_temp.t4490w3_page('w3busy')->'offers') o)
-  = '{"Entry b9-cheap-busy": 1000, "Entry b9-never": 300000, "Entry b9-dear-busy": 350000}'::jsonb,
-  'N-7b the page uses the same rule: cheaper busy price counts, a rule that can never apply does not, a dearer one never raises the from');
+  = '{"Entry b9-cheap-busy": 400000, "Entry b9-never": 300000, "Entry b9-dear-busy": 350000}'::jsonb,
+  'N-7a a busy rule that no slot starts in never prices the page; a rule that can never apply does not; a dearer one never raises the from');
+SELECT public.t4490w3_ok((pg_temp.t4490w3_g(19)->'priceFrom'->>'entry')::bigint = 300000,
+  'N-7b the card''s entry from is the cheapest reachable price (W3-N14: was 1,000, which no checkout charges)');
 SELECT public.t4490w3_ok((pg_temp.t4490w3_g(19)->'priceFrom'->>'entry')::bigint =
   (SELECT min((o->>'fromMinor')::bigint) FROM jsonb_array_elements(pg_temp.t4490w3_page('w3busy')->'offers') o WHERE o->>'kind' = 'entry'),
   'N-7c the card''s entry price is the page''s');
+
+-- ---------------------------------------------------------------------------
+-- N-14 (W3 fix 2) "from" is a price checkout really charges. For every fixture offer,
+-- the page's fromMinor equals the smallest unit price the REAL quote
+-- (issue_4490_quote_offer, service role, smallest allowed party) returns over every slot in
+-- the next 14 venue days, read here without the "from" code: windows from the table, and
+-- for a flexible day every 15-minute start (off-step starts are refused by checkout itself).
+-- Units: per-guest quotes win when the offer has any (W3-N17).
+-- ---------------------------------------------------------------------------
+INSERT INTO public.place_pool (id, name, lat, lng, is_active, is_servable)
+SELECT ('44945000-0000-4000-a000-0000000000' || lpad(n::text, 2, '0'))::uuid, 'W3 place ' || n, 6.45, 3.40, true, true
+FROM generate_series(21, 22) n;
+INSERT INTO public.venue_listings (id, brand_id, slug, name, lat, lng, venue_category, claim_status, country_code, place_pool_id) VALUES
+  ('44945000-0000-4000-9000-0000000000c1', '44945000-0000-4000-9000-000000000010', 'w3prices', 'W3 Prices', 6.45, 3.40, 'play', 'verified', 'NG', '44945000-0000-4000-a000-000000000021'),
+  ('44945000-0000-4000-9000-0000000000c2', '44945000-0000-4000-9000-000000000010', 'w3groups', 'W3 Groups', 6.45, 3.40, 'play', 'verified', 'NG', '44945000-0000-4000-a000-000000000022');
+
+-- One offer: draft, pool (entry and packages), options, policy, schedule step, publish.
+CREATE FUNCTION pg_temp.t4490w3_offer(p_venue uuid, p_key text, p_draft jsonb, p_options jsonb, p_steps jsonb)
+RETURNS uuid LANGUAGE plpgsql AS $f$
+DECLARE
+  v jsonb;
+  v_offer uuid;
+  o jsonb;
+  st jsonb;
+  n int := 0;
+BEGIN
+  v := public.issue_4490_manage_offer('create_draft', p_venue, p_draft, NULL, 'w3p-d-' || p_key);
+  v_offer := (v->>'id')::uuid;
+  IF p_draft->>'kind' IN ('entry', 'group_package') THEN
+    v := public.issue_4490_manage_capacity_pool('create', p_venue,
+      jsonb_build_object('name', 'Pool ' || p_key, 'dailyLimit', 400, 'keptForWalkIns', 0), NULL, 'w3p-pool-' || p_key);
+    v := public.issue_4490_manage_offer('set_pool', p_venue, jsonb_build_object('offerId', v_offer, 'poolId', (v->>'id')::uuid),
+      (SELECT version FROM public.stay_offerings WHERE id = v_offer), 'w3p-p-' || p_key);
+  END IF;
+  FOR st IN SELECT value FROM jsonb_array_elements(p_steps) LOOP
+    n := n + 1;
+    IF st->>'fn' = 'hire' THEN
+      v := public.issue_4490_manage_hire(st->>'action', p_venue, (st->'payload') || jsonb_build_object('offerId', v_offer),
+        (SELECT version FROM public.stay_offerings WHERE id = v_offer), 'w3p-s' || n || '-' || p_key);
+    ELSIF st->>'fn' = 'hour' THEN
+      v := public.issue_4490_manage_hour(st->>'action', p_venue, (st->'payload') || jsonb_build_object('offerId', v_offer),
+        (SELECT version FROM public.stay_offerings WHERE id = v_offer), 'w3p-s' || n || '-' || p_key);
+    ELSIF st->>'fn' = 'package' THEN
+      v := public.issue_4490_manage_package(st->>'action', p_venue, (st->'payload') || jsonb_build_object('offerId', v_offer),
+        (SELECT version FROM public.stay_offerings WHERE id = v_offer), 'w3p-s' || n || '-' || p_key);
+    ELSE
+      v := public.issue_4490_manage_offer(st->>'action', p_venue, (st->'payload') || jsonb_build_object('offerId', v_offer),
+        (SELECT version FROM public.stay_offerings WHERE id = v_offer), 'w3p-s' || n || '-' || p_key);
+    END IF;
+    IF st->>'action' = 'set_price_row' OR (st->>'action' = 'upsert_price_option') THEN NULL; END IF;
+  END LOOP;
+  FOR o IN SELECT value FROM jsonb_array_elements(p_options) LOOP
+    n := n + 1;
+    v := public.issue_4490_manage_offer('upsert_price_option', p_venue, o || jsonb_build_object('offerId', v_offer),
+      (SELECT version FROM public.stay_offerings WHERE id = v_offer), 'w3p-o' || n || '-' || p_key);
+  END LOOP;
+  v := public.issue_4490_manage_offer('set_policy', p_venue, jsonb_build_object('offerId', v_offer),
+    (SELECT version FROM public.stay_offerings WHERE id = v_offer), 'w3p-pol-' || p_key);
+  v := public.issue_4490_manage_offer('publish', p_venue, jsonb_build_object('offerId', v_offer),
+    (SELECT version FROM public.stay_offerings WHERE id = v_offer), 'w3p-pub-' || p_key);
+  IF v->>'status' <> 'live' THEN
+    RAISE EXCEPTION 'w3 fixture % not live: %', p_key, v->'readiness';
+  END IF;
+  INSERT INTO t4490w3_ids VALUES ('px_' || p_key, v_offer);
+  RETURN v_offer;
+END
+$f$;
+
+SELECT public.t4490w3_as('44945000-0000-4000-8000-000000000001');
+DO $pfx$
+DECLARE
+  c1 uuid := '44945000-0000-4000-9000-0000000000c1';
+  c2 uuid := '44945000-0000-4000-9000-0000000000c2';
+  every jsonb := '[0,1,2,3,4,5,6]'::jsonb;
+  walkin jsonb := jsonb_build_array(jsonb_build_object('action', 'set_schedule', 'payload',
+    jsonb_build_object('weekdays', '[0,1,2,3,4,5,6]'::jsonb, 'startTime', '09:00', 'endTime', '21:00')));
+  v jsonb;
+  v_space uuid;
+  v_offer uuid;
+  v_opt uuid;
+BEGIN
+  PERFORM public.issue_4490_set_venue_feature(c1, 'entry', true, NULL, NULL, NULL, 'w3p-c1-entry');
+  PERFORM public.issue_4490_set_venue_feature(c1, 'private_hire', true, NULL, NULL, NULL, 'w3p-c1-hire');
+  PERFORM public.issue_4490_set_venue_feature(c1, 'by_the_hour', true, NULL, NULL, NULL, 'w3p-c1-hour');
+  PERFORM public.issue_4490_set_venue_feature(c2, 'group_packages', true, NULL, NULL, NULL, 'w3p-c2-groups');
+  -- 1 a cheaper busy rule some sessions DO start in (timed sessions on the hour, 10:00-18:00).
+  PERFORM pg_temp.t4490w3_offer(c1, 'hit', '{"kind":"entry","name":"Hit","entryStyle":"timed_session","sessionCapacity":25}',
+    jsonb_build_array(jsonb_build_object('name', 'Adult', 'unit', 'guest', 'guestMin', 1, 'guestMax', 6, 'priceMinor', 300000,
+      'busyRules', jsonb_build_array(jsonb_build_object('weekdays', every, 'from', '12:00', 'to', '14:00', 'amount_minor', 150000)))),
+    jsonb_build_array(jsonb_build_object('action', 'set_schedule', 'payload', jsonb_build_object('mode', 'sessions', 'weekdays', every,
+      'startTime', '10:00', 'endTime', '18:00', 'sessionMinutes', 60, 'sessionEveryMinutes', 60))));
+  -- 2 timed sessions with an option sold only 10:00-11:00 (cheaper) and a dearer evening peak.
+  PERFORM pg_temp.t4490w3_offer(c1, 'hours', '{"kind":"entry","name":"Hours","entryStyle":"timed_session","sessionCapacity":25}',
+    jsonb_build_array(
+      jsonb_build_object('name', 'Any time', 'unit', 'guest', 'guestMin', 1, 'guestMax', 6, 'priceMinor', 300000,
+        'busyRules', jsonb_build_array(jsonb_build_object('weekdays', every, 'from', '16:00', 'to', '18:00', 'amount_minor', 450000))),
+      jsonb_build_object('name', 'Early', 'unit', 'guest', 'guestMin', 1, 'guestMax', 6, 'priceMinor', 220000,
+        'startTime', '10:00', 'endTime', '11:00')),
+    jsonb_build_array(jsonb_build_object('action', 'set_schedule', 'payload', jsonb_build_object('mode', 'sessions', 'weekdays', every,
+      'startTime', '10:00', 'endTime', '18:00', 'sessionMinutes', 30, 'sessionEveryMinutes', 30))));
+  -- 3 a weekday-only cheaper option with an ID check (Gameland's Student & NYSC) beside Walk-in.
+  PERFORM pg_temp.t4490w3_offer(c1, 'student', '{"kind":"entry","name":"Student","entryStyle":"walk_in"}',
+    jsonb_build_array(
+      jsonb_build_object('name', 'Walk-in', 'unit', 'guest', 'guestMin', 1, 'guestMax', 20, 'priceMinor', 500000),
+      jsonb_build_object('name', 'Student & NYSC', 'unit', 'guest', 'guestMin', 1, 'guestMax', 20, 'priceMinor', 400000,
+        'weekdays', '[0,1,2,3]'::jsonb, 'eligibility', jsonb_build_object('label', 'Student or NYSC ID', 'checkAtGate', true))),
+    walkin);
+  -- 4 a free option beside a paid one.
+  PERFORM pg_temp.t4490w3_offer(c1, 'free', '{"kind":"entry","name":"Free","entryStyle":"walk_in"}',
+    jsonb_build_array(
+      jsonb_build_object('name', 'Paid', 'unit', 'guest', 'guestMin', 1, 'guestMax', 20, 'priceMinor', 200000),
+      jsonb_build_object('name', 'Under 5', 'unit', 'guest', 'guestMin', 1, 'guestMax', 20, 'priceMinor', 0)),
+    walkin);
+  -- 5 price versions: the current price replaced by one that starts tomorrow; an old cheaper one expired.
+  v_offer := pg_temp.t4490w3_offer(c1, 'versions', '{"kind":"entry","name":"Versions","entryStyle":"walk_in"}',
+    jsonb_build_array(jsonb_build_object('name', 'Walk-in', 'unit', 'guest', 'guestMin', 1, 'guestMax', 20, 'priceMinor', 500000)),
+    walkin);
+  -- 6 private hire rows by weekday, per booking, smallest party 50.
+  v_space := (public.issue_4490_manage_space('create', c1, '{"name":"W3 Hall","setting":"indoor","capacity_standing":600}'::jsonb, NULL)->>'id')::uuid;
+  v_offer := pg_temp.t4490w3_offer(c1, 'hire', '{"kind":"private_hire","name":"Hire"}', '[]'::jsonb, jsonb_build_array(
+    jsonb_build_object('fn', 'hire', 'action', 'set_spaces', 'payload', jsonb_build_object('spaceIds', jsonb_build_array(v_space), 'combinationIds', '[]'::jsonb)),
+    jsonb_build_object('fn', 'hire', 'action', 'set_price_row', 'payload', jsonb_build_object('name', 'Hall Mon to Thu', 'spaceId', v_space,
+      'unit', 'booking', 'guestMin', 50, 'guestMax', 600, 'priceMinor', 350000000, 'weekdays', '[0,1,2,3]'::jsonb)),
+    jsonb_build_object('fn', 'hire', 'action', 'set_price_row', 'payload', jsonb_build_object('name', 'Hall Fri and Sat', 'spaceId', v_space,
+      'unit', 'booking', 'guestMin', 50, 'guestMax', 600, 'priceMinor', 420000000, 'weekdays', '[4,5]'::jsonb)),
+    jsonb_build_object('fn', 'hire', 'action', 'set_sessions', 'payload', jsonb_build_object('sessions', jsonb_build_array(
+      jsonb_build_object('label', 'Full day', 'startTime', '10:00', 'endTime', '22:00')), 'weekdays', every)),
+    jsonb_build_object('fn', 'hire', 'action', 'set_terms', 'payload', jsonb_build_object('hireCharge', 'hire_fee', 'depositKind', 'percent',
+      'depositValue', 5000, 'balanceDueDaysBefore', 14, 'setupMinutes', 60, 'cleanupMinutes', 60, 'damageDepositMinor', 0)),
+    jsonb_build_object('fn', 'hire', 'action', 'set_booking', 'payload', jsonb_build_object('mode', 'request',
+      'requestResponseHours', 48, 'approvedPaymentMinutes', 4320))));
+  -- 7 by the hour 08:00-20:00, 30-minute step, 1 hour shortest: a cheaper rule from 19:30 holds no
+  --   start (the last start is 19:00); a cheaper rule 18:00-19:00 does.
+  v_space := (public.issue_4490_manage_space('create', c1, '{"name":"W3 Room","setting":"indoor","capacity_seated":10}'::jsonb, NULL)->>'id')::uuid;
+  PERFORM pg_temp.t4490w3_offer(c1, 'hour', '{"kind":"by_the_hour","name":"Room"}',
+    jsonb_build_array(jsonb_build_object('name', 'Per hour', 'unit', 'hour', 'guestMin', 1, 'guestMax', 10, 'priceMinor', 1200000,
+      'busyRules', jsonb_build_array(
+        jsonb_build_object('weekdays', every, 'from', '19:30', 'to', '20:00', 'amount_minor', 100),
+        jsonb_build_object('weekdays', every, 'from', '18:00', 'to', '19:00', 'amount_minor', 900000)))),
+    jsonb_build_array(
+      jsonb_build_object('fn', 'hour', 'action', 'set_place', 'payload', jsonb_build_object('spaceIds', jsonb_build_array(v_space))),
+      jsonb_build_object('fn', 'hour', 'action', 'set_hours', 'payload', jsonb_build_object('weekdays', every, 'startTime', '08:00', 'endTime', '20:00')),
+      jsonb_build_object('fn', 'hour', 'action', 'set_length', 'payload', jsonb_build_object('stepMinutes', 30, 'minMinutes', 60, 'maxMinutes', 120))));
+  -- 8 group packages: per-guest beside a CHEAPER per-booking price (never one minimum, W3-N17),
+  --   smallest group 8; and a per-booking-only package.
+  PERFORM pg_temp.t4490w3_offer(c2, 'mixed', '{"kind":"group_package","name":"Mixed"}',
+    jsonb_build_array(
+      jsonb_build_object('name', 'Per guest', 'unit', 'guest', 'guestMin', 8, 'guestMax', 20, 'priceMinor', 1200000),
+      jsonb_build_object('name', 'Whole party', 'unit', 'booking', 'guestMin', 8, 'guestMax', 20, 'priceMinor', 1000000)),
+    jsonb_build_array(jsonb_build_object('fn', 'package', 'action', 'set_start_times', 'payload',
+      jsonb_build_object('startTimes', '["12:00","16:00"]'::jsonb, 'durationMinutes', 180, 'weekdays', every))));
+  PERFORM pg_temp.t4490w3_offer(c2, 'party', '{"kind":"group_package","name":"Party"}',
+    jsonb_build_array(jsonb_build_object('name', 'Party room', 'unit', 'booking', 'guestMin', 10, 'guestMax', 30, 'priceMinor', 6000000)),
+    jsonb_build_array(jsonb_build_object('fn', 'package', 'action', 'set_start_times', 'payload',
+      jsonb_build_object('startTimes', '["18:00"]'::jsonb, 'durationMinutes', 180, 'weekdays', every))));
+END
+$pfx$;
+SELECT public.t4490w3_reset();
+DO $pver$
+DECLARE
+  v_offer uuid := (SELECT v FROM t4490w3_ids WHERE k = 'px_versions');
+  v_opt uuid;
+BEGIN
+  SELECT id INTO v_opt FROM public.venue_offer_price_options WHERE offering_id = v_offer;
+  UPDATE public.stay_price_versions SET effective_to = now() WHERE price_option_id = v_opt AND effective_to IS NULL;
+  INSERT INTO public.stay_price_versions (offering_id, brand_id, venue_id, version_number, amount_minor, currency_code,
+    pricing_unit, effective_from, effective_to, price_option_id)
+  SELECT p.offering_id, p.brand_id, p.venue_id, p.version_number + 1, 100, p.currency_code, p.pricing_unit,
+         now() - interval '10 days', now() - interval '5 days', p.price_option_id
+  FROM public.stay_price_versions p WHERE p.price_option_id = v_opt;
+  INSERT INTO public.stay_price_versions (offering_id, brand_id, venue_id, version_number, amount_minor, currency_code,
+    pricing_unit, effective_from, effective_to, price_option_id)
+  SELECT p.offering_id, p.brand_id, p.venue_id, p.version_number + 2, 350000, p.currency_code, p.pricing_unit,
+         now() + interval '1 day', NULL, p.price_option_id
+  FROM public.stay_price_versions p WHERE p.price_option_id = v_opt AND p.amount_minor = 500000;
+END
+$pver$;
+-- The tester's W3-N14 fixture joins the set.
+INSERT INTO t4490w3_ids SELECT 'px_b9_' || o.name, o.id FROM public.stay_offerings o
+WHERE o.venue_id = '44945000-0000-4000-9000-0000000000b9' AND o.status = 'live';
+
+-- The real quote over every slot of the next 14 venue days (service role, as the edge calls it).
+CREATE FUNCTION pg_temp.t4490w3_quoted(p_offer uuid)
+RETURNS TABLE (unit text, price bigint, tries int, ok int)
+LANGUAGE plpgsql AS $f$
+DECLARE
+  o public.stay_offerings%ROWTYPE;
+  opt record;
+  w record;
+  t timestamptz;
+  v_win uuid;
+  q jsonb;
+  n int := 0;
+  k int := 0;
+  today date := (now() AT TIME ZONE 'Africa/Lagos')::date;
+BEGIN
+  SELECT * INTO o FROM public.stay_offerings WHERE id = p_offer;
+  CREATE TEMP TABLE IF NOT EXISTS t4490w3_q (offer uuid, unit text, price bigint);
+  FOR opt IN SELECT * FROM public.venue_offer_price_options x WHERE x.offering_id = p_offer AND x.status = 'active' LOOP
+    FOR w IN
+      SELECT pw.id, pw.starts_at, pw.ends_at, r.mode
+      FROM public.stay_place_windows pw JOIN public.stay_place_schedule_rules r ON r.id = pw.schedule_rule_id
+      WHERE pw.offering_id = p_offer AND NOT pw.booked_block AND pw.local_date BETWEEN today - 1 AND today + 14
+      ORDER BY pw.starts_at
+    LOOP
+      FOR t IN SELECT g FROM generate_series(w.starts_at,
+                 CASE WHEN w.mode = 'flexible' THEN w.ends_at ELSE w.starts_at END, interval '15 minutes') g LOOP
+        n := n + 1;
+        BEGIN
+          v_win := CASE WHEN w.mode = 'flexible' THEN public.issue_4490_flexible_window(p_offer, t, 60) ELSE w.id END;
+          q := public.issue_4490_quote_offer(p_offer, v_win,
+            jsonb_build_array(jsonb_build_object('priceOptionId', opt.id, 'guests', opt.guest_min)),
+            encode(sha256(convert_to('w3p-actor', 'UTF8')), 'hex'), NULL, 'w3p-q-' || n || '-' || p_offer,
+            '[]'::jsonb, CASE WHEN o.kind = 'private_hire' THEN '{"occasion":"Wedding"}'::jsonb ELSE '{}'::jsonb END);
+          INSERT INTO t4490w3_q VALUES (p_offer, opt.unit, (q->'lines'->0->>'unitPriceMinor')::bigint);
+          k := k + 1;
+        EXCEPTION WHEN OTHERS THEN
+          NULL;  -- not bookable there (wrong day or time, off the step, too soon, too far, closed)
+        END;
+      END LOOP;
+    END LOOP;
+  END LOOP;
+  RETURN QUERY
+    SELECT CASE WHEN bool_or(x.unit = 'guest') THEN 'guest' ELSE (array_agg(x.unit ORDER BY x.price))[1] END,
+           COALESCE(min(x.price) FILTER (WHERE x.unit = 'guest'), min(x.price)), n, k
+    FROM t4490w3_q x WHERE x.offer = p_offer;
+END
+$f$;
+
+SELECT public.t4490w3_reset();
+SELECT set_config('request.jwt.claim.role', 'service_role', true), set_config('request.jwt.claims', '{"role":"service_role"}', true),
+       set_config('role', 'service_role', true);
+CREATE TEMP TABLE t4490w3_prop ON COMMIT DROP AS
+SELECT i.k, i.v AS offer, q.unit AS q_unit, q.price AS q_min, q.tries, q.ok
+FROM t4490w3_ids i CROSS JOIN LATERAL pg_temp.t4490w3_quoted(i.v) q
+WHERE i.k LIKE 'px\_%';
+SELECT public.t4490w3_reset();
+GRANT SELECT ON t4490w3_prop TO PUBLIC;
+CREATE TEMP TABLE t4490w3_pagefrom ON COMMIT DROP AS
+SELECT (o->>'id')::uuid AS offer, (o->>'fromMinor')::bigint AS page_min, o->>'unit' AS page_unit
+FROM (VALUES ('w3prices'), ('w3groups'), ('w3busy')) s(slug)
+CROSS JOIN LATERAL jsonb_array_elements(public.pg_public_venue_page('gameland-w3-4490', s.slug)->'offers') o;
+GRANT SELECT ON t4490w3_pagefrom TO PUBLIC;
+
+DO $prop$
+DECLARE
+  r record;
+  v_bad text;
+BEGIN
+  FOR r IN SELECT p.k, p.q_unit, p.q_min, p.tries, p.ok, f.page_min, f.page_unit
+           FROM t4490w3_prop p LEFT JOIN t4490w3_pagefrom f ON f.offer = p.offer ORDER BY p.k LOOP
+    RAISE NOTICE 'N-14 % : page % %, quotes min % % (% of % slot tries quoted)', r.k, r.page_min, r.page_unit, r.q_min, r.q_unit, r.ok, r.tries;
+  END LOOP;
+  SELECT string_agg(format('%s page=%s/%s quotes=%s/%s', p.k, f.page_min, f.page_unit, p.q_min, p.q_unit), '; ') INTO v_bad
+  FROM t4490w3_prop p LEFT JOIN t4490w3_pagefrom f ON f.offer = p.offer
+  WHERE p.ok = 0 OR f.page_min IS DISTINCT FROM p.q_min OR f.page_unit IS DISTINCT FROM p.q_unit;
+  PERFORM public.t4490w3_ok(v_bad IS NULL AND (SELECT count(*) FROM t4490w3_prop) = 12,
+    'N-14a every fixture''s page "from" (amount and unit) is the smallest unit price the real quote charges in the next 14 days'
+    || COALESCE(' -- ' || v_bad, ''));
+END
+$prop$;
+SELECT public.t4490w3_ok(
+  (SELECT jsonb_object_agg(replace(p.k, 'px_', ''), f.page_min ORDER BY p.k) FROM t4490w3_prop p JOIN t4490w3_pagefrom f ON f.offer = p.offer)
+  = '{"b9_Entry b9-cheap-busy": 400000, "b9_Entry b9-dear-busy": 350000, "b9_Entry b9-never": 300000, "free": 0, "hire": 350000000,
+      "hit": 150000, "hour": 900000, "hours": 220000, "mixed": 1200000, "party": 6000000, "student": 400000, "versions": 350000}'::jsonb,
+  'N-14b the values: busy rule some sessions start in counts (1,500), one no slot starts in does not (4,000), the option''s own hours, ID-checked weekday price (Student 4,000), free, newest price version, hire row by weekday, hour start rules');
+SELECT public.t4490w3_ok(
+  (SELECT f.page_unit FROM t4490w3_pagefrom f JOIN t4490w3_ids i ON i.v = f.offer WHERE i.k = 'px_mixed') = 'guest'
+  AND (SELECT f.page_unit FROM t4490w3_pagefrom f JOIN t4490w3_ids i ON i.v = f.offer WHERE i.k = 'px_party') = 'booking'
+  AND (SELECT f.page_unit FROM t4490w3_pagefrom f JOIN t4490w3_ids i ON i.v = f.offer WHERE i.k = 'px_hire') = 'booking'
+  AND (SELECT f.page_unit FROM t4490w3_pagefrom f JOIN t4490w3_ids i ON i.v = f.offer WHERE i.k = 'px_hour') = 'hour',
+  'N-17a the unit always belongs to the price: per guest wins over a cheaper per-booking price; a per-booking package says booking');
+SELECT public.t4490w3_ok(
+  (public.issue_4490_venue_card_facts('44945000-0000-4000-9000-0000000000c2')->'priceFrom'->>'group_packages')::bigint = 1200000
+  AND (public.issue_4490_venue_card_facts('44945000-0000-4000-9000-0000000000c1')->'priceFrom'->>'entry')::bigint = 0
+  AND (public.issue_4490_venue_card_facts('44945000-0000-4000-9000-0000000000c1')->'priceFrom'->>'by_the_hour')::bigint = 900000,
+  'N-17b the card''s groups price is per guest when a per-guest package exists; entry and hour are the page''s');
+-- N-16 the Host Offers list carries the same "from" for a live offer.
+SELECT public.t4490w3_as('44945000-0000-4000-8000-000000000001');
+SELECT public.t4490w3_ok(
+  (SELECT bool_and((o->'guestFrom'->>'fromMinor')::bigint = f.page_min AND o->'guestFrom'->>'unit' = f.page_unit)
+   FROM jsonb_array_elements(public.issue_4490_list_offers('44945000-0000-4000-9000-0000000000b9')->'offers') o
+   JOIN t4490w3_pagefrom f ON f.offer = (o->>'id')::uuid)
+  AND (SELECT count(*) FROM jsonb_array_elements(public.issue_4490_list_offers('44945000-0000-4000-9000-0000000000b9')->'offers') o
+       WHERE o ? 'guestFrom') = 3,
+  'N-16 the Host Offers list carries each live offer''s guest "from", the page''s own value');
+SELECT public.t4490w3_reset();
+-- The lifted helpers answer exactly as the per-window functions checkout calls.
+SELECT public.t4490w3_ok(
+  (SELECT bool_and(public.issue_4490_option_price_at(opt.id, w.id) = public.issue_4490_busy_price(opt.busy_rules, pv.amount_minor,
+                     w.starts_at AT TIME ZONE r.timezone)
+                   AND public.issue_4490_option_window_reason(opt.id, w.id) IS NOT DISTINCT FROM public.issue_4490_option_slot_reason(
+                     opt.status, opt.weekdays, opt.local_start_time, opt.local_end_time, w.local_date, w.starts_at AT TIME ZONE r.timezone))
+   FROM t4490w3_ids i JOIN public.venue_offer_price_options opt ON opt.offering_id = i.v
+   JOIN public.stay_price_versions pv ON pv.price_option_id = opt.id AND pv.effective_to IS NULL
+   JOIN public.stay_place_windows w ON w.offering_id = i.v JOIN public.stay_place_schedule_rules r ON r.id = w.schedule_rule_id
+   WHERE i.k LIKE 'px\_%'),
+  'N-14c the quote''s per-window price and reason are the lifted helpers'' answers');
 
 -- N-8 no known zone: no "tonight"; the brand's zone is used when it has one.
 SELECT public.t4490w3_ok(pg_temp.t4490w3_g(20)->'timezone' = 'null'::jsonb
