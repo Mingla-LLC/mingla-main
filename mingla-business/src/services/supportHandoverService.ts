@@ -7,6 +7,8 @@
  *   - new conversation: createSupportTicket (issue_4382_create_customer_ticket)
  *   - photos: agent-attachments `copy_to_support` (server-side copy)
  *   - message: sendSupportMessage (`support-send`, as the requester)
+ *   - already handed over? the host's own newest messages in the conversation,
+ *     read before sending into a conversation that existed (#4420 rework 3)
  *
  * Reached only through the support chunk (supportScreens.ts), never at boot.
  */
@@ -14,6 +16,7 @@
 import { supabase } from "./supabase";
 import {
   createSupportTicket,
+  getOwnSupportTicket,
   listOwnSupportTickets,
   sendSupportMessage,
 } from "./supportService";
@@ -29,10 +32,14 @@ import {
   type HandOverPayload,
   type HandoverOutcome,
   type HandoverProgress,
+  type HandoverThreadMessage,
 } from "../components/support/supportHandover";
 
 /** Where a hand-over conversation says it came from (stored in client_meta). */
 export const HANDOVER_SOURCE_SCREEN = "account/support#ari";
+
+/** How many of the host's newest messages the duplicate check reads. */
+const HANDOVER_CHECK_MESSAGES = 50;
 
 interface FunctionErrorLike {
   context?: { json?: () => Promise<unknown> };
@@ -98,6 +105,23 @@ export async function handOverToSupport(input: {
         await sendSupportMessage(ticketId, content, { attachmentIds, actorMode: "requester" });
       },
       newRequestId: createSupportRequestId,
+      userId: input.userId,
+      readThread: async (ticketId) => {
+        const ticket = await getOwnSupportTicket(ticketId);
+        if (ticket === null) throw new Error("support conversation not found");
+        // The host's own newest messages there: a hand-over made before a
+        // reload is among them however long the conversation is.
+        const { data, error } = await supabase
+          .from("messages")
+          .select("sender_id, content, created_at, is_internal")
+          .eq("conversation_id", ticket.conversation_id)
+          .eq("sender_id", input.userId)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .limit(HANDOVER_CHECK_MESSAGES);
+        if (error) throw new Error(error.message);
+        return (data ?? []) as HandoverThreadMessage[];
+      },
     },
     {
       fromAri: (text) => supportCopy("handover.from_ari", { text }),

@@ -15,8 +15,10 @@ import {
   handOverPayloadFromMessages,
   photoReasonKey,
   runSupportHandover,
+  threadHasHandover,
   type CopyPhotoResult,
   type HandoverDeps,
+  type HandoverThreadMessage,
 } from "../supportHandover";
 
 const wording = {
@@ -27,6 +29,28 @@ const wording = {
 
 function image(id: string) {
   return { id, file_type: "image", original_filename: `${id}.jpg` };
+}
+
+const HOST = "host-1";
+
+interface FakeServer {
+  now: number;
+  threads: Record<string, HandoverThreadMessage[]>;
+  post: (ticketId: string, content: string, senderId?: string) => void;
+  thread: (ticketId: string) => HandoverThreadMessage[];
+}
+
+function newServer(): FakeServer {
+  const server: FakeServer = {
+    now: Date.parse("2026-11-21T10:00:00Z"),
+    threads: {},
+    post: (ticketId, content, senderId = HOST) => {
+      server.now += 1000;
+      (server.threads[ticketId] ??= []).push({ sender_id: senderId, content, created_at: new Date(server.now).toISOString(), is_internal: false });
+    },
+    thread: (ticketId) => [...(server.threads[ticketId] ?? [])],
+  };
+  return server;
 }
 
 interface Calls {
@@ -40,7 +64,10 @@ function fakeDeps(options: {
   copy?: (ariId: string) => CopyPhotoResult | Promise<CopyPhotoResult>;
   sendFails?: number;
   findFails?: boolean;
+  /** The server's messages, shared across "screens" (survives a reload). */
+  server?: FakeServer;
 } = {}): { deps: HandoverDeps; calls: Calls } {
+  const server = options.server ?? newServer();
   const calls: Calls = { create: [], copy: [], send: [] };
   let sendFailures = options.sendFails ?? 0;
   let requestCounter = 0;
@@ -51,6 +78,7 @@ function fakeDeps(options: {
     },
     createConversation: async (input) => {
       calls.create.push(input);
+      server.post(`ticket-${input.clientRequestId}`, input.message);
       // Idempotent on the client request id, like the RPC.
       return `ticket-${input.clientRequestId}`;
     },
@@ -64,8 +92,11 @@ function fakeDeps(options: {
         sendFailures -= 1;
         throw new Error("support-send failed");
       }
+      if (content.length > 0) server.post(ticketId, content);
     },
     newRequestId: () => `req-${++requestCounter}`,
+    userId: HOST,
+    readThread: async (ticketId) => server.thread(ticketId),
   };
   return { deps, calls };
 }
@@ -190,6 +221,78 @@ describe("#4420 Ari to a person hand-over", () => {
     const error = await runSupportHandover({ text: "Hi", ariImageIds: ["a1"], skippedFiles: 0 }, deps, wording, null).catch((e: HandoverError) => e);
     expect(error).toBeInstanceOf(HandoverError);
     expect((error as HandoverError).stage).toBe("find");
+    expect(calls).toEqual({ create: [], copy: [], send: [] });
+  });
+});
+
+// #4420 rework 3 (QA P2-2): a reload or a new screen used to send the same
+// hand-over again (the guard lived only in memory). The conversation's own
+// server thread is now the truth. FAILS-ON-REVERT: without the readThread
+// check in runSupportHandover, block 6's second press sends a duplicate.
+describe("#4420 rework 3 hand-over survives a reload", () => {
+  const asked = (id: string, at: string, text: string, attachments: unknown[] = []) => ({
+    id, created_at: at, role: "user", content: { text, attachments },
+  });
+
+  test("6. a fresh screen (no progress, same server) sends nothing the second time; a NEW question does", async () => {
+    const server = newServer();
+    const messages = [asked("m1", "2026-11-21T09:59:00Z", "Door scanner froze", [image("a1")])];
+    const payload = handOverPayloadFromMessages(messages);
+    expect(payload).toMatchObject({ ariMessageId: "m1", askedAt: "2026-11-21T09:59:00Z" });
+
+    // First screen: no open conversation, so one is made; the photo follows.
+    const first = fakeDeps({ openId: null, server });
+    const outcome = await runSupportHandover(payload!, first.deps, wording, null);
+    expect(outcome.alreadyHandedOver).toBe(false);
+    expect(first.calls.create).toHaveLength(1);
+    expect(first.calls.send).toEqual([["ticket-req-1", "", ["s-a1"]]]);
+
+    // Reload: a new screen with no in-memory progress finds that conversation open.
+    const second = fakeDeps({ openId: outcome.ticketId, server });
+    const again = await runSupportHandover(handOverPayloadFromMessages(messages)!, second.deps, wording, null);
+    expect(again.alreadyHandedOver).toBe(true);
+    expect(again.ticketId).toBe(outcome.ticketId);
+    expect(second.calls).toEqual({ create: [], copy: [], send: [] });
+
+    // A NEW Ari question afterwards (even with the same words) is handed over.
+    const later = [...messages, asked("m2", new Date(server.now + 60_000).toISOString(), "Door scanner froze")];
+    server.now += 120_000;
+    const third = fakeDeps({ openId: outcome.ticketId, server });
+    const fresh = await runSupportHandover(handOverPayloadFromMessages(later)!, third.deps, wording, null);
+    expect(fresh.alreadyHandedOver).toBe(false);
+    expect(third.calls.send).toEqual([[outcome.ticketId, "From my chat with Ari: Door scanner froze", []]]);
+  });
+
+  test("7. a send whose answer was lost is found on the server, not sent again", async () => {
+    const server = newServer();
+    const payload = handOverPayloadFromMessages([asked("m1", "2026-11-21T09:00:00Z", "Hi")])!;
+    server.post("open-1", "From my chat with Ari: Hi");
+    const { deps, calls } = fakeDeps({ openId: "open-1", server });
+    const progress = { clientRequestId: "r", ticketId: "open-1", textDelivered: false, copied: {}, sentPhotoIds: [] };
+    const outcome = await runSupportHandover(payload, deps, wording, progress);
+    expect(outcome.alreadyHandedOver).toBe(true);
+    expect(calls.send).toEqual([]);
+  });
+
+  test("8. the check: own, customer-visible, same words, at or after the question", () => {
+    const at = "2026-11-21T10:00:00Z";
+    const msg = (over: Partial<HandoverThreadMessage> = {}): HandoverThreadMessage => ({ sender_id: HOST, content: "From my chat with Ari: Hi", created_at: "2026-11-21T10:00:05Z", is_internal: false, ...over });
+    const words = "From my chat with Ari: Hi";
+    expect(threadHasHandover([msg()], { userId: HOST, words, askedAt: at })).toBe(true);
+    expect(threadHasHandover([msg({ content: " From my chat with Ari: Hi \n" })], { userId: HOST, words, askedAt: at })).toBe(true);
+    expect(threadHasHandover([msg({ sender_id: "staff-1" })], { userId: HOST, words, askedAt: at })).toBe(false);
+    expect(threadHasHandover([msg({ is_internal: true })], { userId: HOST, words, askedAt: at })).toBe(false);
+    expect(threadHasHandover([msg({ created_at: "2026-11-21T09:59:00Z" })], { userId: HOST, words, askedAt: at })).toBe(false);
+    expect(threadHasHandover([msg({ content: "From my chat with Ari: Hello" })], { userId: HOST, words, askedAt: at })).toBe(false);
+    expect(threadHasHandover([msg({ created_at: "2026-11-21T09:59:00Z" })], { userId: HOST, words })).toBe(true);
+    expect(threadHasHandover([], { userId: HOST, words, askedAt: at })).toBe(false);
+  });
+
+  test("9. the thread cannot be read: stop with Retry, nothing sent", async () => {
+    const { deps, calls } = fakeDeps({ openId: "open-1" });
+    deps.readThread = async () => { throw new Error("offline"); };
+    const error = await runSupportHandover({ text: "Hi", ariImageIds: ["a1"], skippedFiles: 0 }, deps, wording, null).catch((e: HandoverError) => e);
+    expect((error as HandoverError).stage).toBe("check");
     expect(calls).toEqual({ create: [], copy: [], send: [] });
   });
 });

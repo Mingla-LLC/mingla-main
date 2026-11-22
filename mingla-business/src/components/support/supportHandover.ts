@@ -7,7 +7,9 @@
  * supportHandoverService.ts, so every step and every refusal is unit-tested.
  *
  * Nothing is sent twice: the caller keeps the returned progress and passes it
- * back on a retry. The create call reuses its client request id (the RPC
+ * back on a retry, and (#4420 rework 3) before sending into a conversation
+ * that already existed, its server thread is read for this question's
+ * hand-over, so a reload or a new screen cannot send it again. The create call reuses its client request id (the RPC
  * returns the same conversation), copied photos are not copied again, and
  * text that already went out is not resent.
  */
@@ -16,6 +18,9 @@
 export interface HandoverSourceMessage {
   role: string;
   content: unknown;
+  /** The Ari message id and when it was asked (server time), when known. */
+  id?: string;
+  created_at?: string;
 }
 
 export interface HandOverPayload {
@@ -25,6 +30,10 @@ export interface HandOverPayload {
   ariImageIds: string[];
   /** Files in that turn that are not images; they stay with Ari. */
   skippedFiles: number;
+  /** The Ari message this payload is (#4420 rework 3), when known. */
+  ariMessageId?: string;
+  /** When the host asked it (the Ari message's created_at), when known. */
+  askedAt?: string;
 }
 
 const MAX_HANDOVER_IMAGES = 10;
@@ -67,7 +76,10 @@ export function handOverPayloadFromMessages(
     // A photo-only turn shows "1 attachment" in Ari; that is not the host's words.
     if (attachments.length > 0 && ATTACHMENT_COUNT_TEXT.test(text)) text = "";
     if (text.length === 0 && imageIds.length === 0 && skippedFiles === 0) continue;
-    return { text: text.length > 0 ? text : null, ariImageIds: imageIds, skippedFiles };
+    const payload: HandOverPayload = { text: text.length > 0 ? text : null, ariImageIds: imageIds, skippedFiles };
+    if (typeof message.id === "string" && message.id.length > 0) payload.ariMessageId = message.id;
+    if (typeof message.created_at === "string" && message.created_at.length > 0) payload.askedAt = message.created_at;
+    return payload;
   }
   return null;
 }
@@ -158,6 +170,47 @@ export interface HandoverDeps {
   /** `support-send` as the requester. Throws when nothing was sent. */
   send: (ticketId: string, content: string, supportAttachmentIds: readonly string[]) => Promise<void>;
   newRequestId: () => string;
+  /** The host handing over: only their own messages count as a hand-over. */
+  userId: string;
+  /**
+   * #4420 rework 3: the conversation's own messages, read from the server, so
+   * a hand-over already made (before a reload, or by a send whose answer was
+   * lost) is found and not sent again. Throws when the thread cannot be read.
+   */
+  readThread: (ticketId: string) => Promise<readonly HandoverThreadMessage[]>;
+}
+
+/** Only the parts of a support message the duplicate check reads. */
+export interface HandoverThreadMessage {
+  sender_id: string | null;
+  content: string;
+  created_at: string;
+  is_internal: boolean;
+}
+
+/**
+ * #4420 rework 3 (QA P2-2): has this Ari question already been handed over
+ * into this conversation? True when the host (`userId`) has a customer-visible
+ * message there with exactly the hand-over words, sent at or after the Ari
+ * message was asked. The server's thread is the truth, so it holds across a
+ * reload and a new screen; a NEW Ari question (asked later) is not matched by
+ * an older hand-over, even with the same words. With no askedAt known, any
+ * earlier match counts (never a duplicate).
+ */
+export function threadHasHandover(
+  thread: readonly HandoverThreadMessage[],
+  input: { userId: string; words: string; askedAt?: string },
+): boolean {
+  const words = input.words.trim();
+  if (words.length === 0) return false;
+  const asked = input.askedAt ? Date.parse(input.askedAt) : Number.NaN;
+  return thread.some((message) => {
+    if (message.is_internal || message.sender_id !== input.userId) return false;
+    if ((message.content ?? "").trim() !== words) return false;
+    if (!Number.isFinite(asked)) return true;
+    const sent = Date.parse(message.created_at);
+    return Number.isFinite(sent) && sent >= asked;
+  });
 }
 
 /** Words the hand-over adds so staff can see the conversation came from Ari. */
@@ -187,6 +240,8 @@ export function newHandoverProgress(requestId: string): HandoverProgress {
 export interface HandoverOutcome {
   ticketId: string;
   createdConversation: boolean;
+  /** This Ari question was already in the conversation: nothing was sent. */
+  alreadyHandedOver: boolean;
   photosSent: number;
   photoFailures: { ariAttachmentId: string; code: CopyRefusalCode }[];
   skippedFiles: number;
@@ -195,7 +250,7 @@ export interface HandoverOutcome {
 
 export class HandoverError extends Error {
   constructor(
-    readonly stage: "find" | "create" | "send",
+    readonly stage: "find" | "check" | "create" | "send",
     readonly progress: HandoverProgress,
     message: string,
   ) {
@@ -250,6 +305,30 @@ export async function runSupportHandover(
   }
   const ticketId = progress.ticketId;
 
+  // 1b. A conversation that existed already: if its thread holds this Ari
+  // question's hand-over (a press before a reload, or a send whose answer was
+  // lost), nothing is copied or sent again.
+  if (!createdConversation && !progress.textDelivered) {
+    let thread: readonly HandoverThreadMessage[];
+    try {
+      thread = await deps.readThread(ticketId);
+    } catch (error) {
+      throw new HandoverError("check", progress, errorMessage(error));
+    }
+    if (threadHasHandover(thread, { userId: deps.userId, words: firstMessage, askedAt: payload.askedAt })) {
+      progress.textDelivered = true;
+      return {
+        ticketId,
+        createdConversation: false,
+        alreadyHandedOver: true,
+        photosSent: 0,
+        photoFailures: [],
+        skippedFiles: payload.skippedFiles,
+        progress,
+      };
+    }
+  }
+
   // 2. Each Ari photo is copied on the server; a refusal keeps the rest going.
   const photoFailures: HandoverOutcome["photoFailures"] = [];
   for (const ariId of payload.ariImageIds) {
@@ -280,6 +359,7 @@ export async function runSupportHandover(
   return {
     ticketId,
     createdConversation,
+    alreadyHandedOver: false,
     photosSent: progress.sentPhotoIds.length,
     photoFailures,
     skippedFiles: payload.skippedFiles,
