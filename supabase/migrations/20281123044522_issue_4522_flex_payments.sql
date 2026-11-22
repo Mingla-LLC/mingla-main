@@ -630,6 +630,7 @@ BEGIN
          planned_application_fee_cents = planned_application_fee_cents - v_fee,
          updated_at = p_now
    WHERE id = v_row.id;
+  -- orch-strict-grep-allow tr3-schedule-currency-pinned — the re-opened row is the rest of one row and takes that row's currency, which checkout pinned from the session.
   INSERT INTO public.order_installments (order_id, ordinal, amount_cents, currency, due_at, status, provider,
     collection_method, ticket_type_id, kind, addon_portion_minor, referral_share_minor,
     planned_application_fee_cents, plan_bound_at)
