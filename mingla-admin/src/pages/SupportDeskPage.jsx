@@ -156,6 +156,19 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
     return true;
   }, []);
 
+  // #4420 rework 4 (F2): EVERY way of leaving or replacing the side panel (Escape,
+  // the backdrop, the close button, Cancel / Done, opening a ticket) goes
+  // through the same decision as switching conversation: an untouched Create
+  // ticket form closes; an edited one asks, and keeping it changes nothing.
+  const leaveSide = useCallback((next = null) => {
+    const { side: open } = latestRef.current;
+    const decision = sidePanelOnSwitch({ sideKind: open?.kind || null, dirty: createDirtyRef.current, same: false });
+    if (decision === "ask" && !window.confirm(DISCARD_TICKET_WORDS)) return false;
+    setSide(next);
+    createDirtyRef.current = false;
+    return true;
+  }, []);
+
   const loadLinked = useCallback(async (rows) => {
     const ids = rows.map((t) => t.id);
     if (ids.length === 0) { setLinkedByConversation({}); return; }
@@ -408,10 +421,10 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   // #4420 rework (P3-c): Escape closes the side panel (it overlays the thread under xl).
   useEffect(() => {
     if (!showSide) return undefined;
-    const onKey = (e) => { if (e.key === "Escape" && !e.defaultPrevented) setSide(null); };
+    const onKey = (e) => { if (e.key === "Escape" && !e.defaultPrevented) leaveSide(null); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [showSide]);
+  }, [showSide, leaveSide]);
   const selectedKey = selectedReported ? `reported:${selectedReported.id}` : selected.conversationId;
 
   return (
@@ -527,7 +540,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
           // side panel slides over the thread from the right (like the Work
           // card drawer) instead of stacking under the fold. The dimmed
           // backdrop and the panel's own Cancel / Close both dismiss it.
-          <button type="button" aria-label="Close the side panel" data-side-backdrop="" onClick={() => setSide(null)}
+          <button type="button" aria-label="Close the side panel" data-side-backdrop="" onClick={() => leaveSide(null)}
             className="fixed inset-0 h-full w-full cursor-default bg-black/40" style={{ zIndex: "var(--z-modal)" }} />
         ) : null}
         {showSide && side.kind === "create" ? (
@@ -536,7 +549,8 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
               docked={sideDocked}
               ticket={selectedTicket}
               messages={side.messages}
-              onClose={() => setSide(null)}
+              onClose={() => leaveSide(null)}
+              onOpenTicket={(info) => leaveSide({ kind: "summary", linked: { card_id: info.id, number: info.number, title: info.title, type: info.type, status: null } })}
               onDirtyChange={(dirty) => { createDirtyRef.current = dirty; }}
               onMade={() => { void loadLinked(tickets); }}
               onLinked={() => { void loadLinked(tickets); }}
@@ -545,7 +559,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
         ) : null}
         {showSide && side.kind === "summary" ? (
           <div data-side-slot="" className={SIDE_SLOT} style={SIDE_SLOT_Z}>
-            <TicketSummaryPanel linked={side.linked} onClose={() => setSide(null)} />
+            <TicketSummaryPanel linked={side.linked} onClose={() => leaveSide(null)} />
           </div>
         ) : null}
       </div>

@@ -43,14 +43,15 @@ function FieldError({ id, words }) {
 
 /**
  * Props: config (ops config: me, team), online, headingRef, onCreated(card),
- * onCancel, onOpenCard(id), and optionally the conversation the ticket comes
+ * onCancel, onOpenCard(id, { number, title }) (opens that ticket, links nothing),
+ * onLinked(id) (only after the server confirmed "Link here"), and optionally the conversation the ticket comes
  * from: conversation { id, label }, createdFrom ("board" | "conversation" |
  * "brand_group"), brandId, initialTitle, initialWhatIsWrong, initialType, initialProductArea,
  * onDirtyChange(dirty): told when the form gains or loses edits, and
  * stickyActions: keep Make ticket / Cancel in view at the bottom of a
  * scrolling side panel.
  */
-export function TicketForm({ config, online, headingRef, onCreated, onCancel, onOpenCard, onDirtyChange, stickyActions = false, conversation = null, createdFrom = "board", brandId = null, initialTitle = "", initialWhatIsWrong = "", initialType = "bug", initialProductArea = "" }) {
+export function TicketForm({ config, online, headingRef, onCreated, onCancel, onOpenCard, onLinked, onDirtyChange, stickyActions = false, conversation = null, createdFrom = "board", brandId = null, initialTitle = "", initialWhatIsWrong = "", initialType = "bug", initialProductArea = "" }) {
   const { addToast } = useToast();
   const directory = usePeopleDirectory();
   const team = directory.people.length ? directory.people : (config?.team || []);
@@ -117,7 +118,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
       const read = await ops.getWork(row.id);
       const answer = await ops.linkTicketConversation(row.id, source.id, read?.card?.revision);
       addToast({ variant: "success", title: answer?.changed === false ? `Already a reporter on ${ticketNumber(row.number)}` : `Added as a reporter on ${ticketNumber(row.number)}` });
-      onOpenCard?.(row.id);
+      onLinked?.(row.id);
     } catch (error) {
       addToast({ variant: "error", title: "Couldn’t link here", description: opsErrorWords(error) });
     } finally {
@@ -210,7 +211,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
                   {source ? (
                     <Button type="button" variant="secondary" className="min-h-11" loading={linkingId === row.id} disabled={!online || !!linkingId} onClick={() => linkHere(row)}>Link here</Button>
                   ) : (
-                    <Button type="button" variant="ghost" className="min-h-11" onClick={() => onOpenCard?.(row.id)}>Open</Button>
+                    <Button type="button" variant="ghost" className="min-h-11" onClick={() => onOpenCard?.(row.id, { number: row.number, title: row.title, type: row.type })}>Open</Button>
                   )}
                 </li>
               ))}
@@ -285,7 +286,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
                   <Button type="button" variant="secondary" className="min-h-11" loading={linkingId === dupNotice.existingId} disabled={!online || !!linkingId}
                     onClick={() => linkHere({ id: dupNotice.existingId, number: dupNotice.number })}>Link here</Button>
                 ) : null}
-                <Button type="button" variant="secondary" className="min-h-11" onClick={() => onOpenCard?.(dupNotice.existingId)}>Open {dupNotice.number != null ? ticketNumber(dupNotice.number) : "it"}</Button>
+                <Button type="button" variant="secondary" className="min-h-11" onClick={() => onOpenCard?.(dupNotice.existingId, { number: dupNotice.number, title: dupNotice.title })}>Open {dupNotice.number != null ? ticketNumber(dupNotice.number) : "it"}</Button>
               </div>
             ) : null}
           </div>

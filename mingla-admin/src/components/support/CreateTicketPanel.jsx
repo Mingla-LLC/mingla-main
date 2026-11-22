@@ -17,11 +17,12 @@ import { ticketNumber } from "../../lib/ticketModel";
 /**
  * Props: ticket (the conversation), messages (its thread, for the pre-fill),
  * onClose, onMade({ number, id }) after a ticket is made, onLinked(cardId)
- * after "Link here" or an existing ticket was opened, onDirtyChange(dirty)
+ * only after the server confirmed "Link here", onOpenTicket({ id, number, title })
+ * for "Open" (shows that ticket; links nothing), onDirtyChange(dirty)
  * whenever the form gains or loses edits (the page asks before discarding them),
  * docked (true when it is the grid's third column, not the overlay).
  */
-export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked, onDirtyChange, docked = false }) {
+export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked, onOpenTicket, onDirtyChange, docked = false }) {
   const config = useOpsConfig();
   const { addToast } = useToast();
   const [done, setDone] = useState(null);
@@ -91,7 +92,8 @@ export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked,
             onDirtyChange={onDirtyChange}
             stickyActions
             onCreated={(card) => { onDirtyChange?.(false); setDone({ number: card?.number, id: card?.id }); onMade?.(card); }}
-            onOpenCard={(id) => { if (id) { setDone({ number: null, id }); onLinked?.(id); } }}
+            onOpenCard={(id, info) => { if (id) onOpenTicket?.({ id, number: info?.number ?? null, title: info?.title || "", type: info?.type || null }); }}
+            onLinked={(id) => { if (id) { onDirtyChange?.(false); setDone({ number: null, id }); onLinked?.(id); } }}
           />
         )}
       </div>

@@ -307,6 +307,7 @@ export function ticketDuplicateNotice(answer, { hasSource = false } = {}) {
     words: `An open ticket already covers this: ${named}. ${hasSource ? "Link this conversation to it, or open it." : "Open it and update it instead."}`,
     existingId: id,
     number,
+    title,
     canLink: Boolean(hasSource),
   };
 }

@@ -337,10 +337,10 @@ describe("S-9 (rework 1, P3-c) the Create ticket panel is in view at 1024 px", (
   });
   it("both side panels use the slot; it is dismissible by backdrop, Escape and the panel's own Cancel", () => {
     assert.equal((page.match(/data-side-slot="" className=\{SIDE_SLOT\}/g) || []).length, 2);
-    assert.match(page, /data-side-backdrop="" onClick=\{\(\) => setSide\(null\)\}/);
+    assert.match(page, /data-side-backdrop="" onClick=\{\(\) => leaveSide\(null\)\}/);
     assert.match(page, /\{showSide && !sideDocked \? \(/, "the backdrop only for the overlay");
-    assert.match(page, /e\.key === "Escape" && !e\.defaultPrevented\) setSide\(null\)/);
-    assert.match(page, /<CreateTicketPanel[\s\S]{0,200}onClose=\{\(\) => setSide\(null\)\}/);
+    assert.match(page, /e\.key === "Escape" && !e\.defaultPrevented\) leaveSide\(null\)/);
+    assert.match(page, /<CreateTicketPanel[\s\S]{0,200}onClose=\{\(\) => leaveSide\(null\)\}/);
   });
 });
 
