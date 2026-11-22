@@ -152,6 +152,11 @@ jest.mock("../../onboarding/PhoneInput", () => {
       ReactActual.createElement("PhoneInput", props),
   };
 });
+// [TEST-MOD #4548] The Guest pack card pulls in the in-app browser and i18n
+// setup, which this harness does not provide (CI resolves app-mobile through
+// mingla-business node_modules, where i18next is absent). The card has its own
+// suites; here it is an inert stub so these #4473 proofs stay about #4473.
+jest.mock("../GuestPackCard", () => ({ GuestPackCard: () => null }));
 jest.mock("../DoorModeModal", () => {
   const ReactActual = jest.requireActual("react");
   return {
