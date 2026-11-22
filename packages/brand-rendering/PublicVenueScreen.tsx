@@ -864,6 +864,8 @@ const VenuePriceLedeSection: VenueSectionRenderer = ({
         maxMinor: discoveryPrice.maxMinor,
         currencyCode: discoveryPrice.currencyCode,
         exponent: discoveryPrice.minorUnitExponent,
+        // W3 fix 4 (W3-N31): ₦ like the rest of the page, no stray code.
+        display: "venue",
       })}
     </Text>
   );
@@ -2856,6 +2858,7 @@ export const PublicVenueScreen = ({
   // strip's own position: sticky). The strip's content offset is measured
   // once it lays out; the shell's scroll drives the switch.
   const pinnedTabsTop = insets.top + 8 + OFFERING_PREMIUM_HEADER_ROW + 4;
+  const pinnedTabsBackingTop = insets.top + OFFERING_PREMIUM_HEADER_ROW;
   const scrollYRef = React.useRef(0);
   const tabsAnchorRef = React.useRef<View | null>(null);
   const tabsContentYRef = React.useRef<number | null>(null);
@@ -3078,8 +3081,21 @@ export const PublicVenueScreen = ({
       </ParallaxCoverShell>
       {Platform.OS !== "web" && tabsPinned && (page.legacy || page.tabs.length > 1) ? (
         <View
-          style={[styles.pinnedTabs, { top: pinnedTabsTop }]}
+          // W3 fix 4 (W3-N34): the pinned strip sits on an opaque page-colour
+          // backing from the header's foot to below the pill (full width), so
+          // nothing scrolling under it (the Menu tab's section headings) reads
+          // through the gap under the header or beside the pill.
+          style={[
+            styles.pinnedTabs,
+            {
+              top: pinnedTabsBackingTop,
+              paddingTop: pinnedTabsTop - pinnedTabsBackingTop,
+              backgroundColor: palette.page,
+              borderBottomColor: palette.panelBorder,
+            },
+          ]}
           pointerEvents="box-none"
+          testID="issue-4490-venue-tab-pill-pinned-backing"
         >
           <PublicVenueTabPill
             hasMenu={hasMenu}
@@ -3147,7 +3163,15 @@ const styles = StyleSheet.create({
   },
   flyerPillLabel: { fontSize: 14, fontWeight: "700" },
   // issue #4420 — the pinned tab pill (native), under the glass header.
-  pinnedTabs: { position: "absolute", left: 16, right: 16, zIndex: 60 },
+  pinnedTabs: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    zIndex: 60,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   // #1595 — NO `backgroundColor` here. The host's colour is themed and is
   // supplied at the call site from `surface.page`. A constant reinstated here
   // would win on any render where the palette resolves light, which is the

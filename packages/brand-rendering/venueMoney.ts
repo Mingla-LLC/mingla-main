@@ -14,6 +14,11 @@
  * so zero-decimal currencies (JPY, KRW) render correctly.
  */
 
+import {
+  LOCAL_CURRENCY_GLYPHS,
+  withCurrencyGlyph,
+} from "@mingla/offering-rendering/currencyGlyph";
+
 export function formatMinorCurrency(
   amountMinor: number,
   currencyCode: string,
@@ -35,7 +40,17 @@ export function formatSourceRange(input: {
   currencyCode: string;
   exponent: number;
   locale?: string;
+  /**
+   * #4490 W3 fix 4 (W3-N31): "venue" is the GUEST venue page's typical spend
+   * (see `venueSpendRange` below); absent ("source") is the original text,
+   * which the host's claim step shows on purpose.
+   */
+  display?: "source" | "venue";
 }): string {
+  if (input.display === "venue") {
+    const venue = venueSpendRange(input);
+    if (venue !== null) return venue;
+  }
   const min = formatMinorCurrency(
     input.minMinor,
     input.currencyCode,
@@ -50,4 +65,47 @@ export function formatSourceRange(input: {
     input.locale,
   );
   return `${min}–${max} · ${input.currencyCode}`;
+}
+
+/**
+ * #4490 W3 fix 4 (W3-N31) — the GUEST venue page's typical spend ("Typically
+ * ₦20,000–₦150,000 a head", "Typical spend · ₦20,000–₦150,000").
+ *
+ * Hermes (and en-US on V8) print Naira as its code, so `formatSourceRange`
+ * read "NGN 20,000.00–NGN 150,000.00 · NGN" next to a page that says
+ * "₦4,000" everywhere else. A currency with a local glyph (the one table in
+ * `currencyGlyph`, today only NGN; spec 06 decision 14) reads like the rest of
+ * the venue page: the glyph, whole amounts without ".00", and no trailing code
+ * (the glyph already names it). Null for every other currency, which then
+ * prints exactly as before, so "£25.00–£60.00 · GBP" does not change. The
+ * host's claim step calls without `display` and is unchanged.
+ */
+function venueSpendRange(input: {
+  minMinor: number;
+  maxMinor: number | null;
+  currencyCode: string;
+  exponent: number;
+}): string | null {
+  const code = input.currencyCode.trim().toUpperCase();
+  if (LOCAL_CURRENCY_GLYPHS[code] === undefined) return null;
+  const amount = (minor: number): string => {
+    if (!Number.isSafeInteger(minor) || minor < 0) return "—";
+    const whole = minor % 10 ** input.exponent === 0;
+    try {
+      return withCurrencyGlyph(
+        new Intl.NumberFormat("en", {
+          style: "currency",
+          currency: code,
+          currencyDisplay: "narrowSymbol",
+          minimumFractionDigits: whole ? 0 : input.exponent,
+          maximumFractionDigits: whole ? 0 : input.exponent,
+        }).format(minor / 10 ** input.exponent),
+        code,
+      );
+    } catch {
+      return withCurrencyGlyph(formatMinorCurrency(minor, code, input.exponent), code);
+    }
+  };
+  const min = amount(input.minMinor);
+  return input.maxMinor === null ? `${min}+` : `${min}–${amount(input.maxMinor)}`;
 }

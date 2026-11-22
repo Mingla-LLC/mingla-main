@@ -202,6 +202,8 @@ const VENUE_PRICE_CELL: Record<
             maxMinor: discoveryPrice.maxMinor,
             currencyCode: discoveryPrice.currencyCode,
             exponent: discoveryPrice.minorUnitExponent,
+            // W3 fix 4 (W3-N31): ₦ like the rest of the page, no stray code.
+            display: "venue",
           }),
           note: "a head",
         },

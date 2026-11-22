@@ -24,7 +24,9 @@ const source = {
 
 describe("issue #1384 canonical venue price rendering", () => {
   it("renders exact source and never invents a display currency", () => {
-    expect(canonicalDiscoveryPriceLabel(source)).toContain("NGN");
+    // [TEST-MOD-APPROVED #4490] W3 fix 4 (W3-N31): Naira reads ₦ (decision 14);
+    // still the exact SOURCE currency, never a converted one.
+    expect(canonicalDiscoveryPriceLabel(source)).toContain("₦");
     expect(canonicalDiscoveryPriceDetail(source)?.approximate).toBeNull();
   });
 
@@ -42,7 +44,8 @@ describe("issue #1384 canonical venue price rendering", () => {
       fxFreshness: "stale_soft",
     };
     const detail = canonicalDiscoveryPriceDetail(converted);
-    expect(detail?.source).toContain("NGN");
+    // [TEST-MOD-APPROVED #4490] W3 fix 4 (W3-N31): the source reads ₦.
+    expect(detail?.source).toContain("₦");
     expect(detail?.approximate).toContain("$");
     expect(detail?.ratesDate).toBe("2027-01-29T00:00:00.000Z");
     expect(detail?.attributionUrl).toBe("https://www.exchangerate-api.com/");

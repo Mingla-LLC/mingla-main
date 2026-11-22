@@ -145,6 +145,18 @@ export const MOTION_Z = 5;
 export const FLOATING_CTA_MIN_Z = 6;
 export const DESKTOP_MOTION_Z = 4;
 
+/**
+ * #4490 W3 fix 4 (W3-N34a) — where the phone header band is fully solid: its
+ * usual point (the cover has scrolled away), or the end of the page when the
+ * page cannot scroll that far, so the band is never left mid-fade with the
+ * cover's title reading through the compact title. A page that cannot scroll
+ * at all keeps the usual point (the band never shows).
+ */
+export function premiumSolidThreshold(args: { base: number; maxScroll: number | null }): number {
+  if (args.maxScroll === null || args.maxScroll <= 0) return args.base;
+  return Math.min(args.base, Math.max(1, args.maxScroll - 2));
+}
+
 export interface ParallaxCoverShellProps {
   palette: ThemePalette;
   theme: ResolvedTheme;
@@ -540,11 +552,34 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     setDeskColWidth(event.nativeEvent.layout.width);
   }, []);
   const headerHeight = safeAreaTop + PREMIUM_HEADER_ROW;
+  // #4490 W3 fix 4 (W3-N34a): how far the phone page can actually scroll. A
+  // short page (Harbour Palms on Entry) ended BEFORE the band's fade point, so
+  // the header stayed mid-fade at the bottom of the page and the cover's title
+  // read through the compact title. The band now goes solid by the page's end.
+  const [premiumViewportHeight, setPremiumViewportHeight] = React.useState(0);
+  const [premiumContentHeight, setPremiumContentHeight] = React.useState(0);
+  const onPremiumScrollLayout = React.useCallback(
+    (event: LayoutChangeEvent): void => {
+      setPremiumViewportHeight(event.nativeEvent.layout.height);
+      onScrollViewLayout?.(event);
+    },
+    [onScrollViewLayout],
+  );
+  const onPremiumContentSize = React.useCallback((_w: number, h: number): void => {
+    setPremiumContentHeight(h);
+  }, []);
   const solidThreshold = isDesktop
     ? PREMIUM_DESKTOP_SOLID_AT
-    : premiumCoverHeight > 0
-      ? Math.max(120, premiumCoverHeight - SEAM - headerHeight)
-      : 300;
+    : premiumSolidThreshold({
+        base:
+          premiumCoverHeight > 0
+            ? Math.max(120, premiumCoverHeight - SEAM - headerHeight)
+            : 300,
+        maxScroll:
+          premiumViewportHeight > 0 && premiumContentHeight > 0
+            ? premiumContentHeight - premiumViewportHeight
+            : null,
+      });
   const handlePremiumScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
       const y = event.nativeEvent.contentOffset.y;
@@ -946,7 +981,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           showsVerticalScrollIndicator={false}
           onScroll={handlePremiumScroll}
           scrollEventThrottle={16}
-          onLayout={onScrollViewLayout}
+          onLayout={onPremiumScrollLayout}
+          onContentSizeChange={onPremiumContentSize}
           {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
         >
           <View
@@ -1007,7 +1043,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           showsVerticalScrollIndicator={false}
           onScroll={handlePremiumScroll}
           scrollEventThrottle={16}
-          onLayout={onScrollViewLayout}
+          onLayout={onPremiumScrollLayout}
+          onContentSizeChange={onPremiumContentSize}
           {...(scrollRef !== undefined ? { ref: scrollRef } : {})}
         >
           <View

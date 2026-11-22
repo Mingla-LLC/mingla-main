@@ -63,15 +63,41 @@ export function venueNoAnswerCode(isOnline: boolean): "offline" | "venue_unreach
 /** A read the page waits on gives up after this long (W3-N25: was ~60 s). */
 export const VENUE_READ_TIMEOUT_MS = 10_000;
 
+/**
+ * W3 fix 4 (W3-N35) — the read's own clock. The `timeout` option alone never
+ * fired: functions-js aborts through the request's `signal`, and the app's
+ * Supabase fetch wrapper (services/supabase.ts) sends every request with its
+ * OWN abort signal, so the caller's was dropped and the wrapper's 20 s hard
+ * cap was the only one that ran (the device saw the error at ~20 s). The race
+ * is the same reliable path that wrapper uses (Promise.race; abort is not
+ * dependable on Hermes); the request left on the wire ends at its 20 s cap.
+ */
+export function raceVenueRead<T>(work: Promise<T>, timeoutMs: number | undefined): Promise<T> {
+  if (timeoutMs === undefined) return work;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new VenuePurchaseError(venueNoAnswerCode(onlineManager.isOnline()))),
+      timeoutMs,
+    );
+  });
+  return Promise.race([work, timeout]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
+}
+
 async function invoke(
   fn: Fn,
   body: Record<string, unknown>,
   options: { timeoutMs?: number } = {},
 ): Promise<unknown> {
-  const { data, error } = await supabase.functions.invoke(fn, {
-    body,
-    ...(options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs }),
-  });
+  const { data, error } = await raceVenueRead(
+    supabase.functions.invoke(fn, {
+      body,
+      ...(options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs }),
+    }),
+    options.timeoutMs,
+  );
   if (error) {
     // #4490 Explorer W3: a request that never got an answer (no network, the
     // server down, or the read timed out) is named, so a screen can say
