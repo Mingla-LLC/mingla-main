@@ -83,7 +83,10 @@ BEGIN
   v_c := public.biz_compute_refund_for_cancel('45220008-0000-4000-8000-0000000000a1');
   SELECT r INTO v_dep FROM jsonb_array_elements(v_c->'per_payment_refund') r WHERE r->>'note' = 'deposit';
   IF (v_c->>'refund_total_cents')::bigint <> 10200000 OR (v_dep->>'refund_cents')::bigint <> 0
-     OR (v_dep->>'deposit_non_refundable_cents')::bigint <> 30000000
+     -- The kept deposit has its own key, never an element (#4522 rework F7).
+     OR (v_c->>'deposit_non_refundable_cents')::bigint IS DISTINCT FROM 30000000
+     OR jsonb_array_length(v_c->'per_payment_refund') <> 2
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_c->'per_payment_refund') r WHERE NOT r ? 'refund_cents')
      OR (v_c->>'paid_total_cents')::bigint <> 40200000 THEN
     RAISE EXCEPTION 'A-1 SC-14 traveler cancel: %', v_c;
   END IF;
@@ -136,7 +139,8 @@ DECLARE v_c jsonb;
 BEGIN
   v_c := public.biz_compute_refund_for_cancel('45220008-0000-4000-8000-0000000000a2');
   IF (v_c->>'refund_total_cents')::bigint <> 30000000
-     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_c->'per_payment_refund') r WHERE r ? 'deposit_non_refundable_cents') THEN
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_c->'per_payment_refund') r WHERE r ? 'deposit_non_refundable_cents')
+     OR v_c ? 'deposit_non_refundable_cents' THEN
     RAISE EXCEPTION 'C-1 a legacy refund changed: %', v_c;
   END IF;
 END $$;

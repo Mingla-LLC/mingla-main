@@ -151,8 +151,7 @@ BEGIN
       'refund_cents', FLOOR((v_order.total_cents - v_deposit_kept)::numeric * v_tier_pct / 100.0)::bigint,
       'currency', v_order.currency,
       'note', 'deposit'
-    ) || CASE WHEN v_deposit_kept > 0
-         THEN jsonb_build_object('deposit_non_refundable_cents', v_deposit_kept) ELSE '{}'::jsonb END;
+    );
   ELSE
     -- Single-payment order: total_cents = paid.
     v_paid_total_cents := v_order.total_cents;
@@ -194,7 +193,10 @@ BEGIN
     'per_payment_refund', v_per_installment_refund,
     'installments_to_cancel', v_installments,
     'policy_kind', COALESCE(v_policy->>'kind', 'none')
-  );
+  -- issue #4522 — the deposit kept by "Deposit is non-refundable" has its own
+  -- key (never an element of per_payment_refund); absent when nothing is kept.
+  ) || CASE WHEN v_deposit_kept > 0
+       THEN jsonb_build_object('deposit_non_refundable_cents', v_deposit_kept) ELSE '{}'::jsonb END;
 END;
 $function$;
 
@@ -346,7 +348,9 @@ BEGIN
     'refund_total_cents',v_compute->'refund_total_cents',
     'currency',v_compute->'currency','tier_pct',v_compute->'tier_pct',
     'installments_to_cancel',v_compute->'installments_to_cancel'
-  );
+  ) || CASE WHEN v_compute ? 'deposit_non_refundable_cents'
+       THEN jsonb_build_object('deposit_non_refundable_cents', v_compute->'deposit_non_refundable_cents')
+       ELSE '{}'::jsonb END;
 END;
 $function$;
 

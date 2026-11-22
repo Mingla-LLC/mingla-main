@@ -67,6 +67,7 @@ import {
   userClient,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
+import { depositKeptCents, paymentRefundEntries } from "./refundEntries.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,6 +90,7 @@ interface BeginRpcResult {
   reason?: string;
   refund_id?: string;
   per_payment_refund?: PerPaymentRefund[];
+  deposit_non_refundable_cents?: number;
   refund_total_cents?: number;
   currency?: string;
   tier_pct?: number;
@@ -110,6 +112,7 @@ interface ComputeRpcResult {
   refund_total_cents?: number;
   currency?: string;
   per_payment_refund?: PerPaymentRefund[];
+  deposit_non_refundable_cents?: number;
   installments_to_cancel?: Array<
     { installment_id: string; ordinal: number; due_at: string }
   >;
@@ -465,8 +468,12 @@ serve(async (req: Request): Promise<Response> => {
       paidTotalCents: compute.paid_total_cents ?? 0,
       refundTotalCents: compute.refund_total_cents ?? 0,
       currency: compute.currency ?? "GBP",
-      perPaymentRefund: compute.per_payment_refund ?? [],
+      perPaymentRefund: paymentRefundEntries(compute.per_payment_refund),
       installmentsToCancel: (compute.installments_to_cancel ?? []).length,
+      // issue #4522 — "Deposit is non-refundable": what the cancel keeps.
+      ...(depositKeptCents(compute) > 0
+        ? { depositKeptCents: depositKeptCents(compute) }
+        : {}),
     });
   }
 
@@ -532,7 +539,7 @@ serve(async (req: Request): Promise<Response> => {
     };
     if (
       floorError === null && floorCompute.ok &&
-      (floorCompute.per_payment_refund ?? []).some((entry) =>
+      paymentRefundEntries(floorCompute.per_payment_refund).some((entry) =>
         entry.refund_cents > 0 &&
         entry.refund_cents < PAYSTACK_MIN_REFUND_SUBUNITS &&
         entry.refund_cents !== entry.paid_cents
@@ -582,7 +589,7 @@ serve(async (req: Request): Promise<Response> => {
   const computedRefundTotalCents = Number(begin.refund_total_cents ?? 0);
   const currency = (begin.currency ?? "GBP").toLowerCase();
   const tierPct = Number(begin.tier_pct ?? 0);
-  const perPaymentRefund = begin.per_payment_refund ?? [];
+  const perPaymentRefund = paymentRefundEntries(begin.per_payment_refund);
   const installmentsCancelled = (begin.installments_to_cancel ?? []).length;
 
   // SC-22 freshness re-check — if policy changed between preview and confirm,
