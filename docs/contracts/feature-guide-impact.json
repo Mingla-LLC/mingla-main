@@ -5474,7 +5474,12 @@
         "supabase/functions/_shared/installments/overpaymentRefunds.ts",
         "supabase/functions/_shared/installments/overpaymentLane.ts",
         "supabase/functions/_shared/installments/paidInFullNotice.ts",
-        "supabase/functions/_shared/installments/installmentOpsAlert.ts"
+        "supabase/functions/_shared/installments/installmentOpsAlert.ts",
+        "supabase/functions/_shared/installments/flexReclaim.ts",
+        "supabase/functions/_shared/installments/planV2Schema.ts",
+        "supabase/functions/_shared/installments/chargePaystackInstallment.ts",
+        "supabase/functions/cancel-trip-booking/refundEntries.ts",
+        "mingla-business/src/services/cancelTripBookingService.ts"
       ]
     },
     {
