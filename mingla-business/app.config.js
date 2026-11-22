@@ -48,90 +48,6 @@ const RELEASE_BOUND_EAS_PROFILES = [
 ];
 
 /**
- * #4549 S0 — Android push needs Firebase (FCM) configuration in the build.
- *
- * The file is supplied at build time through the EAS FILE environment variable
- * `GOOGLE_SERVICES_JSON` (secret, never committed). On an EAS build the
- * variable holds the PATH of the uploaded file on the build runner, and the
- * documented wiring is `googleServicesFile: process.env.GOOGLE_SERVICES_JSON`
- * (https://docs.expo.dev/eas/environment-variables/manage/ and "Variable
- * types" in https://docs.expo.dev/eas/environment-variables/). When it is set,
- * Expo's prebuild copies the file into the Android project and applies the
- * `com.google.gms.google-services` Gradle plugin; when it is absent nothing is
- * set, so local, development and test builds still configure without it.
- * A developer who needs push on a local Android build points the variable at
- * a private copy of the file.
- *
- * @param {NodeJS.ProcessEnv} env
- * @returns {string | null}
- */
-const resolveGoogleServicesFile = (env) => {
-  const raw = env.GOOGLE_SERVICES_JSON;
-  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
-};
-
-/**
- * @param {import("expo/config").ExpoConfig["android"]} android
- * @param {NodeJS.ProcessEnv} env
- * @returns {import("expo/config").ExpoConfig["android"]}
- */
-const withGoogleServicesFile = (android, env) => {
-  const file = resolveGoogleServicesFile(env);
-  return file === null ? android : { ...android, googleServicesFile: file };
-};
-
-/**
- * #4549 S0 — `react-native-onesignal` was excluded from Android autolinking
- * (META-ORCH-0972, for env-less dev clients), so release builds carried no
- * Android push SDK at all. Reads package.json so the guard sees the real
- * build input.
- * @returns {boolean}
- */
-const isOneSignalExcludedFromAndroidAutolinking = () => {
-  const pkg = require("./package.json");
-  const exclude = pkg?.expo?.autolinking?.android?.exclude;
-  return Array.isArray(exclude) && exclude.includes("react-native-onesignal");
-};
-
-/**
- * #4549 S0 guard. A release-bound EAS Android build with push enabled must
- * carry the Google services file and must link the OneSignal SDK, or Android
- * hosts silently get no pushes (the defect #4549 found). EAS sets
- * EAS_BUILD_PLATFORM ("android" | "ios") and EAS_BUILD_PROFILE on the build
- * runner ("Built-in environment variables",
- * https://docs.expo.dev/eas/environment-variables/usage/); neither is set for
- * local `expo config`, Metro, web export or jest, so those are untouched, and
- * iOS builds never reach the checks.
- * @param {NodeJS.ProcessEnv} env
- * @param {(file: string) => boolean} fileExists
- * @returns {void}
- */
-const assertAndroidPushBuildReady = (env, fileExists) => {
-  if (env.EAS_BUILD_PLATFORM !== "android") return;
-  const profile = env.EAS_BUILD_PROFILE;
-  if (profile === undefined || !RELEASE_BOUND_EAS_PROFILES.includes(profile)) {
-    return;
-  }
-  if (!env.EXPO_PUBLIC_ONESIGNAL_APP_ID) return; // the #3720 guard owns this
-  if (isOneSignalExcludedFromAndroidAutolinking()) {
-    throw new Error(
-      `react-native-onesignal is excluded from Android autolinking in package.json, so the ${profile} Android build would ship with no push SDK. Remove it from expo.autolinking.android.exclude. [#4549]`,
-    );
-  }
-  const file = resolveGoogleServicesFile(env);
-  if (file === null) {
-    throw new Error(
-      `GOOGLE_SERVICES_JSON is required for the ${profile} Android EAS build — without the Google services file Android cannot register for push. Create it as an EAS file variable (secret) in this build's environment. [#4549]`,
-    );
-  }
-  if (!fileExists(require("node:path").resolve(__dirname, file))) {
-    throw new Error(
-      `GOOGLE_SERVICES_JSON points at a file that does not exist on this ${profile} Android build runner. [#4549]`,
-    );
-  }
-};
-
-/**
  * #2829 — loopback hosts the local Sites stack uses.
  * @param {string | undefined} raw
  * @returns {boolean}
@@ -347,12 +263,6 @@ module.exports = ({ config }) => {
   // talks to 127.0.0.1.
   assertNoLocalSitesOverridesInHostedBuild(process.env);
 
-  // #4549 S0 — release-bound Android builds must link OneSignal and carry the
-  // Google services file (helpers above).
-  assertAndroidPushBuildReady(process.env, (file) =>
-    require("node:fs").existsSync(file),
-  );
-
   // #4389 S-11 — LOCAL-only override that opens the native secure setup with
   // the server switch off, for a developer's own simulator proof. Any EAS build
   // that sees it fails here, so it can never reach a tester or a store.
@@ -376,8 +286,6 @@ module.exports = ({ config }) => {
     // SPEC_BIZ_CYCLE_B2A_STRIPE_CONNECT_ONBOARDING.md §3.3 A6.
     scheme: "mingla-business",
     ios: withTapToPayEntitlementGate(config.ios, process.env),
-    // #4549 S0 — Android Firebase config only when the build supplies it.
-    android: withGoogleServicesFile(config.android, process.env),
     plugins: [
       ...basePlugins,
       STRIPE_TERMINAL_PLUGIN,
