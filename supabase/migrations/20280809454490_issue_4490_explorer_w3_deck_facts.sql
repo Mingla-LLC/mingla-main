@@ -175,6 +175,7 @@ BEGIN
     'version', v_version,
     'venue', v_row,
     'currencyCode', v_currency,
+    -- orch-strict-grep-allow offering-currency-list: zero-decimal currencies (minor unit exponent map), not an allow-list.
     'minorUnitExponent', CASE WHEN v_currency IN ('JPY', 'KRW', 'VND', 'CLP', 'ISK', 'UGX', 'RWF', 'XOF', 'XAF', 'PYG', 'GNF', 'KMF', 'DJF', 'BIF', 'VUV', 'XPF')
                               THEN 0 ELSE 2 END,
     'vat', v_vat,
@@ -300,6 +301,7 @@ BEGIN
                 WHERE o->>'kind' = 'by_the_hour' AND o->>'fromMinor' IS NOT NULL),
       'memberships', v_plan_from),
     'currencyCode', v_currency,
+    -- orch-strict-grep-allow offering-currency-list: zero-decimal currencies (minor unit exponent map), not an allow-list.
     'minorUnitExponent', CASE WHEN v_currency IN ('JPY', 'KRW', 'VND', 'CLP', 'ISK', 'UGX', 'RWF', 'XOF', 'XAF', 'PYG', 'GNF', 'KMF', 'DJF', 'BIF', 'VUV', 'XPF')
                               THEN 0 ELSE 2 END,
     'onTodayStartsAt', v_on_starts,

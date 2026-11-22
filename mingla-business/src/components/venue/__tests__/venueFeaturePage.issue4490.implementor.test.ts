@@ -243,7 +243,9 @@ describe("lead precedence and the other rows", () => {
     },
   );
 
-  test("entry, then tables, then by the hour, plans, groups, hire", () => {
+  // [TEST-MOD-APPROVED #4490] spec 06 decision 13.2 (Seth, 19 Nov): Plans lead
+  // By the hour. The subset that holds both now leads with plans.
+  test("entry, then tables, then plans, by the hour, groups, hire", () => {
     const kinds: string[] = [];
     const features = ["entry", "table_reservations", "by_the_hour", "memberships", "group_packages", "private_hire"];
     for (let i = 0; i < features.length; i += 1) {
@@ -251,7 +253,10 @@ describe("lead precedence and the other rows", () => {
       const v: PublicVenueFeaturesView = { ...all, features: all.features.filter((f) => subset.has(f)) };
       kinds.push(deriveVenuePage(v, ctx({ menuTabVisible: false })).lead?.kind ?? "none");
     }
-    expect(kinds).toEqual(["entry", "tables", "by_the_hour", "memberships", "group_packages", "private_hire"]);
+    expect(kinds).toEqual(["entry", "tables", "memberships", "memberships", "group_packages", "private_hire"]);
+    // By the hour still leads when there are no plans.
+    const hourOnly: PublicVenueFeaturesView = { ...all, features: all.features.filter((f) => f === "by_the_hour" || f === "group_packages") };
+    expect(deriveVenuePage(hourOnly, ctx({ menuTabVisible: false })).lead?.kind).toBe("by_the_hour");
   });
 
   test("timed sessions read Book a visit; mixed entry reads Buy entry", () => {

@@ -141,6 +141,11 @@ module.exports = {
     // issue #4490 — the deck place sheet's main button follows what the venue
     // sells (features), not its type.
     "**/__tests__/issue_4490_deck_venue_cta.implementor.test.ts",
+    // issue #4490 Explorer W3 — deck chips (shared deckVenueChip), the venue
+    // page panes (model, seam, analytics, wiring) and the mounted pane states.
+    "**/__tests__/issue_4490_w3_deck_venue_chip.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_venue_panes.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_venue_panes.implementor.render.test.tsx",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.

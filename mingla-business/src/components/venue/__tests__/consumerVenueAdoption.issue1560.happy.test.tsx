@@ -196,6 +196,12 @@ jest.mock("@mingla/offering-rendering", () => {
   };
 });
 
+// [TEST-MOD-APPROVED #4490] Explorer W3: the consumer route now also reads the
+// venue's features (React Query). This suite pins today's page, so the
+// features read answers "no features" (the page's own fallback: unchanged).
+jest.mock("../../../../../app-mobile/src/hooks/usePublicVenueFeatures", () => ({
+  usePublicVenueFeatures: () => ({ data: null, isLoading: false, isError: false }),
+}));
 jest.mock("../../../../../app-mobile/src/hooks/usePublicVenue", () => ({
   __esModule: true,
   usePublicVenue: () => ({
