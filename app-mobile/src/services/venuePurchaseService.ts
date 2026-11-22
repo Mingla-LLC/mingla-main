@@ -29,11 +29,14 @@ import {
 
 export class VenuePurchaseError extends Error {
   readonly code: string;
+  /** #4490 W4: places left, when the server says so (`offer_sold_out`). */
+  readonly remaining: number | null;
 
-  constructor(code: string) {
+  constructor(code: string, remaining: number | null = null) {
     super(code.replaceAll("_", " "));
     this.name = "VenuePurchaseError";
     this.code = code;
+    this.remaining = remaining;
   }
 }
 
@@ -86,6 +89,18 @@ export function raceVenueRead<T>(work: Promise<T>, timeoutMs: number | undefined
   });
 }
 
+/**
+ * #4490 W4: the same owner-path call, shared with the native venue checkout
+ * (`venueOfferCheckoutService`), so both use one error and timeout rule.
+ */
+export function invokeVenueFunction(
+  fn: Fn,
+  body: Record<string, unknown>,
+  options: { timeoutMs?: number } = {},
+): Promise<unknown> {
+  return invoke(fn, body, options);
+}
+
 async function invoke(
   fn: Fn,
   body: Record<string, unknown>,
@@ -106,16 +121,18 @@ async function invoke(
       throw new VenuePurchaseError(venueNoAnswerCode(onlineManager.isOnline()));
     }
     let code = "venue_request_failed";
+    let remaining: number | null = null;
     const context = (error as { context?: Response }).context;
     if (context && typeof context.json === "function") {
       try {
-        const parsed = (await context.json()) as { code?: unknown };
+        const parsed = (await context.json()) as { code?: unknown; remaining?: unknown };
         if (typeof parsed.code === "string") code = parsed.code;
+        if (typeof parsed.remaining === "number" && Number.isFinite(parsed.remaining)) remaining = parsed.remaining;
       } catch {
         // Keep the stable fallback when the edge answer is not JSON.
       }
     }
-    throw new VenuePurchaseError(code);
+    throw new VenuePurchaseError(code, remaining);
   }
   if (data === null || typeof data !== "object" || (data as { kind?: unknown }).kind !== "success") {
     throw new VenuePurchaseError("venue_request_failed");
