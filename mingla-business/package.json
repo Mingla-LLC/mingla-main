@@ -208,7 +208,6 @@
     "autolinking": {
       "android": {
         "exclude": [
-          "react-native-onesignal",
           "react-native-purchases"
         ]
       }

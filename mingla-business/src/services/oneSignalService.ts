@@ -71,6 +71,36 @@ const _readyPromise: Promise<boolean> = new Promise<boolean>((resolve) => {
   _resolveReady = resolve;
 });
 
+// #4549 S0: on Android the OneSignal SDK throws "Must call 'initWithContext'
+// before use" (IllegalStateException, OneSignal-Android 5.10.2 OneSignalImp
+// waitForInit) for ANY Notifications/User call made before initialize(). Inside
+// a native-module method that is an uncaught native exception, i.e. a crash,
+// and a JS try/catch cannot see it. The SDK was never linked on Android before
+// #4549, so nothing here had to care. Listener attachments that happen before
+// the deferred initializeOneSignal() are therefore queued on Android and run
+// right after initialize succeeds. iOS keeps its early attach (its bridge
+// initializes with a nil app id so launch clicks are captured).
+const _mustWaitForInit = Platform.OS === "android";
+const _afterInit: Array<() => void> = [];
+
+function runAfterInit(task: () => void): void {
+  if (_initialized || !_mustWaitForInit) {
+    task();
+    return;
+  }
+  _afterInit.push(task);
+}
+
+function flushAfterInit(): void {
+  for (const task of _afterInit.splice(0, _afterInit.length)) {
+    try {
+      task();
+    } catch (e) {
+      console.warn("[OneSignal] deferred listener attach failed:", e);
+    }
+  }
+}
+
 // #4549 S4: the account-wide `push_os_permission` tag is removed once per
 // install. Nothing sends on it and it was wrong for accounts with several
 // phones; the per-device truth is host_push_devices.device_permission.
@@ -99,6 +129,8 @@ export function initializeOneSignal(): void {
     // cold startup. Keep the capture attached independently of React/auth so a
     // tap cannot be lost between native launch and the root layout subscribing.
     ensureNativeNotificationClickCapture();
+    // #4549 S0: listeners asked for before init (Android only) attach now.
+    flushAfterInit();
     if (__DEV__) console.log("[OneSignal] initialized");
     _resolveReady?.(true);
     // #4549 S4: clear the stale account-wide permission tag once per install.
@@ -517,6 +549,9 @@ const _nativeNotificationClickHandler = (event: {
 
 function ensureNativeNotificationClickCapture(): void {
   if (OneSignal === null || _nativeNotificationClickCaptureAttached) return;
+  // #4549 S0: never touch the Android SDK before initialize() (crash);
+  // initializeOneSignal() calls this again once the SDK is up.
+  if (_mustWaitForInit && !_initialized) return;
   try {
     OneSignal.Notifications.addEventListener(
       "click",
@@ -567,12 +602,19 @@ export function onForegroundNotification(
       () => notification.display(),
     );
   };
-  OneSignal.Notifications.addEventListener(
-    "foregroundWillDisplay",
-    handler as never,
-  );
+  const sdk = OneSignal;
+  let attached = false;
+  let removed = false;
+  // #4549 S0: on Android this waits for initialize() (see runAfterInit).
+  runAfterInit(() => {
+    if (removed) return;
+    sdk.Notifications.addEventListener("foregroundWillDisplay", handler as never);
+    attached = true;
+  });
   return (): void => {
-    OneSignal?.Notifications.removeEventListener(
+    removed = true;
+    if (!attached) return;
+    sdk.Notifications.removeEventListener(
       "foregroundWillDisplay",
       handler as never,
     );
