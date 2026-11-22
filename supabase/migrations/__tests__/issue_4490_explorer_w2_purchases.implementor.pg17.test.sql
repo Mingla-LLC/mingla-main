@@ -1,7 +1,8 @@
 -- #4490 Explorer W2 (20280809434490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-SWEEP-VENUE-KINDS | issue #4490 | the verified-identity sweep attaches venue bookings, plans and open waitlist places once each, labelled with kinds, route kinds, offering type and nouns the Explorer app already accepts (venue_booking/pass, venue_membership/pass only for a plan that carries a pass (active, payment_due, grace) and venue_membership/booking for a payable or requested plan, venue_waitlist/booking; offering type venue), never as stay_group, and never attaches a declined, cancelled or expired never-paid plan.
--- MINGLA-INVARIANT: I-4490-VISIT-REMINDER-ONCE | issue #4490 | a live venue booking (confirmed, or partly cancelled with guests still confirmed) gets at most one day-before and one two-hours-before reminder per booking time (a moved booking is reminded for its new time), never when VENUE_VISIT_REMINDERS is off, never for a booking that is not live, never late, and no booking is starved by the per-run limit.
+-- MINGLA-INVARIANT: I-4490-VISIT-REMINDER-ONCE | issue #4490 | a live venue booking (confirmed, or partly cancelled with guests still confirmed) gets at most one day-before and one two-hours-before reminder per booking time (a moved booking is reminded for its new time), never when VENUE_VISIT_REMINDERS is off, never for a booking that is not live, never late (counted from when it was made, confirmed or last moved), never a day-before reminder for a visit on the venue's own today, and no booking is starved by the per-run limit.
+-- MINGLA-INVARIANT: I-4490-SWEEP-PLAN-WINDOWS | issue #4490 | the sign-up sweep attaches a lapsed or paused plan only while the period it would restart with has not run out (one plan period after the last paid one), and a plan request only while the venue's reply clock (request_response_hours) runs.
 --
 -- [TEST-MOD-APPROVED #4490] W2 fix round 1: S-3 now expects a just-joined,
 -- unpaid plan to be reported with noun 'booking' (W2-N1: it carries no pass);
@@ -9,6 +10,14 @@
 -- by group and reason because the key now carries the slice start (W2-N3);
 -- R-1b, R-12..R-15 cover fairness (W2-N2), moves (W2-N3) and partly
 -- cancelled bookings (W2-N4). No assertion was removed or weakened.
+--
+-- [TEST-MOD-APPROVED #4490] W2 fix round 2: the R fixture now also dates the
+-- bookings' confirmation three days back (they were made then) and puts the
+-- first visit time on the venue's tomorrow (t4490_tomorrow) instead of "10 and
+-- 9 hours from now", because the day-before reminder is now never queued for
+-- a visit on the venue's own today (W2-N13) and the old times could fall on
+-- today depending on the hour the suite runs. S-10 (W2-N14 windows) and
+-- R-16..R-18 (W2-N13) are new. No assertion was removed or weakened.
 --
 -- S sweep. H sharing. L Purchases reads. R reminders. C categories. A authority.
 --
@@ -308,6 +317,98 @@ BEGIN
 END
 $s$;
 
+-- W2-N14: plans are attached only while they are still actionable. A yearly
+-- plan, a 24-hour reply clock for the venue, and plans at each edge
+-- (fixture shaping, rolled back with the suite).
+SELECT public.t4490_as('44943000-0000-4000-8000-000000000001');
+DO $yp$
+DECLARE
+  v jsonb;
+BEGIN
+  v := public.issue_4490_manage_membership_plan('create', '44943000-0000-4000-9000-0000000000a1',
+    '{"name":"Yearly desk","priceMinor":20000000,"period":"year"}'::jsonb, NULL, 'w2-fx-yplan');
+  INSERT INTO t4490_ids VALUES ('yplan', (v->>'id')::uuid);
+  v := public.issue_4490_manage_membership_plan('publish', '44943000-0000-4000-9000-0000000000a1',
+    jsonb_build_object('planId', (v->>'id')::uuid), 1, 'w2-fx-yplan-pub');
+END
+$yp$;
+SELECT public.t4490_reset();
+ALTER TABLE public.venue_booking_settings DISABLE TRIGGER USER;
+INSERT INTO public.venue_booking_settings (venue_id, brand_id, timezone, request_response_hours)
+VALUES ('44943000-0000-4000-9000-0000000000a1', '44943000-0000-4000-9000-000000000010', 'Africa/Lagos', 24)
+ON CONFLICT (venue_id) DO UPDATE SET request_response_hours = 24, timezone = 'Africa/Lagos';
+ALTER TABLE public.venue_booking_settings ENABLE TRIGGER USER;
+DO $wplans$
+DECLARE
+  v jsonb;
+  v_k text;
+BEGIN
+  FOREACH v_k IN ARRAY ARRAY['w_lapsed_in', 'w_lapsed_edge', 'w_lapsed_old', 'w_paused_in', 'w_paused_edge',
+                            'w_req_in', 'w_req_edge', 'w_req_old', 'w_year_in', 'w_year_edge']
+  LOOP
+    v := public.issue_4490_membership_join(gen_random_uuid(),
+      public.t4490_id(CASE WHEN v_k LIKE 'w_year%' THEN 'yplan' ELSE 'plan' END),
+      jsonb_build_object('name', 'Tolu Adebayo', 'email', 'buyer-w2@example.test'), NULL,
+      public.t4490_key('cart:' || v_k), NULL, sha256(convert_to('mtok:' || v_k, 'UTF8')), 'join-' || v_k || '-key');
+    INSERT INTO t4490_ids VALUES (v_k, COALESCE((v->>'subscriptionId')::uuid, (v->>'id')::uuid));
+  END LOOP;
+END
+$wplans$;
+ALTER TABLE public.venue_membership_subscriptions DISABLE TRIGGER USER;
+-- Lapsed/paused: the last paid period ended 25 days ago (inside a month),
+-- exactly one plan period ago (the edge: out), or 350 days ago.
+UPDATE public.venue_membership_subscriptions
+   SET status = CASE WHEN id IN (public.t4490_id('w_paused_in'), public.t4490_id('w_paused_edge')) THEN 'paused' ELSE 'lapsed' END,
+       pause_reason = CASE WHEN id IN (public.t4490_id('w_paused_in'), public.t4490_id('w_paused_edge')) THEN 'member' END,
+       paused_at = CASE WHEN id IN (public.t4490_id('w_paused_in'), public.t4490_id('w_paused_edge')) THEN now() END,
+       current_period_start = now() - interval '400 days',
+       current_period_end = CASE id
+         WHEN public.t4490_id('w_lapsed_in') THEN now() - interval '25 days'
+         WHEN public.t4490_id('w_paused_in') THEN now() - interval '25 days'
+         WHEN public.t4490_id('w_lapsed_edge') THEN now() - interval '1 month'
+         WHEN public.t4490_id('w_paused_edge') THEN now() - interval '1 month'
+         WHEN public.t4490_id('w_lapsed_old') THEN now() - interval '350 days'
+         WHEN public.t4490_id('w_year_in') THEN now() - interval '360 days'
+         WHEN public.t4490_id('w_year_edge') THEN now() - interval '1 year' END
+ WHERE id IN (public.t4490_id('w_lapsed_in'), public.t4490_id('w_lapsed_edge'), public.t4490_id('w_lapsed_old'),
+              public.t4490_id('w_paused_in'), public.t4490_id('w_paused_edge'),
+              public.t4490_id('w_year_in'), public.t4490_id('w_year_edge'));
+-- Requests: made 23 h 59 min ago (inside the 24-hour reply clock), exactly
+-- 24 hours ago (the edge: the billing run declines it now), or 200 days ago.
+UPDATE public.venue_membership_subscriptions
+   SET status = 'requested',
+       created_at = CASE id
+         WHEN public.t4490_id('w_req_in') THEN now() - interval '24 hours' + interval '1 minute'
+         WHEN public.t4490_id('w_req_edge') THEN now() - interval '24 hours'
+         ELSE now() - interval '200 days' END
+ WHERE id IN (public.t4490_id('w_req_in'), public.t4490_id('w_req_edge'), public.t4490_id('w_req_old'));
+ALTER TABLE public.venue_membership_subscriptions ENABLE TRIGGER USER;
+DO $s10$
+DECLARE
+  v jsonb;
+  v_ids uuid[];
+BEGIN
+  v := public.claim_attendance_by_verified_identity('44943000-0000-4000-8000-0000000000c1');
+  SELECT array_agg((item->>'id')::uuid) INTO v_ids FROM jsonb_array_elements(v->'claimed') item;
+  PERFORM public.t4490_ok(public.t4490_id('w_lapsed_in') = ANY(v_ids) AND public.t4490_id('w_paused_in') = ANY(v_ids)
+    AND NOT public.t4490_id('w_lapsed_edge') = ANY(v_ids) AND NOT public.t4490_id('w_paused_edge') = ANY(v_ids),
+    'S-10 a lapsed or paused monthly plan attaches until one month after its last paid month, not at that moment');
+  PERFORM public.t4490_ok(NOT public.t4490_id('w_lapsed_old') = ANY(v_ids)
+    AND (SELECT user_id IS NULL FROM public.venue_membership_subscriptions WHERE id = public.t4490_id('w_lapsed_old')),
+    'S-10b a plan that lapsed long ago is not attached (nothing announced)');
+  PERFORM public.t4490_ok(public.t4490_id('w_year_in') = ANY(v_ids) AND NOT public.t4490_id('w_year_edge') = ANY(v_ids),
+    'S-10c a yearly plan uses its own period: inside a year attaches, a year after does not');
+  PERFORM public.t4490_ok(public.t4490_id('w_req_in') = ANY(v_ids) AND NOT public.t4490_id('w_req_edge') = ANY(v_ids)
+    AND NOT public.t4490_id('w_req_old') = ANY(v_ids),
+    'S-10d a request attaches only while the venue''s reply clock runs (24 hours here; at 24 hours it does not)');
+  PERFORM public.t4490_ok((SELECT bool_and(item->>'noun' = 'booking') FROM jsonb_array_elements(v->'claimed') item
+      WHERE (item->>'id')::uuid IN (public.t4490_id('w_lapsed_in'), public.t4490_id('w_paused_in'),
+        public.t4490_id('w_year_in'), public.t4490_id('w_req_in')))
+    AND (v->>'count')::integer = 4,
+    'S-10e exactly the four plans inside their windows attach, each as a booking');
+END
+$s10$;
+
 -- ===========================================================================
 -- H: sharing by verified identity never shares a venue offer booking.
 -- ===========================================================================
@@ -372,8 +473,25 @@ UPDATE public.stay_reservation_groups SET created_at = now() - interval '3 days'
  WHERE id IN (public.t4490_id('booking'), public.t4490_id('gone'), public.t4490_id('other'));
 UPDATE public.stay_reservation_groups SET state = 'cancelled' WHERE id = public.t4490_id('gone');
 ALTER TABLE public.stay_reservation_groups ENABLE TRIGGER USER;
+-- They were paid (confirmed) when they were made, three days ago.
+ALTER TABLE public.stay_reservation_events DISABLE TRIGGER USER;
+UPDATE public.stay_reservation_events SET created_at = now() - interval '3 days'
+ WHERE event_type = 'stay_reservation_confirmed'
+   AND group_id IN (public.t4490_id('booking'), public.t4490_id('gone'), public.t4490_id('other'));
+ALTER TABLE public.stay_reservation_events ENABLE TRIGGER USER;
+SELECT public.t4490_ok((SELECT count(*) = 2 FROM public.stay_reservation_events
+  WHERE event_type = 'stay_reservation_confirmed' AND group_id IN (public.t4490_id('booking'), public.t4490_id('other'))),
+  'R-0 a paid booking carries its confirmation event (the reminder clock reads it)');
+-- A time on the venue's tomorrow that is less than 24 hours away: p_frac of
+-- the way from the venue's next midnight to now + 24 hours.
+CREATE FUNCTION pg_temp.t4490_tomorrow(p_frac double precision)
+RETURNS timestamptz LANGUAGE sql AS $f$
+  SELECT x.t + (now() + interval '24 hours' - x.t) * p_frac
+  FROM (SELECT (((now() AT TIME ZONE public.issue_4490_venue_timezone('44943000-0000-4000-9000-0000000000a1'))::date + 1)::timestamp
+          AT TIME ZONE public.issue_4490_venue_timezone('44943000-0000-4000-9000-0000000000a1')) AS t) x
+$f$;
 ALTER TABLE public.stay_place_windows DISABLE TRIGGER USER;
-UPDATE public.stay_place_windows SET starts_at = now() + interval '10 hours', ends_at = now() + interval '20 hours'
+UPDATE public.stay_place_windows SET starts_at = pg_temp.t4490_tomorrow(0.5), ends_at = pg_temp.t4490_tomorrow(0.5) + interval '10 hours'
  WHERE id = public.t4490_id('win');
 ALTER TABLE public.stay_place_windows ENABLE TRIGGER USER;
 
@@ -460,11 +578,11 @@ BEGIN
 END
 $r2$;
 SELECT public.t4490_reset();
--- W2-N3: the booking moves to a new time 9 hours away (its first reminder was
--- for 10 hours away). It was booked three days ago, so the day-before
--- reminder for the NEW time is due.
+-- W2-N3: the booking moves to a new time, earlier on the venue's tomorrow
+-- (its first reminder was for a later time). It was booked three days ago,
+-- so the day-before reminder for the NEW time is due.
 ALTER TABLE public.stay_place_windows DISABLE TRIGGER USER;
-UPDATE public.stay_place_windows SET starts_at = now() + interval '9 hours'
+UPDATE public.stay_place_windows SET starts_at = pg_temp.t4490_tomorrow(0.25)
  WHERE id = public.t4490_id('win');
 ALTER TABLE public.stay_place_windows ENABLE TRIGGER USER;
 SELECT public.t4490_service();
@@ -520,6 +638,102 @@ BEGIN
   PERFORM public.t4490_ok((v->>'visitReminders')::integer = 0, 'R-11 a visit that already started gets no reminder');
 END
 $r3$;
+SELECT public.t4490_reset();
+
+-- W2-N13: the "never late" clock counts from confirmation. 'other' was made
+-- three days ago but only confirmed a minute after its day-before mark (a
+-- request approved and paid late, a payment finalized late): no day-before
+-- reminder; 'booking' (made and confirmed three days ago) is the control.
+ALTER TABLE public.stay_place_windows DISABLE TRIGGER USER;
+UPDATE public.stay_place_windows SET starts_at = pg_temp.t4490_tomorrow(0.6)
+ WHERE id = public.t4490_id('win');
+ALTER TABLE public.stay_place_windows ENABLE TRIGGER USER;
+ALTER TABLE public.stay_reservation_events DISABLE TRIGGER USER;
+-- (R-15's "moved just now" event is taken away so 'booking' is a clean control.)
+DELETE FROM public.stay_reservation_events WHERE idempotency_key = 'offer-change:w2-move-now';
+UPDATE public.stay_reservation_events
+   SET created_at = (SELECT starts_at FROM public.stay_place_windows WHERE id = public.t4490_id('win'))
+                    - interval '24 hours' + interval '1 minute'
+ WHERE event_type = 'stay_reservation_confirmed' AND group_id = public.t4490_id('other');
+ALTER TABLE public.stay_reservation_events ENABLE TRIGGER USER;
+DELETE FROM public.notification_outbox WHERE category_key = 'venue_visit_reminder';
+SELECT public.t4490_service();
+DO $r6$
+DECLARE
+  v jsonb;
+BEGIN
+  v := public.issue_4490_offer_sweep(200);
+  PERFORM public.t4490_ok((SELECT count(*) = 1 FROM public.notification_outbox
+      WHERE category_key = 'venue_visit_reminder' AND payload->>'reminder_reason' = '24h'
+        AND (payload->>'venue_group_id')::uuid = public.t4490_id('booking')),
+    'R-16 control: a booking made and confirmed days ago gets the day-before reminder for a visit on the venue''s tomorrow');
+  PERFORM public.t4490_ok(NOT EXISTS (SELECT 1 FROM public.notification_outbox
+      WHERE category_key = 'venue_visit_reminder' AND (payload->>'venue_group_id')::uuid = public.t4490_id('other')),
+    'R-16b a booking confirmed inside the day-before mark gets no late day-before reminder, however old the booking');
+END
+$r6$;
+SELECT public.t4490_reset();
+-- Same-day: the venue's zone is set so that "now" is mid-morning there and
+-- the visit is three hours away, on the venue's own today. The booking was
+-- made and confirmed three days ago and has had no reminder for this time.
+DO $tz$
+DECLARE
+  v_tz text;
+BEGIN
+  SELECT z INTO v_tz FROM unnest(ARRAY['Etc/GMT+12','Etc/GMT+10','Etc/GMT+8','Etc/GMT+6','Etc/GMT+4','Etc/GMT+2','Etc/GMT',
+      'Etc/GMT-2','Etc/GMT-4','Etc/GMT-6','Etc/GMT-8','Etc/GMT-10','Etc/GMT-12','Etc/GMT-14']) z
+   WHERE (now() AT TIME ZONE z)::time BETWEEN time '06:00' AND time '15:00' LIMIT 1;
+  ALTER TABLE public.venue_booking_settings DISABLE TRIGGER USER;
+  UPDATE public.venue_booking_settings SET timezone = v_tz WHERE venue_id = '44943000-0000-4000-9000-0000000000a1';
+  ALTER TABLE public.venue_booking_settings ENABLE TRIGGER USER;
+  ALTER TABLE public.stay_place_windows DISABLE TRIGGER USER;
+  UPDATE public.stay_place_windows SET starts_at = now() + interval '3 hours' WHERE id = public.t4490_id('win');
+  ALTER TABLE public.stay_place_windows ENABLE TRIGGER USER;
+  PERFORM public.t4490_ok(v_tz IS NOT NULL
+    AND ((now() + interval '3 hours') AT TIME ZONE public.issue_4490_venue_timezone('44943000-0000-4000-9000-0000000000a1'))::date
+      = (now() AT TIME ZONE public.issue_4490_venue_timezone('44943000-0000-4000-9000-0000000000a1'))::date,
+    'R-17 fixture: the visit is on the venue''s own today');
+END
+$tz$;
+SELECT public.t4490_service();
+DO $r7$
+DECLARE
+  v jsonb;
+BEGIN
+  v := public.issue_4490_offer_sweep(200);
+  PERFORM public.t4490_ok(NOT EXISTS (SELECT 1 FROM public.notification_outbox
+      WHERE category_key = 'venue_visit_reminder' AND payload->>'reminder_reason' = '24h'
+        AND (payload->>'venue_group_id')::uuid = public.t4490_id('booking')
+        AND (payload->>'starts_at')::timestamptz = now() + interval '3 hours'),
+    'R-17 no "tomorrow" reminder is queued for a visit later the same day (backlog, switch turned on late)');
+END
+$r7$;
+SELECT public.t4490_reset();
+-- Two hours before: 'other' confirmed ten minutes ago, inside the two-hour
+-- mark of a visit 90 minutes away; 'booking' is the control.
+ALTER TABLE public.stay_place_windows DISABLE TRIGGER USER;
+UPDATE public.stay_place_windows SET starts_at = now() + interval '90 minutes' WHERE id = public.t4490_id('win');
+ALTER TABLE public.stay_place_windows ENABLE TRIGGER USER;
+ALTER TABLE public.stay_reservation_events DISABLE TRIGGER USER;
+UPDATE public.stay_reservation_events SET created_at = now() - interval '10 minutes'
+ WHERE event_type = 'stay_reservation_confirmed' AND group_id = public.t4490_id('other');
+ALTER TABLE public.stay_reservation_events ENABLE TRIGGER USER;
+DELETE FROM public.notification_outbox WHERE category_key = 'venue_visit_reminder';
+SELECT public.t4490_service();
+DO $r8$
+DECLARE
+  v jsonb;
+BEGIN
+  v := public.issue_4490_offer_sweep(200);
+  PERFORM public.t4490_ok((SELECT count(*) = 1 FROM public.notification_outbox
+      WHERE category_key = 'venue_visit_reminder' AND payload->>'reminder_reason' = '2h'
+        AND (payload->>'venue_group_id')::uuid = public.t4490_id('booking')),
+    'R-18 control: the two-hours-before reminder is queued for a booking confirmed long before');
+  PERFORM public.t4490_ok(NOT EXISTS (SELECT 1 FROM public.notification_outbox
+      WHERE category_key = 'venue_visit_reminder' AND (payload->>'venue_group_id')::uuid = public.t4490_id('other')),
+    'R-18b a booking confirmed inside the two-hour mark gets no late two-hours-before reminder');
+END
+$r8$;
 SELECT public.t4490_reset();
 
 -- ===========================================================================

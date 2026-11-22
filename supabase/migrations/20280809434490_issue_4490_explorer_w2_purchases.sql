@@ -405,14 +405,16 @@ BEGIN
 
   -- #4490 Explorer W2: venue memberships bought without an account.
   -- Attached: plans that carry a member pass (active, payment_due, grace),
-  -- paid plans that are lapsed or paused (they restart by paying), a plan
-  -- request awaiting the venue, and a plan still inside its first-payment
+  -- paid plans that are lapsed or paused (they restart by paying) while the
+  -- period they would restart with has not run out, a plan request while the
+  -- venue's reply clock runs, and a plan still inside its first-payment
   -- window (joined, or approved by the venue, and not yet closed by the
-  -- billing run: the same clock as issue_4490_membership_billing_run).
+  -- billing run: the same clocks as issue_4490_membership_billing_run).
   -- Only the first three are announced as a pass; the rest are reported with
   -- the noun 'booking' ("Your booking is here"), never as a pass that does
   -- not exist. Declined, cancelled and never-paid plans past their window
-  -- are not attached.
+  -- are not attached, nor is a plan outside every window above (a plan that
+  -- lapsed long ago, or a request nobody answered in time).
   v_pass_count := 0;
   FOR v_row IN
     SELECT s.id, vl.id AS venue_id, p.name AS title, vl.name AS venue_name,
@@ -422,7 +424,20 @@ BEGIN
       LEFT JOIN public.venue_listings vl
         ON vl.id = public.issue_4490_plan_venue(s.plan_id)
      WHERE s.user_id IS NULL
-       AND (s.status IN ('active', 'payment_due', 'grace', 'lapsed', 'paused', 'requested')
+       AND (s.status IN ('active', 'payment_due', 'grace')
+         -- W2-N14: a lapsed or paused plan only while the period it would
+         -- restart with has not run out (one plan period after the last paid
+         -- one ended); a request only while the venue's reply clock runs (the
+         -- billing run declines it at created_at + request_response_hours).
+         OR (s.status IN ('lapsed', 'paused')
+           AND s.current_period_end IS NOT NULL
+           AND s.current_period_end
+               + CASE WHEN p.period = 'year' THEN interval '1 year' ELSE interval '1 month' END > now())
+         OR (s.status = 'requested'
+           AND s.created_at + make_interval(hours => COALESCE((
+                 SELECT bs.request_response_hours FROM public.stay_offerings o
+                   JOIN public.venue_booking_settings bs ON bs.venue_id = o.venue_id
+                  WHERE o.id = p.offering_id), 48)) > now())
          OR (s.status = 'pending'
            AND (CASE WHEN s.decided_at IS NOT NULL THEN s.decided_at + interval '3 days'
                      ELSE s.created_at + interval '2 days' END > now()
@@ -1164,8 +1179,9 @@ BEGIN
   -- still confirmed); once each per booking time: the outbox key carries the
   -- slice start, so a booking moved to a new time is reminded again for the
   -- new time and never twice for the same one. Never late: a reminder whose
-  -- moment had already passed when the booking was made (or last moved), or
-  -- that the next reminder has overtaken, is skipped.
+  -- moment had already passed when the booking was made, confirmed or last
+  -- moved, or that the next reminder has overtaken, is skipped; the
+  -- day-before one is never queued for a visit on the venue's own today.
   -- Fair across runs: only bookings whose due reminder is not queued yet and
   -- that have somewhere to send it are taken, soonest start first, so each
   -- run moves on to the next p_limit bookings and none is starved. Worst
@@ -1185,16 +1201,27 @@ BEGIN
         WHERE l.group_id = g.id AND l.state = 'confirmed'
       ) s
       CROSS JOIN LATERAL (
-        SELECT GREATEST(g.created_at, COALESCE((
-          SELECT max(e.created_at) FROM public.stay_reservation_events e
-          WHERE e.group_id = g.id AND e.event_type = 'stay_offer_changed'
-            AND e.safe_metadata->>'action' = 'move_date'), g.created_at)) AS booked_at
+        -- W2-N13: "booked" is the latest of when the booking was made, when
+        -- it became confirmed (a request approved and paid, a payment
+        -- finalized late) and its last date move.
+        SELECT GREATEST(g.created_at,
+          COALESCE((
+            SELECT max(e.created_at) FROM public.stay_reservation_events e
+            WHERE e.group_id = g.id AND e.event_type = 'stay_reservation_confirmed'), g.created_at),
+          COALESCE((
+            SELECT max(e.created_at) FROM public.stay_reservation_events e
+            WHERE e.group_id = g.id AND e.event_type = 'stay_offer_changed'
+              AND e.safe_metadata->>'action' = 'move_date'), g.created_at)) AS booked_at,
+          public.issue_4490_venue_timezone(g.venue_id) AS tz
       ) b
       CROSS JOIN LATERAL (
         SELECT CASE
           WHEN now() >= s.starts_at - interval '2 hours'
             THEN CASE WHEN b.booked_at <= s.starts_at - interval '2 hours' THEN '2h' END
-          WHEN b.booked_at <= s.starts_at - interval '24 hours' THEN '24h'
+          -- The day-before message says "tomorrow": never for a visit on the
+          -- venue's own today (a backlog, a switch turned on late).
+          WHEN b.booked_at <= s.starts_at - interval '24 hours'
+            AND (s.starts_at AT TIME ZONE b.tz)::date > (now() AT TIME ZONE b.tz)::date THEN '24h'
         END AS v_when
       ) d
       CROSS JOIN LATERAL (
