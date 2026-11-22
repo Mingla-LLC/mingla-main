@@ -58,17 +58,36 @@ BEGIN
                        AND oi.status IN ('scheduled', 'failed') AND oi.due_at > v_row.due_at) THEN
     RETURN jsonb_build_object('rolledOver', false, 'reason', 'not_rollable');
   END IF;
-  IF public.issue_4522_order_has_open_flex(v_order_id) THEN
+  -- The missed amount stays inside its own package: with no later open row
+  -- of the same package it cannot be placed, and the booking is flagged.
+  IF NOT EXISTS (SELECT 1 FROM public.order_installments oi
+                  WHERE oi.order_id = v_order_id AND oi.id <> v_row.id AND oi.kind = 'scheduled'
+                    AND oi.status IN ('scheduled', 'failed') AND oi.due_at > v_row.due_at
+                    AND oi.ticket_type_id IS NOT DISTINCT FROM v_row.ticket_type_id) THEN
+    RETURN jsonb_build_object('rolledOver', false, 'reason', 'no_later_row_in_package');
+  END IF;
+  IF public.issue_4522_order_has_open_flex(v_order_id, p_now) THEN
     RETURN jsonb_build_object('rolledOver', false, 'reason', 'flex_payment_in_flight');
   END IF;
-  UPDATE public.order_installments
-     SET status = 'superseded', superseded_at = p_now, next_retry_at = NULL,
-         in_flight_attempt_id = NULL, updated_at = p_now
-   WHERE id = v_row.id;
-  UPDATE public.order_installment_pay_links SET revoked_at = p_now, revoked_reason = 'installment_superseded'
-   WHERE installment_id = v_row.id AND revoked_at IS NULL;
-  v_result := public.issue_4522_rebalance_order(v_order_id, 'missed_rollover', v_row.id, NULL,
-    '[]'::jsonb, v_row.id);
+  -- A rollover that cannot be placed (a later row's charge in flight, or the
+  -- split would not hold) never aborts the caller: it is undone here and the
+  -- caller flags the booking at risk, so the failure count always persists.
+  BEGIN
+    UPDATE public.order_installments
+       SET status = 'superseded', superseded_at = p_now, next_retry_at = NULL,
+           in_flight_attempt_id = NULL, updated_at = p_now
+     WHERE id = v_row.id;
+    UPDATE public.order_installment_pay_links SET revoked_at = p_now, revoked_reason = 'installment_superseded'
+     WHERE installment_id = v_row.id AND revoked_at IS NULL;
+    v_result := public.issue_4522_rebalance_order(v_order_id, 'missed_rollover', v_row.id, NULL,
+      '[]'::jsonb, v_row.id);
+  EXCEPTION
+    WHEN SQLSTATE 'PT409' THEN
+      RETURN jsonb_build_object('rolledOver', false, 'reason', 'balance_payment_in_flight');
+    WHEN raise_exception THEN
+      IF SQLERRM <> 'installment_rounding_invalid' THEN RAISE; END IF;
+      RETURN jsonb_build_object('rolledOver', false, 'reason', 'installment_rounding_invalid');
+  END;
   RETURN jsonb_build_object('rolledOver', true, 'remainingMinor', v_result->'remainingMinor',
     'orderId', v_order_id);
 END
@@ -150,10 +169,25 @@ DECLARE
   v_next timestamptz;
   v_at_risk boolean := false;
   v_roll jsonb;
+  v_order_id uuid;
 BEGIN
+  -- issue #4522 — lock order event → order → the order's open rows (ORDER BY
+  -- id), as every other money path does, before this row: the rollover below
+  -- takes the same graph, and locking the row first could deadlock (40P01).
+  SELECT order_id INTO v_order_id FROM public.order_installments WHERE id = p_installment_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'installment_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  PERFORM public.issue_4522_lock_order_graph(v_order_id);
   SELECT * INTO v_inst FROM public.order_installments WHERE id = p_installment_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'installment_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  -- issue #4522 — a row a rebalance or rollover already superseded owes
+  -- nothing: a late failure for it (a cron or webhook replay) is a no-op.
+  IF v_inst.status = 'superseded' THEN
+    RETURN jsonb_build_object('outcome', 'noop', 'reason', 'superseded',
+      'retry_count', v_inst.retry_count, 'next_retry_at', NULL);
   END IF;
   v_retry := v_inst.retry_count + 1;
   v_next := public.issue_3645_next_retry_at(v_inst.due_at, v_retry, p_now);
