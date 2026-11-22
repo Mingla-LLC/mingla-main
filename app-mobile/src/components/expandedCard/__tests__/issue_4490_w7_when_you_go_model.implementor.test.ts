@@ -16,14 +16,6 @@
  * cache key (W-2); the Event chip not preselected (K-2); a parts-based
  * formatter in any W7 file (H-2); Leave by without the 5 minute buffer (D-2).
  */
-// app-mobile's tsc has no jest or react-test-renderer types: declare what this
-// suite uses so it adds no type errors (the W5 and W6 suites do the same).
-/* eslint-disable @typescript-eslint/no-explicit-any */
-declare const jest: any;
-declare const describe: any;
-declare const test: any;
-declare const expect: any;
-declare const afterEach: any;
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -49,6 +41,13 @@ import {
   type WhenFactsInput,
 } from '../whenYoudGoModel';
 
+// app-mobile's tsc has no jest or react-test-renderer types: declare what this
+// suite uses so it adds no type errors (the W5 and W6 suites do the same).
+declare const jest: any;
+declare const describe: any;
+declare const test: any;
+declare const expect: any;
+declare const afterEach: any;
 const LAGOS = 'Africa/Lagos';
 // Tuesday 24 Nov 2026, 11:00 in Lagos (UTC+1).
 const NOW = new Date('2026-11-24T10:00:00Z');
