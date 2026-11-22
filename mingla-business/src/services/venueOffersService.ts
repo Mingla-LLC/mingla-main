@@ -667,6 +667,7 @@ export function mapVenueCalendar(v: unknown): VenueCalendar {
         status: str(e.status),
         startsAt: str(e.startsAt),
         endsAt: str(e.endsAt),
+        eventType: strOrNull(e.eventType),
       };
     }),
   };

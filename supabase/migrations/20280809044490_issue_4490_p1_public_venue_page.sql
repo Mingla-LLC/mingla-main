@@ -196,8 +196,9 @@ BEGIN
     'version', v_version,
     'venue', v_row,
     'currencyCode', v_currency,
-    'minorUnitExponent', CASE WHEN v_currency IN ('JPY', 'KRW', 'VND', 'CLP', 'ISK', 'UGX', 'RWF', 'XOF', 'XAF', 'PYG', 'GNF', 'KMF', 'DJF', 'BIF', 'VUV', 'XPF')
-                              THEN 0 ELSE 2 END,
+    -- #4490 W3 fix 1: the exponent comes from its one owner (supported_brand_currencies).
+    'minorUnitExponent', COALESCE((SELECT c.minor_unit_exponent FROM public.supported_brand_currencies c
+                                   WHERE c.code = v_currency), 2),
     'vat', NULL,
     'features', to_jsonb(v_features),
     'spaces', v_spaces,

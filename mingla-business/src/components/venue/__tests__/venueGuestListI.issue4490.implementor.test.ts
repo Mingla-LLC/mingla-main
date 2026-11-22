@@ -1,7 +1,7 @@
-/** #4490 spec 07-I — guest-list client contract and signed-out surface. */
-import fs from "node:fs";
-import path from "node:path";
-
+/**
+ * #4490 spec 07-I — guest-list client contract and signed-out surface.
+ * [TEST-MOD-APPROVED #4490] W3 fix 1: the source-text pins moved to the additive gate .github/scripts/strict-grep/issue-4490-host-wiring.mjs (I-PROPOSED-1047).
+ */
 import { VenueOfferError, mapGuestListDay, mapScanOutcome, mapVenueDay } from "../../../services/venueOffersService";
 import { featureSetFrom } from "../../../types/venueFeatures";
 import type { PromoterGuestListPage } from "../../../types/venueOffers";
@@ -12,7 +12,6 @@ import {
 } from "../features/guestlist/guestListModel";
 import { deriveVenueNav } from "../venueModules";
 
-const ROOT = path.resolve(__dirname, "../../../..");
 
 describe("07-I guest-list mapping", () => {
   it("maps private terms, counts, promoter grouping and entries", () => {
@@ -53,14 +52,6 @@ describe("07-I door", () => {
     expect(checkInResultView(admitted)).toEqual(expect.objectContaining({ title: "Guest list checked in", subject: "Ada · Guest list × 3", secondary: "undo" }));
   });
 
-  it("locks the reduced-price handoff to the configured option and party count", () => {
-    const sale = fs.readFileSync(path.join(ROOT, "src/components/venue/features/checkin/VenueGateSale.tsx"), "utf8");
-    const service = fs.readFileSync(path.join(ROOT, "src/services/venueOffersService.ts"), "utf8");
-    expect(sale).toContain("offer.options.filter((o) => o.id === guestListSale.priceOptionId)");
-    expect(sale).toContain("{o.name} × {guestListSale.count}");
-    expect(sale).toContain("count: guestListSale.count");
-    expect(service).toContain('action: "sell_guest_list"');
-  });
 });
 
 describe("07-I navigation and promoter copy", () => {
@@ -79,19 +70,4 @@ describe("07-I navigation and promoter copy", () => {
     expect(promoterGuestListErrorCopy(new VenueOfferError("guest_list_closed"))).toBe("The list for tonight has closed.");
   });
 
-  it("keeps the promoter route signed out and exposes no public sign-up", () => {
-    const route = fs.readFileSync(path.join(ROOT, "app/visit/list/[token].tsx"), "utf8");
-    const screen = fs.readFileSync(path.join(ROOT, "src/components/venue/features/guestlist/VisitGuestList.tsx"), "utf8");
-    expect(route).not.toContain("useAuth");
-    expect(screen).not.toContain("useAuth");
-    expect(screen).not.toMatch(/sign[ -]?up/i);
-    expect(screen).toContain("Add a name");
-    expect(screen).toContain("Remove");
-  });
-
-  it("clears stale action feedback when a promoter changes night", () => {
-    const screen = fs.readFileSync(path.join(ROOT, "src/components/venue/features/guestlist/VisitGuestList.tsx"), "utf8");
-    expect(screen).toMatch(/const selectDate = \(nextDate: string\): void => \{\s*setDate\(nextDate\);\s*setError\(null\);\s*setNotice\(null\);\s*\};/);
-    expect(screen).toContain('onChange={selectDate} accessibilityLabel="Night"');
-  });
 });

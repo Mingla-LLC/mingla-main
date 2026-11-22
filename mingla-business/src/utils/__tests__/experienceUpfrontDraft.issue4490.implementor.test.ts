@@ -2,12 +2,9 @@
  * N129 (#4490) — a new experience's up-front draft must be creatable before
  * the host names a price (biz_create_experience refuses a blank price name).
  *
- * Fails-on-revert: sending buildPayload(false) unfiltered from ensureDraft (or
- * deleting the unnamed check) fails U-1 / U-3.
+ * Fails-on-revert: deleting the unnamed check fails U-1. [TEST-MOD-APPROVED #4490]
+ * U-3 (the wizard's call goes through the filter): the source-text pins moved to the additive gate .github/scripts/strict-grep/issue-4490-host-wiring.mjs (I-PROPOSED-1047).
  */
-import { readFileSync } from "fs";
-import path from "path";
-
 import { upfrontDraftPayload } from "../experienceUpfrontDraft";
 
 describe("N129 up-front experience draft", () => {
@@ -23,9 +20,5 @@ describe("N129 up-front experience draft", () => {
     expect(upfrontDraftPayload(none)).toBe(none);
   });
 
-  it("U-3 the wizard's up-front draft call goes through the filter", () => {
-    const src = readFileSync(path.join(__dirname, "../../components/experience/ExperienceCreatorWizard.tsx"), "utf8");
-    const call = src.slice(src.indexOf('supabase.rpc("biz_create_experience"'), src.indexOf('supabase.rpc("biz_create_experience"') + 600);
-    expect(call).toMatch(/p_payload: upfrontDraftPayload\(buildPayload\(false\)\)/);
-  });
+
 });

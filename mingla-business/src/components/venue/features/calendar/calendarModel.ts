@@ -12,6 +12,7 @@ import type {
   VenueCalendar,
 } from "../../../../types/venueOffers";
 import { clockIn, dateIn, shortDay } from "../bookings/bookingModel";
+import { routeForEventRowDefensive } from "../../../../utils/routeForEventRow";
 
 export type CalendarView = "day" | "week" | "month";
 
@@ -417,4 +418,19 @@ export function blockIssue(d: BlockDraft, timezone: string): string | null {
   if (!(to > from)) return "The block must end after it starts";
   if (to - from > 31 * 24 * 60 * 60_000) return "A block can last 31 days at most";
   return null;
+}
+
+/**
+ * #4490 W3 fix 1 — the screen an event block opens: the canonical event-row
+ * route (an experience, trip or RSVP at the venue opens its own dashboard),
+ * from the calendar's own event row. An event the calendar does not list
+ * opens the event dashboard.
+ */
+export function calendarEventRoute(cal: Pick<VenueCalendar, "events">, eventId: string): string {
+  const row = cal.events.find((e) => e.eventId === eventId);
+  return routeForEventRowDefensive({
+    id: eventId,
+    eventType: row?.eventType ?? undefined,
+    status: row?.status,
+  });
 }

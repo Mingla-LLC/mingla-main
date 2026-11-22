@@ -416,7 +416,9 @@ BEGIN
       -- combination row can say "part in use"; cancelled dates are left out.
       SELECT jsonb_agg(jsonb_build_object('eventId', e.id, 'title', e.title, 'spaceId', e.space_id,
         'combinationId', e.combination_id, 'spaceIds', to_jsonb(public.issue_4490_event_space_ids(e.id)),
-        'spaceUse', e.space_use, 'status', e.status, 'startsAt', ed.start_at, 'endsAt', ed.end_at) ORDER BY ed.start_at)
+        'spaceUse', e.space_use, 'status', e.status, 'startsAt', ed.start_at, 'endsAt', ed.end_at,
+        -- #4490 W3 fix 1: the event's type, so the Host opens the right screen.
+        'eventType', e.event_type) ORDER BY ed.start_at)
       FROM public.events e JOIN public.event_dates ed ON ed.event_id = e.id AND ed.status = 'active'
       WHERE e.venue_id = p_venue_id AND e.deleted_at IS NULL AND e.status IN ('scheduled', 'live')
         AND tstzrange(ed.start_at, ed.end_at, '[)') && v_range), '[]'::jsonb)
@@ -530,7 +532,7 @@ BEGIN
                     THEN jsonb_build_object('endsAt', v_sub.cancel_at, 'by', v_sub.cancel_requested_by) END,
     'pausing', CASE WHEN v_sub.pause_at_period_end THEN jsonb_build_object('from', v_sub.current_period_end,
                     'by', v_sub.pause_requested_by) END,
-    'paused', CASE WHEN v_sub.status = 'paused' THEN jsonb_build_object('since', v_sub.paused_at, 'by', v_sub.pause_reason) END,
+    'paused', CASE WHEN v_sub.status = 'paused' THEN jsonb_build_object('since', v_sub.paused_since, 'by', v_sub.pause_reason) END,
     'endedAt', v_sub.cancelled_at,
     'endReason', v_sub.end_reason,
     'credits', jsonb_build_object(

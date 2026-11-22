@@ -325,9 +325,9 @@ BEGIN
     'version', v_version,
     'venue', v_row,
     'currencyCode', v_currency,
-    -- orch-strict-grep-allow offering-currency-list: zero-decimal currencies (minor unit exponent map), not an allow-list.
-    'minorUnitExponent', CASE WHEN v_currency IN ('JPY', 'KRW', 'VND', 'CLP', 'ISK', 'UGX', 'RWF', 'XOF', 'XAF', 'PYG', 'GNF', 'KMF', 'DJF', 'BIF', 'VUV', 'XPF')
-                              THEN 0 ELSE 2 END,
+    -- #4490 W3 fix 1: the exponent comes from its one owner (supported_brand_currencies).
+    'minorUnitExponent', COALESCE((SELECT c.minor_unit_exponent FROM public.supported_brand_currencies c
+                                   WHERE c.code = v_currency), 2),
     'vat', v_vat,
     'features', to_jsonb(v_features),
     'spaces', v_spaces,
@@ -495,9 +495,9 @@ BEGIN
       'memberships', v_plan_from),
     'membershipsPeriod', v_plan_period,
     'currencyCode', v_currency,
-    -- orch-strict-grep-allow offering-currency-list: zero-decimal currencies (minor unit exponent map), not an allow-list.
-    'minorUnitExponent', CASE WHEN v_currency IN ('JPY', 'KRW', 'VND', 'CLP', 'ISK', 'UGX', 'RWF', 'XOF', 'XAF', 'PYG', 'GNF', 'KMF', 'DJF', 'BIF', 'VUV', 'XPF')
-                              THEN 0 ELSE 2 END,
+    -- #4490 W3 fix 1: the exponent comes from its one owner (supported_brand_currencies).
+    'minorUnitExponent', COALESCE((SELECT c.minor_unit_exponent FROM public.supported_brand_currencies c
+                                   WHERE c.code = v_currency), 2),
     'onTodayStartsAt', v_on_starts,
     'onTodayEndsAt', v_on_ends,
     'onTodayLive', v_live_until IS NOT NULL,

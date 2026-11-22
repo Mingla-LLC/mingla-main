@@ -261,7 +261,9 @@ const RULES = [
   // -------------------------------------------------------------------------
   ordered("C1-choice-before-publish-dialog", F.rsvpWizard, [
     "const handlePublishTap = useCallback(async (): Promise<void> => {",
-    "validateRsvpPublish(liveDraft)",
+    // #4490 07-A: the publish validation takes the event-at-venue options
+    // (Party Type is optional at a venue); still the first step.
+    "validateRsvpPublish(liveDraft, venueOpts)",
     "liveDraft.rsvpContributionEnabled &&",
     "chipInReadinessKnown &&",
     "!chipInPayoutReady",

@@ -4,15 +4,12 @@
  * venue's zone (N119), tables come right after Overview when they lead (N117),
  * the reserve sheet keeps one height and a Close (N118), and the Calendar week
  * stays readable (N115, N120).
+ *
+ * [TEST-MOD-APPROVED #4490] W3 fix 1: the source-text pins moved to the additive gate .github/scripts/strict-grep/issue-4490-host-wiring.mjs (I-PROPOSED-1047); the behaviour tests stay.
  */
-import { readFileSync } from "fs";
-import path from "path";
-
 import { flyerColumnStickyTop, flyerMaxHeight } from "../../../../../packages/offering-rendering/flyerColumnStickyTop";
 import { deriveVenuePage, type PublicVenueFeaturesView } from "@mingla/brand-rendering/venueFeaturePage";
 import { guestManageWhen } from "../../../utils/guestReservationManage";
-
-const src = (relative: string): string => readFileSync(path.join(__dirname, "../../../..", relative), "utf8");
 
 describe("N116 — the flyer column ends above the privacy strip", () => {
   test("a column that fits keeps 96; a taller one sticks higher so its foot stays in view", () => {
@@ -32,14 +29,6 @@ describe("N116 — the flyer column ends above the privacy strip", () => {
     expect(flyerMaxHeight({ flyerWidth: 420, flyerHeight: 460, columnHeight: 600, scrollHeight: 700 })).toBe(460);
     expect(flyerMaxHeight({ ...base, scrollHeight: 0 })).toBeNull();
   });
-  test("the shell measures its own scroll area and column, not a hard-coded strip height", () => {
-    const shell = src("../packages/offering-rendering/ParallaxCoverShell.tsx");
-    expect(shell).toContain("flyerColumnStickyTop(deskScrollHeight, deskColHeight)");
-    expect(shell).toContain("top: flyerStickyTop,");
-    expect(shell).toContain("flyerWidthCap !== null ? { width: flyerWidthCap, alignSelf: \"center\" } : null");
-    // N121: narrowed (same 4:5), never cropped, so the foot caption keeps its padding
-    expect(shell).not.toContain("maxHeight: flyerCap");
-  });
 });
 
 describe("N119 — the manage page's time", () => {
@@ -52,20 +41,6 @@ describe("N119 — the manage page's time", () => {
     expect(guestManageWhen("nope", "Africa/Lagos")).toBe("");
     expect(guestManageWhen("2026-11-20T18:00:00.000Z", "Not/AZone")).toMatch(/^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2} · \d{2}:\d{2}$/);
     expect(guestManageWhen("2026-11-20T18:00:00.000Z", null)).toMatch(/ · \d{2}:\d{2}$/);
-  });
-  test("the page uses it, sets its tab title, and the button says what the page does", () => {
-    const page = src("app/reserve/[brandId]/manage.tsx");
-    expect(page).toContain("guestManageWhen(reservation.reservedForUtc, reservation.timezone)");
-    expect(page).toContain("Your reservation · Mingla");
-    expect(page).not.toContain("Intl.DateTimeFormat(undefined");
-    const confirmation = src("src/components/venue/GuestVenueReservation.tsx");
-    expect(confirmation).toContain(">Manage booking</Text>");
-    expect(confirmation).not.toContain("Change or cancel");
-  });
-  test("the answer carries the venue's zone", () => {
-    const view = readFileSync(path.join(__dirname, "../../../../../supabase/functions/_shared/guestReservationManageView.ts"), "utf8");
-    expect(view).toContain('issue_4490_venue_timezone');
-    expect(view).toContain("timezone,");
   });
 });
 
@@ -93,38 +68,5 @@ describe("N117 — tables come right after Overview when they lead", () => {
     const club = deriveVenuePage(view, { menuTabVisible: true, tablesGate: "ready", tablesFirst: false });
     expect(club.lead?.kind).toBe("entry");
     expect(club.tabs.indexOf("reservations")).toBeGreaterThan(club.tabs.indexOf("entry"));
-  });
-});
-
-describe("N118 — the reserve sheet", () => {
-  test("it carries the kit's sheet head with a Close, so the form and its confirmation both have one", () => {
-    const sheet = src("src/components/venue/PublicVenueReservationSheet.tsx");
-    expect(sheet).toContain("<PickerSheetHead title={title} onClose={onClose}");
-  });
-  test("the price area keeps one height while loading, the switch has a name", () => {
-    const form = src("src/components/venue/GuestVenueReservation.tsx");
-    expect(form).toContain("styles.priceArea");
-    expect(form).toContain("priceAreaLoading");
-    expect(form).toContain('accessibilityLabel="Send me occasional Mingla updates"');
-  });
-});
-
-describe("N115 / N120 — the Calendar week", () => {
-  const calendar = src("src/components/venue/features/calendar/VenueCalendarModule.tsx");
-  test("a cell shows two lines and carries its full text as the label and the hover title", () => {
-    expect(calendar).not.toMatch(/numberOfLines=\{compact \? 1 : 2\}/);
-    expect(calendar).toContain("{...hoverTitle(block.label)}");
-    expect(calendar).toContain('setAttribute("title", label)');
-  });
-  test("the week opens by itself only when all seven days fit beside the sidebars", () => {
-    expect(calendar).toContain("export const WEEK_DEFAULT_MIN_WIDTH = 1280;");
-    expect(calendar).toContain("isWideDesktop && width >= WEEK_DEFAULT_MIN_WIDTH");
-  });
-});
-
-describe("the six earlier red suites", () => {
-  test("the booking 'tell your group' share is classified for the #1615 gate", () => {
-    const visit = src("src/components/venue/offers/VisitBooking.tsx");
-    expect(visit).toMatch(/\/\/ SHARE-NON-CONTENT:receipt\n\s*await Share\.share\(\{ message \}\);/);
   });
 });

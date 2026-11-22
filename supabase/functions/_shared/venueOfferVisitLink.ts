@@ -17,6 +17,7 @@
 // on a local stack) a loopback origin: the same rule as the payment return.
 // ===========================================================================
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "./businessWebOrigin.ts";
+import { APP_CTA_LABEL, resolveAppCtaUrl } from "./email/appLink.ts";
 import { venueMemberUrlSubscriptionId } from "./venueMembershipToken.ts";
 import {
   isVenueMembershipCategory,
@@ -250,10 +251,11 @@ export function trustedVenueVisitCta(input: {
   ) {
     return web;
   }
-  // "Open in Mingla" leads; the web action becomes the second link (§6 copy).
+  // The app link leads (#2240's owner gives its words and decides its
+  // destination); the web action becomes the second link (§6 copy).
   return {
-    label: "Open in Mingla",
-    url: appUrl,
+    label: APP_CTA_LABEL,
+    url: resolveAppCtaUrl(appUrl),
     note: VENUE_PASS_CATEGORIES.has(category)
       ? "No app? Give your name at the door."
       : web?.note ?? "Open it in the Mingla app.",
@@ -288,7 +290,7 @@ export function venueAppClaimUrl(value: unknown): string | null {
     : null;
 }
 
-/** §6: the second link's words under "Open in Mingla". */
+/** §6: the second link's words under the app link. */
 export function venueWebLinkLabel(categoryKey: string): string {
   if (
     [

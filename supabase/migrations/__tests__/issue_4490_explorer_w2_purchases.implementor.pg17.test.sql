@@ -226,7 +226,7 @@ UPDATE public.venue_membership_subscriptions
        current_period_start = now() - interval '20 days', current_period_end = now() + interval '10 days'
  WHERE id IN (public.t4490_id('m_active'), public.t4490_id('m_due'), public.t4490_id('m_grace'), public.t4490_id('m_lapsed'));
 UPDATE public.venue_membership_subscriptions
-   SET status = 'paused', pause_reason = 'member', paused_at = now(),
+   SET status = 'paused', pause_reason = 'member', paused_since = now(),
        current_period_start = now() - interval '40 days', current_period_end = now() - interval '10 days'
  WHERE id = public.t4490_id('m_paused');
 UPDATE public.venue_membership_subscriptions SET status = 'requested' WHERE id = public.t4490_id('m_requested');
@@ -360,7 +360,7 @@ ALTER TABLE public.venue_membership_subscriptions DISABLE TRIGGER USER;
 UPDATE public.venue_membership_subscriptions
    SET status = CASE WHEN id IN (public.t4490_id('w_paused_in'), public.t4490_id('w_paused_edge')) THEN 'paused' ELSE 'lapsed' END,
        pause_reason = CASE WHEN id IN (public.t4490_id('w_paused_in'), public.t4490_id('w_paused_edge')) THEN 'member' END,
-       paused_at = CASE WHEN id IN (public.t4490_id('w_paused_in'), public.t4490_id('w_paused_edge')) THEN now() END,
+       paused_since = CASE WHEN id IN (public.t4490_id('w_paused_in'), public.t4490_id('w_paused_edge')) THEN now() END,
        current_period_start = now() - interval '400 days',
        current_period_end = CASE id
          WHEN public.t4490_id('w_lapsed_in') THEN now() - interval '25 days'

@@ -620,7 +620,7 @@ BEGIN
                     THEN jsonb_build_object('endsAt', v_sub.cancel_at, 'by', v_sub.cancel_requested_by) END,
     'pausing', CASE WHEN v_sub.pause_at_period_end THEN jsonb_build_object('from', v_sub.current_period_end,
                     'by', v_sub.pause_requested_by) END,
-    'paused', CASE WHEN v_sub.status = 'paused' THEN jsonb_build_object('since', v_sub.paused_at, 'by', v_sub.pause_reason) END,
+    'paused', CASE WHEN v_sub.status = 'paused' THEN jsonb_build_object('since', v_sub.paused_since, 'by', v_sub.pause_reason) END,
     'endedAt', v_sub.cancelled_at,
     'endReason', v_sub.end_reason,
     'credits', jsonb_build_object(

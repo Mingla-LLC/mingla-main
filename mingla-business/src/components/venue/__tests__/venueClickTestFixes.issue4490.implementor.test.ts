@@ -264,28 +264,5 @@ describe("D30 — every switch that moved is named", () => {
   });
 });
 
-describe("Stay workspace round 4J — source shape", () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const fs = require("fs") as typeof import("fs");
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const path = require("path") as typeof import("path");
-  const read = (rel: string): string =>
-    fs.readFileSync(path.join(__dirname, "..", "..", "..", "..", rel), "utf8");
-
-  it("D1: Stay Settings keeps the features panel single-column; the panel defaults to auto", () => {
-    const stay = read("src/components/stay/StaySuiteShell.tsx");
-    const panel = read("src/components/venue/features/VenueTypeAndFeaturesPanel.tsx");
-    expect(stay).toContain('layout="stacked"');
-    expect(panel).toContain('layout = "auto"');
-    // [TEST-MOD-APPROVED #4490] J fix 2 (R4J-N2): the layout itself is proved
-    // by a real react-native-web render (stayDesktopWidth.issue1484.web.render
-    // N2-a..c); this only pins that Stay asks for the stacked layout.
-  });
-
-  it("D3: the Stay shell registers the page-exit gate through the store and clears it", () => {
-    const stay = read("src/components/stay/StaySuiteShell.tsx");
-    expect(stay).toContain("setRequestLeave(requestLeave)");
-    expect(stay).toContain("setRequestLeave(null)");
-    expect(stay).toContain('"beforeunload"');
-  });
-});
+// [TEST-MOD-APPROVED #4490] W3 fix 1: the Stay workspace round 4J source shape (D1, D3):
+// the source-text pins moved to the additive gate .github/scripts/strict-grep/issue-4490-host-wiring.mjs (I-PROPOSED-1047).

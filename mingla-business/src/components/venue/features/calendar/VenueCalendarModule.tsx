@@ -54,6 +54,7 @@ import {
   requestsFor,
   shiftAnchor,
   zonedIso,
+  calendarEventRoute,
   type BlockDraft,
   type CalendarBlock,
   type CalendarRow,
@@ -122,7 +123,7 @@ export function VenueCalendarModule({ brandId, venueId, onOpenRequest }: VenueCa
       return;
     }
     if ((block.tone === "event" || block.tone === "part") && block.eventId !== null) {
-      router.push(`/event/${block.eventId}` as never);
+      if (cal !== undefined) router.push(calendarEventRoute(cal, block.eventId) as never);
       return;
     }
     if (block.groupId === null) return;
@@ -161,6 +162,7 @@ export function VenueCalendarModule({ brandId, venueId, onOpenRequest }: VenueCa
             variant="secondary"
             size="sm"
             leadingIcon="plus"
+            // orch-strict-grep-allow route-by-event-type — creates a new event at this venue; there is no events-table row to route by type.
             onPress={() => router.push(`/event/create?venueId=${encodeURIComponent(venueId as string)}` as never)}
             testID="venue-calendar-add-event"
           />

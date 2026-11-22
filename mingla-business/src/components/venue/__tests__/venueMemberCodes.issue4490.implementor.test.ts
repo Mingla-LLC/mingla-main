@@ -1,7 +1,7 @@
-/** #4490 M — display/input formatting and both member projections. */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
+/**
+ * #4490 M — display/input formatting and both member projections.
+ * [TEST-MOD-APPROVED #4490] W3 fix 1: the source-text pins moved to the additive gate .github/scripts/strict-grep/issue-4490-host-wiring.mjs (I-PROPOSED-1047).
+ */
 import { mapMemberDetail } from "../../../services/venueMembersService";
 import { doorErrorCopy } from "../features/checkin/venueCheckInResult";
 import { parseGuestMember } from "../offers/memberGuestModel";
@@ -42,17 +42,4 @@ describe("member door codes", () => {
     );
   });
 
-  it("keeps the member page, Host panel and six-box door input wired", () => {
-    const component = (relative: string): string =>
-      readFileSync(join(__dirname, "..", relative), "utf8");
-    const pass = component("offers/VisitMembership.tsx");
-    const panel = component("features/members/MemberPanel.tsx");
-    const door = component("features/checkin/VenueCheckInModule.tsx");
-    expect(pass).toContain("Can’t scan? Your code: ${memberCode}");
-    expect(pass).toContain('testID="issue-4490-member-code"');
-    expect(panel).toContain('label: "Member code"');
-    expect(door).toContain("Array.from({ length: 6 }");
-    expect(door).toContain('kind: "admit_code"');
-    expect(door).toContain('testID="venue-checkin-member-code"');
-  });
 });

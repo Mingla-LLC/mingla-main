@@ -525,7 +525,7 @@ GRANT EXECUTE ON FUNCTION public.issue_4490_feature_needs(uuid, text) TO authent
 CREATE TABLE public.venue_feature_paused_offers (
   offering_id uuid PRIMARY KEY REFERENCES public.stay_offerings(id) ON DELETE CASCADE,
   feature_key text NOT NULL CHECK (char_length(feature_key) BETWEEN 1 AND 40),
-  paused_at timestamptz NOT NULL DEFAULT now()
+  paused_since timestamptz NOT NULL DEFAULT now()
 );
 COMMENT ON TABLE public.venue_feature_paused_offers IS
   '#4490: offers a feature switch-off paused (and nothing else did); switching the feature back on puts exactly these back on sale.';
@@ -558,7 +558,7 @@ BEGIN
     )
     INSERT INTO public.venue_feature_paused_offers (offering_id, feature_key)
     SELECT paused.id, NEW.feature_key FROM paused
-    ON CONFLICT (offering_id) DO UPDATE SET feature_key = EXCLUDED.feature_key, paused_at = now();
+    ON CONFLICT (offering_id) DO UPDATE SET feature_key = EXCLUDED.feature_key, paused_since = now();
   ELSIF NEW.enabled AND TG_OP = 'UPDATE' AND OLD.enabled IS DISTINCT FROM true THEN
     -- #4490 fix round 1 (B4): back on sale exactly what the switch-off paused
     -- and is still paused (an offer archived meanwhile stays archived).
@@ -752,7 +752,7 @@ BEGIN
                     THEN jsonb_build_object('endsAt', v_sub.cancel_at, 'by', v_sub.cancel_requested_by) END,
     'pausing', CASE WHEN v_sub.pause_at_period_end THEN jsonb_build_object('from', v_sub.current_period_end,
                     'by', v_sub.pause_requested_by) END,
-    'paused', CASE WHEN v_sub.status = 'paused' THEN jsonb_build_object('since', v_sub.paused_at, 'by', v_sub.pause_reason) END,
+    'paused', CASE WHEN v_sub.status = 'paused' THEN jsonb_build_object('since', v_sub.paused_since, 'by', v_sub.pause_reason) END,
     'endedAt', v_sub.cancelled_at,
     'endReason', v_sub.end_reason,
     'credits', jsonb_build_object(

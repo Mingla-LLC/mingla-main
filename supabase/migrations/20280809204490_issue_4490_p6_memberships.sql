@@ -172,7 +172,7 @@ CREATE TABLE public.venue_membership_subscriptions (
     status IN ('pending', 'active', 'payment_due', 'grace', 'lapsed', 'paused', 'cancelled')
   ),
   pause_reason text CHECK (pause_reason IS NULL OR pause_reason IN ('member', 'staff')),
-  paused_at timestamptz,
+  paused_since timestamptz,
   pause_at_period_end boolean NOT NULL DEFAULT false,
   pause_requested_by text CHECK (pause_requested_by IS NULL OR pause_requested_by IN ('member', 'staff')),
   start_on date NOT NULL,
@@ -398,7 +398,7 @@ GRANT SELECT ON public.venue_member_visits TO authenticated;
 GRANT SELECT ON public.venue_credit_ledger TO authenticated;
 -- Subscriptions: every column but the token and pass hashes.
 GRANT SELECT (id, plan_id, brand_id, user_id, member_name, member_email, member_phone, status, pause_reason,
-  paused_at, pause_at_period_end, pause_requested_by, start_on, started_at, current_period_start,
+  paused_since, pause_at_period_end, pause_requested_by, start_on, started_at, current_period_start,
   current_period_end, cancel_at, cancel_requested_by, cancelled_at, end_reason, terms, version, created_at,
   updated_at) ON public.venue_membership_subscriptions TO authenticated;
 GRANT ALL ON public.venue_membership_plans, public.venue_membership_subscriptions, public.venue_membership_periods,
@@ -1083,7 +1083,7 @@ BEGIN
                     THEN jsonb_build_object('endsAt', v_sub.cancel_at, 'by', v_sub.cancel_requested_by) END,
     'pausing', CASE WHEN v_sub.pause_at_period_end THEN jsonb_build_object('from', v_sub.current_period_end,
                     'by', v_sub.pause_requested_by) END,
-    'paused', CASE WHEN v_sub.status = 'paused' THEN jsonb_build_object('since', v_sub.paused_at, 'by', v_sub.pause_reason) END,
+    'paused', CASE WHEN v_sub.status = 'paused' THEN jsonb_build_object('since', v_sub.paused_since, 'by', v_sub.pause_reason) END,
     'endedAt', v_sub.cancelled_at,
     'endReason', v_sub.end_reason,
     'credits', jsonb_build_object(
@@ -1458,7 +1458,7 @@ BEGIN
         RAISE EXCEPTION 'membership_cannot_pause' USING ERRCODE = 'PT409';
       END IF;
       UPDATE public.venue_membership_subscriptions
-      SET status = 'paused', pause_reason = 'staff', paused_at = now(), pause_at_period_end = false,
+      SET status = 'paused', pause_reason = 'staff', paused_since = now(), pause_at_period_end = false,
           pause_requested_by = 'staff', version = version + 1, updated_at = now()
       WHERE id = v_sub.id;
       UPDATE public.venue_membership_periods SET status = 'void', version = version + 1, updated_at = now()
@@ -1486,7 +1486,7 @@ BEGIN
     ELSIF v_sub.status = 'paused' AND v_sub.current_period_end > now() THEN
       -- Paused inside a paid month: back at once.
       UPDATE public.venue_membership_subscriptions
-      SET status = 'active', pause_reason = NULL, paused_at = NULL, pause_requested_by = NULL,
+      SET status = 'active', pause_reason = NULL, paused_since = NULL, pause_requested_by = NULL,
           version = version + 1, updated_at = now()
       WHERE id = v_sub.id;
     ELSIF v_sub.status = 'paused' THEN
@@ -1855,7 +1855,7 @@ BEGIN
       current_period_end = CASE WHEN current_period_end IS NULL OR v_period.period_end > current_period_end
                                 THEN v_period.period_end ELSE current_period_end END,
       pause_reason = CASE WHEN status = 'cancelled' THEN pause_reason ELSE NULL END,
-      paused_at = CASE WHEN status = 'cancelled' THEN paused_at ELSE NULL END,
+      paused_since = CASE WHEN status = 'cancelled' THEN paused_since ELSE NULL END,
       pause_requested_by = CASE WHEN status = 'paused' THEN NULL ELSE pause_requested_by END,
       version = version + 1, updated_at = now()
   WHERE id = v_sub.id;
@@ -2240,7 +2240,7 @@ BEGIN
     ORDER BY s.current_period_end LIMIT v_limit FOR UPDATE SKIP LOCKED
   LOOP
     UPDATE public.venue_membership_subscriptions
-    SET status = 'paused', pause_reason = COALESCE(pause_requested_by, 'member'), paused_at = v_now,
+    SET status = 'paused', pause_reason = COALESCE(pause_requested_by, 'member'), paused_since = v_now,
         pause_at_period_end = false, version = version + 1, updated_at = now()
     WHERE id = v_row.id;
     PERFORM public.issue_4490_member_event(v_row.id, NULL, 'member_pause_started', 'system', NULL,
@@ -3282,8 +3282,9 @@ BEGIN
     'version', v_version,
     'venue', v_row,
     'currencyCode', v_currency,
-    'minorUnitExponent', CASE WHEN v_currency IN ('JPY', 'KRW', 'VND', 'CLP', 'ISK', 'UGX', 'RWF', 'XOF', 'XAF', 'PYG', 'GNF', 'KMF', 'DJF', 'BIF', 'VUV', 'XPF')
-                              THEN 0 ELSE 2 END,
+    -- #4490 W3 fix 1: the exponent comes from its one owner (supported_brand_currencies).
+    'minorUnitExponent', COALESCE((SELECT c.minor_unit_exponent FROM public.supported_brand_currencies c
+                                   WHERE c.code = v_currency), 2),
     'vat', v_vat,
     'features', to_jsonb(v_features),
     'spaces', v_spaces,

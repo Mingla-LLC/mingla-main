@@ -446,6 +446,8 @@ export interface CalendarEvent {
   status: string;
   startsAt: string;
   endsAt: string;
+  /** #4490 W3 fix 1 — event, experience, trip or rsvp (null from older servers). */
+  eventType?: string | null;
 }
 
 export interface VenueCalendar {
