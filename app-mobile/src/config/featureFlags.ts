@@ -98,3 +98,12 @@ export const FEATURE_FLAG_ACCOUNT_SIDE_TOGGLE: boolean = __DEV__;
  */
 export const FEATURE_FLAG_TRIP_BALANCE: boolean =
   process.env.EXPO_PUBLIC_FF_TRIP_BALANCE !== "false";
+
+/**
+ * Issue #3281 — add-ons on Explorer offering pages: "Add at checkout:" under
+ * each ticket, package and option, and the RSVP add-on picker. Same switch name
+ * as Host (EXPO_PUBLIC_FF_EXTRAS_ENABLED). Default false: pages render as before.
+ * Exit: remove once add-ons are switched on and one OTA window is clean.
+ */
+export const FEATURE_FLAG_ADD_ONS: boolean =
+  process.env.EXPO_PUBLIC_FF_EXTRAS_ENABLED === "true";

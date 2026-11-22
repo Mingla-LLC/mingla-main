@@ -13,9 +13,10 @@
  * (the caller builds its public URL, never an image transformation URL).
  *
  * Imported by its deep path (`@mingla/offering-rendering/OfferingAddOnsBlock`),
- * never through the package barrel. Not yet placed on a page: under each
- * ticket it must load on use, and the shared bodies are in the Host web boot
- * payload (see the #3281 checkpoint 15 report).
+ * never through the package barrel. The shared offering bodies never import
+ * it: they take an `addOns` slot (OfferingAddOnsSlot, a type only) and each
+ * page shell fills it. Host web loads this block on use, so the bodies in the
+ * boot payload carry only the slot call.
  */
 
 import React from "react";
@@ -23,6 +24,20 @@ import { Image, StyleSheet, Text, View } from "react-native";
 
 import { formatAddOnMoney, publicAddOnChips, type OfferingAddOnChip } from "./offeringAddOnChips";
 import type { ThemePalette } from "./themePalette";
+
+/**
+ * issue #3281 S2 — what a shared offering body calls under each ticket,
+ * package, option or RSVP card. Null or omitted (the default) renders
+ * nothing; the page shell passes one only while its add-ons switch is on.
+ */
+export type OfferingAddOnsSlot = (
+  /** The ticket type id (or "rsvp"). */
+  id: string,
+  /** The reader's raw list for that card. */
+  addOns: unknown,
+  currency: string | null,
+  palette: ThemePalette,
+) => React.ReactNode;
 
 export interface OfferingAddOnsBlockProps {
   /** The caller's add-ons switch; false renders nothing. */

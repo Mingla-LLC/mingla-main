@@ -54,6 +54,8 @@ export interface OfferingRefundPolicy {
   deposit_non_refundable?: boolean;
 }
 
+const OPTIONAL_POLICY_KEYS = ["no_refunds", "deposit_non_refundable"] as const;
+
 export type RefundPolicyReadState =
   | { status: "set"; policy: OfferingRefundPolicy }
   | { status: "none" }
@@ -92,27 +94,19 @@ export function parseOfferingRefundPolicy(
   if (typeof kind !== "string" || !POLICY_KINDS.has(kind)) return null;
   const rawTiers = value.tiers;
   if (!Array.isArray(rawTiers)) return null;
-  const hasNoRefunds = Object.prototype.hasOwnProperty.call(
-    value,
-    "no_refunds",
-  );
-  const hasDepositRule = Object.prototype.hasOwnProperty.call(
-    value,
-    "deposit_non_refundable",
-  );
-  if (hasNoRefunds && typeof value.no_refunds !== "boolean") return null;
-  if (hasDepositRule && typeof value.deposit_non_refundable !== "boolean") {
-    return null;
-  }
+  // Each optional key is copied only when the payload carries it (own key),
+  // and must be a boolean when it does. (#3281 checkpoint 15: one loop instead
+  // of two spelled-out checks keeps this boot-payload module small.)
   const optional: Pick<
     OfferingRefundPolicy,
     "no_refunds" | "deposit_non_refundable"
-  > = {
-    ...(hasNoRefunds ? { no_refunds: value.no_refunds as boolean } : {}),
-    ...(hasDepositRule
-      ? { deposit_non_refundable: value.deposit_non_refundable as boolean }
-      : {}),
-  };
+  > = {};
+  for (const key of OPTIONAL_POLICY_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    const flag = value[key];
+    if (typeof flag !== "boolean") return null;
+    optional[key] = flag;
+  }
   // issue #4522 — a "No refunds" policy (`no_refunds: true`, empty ladder) is
   // valid in the database but reads as unknown here until the slice that
   // renders it ships, so no surface shows a ladder or a tick for it.

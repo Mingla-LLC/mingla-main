@@ -229,6 +229,8 @@ import {
   ticketOffChosenDays,
 } from "../../components/expandedCard/ticketDayScope";
 import { ticketsWithNoDateOnSale } from "@mingla/offering-rendering/noDateOnSale";
+// issue #3281 S2 — each ticket/package/option's add-ons (flag-gated, off by default).
+import { publicAddOnsSlot } from "../../components/addOns/publicAddOnsSlot";
 
 const RsvpBrandFormQuestions = React.lazy(
   () => import("../../components/forms/RsvpBrandFormQuestions"),
@@ -2171,6 +2173,7 @@ export default function ConsumerEventDetailScreen({
                  only once the box is actually on-screen (was: hid right after the
                  cover because it measured the body top). */}
               <EventOfferingBody
+                addOns={publicAddOnsSlot()}
                 event={publicEventForBody}
                 brand={{
                   id: seed.brandId,

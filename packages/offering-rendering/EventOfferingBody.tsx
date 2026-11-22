@@ -145,6 +145,7 @@ import { accentFill, accentOutline, themeBoldFace, themeFontFace } from "./theme
 // issue #4518 — the brand logo takes the picture road (one fallback).
 import { OfferingRoutedImage } from "./useOfferingImageUri";
 import { StaticMapImage } from "./StaticMapFrame";
+import type { OfferingAddOnsSlot } from "./OfferingAddOnsBlock";
 
 // Re-export the pure totals so a single import surface stays one place.
 export { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
@@ -373,6 +374,8 @@ export interface EventOfferingBodyProps {
    * omitted/null preserves the pre-#2399 tree exactly.
    */
   leadingPurchaseSection?: React.ReactNode | null;
+  /** issue #3281 S2 — "Add at checkout:" under each ticket; omitted shows none. */
+  addOns?: OfferingAddOnsSlot | null;
   /** issue #2399 — multiplier for the displayed total only; line quantities stay canonical. */
   priceMultiplier?: number;
   /** issue #2399 — false keeps the total unknown and routes CTA taps to app-owned recovery. */
@@ -454,6 +457,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   hideTicketBox = false,
   pricingNote = null,
   leadingPurchaseSection = null,
+  addOns = null,
   priceMultiplier = 1,
   purchaseReady = true,
   purchaseBlockedLabel = null,
@@ -699,6 +703,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
                 inlineProceed={inlineProceed}
                 pricingNote={pricingNote}
                 leadingPurchaseSection={leadingPurchaseSection}
+                addOns={addOns}
                 priceMultiplier={priceMultiplier}
                 purchaseReady={purchaseReady}
                 purchaseBlockedLabel={purchaseBlockedLabel}
@@ -977,6 +982,8 @@ export interface EventTicketBoxProps {
    *  bare (issue #4420): the content draws its own card, so a child that
    *  renders nothing leaves no empty frame behind. */
   leadingPurchaseSection?: React.ReactNode | null;
+  /** issue #3281 S2 — "Add at checkout:" under each ticket; omitted shows none. */
+  addOns?: OfferingAddOnsSlot | null;
   /** issue #2399 — selected-day multiplier; defaults to the byte-identical 1. */
   priceMultiplier?: number;
   /** issue #2399 — false renders an unknown total and recovery CTA copy. */
@@ -999,6 +1006,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
   submitting = false,
   pricingNote = null,
   leadingPurchaseSection = null,
+  addOns = null,
   priceMultiplier = 1,
   purchaseReady = true,
   purchaseBlockedLabel = null,
@@ -1082,8 +1090,8 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
               "Tickets" on the public page. */}
           {leadingPurchaseSection}
           {visibleTickets.map((t) => (
+            <React.Fragment key={t.id}>
             <TicketStepperRow
-              key={t.id}
               ticket={t}
               fallbackCurrency={event.currency}
               palette={palette}
@@ -1095,6 +1103,8 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
               pricingNote={pricingNote}
               hideRemainingCount={event.hideRemainingCount === true}
             />
+            {addOns && addOns(t.id, t.buyerExtras, t.currency ?? event.currency, palette)}
+            </React.Fragment>
           ))}
 
           {inlineProceed ? (

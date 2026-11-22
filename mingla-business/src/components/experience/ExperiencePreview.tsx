@@ -59,6 +59,8 @@ import {
   useResponsiveLayout,
   type SocialProofSummary,
 } from "@mingla/offering-rendering";
+// issue #3281 S2 — each ticket/package/option's add-ons (EXPO_PUBLIC_FF_EXTRAS_ENABLED; off = no slot).
+import { publicAddOnsSlot } from "../offering/LazyPublicParts";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { CollapsibleDescription } from "../offering/CollapsibleDescription";
@@ -437,6 +439,7 @@ const FoundationExperiencePreview: React.FC<{
       testID={testID}
     >
       <ExperienceOfferingBody
+        addOns={publicAddOnsSlot}
         data={data}
         brand={offeringBrand}
         palette={palette}

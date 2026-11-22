@@ -77,6 +77,8 @@ import {
   type TripPaymentPlanChoice,
   type TripReserveLine,
 } from "@mingla/offering-rendering";
+// issue #3281 S2 — each ticket/package/option's add-ons (EXPO_PUBLIC_FF_EXTRAS_ENABLED; off = no slot).
+import { publicAddOnsSlot } from "../offering/LazyPublicParts";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { CollapsibleDescription } from "../offering/CollapsibleDescription";
@@ -561,6 +563,7 @@ const FoundationTripPreview: React.FC<{
       testID={testID}
     >
       <TripOfferingBody
+        addOns={publicAddOnsSlot}
         data={data}
         brand={offeringBrand}
         palette={palette}

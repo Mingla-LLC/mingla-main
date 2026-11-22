@@ -87,6 +87,7 @@ import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
 import { buildStaticMapUrl } from "./staticMapImage";
 import { StaticMapImage } from "./StaticMapFrame";
+import type { OfferingAddOnsSlot } from "./OfferingAddOnsBlock";
 import type {
   TripOfferingBrand,
   TripOfferingCallbacks,
@@ -195,6 +196,8 @@ export interface TripOfferingBodyProps {
    * cover (the premium ParallaxCoverShell frame). Absent ⇒ false (Explorer).
    */
   identityOnCover?: boolean;
+  /** issue #3281 S2 — "Add at checkout:" under each package; omitted shows none. */
+  addOns?: OfferingAddOnsSlot | null;
   testID?: string;
 }
 
@@ -221,6 +224,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
   socialProof = null,
   onSeeWhosGoing,
   identityOnCover = false,
+  addOns = null,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -806,8 +810,8 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
               <>
                 {/* META-ORCH-1174 Leg B3 — N package rows. */}
                 {sortedTiers.map((tier) => (
+                  <React.Fragment key={tier.ticketTypeId}>
                   <TripPackageRow
-                    key={tier.ticketTypeId}
                     tier={tier}
                     palette={palette}
                     surface={surface}
@@ -832,6 +836,8 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                       data.refundPolicy?.deposit_non_refundable === true
                     }
                   />
+                  {addOns && addOns(tier.ticketTypeId, tier.buyerExtras, data.currency, palette)}
+                  </React.Fragment>
                 ))}
 
                 {/* Σ all-in / Σ due-today summary row (WYSIWYP). */}
@@ -897,6 +903,7 @@ export const TripOfferingBody: React.FC<TripOfferingBodyProps> = ({
                     {summaryPriceLabel ?? "—"}
                   </Text>
                 </View>
+                {addOns && addOns(state.selectedTier.ticketTypeId, state.selectedTier.buyerExtras, data.currency, palette)}
               </>
             )}
 

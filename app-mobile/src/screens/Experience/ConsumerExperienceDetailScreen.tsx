@@ -156,6 +156,8 @@ import type { BusinessEventCard } from "../../types/mergedDiscover";
 import { CircleAlert } from "lucide-react-native";
 import { AccentLucideIcon } from "@mingla/offering-rendering/LucideIcons";
 import { themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
+// issue #3281 S2 — each ticket/package/option's add-ons (flag-gated, off by default).
+import { publicAddOnsSlot } from "../../components/addOns/publicAddOnsSlot";
 
 const ACCENT = "#FF6B35";
 
@@ -1539,6 +1541,7 @@ export default function ConsumerExperienceDetailScreen({
                 about/itinerary[shared StopSpine — per-stop VIDEO preserved]/map/
                 price). The DOCKED reserve bar rides as the LAST body child. */}
             <ExperienceOfferingBody
+              addOns={publicAddOnsSlot()}
               data={offeringData}
               brand={offeringBrand}
               palette={palette}

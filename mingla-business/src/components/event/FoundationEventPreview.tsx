@@ -50,6 +50,8 @@ import {
   ParallaxCoverShell,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
+// issue #3281 S2 — each ticket/package/option's add-ons (EXPO_PUBLIC_FF_EXTRAS_ENABLED; off = no slot).
+import { publicAddOnsSlot } from "../offering/LazyPublicParts";
 export interface FoundationEventPreviewProps {
   event: PublicEventProps;
   brand: PublicBrandProps | null;
@@ -216,6 +218,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   // adapter anyway.
   const body = (
     <EventOfferingBody
+      addOns={publicAddOnsSlot}
       event={event}
       brand={brand}
       variant={variant}
