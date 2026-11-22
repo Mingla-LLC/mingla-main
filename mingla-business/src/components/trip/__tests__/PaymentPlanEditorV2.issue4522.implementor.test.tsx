@@ -262,9 +262,13 @@ describe("editor interaction and lazy ownership", () => {
     expect(editor).not.toContain("React.lazy(");
     expect(editor).toContain("import type {");
     expect(editor).not.toContain("TRIP_PLAN_V2_EDITOR_RUNTIME");
-    expect(service).toContain("payment_plan: patch.installmentSchedule");
-    expect(service).toContain("installments: _stripExistingV1");
-    expect(service).toContain("payment_plan: _stripExistingV2");
+    // #3281 boot room: one writer (withTierPlan) keeps exactly one plan shape
+    // for both the update and the create path; the behaviour is pinned by
+    // metaOrch1174_multiPackageAuthoring ("v2 replaces v1", "switching back").
+    expect(service).toContain('["v" in plan && plan.v === 2 ? "payment_plan" : "installments"]: plan');
+    expect(service).toContain("const { installments: _v1, payment_plan: _v2, ...rest } = metadata;");
+    expect(service).toContain("withTierPlan(existingMetadata, patch.installmentSchedule)");
+    expect(service).toContain("withTierPlan({}, patch.installmentSchedule)");
     expect(service).toContain("share_payment_plan: patch.sharePaymentPlan === true");
     expect(publishedEditor).not.toContain("v2PlanAuthoringLocked");
     expect(publishedEditor).toContain("metadata.payment_plan = editPkg.paymentPlan");
