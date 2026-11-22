@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "edge-function-policy",
+  "name": "host-push-reconcile",
+  "verify_jwt": true,
+  "gateway_reason": "Called only by pg_cron with the service-role key, which the function compares in code before reading devices or asking the push provider; same posture as sms-delivery-reconcile.",
+  "env": {
+    "required_top_level": ["ONESIGNAL_BUSINESS_APP_ID", "ONESIGNAL_BUSINESS_REST_API_KEY", "RESEND_API_KEY", "app.qr_token_pepper"],
+    "optional_top_level": ["ONESIGNAL_APP_ID", "ONESIGNAL_REST_API_KEY"],
+    "migration_fallback_top_level": [],
+    "required_bundle_fields": {}
+  }
+}
