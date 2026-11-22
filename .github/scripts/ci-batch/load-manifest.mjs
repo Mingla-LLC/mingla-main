@@ -386,7 +386,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281 S3 add-on authoring: registered 20281121043281_issue_3281_add_on_authoring.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121043281 on the filtered #1931 and #2117 replays (it needs the S1 links those replays skip); re-sealed.
 // #3281 S2+S6 readers and RSVP add-ons: registered 20281121053281_issue_3281_add_on_readers_and_rsvp.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121053281 on the filtered #1931 and #2117 replays (it needs the S1 links those replays skip); re-sealed.
 // #4522 merge of main after #4420 polish pass: kept the #4420 migration and pg17 rows beside the #3281/#4522 rows and skips; re-sealed.
-export const BOOTSTRAP_SHA256 = "bcc0e5360431fb7d91bc737aad91f00de7f90e860936c28f055a582879c8ff7c";
+// #3281 gap E RSVP add-on picks stay: registered 20281122023281_issue_3281_rsvp_add_on_picks_stay.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281122023281 on the filtered #1931 and #2117 replays; re-sealed.
+export const BOOTSTRAP_SHA256 = "a22b687e1315a926513e73403d68f380a33b89f3ab30fc693154c7565eeadd19";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

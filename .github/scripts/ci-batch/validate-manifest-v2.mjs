@@ -647,7 +647,8 @@ export function phase3dContractDigest(manifest) {
 // #3281 S3 add-on authoring: registered 20281121043281_issue_3281_add_on_authoring.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121043281 on the filtered #1931 and #2117 replays (it needs the S1 links those replays skip); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3281 S2+S6 readers and RSVP add-ons: registered 20281121053281_issue_3281_add_on_readers_and_rsvp.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121053281 on the filtered #1931 and #2117 replays (it needs the S1 links those replays skip); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4420 polish pass: kept the #4420 migration and pg17 rows beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "dbc899590ee50f381719a4e6b7e33a63340bf63bb8c99e49ba46ebde41cddfff";
+// #3281 gap E RSVP add-on picks stay: registered 20281122023281_issue_3281_rsvp_add_on_picks_stay.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281122023281 on the filtered #1931 and #2117 replays; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "09bced4dc6db7f19283a98de401cbaa58e332b032d06278bc407780d5a728a11";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

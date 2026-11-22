@@ -1707,6 +1707,7 @@
         "supabase/functions/public-submit-rsvp/rsvpAddOns.ts",
         "supabase/functions/scan-rsvp/doorAddOns.ts",
         "supabase/migrations/20281121053281_issue_3281_add_on_readers_and_rsvp.sql",
+        "supabase/migrations/20281122023281_issue_3281_rsvp_add_on_picks_stay.sql",
         "mingla-business/src/components/addOns/addOnPhoto.native.ts",
         "mingla-business/src/components/addOns/addOnPhoto.ts",
         "mingla-business/src/components/addOns/addOnPhotoRules.ts",
