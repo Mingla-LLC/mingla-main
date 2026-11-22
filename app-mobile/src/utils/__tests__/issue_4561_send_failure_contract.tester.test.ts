@@ -22,8 +22,10 @@
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
   otpPickerChannels,
+  phoneStepPresentation,
   phoneStepSendChannel,
   readSendOtpFailure,
+  refusedForNumber,
   withRefusedChannel,
 } from "../edgeFunctionError.ts";
 
@@ -110,4 +112,44 @@ Deno.test("#4561 adversarial: every public code the real server classifier emits
   }
   // The 409 the server sends before any provider call is also understood.
   assertEquals(readSendOtpFailure({ error: MSG, code: "phone_taken" }, MSG, "sms").code, "phone_taken");
+});
+
+Deno.test("#4561 retest adversarial: no refusal set and no last error ever yields a disabled button without its reason and support", () => {
+  const msgs = { smsRefused: "SMS_REFUSED", allRefused: "ALL_REFUSED" };
+  const sets: ("sms" | "call" | "whatsapp")[][] = [
+    [], ["sms"], ["call"], ["whatsapp"], ["sms", "call"], ["call", "sms"], ["sms", "whatsapp"], ["sms", "call", "whatsapp"], ["sms", "sms"],
+  ];
+  const lastErrors = [null, { message: "TAKEN", phoneTaken: true }, { message: "RETRY", phoneTaken: false }, { message: "", phoneTaken: false }];
+  for (const refused of sets) {
+    for (const lastError of lastErrors) {
+      const p = phoneStepPresentation(refused, lastError, msgs);
+      const row = `refused=${JSON.stringify(refused)} last=${JSON.stringify(lastError)}`;
+      // The button and the picker agree on what is left.
+      assertEquals(p.sendChannel, phoneStepSendChannel(refused), row);
+      if (p.sendChannel === null) {
+        // Disabled: the reason and the way out always come with it, whatever error came last.
+        assertEquals(p.error, "ALL_REFUSED", row);
+        assertEquals(p.showSupport, true, row);
+        assertEquals(otpPickerChannels(refused), [], row);
+      } else {
+        assert(p.error !== "ALL_REFUSED", `${row}: all-refused text with a working button`);
+        // "We can't text this number" only when SMS really was refused.
+        if (p.error === "SMS_REFUSED") assert(refused.includes("sms"), row);
+        // Support without a disabled button only for a number on another account.
+        if (p.showSupport) assertEquals(lastError?.phoneTaken, true, row);
+      }
+    }
+  }
+});
+
+Deno.test("#4561 retest adversarial: refusals belong to one exact number and are copied, not shared", () => {
+  const remembered = { number: "+12015550142", channels: ["sms", "call"] as ("sms" | "call")[] };
+  assertEquals(refusedForNumber(remembered, "+12015550142"), ["sms", "call"]);
+  // Same digits under another country code, or one digit off, carry nothing.
+  for (const other of ["+442015550142", "+12015550143", "12015550142", "+1201555014", ""]) {
+    assertEquals(refusedForNumber(remembered, other), [], other);
+  }
+  const copy = refusedForNumber(remembered, "+12015550142");
+  copy.pop();
+  assertEquals(remembered.channels, ["sms", "call"]);
 });
