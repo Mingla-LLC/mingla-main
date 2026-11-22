@@ -7,11 +7,14 @@ import {
   Animated,
   Easing,
   Keyboard,
+  Dimensions,
   useWindowDimensions,
   AccessibilityInfo,
 } from 'react-native';
 import Svg, { Defs, Rect, Mask } from 'react-native-svg';
+import { useSafeAreaFrame } from 'react-native-safe-area-context';
 import { useCoachMarkContext, TargetRect } from '../contexts/CoachMarkContext';
+import { mixpanelService } from '../services/mixpanelService';
 import { useAppLayout } from '../hooks/useAppLayout';
 import { COACH_STEP_COUNT } from '../constants/coachMarkSteps';
 import CoachLikesPreview from './CoachLikesPreview';
@@ -35,6 +38,20 @@ const FADE_IN_DURATION = 300;
 const FADE_OUT_DURATION = 250;
 const BUBBLE_ENTRY_DURATION = 200;
 
+// #4562: a step that is due but has drawn nothing for this long reports one
+// `Coach Mark Held` event (and one console warning) per step entry.
+const HELD_AFTER_MS = 5000;
+
+// #4562: the only rule left is "a rect with no size cannot be a cutout". The old
+// whole-screen rejection (width >= 98% AND height >= 95% of the window AND y <= 64) was
+// removed: on Android 14 and older the window height excludes the cutout band while the
+// app draws edge to edge, so the REAL deck card (recorded 360x699 on a 728 dp window)
+// measured as "the whole screen", was rejected on every launch, and step 1 never showed.
+const isPlausibleCutout = (t: TargetRect): boolean => {
+  if (t.width <= 0 || t.height <= 0) return false;
+  return true;
+};
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function SpotlightOverlay(): React.ReactElement | null {
@@ -53,6 +70,8 @@ export default function SpotlightOverlay(): React.ReactElement | null {
     // (the targetMeasurements Map is mutated in place). Releases step 1's deck-hold the
     // instant the deck attaches + measures a plausible rect.
     targetVersion,
+    // #4562: the overlay reports which step's bubble it has drawn; the tab lock reads it.
+    reportPresentation,
   } = useCoachMarkContext();
   const layout = useAppLayout();
   const { t } = useTranslation(['modals', 'common']);
@@ -66,6 +85,7 @@ export default function SpotlightOverlay(): React.ReactElement | null {
   const hasEnteredRef = useRef(false);
 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const rootFrame = useSafeAreaFrame();
 
   // ── Accessibility ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -139,65 +159,91 @@ export default function SpotlightOverlay(): React.ReactElement | null {
     ]).start();
   }, [currentStep]);
 
-  // ── Don't render if inactive or hidden ──────────────────────────────────
-  if (!isCoachActive || keyboardVisible) return null;
-  if (!currentStepConfig) return null;
-
+  // ── What would be drawn (computed BEFORE any early return) ─────────────
   const isFirstStep = currentStep === 1;
   const isLastStep = coachProgress.current === coachProgress.total;
   const target: TargetRect | undefined = targetMeasurements.get(currentStep);
-
-  // ORCH-1029 (F-1, REWORK): fullscreen-rejection clamp — recalibrated.
-  //
-  // The clamp's ONLY job is to reject a measurement that covers essentially the WHOLE
-  // screen (the Android warm-deck fallthrough rect {0,2,448,879} on a 448×896 screen),
-  // which would paint a no-op whole-screen cutout. It must NOT reject the LEGITIMATE
-  // deck card.
-  //
-  // The deck ref (`coachDeckRef` → SwipeableCards `cardContainer`) is styled
-  // `{ width: SCREEN_WIDTH, flex: 1 }`, so the real deck card is full-WIDTH by design
-  // (width === screenWidth, x === 0) but NOT full-height — it stops above the bottom tab
-  // bar. Observed real rect on iOS SE3: {0,2,375,589} on a 375×667 screen → height ≈ 88%.
-  // The old clamp (`width <= screenWidth*0.96`) could NEVER be satisfied by a full-width
-  // target, so it rejected the deck card on every device and froze the tour at step 1.
-  //
-  // The recalibrated predicate accepts anything that is NOT a true whole-screen rect.
-  // A true whole-screen rect is near-100% width AND near-100% height AND top-origin near 0
-  // (covers the entire screen top-to-bottom). The Android fallthrough rect hits all three
-  // (width 448 ≥ 98%, height 879 ≥ 95% of 896, y ≈ 0); the deck card hits width + top but
-  // NOT height (589 < 95% of 667), so it is accepted.
-  // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-1 (SC-1.1).
-  const FULLSCREEN_WIDTH_RATIO = 0.98;
-  const FULLSCREEN_HEIGHT_RATIO = 0.95;
-  const FULLSCREEN_TOP_INSET = 64; // status-bar-scale top origin → "starts at the top edge"
-  const isPlausibleCutout = (t: TargetRect): boolean => {
-    if (t.width <= 0 || t.height <= 0) return false;
-    const coversFullWidth = t.width >= screenWidth * FULLSCREEN_WIDTH_RATIO;
-    const coversFullHeight = t.height >= screenHeight * FULLSCREEN_HEIGHT_RATIO;
-    const startsAtTop = t.y <= FULLSCREEN_TOP_INSET;
-    const isWholeScreen = coversFullWidth && coversFullHeight && startsAtTop;
-    return !isWholeScreen;
-  };
-
   const hasPlausibleTarget = !!target && isPlausibleCutout(target);
 
   // ORCH-1029 (F-1): step 1 ("Meet your deck") owns a cutout and MUST NOT present a
-  // misleading no-cutout centered bubble (iOS) or a whole-screen cutout (Android) as its
-  // resting state. If the deck target is unmeasured or fullscreen, step 1 HOLDS — it
-  // renders nothing until a plausible rect arrives. The deck's callback-ref attach (when
-  // SwipeableCards leaves the "Curating" skeleton) fires the rAF measurement that
-  // registers a plausible rect, releasing this hold deterministically — not on a timer.
-  // Spec: SPEC_ORCH-1029_COACH_MARK_FIXES.md §3.F-1 (SC-1.2 / SC-1.3).
+  // misleading no-cutout centered bubble as its resting state. If the deck target is
+  // unmeasured, step 1 HOLDS: it renders nothing until a plausible rect arrives. The deck's
+  // callback-ref attach (when SwipeableCards leaves its skeleton) fires the measurement that
+  // releases this hold deterministically, not on a timer.
+  // #4562: the hold no longer locks anything. The tabs lock only while a bubble is drawn.
   const step1HoldingForDeck = isFirstStep && !hasPlausibleTarget;
 
   // For the cutout itself, a step only gets a cutout when the target is plausible.
   // (Non-step-1 steps with bubblePosition:'center' intentionally render centered when
-  // they have no cutout — preserved below via `forceCenter`.)
+  // they have no cutout, preserved below via `forceCenter`.)
   const hasTarget = hasPlausibleTarget;
+
+  // The bubble is drawn exactly when none of the early returns below fires.
+  const bubbleDrawn =
+    isCoachActive && !keyboardVisible && !!currentStepConfig && !step1HoldingForDeck && overlayVisible;
 
   if (__DEV__) {
     console.log(`[Spotlight] Step ${currentStep} (v${targetVersion}): target=${JSON.stringify(target)}, hasPlausibleTarget=${hasPlausibleTarget}, step1HoldingForDeck=${step1HoldingForDeck}`);
   }
+
+  // ── #4562: report what is drawn so the tab lock follows the bubble ──────
+  useEffect(() => {
+    if (!bubbleDrawn) return;
+    reportPresentation(currentStep);
+    return () => reportPresentation(null);
+  }, [bubbleDrawn, currentStep, reportPresentation]);
+
+  // ── #4562: one `Coach Mark Held` per step entry that draws nothing for 5 s ──
+  const entryAtRef = useRef(Date.now());
+  const heldFiredRef = useRef(false);
+  const presentedOnceRef = useRef(false);
+  const heldInfoRef = useRef<Record<string, string | number | undefined>>({});
+  const screenSize = Dimensions.get('screen');
+  let heldReason = 'unknown';
+  if (step1HoldingForDeck) heldReason = target ? 'rect_rejected' : 'no_target';
+  else if (keyboardVisible) heldReason = 'keyboard';
+  else if (!overlayVisible) heldReason = 'overlay_hidden';
+  heldInfoRef.current = {
+    step_id: String(currentStep),
+    reason: heldReason,
+    rect_x: target?.x,
+    rect_y: target?.y,
+    rect_w: target?.width,
+    rect_h: target?.height,
+    window_w: screenWidth,
+    window_h: screenHeight,
+    screen_w: screenSize.width,
+    screen_h: screenSize.height,
+    root_w: rootFrame.width,
+    root_h: rootFrame.height,
+    inset_top: layout.insets.top,
+    inset_bottom: layout.insets.bottom,
+  };
+  useEffect(() => {
+    entryAtRef.current = Date.now();
+    heldFiredRef.current = false;
+    presentedOnceRef.current = false;
+  }, [currentStep]);
+  useEffect(() => {
+    if (bubbleDrawn) {
+      presentedOnceRef.current = true;
+      return;
+    }
+    if (!isCoachActive || heldFiredRef.current || presentedOnceRef.current) return;
+    const remaining = Math.max(0, HELD_AFTER_MS - (Date.now() - entryAtRef.current));
+    const timer = setTimeout(() => {
+      if (heldFiredRef.current) return;
+      heldFiredRef.current = true;
+      const props = { ...heldInfoRef.current, held_ms: Math.max(0, Date.now() - entryAtRef.current) };
+      console.warn(`[CoachMark] Step ${props.step_id} drew no bubble for ${props.held_ms} ms (reason: ${props.reason}). The bottom tabs stay live.`);
+      mixpanelService.trackCoachMarkHeld(props);
+    }, remaining);
+    return () => clearTimeout(timer);
+  }, [bubbleDrawn, isCoachActive, currentStep]);
+
+  // ── Don't render if inactive or hidden ──────────────────────────────────
+  if (!isCoachActive || keyboardVisible) return null;
+  if (!currentStepConfig) return null;
 
   // ORCH-1029 (F-1): hold step 1's presentation until the deck measures a plausible rect.
   if (step1HoldingForDeck) {
