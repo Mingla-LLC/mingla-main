@@ -642,7 +642,8 @@ export function phase3dContractDigest(manifest) {
 // #3281 S4 free parents and add-on refunds: registered 20281121023281_issue_3281_add_on_free_parent_refunds.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121023281 on the filtered #1931 and #2117 replays
 // #4522 merge of main after #4541: kept the #4541 migration, pg17 rows and #1931 skip beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3281 S5 add-on plan choice: registered 20281121033281_issue_3281_add_on_plan_choice.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121033281 on the filtered #1931 and #2117 replays
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "552fb57da3d63040c286605879f2c68c093deb5218b63fa00cd9353959e06625";
+// #3281 S3 add-on authoring: registered 20281121043281_issue_3281_add_on_authoring.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121043281 on the filtered #1931 and #2117 replays (it needs the S1 links those replays skip); re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "da36a4a87b4e658be77a74a6ca77707a28bd627a32282f1608478dceefca57e3";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

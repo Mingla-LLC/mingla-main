@@ -381,7 +381,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #3281 S4 free parents and add-on refunds: registered 20281121023281_issue_3281_add_on_free_parent_refunds.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121023281 on the filtered #1931 and #2117 replays
 // #4522 merge of main after #4541: kept the #4541 migration, pg17 rows and #1931 skip beside the #3281/#4522 rows and skips; re-sealed.
 // #3281 S5 add-on plan choice: registered 20281121033281_issue_3281_add_on_plan_choice.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121033281 on the filtered #1931 and #2117 replays
-export const BOOTSTRAP_SHA256 = "f5743f4369c55941e6b36c10598afec2f427fef6b5de3513bbd36e51eb81d593";
+// #3281 S3 add-on authoring: registered 20281121043281_issue_3281_add_on_authoring.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281121043281 on the filtered #1931 and #2117 replays (it needs the S1 links those replays skip); re-sealed.
+export const BOOTSTRAP_SHA256 = "f39552b620a92b30fda9a4b3cf802c808f1231d5cc798d28de90ab155a7b3e97";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
