@@ -5695,14 +5695,22 @@
         "supabase/functions/_shared/guestPackPointer.ts",
         "supabase/functions/_shared/orderConfirmationMessage.ts",
         "supabase/functions/ticket-confirmation-dispatch/index.ts",
-        "supabase/migrations/20281121014548_issue_4548_event_guest_packs.sql"
+        "supabase/migrations/20281121014548_issue_4548_event_guest_packs.sql",
+        "app-mobile/src/components/purchases/GuestPackCard.tsx",
+        "app-mobile/src/services/guestPackService.ts",
+        "app-mobile/src/hooks/useMyEventGuestPack.ts",
+        "app-mobile/src/utils/guestPackDisplay.ts"
       ]
     },
     {
       "capability_key": "rsvp-passes",
       "paths": [
         "supabase/functions/_shared/guestPackPointer.ts",
-        "supabase/migrations/20281121014548_issue_4548_event_guest_packs.sql"
+        "supabase/migrations/20281121014548_issue_4548_event_guest_packs.sql",
+        "app-mobile/src/components/purchases/GuestPackCard.tsx",
+        "app-mobile/src/services/guestPackService.ts",
+        "app-mobile/src/hooks/useMyEventGuestPack.ts",
+        "app-mobile/src/utils/guestPackDisplay.ts"
       ]
     }
   ]
