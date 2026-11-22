@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-4541-FORMS-ONE-LAZY-HOP | issue #4541 | the Host forms code loads through exactly two owners (formsOwner for host management, formRenderingPrimitives for guest rendering) with one lazy hop each: no module in either owner graph uses React.lazy or import(), and no forms or checkout-intake module is reachable from both graphs beyond the set shared at c681c23684.
+// MINGLA-INVARIANT: I-4541-FORMS-ONE-LAZY-HOP | issue #4541 | the Host forms code loads through exactly two owners (formsOwner for host management, formRenderingPrimitives for guest rendering) with one lazy hop each: no module in either owner graph uses React.lazy or import(), and no forms or checkout-intake module is reachable from both graphs beyond the set shared at c681c23684; the Blast composer-only modules (COMPOSER_ONLY) are reachable from neither owner graph.
 /**
  * issue #4541 §6.3 (T-41) — one lazy hop per forms owner.
  *
@@ -19,6 +19,12 @@
  *       reachable from both owners must be in BASELINE_SHARED (shared at
  *       c681c23684). Shared pure helpers belong in packages/form-rendering or a
  *       leaf outside those folders.
+ *   R3. A Blast composer-only module (COMPOSER_ONLY) is reachable from neither
+ *       owner graph. The composer route is its own async chunk; a module it and
+ *       a forms owner both reach is hoisted into the eager Host web __common
+ *       chunk (`blastFormLink.ts` put +1,173 B there on #4541). The forms
+ *       owner reads the payload through `blastFormPayload.ts` and counts through
+ *       `blastFormUsage.ts` instead.
  *
  * DOES NOT CATCH, stated rather than implied: imports through path aliases or
  * package names (only relative specifiers are followed; packages/* are leaves),
@@ -49,6 +55,9 @@ export const ALLOWED_LAZY = [
     reason: "the question builder: the same module the trip intake loads with this import(), so it stays one async chunk (#4514)",
   },
 ];
+
+/** Blast composer-only modules: the forms owner graphs must never reach them (R3). */
+export const COMPOSER_ONLY = ["src/utils/marketing/blastFormLink.ts"];
 
 // ---- pure core ----------------------------------------------------------
 
@@ -130,8 +139,8 @@ export function graph(owner, files) {
 
 const guarded = (rel) => rel.startsWith("src/components/forms/") || rel.startsWith("src/components/checkout/intake/");
 
-/** files: Map(rel → src) → { lazy: [{file, uses}], shared: [file] } */
-export function scan(files, owners = OWNERS, baseline = BASELINE_SHARED) {
+/** files: Map(rel → src) → { lazy: [{file, uses}], shared: [file], composer: [{owner, file}] } */
+export function scan(files, owners = OWNERS, baseline = BASELINE_SHARED, composerOnly = COMPOSER_ONLY) {
   const graphs = owners.map((o) => graph(o, files));
   const lazy = [];
   for (const g of graphs) {
@@ -142,7 +151,11 @@ export function scan(files, owners = OWNERS, baseline = BASELINE_SHARED) {
     }
   }
   const shared = [...graphs[0]].filter((rel) => graphs.slice(1).every((g) => g.has(rel)) && guarded(rel) && !baseline.includes(rel));
-  return { lazy, shared };
+  const composer = [];
+  owners.forEach((owner, i) => {
+    for (const file of composerOnly) if (graphs[i].has(file)) composer.push({ owner, file });
+  });
+  return { lazy, shared, composer };
 }
 
 // ---- self-test ----------------------------------------------------------
@@ -184,6 +197,15 @@ function selfTest() {
   check("a type-only import is not followed",
     scan(F({ ...base, [B]: `import type { T } from "../../forms/Types";\nexport * from "./Q";`,
       "src/components/forms/formsOwner.ts": `export { X } from "./X";\nexport { T2 } from "./Types";` })).shared.length === 0);
+  const C = "src/utils/marketing/blastFormLink.ts";
+  check("a forms owner reaching a composer-only module fires (R3)",
+    (() => { const r = scan(F({ ...base, "src/utils/leaf.ts": `import { x } from "./marketing/blastFormLink";`, [C]: "export const x = 1;" })); return r.composer.length === 2 && r.composer[0].file === C; })());
+  check("a composer-only module reached through a hook fires (R3)",
+    scan(F({ ...base, "src/components/forms/X.tsx": `import { useF } from "../../hooks/useF";`, "src/hooks/useF.ts": `import { c } from "../utils/marketing/blastFormLink";`, [C]: "" })).composer[0]?.owner === A);
+  check("the shared payload leaf is not composer-only (R3)",
+    scan(F({ ...base, "src/components/forms/X.tsx": `import { e } from "../../utils/marketing/blastFormPayload";`, "src/utils/marketing/blastFormPayload.ts": "", [C]: "" })).composer.length === 0);
+  check("a type-only import of a composer-only module is fine (R3)",
+    scan(F({ ...base, "src/components/forms/X.tsx": `import type { T } from "../../utils/marketing/blastFormLink";`, [C]: "" })).composer.length === 0);
   check("a module outside the owner graphs is ignored",
     scan(F({ ...base, "src/components/forms/Other.tsx": `const Y = React.lazy(() => import("./Y"));` })).lazy.length === 0);
 
@@ -221,19 +243,20 @@ if (isMain) {
     process.exit(1);
   }
   walk(src, "src");
-  const missing = [...OWNERS, ...BASELINE_SHARED, ...ALLOWED_LAZY.map((a) => a.file)].filter((rel) => !files.has(rel));
+  const missing = [...OWNERS, ...BASELINE_SHARED, ...COMPOSER_ONLY, ...ALLOWED_LAZY.map((a) => a.file)].filter((rel) => !files.has(rel));
   if (missing.length > 0) {
     console.error(`#4541 forms-owner-no-nested-lazy FAIL: listed files no longer exist: ${missing.join(", ")}`);
     process.exit(1);
   }
-  const { lazy, shared } = scan(files);
-  if (lazy.length > 0 || shared.length > 0) {
+  const { lazy, shared, composer } = scan(files);
+  if (lazy.length > 0 || shared.length > 0 || composer.length > 0) {
     console.error("#4541 forms-owner-no-nested-lazy FAIL");
     for (const { file, uses } of lazy) console.error(`    ${file}: ${uses.join(", ")} inside a forms owner graph`);
     for (const file of shared) console.error(`    ${file}: reachable from both forms owners`);
+    for (const { owner, file } of composer) console.error(`    ${file}: Blast composer-only, but reachable from ${owner} (hoists it into __common)`);
     console.error("  Keep one lazy hop per owner; move shared pure helpers to packages/form-rendering or a leaf.");
     process.exit(1);
   }
   const sizes = OWNERS.map((o) => graph(o, files).size);
-  console.log(`#4541 forms-owner-no-nested-lazy PASS: owner graphs ${sizes.join(" and ")} modules, no lazy hop inside, no new shared module`);
+  console.log(`#4541 forms-owner-no-nested-lazy PASS: owner graphs ${sizes.join(" and ")} modules, no lazy hop inside, no new shared module, no composer-only module`);
 }

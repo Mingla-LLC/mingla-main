@@ -3,41 +3,23 @@
  * nothing), so the composer's static cards can count the text honestly without
  * pulling any forms code.
  *
+ * Composer side only (the composer route and `campaignChannelGroupService`,
+ * which only the composer loads). The payload reader is `blastFormPayload.ts`
+ * and the forms owner's count is `blastFormUsage.ts`: a module reached from
+ * both the composer chunk and the forms owner chunk is hoisted into the eager
+ * Host web `__common` chunk (gate: issue-4541-forms-owner-no-nested-lazy R3).
+ *
  * Each recipient gets their own link, `https://host.usemingla.com/form/{formId}
  * ?c={campaignId}#t={token}`, never through click tracking. The text adds
  * " Answer: {link}", counted at the link's real length (the server's quote
  * measures the same line, `_shared/blastFormLinks.ts`).
  */
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /** A link of exactly the real length (the token and ids are placeholders). */
 export const BLAST_FORM_SAMPLE_URL = `https://host.usemingla.com/form/${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}?c=${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}#t=${"0".repeat(64)}`;
 
 /** The line a Blast with a form adds to each text, at its real length. */
 export const BLAST_FORM_SMS_LINE = ` Answer: ${BLAST_FORM_SAMPLE_URL}`;
-
-/** The campaign payload's embedded form id (`channel_payload.embedded_form.form_id`), or null. */
-export function embeddedFormIdOf(payload: unknown): string | null {
-  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
-  const ef = (payload as Record<string, unknown>).embedded_form;
-  if (typeof ef !== "object" || ef === null || Array.isArray(ef)) return null;
-  const id = (ef as Record<string, unknown>).form_id;
-  return typeof id === "string" && UUID.test(id) ? id.toLowerCase() : null;
-}
-
-/**
- * #4541 design v10 G "2b": how many scheduled campaigns carry this form. Pure;
- * the forms screens warn with it before a host closes the form.
- */
-export function countScheduledBlastsUsingForm(
-  rows: readonly { status: string; channel_payload: unknown }[],
-  formId: string | null,
-): number {
-  if (formId === null) return 0;
-  const id = formId.toLowerCase();
-  return rows.filter((r) => r.status === "scheduled" && embeddedFormIdOf(r.channel_payload) === id).length;
-}
 
 /** The host's words for a confirm the server refused over the form, or null. */
 export function blastFormErrorCopy(code: string): string | null {

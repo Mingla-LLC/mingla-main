@@ -55,7 +55,7 @@ import type { BrandFormDefinition } from "../utils/brandFormDefinition";
 import { brandFormKeys } from "./brandFormKeys";
 import { marketingKeys } from "./marketing/marketingKeys";
 import { listCampaigns } from "../services/marketing/marketingCampaignService";
-import { countScheduledBlastsUsingForm } from "../utils/marketing/blastFormLink";
+import { countScheduledBlastsUsingForm } from "../utils/marketing/blastFormUsage";
 import type { MarketingCampaignRow } from "../types/marketing";
 import { loadRosterAnswers, type RosterAnswerIndex } from "../utils/guestRosterAnswers";
 import {

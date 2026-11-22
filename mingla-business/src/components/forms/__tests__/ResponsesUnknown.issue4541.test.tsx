@@ -165,7 +165,7 @@ const { buildAnswersCsv } = jest.requireActual<typeof import("../../../services/
 const { responsesFilterKey } = jest.requireActual<typeof import("../../../hooks/useBrandForms")>("../../../hooks/useBrandForms");
 import { brandFormKeys } from "../../../hooks/brandFormKeys";
 import { FORMS_COPY } from "../brandFormsCopy";
-const { countScheduledBlastsUsingForm } = jest.requireActual<typeof import("../../../utils/marketing/blastFormLink")>("../../../utils/marketing/blastFormLink");
+const { countScheduledBlastsUsingForm } = jest.requireActual<typeof import("../../../utils/marketing/blastFormUsage")>("../../../utils/marketing/blastFormUsage");
 
 const base = (over: Partial<Row>): Row => ({
   responseId: "r1", versionId: "v1", version: 1, earlierVersion: false, answers: {}, source: "page",

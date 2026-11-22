@@ -77,8 +77,8 @@ import {
   BLAST_FORM_SAMPLE_URL,
   BLAST_FORM_SMS_LINE,
   blastFormErrorCopy,
-  embeddedFormIdOf,
 } from "../../../utils/marketing/blastFormLink";
+import { embeddedFormIdOf } from "../../../utils/marketing/blastFormPayload";
 
 const FORM = "45410000-0000-4000-8000-000000000004";
 const item = (id: string, name: string, status: "live" | "closed" | "draft", questions = 3): Item => ({

@@ -164,8 +164,8 @@ import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenT
 import {
   BLAST_FORM_SMS_LINE,
   blastFormErrorCopy,
-  embeddedFormIdOf,
 } from "../../../../src/utils/marketing/blastFormLink";
+import { embeddedFormIdOf } from "../../../../src/utils/marketing/blastFormPayload";
 // issue #2291 — the ONE payload contract, shared with the send path's Deno copy.
 import {
   CAMPAIGN_DRAFT_INCOMPLETE_BANNER,
