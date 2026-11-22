@@ -3,6 +3,7 @@ import Feather from "@expo/vector-icons/Feather";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
   InteractionManager,
   Platform,
   StatusBar,
@@ -101,9 +102,12 @@ import {
   saveAttendanceClaimIntent,
   resolveAttendanceOfferingPath,
   resolvePendingClaimCode,
-  getPendingClaimIntent,
+  loadWelcomePendingClaim,
   savePendingClaimCode,
+  cachePendingClaim,
   clearPendingClaimIntent,
+  pendingClaimCodeFromUrl,
+  settlePendingClaimForAccount,
   type AttendanceClaimIntent,
   type PendingClaim,
   // #3524 — the deliberate-account-handoff marker. It is what keeps a pending
@@ -494,24 +498,40 @@ function AppContent() {
     router.setParams({ finishSetup: undefined });
   }, [beginFinishSetup, routeParams.finishSetup]);
 
+  // #4490 W2-N26 — the signed-out welcome checks the saved /c code before its
+  // card shows (loadWelcomePendingClaim): a code an account carried, or one
+  // whose purchase is gone or whose link expired, is forgotten; offline keeps
+  // the last good copy (cached) and a foreground retries it. Nothing is read
+  // until the session check has settled, so a signed-in account's code is
+  // never judged by the signed-out rules during boot.
+  const [welcomeClaimRetry, setWelcomeClaimRetry] = useState(0);
+  const ticketClaimCachedRef = useRef(false);
+  const lastWelcomeTicketClaimRef = useRef<PendingClaim | null>(null);
   useEffect(() => {
     const generation = ++pendingClaimLoadGenerationRef.current;
     if (isAuthenticated) {
+      ticketClaimCachedRef.current = false;
       setTicketClaim(null);
       setTicketClaimResolving(false);
       return;
     }
-    setTicketClaimResolving(true);
+    if (isLoadingAuth) return;
+    const background = welcomeClaimRetry > 0;
+    if (!background) setTicketClaimResolving(true);
     const maxWait = setTimeout(() => {
       if (pendingClaimLoadGenerationRef.current === generation) {
         setTicketClaimResolving(false);
       }
     }, 2_000);
-    void getPendingClaimIntent()
-      .then((claim) => {
+    void loadWelcomePendingClaim()
+      .then(({ claim, cached }) => {
         if (pendingClaimLoadGenerationRef.current === generation) {
+          ticketClaimCachedRef.current = cached && claim !== null;
           setTicketClaim(claim);
         }
+      })
+      .catch(() => {
+        // Storage or network threw: keep whatever the screen shows.
       })
       .finally(() => {
         clearTimeout(maxWait);
@@ -520,7 +540,44 @@ function AppContent() {
         }
       });
     return () => clearTimeout(maxWait);
+  }, [isAuthenticated, isLoadingAuth, welcomeClaimRetry]);
+
+  // #4490 W2-N26 — "keep it, show the card, retry later": a card shown from
+  // the cached copy is checked again whenever the app comes back to the front.
+  useEffect(() => {
+    if (isAuthenticated) return;
+    const subscription = AppState.addEventListener("change", (next) => {
+      if (next === "active" && ticketClaimCachedRef.current) {
+        setWelcomeClaimRetry((count) => count + 1);
+      }
+    });
+    return () => subscription.remove();
   }, [isAuthenticated]);
+
+  // #4490 W2-N26 part 4 — "Use a different account" under the card: this
+  // person is not the purchase's owner, so the code is forgotten and the
+  // normal welcome stays.
+  const dismissWelcomeTicketClaim = useCallback((): void => {
+    pendingClaimLoadGenerationRef.current += 1;
+    ticketClaimCachedRef.current = false;
+    lastWelcomeTicketClaimRef.current = null;
+    setTicketClaim(null);
+    setTicketClaimResolving(false);
+    void clearPendingClaimIntent();
+  }, []);
+
+  // #4490 N157 — the purchase the signed-out welcome showed, kept across the
+  // sign-in so the found-purchase banner's View opens THAT one when the sweep
+  // attaches several (lastWelcomeTicketClaimRef is declared above).
+  const [linkedBannerClaim, setLinkedBannerClaim] = useState<PendingClaim | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated && ticketClaim) lastWelcomeTicketClaimRef.current = ticketClaim;
+    if (isAuthenticated && lastWelcomeTicketClaimRef.current) {
+      setLinkedBannerClaim(lastWelcomeTicketClaimRef.current);
+      lastWelcomeTicketClaimRef.current = null;
+    }
+    if (!isAuthenticated && !ticketClaim) setLinkedBannerClaim(null);
+  }, [isAuthenticated, ticketClaim]);
 
   useEffect(() => {
     void readAttendanceClaimHandoffMarker().then((marker) => {
@@ -768,48 +825,109 @@ function AppContent() {
     onboardingActive:
       showOnboardingFlow || profile?.has_completed_onboarding === false,
   });
+  // #4490 W2-N27 — a /c link can arrive while the session check is still
+  // running (cold start). Deciding "signed out" then would show the welcome
+  // card to a signed-in person, or skip the signed-in sweep, so the handler
+  // waits for the check to settle (bounded, never a hang).
+  const authSettledRef = useRef(!isLoadingAuth);
+  authSettledRef.current = !isLoadingAuth;
+  const authSettleWaitersRef = useRef<(() => void)[]>([]);
+  useEffect(() => {
+    if (isLoadingAuth) return;
+    for (const resolve of authSettleWaitersRef.current.splice(0)) resolve();
+  }, [isLoadingAuth]);
+  const waitForAuthSettled = useCallback((): Promise<void> => {
+    if (authSettledRef.current) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 5_000);
+      authSettleWaitersRef.current.push(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }, []);
+  // #4490 W2-N26 part 2 — onboarding (or a profile not loaded yet) keeps the
+  // saved code for the ticket-first prefill; the app proper clears it.
+  const pendingClaimOnboardingActive =
+    !profile || showOnboardingFlow || profile.has_completed_onboarding !== true;
+  const pendingClaimOnboardingActiveRef = useRef(pendingClaimOnboardingActive);
+  pendingClaimOnboardingActiveRef.current = pendingClaimOnboardingActive;
+  useEffect(() => {
+    if (!user?.id) return;
+    void settlePendingClaimForAccount(user.id, pendingClaimOnboardingActive);
+  }, [user?.id, pendingClaimOnboardingActive]);
+
   const handleIncomingClaimCode = useCallback(
     (code: string): void => {
       void (async () => {
         const generation = ++pendingClaimLoadGenerationRef.current;
-        if (!userIdRef.current) setTicketClaimResolving(true);
-        await savePendingClaimCode(code);
-        const resolution = await resolvePendingClaimCode(code);
-        if (resolution.status === "redirect") {
-          await clearPendingClaimIntent();
+        await waitForAuthSettled();
+        const accountAtOpen = userIdRef.current ?? null;
+        let maxWait: ReturnType<typeof setTimeout> | null = null;
+        if (!accountAtOpen) {
+          // W2-N27: the welcome shows "Opening your pass…" while the link
+          // resolves, never longer than the saved-code read allows.
+          ticketClaimCachedRef.current = false;
+          setTicketClaimResolving(true);
+          maxWait = setTimeout(() => {
+            if (pendingClaimLoadGenerationRef.current === generation) {
+              setTicketClaimResolving(false);
+            }
+          }, 2_000);
+        }
+        try {
+          await savePendingClaimCode(code, accountAtOpen);
+          const resolution = await resolvePendingClaimCode(code);
+          if (resolution.status === "redirect") {
+            await clearPendingClaimIntent();
+            if (pendingClaimLoadGenerationRef.current === generation) {
+              setTicketClaim(null);
+              setTicketClaimResolving(false);
+            }
+            await Linking.openURL(resolution.url);
+            return;
+          }
+          if (resolution.status === "not_found") {
+            // Mingla answered: no claimable purchase behind this code.
+            await clearPendingClaimIntent();
+          }
+          if (resolution.status === "claim" && !userIdRef.current) {
+            await cachePendingClaim(resolution.claim);
+            if (pendingClaimLoadGenerationRef.current === generation) {
+              setTicketClaim(resolution.claim);
+              setTicketClaimResolving(false);
+            }
+            return;
+          }
           if (pendingClaimLoadGenerationRef.current === generation) {
-            setTicketClaim(null);
             setTicketClaimResolving(false);
           }
-          await Linking.openURL(resolution.url);
-          return;
-        }
-        if (resolution.status === "claim" && !userIdRef.current) {
-          if (pendingClaimLoadGenerationRef.current === generation) {
-            setTicketClaim(resolution.claim);
-            setTicketClaimResolving(false);
+          const signedInUserId = userIdRef.current;
+          if (signedInUserId) {
+            const sweep = await recheckClaims("claim_link");
+            if (
+              resolution.status === "claim" &&
+              (sweep === null || sweep.count === 0) &&
+              pendingClaimLoadGenerationRef.current === generation
+            ) {
+              setLinkLandedClaim(resolution.claim);
+            }
+            // W2-N26 part 2: the sweep (success or idempotent repeat) has run
+            // for this account; outside onboarding the code is done.
+            await settlePendingClaimForAccount(
+              signedInUserId,
+              pendingClaimOnboardingActiveRef.current,
+            );
           }
-          return;
-        }
-        if (pendingClaimLoadGenerationRef.current === generation) {
-          setTicketClaimResolving(false);
-        }
-        if (userIdRef.current) {
-          const sweep = await recheckClaims("claim_link");
-          if (
-            resolution.status === "claim" &&
-            (sweep === null || sweep.count === 0) &&
-            pendingClaimLoadGenerationRef.current === generation
-          ) {
-            setLinkLandedClaim(resolution.claim);
-          }
+        } finally {
+          if (maxWait) clearTimeout(maxWait);
         }
       })().catch((error) => {
         setTicketClaimResolving(false);
         console.warn("[ClaimLink] Failed to resolve incoming claim link", error);
       });
     },
-    [recheckClaims],
+    [recheckClaims, waitForAuthSettled],
   );
   useEffect(() => {
     const nextUserId = user?.id ?? null;
@@ -2415,6 +2533,17 @@ function AppContent() {
     // AsyncStorage and process after login completes. This prevents
     // invite/navigation links from being silently discarded.
     const isOAuthCallback = url.includes("auth/callback");
+    // #4490 W2-N27 — a claim link (`com.mingla.app.v2://c/<code>` or
+    // `https://usemingla.com/c/<code>`, cold or warm) is the sign-in path
+    // itself, so it is never deferred: the signed-out welcome shows THAT
+    // purchase at once, and a signed-in account runs the claim sweep.
+    // handleIncomingClaimCode reads the live session after it settles, so the
+    // stale `user` of this closure cannot misroute it.
+    const claimLinkCode = isOAuthCallback ? null : pendingClaimCodeFromUrl(url);
+    if (claimLinkCode && !userIdRef.current) {
+      handleIncomingClaimCode(claimLinkCode);
+      return;
+    }
     if (!isOAuthCallback && !user) {
       try {
         // Store the link with a timestamp so we can discard stale links (>24h)
@@ -3284,6 +3413,7 @@ function AppContent() {
           followInvite={followInviteWelcome}
           ticketClaim={ticketClaim}
           ticketClaimResolving={ticketClaimResolving}
+          onDismissTicketClaim={dismissWelcomeTicketClaim}
         />
       </ErrorBoundary>
       {attendanceClaimOverlay}
@@ -3333,6 +3463,7 @@ function AppContent() {
         <TicketFoundBanner
           result={ticketFoundBannerResult}
           onDismiss={dismissTicketFoundBanner}
+          linkedClaim={linkedBannerClaim}
         />
         <ClaimLinkLandedSheet
           claim={linkLandedClaim}

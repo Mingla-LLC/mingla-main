@@ -9,12 +9,16 @@ import {
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 
+import type { PendingClaim } from "../../services/attendanceClaimService";
 import type { ClaimSweepResult } from "../../services/claimSweep";
+import { linkedClaimedEntry } from "../../services/pendingClaimPolicy";
 import { claimedEntryPath } from "./missingTicketModel";
 
 type Props = {
   result: ClaimSweepResult | null;
   onDismiss: () => void;
+  /** #4490 N157 — the purchase a claim link signed this person in for. */
+  linkedClaim?: PendingClaim | null;
 };
 
 function summary(result: ClaimSweepResult): string {
@@ -25,12 +29,17 @@ function summary(result: ClaimSweepResult): string {
   return `${result.count} new ${result.count === 1 ? "purchase" : "purchases"} found`;
 }
 
-function destination(result: ClaimSweepResult): string {
-  if (result.claimed.length !== 1) return "/purchases";
-  return claimedEntryPath(result.claimed[0]);
+// #4490 N157: one purchase, or the one the claim link was for when the sweep
+// attached several, opens its own detail; anything else opens the list.
+export function bannerDestination(
+  result: ClaimSweepResult,
+  linkedClaim: PendingClaim | null = null,
+): string {
+  const entry = linkedClaimedEntry(result.claimed, linkedClaim);
+  return entry ? claimedEntryPath(entry) : "/purchases";
 }
 
-export function TicketFoundBanner({ result, onDismiss }: Props): React.ReactElement | null {
+export function TicketFoundBanner({ result, onDismiss, linkedClaim = null }: Props): React.ReactElement | null {
   const { t } = useTranslation("purchases");
   const router = useRouter();
   const translateY = useRef(new Animated.Value(-140)).current;
@@ -56,7 +65,7 @@ export function TicketFoundBanner({ result, onDismiss }: Props): React.ReactElem
     : t("toast.title.ticket", { count: result.count });
 
   const open = (): void => {
-    const path = destination(result);
+    const path = bannerDestination(result, linkedClaim);
     onDismiss();
     router.push(path as never);
   };

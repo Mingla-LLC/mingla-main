@@ -43,6 +43,10 @@ import {
   type PendingClaim,
 } from "../../services/attendanceClaimService";
 import { formatStartsAtLabel } from "../../utils/zoneLabel";
+import {
+  WELCOME_DISMISS_CLAIM_LABEL,
+  welcomeSignInOptions,
+} from "./welcomeClaimModel";
 import { postHogService } from "../../services/postHogService";
 
 const googleIcon = require("../../../assets/google_icon.png");
@@ -79,6 +83,8 @@ interface WelcomeScreenProps {
   /** #4063 — safe claim-link summary. The address is already server-masked. */
   ticketClaim?: PendingClaim | null;
   ticketClaimResolving?: boolean;
+  /** #4490 W2-N26 — "Use a different account" under the claim card. */
+  onDismissTicketClaim?: () => void;
 }
 
 /** One resend per 30 seconds, with a visible countdown. A guest tapping resend
@@ -105,6 +111,7 @@ export default function WelcomeScreen({
   followInvite = null,
   ticketClaim = null,
   ticketClaimResolving = false,
+  onDismissTicketClaim,
 }: WelcomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -204,11 +211,15 @@ export default function WelcomeScreen({
   const isAnyAuthInProgress =
     isGoogleSignInInProgress || isAppleSignInInProgress || emailBusy;
 
-  const claimEmailPreferred = Boolean(
-    ticketClaim && !ticketClaim.expired &&
-      ticketClaim.preferredProof === "email" && ticketClaim.emailMasked &&
-      !claimEmailFallback,
-  );
+  // #4490 W2-N26 part 4: the normal options always sit beside a claim card.
+  const signInOptions = welcomeSignInOptions({
+    ticketClaim,
+    platform: Platform.OS,
+    emailSignInAvailable,
+    claimEmailFallback,
+    claimEmailCodeOpen: claimEmailChallengeId !== null,
+  });
+  const claimEmailPreferred = signInOptions.claimEmail;
 
   const sendClaimEmailCode = async (): Promise<void> => {
     if (!ticketClaim || emailBusy) return;
@@ -682,6 +693,23 @@ export default function WelcomeScreen({
             </Text>
           ) : null}
 
+          {signInOptions.dismissClaim && onDismissTicketClaim ? (
+            <TouchableOpacity
+              onPress={() => {
+                HapticFeedback.light();
+                onDismissTicketClaim();
+              }}
+              style={styles.emailGhost}
+              disabled={emailBusy}
+              accessibilityRole="button"
+              accessibilityLabel={WELCOME_DISMISS_CLAIM_LABEL}
+              accessibilityState={{ disabled: emailBusy }}
+              testID="welcome-ticket-claim-dismiss"
+            >
+              <Text style={styles.emailGhostText}>{WELCOME_DISMISS_CLAIM_LABEL}</Text>
+            </TouchableOpacity>
+          ) : null}
+
           {claimEmailPreferred ? (
             claimEmailChallengeId === null ? (
               <>
@@ -895,7 +923,7 @@ export default function WelcomeScreen({
             straight here mid-claim, and a route push would have to carry and
             restore the pending claim across a navigation it does not own.
           */}
-          {emailSignInAvailable && !claimEmailPreferred ? (
+          {signInOptions.email ? (
             <Animated.View
               style={[
                 styles.buttonAnimWrapper,

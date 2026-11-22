@@ -230,11 +230,21 @@ function partsKey(date: Date, timeZone: string): string {
   }
 }
 
-function monthLabel(date: Date, timeZone: string, locale: string): string {
+// #4490 W2-N28: a month in another year carries its year ("November 2027"),
+// for every purchase kind; this year's months stay a bare "November".
+function monthLabel(
+  date: Date,
+  timeZone: string,
+  locale: string,
+  withYear = false,
+): string {
+  const options: Intl.DateTimeFormatOptions = withYear
+    ? { month: "long", year: "numeric" }
+    : { month: "long" };
   try {
-    return new Intl.DateTimeFormat(locale, { month: "long", timeZone }).format(date);
+    return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(date);
   } catch {
-    return new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" }).format(date);
+    return new Intl.DateTimeFormat(locale, { ...options, timeZone: "UTC" }).format(date);
   }
 }
 
@@ -275,9 +285,10 @@ function groupDescriptor(
   }
   if (isTonight) return { key: "tonight", title: "Tonight" };
   const monthKey = partsKey(startsAt, item.timezone).slice(0, 7);
+  const otherYear = monthKey.slice(0, 4) !== partsKey(now, item.timezone).slice(0, 4);
   return {
     key: `month:${monthKey}`,
-    title: monthLabel(startsAt, item.timezone, locale),
+    title: monthLabel(startsAt, item.timezone, locale, otherYear),
   };
 }
 
