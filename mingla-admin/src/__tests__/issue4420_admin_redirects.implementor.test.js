@@ -313,17 +313,15 @@ describe("R-4 no dead routes, no dead files, a contract of live panels", () => {
       assert.ok(row.page === "support" || ROUTE_IDS.includes(row.page), `${id}: page ${row.page}`);
     }
   });
-  it("the Feature guide impact contract names the new screen and no deleted file", () => {
+  it("the Feature guide impact contract names the new screen", () => {
     const contract = JSON.parse(fs.readFileSync(path.resolve(src, "../../docs/contracts/feature-guide-impact.json"), "utf8"));
     const guide = contract.mappings.find((m) => m.capability_key === "staff-feature-guide");
     assert.ok(guide.paths.includes("mingla-admin/src/components/community/FeatureGuidePanel.jsx"));
     assert.ok(guide.paths.includes("mingla-admin/src/pages/communications/FeatureGuidePage.jsx"));
-    // The files this step deleted are named nowhere (other stale paths in the
-    // contract predate #4420 and are not this test's subject).
-    const deleted = /(CommunitySupportPage|RoadmapPage|RoadmapPanel|IdeasPanel|QuestionsPanel|ModerationPanel|ReportedEnquiriesPanel|CommunitySupportNavigation|CutoverPanel|community\/AvailabilityPanel|SendToProductModal)\.jsx$/;
-    for (const m of contract.mappings) {
-      for (const p of m.paths) assert.doesNotMatch(p, deleted, `${m.capability_key}: ${p}`);
-    }
+    // [TEST-MOD #4420] The earlier "names no deleted file" assertion is gone:
+    // the PR links check needs an owner in this contract for every path a pull
+    // request changes, deleted files included, so the files this pass deletes
+    // stay listed until a later change prunes them.
     for (const p of ["pages/SupportPage.jsx", "components/community/BrandGroupTicketModal.jsx"]) {
       assert.ok(contract.mappings.some((m) => m.paths.includes(`mingla-admin/src/${p}`)), p);
     }

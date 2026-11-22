@@ -5678,6 +5678,72 @@
         "supabase/functions/scan-rsvp/doorAnswers.ts",
         "supabase/functions/scan-rsvp/index.ts"
       ]
+    },
+    {
+      "capability_key": "ari-host-assistant",
+      "paths": [
+        "supabase/functions/agent-attachments/copyToSupport.ts",
+        "supabase/functions/agent-attachments/index.ts"
+      ]
+    },
+    {
+      "capability_key": "help-support",
+      "paths": [
+        "mingla-business/src/components/support/CommunityConversationsPanel.tsx",
+        "mingla-business/src/components/support/CommunityTabPanel.tsx",
+        "mingla-business/src/components/support/GuidePlayerModal.tsx",
+        "mingla-business/src/components/support/GuidesTabPanel.tsx",
+        "mingla-business/src/components/support/guideCaptions.ts",
+        "mingla-business/src/components/support/helpCentreLauncher.web.ts",
+        "mingla-business/src/hooks/useCommunity.ts",
+        "mingla-business/src/services/communityService.ts",
+        "mingla-business/src/utils/communityTabReveal.ts",
+        "mingla-business/src/utils/helpSupportLastTab.ts",
+        "mingla-business/src/utils/roadmapBlurb.ts"
+      ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "mingla-admin/src/components/community/AvailabilityPanel.jsx",
+        "mingla-admin/src/components/community/CommunitySupportNavigation.jsx",
+        "mingla-admin/src/components/community/CutoverPanel.jsx",
+        "mingla-admin/src/components/community/IdeasPanel.jsx",
+        "mingla-admin/src/components/community/ProductInboxPanel.jsx",
+        "mingla-admin/src/components/community/QuestionsPanel.jsx",
+        "mingla-admin/src/components/community/ReportedEnquiriesPanel.jsx",
+        "mingla-admin/src/components/community/RoadmapPanel.jsx",
+        "mingla-admin/src/components/support/ProductCardPanel.jsx",
+        "mingla-admin/src/components/support/SendToProductModal.jsx",
+        "mingla-admin/src/components/support/productBoardModel.js",
+        "mingla-admin/src/pages/CommunitySupportPage.jsx",
+        "mingla-admin/src/pages/communications/RoadmapPage.jsx"
+      ]
+    },
+    {
+      "capability_key": "staff-support-desk",
+      "paths": [
+        "mingla-admin/src/components/support/CreateTicketPanel.jsx",
+        "mingla-admin/src/components/support/InboxLabels.jsx",
+        "mingla-admin/src/components/support/InboxList.jsx",
+        "mingla-admin/src/components/support/ReportedEnquiryThread.jsx",
+        "mingla-admin/src/components/support/TicketSummaryPanel.jsx",
+        "mingla-admin/src/lib/supportInboxModel.js"
+      ]
+    },
+    {
+      "capability_key": "staff-work-board",
+      "paths": [
+        "mingla-admin/src/components/ops/LogRow.jsx",
+        "mingla-admin/src/components/ops/RecordPicker.jsx",
+        "mingla-admin/src/components/ops/ReviewQueue.jsx",
+        "mingla-admin/src/components/ops/TicketChip.jsx",
+        "mingla-admin/src/components/ops/TicketConversations.jsx",
+        "mingla-admin/src/components/ops/TicketForm.jsx",
+        "mingla-admin/src/components/ops/TicketSections.jsx",
+        "mingla-admin/src/lib/ticketModel.js",
+        "supabase/migrations/20281121034420_issue_4420_tickets_on_work_board.sql"
+      ]
     }
   ]
 }
