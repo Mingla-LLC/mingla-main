@@ -68,6 +68,7 @@ import {
   VENUE_ORDER_PARTY_SIZE_PROMPT,
   venueOrderBuyerFailure,
   venueOrderHandoverChip,
+  venueOrderLineRenderKeys,
   venueOrderTipPresets,
   venueOrderingFulfilmentLine,
   venueOrderingIsCounterPickup,
@@ -197,6 +198,7 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
   const counterPickup = venueOrderingIsCounterPickup(shown, pickup);
   const offersPickup = venueOrderingOffersPickup(shown) && onPickupChange !== undefined;
   const Input = TextInputComponent ?? TextInput;
+  const rowKeys = venueOrderLineRenderKeys(cart);
   const priced = previewStatus === "ready" && preview !== null;
   const money = (cents: number): string =>
     formatMenuPrice(cents, preview?.currency ?? "") ?? "—";
@@ -313,13 +315,16 @@ export const VenueOrderReviewPane: React.FC<VenueOrderReviewPaneProps> = ({
       {/* ── the basket ──────────────────────────────────────────────────── */}
       <View style={[styles.card, surface.card]}>
         {cart.map((line, index) => {
+          // W3-N40: a note edit re-keys the LINE (its identity includes the
+          // note) but never the ROW, so the note field keeps focus.
+          const rowKey = rowKeys[index];
           const pricedLine =
             preview?.lines.find(
               (candidate) => candidate.lineNo === index + 1,
             ) ?? null;
           return (
             <View
-              key={line.key}
+              key={rowKey}
               style={[
                 styles.lineRow,
                 index > 0 && {

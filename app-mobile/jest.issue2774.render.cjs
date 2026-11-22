@@ -164,6 +164,11 @@ module.exports = {
     // ₦ typical spend, links over the shared deck, the 10 s pane budget.
     "**/__tests__/issue_4490_w3_fix4.implementor.test.ts",
     "**/__tests__/issue_4490_w3_fix4.implementor.render.test.tsx",
+    // issue #4490 W3 fix 5 — the third device pass: the Menu tab's order bar
+    // docked at the bottom edge, the note field keeping focus, Pay clear of
+    // the keyboard's Done bar.
+    "**/__tests__/issue_4490_w3_fix5.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_fix5.implementor.render.test.tsx",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.

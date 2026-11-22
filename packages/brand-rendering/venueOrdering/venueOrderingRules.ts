@@ -193,6 +193,25 @@ export function venueOrderCartLineKey(input: {
   return `${input.menuItemId}|${mods}|${note}`;
 }
 
+/**
+ * #4490 W3 fix 5 (W3-N40) — the React key each basket row renders under. NOT
+ * the line's identity key: that one includes the note, so keying the row by it
+ * remounted the row (and its note field) on every keystroke and the field lost
+ * focus after the first key. A row's render key is its item and options plus
+ * its place among the lines that share them, which a note edit never changes.
+ */
+export function venueOrderLineRenderKeys(
+  lines: ReadonlyArray<{ menuItemId: string; modifierIds: string[] }>,
+): string[] {
+  const seen = new Map<string, number>();
+  return lines.map((line) => {
+    const base = `${line.menuItemId}|${[...line.modifierIds].sort().join(",")}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return `${base}#${n}`;
+  });
+}
+
 export type VenueOrderCartAction =
   | { type: "ADD"; line: Omit<VenueOrderCartLine, "key" | "quantity">; quantity?: number }
   | { type: "SET_QUANTITY"; key: string; quantity: number }

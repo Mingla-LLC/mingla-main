@@ -1377,6 +1377,21 @@ export function venueLeadBarAllowedOn(page: VenuePageModel, activeTab: PublicVen
   }
 }
 
+/**
+ * #4490 W3 fix 5 (W3-N37) — the order bar a host's ordering surface reported,
+ * docked at the page's bottom edge: only on the Menu tab, and never while a
+ * reservation sheet is up. Leaving the Menu tab takes it away; the other tabs
+ * keep their own bars.
+ */
+export function venueMenuOrderBarOn<Bar>(
+  activeTab: PublicVenueTab,
+  bar: Bar | null,
+  reservationSheetOpen: boolean,
+): Bar | null {
+  if (activeTab !== "menu" || reservationSheetOpen) return null;
+  return bar;
+}
+
 /** The tab a venue page opens on for a `?tab=` value. */
 export function venueTabFromParam(value: string | null | undefined): PublicVenueTab | null {
   switch (value) {

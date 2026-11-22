@@ -964,6 +964,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
               countryCode={venue.countryCode}
               // W3 fix 4 (W3-N36): ordering owns the Menu tab's bottom edge.
               onBottomBarChange={context.onBottomBarChange}
+              // W3 fix 5 (W3-N37): the order bar docks at the Menu tab's edge.
+              onOrderBarChange={context.onOrderBarChange}
             />
           </React.Suspense>
         ),

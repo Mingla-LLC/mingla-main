@@ -152,6 +152,7 @@ import {
   venueHoursText,
   venueLocalDay,
   venueLeadBarAllowedOn,
+  venueMenuOrderBarOn,
   venueOpenStateRows,
   venuePageVerbs,
   venueSpecialDayRows,
@@ -462,6 +463,14 @@ export interface PublicVenueOrderingSlotContext
   isDesktop?: boolean;
   bottomInset?: number;
   onBottomBarChange?: (owned: boolean) => void;
+  /**
+   * #4490 W3 fix 5 (W3-N37) — a host whose menu pane sits inside the page's
+   * scroll view (Explorer) cannot pin a bar itself: it reports the order bar
+   * here (null when there is none) and the screen docks it at the bottom edge
+   * on the Menu tab, where the venue's other bars sit. Buyer web docks its
+   * own bar and never calls this.
+   */
+  onOrderBarChange?: (bar: PublicVenueReservationBar | null) => void;
 }
 
 export interface PublicVenueOrderingSlots {
@@ -1742,6 +1751,9 @@ export const PublicVenueScreen = ({
 
   // ── Issue #1793 — the guest-ordering slot, resolved ONCE. ────────────────
   const [orderingOwnsBar, setOrderingOwnsBar] = useState<boolean>(false);
+  // #4490 W3 fix 5 (W3-N37) — the order bar a host reported (Explorer).
+  const [menuOrderBar, setMenuOrderBar] =
+    useState<PublicVenueReservationBar | null>(null);
   // #4420 D-V3 — the inline booking body's live bar (Reservations tab only).
   // #4490 N29: each tab's bar is tagged with the tab that reported it, so a
   // tab never shows the bar another tab left behind ("Buy entry" on Groups).
@@ -1773,6 +1785,7 @@ export const PublicVenueScreen = ({
     isDesktop,
     bottomInset: insets.bottom,
     onBottomBarChange: setOrderingOwnsBar,
+    onOrderBarChange: setMenuOrderBar,
   };
   const orderingMenuBody = ordering?.menuBody?.(orderingSlotContext) ?? null;
 
@@ -1833,7 +1846,14 @@ export const PublicVenueScreen = ({
   // #4420 D-V3 — on the Reservations tab the bar stays, reading the guest's
   // live pick and walking Continue → Confirm & pay.
   // #4490 P2 — the Entry tab reports the same live bar.
-  const reservationTabBar =
+  // #4490 W3 fix 5 (W3-N37) — on the Menu tab a reported order bar is the
+  // tab's live bar ("1 item · ₦7,000 · View order"), docked like the others.
+  const menuTabOrderBar = venueMenuOrderBarOn(
+    normalizedReservationUiState.activeTab,
+    menuOrderBar,
+    normalizedReservationUiState.reservationSheetOpen,
+  );
+  const tabLiveBar =
     (normalizedReservationUiState.activeTab === "reservations" ||
       normalizedReservationUiState.activeTab === "rooms" ||
       normalizedReservationUiState.activeTab === "entry" ||
@@ -1851,6 +1871,7 @@ export const PublicVenueScreen = ({
           normalizedReservationUiState.activeTab === "rooms")))
       ? liveBar.bar
       : null;
+  const reservationTabBar = menuTabOrderBar ?? tabLiveBar;
   const showReserveBar = showPersistentReserveCta || reservationTabBar !== null;
 
   // ── #1562 §6.5 the venue's own clock, resolved ONCE ──────────────────────
@@ -2727,8 +2748,10 @@ export const PublicVenueScreen = ({
         : insets.bottom + 24;
 
   // #4347 wave 4 — a host bar replaces the shared reserve bar at every width.
+  // #4490 W3 fix 5 (W3-N37): ordering owns the Menu tab's edge, so while the
+  // order bar is docked there the host's bar (the deck's) steps aside: one bar.
   const hostActionBar =
-    actionBar === undefined
+    actionBar === undefined || menuTabOrderBar !== null
       ? null
       : actionBar({
           ...themedSlotContext,
