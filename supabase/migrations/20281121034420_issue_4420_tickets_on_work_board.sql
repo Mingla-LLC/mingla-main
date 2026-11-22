@@ -947,7 +947,9 @@ BEGIN
   END IF;
   IF v_chk->'duplicate' IS NOT NULL AND jsonb_typeof(v_chk->'duplicate') = 'object' THEN
     v_out := jsonb_build_object('status', 'duplicate', 'existing', v_chk->'duplicate', 'replayed', false,
-      'message', format('An open card already does this: "%s" (Card %s). Update that card instead.', v_chk->'duplicate'->>'title', v_chk->'duplicate'->>'number'));
+      'message', CASE WHEN EXISTS (SELECT 1 FROM public.ops_work_cards dw WHERE dw.id = (v_chk->'duplicate'->>'id')::uuid AND dw.kind = 'ticket')
+        THEN format('An open ticket already does this: "%s" (T%s). Update that ticket instead.', v_chk->'duplicate'->>'title', v_chk->'duplicate'->>'number')
+        ELSE format('An open card already does this: "%s" (Card %s). Update that card instead.', v_chk->'duplicate'->>'title', v_chk->'duplicate'->>'number') END);
     PERFORM public.ops_request_finish(v.actor_email, p_request_key || '-ticket', 'add', v_out);
     RETURN v_out;
   END IF;
@@ -965,7 +967,9 @@ BEGIN
     SELECT w.id, w.number, w.title INTO v_ex_id, v_ex_number, v_ex_title FROM public.ops_work_cards w
      WHERE w.archived_at IS NULL AND w.title_key = public.crm_name_key(cl->>'title') AND w.status <> 'done' LIMIT 1;
     v_out := jsonb_build_object('status', 'duplicate', 'existing', jsonb_build_object('id', v_ex_id, 'number', v_ex_number, 'title', v_ex_title),
-      'replayed', false, 'message', format('An open card already does this: "%s" (Card %s). Update that card instead.', v_ex_title, v_ex_number));
+      'replayed', false, 'message', CASE WHEN EXISTS (SELECT 1 FROM public.ops_work_cards dw WHERE dw.id = v_ex_id AND dw.kind = 'ticket')
+        THEN format('An open ticket already does this: "%s" (T%s). Update that ticket instead.', v_ex_title, v_ex_number)
+        ELSE format('An open card already does this: "%s" (Card %s). Update that card instead.', v_ex_title, v_ex_number) END);
     PERFORM public.ops_request_finish(v.actor_email, p_request_key || '-ticket', 'add', v_out);
     RETURN v_out;
   END;
@@ -976,7 +980,7 @@ BEGIN
   PERFORM public.ops_notify_people(c.id, v_event, v_o, v.actor_email, format('%s added you as owner: %s', v_who, c.title), 'assigned');
   PERFORM public.ops_notify_people(c.id, v_event, v_w, v.actor_email, format('%s added you as watcher: %s', v_who, c.title), 'assigned');
   PERFORM public.ops_log_write(v.actor_email, NULL, 'card_added', 'ok', c.id, 'work_card', c.id,
-    format('Added Ticket %s: %s', c.number, c.title), jsonb_build_object('ticket', true, 'reporters', jsonb_array_length(v_conv)));
+    format('Added ticket T%s: %s', c.number, c.title), jsonb_build_object('ticket', true, 'reporters', jsonb_array_length(v_conv)));
   SELECT * INTO c FROM public.ops_work_cards w WHERE w.id = c.id;
   v_out := jsonb_build_object('status', 'added', 'card', public.ops_card_json(c, v_today), 'replayed', false);
   PERFORM public.ops_request_finish(v.actor_email, p_request_key || '-ticket', 'add', v_out);
@@ -1217,10 +1221,10 @@ BEGIN
     user_journey, impact_summary, affected_people, priority, owner_user_id, next_update_at, next_step, customer_reply_draft, created_by)
   VALUES (gen_random_uuid(), CASE t.ticket_type WHEN 'bug' THEN 'bug' WHEN 'idea' THEN 'feature' ELSE 'question' END, 'triaged',
     left(c.title, 200), left(c.instructions, 8000), t.product_area,
-    format('From Work ticket %s.', c.number), format('%s reporter(s) on Work ticket %s.', v_reporters, c.number),
+    format('From Work ticket T%s.', c.number), format('%s reporter(s) on Work ticket T%s.', v_reporters, c.number),
     v_reporters, 'normal', v_actor, now() + interval '7 days',
-    format('Send to GitHub from Ticket %s.', c.number),
-    format('No customer reply drafted; this item came from Work ticket %s.', c.number), v_actor)
+    format('Send to GitHub from ticket T%s.', c.number),
+    format('No customer reply drafted; this item came from Work ticket T%s.', c.number), v_actor)
   RETURNING id INTO v_id;
   INSERT INTO public.support_product_signal_sources (signal_id, source_kind, source_id, linked_by)
   SELECT v_id, 'support_ticket', l.target_id, v_actor FROM public.ops_work_links l
@@ -1270,10 +1274,10 @@ DECLARE v_uid uuid := auth.uid(); v_text text; v_n integer := 0;
 BEGIN
   IF v_uid IS NULL THEN
     PERFORM public.ops_log_write(NEW.closed_by, NEW.closed_via, 'updated', 'info', NEW.id, 'work_card', NEW.id,
-      format('Ticket %s closed with no person signed in: no conversation note written.', NEW.number), '{}'::jsonb);
+      format('Ticket T%s closed with no person signed in: no conversation note written.', NEW.number), '{}'::jsonb);
     RETURN NULL;
   END IF;
-  v_text := left(format('Ticket %s closed: %s', NEW.number,
+  v_text := left(format('Ticket T%s closed: %s', NEW.number,
     COALESCE(NULLIF(btrim(NEW.result), ''), NULLIF(btrim(NEW.close_reason), ''), 'no result given.')), 2000);
   INSERT INTO public.messages (conversation_id, sender_id, content, message_type, is_internal)
   SELECT st.conversation_id, v_uid, v_text, 'text', true
@@ -1363,3 +1367,47 @@ WITH c AS (
 INSERT INTO public.community_audit_log (actor_user_id, action, entity_type, entity_id, metadata)
 SELECT NULL, 'cancel_roadmap_notice', 'community_roadmap_notice', c.id, jsonb_build_object('reason', 'Roadmap retired (#4420)')
   FROM c;
+
+-- #4420 rework 3 (G11, approved by Seth 2026-11-21): the Support inbox reads
+-- names and segments through admin_people_lookup, so active Support staff who
+-- are not full admins may call it too. Body from
+-- 20281118024226_issue_4226_people_journey.sql; ONLY the caller check changed
+-- (full admins as before, plus is_support_staff: an active team member with
+-- an enabled support_staff row). Arguments, result, security mode,
+-- search_path and grants are unchanged.
+CREATE OR REPLACE FUNCTION public.admin_people_lookup(p_user_ids uuid[] DEFAULT NULL, p_query text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_q   text := NULLIF(btrim(COALESCE(p_query, '')), '');
+  v_out jsonb;
+BEGIN
+  IF NOT (public.is_admin_user() OR COALESCE(public.is_support_staff(auth.uid()), false)) THEN RAISE EXCEPTION 'not_authorized'; END IF;
+  IF p_user_ids IS NULL AND (v_q IS NULL OR length(v_q) < 2) THEN RETURN '[]'::jsonb; END IF;
+  IF p_user_ids IS NOT NULL AND cardinality(p_user_ids) > 1000 THEN RAISE EXCEPTION 'too_many_ids'; END IF;
+  v_q := replace(replace(replace(v_q, '\', '\\'), '%', '\%'), '_', '\_');
+
+  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+           'id', p.id, 'display_name', p.display_name, 'username', p.username, 'email', p.email,
+           'avatar_url', p.avatar_url,
+           'segment', COALESCE(s.segment, 'seed'), 'app_status', s.app_status)), '[]'::jsonb)
+    INTO v_out
+    FROM (
+      SELECT p.* FROM public.profiles p
+       WHERE (p_user_ids IS NOT NULL AND p.id = ANY (p_user_ids))
+          OR (p_user_ids IS NULL AND (p.display_name ILIKE '%' || v_q || '%'
+                                      OR p.username ILIKE '%' || v_q || '%'
+                                      OR p.email ILIKE '%' || v_q || '%'))
+       ORDER BY p.display_name NULLS LAST, p.id
+       LIMIT CASE WHEN p_user_ids IS NULL THEN 8 ELSE 1000 END
+    ) p
+    LEFT JOIN public.admin_people_app_status() s ON s.user_id = p.id;
+  RETURN v_out;
+END;
+$$;
+COMMENT ON FUNCTION public.admin_people_lookup(uuid[], text) IS
+  'Issue #4226 / #4420: Support desk people (by ids or a search of at least 2 characters) with the People classifier''s segment. Full admins and active Support staff.';
+REVOKE ALL ON FUNCTION public.admin_people_lookup(uuid[], text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_people_lookup(uuid[], text) TO authenticated;

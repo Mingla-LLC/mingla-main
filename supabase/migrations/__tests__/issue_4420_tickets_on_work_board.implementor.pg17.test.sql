@@ -43,7 +43,10 @@ insert into tx_people (who, id, email) values
   ('abi',  '44200000-0000-4000-a000-000000000003', 'abi.t4420@test.local'),
   ('sue',  '44200000-0000-4000-a000-000000000004', 'sue.t4420@test.local'),
   ('cus',  '44200000-0000-4000-a000-000000000005', 'cus.t4420@test.local'),
-  ('cus2', '44200000-0000-4000-a000-000000000006', 'cus2.t4420@test.local');
+  ('cus2', '44200000-0000-4000-a000-000000000006', 'cus2.t4420@test.local'),
+  -- G11: Support staff switched off, and a Support member removed from the team.
+  ('dis',  '44200000-0000-4000-a000-000000000007', 'dis.t4420@test.local'),
+  ('gone', '44200000-0000-4000-a000-000000000008', 'gone.t4420@test.local');
 insert into auth.users (id, email, email_confirmed_at) select id, email, now() from tx_people;
 -- seth: owner (Support staff, Work board, product operator). abi: admin.
 -- tao: Work board (growth) but not Support staff. sue: Support staff with
@@ -53,6 +56,10 @@ insert into public.admin_users (email, role, status, accepted_at) values
 insert into public.admin_team_members (email, role, status, accepted_at) values
   ('tao.t4420@test.local', 'growth', 'active', now()), ('sue.t4420@test.local', 'website', 'active', now());
 insert into public.support_staff (user_id, enabled, available) values ('44200000-0000-4000-a000-000000000004', true, true);
+insert into public.admin_team_members (email, role, status, accepted_at) values
+  ('dis.t4420@test.local', 'website', 'active', now()), ('gone.t4420@test.local', 'website', 'revoked', now());
+insert into public.support_staff (user_id, enabled, available) values
+  ('44200000-0000-4000-a000-000000000007', false, false), ('44200000-0000-4000-a000-000000000008', true, true);
 
 create temp table tx_results (seq serial primary key, test text, label text, ok boolean, detail text) on commit drop;
 create temp table tx_ids (k text primary key, id uuid not null) on commit drop;
@@ -694,7 +701,7 @@ begin
   perform pg_temp.chk('T-CLOSE', 'each note is internal, from the closer, and says the result',
     (select count(*)::text from public.messages where conversation_id in (pg_temp.id('CONV1'), pg_temp.id('CONV2'))
       and is_internal and sender_id = pg_temp.uid('abi') and message_type = 'text'
-      and content = format('Ticket %s closed: Fixed: the export works on Safari.', (select number from public.ops_work_cards where id = pg_temp.id('TK')))), '2');
+      and content = format('Ticket T%s closed: Fixed: the export works on Safari.', (select number from public.ops_work_cards where id = pg_temp.id('TK')))), '2');
   v := pg_temp.person('cus', format('select count(*)::text from public.messages where conversation_id = %L and (is_internal or content like %L)',
          pg_temp.id('CONV1'), 'Ticket %'));
   perform pg_temp.chk('T-CLOSE', 'the customer reads no internal note and no close note', v, '0');
@@ -785,6 +792,81 @@ begin
     (select status || '/' || close_kind from public.ops_work_cards where id = v_card), 'done/system');
   perform pg_temp.chk('T-WORDING', 'the approved wording stays stored and readable',
     (select public_title from public.community_roadmap_cards where id = v_draft), 'T4420 Guest list export on Safari');
+end;
+$t$;
+
+-- ─────────── T-LOOKUP (rework 3, G11): who may use the people lookup ───────────
+-- The pre-#4420 body (20281118024226), minus its caller check, as a pg_temp
+-- copy: an admin's answer must equal it exactly.
+create function pg_temp.lookup_before(p_user_ids uuid[] default null, p_query text default null) returns jsonb
+language plpgsql stable as $fn$
+declare v_q text := nullif(btrim(coalesce(p_query, '')), ''); v_out jsonb;
+begin
+  if p_user_ids is null and (v_q is null or length(v_q) < 2) then return '[]'::jsonb; end if;
+  v_q := replace(replace(replace(v_q, '\', '\\'), '%', '\%'), '_', '\_');
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', p.id, 'display_name', p.display_name, 'username', p.username, 'email', p.email,
+           'avatar_url', p.avatar_url,
+           'segment', coalesce(s.segment, 'seed'), 'app_status', s.app_status)), '[]'::jsonb)
+    into v_out
+    from (select p.* from public.profiles p
+           where (p_user_ids is not null and p.id = any (p_user_ids))
+              or (p_user_ids is null and (p.display_name ilike '%' || v_q || '%' or p.username ilike '%' || v_q || '%' or p.email ilike '%' || v_q || '%'))
+           order by p.display_name nulls last, p.id
+           limit case when p_user_ids is null then 8 else 1000 end) p
+    left join public.admin_people_app_status() s on s.user_id = p.id;
+  return v_out;
+end;
+$fn$;
+
+do $t$
+declare
+  v_ids text := format('array[%L, %L]::uuid[]', pg_temp.uid('cus'), pg_temp.uid('cus2'));
+  v_by_ids text;
+  v_by_q text := $q$select public.admin_people_lookup(null, 't4420look')::text$q$;
+  v_want_ids text;
+  v_want_q text;
+begin
+  insert into public.profiles (id, email, display_name)
+  select id, email, case who when 'cus' then 'T4420Look Customer' else 'Second customer' end from tx_people where who in ('cus', 'cus2')
+  on conflict (id) do update set display_name = excluded.display_name, email = excluded.email;
+  v_by_ids := format('select public.admin_people_lookup(%s, null)::text', v_ids);
+  execute format('select pg_temp.lookup_before(%s, null)::text', v_ids) into v_want_ids;
+  v_want_q := pg_temp.lookup_before(null, 't4420look')::text;
+  perform pg_temp.chk('T-LOOKUP', 'the fixture has two people by id and one by search',
+    (jsonb_array_length(v_want_ids::jsonb) || '/' || jsonb_array_length(v_want_q::jsonb))::text, '2/1');
+  -- A full admin: exactly the pre-#4420 answer.
+  perform pg_temp.chk('T-LOOKUP', 'a full admin by ids gets the same columns and values as before', pg_temp.as_('abi', v_by_ids), v_want_ids);
+  perform pg_temp.chk('T-LOOKUP', 'a full admin by search gets the same answer as before', pg_temp.as_('abi', v_by_q), v_want_q);
+  -- Active Support staff who is not a full admin: now allowed, same answer.
+  perform pg_temp.chk('T-LOOKUP', 'Support staff (not a full admin) by ids', pg_temp.as_('sue', v_by_ids), v_want_ids);
+  perform pg_temp.chk('T-LOOKUP', 'Support staff (not a full admin) by search', pg_temp.as_('sue', v_by_q), v_want_q);
+  -- Everyone else is refused.
+  perform pg_temp.chk('T-LOOKUP', 'Support staff switched off is refused', left(pg_temp.as_('dis', v_by_ids), 24), 'ERR:P0001:not_authorized');
+  perform pg_temp.chk('T-LOOKUP', 'a Support member removed from the team is refused', left(pg_temp.as_('gone', v_by_ids), 24), 'ERR:P0001:not_authorized');
+  perform pg_temp.chk('T-LOOKUP', 'a Work board teammate who is not Support staff is refused', left(pg_temp.as_('tao', v_by_q), 24), 'ERR:P0001:not_authorized');
+  perform pg_temp.chk('T-LOOKUP', 'a customer is refused', left(pg_temp.as_('cus', v_by_ids), 24), 'ERR:P0001:not_authorized');
+  perform pg_temp.chk('T-LOOKUP', 'anon cannot execute it',
+    has_function_privilege('anon', 'public.admin_people_lookup(uuid[],text)', 'execute')::text, 'false');
+  perform pg_temp.chk('T-LOOKUP', 'security definer, same search_path, same arguments and result',
+    (select prosecdef::text || '|' || array_to_string(proconfig, ',') || '|' || pg_get_function_identity_arguments(oid) || '|' || pg_get_function_result(oid)
+       from pg_proc where oid = 'public.admin_people_lookup(uuid[],text)'::regprocedure),
+    'true|search_path=public, pg_temp|p_user_ids uuid[], p_query text|jsonb');
+end;
+$t$;
+
+-- ─────────── T-WORDING-T (rework 3, G10): ticket text names T<n> ───────────
+do $t$
+begin
+  perform pg_temp.chk('T-WORDING-T', 'the agent log says Added ticket T<n>',
+    (select count(*)::text from public.ops_agent_log
+      where card_id = pg_temp.id('TK') and action = 'card_added'
+        and summary like format('Added ticket T%s: %%', (select number from public.ops_work_cards where id = pg_temp.id('TK')))), '1');
+  -- (Older card functions, e.g. update and close, keep their "Card <n>" text;
+  -- only the wording this migration writes changed.)
+  perform pg_temp.chk('T-WORDING-T', 'no ticket added entry says Ticket <n> or Card <n>',
+    (select count(*)::text from public.ops_agent_log l join public.ops_work_cards w on w.id = l.card_id
+      where w.kind = 'ticket' and l.action = 'card_added' and (l.summary ~ ('Ticket ' || w.number || '\M') or l.summary ~ ('Card ' || w.number || '\M'))), '0');
 end;
 $t$;
 

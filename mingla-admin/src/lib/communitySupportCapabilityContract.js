@@ -59,7 +59,9 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     // through the support-* Edge Functions (the retired internal-thread RPCs
     // are gone).
     // #4226 Phase 2: people lookups use the People classifier
-    // (admin_people_lookup), one owner with People.
+    // (admin_people_lookup), one owner with People. #4420 rework 3: full
+    // admins and active Support staff may call it (the inbox still loads
+    // without it).
     // #4453: "Ready for review" on a website change request
     // (issue_4453_website_request_ready, guarded by
     // issue_3720_support_operator_required like the desk's other writes).
