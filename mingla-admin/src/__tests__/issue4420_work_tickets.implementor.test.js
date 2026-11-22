@@ -193,10 +193,9 @@ describe("T-2 tickets are in Board, Today, This week and This month", () => {
     assert.equal(totals.done, 1);
     assert.equal(rows[0].email, TAO.email);
   });
-  it("the board and period lists draw the chip", () => {
+  it("the board and period lists draw the chip (WorkItem.jsx is imported nowhere, on main either)", () => {
     assert.match(code("components/ops/WorkBoard.jsx"), /<TicketChip card=\{card\} \/>/);
     assert.match(code("components/ops/WorkViews.jsx"), /<TicketChip card=\{c\} compact \/>/);
-    assert.match(code("components/ops/WorkItem.jsx"), /<TicketChip card=\{card\} \/>/);
   });
 });
 
