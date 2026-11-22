@@ -942,6 +942,20 @@ const minFrom = (offers: readonly VenueFeatureOfferView[]): number | null =>
   offers.length === 0 ? null : Math.min(...offers.map((o) => o.fromMinor));
 
 /**
+ * #4490 W3 fix 2 (W3-N17): the words after a hire "from" price for its own
+ * unit: " an hour" for a row priced by the hour (existing words); otherwise
+ * none, as spec 03's "Hire from {min}".
+ */
+export function venueUnitWords(unit: VenueOfferUnit): string {
+  return unit === "hour" ? " an hour" : "";
+}
+
+/** #4490 W3 fix 2 (W3-N17): the cheapest hire offer, whose unit its price words carry. */
+export function venueHireFrom(offers: readonly VenueFeatureOfferView[]): VenueFeatureOfferView | null {
+  return offers.length === 0 ? null : offers.reduce((a, b) => (b.fromMinor < a.fromMinor ? b : a));
+}
+
+/**
  * #4490 W3 fix 2 (W3-N17): the groups "from" across packages, in ONE unit: the
  * cheapest per-guest package when there is one, else the cheapest per-booking
  * package (the server's rule inside one package, and the card's
@@ -1076,7 +1090,8 @@ export function deriveVenuePage(
       }
     }
     if (tabSet.has("hire")) {
-      clauses.push(`private hire from ${money(minFrom(hireOffers) as number)}`);
+      const hire = venueHireFrom(hireOffers);
+      if (hire !== null) clauses.push(`private hire from ${money(hire.fromMinor)}${venueUnitWords(hire.unit)}`);
     }
     if (tabSet.has("by_the_hour")) {
       clauses.push(`from ${money(minFrom(hourOffers) as number)} an hour`);
@@ -1178,7 +1193,7 @@ export function deriveVenuePage(
       tab: "hire",
       ctaLabel: request ? "Ask about a date" : "Book a date",
       row: {
-        value: `Hire from ${money(minFrom(hireOffers) as number)}`,
+        value: `Hire from ${money(minFrom(hireOffers) as number)}${venueUnitWords(venueHireFrom(hireOffers)?.unit ?? "booking")}`,
         detail: maxes.length > 0 ? `Up to ${Math.max(...maxes)} guests` : null,
         actionLabel: request ? "Ask" : "Book",
         icon: "price",
@@ -1227,7 +1242,7 @@ export function deriveVenuePage(
           tab,
           title: "Private hire",
           line: hireOffers[0]?.summary ?? null,
-          price: `from ${money(minFrom(hireOffers) as number)}`,
+          price: `from ${money(minFrom(hireOffers) as number)}${venueUnitWords(venueHireFrom(hireOffers)?.unit ?? "booking")}`,
         });
         break;
       case "by_the_hour":

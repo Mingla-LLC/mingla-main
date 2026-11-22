@@ -131,7 +131,8 @@ function offerPrice(kind: Exclude<VenuePaneKind, "plans">, offer: VenueFeatureOf
       // §6: free entry reads "Free entry", never "from ₦0".
       return offer.fromMinor === 0 ? "Free entry" : `from ${money(offer.fromMinor)}`;
     case "hire":
-      return `from ${money(offer.fromMinor)}`;
+      // W3 fix 2 (W3-N17): the price's own unit ("an hour" for an hourly row).
+      return `from ${money(offer.fromMinor)}${offer.unit === "hour" ? " an hour" : ""}`;
     default: {
       const never: never = kind;
       return never;

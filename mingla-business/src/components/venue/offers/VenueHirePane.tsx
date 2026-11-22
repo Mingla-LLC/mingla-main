@@ -63,7 +63,7 @@ export function VenueHirePane(props: VenueHirePaneProps): React.ReactElement {
               palette={palette}
               title={h.name}
               detail={[h.summary, h.guestMax !== null ? `up to ${h.guestMax} guests` : null].filter(Boolean).join(" · ") || null}
-              price={`From ${money(h.fromMinor)}`}
+              price={`From ${money(h.fromMinor)}${h.unit === "hour" ? " an hour" : ""}`}
               selected={h.id === current?.id}
               onPress={() => setOfferId(h.id)}
               fontFamily={themeBoldFace(theme).fontFamily}

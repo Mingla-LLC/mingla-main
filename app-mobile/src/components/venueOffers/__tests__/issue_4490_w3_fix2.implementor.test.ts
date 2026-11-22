@@ -9,11 +9,15 @@
  *             open nothing and report it;
  *   G-1..G-3  groups "from" in ONE unit (W3-N17): per-guest packages first,
  *             never a cheaper per-booking price worded "a guest"; a
- *             per-booking-only venue says no unit; the Ways row agrees.
+ *             per-booking-only venue says no unit; the Ways row agrees;
+ *   U-1       a hire whose cheapest row is priced by the hour says "an hour"
+ *             on the page lead, the Ways row and the pane (local stack's
+ *             "Hire the Lounge": ₦400,000 an hour, was "from ₦400,000").
  *
  * FAILS-ON-REVERT: making openVenueOfferCheckout ignore `deps` (back to the
  * build constant) fails B-2; restoring the min-over-all groups price in
- * deriveVenuePage fails G-1 and G-2.
+ * deriveVenuePage fails G-1 and G-2; dropping the unit words from the hire
+ * price fails U-1.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,6 +30,7 @@ import {
 } from '@mingla/brand-rendering/venueFeaturePage';
 
 import { openVenueOfferCheckout } from '../venueOfferCheckoutSeam';
+import { offerPaneRows } from '../venuePaneModel';
 
 // The app's one backend owner (CommonJS, read by app.config.js too).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -107,5 +112,19 @@ describe('#4490 W3 fix 2 — groups "from" in one unit (W3-N17)', () => {
     const page = deriveVenuePage(view([pkg({ unit: 'booking', fromMinor: 6000000 })]), ctx);
     expect(page.lead?.row?.value).toBe('Groups from ₦60,000');
     expect(venueGroupsFrom([])).toBeNull();
+  });
+});
+
+describe('#4490 W3 fix 2 — a hire price keeps its unit (W3-N17)', () => {
+  test('U-1 an hourly hire row reads "an hour" on the lead, the Ways row and the pane', () => {
+    const hire = pkg({ id: 'h1', kind: 'private_hire', name: 'Hire the Lounge', unit: 'hour', fromMinor: 40000000 });
+    const v: PublicVenueFeaturesView = { ...view([hire]), features: ['private_hire'] };
+    const page = deriveVenuePage(v, ctx);
+    expect(page.lead?.row?.value).toBe('Hire from ₦400,000 an hour');
+    expect(page.ways.find((w) => w.tab === 'hire')?.price).toBe('from ₦400,000 an hour');
+    const money = (minor: number): string => `₦${(minor / 100).toLocaleString('en-GB')}`;
+    expect(offerPaneRows('hire', [hire], new Map(), { code: 'NGN', exponent: 2 }, money)[0]?.price).toBe('from ₦400,000 an hour');
+    const booking = offerPaneRows('hire', [{ ...hire, unit: 'booking' }], new Map(), { code: 'NGN', exponent: 2 }, money)[0]?.price;
+    expect(booking).toBe('from ₦400,000');
   });
 });
