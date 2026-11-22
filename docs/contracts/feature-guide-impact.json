@@ -994,6 +994,9 @@
         "mingla-business/src/components/stay/StayStripePayment.web.tsx",
         "mingla-business/src/services/publicStayDetailService.ts",
         "packages/brand-rendering/StayGuestBooking.tsx",
+        "packages/brand-rendering/StayDateRangeRows.tsx",
+        "mingla-business/src/components/stay/hostStayCalendar.tsx",
+        "app-mobile/src/components/stay/explorerStayCalendar.tsx",
         "packages/brand-rendering/StayDateStrip.tsx"
       ]
     },

@@ -40,9 +40,9 @@ import {
   type StayRoomPriceControl,
 } from "./stayRoomPriceFilter";
 // Issue #1503 [stay-date-pickers] — dates are PICKED, never typed, and every
-// bound is venue-local. Metro swaps in StayDateRangeField.native.tsx on
-// iOS/Android; the bare module is the web-only twin.
-import { StayDateRangeField } from "./StayDateRangeField";
+// bound is venue-local. #4523: picked from the Mingla range calendar the host
+// app renders (`renderStayCalendar`).
+import { StayDateRangeField, type RenderStayRangeCalendar } from "./StayDateRangeField";
 // issue #4420 — the quick-pick check-in / check-out strip above the field.
 import { StayDateStrip } from "./StayDateStrip";
 import { GlassTabs } from "./GlassTabs";
@@ -99,6 +99,12 @@ export interface StayGuestBookingProps {
     /** #4420 — the host calls this from the field's blur to reveal an error. */
     onBlur?: () => void;
   }) => BrandRenderingReactElement;
+  /**
+   * #4523 — the host app's Mingla range calendar for the stay dates (Host: its
+   * lazily loaded calendar body; Explorer: @mingla/calendar). Required: the
+   * date rows open nothing without it.
+   */
+  renderStayCalendar: RenderStayRangeCalendar;
   onConfirmQuote?: () => void | Promise<void>;
   onEditQuote?: () => void;
   onAnalytics?: (
@@ -136,6 +142,7 @@ export function StayGuestBooking({
   onRetry,
   onSubmit,
   renderPhoneField,
+  renderStayCalendar,
   onConfirmQuote,
   onEditQuote,
   onAnalytics,
@@ -542,6 +549,8 @@ export function StayGuestBooking({
           palette={palette}
           disabled={submitting}
           errorText={dateError}
+          renderCalendar={renderStayCalendar}
+          timeZone={detail.timezone}
           onChange={(next, field) => {
             setEditedRange(next);
             onAnalytics?.("stay_search_changed", { field });

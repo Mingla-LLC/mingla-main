@@ -50,8 +50,6 @@ export const ALLOWLIST = {
   "mingla-business/src/components/event/MultiDateOverrideSheet.tsx": 1,
   "mingla-business/src/components/programs/TimeField.tsx": 1,
   "mingla-business/src/components/venue/MenuCategorySheet.tsx": 1,
-  "packages/brand-rendering/StayDateRangeField.native.tsx": 1,
-  "packages/brand-rendering/StayDateRangeField.tsx": 2,
 };
 
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs)$/;

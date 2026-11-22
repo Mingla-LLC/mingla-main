@@ -9,7 +9,6 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
-    "@react-native-community/datetimepicker": "*",
     "expo-blur": "*",
     "lottie-react-native": "*",
     "lucide-react-native": "*"

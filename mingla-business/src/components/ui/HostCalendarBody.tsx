@@ -4,7 +4,8 @@
  * the surface and the Host config) is this one chunk, loaded by the single
  * React.lazy per field wrapper in `HostCalendarPlaceholder.lazyHostField`.
  */
-import { CalendarField, DateRangeField, DateTimeField } from "@mingla/calendar/CalendarFieldEager";
+import { CalendarEmbed, CalendarField, DateRangeField, DateTimeField } from "@mingla/calendar/CalendarFieldEager";
+import type { StayRangeCalendarArgs } from "@mingla/brand-rendering/StayDateRangeRows";
 import React from "react";
 import { Platform } from "react-native";
 
@@ -122,6 +123,32 @@ export function DateRangeBody({
       timeZone={timeZone}
       defaultOpen={openOnMount}
       config={HOST_CALENDAR_CONFIG}
+    />
+  );
+}
+
+/**
+ * #4523 — the stay dates range calendar, drawn inline under the stay rows
+ * (`@mingla/brand-rendering` StayDateRangeRows) in the page palette. Done
+ * commits the range; Escape closes and keeps the committed dates.
+ */
+export function StayRangeEmbedBody(args: StayRangeCalendarArgs): React.ReactElement {
+  return (
+    <CalendarEmbed
+      mode="range"
+      unit="nights"
+      label={args.label}
+      value={args.value}
+      onChange={args.onCommit}
+      onDone={args.onClose}
+      onCancel={args.onClose}
+      min={args.min}
+      max={args.max}
+      maxLength={args.maxLength}
+      maxStart={args.maxStart}
+      timeZone={args.timeZone}
+      testID={args.testID}
+      config={{ tokens: args.tokens, primitives: HOST_CALENDAR_CONFIG.primitives }}
     />
   );
 }

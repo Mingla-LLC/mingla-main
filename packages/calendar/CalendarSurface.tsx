@@ -54,6 +54,8 @@ type SurfaceModeProps =
       unit?: RangeUnit;
       minLength?: number;
       maxLength?: number;
+      /** Latest day a range may START on (a later day can still end it). */
+      maxStart?: CalendarDate;
     }
   | {
       mode: "datetime";
@@ -92,11 +94,6 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
   const dobMax = props.mode === "dob" ? addYears(today, -(props.minAge ?? 0)) : undefined;
   const min = props.mode === "dob" ? dobMin : props.min;
   const max = props.mode === "dob" ? dobMax : props.max;
-  const bounds: DayBounds = useMemo(
-    () => ({ min, max, isDateDisabled: props.isDateDisabled }),
-    [min, max, props.isDateDisabled],
-  );
-
   // ---- draft -------------------------------------------------------------
   const committedDate: CalendarDate | "" =
     props.mode === "single" || props.mode === "dob"
@@ -110,6 +107,17 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
   const [dateTimeDraft, setDateTimeDraft] = useState<DateTimeValue>(
     props.mode === "datetime" ? props.value : { date: "", time: "" },
   );
+
+  // A day that would START the range (none chosen yet, or before the chosen
+  // start) is unavailable after `maxStart`; the same day can still end it.
+  const maxStart = props.mode === "range" ? props.maxStart : undefined;
+  const bounds: DayBounds = useMemo(() => {
+    const base = props.isDateDisabled;
+    if (maxStart === undefined) return { min, max, isDateDisabled: base };
+    const startsAfterCut = (date: CalendarDate): boolean =>
+      (rangeDraft.start === "" || compareDates(date, rangeDraft.start) < 0) && compareDates(date, maxStart) > 0;
+    return { min, max, isDateDisabled: (date: CalendarDate) => startsAfterCut(date) || (base?.(date) ?? false) };
+  }, [min, max, props.isDateDisabled, maxStart, rangeDraft.start]);
 
   const selectedForFocus =
     props.mode === "range" ? rangeDraft.start : props.mode === "datetime" ? dateTimeDraft.date : committedDate;
