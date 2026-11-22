@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "kind": "ci-batch-suite",
+  "ownerIssue": "#4562",
+  "suite": {
+    "id": "issue-4562-explorer-nav-lock-needs-exit",
+    "class": "app-node22-install",
+    "originPaths": [
+      "app-mobile/app/index.tsx",
+      "app-mobile/package.json",
+      "app-mobile/src/components/SpotlightOverlay.tsx",
+      "app-mobile/src/constants/coachMarkSteps.ts",
+      "app-mobile/src/contexts/CoachMarkContext.tsx",
+      "app-mobile/src/contexts/coachMarkSkipState.ts",
+      "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-grammar-and-blast-radius.tester-adversarial.test.tsx",
+      "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-single-process.test.tsx",
+      "app-mobile/src/contexts/__tests__/orch-1029-coach-mark-adversarial.test.tsx",
+      "app-mobile/src/components/__tests__/orch-1029-coach-mark-fixes.test.tsx"
+    ],
+    "steps": [
+      {
+        "name": "Explorer tour lock: the bottom tabs lock only while a bubble is drawn",
+        "cwd": "app-mobile",
+        "run": "node src/contexts/__tests__/issue_4562_nav_lock_needs_exit.test.tsx",
+        "commandId": "assert:issue-4562-explorer-nav-lock-needs-exit:01",
+        "invocation": {
+          "kind": "raw-shell",
+          "command": "bash",
+          "argv": [
+            "-c",
+            "node src/contexts/__tests__/issue_4562_nav_lock_needs_exit.test.tsx"
+          ]
+        },
+        "exceptionRationale": "New self-registering execution replaces a legacy workflow registry edit."
+      }
+    ],
+    "lifecycle": "batched-active",
+    "ownerIssue": "#4562",
+    "runtime": {
+      "name": "node",
+      "version": "22"
+    },
+    "setupProfile": "app-node22-install",
+    "cwd": "app-mobile",
+    "envNames": [],
+    "isolation": "clean-worktree",
+    "expectedFiles": [
+      "app-mobile/src/contexts/__tests__/issue_4562_nav_lock_needs_exit.test.tsx"
+    ],
+    "externalReferenceFiles": [],
+    "requiredContext": "CI batch: app-node22-install",
+    "timingSeconds": {
+      "p50": 2,
+      "p95": 4,
+      "evidence": "Local targeted run 2026-11-22"
+    },
+    "generatedPaths": [
+      "suite-results.json"
+    ],
+    "exceptionRationale": "Raw shell preserves the reviewed assertion while this self-registering suite replaces a legacy workflow registry edit.",
+    "timeoutSeconds": 120
+  }
+}
