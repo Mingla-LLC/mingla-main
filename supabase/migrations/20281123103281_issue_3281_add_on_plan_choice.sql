@@ -431,6 +431,8 @@ CREATE TABLE public.order_add_on_plan_removals (
 );
 CREATE INDEX order_add_on_plan_removals_line_idx
   ON public.order_add_on_plan_removals (order_add_on_line_item_id);
+CREATE INDEX order_add_on_plan_removals_refund_idx
+  ON public.order_add_on_plan_removals (refund_id);
 ALTER TABLE public.order_add_on_plan_removals ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.order_add_on_plan_removals FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.order_add_on_plan_removals TO service_role;
