@@ -88,6 +88,11 @@ function cancelPendingRuns(): void {
   generation += 1;
   queued = null;
   unsentReport = null;
+  // #4549 P3-3 (retest): the once-per-launch resubscribe budgets belong to the
+  // account that was signed in; a sign-out (even one landing between taking
+  // the budget and the repair) gives the next account its own.
+  localResubscribeUsed = false;
+  serverResubscribeUsed = false;
   const waiters = wakeWaiters;
   wakeWaiters = [];
   for (const wake of waiters) wake();

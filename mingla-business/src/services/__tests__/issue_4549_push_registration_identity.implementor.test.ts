@@ -29,6 +29,7 @@ let linkedTo: string | null = null;
 let sessionUserId: string | null = "user-a";
 let logoutListener: (() => void) | null = null;
 let rpcHook: (() => void) | null = null;
+let sessionHook: (() => void) | null = null;
 let rpcAction = "none";
 let reading = 0;
 let maxConcurrentReads = 0;
@@ -89,9 +90,14 @@ jest.mock("../supabase", () => ({
       return { data: { action: rpcAction }, error: null };
     },
     auth: {
-      getSession: async () => ({
-        data: { session: sessionUserId ? { user: { id: sessionUserId } } : null },
-      }),
+      getSession: async () => {
+        const hook = sessionHook;
+        sessionHook = null;
+        hook?.();
+        return {
+          data: { session: sessionUserId ? { user: { id: sessionUserId } } : null },
+        };
+      },
     },
   },
 }));
@@ -125,6 +131,7 @@ beforeEach(() => {
   linkedTo = null;
   sessionUserId = "user-a";
   rpcHook = null;
+  sessionHook = null;
   rpcAction = "none";
   reading = 0;
   maxConcurrentReads = 0;
@@ -212,4 +219,29 @@ test("after sign-out a new check for the old account never links it", async () =
   await run;
   expect(linksFor("user-a")).toEqual([]);
   expect(reports()).toEqual([]);
+});
+
+test("P3-3: a sign-out right after the server asks to re-register leaves the next account its own resubscribe", async () => {
+  sdkReady = true;
+  linkedTo = "user-a";
+  rpcAction = "reregister";
+  // The sign-out lands inside the identity check the resubscribe makes,
+  // i.e. after this launch's server-asked budget was taken.
+  rpcHook = () => {
+    rpcHook = null;
+    sessionHook = () => signOut();
+  };
+  const runA = ensurePushRegistration("user-a", "launch");
+  await jest.advanceTimersByTimeAsync(200_000);
+  await runA;
+  expect(log.filter((l) => l.includes("resubscribe"))).toEqual([]);
+
+  sessionUserId = "user-b";
+  linkedTo = "user-b";
+  const runB = ensurePushRegistration("user-b", "sign_in");
+  await jest.advanceTimersByTimeAsync(200_000);
+  await runB;
+  expect(log.filter((l) => l.startsWith("repair:resubscribe"))).toEqual([
+    "repair:resubscribe:user-b",
+  ]);
 });
