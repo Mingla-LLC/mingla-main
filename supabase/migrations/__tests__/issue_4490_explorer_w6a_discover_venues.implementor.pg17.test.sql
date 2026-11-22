@@ -5,6 +5,12 @@
 -- K kind and listing. F facets (chips). O order. C city context / nearest city. X flag off. A authority.
 --
 -- FAILS-ON-REVERT: without 20280809461490 every block fails (invalid_kind / functions absent).
+-- Fix round 1: K-9 / K-10 fail if a stay venue is dropped from Venues on "has a live room"
+-- instead of "the Stays kind lists it" (W6-N3); F-5 fails if a Venues count builds the items
+-- page again or a chip count drifts from the list (W6-N6).
+-- TEST-MOD-APPROVED #4490 (06-W6 fix 1): stayboth is now a stay the Stays kind really lists
+-- (price, policy, cover, nights, STAY_PUBLIC_PAGES on); stayhidden (a live room the Stays kind
+-- does not list) is new and listed under Venues, so K-1, K-2 and F-3 count it.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -64,8 +70,10 @@ ON CONFLICT (flag_key) DO UPDATE SET is_enabled = true;
 --   internal restaurant of an internal brand (absent)
 --   paused   play, only a paused entry offer (absent)
 --   rooms    stay, a live room only (absent everywhere: not bookable)
---   stayboth stay, a live day pass AND active settings with a live room (Stays only)
+--   stayboth stay, a live day pass AND a live room the Stays kind lists (Stays only)
 --   staypass stay, a live day pass, no rooms (Venues, unfiltered only)
+--   stayhidden stay, a live day pass AND active settings with a live room that the
+--            Stays kind does NOT list (no price, cover or nights): Venues (fix 1, W6-N3)
 -- ---------------------------------------------------------------------------
 INSERT INTO auth.users (id, instance_id, aud, role, email, created_at, updated_at) VALUES
   ('44947000-0000-4000-8000-000000000001', '00000000-0000-0000-0000-000000000000', 'authenticated',
@@ -90,7 +98,8 @@ INSERT INTO t4490w6a_fx VALUES
   ('paused', '44947000-0000-4000-b000-000000000007', '44947000-0000-4000-a000-000000000007', '44947000-0000-4000-9000-000000000010', 'play', 'verified', 'W6 City', 6.45, now() - interval '10 days'),
   ('rooms', '44947000-0000-4000-b000-000000000008', '44947000-0000-4000-a000-000000000008', '44947000-0000-4000-9000-000000000010', 'stay', 'verified', 'W6 City', 6.45, now() - interval '10 days'),
   ('stayboth', '44947000-0000-4000-b000-000000000009', '44947000-0000-4000-a000-000000000009', '44947000-0000-4000-9000-000000000010', 'stay', 'verified', 'W6 City', 6.45, now() - interval '10 days'),
-  ('staypass', '44947000-0000-4000-b000-00000000000a', '44947000-0000-4000-a000-00000000000a', '44947000-0000-4000-9000-000000000010', 'stay', 'verified', 'W6 City', 6.45, now() - interval '5 days');
+  ('staypass', '44947000-0000-4000-b000-00000000000a', '44947000-0000-4000-a000-00000000000a', '44947000-0000-4000-9000-000000000010', 'stay', 'verified', 'W6 City', 6.45, now() - interval '5 days'),
+  ('stayhidden', '44947000-0000-4000-b000-00000000000b', '44947000-0000-4000-a000-00000000000b', '44947000-0000-4000-9000-000000000010', 'stay', 'verified', 'W6 City', 6.45, now() - interval '3 days');
 GRANT SELECT ON t4490w6a_fx TO PUBLIC;
 
 INSERT INTO public.place_pool (id, name, lat, lng, is_active, is_servable)
@@ -145,6 +154,8 @@ BEGIN
   PERFORM pg_temp.t4490w6a_entry('44947000-0000-4000-b000-000000000009', 'stayboth', false);
   PERFORM public.issue_4490_set_venue_feature('44947000-0000-4000-b000-00000000000a', 'entry', true, NULL, NULL, NULL, 'w6a-staypass-entry');
   PERFORM pg_temp.t4490w6a_entry('44947000-0000-4000-b000-00000000000a', 'staypass', false);
+  PERFORM public.issue_4490_set_venue_feature('44947000-0000-4000-b000-00000000000b', 'entry', true, NULL, NULL, NULL, 'w6a-stayhidden-entry');
+  PERFORM pg_temp.t4490w6a_entry('44947000-0000-4000-b000-00000000000b', 'stayhidden', false);
 END
 $fx$;
 SELECT public.t4490w6a_reset();
@@ -155,15 +166,38 @@ ON CONFLICT (venue_id) DO UPDATE SET reservations_enabled = true;
 -- rooms: a live room, settings still a draft. stayboth: active settings and a live room.
 INSERT INTO public.stay_settings (venue_id, brand_id, booking_state) VALUES
   ('44947000-0000-4000-b000-000000000008', '44947000-0000-4000-9000-000000000010', 'draft');
-INSERT INTO public.stay_offerings (venue_id, brand_id, kind, name, status, confirmation_mode, inventory_basis, quantity, max_adults, max_children) VALUES
-  ('44947000-0000-4000-b000-000000000008', '44947000-0000-4000-9000-000000000010', 'room', 'Garden room', 'live', 'instant', 'pooled_units', 3, 2, 0),
-  ('44947000-0000-4000-b000-000000000009', '44947000-0000-4000-9000-000000000010', 'room', 'Sea room', 'live', 'instant', 'pooled_units', 3, 2, 0);
--- stay_settings for stayboth is written straight to 'active' (the Stays base predicate
--- without date or guest filters; activation checks are not under test here).
+INSERT INTO public.stay_offerings (id, venue_id, brand_id, kind, name, status, confirmation_mode, inventory_basis, quantity, min_guests, max_guests, max_adults, max_children) VALUES
+  ('44947000-0000-4000-d000-000000000008', '44947000-0000-4000-b000-000000000008', '44947000-0000-4000-9000-000000000010', 'room', 'Garden room', 'live', 'instant', 'pooled_units', 3, 1, 2, 2, 0),
+  ('44947000-0000-4000-d000-000000000009', '44947000-0000-4000-b000-000000000009', '44947000-0000-4000-9000-000000000010', 'room', 'Sea room', 'live', 'instant', 'pooled_units', 3, 1, 2, 2, 0),
+  ('44947000-0000-4000-d000-00000000000b', '44947000-0000-4000-b000-00000000000b', '44947000-0000-4000-9000-000000000010', 'room', 'Hidden room', 'live', 'instant', 'pooled_units', 3, 1, 2, 2, 0);
+-- stay_settings for stayboth and stayhidden are written straight to 'active' (activation
+-- checks are not under test here).
 ALTER TABLE public.stay_settings DISABLE TRIGGER USER;
-INSERT INTO public.stay_settings (venue_id, brand_id, booking_state) VALUES
-  ('44947000-0000-4000-b000-000000000009', '44947000-0000-4000-9000-000000000010', 'active');
+INSERT INTO public.stay_settings (venue_id, brand_id, booking_state, property_kind, timezone) VALUES
+  ('44947000-0000-4000-b000-000000000009', '44947000-0000-4000-9000-000000000010', 'active', 'resort', 'Africa/Lagos'),
+  ('44947000-0000-4000-b000-00000000000b', '44947000-0000-4000-9000-000000000010', 'active', 'resort', 'Africa/Lagos');
 ALTER TABLE public.stay_settings ENABLE TRIGGER USER;
+-- stayboth's room is complete (price, policy, ready cover, open nights), so the Stays kind
+-- lists it; stayhidden's room has none of these, so the Stays kind does not.
+INSERT INTO storage.objects (id, bucket_id, name, owner, metadata) VALUES
+  ('44947000-0000-4000-f000-000000000009', 'brand_covers', '44947000-0000-4000-9000-000000000010/stay/sea.jpg',
+   '44947000-0000-4000-8000-000000000001', '{"mimetype":"image/jpeg","size":1024,"width":1600,"height":900}'::jsonb);
+INSERT INTO public.stay_offering_media (offering_id, brand_id, venue_id, storage_object_id, storage_bucket_id, storage_object_name,
+  mime_type, byte_size, width, height, alt_text, sort_order, is_cover, status) VALUES
+  ('44947000-0000-4000-d000-000000000009', '44947000-0000-4000-9000-000000000010', '44947000-0000-4000-b000-000000000009',
+   '44947000-0000-4000-f000-000000000009', 'brand_covers', '44947000-0000-4000-9000-000000000010/stay/sea.jpg',
+   'image/jpeg', 1024, 1600, 900, 'Sea room', 0, true, 'ready');
+INSERT INTO public.stay_price_versions (offering_id, brand_id, venue_id, version_number, amount_minor, currency_code, pricing_unit) VALUES
+  ('44947000-0000-4000-d000-000000000009', '44947000-0000-4000-9000-000000000010', '44947000-0000-4000-b000-000000000009', 1, 5000000, 'NGN', 'room_night');
+INSERT INTO public.stay_policy_versions (offering_id, brand_id, venue_id, version_number, cancellation_policy) VALUES
+  ('44947000-0000-4000-d000-000000000009', '44947000-0000-4000-9000-000000000010', '44947000-0000-4000-b000-000000000009', 1, 'Flexible policy');
+INSERT INTO public.stay_room_nights (offering_id, local_date, brand_id, venue_id, sellable_quantity)
+SELECT '44947000-0000-4000-d000-000000000009', (now() AT TIME ZONE 'Africa/Lagos')::date + d, '44947000-0000-4000-9000-000000000010',
+  '44947000-0000-4000-b000-000000000009', 3
+FROM generate_series(1, 5) d;
+-- Stays stays off until the Venues switch is on (X-1 reads the city context with no supply).
+INSERT INTO public.feature_flags (flag_key, is_enabled) VALUES ('STAY_PUBLIC_PAGES', false)
+ON CONFLICT (flag_key) DO UPDATE SET is_enabled = false;
 -- clubnow: a public event starting in an hour.
 INSERT INTO public.events (id, brand_id, title, slug, event_type, visibility, status, timezone, currency, venue_id)
 VALUES ('44947000-0000-4000-e000-000000000001', '44947000-0000-4000-9000-000000000010', 'Club night W6a', 'w6a-club-night',
@@ -172,12 +206,11 @@ INSERT INTO public.event_dates (event_id, start_at, end_at, timezone, is_master)
 VALUES ('44947000-0000-4000-e000-000000000001', now() + interval '1 hour', now() + interval '5 hours', 'Africa/Lagos', true);
 
 SELECT public.t4490w6a_ok(
-  (SELECT bool_and(public.issue_4490_venue_is_bookable(venue)) FROM t4490w6a_fx WHERE k IN ('rest', 'club40', 'clubnow', 'far', 'internal', 'stayboth', 'staypass'))
+  (SELECT bool_and(public.issue_4490_venue_is_bookable(venue)) FROM t4490w6a_fx WHERE k IN ('rest', 'club40', 'clubnow', 'far', 'internal', 'stayboth', 'staypass', 'stayhidden'))
   AND NOT public.issue_4490_venue_is_bookable('44947000-0000-4000-b000-000000000005')
   AND NOT public.issue_4490_venue_is_bookable('44947000-0000-4000-b000-000000000007')
   AND NOT public.issue_4490_venue_is_bookable('44947000-0000-4000-b000-000000000008'),
   'K-0 fixture bookability as described');
-
 -- ---------------------------------------------------------------------------
 -- Switch off first: nothing changes.
 -- ---------------------------------------------------------------------------
@@ -191,6 +224,13 @@ CREATE TEMP TABLE t4490w6a_nearest_off ON COMMIT DROP AS
 SELECT public.discover_v2_nearest_city(7.35, 3.40) AS n;
 
 UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'VENUE_DISCOVER';
+UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'STAY_PUBLIC_PAGES';
+SELECT public.t4490w6a_ok(
+  (SELECT array_agg(item->>'id') FROM jsonb_array_elements(
+     public.discover_v2_items('stays', ARRAY['W6 City'], 6.45, 3.40, 100, 'Africa/Lagos', '{}'::jsonb, 0, 50)->'items') item)
+  = ARRAY['44947000-0000-4000-b000-000000000009'],
+  'K-0b the Stays kind lists stayboth and not stayhidden (its room has no price, cover or nights) nor rooms (draft settings)');
+
 
 CREATE FUNCTION pg_temp.t4490w6a_keys(p_filters jsonb) RETURNS text[] LANGUAGE sql AS $f$
   SELECT array_agg(f.k ORDER BY i.ord)
@@ -200,10 +240,10 @@ CREATE FUNCTION pg_temp.t4490w6a_keys(p_filters jsonb) RETURNS text[] LANGUAGE s
 $f$;
 
 SELECT public.t4490w6a_ok(
-  pg_temp.t4490w6a_keys('{}'::jsonb) = ARRAY['clubnow', 'staypass', 'club40', 'rest'],
-  'K-1/O-1 listed: on-today first, then newest verified (staypass, club40, rest); absent: far, pending, internal, paused, rooms, stayboth');
+  pg_temp.t4490w6a_keys('{}'::jsonb) = ARRAY['clubnow', 'stayhidden', 'staypass', 'club40', 'rest'],
+  'K-1/O-1 listed: on-today first, then newest verified (stayhidden, staypass, club40, rest); absent: far, pending, internal, paused, rooms, stayboth');
 SELECT public.t4490w6a_ok(
-  (public.discover_v2_items('venues', ARRAY['W6 City'], 6.45, 3.40, 50, 'Africa/Lagos', '{}'::jsonb, 0, 1)->>'total')::int = 4,
+  (public.discover_v2_items('venues', ARRAY['W6 City'], 6.45, 3.40, 50, 'Africa/Lagos', '{}'::jsonb, 0, 1)->>'total')::int = 5,
   'K-2 total counts every listed venue (page of 1)');
 SELECT public.t4490w6a_ok(
   pg_temp.t4490w6a_keys('{}'::jsonb) = pg_temp.t4490w6a_keys('{}'::jsonb)
@@ -214,6 +254,15 @@ SELECT public.t4490w6a_ok(
   AND pg_temp.t4490w6a_keys('{"venueTypes":["restaurant","club"]}'::jsonb) = ARRAY['clubnow', 'club40', 'rest']
   AND pg_temp.t4490w6a_keys('{"venueTypes":["cafe"]}'::jsonb) IS NULL,
   'K-3 venueTypes filters; a Stay with a day pass is in the unfiltered list only');
+SELECT public.t4490w6a_ok(
+  'stayhidden' = ANY(pg_temp.t4490w6a_keys('{}'::jsonb)) AND NOT ('stayboth' = ANY(pg_temp.t4490w6a_keys('{}'::jsonb))),
+  'K-9 a venue appears once: a stay the Stays kind lists is not in Venues; a stay with a live room the Stays kind does not list stays in Venues (bookable through its day pass)');
+UPDATE public.feature_flags SET is_enabled = false WHERE flag_key = 'STAY_PUBLIC_PAGES';
+SELECT public.t4490w6a_ok(
+  (public.discover_v2_items('stays', ARRAY['W6 City'], 6.45, 3.40, 100, 'Africa/Lagos', '{}'::jsonb, 0, 50)->>'total')::int = 0
+  AND pg_temp.t4490w6a_keys('{}'::jsonb) = ARRAY['clubnow', 'stayhidden', 'staypass', 'stayboth', 'club40', 'rest'],
+  'K-10 Stays switched off: Stays lists nothing, so stayboth (bookable by its day pass) is back in Venues; the rule follows the Stays kind itself');
+UPDATE public.feature_flags SET is_enabled = true WHERE flag_key = 'STAY_PUBLIC_PAGES';
 SELECT public.t4490w6a_ok(
   (SELECT bool_and(item->>'kind' = 'venue' AND item->'price' = 'null'::jsonb AND item->'venue'->>'venueId' = item->>'id'
      AND item->'venue' ? 'priceFrom' AND item->'route'->'params'->>'venueSlug' IS NOT NULL
@@ -246,8 +295,39 @@ SELECT public.t4490w6a_ok(
   'F-2 with Club selected: selected total 2 and each chip keeps its own count');
 SELECT public.t4490w6a_ok(
   (public.discover_v2_facets_exact(ARRAY['W6 City'], 6.45, 3.40, 50, 'Africa/Lagos', 'events', '{}'::jsonb, 'NGN')->'kinds'->'venues')
-  = '{"total": 4, "available": true}'::jsonb,
+  = '{"total": 5, "available": true}'::jsonb,
   'F-3 kinds.venues.total is the listed count');
+DO $f5$
+DECLARE
+  v_filters jsonb;
+  v_facets jsonb;
+  v_items jsonb;
+  v_opt jsonb;
+BEGIN
+  FOREACH v_filters IN ARRAY ARRAY['{}'::jsonb, '{"venueTypes":["club"]}', '{"venueTypes":["restaurant","club"]}', '{"venueTypes":["cafe"]}'] LOOP
+    v_facets := public.discover_v2_facets_exact(ARRAY['W6 City'], 6.45, 3.40, 50, 'Africa/Lagos', 'venues', v_filters, 'NGN');
+    v_items := public.discover_v2_items('venues', ARRAY['W6 City'], 6.45, 3.40, 50, 'Africa/Lagos', v_filters, 0, 50);
+    IF (v_facets->'selected'->>'total')::int IS DISTINCT FROM (v_items->>'total')::int
+       OR (v_facets->'kinds'->'venues'->>'total')::int IS DISTINCT FROM
+          (public.discover_v2_items('venues', ARRAY['W6 City'], 6.45, 3.40, 50, 'Africa/Lagos', '{}'::jsonb, 0, 1)->>'total')::int THEN
+      RAISE EXCEPTION 'T4490W6A FAIL: F-5 totals differ for %: facets % items %', v_filters, v_facets->'selected', v_items->>'total';
+    END IF;
+    FOR v_opt IN SELECT * FROM jsonb_array_elements(COALESCE(v_facets->'groups'->0->'options', '[]'::jsonb)) LOOP
+      IF (v_opt->>'count')::int IS DISTINCT FROM (public.discover_v2_items('venues', ARRAY['W6 City'], 6.45, 3.40, 50, 'Africa/Lagos',
+            jsonb_build_object('venueTypes', jsonb_build_array(v_opt->>'id')), 0, 1)->>'total')::int THEN
+        RAISE EXCEPTION 'T4490W6A FAIL: F-5 chip % count % differs from its list', v_opt->>'id', v_opt->>'count';
+      END IF;
+    END LOOP;
+  END LOOP;
+  IF position('discover_v2_option_count(p_city_names,p_lat,p_lng,p_tz,p_kind,v_base,''venueTypes''' IN
+       pg_get_functiondef('public.discover_v2_facets_exact(text[],double precision,double precision,double precision,text,text,jsonb,text)'::regprocedure)) > 0
+     OR position('issue_4490_discover_venues_filtered' IN
+       pg_get_functiondef('public.discover_v2_facets_exact(text[],double precision,double precision,double precision,text,text,jsonb,text)'::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'T4490W6A FAIL: F-5 Venues facets still build the items page per chip';
+  END IF;
+  RAISE NOTICE 'PASS  F-5 Venues counts are plain counts that equal the list (selected total, kinds total, every chip) for 4 filter sets';
+END
+$f5$;
 SELECT public.t4490w6a_ok(
   public.discover_v2_facets_exact(ARRAY['Nowhere'], 9.0, 9.0, 50, 'Africa/Lagos', 'venues', '{}'::jsonb, 'NGN')->'groups' = '[]'::jsonb
   AND public.discover_v2_facets_exact(ARRAY['Nowhere'], 9.0, 9.0, 50, 'Africa/Lagos', 'events', '{}'::jsonb, 'NGN')->'kinds'->'venues'

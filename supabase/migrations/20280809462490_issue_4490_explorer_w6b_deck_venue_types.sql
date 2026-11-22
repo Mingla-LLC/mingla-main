@@ -2,21 +2,25 @@
 -- Spec 06 §3 W6b (the spec's number 20280809414490 is taken; this is the next free
 -- slot after 20280809461490 and before spec 08's reserved 20280809464490).
 --
--- 1. issue_4490_place_is_servable(is_servable, is_active, photos): the place-quality
---    part of the deck's servable rule, lifted out of the two base servable RPCs so
---    the venue-type reads apply the SAME rule (one owner). One SQL expression,
---    IMMUTABLE, no SECURITY DEFINER and no SET clause, so the planner inlines it.
--- 2. The two base servable RPCs, re-emitted from their live bodies by counted
---    substitution (a count mismatch aborts; a body that already calls (1) is left
---    alone) to call (1) in place of the inline predicate. Columns, grants, ORDER BY,
---    LIMIT and geography are unchanged:
---      issue_1384_query_servable_places_by_signal (latest 20270129001384)
---      query_servable_places_by_signal_intersection (latest 20261221000001)
--- 3. issue_4490_hosted_venue_types_near(lat, lng, radius m): the venue types the
+-- 1. The solo base servable RPC, issue_1384_query_servable_places_by_signal (latest
+--    20270129001384), re-emitted from its live body by counted substitution (a count
+--    mismatch aborts; a body that already calls the helper is left alone) to call
+--    issue_4490_place_is_servable (created in 20280809460490) in place of the inline
+--    place-quality predicate. Columns, grants, ORDER BY, LIMIT, geography and the
+--    query plan are unchanged (the helper is inlined).
+--    Fix round 1 (W6-N1): the shared-deck base RPC,
+--    query_servable_places_by_signal_intersection (latest 20261221000001), is NOT
+--    re-emitted. Moving its photo checks changed its plan (incremental sort with an
+--    early stop became a full sort: 2-3x slower on every shared-deck position with
+--    every switch off). It keeps its original body; the venue-type shared-deck read
+--    below applies the same helper on its own small venue set, and runs only for a
+--    venue-type pill with VENUE_DISCOVER on.
+-- 2. issue_4490_hosted_venue_types_near(lat, lng, radius m): the venue types the
 --    deck may offer as chips here: bookable hosted venues (the W6 rule,
 --    issue_4490_discover_venue_candidates) whose place is inside the radius and
---    passes (1); chip types only (no 'stay'); empty while VENUE_DISCOVER is off.
--- 4. issue_4490_hosted_places_by_venue_type(type, lat, lng, radius m, exclude, limit)
+--    passes the place rule; chip types only (no 'stay'); empty while VENUE_DISCOVER
+--    is off.
+-- 3. issue_4490_hosted_places_by_venue_type(type, lat, lng, radius m, exclude, limit)
 --    and issue_4490_hosted_places_by_venue_type_intersection(type, circles, exclude,
 --    limit): the deck rows for one venue-type chip, in the base servable row shape
 --    plus venue_id. No mood floor (a chip is a place type, not a mood);
@@ -24,28 +28,9 @@
 --    for the solo shape, inside every circle for the shared deck, both copied from
 --    the base bodies). Order: review_count DESC NULLS LAST, rating DESC NULLS LAST,
 --    place id ASC.
--- Every new function is service_role only except (1), an invoker helper.
+-- Every new function is service_role only.
 
 BEGIN;
-
-CREATE OR REPLACE FUNCTION public.issue_4490_place_is_servable(
-  p_is_servable boolean,
-  p_is_active boolean,
-  p_photos text[]
-)
-RETURNS boolean
-LANGUAGE sql
-IMMUTABLE
-AS $function$
-  SELECT p_is_servable = true
-    AND p_is_active = true
-    AND p_photos IS NOT NULL
-    AND pg_catalog.array_length(p_photos, 1) > 0
-    AND NOT (
-      pg_catalog.array_length(p_photos, 1) = 1
-      AND p_photos[1] = '__backfill_failed__'
-    )
-$function$;
 
 CREATE OR REPLACE FUNCTION pg_temp.issue_4490_w6b_patch(
   p_signature text,
@@ -89,34 +74,6 @@ SELECT pg_temp.issue_4490_w6b_patch(
     AND ps.score >= p_filter_min$new$,
   1,
   $m$issue_4490_place_is_servable$m$
-);
-
--- Intersection base RPC: the quality checks move into the candidate set (same rows).
-SELECT pg_temp.issue_4490_w6b_patch(
-  'public.query_servable_places_by_signal_intersection(text,numeric,jsonb,uuid[],integer)',
-  $old$    WHERE pp.is_servable = true
-      AND pp.is_active = true
-      AND pp.lat IS NOT NULL$old$,
-  $new$    WHERE public.issue_4490_place_is_servable(pp.is_servable, pp.is_active, pp.stored_photo_urls)
-      AND pp.lat IS NOT NULL$new$,
-  1,
-  $m$issue_4490_place_is_servable$m$
-);
-SELECT pg_temp.issue_4490_w6b_patch(
-  'public.query_servable_places_by_signal_intersection(text,numeric,jsonb,uuid[],integer)',
-  $old$  WHERE ps.score >= p_filter_min
-    AND pp.stored_photo_urls IS NOT NULL
-    AND array_length(pp.stored_photo_urls, 1) > 0
-    AND NOT (
-      array_length(pp.stored_photo_urls, 1) = 1
-      AND pp.stored_photo_urls[1] = '__backfill_failed__'
-    )
-    AND NOT (pp.id = ANY(p_exclude_place_ids))$old$,
-  $new$  WHERE ps.score >= p_filter_min
-    AND NOT (pp.id = ANY(p_exclude_place_ids))$new$,
-  1,
-  $m$  WHERE ps.score >= p_filter_min
-    AND NOT (pp.id = ANY(p_exclude_place_ids))$m$
 );
 
 CREATE OR REPLACE FUNCTION public.issue_4490_hosted_venue_types_near(

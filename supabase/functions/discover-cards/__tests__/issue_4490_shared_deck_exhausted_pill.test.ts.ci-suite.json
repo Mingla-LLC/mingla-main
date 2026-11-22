@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/discover-cards/__tests__/issue_4490_shared_deck_exhausted_pill.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4490-shared-deck-exhausted-pill",
+  "profile": "deno-2-unit",
+  "permissions": [
+    "env",
+    "read"
+  ]
+}

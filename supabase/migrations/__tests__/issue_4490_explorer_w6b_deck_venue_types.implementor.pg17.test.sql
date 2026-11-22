@@ -1,11 +1,15 @@
 -- #4490 Explorer W6b (20280809462490): executable PostgreSQL 17 proof. BEGIN ... ROLLBACK.
 --
 -- MINGLA-INVARIANT: I-4490-DECK-VENUE-TYPE-ONLY-WITH-SUPPLY | issue #4490 | a deck venue-type chip is offered only for a chip type with a bookable hosted venue (the Discover rule) whose place is inside the deck radius and passes the base servable place rule; its rows obey that same place rule, the radius or every circle, and exclusions, in a fixed order; with VENUE_DISCOVER off there are no types and no rows.
--- MINGLA-INVARIANT: I-4490-SERVABLE-PLACE-RULE-ONE-OWNER | issue #4490 | both base servable RPCs read the place-quality rule from issue_4490_place_is_servable, which answers exactly as the inline predicate it replaced (truth table pinned here), with ORDER BY and LIMIT unchanged.
+-- MINGLA-INVARIANT: I-4490-SERVABLE-PLACE-RULE-ONE-OWNER | issue #4490 | the solo base servable RPC and every #4490 venue read take the place-quality rule from issue_4490_place_is_servable, which answers exactly as the inline predicate it replaced (truth table pinned here), with ORDER BY and LIMIT unchanged.
+-- MINGLA-INVARIANT: I-4490-SHARED-DECK-BASE-RPC-UNTOUCHED | issue #4490 | #4490 never re-emits query_servable_places_by_signal_intersection: its body keeps the inline place predicate in its original place (a re-emit that moved the photo checks changed its plan and made every shared-deck position 2-3x slower with every switch off, fix round 1 W6-N1).
 --
 -- P place rule. T types near. S solo rows. I intersection rows. X flag off. A authority.
 --
--- FAILS-ON-REVERT: without 20280809462490 every block fails (functions absent).
+-- FAILS-ON-REVERT: without 20280809462490 every block fails (functions absent). P-3b fails if the
+-- shared-deck base RPC is patched again (fix round 1, W6-N1).
+-- TEST-MOD-APPROVED #4490 (06-W6 fix 1): P-3 now pins the solo base RPC only; P-3b pins the
+-- shared-deck base RPC as untouched.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -59,15 +63,19 @@ SELECT public.t4490w6b_ok(
    FROM pg_proc p WHERE p.oid = 'public.issue_4490_place_is_servable(boolean,boolean,text[])'::regprocedure),
   'P-2 the rule is an inlinable SQL expression (immutable, invoker, no SET)');
 SELECT public.t4490w6b_ok(
-  (SELECT bool_and(pg_get_functiondef(p.oid) LIKE '%public.issue_4490_place_is_servable(pp.is_servable, pp.is_active, pp.stored_photo_urls)%'
-                   AND pg_get_functiondef(p.oid) NOT LIKE '%__backfill_failed__%')
-   FROM pg_proc p WHERE p.oid IN ('public.issue_1384_query_servable_places_by_signal(text,numeric,double precision,double precision,double precision,uuid[],integer,bigint,bigint,character,uuid)'::regprocedure,
-                                  'public.query_servable_places_by_signal_intersection(text,numeric,jsonb,uuid[],integer)'::regprocedure))
+  pg_get_functiondef('public.issue_1384_query_servable_places_by_signal(text,numeric,double precision,double precision,double precision,uuid[],integer,bigint,bigint,character,uuid)'::regprocedure)
+      LIKE '%public.issue_4490_place_is_servable(pp.is_servable, pp.is_active, pp.stored_photo_urls)%'
   AND pg_get_functiondef('public.issue_1384_query_servable_places_by_signal(text,numeric,double precision,double precision,double precision,uuid[],integer,bigint,bigint,character,uuid)'::regprocedure)
-      LIKE '%ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST%LIMIT p_limit%'
+      NOT LIKE '%__backfill_failed__%'
+  AND pg_get_functiondef('public.issue_1384_query_servable_places_by_signal(text,numeric,double precision,double precision,double precision,uuid[],integer,bigint,bigint,character,uuid)'::regprocedure)
+      LIKE '%ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST%LIMIT p_limit%',
+  'P-3 the solo base RPC calls the one rule; ORDER BY and LIMIT unchanged');
+SELECT public.t4490w6b_ok(
+  pg_get_functiondef('public.query_servable_places_by_signal_intersection(text,numeric,jsonb,uuid[],integer)'::regprocedure)
+      NOT LIKE '%issue_4490%'
   AND pg_get_functiondef('public.query_servable_places_by_signal_intersection(text,numeric,jsonb,uuid[],integer)'::regprocedure)
-      LIKE '%ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST, pp.id ASC%LIMIT p_limit%',
-  'P-3 both base RPCs call the one rule; ORDER BY and LIMIT unchanged');
+      LIKE '%candidate_places AS (%WHERE pp.is_servable = true%AND pp.is_active = true%AND pp.lat IS NOT NULL%WHERE ps.score >= p_filter_min%AND pp.stored_photo_urls IS NOT NULL%__backfill_failed__%AND NOT (pp.id = ANY(p_exclude_place_ids))%ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST, pp.id ASC%LIMIT p_limit%',
+  'P-3b the shared-deck base RPC keeps its original body (no #4490 re-emit; its plan is unchanged)');
 
 -- ---------------------------------------------------------------------------
 -- Fixture around (6.45, 3.40). Bookable by reservable tables.

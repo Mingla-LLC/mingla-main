@@ -48,6 +48,8 @@ import {
 // #4490 Explorer W5: hosted venues lead each category (flag VENUE_DECK_HOSTED_FIRST).
 import {
   HOSTED_GRACE_MS,
+  hostedSignalPairs,
+  splitHostedRows,
   VENUE_DECK_HOSTED_FIRST,
   collabCandidates,
   dedupeByPlace,
@@ -64,6 +66,7 @@ import {
   deckRadiusMeters,
   isVenueTypeChip,
   looksLikeVenueTypeChip,
+  nextPillAfterExhaustion,
   splitVenueTypeChips,
 } from './venueTypeChips.ts';
 
@@ -1655,21 +1658,44 @@ async function handleDeterministicV2(args: {
     degradedFrom?: string | null;
   }) => Promise<Response>;
 
+  // #4490 W6 fix round 1 (W6-N2): skip-and-continue applies only with
+  // VENUE_DISCOVER on and a venue-type pill in this session (see
+  // nextPillAfterExhaustion); every other session keeps today's rule.
+  const skipExhaustedPills = collabVenueDiscoverOn && collabSplit.venueChips.length > 0;
+
   const handleSinglePosition = async (params: {
     position: number;
     pill: string;
     degradedFrom?: string | null;
+    /** W6-N2: the pill this position started with and how many pills were skipped. */
+    skip?: { origin: string; tried: number };
   }): Promise<Response> => {
   const fallbackToCuratedAfterSingleExhaustion = async (
     detail: string,
     reason: PositionalDeadEndReason,
   ): Promise<Response> => {
+    const originPill = params.skip?.origin ?? params.pill;
+    const nextPill = nextPillAfterExhaustion({
+      enabled: skipExhaustedPills,
+      rotation: collabCategories,
+      startPill: originPill,
+      tried: params.skip?.tried ?? 0,
+    });
+    if (nextPill) {
+      console.log(`[discover-cards/positional] position=${params.position} pill=${params.pill} exhausted (${reason}); trying ${nextPill}`);
+      return await handleSinglePosition({
+        position: params.position,
+        pill: nextPill,
+        degradedFrom: params.degradedFrom,
+        skip: { origin: originPill, tried: (params.skip?.tried ?? 0) + 1 },
+      });
+    }
     const fallbackIntent = await pickNextCuratedPill();
     if (fallbackIntent && !params.degradedFrom) {
       return await handleCuratedPosition({
         position: params.position,
         experienceType: fallbackIntent,
-        degradedFrom: params.pill,
+        degradedFrom: originPill,
       });
     }
     if (reason === 'no_unswiped_candidates') {
@@ -1803,23 +1829,19 @@ async function handleDeterministicV2(args: {
   // already holds every served id), so this position's category leads with its
   // hosted venues until they are used up. Failures are logged and ignored.
   const hostedFirst = await venueDeckFlagOn(supabaseAdmin, VENUE_DECK_HOSTED_FIRST);
-  const hostedCalls: Promise<Array<{ task: RpcTask; res: any }>> = hostedFirst
-    ? Promise.all(
-      rpcTasks.map((task) =>
-        Promise.resolve(
-          supabaseAdmin.rpc('issue_4490_hosted_servable_places_intersection', {
-            p_signal_id: task.signalId,
-            p_filter_min: task.filterMin,
-            p_circles: agg.circles,
-            p_exclude_place_ids: excludePlaceIds,
-          }),
-        ).then(
-          (res: any) => ({ task, res }),
-          (err: unknown) => ({ task, res: { data: null, error: { message: (err as Error)?.message ?? 'hosted call threw' } } }),
-        )
-      ),
+  // Fix round 1 (W5-N2): one hosted call per position for all its signals.
+  const hostedCall: Promise<any> = hostedFirst && rpcTasks.length > 0
+    ? Promise.resolve(
+      supabaseAdmin.rpc('issue_4490_hosted_servable_places_intersection', {
+        p_signals: hostedSignalPairs(rpcTasks),
+        p_circles: agg.circles,
+        p_exclude_place_ids: excludePlaceIds,
+      }),
+    ).then(
+      (res: any) => res,
+      (err: unknown) => ({ data: null, error: { message: (err as Error)?.message ?? 'hosted call threw' } }),
     )
-    : Promise.resolve([]);
+    : Promise.resolve({ data: [], error: null });
   const baseCalls = Promise.all(
     rpcTasks.map((task) =>
       supabaseAdmin
@@ -1845,19 +1867,18 @@ async function handleDeterministicV2(args: {
     ).then((res: any) => res, (err: unknown) => ({ data: null, error: { message: (err as Error)?.message ?? 'venue type call threw' } }))
     : null;
   const rpcResults = await baseCalls;
-  const hostedSettled = hostedFirst
-    ? await settleHosted(hostedCalls, baseCalls, args.hostedGraceMs ?? HOSTED_GRACE_MS)
-    : [];
-  if (hostedFirst && hostedSettled === null) {
-    console.warn(`[discover-cards/positional] hosted lead skipped: hosted calls did not answer in time`);
+  const hostedAnswer = hostedFirst
+    ? await settleHosted(hostedCall, baseCalls, args.hostedGraceMs ?? HOSTED_GRACE_MS)
+    : null;
+  if (hostedFirst && hostedAnswer === null) {
+    console.warn(`[discover-cards/positional] hosted=late: the hosted call did not answer in time (ignored)`);
   }
-  const usableHosted = (hostedSettled ?? []).filter(({ task, res }) => {
-    if (res?.error) {
-      console.warn(`[discover-cards/positional] hosted call failed (ignored) chip=${task.chip} signal=${task.signalId}: ${String(res.error.message ?? '').slice(0, 200)}`);
-      return false;
-    }
-    return true;
-  });
+  if (hostedAnswer?.error) {
+    console.warn(`[discover-cards/positional] hosted call failed (ignored): ${String(hostedAnswer.error.message ?? '').slice(0, 200)}`);
+  }
+  const usableHosted = hostedFirst && hostedAnswer && !hostedAnswer.error
+    ? splitHostedRows(rpcTasks, hostedAnswer.data)
+    : [];
 
   // #1683/#1703 — one PK lookup across every chip's rows, before bucketing.
   await Promise.all([
@@ -2916,34 +2937,30 @@ export async function handleDiscoverCards(
     // Step 4: fire all RPCs in parallel. Over-fetch per chip (limit × 2) so
     // round-robin has depth; final cap is `limit`.
     const perChipRpcLimit = Math.max(20, Math.min(100, limit * 2));
-    // #4490 W5: with the switch on, the hosted wrapper runs beside every base
-    // call with the same arguments (no p_limit: the wrapper caps at 6 itself).
-    // A failed, thrown or late hosted call is logged and ignored; it never
-    // counts toward the all-failed guard and never delays the organic deck by
-    // more than the grace below.
-    const hostedCalls: Promise<Array<{ task: RpcTask; res: any }>> = hostedFirst
-      ? Promise.all(
-        rpcTasks.map((task) =>
-          Promise.resolve(
-            supabaseAdmin.rpc('issue_4490_hosted_servable_places', {
-              p_signal_id: task.signalId,
-              p_filter_min: task.filterMin,
-              p_lat: location.lat,
-              p_lng: location.lng,
-              p_radius_m: radiusMeters,
-              p_exclude_place_ids: excludeCardIds,
-              p_price_filter_min_minor: priceFilterMinMinor,
-              p_price_filter_max_minor: priceFilterMaxMinor,
-              p_price_filter_currency: priceFilterCurrency,
-              p_fx_snapshot_id: fxSnapshotId,
-            }),
-          ).then(
-            (res: any) => ({ task, res }),
-            (err: unknown) => ({ task, res: { data: null, error: { message: (err as Error)?.message ?? 'hosted call threw' } } }),
-          )
-        ),
+    // #4490 W5: with the switch on, ONE hosted call answers every (signal, mood
+    // floor) of this request beside the base calls, with the same radius,
+    // exclusions and price filter (the wrapper caps at 6 per pair itself; fix
+    // round 1, W5-N2). A failed, thrown or late hosted call is logged and
+    // ignored; it never counts toward the all-failed guard and never delays the
+    // organic deck by more than HOSTED_GRACE_MS after the base calls (W5-N1).
+    const hostedCall: Promise<any> = hostedFirst && rpcTasks.length > 0
+      ? Promise.resolve(
+        supabaseAdmin.rpc('issue_4490_hosted_servable_places', {
+          p_signals: hostedSignalPairs(rpcTasks),
+          p_lat: location.lat,
+          p_lng: location.lng,
+          p_radius_m: radiusMeters,
+          p_exclude_place_ids: excludeCardIds,
+          p_price_filter_min_minor: priceFilterMinMinor,
+          p_price_filter_max_minor: priceFilterMaxMinor,
+          p_price_filter_currency: priceFilterCurrency,
+          p_fx_snapshot_id: fxSnapshotId,
+        }),
+      ).then(
+        (res: any) => res,
+        (err: unknown) => ({ data: null, error: { message: (err as Error)?.message ?? 'hosted call threw' } }),
       )
-      : Promise.resolve([]);
+      : Promise.resolve({ data: [], error: null });
     const baseCalls = Promise.all(
       rpcTasks.map((task) =>
         supabaseAdmin.rpc('issue_1384_query_servable_places_by_signal', {
@@ -2983,19 +3000,19 @@ export async function handleDiscoverCards(
     );
     const rpcResults = await baseCalls;
     const venueResults = await venueCalls;
-    const hostedResults = hostedFirst
-      ? (await settleHosted(hostedCalls, baseCalls, dependencies.hostedGraceMs ?? HOSTED_GRACE_MS)) ?? null
-      : [];
-    if (hostedFirst && hostedResults === null) {
-      console.warn(`[discover-cards] hosted lead skipped: hosted calls did not answer within ${dependencies.hostedGraceMs ?? HOSTED_GRACE_MS}ms of the base calls`);
+    const hostedAnswer = hostedFirst
+      ? await settleHosted(hostedCall, baseCalls, dependencies.hostedGraceMs ?? HOSTED_GRACE_MS)
+      : null;
+    const hostedLate = hostedFirst && hostedAnswer === null;
+    if (hostedLate) {
+      console.warn(`[discover-cards] hosted=late: the hosted call did not answer within ${dependencies.hostedGraceMs ?? HOSTED_GRACE_MS}ms of the base calls (ignored)`);
     }
-    const usableHosted = (hostedResults ?? []).filter(({ task, res }) => {
-      if (res?.error) {
-        console.warn(`[discover-cards] hosted call failed (ignored) chip=${task.chip} signal=${task.signalId}: ${String(res.error.message ?? '').slice(0, 200)}`);
-        return false;
-      }
-      return true;
-    });
+    if (hostedAnswer?.error) {
+      console.warn(`[discover-cards] hosted call failed (ignored): ${String(hostedAnswer.error.message ?? '').slice(0, 200)}`);
+    }
+    const usableHosted = hostedFirst && hostedAnswer && !hostedAnswer.error
+      ? splitHostedRows(rpcTasks, hostedAnswer.data)
+      : [];
 
     // Step 5: bucket results by chip, merging within a chip by place_id max-score.
     // Skip failed RPCs but keep going (partial failure tolerance).
@@ -3290,7 +3307,9 @@ export async function handleDiscoverCards(
       experienceCards = experienceCards.map((exp) => ({ ...exp, deckLead: 'experience' }));
     }
     const mergedCards = interleaveExperiencesIntoDeck(finalCards, experienceCards);
-    const hostedServed = hostedFirst
+    const hostedServed = hostedLate
+      ? 'late'
+      : hostedFirst
       ? finalCards.filter((card: any) => card?.deckLead === 'hosted_venue').length
       : 0;
 

@@ -17,6 +17,10 @@
 -- TEST-MOD-APPROVED #4490 (06-W6b): the deck venue-type reads (20280809462490) are internal, the lifted
 -- place rule is an invoker helper, and the two base servable RPCs it re-emits keep their classes
 -- (solo internal; the shared-deck intersection callable by signed-in and signed-out, as before).
+-- TEST-MOD-APPROVED #4490 (06-W5/W6 fix 1): the hosted wrappers take every signal of a request
+-- at once (new signatures, still internal); the shared-deck base RPC is no longer re-emitted by
+-- #4490 (W6-N1), so its line is gone; the two new Discover Venues helpers (the Stays-listed read
+-- and the filtered candidates, W6-N3 / W6-N6) are internal.
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -150,6 +154,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_day_closed(uuid,date)', 'internal'),
   ('issue_4490_deposit_plan(uuid,uuid,bigint)', 'internal'),
   ('issue_4490_discover_venue_candidates(text[],double precision,double precision,double precision)', 'internal'),
+  ('issue_4490_discover_venues_filtered(text[],double precision,double precision,jsonb)', 'internal'),
   ('issue_4490_duplicate_offer(uuid,uuid,text)', 'signed_in'),
   ('issue_4490_enqueue_offer_event(stay_reservation_events,stay_reservation_groups)', 'internal'),
   ('issue_4490_enqueue_waitlist_message(uuid,text)', 'internal'),
@@ -202,8 +207,8 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_hold_offer_internal(uuid,uuid,jsonb,text,uuid,bytea,text,boolean,uuid,text)', 'internal'),
   ('issue_4490_hosted_places_by_venue_type(text,double precision,double precision,integer,uuid[],integer)', 'internal'),
   ('issue_4490_hosted_places_by_venue_type_intersection(text,jsonb,uuid[],integer)', 'internal'),
-  ('issue_4490_hosted_servable_places_intersection(text,numeric,jsonb,uuid[])', 'internal'),
-  ('issue_4490_hosted_servable_places(text,numeric,double precision,double precision,double precision,uuid[],bigint,bigint,character,uuid)', 'internal'),
+  ('issue_4490_hosted_servable_places_intersection(jsonb,jsonb,uuid[])', 'internal'),
+  ('issue_4490_hosted_servable_places(jsonb,double precision,double precision,double precision,uuid[],bigint,bigint,character,uuid)', 'internal'),
   ('issue_4490_hosted_venue_types_near(double precision,double precision,integer)', 'internal'),
   ('issue_4490_hour_booking_facts(uuid)', 'internal'),
   ('issue_4490_hour_default_mode()', 'helper'),
@@ -378,6 +383,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_venue_page_row(uuid)', 'internal'),
   ('issue_4490_venue_service_date(uuid,timestamp with time zone)', 'internal'),
   ('issue_4490_venue_timezone(uuid)', 'internal'),
+  ('issue_4490_stays_listed_venue_ids(text[],double precision,double precision)', 'internal'),
   ('issue_4490_venue_type_chip_keys()', 'internal'),
   ('issue_4490_venue_upcoming_events(uuid,timestamp with time zone)', 'internal'),
   ('issue_4490_waitlist_actor_ok(venue_waitlist,bytea,uuid)', 'helper'),
@@ -409,8 +415,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('pg_venue_hour_day(uuid,date,integer,uuid)', 'public'),
   ('pg_venue_offer_availability(uuid,date,date,integer,uuid)', 'public'),
   ('pg_venue_order_finalize_payment(uuid,text,integer,text,text,text,integer,text)', 'internal'),
-  ('preview_pending_venue_identity_correction(uuid)', 'signed_in'),
-  ('query_servable_places_by_signal_intersection(text,numeric,jsonb,uuid[],integer)', 'public')
+  ('preview_pending_venue_identity_correction(uuid)', 'signed_in')
 ;
 
 DO $t$
