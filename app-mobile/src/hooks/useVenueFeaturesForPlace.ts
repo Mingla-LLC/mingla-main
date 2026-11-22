@@ -1,10 +1,8 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import {
-  parsePublicVenueFeatures,
-  type PublicVenueFeaturesView,
-} from "@mingla/brand-rendering/venueFeaturePage";
+import type { PublicVenueFeaturesView } from "@mingla/brand-rendering/venueFeaturePage";
 
 import { supabase } from "../services/supabase";
+import { fetchPublicVenueFeatures } from "./usePublicVenueFeatures";
 
 /**
  * useVenueFeaturesForPlace — #4490 (the app twin of the buyer web's
@@ -27,6 +25,18 @@ export interface PlaceVenueFeatures {
   readonly brandSlug: string;
   readonly venueSlug: string;
   readonly features: PublicVenueFeaturesView;
+  /**
+   * #4490 Explorer W3 — who and where, for the card sheet's "Message {venue}"
+   * and its "What's on" times (venue zone, day-first, 24-hour). Public facts
+   * from `venue_public_view` (verified venues only).
+   */
+  readonly venueId: string | null;
+  readonly venueName: string;
+  readonly brandId: string | null;
+  readonly brandName: string;
+  readonly timezone: string | null;
+  /** The venue type (only the page's "tables lead a bar or a restaurant" rule reads it). */
+  readonly venueType: string | null;
 }
 
 const UUID_RE =
@@ -39,16 +49,25 @@ export const venueFeaturesForPlaceKeys = {
 };
 
 interface VenueSlugRow {
+  id: string | null;
+  name: string | null;
   slug: string | null;
+  brand_id: string | null;
   brand_slug: string | null;
+  brand_name: string | null;
+  iana_timezone: string | null;
+  venue_category: string | null;
 }
+
+const trimmedOr = (value: unknown, fallback: string): string =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
 
 async function fetchVenueFeaturesForPlace(
   placePoolId: string,
 ): Promise<PlaceVenueFeatures | null> {
   const { data: rows, error: slugError } = await supabase
     .from("venue_public_view")
-    .select("slug, brand_slug")
+    .select("id, name, slug, brand_id, brand_slug, brand_name, iana_timezone, venue_category")
     .eq("place_pool_id", placePoolId)
     .limit(1);
   if (slugError !== null) throw slugError;
@@ -57,13 +76,21 @@ async function fetchVenueFeaturesForPlace(
   const brandSlug =
     typeof row?.brand_slug === "string" ? row.brand_slug.trim() : "";
   if (venueSlug.length === 0 || brandSlug.length === 0) return null;
-  const { data, error } = await supabase.rpc("pg_public_venue_page", {
-    p_brand_slug: brandSlug,
-    p_venue_slug: venueSlug,
-  });
-  if (error !== null) throw error;
-  const features = parsePublicVenueFeatures(data);
-  return features === null ? null : { brandSlug, venueSlug, features };
+  // One owner of the page read (usePublicVenueFeatures).
+  const features = await fetchPublicVenueFeatures(brandSlug, venueSlug);
+  return features === null
+    ? null
+    : {
+        brandSlug,
+        venueSlug,
+        features,
+        venueId: typeof row?.id === "string" ? row.id : null,
+        venueName: trimmedOr(row?.name, ""),
+        brandId: typeof row?.brand_id === "string" ? row.brand_id : null,
+        brandName: trimmedOr(row?.brand_name, brandSlug),
+        timezone: typeof row?.iana_timezone === "string" && row.iana_timezone.trim().length > 0 ? row.iana_timezone.trim() : null,
+        venueType: typeof row?.venue_category === "string" ? row.venue_category : null,
+      };
 }
 
 export function useVenueFeaturesForPlace(

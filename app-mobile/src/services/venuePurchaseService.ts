@@ -50,6 +50,11 @@ export const venueActionKey = (scope: string): string => `venue-app:${scope}:${r
 async function invoke(fn: Fn, body: Record<string, unknown>): Promise<unknown> {
   const { data, error } = await supabase.functions.invoke(fn, { body });
   if (error) {
+    // #4490 Explorer W3: a request that never reached the server (no network)
+    // is named, so a screen can say "You're offline" instead of a generic line.
+    if ((error as { name?: unknown }).name === "FunctionsFetchError") {
+      throw new VenuePurchaseError("offline");
+    }
     let code = "venue_request_failed";
     const context = (error as { context?: Response }).context;
     if (context && typeof context.json === "function") {
@@ -144,4 +149,22 @@ export async function confirmVenueMemberPayment(subscriptionId: string): Promise
 
 export async function leaveVenueWaitlist(waitlistId: string): Promise<void> {
   await invoke("venue-waitlist", { action: "leave", waitlistId });
+}
+
+/**
+ * #4490 Explorer W3 — one offer's days between two venue dates (no identity
+ * needed; the same `availability` read buyer web uses). The pane turns the
+ * rows into "Sold out" or bookable; it never prices from them.
+ */
+export async function getVenueOfferAvailability(input: {
+  offeringId: string;
+  from: string;
+  to: string;
+}): Promise<unknown> {
+  return invoke("venue-offers", {
+    action: "availability",
+    offeringId: input.offeringId,
+    from: input.from,
+    to: input.to,
+  });
 }
