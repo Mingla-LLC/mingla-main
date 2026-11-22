@@ -5819,6 +5819,8 @@
         "mingla-business/src/components/forms/BlastFormBlock.tsx",
         "mingla-business/src/components/forms/BlastFormPicker.tsx",
         "mingla-business/src/utils/marketing/blastFormLink.ts",
+        "mingla-business/src/utils/marketing/blastFormPayload.ts",
+        "mingla-business/src/utils/marketing/blastFormUsage.ts",
         "supabase/functions/_shared/blastFormLinks.ts",
         "supabase/functions/marketing-send/blastForm.ts",
         "supabase/migrations/20281122014541_issue_4541_forms_blast_push.sql"
