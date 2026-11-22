@@ -197,4 +197,13 @@ describe("#4541 A3 — the RSVP popup's hand-off slot", () => {
     expect(screen).toMatch(/\(close: \(\) => void\): React\.ReactNode =>/);
     expect(screen).toMatch(/kind="rsvp"\s+subjectId=\{rsvpHandoffId\}\s+from="rsvp"\s+onBeforeAnswer=\{close\}\s+onLater=\{close\}/);
   });
+
+  it("the hand-off is offered for Going OR Maybe (the web RSVP page's rule)", () => {
+    const screen = fs.readFileSync(path.resolve(__dirname, "../ConsumerEventDetailScreen.tsx"), "utf8");
+    const call = screen.match(/setRsvpHandoffId\(\s*rsvpAfterRsvpForm !== null &&([\s\S]*?)\? result\.rsvpId/);
+    expect(call).not.toBeNull();
+    const condition = call?.[1] ?? "";
+    expect(condition).toMatch(/result\.status === "going"/);
+    expect(condition).toMatch(/result\.status === "maybe"/);
+  });
 });

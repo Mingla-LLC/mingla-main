@@ -1176,9 +1176,12 @@ export default function ConsumerEventDetailScreen({
           content_kind: "event",
         });
       }
-      // #4541 A3 — an "After they RSVP" form hands off from the success popup.
+      // #4541 A3 — an "After they RSVP" form hands off from the success popup,
+      // for Going or Maybe (the web RSVP page's rule).
       setRsvpHandoffId(
-        rsvpAfterRsvpForm !== null && result.status === "going" && result.rsvpId.length > 0
+        rsvpAfterRsvpForm !== null &&
+          (result.status === "going" || result.status === "maybe") &&
+          result.rsvpId.length > 0
           ? result.rsvpId
           : null,
       );

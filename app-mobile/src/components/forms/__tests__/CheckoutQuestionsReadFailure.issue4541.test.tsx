@@ -173,3 +173,46 @@ describe("#4541 R2.10 a failed questions read — the mounted block (default)", 
     act(() => root.unmount());
   });
 });
+
+describe("#4541 the cart is held until the questions block reports (no fast-tap pay)", () => {
+  const fs = require("node:fs") as typeof import("node:fs");
+  const path = require("node:path") as typeof import("node:path");
+  const cart = fs.readFileSync(path.join(__dirname, "..", "..", "expandedCard", "TicketCartSheet.tsx"), "utf8");
+
+  it("the cart starts with no report and an active block holds Continue until one arrives", () => {
+    expect(cart).toMatch(/useState<CheckoutQuestionsState \| null>\(null\)/);
+    expect(cart).toMatch(/questionsReady = !questionsActive \|\| \(formQuestions !== null && formQuestions\.ready\)/);
+    expect(cart).not.toMatch(/useState<CheckoutQuestionsState>\(\{ ready: true/);
+    // A block that went away reports afresh next time.
+    expect(cart).toMatch(/if \(!questionsActive\) setFormQuestions\(null\);/);
+  });
+
+  it("the block reports on mount (loading, not ready) and then 'no form' (ready with the marker)", async () => {
+    let resolveRead: (v: null) => void = () => undefined;
+    mockFetchCheckoutForm.mockImplementation(() => new Promise<null>((r) => { resolveRead = r; }));
+    const states: CheckoutQuestionsState[] = [];
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let root!: import("react-test-renderer").ReactTestRenderer;
+    await act(async () => {
+      root = TestRenderer.create(
+        <QueryClientProvider client={client}>
+          <CheckoutQuestionsBlock
+            eventId={EVENT}
+            enabled
+            disabled={false}
+            highlight={false}
+            onStateChange={(s) => states.push(s)}
+            onBackToEvent={() => undefined}
+          />
+        </QueryClientProvider>,
+      );
+    });
+    expect(states[0]).toEqual({ ready: false, hint: forms.checkoutLoading });
+    await act(async () => {
+      resolveRead(null);
+    });
+    await flush();
+    expect(states.at(-1)).toEqual({ ready: true, hint: null, brandFormStep: 1 });
+    act(() => root.unmount());
+  });
+});

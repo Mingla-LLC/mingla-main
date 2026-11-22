@@ -228,11 +228,9 @@ export async function fetchMyForm(formId: string, eventId: string | null): Promi
 }
 
 /**
- * R4.5 — a Blast form (no page) read with the campaign it came in.
- * [TRANSITIONAL] #4541 wave 6 server: `{op:"blast_form", formId, campaignId}`
- * is built against the spec's shape ({form, brand, botTicket}); until the edge
- * op lands the server answers bad_request and the screen shows "This link
- * doesn't work". Exit: wave 6 commits the op in brand-form-submit.
+ * R4.5 — a Blast form (no page) read with the campaign it came in, through
+ * brand-form-submit `{op:"blast_form", formId, campaignId}`, which answers
+ * `{form, brand, botTicket}`.
  */
 export async function fetchBlastForm(formId: string, campaignId: string): Promise<FormScreenRead> {
   const data = asRecord(await invoke({ op: "blast_form", formId, campaignId }));
@@ -380,10 +378,8 @@ export interface SubmitBrandFormBody {
   rsvpGuestId?: string | null;
   orderId?: string | null;
   /**
-   * [TRANSITIONAL] #4541 wave 6 server: Blast replies (R4.5). The submit body
-   * keys `campaignId`, `botTicket` and `website` are refused as unknown keys
-   * until wave 6 adds them to `_shared/brandFormsContract.ts` BODY_KEYS. Exit:
-   * wave 6 commits them.
+   * Blast replies (R4.5): `campaignId`, `botTicket` and `website` (the bot
+   * trap) are accepted submit keys (`_shared/brandFormsContract.ts` BODY_KEYS).
    */
   campaignId?: string | null;
   botTicket?: string | null;

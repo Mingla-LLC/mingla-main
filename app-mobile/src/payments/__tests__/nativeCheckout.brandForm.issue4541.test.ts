@@ -55,6 +55,9 @@ import {
 import {
   checkoutFormRefusalCode,
   clearCheckoutFormRefusal,
+  forgetCheckoutAnswers,
+  keepCheckoutAnswers,
+  readCheckoutAnswers,
   readCheckoutFormRefusal,
 } from "../../components/forms/checkoutFormRefusal";
 import { checkoutQuestionsState } from "../../components/forms/CheckoutQuestionsBlock";
@@ -154,6 +157,30 @@ describe("#4541 T-33 — refusals keep the answers and say nothing was charged",
     await useNativeCheckoutFlow()({ ...baseInput, brandFormStep: 1 });
     expect(readCheckoutFormRefusal(EVENT)).toBeNull();
     expect(checkoutFormRefusalCode("checkout_in_progress", null)).toBeNull();
+  });
+
+  it("a booking clears this event's typed answers and refusal (other events keep theirs)", async () => {
+    const OTHER = "33333333-3333-4333-8333-333333333333";
+    mockInvoke.mockResolvedValueOnce(refusal(409, { error: "form_changed" }));
+    await useNativeCheckoutFlow()({ ...baseInput, brandFormStep: 1 });
+    expect(readCheckoutFormRefusal(EVENT)?.code).toBe("form_changed");
+    keepCheckoutAnswers(EVENT, FORM, { [Q1]: "Vegan" });
+    keepCheckoutAnswers(OTHER, FORM, { [Q1]: "Halal" });
+    mockInvoke.mockResolvedValueOnce({ data: { kind: "free_completed", orderId: "order-1" }, error: null });
+    const result = await useNativeCheckoutFlow()({ ...baseInput, brandFormStep: 1 });
+    expect(result.outcome).toBe("succeeded");
+    expect(readCheckoutAnswers(EVENT)).toBeUndefined();
+    expect(readCheckoutFormRefusal(EVENT)).toBeNull();
+    expect(readCheckoutAnswers(OTHER)?.answers).toEqual({ [Q1]: "Halal" });
+    forgetCheckoutAnswers();
+  });
+
+  it("a refused checkout keeps the typed answers", async () => {
+    keepCheckoutAnswers(EVENT, FORM, { [Q1]: "Vegan" });
+    mockInvoke.mockResolvedValueOnce(refusal(422, { error: "form_answers_required" }));
+    await useNativeCheckoutFlow()({ ...baseInput, brandFormStep: 1 });
+    expect(readCheckoutAnswers(EVENT)?.answers).toEqual({ [Q1]: "Vegan" });
+    forgetCheckoutAnswers();
   });
 
   it("a 5xx with a form token stays the generic copy (the 409 catch-all is never reached first)", () => {

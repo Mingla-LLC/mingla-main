@@ -5,6 +5,7 @@
  * written by nativeCheckoutFlow on a refusal and read by the block. Pure (no
  * React, no native modules), so the flow and its tests load it freely.
  */
+import type { BrandAnswers } from "@mingla/form-rendering";
 
 export type CheckoutFormRefusalCode =
   | "form_answers_required"
@@ -74,10 +75,43 @@ export function reportCheckoutFormRefusal(
   return true;
 }
 
-export function clearCheckoutFormRefusal(eventId: string): void {
-  if (current?.eventId !== eventId) return;
+/** Clear the refusal for an event, or every refusal when no event is named. */
+export function clearCheckoutFormRefusal(eventId?: string): void {
+  if (current === null) return;
+  if (eventId !== undefined && current.eventId !== eventId) return;
   current = null;
   emit();
+}
+
+/**
+ * Typed checkout answers per event, kept while the cart remounts (memory
+ * only). Lives here, beside the refusal, so the checkout flow and the sign-out
+ * cleanup can clear it without loading the lazy questions block.
+ */
+const typedByEvent = new Map<string, { formId: string; answers: BrandAnswers }>();
+
+export function readCheckoutAnswers(eventId: string): { formId: string; answers: BrandAnswers } | undefined {
+  return typedByEvent.get(eventId);
+}
+
+export function keepCheckoutAnswers(eventId: string, formId: string, answers: BrandAnswers): void {
+  typedByEvent.set(eventId, { formId, answers });
+}
+
+/** Clear what was typed for an event, or for every event when none is named. */
+export function forgetCheckoutAnswers(eventId?: string): void {
+  if (eventId === undefined) typedByEvent.clear();
+  else typedByEvent.delete(eventId);
+}
+
+/**
+ * #4541 — after a booking for this event (or, with no event, on sign-out so the
+ * next person on this phone never sees these answers): drop the typed answers
+ * and any refusal.
+ */
+export function forgetCheckoutForm(eventId?: string): void {
+  forgetCheckoutAnswers(eventId);
+  clearCheckoutFormRefusal(eventId);
 }
 
 export function readCheckoutFormRefusal(eventId: string): CheckoutFormRefusal | null {

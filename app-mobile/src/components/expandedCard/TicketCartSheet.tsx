@@ -607,11 +607,20 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const [consentHintVisible, setConsentHintVisible] = useState<boolean>(false);
   const signedInBuyer =
     typeof buyerUserId === "string" && buyerUserId.length > 0;
-  // #4541 R2.10 — what the questions block reports; ready when there is none.
-  const [formQuestions, setFormQuestions] = useState<CheckoutQuestionsState>({ ready: true, hint: null });
+  // #4541 R2.10 — what the questions block reports. Null until the (lazy)
+  // block reports in: an active block holds "Continue to Payment" until then,
+  // so a fast tap can never pay without the capability marker. Ready at once
+  // when this cart has no questions block. The block reports on mount and on
+  // every change (loading, no form, a form, or a failed read per
+  // CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY), so this never sticks.
+  const [formQuestions, setFormQuestions] = useState<CheckoutQuestionsState | null>(null);
   const [formHintVisible, setFormHintVisible] = useState<boolean>(false);
   const questionsActive = brandFormQuestions && visible && signedInBuyer;
-  const questionsReady = !questionsActive || formQuestions.ready;
+  const questionsReady = !questionsActive || (formQuestions !== null && formQuestions.ready);
+  // A block that went away (sheet closed, signed out) must report afresh.
+  useEffect(() => {
+    if (!questionsActive) setFormQuestions(null);
+  }, [questionsActive]);
   // #3859 P1 — Explorer checkout is authenticated. A missing id means auth is
   // unresolved or expired, never that native should expose buyer-web's
   // anonymous identity form.
@@ -1135,10 +1144,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         ...(quoteEventDateIds.length > 0
           ? { eventDateIds: quoteEventDateIds }
           : {}),
-        ...(questionsActive && formQuestions.brandFormStep === 1
+        ...(questionsActive && formQuestions?.brandFormStep === 1
           ? { brandFormStep: 1 as const }
           : {}),
-        ...(questionsActive && formQuestions.brandForm !== undefined
+        ...(questionsActive && formQuestions?.brandForm !== undefined
           ? { brandForm: formQuestions.brandForm }
           : {}),
       };
@@ -2804,6 +2813,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         {/* #4541 R2.10 — one reason at a time: the questions are the last. */}
         {questionsActive &&
         !isSubmitting &&
+        formQuestions !== null &&
         formQuestions.hint !== null &&
         !missingRequiredDay &&
         !totals.isEmpty &&

@@ -63,7 +63,7 @@ import {
   nativePaystackReturnMessage,
 } from "./checkoutErrorMessages";
 // #4541 R2.10 — pure store (no React, no native modules).
-import { reportCheckoutFormRefusal } from "../components/forms/checkoutFormRefusal";
+import { forgetCheckoutForm, reportCheckoutFormRefusal } from "../components/forms/checkoutFormRefusal";
 import {
   clearNativeCheckoutRecoveryFor,
   createNativeCheckoutRecoveryPointer,
@@ -973,6 +973,8 @@ export const useNativeCheckoutFlow = (): ((
       ) {
         checkoutAttemptTracker.reset();
       }
+      // #4541 — a booked event's typed questions and any refusal are done with.
+      if (result.outcome === "succeeded") forgetCheckoutForm(input.eventId);
       return result;
     } finally {
       // Cleared on EVERY path, including a throw, or the buy control is dead

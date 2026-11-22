@@ -39,6 +39,13 @@ import {
   stripFormToken,
   takePendingFormRoute,
 } from "../../components/forms/formsStartup";
+import {
+  forgetCheckoutForm,
+  keepCheckoutAnswers,
+  readCheckoutAnswers,
+  readCheckoutFormRefusal,
+  reportCheckoutFormRefusal,
+} from "../../components/forms/checkoutFormRefusal";
 
 // The predicate performPrivateAuthCleanup sweeps AsyncStorage with. Read from
 // source so this suite does not load the cleanup's own integrations.
@@ -135,5 +142,23 @@ describe("#4541 R2.3 — the route held through sign-in", () => {
   it("only form routes are held", async () => {
     await setPendingFormRoute("/purchases");
     expect(await takePendingFormRoute()).toBeNull();
+  });
+});
+
+describe("#4541 — sign-out clears the typed checkout answers and refusals (memory)", () => {
+  it("performPrivateAuthCleanup calls forgetCheckoutForm() for every event", () => {
+    const body = cleanupSource.slice(cleanupSource.indexOf("export async function performPrivateAuthCleanup"));
+    expect(body).toMatch(/\n\s*forgetCheckoutForm\(\);/);
+  });
+
+  it("forgetCheckoutForm() with no event drops every event's answers and the refusal", () => {
+    const OTHER = "45410000-0000-4000-8000-0000000000e2";
+    keepCheckoutAnswers(EVENT, FORM, { q: "user A" });
+    keepCheckoutAnswers(OTHER, FORM, { q: "user A again" });
+    expect(reportCheckoutFormRefusal(OTHER, "form_changed", null, null)).toBe(true);
+    forgetCheckoutForm();
+    expect(readCheckoutAnswers(EVENT)).toBeUndefined();
+    expect(readCheckoutAnswers(OTHER)).toBeUndefined();
+    expect(readCheckoutFormRefusal(OTHER)).toBeNull();
   });
 });

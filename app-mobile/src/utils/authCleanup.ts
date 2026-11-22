@@ -14,6 +14,7 @@ import { clearNativeAdAttribution } from "../services/nativeAdAttributionService
 import { SEEN_MATCHES_KEY_PREFIX } from "../hooks/useSeenSessionMatches";
 import { TEAM_BRAND_CACHE_PREFIX } from "../components/connections/teamBrandCache";
 import { clearDeckVenueHandoff } from "../components/venuePage/deckVenueHandoff";
+import { forgetCheckoutForm } from "../components/forms/checkoutFormRefusal";
 
 type CleanupOptions = {
   reason: string;
@@ -50,6 +51,9 @@ export async function performPrivateAuthCleanup(options: CleanupOptions): Promis
   store.clearUserData();
   // #4347 wave 4: the deck card handed to a venue page belongs to this user.
   clearDeckVenueHandoff();
+  // #4541: typed checkout answers and refusals (memory only) belong to this
+  // user; the AsyncStorage form drafts go with the `mingla_` sweep below.
+  forgetCheckoutForm();
 
   queryClient.cancelQueries({
     predicate: (query) => shouldRemoveForAuthChange(query.queryKey, currentUserId),

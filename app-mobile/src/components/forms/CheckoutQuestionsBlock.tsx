@@ -34,6 +34,9 @@ import {
 import { useCheckoutForm } from "../../hooks/useBrandForm";
 import type { CheckoutBrandForm } from "../../services/brandFormService";
 import {
+  forgetCheckoutAnswers,
+  keepCheckoutAnswers,
+  readCheckoutAnswers,
   readCheckoutFormRefusal,
   subscribeCheckoutFormRefusal,
   type CheckoutFormRefusalCode,
@@ -65,14 +68,9 @@ export interface CheckoutQuestionsState {
  */
 export const CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY: boolean = false;
 
-/** Typed answers per event, kept while the cart remounts (memory only). */
-const typedByEvent = new Map<string, { formId: string; answers: BrandAnswers }>();
-
-/** Clear what was typed for an event (after a booking, and in tests). */
-export function forgetCheckoutAnswers(eventId?: string): void {
-  if (eventId === undefined) typedByEvent.clear();
-  else typedByEvent.delete(eventId);
-}
+// Typed answers per event live in checkoutFormRefusal.ts (cleared after a
+// booking by the checkout flow and on sign-out by the auth cleanup).
+export { forgetCheckoutAnswers };
 
 /** What the cart needs from the read and the answers. Pure; exported for tests. */
 export function checkoutQuestionsState(input: {
@@ -143,7 +141,7 @@ export function CheckoutQuestionsBlock({
   const primitives = useFormPrimitives();
   const query = useCheckoutForm(eventId, enabled);
   const form = query.data;
-  const [answers, setAnswersState] = useState<BrandAnswers>(() => typedByEvent.get(eventId)?.answers ?? {});
+  const [answers, setAnswersState] = useState<BrandAnswers>(() => readCheckoutAnswers(eventId)?.answers ?? {});
   const [failedRetries, setFailedRetries] = useState(0);
   const refusal = useSyncExternalStore(
     subscribeCheckoutFormRefusal,
@@ -153,7 +151,7 @@ export function CheckoutQuestionsBlock({
 
   const setAnswers = useCallback((next: BrandAnswers) => {
     setAnswersState(next);
-    if (form) typedByEvent.set(eventId, { formId: form.formId, answers: next });
+    if (form) keepCheckoutAnswers(eventId, form.formId, next);
   }, [eventId, form]);
 
   // A new read: keep typed answers by question id; else start from the
@@ -161,7 +159,7 @@ export function CheckoutQuestionsBlock({
   useEffect(() => {
     if (!form || form.answeredHere) return;
     setAnswersState((prev) => {
-      const typed = typedByEvent.get(eventId);
+      const typed = readCheckoutAnswers(eventId);
       const base = typed !== undefined && typed.formId === form.formId ? typed.answers : prev;
       const kept = remapAnswersById(base, form.definition as BrandFormDefinitionShape);
       if (Object.keys(kept).length > 0) return kept;
