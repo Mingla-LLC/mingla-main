@@ -179,8 +179,7 @@ function world(): World {
 
 const db: BrandFormSubmitDb = {
   switchedOff: () => Promise.resolve(false),
-  countAttempts: () => Promise.resolve({ ip10m: 0, ip24h: 0 }),
-  recordAttempt: () => Promise.resolve(),
+  attemptAdmit: () => Promise.resolve({ allowed: true }),
   userFromBearer: () => Promise.resolve(null),
   submitCore: () => Promise.reject(new Error("the code path never submits")),
 };

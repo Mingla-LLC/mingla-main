@@ -21,6 +21,8 @@ import {
   detachBrandForm,
   fetchBrandForm,
   fetchBrandFormCounts,
+  fetchDoorReads,
+  fetchGuestAnswers,
   fetchBrandFormResponses,
   fetchBrandForms,
   fetchEventAttachment,
@@ -29,12 +31,18 @@ import {
   reopenBrandForm,
   saveBrandFormDraft,
   setBrandFormDoorFullAnswers,
+  setBrandFormDoorInvited,
+  setBrandFormResponseHidden,
   type AttachInput,
+  type DoorReadRow,
+  type GuestAnswersCardData,
+  type GuestAnswersSubjectKind,
   type AttachResult,
   type BrandFormAttachment,
   type BrandFormCounts,
   type BrandFormDetail,
   type BrandFormListItem,
+  type BrandFormOwnerFilter,
   type BrandFormResponsesFilter,
   type BrandFormResponsesPage,
   type BrandFormRow,
@@ -45,6 +53,10 @@ import {
 } from "../services/brandFormsService";
 import type { BrandFormDefinition } from "../utils/brandFormDefinition";
 import { brandFormKeys } from "./brandFormKeys";
+import { marketingKeys } from "./marketing/marketingKeys";
+import { listCampaigns } from "../services/marketing/marketingCampaignService";
+import { countScheduledBlastsUsingForm } from "../utils/marketing/blastFormUsage";
+import type { MarketingCampaignRow } from "../types/marketing";
 import { loadRosterAnswers, type RosterAnswerIndex } from "../utils/guestRosterAnswers";
 import {
   fetchFormRequestLog,
@@ -72,6 +84,24 @@ export function useBrandFormsList(brandId: string | null): UseQueryResult<BrandF
   const ready = useReady();
   return useQuery<BrandFormListItem[]>({
     queryKey: brandId === null ? brandFormKeys.idle("list") : brandFormKeys.list(brandId),
+    enabled: ready && brandId !== null,
+    staleTime: 15_000,
+    queryFn: () => {
+      if (brandId === null) throw new Error("brand_required");
+      return fetchBrandForms(brandId);
+    },
+  });
+}
+
+/**
+ * #4541 R4.2: the forms the Blast composer's "+ Form" picker lists (this
+ * brand's, archived left out; the picker says why a draft or closed form
+ * cannot be sent).
+ */
+export function useBlastFormPicker(brandId: string | null): UseQueryResult<BrandFormListItem[]> {
+  const ready = useReady();
+  return useQuery<BrandFormListItem[]>({
+    queryKey: brandId === null ? brandFormKeys.idle("blast-picker") : brandFormKeys.blastPicker(brandId),
     enabled: ready && brandId !== null,
     staleTime: 15_000,
     queryFn: () => {
@@ -113,20 +143,44 @@ export function useBrandFormResponses(input: {
   formId: string | null;
   eventId: string | null;
   filter: BrandFormResponsesFilter;
+  /** #4541 R4.7: All, Known or Unknown (default All). */
+  owner?: BrandFormOwnerFilter;
+  /** #4541 R4.8: include hidden Unknown replies. */
+  showHidden?: boolean;
   enabled?: boolean;
 }): UseQueryResult<BrandFormResponsesPage> {
   const ready = useReady();
   const { formId, eventId, filter } = input;
+  const owner = input.owner ?? "all";
+  const showHidden = input.showHidden === true;
   return useQuery<BrandFormResponsesPage>({
     queryKey:
       formId === null
         ? brandFormKeys.idle("responses")
-        : brandFormKeys.responses(formId, eventId, filter),
+        : brandFormKeys.responses(formId, eventId, responsesFilterKey(filter, owner, showHidden)),
     enabled: ready && formId !== null && input.enabled !== false,
     staleTime: 10_000,
     queryFn: () => {
       if (formId === null) throw new Error("form_required");
-      return fetchBrandFormResponses({ formId, eventId, filter });
+      return fetchBrandFormResponses({ formId, eventId, filter, owner, showHidden });
+    },
+  });
+}
+
+/** #4541 §6.2: the owner filter and the hidden toggle fold into the responses key's filter string. */
+export const responsesFilterKey = (
+  filter: BrandFormResponsesFilter,
+  owner: BrandFormOwnerFilter,
+  showHidden: boolean,
+): string => `${filter}:${owner}:${showHidden ? 1 : 0}`;
+
+/** #4541 R4.8: hide an Unknown reply, or undo it. Every forms read refreshes (counts, lists, export). */
+export function useHideBrandFormResponse(): UseMutationResult<boolean, Error, { responseId: string; hidden: boolean }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { responseId: string; hidden: boolean }) => setBrandFormResponseHidden(v.responseId, v.hidden),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: brandFormKeys.all });
     },
   });
 }
@@ -160,6 +214,41 @@ export function useGuestQuestionsTileData(
     queryFn: () => {
       if (eventId === null) throw new Error("event_required");
       return fetchGuestQuestionsTile(eventId);
+    },
+  });
+}
+
+/** #4541 R1.9: one guest's answers for the page's active form (marketing manager and up). */
+export function useGuestAnswers(
+  eventId: string | null,
+  subject: { kind: GuestAnswersSubjectKind; id: string } | null,
+  enabled = true,
+): UseQueryResult<GuestAnswersCardData> {
+  const ready = useReady();
+  return useQuery<GuestAnswersCardData>({
+    queryKey:
+      eventId === null || subject === null
+        ? brandFormKeys.idle("guest-answers")
+        : brandFormKeys.guestAnswers(eventId, subject.kind, subject.id),
+    enabled: ready && eventId !== null && subject !== null && enabled,
+    staleTime: 15_000,
+    queryFn: () => {
+      if (eventId === null || subject === null) throw new Error("subject_required");
+      return fetchGuestAnswers(eventId, subject);
+    },
+  });
+}
+
+/** #4541 R8.3: the latest door reads of full answers on one page (event manager and up). */
+export function useDoorReads(eventId: string | null, enabled = true): UseQueryResult<DoorReadRow[]> {
+  const ready = useReady();
+  return useQuery<DoorReadRow[]>({
+    queryKey: eventId === null ? brandFormKeys.idle("door-reads") : brandFormKeys.doorReads(eventId),
+    enabled: ready && eventId !== null && enabled,
+    staleTime: 15_000,
+    queryFn: () => {
+      if (eventId === null) throw new Error("event_required");
+      return fetchDoorReads(eventId);
     },
   });
 }
@@ -230,6 +319,17 @@ export function useSetDoorFullAnswers(): UseMutationResult<boolean, Error, { for
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { formId: string; on: boolean }) => setBrandFormDoorFullAnswers(v.formId, v.on),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: brandFormKeys.all });
+    },
+  });
+}
+
+/** #4541 R8.3: "Invited door staff can too". */
+export function useSetDoorInvited(): UseMutationResult<boolean, Error, { formId: string; on: boolean }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { formId: string; on: boolean }) => setBrandFormDoorInvited(v.formId, v.on),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: brandFormKeys.all });
     },
@@ -357,5 +457,27 @@ export function useFormRequestLog(
       if (input === null) throw new Error("request_required");
       return fetchFormRequestLog(input);
     },
+  });
+}
+
+/**
+ * #4541 design v10 G "2b": how many of the brand's scheduled Blasts carry this
+ * form (`channel_payload.embedded_form.form_id`). The campaigns list read the
+ * Blast list already uses (same key, shared cache), under the caller's own RLS
+ * (`marketing_campaigns_select`: owner or brand team). Off until `enabled`.
+ */
+export function useScheduledBlastsUsingForm(
+  brandId: string | null,
+  formId: string | null,
+  enabled: boolean,
+): UseQueryResult<number> {
+  const ready = useReady();
+  return useQuery<MarketingCampaignRow[], Error, number>({
+    queryKey:
+      brandId === null ? marketingKeys.campaigns.all : marketingKeys.campaigns.list(brandId, "scheduled"),
+    enabled: ready && enabled && brandId !== null && formId !== null,
+    staleTime: 30_000,
+    queryFn: () => listCampaigns({ brand_id: brandId as string, status: "scheduled" }),
+    select: (rows) => countScheduledBlastsUsingForm(rows, formId),
   });
 }

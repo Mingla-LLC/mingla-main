@@ -22,7 +22,6 @@ import type {
   RsvpAnonymousRecovery,
   RsvpPassCredential,
 } from "@mingla/offering-rendering";
-import { parseRsvpBrandFormPage } from "@mingla/offering-rendering/rsvpBrandForm";
 // issue #4508 — the pure guest model by subpath (no barrel, so partial jest
 // mocks of the barrel are unaffected).
 import { parseSubmittedGuests } from "@mingla/offering-rendering/rsvpGuestParse";
@@ -203,17 +202,6 @@ export const parseRsvpGuestLookup = (data: unknown): RsvpGuestLookupResult => {
   };
 };
 
-/** #4541 — the public page form, never responses or host counts. */
-export const fetchDeckRsvpBrandForm = async (
-  eventId: string,
-): Promise<import("@mingla/offering-rendering").RsvpBrandFormPage | null> => {
-  const { data, error } = await supabase.rpc("public_brand_form_for_event", {
-    p_event_id: eventId,
-  });
-  if (error !== null) throw new Error(error.message || "brand_form_load_failed");
-  return parseRsvpBrandFormPage(data);
-};
-
 /**
  * Write the signed-in user's Going / Maybe / Not-going for a discoverable RSVP
  * event. Throws an Error whose message is the edge-fn error code (rsvp_full /
@@ -282,25 +270,6 @@ export const submitDeckRsvp = async (
 export interface RsvpPassFetchResult {
   pdf: { filename: string; contentBase64: string };
 }
-
-export interface RsvpPendingBrandForm {
-  eventId: string;
-  subject: { kind: "rsvp" | "rsvp_guest" | "order"; id: string };
-  mode: "optional_on_page" | "required_step" | "after_purchase";
-  required: boolean;
-  formId: string;
-  formName: string;
-  formStatus: "live" | "closed";
-  answered: boolean;
-  brand: { displayName?: string } | null;
-}
-
-/** #4541 — pending/editable questions for the signed-in holder's passes. */
-export const fetchMyPendingBrandForms = async (): Promise<RsvpPendingBrandForm[]> => {
-  const { data, error } = await supabase.rpc("brand_forms_my_pending");
-  if (error !== null) throw new Error(error.message || "brand_forms_load_failed");
-  return Array.isArray(data) ? data as RsvpPendingBrandForm[] : [];
-};
 
 interface RsvpPartyPassRow {
   entity_type: "primary" | "guest";

@@ -23,7 +23,7 @@ import {
 } from "react-native";
 import { BaseBottomSheet, BottomSheetScrollView } from "../ui/BaseBottomSheet";
 import QRCode from "react-native-qrcode-svg";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 
@@ -32,7 +32,6 @@ import type { ConsumerRsvpRow } from "../../services/calendarService";
 import {
   fetchRsvpPartyDetails,
   fetchRsvpPassPdf,
-  fetchMyPendingBrandForms,
   submitDeckRsvp,
   type RsvpPartyGuestStatus,
 } from "../../services/rsvpDeckService";
@@ -41,7 +40,8 @@ import { RsvpBringSomeone, RsvpPartyInvites } from "./RsvpPartyInvites";
 import { normalizeCityCountry } from "@mingla/offering-rendering/normalizeCityCountry";
 import type { RsvpPassCredential } from "@mingla/offering-rendering";
 import { useAppStore } from "../../store/appStore";
-import { brandFormKeys } from "../../hooks/queryKeys";
+// #4541 R2.6 — the questions card (it reads the guest's pending forms itself).
+import { QuestionsCard } from "../forms/QuestionsCard";
 import { toastManager } from "../ui/Toast";
 // #4261: the online event link opens in Mingla's in-app browser, through a
 // provider mounted inside this sheet's own RN Modal window.
@@ -129,19 +129,9 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
   const selectedCredential = credentials.find(
     (item) => item.entityId === selectedEntityId,
   ) ?? credentials[0] ?? null;
-  const pendingForms = useQuery({
-    queryKey: brandFormKeys.myPending(user?.id ?? null),
-    enabled: visible && user !== null,
-    staleTime: 30_000,
-    queryFn: fetchMyPendingBrandForms,
-  });
   const formSubject = row.guestId
     ? { kind: "rsvp_guest", id: row.guestId } as const
     : { kind: "rsvp", id: row.rsvpId } as const;
-  const passForm = (pendingForms.data ?? []).find(
-    (item) => item.eventId === row.eventId &&
-      item.subject.kind === formSubject.kind && item.subject.id === formSubject.id,
-  ) ?? null;
 
   // #4508 round 9: the purchase sheets' reveal (SendTicketSheet,
   // AddIdentitySheet): once the keyboard has risen, scroll the sheet to its end
@@ -461,43 +451,15 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
           </Text>
         </View>
 
-        {passForm !== null ? (
-          // [TRANSITIONAL] #4541: replace with router.push('/form/{id}') when the
-          // Explorer form screen ships. brand_forms_my_pending returns no guest
-          // link, so until then this is a status line, not a button.
-          <View
-            style={styles.questionsCard}
-            accessible
-            accessibilityLabel={`Questions from ${passForm.brand?.displayName ?? row.brandName ?? "the host"}. ${passForm.formName}, ${
-              passForm.formStatus === "closed"
-                ? "Answers closed"
-                : passForm.answered
-                  ? "Answered"
-                  : "To answer"
-            }.${
-              passForm.formStatus !== "closed" && !passForm.answered
-                ? " The host may send you a link to answer."
-                : ""
-            }`}
-            testID="issue-4541-rsvp-pass-questions"
-          >
-            <View style={styles.questionsCopy}>
-              <Text style={styles.questionsTitle}>
-                Questions from {passForm.brand?.displayName ?? row.brandName ?? "the host"}
-              </Text>
-              <Text style={styles.questionsMeta}>
-                {passForm.formName} ·{" "}
-                {passForm.formStatus === "closed"
-                  ? "Answers closed"
-                  : passForm.answered
-                    ? "Answered"
-                    : "To answer"}
-              </Text>
-              {passForm.formStatus !== "closed" && !passForm.answered ? (
-                <Text style={styles.questionsMeta}>The host may send you a link to answer.</Text>
-              ) : null}
-            </View>
-          </View>
+        {visible && user !== null && !isPending ? (
+          <QuestionsCard
+            subjectKind={formSubject.kind}
+            subjectId={formSubject.id}
+            eventId={row.eventId}
+            from="pass"
+            maybe={row.status === "maybe"}
+            onBeforeOpen={onClose}
+          />
         ) : null}
 
         {selectedCredential?.qrCode ? (
@@ -709,20 +671,6 @@ const styles = StyleSheet.create({
     color: "#eab308",
     backgroundColor: "rgba(234,179,8,0.16)",
   },
-  questionsCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginTop: 16,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(235,120,37,0.45)",
-    backgroundColor: "rgba(235,120,37,0.10)",
-  },
-  questionsCopy: { flex: 1, gap: 3 },
-  questionsTitle: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  questionsMeta: { color: "rgba(255,255,255,0.58)", fontSize: 12 },
   guestNote: {
     marginTop: 16,
     color: "rgba(255,255,255,0.55)",

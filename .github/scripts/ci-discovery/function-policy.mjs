@@ -9,7 +9,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
 export const CONTRACT_PATH = path.join(REPO_ROOT, "supabase/function-env.contract.json");
 export const CONFIG_PATH = path.join(REPO_ROOT, "supabase/config.toml");
-export const CONTRACT_SHA256 = "e42b47e5828b2d7851f1bbd00975082cb763f07a03f2285155f71519b0867e70";
+// #4541 forms ops: notify-reminders now requires RESEND_API_KEY (top level) in supabase/function-env.contract.json; re-sealed.
+export const CONTRACT_SHA256 = "b2906c0e0dd678abaad4d8da198341bc1c0f0bdf49bb6717d6bbf0ca357d4e1b";
 export const CONFIG_SHA256 = "cc9d8f5f5e8f4819d27c6ac97367bc5c74216e1925f4860aacfe69d55431e4cd";
 export const FUNCTION_POLICY_FILE = "function-policy.json";
 export const SHARED_POLICY_SUFFIX = ".function-policy.json";

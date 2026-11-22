@@ -22,7 +22,8 @@ describe("counts", () => {
   it("calls biz_brand_form_counts once for the brand and maps forms and pages", async () => {
     rpc.mockResolvedValueOnce({
       data: {
-        forms: [{ formId: "f1", answered: 4, toAnswer: 2, pages: 1 }],
+        // #4541 R4.9 (added on purpose): Blast replies default to zero from an older server.
+      forms: [{ formId: "f1", answered: 4, toAnswer: 2, pages: 1, blastReplies: { known: 0, unknown: 0 } }],
         pages: [{ eventId: "e1", formId: "f1", formStatus: "live", answered: 4, toAnswer: 2 }],
       },
       error: null,
@@ -30,8 +31,10 @@ describe("counts", () => {
     const out = await fetchBrandFormCounts("b1");
     expect(rpc).toHaveBeenCalledWith("biz_brand_form_counts", { p_brand_id: "b1" });
     expect(out).toEqual({
-      forms: [{ formId: "f1", answered: 4, toAnswer: 2, pages: 1 }],
-      pages: [{ eventId: "e1", formId: "f1", answered: 4, toAnswer: 2 }],
+      // #4541 R4.9 (added on purpose): Blast replies default to zero from an older server.
+      forms: [{ formId: "f1", answered: 4, toAnswer: 2, pages: 1, blastReplies: { known: 0, unknown: 0 } }],
+      // #4541 R1.2 (added on purpose): `notAsked` is null when the server sends none.
+      pages: [{ eventId: "e1", formId: "f1", answered: 4, toAnswer: 2, notAsked: null }],
     });
   });
 

@@ -139,6 +139,8 @@ export interface ComposerV2EditorProps {
   brandName: string | null;
   currentDraftIsDirty: boolean;
   onErrorToast: (msg: string) => void;
+  /** #4541 R4.2 — the toolbar's "+ Form" (passed through to InsertionBar). */
+  onAddForm?: () => void;
 }
 
 export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2EditorProps>(
@@ -155,6 +157,7 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       brandName,
       currentDraftIsDirty,
       onErrorToast,
+      onAddForm,
     } = props;
 
     const richEditorRef = useRef<RichEditorHandle>(null);
@@ -662,6 +665,7 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           formatState={formatState ?? undefined}
           onInsertEvent={handleInsertEventLocal}
           onInsertPersonalization={handleInsertPersonalizationLocal}
+          onAddForm={onAddForm}
           onOpenLink={handleToggleLinkLocal}
           onInsertDivider={handleInsertDividerLocal}
           onInsertImage={() =>

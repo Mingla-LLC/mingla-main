@@ -110,6 +110,12 @@ export interface RenderMarketingEmailInput {
    * is injected above the unsubscribe footer on every blast email.
    */
   brand_follow_url?: string | null;
+  /**
+   * #4541 R4.3: a Blast's "+ Form". A button "Answer: {name}" whose href is a
+   * server-owned inert marker, replaced per recipient by their own form link.
+   * It is added after link tracking, so it never goes through /m/ (C3).
+   */
+  embedded_form?: { name: string; url_marker: string };
 }
 
 export interface RenderMarketingEmailResult {
@@ -243,7 +249,16 @@ export function renderMarketingEmail(
     input.unsubscribe_url,
     input.brand_name,
   );
-  const bodyWithFooter = `${withTrackingLinks}${followPanel}${unsubFooter}`;
+  // Step 4c — #4541 R4.3 the form button (per-recipient link, never tracked).
+  let formButton = "";
+  if (input.embedded_form !== undefined) {
+    const marker = input.embedded_form.url_marker;
+    if (marker.startsWith("http") || input.body_html.includes(marker)) {
+      throw new Error("blast_form_marker_invalid");
+    }
+    formButton = renderBlastFormButtonHtml(input.embedded_form.name, marker);
+  }
+  const bodyWithFooter = `${withTrackingLinks}${formButton}${followPanel}${unsubFooter}`;
 
   // Step 5 — brand-shell wrap.
   const html = renderShell({
@@ -278,8 +293,26 @@ export function renderMarketingEmail(
   if (input.offering_invite_url_marker !== undefined) {
     text += `\n\nEvent link: ${input.offering_invite_url_marker}`;
   }
+  if (input.embedded_form !== undefined) {
+    text += `\n\nAnswer: ${blastFormLabel(input.embedded_form.name)}: ${input.embedded_form.url_marker}`;
+  }
 
   return { subject: input.subject, html, text, links };
+}
+
+function blastFormLabel(name: string): string {
+  const n = name.replace(/\s+/g, " ").trim();
+  return n.length === 0 ? "the form" : n.length > 60 ? `${n.slice(0, 59).trimEnd()}…` : n;
+}
+
+/** #4541 R4.3: "Answer: {form name}", a plain button; the href is the recipient's own link. */
+export function renderBlastFormButtonHtml(formName: string, href: string): string {
+  const label = escapeHtml(`Answer: ${blastFormLabel(formName)}`);
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0;">` +
+    `<tr><td style="border-radius:8px;background:#111111;">` +
+    `<a href="${href}" style="display:inline-block;padding:12px 20px;color:#ffffff;` +
+    `font-weight:600;text-decoration:none;border-radius:8px;">${label}</a>` +
+    `</td></tr></table>`;
 }
 
 /**

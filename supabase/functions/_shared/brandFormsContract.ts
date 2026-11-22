@@ -80,6 +80,16 @@ export interface BrandFormSubmitRequest {
   /** Signed-in claimed plus-one: answer only for that claimed guest row. */
   rsvpGuestId?: string | null;
   orderId?: string | null;
+  /**
+   * #4541 R4.5: the Blast the form came in. With a token it is the recipient's
+   * own Blast link; signed in it is the person themselves; otherwise Unknown,
+   * which needs `botTicket` (from the blast_form read) and an empty `website`.
+   */
+  campaignId?: string | null;
+  /** #4541 R8.5: the bot ticket from the blast_form or page_form read (Unknown only). */
+  botTicket?: string | null;
+  /** #4541 R8.5: the honeypot field; must be empty or absent. */
+  website?: string | null;
 }
 
 export interface BrandFormSubmitSuccess {
@@ -88,6 +98,8 @@ export interface BrandFormSubmitSuccess {
   editCount: number;
   versionId: string;
   created: boolean;
+  /** #4541 R4.5: false for an Unknown Blast reply (a new row every time, no edit). */
+  editable?: boolean;
 }
 
 export type BrandFormSubmitErrorCode =
@@ -109,9 +121,12 @@ export type BrandFormSubmitErrorCode =
   | "link_revoked"
   | "code_required"
   | "not_holder"
+  | "not_current"
   | "form_not_on_event"
   | "subject_unavailable"
   | "credential_invalid"
+  | "open_reply_limit"
+  | "bot_check_failed"
   | "server_error";
 
 export interface BrandFormSubmitError {
@@ -146,9 +161,15 @@ export const BRAND_FORM_ERROR_STATUS: Readonly<
   link_revoked: 403,
   code_required: 403,
   not_holder: 403,
+  // #4541 R1.4: an RSVP, plus-one or order that is no longer current.
+  not_current: 403,
   form_not_on_event: 403,
   subject_unavailable: 422,
   credential_invalid: 400,
+  // #4541 R4.5: a form's daily limit of replies from people we cannot identify.
+  open_reply_limit: 429,
+  // #4541 R8.5: an Unknown reply without a valid bot ticket.
+  bot_check_failed: 422,
   server_error: 500,
 };
 
@@ -166,9 +187,11 @@ export const BRAND_FORM_CORE_CODES: readonly BrandFormSubmitErrorCode[] = [
   "link_revoked",
   "code_required",
   "not_holder",
+  "not_current",
   "form_not_on_event",
   "subject_unavailable",
   "credential_invalid",
+  "open_reply_limit",
 ];
 
 /**
@@ -209,6 +232,10 @@ const BODY_KEYS = new Set([
   "rsvpId",
   "rsvpGuestId",
   "orderId",
+  // #4541 R4.5 / R8.5 (Blast replies).
+  "campaignId",
+  "botTicket",
+  "website",
 ]);
 
 function optionalUuid(v: unknown): string | null | undefined {
@@ -233,11 +260,22 @@ export function parseSubmitRequest(
   const rsvpId = optionalUuid(r.rsvpId);
   const rsvpGuestId = optionalUuid(r.rsvpGuestId);
   const orderId = optionalUuid(r.orderId);
+  const campaignId = optionalUuid(r.campaignId);
   if (
-    [versionId, eventId, challengeId, rsvpId, rsvpGuestId, orderId].some((v) =>
-      v === undefined
-    )
+    [versionId, eventId, challengeId, rsvpId, rsvpGuestId, orderId, campaignId]
+      .some((v) => v === undefined)
   ) return null;
+  if (campaignId && (rsvpId || rsvpGuestId || orderId || eventId)) return null;
+  let botTicket: string | null = null;
+  if (r.botTicket !== undefined && r.botTicket !== null) {
+    if (typeof r.botTicket !== "string" || r.botTicket.length > 200) return null;
+    botTicket = r.botTicket;
+  }
+  let website: string | null = null;
+  if (r.website !== undefined && r.website !== null) {
+    if (typeof r.website !== "string" || r.website.length > 500) return null;
+    website = r.website;
+  }
   if ([rsvpId, rsvpGuestId, orderId].filter(Boolean).length > 1) return null;
   let token: string | null = null;
   if (r.token !== undefined && r.token !== null) {
@@ -275,6 +313,9 @@ export function parseSubmitRequest(
     rsvpId: rsvpId ?? null,
     rsvpGuestId: rsvpGuestId ?? null,
     orderId: orderId ?? null,
+    campaignId: campaignId ?? null,
+    botTicket,
+    website,
   };
 }
 
@@ -296,13 +337,28 @@ export function corePayload(
     expectedEditCount: req.expectedEditCount ?? null,
   };
   if (req.token) {
+    // A personal page link or a personal Blast link: the SQL core reads which.
     return {
       ...base,
+      ...(req.campaignId ? { source: req.source ?? "blast" } : {}),
       credential: {
         kind: "link",
         token: req.token,
         challengeId: req.challengeId ?? null,
       },
+    };
+  }
+  // #4541 R4.4: a Blast form. Signed in: the person themselves. Signed out with
+  // no link: Unknown (the edge checks the bot ticket first). Typed answers never
+  // change who a reply belongs to.
+  if (req.campaignId) {
+    return {
+      ...base,
+      eventId: null,
+      source: "blast",
+      credential: userId
+        ? { kind: "user", userId, campaignId: req.campaignId }
+        : { kind: "unknown", campaignId: req.campaignId },
     };
   }
   if (!userId) return null;

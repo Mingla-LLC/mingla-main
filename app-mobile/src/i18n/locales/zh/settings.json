@@ -49,7 +49,9 @@
         "brand_campaign_push": "你关注的地点发来的消息",
         "brand_campaign_push_hint": "你关注的地点和主办方的优惠与动态。",
         "brand_offering_invite": "你关注的地点发来的邀请",
-        "brand_offering_invite_hint": "当某个地点或主办方邀请你参加活动时。"
+        "brand_offering_invite_hint": "当某个地点或主办方邀请你参加活动时。",
+        "brand_form_request": "主办方的问题",
+        "brand_form_request_hint": "当主办方请你回答问题时。这类通知的邮件始终开启，因为邮件中有你的专属链接。短信按你的短信设置发送。"
       }
     },
     "friends_going": "好友出门",

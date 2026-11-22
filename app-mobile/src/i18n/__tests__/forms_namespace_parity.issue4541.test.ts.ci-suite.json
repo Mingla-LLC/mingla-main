@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "app-mobile/src/i18n/__tests__/forms_namespace_parity.issue4541.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4541-forms-namespace-parity",
+  "profile": "deno-2-unit",
+  "permissions": ["read"]
+}

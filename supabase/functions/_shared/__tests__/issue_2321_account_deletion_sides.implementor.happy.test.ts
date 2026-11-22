@@ -122,7 +122,12 @@ function makeClient(spec: FakeSpec) {
     return builder;
   };
 
-  return { client: { from } as unknown as Parameters<typeof shouldDeleteAuthUser>[0], probes };
+  // #4541 R1.6: purgeExplorerSideData first erases brand form answers by RPC.
+  const rpc = (fn: string, _args: Record<string, unknown>) => {
+    probes.push({ table: `rpc:${fn}`, op: "select", filters: [] });
+    return Promise.resolve({ data: { responses: 0 }, error: null });
+  };
+  return { client: { from, rpc } as unknown as Parameters<typeof shouldDeleteAuthUser>[0], probes };
 }
 
 // ── T-6 / SC-4 — the gate can return false ──────────────────────────────────

@@ -138,6 +138,7 @@ import type {
   RsvpAnonymousRecovery,
   RsvpConfirmationDetails,
   RsvpPassCredential,
+  RsvpFormHandoffSlot,
 } from "./RsvpSuccessPopup";
 import type { ChipInPanelState } from "./RsvpChipInPanel";
 import { accentFill, accentIcon, themeFontFace } from "./themeAccentStyle";
@@ -372,6 +373,11 @@ export interface RsvpOfferingBodyProps {
   }) => Promise<RsvpSubmitResult>;
   /** #4541 — host-rendered brand-form questions, kept out of this package's app imports. */
   questionsNode?: React.ReactNode;
+  /**
+   * #4541 R1.3 — host-rendered "After they RSVP" hand-off, drawn in the success
+   * popup (RsvpSuccessPopup `formHandoff`). Absent: no block.
+   */
+  formHandoff?: RsvpFormHandoffSlot;
   /** Only required_step blocks Going/Maybe. Optional questions are still shown. */
   questionsRequired?: boolean;
   /** True once every currently visible required question has an answer. */
@@ -1999,6 +2005,7 @@ export const useRsvpOfferingState = (
             ? buildChipPanel("orch-1291-rsvp-chipin-panel-popup")
             : undefined
         }
+        formHandoff={props.formHandoff}
       />
     </Suspense>
   );

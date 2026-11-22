@@ -49,7 +49,9 @@
         "brand_campaign_push": "Nachrichten von Orten, denen du folgst",
         "brand_campaign_push_hint": "Angebote und News von Orten und Gastgebern, denen du folgst.",
         "brand_offering_invite": "Einladungen von Orten, denen du folgst",
-        "brand_offering_invite_hint": "Wenn ein Ort oder Gastgeber dich zu etwas einlädt."
+        "brand_offering_invite_hint": "Wenn ein Ort oder Gastgeber dich zu etwas einlädt.",
+        "brand_form_request": "Fragen von Veranstaltern",
+        "brand_form_request_hint": "Wenn ein Veranstalter dich bittet, seine Fragen zu beantworten. E-Mail bleibt dafür aktiv, weil sie deinen persönlichen Link enthält. SMS folgen deinen SMS-Einstellungen."
       }
     },
     "friends_going": "Freunde unterwegs",

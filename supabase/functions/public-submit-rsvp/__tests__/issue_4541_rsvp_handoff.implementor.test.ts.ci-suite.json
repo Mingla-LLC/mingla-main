@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/functions/public-submit-rsvp/__tests__/issue_4541_rsvp_handoff.implementor.test.ts",
+  "lane": "deno2-discovered",
+  "orderKey": "issue-4541-rsvp-handoff",
+  "profile": "deno-2-unit"
+}

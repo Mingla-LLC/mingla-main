@@ -44,7 +44,8 @@ Deno.test("#4541 full answers require this actor's admitted scan in the last 30 
     scanned_at: new Date(now - RSVP_DOOR_FULL_ANSWERS_WINDOW_MS).toISOString(),
   };
   assert(ownsRecentAdmittedScan(base, ACTOR, EVENT, now));
-  assert(ownsRecentAdmittedScan({ ...base, outcome: "duplicate" }, ACTOR, EVENT, now));
+  // #4541 R8.3: a duplicate scan is no longer a receipt (fresh admissions only).
+  assertEquals(ownsRecentAdmittedScan({ ...base, outcome: "duplicate" }, ACTOR, EVENT, now), false);
   assertEquals(ownsRecentAdmittedScan({ ...base, scanner_user_id: PRIMARY }, ACTOR, EVENT, now), false);
   assertEquals(ownsRecentAdmittedScan({ ...base, requested_event_id: PRIMARY }, ACTOR, EVENT, now), false);
   assertEquals(ownsRecentAdmittedScan({ ...base, outcome: "not_found" }, ACTOR, EVENT, now), false);
@@ -67,7 +68,9 @@ Deno.test("#4541 admission stays independent of the 1.5 second optional door rea
   assert(scanCall >= 0 && subjectRead > scanCall && optionalRead > subjectRead);
   assertStringIncludes(source, "const deadline = new AbortController()");
   assertStringIncludes(source, "setTimeout(() => deadline.abort(), RSVP_DOOR_ANSWERS_DEADLINE_MS)");
-  assertStringIncludes(source, "if (doorAnswers !== null) result = { ...result, doorAnswers }");
+  // #4541 review fix 1: the line rides on the scan through the receipt gate.
+  assertStringIncludes(source, "const shown = rsvpDoorAnswersForScanResult(doorAnswers, result.result);");
+  assertStringIncludes(source, "if (shown !== null) result = { ...result, doorAnswers: shown };");
   assert(!source.includes("return respond({ error: \"door_answers_failed\" }, 500);\n    } finally"),
     "the optional line read must not replace an admitted scan with an error");
 });

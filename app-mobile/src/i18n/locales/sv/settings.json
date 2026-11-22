@@ -49,7 +49,9 @@
         "brand_campaign_push": "Meddelanden från ställen du följer",
         "brand_campaign_push_hint": "Erbjudanden och nyheter från ställen och värdar du följer.",
         "brand_offering_invite": "Inbjudningar från ställen du följer",
-        "brand_offering_invite_hint": "När ett ställe eller en värd bjuder in dig till något."
+        "brand_offering_invite_hint": "När ett ställe eller en värd bjuder in dig till något.",
+        "brand_form_request": "Frågor från arrangörer",
+        "brand_form_request_hint": "När en arrangör ber dig svara på sina frågor. Mejl är alltid på för dessa, eftersom det innehåller din egen länk. Sms följer dina sms-inställningar."
       }
     },
     "friends_going": "Vänner som går ut",

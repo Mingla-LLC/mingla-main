@@ -27,6 +27,11 @@ const row = (over: Partial<BrandFormResponseRow>): BrandFormResponseRow => ({
   updatedAt: "2026-11-19T10:00:00Z",
   subject: { kind: "rsvp", id: "rsvp-1", name: "Amara" },
   holder: null,
+  ownerKind: "guest",
+  ownerName: null,
+  campaignId: null,
+  campaignName: null,
+  hidden: false,
   ...over,
 });
 
@@ -38,6 +43,7 @@ const page = (rows: BrandFormResponseRow[], notAnswered: BrandFormResponsesPage[
   counts: {},
   rows,
   notAnswered,
+  hiddenCount: 0,
 });
 
 describe("guest list answers chip", () => {
@@ -200,7 +206,11 @@ describe("brand forms query keys", () => {
     for (const rel of surfaces) expect(read(rel)).not.toMatch(inlineFormKey);
     expect(read(surfaces[0])).toContain("publicRsvpFormKeys.forEvent(");
     expect(read(surfaces[1])).toContain("brandFormKeys.rsvpForm(");
-    expect(read(surfaces[2])).toContain("brandFormKeys.myPending(");
+    // #4541 R2.6: the pass sheet reads its questions through the shared card,
+    // whose hook keys the read from the factory.
+    expect(read(surfaces[2])).toContain("<QuestionsCard");
+    expect(read("app-mobile/src/hooks/useBrandForm.ts")).toContain("brandFormKeys.myPending(");
+    expect(read("app-mobile/src/hooks/useBrandForm.ts")).not.toMatch(inlineFormKey);
     const explorerKeys = read("app-mobile/src/hooks/queryKeys.ts");
     expect(explorerKeys).toMatch(/export const brandFormKeys = \{\s*all: \['brand-forms'\]/);
   });

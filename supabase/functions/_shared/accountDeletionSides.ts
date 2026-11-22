@@ -458,10 +458,46 @@ export async function deactivatePaystackForOwnedBrands(
   return { attempted: subaccounts.length, rejected };
 }
 
+/**
+ * #4541 R1.6 (default 2): erase every brand form answer of this person (their
+ * own row and the rows on their orders, RSVPs and claimed plus-ones), those
+ * subjects' links and request sends, and their checkout answer stash. It must
+ * run while the login still exists (orders.buyer_user_id and event_rsvps.user_id
+ * go null when it is removed). Fails closed: an error stops the deletion.
+ * The log line carries counts only.
+ */
+export async function eraseBrandFormAnswers(
+  adminClient: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  const { data, error } = await adminClient.rpc("brand_form_erase_person", {
+    p_user_id: userId,
+  });
+  if (error) {
+    console.error("[delete-user] brand form erase FAILED:", error.message);
+    throw new Error(
+      "Account deletion could not be completed. Please contact support.",
+    );
+  }
+  const counts = (typeof data === "object" && data !== null ? data : {}) as Record<
+    string,
+    unknown
+  >;
+  const n = (v: unknown) => (typeof v === "number" ? v : 0);
+  console.log(
+    `[delete-user] brand form answers erased: responses=${n(counts.responses)} links=${
+      n(counts.links)
+    } requestSends=${n(counts.requestSends)} checkoutStash=${n(counts.checkoutStash)}`,
+  );
+}
+
 export async function purgeExplorerSideData(
   adminClient: SupabaseClient,
   userId: string,
 ): Promise<void> {
+  // #4541 R1.6: first, while the login and its order and RSVP links exist.
+  await eraseBrandFormAnswers(adminClient, userId);
+
   const deletes: Array<Promise<unknown>> = [];
 
   const deleteByUser = (table: string, column = "user_id") =>

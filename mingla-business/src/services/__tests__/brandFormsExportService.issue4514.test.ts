@@ -29,7 +29,7 @@ const feed = {
   eventId: "e1",
   columns: [{ key: "1:q1", versionId: "v1", version: 1, questionId: "q1", label: "Act", type: "short_text" }],
   rows: [{
-    responseId: "r1", version: 1, submittedAt: "2026-11-19T10:00:00Z", updatedAt: "2026-11-19T10:00:00Z",
+    responseId: "r1", name: null, campaign: null, version: 1, submittedAt: "2026-11-19T10:00:00Z", updatedAt: "2026-11-19T10:00:00Z",
     verified: true, values: { "1:q1": "\t=HYPERLINK(1)" },
   }],
 };
@@ -72,7 +72,8 @@ describe("Export on the Responses page (C5)", () => {
     expect(rpc.mock.calls.map((c) => c[0])).not.toContain("biz_export_brand_people");
     expect(invoke).not.toHaveBeenCalled();
     const csv: string = share.mock.calls[0][0].message;
-    expect(csv.split("\r\n")[0]).toBe("Name,Answered,Updated,Form version,Verified,Act (v1)");
+    // #4541 R4.7: a Campaign column after Name (empty for a page answer).
+    expect(csv.split("\r\n")[0]).toBe("Name,Campaign,Answered,Updated,Form version,Verified,Act (v1)");
     expect(csv).toContain("Amara,");
     // A guest-written answer starting with a tab is kept as text.
     expect(csv).toContain("'\t=HYPERLINK(1)");

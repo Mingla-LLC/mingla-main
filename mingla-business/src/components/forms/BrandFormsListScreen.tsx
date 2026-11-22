@@ -1,11 +1,15 @@
 /**
  * #4514 — Promote › Forms: the host's forms for the current brand.
  *
- * States: loading, failed (with Try again), empty ("Create a form"), and a
+ * States: loading, failed (with Try again), empty, and a
  * list of draft / live / closed forms. A draft can only be continued; a live
  * form can be edited or its Responses opened; a closed form can be reopened.
  * The Blast shell owns the brand switcher, the section pills and the safe
  * area; this screen adds none of them.
+ *
+ * #4541 R6.1: the shell's tab action is the ONE "Create a form" control. This
+ * screen registers it (through the shell bridge, never the action owner) so it
+ * opens the name sheet in place; the list adds no button of its own.
  *
  * Reached through a lazily loaded route (`app/(tabs)/marketing/forms`), so
  * none of this is in the eager web bundle.
@@ -31,6 +35,7 @@ import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import type { BrandFormListItem, BrandFormStatus } from "../../services/brandFormsService";
 import { MIN_RANK } from "../../utils/permissionGates";
+import { useMarketingActionRegistration } from "../people/MarketingBrandSwitcherContext";
 import { BRAND_FORM_NAME_MAX, BRAND_FORM_NAME_MIN } from "../../utils/brandFormDefinition";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
@@ -68,7 +73,7 @@ export function pagesLine(item: BrandFormListItem): string {
 
 const FormCard: React.FC<{
   item: BrandFormListItem;
-  counts: { answered: number; toAnswer: number } | undefined;
+  counts: { answered: number; toAnswer: number; blastReplies?: { known: number; unknown: number } } | undefined;
   busy: boolean;
   onEdit: () => void;
   onResponses: () => void;
@@ -77,6 +82,8 @@ const FormCard: React.FC<{
   const { form } = item;
   const status = form.status;
   const answers = status === "draft" ? null : formCountsLine(counts);
+  // #4541 R4.9: replies from Blasts (no page), when there are any.
+  const blastTotal = counts?.blastReplies === undefined ? 0 : counts.blastReplies.known + counts.blastReplies.unknown;
   return (
     <GlassCard variant="base" radius="lg" padding={space[4]} testID={`brand-form-card-${form.id}`}>
       <View style={styles.cardHead}>
@@ -94,6 +101,11 @@ const FormCard: React.FC<{
       {answers !== null ? (
         <Text style={styles.cardSub} testID={`brand-form-counts-${form.id}`}>
           {answers}
+        </Text>
+      ) : null}
+      {blastTotal > 0 ? (
+        <Text style={styles.cardSub} testID={`brand-form-blast-replies-${form.id}`}>
+          {FORMS_COPY.blastReplies(blastTotal)}
         </Text>
       ) : null}
       {status === "draft" ? <Text style={styles.cardSub}>{FORMS_COPY.publishToAdd}</Text> : null}
@@ -178,7 +190,23 @@ export const BrandFormsListScreen: React.FC = () => {
     setNameOpen(true);
   }, []);
 
-  // The Blast shell's "Create a form" action opens this screen with
+  // #4541 R6.1: the shared tab action opens the name sheet in place.
+  const createAction = useMemo(
+    () =>
+      brandId !== null && canRead
+        ? {
+            id: "forms-create",
+            label: FORMS_COPY.createForm,
+            compactLabel: FORMS_COPY.createFormCompact,
+            icon: "plus" as const,
+            onPress: openCreate,
+          }
+        : null,
+    [brandId, canRead, openCreate],
+  );
+  useMarketingActionRegistration(createAction);
+
+  // Deep links and the phone's floating button open this screen with
   // ?action=create; open the name sheet once, then clear the param so the
   // action works again next time.
   useEffect(() => {
@@ -250,7 +278,6 @@ export const BrandFormsListScreen: React.FC = () => {
         illustration="list"
         title={FORMS_COPY.emptyTitle}
         description={FORMS_COPY.emptyBody}
-        cta={{ label: FORMS_COPY.createForm, onPress: openCreate }}
         testID="brand-forms-empty"
       />
     );
@@ -278,17 +305,9 @@ export const BrandFormsListScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         {items.length > 0 && canRead ? (
           <View style={styles.headRow}>
-            <Text style={styles.count} accessibilityRole="header">
-              {`${items.length} ${items.length === 1 ? "form" : "forms"}`}
+            <Text style={styles.count} accessibilityRole="header" testID="brand-forms-count">
+              {FORMS_COPY.formsHeading(items.length)}
             </Text>
-            <Button
-              label={FORMS_COPY.createForm}
-              variant="primary"
-              size="sm"
-              leadingIcon="plus"
-              onPress={openCreate}
-              testID="brand-forms-create"
-            />
           </View>
         ) : null}
         {body}

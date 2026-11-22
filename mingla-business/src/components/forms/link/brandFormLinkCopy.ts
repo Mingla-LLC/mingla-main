@@ -72,4 +72,23 @@ export const LINK_COPY = {
   pausedBody: "The host's questions aren't available right now. Try again a little later.",
   loadFailedTitle: "Couldn't load your questions",
   loadFailedBody: "Check your connection and try again.",
+
+  // #4541 R8.2: an older personal link after a newer one was sent.
+  replacedTitle: "This link has been replaced",
+  replacedBody: (brand: string): string =>
+    brand.length > 0
+      ? `${brand} sent you a newer link. Open the latest message from ${brand}.`
+      : "The host sent you a newer link. Open the latest message from them.",
+
+  // #4541 R4.4 / R4.5: a Blast form with no personal link (Unknown replies).
+  unknownNotice: (brand: string): string =>
+    `${brand.length > 0 ? brand : "The host"} won't see who you are, only your answers. Got this by text or email? Use the link in that message.`,
+  unknownSavedTitle: "Thanks. Your answers are in.",
+  unknownSavedBody: "The host sees your answers, not who you are.",
+  unknownLimitTitle: "This form isn't taking more answers right now.",
+  unknownLimitBody: "Got this by text or email? Use the link in that message.",
+  botCheckFailed: "Something went wrong. Reload and try again.",
+  codeUnavailableBody: "We can't send a code for this message. You can still answer without confirming; the host will see your answers as Unknown.",
+  answerWithoutConfirming: "Answer without confirming",
+  honeypotLabel: "Leave this field empty",
 } as const;
