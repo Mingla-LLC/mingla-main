@@ -110,6 +110,16 @@ const WRITE_ONLY_BY_DESIGN = new Map([
       "PRE-EXISTING and outside #2305's allowlist — filed for the orchestrator, " +
       "not fixed here.",
   ],
+  [
+    "order_overpayments",
+    "#4522 — money a v2 trip order collected beyond what it owed (two charges " +
+      "racing) is HELD here, never paid out or dropped: it is read by the " +
+      "balance (heldCreditMinor, shown to buyer, host and Admin), blocks the " +
+      "cron (issue_4522_collection_guard) and is audited. How it is released " +
+      "(automatic refund vs applied to the balance) is an open product decision " +
+      "on #4522; the resolver ships with that decision and this entry is " +
+      "removed in the same pull request.",
+  ],
 ]);
 
 // Exemptions removed after their resolver shipped stay here as a one-way
