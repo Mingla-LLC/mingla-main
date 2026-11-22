@@ -234,7 +234,10 @@ export default function SpotlightOverlay(): React.ReactElement | null {
     const timer = setTimeout(() => {
       if (heldFiredRef.current) return;
       heldFiredRef.current = true;
-      const props = { ...heldInfoRef.current, held_ms: Math.max(0, Date.now() - entryAtRef.current) };
+      const props: Record<string, string | number | undefined> = {
+        ...heldInfoRef.current,
+        held_ms: Math.max(0, Date.now() - entryAtRef.current),
+      };
       console.warn(`[CoachMark] Step ${props.step_id} drew no bubble for ${props.held_ms} ms (reason: ${props.reason}). The bottom tabs stay live.`);
       mixpanelService.trackCoachMarkHeld(props);
     }, remaining);
