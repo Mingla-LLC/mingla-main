@@ -160,3 +160,45 @@ export async function checkLinkCode(input: {
     attemptsLeft: typeof out.attemptsLeft === "number" ? out.attemptsLeft : undefined,
   };
 }
+
+/**
+ * #4541 R4.5 — a Blast form with no personal link: the form, the brand header
+ * and a bot ticket (`{op:"blast_form", formId, campaignId}`). Throws with the
+ * server's code ("form_closed", "form_not_on_event", …).
+ */
+export async function readBlastForm(input: { formId: string; campaignId: string }): Promise<Record<string, unknown>> {
+  const out = await callSubmit({ op: "blast_form", formId: input.formId, campaignId: input.campaignId });
+  if (out.ok === false || !isRecord(out.form)) {
+    throw new BrandFormLinkError(typeof out.error === "string" ? out.error : "read_failed");
+  }
+  return out;
+}
+
+/**
+ * #4541 R4.4 / R8.5 — an Unknown reply: the campaign, the bot ticket from the
+ * read, and the honeypot field as typed (a person never fills it). A new reply
+ * every time; it is never tied to a guest.
+ */
+export async function saveBlastAnswers(input: {
+  formId: string;
+  versionId: string | null;
+  answers: BrandAnswers;
+  campaignId: string;
+  botTicket: string | null;
+  website: string;
+}): Promise<SaveAnswersResult> {
+  const out = await callSubmit({
+    formId: input.formId,
+    versionId: input.versionId,
+    answers: input.answers,
+    campaignId: input.campaignId,
+    botTicket: input.botTicket,
+    website: input.website,
+  });
+  if (out.ok === true) return { ok: true, editCount: 0 };
+  return {
+    ok: false,
+    error: typeof out.error === "string" ? out.error : "server_error",
+    errors: Array.isArray(out.errors) ? out.errors as Array<{ questionId: string | null; code: string }> : undefined,
+  };
+}

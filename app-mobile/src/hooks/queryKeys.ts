@@ -184,6 +184,16 @@ export const brandFormKeys = {
   /** The signed-in guest's forms still waiting for an answer. */
   myPending: (userId: string | null) =>
     [...brandFormKeys.all, 'my-pending', userId ?? 'none'] as const,
+  /**
+   * #4541 R2.4 — the form screen's read. `scope` is `"link"` for a personal
+   * link (the token itself never appears in a key) or
+   * `${eventId|campaignId|"none"}:${as|"user"}:${sid|"self"}`.
+   */
+  screen: (formId: string, scope: string) =>
+    [...brandFormKeys.all, 'screen', formId, scope] as const,
+  /** #4541 R2.10 — the checkout block's read for one event. */
+  checkout: (eventId: string) =>
+    [...brandFormKeys.all, 'checkout', eventId] as const,
 };
 
 // Issue #3281 S6 — an RSVP's add-ons: the RSVP page's list (by slug) and the

@@ -99,6 +99,16 @@ export interface SmsComposeCardProps {
   autoFillLabel?: string | null;
   /** #4273 — sits in a stack with other cards, so it takes its natural height. */
   stacked?: boolean;
+  /**
+   * #4541 R4.2 — "+ Form" under the body (a static button that only calls
+   * back). Absent: no button.
+   */
+  onAddForm?: () => void;
+  /**
+   * #4541 R4.10 — text added after the body at send (a Blast form's
+   * " Answer: {link}"), counted at its real length in the estimate.
+   */
+  appendedText?: string;
 }
 
 export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
@@ -120,6 +130,8 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
   onRemoveMedia,
   autoFillLabel = null,
   stacked = false,
+  onAddForm,
+  appendedText = "",
 }) => {
   const hasMedia = media.length > 0;
   const bodyForEstimate = useMemo(
@@ -128,8 +140,8 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
         value,
         brandName,
         includeFollowCta ? brandSlug : null,
-      ),
-    [value, brandName, brandSlug, includeFollowCta],
+      ) + appendedText,
+    [value, brandName, brandSlug, includeFollowCta, appendedText],
   );
   const estimate = useMemo(
     () => estimateSmsCost(bodyForEstimate, reachableSms ?? 0, undefined, hasMedia),
@@ -179,6 +191,20 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
         accessibilityHint={`${estimate.charCount} characters, ${perRecipientUnit} per recipient`}
         textAlignVertical="top"
       />
+
+      {onAddForm !== undefined ? (
+        <Pressable
+          onPress={onAddForm}
+          disabled={!editable}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel="Add a form"
+          style={({ pressed }) => [styles.addForm, pressed ? styles.pressed : null]}
+          testID="sms-add-form"
+        >
+          <Text style={styles.addFormLabel}>+ Form</Text>
+        </Pressable>
+      ) : null}
 
       {/* Cost guard — segment/message + cost estimate before send. */}
       <View style={styles.estimateBox}>
@@ -390,6 +416,16 @@ const styles = StyleSheet.create({
     paddingVertical: space[1],
   },
   inputStacked: { flex: 0, minHeight: 96 },
+  addForm: {
+    alignSelf: "flex-start",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: space[3],
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: color.line,
+  },
+  addFormLabel: { ...type.btnSm, color: color.text1 },
   estimateBox: {
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,

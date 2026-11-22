@@ -78,6 +78,13 @@ export interface InsertionBarProps {
   /** Fires when operator picks a token from the personalization grid. */
   onInsertPersonalization: (token: PersonalizationToken) => void;
 
+  /**
+   * #4541 R4.2 — "+ Form" (after "+ Event", before "Personalize"). A static
+   * button: it only calls back; the composer opens the forms picker. Absent:
+   * no button.
+   */
+  onAddForm?: () => void;
+
   /** Overflow actions. */
   onOpenLink: () => void;
   onInsertDivider: () => void;
@@ -131,6 +138,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
     events,
     onInsertEvent,
     onInsertPersonalization,
+    onAddForm,
     onOpenLink,
     onInsertDivider,
     onInsertImage,
@@ -292,6 +300,15 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
               onPress={() => toggle("events-open")}
               testID="composer-v2-pill-event"
             />
+            {onAddForm !== undefined ? (
+              <TextButton
+                label="+ Form"
+                accessibilityLabel="Add a form"
+                open={false}
+                onPress={onAddForm}
+                testID="composer-v2-pill-form"
+              />
+            ) : null}
             <TextButton
               label="Personalize"
               accessibilityLabel="Insert personalization token"

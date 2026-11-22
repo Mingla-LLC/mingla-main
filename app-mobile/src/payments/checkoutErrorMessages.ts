@@ -73,6 +73,24 @@ export const CHECKOUT_PAGE_EXPIRED_MESSAGE =
 export const CHECKOUT_FAILED_MESSAGE =
   "We couldn't start your payment. You have not been charged — please try again.";
 
+// #4541 R2.10 — the host's questions refused the checkout before any payment
+// existed. The cart's questions block shows the translated line beside the
+// answers (which stay on screen); these are the toast's words.
+export const CHECKOUT_FORM_ANSWERS_REQUIRED_MESSAGE =
+  "Answer the required questions to continue. You have not been charged.";
+
+export const CHECKOUT_FORM_ANSWERS_INVALID_MESSAGE =
+  "Some answers need another look. You have not been charged.";
+
+export const CHECKOUT_FORM_CHANGED_MESSAGE =
+  "The host changed these questions. Check them, then continue — you have not been charged.";
+
+export const CHECKOUT_FORM_CHECK_FAILED_MESSAGE =
+  "Questions couldn't load. Try again — you have not been charged.";
+
+export const CHECKOUT_FORM_STASH_FAILED_MESSAGE =
+  "Couldn't save your answers. You have not been charged — please try again.";
+
 export const CHECKOUT_BOOKED_START_REQUIRED_MESSAGE =
   "Choose a time within the open hours, then try again — you have not been charged.";
 
@@ -236,6 +254,11 @@ export const NATIVE_CHECKOUT_MESSAGES: readonly string[] = [
   CHECKOUT_BOOKED_START_IN_PAST_MESSAGE,
   CHECKOUT_BOOKED_START_OFF_GRID_MESSAGE,
   CHECKOUT_EXTRAS_CHANGED_MESSAGE,
+  CHECKOUT_FORM_ANSWERS_REQUIRED_MESSAGE,
+  CHECKOUT_FORM_ANSWERS_INVALID_MESSAGE,
+  CHECKOUT_FORM_CHANGED_MESSAGE,
+  CHECKOUT_FORM_CHECK_FAILED_MESSAGE,
+  CHECKOUT_FORM_STASH_FAILED_MESSAGE,
 ];
 
 /**
@@ -332,6 +355,15 @@ export const nativeCheckoutErrorMessage = (
     token,
   )) {
     return BOOKED_START_MESSAGE_BY_TOKEN[token];
+  }
+  // #4541 R2.10 — the host's questions refused the checkout (4xx, before the
+  // catch-all 409 below). A 5xx stays the generic "couldn't start" copy.
+  if (status === null || status < 500) {
+    if (token === "form_answers_required") return CHECKOUT_FORM_ANSWERS_REQUIRED_MESSAGE;
+    if (token === "form_answers_invalid") return CHECKOUT_FORM_ANSWERS_INVALID_MESSAGE;
+    if (token === "form_changed") return CHECKOUT_FORM_CHANGED_MESSAGE;
+    if (token === "brand_form_check_failed") return CHECKOUT_FORM_CHECK_FAILED_MESSAGE;
+    if (token === "brand_form_stash_failed") return CHECKOUT_FORM_STASH_FAILED_MESSAGE;
   }
   // A 409 whose body we could not read still means "the server refused because
   // of the state of this sale", which is the recoverable in-progress case far

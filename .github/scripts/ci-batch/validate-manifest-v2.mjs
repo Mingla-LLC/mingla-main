@@ -637,6 +637,8 @@ export function phase3dContractDigest(manifest) {
 // #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the replay inventories; skipped it by exact filename on the filtered #1931 template replay (it reads event_rsvp_guests columns only the skipped 20281119014508 creates); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 tickets on the Work board: listed migration 20281121034420 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4420 rework: registered the tester's tickets-on-Work-board pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4541 forms fixes and Blast push: registered 20281122004541 and 20281122014541 in the #1857, #1931 and #2117 inventories and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped both by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4541 merge of main after #4420 tickets on the Work board: kept main's 20281121034420 row and its pg17 suites before the two #4541 rows (filename order) and both #4541 filtered-replay skips; re-sealed.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed;
 // MANIFEST.json phase3eContractSha256 matches.
@@ -652,7 +654,8 @@ export function phase3dContractDigest(manifest) {
 // #4522 checkpoint 22 renumbering: moved the branch's 14 migrations (20281120043281..20281122033281) to 20281123013281..20281123143281 above main's 20281121004541 and 20281121034420, same relative order; expectedFiles re-sorted in the #1857, #1931 and #2117 lanes and the filtered #1931/#2117 exact-filename skips renamed; re-sealed. MANIFEST.json phase3eContractSha256 matches.
 // #4522 rework after tester FAIL (F1-F10): registered the three #4522 tester adversarial pg17 suites (flex_inflight_race, flex_alloc_rollover, discount_plan, with sidecars) in the #1931 and #2117 replay inventories and the #4523 calendar suite's same-day range test; no migration added; re-sealed. MANIFEST.json phase3eContractSha256 matches.
 // #4522 second rework after retest FAIL (N1-N10): registered three #4522 implementor pg17 suites (safeupdate_lifecycle, overpayment_return, custom_discount_exact, with sidecars) in the #1931 and #2117 replay inventories; no migration added; re-sealed. MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "30fe3d08b84f3f79a0efa04f2829a8a0aa92e7061d790ec3a4e1cf66c180b6bf";
+// #4522 merge of main after #4541 Explorer forms: kept main's 20281122004541 and 20281122014541 rows, their two pg17 suites and their exact-filename skips on the filtered #1931 and #2117 replays beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "ecbd371621f00d3da49726d386bd3f5df7a1a6228a2caa1854c9850028502c60";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

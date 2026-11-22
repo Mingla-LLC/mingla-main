@@ -128,7 +128,8 @@ import {
   outcomeOf,
   reportBrandFormCheckFailOpen,
   parseCheckoutBrandForm,
-  stashLostAnswers,
+  releaseUnpaidSession,
+  stashBrandFormOrRelease,
 } from "./brandFormCheckout.ts";
 // Issue #3645 — each later Paystack payment priced at checkout by the deposit's
 // engine, shown to the buyer, persisted on the session and charged unchanged.
@@ -292,25 +293,6 @@ const totalRequestedQuantity = (
     }
   }
   return saw ? total : null;
-};
-
-/** Fail an infinity hold that never joined the queue so stock is released. */
-const failUnregisteredQueueHold = async (
-  // deno-lint-ignore no-explicit-any
-  client: any,
-  checkoutSessionId: string,
-  reason: string,
-): Promise<void> => {
-  await client
-    .from("ticket_checkout_sessions")
-    .update({
-      status: "failed",
-      failure_reason: reason,
-      expires_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", checkoutSessionId)
-    .is("order_id", null);
 };
 
 /**
@@ -2729,32 +2711,17 @@ export const createTicketCheckoutCreateHandler = (
     // the same transaction that gives the session its order (paid and free).
     // If this write fails the reply is 409 and payment never starts.
     if (doorPay === null && parsedBrandForm.capable && !brandFormFailedOpen) {
-      const stashed = await supabase.rpc("brand_form_checkout_stash", {
-        p_checkout_session_id: checkoutSessionId,
-        p_event_id: eventId,
-        p_capable: parsedBrandForm.capable,
-        p_form: checkoutFormPayload(parsedBrandForm),
-        p_buyer_user_id: userId,
-        p_ticket_link_hash: ticketLinkHash,
-      });
-      if (stashed.error) {
-        const refusal = brandFormRefusal(stashed.error);
-        if (refusal !== null) {
-          return jsonResponse(refusal.body, refusal.status);
-        }
-        console.error("[ticket-checkout-create] brand form stash failed", {
-          error: stashed.error.message,
-        });
-        return jsonResponse({ error: "brand_form_stash_failed" }, 409);
-      }
-      // Wave 7 (P1-A / P3-E): the check kept answers the stash then could not
-      // (a grant or link that ended in between): 409, never a silent pass.
-      if (stashLostAnswers(brandFormCheckOutcome, outcomeOf(stashed.data))) {
-        console.error("[ticket-checkout-create] brand form stash lost the form", {
-          outcome: outcomeOf(stashed.data),
-        });
-        return jsonResponse({ error: "brand_form_stash_failed" }, 409);
-      }
+      // #4541 R1.13: the stash step and the session release on refusal live in
+      // brandFormCheckout.ts.
+      const stashRefusal = await stashBrandFormOrRelease(supabase, {
+        checkoutSessionId,
+        eventId,
+        parsed: parsedBrandForm,
+        buyerUserId: userId,
+        ticketLinkHash,
+        checkOutcome: brandFormCheckOutcome,
+      }, jsonResponse);
+      if (stashRefusal !== null) return stashRefusal;
     }
 
     // #3859 checkout-v2 binds the normalized client intent to the canonical
@@ -3049,7 +3016,7 @@ export const createTicketCheckoutCreateHandler = (
           "[ticket-checkout-create] queue path status token persist failed",
           tokenErr,
         );
-        await failUnregisteredQueueHold(
+        await releaseUnpaidSession(
           supabase,
           checkoutSessionId,
           "buyer_status_token_persist_failed",
@@ -3074,7 +3041,7 @@ export const createTicketCheckoutCreateHandler = (
       );
       if ((joinErr || !joinData) && !joinPastQueue) {
         console.error("[ticket-checkout-create] queue join failed", joinErr);
-        await failUnregisteredQueueHold(
+        await releaseUnpaidSession(
           supabase,
           checkoutSessionId,
           joinErr?.message ?? "queue_join_failed",
@@ -3088,7 +3055,7 @@ export const createTicketCheckoutCreateHandler = (
         const join = joinData as Record<string, unknown>;
         if (join.duplicate === true) {
           // Same device already waiting on another hold — release this one.
-          await failUnregisteredQueueHold(
+          await releaseUnpaidSession(
             supabase,
             checkoutSessionId,
             "queue_duplicate_device",

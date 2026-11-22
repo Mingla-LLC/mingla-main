@@ -23,6 +23,9 @@
  *   R-3 owned host, first segment we do not serve   -> "/"
  *   R-4 owned host, empty path or "/"               -> "/"
  *   R-5 owned host, served segment                  -> input unchanged (query + fragment intact)
+ *   R-5b owned host, the `form` segment ONLY        -> a `#t={token}` fragment becomes the query
+ *                                                      `?t={token}` (other query params kept); the
+ *                                                      result never leaves the device (#4541 R2.1)
  *   R-6 custom-scheme URL                           -> R-3/R-4/R-5 on its path; scheme is trusted
  *   R-7 anything throws                             -> "/"
  *
@@ -66,18 +69,7 @@ const OWNED_LINK_HOSTS: ReadonlySet<string> = new Set([
 const OWNED_LINK_SCHEMES: ReadonlySet<string> = new Set(["com.mingla.app.v2"]);
 
 /**
- * Routes deliberately admitted before their screen ships in this checkout.
- *
- * #4541 decision 11 stages `/form/{id}` in the native intent map, while the
- * Explorer `/form` screen and iPhone AASA claim ship separately. Keeping this
- * exception named, exact, and test-only exported prevents it becoming a loose
- * bypass of the route-tree anti-drift gate.
- */
-const STAGED_NATIVE_INTENT_SEGMENTS: ReadonlySet<string> = new Set(["form"]);
-
-/**
- * First path segments that exist as routes in `app-mobile/app/`, plus the one
- * explicitly staged segment above.
+ * First path segments that exist as routes in `app-mobile/app/`.
  *
  * DERIVED by enumerating the real `app/` tree, NOT copied from anywhere: every
  * top-level entry, minus expo-router specials (`_layout`, `+not-found`,
@@ -112,8 +104,7 @@ const STAGED_NATIVE_INTENT_SEGMENTS: ReadonlySet<string> = new Set(["form"]);
  * client-side) — see the `case 'board'` comment in `deepLinkService.ts`.
  *
  * Kept honest by T-7 (`issue_2180_native_intent.implementor.happy.test.ts`), which
- * re-enumerates the tree and fails the build on any drift or any additional
- * staged exception.
+ * re-enumerates the tree and fails the build on any drift.
  */
 const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "b",
@@ -128,8 +119,8 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   // #4508 2.3 — an event by id (the friend-is-going push).
   "event",
   "exp",
-  // #4541 — staged before the separately-owned Explorer /form screen.
-  ...STAGED_NATIVE_INTENT_SEGMENTS,
+  // #4541 R2.1 — the Explorer form screen (`app/form/[formId].tsx`).
+  "form",
   "local",
   "p",
   // #3872 — Payout account (Earnings and Local link here).
@@ -157,6 +148,26 @@ function firstSegment(pathname: string): string | null {
     if (part.length > 0) return part;
   }
   return null;
+}
+
+/**
+ * R-5b — `…/form/{id}?a=b#t={token}` -> `…/form/{id}?a=b&t={token}`. Only a
+ * fragment of exactly `t={64 hex}` moves; anything else is returned unchanged.
+ * String surgery on the already-validated URL: the token is never logged.
+ */
+function formTokenToQuery(path: string): string {
+  const hashAt = path.indexOf("#");
+  if (hashAt < 0) return path;
+  const fragment = path.slice(hashAt + 1);
+  const match = /^t=([0-9a-f]{64})$/i.exec(fragment);
+  if (match === null) return path;
+  const head = path.slice(0, hashAt);
+  const queryAt = head.indexOf("?");
+  const base = queryAt < 0 ? head : head.slice(0, queryAt);
+  const kept = queryAt < 0
+    ? []
+    : head.slice(queryAt + 1).split("&").filter((pair) => pair.length > 0 && !/^t=/.test(pair));
+  return `${base}?${[...kept, `t=${match[1]}`].join("&")}`;
 }
 
 export function redirectSystemPath({
@@ -203,6 +214,11 @@ export function redirectSystemPath({
     // `/w36m` is an AppsFlyer OneLink template id, not a screen).
     if (!SERVED_ROUTE_SEGMENTS.has(segment)) return HOME;
 
+    // R-5b — #4541 R2.1: a personal form link keeps its token in the
+    // fragment (`/form/{id}#t={token}`), which expo-router drops. For the
+    // `form` segment only, move it into the query so the screen can read it.
+    if (segment === "form") return formTokenToQuery(path);
+
     // R-5 — a real deep link. Returned byte-for-byte so query strings and
     // fragments survive intact (share tokens, AppsFlyer `pid`/`c`).
     return path;
@@ -217,6 +233,5 @@ export const __test__ = {
   OWNED_LINK_HOSTS,
   OWNED_LINK_SCHEMES,
   SERVED_ROUTE_SEGMENTS,
-  STAGED_NATIVE_INTENT_SEGMENTS,
   HOME,
 };

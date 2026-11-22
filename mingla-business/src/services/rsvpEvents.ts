@@ -182,6 +182,12 @@ export interface SubmitPublicRsvpResult {
   claim: { shortUrl: string | null; code: string | null } | null;
   /** issue #4508 — each person brought, with the link their text carries. */
   guests: import("@mingla/offering-rendering").RsvpSubmittedGuest[];
+  /**
+   * #4541 R1.3 — "After they RSVP": the guest's own form link, minted by the
+   * server after a current (approved Going or Maybe) RSVP. null otherwise, and
+   * always null from a server without the hand-off.
+   */
+  brandFormHandoff: { formId: string; token: string } | null;
 }
 
 /** #4238 W2-5: stored browser ad context for the server RSVP sign-up. */
@@ -247,7 +253,9 @@ export const submitPublicRsvp = async (
     anonymousRecovery?: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
     claim?: { shortUrl?: string | null; code?: string | null } | null;
     guests?: unknown;
+    brandFormHandoff?: { formId?: unknown; token?: unknown } | null;
   };
+  const handoff = res.brandFormHandoff;
   return {
     status: res.status ?? input.rsvpStatus,
     approvalStatus: res.approvalStatus ?? "approved",
@@ -271,6 +279,12 @@ export const submitPublicRsvp = async (
             shortUrl: res.claim.shortUrl ?? null,
             code: res.claim.code ?? null,
           },
+    // #4541 R1.3: public-submit-rsvp's 200 body carries
+    // `brandFormHandoff: {formId, token} | null`.
+    brandFormHandoff:
+      typeof handoff?.formId === "string" && typeof handoff.token === "string" && handoff.token.length > 0
+        ? { formId: handoff.formId, token: handoff.token }
+        : null,
     // On demand: the parser loads on demand, not with the boot payload.
     guests: (
       await import("@mingla/offering-rendering/rsvpGuestParse")

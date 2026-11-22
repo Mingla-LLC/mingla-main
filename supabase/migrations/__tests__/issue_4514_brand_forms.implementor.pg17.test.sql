@@ -237,7 +237,8 @@ BEGIN
     AND NOT has_function_privilege('anon', 'public.brand_form_link_issue(uuid,uuid,jsonb,uuid,integer)', 'EXECUTE')
     AND NOT has_function_privilege('anon', 'public.brand_form_code_begin(uuid,text,text,text,text)', 'EXECUTE'),
     'T-GRANT the submit core, links, codes and door reads are service-role only');
-  PERFORM pg_temp.f_assert(NOT has_function_privilege('anon', 'public.biz_brand_form_responses(uuid,uuid,text,integer,integer)', 'EXECUTE'),
+  -- #4541 R4.7: the Responses RPC gained two trailing arguments (owner, show hidden).
+  PERFORM pg_temp.f_assert(NOT has_function_privilege('anon', 'public.biz_brand_form_responses(uuid,uuid,text,integer,integer,text,boolean)', 'EXECUTE'),
     'T-GRANT anon cannot call the Responses RPC');
 END
 $t$;
@@ -1138,6 +1139,9 @@ DECLARE
   v jsonb; v_before jsonb; v_r text; v_n integer;
   c_yes constant jsonb := '{"11111111-1111-4111-8111-111111111111":"yes","22222222-2222-4222-8222-222222222222":"Juggling"}';
 BEGIN
+  -- #4541 R8.3: sc6 is invited scan-only staff (event_scanners, no brand role),
+  -- who read full answers only when the host also allows invited staff.
+  UPDATE public.brand_forms SET door_full_answers_invited = true WHERE id = v_p;
   SET LOCAL ROLE service_role;
   -- Cam (RSVP) and Quill (order) answer while current.
   PERFORM public.brand_form_submit_core(jsonb_build_object('formId', v_p, 'answers', c_yes,
@@ -1278,14 +1282,18 @@ BEGIN
   PERFORM pg_temp.f_assert(EXISTS (SELECT 1 FROM pg_locks l WHERE l.locktype = 'advisory' AND l.pid = pg_backend_pid()
       AND ((l.classid::bigint << 32) | l.objid::bigint) = hashtextextended('brand_form_door_reads:' || v_sc6::text, 0)),
     'T-DOORX-5 the full read holds the per-actor lock (taken before counting)');
-  -- Repeated real calls: 60 pass (one was logged above), then the limit.
-  FOR i IN 1..60 LOOP
+  -- Repeated real calls. #4541 R8.3 changed the limits for invited scan-only
+  -- staff (sc6): at most 3 full reads of one guest per actor per day (and 20
+  -- reads per 10 minutes; managers keep 60). So the 4th read of Pat is refused.
+  FOR i IN 1..6 LOOP
     v := public.brand_form_door_full_answers(v_sc6, v_e6, jsonb_build_object('kind', 'rsvp', 'id', v_rp), 'search');
     v_states := v_states || (v->>'state');
   END LOOP;
-  PERFORM pg_temp.f_assert(v_states[59] = 'answered' AND v_states[60] = 'rate_limited'
-    AND (SELECT count(*) FROM public.brand_form_door_reads WHERE actor_id = v_sc6 AND result <> 'rate_limited') = 60,
-    'T-DOORX repeated calls hit the limit at 60 per 10 minutes (' || array_to_string(v_states[58:60], ',') || ')');
+  PERFORM pg_temp.f_assert(v_states[1:3] = ARRAY['answered', 'answered', 'answered']
+    AND v_states[4:6] = ARRAY['rate_limited', 'rate_limited', 'rate_limited']
+    AND (SELECT count(*) FROM public.brand_form_door_reads
+          WHERE actor_id = v_sc6 AND subject_id = v_rp AND result = 'full') = 3,
+    'T-DOORX repeated calls hit the per-guest limit at 3 full reads (' || array_to_string(v_states, ',') || ')');
   RESET ROLE;
 END
 $t$;
@@ -1794,11 +1802,20 @@ BEGIN
      WHERE e.slug LIKE 'f4514-%'
   ), old AS (
     SELECT p.form_id, p.event_id,
+           -- #4541 R1.4/R1.5: current holders only (approved Going or Maybe, paid or
+           -- partly refunded orders), claimed plus-ones counted, and guests the host
+           -- added (door sale, import, comp) never "to answer". Written inline here
+           -- as an independent oracle for the function's rule.
            (SELECT count(*) FROM public.event_rsvps x
-             WHERE x.event_id = p.event_id AND x.rsvp_status = 'going'
+             WHERE x.event_id = p.event_id AND x.rsvp_status IN ('going', 'maybe') AND x.approval_status = 'approved'
                AND (public.brand_form_find_response(p.form_id, 'rsvp', x.id)).id IS NULL)::integer
+         + (SELECT count(*) FROM public.event_rsvp_guests g JOIN public.event_rsvps x ON x.id = g.rsvp_id
+             WHERE x.event_id = p.event_id AND x.rsvp_status IN ('going', 'maybe') AND x.approval_status = 'approved'
+               AND g.claimed_at IS NOT NULL AND g.matched_user_id IS NOT NULL
+               AND (public.brand_form_find_response(p.form_id, 'rsvp_guest', g.id)).id IS NULL)::integer
          + (SELECT count(*) FROM public.orders o
              WHERE o.event_id = p.event_id AND o.payment_status IN ('paid', 'partial_refund')
+               AND NOT (o.source IN ('door_sale', 'manual_import', 'comp') OR COALESCE(o.is_door_sale, false))
                AND (public.brand_form_find_response(p.form_id, 'order', o.id)).id IS NULL)::integer AS n
       FROM pairs p
   )
@@ -1829,7 +1846,7 @@ $t$;
 -- T-W4-QUEUE   pages of at most p_limit; a stale claim is retried, then failed after 3 tries;
 --              a queued row older than 24 hours fails; nobody is blocked for 24 hours.
 -- T-W4-QUIET   texts wait for 9am-9pm in the page's time zone; email is not delayed.
--- T-W4-CAP     the per-brand daily text limit refuses a send that would go over it.
+-- T-W4-CAP     over the per-brand daily text limit, texts are off for the send (#4541 R5.4).
 -- T-W4-AUTO    decision 13: push is dropped from the switch; due once per page and date two
 --              days before; a run with nothing left settles; a stuck run fails visibly;
 --              decision 10: a closed form is held and the host told with a link.
@@ -1842,16 +1859,16 @@ $t$;
 -- T-W4-PERSON  the person key is the account, else the booking, never the phone or email:
 --              two guests sharing a phone each get their own request and link; one account
 --              with an RSVP and an order is one person (N5).
--- T-W4-AUTOCAP the automatic reminder keeps to the daily text limit: texts only up to what is
---              left; past it the email on the route goes ('text_cap'), else 'skipped'
---              ('text_cap'), and the log shows it (N2).
+-- T-W4-AUTOCAP the automatic reminder keeps to the text limits: #4541 R5.4, when a run needs
+--              more texts than are left, texts are off for the run; the email on the route
+--              goes ('text_cap' / 'no_texts_left'), else 'skipped', and the log shows it (N2).
 -- T-W4-AUTOLOCK the automatic reminder queues under the brand lock that enqueue takes, and an
 --              Ask and the reminder never both reach one person inside 24 hours (N3).
 -- T-W4-STARTED a request whose guest date has started is skipped at claim ('event_started') (N4).
 -- T-W4-DATES-0 brand_form_guest_dates is static SQL (no EXECUTE) and the columns it reads exist (N6).
 -- FAILS-ON-REVERT (review fixes): deleting the stale-claim UPDATE in claim_batch fails
 -- T-W4-QUEUE-2; deleting the brand_form_text_window delay fails T-W4-QUIET-2; deleting the cap
--- RAISE fails T-W4-CAP-1; replacing brand_form_guest_dates with the page's next date fails
+-- texts-off rule fails T-W4-CAP-1; replacing brand_form_guest_dates with the page's next date fails
 -- T-W4-DATES-2 and T-W4-DATES-4; restoring the phone and email person key (the 5-argument
 -- brand_form_person_key and its caller) fails T-W4-AUD-1b; deleting the text-limit split in
 -- brand_form_auto_reminders_due fails T-W4-AUTOCAP-1; deleting the event_started check in
@@ -2142,9 +2159,18 @@ BEGIN
   INSERT INTO public.brand_form_request_sends (form_id, event_id, brand_id, rsvp_id, person_key, kind, route, status)
   SELECT v_w, v_e10, v_ba, v_ri, 'p:cap' || g, 'ask', ARRAY['sms'], 'sent' FROM generate_series(1, 300) g;
   SET LOCAL ROLE service_role;
-  PERFORM pg_temp.f_assert(pg_temp.f_err(format('SELECT public.brand_form_request_enqueue(%L, %L, %L, %L, %L, %L, %L)',
-      v_em, v_w, v_e10, 'ask', 'everyone', v_ike::text, '{sms,email}')) LIKE '%form_request_text_cap%',
-    'T-W4-CAP-1 over the daily text limit: refused');
+  -- #4541 R5.4 (section 24 item B): over the daily cap the send is no longer
+  -- refused; texts are off for that send and email still goes.
+  v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone', v_ike, ARRAY['sms', 'email']);
+  -- The 300 texts also count against the brand's monthly allowance, which may be
+  -- the smaller limit; either way texts are off (the M-B suite pins each reason).
+  PERFORM pg_temp.f_assert(v->'textsOff'->>'reason' IN ('daily_cap', 'monthly_allowance') AND (v->>'queued')::integer = 1
+      AND (SELECT route = ARRAY['email'] AND safe_reason IN ('text_cap', 'no_texts_left') FROM public.brand_form_request_sends
+            WHERE rsvp_id = v_ri AND status = 'queued'),
+    'T-W4-CAP-1 over the daily text limit: texts off for the send, email still goes (' || v::text || ')');
+  RESET ROLE;
+  DELETE FROM public.brand_form_request_sends WHERE rsvp_id = v_ri AND status = 'queued';
+  SET LOCAL ROLE service_role;
   v := public.brand_form_request_enqueue(v_em, v_w, v_e10, 'ask', 'everyone', v_ike, ARRAY['email']);
   PERFORM pg_temp.f_assert((v->>'queued')::integer = 1, 'T-W4-CAP-2 email still goes (the limit is on texts)');
   RESET ROLE;
@@ -2228,11 +2254,15 @@ BEGIN
   SET LOCAL ROLE service_role;
   v := public.brand_form_auto_reminders_due();
   RESET ROLE;
-  PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued' AND route = ARRAY['sms']) = 1
+  -- #4541 R5.4: the run needs three texts and one is left, so texts are off for
+  -- the whole run (the same rule as a send): text-only guests are skipped with
+  -- the reason. The 299 texts also count against the monthly allowance, which
+  -- may be the smaller limit (no_texts_left); the M-B suite pins each reason.
+  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued')
       AND (SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'skipped'
-             AND safe_reason = 'text_cap' AND route = ARRAY['sms'] AND settled_at IS NOT NULL) = 2
-      AND public.brand_form_request_texts_today((SELECT brand_id FROM public.events WHERE id = v_e10)) = 300,
-    'T-W4-AUTOCAP-1 one text left: one guest texted, two skipped with text_cap, the limit is not overrun');
+             AND safe_reason IN ('text_cap', 'no_texts_left') AND route = ARRAY['sms'] AND settled_at IS NOT NULL) = 3
+      AND public.brand_form_request_texts_today((SELECT brand_id FROM public.events WHERE id = v_e10)) = 299,
+    'T-W4-AUTOCAP-1 one text left for three: texts off for the run, three skipped with the reason, the limit is not overrun');
   -- No texts left, text and email ticked: guests with an email get the email
   -- (marked text_cap); Vic, whose email bounced, is skipped.
   DELETE FROM public.brand_form_request_sends WHERE kind = 'auto';
@@ -2248,8 +2278,8 @@ BEGIN
   v := public.brand_form_auto_reminders_due();
   RESET ROLE;
   PERFORM pg_temp.f_assert((SELECT count(*) FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued'
-                              AND route = ARRAY['email'] AND safe_reason = 'text_cap') = 2
-      AND (SELECT status = 'skipped' AND safe_reason = 'text_cap' FROM public.brand_form_request_sends
+                              AND route = ARRAY['email'] AND safe_reason IN ('text_cap', 'no_texts_left')) = 2
+      AND (SELECT status = 'skipped' AND safe_reason IN ('text_cap', 'no_texts_left') FROM public.brand_form_request_sends
             WHERE kind = 'auto' AND rsvp_id = (SELECT id FROM f4514 WHERE k = 'rv2'))
       AND NOT EXISTS (SELECT 1 FROM public.brand_form_request_sends WHERE kind = 'auto' AND status = 'queued' AND route[1] = 'sms'),
     'T-W4-AUTOCAP-2 no texts left: Val and Ike get the email (text_cap), Vic with no email route is skipped (text_cap)');
@@ -2262,9 +2292,9 @@ BEGIN
   v := public.biz_brand_form_request_log(v_w, v_e10, NULL, 500);
   RESET ROLE;
   PERFORM pg_temp.f_assert((SELECT count(*) FROM jsonb_array_elements(v->'sends') x
-                             WHERE x->>'kind' = 'auto' AND x->>'reason' = 'text_cap' AND x->>'status' = 'sent' AND x->>'channel' = 'email') = 2
+                             WHERE x->>'kind' = 'auto' AND x->>'reason' IN ('text_cap', 'no_texts_left') AND x->>'status' = 'sent' AND x->>'channel' = 'email') = 2
       AND (SELECT count(*) FROM jsonb_array_elements(v->'sends') x
-            WHERE x->>'kind' = 'auto' AND x->>'reason' = 'text_cap' AND x->>'status' = 'skipped' AND x->>'channel' = 'sms') = 1,
+            WHERE x->>'kind' = 'auto' AND x->>'reason' IN ('text_cap', 'no_texts_left') AND x->>'status' = 'skipped' AND x->>'channel' = 'sms') = 1,
     'T-W4-AUTOCAP-3 the delivery log shows who was emailed instead and who was skipped for the text limit');
   DELETE FROM public.channel_suppressions WHERE contact = 'f4514-v2@example.test';
   UPDATE public.brand_form_attachments SET auto_remind_channels = ARRAY['sms'] WHERE id = v_att;
@@ -3011,40 +3041,41 @@ BEGIN
   VALUES (v_form, v_ver, v_ba, v_ea, v_oa, c_ok || jsonb_build_object('99999999-9999-4999-8999-999999999999', 'gone'), 'page');
   INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, event_id, rsvp_id, answers, source)
   VALUES (v_form, v_ver, v_ba, v_er, v_rr, c_ok, 'page');
+  -- #4541 R1.1 replaced OP-5 here: an answer given at ANOTHER event no longer
+  -- counts as "answered" at checkout (it is shown as an editable prefill), and
+  -- the finalize is insert-only per order (I-4541-CHECKOUT-ANSWER-INSERT-ONLY).
   SET LOCAL ROLE service_role;
-  v := public.brand_form_checkout_check(v_eb, true, NULL, v_ub, NULL);
-  PERFORM pg_temp.f_assert(v->>'outcome' = 'answered',
-    'T-W7-PERSON-1 answered through an order elsewhere: no refusal without answers (' || v::text || ')');
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, NULL, %L, NULL)$$, v_eb, v_ub));
+  PERFORM pg_temp.f_assert(v_r LIKE '22023:form_answers_required%',
+    'T-W7-PERSON-1 answered through an order on another page: asked again here (' || v_r || ')');
   v := public.brand_form_checkout_form(v_eb, v_ub, NULL);
-  PERFORM pg_temp.f_assert((v->>'answered')::boolean IS TRUE AND v->'prefill'->'answers' = c_ok
-      AND v->'prefill'->>'versionId' = v_ver::text,
-    'T-W7-PREFILL the read opens prefilled with the live questions only (' || COALESCE(v->>'prefill', 'null') || ')');
-  -- T-W7-PERSON-2: answered through an RSVP.
-  v := public.brand_form_checkout_check(v_eb, true, NULL, v_ur, NULL);
-  PERFORM pg_temp.f_assert(v->>'outcome' = 'answered',
-    'T-W7-PERSON-2 answered through an RSVP: no refusal without answers (' || v::text || ')');
-  PERFORM pg_temp.f_assert((public.brand_form_checkout_form(v_eb, v_ur, NULL)->>'answered')::boolean IS TRUE,
-    'T-W7-PERSON-2 the read says answered for the RSVP guest');
+  PERFORM pg_temp.f_assert((v->>'answered')::boolean IS FALSE AND (v->>'answeredHere')::boolean IS FALSE
+      AND v->'prefill'->'answers' = c_ok AND v->'prefill'->>'versionId' = v_ver::text,
+    'T-W7-PREFILL the read opens prefilled (editable) with the live questions only (' || COALESCE(v->>'prefill', 'null') || ')');
+  -- T-W7-PERSON-2: answered through an RSVP at another event: asked again too.
+  v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, NULL, %L, NULL)$$, v_eb, v_ur));
+  PERFORM pg_temp.f_assert(v_r LIKE '22023:form_answers_required%',
+    'T-W7-PERSON-2 answered through an RSVP at another event: asked again here (' || v_r || ')');
+  PERFORM pg_temp.f_assert((public.brand_form_checkout_form(v_eb, v_ur, NULL)->>'answered')::boolean IS FALSE,
+    'T-W7-PERSON-2 the read says not answered here for the RSVP guest of another event');
   -- T-W7-PREFILL: a returning buyer's stale version on a required step is form_changed.
   v_r := pg_temp.f_err(format($$SELECT public.brand_form_checkout_check(%L, true, %L::jsonb, %L, NULL)$$, v_eb,
            jsonb_build_object('formId', v_form, 'versionId', gen_random_uuid(), 'answers', c_new), v_ub));
   PERFORM pg_temp.f_assert(v_r LIKE 'PT409:form_changed%', 'T-W7-PREFILL a stale version from a returning buyer is form_changed (' || v_r || ')');
-  -- T-W7-PERSON-3: new answers at checkout update the one response.
+  -- T-W7-PERSON-3 (#4541 SC-1): new answers at checkout B become order B's own
+  -- response; order A's response is unchanged.
   v := public.brand_form_checkout_stash(v_sb, v_eb, true,
          jsonb_build_object('formId', v_form, 'versionId', v_ver, 'answers', c_new), v_ub, NULL);
-  PERFORM pg_temp.f_assert(v->>'outcome' = 'stash', 'T-W7-PERSON-3 a returning buyer''s edit is stashed (' || v::text || ')');
+  PERFORM pg_temp.f_assert(v->>'outcome' = 'stash', 'T-W7-PERSON-3 a returning buyer''s answers are stashed (' || v::text || ')');
   RESET ROLE;
   UPDATE public.ticket_checkout_sessions SET order_id = v_ob, status = 'paid_completed' WHERE id = v_sb;
   SELECT * INTO v_resp FROM public.brand_form_responses WHERE form_id = v_form AND order_id = v_oa;
-  PERFORM pg_temp.f_assert(NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE order_id = v_ob)
-      AND (SELECT count(*) FROM public.brand_form_responses r
-             WHERE r.form_id = v_form AND (r.order_id IN (v_oa, v_ob) OR r.user_id = v_ub)) = 1
-      AND v_resp.answers->>'22222222-2222-4222-8222-222222222222' = 'Unicycle'
-      AND v_resp.edit_count = 1 AND v_resp.version_id = v_ver
+  PERFORM pg_temp.f_assert(EXISTS (SELECT 1 FROM public.brand_form_responses WHERE order_id = v_ob
+                                     AND answers->>'22222222-2222-4222-8222-222222222222' = 'Unicycle')
+      AND v_resp.answers = c_ok || jsonb_build_object('99999999-9999-4999-8999-999999999999', 'gone')
+      AND v_resp.edit_count = 0 AND v_resp.event_id = v_ea
       AND NOT EXISTS (SELECT 1 FROM public.brand_form_checkout_answers WHERE checkout_session_id = v_sb),
-    'T-W7-PERSON-3 the finalize updates the person''s one response and writes no second row');
-  PERFORM pg_temp.f_assert((public.brand_form_find_response(v_form, 'order', v_ob)).id = v_resp.id,
-    'T-W7-PERSON-3 the new order shows the person''s one response');
+    'T-W7-PERSON-3 the finalize inserts order B''s response and leaves order A''s untouched');
 
   -- T-FINALIZE-SAFE-1: a primary-key lookup on the stash.
   PERFORM pg_temp.f_assert(EXISTS (
@@ -3104,7 +3135,9 @@ BEGIN
   -- T-1.3c assumes) and its command is the original, trimmed, plus exactly one line.
   SELECT command INTO v_cmd FROM cron.job WHERE jobname = 'issue_4452_forms_retention';
   PERFORM pg_temp.f_assert(v_cmd IS NOT NULL, 'T-PURGE-SAFE-2 the #4452 retention job exists');
-  PERFORM pg_temp.f_assert(v_cmd = rtrim(v_old_cmd, E' \n') || E'\n    SELECT public.brand_form_checkout_answers_purge();\n  ',
+  -- #4541 R1.6 (M-A) appends its own one line after this one: the retention purge.
+  PERFORM pg_temp.f_assert(v_cmd = rtrim(v_old_cmd, E' \n') || E'\n    SELECT public.brand_form_checkout_answers_purge();'
+                                   || E'\n    SELECT public.brand_form_retention_purge();\n  ',
     'T-PURGE-SAFE-2 new command = original trimmed + exactly one appended line (' || v_cmd || ')');
   PERFORM pg_temp.f_assert(left(v_cmd, length(rtrim(v_old_cmd, E' \n'))) = rtrim(v_old_cmd, E' \n'),
     'T-PURGE-SAFE-2 the original statements are byte-for-byte unchanged');

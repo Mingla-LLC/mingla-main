@@ -38,6 +38,7 @@ import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
 import { TripBalanceCard } from "../../../src/components/purchases/TripBalanceCard";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
+import { QuestionsCard } from "../../../src/components/forms/QuestionsCard";
 import { EarnBySharingCard } from "../../../src/components/wallet/EarnBySharingCard";
 import { BrandGuestChatBookingAction } from "../../../src/components/purchases/BrandGuestChatBookingAction";
 import { Icon } from "../../../src/components/ui/Icon";
@@ -1085,6 +1086,8 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                 </Pressable>
               </View>
             ) : null}
+
+            <QuestionsCard subjectKind={shared ? null : kind} subjectId={id} from="ticket" />
 
             <View style={styles.detailCard}>
               <Text style={styles.sectionTitle}>{t("link.details")}</Text>

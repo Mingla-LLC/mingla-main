@@ -122,7 +122,12 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
           <Text style={styles.metaText}>Saved {timeAgo(campaign.updated_at)}</Text>
         );
       case "failed":
-        return (
+        // #4541 R4.3: a scheduled Blast whose form closed first sent nothing.
+        return group.members.some((row) => row.failure_reason === "form_closed") ? (
+          <Text style={[styles.metaText, styles.failedText]} testID="campaign-not-sent-form-closed">
+            Not sent: form closed
+          </Text>
+        ) : (
           <Text style={[styles.metaText, styles.failedText]}>
             Failed {formatDate(campaign.updated_at)}
           </Text>

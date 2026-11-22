@@ -30,6 +30,14 @@ import type {
   FormDispatchResult as DispatchV2Result,
 } from "../_shared/brandFormDispatchTypes.ts";
 import { isExactServiceBearer } from "../_shared/legacyEmailIdempotency.ts";
+// #4541 R7.2: the existing delivery-health recipients and the existing ops
+// alert email (the unreachedGuestAlert.ts pattern). No new secret names.
+import { apiHealthAlertRecipients } from "../_shared/secretBundle.ts";
+import {
+  type OpsAlertEmailInput,
+  type OpsAlertEmailResult,
+  sendOpsAlertEmail,
+} from "../_shared/stripeOpsAlertEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,6 +71,115 @@ export interface ReminderDeps {
   createAdmin?: (url: string, serviceKey: string) => ReminderAdmin;
   /** #4514: the notify v2 dispatcher the brand form reminder sends with. */
   dispatch?: FormRequestDeps["dispatch"];
+  /** #4541 R7.2: the ops alert sender and its recipients (injectable for tests). */
+  sendAlert?: (input: OpsAlertEmailInput) => Promise<OpsAlertEmailResult>;
+  alertRecipients?: () => string[];
+}
+
+/** #4541 R7.2: the four forms alert kinds and their subject lines. */
+export const FORM_OPS_ALERT_SUBJECTS = {
+  form_drain_error: "Mingla forms: form request sending failed",
+  form_sends_failing: "Mingla forms: form requests are failing",
+  form_queue_stuck: "Mingla forms: form requests are stuck in the queue",
+  checkout_answers_stuck: "Mingla forms: checkout answers are stuck",
+} as const;
+export type FormOpsAlertKind = keyof typeof FORM_OPS_ALERT_SUBJECTS;
+
+const ADMIN_FORMS_VIEW = "https://admin.usemingla.com/#/brands";
+
+const count = (v: unknown): number =>
+  typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : 0;
+
+/**
+ * #4541 R1.7 and R7.2: after the form request drain, retry checkout answers
+ * whose finalize did not land (brand_form_checkout_answers_retry), read the
+ * queue's health, and raise at most one alert per kind per day
+ * (brand_form_ops_alert_claim) to the existing delivery-health recipients.
+ * Counts and the Admin view link only: never a contact, link or answer. Never
+ * throws: a failure here is logged and reported, and the cron keeps running.
+ */
+export async function runFormsOps(
+  admin: ReminderAdmin,
+  drainError: string | null,
+  deps: Pick<ReminderDeps, "sendAlert" | "alertRecipients"> = {},
+): Promise<{
+  retry: Record<string, unknown> | null;
+  health: Record<string, unknown> | null;
+  alerts: FormOpsAlertKind[];
+  errors: string[];
+}> {
+  const errors: string[] = [];
+  const obj = (v: unknown): Record<string, unknown> | null =>
+    typeof v === "object" && v !== null && !Array.isArray(v)
+      ? v as Record<string, unknown>
+      : null;
+  const retried = await admin.rpc("brand_form_checkout_answers_retry", {
+    p_limit: 50,
+  });
+  if (retried.error) errors.push(`retry: ${retried.error.message}`);
+  const retry = retried.error ? null : obj(retried.data);
+  const read = await admin.rpc("brand_form_queue_health", {});
+  if (read.error) errors.push(`health: ${read.error.message}`);
+  const health = read.error ? null : obj(read.data);
+
+  const due: Array<[FormOpsAlertKind, string[]]> = [];
+  if (drainError !== null) {
+    due.push(["form_drain_error", [
+      "The five-minute form request drain failed this run. It retries on the next run.",
+    ]]);
+  }
+  if (health !== null && count(health.failedLastHour) >= 10) {
+    due.push(["form_sends_failing", [
+      `${count(health.failedLastHour)} form requests failed in the last hour.`,
+    ]]);
+  }
+  if (health !== null && count(health.stuckQueued) > 0) {
+    due.push(["form_queue_stuck", [
+      `${count(health.stuckQueued)} form requests have waited in the queue for more than 30 minutes.`,
+    ]]);
+  }
+  const stuck = Math.max(
+    count(health?.stashStuck),
+    count(retry?.stuck),
+  );
+  if (stuck > 0) {
+    due.push(["checkout_answers_stuck", [
+      `${stuck} checkout answers could not be saved to their order after 5 tries or 30 minutes.`,
+    ]]);
+  }
+  const alerts: FormOpsAlertKind[] = [];
+  for (const [kind, lines] of due) {
+    const claim = await admin.rpc("brand_form_ops_alert_claim", {
+      p_kind: kind,
+    });
+    if (claim.error) {
+      errors.push(`claim ${kind}: ${claim.error.message}`);
+      continue;
+    }
+    if (claim.data !== true) continue;
+    try {
+      const result = await (deps.sendAlert ?? sendOpsAlertEmail)({
+        subject: FORM_OPS_ALERT_SUBJECTS[kind],
+        paragraphs: [
+          ...lines,
+          "Open the Admin forms view for counts by brand. This email carries counts only.",
+        ],
+        recipients: (deps.alertRecipients ?? apiHealthAlertRecipients)(),
+        cta: { label: "Open Admin", url: ADMIN_FORMS_VIEW },
+        idempotencyKey: `issue4541:${kind}:${new Date().toISOString().slice(0, 10)}`,
+      });
+      if (result.succeeded === 0 || result.failed > 0) {
+        errors.push(`alert ${kind}: send_failed`);
+      } else {
+        alerts.push(kind);
+      }
+    } catch (error) {
+      errors.push(
+        `alert ${kind}: ${error instanceof Error ? error.message.slice(0, 120) : "threw"}`,
+      );
+    }
+  }
+  return { retry, health, alerts, errors };
 }
 
 /**
@@ -191,12 +308,42 @@ export async function handler(
     return { error: message };
   });
 
+  // #4541 R1.7 / R7.2: retry checkout answers, read the queue's health and
+  // raise the forms ops alerts (once per kind per day).
+  const drainError = formReminders !== null && "error" in formReminders
+    ? String(formReminders.error)
+    : null;
+  const formsOps = await runFormsOps(admin, drainError, deps).catch(
+    (error: unknown) => ({
+      retry: null,
+      health: null,
+      alerts: [] as FormOpsAlertKind[],
+      errors: [error instanceof Error ? error.message : String(error)],
+    }),
+  );
+  if (formsOps.errors.length > 0) {
+    hadError = true;
+    console.error("[notify-reminders] forms ops:", formsOps.errors.join("; "));
+  }
+  const formsOpsOut = formsOps.alerts.length > 0 || formsOps.errors.length > 0 ||
+      count(formsOps.retry?.promoted) + count(formsOps.retry?.failed) > 0
+    ? {
+      retry: formsOps.retry,
+      alerts: formsOps.alerts,
+      errors: formsOps.errors.length,
+    }
+    : null;
+
   // Surface partial failure (no silent failure) but never throw — the cron should
   // keep running and retry next tick; idempotency makes retries safe.
   return json(
-    formReminders === null
-      ? { ok: !hadError, enqueued: results, windowMinutes }
-      : { ok: !hadError, enqueued: results, windowMinutes, formReminders },
+    {
+      ok: !hadError,
+      enqueued: results,
+      windowMinutes,
+      ...(formReminders === null ? {} : { formReminders }),
+      ...(formsOpsOut === null ? {} : { formsOps: formsOpsOut }),
+    },
     hadError ? 207 : 200,
   );
 }

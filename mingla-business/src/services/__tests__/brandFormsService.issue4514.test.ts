@@ -144,6 +144,9 @@ describe("RPC mapping", () => {
       p_filter: "all",
       p_limit: 50,
       p_offset: 0,
+      // #4541 R4.7 (added on purpose): the owner filter and hidden toggle, defaults.
+      p_owner: "all",
+      p_show_hidden: false,
     });
     ok({ columns: [{ key: "1:q1", version: 1, questionId: "q1", label: "Are you performing?", type: "single_choice" }], rows: [] });
     const feed = await fetchBrandFormExport("f1", "e1");

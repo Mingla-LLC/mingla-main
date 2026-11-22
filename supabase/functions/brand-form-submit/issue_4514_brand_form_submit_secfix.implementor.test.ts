@@ -10,11 +10,11 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   type BrandFormSubmitDb,
-  clientIp,
   defaultIpSalt,
   handleBrandFormSubmit,
   hashIp,
 } from "./submit.ts";
+import { platformClientIp } from "../_shared/platformClientIp.ts";
 import {
   coreErrorCode,
   unstorableAnswerErrors,
@@ -45,10 +45,9 @@ function pgLikeFake(
   const hashes: string[] = [];
   const db: BrandFormSubmitDb = {
     switchedOff: () => Promise.resolve(false),
-    countAttempts: () => Promise.resolve({ ip10m: 0, ip24h: 0 }),
-    recordAttempt: (h) => {
+    attemptAdmit: (h) => {
       hashes.push(h);
-      return Promise.resolve();
+      return Promise.resolve({ allowed: true });
     },
     userFromBearer: () =>
       Promise.resolve("4514a000-0000-4000-8000-000000000001"),
@@ -222,34 +221,33 @@ Deno.test("T-SALT the address salt is derived from the service-role key, not a c
   await assertRejects(() => hashIp("203.0.113.9", ""));
 });
 
-Deno.test("T-SALT the address is read exactly as forms-submit reads it (first x-forwarded-for hop)", async () => {
+Deno.test("T-SALT #4541 R8.4: the address is the platform-set one, never the caller's x-forwarded-for hop", async () => {
+  // This replaces the #4514 rule (the first x-forwarded-for hop, as forms-submit
+  // reads it): that hop is whatever the caller sends, so the limit could be dodged.
   const req = (h: Record<string, string>) =>
     new Request("https://x", { headers: h });
   assertEquals(
-    clientIp(req({ "x-forwarded-for": "198.51.100.4, 10.0.0.1" })),
-    "198.51.100.4",
+    platformClientIp(req({ "x-forwarded-for": "8.8.8.8, 10.0.0.1" })),
+    "unknown",
   );
-  // A spoofable header the forms function does not read is ignored.
   assertEquals(
-    clientIp(
-      req({
-        "cf-connecting-ip": "192.0.2.1",
-        "x-forwarded-for": "198.51.100.4",
-      }),
+    platformClientIp(
+      req({ "cf-connecting-ip": "1.1.1.1", "x-forwarded-for": "8.8.8.8" }),
     ),
-    "198.51.100.4",
+    "1.1.1.1",
   );
-  assertEquals(clientIp(req({})), "unknown");
+  assertEquals(platformClientIp(req({ "x-real-ip": "9.9.9.9" })), "9.9.9.9");
+  assertEquals(platformClientIp(req({})), "unknown");
   const f = pgLikeFake();
   const salt = await defaultIpSalt({ get: () => ROOT_A });
   await run(
     f,
     post({ formId: FORM, answers: { [Q]: "ok" } }, {
-      "cf-connecting-ip": "192.0.2.1",
+      "cf-connecting-ip": "1.1.1.1",
     }),
     salt,
   );
-  assertEquals(f.hashes, [await hashIp("203.0.113.9", salt)]);
+  assertEquals(f.hashes, [await hashIp("1.1.1.1", salt)]);
 });
 
 Deno.test("T-SALT no salt: the request fails closed (500) and nothing is written", async () => {

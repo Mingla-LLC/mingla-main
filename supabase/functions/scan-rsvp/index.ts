@@ -8,6 +8,7 @@ import {
 import {
   ownsRecentAdmittedScan,
   RSVP_DOOR_ANSWERS_DEADLINE_MS,
+  rsvpDoorAnswersForScanResult,
   rsvpDoorSubjectFromScanResult,
 } from "./doorAnswers.ts";
 // #3281 S6 — the add-ons an admitted RSVP owes (own top-level field).
@@ -167,7 +168,8 @@ serve(async (req) => {
         subject,
         deadline.signal,
       );
-      if (doorAnswers !== null) result = { ...result, doorAnswers };
+      const shown = rsvpDoorAnswersForScanResult(doorAnswers, result.result);
+      if (shown !== null) result = { ...result, doorAnswers: shown };
     } finally {
       clearTimeout(timer);
     }

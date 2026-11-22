@@ -196,6 +196,8 @@ $ratchet$;
 --                                             review": bell, push, email; no SMS)
 --       brand_form_auto_reminders_due       → explicit NULL (#4514 "reminder held"
 --                                             host notice: in-app and push; no SMS)
+--       brand_form_blast_hold_if_closed     → explicit NULL (#4541 "Blast not sent"
+--                                             host notice: in-app and push; no SMS)
 --
 --     PUSH-ONLY — the #3872 notification producers write only in-app/push
 --     categories and deliberately do not carry an SMS country. They are still
@@ -251,7 +253,10 @@ DECLARE
     'ops_due_digest',
     'issue_4420_stay_group_resend_link',
     'issue_4453_website_request_ready',
-    'brand_form_auto_reminders_due'
+    'brand_form_auto_reminders_due',
+    -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
+    -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.
+    'brand_form_blast_hold_if_closed'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -397,7 +402,10 @@ DECLARE
     'ops_due_digest',
     'issue_4420_stay_group_resend_link',
     'issue_4453_website_request_ready',
-    'brand_form_auto_reminders_due'
+    'brand_form_auto_reminders_due',
+    -- #4541 "Blast not sent" host notice (in-app and push; no SMS) writes an
+    -- explicit NULL country_code; issue_4541_forms_blast_push.implementor.pg17 asserts the notice.
+    'brand_form_blast_hold_if_closed'
   ];
   v_missing text;
 BEGIN

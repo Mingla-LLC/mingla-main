@@ -22,6 +22,10 @@ import {
 export type BrandFormStatus = "draft" | "live" | "closed" | "archived";
 export type BrandFormMode = "optional_on_page" | "required_step" | "after_purchase";
 export type BrandFormResponsesFilter = "all" | "earlier_version";
+/** #4541 R4.7: whose replies to list. */
+export type BrandFormOwnerFilter = "all" | "known" | "unknown";
+/** #4541 R4.7: who a reply belongs to (an Unknown Blast reply has no owner). */
+export type BrandFormOwnerKind = "guest" | "blast" | "app_user" | "unknown";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -41,6 +45,7 @@ export type BrandFormsErrorCode =
   | "invalid_definition"
   | "mode_invalid"
   | "trip_uses_intake"
+  | "not_unknown"
   | "network_error"
   | "invalid_response"
   | "unknown";
@@ -149,6 +154,8 @@ export function mapBrandFormsError(error: unknown, fallbackMessage: string): Bra
     return new BrandFormsError("not_found", "We couldn't find that form. It may have been removed.", reason);
   }
   switch (reason) {
+    case "not_unknown":
+      return new BrandFormsError("not_unknown", "Only Unknown replies can be hidden.", reason);
     case "form_archived":
       return new BrandFormsError("form_archived", "This form is archived.", reason);
     case "form_not_live":
@@ -205,6 +212,8 @@ export interface BrandFormRow {
   draftRev: number;
   liveVersionId: string | null;
   doorFullAnswers: boolean;
+  /** #4541 R8.3: invited scan-only staff may open full answers too (off by default). */
+  doorFullAnswersInvited: boolean;
   updatedAt: string;
   closedAt: string | null;
 }
@@ -253,6 +262,14 @@ export interface BrandFormResponseRow {
   subject: { kind: string; id: string | null; name: string | null };
   /** Wave 3: a signed-in answer's RSVP and orders at this page (null without a page). */
   holder: { rsvpId: string | null; rsvpGuestId?: string | null; orderIds: string[] } | null;
+  /** #4541 R4.7: who it belongs to; "guest" from an older server. */
+  ownerKind: BrandFormOwnerKind;
+  /** "Unknown", or a Blast recipient's name at send; null for a guest. */
+  ownerName: string | null;
+  campaignId: string | null;
+  campaignName: string | null;
+  /** An Unknown reply the host hid (R4.8). */
+  hidden: boolean;
 }
 
 export interface BrandFormNotAnswered {
@@ -283,6 +300,8 @@ export interface BrandFormResponsesPage {
   rows: BrandFormResponseRow[];
   /** Empty when no page was named. */
   notAnswered: BrandFormNotAnswered[];
+  /** #4541 R4.8: hidden Unknown replies (All pages only; 0 otherwise). */
+  hiddenCount: number;
 }
 
 export interface BrandFormExportColumn {
@@ -295,6 +314,10 @@ export interface BrandFormExportColumn {
 
 export interface BrandFormExportRow {
   responseId: string;
+  /** #4541 R4.7: "Unknown" or a Blast recipient's name; null for a guest (named from Responses). */
+  name: string | null;
+  /** #4541 R4.7: the Blast it came from, or null. */
+  campaign: string | null;
   version: number;
   submittedAt: string;
   updatedAt: string;
@@ -413,6 +436,7 @@ const parseFormRow = (value: unknown): BrandFormRow => {
     draftRev: num(r.draft_rev, "form.draft_rev"),
     liveVersionId: strOrNull(r.live_version_id),
     doorFullAnswers: bool(r.door_full_answers, true),
+    doorFullAnswersInvited: bool(r.door_full_answers_invited, false),
     updatedAt: str(r.updated_at, "form.updated_at"),
     closedAt: strOrNull(r.closed_at),
   };
@@ -437,8 +461,10 @@ const parseAttachment = (
   };
 };
 
+// #4541 R8.3: `door_full_answers_invited` arrives with the M-A migration, which
+// is applied to production before this ships (spec §21 step 1).
 const FORM_COLUMNS =
-  "id, brand_id, name, status, draft, draft_rev, live_version_id, door_full_answers, updated_at, closed_at";
+  "id, brand_id, name, status, draft, draft_rev, live_version_id, door_full_answers, door_full_answers_invited, updated_at, closed_at";
 const ATTACHMENT_COLUMNS = "id, form_id, event_id, mode, auto_remind, auto_remind_channels";
 
 /** Stored reminder channels, push dropped (it waits for the Explorer form screen). */
@@ -629,13 +655,25 @@ const parseResponseRow = (value: unknown): BrandFormResponseRow => {
           : [],
       }
       : null,
+    ownerKind: parseOwnerKind(r.ownerKind),
+    ownerName: strOrNull(r.name),
+    campaignId: strOrNull(r.campaignId),
+    campaignName: strOrNull(r.campaignName),
+    hidden: bool(r.hidden, false),
   };
 };
+
+const parseOwnerKind = (v: unknown): BrandFormOwnerKind =>
+  v === "blast" || v === "app_user" || v === "unknown" ? v : "guest";
 
 export interface FetchResponsesInput {
   formId: string;
   eventId: string | null;
   filter: BrandFormResponsesFilter;
+  /** #4541 R4.7: All, Known or Unknown (default All). */
+  owner?: BrandFormOwnerFilter;
+  /** #4541 R4.8: include hidden Unknown replies (default no). */
+  showHidden?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -648,6 +686,8 @@ export async function fetchBrandFormResponses(input: FetchResponsesInput): Promi
     p_filter: input.filter,
     p_limit: input.limit ?? 50,
     p_offset: input.offset ?? 0,
+    p_owner: input.owner ?? "all",
+    p_show_hidden: input.showHidden === true,
   });
   if (error !== null) return failFrom(error, "Couldn't load the answers. Try again.");
   const root = rec(data, "responses");
@@ -683,11 +723,26 @@ export async function fetchBrandFormResponses(input: FetchResponsesInput): Promi
         addedByHost: bool(r.addedByHost, false),
       };
     }),
+    hiddenCount: count(root.hiddenCount),
   };
 }
 
-/** The answers feed (event manager and up). One column per question and version. */
-export async function fetchBrandFormExport(formId: string, eventId: string): Promise<BrandFormExport> {
+/** #4541 R4.8: hide an Unknown reply, or bring it back (marketing manager and up). */
+export async function setBrandFormResponseHidden(responseId: string, hidden: boolean): Promise<boolean> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc("biz_brand_form_response_hide", {
+    p_response_id: responseId,
+    p_hidden: hidden,
+  });
+  if (error !== null) return failFrom(error, hidden ? "Couldn't hide the reply. Try again." : "Couldn't bring the reply back. Try again.");
+  return bool(rec(data, "hide").hidden, hidden);
+}
+
+/**
+ * The answers feed (event manager and up). One column per question and version.
+ * #4541 R4.7: no page means All pages, Blast replies included; hidden replies never export.
+ */
+export async function fetchBrandFormExport(formId: string, eventId: string | null): Promise<BrandFormExport> {
   const supabase = await getSupabase();
   const { data, error } = await supabase.rpc("biz_brand_form_responses_export", {
     p_form_id: formId,
@@ -714,6 +769,8 @@ export async function fetchBrandFormExport(formId: string, eventId: string): Pro
       }
       return {
         responseId: str(r.responseId, "row.responseId"),
+        name: strOrNull(r.name),
+        campaign: strOrNull(r.campaign),
         version: num(r.version, "row.version"),
         submittedAt: str(r.submittedAt, "row.submittedAt"),
         updatedAt: str(r.updatedAt, "row.updatedAt"),
@@ -813,6 +870,18 @@ export const reopenBrandForm = (formId: string): Promise<BrandFormStatus> =>
 export const archiveBrandForm = (formId: string): Promise<BrandFormStatus> =>
   statusRpc("biz_brand_form_archive", formId, "Couldn't archive the form. Try again.");
 
+/** #4541 R8.3: "Invited door staff can too" (event manager and up; the server checks). */
+export async function setBrandFormDoorInvited(formId: string, on: boolean): Promise<boolean> {
+  const supabase = await getSupabase();
+  // M-A `biz_brand_form_set_door_invited(p_form_id, p_on)` replies `{doorFullAnswersInvited}`.
+  const { data, error } = await supabase.rpc("biz_brand_form_set_door_invited", {
+    p_form_id: formId,
+    p_on: on,
+  });
+  if (error !== null) return failFrom(error, "Couldn't change that setting. Try again.");
+  return isRecord(data) ? bool(data.doorFullAnswersInvited, on) : on;
+}
+
 export async function setBrandFormDoorFullAnswers(formId: string, on: boolean): Promise<boolean> {
   const supabase = await getSupabase();
   const { data, error } = await supabase.rpc("biz_brand_form_set_door_full_answers", {
@@ -886,6 +955,8 @@ export interface BrandFormCount {
   answered: number;
   toAnswer: number;
   pages: number;
+  /** #4541 R4.9: replies from Blasts (no page); hidden Unknown replies left out. */
+  blastReplies: { known: number; unknown: number };
 }
 
 export interface BrandFormPageCount {
@@ -893,6 +964,11 @@ export interface BrandFormPageCount {
   formId: string;
   answered: number;
   toAnswer: number;
+  /**
+   * #4541 R1.2: current guests with no answer who were never sent the form.
+   * Live forms only; null when the server did not say (older server).
+   */
+  notAsked: number | null;
 }
 
 export interface BrandFormCounts {
@@ -911,7 +987,14 @@ export async function fetchBrandFormCounts(brandId: string): Promise<BrandFormCo
   return {
     forms: arr(r.forms ?? [], "counts.forms").map((f) => {
       const x = rec(f, "counts.form");
-      return { formId: str(x.formId, "counts.formId"), answered: count(x.answered), toAnswer: count(x.toAnswer), pages: count(x.pages) };
+      const blast = isRecord(x.blastReplies) ? x.blastReplies : {};
+      return {
+        formId: str(x.formId, "counts.formId"),
+        answered: count(x.answered),
+        toAnswer: count(x.toAnswer),
+        pages: count(x.pages),
+        blastReplies: { known: count(blast.known), unknown: count(blast.unknown) },
+      };
     }),
     pages: arr(r.pages ?? [], "counts.pages").map((pg) => {
       const x = rec(pg, "counts.page");
@@ -920,6 +1003,7 @@ export async function fetchBrandFormCounts(brandId: string): Promise<BrandFormCo
         formId: str(x.formId, "counts.page.formId"),
         answered: count(x.answered),
         toAnswer: count(x.toAnswer),
+        notAsked: typeof x.notAsked === "number" ? count(x.notAsked) : null,
       };
     }),
   };
@@ -935,6 +1019,8 @@ export interface GuestQuestionsTileData {
   published: boolean;
   answered: number;
   notAnswered: number;
+  /** #4541 R1.2: of those, never asked (0 when unknown). */
+  notAsked: number;
 }
 
 /**
@@ -947,7 +1033,7 @@ export async function fetchGuestQuestionsTile(eventId: string): Promise<GuestQue
   if (found === null) return null;
   const published = found.form.liveVersionId !== null;
   if (!published || found.form.status === "draft") {
-    return { attachment: found.attachment, form: found.form, published, answered: 0, notAnswered: 0 };
+    return { attachment: found.attachment, form: found.form, published, answered: 0, notAnswered: 0, notAsked: 0 };
   }
   // Wave 3: the one counts read (per page), not a page of responses.
   const counts = await fetchBrandFormCounts(found.form.brandId);
@@ -958,5 +1044,97 @@ export async function fetchGuestQuestionsTile(eventId: string): Promise<GuestQue
     published,
     answered: here?.answered ?? 0,
     notAnswered: here?.toAnswer ?? 0,
+    notAsked: here?.notAsked ?? 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// #4541 R1.9 — one guest's answers (guest detail and order detail)
+// ---------------------------------------------------------------------------
+
+export type GuestAnswersSubjectKind = "rsvp" | "rsvp_guest" | "order";
+
+export type GuestAnswersCardData =
+  | { state: "none" }
+  | { state: "not_answered" }
+  | {
+      state: "answered";
+      formName: string;
+      versionLabel: string | null;
+      answeredAt: string | null;
+      isCurrentVersion: boolean;
+      items: Array<{ label: string; value: string }>;
+    };
+
+/** The server payload of `biz_brand_form_guest_answers`. Pure; exported for tests. */
+export function parseGuestAnswers(data: unknown): GuestAnswersCardData {
+  const r = rec(data, "guestAnswers");
+  if (r.state === "none") return { state: "none" };
+  if (r.state === "not_answered") return { state: "not_answered" };
+  return {
+    state: "answered",
+    formName: str(r.formName, "guestAnswers.formName"),
+    versionLabel: strOrNull(r.versionLabel),
+    answeredAt: strOrNull(r.answeredAt),
+    isCurrentVersion: bool(r.isCurrentVersion, true),
+    items: arr(r.items ?? [], "guestAnswers.items").map((it) => {
+      const x = rec(it, "guestAnswers.item");
+      return { label: str(x.label, "guestAnswers.item.label"), value: typeof x.value === "string" ? x.value : "" };
+    }),
+  };
+}
+
+export async function fetchGuestAnswers(
+  eventId: string,
+  subject: { kind: GuestAnswersSubjectKind; id: string },
+): Promise<GuestAnswersCardData> {
+  const supabase = await getSupabase();
+  // M-A `biz_brand_form_guest_answers(p_event_id, p_subject jsonb {kind, id})` (R1.9).
+  const { data, error } = await supabase.rpc("biz_brand_form_guest_answers", {
+    p_event_id: eventId,
+    p_subject: { kind: subject.kind, id: subject.id },
+  });
+  if (error !== null) return failFrom(error, "Couldn't load answers. Try again");
+  return parseGuestAnswers(data);
+}
+
+// ---------------------------------------------------------------------------
+// #4541 R8.3 — who opened full answers at the door (event manager and up)
+// ---------------------------------------------------------------------------
+
+export interface DoorReadRow {
+  at: string;
+  actorName: string | null;
+  guestName: string | null;
+  via: string | null;
+  result: string | null;
+}
+
+/** The server payload of `biz_brand_form_door_reads`. Pure; exported for tests. */
+export function parseDoorReads(data: unknown): DoorReadRow[] {
+  return arr(data ?? [], "doorReads").map((row) => {
+    const r = rec(row, "doorReads[]");
+    return {
+      at: str(r.at, "doorReads.at"),
+      actorName: strOrNull(r.actorName),
+      guestName: strOrNull(r.guestName),
+      via: strOrNull(r.via),
+      result: strOrNull(r.result),
+    };
+  });
+}
+
+export const DOOR_READS_PAGE = 50;
+
+export async function fetchDoorReads(eventId: string, before: string | null = null): Promise<DoorReadRow[]> {
+  const supabase = await getSupabase();
+  // M-A `biz_brand_form_door_reads(p_event_id, p_limit, p_before)` returns
+  // `[{at, actorName, guestName, via, result}]` (R8.3).
+  const { data, error } = await supabase.rpc("biz_brand_form_door_reads", {
+    p_event_id: eventId,
+    p_limit: DOOR_READS_PAGE,
+    p_before: before,
+  });
+  if (error !== null) return failFrom(error, "Couldn't load who opened answers. Try again.");
+  return parseDoorReads(data);
 }

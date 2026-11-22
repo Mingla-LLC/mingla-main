@@ -58,7 +58,7 @@ export interface FormSchema {
 }
 
 /** The icons this package draws. The host's Icon must accept these names. */
-export type FormIconName = "bell" | "check" | "calendar";
+export type FormIconName = "bell" | "check" | "calendar" | "eye";
 
 export interface FormIconProps {
   name: FormIconName;
@@ -103,6 +103,12 @@ export interface FormRenderingTokens {
     text4: string;
     textStrong: string;
     fill: { inset: string };
+    /**
+     * #4541 R2.7: the required asterisk's colour. Absent: `accent` (Host and
+     * buyer web). The Explorer app passes white. "(optional)" still marks the
+     * other questions, so colour never carries the meaning alone.
+     */
+    requiredMark?: string;
   };
   radius: { sm: number; md: number };
   space: { 1: number; 2: number; 4: number; 6: number };
@@ -117,6 +123,41 @@ export interface FormBrandCoverProps {
   height: number;
 }
 
+/**
+ * #4541 R2.12: every guest-facing word this package draws. The English
+ * defaults (`DEFAULT_FORM_RENDERING_COPY`) are today's strings, so Host web
+ * and buyer web pass nothing. The Explorer app passes its `forms` namespace
+ * `t()` values. Placeholder functions receive already-formatted values.
+ */
+export interface FormRenderingCopy {
+  /** The door line under a door question's label (drawn with the eye mark). */
+  shownToDoorStaff: string;
+  /** The line at the top when door staff can open full answers. */
+  answersSeenLine: string;
+  /** Beside the label of a question that is not required. */
+  optional: string;
+  /** A question saved with no label. */
+  untitledQuestion: string;
+  /** The form's "continue" gate while a required question is unanswered. */
+  requiredToContinue: string;
+  /** Per-question refusal rows (the server's `form_answers_invalid` codes). */
+  fieldErrors: { required: string; type: string; option: string; too_long: string };
+  /** Text question placeholder when the host set none. */
+  textPlaceholder: string;
+  /** Number question placeholder when the host set none. */
+  numberPlaceholder: string;
+  numberMin: (min: string) => string;
+  numberMax: (max: string) => string;
+  /** Date question, before a date is picked (iOS and Android). */
+  datePlaceholder: string;
+  dateCancel: string;
+  dateSet: string;
+  /** Brand header fallbacks. */
+  brandFallbackName: string;
+  fromBrand: (brand: string) => string;
+  fromHost: string;
+}
+
 /** Everything visual the host app injects (C11). */
 export interface FormRenderingPrimitives {
   tokens: FormRenderingTokens;
@@ -124,6 +165,11 @@ export interface FormRenderingPrimitives {
   WebDateTimeInput: ComponentType<FormWebDateInputProps>;
   /** Optional: the brand header's cover (absent: the image or a flat accent fill). */
   BrandCover?: ComponentType<FormBrandCoverProps>;
+  /**
+   * #4541 R2.12: the words, injected like the tokens. Absent or partial: the
+   * English defaults fill the gaps (`resolveFormCopy`).
+   */
+  copy?: Partial<FormRenderingCopy>;
 }
 
 /** The props a host's file upload renderer receives. */

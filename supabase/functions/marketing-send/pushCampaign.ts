@@ -18,6 +18,8 @@ import {
   renderBrandReachMessage,
 } from "../_shared/brandReachMessages.ts";
 import { buildPushSnapshot, writeSentSnapshot } from "./sentSnapshot.ts";
+import { blastFormPushDeepLink, embeddedFormIdOf } from "../_shared/blastFormLinks.ts";
+import { blastFormPushEligible } from "./blastForm.ts";
 
 export const PUSH_QUOTE_TTL_MS = 5 * 60 * 1000;
 
@@ -216,7 +218,7 @@ export function campaignPushPayload(
 export async function sendPushCampaign(
   // deno-lint-ignore no-explicit-any
   supabase: any,
-  campaign: { id: string; brand_id: string },
+  campaign: { id: string; brand_id: string; channel_payload?: unknown },
   dispatchOverride?: PushDispatch,
 ): Promise<
   {
@@ -266,6 +268,11 @@ export async function sendPushCampaign(
   }
   let delivered = 0;
   let failed = 0;
+  // #4541 R4.3: a Blast with a form opens the form screen, but only for an
+  // account whose app can open it (BRAND_FORMS_PUSH on, an app seen in 45
+  // days); everyone else gets the push as before, and their email or text
+  // carries the form.
+  const formId = embeddedFormIdOf(campaign.channel_payload);
   for (const item of list.work ?? []) {
     let status: "sent" | "failed" | "skipped" = "failed";
     let reason: string | null = "provider_failed";
@@ -275,7 +282,9 @@ export async function sendPushCampaign(
         user_id: item.userId,
         category_key: BRAND_CAMPAIGN_PUSH_CATEGORY,
         payload: campaignPushPayload(list, body, item.reason, campaign.id),
-        deep_link: link,
+        deep_link: formId !== null && await blastFormPushEligible(supabase, item.userId)
+          ? blastFormPushDeepLink(formId, campaign.id)
+          : link,
         idempotency_key: `campaign-push:${campaign.id}:${item.userId}`,
         requested_channel: "push",
       });

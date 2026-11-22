@@ -7,9 +7,11 @@
  * - The page's form, read through brand-form-submit `{op:"checkout_form"}` with
  *   the SAME credential the buyer presents to checkout: the session bearer
  *   (attached by the client) and the private ticket link. The server applies the
- *   one visibility rule its required-answers check uses (review fix 1), and a
- *   signed-in buyer who already answered gets the step PREFILLED with their own
- *   answers (OP-5); Continue then updates their one response.
+ *   one visibility rule its required-answers check uses (review fix 1). A
+ *   signed-in buyer who already answered for THIS event sees those answers
+ *   read-only (`answeredHere`, #4541 R1.1: checkout never edits an answer); an
+ *   answer at another event opens the step prefilled (OP-5) and becomes a new
+ *   answer for this order.
  * - "After they purchase" (§5.5): a personal link for the buyer's own order,
  *   from brand-form-submit `{op:"purchase_link"}`; possession is the checkout
  *   session's buyer status token. Never an invite (decision 17).
@@ -38,8 +40,19 @@ export interface CheckoutForm {
   definition: BrandFormDefinitionShape | null;
   doorFullAnswers: boolean;
   brand: BrandHeaderData;
-  /** OP-5: set when this signed-in buyer already answered (the step opens prefilled). */
+  /**
+   * The signed-in buyer's own earlier answers. With `answeredHere` they are
+   * this event's answer, shown read-only; otherwise they are from another
+   * event and open the step filled in (editable).
+   */
   prefill: CheckoutFormPrefill | null;
+  /**
+   * #4541 R1.1: this buyer already answered for THIS event (their RSVP, another
+   * order or a plus-one here, or their account answer). Checkout shows the
+   * answers read-only, sends no answers (the server ignores them) and the buyer
+   * edits from their ticket.
+   */
+  answeredHere: boolean;
 }
 
 /** The server's prefill, keeping only answer shapes a question can hold. Pure; exported for tests. */
@@ -78,8 +91,11 @@ export function parseCheckoutForm(data: unknown): CheckoutForm | null {
     name: typeof d.name === "string" ? d.name : "",
     definition,
     doorFullAnswers: d.doorFullAnswers === true,
-    // OP-5 (contract): a returning buyer's step opens prefilled, never skipped.
-    prefill: d.answered === true ? parsePrefill(d.prefill) : null,
+    // #4541 R1.1: prefill comes with `answeredHere` (read-only) or, for an
+    // answer at another event, with `answered:false` (editable). An older
+    // server sends it only with `answered:true`; both parse the same.
+    prefill: parsePrefill(d.prefill),
+    answeredHere: d.answeredHere === true,
     brand: brandHeaderFromServer(
       d.brand && typeof d.brand === "object" ? (d.brand as Record<string, unknown>) : null,
     ),

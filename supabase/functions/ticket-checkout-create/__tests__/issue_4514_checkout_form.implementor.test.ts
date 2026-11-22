@@ -495,6 +495,12 @@ Deno.test("#4514 W5 a failed stash answers 409 and no order is finalized", async
   assertEquals(body.error, "brand_form_stash_failed");
   assert(!has(db, "rpc:biz_ticket_checkout_finalize"));
   assertEquals(db.orders.length, 0);
+  // #4541 R1.13: the refused session is released (failed, expired) right away.
+  assert(
+    db.operations.lastIndexOf("update:ticket_checkout_sessions") >
+      db.operations.indexOf("rpc:brand_form_checkout_stash"),
+    "the session is released after the failed stash",
+  );
 });
 
 Deno.test("#4514 W5 no marker (an older client): the order completes as to-answer with no form call", async () => {
@@ -770,6 +776,12 @@ Deno.test("#4514 W7 P1-A/P3-E: a grant or link that ends between check and stash
     "payment never starts and no free order is finalized",
   );
   assertEquals(db.orders.length, 0);
+  // #4541 R1.13: the session is released too.
+  assert(
+    db.operations.lastIndexOf("update:ticket_checkout_sessions") >
+      db.operations.indexOf("rpc:brand_form_checkout_stash"),
+    "the session is released after the lost stash",
+  );
 });
 
 Deno.test("#4514 W7 OP-5: a returning buyer who sends answers has them stashed (the trigger updates their one response)", async () => {
