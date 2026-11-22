@@ -23,6 +23,7 @@ import {
 import { sendOpsAlertEmail } from "../stripeOpsAlertEmail.ts";
 import { resolveAlertRecipientValue } from "../secretBundle.ts";
 import { defaultDispatchBuyerEmail, type DispatchBuyerEmail } from "./installmentPayLinks.ts";
+import { planV2SchemaAvailable } from "./planV2Schema.ts";
 
 export const INSTALLMENT_REFERENCE_PATTERN = /^mingla-inst-[0-9a-f-]{36}-[alp]\d+$/;
 
@@ -131,6 +132,8 @@ async function settleFlexIfFlex(
   supabase: SupabaseClient,
   installmentId: string,
 ): Promise<{ paidInFull: boolean } | null> {
+  // issue #4522 (F6) — before #4522 is applied there are no flexible rows.
+  if (!(await planV2SchemaAvailable(supabase))) return null;
   const { data: row, error: rowError } = await supabase
     .from("order_installments").select("kind").eq("id", installmentId)
     .maybeSingle();

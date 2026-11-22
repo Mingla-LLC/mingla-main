@@ -71,7 +71,11 @@ Deno.test("a balance link is minted only for a flexible v2 order", async () => {
     () => "b".repeat(43),
   );
   assertEquals(url?.endsWith(`/pay/balance/${"b".repeat(43)}`), true);
-  assertEquals(flexible.rpcCalls[0].name, "issue_4522_issue_balance_link");
+  // #4522 rework F6: the schema probe first, then the link.
+  assertEquals(
+    flexible.rpcCalls.map((c) => c.name).filter((n) => n !== "issue_4522_plan_v2_enabled"),
+    ["issue_4522_issue_balance_link"],
+  );
   for (
     const terms of [null, { v: 2, flex_enabled: false }, { deposit_pct: 25 }]
   ) {

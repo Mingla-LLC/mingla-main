@@ -9,22 +9,22 @@ import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
 const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
 
+// #4522 rework F6: `kind` exists only once the #4522 migrations are applied,
+// so each filter is added when the schema probe says so (behaviour, both
+// ways, in _shared/installments/__tests__/issue_4522_old_schema_tolerance).
 Deno.test("due, retry and notice queries exclude flexible payments", () => {
   assertEquals(
-    source.split('.eq("status", "scheduled").eq("kind", "scheduled")').length -
-      1,
+    source.split('if (planV2) dueQuery = dueQuery.eq("kind", "scheduled");').length - 1,
     1,
     "due query",
   );
   assertEquals(
-    source.split('.eq("status", "failed").eq("kind", "scheduled")').length - 1,
+    source.split('if (planV2) retryQuery = retryQuery.eq("kind", "scheduled");').length - 1,
     1,
     "retry query",
   );
   assertEquals(
-    source.split(
-      '.eq("kind", "scheduled")\n    .is("cancelled_at", null)\n    .is("pre_charge_notice_sent_at", null)',
-    ).length - 1,
+    source.split('if (planV2) noticeQuery = noticeQuery.eq("kind", "scheduled");').length - 1,
     1,
     "notice query",
   );

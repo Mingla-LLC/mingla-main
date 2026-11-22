@@ -13,6 +13,7 @@ import {
   PAY_LINK_TOKEN_PATTERN,
   payLinkTokenHashHex,
 } from "../_shared/installments/installmentPayLinks.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { paystackTicketSplitFields } from "../_shared/ngPaystackSplit.ts";
 import {
   PAYOUT_HOLD_UNREADABLE_ERROR,
@@ -122,6 +123,8 @@ async function balanceLinkFor(
     return null;
   }
   try {
+    // issue #4522 (F6) — no balance affordance before the #4522 migrations.
+    if (!(await planV2SchemaAvailable(supabase))) return null;
     const { data: installment } = await supabase.from("order_installments")
       .select("order_id")
       .eq("id", link.installment_id)

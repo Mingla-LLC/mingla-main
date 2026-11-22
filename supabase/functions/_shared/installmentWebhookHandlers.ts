@@ -35,6 +35,7 @@ import {
   resolveInstallmentFeeRate,
 } from "./installments/installmentFeeRate.ts";
 import { rollOverMissedPayment } from "./installments/missedRollover.ts";
+import { planV2SchemaAvailable } from "./installments/planV2Schema.ts";
 // The one reader of a PaymentIntent's charge id. The router imports this
 // module too; the cycle is safe because both sides only export function
 // declarations and neither calls the other while the module loads.
@@ -107,25 +108,31 @@ export async function handleInstallmentPaymentSucceeded(
   // collected installment. The shared helper reads `latest_charge` first.
   const chargeId = paymentIntentChargeId(pi);
 
-  // Predicate-bound UPDATE: only mark collected if row is still scheduled.
+  // issue #4522 (F6) — before the #4522 migrations are applied the row has
+  // no `kind`; every read below then takes exactly the pre-#4522 shape.
+  const planV2 = await planV2SchemaAvailable(supabase);
+
+  // Predicate-bound UPDATE: only mark collected if row is still scheduled
+  // (or failed: cron may have written failed before the webhook arrived).
   // Idempotent — concurrent cron + webhook arrivals serialize safely.
-  const { data: updated, error } = await supabase
-    .from("order_installments")
-    .update({
-      status: "collected",
-      stripe_payment_intent_id: piId,
-      stripe_charge_id: chargeId,
-      collected_at: new Date().toISOString(),
-      // Clear any prior failure state
-      failed_at: null,
-      failure_reason: null,
-      next_retry_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", installmentId)
-    .in("status", ["scheduled", "failed"]) // tolerate the case where cron already wrote failed before webhook arrived
-    .select("id, order_id, ordinal, amount_cents, kind")
-    .maybeSingle();
+  const collectedUpdate = {
+    status: "collected",
+    stripe_payment_intent_id: piId,
+    stripe_charge_id: chargeId,
+    collected_at: new Date().toISOString(),
+    // Clear any prior failure state
+    failed_at: null,
+    failure_reason: null,
+    next_retry_at: null,
+    updated_at: new Date().toISOString(),
+  };
+  const { data: updated, error } = planV2
+    ? await supabase.from("order_installments").update(collectedUpdate)
+      .eq("id", installmentId).in("status", ["scheduled", "failed"])
+      .select("id, order_id, ordinal, amount_cents, kind").maybeSingle()
+    : await supabase.from("order_installments").update(collectedUpdate)
+      .eq("id", installmentId).in("status", ["scheduled", "failed"])
+      .select("id, order_id, ordinal, amount_cents").maybeSingle();
 
   if (error) {
     throw new Error(`installment collected update failed: ${error.message}`);
@@ -182,15 +189,54 @@ export async function handleInstallmentPaymentSucceeded(
   if (updated === null) {
     // Already collected (replay) or row missing/cancelled. Missing or
     // cancelled must fail closed — never mark the money event processed.
-    const { data: existing, error: existingError } = await supabase
-      .from("order_installments")
-      .select(
-        "id, amount_cents, status, payout_accounting_state, application_fee_amount_cents, kind",
-      )
-      .eq("id", installmentId)
-      .maybeSingle();
+    const loadReplayRow = async () =>
+      planV2
+        ? await supabase.from("order_installments")
+          .select("id, amount_cents, status, payout_accounting_state, application_fee_amount_cents, kind")
+          .eq("id", installmentId).maybeSingle()
+        : await supabase.from("order_installments")
+          .select("id, amount_cents, status, payout_accounting_state, application_fee_amount_cents")
+          .eq("id", installmentId).maybeSingle();
+    let { data: existing, error: existingError } = await loadReplayRow();
     if (existingError !== null) {
       throw new Error(`installment replay load failed: ${existingError.message}`);
+    }
+    // issue #4522 (F1/F2) — the charge landed on a row that is no longer
+    // open: a released flexible payment confirmed late is collected and
+    // settled once; a planned row superseded while its charge was landing is
+    // held as an overpayment. Either way the money is recorded, never looped.
+    if (
+      planV2 && existing !== null &&
+      String((existing as Record<string, unknown>).status ?? "") === "superseded"
+    ) {
+      const received = Number(pi["amount_received"] ?? pi["amount"]);
+      const { data: late, error: lateError } = await supabase.rpc(
+        "issue_4522_record_late_collection",
+        {
+          p_installment_id: installmentId,
+          p_amount_minor: Number.isSafeInteger(received) && received > 0 ? received : null,
+          p_provider_ref: piId,
+          p_charge_ref: chargeId,
+        },
+      );
+      const lateResult = (late ?? null) as { ok?: boolean; outcome?: string; reason?: string } | null;
+      if (lateError !== null || lateResult?.ok !== true) {
+        throw new Error(
+          `issue_4522_record_late_collection failed: ${
+            lateError?.message ?? lateResult?.reason ?? "unknown"
+          }`,
+        );
+      }
+      if (lateResult.outcome === "held") {
+        console.warn(
+          `[installment-webhook] payment_intent.succeeded for superseded ${installmentId} — held as an overpayment`,
+        );
+        return brandId;
+      }
+      ({ data: existing, error: existingError } = await loadReplayRow());
+      if (existingError !== null) {
+        throw new Error(`installment replay load failed: ${existingError.message}`);
+      }
     }
     if (existing === null) {
       throw new Error(
@@ -376,11 +422,14 @@ export async function handleInstallmentPaymentFailed(
   // Fetch current row to compute retry transitions correctly. The cron may
   // already have written a failed row + retry_count for this attempt — in
   // that case the webhook's job is to confirm + ensure dunning fires.
-  const { data: existing, error: fetchError } = await supabase
-    .from("order_installments")
-    .select("id, order_id, ordinal, retry_count, status, due_at, kind")
-    .eq("id", installmentId)
-    .maybeSingle();
+  const planV2 = await planV2SchemaAvailable(supabase);
+  const { data: existing, error: fetchError } = planV2
+    ? await supabase.from("order_installments")
+      .select("id, order_id, ordinal, retry_count, status, due_at, kind")
+      .eq("id", installmentId).maybeSingle()
+    : await supabase.from("order_installments")
+      .select("id, order_id, ordinal, retry_count, status, due_at")
+      .eq("id", installmentId).maybeSingle();
   if (fetchError !== null) {
     throw new Error(`installment fetch failed: ${fetchError.message}`);
   }
@@ -426,7 +475,7 @@ export async function handleInstallmentPaymentFailed(
   // issue #4522 (D-7) — a v2 auto-adjust order rolls the missed payment onto
   // its later rows; otherwise the booking is flagged at risk as before.
   const willBeAtRisk = lastRetry &&
-    !(await rollOverMissedPayment(supabase, installmentId));
+    !(planV2 && await rollOverMissedPayment(supabase, installmentId));
   if (willBeAtRisk) {
     await supabase
       .from("orders")

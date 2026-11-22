@@ -158,6 +158,10 @@ const deps = (fake: ReturnType<typeof world>, calls: Array<unknown>) => ({
           status: "requires_confirmation",
         });
       },
+      cancel: (id) => {
+        calls.push({ cancel: id });
+        return Promise.resolve({});
+      },
     },
   }),
   feeRate: () =>
@@ -291,6 +295,7 @@ Deno.test("Stripe app payment fails closed before PI creation when saved-card cu
             piCalls += 1;
             return Promise.reject(new Error("must_not_create"));
           },
+          cancel: () => Promise.resolve({}),
         },
       }),
     },

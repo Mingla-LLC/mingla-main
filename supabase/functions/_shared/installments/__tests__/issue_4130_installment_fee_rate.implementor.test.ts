@@ -211,6 +211,10 @@ class WebhookFakeDb {
     if (name === "issue_3645_clear_at_risk_if_settled") {
       return Promise.resolve({ data: { ok: true }, error: null });
     }
+    // #4522 rework F6 — the handler asks once whether the #4522 schema exists.
+    if (name === "issue_4522_plan_v2_enabled") {
+      return Promise.resolve({ data: true, error: null });
+    }
     throw new Error(`unexpected rpc ${name}`);
   }
   from(_table: string) {

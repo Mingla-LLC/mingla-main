@@ -16,6 +16,7 @@ import { stripeTicketCheckout } from "../stripe.ts";
 import { writeAudit } from "../audit.ts";
 import { installmentKeyVersionSuffix } from "./installmentIdempotencyKey.ts";
 import { rollOverMissedPayment } from "./missedRollover.ts";
+import { planV2SchemaAvailable } from "./planV2Schema.ts";
 import { applicationFeeWithReferralShare } from "../attribution.ts";
 import {
   MAX_RETRY_ATTEMPTS,
@@ -152,13 +153,24 @@ async function loadInstallmentContext(
     stripeAccount: StripeAccount;
   } | { error: string }
 > {
-  const { data: installment } = await supabase
-    .from("order_installments")
-    .select(
-      "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id, schedule_version",
-    )
-    .eq("id", installmentId)
-    .maybeSingle();
+  // issue #4522 (F6) — schedule_version exists only once #4522 is applied;
+  // before that the row reads exactly as it always did (version 0 key).
+  const planV2 = await planV2SchemaAvailable(supabase);
+  const { data: installment } = planV2
+    ? await supabase
+      .from("order_installments")
+      .select(
+        "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id, schedule_version",
+      )
+      .eq("id", installmentId)
+      .maybeSingle()
+    : await supabase
+      .from("order_installments")
+      .select(
+        "id, order_id, ordinal, amount_cents, referral_share_minor, currency, due_at, status, retry_count, stripe_payment_intent_id",
+      )
+      .eq("id", installmentId)
+      .maybeSingle();
   if (installment === null) return { error: "installment_not_found" };
 
   const inst = installment as InstallmentRow;
@@ -537,7 +549,8 @@ export async function createInstallmentPI(
     // issue #4522 (D-7) — a v2 auto-adjust order rolls the missed payment onto
     // its later rows; otherwise the booking is flagged at risk as before.
     const willBeAtRisk = lastRetry &&
-      !(await rollOverMissedPayment(supabase, installment.id));
+      !(await planV2SchemaAvailable(supabase) &&
+        await rollOverMissedPayment(supabase, installment.id));
     if (willBeAtRisk) {
       await supabase
         .from("orders")

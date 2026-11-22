@@ -13,12 +13,16 @@ import {
   mintPayLinkToken,
   payLinkTokenHashHex,
 } from "./installmentPayLinks.ts";
+import { planV2SchemaAvailable } from "./planV2Schema.ts";
 
 export async function balanceLinkUrlForOrder(
   supabase: SupabaseClient,
   orderId: string,
   mintToken: () => string = () => mintPayLinkToken(),
 ): Promise<string | null> {
+  // issue #4522 (F6) — before the #4522 migrations there is no balance link
+  // (and no payment_plan_terms column): every email stays as it was.
+  if (!(await planV2SchemaAvailable(supabase))) return null;
   const { data: order, error } = await supabase.from("orders")
     .select("payment_plan_terms").eq("id", orderId).maybeSingle();
   if (error !== null || order === null) return null;

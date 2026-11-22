@@ -44,6 +44,12 @@ import {
 } from "../_shared/paystack.ts";
 import { paystackChannelsForCountry } from "../_shared/paymentProvider.ts";
 import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
+import {
+  cancelReleasedFlexIntents,
+  type PaymentIntentCanceller,
+  releasedFlexPayments,
+} from "../_shared/installments/flexReclaim.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import {
   jsonResponse,
@@ -55,7 +61,7 @@ type Action = "view" | "start" | "status";
 type Method = "saved_card" | "new_card";
 
 /** The Stripe surface this function uses (injectable for tests). */
-export type StripeLike = FlexPaymentIntentStripe & {
+export type StripeLike = FlexPaymentIntentStripe & PaymentIntentCanceller & {
   ephemeralKeys: {
     create(
       params: { customer: string },
@@ -113,6 +119,8 @@ async function defaultUserIdFromJwt(jwt: string): Promise<string | null> {
 const KNOWN_REFUSALS: Record<string, number> = {
   balance_payment_in_flight: 409,
   balance_changed: 409,
+  // A client key reused for another amount or method (never replays the row).
+  flex_client_key_reused: 409,
   flex_amount_invalid: 422,
   flex_amount_below_minimum: 422,
   plan_not_flexible: 409,
@@ -156,6 +164,7 @@ function publicBalance(
     "canPayAnyAmount",
     "minPaymentMinor",
     "paymentInFlight",
+    "heldCreditMinor",
     "nextPayment",
     "openRows",
     "history",
@@ -196,6 +205,12 @@ export async function handleTripBalancePay(
   };
   const { supabase } = deps;
   const now = deps.now();
+
+  // issue #4522 (F6) — this endpoint exists only with the #4522 schema. While
+  // the function is deployed ahead of its migrations it refuses cleanly.
+  if (!(await planV2SchemaAvailable(supabase))) {
+    return jsonResponse({ error: "payment_plan_v2_unavailable" }, 409);
+  }
 
   // ── Who is asking: a balance-link token, or the order's own buyer. ──────
   const token = typeof body.token === "string" ? body.token : null;
@@ -483,8 +498,17 @@ export async function handleTripBalancePay(
   if (installmentId.length === 0) {
     return jsonResponse({ error: "balance_payment_failed" }, 502);
   }
+  const replayed = flex.replayed === true;
+  // A replay of a payment that already finished (collected, closed) starts
+  // nothing new: the client refetches the balance.
+  if (replayed && flex.status !== "scheduled") {
+    return jsonResponse({ error: "balance_changed" }, 409);
+  }
 
+  // issue #4522 (F10) — only a payment THIS request opened is closed when the
+  // provider call fails; a replayed one may be live in another tab.
   const closeOnFailure = async (): Promise<void> => {
+    if (replayed) return;
     await supabase.rpc("issue_4522_close_failed_flex", {
       p_installment_id: installmentId,
     });
@@ -523,6 +547,13 @@ export async function handleTripBalancePay(
     );
     try {
       const stripe = deps.stripe();
+      // issue #4522 (F2) — cancel any abandoned payment this begin released
+      // (best-effort; a late confirmation still settles exactly once).
+      await cancelReleasedFlexIntents(
+        stripe,
+        releasedFlexPayments(flex.released),
+        () => Promise.resolve(stripeAccount),
+      );
       let customerEphemeralKeySecret: string | null = null;
       if (token === null) {
         const ephemeralKey = await stripe.ephemeralKeys.create(
@@ -575,7 +606,7 @@ export async function handleTripBalancePay(
         ...(customerEphemeralKeySecret !== null
           ? { customerId: customer, customerEphemeralKeySecret }
           : {}),
-        replayed: flex.replayed === true,
+        replayed,
       });
     } catch {
       await closeOnFailure();

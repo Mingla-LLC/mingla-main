@@ -48,6 +48,14 @@ import {
 } from "../_shared/installments/installmentPayLinks.ts";
 import { handleInstallmentPaystackCharge } from "../_shared/installments/paystackInstallmentWebhook.ts";
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
+import {
+  cancelReleasedFlexIntents,
+  type PaymentIntentCanceller,
+  type ReleasedFlexPayment,
+  releasedFlexPayments,
+} from "../_shared/installments/flexReclaim.ts";
+import { stripeTicketCheckout } from "../_shared/stripe.ts";
 
 const DEFAULT_BATCH_LIMIT = 500 as const;
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
@@ -63,6 +71,8 @@ type SchedulerResult = {
   notices_sent: number;
   reconciled: number;
   unknown: number;
+  /** issue #4522 — abandoned flexible payments released by the sweep. */
+  flex_released?: number;
   errors: Array<{ installment_id: string; reason: string }>;
 };
 
@@ -74,6 +84,8 @@ export interface SchedulerDeps {
   sendPayLink: typeof sendInstallmentPayLink;
   dispatchBuyerEmail: typeof defaultDispatchBuyerEmail;
   sendBuyerPush: typeof defaultSendBuyerPush;
+  /** issue #4522 — cancels released flexible PaymentIntents (best-effort). */
+  stripeCanceller: () => PaymentIntentCanceller;
 }
 
 function rowObject(value: unknown): Record<string, unknown> {
@@ -272,18 +284,21 @@ async function passBNotices(
   result: SchedulerResult,
   limit: number,
   deps: SchedulerDeps,
+  planV2: boolean,
 ): Promise<void> {
   const now = deps.now();
   const leadEnd = new Date(now.getTime() + NOTICE_LEAD_MS).toISOString();
-  const { data, error } = await supabase
+  let noticeQuery = supabase
     .from("order_installments")
     .select(
       `id,order_id,ordinal,buyer_total_cents,amount_cents,currency,due_at,collection_method,
       orders!inner(cancelled_at,buyer_user_id,payment_card_last4,events!inner(status,brand_id,title))`,
     )
-    .eq("status", "scheduled")
-    // issue #4522 — a flexible payment is never noticed, charged or retried here.
-    .eq("kind", "scheduled")
+    .eq("status", "scheduled");
+  // issue #4522 — a flexible payment is never noticed, charged or retried
+  // here. Before #4522 is applied there is no `kind` (and no flexible row).
+  if (planV2) noticeQuery = noticeQuery.eq("kind", "scheduled");
+  const { data, error } = await noticeQuery
     .is("cancelled_at", null)
     .is("pre_charge_notice_sent_at", null)
     .is("orders.cancelled_at", null)
@@ -374,14 +389,21 @@ async function passCDueAndRetry(
   limit: number,
   dryRun: boolean,
   deps: SchedulerDeps,
+  planV2: boolean,
 ): Promise<void> {
   const nowIso = deps.now().toISOString();
   const select =
     `id,order_id,status,provider,collection_method,buyer_action,due_at,next_retry_at,
     orders!inner(cancelled_at,events!inner(status))`;
-  const { data: dueRows, error: dueError } = await supabase
-    .from("order_installments").select(select)
-    .eq("status", "scheduled").eq("kind", "scheduled").is("cancelled_at", null).is(
+  // issue #4522 — planned rows only (no `kind` before #4522 is applied).
+  let dueQuery = supabase.from("order_installments").select(select)
+    .eq("status", "scheduled");
+  if (planV2) dueQuery = dueQuery.eq("kind", "scheduled");
+  let retryQuery = supabase.from("order_installments").select(select)
+    .eq("status", "failed");
+  if (planV2) retryQuery = retryQuery.eq("kind", "scheduled");
+  const { data: dueRows, error: dueError } = await dueQuery
+    .is("cancelled_at", null).is(
       "in_flight_attempt_id",
       null,
     )
@@ -390,9 +412,8 @@ async function passCDueAndRetry(
   if (dueError !== null) {
     throw new Error(`due_query_failed:${dueError.message}`);
   }
-  const { data: retryRows, error: retryError } = await supabase
-    .from("order_installments").select(select)
-    .eq("status", "failed").eq("kind", "scheduled").is("cancelled_at", null).is(
+  const { data: retryRows, error: retryError } = await retryQuery
+    .is("cancelled_at", null).is(
       "in_flight_attempt_id",
       null,
     )
@@ -461,6 +482,7 @@ export async function processScheduledInstallments(
     sendPayLink: sendInstallmentPayLink,
     dispatchBuyerEmail: defaultDispatchBuyerEmail,
     sendBuyerPush: defaultSendBuyerPush,
+    stripeCanceller: () => stripeTicketCheckout() as unknown as PaymentIntentCanceller,
     ...(input.deps ?? {}),
   };
   const limit =
@@ -479,6 +501,14 @@ export async function processScheduledInstallments(
     unknown: 0,
     errors: [],
   };
+  // issue #4522 (F6) — one question per run: is the #4522 schema applied?
+  let planV2: boolean;
+  try {
+    planV2 = await planV2SchemaAvailable(supabase);
+  } catch {
+    result.errors.push({ installment_id: "scheduler", reason: "schema_probe_failed" });
+    return result;
+  }
   try {
     await passAReconcile(supabase, result, limit, deps);
   } catch {
@@ -488,7 +518,7 @@ export async function processScheduledInstallments(
     });
   }
   try {
-    await passBNotices(supabase, result, limit, deps);
+    await passBNotices(supabase, result, limit, deps, planV2);
   } catch {
     result.errors.push({
       installment_id: "scheduler",
@@ -502,6 +532,7 @@ export async function processScheduledInstallments(
       limit,
       input.dryRun === true,
       deps,
+      planV2,
     );
   } catch {
     result.errors.push({
@@ -509,7 +540,60 @@ export async function processScheduledInstallments(
       reason: "charge_pass_failed",
     });
   }
+  if (planV2 && input.dryRun !== true) {
+    try {
+      result.flex_released = await passDReleaseStaleFlex(supabase, limit, deps);
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "flex_sweep_failed",
+      });
+    }
+  }
   return result;
+}
+
+/**
+ * issue #4522 (F2) — release abandoned flexible payments (past the reclaim
+ * window, no attempt in flight) and cancel their Stripe PaymentIntents,
+ * best-effort. A cancel that loses the race to a late confirmation is safe:
+ * the late success settles through issue_4522_record_late_collection.
+ */
+async function passDReleaseStaleFlex(
+  supabase: SupabaseClient,
+  limit: number,
+  deps: SchedulerDeps,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("issue_4522_sweep_stale_flex", {
+    p_now: deps.now().toISOString(),
+    p_limit: Math.min(limit, 100),
+  });
+  if (error !== null) throw new Error(`flex_sweep_failed:${error.message}`);
+  const released = releasedFlexPayments(data);
+  if (released.some((row) => row.provider === "stripe" && row.stripePaymentIntentId !== null)) {
+    await cancelReleasedFlexIntents(
+      deps.stripeCanceller(),
+      released,
+      (payment: ReleasedFlexPayment) => stripeAccountForOrder(supabase, payment.orderId ?? ""),
+    );
+  }
+  return released.length;
+}
+
+async function stripeAccountForOrder(
+  supabase: SupabaseClient,
+  orderId: string,
+): Promise<string | null> {
+  const { data: order } = await supabase.from("orders")
+    .select("events!inner(brand_id)").eq("id", orderId).maybeSingle();
+  const event = rowObject((order as Record<string, unknown> | null)?.events);
+  const brandId = typeof event?.brand_id === "string" ? event.brand_id : null;
+  if (brandId === null) return null;
+  const { data: account } = await supabase.from("stripe_connect_accounts")
+    .select("stripe_account_id").eq("brand_id", brandId).is("detached_at", null)
+    .maybeSingle();
+  const id = (account as { stripe_account_id?: unknown } | null)?.stripe_account_id;
+  return typeof id === "string" ? id : null;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

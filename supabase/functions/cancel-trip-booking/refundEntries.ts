@@ -49,3 +49,34 @@ export function depositKeptCents(
   }
   return kept;
 }
+
+interface RefundComputeClient {
+  rpc(
+    fn: string,
+    args: Record<string, unknown>,
+  ): PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }>;
+}
+
+/**
+ * issue #4522 (D-9, rework F6) — the refund a cancel will compute, for the
+ * actor who cancels: with the #4522 schema, issue_4522_compute_refund_for_cancel_as
+ * (so a host's preview refunds a non-refundable deposit exactly as begin
+ * will); before the #4522 migrations are applied, the pre-#4522
+ * biz_compute_refund_for_cancel, called exactly as it always was.
+ */
+export function computeRefundForActor(
+  client: RefundComputeClient,
+  planV2: boolean,
+  input: { orderId: string; cancelAt: string; actorKind: string },
+): PromiseLike<{ data: unknown; error: { message?: string; code?: string } | null }> {
+  return planV2
+    ? client.rpc("issue_4522_compute_refund_for_cancel_as", {
+      p_order_id: input.orderId,
+      p_cancel_at: input.cancelAt,
+      p_actor_kind: input.actorKind,
+    })
+    : client.rpc("biz_compute_refund_for_cancel", {
+      p_order_id: input.orderId,
+      p_cancel_at: input.cancelAt,
+    });
+}

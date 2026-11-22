@@ -67,7 +67,12 @@ import {
   userClient,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
-import { depositKeptCents, paymentRefundEntries } from "./refundEntries.ts";
+import {
+  computeRefundForActor,
+  depositKeptCents,
+  paymentRefundEntries,
+} from "./refundEntries.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -427,12 +432,13 @@ serve(async (req: Request): Promise<Response> => {
     }
     // issue #4522 — computed for this actor, so a host's preview includes a
     // non-refundable deposit exactly as begin will (D-9).
-    const { data: computeData, error: computeErr } = await supabase.rpc(
-      "issue_4522_compute_refund_for_cancel_as",
+    const { data: computeData, error: computeErr } = await computeRefundForActor(
+      supabase,
+      await planV2SchemaAvailable(supabase),
       {
-        p_order_id: orderId,
-        p_cancel_at: new Date().toISOString(),
-        p_actor_kind: actorKind ?? "buyer",
+        orderId,
+        cancelAt: new Date().toISOString(),
+        actorKind: actorKind ?? "buyer",
       },
     );
     if (computeErr) {
@@ -530,9 +536,10 @@ serve(async (req: Request): Promise<Response> => {
   // before the cancellation state flips. True full refunds omit `amount` and
   // therefore retain Paystack's full-reversal/replay shape.
   if (paymentProvider === "paystack") {
-    const { data: floorData, error: floorError } = await supabase.rpc(
-      "issue_4522_compute_refund_for_cancel_as",
-      { p_order_id: orderId, p_cancel_at: cancelAt, p_actor_kind: actorKind },
+    const { data: floorData, error: floorError } = await computeRefundForActor(
+      supabase,
+      await planV2SchemaAvailable(supabase),
+      { orderId, cancelAt, actorKind },
     );
     const floorCompute = (floorData as ComputeRpcResult | null) ?? {
       ok: false,

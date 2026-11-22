@@ -72,8 +72,13 @@ const REFUSALS: ReadonlyArray<{ code: string; status: number }> = [
 
 /** A database refusal of the add-ons, as the reply the RSVP form shows; else null. */
 export function rsvpAddOnRefusal(
-  error: { message?: string | null } | null,
+  error: { message?: string | null; code?: string | null } | null,
 ): { status: number; body: { error: string } } | null {
+  // #3281 (rework F6) — a database that predates RSVP add-ons has no wrapper
+  // function: the add-ons are simply unavailable (409), never a 500.
+  if (error?.code === "PGRST202" || error?.code === "42883") {
+    return { status: 409, body: { error: "rsvp_add_ons_unavailable" } };
+  }
   const message = error?.message ?? "";
   for (const refusal of REFUSALS) {
     if (message.includes(refusal.code)) {

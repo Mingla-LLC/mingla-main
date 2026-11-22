@@ -87,7 +87,8 @@ Deno.test("ORCH-0869 cron: at-risk flag flips at retry_count >= MAX_RETRY_ATTEMP
   );
   assertMatch(
     HELPER_SOURCE,
-    /willBeAtRisk\s*=\s*lastRetry\s*&&\s*!\(await rollOverMissedPayment\(supabase, installment\.id\)\)/,
+    // #4522 rework F6: the rollover is asked only once the #4522 schema exists.
+    /willBeAtRisk\s*=\s*lastRetry\s*&&\s*!\(await planV2SchemaAvailable\(supabase\)\s*&&\s*await rollOverMissedPayment\(supabase, installment\.id\)\)/,
   );
   assertStringIncludes(
     HELPER_SOURCE,
@@ -209,7 +210,7 @@ Deno.test("ORCH-0869 webhook handlers: at_risk flag flips at MAX_RETRY_ATTEMPTS"
   );
   assertMatch(
     WEBHOOK_HANDLER_SOURCE,
-    /willBeAtRisk\s*=\s*lastRetry\s*&&\s*!\(await rollOverMissedPayment\(supabase, installmentId\)\)/,
+    /willBeAtRisk\s*=\s*lastRetry\s*&&\s*!\(planV2\s*&&\s*await rollOverMissedPayment\(supabase, installmentId\)\)/,
   );
 });
 
