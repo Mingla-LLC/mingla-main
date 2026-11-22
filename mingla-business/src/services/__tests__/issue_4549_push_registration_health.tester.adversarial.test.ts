@@ -162,6 +162,7 @@ describe("#4549 tester: pushRegistrationHealth under pressure", () => {
     const launch = ensurePushRegistration("user-a", "launch");
     for (let i = 0; i < 50 && count("wait:") === 0; i++) await new Promise((r) => setImmediate(r));
     expect(count("wait:")).toBe(1);
+    sessionUserId = "user-b"; // #4549 rework (P1-1): B signing in means the session is B's
     void ensurePushRegistration("user-b", "sign_in");
     release(true);
     await launch;

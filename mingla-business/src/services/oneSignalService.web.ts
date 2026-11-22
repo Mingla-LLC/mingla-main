@@ -98,8 +98,14 @@ export async function readPushRegistrationState(): Promise<PushRegistrationState
 export async function repairPushRegistration(
   _userId: string,
   _step: PushRepairStep,
+  _isStillCurrent?: () => boolean,
 ): Promise<boolean> {
   return false;
+}
+
+/** No SDK on web: nothing to cancel; returns a no-op cleanup. */
+export function onOneSignalLogout(_listener: () => void): () => void {
+  return (): void => {};
 }
 
 export function logoutOneSignal(): void {}

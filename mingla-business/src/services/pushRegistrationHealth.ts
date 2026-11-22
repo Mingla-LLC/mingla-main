@@ -25,6 +25,7 @@ import { Platform } from "react-native";
 
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import {
+  onOneSignalLogout,
   readPushRegistrationState,
   repairPushRegistration,
   whenOneSignalReady,
@@ -74,6 +75,74 @@ let localResubscribeUsed = false;
 let serverResubscribeUsed = false;
 let unsentReport: { userId: string; args: ReportArgs } | null = null;
 
+// #4549 P1-1: every run is tied to the account and the generation it started
+// for. Sign-out (logoutOneSignal) bumps the generation synchronously, wakes
+// every pending wait, drops the queued run and the unsent report, so nothing
+// the old run does afterwards can link, opt in or report.
+let generation = 0;
+const CANCELLED = Symbol("cancelled");
+let wakeWaiters: Array<() => void> = [];
+
+function cancelPendingRuns(): void {
+  generation += 1;
+  queued = null;
+  unsentReport = null;
+  const waiters = wakeWaiters;
+  wakeWaiters = [];
+  for (const wake of waiters) wake();
+}
+
+let logoutHookAttached = false;
+function attachLogoutHook(): void {
+  if (logoutHookAttached) return;
+  // Guarded because some suites mock oneSignalService without this export.
+  if (typeof onOneSignalLogout !== "function") return;
+  onOneSignalLogout(cancelPendingRuns);
+  logoutHookAttached = true;
+}
+
+class RunCancelled extends Error {
+  constructor() {
+    super("run_cancelled");
+  }
+}
+
+interface RunContext {
+  userId: string;
+  gen: number;
+}
+
+const alive = (ctx: RunContext): boolean => ctx.gen === generation;
+
+/** A wait that ends at once (and throws RunCancelled) when the run is cancelled. */
+async function cancellable<T>(ctx: RunContext, work: Promise<T>): Promise<T> {
+  if (!alive(ctx)) throw new RunCancelled();
+  let wake: (() => void) | null = null;
+  const cancelled = new Promise<typeof CANCELLED>((resolve) => {
+    wake = () => resolve(CANCELLED);
+    wakeWaiters.push(wake);
+  });
+  try {
+    const result = await Promise.race([work, cancelled]);
+    if (result === CANCELLED || !alive(ctx)) throw new RunCancelled();
+    return result as T;
+  } finally {
+    wakeWaiters = wakeWaiters.filter((w) => w !== wake);
+  }
+}
+
+/**
+ * Re-reads the signed-in account right before an action that links, opts in
+ * or reports. Throws RunCancelled when the run is stale or the session belongs
+ * to anyone else (or no one).
+ */
+async function assertStillCurrent(ctx: RunContext): Promise<void> {
+  if (!alive(ctx)) throw new RunCancelled();
+  const { data } = await cancellable(ctx, supabase.auth.getSession());
+  const current = data.session?.user?.id ?? null;
+  if (!alive(ctx) || current !== ctx.userId) throw new RunCancelled();
+}
+
 function nativePlatform(): "ios" | "android" | null {
   return Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : null;
 }
@@ -92,38 +161,51 @@ function installedBuild(): string | null {
   }
 }
 
-async function waitForSdk(): Promise<boolean> {
+async function waitForSdk(ctx: RunContext): Promise<boolean> {
   for (const delay of SDK_READY_RETRY_DELAYS_MS) {
-    await deps.sleep(delay);
-    if (await whenOneSignalReady(SDK_READY_TIMEOUT_MS)) return true;
+    await cancellable(ctx, deps.sleep(delay));
+    if (await cancellable(ctx, whenOneSignalReady(SDK_READY_TIMEOUT_MS))) {
+      return true;
+    }
   }
   return false;
 }
 
 async function repairAndReread(
-  userId: string,
+  ctx: RunContext,
   step: PushRepairStep,
   repairs: PushRepairStep[],
 ): Promise<PushRegistrationState> {
+  await assertStillCurrent(ctx);
   repairs.push(step);
-  const ok = await repairPushRegistration(userId, step);
+  const ok = await cancellable(
+    ctx,
+    repairPushRegistration(ctx.userId, step, () => alive(ctx)),
+  );
+  if (!alive(ctx)) throw new RunCancelled();
   if (!ok) reportNonFatal(SCOPE, new Error("repair_step_failed"), { step });
-  await deps.sleep(REPAIR_SETTLE_MS);
-  return readPushRegistrationState();
+  await cancellable(ctx, deps.sleep(REPAIR_SETTLE_MS));
+  return cancellable(ctx, readPushRegistrationState());
 }
 
 /** Returns the server's action, or null when the report could not be sent. */
 async function sendReport(
-  userId: string,
+  ctx: RunContext,
   args: ReportArgs,
 ): Promise<"none" | "reregister" | null> {
+  // The report is filed under the session's account (auth.uid()), so it is
+  // sent only while that account is still this run's account.
+  await assertStillCurrent(ctx);
+  const userId = ctx.userId;
   try {
     const { data, error } = await supabase.rpc("report_host_push_device", args);
+    if (!alive(ctx)) throw new RunCancelled();
     if (error) throw new Error(error.message);
     unsentReport = null;
     const action = (data as { action?: unknown } | null)?.action;
     return action === "reregister" ? "reregister" : "none";
   } catch (error) {
+    if (error instanceof RunCancelled) throw error;
     // Network or server failure: keep the latest result and send it next run.
     unsentReport = { userId, args };
     reportNonFatal(SCOPE, error, { step: "report", reason: args.p_reason });
@@ -150,33 +232,34 @@ function buildReport(
   };
 }
 
-async function runOnce(userId: string, reason: PushHealthReason): Promise<void> {
-  if (!(await waitForSdk())) {
+async function runOnce(ctx: RunContext, reason: PushHealthReason): Promise<void> {
+  const userId = ctx.userId;
+  if (!(await waitForSdk(ctx))) {
     // The cold-start re-link used to return silently here. Now it is reported
     // and retried at the next launch or foreground.
     reportNonFatal(SCOPE, new Error("sdk_not_ready"), { reason });
     if (unsentReport && unsentReport.userId === userId) {
-      await sendReport(userId, unsentReport.args);
+      await sendReport(ctx, unsentReport.args);
     }
     return;
   }
 
   const repairs: PushRepairStep[] = [];
-  let state = await readPushRegistrationState();
+  let state = await cancellable(ctx, readPushRegistrationState());
 
   // Linked to another account (account switch) or no subscription yet.
   if (state.externalId !== userId || !state.subscriptionIdPresent) {
-    state = await repairAndReread(userId, "relink", repairs);
+    state = await repairAndReread(ctx, "relink", repairs);
   }
 
   // Permission granted but not receiving: relink, then resubscribe once.
   if (state.permission === "granted" && (!state.optedIn || !state.tokenPresent)) {
     if (!repairs.includes("relink")) {
-      state = await repairAndReread(userId, "relink", repairs);
+      state = await repairAndReread(ctx, "relink", repairs);
     }
     if (!state.optedIn && !localResubscribeUsed) {
       localResubscribeUsed = true;
-      state = await repairAndReread(userId, "resubscribe", repairs);
+      state = await repairAndReread(ctx, "resubscribe", repairs);
     }
   }
   // Denied: the person's choice. No repair, no prompt (App Store 4.5.4).
@@ -190,7 +273,7 @@ async function runOnce(userId: string, reason: PushHealthReason): Promise<void> 
       permission: state.permission,
     });
     if (unsentReport && unsentReport.userId === userId) {
-      await sendReport(userId, unsentReport.args);
+      await sendReport(ctx, unsentReport.args);
     }
     return;
   }
@@ -198,12 +281,12 @@ async function runOnce(userId: string, reason: PushHealthReason): Promise<void> 
     reportNonFatal(SCOPE, new Error("still_unlinked_after_repair"), { reason });
   }
 
-  const action = await sendReport(userId, report);
+  const action = await sendReport(ctx, report);
   if (action === "reregister" && !serverResubscribeUsed) {
     serverResubscribeUsed = true;
-    state = await repairAndReread(userId, "resubscribe", repairs);
+    state = await repairAndReread(ctx, "resubscribe", repairs);
     const after = buildReport(state, userId, reason);
-    if (after !== null) await sendReport(userId, after);
+    if (after !== null) await sendReport(ctx, after);
   }
 }
 
@@ -216,6 +299,7 @@ export function ensurePushRegistration(
   reason: PushHealthReason,
 ): Promise<void> {
   if (nativePlatform() === null || userId.length === 0) return Promise.resolve();
+  attachLogoutHook();
   if (
     reason === "foreground" &&
     deps.now() - lastFinishedAt < FOREGROUND_MIN_INTERVAL_MS
@@ -230,9 +314,13 @@ export function ensurePushRegistration(
   }
   const run = (async (): Promise<void> => {
     try {
-      await runOnce(userId, reason);
+      await runOnce({ userId, gen: generation }, reason);
     } catch (error) {
-      reportNonFatal(SCOPE, error, { step: "run", reason });
+      // A cancelled run (sign-out or another account) stops quietly: that is
+      // the intended outcome, not a failure.
+      if (!(error instanceof RunCancelled)) {
+        reportNonFatal(SCOPE, error, { step: "run", reason });
+      }
     } finally {
       lastFinishedAt = deps.now();
       inFlight = null;
@@ -270,4 +358,6 @@ export function __resetPushRegistrationHealthForTests(next?: Partial<Deps>): voi
   localResubscribeUsed = false;
   serverResubscribeUsed = false;
   unsentReport = null;
+  generation += 1;
+  wakeWaiters = [];
 }

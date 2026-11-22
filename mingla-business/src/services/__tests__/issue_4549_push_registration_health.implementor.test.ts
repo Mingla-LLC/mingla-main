@@ -185,6 +185,7 @@ test("local resubscribe runs at most once per launch", async () => {
 
 test("account switch without restart: linked to the old account, relinks to the new one", async () => {
   states = [baseState({ externalId: "user-old" }), baseState({ externalId: "user-new" })];
+  sessionUserId = "user-new"; // #4549 P1-1: the new account is the session's account
   await ensurePushRegistration("user-new", "sign_in");
   expect(repairs()).toEqual(["repair:relink:user-new"]);
   expect(rpcArgs[0]).toMatchObject({ p_linked: true, p_reason: "sign_in" });

@@ -449,9 +449,14 @@ const RESUBSCRIBE_PAUSE_MS = 1000;
 export async function repairPushRegistration(
   userId: string,
   step: PushRepairStep,
+  isStillCurrent: () => boolean = () => true,
 ): Promise<boolean> {
   if (!_initialized || OneSignal === null) return false;
   const sdk = OneSignal;
+  // #4549 P1-1: the caller's identity check runs again right before every SDK
+  // call that links or subscribes, so a sign-out (or another account signing
+  // in) in between can never link this phone to the previous account.
+  if (!isStillCurrent()) return false;
   try {
     switch (step) {
       case "relink":
@@ -463,6 +468,7 @@ export async function repairPushRegistration(
         await new Promise<void>((resolve) =>
           setTimeout(resolve, RESUBSCRIBE_PAUSE_MS),
         );
+        if (!isStillCurrent()) return false;
         sdk.User.pushSubscription.optIn();
         sdk.login(userId);
         break;
@@ -479,6 +485,19 @@ export async function repairPushRegistration(
   }
 }
 
+// #4549 P1-1: sign-out listeners. logoutOneSignal() is the one sign-out
+// funnel every AuthContext path already calls; it tells listeners first and
+// synchronously, even when the SDK is not up yet (the exact window of the
+// race), so pending push checks are cancelled before anything else runs.
+const _logoutListeners = new Set<() => void>();
+
+export function onOneSignalLogout(listener: () => void): () => void {
+  _logoutListeners.add(listener);
+  return (): void => {
+    _logoutListeners.delete(listener);
+  };
+}
+
 /**
  * Unlink the device from the current user. Call on signOut so the next
  * signed-in user is not attributed to the prior user's OneSignal alias.
@@ -487,6 +506,13 @@ export async function repairPushRegistration(
  * caches that survive Supabase signOut by default.
  */
 export function logoutOneSignal(): void {
+  for (const listener of _logoutListeners) {
+    try {
+      listener();
+    } catch (e) {
+      console.warn("[OneSignal] logout listener threw:", e);
+    }
+  }
   if (!_initialized) return;
   _loginComplete = false;
   try {
