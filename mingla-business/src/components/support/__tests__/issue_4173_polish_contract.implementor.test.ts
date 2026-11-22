@@ -12,8 +12,12 @@ describe("#4173 Guides, Community and Brand-group polish", () => {
     expect(column).toContain("openHelpCentre(HELP_CENTRE_URL)");
     expect(column).not.toContain("Linking.openURL");
     expect(read("mingla-business/src/components/support/helpCentreLauncher.native.ts")).toContain("WebBrowser.openBrowserAsync");
-    expect(read("mingla-business/src/components/support/helpCentreLauncher.web.ts")).toContain("openExternal(url)");
-    expect(read("mingla-business/src/components/support/helpCentreLauncher.web.ts")).not.toContain("window.open");
+    // [TEST-MOD #4420] rework 3 (G7): web opens a new tab and never replaces the
+    // app (openExternal's popup-blocked fallback navigated the app tab away).
+    const web = read("mingla-business/src/components/support/helpCentreLauncher.web.ts");
+    expect(web).toContain('w.open(url, "_blank")');
+    expect(web).not.toContain("location.assign");
+    expect(web).not.toContain("noopener,");
   });
 
   it("keeps roster email out of the collapsed header and inside authorized details", () => {
