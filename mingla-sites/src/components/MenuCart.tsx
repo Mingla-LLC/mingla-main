@@ -522,7 +522,11 @@ export function MenuCart({ items, context }: { items: CartItem[]; context: SiteE
         setFailed(
           created?.error === "too_many_orders"
             ? "That is a lot of orders in a row. Give it a moment and try again. Nothing has been charged."
-            : "We could not place this order just now. Nothing has been charged.",
+            : created?.error === "order_below_provider_minimum"
+              ? // #3645 — the total is below the smallest amount a card
+                // payment can be. Not a fault: the guest can add to the order.
+                "This order is below the smallest amount we can take by card. Add a little more and try again. Nothing has been charged."
+              : "We could not place this order just now. Nothing has been charged.",
         );
         return;
       }

@@ -328,6 +328,39 @@ function payoutReleaseAlertCopy(alertKind: string): {
   }
 }
 
+/**
+ * Issue #3645 (18 Nov payments audit, item 10) — the error the Stripe webhook
+ * records when a Mingla release's payout is canceled
+ * (`_shared/stripeWebhookRouter.ts`, through
+ * record_stripe_payout_webhook_failure). That RPC files it under the
+ * `stripe_attempt_cap` outbox kind, whose copy says the release "exhausted 10
+ * definitive payout attempts" — false for a one-off cancel, so it gets its
+ * own words and its own notification type (and so its own dedupe key).
+ */
+export const STRIPE_PAYOUT_CANCELED_ERROR = "stripe_payout_canceled";
+
+/** The ops copy for one outbox row: its kind, refined by its recorded error. */
+// (Parameter named `kind`, not `alertKind`: the #1840 guard reads every
+// `alertKind === "…"` in this file as an idempotency-key allowlist entry, and
+// this picks words, not keys.)
+export function payoutReleaseAlertCopyFor(
+  kind: string,
+  errorMessage: string,
+): { type: string; title: string; bodyLead: string } {
+  if (
+    kind === "stripe_attempt_cap" &&
+    errorMessage === STRIPE_PAYOUT_CANCELED_ERROR
+  ) {
+    return {
+      type: "ops.stripe_payout_release_canceled",
+      title: "Stripe organiser payout was canceled",
+      bodyLead:
+        "had its Stripe payout canceled, so the money is back in the organiser's Stripe balance and the release is marked failed. Decide whether to re-send it",
+    };
+  }
+  return payoutReleaseAlertCopy(kind);
+}
+
 export function providerReferenceRoute(
   provider: FeeCandidate["provider"],
   reference: string,
@@ -643,7 +676,7 @@ async function notifyAttemptCap(
 ): Promise<"provider_accepted"> {
   // Issue #1217 — pick rail-aware copy + a kind-specific idempotency key so a
   // Paystack payout-release alert reads correctly instead of as a Stripe one.
-  const copy = payoutReleaseAlertCopy(alertKind);
+  const copy = payoutReleaseAlertCopyFor(alertKind, message);
   // Issue #1840 — the float-shortfall alert is the ONE kind whose payload is a
   // number that moves, so it is the one kind that can legitimately need to be
   // re-sent for the same release with a corrected figure. Its outbox row

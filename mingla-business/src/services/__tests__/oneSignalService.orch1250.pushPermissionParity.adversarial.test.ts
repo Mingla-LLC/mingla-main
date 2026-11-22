@@ -1,18 +1,16 @@
-// ORCH-1250 [business push-permission parity] — ADVERSARIAL regression.
+// ORCH-1250 [business push-permission parity] — ADVERSARIAL regression,
+// REWRITTEN by #4549 S4 / H8.
 //
-// Attacks DIFFERENT failure modes than the happy-path test:
-//   (A) DENIED-DEVICE TRUTH — when the OS reports permission DENIED, the tag is
-//       written 'denied' (not silently 'granted'), so the dashboard audience
-//       (push_os_permission != 'granted') can reach the real decliner and the
-//       audience is never wrong-in-the-other-direction.
-//   (B) NO SETTINGS-FALLBACK ON A GRANTED DEVICE — the service NEVER passes
-//       fallbackToSettings=true, so the native "Open Settings" dialog can't be
-//       triggered by the app on a device with notifications ON. Asserted by
-//       reading the SOURCE (contract-level): `requestPermission(false)` and the
-//       absence of `requestPermission(true)`.
-//   (C) ONE-SHOT + canRequest GATE — the usePushPermissionMoment gate stamps the
-//       one-shot flag and refuses to prompt when canRequestPushPermission() is
-//       false (device already answered), so a decliner is never re-nagged.
+// Attacks:
+//   (A) DENIED DEVICE — a phone whose OS permission is DENIED still never
+//       writes the account-wide tag (S4: the tag was the last phone's view of
+//       a many-phone account, so any write is wrong).
+//   (B) NO SETTINGS-FALLBACK — the service NEVER passes fallbackToSettings=true
+//       (ORCH-1244, unchanged).
+//   (C) H8 ORDER — the permission hook waits for the SDK before it decides or
+//       stamps the one-shot flag, and refuses to prompt a device that already
+//       answered.
+//   (D) SOURCE — no addTag of push_os_permission anywhere in the service.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -28,7 +26,13 @@ process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID =
 jest.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 
 const tagCalls: Array<[string, string]> = [];
+const removeTagCalls: string[] = [];
 const requestPermissionCalls: unknown[] = [];
+
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: { getItem: async () => null, setItem: async () => {} },
+}));
 let permissionGranted = true;
 let canRequest = true;
 
@@ -42,6 +46,9 @@ jest.mock("react-native-onesignal", () => ({
     User: {
       addTag: (k: string, v: string) => {
         tagCalls.push([k, v]);
+      },
+      removeTag: (k: string) => {
+        removeTagCalls.push(k);
       },
       pushSubscription: { optIn: async () => {} },
     },
@@ -65,6 +72,7 @@ const flush = (): Promise<void> => new Promise((r) => setImmediate(r));
 function loadService(): typeof import("../oneSignalService") {
   jest.resetModules();
   tagCalls.length = 0;
+  removeTagCalls.length = 0;
   requestPermissionCalls.length = 0;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   return require("../oneSignalService");
@@ -76,17 +84,27 @@ describe("ORCH-1250 push-permission parity (adversarial)", () => {
     canRequest = true;
   });
 
-  // (A) DENIED-DEVICE TRUTH
-  test("denied OS permission → addTag(push_os_permission, 'denied')", async () => {
+  // (A) DENIED DEVICE
+  test("denied OS permission → the tag is never written, only removed", async () => {
     const svc = loadService();
     permissionGranted = false;
     svc.initializeOneSignal();
     await flush();
-    tagCalls.length = 0;
-    await svc.syncPushPermissionTag();
-    expect(tagCalls).toEqual([[TAG_KEY, "denied"]]);
-    // Must NEVER masquerade a denied device as granted.
-    expect(tagCalls).not.toContainEqual([TAG_KEY, "granted"]);
+    svc.loginToOneSignal("user-denied");
+    await svc.requestPushPermission();
+    await flush();
+    expect(tagCalls).toEqual([]);
+    expect(removeTagCalls).toEqual([TAG_KEY]);
+  });
+
+  // (D) SOURCE: no write path left
+  test("service source never adds the push_os_permission tag", () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, "../oneSignalService.ts"),
+      "utf8",
+    );
+    expect(src).not.toMatch(/addTag\(/);
+    expect(src).toMatch(/removeTag\(PERMISSION_TAG_KEY\)/);
   });
 
   // (B) NO SETTINGS-FALLBACK PATH EXISTS IN SOURCE
@@ -117,19 +135,18 @@ describe("ORCH-1250 push-permission parity (adversarial)", () => {
     expect(requestPermissionCalls).not.toContain(true);
   });
 
-  // (C) ONE-SHOT + canRequest GATE in the hook's source contract.
-  test("hook gates the OS dialog behind canRequestPushPermission + one-shot flag", () => {
+  // (C) H8 ORDER + canRequest GATE in the hook's source contract.
+  test("hook waits for the SDK before deciding or stamping, and gates on canRequestPushPermission", () => {
     const hookSrc = fs.readFileSync(
       path.resolve(__dirname, "../../hooks/usePushPermissionMoment.ts"),
       "utf8",
     );
-    // Imports the new gate.
-    expect(hookSrc).toMatch(/canRequestPushPermission/);
-    // Refuses to prompt when the device already answered.
-    expect(hookSrc).toMatch(
-      /if\s*\(!\(await\s+canRequestPushPermission\(\)\)\)\s*return/,
-    );
-    // One-shot AsyncStorage guard is intact (key unchanged).
+    const wait = hookSrc.indexOf("await whenOneSignalReady(");
+    const gate = hookSrc.indexOf("await canRequestPushPermission()");
+    const firstStamp = hookSrc.indexOf("AsyncStorage.setItem(PROMPTED_FLAG_KEY");
+    expect(wait).toBeGreaterThan(-1);
+    expect(gate).toBeGreaterThan(wait);
+    expect(firstStamp).toBeGreaterThan(gate);
     expect(hookSrc).toMatch(/mingla-business\.pushPermissionPrompted\.v1/);
   });
 

@@ -904,16 +904,22 @@ async function handlePayout(
   }
 
   if (releaseId && event.type === "payout.canceled") {
-    const { error: releaseError } = await supabase
-      .from("brand_payout_releases")
-      .update({
-        status: "failed",
-        organiser_cash_delivered_cents: 0,
-        error_message: "stripe_payout_canceled",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", releaseId)
-      .eq("stripe_payout_id", payoutId);
+    // Issue #3645 (18 Nov payments audit, item 10): a canceled payout used to
+    // be written `failed` directly, which skipped the alert outbox, so nobody
+    // was told a host's money was back in their balance. The same terminal
+    // reconcile `payout.failed` uses (non-retryable) now writes `failed` AND
+    // queues the ops alert, atomically. Still terminal on purpose: re-claiming
+    // under the release's fixed payout idempotency key would replay the
+    // canceled payout, and whether to re-send is a person's call.
+    const { error: releaseError } = await supabase.rpc(
+      "record_stripe_payout_webhook_failure",
+      {
+        p_payout_id: payoutId,
+        p_retryable_kyc: false,
+        p_error_message: "stripe_payout_canceled",
+        p_now: new Date().toISOString(),
+      },
+    );
     if (releaseError) {
       throw new Error(
         `payout release canceled reconcile failed: ${releaseError.message}`,
