@@ -1,5 +1,9 @@
 /**
  * #4490 Explorer W2 — venue bookings, plans and waitlist places in Purchases.
+ * [TEST-MOD-APPROVED #4490] W2 fix round 2 (W2-N18): money rows now go
+ * through the Purchases money text the list uses, so whole amounts read
+ * "₦15,000.00" (was "₦15,000", which Hermes printed as "NGN 15,000"). Same
+ * amounts, same rows; no assertion removed.
  * FAILS-ON-REVERT: drop the venue sources from buildPurchaseTimeline and W2-T1
  * fails; drop the venue_booking detail route from claimedEntryPath and W2-R1
  * fails; drop the three fetchers' throw and W2-F2 fails.
@@ -141,8 +145,8 @@ describe("#4490 W2 venue purchase model", () => {
     expect(venueBookingWhenLine(b)).toBe("Sun 22 Nov · 10:00 to 18:00");
     expect(venueBookingDoorPass(b)).toEqual({ passId: "63253af0-6e28-4bde-8419-e65ef43a456b", qrPayload: "v1.pass.qr" });
     expect(venueBookingMoneyRows(b)).toEqual([
-      { label: "Total", value: "₦15,000" },
-      { label: "Paid", value: "₦15,000" },
+      { label: "Total", value: "₦15,000.00" },
+      { label: "Paid", value: "₦15,000.00" },
     ]);
     expect(venueBookingProgress(b)).toBeNull();
   });
@@ -163,13 +167,13 @@ describe("#4490 W2 venue purchase model", () => {
     expect(venueBookingProgress(b)).toBe("Day 3 of 10 · valid until Sat 16 Jan");
     expect(venueBookingPlaceLine(b)).toBe("The Lounge Side · Banquet · Full day");
     expect(venueBookingExtraRows(b)).toEqual([
-      { label: "R2 guest kit × 120", value: "₦120,000" },
-      { label: "Damage deposit (refundable)", value: "₦500,000" },
+      { label: "R2 guest kit × 120", value: "₦120,000.00" },
+      { label: "Damage deposit (refundable)", value: "₦500,000.00" },
     ]);
     expect(venueBookingMoneyRows(b)).toEqual(
       expect.arrayContaining([
-        { label: "Paid at the venue", value: "₦1,000" },
-        { label: "Left to pay by Thu 26 Nov", value: "₦70,000" },
+        { label: "Paid at the venue", value: "₦1,000.00" },
+        { label: "Left to pay by Thu 26 Nov", value: "₦70,000.00" },
       ]),
     );
   });
@@ -182,7 +186,7 @@ describe("#4490 W2 venue purchase model", () => {
     expect(venueBookingPayNote(balance)).toBe("Pay the rest from your booking page.");
     expect(venueBookingPayNote(approved)).toBe("Pay from your booking page.");
     expect(venueBookingMoneyRows(approved)).toEqual(
-      expect.arrayContaining([{ label: "Pay to hold your date", value: "₦3,762,500" }]),
+      expect.arrayContaining([{ label: "Pay to hold your date", value: "₦3,762,500.00" }]),
     );
     expect(venueBookingPayNote(paid)).toBeNull();
   });

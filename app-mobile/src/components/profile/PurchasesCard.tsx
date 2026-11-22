@@ -7,6 +7,7 @@ import { usePurchases } from "../../hooks/usePurchases";
 import { PROFILE_REVISIT_STALE_MS } from "./profileFreshness";
 import { postHogService } from "../../services/postHogService";
 import type { PurchaseTimelineItem } from "../../utils/purchaseTimeline";
+import { purchaseCountLabel } from "../../utils/purchasePresentation";
 import SettingsRow from "./SettingsRow";
 
 interface PurchasesCardProps {
@@ -16,20 +17,30 @@ interface PurchasesCardProps {
   onFinishSetup: () => void;
 }
 
+// #4490 W2-N21 — venue passes, plans and waitlist places read like the rest
+// of the venue screens: the venue's 24-hour time, "Today" before 17:00, their
+// own date line for a plan, and guests rather than tickets.
+const isVenueKind = (item: PurchaseTimelineItem): boolean =>
+  item.kind === "venue_booking" || item.kind === "venue_membership" || item.kind === "venue_waitlist";
+
 function itemWhen(
   item: PurchaseTimelineItem,
-  tonight: boolean,
+  groupKey: string,
   t: (key: string, options?: Record<string, unknown>) => string,
 ): string {
   const date = new Date(item.startsAt);
   if (Number.isNaN(date.getTime())) return t("card.dateTbd");
+  if (item.whenText) return item.whenText;
+  const venue = isVenueKind(item);
   try {
-    const time = new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
+    const time = new Intl.DateTimeFormat(venue ? "en-GB" : undefined, {
+      hour: venue ? "2-digit" : "numeric",
       minute: "2-digit",
+      ...(venue ? { hourCycle: "h23" as const } : {}),
       timeZone: item.timezone,
     }).format(date);
-    if (tonight) return t("card.tonightAt", { time });
+    if (groupKey === "tonight") return t("card.tonightAt", { time });
+    if (venue && groupKey === "today") return t("card.todayAt", { time });
     const day = new Intl.DateTimeFormat(undefined, {
       weekday: "short",
       day: "numeric",
@@ -53,7 +64,7 @@ export function PurchasesCard({
   const upcoming = useMemo(
     () =>
       purchases.timeline.upcoming.flatMap((group) =>
-        group.items.map((item) => ({ item, tonight: group.key === "tonight" })),
+        group.items.map((item) => ({ item, groupKey: group.key })),
       ),
     [purchases.timeline.upcoming],
   );
@@ -63,6 +74,7 @@ export function PurchasesCard({
     if (item.kind === "rsvp") return t("pill.rsvp");
     if (item.kind === "reservation") return t("pill.reservation");
     if (item.source === "comp") return t("pill.guestList");
+    if (isVenueKind(item)) return purchaseCountLabel(item);
     return t("pill.tickets", { count: item.count });
   };
 
@@ -82,7 +94,7 @@ export function PurchasesCard({
   const accessibilityLabel = next
     ? `${t("screen.title")}. ${t("card.upcomingCount", { count: upcoming.length })}. Next: ${next.item.title}, ${itemWhen(
         next.item,
-        next.tonight,
+        next.groupKey,
         t,
       )}.`
     : `${t("screen.title")}. ${t("card.empty")}`;
@@ -125,7 +137,7 @@ export function PurchasesCard({
             )}
             <View style={styles.copy}>
               <Text style={styles.when}>
-                {itemWhen(next.item, next.tonight, t)}
+                {itemWhen(next.item, next.groupKey, t)}
               </Text>
               <Text style={styles.itemTitle} numberOfLines={1}>
                 {next.item.title}

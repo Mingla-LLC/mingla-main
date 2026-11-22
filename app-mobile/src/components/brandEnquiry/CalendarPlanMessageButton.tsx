@@ -39,15 +39,15 @@ export function CalendarPlanMessageButton({
         ? null
         : {
             id: identity.data.id,
-            name: identity.data.name,
+            name: target.displayName ?? identity.data.name,
             slug: identity.data.slug,
             theme: resolveTheme(identity.data.theme, null),
           },
-    [identity.data],
+    [identity.data, target.displayName],
   );
   const profile = useBrandEnquiryProfile(armed ? brand?.id ?? null : null);
   const message = useExplorerBrandMessage({ brand, entry: "calendar", onCancelReservation });
-  const brandName = brand?.name ?? target.brandName;
+  const brandName = brand?.name ?? target.displayName ?? target.brandName;
 
   // Tap → (identity → profile) → open once.
   const { open, available } = message;
@@ -67,7 +67,7 @@ export function CalendarPlanMessageButton({
     open(target.prefill);
   }, [armed, available, brandName, identity.data, identity.isError, identity.isSuccess, open, profile.isError, profile.isSuccess, t, target.prefill]);
 
-  const label = t("enquiry:message_brand", { brand: target.brandName });
+  const label = t("enquiry:message_brand", { brand: target.displayName ?? target.brandName });
   return (
     <>
       <Pressable

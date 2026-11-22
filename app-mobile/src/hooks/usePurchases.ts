@@ -120,6 +120,9 @@ async function fetchPurchaseDetail(
 ): Promise<PurchaseTimelineItem | null> {
   const owned = await fetchOwnedPurchaseDetail(userId, kind, id);
   if (owned) return owned;
+  // #4490 W2-N16: venue items are never shared (decision 4), so a venue id
+  // that is not this account's is a not-found, not a second read that can fail.
+  if (kind === "venue_booking" || kind === "venue_membership" || kind === "venue_waitlist") return null;
   // #4473 — not this account's own purchase: it may be shared with it.
   const shared = sharedPurchaseSources(await fetchMySharedPurchases());
   return findTimelineItem(buildPurchaseTimeline(shared, new Date()), kind, id);

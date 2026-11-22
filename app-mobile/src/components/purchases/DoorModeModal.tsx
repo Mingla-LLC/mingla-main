@@ -23,6 +23,8 @@ type Props = {
   tickets: PurchaseTicket[];
   initialTicketId?: string | null;
   source?: "button" | "push";
+  /** #4490 W2-N22: a venue pass or member pass reads "Pass 1 of 1", not "Ticket". */
+  unit?: "ticket" | "pass";
   onClose: () => void;
 };
 
@@ -33,6 +35,7 @@ export function DoorModeModal({
   tickets,
   initialTicketId,
   source = "button",
+  unit = "ticket",
   onClose,
 }: Props): React.ReactElement {
   const { t } = useTranslation("purchases");
@@ -123,7 +126,9 @@ export function DoorModeModal({
         >
           {tickets.map((ticket, index) => (
             <View
-              accessibilityLabel={`Ticket QR code for ${ticket.attendeeName ?? t("door.guest")}, ticket ${index + 1} of ${tickets.length}`}
+              accessibilityLabel={unit === "pass"
+                ? `Pass QR code for ${ticket.attendeeName ?? t("door.guest")}, pass ${index + 1} of ${tickets.length}`
+                : `Ticket QR code for ${ticket.attendeeName ?? t("door.guest")}, ticket ${index + 1} of ${tickets.length}`}
               accessibilityRole="image"
               key={ticket.id}
               style={[styles.page, { width: pageWidth }]}
@@ -140,7 +145,7 @@ export function DoorModeModal({
                 {ticket.attendeeName ?? t("door.guest")}
               </Text>
               <Text style={styles.ticketLine}>
-                {t("door.ticketLine", {
+                {t(unit === "pass" ? "door.passLine" : "door.ticketLine", {
                   ticketType: ticket.ticketTypeName ?? t("door.admission"),
                   index: index + 1,
                   total: tickets.length,

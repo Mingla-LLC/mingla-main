@@ -14,6 +14,8 @@ import {
   parseVenueWaitlistPlaces,
   venueBookingGuests,
   venueBookingSpan,
+  venueMemberListDate,
+  venueMemberListLine,
 } from "../components/purchases/venuePurchaseModel";
 
 export interface PurchaseTicket {
@@ -616,8 +618,10 @@ export async function fetchMyMemberships(): Promise<PurchaseVenueMembershipSourc
       title: member.planName,
       brandName: member.venue.brandName,
       venueLine: member.venue.name,
-      startAt: member.startedAt ?? member.createdAt,
+      // W2-N19: placed and dated by what comes next, not the old start.
+      startAt: venueMemberListDate(member),
       endAt: member.activeUntil,
+      whenText: venueMemberListLine(member),
       timezone: member.venue.timezone,
       status: member.status,
       raw: member,

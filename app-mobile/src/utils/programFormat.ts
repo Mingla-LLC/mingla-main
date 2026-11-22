@@ -62,6 +62,19 @@ export function formatMoney(minor: number | null | undefined, currency: string |
   }
 }
 
+/**
+ * #4490 W2-N18: the #4402 rule for text another formatter already produced.
+ * Hermes on iOS prints the ISO code ("NGN 10,750.00") where it has no symbol
+ * for the currency; a currency with a known symbol then reads "₦10,750.00".
+ * Text that already shows a symbol ("£24.50", "US$5.00") is returned as is.
+ */
+export function withKnownCurrencySymbol(text: string, currency: string | null | undefined): string {
+  const code = (currency ?? '').toUpperCase();
+  const symbol = SYMBOLS[code];
+  if (!symbol || !/^[A-Z]{3}$/.test(code) || !text.includes(code)) return text;
+  return text.replace(new RegExp(`${code}[\\s\\u00a0]*`, 'g'), symbol);
+}
+
 function formatPlainNumber(value: number, locale?: string, fraction = 0): string {
   try {
     return new Intl.NumberFormat(locale, { minimumFractionDigits: fraction, maximumFractionDigits: fraction }).format(value);

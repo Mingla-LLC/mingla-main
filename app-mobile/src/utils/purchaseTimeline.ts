@@ -128,6 +128,8 @@ export interface PurchaseVenueMembershipSource {
   endAt: string | null;
   timezone: string;
   status: string;
+  /** W2-N19: the plan's own date line ("Paid until …"). */
+  whenText?: string | null;
   raw: unknown;
 }
 
@@ -175,6 +177,12 @@ export interface PurchaseTimelineItem {
   source: string | null;
   /** #4473 — shows here because this account proved its contact; read-only. */
   shared?: boolean;
+  /**
+   * #4490 W2-N19 — the row's date line when the start is not the date that
+   * matters (a plan reads "Paid until Sun 21 Nov 2027"). Unset for every
+   * other kind, which keeps the start's day and time.
+   */
+  whenText?: string | null;
   raw: unknown;
 }
 
@@ -230,6 +238,27 @@ function monthLabel(date: Date, timeZone: string, locale: string): string {
   }
 }
 
+/** The venue's own hour (0-23) of an instant. */
+function localHour(date: Date, timeZone: string): number | null {
+  try {
+    const hour = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(date);
+    const n = Number.parseInt(hour, 10);
+    return Number.isFinite(n) ? n % 24 : null;
+  } catch {
+    return null;
+  }
+}
+
+// #4490 W2-N21: venue items follow spec 06 §6's day words in the venue's
+// zone: "Tonight" from 17:00, "Today" before it. Other kinds keep "Tonight"
+// for anything later today.
+const VENUE_KINDS = new Set<PurchaseKind>(["venue_booking", "venue_membership", "venue_waitlist"]);
+const TONIGHT_FROM_HOUR = 17;
+
 function groupDescriptor(
   item: PurchaseTimelineItem,
   now: Date,
@@ -240,6 +269,10 @@ function groupDescriptor(
   const isTonight =
     startsAt.getTime() >= tonightThreshold &&
     partsKey(startsAt, item.timezone) === partsKey(now, item.timezone);
+  if (isTonight && VENUE_KINDS.has(item.kind)) {
+    const hour = localHour(startsAt, item.timezone);
+    if (hour !== null && hour < TONIGHT_FROM_HOUR) return { key: "today", title: "Today" };
+  }
   if (isTonight) return { key: "tonight", title: "Tonight" };
   const monthKey = partsKey(startsAt, item.timezone).slice(0, 7);
   return {
@@ -452,6 +485,7 @@ function venueMembershipItems(
     const end = validDate(membership.endAt) ?? start;
     return [{
       key: `venue_membership:${membership.id}`,
+      whenText: membership.whenText ?? null,
       id: membership.id,
       kind: "venue_membership" as const,
       title: membership.title,
@@ -534,7 +568,9 @@ function isUpcoming(item: PurchaseTimelineItem, now: Date): boolean {
     return LIVE_VENUE_MEMBERSHIP_STATES.has(item.status);
   }
   if (item.kind === "venue_waitlist") {
-    return OPEN_VENUE_WAITLIST_STATES.has(item.status);
+    // W2-N11: an open place whose day has passed (venue zone) is past.
+    return OPEN_VENUE_WAITLIST_STATES.has(item.status) &&
+      partsKey(new Date(item.startsAt), item.timezone) >= partsKey(now, item.timezone);
   }
   if (
     item.kind === "venue_booking" &&

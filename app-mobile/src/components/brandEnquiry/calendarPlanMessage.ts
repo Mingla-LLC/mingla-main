@@ -18,6 +18,12 @@ export interface CalendarPlanMessageTarget {
   brandId: string | null;
   brandSlug: string | null;
   brandName: string;
+  /**
+   * #4490 W2-N23: the name the button and the sheet use instead of the brand's
+   * ("Message {venue}" on a venue pass, plan or waitlist place). Unset for
+   * every other plan, which keeps "Message {brand}".
+   */
+  displayName?: string;
   prefill: EnquiryPrefill;
 }
 

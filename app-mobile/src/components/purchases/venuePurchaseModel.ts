@@ -3,20 +3,22 @@
  * Purchases. PURE: parsers for the three server reads, their Purchases
  * timeline sources, and the words each state shows. No React, no network.
  *
- * Money is always the server's (minor units) and goes through the shared venue
- * formatter (`formatVenueMoney`); dates are the venue's own day and time
+ * Money is always the server's (minor units) and goes through the Purchases
+ * money text (`purchaseMoneyText`, the list's formatter, so a row and its
+ * detail read the same amount the same way); dates are the venue's own day and time
  * (day-first, 24-hour). Wording follows the web booking, member and waitlist
  * pages so a guest reads the same sentence on both.
  */
 import {
   currencyExponent,
   entryDateLabel,
+  guestsText,
   parseEntryBooking,
   passProgressLine,
   venueClock,
   type EntryBooking,
 } from "@mingla/brand-rendering/venueOffers/entryModel";
-import { formatVenueMoney } from "@mingla/brand-rendering/venueFeaturePage";
+import { purchaseMoneyText } from "../../utils/purchaseMoney";
 
 type Json = Record<string, unknown>;
 const isJson = (v: unknown): v is Json => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -173,6 +175,9 @@ export function venueBookingWhenLine(b: VenueBooking): string | null {
 /** "Day 3 of 10 · valid until Sat 16 Jan" for a multi-day pass, else null. */
 export const venueBookingProgress = (b: VenueBooking): string | null => passProgressLine(b.passes[0]);
 
+/** W2-N17: the guest change button, singular or plural ("Change to 1 guest"). */
+export const venueGuestChangeLabel = (guests: number): string => `Change to ${guestsText(guests)}`;
+
 export function venueBookingGuests(b: VenueBooking): number {
   return b.passes[0]?.admits ?? b.hire?.guests ?? b.hour?.guests ?? b.lines.reduce((n, l) => n + l.guests, 0);
 }
@@ -184,7 +189,7 @@ export interface VenueMoneyRow {
 
 /** Paid, paid at the venue, left to pay (with its date) and refunded: server numbers only. */
 export function venueBookingMoneyRows(b: VenueBooking): VenueMoneyRow[] {
-  const money = (minor: number): string => formatVenueMoney(minor, b.currencyCode, b.exponent);
+  const money = (minor: number): string => purchaseMoneyText(minor, b.currencyCode, b.exponent) ?? "—";
   const rows: VenueMoneyRow[] = [{ label: "Total", value: money(b.totalMinor) }];
   if (b.paidMinor > 0) rows.push({ label: "Paid", value: money(b.paidMinor) });
   if (b.paidAtVenueMinor > 0) rows.push({ label: "Paid at the venue", value: money(b.paidAtVenueMinor) });
@@ -218,7 +223,7 @@ export function venueBookingPayNote(b: VenueBooking): string | null {
 
 /** Extras and a hire's damage deposit, each with the server's amount. */
 export function venueBookingExtraRows(b: VenueBooking): VenueMoneyRow[] {
-  const money = (minor: number): string => formatVenueMoney(minor, b.currencyCode, b.exponent);
+  const money = (minor: number): string => purchaseMoneyText(minor, b.currencyCode, b.exponent) ?? "—";
   const rows = b.extras.map((e) => ({ label: e.qty > 1 ? `${e.name} × ${e.qty}` : e.name, value: money(e.amountMinor) }));
   const deposit = b.hire?.damageDepositMinor ?? null;
   if (deposit !== null && deposit > 0) rows.push({ label: "Damage deposit (refundable)", value: money(deposit) });
@@ -430,6 +435,27 @@ export function venueMemberState(m: VenueMember): { label: string; title: string
   }
 }
 
+/**
+ * W2-N19: the date a plan's Purchases row is placed and shown by. A live plan
+ * goes by what comes next (renewal, else paid-until, else the payment's last
+ * day, else when it was joined); an ended plan by when it ended.
+ */
+export function venueMemberListDate(m: VenueMember): string | null {
+  if (isLiveVenueMember(m.status)) {
+    return m.renewsOn ?? m.activeUntil ?? m.paymentDue?.graceEndsAt ?? m.startedAt ?? m.createdAt;
+  }
+  return m.endedAt ?? m.activeUntil ?? m.startedAt ?? m.createdAt;
+}
+
+/** W2-N19: the row's date line: "Paid until Sun 21 Nov 2027" while active, else the plan's headline. */
+export function venueMemberListLine(m: VenueMember): string {
+  if (m.status === "active" && m.leavingOn === null && m.pausingFrom === null) {
+    const until = memberDay(m.activeUntil, m);
+    if (until !== null) return `Paid until ${until}`;
+  }
+  return venueMemberState(m).title;
+}
+
 /** Renew (pay on the web) is offered only when something is owed and payable. */
 export function venueMemberCanRenew(m: VenueMember): boolean {
   return m.status === "pending" || m.status === "payment_due" || m.status === "grace" || m.status === "lapsed";
@@ -510,6 +536,32 @@ export function venueWaitlistState(p: Pick<VenueWaitlistPlace, "status" | "venue
       return { label: "Waiting", title: "You're on the waitlist", line: `We'll tell you as soon as a table for ${p.partySize} opens${range}.` };
     }
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The detail screen when there is nothing to show (W2-N16)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VENUE_NOUN: Readonly<Record<"venue_booking" | "venue_membership" | "venue_waitlist", string>> = {
+  venue_booking: "pass",
+  venue_membership: "plan",
+  venue_waitlist: "waitlist place",
+};
+
+/**
+ * A venue id that is not this account's (or not real) is a not-found, said
+ * with the item's own noun and no blame on the connection; a read that failed
+ * is a load error with Retry (the pass's own load-error words).
+ */
+export function venueDetailMissingCopy(
+  kind: "venue_booking" | "venue_membership" | "venue_waitlist",
+  reason: "not_found" | "load_failed",
+): { title: string; body: string | null; retry: boolean } {
+  const noun = VENUE_NOUN[kind];
+  if (reason === "load_failed") {
+    return { title: `We couldn't load your ${noun}.`, body: "Check your connection and try again.", retry: true };
+  }
+  return { title: `This ${noun} isn't on your account.`, body: null, retry: false };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

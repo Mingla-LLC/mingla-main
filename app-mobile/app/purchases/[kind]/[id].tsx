@@ -35,6 +35,8 @@ import {
 } from "@mingla/offering-rendering";
 
 import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
+import { venueDetailMissingCopy } from "../../../src/components/purchases/venuePurchaseModel";
+import { VENUE_LINK_COPY } from "../../../src/components/venueLink/venueLinkModel";
 import {
   isVenuePurchaseKind,
   VenuePurchaseDetail,
@@ -78,12 +80,14 @@ import { TicketService } from "../../../src/services/ticketService";
 import { fetchRsvpPartyPasses } from "../../../src/services/rsvpDeckService";
 import { postHogService } from "../../../src/services/postHogService";
 import {
-  formatPurchaseMoney,
   purchaseCountLabel,
   purchaseKindLabel,
-  purchaseRefundLabel,
   purchaseStatusLabel,
 } from "../../../src/utils/purchasePresentation";
+import {
+  purchaseMoneyText,
+  purchaseRefundText,
+} from "../../../src/utils/purchaseMoney";
 import type {
   PurchaseKind,
   PurchaseTimelineItem,
@@ -163,9 +167,9 @@ function detailRows(
     [t("ticket.details.where"), item.venueLine],
     [
       t("ticket.details.total"),
-      formatPurchaseMoney(item.amountCents, item.currency),
+      purchaseMoneyText(item.amountCents, item.currency),
     ],
-    [t("ticket.details.refund"), purchaseRefundLabel(item)],
+    [t("ticket.details.refund"), purchaseRefundText(item)],
     [t("ticket.details.reference"), item.id],
   ];
   return rows.filter(
@@ -188,7 +192,7 @@ function moneyOrFree(
 ): string {
   return amountCents === 0
     ? freeLabel
-    : (formatPurchaseMoney(amountCents, currency) ?? "—");
+    : (purchaseMoneyText(amountCents, currency) ?? "—");
 }
 
 function cardDisplay(order: PurchaseOrderRecord): string | null {
@@ -735,6 +739,28 @@ export default function PurchaseDetailRoute(): React.ReactElement {
               <Text style={styles.retryText}>{t("error.retry")}</Text>
             </Pressable>
           </View>
+        ) : item === null && isVenuePurchaseKind(kind) ? (
+          // #4490 W2-N16: a venue id that is not yours (or not real) says so
+          // with its own noun; only a failed read blames the connection.
+          (() => {
+            const copy = venueDetailMissingCopy(kind, purchase.isError ? "load_failed" : "not_found");
+            return (
+              <View style={styles.missing} testID="venue-purchase-missing">
+                <Text style={styles.missingTitle}>{copy.title}</Text>
+                {copy.body !== null ? <Text style={styles.missingBody}>{copy.body}</Text> : null}
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    if (copy.retry) void purchase.refetch();
+                    else router.replace("/purchases");
+                  }}
+                  style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+                >
+                  <Text style={styles.retryText}>{copy.retry ? t("error.retry") : VENUE_LINK_COPY.paidButton}</Text>
+                </Pressable>
+              </View>
+            );
+          })()
         ) : item === null ? (
           <View style={styles.missing}>
             <Text style={styles.missingTitle}>{t("ticket.notFound")}</Text>

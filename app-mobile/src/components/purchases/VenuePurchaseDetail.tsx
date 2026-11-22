@@ -44,6 +44,7 @@ import {
   VenuePurchaseError,
   type VenueMemberAction,
 } from "../../services/venuePurchaseService";
+import { withKnownCurrencySymbol } from "../../utils/programFormat";
 import type { PurchaseTimelineItem } from "../../utils/purchaseTimeline";
 import { CalendarPlanMessageButton } from "../brandEnquiry/CalendarPlanMessageButton";
 import type { CalendarPlanMessageTarget } from "../brandEnquiry/calendarPlanMessage";
@@ -63,6 +64,7 @@ import {
   venueBookingProgress,
   venueBookingStateLabel,
   venueBookingWhenLine,
+  venueGuestChangeLabel,
   venueMemberCanRenew,
   venueMemberErrorCopy,
   venueMemberState,
@@ -74,6 +76,10 @@ import {
 
 /** §5 accessibility: the pass QR's label. */
 export const VENUE_PASS_QR_LABEL = "Your pass. Show this at the door.";
+
+/** W2-N9: what a screen reader says for the guest stepper's − and + (the
+ * Discover guests stepper's existing words, discover:guests.*_a11y). */
+export const VENUE_GUEST_STEPPER_LABELS = { fewer: "Remove a guest", more: "Add a guest" } as const;
 
 const errorCode = (e: unknown): string | null => (e instanceof VenuePurchaseError ? e.code : null);
 
@@ -104,12 +110,15 @@ function Row({ label, value }: { label: string; value: string }): React.ReactEle
 
 function Action({
   label,
+  accessibilityLabel,
   onPress,
   busy = false,
   primary = false,
   testID,
 }: {
   label: string;
+  /** Spoken name when the visible label is a symbol (the stepper's − and +). */
+  accessibilityLabel?: string;
   onPress: () => void;
   busy?: boolean;
   primary?: boolean;
@@ -118,7 +127,7 @@ function Action({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ busy, disabled: busy }}
       disabled={busy}
       onPress={onPress}
@@ -274,6 +283,8 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
           brandId: null,
           brandSlug: booking.venue.brandSlug,
           brandName: booking.venue.brandName ?? booking.venue.name,
+          // W2-N23: spec 06 §6 "Message {venue}" (button and sheet).
+          displayName: booking.venue.name,
           prefill: {
             contextKind: "stay",
             contextId: booking.groupId,
@@ -359,18 +370,33 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
       {guests !== null ? (
         <View style={styles.panel} testID="venue-booking-change-panel">
           <View style={styles.stepper}>
-            <Action label="−" onPress={() => void stepGuests(guests - 1)} testID="venue-booking-guests-minus" />
+            <Action
+              label="−"
+              accessibilityLabel={VENUE_GUEST_STEPPER_LABELS.fewer}
+              onPress={() => void stepGuests(guests - 1)}
+              testID="venue-booking-guests-minus"
+            />
             <Text style={styles.stepValue} accessibilityLiveRegion="polite">
               {guestsText(guests)}
             </Text>
-            <Action label="+" onPress={() => void stepGuests(guests + 1)} testID="venue-booking-guests-plus" />
+            <Action
+              label="+"
+              accessibilityLabel={VENUE_GUEST_STEPPER_LABELS.more}
+              onPress={() => void stepGuests(guests + 1)}
+              testID="venue-booking-guests-plus"
+            />
           </View>
           {busy === "change_preview" ? <ActivityIndicator color={C.accent} /> : null}
           {summary !== null ? (
-            <Text style={styles.caption}>{`${guestChangeWords(summary, booking.exponent).title}. ${guestChangeWords(summary, booking.exponent).body}`}</Text>
+            <Text style={styles.caption}>
+              {withKnownCurrencySymbol(
+                `${guestChangeWords(summary, booking.exponent).title}. ${guestChangeWords(summary, booking.exponent).body}`,
+                summary.currencyCode,
+              )}
+            </Text>
           ) : null}
           {summary !== null && summary.amountMinor <= 0 ? (
-            <Action label={`Change to ${guests} guests`} onPress={() => void applyChange()} busy={busy === "change"} primary testID="venue-booking-change-apply" />
+            <Action label={venueGuestChangeLabel(guests)} onPress={() => void applyChange()} busy={busy === "change"} primary testID="venue-booking-change-apply" />
           ) : null}
           <Action label="Keep my booking" onPress={() => { setGuests(null); setSummary(null); }} testID="venue-booking-change-close" />
         </View>
@@ -378,7 +404,9 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
 
       {preview !== null ? (
         <View style={styles.panel} testID="venue-booking-cancel-panel">
-          <Text style={styles.caption}>{refundPreviewWords(preview, booking.exponent, booking.venue.name)}</Text>
+          <Text style={styles.caption}>
+            {withKnownCurrencySymbol(refundPreviewWords(preview, booking.exponent, booking.venue.name), preview.currencyCode)}
+          </Text>
           <Action label="Cancel booking" onPress={() => void confirmCancel()} busy={busy === "cancel"} primary testID="venue-booking-cancel-confirm" />
           <Action label="Keep my booking" onPress={() => setPreview(null)} testID="venue-booking-cancel-keep" />
         </View>
@@ -400,6 +428,7 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
 
       {door !== null ? (
         <DoorModeModal
+          unit="pass"
           visible={doorVisible}
           onClose={() => setDoorVisible(false)}
           source={openDoor ? "push" : "button"}
@@ -487,6 +516,7 @@ function MembershipBody({ item, userId }: { item: PurchaseTimelineItem; userId: 
           brandId: null,
           brandSlug: member.venue.brandSlug,
           brandName: member.venue.brandName ?? member.venue.name,
+          displayName: member.venue.name,
           prefill: { contextKind: "venue", contextId: member.venue.id },
         };
 
@@ -547,6 +577,7 @@ function MembershipBody({ item, userId }: { item: PurchaseTimelineItem; userId: 
 
       {member.pass !== null && member.pass.valid ? (
         <DoorModeModal
+          unit="pass"
           visible={doorVisible}
           onClose={() => setDoorVisible(false)}
           title={member.venue.name}
@@ -595,7 +626,13 @@ function WaitlistBody({ item }: { item: PurchaseTimelineItem }): React.ReactElem
   const messageTarget: CalendarPlanMessageTarget | null =
     place.brandSlug === null || place.venueId === null
       ? null
-      : { brandId: null, brandSlug: place.brandSlug, brandName: place.venueName, prefill: { contextKind: "venue", contextId: place.venueId } };
+      : {
+          brandId: null,
+          brandSlug: place.brandSlug,
+          brandName: place.venueName,
+          displayName: place.venueName,
+          prefill: { contextKind: "venue", contextId: place.venueId },
+        };
   const day = place.startsAt !== null ? memberDay(place.startsAt, { period: "month", venue: { id: null, name: place.venueName, slug: null, brandSlug: null, brandName: null, timezone: place.timezone } }) : null;
   return (
     <View testID="venue-waitlist-detail">
