@@ -25,9 +25,12 @@ export type VenueFeatureKey =
   | "memberships"
   | "stays"
   | "events_here"
-  | "waitlist";
+  | "waitlist"
+  // #4490 spec 08 O1 — sell in person (the Till) and, in O3, the station screens.
+  | "till"
+  | "kitchen_screens";
 
-/** The fifteen keys in the contract's order (`issue_4490_feature_keys`). */
+/** The seventeen keys in the contract's order (`issue_4490_feature_keys`). */
 export const VENUE_FEATURE_KEYS: readonly VenueFeatureKey[] = [
   "entry",
   "group_packages",
@@ -44,6 +47,8 @@ export const VENUE_FEATURE_KEYS: readonly VenueFeatureKey[] = [
   "stays",
   "events_here",
   "waitlist",
+  "till",
+  "kitchen_screens",
 ];
 
 export interface VenueFeature {
@@ -104,11 +109,20 @@ export const BUILT_FEATURES: ReadonlySet<VenueFeatureKey> = new Set<VenueFeature
   // P6: memberships (monthly plans, members, member check-in).
   "memberships",
   "stays",
+  // 08 O1: the Till (switchable only behind its release flag, see below).
+  "till",
 ]);
+
+/**
+ * #4490 spec 08 O1 — switched on only once its release flag (`VENUE_TILL`) is
+ * on, so no host turns on a Till that devices cannot run yet. Station screens
+ * (`kitchen_screens`) arrive with O3 and are not switchable in this build.
+ */
+export const RELEASE_GATED_FEATURES: readonly VenueFeatureKey[] = ["till"];
 
 /** Features a host can switch in Settings in this build. */
 export const SWITCHABLE_FEATURES: readonly VenueFeatureKey[] = VENUE_FEATURE_KEYS.filter(
-  (key) => BUILT_FEATURES.has(key) && key !== "stays",
+  (key) => BUILT_FEATURES.has(key) && key !== "stays" && !RELEASE_GATED_FEATURES.includes(key),
 );
 
 /** Direct parents (mirror of `issue_4490_feature_parents`). */
@@ -128,6 +142,8 @@ export const FEATURE_PARENTS: Readonly<Record<VenueFeatureKey, readonly VenueFea
   stays: [],
   events_here: [],
   waitlist: [],
+  till: [],
+  kitchen_screens: ["menu"],
 };
 
 /** Every feature `key` needs, nearest parent last (roots first). */
@@ -191,6 +207,8 @@ export const FEATURE_COPY: Readonly<Record<VenueFeatureKey, { label: string; sum
   stays: { label: "Stays", summary: "Rooms by the night" },
   events_here: { label: "Events here", summary: "Your events and experiences show on this venue's page" },
   waitlist: { label: "Waitlist", summary: "Quote waits and seat walk-ins" },
+  till: { label: "Sell in person", summary: "Sell anything you offer from one screen" },
+  kitchen_screens: { label: "Kitchen and bar screens", summary: "Each station gets its own screen" },
 };
 
 export function featureLabel(key: VenueFeatureKey): string {

@@ -859,22 +859,6 @@ export interface ScanOutcome {
   count?: number;
 }
 
-export type GateMethod = "cash" | "transfer" | "pay_link";
-
-export interface GateSaleLine {
-  priceOptionId: string;
-  guests: number;
-}
-
-export interface GateSaleResult {
-  method: GateMethod;
-  passId: string | null;
-  totalMinor: number;
-  currencyCode: string | null;
-  reference: string | null;
-  payUrl: string | null;
-}
-
 // ------------------------------------------------- #4490 P3 booking detail
 
 export type OfflineMethod = "cash" | "transfer" | "card_at_venue" | "other";

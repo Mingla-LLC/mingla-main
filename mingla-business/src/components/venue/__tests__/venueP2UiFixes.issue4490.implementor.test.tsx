@@ -271,12 +271,19 @@ describe("I1 the venue header follows Admin's decision", () => {
   });
 });
 
-describe("I6 the pay code has a Copy link button", () => {
-  it("offers Copy link with the full link and keeps the plain text secondary", () => {
-    const src = read("src/components/venue/features/checkin/VenueGateSale.tsx");
-    expect(src).toContain('"Copy link"');
-    expect(src).toContain("copyPublicUrl(payUrlProof)");
-    expect(src).toContain("styles.linkText");
+// TEST-MOD-APPROVED #4490 (08-O1): the gate sale sheet (and its pay-code Copy
+// link) is deleted; selling at the door happens in the Till (spec 08 subtract
+// list). The pay-code link returns with Scan to pay in O2. The intent kept:
+// the door can always sell, through the one Till.
+describe("I6 selling at the door opens the Till", () => {
+  it("check-in and the scan screen route Sell to the Till; the gate sale sheet is gone", () => {
+    const module = read("src/components/venue/features/checkin/VenueCheckInModule.tsx");
+    const scan = read("app/venue/[venueId]/check-in/scan.tsx");
+    expect(module).toContain("/till?");
+    expect(scan).toContain("/till?tab=entry");
+    expect(module).not.toContain("VenueGateSale");
+    expect(scan).not.toContain("VenueGateSale");
+    expect(require("fs").existsSync(require("path").join(__dirname, "../features/checkin/VenueGateSale.tsx"))).toBe(false);
   });
 });
 

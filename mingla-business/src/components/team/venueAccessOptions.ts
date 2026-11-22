@@ -30,6 +30,9 @@ export const VENUE_ACCESS_PROFILES: Record<
     "stay.create_reservations",
     "stay.manage_reservations",
     "stay.view_availability",
+    // #4490 spec 08 O1: the front desk sells and checks guests in.
+    "venue.sell",
+    "venue.check_in",
   ],
   restaurant_manager: [
     "restaurant.view_orders",
@@ -37,8 +40,14 @@ export const VENUE_ACCESS_PROFILES: Record<
     "restaurant.manage_menu",
     "restaurant.manage_qr",
     "restaurant.manage_reservations",
+    // #4490 spec 08 O1.
+    "venue.sell",
+    "venue.kitchen",
+    "venue.manage_money",
   ],
-  kitchen_bar: ["restaurant.view_orders", "restaurant.manage_orders"],
+  kitchen_bar: ["restaurant.view_orders", "restaurant.manage_orders", "venue.kitchen"],
+  // #4490 spec 08 O1: a shared phone or tablet that stays signed in.
+  till_device: ["venue.till_device", "venue.sell", "venue.kitchen", "venue.check_in"],
 };
 
 export const PROFILE_OPTIONS: readonly {
@@ -48,6 +57,7 @@ export const PROFILE_OPTIONS: readonly {
   { id: "front_desk", label: "Front desk" },
   { id: "restaurant_manager", label: "Venue manager" },
   { id: "kitchen_bar", label: "Kitchen / bar" },
+  { id: "till_device", label: "Till device" },
   { id: "custom", label: "Custom" },
 ];
 
@@ -83,6 +93,8 @@ export const CAPABILITY_OPTIONS: readonly CapabilityOption[] = [
   { capability: "venue.check_in", label: "Check guests in at the door", categories: ALL_VENUE_CATEGORIES },
   { capability: "venue.manage_money", label: "Take payments and give refunds", categories: ALL_VENUE_CATEGORIES },
   { capability: "venue.manage_members", label: "Manage members and plans", categories: ALL_VENUE_CATEGORIES },
+  // #4490 spec 08 O1 — the Till.
+  { capability: "venue.sell", label: "Sell and send orders", categories: ALL_VENUE_CATEGORIES },
 ];
 
 /** The capabilities offered for a venue of this type, in display order. */

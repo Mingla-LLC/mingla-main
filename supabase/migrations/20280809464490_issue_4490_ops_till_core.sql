@@ -191,6 +191,18 @@ SELECT pg_temp.issue_4490_o1_patch(
       )$new$
 );
 
+-- A Stay venue takes the Till device profile too (spec 07 §J: Stays use the
+-- same venue features).
+SELECT pg_temp.issue_4490_o1_patch(
+  'public.issue_4188_set_member_venue_grants(uuid,uuid,jsonb)'::regprocedure,
+  $old$              AND grant_row->>'profile' IN (
+                'front_desk', 'restaurant_manager', 'kitchen_bar', 'custom'
+              )$old$,
+  $new$              AND grant_row->>'profile' IN (
+                'front_desk', 'restaurant_manager', 'kitchen_bar', 'till_device', 'custom'
+              )$new$
+);
+
 -- The named-user helper also answers the two order capabilities (can_kitchen).
 SELECT pg_temp.issue_4490_o1_patch(
   'public.issue_4490_user_has_venue_capability(uuid,uuid,text)'::regprocedure,

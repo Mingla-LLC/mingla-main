@@ -171,7 +171,14 @@ export const fetchVenueOrders = async (
     .from("venue_orders")
     .select(ORDER_COLUMNS)
     .eq("brand_id", brandId)
-    .gte("created_at", since);
+    .gte("created_at", since)
+    // #4490 spec 08 §11 T2: the queue lists only orders a kitchen should make:
+    // never a held Till round or a Till payment carrier, never a tab settlement,
+    // and a guest checkout only once it is paid (or refunded) — an unpaid or
+    // failed online checkout is not an order yet (N146).
+    .not("fulfillment_status", "in", "(held,payment_only)")
+    .or("metadata->>tab_settlement.is.null,metadata->>tab_settlement.neq.true")
+    .or("money_path.eq.venue_collected,payment_status.in.(paid,partial_refund,refunded)");
   if (venueId !== null) query = query.eq("venue_id", venueId);
   const { data, error } = await query
     .order("created_at", { ascending: false })

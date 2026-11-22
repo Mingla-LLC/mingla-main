@@ -64,6 +64,8 @@ const VENUE_ACCESS_PROFILES = new Set([
   "front_desk",
   "restaurant_manager",
   "kitchen_bar",
+  // #4490 spec 08 O1 — server: 20280809464490.
+  "till_device",
   "custom",
 ]);
 const VENUE_CAPABILITIES = new Set([
@@ -84,6 +86,10 @@ const VENUE_CAPABILITIES = new Set([
   "venue.manage_money",
   // #4490 P6 — members (server: 20280809204490).
   "venue.manage_members",
+  // #4490 spec 08 O1 — the Till (server: 20280809464490).
+  "venue.sell",
+  "venue.kitchen",
+  "venue.till_device",
 ]);
 
 /** #4490 — every venue type except Stay takes restaurant.* and venue.* grants. */
@@ -199,6 +205,7 @@ export function venueGrantMatchesCategory(
     return (
       grant.access_profile === "restaurant_manager" ||
       grant.access_profile === "kitchen_bar" ||
+      grant.access_profile === "till_device" ||
       grant.access_profile === "custom"
     ) && grant.capabilities.every((capability) =>
       capability.startsWith("restaurant.") || capability.startsWith("venue.")

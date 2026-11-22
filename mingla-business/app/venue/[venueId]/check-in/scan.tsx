@@ -20,7 +20,6 @@ import { IconChrome } from "../../../../src/components/ui/IconChrome";
 import { Input } from "../../../../src/components/ui/Input";
 import { Sheet } from "../../../../src/components/ui/Sheet";
 import { SheetScrollLayout } from "../../../../src/components/ui/SheetScrollLayout";
-import { VenueGateSale } from "../../../../src/components/venue/features/checkin/VenueGateSale";
 import {
   checkInResultView,
   doorErrorCopy,
@@ -28,7 +27,8 @@ import {
   type CheckInAction,
 } from "../../../../src/components/venue/features/checkin/venueCheckInResult";
 import { color, radius, scrim, space, type } from "../../../../src/constants/designSystem";
-import { useBrandCurrency } from "../../../../src/hooks/useBrandCurrency";
+import { useTillReleased } from "../../../../src/hooks/useTillReleased";
+import { useVenueFeatures } from "../../../../src/hooks/useVenueFeatures";
 import { useDoorAction, useVenueCheckIns } from "../../../../src/hooks/useVenueCheckIns";
 import { useVenueDay } from "../../../../src/hooks/useVenueDay";
 import { useVenueListing } from "../../../../src/hooks/useVenueListings";
@@ -48,7 +48,15 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
   const venueId = paramValue(params.venueId);
   const venue = useVenueListing(venueId).data ?? null;
   const brandId = venue?.brandId ?? null;
-  const currency = useBrandCurrency(brandId);
+  // #4490 spec 08 O1: selling at the door happens in the Till; Sell shows only
+  // where the Till runs (release flag and the venue's Sell in person feature).
+  const tillReleased = useTillReleased().data === true;
+  const tillFeatureOn = useVenueFeatures(brandId, venueId).data?.features.till?.enabled === true;
+  const canSell = tillReleased && tillFeatureOn;
+  const openTill = (offerId: string | null): void => {
+    if (venueId === null) return;
+    router.push(`/venue/${venueId}/till?tab=entry${offerId !== null ? `&offer=${offerId}` : ""}`);
+  };
   const listQuery = useVenueCheckIns(brandId, venueId);
   const dayQuery = useVenueDay(brandId, venueId, null, { live: true });
   const offersQuery = useVenueOffers(brandId, venueId);
@@ -60,7 +68,6 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [typing, setTyping] = useState(false);
   const [code, setCode] = useState("");
-  const [sale, setSale] = useState<{ open: boolean; offerId: string | null }>({ open: false, offerId: null });
   const busy = useRef(false);
   const lastScan = useRef<{ value: string; at: number }>({ value: "", at: 0 });
 
@@ -100,14 +107,14 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
 
   const onScanned = useCallback(
     (result: BarcodeScanningResult): void => {
-      if (outcome !== null || typing || sale.open) return;
+      if (outcome !== null || typing) return;
       const now = Date.now();
       if (result.data === lastScan.current.value && now - lastScan.current.at < 3000) return;
       lastScan.current = { value: result.data, at: now };
       setLastQr(result.data);
       run({ kind: "scan", qrPayload: result.data });
     },
-    [outcome, run, sale.open, typing],
+    [outcome, run, typing],
   );
 
   const submitCode = (): void => {
@@ -150,7 +157,7 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
     if (action === "sell_walk_in") {
       setOutcome(null);
       const walkIn = liveOffers.find((o) => o.entryStyle === "walk_in") ?? liveOffers[0] ?? null;
-      setSale({ open: true, offerId: walkIn?.id ?? null });
+      openTill(walkIn?.id ?? null);
     }
   };
 
@@ -204,15 +211,17 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
             <Button label="Type a code" variant="secondary" size="lg" fullWidth onPress={() => { setError(null); setTyping(true); }} testID="venue-scan-type" />
           </View>
           <View style={styles.grow}>
-            <Button
-              label="Sell at the gate"
-              variant="secondary"
-              size="lg"
-              fullWidth
-              onPress={() => setSale({ open: true, offerId: null })}
-              disabled={liveOffers.length === 0}
-              testID="venue-scan-sell"
-            />
+            {canSell ? (
+              <Button
+                label="Sell at the gate"
+                variant="secondary"
+                size="lg"
+                fullWidth
+                onPress={() => openTill(null)}
+                disabled={liveOffers.length === 0}
+                testID="venue-scan-sell"
+              />
+            ) : null}
           </View>
         </View>
       </View>
@@ -223,7 +232,7 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
             <SheetScrollLayout
               footer={
                 <View style={styles.bar}>
-                  {view.secondary !== null && !(view.secondary === "sell_walk_in" && liveOffers.length === 0) ? (
+                  {view.secondary !== null && !(view.secondary === "sell_walk_in" && (liveOffers.length === 0 || !canSell)) ? (
                     <View style={styles.grow}>
                       <Button label={label(view.secondary)} variant="secondary" size="lg" fullWidth onPress={() => onAction(view.secondary as CheckInAction)} disabled={door.isPending} />
                     </View>
@@ -263,20 +272,6 @@ export default function VenueCheckInScanRoute(): React.ReactElement {
         </View>
       </Sheet>
 
-      <VenueGateSale
-        visible={sale.open}
-        onClose={() => setSale({ open: false, offerId: null })}
-        brandId={brandId}
-        venueId={venueId}
-        offers={liveOffers}
-        settings={offersQuery.data?.settings ?? null}
-        currency={currency}
-        walkInLine={pool !== null && pool.keptForWalkIns > 0 ? `${pool.walkInLeft} of the ${pool.keptForWalkIns} kept for walk-ins are left today.` : null}
-        initialOfferId={sale.offerId}
-        onSold={(result) => {
-          if (result.method !== "pay_link") setSale({ open: false, offerId: null });
-        }}
-      />
     </View>
   );
 }

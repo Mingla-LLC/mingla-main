@@ -13,6 +13,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../../constants/designSystem";
 import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
+import { useTillReleased } from "../../../hooks/useTillReleased";
 import { useVenueEditAccess } from "../../../hooks/useVenueEditAccess";
 import {
   useApplyFeaturePreset,
@@ -28,6 +29,7 @@ import { VenueFeatureError } from "../../../services/venueFeaturesService";
 import { useVenueSuiteStore } from "../../../store/venueSuiteStore";
 import {
   FEATURE_COPY,
+  RELEASE_GATED_FEATURES,
   SWITCHABLE_FEATURES,
   VENUE_TYPES,
   builtPreset,
@@ -109,8 +111,11 @@ export function VenueTypeAndFeaturesPanel({
   const verified = venue?.claimStatus === "verified";
 
   const usual = useMemo(() => (category === null ? [] : builtPreset(category)), [category]);
-  const usualKeys = SWITCHABLE_FEATURES.filter((k) => usual.includes(k));
-  const moreKeys = SWITCHABLE_FEATURES.filter((k) => !usual.includes(k));
+  // #4490 08 O1: the Till's switch appears only once its release flag is on.
+  const tillReleased = useTillReleased().data === true;
+  const switchable = tillReleased ? [...SWITCHABLE_FEATURES, ...RELEASE_GATED_FEATURES] : SWITCHABLE_FEATURES;
+  const usualKeys = switchable.filter((k) => usual.includes(k));
+  const moreKeys = switchable.filter((k) => !usual.includes(k));
 
   const runSwitch = useCallback(
     (key: VenueFeatureKey, enable: boolean, cascade: readonly VenueFeatureKey[]): void => {

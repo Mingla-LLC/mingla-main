@@ -27,7 +27,11 @@ export type VenueOrderFulfillmentStatus =
   | "ready"
   | "delivered"
   | "cancelled"
-  | "refunded";
+  | "refunded"
+  // #4490 spec 08 §11 T1: a Till round not yet sent, and a Till payment
+  // carrier. Neither is a kitchen order; the queue filters both out (T2).
+  | "held"
+  | "payment_only";
 
 export type VenueOrderPaymentStatus =
   | "pending"
@@ -129,7 +133,8 @@ export function isVenueOrderTransitionLegal(
     case "delivered":
       return to === "refunded";
     default:
-      // cancelled / refunded are terminal.
+      // cancelled / refunded are terminal; held and payment_only (Till) have
+      // no queue exit: only the Till sends a held round (T1).
       return false;
   }
 }
@@ -184,6 +189,9 @@ export const VENUE_ORDER_STATUS_PRESENTATION: Record<
   delivered: { label: "Delivered", tone: "muted" },
   cancelled: { label: "Canceled", tone: "faded" },
   refunded: { label: "Refunded", tone: "faded" },
+  // #4490 08 O1 (T1): never in the queue (T2 filters them); labelled for safety.
+  held: { label: "Not sent", tone: "muted" },
+  payment_only: { label: "Paid", tone: "muted" },
 };
 
 /**
