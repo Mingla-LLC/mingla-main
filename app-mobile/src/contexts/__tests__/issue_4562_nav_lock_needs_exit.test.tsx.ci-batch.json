@@ -15,7 +15,8 @@
       "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-grammar-and-blast-radius.tester-adversarial.test.tsx",
       "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-single-process.test.tsx",
       "app-mobile/src/contexts/__tests__/orch-1029-coach-mark-adversarial.test.tsx",
-      "app-mobile/src/components/__tests__/orch-1029-coach-mark-fixes.test.tsx"
+      "app-mobile/src/components/__tests__/orch-1029-coach-mark-fixes.test.tsx",
+      "app-mobile/src/contexts/__tests__/issue_4562_nav_lock_needs_exit.test.tsx"
     ],
     "steps": [
       {
