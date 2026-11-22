@@ -6,7 +6,8 @@
  *
  * Answer now closes the sheet (which lands on the purchase page), then pushes
  * the form over it, so Back returns to the ticket. Later, or closing the sheet
- * any way, leaves the card reading "To answer". Seen once per order:
+ * any way, leaves the card reading "To answer". In the RSVP popup Later also
+ * closes the popup (`onLater`), as on web. Seen once per order:
  * `mingla_form_handoff_seen_v1:{kind}:{id}` (cleared on sign-out by the
  * `mingla_` prefix). The block fades and rises 8 pt over 220 ms, 300 ms after
  * the panel settles; with Reduce Motion it just appears.
@@ -62,6 +63,11 @@ export interface FormHandoffBlockProps {
   from: Extract<FormOpenedFrom, "purchase" | "rsvp">;
   /** Close the surface first (the cart lands on the purchase page). */
   onBeforeAnswer: () => void;
+  /**
+   * "Later" also closes the surface (the RSVP popup, as on web). Absent: Later
+   * only hides the block (the cart's success panel stays on its ticket).
+   */
+  onLater?: () => void;
   /** "row": the light sent-ticket sheet's compact row (one button). */
   variant?: "block" | "row";
 }
@@ -71,6 +77,7 @@ export function FormHandoffBlock({
   subjectId,
   from,
   onBeforeAnswer,
+  onLater,
   variant = "block",
 }: FormHandoffBlockProps): React.ReactElement | null {
   const { t } = useTranslation("forms");
@@ -163,7 +170,10 @@ export function FormHandoffBlock({
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            onPress={() => setHidden(true)}
+            onPress={() => {
+              setHidden(true);
+              onLater?.();
+            }}
             style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
             testID="form-handoff-later"
           >

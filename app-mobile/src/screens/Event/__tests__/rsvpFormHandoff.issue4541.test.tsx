@@ -5,7 +5,7 @@
  * popup's `formHandoff` slot now also takes a function given the popup's own
  * close, so "Answer now" closes the popup first and then opens
  * `/form/{formId}?event=&as=rsvp&sid=&from=rsvp` (never a form under a modal).
- * A plain node still works.
+ * A plain node still works. "Later" closes the popup too (`onLater`), as on web.
  *
  * Red on revert of: the popup calling a function slot with its close
  * (`resolveFormHandoff`), or the event screen passing `formHandoff` with the
@@ -150,10 +150,51 @@ describe("#4541 A3 — the RSVP popup's hand-off slot", () => {
     act(() => root.unmount());
   });
 
+  it("Later closes the popup (as on web) and opens nothing", async () => {
+    mockPending.mockResolvedValue([pendingRow()]);
+    let visible = true;
+    const onClose = jest.fn(() => {
+      visible = false;
+      mockCalls.push("close");
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const popup = (): React.ReactElement => (
+      <QueryClientProvider client={client}>
+        <RsvpSuccessPopup
+          visible={visible}
+          palette={palette}
+          theme={theme}
+          details={details}
+          showCalendarNudge={false}
+          onClose={onClose}
+          formHandoff={(close: () => void) => (
+            <FormHandoffBlock kind="rsvp" subjectId={RSVP} from="rsvp" onBeforeAnswer={close} onLater={close} />
+          )}
+        />
+      </QueryClientProvider>
+    );
+    let root!: import("react-test-renderer").ReactTestRenderer;
+    await act(async () => {
+      root = TestRenderer.create(popup());
+    });
+    await flush();
+    expect(node(root, "form-handoff-later")).toBeDefined();
+    await act(async () => {
+      node(root, "form-handoff-later").props.onPress();
+    });
+    expect(mockCalls).toEqual(["close"]);
+    expect(mockPush).not.toHaveBeenCalled();
+    await act(async () => {
+      root.update(popup());
+    });
+    expect(node(root, "form-handoff-later")).toBeUndefined();
+    act(() => root.unmount());
+  });
+
   it("the event screen hands the block the popup's close", () => {
     const screen = fs.readFileSync(path.resolve(__dirname, "../ConsumerEventDetailScreen.tsx"), "utf8");
     expect(screen).toMatch(/formHandoff: rsvpFormHandoff,/);
     expect(screen).toMatch(/\(close: \(\) => void\): React\.ReactNode =>/);
-    expect(screen).toMatch(/kind="rsvp"\s+subjectId=\{rsvpHandoffId\}\s+from="rsvp"\s+onBeforeAnswer=\{close\}/);
+    expect(screen).toMatch(/kind="rsvp"\s+subjectId=\{rsvpHandoffId\}\s+from="rsvp"\s+onBeforeAnswer=\{close\}\s+onLater=\{close\}/);
   });
 });

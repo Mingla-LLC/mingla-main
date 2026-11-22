@@ -1694,7 +1694,7 @@ export default function ConsumerEventDetailScreen({
     );
   // #4541 A3 — the popup hands its own close in, so "Answer now" closes the
   // popup first and then opens /form/{formId} (event, as=rsvp, sid) over the
-  // event page; "Later" hides the block. The block shows only for this RSVP's
+  // event page; "Later" closes the popup too, as on web. The block shows only for this RSVP's
   // unanswered live "After they RSVP" form, once.
   const rsvpFormHandoff = useCallback(
     (close: () => void): React.ReactNode =>
@@ -1705,6 +1705,7 @@ export default function ConsumerEventDetailScreen({
             subjectId={rsvpHandoffId}
             from="rsvp"
             onBeforeAnswer={close}
+            onLater={close}
           />
         </React.Suspense>
       ),
