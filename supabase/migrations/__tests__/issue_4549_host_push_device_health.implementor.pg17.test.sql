@@ -19,6 +19,11 @@
 --             notifications.push_sent/push_sent_at; a sent email, a failed
 --             push and a non-queued row do not.
 --   T-CRON    one job, every 30 minutes, calling host-push-reconcile.
+--   T-BOUND   (#4549 rework P2-4) 30 reports per account per 10 minutes, then
+--             PT429; at most 25 records per account, oldest pruned, never the
+--             one just written; the rate table is service role only.
+--   T-CLAIM   (#4549 rework P3-4) a provider delete claim happens once at a
+--             time, only for refused_token, at most 3 attempts ever.
 
 \set ON_ERROR_STOP on
 
@@ -327,5 +332,104 @@ BEGIN
     'T-CRON one job every 30 minutes calls host-push-reconcile with the vault key');
 END;
 $cron$;
+
+-- ---------------------------------------------------------------------------
+-- T-BOUND (P2-4)
+-- ---------------------------------------------------------------------------
+DO $bound_setup$
+BEGIN
+  INSERT INTO auth.users(id, email) VALUES
+    ('45490000-0000-4000-8000-000000000004', 'i4549-flood@example.test');
+END;
+$bound_setup$;
+
+SELECT pg_temp.as_user('45490000-0000-4000-8000-000000000004');
+SET LOCAL ROLE authenticated;
+DO $bound$
+DECLARE
+  i integer;
+  v_err text;
+BEGIN
+  PERFORM pg_temp.ok(pg_temp.err('SELECT count(*) FROM public.host_push_report_rate') LIKE '42501:%',
+    'T-BOUND authenticated cannot read the rate table');
+  FOR i IN 1..30 LOOP
+    PERFORM public.report_host_push_device('flood-' || i, 'ios', '42', 'granted', true, true, true, 'foreground');
+  END LOOP;
+  v_err := pg_temp.err($q$SELECT public.report_host_push_device(
+      'flood-31', 'ios', '42', 'granted', true, true, true, 'foreground')$q$);
+  PERFORM pg_temp.ok(v_err LIKE 'PT429:%report_rate_limited%',
+    'T-BOUND the 31st report inside 10 minutes is refused with PT429');
+END;
+$bound$;
+RESET ROLE;
+
+DO $bound_check$
+BEGIN
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.host_push_devices
+      WHERE user_id = '45490000-0000-4000-8000-000000000004') = 25,
+    'T-BOUND an account keeps at most 25 records');
+  PERFORM pg_temp.ok(EXISTS (SELECT 1 FROM public.host_push_devices
+      WHERE user_id = '45490000-0000-4000-8000-000000000004'
+        AND provider_subscription_id = 'flood-30'),
+    'T-BOUND the record just written is kept');
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.host_push_devices
+      WHERE user_id = '45490000-0000-4000-8000-000000000004'
+        AND provider_subscription_id = 'flood-31'),
+    'T-BOUND the refused report wrote nothing');
+  -- A new window: the counter resets.
+  UPDATE public.host_push_report_rate SET window_started_at = now() - interval '11 minutes'
+   WHERE user_id = '45490000-0000-4000-8000-000000000004';
+END;
+$bound_check$;
+
+SELECT pg_temp.as_user('45490000-0000-4000-8000-000000000004');
+SET LOCAL ROLE authenticated;
+DO $bound_window$
+BEGIN
+  PERFORM pg_temp.ok(pg_temp.err($q$SELECT public.report_host_push_device(
+      'flood-32', 'ios', '42', 'granted', true, true, true, 'foreground')$q$) = 'ok',
+    'T-BOUND after the 10-minute window the account may report again');
+END;
+$bound_window$;
+RESET ROLE;
+
+-- ---------------------------------------------------------------------------
+-- T-CLAIM (P3-4)
+-- ---------------------------------------------------------------------------
+DO $claim$
+DECLARE
+  v_id uuid;
+BEGIN
+  SELECT id INTO v_id FROM public.host_push_devices
+   WHERE user_id = '45490000-0000-4000-8000-000000000004' AND provider_subscription_id = 'flood-30';
+  UPDATE public.host_push_devices SET provider_state = 'subscribed' WHERE id = v_id;
+  PERFORM pg_temp.ok(NOT public.host_push_claim_provider_delete(v_id, 3),
+    'T-CLAIM a subscribed record is never claimed');
+  UPDATE public.host_push_devices SET provider_state = 'refused_token' WHERE id = v_id;
+  PERFORM pg_temp.ok(public.host_push_claim_provider_delete(v_id, 3), 'T-CLAIM first claim wins');
+  PERFORM pg_temp.ok(NOT public.host_push_claim_provider_delete(v_id, 3),
+    'T-CLAIM a second claim while one is held is refused');
+  -- release (what the function does after a failed call), twice more
+  UPDATE public.host_push_devices SET repair_state = 'none', provider_deleted_at = NULL WHERE id = v_id;
+  PERFORM pg_temp.ok(public.host_push_claim_provider_delete(v_id, 3), 'T-CLAIM retry 2 allowed');
+  UPDATE public.host_push_devices SET repair_state = 'none', provider_deleted_at = NULL WHERE id = v_id;
+  PERFORM pg_temp.ok(public.host_push_claim_provider_delete(v_id, 3), 'T-CLAIM retry 3 allowed');
+  UPDATE public.host_push_devices SET repair_state = 'none', provider_deleted_at = NULL WHERE id = v_id;
+  PERFORM pg_temp.ok(NOT public.host_push_claim_provider_delete(v_id, 99),
+    'T-CLAIM never more than 3 attempts, whatever the caller asks');
+  PERFORM pg_temp.ok((SELECT provider_delete_attempts FROM public.host_push_devices WHERE id = v_id) = 3,
+    'T-CLAIM attempts counted');
+END;
+$claim$;
+
+SELECT pg_temp.as_user('45490000-0000-4000-8000-000000000001');
+SET LOCAL ROLE authenticated;
+DO $claim_priv$
+BEGIN
+  PERFORM pg_temp.ok(pg_temp.err($q$SELECT public.host_push_claim_provider_delete(gen_random_uuid(), 3)$q$) LIKE '42501:%',
+    'T-CLAIM authenticated cannot claim a delete');
+END;
+$claim_priv$;
+RESET ROLE;
 
 ROLLBACK;

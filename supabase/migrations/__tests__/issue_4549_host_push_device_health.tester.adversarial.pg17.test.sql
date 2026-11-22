@@ -262,7 +262,7 @@ SELECT pg_temp.t_as('authenticated', '45491111-0000-4000-8000-000000000002');
 INSERT INTO t4549
 SELECT 'rep_' || g, public.report_host_push_device('b-owned-sub-0001', 'ios', 'b-build', 'granted', true, true, true,
          CASE g % 3 WHEN 0 THEN 'launch' WHEN 1 THEN 'foreground' ELSE 'sign_in' END)::text
-  FROM generate_series(1, 300) g;
+  FROM generate_series(1, 20) g; -- #4549 rework P2-4: was 300; the report call now refuses more than 30 per account per 10 minutes
 RESET ROLE;
 SELECT pg_temp.t_ok((SELECT count(*) FROM t4549 WHERE k LIKE 'rep_%' AND v::jsonb ->> 'action' = 'reregister') = 1,
   'A-REPEAT 300 reports: the queued repair is handed out exactly once');

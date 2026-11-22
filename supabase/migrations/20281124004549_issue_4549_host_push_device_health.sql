@@ -12,6 +12,8 @@
 --   3. public.report_host_push_device(): the app's one write path. It upserts
 --      the caller's own row only and answers {"action":"reregister"} once per
 --      repair request the reconciler queued.
+--      Bounded: 30 calls per account per 10 minutes (PT429 beyond), 25
+--      records per account (oldest pruned). Rate kept in host_push_report_rate.
 --   4. public.host_push_reconcile_candidates(): which accounts the reconciler
 --      checks next (Host pushes in the last 48 hours, or a Host app report in
 --      the last 7 days), oldest check first, at most 40.
@@ -55,6 +57,9 @@ CREATE TABLE IF NOT EXISTS public.host_push_devices (
   repair_requests integer NOT NULL DEFAULT 0 CHECK (repair_requests BETWEEN 0 AND 3),
   repair_window_started_at timestamptz,
   provider_deleted_at timestamptz,
+  -- #4549 P3-4: a failed provider delete may be retried; never more than 3.
+  provider_delete_attempts integer NOT NULL DEFAULT 0
+    CHECK (provider_delete_attempts BETWEEN 0 AND 3),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT host_push_devices_user_subscription_key
@@ -99,6 +104,24 @@ COMMENT ON TABLE public.host_push_reconcile_state IS
   'time, so one email goes out per 6 hours while nothing changes, and the '
   'provider back-off after a rate-limit answer. Service role only.';
 
+-- #4549 P2-4: per-account report rate (fixed 10-minute window). A normal
+-- phone reports at launch, sign-in and at most every 5 minutes in the
+-- foreground; 30 calls in 10 minutes per account leaves room for several
+-- phones on one shared account and refuses a flood.
+CREATE TABLE IF NOT EXISTS public.host_push_report_rate (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  window_started_at timestamptz NOT NULL,
+  calls integer NOT NULL CHECK (calls >= 0)
+);
+
+ALTER TABLE public.host_push_report_rate ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.host_push_report_rate FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.host_push_report_rate TO service_role;
+
+COMMENT ON TABLE public.host_push_report_rate IS
+  '#4549 report_host_push_device call counter per account (10-minute window). '
+  'Written only inside the RPC. Service role only.';
+
 -- ---------------------------------------------------------------------------
 -- 3. report_host_push_device
 -- ---------------------------------------------------------------------------
@@ -119,6 +142,7 @@ SET search_path = public, pg_temp
 AS $function$
 DECLARE
   v_uid uuid := auth.uid();
+  v_calls integer;
   v_row public.host_push_devices%ROWTYPE;
   v_action text := 'none';
 BEGIN
@@ -143,6 +167,21 @@ BEGIN
     RAISE EXCEPTION 'invalid_app_build' USING ERRCODE = '22023';
   END IF;
 
+  -- #4549 P2-4: at most 30 reports per account per 10 minutes.
+  INSERT INTO public.host_push_report_rate AS r (user_id, window_started_at, calls)
+  VALUES (v_uid, now(), 1)
+  ON CONFLICT (user_id) DO UPDATE
+  SET window_started_at = CASE
+        WHEN r.window_started_at <= now() - interval '10 minutes' THEN now()
+        ELSE r.window_started_at END,
+      calls = CASE
+        WHEN r.window_started_at <= now() - interval '10 minutes' THEN 1
+        ELSE r.calls + 1 END
+  RETURNING r.calls INTO v_calls;
+  IF v_calls > 30 THEN
+    RAISE EXCEPTION 'report_rate_limited' USING ERRCODE = 'PT429';
+  END IF;
+
   INSERT INTO public.host_push_devices AS d (
     user_id, provider_subscription_id, platform, app_build,
     device_permission, device_opted_in, device_token_present, device_linked,
@@ -163,6 +202,19 @@ BEGIN
       last_report_reason = EXCLUDED.last_report_reason,
       updated_at = now()
   RETURNING d.* INTO v_row;
+
+  -- #4549 P2-4: at most 25 records per account. The oldest reports beyond
+  -- that are pruned (never the one just written); the provider itself keeps
+  -- 20 subscriptions per account, so older rows are already dead there.
+  DELETE FROM public.host_push_devices d
+   WHERE d.user_id = v_uid
+     AND d.id <> v_row.id
+     AND d.id IN (
+       SELECT x.id FROM public.host_push_devices x
+        WHERE x.user_id = v_uid AND x.id <> v_row.id
+        ORDER BY x.last_reported_at DESC, x.id
+        OFFSET 24
+     );
 
   -- A queued repair is handed to the app exactly once: the request moves back
   -- to 'none' and is counted. The reconciler queues at most 3 per window, so a
@@ -194,6 +246,36 @@ COMMENT ON FUNCTION public.report_host_push_device(text, text, text, text, boole
   '#4549 the Host app reports its own push setup for the signed-in account. '
   'Writes only the caller''s row; returns {"action":"reregister"} once per '
   'repair the reconciler queued, else {"action":"none"}.';
+
+-- #4549 P3-4: claim a provider delete. One claim at a time per record and at
+-- most p_max_attempts (capped at 3) ever; host-push-reconcile releases a claim
+-- whose provider call failed so a later run may retry within that bound.
+CREATE OR REPLACE FUNCTION public.host_push_claim_provider_delete(
+  p_id uuid,
+  p_max_attempts integer
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  UPDATE public.host_push_devices
+     SET repair_state = 'provider_deleted',
+         provider_deleted_at = now(),
+         provider_delete_attempts = provider_delete_attempts + 1,
+         updated_at = now()
+   WHERE id = p_id
+     AND provider_state = 'refused_token'
+     AND repair_state NOT IN ('provider_deleted', 'gave_up')
+     AND provider_delete_attempts < LEAST(GREATEST(COALESCE(p_max_attempts, 0), 0), 3);
+  RETURN FOUND;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.host_push_claim_provider_delete(uuid, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.host_push_claim_provider_delete(uuid, integer) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 4. host_push_reconcile_candidates
