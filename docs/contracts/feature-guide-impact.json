@@ -1705,7 +1705,6 @@
         "mingla-business/src/services/guestPackService.ts",
         "mingla-business/src/utils/guestPackSession.ts",
         "mingla-business/src/utils/guestPackValidation.ts",
-        "mingla-business/src/components/event/LazyGuestPackEditor.tsx",
         "mingla-business/src/utils/guestPackGate.ts"
       ]
     },
@@ -1730,7 +1729,6 @@
         "mingla-business/src/services/guestPackService.ts",
         "mingla-business/src/utils/guestPackSession.ts",
         "mingla-business/src/utils/guestPackValidation.ts",
-        "mingla-business/src/components/event/LazyGuestPackEditor.tsx",
         "mingla-business/src/utils/guestPackGate.ts"
       ]
     },
@@ -5662,7 +5660,6 @@
         "mingla-business/src/services/guestPackService.ts",
         "mingla-business/src/utils/guestPackSession.ts",
         "mingla-business/src/utils/guestPackValidation.ts",
-        "mingla-business/src/components/event/LazyGuestPackEditor.tsx",
         "mingla-business/src/utils/guestPackGate.ts"
       ]
     },
