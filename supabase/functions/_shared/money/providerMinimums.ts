@@ -53,6 +53,26 @@ export function providerMinimumChargeMinor(currency: unknown): number | null {
 }
 
 /**
+ * Issue #3645 (18 Nov payments audit, item 7) — the charge-time twin of the
+ * publish-time price rule. Chip-ins, venue orders and bill-to-phone settle
+ * amounts the guest or staff type, so no publish gate ever saw them: a tiny
+ * amount reached the provider and failed there with no clear message.
+ *
+ * Returns the provider floor in minor units when `0 < amountMinor < floor`;
+ * null when the amount is free (0), invalid, at/above the floor, or the
+ * currency has no known minimum (left open rather than guessed).
+ */
+export function chargeBelowProviderMinimum(
+  amountMinor: number,
+  currency: unknown,
+): number | null {
+  if (!Number.isFinite(amountMinor) || amountMinor <= 0) return null;
+  const minimum = providerMinimumChargeMinor(currency);
+  if (minimum === null || amountMinor >= minimum) return null;
+  return minimum;
+}
+
+/**
  * Currencies whose en-GB form is the bare code ("NGN 100.00") but whose own
  * symbol is unambiguous, so the owner reads "₦100.00". Same list in the Host.
  */
@@ -95,4 +115,12 @@ export function ticketPriceBelowMinimum(
   const minimum = providerMinimumChargeMinor(currency);
   if (minimum === null || priceMinor >= minimum) return null;
   return ticketPriceMinimumMessage(currency);
+}
+
+/**
+ * Issue #3645 — the provider floor as the guest/staff reads it ("₦100.00",
+ * "£0.30"), the same rendering the ticket-price sentence uses.
+ */
+export function providerMinimumText(minor: number, currency: string): string {
+  return minimumText(minor, currency.trim().toUpperCase());
 }

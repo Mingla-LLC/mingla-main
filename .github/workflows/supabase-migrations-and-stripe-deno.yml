@@ -184,6 +184,9 @@ on:
       - "mingla-business/src/services/eventDrafts.ts"
       - "mingla-business/src/hooks/useRsvpApprovals.ts"
       - "supabase/functions/rsvp-contribution-refund/**"
+      # Issue #3645 — the chip-in provider-minimum suite (stripe-deno lane) tests
+      # this handler; a change to it alone must re-run that suite.
+      - "supabase/functions/rsvp-contribution-create/**"
       # Issue #3391 — the host's paid-cancel route lives in this function; a
       # change to it alone must re-run the #3391 SQL and Deno suites.
       - "supabase/functions/venue-reservation-cancel/**"
@@ -605,6 +608,9 @@ on:
       - "mingla-business/src/services/eventDrafts.ts"
       - "mingla-business/src/hooks/useRsvpApprovals.ts"
       - "supabase/functions/rsvp-contribution-refund/**"
+      # Issue #3645 — the chip-in provider-minimum suite (stripe-deno lane) tests
+      # this handler; a change to it alone must re-run that suite.
+      - "supabase/functions/rsvp-contribution-create/**"
       # Issue #3391 — the host's paid-cancel route lives in this function; a
       # change to it alone must re-run the #3391 SQL and Deno suites.
       - "supabase/functions/venue-reservation-cancel/**"
