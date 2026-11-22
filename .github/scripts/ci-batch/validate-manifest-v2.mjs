@@ -1156,10 +1156,13 @@ const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
 // [TEST-MOD-APPROVED #4541] Re-banked app-mobile after the Explorer app declared
 // @mingla/form-rendering (file:../packages/form-rendering, the one question
 // model) and its two lockfile link entries. No other package version moved.
+// [#4549] Re-banked mingla-business/package.json after react-native-onesignal
+// left expo.autolinking.android.exclude (Host Android push). Dependencies and
+// lockfiles unchanged.
 export const PACKAGE_AUTHORITY_DIGESTS = Object.freeze({
   "app-mobile/package.json": "ad4a34a147b3b2452825f458f2cef7aefd8b83a47804876be9a1277c0ef13b8f",
   "app-mobile/package-lock.json": "6cc33c2879c6ff793d07584641a632b7404714608e256a7c37395e9042833485",
-  "mingla-business/package.json": "504036f1f62da1a272df5864287efce79eda6d03d2dcf380fecf43b1436f906b",
+  "mingla-business/package.json": "c3494e93688a9730319971456e88916fd8007dc96f87cb40567461a262dbfaf7",
   "mingla-business/package-lock.json": "0bc52863b9c33e013d200020dedaa5035f4f17f590387eb1247830ca279792d2",
 });
 // [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
