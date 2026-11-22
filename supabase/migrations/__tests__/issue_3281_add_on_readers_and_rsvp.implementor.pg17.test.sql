@@ -241,6 +241,27 @@ BEGIN
     AND (v_result->0->>'quantity')::integer = 2,
     'T-DOOR the door line lists the RSVP add-ons');
 
+  -- T-DOOR-SCAN (#3281 rework): the admission reply itself carries the door
+  -- line, so scan-rsvp makes no second read; an RSVP with no picks gets no key.
+  UPDATE public.event_dates SET start_at = now() - interval '1 hour', end_at = now() + interval '2 hours'
+   WHERE event_id = v_rsvp;
+  -- Door QR payloads in the scanner's signed shape.
+  UPDATE public.event_rsvps SET qr_code = 'mingla:v1:rsvp:' || id || ':sig:' || md5(id::text) || md5(id::text)
+   WHERE event_id = v_rsvp;
+  PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+  PERFORM set_config('request.jwt.claim.sub', v_owner::text, true);
+  v_result := public.biz_rsvp_scan(v_rsvp, (SELECT qr_code FROM public.event_rsvps WHERE id = v_rsvp_id));
+  PERFORM pg_temp.ok(v_result->>'result' = 'success' AND jsonb_array_length(v_result->'addOns') = 2
+    AND v_result->'addOns'->0->>'name' = 'Snack box' AND (v_result->'addOns'->0->>'quantity')::integer = 2,
+    'T-DOOR-SCAN the admission reply carries the door line: ' || v_result::text);
+  v_result := public.biz_rsvp_scan(v_rsvp, (SELECT qr_code FROM public.event_rsvps WHERE event_id = v_rsvp AND user_id = v_g1));
+  PERFORM pg_temp.ok(v_result->>'result' = 'success' AND NOT (v_result ? 'addOns'),
+    'T-DOOR-SCAN no picks: no addOns key: ' || v_result::text);
+  PERFORM set_config('request.jwt.claims', '', true);
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  UPDATE public.event_dates SET start_at = now() + interval '6 days', end_at = now() + interval '6 days 3 hours'
+   WHERE event_id = v_rsvp;
+
   -- T-RSVP-REFUSE: each refusal undoes the whole RSVP of guest three.
   v_error := pg_temp.err(format($sql$SELECT public.issue_3281_submit_rsvp_with_add_ons(%L,%L,'Guest Three',
     's6-g3@example.test','+15553281023','going',0,'[]',NULL,'US',false,NULL,%L::jsonb)$sql$,

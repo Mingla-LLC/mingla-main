@@ -27,13 +27,15 @@
 --     #4541 submit_event_rsvp_with_form first, with the same twelve arguments,
 --     then checks and stores the add-ons in the same transaction; any refusal
 --     undoes the RSVP. With no add-ons it returns the inner result untouched.
---   * issue_3281_rsvp_door_add_ons (service role) is the door line scan-rsvp
---     reads after admission.
+--   * issue_3281_rsvp_door_add_ons (service role) is the door line; biz_rsvp_scan
+--     returns it with the admission (`addOns`, absent when none), so the door
+--     makes no extra read.
 -- Re-emitted from the replayed database (md5 drift-guarded):
 --   issue_3281_public_ticket_extras (20281123013281),
 --   issue_3281_add_on_taken (20280313003281), pg_public_trip_by_slug,
 --   pg_public_experience_by_slug, pg_public_rsvp_by_slug (latest bodies,
---   wrapped unchanged inside a CTE as 20280315003281 wrapped the event readers).
+--   wrapped unchanged inside a CTE as 20280315003281 wrapped the event readers),
+--   biz_rsvp_scan (20281119014508, one hunk: the door line).
 -- Signatures, settings and grants are unchanged. Static SQL only; no lock
 -- beyond the new rows' own add-ons (ORDER BY id FOR UPDATE), taken after the
 -- RSVP is written, the same event-then-add-on order checkout takes.
@@ -49,7 +51,8 @@ BEGIN
     ('public.issue_3281_add_on_taken(uuid,text,uuid)','e8b69267c8ee94a9d4a4132b1b3b0cce'),
     ('public.pg_public_trip_by_slug(text,text)','46ad6c508e10a5f5b9b80bf90cd81647'),
     ('public.pg_public_experience_by_slug(text,text)','b7b9e4e76ba14a3936958732acaf24d4'),
-    ('public.pg_public_rsvp_by_slug(text,text)','014dc8b12e2bd7a42960116119d02649')
+    ('public.pg_public_rsvp_by_slug(text,text)','014dc8b12e2bd7a42960116119d02649'),
+    ('public.biz_rsvp_scan(uuid,text)','e6150c405d4279b4bddf03baa0061125')
   ) v(sig,expected_md5) LOOP
     SELECT md5(pg_get_functiondef(r.sig::regprocedure)) INTO v_actual;
     IF v_actual IS DISTINCT FROM r.expected_md5 THEN
@@ -1300,6 +1303,112 @@ $fn$;
 
 REVOKE ALL ON FUNCTION public.issue_3281_rsvp_door_add_ons(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_3281_rsvp_door_add_ons(uuid) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- S6 door line in the admission reply (#3281, rework). biz_rsvp_scan returns
+-- an admitted RSVP holder's add-ons as `addOns` (absent when there are none,
+-- so every other scan reply is byte for byte as before), and scan-rsvp makes
+-- no extra read at the door. Re-emitted from 20281119014508 (md5-guarded
+-- above); one hunk.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.biz_rsvp_scan(p_event_id uuid, p_qr_payload text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'auth'
+AS $function$
+DECLARE
+  c_before constant interval := interval '120 minutes';
+  c_after constant interval := interval '360 minutes';
+  v_actor uuid := auth.uid(); v_match text[]; v_entity_id uuid;
+  v_rsvp public.event_rsvps%ROWTYPE; v_guest public.event_rsvp_guests%ROWTYPE;
+  v_event_id uuid; v_outcome text := 'not_found'; v_now timestamptz := now();
+  v_next_start timestamptz; v_last_end timestamptz; v_scan_id uuid;
+BEGIN
+  IF v_actor IS NULL OR NOT (
+    EXISTS (SELECT 1 FROM public.events e WHERE e.id=p_event_id
+      AND public.biz_brand_effective_rank(e.brand_id,v_actor)
+        >= public.biz_role_rank('event_manager'))
+    OR EXISTS (SELECT 1 FROM public.event_scanners es WHERE es.event_id=p_event_id
+      AND es.user_id=v_actor AND es.removed_at IS NULL
+      AND COALESCE((es.permissions->>'scan')::boolean,true))
+    OR EXISTS (SELECT 1 FROM public.events e JOIN public.brand_team_members m ON m.brand_id=e.brand_id
+      WHERE e.id=p_event_id AND m.user_id=v_actor AND m.role='scanner'
+        AND m.removed_at IS NULL AND m.accepted_at IS NOT NULL)
+  ) THEN RAISE EXCEPTION 'scanner_not_authorized'; END IF;
+
+  v_match := regexp_match(COALESCE(p_qr_payload,''),
+    '^mingla:v1:rsvp:([0-9a-fA-F-]{36}):sig:([a-f0-9]{64})$');
+  IF v_match IS NOT NULL THEN
+    v_entity_id := v_match[1]::uuid;
+    SELECT * INTO v_rsvp FROM public.event_rsvps
+      WHERE id=v_entity_id AND qr_code=p_qr_payload FOR UPDATE;
+    IF NOT FOUND THEN
+      SELECT * INTO v_guest FROM public.event_rsvp_guests
+        WHERE id=v_entity_id AND qr_code=p_qr_payload FOR UPDATE;
+      IF FOUND THEN SELECT * INTO v_rsvp FROM public.event_rsvps WHERE id=v_guest.rsvp_id; END IF;
+    END IF;
+    IF v_rsvp.id IS NOT NULL THEN
+      v_event_id := v_rsvp.event_id;
+      IF v_event_id <> p_event_id THEN v_outcome := 'wrong_event';
+      ELSIF v_rsvp.rsvp_status <> 'going' OR v_rsvp.approval_status <> 'approved' THEN
+        v_outcome := CASE WHEN v_rsvp.approval_status='denied' THEN 'revoked' ELSE 'not_eligible' END;
+      ELSIF EXISTS (SELECT 1 FROM public.events e WHERE e.id=p_event_id
+        AND (e.deleted_at IS NOT NULL OR e.status='cancelled')) THEN v_outcome := 'revoked';
+      ELSIF (CASE WHEN v_guest.id IS NOT NULL THEN v_guest.checked_in_at ELSE v_rsvp.checked_in_at END) IS NOT NULL
+        THEN v_outcome := 'duplicate';
+      ELSIF NOT EXISTS (SELECT 1 FROM public.event_dates WHERE event_id=p_event_id) THEN v_outcome := 'success';
+      ELSIF EXISTS (SELECT 1 FROM public.event_dates WHERE event_id=p_event_id
+        AND v_now BETWEEN start_at-c_before AND end_at+c_after) THEN v_outcome := 'success';
+      ELSE
+        SELECT min(start_at) INTO v_next_start FROM public.event_dates
+          WHERE event_id=p_event_id AND start_at-c_before > v_now;
+        IF v_next_start IS NOT NULL THEN v_outcome := 'not_yet_open';
+        ELSE v_outcome := 'event_ended';
+          SELECT max(end_at) INTO v_last_end FROM public.event_dates WHERE event_id=p_event_id;
+        END IF;
+      END IF;
+      IF v_outcome='success' THEN
+        IF v_guest.id IS NOT NULL THEN UPDATE public.event_rsvp_guests
+          SET checked_in_at=v_now, checked_in_by=v_actor WHERE id=v_guest.id;
+        ELSE UPDATE public.event_rsvps SET checked_in_at=v_now, checked_in_by=v_actor WHERE id=v_rsvp.id;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+  INSERT INTO public.rsvp_scan_events(requested_event_id,matched_event_id,rsvp_id,guest_id,
+    scanner_user_id,outcome,metadata)
+  VALUES(p_event_id,v_event_id,
+    CASE WHEN v_guest.id IS NULL THEN v_rsvp.id ELSE NULL END,v_guest.id,v_actor,v_outcome,
+    jsonb_strip_nulls(jsonb_build_object('source','scan-rsvp','nextStartAt',v_next_start,'lastEndAt',v_last_end)))
+  RETURNING id INTO v_scan_id;
+  RETURN jsonb_strip_nulls(jsonb_build_object(
+    'result',v_outcome,'scanId',v_scan_id,
+    'entityType',CASE WHEN v_outcome IN ('success','duplicate') THEN
+      CASE WHEN v_guest.id IS NULL THEN 'primary' ELSE 'guest' END END,
+    'entityId',CASE WHEN v_outcome IN ('success','duplicate') THEN
+      COALESCE(v_guest.id,v_rsvp.id) END,
+    'attendeeDisplayName',CASE WHEN v_outcome IN ('success','duplicate') THEN
+      CASE WHEN v_guest.id IS NOT NULL THEN public.rsvp_guest_host_label(v_guest.id)
+        ELSE v_rsvp.guest_name END END,
+    -- #4508 1.25: who brought an unclaimed guest, for the door.
+    'invitedByName',CASE WHEN v_outcome IN ('success','duplicate') AND v_guest.id IS NOT NULL THEN
+      (SELECT n.label FROM public.rsvp_guest_inviter_names(v_guest.id) n) END,
+    'claimed',CASE WHEN v_outcome IN ('success','duplicate') AND v_guest.id IS NOT NULL THEN
+      v_guest.claimed_at IS NOT NULL END,
+    'phoneLast4',CASE WHEN v_outcome IN ('success','duplicate') AND v_guest.id IS NOT NULL
+      AND v_guest.claimed_at IS NULL AND v_guest.phone IS NOT NULL THEN
+      right(regexp_replace(v_guest.phone,'\D','','g'),4) END,
+    -- #3281 S6 — an admitted RSVP holder's add-ons, for the door line, in the
+    -- admission reply itself (no second read at the door). Absent when none.
+    'addOns',CASE WHEN v_outcome IN ('success','duplicate') AND v_guest.id IS NULL
+      AND EXISTS (SELECT 1 FROM public.event_rsvp_add_ons ra WHERE ra.rsvp_id=v_rsvp.id)
+      THEN public.issue_3281_rsvp_door_add_ons(v_rsvp.id) END,
+    'nextStartAt',v_next_start,'lastEndAt',v_last_end,'checkedInAt',
+    CASE WHEN v_outcome IN ('success','duplicate') THEN
+      COALESCE(CASE WHEN v_guest.id IS NOT NULL THEN v_guest.checked_in_at ELSE v_rsvp.checked_in_at END,v_now) END));
+END;
+$function$;
 
 NOTIFY pgrst, 'reload schema';
 
