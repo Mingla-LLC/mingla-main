@@ -119,19 +119,39 @@ const ticket = (overrides: Partial<TicketStub> = {}): TicketStub => ({
   ...overrides,
 });
 
-const mount = async (onSave: (t: TicketStub) => void): Promise<Tree> => {
+const DRAFT_EXTRAS: NonNullable<TicketStub["extras"]> = [
+  {
+    id: "x_dinner",
+    name: "Friday dinner",
+    description: null,
+    priceGbp: 30,
+    isUnlimited: false,
+    capacity: 40,
+    maxPerTicket: 2,
+    validDayIds: null,
+  },
+];
+
+const mount = async (
+  onSave: (t: TicketStub) => void,
+  as: "live" | "draft" = "live",
+): Promise<Tree> => {
   let tree: Tree | undefined;
   await TestRenderer.act(() => {
     tree = TestRenderer.create(
       <TicketTierEditSheet
         visible
-        initial={ticket({ id: TICKET_ID })}
+        initial={
+          as === "live"
+            ? ticket({ id: TICKET_ID })
+            : ticket({ id: "t_draft", extras: DRAFT_EXTRAS })
+        }
         nextOrder={0}
         onClose={() => undefined}
         onSave={onSave}
         eventCurrency="USD"
         eventId={EVENT_ID}
-        liveEdit
+        liveEdit={as === "live"}
       />,
     );
   });
@@ -178,5 +198,36 @@ describe("#3281 S3 the ticket sheet and the Add-ons editor", () => {
     });
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(Object.prototype.hasOwnProperty.call(onSave.mock.calls[0][0], "extras")).toBe(false);
+  });
+
+  // issue #3281 §6.4 — an event draft (not a published event).
+  test("draft, flag off: the per-ticket section shows the ticket's add-ons and Save sends them as today", async () => {
+    flags.extras = false;
+    const onSave = jest.fn<(t: TicketStub) => void>();
+    const tree = await mount(onSave, "draft");
+    expect(rpc).not.toHaveBeenCalled();
+    expect(byTestId(tree, "ticket-sheet-add-ons-line")).toHaveLength(0);
+    expect(hasText(tree, "Extras")).toBe(true);
+    expect(hasText(tree, "Friday dinner")).toBe(true);
+    await TestRenderer.act(() => {
+      (saveButton(tree).props.onPress as () => void)();
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0][0].extras).toEqual(DRAFT_EXTRAS);
+  });
+
+  test("draft, flag on: the Add-ons editor owns them; the sheet shows the pointer, not the section", async () => {
+    flags.extras = true;
+    const onSave = jest.fn<(t: TicketStub) => void>();
+    const tree = await mount(onSave, "draft");
+    expect(byTestId(tree, "ticket-sheet-add-ons-line").length).toBeGreaterThan(0);
+    expect(hasText(tree, "set in Add-ons")).toBe(true);
+    expect(hasText(tree, "One add-on can come with several tickets")).toBe(false);
+    expect(hasText(tree, "Friday dinner")).toBe(false);
+    await TestRenderer.act(() => {
+      (saveButton(tree).props.onPress as () => void)();
+    });
+    // Unchanged add-ons go back as they came, so the draft keeps the editor's list.
+    expect(onSave.mock.calls[0][0].extras).toEqual(DRAFT_EXTRAS);
   });
 });

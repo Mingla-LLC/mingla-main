@@ -501,11 +501,13 @@ describe("CR — event create wizard: Settings, validation, draft, publish", () 
     expect(errors[0].step).toBe(5);
   });
 
-  test("CR-5 the persisted draft store is v15, backfills refund terms, and retires passwords", async () => {
+  test("CR-5 the persisted draft store (v16) backfills refund terms and retires passwords", async () => {
     const options = useDraftEventStore.persist.getOptions();
     // [TEST-MOD-APPROVED #3827] v15 adds a one-way retirement migration on top
     // of the unchanged v14 refund-policy backfill; prove both transformations.
-    expect(options.version).toBe(15);
+    // #3281 §6.4 — v16 moves ticket add-ons to the draft's top-level list on
+    // top of both (its own suite: issue_3281_draft_add_ons); these two are unchanged.
+    expect(options.version).toBe(16);
     const legacy = draft({ refundPolicy: undefined, passwordProtected: true });
     legacy.tickets = legacy.tickets.map((ticket) => ({
       ...ticket,

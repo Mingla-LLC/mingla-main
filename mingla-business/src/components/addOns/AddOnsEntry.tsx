@@ -15,6 +15,9 @@ import { isFeatureEnabled } from "../../config/featureFlags";
 import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
 import type { AddOnsEditorSheetProps } from "./AddOnsEditorSheet";
 import type { AddOnOfferingKind } from "./addOnsEditorModel";
+import type { DraftEvent } from "../../store/draftEventStore";
+import type { DraftAddOnFields } from "../../utils/draftAddOns";
+import { draftAddOnsFromSave, draftAddOnsPayload } from "./draftAddOnsSource";
 
 // The editor's chunk loads on the first tap; a failed load (offline) shows
 // the house retry instead of breaking the offering editor. Nothing here
@@ -32,14 +35,29 @@ export interface AddOnsEntryProps {
   eventId: string | null | undefined;
   offering: AddOnOfferingKind;
   currency?: string | null;
+  /**
+   * issue #3281 S3 (§6.4) — an event draft: the editor reads and writes the
+   * draft's own add-ons (saved with the draft, mapped onto tickets at publish).
+   */
+  draft?: {
+    event: Pick<
+      DraftEvent,
+      "id" | "tickets" | "currency" | "whenMode" | "multiDates" | "timezone" | "addOns" | "addOnTicketIds"
+    >;
+    onChange: (fields: Required<DraftAddOnFields>) => void;
+  };
 }
 
-export const AddOnsEntry: React.FC<AddOnsEntryProps> = ({ eventId, offering, currency = null }) => {
+export const AddOnsEntry: React.FC<AddOnsEntryProps> = ({ eventId, offering, currency = null, draft }) => {
   const [open, setOpen] = useState(false);
   const [opened, setOpened] = useState(false);
-  if (!isFeatureEnabled("extras") || typeof eventId !== "string" || !SAVED_OFFERING.test(eventId)) {
-    return null;
-  }
+  const offeringId =
+    draft !== undefined
+      ? draft.event.id
+      : typeof eventId === "string" && SAVED_OFFERING.test(eventId)
+        ? eventId
+        : null;
+  if (!isFeatureEnabled("extras") || offeringId === null) return null;
   return (
     <View style={styles.wrap}>
       <Pressable
@@ -61,9 +79,17 @@ export const AddOnsEntry: React.FC<AddOnsEntryProps> = ({ eventId, offering, cur
         <LazyAddOnsEditorSheet
           visible={open}
           onClose={() => setOpen(false)}
-          eventId={eventId}
+          eventId={offeringId}
           offering={offering}
           currency={currency}
+          draftSource={
+            draft !== undefined
+              ? {
+                  payload: draftAddOnsPayload(draft.event),
+                  onSave: (items) => draft.onChange(draftAddOnsFromSave(items, draft.event)),
+                }
+              : undefined
+          }
         />
       ) : null}
     </View>

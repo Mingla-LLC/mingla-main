@@ -27,6 +27,8 @@ import {
   ticketsOnCurrentDays,
   ticketsWithoutDay,
 } from "../../utils/ticketDayScope";
+// issue #3281 — a date change trims each add-on's dates with its ticket's.
+import { ticketsWithAddOns } from "../../utils/draftAddOns";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Platform,
@@ -635,9 +637,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       }
       // issue #3281 — new dates get new ids, so a list keeps only what survives.
       if (to === "multi_date") {
-        patch.tickets = ticketsOnCurrentDays(draft.tickets, patch.multiDates ?? []);
+        patch.tickets = ticketsOnCurrentDays(ticketsWithAddOns(draft), patch.multiDates ?? []);
       } else if (from === "multi_date") {
-        patch.tickets = ticketsOnAllDates(draft.tickets);
+        patch.tickets = ticketsOnAllDates(ticketsWithAddOns(draft));
       }
       updateDraft(patch);
     },
@@ -839,11 +841,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       updateDraft({
         multiDates: existing.filter((e) => e.id !== entryId),
         // issue #3281 — a deleted date leaves every ticket's list.
-        tickets: ticketsWithoutDay(draft.tickets, entryId),
+        tickets: ticketsWithoutDay(ticketsWithAddOns(draft), entryId),
       });
       setPendingDeleteEntryId(null);
     },
-    [draft.multiDates, draft.tickets, updateDraft],
+    [draft, updateDraft],
   );
 
   const handleSaveOverride = useCallback(

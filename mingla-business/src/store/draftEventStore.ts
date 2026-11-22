@@ -50,6 +50,7 @@ import {
   type DraftEditMeta,
 } from "../utils/serverDraftAutosaveGuards";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
+import { liftDraftAddOns, liftTicketAddOns, type DraftAddOn } from "../utils/draftAddOns";
 import type { LiveEvent } from "./liveEventStore";
 import type { RefundPolicy } from "../services/refundPolicyService";
 import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
@@ -427,6 +428,15 @@ export interface DraftEvent {
   /** ISO 4217 event commerce currency. Null means server should use brand default. */
   currency?: string | null;
   tickets: TicketStub[];
+  /**
+   * issue #3281 S3 (§6.4) — the draft's add-ons, once each, naming the ticket
+   * they come with (`targets`, draft ticket ids) and priced in minor units.
+   * Absent when no ticket ever had add-ons. Tickets in this store never carry
+   * `extras`; `utils/draftAddOns` puts them back at the server boundary.
+   */
+  addOns?: DraftAddOn[];
+  /** issue #3281 — tickets whose server JSON carries an `extras` key. */
+  addOnTicketIds?: string[];
   /**
    * ORCH-1006 — per-offering all-in pricing switches (who covers each cost).
    * Each field NULL = inherit the brand default; explicit boolean = override.
@@ -926,6 +936,12 @@ const retirePasswordProtection = (state: PersistedState): PersistedState => ({
   ),
 });
 
+/** issue #3281 — v15 → v16: every ticket's extras move to `draft.addOns`. */
+const liftPersistedAddOns = (state: PersistedState): PersistedState => ({
+  ...state,
+  drafts: (state.drafts ?? []).map((draft): DraftEvent => liftDraftAddOns(draft)),
+});
+
 /** The v1…v13 migration chain, unchanged — issue #3284 appends v14 on top of it. */
 function migrateDraftsToV13(persistedState: unknown, version: number): PersistedState {
   if (version < 1) {
@@ -1081,10 +1097,14 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   // issue #868 — v12 → v13 backfills the additive cover gallery (coverGallery:[]).
   // issue #3284 — v13 → v14 backfills the additive refund terms (refundPolicy:null).
   // issue #3827 — v14 → v15 retires event and ticket password protection.
-  version: 15,
+  // issue #3281 — v15 → v16 moves each ticket's extras to the draft's top-level
+  // add-ons (lossless; `utils/draftAddOns` puts them back for the server).
+  version: 16,
   migrate: (persistedState, version): PersistedState =>
-    retirePasswordProtection(
-      backfillRefundPolicy(migrateDraftsToV13(persistedState, version)),
+    liftPersistedAddOns(
+      retirePasswordProtection(
+        backfillRefundPolicy(migrateDraftsToV13(persistedState, version)),
+      ),
     ),
 };
 
@@ -1123,6 +1143,30 @@ const resolvePromotedDraftId = (
   return current;
 };
 
+/**
+ * issue #3281 — a patch that carries tickets is applied with each ticket's
+ * `extras` moved to the draft's add-ons (a ticket without the key keeps its own).
+ */
+const withLiftedAddOns = (
+  draft: DraftEvent,
+  patch: Partial<DraftEvent>,
+  now: string,
+): DraftEvent => {
+  if (patch.tickets === undefined) return { ...draft, ...patch, updatedAt: now };
+  const lifted = liftTicketAddOns(patch.tickets, {
+    addOns: patch.addOns ?? draft.addOns,
+    addOnTicketIds: patch.addOnTicketIds ?? draft.addOnTicketIds,
+  });
+  const { addOns: _a, addOnTicketIds: _b, ...rest } = { ...draft, ...patch };
+  return {
+    ...rest,
+    tickets: lifted.tickets,
+    ...(lifted.addOns !== undefined ? { addOns: lifted.addOns } : {}),
+    ...(lifted.addOnTicketIds !== undefined ? { addOnTicketIds: lifted.addOnTicketIds } : {}),
+    updatedAt: now,
+  };
+};
+
 export const useDraftEventStore = create<DraftEventState>()(
   persist(
     (set, get) => ({
@@ -1153,7 +1197,9 @@ export const useDraftEventStore = create<DraftEventState>()(
       getDraft: (id): DraftEvent | null =>
         get().drafts.find((d) => d.id === id) ?? null,
 
-      upsertDraft: (draft): void => {
+      upsertDraft: (input): void => {
+        // issue #3281 — every draft entering the store keeps add-ons top-level.
+        const draft = liftDraftAddOns(input);
         set((s) => {
           const idx = s.drafts.findIndex((d) => d.id === draft.id);
           if (idx === -1) return { drafts: [...s.drafts, draft] };
@@ -1166,12 +1212,13 @@ export const useDraftEventStore = create<DraftEventState>()(
       upsertDrafts: (drafts): void => {
         set((s) => {
           const byId = new Map(s.drafts.map((d) => [d.id, d]));
-          drafts.forEach((draft) => byId.set(draft.id, draft));
+          drafts.forEach((draft) => byId.set(draft.id, liftDraftAddOns(draft)));
           return { drafts: Array.from(byId.values()) };
         });
       },
 
-      upsertServerDraft: (draft): boolean => {
+      upsertServerDraft: (input): boolean => {
+        const draft = liftDraftAddOns(input);
         let accepted = false;
         set((s) => {
           const existing = s.drafts.find((d) => d.id === draft.id) ?? null;
@@ -1230,7 +1277,8 @@ export const useDraftEventStore = create<DraftEventState>()(
         });
       },
 
-      replaceDraft: (oldId, draft): void => {
+      replaceDraft: (oldId, input): void => {
+        const draft = liftDraftAddOns(input);
         // Recorded before `set` so every subscriber notified by this swap
         // already resolves the old id to its replacement.
         if (oldId !== draft.id) promotedDraftIds.set(oldId, draft.id);
@@ -1248,7 +1296,7 @@ export const useDraftEventStore = create<DraftEventState>()(
           const target = resolvePromotedDraftId(s.drafts, id);
           return {
             drafts: s.drafts.map((d) =>
-              d.id === target ? { ...d, ...patch, updatedAt: now } : d,
+              d.id === target ? withLiftedAddOns(d, patch, now) : d,
             ),
           };
         });

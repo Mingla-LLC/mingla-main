@@ -1368,13 +1368,14 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
           {/* #3281 — dark until buyers can buy extras; a tier that already has
               some keeps them editable. */}
           {isFeatureEnabled("extras") &&
-          initial !== null &&
-          extrasUnavailableFor(liveEdit, initial) ? (
+          (!liveEdit || (initial !== null && extrasUnavailableFor(liveEdit, initial))) ? (
             <View testID="ticket-sheet-add-ons-line">
               <Text style={styles.sectionHeader}>Add-ons</Text>
               <Text style={styles.helperHint}>
-                This ticket's add-ons are set in Add-ons, under your tickets.
-                One add-on can come with several tickets there.
+                {/* issue #3281 S3 — an event draft's add-ons are edited in Add-ons too. */}
+                {liveEdit
+                  ? "This ticket's add-ons are set in Add-ons, under your tickets. One add-on can come with several tickets there."
+                  : "This ticket's add-ons are set in Add-ons, under your tickets."}
               </Text>
             </View>
           ) : isFeatureEnabled("extras") || extras.length > 0 ? (

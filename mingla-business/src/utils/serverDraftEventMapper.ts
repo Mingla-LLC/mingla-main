@@ -22,6 +22,7 @@ import { parseOfferingRefundPolicy } from "@mingla/offering-rendering/offeringRe
 import type { RefundPolicy } from "../services/refundPolicyService";
 import type { LiveEvent } from "../store/liveEventStore";
 import { asExtraGuestCount } from "../constants/guestListPrivacy";
+import { liftDraftAddOns, ticketsWithAddOns } from "./draftAddOns";
 import { currencyCodeOrNull } from "./currency";
 // #4334 — the pin rules live in liveEventAdapter (see there): importing them
 // from the mapper closed a require cycle through the stores.
@@ -474,7 +475,8 @@ const buildBusinessDraftPayload = (
     address: draft.address,
   },
   hideAddressUntilTicket: draft.hideAddressUntilTicket,
-  tickets: draft.tickets.map(sanitizeTicketForServer),
+  // issue #3281 — the draft keeps add-ons once; the blob (and publish) read them per ticket.
+  tickets: ticketsWithAddOns(draft).map(sanitizeTicketForServer),
   settings: {
     requireApproval: draft.requireApproval,
     allowTransfers: draft.allowTransfers,
@@ -975,7 +977,8 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     asLatLng(businessDraft.locationGeo);
 
   const legacyLocalDraftId = asStringOrNull(businessDraft.legacyLocalDraftId);
-  return {
+  // issue #3281 — the blob keeps add-ons on each ticket; the draft keeps them once.
+  return liftDraftAddOns({
     id: row.id,
     brandId: row.brand_id,
     serverSlug: row.slug,
@@ -1156,5 +1159,5 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(legacyLocalDraftId !== null ? { legacyLocalDraftId } : {}),
-  } satisfies DraftEvent;
+  } satisfies DraftEvent);
 };

@@ -58,6 +58,7 @@ import {
   validateAddOnForm,
   type AddOnForm,
   type AddOnOfferingKind,
+  type AddOnSaveItem,
   type OfferingAddOn,
   type OfferingAddOnsPayload,
 } from "./addOnsEditorModel";
@@ -72,6 +73,15 @@ export interface AddOnsEditorSheetProps {
   currency?: string | null;
   /** Opened from one ticket: show its add-ons and preselect it for new ones. */
   filterTicketTypeId?: string | null;
+  /**
+   * issue #3281 S3 (§6.4) — an event draft. The list comes from the draft and a
+   * save hands the whole list back to it (saved with the draft); no server read
+   * or write, no photo (a photo is added once the event is published).
+   */
+  draftSource?: {
+    payload: OfferingAddOnsPayload;
+    onSave: (items: AddOnSaveItem[]) => void;
+  };
 }
 
 type PhotoState =
@@ -99,11 +109,15 @@ export const AddOnsEditorSheet: React.FC<AddOnsEditorSheetProps> = ({
   offering,
   currency: fallbackCurrency = null,
   filterTicketTypeId = null,
+  draftSource,
 }) => {
-  const query = useOfferingAddOns(eventId);
+  const isDraft = draftSource !== undefined;
+  // A draft reads nothing from the server (an empty id keeps the query off).
+  const query = useOfferingAddOns(isDraft ? "" : eventId);
   const save = useSaveOfferingAddOns(eventId);
   const network = useNetInfoSafe();
-  const offline = network?.isConnected === false;
+  // A draft's add-ons save with the draft (its own offline handling).
+  const offline = !isDraft && network?.isConnected === false;
 
   const [form, setForm] = useState<AddOnForm | null>(null);
   const [formSeed, setFormSeed] = useState<string>("");
@@ -113,7 +127,7 @@ export const AddOnsEditorSheet: React.FC<AddOnsEditorSheetProps> = ({
   const [photo, setPhoto] = useState<PhotoState>({ phase: "idle" });
   const [photoError, setPhotoError] = useState<string | null>(null);
 
-  const payload: OfferingAddOnsPayload | undefined = query.data;
+  const payload: OfferingAddOnsPayload | undefined = draftSource?.payload ?? query.data;
   const currency = payload?.currency ?? fallbackCurrency;
   const noun = targetNoun(offering);
   const formatMinor = useCallback(
@@ -179,6 +193,12 @@ export const AddOnsEditorSheet: React.FC<AddOnsEditorSheetProps> = ({
 
   const runSave = async (edit: { form: AddOnForm } | { removeId: string }): Promise<void> => {
     if (payload === undefined || context === null || offline) return;
+    if (draftSource !== undefined) {
+      draftSource.onSave(buildSaveList(payload, context, edit));
+      setForm(null);
+      setConfirmRemove(false);
+      return;
+    }
     try {
       await save.mutateAsync({
         addOns: buildSaveList(payload, context, edit),
@@ -242,14 +262,14 @@ export const AddOnsEditorSheet: React.FC<AddOnsEditorSheetProps> = ({
   let body: React.ReactNode;
   let footer: React.ReactNode = null;
 
-  if (query.isPending) {
+  if (!isDraft && query.isPending) {
     body = (
       <View style={styles.center}>
         <ActivityIndicator accessibilityLabel="Loading add-ons" />
         <Text style={styles.caption}>Loading add-ons…</Text>
       </View>
     );
-  } else if (query.isError || payload === undefined || context === null) {
+  } else if ((!isDraft && query.isError) || payload === undefined || context === null) {
     body = (
       <View style={styles.center}>
         <Text style={styles.caption}>
@@ -352,6 +372,7 @@ export const AddOnsEditorSheet: React.FC<AddOnsEditorSheetProps> = ({
             </View>
           </View>
         ) : null}
+        {isDraft ? null : (
         <View style={styles.photoRow}>
           <Pressable
             onPress={() => void choosePhoto()}
@@ -397,6 +418,7 @@ export const AddOnsEditorSheet: React.FC<AddOnsEditorSheetProps> = ({
             )}
           </View>
         </View>
+        )}
 
         <Field label="Name">
           <TextInput
@@ -565,6 +587,9 @@ export const AddOnsEditorSheet: React.FC<AddOnsEditorSheetProps> = ({
           </Field>
         ) : null}
 
+        {isDraft ? (
+          <Text style={styles.caption}>You can add a photo once the event is published.</Text>
+        ) : (
         <View style={styles.toggleRow}>
           <View style={styles.rowText}>
             <Text style={styles.body}>Show on the public page</Text>
@@ -576,6 +601,7 @@ export const AddOnsEditorSheet: React.FC<AddOnsEditorSheetProps> = ({
             accessibilityLabel="Show on the public page"
           />
         </View>
+        )}
 
         {form.id !== null ? (
           confirmRemove ? (
