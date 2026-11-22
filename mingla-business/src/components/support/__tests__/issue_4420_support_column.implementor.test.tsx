@@ -67,7 +67,7 @@ jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQ
 
 import { SupportColumn } from "../SupportColumn";
 import { HelpSupportHubTabs } from "../HelpSupportHubTabs";
-import { segmentKeyTarget } from "../helpSupportRoute";
+import { handleSegmentKeyDown, rovingTabIndex, segmentKeyTarget } from "../helpSupportRoute";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
@@ -268,5 +268,71 @@ describe("#4420 rework 3 keyboard on the switch and the tabs", () => {
     });
     expect(onChange).toHaveBeenLastCalledWith("support");
     await TestRenderer.act(async () => tabs.unmount());
+  });
+});
+
+// #4420 rework 5 (H1, H2). FAILS-ON-REVERT: tint the orb (or draw it through
+// Icon name="ari", which always tints) and block 8 fails; drop the roving
+// tabindex or the focus request and blocks 9 and 10 fail.
+describe("#4420 rework 5 orb colour and roving focus", () => {
+  test("8. the switch's orb takes no tint (Ari's own orange) selected and unselected", async () => {
+    const renderer = await mount();
+    const orb = (): Node =>
+      renderer.root.findAll((node) => node.type === "HomeAriOrbProbe" && node.props.testID === "support-mode-ari-orb")[0];
+    expect(orb().props.tint).toBeUndefined();
+    expect(orb().props.color).toBeUndefined();
+    await press(renderer, "support-mode-person");
+    expect(selectedMode(renderer)).toBe("person");
+    expect(orb().props.tint).toBeUndefined();
+    await TestRenderer.act(async () => renderer.unmount());
+  });
+
+  test("9. roving tabindex: only the selected option is a tab stop, in the switch and the tabs", async () => {
+    expect(rovingTabIndex(true)).toBe(0);
+    expect(rovingTabIndex(false)).toBe(-1);
+    const renderer = await mount();
+    const stop = (id: string): unknown =>
+      renderer.root.findAll((node) => node.props.testID === id && typeof node.props.onKeyDown === "function")[0].props.tabIndex;
+    expect([stop("support-mode-ari"), stop("support-mode-person")]).toEqual([0, -1]);
+    await press(renderer, "support-mode-person");
+    expect([stop("support-mode-ari"), stop("support-mode-person")]).toEqual([-1, 0]);
+    await TestRenderer.act(async () => renderer.unmount());
+
+    let tabs!: Renderer;
+    await TestRenderer.act(async () => {
+      tabs = TestRenderer.create(<HelpSupportHubTabs active="support" onChange={jest.fn()} />);
+    });
+    const tabNodes = tabs.root.findAll((node) => node.props.accessibilityRole === "tab" && typeof node.props.onKeyDown === "function" && typeof node.type !== "string");
+    expect(tabNodes.map((node) => node.props.tabIndex)).toEqual([-1, 0]);
+    await TestRenderer.act(async () => tabs.unmount());
+  });
+
+  test("10. arrows request focus on the newly selected option; Space does not move it", () => {
+    const options = ["ari", "person"] as const;
+    const select = jest.fn();
+    const focus = jest.fn();
+    handleSegmentKeyDown({ key: "ArrowRight", preventDefault: jest.fn() }, options, "ari", select, focus);
+    expect(select).toHaveBeenLastCalledWith("person");
+    expect(focus).toHaveBeenLastCalledWith("person");
+    handleSegmentKeyDown({ nativeEvent: { key: "ArrowLeft" } }, options, "person", select, focus);
+    expect(focus).toHaveBeenLastCalledWith("ari");
+    focus.mockClear();
+    handleSegmentKeyDown({ key: " " }, options, "ari", select, focus);
+    expect(select).toHaveBeenLastCalledWith("ari");
+    expect(focus).not.toHaveBeenCalled();
+    handleSegmentKeyDown({ key: "a" }, options, "ari", select, focus);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  test("11. in the rendered switch, an arrow focuses the other option's element", async () => {
+    // The refs are real element handles on web; here the render mock has none,
+    // so this proves the handler is wired to focusOption without throwing.
+    const renderer = await mount();
+    const [ari] = renderer.root.findAll((node) => node.props.testID === "support-mode-ari" && typeof node.props.onKeyDown === "function");
+    await TestRenderer.act(async () => {
+      (ari.props.onKeyDown as (e: object) => void)({ key: "ArrowRight", preventDefault: jest.fn() });
+    });
+    expect(selectedMode(renderer)).toBe("person");
+    await TestRenderer.act(async () => renderer.unmount());
   });
 });

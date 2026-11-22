@@ -141,3 +141,27 @@ export interface SegmentKeyEvent {
   nativeEvent?: { key?: string };
   preventDefault?: () => void;
 }
+
+/** #4420 rework 5 (H2): roving tabindex. Only the selected option is a tab stop. */
+export function rovingTabIndex(selected: boolean): 0 | -1 {
+  return selected ? 0 : -1;
+}
+
+/**
+ * #4420 rework 5 (H2): one keydown on a tab or switch option. Selects the
+ * option segmentKeyTarget names and, when the key MOVED to a different one,
+ * asks for focus on it, so a second arrow press continues from there.
+ */
+export function handleSegmentKeyDown<T>(
+  event: SegmentKeyEvent,
+  options: readonly T[],
+  focused: T,
+  select: (next: T) => void,
+  focusOption: (next: T) => void,
+): void {
+  const next = segmentKeyTarget(event.nativeEvent?.key ?? event.key, options, focused);
+  if (next === null) return;
+  event.preventDefault?.();
+  select(next);
+  if (next !== focused) focusOption(next);
+}

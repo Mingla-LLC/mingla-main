@@ -3,7 +3,9 @@
  * as amended by the scope cut (Seth, 2026-11-21).
  *
  *   - A switch "Ari | A person". The Ari segment's mark is the Ari orb
- *     (`Icon name="ari"`, which draws HomeAriOrb): never a new drawing.
+ *     (HomeAriOrb, still, with NO tint, so it keeps Ari's orange like the Ari
+ *     tab and Home; `Icon name="ari"` always tints, which is for navigation
+ *     only): never a new drawing.
  *   - Ari: the ORDINARY Ari chat (same conversations as the Ari tab, no
  *     help-specific prompt, tool or flag), with "Talk to a person" always
  *     visible and one plain "Browse all help videos" link to the Help Centre.
@@ -24,10 +26,11 @@ import { HELP_CENTRE_URL } from "../../constants/supportHostFacing";
 import { useAuth } from "../../context/AuthContext";
 import { supportTicketKeys } from "../../hooks/supportTicketKeys";
 import { useCurrentBrandStore } from "../../store/currentBrandStore";
+import { HomeAriOrb } from "../home/HomeAriOrb";
 import { Icon } from "../ui/Icon";
 import { openHelpCentre } from "./helpCentreLauncher";
 import { hubCopy } from "./helpSupportHubCopy";
-import { segmentKeyTarget, type SegmentKeyEvent, type SupportMode } from "./helpSupportRoute";
+import { handleSegmentKeyDown, rovingTabIndex, type SegmentKeyEvent, type SupportMode } from "./helpSupportRoute";
 import type { HandoverProgress, HandoverSourceMessage } from "./supportHandover";
 import { LazySupportAriChat, LazySupportPersonPane, loadSupportScreens } from "./LazySupportScreens";
 
@@ -76,6 +79,11 @@ export const SupportColumn: React.FC<SupportColumnProps> = ({
   const [helpCentreError, setHelpCentreError] = useState(false);
   const snapshotRef = useRef<AriSnapshot | null>(null);
   const progressRef = useRef<{ key: string; progress: HandoverProgress } | null>(null);
+
+  const optionRefs = useRef<Partial<Record<SupportMode, { focus?: () => void } | null>>>({});
+  const focusOption = useCallback((option: SupportMode): void => {
+    optionRefs.current[option]?.focus?.();
+  }, []);
 
   const select = useCallback((next: SupportMode): void => {
     setVisited((current) => (current[next] ? current : { ...current, [next]: true }));
@@ -147,19 +155,20 @@ export const SupportColumn: React.FC<SupportColumnProps> = ({
                 // A radio's state is "checked"; react-native-web reads aria-checked (#4420 rework 2).
                 aria-checked={selected}
                 // #4420 rework 3 (G6): Space selects, arrows move (web keyboard).
+                // #4420 rework 5 (H2): roving tabindex, focus follows the arrows.
+                ref={(node: unknown) => {
+                  optionRefs.current[option] = node as { focus?: () => void } | null;
+                }}
                 {...({
-                  onKeyDown: (event: SegmentKeyEvent) => {
-                    const next = segmentKeyTarget(event.nativeEvent?.key ?? event.key, SUPPORT_MODES, option);
-                    if (next === null) return;
-                    event.preventDefault?.();
-                    select(next);
-                  },
+                  onKeyDown: (event: SegmentKeyEvent) =>
+                    handleSegmentKeyDown(event, SUPPORT_MODES, option, select, focusOption),
+                  tabIndex: rovingTabIndex(selected),
                 } as object)}
                 accessibilityLabel={hubCopy(`support.${option}`)}
                 testID={`support-mode-${option}`}
                 style={({ pressed }) => [styles.segment, selected && styles.segmentOn, pressed && !selected && styles.pressed]}
               >
-                {option === "ari" ? <Icon name="ari" size={18} testID="support-mode-ari-orb" /> : null}
+                {option === "ari" ? <HomeAriOrb size={18} still testID="support-mode-ari-orb" /> : null}
                 <Text style={[styles.segmentText, selected && styles.segmentTextOn]}>{hubCopy(`support.${option}`)}</Text>
               </Pressable>
             );

@@ -4,14 +4,14 @@
  * three-tab control.
  */
 
-import React from "react";
+import React, { useRef } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   color,
   space,
 } from "../../constants/designSystem";
-import { segmentKeyTarget, type HelpSupportTab, type SegmentKeyEvent } from "./helpSupportRoute";
+import { handleSegmentKeyDown, rovingTabIndex, type HelpSupportTab, type SegmentKeyEvent } from "./helpSupportRoute";
 import { hubCopy } from "./helpSupportHubCopy";
 
 type TabDef = {
@@ -36,7 +36,12 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
   active,
   onChange,
   announcementsBadge = 0,
-}) => (
+}) => {
+  const tabRefs = useRef<Partial<Record<HelpSupportTab, { focus?: () => void } | null>>>({});
+  const focusTab = (id: HelpSupportTab): void => {
+    tabRefs.current[id]?.focus?.();
+  };
+  return (
   <View style={styles.host} accessibilityRole="tablist" accessibilityLabel={hubCopy("tabs.label")}>
     <View style={styles.bar}>
       {TABS.map((tab) => {
@@ -62,13 +67,13 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
             // the web tab says which one is selected too (#4420 rework 2).
             aria-selected={isActive}
             // #4420 rework 3 (G6): Space selects, arrows move (web keyboard).
+            // #4420 rework 5 (H2): roving tabindex, focus follows the arrows.
+            ref={(node: unknown) => {
+              tabRefs.current[tab.id] = node as { focus?: () => void } | null;
+            }}
             {...({
-              onKeyDown: (event: SegmentKeyEvent) => {
-                const next = segmentKeyTarget(event.nativeEvent?.key ?? event.key, TAB_IDS, tab.id);
-                if (next === null) return;
-                event.preventDefault?.();
-                onChange(next);
-              },
+              onKeyDown: (event: SegmentKeyEvent) => handleSegmentKeyDown(event, TAB_IDS, tab.id, onChange, focusTab),
+              tabIndex: rovingTabIndex(isActive),
             } as object)}
             hitSlop={6}
           >
@@ -93,7 +98,8 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
       })}
     </View>
   </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   host: {
