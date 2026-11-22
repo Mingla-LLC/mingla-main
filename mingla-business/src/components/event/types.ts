@@ -8,6 +8,7 @@
  * Per Cycle 3 spec §3.4.
  */
 
+import type React from "react";
 import type { DraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../types/brand";
 import type { ValidationError } from "../../utils/draftEventValidation";
@@ -26,6 +27,12 @@ export interface StepBodyProps {
   /** issue #2590 — the event's LAST occurrence END, ISO-8601 UTC. */
   eventEndsAtIso?: string | null;
   draft: DraftEvent;
+  /**
+   * #4548 — the Guest pack block, rendered under the address on the Where step.
+   * The owner builds it (it loads with its own chunk), so this step carries no
+   * guest pack code of its own and the eager boot payload does not grow.
+   */
+  guestPackSlot?: React.ReactNode;
   /** Patches the draft via draftEventStore.updateDraft (create-flow) or local state setter (edit-published flow). */
   updateDraft: (
     patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,

@@ -105,6 +105,7 @@ import { resolveAttendanceClaimPepperRing } from "../_shared/governedAdSecret.ts
 import { guestListPartyLine } from "../_shared/email/partyLine.ts";
 import { buildBuyerConfirmationPayload } from "../_shared/buyerConfirmationPayload.ts";
 import { buildOrderConfirmationMessage } from "../_shared/orderConfirmationMessage.ts";
+import { guestPackExists } from "../_shared/guestPackPointer.ts";
 import { formatDateRange, formatMessageTime } from "../_shared/messageTime.ts";
 import { resolveBuyerLink } from "../_shared/messageLinks.ts";
 import { buildWaitlistSpotMessage } from "../_shared/waitlistSpotMessage.ts";
@@ -1526,6 +1527,14 @@ export const handler = async (req: Request): Promise<Response> => {
       : partyOrigin === "link" && partyLead.length > 0
       ? `${partyLead} added you to the guest list.`
       : null;
+    // #4548 — a yes/no only; the pack itself is read in the app, never here.
+    // Trips have no guest pack.
+    const guestPack = !isTrip &&
+      await guestPackExists(
+        supabase,
+        order.events.id,
+        "[ticket-confirmation-dispatch]",
+      );
     const defaultButtonUrl = confirmation.claim.shortUrl ?? BUYER_DOWNLOAD_URL;
     hasShortClaimLink = confirmation.claim.shortUrl !== null;
     const buildMessage = (buttonUrl: string) =>
@@ -1553,6 +1562,7 @@ export const handler = async (req: Request): Promise<Response> => {
         place,
         detailLines: partyLine === null ? undefined : [partyLine],
         hostAddedGuest,
+        guestPack,
         receipt: {
           currency: confirmation.receipt.currency,
           items: confirmation.receipt.lines.map((line) => ({

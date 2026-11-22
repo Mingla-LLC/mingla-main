@@ -379,6 +379,7 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4420 rework: registered the tester's tickets-on-Work-board pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4541 forms fixes and Blast push: registered 20281122004541 and 20281122014541 in the #1857, #1931 and #2117 inventories and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped both by exact filename on the filtered #1931 and #2117 template replays; re-sealed.
 // #4541 merge of main after #4420 tickets on the Work board: kept main's 20281121034420 row and its pg17 suites before the two #4541 rows (filename order) and both #4541 filtered-replay skips; re-sealed.
+// #4548 guest pack: registered 20281122024548 and its three pg17 proofs (implementor happy, implementor adversarial, tester adversarial; with sidecars) in the #1857, #1931 and #2117 inventories after #4541's rows; skipped it by exact filename on the filtered #1931 template replay (#4508 and #4459, which it reads, are skipped there); re-sealed.
 // #4522 slice 12 integration: kept #4508/#4514's rows and filtered-replay
 // decisions, restored #3281/#4522 rows and proofs, then re-sealed.
 // #4522 slice 13 switch on: registered 20281121014522_issue_4522_switch_on.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281120104522 and 20281121014522 on the filtered #1931 replay and for all #4522 migrations on the filtered #2117 replay (their md5 drift guards need bodies those lanes skip); re-sealed.
@@ -394,7 +395,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4522 rework after tester FAIL (F1-F10): registered the three #4522 tester adversarial pg17 suites (flex_inflight_race, flex_alloc_rollover, discount_plan, with sidecars) in the #1931 and #2117 replay inventories and the #4523 calendar suite's same-day range test; no migration added; re-sealed.
 // #4522 second rework after retest FAIL (N1-N10): registered three #4522 implementor pg17 suites (safeupdate_lifecycle, overpayment_return, custom_discount_exact, with sidecars) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
 // #4522 merge of main after #4541 Explorer forms: kept main's 20281122004541 and 20281122014541 rows, their two pg17 suites and their exact-filename skips on the filtered #1931 and #2117 replays beside the #3281/#4522 rows and skips; re-sealed.
-export const BOOTSTRAP_SHA256 = "e015680fe2814354c6600e018fe67893e7690dcb160282a7ee9ceec58db8d158";
+// #4522 merge of main after #4548 guest pack: kept main's 20281122024548 row, its three pg17 suites and its exact-filename #1931 skip beside the #3281/#4522 rows and skips; re-sealed.
+export const BOOTSTRAP_SHA256 = "e92fe85f64ce20e16f600d8be39fdb7bc7ad3d912b7211f5b3bd816fc04c9f98";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

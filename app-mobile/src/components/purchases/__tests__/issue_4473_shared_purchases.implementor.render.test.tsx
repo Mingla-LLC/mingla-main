@@ -86,6 +86,10 @@ jest.mock("../../onboarding/PhoneInput", () => {
       ReactActual.createElement("PhoneInput", props),
   };
 });
+// [TEST-MOD #4548] The Guest pack card reads through react-query, and this
+// harness mounts the detail screen without a QueryClientProvider. The card has
+// its own suites; here it is an inert stub so these #4473 proofs stay about #4473.
+jest.mock("../GuestPackCard", () => ({ GuestPackCard: () => null }));
 jest.mock("../DoorModeModal", () => {
   const ReactActual = jest.requireActual("react");
   return {

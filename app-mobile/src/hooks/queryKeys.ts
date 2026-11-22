@@ -82,6 +82,12 @@ export const purchaseKeys = {
     [...purchaseKeys.all, "identifiers", userId] as const,
   lastClaim: (userId: string) =>
     [...purchaseKeys.all, "lastClaim", userId] as const,
+  // #4548 — the host's Guest pack for an event this account holds. OFFLINE
+  // CONTRACT: persisted with the rest of the cache (the user id in the key makes
+  // it auth-scoped), so the note and labels show offline; links need a
+  // connection. Logout and account change drop it with every purchases key.
+  guestPack: (userId: string, eventId: string) =>
+    [...purchaseKeys.all, "guestPack", userId, eventId] as const,
 };
 
 // Issue #4522 — one balance key factory. Collection invalidates both this

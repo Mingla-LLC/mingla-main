@@ -141,6 +141,7 @@ import type {
 import { readRpcFailureMessage } from "../../services/rsvpRpcFailure";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -155,6 +156,20 @@ import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
+import {
+  flushGuestPack,
+  guestPackEventIdForDraft,
+  hasPendingGuestPack,
+  releaseGuestPackSession,
+  useGuestPackPending,
+} from "../../utils/guestPackGate";
+// #4548 — the guest pack editor loads with its own chunk. Declared here, not in
+// a shared module: a module shared by several lazy screens is hoisted into the
+// eager boot chunk, and this one must stay out of it.
+const GuestPackEditorLazy = React.lazy(async () => ({
+  default: (await import("./GuestPackEditor")).GuestPackEditor,
+}));
+
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { CreatorStep5Tickets } from "./LazyCreatorStep5Tickets";
 // issue #3827 — Step 6 loads lazily (see lazySettingsSteps.tsx).
@@ -370,6 +385,12 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   const liveDraft =
     useDraftEventStore((s) => s.drafts.find((d) => d.id === initialDraft.id)) ??
     initialDraft;
+  // #4548 — the guest pack's working copy lives for as long as this wizard does.
+  const guestPackSessionId = guestPackEventIdForDraft(liveDraft.id);
+  useEffect(
+    () => () => releaseGuestPackSession(guestPackSessionId),
+    [guestPackSessionId],
+  );
   // #3645 PR11c — Organiser Terms before first paid listing publish.
   const {
     blockPaidPublishUntilAccepted,
@@ -872,7 +893,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // the draft has edits.
   const handleClose = useCallback((): void => {
     if (isCreateMode) {
-      if (isDraftPristine()) {
+      // #4548 — a typed guest pack change makes the draft not pristine, so
+      // closing asks through the same discard confirm.
+      if (isDraftPristine() && !hasPendingGuestPack(guestPackSessionId)) {
         void (async (): Promise<void> => {
           try {
             await discardDraft(liveDraft);
@@ -889,11 +912,20 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       // #4420 — edit mode autosaves, so leaving loses nothing, unless the
       // last autosave failed: then ask before the unsaved edits are dropped.
       setAutosaveLeaveVisible(true);
+    } else if (hasPendingGuestPack(guestPackSessionId)) {
+      // #4548 — edit mode autosaves its fields; the guest pack has no
+      // autosave, so it is saved on the way out (the same save-first rule as
+      // Continue). A failed save keeps the host here with the toast.
+      void flushGuestPack(guestPackSessionId).then((result) => {
+        if (result.ok) onExit("abandoned");
+        else handleShowToast(result.message);
+      });
     } else {
       // Edit mode: auto-save semantics — simple exit, no dialog.
       onExit("abandoned");
     }
   }, [
+    guestPackSessionId,
     serverSaveState?.hasError,
     isCreateMode,
     isDraftPristine,
@@ -919,6 +951,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     onStepBack: handleStepBack,
     onExit: handleClose,
   });
+  // #4548 — web reload / tab close with a typed, unsaved guest pack asks first
+  // (the fields autosave; the pack is saved only by Continue, Publish or Close).
+  const guestPackPending = useGuestPackPending(guestPackSessionId);
+  useUnsavedChangesGuard({ dirty: guestPackPending, onRequestLeave: handleClose });
 
   const handleCloseDiscardDialog = useCallback((): void => {
     if (isDiscarding) return;
@@ -954,11 +990,27 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       return;
     }
     // Advance.
-    setShowStepErrors(false);
-    setCurrentStep((prev) => prev === 5 && !inviteEnabled
-      ? 7
-      : Math.min(TOTAL_STEPS - 1, prev + 1));
-  }, [currentStep, liveDraft, inviteEnabled, inviteNavigation]);
+    const advance = (): void => {
+      setShowStepErrors(false);
+      setCurrentStep((prev) => prev === 5 && !inviteEnabled
+        ? 7
+        : Math.min(TOTAL_STEPS - 1, prev + 1));
+    };
+    // #4548 — a changed guest pack is saved first; if that fails the host stays
+    // on this step with the toast and nothing typed is lost.
+    const packId = guestPackEventIdForDraft(liveDraft.id);
+    if (hasPendingGuestPack(packId)) {
+      void flushGuestPack(packId).then((result) => {
+        if (!result.ok) {
+          handleShowToast(result.message);
+          return;
+        }
+        advance();
+      });
+      return;
+    }
+    advance();
+  }, [currentStep, liveDraft, inviteEnabled, inviteNavigation, handleShowToast]);
 
   // #4420 B7 — jump to a reachable step from the stepper. Same guards as the
   // dock Back: never while Invite people is still saving its selection, and
@@ -981,6 +1033,14 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 
   const handlePublishTap = useCallback(async (): Promise<void> => {
     if (!coverAuthority.isReady) return;
+    // #4548 — publish saves a changed guest pack first; a failed save keeps the host here.
+    const packResult = await flushGuestPack(
+      guestPackEventIdForDraft(liveDraft.id),
+    );
+    if (!packResult.ok) {
+      handleShowToast(packResult.message);
+      return;
+    }
     const errs = validatePublish(liveDraft, stripeStatus);
     const stripeBlocking = errs.find(
       (e) => e.fieldKey === "stripeNotConnected",
@@ -1264,7 +1324,19 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       case 1:
         return <CreatorStep2When {...baseProps} />;
       case 2:
-        return <CreatorStep3Where {...baseProps} />;
+        return (
+          <CreatorStep3Where
+            {...baseProps}
+            guestPackSlot={
+              <React.Suspense fallback={null}>
+                <GuestPackEditorLazy
+                  eventId={guestPackEventIdForDraft(liveDraft.id)}
+                  onShowToast={handleShowToast}
+                />
+              </React.Suspense>
+            }
+          />
+        );
       case 3:
         return <CreatorStep4Cover {...baseProps} />;
       case 4:

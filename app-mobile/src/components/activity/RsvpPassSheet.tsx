@@ -54,6 +54,8 @@ import { postHogService } from "../../services/postHogService";
 import { PURCHASE_SHEET_KEYBOARD_TOOLBAR } from "../purchases/SheetKeyboardDoneBar";
 // issue #3281 S6 — the add-ons on the guest's own RSVP (its own read).
 import { RsvpPassAddOns } from "./RsvpPassAddOns";
+import { GuestPackCard } from "../purchases/GuestPackCard";
+import { isRsvpGuestPackEligible } from "../../utils/guestPackDisplay";
 
 interface RsvpPassSheetProps {
   visible: boolean;
@@ -391,6 +393,22 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
         </View>
 
         {renderVenue()}
+
+        {/* #4548 — the host's Guest pack: its own block, only for approved guests. */}
+        <GuestPackCard
+          audience="rsvp"
+          bookedAtIso={row.createdAt ?? null}
+          endsAtIso={row.masterDateEndUtc}
+          eventId={row.eventId}
+          eligible={
+            visible &&
+            isRsvpGuestPackEligible({
+              status: row.status,
+              approvalStatus: row.approvalStatus,
+            })
+          }
+          startsAtIso={row.masterDateUtc}
+        />
 
         {partyLoading ? <ActivityIndicator size="small" color="#eb7825" /> : null}
         {partyError ? (

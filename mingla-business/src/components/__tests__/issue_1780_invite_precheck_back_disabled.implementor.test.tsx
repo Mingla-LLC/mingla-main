@@ -540,6 +540,15 @@ const BOUNDARY: Record<string, () => unknown> = {
     ORGANISER_TERMS_PUBLISH_RETRY_TOAST:
       "Accept the Organiser Terms, then tap Publish again.",
   }), // [TEST-MOD-APPROVED #3645]
+  // [TEST-MOD #4548] the guest pack working copy (nothing pending in this suite).
+  guestPackGate: () => ({
+    guestPackEventIdForDraft: (id: string) => (id.startsWith("d_") ? null : id),
+    hasPendingGuestPack: () => false,
+    flushGuestPack: async () => ({ ok: true, saved: false }),
+    releaseGuestPackSession: () => undefined,
+    subscribeGuestPack: () => () => undefined,
+    useGuestPackPending: () => false,
+  }),
   useIntakeSchema: () => ({
     useTripIntakeSchemasByEvent: () => intakeQuery,
     useUpsertTripIntakeSchema: () => mutation,
