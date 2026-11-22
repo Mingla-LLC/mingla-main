@@ -7,6 +7,9 @@
 -- FAILS-ON-REVERT: without 20280809460490 every block fails (the wrappers do not exist).
 \set ON_ERROR_STOP on
 BEGIN;
+INSERT INTO public.feature_flags (flag_key, is_enabled)
+SELECT k, true FROM unnest(ARRAY['VENUE_OFFERS_READS', 'VENUE_OFFERS_WRITES']) k
+ON CONFLICT (flag_key) DO UPDATE SET is_enabled = true;
 
 CREATE FUNCTION public.t4490w5_ok(p_ok boolean, p_label text)
 RETURNS void LANGUAGE plpgsql AS $f$
