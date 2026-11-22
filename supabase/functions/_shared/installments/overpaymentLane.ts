@@ -6,7 +6,7 @@
  * throws, because the scheduled sweep retries anything left.
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { createPaystackRefund } from "../paystackRefunds.ts";
+import { createPaystackRefund, getPaystackRefund } from "../paystackRefunds.ts";
 import { stripeTicketRefund } from "../stripe.ts";
 import { installmentOpsAlert } from "./installmentOpsAlert.ts";
 import {
@@ -22,6 +22,7 @@ export function defaultOverpaymentDeps(supabase: SupabaseClient): OverpaymentRef
     stripe: () => stripeTicketRefund() as unknown as OverpaymentStripe,
     stripeAccountForBrand: (brandId) => stripeAccountForBrandFrom(supabase, brandId),
     createPaystackRefund,
+    getPaystackRefund,
     alertOps: installmentOpsAlert,
   };
 }

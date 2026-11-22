@@ -396,7 +396,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4522 second rework after retest FAIL (N1-N10): registered three #4522 implementor pg17 suites (safeupdate_lifecycle, overpayment_return, custom_discount_exact, with sidecars) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
 // #4522 merge of main after #4541 Explorer forms: kept main's 20281122004541 and 20281122014541 rows, their two pg17 suites and their exact-filename skips on the filtered #1931 and #2117 replays beside the #3281/#4522 rows and skips; re-sealed.
 // #4522 merge of main after #4548 guest pack: kept main's 20281122024548 row, its three pg17 suites and its exact-filename #1931 skip beside the #3281/#4522 rows and skips; re-sealed.
-export const BOOTSTRAP_SHA256 = "e92fe85f64ce20e16f600d8be39fdb7bc7ad3d912b7211f5b3bd816fc04c9f98";
+// #4522 third rework after retest FAIL (T3-1..T3-10): registered the #4522 implementor pg17 suite overpayment_refund_once (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
+export const BOOTSTRAP_SHA256 = "e65f96878755a42e00374a67982b15cd57daef5bc31609239fc6761194cc3dea";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -252,7 +252,7 @@ BEGIN
     NOT has_table_privilege('authenticated', 'public.order_paid_in_full_notices', 'SELECT')
     AND NOT has_table_privilege('service_role', 'public.order_paid_in_full_notices', 'INSERT'));
   PERFORM pg_temp.check('N9 no client role executes the lane',
-    NOT has_function_privilege('authenticated', 'public.issue_4522_begin_overpayment_refund(uuid, timestamptz)', 'EXECUTE')
+    NOT has_function_privilege('authenticated', 'public.issue_4522_begin_overpayment_refund(uuid, integer, timestamptz)', 'EXECUTE')
     AND NOT has_function_privilege('anon', 'public.issue_4522_release_flex_verified(uuid, text, text, timestamptz)', 'EXECUTE')
     AND NOT has_function_privilege('authenticated', 'public.issue_4522_release_flex_verified(uuid, text, text, timestamptz)', 'EXECUTE')
     AND has_function_privilege('service_role', 'public.issue_4522_release_flex_verified(uuid, text, text, timestamptz)', 'EXECUTE'));

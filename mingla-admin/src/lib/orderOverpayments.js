@@ -7,6 +7,8 @@ export const OVERPAYMENT_STATE_LABEL = {
   held: "Held — refund starting",
   refund_pending: "Refunding",
   refund_failed: "Refund failed — retrying",
+  // issue #4522 (T3-2) — automatic refunding stopped; the ops alert says what to do.
+  needs_ops: "Needs ops — automatic refund stopped",
   refunded: "Refunded",
   applied: "Applied to the balance",
 };
@@ -33,6 +35,7 @@ export function overpaymentRows(balance) {
       createdAt: op.createdAt ?? null,
       resolvedAt: op.resolvedAt ?? null,
       attempts: Number.isSafeInteger(op.attempts) ? op.attempts : 0,
-      needsAttention: op.state === "refund_failed",
+      returnedMinor: Number.isSafeInteger(op.returnedMinor) ? op.returnedMinor : 0,
+      needsAttention: op.state === "refund_failed" || op.state === "needs_ops",
     }));
 }

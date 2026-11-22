@@ -26,6 +26,22 @@ describe("#4522 Admin overpayments", () => {
     assert.equal(rows[1].reasonLabel, "A cancelled payment was charged");
   });
 
+  it("flags a stopped overpayment (needs_ops) for attention and shows what was returned (T3-2)", () => {
+    const rows = overpaymentRows({
+      currency: "NGN",
+      overpayments: [
+        { overpaymentId: "e", state: "needs_ops", reason: "flex_exceeds_balance", refundMinor: 3000, returnedMinor: 0,
+          needsOpsReason: "below_provider_minimum", currency: "NGN", attempts: 0 },
+        { overpaymentId: "f", state: "refund_pending", reason: "flex_exceeds_balance", refundMinor: 3000000000,
+          returnedMinor: 2147483647, currency: "NGN", attempts: 2 },
+      ],
+    });
+    assert.deepEqual(rows.map((r) => [r.id, r.stateLabel, r.needsAttention, r.returnedMinor]), [
+      ["e", "Needs ops — automatic refund stopped", true, 0],
+      ["f", "Refunding", false, 2147483647],
+    ]);
+  });
+
   it("is empty for an order with no v2 balance or no overpayment", () => {
     assert.deepEqual(overpaymentRows(null), []);
     assert.deepEqual(overpaymentRows({ overpayments: [] }), []);

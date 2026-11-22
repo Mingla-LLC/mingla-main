@@ -22,6 +22,14 @@
 --     part overpayment not yet returned, or a flexible payment not yet
 --     settled, stays 'pending' instead of 'ready', so no payout ever counts
 --     money the traveler is owed back (N2, I-4522-OVERPAY-NEVER-PAID-OUT).
+--   issue_3645_cancel_refund_installment (20280204003645) — a host's trip
+--     cancel (event-cancel fan-out) asks the provider only for what is still
+--     refundable on the charge: the overpaid part of a flexible payment not
+--     yet returned is left to its own refund, so a pending overpayment
+--     refund never makes the provider refuse the cancel refund (T3-1).
+--   issue_3872_refund_share_trigger (20271221003872) — an overpayment refund
+--     reverses no referral share (none was earned on money the plan did not
+--     owe) and adds nothing to the reversal basis of later refunds (T3-4).
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -32,7 +40,9 @@ BEGIN
   FOR r IN SELECT * FROM (VALUES
     ('public.biz_compute_refund_for_cancel(uuid,timestamptz)','72d1629b3db78f4dbbad280565234d1b'),
     ('public.biz_cancel_trip_booking_begin(uuid,text,uuid,text,timestamptz)','3bb652b695930105fa5d1cb1c0ce32ea'),
-    ('public.record_order_installment_provider_sale(uuid,integer,integer,timestamptz)','4fd2f012df53833c54d02eb9ff20309f')
+    ('public.record_order_installment_provider_sale(uuid,integer,integer,timestamptz)','4fd2f012df53833c54d02eb9ff20309f'),
+    ('public.issue_3645_cancel_refund_installment(uuid,text,text)','ba50142f4b8b940893a4c870c54d62da'),
+    ('public.issue_3872_refund_share_trigger()','416d98679e62a948931f9c675d2c45df')
   ) v(sig,expected_md5) LOOP
     SELECT md5(pg_get_functiondef(r.sig::regprocedure)) INTO v_actual;
     IF v_actual IS DISTINCT FROM r.expected_md5 THEN
@@ -56,9 +66,10 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
-  SELECT COALESCE(sum(refund_minor), 0)::bigint FROM public.order_overpayments
+  SELECT COALESCE(sum(refund_minor - public.issue_4522_overpayment_returned_minor(id)), 0)::bigint
+    FROM public.order_overpayments
    WHERE installment_id = p_installment_id AND reason = 'flex_exceeds_balance'
-     AND state IN ('held', 'refund_pending', 'refund_failed')
+     AND state IN ('held', 'refund_pending', 'refund_failed', 'needs_ops')
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_row_unreturned_overpayment(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
@@ -69,8 +80,9 @@ STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
-  SELECT COALESCE(sum(refund_minor), 0)::bigint FROM public.order_overpayments
-   WHERE order_id = p_order_id AND state IN ('held', 'refund_pending', 'refund_failed')
+  SELECT COALESCE(sum(refund_minor - public.issue_4522_overpayment_returned_minor(id)), 0)::bigint
+    FROM public.order_overpayments
+   WHERE order_id = p_order_id AND state IN ('held', 'refund_pending', 'refund_failed', 'needs_ops')
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_order_unreturned_overpayment(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
@@ -550,5 +562,143 @@ BEGIN
   );
 END;
 $function$;
+
+-- ---------------------------------------------------------------------------
+-- 4. A host's trip cancel refunds only what the charge still holds for the
+--    trip (T3-1). Body as 20280204003645 except the overpayment term.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.issue_3645_cancel_refund_installment(
+  p_installment_id uuid,
+  p_reason text,
+  p_idempotency_key text
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_inst public.order_installments;
+  v_order public.orders;
+  v_brand_id uuid;
+  v_existing public.refunds;
+  v_charged bigint;
+  v_unapplied bigint;
+  v_amount bigint;
+  v_refund_id uuid;
+  v_account text;
+BEGIN
+  IF auth.uid() IS NOT NULL THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  IF p_reason IS NULL OR length(trim(p_reason)) < 10 OR length(trim(p_reason)) > 200 THEN
+    RAISE EXCEPTION 'reason_invalid_length' USING ERRCODE = 'P0003';
+  END IF;
+  IF p_idempotency_key IS NULL OR btrim(p_idempotency_key) = '' THEN
+    RAISE EXCEPTION 'idempotency_key_required' USING ERRCODE = '22023';
+  END IF;
+  IF public.issue_3645_lock_installment_graph(p_installment_id) IS NULL THEN
+    RAISE EXCEPTION 'installment_not_found' USING ERRCODE = 'P0001';
+  END IF;
+  SELECT * INTO v_inst FROM public.order_installments WHERE id = p_installment_id;
+  SELECT * INTO v_order FROM public.orders WHERE id = v_inst.order_id;
+  SELECT e.brand_id INTO v_brand_id FROM public.events e WHERE e.id = v_order.event_id;
+  IF v_inst.provider = 'stripe' THEN
+    SELECT sca.stripe_account_id INTO v_account
+      FROM public.stripe_connect_accounts sca
+     WHERE sca.brand_id = v_brand_id AND sca.detached_at IS NULL
+     ORDER BY sca.created_at DESC
+     LIMIT 1;
+  END IF;
+  v_charged := coalesce(v_inst.buyer_total_cents, v_inst.amount_cents);
+
+  SELECT * INTO v_existing FROM public.refunds
+   WHERE metadata ->> 'idempotency_key' = p_idempotency_key
+     AND order_installment_id = p_installment_id
+   LIMIT 1 FOR UPDATE;
+  IF FOUND THEN
+    RETURN jsonb_build_object(
+      'refund_id', v_existing.id, 'order_id', v_inst.order_id, 'installment_id', v_inst.id,
+      'provider', v_inst.provider, 'amount_cents', v_existing.amount_cents,
+      'currency', trim(v_existing.currency),
+      'source_reference', v_inst.stripe_payment_intent_id,
+      'provider_transaction_id', v_inst.provider_transaction_id,
+      'stripe_charge_id', v_inst.stripe_charge_id,
+      'application_fee_amount_cents', v_inst.application_fee_amount_cents,
+      'connected_account_id', v_account,
+      'is_full_refund', v_existing.amount_cents = v_charged AND v_inst.refunded_amount_cents = 0,
+      'idempotent_replay', true
+    );
+  END IF;
+
+  IF v_inst.status <> 'collected' THEN
+    RAISE EXCEPTION 'installment_not_refundable: status=%', v_inst.status USING ERRCODE = 'P0002';
+  END IF;
+
+  -- Cancel refunds already issued for this instalment but not yet applied to
+  -- its counter (pending, or committed before a crash) still count.
+  SELECT coalesce(sum(r.amount_cents), 0) INTO v_unapplied
+    FROM public.refunds r
+   WHERE r.order_installment_id = p_installment_id
+     AND r.status IN ('pending', 'succeeded')
+     AND r.metadata ->> 'kind' = 'installment_cancel_refund'
+     AND NOT EXISTS (SELECT 1 FROM public.order_installment_refund_applications a
+                      WHERE a.refund_id = r.id AND a.installment_id = p_installment_id);
+  -- issue #4522 (T3-1) — the overpaid part of a flexible payment that is not
+  -- yet returned is refunded by its own lane (held, pending at the provider
+  -- or stopped for ops); asking for it here would exceed what the provider
+  -- still holds on the charge while that refund is pending.
+  v_amount := v_charged - v_inst.refunded_amount_cents - v_unapplied
+              - public.issue_4522_row_unreturned_overpayment(p_installment_id);
+  IF v_amount <= 0 THEN
+    RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+  END IF;
+
+  INSERT INTO public.refunds (
+    order_id, order_installment_id, amount_cents, currency, reason, initiated_by, status,
+    stripe_payment_intent_id, stripe_charge_id, metadata
+  ) VALUES (
+    v_inst.order_id, v_inst.id, v_amount::integer, v_inst.currency, trim(p_reason), NULL, 'pending',
+    v_inst.stripe_payment_intent_id, v_inst.stripe_charge_id,
+    jsonb_build_object('idempotency_key', p_idempotency_key, 'kind', 'installment_cancel_refund')
+  ) RETURNING id INTO v_refund_id;
+
+  RETURN jsonb_build_object(
+    'refund_id', v_refund_id, 'order_id', v_inst.order_id, 'installment_id', v_inst.id,
+    'provider', v_inst.provider, 'amount_cents', v_amount,
+    'currency', trim(v_inst.currency),
+    'source_reference', v_inst.stripe_payment_intent_id,
+    'provider_transaction_id', v_inst.provider_transaction_id,
+    'stripe_charge_id', v_inst.stripe_charge_id,
+    'application_fee_amount_cents', v_inst.application_fee_amount_cents,
+    'connected_account_id', v_account,
+    'is_full_refund', v_amount = v_charged,
+    'idempotent_replay', false
+  );
+END
+$fn$;
+
+REVOKE ALL ON FUNCTION public.issue_3645_cancel_refund_installment(uuid, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_3645_cancel_refund_installment(uuid, text, text) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 5. T3-4: an overpayment refund (refunds.metadata source
+--    issue_4522_overpayment) is no reversal input. Body as 20271221003872
+--    except that condition.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.issue_3872_refund_share_trigger()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $fn$
+DECLARE v_eligible bigint;
+BEGIN
+  IF NEW.status='succeeded' AND (TG_OP='INSERT' OR OLD.status IS DISTINCT FROM NEW.status)
+     AND COALESCE(NEW.metadata->>'source','') <> 'issue_4522_overpayment' THEN
+    SELECT COALESCE(sum(amount_cents),NEW.amount_cents,0) INTO v_eligible
+    FROM public.refund_line_items WHERE refund_id=NEW.id;
+    PERFORM public.payee_share_reverse('ticket',NEW.order_id,
+      'refund:'||COALESCE(NEW.stripe_refund_id,NEW.id::text),v_eligible);
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
 
 COMMIT;

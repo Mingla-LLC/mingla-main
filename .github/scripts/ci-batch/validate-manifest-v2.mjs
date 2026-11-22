@@ -657,7 +657,8 @@ export function phase3dContractDigest(manifest) {
 // #4522 second rework after retest FAIL (N1-N10): registered three #4522 implementor pg17 suites (safeupdate_lifecycle, overpayment_return, custom_discount_exact, with sidecars) in the #1931 and #2117 replay inventories; no migration added; re-sealed. MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4541 Explorer forms: kept main's 20281122004541 and 20281122014541 rows, their two pg17 suites and their exact-filename skips on the filtered #1931 and #2117 replays beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4548 guest pack: kept main's 20281122024548 row, its three pg17 suites and its exact-filename #1931 skip beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "086fa4f8cfbab6325257d33ae269bfd908d94aa5945bc6eda86458eedd24e64f";
+// #4522 third rework after retest FAIL (T3-1..T3-10): registered the #4522 implementor pg17 suite overpayment_refund_once (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed. MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "15fa7bba75547c52361242accf77394899856dedeedbbc59fec29643d8d9789e";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

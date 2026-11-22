@@ -89,6 +89,10 @@ CREATE FUNCTION public.t4522su_row(p_order uuid, p_ord int) RETURNS uuid LANGUAG
 CREATE FUNCTION public.t4522su_flex(p_order uuid, p_key text) RETURNS uuid LANGUAGE sql AS $$
   SELECT id FROM public.order_installments WHERE order_id = p_order AND flex_client_key = p_key $$;
 GRANT EXECUTE ON FUNCTION public.t4522su_row(uuid, int), public.t4522su_flex(uuid, text) TO service_role, authenticated;
+-- The overpayment's state, for assertions only (the table is closed to service_role).
+CREATE FUNCTION public.t4522su_op_state(p_id uuid) RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  SELECT state FROM public.order_overpayments WHERE id = p_id $$;
+GRANT EXECUTE ON FUNCTION public.t4522su_op_state(uuid) TO service_role;
 
 -- S: Stripe, two packages. P: Paystack (rollover, attempts). R: refunds.
 SELECT public.t4522su_seed('4522a500-0000-4000-8000-0000000000a1', 'stripe',
@@ -148,8 +152,8 @@ BEGIN
     AND v->>'idempotencyKey' LIKE 'mingla_overpay_refund:%:1', v::text);
   PERFORM public.t4522su_check('S-REFUND unknown keeps it pending',
     public.issue_4522_finish_overpayment_refund((v->>'overpaymentId')::uuid, 1, 'unknown', NULL, 'timeout')->>'state' = 'refund_pending');
-  PERFORM public.t4522su_check('S-REFUND resume hands back the same key',
-    public.issue_4522_begin_overpayment_refund((v->>'overpaymentId')::uuid)->>'idempotencyKey' = v->>'idempotencyKey');
+  PERFORM public.t4522su_check('S-REFUND resume verifies the same attempt (same key), never a new one',
+    public.issue_4522_begin_overpayment_refund((v->>'overpaymentId')::uuid)->'attempts'->0->>'idempotencyKey' = v->>'idempotencyKey');
   PERFORM public.t4522su_check('S-REFUND succeeded',
     public.issue_4522_finish_overpayment_refund((v->>'overpaymentId')::uuid, 1, 'succeeded', 're_su_1')->>'state' = 'refunded');
   PERFORM public.t4522su_check('S-REFUND the row is payout-ready for what it kept',
@@ -224,10 +228,43 @@ BEGIN
   PERFORM public.t4522su_check('R-LATE failed refund waits for its retry', v->>'state' = 'refund_failed', v::text);
   PERFORM public.t4522su_check('R-LATE not retried early',
     public.issue_4522_begin_overpayment_refund(v_op)->>'reason' = 'retry_not_due');
-  v := public.issue_4522_begin_overpayment_refund(v_op, now() + interval '2 hours');
+  v := public.issue_4522_begin_overpayment_refund(v_op, NULL, now() + interval '2 hours');
   PERFORM public.t4522su_check('R-LATE retried with the next attempt', (v->>'attemptNo')::int = 2, v::text);
   v := public.issue_4522_hold_collected_excess(public.t4522su_row(r, 1), 50000, 'pi_x');
   PERFORM public.t4522su_check('R-EXCESS runs', (v->>'ok')::boolean, v::text);
+
+  -- T3 (third rework): the attempt lane, provider events, ops actions, the
+  -- event-cancel refund, a short collection and an abandoned release, all as
+  -- service_role under pg-safeupdate.
+  v := public.issue_4522_finish_overpayment_refund(v_op, 2, 'pending', 're_su_t3');
+  PERFORM public.t4522su_check('T3 pending stores the refund id', v->>'state' = 'refund_pending', v::text);
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_su_t3', 'pi_su_late', 45000, 'failed');
+  PERFORM public.t4522su_check('T3 event by refund id (failed)', (v->>'handled')::boolean, v::text);
+  v := public.issue_4522_begin_overpayment_refund(v_op, 2, now() + interval '5 hours');
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_su_meta', 'pi_su_late', (v->>'amountMinor')::bigint, 'pending',
+         v_op, (v->>'attemptNo')::int);
+  PERFORM public.t4522su_check('T3 event by metadata', v->>'matchedBy' = 'metadata', v::text);
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_su_meta', 'pi_su_late', 45000, 'failed');
+  PERFORM public.t4522su_check('T3 the third refusal stops it',
+    public.t4522su_op_state(v_op) = 'needs_ops', v::text);
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_su_dash', 'pi_su_late', 45000, 'succeeded', NULL, NULL, false);
+  PERFORM public.t4522su_check('T3 a dashboard refund is matched', v->>'matchedBy' = 'provider_charge'
+    AND public.t4522su_op_state(v_op) = 'refunded', v::text);
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_su_dash', 'pi_su_late', 45000, 'failed');
+  PERFORM public.t4522su_check('T3 a reversed refund stops it for ops',
+    public.t4522su_op_state(v_op) = 'needs_ops', v::text);
+  v := public.issue_4522_resolve_overpayment_by_ops(v_op, 'retry', '4522a500-0000-4000-8000-000000000001');
+  PERFORM public.t4522su_check('T3 ops retry', v->>'state' = 'held', v::text);
+  v := public.issue_4522_resolve_overpayment_by_ops(v_op, 'refunded_by_hand', '4522a500-0000-4000-8000-000000000001', 'su-manual');
+  PERFORM public.t4522su_check('T3 ops by hand', v->>'state' = 'refunded', v::text);
+  v := public.issue_3645_cancel_refund_installment(v_flex, 'The host cancelled this trip', 'su-cancel-1');
+  PERFORM public.t4522su_check('T3 event-cancel refund prepare', (v->>'amount_cents')::bigint > 0, v::text);
+  UPDATE public.order_installments SET status = 'collected', collected_at = now(), stripe_payment_intent_id = 'pi_su_short'
+   WHERE id = public.t4522su_row('4522a500-0000-4000-8000-0000000000a1', 2) AND status IN ('scheduled', 'failed');
+  v := public.issue_4522_record_short_collection(public.t4522su_row('4522a500-0000-4000-8000-0000000000a1', 2), 100, 'pi_su_short');
+  PERFORM public.t4522su_check('T3 short collection', (v->>'ok')::boolean, v::text);
+  v := public.issue_4522_release_flex_verified(v_flex, 'provider_abandoned', 'mingla-inst-x-l1');
+  PERFORM public.t4522su_check('T3 abandoned release path runs', v IS NOT NULL, v::text);
 END
 $t$;
 

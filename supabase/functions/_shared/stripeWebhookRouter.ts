@@ -52,6 +52,12 @@ import {
   isInstallmentPaymentIntentEvent,
 } from "./installmentWebhookHandlers.ts";
 import { handleChargeDispute } from "./stripeDisputeHandlers.ts";
+import { planV2SchemaAvailable } from "./installments/planV2Schema.ts";
+import {
+  applyOverpaymentRefundEvent,
+  stripeOverpaymentRefundEvent,
+} from "./installments/overpaymentRefunds.ts";
+import { installmentOpsAlert } from "./installments/installmentOpsAlert.ts";
 import {
   applyAdCreditTopUpFromPaymentIntent,
   applyAdCreditWithdrawFromStripeRefund,
@@ -1190,6 +1196,31 @@ async function handleRefundEvent(
       after: refund,
     });
     return brandId;
+  }
+
+  // issue #4522 (T3-1 / T3-2) — a refund of a trip overpayment (by its stored
+  // refund id or Mingla's metadata), or a refund made in the dashboard on a
+  // charge that carries an unreturned overpayment, resolves that overpayment
+  // in every status (pending, succeeded, failed); never an orphan. Before the
+  // #4522 migrations are applied there is no overpayment to match.
+  if (await planV2SchemaAvailable(supabase)) {
+    const overpaymentHandled = await applyOverpaymentRefundEvent(
+      supabase,
+      stripeOverpaymentRefundEvent(refund),
+      installmentOpsAlert,
+    );
+    if (overpaymentHandled) {
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: brandId,
+        event_id: null, // META-ORCH-1234: Stripe event id (event.id) is not a Mingla event uuid; lives in payment_webhook_events.stripe_event_id
+        action: `stripe.${event.type}.overpayment`,
+        target_type: "refund",
+        target_id: refundId,
+        after: refund,
+      });
+      return brandId;
+    }
   }
 
   // Only act on settled refunds. Stripe also emits refund.created/refund.updated for
