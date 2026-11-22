@@ -124,7 +124,7 @@ const assertAndroidPushBuildReady = (env, fileExists) => {
       `GOOGLE_SERVICES_JSON is required for the ${profile} Android EAS build — without the Google services file Android cannot register for push. Create it as an EAS file variable (secret) in this build's environment. [#4549]`,
     );
   }
-  if (!fileExists(require("node:path").resolve(__dirname, file))) {
+  if (!fileExists(require("node:path").resolve(file))) {
     throw new Error(
       `GOOGLE_SERVICES_JSON points at a file that does not exist on this ${profile} Android build runner. [#4549]`,
     );
