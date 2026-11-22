@@ -401,7 +401,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // toward #4490 Stay venue features expectedFiles registration; re-sealed.
 // issue #4490 explorer W2: purchases sweep, reads and visit reminders; re-sealed.
 // issue #4490 W2 fix 1: guest list pin owner 20280809444490 registered; re-sealed.
-export const BOOTSTRAP_SHA256 = "e9a4621f47584da7820fc10e157178177f0e1d477f37c1d2b1ec903314e35535";
+// issue #4490 explorer W3: registered migration 20280809454490 (deck card facts) and its pg17 suite with sidecar, exact-filename skip lines in the #1931 baseline and #2117 phase-1 lanes; re-sealed.
+export const BOOTSTRAP_SHA256 = "5713d150dc0a35ec4d71d448313a28a3b5d048ff8667ec91c3ea72bae0d199f3";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -39,6 +39,8 @@ links_page_cities()
 site_public_content()
 # #4452: one high-entropy, one-hour preview token resolves one page draft (the blog_public_preview pattern); a malformed, unknown or expired token returns NULL and no staff identity.
 site_public_preview(p_token text)
+# #4490 Explorer W3: deck card facts for at most 100 place ids; only verified venues of live, non-internal brands; slugs, names, venue type, switched-on features, live "from" prices the public venue page already lists, and whether an event is on today; no contact, owner, address or buyer data.
+pg_deck_venue_facts(p_place_ids uuid[])
 check_username_availability(check_username text)
 is_username_available(p_username text)
 # #1384: static active currency metadata is required before sign-in and carries no user or brand data.
