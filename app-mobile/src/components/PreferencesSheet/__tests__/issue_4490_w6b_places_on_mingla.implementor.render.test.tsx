@@ -27,7 +27,7 @@ jest.mock("../../../services/supabase", () => ({ supabase: { functions: { invoke
 
 const { deckService, VENUE_TYPE_PILL_RE } = require("../../../services/deckService") as typeof import("../../../services/deckService");
 const { normalizeCategoryArray, getCategoryIcon, VENUE_TYPE_ICONS } = require("../../../utils/categoryUtils") as typeof import("../../../utils/categoryUtils");
-const { parseHostedVenueTypes, hostedVenueTypeKeys, HOSTED_VENUE_TYPES_STALE_MS } =
+const { parseHostedVenueTypes, hostedVenueTypeKeys, HOSTED_VENUE_TYPES_STALE_MS, placesOnMinglaKeys } =
   require("../../../hooks/useHostedVenueTypes") as typeof import("../../../hooks/useHostedVenueTypes");
 const { PlacesOnMinglaSection } = require("../PreferencesSections") as typeof import("../PreferencesSections");
 const { VENUE_TYPE_CHIP_KEYS, VENUE_TYPE_LABELS } = require("@mingla/brand-rendering/venueTypeLabels") as typeof import("@mingla/brand-rendering/venueTypeLabels");
@@ -101,10 +101,22 @@ describe("#4490 W6b Places on Mingla", () => {
     expect(json).toContain("Bar and lounge");
   });
 
+  it("S-1 a saved type not offered here stays in the row, selected, so it can be removed (fix 1, W6-N5)", () => {
+    const here = [{ key: "club" as const, count: 1 }];
+    expect(placesOnMinglaKeys(here, ["drinks_and_music", "venue_type:bar_lounge"])).toEqual(["club", "bar_lounge"]);
+    expect(placesOnMinglaKeys([], ["venue_type:bar_lounge"])).toEqual(["bar_lounge"]);
+    expect(placesOnMinglaKeys(here, ["venue_type:club"])).toEqual(["club"]);
+    expect(placesOnMinglaKeys(here, ["venue_type:spa", "venue_type:stay"])).toEqual(["club"]);
+    expect(placesOnMinglaKeys([], ["drinks_and_music"])).toEqual([]);
+    // Still hidden while loading or after an error.
+    expect(placesOnMinglaKeys(undefined, ["venue_type:bar_lounge"])).toEqual([]);
+  });
+
   it("G-1 the sheet shows the row only when the server lists a type, inside the categories toggle", () => {
     const sheet = read("../../PreferencesSheet.tsx");
     expect(sheet).toContain("{placesOnMinglaTypes.length > 0 ? (");
-    expect(sheet).toContain("const placesOnMinglaTypes = useMemo(\n    () => (hostedVenueTypes.data ?? []).map((type) => ({");
+    // TEST-MOD-APPROVED #4490 (06-W6 fix 1): the row reads placesOnMinglaKeys (W6-N5).
+    expect(sheet).toContain("() => placesOnMinglaKeys(hostedVenueTypes.isError ? undefined : hostedVenueTypes.data, selectedCategories).map((key) => ({");
     expect(sheet).toContain("title={t('preferences:places_on_mingla_title', 'Places on Mingla')}");
     expect(sheet).toContain("onCategoryToggle={handleCategoryToggle}\n              />\n            ) : null}");
     // The chip lives in selectedCategories, so the "Pick a category" rule counts it.

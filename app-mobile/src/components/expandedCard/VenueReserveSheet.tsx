@@ -467,6 +467,8 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
       onReservationFailed?.("create_failed");
     } catch (caught) {
       setSubmitting(false);
+      // #4490 W6 fix 1 (W6-N8): a checkout that throws is a failed checkout too.
+      captureVenueCheckoutFinished({ venueId, offerKind: "table_reservation", outcome: "failed" });
       const errorCode = caught instanceof Error ? caught.message : "";
       setError(
         guestReservationFailureCopy(errorCode) ??

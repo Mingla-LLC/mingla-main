@@ -90,16 +90,22 @@ function DiscoverVenueCardBody({ card, venue, saved, onPress, onSave, t }: {
   onSave: () => void;
   t: (key: string, values?: Record<string, unknown>) => string;
 }) {
-  const a11y = [card.title, venue.typeLabel, venue.offerLine, venue.eventChip].filter(Boolean).join(", ");
+  // #4490 W6 fix 1 (W6-N4): the same translated words as the W3 deck's event chip.
+  const eventChip = venue.eventChip === "On tonight"
+    ? t("cards:deck.on_tonight", { defaultValue: "On tonight" })
+    : venue.eventChip === "On today"
+    ? t("cards:deck.on_today", { defaultValue: "On today" })
+    : null;
+  const a11y = [card.title, venue.typeLabel, venue.offerLine, eventChip].filter(Boolean).join(", ");
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={a11y} style={styles.card}>
       <EventCoverMedia mediaUrl={card.coverUrl} mediaType={card.coverType} hue={card.coverHue} height="100%" width="100%" radius={24} autoplay={false} playbackActive={false} />
       <LinearGradient colors={["transparent", "rgba(0,0,0,.76)"]} locations={[0.35, 1]} style={StyleSheet.absoluteFill} />
       {venue.typeLabel ? <Text numberOfLines={1} style={[styles.type, styles.venueType]}>{venue.typeLabel}</Text> : null}
-      {venue.eventChip ? (
+      {eventChip ? (
         <View style={styles.venueOn} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <View style={styles.venueOnDot} />
-          <Text style={styles.venueOnText}>{venue.eventChip}</Text>
+          <Text style={styles.venueOnText}>{eventChip}</Text>
         </View>
       ) : null}
       <Pressable onPress={(event) => { event.stopPropagation(); onSave(); }} accessibilityRole="button" accessibilityLabel={saved ? t("card.saved_a11y", { title: card.title }) : t("card.save_a11y", { title: card.title })} style={styles.heart}>

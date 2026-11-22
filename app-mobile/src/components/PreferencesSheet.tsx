@@ -63,7 +63,7 @@ import {
   LoadingShimmer,
 } from "./PreferencesSheet/PreferencesSections";
 // #4490 Explorer W6b: "Places on Mingla" venue-type chips.
-import { useHostedVenueTypes } from '../hooks/useHostedVenueTypes';
+import { placesOnMinglaKeys, useHostedVenueTypes } from '../hooks/useHostedVenueTypes';
 import { useUserLocation } from '../hooks/useUserLocation';
 import { VENUE_TYPE_LABELS } from '@mingla/brand-rendering/venueTypeLabels';
 import {
@@ -602,13 +602,15 @@ export default function PreferencesSheet({
     return typeof lat === "number" && typeof lng === "number" ? { lat, lng } : null;
   }, [useGpsLocation, selectedCoords, deviceLocation.data?.lat, deviceLocation.data?.lng]);
   const hostedVenueTypes = useHostedVenueTypes(venueTypeLocation, travelMode, constraintValue, !!visible);
+  // #4490 W6 fix 1 (W6-N5): a saved type not offered here stays visible
+  // (selected) so it can be removed; see placesOnMinglaKeys.
   const placesOnMinglaTypes = useMemo(
-    () => (hostedVenueTypes.data ?? []).map((type) => ({
-      key: type.key,
-      label: VENUE_TYPE_LABELS[type.key],
-      icon: VENUE_TYPE_ICONS[type.key] ?? 'location',
+    () => placesOnMinglaKeys(hostedVenueTypes.isError ? undefined : hostedVenueTypes.data, selectedCategories).map((key) => ({
+      key,
+      label: VENUE_TYPE_LABELS[key],
+      icon: VENUE_TYPE_ICONS[key] ?? 'location',
     })),
-    [hostedVenueTypes.data],
+    [hostedVenueTypes.data, hostedVenueTypes.isError, selectedCategories],
   );
 
   // Memoized callbacks — side effects kept outside updater to stay StrictMode-safe

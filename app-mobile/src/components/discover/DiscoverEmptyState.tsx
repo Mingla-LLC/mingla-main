@@ -25,7 +25,7 @@ export function DiscoverEmptyState(props: Props): React.ReactElement {
     <View style={styles.root}>
       <Icon name={props.mode === "city" ? "location-outline" : "calendar-outline"} size={48} color="rgba(255,255,255,.45)" />
       <Text style={styles.title}>{props.title}</Text>
-      <Text style={styles.body}>{props.body}</Text>
+      {props.body ? <Text style={styles.body}>{props.body}</Text> : null}
       {props.subscribed ? (
         <View style={styles.confirmation} accessibilityLabel={props.doneA11y}>
           <Icon name="checkmark" size={17} color="#fff" />

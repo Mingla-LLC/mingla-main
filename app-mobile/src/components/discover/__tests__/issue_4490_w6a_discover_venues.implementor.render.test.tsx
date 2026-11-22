@@ -16,6 +16,14 @@
  * FAILS-ON-REVERT: `kinds[kind].total` without `?.` -> G-1; open without the
  * lead tab -> R-1; the venue variant removed from DiscoverCard -> C-1; the coach
  * check back on DISCOVER_KIND_ORDER.length -> G-4.
+ *
+ * Fix round 1 (W6-N4 / W6-N7): C-3 fails if the card prints "On tonight" /
+ * "On today" in English instead of the W3 deck's translated keys; M-5 fails if
+ * Discover stops using the shared table verb rule; G-6 fails if the filtered-empty
+ * state goes back to an empty body line.
+ * TEST-MOD-APPROVED #4490 (06-W6 fix 1): this file now mocks react-i18next with a
+ * small lookup over the real en / fr cards and discover strings (the lane's shared
+ * double only knows followers.json and would print raw keys).
  */
 import React from "react";
 import fs from "node:fs";
@@ -26,6 +34,17 @@ const { act, create } = require("react-test-renderer") as typeof import("react-t
 jest.mock("@mingla/offering-rendering", () => ({ EventCoverMedia: () => null }));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: () => null }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+const mockI18n = { lang: "en" as "en" | "fr" };
+jest.mock("react-i18next", () => {
+  const nodePath = require("node:path");
+  const load = (lang: string, ns: string) => require(nodePath.resolve(__dirname, `../../../i18n/locales/${lang}/${ns}.json`));
+  const t = (key: string, options?: { defaultValue?: string } & Record<string, unknown>) => {
+    const [ns, leaf] = key.includes(":") ? key.split(":") : ["discover", key];
+    const value = load(mockI18n.lang, ns)[leaf] ?? options?.defaultValue ?? key;
+    return String(value).replace(/{{\s*(\w+)\s*}}/g, (_m: string, k: string) => String(options?.[k] ?? `{{${k}}}`));
+  };
+  return { initReactI18next: { type: "3rdParty", init: () => undefined }, useTranslation: () => ({ t, i18n: { language: mockI18n.lang } }) };
+});
 
 const { DISCOVER_KIND_ORDER, emptyDiscoverFilters } = require("../../../types/discoverFeed") as typeof import("../../../types/discoverFeed");
 const { discoverVenueCardModel, discoverVenueAnalytics, discoverVenueLeadTab, withVenueLeadTab } =
@@ -155,6 +174,37 @@ describe("#4490 W6a Discover Venues", () => {
     const root = tree!.root.findAll((n) => n.props?.accessibilityRole === "button")[0];
     expect(root.props.accessibilityLabel).toBe("Gameland Lagos, Play and games, Entry from ₦4,000, On tonight");
   });
+  it("C-3 the event chip uses the W3 deck's translated words (French: Ce soir / Aujourd’hui)", () => {
+    mockI18n.lang = "fr";
+    try {
+      let tree: ReturnType<typeof create> | null = null;
+      act(() => {
+        tree = create(<DiscoverCard card={venueCard() as never} saved={false} onPress={() => undefined} onSave={() => undefined} now={NOW} />);
+      });
+      const text = textOf(tree!.toJSON());
+      expect(text).toContain("Ce soir");
+      expect(text).not.toContain("On tonight");
+      act(() => {
+        tree = create(<DiscoverCard card={venueCard({ onTodayStartsAt: "2026-11-29T10:00:00.000Z", onTodayEndsAt: "2026-11-29T12:00:00.000Z" }) as never}
+          saved={false} onPress={() => undefined} onSave={() => undefined} now={new Date("2026-11-29T07:00:00.000Z")} />);
+      });
+      expect(textOf(tree!.toJSON())).toContain("Aujourd’hui");
+      const deck = read("../../SwipeableCards.tsx");
+      expect(deck).toContain("t('cards:deck.on_tonight', { defaultValue: 'On tonight' })");
+      expect(read("../DiscoverCard.tsx")).toContain('t("cards:deck.on_tonight", { defaultValue: "On tonight" })');
+    } finally {
+      mockI18n.lang = "en";
+    }
+  });
+  it("M-5 tables follow the shared rule: Book a table with minimum-spend tables, otherwise Reserve a table", () => {
+    const none = { entry: null, group_packages: null, private_hire: null, by_the_hour: null, memberships: null };
+    const plain = discoverVenueCardModel(venueCard({ venueType: "restaurant", features: ["table_reservations"], tablesReservable: true, priceFrom: none, onTodayStartsAt: null, onTodayEndsAt: null }), NOW)!;
+    const minSpend = discoverVenueCardModel(venueCard({ venueType: "club", features: ["table_reservations", "min_spend_tables"], tablesReservable: true, priceFrom: none, onTodayStartsAt: null, onTodayEndsAt: null }), NOW)!;
+    expect(plain.offerLine).toBe("Reserve a table");
+    expect(minSpend.offerLine).toBe("Book a table");
+    // One owner: Discover's line is the deck's chip (deckVenueChips -> deriveVenuePage).
+    expect(read("../discoverVenueCard.ts")).toContain("const chips = deckVenueChips(facts, now, venueMoneyText);");
+  });
   it("C-2 an event card still renders the classic body (no venue line)", () => {
     let tree: ReturnType<typeof create> | null = null;
     const event = { ...venueCard(), kind: "event", venue: undefined, price: { currency: "NGN", listMinor: 500000, saleMinor: null, saleEndsAt: null, isFree: false, unit: "each" } };
@@ -200,5 +250,11 @@ describe("#4490 W6a Discover Venues", () => {
     expect(en["venues.error_title"]).toBe("We could not load venues.");
     expect(en["venues.error_retry"]).toBe("Try again");
     expect(en["empty.clear_filters"]).toBe("Clear filters");
+  });
+  it("G-6 the filtered-empty Venues state uses the existing Discover filtered-empty body; an empty body draws no line", () => {
+    const screen = read("../../DiscoverScreen.tsx");
+    expect(screen).toContain('title={t("venues.filtered_title", "No venues match those filters.")} body={t("empty.no_match_subtitle", "Adjust filters or reset to see more.")}');
+    expect(screen).not.toContain('body=""');
+    expect(read("../DiscoverEmptyState.tsx")).toContain("{props.body ? <Text style={styles.body}>{props.body}</Text> : null}");
   });
 });

@@ -9,7 +9,8 @@
  *
  * FAILS-ON-REVERT: drop deckLead from unifiedCardToRecommendation and D-1 fails;
  * drop the spread on card_viewed / card_saved / card_dismissed / card_expanded and
- * G-1 fails; remove the table sheet's call and G-2 fails.
+ * G-1 fails; remove the table sheet's call and G-2 fails; drop the call in the
+ * sheet's catch and G-3 fails (fix round 1, W6-N8).
  */
 declare const jest: { mock(path: string, factory: () => unknown): void };
 import fs from 'node:fs';
@@ -107,5 +108,10 @@ describe('#4490 W5 deck analytics', () => {
   it('G-2 the table reservation sheet reports its checkout outcome', () => {
     const src = read('../../expandedCard/VenueReserveSheet.tsx');
     expect(src).toContain('captureVenueCheckoutFinished({ venueId, offerKind: "table_reservation", outcome: finished });');
+  });
+  it('G-3 a reservation that throws still reports outcome failed (fix round 1, W6-N8)', () => {
+    const src = read('../../expandedCard/VenueReserveSheet.tsx');
+    const catchBlock = src.slice(src.indexOf('} catch (caught) {'), src.indexOf('onReservationFailed?.("create_failed");\n    }\n  };'));
+    expect(catchBlock).toContain('captureVenueCheckoutFinished({ venueId, offerKind: "table_reservation", outcome: "failed" });');
   });
 });
