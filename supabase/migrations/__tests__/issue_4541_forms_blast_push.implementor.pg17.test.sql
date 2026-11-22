@@ -748,8 +748,10 @@ INSERT INTO public.brand_messaging_limits (brand_id, email_monthly, sms_monthly,
 VALUES (pg_temp.u('racebrand'), 1000, 3, 'i4541mb race');
 COMMIT;
 
-SELECT dblink_connect('i4541mb_a', format('dbname=%s user=%s password=postgres host=127.0.0.1', current_database(), current_user));
-SELECT dblink_connect('i4541mb_b', format('dbname=%s user=%s password=postgres host=127.0.0.1', current_database(), current_user));
+-- The second connections reuse this psql session's own password; nothing is written here.
+\getenv i4541mb_pw PGPASSWORD
+SELECT dblink_connect('i4541mb_a', format('dbname=%L user=%L password=%L host=127.0.0.1', current_database(), current_user, :'i4541mb_pw'));
+SELECT dblink_connect('i4541mb_b', format('dbname=%L user=%L password=%L host=127.0.0.1', current_database(), current_user, :'i4541mb_pw'));
 
 -- RACE-1: a Blast confirm (check + execution row, 3 texts = all that is left) holds the
 -- lock; a form send needing 2 texts waits, then sees the Blast and goes without texts.
