@@ -212,5 +212,7 @@ module.exports = {
     "**/__tests__/issue_4523_creator_dob.implementor.render.test.tsx",
     // issue #4523 — Explorer inline calendars: stay dates and plan date never move on a month change.
     "**/__tests__/issue_4523_explorer_inline_calendars.implementor.render.test.tsx",
+    // issue #4523 — form date questions (RSVP / brand forms) use the Mingla calendar.
+    "**/__tests__/issue_4523_rsvp_form_date.implementor.render.test.tsx",
   ],
 };

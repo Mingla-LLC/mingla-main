@@ -74,7 +74,8 @@ function Shell(props: ShellProps): React.ReactElement {
 
   return (
     <View style={styles.host}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      {/* An empty label: the caller draws its own (a form question's shell). */}
+      {label !== "" ? <Text style={styles.fieldLabel}>{label}</Text> : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={spoken}

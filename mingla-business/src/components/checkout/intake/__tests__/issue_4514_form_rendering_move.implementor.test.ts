@@ -12,8 +12,6 @@ import { describe, expect, jest, test } from "@jest/globals";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-// The native date picker ships untranspiled ESM; the renderers only need it to resolve.
-jest.mock("@react-native-community/datetimepicker", () => ({ __esModule: true, default: () => null }));
 // The owner also renders the file upload question (native pickers); not under test here.
 jest.mock("../IntakeQuestionFileUpload", () => ({ IntakeQuestionFileUpload: () => null }));
 // Wave 5: the lazy owner also exports the checkout step (expo-router); not under test here.
@@ -29,7 +27,6 @@ import {
 } from "@mingla/form-rendering";
 import { businessFormPrimitives } from "../formRenderingPrimitives";
 import { Icon } from "../../../ui/Icon";
-import { WebDateTimeInput } from "../../../ui/WebDateTimeInput";
 import { color } from "../../../../constants/designSystem";
 import { activeSurfaceTokens, GRAPHITE_CONTROL_OUTLINE } from "../../../../theme/surfaceTokens";
 
@@ -121,7 +118,12 @@ describe("#4514 — the renderers live in @mingla/form-rendering", () => {
 
   test("the injected primitives are the business app's own components and tokens", () => {
     expect(businessFormPrimitives.Icon).toBe(Icon);
-    expect(businessFormPrimitives.WebDateTimeInput).toBe(WebDateTimeInput);
+    // #4523: the date input is the Host's own Mingla calendar field, not the
+    // browser date box (behaviour: ui/__tests__/issue_4523_form_date_question).
+    expect(typeof businessFormPrimitives.WebDateTimeInput).toBe("function");
+    expect(read("mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx")).toMatch(
+      /import \{ DateField \} from "\.\.\/\.\.\/ui\/DateField";/,
+    );
     // #4518: the colours are the active surface tokens (Graphite here): every
     // designSystem colour, plus the surface-only `controlOutline`.
     expect(businessFormPrimitives.tokens.color).toBe(activeSurfaceTokens().color);

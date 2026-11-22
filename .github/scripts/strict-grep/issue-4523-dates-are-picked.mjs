@@ -46,17 +46,12 @@ export const SCAN_ROOTS = [
 
 /** Counted ratchet. Only ever lowered. */
 export const ALLOWLIST = {
-  // #4514 moved the intake question renderers (3 hits) into the shared form renderer and its Host primitives; same 3 hits, not new ones.
-  // #4541 (via main) added the Explorer RSVP custom-form web date input; checkpoint 17 (#4523 custom-form calendar wiring) moves it onto the calendar.
-  "app-mobile/src/components/forms/RsvpFormWebDateInput.web.tsx": 1,
-  "mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx": 1,
   "mingla-business/src/components/event/CreatorStep2When.tsx": 1,
   "mingla-business/src/components/event/MultiDateOverrideSheet.tsx": 1,
   "mingla-business/src/components/programs/TimeField.tsx": 1,
   "mingla-business/src/components/venue/MenuCategorySheet.tsx": 1,
   "packages/brand-rendering/StayDateRangeField.native.tsx": 1,
   "packages/brand-rendering/StayDateRangeField.tsx": 2,
-  "packages/form-rendering/QuestionRenderers.tsx": 2,
 };
 
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs)$/;
@@ -282,17 +277,29 @@ if (process.argv.includes("--self-test")) {
   cmp("unlisted file fails", { "a.tsx": 2, "b.tsx": 1 }, 1);
   cmp("listed file with zero hits fails", {}, 1);
 
-  // The #4541 RSVP web date input is allowlisted at exactly the hits its source has today.
-  const rsvpWebDate = "app-mobile/src/components/forms/RsvpFormWebDateInput.web.tsx";
-  if (ALLOWLIST[rsvpWebDate] !== 1) fail.push(`${rsvpWebDate} allowlist entry is ${ALLOWLIST[rsvpWebDate]}, expected 1`);
-  if (fs.existsSync(path.join(ROOT, rsvpWebDate))) {
-    const got = checkSource(rsvpWebDate, fs.readFileSync(path.join(ROOT, rsvpWebDate), "utf8")).length;
-    if (got !== ALLOWLIST[rsvpWebDate]) fail.push(`${rsvpWebDate} has ${got} hit(s) but the allowlist says ${ALLOWLIST[rsvpWebDate]}`);
+  // #4523 checkpoint 17: custom-form date questions (form-rendering, the Host
+  // primitives, the Explorer RSVP / brand-form input) are on the calendar. None
+  // of them may be allowlisted again, and each must stay at zero hits.
+  const formDateLeaves = [
+    "packages/form-rendering/QuestionRenderers.tsx",
+    "mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx",
+    "app-mobile/src/components/forms/RsvpFormWebDateInput.tsx",
+  ];
+  for (const leaf of formDateLeaves) {
+    if (ALLOWLIST[leaf] !== undefined) fail.push(`${leaf} is allowlisted again`);
+    if (fs.existsSync(path.join(ROOT, leaf)) && checkSource(leaf, fs.readFileSync(path.join(ROOT, leaf), "utf8")).length !== 0) {
+      fail.push(`${leaf} has a date-picking violation`);
+    }
   }
-  expectHits("the RSVP web date input shape fails without the allowlist", rsvpWebDate, '<input type="date" value={value} onChange={onChange} />', 1);
-  const rsvpOnly = { [rsvpWebDate]: ALLOWLIST[rsvpWebDate] };
-  if (compareWithAllowlist({ [rsvpWebDate]: 1 }, rsvpOnly).length !== 0) fail.push("the RSVP web date input is covered by the shipped allowlist");
-  if (compareWithAllowlist({ [rsvpWebDate]: 2 }, rsvpOnly).length === 0) fail.push("a second date input in the RSVP web file fails");
+  const rsvpDate = "app-mobile/src/components/forms/RsvpFormWebDateInput.tsx";
+  expectHits("a browser date box back in the Explorer form date input fails", rsvpDate, '<input type="date" value={value} onChange={onChange} />', 1);
+  if (compareWithAllowlist({ [rsvpDate]: 1 }, ALLOWLIST).length === 0) fail.push("a date box in the Explorer form date input fails the shipped allowlist");
+  expectHits(
+    "an OS date picker back in the form renderer fails",
+    "packages/form-rendering/QuestionRenderers.tsx",
+    'import DateTimePicker from "@react-native-community/datetimepicker";\nconst x = <DateTimePicker mode="date" value={d} />;',
+    1,
+  );
 
   const goodNav = "const onNavigateMonth = useCallback((delta) => { setVisible(delta); }, []);\n  const onNavigateYears = 1;";
   const badNav = "const onNavigateMonth = useCallback((delta) => { props.onDone(); }, []);\n  const onNavigateYears = 1;";

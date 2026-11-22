@@ -8,10 +8,12 @@
     "originPaths": [
       "mingla-business/jest.issue4523.cfg.cjs",
       "mingla-business/jest.orch1118.babel.cjs",
+      "mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx",
       "mingla-business/src/components/ui/**",
       "packages/brand-rendering/**",
       "packages/calendar-web/**",
-      "packages/calendar/**"
+      "packages/calendar/**",
+      "packages/form-rendering/**"
     ],
     "steps": [
       {
@@ -43,6 +45,7 @@
     "expectedFiles": [
       "mingla-business/jest.issue4523.cfg.cjs",
       "mingla-business/src/components/ui/__tests__/issue_4523_datefield_month_nav.test.tsx",
+      "mingla-business/src/components/ui/__tests__/issue_4523_form_date_question.test.tsx",
       "mingla-business/src/components/ui/__tests__/issue_4523_host_datetime_field.test.tsx",
       "packages/brand-rendering/__tests__/issue_4523_stay_range_month_nav.test.tsx",
       "packages/calendar-web/__tests__/calendarWeb.test.tsx",

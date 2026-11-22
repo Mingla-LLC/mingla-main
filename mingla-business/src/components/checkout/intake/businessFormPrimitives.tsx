@@ -6,13 +6,17 @@
  */
 
 import React from "react";
-import type { FormBrandCoverProps, FormRenderingPrimitives } from "@mingla/form-rendering";
+import type {
+  FormBrandCoverProps,
+  FormRenderingPrimitives,
+  FormWebDateInputProps,
+} from "@mingla/form-rendering";
 
 import { radius, space, type } from "../../../constants/designSystem";
 import { activeSurfaceTokens, themed } from "../../../theme/surfaceTokens";
 import { EventCoverMedia } from "../../ui/EventCoverMedia";
 import { Icon } from "../../ui/Icon";
-import { WebDateTimeInput } from "../../ui/WebDateTimeInput";
+import { DateField } from "../../ui/DateField";
 
 /** The brand header's cover: the host's cover media, or its hue gradient (§5.1). */
 const BusinessBrandCover: React.FC<FormBrandCoverProps> = ({ uri, hue, height }) => (
@@ -23,6 +27,31 @@ const BusinessBrandCover: React.FC<FormBrandCoverProps> = ({ uri, hue, height })
     radius={0}
     label=""
     height={height}
+  />
+);
+
+/**
+ * #4523: a date question is picked from the Host's Mingla calendar (sheet on
+ * phones, popover on wide web) on every platform. The question shell draws the
+ * label, so the field's own visible label is empty and the question's label is
+ * spoken. The answer is the picked `YYYY-MM-DD`, as before.
+ */
+const BusinessFormDateInput: React.FC<FormWebDateInputProps> = ({
+  value,
+  onChangeValue,
+  ariaLabel,
+  disabled = false,
+  hasError = false,
+  testID,
+}) => (
+  <DateField
+    label=""
+    accessibilityLabel={ariaLabel}
+    value={value}
+    onChangeValue={onChangeValue}
+    disabled={disabled}
+    hasError={hasError}
+    testID={testID}
   />
 );
 
@@ -44,7 +73,7 @@ export const businessFormPrimitives: FormRenderingPrimitives = {
     return surfaceFormTokens();
   },
   Icon,
-  WebDateTimeInput,
+  WebDateTimeInput: BusinessFormDateInput,
   BrandCover: BusinessBrandCover,
 };
 

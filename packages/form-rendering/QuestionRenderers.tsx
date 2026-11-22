@@ -10,26 +10,21 @@
  *
  * Each renderer accepts { question, value, onChange, error?, disabled?, primitives }.
  *
- * iOS date picker mirrors ORCH-0875 BookingDeadlinePicker: themeVariant="dark"
- * + pending-state Set/Cancel buttons (not a silent commit on every spinner tick).
- * Web renders the host's visible native <input type="date"> (issue #1027: the
- * native DateTimePicker has no web build). No useAuth: anon-tolerant.
+ * Date questions render the host's injected date input on every platform: the
+ * host app's Mingla calendar field (#4523), so no OS spinner, OS dialog or
+ * browser date box is drawn here. No useAuth: anon-tolerant.
  *
  * MINGLA-INVARIANT: I-4514-ONE-QUESTION-MODEL | issue #4514 | question renderers live only in packages/form-rendering (strict-grep gate i-4514-one-question-model.mjs).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import DateTimePicker, {
-  type DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 
 import type {
   FormAnswerValue,
@@ -165,71 +160,6 @@ const makeStyles = (t: FormRenderingTokens) => {
       fontSize: type.body.fontSize,
       lineHeight: type.body.lineHeight,
       color: color.text1,
-    },
-    dateInput: {
-      flexDirection: "row",
-      alignItems: "center",
-      minHeight: 48,
-      paddingHorizontal: space[4],
-      paddingVertical: 10,
-      borderRadius: radius.sm,
-      overflow: "hidden",
-      borderWidth: 1,
-      borderColor: color.line,
-      backgroundColor: color.fill.inset,
-    },
-    dateInputText: {
-      flex: 1,
-      fontSize: type.body.fontSize,
-      lineHeight: type.body.lineHeight,
-      color: color.text1,
-    },
-    placeholderText: { color: color.text4 },
-    iosPickerWrap: {
-      marginTop: space[2],
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: color.line,
-      backgroundColor: color.fill.inset,
-      overflow: "hidden",
-    },
-    iosPicker: { backgroundColor: "transparent" },
-    iosPickerActions: {
-      flexDirection: "row",
-      gap: space[2],
-      padding: space[2],
-      borderTopWidth: 1,
-      borderTopColor: color.line,
-    },
-    iosPickerCancel: {
-      flex: 1,
-      paddingVertical: 10,
-      borderRadius: radius.md,
-      borderWidth: 1,
-      borderColor: color.line,
-      backgroundColor: "transparent",
-      alignItems: "center",
-      justifyContent: "center",
-      minHeight: 44,
-    },
-    iosPickerCancelLabel: {
-      fontSize: type.small.fontSize,
-      color: color.text2,
-      fontWeight: "500",
-    },
-    iosPickerSet: {
-      flex: 2,
-      paddingVertical: 10,
-      borderRadius: radius.md,
-      backgroundColor: color.accent,
-      alignItems: "center",
-      justifyContent: "center",
-      minHeight: 44,
-    },
-    iosPickerSetLabel: {
-      fontSize: type.small.fontSize,
-      color: color.textStrong,
-      fontWeight: "600",
     },
   });
 };
@@ -553,13 +483,13 @@ export function formatDateForDisplay(iso: string): string {
   }
 }
 
-function dateToIso(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
+/**
+ * #4523 — the date question renders the host's injected date input on every
+ * platform (Host: its Mingla calendar field; Explorer: its inline Mingla
+ * calendar). The answer is the picked day as `YYYY-MM-DD` (or "" when
+ * cleared), exactly the string the browser date box and the native picker
+ * produced before, so stored answers and validation are unchanged.
+ */
 export const IntakeQuestionDate: React.FC<IntakeQuestionTextProps> = ({
   question,
   primitives,
@@ -568,127 +498,19 @@ export const IntakeQuestionDate: React.FC<IntakeQuestionTextProps> = ({
   error,
   disabled = false,
 }) => {
-  const styles = formStylesFor(primitives.tokens);
-  const { Icon, WebDateTimeInput } = primitives;
-  const { color } = primitives.tokens;
-  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
-  const [pendingDate, setPendingDate] = useState<Date | null>(null);
-
-  const openPicker = useCallback(() => {
-    if (disabled) return;
-    const seed =
-      value.length > 0
-        ? (() => {
-            const [y, m, d] = value.split("-").map((p) => parseInt(p, 10));
-            return new Date(y, m - 1, d);
-          })()
-        : new Date();
-    setPendingDate(seed);
-    setPickerOpen(true);
-  }, [value, disabled]);
-
-  const handlePickerChange = useCallback(
-    (_event: DateTimePickerEvent, selected?: Date) => {
-      if (Platform.OS === "android") {
-        // Android: native modal commits immediately on confirm.
-        setPickerOpen(false);
-        if (selected !== undefined) onChange(dateToIso(selected));
-        return;
-      }
-      // iOS: pending-state — scrolling spinner doesn't commit until Set tapped.
-      if (selected !== undefined) setPendingDate(selected);
-    },
-    [onChange],
-  );
-
-  const handleSetIos = useCallback(() => {
-    if (pendingDate !== null) onChange(dateToIso(pendingDate));
-    setPickerOpen(false);
-  }, [pendingDate, onChange]);
-
-  const handleCancelIos = useCallback(() => {
-    setPickerOpen(false);
-    setPendingDate(null);
-  }, []);
-
-  const display = formatDateForDisplay(value);
-
+  const { WebDateTimeInput } = primitives;
   return (
     <IntakeQuestionShell question={question} primitives={primitives} error={error}>
-      {/* issue #1027 Thread B (Class 2) — web renders the host's visible native
-          <input type=date> (the native DateTimePicker has no web build).
-          iOS/Android keep the Pressable → spinner/dialog flow. */}
-      {Platform.OS === "web" ? (
-        <WebDateTimeInput
-          type="date"
-          value={value}
-          disabled={disabled}
-          ariaLabel={`${question.label}, ${display.length > 0 ? `currently ${display}` : "choose a date"}`}
-          hasError={error !== undefined && error.length > 0}
-          testID="intake-date-web"
-          onChangeValue={(v) => onChange(v)}
-        />
-      ) : (
-        <Pressable
-          onPress={openPicker}
-          disabled={disabled}
-          accessibilityRole="button"
-          accessibilityLabel={`${question.label}, ${display.length > 0 ? `currently ${display}` : "tap to choose a date"}`}
-          hitSlop={4}
-          style={({ pressed }) => [
-            styles.dateInput,
-            error !== undefined && error.length > 0 && styles.textInputError,
-            disabled && styles.textInputDisabled,
-            pressed && !disabled && styles.choiceRowPressed,
-          ]}
-        >
-          <Text style={[styles.dateInputText, display.length === 0 && styles.placeholderText]}>
-            {display.length > 0 ? display : "Tap to choose date"}
-          </Text>
-          <Icon name="calendar" size={18} color={color.text2} strokeWidth={2} />
-        </Pressable>
-      )}
-      {pickerOpen && Platform.OS === "ios" ? (
-        <View style={styles.iosPickerWrap}>
-          <DateTimePicker
-            value={pendingDate ?? new Date()}
-            mode="date"
-            display="spinner"
-            onChange={handlePickerChange}
-            themeVariant="dark"
-            textColor={color.text1}
-            style={styles.iosPicker}
-          />
-          <View style={styles.iosPickerActions}>
-            <Pressable
-              onPress={handleCancelIos}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel date selection"
-              style={({ pressed }) => [styles.iosPickerCancel, pressed && styles.choiceRowPressed]}
-            >
-              <Text style={styles.iosPickerCancelLabel}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSetIos}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Set date"
-              style={({ pressed }) => [styles.iosPickerSet, pressed && styles.choiceRowPressed]}
-            >
-              <Text style={styles.iosPickerSetLabel}>Set date</Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-      {pickerOpen && Platform.OS === "android" ? (
-        <DateTimePicker
-          value={pendingDate ?? new Date()}
-          mode="date"
-          display="default"
-          onChange={handlePickerChange}
-        />
-      ) : null}
+      <WebDateTimeInput
+        type="date"
+        value={value}
+        disabled={disabled}
+        ariaLabel={question.label}
+        hasError={error !== undefined && error.length > 0}
+        testID="intake-date"
+        tokens={primitives.tokens}
+        onChangeValue={(v) => onChange(v)}
+      />
     </IntakeQuestionShell>
   );
 };

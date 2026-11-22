@@ -3,7 +3,7 @@
  *
  * The question shape is the trip intake shape (ORCH-0880), which brand forms
  * extend in later waves. Every visual primitive is injected by the host app
- * (C11): its design tokens, its Icon and its web date input. File upload is
+ * (C11): its design tokens, its Icon and its date input. File upload is
  * rendered by the host app through `renderFileUpload`.
  */
 
@@ -67,7 +67,11 @@ export interface FormIconProps {
   strokeWidth?: number;
 }
 
-/** The host's web date input (a real, visible native <input>, issue #1027). */
+/**
+ * The host's date input, drawn on every platform: the host app's Mingla
+ * calendar field (#4523). It commits `YYYY-MM-DD` (or "" when cleared). The
+ * name predates #4523, when this was the web-only browser date box.
+ */
 export interface FormWebDateInputProps {
   type: "date";
   value: string;
@@ -76,6 +80,8 @@ export interface FormWebDateInputProps {
   disabled?: boolean;
   hasError?: boolean;
   testID?: string;
+  /** #4523: the form's tokens, so a host can draw its calendar in the form's palette. */
+  tokens?: FormRenderingTokens;
 }
 
 export interface FormTextStyle {
