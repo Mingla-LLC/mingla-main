@@ -380,6 +380,20 @@ const INITIAL_STATE: CartState = {
   partySize: null,
 };
 
+/**
+ * issue #4522 — a cart change that alters what is charged drops the quote and
+ * the review: re-quote while the cart has lines (one helper so the three plan
+ * and add-on choices reset the same way and the reducer stays small).
+ */
+const staleQuote = (
+  state: CartState,
+): Pick<CartState, "quote" | "quoteStatus" | "quoteErrorCode" | "checkoutReview"> => ({
+  quote: null,
+  quoteStatus: state.lines.length > 0 ? "loading" : "idle",
+  quoteErrorCode: null,
+  checkoutReview: null,
+});
+
 const reducer = (state: CartState, action: CartAction): CartState => {
   switch (action.type) {
     case "SET_LINE_QUANTITY": {
@@ -511,21 +525,11 @@ const reducer = (state: CartState, action: CartAction): CartState => {
       return { ...state, intakeFormData: next };
     }
     case "SET_PAYMENT_PLAN_CHOICE":
-      return {
-        ...state,
-        paymentPlanChoice: action.choice,
-        quote: null,
-        quoteStatus: state.lines.length > 0 ? "loading" : "idle",
-        quoteErrorCode: null,
-        checkoutReview: null,
-      };
+      return { ...state, paymentPlanChoice: action.choice, ...staleQuote(state) };
     case "SET_LINE_PAYMENT_PLAN_CHOICE": {
       return {
         ...state,
-        quote: null,
-        quoteStatus: state.lines.length > 0 ? "loading" : "idle",
-        quoteErrorCode: null,
-        checkoutReview: null,
+        ...staleQuote(state),
         lines: state.lines.map((line) =>
           line.ticketTypeId === action.ticketTypeId
             ? { ...line, paymentPlanChoice: action.choice }
@@ -537,12 +541,10 @@ const reducer = (state: CartState, action: CartAction): CartState => {
       if (!state.lines.some((line) => (line.addOns?.length ?? 0) > 0)) {
         return state;
       }
+      // Some line has add-ons here, so the reset re-quotes ("loading").
       return {
         ...state,
-        quote: null,
-        quoteStatus: "loading",
-        quoteErrorCode: null,
-        checkoutReview: null,
+        ...staleQuote(state),
         lines: state.lines.map((line) =>
           (line.addOns?.length ?? 0) > 0
             ? { ...line, addonPaymentMode: action.choice }

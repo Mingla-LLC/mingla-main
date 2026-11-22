@@ -372,8 +372,13 @@ describe("#4522 v2 checkout choice", () => {
       reducerStart,
     );
     const reducerWindow = cartSource.slice(reducerStart, reducerEnd);
-    expect(reducerWindow.match(/quoteStatus:/g)).toHaveLength(3);
-    expect(reducerWindow.match(/quote:\s*null/g)).toHaveLength(3);
+    // #3281 checkpoint 15: the three choices share one reset helper (boot size).
+    expect(reducerWindow.match(/\.\.\.staleQuote\(state\)/g)).toHaveLength(3);
+    const helper = cartSource.slice(cartSource.indexOf("const staleQuote"), reducerStart);
+    expect(helper).toMatch(/quote:\s*null/);
+    expect(helper).toContain('quoteStatus: state.lines.length > 0 ? "loading" : "idle"');
+    expect(helper).toMatch(/quoteErrorCode:\s*null/);
+    expect(helper).toMatch(/checkoutReview:\s*null/);
     expect(cartSource).toContain('case "SET_ADDON_PAYMENT_MODE"');
     expect(cartSource).toContain("addonPaymentMode: action.choice");
   });
