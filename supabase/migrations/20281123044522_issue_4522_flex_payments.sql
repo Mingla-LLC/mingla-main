@@ -43,6 +43,51 @@ COMMENT ON COLUMN public.order_installments.flex_client_key IS
   'Issue #4522: the client key of a flexible payment; the same key replays the same row.';
 
 -- ---------------------------------------------------------------------------
+-- 0b. Money collected beyond what the plan still owed (two charges racing:
+--     a planned row and a flexible payment both landing). It is never
+--     silently kept or dropped: it is held here as a refundable credit,
+--     shown on the balance (buyer, host, Admin) and audited, and the cron
+--     charges nothing more on the order while it is held. Spec §5.4 has no
+--     surplus rule; holding and flagging is the safe default (product
+--     question on #4522: refund automatically, or apply to the balance).
+-- ---------------------------------------------------------------------------
+CREATE TABLE public.order_overpayments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+  installment_id uuid NOT NULL REFERENCES public.order_installments(id) ON DELETE CASCADE,
+  reason text NOT NULL CHECK (reason IN ('flex_exceeds_balance', 'superseded_row_collected')),
+  amount_minor bigint NOT NULL CHECK (amount_minor > 0),
+  currency character(3) NOT NULL,
+  provider_ref text NULL,
+  state text NOT NULL DEFAULT 'held' CHECK (state IN ('held', 'refunded', 'applied')),
+  detail jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  resolved_at timestamptz NULL,
+  resolved_by uuid NULL,
+  CONSTRAINT order_overpayments_resolved_consistent CHECK ((state = 'held') = (resolved_at IS NULL)),
+  CONSTRAINT order_overpayments_one_per_cause UNIQUE (installment_id, reason)
+);
+CREATE INDEX order_overpayments_held_by_order ON public.order_overpayments (order_id) WHERE state = 'held';
+ALTER TABLE public.order_overpayments ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.order_overpayments FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.order_overpayments TO service_role;
+COMMENT ON TABLE public.order_overpayments IS
+  'Issue #4522: money a v2 trip order collected beyond what it owed (a planned charge and a flexible payment both landing). Held as a refundable credit and flagged on the balance for the buyer, host and Admin; never paid out or dropped silently.';
+
+-- The reclaim window for an abandoned flexible payment: the same 15 minutes
+-- the instalment reconcile waits before it treats a created attempt as stale
+-- (process-scheduled-installments FIFTEEN_MINUTES_MS). One owner; the edge
+-- mirror is FLEX_RECLAIM_WINDOW_MS in _shared/installments/flexReclaim.ts.
+CREATE FUNCTION public.issue_4522_flex_reclaim_window()
+RETURNS interval
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public, pg_temp
+AS $fn$ SELECT interval '15 minutes' $fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_flex_reclaim_window() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_flex_reclaim_window() TO service_role;
+
+-- ---------------------------------------------------------------------------
 -- 1. Lock graph and small internal readers.
 -- ---------------------------------------------------------------------------
 CREATE FUNCTION public.issue_4522_lock_order_graph(p_order_id uuid)
@@ -69,7 +114,11 @@ END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_lock_order_graph(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
-CREATE FUNCTION public.issue_4522_order_has_open_flex(p_order_id uuid)
+-- An open flexible payment past the reclaim window with no provider attempt
+-- in flight is abandoned (the buyer closed the payment sheet): it no longer
+-- blocks the cron, rollover or a new payment, and the next begin or the
+-- scheduled sweep releases it (issue_4522_release_stale_flex).
+CREATE FUNCTION public.issue_4522_order_has_open_flex(p_order_id uuid, p_now timestamptz DEFAULT now())
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -77,9 +126,32 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $fn$
   SELECT EXISTS (SELECT 1 FROM public.order_installments
-                  WHERE order_id = p_order_id AND kind = 'flex' AND status IN ('scheduled', 'failed'))
+                  WHERE order_id = p_order_id AND kind = 'flex' AND status IN ('scheduled', 'failed')
+                    AND (in_flight_attempt_id IS NOT NULL
+                         OR due_at > p_now - public.issue_4522_flex_reclaim_window()))
 $fn$;
-REVOKE ALL ON FUNCTION public.issue_4522_order_has_open_flex(uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.issue_4522_order_has_open_flex(uuid, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
+
+-- A planned row is in flight while a provider charge of its CURRENT attempt
+-- can still land: a Paystack attempt that is created / unknown; a Stripe
+-- PaymentIntent createInstallmentPI wrote on a scheduled row (any failure
+-- moves the row to failed, so the id on a scheduled row is the current
+-- attempt's); or a failed Stripe row whose retry is due (the cron is charging
+-- it, and a retry's PaymentIntent id cannot be written on a failed row). A
+-- failed row that still carries an earlier attempt's PaymentIntent and waits
+-- for a later retry is not in flight.
+CREATE FUNCTION public.issue_4522_stripe_charge_in_flight(
+  p_provider text, p_status text, p_payment_intent_id text, p_next_retry_at timestamptz)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT p_provider = 'stripe'
+     AND ((p_status = 'scheduled' AND p_payment_intent_id IS NOT NULL)
+          OR (p_status = 'failed' AND p_next_retry_at IS NOT NULL AND p_next_retry_at <= now()))
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_stripe_charge_in_flight(text, text, text, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
 
 CREATE FUNCTION public.issue_4522_order_has_open_attempt(p_order_id uuid)
 RETURNS boolean
@@ -93,10 +165,98 @@ AS $fn$
      WHERE oi.order_id = p_order_id AND oi.kind = 'scheduled'
        AND oi.status IN ('scheduled', 'failed')
        AND (oi.in_flight_attempt_id IS NOT NULL
+            OR public.issue_4522_stripe_charge_in_flight(oi.provider, oi.status, oi.stripe_payment_intent_id, oi.next_retry_at)
             OR EXISTS (SELECT 1 FROM public.order_installment_charge_attempts a
                         WHERE a.installment_id = oi.id AND a.state IN ('created', 'unknown'))))
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_order_has_open_attempt(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+-- Release an order's abandoned flexible payments (caller holds the graph
+-- lock). Returns what was released so the edge can cancel each Stripe
+-- PaymentIntent best-effort. A late success for a released row still settles
+-- (issue_4522_record_late_collection).
+CREATE FUNCTION public.issue_4522_release_stale_flex(p_order_id uuid, p_now timestamptz DEFAULT now())
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_released jsonb;
+BEGIN
+  WITH released AS (
+    UPDATE public.order_installments
+       SET status = 'superseded', superseded_at = p_now, next_retry_at = NULL,
+           failure_reason = COALESCE(failure_reason, 'flex_expired'), updated_at = p_now
+     WHERE order_id = p_order_id AND kind = 'flex' AND status IN ('scheduled', 'failed')
+       AND in_flight_attempt_id IS NULL
+       AND due_at <= p_now - public.issue_4522_flex_reclaim_window()
+    RETURNING id, provider, stripe_payment_intent_id)
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('installmentId', id, 'provider', provider,
+           'stripePaymentIntentId', stripe_payment_intent_id) ORDER BY id), '[]'::jsonb)
+    INTO v_released FROM released;
+  RETURN v_released;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_release_stale_flex(uuid, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
+
+-- What stops the cron charging an order more: a collected flexible payment
+-- whose settlement has not run yet, or money already held as an
+-- overpayment. In both states the collected total can meet or pass what the
+-- order owes while planned rows still look open; NULL means chargeable.
+CREATE FUNCTION public.issue_4522_collection_guard(p_order_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT CASE
+    WHEN EXISTS (SELECT 1 FROM public.order_installments oi
+                  WHERE oi.order_id = p_order_id AND oi.kind = 'flex' AND oi.status = 'collected'
+                    AND NOT EXISTS (SELECT 1 FROM public.order_balance_events e
+                                     WHERE e.trigger_installment_id = oi.id AND e.reason = 'flex_payment'))
+      THEN 'flex_settlement_pending'
+    WHEN EXISTS (SELECT 1 FROM public.order_overpayments op
+                  WHERE op.order_id = p_order_id AND op.state = 'held')
+      THEN 'overpayment_held'
+  END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_collection_guard(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+-- Hold money collected beyond what is owed (idempotent per cause).
+CREATE FUNCTION public.issue_4522_hold_overpayment(
+  p_installment_id uuid,
+  p_reason text,
+  p_amount_minor bigint,
+  p_provider_ref text,
+  p_detail jsonb DEFAULT '{}'::jsonb
+) RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_row public.order_installments;
+  v_id uuid;
+BEGIN
+  SELECT * INTO v_row FROM public.order_installments WHERE id = p_installment_id;
+  IF NOT FOUND OR p_amount_minor IS NULL OR p_amount_minor <= 0 THEN
+    RETURN NULL;
+  END IF;
+  INSERT INTO public.order_overpayments (order_id, installment_id, reason, amount_minor, currency, provider_ref, detail)
+  VALUES (v_row.order_id, v_row.id, p_reason, p_amount_minor, v_row.currency, p_provider_ref, COALESCE(p_detail, '{}'::jsonb))
+  ON CONFLICT (installment_id, reason) DO NOTHING
+  RETURNING id INTO v_id;
+  IF v_id IS NOT NULL THEN
+    PERFORM public.issue_3645_audit_installment(p_installment_id, 'tr3.installment_overpayment_held',
+      jsonb_build_object('overpayment_id', v_id, 'reason', p_reason, 'amount_minor', p_amount_minor,
+        'order_id', v_row.order_id, 'provider_ref', p_provider_ref));
+  END IF;
+  RETURN v_id;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_hold_overpayment(uuid, text, bigint, text, jsonb) FROM PUBLIC, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- 2. Rebalance (spec §6.3). Caller holds the order graph lock. Moves money
@@ -176,8 +336,11 @@ BEGIN
     FROM public.order_installments oi
    WHERE oi.order_id = p_order_id AND oi.kind = 'scheduled' AND oi.status IN ('scheduled', 'failed')
      AND (p_rolled_in_row IS NULL OR oi.due_at > v_roll.due_at);
+  -- A row whose provider charge can still land keeps its amount: Paystack
+  -- attempt in flight, or a Stripe PaymentIntent of its current attempt.
   IF EXISTS (SELECT 1 FROM public.order_installments oi JOIN pg_temp.i4522_open o ON o.id = oi.id
-              WHERE oi.in_flight_attempt_id IS NOT NULL) THEN
+              WHERE oi.in_flight_attempt_id IS NOT NULL
+                 OR public.issue_4522_stripe_charge_in_flight(oi.provider, oi.status, oi.stripe_payment_intent_id, oi.next_retry_at)) THEN
     RAISE EXCEPTION 'balance_payment_in_flight' USING ERRCODE = 'PT409';
   END IF;
 
@@ -378,7 +541,11 @@ BEGIN
     'canPayAnyAmount', v_flexible,
     'minPaymentMinor', CASE WHEN v_flexible THEN v_min END,
     'paymentInFlight', public.issue_4522_order_has_open_flex(p_order_id)
-                       OR public.issue_4522_order_has_open_attempt(p_order_id),
+                       OR public.issue_4522_order_has_open_attempt(p_order_id)
+                       OR public.issue_4522_collection_guard(p_order_id) IS NOT DISTINCT FROM 'flex_settlement_pending',
+    -- Money collected beyond what was owed, held for a refund (flagged).
+    'heldCreditMinor', (SELECT COALESCE(sum(amount_minor), 0) FROM public.order_overpayments
+                         WHERE order_id = p_order_id AND state = 'held'),
     'nextPayment', v_next,
     'openRows', COALESCE((SELECT jsonb_agg(jsonb_build_object('installmentId', id, 'dueAt', due_at,
         'amountMinor', amount_cents, 'addonPortionMinor', addon_portion_minor,
@@ -467,6 +634,8 @@ DECLARE
   v_min bigint;
   v_flexible boolean;
   v_next_due bigint;
+  v_released jsonb := '[]'::jsonb;
+  v_rem_left bigint;
 BEGIN
   IF p_method IS NULL OR p_method NOT IN ('auto_card', 'pay_link') THEN
     RAISE EXCEPTION 'invalid_attempt_method' USING ERRCODE = '22023';
@@ -492,16 +661,25 @@ BEGIN
     RAISE EXCEPTION 'payment_plan_v2_unavailable' USING ERRCODE = 'P0001';
   END IF;
 
-  -- The same key replays the same row.
+  -- The same key replays the same row, and only the same request: a key
+  -- reused for another amount or method is refused and never touches it.
   SELECT * INTO v_existing FROM public.order_installments
    WHERE order_id = p_order_id AND kind = 'flex' AND flex_client_key = p_client_key;
   IF FOUND THEN
+    IF v_existing.amount_cents IS DISTINCT FROM p_amount_minor
+       OR v_existing.collection_method IS DISTINCT FROM p_method THEN
+      RAISE EXCEPTION 'flex_client_key_reused' USING ERRCODE = 'PT409';
+    END IF;
     RETURN jsonb_build_object('installmentId', v_existing.id, 'amountMinor', v_existing.amount_cents,
       'buyerTotalMinor', COALESCE(v_existing.buyer_total_cents, v_existing.amount_cents),
       'currency', trim(v_existing.currency), 'provider', v_existing.provider,
-      'status', v_existing.status, 'replayed', true);
+      'status', v_existing.status, 'replayed', true, 'released', '[]'::jsonb);
   END IF;
-  IF public.issue_4522_order_has_open_flex(p_order_id) OR public.issue_4522_order_has_open_attempt(p_order_id) THEN
+  -- An abandoned flexible payment (past the reclaim window, no attempt in
+  -- flight) is released first; the edge cancels its PaymentIntent.
+  v_released := public.issue_4522_release_stale_flex(p_order_id, p_now);
+  IF public.issue_4522_order_has_open_flex(p_order_id, p_now) OR public.issue_4522_order_has_open_attempt(p_order_id)
+     OR public.issue_4522_collection_guard(p_order_id) IS NOT DISTINCT FROM 'flex_settlement_pending' THEN
     RAISE EXCEPTION 'balance_payment_in_flight' USING ERRCODE = 'PT409';
   END IF;
 
@@ -535,22 +713,34 @@ BEGIN
     RAISE EXCEPTION 'invalid_attempt_method' USING ERRCODE = '22023';
   END IF;
 
-  -- Allocate across packages pro rata to each one's open remaining (floor per
-  -- line, the last line absorbs); the add-on share pro rata within each line.
-  SELECT count(DISTINCT ticket_type_id) INTO v_lines FROM public.order_installments
-   WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed');
+  -- Allocate across packages pro rata to each one's open remaining by largest
+  -- remainder: every line takes floor(amount × line / R), then the leftover
+  -- minor units go one each to the lines with the largest fractional parts
+  -- (ties by package order). A line never takes more than it owes, so any
+  -- amount from the minimum up to R allocates exactly. The add-on share is
+  -- pro rata within each line.
+  v_rem_left := p_amount_minor - (
+    SELECT COALESCE(sum(floor(p_amount_minor::numeric * l.amt / v_remaining)), 0)::bigint
+      FROM (SELECT sum(amount_cents) AS amt FROM public.order_installments
+             WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
+             GROUP BY ticket_type_id) l);
   FOR v_line IN
-    SELECT ticket_type_id, sum(amount_cents) AS amt, sum(addon_portion_minor) AS addon
-      FROM public.order_installments
-     WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
-     GROUP BY ticket_type_id ORDER BY ticket_type_id NULLS LAST
+    SELECT l.ticket_type_id, l.amt, l.addon,
+           floor(p_amount_minor::numeric * l.amt / v_remaining)::bigint AS base,
+           row_number() OVER (ORDER BY (p_amount_minor::numeric * l.amt) % v_remaining DESC,
+                              l.ticket_type_id NULLS LAST) AS frac_rank
+      FROM (SELECT ticket_type_id, sum(amount_cents) AS amt, sum(addon_portion_minor) AS addon
+              FROM public.order_installments
+             WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
+             GROUP BY ticket_type_id) l
+     ORDER BY l.ticket_type_id NULLS LAST
   LOOP
-    v_seen := v_seen + 1;
-    v_part := CASE WHEN v_seen < v_lines
-      THEN floor(p_amount_minor::numeric * v_line.amt / v_remaining)::bigint
-      ELSE p_amount_minor - v_run END;
-    v_part := least(v_part, v_line.amt);
+    v_part := v_line.base + CASE WHEN v_line.frac_rank <= v_rem_left THEN 1 ELSE 0 END;
+    IF v_part > v_line.amt THEN
+      RAISE EXCEPTION 'installment_rounding_invalid' USING ERRCODE = 'P0001';
+    END IF;
     v_run := v_run + v_part;
+    CONTINUE WHEN v_part = 0;
     v_part_addon := floor(v_part::numeric * v_line.addon / v_line.amt)::bigint;
     v_addon_total := v_addon_total + v_part_addon;
     v_alloc := v_alloc || jsonb_build_array(jsonb_build_object(
@@ -580,7 +770,7 @@ BEGIN
     'buyerTotalMinor', CASE WHEN v_provider = 'paystack' AND v_bt IS NOT NULL
       THEN floor(p_amount_minor::numeric * v_bt / v_remaining)::bigint ELSE p_amount_minor END,
     'currency', trim(v_currency), 'provider', v_provider, 'status', 'scheduled',
-    'remainingBeforeMinor', v_remaining, 'replayed', false);
+    'remainingBeforeMinor', v_remaining, 'replayed', false, 'released', v_released);
 END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_begin_flex_payment(uuid, bigint, bigint, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
@@ -599,6 +789,8 @@ DECLARE
   v_order_id uuid;
   v_row public.order_installments;
   v_result jsonb;
+  v_applied jsonb;
+  v_applied_total bigint;
 BEGIN
   SELECT order_id INTO v_order_id FROM public.order_installments WHERE id = p_installment_id;
   IF NOT FOUND OR public.issue_4522_lock_order_graph(v_order_id) IS NULL THEN
@@ -620,15 +812,48 @@ BEGIN
      WHERE order_id = v_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed');
     RETURN v_result;
   END IF;
+  -- Apply the payment only up to what each package still owes: a planned
+  -- charge may have landed after this payment began (two charges racing).
+  -- Anything beyond is held as an overpayment, never raised (a webhook must
+  -- not retry forever) and never charged again by the cron.
+  SELECT COALESCE(jsonb_agg(jsonb_build_object('ticket_type_id', a.ticket_type_id,
+           'net_minor', a.applied_net, 'addon_minor', a.applied_addon) ORDER BY a.ord), '[]'::jsonb),
+         COALESCE(sum(a.applied_net + a.applied_addon), 0)
+    INTO v_applied, v_applied_total
+    FROM (
+      SELECT x.ord, x.ticket_type_id, x.applied_total - least(x.applied_total - least(x.addon, x.open_addon), x.open_trip) AS applied_addon,
+             least(x.applied_total - least(x.addon, x.open_addon), x.open_trip) AS applied_net
+        FROM (
+          SELECT p.ord, p.ticket_type_id, p.net, p.addon,
+                 COALESCE(o.open_trip, 0) AS open_trip, COALESCE(o.open_addon, 0) AS open_addon,
+                 least(p.net + p.addon, COALESCE(o.open_trip, 0) + COALESCE(o.open_addon, 0)) AS applied_total
+            FROM (SELECT ord, (e->>'ticket_type_id')::uuid AS ticket_type_id,
+                         greatest(COALESCE((e->>'net_minor')::bigint, 0), 0) AS net,
+                         greatest(COALESCE((e->>'addon_minor')::bigint, 0), 0) AS addon
+                    FROM jsonb_array_elements(COALESCE(v_row.line_allocation, '[]'::jsonb)) WITH ORDINALITY t(e, ord)) p
+            LEFT JOIN (SELECT ticket_type_id, sum(amount_cents - addon_portion_minor) AS open_trip,
+                              sum(addon_portion_minor) AS open_addon
+                         FROM public.order_installments
+                        WHERE order_id = v_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
+                        GROUP BY ticket_type_id) o
+              ON o.ticket_type_id IS NOT DISTINCT FROM p.ticket_type_id) x
+       WHERE x.applied_total > 0) a;
+  IF v_row.amount_cents > v_applied_total THEN
+    PERFORM public.issue_4522_hold_overpayment(p_installment_id, 'flex_exceeds_balance',
+      v_row.amount_cents - v_applied_total,
+      COALESCE(v_row.stripe_payment_intent_id, v_row.provider_transaction_id),
+      jsonb_build_object('allocated', v_row.line_allocation, 'applied', v_applied));
+  END IF;
   v_result := public.issue_4522_rebalance_order(v_order_id, 'flex_payment', p_installment_id, NULL,
-    v_row.line_allocation, NULL);
+    v_applied, NULL);
   IF (v_result->>'remainingMinor')::bigint = 0 THEN
     UPDATE public.order_balance_links SET revoked_at = now(), revoked_reason = 'paid_in_full'
      WHERE order_id = v_order_id AND revoked_at IS NULL;
   END IF;
   RETURN jsonb_build_object('ok', true, 'replayed', false,
     'remainingMinor', (v_result->>'remainingMinor')::bigint,
-    'paidInFull', (v_result->>'remainingMinor')::bigint = 0);
+    'paidInFull', (v_result->>'remainingMinor')::bigint = 0,
+    'heldMinor', v_row.amount_cents - v_applied_total);
 END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_settle_flex_payment(uuid) FROM PUBLIC, anon, authenticated;
@@ -660,6 +885,103 @@ END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_close_failed_flex(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4522_close_failed_flex(uuid) TO service_role;
+
+-- A provider success for a row that is no longer open. Idempotent; the
+-- webhook acks only on ok = true.
+--   * a flexible payment that was released (abandoned past the window) or
+--     closed after a failure, then confirmed late: it is collected and
+--     settled like any flexible payment (anything beyond the balance is held);
+--   * a planned row superseded while its charge was landing: the whole
+--     charge is held as an overpayment (never kept, never paid out).
+-- A cancelled row is not handled here (the caller's existing recovery).
+CREATE FUNCTION public.issue_4522_record_late_collection(
+  p_installment_id uuid,
+  p_amount_minor bigint,
+  p_provider_ref text,
+  p_charge_ref text DEFAULT NULL,
+  p_now timestamptz DEFAULT now()
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_order_id uuid;
+  v_row public.order_installments;
+  v_settle jsonb;
+  v_held uuid;
+BEGIN
+  SELECT order_id INTO v_order_id FROM public.order_installments WHERE id = p_installment_id;
+  IF NOT FOUND OR public.issue_4522_lock_order_graph(v_order_id) IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_found');
+  END IF;
+  SELECT * INTO v_row FROM public.order_installments WHERE id = p_installment_id FOR UPDATE;
+  IF v_row.status = 'collected' THEN
+    RETURN jsonb_build_object('ok', true, 'outcome', 'already_collected', 'kind', v_row.kind);
+  END IF;
+  IF v_row.status <> 'superseded' THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_superseded', 'status', v_row.status);
+  END IF;
+  IF v_row.kind = 'flex' THEN
+    IF p_amount_minor IS NOT NULL AND p_amount_minor <> v_row.amount_cents
+       AND p_amount_minor <> COALESCE(v_row.buyer_total_cents, v_row.amount_cents) THEN
+      RETURN jsonb_build_object('ok', false, 'reason', 'amount_mismatch');
+    END IF;
+    UPDATE public.order_installments
+       SET status = 'collected', superseded_at = NULL, collected_at = p_now,
+           failed_at = NULL, failure_reason = NULL, next_retry_at = NULL,
+           stripe_payment_intent_id = CASE WHEN provider = 'stripe' THEN COALESCE(p_provider_ref, stripe_payment_intent_id)
+                                           ELSE stripe_payment_intent_id END,
+           stripe_charge_id = CASE WHEN provider = 'stripe' THEN COALESCE(p_charge_ref, stripe_charge_id)
+                                   ELSE stripe_charge_id END,
+           updated_at = p_now
+     WHERE id = p_installment_id;
+    PERFORM public.issue_3645_audit_installment(p_installment_id, 'tr3.installment_flex_late_collected',
+      jsonb_build_object('order_id', v_order_id, 'amount_minor', v_row.amount_cents, 'provider_ref', p_provider_ref));
+    v_settle := public.issue_4522_settle_flex_payment(p_installment_id);
+    RETURN jsonb_build_object('ok', COALESCE((v_settle->>'ok')::boolean, false), 'outcome', 'flex_collected',
+      'kind', 'flex', 'amountMinor', v_row.amount_cents, 'settle', v_settle);
+  END IF;
+  v_held := public.issue_4522_hold_overpayment(p_installment_id, 'superseded_row_collected',
+    COALESCE(p_amount_minor, v_row.amount_cents), p_provider_ref,
+    jsonb_build_object('superseded_at', v_row.superseded_at, 'row_amount_minor', v_row.amount_cents));
+  RETURN jsonb_build_object('ok', true, 'outcome', 'held', 'kind', v_row.kind,
+    'replayed', v_held IS NULL);
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_record_late_collection(uuid, bigint, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_record_late_collection(uuid, bigint, text, text, timestamptz) TO service_role;
+
+-- The scheduled sweep: release abandoned flexible payments on every order
+-- (one order's graph lock at a time) and return them so the cron cancels
+-- each Stripe PaymentIntent best-effort.
+CREATE FUNCTION public.issue_4522_sweep_stale_flex(p_now timestamptz DEFAULT now(), p_limit integer DEFAULT 100)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_order uuid;
+  v_out jsonb := '[]'::jsonb;
+  v_released jsonb;
+BEGIN
+  FOR v_order IN
+    SELECT DISTINCT order_id FROM public.order_installments
+     WHERE kind = 'flex' AND status IN ('scheduled', 'failed') AND in_flight_attempt_id IS NULL
+       AND due_at <= p_now - public.issue_4522_flex_reclaim_window()
+     ORDER BY order_id LIMIT greatest(COALESCE(p_limit, 100), 1)
+  LOOP
+    IF public.issue_4522_lock_order_graph(v_order) IS NULL THEN CONTINUE; END IF;
+    v_released := public.issue_4522_release_stale_flex(v_order, p_now);
+    v_out := v_out || (SELECT COALESCE(jsonb_agg(r || jsonb_build_object('orderId', v_order)), '[]'::jsonb)
+                         FROM jsonb_array_elements(v_released) r);
+  END LOOP;
+  RETURN v_out;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_sweep_stale_flex(timestamptz, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_sweep_stale_flex(timestamptz, integer) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 6. "Pay toward your balance" links (raw token never stored; 30 days; one
@@ -760,6 +1082,7 @@ DECLARE
   v_event_status text;
   v_order_id uuid;
   v_event_id uuid;
+  v_guard text;
 BEGIN
   IF p_installment_id IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'installment_id_required');
@@ -832,6 +1155,12 @@ BEGIN
   IF public.issue_4522_order_has_open_flex(v_order.id) THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'flex_payment_in_flight');
   END IF;
+  -- Never charge an order whose collected money already covers what it
+  -- owes: a flexible payment not yet settled, or an overpayment held.
+  v_guard := public.issue_4522_collection_guard(v_order.id);
+  IF v_guard IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', v_guard);
+  END IF;
 
   RETURN jsonb_build_object(
     'ok', true,
@@ -888,6 +1217,9 @@ BEGIN
   -- issue #4522 — no planned row is charged while a flexible payment is open.
   IF v_inst.kind = 'scheduled' AND public.issue_4522_order_has_open_flex(v_inst.order_id) THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'flex_payment_in_flight');
+  END IF;
+  IF v_inst.kind = 'scheduled' AND public.issue_4522_collection_guard(v_inst.order_id) IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', public.issue_4522_collection_guard(v_inst.order_id));
   END IF;
   IF v_inst.plan_bound_at IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'plan_not_bound');
