@@ -1,6 +1,6 @@
 /**
  * issue #3281 S2 — the public "Add at checkout:" list, loaded on use by
- * `publicAddOnsSlot` (components/offering/LazyPublicParts). Thumbnails are the stored objects in the public
+ * `publicAddOnsSlot` (components/addOns/publicAddOnsSlot). Thumbnails are the stored objects in the public
  * `event_covers` bucket (the bucket S1 fixed for add-on photos), never an
  * image transformation URL (the spend cap is armed).
  */

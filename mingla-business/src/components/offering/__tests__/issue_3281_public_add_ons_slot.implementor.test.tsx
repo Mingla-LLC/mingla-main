@@ -4,7 +4,7 @@
  * pages. The shared bodies (event, trip, experience) take an `addOns` slot and
  * call it once under each ticket, package or option with that card's raw
  * reader list; the Host web / buyer web shells pass `publicAddOnsSlot`
- * (LazyPublicParts), which is null while EXPO_PUBLIC_FF_EXTRAS_ENABLED is off
+ * (components/addOns/publicAddOnsSlot), which is null while EXPO_PUBLIC_FF_EXTRAS_ENABLED is off
  * and otherwise renders the block from its on-use chunk.
  *
  * Mounts the REAL EventOfferingBody, ExperienceOfferingBody and
@@ -12,6 +12,7 @@
  *
  * FAILS-ON-REVERT: delete the slot call under a ticket / package / option in
  * any of the three bodies, or the flag check in `publicAddOnsSlot` -> red.
+ * A chunk that fails to load renders nothing (logged), never an error.
  */
 
 import * as fs from "node:fs";
@@ -70,8 +71,6 @@ jest.mock("../../../services/supabase", () => ({
     },
   },
 }));
-// The retry boundary's Button owns native motion; the slot never shows it here.
-jest.mock("../../ui/Button", () => ({ Button: (): null => null }));
 const mockFlags = { extras: false };
 jest.mock("../../../config/featureFlags", () => {
   const actual = jest.requireActual("../../../config/featureFlags") as { featureFlags: Record<string, unknown> };
@@ -445,7 +444,7 @@ describe("#3281 S2 the shared bodies call the add-ons slot under each card", () 
   });
 });
 
-describe("#3281 S2 the Host web / buyer web slot (LazyPublicParts)", () => {
+describe("#3281 S2 the Host web / buyer web slot (addOns/publicAddOnsSlot)", () => {
   // The slot is fixed when the module loads (like the flag), so each case loads
   // a fresh copy with its own React and renderer.
   type Isolated = {
@@ -453,12 +452,17 @@ describe("#3281 S2 the Host web / buyer web slot (LazyPublicParts)", () => {
     R: typeof React;
     renderer: typeof TestRenderer;
   };
-  const load = (): Isolated => {
+  const load = (failChunk = false): Isolated => {
     let out!: Isolated;
     jest.isolateModules(() => {
+      if (failChunk) {
+        jest.doMock("../../addOns/PublicAddOnsBlock", () => {
+          throw new Error("chunk failed");
+        });
+      }
       out = {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        slot: (require("../LazyPublicParts") as { publicAddOnsSlot: OfferingAddOnsSlot | null }).publicAddOnsSlot,
+        slot: (require("../../addOns/publicAddOnsSlot") as { publicAddOnsSlot: OfferingAddOnsSlot | null }).publicAddOnsSlot,
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         R: require("react") as typeof React,
         // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -492,6 +496,26 @@ describe("#3281 S2 the Host web / buyer web slot (LazyPublicParts)", () => {
     expect(json).toContain("Friday dinner");
     expect(json).toContain("https://cdn.example/event_covers/add-ons/e/x1_thumb.jpg");
     expect(json).not.toContain("render/image");
+    await renderer.act(async () => tree.unmount());
+  });
+
+  test("a chunk that fails to load is logged and renders nothing (the page stays up)", async () => {
+    mockFlags.extras = true;
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { slot, R, renderer } = load(true);
+    let tree!: Renderer;
+    await renderer.act(async () => {
+      tree = renderer.create(R.createElement(R.Fragment, null, slot?.("t-a", [ADD_ON], "USD", palette)));
+    });
+    for (let i = 0; i < 3; i++) {
+      await renderer.act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    }
+    expect(tree.toJSON()).toBeNull();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+    jest.dontMock("../../addOns/PublicAddOnsBlock");
     await renderer.act(async () => tree.unmount());
   });
 });

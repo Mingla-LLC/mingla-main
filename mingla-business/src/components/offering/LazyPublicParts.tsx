@@ -12,12 +12,8 @@
  * never a blank page. Native is unaffected in behaviour: Metro resolves the
  * same `import()` synchronously from the one bundle.
  */
-import { createElement } from "react";
 import type React from "react";
-import type { OfferingAddOnsSlot } from "@mingla/offering-rendering/OfferingAddOnsBlock";
 
-import { featureFlags } from "../../config/featureFlags";
-import type { PublicAddOnsBlockProps } from "../addOns/PublicAddOnsBlock";
 import type { BuyerClaimCardProps } from "../checkout/DownloadMinglaCta";
 import type { SecurePaymentHandoffProps } from "../checkout/SecurePaymentHandoff";
 import type { RefundPreviewBodyProps } from "../trip/RefundPreviewBody";
@@ -61,19 +57,3 @@ export const SecurePaymentHandoff: React.ComponentType<SecurePaymentHandoffProps
       })),
     { loadingLabel: "Opening secure payment…" },
   );
-
-/**
- * #3281 S2 — "Add at checkout:" under each ticket, package or option on the
- * public pages and host previews. The `addOns` slot the shared offering bodies
- * take; null while EXPO_PUBLIC_FF_EXTRAS_ENABLED is off (the default), so the
- * pages render exactly as before.
- */
-const PublicAddOnsBlock: React.ComponentType<PublicAddOnsBlockProps> =
-  createRetryableLazyErrorBoundary(() => import("../addOns/PublicAddOnsBlock"), {
-    loadingLabel: "Loading add-ons…",
-  });
-
-export const publicAddOnsSlot: OfferingAddOnsSlot | null = featureFlags.extras
-  ? (id, addOns, currency, palette) =>
-      createElement(PublicAddOnsBlock, { id, addOns, currency, palette })
-  : null;
