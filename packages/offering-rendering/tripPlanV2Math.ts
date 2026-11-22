@@ -177,6 +177,24 @@ const isoSeconds = (instantMs: number): string =>
 const floorDiv = (a: number, b: number): number => Math.floor(a / b);
 
 /**
+ * issue #4522 (N8) — floor(amount × pct / 100) in exact integer arithmetic.
+ * pct is the plan's decimal as written (1–100, decimals allowed); it is read
+ * digit for digit, so the result equals the SQL numeric one at any magnitude.
+ */
+export function percentFloor(amount: number, pct: number): number {
+  const text = String(pct);
+  const [whole, fraction = ""] = text.split(".");
+  const scaled = BigInt(`${whole}${fraction}`);
+  const scale = 10n ** BigInt(fraction.length);
+  return Number((BigInt(amount) * scaled) / (100n * scale));
+}
+
+/** issue #4522 (N8) — floor(a × b / (c × d)) for non-negative integers, exactly. */
+export function mulDivFloor(a: number, b: number, c: number, d = 1): number {
+  return Number((BigInt(a) * BigInt(b)) / (BigInt(c) * BigInt(d)));
+}
+
+/**
  * One cart line's schedule, exactly as `issue_4522_plan_v2_schedule` computes
  * it (spec §6.1). Throws TripPlanV2Error with the SQL function's code.
  */
@@ -198,7 +216,7 @@ export function computeTripPlanV2Schedule(
 
   const d0 = plan.deposit.mode === "amount"
     ? Math.min(plan.deposit.amount_minor * units, p)
-    : Math.floor((p * plan.deposit.pct) / 100);
+    : percentFloor(p, plan.deposit.pct);
   const t = p - d0;
   const count = plan.count;
   const auto = plan.auto_adjust ?? true;
@@ -235,11 +253,10 @@ export function computeTripPlanV2Schedule(
       if (list !== null && list > p) {
         const tList = list - (plan.deposit.mode === "amount"
           ? Math.min(plan.deposit.amount_minor * units, list)
-          : Math.floor((list * plan.deposit.pct) / 100));
+          : percentFloor(list, plan.deposit.pct));
         if (tList > 0) {
           c = c.map((amount) =>
-            Math.floor(Number((BigInt(amount) * BigInt(t)) / BigInt(tList)) / UNIT) *
-            UNIT
+            mulDivFloor(amount, t, tList, UNIT) * UNIT
           );
         }
       }

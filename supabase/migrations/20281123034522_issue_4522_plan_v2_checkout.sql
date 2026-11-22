@@ -140,7 +140,10 @@ BEGIN
           THEN least((p_plan#>>'{deposit,amount_minor}')::bigint * p_units, v_list)
           ELSE floor(v_list::numeric * (p_plan#>>'{deposit,pct}')::numeric / 100)::bigint END;
         IF v_t_list > 0 THEN
-          SELECT array_agg(floor(c::numeric * v_t / v_t_list / c_unit)::bigint * c_unit ORDER BY o) INTO v_custom
+          -- N8: exact integer arithmetic (multiply, then one integer division
+          -- by t_list × unit, truncating), never a rounded numeric ratio, so
+          -- SQL and TypeScript agree at every magnitude up to 9e15.
+          SELECT array_agg(div(c::numeric * v_t, v_t_list::numeric * c_unit)::bigint * c_unit ORDER BY o) INTO v_custom
             FROM unnest(v_custom) WITH ORDINALITY u(c, o);
         END IF;
       END IF;
@@ -346,7 +349,7 @@ BEGIN
     v_dep := (v_sched->>'deposit_minor')::bigint;
     v_due_net := v_due_net + v_dep;
     v_due_list := v_due_list + CASE WHEN v_net > 0
-      THEN floor(v_list::numeric * v_dep / v_net)::bigint ELSE 0 END;
+      THEN div(v_list::numeric * v_dep, v_net::numeric)::bigint ELSE 0 END; -- N8: exact
     v_ri := 0;
     FOR v_row IN SELECT value FROM jsonb_array_elements(v_sched->'rows') LOOP
       v_ri := v_ri + 1;
