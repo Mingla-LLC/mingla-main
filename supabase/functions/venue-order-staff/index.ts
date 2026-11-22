@@ -23,9 +23,19 @@
 //                          watches what it lets in.
 //
 // verify_jwt = false with a Bearer REQUIRED IN-CODE (the §S6 table): the token is
-// verified via auth.getUser, then the brand-membership floor is checked, and the
+// verified via auth.getUser, then the pad's floor is checked, and the
 // rank-gated mutations enforce their own floor INSIDE the SECURITY DEFINER RPC
 // (biz_venue_tab_open / biz_venue_tab_close require >= event_manager).
+//
+// #4490 spec 08 O1 fix 1 — one bill, one owner. `create` and `settle` ask
+// issue_4490_pad_guard first (server side, by the order's Till check link and
+// the venue's Till switch, never a client flag): the pad's floor is a brand
+// role (the pad's own rule on main) or venue.sell at that venue; `settle`
+// refuses any round that belongs to a Till check and every order at a venue
+// whose Till is running; `create` refuses a Till check that is no longer
+// open. tab_close is refused inside biz_venue_tab_close (tab_on_till). Each
+// refusal answers `transition_not_allowed`, the copy an installed pad already
+// shows.
 //
 // Phase 3b (#1792) builds the surface a waiter actually touches, and hardens the
 // four Phase-2 actions against what a real service does to them:
@@ -202,28 +212,55 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
     }, 500),
 }));
 
-/** The §S6 floor: brand MEMBERSHIP. Rank gates live inside the RPCs. */
-async function callerIsBrandMember(
+type PadGuardVerdict =
+  | "ok"
+  | "not_found"
+  | "not_authorized"
+  | "session_closed"
+  | "till_round"
+  | "till_on";
+
+/**
+ * #4490 spec 08 O1 fix 1 — the pad's floor and the Till's ownership, decided
+ * by the database (issue_4490_pad_guard). Fails CLOSED: a broken read is a
+ * refusal, never a pass.
+ */
+async function padGuard(
   supabase: ServiceClient,
-  brandId: string,
-  userId: string,
-): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("brand_team_members")
-    .select("id")
-    .eq("brand_id", brandId)
-    .eq("user_id", userId)
-    .is("removed_at", null)
-    .not("accepted_at", "is", null)
-    .maybeSingle();
+  input: {
+    action: "create" | "settle";
+    orderId: string | null;
+    sessionId: string | null;
+    venueId: string | null;
+    userId: string;
+  },
+): Promise<PadGuardVerdict> {
+  const { data, error } = await supabase.rpc("issue_4490_pad_guard", {
+    p_action: input.action,
+    p_order_id: input.orderId,
+    p_session_id: input.sessionId,
+    p_venue_id: input.venueId,
+    p_actor: input.userId,
+  });
   if (error) {
-    // Fail CLOSED on an auth read. This is the one place where a broken read
-    // must NOT fail open — the rate limiter's fail-open reasoning is about
-    // losing a sale, this is about who may take one.
-    console.error("[venue-order-staff] membership read failed", error.message);
-    return false;
+    console.error("[venue-order-staff] pad guard failed", error.message);
+    return "not_authorized";
   }
-  return data !== null;
+  const verdict = String(data ?? "");
+  return (["ok", "not_found", "not_authorized", "session_closed", "till_round", "till_on"]
+      .includes(verdict)
+    ? verdict
+    : "not_authorized") as PadGuardVerdict;
+}
+
+/** The answer an installed pad already knows for each refusal. */
+function padGuardRefusal(verdict: PadGuardVerdict): Response {
+  if (verdict === "not_found") return jsonResponse({ error: "not_found" }, 404);
+  if (verdict === "session_closed") return fail("session_not_addable");
+  if (verdict === "till_round" || verdict === "till_on") {
+    return fail("transition_not_allowed");
+  }
+  return jsonResponse({ error: "not_authorized" }, 403);
 }
 
 // ---------------------------------------------------------------------------
@@ -290,9 +327,14 @@ async function handleStaffCreate(
     return fail(resolved.failure.code, { venue: resolved.failure.venue });
   }
   const ctx = resolved.context;
-  if (!(await callerIsBrandMember(supabase, ctx.brandId, userId))) {
-    return jsonResponse({ error: "not_authorized" }, 403);
-  }
+  const createGuard = await padGuard(supabase, {
+    action: "create",
+    orderId: null,
+    sessionId,
+    venueId: ctx.servingVenueId,
+    userId,
+  });
+  if (createGuard !== "ok") return padGuardRefusal(createGuard);
 
   const menu = await loadMenuSnapshot(supabase, {
     brandId: ctx.brandId,
@@ -594,9 +636,16 @@ async function handleSettle(
     .maybeSingle();
   if (error) return fail("internal_error");
   if (!order) return jsonResponse({ error: "not_found" }, 404);
-  if (!(await callerIsBrandMember(supabase, String(order.brand_id), userId))) {
-    return jsonResponse({ error: "not_authorized" }, 403);
-  }
+  // #4490 O1 fix 1: a Till round, or any order at a venue running the Till, is
+  // never settled here (both settle methods: venue_collected and bill_to_phone).
+  const settleGuard = await padGuard(supabase, {
+    action: "settle",
+    orderId,
+    sessionId: null,
+    venueId: null,
+    userId,
+  });
+  if (settleGuard !== "ok") return padGuardRefusal(settleGuard);
   if (order.payment_status !== "pending") {
     return fail("transition_not_allowed");
   }
@@ -1097,6 +1146,11 @@ function mapTabRpcError(message: string): Response {
     return fail("tab_bill_already_sent");
   }
   if (message.includes("tab_has_mingla_orders")) {
+    return fail("transition_not_allowed");
+  }
+  // #4490 O1 fix 1: the Till runs at this venue, or the tab's check already
+  // holds Till money. The pad says what it always says for a moved-on order.
+  if (message.includes("tab_on_till")) {
     return fail("transition_not_allowed");
   }
   if (message.includes("invalid_settlement_method")) {

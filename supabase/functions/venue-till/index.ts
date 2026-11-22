@@ -18,6 +18,9 @@
 //   pay_cash  { saleId, amountMinor, tipMinor, cashGivenMinor, clientRequestId, expectedVersion }
 //   pay_own_machine { saleId, amountMinor, tipMinor, clientRequestId, expectedVersion }
 //   refund    { paymentId, amountMinor, tipMinor, reason, restock, clientRequestId }
+//             | { lineId, reason, clientRequestId }   (a paid offer line, in full:
+//               the money comes back and its booking is cancelled)
+//   servers   {}                                            → { servers } (who may take a check over)
 //   checks    {}                                            → { open, paid }
 //   sale      { saleId }                                    → sale
 //   receipt   { paymentId, phone?, phoneCountryIso?, email? } → { queued, sendsLeft }
@@ -98,6 +101,16 @@ export const TILL_SAFE_CODES = [
   "guest_list_reduced_window_closed",
   "guest_list_reduced_price_invalid",
   "admit_count_invalid",
+  // #4490 O1 fix 1: one bill with the old pad; one arrival per open check;
+  // refusals the payment path used to answer 500.
+  "till_tab_settled_on_pad",
+  "till_round_settled_elsewhere",
+  "guest_list_entry_on_check",
+  "guest_list_arrived_invalid",
+  "offer_option_unavailable",
+  "offer_guests_out_of_range",
+  "till_refund_line_invalid",
+  "till_line_not_paid",
   "not_authorized",
   "venue_not_found",
 ] as const;
@@ -760,6 +773,38 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       }
 
       case "refund": {
+        // A paid offer line, refunded in full: the money comes back from the
+        // check's cash and own-machine payments, then the booking is cancelled
+        // through the venue offer cancel path (spec 08 §3 O1 Refunds).
+        if (body.lineId != null) {
+          const lineId = str(body.lineId);
+          const reason = str(body.reason).trim();
+          const requestId = str(body.clientRequestId);
+          if (
+            !UUID.test(lineId) || !UUID.test(requestId) || reason.length < 1 ||
+            reason.length > 60 || body.paymentId != null || body.amountMinor != null
+          ) {
+            return json(400, { code: "till_invalid_payload" });
+          }
+          const ownsLine = await client.from("venue_till_lines")
+            .select("id, venue_till_sales!inner(venue_id)")
+            .eq("id", lineId).maybeSingle();
+          if (
+            ownsLine.error || !ownsLine.data ||
+            (ownsLine.data as Record<string, { venue_id?: string }>).venue_till_sales
+                ?.venue_id !== venueId
+          ) {
+            return json(404, { code: "till_line_not_found" });
+          }
+          const r = await rpc("issue_4490_till_refund_line", {
+            p_line_id: lineId,
+            p_actor: userId,
+            p_device_user: userId,
+            p_reason: reason,
+            p_client_request_id: requestId,
+          });
+          return r.error ? tillFailure(r.error) : ok(r.data);
+        }
         const paymentId = str(body.paymentId);
         const amount = minor(body.amountMinor ?? 0);
         const tip = minor(body.tipMinor ?? 0);
@@ -807,6 +852,14 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
             p_client_request_id: requestId,
           });
         return r.error ? tillFailure(r.error) : ok(r.data);
+      }
+
+      case "servers": {
+        const r = await rpc("issue_4490_till_servers", {
+          p_venue_id: venueId,
+          p_actor: userId,
+        });
+        return r.error ? tillFailure(r.error) : ok({ servers: r.data });
       }
 
       case "receipt": {
