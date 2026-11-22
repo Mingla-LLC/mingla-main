@@ -182,3 +182,24 @@ Deno.test("#3645 the cancel wording only applies to the Stripe cap kind", () => 
   );
   assertEquals(copy.type, "ops.payout_release_waiting_for_bank");
 });
+
+Deno.test("#3645 the sweep's alert sender words every outbox row through the cancel-aware copy", async () => {
+  const sweep = await Deno.readTextFile(
+    new URL("../../payout-release-sweep/index.ts", import.meta.url),
+  );
+  const start = sweep.indexOf("async function notifyAttemptCap(");
+  const end = sweep.indexOf("\n}\n", start);
+  assertEquals(start > 0 && end > start, true, "notifyAttemptCap found");
+  const sender = sweep.slice(start, end);
+  // Reverting to payoutReleaseAlertCopy(alertKind) would silently bring back
+  // "exhausted 10 definitive payout attempts" for a canceled payout.
+  assertEquals(
+    sender.split("const copy = payoutReleaseAlertCopyFor(alertKind, message);")
+      .length,
+    2,
+  );
+  assertEquals(sender.includes("payoutReleaseAlertCopy(alertKind)"), false);
+  // The dedupe key is per copy type, so a cancel and a real cap alert for the
+  // same release are separate notifications.
+  assertEquals(sender.includes("`${copy.type}:${release.release_id}`"), true);
+});
