@@ -45,9 +45,20 @@ Deno.test("F1-PG2 create asks the guard with the sitting it would join", () => {
   assert(create.includes("sessionId,"));
 });
 
-Deno.test("F1-PG3 brand membership alone is no longer the pad's floor", () => {
+Deno.test("F1-PG3 brand membership alone is no longer the pad's floor (only while the guard is not deployed)", () => {
   assertEquals(source.includes("callerIsBrandMember"), false);
   assert(source.includes('supabase.rpc("issue_4490_pad_guard"'));
+  const guard = source.slice(
+    source.indexOf("async function padGuard"),
+    source.indexOf("function padGuardRefusal"),
+  );
+  // The membership read runs only when the guard function does not exist.
+  assertEquals(guard.match(/await memberBeforeTheTill\(/g)?.length, 1);
+  assert(
+    /error\.code === "PGRST202"\) \{\s*return \(await memberBeforeTheTill/.test(
+      guard,
+    ),
+  );
 });
 
 Deno.test("F1-PG4 refusals answer with codes an installed pad already shows; a failed guard read refuses", () => {

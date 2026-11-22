@@ -223,7 +223,10 @@ type PadGuardVerdict =
 /**
  * #4490 spec 08 O1 fix 1 — the pad's floor and the Till's ownership, decided
  * by the database (issue_4490_pad_guard). Fails CLOSED: a broken read is a
- * refusal, never a pass.
+ * refusal, never a pass. One exception keeps deploy order safe: while the
+ * guard does not exist yet (this function deployed before migration
+ * 20280809594490), no Till check can exist either, so main's rule applies
+ * (an accepted brand member).
  */
 async function padGuard(
   supabase: ServiceClient,
@@ -232,6 +235,7 @@ async function padGuard(
     orderId: string | null;
     sessionId: string | null;
     venueId: string | null;
+    brandId: string;
     userId: string;
   },
 ): Promise<PadGuardVerdict> {
@@ -243,6 +247,11 @@ async function padGuard(
     p_actor: input.userId,
   });
   if (error) {
+    if (error.code === "PGRST202") {
+      return (await memberBeforeTheTill(supabase, input.brandId, input.userId))
+        ? "ok"
+        : "not_authorized";
+    }
     console.error("[venue-order-staff] pad guard failed", error.message);
     return "not_authorized";
   }
@@ -258,6 +267,27 @@ async function padGuard(
       .includes(verdict)
     ? verdict
     : "not_authorized") as PadGuardVerdict;
+}
+
+/** Main's floor, used only while the guard is not deployed (see padGuard). */
+async function memberBeforeTheTill(
+  supabase: ServiceClient,
+  brandId: string,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("brand_team_members")
+    .select("id")
+    .eq("brand_id", brandId)
+    .eq("user_id", userId)
+    .is("removed_at", null)
+    .not("accepted_at", "is", null)
+    .maybeSingle();
+  if (error) {
+    console.error("[venue-order-staff] membership read failed", error.message);
+    return false;
+  }
+  return data !== null;
 }
 
 /** The answer an installed pad already knows for each refusal. */
@@ -339,6 +369,7 @@ async function handleStaffCreate(
     orderId: null,
     sessionId,
     venueId: ctx.servingVenueId,
+    brandId: ctx.brandId,
     userId,
   });
   if (createGuard !== "ok") return padGuardRefusal(createGuard);
@@ -650,6 +681,7 @@ async function handleSettle(
     orderId,
     sessionId: null,
     venueId: null,
+    brandId: String(order.brand_id),
     userId,
   });
   if (settleGuard !== "ok") return padGuardRefusal(settleGuard);
