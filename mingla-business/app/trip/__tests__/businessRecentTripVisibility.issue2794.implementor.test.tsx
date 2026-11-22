@@ -93,6 +93,20 @@ jest.mock("../../../src/components/trip/EditPublishedTripScreen", () => ({
       testID: "canonical-trip-editor-visible",
     }),
 }));
+// #4522 — the 4-step builder (tripBuilderV2, default on) names the trip in a
+// start gate before the server draft exists; the eight-step fallback (flag off)
+// still creates the draft as soon as the route mounts. Both paths are pinned.
+let mockBuilderV2 = false;
+let mockStartGateProps: { onStart: (title: string) => Promise<void> } | null = null;
+jest.mock("../../../src/config/featureFlags", () => ({
+  isFeatureEnabled: (key: string) => (key === "tripBuilderV2" ? mockBuilderV2 : false),
+}));
+jest.mock("../../../src/components/trip/TripStartGate", () => ({
+  TripStartGate: (props: { onStart: (title: string) => Promise<void> }) => {
+    mockStartGateProps = props;
+    return React.createElement("TripStartGate", { testID: "trip-start-gate" });
+  },
+}));
 jest.mock("../../../src/components/ui/Button", () => ({
   Button: () => React.createElement("Button"),
 }));
@@ -106,9 +120,62 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockRouteId = "d_local-trip";
   mockResolveCreate = null;
+  mockBuilderV2 = false;
+  mockStartGateProps = null;
 });
 
-test("local placeholder records zero opens, then visible server editor records exactly one", async () => {
+test("4-step builder: the start gate records zero opens and creates nothing until Start, then the visible server editor records exactly one", async () => {
+  mockBuilderV2 = true;
+  let tree: any;
+  await act(async () => {
+    tree = TestRenderer.create(<TripEditRoute />);
+    await Promise.resolve();
+  });
+
+  expect(tree.root.findByProps({ testID: "trip-start-gate" })).toBeDefined();
+  expect(mockCreateTripDraft).not.toHaveBeenCalled();
+  expect(mockOpen).not.toHaveBeenCalled();
+
+  let started: Promise<void> | null = null;
+  await act(async () => {
+    started = mockStartGateProps!.onStart("Lagos weekend");
+    await Promise.resolve();
+  });
+  expect(mockCreateTripDraft).toHaveBeenCalledWith({
+    brandId: "brand-a",
+    initialTitle: "Lagos weekend",
+  });
+  expect(mockOpen).not.toHaveBeenCalled();
+
+  await act(async () => {
+    mockResolveCreate?.({ id: mockServerId });
+    await started;
+  });
+  expect(mockPromote).toHaveBeenCalledWith({
+    userId: "user-a",
+    brandId: "brand-a",
+    entityType: "trip",
+    localId: "d_local-trip",
+    serverId: mockServerId,
+  });
+  expect(mockReplace).toHaveBeenCalledWith(`/trip/${mockServerId}/edit`);
+  expect(mockOpen).not.toHaveBeenCalled();
+
+  mockRouteId = mockServerId;
+  await act(async () => {
+    tree.update(<TripEditRoute />);
+    await Promise.resolve();
+  });
+
+  expect(
+    tree.root.findByProps({ testID: "canonical-trip-editor-visible" }),
+  ).toBeDefined();
+  expect(mockOpen).toHaveBeenCalledTimes(1);
+  expect(mockOpen).toHaveBeenCalledWith(mockServerId);
+  tree.unmount();
+});
+
+test("eight-step fallback (tripBuilderV2 off): local placeholder records zero opens, then visible server editor records exactly one", async () => {
   let tree: any;
   await act(async () => {
     tree = TestRenderer.create(<TripEditRoute />);
