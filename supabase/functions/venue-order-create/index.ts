@@ -831,6 +831,22 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       console.error("[venue-order-create] discount reserve failed", error);
       return fail("internal_error");
     }
+    // #3645 (review of #4560): the reservation checks the guest's own
+    // quoteDigest, not necessarily the quote priced above, so it can hand back
+    // a stronger discount and a total that is now under the provider minimum.
+    // Check the final total again; on refusal, give the reserved uses back
+    // before answering. Still before any row write or provider call.
+    if (movesMoney) {
+      const reservedRefusal = venueOrderProviderFloorRefusal(
+        money.totalCents,
+        venueOrderChargeCurrency(routing.provider, settlementCurrency),
+        "guest",
+      );
+      if (reservedRefusal) {
+        await releaseDiscountUses();
+        return jsonResponse(reservedRefusal.body, reservedRefusal.status);
+      }
+    }
   }
 
   let referralAttribution: ReferrerResolution;

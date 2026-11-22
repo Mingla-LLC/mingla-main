@@ -185,6 +185,57 @@ Deno.test("#3645 venue-order-create: the guest floor runs on the charged total i
   }
 });
 
+Deno.test("#3645 venue-order-create: a discount reservation that lowers the total is checked again, hands the uses back, and refuses before any row or provider call", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../../venue-order-create/index.ts", import.meta.url),
+  );
+  const recheck = `if (movesMoney) {
+      const reservedRefusal = venueOrderProviderFloorRefusal(
+        money.totalCents,
+        venueOrderChargeCurrency(routing.provider, settlementCurrency),
+        "guest",
+      );
+      if (reservedRefusal) {
+        await releaseDiscountUses();
+        return jsonResponse(reservedRefusal.body, reservedRefusal.status);
+      }
+    }`;
+  assertEquals(source.split(recheck).length, 2, "exactly one post-reservation recheck");
+  const at = source.indexOf(recheck);
+  // It reads the total the reservation just priced…
+  const repriced = source.indexOf(
+    "({ discountedCart, money, notices, pricingBreakdown } = pricedDiscount);",
+  );
+  assert(repriced > source.indexOf("callReserveDiscountUses(supabase, {"));
+  assert(at > repriced, "recheck must follow the reservation's repricing");
+  // …inside the discount branch (only a reservation can change the total)…
+  const branch = source.indexOf("if (discountedCart.discountCents > 0) {");
+  assert(branch >= 0 && branch < repriced);
+  assert(at < source.indexOf("let referralAttribution: ReferrerResolution;", repriced));
+  // …and still before any row write or provider call.
+  for (
+    const later of [
+      '.from("venue_order_sessions")\n      .insert(',
+      "await insertVenueOrderRow(",
+      "paystackInitializeTransaction({",
+      "checkout.sessions.create(",
+      "paymentIntents.create(",
+    ]
+  ) {
+    assert(source.indexOf(later) > at, `recheck must precede ${later}`);
+  }
+  // The release really hands the reserved uses back for this order.
+  const release = between(
+    source,
+    "const releaseDiscountUses = async (): Promise<void> => {",
+    "};",
+  );
+  assert(release.includes("if (!discountUsesReserved) return;"));
+  assert(
+    release.includes('callReleaseDiscountUses(supabase, "venue_order", orderId)'),
+  );
+});
+
 Deno.test("#3645 venue-order-staff: billToPhone refuses below the floor before the order moves to Mingla or a provider is called", async () => {
   const source = await Deno.readTextFile(
     new URL("../../venue-order-staff/index.ts", import.meta.url),
