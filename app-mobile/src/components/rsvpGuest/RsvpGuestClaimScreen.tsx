@@ -13,8 +13,9 @@
  * with a way forward.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import * as Haptics from "expo-haptics";
 import QRCode from "react-native-qrcode-svg";
 import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 import type { PhoneInputTheme } from "@mingla/phone-input";
@@ -31,7 +32,15 @@ import {
 } from "../programs/ProgramUi";
 import { PhoneInput } from "../onboarding/PhoneInput";
 import { useAppStore } from "../../store/appStore";
-import { sendOtp, verifyOtp } from "../../services/otpService";
+import { sendOtp, verifyOtp, type OtpChannel } from "../../services/otpService";
+import {
+  phoneStepSendChannel,
+  SUPPORT_EMAIL,
+  SUPPORT_MAILTO,
+  withRefusedChannel,
+} from "../../utils/edgeFunctionError";
+import { mixpanelService } from "../../services/mixpanelService";
+import { logger } from "../../utils/logger";
 import {
   claimRsvpGuestLink,
   releaseRsvpGuestLink,
@@ -60,6 +69,11 @@ type Phase =
   | { kind: "released"; title: string; body: string };
 
 const C = PROGRAM_COLORS;
+// #4561 copy (approved on the issue; this screen keeps its strings inline).
+const SMS_REFUSED_TEXT = "We can't text this number.";
+const ALL_REFUSED_TEXT =
+  "We couldn't reach this number by text or call. Try a different number, or email us and we'll help.";
+const CALL_CODE_PROMPT = "Enter the 6-digit code we're calling you with.";
 // The dark program surface for the shared phone field.
 // #4508 R2 / round 8: room under the focused number field for the whole
 // "Text me a code" button above the Done bar. On a device the floating Done
@@ -104,6 +118,9 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
   const [phoneRaw, setPhoneRaw] = useState("");
   const [phoneCountry, setPhoneCountry] = useState<string | null>(null);
   const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
+  // #4561: channels refused for the typed number, and how the code went out.
+  const [refused, setRefused] = useState<{ number: string; channels: OtpChannel[] }>({ number: "", channels: [] });
+  const [sentChannel, setSentChannel] = useState<OtpChannel>("sms");
   const [otp, setOtp] = useState("");
   const [pass, setPass] = useState<{ qr: string; name: string } | null>(null);
   const [passError, setPassError] = useState(false);
@@ -217,23 +234,62 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
   const last4 = resolved?.phoneLast4 ?? null;
   const typedMatches = typedE164 !== null && (last4 === null || typedE164.replace(/\D/g, "").endsWith(last4));
 
+  const refusedChannels = useMemo<OtpChannel[]>(
+    () => (typedE164 !== null && refused.number === typedE164 ? refused.channels : []),
+    [refused, typedE164],
+  );
+  // #4561: text first; a call once text is refused; nothing once both are.
+  const sendChannel = phoneStepSendChannel(refusedChannels);
+  const allRefused = sendChannel === null;
+
   const sendCode = useCallback(async (): Promise<void> => {
     if (busy !== null) return;
     if (typedE164 === null) { setError("Enter the number this invite was sent to."); return; }
     if (!typedMatches) { setError(`That's not the number ending ${last4}. Enter the number the invite was sent to.`); return; }
+    if (sendChannel === null) return;
     setBusy("send");
     setError(null);
-    const result = await sendOtp(typedE164);
+    const result = sendChannel === "sms" ? await sendOtp(typedE164) : await sendOtp(typedE164, sendChannel);
     if (!mounted.current) return;
     setBusy(null);
-    if (!result.success) { setError(result.error ?? "We couldn't send the code. Try again."); return; }
+    if (!result.success) {
+      mixpanelService.track("Phone Code Send Failed", {
+        surface: "rsvp_claim",
+        channel: sendChannel,
+        failure_class: result.code ?? "send_failed",
+      });
+      if (result.code === "channel_unavailable") {
+        const next = withRefusedChannel(refusedChannels, result.channel ?? sendChannel);
+        setRefused({ number: typedE164, channels: next });
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setError(phoneStepSendChannel(next) === null ? ALL_REFUSED_TEXT : SMS_REFUSED_TEXT);
+        return;
+      }
+      setError(result.error ?? "We couldn't send the code. Try again.");
+      return;
+    }
+    if (sendChannel !== "sms") {
+      mixpanelService.track("Phone Code Fallback Sent", { surface: "rsvp_claim", channel: sendChannel });
+    }
+    setSentChannel(sendChannel);
     setCodeSentTo(typedE164);
     setOtp("");
-  }, [busy, typedE164, typedMatches, last4]);
+  }, [busy, typedE164, typedMatches, last4, sendChannel, refusedChannels]);
+
+  const emailSupport = useCallback((): void => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Linking.openURL(SUPPORT_MAILTO).catch((e: unknown) => {
+      // The address is printed under the button for phones with no mail app.
+      logger.error("[RsvpGuestClaim] support email could not open", { error: String(e) });
+    });
+  }, []);
 
   const verifyAndClaim = useCallback(async (): Promise<void> => {
     if (busy !== null || codeSentTo === null) return;
-    if (!/^\d{6}$/.test(otp.trim())) { setError("Enter the 6-digit code we texted you."); return; }
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setError(sentChannel === "call" ? CALL_CODE_PROMPT : "Enter the 6-digit code we texted you.");
+      return;
+    }
     setBusy("verify");
     setError(null);
     const result = await verifyOtp(codeSentTo, otp.trim());
@@ -241,7 +297,7 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
     setBusy(null);
     if (!result.success) { setError(result.error ?? "That code didn't work. Check it and try again."); return; }
     await claim();
-  }, [busy, codeSentTo, otp, claim]);
+  }, [busy, codeSentTo, otp, claim, sentChannel]);
 
   // ── render ──
   if (phase.kind === "loading") {
@@ -381,10 +437,10 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
                     showDoneAccessory={false}
                   />
                   <ProgramButton
-                    label="Text me a code"
+                    label={sendChannel === "call" ? "Call me with the code" : "Text me a code"}
                     onPress={() => void sendCode()}
                     busy={busy === "send"}
-                    disabled={busy !== null && busy !== "send"}
+                    disabled={allRefused || (busy !== null && busy !== "send")}
                     variant="secondary"
                     style={styles.gap}
                   />
@@ -415,6 +471,18 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
           ) : null}
           {sentence ? <Text style={[styles.muted, styles.gap]}>{sentence}</Text> : null}
           {error ? <ProgramNotice tone="error" text={error} /> : null}
+          {mode === "confirm_number" && codeSentTo === null && allRefused ? (
+            <View>
+              <ProgramButton
+                label="Email support"
+                icon="mail"
+                variant="secondary"
+                onPress={emailSupport}
+                style={styles.gap}
+              />
+              <Text style={[styles.muted, styles.supportAddress]} selectable>{SUPPORT_EMAIL}</Text>
+            </View>
+          ) : null}
           <ProgramButton
             label="Get my pass"
             onPress={() => void (mode === "one_tap" ? claim() : verifyAndClaim())}
@@ -449,6 +517,7 @@ const styles = StyleSheet.create({
   qrWrap: { alignItems: "center", gap: 10, paddingVertical: 8 },
   qrCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14 },
   passName: { color: C.text, fontSize: 15, fontWeight: "700" },
+  supportAddress: { marginTop: 8, textAlign: "center" },
 });
 
 export default RsvpGuestClaimScreen;

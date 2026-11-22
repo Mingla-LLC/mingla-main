@@ -36,7 +36,14 @@ import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGe
 // forward/limit=1 single-shot. inBottomSheet={false} because onboarding is a
 // plain SafeAreaView+ScrollView, not a gorhom <BottomSheet>.
 import { AddressInput, type PlaceDetails } from './location/AddressInput'
-import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
+import { sendOtp, verifyOtp, OtpChannel, type SendOtpResult } from '../services/otpService'
+import {
+  otpPickerChannels,
+  phoneStepSendChannel,
+  SUPPORT_EMAIL,
+  SUPPORT_MAILTO,
+  withRefusedChannel,
+} from '../utils/edgeFunctionError'
 // META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent writer + verbatim disclosure.
 import { recordConsent } from '../services/consentService'
 import {
@@ -1060,6 +1067,13 @@ const OnboardingFlow = ({
   const [activeChannel, setActiveChannel] = useState<OtpChannel>('sms')
   const [channelConfirmation, setChannelConfirmation] = useState<string | null>(null)
   const [showChannelOptions, setShowChannelOptions] = useState(false)
+  // #4561: channels the provider refused, remembered per number so a failed
+  // resend can never fall back to a channel that cannot work.
+  const [refusedSends, setRefusedSends] = useState<{ number: string; channels: OtpChannel[] }>({ number: '', channels: [] })
+  // #4561: which help to show under the phone error (support route).
+  const [phoneErrorKind, setPhoneErrorKind] = useState<'phone_taken' | 'channel_refused' | 'all_refused' | null>(null)
+  const [otpAllRefused, setOtpAllRefused] = useState(false)
+  const [otpSaveFailed, setOtpSaveFailed] = useState<string | null>(null)
   const [valuePropBeat, setValuePropBeat] = useState(0)
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'settings' | 'error'>('idle')
 
@@ -1459,6 +1473,54 @@ const OnboardingFlow = ({
     return /^\+[1-9]\d{1,14}$/.test(e164)
   }, [buildE164])
 
+  // ─── #4561: refusal memory and phone-step failure display ───
+  const refusedChannels = useMemo<OtpChannel[]>(
+    () => (refusedSends.number === buildE164() ? refusedSends.channels : []),
+    [refusedSends, buildE164],
+  )
+  const recordRefusal = useCallback((e164: string, channel: OtpChannel): OtpChannel[] => {
+    const prior = refusedSends.number === e164 ? refusedSends.channels : []
+    const next = withRefusedChannel(prior, channel)
+    setRefusedSends({ number: e164, channels: next })
+    return next
+  }, [refusedSends])
+  const announceError = useCallback((message: string) => {
+    // Android reads the error line's live region; iOS needs an explicit announce.
+    if (Platform.OS === 'ios') AccessibilityInfo.announceForAccessibility(message)
+  }, [])
+  const trackSendFailure = useCallback((result: SendOtpResult, channel: OtpChannel) => {
+    mixpanelService.track('Phone Code Send Failed', {
+      surface: 'onboarding',
+      channel,
+      failure_class: result.code ?? 'send_failed',
+    })
+  }, [])
+  const showPhoneSendFailure = useCallback((result: SendOtpResult, channel: OtpChannel, e164: string) => {
+    trackSendFailure(result, channel)
+    if (result.code === 'channel_unavailable') {
+      const refused = recordRefusal(e164, result.channel ?? channel)
+      const allRefused = phoneStepSendChannel(refused) === null
+      const message = allRefused
+        ? t('onboarding:phone.error_all_refused')
+        : t('onboarding:phone.error_sms_refused')
+      setPhoneError(message)
+      setPhoneErrorKind(allRefused ? 'all_refused' : 'channel_refused')
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+      announceError(message)
+      return
+    }
+    const taken = result.code === 'phone_taken' || !!result.error?.includes('already associated')
+    setPhoneError(result.error || "Couldn't send code. Try again.")
+    setPhoneErrorKind(taken ? 'phone_taken' : null)
+  }, [trackSendFailure, recordRefusal, t, announceError])
+  const openSupportEmail = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+    Linking.openURL(SUPPORT_MAILTO).catch((err: unknown) => {
+      // The address is printed under the button for phones with no mail app.
+      logger.onboarding('Support email could not open', { error: String(err) })
+    })
+  }, [])
+
   // ─── Send OTP ───
   const handleSendOtp = useCallback(async () => {
     logger.action('Send OTP pressed')
@@ -1473,11 +1535,16 @@ const OnboardingFlow = ({
       setPhoneError('Check that number — something looks off.')
       return
     }
-    setPhoneError(null)
-    setSendingOtp(true)
     const e164 = buildE164()
-    logger.onboarding('Sending OTP', { phone: e164.slice(0, 4) + '****' })
-    const result = await sendOtp(e164)
+    const refusedForNumber = refusedSends.number === e164 ? refusedSends.channels : []
+    const sendChannel = phoneStepSendChannel(refusedForNumber)
+    if (sendChannel === null) return // #4561 Q-1: text and call both refused for this number
+    setPhoneError(null)
+    setPhoneErrorKind(null)
+    setSendingOtp(true)
+    logger.onboarding('Sending OTP', { phone: e164.slice(0, 4) + '****', channel: sendChannel })
+    // The first channel is SMS unless the provider refused it for this number.
+    const result = sendChannel === 'sms' ? await sendOtp(e164) : await sendOtp(e164, sendChannel)
     setSendingOtp(false)
     if (result.success) {
       // Server confirmed phone is already verified — skip OTP, mark verified
@@ -1487,23 +1554,29 @@ const OnboardingFlow = ({
         goToSubStep('gender_identity')
         return
       }
-      setActiveChannel('sms')
+      if (sendChannel !== 'sms') {
+        mixpanelService.track('Phone Code Fallback Sent', { surface: 'onboarding', channel: sendChannel })
+      }
+      setActiveChannel(sendChannel)
       setChannelConfirmation(null)
       setShowChannelOptions(false)
+      setOtpAllRefused(false)
+      setOtpSaveFailed(null)
       setResendCountdown(30)
       setOtpAttempts(0)
       goNext() // advance to OTP sub-step
     } else {
-      setPhoneError(result.error || "Couldn't send code. Try again.")
+      showPhoneSendFailure(result, sendChannel, e164)
     }
-  }, [isPhoneValid, buildE164, goNext, data.phoneVerified, goToSubStep])
+  }, [isPhoneValid, buildE164, goNext, data.phoneVerified, goToSubStep, refusedSends, showPhoneSendFailure])
 
   // ─── Resend OTP via Channel (replaces old SMS-only handleResendOtp) ───
   const handleResendViaChannel = useCallback(async (channel: OtpChannel) => {
     logger.action(`Resend OTP via ${channel}`)
     setSendingOtp(true)
     setChannelConfirmation(null)
-    const result = await sendOtp(buildE164(), channel)
+    const e164 = buildE164()
+    const result = await sendOtp(e164, channel)
     setSendingOtp(false)
     if (result.success) {
       // Server confirmed phone is already verified — skip OTP, mark verified
@@ -1512,6 +1585,9 @@ const OnboardingFlow = ({
         setData((prev) => ({ ...prev, phoneVerified: true }))
         goToSubStep('gender_identity')
         return
+      }
+      if (refusedChannels.length > 0 && channel !== 'sms') {
+        mixpanelService.track('Phone Code Fallback Sent', { surface: 'onboarding', channel })
       }
       setActiveChannel(channel)
       setShowChannelOptions(false)
@@ -1528,9 +1604,33 @@ const OnboardingFlow = ({
           break
       }
     } else {
+      trackSendFailure(result, channel)
+      // #4561: a refused channel is remembered for this number. When nothing
+      // is left to offer, the code screen shows the way out (Q-3); otherwise
+      // the phone step offers the channel that can still work (SC-4).
+      if (result.code === 'channel_unavailable') {
+        const refused = recordRefusal(e164, result.channel ?? channel)
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
+        if (otpPickerChannels(refused).length === 0) {
+          const message = t('onboarding:phone.error_all_refused')
+          setShowChannelOptions(false)
+          setOtpAllRefused(true)
+          announceError(message)
+          return
+        }
+        const message = t('onboarding:phone.error_sms_refused')
+        setPhoneError(message)
+        setPhoneErrorKind('channel_refused')
+        setOtpCode('')
+        setOtpAttempts(0)
+        announceError(message)
+        goToSubStep('phone')
+        return
+      }
       // Phone claimed by another user — navigate back to phone step with error
-      if (result.error?.includes('already associated')) {
-        setPhoneError(result.error)
+      if (result.code === 'phone_taken' || result.error?.includes('already associated')) {
+        setPhoneError(result.error ?? null)
+        setPhoneErrorKind('phone_taken')
         setOtpCode('')
         setOtpAttempts(0)
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
@@ -1542,10 +1642,11 @@ const OnboardingFlow = ({
         setShowChannelOptions(false)
       }
       setPhoneError(result.error || "Couldn't send code. Try again.")
+      setPhoneErrorKind(null)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
       goToSubStep('phone')
     }
-  }, [buildE164, goToSubStep])
+  }, [buildE164, goToSubStep, refusedChannels, trackSendFailure, recordRefusal, t, announceError])
 
   // Thin wrapper for backward compat (auto-resend references)
   const handleResendOtp = useCallback(() => {
@@ -1634,10 +1735,18 @@ const OnboardingFlow = ({
         // Phone already claimed by another user — show error on phone step, not OTP step
         if (result.error?.includes('already associated')) {
           setPhoneError(result.error)
+          setPhoneErrorKind('phone_taken')
           setOtpCode('')
           setOtpAttempts(0)
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
           goToSubStep('phone')
+          return
+        }
+
+        // #4561: the code was right but the save failed; offer support.
+        if (result.code === 'save_failed' || result.error?.includes('save failed')) {
+          setOtpSaveFailed(result.error ?? null)
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
           return
         }
 
@@ -2396,7 +2505,17 @@ const OnboardingFlow = ({
       case 'phone':
         return data.phoneVerified
           ? { label: t('common:continue'), disabled: false, loading: false, onPress: () => goToSubStep('gender_identity'), hide: false }
-          : { label: t('onboarding:phone.cta_send_code'), disabled: !isPhoneValid() || !smsConsentChecked, loading: sendingOtp, onPress: handleSendOtp, hide: false }
+          : {
+            // #4561: after a refused text the button calls; with both refused
+            // it stays disabled until the number changes (Q-1).
+            label: phoneStepSendChannel(refusedChannels) === 'call'
+              ? t('onboarding:phone.cta_call_me')
+              : t('onboarding:phone.cta_send_code'),
+            disabled: !isPhoneValid() || !smsConsentChecked || phoneStepSendChannel(refusedChannels) === null,
+            loading: sendingOtp,
+            onPress: handleSendOtp,
+            hide: false,
+          }
       case 'otp':
         return { label: t('onboarding:otp.cta_verify'), disabled: otpCode.length < 6, loading: otpLoading, onPress: () => handleVerifyOtp(otpCode), hide: true }
       case 'gender_identity':
@@ -2487,9 +2606,27 @@ const OnboardingFlow = ({
       default:
         return { label: t('common:next'), disabled: false, loading: false, onPress: handleGoNext, hide: false }
     }
-  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep, launchGate, launchGateSelectedCity, launchGateWriting, handleLaunchGateConfirmCity, handleLaunchGateProceedWithGps, handleLaunchGateRetry, onboardingMode, claimNamePrefilled])
+  }, [navState, data, otpCode, otpLoading, sendingOtp, isPhoneValid, smsConsentChecked, refusedChannels, valuePropBeat, locationStatus, selectedLocation, savingPrefs, prefsSaveError, handleGoNext, handleSendOtp, handleVerifyOtp, handleLocationRequest, handleManualLocation, handleSavePreferences, handleSaveIdentity, persistStep, goToSubStep, launchGate, launchGateSelectedCity, launchGateWriting, handleLaunchGateConfirmCity, handleLaunchGateProceedWithGps, handleLaunchGateRetry, onboardingMode, claimNamePrefilled])
 
   // ─── Render Step Content ───
+  // #4561: the one support route (Q-2/Q-8): mailto plus the address as text,
+  // so a phone with no mail app still shows where to write.
+  const renderEmailSupport = () => (
+    <View style={styles.channelOptions}>
+      <Pressable
+        style={styles.channelButton}
+        onPress={openSupportEmail}
+        accessibilityRole="button"
+        accessibilityLabel={t('onboarding:phone.email_support')}
+        accessibilityHint={t('onboarding:phone.email_support_hint')}
+      >
+        <Icon name="mail" size={18} color={colors.text.secondary} />
+        <Text style={styles.channelButtonText}>{t('onboarding:phone.email_support')}</Text>
+      </Pressable>
+      <Text style={styles.supportAddress} selectable>{SUPPORT_EMAIL}</Text>
+    </View>
+  )
+
   const renderContent = () => {
     const { step, subStep } = navState
     logger.onboarding(`Rendering: Step ${step} / ${subStep}`)
@@ -2667,11 +2804,17 @@ const OnboardingFlow = ({
             <PhoneInput
               value={data.phoneNumber}
               countryCode={data.phoneCountryCode}
-              onChangePhone={(phone) => { setData((p) => ({ ...p, phoneNumber: phone })); setPhoneError(null) }}
+              onChangePhone={(phone) => { setData((p) => ({ ...p, phoneNumber: phone })); setPhoneError(null); setPhoneErrorKind(null); setOtpAllRefused(false) }}
               onChangeCountry={(code) => setData((p) => ({ ...p, phoneCountryCode: code }))}
               error={phoneError}
               disabled={sendingOtp}
             />
+            {phoneErrorKind === 'phone_taken' && phoneError ? (
+              <Text style={styles.supportNote}>{t('onboarding:phone.taken_help')}</Text>
+            ) : null}
+            {phoneError && (phoneErrorKind === 'phone_taken' || phoneErrorKind === 'all_refused')
+              ? renderEmailSupport()
+              : null}
             {onboardingMode === 'ticket_first' &&
             pendingClaim?.preferredProof === 'phone' &&
             !claimPhonePrefilled &&
@@ -2725,7 +2868,11 @@ const OnboardingFlow = ({
       return (
         <View>
           <Text style={styles.headline}>{t('onboarding:otp.headline')}</Text>
-          <Text style={styles.body}>{t('onboarding:otp.body', { phone: buildE164() })}</Text>
+          <Text style={styles.body}>
+            {activeChannel === 'call'
+              ? t('onboarding:otp.body_call', { phone: buildE164() })
+              : t('onboarding:otp.body', { phone: buildE164() })}
+          </Text>
           {channelConfirmation && (
             <Text style={styles.channelConfirmation}>{channelConfirmation}</Text>
           )}
@@ -2745,34 +2892,52 @@ const OnboardingFlow = ({
             <Text style={[styles.caption, styles.textCenter]}>{t('onboarding:otp.sending')}</Text>
           ) : (
             <>
-              {resendCountdown > 0 && !showChannelOptions ? (
+              {otpAllRefused ? (
+                // #4561 Q-3: the last allowed channel was refused from the picker.
+                <View accessibilityLiveRegion="polite">
+                  <Text style={styles.errorText} accessibilityRole="alert">
+                    {t('onboarding:phone.error_all_refused')}
+                  </Text>
+                  {renderEmailSupport()}
+                </View>
+              ) : otpSaveFailed ? (
+                <View accessibilityLiveRegion="polite">
+                  <Text style={styles.errorText} accessibilityRole="alert">{otpSaveFailed}</Text>
+                  {renderEmailSupport()}
+                </View>
+              ) : resendCountdown > 0 && !showChannelOptions ? (
                 <View style={styles.resendRow}>
                   <Text style={styles.caption}>{t('onboarding:otp.resend_countdown', { seconds: resendCountdown })}</Text>
                 </View>
               ) : showChannelOptions ? (
                 <View style={styles.channelOptions}>
                   <Text style={styles.channelOptionsLabel}>{t('onboarding:otp.channel_label')}</Text>
-                  <Pressable
-                    style={styles.channelButton}
-                    onPress={() => handleResendViaChannel('sms')}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('onboarding:otp.resend_sms_accessibility')}
-                  >
-                    <Icon name="message-square" size={18} color={colors.text.secondary} />
-                    <Text style={styles.channelButtonText}>{t('onboarding:otp.resend_sms')}</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.channelButton}
-                    onPress={() => handleResendViaChannel('call')}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('onboarding:otp.call_me_accessibility')}
-                  >
-                    <Icon name="call" size={18} color={colors.text.secondary} />
-                    <Text style={styles.channelButtonText}>{t('onboarding:otp.call_me')}</Text>
-                  </Pressable>
+                  {/* #4561: a refused channel is never offered again for this number. */}
+                  {otpPickerChannels(refusedChannels).includes('sms') ? (
+                    <Pressable
+                      style={styles.channelButton}
+                      onPress={() => handleResendViaChannel('sms')}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('onboarding:otp.resend_sms_accessibility')}
+                    >
+                      <Icon name="message-square" size={18} color={colors.text.secondary} />
+                      <Text style={styles.channelButtonText}>{t('onboarding:otp.resend_sms')}</Text>
+                    </Pressable>
+                  ) : null}
+                  {otpPickerChannels(refusedChannels).includes('call') ? (
+                    <Pressable
+                      style={styles.channelButton}
+                      onPress={() => handleResendViaChannel('call')}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('onboarding:otp.call_me_accessibility')}
+                    >
+                      <Icon name="call" size={18} color={colors.text.secondary} />
+                      <Text style={styles.channelButtonText}>{t('onboarding:otp.call_me')}</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
-              {otpError && (
+              {otpError && !otpAllRefused && !otpSaveFailed && (
                 <Text style={styles.errorText}>
                   {otpAttempts >= 3 ? t('onboarding:otp.error_max_attempts') : t('onboarding:otp.error_wrong_code')}
                 </Text>
@@ -4048,6 +4213,7 @@ const styles = StyleSheet.create({
   channelButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
+    minHeight: touchTargets.minimum,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
@@ -4060,6 +4226,18 @@ const styles = StyleSheet.create({
     ...typography.sm,
     fontWeight: fontWeights.medium,
     color: colors.text.primary,
+  },
+  // ─── #4561 support route ───
+  supportNote: {
+    ...typography.sm,
+    color: colors.text.secondary,
+    marginTop: spacing.sm,
+  },
+  supportAddress: {
+    ...typography.sm,
+    color: colors.text.secondary,
+    marginTop: spacing.xs,
+    textAlign: 'center' as const,
   },
   // ─── Value Prop Dots ───
   dotIndicator: {
