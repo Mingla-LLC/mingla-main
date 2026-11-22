@@ -140,6 +140,8 @@ export interface VenueCheckoutFromPurchases {
   readonly booking: VenueCheckoutBookingRef;
   /** The pay modes the booking allows, with the server's amounts (`payModes`); empty = the server decides (balance). */
   readonly payOptions: ReadonlyArray<{ mode: VenuePayMode; amountMinor: number }>;
+  /** #4490 06-W4 fix 2 (W4-R1): the server's reason everything is due now (`fullNowReason`). */
+  readonly fullNowReason?: "balance_due_passed" | "deposit_covers_total" | null;
   readonly venueId: string;
   readonly venueName: string;
   readonly currencyCode: string;
@@ -809,6 +811,11 @@ function CheckoutSession({
             rows.map((r) => <SummaryRow key={r.label} label={r.label} value={r.value} total={r.total === true} muted={r.muted === true} />)
           )}
         </View>
+        {(fromPurchases !== null ? fromPurchases.fullNowReason ?? null : review?.fullNowReason ?? null) === "balance_due_passed" ? (
+          // #4490 06-W4 fix 2 (W4-R1): the offer takes a deposit, but its balance
+          // date has passed, so the server asks for everything now. Say why.
+          <Text style={styles.caption} testID="venue-checkout-full-now">{COPY.fullNowClose}</Text>
+        ) : null}
         {review !== null && review.ref.payModes.includes("deposit") ? (
           <>
             <Label>How to pay</Label>

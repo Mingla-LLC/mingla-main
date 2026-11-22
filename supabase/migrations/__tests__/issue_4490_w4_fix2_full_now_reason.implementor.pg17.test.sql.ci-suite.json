@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "kind": "suite",
+  "path": "supabase/migrations/__tests__/issue_4490_w4_fix2_full_now_reason.implementor.pg17.test.sql",
+  "lane": "migrations",
+  "orderKey": "issue-4490-47-w4-fix2-full-now-reason",
+  "profile": "psql-pg17-post-replay",
+  "database": {
+    "database": "postgres",
+    "user": "supabase_admin",
+    "reset": "suite-owned"
+  }
+}

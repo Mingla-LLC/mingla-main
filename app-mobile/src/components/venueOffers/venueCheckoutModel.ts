@@ -149,6 +149,11 @@ export interface VenueReviewQuote {
   readonly balanceDueAt: string | null;
   /** Private hire: "request" asks first (no payment). */
   readonly mode: "instant" | "request";
+  /**
+   * #4490 06-W4 fix 2 (W4-R1): why the server folded the deposit into one
+   * payment (the balance date has passed, or the deposit is the whole amount).
+   */
+  readonly fullNowReason: "deposit_covers_total" | "balance_due_passed" | null;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -172,6 +177,7 @@ export function parseVenueReviewQuote(raw: unknown): VenueReviewQuote | null {
     depositMinor: modes.includes("deposit") ? plan.depositMinor : null,
     balanceDueAt: plan.balanceDueAt,
     mode: hire !== null && raw.mode !== "instant" ? "request" : "instant",
+    fullNowReason: modes.includes("deposit") ? null : plan.collapsed,
   };
 }
 

@@ -245,6 +245,11 @@ export const VENUE_CHECKOUT_COPY = {
   changed: "Something changed while we were saving. Try again.",
   offline: "You're offline. Check your connection and try again.",
   tryAgain: "Try again",
+  /**
+   * #4490 06-W4 fix 2 (W4-R1): the existing buyer-web line (PackageForm) when
+   * the balance date has passed and the deposit is folded into one payment.
+   */
+  fullNowClose: "This day is close, so it's paid in full now.",
   empty: "Nothing to book here right now.",
   soldOut: "Sold out",
 } as const;

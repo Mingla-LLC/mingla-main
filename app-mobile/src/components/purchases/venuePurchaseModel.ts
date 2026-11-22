@@ -62,7 +62,14 @@ export interface VenueBooking extends EntryBooking {
   exponent: number;
   /** #4490 W4: the pay modes the server allows now, with its amounts (empty once confirmed). */
   payModes: Array<{ mode: "deposit" | "full"; amountMinor: number }>;
+  /**
+   * #4490 06-W4 fix 2 (W4-R1): the server's reason an offer that takes a
+   * deposit asks for everything now (`fullNowReason`); null otherwise.
+   */
+  fullNowReason: VenueFullNowReason | null;
 }
+
+export type VenueFullNowReason = "balance_due_passed" | "deposit_covers_total";
 
 function place(raw: unknown): VenueBookingPlace | null {
   if (!isJson(raw)) return null;
@@ -110,6 +117,8 @@ export function parseVenueBooking(raw: unknown): VenueBooking | null {
       const amount = int(m.amountMinor);
       return amount === null ? [] : [{ mode: m.mode, amountMinor: amount }];
     }),
+    fullNowReason:
+      raw.fullNowReason === "balance_due_passed" || raw.fullNowReason === "deposit_covers_total" ? raw.fullNowReason : null,
   };
 }
 
@@ -231,6 +240,8 @@ export interface VenueBookingPayAction {
   /** The server's amount due now (the deposit when one is offered). */
   amountMinor: number;
   payOptions: Array<{ mode: "deposit" | "full"; amountMinor: number }>;
+  /** #4490 06-W4 fix 2 (W4-R1): why everything is due now, when only "full" is offered. */
+  fullNowReason: VenueFullNowReason | null;
 }
 
 export function venueBookingPayAction(b: VenueBooking): VenueBookingPayAction | null {
@@ -241,10 +252,11 @@ export function venueBookingPayAction(b: VenueBooking): VenueBookingPayAction | 
       label: "Pay to hold your date",
       amountMinor: deposit?.amountMinor ?? b.amountDueNowMinor,
       payOptions: b.payModes.length > 1 ? b.payModes : [],
+      fullNowReason: deposit === undefined ? b.fullNowReason : null,
     };
   }
   if ((b.state === "confirmed" || b.state === "partially_cancelled") && b.balanceDueMinor > 0) {
-    return { label: "Pay the rest", amountMinor: b.balanceDueMinor, payOptions: [] };
+    return { label: "Pay the rest", amountMinor: b.balanceDueMinor, payOptions: [], fullNowReason: null };
   }
   return null;
 }

@@ -17,6 +17,8 @@
 -- TEST-MOD-APPROVED #4490 (06-W6b): the deck venue-type reads (20280809462490) are internal, the lifted
 -- place rule is an invoker helper, and the two base servable RPCs it re-emits keep their classes
 -- (solo internal; the shared-deck intersection callable by signed-in and signed-out, as before).
+-- TEST-MOD-APPROVED #4490 (06-W4 fix 2): the full-now reason (20280809462690) is internal (service role only);
+-- the booking read it patches keeps its class.
 -- TEST-MOD-APPROVED #4490 (06-W4 fix 1): the plan charge owner and its fee lines and period read, and the
 -- remembered-payment-page writer (20280809462590) are internal (service role only); the eight functions that
 -- migration re-emits keep their classes.
@@ -172,6 +174,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_feature_parents(text)', 'helper'),
   ('issue_4490_feature_preset(text)', 'helper'),
   ('issue_4490_feature_setting_on(uuid,text,text)', 'internal'),
+  ('issue_4490_full_now_reason(uuid)', 'internal'),
   ('issue_4490_finalize_followup_payment(uuid,text,text,text,bigint,text,bigint)', 'internal'),
   ('issue_4490_flag_on(text)', 'internal'),
   ('issue_4490_flex_day_summary(uuid,uuid,integer,uuid)', 'internal'),

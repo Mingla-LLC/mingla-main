@@ -244,6 +244,7 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
         holdUntil: booking.holdUntil,
       },
       payOptions: payAction.payOptions,
+      fullNowReason: payAction.fullNowReason,
       venueId: booking.venue.id ?? "",
       venueName: booking.venue.name,
       currencyCode: booking.currencyCode,

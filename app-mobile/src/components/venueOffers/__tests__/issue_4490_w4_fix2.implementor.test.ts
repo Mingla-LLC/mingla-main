@@ -17,6 +17,8 @@
  *       out (never for a stranger who was never signed in)
  *   F-6 the venue route and the Purchases detail use that rule; a signed-out
  *       Purchases venue detail never says "isn't on your account"
+ *   F-7 (W4-R1) the booking read's fullNowReason reaches "Pay to hold your
+ *       date" only when the server offers no deposit; unknown values are dropped
  *
  * FAILS-ON-REVERT: drop VENUE_SESSION_LOST_CODES from step_failed and F-1
  * fails; drop the expiry and F-4 fails; drop the hook from the routes and F-6
@@ -161,5 +163,38 @@ describe("F-6 the routes W4's checkout lives on", () => {
     const missing = src.indexOf("item === null && isVenuePurchaseKind(kind)");
     expect(signedOut).toBeGreaterThan(0);
     expect(signedOut).toBeLessThan(missing);
+  });
+});
+
+describe("F-7 the server's reason everything is due now (W4-R1)", () => {
+  const purchases = require("../../purchases/venuePurchaseModel");
+  const row = (over = {}) => ({
+    groupId: "00000000-4490-4000-8000-0000000004f7",
+    reference: "VB-1",
+    state: "approved_payment_required",
+    offerKind: "private_hire",
+    currencyCode: "NGN",
+    totalMinor: 308000000,
+    totalDueMinor: 308000000,
+    amountDueNowMinor: 308000000,
+    paidMinor: 0,
+    paymentCollection: "mingla",
+    payModes: [{ mode: "full", amountMinor: 308000000 }],
+    fullNowReason: "balance_due_passed",
+    venue: { id: "v", name: "Gameland QA", timezone: "Africa/Lagos" },
+    lines: [],
+    passes: [],
+    ...over,
+  });
+  test("parsed and passed to Pay to hold your date", () => {
+    const b = purchases.parseVenueBooking(row());
+    expect(b.fullNowReason).toBe("balance_due_passed");
+    expect(purchases.venueBookingPayAction(b)).toMatchObject({ label: "Pay to hold your date", amountMinor: 308000000, payOptions: [], fullNowReason: "balance_due_passed" });
+  });
+  test("a deposit offered: no reason on the pay action; unknown values are dropped", () => {
+    const b = purchases.parseVenueBooking(row({ payModes: [{ mode: "deposit", amountMinor: 129000000 }, { mode: "full", amountMinor: 308000000 }], fullNowReason: "balance_due_passed" }));
+    expect(purchases.venueBookingPayAction(b).fullNowReason).toBeNull();
+    expect(purchases.parseVenueBooking(row({ fullNowReason: "whatever" })).fullNowReason).toBeNull();
+    expect(purchases.parseVenueBooking(row({ fullNowReason: undefined })).fullNowReason).toBeNull();
   });
 });

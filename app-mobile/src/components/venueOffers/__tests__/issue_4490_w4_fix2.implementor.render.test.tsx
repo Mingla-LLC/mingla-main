@@ -20,9 +20,15 @@
  *   D1-6 the hold ran out while signed out: the §6 line on step 1, picks kept
  *   D1-7 an ordinary failure still reads "Something went wrong. Try again."
  *   D1-8 Close on the lost-session state drops what was kept
+ *   R1-1 W4-R1: "Pay to hold your date" for a hire whose balance date has
+ *        passed says why everything is due now (the existing buyer-web line);
+ *        without that reason (or with a deposit offered) it says nothing more
+ *   R1-2 a group package quote folded into one payment (balance_due_passed)
+ *        says the same on Review; a quote with Half now does not
  *
  * FAILS-ON-REVERT: drop the session-lost codes from the reducer and D1-1..D1-3
- * show the generic line; drop the store subscription / keep-at-once and D1-1
+ * show the generic line; drop the fullNowReason line from the sheet and R1-1 /
+ * R1-2 fail; drop the store subscription / keep-at-once and D1-1
  * (after the unmount) and D1-5 keep nothing; drop the sign-out in Sign in
  * again and D1-4 fails.
  */
@@ -485,5 +491,73 @@ describe("#4490 W4 fix 2 — D1 a lost session mid-checkout", () => {
     press(tree, "venue-checkout-close");
     expect(resumeStore.heldVenueCheckoutForTests()).toBeNull();
     expect(mockSignOuts).toEqual([]);
+  });
+});
+
+describe("#4490 W4 fix 2 — R1 everything due now says why", () => {
+  const LINE = "This day is close, so it's paid in full now.";
+  const PAY_OPEN = (fullNowReason: string | null, payOptions: unknown[] = []) => ({
+    from: "purchases",
+    kind: "private_hire",
+    booking: { id: GROUP, version: 2, state: "approved_payment_required", totalMinor: 308000000, amountDueNowMinor: 308000000, holdUntil: new Date(Date.now() + 3600_000).toISOString() },
+    payOptions,
+    fullNowReason,
+    venueId: "venue-1",
+    venueName: "Gameland Lagos",
+    currencyCode: "NGN",
+    exponent: 2,
+    timezone: TZ,
+  });
+
+  test("R1-1 balance date passed: Due now ₦3,080,000 with the reason; no reason → no line", async () => {
+    const tree = mount(PAY_OPEN("balance_due_passed"));
+    await flush(30);
+    const shown = texts(tree);
+    expect(shown).toContain("Due now");
+    expect(shown).toContain(money(308000000));
+    expect(shown).toContain(LINE);
+    act(() => tree.unmount());
+    for (const reason of [null, "deposit_covers_total"]) {
+      const other = mount(PAY_OPEN(reason));
+      await flush(30);
+      expect(texts(other)).not.toContain(LINE);
+      act(() => other.unmount());
+    }
+  });
+
+  test("R1-2 a package quote folded into one payment says why on Review; Half now does not", async () => {
+    const pkgQuote = (payPlan: Record<string, unknown>) => ({
+      ...QUOTE,
+      subtotalMinor: 10000000,
+      taxMinor: 750000,
+      totalMinor: 10750000,
+      lines: [{ priceOptionId: "sq", name: "Squad", guests: 10, unitPriceMinor: 1000000, baseMinor: 10000000, taxMinor: 750000, totalMinor: 10750000 }],
+      payPlan,
+    });
+    const model = require("../venueCheckoutModel");
+    const folded = model.parseVenueReviewQuote(pkgQuote({ payModes: ["full"], depositMinor: null, depositKind: "percent", depositValue: 5000, collapsed: "balance_due_passed" }));
+    expect(folded.fullNowReason).toBe("balance_due_passed");
+    expect(folded.ref.payModes).toEqual(["full"]);
+    const half = model.parseVenueReviewQuote(pkgQuote({ payModes: ["deposit", "full"], depositMinor: 5375000, depositKind: "percent", depositValue: 5000, balanceDueAt: "2026-12-01T10:00:00Z", collapsed: null }));
+    expect(half.fullNowReason).toBeNull();
+    expect(half.ref.payModes).toEqual(["deposit", "full"]);
+    // On the sheet: the entry Review with a folded plan shows the line; the normal one does not.
+    mockScript.quote = async () => ({ ...QUOTE, payPlan: { payModes: ["full"], depositMinor: null, depositKind: "percent", depositValue: 5000, collapsed: "balance_due_passed" } });
+    const tree = mount(VENUE_OPEN("entry", "offer-entry"));
+    await flush(60);
+    press(tree, "venue-checkout-count-p1-plus");
+    await flush();
+    press(tree, "venue-checkout-next");
+    await flush(40);
+    expect(texts(tree)).toContain(LINE);
+    act(() => tree.unmount());
+    mockScript.quote = async () => QUOTE;
+    const plain = mount(VENUE_OPEN("entry", "offer-entry"));
+    await flush(60);
+    press(plain, "venue-checkout-count-p1-plus");
+    await flush();
+    press(plain, "venue-checkout-next");
+    await flush(40);
+    expect(texts(plain)).not.toContain(LINE);
   });
 });
