@@ -24,6 +24,8 @@
  */
 
 import { describe, expect, test } from "@jest/globals";
+import React from "react";
+import { Platform } from "react-native";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -39,9 +41,6 @@ const shared = strip(sharedRaw);
 const when = strip(read("../CreatorStep2When.tsx"));
 const override = strip(read("../MultiDateOverrideSheet.tsx"));
 const intake = strip(read("../../../../../packages/form-rendering/QuestionRenderers.tsx"));
-const payplan = strip(read("../../trip/PaymentPlanEditor.tsx"));
-const deadline = strip(read("../../trip/BookingDeadlinePicker.tsx"));
-const composer = strip(read("../../marketing/ComposerStepWhen.tsx"));
 
 const HIDDEN_INPUT_STYLE = /pointerEvents\s*:\s*["']none["']/;
 const OPACITY_ZERO = /opacity\s*:\s*0\b/;
@@ -66,7 +65,9 @@ describe("issue #1027 Thread B — Class 1: event/RSVP When + per-date override"
     expect(when).not.toContain("HIDDEN_WEB_INPUT_STYLE");
     expect(when).not.toMatch(HIDDEN_INPUT_STYLE);
     expect(when).toContain("WebDateTimeInput");
-    expect(when).toContain('type="date"');
+    // #4523: the date row is the shared calendar (DateField); its web
+    // behaviour is proven mounted at the end of this file.
+    expect(when).toContain("<DateField");
     expect(when).toContain('type="time"');
   });
 
@@ -97,24 +98,230 @@ describe("issue #1027 Thread B — Class 2: web-broken native pickers now render
     expect(intake).toContain('Platform.OS === "android"');
   });
 
-  test("Trip installment fixed due date: WebDateTimeInput on web; DateTimePicker gated off web", () => {
-    expect(payplan).toContain("WebDateTimeInput");
-    expect(payplan).toContain('Platform.OS === "web"');
-    expect(payplan).toContain('type="date"');
-    expect(payplan).toContain('Platform.OS !== "web"');
+  // #4523 moved the trip instalment due date, the trip booking deadline and
+  // the marketing scheduler onto the shared Mingla calendar, so the old
+  // `WebDateTimeInput type="date"` source pins no longer describe them. Their
+  // web behaviour (visible picked control, no OS picker on web, the value
+  // reaches the screen) is proven on the mounted screens in
+  // the mounted suite at the end of this file.
+});
+
+// ===========================================================================
+/*
+ * issue #1027 Thread B (web date/time) — the behaviour half, rewritten for #4523.
+ *
+ * The original #1027 suite pinned the source text of four screens: each had to
+ * contain `WebDateTimeInput` with a `type="date"` / `type="datetime-local"`
+ * branch. #4523 moved every Host date onto the shared Mingla calendar, so those
+ * pins described code that no longer exists. The intent they guarded is kept
+ * here and checked on the MOUNTED screens with `Platform.OS === "web"`:
+ *
+ *   1. On web a date is chosen through a real, visible, pressable control that
+ *      commits a value — never a hidden input or an imperative browser picker.
+ *   2. The OS DateTimePicker (no web build) is never rendered on web.
+ *   3. The commit reaches the screen's own state handler.
+ *
+ * Screens: event When step (CreatorStep2When), trip instalment fixed due date
+ * (PaymentPlanEditor), trip booking deadline (BookingDeadlinePicker), marketing
+ * scheduler (ComposerStepWhen).
+ *
+ * Fails on revert: bring back a hidden/imperative web date input, render the OS
+ * picker on web, or drop the commit wiring on any of the four screens -> red.
+ */
+
+
+const OS_PICKER = "OsDateTimePicker";
+
+jest.mock("@react-native-community/datetimepicker", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const R = require("react") as typeof React;
+  const Picker = (props: Record<string, unknown>): React.ReactElement =>
+    R.createElement("OsDateTimePicker", props);
+  return { __esModule: true, default: Picker };
+});
+jest.mock("../../ui/Sheet", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const R = require("react") as typeof React;
+  return {
+    __esModule: true,
+    Sheet: ({ visible, children }: { visible: boolean; children: React.ReactNode }) =>
+      visible ? R.createElement(R.Fragment, null, children) : null,
+  };
+});
+jest.mock("../../ui/Icon", () => ({ __esModule: true, Icon: (): null => null }));
+jest.mock("../../ui/Button", () => ({ __esModule: true, Button: (): null => null }));
+jest.mock("../../ui/Input", () => ({ __esModule: true, Input: (): null => null }));
+jest.mock("../../ui/ConfirmDialog", () => ({ __esModule: true, ConfirmDialog: (): null => null }));
+jest.mock("../../../wrappers/SmartScrollView", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const R = require("react") as typeof React;
+  return {
+    __esModule: true,
+    ScrollView: ({ children }: { children?: React.ReactNode }) => R.createElement(R.Fragment, null, children),
+  };
+});
+jest.mock("../CreatorStep2WhenRepeatPickerSheet", () => ({
+  __esModule: true,
+  CreatorStep2WhenRepeatPickerSheet: (): null => null,
+}));
+jest.mock("../MultiDateOverrideSheet", () => ({ __esModule: true, MultiDateOverrideSheet: (): null => null }));
+jest.mock("react-native-svg", () => ({ __esModule: true, default: (): null => null, Svg: (): null => null, Path: (): null => null }), {
+  virtual: true,
+});
+
+type Node = { type: unknown; props: Record<string, unknown>; findAll: (p: (n: Node) => boolean) => Node[] };
+type Tree = { root: Node; unmount: () => void };
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const TestRenderer = require("react-test-renderer") as {
+  create: (el: React.ReactElement) => Tree;
+  act: (cb: () => Promise<void> | void) => Promise<void>;
+};
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const originalOS = Platform.OS;
+beforeAll(() => {
+  (Platform as { OS: string }).OS = "web";
+});
+afterAll(() => {
+  (Platform as { OS: string }).OS = originalOS;
+});
+
+const mount = async (el: React.ReactElement): Promise<Tree> => {
+  let tree!: Tree;
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(el);
+  });
+  // The calendar body is one lazy chunk; let it resolve.
+  await TestRenderer.act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  return tree;
+};
+
+const pressables = (tree: Tree, testID: string): Node[] =>
+  tree.root.findAll((n) => n.props.testID === testID && typeof n.props.onPress === "function");
+
+const press = async (tree: Tree, testID: string): Promise<void> => {
+  const hit = pressables(tree, testID)[0];
+  if (hit === undefined) throw new Error(`nothing pressable with testID ${testID}`);
+  await TestRenderer.act(async () => {
+    (hit.props.onPress as () => void)();
+  });
+  await TestRenderer.act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+};
+
+const dayIds = (tree: Tree, prefix: string): string[] =>
+  tree.root
+    .findAll((n) => typeof n.props.testID === "string" && new RegExp(`^${prefix}-calendar-day-\\d{4}-\\d{2}-\\d{2}$`).test(n.props.testID as string) && typeof n.props.onPress === "function" && n.props.disabled !== true)
+    .map((n) => n.props.testID as string);
+
+/** Intent 1 + 2: nothing hidden, no imperative browser picker, no OS picker on web. */
+const expectNoHiddenOrOsPicker = (tree: Tree): void => {
+  expect(tree.root.findAll((n) => n.type === OS_PICKER)).toHaveLength(0);
+  for (const input of tree.root.findAll((n) => n.type === "input")) {
+    const style = (input.props.style ?? {}) as Record<string, unknown>;
+    expect(style.opacity).not.toBe(0);
+    expect(style.pointerEvents).not.toBe("none");
+    expect(input.props.type).not.toBe("date");
+    expect(input.props.type).not.toBe("datetime-local");
+  }
+};
+
+describe("issue #1027 / #4523 — web date fields are picked on a visible control (mounted)", () => {
+  test("event When step: the date row opens the Mingla calendar and a picked day reaches the draft; times stay visible inputs", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { CreatorStep2When } = require("../CreatorStep2When") as { CreatorStep2When: React.FC<Record<string, unknown>> };
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { buildDraftEvent } = require("../../../store/draftEventStore") as {
+      buildDraftEvent: (brandId: string) => Record<string, unknown>;
+    };
+    const updateDraft = jest.fn();
+    const tree = await mount(
+      React.createElement(CreatorStep2When, {
+        draft: { ...buildDraftEvent("brand_1027_web"), whenMode: "single", date: null, doorsOpen: null, endsAt: null, endsAtUtc: null, timezone: "Europe/London" },
+        updateDraft,
+        errors: [],
+        showErrors: false,
+        onShowToast: () => undefined,
+        scrollToBottom: () => undefined,
+      }),
+    );
+    expectNoHiddenOrOsPicker(tree);
+    const times = tree.root.findAll((n) => n.type === "input" && n.props.type === "time");
+    expect(times.map((n) => n.props["data-testid"]).sort()).toEqual(["creator-when-doors-web", "creator-when-ends-web"]);
+
+    await press(tree, "creator-when-date");
+    const days = dayIds(tree, "creator-when-date");
+    expect(days.length).toBeGreaterThan(0);
+    await press(tree, days[days.length - 1]);
+    const datePatch = updateDraft.mock.calls.map((c) => c[0] as Record<string, unknown>).find((p) => "date" in p);
+    expect(datePatch?.date).toBe(days[days.length - 1].replace("creator-when-date-calendar-day-", ""));
+    expectNoHiddenOrOsPicker(tree);
+    tree.unmount();
   });
 
-  test("Trip booking deadline: WebDateTimeInput datetime-local on web; DateTimePicker gated off web", () => {
-    expect(deadline).toContain("WebDateTimeInput");
-    expect(deadline).toContain('Platform.OS === "web"');
-    expect(deadline).toContain('type="datetime-local"');
-    expect(deadline).toContain('Platform.OS !== "web"');
+  test("trip instalment fixed due date: the calendar commits the picked day into the schedule", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PaymentPlanEditor } = require("../../trip/PaymentPlanEditor") as { PaymentPlanEditor: React.FC<Record<string, unknown>> };
+    const onChange = jest.fn();
+    const tree = await mount(
+      React.createElement(PaymentPlanEditor, {
+        value: { deposit_pct: 50, installments: [{ ordinal: 1, pct: 50, fixed_date: "2099-01-15" }] },
+        onChange,
+        totalAmountCents: 100000,
+        currency: "GBP",
+        locked: false,
+      }),
+    );
+    expectNoHiddenOrOsPicker(tree);
+    await press(tree, "payplan-date-1");
+    const days = dayIds(tree, "payplan-date-1");
+    expect(days.length).toBeGreaterThan(0);
+    const picked = days[days.length - 1];
+    await press(tree, picked);
+    const last = onChange.mock.calls[onChange.mock.calls.length - 1]?.[0] as { installments: Array<{ fixed_date?: string }> } | undefined;
+    expect(last?.installments[0]?.fixed_date).toBe(picked.replace("payplan-date-1-calendar-day-", ""));
+    tree.unmount();
   });
 
-  test("Marketing scheduler (ComposerStepWhen): WebDateTimeInput date + time on web", () => {
-    expect(composer).toContain("WebDateTimeInput");
-    expect(composer).toContain('Platform.OS === "web"');
-    expect(composer).toContain('type="date"');
-    expect(composer).toContain('type="time"');
+  test("trip booking deadline: date and time are picked on the calendar and saved as an instant", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { BookingDeadlinePicker } = require("../../trip/BookingDeadlinePicker") as { BookingDeadlinePicker: React.FC<Record<string, unknown>> };
+    const onChange = jest.fn();
+    const tree = await mount(
+      React.createElement(BookingDeadlinePicker, {
+        value: "2099-03-01T10:00:00.000Z",
+        tripStartIso: "2099-06-01T10:00:00.000Z",
+        brandTimezone: "Europe/London",
+        onChange,
+      }),
+    );
+    expectNoHiddenOrOsPicker(tree);
+    await press(tree, "booking-deadline-field");
+    await press(tree, "booking-deadline-field-calendar-done");
+    expect(onChange).toHaveBeenCalledWith("2099-03-01T10:00:00.000Z");
+    expectNoHiddenOrOsPicker(tree);
+    tree.unmount();
+  });
+
+  test("marketing scheduler: the schedule is picked on the calendar and reaches the composer", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ComposerStepWhen } = require("../../marketing/ComposerStepWhen") as { ComposerStepWhen: React.FC<Record<string, unknown>> };
+    const onScheduledForChange = jest.fn();
+    const tree = await mount(
+      React.createElement(ComposerStepWhen, {
+        mode: "schedule",
+        onModeChange: () => undefined,
+        scheduledForIso: "2099-05-04T18:15",
+        onScheduledForChange,
+      }),
+    );
+    expectNoHiddenOrOsPicker(tree);
+    await press(tree, "composer-when-datetime");
+    await press(tree, "composer-when-datetime-calendar-done");
+    expect(onScheduledForChange).toHaveBeenCalledWith("2099-05-04T18:15");
+    tree.unmount();
   });
 });
