@@ -10,11 +10,9 @@
  * booking bar uses: `deriveVenuePage` in `@mingla/brand-rendering`):
  *
  *   - a TABLE lead keeps opening the in-place `VenueReserveSheet`;
- *   - any other lead opens the venue page on the lead's tab (`?tab=`). #4490
- *     P2: the app has no native entry flow yet, so the sheet opens the BUYER
- *     WEB page (`webUrl`) in the in-app browser, where buying never needs an
- *     account and the pass page works after paying. `path` stays for the day
- *     the app builds its own flow;
+ *   - any other lead opens the venue page IN THE APP on the lead's tab
+ *     (`?tab=`): #4490 Explorer W3 built the native tabs, so the in-app web
+ *     browser path (`webUrl`, the buyer web origin) is deleted (rule 8);
  *   - no lead (the venue sells nothing the page can book) is Directions;
  *   - features not loaded / not a claimed venue / read failed is TODAY's
  *     button, unchanged: Reserve a table when `useVenueReservable` says so,
@@ -28,9 +26,6 @@ import {
   type PublicVenueFeaturesView,
 } from "@mingla/brand-rendering/venueFeaturePage";
 import type { PublicVenueTab } from "@mingla/brand-rendering/publicVenueTabState";
-
-/** Buyer web: where a guest buys without an account. */
-export const BUYER_WEB_ORIGIN = "https://host.usemingla.com";
 
 export interface DeckReservableGate {
   readonly reservable: boolean;
@@ -61,12 +56,10 @@ export type DeckVenueCta =
       readonly fallbackLabel: string;
     }
   | {
-      /** Opens the venue page on the lead's tab. */
+      /** Opens the venue page on the lead's tab, in the app. */
       readonly kind: "venue";
       readonly tab: PublicVenueTab;
       readonly path: string;
-      /** The buyer web page on that tab (the in-app browser opens it). */
-      readonly webUrl: string;
       readonly labelKey: string;
       readonly fallbackLabel: string;
     }
@@ -118,7 +111,6 @@ export function deckVenueCta(input: {
     kind: "venue",
     tab: lead.tab,
     path,
-    webUrl: `${BUYER_WEB_ORIGIN}${path}`,
     labelKey,
     fallbackLabel: lead.ctaLabel,
   };

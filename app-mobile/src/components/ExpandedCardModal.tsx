@@ -86,6 +86,9 @@ import { useVenueReservable } from "../hooks/useVenueReservable";
 // #4490 — the main button follows what the venue sells, not its type.
 import { useVenueFeaturesForPlace } from "../hooks/useVenueFeaturesForPlace";
 import { deckVenueCta } from "./expandedCard/deckVenueCta";
+// #4490 Explorer W3 — Ways to come, What's on and Message {venue} for a claimed venue.
+import { VenueSheetBlocks } from "./expandedCard/VenueSheetBlocks";
+import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
 import { ImageLightbox } from "./ImageLightbox";
 // issue #2468 / #4347 wave 2 — every maps link on this sheet goes through
 // expandedCard/placeDirections (openPlaceDirections), which wraps the ONE host
@@ -2062,10 +2065,11 @@ export default function ExpandedCardModal({
                       style={pinnedPrimaryStyles.button}
                       activeOpacity={0.85}
                       onPress={() => {
-                        // #4490 P2 — the buyer web page in the in-app browser:
-                        // the app has no native entry flow yet (no dead tab).
-                        setBrowserUrl(deckCta.webUrl);
-                        setBrowserTitle(t(`cards:${deckCta.labelKey}`, { defaultValue: deckCta.fallbackLabel }));
+                        // #4490 Explorer W3 — the venue page in the app, on
+                        // the lead's tab (its native panes); the sheet closes
+                        // first. The in-app web browser path is deleted.
+                        onClose();
+                        router.push(deckCta.path as never);
                       }}
                       accessibilityRole="button"
                       accessibilityLabel={t('cards:sheet.open_venue_a11y', {
@@ -2331,6 +2335,40 @@ export default function ExpandedCardModal({
 
             {/* About — 3 lines, then More; the typical spend and its "charged in" line stay here. */}
             <CardInfoSection description={card.description} tip={card.tip} discoveryPrice={card} />
+
+            {/* #4490 Explorer W3 — a claimed venue's Ways to come, What's on
+                and Message {venue}. Absent for any other place (today's sheet). */}
+            {venueFeatures ? (
+              <VenueSheetBlocks
+                place={venueFeatures}
+                tablesReservable={venueReservable === undefined ? null : venueReservable?.reservable === true}
+                venueType={venueFeatures.venueType}
+                onOpenPath={(path) => {
+                  onClose();
+                  router.push(path as never);
+                }}
+                onWayTapped={(row) =>
+                  captureVenueTappedToBook({
+                    venueId: venueFeatures.venueId ?? '',
+                    tab: row.tab,
+                    offerKind:
+                      row.tab === 'entry'
+                        ? 'entry'
+                        : row.tab === 'groups'
+                          ? 'group_package'
+                          : row.tab === 'hire'
+                            ? 'private_hire'
+                            : row.tab === 'by_the_hour'
+                              ? 'by_the_hour'
+                              : null,
+                    source: 'expanded_sheet',
+                    positionInDeck: null,
+                    isHostedVenue: true,
+                    mode: currentMode === 'solo' ? 'solo' : 'collab',
+                  })
+                }
+              />
+            ) : null}
 
             <LocalReviewsSection placePoolId={card.placePoolId ?? card.id} />
 

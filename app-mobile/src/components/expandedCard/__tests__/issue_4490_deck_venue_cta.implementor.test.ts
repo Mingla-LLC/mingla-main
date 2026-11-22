@@ -93,7 +93,10 @@ describe('#4490 deck place sheet main button', () => {
     expect(model.lead?.tab).toBe('entry');
   });
 
-  test('D-3b P2: Entry is built, so a Gameland-like venue gets Buy entry, opening the buyer web page', () => {
+  // [TEST-MOD-APPROVED #4490] Explorer W3: the venue lead opens the venue page
+  // IN THE APP (its native tabs); the buyer web `webUrl` path is deleted
+  // (rule 8), so this test now pins the in-app path and its absence.
+  test('D-3b W3: a Gameland-like venue gets Buy entry, opening the app venue page on Entry', () => {
     const p = place(['entry', 'events_here'], {
       offers: [{ id: 'o1', kind: 'entry', name: 'Walk-in', fromMinor: 400000, entryStyle: 'walk_in', unit: 'guest', confirmationMode: 'instant' }],
     });
@@ -101,12 +104,14 @@ describe('#4490 deck place sheet main button', () => {
       kind: 'venue',
       tab: 'entry',
       path: '/b/gameland/v/lagos?tab=entry',
-      webUrl: 'https://host.usemingla.com/b/gameland/v/lagos?tab=entry',
       labelKey: 'sheet.buy_entry',
       fallbackLabel: 'Buy entry',
     });
     const modal = fs.readFileSync(path.join(__dirname, '../../ExpandedCardModal.tsx'), 'utf8');
-    expect(modal).toMatch(/setBrowserUrl\(deckCta\.webUrl\)/);
+    expect(modal).not.toMatch(/deckCta\.webUrl/);
+    expect(modal).toMatch(/router\.push\(deckCta\.path as never\)/);
+    const cta = fs.readFileSync(path.join(__dirname, '../deckVenueCta.ts'), 'utf8');
+    expect(cta).not.toMatch(/host\.usemingla\.com/);
   });
 
   test('D-4 no lead is Directions', () => {
