@@ -137,6 +137,19 @@ import {
 
 // #4518 — loaded on intent (a tap on "Join waitlist"), not at boot: the
 // sheet was in the eager shared chunk of every Host web page.
+// issue #3281 S6 — the RSVP form's free add-on picker and its read, one
+// on-use chunk (used only while the Host add-ons switch is on).
+// A chunk that fails to load is logged and offers no add-ons; the RSVP works.
+const RsvpAddOnsPicker = React.lazy(() =>
+  import("../addOns/RsvpAddOnsOnUse").catch((error: unknown) => {
+    console.warn("[PublicEventPage] RSVP add-ons did not load", error);
+    return { default: (): null => null };
+  }),
+);
+const publicRsvpAddOnsKeys = {
+  forEvent: (brandSlug: string, eventSlug: string) =>
+    ["public-rsvp-add-ons", brandSlug, eventSlug] as const,
+};
 const JoinWaitlistSheet = React.lazy(() =>
   import("../waitlist/JoinWaitlistSheet").then((module) => ({
     default: module.JoinWaitlistSheet,
@@ -156,19 +169,6 @@ const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
 // is the actual complaint in #2135. Measured: inline +1,212 B vs sheet
 // +10,238 B. See MultiDateDayChooser's header for the full rationale.
 const MultiDateDayChooser = React.lazy(() => import("./MultiDateDayChooser"));
-// issue #3281 S6 — the RSVP form's free add-on picker and its read, one
-// on-use chunk (used only while the Host add-ons switch is on).
-// A chunk that fails to load is logged and offers no add-ons; the RSVP works.
-const RsvpAddOnsPicker = React.lazy(() =>
-  import("../addOns/RsvpAddOnsOnUse").catch((error: unknown) => {
-    console.warn("[PublicEventPage] RSVP add-ons did not load", error);
-    return { default: (): null => null };
-  }),
-);
-const publicRsvpAddOnsKeys = {
-  forEvent: (brandSlug: string, eventSlug: string) =>
-    ["public-rsvp-add-ons", brandSlug, eventSlug] as const,
-};
 const RsvpBrandFormQuestions = React.lazy(() =>
   import("../checkout/intake/formRenderingPrimitives").then((module) => ({
     default: module.RsvpBrandFormQuestions,
