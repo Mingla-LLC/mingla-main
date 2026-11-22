@@ -105,8 +105,10 @@ function refuse(
   return { status, body: { code, message } };
 }
 
-async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+// Takes the ArrayBuffer itself: a plain ArrayBuffer is a BufferSource under
+// every Deno this repo checks with (1.46 in CI, 2.x locally).
+async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", buffer));
   return Array.from(digest).map((value) => value.toString(16).padStart(2, "0"))
     .join("");
 }
@@ -242,11 +244,12 @@ export async function copyAriAttachmentToSupport(
       "The photo could not be copied. Try again.",
     );
   }
-  const content = new Uint8Array(await source.arrayBuffer());
+  const sourceBuffer = await source.arrayBuffer();
+  const content = new Uint8Array(sourceBuffer);
   if (
     content.byteLength !== bytes ||
     content.byteLength > SUPPORT_IMAGE_MAX_BYTES ||
-    !owned.sha256 || (await sha256Hex(content)) !== owned.sha256
+    !owned.sha256 || (await sha256Hex(sourceBuffer)) !== owned.sha256
   ) {
     return refuse(
       409,
