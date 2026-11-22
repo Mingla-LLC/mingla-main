@@ -10,7 +10,7 @@ import { DiscoverCard } from "./discover/DiscoverCard";
 import { DiscoverEmptyState } from "./discover/DiscoverEmptyState";
 import { DiscoverGridSkeleton } from "./discover/DiscoverGridSkeleton";
 import { DiscoverHeader } from "./discover/DiscoverHeader";
-import { discoverLoadState } from "./discover/discoverLoadState";
+import { discoverLoadState, discoverPillKinds } from "./discover/discoverLoadState";
 import { canonicalDiscoverCardPath } from "./discover/discoverCardRoute";
 import { DISCOVER_GRID_GAP, DISCOVER_GRID_SIDE_PADDING, discoverGridCellWidth } from "./discover/discoverGridLayout";
 import ExpandedCardModal from "./ExpandedCardModal";
@@ -320,7 +320,13 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
   // ORCH-0839-A F-4: Discover stays server-authoritative. The V2 query hook
   // owns freshness; there is deliberately no local skipCache short-circuit.
   const feed = useDiscoverFeed(anchorKey, activeAnchor, appliedFilters);
-  const visibleKinds = useMemo(() => DISCOVER_KIND_ORDER.filter((kind) => (facets.data?.kinds[kind]?.total ?? 0) > 0), [facets.data?.kinds]);
+  // #4490 W6 fix 2 (W6-D2): a failed facets read keeps the city's last pills.
+  const lastKindsRef = useRef<{ anchorKey: string; kinds: NonNullable<typeof facets.data>["kinds"] } | null>(null);
+  useEffect(() => {
+    if (facets.data && !facets.isPlaceholderData) lastKindsRef.current = { anchorKey, kinds: facets.data.kinds };
+  }, [anchorKey, facets.data, facets.isPlaceholderData]);
+  const pillKinds = discoverPillKinds(facets.data?.kinds, lastKindsRef.current, anchorKey);
+  const visibleKinds = useMemo(() => DISCOVER_KIND_ORDER.filter((kind) => (pillKinds?.[kind]?.total ?? 0) > 0), [pillKinds]);
   const cityWatch = useDiscoverCityWatch({ cityKey: facets.data?.city.key ?? null, userId: user?.id ?? null, anchor: activeAnchor, label: facets.data?.city.label ?? city?.name ?? null });
 
   useEffect(() => {
@@ -385,8 +391,11 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
     feedFailed: Boolean(feed.error),
     visibleKindCount: visibleKinds.length,
     itemCount: items.length,
+    facetsStale: facets.isPlaceholderData,
   });
   const countLabel = loadState.countPending
+    ? ""
+    : facets.error
     ? ""
     : visibleKinds.length === 0
     ? t("count.nothing", "Nothing yet")

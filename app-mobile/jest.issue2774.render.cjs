@@ -181,6 +181,10 @@ module.exports = {
     // issue #4490 Explorer W6a — Venues in Discover: the kind, the venue card
     // (model, route with ?tab=, mounted variant), Type of place chips, wiring.
     "**/__tests__/issue_4490_w6a_discover_venues.implementor.render.test.tsx",
+    // issue #4490 W6 fix 2 — the device pass's Discover P3s: the lead line wraps
+    // (no price cut mid-number), one body state at a time with the pills kept,
+    // no stale count while new filters load, the 10 s Venues read budget.
+    "**/__tests__/issue_4490_w6_fix2_discover.implementor.render.test.tsx",
     // issue #4490 Explorer W6b — "Places on Mingla" deck chips: resolvePills,
     // saved categories, the hook's parse and keys, the mounted row, sheet wiring.
     "**/__tests__/issue_4490_w6b_places_on_mingla.implementor.render.test.tsx",

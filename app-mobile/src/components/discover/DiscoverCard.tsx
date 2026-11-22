@@ -114,7 +114,8 @@ function DiscoverVenueCardBody({ card, venue, saved, onPress, onSave, t }: {
       <View style={styles.chip}>
         <Text numberOfLines={2} style={styles.title}>{card.title}</Text>
         {card.meta.venueOrPlace ? <Text numberOfLines={1} style={[styles.meta, styles.venueArea]}>{card.meta.venueOrPlace}</Text> : null}
-        {venue.offerLine ? <Text numberOfLines={1} style={styles.venueOffer}>{venue.offerLine}</Text> : null}
+        {/* #4490 W6 fix 2 (W6-D1): the lead line may wrap to a second line, so a price ("Hire from ₦1,800,000") is never cut mid-number. */}
+        {venue.offerLine ? <Text numberOfLines={2} style={styles.venueOffer}>{venue.offerLine}</Text> : null}
       </View>
     </Pressable>
   );

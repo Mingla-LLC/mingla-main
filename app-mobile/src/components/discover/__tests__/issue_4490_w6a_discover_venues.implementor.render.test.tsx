@@ -230,7 +230,10 @@ describe("#4490 W6a Discover Venues", () => {
 
   it("G-1..G-5 DiscoverScreen wiring", () => {
     const screen = read("../../DiscoverScreen.tsx");
-    expect(screen).toContain("(facets.data?.kinds[kind]?.total ?? 0) > 0");
+    // TEST-MOD-APPROVED #4490 (06-W6 fix 2, W6-D2): the pills now read the kept
+    // kinds (`pillKinds`, the facets' kinds or the city's last ones); the pin is
+    // the same optional chaining on a kind the server may not send.
+    expect(screen).toContain("(pillKinds?.[kind]?.total ?? 0) > 0");
     expect(screen).toContain('venues: t("pill.venues", "Venues")');
     expect(screen).toContain('source: "discover",');
     expect(screen).toContain('if (card.kind === "stay" || card.kind === "venue") return "venue" as const;');
