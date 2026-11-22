@@ -410,7 +410,7 @@ describe("ORCH-1118 — EditPublishedTripScreen RENDER PROOF (runtime mount)", (
     await render(<EditPublishedTripScreen trip={makeTrip()} />);
 
     const pickers = screen.UNSAFE_getAllByType(AddressInput);
-    expect(pickers.map((p) => p.props.accessibilityLabel)).toEqual([DEP_LABEL, DEST_LABEL]);
+    expect(pickers.map((p: { props: { accessibilityLabel?: string } }) => p.props.accessibilityLabel)).toEqual([DEP_LABEL, DEST_LABEL]);
     const place = (placeId: string, formattedAddress: string, lat: number, lng: number) => ({
       placeId,
       formattedAddress,
