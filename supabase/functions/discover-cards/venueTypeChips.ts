@@ -55,36 +55,3 @@ export function splitVenueTypeChips<T>(raw: readonly T[], enabled: boolean): { v
 export function deckRadiusMeters(maxDistKm: number): number {
   return Math.min(Math.max(Math.round(maxDistKm * 1000), 500), 100000);
 }
-
-/**
- * Shared deck, fix round 1 (W6-N2): skip an exhausted pill.
- *
- * Applies ONLY when VENUE_DISCOVER is on AND the session's rotation holds a
- * venue-type pill (the only case in which this file's switch is read at all).
- * Then a position whose pill has nothing left to serve (no candidate, all
- * served, or every candidate filtered out) moves to the next pill in the
- * rotation, each other pill at most once (one full rotation), and only after
- * that ends exactly as today (curated fallback, then the dead end). The rule
- * covers every pill in such a session, ordinary categories included, so one
- * participant picking a type with one or two venues cannot end the shared deck
- * for everyone. Every other session keeps today's rule untouched.
- *
- * Deterministic: the next pill depends only on the shared rotation and the
- * starting pill, so both participants compute the same card at a position.
- *
- * To restore "end as today" for venue sessions too, make this return null.
- */
-export function nextPillAfterExhaustion(args: {
-  enabled: boolean;
-  rotation: readonly string[];
-  startPill: string;
-  tried: number;
-}): string | null {
-  if (!args.enabled) return null;
-  const rotation = [...new Set(args.rotation)];
-  const start = rotation.indexOf(args.startPill);
-  if (start < 0) return null;
-  const step = args.tried + 1;
-  if (step >= rotation.length) return null;
-  return rotation[(start + step) % rotation.length];
-}

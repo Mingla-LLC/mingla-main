@@ -66,7 +66,6 @@ import {
   deckRadiusMeters,
   isVenueTypeChip,
   looksLikeVenueTypeChip,
-  nextPillAfterExhaustion,
   splitVenueTypeChips,
 } from './venueTypeChips.ts';
 
@@ -1658,44 +1657,21 @@ async function handleDeterministicV2(args: {
     degradedFrom?: string | null;
   }) => Promise<Response>;
 
-  // #4490 W6 fix round 1 (W6-N2): skip-and-continue applies only with
-  // VENUE_DISCOVER on and a venue-type pill in this session (see
-  // nextPillAfterExhaustion); every other session keeps today's rule.
-  const skipExhaustedPills = collabVenueDiscoverOn && collabSplit.venueChips.length > 0;
-
   const handleSinglePosition = async (params: {
     position: number;
     pill: string;
     degradedFrom?: string | null;
-    /** W6-N2: the pill this position started with and how many pills were skipped. */
-    skip?: { origin: string; tried: number };
   }): Promise<Response> => {
   const fallbackToCuratedAfterSingleExhaustion = async (
     detail: string,
     reason: PositionalDeadEndReason,
   ): Promise<Response> => {
-    const originPill = params.skip?.origin ?? params.pill;
-    const nextPill = nextPillAfterExhaustion({
-      enabled: skipExhaustedPills,
-      rotation: collabCategories,
-      startPill: originPill,
-      tried: params.skip?.tried ?? 0,
-    });
-    if (nextPill) {
-      console.log(`[discover-cards/positional] position=${params.position} pill=${params.pill} exhausted (${reason}); trying ${nextPill}`);
-      return await handleSinglePosition({
-        position: params.position,
-        pill: nextPill,
-        degradedFrom: params.degradedFrom,
-        skip: { origin: originPill, tried: (params.skip?.tried ?? 0) + 1 },
-      });
-    }
     const fallbackIntent = await pickNextCuratedPill();
     if (fallbackIntent && !params.degradedFrom) {
       return await handleCuratedPosition({
         position: params.position,
         experienceType: fallbackIntent,
-        degradedFrom: originPill,
+        degradedFrom: params.pill,
       });
     }
     if (reason === 'no_unswiped_candidates') {

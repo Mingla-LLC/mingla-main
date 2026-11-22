@@ -1,20 +1,19 @@
-// #4490 Explorer W6 fix round 1 (W6-N2): the shared deck skips an exhausted pill.
+// #4490 Explorer W6 fix round 1 (W6-N2): a shared deck ends at an exhausted pill, venue-type
+// pills included, exactly as it does for any category that runs out.
 //
-// MINGLA-INVARIANT: I-4490-SHARED-DECK-SKIPS-EXHAUSTED-PILL | issue #4490 | with VENUE_DISCOVER on and a venue-type pill in a shared deck's rotation, a position whose pill has nothing left to serve moves to the next pill in the rotation (each other pill at most once) before ending as today, so one participant's venue-type pick cannot end the deck for everyone; both participants get the same card at every position; every other session (switch off, or no venue-type pill) keeps today's rule.
+// MINGLA-INVARIANT: I-4490-SHARED-DECK-EXHAUSTED-PILL-ENDS-AS-TODAY | issue #4490 | in a shared deck, a venue-type pill that has nothing left to serve ends the deck at its turn exactly as an exhausted ordinary category does (curated fallback, then the dead end), with VENUE_DISCOVER on or off; the rule is kept by the product owner's decision of 22 Nov ("End as today"), and this suite pins it so it cannot change by accident.
 //
-// Adapted from the independent tester's repro (drinks with 30 places + "Bar and lounge" with
-// one venue ended the shared deck at its second turn: o0 b1 END END ...).
+// Adapted from the independent tester's repro: drinks with 30 places + "Bar and lounge" with
+// one venue gives o0 b1 END END ... (the same shape as drinks + a one-place "Play").
 //
-// FAILS-ON-REVERT: remove the nextPillAfterExhaustion call in handleSinglePosition
-// (index.ts) and X-1 / X-4 fail (the deck ends at position 3); make it skip without the
-// switch and X-2 / X-3 fail (today's rule must hold there).
+// FAILS-ON-CHANGE: any skip-and-continue for an exhausted pill (venue-type or ordinary) makes
+// X-1 / X-3 fail; dropping the venue split makes X-1 fail (b1 never served).
 //
 // Run: deno test --allow-read --allow-env --no-check supabase/functions/discover-cards/__tests__/issue_4490_shared_deck_exhausted_pill.test.ts
 
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import { handleDiscoverCards } from '../index.ts';
 import { resetVenueDeckFlagCacheForTests } from '../hostedLead.ts';
-import { nextPillAfterExhaustion } from '../venueTypeChips.ts';
 
 const ALL_DAY = {
   periods: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ open: { day, hour: 0, minute: 0 }, close: { day, hour: 23, minute: 59 } })),
@@ -160,17 +159,14 @@ const quiet = async <T>(fn: () => Promise<T>): Promise<T> => {
   }
 };
 
-Deno.test('X-1 switch on: an exhausted venue-type pill is skipped; the deck keeps serving drinks, same for both participants', async () => {
+Deno.test('X-1 switch on: an exhausted venue-type pill ends the shared deck at its turn (today\'s rule), same for both participants', async () => {
   const collab = session(['drinks_and_music', 'venue_type:bar_lounge']);
   const db = fakeDb({ flags: { VENUE_DISCOVER: true }, base: { drinks: DRINKS }, venues: { bar_lounge: ONE_BAR }, collab });
-  const a = await quiet(() => walk(db, 10, 'u-a'));
-  assertEquals(a.filter((x) => x.startsWith('END')), [], `no dead end while drinks has places left: ${a.join(' ')}`);
+  const a = await quiet(() => walk(db, 6, 'u-a'));
   assertEquals(a.slice(0, 2), ['o0(Drinks & Music)', 'b1(venue_type:bar_lounge)']);
-  assertEquals(a.filter((x) => x.startsWith('b1')).length, 1, 'the one bar is served once');
-  assertEquals(a.slice(2), ['o1(Drinks & Music)', 'o2(Drinks & Music)', 'o3(Drinks & Music)', 'o4(Drinks & Music)',
-    'o5(Drinks & Music)', 'o6(Drinks & Music)', 'o7(Drinks & Music)', 'o8(Drinks & Music)']);
-  const b = await quiet(() => walk(db, 10, 'u-b'));
-  assertEquals(b, a, 'the second participant reads the same stored positions');
+  assert(a.slice(2).every((x) => x.startsWith('END')), `the deck ends at the exhausted venue pill: ${a.join(' ')}`);
+  const b = await quiet(() => walk(db, 6, 'u-b'));
+  assertEquals(b, a, 'the second participant sees the same deck');
 });
 
 Deno.test('X-2 switch off: today\'s deck (the venue chip is dropped like any unknown chip; 10 drinks cards)', async () => {
@@ -181,46 +177,22 @@ Deno.test('X-2 switch off: today\'s deck (the venue chip is dropped like any unk
   assertEquals(db.calls.some((c) => c.fn === 'issue_4490_hosted_places_by_venue_type_intersection'), false);
 });
 
-Deno.test('X-3 no venue-type pill in the session: today\'s rule (an exhausted ordinary pill ends the deck), switch on or off', async () => {
+Deno.test('X-3 the same rule as an ordinary category that runs out (a one-place Play), switch on or off', async () => {
+  const venue = await quiet(() => walk(fakeDb({ flags: { VENUE_DISCOVER: true }, base: { drinks: DRINKS }, venues: { bar_lounge: ONE_BAR },
+    collab: session(['drinks_and_music', 'venue_type:bar_lounge']) }), 5));
   for (const flags of [{}, { VENUE_DISCOVER: true }]) {
-    const db = fakeDb({ flags, base: { drinks: DRINKS, play: PLAY_ONE }, collab: session(['drinks_and_music', 'play']) });
-    const got = await quiet(() => walk(db, 5));
-    assertEquals(got.slice(0, 2), ['o0(Drinks & Music)', 'p0(Play)']);
-    assert(got.slice(2).every((x) => x.startsWith('END')), `today's rule: ${got.join(' ')}`);
-    assertEquals(db.calls.some((c) => c.fn === 'issue_4490_flag_on' && c.args.p_flag === 'VENUE_DISCOVER'), false,
-      'VENUE_DISCOVER is not even read without a venue chip');
+    const ordinary = await quiet(() => walk(fakeDb({ flags, base: { drinks: DRINKS, play: PLAY_ONE }, collab: session(['drinks_and_music', 'play']) }), 5));
+    assertEquals(ordinary.slice(0, 2), ['o0(Drinks & Music)', 'p0(Play)']);
+    assertEquals(ordinary.slice(2), venue.slice(2), 'the venue pill ends the deck exactly as the ordinary one');
   }
 });
 
-Deno.test('X-4 switch on with a venue pill: an exhausted ordinary pill is skipped too (one rule for the session)', async () => {
+Deno.test('X-4 a mixed session: an exhausted ordinary pill also ends the deck with the switch on', async () => {
   const db = fakeDb({ flags: { VENUE_DISCOVER: true }, base: { drinks: DRINKS, play: PLAY_ONE }, venues: { bar_lounge: ONE_BAR },
     collab: session(['drinks_and_music', 'play', 'venue_type:bar_lounge']) });
-  const got = await quiet(() => walk(db, 9));
-  assertEquals(got.filter((x) => x.startsWith('END')), [], got.join(' '));
-  assertEquals(got.slice(0, 3), ['o0(Drinks & Music)', 'p0(Play)', 'b1(venue_type:bar_lounge)']);
-  assert(got.slice(3).every((x) => /^o\d+\(Drinks & Music\)$/.test(x)), got.join(' '));
-});
-
-Deno.test('X-5 bounded: when every pill is exhausted the deck ends as today', async () => {
-  const db = fakeDb({ flags: { VENUE_DISCOVER: true }, base: { play: PLAY_ONE }, venues: { bar_lounge: ONE_BAR },
-    collab: session(['play', 'venue_type:bar_lounge']) });
-  const got = await quiet(() => walk(db, 5));
-  assertEquals(got.slice(0, 2), ['p0(Play)', 'b1(venue_type:bar_lounge)']);
-  assert(got.slice(2).every((x) => x === 'END:no_unswiped_candidates' || x === 'END:no_matching_candidates'), got.join(' '));
-  // Each dead-end request tried each pill once: no more base calls than pills per position.
-  const before = db.calls.length;
-  await quiet(() => walk(db, 1));
-  const perPosition = db.calls.slice(before).filter((c) =>
-    c.fn === 'query_servable_places_by_signal_intersection' || c.fn === 'issue_4490_hosted_places_by_venue_type_intersection');
-  assertEquals(perPosition.length, 2, 'one fetch per pill, one full rotation at most');
-});
-
-Deno.test('X-6 the rule in one place: next pill in rotation, each once, off when disabled', () => {
-  const rotation = ['a', 'b', 'c'];
-  assertEquals(nextPillAfterExhaustion({ enabled: true, rotation, startPill: 'b', tried: 0 }), 'c');
-  assertEquals(nextPillAfterExhaustion({ enabled: true, rotation, startPill: 'b', tried: 1 }), 'a');
-  assertEquals(nextPillAfterExhaustion({ enabled: true, rotation, startPill: 'b', tried: 2 }), null);
-  assertEquals(nextPillAfterExhaustion({ enabled: false, rotation, startPill: 'b', tried: 0 }), null);
-  assertEquals(nextPillAfterExhaustion({ enabled: true, rotation, startPill: 'zzz', tried: 0 }), null);
-  assertEquals(nextPillAfterExhaustion({ enabled: true, rotation: ['a'], startPill: 'a', tried: 0 }), null);
+  const got = await quiet(() => walk(db, 6));
+  // Rotation: Drinks, Play, Bar and lounge. Play's one place is used at position 2, so its
+  // next turn (position 3) ends the deck, as today.
+  assertEquals(got.slice(0, 2), ['o0(Drinks & Music)', 'p0(Play)']);
+  assert(got.slice(2).every((x) => x.startsWith('END')), got.join(' '));
 });
