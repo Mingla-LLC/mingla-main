@@ -165,6 +165,17 @@ export interface VenueOffer {
   hire: HireTerms | null;
   /** #4490 P5 — the by-the-hour part (null for other kinds). */
   hour?: HourTerms | null;
+  /**
+   * #4490 W3 fix 2 (W3-N16) — a live offer's "from" exactly as guests see it
+   * (the server's one owner, `issue_4490_offer_from`: the cheapest price
+   * checkout charges, with its unit). Null for drafts, paused and archived.
+   */
+  guestFrom?: VenueOfferGuestFrom | null;
+}
+
+export interface VenueOfferGuestFrom {
+  fromMinor: number;
+  unit: "guest" | "booking" | "hour" | "unit";
 }
 
 // ------------------------------------------------------ #4490 P5 by the hour

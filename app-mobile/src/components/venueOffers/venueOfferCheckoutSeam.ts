@@ -18,6 +18,9 @@
  * new setting: the hosted project's buyer web is host.usemingla.com; a build
  * pointed at any other backend (the local stack) has no buyer web this app may
  * send a guest to, and the hand-off reports that instead of opening production.
+ * W3 fix 2: the backend is an injected dependency of `openVenueOfferCheckout`
+ * (default: this build's `SUPABASE_URL`), so the whole hand-off is unit-tested
+ * for every build profile's backend.
  */
 import type { PublicVenueTab } from "@mingla/brand-rendering/publicVenueTabState";
 
@@ -57,6 +60,18 @@ export function venueOfferCheckoutWebUrl(
 }
 
 /**
+ * What the hand-off depends on, injectable so a test can run the whole
+ * hand-off for each build profile's backend (W3 fix 2, W3-N15). The app
+ * passes nothing: the build's own backend is the one owner, `SUPABASE_URL`.
+ */
+export interface VenueOfferHandoffDeps {
+  /** The backend this build reads venues from. */
+  readonly backendUrl: string;
+}
+
+const BUILD_HANDOFF_DEPS: VenueOfferHandoffDeps = { backendUrl: SUPABASE_URL };
+
+/**
  * Open the checkout for one offer. `openInMingla` is `useOpenInMingla().open`
  * from the screen (the in-app browser provider above the route). Returns false
  * when this build has no buyer web to open (the pane then says so).
@@ -64,9 +79,9 @@ export function venueOfferCheckoutWebUrl(
 export function openVenueOfferCheckout(
   target: VenueOfferCheckoutTarget,
   openInMingla: (url: string) => void,
-  origin: string | null = buyerWebOriginFor(SUPABASE_URL),
+  deps: VenueOfferHandoffDeps = BUILD_HANDOFF_DEPS,
 ): boolean {
-  const url = venueOfferCheckoutWebUrl(target, origin);
+  const url = venueOfferCheckoutWebUrl(target, buyerWebOriginFor(deps.backendUrl));
   if (url === null) return false;
   openInMingla(url);
   return true;

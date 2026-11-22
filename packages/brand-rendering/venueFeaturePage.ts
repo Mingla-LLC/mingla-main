@@ -941,6 +941,23 @@ const WAYS_FEATURES: readonly VenueFeatureKey[] = [
 const minFrom = (offers: readonly VenueFeatureOfferView[]): number | null =>
   offers.length === 0 ? null : Math.min(...offers.map((o) => o.fromMinor));
 
+/**
+ * #4490 W3 fix 2 (W3-N17): the groups "from" across packages, in ONE unit: the
+ * cheapest per-guest package when there is one, else the cheapest per-booking
+ * package (the server's rule inside one package, and the card's
+ * `priceFrom.group_packages`). A per-booking price is never compared with a
+ * per-guest one as if they were the same.
+ */
+export function venueGroupsFrom(
+  offers: readonly VenueFeatureOfferView[],
+): { offer: VenueFeatureOfferView; perGuest: boolean } | null {
+  const perGuest = offers.filter((o) => o.unit !== "booking");
+  const pool = perGuest.length > 0 ? perGuest : offers;
+  if (pool.length === 0) return null;
+  const offer = pool.reduce((a, b) => (b.fromMinor < a.fromMinor ? b : a));
+  return { offer, perGuest: perGuest.length > 0 };
+}
+
 const capitalise = (s: string): string =>
   s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -1053,9 +1070,10 @@ export function deriveVenuePage(
         : "Buy entry";
     const clauses: string[] = [];
     if (tabSet.has("groups")) {
-      const min = minFrom(groupOffers) as number;
-      const perGuest = groupOffers.some((o) => o.unit !== "booking");
-      clauses.push(`groups from ${money(min)}${perGuest ? " a guest" : ""}`);
+      const groups = venueGroupsFrom(groupOffers);
+      if (groups !== null) {
+        clauses.push(`groups from ${money(groups.offer.fromMinor)}${groups.perGuest ? " a guest" : ""}`);
+      }
     }
     if (tabSet.has("hire")) {
       clauses.push(`private hire from ${money(minFrom(hireOffers) as number)}`);
@@ -1132,8 +1150,9 @@ export function deriveVenuePage(
       keepPriceRow: false,
     };
   } else if (tabSet.has("groups")) {
-    const min = minFrom(groupOffers) as number;
-    const perGuest = groupOffers.some((o) => o.unit !== "booking");
+    const groups = venueGroupsFrom(groupOffers);
+    const min = groups?.offer.fromMinor ?? (minFrom(groupOffers) as number);
+    const perGuest = groups?.perGuest ?? false;
     const mins = groupOffers.map((o) => o.guestMin).filter((n): n is number => n !== null);
     const maxes = groupOffers.map((o) => o.guestMax).filter((n): n is number => n !== null);
     lead = {
@@ -1185,12 +1204,13 @@ export function deriveVenuePage(
         break;
       }
       case "groups": {
-        const min = minFrom(groupOffers) as number;
         // #4490 N50: the line and the price come from the same package (the
         // cheapest), and the price says "from" when there is more than one.
-        const cheapest =
-          [...groupOffers].sort((a, b) => (a.fromMinor ?? Infinity) - (b.fromMinor ?? Infinity))[0] ?? null;
-        const perGuest = cheapest !== null && cheapest.unit !== "booking";
+        // W3 fix 2 (W3-N17): per-guest packages first, so the unit is the price's own.
+        const groups = venueGroupsFrom(groupOffers);
+        const cheapest = groups?.offer ?? null;
+        const min = cheapest?.fromMinor ?? (minFrom(groupOffers) as number);
+        const perGuest = groups?.perGuest ?? false;
         const several = groupOffers.length > 1;
         ways.push({
           tab,

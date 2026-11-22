@@ -39,6 +39,7 @@ import type {
   VenueDayOffer,
   VenueDayPool,
   VenueOffer,
+  VenueOfferGuestFrom,
   VenueOfferKind,
   VenueOffersState,
   VenuePriceOption,
@@ -229,6 +230,19 @@ function mapDeposit(v: unknown): PackageDeposit | null {
   };
 }
 
+/** #4490 W3 fix 2: the server's guest "from" for a live offer (null when absent or malformed). */
+export function mapGuestFrom(v: unknown): VenueOfferGuestFrom | null {
+  if (v === null || v === undefined || typeof v !== "object") return null;
+  const g = obj(v);
+  const from = numOrNull(g.fromMinor);
+  if (from === null || from < 0) return null;
+  const unit = g.unit;
+  return {
+    fromMinor: from,
+    unit: unit === "booking" || unit === "hour" || unit === "unit" ? unit : "guest",
+  };
+}
+
 export function mapOffer(v: unknown): VenueOffer {
   const o = obj(v);
   const policy = o.policy === null || o.policy === undefined ? null : obj(o.policy);
@@ -287,6 +301,7 @@ export function mapOffer(v: unknown): VenueOffer {
             endDate: strOrNull(schedule.endDate),
           },
     readiness: arr(o.readiness).filter((r): r is string => typeof r === "string"),
+    guestFrom: mapGuestFrom(o.guestFrom),
     outsideOpeningHours: o.outsideOpeningHours === true,
     outsideOpeningHoursDays: arr(o.outsideOpeningHoursDays).filter((d): d is number => typeof d === "number"),
     warnings: arr(o.warnings).filter((r): r is string => typeof r === "string"),

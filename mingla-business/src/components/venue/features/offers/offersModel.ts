@@ -590,13 +590,21 @@ export function multiDayPassSummary(days: number, windowDays: number, capital = 
   return capital ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
 }
 
-/** Lowest price label for the list ("₦4,000 per guest", "from ₦4,000"). */
+/**
+ * Lowest price label for the list ("₦4,000 per guest", "from ₦4,000").
+ * #4490 W3 fix 2 (W3-N16): a live offer's lowest price is the server's guest
+ * "from" (`offer.guestFrom`, the one owner the guest page and card read), so
+ * the Host list and the guest page never show two prices for one offer; a
+ * draft or paused offer (no guest "from") lists the host's own prices.
+ */
 export function priceColumn(offer: VenueOffer, currency: string | null): string {
   if (offer.options.length === 0) return "No price yet";
+  const guest = offer.guestFrom ?? null;
+  const ownLowest = Math.min(...offer.options.map((o) => o.priceMinor));
   if (offer.kind === "private_hire") {
-    const lowest = Math.min(...offer.options.map((o) => o.priceMinor));
+    const lowest = guest?.fromMinor ?? ownLowest;
     const max = Math.max(...offer.options.map((o) => o.guestMax));
-    const perGuest = offer.options.some((o) => o.unit === "guest");
+    const perGuest = guest !== null ? guest.unit === "guest" : offer.options.some((o) => o.unit === "guest");
     // #4490 N68: a weekend price is named with its days, never folded into "from".
     const dayPrices = offer.options.filter((o) => o.weekdays.length > 0 && o.weekdays.length < 7);
     const days =
@@ -606,21 +614,24 @@ export function priceColumn(offer: VenueOffer, currency: string | null): string 
     return `from ${money(lowest, currency)}${perGuest ? " a guest" : ""}${days} · up to ${max.toLocaleString("en-GB")} guests`;
   }
   if (offer.kind === "by_the_hour") {
-    const lowest = Math.min(...offer.options.map((o) => o.priceMinor));
-    return `${money(lowest, currency)} an hour`;
+    const lowest = guest?.fromMinor ?? ownLowest;
+    return `${lowest !== ownLowest ? "from " : ""}${money(lowest, currency)} an hour`;
   }
   if (offer.kind === "group_package") {
-    const lowest = Math.min(...offer.options.map((o) => o.priceMinor));
-    const perGroup = offer.options.length === 1 && offer.options[0].unit === "booking";
+    const lowest = guest?.fromMinor ?? ownLowest;
+    const perGroup =
+      guest !== null ? guest.unit === "booking" : offer.options.length === 1 && offer.options[0].unit === "booking";
     const min = Math.min(...offer.options.map((o) => o.guestMin));
     const max = Math.max(...offer.options.map((o) => o.guestMax));
+    const several = offer.options.length > 1 || lowest !== ownLowest;
     const price = perGroup
-      ? `${money(lowest, currency)} a group`
-      : `${offer.options.length > 1 ? "from " : ""}${money(lowest, currency)} a guest`;
+      ? `${several ? "from " : ""}${money(lowest, currency)} a group`
+      : `${several ? "from " : ""}${money(lowest, currency)} a guest`;
     return `${price} · ${min}–${max} guests`;
   }
   const prices = offer.options.map((o) => o.priceMinor);
-  const lowest = Math.min(...prices);
+  // The guest "from" may be a busy-time price below every listed price.
+  const lowest = guest?.fromMinor ?? Math.min(...prices);
   if (lowest === 0 && prices.every((p) => p === 0)) return "Free";
   // #4490 fix 2 (N77): a free option beside paid ones reads "Free – ₦x"
   // (the lowest paid price), never "from ₦0".
@@ -630,7 +641,7 @@ export function priceColumn(offer: VenueOffer, currency: string | null): string 
     return `Free – ${money(cheapest, currency)}${new Set(paid).size > 1 ? "+" : ""} per guest`;
   }
   const label = `${money(lowest, currency)} per guest`;
-  return new Set(prices).size > 1 ? `from ${label}` : label;
+  return new Set(prices).size > 1 || lowest !== Math.min(...prices) ? `from ${label}` : label;
 }
 
 export function whenColumn(offer: VenueOffer): string {

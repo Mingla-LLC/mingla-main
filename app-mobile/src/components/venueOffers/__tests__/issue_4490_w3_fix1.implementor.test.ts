@@ -14,6 +14,11 @@
  *             (W3-N13), the event chip reads the session's dates in collab
  *             (W3-N11), the sheet gets the deck host's hand-off (W3-N2).
  *
+ * TEST-MOD-APPROVED #4490 (W3 fix 2, W3-N15): the hand-off takes the build's
+ * backend as an injected dependency (`{ backendUrl }`) instead of a ready-made
+ * origin, so S-3 passes backends and S-4 pins the default dependency; same
+ * assertions otherwise.
+ *
  * FAILS-ON-REVERT: deleting the closeSheet call in leaveSheetTo fails H-1;
  * deleting the origin check in buyerWebOriginFor fails S-2; deleting the
  * "Free entry" branch in offerPrice fails F-1; deleting the todayTag branch in
@@ -89,16 +94,17 @@ describe('#4490 W3 fix 1 — the Buy hand-off opens this build\'s buyer web (W3-
   test('S-3 with no buyer web the hand-off opens nothing and reports it', () => {
     const opened: string[] = [];
     const target = { brandSlug: 'hc', venueSlug: 'gameland', tab: 'entry' as const, offerId: 'o1' };
-    expect(openVenueOfferCheckout(target, (u) => opened.push(u), null)).toBe(false);
+    expect(openVenueOfferCheckout(target, (u) => opened.push(u), { backendUrl: 'http://127.0.0.1:57521' })).toBe(false);
     expect(venueOfferCheckoutWebUrl(target, null)).toBeNull();
     expect(opened).toEqual([]);
-    expect(openVenueOfferCheckout(target, (u) => opened.push(u), 'https://host.usemingla.com')).toBe(true);
+    expect(openVenueOfferCheckout(target, (u) => opened.push(u), { backendUrl: 'https://abcdefghijklmnop.supabase.co' })).toBe(true);
     expect(opened).toEqual(['https://host.usemingla.com/b/hc/v/gameland?tab=entry']);
   });
   test('S-4 the origin follows the app\'s one backend owner; the pane shows the error line, never a dead tap', () => {
     const seam = read('../venueOfferCheckoutSeam.ts');
     expect(seam).toMatch(/import \{ SUPABASE_URL \} from "\.\.\/\.\.\/config\/supabaseProject";/);
-    expect(seam).toMatch(/buyerWebOriginFor\(SUPABASE_URL\)/);
+    expect(seam).toMatch(/const BUILD_HANDOFF_DEPS: VenueOfferHandoffDeps = \{ backendUrl: SUPABASE_URL \};/);
+    expect(seam).toMatch(/deps: VenueOfferHandoffDeps = BUILD_HANDOFF_DEPS/);
     const pane = read('../VenueOfferPane.tsx');
     expect(pane).toMatch(/const opened = openVenueOfferCheckout\(/);
     expect(pane).toMatch(/setHandoffFailed\(!opened\)/);
