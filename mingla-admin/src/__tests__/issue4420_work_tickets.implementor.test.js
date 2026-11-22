@@ -713,3 +713,28 @@ describe("T-13 What changed also follows Show and search", () => {
     assert.match(code("pages/WorkBoardPage.jsx"), /<PeriodView [^>]*filtersActive=\{pageFiltersActive\(filters\)\} \/>/);
   });
 });
+
+// G10 (rework 3, QA P3-6): the agent log said "Added Ticket 6 … Card 6:". The
+// server's ticket text now says T6 (pg17 T-WORDING-T) and the row's link
+// label follows it. FAILS-ON-REVERT: without logCardLabel these red.
+describe("T-14 the agent log names a ticket T<n>, a card Card <n>", () => {
+  it("a ticket entry (the server's ticket wording) is labelled T<n>; any other card keeps Card <n>", () => {
+    assert.equal(ticketModel.logCardLabel({ summary: "Added ticket T6: Refund stuck", card: { number: 6 } }), "T6");
+    assert.equal(ticketModel.logCardLabel({ summary: "Ticket T6 closed: fixed", card: { number: 6 } }), "T6");
+    assert.equal(ticketModel.logCardLabel({ summary: "Added Call the venue", card: { number: 6 } }), "Card 6");
+    assert.equal(ticketModel.logCardLabel({ summary: "Added ticket T61: x", card: { number: 6 } }), "Card 6", "T61 is not T6");
+    assert.equal(ticketModel.logCardLabel({ summary: "", card: {} }), "Card ?");
+  });
+  it("LogRow uses it, and writes no number by hand", () => {
+    const row = read("components/ops/LogRow.jsx");
+    assert.match(row, /\{logCardLabel\(entry\)\}: \{entry\.card\.title\}/);
+    assert.doesNotMatch(row, /Card \{entry\.card\.number\}/);
+  });
+  it("the ticket migration writes T<n> in every ticket text, and an ordinary card duplicate keeps its words", () => {
+    const sql = fs.readFileSync(path.resolve(SRC, "../../supabase/migrations/20281121034420_issue_4420_tickets_on_work_board.sql"), "utf8");
+    assert.doesNotMatch(sql, /Ticket %s|ticket %s\./);
+    assert.match(sql, /format\('Added ticket T%s: %s', c\.number, c\.title\)/);
+    assert.equal((sql.match(/An open ticket already does this: "%s" \(T%s\)\. Update that ticket instead\./g) || []).length, 2);
+    assert.equal((sql.match(/ELSE format\('An open card already does this: "%s" \(Card %s\)\. Update that card instead\.'/g) || []).length, 2);
+  });
+});

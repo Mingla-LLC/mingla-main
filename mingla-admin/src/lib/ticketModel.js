@@ -313,3 +313,18 @@ export function ticketDuplicateNotice(answer, { hasSource = false } = {}) {
 
 /** #4420 rework 3 (G4): the sentence beside Make ticket when the request failed. */
 export const TICKET_SUBMIT_FAILED_WORDS = "The ticket wasn't made. Check your connection and press Make ticket again: it won't make two.";
+
+/**
+ * #4420 rework 3 (G10): the card label on an agent log row. The log read
+ * (ops_log_list, older than tickets) gives only the card's id, number and
+ * title, so a ticket is known by the server's own ticket wording in the
+ * entry's summary ("Added ticket T6: …", "Ticket T6 closed: …"); then the
+ * label is T6, as everywhere else. Every other card keeps "Card 6".
+ */
+export function logCardLabel(entry) {
+  const number = entry?.card?.number;
+  if (number == null || number === "") return "Card ?";
+  const t = ticketNumber(number);
+  const summary = String(entry?.summary || "");
+  return t !== "T?" && new RegExp(`\\bticket ${t}\\b`, "i").test(summary) ? t : `Card ${number}`;
+}
