@@ -74,6 +74,14 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
       };
     } // [TEST-MOD-APPROVED #3645]
     if (name.endsWith("/refundPolicyTerms")) return { OfferingRefundTermsError: class extends Error {} };
+    // [TEST-MOD #4548] the guest pack working copy (nothing pending in this suite).
+    if (name.endsWith("/guestPackGate")) return {
+      guestPackEventIdForDraft: (id: string) => (id.startsWith("d_") ? null : id),
+      hasPendingGuestPack: () => false,
+      flushGuestPack: async () => ({ ok: true, saved: false }),
+      releaseGuestPackSession: () => undefined,
+      subscribeGuestPack: () => () => undefined,
+    };
     if (name.endsWith("/recurrenceRule")) return { expandRecurrenceToDates: () => [] };
     if (name === "@mingla/brand-assets") return { MINGLA_BUSINESS_LOGO: 1 };
     if (name.endsWith("/createDeferredTurnoutIntelProvider")) return { createDeferredTurnoutIntelProvider: () => leaf("IntelProvider") };
