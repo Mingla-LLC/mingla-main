@@ -151,6 +151,9 @@ import { useOtaUpdates } from "../src/hooks/useOtaUpdates";
 import { OtaUpdateBanner } from "../src/components/ui/OtaUpdateBanner";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import { TicketFoundBanner } from "../src/components/purchases/TicketFoundBanner";
+import { claimedEntryPath } from "../src/components/purchases/missingTicketModel";
+import { linkedClaimedEntry } from "../src/services/pendingClaimPolicy";
+import { lastAttachedClaimSweep } from "../src/services/claimSweep";
 import { ClaimLinkLandedSheet } from "../src/components/purchases/ClaimLinkLandedSheet";
 import { useClaimRecheck } from "../src/hooks/useClaimRecheck";
 import type { OnboardingMode } from "../src/hooks/ticketFirstLogic";
@@ -3376,6 +3379,21 @@ function AppContent() {
               requestAnimationFrame(() => {
                 router.push(result.landing?.route as never);
               });
+            } else if (linkedBannerClaim) {
+              // #4490 N157 — a new account made through a claim link's
+              // welcome card lands on THAT purchase's detail once onboarding
+              // ends (the sweep that attached it is kept per account).
+              const claimUserId = userIdRef.current;
+              const attached = claimUserId ? lastAttachedClaimSweep(claimUserId) : null;
+              const entry = attached
+                ? linkedClaimedEntry(attached.claimed, linkedBannerClaim)
+                : null;
+              setLinkedBannerClaim(null);
+              if (entry) {
+                requestAnimationFrame(() => {
+                  router.push(claimedEntryPath(entry) as never);
+                });
+              }
             }
             // ORCH-1257 (Apple 2.1): fire the deferred permission sequence HERE —
             // right after onboarding, BEFORE the coach-mark tour — so the reviewer

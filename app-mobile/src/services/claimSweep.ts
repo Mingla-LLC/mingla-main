@@ -42,6 +42,10 @@ const lastForegroundByUserId = new Map<string, number>();
 const lastPullRefreshByUserId = new Map<string, number>();
 const rateLimitedUntilByUserId = new Map<string, number>();
 const inFlightByUserId = new Map<string, Promise<ClaimSweepResult>>();
+// #4490 N157: the last sweep that attached something, per account, so a
+// claim-link sign-in can open THAT purchase after onboarding (a later
+// idempotent sweep finds nothing new and must not erase it).
+const lastAttachedByUserId = new Map<string, ClaimSweepResult>();
 const listeners = new Set<(result: ClaimSweepResult) => void>();
 
 export function claimSweepThrottleMs(reason: ClaimRecheckReason): number {
@@ -149,6 +153,7 @@ async function executeSweep(
 
   queryClient.setQueryData(purchaseKeys.lastClaim(userId), aggregate);
   if (aggregate.count > 0) {
+    lastAttachedByUserId.set(userId, aggregate);
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: purchaseKeys.all }),
       queryClient.invalidateQueries({ queryKey: ["businessEventOrders", userId] }),
@@ -176,6 +181,10 @@ export function runClaimSweep(
   return promise;
 }
 
+export function lastAttachedClaimSweep(userId: string): ClaimSweepResult | null {
+  return lastAttachedByUserId.get(userId) ?? null;
+}
+
 export function subscribeToClaimSweepResults(
   listener: (result: ClaimSweepResult) => void,
 ): () => void {
@@ -188,5 +197,6 @@ export function resetClaimSweepStateForTests(): void {
   lastPullRefreshByUserId.clear();
   rateLimitedUntilByUserId.clear();
   inFlightByUserId.clear();
+  lastAttachedByUserId.clear();
   listeners.clear();
 }

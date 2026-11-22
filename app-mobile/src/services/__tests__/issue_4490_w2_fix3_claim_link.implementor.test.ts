@@ -55,6 +55,11 @@ jest.mock("../supabase", () => ({
 jest.mock("@mingla/phone-input/phoneNumber", () => ({ formatPhoneNational: (v: string) => v }));
 jest.mock("../../constants/countries", () => ({ COUNTRIES: [] }));
 jest.mock("../../utils/zoneLabel", () => ({ formatStartsAtLabel: () => "" }));
+jest.mock("../../config/queryClient", () => ({
+  queryClient: { setQueryData: () => undefined, invalidateQueries: async () => undefined },
+}));
+jest.mock("../../hooks/useMyReservations", () => ({ myReservationsKeys: { all: ["myReservations"] } }));
+jest.mock("@mingla/brand-rendering/stayGuest", () => ({ stayGuestKeys: { all: ["stayGuest"] } }));
 
 import {
   loadWelcomePendingClaim,
@@ -71,6 +76,7 @@ import {
   welcomeClaimDecision,
 } from "../pendingClaimPolicy";
 import { welcomeSignInOptions } from "../../components/signIn/welcomeClaimModel";
+import { lastAttachedClaimSweep, resetClaimSweepStateForTests, runClaimSweep } from "../claimSweep";
 import { claimedEntryPath } from "../../components/purchases/missingTicketModel";
 import { buildPurchaseTimeline, type PurchaseSources } from "../../utils/purchaseTimeline";
 
@@ -174,6 +180,27 @@ describe("W2-N27 a claim link opened while signed out reaches the claim handler"
     expect(claimedEntryPath(picked as never)).toBe("/purchases/venue_booking/c14ed7f7");
     expect(linkedClaimedEntry(claimed, null)).toBeNull();
     expect(linkedClaimedEntry([claimed[1]], null)?.id).toBe("f345010d");
+  });
+
+  test("F3-L6 a new account made from the card lands on that purchase after onboarding, even after an idempotent repeat sweep", async () => {
+    resetClaimSweepStateForTests();
+    const row = {
+      kind: "venue_booking", id: "c14ed7f7", routeKind: "venue_booking", routeId: "c14ed7f7",
+      offeringType: "venue", noun: "pass", title: "Gameland QA", orderLabel: null,
+      startsAt: "2026-11-23T09:00:00Z", timezone: "Africa/Lagos", venueLine: null, quantity: 1,
+      source: "booking", sentByFirstName: null, chatJoined: null, conversationId: null,
+    };
+    mockNextResolve = { data: { count: 1, claimed: [row], more: false }, error: null };
+    await runClaimSweep("u-new", "sign_in", { showBanner: false });
+    mockNextResolve = { data: { count: 0, claimed: [], more: false }, error: null };
+    await runClaimSweep("u-new", "sign_in", { showBanner: false });
+    const attached = lastAttachedClaimSweep("u-new");
+    const entry = attached ? linkedClaimedEntry(attached.claimed, claim()) : null;
+    expect(entry ? claimedEntryPath(entry) : null).toBe("/purchases/venue_booking/c14ed7f7");
+    const index = read("../../../app/index.tsx");
+    const done = index.slice(index.indexOf("logger.nav('OnboardingFlow completed"));
+    expect(done.slice(0, 2400)).toContain("linkedClaimedEntry(attached.claimed, linkedBannerClaim)");
+    expect(done.slice(0, 2400)).toContain("router.push(claimedEntryPath(entry) as never);");
   });
 });
 
