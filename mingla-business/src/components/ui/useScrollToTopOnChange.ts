@@ -4,10 +4,10 @@
  * short step opens half-way down. Give the returned ref to the step's
  * ScrollView and pass the step as `key`.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import type { ScrollView } from "react-native";
 
-export function useScrollToTopOnChange(key: unknown): React.RefObject<ScrollView | null> {
+export function useScrollToTopOnChange(key: unknown): RefObject<ScrollView | null> {
   const ref = useRef<ScrollView | null>(null);
   const first = useRef(true);
   useEffect(() => {

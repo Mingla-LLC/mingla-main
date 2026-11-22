@@ -16,11 +16,36 @@
  * `facetsStale` ignored -> D3-1, D3-2; the venue read not raced -> D3-3;
  * the venue retry rule removed -> D3-4, D3-5.
  */
+// app-mobile's tsc has no jest or react-test-renderer types: declare what this
+// suite uses so it adds no type errors (the W5 handler suite does the same).
+declare const jest: {
+  mock(path: string, factory: () => unknown): void;
+  fn(): { (...args: unknown[]): unknown; mockImplementation(impl: (...args: unknown[]) => unknown): void; mockReset(): void };
+  useFakeTimers(): void;
+  useRealTimers(): void;
+  advanceTimersByTime(ms: number): void;
+};
+declare const describe: (name: string, body: () => void) => void;
+declare const it: (name: string, body: () => void | Promise<void>) => void;
+declare const expect: (value: unknown) => {
+  toBe(v: unknown): void;
+  toEqual(v: unknown): void;
+  toContain(v: unknown): void;
+  toMatch(v: RegExp): void;
+  toBeUndefined(): void;
+  toBeInstanceOf(v: unknown): void;
+};
+type TestNode = { type: unknown; props: Record<string, any> };
+type TestTree = { root: { findAll(match: (n: TestNode) => boolean): TestNode[] } };
+
 import React from "react";
 import fs from "node:fs";
 import path from "node:path";
 
-const { act, create } = require("react-test-renderer") as typeof import("react-test-renderer");
+const { act, create } = require("react-test-renderer") as {
+  act(work: () => void | Promise<void>): Promise<void> | void;
+  create(element: React.ReactElement): TestTree;
+};
 
 jest.mock("@mingla/offering-rendering", () => ({ EventCoverMedia: () => null }));
 jest.mock("expo-linear-gradient", () => ({ LinearGradient: () => null }));
@@ -101,7 +126,7 @@ const base = {
 
 describe("#4490 W6 fix 2 Discover", () => {
   it("D1-1 the lead line wraps to two lines and keeps the whole price", () => {
-    let tree: ReturnType<typeof create> | null = null;
+    let tree: TestTree | null = null;
     act(() => {
       tree = create(<DiscoverCard card={hallCard() as never} saved={false} onPress={() => undefined} onSave={() => undefined} now={NOW} />);
     });
