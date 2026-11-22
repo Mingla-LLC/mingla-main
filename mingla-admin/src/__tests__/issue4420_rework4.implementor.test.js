@@ -89,3 +89,22 @@ describe("F7 the Work search box follows the address", () => {
     assert.match(read("pages/WorkBoardPage.jsx"), /if \(seenQ !== view\.q\) \{ setSeenQ\(view\.q\); setTyping\(\{ q: view\.q, text: view\.q \}\); \}/);
   });
 });
+
+// #4420 rework 5 (H3). FAILS-ON-REVERT: put back `|| "Ticket"` and the summary
+// says "Type: Ticket" for a ticket whose type the row does not carry.
+import { ticketTypeLabel } from "../lib/ticketModel.js";
+describe("H3 the ticket summary shows the ticket's own type, or no type", () => {
+  const panel = read("components/support/TicketSummaryPanel.jsx");
+  it("the one label helper gives Bug, Idea, Question and Task for the real type values", () => {
+    assert.deepEqual(["bug", "idea", "question", "task"].map(ticketTypeLabel), ["Bug", "Idea", "Question", "Task"]);
+  });
+  it("a row with no type (the duplicate answer: id, number, title only) gives an empty label", () => {
+    assert.equal(ticketTypeLabel(undefined), "");
+    assert.equal(ticketTypeLabel(null), "");
+  });
+  it("the panel renders the Type row only with a label and never invents 'Ticket'", () => {
+    assert.match(panel, /const typeLabel = ticketTypeLabel\(linked\.type\)/);
+    assert.match(panel, /typeLabel \? \(/);
+    assert.doesNotMatch(panel, /\|\| "Ticket"/);
+  });
+});
