@@ -40,7 +40,7 @@ export function FormChoiceSheet({
       accessibilityLabel={title}
       enablePanDownToClose
       enableDynamicSizing
-      scrollMode="view"
+      scrollMode="scroll"
       theme="dark"
       wrapInRNModal
     >

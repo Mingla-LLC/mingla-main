@@ -36,7 +36,7 @@ import { timeAgo, formatDate, formatDateTime } from "../lib/formatters";
 import { PageHeader } from "../components/ui/PageHeader";
 import { formatMoneyMinor } from "../lib/moneyFormat";
 // #4541 R7.1 — forms support (counts, statuses, failures, switches; never answers or contacts).
-import { BrandFormsSupportPage } from "./BrandFormsSupportPage";
+import { BrandFormsSupportPanel } from "../components/brands/BrandFormsSupportPanel";
 
 // Money formatter (cents + currency → string; never throws).
 function formatMoney(cents, currency) {
@@ -908,7 +908,7 @@ export function BrandsConsolePage() {
 
         {detail && (
           <div className="mt-6" data-testid="brand-forms-support">
-            <BrandFormsSupportPage brandId={selectedBrandId} />
+            <BrandFormsSupportPanel brandId={selectedBrandId} />
           </div>
         )}
 

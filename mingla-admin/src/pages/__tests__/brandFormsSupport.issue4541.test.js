@@ -81,8 +81,8 @@ test("#4541 R7.1 a refusal reads in plain words", () => {
 
 test("#4541 R7.1 the brand detail mounts the view and the page calls only the admin RPCs", () => {
   const consolePage = readFileSync(new URL("../BrandsConsolePage.jsx", import.meta.url), "utf8");
-  const page = readFileSync(new URL("../BrandFormsSupportPage.jsx", import.meta.url), "utf8");
-  assert.ok(consolePage.includes("<BrandFormsSupportPage brandId={selectedBrandId} />"));
+  const page = readFileSync(new URL("../../components/brands/BrandFormsSupportPanel.jsx", import.meta.url), "utf8");
+  assert.ok(consolePage.includes("<BrandFormsSupportPanel brandId={selectedBrandId} />"));
   assert.ok(page.includes('supabase.rpc("admin_brand_forms_support"'));
   assert.ok(page.includes('supabase.rpc("admin_brand_form_set_open_reply_limit"'));
   assert.ok(!page.includes(".from("));

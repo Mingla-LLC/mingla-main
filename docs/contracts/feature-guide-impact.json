@@ -5797,7 +5797,7 @@
         "app-mobile/src/i18n/locales/zh/forms.json",
         "app-mobile/src/services/brandFormService.ts",
         "mingla-admin/src/lib/brandFormsSupport.js",
-        "mingla-admin/src/pages/BrandFormsSupportPage.jsx",
+        "mingla-admin/src/components/brands/BrandFormsSupportPanel.jsx",
         "mingla-business/src/components/forms/BlastFormBlock.tsx",
         "mingla-business/src/components/forms/BlastFormPicker.tsx",
         "mingla-business/src/components/forms/DoorReadLog.tsx",

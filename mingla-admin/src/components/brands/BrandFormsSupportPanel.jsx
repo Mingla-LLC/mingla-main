@@ -8,17 +8,17 @@
 // in the Brands console.
 
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
-import { SectionCard } from "../components/ui/Card";
-import { Button } from "../components/ui/Button";
-import { LoadError } from "../components/ui/LoadError";
-import { Spinner } from "../components/ui/Spinner";
+import { supabase } from "../../lib/supabase";
+import { SectionCard } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { LoadError } from "../ui/LoadError";
+import { Spinner } from "../ui/Spinner";
 import {
   brandFormsSupportView,
   parseOpenReplyLimit,
   sendLine,
   supportErrorMessage,
-} from "../lib/brandFormsSupport";
+} from "../../lib/brandFormsSupport";
 
 const Row = ({ label, value }) => (
   <div className="flex items-baseline justify-between gap-3 py-1.5 border-b border-[var(--a-line)] last:border-b-0">
@@ -79,7 +79,7 @@ async function fetchSupportView(brandId) {
   }
 }
 
-export function BrandFormsSupportPage({ brandId }) {
+export function BrandFormsSupportPanel({ brandId }) {
   const [view, setView] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -179,4 +179,4 @@ export function BrandFormsSupportPage({ brandId }) {
   );
 }
 
-export default BrandFormsSupportPage;
+export default BrandFormsSupportPanel;
