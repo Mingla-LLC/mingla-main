@@ -186,6 +186,15 @@ export const brandFormKeys = {
     [...brandFormKeys.all, 'my-pending', userId ?? 'none'] as const,
 };
 
+// Issue #3281 S6 — an RSVP's add-ons: the RSVP page's list (by slug) and the
+// add-ons stored with the guest's own RSVP (the pass sheet).
+export const rsvpAddOnsKeys = {
+  all: ['rsvp-add-ons'] as const,
+  forPage: (brandSlug: string | null, eventSlug: string | null) =>
+    [...rsvpAddOnsKeys.all, 'page', brandSlug ?? 'none', eventSlug ?? 'none'] as const,
+  mine: (rsvpId: string) => [...rsvpAddOnsKeys.all, 'mine', rsvpId] as const,
+};
+
 // Issue #4261 — plans in chats (chat plans and deck matches share one entity).
 // `conversation` is the one list read per plan chat; realtime and every plan
 // mutation invalidate it.

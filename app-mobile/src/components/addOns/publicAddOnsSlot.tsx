@@ -32,6 +32,8 @@ const slot: OfferingAddOnsSlot = (id, addOns, currency, palette) => (
     currency={currency}
     palette={palette}
     photoUrl={addOnPhotoUrl}
+    // The RSVP card lists only what a guest can pick there: free add-ons (#3281 S6).
+    freeOnly={id === "rsvp"}
   />
 );
 
