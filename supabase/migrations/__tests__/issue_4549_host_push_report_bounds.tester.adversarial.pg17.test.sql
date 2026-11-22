@@ -202,10 +202,24 @@ END
 $do$;
 SELECT pg_temp.t_ok((SELECT v FROM r4549 WHERE k = 'claims_99') = '3',
   'R-CLAIM ten claim-and-release cycles with p_max_attempts = 99 win exactly 3');
+-- #4549 CI fix: this check used 'rate-dev-1', but R-RATE writes 30 records
+-- for one account in one transaction (one now() for all), so the 25-record
+-- prune drops 5 of them in uuid order and 'rate-dev-1' was missing on some
+-- runs (an empty SELECT is NULL, which fails). It now sets up its own fully
+-- claimable record and proves claimability with a positive control.
+INSERT INTO public.host_push_devices
+  (user_id, provider_subscription_id, platform, last_reported_at, provider_state, repair_state, provider_delete_attempts)
+VALUES ('45496666-0000-4000-8000-000000000004', 'claim-max-dev', 'ios', now(), 'refused_token', 'none', 0);
 SELECT pg_temp.t_ok(
-  (SELECT NOT public.host_push_claim_provider_delete(d.id, NULL) AND NOT public.host_push_claim_provider_delete(d.id, -5)
-     FROM public.host_push_devices d WHERE d.provider_subscription_id = 'rate-dev-1'),
+  (SELECT NOT public.host_push_claim_provider_delete(d.id, NULL)
+      AND NOT public.host_push_claim_provider_delete(d.id, -5)
+      AND NOT public.host_push_claim_provider_delete(d.id, 0)
+     FROM public.host_push_devices d WHERE d.provider_subscription_id = 'claim-max-dev'),
   'R-CLAIM a null or negative maximum allows no claim');
+SELECT pg_temp.t_ok(
+  (SELECT public.host_push_claim_provider_delete(d.id, 3)
+     FROM public.host_push_devices d WHERE d.provider_subscription_id = 'claim-max-dev'),
+  'R-CLAIM control: the same record is claimable with a maximum of 3');
 SELECT pg_temp.t_ok(
   (SELECT NOT public.host_push_claim_provider_delete(d.id, 3)
      FROM public.host_push_devices d WHERE d.provider_subscription_id = 'prune-dev-26'),
