@@ -16,7 +16,8 @@ const read = (rel) => readFileSync(join(ROOT, rel), "utf8");
 
 const CONSTANTS = read("lib/constants.js");
 const APP = read("App.jsx");
-const PAGE = read("pages/CommunitySupportPage.jsx");
+// [TEST-MOD #4420] the shared frame file was replaced by pages/SupportPage.jsx (Community retired).
+const PAGE = read("pages/SupportPage.jsx");
 const TABS = read("lib/supportCommunityTabs.js");
 // #4130: retired addresses (the old #/support and #/email among them) live here.
 const ROUTES = read("lib/adminRoutes.js");
@@ -29,8 +30,10 @@ describe("#3720 F — nav is one Community & Support item", () => {
     // #4130 Wave 6: the menu's Support group holds two pages, Support and
     // Community, split from this console; there is still no Email entry.
     assert.match(CONSTANTS, /id:\s*"support",\s*label:\s*"Support"/);
-    assert.match(CONSTANTS, /id:\s*"community",\s*label:\s*"Community"/);
+    // [TEST-MOD #4420] Community is retired: no menu entry; its address redirects like the console's.
+    assert.equal(/id:\s*"community",/.test(CONSTANTS), false);
     assert.match(ROUTES, /"community-support": consoleRedirectHash/);
+    assert.match(ROUTES, /community: consoleRedirectHash/);
     // #4383: Email is a Communications screen of its own again.
     assert.match(CONSTANTS, /id:\s*"email",\s*label:\s*"Email"/);
   });
@@ -39,7 +42,10 @@ describe("#3720 F — nav is one Community & Support item", () => {
 describe("#3720 F — App routes and legacy aliases", () => {
   // #4130 Wave 6: was "PAGES maps community-support only".
   it("PAGES maps the Support and Community pages (not the desk page key)", () => {
-    assert.match(APP, /support: SupportPage,\s*community: CommunityPage,/);
+    // [TEST-MOD #4420] Community retired: Support is the page, from pages/SupportPage.
+    assert.match(APP, /\bsupport: SupportPage,/);
+    assert.match(APP, /import \{ SupportPage \} from "\.\/pages\/SupportPage";/);
+    assert.equal(/CommunityPage/.test(APP), false);
     assert.equal(/\bsupport:\s*SupportDeskPage/.test(APP), false);
     // #4383: #/email is the Communications Email screen.
     assert.match(APP, /\bemail: EmailPage,/);

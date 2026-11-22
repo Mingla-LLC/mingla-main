@@ -19,14 +19,14 @@
  */
 
 import React from "react";
-import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, type PressableStateCallbackType } from "react-native";
+import { Image, Platform, Pressable, StyleSheet, Text, View, type LayoutChangeEvent, type PressableStateCallbackType } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 
 import { color, materials, radius, space, type } from "../../constants/designSystem";
 import { DESKTOP_RAIL_WIDTH, DESKTOP_SIDEBAR_WIDTH } from "../../constants/desktopLayout";
 import { MARKETING_SUB_NAV_TABS, detectMarketingSubNavActive } from "../marketing/marketingSubNavTabs";
 
-import { isRailRoute, useDesktopSidebarStore } from "./desktopSidebarState";
+import { EXPANDED_BRAND_ROW_HEIGHT, expandedAvailable, expandedLayout, isRailRoute, useDesktopSidebarStore, type ExpandedLayout } from "./desktopSidebarState";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 // ISSUE-1001 — the official business lockup from @mingla/brand-assets.
@@ -168,10 +168,23 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
   const { groups, account } = buildSidebarGroups(tabs);
   const activeKey = activeSidebarKey(pathname);
   const go = (path: string) => (): void => router.push(path as never);
+  // #4420 — the expanded menu never scrolls: sizes come from the measured panel.
+  const [panelH, setPanelH] = React.useState(0);
+  const visibleRows = groups.reduce(
+    (n, g) => n + (g.title !== null && closedGroups.includes(g.key) ? 0 : g.items.length),
+    0,
+  ) + (account !== null ? 1 : 0);
+  const titleCount = groups.filter((g) => g.title !== null).length;
+  const m: ExpandedLayout = expandedLayout(
+    panelH > 0 ? expandedAvailable(panelH, EXPANDED_BRAND_ROW_HEIGHT) : Number.MAX_SAFE_INTEGER,
+    visibleRows,
+    titleCount,
+    groups.length,
+  );
 
   if (rail) {
-    // #4389 P3 — the 80 icon rail (every page, hover / focus labels, a
-    // scrolling page list) loads on intent: it shows only when the host
+    // #4389 P3 — the 80 icon rail (every page, hover / focus labels, no
+    // scrolling) loads on intent: it shows only when the host
     // collapsed the sidebar or on a wizard route, so it stays off the eager
     // boot chunk. Until it loads, the empty rail column holds the layout.
     return (
@@ -194,7 +207,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
   }
 
   return (
-    <View testID={testID} style={[styles.sidebar, styles.expanded]} accessibilityRole="tablist">
+    <View
+      testID={testID}
+      style={[styles.sidebar, styles.expanded]}
+      accessibilityRole="tablist"
+      onLayout={(e: LayoutChangeEvent) => setPanelH(e.nativeEvent.layout.height)}
+    >
       <View style={styles.brandRow}>
         <HostLogo width={LOGO_WIDTH_SIDEBAR} />
         <View style={styles.spacer} />
@@ -202,7 +220,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
           <Icon name="chevL" size={16} color={color.text3} />
         </Pressable>
       </View>
-      <ScrollView style={styles.groups} contentContainerStyle={styles.groupsContent} showsVerticalScrollIndicator={false}>
+      <View style={[styles.groups, { gap: m.gap, paddingBottom: m.gap }]}>
         {groups.map((group) => {
           const closed = group.title !== null && closedGroups.includes(group.key);
           const holdsActive = group.items.some((i) => i.key === activeKey);
@@ -214,7 +232,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
                   accessibilityRole="button"
                   accessibilityState={{ expanded: !closed }}
                   accessibilityLabel={group.title}
-                  style={styles.groupHead}
+                  style={[styles.groupHead, { height: m.title }]}
                   testID={`sidebar-group-${group.key}`}
                 >
                   <Text style={styles.groupTitle}>{group.title}</Text>
@@ -226,22 +244,22 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ tabs, forceRail 
               {closed
                 ? null
                 : group.items.map((item) => (
-                    <SidebarRow key={item.key} item={item} on={item.key === activeKey} onPress={go(item.path)} />
+                    <SidebarRow key={item.key} item={item} on={item.key === activeKey} onPress={go(item.path)} m={m} />
                   ))}
             </View>
           );
         })}
-      </ScrollView>
+      </View>
       {account !== null ? (
         <View style={styles.footer}>
-          <SidebarRow item={account} on={activeKey === "account"} onPress={go(account.path)} />
+          <SidebarRow item={account} on={activeKey === "account"} onPress={go(account.path)} m={m} />
         </View>
       ) : null}
     </View>
   );
 };
 
-const SidebarRow: React.FC<{ item: SidebarItem; on: boolean; onPress: () => void }> = ({ item, on, onPress }) => (
+const SidebarRow: React.FC<{ item: SidebarItem; on: boolean; onPress: () => void; m: ExpandedLayout }> = ({ item, on, onPress, m }) => (
   <Pressable
     onPress={onPress}
     accessibilityRole="tab"
@@ -250,11 +268,12 @@ const SidebarRow: React.FC<{ item: SidebarItem; on: boolean; onPress: () => void
     testID={`sidebar-item-${item.key}`}
     style={(state: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.row,
+      { height: m.row },
       on ? styles.itemOn : state.hovered ? styles.itemHover : null,
     ]}
   >
-    <Icon name={item.icon} size={18} color={on ? color.accent : color.text2} />
-    <Text style={[styles.rowLabel, on ? styles.rowLabelOn : null]} numberOfLines={1}>
+    <Icon name={item.icon} size={m.icon} color={on ? color.accent : color.text2} />
+    <Text style={[styles.rowLabel, { fontSize: m.labelSize }, on ? styles.rowLabelOn : null]} numberOfLines={1}>
       {item.label}
     </Text>
   </Pressable>
@@ -278,13 +297,13 @@ const styles = StyleSheet.create({
   logoCrop: { overflow: "hidden" },
   brandRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: space[5], paddingBottom: space[4] },
   collapseButton: { width: 28, height: 28, borderRadius: radius.xs, alignItems: "center", justifyContent: "center" },
-  groups: { flex: 1 },
-  groupsContent: { paddingHorizontal: space[3], gap: space[4] },
-  group: { gap: 2 },
-  groupHead: { flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 28, paddingHorizontal: space[3] },
+  // Groups share the height; leftover (tall monitors) lands between them.
+  groups: { flex: 1, minHeight: 0, paddingHorizontal: space[3], justifyContent: "space-between" },
+  group: {},
+  groupHead: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[3] },
   groupTitle: { ...type.label, textTransform: "uppercase", color: color.text3 },
   activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: color.accent },
-  row: { flexDirection: "row", alignItems: "center", gap: space[3], minHeight: 40, paddingHorizontal: space[3], borderRadius: radius.sm },
+  row: { flexDirection: "row", alignItems: "center", gap: space[3], paddingHorizontal: space[3], borderRadius: radius.sm },
   rowLabel: { ...type.small, fontWeight: "500", color: color.text2, flex: 1 },
   rowLabelOn: { color: color.text1, fontWeight: "600" },
   itemOn: { backgroundColor: color.fill.railOn },

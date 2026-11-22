@@ -46,15 +46,7 @@ describe("#4168 Host wide-screen design contract", () => {
       .toContain("useMarketingActionRegistration");
   });
 
-  it("keeps Roadmap as stable Now, Next and Later lanes with hidden scrollbar chrome", () => {
-    const panel = source("src/components/support/CommunityTabPanel.tsx");
-    expect(panel).toContain('const LANE_ORDER = ["now", "next", "later"] as const');
-    expect(panel).toContain('now: "Now"');
-    expect(panel).toContain("showsHorizontalScrollIndicator={false}");
-    expect(panel).toContain('testID="community-roadmap-board"');
-    expect(panel).not.toMatch(/LANE_ORDER[^\n]*shipped/);
-  });
-
+  // [TEST-MOD #4420] The Roadmap left the Host app with Community; its lane pins went with it.
   it("uses full-width responsive program columns and omits empty Results filters", () => {
     const kit = source("src/components/programs/ProgramKit.tsx");
     const results = source("src/components/creators/screens/CreatorResultsScreen.tsx");
@@ -89,6 +81,7 @@ describe("#4168 Host wide-screen design contract", () => {
     expect(support).not.toContain("sectionRail");
     expect(support).not.toContain("desktopConstrained");
     expect(support).not.toContain("desktopTitle");
-    expect(support).toContain("community-floating-action");
+    // [TEST-MOD #4420] The Community floating action was removed (spec 4.2).
+    expect(support).not.toContain("community-floating-action");
   });
 });

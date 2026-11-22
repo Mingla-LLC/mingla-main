@@ -85,7 +85,7 @@ export function SupportThread({ ticket, messages, urls, profilesById, myUserId }
   const imageIndex = new Map(images.map((attachment, index) => [attachment.id, index]));
 
   if (messages.length === 0) {
-    return <p className="py-8 text-center text-sm text-[var(--color-text-tertiary)]">No messages yet in this ticket.</p>;
+    return <p className="py-8 text-center text-sm text-[var(--color-text-tertiary)]">No messages yet in this conversation.</p>;
   }
 
   return (

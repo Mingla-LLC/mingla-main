@@ -48,6 +48,8 @@ Deno.test("additional page exceptions stay one-to-one with server capabilities",
     // #4452 §7.0/§7.2: Brand groups keeps its old tab's Support area; Forms and
     // Website pages open to forms_can_view (Website editor, crm, beta_leads).
     "brand-groups": [SUPPORT_OPERATIONS_AREA],
+    // [TEST-MOD #4420] the Feature guide's own screen keeps its old tab's Support area.
+    "feature-guide": [SUPPORT_OPERATIONS_AREA],
     forms: [AREA.WEBSITE, AREA.CRM, AREA.BETA_LEADS],
     "website-pages": [AREA.WEBSITE, AREA.CRM, AREA.BETA_LEADS],
   });

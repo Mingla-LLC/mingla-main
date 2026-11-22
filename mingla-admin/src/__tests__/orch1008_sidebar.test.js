@@ -67,9 +67,8 @@ const EXPECTED_IDS = [
   "inbound",
   "content-calendar",
   "team-dashboard",
-  // Support
+  // Support ([TEST-MOD #4420] Community retired)
   "support",
-  "community",
   // Business
   "people",
   "brands",

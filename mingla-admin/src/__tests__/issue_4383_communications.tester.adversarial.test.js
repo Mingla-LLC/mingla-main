@@ -42,7 +42,7 @@ import {
   visibleNavGroups,
 } from "../lib/access.js";
 import { redirectHash } from "../lib/adminRoutes.js";
-import { COMMUNITY_PAGE_TABS, SUPPORT_PAGE_TABS, pageTabFromHash } from "../lib/supportCommunityTabs.js";
+import { SUPPORT_PAGE_TABS, pageTabFromHash } from "../lib/supportCommunityTabs.js";
 import { communitySupportTabsForAccess } from "../lib/communitySupportAccess.js";
 
 // ─── The frozen origin/main rule (dda822635a), copied, not imported ───
@@ -87,13 +87,17 @@ function landedBefore(access, page, tab) {
 }
 
 // ─── The new code, as the app runs it ───
-const COMMS_SCREENS = ["email", "blog", "links", "announcements", "roadmap", "brand-groups"]; // #4452 §7.2: + Brand groups
+// [TEST-MOD #4420] Community and the Roadmap screen are retired: their tabs
+// (ideas, questions, moderation, product, roadmap; enquiry-reports now in the
+// Support inbox) are no panels any more, and the Feature guide is a screen
+// with the access its tab had. Every surviving panel keeps the frozen rule.
+const RETIRED = ["enquiry-reports", "ideas", "moderation", "product", "questions", "roadmap"];
+const survivingBefore = (access) => panelsBefore(access).filter((t) => !RETIRED.includes(t));
+const COMMS_SCREENS = ["email", "blog", "links", "announcements", "brand-groups", "feature-guide"]; // #4452 §7.2: + Brand groups; #4420: + Feature guide
 const KNOWN = [...NAV_ITEMS.map((i) => i.id), "home"];
 function panelsAfter(access) {
   const out = new Set();
-  for (const [page, tabs] of [["support", SUPPORT_PAGE_TABS], ["community", COMMUNITY_PAGE_TABS]]) {
-    if (canOpenPage(access, page)) communitySupportTabsForAccess(access, tabs).forEach((t) => out.add(t.id));
-  }
+  if (canOpenPage(access, "support")) communitySupportTabsForAccess(access, SUPPORT_PAGE_TABS).forEach((t) => out.add(t.id));
   for (const screen of COMMS_SCREENS) if (canOpenPage(access, screen)) out.add(screen);
   return [...out].sort();
 }
@@ -102,8 +106,8 @@ function landedAfter(access, hash) {
   const page = next.replace("#/", "").split("?")[0].split("/")[0];
   const route = resolveRoute(page, access, KNOWN);
   if (route.pageId !== page) return { panel: null, next };
-  if (page === "support" || page === "community") {
-    const visible = communitySupportTabsForAccess(access, page === "support" ? SUPPORT_PAGE_TABS : COMMUNITY_PAGE_TABS);
+  if (page === "support") {
+    const visible = communitySupportTabsForAccess(access, SUPPORT_PAGE_TABS);
     const requested = pageTabFromHash(next, page);
     return { panel: visible.some((t) => t.id === requested) ? requested : visible[0]?.id || null, next };
   }
@@ -133,7 +137,7 @@ describe("X-1 every server-reachable person opens exactly the panels they opened
   it("panel sets are identical for every area combination, role and status", () => {
     let n = 0;
     for (const { label, access } of everyone()) {
-      assert.deepEqual(panelsAfter(access), panelsBefore(access), label);
+      assert.deepEqual(panelsAfter(access), survivingBefore(access), label);
       n += 1;
     }
     assert.equal(n, 256 * 5 * 4 * 2);
@@ -148,7 +152,7 @@ describe("X-1 every server-reachable person opens exactly the panels they opened
         assert.equal(access.areas.includes(COMMUNITY_SUPPORT_AREA), false, `${label}: lost Support while holding community_support`);
         assert.equal(access.areas.includes(AREA.ADMIN_CONSOLE), false, label);
       }
-      assert.equal(menuIds(access).includes("community"), oldCanOpen(access, "community"), `${label}: Community entry`);
+      assert.equal(menuIds(access).includes("community"), false, `${label}: Community entry (retired, #4420)`);
     }
   });
 
@@ -165,19 +169,19 @@ describe("X-2 every old address lands on the panel iff the person could open it 
     ["#/support?tab=blog&view=editor&post=P1", "support", "blog", "blog"],
     ["#/support?tab=links", "support", "links", "links"],
     ["#/community?tab=announcements", "community", "announcements", "announcements"],
-    ["#/community?tab=roadmap&card=C1", "community", "roadmap", "roadmap"],
     ["#/community-support?tab=email&view=scheduled", "support", "email", "email"],
     ["#/community-support?tab=blog&post=P2", "support", "blog", "blog"],
     ["#/community-support?tab=links", "support", "links", "links"],
     ["#/community-support?tab=announcements", "community", "announcements", "announcements"],
-    ["#/community-support?tab=roadmap&card=C2", "community", "roadmap", "roadmap"],
   ];
+  // [TEST-MOD #4420] the Roadmap rows left this table: the screen is retired
+  // and its addresses open Announcements (pinned in issue4420_admin_redirects).
   it("for every person and every old address", () => {
     for (const { label, access } of everyone()) {
       // A person with no home page (no role_home, no admin_console) opens
       // nothing at all, before and after (resolveRoute); the server never sends that.
       if (access.status !== "active" || !homePageFor(access)) continue;
-      const before = panelsBefore(access);
+      const before = survivingBefore(access);
       for (const [hash, , tab, screen] of OLD) {
         const { panel } = landedAfter(access, hash);
         if (before.includes(tab)) assert.equal(panel, screen, `${label} ${hash}`);
@@ -190,7 +194,8 @@ describe("X-2 every old address lands on the panel iff the person could open it 
       // A person with no home page (no role_home, no admin_console) opens
       // nothing at all, before and after (resolveRoute); the server never sends that.
       if (access.status !== "active" || !homePageFor(access)) continue;
-      for (const [page, tab] of [["support", "support"], ["support", "team"], ["community", "ideas"], ["community", "brand-groups"], ["community", "product"], ["community", "feature-guide"]]) {
+      // [TEST-MOD #4420] ideas and product are retired tabs (no panel to land on).
+      for (const [page, tab] of [["support", "support"], ["support", "team"], ["community", "brand-groups"], ["community", "feature-guide"]]) {
         const was = landedBefore(access, page, tab);
         const { panel } = landedAfter(access, `#/${page}?tab=${tab}`);
         if (was === tab) assert.equal(panel, tab, `${label} ${page}?tab=${tab}`);
@@ -200,7 +205,7 @@ describe("X-2 every old address lands on the panel iff the person could open it 
   });
   it("other query values survive, in any order", () => {
     assert.equal(redirectHash("#/support?view=editor&tab=blog&post=P1"), "#/blog?view=editor&post=P1");
-    assert.equal(redirectHash("#/community?card=C1&tab=roadmap&x=%20y"), "#/roadmap?card=C1&x=+y");
+    assert.equal(redirectHash("#/community?card=C1&tab=feature-guide&x=%20y"), "#/feature-guide?card=C1&x=+y"); // [TEST-MOD #4420] roadmap retired
     assert.equal(redirectHash("#/community-support?ticket=T&tab=announcements"), "#/announcements?ticket=T");
     assert.equal(redirectHash("#/support?tab=email&tab=blog"), "#/email", "a repeated tab takes the first and drops the rest");
   });
@@ -213,18 +218,15 @@ describe("X-3 a Founding partner (coordinator assertion)", () => {
     email: "partner@example.test", role: "partner", status: "active",
     areas: ["admin_console", "team_manage", "crm", "beta_leads", "email_drafts", TEAM_NOTIFICATIONS_AREA, DATA_ROOM_AREA, BLOG_AREA],
   });
-  it("sees Community's product tab, labelled Product board", () => {
-    assert.equal(canOpenPage(partner, "community"), true);
-    const tabs = communitySupportTabsForAccess(partner, COMMUNITY_PAGE_TABS);
-    const product = tabs.find((t) => t.id === "product");
-    assert.ok(product, "product tab visible");
-    assert.equal(product.label, "Product board");
-    assert.equal(landedAfter(partner, "#/community?tab=product").panel, "product");
-    assert.equal(landedAfter(partner, "#/community-support?tab=product").panel, "product");
+  // [TEST-MOD #4420] the Product board is retired; its addresses open Work tickets.
+  it("old Product board addresses open the Work board's tickets", () => {
+    assert.equal(redirectHash("#/community?tab=product"), "#/work-board?type=tickets");
+    assert.equal(landedAfter(partner, "#/community?tab=product").panel, "work-board");
+    assert.equal(landedAfter(partner, "#/community-support?tab=product").panel, "work-board");
   });
   it("sees every Communications screen", () => {
     const menu = menuIds(partner);
-    for (const id of ["communications", "push", "announcements", "roadmap", "email", "blog", "links"]) assert.ok(menu.includes(id), id);
+    for (const id of ["communications", "push", "announcements", "email", "blog", "links", "feature-guide"]) assert.ok(menu.includes(id), id); // [TEST-MOD #4420]
   });
 });
 
@@ -245,6 +247,7 @@ describe("X-4 hostile addresses", () => {
   });
   it("a moved tab on the wrong page is not redirected to a screen", () => {
     assert.equal(redirectHash("#/support?tab=announcements"), null);
-    assert.equal(redirectHash("#/community?tab=email"), null);
+    // [TEST-MOD #4420] Community is retired, so every Community address is rewritten; Email opens Email.
+    assert.equal(redirectHash("#/community?tab=email"), "#/email");
   });
 });

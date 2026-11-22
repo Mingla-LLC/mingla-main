@@ -29,6 +29,9 @@ import { AlertCard } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { useToast } from "../../context/ToastContext";
+import { useAuth } from "../../context/AuthContext";
+import { isFullAdmin } from "../../lib/access";
+import { TicketSections } from "./TicketSections";
 import { useOpsCard } from "../../hooks/useOpsCard";
 import { useCardUploads } from "../../hooks/useCardFiles";
 import * as ops from "../../services/opsService";
@@ -36,7 +39,7 @@ import {
   personActionFor,
   personReasonLabel,
   isTagged,
-  roadmapDraftHref,
+  DETAIL_LINK_KINDS,
   addDays,
   agentName,
   agentPromptFor,
@@ -73,6 +76,7 @@ import { DraftKeptNote, SideLink, usePanelLinks } from "../ui/PanelStack";
 import { usePanelDraft } from "../../hooks/usePanelDraft";
 import { AUTO_GROW_CLASS, useAutoGrow } from "./useAutoGrow";
 import { linkSide, sideHref } from "../../lib/panelStack";
+import { isTicketCard, ticketNumber } from "../../lib/ticketModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
@@ -144,6 +148,7 @@ function PeopleChip({ id, label, people, field }) {
 // the wording card's link to another page is not shown there.
 export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBack, onClose, onOpenSide = null, focus = false, onFocus = null, onOpenCard = null, columns: givenColumns = null }) {
   const { addToast } = useToast();
+  const { access } = useAuth();
   const read = useOpsCard(cardId);
   const card = read.data?.card || null;
   const directory = usePeopleDirectory();
@@ -295,7 +300,6 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const thisWeek = mondayOf(today);
   const weeks = Array.from(new Set([card.sprint?.starts_on, ...[0, 7, 14, 21, 28].map((d) => addDays(thisWeek, d))].filter(Boolean))).sort();
   const action = personActionFor(card);
-  const draftHref = roadmapDraftHref(card);
   const tagged = isTagged(card);
   const closed = card.status === "done";
   const column = columns.find((c) => c.id === card.status_id) || card.column || null;
@@ -389,7 +393,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                 <span aria-hidden="true">›</span>
               </span>
             ))}
-            <span className="shrink-0 font-semibold text-[var(--color-text-secondary)]">#{card.number}</span>
+            <span className="shrink-0 font-semibold text-[var(--color-text-secondary)]">{isTicketCard(card) ? ticketNumber(card.number) : `#${card.number}`}</span>
             {column && <span className="truncate">· {GROUP_LABELS[column.grp] || ""}</span>}
             {saveState && <span role="status" className="ml-2 shrink-0 text-[12px]">{saveState}</span>}
           </nav>
@@ -478,7 +482,6 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                 </Popover>
               )}
               {tagged && <OpsChip tone="warning">{personReasonLabel(card)}</OpsChip>}
-              {draftHref && <a href={draftHref} target="_blank" rel="noopener" title="Opens in a new tab, so this card stays as it is" className={`inline-flex h-9 items-center rounded-lg px-2 text-[12.5px] font-semibold text-[var(--color-brand-700)] hover:bg-[var(--color-brand-50)] ${FOCUS}`}>Open the draft in Roadmap</a>}
               {(busy === "save" || busy === "start" || busy === "move") && <span role="status" className="text-[12px] text-[var(--color-text-tertiary)]">Saving…</span>}
             </div>
             {trouble && !card.archived && (
@@ -695,6 +698,9 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             )}
           </section>
 
+          {/* #4420: a ticket's type, reporters, conversations and Send to GitHub, above the Description */}
+          {isTicketCard(card) && <TicketSections card={card} canEdit={canEdit} isOperator={isFullAdmin(access)} locked={locked} onChanged={refresh} />}
+
           {/* (5) Description */}
           <section aria-labelledby={`desc-${card.id}`} data-card-description="" className="flex min-w-0 flex-col gap-1.5">
             <div className="flex min-w-0 items-center justify-between gap-2">
@@ -736,6 +742,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
             )}
             {linking && (
               <RecordPicker
+                kinds={DETAIL_LINK_KINDS}
                 onClose={() => setLinking(false)}
                 onPick={async (pick) => {
                   const answer = await update({ links: [...(card.links || []).map((x) => ({ kind: x.kind, id: x.id })), { kind: pick.kind, id: pick.id }] }, `${pick.label} linked`);

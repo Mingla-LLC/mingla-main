@@ -7,66 +7,39 @@ import {
 const read = (relative: string) => Deno.readTextFile(new URL(`../${relative}`, import.meta.url));
 
 // MINGLA-INVARIANT: I-3720-ADMIN-COMMUNITY-CONSOLE | issue #3720 | The Admin console retains the approved grouped navigation, human-action queues, audited Community workflows, safe email audience, responsive support list, and evidence-packet review.
+// [TEST-MOD #4420] Community (Ideas, Questions, Moderation, Product board) and
+// the Roadmap screen are retired, and their panels deleted; this keeps
+// pinning every surviving screen of the rebuild: Support, Announcements,
+// Email, People and roles, the Feature guide and Brand groups.
 Deno.test("#3720 Admin Community and Support rebuild stays complete", async () => {
-  const [page, navigation, tabs, ideas, questions, moderation, announcements, roadmap, support, email, composer, team, guide, groups, inbox, service] = await Promise.all([
-    read("pages/CommunitySupportPage.jsx"),
-    read("components/community/CommunitySupportNavigation.jsx"),
-    // #4130 Wave 6: Overview was retired; the two pages' tabs live here.
+  const [page, tabs, announcements, support, email, composer, team, guide, groups, service] = await Promise.all([
+    read("pages/SupportPage.jsx"),
     read("lib/supportCommunityTabs.js"),
-    read("components/community/IdeasPanel.jsx"),
-    read("components/community/QuestionsPanel.jsx"),
-    read("components/community/ModerationPanel.jsx"),
     read("components/community/AnnouncementsPanel.jsx"),
-    read("components/community/RoadmapPanel.jsx"),
     read("pages/SupportDeskPage.jsx"),
     read("pages/EmailPage.jsx"),
-    // #4226: the audience presets moved from the composer into lib/emailAudience.js.
     Promise.all([read("components/email/EmailComposer.jsx"), read("lib/emailAudience.js")]).then((parts) => parts.join("\n")),
     read("components/community/TeamRolesPanel.jsx"),
     read("components/community/FeatureGuidePanel.jsx"),
-    // #4270 W7: the Brand group list and its words moved out of the panel.
     Promise.all([read("components/community/BrandGroupsPanel.jsx"), read("components/community/BrandGroupList.jsx"), read("lib/brandGroupInbox.js")]).then((parts) => parts.join("\n")),
-    read("components/community/ProductInboxPanel.jsx"),
     read("services/communityService.js"),
   ]);
 
-  // #4130 Wave 6: the grouped navigation became two pages, Support and
-  // Community, each with one flat row of tabs (a select on a phone).
-  // #4383: Email, Announcements and Roadmap are Communications screens; the
-  // Product inbox tab is called Product board.
-  // #4452 §7.2: Brand groups left Community for its own Communications screen.
-  for (const tab of ["Inbox", "People and roles", "Ideas from hosts", "Questions", "Moderation", "Reported enquiries", "Feature guide", "Product board"]) assert(tabs.includes(`label: "${tab}"`), tab);
-  assert(!tabs.includes('label: "Brand groups"'), "Brand groups is no longer a Community tab");
+  for (const tab of ["Inbox", "People and roles"]) assert(tabs.includes(`label: "${tab}"`), tab);
+  for (const gone of ["Ideas from hosts", "Moderation", "Product board", "Brand groups"]) assert(!tabs.includes(`label: "${gone}"`), gone);
   assert(tabs.includes('"brand-groups": "brand-groups"'), "the old Brand groups tab lands on its own screen");
-  assertMatch(navigation, /md:hidden/);
   assertMatch(page, /Available for support/);
-  assertMatch(page, /Conversations with hosts and explorers, oldest waiting first[.]/);
-  assertMatch(page, /What hosts ask for and talk about[.] What we tell them now lives in Communications[.]/);
+  assertMatch(page, /Conversations with hosts and explorers. The ones that need a reply come first[.]/);
   assertNotMatch(page, /CutoverPanel|activeTab === "availability"|OverviewPanel/);
-  assertMatch(ideas, /not_now/);
-  assertMatch(ideas, /Response from Mingla/);
-  assertMatch(ideas, /Merge into this idea/);
-  assertMatch(ideas, /Promote to roadmap/);
-  assertMatch(questions, /Mingla team badge/);
-  assertMatch(questions, /"pin"|"unpin"/);
-  for (const label of ["Reports", "First posts", "Appeals", "Hidden", "Paused hosts", "Audit log", "7 days", "30 days", "Permanent"]) assert(moderation.includes(label), label);
-  assertMatch(moderation, /Reason shown to the Host/);
   assertMatch(announcements, /Sent and scheduled/);
   assertMatch(announcements, /Retry failed/);
-  assertMatch(roadmap, /Recently shipped/);
-  assertMatch(roadmap, /draggable/);
-  assertMatch(roadmap, /line-clamp-2/);
-  // [TEST-MOD #4382] the inbox is a rail of views, a list and a side panel
-  // (the old five-column table is gone); on a phone the panel replaces the list.
-  assertMatch(support, /aria-label="Inbox views"/);
+  assertMatch(support, /<InboxList/);
   assertMatch(support, /<TicketPanel/);
-  assertMatch(support, /hidden xl:block/);
-  // #4383: the sections live in lib/emailViews.js (History is Sent, Send is Write).
+  assertMatch(support, /hidden lg:block/);
   assertMatch(email, /emailViewsFor\(access\)/);
   assertMatch(composer, /userType: "host"/);
   assertMatch(composer, /Explorer users/);
   assertMatch(composer, /Insert ▾/);
-  // [TEST-MOD-APPROVED #3988] One "Community & Support" role column replaces the two role columns.
   assertMatch(team, /Community &amp; Support[\s\S]+Available[\s\S]+Last active/);
   assertNotMatch(team, />\{row[.]user_id\}</);
   assertMatch(guide, /Apply evidence packet/);
@@ -74,10 +47,9 @@ Deno.test("#3720 Admin Community and Support rebuild stays complete", async () =
   assertMatch(guide, /before[\s\S]+after/);
   assertMatch(groups, /Search brand groups/);
   assertMatch(groups, /n === 1 \? "teammate" : "teammates"/);
-  // [TEST-MOD #4382] the Product board links the Avengers board from its toolbar.
-  assertMatch(inbox, /https:\/\/github\.com\/orgs\/Mingla-LLC\/projects\/4/);
-  assertMatch(inbox, /Avengers board/);
 
+  // The server's Community RPCs stay reachable from the service (Host apps on
+  // current builds still use the data).
   for (const rpc of [
     "issue_3720_admin_list_posts", "issue_3720_admin_update_idea",
     "issue_3720_admin_question_action", "issue_3720_admin_moderation_workspace",

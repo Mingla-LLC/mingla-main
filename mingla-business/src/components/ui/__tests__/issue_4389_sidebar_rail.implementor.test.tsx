@@ -9,8 +9,7 @@
  *   P4  no two identical person glyphs: People is `notebook`, Account `user`,
  *       Creators `users`.
  *
- * P3 rework: the page list scrolls inside the rail (fits a 768 window);
- * Account and Expand are pinned outside the scroll region (R4, R5).
+ * #4420: the rail never scrolls; slots share the measured height (R4, R5).
  *
  * FAILS-ON-REVERT: restore the "first item per group" rail (only Home, Hub,
  * Ari, Overview, People) or drop the RailItem tooltip and R1/R2 fail; set
@@ -139,51 +138,48 @@ describe("#4389 P3–P5 collapsed rail", () => {
     TestRenderer.act(() => tree.unmount());
   });
 
-  // #4389 P3 rework — a full rail is ~780 tall; on a 768 window the page
-  // list scrolls inside the rail while the logo and Expand + Account stay put.
-  test("R4: pages scroll inside the rail; the logo, Expand and Account stay outside the scroll region", async () => {
+  // #4420 — the side menu never scrolls: every slot shares the rail's height.
+  test("R4: no scroll container; the logo, pages, Expand and Account are all in one flex rail, in order; hit targets stay >= 20 and square", async () => {
     const tree = await renderRail();
-    const scroll = hosts(tree, "sidebar-rail-scroll");
-    expect(scroll).toHaveLength(1);
-    const inScroll = (key: string): boolean => isInside(hosts(tree, `sidebar-rail-item-${key}`)[0]!, scroll[0]!);
-    for (const key of ALL_PAGES) expect(inScroll(key)).toBe(true);
-    expect(inScroll("account")).toBe(false);
-    expect(inScroll("expand")).toBe(false);
-    expect(isInside(hosts(tree, "desktop-sidebar-logo")[0]!, scroll[0]!)).toBe(false);
-    // Account and Expand come after the scroll region (pinned at the bottom).
+    expect(hosts(tree, "sidebar-rail-scroll")).toHaveLength(0);
+    const scrolls = tree.root.findAll((n) => typeof n.props.onScroll === "function");
+    expect(scrolls).toHaveLength(0);
     const order = tree.root
-      .findAll((n) => typeof n.type === "string" && ["sidebar-rail-scroll", "sidebar-rail-item-expand", "sidebar-rail-item-account"].includes(n.props.testID as string))
-      .map((n) => n.props.testID);
-    expect(order).toEqual(["sidebar-rail-scroll", "sidebar-rail-item-expand", "sidebar-rail-item-account"]);
-    // Hit targets stay 48 (>= 40).
+      .findAll((n) => typeof n.type === "string" && typeof n.props.testID === "string" && /^sidebar-rail-item-/.test(n.props.testID as string))
+      .map((n) => (n.props.testID as string).replace("sidebar-rail-item-", ""));
+    expect([...new Set(order)]).toEqual([...ALL_PAGES, "expand", "account"]);
     for (const key of ["home", "account"]) {
       const styleFn = item(tree, key).props.style as (s: { pressed: boolean; hovered: boolean }) => unknown;
       const box = StyleSheet.flatten(styleFn({ pressed: false, hovered: false }) as never) as { width: number; height: number };
-      expect(box.height).toBeGreaterThanOrEqual(40);
-      expect(box.width).toBeGreaterThanOrEqual(40);
+      expect(box.height).toBe(box.width);
+      expect(box.height).toBeGreaterThanOrEqual(20);
     }
     TestRenderer.act(() => tree.unmount());
   });
 
-  test("R5: a scrolled page's label follows the item, drawn outside the clipping scroll view", async () => {
+  test("R5: the tile shrinks from the measured height (432 panel: 20..48, square), each item draws its own label", async () => {
     const tree = await renderRail();
-    const scroll = tree.root.findAll((n) => n.props.testID === "sidebar-rail-scroll" && typeof n.props.onScroll === "function")[0]!;
+    const size = (): { width: number; height: number } => {
+      const fn = item(tree, "home").props.style as (s: { pressed: boolean; hovered: boolean }) => unknown;
+      return StyleSheet.flatten(fn({ pressed: false, hovered: false }) as never) as { width: number; height: number };
+    };
+    expect(size().height).toBe(48);
+    const frame = tree.root.findAll((n) => n.props.testID === undefined && typeof n.props.onLayout === "function" && n.props.accessibilityRole === "tablist")[0]!;
+    const body = tree.root.findAll((n) => typeof n.type === "string" && typeof n.props.onLayout === "function" && n !== frame && !isInside(n, frame) === false && n.props.accessibilityRole === undefined)[0]!;
     TestRenderer.act(() => {
-      (scroll.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { y: 60, height: 500 } } });
+      (frame.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { height: 432 } } });
+      (body.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { height: 432 - 24 - 38 } } });
     });
-    let slot: Node | null = item(tree, "people");
-    while (slot !== null && typeof slot.props.onLayout !== "function") slot = slot.parent;
-    if (slot === null) throw new Error("no slot with onLayout");
-    TestRenderer.act(() => {
-      (slot.props.onLayout as (e: unknown) => void)({ nativeEvent: { layout: { y: 520 } } });
-      (scroll.props.onScroll as (e: unknown) => void)({ nativeEvent: { contentOffset: { y: 100 } } });
-    });
+    expect(size().height).toBeLessThan(48);
+    expect(size().height).toBeGreaterThanOrEqual(20);
     fire(item(tree, "people"), "onHoverIn");
     const tip = hosts(tree, "sidebar-rail-tip-people")[0]!;
-    expect(isInside(tip, hosts(tree, "sidebar-rail-scroll")[0]!)).toBe(false);
-    const style = StyleSheet.flatten(tip.props.style as never) as { top: number; left: number };
-    expect(style.top).toBe(60 + 520 - 100);
-    expect(style.left).toBe(16 + 56);
+    // The label is a sibling of its own item (same slot), not drawn by a shared list.
+    const itemHost = hosts(tree, "sidebar-rail-item-people")[0]!;
+    let slot: Node | null = tip.parent;
+    while (slot !== null && !isInside(itemHost, slot)) slot = slot.parent;
+    expect(slot).not.toBeNull();
+    expect(hosts(tree, "sidebar-rail-item-home").every((n) => !isInside(n, slot as Node))).toBe(true);
     TestRenderer.act(() => tree.unmount());
   });
 

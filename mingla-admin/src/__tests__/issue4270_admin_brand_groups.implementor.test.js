@@ -443,7 +443,8 @@ describe("D rendered", () => {
     assert.doesNotMatch(html, /Assign to me|Mingla owner/);
     const box = harness.composer({ brandName: "Harmattan Club", value: "", chips: quickReplies({ brandName: "Harmattan Club" }), replyingAs: "Seth Ogieva", selectedCount: 2, canPlanActions: true });
     assert.match(box, />2 messages selected</);
-    for (const label of ["Create product signal", "Add to plan", "Make a work card", "Cancel"]) assert.match(box, new RegExp(`>${label}<`));
+    // [TEST-MOD #4420] Send to Product became Create ticket (the Product board is retired).
+    for (const label of ["Create ticket", "Add to plan", "Make a work card", "Cancel"]) assert.match(box, new RegExp(`>${label}<`));
     assert.match(box, /<span class="sr-only">Message Harmattan Club<\/span>/);
     assert.match(box, /placeholder="Message Harmattan Club…"/);
     assert.match(box, /Replying as <strong[^>]*>Seth Ogieva · Mingla Support<\/strong> · the brand team gets a push/);

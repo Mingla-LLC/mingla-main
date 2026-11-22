@@ -13,11 +13,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, describe, it } from "node:test";
+import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { createServer } from "vite";
 import {
   INITIAL_REPORTED_ENQUIRIES_STATE,
   REPORTED_ENQUIRIES_EMPTY_COPY,
@@ -148,126 +145,31 @@ describe("#4111 reported enquiries — model and actions", () => {
   });
 });
 
-describe("#4111 reported enquiries — rendered states and service", () => {
-  let vite;
-  let View;
-  let Panel;
-  let service;
-  let supabaseModule;
-
-  before(async () => {
-    vite = await createServer({
-      root: ADMIN_ROOT,
-      appType: "custom",
-      server: { middlewareMode: true },
-      logLevel: "silent",
-    });
-    const panelModule = await vite.ssrLoadModule("/src/components/community/ReportedEnquiriesPanel.jsx");
-    View = panelModule.ReportedEnquiriesView;
-    Panel = panelModule.ReportedEnquiriesPanel;
-    service = await vite.ssrLoadModule("/src/services/communityService.js");
-    supabaseModule = await vite.ssrLoadModule("/src/lib/supabase.js");
+// [TEST-MOD #4420] the Reported enquiries panel retired with Community; its
+// rows arrive in the Support inbox. The rendered states are pinned by
+// issue4420_support_inbox (ReportedEnquiryThread); here: the same logic and
+// RPCs, the confirmation still in place, and the inbox gate.
+describe("#4111 reported enquiries — the inbox thread and service", () => {
+  it("the thread uses the same model and keeps Block everywhere's in-place confirmation", () => {
+    const source = read("components/support/ReportedEnquiryThread.jsx");
+    assert.match(source, /from "\.\.\/\.\.\/lib\/reportedEnquiries"/);
+    assert.match(source, />Dismiss</);
+    assert.match(source, />Block everywhere</);
+    assert.match(source, /confirming \?/);
+    assert.match(source, /role="alert"/);
   });
-  after(async () => { await vite?.close(); });
-
-  const noop = () => {};
-  const render = (state) => renderToStaticMarkup(React.createElement(View, {
-    state, onRetry: noop, onDismiss: noop, onAskBlock: noop, onCancelBlock: noop, onConfirmBlock: noop,
-  }));
-  const ready = (extra = {}) => ({ ...INITIAL_REPORTED_ENQUIRIES_STATE, status: "ready", rows: [ROW_A, ROW_B], ...extra });
-
-  it("loading, error with retry, and empty states", () => {
-    assert.match(render(INITIAL_REPORTED_ENQUIRIES_STATE), /aria-label="Loading reported enquiries"/);
-    const error = render({ ...INITIAL_REPORTED_ENQUIRIES_STATE, status: "error", loadError: "Network down." });
-    assert.match(error, /Couldn&#x27;t load reported enquiries/);
-    assert.match(error, /Network down\./);
-    assert.match(error, />Try again</);
-    const empty = render({ ...INITIAL_REPORTED_ENQUIRIES_STATE, status: "ready", rows: [] });
-    assert.ok(
-      empty.includes(REPORTED_ENQUIRIES_EMPTY_COPY.replace("'", "&#x27;")),
-      "empty copy is the approved sentence",
-    );
-    assert.equal(
-      REPORTED_ENQUIRIES_EMPTY_COPY,
-      "No reported enquiries. Mingla only sees an enquiry when the brand or the guest reports it.",
-    );
-  });
-
-  it("each report shows brand, sender, who reported it, reason, when, and the messages, with both actions", () => {
-    const html = render(ready());
-    for (const text of [
-      "Lantern Room", "Ada Guest", "ada@example.test", "Reported by the guest", "Reported by the brand",
-      "Reason: The brand asked me to pay outside Mingla", "3h ago", "Can I get a refund?",
-      "Pay me by bank transfer instead", "Tunde (Lantern Room)", "Soft Life", "No messages in this enquiry.",
-    ]) assert.ok(html.includes(text), `missing: ${text}`);
-    assert.equal((html.match(/>Dismiss</g) || []).length, 2);
-    assert.equal((html.match(/>Block everywhere</g) || []).length, 2);
-    assert.doesNotMatch(html, /role="alertdialog"/);
-  });
-
-  it("Block everywhere shows a confirmation inside the row, and action errors are shown", () => {
-    const html = render(ready({ confirmBlockId: ROW_A.id, actionError: { id: ROW_B.id, message: "This report was already handled by someone else. Refresh the list." } }));
-    assert.match(html, /role="alertdialog"/);
-    assert.match(html, /Block Ada Guest everywhere\?/);
-    assert.match(html, /from ada@example\.test or from their Mingla account/);
-    assert.match(html, />Yes, block everywhere</);
-    assert.match(html, />Cancel</);
-    assert.match(html, /role="alert"[^>]*>This report was already handled/);
-    const notice = render(ready({ notice: "Report dismissed." }));
-    assert.match(notice, /role="status"[^>]*>Report dismissed\./);
-    const source = read("components/community/ReportedEnquiriesPanel.jsx");
-    assert.doesNotMatch(source, /window\.confirm|\bconfirm\(/);
-  });
-
-  it("the stateful panel renders its loading state first", () => {
-    const html = renderToStaticMarkup(React.createElement(Panel, { service: recordingService() }));
-    assert.match(html, /Loading reported enquiries/);
-  });
-
-  it("the service calls the three staff RPCs and turns their errors into plain words", async () => {
-    const calls = [];
-    const original = supabaseModule.supabase.rpc;
-    let next = { data: [ROW_A], error: null };
-    supabaseModule.supabase.rpc = async (name, args) => { calls.push([name, args]); return next; };
-    try {
-      assert.deepEqual(await service.listReportedEnquiries(), [ROW_A]);
-      next = { data: true, error: null };
-      assert.equal(await service.dismissEnquiryReport(ROW_A.id), true);
-      assert.equal(await service.blockEnquirySenderEverywhere(ROW_A.id), true);
-      assert.deepEqual(calls, [
-        ["admin_list_reported_enquiries", { p_limit: 100 }],
-        ["admin_enquiry_dismiss_report", { p_enquiry_id: ROW_A.id }],
-        ["admin_enquiry_block_everywhere", { p_enquiry_id: ROW_A.id }],
-      ]);
-      next = { data: null, error: { message: "forbidden", code: "42501" } };
-      await assert.rejects(service.listReportedEnquiries(), /Community & Support role/);
-      next = { data: null, error: { message: "report_not_found", code: "P0002" } };
-      await assert.rejects(service.dismissEnquiryReport(ROW_A.id), /already handled/);
-      next = { data: false, error: null };
-      await assert.rejects(service.blockEnquirySenderEverywhere(ROW_A.id), /Nothing changed/);
-    } finally {
-      supabaseModule.supabase.rpc = original;
-    }
+  it("the inbox reaches the three staff RPCs, which the support row of the contract names", () => {
+    const service = read("services/communityService.js");
+    for (const rpc of ["admin_list_reported_enquiries", "admin_enquiry_dismiss_report", "admin_enquiry_block_everywhere"]) assert.match(service, new RegExp(`rpc\\(\\s*"${rpc}"`));
   });
 });
 
-describe("#4111 reported enquiries — only moderators see the tab", () => {
-  it("the page lists the tab and renders the panel only for the Community area", () => {
-    const page = read("pages/CommunitySupportPage.jsx");
-    assert.match(page, /activeTab === "enquiry-reports" && capabilities\.canCommunity && <ReportedEnquiriesPanel \/>/);
-    // #4130 Wave 6: the Community page's tab list lives in
-    // lib/supportCommunityTabs.js, with Reported enquiries right after Moderation.
-    const tabs = read("lib/supportCommunityTabs.js");
-    assert.match(tabs, /\{ id: "moderation", label: "Moderation" \}\),\n(?:\s*\/\/.*\n)*\s*Object\.freeze\(\{ id: "enquiry-reports", label: "Reported enquiries" \}\)/);
-  });
-
-  it("the access filter shows it to Community moderators and Admins, never to Support-only", () => {
-    const tabs = [{ id: "enquiry-reports", label: "Reported enquiries" }];
-    const access = (areas, role = "growth") => ({ email: "t@example.test", role, status: "active", areas });
-    const shown = (a) => communitySupportTabsForAccess(a, tabs).length === 1;
-    assert.equal(shown(access([COMMUNITY_SUPPORT_AREA, COMMUNITY_OPERATIONS_AREA])), true);
-    assert.equal(shown(access([COMMUNITY_SUPPORT_AREA, SUPPORT_OPERATIONS_AREA])), false);
-    assert.equal(shown(access([COMMUNITY_SUPPORT_AREA])), false);
-    assert.equal(shown(access(["admin_console"], "admin")), true);
+describe("#4111 reported enquiries — who sees them", () => {
+  it("the Support inbox (where reports arrive) shows to the Support area and Admins only", () => {
+    const tabs = [{ id: "support" }];
+    const ids = (areas) => communitySupportTabsForAccess({ status: "active", areas }, tabs).map((t) => t.id);
+    assert.deepEqual(ids([SUPPORT_OPERATIONS_AREA]), ["support"]);
+    assert.deepEqual(ids(["admin_console"]), ["support"]);
+    assert.deepEqual(ids([COMMUNITY_OPERATIONS_AREA, COMMUNITY_SUPPORT_AREA]), []);
   });
 });

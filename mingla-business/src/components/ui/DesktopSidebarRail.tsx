@@ -5,18 +5,18 @@
  * route, so this code stays off the eager boot chunk.
  *
  * Every page shows (the top group, then each titled group's items after a thin
- * divider; group titles live only in the expanded sidebar), the page list
- * scrolls between the logo and the pinned Expand + Account items, and every
- * item shows its name on hover and keyboard focus. No Blast item.
+ * divider; group titles live only in the expanded sidebar) and every item
+ * shows its name on hover and keyboard focus. No Blast item. #4420: the rail
+ * never scrolls; every slot (pages, Expand, Account) takes an equal share of
+ * the measured height and the tile shrinks to fit.
  */
 
-import React, { useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, type PressableStateCallbackType, type StyleProp, type ViewStyle } from "react-native";
+import React, { useState } from "react";
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent, type PressableStateCallbackType, type StyleProp, type ViewStyle } from "react-native";
 
 import { color, materials, radius, space, type } from "../../constants/designSystem";
-import { DESKTOP_RAIL_WIDTH } from "../../constants/desktopLayout";
 
-import type { SidebarGroup, SidebarItem } from "./desktopSidebarState";
+import { RAIL_DIVIDER_HEIGHT, railLayout, railVerticalPadding, type RailLayout, type SidebarGroup, type SidebarItem } from "./desktopSidebarState";
 import { Icon } from "./Icon";
 
 const DesktopSidebarRail: React.FC<{
@@ -29,92 +29,54 @@ const DesktopSidebarRail: React.FC<{
   showExpand: boolean;
   onExpand: () => void;
   go: (path: string) => () => void;
-}> = ({ testID, frameStyle, logo, groups, account, activeKey, showExpand, onExpand, go }) => (
-  <View testID={testID} style={frameStyle} accessibilityRole="tablist">
-    <View style={styles.railLogo}>{logo}</View>
-    <RailPages groups={groups} activeKey={activeKey} go={go} />
-    {showExpand ? (
-      <RailItem tipKey="expand" label="Expand sidebar" role="button" on={false} onPress={onExpand}>
-        <Icon name="chevR" size={18} color={color.text3} />
-      </RailItem>
-    ) : null}
-    {account !== null ? (
-      <RailItem
-        tipKey="account"
-        label={account.label}
-        role="tab"
-        on={activeKey === "account"}
-        onPress={go(account.path)}
-      >
-        <Icon name={account.icon} size={20} color={activeKey === "account" ? color.accent : color.text2} />
-      </RailItem>
-    ) : null}
-  </View>
-);
-
-/**
- * #4389 P3 rework — the rail's page list scrolls inside the rail (a full rail
- * is ~780 tall; a 768 window must still reach Account), while the logo stays
- * on top and Expand + Account stay pinned below it. A scroll container clips
- * horizontally, so the pages' labels are drawn here, OUTSIDE the scroll view
- * (absolute in the rail), at the hovered item's offset minus the scroll.
- */
-const RAIL_SLOT = 48;
-const RAIL_TIP_LEFT = (DESKTOP_RAIL_WIDTH - RAIL_SLOT) / 2 + 56;
-const RailPages: React.FC<{
-  groups: SidebarGroup[];
-  activeKey: string;
-  go: (path: string) => () => void;
-}> = ({ groups, activeKey, go }) => {
-  const [tip, setTip] = useState<{ key: string; label: string } | null>(null);
-  const [scrollY, setScrollY] = useState(0);
-  const [areaY, setAreaY] = useState(0);
-  const slotY = useRef<Record<string, number>>({});
-  const tipTop = tip === null ? 0 : areaY + (slotY.current[tip.key] ?? 0) - scrollY;
+}> = ({ testID, frameStyle, logo, groups, account, activeKey, showExpand, onExpand, go }) => {
+  // #4420 — measured, never hard-coded to the item count. Until the first
+  // layout the full 48 tile shows (a frame or two).
+  const [panelH, setPanelH] = useState(0);
+  const [bodyH, setBodyH] = useState(0);
+  const pageCount = groups.reduce((n, g) => n + g.items.length, 0);
+  const slotCount = pageCount + (showExpand ? 1 : 0) + (account !== null ? 1 : 0);
+  const dividerCount = groups.filter((g) => g.title !== null).length;
+  const m: RailLayout = bodyH > 0 ? railLayout(bodyH, slotCount, dividerCount) : { slot: 48, tile: 48, icon: 20 };
+  const padV = panelH > 0 ? railVerticalPadding(panelH) : 20;
   return (
-    <>
-      <ScrollView
-        style={styles.railScroll}
-        contentContainerStyle={styles.railScrollContent}
-        showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
-        onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
-        onLayout={(e) => setAreaY(e.nativeEvent.layout.y)}
-        testID="sidebar-rail-scroll"
-      >
+    <View
+      testID={testID}
+      style={[frameStyle, { paddingVertical: padV, gap: 0 }]}
+      accessibilityRole="tablist"
+      onLayout={(e: LayoutChangeEvent) => setPanelH(e.nativeEvent.layout.height)}
+    >
+      <View style={styles.railLogo}>{logo}</View>
+      <View style={styles.railBody} onLayout={(e: LayoutChangeEvent) => setBodyH(e.nativeEvent.layout.height)}>
         {groups.map((group) => (
           <React.Fragment key={group.key}>
             {group.title !== null ? (
-              <View style={styles.railDivider} testID={`sidebar-rail-divider-${group.key}`} />
+              <View style={styles.railDividerBox} testID={`sidebar-rail-divider-${group.key}`}>
+                <View style={styles.railDivider} />
+              </View>
             ) : null}
             {group.items.map((item) => {
               const on = item.key === activeKey;
               return (
-                <RailItem
-                  key={item.key}
-                  tipKey={item.key}
-                  label={item.label}
-                  role="tab"
-                  on={on}
-                  onPress={go(item.path)}
-                  onTip={(show) =>
-                    setTip((cur) => (show ? { key: item.key, label: item.label } : cur?.key === item.key ? null : cur))
-                  }
-                  onSlotLayout={(y) => {
-                    slotY.current[item.key] = y;
-                  }}
-                >
-                  <Icon name={item.icon} size={20} color={on ? color.accent : color.text2} />
+                <RailItem key={item.key} tipKey={item.key} label={item.label} role="tab" on={on} onPress={go(item.path)} tile={m.tile}>
+                  <Icon name={item.icon} size={m.icon} color={on ? color.accent : color.text2} />
                 </RailItem>
               );
             })}
           </React.Fragment>
         ))}
-      </ScrollView>
-      {tip !== null ? (
-        <RailTip tipKey={tip.key} label={tip.label} style={{ top: tipTop, left: RAIL_TIP_LEFT }} />
-      ) : null}
-    </>
+        {showExpand ? (
+          <RailItem tipKey="expand" label="Expand sidebar" role="button" on={false} onPress={onExpand} tile={m.tile}>
+            <Icon name="chevR" size={m.icon} color={color.text3} />
+          </RailItem>
+        ) : null}
+        {account !== null ? (
+          <RailItem tipKey="account" label={account.label} role="tab" on={activeKey === "account"} onPress={go(account.path)} tile={m.tile}>
+            <Icon name={account.icon} size={m.icon} color={activeKey === "account" ? color.accent : color.text2} />
+          </RailItem>
+        ) : null}
+      </View>
+    </View>
   );
 };
 
@@ -137,10 +99,11 @@ const RailTip: React.FC<{ tipKey: string; label: string; style?: ViewStyle }> = 
 );
 
 /**
- * #4389 P3 — one rail item with its hover / keyboard-focus label (web). The
- * bubble sits to the right of the 48 item (the sidebar is fixed and does not
- * clip), ignores the pointer and is hidden from assistive tech: the Pressable
- * already carries the accessibility label.
+ * #4389 P3 — one rail item with its hover / keyboard-focus label (web). Each
+ * item draws its own label (#4420: nothing scrolls, so no offset maths). The
+ * bubble sits to the right, ignores the pointer and is hidden from assistive
+ * tech: the Pressable already carries the accessibility label. The slot takes
+ * an equal flex share of the rail; the tile is centred in it.
  */
 const RailItem: React.FC<{
   tipKey: string;
@@ -148,21 +111,14 @@ const RailItem: React.FC<{
   role: "tab" | "button";
   on: boolean;
   onPress: () => void;
+  tile: number;
   children: React.ReactNode;
-  /** Pages in the scroll list: the rail draws the label (see RailPages). */
-  onTip?: (show: boolean) => void;
-  onSlotLayout?: (y: number) => void;
-}> = ({ tipKey, label, role, on, onPress, children, onTip, onSlotLayout }) => {
-  const [localTip, setLocalTip] = useState(false);
-  const setTip = onTip ?? setLocalTip;
-  const tip = onTip === undefined && localTip;
+}> = ({ tipKey, label, role, on, onPress, tile, children }) => {
+  const [tip, setTip] = useState(false);
   const show = (): void => setTip(true);
   const hide = (): void => setTip(false);
   return (
-    <View
-      style={styles.railSlot}
-      onLayout={onSlotLayout !== undefined ? (e) => onSlotLayout(e.nativeEvent.layout.y) : undefined}
-    >
+    <View style={styles.railSlot}>
       <Pressable
         onPress={() => {
           hide();
@@ -178,6 +134,7 @@ const RailItem: React.FC<{
         testID={`sidebar-rail-item-${tipKey}`}
         style={(state: PressableStateCallbackType & { hovered?: boolean }) => [
           styles.railItem,
+          { width: tile, height: tile },
           on ? styles.itemOn : state.hovered ? styles.itemHover : null,
         ]}
       >
@@ -192,15 +149,16 @@ const styles = StyleSheet.create({
   railLogo: { marginBottom: space[3], alignItems: "center", justifyContent: "center" },
   itemOn: { backgroundColor: color.fill.railOn },
   itemHover: { backgroundColor: color.fill.rowHover },
-  railItem: { width: 48, height: 48, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
-  // The rail item's slot (anchors its label).
-  railSlot: { position: "relative", width: 48, height: 48 },
-  // The page list scrolls between the logo and Expand / Account.
-  railScroll: { flex: 1, minHeight: 0, alignSelf: "stretch" },
-  railScrollContent: { alignItems: "center", gap: space[2] },
+  railItem: { borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  // Every slot shares the body's height equally (no cap); the tile is centred.
+  railSlot: { position: "relative", flex: 1, minHeight: 0, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
+  // Logo on top; everything under it shares the remaining height. Never scrolls.
+  railBody: { flex: 1, minHeight: 0, alignSelf: "stretch", alignItems: "center" },
   // The thin divider that stands in for a group title.
-  railDivider: { width: 32, height: StyleSheet.hairlineWidth, backgroundColor: color.line, marginVertical: space[1] },
-  railTipWrap: { position: "absolute", left: 56, top: 0, height: RAIL_SLOT, justifyContent: "center", zIndex: 1 },
+  railDividerBox: { height: RAIL_DIVIDER_HEIGHT, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
+  railDivider: { width: 32, height: StyleSheet.hairlineWidth, backgroundColor: color.line },
+  // Label sits right of the rail column (slot is the full 80 wide), vertically centred on the slot.
+  railTipWrap: { position: "absolute", left: 72, top: 0, bottom: 0, justifyContent: "center", zIndex: 1 },
   railTip: {
     paddingHorizontal: space[3],
     paddingVertical: space[1],

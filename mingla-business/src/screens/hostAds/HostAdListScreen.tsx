@@ -75,6 +75,7 @@ import {
   HostAdWithdrawSheet,
 } from "../../components/marketing/ads/HostAdManageSheets";
 import { HostAdTopUpSheet } from "../../components/marketing/ads/HostAdTopUpSheet";
+import { HELP_SUPPORT_PERSON_ROUTE } from "../../constants/supportHostFacing";
 
 function firstParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.length > 0) return value;
@@ -460,7 +461,7 @@ export default function MarketingAdsRoute(): React.ReactElement {
       <Text style={bs.small}>{hm("list.errorBody")}</Text>
       <View style={bs.actions}>
         <Button label={hm("detail.tryAgain")} variant="secondary" size="md" onPress={onRefresh} testID="ads-list-retry" />
-        <Button label={hm("detail.help")} variant="ghost" size="md" onPress={() => router.push("/account/support" as never)} testID="ads-list-help" />
+        <Button label={hm("detail.help")} variant="ghost" size="md" onPress={() => router.push(HELP_SUPPORT_PERSON_ROUTE as never)} testID="ads-list-help" />
       </View>
     </BuilderCard>
   ) : adItems.length === 0 ? (

@@ -102,7 +102,9 @@ describe("#4304 — Help & Support does not load the first-run gate", () => {
     const code = source("app/account/support.tsx");
     expect(importsStatically(code, "useFirstRunStage")).toBe(false);
     expect(importsStatically(code, "firstRunState")).toBe(false);
-    expect(code).toContain("useFirstRunStore((s) => s.lockedNavUserId)");
+    // [TEST-MOD #4420] the page's own (unrendered) rail left with the rebuild,
+    // so it no longer reads the reduced nav at all; the root shell owns it.
+    expect(importsStatically(code, "firstRunStore")).toBe(false);
   });
 
   test("the tabs layout is the one publisher of the reduced nav", () => {

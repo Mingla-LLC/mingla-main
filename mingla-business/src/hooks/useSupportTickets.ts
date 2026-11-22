@@ -18,17 +18,15 @@ import {
 } from "../services/supportService";
 import type { HostCreateTicketInput } from "../components/support/supportRequestModel";
 
-const STALE_TIME_MS = 30 * 1000; // tickets change as staff reply — keep it fresh
+import {
+  SUPPORT_TICKETS_DISABLED_KEY as DISABLED_KEY,
+  SUPPORT_TICKETS_STALE_TIME_MS as STALE_TIME_MS,
+  supportTicketKeys,
+} from "./supportTicketKeys";
 
-export const supportTicketKeys = {
-  all: ["support", "tickets"] as const,
-  byUser: (userId: string): readonly [string, string, string] =>
-    ["support", "tickets", userId] as const,
-  thread: (ticketId: string): readonly [string, string, string] =>
-    ["support", "thread", ticketId] as const,
-};
-
-const DISABLED_KEY = ["support", "tickets", "disabled"] as const;
+// #4420 — the factory moved to supportTicketKeys.ts (no service import) so the
+// Help & Support shell can share the same cache entry; re-exported here.
+export { supportTicketKeys };
 
 export interface UseSupportTicketsResult {
   data: SupportTicket[];

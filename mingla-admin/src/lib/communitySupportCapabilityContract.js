@@ -1,9 +1,14 @@
 /**
  * #3988 — the Community & Support tab contract. #4383: the screen and tab
- * contract — every row names the `page` that shows it: "support" or
- * "community" for a tab of those pages, or the row's own page id for a
- * Communications screen (Email, Blog, Links page, Announcements, Roadmap,
- * Overview, Push).
+ * contract — every row names the `page` that shows it: "support" for a tab
+ * of the Support page, or the row's own page id for a Communications screen
+ * (Email, Blog, Links page, Announcements, Overview, Push, Brand groups,
+ * Feature guide).
+ *
+ * #4420: Community and the Roadmap screen are retired, so their rows (ideas,
+ * questions, moderation, enquiry-reports, product, roadmap) are gone; the
+ * reported-enquiry RPCs are in the support row. Their server data and RPCs
+ * stay for Host apps on current builds.
  *
  * #4130 Wave 6: the tabs now sit on two pages, Support and Community
  * (lib/supportCommunityTabs.js); every row keeps its area. The Overview tab
@@ -21,7 +26,6 @@
  */
 
 const ADMIN = "admin_console";
-const COMMUNITY = "community_support_community";
 const SUPPORT = "community_support_support";
 // #4255: every active teammate (server: admin_team_role_areas, and
 // issue_4137_blog_can_write via admin_team_my_operational_areas).
@@ -47,60 +51,6 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     ]),
     functions: Object.freeze([]),
   }),
-  roadmap: Object.freeze({
-    page: "roadmap",
-    area: ADMIN,
-    panel: "components/community/RoadmapPanel.jsx",
-    rpcs: Object.freeze([
-      "community_get_roadmap_notification_status",
-      "community_notify_roadmap_change",
-      "community_reorder_roadmap",
-      "community_roadmap_notification_preview",
-      "community_upsert_roadmap_card",
-      "issue_3720_admin_list_roadmap_cards",
-      // #4383: card go-live and scheduled notices.
-      "issue_4383_roadmap_cancel_notice",
-      "issue_4383_roadmap_schedule_card",
-      "issue_4383_roadmap_schedule_notice",
-      "issue_4383_roadmap_scheduled_list",
-      "issue_4383_roadmap_unschedule_card",
-    ]),
-    functions: Object.freeze([]),
-  }),
-  ideas: Object.freeze({
-    page: "community",
-    area: COMMUNITY,
-    panel: "components/community/IdeasPanel.jsx",
-    rpcs: Object.freeze(["issue_3720_admin_list_posts", "issue_3720_admin_update_idea"]),
-    functions: Object.freeze([]),
-  }),
-  questions: Object.freeze({
-    page: "community",
-    area: COMMUNITY,
-    panel: "components/community/QuestionsPanel.jsx",
-    rpcs: Object.freeze(["issue_3720_admin_list_posts", "issue_3720_admin_question_action"]),
-    functions: Object.freeze([]),
-  }),
-  moderation: Object.freeze({
-    page: "community",
-    area: COMMUNITY,
-    panel: "components/community/ModerationPanel.jsx",
-    rpcs: Object.freeze(["issue_3720_admin_moderate", "issue_3720_admin_moderation_workspace"]),
-    functions: Object.freeze([]),
-  }),
-  // #4111 — guarded by issue_4111_is_mingla_staff (active admin_users OR
-  // is_support_staff), which is exactly community_can('moderate').
-  "enquiry-reports": Object.freeze({
-    page: "community",
-    area: COMMUNITY,
-    panel: "components/community/ReportedEnquiriesPanel.jsx",
-    rpcs: Object.freeze([
-      "admin_enquiry_block_everywhere",
-      "admin_enquiry_dismiss_report",
-      "admin_list_reported_enquiries",
-    ]),
-    functions: Object.freeze([]),
-  }),
   support: Object.freeze({
     page: "support",
     area: SUPPORT,
@@ -109,27 +59,31 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
     // through the support-* Edge Functions (the retired internal-thread RPCs
     // are gone).
     // #4226 Phase 2: people lookups use the People classifier
-    // (admin_people_lookup), one owner with People.
+    // (admin_people_lookup), one owner with People. #4420 rework 3: full
+    // admins and active Support staff may call it (the inbox still loads
+    // without it).
     // #4453: "Ready for review" on a website change request
     // (issue_4453_website_request_ready, guarded by
     // issue_3720_support_operator_required like the desk's other writes).
-    rpcs: Object.freeze(["admin_people_lookup", "issue_4453_website_request_ready"]),
+    // #4420 (step 5): the chat inbox also lists the Work tickets linked to a
+    // conversation (Support staff only) and shows reported enquiries with
+    // Dismiss and Block everywhere (the same RPCs and guard the retired
+    // Reported enquiries tab used; step 6 folded that row in here).
+    rpcs: Object.freeze([
+      "admin_enquiry_block_everywhere",
+      "admin_enquiry_dismiss_report",
+      "admin_list_reported_enquiries",
+      "admin_people_lookup",
+      "issue_4420_conversation_tickets",
+      "issue_4453_website_request_ready",
+    ]),
     // support-send is reached by the ticket panel's composer
     // (components/support/SupportComposer.jsx), not by the page itself.
     functions: Object.freeze(["support-claim", "support-set-status"]),
   }),
-  product: Object.freeze({
-    page: "community",
-    area: ADMIN,
-    panel: "components/community/ProductInboxPanel.jsx",
-    // #4382: the board lists items and Community ideas; triage, GitHub, verify
-    // and Tell reporters run from the card panel
-    // (components/support/ProductCardPanel.jsx).
-    rpcs: Object.freeze(["issue_3720_admin_list_posts"]),
-    functions: Object.freeze([]),
-  }),
+  // #4420: its own Communications screen (was a Community tab), same area.
   "feature-guide": Object.freeze({
-    page: "community",
+    page: "feature-guide",
     area: SUPPORT,
     panel: "components/community/FeatureGuidePanel.jsx",
     // Writing evidence and capabilities stays Admin-only (canManage).
@@ -272,16 +226,16 @@ export const COMMUNITY_SUPPORT_TAB_CONTRACT = Object.freeze({
   }),
 });
 
-/** #4383: the rows that are a tab of the Support or Community page. */
+/** #4383: the rows that are a tab of the Support page (#4420: Community is retired). */
 export const SUPPORT_COMMUNITY_TAB_ROWS = Object.freeze(
   Object.keys(COMMUNITY_SUPPORT_TAB_CONTRACT).filter((id) =>
-    ["support", "community"].includes(COMMUNITY_SUPPORT_TAB_CONTRACT[id].page)),
+    COMMUNITY_SUPPORT_TAB_CONTRACT[id].page === "support"),
 );
 
 /** #4383: the rows that are a Communications screen of their own. */
 export const COMMUNICATIONS_SCREEN_ROWS = Object.freeze(
   Object.keys(COMMUNITY_SUPPORT_TAB_CONTRACT).filter((id) =>
-    !["support", "community"].includes(COMMUNITY_SUPPORT_TAB_CONTRACT[id].page)),
+    COMMUNITY_SUPPORT_TAB_CONTRACT[id].page !== "support"),
 );
 
 /** tab id → the access area that shows it (used by communitySupportAccess). */

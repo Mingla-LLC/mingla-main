@@ -20,7 +20,10 @@ export function RecordPicker({ onPick, onClose, kinds = LINK_KINDS }) {
     const mine = ++seq.current;
     const timer = setTimeout(async () => {
       try {
-        const answer = await ops.searchLinks(kind, query);
+        // #4420: a support conversation is found by customer name or number (Support staff only).
+        const answer = kind === "support_conversation"
+          ? { results: (await ops.searchConversations(query) || []).map((r) => ({ id: r.id, label: r.label, sub: [r.customer_name, r.segment === "business" ? "Host" : r.segment === "explorer" ? "Explorer" : ""].filter(Boolean).join(" · ") })) }
+          : await ops.searchLinks(kind, query);
         if (mine === seq.current) setFound({ kind, query, results: answer?.results || [], error: null });
       } catch (error) {
         if (mine === seq.current) setFound({ kind, query, results: [], error });

@@ -324,6 +324,7 @@
       "capability_key": "staff-feature-guide",
       "paths": [
         "mingla-admin/src/components/community/FeatureGuidePanel.jsx",
+        "mingla-admin/src/pages/communications/FeatureGuidePage.jsx",
         "mingla-admin/src/services/featureGuideService.js",
         "supabase/functions/_shared/opsBridges.ts",
         "supabase/functions/product-avengers-sync/index.ts",
@@ -2426,7 +2427,7 @@
       "paths": [
         "mingla-admin/src/lib/communitySupportAccess.js",
         "mingla-admin/src/lib/communitySupportCapabilityContract.js",
-        "mingla-admin/src/pages/CommunitySupportPage.jsx"
+        "mingla-admin/src/pages/SupportPage.jsx"
       ]
     },
     {
@@ -3236,6 +3237,7 @@
         "mingla-admin/src/components/community/BrandGroupSidePanel.jsx",
         "mingla-admin/src/components/community/BrandGroupStrip.jsx",
         "mingla-admin/src/components/community/BrandGroupThread.jsx",
+        "mingla-admin/src/components/community/BrandGroupTicketModal.jsx",
         "mingla-admin/src/components/community/BrandGroupsPanel.jsx",
         "mingla-admin/src/components/community/HostCardEmptyState.jsx",
         "mingla-admin/src/components/community/PlanActivityCard.jsx",
@@ -4578,7 +4580,6 @@
         "mingla-admin/src/components/communications/SchedulePicker.jsx",
         "mingla-admin/src/components/communications/ScheduleTime.jsx",
         "mingla-admin/src/components/community/FailedPushBanner.jsx",
-        "mingla-admin/src/components/community/RoadmapPanel.jsx",
         "mingla-admin/src/lib/communications.js",
         "mingla-admin/src/lib/communicationsErrors.js",
         "mingla-admin/src/lib/pushDestinations.js",
@@ -4587,7 +4588,6 @@
         "mingla-admin/src/pages/communications/CommunicationsOverviewPage.jsx",
         "mingla-admin/src/pages/communications/LinksPage.jsx",
         "mingla-admin/src/pages/communications/PushPage.jsx",
-        "mingla-admin/src/pages/communications/RoadmapPage.jsx",
         "mingla-admin/src/services/communicationsService.js",
         "supabase/functions/_shared/adminPushDestinations.ts",
         "supabase/functions/notify-outbox-drain/index.ts",
@@ -4907,15 +4907,12 @@
     {
       "capability_key": "staff-community-support",
       "paths": [
-        "mingla-admin/src/components/community/ProductInboxPanel.jsx",
-        "mingla-admin/src/components/support/ProductCardPanel.jsx",
-        "mingla-admin/src/components/support/SendToProductModal.jsx",
-        "mingla-admin/src/components/support/productBoardModel.js",
+        "mingla-admin/src/components/ops/TicketGithubSection.jsx",
         "mingla-admin/src/services/productAvengersService.js",
         "mingla-admin/src/lib/brandGroupWaiting.js",
         "mingla-admin/src/lib/communitySupportCapabilityContract.js",
         "mingla-admin/src/lib/supportCommunityTabs.js",
-        "mingla-admin/src/pages/CommunitySupportPage.jsx",
+        "mingla-admin/src/pages/SupportPage.jsx",
         "mingla-admin/src/pages/communications/BrandGroupsPage.jsx"
       ]
     },
@@ -4938,12 +4935,17 @@
         "mingla-business/src/hooks/useSupportTickets.ts",
         "mingla-business/src/i18n/locales/en/hostSupport.json",
         "mingla-business/src/services/supportService.ts",
-        "mingla-business/src/components/support/CommunityConversationsPanel.tsx",
         "mingla-business/src/components/support/CommunityMarkdown.tsx",
-        "mingla-business/src/components/support/CommunityTabPanel.tsx",
-        "mingla-business/src/components/support/GuidePlayerModal.tsx",
-        "mingla-business/src/components/support/GuidesTabPanel.tsx",
-        "mingla-business/src/components/support/HelpSupportHubTabs.tsx"
+        "mingla-business/src/components/support/HelpSupportHubTabs.tsx",
+        "mingla-business/src/components/support/AnnouncementsPanel.tsx",
+        "mingla-business/src/components/support/SupportColumn.tsx",
+        "mingla-business/src/components/support/SupportPersonPane.tsx",
+        "mingla-business/src/components/support/helpSupportHubCopy.ts",
+        "mingla-business/src/components/support/helpSupportRoute.ts",
+        "mingla-business/src/components/support/supportHandover.ts",
+        "mingla-business/src/hooks/supportTicketKeys.ts",
+        "mingla-business/src/i18n/locales/en/hostSupport.hub.json",
+        "mingla-business/src/services/supportHandoverService.ts"
       ]
     },
     {
@@ -5675,6 +5677,72 @@
       "paths": [
         "supabase/functions/scan-rsvp/doorAnswers.ts",
         "supabase/functions/scan-rsvp/index.ts"
+      ]
+    },
+    {
+      "capability_key": "ari-host-assistant",
+      "paths": [
+        "supabase/functions/agent-attachments/copyToSupport.ts",
+        "supabase/functions/agent-attachments/index.ts"
+      ]
+    },
+    {
+      "capability_key": "help-support",
+      "paths": [
+        "mingla-business/src/components/support/CommunityConversationsPanel.tsx",
+        "mingla-business/src/components/support/CommunityTabPanel.tsx",
+        "mingla-business/src/components/support/GuidePlayerModal.tsx",
+        "mingla-business/src/components/support/GuidesTabPanel.tsx",
+        "mingla-business/src/components/support/guideCaptions.ts",
+        "mingla-business/src/components/support/helpCentreLauncher.web.ts",
+        "mingla-business/src/hooks/useCommunity.ts",
+        "mingla-business/src/services/communityService.ts",
+        "mingla-business/src/utils/communityTabReveal.ts",
+        "mingla-business/src/utils/helpSupportLastTab.ts",
+        "mingla-business/src/utils/roadmapBlurb.ts"
+      ]
+    },
+    {
+      "capability_key": "staff-community-support",
+      "paths": [
+        "mingla-admin/src/components/community/AvailabilityPanel.jsx",
+        "mingla-admin/src/components/community/CommunitySupportNavigation.jsx",
+        "mingla-admin/src/components/community/CutoverPanel.jsx",
+        "mingla-admin/src/components/community/IdeasPanel.jsx",
+        "mingla-admin/src/components/community/ProductInboxPanel.jsx",
+        "mingla-admin/src/components/community/QuestionsPanel.jsx",
+        "mingla-admin/src/components/community/ReportedEnquiriesPanel.jsx",
+        "mingla-admin/src/components/community/RoadmapPanel.jsx",
+        "mingla-admin/src/components/support/ProductCardPanel.jsx",
+        "mingla-admin/src/components/support/SendToProductModal.jsx",
+        "mingla-admin/src/components/support/productBoardModel.js",
+        "mingla-admin/src/pages/CommunitySupportPage.jsx",
+        "mingla-admin/src/pages/communications/RoadmapPage.jsx"
+      ]
+    },
+    {
+      "capability_key": "staff-support-desk",
+      "paths": [
+        "mingla-admin/src/components/support/CreateTicketPanel.jsx",
+        "mingla-admin/src/components/support/InboxLabels.jsx",
+        "mingla-admin/src/components/support/InboxList.jsx",
+        "mingla-admin/src/components/support/ReportedEnquiryThread.jsx",
+        "mingla-admin/src/components/support/TicketSummaryPanel.jsx",
+        "mingla-admin/src/lib/supportInboxModel.js"
+      ]
+    },
+    {
+      "capability_key": "staff-work-board",
+      "paths": [
+        "mingla-admin/src/components/ops/LogRow.jsx",
+        "mingla-admin/src/components/ops/RecordPicker.jsx",
+        "mingla-admin/src/components/ops/ReviewQueue.jsx",
+        "mingla-admin/src/components/ops/TicketChip.jsx",
+        "mingla-admin/src/components/ops/TicketConversations.jsx",
+        "mingla-admin/src/components/ops/TicketForm.jsx",
+        "mingla-admin/src/components/ops/TicketSections.jsx",
+        "mingla-admin/src/lib/ticketModel.js",
+        "supabase/migrations/20281121034420_issue_4420_tickets_on_work_board.sql"
       ]
     }
   ]

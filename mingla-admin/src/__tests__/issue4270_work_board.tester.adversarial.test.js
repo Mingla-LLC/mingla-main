@@ -242,7 +242,7 @@ describe("XA-6 Due today never invents a 0", () => {
   });
   it("the Work menu badge adds due today and overdue only when both are read", () => {
     const src = read("hooks/useReviewCount.js");
-    assert.match(src, /work\.status === "ready" \? work\.dueToday \+ work\.overdue : null/);
+    assert.match(src, /work\.status === "ready" \? workMenuCount\(work\.dueToday \+ work\.overdue, ticketsNew\) : null/);
   });
 });
 

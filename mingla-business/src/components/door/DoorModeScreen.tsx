@@ -43,7 +43,7 @@ import {
   color,
   space,
 } from "../../constants/designSystem";
-import { HELP_AND_SUPPORT_ROUTE } from "../../constants/supportHostFacing";
+import { HELP_SUPPORT_PERSON_ROUTE } from "../../constants/supportHostFacing";
 import {
   TAP_CARD_NEEDS_INSERT_COPY,
   TAP_PROCESSING_TEXT,
@@ -1018,7 +1018,7 @@ export const DoorModeScreen = ({
               title="Paid, still saving"
               body={tap.state.kind === "save_failed" ? tap.state.message : null}
               primary={{ label: "Save again", onPress: () => void tap.saveAgain(), testID: "door-mode-save-again" }}
-              onHelp={() => router.push(HELP_AND_SUPPORT_ROUTE as never)}
+              onHelp={() => router.push(HELP_SUPPORT_PERSON_ROUTE as never)}
               testID="door-mode-tap-save-failed"
             />
           )}

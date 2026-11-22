@@ -84,7 +84,7 @@ describe("R-1 a long To do never empties In progress or Done (P2-1)", () => {
   it("the board asks for each column on its own and drops the one-page notice", () => {
     const page = code("pages/WorkBoardPage.jsx");
     assert.match(page, /useOpsWork\(\{[^}]*limit: BOARD_LIMIT, perStatus: true/);
-    assert.match(page, /info=\{view\.show \|\| view\.linked \? null : list\.data\?\.status_columns \|\| null\}/);
+    assert.match(page, /info=\{view\.show \|\| view\.linked \|\| view\.type \? null : list\.data\?\.status_columns \|\| null\}/);
     assert.doesNotMatch(page, /Showing the first \$\{BOARD_LIMIT\} cards/);
     const hook = code("hooks/useOpsWork.js");
     assert.match(hook, /\.\.\.\(perStatus \? \{ per_status: true \} : \{\}\)/);
