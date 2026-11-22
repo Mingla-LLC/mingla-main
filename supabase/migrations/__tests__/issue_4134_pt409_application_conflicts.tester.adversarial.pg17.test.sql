@@ -402,7 +402,7 @@ $fn$;
 -- restored the same way. It also DROPS issue_3720_update_internal_thread and
 -- issue_3988_reassign_internal_thread with the staff-thread table; they are
 -- re-created here from section B for the replay and dropped again after T4.
--- #4522 (20281123024522_issue_4522_plan_v2_model.sql) re-defines
+-- #4522 (20281125024522_issue_4522_plan_v2_model.sql) re-defines
 -- biz_apply_trip_draft_graph ("Use this plan for all packages" and the v2
 -- plan price check), so it is put back and restored the same way.
 -------------------------------------------------------------------------------

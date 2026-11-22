@@ -403,7 +403,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4522 merge of main after #4548 guest pack: kept main's 20281122024548 row, its three pg17 suites and its exact-filename #1931 skip beside the #3281/#4522 rows and skips; re-sealed.
 // #4522 third rework after retest FAIL (T3-1..T3-10): registered the #4522 implementor pg17 suite overpayment_refund_once (with sidecar) in the #1931 and #2117 replay inventories; no migration added; re-sealed.
 // #4522 merge of main after #4549 Host push repair and #3645 provider minimums: kept main's 20281124004549 row and its three pg17 suites (with sidecars) beside the #3281/#4522 rows and skips (filename order); #3645 adds no MANIFEST rows (its Deno suites register by sidecar); re-sealed.
-export const BOOTSTRAP_SHA256 = "29088f7a39fbcdd73d7d744d13891bb885197e025244d391924d186fa95759cc";
+// #4522 renumbering after #4549: moved the branch's 14 migrations (20281123013281..20281123143281) to 20281125013281..20281125143281 above main's 20281124004549, same relative order and slugs; expectedFiles re-sorted in the #1857, #1931 and #2117 lanes (main's rows first) and the filtered #1931/#2117 exact-filename skips renamed; re-sealed.
+export const BOOTSTRAP_SHA256 = "f430f7c8fc885cd01385210605882ecfecb5d774384d4a6d24d4ca4c99e0c9f1";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

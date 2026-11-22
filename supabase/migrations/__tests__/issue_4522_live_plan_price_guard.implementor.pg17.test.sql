@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-4522-PLAN-PRICE-LIVE | issue #4522 | A published trip edit and a publish transition validate every v2 payment plan against the package price before the transaction can commit.
 \set ON_ERROR_STOP on
 
--- Issue #4522 slice 12 (20281123074522). Drives the real
+-- Issue #4522 slice 12 (20281125074522). Drives the real
 -- biz_update_live_trip RPC and the real publish trigger. The rollout switch is
 -- enabled only inside this rolled-back test transaction.
 

@@ -108,7 +108,7 @@ const outcomes = (db: ReturnType<typeof scripted>) =>
 
 Deno.test("T3 constants mirror the SQL", async () => {
   const sql = await Deno.readTextFile(new URL(
-    "../../../../migrations/20281123044522_issue_4522_flex_payments.sql",
+    "../../../../migrations/20281125044522_issue_4522_flex_payments.sql",
     import.meta.url,
   ));
   assertEquals(OVERPAYMENT_PENDING_CEILING_MS, 7 * 24 * 3600 * 1000);
