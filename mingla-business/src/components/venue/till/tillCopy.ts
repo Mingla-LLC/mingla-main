@@ -111,6 +111,35 @@ export const TILL_COPY = {
   leaveBody: "The items you picked aren't on the check yet, so they'll be lost.",
   leaveConfirm: "Leave",
   leaveKeep: "Keep selling",
+  // Moving a check, handing it over, renaming it (T9; floor design "check-actions")
+  checkActions: "Check",
+  moveToTable: "Move to another table",
+  moveToTableSub: "Everything sent and paid moves with it",
+  handOver: "Hand over to someone",
+  handOverSub: "For a break or the end of a shift",
+  changeName: "Change the name",
+  moveTitle: (label: string): string => `Move ${label}`,
+  moveTo: (table: string): string => `Move to ${table}`,
+  moveCaption:
+    "Sent items don't go to the kitchen again; their tickets and the bill show the new table. Tables with their own open check can't be picked: pay or move that one first.",
+  noTables: "This venue has no tables to move to.",
+  handoverTitle: (label: string): string => `Hand over ${label}`,
+  handoverTo: (name: string): string => `Hand over to ${name}`,
+  handoverCaption: (to: string, from: string): string =>
+    `Tips paid from now go to ${to}. Tips already paid on this check stay with ${from}.`,
+  openChecksOf: (n: number): string => (n === 1 ? "1 open check" : `${n} open checks`),
+  servingNow: (name: string): string => `${name} is serving`,
+  nobodyElse: "Nobody else here can sell yet.",
+  teamMember: "Team member",
+  movedTo: (table: string): string => `Moved to ${table}`,
+  handedOver: (name: string): string => `${name} is serving this check now`,
+  nameSaved: "Name saved",
+  // A part-paid check that now costs less; a check the old order pad closed
+  overpaid: (amount: string): string => `${amount} more was paid than this check now costs. Refund it from the payment below.`,
+  settledOnPad: "Paid on the order pad",
+  // Refunding an entry or package line
+  refundLineTitle: (label: string): string => `Refund ${label}`,
+  refundLineBody: "The booking is cancelled, its places are freed and the pass stops working.",
 } as const;
 
 /**
@@ -122,6 +151,8 @@ export function tillErrorCopy(code: string, item: string | null = null): string 
   switch (code) {
     case "till_check_changed":
     case "till_check_closed":
+    case "till_line_not_paid":
+    case "till_refund_line_invalid":
     case "till_amount_over_due":
     case "till_nothing_to_pay":
     case "till_payment_in_progress":
@@ -151,7 +182,20 @@ export function tillErrorCopy(code: string, item: string | null = null): string 
     case "offers_not_enabled":
       return "Selling at the gate isn't switched on for your brand yet.";
     case "admit_count_invalid":
+    case "guest_list_arrived_invalid":
       return "That's more guests than are left on this pass.";
+    case "guest_list_entry_on_check":
+      return "This guest is already on another check.";
+    case "offer_option_unavailable":
+      return "That offer isn't on sale any more. Close this and try again.";
+    case "offer_guests_out_of_range":
+      return "That number of guests is outside this package's group size.";
+    case "till_hold_lapsed":
+      return "The hold already ran out. We've loaded the latest.";
+    case "till_tab_settled_on_pad":
+      return "That tab is already closed.";
+    case "till_round_settled_elsewhere":
+      return "That order has already moved on. Pull to refresh.";
     case "till_card_refunded_once":
       return "This card payment was already refunded once. Pay the rest back in cash.";
     case "till_receipt_limit":

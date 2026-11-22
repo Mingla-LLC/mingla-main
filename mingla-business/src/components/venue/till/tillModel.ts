@@ -5,7 +5,7 @@
  * chip), and the server checks both again.
  */
 
-import type { TillCatalog, TillMenuItem, TillSale } from "../../../services/venueTillService";
+import type { TillCatalog, TillLine, TillMenuItem, TillSale, TillServer } from "../../../services/venueTillService";
 
 export type FloorLayout = "phone" | "tablet" | "desk";
 
@@ -40,6 +40,8 @@ export interface BasketRow {
   /** Void target: a menu item of a round, or a whole Till line. */
   orderItemId: string | null;
   lineId: string | null;
+  /** The server line's state: held until the check is fully paid. */
+  lineState: TillLine["state"];
 }
 
 /** The check's server lines as rows: one per menu item, one per offer line. */
@@ -61,6 +63,7 @@ export function basketRows(sale: TillSale | null): BasketRow[] {
           voided: item.voided || line.state === "voided",
           orderItemId: item.id,
           lineId: null,
+          lineState: line.state,
         });
       }
     } else {
@@ -75,6 +78,7 @@ export function basketRows(sale: TillSale | null): BasketRow[] {
         voided: line.state === "voided",
         orderItemId: null,
         lineId: line.id,
+        lineState: line.state,
       });
     }
   }
@@ -253,4 +257,63 @@ export function receiptPhoneStartCountry(currency: string): string | null {
     default:
       return null;
   }
+}
+
+// ------------------------------------------------- corrections (O1 fix 1)
+
+/**
+ * A row can be voided while the check is open and the row is not final: a
+ * part payment does not freeze the check (the server decides who may void a
+ * sent item, and closes the check if what was paid then covers the rest).
+ */
+export function rowCanVoid(sale: TillSale | null, row: BasketRow): boolean {
+  return sale !== null && sale.state === "open" && !sale.pendingPayment && !row.voided && row.lineState === "held";
+}
+
+/** A paid entry or package line can be refunded in full by money rights. */
+export function rowRefundable(row: BasketRow, canManageMoney: boolean): boolean {
+  return canManageMoney && row.kind === "offer" && row.lineId !== null && row.lineState === "committed";
+}
+
+/** Money taken beyond what the check now costs (kept to refund, never dropped). */
+export function overpaidToRefund(sale: TillSale | null): number {
+  return sale !== null && sale.state !== "open" ? Math.max(0, sale.overpaidMinor) : 0;
+}
+
+export interface MoveTarget {
+  id: string;
+  label: string;
+  /** Another open check sits there: pay or move that one first. */
+  busy: boolean;
+  current: boolean;
+}
+
+/** Tables a check can move to; the one it is on is marked, busy ones can't be picked. */
+export function moveTargets(spots: TillCatalog["spots"], sale: TillSale | null): MoveTarget[] {
+  return spots.map((spot) => {
+    const current = sale !== null && sale.spotId === spot.id;
+    return { id: spot.id, label: spot.label, busy: spot.hasCheck && !current, current };
+  });
+}
+
+/** Who a check can be handed to: everyone who may sell here except whoever serves it now. */
+export function handoverChoices(servers: TillServer[], currentServerId: string | null): TillServer[] {
+  return servers.filter((s) => s.userId !== currentServerId);
+}
+
+/** A person's name as the Till shows it (a fallback when none is on file). */
+export function serverName(servers: TillServer[], userId: string | null, fallback: string): string {
+  const found = servers.find((s) => s.userId === userId);
+  return found?.name ?? fallback;
+}
+
+/**
+ * #4490 O1 fix 1 (O1-N7) — realtime binds by the VENUE (a primary-key `id=eq.` filter is silently
+ * dropped by realtime under RLS: I-PROPOSED-ORCH-0931-NO-PK-FILTER-REALTIME);
+ * the handler keeps only this check's rows.
+ */
+export function tillSaleChangeMatches(payload: unknown, saleId: string): boolean {
+  if (payload === null || typeof payload !== "object") return false;
+  const row = (payload as { new?: unknown; old?: unknown }).new ?? (payload as { old?: unknown }).old;
+  return row !== null && typeof row === "object" && (row as { id?: unknown }).id === saleId;
 }

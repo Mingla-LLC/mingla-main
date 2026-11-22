@@ -93,6 +93,8 @@ export interface TillSale {
   paidMinor: number;
   remainingMinor: number;
   overpaidMinor: number;
+  /** Closed on the old order pad (its tab was paid there), never by the Till. */
+  settledOutside: "venue_collected" | "bill_to_phone" | null;
   version: number;
   businessDate: string | null;
   pendingPayment: boolean;
@@ -192,6 +194,7 @@ export function mapTillSale(v: unknown): TillSale {
     paidMinor: num(s.paidMinor),
     remainingMinor: num(s.remainingMinor),
     overpaidMinor: num(s.overpaidMinor),
+    settledOutside: s.settledOutside === "venue_collected" || s.settledOutside === "bill_to_phone" ? s.settledOutside : null,
     version: num(s.version, 1),
     businessDate: strOrNull(s.businessDate),
     pendingPayment: s.pendingPayment === true,
@@ -446,6 +449,57 @@ export async function refundTill(input: {
 }): Promise<TillSale> {
   const data = obj(await till<unknown>({ action: "refund", ...input }));
   return mapTillSale(data.sale);
+}
+
+/**
+ * Refund one paid offer line in full (money rights). The server takes the
+ * money back from the check's cash / own-machine payments and cancels the
+ * booking; no amount is sent.
+ */
+export async function refundTillLine(input: {
+  venueId: string;
+  lineId: string;
+  reason: string;
+  clientRequestId: string;
+}): Promise<TillSale> {
+  const data = obj(await till<unknown>({ action: "refund", ...input }));
+  return mapTillSale(data.sale);
+}
+
+/** Move a check to another table and/or rename it (T9). */
+export function relabelTill(input: {
+  venueId: string;
+  saleId: string;
+  spotId: string | null;
+  label: string | null;
+  expectedVersion: number;
+}): Promise<TillSale> {
+  return saleAction({ action: "relabel", ...input });
+}
+
+/** Hand a check over to someone else who may sell here (T9). */
+export function setTillServer(input: {
+  venueId: string;
+  saleId: string;
+  serverUserId: string;
+  expectedVersion: number;
+}): Promise<TillSale> {
+  return saleAction({ action: "set_server", ...input });
+}
+
+export interface TillServer {
+  userId: string;
+  name: string | null;
+  openChecks: number;
+}
+
+/** The people who may sell at this venue (who can take a check over). */
+export async function fetchTillServers(venueId: string): Promise<TillServer[]> {
+  const data = obj(await till<unknown>({ action: "servers", venueId }));
+  return arr(data.servers).map((v) => {
+    const r = obj(v);
+    return { userId: str(r.userId), name: strOrNull(r.name), openChecks: num(r.openChecks) };
+  }).filter((r) => r.userId.length > 0);
 }
 
 /** Send a payment's receipt by text and/or email (at most three sends). */

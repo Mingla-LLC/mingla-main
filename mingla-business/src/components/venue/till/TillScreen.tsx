@@ -7,6 +7,11 @@
  * added to the check (Save check, Send, Pay); until then the totals read "--"
  * (rule 9). A sold-out or changed item is refused by the server in words.
  *
+ * Corrections (O1 fix 1): a part payment no longer freezes a check (unpaid
+ * lines can still be voided; money beyond the new total is shown to refund);
+ * a paid entry line is refunded by line (its booking is cancelled); the check
+ * can be moved to another table, handed over or renamed (T9).
+ *
  * Layout (spec 08 §2, `floorLayoutFor`): phone < 600 shows the catalog full
  * width with a bottom bar that opens the basket; tablet and desk show the
  * basket beside the catalog at `size.sidePanel`. (The full tablet layout with
@@ -20,8 +25,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { color, radius, size, space, type } from "../../../constants/designSystem";
 import { useVenueOffers } from "../../../hooks/useVenueOffers";
-import { useTillActions, useTillCatalog, useTillChecks, useTillSale } from "../../../hooks/useVenueTill";
-import type { TillCatalog, TillMenuItem, TillSale } from "../../../services/venueTillService";
+import { useTillActions, useTillCatalog, useTillChecks, useTillSale, useTillServers } from "../../../hooks/useVenueTill";
+import type { TillCatalog, TillMenuItem, TillSale, TillServer } from "../../../services/venueTillService";
 import { TillError } from "../../../services/venueTillService";
 import type { VenueOffer } from "../../../types/venueOffers";
 import { formatCurrency } from "../../../utils/currency";
@@ -48,13 +53,20 @@ import {
   addToDraft,
   basketRows,
   floorLayoutFor,
+  handoverChoices,
   itemNeedsChoices,
   itemSellable,
+  moveTargets,
+  overpaidToRefund,
+  rowCanVoid,
+  rowRefundable,
   sendLabel,
+  serverName,
   setDraftQuantity,
   totalsReady,
   type BasketRow,
   type DraftLine,
+  type MoveTarget,
   type TillPrefill,
 } from "./tillModel";
 
@@ -96,6 +108,9 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   const [toast, setToast] = useState<ToastState>(null);
   const [busy, setBusy] = useState(false);
   const [leaveAsk, setLeaveAsk] = useState(false);
+  const [checkSheet, setCheckSheet] = useState<"actions" | "move" | "handover" | "rename" | null>(null);
+  const [lineRefund, setLineRefund] = useState<BasketRow | null>(null);
+  const serversQuery = useTillServers(venueId, checkSheet === "actions" || checkSheet === "handover");
 
   const currency = sale?.currency ?? catalog?.currency ?? "NGN";
   const money = useCallback((minor: number): string => formatCurrency(minor, currency, true), [currency]);
@@ -123,7 +138,9 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
     (err: unknown): void => {
       const code = err instanceof TillError ? err.code : "till_failed";
       const item = err instanceof TillError ? err.item : null;
-      if (code === "till_check_changed" && saleId !== null) actions.refreshSale(saleId);
+      const refresh = ["till_check_changed", "till_hold_lapsed", "till_tab_settled_on_pad", "till_round_settled_elsewhere",
+        "till_line_not_paid", "till_refund_line_invalid"];
+      if (refresh.includes(code) && saleId !== null) actions.refreshSale(saleId);
       setToast({ kind: "error", message: tillErrorCopy(code, item) });
     },
     [actions, saleId],
@@ -209,6 +226,12 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   const itemCount = rows.filter((r) => !r.voided).reduce((n, r) => n + r.quantity, 0) + draft.reduce((n, d) => n + d.quantity, 0);
   const payLabel = ready && sale !== null ? TILL_COPY.pay(money(sale.remainingMinor)) : TILL_COPY.payPending;
   const nothingOnCheck = rows.length === 0 && draft.length === 0;
+  const canManageMoney = catalog?.canManageMoney === true;
+  const overpaid = overpaidToRefund(sale);
+  const checkName = sale?.checkLabel ?? sale?.spotLabel ?? TILL_COPY.newCheck;
+  const servers = serversQuery.data ?? [];
+  const currentServer = serverName(servers, sale?.serverUserId ?? null, TILL_COPY.teamMember);
+  const canMoveCheck = sale !== null && sale.state === "open" && !sale.pendingPayment;
 
   // ---------------------------------------------------------------- catalog
   const menus = catalog?.menus ?? [];
@@ -303,19 +326,33 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
   const basket = (
     <View style={styles.basket} testID="till-basket">
       <View style={styles.basketHead}>
-        <Text style={styles.h3} numberOfLines={1}>{sale?.checkLabel ?? sale?.spotLabel ?? TILL_COPY.newCheck}</Text>
-        {sale !== null && sale.paidMinor > 0 ? <Pill variant="info">{TILL_COPY.leftToPay}</Pill> : null}
+        <Text style={styles.h3} numberOfLines={1}>{checkName}</Text>
+        {sale !== null && sale.settledOutside !== null ? <Pill variant="info">{TILL_COPY.settledOnPad}</Pill> : null}
+        {sale !== null && sale.state === "open" && sale.paidMinor > 0 ? <Pill variant="info">{TILL_COPY.leftToPay}</Pill> : null}
+        {canMoveCheck ? (
+          <Button label={TILL_COPY.checkActions} variant="ghost" size="sm" onPress={() => setCheckSheet("actions")}
+            testID="till-check-actions" />
+        ) : null}
       </View>
+      {overpaid > 0 ? (
+        <Banner tone="warning" title={TILL_COPY.overpaid(money(overpaid))} testID="till-overpaid" />
+      ) : null}
       <ScrollView style={styles.grow} contentContainerStyle={styles.basketList}>
         {rows.map((row) => (
           <ListRow
             key={row.key}
             title={`${row.quantity > 1 ? `${row.quantity} × ` : ""}${row.label}`}
-            subtitle={row.voided ? TILL_COPY.void : row.detail ?? undefined}
+            subtitle={row.voided ? TILL_COPY.void : row.lineState === "refunded" ? TILL_COPY.refunded : row.detail ?? undefined}
             value={money(row.amountMinor)}
-            disabled={row.voided}
+            disabled={row.voided || row.lineState === "refunded"}
             chevron={false}
-            onPress={row.voided || sale === null || sale.paidMinor > 0 ? undefined : () => setVoidRow(row)}
+            onPress={
+              rowCanVoid(sale, row)
+                ? () => setVoidRow(row)
+                : rowRefundable(row, canManageMoney)
+                  ? () => setLineRefund(row)
+                  : undefined
+            }
             testID={`till-row-${row.key}`}
           />
         ))}
@@ -626,6 +663,103 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
         testID="till-leave"
       />
 
+      <CheckActionsSheet
+        visible={checkSheet === "actions"}
+        title={checkName}
+        subtitle={sale !== null ? `${TILL_COPY.servingNow(currentServer)} · ${money(sale.totalDueMinor)}` : ""}
+        hasTables={(catalog?.spots.length ?? 0) > 0}
+        onClose={() => setCheckSheet(null)}
+        onPick={(next) => setCheckSheet(next)}
+      />
+
+      <MoveSheet
+        visible={checkSheet === "move"}
+        title={TILL_COPY.moveTitle(checkName)}
+        targets={moveTargets(catalog?.spots ?? [], sale)}
+        busy={busy}
+        onClose={() => setCheckSheet(null)}
+        onMove={(target) =>
+          void run(async () => {
+            if (sale === null) return;
+            try {
+              await actions.relabel.mutateAsync({
+                saleId: sale.id,
+                spotId: target.id,
+                label: sale.checkLabel,
+                expectedVersion: sale.version,
+              });
+              setCheckSheet(null);
+              setToast({ kind: "success", message: TILL_COPY.movedTo(target.label) });
+            } catch (err) {
+              fail(err);
+            }
+          })
+        }
+      />
+
+      <HandoverSheet
+        visible={checkSheet === "handover"}
+        title={TILL_COPY.handoverTitle(checkName)}
+        currentName={currentServer}
+        choices={handoverChoices(servers, sale?.serverUserId ?? null)}
+        loading={serversQuery.isLoading}
+        failed={serversQuery.isError}
+        onRetry={() => void serversQuery.refetch()}
+        busy={busy}
+        onClose={() => setCheckSheet(null)}
+        onHandOver={(server) =>
+          void run(async () => {
+            if (sale === null) return;
+            try {
+              await actions.setServer.mutateAsync({ saleId: sale.id, serverUserId: server.userId, expectedVersion: sale.version });
+              setCheckSheet(null);
+              setToast({ kind: "success", message: TILL_COPY.handedOver(server.name ?? TILL_COPY.teamMember) });
+            } catch (err) {
+              fail(err);
+            }
+          })
+        }
+      />
+
+      <NameSheet
+        visible={checkSheet === "rename"}
+        busy={busy}
+        title={TILL_COPY.changeName}
+        initial={sale?.checkLabel ?? ""}
+        onClose={() => setCheckSheet(null)}
+        onSave={(label) =>
+          void run(async () => {
+            if (sale === null) return;
+            try {
+              await actions.relabel.mutateAsync({ saleId: sale.id, spotId: sale.spotId, label, expectedVersion: sale.version });
+              setCheckSheet(null);
+              setToast({ kind: "success", message: TILL_COPY.nameSaved });
+            } catch (err) {
+              fail(err);
+            }
+          })
+        }
+      />
+
+      <LineRefundSheet
+        row={lineRefund}
+        currency={currency}
+        busy={busy}
+        onClose={() => setLineRefund(null)}
+        onRefund={(reason) =>
+          void run(async () => {
+            if (lineRefund === null || lineRefund.lineId === null) return;
+            try {
+              await actions.refundLine.mutateAsync({ lineId: lineRefund.lineId, reason, clientRequestId: randomId() });
+              setLineRefund(null);
+              setToast({ kind: "success", message: TILL_COPY.refunded });
+            } catch (err) {
+              fail(err);
+            }
+          })
+        }
+      />
+
       <Toast visible={toast !== null} kind={toast?.kind ?? "info"} message={toast?.message ?? ""} onDismiss={() => setToast(null)} testID="till-toast" />
     </View>
   );
@@ -848,15 +982,29 @@ function ChecksSheet({
   );
 }
 
-function NameSheet({ visible, busy, onClose, onSave }: { visible: boolean; busy: boolean; onClose: () => void; onSave: (label: string | null) => void }): React.ReactElement {
-  const [label, setLabel] = useState("");
+function NameSheet({
+  visible,
+  busy,
+  onClose,
+  onSave,
+  title = TILL_COPY.saveCheck,
+  initial = "",
+}: {
+  visible: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (label: string | null) => void;
+  title?: string;
+  initial?: string;
+}): React.ReactElement {
+  const [label, setLabel] = useState(initial);
   useEffect(() => {
-    if (visible) setLabel("");
-  }, [visible]);
+    if (visible) setLabel(initial);
+  }, [visible, initial]);
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint={0.6} dismissDisabled={busy} testID="till-name">
       <View style={styles.grow}>
-        <SheetHead title={TILL_COPY.saveCheck} onClose={onClose} disabled={busy} />
+        <SheetHead title={title} onClose={onClose} disabled={busy} />
         <SheetScrollLayout keyboardAware contentStyle={styles.sheetScroll}
           footer={<Button label={TILL_COPY.saveCheck} variant="primary" size="lg" fullWidth loading={busy}
             onPress={() => onSave(label.trim().length > 0 ? label.trim().slice(0, 40) : null)} testID="till-name-save" />}>
@@ -885,6 +1033,210 @@ function VoidSheet({ row, currency, busy, onClose, onVoid }: { row: BasketRow | 
           <View style={styles.chips}>
             {TILL_COPY.voidReasons.map((r) => (
               <Chip key={r.key} label={r.label} selected={reason === r.label} onPress={() => setReason(r.label)} testID={`till-void-${r.key}`} />
+            ))}
+          </View>
+        </SheetScrollLayout>
+      </View>
+    </Sheet>
+  );
+}
+
+function CheckActionsSheet({
+  visible,
+  title,
+  subtitle,
+  hasTables,
+  onClose,
+  onPick,
+}: {
+  visible: boolean;
+  title: string;
+  subtitle: string;
+  hasTables: boolean;
+  onClose: () => void;
+  onPick: (next: "move" | "handover" | "rename") => void;
+}): React.ReactElement {
+  return (
+    <Sheet visible={visible} onClose={onClose} snapPoint={0.6} testID="till-check-actions-sheet">
+      <View style={styles.grow}>
+        <SheetHead title={title} onClose={onClose} />
+        <SheetScrollLayout contentStyle={styles.sheetScroll}>
+          <Text style={styles.muted}>{subtitle}</Text>
+          {hasTables ? (
+            <ListRow title={TILL_COPY.moveToTable} subtitle={TILL_COPY.moveToTableSub} onPress={() => onPick("move")}
+              testID="till-check-move" />
+          ) : null}
+          <ListRow title={TILL_COPY.handOver} subtitle={TILL_COPY.handOverSub} onPress={() => onPick("handover")}
+            testID="till-check-handover" />
+          <ListRow title={TILL_COPY.changeName} onPress={() => onPick("rename")} testID="till-check-rename" />
+        </SheetScrollLayout>
+      </View>
+    </Sheet>
+  );
+}
+
+function MoveSheet({
+  visible,
+  title,
+  targets,
+  busy,
+  onClose,
+  onMove,
+}: {
+  visible: boolean;
+  title: string;
+  targets: MoveTarget[];
+  busy: boolean;
+  onClose: () => void;
+  onMove: (target: MoveTarget) => void;
+}): React.ReactElement {
+  const [picked, setPicked] = useState<MoveTarget | null>(null);
+  useEffect(() => {
+    if (visible) setPicked(null);
+  }, [visible]);
+  return (
+    <Sheet visible={visible} onClose={onClose} snapPoint={0.86} dismissDisabled={busy} testID="till-move">
+      <View style={styles.grow}>
+        <SheetHead title={title} onClose={onClose} disabled={busy} />
+        <SheetScrollLayout
+          contentStyle={styles.sheetScroll}
+          footer={
+            <Button
+              label={picked !== null ? TILL_COPY.moveTo(picked.label) : TILL_COPY.moveToTable}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={busy}
+              disabled={picked === null}
+              onPress={() => {
+                if (picked !== null) onMove(picked);
+              }}
+              testID="till-move-confirm"
+            />
+          }
+        >
+          {targets.length === 0 ? <Text style={styles.muted}>{TILL_COPY.noTables}</Text> : null}
+          <View style={styles.chips}>
+            {targets.map((t) => (
+              <Chip
+                key={t.id}
+                label={t.label}
+                selected={picked?.id === t.id || (picked === null && t.current)}
+                disabled={t.busy || t.current}
+                onPress={() => setPicked(t)}
+                testID={`till-move-${t.id}`}
+              />
+            ))}
+          </View>
+          <Text style={styles.muted}>{TILL_COPY.moveCaption}</Text>
+        </SheetScrollLayout>
+      </View>
+    </Sheet>
+  );
+}
+
+function HandoverSheet({
+  visible,
+  title,
+  currentName,
+  choices,
+  loading,
+  failed,
+  onRetry,
+  busy,
+  onClose,
+  onHandOver,
+}: {
+  visible: boolean;
+  title: string;
+  currentName: string;
+  choices: TillServer[];
+  loading: boolean;
+  failed: boolean;
+  onRetry: () => void;
+  busy: boolean;
+  onClose: () => void;
+  onHandOver: (server: TillServer) => void;
+}): React.ReactElement {
+  const [picked, setPicked] = useState<TillServer | null>(null);
+  useEffect(() => {
+    if (visible) setPicked(null);
+  }, [visible]);
+  const pickedName = picked?.name ?? TILL_COPY.teamMember;
+  return (
+    <Sheet visible={visible} onClose={onClose} snapPoint={0.8} dismissDisabled={busy} testID="till-handover">
+      <View style={styles.grow}>
+        <SheetHead title={title} onClose={onClose} disabled={busy} />
+        <SheetScrollLayout
+          contentStyle={styles.sheetScroll}
+          footer={
+            <Button
+              label={picked !== null ? TILL_COPY.handoverTo(pickedName) : TILL_COPY.handOver}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={busy}
+              disabled={picked === null}
+              onPress={() => {
+                if (picked !== null) onHandOver(picked);
+              }}
+              testID="till-handover-confirm"
+            />
+          }
+        >
+          <Text style={styles.muted}>{TILL_COPY.servingNow(currentName)}</Text>
+          {loading ? <Skeleton height={56} /> : null}
+          {failed ? (
+            <Banner tone="danger" title={tillErrorCopy("till_failed")} action={{ label: TILL_COPY.retry, onPress: onRetry }} />
+          ) : null}
+          {!loading && !failed && choices.length === 0 ? <Text style={styles.muted}>{TILL_COPY.nobodyElse}</Text> : null}
+          {choices.map((c) => (
+            <ListRow
+              key={c.userId}
+              title={c.name ?? TILL_COPY.teamMember}
+              subtitle={TILL_COPY.openChecksOf(c.openChecks)}
+              chevron={false}
+              trailing={picked?.userId === c.userId ? <Pill variant="info">{TILL_COPY.handOver}</Pill> : undefined}
+              onPress={() => setPicked(c)}
+              testID={`till-handover-${c.userId}`}
+            />
+          ))}
+          {picked !== null ? <Text style={styles.muted}>{TILL_COPY.handoverCaption(pickedName, currentName)}</Text> : null}
+        </SheetScrollLayout>
+      </View>
+    </Sheet>
+  );
+}
+
+function LineRefundSheet({
+  row,
+  currency,
+  busy,
+  onClose,
+  onRefund,
+}: {
+  row: BasketRow | null;
+  currency: string;
+  busy: boolean;
+  onClose: () => void;
+  onRefund: (reason: string) => void;
+}): React.ReactElement {
+  const [reason, setReason] = useState<string>(TILL_COPY.refundReasons[0].label);
+  useEffect(() => {
+    setReason(TILL_COPY.refundReasons[0].label);
+  }, [row?.key]);
+  return (
+    <Sheet visible={row !== null} onClose={onClose} snapPoint={0.6} dismissDisabled={busy} testID="till-line-refund">
+      <View style={styles.grow}>
+        <SheetHead title={row !== null ? TILL_COPY.refundLineTitle(row.label) : TILL_COPY.refund} onClose={onClose} disabled={busy} />
+        <SheetScrollLayout contentStyle={styles.sheetScroll}
+          footer={<Button label={TILL_COPY.refundAmount(formatCurrency(row?.amountMinor ?? 0, currency, true))} variant="destructive"
+            size="lg" fullWidth loading={busy} onPress={() => onRefund(reason)} testID="till-line-refund-confirm" />}>
+          <Text style={styles.muted}>{TILL_COPY.refundLineBody}</Text>
+          <Text style={styles.label}>{TILL_COPY.reason}</Text>
+          <View style={styles.chips}>
+            {TILL_COPY.refundReasons.map((r) => (
+              <Chip key={r.key} label={r.label} selected={reason === r.label} onPress={() => setReason(r.label)} />
             ))}
           </View>
         </SheetScrollLayout>

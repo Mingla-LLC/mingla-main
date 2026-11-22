@@ -2,7 +2,8 @@
  * #4490 spec 08 O1 — the Till's server state (edge function `venue-till`).
  * One key factory (`venueTillKeys`, rule 4). Money state is never persisted
  * (rule 14): every read comes from the server, refreshed by realtime on the
- * venue's checks plus a 15 s poll while a check is open.
+ * venue's checks plus a 15 s poll while a check is open. Realtime is a speed-up
+ * only: where it is absent (or drops) the poll keeps the check current.
  */
 
 import { useEffect } from "react";
@@ -16,23 +17,31 @@ import {
   fetchTillCatalog,
   fetchTillChecks,
   fetchTillSale,
+  fetchTillServers,
   openTillCheck,
   payTill,
   refundTill,
+  refundTillLine,
+  relabelTill,
   sendTill,
   sendTillReceipt,
+  setTillServer,
   voidTillLine,
   type TillCatalog,
   type TillChecks,
   type TillSale,
+  type TillServer,
 } from "../services/venueTillService";
+import { tillSaleChangeMatches } from "../components/venue/till/tillModel";
 
 export const venueTillKeys = {
   all: (venueId: string) => ["venueTill", venueId] as const,
   catalog: (venueId: string) => ["venueTill", venueId, "catalog"] as const,
   checks: (venueId: string) => ["venueTill", venueId, "checks"] as const,
   sale: (venueId: string, saleId: string) => ["venueTill", venueId, "sale", saleId] as const,
+  servers: (venueId: string) => ["venueTill", venueId, "servers"] as const,
 };
+
 
 export const TILL_POLL_MS = 15_000;
 
@@ -68,11 +77,12 @@ export function useTillSale(venueId: string | null, saleId: string | null): UseQ
   useEffect(() => {
     if (!enabled) return undefined;
     const channel = supabase
-      .channel(`venue-till:${saleId}`)
+      .channel(`venue-till:${venueId}:${saleId}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "venue_till_sales", filter: `id=eq.${saleId}` },
-        () => {
+        { event: "UPDATE", schema: "public", table: "venue_till_sales", filter: `venue_id=eq.${venueId}` },
+        (payload: unknown) => {
+          if (!tillSaleChangeMatches(payload, saleId as string)) return;
           void queryClient.invalidateQueries({ queryKey: venueTillKeys.sale(venueId as string, saleId as string) });
         },
       )
@@ -87,6 +97,18 @@ export function useTillSale(venueId: string | null, saleId: string | null): UseQ
     staleTime: 2_000,
     refetchInterval: enabled ? TILL_POLL_MS : false,
     queryFn: () => fetchTillSale(venueId as string, saleId as string),
+  });
+}
+
+/** Who may take a check over (loaded when the hand-over sheet opens). */
+export function useTillServers(venueId: string | null, active: boolean): UseQueryResult<TillServer[]> {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && active && venueId !== null && venueId.length > 0;
+  return useQuery<TillServer[]>({
+    queryKey: enabled ? venueTillKeys.servers(venueId as string) : ["venueTill", "disabled", "servers"],
+    enabled,
+    staleTime: 30_000,
+    queryFn: () => fetchTillServers(venueId as string),
   });
 }
 
@@ -127,5 +149,14 @@ export function useTillActions(venueId: string | null) {
       },
     }),
     refund: useMutation({ mutationFn: async (i: Omit<Parameters<typeof refundTill>[0], "venueId">) => put(await refundTill({ venueId: venueId as string, ...i })) }),
+    refundLine: useMutation({ mutationFn: async (i: Omit<Parameters<typeof refundTillLine>[0], "venueId">) => put(await refundTillLine({ venueId: venueId as string, ...i })) }),
+    relabel: useMutation({ mutationFn: async (i: Omit<Parameters<typeof relabelTill>[0], "venueId">) => put(await relabelTill({ venueId: venueId as string, ...i })) }),
+    setServer: useMutation({
+      mutationFn: async (i: Omit<Parameters<typeof setTillServer>[0], "venueId">) => {
+        const sale = put(await setTillServer({ venueId: venueId as string, ...i }));
+        if (venueId !== null) void queryClient.invalidateQueries({ queryKey: venueTillKeys.servers(venueId) });
+        return sale;
+      },
+    }),
   };
 }
