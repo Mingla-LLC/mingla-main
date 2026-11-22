@@ -36,6 +36,9 @@
 -- TEST-MOD-APPROVED #4490 (08-O1 fix 1): 20280809594490 adds nine functions, all internal (service role
 -- only); the legacy order-pad RPCs it patches (tab open / close, the queue's transition, the refund
 -- decision) keep their signed-in class.
+-- TEST-MOD-APPROVED #4490 (08-O1 fix 2): 20280809589490 adds the overpaid derivation and its refund
+-- trigger function, both internal (service role only); the day's money and the guest-list gate sale it
+-- patches keep their internal class.
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -480,6 +483,8 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_cancel_offers_if_refunded(uuid,uuid,text)', 'internal'),
   ('issue_4490_till_refund_line(uuid,uuid,uuid,text,uuid)', 'internal'),
   ('issue_4490_till_servers(uuid,uuid)', 'internal'),
+  ('issue_4490_till_overpaid_derived(uuid)', 'internal'),
+  ('issue_4490_till_refund_settles()', 'internal'),
   ('biz_venue_tab_open(uuid)', 'signed_in'),
   ('biz_venue_tab_close(uuid,text)', 'signed_in'),
   ('biz_venue_order_transition(uuid,text,text)', 'signed_in'),

@@ -669,7 +669,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 ops O1: #2099 repin over the Till lanes registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O1 part 2: Till receipts and the held-round sweep / card refund migrations + suites registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O1 fix 1: one-bill migration 20280809594490 + its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "b67aae02de91afc6fefb68bf633a17c72a67d61f33777efe0c9d7d46ff30352a";
+// issue #4490 ops O1 fix 2: money-and-door migration 20280809589490 + its pg17 suite registered, exact-filename skips in the #1931 baseline and #2117 phase-1 lanes; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "5263bf19020aec4cc0aba58c89725b234b2b0ef5bdef9995c8fd707410a2ff66";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

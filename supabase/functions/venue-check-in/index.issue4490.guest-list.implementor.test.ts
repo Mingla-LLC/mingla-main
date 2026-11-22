@@ -73,3 +73,19 @@ Deno.test("invalid list ids and counts never reach PostgreSQL", async () => {
   }))).status, 400);
   assertEquals(calls.length, 0);
 });
+
+Deno.test("#4490 08-O1 fix 2: an arrival already on an open Till check is refused at the gate in words, not a 500", async () => {
+  const run = createVenueCheckInHandler({
+    client: () => ({
+      rpc: () => Promise.resolve({ data: null, error: { message: "guest_list_entry_on_check", code: "PT409" } }),
+      auth: { getUser: () => Promise.resolve({ data: { user: { id: STAFF } }, error: null }) },
+    }),
+    env,
+  });
+  const res = await run(req({
+    action: "sell_guest_list", venueId: VENUE, entryId: ENTRY, count: 1,
+    method: "cash", idempotencyKey: "list-sale-3",
+  }));
+  assertEquals(res.status, 409);
+  assertEquals((await res.json()).code, "guest_list_entry_on_check");
+});

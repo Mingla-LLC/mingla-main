@@ -89,6 +89,8 @@ const SAFE_CODES = [
   "guest_list_reduced_price_invalid",
   "guest_list_reduced_window_closed",
   "guest_list_arrived_invalid",
+  // #4490 08-O1 fix 2: an arrival on an open Till check is not sold at the gate too.
+  "guest_list_entry_on_check",
 ];
 
 type RpcError = { message?: string; code?: string; details?: string };
