@@ -30,6 +30,9 @@
 -- TEST-MOD-APPROVED #4490 (08-O1): the Till core (20280809464490) adds 26 functions, all internal
 -- (service role only; the venue-till edge passes the verified user), and patches the #1795 rollup,
 -- which keeps its class (signed-in).
+-- TEST-MOD-APPROVED #4490 (08-O1 part 2): receipts (20280809474490) add eight functions and the
+-- sweep / card refund (20280809584490) two, all internal; the patched issue_4063_claim_subject keeps
+-- its existing class.
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -455,6 +458,16 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_till_catalog(uuid,uuid)', 'internal'),
   ('issue_4490_till_adopt_tab()', 'internal'),
   ('issue_4490_till_round_added()', 'internal'),
+  ('issue_4490_till_receipt_immutable()', 'internal'),
+  ('issue_4490_till_receipt_build(uuid)', 'internal'),
+  ('issue_4490_till_receipt_capture(uuid)', 'internal'),
+  ('issue_4490_till_receipt_on_paid()', 'internal'),
+  ('issue_4490_till_receipt_projection(uuid)', 'internal'),
+  ('issue_4490_till_receipt_send(uuid,uuid,uuid,text,text,bytea)', 'internal'),
+  ('issue_4490_till_receipt_view(uuid,bytea)', 'internal'),
+  ('issue_4490_till_receipt_link_facts(uuid)', 'internal'),
+  ('issue_4490_till_sweep_held_rounds(integer)', 'internal'),
+  ('issue_4490_till_mint_carrier_refund(uuid,bigint,bigint,uuid,uuid,text,uuid)', 'internal'),
   ('venue_order_metrics_rollup(uuid,uuid)', 'signed_in'),
   ('preview_pending_venue_identity_correction(uuid)', 'signed_in')
 ;

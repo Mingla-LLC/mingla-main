@@ -410,7 +410,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 06-W4 fix 2: 20280809462690 (why everything is due now) + its pg17 suite registered; re-sealed.
 // issue #4490 ops O1: Till core migration and suite registered; re-sealed.
 // issue #4490 ops O1: #2099 repin over the Till lanes registered; re-sealed.
-export const BOOTSTRAP_SHA256 = "4267666b793c050a80eb654641f571c2ed4fce19de1736007c48d5c7e36f8d4b";
+// issue #4490 ops O1 part 2: Till receipts and the held-round sweep / card refund migrations + suites registered; re-sealed.
+export const BOOTSTRAP_SHA256 = "6898cdba4905470875765278cfab42558083efbd99052f59e549b3c375f5ec49";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

@@ -50,7 +50,46 @@ Deno.test("the sweep runs once and reports reminders and overdue notices", async
   const res = await handle(req("Bearer service-key"));
   assertEquals(res.status, 200);
   assertEquals((await res.json()).result, { reminders: 2, overdue: 1 });
-  assertEquals(seen, [{ name: "issue_4490_offer_sweep", p_limit: 200 }]);
+  // TEST-MOD-APPROVED #4490 (spec 08 O1): the same run also sweeps Till
+  // rounds that never joined a check.
+  assertEquals(seen, [
+    { name: "issue_4490_offer_sweep", p_limit: 200 },
+    { name: "issue_4490_till_sweep_held_rounds", p_limit: 200 },
+  ]);
+});
+
+Deno.test("08-O1 the Till held-round sweep runs even when the offer sweep fails, and reports its count", async () => {
+  const seen: string[] = [];
+  const handle = createVenueOfferSweepHandler({
+    env,
+    client: () => ({
+      rpc: (name) => {
+        seen.push(name);
+        return Promise.resolve(
+          name === "issue_4490_offer_sweep"
+            ? { data: null, error: { code: "XX000", message: "boom" } }
+            : { data: { cancelled: 3 }, error: null },
+        );
+      },
+    }),
+  });
+  const failed = await handle(req("Bearer service-key"));
+  assertEquals(failed.status, 500);
+  assertEquals(seen, ["issue_4490_offer_sweep", "issue_4490_till_sweep_held_rounds"]);
+
+  const ok = createVenueOfferSweepHandler({
+    env,
+    client: () => ({
+      rpc: (name) =>
+        Promise.resolve({
+          data: name === "issue_4490_offer_sweep" ? { reminders: 0 } : { cancelled: 3 },
+          error: null,
+        }),
+    }),
+  });
+  const res = await ok(req("Bearer service-key"));
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).tillHeldRounds, { cancelled: 3 });
 });
 
 Deno.test("a database failure is a 500 with no detail", async () => {

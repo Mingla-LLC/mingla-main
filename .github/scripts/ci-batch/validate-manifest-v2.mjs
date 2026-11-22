@@ -667,7 +667,8 @@ export function phase3dContractDigest(manifest) {
 // issue #4490 06-W4 fix 2: 20280809462690 (why everything is due now) + its pg17 suite registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O1: Till core migration and suite registered; MANIFEST.json phase3eContractSha256 matches.
 // issue #4490 ops O1: #2099 repin over the Till lanes registered; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "bfd9c9821fb9e8b38031d8ea9ceecc3ba892433286ce57f328d3a11708e54ca4";
+// issue #4490 ops O1 part 2: Till receipts and the held-round sweep / card refund migrations + suites registered; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "82cf5815e08f78cd33c61b84d950331efb37d74e250acce89fbb5388c67a3298";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

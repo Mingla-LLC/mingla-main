@@ -4,6 +4,10 @@
 // overdue notices on the due date and 3 days after (no auto-cancel). Every
 // message is one booking event keyed by booking and day, so a repeat run sends
 // nothing twice. Messages go out through the notification outbox.
+// #4490 spec 08 O1: the same run cancels Till rounds that were inserted held
+// but never joined a check within 10 minutes (issue_4490_till_sweep_held_rounds;
+// bounded, idempotent, never a paid, sent or attached round). Each step runs
+// even when the other fails; the run answers 500 if either failed.
 //
 // Only the platform's own scheduler calls this: the bearer must be the
 // project's service key.
@@ -52,9 +56,20 @@ export function createVenueOfferSweepHandler(deps: VenueOfferSweepDeps = {}) {
         code: error.code,
         message: error.message,
       });
+    }
+    const till = await client.rpc("issue_4490_till_sweep_held_rounds", {
+      p_limit: 200,
+    });
+    if (till.error) {
+      console.error("venue_till_held_sweep_failed", {
+        code: till.error.code,
+        message: till.error.message,
+      });
+    }
+    if (error || till.error) {
       return Response.json({ error: "sweep_failed" }, { status: 500 });
     }
-    return Response.json({ ok: true, result: data });
+    return Response.json({ ok: true, result: data, tillHeldRounds: till.data });
   };
 }
 
