@@ -18,7 +18,7 @@
  *   T-1       a venue read that never answers fails at 10 s, not at the app
  *             fetch wrapper's 20 s cap, and is not retried (W3-N35);
  *   H-1/H-2   the phone header is solid by the end of a short page; the pinned
- *             tab strip is opaque without a blur and has a page-colour backing
+ *             tab strip is opaque and has a page-colour backing
  *             (W3-N34).
  *
  * FAILS-ON-REVERT: the reducer's empty-basket guard removed -> B-1; the bar
@@ -279,11 +279,11 @@ describe('#4490 W3 fix 4 — header and pinned strip are solid at 375 (W3-N34)',
     expect(shell.match(/onLayout=\{onPremiumScrollLayout\}\s*onContentSizeChange=\{onPremiumContentSize\}/g)?.length).toBe(2);
   });
 
-  test('H-2 the pinned strip is opaque without a blur (iOS and Android) and sits on a page-colour backing', () => {
-    expect(glassTabFillAlpha({ platform: 'ios', pinned: true, blurred: false })).toBe(1);
-    expect(glassTabFillAlpha({ platform: 'android', pinned: true, blurred: true })).toBe(1);
-    expect(glassTabFillAlpha({ platform: 'ios', pinned: true, blurred: true })).toBe(0.96);
-    expect(glassTabFillAlpha({ platform: 'ios', pinned: false, blurred: false })).toBe(0.82);
+  test('H-2 the pinned strip is opaque (iOS and Android) and sits on a page-colour backing', () => {
+    expect(glassTabFillAlpha({ platform: 'ios', pinned: true })).toBe(1);
+    expect(glassTabFillAlpha({ platform: 'android', pinned: true })).toBe(1);
+    expect(glassTabFillAlpha({ platform: 'android', pinned: false })).toBe(1);
+    expect(glassTabFillAlpha({ platform: 'ios', pinned: false })).toBe(0.82);
     const screen = read('packages/brand-rendering/PublicVenueScreen.tsx');
     expect(screen).toMatch(/top: pinnedTabsBackingTop,\s*paddingTop: pinnedTabsTop - pinnedTabsBackingTop,\s*backgroundColor: palette\.page,/);
     expect(screen).toMatch(/pinnedTabs: \{\s*position: "absolute",\s*left: 0,\s*right: 0,/);

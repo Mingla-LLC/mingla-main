@@ -29,12 +29,7 @@ import type {
 } from "react-native";
 import type { ResolvedTheme, ThemePalette } from "@mingla/offering-rendering";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
-import {
-  glassBlurActive,
-  glassFillAlpha,
-  OfferingGlassBackdrop,
-  useOfferingGlass,
-} from "@mingla/offering-rendering/OfferingGlassContext";
+import { OfferingGlassBackdrop } from "@mingla/offering-rendering/OfferingGlassContext";
 import { hexToRgba } from "@mingla/offering-rendering/themePalette";
 
 export interface GlassTabItem<K extends string> {
@@ -74,24 +69,19 @@ const FADE_WIDTH = 28;
 
 /**
  * #4490 W3 fix 4 (W3-N34) — the pinned native copy floats over the page's
- * scrolling content, so it follows the one glass rule (glassFillAlpha):
- * opaque on Android always and on iOS unless a blur sits behind it. At 0.96
- * with no blur, the Menu tab's section headings ("Rice", "Noodles") read
- * through it at 375 pt. The in-flow strip keeps its lighter fill.
+ * scrolling content, so it is opaque (spec 06 §8: Android always; on iOS the
+ * Explorer has no blur behind it, and an opaque pill is legible either way).
+ * At 0.96 the Menu tab's section headings ("Rice", "Noodles") read through it
+ * at 375 pt. The in-flow strip keeps its lighter fill.
  */
-export const glassTabFillAlpha = (args: {
-  platform: string;
-  pinned: boolean;
-  blurred: boolean;
-}): number => {
+export const glassTabFillAlpha = (args: { platform: string; pinned: boolean }): number => {
   if (args.platform === "android") return 1;
-  if (!args.pinned) return 0.82;
-  return args.blurred ? 0.96 : glassFillAlpha({ platform: args.platform, blurred: false, desktopWeb: false });
+  return args.pinned ? 1 : 0.82;
 };
 
-const pillFillFor = (palette: ThemePalette, pinned: boolean, blurred: boolean): string => {
+const pillFillFor = (palette: ThemePalette, pinned: boolean): string => {
   if (palette.card.startsWith("#")) {
-    return hexToRgba(palette.card, glassTabFillAlpha({ platform: Platform.OS, pinned, blurred }));
+    return hexToRgba(palette.card, glassTabFillAlpha({ platform: Platform.OS, pinned }));
   }
   if (palette.page.startsWith("#")) {
     return hexToRgba(palette.page, Platform.OS === "android" ? 1 : 0.9);
@@ -147,8 +137,7 @@ export function GlassTabs<K extends string>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeKey]);
 
-  const blurred = glassBlurActive(useOfferingGlass(), palette.glassTint);
-  const fill = pillFillFor(palette, pinned, blurred);
+  const fill = pillFillFor(palette, pinned);
   const overflowing = contentWidth > viewportWidth + 1 && viewportWidth > 0;
   const moreToTheRight = overflowing && scrollX + viewportWidth < contentWidth - 2;
   const sticky: ViewStyle | null =
