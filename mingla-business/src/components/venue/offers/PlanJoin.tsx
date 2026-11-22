@@ -257,6 +257,12 @@ export function PlanJoin({ brandSlug, venueSlug, planId, safeTop, safeBottom }: 
               : `Then ${money(total.totalMinor)} a ${plan.period}, paid from an emailed link.`}
           </Text>
         </>
+      ) : plan !== null ? (
+        // No server charge in the answer (an older server): the plan's own price only, never a total worked out here.
+        <View style={styles.line}>
+          <Text style={[styles.small, { color: palette.secondaryText }]}>{`${plan.name} · ${periodRange}`}</Text>
+          <Text style={[styles.small, { color: palette.primaryText }]}>{money(plan.priceMinor)}</Text>
+        </View>
       ) : (
         <Text style={[styles.small, { color: palette.secondaryText }]}>Loading the plan…</Text>
       )}
