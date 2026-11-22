@@ -146,12 +146,23 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
   };
 });
 // [TEST-MOD-APPROVED #3655] VenueSuiteShell leave beforeRemove needs useNavigation.
+// [TEST-MOD-APPROVED #4490] spec 08 O1: the shells open the Till route with
+// the imperative router; the suite records those calls.
+const mockAppRouter = { push: jest.fn(), replace: jest.fn() };
 jest.mock("expo-router", () => ({
+  get router() {
+    return mockAppRouter;
+  },
   useRouter: () => ({ push: jest.fn() }),
   useNavigation: () => ({
     addListener: () => () => undefined,
     dispatch: jest.fn(),
   }),
+}));
+// [TEST-MOD-APPROVED #4490] spec 08 O1: the Till's release switch.
+let mockTillReleased = false;
+jest.mock("../../../hooks/useTillReleased", () => ({
+  useTillReleased: () => mockTillReleased,
 }));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -413,7 +424,7 @@ jest.mock("../../../hooks/useOrganiserTermsPublishGate", () => ({
 }));
 // [TEST-MOD-APPROVED #4490] fix round 5: access is switchable so the
 // capability-scoped Table reservations / Waitlist rules can be proven.
-let mockVenueAccess: { scoped: boolean; capabilities: string[] } = {
+let mockVenueAccess: { scoped: boolean; capabilities: string[]; canSell?: boolean } = {
   scoped: false,
   capabilities: [],
 };
@@ -1041,7 +1052,9 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     }
   }
 
-  it("T-1i — the order constant is the decided twelve", () => {
+  // TEST-MOD-APPROVED #4490 (spec 08 O1): the Till joins the decided twelve,
+  // first of the floor tools (before Check-in, Menu and Orders).
+  it("T-1i — the order constant is the decided twelve plus the Till", () => {
     expect(STAY_FEATURE_MODULE_ORDER).toEqual([
       "offers",
       "spaces",
@@ -1051,11 +1064,77 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
       "table_reservations",
       "waitlist",
       "members",
+      "till",
       "checkin",
       "menu",
       "orders",
       "guestlist",
     ]);
+  });
+
+  // #4490 spec 08 O1 — the Till in the Stay workspace.
+  describe("08-O1 the Till destination", () => {
+    afterEach(() => {
+      mockTillReleased = false;
+      mockAppRouter.push.mockClear();
+      mockAppRouter.replace.mockClear();
+    });
+
+    it("T-TILL-1 — released, switched on and allowed: Till sits right before Check-in and opens the Till route", async () => {
+      mockTillReleased = true;
+      mockVenueAccess = { scoped: false, capabilities: [], canSell: true };
+      mockStayFeaturesState = tablesStay({ entry: true, menu: true, till: true });
+      const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+      const rail = testIdsMatching(r, /^stay-rail-/);
+      expect(rail).toContain("stay-rail-till");
+      expect(rail.indexOf("stay-rail-till")).toBe(rail.indexOf("stay-rail-checkin") - 1);
+      await press(pressableWithTestId(r, "stay-rail-till"));
+      expect(mockAppRouter.push).toHaveBeenCalledWith("/venue/venue-1484/till");
+      // The workspace stays where it was (the Till is its own route).
+      expect(testIdsMatching(r, /^venue-till-launcher$/)).toHaveLength(0);
+    });
+
+    it("T-TILL-2 — not released, switched off, or no right to sell: no Till", async () => {
+      mockStayFeaturesState = tablesStay({ entry: true, menu: true, till: true });
+      mockVenueAccess = { scoped: false, capabilities: [], canSell: true };
+      mockTillReleased = false;
+      const off = await mount(<StaySuiteShell {...STAY_PROPS} />);
+      expect(testIdsMatching(off, /^stay-rail-till$/)).toHaveLength(0);
+      mockTillReleased = true;
+      mockVenueAccess = { scoped: false, capabilities: [], canSell: false };
+      const finance = await mount(<StaySuiteShell {...STAY_PROPS} />);
+      expect(testIdsMatching(finance, /^stay-rail-till$/)).toHaveLength(0);
+      mockVenueAccess = { scoped: false, capabilities: [], canSell: true };
+      mockStayFeaturesState = tablesStay({ entry: true, menu: true, till: false });
+      const featureOff = await mount(<StaySuiteShell {...STAY_PROPS} />);
+      expect(testIdsMatching(featureOff, /^stay-rail-till$/)).toHaveLength(0);
+    });
+
+    it("T-TILL-3 — a login that may only sell sees the Till and nothing else, never a blank workspace", async () => {
+      mockTillReleased = true;
+      mockStayFeaturesState = tablesStay({ entry: true, menu: true, till: true });
+      mockVenueAccess = { scoped: true, capabilities: ["venue.sell"], canSell: true };
+      const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+      await settle();
+      expect(testIdsMatching(r, /^stay-rail-(?!scroll$)/)).toEqual(["stay-rail-till"]);
+      expect(hostWithTestId(r, "venue-till-launcher")).toBeTruthy();
+      await press(pressableWithTestId(r, "venue-till-open"));
+      expect(mockAppRouter.push).toHaveBeenCalledWith("/venue/venue-1484/till");
+    });
+
+    it("T-TILL-4 — `?module=till` opens the Till itself, replacing the address", async () => {
+      mockTillReleased = true;
+      mockStayFeaturesState = tablesStay({ entry: true, menu: true, till: true });
+      mockVenueAccess = { scoped: false, capabilities: [], canSell: true };
+      await mount(<StaySuiteShell {...STAY_PROPS} requestedModule="till" />);
+      await settle();
+      expect(mockAppRouter.replace).toHaveBeenCalledWith("/venue/venue-1484/till");
+      mockAppRouter.replace.mockClear();
+      mockTillReleased = false;
+      await mount(<StaySuiteShell {...STAY_PROPS} requestedModule="till" />);
+      await settle();
+      expect(mockAppRouter.replace).not.toHaveBeenCalled();
+    });
   });
 
   it("T-1j — cold `?module=table_reservations` and `?module=waitlist` open the venue screens; `reservations` stays the Stay's own", async () => {

@@ -176,6 +176,15 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     group: "operations",
     summary: "Scan passes and sell at the gate.",
   },
+  // #4490 spec 08 O1 — the Till (floor design rail: first under Operations).
+  // Selecting it opens the full-screen Till route; see the shells.
+  till: {
+    id: "till",
+    label: "Till",
+    band: "command",
+    group: "operations",
+    summary: "Sell anything you offer from one screen.",
+  },
   settings: {
     id: "settings",
     label: "Settings",
@@ -340,6 +349,8 @@ export const BUILT_MODULES: ReadonlySet<VenueModule> = new Set<VenueModule>([
   // P6: memberships — Members (plans live inside it).
   "members",
   "checkin",
+  // 08-O1: the Till (shown only when released, switched on and allowed).
+  "till",
   "tables",
   "availability",
   "reservations",
@@ -371,6 +382,12 @@ export interface VenueNavInput {
   venueCategory?: string | null;
   /** True when the venue has never stored a feature row (every version 0). */
   noStoredFeatures?: boolean;
+  /**
+   * #4490 spec 08 O1: the Till's release switch (flag VENUE_TILL). The Till
+   * shows only when it is released AND the venue's `till` feature is on;
+   * who may sell is decided after this (`withTillAccess`).
+   */
+  tillReleased?: boolean;
 }
 
 /**
@@ -441,6 +458,8 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
   // P6: members come in through the same door (Check-in) and count on Today.
   const door = anyBooking || featureOn(features, "memberships") || featureOn(features, "guest_list");
   const usesSpaces = venueUsesSpaces(input);
+  // 08-O1: the Till, first under Operations (floor design rail).
+  const till = input.tillReleased === true && featureOn(features, "till");
 
   const candidates: Array<[VenueModule, boolean]> = usesSpaces
     ? [
@@ -461,6 +480,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["reservations", tables],
         ["waitlist", featureOn(features, "waitlist")],
         ["members", featureOn(features, "memberships")],
+        ["till", till],
         ["checkin", door],
         ["menu", featureOn(features, "menu")],
         ["insights", true],
@@ -473,6 +493,7 @@ export function deriveVenueNav(input: VenueNavInput): readonly VenueModule[] {
         ["availability", tables],
         ["reservations", tables],
         ["waitlist", featureOn(features, "waitlist")],
+        ["till", till],
         ["menu", featureOn(features, "menu")],
         ["insights", true],
         ["orders", orders],
@@ -560,4 +581,31 @@ export function resolveTablesAlias(input: {
   if (input.activeModule !== "tables" || !input.usesSpaces) return null;
   if (!input.visible.includes("spaces")) return null;
   return { module: "spaces", spacesView: "tables" };
+}
+
+/**
+ * #4490 spec 08 O1 — how staff take an order at this venue: THE one switch
+ * between the legacy order pad and the Till (spec 08 §11.4 item 7 / §12 item
+ * 15: one store build plus its update; the Till stays off for a venue until
+ * its devices update).
+ *  - "pad": the Till is not running here (not released, or the venue's `till`
+ *    feature is off). The order pad and the open-tabs card work exactly as
+ *    before.
+ *  - "till": the Till runs here and this person may sell. The pad and the tabs
+ *    card are gone; their entry points (New order, open tabs) open the Till.
+ *  - "none": the Till runs here but this person may not sell (no pad either).
+ * [TRANSITIONAL] the "pad" branch keeps the #1792 order pad and tabs card for
+ * venues whose devices predate the Till; exits when every venue runs the Till
+ * (no venue with the `till` feature off takes staff orders), then the pad,
+ * the tabs card and useVenueOrderTabs are deleted.
+ */
+export type VenueOrderEntry = "pad" | "till" | "none";
+
+export function venueOrderEntry(input: {
+  tillReleased: boolean;
+  tillFeatureOn: boolean;
+  canSell: boolean;
+}): VenueOrderEntry {
+  if (!input.tillReleased || !input.tillFeatureOn) return "pad";
+  return input.canSell ? "till" : "none";
 }

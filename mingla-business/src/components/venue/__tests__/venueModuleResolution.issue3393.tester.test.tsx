@@ -66,7 +66,9 @@ afterEach(async () => { await Renderer.act(async () => { mounted.splice(0).forEa
 // [TEST-MOD-APPROVED #4490] 07-I: Guest list shows only with the guest_list
 // feature, which this harness never enables (features fall back to the old
 // reservations switch), so a guestlist link lands on Overview like the others.
-const HIDDEN_FOR_CLASSIC_VENUE: VenueModule[] = ["offers", "spaces", "today", "calendar", "requests", "members", "checkin", "guestlist"];
+// [TEST-MOD-APPROVED #4490] spec 08 O1: the Till shows only when released (VENUE_TILL), switched on
+// and allowed to sell; none of that holds here, so a till link also lands on Overview.
+const HIDDEN_FOR_CLASSIC_VENUE: VenueModule[] = ["offers", "spaces", "today", "calendar", "requests", "members", "checkin", "guestlist", "till"];
 test.each(HIDDEN_FOR_CLASSIC_VENUE)("%s link to a venue that does not show it lands on Overview", async module => {
   mockSettings = { data: { reservationsEnabled: true }, isError: false };
   await mount(parseVenueModuleParam(module)!);

@@ -55,7 +55,11 @@ export type VenueModule =
   | "requests"
   | "guestlist"
   | "members"
-  | "checkin";
+  | "checkin"
+  // #4490 spec 08 O1 — the Till. A rail destination that opens the full-screen
+  // Till route (`/venue/[venueId]/till`); inside the shell it is only the
+  // launcher a Till-only login lands on.
+  | "till";
 
 /** The booking-band modules (gated on the toggle; ComingSoon in 2.0). */
 export type VenueBookingModule = Extract<

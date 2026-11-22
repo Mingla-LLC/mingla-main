@@ -8,13 +8,17 @@
  * lanes need no extra providers or mocks.
  */
 
-import { useContext, useEffect, useState } from "react";
-import { QueryClientContext } from "@tanstack/react-query";
+import { createContext, useContext, useEffect, useState } from "react";
+import { QueryClientContext, type QueryClient } from "@tanstack/react-query";
 
 export const TILL_RELEASED_KEY = ["venueTill", "released"] as const;
 
+// Render suites that stub @tanstack/react-query without its context still
+// mount the shells: with no context the Till reads as not released.
+const NO_QUERY_CLIENT = createContext<QueryClient | undefined>(undefined);
+
 export function useTillReleased(): boolean {
-  const client = useContext(QueryClientContext);
+  const client = useContext(QueryClientContext ?? NO_QUERY_CLIENT);
   const [released, setReleased] = useState<boolean>(() => client?.getQueryData(TILL_RELEASED_KEY) === true);
   useEffect(() => {
     if (client === undefined) return undefined;

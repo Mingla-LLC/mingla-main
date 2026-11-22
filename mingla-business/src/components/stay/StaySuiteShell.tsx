@@ -38,7 +38,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { router as appRouter, useRouter } from "expo-router";
 
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
@@ -53,6 +53,8 @@ import {
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
+import { useTillReleased } from "../../hooks/useTillReleased";
+import { tillHref, TillLauncher } from "../venue/till/TillLauncher";
 import { unsavedWork } from "../../hooks/useUnsavedChangesGuard";
 import { useMyVenueAccess } from "../../hooks/useMyVenueAccess";
 import { useVenueFeatures } from "../../hooks/useVenueFeatures";
@@ -111,11 +113,13 @@ import { VenueWaitlistModule } from "../venue/VenueWaitlistModule";
 import type { VenueAvailabilityLeaveHandle } from "../venue/VenueAvailabilityModule";
 import {
   filterVenueModulesForCapabilities,
+  withTillAccess,
   scopedStaffManagesOffers,
 } from "../venue/venueCapabilityGate";
 import {
   deriveVenueNav,
   hasNoStoredFeatures,
+  venueOrderEntry,
   VENUE_MODULES,
 } from "../venue/venueModules";
 import {
@@ -156,6 +160,7 @@ export type StayFeatureModule =
       | "requests"
       | "waitlist"
       | "members"
+      | "till"
       | "checkin"
       | "menu"
       | "orders"
@@ -265,6 +270,10 @@ export const STAY_FEATURE_MODULE_ORDER: readonly StayFeatureModule[] = [
   "table_reservations",
   "waitlist",
   "members",
+  // #4490 spec 08 O1 — the Till, first of the floor tools (floor design rail:
+  // Till leads Operations, before Check-in, Menu and Orders). Selecting it
+  // opens the full-screen Till route, as in the ordinary venue shell.
+  "till",
   "checkin",
   "menu",
   "orders",
@@ -287,6 +296,7 @@ export const STAY_FEATURE_VENUE_MODULE: Readonly<
   table_reservations: "reservations",
   waitlist: "waitlist",
   members: "members",
+  till: "till",
   checkin: "checkin",
   menu: "menu",
   orders: "orders",
@@ -308,6 +318,7 @@ const FEATURE_ICONS: Readonly<Record<StayFeatureModule, IconName>> = {
   table_reservations: "calendar",
   waitlist: "clock",
   members: "users",
+  till: "cash",
   checkin: "scan",
   menu: "list",
   orders: "receipt",
@@ -1373,8 +1384,11 @@ export function StaySuiteShell({
   const venueAccess = venueAccessQuery.data ?? {
     scoped: true,
     capabilities: [],
+    canSell: false,
   };
   const featuresQuery = useVenueFeatures(brandId, venueId);
+  // #4490 spec 08 O1 — the Till's release switch (fails closed).
+  const tillReleased = useTillReleased();
   const coreModules = useMemo(() => {
     if (!venueAccess.scoped) return CORE_MODULES;
     const scoped: StayModuleMeta[] = [];
@@ -1422,16 +1436,22 @@ export function StaySuiteShell({
         spacesRequestedVenueId === venueId ||
         setupNeedsSpaces ||
         scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities),
+      tillReleased,
     });
     return new Set(
-      filterVenueModulesForCapabilities(
-        derived,
-        venueAccess.scoped,
-        venueAccess.capabilities,
+      withTillAccess(
+        filterVenueModulesForCapabilities(
+          derived,
+          venueAccess.scoped,
+          venueAccess.capabilities,
+        ),
+        venueAccess.canSell === true,
       ),
     );
   }, [
     featuresQuery.data,
+    tillReleased,
+    venueAccess.canSell,
     spacesRequestedVenueId,
     venueAccess.capabilities,
     venueAccess.scoped,
@@ -1512,6 +1532,12 @@ export function StaySuiteShell({
   );
   const selectModule = useCallback(
     (next: StayModule): void => {
+      // #4490 spec 08 O1 — the Till is a full-screen route: the rail opens it
+      // and this workspace (with any unsaved edit) stays underneath.
+      if (next === "till") {
+        appRouter.push(tillHref(venueId) as never);
+        return;
+      }
       if (next === activeModule) return;
       requestLeave(() => {
         setActiveModule(next);
@@ -1519,8 +1545,18 @@ export function StaySuiteShell({
         setTableView("bookings");
       });
     },
-    [activeModule, requestLeave],
+    [activeModule, requestLeave, venueId],
   );
+  // #4490 spec 08 O1 — `?module=till` (a link or a reload) opens the Till
+  // itself once it is shown here, replacing the address so Back from the
+  // Till never bounces straight back into it.
+  const tillDeepLinkRef = useRef(initialStayModule === "till");
+  useEffect(() => {
+    if (!tillDeepLinkRef.current) return;
+    if (!visibleModules.some((module) => module.id === "till")) return;
+    tillDeepLinkRef.current = false;
+    appRouter.replace(tillHref(venueId) as never);
+  }, [venueId, visibleModules]);
   // "Edit floor" targets one space's tables once; Spaces opened later from the
   // rail starts on its list again.
   useEffect(() => {
@@ -1824,6 +1860,10 @@ export function StaySuiteShell({
         </React.Suspense>
       );
     }
+    // #4490 spec 08 O1 — a Till-only login lands here (never a blank shell).
+    if (activeModule === "till") {
+      return featurePage("till", <TillLauncher venueId={venueId} />);
+    }
     if (activeModule === "checkin") {
       return featurePage(
         "checkin",
@@ -1940,7 +1980,15 @@ export function StaySuiteShell({
       return featurePage(
         "orders",
         <React.Suspense fallback={lazyFallback}>
-          <LazyVenueOrdersModule brandId={brandId} venueId={venueId} />
+          <LazyVenueOrdersModule
+            brandId={brandId}
+            venueId={venueId}
+            orderEntry={venueOrderEntry({
+              tillReleased,
+              tillFeatureOn: featuresQuery.data?.features.till.enabled === true,
+              canSell: venueAccess.canSell === true,
+            })}
+          />
         </React.Suspense>,
       );
     }

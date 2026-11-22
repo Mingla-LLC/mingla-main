@@ -42,7 +42,7 @@ import React, {
   useState,
 } from "react";
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
-import { useNavigation } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -79,6 +79,7 @@ import { featureSetupNeeds, type SetupRefusal, type SetupTarget } from "./featur
 import {
   filterVenueModulesForCapabilities,
   scopedStaffManagesOffers,
+  withTillAccess,
 } from "./venueCapabilityGate";
 import { venueWriteErrorCopy } from "./features/venueFeaturesCopy";
 
@@ -111,12 +112,15 @@ import {
   type VenueModuleLeaveHandle,
 } from "./venueLeaveContract";
 import { deriveVenueRailModules } from "./venueRail";
+import { useTillReleased } from "../../hooks/useTillReleased";
+import { tillHref, TillLauncher } from "./till/TillLauncher";
 import { moduleSelfScrolls, venueScrollBottomPad } from "./venueShellScroll";
 import {
   deriveVenueNav,
   hasNoStoredFeatures,
   resolveTablesAlias,
   shouldLeaveHiddenModule,
+  venueOrderEntry,
   venueUsesSpaces,
   withVenueReviewsModule,
 } from "./venueModules";
@@ -224,6 +228,7 @@ const PENDING_SCOPED_FEATURES = featureSetFrom(
 const PENDING_VENUE_ACCESS: MyVenueAccess = {
   scoped: true,
   capabilities: [],
+  canSell: false,
 };
 
 export interface VenueSuiteShellProps {
@@ -298,6 +303,8 @@ export function VenueSuiteShell({
   // never flashes a different workspace.
   const featuresQuery = useVenueFeatures(brandId, venueId);
   const setFeature = useSetVenueFeature(brandId, venueId);
+  // #4490 spec 08 O1 — the Till's release switch (fails closed).
+  const tillReleased = useTillReleased();
   // A failed features read falls back to the backfill rule (the old
   // reservations switch), which is exactly what the server derives for a
   // venue without stored rows — so it counts as resolved once the settings
@@ -362,10 +369,12 @@ export function VenueSuiteShell({
         // #4490 N20: a chosen feature waiting for a space opens Spaces.
         setupNeedsSpace ||
         scopedStaffManagesOffers(venueAccess.scoped, venueAccess.capabilities),
+      tillReleased: tillReleased && venueId !== null,
     }),
     [
       features,
       featuresQuery.data,
+      tillReleased,
       setupNeedsSpace,
       spacesRequestedVenueId,
       venueAccess.capabilities,
@@ -374,18 +383,27 @@ export function VenueSuiteShell({
     ],
   );
   const usesSpaces = venueUsesSpaces(navInput);
+  // #4490 spec 08 O1 — the pad/Till switch (one rule: venueOrderEntry).
+  const orderEntry = venueOrderEntry({
+    tillReleased: tillReleased && venueId !== null,
+    tillFeatureOn: features.till.enabled,
+    canSell: venueAccess.canSell === true,
+  });
 
   const hasReviews = reviewsPanel !== null && reviewsPanel !== undefined;
   const visibleModules = useMemo(
     () => withVenueReviewsModule(
-      filterVenueModulesForCapabilities(
-        deriveVenueNav(navInput),
-        venueAccess.scoped,
-        venueAccess.capabilities,
+      withTillAccess(
+        filterVenueModulesForCapabilities(
+          deriveVenueNav(navInput),
+          venueAccess.scoped,
+          venueAccess.capabilities,
+        ),
+        venueAccess.canSell === true,
       ),
       hasReviews,
     ),
-    [hasReviews, navInput, venueAccess.scoped, venueAccess.capabilities],
+    [hasReviews, navInput, venueAccess.scoped, venueAccess.capabilities, venueAccess.canSell],
   );
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
@@ -445,6 +463,13 @@ export function VenueSuiteShell({
 
   const selectModule = useCallback(
     (nextModule: VenueModule, restoreFocus?: () => void): void => {
+      // #4490 spec 08 O1 — the Till is a full-screen route outside the rail:
+      // the rail item opens it; the workspace (and any unsaved edit in it)
+      // stays where it was underneath.
+      if (nextModule === "till" && venueId !== null) {
+        router.push(tillHref(venueId) as never);
+        return;
+      }
       if (nextModule === activeModule) return;
 
       if (activeModule === "availability" && availabilityRef.current !== null) {
@@ -469,8 +494,19 @@ export function VenueSuiteShell({
       }
       setActiveModule(nextModule);
     },
-    [activeModule, getLeaveHandle],
+    [activeModule, getLeaveHandle, venueId],
   );
+
+  // #4490 spec 08 O1 — `?module=till` (a link or a reload) opens the Till
+  // itself once it is shown here; the address is replaced so Back from the
+  // Till never lands on a page that sends it straight back.
+  const tillDeepLinkRef = useRef(initialModule === "till");
+  useEffect(() => {
+    if (!tillDeepLinkRef.current || venueId === null) return;
+    if (!visibleModules.includes("till")) return;
+    tillDeepLinkRef.current = false;
+    router.replace(tillHref(venueId) as never);
+  }, [venueId, visibleModules]);
 
   const leaveSection =
     pendingLeaveRef.current !== null
@@ -734,6 +770,10 @@ export function VenueSuiteShell({
   );
 
   const renderWorkspace = (): React.ReactElement => {
+    // #4490 spec 08 O1 — a Till-only login lands here (never a blank shell).
+    if (activeModule === "till" && venueId !== null) {
+      return <TillLauncher venueId={venueId} />;
+    }
     if (activeModule === "overview") {
       // ORCH-1186-B — the Overview slot is now the venue INTELLIGENCE dashboard
       // (the listing recap relocated to Settings by Leg 1). The reservations-
@@ -1056,7 +1096,7 @@ export function VenueSuiteShell({
             </View>
           }
         >
-          <LazyVenueOrdersModule brandId={brandId} venueId={venueId} />
+          <LazyVenueOrdersModule brandId={brandId} venueId={venueId} orderEntry={orderEntry} />
         </React.Suspense>
       );
     }

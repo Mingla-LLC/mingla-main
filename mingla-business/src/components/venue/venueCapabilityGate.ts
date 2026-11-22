@@ -67,7 +67,23 @@ export function filterVenueModulesForCapabilities(
     allowed.add("today");
     allowed.add("checkin");
   }
+  // #4490 spec 08 O1 — selling (a Till device login holds venue.sell too).
+  if (capabilities.includes("venue.sell")) {
+    allowed.add("till");
+  }
   return modules.filter((module) => allowed.has(module));
+}
+
+/**
+ * #4490 spec 08 O1 — the Till shows only to someone the server lets sell at
+ * this venue (`issue_4490_can_sell`: event manager and above, or venue.sell),
+ * so a finance or marketing manager never meets a Till that refuses them.
+ */
+export function withTillAccess(
+  modules: readonly VenueModule[],
+  canSell: boolean,
+): readonly VenueModule[] {
+  return canSell ? modules : modules.filter((module) => module !== "till");
 }
 
 /** #4490 — scoped staff who may open the venue's offer/space/hours editors. */
@@ -76,4 +92,22 @@ export function scopedStaffManagesOffers(
   capabilities: readonly VenueCapability[],
 ): boolean {
   return scoped && capabilities.includes("venue.manage_offers");
+}
+
+/** #4490 spec 08 O1 — brand roles that may sell without a venue grant. */
+const SELLING_ROLES: ReadonlySet<string> = new Set(["event_manager", "brand_admin", "brand_owner"]);
+
+/**
+ * #4490 spec 08 O1 — the client mirror of `issue_4490_can_sell`: venue staff
+ * with venue.sell at this venue, or a brand role of event manager and above.
+ * An unknown role (no member row read) is no.
+ */
+export function venueAccessCanSell(input: {
+  scoped: boolean;
+  capabilities: readonly VenueCapability[];
+  role: string | null;
+}): boolean {
+  return input.scoped
+    ? input.capabilities.includes("venue.sell")
+    : input.role !== null && SELLING_ROLES.has(input.role);
 }

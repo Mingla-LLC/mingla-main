@@ -166,11 +166,35 @@ const STAY_FEATURE_MAP = {
   table_reservations: "reservations",
   waitlist: "waitlist",
   members: "members",
+  // [TEST-MOD-APPROVED #4490] spec 08 O1: the Till is the thirteenth feature
+  // destination; it shows the venue `till` module (which opens the Till route).
+  till: "till",
   checkin: "checkin",
   menu: "menu",
   orders: "orders",
   guestlist: "guestlist",
 };
+// [TEST-MOD-APPROVED #4490] spec 08 O1: the destination order is a product
+// contract (Round 4J: Seth approved twelve after Stay's five on 21 Nov; spec 08
+// puts the Till first among the floor tools, before Check-in, Menu and Orders,
+// as the floor design's Operations rail does). Pinned exactly.
+const STAY_FEATURE_ORDER = [
+  "offers",
+  "spaces",
+  "today",
+  "calendar",
+  "requests",
+  "table_reservations",
+  "waitlist",
+  "members",
+  "till",
+  "checkin",
+  "menu",
+  "orders",
+  "guestlist",
+];
+const TILL_LAUNCHER_IMPORT = 'import { tillHref, TillLauncher } from "../venue/till/TillLauncher";';
+const TILL_LAUNCHER_VENUE_IMPORT = 'import { tillHref, TillLauncher } from "./till/TillLauncher";';
 const VENUE_SCREEN_SPEC = /["'](\.\.\/venue\/(?:[\w-]+\/)*Venue\w*Module)["']/;
 
 function objectBody(source, name) {
@@ -220,6 +244,28 @@ function checkStayFeatureScope(files, failures) {
   }
   if (!/const visibleModules = useMemo\(\(\) => \{\s*return \[\.\.\.coreModules, \.\.\.featureModules\];\s*\}/.test(shell)) {
     failures.push(`${label}: visible destinations must be exactly the Stay core list then the allowed feature list (nothing spliced in)`);
+  }
+  // [TEST-MOD-APPROVED #4490] spec 08 O1: the exact destination order, and the
+  // Till launcher loaded the same (static) way in both shells, so the Stay
+  // shell adds no second chunk for it (the W5/W6 __common hoisting trap).
+  const order = listBody(shell, "STAY_FEATURE_MODULE_ORDER");
+  const listed = order === null ? [] : [...order.matchAll(/"([a-z_]+)"/g)].map(([, key]) => key);
+  if (listed.join(",") !== STAY_FEATURE_ORDER.join(",")) {
+    failures.push(
+      `${label}: STAY_FEATURE_MODULE_ORDER must be exactly ${STAY_FEATURE_ORDER.join(", ")} (the approved order; the Till sits before Check-in)`,
+    );
+  }
+  const venueShellSource = files.venueShell ?? "";
+  if (venueShellSource.includes(TILL_LAUNCHER_VENUE_IMPORT)) {
+    if (shell.split(TILL_LAUNCHER_IMPORT).length - 1 !== 1) {
+      failures.push(`${label}: the Stay shell imports TillLauncher statically exactly once, like VenueSuiteShell`);
+    }
+    if (/import\(\s*["']\.\.\/venue\/till\/TillLauncher["']/.test(shell)) {
+      failures.push(`${label}: TillLauncher must not be lazy-loaded in the Stay shell (VenueSuiteShell imports it statically)`);
+    }
+  }
+  if (/import\(\s*["']\.\.\/venue\/till\/TillScreen["']|from\s+["']\.\.\/venue\/till\/TillScreen["']/.test(shell)) {
+    failures.push(`${label}: the Till screen is its own route; the Stay shell must not load it`);
   }
   const nav = files.venueNav ?? "";
   if (
@@ -576,6 +622,23 @@ function selfTest() {
     ],
     // [TEST-MOD-APPROVED #4490] fix round 6 (R4J-N24) reversions.
     ["shell", '  orders: "orders",', '  orders: "offers",', "must show its own venue module"],
+    // [TEST-MOD-APPROVED #4490] spec 08 O1 reversions: the Till's map entry,
+    // its place in the order, and the static launcher import.
+    ["shell", '  till: "till",\n  checkin: "checkin",', '  till: "checkin",\n  checkin: "checkin",', "must show its own venue module"],
+    ["shell", '  "till",\n  "checkin",\n  "menu",', '  "checkin",\n  "till",\n  "menu",', "STAY_FEATURE_MODULE_ORDER must be exactly"],
+    ["shell", '  "members",\n  // #4490 spec 08 O1', '  // #4490 spec 08 O1', "STAY_FEATURE_MODULE_ORDER must be exactly"],
+    [
+      "shell",
+      TILL_LAUNCHER_IMPORT,
+      'const LazyTillLauncher = React.lazy(() => import("../venue/till/TillLauncher").then((m) => ({ default: m.TillLauncher })));',
+      "TillLauncher must not be lazy-loaded",
+    ],
+    [
+      "shell",
+      TILL_LAUNCHER_IMPORT,
+      TILL_LAUNCHER_IMPORT + '\nimport { TillScreen } from "../venue/till/TillScreen";',
+      "the Till screen is its own route",
+    ],
     [
       "shell",
       "FEATURE_MODULES.filter((module) =>\n        allowedVenueModules.has(",
