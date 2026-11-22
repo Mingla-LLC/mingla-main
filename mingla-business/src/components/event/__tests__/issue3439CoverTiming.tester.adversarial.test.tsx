@@ -81,6 +81,7 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
       flushGuestPack: async () => ({ ok: true, saved: false }),
       releaseGuestPackSession: () => undefined,
       subscribeGuestPack: () => () => undefined,
+      useGuestPackPending: () => false,
     };
     if (name.endsWith("/recurrenceRule")) return { expandRecurrenceToDates: () => [] };
     if (name === "@mingla/brand-assets") return { MINGLA_BUSINESS_LOGO: 1 };

@@ -115,6 +115,7 @@ import {
 import type { WizardInvitePlan, WizardInviteQuote } from "../../services/offeringInvitePlanService";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
 import { useWizardHardwareBack } from "../../hooks/useWizardHardwareBack";
+import { useUnsavedChangesGuard } from "../../hooks/useUnsavedChangesGuard";
 import type { TurnoutInputSource } from "../../utils/turnoutInput";
 
 /*
@@ -135,6 +136,7 @@ import {
   guestPackEventIdForDraft,
   hasPendingGuestPack,
   releaseGuestPackSession,
+  useGuestPackPending,
 } from "../../utils/guestPackGate";
 // #4548 — the guest pack editor loads with its own chunk. Declared here, not in
 // a shared module: a module shared by several lazy screens is hoisted into the
@@ -830,7 +832,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // the draft has edits.
   const handleClose = useCallback((): void => {
     if (isCreateMode) {
-      if (isDraftPristine()) {
+      // #4548 — a typed guest pack change makes the draft not pristine, so
+      // closing asks through the same discard confirm.
+      if (isDraftPristine() && !hasPendingGuestPack(guestPackSessionId)) {
         void (async (): Promise<void> => {
           try {
             await discardDraft(liveDraft);
@@ -847,11 +851,20 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       // #4420 — edit mode autosaves, so leaving loses nothing, unless the
       // last autosave failed: then ask before the unsaved edits are dropped.
       setAutosaveLeaveVisible(true);
+    } else if (hasPendingGuestPack(guestPackSessionId)) {
+      // #4548 — edit mode autosaves its fields; the guest pack has no
+      // autosave, so it is saved on the way out (the same save-first rule as
+      // Continue). A failed save keeps the host here with the toast.
+      void flushGuestPack(guestPackSessionId).then((result) => {
+        if (result.ok) onExit("abandoned");
+        else handleShowToast(result.message);
+      });
     } else {
       // Edit mode: auto-save semantics — simple exit, no dialog.
       onExit("abandoned");
     }
   }, [
+    guestPackSessionId,
     serverSaveState?.hasError,
     isCreateMode,
     isDraftPristine,
@@ -898,6 +911,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     onStepBack: handleStepBack,
     onExit: handleClose,
   });
+  // #4548 — web reload / tab close with a typed, unsaved guest pack asks first
+  // (the fields autosave; the pack is saved only by Continue, Publish or Close).
+  const guestPackPending = useGuestPackPending(guestPackSessionId);
+  useUnsavedChangesGuard({ dirty: guestPackPending, onRequestLeave: handleClose });
 
   const handleCloseDiscardDialog = useCallback((): void => {
     if (isDiscarding) return;

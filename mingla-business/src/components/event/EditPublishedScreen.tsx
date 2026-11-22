@@ -127,6 +127,7 @@ import { CreatorStep3Where } from "./CreatorStep3Where";
 import {
   flushGuestPack,
   hasPendingGuestPack,
+  useGuestPackPending,
   releaseGuestPackSession,
 } from "../../utils/guestPackGate";
 // #4548 — the guest pack editor loads with its own chunk. Declared here, not in
@@ -1820,8 +1821,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     () => JSON.stringify(editState) !== JSON.stringify(seededEditStateRef.current),
     [editState],
   );
+  // #4548 — a typed guest pack change counts too ("Save changes" stays off for a
+  // pack-only change, so leaving must ask rather than drop it).
+  const guestPackPending = useGuestPackPending(guestPackId);
   const hasUnsavedEdits = shouldConfirmLeave({
-    dirty: editedSinceSeed,
+    dirty: editedSinceSeed || guestPackPending,
     busy: submitting,
   });
   const handleBack = useCallback((): void => {

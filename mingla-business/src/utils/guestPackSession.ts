@@ -18,6 +18,7 @@ import {
   type SavedGuestPack,
 } from "../services/guestPackService";
 import {
+  notifyGuestPackPending,
   setGuestPackDriver,
   type GuestPackSaveResult,
 } from "./guestPackGate";
@@ -28,6 +29,7 @@ import {
   checkGuestPackNote,
   GUEST_PACK_COPY,
   GUEST_PACK_MAX_ITEMS,
+  trimGuestPackText,
 } from "./guestPackValidation";
 import { registerSignOutCleanup } from "./signOutCleanups";
 
@@ -80,6 +82,7 @@ export function subscribeGuestPack(listener: () => void): () => void {
 
 function emit(): void {
   for (const listener of Array.from(listeners)) listener();
+  notifyGuestPackPending();
 }
 
 function put(next: GuestPackSession): void {
@@ -146,7 +149,10 @@ const signature = (
   note: string,
   items: ReadonlyArray<{ label: string; url: string }>,
 ): string =>
-  JSON.stringify([note.trim(), items.map((i) => [i.label.trim(), i.url.trim()])]);
+  JSON.stringify([
+    trimGuestPackText(note),
+    items.map((i) => [trimGuestPackText(i.label), trimGuestPackText(i.url)]),
+  ]);
 
 export function isGuestPackDirty(session: GuestPackSession | undefined): boolean {
   if (session === undefined || session.load !== "ready") return false;

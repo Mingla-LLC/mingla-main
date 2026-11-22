@@ -9,8 +9,11 @@
  * working copy once that module has loaded and registered itself. Until then
  * nothing can be pending, so every question answers "no pack changes".
  *
- * Pure: no React, no network, no storage.
+ * No network, no storage. One tiny React hook (`useGuestPackPending`) lets the
+ * owners count a typed pack change in their unsaved-changes guard.
  */
+
+import { useSyncExternalStore } from "react";
 
 export type GuestPackSaveResult =
   | { ok: true; saved: boolean }
@@ -23,6 +26,19 @@ export interface GuestPackDriver {
 }
 
 let driver: GuestPackDriver | null = null;
+const pendingListeners = new Set<() => void>();
+
+const subscribePending = (listener: () => void): (() => void) => {
+  pendingListeners.add(listener);
+  return () => {
+    pendingListeners.delete(listener);
+  };
+};
+
+/** Called by the working copy after every change. */
+export function notifyGuestPackPending(): void {
+  pendingListeners.forEach((listener) => listener());
+}
 
 /** Called once by the working copy when it loads. */
 export function setGuestPackDriver(next: GuestPackDriver): void {
@@ -56,4 +72,16 @@ export async function flushGuestPack(
 export function releaseGuestPackSession(eventId: string | null | undefined): void {
   if (eventId === null || eventId === undefined || driver === null) return;
   driver.release(eventId);
+}
+
+/**
+ * #4548 — reactive "this event has an unsaved pack change", for the owners'
+ * leave guards (close, Android back, web reload). False until the editor loads.
+ */
+export function useGuestPackPending(eventId: string | null | undefined): boolean {
+  return useSyncExternalStore(
+    subscribePending,
+    () => hasPendingGuestPack(eventId),
+    () => false,
+  );
 }

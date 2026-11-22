@@ -540,6 +540,7 @@ const BOUNDARY: Record<string, () => unknown> = {
     flushGuestPack: async () => ({ ok: true, saved: false }),
     releaseGuestPackSession: () => undefined,
     subscribeGuestPack: () => () => undefined,
+    useGuestPackPending: () => false,
   }),
   useIntakeSchema: () => ({
     useTripIntakeSchemasByEvent: () => intakeQuery,

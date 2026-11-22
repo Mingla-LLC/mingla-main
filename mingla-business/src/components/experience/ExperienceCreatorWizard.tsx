@@ -37,6 +37,7 @@ import {
   flushGuestPack,
   hasPendingGuestPack,
   releaseGuestPackSession,
+  useGuestPackPending,
 } from "../../utils/guestPackGate";
 // #4548 — the guest pack editor loads with its own chunk. Declared here, not in
 // a shared module: a module shared by several lazy screens is hoisted into the
@@ -1172,10 +1173,13 @@ export const ExperienceCreatorWizard: React.FC<
       payloadBaselineRef.current = payloadKey;
     }
   }, [payloadKey]);
+  // #4548 — a typed guest pack change counts as an unsaved edit too.
+  const guestPackPending = useGuestPackPending(experienceId);
   const hasUnsavedEdits = shouldConfirmLeave({
     dirty:
-      payloadBaselineRef.current !== null &&
-      payloadKey !== payloadBaselineRef.current,
+      (payloadBaselineRef.current !== null &&
+        payloadKey !== payloadBaselineRef.current) ||
+      guestPackPending,
     busy: submitting,
   });
   hasUnsavedEditsRef.current = hasUnsavedEdits;

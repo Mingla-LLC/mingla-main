@@ -119,6 +119,7 @@ function loadHost(mode: "create" | "edit"): React.ComponentType<any> {
       flushGuestPack: async () => ({ ok: true, saved: false }),
       releaseGuestPackSession: () => undefined,
       subscribeGuestPack: () => () => undefined,
+      useGuestPackPending: () => false,
     };
     if (exportName === "formsOwner") return { GuestQuestionsRow: () => null }; // [TEST-MOD #4514] the lazy Guest questions row is not under test here
     if (/^(Button|ConfirmDialog|GlassCard|Icon|IconChrome|Stepper|TopBar|Toast|CreatorStep\d\w+|RsvpStep7Preview|PublishErrorsSheet|ChangeSummaryModal|EditAfterPublishBanner|ThemeControlRow|ThemeSheet)$/.test(exportName)) return { [exportName]: leaf(exportName) };
