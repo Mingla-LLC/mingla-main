@@ -7,11 +7,10 @@
  * part hides when the forecast does not reach that hour; the crowd part hides
  * with no category. Drive lives on the pass, not here.
  *
- * [TRANSITIONAL] blocked on #4490 W4 (native venue checkout): finished and
- * tested but not mounted, because the checkout screen does not exist yet. It
- * exits when W4 mounts <VenueCheckoutWhenLine /> under the picks on the choose
- * step for Entry, Group and By the hour, passing the venue's coordinates and
- * crowd category (`crowdCategoryFor`) and the chosen venue-local day and time.
+ * Mounted by W4 (native venue checkout) under the picks on the choose step for
+ * Entry, Group and By the hour (`VenueCheckoutChoose`), with the venue's
+ * coordinates and crowd category (`crowdCategoryFor`) and the chosen
+ * venue-local day and time.
  */
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";

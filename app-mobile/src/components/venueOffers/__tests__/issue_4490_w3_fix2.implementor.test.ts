@@ -1,12 +1,9 @@
 /**
  * #4490 Explorer W3 fix round 2 — app side.
  *
- *   B-1..B-3  the Buy hand-off end to end for every EAS build profile (W3-N15):
- *             each profile's backend is the app's one owner (no profile sets a
- *             backend of its own), and the injected backend decides: the hosted
- *             project opens host.usemingla.com in Mingla's browser once; the
- *             local harness (it rewrites SUPABASE_URL) and a LAN dev server
- *             open nothing and report it;
+ *   B-1..B-3  the Buy hand-off for every EAS build profile (W3-N15): each
+ *             profile's backend is the app's one owner, and (06-W4) every
+ *             profile opens the native checkout sheet the same way;
  *   G-1..G-3  groups "from" in ONE unit (W3-N17): per-guest packages first,
  *             never a cheaper per-booking price worded "a guest"; a
  *             per-booking-only venue says no unit; the Ways row agrees;
@@ -14,8 +11,7 @@
  *             on the page lead, the Ways row and the pane (local stack's
  *             "Hire the Lounge": ₦400,000 an hour, was "from ₦400,000").
  *
- * FAILS-ON-REVERT: making openVenueOfferCheckout ignore `deps` (back to the
- * build constant) fails B-2; restoring the min-over-all groups price in
+ * FAILS-ON-REVERT: putting a web origin back in the seam fails B-3; restoring the min-over-all groups price in
  * deriveVenuePage fails G-1 and G-2; dropping the unit words from the hire
  * price fails U-1.
  */
@@ -63,24 +59,23 @@ describe('#4490 W3 fix 2 — the Buy hand-off for every build profile (W3-N15)',
     }
   });
 
-  test('B-2 each profile\'s backend: hosted opens the buyer web once; local or LAN opens nothing', () => {
+  // TEST-MOD-APPROVED #4490 (06-W4): the buyer-web hand-off is retired; the
+  // native sheet opens the same on every profile's backend (it calls this
+  // build's own backend, so no profile can send a guest to another system).
+  test('B-2 every profile opens the native checkout for the tapped offer, the same way', () => {
+    const venue = { venueId: 'v1', venueName: 'Gameland', currencyCode: 'NGN', exponent: 2, timezone: 'Africa/Lagos', lat: null, lng: null, category: null };
     for (const name of profiles) {
-      const opened: string[] = [];
-      expect(openVenueOfferCheckout(target, (u) => opened.push(u), { backendUrl: SUPABASE_URL })).toBe(true);
-      expect(opened).toEqual(['https://host.usemingla.com/b/harmattan-club/v/gameland?tab=entry']);
+      const opened: Array<{ kind: string; offerId: string | null }> = [];
+      expect(openVenueOfferCheckout(target, venue, (o) => opened.push({ kind: o.kind, offerId: o.offerId }))).toBe(true);
+      expect(opened).toEqual([{ kind: 'entry', offerId: 'o1' }]);
       void name;
-    }
-    for (const backendUrl of ['http://127.0.0.1:57521', 'http://192.168.1.20:57521', 'http://localhost:54321']) {
-      const opened: string[] = [];
-      expect(openVenueOfferCheckout(target, (u) => opened.push(u), { backendUrl })).toBe(false);
-      expect(opened).toEqual([]);
     }
   });
 
-  test('B-3 the app passes no dependency: the build constant decides (hosted today)', () => {
-    const opened: string[] = [];
-    expect(openVenueOfferCheckout(target, (u) => opened.push(u))).toBe(true);
-    expect(opened).toEqual(['https://host.usemingla.com/b/harmattan-club/v/gameland?tab=entry']);
+  test('B-3 the seam no longer reads a backend to pick a web origin', () => {
+    const seam = fs.readFileSync(path.join(__dirname, '../venueOfferCheckoutSeam.ts'), 'utf8');
+    expect(seam).not.toMatch(/SUPABASE_URL|backendUrl|host\.usemingla\.com/);
+    void SUPABASE_URL;
   });
 });
 

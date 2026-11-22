@@ -4,9 +4,9 @@
  *   H-1..H-3  the card sheet's venue routes close the sheet, then leave the
  *             deck through the deck host's hand-off (collab: the shared deck's
  *             modal closes before the push); solo pushes directly (W3-N2);
- *   S-1..S-4  the Buy hand-off opens the buyer web of THIS build's backend:
- *             the hosted project's web, never production from a local or
- *             unknown backend; the pane says so instead of a dead tap (W3-N12);
+ *   S-1..S-4  the Buy hand-off opens the native checkout sheet (W4; was the
+ *             buyer web of this build's backend, W3-N12); the pane says so
+ *             instead of a dead tap;
  *   F-1       a free entry row reads "Free entry", never "from ₦0" (W3-N6);
  *   T-1..T-4  "Sold out today" / "Closed today" while a later day is open
  *             (the design's row tag), the row stays bookable;
@@ -20,7 +20,7 @@
  * assertions otherwise.
  *
  * FAILS-ON-REVERT: deleting the closeSheet call in leaveSheetTo fails H-1;
- * deleting the origin check in buyerWebOriginFor fails S-2; deleting the
+ * opening a sheet for a tab with no checkout fails S-2; deleting the
  * "Free entry" branch in offerPrice fails F-1; deleting the todayTag branch in
  * availabilitySummary fails T-1; restoring `chips.offerChip.label` as the tile
  * value fails W-1.
@@ -35,7 +35,7 @@ import {
   paneBar,
   PANE_COPY,
 } from '../venuePaneModel';
-import { buyerWebOriginFor, openVenueOfferCheckout, venueOfferCheckoutWebUrl } from '../venueOfferCheckoutSeam';
+import { openVenueOfferCheckout } from '../venueOfferCheckoutSeam';
 
 interface M {
   toBe(v: unknown): void;
@@ -80,35 +80,38 @@ describe('#4490 W3 fix 1 — the card sheet leaves the deck through its host (W3
   });
 });
 
-describe('#4490 W3 fix 1 — the Buy hand-off opens this build\'s buyer web (W3-N12)', () => {
-  test('S-1 the hosted project (every EAS profile) hands off to host.usemingla.com', () => {
-    expect(buyerWebOriginFor('https://abcdefghijklmnop.supabase.co')).toBe('https://host.usemingla.com');
+// TEST-MOD-APPROVED #4490 (06-W4): W4 retires the buyer-web hand-off (the
+// seam's [TRANSITIONAL] exit). S-1..S-4 now pin its replacement: the seam opens
+// the native checkout sheet for the tapped offer, never a web page, and a tap
+// with nothing to open still shows the pane's error line (never a dead tap).
+describe('#4490 W4 — the Buy hand-off opens the native checkout sheet', () => {
+  const venue = { venueId: 'v1', venueName: 'Gameland', currencyCode: 'NGN', exponent: 2, timezone: 'Africa/Lagos', lat: 6.4, lng: 3.4, category: 'play' };
+  test('S-1 every bookable tab opens its kind', () => {
+    const shown: Array<{ kind: string; offerId: string | null }> = [];
+    for (const tab of ['entry', 'groups', 'hire', 'by_the_hour', 'plans'] as const) {
+      expect(openVenueOfferCheckout({ brandSlug: 'hc', venueSlug: 'gameland', tab, offerId: 'o1' }, venue, (o) => shown.push({ kind: o.kind, offerId: o.offerId }))).toBe(true);
+    }
+    expect(shown.map((s) => s.kind)).toEqual(['entry', 'group_package', 'private_hire', 'by_the_hour', 'plan']);
   });
-  test('S-2 a local or unknown backend never opens production', () => {
-    expect(buyerWebOriginFor('http://127.0.0.1:57521')).toBeNull();
-    expect(buyerWebOriginFor('http://192.168.1.20:57521')).toBeNull();
-    expect(buyerWebOriginFor('http://abc.supabase.co')).toBeNull();
-    expect(buyerWebOriginFor('https://supabase.co.example.test')).toBeNull();
-    expect(buyerWebOriginFor('not a url')).toBeNull();
+  test('S-2 a tab with no checkout, or an offer tab with no offer, opens nothing and reports it', () => {
+    const shown: unknown[] = [];
+    expect(openVenueOfferCheckout({ brandSlug: 'hc', venueSlug: 'gameland', tab: 'menu', offerId: 'o1' }, venue, (o) => shown.push(o))).toBe(false);
+    expect(openVenueOfferCheckout({ brandSlug: 'hc', venueSlug: 'gameland', tab: 'entry', offerId: null }, venue, (o) => shown.push(o))).toBe(false);
+    expect(shown).toEqual([]);
   });
-  test('S-3 with no buyer web the hand-off opens nothing and reports it', () => {
-    const opened: string[] = [];
-    const target = { brandSlug: 'hc', venueSlug: 'gameland', tab: 'entry' as const, offerId: 'o1' };
-    expect(openVenueOfferCheckout(target, (u) => opened.push(u), { backendUrl: 'http://127.0.0.1:57521' })).toBe(false);
-    expect(venueOfferCheckoutWebUrl(target, null)).toBeNull();
-    expect(opened).toEqual([]);
-    expect(openVenueOfferCheckout(target, (u) => opened.push(u), { backendUrl: 'https://abcdefghijklmnop.supabase.co' })).toBe(true);
-    expect(opened).toEqual(['https://host.usemingla.com/b/hc/v/gameland?tab=entry']);
+  test('S-3 no "from" price travels: the sheet opens with ids and venue facts only', () => {
+    let opened: Record<string, unknown> | null = null;
+    openVenueOfferCheckout({ brandSlug: 'hc', venueSlug: 'gameland', tab: 'entry', offerId: 'o1' }, venue, (o) => {
+      opened = o as unknown as Record<string, unknown>;
+    });
+    expect(Object.keys(opened ?? {}).some((k) => /minor|price|total|amount/i.test(k))).toBe(false);
   });
-  test('S-4 the origin follows the app\'s one backend owner; the pane shows the error line, never a dead tap', () => {
+  test('S-4 the seam opens no browser and holds no web origin; the pane shows the error line, never a dead tap', () => {
     const seam = read('../venueOfferCheckoutSeam.ts');
-    expect(seam).toMatch(/import \{ SUPABASE_URL \} from "\.\.\/\.\.\/config\/supabaseProject";/);
-    expect(seam).toMatch(/const BUILD_HANDOFF_DEPS: VenueOfferHandoffDeps = \{ backendUrl: SUPABASE_URL \};/);
-    expect(seam).toMatch(/deps: VenueOfferHandoffDeps = BUILD_HANDOFF_DEPS/);
+    expect(seam).not.toMatch(/openBrowserAsync|Linking\.openURL|host\.usemingla\.com|SUPABASE_URL/);
     const pane = read('../VenueOfferPane.tsx');
     expect(pane).toMatch(/const opened = openVenueOfferCheckout\(/);
-    // [TEST-MOD-APPROVED #4490] W3 fix 3 (W3-N23): the failure is held per
-    // row (the row that raised it), not one pane-wide flag.
+    expect(pane).toMatch(/<VenueOfferCheckoutSheet open=\{checkout\}/);
     expect(pane).toMatch(/setHandoffFailedRowId\(opened \? null : row\.id\)/);
     expect(pane).toMatch(/handoffFailedRowId === row\.id \?[\s\S]*PANE_COPY\.error/);
   });

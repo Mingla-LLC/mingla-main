@@ -8,7 +8,7 @@
  *   S-*  pane states: empty, loading, error, offline, ready;
  *   B-*  the docked bar: cheapest open row, the tab's verb, none when all sold out;
  *   W-*  the availability window is the venue's own today;
- *   X-*  the W4 seam opens the buyer web tab in Mingla's in-app browser;
+ *   X-*  the seam opens the native checkout sheet (06-W4; was the buyer web);
  *   A-*  venue_tapped_to_book's exact properties;
  *   H-*  card sheet Ways to come / What's on rows and paths;
  *   G-*  wiring: route tabs + features + five panes, deck `?tab=` + event chip
@@ -46,7 +46,7 @@ import {
   soldOutFromAvailability,
   type OfferAvailability,
 } from '../venuePaneModel';
-import { openVenueOfferCheckout, venueOfferCheckoutWebUrl } from '../venueOfferCheckoutSeam';
+import { openVenueOfferCheckout } from '../venueOfferCheckoutSeam';
 import { venueTappedToBookProps } from '../venueBookAnalytics';
 import { venuePagePath, venueSheetEvents, venueSheetWays } from '../../expandedCard/venueSheetModel';
 import { toClaimedVenue } from '../../../hooks/useClaimedVenues';
@@ -179,20 +179,24 @@ describe('#4490 W3 availability window', () => {
   });
 });
 
-describe('#4490 W3 W4 seam', () => {
-  test('X-1 the buyer web page on the tab, in Mingla\'s in-app browser', () => {
-    const opened: string[] = [];
-    openVenueOfferCheckout({ brandSlug: 'harmattan qa', venueSlug: 'gamelandqa', tab: 'by_the_hour', offerId: 'o1' }, (u) => opened.push(u));
-    expect(opened).toEqual(['https://host.usemingla.com/b/harmattan%20qa/v/gamelandqa?tab=by_the_hour']);
-    expect(venueOfferCheckoutWebUrl({ brandSlug: 'b', venueSlug: 'v', tab: 'plans', offerId: null })).toBe('https://host.usemingla.com/b/b/v/v?tab=plans');
+// TEST-MOD-APPROVED #4490 (06-W4): the seam's [TRANSITIONAL] exit landed: it
+// now opens the native checkout sheet (no web page, no browser).
+describe('#4490 W4 seam', () => {
+  test('X-1 a pane tap opens the native sheet on the tapped offer', () => {
+    const opened: Array<{ kind: string; offerId: string | null; brandSlug: string }> = [];
+    const venue = { venueId: 'v1', venueName: 'Gameland QA', currencyCode: 'NGN', exponent: 2, timezone: 'Africa/Lagos', lat: null, lng: null, category: null };
+    openVenueOfferCheckout({ brandSlug: 'harmattan qa', venueSlug: 'gamelandqa', tab: 'by_the_hour', offerId: 'o1' }, venue, (o) =>
+      opened.push({ kind: o.kind, offerId: o.offerId, brandSlug: o.brandSlug }),
+    );
+    expect(opened).toEqual([{ kind: 'by_the_hour', offerId: 'o1', brandSlug: 'harmattan qa' }]);
   });
-  test('X-2 the seam is the only caller, marked transitional with W4 as the exit, and never Safari', () => {
+  test('X-2 the seam is the only caller, no longer transitional, and never a browser', () => {
     const seam = read('../venueOfferCheckoutSeam.ts');
-    expect(seam).toMatch(/\[TRANSITIONAL\][\s\S]*Exits when W4's\s*\n?\s*\*?\s*VenueOfferCheckoutSheet replaces/);
+    expect(seam).not.toMatch(/\[TRANSITIONAL\]/);
     expect(seam).not.toMatch(/openBrowserAsync|Linking\.openURL/);
     const pane = read('../VenueOfferPane.tsx');
     expect(pane).toMatch(/openVenueOfferCheckout\(/);
-    expect(pane).toMatch(/useOpenInMingla\(\)/);
+    expect(pane).not.toMatch(/useOpenInMingla\(\)/);
     expect(pane).not.toMatch(/openBrowserAsync|Linking\.openURL/);
   });
 });

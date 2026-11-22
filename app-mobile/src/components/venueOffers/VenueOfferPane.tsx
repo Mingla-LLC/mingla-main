@@ -11,8 +11,8 @@
  * disabled), success. The docked bar reads this tab's cheapest open row.
  * Every price shown is a server "from" price, display only.
  *
- * The book button goes through `openVenueOfferCheckout`, the one seam W4's
- * native checkout replaces.
+ * The book button goes through `openVenueOfferCheckout`, the one seam: W4's
+ * native checkout sheet (`VenueOfferCheckoutSheet`) opens on the tapped offer.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -21,10 +21,11 @@ import type { PublicVenueTab } from "@mingla/brand-rendering/publicVenueTabState
 import type { VenueFeaturePlanView } from "@mingla/brand-rendering/venueFeaturePage";
 
 import { fontWeights, radius, spacing, typography } from "../../constants/designSystem";
-import { useOpenInMingla } from "../InAppBrowserProvider";
+import { crowdCategoryFor } from "../venuePage/venueExplorerModel";
 import { captureVenueTappedToBook } from "./venueBookAnalytics";
 import { venueMoneyText } from "./venueMoneyText";
 import { openVenueOfferCheckout } from "./venueOfferCheckoutSeam";
+import { VenueOfferCheckoutSheet, type VenueCheckoutOpen } from "./VenueOfferCheckoutSheet";
 import {
   offerPaneRows,
   paneAvailabilityWindow,
@@ -56,6 +57,12 @@ export interface VenueOfferPaneProps {
   timezone: string | null;
   /** The deck's mode when the page was opened from a collab deck. */
   mode: "solo" | "collab";
+  /** #4490 W4: the venue's name and place for the checkout sheet, and what picks its crowd curve. */
+  venueName?: string;
+  lat?: number | null;
+  lng?: number | null;
+  deckCategory?: string | null;
+  venueCategory?: string | null;
   /** Test seam: "now" for the availability window. */
   now?: Date;
 }
@@ -69,8 +76,15 @@ export function VenueOfferPane({
   timezone,
   mode,
   now,
+  venueName,
+  lat,
+  lng,
+  deckCategory,
+  venueCategory,
 }: VenueOfferPaneProps): React.ReactElement {
-  const { open: openInMingla } = useOpenInMingla();
+  const crowdCategory = crowdCategoryFor(deckCategory, venueCategory);
+  // #4490 W4: the native checkout sheet for the tapped offer (one per pane).
+  const [checkout, setCheckout] = useState<VenueCheckoutOpen | null>(null);
   const currency = useMemo(
     () => ({ code: context.currencyCode, exponent: context.exponent }),
     [context.currencyCode, context.exponent],
@@ -115,11 +129,22 @@ export function VenueOfferPane({
       });
       const opened = openVenueOfferCheckout(
         { brandSlug, venueSlug, tab: PANE_TAB[kind], offerId: row.id },
-        openInMingla,
+        {
+          venueId,
+          venueName: venueName ?? "",
+          currencyCode: context.currencyCode,
+          exponent: context.exponent,
+          timezone,
+          lat: lat ?? null,
+          lng: lng ?? null,
+          category: crowdCategory ?? null,
+          plans: context.plans,
+        },
+        setCheckout,
       );
       setHandoffFailedRowId(opened ? null : row.id);
     },
-    [brandSlug, kind, mode, openInMingla, venueId, venueSlug],
+    [brandSlug, context.currencyCode, context.exponent, context.plans, crowdCategory, kind, lat, lng, mode, timezone, venueId, venueName, venueSlug],
   );
 
   // The docked bar speaks for this tab: its cheapest open row.
@@ -154,6 +179,7 @@ export function VenueOfferPane({
   }
   return (
     <View style={styles.pane} testID={`venue-pane-${kind}`}>
+      <VenueOfferCheckoutSheet open={checkout} onClose={() => setCheckout(null)} />
       {status === "error" || status === "offline" ? (
         <View style={styles.stateRow} testID={`venue-pane-${kind}-${status}`}>
           <Text style={[styles.stateLine, { color: palette.secondaryText }]}>

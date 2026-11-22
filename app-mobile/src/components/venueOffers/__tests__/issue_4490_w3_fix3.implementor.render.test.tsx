@@ -35,6 +35,9 @@ jest.mock("../../InAppBrowserProvider", () => ({
 }));
 jest.mock("../../../services/postHogService", () => ({ postHogService: { capture: () => undefined } }));
 jest.mock("../venueOfferCheckoutSeam", () => ({ openVenueOfferCheckout: () => mockHandoffOpens }));
+// TEST-MOD-APPROVED #4490 (06-W4): the pane now mounts the native checkout
+// sheet; a stand-in keeps this suite about the pane's own error line.
+jest.mock("../VenueOfferCheckoutSheet", () => ({ VenueOfferCheckoutSheet: () => null }));
 jest.mock("../../../services/venuePurchaseService", () => {
   class mockVenuePurchaseError extends Error {
     code: string;

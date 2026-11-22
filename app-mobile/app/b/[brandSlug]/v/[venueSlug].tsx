@@ -656,11 +656,16 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
               venueId={venue.id}
               timezone={venue.timezone}
               mode={paneMode}
+              venueName={venue.name}
+              lat={venue.lat}
+              lng={venue.lng}
+              deckCategory={deckHandoff?.card?.category ?? null}
+              venueCategory={venue.venueCategory ?? null}
             />
           </React.Suspense>
         </VenuePaneBoundary>
       ),
-    [brandSlug, handleExplorerError, paneMode, venue, venueSlug],
+    [brandSlug, deckHandoff, handleExplorerError, paneMode, venue, venueSlug],
   );
   const renderEntryBody = useCallback(
     (context: PublicVenueEntrySlotContext): React.ReactNode => renderPane("entry", context),

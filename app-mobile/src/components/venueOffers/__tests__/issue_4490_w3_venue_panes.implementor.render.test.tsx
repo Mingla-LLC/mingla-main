@@ -26,8 +26,17 @@ const mockOpened: string[] = [];
 const mockCaptured: Array<{ event: string; props: unknown }> = [];
 let mockAvailability: (input: { offeringId: string }) => Promise<unknown> = async () => ({ days: [] });
 
-jest.mock("../../InAppBrowserProvider", () => ({
-  useOpenInMingla: () => ({ open: (url: string) => mockOpened.push(url), openDocument: () => undefined }),
+// TEST-MOD-APPROVED #4490 (06-W4): the book button opens the native checkout
+// sheet (the W3 buyer-web hand-off is retired). The sheet is a stand-in that
+// records what it was opened with.
+jest.mock("../VenueOfferCheckoutSheet", () => ({
+  VenueOfferCheckoutSheet: ({ open }: { open: { kind: string; offerId: string | null; brandSlug: string; venueSlug: string } | null }) => {
+    if (open !== null) {
+      const id = `${open.kind}:${open.offerId}:${open.brandSlug}/${open.venueSlug}`;
+      if (mockOpened[mockOpened.length - 1] !== id) mockOpened.push(id);
+    }
+    return null;
+  },
 }));
 jest.mock("../../../services/postHogService", () => ({
   postHogService: { capture: (event: string, props: unknown) => mockCaptured.push({ event, props }) },
@@ -101,7 +110,7 @@ describe("#4490 W3 venue pane (mounted)", () => {
     expect(button.props.accessibilityState).toMatchObject({ busy: true, disabled: true });
   });
 
-  test("P-2 success: sold out is disabled; the open row opens the buyer web tab in Mingla and is tracked", async () => {
+  test("P-2 success: sold out is disabled; the open row opens the native checkout on that offer and is tracked", async () => {
     mockAvailability = async ({ offeringId }) => ({ days: [day(offeringId === "a" ? "sold_out" : "available")] });
     const { tree, bars } = mount("entry", { offers: [offer("a", { fromMinor: 100000 }), offer("b", { fromMinor: 500000 })] as never });
     await flush(50);
@@ -111,14 +120,15 @@ describe("#4490 W3 venue pane (mounted)", () => {
     const open = byTestId(tree, "venue-pane-book-b");
     expect(open.props.disabled).toBe(false);
     act(() => open.props.onPress());
-    expect(mockOpened).toEqual(["https://host.usemingla.com/b/harmattan-qa-local/v/gamelandqa?tab=entry"]);
+    expect(mockOpened).toEqual(["entry:b:harmattan-qa-local/gamelandqa"]);
     expect(mockCaptured).toEqual([{ event: "venue_tapped_to_book", props: {
       venue_id: "v1", tab: "entry", offer_kind: "entry", source: "venue_page", position_in_deck: null, is_hosted_venue: true, mode: "solo",
     } }]);
     const bar = bars.filter((b) => b !== null).pop();
     expect(bar).toMatchObject({ title: "Pass b", ctaLabel: "Buy a day pass", enabled: true });
     act(() => bar?.onPress());
-    expect(mockOpened).toHaveLength(2);
+    expect(mockOpened[mockOpened.length - 1]).toBe("entry:b:harmattan-qa-local/gamelandqa");
+    expect(mockCaptured).toHaveLength(2);
   });
 
   test("P-3 error: the line and Try again, which asks again; buttons stay usable", async () => {

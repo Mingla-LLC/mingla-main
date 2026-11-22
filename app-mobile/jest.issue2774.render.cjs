@@ -197,6 +197,15 @@ module.exports = {
     // Hermes) and the rendered blocks (event page, pass, checkout line).
     "**/__tests__/issue_4490_w7_when_you_go_model.implementor.test.ts",
     "**/__tests__/issue_4490_w7_when_you_go.implementor.render.test.tsx",
+    // issue #4490 Explorer W4 — native checkout per offer: the reducer (steps,
+    // keys, words), the venue recovery pointer and payment leg, sign-out
+    // clearing the pointer, the sheet's pure model and the sheet itself.
+    "**/__tests__/issue_4490_w4_venue_checkout_flow.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_venue_checkout_recovery.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_signout_clears_venue_checkout.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_checkout_model.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_checkout_service.implementor.test.ts",
+    "**/__tests__/issue_4490_w4_checkout_sheet.implementor.render.test.tsx",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.
