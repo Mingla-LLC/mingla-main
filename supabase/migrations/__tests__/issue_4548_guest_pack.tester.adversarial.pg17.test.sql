@@ -575,6 +575,46 @@ BEGIN
 END;
 $test$;
 
+-- X-TRIM (retest) ---------------------------------------------------------------
+-- The fix for F3: every leading/trailing whitespace character goes, including the Unicode
+-- spaces; the helper is service-only and never reads the table.
+DO $test$
+DECLARE
+  v jsonb;
+  bad jsonb;
+BEGIN
+  PERFORM pg_temp.ok(NOT has_function_privilege('anon', 'public.issue_4548_trim(text)', 'EXECUTE')
+      AND NOT has_function_privilege('authenticated', 'public.issue_4548_trim(text)', 'EXECUTE'),
+    'X-TRIM the trim helper is not client callable');
+  PERFORM pg_temp.ok((SELECT NOT prosecdef AND prosrc NOT ILIKE '%event_guest_packs%'
+                        AND proconfig @> ARRAY['search_path=""']
+                        FROM pg_proc WHERE oid = 'public.issue_4548_trim(text)'::regprocedure),
+    'X-TRIM the trim helper is an invoker function with an empty search_path that never reads the table');
+  FOREACH bad IN ARRAY ARRAY[
+    jsonb_build_array(jsonb_build_object('label', E' ', 'url', 'https://a.test/m')),
+    jsonb_build_array(jsonb_build_object('label', E'​　', 'url', 'https://a.test/m')),
+    jsonb_build_array(jsonb_build_object('label', E'﻿ ', 'url', 'https://a.test/m')),
+    jsonb_build_array(jsonb_build_object('label', E'Ma\np', 'url', 'https://a.test/m')),
+    jsonb_build_array(jsonb_build_object('label', 'Map', 'url', E'https://a.test/x y'))] LOOP
+    v := pg_temp.set_as('host', 'ev_a2', NULL, bad);
+    PERFORM pg_temp.ok(pg_temp.err(v) LIKE '22023%', 'X-TRIM refused ' || bad::text || ' -> ' || left(v::text, 60));
+  END LOOP;
+  v := pg_temp.set_as('host', 'ev_a2', E' 　 \t\nDoor 4548\n﻿​',
+    jsonb_build_array(jsonb_build_object('label', E'  Map 　', 'url', E' https://a.test/m \n')));
+  PERFORM pg_temp.ok(v ->> 'note' = 'Door 4548' AND v -> 'items' -> 0 ->> 'label' = 'Map'
+      AND v -> 'items' -> 0 ->> 'url' = 'https://a.test/m',
+    'X-TRIM mixed ASCII and Unicode edges are trimmed from the note, label and url: ' || v::text);
+  v := pg_temp.set_as('host', 'ev_a2', E'  ​\u0085', '[]');
+  PERFORM pg_temp.ok(v IS NULL OR v = 'null'::jsonb, 'X-TRIM a note of only Unicode whitespace deletes the pack');
+  BEGIN
+    INSERT INTO public.event_guest_packs(event_id, note) VALUES (pg_temp.u('ev_a2'), E' Door');
+    PERFORM pg_temp.ok(false, 'X-TRIM the table refuses an untrimmed note');
+  EXCEPTION WHEN check_violation THEN
+    PERFORM pg_temp.ok(true, 'X-TRIM the table refuses an untrimmed note');
+  END;
+END;
+$test$;
+
 -- X-LIFE ------------------------------------------------------------------------
 DO $test$
 BEGIN
