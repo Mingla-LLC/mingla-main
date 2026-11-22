@@ -51,6 +51,7 @@ import type { CalendarPlanMessageTarget } from "../brandEnquiry/calendarPlanMess
 import { toastManager } from "../ui/Toast";
 import { DoorModeModal } from "./DoorModeModal";
 import { PURCHASE_SHEET_COLORS as C } from "./purchaseSheetTheme";
+import { VenueOnTheDay } from "./VenueOnTheDay";
 import {
   isOpenWaitlistPlace,
   memberCodeWords,
@@ -347,6 +348,9 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
         {pass?.idCheckLabel ? <Row label="ID" value={pass.idCheckLabel} /> : null}
         {booking.reference ? <Row label="Reference" value={booking.reference} /> : null}
       </View>
+
+      {/* #4490 W7 (d): the weather, the drive and when to leave, for a held booking. */}
+      {isLive ? <VenueOnTheDay booking={booking} /> : null}
 
       {venueBookingExtraRows(booking).length > 0 ? (
         <View style={styles.facts} testID="venue-booking-extras">

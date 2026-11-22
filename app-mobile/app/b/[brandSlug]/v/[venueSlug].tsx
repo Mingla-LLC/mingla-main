@@ -90,6 +90,7 @@ import {
 } from "@mingla/brand-rendering/venueFeaturePage";
 
 import { VenueReserveSheet } from "../../../../src/components/expandedCard/VenueReserveSheet";
+import { rememberHostedEventRow } from "../../../../src/components/expandedCard/hostedEventContext";
 import { ConsumerStayGuestExperience } from "../../../../src/components/stay/ConsumerStayGuestExperience";
 import { usePublicVenue } from "../../../../src/hooks/usePublicVenue";
 import { usePublicVenueFeatures } from "../../../../src/hooks/usePublicVenueFeatures";
@@ -608,9 +609,17 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   const handleOpenEvent = useCallback(
     (href: string): void => {
       if (!/^\/(e|exp|t)\/[^\s/]+\/[^\s/]+$/.test(href)) return;
+      // #4490 W7 (b): this row is at a hosted venue, so the event page draws
+      // "When you'd go" at the event's start (see hostedEventContext).
+      rememberHostedEventRow(href, features?.events, {
+        lat: venue?.lat,
+        lng: venue?.lng,
+        timeZone: venue?.timezone,
+        driveTime: deckHandoff?.card?.travelTime ?? null,
+      });
       router.push(href as never);
     },
-    [router],
+    [router, features, venue, deckHandoff],
   );
 
   // #4490 Explorer W3 — one native pane per bookable tab; the deck's mode

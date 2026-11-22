@@ -88,6 +88,7 @@ import { useVenueFeaturesForPlace } from "../hooks/useVenueFeaturesForPlace";
 import { deckVenueCta } from "./expandedCard/deckVenueCta";
 // #4490 Explorer W3 — Ways to come, What's on and Message {venue} for a claimed venue.
 import { VenueSheetBlocks } from "./expandedCard/VenueSheetBlocks";
+import { rememberHostedEventRow } from "./expandedCard/hostedEventContext";
 import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
 import { closeSheetOnIncomingLink, leaveSheetTo } from "./deckCard/deckNavigation";
 import { ImageLightbox } from "./ImageLightbox";
@@ -2357,13 +2358,21 @@ export default function ExpandedCardModal({
                 place={venueFeatures}
                 tablesReservable={venueReservable === undefined ? null : venueReservable?.reservable === true}
                 venueType={venueFeatures.venueType}
-                onOpenPath={(path) =>
+                onOpenPath={(path) => {
+                  // #4490 W7 (b): a What's on row opens its event page, which
+                  // then draws "When you'd go" at the event's start.
+                  rememberHostedEventRow(path, venueFeatures.features.events, {
+                    lat: card.location?.lat,
+                    lng: card.location?.lng,
+                    timeZone: venueFeatures.timezone,
+                    driveTime: viewerTravelTime ?? card.travelTime ?? null,
+                  });
                   leaveSheetTo(path, {
                     closeSheet: onClose,
                     onExternalRoute,
                     push: (next) => router.push(next as never),
-                  })
-                }
+                  });
+                }}
                 onWayTapped={(row) =>
                   captureVenueTappedToBook({
                     venueId: venueFeatures.venueId ?? '',

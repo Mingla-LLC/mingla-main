@@ -14,6 +14,9 @@
  * when a later hour is a full level quieter. Every row hides when its source
  * has nothing (Constitution 9).
  *
+ * #4490 W7 — the same block on an event page (chips Now and Event, `showCrowd`
+ * off, Good to know adds "Leave by"). All the maths is in `whenYoudGoModel`.
+ *
  * Motion: the bars ease to their heights (Reanimated, 240ms); under Reduce
  * Motion they are drawn at their final heights.
  */
@@ -22,18 +25,19 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Reanimated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { SPINE, WHEN_BLOCK } from './spineTokens';
+import { crowdLevel, type WhenChip, type WhenKey } from './placeSheetModel';
 import {
-  crowdLevel,
-  forecastAt,
-  quieterHour,
-  sunsetAt,
-  typicalCrowdAt,
-  type WhenChip,
-  type WhenKey,
-} from './placeSheetModel';
+  chipLabelSpec,
+  offsetClock,
+  whenBlockVisible,
+  whenFactsFor,
+  wallDayDiff,
+  wallWeekday,
+  type ClockResolver,
+  type LeaveBy,
+} from './whenYoudGoModel';
 import type { HourlyForecast } from '../../services/weatherService';
 import { formatTemperature } from '../utils/formatters';
-import { extractWeekdayText, isPlaceOpenAt } from '../../utils/openingHoursUtils';
 import type { WhenColors } from '../venuePage/venueExplorerModel';
 
 export interface WhenYoudGoProps {
@@ -53,6 +57,15 @@ export interface WhenYoudGoProps {
   readonly clock: (minuteOfDay: number) => string;
   readonly reducedMotion?: boolean;
   /**
+   * #4490 W7 — false on an event page: the event sets the crowd, so the
+   * venue's usual curve would mislead. No crowd tile, bars or note then.
+   */
+  readonly showCrowd?: boolean;
+  /** The venue's clock for chip days and times; default: `utcOffsetMinutes`. */
+  readonly resolveClock?: ClockResolver;
+  /** Injectable clock (tests); default the current time. */
+  readonly now?: Date;
+  /**
    * #4347 wave 4 — the host venue page draws this block inside the host's own
    * page, as a card in that page's colours (`whenColorsFor`, contrast-checked,
    * neutral fallback). Absent: the place sheet's paper section, unchanged.
@@ -60,12 +73,6 @@ export interface WhenYoudGoProps {
   readonly colors?: WhenColors;
   /** The host's brand font for the heading (venue page only). */
   readonly fontFamily?: string;
-}
-
-function minuteOfDay(at: Date, utcOffsetMinutes: number | null): number {
-  if (utcOffsetMinutes == null) return at.getHours() * 60 + at.getMinutes();
-  const shifted = new Date(at.getTime() + utcOffsetMinutes * 60_000);
-  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
 }
 
 export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
@@ -85,6 +92,9 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
     measurementSystem,
     clock,
     reducedMotion = false,
+    showCrowd = true,
+    resolveClock,
+    now: nowProp,
     colors,
     fontFamily,
   } = props;
@@ -92,41 +102,66 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
   const chip = chips.find((c) => c.key === selected) ?? chips[0];
   if (!chip) return null;
 
-  const weather = forecastAt(hourly, chip.at, weatherUtcOffsetSeconds ?? null);
-  const crowd = typicalCrowdAt(category, chip.at, utcOffsetMinutes);
-  const weekday = extractWeekdayText(openingHours as Parameters<typeof extractWeekdayText>[0]);
-  const quieter = quieterHour(crowd, (hour) => {
-    if (weekday === null) return null;
-    const delta = (hour - crowd.hour) * 3_600_000;
-    return isPlaceOpenAt(weekday, new Date(chip.at.getTime() + delta), utcOffsetMinutes);
-  });
-  const sunset =
-    typeof lat === 'number' && typeof lng === 'number'
-      ? sunsetAt(lat, lng, new Date(chip.at.getTime() + (utcOffsetMinutes ?? 0) * 60_000))
-      : null;
-  const drive = typeof driveTime === 'string' && driveTime.trim().length > 0 ? driveTime.trim() : null;
+  const now = nowProp ?? new Date();
+  const resolve = resolveClock ?? offsetClock(utcOffsetMinutes);
+  const input = {
+    now,
+    hourly,
+    weatherUtcOffsetSeconds,
+    category,
+    showCrowd,
+    utcOffsetMinutes,
+    openingHours,
+    driveTime,
+    lat,
+    lng,
+  };
+  // The block's own hide rule: with no row left on any chip it is not drawn.
+  if (!whenBlockVisible(chips, input)) return null;
+  const { weather, crowd, drive, sunset, quieter, leaveBy } = whenFactsFor(chip, input);
+  const minuteOf = (at: Date): number => {
+    const w = resolve(at);
+    return w === null ? 0 : w.hour * 60 + w.minute;
+  };
 
   const chipLabel = (c: WhenChip): string => {
-    const time = clock(minuteOfDay(c.at, utcOffsetMinutes));
-    switch (c.key) {
+    const spec = chipLabelSpec(c, now, resolve);
+    switch (spec.kind) {
       case 'now':
         return t('cards:sheet.when_now');
       case 'tonight':
-        return t('cards:sheet.when_tonight', { time });
+        return t('cards:sheet.when_tonight', { time: clock(spec.minuteOfDay) });
       case 'tomorrow':
-        return t('cards:sheet.when_tomorrow', { time });
+        return t('cards:sheet.when_tomorrow', { time: clock(spec.minuteOfDay) });
       case 'scheduled':
-        return t('cards:sheet.when_scheduled', { time });
+        return t('cards:sheet.when_scheduled', { time: clock(spec.minuteOfDay) });
+      case 'scheduled_day':
+        return t('cards:sheet.when_scheduled_day', { day: spec.day, time: spec.time });
+      case 'event':
+        return t('cards:sheet.when_event', { time: spec.time });
+      case 'event_day':
+        return t('cards:sheet.when_event_day', { day: spec.day, time: spec.time });
       default: {
-        const never: never = c.key;
+        const never: never = spec;
         return never;
       }
     }
   };
 
+  /** "Leave by 18:30", or "Leave now"; a day is named only when it is not the start's day. */
+  const leaveRow = (l: LeaveBy): { label: string; value: string } => {
+    if (l.kind === 'now') return { label: t('cards:sheet.leave_now'), value: '' };
+    const start = resolve(chip.at);
+    const at = resolve(l.at);
+    const otherDay = start !== null && at !== null && wallDayDiff(at, start) !== 0;
+    const time = clock(minuteOf(l.at));
+    return { label: t('cards:sheet.leave_by'), value: otherDay && at !== null ? `${wallWeekday(at)} ${time}` : time };
+  };
+
   const goodToKnow: { key: string; label: string; value: string }[] = [];
-  if (sunset) goodToKnow.push({ key: 'sunset', label: t('cards:sheet.sunset'), value: clock(minuteOfDay(sunset, utcOffsetMinutes)) });
+  if (sunset) goodToKnow.push({ key: 'sunset', label: t('cards:sheet.sunset'), value: clock(minuteOf(sunset)) });
   if (quieter !== null) goodToKnow.push({ key: 'quieter', label: t('cards:sheet.quieter_at'), value: clock(quieter * 60) });
+  if (leaveBy) goodToKnow.push({ key: 'leave_by', ...leaveRow(leaveBy) });
 
   return (
     <View style={[styles.section, tone?.section]} testID="sheet-when">
@@ -143,6 +178,8 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
               onPress={() => onSelect(c.key)}
               accessibilityRole="button"
               accessibilityState={{ selected: on }}
+              // #4490 W7: 34 pt to look at, 44 pt to tap.
+              hitSlop={WHEN_CHIP_HIT_SLOP}
               style={[styles.chip, tone?.chip, on ? styles.chipOn : null, on ? tone?.chipOn : null]}
             >
               <Text
@@ -169,10 +206,12 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
             </Text>
           </View>
         ) : null}
-        <View style={[styles.fact, tone?.fact]} testID="sheet-when-crowd">
-          <Text style={[styles.factLabel, tone?.muted]}>{t('cards:sheet.crowd')}</Text>
-          <Text style={[styles.factValue, tone?.text]}>{t(`cards:sheet.crowd_usually_${crowd.level}`)}</Text>
-        </View>
+        {crowd ? (
+          <View style={[styles.fact, tone?.fact]} testID="sheet-when-crowd">
+            <Text style={[styles.factLabel, tone?.muted]}>{t('cards:sheet.crowd')}</Text>
+            <Text style={[styles.factValue, tone?.text]}>{t(`cards:sheet.crowd_usually_${crowd.level}`)}</Text>
+          </View>
+        ) : null}
         {drive ? (
           <View style={[styles.fact, tone?.fact]} testID="sheet-when-drive">
             <Text style={[styles.factLabel, tone?.muted]}>{t('cards:sheet.drive')}</Text>
@@ -181,29 +220,35 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
         ) : null}
       </View>
 
-      <View
-        style={styles.bars}
-        accessible
-        accessibilityLabel={t('cards:sheet.crowd_chart_a11y')}
-        testID="sheet-when-bars"
-      >
-        {Array.from({ length: WHEN_BLOCK.lastHour - WHEN_BLOCK.firstHour + 1 }, (_, i) => {
-          const hour = WHEN_BLOCK.firstHour + i;
-          const value = crowd.hourly[hour] ?? 0;
-          return (
-            <CrowdBar
-              key={hour}
-              pct={Math.max(WHEN_BLOCK.barMinPct, value)}
-              active={hour === crowd.hour}
-              reducedMotion={reducedMotion}
-              colors={colors}
-            />
-          );
-        })}
-      </View>
-      <Text style={[styles.note, tone?.muted]} testID="sheet-when-note">
-        {drive ? `${t('cards:sheet.crowd_note')} ${t('cards:sheet.drive_note')}` : t('cards:sheet.crowd_note')}
-      </Text>
+      {crowd ? (
+        <View
+          style={styles.bars}
+          accessible
+          accessibilityLabel={t('cards:sheet.crowd_chart_a11y')}
+          testID="sheet-when-bars"
+        >
+          {Array.from({ length: WHEN_BLOCK.lastHour - WHEN_BLOCK.firstHour + 1 }, (_, i) => {
+            const hour = WHEN_BLOCK.firstHour + i;
+            const value = crowd.hourly[hour] ?? 0;
+            return (
+              <CrowdBar
+                key={hour}
+                pct={Math.max(WHEN_BLOCK.barMinPct, value)}
+                active={hour === crowd.hour}
+                reducedMotion={reducedMotion}
+                colors={colors}
+              />
+            );
+          })}
+        </View>
+      ) : null}
+      {crowd || drive ? (
+        <Text style={[styles.note, tone?.muted]} testID="sheet-when-note">
+          {[crowd ? t('cards:sheet.crowd_note') : null, drive ? t('cards:sheet.drive_note') : null]
+            .filter((line): line is string => line !== null)
+            .join(' ')}
+        </Text>
+      ) : null}
 
       {goodToKnow.length > 0 ? (
         <View style={styles.goodToKnow} testID="sheet-good-to-know">
@@ -219,6 +264,9 @@ export function WhenYoudGo(props: WhenYoudGoProps): React.ReactElement | null {
     </View>
   );
 }
+
+/** The chip is 34 pt tall to look at; 5 pt above and below make the 44 pt target. */
+export const WHEN_CHIP_HIT_SLOP = { top: 5, bottom: 5 } as const;
 
 /** Exposed for tests: the crowd label for a popularity value. */
 export const crowdLabelKey = (popularity: number): string => `cards:sheet.crowd_usually_${crowdLevel(popularity)}`;
