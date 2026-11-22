@@ -19,10 +19,13 @@
 export const BRAND_FORM_REQUEST_CATEGORY = "brand_form_request";
 export const BRAND_FORM_REMINDER_HELD_CATEGORY =
   "business.brand_form_reminder_held";
+/** #4541 R4.3: a scheduled Blast was not sent because its form closed first. */
+export const BLAST_FORM_CLOSED_CATEGORY = "business.blast_form_closed";
 
 export function isBrandFormCategory(category: string): boolean {
   return category === BRAND_FORM_REQUEST_CATEGORY ||
-    category === BRAND_FORM_REMINDER_HELD_CATEGORY;
+    category === BRAND_FORM_REMINDER_HELD_CATEGORY ||
+    category === BLAST_FORM_CLOSED_CATEGORY;
 }
 
 interface Rendered {
@@ -57,6 +60,8 @@ export function brandFormLinkValid(url: unknown): url is string {
 export function brandFormProviderSafeKeys(category: string): string[] {
   return category === BRAND_FORM_REQUEST_CATEGORY
     ? ["form_id", "event_id", "rsvp_id", "order_id", "rsvp_guest_id"]
+    : category === BLAST_FORM_CLOSED_CATEGORY
+    ? ["campaign_id", "form_id", "brand_id"]
     : ["form_id", "event_id", "brand_id"];
 }
 
@@ -174,6 +179,16 @@ export function renderBrandFormMessage(
 ): Rendered {
   const brand = plain(payload.brand_name, 80) || "The host";
   const event = plain(payload.event_title, 90);
+  if (category === BLAST_FORM_CLOSED_CATEGORY) {
+    const campaign = plain(payload.campaign_name, 80) || "Your Blast";
+    const form = plain(payload.form_name, 80) || "its form";
+    const line = `${campaign} wasn't sent because ${form} is closed. Reopen the form, then send again.`;
+    return {
+      push: { title: "Blast not sent", body: line },
+      email: { subject: "Blast not sent", body: line },
+      sms: "",
+    };
+  }
   if (category === BRAND_FORM_REMINDER_HELD_CATEGORY) {
     const form = plain(payload.form_name, 80) || "your form";
     const line = event

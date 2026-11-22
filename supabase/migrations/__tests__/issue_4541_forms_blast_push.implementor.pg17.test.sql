@@ -1,4 +1,5 @@
 -- MINGLA-INVARIANT: I-4541-ONE-TEXT-BUDGET | issue #4541 | form-request texts and Blast texts draw from one monthly text budget per brand, counted by Blast's own allowance functions under one lock (blast_cap), so together they never exceed it; over it, a form send goes without texts and is never refused (T-18, T-18-RACE).
+-- MINGLA-INVARIANT: I-4541-BLAST-REPLY-NEVER-ON-GUEST | issue #4541 | a reply from a Blast (a known recipient by a hashed key, or Unknown) is never a guest's answer, never on a page, at the door, on guest detail or in the roster export; typed answers never change who a reply belongs to (T-14, T-15, T-16).
 -- MINGLA-INVARIANT: I-4541-FORM-PUSH-APP-READY | issue #4541 | a form request is tried by push only while BRAND_FORMS_PUSH is on and the person's app reported in the last 45 days that it opens the form, decided again at claim (T-19).
 -- #4541 M-B (20281122014541_issue_4541_forms_blast_push.sql): PostgreSQL 17 proof after the full replay.
 -- Run as supabase_admin (the race sections open two dblink sessions, as issue_0871 does).
@@ -6,6 +7,11 @@
 -- T-19  push: the switch, the capability report, eligibility at preview and again at claim (SC-26)
 -- T-18  one text budget: the form counter in Blast's usage and check, texts off over the monthly
 --       allowance and over the daily cap, the reason kept in the log, lock order (SC-37, SC-38)
+-- T-14  Blast reply schema (one owner, never on a page, Unknown never verified)
+-- T-15  Blast submit (SC-32, SC-36): Unknown, signed in, own link (hashed key, code for a second
+--       answer, revoked by a newer link), campaign window, open-reply limit; confirm check, hold
+-- T-16  never on a guest record or at the door (SC-33)
+-- T-17  Responses owner filter, hide and undo, old 5-argument call, export, counts (SC-34)
 -- T-42  every client-called RPC called the way the app calls it; service-role-only functions refused
 -- T-18-RACE two sessions (SC-39): a Blast confirm and a form send for one brand never both pass
 --       when together they exceed the allowance, in either order, and never deadlock
@@ -13,7 +19,9 @@
 -- FAILS-ON-REVERT: dropping the brand_form_push_eligible test from the claim fails T-19c;
 -- dropping the form term from biz_assert_brand_blast_allowance_v1 fails T-18b; dropping it from
 -- biz_brand_blast_usage_v1 fails T-18a; dropping the texts-off rule fails T-18c/T-18d;
--- dropping the blast_cap lock from brand_form_request_enqueue fails T-18-RACE-1.
+-- dropping the blast_cap lock from brand_form_request_enqueue fails T-18-RACE-1; dropping the
+-- campaign-window check fails T-15 SC-36; dropping the open-reply cap fails T-15 SC-36;
+-- dropping the unknown_owner guards fails T-16; dropping name 'Unknown' fails T-17.
 
 CREATE EXTENSION IF NOT EXISTS dblink;
 
@@ -330,6 +338,240 @@ BEGIN
   v_r := pg_temp.err($$SELECT public.brand_form_report_capability('explorer', 'android', '1.4.1', 1)$$);
   RESET ROLE;
   PERFORM pg_temp.ok(v_r = 'ok', 'T-42 brand_form_report_capability as the signed-in app user (' || v_r || ')');
+END;
+$t$;
+
+-- ═══ T-14 … T-17 Blast "+ Form" (wave 6) ══════════════════════════════════════════
+CREATE OR REPLACE FUNCTION pg_temp.mb_campaign(p_id uuid, p_payload jsonb, p_status text, p_sent timestamptz)
+RETURNS void LANGUAGE sql AS $fn$
+  INSERT INTO public.marketing_campaigns (id, account_id, brand_id, audience_id, name, channel, channel_payload, status, sent_at)
+  VALUES (p_id, pg_temp.u('xowner'), pg_temp.u('xbrand'), pg_temp.u('xaud'), 'Spring news', p_payload->>'kind', p_payload, p_status, p_sent)
+$fn$;
+CREATE OR REPLACE FUNCTION pg_temp.blast_submit(p_cred jsonb, p_text text, p_expected integer DEFAULT NULL)
+RETURNS text LANGUAGE plpgsql AS $fn$
+DECLARE v jsonb;
+BEGIN
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_submit_core(jsonb_build_object('formId', pg_temp.u('xF'), 'source', 'blast',
+         'answers', jsonb_build_object('45419100-0000-4000-8000-000000000101', p_text),
+         'expectedEditCount', p_expected, 'credential', p_cred));
+  RESET ROLE;
+  RETURN v::text;
+EXCEPTION WHEN OTHERS THEN
+  RESET ROLE;
+  RETURN 'ERR:' || SQLERRM;
+END;
+$fn$;
+
+DO $t$
+DECLARE
+  v jsonb; v_r text; v_tok text; v_tok2 text; v_key text; v_id uuid; v_n integer;
+  v_email jsonb := jsonb_build_object('kind', 'email', 'subject', 'Hi', 'body_html', 'Hi', 'body_text', 'Hi',
+                     'embedded_form', jsonb_build_object('form_id', pg_temp.u('xF')));
+BEGIN
+  PERFORM pg_temp.mb_campaign(pg_temp.u('cmp'), v_email, 'sent', now());
+  PERFORM pg_temp.mb_campaign(pg_temp.u('cmp_plain'), '{"kind":"email","subject":"Hi","body_html":"Hi","body_text":"Hi"}'::jsonb, 'sent', now());
+  PERFORM pg_temp.mb_campaign(pg_temp.u('cmp_old'), v_email, 'sent', now() - interval '31 days');
+
+  -- T-14 schema.
+  v_r := pg_temp.err(format($$INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, user_id, unknown_owner, verified, answers, source, campaign_id)
+                             VALUES (%L, %L, %L, %L, true, false, '{}', 'blast', %L)$$,
+         pg_temp.u('xF'), pg_temp.u('xFv'), pg_temp.u('xbrand'), pg_temp.u('xu1'), pg_temp.u('cmp')));
+  PERFORM pg_temp.ok(v_r LIKE '23514%one_subject%', 'T-14 an Unknown reply has no other owner (' || v_r || ')');
+  v_r := pg_temp.err(format($$INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, unknown_owner, verified, answers, source, campaign_id, event_id)
+                             VALUES (%L, %L, %L, true, false, '{}', 'blast', %L, %L)$$,
+         pg_temp.u('xF'), pg_temp.u('xFv'), pg_temp.u('xbrand'), pg_temp.u('cmp'), pg_temp.u('xe')));
+  PERFORM pg_temp.ok(v_r LIKE '23514%blast_ctx%', 'T-14 an Unknown reply is never on a page (' || v_r || ')');
+  v_r := pg_temp.err(format($$INSERT INTO public.brand_form_responses (form_id, version_id, brand_id, unknown_owner, verified, answers, source, campaign_id)
+                             VALUES (%L, %L, %L, true, true, '{}', 'blast', %L)$$,
+         pg_temp.u('xF'), pg_temp.u('xFv'), pg_temp.u('xbrand'), pg_temp.u('cmp')));
+  PERFORM pg_temp.ok(v_r LIKE '23514%verified%', 'T-14 an Unknown reply is never verified (' || v_r || ')');
+
+  -- T-15 SC-32: Unknown, a new row every time; typed contact changes nothing.
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'unknown', 'campaignId', pg_temp.u('cmp')), 'i4541mb-xr1@example.test');
+  PERFORM pg_temp.ok(v_r NOT LIKE 'ERR%' AND (v_r::jsonb->>'editable')::boolean IS FALSE
+      AND v_r::jsonb->>'ownerKind' = 'unknown', 'T-15 SC-32 a signed-out reply is Unknown (' || v_r || ')');
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'unknown', 'campaignId', pg_temp.u('cmp')), 'Second');
+  PERFORM pg_temp.ok((SELECT count(*) FROM public.brand_form_responses
+                       WHERE form_id = pg_temp.u('xF') AND unknown_owner AND campaign_id = pg_temp.u('cmp')
+                         AND event_id IS NULL AND NOT verified AND source = 'blast') = 2
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE form_id = pg_temp.u('xF')
+                       AND (rsvp_id = pg_temp.u('xr1') OR user_id = pg_temp.u('xu1'))),
+    'T-15 SC-32 Unknown writes a new row each time; a typed email equal to a guest''s changes nothing');
+  -- Signed in: the person themselves, editable.
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'user', 'userId', pg_temp.u('xu5'), 'campaignId', pg_temp.u('cmp')), 'Mine');
+  PERFORM pg_temp.ok(v_r::jsonb->>'ownerKind' = 'app_user'
+      AND EXISTS (SELECT 1 FROM public.brand_form_responses WHERE user_id = pg_temp.u('xu5') AND campaign_id = pg_temp.u('cmp')
+                   AND event_id IS NULL AND verified),
+    'T-15 SC-32 signed in: stored as that user (' || v_r || ')');
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'user', 'userId', pg_temp.u('xu5'), 'campaignId', pg_temp.u('cmp')), 'Again');
+  PERFORM pg_temp.ok(v_r LIKE 'ERR:response_stale%', 'T-15 a second signed-in answer is an edit (' || v_r || ')');
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'user', 'userId', pg_temp.u('xu5'), 'campaignId', pg_temp.u('cmp')), 'Again', 0);
+  PERFORM pg_temp.ok((v_r::jsonb->>'editCount')::integer = 1, 'T-15 the signed-in edit saves (' || v_r || ')');
+  -- A personal Blast link: the recipient, by a hashed key, never the contact.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_link_issue_blast(pg_temp.u('xF'), pg_temp.u('cmp'), 'Lee.Blast@Example.test', 'Lee Blast');
+  RESET ROLE;
+  v_tok := v->>'token';
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'link', 'token', v_tok), 'Lee answers');
+  v_key := public.brand_form_blast_contact_key(pg_temp.u('xbrand'), 'lee.blast@example.test');
+  PERFORM pg_temp.ok(v_r::jsonb->>'ownerKind' = 'blast'
+      AND EXISTS (SELECT 1 FROM public.brand_form_responses WHERE blast_contact_key = v_key AND owner_label = 'Lee Blast'
+                   AND campaign_id = pg_temp.u('cmp') AND verified AND via_link)
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_responses WHERE blast_contact_key ILIKE '%lee%')
+      AND NOT EXISTS (SELECT 1 FROM public.brand_form_links WHERE blast_contact_key ILIKE '%lee%'),
+    'T-15 SC-32 an own Blast link is the recipient, kept as a hash with their name (' || v_r || ')');
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'link', 'token', v_tok), 'Forwarded', 0);
+  PERFORM pg_temp.ok(v_r LIKE 'ERR:code_required%', 'T-15 scenario 17: a forwarded link cannot change an existing answer (' || v_r || ')');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_my_response(pg_temp.u('xF'), NULL, v_tok, NULL);
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->>'state' = 'code_required' AND (v->>'unknownAllowed')::boolean AND NOT (v->>'codeAvailable')::boolean
+      AND v->'response' IS NULL AND v->>'identity' = 'Lee B.',
+    'T-15 the link read never shows the answer without a code, and offers answering as Unknown (' || v::text || ')');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_link_resolve(v_tok);
+  v_tok2 := (public.brand_form_link_issue_blast(pg_temp.u('xF'), pg_temp.u('cmp'), 'lee.blast@example.test', 'Lee Blast'))->>'token';
+  RESET ROLE;
+  PERFORM pg_temp.ok(v->>'kind' = 'blast' AND v->'channels' = '[]'::jsonb AND (v->>'answered')::boolean,
+    'T-15 a Blast link resolves with no code channels (' || v::text || ')');
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'link', 'token', v_tok), 'Old link');
+  PERFORM pg_temp.ok(v_r LIKE 'ERR:link_revoked%', 'T-15 R8.2 a new Blast link switches off the earlier one (' || v_r || ')');
+  -- SC-36: the campaign window.
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'unknown', 'campaignId', pg_temp.u('cmp_plain')), 'x');
+  PERFORM pg_temp.ok(v_r LIKE 'ERR:form_not_on_event%', 'T-15 SC-36 a campaign that did not embed the form is refused');
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'unknown', 'campaignId', pg_temp.u('cmp_old')), 'x');
+  PERFORM pg_temp.ok(v_r LIKE 'ERR:form_not_on_event%', 'T-15 SC-36 a Blast older than 30 days is refused');
+  -- SC-36: the per-form open-reply limit (2 a day here).
+  UPDATE public.brand_forms SET open_reply_limit_per_day = 2 WHERE id = pg_temp.u('xF');
+  v_r := pg_temp.blast_submit(jsonb_build_object('kind', 'unknown', 'campaignId', pg_temp.u('cmp')), 'Third');
+  PERFORM pg_temp.ok(v_r LIKE 'ERR:open_reply_limit%', 'T-15 SC-36 over the daily open-reply limit (' || v_r || ')');
+  UPDATE public.brand_forms SET open_reply_limit_per_day = 500 WHERE id = pg_temp.u('xF');
+  -- The read and the confirm check.
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_blast_form(pg_temp.u('xF'), pg_temp.u('cmp'));
+  PERFORM pg_temp.ok(v->'form'->>'id' = pg_temp.u('xF')::text AND v->'form'->'definition' IS NOT NULL
+      AND strpos(v::text, 'Lee') = 0, 'T-15 the Blast form read: definition and brand, never answers');
+  v := public.brand_form_blast_check(pg_temp.u('cmp'));
+  PERFORM pg_temp.ok((v->>'ok')::boolean, 'T-15 confirm check passes a live form of the brand');
+  RESET ROLE;
+
+  -- T-16 SC-33: never on a guest record or at the door.
+  PERFORM pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.brand_form_event_responses(pg_temp.u('xF'), pg_temp.u('xe')) r
+                                  WHERE r.campaign_id IS NOT NULL AND r.event_id IS NULL)
+      AND (SELECT count(*) FROM public.brand_form_event_responses(pg_temp.u('xF'), NULL) r WHERE r.campaign_id IS NOT NULL) = 4,
+    'T-16 SC-33 Blast replies belong to All pages only, never a page');
+  PERFORM pg_temp.ok((SELECT bool_and(p.prosrc ~ 'unknown_owner' AND p.prosrc ~ 'blast_contact_key') FROM pg_proc p
+                       WHERE p.oid IN ('public.brand_form_door_answers(uuid,uuid,jsonb)'::regprocedure,
+                                       'public.brand_form_door_full_answers(uuid,uuid,jsonb,text)'::regprocedure,
+                                       'public.brand_form_roster_export_answers(uuid)'::regprocedure,
+                                       'public.biz_brand_form_guest_answers(uuid,jsonb)'::regprocedure)),
+    'T-16 I-4541-BLAST-REPLY-NEVER-ON-GUEST the door, full read, roster export and guest answers refuse Blast and Unknown rows');
+
+  -- T-17 SC-34: Responses, filter, hide and undo, export, counts.
+  PERFORM pg_temp.as_user(pg_temp.u('xowner'));
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_responses(p_form_id => pg_temp.u('xF'), p_event_id => NULL, p_filter => 'all', p_limit => 50, p_offset => 0);
+  PERFORM pg_temp.ok((v->>'total')::integer = 4
+      AND (SELECT count(*) FROM jsonb_array_elements(v->'rows') x WHERE x->'subject'->>'name' = 'Unknown' AND x->>'ownerKind' = 'unknown') = 2
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(v->'rows') x WHERE x->>'ownerKind' = 'blast' AND x->'subject'->>'name' = 'Lee Blast'
+                    AND x->>'campaignName' = 'Spring news'),
+    'T-17 SC-34 an old Host build (five named arguments) sees Unknown rows named "Unknown" (' || left(v::text, 160) || ')');
+  v := public.biz_brand_form_responses(pg_temp.u('xF'), NULL, 'all', 50, 0, 'unknown', false);
+  PERFORM pg_temp.ok((v->>'total')::integer = 2, 'T-17 the Unknown filter');
+  v := public.biz_brand_form_responses(pg_temp.u('xF'), NULL, 'all', 50, 0, 'known', false);
+  PERFORM pg_temp.ok((v->>'total')::integer = 2 AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'rows') x WHERE x->>'ownerKind' = 'unknown'),
+    'T-17 the Known filter');
+  v_r := pg_temp.err(format($$SELECT public.biz_brand_form_responses(%L, NULL, 'all', 50, 0, 'nobody', false)$$, pg_temp.u('xF')));
+  PERFORM pg_temp.ok(v_r LIKE '22023:owner_invalid%', 'T-17 a bad owner filter is refused');
+  RESET ROLE;
+  SELECT r.id INTO v_id FROM public.brand_form_responses r WHERE r.form_id = pg_temp.u('xF') AND r.unknown_owner LIMIT 1;
+  SET LOCAL ROLE authenticated;
+  v := public.biz_brand_form_response_hide(v_id, true);
+  v := public.biz_brand_form_responses(pg_temp.u('xF'), NULL, 'all', 50, 0, 'all', false);
+  PERFORM pg_temp.ok((v->>'total')::integer = 3 AND (v->>'hiddenCount')::integer = 1, 'T-17 SC-34 a hidden reply leaves the list and counts');
+  v := public.biz_brand_form_responses(pg_temp.u('xF'), NULL, 'all', 50, 0, 'all', true);
+  PERFORM pg_temp.ok((v->>'total')::integer = 4 AND EXISTS (SELECT 1 FROM jsonb_array_elements(v->'rows') x
+                       WHERE (x->>'responseId')::uuid = v_id AND (x->>'hidden')::boolean), 'T-17 Show hidden lists it');
+  v := public.biz_brand_form_responses_export(pg_temp.u('xF'), NULL);
+  PERFORM pg_temp.ok(jsonb_array_length(v->'rows') = 3
+      AND EXISTS (SELECT 1 FROM jsonb_array_elements(v->'rows') x WHERE x->>'name' = 'Unknown' AND x->>'campaign' = 'Spring news')
+      AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'rows') x WHERE (x->>'responseId')::uuid = v_id),
+    'T-17 the All pages export names Unknown and the campaign, without hidden rows');
+  v := public.biz_brand_form_counts(pg_temp.u('xbrand'));
+  PERFORM pg_temp.ok((SELECT f->'blastReplies' FROM jsonb_array_elements(v->'forms') f WHERE f->>'formId' = pg_temp.u('xF')::text)
+                       = '{"known": 2, "unknown": 1}'::jsonb, 'T-17 R4.9 Blast reply counts leave hidden out');
+  v := public.biz_brand_form_response_hide(v_id, false);
+  v := public.biz_brand_form_responses(pg_temp.u('xF'), NULL, 'all', 50, 0, 'all', false);
+  PERFORM pg_temp.ok((v->>'total')::integer = 4, 'T-17 SC-34 Undo restores the reply');
+  RESET ROLE;
+  SELECT r.id INTO v_id FROM public.brand_form_responses r WHERE r.form_id = pg_temp.u('xF') AND r.blast_contact_key IS NOT NULL;
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.err(format($$SELECT public.biz_brand_form_response_hide(%L, true)$$, v_id));
+  PERFORM pg_temp.ok(v_r LIKE '22023:not_unknown%', 'T-17 only Unknown replies can be hidden');
+  RESET ROLE;
+  PERFORM pg_temp.as_user(pg_temp.u('xu1'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.err(format($$SELECT public.biz_brand_form_response_hide(%L, true)$$, v_id));
+  RESET ROLE;
+  PERFORM pg_temp.ok(v_r LIKE '42501%', 'T-17 a guest cannot hide anything (' || v_r || ')');
+
+  -- R4.3 decision 10: a scheduled Blast whose form closed first.
+  PERFORM pg_temp.mb_campaign(pg_temp.u('cmp_sched'), v_email, 'scheduled', NULL);
+  UPDATE public.brand_forms SET status = 'closed', closed_at = now() WHERE id = pg_temp.u('xF');
+  SET LOCAL ROLE service_role;
+  v := public.brand_form_blast_check(pg_temp.u('cmp_sched'));
+  PERFORM pg_temp.ok(v->>'code' = 'embedded_form_not_live', 'T-15 SC-30 confirm with a closed form: embedded_form_not_live');
+  PERFORM pg_temp.ok(public.brand_form_blast_hold_if_closed(pg_temp.u('cmp_sched')), 'T-15 SC-31 the claim holds it');
+  RESET ROLE;
+  PERFORM pg_temp.ok((SELECT status = 'failed' AND failure_reason = 'form_closed' FROM public.marketing_campaigns WHERE id = pg_temp.u('cmp_sched'))
+      AND EXISTS (SELECT 1 FROM public.notification_outbox WHERE category_key = 'business.blast_form_closed'
+                   AND user_id = pg_temp.u('xowner') AND payload->>'campaign_id' = pg_temp.u('cmp_sched')::text),
+    'T-15 SC-31 failed / form_closed, nothing sent, the host told');
+  UPDATE public.brand_forms SET status = 'live', closed_at = NULL WHERE id = pg_temp.u('xF');
+END;
+$t$;
+
+-- ═══ T-42 wave 6 grants; Admin (R7.1) ══════════════════════════════════════════════
+DO $t$
+DECLARE v_sig text; v jsonb; v_r text;
+BEGIN
+  FOREACH v_sig IN ARRAY ARRAY['public.brand_form_blast_campaign_ok(uuid,uuid)', 'public.brand_form_blast_check(uuid)',
+    'public.brand_form_blast_hold_if_closed(uuid)', 'public.brand_form_link_issue_blast(uuid,uuid,text,text)',
+    'public.brand_form_blast_form(uuid,uuid)', 'public.brand_form_submit_blast(jsonb,uuid,uuid)',
+    'public.brand_form_responses_scope(uuid,uuid,text,boolean)', 'public.brand_form_blast_contact_key(uuid,text)'] LOOP
+    PERFORM pg_temp.ok(has_function_privilege('service_role', v_sig, 'EXECUTE')
+        AND NOT has_function_privilege('anon', v_sig, 'EXECUTE')
+        AND NOT has_function_privilege('authenticated', v_sig, 'EXECUTE'), 'T-42 service role only: ' || v_sig);
+  END LOOP;
+  FOREACH v_sig IN ARRAY ARRAY['public.biz_brand_form_responses(uuid,uuid,text,integer,integer,text,boolean)',
+    'public.biz_brand_form_response_hide(uuid,boolean)', 'public.admin_brand_form_set_open_reply_limit(uuid,integer)'] LOOP
+    PERFORM pg_temp.ok(has_function_privilege('authenticated', v_sig, 'EXECUTE')
+        AND NOT has_function_privilege('anon', v_sig, 'EXECUTE'), 'T-42 authenticated, never anon: ' || v_sig);
+  END LOOP;
+  PERFORM pg_temp.ok(to_regprocedure('public.biz_brand_form_responses(uuid,uuid,text,integer,integer)') IS NULL,
+    'T-42 the five-argument signature is gone (old clients resolve the seven-argument one by name)');
+  -- Admin: refused for a host; an admin sets the limit and reads the numbers.
+  PERFORM pg_temp.as_user(pg_temp.u('xowner'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.err(format($$SELECT public.admin_brand_form_set_open_reply_limit(%L, 10)$$, pg_temp.u('xF')));
+  RESET ROLE;
+  PERFORM pg_temp.ok(v_r LIKE '42501:forbidden%', 'T-42 SC-43 a host cannot set the open-reply limit');
+  INSERT INTO auth.users(id, email) VALUES (pg_temp.u('xadm'), 'i4541mb-xadm@example.test');
+  INSERT INTO public.admin_users(email, role, status) VALUES ('i4541mb-xadm@example.test', 'admin', 'active');
+  PERFORM pg_temp.as_user(pg_temp.u('xadm'));
+  SET LOCAL ROLE authenticated;
+  v_r := pg_temp.err(format($$SELECT public.admin_brand_form_set_open_reply_limit(%L, 6000)$$, pg_temp.u('xF')));
+  v := public.admin_brand_form_set_open_reply_limit(pg_temp.u('xF'), 50);
+  v := public.admin_brand_forms_support(pg_temp.u('xbrand'));
+  RESET ROLE;
+  PERFORM pg_temp.ok(v_r LIKE '22023:limit_invalid%', 'T-42 the limit stays within 0..5000');
+  PERFORM pg_temp.ok((SELECT (f->>'openReplyLimitPerDay')::integer = 50 AND (f->>'blastUnknown')::integer = 2
+                             AND (f->>'blastKnown')::integer = 2 FROM jsonb_array_elements(v->'forms') f
+                       WHERE f->>'id' = pg_temp.u('xF')::text)
+      AND v ? 'formReadyAppShare14d' AND (v->'switches') ? 'BRAND_FORMS_PUSH'
+      AND strpos(v::text, 'Lee') = 0 AND strpos(v::text, '@example.test') = 0 AND strpos(v::text, 'Mine') = 0,
+    'T-42 SC-43 the Admin read: the limit, Blast counts, the form-ready share, never answers or contacts');
 END;
 $t$;
 

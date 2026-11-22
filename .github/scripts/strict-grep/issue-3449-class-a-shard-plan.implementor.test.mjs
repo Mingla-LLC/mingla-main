@@ -143,10 +143,11 @@ const EXPECTED_PLAN = Object.freeze({
   // executions: self-test and plain). Read off the plan command as above.
   // [TEST-MOD #4541] Re-derived after #4541 added the locally declared
   // no-client-service-role-rpc gate (issue-4541-no-client-service-role-rpc,
-  // +2 batch:A executions: self-test and plain). Read off the plan command as above.
-  executions: 1071,
-  loadsSeconds: [386.0, 386.0, 386.1],
-  counts: [356, 357, 358],
+  // +2 batch:A executions: self-test and plain), then the forms-owner-no-nested-lazy
+  // gate (issue-4541-forms-owner-no-nested-lazy, +2 more). Read off the plan command as above.
+  executions: 1073,
+  loadsSeconds: [386.1, 386.1, 386.1],
+  counts: [357, 358, 358],
 });
 
 const tempDir = (label) =>

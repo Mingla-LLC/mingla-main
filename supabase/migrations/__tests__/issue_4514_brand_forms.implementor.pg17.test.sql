@@ -237,7 +237,8 @@ BEGIN
     AND NOT has_function_privilege('anon', 'public.brand_form_link_issue(uuid,uuid,jsonb,uuid,integer)', 'EXECUTE')
     AND NOT has_function_privilege('anon', 'public.brand_form_code_begin(uuid,text,text,text,text)', 'EXECUTE'),
     'T-GRANT the submit core, links, codes and door reads are service-role only');
-  PERFORM pg_temp.f_assert(NOT has_function_privilege('anon', 'public.biz_brand_form_responses(uuid,uuid,text,integer,integer)', 'EXECUTE'),
+  -- #4541 R4.7: the Responses RPC gained two trailing arguments (owner, show hidden).
+  PERFORM pg_temp.f_assert(NOT has_function_privilege('anon', 'public.biz_brand_form_responses(uuid,uuid,text,integer,integer,text,boolean)', 'EXECUTE'),
     'T-GRANT anon cannot call the Responses RPC');
 END
 $t$;

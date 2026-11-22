@@ -21,6 +21,9 @@
 // public_brand_form_for_event the same way (service role only, no grant change).
 // #4541 R8.4: the address is the platform-set one (_shared/platformClientIp.ts) and
 // each request takes one atomic admission (brand_form_attempt_admit).
+// #4541 R4.5: the Blast form read ({op:"blast_form"}, ./blastForm.ts) calls
+// brand_form_blast_form as the service role; Blast replies go through the same
+// brand_form_submit_core (an Unknown reply needs the bot ticket, R8.5).
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
@@ -184,6 +187,19 @@ export async function handler(req: Request): Promise<Response> {
       async pageForm(eventId) {
         const { data, error } = await supabase.rpc("public_brand_form_for_event", {
           p_event_id: eventId,
+        });
+        return {
+          data,
+          error: error ? { message: String(error.message ?? "") } : null,
+        };
+      },
+    },
+    blast: {
+      // #4541 R4.5: the Blast form read, as the service role.
+      async blastForm(formId, campaignId) {
+        const { data, error } = await supabase.rpc("brand_form_blast_form", {
+          p_form_id: formId,
+          p_campaign_id: campaignId,
         });
         return {
           data,

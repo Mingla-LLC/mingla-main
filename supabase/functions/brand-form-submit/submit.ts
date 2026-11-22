@@ -69,6 +69,13 @@ import {
   platformClientIp,
   UNKNOWN_CLIENT_IP,
 } from "../_shared/platformClientIp.ts";
+import {
+  type BlastFormDeps,
+  handleBlastForm,
+  isBlastFormOp,
+  parseBlastFormRequest,
+} from "./blastForm.ts";
+import { type BotTicketKey, verifyBotTicket } from "./botTicket.ts";
 
 /** The derivation label for this limiter's salt (one label per purpose, #3201). */
 export const IP_SALT_LABEL = "brand-form-submit-ip-salt";
@@ -126,6 +133,12 @@ export interface BrandFormSubmitDeps {
   linkRead?: Pick<LinkReadDeps, "myResponse">;
   /** #4541 R1.14: the RSVP page's form read (./pageForm.ts). */
   page?: Pick<PageFormDeps, "pageForm" | "botTicketKey">;
+  /** #4541 R4.5: the Blast form read (./blastForm.ts). */
+  blast?: Pick<BlastFormDeps, "blastForm">;
+  /** #4541 R8.5: the bot ticket key (tests); defaults to the shared derivation. */
+  botTicketKey?: BotTicketKey;
+  /** Tests only: the clock the bot ticket is checked against. */
+  nowMs?: () => number;
 }
 
 export function corsFor(origin: string | null): Record<string, string> | null {
@@ -336,6 +349,41 @@ export async function handleBrandFormSubmit(
       return fail("server_error", cors);
     }
   }
+  // #4541 R4.5: {op:"blast_form"} is the link page (or app) reading a form sent
+  // in a Blast, with the campaign window checked (./blastForm.ts).
+  if (isBlastFormOp(raw)) {
+    const blastReq = parseBlastFormRequest(raw);
+    if (!blastReq || !deps.blast) return fail("bad_request", cors);
+    try {
+      const salt = await (deps.ipSalt ?? (() => defaultIpSalt()))();
+      const ip = platformClientIp(req);
+      const admit = await deps.db.attemptAdmit(
+        await hashIp(ip, salt),
+        blastReq.formId,
+        attemptBucket(ip, "read", log),
+      );
+      if (!admit.allowed) {
+        log("[brand-form-submit] blast_form rate_limited");
+        return fail("rate_limited", cors);
+      }
+      const result = await handleBlastForm(blastReq, {
+        log,
+        botTicketKey: deps.botTicketKey,
+        ...deps.blast,
+      });
+      return new Response(JSON.stringify(result.body), {
+        status: result.status,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      log(
+        `[brand-form-submit] blast_form server_error ${
+          e instanceof Error ? e.name : "unknown"
+        }`,
+      );
+      return fail("server_error", cors);
+    }
+  }
   // {op:"link_read"} is the link page reading its form with the personal token
   // (./linkRead.ts): the read is service-role only, never anon PostgREST.
   if (isLinkReadOp(raw)) {
@@ -414,6 +462,38 @@ export async function handleBrandFormSubmit(
     if (!payload) {
       return fail("sign_in_required", cors);
     }
+    // #4541 R8.5: an Unknown Blast reply (no link, not signed in) passes the
+    // honeypot and the bot ticket before any write. A filled honeypot gets a
+    // fake success and nothing is written.
+    const credential = payload.credential as Record<string, unknown>;
+    if (credential.kind === "unknown") {
+      if (typeof body.website === "string" && body.website.length > 0) {
+        log(`[brand-form-submit] honeypot form=${body.formId}`);
+        return json(
+          {
+            ok: true,
+            responseId: crypto.randomUUID(),
+            editCount: 0,
+            versionId: body.versionId ?? "",
+            created: true,
+            editable: false,
+          },
+          200,
+          cors,
+        );
+      }
+      const ticketOk = await verifyBotTicket(
+        body.botTicket,
+        body.formId,
+        body.campaignId ?? null,
+        deps.botTicketKey,
+        deps.nowMs ? deps.nowMs() : Date.now(),
+      );
+      if (!ticketOk) {
+        log(`[brand-form-submit] refused code=bot_check_failed form=${body.formId}`);
+        return fail("bot_check_failed", cors);
+      }
+    }
     const unstorable = unstorableAnswerErrors(body.answers);
     if (unstorable.length > 0) {
       log(
@@ -459,6 +539,7 @@ export async function handleBrandFormSubmit(
         editCount: Number(data.editCount ?? 0),
         versionId: String(data.versionId ?? ""),
         created: data.created === true,
+        ...(data.editable === false ? { editable: false } : {}),
       },
       200,
       cors,
