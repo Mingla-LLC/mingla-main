@@ -8,7 +8,7 @@
  * owner. Privacy rules are unchanged: the card holds only what resolve
  * returns (title, date, masked email); no pass or QR before sign-in.
  */
-import type { PendingClaim } from "../../services/attendanceClaimService";
+import type { ClaimNoun, PendingClaim } from "../../services/attendanceClaimService";
 
 export const WELCOME_DISMISS_CLAIM_LABEL = "Use a different account";
 
@@ -49,4 +49,22 @@ export function welcomeSignInOptions(input: {
     // screen never has two code fields at once.
     email: input.emailSignInAvailable && !(claimEmail && input.claimEmailCodeOpen),
   };
+}
+
+/**
+ * #4490 W2-N33 — the noun for "Opening your …" while a claim link resolves.
+ * A OneLink claim link carries it (`c=<noun>`, claim-link `appLink`); a direct
+ * `/c/<code>` link does not, and the resolve answer is what brings the noun.
+ * Unknown → null: the welcome then shows the spinner without a line rather
+ * than call a pass a ticket.
+ */
+export function claimLinkNounFromUrl(url: string): ClaimNoun | null {
+  try {
+    const value = new URL(url).searchParams.get("c");
+    return value === "ticket" || value === "pass" || value === "booking" || value === "receipt"
+      ? value
+      : null;
+  } catch {
+    return null;
+  }
 }

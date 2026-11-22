@@ -137,10 +137,12 @@ describe("W2-N27 a claim link opened while signed out reaches the claim handler"
   });
 
   test("F3-L3 the shell routes /c links before the unauthenticated deferral, on the cold and the warm path", () => {
+    // [TEST-MOD-APPROVED #4490] fix 4: handleDeepLink takes a source ("os")
+    // (W2-N32) and passes the link's noun to the claim handler (W2-N33).
     const index = read("../../../app/index.tsx");
-    const body = index.slice(index.indexOf("const handleDeepLink = async (url: string) => {"));
+    const body = index.slice(index.indexOf("const handleDeepLink = async (url: string, source"));
     const claimAt = body.indexOf("const claimLinkCode = isOAuthCallback ? null : pendingClaimCodeFromUrl(url);");
-    const handleAt = body.indexOf("handleIncomingClaimCode(claimLinkCode);");
+    const handleAt = body.indexOf("handleIncomingClaimCode(claimLinkCode, claimLinkNounFromUrl(url));");
     const deferAt = body.indexOf("'mingla_deferred_deeplink'");
     expect(claimAt).toBeGreaterThan(-1);
     expect(handleAt).toBeGreaterThan(claimAt);
@@ -148,8 +150,8 @@ describe("W2-N27 a claim link opened while signed out reaches the claim handler"
     expect(body.slice(claimAt, deferAt)).toContain("if (claimLinkCode && !userIdRef.current) {");
     // Cold start (getInitialURL) and warm links (url listener) both use it.
     const linking = index.slice(index.indexOf("Linking.getInitialURL().then(async (url) => {"));
-    expect(linking.slice(0, 1200)).toContain("handleDeepLink(url);");
-    expect(linking.slice(0, 1600)).toContain("handleDeepLink(event.url);");
+    expect(linking.slice(0, 1200)).toContain('handleDeepLink(url, "os");');
+    expect(linking.slice(0, 1600)).toContain('handleDeepLink(event.url, "os");');
   });
 
   test("F3-L4 the handler waits for the session check, stamps a signed-in open, and never logs the code with an email", () => {
@@ -197,10 +199,13 @@ describe("W2-N27 a claim link opened while signed out reaches the claim handler"
     const attached = lastAttachedClaimSweep("u-new");
     const entry = attached ? linkedClaimedEntry(attached.claimed, claim()) : null;
     expect(entry ? claimedEntryPath(entry) : null).toBe("/purchases/venue_booking/c14ed7f7");
+    // [TEST-MOD-APPROVED #4490] fix 4 (W2-N31): the hand-off moved into
+    // onboardingClaimHandoff (missingTicketModel) and survives the sign-in
+    // remount; the fix-4 suite covers it in depth.
     const index = read("../../../app/index.tsx");
     const done = index.slice(index.indexOf("logger.nav('OnboardingFlow completed"));
-    expect(done.slice(0, 2400)).toContain("linkedClaimedEntry(attached.claimed, linkedBannerClaim)");
-    expect(done.slice(0, 2400)).toContain("router.push(claimedEntryPath(entry) as never);");
+    expect(done.slice(0, 3200)).toContain("onboardingClaimHandoff(");
+    expect(done.slice(0, 3200)).toContain("router.push(path as never);");
   });
 });
 

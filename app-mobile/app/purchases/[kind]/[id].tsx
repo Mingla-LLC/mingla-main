@@ -21,7 +21,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar";
 import * as FileSystem from "expo-file-system/legacy";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import QRCode from "react-native-qrcode-svg";
@@ -36,6 +36,7 @@ import {
 
 import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
 import { venueDetailMissingCopy } from "../../../src/components/purchases/venuePurchaseModel";
+import { purchaseDetailBack } from "../../../src/components/purchases/purchaseDetailNav";
 import { VENUE_LINK_COPY } from "../../../src/components/venueLink/venueLinkModel";
 import {
   isVenuePurchaseKind,
@@ -240,6 +241,7 @@ export default function PurchaseDetailRoute(): React.ReactElement {
   const { t } = useTranslation("purchases");
   const { open: openInMingla } = useOpenInMingla();
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const params = useLocalSearchParams<{
@@ -458,9 +460,13 @@ export default function PurchaseDetailRoute(): React.ReactElement {
     [item?.kind, kind],
   );
 
+  // #4490 W2-N32: back pops past every copy of this same detail (a warm link
+  // opens it twice) and opens the Purchases list when nothing else is below.
   const goBack = (): void => {
-    if (router.canGoBack()) router.back();
-    else router.replace("/purchases");
+    const state = navigation.getState();
+    const action = purchaseDetailBack(state?.routes, state?.index);
+    if (action.kind === "dismiss") router.dismiss(action.count);
+    else router.replace(action.href);
   };
 
   const handleAddToCalendar = useCallback(async (): Promise<void> => {

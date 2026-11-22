@@ -109,6 +109,7 @@ import {
   pendingClaimCodeFromUrl,
   settlePendingClaimForAccount,
   type AttendanceClaimIntent,
+  type ClaimNoun,
   type PendingClaim,
   // #3524 — the deliberate-account-handoff marker. It is what keeps a pending
   // claim alive across the sign-out the mismatch flow performs on purpose.
@@ -151,8 +152,13 @@ import { useOtaUpdates } from "../src/hooks/useOtaUpdates";
 import { OtaUpdateBanner } from "../src/components/ui/OtaUpdateBanner";
 import RealtimeSubscriptions from "../src/components/RealtimeSubscriptions";
 import { TicketFoundBanner } from "../src/components/purchases/TicketFoundBanner";
-import { claimedEntryPath } from "../src/components/purchases/missingTicketModel";
-import { linkedClaimedEntry } from "../src/services/pendingClaimPolicy";
+import { onboardingClaimHandoff } from "../src/components/purchases/missingTicketModel";
+import { osLinkPushIsDuplicate } from "../src/components/purchases/purchaseDetailNav";
+import { claimLinkNounFromUrl } from "../src/components/signIn/welcomeClaimModel";
+import {
+  rememberWelcomeLinkedClaim,
+  welcomeLinkedClaim,
+} from "../src/services/pendingClaimPolicy";
 import { lastAttachedClaimSweep } from "../src/services/claimSweep";
 import { ClaimLinkLandedSheet } from "../src/components/purchases/ClaimLinkLandedSheet";
 import { useClaimRecheck } from "../src/hooks/useClaimRecheck";
@@ -479,6 +485,8 @@ function AppContent() {
   } | null>(null);
   const [ticketClaim, setTicketClaim] = useState<PendingClaim | null>(null);
   const [ticketClaimResolving, setTicketClaimResolving] = useState(false);
+  // #4490 W2-N33 — the noun the link carried, for "Opening your …".
+  const [ticketClaimResolvingNoun, setTicketClaimResolvingNoun] = useState<ClaimNoun | null>(null);
   // #4473 — a signed-in account opened a /c link the sweep did not attach:
   // "Is this your ticket?" asks it to prove the purchase contact.
   const [linkLandedClaim, setLinkLandedClaim] = useState<PendingClaim | null>(null);
@@ -509,7 +517,6 @@ function AppContent() {
   // never judged by the signed-out rules during boot.
   const [welcomeClaimRetry, setWelcomeClaimRetry] = useState(0);
   const ticketClaimCachedRef = useRef(false);
-  const lastWelcomeTicketClaimRef = useRef<PendingClaim | null>(null);
   useEffect(() => {
     const generation = ++pendingClaimLoadGenerationRef.current;
     if (isAuthenticated) {
@@ -563,7 +570,7 @@ function AppContent() {
   const dismissWelcomeTicketClaim = useCallback((): void => {
     pendingClaimLoadGenerationRef.current += 1;
     ticketClaimCachedRef.current = false;
-    lastWelcomeTicketClaimRef.current = null;
+    rememberWelcomeLinkedClaim(null);
     setTicketClaim(null);
     setTicketClaimResolving(false);
     void clearPendingClaimIntent();
@@ -571,15 +578,18 @@ function AppContent() {
 
   // #4490 N157 — the purchase the signed-out welcome showed, kept across the
   // sign-in so the found-purchase banner's View opens THAT one when the sweep
-  // attaches several (lastWelcomeTicketClaimRef is declared above).
-  const [linkedBannerClaim, setLinkedBannerClaim] = useState<PendingClaim | null>(null);
+  // attaches several.
+  // W2-N31: signing in REMOUNTS AppContent (SessionManagementProvider is keyed
+  // on the user id, bottom of this file), so the claim lives in module memory
+  // (rememberWelcomeLinkedClaim) and the signed-in instance reads it on mount.
+  const [linkedBannerClaim, setLinkedBannerClaim] = useState<PendingClaim | null>(
+    () => (isAuthenticated ? welcomeLinkedClaim() : null),
+  );
   useEffect(() => {
-    if (!isAuthenticated && ticketClaim) lastWelcomeTicketClaimRef.current = ticketClaim;
-    if (isAuthenticated && lastWelcomeTicketClaimRef.current) {
-      setLinkedBannerClaim(lastWelcomeTicketClaimRef.current);
-      lastWelcomeTicketClaimRef.current = null;
-    }
-    if (!isAuthenticated && !ticketClaim) setLinkedBannerClaim(null);
+    if (isAuthenticated) return;
+    // Signed out: hold exactly what the card shows (null clears it).
+    rememberWelcomeLinkedClaim(ticketClaim);
+    setLinkedBannerClaim(null);
   }, [isAuthenticated, ticketClaim]);
 
   useEffect(() => {
@@ -861,7 +871,8 @@ function AppContent() {
   }, [user?.id, pendingClaimOnboardingActive]);
 
   const handleIncomingClaimCode = useCallback(
-    (code: string): void => {
+    (code: string, noun: ClaimNoun | null = null): void => {
+      setTicketClaimResolvingNoun(noun);
       void (async () => {
         const generation = ++pendingClaimLoadGenerationRef.current;
         await waitForAuthSettled();
@@ -2500,11 +2511,11 @@ function AppContent() {
       try {
         const handledByStripe = await handleURLCallback(url);
         if (!handledByStripe) {
-          handleDeepLink(url);
+          handleDeepLink(url, "os");
         }
       } catch (err) {
         console.warn('[Deeplink] handleURLCallback threw; falling back to handleDeepLink', err);
-        handleDeepLink(url);
+        handleDeepLink(url, "os");
       }
     });
 
@@ -2514,11 +2525,11 @@ function AppContent() {
       try {
         const handledByStripe = await handleURLCallback(event.url);
         if (!handledByStripe) {
-          handleDeepLink(event.url);
+          handleDeepLink(event.url, "os");
         }
       } catch (err) {
         console.warn('[Deeplink] handleURLCallback threw; falling back to handleDeepLink', err);
-        handleDeepLink(event.url);
+        handleDeepLink(event.url, "os");
       }
     });
 
@@ -2528,7 +2539,9 @@ function AppContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receiveAttendanceClaimUrl]);
 
-  const handleDeepLink = async (url: string) => {
+  // W2-N32: `source` "os" = the OS handed this URL to the app (initial URL or
+  // "url" event); expo-router's own linking has opened any route it serves.
+  const handleDeepLink = async (url: string, source: "os" | "replay" = "replay") => {
     console.log("Deep link received:", url);
 
     // OAuth callbacks MUST run immediately — they ARE the auth flow.
@@ -2544,7 +2557,7 @@ function AppContent() {
     // stale `user` of this closure cannot misroute it.
     const claimLinkCode = isOAuthCallback ? null : pendingClaimCodeFromUrl(url);
     if (claimLinkCode && !userIdRef.current) {
-      handleIncomingClaimCode(claimLinkCode);
+      handleIncomingClaimCode(claimLinkCode, claimLinkNounFromUrl(url));
       return;
     }
     if (!isOAuthCallback && !user) {
@@ -2662,6 +2675,13 @@ function AppContent() {
     // setViewingFriendProfileId — so a `mingla://session/{id}` (→ group chat,
     // ORCH-1080) or `mingla://profile/{id}` cold-start tap reaches its container.
     const action = parseDeepLink(url);
+    // #4490 W2-N32: a purchase detail opened from an OS link is already on
+    // screen (expo-router opened it); pushing it again stacked two copies and
+    // made the header back look dead.
+    if (osLinkPushIsDuplicate(source, action?.kind)) {
+      console.log("[DEEPLINK] Purchase link opened by the router; no second push");
+      return;
+    }
     executeDeepLink(action, {
       setCurrentPage: setCurrentPage as (page: string) => void,
       setViewingFriendProfileId: (id: string) => setViewingFriendProfileId(id),
@@ -3379,19 +3399,32 @@ function AppContent() {
               requestAnimationFrame(() => {
                 router.push(result.landing?.route as never);
               });
-            } else if (linkedBannerClaim) {
-              // #4490 N157 — a new account made through a claim link's
-              // welcome card lands on THAT purchase's detail once onboarding
-              // ends (the sweep that attached it is kept per account).
+            } else {
+              // #4490 N157 / W2-N31 — a new account made through a claim
+              // link's welcome card lands on THAT purchase's detail once
+              // onboarding ends. The link's claim comes from the welcome card
+              // (module memory survives the sign-in remount) or onboarding's
+              // own pending claim; the rows from the last sweep that attached.
               const claimUserId = userIdRef.current;
-              const attached = claimUserId ? lastAttachedClaimSweep(claimUserId) : null;
-              const entry = attached
-                ? linkedClaimedEntry(attached.claimed, linkedBannerClaim)
-                : null;
-              setLinkedBannerClaim(null);
-              if (entry) {
+              const handoff = onboardingClaimHandoff(
+                linkedBannerClaim ?? result?.claim?.pendingClaim ?? null,
+                (claimUserId ? lastAttachedClaimSweep(claimUserId)?.claimed : null) ??
+                  result?.claim?.attached ?? null,
+              );
+              // Durable, non-personal proof for device passes (no code, email or id).
+              logger.nav('[ClaimHandoff] onboarding done', {
+                reason: handoff.reason,
+                kind: handoff.kind,
+                navigated: handoff.path !== null,
+              });
+              if (handoff.path !== null) {
+                const path = handoff.path;
+                rememberWelcomeLinkedClaim(null);
+                setLinkedBannerClaim(null);
+                // The person is taken to it; the banner would sit over its header.
+                dismissTicketFoundBanner();
                 requestAnimationFrame(() => {
-                  router.push(claimedEntryPath(entry) as never);
+                  router.push(path as never);
                 });
               }
             }
@@ -3431,6 +3464,7 @@ function AppContent() {
           followInvite={followInviteWelcome}
           ticketClaim={ticketClaim}
           ticketClaimResolving={ticketClaimResolving}
+          ticketClaimResolvingNoun={ticketClaimResolvingNoun}
           onDismissTicketClaim={dismissWelcomeTicketClaim}
         />
       </ErrorBoundary>

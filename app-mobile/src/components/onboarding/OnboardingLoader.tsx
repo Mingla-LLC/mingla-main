@@ -3,8 +3,16 @@ import { View, ActivityIndicator, StatusBar, StyleSheet } from 'react-native'
 import { useOnboardingResume } from '../../hooks/useOnboardingResume'
 import OnboardingFlow from '../OnboardingFlow'
 import { colors } from '../../constants/designSystem'
-import { getPendingClaimIntent, type PendingClaim } from '../../services/attendanceClaimService'
-import { runClaimSweep, type ClaimSweepResult } from '../../services/claimSweep'
+import {
+  getPendingClaimIntent,
+  type ClaimedEntry,
+  type PendingClaim,
+} from '../../services/attendanceClaimService'
+import {
+  lastAttachedClaimSweep,
+  runClaimSweep,
+  type ClaimSweepResult,
+} from '../../services/claimSweep'
 import {
   decideOnboardingMode,
   deferredLocationSeedFromOrder,
@@ -25,8 +33,19 @@ interface OnboardingLoaderProps {
     country?: string | null
     preferred_language?: string | null
   }
-  onComplete: (result?: { landing?: { route: string } }) => void
+  onComplete: (result?: OnboardingCompleteResult) => void
   modeOverride?: OnboardingMode | null
+}
+
+/**
+ * #4490 W2-N31 — what onboarding knew about a claim link when it ended: the
+ * pending claim it prefilled from and the rows the sign-in sweep attached.
+ * The shell opens that purchase (AppContent remounts at sign-in, so it cannot
+ * rely on its own memory of the welcome card).
+ */
+export type OnboardingCompleteResult = {
+  landing?: { route: string }
+  claim?: { pendingClaim: PendingClaim | null; attached: ClaimedEntry[] | null }
 }
 
 export default function OnboardingLoader({
@@ -110,7 +129,18 @@ export default function OnboardingLoader({
 
   return (
     <OnboardingFlow
-      onComplete={onComplete}
+      onComplete={(result) => {
+        // The last sweep that attached something wins: a later idempotent
+        // sweep (count 0) may have replaced claimDecision.result.
+        const attached = lastAttachedClaimSweep(userId)?.claimed ??
+          (claimDecision.result && claimDecision.result.count > 0
+            ? claimDecision.result.claimed
+            : null)
+        onComplete({
+          ...result,
+          claim: { pendingClaim: claimDecision.pendingClaim, attached },
+        })
+      }}
       initialStep={resumeData.initialStep}
       initialData={resumeData.initialData}
       phonePreVerified={resumeData.phonePreVerified}

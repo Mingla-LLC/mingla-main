@@ -9,6 +9,7 @@ import { postHogService } from "../../services/postHogService";
 import type { PurchaseTimelineItem } from "../../utils/purchaseTimeline";
 import { purchaseCountLabel } from "../../utils/purchasePresentation";
 import SettingsRow from "./SettingsRow";
+import { isVenueKind, itemWhen } from "./purchasesCardWhen";
 
 interface PurchasesCardProps {
   userId: string | null | undefined;
@@ -17,42 +18,7 @@ interface PurchasesCardProps {
   onFinishSetup: () => void;
 }
 
-// #4490 W2-N21 — venue passes, plans and waitlist places read like the rest
-// of the venue screens: the venue's 24-hour time, "Today" before 17:00, their
-// own date line for a plan, and guests rather than tickets.
-const isVenueKind = (item: PurchaseTimelineItem): boolean =>
-  item.kind === "venue_booking" || item.kind === "venue_membership" || item.kind === "venue_waitlist";
-
-function itemWhen(
-  item: PurchaseTimelineItem,
-  groupKey: string,
-  t: (key: string, options?: Record<string, unknown>) => string,
-): string {
-  const date = new Date(item.startsAt);
-  if (Number.isNaN(date.getTime())) return t("card.dateTbd");
-  if (item.whenText) return item.whenText;
-  const venue = isVenueKind(item);
-  try {
-    const time = new Intl.DateTimeFormat(venue ? "en-GB" : undefined, {
-      hour: venue ? "2-digit" : "numeric",
-      minute: "2-digit",
-      ...(venue ? { hourCycle: "h23" as const } : {}),
-      timeZone: item.timezone,
-    }).format(date);
-    if (groupKey === "tonight") return t("card.tonightAt", { time });
-    if (venue && groupKey === "today") return t("card.todayAt", { time });
-    const day = new Intl.DateTimeFormat(undefined, {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      timeZone: item.timezone,
-    }).format(date);
-    return `${day} · ${time}`;
-  } catch {
-    return date.toLocaleString();
-  }
-}
-
+// #4490 W2-N21 / W2-N34: the "when" line lives in purchasesCardWhen.ts.
 export function PurchasesCard({
   userId,
   setupDeferred,

@@ -178,6 +178,11 @@ export const venueBookingProgress = (b: VenueBooking): string | null => passProg
 /** W2-N17: the guest change button, singular or plural ("Change to 1 guest"). */
 export const venueGuestChangeLabel = (guests: number): string => `Change to ${guestsText(guests)}`;
 
+/** A booking always keeps at least one guest. */
+export const VENUE_MIN_GUESTS = 1;
+/** Carried-over check: "−" is disabled (visibly) at the minimum, never a dead tap. */
+export const venueGuestsCanDecrease = (guests: number): boolean => guests > VENUE_MIN_GUESTS;
+
 export function venueBookingGuests(b: VenueBooking): number {
   return b.passes[0]?.admits ?? b.hire?.guests ?? b.hour?.guests ?? b.lines.reduce((n, l) => n + l.guests, 0);
 }
@@ -200,7 +205,10 @@ export function venueBookingMoneyRows(b: VenueBooking): VenueMoneyRow[] {
   if (b.state === "approved_payment_required" && b.amountDueNowMinor > 0) {
     rows.push({ label: "Pay to hold your date", value: money(b.amountDueNowMinor) });
   }
-  if (b.refundedMinor > 0) rows.push({ label: "Refunded", value: money(b.refundedMinor) });
+  // W2-N35: the server's refundedMinor counts refunds still being sent
+  // (submitted, processing) as well as finished ones, so the row says "Refund"
+  // (Purchases' existing word), never "Refunded" before the money has moved.
+  if (b.refundedMinor > 0) rows.push({ label: "Refund", value: money(b.refundedMinor) });
   return rows;
 }
 

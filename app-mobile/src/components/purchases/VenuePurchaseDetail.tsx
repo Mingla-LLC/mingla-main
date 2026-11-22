@@ -65,6 +65,7 @@ import {
   venueBookingStateLabel,
   venueBookingWhenLine,
   venueGuestChangeLabel,
+  venueGuestsCanDecrease,
   venueMemberCanRenew,
   venueMemberErrorCopy,
   venueMemberState,
@@ -113,6 +114,7 @@ function Action({
   accessibilityLabel,
   onPress,
   busy = false,
+  disabled = false,
   primary = false,
   testID,
 }: {
@@ -121,18 +123,26 @@ function Action({
   accessibilityLabel?: string;
   onPress: () => void;
   busy?: boolean;
+  /** Shown dimmed and not tappable (e.g. "−" at one guest). */
+  disabled?: boolean;
   primary?: boolean;
   testID: string;
 }): React.ReactElement {
+  const off = busy || disabled;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ busy, disabled: busy }}
-      disabled={busy}
+      accessibilityState={{ busy, disabled: off }}
+      disabled={off}
       onPress={onPress}
       testID={testID}
-      style={({ pressed }) => [styles.action, primary && styles.actionPrimary, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.action,
+        primary && styles.actionPrimary,
+        disabled && styles.actionDisabled,
+        pressed && styles.pressed,
+      ]}
     >
       {busy ? <ActivityIndicator color={C.text} /> : <Text style={styles.actionText}>{label}</Text>}
     </Pressable>
@@ -373,6 +383,7 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
             <Action
               label="−"
               accessibilityLabel={VENUE_GUEST_STEPPER_LABELS.fewer}
+              disabled={!venueGuestsCanDecrease(guests)}
               onPress={() => void stepGuests(guests - 1)}
               testID="venue-booking-guests-minus"
             />
@@ -757,6 +768,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   actionPrimary: { backgroundColor: C.accent, borderColor: C.accent },
+  actionDisabled: { opacity: 0.4 },
   actionText: { color: C.text, ...typography.sm, fontWeight: fontWeights.bold },
   pressed: { opacity: 0.7 },
 });

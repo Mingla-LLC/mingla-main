@@ -273,10 +273,12 @@ function groupDescriptor(
   item: PurchaseTimelineItem,
   now: Date,
   locale: string,
+  dayWords: boolean,
 ): { key: string; title: string } {
   const startsAt = new Date(item.startsAt);
   const tonightThreshold = now.getTime() - 6 * 60 * 60 * 1000;
   const isTonight =
+    dayWords &&
     startsAt.getTime() >= tonightThreshold &&
     partsKey(startsAt, item.timezone) === partsKey(now, item.timezone);
   if (isTonight && VENUE_KINDS.has(item.kind)) {
@@ -296,10 +298,11 @@ function groupItems(
   items: PurchaseTimelineItem[],
   now: Date,
   locale: string,
+  dayWords = true,
 ): PurchaseGroup[] {
   const groups = new Map<string, PurchaseGroup>();
   for (const item of items) {
-    const descriptor = groupDescriptor(item, now, locale);
+    const descriptor = groupDescriptor(item, now, locale, dayWords);
     const group = groups.get(descriptor.key) ?? {
       key: descriptor.key,
       title: descriptor.title,
@@ -624,6 +627,9 @@ export function buildPurchaseTimeline(
     .sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt));
   return {
     upcoming: groupItems(upcoming, now, locale),
-    past: groupItems(past, now, locale),
+    // #4490 W2-N37: Past is grouped by month only. "Tonight" / "Today" are
+    // for what is still coming; a place left (or a booking cancelled) for
+    // later today is not "Tonight" in Past. Shared by every kind.
+    past: groupItems(past, now, locale, false),
   };
 }

@@ -198,14 +198,17 @@ Deno.test("the shell really does take an attendance-claim URL before the parser 
   const src = read(SHELL);
   for (
     const [taken, fallback, where] of [
+      // [TEST-MOD-APPROVED #4490] W2-N32: the OS Linking paths now tell
+      // handleDeepLink the URL came from the OS (`"os"`), so a purchase link
+      // expo-router already opened is not pushed a second time.
       [
         "if (await receiveAttendanceClaimUrl(url)) return;",
-        "handleDeepLink(url);",
+        'handleDeepLink(url, "os");',
         "the cold-start Linking.getInitialURL path",
       ],
       [
         "if (await receiveAttendanceClaimUrl(event.url)) return;",
-        "handleDeepLink(event.url);",
+        'handleDeepLink(event.url, "os");',
         "the warm Linking.addEventListener path",
       ],
     ] as const

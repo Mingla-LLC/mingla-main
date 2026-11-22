@@ -40,6 +40,7 @@ import { WelcomeVideoBackground } from "./WelcomeVideoBackground";
 import {
   sendPendingClaimEmailCode,
   verifyPendingClaimEmailCode,
+  type ClaimNoun,
   type PendingClaim,
 } from "../../services/attendanceClaimService";
 import { formatStartsAtLabel } from "../../utils/zoneLabel";
@@ -83,6 +84,8 @@ interface WelcomeScreenProps {
   /** #4063 — safe claim-link summary. The address is already server-masked. */
   ticketClaim?: PendingClaim | null;
   ticketClaimResolving?: boolean;
+  /** #4490 W2-N33 — the link's noun while it resolves; null = spinner only. */
+  ticketClaimResolvingNoun?: ClaimNoun | null;
   /** #4490 W2-N26 — "Use a different account" under the claim card. */
   onDismissTicketClaim?: () => void;
 }
@@ -111,6 +114,7 @@ export default function WelcomeScreen({
   followInvite = null,
   ticketClaim = null,
   ticketClaimResolving = false,
+  ticketClaimResolvingNoun = null,
   onDismissTicketClaim,
 }: WelcomeScreenProps) {
   const insets = useSafeAreaInsets();
@@ -645,11 +649,12 @@ export default function WelcomeScreen({
           {ticketClaimResolving ? (
             <View style={styles.claimResolving} testID="welcome-ticket-claim-resolving">
               <ActivityIndicator color="#ffffff" />
-              <Text style={styles.claimResolvingText}>
-                {t("auth:welcome.opening.ticket", {
-                  defaultValue: "Opening your ticket…",
-                })}
-              </Text>
+              {/* W2-N33: the noun only when the link said which one. */}
+              {ticketClaimResolvingNoun ? (
+                <Text style={styles.claimResolvingText}>
+                  {t(`auth:welcome.opening.${ticketClaimResolvingNoun}`)}
+                </Text>
+              ) : null}
             </View>
           ) : null}
 

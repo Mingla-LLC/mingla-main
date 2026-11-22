@@ -201,3 +201,22 @@ export function linkedClaimedEntry<
   );
   return matches.length === 1 ? matches[0] : null;
 }
+
+/**
+ * #4490 W2-N31 — the purchase the signed-out welcome card showed, held in
+ * module memory so it survives the sign-in. Signing in changes the key of
+ * `SessionManagementProvider` in app/index.tsx, which remounts AppContent and
+ * wipes its refs and state; fix 3 kept this claim there, so the new account's
+ * AppContent never knew which purchase the link was for. Memory only (never
+ * stored): it holds what the card already showed, is replaced by the next
+ * card and cleared by a signed-out welcome with no card.
+ */
+let welcomeLinkedClaimHeld: PendingClaim | null = null;
+
+export function rememberWelcomeLinkedClaim(claim: PendingClaim | null): void {
+  welcomeLinkedClaimHeld = claim;
+}
+
+export function welcomeLinkedClaim(): PendingClaim | null {
+  return welcomeLinkedClaimHeld;
+}

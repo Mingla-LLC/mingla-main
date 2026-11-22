@@ -11,8 +11,8 @@ import { useTranslation } from "react-i18next";
 
 import type { PendingClaim } from "../../services/attendanceClaimService";
 import type { ClaimSweepResult } from "../../services/claimSweep";
-import { linkedClaimedEntry } from "../../services/pendingClaimPolicy";
-import { claimedEntryPath } from "./missingTicketModel";
+// #4490 N157 / W2-N31: View's destination and handler live in the pure model.
+import { openFoundBannerTarget } from "./missingTicketModel";
 
 type Props = {
   result: ClaimSweepResult | null;
@@ -27,16 +27,6 @@ function summary(result: ClaimSweepResult): string {
     return `${first.quantity > 1 ? `${first.quantity} ${first.noun}s` : first.noun} · ${first.title}`;
   }
   return `${result.count} new ${result.count === 1 ? "purchase" : "purchases"} found`;
-}
-
-// #4490 N157: one purchase, or the one the claim link was for when the sweep
-// attached several, opens its own detail; anything else opens the list.
-export function bannerDestination(
-  result: ClaimSweepResult,
-  linkedClaim: PendingClaim | null = null,
-): string {
-  const entry = linkedClaimedEntry(result.claimed, linkedClaim);
-  return entry ? claimedEntryPath(entry) : "/purchases";
 }
 
 export function TicketFoundBanner({ result, onDismiss, linkedClaim = null }: Props): React.ReactElement | null {
@@ -65,9 +55,12 @@ export function TicketFoundBanner({ result, onDismiss, linkedClaim = null }: Pro
     : t("toast.title.ticket", { count: result.count });
 
   const open = (): void => {
-    const path = bannerDestination(result, linkedClaim);
-    onDismiss();
-    router.push(path as never);
+    openFoundBannerTarget({
+      claimed: result.claimed,
+      linkedClaim,
+      dismiss: onDismiss,
+      push: (path) => router.push(path as never),
+    });
   };
 
   return (
