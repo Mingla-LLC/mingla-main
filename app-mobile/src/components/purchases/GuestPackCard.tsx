@@ -16,7 +16,6 @@ import { useTranslation } from "react-i18next";
 
 import { useAppStore } from "../../store/appStore";
 import { useMyEventGuestPack } from "../../hooks/useMyEventGuestPack";
-import { isOnline } from "../../services/networkMonitor";
 import {
   guestPackRowKind,
   guestPackSite,
@@ -71,6 +70,9 @@ export function GuestPackCard({
     async (url: string, label: string, key: string): Promise<void> => {
       let online = true;
       try {
+        // Loaded on tap, not at module scope: networkMonitor pulls in the native
+        // NetInfo module, which breaks render suites that mount this card's parents.
+        const { isOnline } = await import("../../services/networkMonitor");
         online = await isOnline();
       } catch (error) {
         console.warn("[guest-pack] connection check failed; trying to open", error);
