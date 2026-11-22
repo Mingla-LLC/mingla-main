@@ -21,6 +21,7 @@ import {
   space,
   type,
 } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { Input } from "../ui/Input";
@@ -172,6 +173,8 @@ const ReadyEditor: React.FC<ReadyProps> = ({
   liveEdit,
   onShowToast,
 }) => {
+  // Design v2: on wide desktop web the links sit in two columns (phone: one).
+  const { isWideDesktop } = useResponsiveLayout();
   const dirty = isGuestPackDirty(session);
   const summary = guestPackSummary(session.baseline);
   const noteLength = session.note.length;
@@ -285,15 +288,18 @@ const ReadyEditor: React.FC<ReadyProps> = ({
             </Text>
           </View>
 
-          {session.items.map((item, index) => (
-            <ItemCard
-              key={item.key}
-              eventId={eventId}
-              item={item}
-              index={index}
-              total={session.items.length}
-            />
-          ))}
+          <View style={isWideDesktop ? styles.itemsGrid : undefined}>
+            {session.items.map((item, index) => (
+              <ItemCard
+                key={item.key}
+                eventId={eventId}
+                item={item}
+                index={index}
+                total={session.items.length}
+                half={isWideDesktop}
+              />
+            ))}
+          </View>
 
           {session.items.length < GUEST_PACK_MAX_ITEMS ? (
             <>
@@ -401,11 +407,16 @@ const ItemCard: React.FC<{
   item: GuestPackEditorItem;
   index: number;
   total: number;
-}> = ({ eventId, item, index, total }) => {
+  half?: boolean;
+}> = ({ eventId, item, index, total, half = false }) => {
   const name = item.label.trim() === "" ? "item" : item.label;
   return (
     <View
-      style={[styles.item, (item.labelError || item.urlError) && styles.itemBad]}
+      style={[
+        styles.item,
+        half && styles.itemHalf,
+        (item.labelError || item.urlError) && styles.itemBad,
+      ]}
       accessibilityLabel={`Link ${index + 1} of ${total}`}
     >
       <View style={styles.itemHead}>
@@ -631,6 +642,12 @@ const styles = StyleSheet.create({
     marginBottom: space[3],
   },
   itemBad: { borderColor: color.danger },
+  itemsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  itemHalf: { width: "48.5%" },
   itemHead: {
     flexDirection: "row",
     alignItems: "center",

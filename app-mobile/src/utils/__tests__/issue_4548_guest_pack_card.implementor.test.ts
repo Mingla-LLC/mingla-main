@@ -136,6 +136,9 @@ Deno.test("source contract: card, wiring, key and strings", () => {
   for (const [name, src] of [["order route", route], ["shared detail", shared], ["rsvp pass", rsvp]])
     if (!src.includes("<GuestPackCard")) throw new Error(`${name} does not render the card`);
 
+  if (!rsvp.includes("bookedAtIso={row.createdAt ?? null}")) throw new Error("the RSVP pass must pass its own created time for the Updated pill");
+  if (!read("src/services/calendarService.ts").includes("createdAt: row.created_at ?? null")) throw new Error("the RSVP row must carry created_at");
+
   const en = JSON.parse(read("src/i18n/locales/en/purchases.json")).guestPack;
   assertEquals(en.offline, "You're offline. Connect to open this link.", "offline copy");
   assertEquals(en.openPdf, "Open PDF", "pdf label");

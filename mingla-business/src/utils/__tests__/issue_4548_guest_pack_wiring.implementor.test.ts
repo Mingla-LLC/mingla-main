@@ -43,4 +43,11 @@ describe("save-first wiring", () => {
     // the pack never rides in the draft or publish payload
     expect(wizard).not.toMatch(/guestPack(Note|Items)/);
   });
+
+  test("links sit in two columns on wide desktop only, through the app's layout hook", () => {
+    const editor = read("src/components/event/GuestPackEditor.tsx");
+    expect(editor).toContain("useResponsiveLayout");
+    expect(editor).toContain("isWideDesktop ? styles.itemsGrid : undefined");
+    expect(editor).toContain("half && styles.itemHalf");
+  });
 });

@@ -405,6 +405,7 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
         {/* #4548 — the host's Guest pack: its own block, only for approved guests. */}
         <GuestPackCard
           audience="rsvp"
+          bookedAtIso={row.createdAt ?? null}
           endsAtIso={row.masterDateEndUtc}
           eventId={row.eventId}
           eligible={
