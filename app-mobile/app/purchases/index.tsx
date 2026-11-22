@@ -1,5 +1,5 @@
 // orch-strict-grep-allow safearea-on-fullscreen-routes — route applies insets directly
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,7 +9,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 
@@ -17,6 +18,8 @@ import { PurchaseCard } from "../../src/components/purchases/PurchaseCard";
 import { PurchaseEmptyState } from "../../src/components/purchases/PurchaseEmptyState";
 import { usePurchases } from "../../src/hooks/usePurchases";
 import { runClaimSweep } from "../../src/services/claimSweep";
+import { purchaseKeys } from "../../src/hooks/queryKeys";
+import { runVenueCheckoutRecovery } from "../../src/payments/useVenueCheckoutRecovery";
 import { postHogService } from "../../src/services/postHogService";
 import { useAppStore } from "../../src/store/appStore";
 import type {
@@ -58,11 +61,19 @@ export default function PurchasesRoute(): React.ReactElement {
     );
   };
 
-  // #4490 Explorer W2 (spec 06 W4 rule 4): on Purchases focus, a live venue
-  // checkout recovery pointer is confirmed (confirm_return) and cleared.
-  // [TRANSITIONAL] not wired yet: exits when W4 adds the venue recovery
-  // pointer (mingla_venue_checkout_recovery_v1 in nativeCheckoutRecovery.ts);
-  // then run that check here on focus, next to the list refetch.
+  // #4490 Explorer W4 (spec 06 W4 rule 4): on Purchases focus, a live venue
+  // checkout recovery pointer is answered by the server (confirm_return, or
+  // membership_get for a plan) and cleared; the list refreshes after.
+  const queryClient = useQueryClient();
+  useFocusEffect(
+    useCallback(() => {
+      if (userId === null) return undefined;
+      void runVenueCheckoutRecovery(userId, () => {
+        void queryClient.invalidateQueries({ queryKey: purchaseKeys.all });
+      });
+      return undefined;
+    }, [queryClient, userId]),
+  );
   const refresh = async (): Promise<void> => {
     await purchases.refetch();
     if (userId) await runClaimSweep(userId, "pull_to_refresh");

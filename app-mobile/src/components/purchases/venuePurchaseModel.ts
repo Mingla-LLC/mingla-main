@@ -60,6 +60,8 @@ export interface VenueBooking extends EntryBooking {
   canChangeGuests: boolean;
   guestChangeUntil: string | null;
   exponent: number;
+  /** #4490 W4: the pay modes the server allows now, with its amounts (empty once confirmed). */
+  payModes: Array<{ mode: "deposit" | "full"; amountMinor: number }>;
 }
 
 function place(raw: unknown): VenueBookingPlace | null {
@@ -103,6 +105,11 @@ export function parseVenueBooking(raw: unknown): VenueBooking | null {
     canChangeGuests: rules.canChangeGuests === true,
     guestChangeUntil: str(rules.guestChangeUntil),
     exponent: currencyExponent(base.currencyCode),
+    payModes: (Array.isArray(raw.payModes) ? raw.payModes : []).flatMap((m) => {
+      if (!isJson(m) || (m.mode !== "deposit" && m.mode !== "full")) return [];
+      const amount = int(m.amountMinor);
+      return amount === null ? [] : [{ mode: m.mode, amountMinor: amount }];
+    }),
   };
 }
 
@@ -213,19 +220,32 @@ export function venueBookingMoneyRows(b: VenueBooking): VenueMoneyRow[] {
 }
 
 /**
- * Where the guest pays what is still owed, until the app can take the payment
- * itself: a balance ("Pay the rest from your booking page.") or an approved
- * private hire's deposit ("Pay from your booking page.", the approval text's
- * wording). Null when nothing is owed now.
- * [TRANSITIONAL] spec 06 W4 (native venue checkout) adds "Pay the rest" and the
- * deposit payment in the app; exits when W4's checkout sheet ships, which then
- * replaces this pointer with a pay button for both cases.
+ * #4490 W4 — what the guest can pay in the app now, with the server's
+ * amounts: an approved private hire's "Pay to hold your date" (the deposit or
+ * the whole, as the server allows) or a confirmed booking's "Pay the rest"
+ * (the balance; the server picks the amount). Null when nothing is owed now.
+ * The button opens the native checkout sheet straight at Pay.
  */
-export function venueBookingPayNote(b: VenueBooking): string | null {
+export interface VenueBookingPayAction {
+  label: "Pay to hold your date" | "Pay the rest";
+  /** The server's amount due now (the deposit when one is offered). */
+  amountMinor: number;
+  payOptions: Array<{ mode: "deposit" | "full"; amountMinor: number }>;
+}
+
+export function venueBookingPayAction(b: VenueBooking): VenueBookingPayAction | null {
+  if (b.paymentCollection !== null && b.paymentCollection !== "mingla") return null;
   if (b.state === "approved_payment_required" && b.amountDueNowMinor > 0) {
-    return "Pay from your booking page.";
+    const deposit = b.payModes.find((m) => m.mode === "deposit");
+    return {
+      label: "Pay to hold your date",
+      amountMinor: deposit?.amountMinor ?? b.amountDueNowMinor,
+      payOptions: b.payModes.length > 1 ? b.payModes : [],
+    };
   }
-  if (b.balanceDueMinor > 0) return "Pay the rest from your booking page.";
+  if ((b.state === "confirmed" || b.state === "partially_cancelled") && b.balanceDueMinor > 0) {
+    return { label: "Pay the rest", amountMinor: b.balanceDueMinor, payOptions: [] };
+  }
   return null;
 }
 

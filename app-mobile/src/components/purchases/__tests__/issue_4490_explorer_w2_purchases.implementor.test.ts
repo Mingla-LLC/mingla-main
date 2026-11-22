@@ -46,7 +46,7 @@ import {
   venueBookingDoorPass,
   venueBookingExtraRows,
   venueBookingMoneyRows,
-  venueBookingPayNote,
+  venueBookingPayAction,
   venueBookingPlaceLine,
   venueBookingProgress,
   venueBookingWhenLine,
@@ -178,17 +178,31 @@ describe("#4490 W2 venue purchase model", () => {
     );
   });
 
-  test("W2-M2b the pay pointer covers a balance and an approved hire's deposit (W2-N8, until W4)", () => {
+  // TEST-MOD-APPROVED #4490 (06-W4): the W2 pointer to the booking page is
+  // retired; Purchases now pays in the app ("Pay the rest", "Pay to hold your
+  // date") with the server's amounts.
+  test("W2-M2b the pay action covers a balance and an approved hire's deposit (W4)", () => {
     const balance = parseVenueBooking(booking({ balanceDueMinor: 7000000, balanceDueAt: "2026-11-26T15:00:00+00:00" }));
-    const approved = parseVenueBooking(booking({ state: "approved_payment_required", amountDueNowMinor: 376250000, balanceDueMinor: 0 }));
+    const approved = parseVenueBooking(booking({
+      state: "approved_payment_required",
+      amountDueNowMinor: 376250000,
+      balanceDueMinor: 0,
+      payModes: [{ mode: "deposit", amountMinor: 112875000 }, { mode: "full", amountMinor: 376250000 }],
+    }));
     const paid = parseVenueBooking(booking());
-    if (balance === null || approved === null || paid === null) throw new Error("parse");
-    expect(venueBookingPayNote(balance)).toBe("Pay the rest from your booking page.");
-    expect(venueBookingPayNote(approved)).toBe("Pay from your booking page.");
+    const atVenue = parseVenueBooking(booking({ balanceDueMinor: 7000000, paymentCollection: "venue" }));
+    if (balance === null || approved === null || paid === null || atVenue === null) throw new Error("parse");
+    expect(venueBookingPayAction(balance)).toEqual({ label: "Pay the rest", amountMinor: 7000000, payOptions: [] });
+    expect(venueBookingPayAction(approved)).toEqual({
+      label: "Pay to hold your date",
+      amountMinor: 112875000,
+      payOptions: [{ mode: "deposit", amountMinor: 112875000 }, { mode: "full", amountMinor: 376250000 }],
+    });
+    expect(venueBookingPayAction(atVenue)).toBeNull();
     expect(venueBookingMoneyRows(approved)).toEqual(
       expect.arrayContaining([{ label: "Pay to hold your date", value: "₦3,762,500.00" }]),
     );
-    expect(venueBookingPayNote(paid)).toBeNull();
+    expect(venueBookingPayAction(paid)).toBeNull();
   });
 
   test("W2-M3 no door pass for a booking that is not confirmed or has no QR", () => {

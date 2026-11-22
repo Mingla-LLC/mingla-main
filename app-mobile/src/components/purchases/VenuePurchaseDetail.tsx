@@ -52,6 +52,8 @@ import { toastManager } from "../ui/Toast";
 import { DoorModeModal } from "./DoorModeModal";
 import { PURCHASE_SHEET_COLORS as C } from "./purchaseSheetTheme";
 import { VenueOnTheDay } from "./VenueOnTheDay";
+import { VenueOfferCheckoutSheet, type VenueCheckoutOpen } from "../venueOffers/VenueOfferCheckoutSheet";
+import { venueMoneyText } from "../venueOffers/venueMoneyText";
 import {
   isOpenWaitlistPlace,
   memberCodeWords,
@@ -60,7 +62,7 @@ import {
   venueBookingExtraRows,
   venueBookingGuests,
   venueBookingMoneyRows,
-  venueBookingPayNote,
+  venueBookingPayAction,
   venueBookingPlaceLine,
   venueBookingProgress,
   venueBookingStateLabel,
@@ -213,7 +215,32 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
   const when = venueBookingWhenLine(booking);
   const progress = venueBookingProgress(booking);
   const placeLine = venueBookingPlaceLine(booking);
-  const payNote = venueBookingPayNote(booking);
+  const payAction = venueBookingPayAction(booking);
+  // #4490 W4: "Pay to hold your date" / "Pay the rest" open the native
+  // checkout sheet straight at Pay (the server's amounts only).
+  const [checkout, setCheckout] = useState<VenueCheckoutOpen | null>(null);
+  const checkoutKind = (["entry", "group_package", "private_hire", "by_the_hour"] as const).find((k) => k === booking.offerKind) ?? "entry";
+  const openPay = (): void => {
+    if (payAction === null) return;
+    setCheckout({
+      from: "purchases",
+      kind: checkoutKind,
+      booking: {
+        id: booking.groupId,
+        version: booking.version,
+        state: booking.state,
+        totalMinor: booking.totalMinor,
+        amountDueNowMinor: payAction.amountMinor,
+        holdUntil: booking.holdUntil,
+      },
+      payOptions: payAction.payOptions,
+      venueId: booking.venue.id ?? "",
+      venueName: booking.venue.name,
+      currencyCode: booking.currencyCode,
+      exponent: booking.exponent,
+      timezone: booking.venue.timezone,
+    });
+  };
   const now = venueBookingGuests(booking);
   const isLive = booking.state === "confirmed" || booking.state === "partially_cancelled";
   const canCancel = isLive || booking.state === "request_pending" || booking.state === "approved_payment_required";
@@ -364,15 +391,21 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
           <Row key={r.label} label={r.label} value={r.value} />
         ))}
       </View>
-      {payNote !== null ? (
-        // [TRANSITIONAL] W4 (spec 06 §3) adds "Pay the rest" and an approved
-        // hire's deposit payment in the app; exits when the native venue
-        // checkout sheet ships. Until then both are paid from the booking page
-        // link in the guest's email (venueBookingPayNote).
-        <Text style={styles.caption} testID="venue-booking-pay-rest-note">
-          {payNote}
-        </Text>
+      {payAction !== null ? (
+        <Action
+          label={`${payAction.label} · ${venueMoneyText(payAction.amountMinor, booking.currencyCode, booking.exponent)}`}
+          onPress={openPay}
+          primary
+          testID="venue-booking-pay"
+        />
       ) : null}
+      <VenueOfferCheckoutSheet
+        open={checkout}
+        onClose={() => {
+          setCheckout(null);
+          void refresh();
+        }}
+      />
       {booking.policyText !== null ? <Text style={styles.caption}>{booking.policyText}</Text> : null}
 
       {actionError !== null ? (
@@ -410,7 +443,8 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
               )}
             </Text>
           ) : null}
-          {summary !== null && summary.amountMinor <= 0 ? (
+          {/* #4490 W4: a change that costs more is applied, then paid with "Pay the rest". */}
+          {summary !== null ? (
             <Action label={venueGuestChangeLabel(guests)} onPress={() => void applyChange()} busy={busy === "change"} primary testID="venue-booking-change-apply" />
           ) : null}
           <Action label="Keep my booking" onPress={() => { setGuests(null); setSummary(null); }} testID="venue-booking-change-close" />
@@ -429,10 +463,8 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
 
       <View style={styles.actions}>
         {canChange && guests === null && preview === null ? (
-          // [TRANSITIONAL] "Change" is the guest-count change only (spec 06 W2
-          // deviation 7): moving the date needs W4's date and session pickers,
-          // and a change that costs more needs W4's in-app payment; exits when
-          // W4 (native venue checkout) ships the date move and the top-up.
+          // "Change" is the guest-count change (spec 06 W2 deviation 7); a
+          // change that costs more is paid in the app with "Pay the rest" (W4).
           <Action label="Change" onPress={() => void stepGuests(now)} testID="venue-booking-change" />
         ) : null}
         {canCancel && preview === null && guests === null ? (
