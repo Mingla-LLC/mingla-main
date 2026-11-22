@@ -90,12 +90,14 @@ describe("issue #1027 Thread B — Class 1: event/RSVP When + per-date override"
 });
 
 describe("issue #1027 Thread B — Class 2: web-broken native pickers now render a web input", () => {
-  test("Checkout intake date question (buyer web): WebDateTimeInput on web; DateTimePicker gated to iOS/Android", () => {
-    expect(intake).toContain("WebDateTimeInput");
-    expect(intake).toContain('Platform.OS === "web"');
-    expect(intake).toContain('type="date"');
-    expect(intake).toContain('Platform.OS === "ios"');
-    expect(intake).toContain('Platform.OS === "android"');
+  test("Checkout intake date question (buyer web): the shared renderer no longer carries an OS or browser date control", () => {
+    // #4523: the renderer draws the host's injected date input on every
+    // platform, so the web branch and the OS picker imports are gone on
+    // purpose. The behaviour (injected input used on web, no browser date box,
+    // no OS picker, the commit reaches onChange) is mounted at the end of this
+    // file.
+    expect(intake).not.toContain("@react-native-community/datetimepicker");
+    expect(intake).not.toMatch(/Platform\.OS\s*===/);
   });
 
   // #4523 moved the trip instalment due date, the trip booking deadline and
@@ -259,6 +261,49 @@ describe("issue #1027 / #4523 — web date fields are picked on a visible contro
     const datePatch = updateDraft.mock.calls.map((c) => c[0] as Record<string, unknown>).find((p) => "date" in p);
     expect(datePatch?.date).toBe(days[days.length - 1].replace("creator-when-date-calendar-day-", ""));
     expectNoHiddenOrOsPicker(tree);
+    tree.unmount();
+  });
+
+  test("checkout intake date question (buyer web): the injected date input is drawn, no browser date box or OS picker, and a pick reaches onChange", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { IntakeQuestionDate } = require("../../../../../packages/form-rendering/QuestionRenderers") as {
+      IntakeQuestionDate: React.FC<Record<string, unknown>>;
+    };
+    const { Pressable } = jest.requireActual("react-native") as typeof import("react-native");
+    const injected = (props: Record<string, unknown>): React.ReactElement =>
+      React.createElement(Pressable, {
+        testID: props.testID as string,
+        accessibilityLabel: props.ariaLabel as string,
+        onPress: () => (props.onChangeValue as (v: string) => void)("2099-02-03"),
+      });
+    const primitives = {
+      tokens: {
+        color: { text1: "#111", text2: "#222", text3: "#333", text4: "#444", textStrong: "#000", line: "#ddd", accent: "#f60", danger: "#d00", fill: { inset: "#eee" } },
+        radius: { sm: 4, md: 8 },
+        space: { 1: 2, 2: 4, 4: 8, 6: 12 },
+        type: {
+          body: { fontSize: 14, lineHeight: 20 },
+          caption: { fontSize: 12, lineHeight: 16 },
+          small: { fontSize: 13, lineHeight: 18 },
+        },
+      },
+      Icon: (): null => null,
+      WebDateTimeInput: injected,
+    };
+    const onChange = jest.fn();
+    const tree = await mount(
+      React.createElement(IntakeQuestionDate, {
+        question: { id: "q1", type: "date", label: "Arrival day", required: true, position: 0 },
+        primitives,
+        value: "",
+        onChange,
+      }),
+    );
+    expect(Platform.OS).toBe("web");
+    expectNoHiddenOrOsPicker(tree);
+    expect(pressables(tree, "intake-date").length).toBeGreaterThan(0);
+    await press(tree, "intake-date");
+    expect(onChange).toHaveBeenCalledWith("2099-02-03");
     tree.unmount();
   });
 
