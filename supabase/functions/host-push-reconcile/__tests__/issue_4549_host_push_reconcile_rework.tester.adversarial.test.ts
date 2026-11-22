@@ -416,8 +416,9 @@ Deno.test("R-IDENTITY an answer about another account, or with no identity, chan
   }
 });
 
-Deno.test("R-DELETE retries are capped at 3 for throws, 500s and 400s, and the switch is off in the bundle", async () => {
-  assertEquals(PROVIDER_DELETE_ENABLED, false);
+Deno.test("R-DELETE retries are capped at 3 for throws, 500s and 400s, and the switch is on in the bundle (#4564)", async () => {
+  // #4564 turned the bundle switch on (was asserted false under #4549).
+  assertEquals(PROVIDER_DELETE_ENABLED, true);
   for (const shape of ["throw", "500", "400"] as const) {
     const store = new Store();
     store.rows.push(row(UID(1), "d1", {
