@@ -214,5 +214,6 @@ module.exports = {
     "**/__tests__/issue_4523_explorer_inline_calendars.implementor.render.test.tsx",
     // issue #4523 — form date questions (RSVP / brand forms) use the Mingla calendar.
     "**/__tests__/issue_4523_rsvp_form_date.implementor.render.test.tsx",
+    "**/__tests__/issue_4522_trip_balance_card.implementor.render.test.tsx",
   ],
 };

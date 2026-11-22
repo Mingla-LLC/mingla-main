@@ -38,6 +38,24 @@ export interface TripBalance {
   nextPayment: TripBalanceScheduleRow | null;
   openRows: TripBalanceScheduleRow[];
   history: TripBalanceHistoryRow[];
+  /**
+   * issue #4522 (N6) — the order's plan version. Only a version 2 plan has the
+   * flexible "pay toward your balance" actions; an older instalment plan keeps
+   * its schedule exactly as before. Absent from older servers: 2.
+   */
+  planVersion: number;
+  /**
+   * issue #4522 (N5) — money paid beyond what the trip costs that is being
+   * returned to the traveler (never counted in paid or total), and what was
+   * already returned. 0 when none.
+   */
+  heldCreditMinor: number;
+  overpaymentRefundedMinor: number;
+}
+
+/** issue #4522 (N6) — whether the flexible balance actions apply to this order. */
+export function supportsBalancePayments(balance: TripBalance): boolean {
+  return balance.planVersion === 2;
 }
 
 export type TripBalanceProvider = "stripe" | "paystack";
@@ -156,6 +174,17 @@ export function decodeTripBalance(value: unknown): TripBalance | null {
       ? value.minPaymentMinor
       : undefined;
   if (minPaymentMinor === undefined) return null;
+  const optionalMoney = (entry: unknown): number | undefined =>
+    entry === undefined || entry === null ? 0 : integer(entry) && entry >= 0 ? entry : undefined;
+  const heldCreditMinor = optionalMoney(value.heldCreditMinor);
+  const overpaymentRefundedMinor = optionalMoney(value.overpaymentRefundedMinor);
+  if (heldCreditMinor === undefined || overpaymentRefundedMinor === undefined) return null;
+  const planVersion = value.planVersion === undefined || value.planVersion === null
+    ? 2
+    : integer(value.planVersion) && value.planVersion > 0
+    ? value.planVersion
+    : undefined;
+  if (planVersion === undefined) return null;
   const depositMinor = value.depositMinor as number;
   const paidMinor = value.paidMinor as number;
   const remainingMinor = value.remainingMinor as number;
@@ -185,6 +214,9 @@ export function decodeTripBalance(value: unknown): TripBalance | null {
     nextPayment,
     openRows: openRows as TripBalanceScheduleRow[],
     history: history as TripBalanceHistoryRow[],
+    planVersion,
+    heldCreditMinor,
+    overpaymentRefundedMinor,
   };
 }
 

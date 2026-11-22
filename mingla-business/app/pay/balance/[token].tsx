@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import {
+  supportsBalancePayments,
   parseTripBalanceAmount,
   type TripBalanceChoice,
   tripBalanceOptions,
@@ -382,6 +383,14 @@ export default function TripBalancePayPage(): React.ReactElement {
           />
         </Suspense>
       </View>
+    );
+  } else if (page.view.balance !== null && !supportsBalancePayments(page.view.balance)) {
+    // issue #4522 (N6) — an older instalment plan has no flexible actions.
+    content = (
+      <State
+        title="Not available for this trip"
+        body="Your payments stay on their schedule."
+      />
     );
   } else {
     content = (

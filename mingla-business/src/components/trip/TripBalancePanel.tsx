@@ -100,6 +100,16 @@ export function TripBalancePanel({
           {balanceMoney(balance.paidMinor, balance.currency)} paid of{" "}
           {balanceMoney(balance.totalMinor, balance.currency)}
         </Text>
+        {balance.heldCreditMinor > 0
+          ? (
+            // issue #4522 (N5) — money paid beyond the trip price, returned.
+            <Text style={styles.muted}>
+              You paid {balanceMoney(balance.heldCreditMinor, balance.currency)}{" "}
+              more than was due. We’re refunding it to your original payment
+              method.
+            </Text>
+          )
+          : null}
       </View>
 
       <View style={styles.section}>

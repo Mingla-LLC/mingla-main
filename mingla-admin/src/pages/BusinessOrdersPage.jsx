@@ -20,7 +20,8 @@ import { SubscriberContextCard } from "../components/entity/SubscriberContextCar
 import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { listOrders, getOrder, getOrdersOverview, getOrderAddOnLines } from "../services/adminMoneyService";
+import { listOrders, getOrder, getOrdersOverview, getOrderAddOnLines, getTripOrderBalance } from "../services/adminMoneyService";
+import { overpaymentRows } from "../lib/orderOverpayments";
 import { addOnRows, addOnLinesBody, addOnSummary, planRemovalNotice, SPREAD_ADD_ON_NOTE } from "../lib/orderAddOnRefunds";
 import { formatMoneyMinor } from "../lib/moneyFormat";
 import { describeAdminRefundError } from "../lib/adminRefundError";
@@ -296,7 +297,7 @@ function jsonBlock(obj) {
   );
 }
 
-function buildOrderSections(bundle, onViewSubscriber, money, addOns) {
+function buildOrderSections(bundle, onViewSubscriber, money, addOns, tripBalance = null) {
   const order = bundle.order || {};
   const event = bundle.event || null;
   const brand = bundle.brand || null;
@@ -474,6 +475,22 @@ function buildOrderSections(bundle, onViewSubscriber, money, addOns) {
     },
   ];
 
+  // #4522 N5: money the traveler paid beyond what the trip cost, and where
+  // its automatic refund stands.
+  const overpaid = overpaymentRows(tripBalance);
+  if (overpaid.length > 0) {
+    sections.push({
+      label: "Overpayments",
+      fields: overpaid.map((op) =>
+        field(op.reasonLabel, null, () => (
+          <span className={op.needsAttention ? "text-[var(--color-error-700)]" : undefined}>
+            {formatMoney(op.amountMinor, op.currency)} · {op.stateLabel}
+            {op.resolvedAt ? ` · ${formatDateTime(op.resolvedAt)}` : ""}
+          </span>
+        )),
+      ),
+    });
+  }
   return sections;
 }
 
@@ -674,6 +691,7 @@ export function BusinessOrdersPage() {
   const [refundOpen, setRefundOpen] = useState(false);
   const [money, setMoney] = useState(null);
   const [addOns, setAddOns] = useState(null);
+  const [tripBalance, setTripBalance] = useState(null);
   // #3281 S5: what the last refund did when it only took an add-on off the plan.
   const [refundNotice, setRefundNotice] = useState(null);
   const [initialStatus] = useState(() => statusFromHash());
@@ -691,7 +709,10 @@ export function BusinessOrdersPage() {
     setBundle(null);
     setMoney(null);
     setAddOns(null);
+    setTripBalance(null);
     try {
+      // #4522 N5: a v2 trip order's overpayments (none for any other order).
+      setTripBalance(await getTripOrderBalance(orderId));
       // #3281 S4: add-on lines; a failed read says so and the order still shows.
       try {
         setAddOns({ lines: await getOrderAddOnLines(orderId), error: null });
@@ -766,7 +787,7 @@ export function BusinessOrdersPage() {
             backLabel: "Orders",
             onBack: backToList,
           }}
-          sections={bundle ? buildOrderSections(bundle, setSubUserId, money, addOns) : []}
+          sections={bundle ? buildOrderSections(bundle, setSubUserId, money, addOns, tripBalance) : []}
         />
         {bundle && REFUNDABLE_STATUSES.includes(order.payment_status) && !isFreeOrder(order) && (
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[var(--gray-200)] pt-4">

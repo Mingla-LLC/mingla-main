@@ -26,6 +26,7 @@ import {
   rebalanceTripPlan,
   type TripBalance,
   type TripBalanceChoice,
+  supportsBalancePayments,
   tripBalanceOptions,
 } from "@mingla/offering-rendering/tripBalance";
 
@@ -38,6 +39,10 @@ import {
   statusTripBalance,
   TripBalancePayError,
 } from "../../src/services/tripBalancePayService";
+import {
+  isBalanceUnavailable,
+  OverpaymentLine,
+} from "../../src/components/purchases/TripBalanceCard";
 import { toastManager } from "../../src/components/ui/Toast";
 import { formatPurchaseMoney } from "../../src/utils/purchasePresentation";
 
@@ -339,16 +344,42 @@ export default function TripBalanceRoute(): React.ReactElement {
     content = <State title="You're offline" body="Connect to pay." />;
   } else if (query.isLoading) {
     content = <State title="Loading your balance" busy />;
+  } else if (query.isError && isBalanceUnavailable(query.error)) {
+    // issue #4522 (N6) — no balance endpoint or v2 schema yet.
+    content = (
+      <State
+        title="Not available for this trip"
+        body="Your payments stay on their schedule. Check Purchases for the next one."
+      />
+    );
   } else if (query.isError || !query.data) {
     content = (
       <State title="Couldn't load your balance" body="Pull to try again." />
     );
-  } else if (query.data.state === "paid" || balance?.remainingMinor === 0) {
+  } else if (balance !== null && !supportsBalancePayments(balance)) {
+    // issue #4522 (N6) — an older instalment plan: no flexible actions.
     content = (
       <State
-        title="Paid in full"
-        body={`You're all set for ${query.data.tripTitle ?? "your trip"}.`}
+        title="Not available for this trip"
+        body="Your payments stay on their schedule. Check Purchases for the next one."
       />
+    );
+  } else if (query.data.state === "paid" || balance?.remainingMinor === 0) {
+    content = (
+      <View style={styles.stack}>
+        <State
+          title="Paid in full"
+          body={`You're all set for ${query.data.tripTitle ?? "your trip"}.`}
+        />
+        {balance !== null
+          ? (
+            <OverpaymentLine
+              heldMinor={balance.heldCreditMinor}
+              currency={balance.currency}
+            />
+          )
+          : null}
+      </View>
     );
   } else if (!balance) {
     content = (
@@ -465,6 +496,10 @@ function BalanceContent(
         <Text style={styles.balance}>
           {money(balance.remainingMinor, balance.currency)}
         </Text>
+        <OverpaymentLine
+          heldMinor={balance.heldCreditMinor}
+          currency={balance.currency}
+        />
         <View
           accessibilityRole="progressbar"
           accessibilityValue={{

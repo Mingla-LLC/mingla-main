@@ -8,7 +8,10 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 
+import { supportsBalancePayments } from "@mingla/offering-rendering/tripBalance";
+
 import { useTripBalance } from "../../hooks/useTripBalance";
+import { TripBalancePayError } from "../../services/tripBalancePayService";
 import { formatPurchaseMoney } from "../../utils/purchasePresentation";
 
 const money = (minor: number, currency: string): string =>
@@ -28,6 +31,12 @@ export function TripBalanceCard(
   const router = useRouter();
   const query = useTripBalance(orderId);
   const balance = query.data?.balance ?? null;
+  // issue #4522 (N6) — the card follows what the server says this order
+  // supports: an older instalment plan keeps the purchase screen exactly as
+  // before (no card, no flexible actions), and so does a server that has no
+  // balance endpoint yet (the app can ship before the migrations).
+  if (query.isError && isBalanceUnavailable(query.error)) return null;
+  if (balance !== null && !supportsBalancePayments(balance)) return null;
   return (
     <View style={styles.card}>
       <Text style={styles.eyebrow}>BALANCE</Text>
@@ -45,6 +54,7 @@ export function TripBalanceCard(
         ? (
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Retry loading your balance"
             onPress={() => void query.refetch()}
           >
             <Text style={styles.error}>
@@ -54,12 +64,28 @@ export function TripBalanceCard(
         )
         : balance === null || balance.remainingMinor === 0 ||
             query.data?.state === "paid"
-        ? <Text style={styles.paid}>Paid in full</Text>
+        ? (
+          <>
+            <Text style={styles.paid}>Paid in full</Text>
+            {balance !== null
+              ? (
+                <OverpaymentLine
+                  heldMinor={balance.heldCreditMinor}
+                  currency={balance.currency}
+                />
+              )
+              : null}
+          </>
+        )
         : (
           <>
             <Text style={styles.amount}>
               {money(balance.remainingMinor, balance.currency)} left
             </Text>
+            <OverpaymentLine
+              heldMinor={balance.heldCreditMinor}
+              currency={balance.currency}
+            />
             {balance.nextPayment
               ? (
                 <Text style={styles.next}>
@@ -72,6 +98,7 @@ export function TripBalanceCard(
               : null}
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Pay toward balance"
               onPress={() =>
                 router.push(
                   `/trip-balance/${encodeURIComponent(orderId)}` as never,
@@ -88,7 +115,32 @@ export function TripBalanceCard(
   );
 }
 
+/** issue #4522 (N6) — no balance endpoint, no v2 schema, or no such balance yet. */
+export function isBalanceUnavailable(error: unknown): boolean {
+  if (!(error instanceof TripBalancePayError)) return false;
+  return error.code === "payment_plan_v2_unavailable" ||
+    error.code === "balance_not_found" || error.status === 404;
+}
+
+/**
+ * issue #4522 (N5) — money paid beyond what the trip costs is shown once, in
+ * plain words, and never counted in what is paid or left.
+ */
+export function OverpaymentLine(
+  { heldMinor, currency }: { heldMinor: number; currency: string },
+): React.ReactElement | null {
+  if (heldMinor <= 0) return null;
+  return (
+    <Text style={styles.overpaid}>
+      You paid {money(heldMinor, currency)}{" "}
+      more than was due. We’re refunding it to your original payment
+      method.
+    </Text>
+  );
+}
+
 const styles = StyleSheet.create({
+  overpaid: { color: "rgba(255,255,255,0.72)", fontSize: 13, lineHeight: 19 },
   card: {
     borderRadius: 22,
     backgroundColor: "#171a20",
