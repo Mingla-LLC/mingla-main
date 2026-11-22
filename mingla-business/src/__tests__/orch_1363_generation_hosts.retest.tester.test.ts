@@ -75,22 +75,6 @@ const hosts: HostContract[] = [
     generationRef: "destinationRequestGenerationRef",
     resolveName: "resolveDestination",
   },
-  {
-    name: "published-trip edit departure",
-    file: "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
-    fieldStart: 'testID="edit-trip-departure"',
-    fieldEnd: "error={",
-    generationRef: "departureRequestGenerationRef",
-    resolveName: "resolveDeparture",
-  },
-  {
-    name: "published-trip edit destination",
-    file: "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
-    fieldStart: 'testID="edit-trip-destination"',
-    fieldEnd: "error={",
-    generationRef: "destinationRequestGenerationRef",
-    resolveName: "resolveDestination",
-  },
 ];
 
 const compact = (value: string): string => value.replace(/[\s,]+/g, "");
@@ -116,6 +100,17 @@ function handler(
 }
 
 describe("Issue #1363 RETEST — every free-text host invalidates stale work", () => {
+  // #4522 slice 12 — the published trip edit renders the create builder's
+  // TripCreatorStep1Basics for its address fields and mounts no AddressInput
+  // of its own, so the TripCreatorStep1Basics rows cover it.
+  // EditPublishedTripScreen.render.test.tsx case (d) proves the tapped label
+  // and place id reach the live update.
+  test("the published trip edit reuses the create basics for its address fields", () => {
+    const editScreen = sourceFor("mingla-business/src/components/trip/EditPublishedTripScreen.tsx");
+    expect(editScreen).toContain("<TripCreatorStep1Basics");
+    expect(editScreen).not.toMatch(/<AddressInput\b/);
+  });
+
   test.each(hosts)(
     "$name wires keystroke, later commit/selection, X, and clear to its own generation",
     ({ file, fieldStart, fieldEnd, generationRef, resolveName }) => {

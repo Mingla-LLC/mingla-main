@@ -307,8 +307,6 @@ const HOST_FIELDS: ReadonlyArray<{
   { file: "src/components/experience/ExperienceStopCard.tsx", field: "experience stop address", savedAs: /address: label,/ },
   { file: "src/components/trip/TripCreatorStep1Basics.tsx", field: "trip departure", savedAs: /departureLocationText: label,/ },
   { file: "src/components/trip/TripCreatorStep1Basics.tsx", field: "trip destination", savedAs: /destinationLocationText: label,/ },
-  { file: "src/components/trip/EditPublishedTripScreen.tsx", field: "published trip departure", savedAs: /departureLocationText: label,/ },
-  { file: "src/components/trip/EditPublishedTripScreen.tsx", field: "published trip destination", savedAs: /destinationLocationText: label,/ },
   { file: "src/components/venue/VenueStep1Address.tsx", field: "venue address", savedAs: /formattedAddress: label,/ },
   { file: "src/components/brand/PartnerClientBrandCreationFlow.tsx", field: "brand address", savedAs: /setAddress\(label\);/ },
   // [TEST-MOD-APPROVED #3386] the venue Settings details editor is a new Host
@@ -343,6 +341,20 @@ function addressInputBlocks(source: string): string[] {
 }
 
 describe("Issue #3291 — every Host address field saves the tapped name", () => {
+  // #4522 slice 12 — the published trip edit renders the create builder's
+  // TripCreatorStep1Basics for its address fields and mounts no AddressInput
+  // of its own, so the TripCreatorStep1Basics rows cover it.
+  // EditPublishedTripScreen.render.test.tsx case (d) proves the tapped label
+  // and place id reach the live update.
+  test("the published trip edit reuses the create basics for its address fields", () => {
+    const editScreen = fs.readFileSync(
+      path.resolve(ROOT, "mingla-business", "src/components/trip/EditPublishedTripScreen.tsx"),
+      "utf8",
+    );
+    expect(editScreen).toContain("<TripCreatorStep1Basics");
+    expect(editScreen).not.toMatch(/<AddressInput\b/);
+  });
+
   test("the host list covers every business mount of the picker", () => {
     const mounts = HOST_FIELDS.reduce<Record<string, number>>((acc, h) => {
       acc[h.file] = (acc[h.file] ?? 0) + 1;
@@ -353,7 +365,9 @@ describe("Issue #3291 — every Host address field saves the tapped name", () =>
       expect(addressInputBlocks(source)).toHaveLength(count);
     }
     // #4389: + the Tap to Pay on iPhone fallback address (9 → 10).
-    expect(Object.keys(mounts)).toHaveLength(10);
+    // #4522 slice 12: the published trip edit reuses TripCreatorStep1Basics
+    // and has no picker mount of its own (10 → 9).
+    expect(Object.keys(mounts)).toHaveLength(9);
 
     // Discovery, not a hand-kept list: a NEW Host mount of the picker must be
     // added to HOST_FIELDS (and proven) or this goes red.

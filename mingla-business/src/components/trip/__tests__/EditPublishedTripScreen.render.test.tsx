@@ -78,9 +78,10 @@ jest.mock("../../../hooks/useResponsiveLayout", () => ({
 }));
 
 // react-query mutation + web-purchases hook used at the top of the screen.
+const mockUpdateLiveTrip = jest.fn(async (_input: unknown) => ({ ok: true }));
 jest.mock("../../../hooks/useTrips", () => ({
   useUpdateLiveTripFields: () => ({
-    mutateAsync: jest.fn(),
+    mutateAsync: (input: unknown) => mockUpdateLiveTrip(input),
     isPending: false,
   }),
 }));
@@ -180,16 +181,28 @@ jest.mock("../../ui/HostDateRangeField", () => ({ HostDateRangeField: () => null
 jest.mock("../../event/LazyChangeSummaryModal", () => {
   const RN = require("react-native");
   return {
-    ChangeSummaryModal: ({ visible }: { visible: boolean }) =>
-      visible ? <RN.View testID="change-summary-modal-OPEN" /> : null,
+    ChangeSummaryModal: ({
+      visible,
+      onConfirm,
+    }: {
+      visible: boolean;
+      onConfirm: (reason: string) => void;
+    }) =>
+      visible ? (
+        <RN.Pressable
+          testID="change-summary-modal-OPEN"
+          onPress={() => onConfirm("Pickup point moved")}
+        />
+      ) : null,
   };
 });
 
 // ---- Imports AFTER mocks ----
 
 // eslint-disable-next-line import/no-unresolved -- provisioned by the dedicated render workflow
-import { render, screen, fireEvent } from "@testing-library/react-native";
+import { render, screen, fireEvent, act } from "@testing-library/react-native";
 import { EditPublishedTripScreen } from "../EditPublishedTripScreen";
+import { AddressInput } from "../../location/AddressInput";
 import {
   TRIP_DEPARTURE_PICK_ERROR,
   TRIP_DESTINATION_PICK_ERROR,
@@ -386,5 +399,44 @@ describe("ORCH-1118 — EditPublishedTripScreen RENDER PROOF (runtime mount)", (
     // No blocking errors when both are valid.
     expect(screen.queryByText(TRIP_DEPARTURE_PICK_ERROR)).toBeNull();
     expect(screen.queryByText(TRIP_DESTINATION_PICK_ERROR)).toBeNull();
+  });
+  // #4522 slice 12 — the published edit reuses the create builder's basics
+  // (TripCreatorStep1Basics), so the #1363 / #3291 / #4334 address guards the
+  // create path pins are the ones this screen runs. This proves the published
+  // screen does not strip what the shared field hands it: the tapped row's
+  // label and its place id reach the live-update RPC patch.
+  it("(d) a picked departure and destination save the tapped label and place id through the live update", async () => {
+    mockUpdateLiveTrip.mockClear();
+    await render(<EditPublishedTripScreen trip={makeTrip()} />);
+
+    const pickers = screen.UNSAFE_getAllByType(AddressInput);
+    expect(pickers.map((p) => p.props.accessibilityLabel)).toEqual([DEP_LABEL, DEST_LABEL]);
+    const place = (placeId: string, formattedAddress: string, lat: number, lng: number) => ({
+      placeId,
+      formattedAddress,
+      city: "Somewhere",
+      region: null,
+      regionCode: null,
+      regionCodeFull: null,
+      countryCode: "US",
+      location: { lat, lng },
+      featureType: "address",
+    });
+    await act(async () => {
+      pickers[0].props.onPick(place("place-dep-new", "Union Station, Washington, DC, USA", 38.89, -77.0), "Union Station");
+    });
+    await act(async () => {
+      pickers[1].props.onPick(place("place-dest-new", "Tulum, Quintana Roo, Mexico", 20.21, -87.46), "Tulum Beach Club");
+    });
+
+    await fireEvent.press(screen.getByTestId("edit-trip-save"));
+    await fireEvent.press(screen.getByTestId("change-summary-modal-OPEN"));
+
+    expect(mockUpdateLiveTrip).toHaveBeenCalledTimes(1);
+    const sent = JSON.stringify(mockUpdateLiveTrip.mock.calls[0][0]);
+    expect(sent).toContain("Union Station");
+    expect(sent).toContain("place-dep-new");
+    expect(sent).toContain("Tulum Beach Club");
+    expect(sent).toContain("place-dest-new");
   });
 });
