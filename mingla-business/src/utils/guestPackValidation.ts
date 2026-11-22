@@ -27,6 +27,19 @@ export const GUEST_PACK_COPY = {
   httpsAdded: "Added https:// for you.",
 } as const;
 
+// The server's `issue_4548_trim` class: whitespace plus the invisible format and
+// filler characters (zero-width space/joiners, word joiner, soft hyphen, Hangul
+// fillers, Braille blank, BOM...). Leading/trailing runs are trimmed; text made
+// only of them is empty; a link may contain none of them anywhere.
+const INVISIBLE = "[\\s\\u00a0\\u00ad\\u034f\\u115f\\u1160\\u1680\\u17b4\\u17b5\\u180e\\u2000-\\u200f\\u2028\\u2029\\u202f\\u205f\\u2060-\\u2064\\u2800\\u3000\\u3164\\ufeff\\uffa0]";
+const EDGE_INVISIBLE = new RegExp(`^${INVISIBLE}+|${INVISIBLE}+$`, "g");
+const ANY_INVISIBLE = new RegExp(INVISIBLE);
+
+/** Trims whitespace and invisible characters from both ends (server rule). */
+export function trimGuestPackText(raw: string): string {
+  return raw.replace(EDGE_INVISIBLE, "");
+}
+
 const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 const BARE_DOMAIN = /^[^\s/:@]+\.[^\s/:@]+(?:[/?#][^\s]*)?$/;
 const FULL_HTTPS = /^https:\/\/[^\s/]+\.[^\s]+$/i;
@@ -55,8 +68,11 @@ export type LinkCheck =
  * an empty link is a "missing" error (save) or nothing to say yet (typing).
  */
 export function checkGuestPackLink(raw: string): LinkCheck {
-  const text = raw.trim();
+  const text = trimGuestPackText(raw);
   if (text === "") return { ok: false, error: GUEST_PACK_COPY.urlMissing };
+  if (ANY_INVISIBLE.test(text)) {
+    return { ok: false, error: GUEST_PACK_COPY.urlIncomplete };
+  }
   if (/^http:\/\//i.test(text)) {
     return { ok: false, error: GUEST_PACK_COPY.urlInsecure };
   }
@@ -81,7 +97,7 @@ export function checkGuestPackLink(raw: string): LinkCheck {
 }
 
 export function checkGuestPackLabel(raw: string): string | null {
-  return raw.trim() === "" ? GUEST_PACK_COPY.labelMissing : null;
+  return trimGuestPackText(raw) === "" ? GUEST_PACK_COPY.labelMissing : null;
 }
 
 export function checkGuestPackNote(raw: string): string | null {
@@ -137,13 +153,13 @@ export function buildGuestPackPayload(
       invalidItems += 1;
       continue;
     }
-    out.push({ label: item.label.trim(), url: check.url });
+    out.push({ label: trimGuestPackText(item.label), url: check.url });
   }
   if (items.length > GUEST_PACK_MAX_ITEMS) invalidItems += 1;
   if (noteError !== null || invalidItems > 0) {
     return { ok: false, noteError, invalidItems };
   }
-  const trimmed = note.trim();
+  const trimmed = trimGuestPackText(note);
   return {
     ok: true,
     payload: { note: trimmed === "" ? null : trimmed, items: out },

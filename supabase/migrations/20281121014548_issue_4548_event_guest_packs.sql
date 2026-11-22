@@ -24,7 +24,14 @@
 -- btrim() strips only spaces. Guest pack text is trimmed of every leading and
 -- trailing whitespace character: ASCII space, tab, CR, LF, VT, FF, and the
 -- Unicode spaces (no-break, ogham, en..hair, zero-width, line/paragraph
--- separators, narrow no-break, medium mathematical, ideographic, BOM).
+-- separators, narrow no-break, medium mathematical, ideographic, BOM), and
+-- the invisible format and filler characters: soft hyphen U+00AD, grapheme
+-- joiner U+034F, Hangul fillers U+115F U+1160 U+3164 U+FFA0, Khmer U+17B4
+-- U+17B5, Mongolian vowel separator U+180E, zero-width space / non-joiner /
+-- joiner and direction marks U+200B..U+200F, word joiner and invisible
+-- operators U+2060..U+2064, Braille blank U+2800. A note or label made only of
+-- these is empty; interior ones (a zero-width joiner inside an emoji) stay. A
+-- link may contain none of them anywhere.
 CREATE OR REPLACE FUNCTION public.issue_4548_trim(p text)
 RETURNS text
 LANGUAGE sql IMMUTABLE
@@ -32,7 +39,7 @@ SET search_path = ''
 AS $fn$
   SELECT pg_catalog.regexp_replace(
     p,
-    '^[\s\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+|[\s\u00a0\u1680\u2000-\u200b\u2028\u2029\u202f\u205f\u3000\ufeff]+$',
+    '^[\s\u00a0\u00ad\u034f\u115f\u1160\u1680\u17b4\u17b5\u180e\u2000-\u200f\u2028\u2029\u202f\u205f\u2060-\u2064\u2800\u3000\u3164\ufeff\uffa0]+|[\s\u00a0\u00ad\u034f\u115f\u1160\u1680\u17b4\u17b5\u180e\u2000-\u200f\u2028\u2029\u202f\u205f\u2060-\u2064\u2800\u3000\u3164\ufeff\uffa0]+$',
     '', 'g');
 $fn$;
 
@@ -63,6 +70,8 @@ AS $fn$
          ELSE (e.item ->> 'label') = public.issue_4548_trim(e.item ->> 'label')
           AND (e.item ->> 'label') !~ '[\t\n\r\v\f\u2028\u2029]'
           AND (e.item ->> 'url') = public.issue_4548_trim(e.item ->> 'url')
+          -- No invisible or space character anywhere in a link.
+          AND (e.item ->> 'url') !~ '[\s\u00a0\u00ad\u034f\u115f\u1160\u1680\u17b4\u17b5\u180e\u2000-\u200f\u2028\u2029\u202f\u205f\u2060-\u2064\u2800\u3000\u3164\ufeff\uffa0]'
           AND char_length(e.item ->> 'label') BETWEEN 1 AND 40
           AND char_length(e.item ->> 'url') <= 2048
           AND (e.item ->> 'url') ~ '^https://[^\s/]+\.[^\s]+$'

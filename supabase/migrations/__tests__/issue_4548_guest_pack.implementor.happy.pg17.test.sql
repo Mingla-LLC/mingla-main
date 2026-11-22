@@ -375,6 +375,25 @@ BEGIN
   PERFORM pg_temp.ok(v->'note' = 'null'::jsonb, 'T-TRIM a whitespace-only note is no note');
   v := pg_temp.set_as(pg_temp.u('host'), pg_temp.u('event'), NULL, E'[{"label":"Map\\tTwo","url":"https://example.test/m"}]');
   PERFORM pg_temp.ok(v::text LIKE '"ERR 22023 guest_pack_items_invalid%', 'T-TRIM a tab inside a label is refused');
+  -- Retest 1 R2: invisible format and filler characters.
+  PERFORM pg_temp.ok(public.issue_4548_trim(U&'\200C') = ''
+    AND public.issue_4548_trim(U&'\200B\200C\200D\2060\180E\3164\2800\FEFF\00AD\034F\115F\1160\17B4\17B5\FFA0') = ''
+    AND public.issue_4548_trim(U&'\200BMap\2060') = 'Map'
+    AND public.issue_4548_trim(U&'\+01F468\200D\+01F469') = U&'\+01F468\200D\+01F469',
+    'T-TRIM invisible runs are trimmed; an interior joiner in an emoji stays');
+  v := pg_temp.set_as(pg_temp.u('host'), pg_temp.u('event'), U&'\200B\200C\3164\2800', '[]');
+  PERFORM pg_temp.ok(v IS NULL OR v = 'null'::jsonb, 'T-TRIM an all-invisible note with no links deletes the pack');
+  v := pg_temp.set_as(pg_temp.u('host'), pg_temp.u('event'), 'Door',
+    jsonb_build_array(jsonb_build_object('label', U&'\200D\2060', 'url', 'https://example.test/m')));
+  PERFORM pg_temp.ok(v::text LIKE '"ERR 22023 guest_pack_items_invalid%', 'T-TRIM an all-invisible label is refused');
+  v := pg_temp.set_as(pg_temp.u('host'), pg_temp.u('event'), 'Door',
+    jsonb_build_array(jsonb_build_object('label', 'Map', 'url', U&'https://exa\200Bmple.test/m')));
+  PERFORM pg_temp.ok(v::text LIKE '"ERR 22023 guest_pack_items_invalid%', 'T-TRIM a zero-width space inside a link is refused');
+  v := pg_temp.set_as(pg_temp.u('host'), pg_temp.u('event'), 'Door',
+    jsonb_build_array(jsonb_build_object('label', U&'Family \+01F468\200D\+01F469', 'url', U&'\200Bhttps://example.test/m\FEFF')));
+  PERFORM pg_temp.ok(v->'items'->0->>'label' = U&'Family \+01F468\200D\+01F469'
+      AND v->'items'->0->>'url' = 'https://example.test/m',
+    'T-TRIM an emoji joiner inside a label is kept; edge invisibles on a link are trimmed');
 END;
 $test$;
 

@@ -5,10 +5,12 @@
 import {
   buildGuestPackPayload,
   checkGuestPackItem,
+  checkGuestPackLabel,
   checkGuestPackLink,
   checkGuestPackNote,
   guestPackSummary,
   GUEST_PACK_COPY,
+  trimGuestPackText,
 } from "../guestPackValidation";
 
 describe("checkGuestPackLink", () => {
@@ -121,5 +123,34 @@ describe("guestPackSummary", () => {
     expect(guestPackSummary({ note: "hi", items: [1, 2, 3, 4] })).toBe("Note and 4 links");
     expect(guestPackSummary({ note: null, items: [1] })).toBe("1 link");
     expect(guestPackSummary({ note: "hi", items: [] })).toBe("Note");
+  });
+});
+
+// [TEST-MOD #4548] Retest 1 R2: invisible characters follow the server rule.
+describe("invisible characters (server issue_4548_trim)", () => {
+  const ZW = ["\u200b", "\u200c", "\u200d", "\u2060", "\u180e", "\u3164", "\u2800", "\ufeff", "\u00ad", "\u034f", "\u115f", "\u1160", "\u17b4", "\u17b5", "\uffa0"];
+  test.each(ZW)("a label made only of U+%s is missing", (ch) => {
+    expect(checkGuestPackLabel(ch + ch + " ")).toBe("Add a label so guests know what this is.");
+  });
+  test("leading and trailing invisible runs are trimmed; an interior joiner stays", () => {
+    expect(trimGuestPackText("\u200b\u2060 Map \ufeff")).toBe("Map");
+    const family = "\u{1F468}\u200d\u{1F469}";
+    expect(trimGuestPackText(family)).toBe(family);
+    expect(checkGuestPackLabel(family)).toBeNull();
+  });
+  test("a note made only of invisible characters saves as no note", () => {
+    const built = buildGuestPackPayload("\u200b\u3164\u2800", []);
+    expect(built).toEqual({ ok: true, payload: { note: null, items: [] } });
+  });
+  test("a link with an invisible character anywhere is refused inline", () => {
+    expect(checkGuestPackLink("https://exa\u200bmple.com/m")).toEqual({
+      ok: false,
+      error: "That isn't a full link. Paste the whole web address, starting with https://",
+    });
+    expect(checkGuestPackLink("\u200bhttps://example.com/m\u2060")).toEqual({
+      ok: true,
+      url: "https://example.com/m",
+      fixed: false,
+    });
   });
 });
