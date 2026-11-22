@@ -34,7 +34,8 @@ import { PhoneInput } from "../onboarding/PhoneInput";
 import { useAppStore } from "../../store/appStore";
 import { sendOtp, verifyOtp, type OtpChannel } from "../../services/otpService";
 import {
-  phoneStepSendChannel,
+  phoneStepPresentation,
+  refusedForNumber,
   SUPPORT_EMAIL,
   SUPPORT_MAILTO,
   withRefusedChannel,
@@ -235,11 +236,18 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
   const typedMatches = typedE164 !== null && (last4 === null || typedE164.replace(/\D/g, "").endsWith(last4));
 
   const refusedChannels = useMemo<OtpChannel[]>(
-    () => (typedE164 !== null && refused.number === typedE164 ? refused.channels : []),
+    () => (typedE164 !== null ? refusedForNumber(refused, typedE164) : []),
     [refused, typedE164],
   );
   // #4561: text first; a call once text is refused; nothing once both are.
-  const sendChannel = phoneStepSendChannel(refusedChannels);
+  // The refusal message, support route and disabled button share one source
+  // (the refusals for the typed number), so none can show without the others.
+  const numberPresentation = phoneStepPresentation(
+    refusedChannels,
+    error ? { message: error, phoneTaken: false } : null,
+    { smsRefused: SMS_REFUSED_TEXT, allRefused: ALL_REFUSED_TEXT },
+  );
+  const sendChannel = numberPresentation.sendChannel;
   const allRefused = sendChannel === null;
 
   const sendCode = useCallback(async (): Promise<void> => {
@@ -262,7 +270,7 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
         const next = withRefusedChannel(refusedChannels, result.channel ?? sendChannel);
         setRefused({ number: typedE164, channels: next });
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setError(phoneStepSendChannel(next) === null ? ALL_REFUSED_TEXT : SMS_REFUSED_TEXT);
+        setError(null); // the refusal message is derived (numberPresentation)
         return;
       }
       setError(result.error ?? "We couldn't send the code. Try again.");
@@ -380,6 +388,8 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
 
   const mode = screen?.kind === "verify_number" ? "confirm_number" : inviteMode(r, signedIn);
   const sentence = r.inviterHasAccount ? friendshipSentence(inviterFirst) : null;
+  // #4561: on the number step the notice follows the typed number's refusals.
+  const noticeText = mode === "confirm_number" && codeSentTo === null ? numberPresentation.error : error;
 
   return (
     // #4508 R2: "Text me a code" sits right under the number field, so the
@@ -427,7 +437,7 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
                     value={phoneRaw}
                     countryCode={phoneCountry}
                     onChangePhone={(v: string) => { setPhoneRaw(v); setError(null); }}
-                    onChangeCountry={(iso: string) => setPhoneCountry(iso)}
+                    onChangeCountry={(iso: string) => { setPhoneCountry(iso); setError(null); }}
                     error={null}
                     disabled={busy !== null}
                     theme={PHONE_THEME}
@@ -470,8 +480,8 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
             </ProgramCard>
           ) : null}
           {sentence ? <Text style={[styles.muted, styles.gap]}>{sentence}</Text> : null}
-          {error ? <ProgramNotice tone="error" text={error} /> : null}
-          {mode === "confirm_number" && codeSentTo === null && allRefused ? (
+          {noticeText ? <ProgramNotice tone="error" text={noticeText} /> : null}
+          {mode === "confirm_number" && codeSentTo === null && numberPresentation.showSupport ? (
             <View>
               <ProgramButton
                 label="Email support"

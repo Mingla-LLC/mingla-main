@@ -14,8 +14,10 @@ import {
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
   otpPickerChannels,
+  phoneStepPresentation,
   phoneStepSendChannel,
   readSendOtpFailure,
+  refusedForNumber,
   SUPPORT_MAILTO,
   withRefusedChannel,
 } from "../edgeFunctionError.ts";
@@ -87,7 +89,7 @@ Deno.test("#4561 both sendOtp callers use the shared fallback rules", () => {
   const onboarding = read("src/components/OnboardingFlow.tsx");
   const rsvp = read("src/components/rsvpGuest/RsvpGuestClaimScreen.tsx");
   for (const source of [onboarding, rsvp]) {
-    assertStringIncludes(source, "phoneStepSendChannel(");
+    assertStringIncludes(source, "phoneStepPresentation(");
     assertStringIncludes(source, "withRefusedChannel(");
     assertStringIncludes(source, "SUPPORT_MAILTO");
     assertStringIncludes(source, "Phone Code Send Failed");
@@ -109,4 +111,76 @@ Deno.test("#4561 every new onboarding string exists in English", () => {
   assertEquals(en.phone.taken_help, "Use a different number, or email us if this number is yours.");
   assertEquals(en.phone.email_support, "Email support");
   assertEquals(en.otp.body_call, "We're calling {{phone}}");
+});
+
+// ─── Rework (QA P1-1, P3-1, P3-3) ───
+
+const MESSAGES = { smsRefused: "SMS_REFUSED", allRefused: "ALL_REFUSED" };
+
+Deno.test("#4561 P1-1: a disabled send button always has its reason and support route", () => {
+  // Every combination a person can reach the phone step with, including Back
+  // from the code screen's all-refused state (no stored error at all).
+  const lastErrors = [
+    null,
+    { message: "Couldn't send code. Try again.", phoneTaken: false },
+    { message: "taken", phoneTaken: true },
+  ];
+  for (const refused of [[], ["sms"], ["call"], ["sms", "call"], ["call", "sms"]] as const) {
+    for (const lastError of lastErrors) {
+      const p = phoneStepPresentation(refused, lastError, MESSAGES);
+      if (p.sendChannel === null) {
+        assertEquals(p.error, "ALL_REFUSED", `refused=${refused} last=${JSON.stringify(lastError)}`);
+        assertEquals(p.showSupport, true, `refused=${refused} last=${JSON.stringify(lastError)}`);
+      }
+    }
+  }
+});
+
+Deno.test("#4561 P1-1: Back from the code-screen all-refused state shows the message and support", () => {
+  // Text refused on the phone step, call refused from the picker, then Back:
+  // no error was stored for the phone step, only the remembered refusals.
+  const remembered = { number: "+12015550142", channels: withRefusedChannel(withRefusedChannel([], "sms"), "call") };
+  const p = phoneStepPresentation(refusedForNumber(remembered, "+12015550142"), null, MESSAGES);
+  assertEquals(p, { sendChannel: null, error: "ALL_REFUSED", showSupport: true });
+  // Back after only SMS was refused: the call button explains itself.
+  const smsOnly = phoneStepPresentation(["sms"], null, MESSAGES);
+  assertEquals(smsOnly, { sendChannel: "call", error: "SMS_REFUSED", showSupport: false });
+  // The onboarding screen draws exactly this presentation, not a second flag.
+  const onboarding = read("src/components/OnboardingFlow.tsx");
+  assertStringIncludes(onboarding, "error={phonePresentation.error}");
+  assertStringIncludes(onboarding, "{phonePresentation.showSupport ? renderEmailSupport() : null}");
+  assertStringIncludes(onboarding, "disabled: !isPhoneValid() || !smsConsentChecked || phonePresentation.sendChannel === null");
+  assert(!onboarding.includes("otpAllRefused"), "a second all-refused flag is back");
+  const rsvp = read("src/components/rsvpGuest/RsvpGuestClaimScreen.tsx");
+  assertStringIncludes(rsvp, "numberPresentation.error");
+  assertStringIncludes(rsvp, "numberPresentation.showSupport");
+});
+
+Deno.test("#4561 P3-1: a country change is a number change and clears the shown refusal", () => {
+  const remembered = { number: "+12015550142", channels: ["sms", "call"] as ("sms" | "call")[] };
+  // Same digits, another country: a different full number with no refusals.
+  assertEquals(refusedForNumber(remembered, "+442015550142"), []);
+  assertEquals(phoneStepPresentation(refusedForNumber(remembered, "+442015550142"), null, MESSAGES), {
+    sendChannel: "sms",
+    error: null,
+    showSupport: false,
+  });
+  // And both screens clear a stored error on a country change, as on a digit change.
+  const onboarding = read("src/components/OnboardingFlow.tsx");
+  assertStringIncludes(
+    onboarding,
+    "onChangeCountry={(code) => { setData((p) => ({ ...p, phoneCountryCode: code })); setPhoneError(null); setPhoneErrorKind(null) }}",
+  );
+  const rsvp = read("src/components/rsvpGuest/RsvpGuestClaimScreen.tsx");
+  assertStringIncludes(rsvp, "onChangeCountry={(iso: string) => { setPhoneCountry(iso); setError(null); }}");
+});
+
+Deno.test("#4561 P3-3: a refusal is recorded against the requested channel only", () => {
+  const otherChannel = readSendOtpFailure({ code: "channel_unavailable", channel: "whatsapp" }, "x", "sms");
+  assertEquals(otherChannel.channel, "sms");
+  const callForSms = readSendOtpFailure({ code: "channel_unavailable", channel: "call", alternatives: ["call"] }, "x", "sms");
+  assertEquals(callForSms.channel, "sms", "a reply must not mark the call refused when the app asked for SMS");
+  assertEquals(callForSms.alternatives, ["call"]);
+  const matching = readSendOtpFailure({ code: "channel_unavailable", channel: "call" }, "x", "call");
+  assertEquals(matching.channel, "call");
 });

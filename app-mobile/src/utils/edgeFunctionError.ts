@@ -147,7 +147,7 @@ export interface SendOtpFailure {
   success: false
   error: string
   code: SendOtpFailureCode
-  /** On `channel_unavailable`: the refused channel. */
+  /** On `channel_unavailable`: the refused channel (always the requested one). */
   channel?: OtpDeliveryChannel
   /** On `channel_unavailable`: the channels the server still allows. */
   alternatives?: OtpDeliveryChannel[]
@@ -179,8 +179,10 @@ export function readSendOtpFailure(
       : 'send_failed'
   const result: SendOtpFailure = { success: false, error: message, code }
   if (code === 'channel_unavailable') {
-    const refused = body?.channel
-    const channel = isOtpChannel(refused) ? refused : requestedChannel
+    // The refusal is recorded against the channel the app ASKED for. A reply
+    // naming another channel is ignored: it must never mark a channel refused
+    // that was not requested (#4561 rework, gap 3).
+    const channel = requestedChannel
     const offered = Array.isArray(body?.alternatives) ? (body?.alternatives as unknown[]) : []
     result.channel = channel
     result.alternatives = offered.filter(isOtpChannel).filter((c) => c !== channel)
@@ -215,6 +217,48 @@ export function otpPickerChannels(
   refused: readonly OtpDeliveryChannel[],
 ): OtpDeliveryChannel[] {
   return OFFERED_CHANNELS.filter((c) => !refused.includes(c))
+}
+
+/** Refusals remembered for `number`; any other number (digits or country) has none. */
+export function refusedForNumber(
+  remembered: { number: string; channels: readonly OtpDeliveryChannel[] },
+  number: string,
+): OtpDeliveryChannel[] {
+  return remembered.number === number ? [...remembered.channels] : []
+}
+
+export interface PhoneStepPresentation {
+  /** What the main button sends, or null when it is disabled for this number. */
+  sendChannel: OtpDeliveryChannel | null
+  /** The message under the number field. */
+  error: string | null
+  /** Show Email support and the printed address. */
+  showSupport: boolean
+}
+
+/**
+ * The phone step's message, support route and button state, all derived from
+ * the refusals remembered for the CURRENT number (one owner per truth), so a
+ * disabled button can never appear without its reason and its way out, however
+ * the person arrived (Back from the code screen, a failed resend, a send).
+ * `lastError` is the last non-refusal failure shown (409, 429, 500 and so on).
+ */
+export function phoneStepPresentation(
+  refused: readonly OtpDeliveryChannel[],
+  lastError: { message: string; phoneTaken: boolean } | null,
+  messages: { smsRefused: string; allRefused: string },
+): PhoneStepPresentation {
+  const sendChannel = phoneStepSendChannel(refused)
+  if (sendChannel === null) {
+    return { sendChannel, error: messages.allRefused, showSupport: true }
+  }
+  if (lastError !== null) {
+    return { sendChannel, error: lastError.message, showSupport: lastError.phoneTaken }
+  }
+  if (refused.includes('sms')) {
+    return { sendChannel, error: messages.smsRefused, showSupport: false }
+  }
+  return { sendChannel, error: null, showSupport: false }
 }
 
 /** The support address shown under every Email support button (#4561 Q-2/Q-8). */
