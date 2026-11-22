@@ -18,6 +18,10 @@
 --     and v2 refunds cannot overflow the orders integer column.
 --   biz_cancel_trip_booking_begin (20280204003645) — marks the actor so an
 --     operator cancel refunds that deposit (D-9).
+--   record_order_installment_provider_sale (20270725003645) — a row that is
+--     part overpayment not yet returned, or a flexible payment not yet
+--     settled, stays 'pending' instead of 'ready', so no payout ever counts
+--     money the traveler is owed back (N2, I-4522-OVERPAY-NEVER-PAID-OUT).
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -27,7 +31,8 @@ DECLARE r record; v_actual text;
 BEGIN
   FOR r IN SELECT * FROM (VALUES
     ('public.biz_compute_refund_for_cancel(uuid,timestamptz)','72d1629b3db78f4dbbad280565234d1b'),
-    ('public.biz_cancel_trip_booking_begin(uuid,text,uuid,text,timestamptz)','3bb652b695930105fa5d1cb1c0ce32ea')
+    ('public.biz_cancel_trip_booking_begin(uuid,text,uuid,text,timestamptz)','3bb652b695930105fa5d1cb1c0ce32ea'),
+    ('public.record_order_installment_provider_sale(uuid,integer,integer,timestamptz)','4fd2f012df53833c54d02eb9ff20309f')
   ) v(sig,expected_md5) LOOP
     SELECT md5(pg_get_functiondef(r.sig::regprocedure)) INTO v_actual;
     IF v_actual IS DISTINCT FROM r.expected_md5 THEN
@@ -36,6 +41,38 @@ BEGIN
   END LOOP;
 END;
 $drift$;
+
+-- ---------------------------------------------------------------------------
+-- 0. Overpayment not yet returned (charge units), per row and per order.
+--    Per row: only a flexible payment's excess lies inside the row's own
+--    recorded charge; the other causes (a superseded row's charge, an
+--    unexpected amount, a charge above the row) were never part of a
+--    collected row's amount.
+-- ---------------------------------------------------------------------------
+CREATE FUNCTION public.issue_4522_row_unreturned_overpayment(p_installment_id uuid)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT COALESCE(sum(refund_minor), 0)::bigint FROM public.order_overpayments
+   WHERE installment_id = p_installment_id AND reason = 'flex_exceeds_balance'
+     AND state IN ('held', 'refund_pending', 'refund_failed')
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_row_unreturned_overpayment(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION public.issue_4522_order_unreturned_overpayment(p_order_id uuid)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT COALESCE(sum(refund_minor), 0)::bigint FROM public.order_overpayments
+   WHERE order_id = p_order_id AND state IN ('held', 'refund_pending', 'refund_failed')
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_order_unreturned_overpayment(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- 1. The policy refund keeps a non-refundable deposit on a traveler's cancel.
@@ -60,6 +97,7 @@ DECLARE
   v_installment record;
   v_per_installment_refund jsonb := '[]'::jsonb;
   v_deposit_kept bigint := 0;
+  v_overpayment_return bigint := 0;
 BEGIN
   -- Fetch order + event
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
@@ -106,15 +144,21 @@ BEGIN
   -- For single-payment orders: orders.total_cents is the only paid amount.
   IF v_order.installment_plan_root THEN
     -- Deposit (orders row) + sum of collected installments
+    -- issue #4522 (N2) — money a row collected beyond what the plan owed and
+    -- has not yet returned is not part of the policy base: it goes back in
+    -- full through its own refund (issue_4522_begin_overpayment_refund),
+    -- whatever the tier, and is reported as overpayment_return_cents.
     SELECT v_order.total_cents +
-           COALESCE(sum(coalesce(buyer_total_cents, amount_cents) - refunded_amount_cents), 0)
+           COALESCE(sum(coalesce(buyer_total_cents, amount_cents) - refunded_amount_cents
+                        - public.issue_4522_row_unreturned_overpayment(id)), 0)
     INTO v_paid_total_cents
     FROM public.order_installments
     WHERE order_id = v_order.id AND status = 'collected';
 
     -- Build per-installment refund attribution (one row per collected installment).
     FOR v_installment IN
-      SELECT id, coalesce(buyer_total_cents, amount_cents) - refunded_amount_cents AS amount_cents,
+      SELECT id, coalesce(buyer_total_cents, amount_cents) - refunded_amount_cents
+                 - public.issue_4522_row_unreturned_overpayment(id) AS amount_cents,
              currency, stripe_payment_intent_id, ordinal
       FROM public.order_installments
       WHERE order_id = v_order.id AND status = 'collected'
@@ -168,6 +212,7 @@ BEGIN
   -- Sum refund_cents across attributions for total (handles per-row rounding).
   SELECT COALESCE(sum((r->>'refund_cents')::bigint), 0) INTO v_refund_total_cents
   FROM jsonb_array_elements(v_per_installment_refund) AS r;
+  v_overpayment_return := public.issue_4522_order_unreturned_overpayment(v_order.id);
 
   -- Scheduled + failed installments to cancel (for write path); cron will
   -- skip these per AND cancelled_at IS NULL filter.
@@ -196,7 +241,13 @@ BEGIN
   -- issue #4522 — the deposit kept by "Deposit is non-refundable" has its own
   -- key (never an element of per_payment_refund); absent when nothing is kept.
   ) || CASE WHEN v_deposit_kept > 0
-       THEN jsonb_build_object('deposit_non_refundable_cents', v_deposit_kept) ELSE '{}'::jsonb END;
+       THEN jsonb_build_object('deposit_non_refundable_cents', v_deposit_kept) ELSE '{}'::jsonb END
+  -- issue #4522 (N2) — overpayment returned in full on top of the policy
+  -- refund (its own refund, never part of per_payment_refund); absent when none.
+    || CASE WHEN v_overpayment_return > 0
+       THEN jsonb_build_object('overpayment_return_cents', v_overpayment_return,
+              'total_back_cents', v_refund_total_cents + v_overpayment_return)
+       ELSE '{}'::jsonb END;
 END;
 $function$;
 
@@ -435,5 +486,69 @@ REVOKE ALL ON FUNCTION public.issue_4522_remove_spread_addon(uuid, uuid, bigint,
 GRANT EXECUTE ON FUNCTION public.issue_4522_remove_spread_addon(uuid, uuid, bigint, uuid) TO service_role;
 COMMENT ON FUNCTION public.issue_4522_remove_spread_addon(uuid, uuid, bigint, uuid) IS
   'Issue #4522 §5.5 / #3281 §9.4: an add-on removed from a spread order first comes off the open rows of its package (rebalance addon_removed); refundFromCollectedMinor is what the caller still refunds from collected payments. A today order refunds it all from the deposit.';
+
+-- ---------------------------------------------------------------------------
+-- 3. Payouts never count money being returned (N2).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.record_order_installment_provider_sale(p_installment_id uuid, p_application_fee_amount_cents integer, p_provider_fee_cents integer, p_now timestamp with time zone DEFAULT now())
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_row public.order_installments;
+BEGIN
+  IF p_installment_id IS NULL THEN
+    RAISE EXCEPTION 'installment_id_required' USING ERRCODE = '22023';
+  END IF;
+  IF p_application_fee_amount_cents IS NULL OR p_application_fee_amount_cents < 0 THEN
+    RAISE EXCEPTION 'invalid_application_fee' USING ERRCODE = '22023';
+  END IF;
+  IF p_provider_fee_cents IS NULL OR p_provider_fee_cents < 0 THEN
+    RAISE EXCEPTION 'invalid_provider_fee' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.order_installments
+  WHERE id = p_installment_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'installment_not_found' USING ERRCODE = 'P0002';
+  END IF;
+  IF v_row.status IS DISTINCT FROM 'collected' THEN
+    RETURN jsonb_build_object(
+      'ok', false,
+      'reason', 'not_collected',
+      'status', v_row.status
+    );
+  END IF;
+
+  UPDATE public.order_installments
+  SET application_fee_amount_cents = p_application_fee_amount_cents,
+      provider_fee_cents = p_provider_fee_cents,
+      payout_accounting_state = CASE
+        WHEN payout_accounting_state IN ('attached', 'manual_review')
+          THEN payout_accounting_state
+        -- issue #4522 (N2) — held back while part of it is being returned
+        -- or while a flexible payment is unsettled; released by
+        -- issue_4522_sync_row_payout_hold.
+        WHEN public.issue_4522_row_payout_blocked(p_installment_id)
+          THEN 'pending'
+        ELSE 'ready'
+      END,
+      updated_at = p_now
+  WHERE id = p_installment_id
+  RETURNING * INTO v_row;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'installment_id', v_row.id,
+    'payout_accounting_state', v_row.payout_accounting_state,
+    'application_fee_amount_cents', v_row.application_fee_amount_cents,
+    'provider_fee_cents', v_row.provider_fee_cents
+  );
+END;
+$function$;
 
 COMMIT;

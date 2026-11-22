@@ -167,10 +167,31 @@ BEGIN
    WHERE order_id = '45220008-0000-4000-8000-0000000000a1' AND kind = 'flex';
   SELECT id INTO v_sup FROM public.order_installments
    WHERE order_id = '45220008-0000-4000-8000-0000000000a1' AND status = 'superseded';
+  -- N2: until it is settled, what it paid and what it overpaid is not known,
+  -- so it waits outside payouts; settled with nothing over, it is ready.
   v_r := public.record_order_installment_provider_sale(v_flex, 450000, 15000);
   IF NOT COALESCE((v_r->>'ok')::boolean, false)
+     OR (SELECT payout_accounting_state FROM public.order_installments WHERE id = v_flex) <> 'pending' THEN
+    RAISE EXCEPTION 'D-1a an unsettled flexible row must wait outside payouts: %', v_r;
+  END IF;
+  -- A flexible payment that fits the open balance: ready once settled.
+  PERFORM pg_temp.seed_order('45220008-0000-4000-8000-0000000000a6',
+    '{"v":2,"deposit_minor":30000000,"flex_enabled":true,"auto_adjust":true}', NULL);
+  INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
+    collection_method, plan_bound_at, buyer_total_cents, kind, flex_client_key, line_allocation,
+    collected_at, stripe_payment_intent_id)
+  VALUES ('45220008-0000-4000-8000-0000000000a6', 4, 10000000, 'NGN', now(), 'collected', 'paystack', 'pay_link',
+    now(), 10200000, 'flex', 'client-key-payout', '[{"ticket_type_id":"45220008-0000-4000-8000-000000000030","net_minor":10000000,"addon_minor":0}]',
+    now(), 'ps_flex_payout')
+  RETURNING id INTO v_flex;
+  v_r := public.record_order_installment_provider_sale(v_flex, 450000, 15000);
+  IF (SELECT payout_accounting_state FROM public.order_installments WHERE id = v_flex) <> 'pending' THEN
+    RAISE EXCEPTION 'D-1b an unsettled flexible row must wait outside payouts: %', v_r;
+  END IF;
+  v_r := public.issue_4522_settle_flex_payment(v_flex);
+  IF NOT COALESCE((v_r->>'ok')::boolean, false) OR (v_r->>'heldMinor')::bigint <> 0
      OR (SELECT payout_accounting_state FROM public.order_installments WHERE id = v_flex) <> 'ready' THEN
-    RAISE EXCEPTION 'D-1 a collected flexible row must be payout-ready: %', v_r;
+    RAISE EXCEPTION 'D-1 a settled flexible row must be payout-ready: %', v_r;
   END IF;
   v_r := public.record_order_installment_provider_sale(v_sup, 450000, 15000);
   IF (v_r->>'reason') <> 'not_collected'

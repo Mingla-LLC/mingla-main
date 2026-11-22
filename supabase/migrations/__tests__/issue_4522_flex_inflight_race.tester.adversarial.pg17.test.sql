@@ -1,5 +1,5 @@
--- MINGLA-INVARIANT: I-4522-12 | issue #4522 | Money is never collected twice for the same balance: a planned row whose Stripe charge or Paystack attempt is in flight blocks a flexible payment, the balance and the cron claim agree on it, a settlement that finds more money than is owed holds the surplus as a flagged overpayment instead of raising, and the cron charges nothing while a flexible payment is unsettled or an overpayment is held.
--- MINGLA-INVARIANT: I-4522-13 | issue #4522 | An abandoned flexible payment (past issue_4522_flex_reclaim_window() with no attempt in flight) never blocks the cron, rollover or a new payment; it is released by the next begin or the sweep, and a late success for it still settles exactly once.
+-- MINGLA-INVARIANT: I-4522-12 | issue #4522 | Money is never collected twice for the same balance: a planned row whose Stripe charge or Paystack attempt is in flight blocks a flexible payment, the balance and the cron claim agree on it, a settlement applies around a charge still in flight and holds anything beyond what is owed as an overpayment that is returned to the traveler instead of raising, and the cron charges nothing while a flexible payment is unsettled.
+-- MINGLA-INVARIANT: I-4522-13 | issue #4522 | An open flexible payment is never released on time alone: it blocks the cron and a new payment until the provider's answer settles it or releases it through issue_4522_release_flex_verified, and a late success for a released payment still settles exactly once.
 \set ON_ERROR_STOP on
 
 -- Rework after the #4522 tester FAIL (F1 money loss, F2 abandoned payment).
@@ -71,7 +71,7 @@ LANGUAGE sql AS $$
   SELECT o.total_cents
        + COALESCE((SELECT sum(amount_cents) FROM public.order_installments WHERE order_id = p_order AND status = 'collected'), 0)
        + COALESCE((SELECT sum(amount_minor) FROM public.order_overpayments WHERE order_id = p_order AND reason = 'superseded_row_collected'), 0)
-       - COALESCE((SELECT sum(amount_minor) FROM public.order_overpayments WHERE order_id = p_order AND state = 'held'), 0)
+       - COALESCE((SELECT sum(amount_minor) FROM public.order_overpayments WHERE order_id = p_order AND state <> 'applied'), 0)
     FROM public.orders o WHERE o.id = p_order $$;
 CREATE FUNCTION pg_temp.open_sum(p_order uuid) RETURNS bigint
 LANGUAGE sql AS $$ SELECT COALESCE(sum(amount_cents), 0) FROM public.order_installments
@@ -154,20 +154,22 @@ BEGIN
     EXISTS (SELECT 1 FROM public.audit_log WHERE action = 'tr3.installment_overpayment_held'
              AND target_id = pg_temp.flex_id(o2, 'race-key-0003')::text));
 
-  -- ── F1-c: same race, the flexible webhook first. Its settlement waits
-  --    (PT409, retried by the inbox) while the planned charge is in flight,
-  --    then holds the surplus once the planned webhook lands.
+  -- ── F1-c: same race, the flexible webhook first. Until it settles the cron
+  --    claims nothing; the settlement applies around the planned charge still
+  --    in flight (that row keeps its amount) and holds the share it could not
+  --    apply, to be returned. It never waits on a charge that may never land.
   PERFORM pg_temp.seed(o3, rows3, 'stripe');
   PERFORM public.issue_4522_begin_flex_payment(o3, 90000000, 90000000, 'race-key-0004', 'auto_card');
   UPDATE public.order_installments SET stripe_payment_intent_id = 'pi_race_row1_c' WHERE id = pg_temp.row_id(o3, 1);
   PERFORM pg_temp.check('F1-c flex webhook', pg_temp.collect(pg_temp.flex_id(o3, 'race-key-0004'), 'pi_flex_o3') = 1);
-  v_txt := pg_temp.raised(format($$SELECT public.issue_4522_settle_flex_payment(%L)$$, pg_temp.flex_id(o3, 'race-key-0004')));
-  PERFORM pg_temp.check('F1-c settlement waits for the in-flight planned charge', v_txt = 'PT409:balance_payment_in_flight', v_txt);
-  PERFORM pg_temp.check('F1-c cron claims nothing meanwhile',
+  PERFORM pg_temp.check('F1-c cron claims nothing before the settlement',
     public.claim_order_installment_for_charge(pg_temp.row_id(o3, 2))->>'reason' = 'flex_settlement_pending');
-  PERFORM pg_temp.check('F1-c planned webhook', pg_temp.collect(pg_temp.row_id(o3, 1), 'pi_race_row1_c') = 1);
   v := public.issue_4522_settle_flex_payment(pg_temp.flex_id(o3, 'race-key-0004'));
-  PERFORM pg_temp.check('F1-c settlement holds the surplus', (v->>'ok')::boolean AND (v->>'heldMinor')::bigint = 30000000, v::text);
+  PERFORM pg_temp.check('F1-c settlement applies around the in-flight charge and holds its share',
+    (v->>'ok')::boolean AND (v->>'heldMinor')::bigint = 30000000 AND (v->>'remainingMinor')::bigint = 30000000, v::text);
+  PERFORM pg_temp.check('F1-c the in-flight row keeps its amount',
+    (SELECT status = 'scheduled' AND amount_cents = 30000000 FROM public.order_installments WHERE id = pg_temp.row_id(o3, 1)));
+  PERFORM pg_temp.check('F1-c planned webhook', pg_temp.collect(pg_temp.row_id(o3, 1), 'pi_race_row1_c') = 1);
   PERFORM pg_temp.check('F1-c buyer keeps exactly the price', pg_temp.net_collected(o3) = 120000000, pg_temp.net_collected(o3)::text);
 
   -- ── F1-d: a planned row superseded while its charge was landing (the
@@ -197,13 +199,17 @@ BEGIN
   v := public.issue_4522_settle_flex_payment(pg_temp.flex_id(o5, 'race-key-0006'));
   PERFORM pg_temp.check('F1-e only package B''s share is applied', (v->>'heldMinor')::bigint = 20000000
     AND (v->>'remainingMinor')::bigint = 10000000, v::text);
-  PERFORM pg_temp.check('F1-e the cron never charges while money is held',
-    public.claim_order_installment_for_charge(pg_temp.row_id(o5, 2))->>'reason' = 'overpayment_held'
-    AND public.issue_3645_begin_installment_attempt(pg_temp.row_id(o5, 2), 'auto_card', 0, true, now())->>'reason' = 'overpayment_held');
+  -- N4: the held share is returned on its own; it never stalls package B.
+  PERFORM pg_temp.check('F1-e held money never stalls the plan',
+    (public.claim_order_installment_for_charge(pg_temp.row_id(o5, 2))->>'ok')::boolean
+    AND (public.issue_3645_begin_installment_attempt(pg_temp.row_id(o5, 2), 'pay_link', 0, true, now())->>'ok')::boolean);
 END
 $t$;
 
--- ── F2: an abandoned flexible payment ─────────────────────────────────────
+-- ── F2 / N3: an abandoned flexible payment ────────────────────────────────
+-- It is never released on time alone. Past the reclaim window the edge asks
+-- the provider; only its answer releases (issue_4522_release_flex_verified)
+-- or settles (the success path) the payment.
 DO $t$
 DECLARE
   o6 uuid := '45220f01-0000-4000-8000-0000000000b6';
@@ -217,34 +223,53 @@ DECLARE
 BEGIN
   PERFORM pg_temp.check('F2 the reclaim window is the instalment reconcile''s 15 minutes',
     public.issue_4522_flex_reclaim_window() = interval '15 minutes');
+  PERFORM pg_temp.check('N3 the in-flight ceiling is 24 hours',
+    public.issue_4522_flex_in_flight_ceiling() = interval '24 hours');
 
   -- A buyer opened "Pay ₦50,000" 20 minutes ago and closed the sheet.
   PERFORM pg_temp.seed(o6, rows3, 'stripe');
   PERFORM public.issue_4522_begin_flex_payment(o6, 5000000, 90000000, 'abandon-key-01', 'auto_card', now() - interval '20 minutes');
   v_old := pg_temp.flex_id(o6, 'abandon-key-01');
   UPDATE public.order_installments SET stripe_payment_intent_id = 'pi_flex_abandoned' WHERE id = v_old;
-  PERFORM pg_temp.check('F2 balance no longer shows it in flight', NOT (public.issue_4522_balance(o6)->>'paymentInFlight')::boolean);
-  v := public.claim_order_installment_for_charge(pg_temp.row_id(o6, 1));
-  PERFORM pg_temp.check('F2 the cron claims the overdue row', (v->>'ok')::boolean, v::text);
-  v := public.issue_4522_begin_flex_payment(o6, 90000000, 90000000, 'abandon-key-02', 'auto_card');
-  PERFORM pg_temp.check('F2 a new payment starts and names the released PaymentIntent',
-    v->'released'->0->>'stripePaymentIntentId' = 'pi_flex_abandoned' AND NOT (v->>'replayed')::boolean, v::text);
+  PERFORM pg_temp.check('N3 time alone releases nothing: still in flight on the balance',
+    (public.issue_4522_balance(o6)->>'paymentInFlight')::boolean);
+  PERFORM pg_temp.check('N3 time alone releases nothing: the cron waits',
+    public.claim_order_installment_for_charge(pg_temp.row_id(o6, 1))->>'reason' = 'flex_payment_in_flight');
+  v_txt := pg_temp.raised(format($$SELECT public.issue_4522_begin_flex_payment(%L, 90000000, 90000000, 'abandon-key-02', 'auto_card')$$, o6));
+  PERFORM pg_temp.check('N3 time alone releases nothing: a new payment waits', v_txt = 'PT409:balance_payment_in_flight', v_txt);
+  v := public.issue_4522_flex_payments_to_verify(o6, now(), 10);
+  PERFORM pg_temp.check('N3 the edge is told to ask the provider about it',
+    jsonb_array_length(v) = 1 AND v->0->>'stripePaymentIntentId' = 'pi_flex_abandoned'
+    AND NOT (v->0->>'pastCeiling')::boolean, v::text);
+  v_txt := pg_temp.raised(format($$SELECT public.issue_4522_release_flex_verified(%L, 'expired', 'pi_flex_abandoned')$$, v_old));
+  PERFORM pg_temp.check('N3 an unverified reason is refused', v_txt LIKE '22023:flex_release_reason_invalid%', v_txt);
+  v := public.issue_4522_release_flex_verified(v_old, 'provider_canceled', 'pi_someone_else');
+  PERFORM pg_temp.check('N3 another PaymentIntent''s answer is refused', v->>'reason' = 'provider_ref_mismatch', v::text);
+  v := public.issue_4522_release_flex_verified(v_old, 'no_provider_charge', NULL);
+  PERFORM pg_temp.check('N3 "no charge" is refused when a PaymentIntent exists', v->>'reason' = 'provider_charge_exists', v::text);
+  v := public.issue_4522_release_flex_verified(v_old, 'provider_canceled', 'pi_flex_abandoned');
+  PERFORM pg_temp.check('N3 the provider-confirmed cancel releases it', (v->>'released')::boolean, v::text);
   PERFORM pg_temp.check('F2 the abandoned row is closed, not cancelled',
-    (SELECT status = 'superseded' AND failure_reason = 'flex_expired' FROM public.order_installments WHERE id = v_old));
-  -- A fresh flexible payment still blocks the cron.
-  PERFORM pg_temp.check('F2 a fresh flexible payment still blocks the cron',
+    (SELECT status = 'superseded' AND failure_reason = 'flex_released:provider_canceled' FROM public.order_installments WHERE id = v_old));
+  v := public.claim_order_installment_for_charge(pg_temp.row_id(o6, 1));
+  PERFORM pg_temp.check('F2 the cron claims the overdue row after the release', (v->>'ok')::boolean, v::text);
+  v := public.issue_4522_begin_flex_payment(o6, 90000000, 90000000, 'abandon-key-02', 'auto_card');
+  PERFORM pg_temp.check('F2 a new payment starts after the release', NOT (v->>'replayed')::boolean
+    AND jsonb_array_length(v->'released') = 0, v::text);
+  PERFORM pg_temp.check('F2 a fresh flexible payment blocks the cron',
     public.claim_order_installment_for_charge(pg_temp.row_id(o6, 2))->>'reason' = 'flex_payment_in_flight');
+  PERFORM pg_temp.check('N3 a fresh payment is not even offered for checking',
+    jsonb_array_length(public.issue_4522_flex_payments_to_verify(o6, now(), 10)) = 0);
 
-  -- Rollover is not blocked by an abandoned payment; the sweep releases it.
+  -- Paystack: a payment with no attempt at all may be released as "no charge";
+  -- one whose latest attempt the provider verified failed, as "failed".
   PERFORM pg_temp.seed(o7, rows3, 'paystack');
   PERFORM public.issue_4522_begin_flex_payment(o7, 5000000, 90000000, 'abandon-key-03', 'pay_link', now() - interval '1 hour');
-  UPDATE public.order_installments SET status = 'failed', retry_count = 2, failed_at = now(), failure_reason = 'declined'
-   WHERE id = pg_temp.row_id(o7, 1);
-  v := public.issue_3645_count_installment_failure(pg_temp.row_id(o7, 1), 'declined');
-  PERFORM pg_temp.check('F2 rollover proceeds past an abandoned payment', (v->>'rolled_over')::boolean, v::text);
-  v := public.issue_4522_sweep_stale_flex(now(), 100);
-  PERFORM pg_temp.check('F2 the sweep releases it',
-    EXISTS (SELECT 1 FROM jsonb_array_elements(v) r WHERE r->>'orderId' = o7::text), v::text);
+  v_old := pg_temp.flex_id(o7, 'abandon-key-03');
+  v := public.issue_4522_release_flex_verified(v_old, 'provider_canceled', 'x');
+  PERFORM pg_temp.check('N3 a Stripe answer cannot release a Paystack payment', v->>'reason' = 'provider_ref_mismatch', v::text);
+  v := public.issue_4522_release_flex_verified(v_old, 'no_provider_charge', NULL);
+  PERFORM pg_temp.check('N3 a Paystack payment never attempted is released', (v->>'released')::boolean, v::text);
   PERFORM pg_temp.check('F2 nothing open is left for the order',
     NOT EXISTS (SELECT 1 FROM public.order_installments WHERE order_id = o7 AND kind = 'flex' AND status IN ('scheduled', 'failed')));
 
@@ -252,7 +277,8 @@ BEGIN
   PERFORM pg_temp.seed(o8, rows3, 'stripe');
   PERFORM public.issue_4522_begin_flex_payment(o8, 30000000, 90000000, 'abandon-key-04', 'auto_card', now() - interval '30 minutes');
   v_old := pg_temp.flex_id(o8, 'abandon-key-04');
-  PERFORM public.issue_4522_sweep_stale_flex(now(), 100);
+  UPDATE public.order_installments SET stripe_payment_intent_id = 'pi_flex_late' WHERE id = v_old;
+  PERFORM public.issue_4522_release_flex_verified(v_old, 'provider_canceled', 'pi_flex_late');
   PERFORM pg_temp.check('F2 late webhook matches no open row', pg_temp.collect(v_old, 'pi_flex_late') = 0);
   v := public.issue_4522_record_late_collection(v_old, 30000000, 'pi_flex_late', 'ch_flex_late');
   PERFORM pg_temp.check('F2 the late payment is collected and settled', (v->>'ok')::boolean AND v->>'outcome' = 'flex_collected'
@@ -262,39 +288,61 @@ BEGIN
   PERFORM pg_temp.check('F2 settled exactly once',
     (SELECT count(*) FROM public.order_balance_events WHERE trigger_installment_id = v_old) = 1);
 
-  -- Late success after the buyer already paid everything with a new payment,
-  -- in both webhook orders: never double-collected (the extra is held).
+  -- A late success for an amount we never asked for: recorded, wholly
+  -- returned, flagged, and the webhook acks (never retries forever).
   PERFORM pg_temp.seed(o9, rows3, 'stripe');
   PERFORM public.issue_4522_begin_flex_payment(o9, 30000000, 90000000, 'abandon-key-05', 'auto_card', now() - interval '30 minutes');
   v_old := pg_temp.flex_id(o9, 'abandon-key-05');
-  v := public.issue_4522_begin_flex_payment(o9, 90000000, 90000000, 'abandon-key-06', 'auto_card');
-  -- order 1: the old payment's late success lands while the new one is open
-  v := public.issue_4522_record_late_collection(v_old, 30000000, 'pi_old_late');
-  PERFORM pg_temp.check('F2 old payment settles first', (v->'settle'->>'remainingMinor')::bigint = 60000000, v::text);
-  PERFORM pg_temp.collect(pg_temp.flex_id(o9, 'abandon-key-06'), 'pi_new');
-  v := public.issue_4522_settle_flex_payment(pg_temp.flex_id(o9, 'abandon-key-06'));
-  PERFORM pg_temp.check('F2 the new payment''s extra is held', (v->>'heldMinor')::bigint = 30000000
-    AND (v->>'paidInFull')::boolean, v::text);
-  PERFORM pg_temp.check('F2 buyer keeps exactly the price', pg_temp.net_collected(o9) = 120000000, pg_temp.net_collected(o9)::text);
+  UPDATE public.order_installments SET stripe_payment_intent_id = 'pi_mismatch' WHERE id = v_old;
+  PERFORM public.issue_4522_release_flex_verified(v_old, 'provider_canceled', 'pi_mismatch');
+  v := public.issue_4522_record_late_collection(v_old, 31000000, 'pi_mismatch');
+  PERFORM pg_temp.check('edge: a mismatched late amount acks, is held whole and flags ops',
+    (v->>'ok')::boolean AND v->>'outcome' = 'held' AND (v->>'alertOps')::boolean
+    AND (SELECT refund_minor = 31000000 AND reason = 'late_amount_mismatch' FROM public.order_overpayments WHERE installment_id = v_old), v::text);
+  PERFORM pg_temp.check('edge: the plan is untouched by it', pg_temp.open_sum(o9) = 90000000);
+  v := public.issue_4522_record_late_collection(v_old, 31000000, 'pi_mismatch');
+  PERFORM pg_temp.check('edge: its replay holds nothing more', (v->>'replayed')::boolean
+    AND (SELECT count(*) FROM public.order_overpayments WHERE installment_id = v_old) = 1, v::text);
 END
 $t$;
 
--- order 2 of the late success: the new payment settles first.
+-- Late success after the buyer already paid everything with a new payment,
+-- in both webhook orders: never double-collected (the extra is returned).
 DO $t$
 DECLARE
   o10 uuid := '45220f01-0000-4000-8000-0000000000ba';
+  o11 uuid := '45220f01-0000-4000-8000-0000000000bb';
   v jsonb; v_old uuid;
 BEGIN
+  -- order 1: the old payment's late success lands while the new one is open.
+  PERFORM pg_temp.seed(o11, '[{"tt":"45220f01-0000-4000-8000-000000000030","due":"2027-01-13T08:00Z","amt":45000000},
+                             {"tt":"45220f01-0000-4000-8000-000000000030","due":"2027-02-10T08:00Z","amt":45000000}]', 'stripe');
+  PERFORM public.issue_4522_begin_flex_payment(o11, 30000000, 90000000, 'abandon-key-09', 'auto_card', now() - interval '30 minutes');
+  v_old := pg_temp.flex_id(o11, 'abandon-key-09');
+  UPDATE public.order_installments SET stripe_payment_intent_id = 'pi_old_o11' WHERE id = v_old;
+  PERFORM public.issue_4522_release_flex_verified(v_old, 'provider_canceled', 'pi_old_o11');
+  PERFORM public.issue_4522_begin_flex_payment(o11, 90000000, 90000000, 'abandon-key-10', 'auto_card');
+  v := public.issue_4522_record_late_collection(v_old, 30000000, 'pi_old_o11');
+  PERFORM pg_temp.check('F2 order 1: old payment settles first', (v->'settle'->>'remainingMinor')::bigint = 60000000, v::text);
+  PERFORM pg_temp.collect(pg_temp.flex_id(o11, 'abandon-key-10'), 'pi_new');
+  v := public.issue_4522_settle_flex_payment(pg_temp.flex_id(o11, 'abandon-key-10'));
+  PERFORM pg_temp.check('F2 order 1: the new payment''s extra is held for return', (v->>'heldMinor')::bigint = 30000000
+    AND (v->>'paidInFull')::boolean, v::text);
+  PERFORM pg_temp.check('F2 order 1: buyer keeps exactly the price', pg_temp.net_collected(o11) = 120000000, pg_temp.net_collected(o11)::text);
+
+  -- order 2: the new payment settles first.
   PERFORM pg_temp.seed(o10, '[{"tt":"45220f01-0000-4000-8000-000000000030","due":"2027-01-13T08:00Z","amt":45000000},
                              {"tt":"45220f01-0000-4000-8000-000000000030","due":"2027-02-10T08:00Z","amt":45000000}]', 'stripe');
   PERFORM public.issue_4522_begin_flex_payment(o10, 30000000, 90000000, 'abandon-key-07', 'auto_card', now() - interval '30 minutes');
   v_old := pg_temp.flex_id(o10, 'abandon-key-07');
+  UPDATE public.order_installments SET stripe_payment_intent_id = 'pi_old_o10' WHERE id = v_old;
+  PERFORM public.issue_4522_release_flex_verified(v_old, 'provider_canceled', 'pi_old_o10');
   PERFORM public.issue_4522_begin_flex_payment(o10, 90000000, 90000000, 'abandon-key-08', 'auto_card');
   PERFORM pg_temp.collect(pg_temp.flex_id(o10, 'abandon-key-08'), 'pi_new_first');
   v := public.issue_4522_settle_flex_payment(pg_temp.flex_id(o10, 'abandon-key-08'));
   PERFORM pg_temp.check('F2 order 2: the new payment pays in full', (v->>'paidInFull')::boolean AND (v->>'heldMinor')::bigint = 0, v::text);
-  v := public.issue_4522_record_late_collection(v_old, 30000000, 'pi_old_after');
-  PERFORM pg_temp.check('F2 order 2: the old payment is collected and wholly held',
+  v := public.issue_4522_record_late_collection(v_old, 30000000, 'pi_old_o10');
+  PERFORM pg_temp.check('F2 order 2: the old payment is collected and wholly held for return',
     (v->>'ok')::boolean AND (v->'settle'->>'heldMinor')::bigint = 30000000, v::text);
   PERFORM pg_temp.check('F2 order 2: buyer keeps exactly the price', pg_temp.net_collected(o10) = 120000000,
     pg_temp.net_collected(o10)::text);
