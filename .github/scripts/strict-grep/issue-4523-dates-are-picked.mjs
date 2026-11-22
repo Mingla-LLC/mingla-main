@@ -26,6 +26,10 @@
  * change). The last slice leaves it `{}`.
  *
  * Time-only fields (`type="time"`, `<DateTimePicker mode="time">`) are allowed.
+ * A file that reaches the old browser input ONLY for its time mode is listed by
+ * name in TIME_ONLY_EXEMPTIONS with its reason (no directory or pattern
+ * exemptions); it is exempt from rule 5 only while every `<WebDateTimeInput>`
+ * in it is `type="time"`, and every other rule still applies to it.
  * mingla-site-cms (Payload's own calendar) is out of scope. `--self-test` drives
  * the pure checkers with fixtures.
  */
@@ -46,11 +50,33 @@ export const SCAN_ROOTS = [
 
 /** Counted ratchet. Only ever lowered. */
 export const ALLOWLIST = {
-  "mingla-business/src/components/event/CreatorStep2When.tsx": 1,
-  "mingla-business/src/components/event/MultiDateOverrideSheet.tsx": 1,
-  "mingla-business/src/components/programs/TimeField.tsx": 1,
+  // #4490 (venue features, another chat's in-flight work) owns the venue menu sheet; its rows stay listed until #4490 lands.
   "mingla-business/src/components/venue/MenuCategorySheet.tsx": 1,
 };
+
+/**
+ * Time-only fields (spec OD-4: times stay their own control). Each entry is one
+ * file and why it is time-only. Exempt from rule 5 only while every
+ * `<WebDateTimeInput>` in the file is `type="time"`.
+ */
+export const TIME_ONLY_EXEMPTIONS = {
+  "mingla-business/src/components/event/CreatorStep2When.tsx":
+    "Event start and end TIMES (single, recurring and each multi-date row); the dates in this step are picked from the Mingla calendar (ui/DateField).",
+  "mingla-business/src/components/event/MultiDateOverrideSheet.tsx":
+    "Per-date start and end TIME overrides; the date of each occurrence is not edited in this sheet.",
+  "mingla-business/src/components/programs/TimeField.tsx":
+    "The program time of day field: a time only, with no date part.",
+};
+
+/** True when every `<WebDateTimeInput>` in the source is a literal type="time". */
+function webDateTimeInputsAreTimeOnly(src) {
+  let saw = false;
+  for (const tag of jsxOpeningTags(src, "WebDateTimeInput")) {
+    saw = true;
+    if (!/\btype\s*=\s*(?:\{\s*)?["'`]time["'`]/.test(tag)) return false;
+  }
+  return saw;
+}
 
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs)$/;
 const DATE_TYPES = "date|datetime-local|month|week";
@@ -162,13 +188,16 @@ export function checkSource(relPath, rawSource) {
     hits.push({ rule: 4, detail: "typed-date placeholder" });
   }
 
-  // 5 — the old controls
+  // 5 — the old controls (a listed time-only file is exempt while it stays time-only)
+  const timeOnlyExempt =
+    Object.prototype.hasOwnProperty.call(TIME_ONLY_EXEMPTIONS, relPath) && webDateTimeInputsAreTimeOnly(src);
   const inUiDir = /(^|\/)components\/ui\/[^/]+$/.test(relPath);
   // A type-only import is erased and brings in no control.
   for (const m of src.replace(/import\s+type\s[^;]*;/g, "").matchAll(/(?:from|import|require\()\s*\(?\s*["']([^"']+)["']/g)) {
     const spec = m[1];
     const isOld = /(^|\/)WebDateTimeInput$/.test(spec);
     if (!isOld) continue;
+    if (timeOnlyExempt) continue;
     if (/(^|\/)ui\/WebDateTimeInput$/.test(spec) || (inUiDir && /^\.\/WebDateTimeInput$/.test(spec))) {
       hits.push({ rule: 5, detail: `import ${spec}` });
     }
@@ -298,6 +327,40 @@ if (process.argv.includes("--self-test")) {
     'import DateTimePicker from "@react-native-community/datetimepicker";\nconst x = <DateTimePicker mode="date" value={d} />;',
     1,
   );
+
+  // #4523 checkpoint 20: time-only exemptions are named files with reasons, never patterns.
+  const exempt = "mingla-business/src/components/programs/TimeField.tsx";
+  const timeOnlySrc = 'import { WebDateTimeInput } from "../ui/WebDateTimeInput";\nconst a = <WebDateTimeInput type="time" value={v} onChangeValue={set} ariaLabel="Time" />;';
+  expectHits("a listed time-only file with only time inputs passes", exempt, timeOnlySrc, 0);
+  expectHits(
+    "a listed time-only file that gains a date-typed WebDateTimeInput fails",
+    exempt,
+    timeOnlySrc + '\nconst b = <WebDateTimeInput type="date" value={d} onChangeValue={set} ariaLabel="Day" />;',
+    1,
+  );
+  expectHits(
+    "a listed time-only file with a dynamic WebDateTimeInput type fails",
+    exempt,
+    'import { WebDateTimeInput } from "../ui/WebDateTimeInput";\nconst a = <WebDateTimeInput type={kind} value={v} />;',
+    1,
+  );
+  expectHits("a listed time-only file that gains a browser date box fails", exempt, timeOnlySrc + '\nconst c = <input type="date" />;', 1);
+  expectHits(
+    "a listed time-only file that gains an OS date picker fails",
+    exempt,
+    timeOnlySrc + '\nimport DateTimePicker from "@react-native-community/datetimepicker";\nconst d = <DateTimePicker mode="date" value={x} />;',
+    1,
+  );
+  expectHits("the same time-only source in an UNLISTED file still fails (no blanket exemption)", "mingla-business/src/components/other/Clock.tsx", timeOnlySrc, 1);
+  for (const [file, reason] of Object.entries(TIME_ONLY_EXEMPTIONS)) {
+    if (typeof reason !== "string" || reason.trim().length < 20) fail.push(`${file}: time-only exemption needs a stated reason`);
+    if (/[*?[\]]/.test(file) || file.endsWith("/")) fail.push(`${file}: exemptions name one file, never a pattern or directory`);
+    if (!fs.existsSync(path.join(ROOT, file))) fail.push(`${file}: exempted file is missing; remove the exemption`);
+    else if (!webDateTimeInputsAreTimeOnly(stripComments(fs.readFileSync(path.join(ROOT, file), "utf8")))) {
+      fail.push(`${file}: exempted as time-only but has a non-time WebDateTimeInput (or none); remove the exemption`);
+    }
+    if (ALLOWLIST[file] !== undefined) fail.push(`${file}: both exempted and allowlisted`);
+  }
 
   const goodNav = "const onNavigateMonth = useCallback((delta) => { setVisible(delta); }, []);\n  const onNavigateYears = 1;";
   const badNav = "const onNavigateMonth = useCallback((delta) => { props.onDone(); }, []);\n  const onNavigateYears = 1;";
