@@ -195,12 +195,14 @@ export interface DateRangeFieldProps extends CommonOnly {
   onClear?: () => void;
   /** Two months side by side (wide web). */
   months?: 1 | 2;
+  /** A one-day range may be picked (trip dates, day-unit pickers); stays never. */
+  allowSameDay?: boolean;
 }
 
 /** Range. Stays open until Done; dismissing discards the draft. */
 export function BaseDateRangeField(props: DateRangeFieldProps): React.ReactElement {
   const { Surface } = useSurfaceImpl();
-  const { value, onChange, onClear, unit = "nights", minLength, maxLength, months, ...common } = props;
+  const { value, onChange, onClear, unit = "nights", minLength, maxLength, months, allowSameDay, ...common } = props;
   const labels = mergeLabels(common.labels);
   const complete = value.start !== "" && value.end !== "" && parseCalendarDate(value.start) !== null && parseCalendarDate(value.end) !== null;
   const displayText = complete
@@ -228,6 +230,7 @@ export function BaseDateRangeField(props: DateRangeFieldProps): React.ReactEleme
           minLength={minLength}
           maxLength={maxLength}
           months={months}
+          allowSameDay={allowSameDay}
           onDone={close}
           onCancel={close}
         />

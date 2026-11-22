@@ -127,7 +127,8 @@ export function DateRangeField({ label, start, end, onChange, minDate, maxDate, 
   label?: string; start: string | null; end: string | null; onChange: (range: { start: string; end: string }) => void; minDate?: string | null; maxDate?: string | null; error?: string | null;
 }): React.ReactElement {
   const labels = useExplorerCalendarLabels();
-  return <CalendarDateRangeField label={label ?? labels.choose_dates} value={{ start: start ?? '', end: end ?? '' }} onChange={onChange} unit="days"
+  // #4523 — a day-unit range may start and end on the same day.
+  return <CalendarDateRangeField label={label ?? labels.choose_dates} value={{ start: start ?? '', end: end ?? '' }} onChange={onChange} unit="days" allowSameDay
     min={minDate ?? undefined} max={maxDate ?? undefined} error={error} timeZone={deviceTimeZone()} labels={labels} config={EXPLORER_CALENDAR_CONFIG} />;
 }
 

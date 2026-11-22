@@ -477,6 +477,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           timeZone={tripZone}
           disabled={disabled}
           placeholder="Choose start and end dates"
+          // #4523 — a day trip ends on the day it starts.
+          allowSameDay
           testID="trip-step1-dates"
         />
         {tripLength !== null ? (

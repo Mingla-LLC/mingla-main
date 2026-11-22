@@ -323,6 +323,20 @@ describe.each(["web", "ios"] as const)("#3801 — Step 1 on %s (shared range cal
     expect(harness.draft().endAt).toBe(END);
   });
 
+  test("a day trip: the field allows a one-day range and stores what main stored (#4523 rework F5)", async () => {
+    setZone("America/New_York");
+    const harness = await mountStep1(os);
+    expect((rangeField(harness.tree) as unknown as { allowSameDay?: boolean }).allowSameDay).toBe(true);
+    await act(async () => {
+      rangeField(harness.tree).onChangeValue({ start: "2026-11-20", end: "2026-11-20" });
+    });
+    // main's two date inputs wrote htmlDateToIso(day, false) / (day, true):
+    expect(harness.draft().startAt).toBe(calendarDate.inputValueToCalendarIso("2026-11-20", false));
+    expect(harness.draft().endAt).toBe(calendarDate.inputValueToCalendarIso("2026-11-20", true));
+    expect(harness.draft().startAt).toBe("2026-11-20T00:00:00.000Z");
+    expect(harness.draft().endAt).toBe("2026-11-20T23:59:59.000Z");
+  });
+
   test("a half-picked or malformed range writes nothing", async () => {
     setZone("America/New_York");
     const harness = await mountStep1(os);

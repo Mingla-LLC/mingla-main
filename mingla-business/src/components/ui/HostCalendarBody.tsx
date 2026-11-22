@@ -107,9 +107,11 @@ export function DateRangeBody({
   testID,
   timeZone = detectDeviceTimezone(),
   openOnMount = false,
+  allowSameDay = false,
 }: HostDateRangeFieldProps & { openOnMount?: boolean }): React.ReactElement {
   return (
     <DateRangeField
+      allowSameDay={allowSameDay}
       label={label}
       accessibilityLabel={accessibilityLabel}
       value={value}

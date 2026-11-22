@@ -104,4 +104,20 @@ describe("#4523 Explorer program pickers", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith({ start: "2027-03-12", end: "2027-03-16" });
   });
+
+  it("DateRangeField (days): a one-day range commits start = end (#4523 rework F5)", async () => {
+    const onChange = jest.fn();
+    const renderer = await render(
+      <DateRangeField label="Window" start={null} end={null} onChange={onChange} minDate="2027-03-01" maxDate="2027-03-31" />,
+    );
+    await act(async () => {
+      const trigger = renderer.root.findAll((n) => typeof n.props.onPress === "function" && n.props.accessibilityHint === "Opens calendar")[0];
+      (trigger.props.onPress as () => void)();
+    });
+    await press(renderer, "calendar-day-2027-03-12");
+    await press(renderer, "calendar-day-2027-03-12");
+    await press(renderer, "calendar-done");
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith({ start: "2027-03-12", end: "2027-03-12" });
+  });
 });

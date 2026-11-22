@@ -52,6 +52,8 @@ export interface CalendarProps {
   min?: string;
   max?: string;
   isDateDisabled?: (date: CalendarDate) => boolean;
+  /** Range: a one-day range (start = end) may be picked. */
+  allowSameDay?: boolean;
   timeZone: string;
   weekStartsOn?: 0 | 1;
   months?: 1 | 2;
@@ -152,7 +154,7 @@ export function Calendar(props: CalendarProps): React.ReactElement {
     if (isDisabled(date, bounds)) return;
     setFocused(date);
     if (mode === "date") props.onCommit(date);
-    else if (mode === "range") setRangeDraft((cur) => nextRange(cur, date));
+    else if (mode === "range") setRangeDraft((cur) => nextRange(cur, date, props.allowSameDay === true));
     else setDtDraft((cur) => ({ ...cur, date }));
   };
 

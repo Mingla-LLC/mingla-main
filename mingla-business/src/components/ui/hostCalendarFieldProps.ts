@@ -57,4 +57,6 @@ export interface HostDateRangeFieldProps extends HostFieldBase {
   min?: string;
   max?: string;
   timeZone?: string;
+  /** A one-day range may be picked (a day trip); default false. */
+  allowSameDay?: boolean;
 }

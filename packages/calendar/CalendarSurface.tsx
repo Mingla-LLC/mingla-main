@@ -56,6 +56,8 @@ type SurfaceModeProps =
       maxLength?: number;
       /** Latest day a range may START on (a later day can still end it). */
       maxStart?: CalendarDate;
+      /** A one-day range (start = end) may be picked: tap the start day again. */
+      allowSameDay?: boolean;
     }
   | {
       mode: "datetime";
@@ -179,7 +181,7 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
         props.onDone();
         return;
       case "range":
-        setRangeDraft((cur) => nextRange(cur, date));
+        setRangeDraft((cur) => nextRange(cur, date, props.allowSameDay === true));
         return;
       case "datetime":
         setDateTimeDraft((cur) => ({ ...cur, date }));
