@@ -67,7 +67,7 @@ const paymentErrorCopy = (
     case "payment_plan_v2_unavailable":
       return "Paying in parts isn't available right now. You can pay the full balance.";
     case "balance_payment_in_flight":
-      return "A payment on this trip is already processing. Try again in a few minutes.";
+      return "Your earlier payment on this trip is still being confirmed. You can pay again once it's confirmed, within 24 hours.";
     case "flex_amount_invalid":
       return balance
         ? `That's more than your balance of ${

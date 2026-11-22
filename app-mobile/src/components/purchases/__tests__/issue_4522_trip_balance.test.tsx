@@ -106,12 +106,14 @@ test("#4522 one query-key factory invalidates both balance and purchase truth", 
   assert.match(route, /setCustomError\(\s*"Your balance just changed/s);
 });
 
-test("#4522 T4-3 both balance screens: a forbidden amount names the two payable amounts", () => {
+test("#4522 T4-3 / T4-8 both balance screens: a forbidden amount names the two payable amounts; a long block never says a few minutes", () => {
   const buyerWeb = readFileSync(resolve(root, "../mingla-business/app/pay/balance/[token].tsx"), "utf8");
   for (const [name, screen] of [["Explorer", route], ["buyer web", buyerWeb]] as const) {
     assert.ok(screen.includes("flex_amount_leaves_unpayable_remainder"), `${name}: server refusal`);
     assert.ok(screen.includes('"leaves_unpayable_remainder"'), `${name}: refused before any request`);
     assert.ok(screen.includes("unpayableRemainderCopy("), `${name}: shared copy naming both amounts`);
     assert.ok(screen.includes('"balance_settled"'), `${name}: a waived balance`);
+    assert.doesNotMatch(screen, /already processing\. Try again in a few minutes/, `${name}: T4-8 copy`);
+    assert.match(screen, /still being confirmed\. You can pay again once it's confirmed, within 24 hours\./);
   }
 });
