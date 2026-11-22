@@ -214,6 +214,18 @@ export function onPushSubscriptionToken(listener: PushTokenListener): void {
   attachPushTokenListeners();
 }
 
+/**
+ * #4549 P2-A: whether this build can do push at all. False when the native
+ * module is not linked (react-native-onesignal's TurboModuleRegistry
+ * getEnforcing throws at require time, so `OneSignal` stays null: Host
+ * Android today) or when EXPO_PUBLIC_ONESIGNAL_APP_ID is absent. Decided once
+ * at module load; synchronous and free. "Not ready yet" is a different thing:
+ * see whenOneSignalReady.
+ */
+export function isPushAvailableInBuild(): boolean {
+  return _enabled;
+}
+
 /** Returns true if the SDK has been successfully initialized. */
 export function isOneSignalReady(): boolean {
   return _initialized;

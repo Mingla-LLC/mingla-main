@@ -36,6 +36,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   requestPushPermission,
   canRequestPushPermission,
+  isPushAvailableInBuild,
   whenOneSignalReady,
 } from "../services/oneSignalService";
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
@@ -53,6 +54,14 @@ export function usePushPermissionMoment(
     // Gate: authenticated + a brand exists (the value moment). Not on boot,
     // not on the account screen alone — a brand must be present.
     if (!isAuthenticated || currentBrandId === null) return;
+    // #4549 P2-A: a build without push (no native module, no app id) never
+    // asks, never waits, never reports and never writes the flag.
+    if (
+      typeof isPushAvailableInBuild === "function" &&
+      !isPushAvailableInBuild()
+    ) {
+      return;
+    }
     if (firedRef.current) return;
     firedRef.current = true;
 

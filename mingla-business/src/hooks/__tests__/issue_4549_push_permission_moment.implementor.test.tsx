@@ -16,6 +16,7 @@ let ready = true;
 let canAsk = true;
 let promptAnswers = true; // the OS records an answer when the prompt shows
 let promptThrows = false;
+let available = true;
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -29,6 +30,7 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 jest.mock("../../services/oneSignalService", () => ({
+  isPushAvailableInBuild: () => available,
   whenOneSignalReady: async () => {
     events.push("wait");
     return ready;
@@ -84,6 +86,7 @@ beforeEach(() => {
   canAsk = true;
   promptAnswers = true;
   promptThrows = false;
+  available = true;
 });
 
 test("SDK not ready when the brand appears: the flag is not written and nothing is prompted", async () => {
@@ -133,4 +136,11 @@ test("P3-3: a prompt call that throws does not write the flag and is reported", 
   await launch();
   expect(storage.has(FLAG)).toBe(false);
   expect(events).toContain("nonfatal:push.permission_moment:native prompt failed");
+});
+
+test("P2-A: a build without push never waits, asks, reports or writes the flag", async () => {
+  available = false;
+  await launch();
+  expect(events).toEqual([]);
+  expect(storage.has(FLAG)).toBe(false);
 });

@@ -25,6 +25,7 @@ import { Platform } from "react-native";
 
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import {
+  isPushAvailableInBuild,
   onOneSignalLogout,
   readPushRegistrationState,
   repairPushRegistration,
@@ -141,6 +142,19 @@ async function assertStillCurrent(ctx: RunContext): Promise<void> {
   const { data } = await cancellable(ctx, supabase.auth.getSession());
   const current = data.session?.user?.id ?? null;
   if (!alive(ctx) || current !== ctx.userId) throw new RunCancelled();
+}
+
+/**
+ * #4549 P2-A: a build without push (native module not linked, or no app id)
+ * has nothing to check or repair, so every entry point returns at once and
+ * quietly: no waits, no reports. Guarded because some suites mock
+ * oneSignalService without this export; there it counts as available, which
+ * is the behaviour those suites were written against.
+ */
+function pushAvailable(): boolean {
+  return typeof isPushAvailableInBuild === "function"
+    ? isPushAvailableInBuild()
+    : true;
 }
 
 function nativePlatform(): "ios" | "android" | null {
@@ -298,7 +312,9 @@ export function ensurePushRegistration(
   userId: string,
   reason: PushHealthReason,
 ): Promise<void> {
-  if (nativePlatform() === null || userId.length === 0) return Promise.resolve();
+  if (nativePlatform() === null || userId.length === 0 || !pushAvailable()) {
+    return Promise.resolve();
+  }
   attachLogoutHook();
   if (
     reason === "foreground" &&
@@ -338,7 +354,7 @@ export function ensurePushRegistration(
  * session, so a signed-out app never relinks a previous account.
  */
 export async function ensurePushRegistrationOnForeground(): Promise<void> {
-  if (nativePlatform() === null) return;
+  if (nativePlatform() === null || !pushAvailable()) return;
   try {
     const { data } = await supabase.auth.getSession();
     const userId = data.session?.user?.id;

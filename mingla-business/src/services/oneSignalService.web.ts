@@ -24,6 +24,11 @@ export interface OneSignalNotificationData {
 
 export function initializeOneSignal(): void {}
 
+/** No push on web. Matches native `isPushAvailableInBuild`. */
+export function isPushAvailableInBuild(): boolean {
+  return false;
+}
+
 export function isOneSignalReady(): boolean {
   return false;
 }
