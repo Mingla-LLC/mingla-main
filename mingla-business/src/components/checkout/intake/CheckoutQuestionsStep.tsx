@@ -469,8 +469,13 @@ const PreMintedFormHandoff: React.FC<{
   const path = formLinkPath(handoff.formId, handoff.token);
   const answerNow = (): void => {
     if (Platform.OS === "web") {
-      const opened = globalThis.open?.(path, "_blank", "noopener");
-      if (opened === null || opened === undefined) {
+      // No feature string: "noopener" makes open() return null even when the
+      // tab opened, which would also navigate this tab (two form tabs, the
+      // RSVP confirmation lost). Sever the opener by hand instead.
+      const opened = globalThis.open?.(path, "_blank");
+      if (opened !== null && opened !== undefined) {
+        opened.opener = null;
+      } else {
         // A blocked new tab: open it here instead (the RSVP is already saved).
         try {
           globalThis.location?.assign(path);

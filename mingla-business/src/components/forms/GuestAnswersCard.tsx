@@ -47,7 +47,9 @@ export const GuestAnswersCard: React.FC<GuestAnswersCardProps> = ({
   const readable = canReadGuestQuestions(role.rank);
   const answers = useGuestAnswers(eventId, subject, readable);
   if (!readable) return null;
-  if (answers.isLoading) {
+  // isPending, not isLoading: while auth settles the query is disabled (not
+  // fetching, no data) and must read as loading, never flash the error state.
+  if (answers.isPending) {
     return (
       <View style={styles.block} testID={`${testID}-loading`}>
         <Text style={styles.muted}>{COPY.loading}</Text>

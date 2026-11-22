@@ -140,11 +140,24 @@ describe("#4541 R1.3 After they RSVP", () => {
 
   test("pre-minted: the strip, Answer now opens the personal link without minting, then the block goes", () => {
     const opened: string[] = [];
-    const g = globalThis as { open?: (url: string, target?: string, features?: string) => unknown };
+    const features: (string | undefined)[] = [];
+    const tab: { opener: unknown } = { opener: "the RSVP page" };
+    const assigned: string[] = [];
+    const g = globalThis as {
+      open?: (url: string, target?: string, features?: string) => unknown;
+      location?: unknown;
+    };
     const prevOpen = g.open;
-    g.open = (url: string) => {
+    const prevLocation = Object.getOwnPropertyDescriptor(globalThis, "location");
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      writable: true,
+      value: { assign: (u: string) => assigned.push(u) },
+    });
+    g.open = (url: string, _target?: string, feat?: string) => {
       opened.push(url);
-      return {};
+      features.push(feat);
+      return tab;
     };
     let r: { root: Node; toJSON: () => unknown; unmount: () => void } | null = null;
     act(() => {
@@ -159,10 +172,46 @@ describe("#4541 R1.3 After they RSVP", () => {
     expect(later?.props.label).toBe("Later");
     act(() => answer?.props.onPress());
     expect(opened).toEqual([`/form/${FORM}#t=tok_abc`]);
+    // No "noopener" feature (it makes open() return null on success); the
+    // opener is severed by hand, and this tab is never navigated.
+    expect(features).toEqual([undefined]);
+    expect(tab.opener).toBeNull();
+    expect(assigned).toEqual([]);
     expect(invoke).not.toHaveBeenCalled();
     expect(tree.toJSON()).toBeNull();
     tree.unmount();
     g.open = prevOpen;
+    if (prevLocation) Object.defineProperty(globalThis, "location", prevLocation);
+    else delete g.location;
+  });
+
+  test("pre-minted: a blocked new tab (open returns null) opens the form in this tab once", () => {
+    const assigned: string[] = [];
+    const g = globalThis as {
+      open?: (url: string, target?: string, features?: string) => unknown;
+      location?: unknown;
+    };
+    const prevOpen = g.open;
+    const prevLocation = Object.getOwnPropertyDescriptor(globalThis, "location");
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      writable: true,
+      value: { assign: (u: string) => assigned.push(u) },
+    });
+    g.open = () => null;
+    let r: { root: Node; toJSON: () => unknown; unmount: () => void } | null = null;
+    act(() => {
+      r = create(<PurchaseFormHandoff handoff={{ formId: FORM, token: "tok_b" }} strip="rsvp" brandName="Sundown" />);
+    });
+    const tree = r as unknown as { root: Node; toJSON: () => unknown; unmount: () => void };
+    const answer = tree.root.findAll((n) => n.type === "Button" && n.props.testID === "rsvp-form-handoff-answer")[0];
+    act(() => answer?.props.onPress());
+    expect(assigned).toEqual([`/form/${FORM}#t=tok_b`]);
+    expect(tree.toJSON()).toBeNull();
+    tree.unmount();
+    g.open = prevOpen;
+    if (prevLocation) Object.defineProperty(globalThis, "location", prevLocation);
+    else delete g.location;
   });
 
   test("Later keeps the confirmation and removes the block", () => {

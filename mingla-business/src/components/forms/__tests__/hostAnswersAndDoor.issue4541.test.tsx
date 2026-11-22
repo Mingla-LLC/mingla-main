@@ -28,7 +28,7 @@ const { act, create } = require("react-test-renderer") as {
   act: (cb: () => void) => void;
 };
 
-type Q = { isLoading: boolean; isError: boolean; data: unknown; error?: unknown; refetch: () => void };
+type Q = { isPending?: boolean; isLoading: boolean; isError: boolean; data: unknown; error?: unknown; refetch: () => void };
 let guestAnswersQuery: Q = { isLoading: true, isError: false, data: undefined, refetch: jest.fn() };
 let doorReadsQuery: Q = { isLoading: true, isError: false, data: undefined, refetch: jest.fn() };
 let rank = 100;
@@ -90,25 +90,32 @@ describe("#4541 R1.9 the answers card", () => {
   });
 
   test("loading, error with Try again, not answered, none, answered", () => {
-    guestAnswersQuery = { isLoading: true, isError: false, data: undefined, refetch: jest.fn() };
+    guestAnswersQuery = { isPending: true, isLoading: true, isError: false, data: undefined, refetch: jest.fn() };
     expect(texts(mount(card()).root)).toContain("Loading answers…");
 
+    // While auth settles the query is disabled: pending, not fetching
+    // (isLoading false), no data. That is loading, never the error state.
+    guestAnswersQuery = { isPending: true, isLoading: false, isError: false, data: undefined, refetch: jest.fn() };
+    const settling = texts(mount(card()).root);
+    expect(settling).toContain("Loading answers…");
+    expect(settling).not.toContain("Couldn't load answers. Try again");
+
     const refetch = jest.fn();
-    guestAnswersQuery = { isLoading: false, isError: true, data: undefined, refetch };
+    guestAnswersQuery = { isPending: false, isLoading: false, isError: true, data: undefined, refetch };
     const err = mount(card());
     expect(texts(err.root)).toContain("Couldn't load answers. Try again");
     const retry = err.root.findAll((n) => n.type === "Button")[0];
     act(() => retry?.props.onPress());
     expect(refetch).toHaveBeenCalled();
 
-    guestAnswersQuery = { isLoading: false, isError: false, data: { state: "not_answered" }, refetch: jest.fn() };
+    guestAnswersQuery = { isPending: false, isLoading: false, isError: false, data: { state: "not_answered" }, refetch: jest.fn() };
     expect(texts(mount(card()).root)).toContain("Not answered");
 
-    guestAnswersQuery = { isLoading: false, isError: false, data: { state: "none" }, refetch: jest.fn() };
+    guestAnswersQuery = { isPending: false, isLoading: false, isError: false, data: { state: "none" }, refetch: jest.fn() };
     expect(mount(card()).toJSON()).toBeNull();
 
     guestAnswersQuery = {
-      isLoading: false, isError: false, refetch: jest.fn(),
+      isPending: false, isLoading: false, isError: false, refetch: jest.fn(),
       data: { state: "answered", formName: "Guest details", versionLabel: null, answeredAt: null, isCurrentVersion: true,
         items: [{ label: "Diet", value: "Vegan" }, { label: "Song", value: "" }] },
     };
