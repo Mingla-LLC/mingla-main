@@ -112,6 +112,7 @@
   "checkoutLoading": "กำลังโหลดคำถาม…",
   "checkoutLoadToContinue": "โหลดคำถามเพื่อดำเนินการต่อ",
   "checkoutStillFailed": "ยังโหลดคำถามไม่ได้ ไม่มีการเรียกเก็บเงิน",
+  "checkoutBookLater": "โหลดคำถามไม่ได้ คุณจองตอนนี้แล้วค่อยตอบทีหลังได้",
   "backToEvent": "กลับไปที่งาน",
   "checkoutAnsweredHere": "คุณตอบคำถามเหล่านี้แล้ว แก้ไขได้จากตั๋วของคุณ",
   "refusedRequired": "ตอบคำถามที่จำเป็นเพื่อดำเนินการต่อ",

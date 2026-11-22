@@ -112,6 +112,7 @@
   "checkoutLoading": "Laddar frågor…",
   "checkoutLoadToContinue": "Ladda frågorna för att fortsätta",
   "checkoutStillFailed": "Det går fortfarande inte att ladda frågorna. Inget har debiterats.",
+  "checkoutBookLater": "Frågorna kunde inte laddas. Du kan boka nu och svara senare.",
   "backToEvent": "Tillbaka till eventet",
   "checkoutAnsweredHere": "Du har redan svarat. Du kan ändra svaren från din biljett.",
   "refusedRequired": "Svara på de obligatoriska frågorna för att fortsätta",

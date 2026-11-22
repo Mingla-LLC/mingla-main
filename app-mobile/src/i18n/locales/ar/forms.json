@@ -112,6 +112,7 @@
   "checkoutLoading": "جارٍ تحميل الأسئلة…",
   "checkoutLoadToContinue": "حمّل الأسئلة للمتابعة",
   "checkoutStillFailed": "ما زلنا لا نستطيع تحميل الأسئلة. لم يتم خصم أي مبلغ.",
+  "checkoutBookLater": "تعذّر تحميل الأسئلة. يمكنك الحجز الآن والإجابة لاحقًا.",
   "backToEvent": "العودة إلى الفعالية",
   "checkoutAnsweredHere": "أجبت عن هذه الأسئلة من قبل. يمكنك تغييرها من تذكرتك.",
   "refusedRequired": "أجب عن الأسئلة المطلوبة للمتابعة",

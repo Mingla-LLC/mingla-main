@@ -112,6 +112,7 @@
   "checkoutLoading": "Cargando preguntas…",
   "checkoutLoadToContinue": "Carga las preguntas para continuar",
   "checkoutStillFailed": "Seguimos sin poder cargar las preguntas. No se te cobró nada.",
+  "checkoutBookLater": "No se pudieron cargar las preguntas. Puedes reservar ahora y responder más tarde.",
   "backToEvent": "Volver al evento",
   "checkoutAnsweredHere": "Ya respondiste estas preguntas. Puedes cambiarlas desde tu entrada.",
   "refusedRequired": "Responde las preguntas obligatorias para continuar",

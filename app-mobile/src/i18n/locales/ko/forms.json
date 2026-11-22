@@ -112,6 +112,7 @@
   "checkoutLoading": "질문 불러오는 중…",
   "checkoutLoadToContinue": "계속하려면 질문을 불러오세요",
   "checkoutStillFailed": "아직 질문을 불러오지 못했어요. 결제되지 않았어요.",
+  "checkoutBookLater": "질문을 불러오지 못했어요. 지금 예약하고 나중에 답할 수 있어요.",
   "backToEvent": "이벤트로 돌아가기",
   "checkoutAnsweredHere": "이미 답변했어요. 티켓에서 변경할 수 있어요.",
   "refusedRequired": "계속하려면 필수 질문에 답하세요",

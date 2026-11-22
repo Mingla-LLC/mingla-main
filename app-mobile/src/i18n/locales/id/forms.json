@@ -112,6 +112,7 @@
   "checkoutLoading": "Memuat pertanyaan…",
   "checkoutLoadToContinue": "Muat pertanyaan untuk melanjutkan",
   "checkoutStillFailed": "Pertanyaan masih belum bisa dimuat. Tidak ada biaya yang ditagih.",
+  "checkoutBookLater": "Pertanyaan tidak dapat dimuat. Kamu bisa memesan sekarang dan menjawab nanti.",
   "backToEvent": "Kembali ke acara",
   "checkoutAnsweredHere": "Kamu sudah menjawab ini. Kamu bisa mengubahnya dari tiketmu.",
   "refusedRequired": "Jawab pertanyaan wajib untuk melanjutkan",

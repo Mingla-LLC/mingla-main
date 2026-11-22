@@ -112,6 +112,7 @@
   "checkoutLoading": "Wczytywanie pytań…",
   "checkoutLoadToContinue": "Wczytaj pytania, aby kontynuować",
   "checkoutStillFailed": "Nadal nie udało się wczytać pytań. Nic nie zostało pobrane.",
+  "checkoutBookLater": "Nie udało się wczytać pytań. Możesz zarezerwować teraz i odpowiedzieć później.",
   "backToEvent": "Wróć do wydarzenia",
   "checkoutAnsweredHere": "Już na nie odpowiedziałeś. Możesz je zmienić z poziomu biletu.",
   "refusedRequired": "Odpowiedz na wymagane pytania, aby kontynuować",

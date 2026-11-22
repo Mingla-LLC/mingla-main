@@ -10,7 +10,8 @@
  *     already answered for this event (R1.1 answeredHere);
  *   - whether "Continue to Payment" may go on: a required form holds it until
  *     the required visible questions are answered; a failed read holds it with
- *     Try again (Q1).
+ *     Try again (Q1) until one Try again also fails, then lets the buyer book
+ *     with no marker (`CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY`).
  * Typed answers survive a re-quote, a remount and a "questions changed"
  * refusal (kept by question id). Every refusal in the R2.10 table is explained
  * here, and nothing is ever charged on one.
@@ -51,6 +52,19 @@ export interface CheckoutQuestionsState {
   brandForm?: { formId: string; versionId: string; answers: BrandAnswers };
 }
 
+/**
+ * #4541 R2.10 (decision pending with Seth): what a questions read that keeps
+ * failing does to "Continue to Payment".
+ *   - false (default): after the first read fails and ONE Try again also
+ *     fails, the buyer may continue. The checkout then sends no capability
+ *     marker, so the server records the order "not asked" (never answered),
+ *     and the block says "Questions couldn't load. You can book now and answer
+ *     later." with Try again still there. A forms outage never blocks a sale.
+ *   - true: the button stays off until a read succeeds (Back to event).
+ * A read that succeeded is never affected (a required form still holds it).
+ */
+export const CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY: boolean = false;
+
 /** Typed answers per event, kept while the cart remounts (memory only). */
 const typedByEvent = new Map<string, { formId: string; answers: BrandAnswers }>();
 
@@ -67,10 +81,19 @@ export function checkoutQuestionsState(input: {
   answers: BrandAnswers;
   hints: { loading: string; load: string; answer: string };
   blockedByRefusal?: boolean;
+  /** Buyer Try agains that also failed (the first failed read is not one). */
+  failedRetries?: number;
+  /** Defaults to `CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY`. */
+  failureBlocksPay?: boolean;
 }): CheckoutQuestionsState {
   const { status, form } = input;
   if (status === "pending" && form === undefined) return { ready: false, hint: input.hints.loading };
-  if (status === "error" && form === undefined) return { ready: false, hint: input.hints.load };
+  if (status === "error" && form === undefined) {
+    const blocks = input.failureBlocksPay ?? CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY;
+    // No marker either way: the server records this order as not asked.
+    if (!blocks && (input.failedRetries ?? 0) > 0) return { ready: true, hint: null };
+    return { ready: false, hint: input.hints.load };
+  }
   if (input.blockedByRefusal === true) return { ready: false, hint: input.hints.load, brandFormStep: 1 };
   if (form === null || form === undefined || form.mode === "after_purchase" || form.answeredHere) {
     return { ready: true, hint: null, brandFormStep: 1 };
@@ -170,6 +193,7 @@ export function CheckoutQuestionsBlock({
       answer: t("needsAnswers"),
     },
     blockedByRefusal,
+    failedRetries,
   }), [query.status, form, answers, t, failedRetries, blockedByRefusal]);
   const stateKey = JSON.stringify(state);
   useEffect(() => {
@@ -205,16 +229,21 @@ export function CheckoutQuestionsBlock({
         if (r.status === "error") setFailedRetries((n) => n + 1);
       });
     };
+    // Gave up on the questions: the buyer books now and answers later.
+    const bookLater = failedRetries > 0 && !CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY;
+    const backOnly = failedRetries > 0 && CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY;
     return (
       <View style={styles.card} accessibilityRole="alert" testID="checkout-questions-failed">
-        <Text style={styles.noteStrong}>{failedRetries > 0 ? t("checkoutStillFailed") : t("checkoutLoadToContinue")}</Text>
+        <Text style={styles.noteStrong}>
+          {bookLater ? t("checkoutBookLater") : backOnly ? t("checkoutStillFailed") : t("checkoutLoadToContinue")}
+        </Text>
         <Pressable
           accessibilityRole="button"
-          onPress={failedRetries > 0 ? onBackToEvent : retry}
+          onPress={backOnly ? onBackToEvent : retry}
           style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
           testID="checkout-questions-retry"
         >
-          <Text style={styles.secondaryText}>{failedRetries > 0 ? t("backToEvent") : t("tryAgain")}</Text>
+          <Text style={styles.secondaryText}>{backOnly ? t("backToEvent") : t("tryAgain")}</Text>
         </Pressable>
       </View>
     );

@@ -112,6 +112,7 @@
   "checkoutLoading": "טוענים שאלות…",
   "checkoutLoadToContinue": "יש לטעון את השאלות כדי להמשיך",
   "checkoutStillFailed": "עדיין לא הצלחנו לטעון את השאלות. לא חויבת.",
+  "checkoutBookLater": "לא הצלחנו לטעון את השאלות. אפשר להזמין עכשיו ולענות אחר כך.",
   "backToEvent": "חזרה לאירוע",
   "checkoutAnsweredHere": "כבר ענית על השאלות האלה. אפשר לשנות אותן מהכרטיס.",
   "refusedRequired": "יש לענות על שאלות החובה כדי להמשיך",

@@ -112,6 +112,7 @@
   "checkoutLoading": "Se încarcă întrebările…",
   "checkoutLoadToContinue": "Încarcă întrebările pentru a continua",
   "checkoutStillFailed": "Tot nu am putut încărca întrebările. Nu s-a perceput nimic.",
+  "checkoutBookLater": "Întrebările nu s-au putut încărca. Poți rezerva acum și răspunde mai târziu.",
   "backToEvent": "Înapoi la eveniment",
   "checkoutAnsweredHere": "Ai răspuns deja. Le poți schimba din biletul tău.",
   "refusedRequired": "Răspunde la întrebările obligatorii pentru a continua",

@@ -112,6 +112,7 @@
   "checkoutLoading": "Đang tải câu hỏi…",
   "checkoutLoadToContinue": "Tải câu hỏi để tiếp tục",
   "checkoutStillFailed": "Vẫn chưa tải được câu hỏi. Bạn chưa bị trừ tiền.",
+  "checkoutBookLater": "Không tải được câu hỏi. Bạn có thể đặt ngay và trả lời sau.",
   "backToEvent": "Quay lại sự kiện",
   "checkoutAnsweredHere": "Bạn đã trả lời các câu này. Bạn có thể sửa từ vé của mình.",
   "refusedRequired": "Trả lời các câu hỏi bắt buộc để tiếp tục",

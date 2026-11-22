@@ -112,6 +112,7 @@
   "checkoutLoading": "Chargement des questions…",
   "checkoutLoadToContinue": "Chargez les questions pour continuer",
   "checkoutStillFailed": "Les questions ne se chargent toujours pas. Rien n'a été débité.",
+  "checkoutBookLater": "Les questions n'ont pas pu se charger. Tu peux réserver maintenant et répondre plus tard.",
   "backToEvent": "Retour à l'événement",
   "checkoutAnsweredHere": "Vous avez déjà répondu. Vous pouvez modifier vos réponses depuis votre billet.",
   "refusedRequired": "Répondez aux questions obligatoires pour continuer",

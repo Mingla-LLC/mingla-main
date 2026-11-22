@@ -112,6 +112,7 @@
   "checkoutLoading": "Fragen werden geladen…",
   "checkoutLoadToContinue": "Lade die Fragen, um fortzufahren",
   "checkoutStillFailed": "Die Fragen konnten weiterhin nicht geladen werden. Es wurde nichts abgebucht.",
+  "checkoutBookLater": "Die Fragen konnten nicht geladen werden. Du kannst jetzt buchen und später antworten.",
   "backToEvent": "Zurück zur Veranstaltung",
   "checkoutAnsweredHere": "Du hast diese Fragen bereits beantwortet. Du kannst sie über dein Ticket ändern.",
   "refusedRequired": "Beantworte die Pflichtfragen, um fortzufahren",

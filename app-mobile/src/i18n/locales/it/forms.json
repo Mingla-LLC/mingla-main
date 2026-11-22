@@ -112,6 +112,7 @@
   "checkoutLoading": "Caricamento domande…",
   "checkoutLoadToContinue": "Carica le domande per continuare",
   "checkoutStillFailed": "Ancora impossibile caricare le domande. Non ti è stato addebitato nulla.",
+  "checkoutBookLater": "Non è stato possibile caricare le domande. Puoi prenotare ora e rispondere più tardi.",
   "backToEvent": "Torna all'evento",
   "checkoutAnsweredHere": "Hai già risposto a queste domande. Puoi modificarle dal tuo biglietto.",
   "refusedRequired": "Rispondi alle domande obbligatorie per continuare",

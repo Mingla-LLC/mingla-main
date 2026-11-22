@@ -112,6 +112,7 @@
   "checkoutLoading": "Vragen laden…",
   "checkoutLoadToContinue": "Laad de vragen om door te gaan",
   "checkoutStillFailed": "De vragen laden nog steeds niet. Er is niets afgeschreven.",
+  "checkoutBookLater": "De vragen konden niet worden geladen. Je kunt nu boeken en later antwoorden.",
   "backToEvent": "Terug naar evenement",
   "checkoutAnsweredHere": "Je hebt deze al beantwoord. Je kunt ze wijzigen via je ticket.",
   "refusedRequired": "Beantwoord de verplichte vragen om door te gaan",

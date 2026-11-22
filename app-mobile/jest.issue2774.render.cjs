@@ -215,5 +215,8 @@ module.exports = {
     // issue #4541 A3 — the RSVP success popup hands its close to the
     // "After they RSVP" block: Answer now closes it, then opens the form.
     "**/__tests__/rsvpFormHandoff.issue4541.test.tsx",
+    // issue #4541 R2.10 — a questions read that keeps failing never blocks
+    // a purchase (CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY).
+    "**/__tests__/CheckoutQuestionsReadFailure.issue4541.test.tsx",
   ],
 };

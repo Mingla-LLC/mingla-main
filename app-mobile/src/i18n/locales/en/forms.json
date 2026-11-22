@@ -112,6 +112,7 @@
   "checkoutLoading": "Loading questions…",
   "checkoutLoadToContinue": "Load the questions to continue",
   "checkoutStillFailed": "We still couldn't load the questions. Nothing was charged.",
+  "checkoutBookLater": "Questions couldn't load. You can book now and answer later.",
   "backToEvent": "Back to event",
   "checkoutAnsweredHere": "You've answered these. You can change them from your ticket.",
   "refusedRequired": "Answer the required questions to continue",

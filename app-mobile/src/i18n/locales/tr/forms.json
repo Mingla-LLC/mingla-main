@@ -112,6 +112,7 @@
   "checkoutLoading": "Sorular yükleniyor…",
   "checkoutLoadToContinue": "Devam etmek için soruları yükle",
   "checkoutStillFailed": "Sorular hâlâ yüklenemedi. Hiçbir ücret alınmadı.",
+  "checkoutBookLater": "Sorular yüklenemedi. Şimdi rezervasyon yapıp daha sonra yanıtlayabilirsin.",
   "backToEvent": "Etkinliğe dön",
   "checkoutAnsweredHere": "Bunları zaten yanıtladın. Biletinden değiştirebilirsin.",
   "refusedRequired": "Devam etmek için zorunlu soruları yanıtla",

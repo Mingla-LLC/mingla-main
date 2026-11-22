@@ -112,6 +112,7 @@
   "checkoutLoading": "正在加载问题…",
   "checkoutLoadToContinue": "加载问题后才能继续",
   "checkoutStillFailed": "仍无法加载问题。没有扣款。",
+  "checkoutBookLater": "无法加载问题。你可以先预订，稍后再回答。",
   "backToEvent": "返回活动",
   "checkoutAnsweredHere": "你已回答过这些问题。可以在门票中修改。",
   "refusedRequired": "回答必答问题后才能继续",
