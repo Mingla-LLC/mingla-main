@@ -75,7 +75,6 @@ import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 import { usesConfiguredVat } from "../../utils/pricingTaxContext";
 
 import { isFeatureEnabled } from "../../config/featureFlags";
-import { ticketsWithAddOns } from "../../utils/draftAddOns";
 
 // issue #3281 S3 — the Add-ons card loads only when EXPO_PUBLIC_FF_EXTRAS_ENABLED
 // is on, so flag-off editors and the Host web boot carry none of it.
@@ -122,8 +121,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   const editingTicket: TicketStub | null =
     editingTicketId === null
       ? null
-      : // issue #3281 — the sheet edits a ticket with its add-ons on it.
-        (ticketsWithAddOns(draft).find((t) => t.id === editingTicketId) ?? null);
+      : (draft.tickets.find((t) => t.id === editingTicketId) ?? null);
 
   // Sorted tickets — single source of truth for render order.
   const sortedTickets = sortTicketsByDisplayOrder(draft.tickets);
@@ -146,7 +144,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
 
   const handleDuplicateTicket = useCallback(
     (ticketId: string): void => {
-      const original = ticketsWithAddOns(draft).find((t) => t.id === ticketId);
+      const original = draft.tickets.find((t) => t.id === ticketId);
       if (original === undefined) return;
       // displayOrder is OWNED by ticketDisplay.ts helpers — use nextDisplayOrder.
       const copy: TicketStub = {
@@ -427,7 +425,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
 
       {/* issue #3281 S3 — the event's add-ons: one editor for every ticket.
           Dark unless EXPO_PUBLIC_FF_EXTRAS_ENABLED is on. A published event
-          saves to the server; a draft keeps them on the draft (§6.4). */}
+          saves to the server; a draft keeps them on its tickets (§6.4). */}
       {editMode !== undefined && isFeatureEnabled("extras") ? (
         <React.Suspense fallback={null}>
           <LazyAddOnsEntry eventId={coverMediaEventId} offering="event" currency={draft.currency ?? null} />
@@ -438,7 +436,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
             eventId={draft.id}
             offering="event"
             currency={draft.currency ?? null}
-            draft={{ event: draft, onChange: (fields) => updateDraft(fields) }}
+            draft={{ event: draft, onChange: (tickets) => updateDraft({ tickets }) }}
           />
         </React.Suspense>
       ) : null}

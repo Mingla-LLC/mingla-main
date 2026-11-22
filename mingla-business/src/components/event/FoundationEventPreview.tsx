@@ -50,8 +50,6 @@ import {
   ParallaxCoverShell,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
-// issue #3281 S2 — each ticket's add-ons on the public page (flag-gated).
-import { publicAddOnsDisplay } from "../../services/addOnPhotoUrl";
 export interface FoundationEventPreviewProps {
   event: PublicEventProps;
   brand: PublicBrandProps | null;
@@ -218,7 +216,6 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   // adapter anyway.
   const body = (
     <EventOfferingBody
-      addOns={publicAddOnsDisplay()}
       event={event}
       brand={brand}
       variant={variant}

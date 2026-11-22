@@ -13,21 +13,16 @@
  * (the caller builds its public URL, never an image transformation URL).
  *
  * Imported by its deep path (`@mingla/offering-rendering/OfferingAddOnsBlock`),
- * never through the package barrel.
+ * never through the package barrel. Not yet placed on a page: under each
+ * ticket it must load on use, and the shared bodies are in the Host web boot
+ * payload (see the #3281 checkpoint 15 report).
  */
 
 import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 
-import {
-  formatAddOnMoney,
-  publicAddOnChips,
-  type OfferingAddOnChip,
-  type OfferingAddOnsDisplay,
-} from "./offeringAddOnChips";
+import { formatAddOnMoney, publicAddOnChips, type OfferingAddOnChip } from "./offeringAddOnChips";
 import type { ThemePalette } from "./themePalette";
-
-export type { OfferingAddOnsDisplay } from "./offeringAddOnChips";
 
 export interface OfferingAddOnsBlockProps {
   /** The caller's add-ons switch; false renders nothing. */
@@ -39,7 +34,8 @@ export interface OfferingAddOnsBlockProps {
   currency: string | null;
   /** The stored thumbnail's public URL, or null to show no image. */
   photoUrl?: (path: string) => string | null;
-  testID?: string;
+  /** The ticket, package or option id; the block's testID is derived from it. */
+  id?: string;
 }
 
 export const OfferingAddOnsBlock: React.FC<OfferingAddOnsBlockProps> = ({
@@ -48,8 +44,9 @@ export const OfferingAddOnsBlock: React.FC<OfferingAddOnsBlockProps> = ({
   palette,
   currency,
   photoUrl,
-  testID = "issue-3281-offering-add-ons",
+  id,
 }) => {
+  const testID = id === undefined ? "issue-3281-offering-add-ons" : `issue-3281-offering-add-ons-${id}`;
   if (!enabled) return null;
   const formatMoney = (minor: number): string => formatAddOnMoney(minor, currency);
   const chips = publicAddOnChips(addOns);

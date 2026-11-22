@@ -15,8 +15,7 @@ import { isFeatureEnabled } from "../../config/featureFlags";
 import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
 import type { AddOnsEditorSheetProps } from "./AddOnsEditorSheet";
 import type { AddOnOfferingKind } from "./addOnsEditorModel";
-import type { DraftEvent } from "../../store/draftEventStore";
-import type { DraftAddOnFields } from "../../utils/draftAddOns";
+import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
 import { draftAddOnsFromSave, draftAddOnsPayload } from "./draftAddOnsSource";
 
 // The editor's chunk loads on the first tap; a failed load (offline) shows
@@ -37,14 +36,11 @@ export interface AddOnsEntryProps {
   currency?: string | null;
   /**
    * issue #3281 S3 (§6.4) — an event draft: the editor reads and writes the
-   * draft's own add-ons (saved with the draft, mapped onto tickets at publish).
+   * add-ons on the draft's tickets (saved with the draft, mapped at publish).
    */
   draft?: {
-    event: Pick<
-      DraftEvent,
-      "id" | "tickets" | "currency" | "whenMode" | "multiDates" | "timezone" | "addOns" | "addOnTicketIds"
-    >;
-    onChange: (fields: Required<DraftAddOnFields>) => void;
+    event: Pick<DraftEvent, "id" | "tickets" | "currency" | "whenMode" | "multiDates" | "timezone">;
+    onChange: (tickets: TicketStub[]) => void;
   };
 }
 

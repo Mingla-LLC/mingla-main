@@ -74,8 +74,6 @@ import type {
 // #3372 — naira shows "₦", not "NGN", in the experience preview (#3341 rule).
 import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { accentFill, themeFontFace } from "@mingla/offering-rendering/themeAccentStyle";
-// issue #3281 S2 — each option's add-ons on the public page (flag-gated).
-import { publicAddOnsDisplay } from "../../services/addOnPhotoUrl";
 
 export interface ExperiencePreviewProps {
   experience: PublicExperience;
@@ -439,7 +437,6 @@ const FoundationExperiencePreview: React.FC<{
       testID={testID}
     >
       <ExperienceOfferingBody
-        addOns={publicAddOnsDisplay()}
         data={data}
         brand={offeringBrand}
         palette={palette}

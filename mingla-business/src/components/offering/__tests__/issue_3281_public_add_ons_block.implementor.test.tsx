@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-ADDON-PUBLIC-BLOCK-OPT-IN | issue #3281 | The shared offering bodies render the public add-on block only when their page passes addOns (Host: EXPO_PUBLIC_FF_EXTRAS_ENABLED; Explorer: FEATURE_FLAG_ADD_ONS); without it the rendered tree is identical to before.
+// MINGLA-INVARIANT: I-ADDON-PUBLIC-BLOCK-OPT-IN | issue #3281 | The public add-on block renders nothing unless its page turns it on, and then lists only shown add-ons with the server all-in price and a stored thumbnail URL.
 /**
  * issue #3281 S2 — "Add at checkout:" under each ticket on the public page,
  * mounted through the real shared EventTicketBox, plus the Host RSVP door line.
@@ -10,10 +10,9 @@
 import React from "react";
 import { describe, expect, test } from "@jest/globals";
 
-import { EventTicketBox } from "../../../../../packages/offering-rendering/EventOfferingBody";
+import { OfferingAddOnsBlock } from "../../../../../packages/offering-rendering/OfferingAddOnsBlock";
 import { createThemePalette } from "../../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../../packages/offering-rendering/themeResolver";
-import type { PublicTicketProps } from "../../../../../packages/offering-rendering/types";
 import { withDoorAddOns } from "../../../services/scanRsvpService";
 
 jest.mock(
@@ -51,55 +50,24 @@ const extra = (over: Record<string, unknown>): Record<string, unknown> => ({
   ...over,
 });
 
-const ticket = (overrides: Partial<PublicTicketProps> = {}): PublicTicketProps =>
-  ({
-    id: "tier-a",
-    name: "General",
-    description: null,
-    priceGbp: 20,
-    priceAllInGbp: 20,
-    currency: "USD",
-    isFree: false,
-    isUnlimited: true,
-    capacity: null,
-    visibility: "public",
-    passwordProtected: false,
-    password: null,
-    saleStartAt: null,
-    saleEndAt: null,
-    approvalRequired: false,
-    waitlistEnabled: false,
-    availableAt: "online",
-    displayOrder: 0,
-    ...overrides,
-  }) as PublicTicketProps;
-
 const theme = resolveTheme(null, null);
+const ADD_ONS = [
+  extra({}),
+  extra({ id: "x2", name: "Secret tasting", showOnPublicPage: false }),
+  extra({ id: "x3", name: "Tote bag", priceCents: 0, priceAllInCents: 0, photoThumbPath: null, remaining: 0 }),
+];
 
-const mount = async (addOns: { photoUrl?: (p: string) => string | null } | null | undefined): Promise<string> => {
+const mount = async (enabled: boolean, photoUrl?: (p: string) => string | null): Promise<string> => {
   let tree!: Tree;
-  const tickets = [
-    ticket({
-      buyerExtras: [
-        extra({}),
-        extra({ id: "x2", name: "Secret tasting", showOnPublicPage: false }),
-        extra({ id: "x3", name: "Tote bag", priceCents: 0, priceAllInCents: 0, photoThumbPath: null, remaining: 0 }),
-      ],
-    }),
-    ticket({ id: "tier-b", name: "VIP", displayOrder: 1 }),
-  ];
   await TestRenderer.act(() => {
     tree = TestRenderer.create(
-      <EventTicketBox
-        event={{ id: "event-3281", name: "Add-ons night", currency: "USD", tickets } as never}
-        bookable
+      <OfferingAddOnsBlock
+        enabled={enabled}
+        addOns={ADD_ONS}
         palette={createThemePalette(theme)}
-        theme={theme}
-        variant={"published" as never}
-        ticketQuantities={{}}
-        onChangeTicketQuantity={() => undefined}
-        onProceedToCart={() => undefined}
-        {...(addOns === undefined ? {} : { addOns })}
+        currency="USD"
+        photoUrl={photoUrl}
+        id="tier-a"
       />,
     );
   });
@@ -109,28 +77,22 @@ const mount = async (addOns: { photoUrl?: (p: string) => string | null } | null 
 };
 
 describe("#3281 S2 the public add-on block", () => {
-  test("off (no addOns prop, or null): the ticket box is exactly as before", async () => {
-    const without = await mount(undefined);
-    expect(without).not.toContain("Add at checkout");
-    expect(await mount(null)).toBe(without);
+  test("off: renders nothing", async () => {
+    expect(await mount(false)).toBe("null");
   });
 
-  test("on: shown add-ons under their ticket, all-in price, Free, sold out, hidden left out", async () => {
+  test("on: shown add-ons, all-in price, Free, sold out, hidden left out, stored thumbnail", async () => {
     const urls: string[] = [];
-    const json = await mount({
-      photoUrl: (path) => {
-        urls.push(path);
-        return `https://cdn.example/${path}`;
-      },
+    const json = await mount(true, (path) => {
+      urls.push(path);
+      return `https://cdn.example/${path}`;
     });
     expect(json).toContain("Add at checkout:");
     expect(json).toContain("issue-3281-offering-add-ons-tier-a");
-    expect(json).not.toContain("issue-3281-offering-add-ons-tier-b");
     expect(json).toContain("Add at checkout: Friday dinner, $27.50; Tote bag, sold out");
     expect(json).not.toContain("Secret tasting");
     expect(json).toContain(" · Sold out");
     expect(urls).toEqual(["add-ons/e/x1_thumb.jpg"]);
-    expect(json).toContain("https://cdn.example/add-ons/e/x1_thumb.jpg");
     expect(json).not.toContain("render/image");
   });
 });

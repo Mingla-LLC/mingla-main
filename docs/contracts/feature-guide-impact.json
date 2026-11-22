@@ -1698,8 +1698,6 @@
         "mingla-business/src/components/addOns/AddOnsEntry.tsx",
         "mingla-business/src/components/addOns/draftAddOnsSource.ts",
         "mingla-business/src/utils/draftAddOns.ts",
-        "mingla-business/src/services/addOnPhotoUrl.ts",
-        "app-mobile/src/services/addOnPhotoUrl.ts",
         "packages/offering-rendering/OfferingAddOnsBlock.tsx",
         "packages/offering-rendering/offeringAddOnChips.ts",
         "supabase/functions/public-submit-rsvp/rsvpAddOns.ts",

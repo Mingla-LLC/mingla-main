@@ -1,19 +1,18 @@
 /**
- * issue #3281 S3 (§6.4) — an event draft's add-ons live once, at the top level
- * (`draft.addOns`), not inside each ticket. Each names the ticket it comes with
- * by the draft's own ticket id and keeps its price in minor units.
+ * issue #3281 S3 (§6.4) — an event draft's add-ons as one list: each once,
+ * naming the ticket it comes with by the draft's own ticket id, priced in
+ * minor units.
  *
- * The server draft blob and the publish step still read the per-ticket shape
- * (`tickets[].extras`, major units), so this module converts at those two
- * boundaries and nowhere else:
- *   liftTicketAddOns  — tickets carrying `extras` → top-level add-ons
- *   ticketsWithAddOns — top-level add-ons → `tickets[].extras` (save, publish,
- *                       and the per-ticket editor while the Add-ons flag is off)
+ *   liftTicketAddOns  — tickets carrying `extras` → one list
+ *   ticketsWithAddOns — the list → `tickets[].extras`
  * Lifting then lowering returns the same tickets: `addOnTicketIds` remembers
  * which tickets carried an `extras` key (even an empty one), so a ticket that
  * never had one still sends none.
  *
- * Type-only imports: the persisted store loads this file, so it pulls in nothing.
+ * The draft itself keeps today's per-ticket JSON (`tickets[].extras`, major
+ * units), which the server blob and publish read. The unified editor works on
+ * the one-list view this file lifts from it and lowers back. Only the editor's
+ * on-use chunk imports this file, so none of it joins the Host web boot payload.
  */
 
 import type { TicketExtraStub, TicketStub } from "../store/draftEventStore";
@@ -122,18 +121,4 @@ export const ticketsWithAddOns = (
     if (own.length === 0 && !ids.includes(ticket.id)) return ticket;
     return { ...ticket, extras: own.map(toExtra) };
   });
-};
-
-/** Lifts a whole draft (persisted-store migration and server reads). */
-export const liftDraftAddOns = <D extends { tickets: TicketStub[] } & DraftAddOnFields>(
-  draft: D,
-): D => {
-  const lifted = liftTicketAddOns(draft.tickets, draft);
-  const { addOns: _a, addOnTicketIds: _b, ...rest } = draft;
-  return {
-    ...(rest as D),
-    tickets: lifted.tickets,
-    ...(lifted.addOns !== undefined ? { addOns: lifted.addOns } : {}),
-    ...(lifted.addOnTicketIds !== undefined ? { addOnTicketIds: lifted.addOnTicketIds } : {}),
-  };
 };

@@ -2,10 +2,13 @@
  * issue #3281 S2 — the public add-on list's pure half (no React): which add-ons
  * a public page lists and how their prices read. The block
  * (OfferingAddOnsBlock.tsx) renders these.
+ *
+ * It reads only the display fields of the reader's item and imports nothing
+ * from the cart (ticketExtrasCart owns what a buyer may pick), so the public
+ * block's on-use chunk shares no module with the checkout picker's.
  */
 
 import { withCurrencyGlyph } from "./currencyGlyph.ts";
-import { parsePublicTicketExtras } from "./ticketExtrasCart.ts";
 
 export interface OfferingAddOnChip {
   id: string;
@@ -26,33 +29,43 @@ const noneLeft = (remaining: number | Record<string, number> | null): boolean =>
   return counts.length > 0 && counts.every((n) => n <= 0);
 };
 
+const wholeAtLeast = (value: unknown, min: number): number | null =>
+  typeof value === "number" && Number.isInteger(value) && value >= min ? value : null;
+
 /** The add-ons a public page lists: shown ones only, in the reader's order. */
 export function publicAddOnChips(raw: unknown): OfferingAddOnChip[] {
   if (!Array.isArray(raw)) return [];
-  const byId = new Map<string, Record<string, unknown>>();
-  for (const item of raw) {
-    if (isRecord(item) && typeof item.id === "string") byId.set(item.id, item);
-  }
   const chips: OfferingAddOnChip[] = [];
-  for (const extra of parsePublicTicketExtras(raw)) {
-    const source = byId.get(extra.id);
-    if (source === undefined || source.showOnPublicPage === false) continue;
-    const thumb = source.photoThumbPath;
+  for (const item of raw) {
+    if (!isRecord(item) || typeof item.id !== "string" || typeof item.name !== "string") continue;
+    const priceCents = wholeAtLeast(item.priceCents, 0);
+    if (priceCents === null || wholeAtLeast(item.maxPerTicket, 1) === null) continue;
+    if (item.showOnPublicPage === false) continue;
+    let remaining: number | Record<string, number> | null = null;
+    if (item.isUnlimited !== true) {
+      if (typeof item.remaining === "number") {
+        remaining = item.remaining;
+      } else if (isRecord(item.remaining)) {
+        const byDate: Record<string, number> = {};
+        for (const key of Object.keys(item.remaining)) {
+          const n = item.remaining[key];
+          if (typeof n === "number") byDate[key] = n;
+        }
+        remaining = byDate;
+      } else {
+        remaining = 0; // a limited add-on whose count can't be read is not offered
+      }
+    }
+    const thumb = item.photoThumbPath;
     chips.push({
-      id: extra.id,
-      name: extra.name,
-      priceAllInCents: extra.priceAllInCents,
-      soldOut: noneLeft(extra.remaining),
+      id: item.id,
+      name: item.name,
+      priceAllInCents: wholeAtLeast(item.priceAllInCents, 0) ?? priceCents,
+      soldOut: noneLeft(remaining),
       photoThumbPath: typeof thumb === "string" && thumb.length > 0 ? thumb : null,
     });
   }
   return chips;
-}
-
-/** What a page passes to show add-ons; absent (the default) shows none. */
-export interface OfferingAddOnsDisplay {
-  /** The stored thumbnail's public URL, or null to show no image. */
-  photoUrl?: (path: string) => string | null;
 }
 
 /** Minor units in the offering's currency, with the house glyph rule. */

@@ -1,17 +1,17 @@
 /**
  * issue #3281 S3 (§6.4) — the Add-ons editor on an event draft.
  *
- * A draft has no ticket rows yet, so the editor reads and writes the draft's own
- * `addOns` (draft ticket ids as targets, minor units) instead of the server.
- * Publishing maps them onto the new tickets through the per-ticket JSON the
- * publish step already reads (`utils/draftAddOns`), so each add-on comes with
- * one ticket on a draft. Photos are added once the event is published (a photo
+ * A draft has no ticket rows yet, so the editor reads and writes the draft
+ * instead of the server: its tickets' add-ons lifted into one list (draft
+ * ticket ids as targets, minor units) and lowered back onto the tickets on
+ * save (`utils/draftAddOns`). Publish maps them onto the new tickets through
+ * that per-ticket JSON, so each add-on comes with one ticket on a draft. Photos are added once the event is published (a photo
  * belongs to a saved add-on), so the draft form hides the photo and the public
  * page switch (every draft add-on is shown, the default).
  */
 
-import type { DraftEvent } from "../../store/draftEventStore";
-import type { DraftAddOn, DraftAddOnFields } from "../../utils/draftAddOns";
+import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
+import { liftTicketAddOns, ticketsWithAddOns, type DraftAddOn } from "../../utils/draftAddOns";
 import type {
   AddOnSaveItem,
   AddOnTargetOption,
@@ -19,10 +19,7 @@ import type {
   OfferingAddOnsPayload,
 } from "./addOnsEditorModel";
 
-type DraftView = Pick<
-  DraftEvent,
-  "id" | "tickets" | "currency" | "whenMode" | "multiDates" | "timezone" | "addOns" | "addOnTicketIds"
->;
+type DraftView = Pick<DraftEvent, "id" | "tickets" | "currency" | "whenMode" | "multiDates" | "timezone">;
 
 let localIdSeq = 0;
 const newLocalId = (): string => {
@@ -51,7 +48,7 @@ export const draftAddOnsPayload = (draft: DraftView): OfferingAddOnsPayload => {
         timezone: draft.timezone,
       }))
     : [];
-  const addOns: OfferingAddOn[] = (draft.addOns ?? []).map((addOn, index) => ({
+  const addOns: OfferingAddOn[] = (liftTicketAddOns(draft.tickets).addOns ?? []).map((addOn, index) => ({
     id: addOn.id,
     name: addOn.name,
     description: addOn.description,
@@ -82,12 +79,13 @@ export const draftAddOnsPayload = (draft: DraftView): OfferingAddOnsPayload => {
   };
 };
 
-/** The editor's whole-list save as the draft's add-on fields. */
+/** The editor's whole-list save as the draft's tickets, add-ons back on them. */
 export const draftAddOnsFromSave = (
   items: readonly AddOnSaveItem[],
   draft: DraftView,
-): Required<DraftAddOnFields> => {
-  const previous = new Map((draft.addOns ?? []).map((addOn) => [addOn.id, addOn]));
+): TicketStub[] => {
+  const lifted = liftTicketAddOns(draft.tickets);
+  const previous = new Map((lifted.addOns ?? []).map((addOn) => [addOn.id, addOn]));
   const addOns: DraftAddOn[] = items.map((item) => {
     const before = item.id !== undefined ? previous.get(item.id) : undefined;
     const targets = item.targets.flatMap((target) =>
@@ -108,7 +106,7 @@ export const draftAddOnsFromSave = (
       ...(before?.soldDayIds !== undefined ? { soldDayIds: before.soldDayIds } : {}),
     };
   });
-  const ticketIds = new Set(draft.addOnTicketIds ?? []);
+  const ticketIds = new Set(lifted.addOnTicketIds ?? []);
   for (const addOn of addOns) for (const id of addOn.targets) ticketIds.add(id);
   // The draft's tickets keep their order; an add-on follows its ticket's order.
   const order = new Map(draft.tickets.map((ticket, index) => [ticket.id, index]));
@@ -120,8 +118,9 @@ export const draftAddOnsFromSave = (
           (order.get(b.addOn.targets[0] ?? "") ?? Number.MAX_SAFE_INTEGER) || a.index - b.index,
     )
     .map((entry) => entry.addOn);
-  return {
+  return ticketsWithAddOns({
+    tickets: lifted.tickets,
     addOns: sorted,
     addOnTicketIds: draft.tickets.map((ticket) => ticket.id).filter((id) => ticketIds.has(id)),
-  };
+  });
 };

@@ -586,9 +586,6 @@ const DRAFT_EVENT_KEY_CLASS = {
   coverGallery: "roundtrip",
   currency: "roundtrip",
   tickets: "roundtrip",
-  // issue #3281 §6.4 — the draft's add-ons ride the blob on their tickets.
-  addOns: "roundtrip",
-  addOnTicketIds: "roundtrip",
   pricingSwitches: "roundtrip",
   // [TEST-MOD-APPROVED #3284] The Settings step's refund terms round-trip through
   // business_draft so an autosave echo cannot wipe them.
@@ -745,20 +742,6 @@ describe("#3287 — multi-day pricing choice survives the draft save round-trip"
       coverMediaAlt: "Weekend cover",
       coverGallery: [{ url: "https://cdn.example.com/gallery-1.jpg", type: "image" }],
       currency: "USD",
-      addOns: [
-        {
-          id: "x_dinner",
-          name: "Friday dinner",
-          description: "Three courses",
-          priceMinor: 3500,
-          isUnlimited: false,
-          capacity: 40,
-          maxPerTicket: 2,
-          validDayIds: null,
-          targets: ["ticket-weekend"],
-        },
-      ],
-      addOnTicketIds: ["ticket-weekend"],
       tickets: [
         ticket({
           id: "ticket-weekend",

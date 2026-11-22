@@ -14,9 +14,6 @@ import {
   type OfferingAddOnsPayload,
 } from "../components/addOns/addOnsEditorModel";
 import { supabase } from "./supabase";
-import { ADD_ON_PHOTO_BUCKET, addOnPhotoPublicUrl } from "./addOnPhotoUrl";
-
-export { ADD_ON_PHOTO_BUCKET, addOnPhotoPublicUrl };
 
 export class OfferingAddOnsError extends Error {
   readonly code: string;
@@ -74,6 +71,13 @@ export const saveOfferingAddOns = async (input: {
     throw new OfferingAddOnsError("add_ons_invalid");
   }
 };
+
+/** Bucket and folder S1 fixed for add-on photos (`ticket_add_ons` CHECKs). */
+export const ADD_ON_PHOTO_BUCKET = "event_covers";
+
+/** Public URL of a stored add-on photo. Never a transformation endpoint. */
+export const addOnPhotoPublicUrl = (path: string): string =>
+  supabase.storage.from(ADD_ON_PHOTO_BUCKET).getPublicUrl(path).data.publicUrl;
 
 /**
  * Uploads the two JPEGs the device made (full and thumbnail) under
