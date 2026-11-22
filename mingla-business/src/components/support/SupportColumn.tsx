@@ -212,10 +212,20 @@ export const SupportColumn: React.FC<SupportColumnProps> = ({
           {handover.status === "error" ? (
             <View style={styles.errorRow} accessibilityRole="alert">
               <Text style={styles.errorText}>{handover.message}</Text>
-              <Pressable onPress={() => void handleTalkToPerson()} accessibilityRole="button" style={styles.errorAction}>
+              <Pressable
+                onPress={() => void handleTalkToPerson()}
+                accessibilityRole="button"
+                accessibilityLabel={hubCopy("support.retry")}
+                style={styles.errorAction}
+              >
                 <Text style={styles.errorActionText}>{hubCopy("support.retry")}</Text>
               </Pressable>
-              <Pressable onPress={() => setHandover({ status: "idle" })} accessibilityRole="button" style={styles.errorAction}>
+              <Pressable
+                onPress={() => setHandover({ status: "idle" })}
+                accessibilityRole="button"
+                accessibilityLabel={hubCopy("support.dismiss")}
+                style={styles.errorAction}
+              >
                 <Text style={styles.errorActionText}>{hubCopy("support.dismiss")}</Text>
               </Pressable>
             </View>
