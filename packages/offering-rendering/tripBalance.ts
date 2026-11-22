@@ -324,21 +324,43 @@ export function rebalanceTripPlan(
     if (b === null) return -1;
     return a.localeCompare(b);
   });
-  let paidRun = 0;
+  // Largest remainder, as issue_4522_begin_flex_payment allocates: each line
+  // takes floor(paid × line / before); the leftover minor units go one each
+  // to the lines with the largest remainders (ties by line order). A line
+  // never takes more than it owes, so every amount allocates exactly.
+  const lineTotals = ordered.map(([, group]) =>
+    group.reduce((sum, row) => sum + row.amountMinor, 0)
+  );
+  const bases = lineTotals.map((total) =>
+    proportionalFloor(paid, total, before)
+  );
+  let leftover = paid - bases.reduce((sum, base) => sum + base, 0);
+  const byRemainder = lineTotals
+    .map((total, index) => ({
+      index,
+      remainder: before <= 0
+        ? BigInt(0)
+        : (BigInt(paid) * BigInt(total)) % BigInt(before),
+    }))
+    .sort((a, b) =>
+      a.remainder === b.remainder
+        ? a.index - b.index
+        : (a.remainder > b.remainder ? -1 : 1)
+    );
+  const linePaidByIndex = [...bases];
+  for (const { index } of byRemainder) {
+    if (leftover <= 0) break;
+    linePaidByIndex[index] += 1;
+    leftover -= 1;
+  }
   const rebalanced: TripBalanceScheduleRow[] = [];
   ordered.forEach(([, group], groupIndex) => {
-    const lineBefore = group.reduce((sum, row) => sum + row.amountMinor, 0);
+    const lineBefore = lineTotals[groupIndex];
     const lineAddonBefore = group.reduce(
       (sum, row) => sum + (row.addonPortionMinor ?? 0),
       0,
     );
-    const linePaid = Math.min(
-      groupIndex < ordered.length - 1
-        ? proportionalFloor(paid, lineBefore, before)
-        : paid - paidRun,
-      lineBefore,
-    );
-    paidRun += linePaid;
+    const linePaid = Math.min(linePaidByIndex[groupIndex], lineBefore);
     const addonPaid = proportionalFloor(linePaid, lineAddonBefore, lineBefore);
     const tripRemaining = lineBefore - lineAddonBefore - (linePaid - addonPaid);
     const addonRemaining = lineAddonBefore - addonPaid;
