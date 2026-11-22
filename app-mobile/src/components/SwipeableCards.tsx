@@ -105,7 +105,7 @@ import { useClaimedVenues, type ClaimedVenue } from "../hooks/useClaimedVenues";
 // venue's server facts (deep specifier: never the package barrel).
 import { deckBrowsesToday, deckVenueChips, sessionBrowsesToday, type DeckVenueChips } from "@mingla/brand-rendering/deckVenueChip";
 import { venueMoneyText } from "./venueOffers/venueMoneyText";
-import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
+import { captureVenueTappedToBook, deckCardVenueProps } from "./venueOffers/venueBookAnalytics";
 import { leaveDeckTo } from "./deckCard/deckNavigation";
 import { deckHandoffSave, setDeckVenueHandoff } from "./venuePage/deckVenueHandoff";
 import { LinearGradient } from "expo-linear-gradient";
@@ -2049,6 +2049,8 @@ export default function SwipeableCards({
         category: currentRec.category,
         position_in_deck: currentCardIndex,
         is_curated: (currentRec as any).cardType === 'curated',
+        // #4490 Explorer W5: is_hosted_venue, deck_lead, venue_id (null for non-venues).
+        ...deckCardVenueProps({ deckLead: currentRec.deckLead, claimedVenue: currentClaimedVenue }),
       };
       const trackCardViewed = async (): Promise<void> => {
         mixpanelService.trackCardViewed(view);
@@ -2061,7 +2063,7 @@ export default function SwipeableCards({
         void trackCardViewed();
       }
     }
-  }, [currentRec, currentCardIndex, enqueuePostSwipeWork]);
+  }, [currentRec, currentCardIndex, enqueuePostSwipeWork, currentClaimedVenue]);
 
   useEffect(() => {
     if (
@@ -2490,6 +2492,9 @@ export default function SwipeableCards({
         category: currentRec.category,
         source: "home",
         destination: "venue_page",
+        // #4490 Explorer W5.
+        position_in_deck: currentCardIndex,
+        ...expandVenueProps(deckCardVenueProps({ deckLead: currentRec.deckLead, claimedVenue: currentClaimedVenue })),
       });
       // #4347 wave 4 — hand the venue page THIS card and the deck's own save
       // path, so its Save / Schedule act exactly as the place sheet's would
@@ -2561,11 +2566,18 @@ export default function SwipeableCards({
     });
 
     // Track card expanded in Mixpanel (ALL card types — curated was previously skipped)
+    // #4490 Explorer W5: position_in_deck, is_hosted_venue, deck_lead.
+    const expandLead = expandVenueProps(
+      deckCardVenueProps({ deckLead: currentRec.deckLead, claimedVenue: currentClaimedVenue }),
+    );
     mixpanelService.trackCardExpanded({
       cardId: currentRec.id,
       cardTitle: currentRec.title,
       category: currentRec.category,
       source: "home",
+      positionInDeck: currentCardIndex,
+      isHostedVenue: expandLead.is_hosted_venue,
+      deckLead: expandLead.deck_lead,
     });
     // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
     postHogService.capture("card_expanded", {
@@ -2573,6 +2585,8 @@ export default function SwipeableCards({
       card_title: currentRec.title,
       category: currentRec.category,
       source: "home",
+      position_in_deck: currentCardIndex,
+      ...expandLead,
     });
 
     // ORCH-1065: brand experiences expand to the business-event sheet →
@@ -2648,6 +2662,14 @@ export default function SwipeableCards({
 
     // ── Analytics: save or dismiss ──
     const isCurated = (card as any).cardType === 'curated';
+    // #4490 Explorer W5: position_in_deck, is_hosted_venue, deck_lead.
+    const swipeLead = expandVenueProps(
+      deckCardVenueProps({
+        deckLead: card.deckLead,
+        claimedVenue: !card.cardType && card.placePoolId ? claimedVenues.get(card.placePoolId) ?? null : null,
+      }),
+    );
+    const swipePosition = currentRec?.id === card.id ? currentCardIndex : null;
     if (direction === 'right') {
       logAppsFlyerEvent('af_add_to_wishlist', {
         af_content_type: card.category,
@@ -2660,6 +2682,8 @@ export default function SwipeableCards({
         category: card.category,
         is_curated: isCurated,
         source: 'swipe',
+        position_in_deck: swipePosition ?? undefined,
+        ...swipeLead,
       });
       // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
       postHogService.capture("card_saved", {
@@ -2668,6 +2692,8 @@ export default function SwipeableCards({
         category: card.category,
         is_curated: isCurated,
         source: 'swipe',
+        position_in_deck: swipePosition,
+        ...swipeLead,
       });
 
     } else {
@@ -2679,6 +2705,8 @@ export default function SwipeableCards({
         card_title: card.title,
         category: card.category,
         is_curated: isCurated,
+        position_in_deck: swipePosition ?? undefined,
+        ...swipeLead,
       });
       // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
       postHogService.capture("card_dismissed", {
@@ -2686,6 +2714,8 @@ export default function SwipeableCards({
         card_title: card.title,
         category: card.category,
         is_curated: isCurated,
+        position_in_deck: swipePosition,
+        ...swipeLead,
       });
     }
 

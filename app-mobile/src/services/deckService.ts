@@ -289,6 +289,9 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     // to guess from the id's shape (an `events.id` is uuid-shaped too, and
     // `place_reviews.place_pool_id` carries a live FK to `place_pool`).
     placePoolId: typeof card.id === 'string' ? card.id : undefined,
+    // #4490 Explorer W5: the server's additive lead tag (analytics only; the
+    // client order is untouched).
+    ...(card.deckLead === 'hosted_venue' ? { deckLead: 'hosted_venue' as const } : {}),
     priceTier: undefined,
     ...discoveryPrice,
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
@@ -378,6 +381,8 @@ function experienceCardToRecommendation(card: any): Recommendation {
     // Discriminator + brand attribution + experience fields — carried verbatim
     // for the renderer (read via runtime cast in SwipeableCards).
     cardType: 'experience',
+    // #4490 Explorer W5: the server's additive lead tag (analytics only).
+    ...(card?.deckLead === 'experience' ? { deckLead: 'experience' as const } : {}),
     id: String(card?.id ?? card?.eventId ?? ''),
     eventId: String(card?.eventId ?? card?.id ?? ''),
     experienceType: intentId,

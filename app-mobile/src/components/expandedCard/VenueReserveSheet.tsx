@@ -30,6 +30,10 @@ import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
+import {
+  captureVenueCheckoutFinished,
+  tableCheckoutOutcome,
+} from "../venueOffers/venueBookAnalytics";
 import { Icon } from "../ui/Icon";
 import { BOTTOM_NAV_CONTENT_HEIGHT } from "../../hooks/useAppLayout";
 import { PhoneInput } from "../onboarding/PhoneInput";
@@ -433,6 +437,11 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
         venueName,
       );
       setSubmitting(false);
+      // #4490 Explorer W5: the table checkout's outcome (no amounts, names or emails).
+      const finished = tableCheckoutOutcome(outcome.outcome);
+      if (finished !== null) {
+        captureVenueCheckoutFinished({ venueId, offerKind: "table_reservation", outcome: finished });
+      }
       if (outcome.outcome === "succeeded") {
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,

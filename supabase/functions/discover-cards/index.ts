@@ -45,6 +45,18 @@ import {
   businessHoursToGoogleOpeningHours,
   isBusinessHoursArray,
 } from '../_shared/businessHoursToGoogle.ts';
+// #4490 Explorer W5: hosted venues lead each category (flag VENUE_DECK_HOSTED_FIRST).
+import {
+  HOSTED_GRACE_MS,
+  VENUE_DECK_HOSTED_FIRST,
+  collabCandidates,
+  dedupeByPlace,
+  leadHostedWithinCategories,
+  mergeIntoBucket,
+  partitionHostedFirst,
+  settleHosted,
+  venueDeckFlagOn,
+} from './hostedLead.ts';
 
 // ─── ORCH-0588 Slice 1: cohort cache for signal-serving rollout ───────────────
 // Module-scoped 60s cache for the admin-config cohort pct. 60s = balance between
@@ -1237,6 +1249,7 @@ async function handleDeterministicV2(args: {
   currentPosition: number;
   req: Request;
   t0: number;
+  hostedGraceMs?: number;
 }): Promise<Response> {
   const { supabaseAdmin, sessionId, currentPosition, req, t0 } = args;
 
@@ -1759,7 +1772,29 @@ async function handleDeterministicV2(args: {
   excludePlaceIds = [...new Set([...excludePlaceIds, ...sessionServedIds])];
 
   const PER_CHIP_LIMIT = 50;
-  const rpcResults = await Promise.all(
+  // #4490 W5 (collab): with the switch on, the hosted intersection wrapper runs
+  // beside each base call with the same circles and exclusions (excludePlaceIds
+  // already holds every served id), so this position's category leads with its
+  // hosted venues until they are used up. Failures are logged and ignored.
+  const hostedFirst = await venueDeckFlagOn(supabaseAdmin, VENUE_DECK_HOSTED_FIRST);
+  const hostedCalls: Promise<Array<{ task: RpcTask; res: any }>> = hostedFirst
+    ? Promise.all(
+      rpcTasks.map((task) =>
+        Promise.resolve(
+          supabaseAdmin.rpc('issue_4490_hosted_servable_places_intersection', {
+            p_signal_id: task.signalId,
+            p_filter_min: task.filterMin,
+            p_circles: agg.circles,
+            p_exclude_place_ids: excludePlaceIds,
+          }),
+        ).then(
+          (res: any) => ({ task, res }),
+          (err: unknown) => ({ task, res: { data: null, error: { message: (err as Error)?.message ?? 'hosted call threw' } } }),
+        )
+      ),
+    )
+    : Promise.resolve([]);
+  const baseCalls = Promise.all(
     rpcTasks.map((task) =>
       supabaseAdmin
         .rpc('query_servable_places_by_signal_intersection', {
@@ -1772,9 +1807,26 @@ async function handleDeterministicV2(args: {
         .then((res: any) => ({ task, res })),
     ),
   );
+  const rpcResults = await baseCalls;
+  const hostedSettled = hostedFirst
+    ? await settleHosted(hostedCalls, baseCalls, args.hostedGraceMs ?? HOSTED_GRACE_MS)
+    : [];
+  if (hostedFirst && hostedSettled === null) {
+    console.warn(`[discover-cards/positional] hosted lead skipped: hosted calls did not answer in time`);
+  }
+  const usableHosted = (hostedSettled ?? []).filter(({ task, res }) => {
+    if (res?.error) {
+      console.warn(`[discover-cards/positional] hosted call failed (ignored) chip=${task.chip} signal=${task.signalId}: ${String(res.error.message ?? '').slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  });
 
   // #1683/#1703 — one PK lookup across every chip's rows, before bucketing.
-  await Promise.all(rpcResults.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])));
+  await Promise.all([
+    ...rpcResults.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])),
+    ...usableHosted.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])),
+  ]);
 
   const perChipBuckets = new Map<string, Map<string, any>>();
   const failedTasks: string[] = [];
@@ -1825,7 +1877,33 @@ async function handleDeterministicV2(args: {
     );
     perChipSorted.set(chip, arr);
   }
-  const interleavedRows = roundRobinByChip({ perChip: perChipSorted, totalLimit: 200 });
+  const organicInterleaved = roundRobinByChip({ perChip: perChipSorted, totalLimit: 200 });
+  // #4490 W5 (collab): candidates = hosted head per chip (round-robin) then the
+  // organic rows (round-robin), deduped by place. Nothing random, no clock.
+  let interleavedRows = organicInterleaved;
+  if (hostedFirst && usableHosted.length > 0) {
+    const hostedBuckets = new Map<string, Map<string, any>>();
+    for (const { task, res } of usableHosted) {
+      let bucket = hostedBuckets.get(task.chip);
+      if (!bucket) {
+        bucket = new Map<string, any>();
+        hostedBuckets.set(task.chip, bucket);
+      }
+      for (const row of (res.data as any[]) ?? []) {
+        mergeIntoBucket(bucket, row, { __displayCategory: task.displayCategory, __signalId: task.signalId }, true);
+      }
+    }
+    const hostedPerChip = new Map<string, any[]>();
+    for (const chip of canonicalCategories) {
+      const bucket = hostedBuckets.get(chip);
+      if (!bucket || bucket.size === 0) continue;
+      hostedPerChip.set(chip, partitionHostedFirst([...bucket.values()]));
+    }
+    interleavedRows = collabCandidates(
+      roundRobinByChip({ perChip: hostedPerChip, totalLimit: 200 }),
+      organicInterleaved,
+    );
+  }
   if (interleavedRows.length === 0) {
     return await fallbackToCuratedAfterSingleExhaustion(
       'Signal RPCs returned zero rows for the intersection.',
@@ -2252,6 +2330,8 @@ interface DiscoveryFxContext {
 interface DiscoverCardsDependencies {
   adminClient?: any;
   nowMs?: () => number;
+  /** #4490 W5: how long a hosted answer may trail the base calls (tests shorten it). */
+  hostedGraceMs?: number;
 }
 
 export async function resolveDiscoveryFxContext(
@@ -2369,13 +2449,15 @@ export async function handleDiscoverCards(
       Object.prototype.hasOwnProperty.call(body, 'expected' + '_deck_version');
 
     if (newCollabSessionId && typeof body.current_position === 'number') {
-      const supabaseAdminForCollab = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+      const supabaseAdminForCollab = dependencies.adminClient ??
+        createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
       return await handleDeterministicV2({
         supabaseAdmin: supabaseAdminForCollab,
         sessionId: newCollabSessionId,
         currentPosition: body.current_position,
         req,
         t0,
+        hostedGraceMs: dependencies.hostedGraceMs,
       });
     }
 
@@ -2694,12 +2776,15 @@ export async function handleDiscoverCards(
     // the interleave serving zero results for that chip — other chips continue).
     const uniqueSignalIds = [...new Set(chipTargets.flatMap((t) => t.signalIds))];
     const cohortByPct = new Map<string, { pct: number; inCohort: boolean }>();
+    // #4490 W5: the hosted-lead switch is read beside the cohort reads (60 s cache).
+    const hostedFirstRead = venueDeckFlagOn(supabaseAdmin, VENUE_DECK_HOSTED_FIRST);
     await Promise.all(
       uniqueSignalIds.map(async (sig) => {
         const pct = await getSignalServingPct(supabaseAdmin, sig);
         cohortByPct.set(sig, { pct, inCohort: isInCohort(userId, pct) });
       }),
     );
+    const hostedFirst = await hostedFirstRead;
 
     // Step 3: build flat list of RPC tasks (one per chip × signalId where in-cohort).
     type RpcTask = { chip: string; signalId: string; filterMin: number; displayCategory: string };
@@ -2730,7 +2815,35 @@ export async function handleDiscoverCards(
     // Step 4: fire all RPCs in parallel. Over-fetch per chip (limit × 2) so
     // round-robin has depth; final cap is `limit`.
     const perChipRpcLimit = Math.max(20, Math.min(100, limit * 2));
-    const rpcResults = await Promise.all(
+    // #4490 W5: with the switch on, the hosted wrapper runs beside every base
+    // call with the same arguments (no p_limit: the wrapper caps at 6 itself).
+    // A failed, thrown or late hosted call is logged and ignored; it never
+    // counts toward the all-failed guard and never delays the organic deck by
+    // more than the grace below.
+    const hostedCalls: Promise<Array<{ task: RpcTask; res: any }>> = hostedFirst
+      ? Promise.all(
+        rpcTasks.map((task) =>
+          Promise.resolve(
+            supabaseAdmin.rpc('issue_4490_hosted_servable_places', {
+              p_signal_id: task.signalId,
+              p_filter_min: task.filterMin,
+              p_lat: location.lat,
+              p_lng: location.lng,
+              p_radius_m: radiusMeters,
+              p_exclude_place_ids: excludeCardIds,
+              p_price_filter_min_minor: priceFilterMinMinor,
+              p_price_filter_max_minor: priceFilterMaxMinor,
+              p_price_filter_currency: priceFilterCurrency,
+              p_fx_snapshot_id: fxSnapshotId,
+            }),
+          ).then(
+            (res: any) => ({ task, res }),
+            (err: unknown) => ({ task, res: { data: null, error: { message: (err as Error)?.message ?? 'hosted call threw' } } }),
+          )
+        ),
+      )
+      : Promise.resolve([]);
+    const baseCalls = Promise.all(
       rpcTasks.map((task) =>
         supabaseAdmin.rpc('issue_1384_query_servable_places_by_signal', {
           p_signal_id: task.signalId,
@@ -2747,11 +2860,28 @@ export async function handleDiscoverCards(
         }).then((res: any) => ({ task, res })),
       ),
     );
+    const rpcResults = await baseCalls;
+    const hostedResults = hostedFirst
+      ? (await settleHosted(hostedCalls, baseCalls, dependencies.hostedGraceMs ?? HOSTED_GRACE_MS)) ?? null
+      : [];
+    if (hostedFirst && hostedResults === null) {
+      console.warn(`[discover-cards] hosted lead skipped: hosted calls did not answer within ${dependencies.hostedGraceMs ?? HOSTED_GRACE_MS}ms of the base calls`);
+    }
+    const usableHosted = (hostedResults ?? []).filter(({ task, res }) => {
+      if (res?.error) {
+        console.warn(`[discover-cards] hosted call failed (ignored) chip=${task.chip} signal=${task.signalId}: ${String(res.error.message ?? '').slice(0, 200)}`);
+        return false;
+      }
+      return true;
+    });
 
     // Step 5: bucket results by chip, merging within a chip by place_id max-score.
     // Skip failed RPCs but keep going (partial failure tolerance).
     // #1683/#1703 — one PK lookup across every chip's rows, before bucketing.
-    await Promise.all(rpcResults.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])));
+    await Promise.all([
+      ...rpcResults.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])),
+      ...usableHosted.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])),
+    ]);
 
     const perChipBuckets = new Map<string, Map<string, any>>(); // chip → place_id → row
     const failedTasks: string[] = [];
@@ -2766,6 +2896,10 @@ export async function handleDiscoverCards(
         perChipBuckets.set(task.chip, bucket);
       }
       for (const row of (res.data as any[]) ?? []) {
+        if (hostedFirst) {
+          mergeIntoBucket(bucket, row, { __displayCategory: task.displayCategory, __signalId: task.signalId }, false);
+          continue;
+        }
         const existing = bucket.get(row.place_id);
         if (!existing || Number(row.signal_score) > Number(existing.signal_score)) {
           // Attach displayCategory from the winning chip (preserved through interleave)
@@ -2773,6 +2907,18 @@ export async function handleDiscoverCards(
           // the per-signal Gemini Q2 reasoning slice for the "Why we picked" section.
           bucket.set(row.place_id, { ...row, __displayCategory: task.displayCategory, __signalId: task.signalId });
         }
+      }
+    }
+    // #4490 W5: hosted rows merge into the same buckets AFTER the base rows (so
+    // the organic insertion order is today's), with the tag kept on a tie.
+    for (const { task, res } of usableHosted) {
+      let bucket = perChipBuckets.get(task.chip);
+      if (!bucket) {
+        bucket = new Map<string, any>();
+        perChipBuckets.set(task.chip, bucket);
+      }
+      for (const row of (res.data as any[]) ?? []) {
+        mergeIntoBucket(bucket, row, { __displayCategory: task.displayCategory, __signalId: task.signalId }, true);
       }
     }
 
@@ -2803,15 +2949,18 @@ export async function handleDiscoverCards(
       const arr = [...bucket.values()].sort(
         (a, b) => Number(b.signal_score ?? 0) - Number(a.signal_score ?? 0),
       );
-      perChipSorted.set(chip, arr);
+      // #4490 W5: hosted head (≤6, hosted order) then today's order unchanged.
+      perChipSorted.set(chip, hostedFirst ? partitionHostedFirst(arr) : arr);
     }
 
     // Step 8: preserve enough candidates for server-side price filtering
     // before the response limit is applied.
-    const interleavedRows = roundRobinByChip({
+    const roundRobinRows = roundRobinByChip({
       perChip: perChipSorted,
       totalLimit: Math.max(limit, categories.length * perChipRpcLimit),
     });
+    // #4490 W5: with the switch on, a place dealt by two chips appears once.
+    const interleavedRows = hostedFirst ? dedupeByPlace(roundRobinRows) : roundRobinRows;
 
     // ORCH-1065: fetch deck-eligible brand experiences ONCE (best-effort). Hoisted
     // ABOVE the zero-row branch so "auto-surface every published experience" holds
@@ -2927,6 +3076,8 @@ export async function handleDiscoverCards(
         row.__signalId, // META-ORCH-1009 Sub-B: per-signal reasoning lookup
       );
       if (card.distanceKm === null) _placesMissingCoords++;
+      // #4490 W5: additive field; current apps ignore it.
+      if (hostedFirst && row.__hostedLead === true) card.deckLead = 'hosted_venue';
       return card;
     });
     if (_placesMissingCoords > 0) {
@@ -2961,7 +3112,12 @@ export async function handleDiscoverCards(
     // against the stale stored datetime_pref. dateOption + selectedDates are in
     // scope here (passed to filterByDateTime above), so reuse them.
     const curatedHoursPolicy = resolveCuratedHoursPolicy({ dateOption, datetimePref, selectedDates });
-    const hoursFilteredCards = filterCuratedByStopHours(timeFilteredCards, curatedHoursPolicy);
+    const hoursFilteredBeforeLead = filterCuratedByStopHours(timeFilteredCards, curatedHoursPolicy);
+    // #4490 W5 final safety pass: inside each display category, its hosted
+    // lead cards take that category's earliest slots (two chips can share one).
+    const hoursFilteredCards = hostedFirst
+      ? leadHostedWithinCategories(hoursFilteredBeforeLead)
+      : hoursFilteredBeforeLead;
 
     // Step 11: keep signal-score ranked order. ORCH-0902 CR-9: legacy collab
     // branch (place_id sort + zero matchScore for sessionId presence) was
@@ -2976,14 +3132,21 @@ export async function handleDiscoverCards(
     // the deck (index 0..n-1, ahead of curated/singles) in stable RPC order
     // (operator-approved 2026-06-03). Additive — experiences never displace place
     // cards. Bypasses place_pool/ai_signal_scores/run-signal-scorer (COMMS-0018).
+    // #4490 W5: experiences say why they lead (additive; only with the switch on).
+    if (hostedFirst) {
+      experienceCards = experienceCards.map((exp) => ({ ...exp, deckLead: 'experience' }));
+    }
     const mergedCards = interleaveExperiencesIntoDeck(finalCards, experienceCards);
+    const hostedServed = hostedFirst
+      ? finalCards.filter((card: any) => card?.deckLead === 'hosted_venue').length
+      : 0;
 
     const elapsed = Date.now() - t0;
     const perChipBreakdown: Record<string, number> = {};
     for (const [chip, arr] of perChipSorted) perChipBreakdown[chip] = arr.length;
     const filterMins: Record<string, number> = {};
     for (const t of chipTargets) filterMins[t.chip] = t.filterMin;
-    console.log(`[discover-cards] exit path=pipeline source=signal-serving-v2-multi-chip chips=${categories.length} rpcs=${rpcTasks.length} failed=${failedTasks.length} pre=${rawCards.length} post=${finalCards.length} experiences=${experienceCards.length} merged=${mergedCards.length} elapsed_ms=${elapsed} mode=solo`);
+    console.log(`[discover-cards] exit path=pipeline source=signal-serving-v2-multi-chip chips=${categories.length} rpcs=${rpcTasks.length} failed=${failedTasks.length} pre=${rawCards.length} post=${finalCards.length} experiences=${experienceCards.length} merged=${mergedCards.length} hosted=${hostedServed} elapsed_ms=${elapsed} mode=solo`);
 
     return new Response(JSON.stringify({
       success: true,

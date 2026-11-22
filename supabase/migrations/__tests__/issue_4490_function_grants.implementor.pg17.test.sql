@@ -10,6 +10,9 @@
 -- issue_4490_offer_from, its slot read, the live-offers owner and the card's lean price read are internal, the three lifted price helpers are
 -- invoker helpers.
 --
+-- TEST-MOD-APPROVED #4490 (06-W5): the two hosted deck wrappers (20280809460490) are internal
+-- (service role only).
+--
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
 \set ON_ERROR_STOP on
@@ -186,6 +189,8 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_hold_damage_deposit(uuid,text,text)', 'signed_in'),
   ('issue_4490_hold_hire_internal(uuid,uuid,jsonb,text,uuid,bytea,text)', 'internal'),
   ('issue_4490_hold_offer_internal(uuid,uuid,jsonb,text,uuid,bytea,text,boolean,uuid,text)', 'internal'),
+  ('issue_4490_hosted_servable_places_intersection(text,numeric,jsonb,uuid[])', 'internal'),
+  ('issue_4490_hosted_servable_places(text,numeric,double precision,double precision,double precision,uuid[],bigint,bigint,character,uuid)', 'internal'),
   ('issue_4490_hour_booking_facts(uuid)', 'internal'),
   ('issue_4490_hour_default_mode()', 'helper'),
   ('issue_4490_hour_projection(uuid)', 'internal'),

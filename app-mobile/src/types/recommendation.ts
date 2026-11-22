@@ -18,6 +18,12 @@ export interface Recommendation {
    * silently mis-handles every type added later — see `placeReviewRequestStore`.
    */
   cardType?: string;
+  /**
+   * #4490 Explorer W5 — why the server put this card early (`hosted_venue`: a
+   * venue bookable on Mingla led its category; `experience`: a brand
+   * experience). Sent only while VENUE_DECK_HOSTED_FIRST is on; analytics only.
+   */
+  deckLead?: 'hosted_venue' | 'experience';
   id: string;
   title: string;
   category: string;
