@@ -149,3 +149,13 @@ export function claimPhonePlaceholder(country: string | null | undefined): strin
   if (!isClaimPhoneCountry(country)) return undefined;
   return formatPhoneNational(country, EXAMPLE_NATIONAL[country]).trim();
 }
+
+/**
+ * #4490 W2-N24 — the landed question uses the noun the server sent for the
+ * claim (a venue pass is "Is this your pass?"); a ticket keeps its words.
+ */
+export function claimLinkLandedTitleKey(noun: string | null): string {
+  return noun === "pass" || noun === "booking" || noun === "receipt"
+    ? `missing.landed.titleNoun.${noun}`
+    : "missing.landed.title";
+}

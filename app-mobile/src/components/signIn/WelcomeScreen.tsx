@@ -684,30 +684,44 @@ export default function WelcomeScreen({
 
           {claimEmailPreferred ? (
             claimEmailChallengeId === null ? (
-              <TouchableOpacity
-                onPress={() => void sendClaimEmailCode()}
-                style={[styles.claimEmailButton, emailBusy && styles.buttonDisabled]}
-                disabled={emailBusy}
-                accessibilityRole="button"
-                accessibilityLabel={`Continue with ${ticketClaim!.emailMasked}`}
-                accessibilityState={{ disabled: emailBusy, busy: emailBusy }}
-                testID="welcome-claim-email-send"
-              >
-                {emailBusy ? (
-                  <ActivityIndicator size="small" color="#111827" />
-                ) : (
+              <>
+                <TouchableOpacity
+                  onPress={() => void sendClaimEmailCode()}
+                  style={[styles.claimEmailButton, emailBusy && styles.buttonDisabled]}
+                  disabled={emailBusy}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Continue with ${ticketClaim!.emailMasked}`}
+                  accessibilityState={{ disabled: emailBusy, busy: emailBusy }}
+                  testID="welcome-claim-email-send"
+                >
+                  {emailBusy ? (
+                    <ActivityIndicator size="small" color="#111827" />
+                  ) : (
+                    <Text
+                      style={styles.claimEmailButtonText}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+                    >
+                      {t("auth:welcome.continueWithEmailAddress", {
+                        email: ticketClaim!.emailMasked,
+                        defaultValue: `Continue with ${ticketClaim!.emailMasked}`,
+                      })}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                {/* #4490 (device pass 2): a failed code send (for example the
+                    email service down) said nothing here; the code panel and
+                    the fallback each show the error, this step did not. */}
+                {emailError ? (
                   <Text
-                    style={styles.claimEmailButtonText}
-                    numberOfLines={1}
-                    maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+                    style={styles.emailError}
+                    accessibilityLiveRegion="polite"
+                    testID="welcome-claim-email-send-error"
                   >
-                    {t("auth:welcome.continueWithEmailAddress", {
-                      email: ticketClaim!.emailMasked,
-                      defaultValue: `Continue with ${ticketClaim!.emailMasked}`,
-                    })}
+                    {emailError}
                   </Text>
-                )}
-              </TouchableOpacity>
+                ) : null}
+              </>
             ) : (
               <View style={styles.emailPanel} testID="welcome-claim-email-panel">
                 <Text style={styles.emailPanelHeading}>

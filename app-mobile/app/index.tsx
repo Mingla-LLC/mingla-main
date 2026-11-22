@@ -833,6 +833,18 @@ function AppContent() {
     if (authAction === "preserve") return;
     if (authAction === "clear") {
       void clearAttendanceClaimIntent();
+      // #4490 W2-N20 — the /c link code this device saved belongs to the
+      // account that just left: forget it too, so the signed-out welcome no
+      // longer shows that purchase (title, date, masked email) or hides plain
+      // email sign-up. A link opened BEFORE any account still survives an app
+      // restart (no account change happens), and a deliberate "use a
+      // different account" handoff takes "preserve" above, so it keeps it.
+      // The generation bump drops a pending-claim read already in flight.
+      void clearPendingClaimIntent().then(() => {
+        pendingClaimLoadGenerationRef.current += 1;
+        setTicketClaim(null);
+        setTicketClaimResolving(false);
+      });
       void clearAttendanceClaimHandoffMarker();
       attendanceClaimHandoffActiveRef.current = false;
       attendanceClaimHandoffStartedAtRef.current = null;

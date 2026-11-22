@@ -66,6 +66,7 @@ import { runClaimSweep } from "../../services/claimSweep";
 import {
   claimedEntryMetaLine,
   claimedEntryPath,
+  claimLinkLandedTitleKey,
   hasSharedEntry,
   mergeFoundEntries,
   resendClock,
@@ -946,7 +947,7 @@ export function AddIdentitySheet({
           {step === "landed" ? (
             <View testID="add-identity-landed">
               <Text accessibilityRole="header" style={styles.title}>
-                {t("missing.landed.title")}
+                {t(claimLinkLandedTitleKey(claimLink?.noun ?? null))}
               </Text>
               {claimLink ? (
                 <View style={[styles.card, styles.landedCard]}>
