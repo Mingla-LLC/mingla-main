@@ -43,6 +43,7 @@ import { alertUnreachedGuests } from "../_shared/unreachedGuestAlert.ts";
 // Issue #4508 R-5 — friend-is-going enqueue failures raise an ops alert.
 import { alertFriendGoingFailures } from "./friendGoingFailureAlert.ts";
 import { sendGuestNotices } from "./guestNotices.ts";
+import { guestPackExists } from "../_shared/guestPackPointer.ts";
 import { alertSignedOutCeilingHits } from "./signedOutCeilingAlert.ts";
 // Issue #3827 — buyers and guests are told when a live listing changes.
 import {
@@ -488,6 +489,10 @@ async function processClaim(
     null;
   const v2HasClaimContact = buyerLink?.claimed === true ||
     recipientEmail !== null || recipientPhoneLast4?.length === 4;
+  // #4548 — the pass email says a guest pack is waiting in the app (a yes/no
+  // from the service-only check); texts never mention it.
+  const guestPack = canRenderV2 && claim.channel === "email" &&
+    await guestPackExists(admin, eventId, "[rsvp-notify]");
   const modernMessage = canRenderV2 && buyerLink !== null &&
       v2HasClaimContact && eventTime !== null && eventName !== null &&
       brandName !== null
@@ -507,6 +512,7 @@ async function processClaim(
       time: eventTime.time,
       when: `${eventTime.date}, ${eventTime.time}`,
       place: text(p.venueLine),
+      guestPack,
     })
     : null;
   const renderedModernEmail = modernMessage !== null &&

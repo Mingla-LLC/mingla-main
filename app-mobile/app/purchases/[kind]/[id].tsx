@@ -37,6 +37,8 @@ import {
 import { DoorModeModal } from "../../../src/components/purchases/DoorModeModal";
 import { SendTicketSheet } from "../../../src/components/purchases/SendTicketSheet";
 import RsvpPassSheet from "../../../src/components/activity/RsvpPassSheet";
+import { GuestPackCard } from "../../../src/components/purchases/GuestPackCard";
+import { isOrderGuestPackEligible } from "../../../src/utils/guestPackDisplay";
 import { QuestionsCard } from "../../../src/components/forms/QuestionsCard";
 import { EarnBySharingCard } from "../../../src/components/wallet/EarnBySharingCard";
 import { BrandGuestChatBookingAction } from "../../../src/components/purchases/BrandGuestChatBookingAction";
@@ -826,6 +828,20 @@ export default function PurchaseDetailRoute(): React.ReactElement {
                   </Pressable>
                 ) : null}
               </View>
+            ) : null}
+
+            {/* #4548 — the host's Guest pack, below the venue block. */}
+            {order ? (
+              <GuestPackCard
+                bookedAtIso={order.createdAt}
+                endsAtIso={item.endsAt}
+                eventId={order.eventId}
+                eligible={isOrderGuestPackEligible({
+                  paymentStatus: order.paymentStatus,
+                  cancelledAt: order.cancelledAt,
+                })}
+                startsAtIso={item.startsAt}
+              />
             ) : null}
 
             {allTickets.length > 0 ? (

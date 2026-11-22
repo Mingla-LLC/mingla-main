@@ -22,6 +22,8 @@ export interface OrderConfirmationMessageInput {
   place: string | null;
   detailLines?: string[];
   hostAddedGuest?: boolean;
+  /** Issue #4548 — the event has a guest pack (adds the pointer line). */
+  guestPack?: boolean;
   receipt: {
     currency: string;
     items: Array<{ label: string; quantity: number; amountCents: number }>;
@@ -75,6 +77,7 @@ export function buildOrderConfirmationMessage(
         phoneLast4: input.buyerPhoneLast4,
       },
       buttonUrl: input.buttonUrl,
+      ...(input.guestPack === true ? { guestPack: true } : {}),
       details: {
         title: input.title,
         hostOrVenue: input.brandName,

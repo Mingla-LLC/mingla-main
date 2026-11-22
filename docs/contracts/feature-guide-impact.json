@@ -5834,6 +5834,50 @@
         "supabase/functions/marketing-send/blastForm.ts",
         "supabase/migrations/20281122014541_issue_4541_forms_blast_push.sql"
       ]
+    },
+    {
+      "capability_key": "checkout-tickets",
+      "paths": [
+        "app-mobile/src/components/purchases/GuestPackCard.tsx",
+        "app-mobile/src/hooks/useMyEventGuestPack.ts",
+        "app-mobile/src/services/guestPackService.ts",
+        "app-mobile/src/utils/guestPackDisplay.ts",
+        "supabase/functions/_shared/guestPackPointer.ts",
+        "supabase/functions/_shared/orderConfirmationMessage.ts",
+        "supabase/functions/ticket-confirmation-dispatch/index.ts",
+        "supabase/migrations/20281122024548_issue_4548_event_guest_packs.sql"
+      ]
+    },
+    {
+      "capability_key": "events-edit-live",
+      "paths": [
+        "mingla-business/src/components/event/GuestPackEditor.tsx",
+        "mingla-business/src/services/guestPackService.ts",
+        "mingla-business/src/utils/guestPackGate.ts",
+        "mingla-business/src/utils/guestPackSession.ts",
+        "mingla-business/src/utils/guestPackValidation.ts"
+      ]
+    },
+    {
+      "capability_key": "events-ticket-types",
+      "paths": [
+        "mingla-business/src/components/event/GuestPackEditor.tsx",
+        "mingla-business/src/services/guestPackService.ts",
+        "mingla-business/src/utils/guestPackGate.ts",
+        "mingla-business/src/utils/guestPackSession.ts",
+        "mingla-business/src/utils/guestPackValidation.ts"
+      ]
+    },
+    {
+      "capability_key": "rsvp-passes",
+      "paths": [
+        "app-mobile/src/components/purchases/GuestPackCard.tsx",
+        "app-mobile/src/hooks/useMyEventGuestPack.ts",
+        "app-mobile/src/services/guestPackService.ts",
+        "app-mobile/src/utils/guestPackDisplay.ts",
+        "supabase/functions/_shared/guestPackPointer.ts",
+        "supabase/migrations/20281122024548_issue_4548_event_guest_packs.sql"
+      ]
     }
   ]
 }
