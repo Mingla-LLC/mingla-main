@@ -18,6 +18,11 @@ jest.mock("../../../config/featureFlags", () => ({
   isFeatureEnabled: (key: string) => key === "extras" && flags.extras,
   featureFlags: {},
 }));
+// The house error boundary's Button loads reanimated; the boundary itself is
+// not under test here.
+jest.mock("../../ui/ErrorBoundary", () => ({
+  ErrorBoundary: ({ children }: { children?: React.ReactNode }) => children ?? null,
+}));
 const loads: string[] = [];
 jest.mock("../AddOnsEditorSheet", () => {
   loads.push("editor");
@@ -86,7 +91,7 @@ describe("the Add-ons card", () => {
   test("the editor is never imported eagerly by the card", () => {
     const source = fs.readFileSync(path.join(__dirname, "..", "AddOnsEntry.tsx"), "utf8");
     expect(source).not.toMatch(/^import\s+\{[^}]*AddOnsEditorSheet[^}]*\}\s+from/m);
-    expect(source).toContain('React.lazy(() => import("./AddOnsEditorSheet"))');
+    expect(source).toContain('() => import("./AddOnsEditorSheet")');
     // The Sheet primitive (reanimated at module scope) never rides the card.
     expect(source).not.toMatch(/from "\.\.\/ui\/(Sheet|OnIntentLazySheet)"/);
   });

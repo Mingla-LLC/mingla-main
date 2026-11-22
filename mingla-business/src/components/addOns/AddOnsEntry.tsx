@@ -7,16 +7,23 @@
  * mounted after it (one lazy owner for the feature; Host web boot stays flat).
  */
 
-import React, { Suspense, useState } from "react";
+import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import { isFeatureEnabled } from "../../config/featureFlags";
+import { createRetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
+import type { AddOnsEditorSheetProps } from "./AddOnsEditorSheet";
 import type { AddOnOfferingKind } from "./addOnsEditorModel";
 
-// The one lazy owner of the feature. Nothing here imports the Sheet (its
-// module-scope reanimated import would load with every offering editor).
-const LazyAddOnsEditorSheet = React.lazy(() => import("./AddOnsEditorSheet"));
+// The editor's chunk loads on the first tap; a failed load (offline) shows
+// the house retry instead of breaking the offering editor. Nothing here
+// imports the Sheet (its module-scope reanimated import would load with
+// every offering editor).
+const LazyAddOnsEditorSheet = createRetryableLazyErrorBoundary<AddOnsEditorSheetProps>(
+  () => import("./AddOnsEditorSheet"),
+  { loadingLabel: "Loading add-ons…" },
+);
 
 const SAVED_OFFERING = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -51,21 +58,13 @@ export const AddOnsEntry: React.FC<AddOnsEntryProps> = ({ eventId, offering, cur
         </Text>
       </Pressable>
       {opened ? (
-        <Suspense
-          fallback={
-            <Text style={styles.sub} accessibilityLiveRegion="polite">
-              Loading add-ons…
-            </Text>
-          }
-        >
-          <LazyAddOnsEditorSheet
-            visible={open}
-            onClose={() => setOpen(false)}
-            eventId={eventId}
-            offering={offering}
-            currency={currency}
-          />
-        </Suspense>
+        <LazyAddOnsEditorSheet
+          visible={open}
+          onClose={() => setOpen(false)}
+          eventId={eventId}
+          offering={offering}
+          currency={currency}
+        />
       ) : null}
     </View>
   );

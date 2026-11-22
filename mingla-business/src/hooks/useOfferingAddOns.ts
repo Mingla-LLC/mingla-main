@@ -15,6 +15,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import type {
   AddOnSaveItem,
   OfferingAddOnsPayload,
@@ -32,14 +33,18 @@ export const offeringAddOnKeys = {
 
 export const useOfferingAddOns = (
   eventId: string,
-): UseQueryResult<OfferingAddOnsPayload, OfferingAddOnsError> =>
-  useQuery<OfferingAddOnsPayload, OfferingAddOnsError>({
+): UseQueryResult<OfferingAddOnsPayload, OfferingAddOnsError> => {
+  // The read checks auth.uid()'s rank: wait for a ready session (ORCH-1004).
+  const { isAuthReady } = useAuth();
+  return useQuery<OfferingAddOnsPayload, OfferingAddOnsError>({
     queryKey: offeringAddOnKeys.byEvent(eventId),
     queryFn: () => fetchOfferingAddOns(eventId),
+    enabled: isAuthReady && eventId.length > 0,
     // The editor is open while this is read; a fresh read on every open.
     staleTime: 0,
     retry: (failures, error) => error.code === "unknown" && failures < 2,
   });
+};
 
 export const useSaveOfferingAddOns = (
   eventId: string,

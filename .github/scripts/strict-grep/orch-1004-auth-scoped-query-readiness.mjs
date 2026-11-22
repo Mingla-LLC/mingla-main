@@ -120,6 +120,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useTapToPayBrandFacts.ts",
   // issue #3281 — event_dates keys for sold-date counts; folds isAuthReady.
   "useEventDateKeys.ts",
+  // issue #3281 S3 — biz_offering_add_ons (event_manager rank on auth.uid()); folds isAuthReady.
+  "useOfferingAddOns.ts",
   // toward #3697 Wave 7 — Ads credit wallet via ad-credit edge (JWT + brand payments view).
   "marketing/useAdCreditWallet.ts",
   // toward #3697 Wave 7c — Host-owned ad campaigns list (JWT + brand-scoped edge).
