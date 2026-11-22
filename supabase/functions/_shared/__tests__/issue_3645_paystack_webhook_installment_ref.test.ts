@@ -33,6 +33,10 @@ function harness(resolve: Record<string, unknown>, opts: { attempt?: Record<stri
         if (resolve.outcome === "refund_due") attemptState = "refund_due";
         return ok(resolve);
       }
+      // #4522 N7: the paid-in-full email is claimed once per order first; this
+      // order's claim is granted (the claim's own once-only rule is proven by
+      // the #4522 pg17 and paidInFullNotice suites).
+      if (name === "issue_4522_claim_paid_in_full_notice") return ok(true);
       return ok({ ok: true });
     },
     table: (op: TableOp) => {
@@ -99,6 +103,8 @@ Deno.test("#3645 SC-17 paying a pay link by a reusable card upgrades later payme
 Deno.test("#3645 last payment: paid-in-full email", async () => {
   const h = harness({ ok: true, outcome: "collected", remaining: 0, order_id: "order-1" });
   await h.run();
+  const claim = h.fake.rpcCalls.find((c) => c.name === "issue_4522_claim_paid_in_full_notice");
+  assertEquals(claim?.args.p_order_id, "order-1");
   assert(h.emails.some((e) => e.kind === "installment_plan_paid_in_full" && e.payload.orderId === "order-1"));
 });
 
