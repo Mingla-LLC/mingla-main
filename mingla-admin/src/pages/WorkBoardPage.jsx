@@ -57,7 +57,7 @@ import * as drafts from "../services/draftService";
 import { draftErrorWords } from "../lib/draftModel";
 import { addDays, cardReasons, mondayOf, opsErrorWords, parseWorkSearch, todayIso } from "../lib/opsModel";
 import { canChangeColumns, liveColumns, moveErrorWords, moveLocally, planMove } from "../lib/workBoardModel";
-import { parseWorkView, periodWindow, splitDrafts, standupPeople, standupRows, standupText, workFilter } from "../lib/workViews";
+import { pageFiltersActive, parseWorkView, periodWindow, splitDrafts, standupPeople, standupRows, standupText, workFilter } from "../lib/workViews";
 
 // Panel one is one of these at a time; opening one closes the others and panel two.
 const FIRST_PANEL_KEYS = ["card", "add", "newticket", "draft", "record", "drafts", "plan"];
@@ -342,7 +342,7 @@ export function WorkBoardPage() {
             )}
           </div>
         ) : (
-          <PeriodView win={win} read={period} cards={periodCards} people={people.people} onOpenCard={openCard} />
+          <PeriodView win={win} read={period} cards={periodCards} people={people.people} onOpenCard={openCard} filtersActive={pageFiltersActive(filters)} />
         )}
       </div>
 

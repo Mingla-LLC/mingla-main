@@ -28,7 +28,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { WORK_LINKED, WORK_TYPE, filterFeed, parseWorkView, periodBucket, periodRows, periodWindow, workFilter } from "../lib/workViews.js";
+import { WORK_LINKED, WORK_TYPE, filterFeed, pageFiltersActive, parseWorkView, periodBucket, periodRows, periodWindow, workFilter } from "../lib/workViews.js";
 import { activeFilterCount } from "../lib/workBoardModel.js";
 import { DETAIL_LINK_KINDS, LINK_KINDS } from "../lib/opsModel.js";
 import {
@@ -623,7 +623,8 @@ describe("T-7 What changed follows Type, Linked to, Show and search", () => {
     assert.equal(out.filtered, false);
   });
   it("the Today view passes the filtered cards to the feed", () => {
-    assert.match(code("components/ops/WorkViews.jsx"), /<WhatChanged feed=\{filterFeed\(read\.data\?\.feed, read\.data\?\.cards, cards\)\}/);
+    // [TEST-MOD #4420] rework 3 (G5): the page's filter state goes with the cards.
+    assert.match(code("components/ops/WorkViews.jsx"), /<WhatChanged feed=\{filterFeed\(read\.data\?\.feed, read\.data\?\.cards, cards, \{ filtersActive \}\)\}/);
   });
 });
 
@@ -684,5 +685,31 @@ describe("T-12 the ticket form's people lists stay inside the field", () => {
     assert.match(form, /<PeopleField id="new-ticket-watcher" label="Watcher" single fitMenu /);
     const field = read("components/people/PeopleField.jsx");
     assert.match(field, /\$\{fitMenu \? "w-full max-w-full" : "w-\[max\(100%,17rem\)\]/);
+  });
+});
+
+// G5 (rework 3, QA P3-1): Show and search narrow the period on the server, so
+// the loaded and the shown cards were the same and the feed kept every entry.
+// FAILS-ON-REVERT: without the filtersActive option / pageFiltersActive these red.
+describe("T-13 What changed also follows Show and search", () => {
+  const w = { id: "w1", title: "Watched", status: "doing", owners: [], watchers: [{ email: "me@x" }], links: [] };
+  const feed = { entries: [{ id: "e1", card: { id: "w1" } }, { id: "e2", card: { id: "not-loaded" } }], truncated: false, total: 2 };
+  const ids = (f) => f.entries.map((e) => e.id);
+  it("Show: Cards I watch (server already narrowed the period) keeps only the shown cards' changes", () => {
+    const filters = { show: "watch", me: "me@x" };
+    const out = filterFeed(feed, [w], workFilter([w], filters), { filtersActive: pageFiltersActive(filters) });
+    assert.deepEqual(ids(out), ["e1"]);
+    assert.equal(out.filtered, true);
+  });
+  it("search (server already narrowed the period) does the same", () => {
+    const filters = { q: "watched" };
+    assert.deepEqual(ids(filterFeed(feed, [w], workFilter([w], filters), { filtersActive: pageFiltersActive(filters) })), ["e1"]);
+  });
+  it("no page filter (owner only): every entry stays", () => {
+    assert.equal(pageFiltersActive({ owner: "a@x", q: "  " }), false);
+    assert.deepEqual(ids(filterFeed(feed, [w], [w], { filtersActive: false })), ["e1", "e2"]);
+  });
+  it("the board passes its filters to the Today view", () => {
+    assert.match(code("pages/WorkBoardPage.jsx"), /<PeriodView [^>]*filtersActive=\{pageFiltersActive\(filters\)\} \/>/);
   });
 });

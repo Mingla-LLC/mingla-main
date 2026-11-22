@@ -160,6 +160,11 @@ export function standupSince(now = new Date()) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1, 9, 0, 0, 0);
 }
 
+/** #4420 rework 3 (G5): whether a page filter (not the owner) narrows the view. */
+export function pageFiltersActive({ show = "", linked = "", type = "", q = "" } = {}) {
+  return Boolean(show || linked || type || String(q || "").trim());
+}
+
 /**
  * #4420 (rework 2): the "What changed" feed under the page's filters. The
  * server already narrows it by owner; Type, Linked to, Show and search are the
@@ -169,11 +174,14 @@ export function standupSince(now = new Date()) {
  * an entry whose card is not among them cannot be checked, and is kept only
  * when the filters hid nothing.
  */
-export function filterFeed(feed, allCards, shownCards) {
+export function filterFeed(feed, allCards, shownCards, { filtersActive = false } = {}) {
   if (!feed || !Array.isArray(feed.entries)) return feed;
   const all = new Set((Array.isArray(allCards) ? allCards : []).map((c) => c?.id).filter(Boolean));
   const shown = new Set((Array.isArray(shownCards) ? shownCards : []).map((c) => c?.id).filter(Boolean));
-  const narrowed = shown.size < all.size;
+  // #4420 rework 3 (G5): Show and search also narrow the period on the server,
+  // so the loaded cards can equal the shown ones while a filter is on. With
+  // any page filter on, only entries for shown cards stay.
+  const narrowed = Boolean(filtersActive) || shown.size < all.size;
   const entries = feed.entries.filter((e) => {
     const id = e?.card?.id;
     if (shown.has(id)) return true;

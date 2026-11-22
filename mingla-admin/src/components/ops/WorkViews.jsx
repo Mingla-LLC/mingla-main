@@ -130,7 +130,7 @@ function WhatChanged({ feed, onOpenCard }) {
  * One period tab. `read` is the page's useOpsPoll of loadPeriod; `cards` the
  * same cards after the page's filter.
  */
-export function PeriodView({ win, read, cards, people, onOpenCard }) {
+export function PeriodView({ win, read, cards, people, onOpenCard, filtersActive = false }) {
   if (read.loading) {
     return (
       <div className="flex min-w-0 flex-col gap-3" aria-busy="true" aria-label={`Loading ${win.view === "today" ? "today" : win.view === "week" ? "this week" : "this month"}`}>
@@ -144,7 +144,7 @@ export function PeriodView({ win, read, cards, people, onOpenCard }) {
       <PeriodBody win={win} cards={cards} people={people} onOpenCard={onOpenCard} truncated={!!read.data?.truncated} />
       {win.view === "today" && (
         <>
-          <WhatChanged feed={filterFeed(read.data?.feed, read.data?.cards, cards)} onOpenCard={onOpenCard} />
+          <WhatChanged feed={filterFeed(read.data?.feed, read.data?.cards, cards, { filtersActive })} onOpenCard={onOpenCard} />
           <AgentActivity />
         </>
       )}
