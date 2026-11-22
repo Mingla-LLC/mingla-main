@@ -5410,7 +5410,8 @@
       "paths": [
         "supabase/functions/_shared/venueOrderPricing.ts",
         "supabase/functions/venue-order-create/index.ts",
-        "supabase/functions/venue-order-staff/index.ts"
+        "supabase/functions/venue-order-staff/index.ts",
+        "mingla-sites/src/components/MenuCart.tsx"
       ]
     },
     {
