@@ -6,7 +6,8 @@
  * the 24-hour ceiling, and "no charge ever presented".
  * N2: returnOverpayment — Stripe partial refund of the PaymentIntent and
  * Paystack partial refund of the transaction, with the attempt's key; a
- * timeout keeps the same key (never a second refund); a refusal is failed;
+ * timeout keeps the same key (never a second refund); only the provider's
+ * refusal of the refund itself is failed, anything else is unknown (T4-1);
  * the third failure stops the lane and alerts ops (T3-2). The pending /
  * verify paths are in issue_4522_overpayment_refund_once.implementor.test.ts.
  * T3-5: Paystack "abandoned" is kept, released only past 24 hours.
@@ -274,12 +275,19 @@ Deno.test("N2 Stripe: a partial refund of the PaymentIntent with the attempt's k
     { p_overpayment_id: "op-1", p_attempt_no: 1, p_outcome: "succeeded", p_provider_refund_id: "re_1", p_error: null });
 });
 
-Deno.test("N2 Stripe: a timeout stays pending under the same key; a 4xx refusal is failed", async () => {
+Deno.test("N2 / T4-1 Stripe: only the provider's refusal of the refund itself is failed; anything else is unknown", async () => {
   for (const [err, expected] of [
     [Object.assign(new Error("socket hang up"), {}), "unknown"],
     [Object.assign(new Error("rate"), { statusCode: 429 }), "unknown"],
     [Object.assign(new Error("idempotency in use"), { statusCode: 409 }), "unknown"],
-    [Object.assign(new Error("charge already refunded"), { statusCode: 400 }), "failed"],
+    [Object.assign(new Error("Keys for idempotent requests can only be used with the same parameters they were first used with."),
+      { statusCode: 400, type: "StripeIdempotencyError", rawType: "idempotency_error" }), "unknown"],
+    [Object.assign(new Error("server"), { statusCode: 500 }), "unknown"],
+    [Object.assign(new Error("an unrecognised refusal"), { statusCode: 400 }), "unknown"],
+    [Object.assign(new Error("payment required"), { statusCode: 402 }), "unknown"],
+    [Object.assign(new Error("charge already refunded"), { statusCode: 400, type: "StripeInvalidRequestError",
+      code: "charge_already_refunded" }), "failed"],
+    [Object.assign(new Error("disputed"), { statusCode: 400, raw: { code: "charge_disputed" } }), "failed"],
   ] as const) {
     const l = lane(begunStripe);
     const outcome = await returnOverpayment({
@@ -327,7 +335,8 @@ Deno.test("N2 / T3-2 the third failure stops the lane and alerts ops once throug
     attemptNo: 3, remainingMinor: 10000 });
   const outcome = await returnOverpayment({
     supabase: l.rpc.client,
-    stripe: () => ({ refunds: { ...unusedReads, create: () => Promise.reject(Object.assign(new Error("declined"), { statusCode: 402 })) } }),
+    stripe: () => ({ refunds: { ...unusedReads, create: () => Promise.reject(Object.assign(new Error("declined"),
+      { statusCode: 400, code: "charge_already_refunded" })) } }),
     stripeAccountForBrand: () => Promise.resolve("acct_1"),
     createPaystackRefund: () => Promise.reject(new Error("unused")),
     alertOps: (subject) => {

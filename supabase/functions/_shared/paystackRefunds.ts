@@ -304,6 +304,28 @@ async function resolveAndFindExistingRefund(params: {
   }
 }
 
+/**
+ * issue #4522 (T4-1): every refund Paystack lists on one transaction, so the
+ * overpayment lane can adopt refunds that already exist before it creates
+ * one. Null when the list cannot be trusted as complete (a full page).
+ */
+export async function listPaystackTransactionRefunds(params: {
+  transaction: string;
+  currency?: string;
+}): Promise<
+  Array<{ id: string; amount: number; status: string; merchantNote: string }> | null
+> {
+  const identity = await resolveTransactionIdentity({ reference: params.transaction, currency: params.currency });
+  const { rows } = await findExistingRefund({ transactionId: identity.id, merchantNote: "", amountSubunits: -1 });
+  if (rows.length >= 100) return null;
+  return rows.filter((row) => providerTransactionId(row.transaction) === identity.id).map((row) => ({
+    id: row.id === undefined ? "" : String(row.id),
+    amount: Number(row.amount ?? NaN),
+    status: typeof row.status === "string" ? row.status : "",
+    merchantNote: typeof row.merchant_note === "string" ? row.merchant_note : "",
+  }));
+}
+
 export async function reconcilePaystackRefund(params: {
   transaction: string;
   expectedTransactionId?: number;

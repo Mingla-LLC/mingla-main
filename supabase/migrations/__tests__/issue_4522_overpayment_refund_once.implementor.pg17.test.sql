@@ -1,4 +1,4 @@
--- MINGLA-INVARIANT: I-4522-OVERPAY-REFUND-ONCE | issue #4522 | An overpayment is refunded at most once: a provider refund that is pending or whose answer was never received is re-checked by its own refund id or key and never replaced; a new refund is made only after every earlier one is confirmed failed at the provider; creating + pending + succeeded refunds of one overpayment never exceed its amount (database guard); provider refund events and dashboard refunds resolve it; after three refusals the lane stops for ops.
+-- MINGLA-INVARIANT: I-4522-OVERPAY-REFUND-ONCE | issue #4522 | An overpayment is refunded at most once: a provider refund that is pending or whose answer was never received is re-checked by its own refund id or key and never replaced; a new refund is made only after every earlier one is confirmed failed at the provider and every refund already on the charge was adopted, one sweep at a time; creating + pending + succeeded refunds of one overpayment never exceed its amount (database guard); provider refund events and dashboard refunds resolve it; after three refusals the lane stops for ops.
 -- MINGLA-INVARIANT: I-4522-COLLECTED-IS-WHAT-WAS-CHARGED | issue #4522 | A collected instalment row records exactly the amount the provider collected; money still owed after a short charge stays on an open row, so paid, paid-in-full, payouts and cancel refunds count only money actually collected.
 \set ON_ERROR_STOP on
 
@@ -16,13 +16,21 @@
 --   T3-5  "abandoned" releases only once the attempt is 24 hours old.
 --   T3-6  NGN 30,000,000.00 (3,000,000,000 kobo) goes back in two 32-bit parts.
 --   T3-7  an overpayment under NGN 50 stops for ops at once (alert once).
+--   T4-1  nothing is reserved before the charge's refunds were read
+--         (reconcile); a second sweep while one is sending is busy; a lost
+--         answer is adopted from the provider's list; a refused create never
+--         reverses a succeeded refund; a late refund past the amount is
+--         acknowledged, recorded and stopped for ops with the exact extra;
+--         a refund Mingla already recorded is never adopted as a dashboard one.
 --
 -- FAILS-ON-REVERT: let issue_4522_begin_overpayment_refund reserve a new
 -- attempt while one is creating/pending, drop issue_4522_overpayment_attempts_guard,
 -- drop the overpayment term from issue_3645_cancel_refund_installment, drop
 -- the failure limit, drop the source condition from
--- issue_3872_refund_share_trigger, or drop issue_4522_record_short_collection's
--- update -> red.
+-- issue_3872_refund_share_trigger, drop issue_4522_record_short_collection's
+-- update, drop the begin's reconcile or busy step, let a refund without its id
+-- reverse a succeeded one, drop the over-amount adoption, or drop the known
+-- refund check -> red.
 
 BEGIN;
 
@@ -103,7 +111,7 @@ DECLARE
 BEGIN
   -- ── T3-1: pending is checked, never re-created ────────────────────────
   op := pg_temp.overpaid(o1);
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-1 the first plan reserves attempt 1 for $100',
     v->>'action' = 'create' AND (v->>'attemptNo')::int = 1 AND (v->>'amountMinor')::bigint = 10000
     AND v->>'idempotencyKey' = 'mingla_overpay_refund:' || op || ':1', v::text);
@@ -112,22 +120,22 @@ BEGIN
     (SELECT provider_refund_id FROM public.order_overpayment_refund_attempts WHERE overpayment_id = op) = 're_r3_1'
     AND (pg_temp.op(op)).state = 'refund_pending', v::text);
   FOR v_i IN 1..3 LOOP
-    v := public.issue_4522_begin_overpayment_refund(op);
+    v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
     PERFORM pg_temp.check('T3-1 every later pass verifies the stored refund (pass ' || v_i || ')',
       v->>'action' = 'verify' AND v->'attempts'->0->>'providerRefundId' = 're_r3_1' AND pg_temp.n_attempts(op) = 1, v::text);
     PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', 're_r3_1');
   END LOOP;
   -- 30 hours later (past the provider's key window): still verified by id, nothing new.
   UPDATE public.order_overpayment_refund_attempts SET created_at = now() - interval '30 hours' WHERE overpayment_id = op;
-  v := public.issue_4522_begin_overpayment_refund(op, 99);
+  v := public.issue_4522_begin_overpayment_refund(op, 99, true);
   PERFORM pg_temp.check('T3-1 after the key window: verify by id, never a new refund',
     v->>'action' = 'verify' AND (v->'attempts'->0->>'withinKeyWindow')::boolean = false AND pg_temp.n_attempts(op) = 1, v::text);
   -- 8 days: ops told once, still nothing new.
   UPDATE public.order_overpayment_refund_attempts SET created_at = now() - interval '8 days' WHERE overpayment_id = op;
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-1 pending past the ceiling alerts ops once', (v->>'alertOps')::boolean
     AND v->>'alertKind' = 'refund_pending_too_long' AND v->>'action' = 'verify', v::text);
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-1 ... and only once', NOT (v->>'alertOps')::boolean AND pg_temp.n_attempts(op) = 1, v::text);
   -- The hard guard: a second live refund of the same overpayment is refused.
   v_raised := false;
@@ -153,19 +161,19 @@ BEGIN
     AND (SELECT payout_accounting_state FROM public.order_installments WHERE id = v_flex) = 'ready');
   PERFORM pg_temp.check('T3-1 refunded: nothing due, plan done',
     jsonb_array_length(public.issue_4522_overpayments_due(o1, now(), 10)) = 0
-    AND (public.issue_4522_begin_overpayment_refund(op)->>'done')::boolean);
+    AND (public.issue_4522_begin_overpayment_refund(op, NULL, true)->>'done')::boolean);
 
   -- ── T3-1: a failed refund is re-read before the next one ────────────────
   op := pg_temp.overpaid(o2);
-  PERFORM public.issue_4522_begin_overpayment_refund(op);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'failed', 're_r3_f1', 'card_closed');
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-1 a refused refund retries only when due', v->>'reason' = 'retry_not_due', v::text);
   UPDATE public.order_overpayments SET next_attempt_at = now() - interval '1 minute' WHERE id = op;
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-1 before a new refund every earlier provider refund is re-read',
     v->>'action' = 'verify_prior' AND v->'attempts'->0->>'providerRefundId' = 're_r3_f1' AND pg_temp.n_attempts(op) = 1, v::text);
-  v := public.issue_4522_begin_overpayment_refund(op, 1);
+  v := public.issue_4522_begin_overpayment_refund(op, 1, true);
   PERFORM pg_temp.check('T3-1 ... then attempt 2 with a new key', v->>'action' = 'create' AND (v->>'attemptNo')::int = 2
     AND v->>'idempotencyKey' = 'mingla_overpay_refund:' || op || ':2', v::text);
   -- Its create answer was lost; the webhook names it by metadata (amount must match).
@@ -182,7 +190,7 @@ BEGIN
 
   -- ── T3-1: cancels with the $100 refund pending ─────────────────────────
   op := pg_temp.overpaid(o3);
-  PERFORM public.issue_4522_begin_overpayment_refund(op);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', 're_r3_c1');
   v_flex := (pg_temp.op(op)).installment_id;
   v := public.issue_3645_cancel_refund_installment(v_flex, 'The host cancelled this trip', 'r3-host-cancel-1');
@@ -201,7 +209,7 @@ BEGIN
   op := pg_temp.overpaid(o4);
   FOR v_i IN 1..3 LOOP
     UPDATE public.order_overpayments SET next_attempt_at = now() - interval '1 minute' WHERE id = op AND state = 'refund_failed';
-    v := public.issue_4522_begin_overpayment_refund(op, 99);
+    v := public.issue_4522_begin_overpayment_refund(op, 99, true);
     PERFORM pg_temp.check('T3-2 attempt ' || v_i || ' reserved', v->>'action' = 'create' AND (v->>'attemptNo')::int = v_i, v::text);
     v := public.issue_4522_finish_overpayment_refund(op, v_i, 'failed', NULL, 'charge_disputed');
   END LOOP;
@@ -210,7 +218,7 @@ BEGIN
     AND (v->>'alertOps')::boolean AND v->>'alertKind' = 'refund_failed_repeatedly', v::text);
   PERFORM pg_temp.check('T3-2 stopped: never due again, the plan sends nothing',
     jsonb_array_length(public.issue_4522_overpayments_due(o4, now(), 10)) = 0
-    AND public.issue_4522_begin_overpayment_refund(op, 99)->>'reason' = 'needs_ops' AND pg_temp.n_attempts(op) = 3);
+    AND public.issue_4522_begin_overpayment_refund(op, 99, true)->>'reason' = 'needs_ops' AND pg_temp.n_attempts(op) = 3);
   v_flex := (pg_temp.op(op)).installment_id;
   PERFORM pg_temp.check('T3-2 the host payout for the charge stays held (whole row, bounded by the alert)',
     public.issue_4522_row_payout_blocked(v_flex));
@@ -239,7 +247,7 @@ BEGIN
   v := public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
   PERFORM pg_temp.check('T3-2 ops retry restarts automatic refunding', (pg_temp.op(op)).state = 'held'
     AND (pg_temp.op(op)).consecutive_failures = 0 AND (pg_temp.op(op)).ops_alerted_at IS NULL, v::text);
-  PERFORM public.issue_4522_begin_overpayment_refund(op);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
   v_raised := false;
   BEGIN
     PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'refunded_by_hand', '4522c300-0000-4000-8000-000000000001', 'manual-1');
@@ -250,6 +258,69 @@ BEGIN
   v := public.issue_4522_resolve_overpayment_by_ops(op, 'refunded_by_hand', '4522c300-0000-4000-8000-000000000001', 'manual-1');
   PERFORM pg_temp.check('T3-2 refunded by hand is recorded and closes it', (pg_temp.op(op)).state = 'refunded'
     AND (pg_temp.op(op)).resolved_by = '4522c300-0000-4000-8000-000000000001', v::text);
+END
+$t$;
+
+-- ── T4-1 (fourth rework): adopt before create, one sender, late answers ─
+DO $t$
+DECLARE
+  o6 uuid := '4522c300-0000-4000-8000-0000000000a6';
+  o7 uuid := '4522c300-0000-4000-8000-0000000000a7';
+  o8 uuid := '4522c300-0000-4000-8000-0000000000a8';
+  op uuid; v jsonb; v_flex uuid;
+BEGIN
+  op := pg_temp.overpaid(o6);
+  v := public.issue_4522_begin_overpayment_refund(op);
+  PERFORM pg_temp.check('T4-1 nothing is reserved before the provider''s refunds on the charge were read (reconcile)',
+    v->>'action' = 'reconcile' AND v->>'providerRef' = 'pi_flex_' || o6::text AND pg_temp.n_attempts(op) = 0, v::text);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM pg_temp.check('T4-1 ... after it, attempt 1 is reserved', v->>'action' = 'create' AND (v->>'attemptNo')::int = 1, v::text);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM pg_temp.check('T4-1 a second sweep while attempt 1 is being sent is told busy and gets nothing',
+    v->>'reason' = 'busy' AND v->'attempts' IS NULL AND pg_temp.n_attempts(op) = 1, v::text);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true, now() + interval '3 minutes');
+  PERFORM pg_temp.check('T4-1 once the sender is quiet, the unanswered attempt is verified with its stored refund row id',
+    v->>'action' = 'verify' AND v->'attempts'->0->>'state' = 'creating'
+    AND v->'attempts'->0->>'refundId' = (pg_temp.op(op)).refund_id::text, v::text);
+  -- our answer write was lost; the refund the provider lists (our metadata) is adopted
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_t4_1', 'pi_flex_' || o6::text, 10000, 'succeeded', op, 1, true);
+  PERFORM pg_temp.check('T4-1 the listed refund is adopted: refunded once', (pg_temp.op(op)).state = 'refunded'
+    AND v->>'matchedBy' = 'metadata', v::text);
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_t4_1', 'pi_flex_' || o6::text, 10000, 'succeeded', op, 1, true);
+  PERFORM pg_temp.check('T4-1 its webhook later changes nothing', (pg_temp.op(op)).state = 'refunded'
+    AND NOT (v->'results'->0->>'changed')::boolean, v::text);
+  v := public.issue_4522_finish_overpayment_refund(op, 1, 'failed', NULL, 'idempotency_error');
+  PERFORM pg_temp.check('T4-1 a refused create (no refund id) never reverses a succeeded refund and never alerts',
+    (pg_temp.op(op)).state = 'refunded' AND v->>'alertOps' IS NULL
+    AND (SELECT state FROM public.order_overpayment_refund_attempts WHERE overpayment_id = op) = 'succeeded', v::text);
+
+  -- the state the old code could leave: attempt 1 counted failed, refund 2 sent; then refund 1's late webhook
+  op := pg_temp.overpaid(o7);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'not_found', NULL, 'not_created_at_provider');
+  UPDATE public.order_overpayments SET next_attempt_at = now() - interval '1 minute' WHERE id = op;
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 2, 'succeeded', 're_t4_b2');
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_t4_b1', 'pi_flex_' || o7::text, 10000, 'succeeded', op, 1, true);
+  PERFORM pg_temp.check('T4-1 a late refund past the amount is acknowledged (no error), recorded, stopped for ops with the exact extra amount',
+    (v->>'handled')::boolean AND v->'results'->0->>'alertKind' = 'provider_refunded_more'
+    AND (v->'results'->0->>'alertOps')::boolean AND (v->'results'->0->>'overRefundedMinor')::bigint = 10000
+    AND (pg_temp.op(op)).state = 'needs_ops' AND (pg_temp.op(op)).needs_ops_reason = 'provider_refunded_more'
+    AND (pg_temp.op(op)).detail->'over_refunded'->0->>'provider_refund_id' = 're_t4_b1', v::text);
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_t4_b1', 'pi_flex_' || o7::text, 10000, 'succeeded', op, 1, true);
+  PERFORM pg_temp.check('T4-1 ... its replay is acknowledged once more without a second alert or record',
+    (v->>'handled')::boolean AND v->'results'->0->>'alertOps' IS NULL
+    AND jsonb_array_length((pg_temp.op(op)).detail->'over_refunded') = 1, v::text);
+
+  -- a refund Mingla already recorded (its id is known) is never taken as a dashboard refund, even without metadata
+  op := pg_temp.overpaid(o8);
+  v_flex := (pg_temp.op(op)).installment_id;
+  INSERT INTO public.refunds (order_id, amount_cents, reason, status, currency, stripe_refund_id, metadata)
+  VALUES (o8, 5000, 'A host refund', 'succeeded', 'USD', 're_t4_known', '{"kind":"t4_other"}');
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_t4_known', 'pi_flex_' || o8::text, 5000, 'succeeded',
+         NULL, NULL, false);
+  PERFORM pg_temp.check('T4-1 a known Mingla refund listed without metadata is explained, not adopted',
+    NOT (v->>'handled')::boolean AND v->>'reason' = 'known_refund' AND pg_temp.n_attempts(op) = 0, v::text);
 END
 $t$;
 
@@ -277,13 +348,13 @@ DECLARE
   op uuid; v jsonb; v_parts text;
 BEGIN
   op := pg_temp.ng_overpayment('4522c300-0000-4000-8000-0000000000b1', 3000000000);
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-6 part 1 fits a refund row (2,147,483,647)',
     v->>'action' = 'create' AND (v->>'amountMinor')::bigint = 2147483647, v::text);
   v := public.issue_4522_finish_overpayment_refund(op, 1, 'succeeded', 'rfd_p1');
   PERFORM pg_temp.check('T3-6 after part 1 the rest is due now', (pg_temp.op(op)).state = 'held'
     AND jsonb_array_length(public.issue_4522_overpayments_due('4522c300-0000-4000-8000-0000000000b1', now(), 5)) = 1, v::text);
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-6 part 2 is the exact rest (852,516,353)', (v->>'amountMinor')::bigint = 852516353, v::text);
   PERFORM public.issue_4522_finish_overpayment_refund(op, 2, 'succeeded', 'rfd_p2');
   SELECT string_agg(amount_cents::text, '+' ORDER BY created_at) INTO v_parts FROM public.refunds
@@ -293,16 +364,16 @@ BEGIN
     AND (public.issue_4522_balance((pg_temp.op(op)).order_id)->>'overpaymentRefundedMinor')::bigint = 3000000000, v_parts);
 
   op := pg_temp.ng_overpayment('4522c300-0000-4000-8000-0000000000b2', 2147486647);
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-6 the last part never falls under the provider''s minimum (2,147,481,647 then 5,000)',
     (v->>'amountMinor')::bigint = 2147481647, v::text);
 
   op := pg_temp.ng_overpayment('4522c300-0000-4000-8000-0000000000b3', 3000);
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-7 NGN 30 is below the NGN 50 partial-refund minimum: stopped for ops at once, alerted',
     v->>'reason' = 'needs_ops' AND v->>'alertKind' = 'below_provider_minimum' AND (v->>'alertOps')::boolean
     AND (v->>'minRefundMinor')::bigint = 5000 AND (pg_temp.op(op)).state = 'needs_ops' AND pg_temp.n_attempts(op) = 0, v::text);
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T3-7 never retried and alerted only once', v->>'reason' = 'needs_ops' AND v->>'alertOps' IS NULL
     AND jsonb_array_length(public.issue_4522_overpayments_due('4522c300-0000-4000-8000-0000000000b3', now(), 5)) = 0, v::text);
   v := public.issue_4522_overpayment_refund_event('paystack', 'rfd_dash_small', 'mingla-inst-4522c300-0000-4000-8000-0000000000b3-l1',
@@ -404,7 +475,7 @@ BEGIN
   DELETE FROM public.order_overpayments WHERE order_id = o_plain;
   s_over := pg_temp.share(o_over);
   s_plain := pg_temp.share(o_plain);
-  v := public.issue_4522_begin_overpayment_refund(op);
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'succeeded', 'rfd_over_1');
   PERFORM pg_temp.check('T3-4 the NGN 100,000 overpayment refund succeeded', (pg_temp.op(op)).state = 'refunded');
   PERFORM pg_temp.check('T3-4 it reversed NGN 0 of the referral share',
@@ -492,7 +563,7 @@ BEGIN
     AND NOT has_function_privilege('authenticated', 'public.issue_4522_record_short_collection(uuid, bigint, text, timestamptz)', 'EXECUTE')
     AND NOT has_function_privilege('service_role', 'public.issue_4522_apply_overpayment_attempt_outcome(uuid, text, text, text, timestamptz)', 'EXECUTE')
     AND has_function_privilege('service_role', 'public.issue_4522_overpayment_refund_event(text, text, text, bigint, text, uuid, integer, boolean, timestamptz)', 'EXECUTE')
-    AND has_function_privilege('service_role', 'public.issue_4522_begin_overpayment_refund(uuid, integer, timestamptz)', 'EXECUTE'));
+    AND has_function_privilege('service_role', 'public.issue_4522_begin_overpayment_refund(uuid, integer, boolean, timestamptz)', 'EXECUTE'));
 END
 $t$;
 

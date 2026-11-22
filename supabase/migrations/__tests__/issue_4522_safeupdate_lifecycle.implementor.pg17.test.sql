@@ -147,13 +147,15 @@ BEGIN
     (SELECT payout_accounting_state FROM public.order_installments WHERE id = v_flex) = 'pending');
   v := public.issue_4522_overpayments_due(s, now(), 10);
   PERFORM public.t4522su_check('S-REFUND the overpayment is due', jsonb_array_length(v) = 1, v::text);
-  v := public.issue_4522_begin_overpayment_refund((v->0->>'overpaymentId')::uuid);
+  v := public.issue_4522_begin_overpayment_refund((v->0->>'overpaymentId')::uuid, NULL, true);
   PERFORM public.t4522su_check('S-REFUND begin creates the linked refund', v->>'refundId' IS NOT NULL
     AND v->>'idempotencyKey' LIKE 'mingla_overpay_refund:%:1', v::text);
   PERFORM public.t4522su_check('S-REFUND unknown keeps it pending',
     public.issue_4522_finish_overpayment_refund((v->>'overpaymentId')::uuid, 1, 'unknown', NULL, 'timeout')->>'state' = 'refund_pending');
+  PERFORM public.t4522su_check('S-REFUND a second sweep while the answer may still be coming is told busy (T4-1)',
+    public.issue_4522_begin_overpayment_refund((v->>'overpaymentId')::uuid, NULL, true)->>'reason' = 'busy');
   PERFORM public.t4522su_check('S-REFUND resume verifies the same attempt (same key), never a new one',
-    public.issue_4522_begin_overpayment_refund((v->>'overpaymentId')::uuid)->'attempts'->0->>'idempotencyKey' = v->>'idempotencyKey');
+    public.issue_4522_begin_overpayment_refund((v->>'overpaymentId')::uuid, NULL, true, now() + interval '3 minutes')->'attempts'->0->>'idempotencyKey' = v->>'idempotencyKey');
   PERFORM public.t4522su_check('S-REFUND succeeded',
     public.issue_4522_finish_overpayment_refund((v->>'overpaymentId')::uuid, 1, 'succeeded', 're_su_1')->>'state' = 'refunded');
   PERFORM public.t4522su_check('S-REFUND the row is payout-ready for what it kept',
@@ -223,12 +225,12 @@ BEGIN
   v := public.issue_4522_record_late_collection(public.t4522su_row(r, 1), 45000, 'pi_su_late');
   PERFORM public.t4522su_check('R-LATE held', v->>'outcome' = 'held', v::text);
   SELECT (x->>'overpaymentId')::uuid INTO v_op FROM jsonb_array_elements(public.issue_4522_overpayments_due(r, now(), 10)) x;
-  v := public.issue_4522_begin_overpayment_refund(v_op);
+  v := public.issue_4522_begin_overpayment_refund(v_op, NULL, true);
   v := public.issue_4522_finish_overpayment_refund(v_op, 1, 'failed', NULL, 'charge_disputed');
   PERFORM public.t4522su_check('R-LATE failed refund waits for its retry', v->>'state' = 'refund_failed', v::text);
   PERFORM public.t4522su_check('R-LATE not retried early',
-    public.issue_4522_begin_overpayment_refund(v_op)->>'reason' = 'retry_not_due');
-  v := public.issue_4522_begin_overpayment_refund(v_op, NULL, now() + interval '2 hours');
+    public.issue_4522_begin_overpayment_refund(v_op, NULL, true)->>'reason' = 'retry_not_due');
+  v := public.issue_4522_begin_overpayment_refund(v_op, NULL, true, now() + interval '2 hours');
   PERFORM public.t4522su_check('R-LATE retried with the next attempt', (v->>'attemptNo')::int = 2, v::text);
   v := public.issue_4522_hold_collected_excess(public.t4522su_row(r, 1), 50000, 'pi_x');
   PERFORM public.t4522su_check('R-EXCESS runs', (v->>'ok')::boolean, v::text);
@@ -240,7 +242,7 @@ BEGIN
   PERFORM public.t4522su_check('T3 pending stores the refund id', v->>'state' = 'refund_pending', v::text);
   v := public.issue_4522_overpayment_refund_event('stripe', 're_su_t3', 'pi_su_late', 45000, 'failed');
   PERFORM public.t4522su_check('T3 event by refund id (failed)', (v->>'handled')::boolean, v::text);
-  v := public.issue_4522_begin_overpayment_refund(v_op, 2, now() + interval '5 hours');
+  v := public.issue_4522_begin_overpayment_refund(v_op, 2, true, now() + interval '5 hours');
   v := public.issue_4522_overpayment_refund_event('stripe', 're_su_meta', 'pi_su_late', (v->>'amountMinor')::bigint, 'pending',
          v_op, (v->>'attemptNo')::int);
   PERFORM public.t4522su_check('T3 event by metadata', v->>'matchedBy' = 'metadata', v::text);

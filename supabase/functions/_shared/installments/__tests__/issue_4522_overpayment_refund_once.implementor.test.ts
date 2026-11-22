@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-4522-OVERPAY-REFUND-ONCE-EDGE | issue #4522 | The overpayment lane never sends a new provider refund while an earlier one is creating or pending: a stored refund id is retrieved, an unanswered attempt is re-sent with its own key inside the key window or found in the provider's refund list after it, and every earlier failed refund is re-read before a new one; refund webhooks resolve overpayment refunds by refund id, Mingla metadata, or (a refund not made by Mingla) the charge.
+// MINGLA-INVARIANT: I-4522-OVERPAY-REFUND-ONCE-EDGE | issue #4522 | The overpayment lane never sends a new provider refund while an earlier one is creating or pending: a stored refund id is retrieved, an unanswered attempt is re-sent as the identical request with its own key inside the key window or found in the provider's refund list, only the provider's refusal of the refund itself marks an attempt failed, every earlier failed refund is re-read and every refund already on the charge is adopted before a new one; refund webhooks resolve overpayment refunds by refund id, Mingla metadata, or (a refund not made by Mingla) the charge.
 /**
  * issue #4522 third rework (T3-1 / T3-2 / T3-6 / T3-7 at the edge, T3-3 and
  * T3-8 helpers) — mocked providers and a scripted database, no network.
@@ -48,19 +48,45 @@ interface StripeLog {
   creates: Array<{ amount: unknown; key: string; metadata: Record<string, unknown> }>;
   retrieves: string[];
   lists: string[];
+  /** T4-1: what the provider remembers per idempotency key: the first request and its answer. */
+  keys: Map<string, { sig: string; answer: { id?: string; status: string } }>;
+  /** Re-sends the provider refused because the parameters differed from the first use of the key. */
+  idempotencyErrors: string[];
 }
 
+/**
+ * Stripe's documented idempotency rule (T4-1): a key reused with the SAME
+ * parameters replays the first answer; with DIFFERENT parameters it is
+ * refused (HTTP 400, idempotency_error). `lostAnswer` creates the refund and
+ * then loses the response, as a timeout after the provider acted.
+ */
 function stripe(log: StripeLog, opts: {
   retrieve?: Record<string, { status: string } | Error>;
   create?: { id?: string; status: string } | Error;
-  list?: Array<{ id: string; status: string; metadata: Record<string, unknown> }>;
+  lostAnswer?: boolean;
+  list?: Array<{ id: string; status: string; metadata: Record<string, unknown> }> | Error;
 } = {}): OverpaymentStripe {
   return {
     refunds: {
       create: (p, o) => {
         log.creates.push({ amount: p.amount, key: o.idempotencyKey, metadata: p.metadata as Record<string, unknown> });
+        const sig = JSON.stringify(p);
+        const seen = log.keys.get(o.idempotencyKey);
+        if (seen !== undefined) {
+          if (seen.sig !== sig) {
+            log.idempotencyErrors.push(o.idempotencyKey);
+            return Promise.reject(Object.assign(
+              new Error("Keys for idempotent requests can only be used with the same parameters they were first used with."),
+              { statusCode: 400, type: "StripeIdempotencyError", rawType: "idempotency_error" },
+            ));
+          }
+          return Promise.resolve({ ...seen.answer });
+        }
         const c = opts.create ?? { id: `re_new_${log.creates.length}`, status: "succeeded" };
-        return c instanceof Error ? Promise.reject(c) : Promise.resolve({ id: c.id, status: c.status });
+        if (c instanceof Error) return Promise.reject(c);
+        log.keys.set(o.idempotencyKey, { sig, answer: { id: c.id, status: c.status } });
+        if (opts.lostAnswer === true) return Promise.reject(new Error("socket hang up (the provider created it)"));
+        return Promise.resolve({ id: c.id, status: c.status });
       },
       retrieve: (id) => {
         log.retrieves.push(id);
@@ -69,7 +95,8 @@ function stripe(log: StripeLog, opts: {
       },
       list: (p) => {
         log.lists.push(String(p.payment_intent));
-        return Promise.resolve({ data: opts.list ?? [] });
+        if (opts.list instanceof Error) return Promise.reject(opts.list);
+        return Promise.resolve({ data: opts.list ?? [], has_more: false });
       },
     },
   };
@@ -101,7 +128,7 @@ function deps(db: ReturnType<typeof scripted>, s: OverpaymentStripe, alerts: str
   };
 }
 
-const newLog = (): StripeLog => ({ creates: [], retrieves: [], lists: [] });
+const newLog = (): StripeLog => ({ creates: [], retrieves: [], lists: [], keys: new Map(), idempotencyErrors: [] });
 const outcomes = (db: ReturnType<typeof scripted>) =>
   db.calls.filter((c) => c.fn === "issue_4522_finish_overpayment_refund")
     .map((c) => `${c.args?.p_attempt_no}:${c.args?.p_outcome}:${c.args?.p_provider_refund_id ?? "-"}`);
@@ -342,6 +369,134 @@ Deno.test("T3-2 applyOverpaymentRefundEvent passes the event and alerts once whe
   assertEquals(await applyOverpaymentRefundEvent(none.client,
     stripeOverpaymentRefundEvent({ id: "re_2", status: "succeeded", amount: 1, payment_intent: "pi_x", metadata: {} }),
     () => Promise.resolve()), false);
+});
+
+// ── T4-1 (fourth rework): a lost answer must never become a second refund ──
+
+const OPU = "8f8f8f8f-1111-4222-8333-444455556666";
+
+Deno.test("T4-1 lost answer: the re-send is the IDENTICAL request, so the provider replays it — one refund, never failed", async () => {
+  const log = newLog();
+  const created = { ...create(1), refundId: "9a9a9a9a-0000-4000-8000-000000000001" };
+  // pass 1: the provider creates re_1 but the answer is lost
+  let db = scripted({ issue_4522_begin_overpayment_refund: [created],
+    issue_4522_finish_overpayment_refund: [{ ok: true, state: "refund_pending" }] });
+  assertEquals(await returnOverpayment(deps(db, stripe(log, { create: { id: "re_1", status: "succeeded" }, lostAnswer: true })), "op-1"),
+    "unknown");
+  assertEquals(outcomes(db), ["1:unknown:-"]);
+  // pass 2 (inside the key window): verify re-sends from the STORED attempt row (refund id included)
+  db = scripted({
+    issue_4522_begin_overpayment_refund: [verify([{ attemptNo: 1, state: "creating", amountMinor: 30000, providerRefundId: null,
+      idempotencyKey: "mingla_overpay_refund:op-1:1", refundId: "9a9a9a9a-0000-4000-8000-000000000001", withinKeyWindow: true }]),
+      { ok: true, done: true, state: "refunded" }],
+    issue_4522_finish_overpayment_refund: [{ ok: true, state: "refunded" }],
+  });
+  assertEquals(await returnOverpayment(deps(db, stripe(log)), "op-1"), "succeeded");
+  assertEquals(log.idempotencyErrors, [], "the provider refused a re-send whose parameters differed");
+  assertEquals(log.keys.size, 1, "exactly one refund exists at the provider");
+  assertEquals(log.creates.length, 2);
+  assertEquals(log.creates[1], log.creates[0]);
+  assertEquals(outcomes(db), ["1:succeeded:re_1"]);
+});
+
+Deno.test("T4-1 an unknown re-send is looked up on the charge; inside the key window it never becomes failed", async () => {
+  const attempt = (within: boolean) => verify([{ attemptNo: 1, state: "creating", amountMinor: 30000, providerRefundId: null,
+    idempotencyKey: "mingla_overpay_refund:op-1:1", refundId: "rf-1", withinKeyWindow: within }]);
+  const idem = Object.assign(new Error("idempotency"), { statusCode: 400, type: "StripeIdempotencyError", rawType: "idempotency_error" });
+  // listed with our metadata: adopted by its id
+  let db = scripted({ issue_4522_begin_overpayment_refund: [attempt(true)],
+    issue_4522_finish_overpayment_refund: [{ ok: true, state: "refund_pending" }] });
+  let log = newLog();
+  await returnOverpayment(deps(db, stripe(log, { create: idem, list: [
+    { id: "re_found", status: "pending", metadata: { mingla_overpayment_id: "op-1", mingla_overpayment_attempt: "1" } }] })), "op-1");
+  assertEquals(outcomes(db), ["1:pending:re_found"]);
+  // not listed, inside the window: stays open (unknown); unreadable list: unknown
+  for (const list of [[], new Error("list down")]) {
+    db = scripted({ issue_4522_begin_overpayment_refund: [attempt(true)],
+      issue_4522_finish_overpayment_refund: [{ ok: true, state: "refund_pending" }] });
+    log = newLog();
+    assertEquals(await returnOverpayment(deps(db, stripe(log, { create: idem, list })), "op-1"), "unknown");
+    assertEquals(outcomes(db), ["1:unknown:-"]);
+  }
+});
+
+Deno.test("T4-1 before any new attempt the charge's refunds are adopted; an unreadable list creates nothing", async () => {
+  const reconcile = { ...plan, overpaymentId: OPU, action: "reconcile" };
+  const listed = [
+    { id: "re_ours", status: "succeeded", metadata: { mingla_overpayment_id: OPU, mingla_overpayment_attempt: "1" } },
+    { id: "re_dash", status: "succeeded", metadata: {} },
+  ];
+  const db = scripted({
+    issue_4522_begin_overpayment_refund: [reconcile, { ok: true, done: true, state: "refunded" }],
+    issue_4522_overpayment_refund_event: [{ handled: true, results: [] }],
+  });
+  const log = newLog();
+  assertEquals(await returnOverpayment(deps(db, stripe(log, { list: listed })), OPU), "done");
+  assertEquals(log.creates, []);
+  assertEquals(db.calls.filter((c) => c.fn === "issue_4522_begin_overpayment_refund").map((c) => c.args?.p_reconciled), [false, true]);
+  const events = db.calls.filter((c) => c.fn === "issue_4522_overpayment_refund_event").map((c) => c.args);
+  assertEquals(events.map((e) => [e?.p_provider_refund_id, e?.p_overpayment_id, e?.p_attempt_no, e?.p_mingla_created, e?.p_payment_ref]), [
+    ["re_ours", OPU, 1, true, "pi_flex"],
+    ["re_dash", null, null, false, "pi_flex"],
+  ]);
+  // the list cannot be read: nothing is created, the plan is not asked to reserve
+  const db2 = scripted({ issue_4522_begin_overpayment_refund: [reconcile, create(1)] });
+  const log2 = newLog();
+  assertEquals(await returnOverpayment(deps(db2, stripe(log2, { list: new Error("down") })), OPU), "unknown");
+  assertEquals(log2.creates, []);
+  assertEquals(db2.calls.filter((c) => c.fn === "issue_4522_begin_overpayment_refund").length, 1);
+});
+
+Deno.test("T4-1 Paystack: the transaction's refunds are adopted before a new attempt (merchant note names ours)", async () => {
+  const reconcile = { ...plan, overpaymentId: OPU, provider: "paystack", providerRef: "mingla-inst-flex-l1", currency: "NGN",
+    action: "reconcile" };
+  const db = scripted({
+    issue_4522_begin_overpayment_refund: [reconcile, { ok: true, done: true }],
+    issue_4522_overpayment_refund_event: [{ handled: true, results: [] }],
+  });
+  const asked: unknown[] = [];
+  await returnOverpayment(deps(db, stripe(newLog()), [], {
+    listPaystackRefunds: (p) => {
+      asked.push(p);
+      return Promise.resolve([{ id: "rfd_7", amount: 10200, status: "processed", merchantNote: `mingla_overpay_refund:${OPU}:1` }]);
+    },
+  }), OPU);
+  assertEquals(asked, [{ transaction: "mingla-inst-flex-l1", currency: "NGN" }]);
+  const e = db.calls.find((c) => c.fn === "issue_4522_overpayment_refund_event")?.args;
+  assertEquals([e?.p_provider, e?.p_provider_refund_id, e?.p_status, e?.p_overpayment_id, e?.p_attempt_no, e?.p_amount_minor],
+    ["paystack", "rfd_7", "succeeded", OPU, 1, 10200]);
+  // a full page (null) or a failed read: nothing created
+  for (const answer of [null, new Error("down")]) {
+    const db2 = scripted({ issue_4522_begin_overpayment_refund: [reconcile, create(1)] });
+    const sent: unknown[] = [];
+    assertEquals(await returnOverpayment(deps(db2, stripe(newLog()), [], {
+      listPaystackRefunds: () => answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer),
+      // deno-lint-ignore no-explicit-any
+      createPaystackRefund: ((p: unknown) => { sent.push(p); return Promise.reject(new Error("must not be called")); }) as any,
+    }), OPU), "unknown");
+    assertEquals(sent, []);
+  }
+});
+
+Deno.test("T4-1 a second sweep while another worker is sending does nothing (busy)", async () => {
+  const db = scripted({ issue_4522_begin_overpayment_refund: [{ ok: false, reason: "busy" }] });
+  const log = newLog();
+  assertEquals(await returnOverpayment(deps(db, stripe(log)), "op-1"), "skipped");
+  assertEquals([log.creates.length, log.lists.length, log.retrieves.length], [0, 0, 0]);
+});
+
+Deno.test("T4-1 a late refund that went past the amount: one alert with the exact extra amount", async () => {
+  const db = scripted({ issue_4522_overpayment_refund_event: [{ handled: true, results: [{ ok: true, state: "needs_ops",
+    alertOps: true, alertKind: "provider_refunded_more", overRefundedMinor: 30000, overpaymentId: OPU, orderId: "order-1",
+    currency: "USD", providerRef: "pi_flex", remainingMinor: 0 }] }] });
+  const alerts: Array<{ s: string; p: string[] }> = [];
+  assertEquals(await applyOverpaymentRefundEvent(db.client,
+    stripeOverpaymentRefundEvent({ id: "re_1", status: "succeeded", amount: 30000, payment_intent: "pi_flex",
+      metadata: { mingla_overpayment_id: OPU, mingla_overpayment_attempt: "1" } }),
+    (s, p) => { alerts.push({ s, p }); return Promise.resolve(); }), true);
+  assertEquals(alerts.length, 1);
+  assertEquals(alerts[0].s, "Trip overpayment refunded more than owed");
+  assert(alerts[0].p[0].includes("refunded 30000 (USD minor units) more than this overpayment"), alerts[0].p[0]);
 });
 
 Deno.test("T3-8 a schema probe that keeps failing is answered by reading the table, every time", async () => {

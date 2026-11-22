@@ -23,8 +23,12 @@
  *   pending / requires_action → kept, ops alerted once past
  *   OVERPAYMENT_PENDING_CEILING_MS.
  * An attempt whose answer never arrived (timeout, lost write) is checked by
- * re-sending its own key inside the provider's key window, else by reading
- * the provider's refund list for its metadata; never by a new refund.
+ * re-sending the identical request with its own key inside the provider's
+ * key window, else (or when that answer is unknown) by reading the charge's
+ * refund list for its metadata; never by a new refund. Only the provider's
+ * refusal of the refund itself is final; any other error is unknown (T4-1).
+ * Before any new attempt the charge's refunds are adopted (T4-1), and a
+ * second sweep while an attempt is being sent is told "busy".
  * Three refusals in a row stop the lane (needs_ops) with one ops alert that
  * says exactly what is safe to do; a refund made in the provider dashboard
  * is matched back by the refund webhooks (issue_4522_overpayment_refund_event).
@@ -36,6 +40,7 @@ import {
   createPaystackRefund,
   getPaystackRefund,
   isRetryablePaystackRefundError,
+  listPaystackTransactionRefunds,
   PAYSTACK_MIN_REFUND_SUBUNITS,
   paystackRefundOutcomeStatus,
   paystackRefundTransaction,
@@ -78,7 +83,7 @@ export interface OverpaymentStripe {
     list(
       params: Record<string, unknown>,
       options: { stripeAccount: string },
-    ): Promise<{ data?: StripeRefundLike[] | null }>;
+    ): Promise<{ data?: StripeRefundLike[] | null; has_more?: boolean | null }>;
   };
 }
 
@@ -88,6 +93,7 @@ export interface OverpaymentRefundDeps {
   stripeAccountForBrand: (brandId: string) => Promise<string | null>;
   createPaystackRefund: typeof createPaystackRefund;
   getPaystackRefund?: typeof getPaystackRefund;
+  listPaystackRefunds?: typeof listPaystackTransactionRefunds;
   alertOps: (subject: string, paragraphs: string[]) => Promise<void>;
   now?: () => number;
 }
@@ -111,6 +117,7 @@ interface AttemptRow {
   amountMinor: number;
   providerRefundId: string | null;
   idempotencyKey: string | null;
+  refundId?: string | null;
   withinKeyWindow?: boolean;
 }
 
@@ -119,7 +126,7 @@ interface Plan {
   done?: boolean;
   reason?: string;
   needsOpsReason?: string;
-  action?: "verify" | "verify_prior" | "create";
+  action?: "verify" | "verify_prior" | "reconcile" | "create";
   overpaymentId?: string;
   orderId?: string;
   installmentId?: string;
@@ -137,6 +144,7 @@ interface Plan {
   alertOps?: boolean;
   alertKind?: string;
   minRefundMinor?: number;
+  overRefundedMinor?: number;
 }
 
 interface Recorded {
@@ -145,15 +153,21 @@ interface Recorded {
   alertOps?: boolean;
   alertKind?: string | null;
   remainingMinor?: number;
+  overRefundedMinor?: number;
   reason?: string;
 }
 
-/** Stripe answered for good (a 4xx refusal other than a conflict or rate limit). */
+/**
+ * T4-1: Stripe's refusals of the refund itself — no refund exists and none
+ * will. Everything else (an idempotency error, 409, 429, 5xx, a timeout, a
+ * network error, any other 4xx) is UNKNOWN: the attempt stays open and is
+ * verified at the provider; it never becomes failed by itself.
+ */
+const STRIPE_REFUND_REFUSAL_CODES = new Set(["charge_already_refunded", "charge_disputed"]);
 export function isDefinitiveStripeRefusal(error: unknown): boolean {
-  const e = error as { statusCode?: unknown; type?: unknown } | null;
-  const status = typeof e?.statusCode === "number" ? e.statusCode : null;
-  if (status === null) return false;
-  return status >= 400 && status < 500 && status !== 409 && status !== 429;
+  const e = error as { statusCode?: unknown; code?: unknown; raw?: { code?: unknown } | null } | null;
+  const code = typeof e?.code === "string" ? e.code : e?.raw?.code;
+  return e?.statusCode === 400 && typeof code === "string" && STRIPE_REFUND_REFUSAL_CODES.has(code);
 }
 
 /** A Stripe Refund status as the attempt records it. */
@@ -227,6 +241,15 @@ export function overpaymentAlert(
           "The host's payout for this charge stays held until it completes.",
         ],
       };
+    case "provider_refunded_more":
+      return {
+        subject: "Trip overpayment refunded more than owed",
+        paragraphs: [
+          `The provider shows a refund of a traveler's overpayment that Mingla had not counted, so the traveler was refunded ${String(plan.overRefundedMinor ?? "?")} (${plan.currency ?? "?"} minor units) more than this overpayment. Mingla recorded it and stopped automatic refunding for this overpayment.`,
+          ...where.slice(0, 3),
+          "Nothing more will be refunded for it automatically. Decide whether to recover the extra amount, then record the outcome; the host's payout for this charge stays held until then.",
+        ],
+      };
     case "provider_reversed_refund":
       return {
         subject: "Trip overpayment refund reversed by the provider",
@@ -273,7 +296,7 @@ async function record(
   });
   if (rpcError !== null) throw new Error(`overpayment_finish_failed:${rpcError.message ?? "unknown"}`);
   const recorded = (data ?? {}) as Recorded;
-  await alertFor(deps, plan, recorded, error);
+  await alertFor(deps, { ...plan, overRefundedMinor: recorded.overRefundedMinor }, recorded, error);
   return recorded;
 }
 
@@ -287,34 +310,47 @@ async function stripeAccount(deps: OverpaymentRefundDeps, plan: Plan): Promise<s
   return await deps.stripeAccountForBrand(String(plan.brandId ?? ""));
 }
 
-function stripeCreateParams(plan: Plan, attemptNo: number, amount: number, refundId: string | null) {
+/**
+ * T4-1: the ONE Stripe create request of an attempt, built only from the
+ * stored overpayment and attempt rows, so the first send and every re-send
+ * with the same key are the same request (Stripe refuses a reused key whose
+ * parameters differ).
+ */
+export function stripeCreateRequest(
+  plan: Plan,
+  attempt: { attemptNo: number; amountMinor: number; idempotencyKey: string; refundId?: string | null },
+): { params: Record<string, unknown>; idempotencyKey: string } {
   return {
-    payment_intent: String(plan.providerRef),
-    amount,
-    reason: "requested_by_customer",
-    refund_application_fee: true,
-    metadata: {
-      mingla_overpayment_id: String(plan.overpaymentId),
-      mingla_overpayment_attempt: String(attemptNo),
-      mingla_order_id: String(plan.orderId ?? ""),
-      mingla_refund_id: String(refundId ?? ""),
-      mingla_installment_id: String(plan.installmentId ?? ""),
+    params: {
+      payment_intent: String(plan.providerRef),
+      amount: attempt.amountMinor,
+      reason: "requested_by_customer",
+      refund_application_fee: true,
+      metadata: {
+        mingla_overpayment_id: String(plan.overpaymentId),
+        mingla_overpayment_attempt: String(attempt.attemptNo),
+        mingla_order_id: String(plan.orderId ?? ""),
+        mingla_refund_id: String(attempt.refundId ?? ""),
+        mingla_installment_id: String(plan.installmentId ?? ""),
+      },
     },
+    idempotencyKey: attempt.idempotencyKey,
   };
 }
 
-/** Send (or re-send with the SAME key) one Stripe attempt. */
+/** Send (or re-send with the SAME key and the SAME request) one Stripe attempt. */
 async function stripeSend(
   deps: OverpaymentRefundDeps,
   plan: Plan,
-  attempt: { attemptNo: number; amountMinor: number; idempotencyKey: string; refundId: string | null },
+  attempt: { attemptNo: number; amountMinor: number; idempotencyKey: string; refundId?: string | null },
 ): Promise<ProviderAnswer> {
   const account = await stripeAccount(deps, plan);
   if (account === null) return { answer: "unknown", providerRefundId: null, error: "no_connected_account" };
   try {
+    const request = stripeCreateRequest(plan, attempt);
     const refund = await deps.stripe().refunds.create(
-      stripeCreateParams(plan, attempt.attemptNo, attempt.amountMinor, attempt.refundId),
-      { idempotencyKey: attempt.idempotencyKey, stripeAccount: account },
+      request.params,
+      { idempotencyKey: request.idempotencyKey, stripeAccount: account },
     );
     const id = typeof refund.id === "string" && refund.id !== "" ? refund.id : null;
     const answer = stripeRefundAnswer(refund.status);
@@ -343,42 +379,40 @@ async function stripeRead(deps: OverpaymentRefundDeps, plan: Plan, refundId: str
   }
 }
 
-/**
- * An attempt whose create answer never arrived, outside the key window: the
- * provider's refunds on the charge are read for this attempt's metadata.
- * Found → its real status; read but absent → it was never created.
- */
-async function stripeFindByMetadata(
-  deps: OverpaymentRefundDeps,
-  plan: Plan,
-  attemptNo: number,
-): Promise<ProviderAnswer> {
+/** Every refund Stripe lists on the charge (all pages). Null when it cannot be read in full. */
+async function stripeChargeRefunds(deps: OverpaymentRefundDeps, plan: Plan): Promise<StripeRefundLike[] | null> {
   const account = await stripeAccount(deps, plan);
-  if (account === null) return { answer: "unknown", providerRefundId: null, error: "no_connected_account" };
+  if (account === null) return null;
+  const all: StripeRefundLike[] = [];
+  let after: string | null = null;
   try {
     const stripe = deps.stripe();
-    // orch-strict-grep-allow stripe-no-idempotency-key — read-only list (GET; no mutation to dedupe)
-    const page = await stripe.refunds.list({ payment_intent: String(plan.providerRef), limit: 100 }, {
-      stripeAccount: account,
-    });
-    const rows = Array.isArray(page.data) ? page.data : [];
-    const match = rows.find((r) =>
-      String(r.metadata?.mingla_overpayment_id ?? "") === String(plan.overpaymentId) &&
-      String(r.metadata?.mingla_overpayment_attempt ?? "") === String(attemptNo)
-    );
-    if (match === undefined) {
-      // 100 refunds on one charge cannot all be ours; a full page is ambiguous.
-      if (rows.length >= 100) return { answer: "unknown", providerRefundId: null, error: "refund_list_full_page" };
-      return { answer: "not_found", providerRefundId: null, error: "not_created_at_provider" };
+    for (let page = 0; page < 20; page += 1) {
+      // orch-strict-grep-allow stripe-no-idempotency-key — read-only list (GET; no mutation to dedupe)
+      const res = await stripe.refunds.list({
+        payment_intent: String(plan.providerRef),
+        limit: 100,
+        ...(after === null ? {} : { starting_after: after }),
+      }, { stripeAccount: account });
+      const rows = Array.isArray(res.data) ? res.data : [];
+      all.push(...rows);
+      if (res.has_more !== true) return all;
+      const last = rows[rows.length - 1]?.id;
+      if (typeof last !== "string" || last === after) return null;
+      after = last;
     }
-    return {
-      answer: stripeRefundAnswer(match.status),
-      providerRefundId: typeof match.id === "string" ? match.id : null,
-      error: null,
-    };
-  } catch (err) {
-    return { answer: "unknown", providerRefundId: null, error: errorText(err, "stripe_refund_list_error") };
+    return null;
+  } catch {
+    return null;
   }
+}
+
+/** Our attempt among the charge's refunds, by its metadata. */
+function stripeAttemptIn(rows: StripeRefundLike[], plan: Plan, attemptNo: number): StripeRefundLike | undefined {
+  return rows.find((r) =>
+    String(r.metadata?.mingla_overpayment_id ?? "") === String(plan.overpaymentId) &&
+    String(r.metadata?.mingla_overpayment_attempt ?? "") === String(attemptNo)
+  );
 }
 
 /** Send (or re-send: the merchant note finds the same refund) one Paystack attempt. */
@@ -400,11 +434,12 @@ async function paystackSend(
     const answer = paystackRefundAnswer(refund.status ?? null);
     return { answer: answer === "pending" && id === null ? "unknown" : answer, providerRefundId: id, error: null };
   } catch (err) {
-    return {
-      answer: isRetryablePaystackRefundError(err) ? "unknown" : "failed",
-      providerRefundId: null,
-      error: errorText(err, "paystack_refund_error"),
-    };
+    // T4-1: only the refund POST's own refusal (after the helper read the
+    // transaction's refunds and found none for this note) is final; a failed
+    // read or anything retryable stays unknown.
+    const final = !isRetryablePaystackRefundError(err) && err instanceof Error &&
+      (err.message === "Paystack refund failed" || err.message.startsWith("Paystack partial refunds must be"));
+    return { answer: final ? "failed" : "unknown", providerRefundId: null, error: errorText(err, "paystack_refund_error") };
   }
 }
 
@@ -430,22 +465,85 @@ async function checkOpenAttempt(deps: OverpaymentRefundDeps, plan: Plan, a: Atte
     return { answer: "unknown", providerRefundId: null, error: "attempt_without_key" };
   }
   if (plan.provider === "stripe") {
+    // T4-1: inside the key window the identical request is re-sent (Stripe
+    // replays its first answer, or creates it once); otherwise, or when that
+    // answer is unknown, the attempt is looked up on the charge by metadata.
+    const key = a.idempotencyKey;
+    if (a.withinKeyWindow === true) {
+      const sent = await stripeSend(deps, plan, { ...a, idempotencyKey: key });
+      if (sent.answer !== "unknown") return sent;
+    }
+    const rows = await stripeChargeRefunds(deps, plan);
+    if (rows === null) return { answer: "unknown", providerRefundId: null, error: "refund_list_unreadable" };
+    const match = stripeAttemptIn(rows, plan, a.attemptNo);
+    if (match !== undefined) {
+      return {
+        answer: stripeRefundAnswer(match.status),
+        providerRefundId: typeof match.id === "string" ? match.id : null,
+        error: null,
+      };
+    }
+    // Absent from a complete list: never created — but inside the key window
+    // an unknown re-send may still land, so it stays open until the window ends.
     return a.withinKeyWindow === true
-      ? await stripeSend(deps, plan, {
-        attemptNo: a.attemptNo,
-        amountMinor: a.amountMinor,
-        idempotencyKey: a.idempotencyKey,
-        refundId: null,
-      })
-      : await stripeFindByMetadata(deps, plan, a.attemptNo);
+      ? { answer: "unknown", providerRefundId: null, error: "not_listed_inside_key_window" }
+      : { answer: "not_found", providerRefundId: null, error: "not_created_at_provider" };
   }
   return await paystackSend(deps, plan, { amountMinor: a.amountMinor, idempotencyKey: a.idempotencyKey });
 }
 
-async function plan(deps: OverpaymentRefundDeps, overpaymentId: string, verifiedThrough: number | null): Promise<Plan> {
+/**
+ * T4-1: before any new attempt, every refund the provider lists on the
+ * charge is offered to the database (by refund id, our metadata, or as a
+ * refund Mingla did not make), so a refund that already exists is adopted
+ * instead of sent again. False when the list could not be read in full.
+ */
+async function reconcileCharge(deps: OverpaymentRefundDeps, p: Plan): Promise<boolean> {
+  const events: OverpaymentRefundEvent[] = [];
+  if (p.provider === "stripe") {
+    const rows = await stripeChargeRefunds(deps, p);
+    if (rows === null) return false;
+    for (const r of rows) {
+      events.push(stripeOverpaymentRefundEvent({ ...r, payment_intent: String(p.providerRef) }));
+    }
+  } else if (p.provider === "paystack") {
+    let rows: Awaited<ReturnType<typeof listPaystackTransactionRefunds>>;
+    try {
+      rows = await (deps.listPaystackRefunds ?? listPaystackTransactionRefunds)({
+        transaction: String(p.providerRef ?? ""),
+        currency: String(p.currency ?? "NGN").toUpperCase(),
+      });
+    } catch {
+      return false;
+    }
+    if (rows === null) return false;
+    for (const r of rows) {
+      const s = paystackRefundAnswer(r.status);
+      events.push(paystackOverpaymentRefundEvent(
+        s === "succeeded" ? "refund.processed" : s === "failed" ? "refund.failed" : "refund.pending",
+        r.id,
+        r.merchantNote,
+        String(p.providerRef ?? ""),
+        r.amount,
+      ));
+    }
+  } else {
+    return false;
+  }
+  for (const e of events) await applyOverpaymentRefundEvent(deps.supabase, e, deps.alertOps);
+  return true;
+}
+
+async function plan(
+  deps: OverpaymentRefundDeps,
+  overpaymentId: string,
+  verifiedThrough: number | null,
+  reconciled: boolean,
+): Promise<Plan> {
   const { data, error } = await deps.supabase.rpc("issue_4522_begin_overpayment_refund", {
     p_overpayment_id: overpaymentId,
     p_verified_through: verifiedThrough,
+    p_reconciled: reconciled,
   });
   if (error !== null) throw new Error(`overpayment_begin_failed:${error.message ?? "unknown"}`);
   return (data ?? {}) as Plan;
@@ -457,10 +555,12 @@ export async function returnOverpayment(
   overpaymentId: string,
 ): Promise<OverpaymentOutcome> {
   let verifiedThrough: number | null = null;
+  let reconciled = false;
   let last: OverpaymentOutcome | null = null;
-  // At most: verify open attempts, re-read earlier refunds, create parts.
-  for (let step = 0; step < 6; step += 1) {
-    const p = await plan(deps, overpaymentId, verifiedThrough);
+  // At most: verify open attempts, re-read earlier refunds, adopt what the
+  // provider already has, create parts.
+  for (let step = 0; step < 8; step += 1) {
+    const p = await plan(deps, overpaymentId, verifiedThrough, reconciled);
     if (p.ok === true && p.done === true) return last === "succeeded" ? "succeeded" : "done";
     if (p.reason === "needs_ops") {
       await alertFor(deps, p, p, null);
@@ -504,6 +604,12 @@ export async function returnOverpayment(
       }
       if (revived) return "pending";
       verifiedThrough = highest;
+      continue;
+    }
+
+    if (p.action === "reconcile") {
+      if (!(await reconcileCharge(deps, p))) return "unknown"; // cannot see the charge: create nothing
+      reconciled = true;
       continue;
     }
 
@@ -696,6 +802,7 @@ export async function applyOverpaymentRefundEvent(
         providerRef: r.providerRef,
         currency: r.currency,
         remainingMinor: r.remainingMinor,
+        overRefundedMinor: r.overRefundedMinor,
       }, null);
       if (alert !== null) await alertOps(alert.subject, alert.paragraphs);
     }
