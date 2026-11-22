@@ -240,6 +240,17 @@ export const FORM_REQUEST_COPY = {
   sms: "Text",
   channelsNote: "Texts go to guests with a phone on file; everyone else gets the email.",
   email: "Email (free)",
+  /** #4541 R3 / R7.3: the Push channel follows the server's switch. */
+  push: "Push (free)",
+  pushLine: "Push (free) · app users on the latest version",
+  pushUnavailable: "Push: not available yet",
+  /** #4541 R5.5: the shared text allowance (Blast's own words). */
+  monthlyLeft: (left: number, cap: number): string => `${left} of ${cap} texts left this month`,
+  sharedWithBlasts: "Shared with your Blasts.",
+  sendUses: (n: number): string => `This send uses ${n} ${n === 1 ? "text" : "texts"}`,
+  textsOffMonthly: "Not enough texts left this month, so this send goes by email and push only.",
+  textsOffDaily: "Today's text limit is reached, so this send goes by email and push only.",
+  sentNoTextsToast: (n: number): string => `Sent to ${n} ${n === 1 ? "guest" : "guests"} by email and push.`,
   messageLabel: "Message",
   message: (brand: string, event: string): string =>
     `${brand} has a few questions about ${event}. Answer here: [their own link]`,
@@ -260,7 +271,6 @@ export const FORM_REQUEST_COPY = {
   segmentsLine: (parts: number): string => `Each text is ${parts} parts (emoji and some letters make a text longer).`,
   unpricedConfirm: "Send these texts even though a price isn't available yet",
   capLine: (today: number, cap: number): string => `${today} of ${cap} form texts used in the last 24 hours.`,
-  overCap: "That's over the daily limit for form texts. Untick Text to send by email, or try tomorrow.",
   waitLine: (time: string): string => `Texts wait until ${time}: no texts before 9am or after 9pm where the event is.`,
   noCost: "No paid channel cost",
   askNow: "Ask them now",
@@ -270,7 +280,7 @@ export const FORM_REQUEST_COPY = {
   confirm: "Send",
   back: "Back",
   sending: "Sending…",
-  nobody: "Nobody here can be reached with these choices.",
+  nobody: "No one can be reached by the channels you picked.",
   sentToast: (n: number): string => `Sent to ${n} ${n === 1 ? "guest" : "guests"}.`,
   queuedToast: (queued: number, sent: number): string =>
     `Sending to ${queued} ${queued === 1 ? "guest" : "guests"}. ${sent} sent so far; the rest go out shortly.`,
@@ -325,6 +335,15 @@ export const FORM_REQUEST_LOG_COPY = {
     claim_expired: "not delivered after 3 tries",
     text_cap: "the day's text limit was reached",
     event_started: "their date had already started",
+    /** #4541 R3.4: the push went with its email. */
+    push_and_email: "push and email",
+    /** #4541 R3.2: push was the only way, and their app can't open forms yet. */
+    push_not_ready: "their app can't open forms yet",
+  } as Record<string, string>,
+  /** #4541 R5.5: a guest who was not texted because texts were off for that send. */
+  notTexted: {
+    no_texts_left: "Not texted: no texts left this month",
+    text_cap: "Not texted: daily limit",
   } as Record<string, string>,
   run: (date: string, outcome: "sending" | "sent" | "failed" | "held_form_closed"): string =>
     `Automatic reminder for ${date}: ${
