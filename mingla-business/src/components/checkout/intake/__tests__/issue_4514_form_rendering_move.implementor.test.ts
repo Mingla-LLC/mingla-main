@@ -122,7 +122,7 @@ describe("#4514 — the renderers live in @mingla/form-rendering", () => {
     // browser date box (behaviour: ui/__tests__/issue_4523_form_date_question).
     expect(typeof businessFormPrimitives.WebDateTimeInput).toBe("function");
     expect(read("mingla-business/src/components/checkout/intake/businessFormPrimitives.tsx")).toContain(
-      'import("../../ui/HostCalendarBody")',
+      "loadHostCalendarBody().then((m) => ({ default: m.FormDateBody }))",
     );
     // #4518: the colours are the active surface tokens (Graphite here): every
     // designSystem colour, plus the surface-only `controlOutline`.

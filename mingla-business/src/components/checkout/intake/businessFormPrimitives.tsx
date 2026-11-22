@@ -16,6 +16,7 @@ import type {
 import { radius, space, type } from "../../../constants/designSystem";
 import { activeSurfaceTokens, themed } from "../../../theme/surfaceTokens";
 import { EventCoverMedia } from "../../ui/EventCoverMedia";
+import { loadHostCalendarBody } from "../../ui/HostCalendarPlaceholder";
 import { Icon } from "../../ui/Icon";
 
 /** The brand header's cover: the host's cover media, or its hue gradient (§5.1). */
@@ -33,14 +34,16 @@ const BusinessBrandCover: React.FC<FormBrandCoverProps> = ({ uri, hue, height })
 /**
  * #4523: a date question is picked from the Host's Mingla calendar (sheet on
  * phones, popover on wide web) on every platform. The calendar loads on first
- * use from the shared Host calendar chunk; meanwhile the row is pressable and a
- * tap made while loading opens it once loaded (no dead tap). The question shell
+ * use from the shared Host calendar chunk, through the Host fields' one loader
+ * (so this forms module holds no import() of its own, I-4541-FORMS-ONE-LAZY-HOP);
+ * meanwhile the row is pressable and a tap made while loading opens it once
+ * loaded (no dead tap). The question shell
  * draws the label, so only the question's label is spoken here. The answer is
  * the picked `YYYY-MM-DD`, as before. This module is itself lazily loaded, so
  * none of this reaches the Host boot payload.
  */
 const FormDateBody = React.lazy(() =>
-  import("../../ui/HostCalendarBody").then((m) => ({ default: m.FormDateBody })),
+  loadHostCalendarBody().then((m) => ({ default: m.FormDateBody })),
 );
 
 const BusinessFormDateInput: React.FC<FormWebDateInputProps> = ({
