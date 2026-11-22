@@ -21664,6 +21664,12 @@
         "supabase/migrations/__tests__/issue_4508_one_place.tester.retest.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_discount_plan.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_discount_plan.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_flex_alloc_rollover.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_flex_alloc_rollover.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_flex_inflight_race.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_flex_inflight_race.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_flex_payments.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_flex_payments.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_live_plan_price_guard.implementor.pg17.test.sql",
@@ -27354,6 +27360,12 @@
         "supabase/migrations/__tests__/issue_4508_one_place.tester.retest.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4514_brand_forms.implementor.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_discount_plan.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_discount_plan.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_flex_alloc_rollover.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_flex_alloc_rollover.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_4522_flex_inflight_race.tester.adversarial.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_4522_flex_inflight_race.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_flex_payments.implementor.pg17.test.sql",
         "supabase/migrations/__tests__/issue_4522_flex_payments.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_4522_live_plan_price_guard.implementor.pg17.test.sql",
@@ -54666,5 +54678,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "0731c267e3472618fcb80fe5417ff5ca3c384a65449130835142b7dc66716a40"
+  "phase3eContractSha256": "995134c271a187968adca09ebcefa1cd5a8e2bf7a43a84c674747676642c2af5"
 }

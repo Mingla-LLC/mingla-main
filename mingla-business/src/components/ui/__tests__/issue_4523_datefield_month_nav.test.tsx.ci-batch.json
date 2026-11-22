@@ -50,6 +50,7 @@
       "packages/brand-rendering/__tests__/issue_4523_stay_range_month_nav.test.tsx",
       "packages/calendar-web/__tests__/calendarWeb.test.tsx",
       "packages/calendar/__tests__/core.calendar.test.ts",
+      "packages/calendar/__tests__/issue_4523_same_day_range.tester.adversarial.test.tsx",
       "packages/calendar/__tests__/monthNavigationNeverCloses.test.tsx"
     ],
     "externalReferenceFiles": [
