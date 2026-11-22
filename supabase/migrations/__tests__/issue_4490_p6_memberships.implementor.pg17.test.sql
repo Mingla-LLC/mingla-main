@@ -330,9 +330,12 @@ DECLARE
 BEGIN
   v := public.t4490_join(public.t4490_id('hot'), 'amaka');
   INSERT INTO t4490_ids VALUES ('amaka', (v->>'subscriptionId')::uuid);
-  PERFORM public.t4490_ok(v->>'status' = 'pending' AND (v->'paymentDue'->>'amountMinor')::bigint = 8500000
+  -- TEST-MOD-APPROVED #4490 (06-W4 fix 1, W4-N2): the amount due is what the page charges (N85,000 + 7.5% VAT
+  -- = N91,375, as M-4 pays); the plan price is baseMinor. It used to pin the price before VAT.
+  PERFORM public.t4490_ok(v->>'status' = 'pending' AND (v->'paymentDue'->>'amountMinor')::bigint = 9137500
+                          AND (v->'paymentDue'->>'baseMinor')::bigint = 8500000
                           AND v->>'memberPath' = '/visit/plan/' || (v->>'subscriptionId') AND NOT (v ? 'pass'),
-    'M-3a a stranger joins Hot desk: waiting for the first month (N85,000), no pass yet');
+    'M-3a a stranger joins Hot desk: waiting for the first month (N85,000 + VAT = N91,375), no pass yet');
   w := public.t4490_join(public.t4490_id('hot'), 'amaka');
   PERFORM public.t4490_ok((w->>'replayed')::boolean AND w->>'subscriptionId' = v->>'subscriptionId',
     'M-3b the same join again (same key) returns the same member');
@@ -636,7 +639,8 @@ BEGIN
                                AND payload->>'subscription_id' = v_sub::text) = 1,
     'M-9d the run again (twice): still one month, one email');
   v := public.issue_4490_membership_get(v_sub, public.t4490_tok('amaka'), NULL, NULL);
-  PERFORM public.t4490_ok(v->>'status' = 'active' AND (v->'paymentDue'->>'amountMinor')::bigint = 8500000,
+  -- TEST-MOD-APPROVED #4490 (06-W4 fix 1, W4-N2): the next month due is what M-9f pays (N91,375).
+  PERFORM public.t4490_ok(v->>'status' = 'active' AND (v->'paymentDue'->>'amountMinor')::bigint = 9137500,
     'M-9e the member page shows the next month to pay, still active');
   v := public.t4490_pay_member(v_sub, 'amaka', 2);
   PERFORM public.t4490_ok((v->>'amountMinor')::bigint = 9137500 AND (v->>'periodId')::uuid = v_p2.id,
@@ -744,7 +748,8 @@ BEGIN
   SET current_period_start = now() - interval '31 days', current_period_end = now() - interval '1 hour'
   WHERE id = v_sub;
   v := public.issue_4490_membership_member_action(v_sub, public.t4490_tok('amaka'), NULL, 'resume', 'p6-m11-resume');
-  PERFORM public.t4490_ok(v->>'status' = 'paused' AND (v->'paymentDue'->>'amountMinor')::bigint = 8500000,
+  -- TEST-MOD-APPROVED #4490 (06-W4 fix 1, W4-N2): due = the charge with VAT (N91,375).
+  PERFORM public.t4490_ok(v->>'status' = 'paused' AND (v->'paymentDue'->>'amountMinor')::bigint = 9137500,
     'M-11f resume: a month from today to pay; paused until paid');
   v := public.issue_4490_membership_member_action(v_sub, public.t4490_tok('amaka'), NULL, 'resume', 'p6-m11-resume');
   PERFORM public.t4490_ok((v->>'replayed')::boolean, 'M-11g the same request again replays');

@@ -26,6 +26,10 @@ import {
 import { handleStayPaystackChargeSuccess } from "../_shared/stayPaymentWebhook.ts";
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 import {
+  rememberPaymentPage,
+  reusedPaymentPage,
+} from "../_shared/venueOfferPaymentPage.ts";
+import {
   isLocalSupabaseUrl,
   resolveVenueVisitOrigin,
 } from "../_shared/venueOfferVisitLink.ts";
@@ -62,6 +66,8 @@ const SAFE_CODES = [
   "membership_nothing_to_pay",
   "plan_not_found",
   "offer_payment_already_pending",
+  // #4490 06-W4 fix 1 (W4-N3): another device is paying this booking another way.
+  "offer_payment_mode_conflict",
   "offer_payment_already_paid",
   "offer_hold_expired",
   "offer_bank_not_ready",
@@ -362,6 +368,22 @@ export function createPayLinkHandler(deps: PayLinkDeps = {}) {
       }
       if (error) return rpcFailure(error);
       const returnUrl = memberReturnUrl(env, subscriptionId, body.channel);
+      // #4490 06-W4 fix 1 (W4-N3): this period's payment is already open:
+      // its own page again, never a second one.
+      const reused = reusedPaymentPage(prepared);
+      if (reused) {
+        const p = prepared as Json;
+        return json(200, {
+          kind: "success",
+          data: {
+            ...reused,
+            returnUrl,
+            periodId: p.periodId ?? null,
+            amountMinor: p.amountMinor ?? null,
+            currencyCode: p.currencyCode ?? null,
+          },
+        });
+      }
       try {
         const session = await (deps.createPaymentSession ??
           createStayPaymentSession)(
@@ -387,6 +409,7 @@ export function createPayLinkHandler(deps: PayLinkDeps = {}) {
           });
           return json(502, { code: "membership_payment_ambiguous" });
         }
+        await rememberPaymentPage(client, session);
         const p = prepared as Json;
         return json(200, {
           kind: "success",

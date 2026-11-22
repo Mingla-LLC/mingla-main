@@ -406,7 +406,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 explorer W5: hosted deck wrappers migration + suite registered; re-sealed.
 // issue #4490 explorer W6a: Discover venues migration + suite registered; re-sealed.
 // issue #4490 explorer W6b: deck venue-type chips migration + suite registered; re-sealed.
-export const BOOTSTRAP_SHA256 = "e099087521901c45a17c05a076dcc02c21aad71e990e2cecccabeae191c83e89";
+// issue #4490 06-W4 fix 1: 20280809462590 (plan charges, one live payment page) + its pg17 suite registered; re-sealed.
+export const BOOTSTRAP_SHA256 = "5be28c5f4dedf40d036d5c2441ab9b9d11c1f26187ea736f56afe79b6d0e4a4b";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

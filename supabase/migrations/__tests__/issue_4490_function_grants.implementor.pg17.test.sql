@@ -17,6 +17,9 @@
 -- TEST-MOD-APPROVED #4490 (06-W6b): the deck venue-type reads (20280809462490) are internal, the lifted
 -- place rule is an invoker helper, and the two base servable RPCs it re-emits keep their classes
 -- (solo internal; the shared-deck intersection callable by signed-in and signed-out, as before).
+-- TEST-MOD-APPROVED #4490 (06-W4 fix 1): the plan charge owner and its fee lines and period read, and the
+-- remembered-payment-page writer (20280809462590) are internal (service role only); the eight functions that
+-- migration re-emits keep their classes.
 -- TEST-MOD-APPROVED #4490 (06-W5/W6 fix 1): the hosted wrappers take every signal of a request
 -- at once (new signatures, still internal); the shared-deck base RPC is no longer re-emitted by
 -- #4490 (W6-N1), so its line is gone; the two new Discover Venues helpers (the Stays-listed read
@@ -242,6 +245,9 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_member_code_candidate()', 'internal'),
   ('issue_4490_member_credit_left(uuid,text,timestamp with time zone)', 'internal'),
   ('issue_4490_member_enqueue(uuid,uuid,text,text)', 'internal'),
+  ('issue_4490_member_charge(uuid,bigint)', 'internal'),
+  ('issue_4490_member_fee_lines(uuid,bigint)', 'internal'),
+  ('issue_4490_member_period_charge(uuid)', 'internal'),
   ('issue_4490_member_event(uuid,uuid,text,text,uuid,jsonb,text)', 'internal'),
   ('issue_4490_member_leave_at(uuid,boolean)', 'internal'),
   ('issue_4490_member_open_period(uuid)', 'internal'),
@@ -305,6 +311,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_pool_day_usage(uuid,date)', 'internal'),
   ('issue_4490_pool_projection(uuid)', 'internal'),
   ('issue_4490_prepare_offer_payment(uuid,bytea,uuid,text,bigint,text)', 'internal'),
+  ('issue_4490_record_payment_page(uuid,text)', 'internal'),
   ('issue_4490_preview_day_closure(uuid,date)', 'signed_in'),
   ('issue_4490_prune_table_joins()', 'internal'),
   ('issue_4490_public_features(uuid)', 'internal'),

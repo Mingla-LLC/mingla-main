@@ -43,6 +43,10 @@ import {
 import { handleStayPaystackChargeSuccess } from "../_shared/stayPaymentWebhook.ts";
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 import {
+  rememberPaymentPage,
+  reusedPaymentPage,
+} from "../_shared/venueOfferPaymentPage.ts";
+import {
   isLocalSupabaseUrl,
   resolveVenueVisitOrigin,
 } from "../_shared/venueOfferVisitLink.ts";
@@ -139,6 +143,8 @@ const SAFE_CODES = [
   "claim_text_not_confirmed",
   "offer_hold_expired",
   "offer_payment_already_pending",
+  // #4490 06-W4 fix 1 (W4-N3): another device is paying this booking another way.
+  "offer_payment_mode_conflict",
   "offer_payment_already_paid",
   "offer_invalid_transition",
   "offer_bank_not_ready",
@@ -1186,6 +1192,15 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
       }
       if (error) return rpcFailure(error);
       const callbackUrl = offerPayReturnUrl(env, groupId, body.channel);
+      // #4490 06-W4 fix 1 (W4-N3): a payment of the same stage and amount is
+      // already open for this booking: its own page again, never a second one.
+      const reused = reusedPaymentPage(prepared);
+      if (reused) {
+        return json(200, {
+          kind: "success",
+          data: { ...reused, returnUrl: callbackUrl },
+        });
+      }
       try {
         const session = await (deps.createPaymentSession ??
           createStayPaymentSession)(
@@ -1211,6 +1226,7 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
           });
           return json(502, { code: "offer_payment_ambiguous" });
         }
+        await rememberPaymentPage(client, session);
         return json(200, {
           kind: "success",
           data: { ...session, returnUrl: callbackUrl },
