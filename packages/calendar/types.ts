@@ -11,6 +11,13 @@ export type { RangeUnit } from "./core/rangeRules";
 /** "HH:mm", 24-hour, wall clock in the field's time zone. */
 export type WallTime = string;
 
+/** An accent fill as style props: the first colour plus, for a gradient theme, the gradient image. */
+export interface CalendarAccentStyle {
+  backgroundColor?: string;
+  backgroundImage?: string;
+  experimental_backgroundImage?: string;
+}
+
 /** Colours and shape, injected by the host app. No literal lives in the package. */
 export interface CalendarTokens {
   surface: string;
@@ -26,6 +33,12 @@ export interface CalendarTokens {
   rangeFill: string;
   /** The small dot under today. */
   todayDot: string;
+  /**
+   * Optional: the accent drawn as a fill style (a gradient when the page theme
+   * has one), laid over `selectedFill` on the selected day, the primary button
+   * and the today dot. `selectedFill` stays the first-colour fallback.
+   */
+  accentStyle?: CalendarAccentStyle;
   error: string;
   radius: number;
   dayRadius: number;

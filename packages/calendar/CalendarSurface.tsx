@@ -321,7 +321,7 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
       disabled={opts.disabled}
       onPress={onPress}
       testID={`${testID}-${key}`}
-      style={[styles.button, opts.quiet === true && styles.buttonQuiet, opts.disabled === true && styles.buttonDisabled]}
+      style={[styles.button, opts.quiet === true ? styles.buttonQuiet : styles.buttonAccent, opts.disabled === true && styles.buttonDisabled]}
     >
       <Text style={[styles.buttonText, opts.quiet === true && styles.buttonTextQuiet]}>{text}</Text>
     </Pressable>

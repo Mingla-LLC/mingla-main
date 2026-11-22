@@ -17,6 +17,7 @@
 
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { ThemePalette } from "@mingla/offering-rendering";
+import { accentFill } from "@mingla/offering-rendering/themeAccentStyle";
 
 import {
   addStayDays,
@@ -47,6 +48,8 @@ export interface StayCalendarTokens {
   onSelected: string;
   rangeFill: string;
   todayDot: string;
+  /** The accent drawn as a fill (gradient when the page theme has one); see @mingla/calendar. */
+  accentStyle?: { backgroundColor?: string; backgroundImage?: string; experimental_backgroundImage?: string };
   error: string;
   radius: number;
   dayRadius: number;
@@ -97,6 +100,8 @@ export const STAY_DATE_RANGE_CHECK_OUT_TESTID = "stay-date-check-out";
 const ERROR_COLOR = "#ef4444";
 
 export function stayCalendarTokens(palette: ThemePalette): StayCalendarTokens {
+  // The accent is a fill here, so it goes through the gradient-aware helper (#1023).
+  const accent = accentFill(palette);
   return {
     surface: "transparent",
     text: palette.primaryText,
@@ -104,10 +109,11 @@ export function stayCalendarTokens(palette: ThemePalette): StayCalendarTokens {
     textFaint: palette.tertiaryText,
     border: palette.panelBorder,
     fieldFill: palette.card,
-    selectedFill: palette.accent,
+    selectedFill: accent.backgroundColor,
     onSelected: palette.accentText,
     rangeFill: palette.accentWash,
-    todayDot: palette.accent,
+    todayDot: accent.backgroundColor,
+    accentStyle: accent,
     error: ERROR_COLOR,
     radius: 12,
     dayRadius: 12,
