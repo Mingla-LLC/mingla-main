@@ -64,6 +64,19 @@ const _enabled =
   ONESIGNAL_APP_ID.length > 0 &&
   OneSignal !== null;
 
+// #4549 S1: one promise that settles when initializeOneSignal() succeeds, so a
+// caller can wait for the SDK instead of returning silently when it is not up.
+let _resolveReady: ((ready: boolean) => void) | null = null;
+const _readyPromise: Promise<boolean> = new Promise<boolean>((resolve) => {
+  _resolveReady = resolve;
+});
+
+// #4549 S4: the account-wide `push_os_permission` tag is removed once per
+// install. Nothing sends on it and it was wrong for accounts with several
+// phones; the per-device truth is host_push_devices.device_permission.
+const PERMISSION_TAG_KEY = "push_os_permission";
+const PERMISSION_TAG_REMOVED_FLAG = "mingla-business.pushPermissionTagRemoved.v1";
+
 /**
  * Initialize the OneSignal SDK. Call once at app startup before any other
  * OneSignal method. Safe to call again — subsequent calls are no-ops.
@@ -87,11 +100,9 @@ export function initializeOneSignal(): void {
     // tap cannot be lost between native launch and the root layout subscribing.
     ensureNativeNotificationClickCapture();
     if (__DEV__) console.log("[OneSignal] initialized");
-    // ORCH-1250 (consumer ORCH-1243 parity): seed the OS-permission tag as soon
-    // as the SDK is up so the launch In-App Message audience can read TRUE OS
-    // permission, not OneSignal's async subscription state. Fire-and-forget;
-    // self-guards on _initialized.
-    void syncPushPermissionTag();
+    _resolveReady?.(true);
+    // #4549 S4: clear the stale account-wide permission tag once per install.
+    void removePermissionTagOnce();
   } catch (e) {
     console.warn("[OneSignal] init failed:", e);
   }
@@ -198,10 +209,6 @@ export function loginToOneSignal(userId: string): void {
     void OneSignal!.User.pushSubscription.optIn();
     _loginComplete = true;
     if (__DEV__) console.log("[OneSignal] logged in + optIn:", userId);
-    // ORCH-1250 (consumer ORCH-1243 parity): keep the OS-permission tag fresh
-    // once identity + subscription are established (the tag is now attached to
-    // the logged-in user). Fire-and-forget; self-guards on _initialized.
-    void syncPushPermissionTag();
   } catch (e) {
     console.warn("[OneSignal] login failed:", e);
   }
@@ -234,10 +241,6 @@ export async function requestPushPermission(): Promise<boolean> {
     // "push feels mandatory" / false "notifications off" trigger.
     const granted = await OneSignal!.Notifications.requestPermission(false);
     if (__DEV__) console.log("[OneSignal] permission result:", granted);
-    // ORCH-1250 (consumer ORCH-1243 parity): a fresh grant/deny from the OS
-    // dialog must update the tag immediately so the In-App Message audience
-    // reconciles right away.
-    await syncPushPermissionTag();
     return granted;
   } catch (e) {
     console.warn("[OneSignal] requestPushPermission failed:", e);
@@ -267,40 +270,180 @@ export async function canRequestPushPermission(): Promise<boolean> {
 }
 
 /**
- * ORCH-1250 (consumer ORCH-1243 parity): mirror the device's TRUE OS
- * notification permission into a OneSignal tag.
- *
- * TAG CONTRACT:
- *   key   = `push_os_permission`
- *   value ∈ { `granted`, `denied` }
- *
- * Consumed by the launch "turn on notifications" In-App Message audience. The
- * dashboard message must target this TAG (show when `push_os_permission !=
- * granted`) instead of OneSignal's subscription state: OneSignal v5 registers
- * the push subscription ASYNCHRONOUSLY, so at launch the audience can see a
- * device as "not subscribed" even when iOS permission is GRANTED → the false
- * "notifications are off" / "Open Settings" popup. The OS permission read below
- * is synchronous truth, so the tag is reliable.
- *
- * Kept fresh by calling at init, login, after the permission dialog, and on app
- * foreground (so returning from iOS Settings reconciles the tag). Self-guards on
- * `_initialized` and never throws.
+ * #4549 S4: remove the account-wide `push_os_permission` tag once per install.
+ * ORCH-1250 wrote it from every phone of an account, so its value was whatever
+ * the last phone saw; no send, segment or in-app message reads it. AsyncStorage
+ * is loaded on use (never at module scope). Never throws.
  */
-export async function syncPushPermissionTag(): Promise<void> {
+async function removePermissionTagOnce(): Promise<void> {
   if (!_initialized || OneSignal === null) return;
   try {
-    // OneSignal v5 (react-native-onesignal) — TRUE OS permission read:
-    //   Notifications.getPermissionAsync(): Promise<boolean>
-    const granted = await OneSignal.Notifications.getPermissionAsync();
-    // addTag(key, value): void — reliable, synchronous-truth tag.
-    OneSignal.User.addTag(
-      "push_os_permission",
-      granted ? "granted" : "denied",
-    );
-    if (__DEV__)
-      console.log("[OneSignal] os-permission tag synced:", granted);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const storage = require("@react-native-async-storage/async-storage")
+      .default as {
+      getItem: (key: string) => Promise<string | null>;
+      setItem: (key: string, value: string) => Promise<void>;
+    };
+    if ((await storage.getItem(PERMISSION_TAG_REMOVED_FLAG)) === "1") return;
+    OneSignal.User.removeTag(PERMISSION_TAG_KEY);
+    await storage.setItem(PERMISSION_TAG_REMOVED_FLAG, "1");
   } catch (e) {
-    console.warn("[OneSignal] syncPushPermissionTag failed:", e);
+    console.warn("[OneSignal] permission tag removal failed:", e);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #4549 S1 — registration state and repair (only pushRegistrationHealth calls
+// these; every SDK call stays in this file)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolves `true` as soon as initializeOneSignal() has succeeded, `false` on
+ * timeout or when push is disabled in this build. No polling. Never throws.
+ */
+export function whenOneSignalReady(timeoutMs: number): Promise<boolean> {
+  if (_initialized) return Promise.resolve(true);
+  if (!_enabled) return Promise.resolve(false);
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => resolve(false), Math.max(0, timeoutMs));
+    void _readyPromise.then((ready) => {
+      clearTimeout(timer);
+      resolve(ready);
+    });
+  });
+}
+
+export type PushPermissionState = "granted" | "denied" | "not_determined";
+
+export interface PushRegistrationState {
+  sdkReady: boolean;
+  permission: PushPermissionState;
+  canPrompt: boolean;
+  subscriptionIdPresent: boolean;
+  /** Kept in memory and sent only to Mingla's own server. */
+  subscriptionId: string | null;
+  tokenPresent: boolean;
+  optedIn: boolean;
+  externalId: string | null;
+}
+
+const NOT_READY_STATE: PushRegistrationState = {
+  sdkReady: false,
+  permission: "not_determined",
+  canPrompt: false,
+  subscriptionIdPresent: false,
+  subscriptionId: null,
+  tokenPresent: false,
+  optedIn: false,
+  externalId: null,
+};
+
+/**
+ * react-native-onesignal 5.5.15 `OSNotificationPermission`: NotDetermined 0,
+ * Denied 1, Authorized 2, Provisional 3, Ephemeral 4. Android's native bridge
+ * only ever answers 2 (granted) or 1, so "1 while the OS can still ask" is a
+ * device that was never asked.
+ */
+export function mapNativePermission(
+  native: number,
+  canPrompt: boolean,
+): PushPermissionState {
+  if (native === 2 || native === 3 || native === 4) return "granted";
+  if (native === 1) return canPrompt ? "not_determined" : "denied";
+  return "not_determined";
+}
+
+async function settle<T>(read: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await read();
+  } catch (e) {
+    console.warn("[OneSignal] registration read failed:", e);
+    return fallback;
+  }
+}
+
+/** What this device can see about its own push setup. Never throws. */
+export async function readPushRegistrationState(): Promise<PushRegistrationState> {
+  if (!_initialized || OneSignal === null) return { ...NOT_READY_STATE };
+  const sdk = OneSignal;
+  const canPrompt = await settle(
+    () => sdk.Notifications.canRequestPermission(),
+    false,
+  );
+  const native = await settle(
+    () => sdk.Notifications.permissionNative() as Promise<number>,
+    0,
+  );
+  const subscriptionId = await settle(
+    () => sdk.User.pushSubscription.getIdAsync(),
+    null,
+  );
+  const token = await settle(
+    () => sdk.User.pushSubscription.getTokenAsync(),
+    null,
+  );
+  const optedIn = await settle(
+    () => sdk.User.pushSubscription.getOptedInAsync(),
+    false,
+  );
+  const externalId = await settle(() => sdk.User.getExternalId(), null);
+  const id = typeof subscriptionId === "string" && subscriptionId.length > 0
+    ? subscriptionId
+    : null;
+  return {
+    sdkReady: true,
+    permission: mapNativePermission(native, canPrompt),
+    canPrompt,
+    subscriptionIdPresent: id !== null,
+    subscriptionId: id,
+    tokenPresent: typeof token === "string" && token.length > 0,
+    optedIn: optedIn === true,
+    externalId:
+      typeof externalId === "string" && externalId.length > 0
+        ? externalId
+        : null,
+  };
+}
+
+export type PushRepairStep = "relink" | "resubscribe";
+
+const RESUBSCRIBE_PAUSE_MS = 1000;
+
+/**
+ * One repair step. `relink` = login(userId) then optIn(); `resubscribe` =
+ * optOut(), wait 1 s, optIn(), then login(userId). Returns false when the SDK
+ * is not up or a call threw. Never throws.
+ */
+export async function repairPushRegistration(
+  userId: string,
+  step: PushRepairStep,
+): Promise<boolean> {
+  if (!_initialized || OneSignal === null) return false;
+  const sdk = OneSignal;
+  try {
+    switch (step) {
+      case "relink":
+        sdk.login(userId);
+        sdk.User.pushSubscription.optIn();
+        break;
+      case "resubscribe":
+        sdk.User.pushSubscription.optOut();
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, RESUBSCRIBE_PAUSE_MS),
+        );
+        sdk.User.pushSubscription.optIn();
+        sdk.login(userId);
+        break;
+      default: {
+        const unreachable: never = step;
+        return unreachable;
+      }
+    }
+    _loginComplete = true;
+    return true;
+  } catch (e) {
+    console.warn("[OneSignal] repair step failed:", step, e);
+    return false;
   }
 }
 

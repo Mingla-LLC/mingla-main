@@ -104,8 +104,8 @@ import {
   initializeOneSignal,
   onForegroundNotification,
   onNotificationClicked,
-  syncPushPermissionTag,
 } from "../src/services/oneSignalService";
+import { ensurePushRegistrationOnForeground } from "../src/services/pushRegistrationHealth";
 import {
   processBusinessNotification,
   type BusinessNavTarget,
@@ -934,7 +934,7 @@ export default function RootLayout(): React.ReactElement {
   useEffect(() => {
     const handleAppStateChange = (status: AppStateStatus): void => {
       focusManager.setFocused(status === "active");
-      if (status === "active") void syncPushPermissionTag();
+      if (status === "active") void ensurePushRegistrationOnForeground();
 
       const wasBackground = prevAppStateRef.current === "background";
       prevAppStateRef.current = status;
