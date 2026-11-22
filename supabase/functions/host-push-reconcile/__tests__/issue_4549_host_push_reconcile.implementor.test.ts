@@ -599,7 +599,7 @@ Deno.test("#4549 alert adversarial: a failed send is not recorded, so the next r
 const INDEX = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
 const RUN = await Deno.readTextFile(new URL("../run.ts", import.meta.url));
 
-Deno.test("#4549 wiring: service-role only, body never read, delete switch is the off constant", () => {
+Deno.test("#4549 wiring: service-role only, body never read, delete switch is the reviewed constant (on since #4564)", () => {
   assert(INDEX.length > 2_000, "a short read would make every check vacuous");
   assertMatch(
     INDEX,
@@ -611,8 +611,9 @@ Deno.test("#4549 wiring: service-role only, body never read, delete switch is th
     "nothing a caller sends steers a run",
   );
   assertStringIncludes(INDEX, "deleteEnabled: PROVIDER_DELETE_ENABLED");
-  assertEquals(PROVIDER_DELETE_ENABLED, false);
-  assertMatch(RUN, /export const PROVIDER_DELETE_ENABLED = false;/);
+  // #4564 flipped the switch on (was asserted false under #4549).
+  assertEquals(PROVIDER_DELETE_ENABLED, true);
+  assertMatch(RUN, /export const PROVIDER_DELETE_ENABLED = true;/);
   assertMatch(RUN, /const deleteEnabled = deps\.deleteEnabled === true;/);
 });
 
