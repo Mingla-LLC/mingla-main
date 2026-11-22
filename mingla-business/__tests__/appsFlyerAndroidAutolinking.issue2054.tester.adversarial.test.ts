@@ -63,12 +63,8 @@ describe("issue #2054 tester adversarial Android native resolution", () => {
     );
   });
 
-  // #4549 S0: OneSignal is linked on Android again (Host push); RevenueCat
-  // is still intentionally excluded.
-  test("the resolver omits the intentionally excluded Android SDK and links OneSignal", () => {
+  test("the resolver still omits the two intentionally excluded Android SDKs", () => {
+    expect(dependencies["react-native-onesignal"]).toBeUndefined();
     expect(dependencies["react-native-purchases"]).toBeUndefined();
-    expect(
-      dependencies["react-native-onesignal"]?.platforms?.android?.packageImportPath,
-    ).toBe("import com.onesignal.rnonesignalandroid.ReactNativeOneSignalPackage;");
   });
 });

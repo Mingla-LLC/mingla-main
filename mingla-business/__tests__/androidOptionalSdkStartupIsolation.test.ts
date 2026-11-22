@@ -47,15 +47,15 @@ describe("META-ORCH-0972 Sub-B Android optional SDK startup isolation", () => {
     expect(names).toContain("@stripe/stripe-react-native");
   });
 
-  // #4549 S0: OneSignal is no longer excluded (Android hosts got no push SDK
-  // at all). Env-less dev clients stay quiet through the JS env gate and the
-  // config-plugin filter above; RevenueCat stays excluded.
-  it("keeps RevenueCat excluded and OneSignal linked for Android native autolinking", () => {
+  it("keeps unrelated optional install SDKs excluded from Android native autolinking", () => {
     const packageJson = JSON.parse(read("package.json"));
-    const exclude = packageJson.expo?.autolinking?.android?.exclude;
 
-    expect(exclude).toEqual(expect.arrayContaining(["react-native-purchases"]));
-    expect(exclude).not.toContain("react-native-onesignal");
+    expect(packageJson.expo?.autolinking?.android?.exclude).toEqual(
+      expect.arrayContaining([
+        "react-native-onesignal",
+        "react-native-purchases",
+      ]),
+    );
   });
 
   it("keeps optional native startup plugins when their env keys are present", () => {

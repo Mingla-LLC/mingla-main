@@ -53,11 +53,11 @@ describe("issue #2054 Business Android AppsFlyer native linkage", () => {
     expect(businessExclusions).not.toContain("react-native-appsflyer");
   });
 
-  // #4549 S0 removed react-native-onesignal from this list: the exclusion
-  // (META-ORCH-0972, meant for env-less dev clients) shipped Host Android
-  // releases with no push SDK. RevenueCat stays excluded.
   test("unrelated Business Android exclusions remain exact", () => {
-    expect(businessExclusions).toEqual(["react-native-purchases"]);
+    expect(businessExclusions).toEqual([
+      "react-native-onesignal",
+      "react-native-purchases",
+    ]);
   });
 
   test("Consumer remains linked as the known-good control", () => {
