@@ -54,6 +54,8 @@ import {
   DISCARD_TICKET_WORDS,
   conversationRow,
   hashForSelection,
+  inboxLoadErrorText,
+  inboxLookupNotice,
   inboxParamsFromHash,
   needsReplyCount,
   reportedRow,
@@ -108,6 +110,8 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
   const [linkedByConversation, setLinkedByConversation] = useState({});
   const [previews, setPreviews] = useState({});
   const [notice, setNotice] = useState(null);
+  // #4420 rework 3 (G1): names or brands that did not load (never an error).
+  const [lookupNotice, setLookupNotice] = useState(null);
   const [queueLoading, setQueueLoading] = useState(true);
   const [queueError, setQueueError] = useState(null);
   // #4382 (tester P3d): every active conversation loads; resolved and closed load in
@@ -176,6 +180,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
       setStaffRoster((roster || []).filter((row) => row.enabled));
       setProfilesById(lookups.profilesById);
       setBrandsById(lookups.brandsById);
+      setLookupNotice(inboxLookupNotice(lookups.missing));
       void loadLinked(rows);
       // Snippets for the rows the person sees first (the rest show their subject).
       const first = splitInbox(rows.map(conversationRow), { me: myUserId }).open
@@ -189,8 +194,10 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
       }
     } catch (err) {
       if (!mountedRef.current) return;
-      setQueueError(err.message);
-      addToast({ variant: "error", title: "Couldn't load the support inbox", description: err.message });
+      // #4420 rework 3 (G1): a plain sentence with Try again, never a server code.
+      console.warn("[support desk] inbox load failed:", err?.message);
+      setQueueError(inboxLoadErrorText(err));
+      addToast({ variant: "error", title: "Couldn't load the support inbox", description: inboxLoadErrorText(err) });
     } finally {
       if (mountedRef.current) setQueueLoading(false);
     }
@@ -430,7 +437,7 @@ export function SupportDeskPage({ embedded = false, canManageAgents = true, onCo
             loadingOlder={loadingOlder}
             onLoadOlder={() => void loadOlder()}
             filtersActive={filtersActive}
-            notice={notice || (!resolvedOpen && note ? note : null)}
+            notice={notice || lookupNotice || (!resolvedOpen && note ? note : null)}
           />
         </div>
 

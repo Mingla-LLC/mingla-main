@@ -47,6 +47,7 @@ import {
   ticketPrefill,
 } from "../lib/supportInboxModel.js";
 import * as metrics from "../lib/supportTicketMetrics.js";
+import * as inboxModel from "../lib/supportInboxModel.js";
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (rel) => fs.readFileSync(path.join(SRC, rel), "utf8");
@@ -387,5 +388,67 @@ describe("S-11 the third-column Create ticket panel fits a 1280 x 800 window", (
     assert.match(panel, /min-h-0 flex-1 overflow-y-auto/, "the body scrolls inside the panel");
     assert.match(panel, /\n {12}stickyActions\n/);
     assert.match(read("components/ops/TicketForm.jsx"), /stickyActions \? "sticky bottom-0/);
+  });
+});
+
+// G1 (rework 3, P1 on main): a Support teammate who is not a full admin is
+// refused admin_people_lookup; the inbox still loads from the rows and never
+// shows a raw server code. FAILS-ON-REVERT: without inboxLookupsFromResults /
+// inboxLoadErrorText the calls throw; with the old loadInboxLookups (unwrap on
+// the people page) the source assertions fail.
+describe("S-12 the inbox loads when the people lookup is refused", () => {
+  const refused = { data: null, error: { message: "not_authorized", code: "42501" } };
+  const rows = [
+    T({ id: "a", requester_user_id: "u1", brand_id: "b1", subject: "Payout shows zero" }),
+    T({ id: "b", requester_user_id: "u2", requester_segment: "explorer", subject: "Ticket refund", last_sender_kind: "staff" }),
+  ];
+  it("a refused lookup is no enrichment: rows list, labels and titles come from the row", () => {
+    const lookups = inboxModel.inboxLookupsFromResults({ peoplePages: [refused], brands: { data: [{ id: "b1", name: "Lagos Lounge" }], error: null } });
+    assert.deepEqual(lookups.profilesById, {});
+    assert.deepEqual(lookups.missing, ["people"]);
+    const inbox = splitInbox(rows.map(conversationRow), { lookups });
+    assert.equal(inbox.open.length, 2);
+    assert.equal(rowTitle(conversationRow(rows[0]), lookups), "Host · Lagos Lounge");
+    assert.equal(rowTitle(conversationRow(rows[1]), lookups), "Explorer");
+    assert.ok(texts(rows[0]).includes("Host"));
+    assert.ok(texts(rows[1]).includes("Explorer"));
+  });
+  it("a lookup that threw, or a failed brand read, is the same: no throw, nothing invented", () => {
+    const lookups = inboxModel.inboxLookupsFromResults({ peoplePages: [new Error("Failed to fetch")], brands: { data: null, error: { message: "denied" } } });
+    assert.deepEqual(lookups, { profilesById: {}, brandsById: {}, missing: ["people", "brands"] });
+    assert.equal(rowTitle(conversationRow(rows[0]), lookups), "Host");
+  });
+  it("search by person degrades to the fields the row has, with no error", () => {
+    const lookups = inboxModel.inboxLookupsFromResults({ peoplePages: [refused] });
+    assert.deepEqual(splitInbox(rows.map(conversationRow), { search: "refund", lookups }).open.map((r) => r.ticket.id), ["b"]);
+    assert.deepEqual(splitInbox(rows.map(conversationRow), { search: "s-12", lookups }).open.length, 2);
+    assert.deepEqual(splitInbox(rows.map(conversationRow), { search: "ada", lookups }).open, []);
+  });
+  it("a granted lookup still enriches", () => {
+    const lookups = inboxModel.inboxLookupsFromResults({ peoplePages: [{ data: [{ id: "u1", display_name: "Ada" }], error: null }], brands: { data: [], error: null } });
+    assert.equal(rowTitle(conversationRow(rows[0]), lookups), "Ada");
+    assert.deepEqual(lookups.missing, []);
+    assert.equal(inboxModel.inboxLookupNotice([]), null);
+    assert.match(inboxModel.inboxLookupNotice(["people"]), /^Names aren't shown/);
+  });
+  it("the load error text is always a plain sentence, never a server code", () => {
+    const inputs = [new Error("not_authorized"), { message: "permission denied for function", code: "42501" }, new Error("JWT expired"), new Error("Failed to fetch"), new Error("PGRST301 boom"), "weird", null, undefined, {}];
+    const allowed = new Set(Object.values(inboxModel.INBOX_LOAD_ERROR_WORDS));
+    for (const input of inputs) {
+      const out = inboxModel.inboxLoadErrorText(input);
+      assert.ok(allowed.has(out), String(out));
+      assert.doesNotMatch(out, /not_authorized|42501|PGRST|JWT|_/);
+    }
+    assert.equal(inboxModel.inboxLoadErrorText(new Error("not_authorized")), inboxModel.INBOX_LOAD_ERROR_WORDS.access);
+  });
+  it("the service never unwraps the people page, and the page maps every load error", () => {
+    const svc = read("services/supportDeskService.js");
+    const fn = svc.slice(svc.indexOf("export async function loadInboxLookups"), svc.indexOf("/** A ticket's thread"));
+    assert.match(fn, /inboxLookupsFromResults\(\{ peoplePages, brands \}\)/);
+    assert.doesNotMatch(fn, /unwrap\(/);
+    const page = read("pages/SupportDeskPage.jsx");
+    assert.match(page, /setQueueError\(inboxLoadErrorText\(err\)\)/);
+    assert.doesNotMatch(page, /setQueueError\(err\.message\)/);
+    assert.match(page, /setLookupNotice\(inboxLookupNotice\(lookups\.missing\)\)/);
   });
 });

@@ -344,3 +344,57 @@ export function sidePanelFitHeight(top, viewportHeight) {
   const vh = Number.isFinite(viewportHeight) ? viewportHeight : 0;
   return Math.max(SIDE_PANEL_MIN_HEIGHT, Math.floor(vh - t - SIDE_PANEL_BOTTOM_GAP));
 }
+
+/**
+ * #4420 rework 3 (G1): the inbox's name and brand lookups from the answers the
+ * server gave. A refused or failed people lookup (a Support teammate who is
+ * not a full admin is refused it) or brand read is "no enrichment", never a
+ * failed inbox: the rows still list, and their titles and labels fall back to
+ * what the conversation row carries (requester_segment gives Host or
+ * Explorer). `missing` names what did not load, for one plain notice.
+ *
+ * peoplePages: the answers of each people lookup ({ data, error } or an Error
+ * when the call threw); brands: the brand read's answer (same shapes).
+ */
+export function inboxLookupsFromResults({ peoplePages = [], brands = null } = {}) {
+  const failed = (answer) => !answer || answer instanceof Error || Boolean(answer.error);
+  const missing = [];
+  let profilesById = {};
+  if (peoplePages.some(failed)) missing.push("people");
+  else profilesById = Object.fromEntries(peoplePages.flatMap((page) => (Array.isArray(page.data) ? page.data : [])).filter((row) => row?.id).map((row) => [row.id, row]));
+  let brandsById = {};
+  if (brands === null) return { profilesById, brandsById, missing };
+  if (failed(brands)) missing.push("brands");
+  else brandsById = Object.fromEntries((Array.isArray(brands.data) ? brands.data : []).filter((row) => row?.id).map((row) => [row.id, row]));
+  return { profilesById, brandsById, missing };
+}
+
+/** The one plain notice for lookups that did not load, or null. */
+export function inboxLookupNotice(missing = []) {
+  const people = missing.includes("people");
+  const brands = missing.includes("brands");
+  if (people && brands) return "Names and brands aren't shown for your account, so conversations show Host or Explorer. Replies, notes and tickets work as usual.";
+  if (people) return "Names aren't shown for your account, so conversations show Host or Explorer and search covers subjects, numbers and brands. Replies, notes and tickets work as usual.";
+  if (brands) return "Brand names didn't load, so conversations show the person instead. Replies, notes and tickets work as usual.";
+  return null;
+}
+
+/**
+ * #4420 rework 3 (G1): the sentence under "Couldn't load the conversations".
+ * Always one of these plain sentences: a server code (not_authorized, 42501,
+ * PGRST…) is never shown.
+ */
+export const INBOX_LOAD_ERROR_WORDS = Object.freeze({
+  access: "Your account can't open the Support inbox yet. Ask an admin to add you to Support, then try again.",
+  session: "Your sign-in has ended. Sign in again, then try again.",
+  network: "We couldn't reach Mingla. Check your connection, then try again.",
+  other: "Something on our side stopped the conversations loading. Try again in a moment.",
+});
+export function inboxLoadErrorText(err) {
+  const text = String(err?.message ?? err ?? "").toLowerCase();
+  const code = String(err?.code ?? "").toLowerCase();
+  if (/not_authorized|not authorized|permission denied|42501|forbidden|403/.test(`${text} ${code}`)) return INBOX_LOAD_ERROR_WORDS.access;
+  if (/jwt|session|401|sign in/.test(`${text} ${code}`)) return INBOX_LOAD_ERROR_WORDS.session;
+  if (/failed to fetch|network|timeout|timed out|load failed/.test(text)) return INBOX_LOAD_ERROR_WORDS.network;
+  return INBOX_LOAD_ERROR_WORDS.other;
+}

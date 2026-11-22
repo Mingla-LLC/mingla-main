@@ -20,6 +20,7 @@ import {
   DONE_TICKET_STATUSES,
 } from "../lib/supportTicketMetrics";
 import { WEBSITE_TOPIC, readyErrorMessage } from "../lib/websiteRequestModel";
+import { inboxLookupsFromResults } from "../lib/supportInboxModel";
 
 export const SUPPORT_ATTACHMENT_BUCKET = "support-attachments";
 export const SIGNED_URL_SECONDS = 60 * 60;
@@ -210,18 +211,21 @@ export async function markWebsiteRequestReady(ticketId, note) {
  * Profiles (with segment) and every brand name, for the rows and filters.
  * #4226 Phase 2: the segment is the People classifier's (admin_people_lookup),
  * one owner with People and the person record.
+ *
+ * #4420 rework 3 (G1): never throws. The server lets only full admins call
+ * admin_people_lookup, so for a Support teammate it is refused; a refused or
+ * failed lookup is "no enrichment" (see inboxLookupsFromResults), and the
+ * inbox still loads from the conversation rows. `missing` says what is absent.
  */
 export async function loadInboxLookups(userIds) {
-  const [profilePages, brands] = await Promise.all([
-    Promise.all(chunks(userIds).map((ids) => supabase.rpc("admin_people_lookup", { p_user_ids: ids, p_query: null }))),
-    supabase.from("brands").select("id, name").is("deleted_at", null).order("name", { ascending: true }).limit(2000),
+  const settle = (call) => Promise.resolve().then(call).catch((err) => (err instanceof Error ? err : new Error(String(err))));
+  const [peoplePages, brands] = await Promise.all([
+    Promise.all(chunks(userIds).map((ids) => settle(() => supabase.rpc("admin_people_lookup", { p_user_ids: ids, p_query: null })))),
+    settle(() => supabase.from("brands").select("id, name").is("deleted_at", null).order("name", { ascending: true }).limit(2000)),
   ]);
-  const profileRows = profilePages.flatMap((page) => unwrap(page, "Couldn't load people") || []);
-  const brandRows = unwrap(brands, "Couldn't load brands") || [];
-  return {
-    profilesById: Object.fromEntries(profileRows.map((row) => [row.id, row])),
-    brandsById: Object.fromEntries(brandRows.map((row) => [row.id, row])),
-  };
+  const out = inboxLookupsFromResults({ peoplePages, brands });
+  if (out.missing.length) console.warn("[support desk] inbox shown without:", out.missing.join(", "));
+  return out;
 }
 
 /** A ticket's thread with each message's attachments. */
