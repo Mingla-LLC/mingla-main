@@ -8,7 +8,7 @@
 // stores only SHA-256 of the token and checks the same rule again.
 //
 //   get             { subscriptionId, token? } -> the member and what is due
-//   pay             { subscriptionId, token?, idempotencyKey } -> the payment
+//   pay             { subscriptionId, token?, idempotencyKey, channel? } -> the payment
 //                   page for the open month (full amount; a month already
 //                   paid owes nothing: membership_nothing_to_pay)
 //   confirm_return  { subscriptionId, token? } -> asks the provider about the
@@ -179,12 +179,22 @@ function jwtRole(token: string): string | null {
   }
 }
 
-/** The page the member comes back to (no token in it: it stays on the device). */
+/**
+ * The page the member comes back to (no token in it: it stays on the device).
+ * #4490 Explorer W4: `channel: "app"` (the Explorer app's first payment)
+ * returns to the app's payment-return page `/paid/plan/<subscriptionId>`; any
+ * other value, or none, keeps today's address. The origin is always the
+ * server's own; the channel never changes what is charged or who may pay.
+ */
 export function memberReturnUrl(
   env: (name: string) => string | undefined,
   subscriptionId: string,
+  channel?: unknown,
 ): string {
-  return `${resolveVenueVisitOrigin(env)}/visit/plan/${subscriptionId}?paid=1`;
+  const origin = resolveVenueVisitOrigin(env);
+  return channel === "app"
+    ? `${origin}/paid/plan/${subscriptionId}`
+    : `${origin}/visit/plan/${subscriptionId}?paid=1`;
 }
 
 /**
@@ -351,7 +361,7 @@ export function createPayLinkHandler(deps: PayLinkDeps = {}) {
         }
       }
       if (error) return rpcFailure(error);
-      const returnUrl = memberReturnUrl(env, subscriptionId);
+      const returnUrl = memberReturnUrl(env, subscriptionId, body.channel);
       try {
         const session = await (deps.createPaymentSession ??
           createStayPaymentSession)(

@@ -327,6 +327,26 @@ export function resolveReturnOrigin(
   return resolveVenueVisitOrigin(env);
 }
 
+/**
+ * #4490 Explorer W4 — the return address for a `pay`. `channel: "app"` (the
+ * Explorer app's native checkout) returns to the app's payment-return page
+ * `/paid/visit/<groupId>`, which shows no booking data and sends the guest
+ * back to the app; any other value, or none, keeps today's web return. The
+ * origin is always the server's own (`resolveVenueVisitOrigin`): no client
+ * URL is ever accepted, and the channel never changes what is charged or who
+ * may pay.
+ */
+export function offerPayReturnUrl(
+  env: (name: string) => string | undefined,
+  groupId: string,
+  channel: unknown,
+): string {
+  const origin = resolveReturnOrigin(env);
+  return channel === "app"
+    ? `${origin}/paid/visit/${groupId}`
+    : `${origin}/visit/${groupId}?paid=1`;
+}
+
 export function qrPepper(
   env: (name: string) => string | undefined,
 ): string | null {
@@ -1165,7 +1185,7 @@ export function createVenueOffersHandler(deps: VenueOffersDeps = {}) {
         if (earlier === "closed") ({ data: prepared, error } = await prepare());
       }
       if (error) return rpcFailure(error);
-      const callbackUrl = `${resolveReturnOrigin(env)}/visit/${groupId}?paid=1`;
+      const callbackUrl = offerPayReturnUrl(env, groupId, body.channel);
       try {
         const session = await (deps.createPaymentSession ??
           createStayPaymentSession)(
