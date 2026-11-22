@@ -437,5 +437,16 @@
       "rsvp": "Your RSVP"
     }
   },
-  "keyboardDone": "Done"
+  "keyboardDone": "Done",
+  "guestPack": {
+    "title": "Guest pack",
+    "updated": "Updated {{date}}",
+    "open": "Open",
+    "openPdf": "Open PDF",
+    "rowPdfLabel": "{{label}}, PDF",
+    "rowPageLabel": "{{label}}, web page",
+    "offline": "You're offline. Connect to open this link.",
+    "footer": "From the host. Only guests with a ticket see this.",
+    "footerRsvp": "From the host. Only approved guests see this."
+  }
 }

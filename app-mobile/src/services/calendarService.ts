@@ -193,6 +193,8 @@ export interface ConsumerRsvpRow {
     onlineUrl: string | null;
   };
   invitedBy: string | null;
+  /** #4548 — when the RSVP was made (the RPC's `created_at`); drives the Guest pack "Updated" pill. */
+  createdAt?: string | null;
   /** #4473 — shared with this account by a proven contact; read-only. */
   shared?: boolean;
 }
@@ -757,6 +759,7 @@ export class CalendarService {
           onlineUrl: row.online_url ?? null,
         },
         invitedBy: row.invited_by ?? null,
+        createdAt: row.created_at ?? null,
       }),
     );
     // #4473 — RSVPs shared with this account; read-only.
