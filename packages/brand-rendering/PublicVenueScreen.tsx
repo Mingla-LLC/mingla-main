@@ -2739,7 +2739,12 @@ export const PublicVenueScreen = ({
 
   const reserveBarClearance =
     // #4420 D-V2 — the docked basket bar is fixed, not in flow: clear it.
-    orderingOwnsBar && Platform.OS === "web" && !isDesktop
+    // #4490 W3 fix 6 (W3-N41): the Menu pane now stays mounted (hidden) on
+    // other tabs, so its report counts only while Menu is the open tab.
+    orderingOwnsBar &&
+    normalizedReservationUiState.activeTab === "menu" &&
+    Platform.OS === "web" &&
+    !isDesktop
       ? 68 + 12 + insets.bottom + 16
       : showReserveBar && !isDesktop
         ? Platform.OS === "web"

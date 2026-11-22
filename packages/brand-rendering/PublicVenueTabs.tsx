@@ -229,6 +229,15 @@ export const PublicVenueTabs = forwardRef<
         : tabs.includes(uncontrolledActiveTab)
           ? uncontrolledActiveTab
           : "overview";
+  // #4490 W3 fix 6 (W3-N41) — the Menu pane holds the guest's order basket
+  // (items, notes, name). Once opened it stays mounted, hidden, while another
+  // tab shows, so a guest who looks at Private hire or What's on comes back to
+  // the same basket. It goes when the page goes (or the venue loses its menu).
+  // Other panes keep today's rule: only the active one is mounted.
+  const [menuOpened, setMenuOpened] = useState<boolean>(activeTab === "menu");
+  if (activeTab === "menu" && !menuOpened) setMenuOpened(true);
+  const keepMenu =
+    menuOpened && tabs.includes("menu") && menu !== null && menu !== undefined;
   const instanceId = useId();
   const lastInitialViewed = useRef<PublicVenueTab | null>(null);
   const onTabViewedRef = useRef(onTabViewed);
@@ -484,13 +493,30 @@ export const PublicVenueTabs = forwardRef<
               tabIndex={active ? 0 : -1}
               style={[styles.pane, !active && styles.hiddenPanel]}
             >
-              {active ? contentByTab[tab] : null}
+              {active || (tab === "menu" && keepMenu)
+                ? contentByTab[tab]
+                : null}
             </WebVenuePanel>
           );
         })
       ) : (
         <View style={styles.pane}>
-          {contentByTab[activeTab] ?? overview}
+          {activeTab === "menu" && keepMenu
+            ? null
+            : (contentByTab[activeTab] ?? overview)}
+          {keepMenu ? (
+            // One fixed slot, so moving between tabs never remounts the menu.
+            <View
+              testID="issue-4490-menu-pane"
+              style={activeTab === "menu" ? null : styles.hiddenPanel}
+              accessibilityElementsHidden={activeTab !== "menu"}
+              importantForAccessibility={
+                activeTab === "menu" ? "auto" : "no-hide-descendants"
+              }
+            >
+              {menu}
+            </View>
+          ) : null}
         </View>
       )}
     </View>
