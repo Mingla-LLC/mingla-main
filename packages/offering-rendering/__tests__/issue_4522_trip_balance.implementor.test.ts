@@ -5,6 +5,7 @@ import {
   decodeTripBalance,
   parseTripBalanceAmount,
   rebalanceTripPlan,
+  supportsBalancePayments,
   tripBalanceOptions,
 } from "../tripBalance.ts";
 
@@ -159,4 +160,22 @@ Deno.test("#4522 preview mirrors per-package allocation before aggregating buyer
   assertEquals(after.map((row) => row.amountMinor), [10_000, 17_500, 17_500]);
   assertEquals(after.map((row) => row.addonPortionMinor), [0, 1_000, 1_000]);
   assertEquals(after.reduce((sum, row) => sum + row.amountMinor, 0), 45_000);
+});
+
+// issue #4522 (rework N6 / N5) — the plan version and the money being returned.
+Deno.test("#4522 N6 plan version: absent reads as 2, an older plan reads as itself, junk fails closed", () => {
+  assertEquals(decodeTripBalance(balance)?.planVersion, 2);
+  assertEquals(decodeTripBalance({ ...balance, planVersion: 1 })?.planVersion, 1);
+  assertEquals(supportsBalancePayments(decodeTripBalance({ ...balance, planVersion: 1 })!), false);
+  assertEquals(supportsBalancePayments(decodeTripBalance(balance)!), true);
+  assertEquals(decodeTripBalance({ ...balance, planVersion: "2" }), null);
+});
+
+Deno.test("#4522 N5 held and returned overpayment decode as their own fields, never into paid", () => {
+  const decoded = decodeTripBalance({ ...balance, heldCreditMinor: 10_000, overpaymentRefundedMinor: 2_500 });
+  assertEquals(decoded?.heldCreditMinor, 10_000);
+  assertEquals(decoded?.overpaymentRefundedMinor, 2_500);
+  assertEquals(decoded?.paidMinor, 40_000);
+  assertEquals(decodeTripBalance(balance)?.heldCreditMinor, 0);
+  assertEquals(decodeTripBalance({ ...balance, heldCreditMinor: -1 }), null);
 });

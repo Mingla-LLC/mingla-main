@@ -469,6 +469,9 @@ describe.each(THEMES)("#4518 — checkout is readable on %s", (_name, palette) =
               { installmentId: "i2", dueAt: "2027-04-01T00:00:00Z", amountMinor: 60000 },
             ],
             history: [{ installmentId: "deposit", kind: "deposit", status: "collected", amountMinor: 40000 }],
+            planVersion: 2,
+            heldCreditMinor: 0,
+            overpaymentRefundedMinor: 0,
           }}
           busy={false}
           choice="next"
