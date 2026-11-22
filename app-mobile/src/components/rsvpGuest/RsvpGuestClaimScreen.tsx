@@ -245,6 +245,8 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
   const numberPresentation = phoneStepPresentation(
     refusedChannels,
     error ? { message: error, phoneTaken: false } : null,
+    // No call-only refusal is reachable here: the button calls only after a
+    // refused text, so the next refusal is the all-refused state.
     { smsRefused: SMS_REFUSED_TEXT, allRefused: ALL_REFUSED_TEXT },
   );
   const sendChannel = numberPresentation.sendChannel;

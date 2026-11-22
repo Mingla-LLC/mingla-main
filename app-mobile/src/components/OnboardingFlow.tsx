@@ -38,7 +38,7 @@ import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGe
 import { AddressInput, type PlaceDetails } from './location/AddressInput'
 import { sendOtp, verifyOtp, OtpChannel, type SendOtpResult } from '../services/otpService'
 import {
-  otpPickerChannels,
+  codeStepPresentation,
   phoneStepPresentation,
   phoneStepSendChannel,
   refusedForNumber,
@@ -1076,6 +1076,9 @@ const OnboardingFlow = ({
   // route). Refusal messages are never stored: they are derived from
   // refusedSends for the current number (phoneStepPresentation).
   const [phoneErrorKind, setPhoneErrorKind] = useState<'phone_taken' | null>(null)
+  // #4561: the channel just refused from the code screen's picker (an event
+  // marker; it counts only while that channel is refused for this number).
+  const [pickerRefusal, setPickerRefusal] = useState<OtpChannel | null>(null)
   const [otpSaveFailed, setOtpSaveFailed] = useState<string | null>(null)
   const [valuePropBeat, setValuePropBeat] = useState(0)
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'granted' | 'settings' | 'error'>('idle')
@@ -1481,20 +1484,25 @@ const OnboardingFlow = ({
     () => refusedForNumber(refusedSends, buildE164()),
     [refusedSends, buildE164],
   )
+  const refusalMessages = useMemo(() => ({
+    smsRefused: t('onboarding:phone.error_sms_refused'),
+    callRefused: t('onboarding:phone.error_call_refused'),
+    allRefused: t('onboarding:phone.error_all_refused'),
+  }), [t])
   // One owner for the phone step's message, support route and button state.
   const phonePresentation = useMemo(
     () => phoneStepPresentation(
       refusedChannels,
       phoneError ? { message: phoneError, phoneTaken: phoneErrorKind === 'phone_taken' } : null,
-      {
-        smsRefused: t('onboarding:phone.error_sms_refused'),
-        allRefused: t('onboarding:phone.error_all_refused'),
-      },
+      refusalMessages,
     ),
-    [refusedChannels, phoneError, phoneErrorKind, t],
+    [refusedChannels, phoneError, phoneErrorKind, refusalMessages],
   )
-  // The code screen's all-refused state: nothing left in the picker for this number.
-  const allChannelsRefused = otpPickerChannels(refusedChannels).length === 0
+  // ...and for the code screen's refusal line, picker and all-refused state.
+  const codePresentation = useMemo(
+    () => codeStepPresentation(refusedChannels, pickerRefusal, refusalMessages),
+    [refusedChannels, pickerRefusal, refusalMessages],
+  )
   const recordRefusal = useCallback((e164: string, channel: OtpChannel): OtpChannel[] => {
     const prior = refusedForNumber(refusedSends, e164)
     const next = withRefusedChannel(prior, channel)
@@ -1516,21 +1524,19 @@ const OnboardingFlow = ({
     trackSendFailure(result, channel)
     if (result.code === 'channel_unavailable') {
       const refused = recordRefusal(e164, result.channel ?? channel)
-      const allRefused = phoneStepSendChannel(refused) === null
-      const message = allRefused
-        ? t('onboarding:phone.error_all_refused')
-        : t('onboarding:phone.error_sms_refused')
-      // The message itself is derived from the refusal (phonePresentation).
+      // The message itself is derived from the refusal (phonePresentation);
+      // the announcement reads the same derivation, so they always match.
       setPhoneError(null)
       setPhoneErrorKind(null)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-      announceError(message)
+      const message = phoneStepPresentation(refused, null, refusalMessages).error
+      if (message) announceError(message)
       return
     }
     const taken = result.code === 'phone_taken' || !!result.error?.includes('already associated')
     setPhoneError(result.error || "Couldn't send code. Try again.")
     setPhoneErrorKind(taken ? 'phone_taken' : null)
-  }, [trackSendFailure, recordRefusal, t, announceError])
+  }, [trackSendFailure, recordRefusal, refusalMessages, announceError])
   const openSupportEmail = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     Linking.openURL(SUPPORT_MAILTO).catch((err: unknown) => {
@@ -1577,6 +1583,7 @@ const OnboardingFlow = ({
       setActiveChannel(sendChannel)
       setChannelConfirmation(null)
       setShowChannelOptions(false)
+      setPickerRefusal(null)
       setOtpSaveFailed(null)
       setResendCountdown(30)
       setOtpAttempts(0)
@@ -1607,6 +1614,7 @@ const OnboardingFlow = ({
       }
       setActiveChannel(channel)
       setShowChannelOptions(false)
+      setPickerRefusal(null)
       setResendCountdown(30)
       switch (channel) {
         case 'sms':
@@ -1621,26 +1629,20 @@ const OnboardingFlow = ({
       }
     } else {
       trackSendFailure(result, channel)
-      // #4561: a refused channel is remembered for this number. When nothing
-      // is left to offer, the code screen shows the way out (Q-3); otherwise
-      // the phone step offers the channel that can still work (SC-4).
+      // #4561: a channel refused from the picker is remembered for this
+      // number and the person STAYS on the code screen (a code already sent
+      // may still arrive). The line names the refused channel, the picker
+      // hides it, and when nothing is left the way out shows (Q-3). Both
+      // screens derive from `refused`, so Back shows the same truth (P1-1).
       if (result.code === 'channel_unavailable') {
         const refused = recordRefusal(e164, result.channel ?? channel)
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
-        // Both screens derive their all-refused state from `refused`, so Back
-        // from here shows the same message and support route (P1-1).
         setPhoneError(null)
         setPhoneErrorKind(null)
-        if (otpPickerChannels(refused).length === 0) {
-          setShowChannelOptions(false)
-          announceError(t('onboarding:phone.error_all_refused'))
-          return
-        }
-        const message = t('onboarding:phone.error_sms_refused')
-        setOtpCode('')
-        setOtpAttempts(0)
-        announceError(message)
-        goToSubStep('phone')
+        setPickerRefusal(channel)
+        const shown = codeStepPresentation(refused, channel, refusalMessages)
+        setShowChannelOptions(!shown.allRefused)
+        if (shown.message) announceError(shown.message)
         return
       }
       // Phone claimed by another user — navigate back to phone step with error
@@ -1662,7 +1664,7 @@ const OnboardingFlow = ({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error)
       goToSubStep('phone')
     }
-  }, [buildE164, goToSubStep, refusedChannels, trackSendFailure, recordRefusal, t, announceError])
+  }, [buildE164, goToSubStep, refusedChannels, trackSendFailure, recordRefusal, refusalMessages, announceError])
 
   // Thin wrapper for backward compat (auto-resend references)
   const handleResendOtp = useCallback(() => {
@@ -2907,7 +2909,7 @@ const OnboardingFlow = ({
             <Text style={[styles.caption, styles.textCenter]}>{t('onboarding:otp.sending')}</Text>
           ) : (
             <>
-              {allChannelsRefused ? (
+              {codePresentation.allRefused ? (
                 // #4561 Q-3: the last allowed channel was refused from the picker.
                 <View accessibilityLiveRegion="polite">
                   <Text style={styles.errorText} accessibilityRole="alert">
@@ -2926,9 +2928,15 @@ const OnboardingFlow = ({
                 </View>
               ) : showChannelOptions ? (
                 <View style={styles.channelOptions}>
+                  {codePresentation.message ? (
+                    // #4561: the channel just refused, named; never silent.
+                    <Text style={styles.errorText} accessibilityRole="alert" accessibilityLiveRegion="polite">
+                      {codePresentation.message}
+                    </Text>
+                  ) : null}
                   <Text style={styles.channelOptionsLabel}>{t('onboarding:otp.channel_label')}</Text>
                   {/* #4561: a refused channel is never offered again for this number. */}
-                  {otpPickerChannels(refusedChannels).includes('sms') ? (
+                  {codePresentation.pickerChannels.includes('sms') ? (
                     <Pressable
                       style={styles.channelButton}
                       onPress={() => handleResendViaChannel('sms')}
@@ -2939,7 +2947,7 @@ const OnboardingFlow = ({
                       <Text style={styles.channelButtonText}>{t('onboarding:otp.resend_sms')}</Text>
                     </Pressable>
                   ) : null}
-                  {otpPickerChannels(refusedChannels).includes('call') ? (
+                  {codePresentation.pickerChannels.includes('call') ? (
                     <Pressable
                       style={styles.channelButton}
                       onPress={() => handleResendViaChannel('call')}
@@ -2952,7 +2960,7 @@ const OnboardingFlow = ({
                   ) : null}
                 </View>
               ) : null}
-              {otpError && !allChannelsRefused && !otpSaveFailed && (
+              {otpError && !codePresentation.allRefused && !otpSaveFailed && (
                 <Text style={styles.errorText}>
                   {otpAttempts >= 3 ? t('onboarding:otp.error_max_attempts') : t('onboarding:otp.error_wrong_code')}
                 </Text>

@@ -59,6 +59,7 @@
     "terms_and_conditions": "Terms & Conditions",
     "cta_call_me": "Call me with the code",
     "error_sms_refused": "We can't text this number.",
+    "error_call_refused": "We can't call this number.",
     "error_all_refused": "We couldn't reach this number by text or call. Try a different number, or email us and we'll help.",
     "taken_help": "Use a different number, or email us if this number is yours.",
     "email_support": "Email support",

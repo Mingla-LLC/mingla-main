@@ -236,17 +236,41 @@ export interface PhoneStepPresentation {
   showSupport: boolean
 }
 
+/** Copy for each refusal, by channel (callers pass translated strings). */
+export interface RefusalMessages {
+  smsRefused: string
+  /** Optional for older callers; a refused call is then described as nothing. */
+  callRefused?: string
+  allRefused: string
+}
+
+/**
+ * The rule (#4561): a person is never returned to, or left on, a screen by a
+ * refusal without being told which channel failed and what is still possible.
+ * Every refusal message below names the channel that was actually refused.
+ */
+function refusalMessage(
+  refused: readonly OtpDeliveryChannel[],
+  messages: RefusalMessages,
+): string | null {
+  if (phoneStepSendChannel(refused) === null) return messages.allRefused
+  if (refused.includes('sms')) return messages.smsRefused
+  if (refused.includes('call')) return messages.callRefused ?? null
+  return null
+}
+
 /**
  * The phone step's message, support route and button state, all derived from
  * the refusals remembered for the CURRENT number (one owner per truth), so a
  * disabled button can never appear without its reason and its way out, however
  * the person arrived (Back from the code screen, a failed resend, a send).
  * `lastError` is the last non-refusal failure shown (409, 429, 500 and so on).
+ * With text and call both still possible and no error, it shows nothing.
  */
 export function phoneStepPresentation(
   refused: readonly OtpDeliveryChannel[],
   lastError: { message: string; phoneTaken: boolean } | null,
-  messages: { smsRefused: string; allRefused: string },
+  messages: RefusalMessages,
 ): PhoneStepPresentation {
   const sendChannel = phoneStepSendChannel(refused)
   if (sendChannel === null) {
@@ -255,10 +279,37 @@ export function phoneStepPresentation(
   if (lastError !== null) {
     return { sendChannel, error: lastError.message, showSupport: lastError.phoneTaken }
   }
-  if (refused.includes('sms')) {
-    return { sendChannel, error: messages.smsRefused, showSupport: false }
+  return { sendChannel, error: refusalMessage(refused, messages), showSupport: false }
+}
+
+export interface CodeStepPresentation {
+  /** The refusal line on the code screen (also the screen-reader announcement). */
+  message: string | null
+  /** The "try another way" options still allowed for this number. */
+  pickerChannels: OtpDeliveryChannel[]
+  /** Nothing is left: show the message with Email support instead of the picker. */
+  allRefused: boolean
+}
+
+/**
+ * The code screen after a refusal from its own picker. The person stays here
+ * (a code already sent may still arrive), the message names the channel that
+ * was refused, and the picker hides it. `pickerRefusal` is the channel refused
+ * from this screen's picker; it counts only while it is in `refused`.
+ */
+export function codeStepPresentation(
+  refused: readonly OtpDeliveryChannel[],
+  pickerRefusal: OtpDeliveryChannel | null,
+  messages: RefusalMessages,
+): CodeStepPresentation {
+  const pickerChannels = otpPickerChannels(refused)
+  if (pickerChannels.length === 0) {
+    return { message: messages.allRefused, pickerChannels, allRefused: true }
   }
-  return { sendChannel, error: null, showSupport: false }
+  const message = pickerRefusal !== null && refused.includes(pickerRefusal)
+    ? refusalMessage([pickerRefusal], messages)
+    : null
+  return { message, pickerChannels, allRefused: false }
 }
 
 /** The support address shown under every Email support button (#4561 Q-2/Q-8). */
