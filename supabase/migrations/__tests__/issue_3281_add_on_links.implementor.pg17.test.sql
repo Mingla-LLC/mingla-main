@@ -408,7 +408,9 @@ BEGIN
   -- ── Re-emitted bodies read links, never ticket_add_ons.ticket_type_id ───
   FOREACH v_fn IN ARRAY ARRAY[
     'public.issue_3281_price_extras(uuid,jsonb,uuid[],boolean)',
-    'public.issue_3281_public_ticket_extras(uuid)',
+    -- #3281 S2 (20281121053281): issue_3281_public_ticket_extras delegates to
+    -- the one owner of the public item, which is the body that reads links.
+    'public.issue_3281_public_add_on_items(uuid,uuid)',
     'public.issue_3281_attach_public_extras(json)',
     'public.issue_3281_sync_live_tier_extras(uuid,uuid,jsonb,boolean,text[])',
     'public.issue_3281_assert_kept_extras_fit_tier(uuid,boolean,text[])',
@@ -422,6 +424,9 @@ BEGIN
       RAISE EXCEPTION '% must read the links only', v_fn;
     END IF;
   END LOOP;
+  IF position('issue_3281_public_add_on_items' IN pg_get_functiondef('public.issue_3281_public_ticket_extras(uuid)'::regprocedure)) = 0 THEN
+    RAISE EXCEPTION 'issue_3281_public_ticket_extras must read through issue_3281_public_add_on_items';
+  END IF;
   IF position('SECURITY DEFINER' IN pg_get_functiondef('public.issue_3281_add_on_switch(text)'::regprocedure)) = 0
      OR has_function_privilege('authenticated','public.issue_3281_price_extras(uuid,jsonb,uuid[],boolean)','EXECUTE')
      OR NOT has_function_privilege('authenticated','public.business_event_ticket_extras(uuid)','EXECUTE')

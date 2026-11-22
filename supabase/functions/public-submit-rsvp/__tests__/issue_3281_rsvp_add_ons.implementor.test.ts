@@ -62,12 +62,14 @@ Deno.test("#3281 S6 the handler keeps the #4541 call and adds the wrapper only w
   for (const key of ["brandFormStep", "brandForm", "rsvpAddOns", "guests", "ad_context"]) {
     assert(src.includes(`"${key}",`), key);
   }
-  assert(src.includes(
-    'parsedAddOns.addOns === null ? "submit_event_rsvp_with_form" : RSVP_ADD_ONS_RPC',
-  ));
-  assert(src.includes("...(parsedAddOns.addOns === null ? {} : { p_add_ons: parsedAddOns.addOns })"));
-  // One call site, still sending the client header.
-  const call = src.slice(src.indexOf("RSVP_ADD_ONS_RPC, {"));
-  assert(call.slice(0, 900).includes('.setHeader("x-mingla-rsvp-client", inviterClient)'));
+  // Without add-ons: today's call, byte for byte, still with the client header.
+  const plain = src.indexOf('? await admin.rpc("submit_event_rsvp_with_form", rsvpArgs)');
+  assert(plain > 0);
+  assert(src.slice(plain, plain + 160).includes('.setHeader("x-mingla-rsvp-client", inviterClient)'));
+  // With add-ons: the wrapper, the same arguments plus p_add_ons, the same header.
+  const wrapped = src.indexOf(": await admin.rpc(RSVP_ADD_ONS_RPC, { ...rsvpArgs, p_add_ons: parsedAddOns.addOns })");
+  assert(wrapped > plain);
+  assert(src.slice(wrapped, wrapped + 200).includes('.setHeader("x-mingla-rsvp-client", inviterClient)'));
+  assert(src.includes("p_form: parsedBrandForm.form,\n  };"));
   assertEquals(src.split("submit_event_rsvp_with_form").length - 1, 1);
 });

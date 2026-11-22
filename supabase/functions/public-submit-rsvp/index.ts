@@ -451,8 +451,7 @@ export const handler = async (req: Request): Promise<Response> => {
     },
   });
   if (gate !== null) return json(gate.status, gate.body);
-  // #3281 S6 — with add-ons, the wrapper submits this same RSVP first.
-  const { data, error } = await admin.rpc(parsedAddOns.addOns === null ? "submit_event_rsvp_with_form" : RSVP_ADD_ONS_RPC, {
+  const rsvpArgs = {
     p_event_id: eventId,
     p_user_id: userId,
     p_guest_name: guestName.length > 0 ? guestName : null,
@@ -465,8 +464,13 @@ export const handler = async (req: Request): Promise<Response> => {
     p_guest_phone_country_iso: guestPhoneCountryIso,
     p_capable: parsedBrandForm.capable,
     p_form: parsedBrandForm.form,
-    ...(parsedAddOns.addOns === null ? {} : { p_add_ons: parsedAddOns.addOns }),
-  }).setHeader("x-mingla-rsvp-client", inviterClient);
+  };
+  // #3281 S6 — with add-ons, the wrapper submits this same RSVP first.
+  const { data, error } = parsedAddOns.addOns === null
+    ? await admin.rpc("submit_event_rsvp_with_form", rsvpArgs)
+      .setHeader("x-mingla-rsvp-client", inviterClient)
+    : await admin.rpc(RSVP_ADD_ONS_RPC, { ...rsvpArgs, p_add_ons: parsedAddOns.addOns })
+      .setHeader("x-mingla-rsvp-client", inviterClient);
 
   if (error !== null) {
     const addOnRefusal = parsedAddOns.addOns === null ? null : rsvpAddOnRefusal(error);
