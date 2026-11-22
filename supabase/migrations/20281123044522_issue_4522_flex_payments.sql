@@ -1588,9 +1588,14 @@ BEGIN
   IF p_rolled_in_row IS NOT NULL THEN
     SELECT * INTO v_roll FROM public.order_installments WHERE id = p_rolled_in_row AND order_id = p_order_id;
   END IF;
-  v_min := CASE WHEN COALESCE((v_order.payment_plan_terms->>'flex_enabled')::boolean, false)
-                THEN COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, c_unit)
-                ELSE c_unit END;
+  -- #3645 provider floor (issue_3355_provider_minimum_charge_minor, the SQL
+  -- mirror of _shared/money/providerMinimums.ts): a re-spread never splits
+  -- into rows the provider cannot charge (₦100 on Paystack, 50¢ on Stripe).
+  v_min := greatest(
+    CASE WHEN COALESCE((v_order.payment_plan_terms->>'flex_enabled')::boolean, false)
+         THEN COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, c_unit)
+         ELSE c_unit END,
+    COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0));
 
   CREATE TEMP TABLE IF NOT EXISTS pg_temp.i4522_open (
     id uuid, ticket_type_id uuid, due_at timestamptz, amount bigint, addon bigint,
@@ -1795,7 +1800,10 @@ BEGIN
     AND COALESCE((v_order.payment_plan_terms->>'flex_enabled')::boolean, false)
     AND public.issue_4522_plan_v2_enabled()
     AND v_order.cancelled_at IS NULL AND v_event.status <> 'cancelled' AND v_remaining > 0;
-  v_min := least(COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, v_remaining), v_remaining);
+  -- #3645: never below the provider floor (same rule as issue_4522_begin_flex_payment).
+  v_min := least(greatest(COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, v_remaining),
+                          COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0)),
+                 v_remaining);
   SELECT jsonb_build_object(
       'installmentId', min(id::text),
       'dueAt', due_at,
@@ -1992,8 +2000,13 @@ BEGIN
   IF NOT v_flexible AND p_amount_minor NOT IN (v_next_due, v_remaining) THEN
     RAISE EXCEPTION 'plan_not_flexible' USING ERRCODE = 'P0001';
   END IF;
+  -- #3645 (refuse charges below the provider minimum): the smallest flexible
+  -- payment is the host's minimum or the provider floor, whichever is larger,
+  -- capped at the balance (issue_4522_balance quotes the same number).
   v_min := CASE WHEN v_flexible
-    THEN least(COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, 0), v_remaining)
+    THEN least(greatest(COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, 0),
+                        COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0)),
+               v_remaining)
     ELSE 0 END;
   IF p_amount_minor < v_min THEN
     RAISE EXCEPTION 'flex_amount_below_minimum' USING ERRCODE = '22023', DETAIL = v_min::text;

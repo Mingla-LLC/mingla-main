@@ -295,4 +295,37 @@ BEGIN
   END IF;
 END $$;
 
+-- I. #3645 provider floor (issue_3355_provider_minimum_charge_minor): a host
+--    minimum below the provider's (₦1 here, Paystack's is ₦100) never lets a
+--    flexible payment, or a re-spread row, fall under what the provider charges.
+SELECT pg_temp.seed_order('45220005-0000-4000-8000-0000000000b1', true);
+UPDATE public.orders SET payment_plan_terms = payment_plan_terms || '{"min_payment_minor": 100}'
+ WHERE id = '45220005-0000-4000-8000-0000000000b1';
+DO $$
+DECLARE v_balance jsonb; v_raised text;
+BEGIN
+  v_balance := public.issue_4522_balance('45220005-0000-4000-8000-0000000000b1');
+  IF (v_balance->>'minPaymentMinor')::bigint IS DISTINCT FROM 10000 THEN
+    RAISE EXCEPTION 'I-1 the quoted minimum must be the provider floor, not ₦1: %', v_balance->>'minPaymentMinor';
+  END IF;
+  v_raised := pg_temp.raised($q$SELECT public.issue_4522_begin_flex_payment('45220005-0000-4000-8000-0000000000b1',
+       9999, 90000000, 'client-key-floor1', 'pay_link')$q$);
+  IF v_raised IS DISTINCT FROM '22023:flex_amount_below_minimum' THEN
+    RAISE EXCEPTION 'I-2 a payment under the provider floor must be refused before any row, got %', v_raised;
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.order_installments
+              WHERE order_id = '45220005-0000-4000-8000-0000000000b1' AND kind = 'flex') THEN
+    RAISE EXCEPTION 'I-3 a refused payment must leave no flexible row';
+  END IF;
+  -- ₦150 left over three dates: ₦50 rows clear the host's ₦1 minimum but not
+  -- the provider's ₦100, so the re-spread keeps one row (the latest date).
+  PERFORM public.issue_4522_rebalance_order('45220005-0000-4000-8000-0000000000b1', 'host_adjust', NULL, NULL,
+    '[{"ticket_type_id":"45220005-0000-4000-8000-000000000030","net_minor":89985000,"addon_minor":0}]'::jsonb);
+  IF pg_temp.rows('45220005-0000-4000-8000-0000000000b1') IS DISTINCT FROM
+     '2026-12-17:30000000:superseded:v1,2027-01-13:30000000:superseded:v1,2027-02-10:15000:scheduled:v2' THEN
+    RAISE EXCEPTION 'I-4 a re-spread must not split under the provider floor: %',
+      pg_temp.rows('45220005-0000-4000-8000-0000000000b1');
+  END IF;
+END $$;
+
 ROLLBACK;
