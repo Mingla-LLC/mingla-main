@@ -23,7 +23,7 @@ import {
 import { resolveAppCredentials } from "../_shared/push-utils.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { apiHealthAlertRecipients } from "../_shared/secretBundle.ts";
-import type { DeviceRow } from "./logic.ts";
+import { type DeviceRow, MAX_PROVIDER_DELETE_ATTEMPTS } from "./logic.ts";
 import {
   PROVIDER_DELETE_ENABLED,
   type ReconcileState,
@@ -99,20 +99,29 @@ function makeStore(db: LooseClient): ReconcileStore {
       );
     },
     async claimProviderDelete(id, nowIso) {
+      // One claim at a time per record, and at most
+      // MAX_PROVIDER_DELETE_ATTEMPTS claims ever (#4549 P3-4).
       const rows = must(
+        await db.rpc("host_push_claim_provider_delete", {
+          p_id: id,
+          p_max_attempts: MAX_PROVIDER_DELETE_ATTEMPTS,
+        }),
+        "claim_delete",
+      ) as boolean | null;
+      return rows === true;
+    },
+    async releaseProviderDelete(id) {
+      must(
         await db.from("host_push_devices")
           .update({
-            repair_state: "provider_deleted",
-            provider_deleted_at: nowIso,
-            updated_at: nowIso,
+            repair_state: "none",
+            provider_deleted_at: null,
+            updated_at: new Date().toISOString(),
           })
           .eq("id", id)
-          .is("provider_deleted_at", null)
-          .eq("provider_state", "refused_token")
-          .select("id"),
-        "claim_delete",
-      ) as unknown[] | null;
-      return (rows ?? []).length === 1;
+          .eq("repair_state", "provider_deleted"),
+        "release_delete",
+      );
     },
     async deleteRows(ids) {
       must(

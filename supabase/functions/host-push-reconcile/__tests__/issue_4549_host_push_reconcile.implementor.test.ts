@@ -58,17 +58,30 @@ class FakeStore implements ReconcileStore {
     if (row) Object.assign(row, patch);
     return Promise.resolve();
   }
+  attempts = new Map<string, number>();
+  /** Mirrors host_push_claim_provider_delete (tested in pg17). */
   claimProviderDelete(id: string, nowIso: string): Promise<boolean> {
     const row = this.rows.find((r) => r.id === id);
+    const used = this.attempts.get(id) ?? 0;
     if (
-      !row || row.provider_deleted_at !== null ||
-      row.provider_state !== "refused_token"
+      !row || row.repair_state === "provider_deleted" ||
+      row.repair_state === "gave_up" ||
+      row.provider_state !== "refused_token" || used >= 3
     ) {
       return Promise.resolve(false);
     }
+    this.attempts.set(id, used + 1);
     row.repair_state = "provider_deleted";
     row.provider_deleted_at = nowIso;
     return Promise.resolve(true);
+  }
+  releaseProviderDelete(id: string): Promise<void> {
+    const row = this.rows.find((r) => r.id === id);
+    if (row && row.repair_state === "provider_deleted") {
+      row.repair_state = "none";
+      row.provider_deleted_at = null;
+    }
+    return Promise.resolve();
   }
   deleteRows(ids: string[]): Promise<void> {
     this.rows = this.rows.filter((r) => !ids.includes(r.id ?? ""));
@@ -117,6 +130,7 @@ class FakeProvider {
   status = new Map<string, number>(); // per user id override
   throwFor = new Set<string>();
   deleteStatus = 202;
+  identityFor = new Map<string, string>();
   constructor(private clock: { t: number }) {}
   fetch = (url: string, init: { method: string }) => {
     this.calls.push({ method: init.method, url, at: this.clock.t });
@@ -136,7 +150,10 @@ class FakeProvider {
     return Promise.resolve(
       response(
         status,
-        { subscriptions: this.subsByUser.get(user) ?? [] },
+        {
+          identity: { external_id: this.identityFor.get(user) ?? user },
+          subscriptions: this.subsByUser.get(user) ?? [],
+        },
         null,
       ),
     );
@@ -266,26 +283,32 @@ Deno.test("#4549 map adversarial: a code the docs do not settle is unknown, neve
 });
 
 Deno.test("#4549 view response: only iOS and Android push records; errors classified", () => {
-  const ok = classifyViewResponse(200, {
-    subscriptions: [
-      { id: "a", type: "iOSPush", notification_types: 1, test_type: 1 },
-      { id: "b", type: "Email", notification_types: 1 },
-      { id: "c", type: "AndroidPush", notification_types: -6 },
-    ],
-  }, null);
+  const ok = classifyViewResponse(
+    200,
+    {
+      identity: { external_id: "u1" },
+      subscriptions: [
+        { id: "a", type: "iOSPush", notification_types: 1, test_type: 1 },
+        { id: "b", type: "Email", notification_types: 1 },
+        { id: "c", type: "AndroidPush", notification_types: -6 },
+      ],
+    },
+    null,
+    "u1",
+  );
   assertEquals(ok.kind, "ok");
   if (ok.kind === "ok") {
     assertEquals(ok.subscriptions.map((s) => s.id), ["a", "c"]);
   }
-  assertEquals(classifyViewResponse(404, null, null).kind, "not_found");
-  assertEquals(classifyViewResponse(429, null, "7"), {
+  assertEquals(classifyViewResponse(404, null, null, "u1").kind, "not_found");
+  assertEquals(classifyViewResponse(429, null, "7", "u1"), {
     kind: "rate_limited",
     retryAfterSeconds: 7,
   });
-  assertEquals(classifyViewResponse(401, null, null).kind, "auth_error");
-  assertEquals(classifyViewResponse(503, null, null).kind, "unavailable");
+  assertEquals(classifyViewResponse(401, null, null, "u1").kind, "auth_error");
+  assertEquals(classifyViewResponse(503, null, null, "u1").kind, "unavailable");
   assertEquals(
-    classifyViewResponse(200, { nope: 1 }, null).kind,
+    classifyViewResponse(200, { nope: 1 }, null, "u1").kind,
     "unavailable",
   );
   assertEquals(classifyDeleteResponse(202, null).kind, "deleted");
@@ -511,7 +534,7 @@ Deno.test("#4549 pacing: one provider request per second, at most 40 accounts pe
   }
 });
 
-Deno.test("#4549 alert: once for a new set, not again inside 6 h, again on change and after 6 h", async () => {
+Deno.test("#4549 alert: once at the start, not again while it persists, again when a category starts, a reminder after a day", async () => {
   const h = harness();
   h.store.users = ["u1"];
   h.store.names.set("u1", "Lagos Nights");
@@ -534,10 +557,17 @@ Deno.test("#4549 alert: once for a new set, not again inside 6 h, again on chang
     notification_types: -14,
   }]);
   await h.run();
-  assertEquals(h.sent.length, 2, "the set changed: a new email");
+  assertEquals(
+    h.sent.length,
+    2,
+    "a new category (refused) started: a new email",
+  );
   h.clock.t += 7 * HOUR;
   await h.run();
-  assertEquals(h.sent.length, 3, "same set after 6 h: reminded");
+  assertEquals(h.sent.length, 2, "same condition after 7 h: no email");
+  h.clock.t += 18 * HOUR;
+  await h.run();
+  assertEquals(h.sent.length, 3, "same condition after a day: one reminder");
 });
 
 Deno.test("#4549 alert adversarial: a failed send is not recorded, so the next run tries again", async () => {
@@ -594,4 +624,230 @@ Deno.test("#4549 wiring: existing provider key and ops recipient names, no new s
     !/Deno\.env\.get\("(?!SUPABASE_SERVICE_ROLE_KEY")/.test(INDEX + RUN),
     "no other env read",
   );
+});
+
+// ---------------------------------------------------------------------------
+// #4549 rework (QA FAIL 1): P2-1, P2-2, P2-3, P3-1, P3-2, P3-4
+// ---------------------------------------------------------------------------
+Deno.test("#4549 P2-1: twelve accounts aging out one by one over 6 h send one email, not twelve", async () => {
+  const h = harness();
+  const users = Array.from({ length: 12 }, (_, i) => `u${i}`);
+  h.store.users = users;
+  // Each account reported at a different hour, 7 days ago minus i*30 min, so
+  // one ages out of the 7-day window every 30 minutes.
+  h.store.rows = users.map((u, i) =>
+    row({
+      user_id: u,
+      provider_subscription_id: `s-${u}`,
+      last_reported_at: new Date(T0 - 7 * DAY + (i + 1) * 30 * 60_000)
+        .toISOString(),
+    })
+  );
+  for (const u of users) {
+    h.provider.subsByUser.set(u, [{
+      id: `s-${u}`,
+      type: "iOSPush",
+      notification_types: -10,
+    }]);
+  }
+  for (let run = 0; run < 12; run++) {
+    await h.run();
+    h.clock.t += 30 * 60_000;
+  }
+  assertEquals(h.sent.length, 1);
+});
+
+Deno.test("#4549 P2-1: a material worsening mails again; a small rise does not", async () => {
+  const h = harness();
+  h.store.users = ["a", "b", "c", "d", "e"];
+  const refused = (u: string) => {
+    h.store.rows.push(row({ user_id: u, provider_subscription_id: `s-${u}` }));
+    h.provider.subsByUser.set(u, [{
+      id: `s-${u}`,
+      type: "iOSPush",
+      notification_types: -14,
+    }]);
+  };
+  for (const u of ["a", "b", "c", "d", "e"]) {
+    h.provider.subsByUser.set(u, [{
+      id: `s-${u}`,
+      type: "iOSPush",
+      notification_types: 1,
+    }]);
+  }
+  refused("a");
+  await h.run();
+  assertEquals(h.sent.length, 1, "start");
+  refused("b");
+  h.clock.t += HOUR;
+  await h.run();
+  assertEquals(h.sent.length, 1, "1 -> 2 refused is not material (needs +3)");
+  refused("c");
+  refused("d");
+  h.clock.t += HOUR;
+  await h.run();
+  assertEquals(h.sent.length, 2, "1 -> 4 refused: doubled and +3, material");
+});
+
+Deno.test("#4549 P2-2: accounts never answered by the provider are not called unreachable", async () => {
+  const h = harness();
+  h.store.users = ["u1"];
+  h.store.rows = [row({ user_id: "u1", provider_subscription_id: "s1" })]; // unknown, unchecked
+  const summary = await runHostPushReconcile({
+    store: h.store,
+    credentials: { appId: "", restKey: "" },
+    fetch: h.provider.fetch,
+    now: () => h.clock.t,
+    sleep: () => Promise.resolve(),
+    sendAlert: () => {
+      throw new Error("no email may be sent");
+    },
+    recipients: () => ["ops@example.test"],
+    log: () => {},
+  });
+  assertEquals(summary.stopped, "no_credentials");
+  assertEquals(summary.alert, "none");
+});
+
+Deno.test("#4549 P2-2: a stale provider answer (older than 26 h) no longer counts", async () => {
+  const h = harness();
+  h.store.rows = [row({
+    user_id: "u1",
+    provider_subscription_id: "s1",
+    provider_state: "unsubscribed",
+    provider_checked_at: new Date(T0 - 27 * HOUR).toISOString(),
+  })];
+  await h.run(); // no candidates: nothing is re-checked
+  assertEquals(h.sent.length, 0);
+});
+
+Deno.test("#4549 P2-3: a gave_up device the provider shows healthy again returns to repaired and leaves the alert", async () => {
+  const h = harness();
+  h.store.users = ["u1"];
+  h.store.rows = [row({
+    user_id: "u1",
+    provider_subscription_id: "s1",
+    provider_state: "refused_token",
+    repair_state: "gave_up",
+    repair_requests: 3,
+    repair_window_started_at: new Date(T0 - 8 * DAY).toISOString(),
+  })];
+  h.provider.subsByUser.set("u1", [{
+    id: "s1",
+    type: "iOSPush",
+    notification_types: 1,
+  }]);
+  const summary = await h.run();
+  assertEquals(h.store.rows[0].repair_state, "repaired");
+  assertEquals(h.store.rows[0].provider_state, "subscribed");
+  assertEquals(h.sent.length, 0);
+  assertEquals(summary.alert, "none");
+});
+
+Deno.test("#4549 P3-1: a provider that sends headers then stalls the body times out; the run goes on", async () => {
+  const h = harness();
+  h.store.users = ["stall", "u2"];
+  h.store.rows = [row({ user_id: "u2", provider_subscription_id: "s2" })];
+  h.provider.subsByUser.set("u2", [{
+    id: "s2",
+    type: "iOSPush",
+    notification_types: 1,
+  }]);
+  const summary = await runHostPushReconcile({
+    store: h.store,
+    credentials: { appId: "app", restKey: "fake-key" },
+    fetch: (url, init) => {
+      if (url.includes("/external_id/stall")) {
+        return Promise.resolve({
+          status: 200,
+          headers: { get: () => null },
+          json: () => new Promise<unknown>(() => {}), // never settles
+        });
+      }
+      return h.provider.fetch(url, init);
+    },
+    now: () => h.clock.t,
+    sleep: () => Promise.resolve(),
+    requestTimeoutMs: 30,
+    log: () => {},
+  });
+  assertEquals(summary.users_checked, 1);
+  assertEquals(summary.skipped_users, 1);
+  assertEquals(
+    h.store.rows.find((r) => r.user_id === "u2")?.provider_state,
+    "subscribed",
+  );
+});
+
+Deno.test("#4549 P3-1: the run stops at its deadline and says so", async () => {
+  const h = harness();
+  h.store.users = Array.from({ length: 10 }, (_, i) => `u${i}`);
+  const summary = await runHostPushReconcile({
+    store: h.store,
+    credentials: { appId: "app", restKey: "fake-key" },
+    fetch: h.provider.fetch,
+    now: () => h.clock.t,
+    sleep: (ms) => {
+      h.clock.t += ms;
+      return Promise.resolve();
+    },
+    runDeadlineMs: 3_500,
+    log: () => {},
+  });
+  assertEquals(summary.stopped, "deadline");
+  assert(h.provider.calls.length <= 5);
+});
+
+Deno.test("#4549 P3-2: an answer about another user is not evidence; rows stay, a log line says so", async () => {
+  const h = harness();
+  h.store.users = ["u1"];
+  h.store.rows = [
+    row({
+      user_id: "u1",
+      provider_subscription_id: "s1",
+      provider_state: "subscribed",
+    }),
+  ];
+  const before = JSON.stringify(h.store.rows);
+  h.provider.identityFor.set("u1", "someone-else");
+  h.provider.subsByUser.set("u1", []);
+  const summary = await h.run();
+  assertEquals(JSON.stringify(h.store.rows), before);
+  assertEquals(summary.skipped_users, 1);
+  assert(
+    h.logs.some((l) => l.includes('"event":"host_push_identity_mismatch"')),
+  );
+  assert(!h.logs.some((l) => l.includes("someone-else") || l.includes("u1")));
+});
+
+Deno.test("#4549 P3-4: a failed provider delete is released and retried on a later run, at most 3 attempts (switch forced on in the test only)", async () => {
+  const h = harness({ deleteEnabled: true });
+  h.store.users = ["u1"];
+  h.store.rows = [row({
+    user_id: "u1",
+    provider_subscription_id: "bad",
+    provider_state: "refused_token",
+    repair_state: "none",
+    repair_requests: 1,
+    repair_window_started_at: new Date(T0 - 2 * DAY).toISOString(),
+    last_reported_at: new Date(T0 - HOUR).toISOString(),
+  })];
+  h.provider.subsByUser.set("u1", [{
+    id: "bad",
+    type: "iOSPush",
+    notification_types: -14,
+  }]);
+  h.provider.deleteStatus = 500;
+  for (let i = 0; i < 6; i++) {
+    await h.run();
+    h.clock.t += HOUR;
+  }
+  const deletes = h.provider.calls.filter((c) => c.method === "DELETE");
+  assertEquals(deletes.length, 3, "retried, but never more than 3 attempts");
+  assertEquals(h.store.rows[0].repair_state === "provider_deleted", false);
+  h.provider.deleteStatus = 202;
+  h.store.attempts.clear();
+  await h.run();
+  assertEquals(h.provider.calls.filter((c) => c.method === "DELETE").length, 4);
+  assertEquals(h.store.rows[0].repair_state, "provider_deleted");
 });

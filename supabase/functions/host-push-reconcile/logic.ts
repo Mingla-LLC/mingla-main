@@ -68,8 +68,15 @@ export const REPAIR_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const DELETE_AFTER_MS = 24 * 60 * 60 * 1000;
 export const STALE_ROW_MS = 60 * 24 * 60 * 60 * 1000;
 export const ALERT_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
-export const ALERT_REPEAT_MS = 6 * 60 * 60 * 1000;
 export const CROWDED_ACCOUNT_RECORDS = 16;
+/** #4549 P3-1: a whole run stops here, under the platform's wall-clock limit. */
+export const RUN_DEADLINE_MS = 120_000;
+/** #4549 P3-4: provider delete attempts per record (one success at most). */
+export const MAX_PROVIDER_DELETE_ATTEMPTS = 3;
+/** #4549 P2-2: a provider answer older than this no longer counts for the alert. */
+export const ALERT_ANSWER_MAX_AGE_MS = 26 * 60 * 60 * 1000;
+/** #4549 P2-1: while a condition persists, one reminder a day at most. */
+export const ALERT_REMINDER_MS = 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Provider status codes.
@@ -181,6 +188,7 @@ export function classifyViewResponse(
   status: number,
   body: unknown,
   retryAfter: string | null,
+  expectedExternalId: string,
 ): ViewOutcome {
   if (status === 429) {
     return {
@@ -193,6 +201,12 @@ export function classifyViewResponse(
   if (status !== 200) return { kind: "unavailable", reason: `http_${status}` };
   if (typeof body !== "object" || body === null) {
     return { kind: "unavailable", reason: "body_not_object" };
+  }
+  // #4549 P3-2: the answer must be about the account we asked for (View user
+  // returns `identity.external_id`). Anything else is not evidence about it.
+  const identity = (body as { identity?: { external_id?: unknown } }).identity;
+  if (identity?.external_id !== expectedExternalId) {
+    return { kind: "unavailable", reason: "identity_mismatch" };
   }
   const subs = (body as { subscriptions?: unknown }).subscriptions;
   if (!Array.isArray(subs)) {
@@ -271,6 +285,16 @@ export function advanceRepair(
 ): { row: DeviceRow; wantDelete: boolean } {
   const next = { ...row };
   const windowStart = ms(row.repair_window_started_at);
+
+  // #4549 P2-3: a record the provider shows as subscribed again is healthy,
+  // whatever the ladder said before (gave_up included).
+  if (
+    row.provider_state === "subscribed" &&
+    (row.repair_state === "gave_up" || row.repair_state === "requested")
+  ) {
+    next.repair_state = "repaired";
+    return { row: next, wantDelete: false };
+  }
 
   if (row.repair_state === "gave_up") return { row: next, wantDelete: false };
 
@@ -471,8 +495,18 @@ export function computeAlertSet(rows: DeviceRow[], now: number): AlertSet {
   ) {
     const appReported = list.some((r) =>
       r.last_report_reason !== null && recent(r)
+    ); // #4549 P2-2: only an account whose every record has a fresh, real
+    // provider answer can be called unreachable; unchecked or `unknown`
+    // records mean "not yet checked", never "no device the provider accepts".
+    const answered = list.every((r) =>
+      r.provider_state !== "unknown" && r.provider_checked_at !== null &&
+      now - (ms(r.provider_checked_at) ?? 0) <= ALERT_ANSWER_MAX_AGE_MS
     );
-    if (appReported && !list.some((r) => r.provider_state === "subscribed")) {
+
+    if (
+      appReported && answered &&
+      !list.some((r) => r.provider_state === "subscribed")
+    ) {
       const states = [
         ...new Set(list.map((r) => `${r.platform}:${r.provider_state}`)),
       ].sort();
@@ -507,24 +541,81 @@ export function alertSetIsEmpty(set: AlertSet): boolean {
     set.crowded.length === 0;
 }
 
-/** Canonical text of the set; the caller hashes it before storing. */
-export function alertSetKey(set: AlertSet): string {
-  return JSON.stringify(set);
+export interface AlertCounts {
+  unreachable: number;
+  refused: number;
+  crowded: number;
 }
 
-export function shouldSendAlert(
+const CATEGORIES = ["unreachable", "refused", "crowded"] as const;
+
+export function alertCounts(set: AlertSet): AlertCounts {
+  return {
+    unreachable: set.unreachable.length,
+    refused: set.refused.length,
+    crowded: set.crowded.length,
+  };
+}
+
+function parseBaseline(raw: string | null): AlertCounts | null {
+  if (raw === null) return null;
+  try {
+    const v = JSON.parse(raw) as Partial<AlertCounts>;
+    if (CATEGORIES.every((c) => typeof v[c] === "number")) {
+      return v as AlertCounts;
+    }
+  } catch {
+    // A legacy or damaged value is treated as "no alert sent yet".
+  }
+  return null;
+}
+
+export type AlertDecision =
+  | { kind: "send"; reason: "start" | "worse" | "reminder"; baseline: string }
+  | { kind: "clear" }
+  | { kind: "none" };
+
+/**
+ * #4549 P2-1. One email when the condition STARTS (a category goes from none
+ * to some) or MATERIALLY WORSENS (a category's count at least doubles AND
+ * grows by 3 or more since the last email); while it persists, a reminder at
+ * most once a day; membership churn alone never mails. The baseline (counts at
+ * the last email) is stored in host_push_reconcile_state.last_alert_fingerprint
+ * as JSON; when every category is back to zero it is cleared, so a new start
+ * alerts again. No all-clear email.
+ */
+export function decideAlert(
   set: AlertSet,
-  fingerprint: string,
   state: {
     last_alert_fingerprint: string | null;
     last_alert_at: string | null;
   },
   now: number,
-): boolean {
-  if (alertSetIsEmpty(set)) return false;
-  if (state.last_alert_fingerprint !== fingerprint) return true;
+): AlertDecision {
+  const counts = alertCounts(set);
+  const baseline = parseBaseline(state.last_alert_fingerprint);
+  if (alertSetIsEmpty(set)) {
+    return state.last_alert_fingerprint !== null
+      ? { kind: "clear" }
+      : { kind: "none" };
+  }
+  const stored = JSON.stringify(counts);
+  if (baseline === null) {
+    return { kind: "send", reason: "start", baseline: stored };
+  }
+  for (const c of CATEGORIES) {
+    if (baseline[c] === 0 && counts[c] > 0) {
+      return { kind: "send", reason: "start", baseline: stored };
+    }
+    if (counts[c] >= 2 * baseline[c] && counts[c] - baseline[c] >= 3) {
+      return { kind: "send", reason: "worse", baseline: stored };
+    }
+  }
   const last = ms(state.last_alert_at);
-  return last === null || now - last >= ALERT_REPEAT_MS;
+  if (last === null || now - last >= ALERT_REMINDER_MS) {
+    return { kind: "send", reason: "reminder", baseline: stored };
+  }
+  return { kind: "none" };
 }
 
 export function alertParagraphs(

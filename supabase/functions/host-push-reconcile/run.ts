@@ -10,11 +10,11 @@ import {
   alertParagraphs,
   type AlertSet,
   alertSetIsEmpty,
-  alertSetKey,
   changedColumns,
   classifyDeleteResponse,
   classifyViewResponse,
   computeAlertSet,
+  decideAlert,
   type DeviceRow,
   isStaleRow,
   MAX_CONSECUTIVE_UNAVAILABLE,
@@ -22,7 +22,7 @@ import {
   planUserReconcile,
   PROVIDER_MIN_INTERVAL_MS,
   PROVIDER_TIMEOUT_MS,
-  shouldSendAlert,
+  RUN_DEADLINE_MS,
 } from "./logic.ts";
 
 /**
@@ -46,6 +46,8 @@ export interface ReconcileStore {
   updateRow(id: string, patch: Record<string, unknown>): Promise<void>;
   /** Mark a row provider_deleted only if it was never deleted; true when this run won the claim. */
   claimProviderDelete(id: string, nowIso: string): Promise<boolean>;
+  /** #4549 P3-4: undo a claim whose provider call failed (optional for fakes). */
+  releaseProviderDelete?(id: string): Promise<void>;
   deleteRows(ids: string[]): Promise<void>;
   allRows(): Promise<DeviceRow[]>;
   displayNames(userIds: string[]): Promise<Map<string, string>>;
@@ -88,6 +90,10 @@ export interface ReconcileDeps {
   recipients?: () => string[];
   hash?: (text: string) => Promise<string>;
   deleteEnabled?: boolean;
+  /** Per provider request, headers and body together (default 5 s). */
+  requestTimeoutMs?: number;
+  /** Whole run (default 120 s, under the platform's wall-clock limit). */
+  runDeadlineMs?: number;
   log?: (line: string) => void;
 }
 
@@ -106,18 +112,9 @@ export interface ReconcileSummary {
     | "backoff"
     | "rate_limited"
     | "auth_error"
-    | "provider_unavailable";
-  alert: "none" | "sent" | "unchanged" | "send_failed";
-}
-
-async function defaultHash(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(text),
-  );
-  return Array.from(new Uint8Array(digest)).map((b) =>
-    b.toString(16).padStart(2, "0")
-  ).join("");
+    | "provider_unavailable"
+    | "deadline";
+  alert: "none" | "sent" | "unchanged" | "send_failed" | "cleared";
 }
 
 export async function runHostPushReconcile(
@@ -148,26 +145,52 @@ export async function runHostPushReconcile(
 
   // --- Pacing: never more than one provider call per PROVIDER_MIN_INTERVAL_MS.
   let lastCallAt = Number.NEGATIVE_INFINITY;
-  const paced = async (url: string, method: "GET" | "DELETE") => {
+  // #4549 P3-1: one deadline covers the headers AND the body. A provider that
+  // sends headers and then stalls the body is aborted like any other timeout.
+  const requestTimeoutMs = deps.requestTimeoutMs ?? PROVIDER_TIMEOUT_MS;
+  const paced = async (
+    url: string,
+    method: "GET" | "DELETE",
+  ): Promise<{ status: number; retryAfter: string | null; body: unknown }> => {
     const wait = lastCallAt + PROVIDER_MIN_INTERVAL_MS - now();
     if (wait > 0) await sleep(wait);
     lastCallAt = now();
     summary.provider_calls += 1;
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new DOMException("provider request timed out", "TimeoutError"));
+      }, requestTimeoutMs);
+    });
     try {
-      return await deps.fetch(url, {
-        method,
-        headers: {
-          Authorization: `Key ${credentials.restKey}`,
-          Accept: "application/json",
-        },
-        signal: controller.signal,
-      });
+      return await Promise.race([
+        (async () => {
+          const res = await deps.fetch(url, {
+            method,
+            headers: {
+              Authorization: `Key ${credentials.restKey}`,
+              Accept: "application/json",
+            },
+            signal: controller.signal,
+          });
+          const body = res.status === 200
+            ? await res.json().catch(() => null)
+            : null;
+          return {
+            status: res.status,
+            retryAfter: res.headers.get("retry-after"),
+            body,
+          };
+        })(),
+        deadline,
+      ]);
     } finally {
       clearTimeout(timer);
     }
   };
+  const runDeadlineMs = deps.runDeadlineMs ?? RUN_DEADLINE_MS;
 
   const backoffUntil = state.provider_backoff_until
     ? Date.parse(state.provider_backoff_until)
@@ -200,19 +223,22 @@ export async function runHostPushReconcile(
       summary.skipped_users += 1;
       continue;
     }
+    if (now() - startedAt >= runDeadlineMs) {
+      await stopFor("deadline");
+      summary.skipped_users += 1;
+      continue;
+    }
     let outcome;
     try {
       const res = await paced(
         `${appPath}/users/by/external_id/${encodeURIComponent(userId)}`,
         "GET",
       );
-      const body = res.status === 200
-        ? await res.json().catch(() => null)
-        : null;
       outcome = classifyViewResponse(
         res.status,
-        body,
-        res.headers.get("retry-after"),
+        res.body,
+        res.retryAfter,
+        userId,
       );
     } catch (err) {
       outcome = {
@@ -232,6 +258,9 @@ export async function runHostPushReconcile(
     }
     if (outcome.kind === "unavailable") {
       // Absence of evidence: this account's rows stay exactly as they were.
+      if (outcome.reason === "identity_mismatch") {
+        log(JSON.stringify({ event: "host_push_identity_mismatch" }));
+      }
       summary.skipped_users += 1;
       consecutiveUnavailable += 1;
       if (consecutiveUnavailable >= MAX_CONSECUTIVE_UNAVAILABLE) {
@@ -285,20 +314,24 @@ export async function runHostPushReconcile(
           `${appPath}/subscriptions/${encodeURIComponent(subId)}`,
           "DELETE",
         );
-        const result = classifyDeleteResponse(
-          res.status,
-          res.headers.get("retry-after"),
-        );
+        const result = classifyDeleteResponse(res.status, res.retryAfter);
         if (result.kind === "deleted") summary.provider_deletes += 1;
-        else if (result.kind === "rate_limited") {
-          await stopFor("rate_limited", result.retryAfterSeconds);
-        } else {log(
-            JSON.stringify({
+        else {
+          // #4549 P3-4: the provider still has the record, so the claim is
+          // released and a later run may try again; attempts are capped
+          // (MAX_PROVIDER_DELETE_ATTEMPTS) and the 7-day give-up still holds.
+          await store.releaseProviderDelete?.(prior.id);
+          if (result.kind === "rate_limited") {
+            await stopFor("rate_limited", result.retryAfterSeconds);
+          } else {
+            log(JSON.stringify({
               event: "host_push_provider_delete_failed",
               reason: result.reason,
-            }),
-          );}
+            }));
+          }
+        }
       } catch (err) {
+        await store.releaseProviderDelete?.(prior.id);
         log(JSON.stringify({
           event: "host_push_provider_delete_failed",
           reason: err instanceof Error ? err.name : "transport_error",
@@ -321,40 +354,47 @@ export async function runHostPushReconcile(
     rows.filter((r) => !staleSet.has(r.id ?? "")),
     now(),
   );
-  if (!alertSetIsEmpty(set)) {
-    const fingerprint = await (deps.hash ?? defaultHash)(alertSetKey(set));
-    if (shouldSendAlert(set, fingerprint, state, now())) {
-      const ids = [
-        ...new Set([
-          ...set.unreachable.map((u) => u.user_id),
-          ...set.refused.map((u) => u.user_id),
-          ...set.crowded.map((u) => u.user_id),
-        ]),
-      ];
-      const names = await store.displayNames(ids);
-      const send = deps.sendAlert;
-      const result = send
-        ? await send({
-          subject: "Host push: accounts the Host app cannot reach",
-          paragraphs: alertParagraphs(set, names),
-          recipients: deps.recipients ? deps.recipients() : [],
-          idempotencyKey: `host-push-reconcile:${fingerprint}:${
-            Math.floor(now() / 3_600_000)
-          }`,
-        })
-        : { succeeded: 0, attempted: 0 };
-      if (result.succeeded > 0) {
-        await store.writeState({
-          last_alert_fingerprint: fingerprint,
-          last_alert_at: new Date(now()).toISOString(),
-        });
-        summary.alert = "sent";
-      } else {
-        summary.alert = "send_failed";
-      }
+  const decision = decideAlert(set, state, now());
+  if (decision.kind === "send") {
+    const ids = [
+      ...new Set([
+        ...set.unreachable.map((u) => u.user_id),
+        ...set.refused.map((u) => u.user_id),
+        ...set.crowded.map((u) => u.user_id),
+      ]),
+    ];
+    const names = await store.displayNames(ids);
+    const send = deps.sendAlert;
+    const result = send
+      ? await send({
+        subject: decision.reason === "reminder"
+          ? "Host push: accounts the Host app still cannot reach"
+          : "Host push: accounts the Host app cannot reach",
+        paragraphs: alertParagraphs(set, names),
+        recipients: deps.recipients ? deps.recipients() : [],
+        idempotencyKey: `host-push-reconcile:${decision.reason}:${
+          Math.floor(now() / 3_600_000)
+        }`,
+      })
+      : { succeeded: 0, attempted: 0 };
+    if (result.succeeded > 0) {
+      await store.writeState({
+        last_alert_fingerprint: decision.baseline,
+        last_alert_at: new Date(now()).toISOString(),
+      });
+      summary.alert = "sent";
     } else {
-      summary.alert = "unchanged";
+      summary.alert = "send_failed";
     }
+  } else if (decision.kind === "clear") {
+    // The condition ended: forget the baseline so a new start alerts again.
+    await store.writeState({
+      last_alert_fingerprint: null,
+      last_alert_at: null,
+    });
+    summary.alert = "cleared";
+  } else if (!alertSetIsEmpty(set)) {
+    summary.alert = "unchanged";
   }
 
   // One line per run, counts only (no account ids).

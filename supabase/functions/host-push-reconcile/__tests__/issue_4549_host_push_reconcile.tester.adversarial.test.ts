@@ -146,6 +146,18 @@ function seed(
   };
 }
 
+// #4549 rework P3-2: View user answers carry `identity.external_id` (the
+// provider docs) and the reconciler now requires it to match the account it
+// asked about, so the fake provider sends it the way the real one does. A
+// body that already has an `identity` is left exactly as the case wrote it.
+function withIdentity(body: unknown, user: string): unknown {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return body;
+  }
+  if ("identity" in body) return body;
+  return { identity: { external_id: user }, ...body };
+}
+
 function rig(reply: (user: string, method: string) => Reply) {
   const clock = { t: T0 };
   const store = new Store();
@@ -177,7 +189,7 @@ function rig(reply: (user: string, method: string) => Reply) {
         json: () =>
           r.jsonThrows
             ? Promise.reject(new SyntaxError("Unexpected token <"))
-            : Promise.resolve(r.body),
+            : Promise.resolve(withIdentity(r.body, user)),
       });
     },
     now: () => clock.t,
