@@ -107,8 +107,10 @@ describe('#4490 W3 fix 1 — the Buy hand-off opens this build\'s buyer web (W3-
     expect(seam).toMatch(/deps: VenueOfferHandoffDeps = BUILD_HANDOFF_DEPS/);
     const pane = read('../VenueOfferPane.tsx');
     expect(pane).toMatch(/const opened = openVenueOfferCheckout\(/);
-    expect(pane).toMatch(/setHandoffFailed\(!opened\)/);
-    expect(pane).toMatch(/handoffFailed \?[\s\S]*PANE_COPY\.error/);
+    // [TEST-MOD-APPROVED #4490] W3 fix 3 (W3-N23): the failure is held per
+    // row (the row that raised it), not one pane-wide flag.
+    expect(pane).toMatch(/setHandoffFailedRowId\(opened \? null : row\.id\)/);
+    expect(pane).toMatch(/handoffFailedRowId === row\.id \?[\s\S]*PANE_COPY\.error/);
   });
 });
 

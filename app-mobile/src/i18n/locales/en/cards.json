@@ -240,7 +240,7 @@
   "sheet.ask_date": "Ask about a date",
   "sheet.book_date": "Book a date",
   "sheet.join": "Join",
-  "sheet.book_room": "Book a room",
+  "sheet.book": "Book",
   "sheet.reserve_stay": "Reserve this Stay",
   "sheet.open_venue_a11y": "{{label}} at {{name}}",
   "sheet.ways_to_come": "Ways to come",

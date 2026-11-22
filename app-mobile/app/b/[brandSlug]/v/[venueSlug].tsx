@@ -624,6 +624,10 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     ): React.ReactNode =>
       venue === null || typeof brandSlug !== "string" || typeof venueSlug !== "string" ? null : (
         <VenuePaneBoundary
+          // W3 fix 3 (W3-N23): one pane instance per tab. The shared page
+          // mounts each tab's body in the same slot, so without a key a
+          // refused hand-off on Entry stayed on Groups and Private hire.
+          key={`venue-pane-${kind}`}
           textColor={context.palette.secondaryText}
           borderColor={context.palette.panelBorder}
           onError={(error) => handleExplorerError(`offer-pane-${kind}`, error)}

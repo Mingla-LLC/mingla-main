@@ -96,8 +96,10 @@ export function VenueOfferPane({
   );
   const status = paneStatus(rows, availability.reads);
   // The hand-off could not open (this build has no buyer web for its backend):
-  // said on the pane, never a silent dead tap.
-  const [handoffFailed, setHandoffFailed] = useState(false);
+  // said under the offer that raised it, never a silent dead tap. W3 fix 3
+  // (W3-N23): scoped to that row of this pane; the route keys each pane by its
+  // kind, so another tab starts clean, and the next tap clears it.
+  const [handoffFailedRowId, setHandoffFailedRowId] = useState<string | null>(null);
 
   const book = useCallback(
     (row: VenuePaneRow): void => {
@@ -115,7 +117,7 @@ export function VenueOfferPane({
         { brandSlug, venueSlug, tab: PANE_TAB[kind], offerId: row.id },
         openInMingla,
       );
-      setHandoffFailed(!opened);
+      setHandoffFailedRowId(opened ? null : row.id);
     },
     [brandSlug, kind, mode, openInMingla, venueId, venueSlug],
   );
@@ -169,14 +171,9 @@ export function VenueOfferPane({
           </Pressable>
         </View>
       ) : null}
-      {handoffFailed ? (
-        <Text style={[styles.stateLine, { color: palette.secondaryText }]} testID={`venue-pane-${kind}-handoff-error`}>
-          {PANE_COPY.error}
-        </Text>
-      ) : null}
       {rows.map((row) => (
+        <React.Fragment key={row.id}>
         <View
-          key={row.id}
           style={[styles.row, { borderColor: palette.panelBorder, backgroundColor: palette.card }]}
           testID={`venue-pane-row-${row.id}`}
         >
@@ -227,6 +224,16 @@ export function VenueOfferPane({
             )}
           </Pressable>
         </View>
+        {handoffFailedRowId === row.id ? (
+          <Text
+            style={[styles.stateLine, { color: palette.secondaryText }]}
+            testID={`venue-pane-${kind}-handoff-error`}
+            accessibilityLiveRegion="polite"
+          >
+            {PANE_COPY.error}
+          </Text>
+        ) : null}
+        </React.Fragment>
       ))}
     </View>
   );

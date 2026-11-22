@@ -37,7 +37,7 @@ import {
   type VenueLeadKind,
   type VenueOfferKind,
 } from "./venueFeaturePage";
-import { isIanaZoneName } from "./venueOpenState";
+import { isIanaZoneName, venueWallClock } from "./venueOpenState";
 import type { PublicVenueTab } from "./publicVenueTabState";
 
 /** `priceFrom` per feature, in minor units; null = no live price. */
@@ -288,25 +288,12 @@ export function deckVenueOfferChip(
 }
 
 function zonedParts(at: Date, timeZone: string): { date: string; hour: number; minute: number } | null {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(at);
-    const get = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
-    const hour = Number(get("hour") === "24" ? "0" : get("hour"));
-    const minute = Number(get("minute"));
-    const date = `${get("year")}-${get("month")}-${get("day")}`;
-    if (!Number.isInteger(hour) || !Number.isInteger(minute) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-    return { date, hour, minute };
-  } catch {
-    return null;
-  }
+  // W3 fix 3 (W3-N21): one `format()` string (venueWallClock), never
+  // `formatToParts`, which Hermes on iOS can mistype.
+  const clock = venueWallClock(at, timeZone);
+  if (clock === null) return null;
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return { date: `${clock.year}-${pad(clock.month)}-${pad(clock.day)}`, hour: clock.hour, minute: clock.minute };
 }
 
 /**

@@ -283,8 +283,10 @@ describe("lead precedence and the other rows", () => {
     const hour = view(["by_the_hour"], {
       offers: [offer({ kind: "by_the_hour", name: "Room", fromMinor: naira(2000), unit: "hour" })],
     });
+    // [TEST-MOD-APPROVED #4490] W3 fix 3 (W3-N27): a pool table or a desk is
+    // not "a room": the by-the-hour verb is the pane's own "Book".
     expect(deriveVenuePage(hour, ctx({ menuTabVisible: false })).lead).toMatchObject({
-      ctaLabel: "Book a room",
+      ctaLabel: "Book",
       row: { value: "From ₦2,000 an hour", actionLabel: "Book" },
     });
     const plans = view(["memberships"], { memberships: { fromMinor: naira(30000), interval: "month" } });

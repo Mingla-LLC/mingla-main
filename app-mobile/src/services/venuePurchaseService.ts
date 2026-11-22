@@ -17,6 +17,8 @@ import {
   type GuestChangeSummary,
 } from "@mingla/brand-rendering/venueOffers/packageModel";
 
+import { onlineManager } from "@tanstack/react-query";
+
 import { supabase } from "./supabase";
 import {
   parseVenueBooking,
@@ -47,13 +49,35 @@ const randomId = (): string => {
 /** One idempotency key per user action (a retry of the same tap reuses it). */
 export const venueActionKey = (scope: string): string => `venue-app:${scope}:${randomId()}`;
 
-async function invoke(fn: Fn, body: Record<string, unknown>): Promise<unknown> {
-  const { data, error } = await supabase.functions.invoke(fn, { body });
+/**
+ * #4490 W3 fix 3 (W3-N25): a request that got no answer is "offline" only
+ * when the phone itself is offline (the app's one connectivity signal:
+ * React Query's onlineManager, fed by NetInfo in config/queryClient). Online,
+ * it is the server that did not answer ("venue_unreachable"), which a screen
+ * words as its plain load-failure line, never "You're offline".
+ */
+export function venueNoAnswerCode(isOnline: boolean): "offline" | "venue_unreachable" {
+  return isOnline ? "venue_unreachable" : "offline";
+}
+
+/** A read the page waits on gives up after this long (W3-N25: was ~60 s). */
+export const VENUE_READ_TIMEOUT_MS = 10_000;
+
+async function invoke(
+  fn: Fn,
+  body: Record<string, unknown>,
+  options: { timeoutMs?: number } = {},
+): Promise<unknown> {
+  const { data, error } = await supabase.functions.invoke(fn, {
+    body,
+    ...(options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs }),
+  });
   if (error) {
-    // #4490 Explorer W3: a request that never reached the server (no network)
-    // is named, so a screen can say "You're offline" instead of a generic line.
+    // #4490 Explorer W3: a request that never got an answer (no network, the
+    // server down, or the read timed out) is named, so a screen can say
+    // "You're offline" only when the phone is (W3 fix 3, W3-N25).
     if ((error as { name?: unknown }).name === "FunctionsFetchError") {
-      throw new VenuePurchaseError("offline");
+      throw new VenuePurchaseError(venueNoAnswerCode(onlineManager.isOnline()));
     }
     let code = "venue_request_failed";
     const context = (error as { context?: Response }).context;
@@ -161,10 +185,14 @@ export async function getVenueOfferAvailability(input: {
   from: string;
   to: string;
 }): Promise<unknown> {
-  return invoke("venue-offers", {
-    action: "availability",
-    offeringId: input.offeringId,
-    from: input.from,
-    to: input.to,
-  });
+  return invoke(
+    "venue-offers",
+    {
+      action: "availability",
+      offeringId: input.offeringId,
+      from: input.from,
+      to: input.to,
+    },
+    { timeoutMs: VENUE_READ_TIMEOUT_MS },
+  );
 }

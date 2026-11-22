@@ -44,7 +44,7 @@ export const DECK_CTA_LABEL_KEYS: Readonly<Record<string, string>> = {
   "Ask about a date": "sheet.ask_date",
   "Book a date": "sheet.book_date",
   "Join": "sheet.join",
-  "Book a room": "sheet.book_room",
+  "Book": "sheet.book",
   "Reserve this Stay": "sheet.reserve_stay",
 };
 

@@ -73,6 +73,7 @@ import { OFFERING_PREMIUM_HEADER_ROW } from "./offeringFrameMetrics";
 import {
   OfferingGlassBackdrop,
   glassBlurActive,
+  glassFillAlpha,
   useOfferingGlass,
 } from "./OfferingGlassContext";
 import {
@@ -653,12 +654,23 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             // Phone web is fully opaque (issue #4420 audit): at 0.9 the
             // section heading and steppers scrolling under it ghosted through
             // beside the title (same rule as glassFillAlpha).
+            // #4490 W3 fix 3 (W3-N26): native follows the one glass rule
+            // (glassFillAlpha: Android always opaque, spec 06 §8; iOS opaque
+            // unless a blur sits behind it). At 0.93 / 0.97 with no blur the
+            // venue page's "Closed now / Opens 12:00" and price lines read
+            // through the header beside the title at 375 pt.
             backgroundColor: palette.page.startsWith("#")
               ? hexToRgba(
                   palette.page,
-                  headerBlurred
-                    ? 0.72
-                    : Platform.OS === "web" ? (isDesktop ? 0.78 : 1) : Platform.OS === "android" ? 0.97 : 0.93,
+                  Platform.OS === "web"
+                    ? headerBlurred
+                      ? 0.72
+                      : isDesktop ? 0.78 : 1
+                    : glassFillAlpha({
+                        platform: Platform.OS,
+                        blurred: headerBlurred,
+                        desktopWeb: false,
+                      }),
                 )
               : palette.page,
           },

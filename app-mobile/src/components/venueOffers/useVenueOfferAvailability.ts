@@ -43,7 +43,12 @@ export function useVenueOfferAvailability(
           window.from,
         ),
       staleTime: 60 * 1000,
-      retry: 1,
+      // W3 fix 3 (W3-N25): a read that timed out or got no answer while the
+      // phone is online is not retried behind a spinner: the pane says so at
+      // once and "Try again" asks again.
+      retry: (failureCount: number, error: unknown) =>
+        failureCount < 1 &&
+        !(error instanceof VenuePurchaseError && (error.code === "venue_unreachable" || error.code === "offline")),
     })),
   });
   const stamp = results.map((r) => `${r.status}:${r.dataUpdatedAt}:${r.errorUpdatedAt}`).join("|");

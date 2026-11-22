@@ -34,3 +34,27 @@ export function leaveSheetTo(
   handlers.closeSheet();
   leaveDeckTo(path, handlers);
 }
+
+/** The part of React Native's `Linking` this needs (a fake in tests). */
+export interface IncomingLinkSource {
+  addEventListener(
+    type: 'url',
+    handler: (event: { url: string }) => void,
+  ): { remove: () => void };
+}
+
+/**
+ * #4490 W3 fix 3 (W3-N29) — a link opened while the card sheet is up (a
+ * venue link from a message, a QR scan) routes to its page; the sheet is a
+ * full-screen RN Modal, so the page landed UNDER it. While the sheet is
+ * visible, an incoming link closes it first. Returns the unsubscribe.
+ */
+export function closeSheetOnIncomingLink(
+  source: IncomingLinkSource,
+  closeSheet: () => void,
+): () => void {
+  const subscription = source.addEventListener('url', (event) => {
+    if (typeof event?.url === 'string' && event.url.length > 0) closeSheet();
+  });
+  return () => subscription.remove();
+}

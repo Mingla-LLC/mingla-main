@@ -215,31 +215,19 @@ export function paneStatus(
   return "ready";
 }
 
-/** The bar's button for a pane: the lead verbs the deck and the page already use. */
+/**
+ * The bar's button for a pane: the ACTIVE tab's own verb, handed in by the
+ * shared page (`deriveVenuePage` → `tabVerbs`, one owner for buyer web and
+ * the app). W3 fix 3 (W3-N22/N27): this pane no longer keeps its own list
+ * (it said "Book a room" for a pool table).
+ */
 export function paneBarLabel(
-  kind: VenuePaneKind,
-  rows: readonly VenuePaneRow[],
-  offers: readonly VenueFeatureOfferView[],
-  entryVerb: string,
+  _kind: VenuePaneKind,
+  _rows: readonly VenuePaneRow[],
+  _offers: readonly VenueFeatureOfferView[],
+  tabVerb: string,
 ): string {
-  switch (kind) {
-    case "entry":
-      return entryVerb;
-    case "groups":
-      return "Book for a group";
-    case "hire":
-      return offers.some((o) => o.kind === "private_hire" && o.confirmationMode === "request" && rows.some((r) => r.id === o.id))
-        ? "Ask about a date"
-        : "Book a date";
-    case "by_the_hour":
-      return "Book a room";
-    case "plans":
-      return "Join";
-    default: {
-      const never: never = kind;
-      return never;
-    }
-  }
+  return tabVerb;
 }
 
 /**
@@ -251,7 +239,7 @@ export function paneBar(
   kind: VenuePaneKind,
   rows: readonly VenuePaneRow[],
   offers: readonly VenueFeatureOfferView[],
-  entryVerb: string,
+  tabVerb: string,
 ): { title: string; subtitle: string; ctaLabel: string; enabled: boolean; rowId: string } | null {
   const open = rows.filter((r) => !r.soldOut);
   if (open.length === 0) return null;
@@ -260,7 +248,7 @@ export function paneBar(
   return {
     title: pick.name,
     subtitle: pick.price,
-    ctaLabel: paneBarLabel(kind, rows, offers, entryVerb),
+    ctaLabel: paneBarLabel(kind, rows, offers, tabVerb),
     enabled: !pick.checking,
     rowId: pick.id,
   };

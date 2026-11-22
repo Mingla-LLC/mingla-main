@@ -1,3 +1,5 @@
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+
 export function formatStayMoney(
   amountMinor: string,
   currencyCode: string,
@@ -12,12 +14,14 @@ export function formatStayMoney(
     style: "currency",
     currency: currencyCode,
   }).resolvedOptions().maximumFractionDigits ?? 2;
-  return new Intl.NumberFormat(locale, {
+  // #4490 W3 fix 3 (W3-N24): "₦10,000.00", not "NGN 10,000.00" (spec 06
+  // decision 14; the shared glyph rule, #3341).
+  return withCurrencyGlyph(new Intl.NumberFormat(locale, {
     style: "currency",
     currency: currencyCode,
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  }).format(amount / 10 ** digits);
+  }).format(amount / 10 ** digits), currencyCode);
 }
 
 /**
@@ -57,10 +61,11 @@ export function formatStayRate(
   }).resolvedOptions().maximumFractionDigits ?? 2;
   const scale = 10 ** digits;
   const whole = amount % scale === 0;
-  return new Intl.NumberFormat(locale, {
+  // #4490 W3 fix 3 (W3-N24): the Stay bar read "From NGN 10,000" on Hermes.
+  return withCurrencyGlyph(new Intl.NumberFormat(locale, {
     style: "currency",
     currency: currencyCode,
     minimumFractionDigits: whole ? 0 : digits,
     maximumFractionDigits: digits,
-  }).format(amount / scale);
+  }).format(amount / scale), currencyCode);
 }

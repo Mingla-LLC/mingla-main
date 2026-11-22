@@ -224,6 +224,66 @@ export function isIanaZoneName(value: string): boolean {
   return IANA_ZONE_NAME.test(zone);
 }
 
+/** A wall clock read in a venue's zone. `weekday` is 0 = Monday … 6 = Sunday. */
+export interface VenueWallClock {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  weekday: number;
+}
+
+const WALL_CLOCK_TEXT = /(\d{1,2})\D+(\d{1,2})\D+(\d{4})\D+(\d{1,2})\D+(\d{2})/;
+
+/**
+ * #4490 W3 fix 3 (W3-N21) — the date and 24-hour time of an instant in an
+ * IANA zone, read from ONE `format()` string and never from `formatToParts`.
+ *
+ * Hermes on Apple platforms types parts by walking the pattern, and a pattern
+ * with a quoted literal ("EEE d MMM 'at' HH:mm", en-GB date + time) comes back
+ * with the hour and minute typed `literal`: the venue page printed
+ * "Sat 28 Nov · :". A one-field call can be mistyped too (en-US weekday alone
+ * is one `literal`). The whole formatted string is right on every engine, so
+ * it is read here with a fixed numeric en-US pattern ("11/28/2026, 19:05"),
+ * the same rule the Explorer's `zoneWallClock` (programFormat, #4402 walk)
+ * uses; the weekday is computed from the date, not asked of Intl. Null when
+ * the zone is unknown, refused or the text does not parse (fail closed).
+ */
+export function venueWallClock(
+  at: Date,
+  timeZone: string | null | undefined,
+): VenueWallClock | null {
+  if (typeof timeZone !== "string" || !isIanaZoneName(timeZone)) return null;
+  if (!(at instanceof Date) || Number.isNaN(at.getTime())) return null;
+  let text: string;
+  try {
+    text = new Intl.DateTimeFormat("en-US", {
+      timeZone: timeZone.trim(),
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(at);
+  } catch {
+    return null;
+  }
+  const m = WALL_CLOCK_TEXT.exec(text);
+  if (m === null) return null;
+  const month = Number(m[1]);
+  const day = Number(m[2]);
+  const year = Number(m[3]);
+  // h23 never says 24, but V8 and JavaScriptCore have both emitted it for
+  // midnight under hour12:false: the same normalisation as venueLocalClock.
+  const hour = Number(m[4]) % 24;
+  const minute = Number(m[5]);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || minute > 59) return null;
+  const weekday = (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
+  return { year, month, day, hour, minute, weekday };
+}
+
 /**
  * The venue's own weekday and minute-of-day, resolved through `Intl` so DST is
  * the platform's problem and not ours.

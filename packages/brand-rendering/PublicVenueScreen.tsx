@@ -151,7 +151,9 @@ import {
   venueHoursDaysFromEntries,
   venueHoursText,
   venueLocalDay,
+  venueLeadBarAllowedOn,
   venueOpenStateRows,
+  venuePageVerbs,
   venueSpecialDayRows,
   type PublicVenueFeaturesView,
   type VenueHoursDay,
@@ -1795,10 +1797,16 @@ export const PublicVenueScreen = ({
   // Today the category names the one verb. With features the lead names it, and
   // when there is no lead (nothing to sell, so no sheet will ever open) the
   // flow's own name: a venue's type never leaks into a button it does not have.
-  const reserveVerb = page.legacy
-    ? profile.reserveAction
-    : lead?.ctaLabel ??
-      (page.has.stays ? page.verbs.stay : page.verbs.table);
+  // W3 fix 3 (W3-N22): the lead's verb for the docked bar, and the table /
+  // stay rail's OWN action for the Tables tab's button, its sheet title and
+  // the host bar's reserve words (one owner: venuePageVerbs). A venue that
+  // leads with entry said "Buy entry" on a button that opened "Reserve a table".
+  const pageVerbs = venuePageVerbs(page, {
+    reservationsKind,
+    legacyReserveAction: profile.reserveAction,
+  });
+  const reserveVerb = pageVerbs.lead;
+  const railVerb = pageVerbs.rail;
   // #2331 — the buyer-web privacy bar no longer competes for this edge: the
   // app root ends above it (I-PRIVACY-BAR-NEVER-OCCLUDES), so the reserve bar
   // always shows.
@@ -1806,12 +1814,13 @@ export const PublicVenueScreen = ({
   // #4490 fix 2 (N87): on another booking tab (By the hour, Groups, Hire,
   // Plans, Entry) the bar speaks for that tab only; until its pane has a
   // choice to show, the lead's words ("Buy a day pass") are not borrowed.
-  const activeIsOtherBookingTab =
-    normalizedReservationUiState.activeTab === "entry" ||
-    normalizedReservationUiState.activeTab === "groups" ||
-    normalizedReservationUiState.activeTab === "hire" ||
-    normalizedReservationUiState.activeTab === "by_the_hour" ||
-    normalizedReservationUiState.activeTab === "plans";
+  // W3 fix 3 (W3-N22): the bar follows the ACTIVE tab: on a tab that sells
+  // something of its own the lead's bar is not drawn over it (venueLeadBarAllowedOn);
+  // that tab's live bar, when its body reports one, still shows.
+  const activeIsOtherBookingTab = !venueLeadBarAllowedOn(
+    page,
+    normalizedReservationUiState.activeTab,
+  );
   const showPersistentReserveCta =
     showReserveCta &&
     !activeIsOtherBookingTab &&
@@ -2084,7 +2093,9 @@ export const PublicVenueScreen = ({
                     ? "Map"
                     : fact.actionLabel ?? "Reserve",
               accessibilityLabel:
-                action === "reserve" || action === "lead"
+                action === "reserve"
+                  ? railVerb
+                  : action === "lead"
                   ? reserveVerb
                   : action === "map"
                     ? `Open ${venue.name} in maps`
@@ -2413,7 +2424,7 @@ export const PublicVenueScreen = ({
   const bookingSlotBase = {
     ...themedSlotContext,
     openReservationSheet: handleOpenReservationSheetFromBody,
-    reserveAction: reserveVerb,
+    reserveAction: railVerb,
   };
   const reservationBodies: Record<
     VenueBookingBody,
@@ -2431,6 +2442,9 @@ export const PublicVenueScreen = ({
       >
         {bookingBody({
           ...bookingSlotBase,
+          // W3 fix 3 (W3-N22): the stay body names its own flow (a Rooms tab
+          // beside Tables reads "Reserve this Stay", never the table verb).
+          reserveAction: pageVerbs.stay,
           ...(inline ? { onReservationBarChange: barReporters.inline } : {}),
           kind: "stay",
           venueId: venue.id,
@@ -2466,6 +2480,7 @@ export const PublicVenueScreen = ({
       ) : reservable?.reservable === true && reservable.venueId !== null ? (
         bookingBody({
           ...bookingSlotBase,
+          reserveAction: pageVerbs.table,
           ...(inline ? { onReservationBarChange: barReporters.inline } : {}),
           kind: "table",
           venueId: reservable.venueId,
@@ -2514,7 +2529,9 @@ export const PublicVenueScreen = ({
             offers: entryOffers,
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
-            verb: page.lead?.kind === "entry" ? page.lead.ctaLabel : "Buy entry",
+            // W3 fix 3 (W3-N27): the entry tab's own verb ("Buy a day pass"
+            // for day passes) even when another feature leads the page.
+            verb: page.tabVerbs.entry ?? "Buy entry",
             onBookingBarChange: barReporters.entry,
           })
         : (
@@ -2536,7 +2553,7 @@ export const PublicVenueScreen = ({
             offers: groupOffers,
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
-            verb: "Book for a group",
+            verb: page.tabVerbs.groups ?? "Book for a group",
             onBookingBarChange: barReporters.groups,
           })
         : (
@@ -2558,7 +2575,7 @@ export const PublicVenueScreen = ({
             offers: hireOffers,
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
-            verb: "Ask for a date",
+            verb: page.tabVerbs.hire ?? "Ask about a date",
             onBookingBarChange: barReporters.hire,
           })
         : (
@@ -2580,7 +2597,7 @@ export const PublicVenueScreen = ({
             offers: hourOffers,
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
-            verb: "Book",
+            verb: page.tabVerbs.by_the_hour ?? "Book",
             onBookingBarChange: barReporters.by_the_hour,
           })
         : (
@@ -2602,7 +2619,7 @@ export const PublicVenueScreen = ({
             plans: featuresView?.memberships?.plans ?? [],
             currencyCode: page.currency.code,
             exponent: page.currency.exponent,
-            verb: "Join",
+            verb: page.tabVerbs.plans ?? "Join",
             onBookingBarChange: barReporters.plans,
           })
         : (
@@ -2714,7 +2731,7 @@ export const PublicVenueScreen = ({
           // the Reservations tab the pane carries the reserve button.
           canReserve: showReserveCta,
           bookingKind: reservationsKind,
-          reserveAction: reserveVerb,
+          reserveAction: railVerb,
           ctaLabel: page.legacy ? null : lead?.ctaLabel ?? null,
           ctaTab: page.legacy ? null : lead?.tab ?? null,
           openReservation: handleOpenReservationFromActionBar,
@@ -3089,7 +3106,7 @@ export const PublicVenueScreen = ({
         // #1532 defect 1 / #1558 — the heading comes from the SAME profile
         // field as the CTA above, so a Stay guest can no longer tap "Reserve
         // this Stay" and land on a sheet headed "Reserve a table".
-        title: reserveVerb,
+        title: railVerb,
         children: reservationsSheetBlock,
       })}
       {overlays}

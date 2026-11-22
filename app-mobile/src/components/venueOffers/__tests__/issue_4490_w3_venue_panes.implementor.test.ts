@@ -158,14 +158,17 @@ describe('#4490 W3 docked bar', () => {
     const rows = offerPaneRows('entry', [offer({})], new Map([['o1', ready(true)]]), NGN, money);
     expect(paneBar('entry', rows, [offer({})], 'Buy entry')).toBeNull();
   });
-  test('B-3 the verbs are the page lead verbs', () => {
+  // [TEST-MOD-APPROVED #4490] W3 fix 3 (W3-N22/N27): the bar's verb is the
+  // tab verb the shared page hands in (deriveVenuePage tabVerbs), one owner;
+  // by the hour says "Book" (was "Book a room"). The pane no longer keeps a list.
+  test('B-3 the verbs are the tab verbs the page hands in', () => {
     const g = [offer({ kind: 'group_package' })];
-    expect(paneBar('groups', offerPaneRows('groups', g, new Map([['o1', ready(false)]]), NGN, money), g, 'x')?.ctaLabel).toBe('Book for a group');
+    expect(paneBar('groups', offerPaneRows('groups', g, new Map([['o1', ready(false)]]), NGN, money), g, 'Book for a group')?.ctaLabel).toBe('Book for a group');
     const h = [offer({ kind: 'private_hire', confirmationMode: 'request' })];
-    expect(paneBar('hire', offerPaneRows('hire', h, new Map([['o1', ready(false)]]), NGN, money), h, 'x')?.ctaLabel).toBe('Ask about a date');
+    expect(paneBar('hire', offerPaneRows('hire', h, new Map([['o1', ready(false)]]), NGN, money), h, 'Ask about a date')?.ctaLabel).toBe('Ask about a date');
     const r = [offer({ kind: 'by_the_hour' })];
-    expect(paneBar('by_the_hour', offerPaneRows('by_the_hour', r, new Map([['o1', ready(false)]]), NGN, money), r, 'x')?.ctaLabel).toBe('Book a room');
-    expect(paneBar('plans', planPaneRows([plan({})], NGN, money), [], 'x')?.ctaLabel).toBe('Join');
+    expect(paneBar('by_the_hour', offerPaneRows('by_the_hour', r, new Map([['o1', ready(false)]]), NGN, money), r, 'Book')?.ctaLabel).toBe('Book');
+    expect(paneBar('plans', planPaneRows([plan({})], NGN, money), [], 'Join')?.ctaLabel).toBe('Join');
   });
 });
 

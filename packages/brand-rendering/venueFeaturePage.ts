@@ -24,11 +24,12 @@
  * `venueCategory` is read nowhere in this file. A venue type is a label and a
  * starting preset only (see `venueCategoryProfile.ts`).
  */
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import type { PublicVenueTab } from "./publicVenueTabState";
 import { formatMinorCurrency } from "./venueMoney";
 import {
-  isIanaZoneName,
   venueClockMinutes,
+  venueWallClock,
   type VenueHourRow,
 } from "./venueOpenState";
 
@@ -515,16 +516,22 @@ export function formatVenueMoney(
 ): string {
   if (!Number.isSafeInteger(minor) || minor < 0) return "—";
   const whole = minor % 10 ** exponent === 0;
+  // W3 fix 3 (W3-N24): Hermes has no narrow naira symbol and prints
+  // "NGN 4,000"; the shared glyph rule (#3341) makes it "₦4,000" on every
+  // engine (spec 06 decision 14: Naira shows ₦). A no-op on V8.
   try {
-    return new Intl.NumberFormat("en", {
-      style: "currency",
-      currency: currencyCode,
-      currencyDisplay: "narrowSymbol",
-      minimumFractionDigits: whole ? 0 : exponent,
-      maximumFractionDigits: whole ? 0 : exponent,
-    }).format(minor / 10 ** exponent);
+    return withCurrencyGlyph(
+      new Intl.NumberFormat("en", {
+        style: "currency",
+        currency: currencyCode,
+        currencyDisplay: "narrowSymbol",
+        minimumFractionDigits: whole ? 0 : exponent,
+        maximumFractionDigits: whole ? 0 : exponent,
+      }).format(minor / 10 ** exponent),
+      currencyCode,
+    );
   } catch {
-    return formatMinorCurrency(minor, currencyCode, exponent);
+    return withCurrencyGlyph(formatMinorCurrency(minor, currencyCode, exponent), currencyCode);
   }
 }
 
@@ -636,32 +643,21 @@ export interface VenueSpecialDayRow {
   text: string;
 }
 
-/** The venue's own calendar day (`YYYY-MM-DD`) and weekday, or null. */
+/**
+ * The venue's own calendar day (`YYYY-MM-DD`) and weekday, or null.
+ * W3 fix 3: read through `venueWallClock` (one `format()` string), never
+ * `formatToParts`, which Hermes on iOS mistypes (W3-N21).
+ */
 export function venueLocalDay(
   now: Date,
   timeZone: string | null | undefined,
 ): { date: string; weekday: number } | null {
-  if (typeof timeZone !== "string" || !isIanaZoneName(timeZone)) return null;
-  if (!(now instanceof Date) || Number.isNaN(now.getTime())) return null;
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timeZone.trim(),
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).formatToParts(now);
-    const get = (type: string): string =>
-      parts.find((p) => p.type === type)?.value ?? "";
-    const date = `${get("year")}-${get("month")}-${get("day")}`;
-    if (!DATE_ONLY.test(date)) return null;
-    const [y, m, d] = date.split("-").map(Number);
-    return {
-      date,
-      weekday: (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7,
-    };
-  } catch {
-    return null;
-  }
+  const clock = venueWallClock(now, timeZone);
+  if (clock === null) return null;
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const date = `${clock.year}-${pad(clock.month)}-${pad(clock.day)}`;
+  if (!DATE_ONLY.test(date)) return null;
+  return { date, weekday: clock.weekday };
 }
 
 /** Upcoming special days (today onward when the venue's zone is known). */
@@ -743,29 +739,15 @@ export function venueEventWhen(
   startsAt: string,
   timeZone: string | null | undefined,
 ): string | null {
-  const at = new Date(startsAt);
-  if (Number.isNaN(at.getTime())) return null;
-  if (typeof timeZone !== "string" || !isIanaZoneName(timeZone)) return null;
-  try {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: timeZone.trim(),
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(at);
-    const get = (type: string): string =>
-      parts.find((p) => p.type === type)?.value ?? "";
-    const hour = get("hour") === "24" ? "00" : get("hour");
-    if (get("weekday") === "" || get("day") === "" || get("month") === "") {
-      return null;
-    }
-    return `${get("weekday")} ${get("day")} ${get("month")} · ${hour}:${get("minute")}`;
-  } catch {
-    return null;
-  }
+  // W3 fix 3 (W3-N21): one `format()` string read in the venue's zone, never
+  // `formatToParts` (Hermes on iOS typed the hour and minute of
+  // "Sat 28 Nov at 19:00" as literals, so the row said "Sat 28 Nov · :").
+  // Day-first English words from the page's own date label.
+  const clock = venueWallClock(new Date(startsAt), timeZone);
+  if (clock === null) return null;
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  const day = venueDateLabel(`${clock.year}-${pad(clock.month)}-${pad(clock.day)}`);
+  return `${day} · ${pad(clock.hour)}:${pad(clock.minute)}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -917,6 +899,12 @@ export interface VenuePageModel {
   currency: { code: string; exponent: number } | null;
   /** The words the table and stay flows are named with (sheet titles, a11y). */
   verbs: { table: string; stay: string };
+  /**
+   * W3 fix 3 (W3-N22/N27): the action of EACH tab, in one place. The docked
+   * bar and a tab's own buttons read the ACTIVE tab's verb (a Tables tab never
+   * borrows the lead's "Buy entry"); the lead's `ctaLabel` is its tab's verb.
+   */
+  tabVerbs: Partial<Record<PublicVenueTab, string>>;
   /** Feature facts the screen needs to pick bodies and gates. */
   has: { stays: boolean; tables: boolean; menu: boolean };
 }
@@ -990,6 +978,7 @@ function legacyModel(ctx: VenuePageContext): VenuePageModel {
     events: [],
     currency: null,
     verbs: { table: "Reserve a table", stay: "Reserve this Stay" },
+    tabVerbs: { reservations: "Reserve a table" },
     has: { stays: false, tables: true, menu: hasMenu },
   };
 }
@@ -1065,6 +1054,29 @@ export function deriveVenuePage(
   const minSpend = on.has("min_spend_tables");
   const tableVerb = minSpend ? "Book a table" : "Reserve a table";
 
+  // ── each tab's action (W3 fix 3, W3-N22/N27) ────────────────────────────
+  const entryStyles = entryOffers.map((o) => o.entryStyle);
+  const entryVerb = entryStyles.every((s) => s === "day_pass")
+    ? "Buy a day pass"
+    : entryStyles.every((s) => s === "timed_session")
+      ? "Book a visit"
+      : "Buy entry";
+  const hireVerb = hireOffers.some((o) => o.confirmationMode === "request")
+    ? "Ask about a date"
+    : "Book a date";
+  const tabVerbs: Partial<Record<PublicVenueTab, string>> = {};
+  if (tabSet.has("entry")) tabVerbs.entry = entryVerb;
+  if (tabSet.has("groups")) tabVerbs.groups = "Book for a group";
+  if (tabSet.has("hire")) tabVerbs.hire = hireVerb;
+  // W3-N27: a pool table, phone booth or desk is not "a room": the by-the-hour
+  // action is the pane's own "Book" (spec 06 §6 names no by-the-hour verb).
+  if (tabSet.has("by_the_hour")) tabVerbs.by_the_hour = "Book";
+  if (tabSet.has("plans")) tabVerbs.plans = "Join";
+  if (tabSet.has("reservations")) {
+    tabVerbs.reservations = stayAsReservations ? "Reserve this Stay" : tableVerb;
+  }
+  if (tabSet.has("rooms")) tabVerbs.rooms = "Reserve this Stay";
+
   // ── the lead: the one thing the bar sells ───────────────────────────────
   let lead: VenueLead | null = null;
   if (stays && (tabSet.has("rooms") || stayAsReservations)) {
@@ -1076,12 +1088,7 @@ export function deriveVenuePage(
       keepPriceRow: true,
     };
   } else if (tabSet.has("entry") && !(ctx.tablesFirst === true && tabSet.has("reservations") && tablesReady && tablesFeature)) {
-    const styles = entryOffers.map((o) => o.entryStyle);
-    const verb = styles.every((s) => s === "day_pass")
-      ? "Buy a day pass"
-      : styles.every((s) => s === "timed_session")
-        ? "Book a visit"
-        : "Buy entry";
+    const verb = entryVerb;
     const clauses: string[] = [];
     if (tabSet.has("groups")) {
       const groups = venueGroupsFrom(groupOffers);
@@ -1155,7 +1162,7 @@ export function deriveVenuePage(
     lead = {
       kind: "by_the_hour",
       tab: "by_the_hour",
-      ctaLabel: "Book a room",
+      ctaLabel: tabVerbs.by_the_hour ?? "Book",
       row: {
         value: `From ${money(minFrom(hourOffers) as number)} an hour`,
         detail: null,
@@ -1191,7 +1198,7 @@ export function deriveVenuePage(
     lead = {
       kind: "private_hire",
       tab: "hire",
-      ctaLabel: request ? "Ask about a date" : "Book a date",
+      ctaLabel: hireVerb,
       row: {
         value: `Hire from ${money(minFrom(hireOffers) as number)}${venueUnitWords(venueHireFrom(hireOffers)?.unit ?? "booking")}`,
         detail: maxes.length > 0 ? `Up to ${Math.max(...maxes)} guests` : null,
@@ -1233,7 +1240,9 @@ export function deriveVenuePage(
           line: several
             ? `${groupOffers.length} packages: ${groupOffers.slice(0, 3).map((o) => o.name).join(", ")}`
             : cheapest?.summary ?? null,
-          price: `${several || !perGuest ? "from " : ""}${money(min)}${perGuest ? " a guest" : ""}`,
+          // W3 fix 3 (W3-N28): "from" like every other Ways row (one package
+          // still has a minimum group and dearer options).
+          price: `from ${money(min)}${perGuest ? " a guest" : ""}`,
         });
         break;
       }
@@ -1315,8 +1324,57 @@ export function deriveVenuePage(
       table: tablesFeature ? tableVerb : "Book",
       stay: stays ? "Reserve this Stay" : "Book",
     },
+    tabVerbs,
     has: { stays, tables: tablesFeature, menu: on.has("menu") },
   };
+}
+
+/**
+ * #4490 W3 fix 3 (W3-N22) — the page's verbs, in one place for both surfaces.
+ *  - `lead`: what the docked bar sells off its own tab (the lead's verb).
+ *  - `rail`: the table/stay rail's own action: the Reservations body's button,
+ *    its sheet title and the host bar's reserve words. Never the lead's verb.
+ *  - `table` / `stay`: what each rail body names its button.
+ * Today's page (no features) uses the category's one verb everywhere.
+ */
+export function venuePageVerbs(
+  page: VenuePageModel,
+  ctx: { reservationsKind: "table" | "stay"; legacyReserveAction: string },
+): { lead: string; rail: string; table: string; stay: string } {
+  if (page.legacy) {
+    const v = ctx.legacyReserveAction;
+    return { lead: v, rail: v, table: v, stay: v };
+  }
+  const rail = ctx.reservationsKind === "stay" ? page.verbs.stay : page.verbs.table;
+  return {
+    lead: page.lead?.ctaLabel ?? (page.has.stays ? page.verbs.stay : page.verbs.table),
+    rail,
+    table: page.verbs.table,
+    stay: page.verbs.stay,
+  };
+}
+
+/**
+ * #4490 W3 fix 3 (W3-N22) — may the lead's docked bar show on this tab? Not
+ * on a tab that sells something of its own (its pane reports its own bar, or
+ * its body carries its own button): Entry, Groups, Private hire, By the hour,
+ * Plans, and on a features page Tables and Rooms. Today's page keeps its rule
+ * (the Reservations tab is its lead, which the caller already excludes).
+ */
+export function venueLeadBarAllowedOn(page: VenuePageModel, activeTab: PublicVenueTab): boolean {
+  switch (activeTab) {
+    case "entry":
+    case "groups":
+    case "hire":
+    case "by_the_hour":
+    case "plans":
+      return false;
+    case "reservations":
+    case "rooms":
+      return page.legacy;
+    default:
+      return true;
+  }
 }
 
 /** The tab a venue page opens on for a `?tab=` value. */

@@ -29,6 +29,7 @@ import type {
 } from "@mingla/offering-rendering";
 
 import type { PublicMenuGroup } from "./types";
+import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
 import { themeBoldFace } from "@mingla/offering-rendering/themeAccentStyle";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
@@ -64,14 +65,19 @@ export const formatMenuPrice = (
     // Whole naira drop the ".00" (the venue page writes ₦10,000); other
     // currencies keep their usual two places (£20.00).
     const dropCents = currency.toUpperCase() === "NGN" && Number.isInteger(major);
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
+    // #4490 W3 fix 3 (W3-N24): Hermes prints "NGN 10,000" even with the
+    // narrow symbol; the shared glyph rule makes it "₦10,000" everywhere.
+    return withCurrencyGlyph(
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency,
+        currencyDisplay: "narrowSymbol",
+        ...(dropCents ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}),
+      }).format(major),
       currency,
-      currencyDisplay: "narrowSymbol",
-      ...(dropCents ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}),
-    }).format(major);
+    );
   } catch {
-    return `${currency} ${major.toFixed(2)}`;
+    return withCurrencyGlyph(`${currency} ${major.toFixed(2)}`, currency);
   }
 };
 

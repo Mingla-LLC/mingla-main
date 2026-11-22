@@ -154,6 +154,11 @@ module.exports = {
     // issue #4490 W3 fix 2 — the Buy hand-off per build profile (injected
     // backend) and the groups "from" in one unit.
     "**/__tests__/issue_4490_w3_fix2.implementor.test.ts",
+    // issue #4490 W3 fix 3 — the first device pass: venue times without Intl
+    // parts (Hermes), ₦ on every engine, each tab's own action, offline vs a
+    // server failure, panes per tab, the tab strip and header at 375 pt.
+    "**/__tests__/issue_4490_w3_fix3.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_fix3.implementor.render.test.tsx",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.

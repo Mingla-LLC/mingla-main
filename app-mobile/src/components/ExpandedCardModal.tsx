@@ -89,7 +89,7 @@ import { deckVenueCta } from "./expandedCard/deckVenueCta";
 // #4490 Explorer W3 — Ways to come, What's on and Message {venue} for a claimed venue.
 import { VenueSheetBlocks } from "./expandedCard/VenueSheetBlocks";
 import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
-import { leaveSheetTo } from "./deckCard/deckNavigation";
+import { closeSheetOnIncomingLink, leaveSheetTo } from "./deckCard/deckNavigation";
 import { ImageLightbox } from "./ImageLightbox";
 // issue #2468 / #4347 wave 2 — every maps link on this sheet goes through
 // expandedCard/placeDirections (openPlaceDirections), which wraps the ONE host
@@ -610,6 +610,13 @@ export default function ExpandedCardModal({
       onClose();
     }
   }, [visible, card, router, onClose]);
+
+  // #4490 W3 fix 3 (W3-N29): a link opened while this sheet is up lands its
+  // page on top, not under the sheet.
+  useEffect(() => {
+    if (!visible) return undefined;
+    return closeSheetOnIncomingLink(Linking, onClose);
+  }, [visible, onClose]);
 
   const { t, i18n } = useTranslation(['cards', 'common']);
   const { user } = useAppStore();
