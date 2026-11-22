@@ -63,7 +63,12 @@ import {
   rsvpBrandFormRefusal,
 } from "./brandFormRsvp.ts";
 // #3281 S6 — free add-ons picked with the RSVP (own module; dark by switch).
-import { parseRsvpAddOns, RSVP_ADD_ONS_RPC, rsvpAddOnRefusal } from "./rsvpAddOns.ts";
+import {
+  parseRsvpAddOns,
+  RSVP_ADD_ONS_RPC,
+  rsvpAddOnRefusal,
+  rsvpAddOnsUnavailable,
+} from "./rsvpAddOns.ts";
 // #4508 R-4 — the caller's address, read the one way the repo reads it.
 import { requestClientIp } from "../_shared/ticketLinkToken.ts";
 // #4508 R-9 — a plus-one's pass name follows the 1.11 rule.
@@ -467,14 +472,24 @@ export const handler = async (req: Request): Promise<Response> => {
     p_form: parsedBrandForm.form,
   };
   // #3281 S6 — with add-ons, the wrapper submits this same RSVP first.
-  const { data, error } = parsedAddOns.addOns === null
+  let { data, error } = parsedAddOns.addOns === null
     ? await admin.rpc("submit_event_rsvp_with_form", rsvpArgs)
       .setHeader("x-mingla-rsvp-client", inviterClient)
     : await admin.rpc(RSVP_ADD_ONS_RPC, { ...rsvpArgs, p_add_ons: parsedAddOns.addOns })
       .setHeader("x-mingla-rsvp-client", inviterClient);
+  // #3281 (T3-10) — add-ons sent while RSVP add-ons are switched off (a
+  // reader/switch race), or on a database without them: the wrapper undid the
+  // RSVP, so it is submitted again exactly as without add-ons. The RSVP and its
+  // form answers are saved; the add-ons are ignored and the reply says so.
+  let rsvpAddOnsIgnored = false;
+  if (error !== null && parsedAddOns.addOns !== null && rsvpAddOnsUnavailable(error)) {
+    rsvpAddOnsIgnored = true;
+    ({ data, error } = await admin.rpc("submit_event_rsvp_with_form", rsvpArgs)
+      .setHeader("x-mingla-rsvp-client", inviterClient));
+  }
 
   if (error !== null) {
-    const addOnRefusal = parsedAddOns.addOns === null ? null : rsvpAddOnRefusal(error);
+    const addOnRefusal = parsedAddOns.addOns === null || rsvpAddOnsIgnored ? null : rsvpAddOnRefusal(error);
     if (addOnRefusal !== null) return json(addOnRefusal.status, addOnRefusal.body);
     const formRefusal = rsvpBrandFormRefusal(error);
     if (formRefusal !== null) {
@@ -701,6 +716,9 @@ export const handler = async (req: Request): Promise<Response> => {
       : [],
     anonymousRecovery: [],
     guests: guestsOut,
+    // #3281 (T3-10) — additive and optional: present only when add-ons were
+    // sent and ignored because RSVP add-ons are not available.
+    ...(rsvpAddOnsIgnored ? { rsvpAddOnsIgnored: true } : {}),
   });
 };
 

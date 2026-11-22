@@ -70,6 +70,17 @@ const REFUSALS: ReadonlyArray<{ code: string; status: number }> = [
   { code: "extras_invalid", status: 400 },
 ];
 
+/**
+ * #3281 (T3-10) — the add-ons cannot be taken at all (RSVP add-ons switched
+ * off, not offered for this RSVP, or a database without them). The handler
+ * then saves the RSVP without them instead of refusing it.
+ */
+export function rsvpAddOnsUnavailable(
+  error: { message?: string | null; code?: string | null } | null,
+): boolean {
+  return rsvpAddOnRefusal(error)?.body.error === "rsvp_add_ons_unavailable";
+}
+
 /** A database refusal of the add-ons, as the reply the RSVP form shows; else null. */
 export function rsvpAddOnRefusal(
   error: { message?: string | null; code?: string | null } | null,

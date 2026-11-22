@@ -1,4 +1,5 @@
 // MINGLA-INVARIANT: I-ADDON-RSVP-EDGE-ADDITIVE | issue #3281 | public-submit-rsvp sends today's submit_event_rsvp_with_form call unchanged unless the request carries a non-empty rsvpAddOns list, and then calls issue_3281_submit_rsvp_with_add_ons with the same arguments plus p_add_ons and the same client header.
+// MINGLA-INVARIANT: I-ADDON-RSVP-SAVED-WHEN-ADDONS-OFF | issue #3281 | An RSVP sent with rsvpAddOns while RSVP add-ons are unavailable (switch off, not offered, or no wrapper) is still saved with its form answers through the plain submit_event_rsvp_with_form call; the add-ons are ignored and the reply carries rsvpAddOnsIgnored: true. Other add-on refusals still refuse the RSVP.
 /**
  * #3281 S6 — free add-ons on an RSVP, at the edge.
  * FAILS-ON-REVERT: drop the empty-list shortcut, accept a duplicate or a
@@ -7,7 +8,12 @@
  */
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 
-import { parseRsvpAddOns, RSVP_ADD_ONS_RPC, rsvpAddOnRefusal } from "../rsvpAddOns.ts";
+import {
+  parseRsvpAddOns,
+  RSVP_ADD_ONS_RPC,
+  rsvpAddOnRefusal,
+  rsvpAddOnsUnavailable,
+} from "../rsvpAddOns.ts";
 
 const A = "11111111-1111-4111-8111-111111111111";
 const B = "22222222-2222-4222-8222-222222222222";
@@ -71,5 +77,30 @@ Deno.test("#3281 S6 the handler keeps the #4541 call and adds the wrapper only w
   assert(wrapped > plain);
   assert(src.slice(wrapped, wrapped + 200).includes('.setHeader("x-mingla-rsvp-client", inviterClient)'));
   assert(src.includes("p_form: parsedBrandForm.form,\n  };"));
-  assertEquals(src.split("submit_event_rsvp_with_form").length - 1, 1);
+  // #3281 (T3-10): the only second plain call is the add-ons-unavailable fallback.
+  assertEquals(src.split("submit_event_rsvp_with_form").length - 1, 2);
+});
+
+Deno.test("#3281 T3-10 only 'unavailable' falls back to saving the RSVP without add-ons", () => {
+  assert(rsvpAddOnsUnavailable({ message: "rsvp_add_ons_unavailable" }));
+  assert(rsvpAddOnsUnavailable({ code: "PGRST202", message: "Could not find the function" }));
+  assert(rsvpAddOnsUnavailable({ code: "42883", message: "function does not exist" }));
+  for (const code of ["rsvp_add_on_needs_payment", "extra_capacity_exceeded", "extra_not_available", "rsvp_full"]) {
+    assert(!rsvpAddOnsUnavailable({ message: code }), code);
+  }
+  assert(!rsvpAddOnsUnavailable(null));
+});
+
+Deno.test("#3281 T3-10 the handler re-submits the same RSVP plainly and says the add-ons were ignored", async () => {
+  const src = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  const fallback = src.indexOf("if (error !== null && parsedAddOns.addOns !== null && rsvpAddOnsUnavailable(error)) {");
+  assert(fallback > 0);
+  const block = src.slice(fallback, fallback + 320);
+  assert(block.includes("rsvpAddOnsIgnored = true;"));
+  assert(block.includes('await admin.rpc("submit_event_rsvp_with_form", rsvpArgs)'));
+  assert(block.includes('.setHeader("x-mingla-rsvp-client", inviterClient)'));
+  // the fallback's own error is never re-mapped as an add-on refusal
+  assert(src.includes("parsedAddOns.addOns === null || rsvpAddOnsIgnored ? null : rsvpAddOnRefusal(error)"));
+  // additive optional reply field, absent unless ignored (add-ons-off replies unchanged)
+  assert(src.includes("...(rsvpAddOnsIgnored ? { rsvpAddOnsIgnored: true } : {}),"));
 });
