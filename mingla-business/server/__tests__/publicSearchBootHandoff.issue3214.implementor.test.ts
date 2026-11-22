@@ -536,7 +536,8 @@ describe("#3214 the public document's CSP is the booted app's policy", () => {
     expect(policy.get("font-src")).toEqual(["'self'"]);
     // [TEST-MOD-APPROVED #3720] Host Guides add one exact HLS media origin;
     // the policy stays fail-closed rather than widening to an https: scheme.
-    expect(policy.get("media-src")).toEqual(["'self'", "https://vz-a16fce08-6c6.b-cdn.net", "https://cdnapi.bamboo-cloud.com"]);
+    // [TEST-MOD #4420] guides left the Host app, so the Bamboo origin is gone again.
+    expect(policy.get("media-src")).toEqual(["'self'", "https://vz-a16fce08-6c6.b-cdn.net"]);
     // [TEST-MOD-APPROVED #4402] Bunny embed player origins admitted for creator showcase videos.
     expect(policy.get("frame-src")).toEqual([
       "https://js.stripe.com", "https://hooks.stripe.com", "https://tr.snapchat.com",
