@@ -53,6 +53,7 @@ import {
   githubErrorWords,
   GITHUB_ERROR_FALLBACK,
 } from "../lib/ticketModel.js";
+import * as ticketModel from "../lib/ticketModel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "..");
@@ -622,5 +623,43 @@ describe("T-7 What changed follows Type, Linked to, Show and search", () => {
   });
   it("the Today view passes the filtered cards to the feed", () => {
     assert.match(code("components/ops/WorkViews.jsx"), /<WhatChanged feed=\{filterFeed\(read\.data\?\.feed, read\.data\?\.cards, cards\)\}/);
+  });
+});
+
+// G4 (rework 3, QA P2-3): a duplicate refusal rendered at the top of the form,
+// out of view. It now sits beside Make ticket, is announced, and offers the
+// existing ticket. FAILS-ON-REVERT: without ticketDuplicateNotice the calls
+// throw; with the old top-of-form box the source assertions fail.
+describe("T-10 a refused submit is said beside Make ticket", () => {
+  const dup = { status: "duplicate", existing: { id: "c6", number: 6, title: "Refund stuck" }, message: "An open card already does this: \"Refund stuck\" (Card 6)." };
+  it("the duplicate names the existing ticket with T-n and offers Link here only with a source", () => {
+    const withSource = ticketModel.ticketDuplicateNotice(dup, { hasSource: true });
+    assert.equal(withSource.existingId, "c6");
+    assert.equal(withSource.canLink, true);
+    assert.match(withSource.words, /\(T6\)/);
+    assert.doesNotMatch(withSource.words, /Card 6/);
+    const board = ticketModel.ticketDuplicateNotice(dup);
+    assert.equal(board.canLink, false);
+    assert.match(board.words, /Open it and update it instead/);
+  });
+  it("without the existing ticket in the answer: a plain sentence, nothing to open", () => {
+    for (const answer of [{ status: "duplicate" }, { status: "duplicate", existing: null }, { status: "duplicate", existing: { number: 3 } }, null]) {
+      const notice = ticketModel.ticketDuplicateNotice(answer, { hasSource: true });
+      assert.equal(notice.existingId, null);
+      assert.equal(notice.canLink, false);
+      assert.match(notice.words, /^An open ticket already covers this\./);
+    }
+  });
+  it("the form renders every submit notice in the actions row, as alerts, and none at the top", () => {
+    const form = strip(read("components/ops/TicketForm.jsx"));
+    const actionsAt = form.indexOf('data-ticket-actions=""');
+    const typeAt = form.indexOf("<legend className={LABEL}>Type</legend>");
+    assert.ok(actionsAt > 0 && typeAt > 0);
+    const notices = [...form.matchAll(/role="alert" data-ticket-submit-notice=""/g)].map((m) => m.index);
+    assert.equal(notices.length, 3, "server fixes, duplicate, request failed");
+    for (const at of notices) assert.ok(at > actionsAt, "beside Make ticket, not at the top of the form");
+    assert.doesNotMatch(form.slice(form.indexOf("<form onSubmit"), typeAt), /duplicate|dupNotice|unplaced\.map/);
+    assert.match(form, /onClick=\{\(\) => linkHere\(\{ id: dupNotice\.existingId, number: dupNotice\.number \}\)\}>Link here</);
+    assert.match(form, /setSubmitFailed\(`\$\{TICKET_SUBMIT_FAILED_WORDS\}/);
   });
 });

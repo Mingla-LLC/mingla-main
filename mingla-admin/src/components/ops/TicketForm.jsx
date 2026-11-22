@@ -13,6 +13,7 @@ import * as ops from "../../services/opsService";
 import { dayLabel, opsErrorWords, requestKey, todayIso } from "../../lib/opsModel";
 import {
   SIMILAR_DEBOUNCE_MS,
+  TICKET_SUBMIT_FAILED_WORDS,
   TICKET_TYPES,
   TITLE_MAX,
   WRONG_MAX,
@@ -23,6 +24,7 @@ import {
   nextTicketWatchers,
   shouldSearchSimilar,
   similarWords,
+  ticketDuplicateNotice,
   ticketFormProblems,
   ticketNumber,
 } from "../../lib/ticketModel";
@@ -72,6 +74,8 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState(null);
   const [duplicate, setDuplicate] = useState(null);
+  // #4420 rework 3 (G4): a failed request, said beside Make ticket.
+  const [submitFailed, setSubmitFailed] = useState(null);
   const [touched, setTouched] = useState(false);
   const keyRef = useRef({ key: null, value: null });
 
@@ -129,6 +133,7 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
     if (keyRef.current.value !== value) keyRef.current = { key: requestKey("web_ticket"), value };
     setBusy(true);
     setDuplicate(null);
+    setSubmitFailed(null);
     try {
       const answer = await ops.createTicket(payload, keyRef.current.key);
       if (answer?.status === "added") {
@@ -144,28 +149,18 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
       }
     } catch (error) {
       // The request key is kept, so Try again is safe (the same request never makes two tickets).
-      addToast({ variant: "error", title: "Ticket not made", description: opsErrorWords(error) });
+      setSubmitFailed(`${TICKET_SUBMIT_FAILED_WORDS} (${opsErrorWords(error)})`);
     } finally {
       setBusy(false);
     }
   };
 
+  const dupNotice = duplicate ? ticketDuplicateNotice(duplicate, { hasSource: Boolean(source) }) : null;
   const unplaced = refused?.status === "refused" ? (refused.fixes || []).filter((f) => !["type", "title", "what_is_wrong", "product_area", "due_on", "owners", "watchers"].includes(f.field)) : [];
 
   return (
     <form onSubmit={submit} noValidate data-ticket-form="" className="flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 shadow-[var(--shadow-sm)]">
       <h2 ref={headingRef} tabIndex={-1} className="text-[15px] font-semibold text-[var(--color-text-primary)]">New ticket</h2>
-      {unplaced.length > 0 && (
-        <div role="alert" className="rounded-xl bg-[var(--color-error-50)] p-3 text-[13px] text-[var(--color-error-700)]">
-          {unplaced.map((f, i) => <p key={`${f.field}-${i}`} className="break-words">{f.message}</p>)}
-        </div>
-      )}
-      {duplicate && (
-        <div role="alert" className="flex min-w-0 flex-col gap-2 rounded-xl bg-[var(--color-warning-50)] p-3 text-[13px] text-[var(--color-warning-700)]">
-          <p className="break-words">{duplicate.message}</p>
-          <Button variant="secondary" className="min-h-11 self-start" onClick={() => onOpenCard?.(duplicate.existing?.id)}>Open existing card</Button>
-        </div>
-      )}
 
       <fieldset className="flex min-w-0 flex-col gap-1">
         <legend className={LABEL}>Type</legend>
@@ -272,6 +267,29 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
       </div>
 
       <div data-ticket-actions="" className={`flex flex-wrap gap-2 ${stickyActions ? "sticky bottom-0 -mx-4 -mb-4 rounded-b-xl border-t border-[var(--gray-200)] bg-[var(--color-background-primary)] px-4 py-3" : ""}`}>
+        {/* #4420 rework 3 (G4): what the server said about this submit sits beside Make ticket, announced. */}
+        {unplaced.length > 0 && (
+          <div role="alert" data-ticket-submit-notice="" className="w-full rounded-xl bg-[var(--color-error-50)] p-3 text-[13px] text-[var(--color-error-700)]">
+            {unplaced.map((f, i) => <p key={`${f.field}-${i}`} className="break-words">{f.message}</p>)}
+          </div>
+        )}
+        {dupNotice && (
+          <div role="alert" data-ticket-submit-notice="" className="flex w-full min-w-0 flex-col gap-2 rounded-xl bg-[var(--color-warning-50)] p-3 text-[13px] text-[var(--color-warning-700)]">
+            <p className="break-words">{dupNotice.words}</p>
+            {dupNotice.existingId ? (
+              <div className="flex flex-wrap gap-2">
+                {dupNotice.canLink ? (
+                  <Button type="button" variant="secondary" className="min-h-11" loading={linkingId === dupNotice.existingId} disabled={!online || !!linkingId}
+                    onClick={() => linkHere({ id: dupNotice.existingId, number: dupNotice.number })}>Link here</Button>
+                ) : null}
+                <Button type="button" variant="secondary" className="min-h-11" onClick={() => onOpenCard?.(dupNotice.existingId)}>Open {dupNotice.number != null ? ticketNumber(dupNotice.number) : "it"}</Button>
+              </div>
+            ) : null}
+          </div>
+        )}
+        {submitFailed && (
+          <p role="alert" data-ticket-submit-notice="" className="w-full break-words text-[13px] text-[var(--color-error-700)]">{submitFailed}</p>
+        )}
         <Button type="submit" className="min-h-11" loading={busy} disabled={!online || busy}>Make ticket</Button>
         <Button type="button" variant="ghost" className="min-h-11" onClick={onCancel}>Cancel</Button>
       </div>

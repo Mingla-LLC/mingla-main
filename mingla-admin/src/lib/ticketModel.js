@@ -285,3 +285,31 @@ export function ticketsNotAlreadyDue(cards, today, raw) {
   }).length;
   return Math.min(n, ceiling);
 }
+
+/**
+ * #4420 rework 3 (G4): what the Create ticket form shows beside Make ticket
+ * after the server refuses a ticket as a duplicate. With the existing ticket
+ * named in the answer: its words (T-number, one formatter), "Open it", and
+ * "Link here" when a source conversation is attached. Without it: a plain
+ * sentence, never a code.
+ */
+export function ticketDuplicateNotice(answer, { hasSource = false } = {}) {
+  const existing = answer?.existing && typeof answer.existing === "object" ? answer.existing : null;
+  const id = typeof existing?.id === "string" && existing.id ? existing.id : null;
+  const number = existing?.number ?? null;
+  const title = typeof existing?.title === "string" ? existing.title.trim() : "";
+  if (!id) {
+    return { words: "An open ticket already covers this. Search the Work board for it and update that one instead.", existingId: null, number: null, canLink: false };
+  }
+  const label = number != null && number !== "" ? ticketNumber(number) : "an open ticket";
+  const named = title ? `"${title}" (${label})` : label;
+  return {
+    words: `An open ticket already covers this: ${named}. ${hasSource ? "Link this conversation to it, or open it." : "Open it and update it instead."}`,
+    existingId: id,
+    number,
+    canLink: Boolean(hasSource),
+  };
+}
+
+/** #4420 rework 3 (G4): the sentence beside Make ticket when the request failed. */
+export const TICKET_SUBMIT_FAILED_WORDS = "The ticket wasn't made. Check your connection and press Make ticket again: it won't make two.";
