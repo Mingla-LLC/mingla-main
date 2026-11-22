@@ -12,11 +12,9 @@ import { color, radius, type } from "../../constants/designSystem";
 import type { HostFieldBase } from "./hostCalendarFieldProps";
 
 // The one import site of the calendar body chunk for every Host field: each
-// field names its body (`pick`), so the boot payload carries one loader. The
-// forms date input (businessFormPrimitives) loads through it too, so the forms
-// owner graph holds no import() of its own (I-4541-FORMS-ONE-LAZY-HOP).
+// field names its body (`pick`), so the boot payload carries one loader.
 type HostCalendarBodyModule = typeof import("./HostCalendarBody");
-export const loadHostCalendarBody = (): Promise<HostCalendarBodyModule> => import("./HostCalendarBody");
+const loadHostCalendarBody = (): Promise<HostCalendarBodyModule> => import("./HostCalendarBody");
 
 export function lazyHostField<P extends HostFieldBase>(
   pick: (m: HostCalendarBodyModule) => React.ComponentType<P & { openOnMount?: boolean }>,
