@@ -11,6 +11,11 @@
 --
 -- FAILS-ON-REVERT: without 20280809474490 the first assertion fails (no
 -- venue_till_receipts row is written when a payment is paid).
+--
+-- TEST-MOD-APPROVED #4490 (08-O1 fix 1, O1-N5): the two payments of RC-3 are
+-- taken in one statement block, so they share one paid_at; "paid before" now
+-- breaks that tie on the payment sequence (20280809594490), and RC-3b pins it.
+-- Before, the tie fell to random uuid order and RC-3 failed about half the runs.
 \set ON_ERROR_STOP on
 BEGIN;
 ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;
@@ -211,6 +216,11 @@ BEGIN
     AND r->>'footer' = 'Thank you. See you soon.' AND (r->>'receiptNo')::int = 2
     AND (r->>'refundedMinor')::bigint = 0,
     'RC-3 the snapshot carries lines, service charge, total, what was paid before, tender, change, reference, venue, brand, footer');
+  PERFORM public.t4490r_ok(
+    (SELECT paid_at FROM public.venue_till_payments WHERE id = v_p1) = (SELECT paid_at FROM public.venue_till_payments WHERE id = v_p2)
+    AND (SELECT seq FROM public.venue_till_payments WHERE id = v_p1) < (SELECT seq FROM public.venue_till_payments WHERE id = v_p2)
+    AND (public.issue_4490_till_receipt_projection(v_p1)->>'paidBeforeMinor')::bigint = 0,
+    'RC-3b two payments in one moment: paid-before follows the payment sequence (deterministic)');
 
   -- Later edits never change a receipt.
   UPDATE public.menu_items SET name = 'Chapman XL', price_cents = 999900 WHERE id = '44900200-0000-4000-b000-000000000011';

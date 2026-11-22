@@ -411,7 +411,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // issue #4490 ops O1: Till core migration and suite registered; re-sealed.
 // issue #4490 ops O1: #2099 repin over the Till lanes registered; re-sealed.
 // issue #4490 ops O1 part 2: Till receipts and the held-round sweep / card refund migrations + suites registered; re-sealed.
-export const BOOTSTRAP_SHA256 = "6898cdba4905470875765278cfab42558083efbd99052f59e549b3c375f5ec49";
+// issue #4490 ops O1 fix 1: one-bill migration 20280809594490 + its pg17 suite registered; re-sealed.
+export const BOOTSTRAP_SHA256 = "b55d655f08ed637171f226930ed8f07258566354f4062a6caad1a199d90b9924";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
