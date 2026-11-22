@@ -211,11 +211,7 @@ function unwrapPreview(raw: unknown): RefundPreview {
     refundTotalCents: Number(data.refundTotalCents ?? 0),
     currency: String(data.currency ?? "GBP").toUpperCase(),
     perPaymentRefund: Array.isArray(data.perPaymentRefund)
-      ? (data.perPaymentRefund as Array<Record<string, unknown>>)
-          // issue #4522 — only payment entries (an older server appended the
-          // kept deposit as a stray element with no money fields).
-          .filter((p) => typeof p === "object" && p !== null && "refund_cents" in p)
-          .map((p) => ({
+      ? (data.perPaymentRefund as Array<Record<string, unknown>>).map((p) => ({
           installmentId:
             typeof p.installment_id === "string" ? p.installment_id : null,
           ordinal: Number(p.ordinal ?? 0),
@@ -227,22 +223,11 @@ function unwrapPreview(raw: unknown): RefundPreview {
         }))
       : [],
     installmentsToCancel: Number(data.installmentsToCancel ?? 0),
-    ...(depositKeptFrom(data) > 0 ? { depositKeptCents: depositKeptFrom(data) } : {}),
+    // issue #4522 — what "Deposit is non-refundable" keeps. The cancel edge
+    // sends only payment entries and this one number, whichever shape the
+    // database answered in (supabase/functions/cancel-trip-booking/refundEntries.ts).
+    ...(Number(data.depositKeptCents) > 0 ? { depositKeptCents: Number(data.depositKeptCents) } : {}),
   };
-}
-
-/** issue #4522 — the kept deposit: its own key, else an older stray element. */
-function depositKeptFrom(data: Record<string, unknown>): number {
-  const own = Number(data.depositKeptCents);
-  if (Number.isFinite(own) && own > 0) return own;
-  if (!Array.isArray(data.perPaymentRefund)) return 0;
-  return (data.perPaymentRefund as Array<Record<string, unknown>>).reduce(
-    (sum, p) => {
-      const kept = Number(p?.deposit_non_refundable_cents);
-      return Number.isFinite(kept) && kept > 0 ? sum + kept : sum;
-    },
-    0,
-  );
 }
 
 function unwrapCommit(raw: unknown): CancelTripBookingResult {

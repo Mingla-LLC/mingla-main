@@ -3,12 +3,13 @@
  * "Deposit is non-refundable" is told the deposit is kept, and the kept
  * deposit is never read as a payment row.
  *
- * The cancel edge now sends `depositKeptCents`; an older server appended a
- * stray `{ deposit_non_refundable_cents }` element to the payment list. The
- * service reads both shapes; the preview body shows the spec's line.
+ * The cancel edge sends `depositKeptCents` and payment entries only (it reads
+ * both database shapes: cancel-trip-booking/refundEntries.ts and its test);
+ * the service passes the number through and the preview body shows the
+ * spec's line.
  *
- * Fails on revert: the parser keeps the stray element as a ₦0 payment and
- * drops the kept amount; the body never says the deposit is non-refundable.
+ * Fails on revert: the service drops the kept amount and the body never says
+ * the deposit is non-refundable.
  */
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
@@ -104,19 +105,6 @@ describe("#4522 F7 — the kept deposit", () => {
     const shown = await render(<RefundPreviewBody preview={preview} mode="buyer" />);
     expect(shown).toContain("Deposit is non-refundable");
     expect(shown).toMatch(/Deposit is non-refundable ₦300,000\.00\s+kept/);
-  });
-
-  test("older server shape: the stray element is not a payment and still reads as kept", async () => {
-    invoke.mockResolvedValueOnce({
-      data: {
-        ...base,
-        perPaymentRefund: [flexRow, depositRow, { deposit_non_refundable_cents: 30_000_000 }],
-      },
-      error: null,
-    });
-    const preview = await previewBuyerCancel("order-4522", "token");
-    expect(preview.perPaymentRefund.map((p) => p.ordinal)).toEqual([4, 0]);
-    expect(preview.depositKeptCents).toBe(30_000_000);
   });
 
   test("nothing kept: no line, no key", async () => {
