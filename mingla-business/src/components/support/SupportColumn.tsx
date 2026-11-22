@@ -27,9 +27,11 @@ import { useCurrentBrandStore } from "../../store/currentBrandStore";
 import { Icon } from "../ui/Icon";
 import { openHelpCentre } from "./helpCentreLauncher";
 import { hubCopy } from "./helpSupportHubCopy";
-import type { SupportMode } from "./helpSupportRoute";
+import { segmentKeyTarget, type SegmentKeyEvent, type SupportMode } from "./helpSupportRoute";
 import type { HandoverProgress, HandoverSourceMessage } from "./supportHandover";
 import { LazySupportAriChat, LazySupportPersonPane, loadSupportScreens } from "./LazySupportScreens";
+
+const SUPPORT_MODES: readonly SupportMode[] = ["ari", "person"];
 
 interface AriSnapshot {
   conversationId: string | null;
@@ -144,6 +146,15 @@ export const SupportColumn: React.FC<SupportColumnProps> = ({
                 accessibilityState={{ selected, checked: selected }}
                 // A radio's state is "checked"; react-native-web reads aria-checked (#4420 rework 2).
                 aria-checked={selected}
+                // #4420 rework 3 (G6): Space selects, arrows move (web keyboard).
+                {...({
+                  onKeyDown: (event: SegmentKeyEvent) => {
+                    const next = segmentKeyTarget(event.nativeEvent?.key ?? event.key, SUPPORT_MODES, option);
+                    if (next === null) return;
+                    event.preventDefault?.();
+                    select(next);
+                  },
+                } as object)}
                 accessibilityLabel={hubCopy(`support.${option}`)}
                 testID={`support-mode-${option}`}
                 style={({ pressed }) => [styles.segment, selected && styles.segmentOn, pressed && !selected && styles.pressed]}

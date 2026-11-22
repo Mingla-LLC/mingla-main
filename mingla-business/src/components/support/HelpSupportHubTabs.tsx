@@ -11,7 +11,7 @@ import {
   color,
   space,
 } from "../../constants/designSystem";
-import type { HelpSupportTab } from "./helpSupportRoute";
+import { segmentKeyTarget, type HelpSupportTab, type SegmentKeyEvent } from "./helpSupportRoute";
 import { hubCopy } from "./helpSupportHubCopy";
 
 type TabDef = {
@@ -23,6 +23,7 @@ const TABS: readonly TabDef[] = [
   { id: "announcements", label: hubCopy("tabs.announcements") },
   { id: "support", label: hubCopy("tabs.support") },
 ];
+const TAB_IDS: readonly HelpSupportTab[] = TABS.map((tab) => tab.id);
 
 export type HelpSupportHubTabsProps = {
   active: HelpSupportTab;
@@ -60,6 +61,15 @@ export const HelpSupportHubTabs: React.FC<HelpSupportHubTabsProps> = ({
             // react-native-web reads aria-selected, not accessibilityState, so
             // the web tab says which one is selected too (#4420 rework 2).
             aria-selected={isActive}
+            // #4420 rework 3 (G6): Space selects, arrows move (web keyboard).
+            {...({
+              onKeyDown: (event: SegmentKeyEvent) => {
+                const next = segmentKeyTarget(event.nativeEvent?.key ?? event.key, TAB_IDS, tab.id);
+                if (next === null) return;
+                event.preventDefault?.();
+                onChange(next);
+              },
+            } as object)}
             hitSlop={6}
           >
             <Text

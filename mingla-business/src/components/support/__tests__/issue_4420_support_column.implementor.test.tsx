@@ -67,6 +67,7 @@ jest.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({ invalidateQ
 
 import { SupportColumn } from "../SupportColumn";
 import { HelpSupportHubTabs } from "../HelpSupportHubTabs";
+import { segmentKeyTarget } from "../helpSupportRoute";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const TestRenderer = require("react-test-renderer") as {
@@ -220,6 +221,52 @@ describe("#4420 Support column", () => {
       [false, false],
       [true, true],
     ]);
+    await TestRenderer.act(async () => tabs.unmount());
+  });
+});
+
+// #4420 rework 3 (G6, QA P3-2): Space selects the focused option of the
+// Ari / A person switch and of the phone tabs (Enter already did); arrows move,
+// as the Website workspace tabs do. FAILS-ON-REVERT: without the onKeyDown
+// wiring (or segmentKeyTarget) these fail.
+describe("#4420 rework 3 keyboard on the switch and the tabs", () => {
+  test("6. segmentKeyTarget: Space is the focused option, arrows wrap, other keys nothing", () => {
+    const options = ["ari", "person"] as const;
+    expect(segmentKeyTarget(" ", options, "person")).toBe("person");
+    expect(segmentKeyTarget("Spacebar", options, "ari")).toBe("ari");
+    expect(segmentKeyTarget("ArrowRight", options, "person")).toBe("ari");
+    expect(segmentKeyTarget("ArrowLeft", options, "ari")).toBe("person");
+    expect(segmentKeyTarget("Enter", options, "ari")).toBeNull();
+    expect(segmentKeyTarget("a", options, "ari")).toBeNull();
+  });
+
+  test("7. Space on A person selects it; Space on a tab selects that tab", async () => {
+    const renderer = await mount();
+    const segment = (id: string): Node =>
+      renderer.root.findAll((node) => node.props.testID === id && typeof node.props.onKeyDown === "function")[0];
+    const preventDefault = jest.fn();
+    await TestRenderer.act(async () => {
+      (segment("support-mode-person").props.onKeyDown as (e: object) => void)({ key: " ", preventDefault });
+    });
+    expect(selectedMode(renderer)).toBe("person");
+    expect(preventDefault).toHaveBeenCalled();
+    await TestRenderer.act(async () => renderer.unmount());
+
+    const onChange = jest.fn();
+    let tabs!: Renderer;
+    await TestRenderer.act(async () => {
+      tabs = TestRenderer.create(<HelpSupportHubTabs active="support" onChange={onChange} />);
+    });
+    const tabNodes = tabs.root.findAll((node) => node.props.accessibilityRole === "tab" && typeof node.props.onKeyDown === "function" && typeof node.type !== "string");
+    expect(tabNodes).toHaveLength(2);
+    await TestRenderer.act(async () => {
+      (tabNodes[0].props.onKeyDown as (e: object) => void)({ nativeEvent: { key: " " } });
+    });
+    expect(onChange).toHaveBeenLastCalledWith("announcements");
+    await TestRenderer.act(async () => {
+      (tabNodes[0].props.onKeyDown as (e: object) => void)({ key: "ArrowRight" });
+    });
+    expect(onChange).toHaveBeenLastCalledWith("support");
     await TestRenderer.act(async () => tabs.unmount());
   });
 });

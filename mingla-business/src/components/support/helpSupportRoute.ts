@@ -110,3 +110,34 @@ export function resolveHelpSupportEntry(input: {
     startNew: false,
   };
 }
+
+/**
+ * #4420 rework 3 (G6): keys on a focused tab or switch option. Space selects
+ * the focused option (Enter already does, through Pressable); the arrow keys
+ * move to the next or previous option, as the Website workspace's tabs do
+ * (components/sites/website/workspace/parts.tsx). Anything else: null.
+ */
+export function segmentKeyTarget<T>(key: string | undefined, options: readonly T[], focused: T): T | null {
+  const index = options.indexOf(focused);
+  if (index < 0) return null;
+  switch (key) {
+    case " ":
+    case "Spacebar":
+      return focused;
+    case "ArrowRight":
+    case "ArrowDown":
+      return options[(index + 1) % options.length] ?? null;
+    case "ArrowLeft":
+    case "ArrowUp":
+      return options[(index + options.length - 1) % options.length] ?? null;
+    default:
+      return null;
+  }
+}
+
+/** The key of a web keydown (react-native-web passes the DOM event). */
+export interface SegmentKeyEvent {
+  key?: string;
+  nativeEvent?: { key?: string };
+  preventDefault?: () => void;
+}
