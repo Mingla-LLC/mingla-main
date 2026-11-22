@@ -22,5 +22,6 @@ export interface PublicAddOnsBlockProps {
 }
 
 export default function PublicAddOnsBlock(props: PublicAddOnsBlockProps): React.ReactElement {
-  return <OfferingAddOnsBlock enabled photoUrl={photoUrl} {...props} />;
+  // The RSVP card lists only what a guest can pick there: free add-ons (#3281 S6).
+  return <OfferingAddOnsBlock enabled photoUrl={photoUrl} freeOnly={props.id === "rsvp"} {...props} />;
 }

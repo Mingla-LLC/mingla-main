@@ -164,6 +164,8 @@ export interface SubmitPublicRsvpInput {
   guests?: RsvpGuestContactInput[];
   /** #4541 — current answers to the form attached to this RSVP page. `undefined` = form read failed (no capability marker); `null` = read ok, no form. */
   brandForm?: import("@mingla/offering-rendering").RsvpBrandFormPayload | null;
+  /** issue #3281 S6 — the free add-ons picked with a Going reply; absent sends none (the page never passes an empty list). */
+  rsvpAddOns?: ReadonlyArray<{ addOnId: string; quantity: number }>;
 }
 
 export interface SubmitPublicRsvpResult {
@@ -211,6 +213,9 @@ export const submitPublicRsvp = async (
         guestPhoneCountryIso: input.guestPhoneCountryIso,
         plusCount: input.plusCount ?? 0,
         guests: input.guests ?? [],
+        // issue #3281 S6 — undefined (dropped from the JSON) unless the page has
+        // picks, so an RSVP without add-ons sends exactly the body it sent before.
+        rsvpAddOns: input.rsvpAddOns,
         // #4541 — explicit capability marker. Missing answers are meaningful;
         // the atomic SQL wrapper decides whether the current form requires them.
         // `undefined` = the form read did not succeed: send no marker so the

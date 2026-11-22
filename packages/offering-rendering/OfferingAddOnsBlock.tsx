@@ -51,6 +51,11 @@ export interface OfferingAddOnsBlockProps {
   photoUrl?: (path: string) => string | null;
   /** The ticket, package or option id; the block's testID is derived from it. */
   id?: string;
+  /**
+   * issue #3281 S6 — list free add-ons only. The RSVP card passes it: a guest
+   * can pick free RSVP add-ons; paid ones wait on a product decision.
+   */
+  freeOnly?: boolean;
 }
 
 export const OfferingAddOnsBlock: React.FC<OfferingAddOnsBlockProps> = ({
@@ -60,11 +65,12 @@ export const OfferingAddOnsBlock: React.FC<OfferingAddOnsBlockProps> = ({
   currency,
   photoUrl,
   id,
+  freeOnly = false,
 }) => {
   const testID = id === undefined ? "issue-3281-offering-add-ons" : `issue-3281-offering-add-ons-${id}`;
   if (!enabled) return null;
   const formatMoney = (minor: number): string => formatAddOnMoney(minor, currency);
-  const chips = publicAddOnChips(addOns);
+  const chips = publicAddOnChips(addOns).filter((chip) => !freeOnly || chip.priceAllInCents === 0);
   if (chips.length === 0) return null;
   const label = (chip: OfferingAddOnChip): string =>
     chip.soldOut
