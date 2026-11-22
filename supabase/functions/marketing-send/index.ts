@@ -122,6 +122,18 @@ import {
   writeSentSnapshot,
 } from "./sentSnapshot.ts";
 import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
+import {
+  BLAST_FORM_URL_MARKER,
+  blastFormConfirmRefusal,
+  holdIfBlastFormClosed,
+  loadEmbeddedForm,
+  mintBlastFormUrl,
+} from "./blastForm.ts";
+import {
+  BLAST_FORM_SAMPLE_URL,
+  blastFormSmsLine,
+  embeddedFormIdOf,
+} from "../_shared/blastFormLinks.ts";
 
 const BATCH_LIMIT = 10;
 
@@ -467,6 +479,8 @@ interface CampaignRow {
     // only; NG/Termii drops it (SMS-only). Passenger on the existing send — does
     // NOT alter disposition or the ORCH-1270 dedupe.
     media_urls?: string[];
+    /** #4541 R4.2: a Blast's "+ Form" (one per campaign). */
+    embedded_form?: { form_id: string };
   };
   name: string;
   scheduled_for: string | null;
@@ -748,6 +762,16 @@ export async function handleMarketingSendRequest(
     if (quote.reachableCount === 0) {
       return jsonResponse({ error: "BOOK_BLAST_ZERO_RECIPIENTS" }, 409);
     }
+    // #4541 R4.3: a Blast that carries a form confirms (or schedules) only with
+    // a live form of its own brand (read only when the payload has one).
+    const formRefusal = embeddedFormIdOf(
+        (candidates.data as { content?: unknown } | null)?.content,
+      ) === null
+      ? null
+      : await blastFormConfirmRefusal(supabase, body.campaign_id);
+    if (formRefusal !== null) {
+      return jsonResponse({ error: formRefusal.code }, formRefusal.status);
+    }
     const confirmed = await supabase.rpc(
       body.action === "confirm_combined_v1"
         ? "biz_confirm_marketing_combined_send_v1"
@@ -916,6 +940,13 @@ export async function handlePushCampaignAction(
   }
   if (quote.reachableCount === 0) {
     return jsonResponse({ error: "BOOK_BLAST_ZERO_RECIPIENTS" }, 409);
+  }
+  // #4541 R4.3: the push lane carries the same form check.
+  const formRefusal = embeddedFormIdOf(envelope.content) === null
+    ? null
+    : await blastFormConfirmRefusal(supabase, body.campaign_id);
+  if (formRefusal !== null) {
+    return jsonResponse({ error: formRefusal.code }, formRefusal.status);
   }
   const confirmed = await supabase.rpc("biz_confirm_marketing_push_send_v1", {
     p_actor_id: actorId,
@@ -1443,6 +1474,16 @@ export async function processClaimedCampaigns(
 
   for (const campaign of campaigns) {
     try {
+      // #4541 R4.3 (decision 10): a scheduled Blast whose form closed first is
+      // failed (form_closed), sends nothing, and the host is told (SQL).
+      if (
+        embeddedFormIdOf(campaign.channel_payload) !== null &&
+        await holdIfBlastFormClosed(supabase, campaign.id)
+      ) {
+        results.push({ campaign_id: campaign.id, status: "failed", reason: "form_closed" });
+        failed += 1;
+        continue;
+      }
       const outcome = await dispatcher(supabase, campaign, options);
       if (outcome.retry_later === true) {
         // #4273 — nothing was attempted: back to scheduled, no finalize.
@@ -1795,6 +1836,8 @@ async function sendEmail(
     supabase,
     campaign.channel_payload.embedded_events ?? [],
   );
+  // #4541 R4.3: the Blast's form (each recipient gets their own link).
+  const embeddedForm = await loadEmbeddedForm(supabase, campaign);
 
   // 2. Resolve audience via shared helper (service-role bypasses RLS).
   const resolved = await resolveAudience(
@@ -1989,6 +2032,9 @@ async function sendEmail(
       offering_invite_url_marker: inviteContext === null
         ? undefined
         : OFFERING_LINK_MARKER,
+      ...(embeddedForm === null ? {} : {
+        embedded_form: { name: embeddedForm.formName, url_marker: BLAST_FORM_URL_MARKER },
+      }),
     });
     if (
       rendered.links.some((link) =>
@@ -2084,6 +2130,18 @@ async function sendEmail(
       providerText = replaceSingleMarker(rendered.text, prepared.url);
       offeringTokenId = prepared.tokenId;
       offeringProviderKey = `offering:${inviteContext.attempt_id}:email:v1`;
+    }
+    if (embeddedForm !== null) {
+      // #4541 R4.3: this recipient's own form link, minted only now (after the
+      // audience's consent and unsubscribe rules picked them).
+      const formUrl = await mintBlastFormUrl(supabase, {
+        formId: embeddedForm.formId,
+        campaignId: campaign.id,
+        contactKey: contact.contact_key,
+        label: contact.display_name,
+      });
+      providerHtml = providerHtml.split(BLAST_FORM_URL_MARKER).join(escapeOfferingUrlForHtml(formUrl));
+      providerText = providerText.split(BLAST_FORM_URL_MARKER).join(formUrl);
     }
     const sendOutcome = await postToResend({
       apiKey: options.resendApiKey,
@@ -2205,6 +2263,9 @@ interface SmsContact {
   raw_phone: string | null;
   sms_marketing_ok: boolean;
   offering_invite?: OfferingInviteContext;
+  /** #4541 R4.3: the audience's contact key and name (the form link's recipient). */
+  contact_key?: string;
+  display_name?: string;
 }
 
 // Region derivation (for quiet-hours + kill-switch routing) comes from the
@@ -2343,6 +2404,9 @@ async function sendSms(
     supabase,
     campaign.channel_payload.embedded_events ?? [],
   );
+  // #4541 R4.3: the Blast's form: " Answer: {link}" after link tracking.
+  const embeddedForm = await loadEmbeddedForm(supabase, campaign);
+  const formSampleLine = embeddedForm === null ? "" : blastFormSmsLine(BLAST_FORM_SAMPLE_URL);
 
   // ORCH-1282 — MMS media. A passenger on the existing send: it rides the Twilio
   // MediaUrl param (US only); the NG/Termii branch inside the adapter never
@@ -2731,8 +2795,9 @@ async function sendSms(
       const optOutLink = optOutTrackingId === null
         ? undefined
         : `${resolveMarketingTrackingOrigin()}/${optOutTrackingId}`;
+      // #4541 R4.10: the form link counted at its real length.
       const segments = computeSegments(
-        composeSmsBody(segmentBody, true, optOutLink),
+        composeSmsBody(segmentBody + formSampleLine, true, optOutLink),
       );
 
       // UPSERT the queued row (∅→queued or deferred→queued). onConflict clears
@@ -2819,6 +2884,14 @@ async function sendSms(
         );
         providerMessage = replaceSingleMarker(rewritten, prepared.url);
         offeringTokenId = prepared.tokenId;
+      }
+      if (embeddedForm !== null) {
+        providerMessage += blastFormSmsLine(await mintBlastFormUrl(supabase, {
+          formId: embeddedForm.formId,
+          campaignId: campaign.id,
+          contactKey: contact.contact_key ?? phone,
+          label: contact.display_name ?? null,
+        }));
       }
 
       // Live path — #4273: the route comes from the country switches

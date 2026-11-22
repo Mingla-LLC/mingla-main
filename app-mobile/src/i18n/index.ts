@@ -44,13 +44,15 @@ import en_followers from './locales/en/followers.json'
 import en_purchases from './locales/en/purchases.json'
 // #4111 Wave D — en-only like `purchases`; other locales fall back to en.
 import en_enquiry from './locales/en/enquiry.json'
+// #4541 R2.12 — brand form strings; every locale lazy-loads its own copy.
+import en_forms from './locales/en/forms.json'
 
 const NAMESPACES = [
   'common', 'onboarding', 'navigation', 'cards', 'discover', 'preferences',
   'share', 'paywall', 'profile', 'settings', 'connections', 'saved',
   'feedback', 'chat', 'social', 'map', 'activity', 'board', 'notifications',
   'modals', 'billing', 'expanded_details', 'auth', 'discounts', 'followers',
-  'purchases', 'enquiry',
+  'purchases', 'enquiry', 'forms',
 ] as const
 
 // ─── Lazy: 28 other languages via dynamic import ───
@@ -83,6 +85,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/es/auth.json')).default,
     discounts: (await import('./locales/es/discounts.json')).default,
     followers: (await import('./locales/es/followers.json')).default,
+    forms: (await import('./locales/es/forms.json')).default,
   }),
   bin: async () => ({
     common: (await import('./locales/bin/common.json')).default,
@@ -110,6 +113,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/bin/auth.json')).default,
     discounts: (await import('./locales/bin/discounts.json')).default,
     followers: (await import('./locales/bin/followers.json')).default,
+    forms: (await import('./locales/bin/forms.json')).default,
   }),
   ha: async () => ({
     common: (await import('./locales/ha/common.json')).default,
@@ -137,6 +141,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/ha/auth.json')).default,
     discounts: (await import('./locales/ha/discounts.json')).default,
     followers: (await import('./locales/ha/followers.json')).default,
+    forms: (await import('./locales/ha/forms.json')).default,
   }),
   ig: async () => ({
     common: (await import('./locales/ig/common.json')).default,
@@ -164,6 +169,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/ig/auth.json')).default,
     discounts: (await import('./locales/ig/discounts.json')).default,
     followers: (await import('./locales/ig/followers.json')).default,
+    forms: (await import('./locales/ig/forms.json')).default,
   }),
   yo: async () => ({
     common: (await import('./locales/yo/common.json')).default,
@@ -191,6 +197,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/yo/auth.json')).default,
     discounts: (await import('./locales/yo/discounts.json')).default,
     followers: (await import('./locales/yo/followers.json')).default,
+    forms: (await import('./locales/yo/forms.json')).default,
   }),
   fr: async () => ({
     common: (await import('./locales/fr/common.json')).default,
@@ -218,6 +225,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/fr/auth.json')).default,
     discounts: (await import('./locales/fr/discounts.json')).default,
     followers: (await import('./locales/fr/followers.json')).default,
+    forms: (await import('./locales/fr/forms.json')).default,
   }),
   nl: async () => ({
     common: (await import('./locales/nl/common.json')).default,
@@ -245,6 +253,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/nl/auth.json')).default,
     discounts: (await import('./locales/nl/discounts.json')).default,
     followers: (await import('./locales/nl/followers.json')).default,
+    forms: (await import('./locales/nl/forms.json')).default,
   }),
   de: async () => ({
     common: (await import('./locales/de/common.json')).default,
@@ -272,6 +281,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/de/auth.json')).default,
     discounts: (await import('./locales/de/discounts.json')).default,
     followers: (await import('./locales/de/followers.json')).default,
+    forms: (await import('./locales/de/forms.json')).default,
   }),
   pt: async () => ({
     common: (await import('./locales/pt/common.json')).default,
@@ -299,6 +309,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/pt/auth.json')).default,
     discounts: (await import('./locales/pt/discounts.json')).default,
     followers: (await import('./locales/pt/followers.json')).default,
+    forms: (await import('./locales/pt/forms.json')).default,
   }),
   ar: async () => ({
     common: (await import('./locales/ar/common.json')).default,
@@ -326,6 +337,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/ar/auth.json')).default,
     discounts: (await import('./locales/ar/discounts.json')).default,
     followers: (await import('./locales/ar/followers.json')).default,
+    forms: (await import('./locales/ar/forms.json')).default,
   }),
   bn: async () => ({
     common: (await import('./locales/bn/common.json')).default,
@@ -353,6 +365,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/bn/auth.json')).default,
     discounts: (await import('./locales/bn/discounts.json')).default,
     followers: (await import('./locales/bn/followers.json')).default,
+    forms: (await import('./locales/bn/forms.json')).default,
   }),
   zh: async () => ({
     common: (await import('./locales/zh/common.json')).default,
@@ -380,6 +393,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/zh/auth.json')).default,
     discounts: (await import('./locales/zh/discounts.json')).default,
     followers: (await import('./locales/zh/followers.json')).default,
+    forms: (await import('./locales/zh/forms.json')).default,
   }),
   hi: async () => ({
     common: (await import('./locales/hi/common.json')).default,
@@ -407,6 +421,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/hi/auth.json')).default,
     discounts: (await import('./locales/hi/discounts.json')).default,
     followers: (await import('./locales/hi/followers.json')).default,
+    forms: (await import('./locales/hi/forms.json')).default,
   }),
   id: async () => ({
     common: (await import('./locales/id/common.json')).default,
@@ -434,6 +449,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/id/auth.json')).default,
     discounts: (await import('./locales/id/discounts.json')).default,
     followers: (await import('./locales/id/followers.json')).default,
+    forms: (await import('./locales/id/forms.json')).default,
   }),
   ja: async () => ({
     common: (await import('./locales/ja/common.json')).default,
@@ -461,6 +477,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/ja/auth.json')).default,
     discounts: (await import('./locales/ja/discounts.json')).default,
     followers: (await import('./locales/ja/followers.json')).default,
+    forms: (await import('./locales/ja/forms.json')).default,
   }),
   ko: async () => ({
     common: (await import('./locales/ko/common.json')).default,
@@ -488,6 +505,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/ko/auth.json')).default,
     discounts: (await import('./locales/ko/discounts.json')).default,
     followers: (await import('./locales/ko/followers.json')).default,
+    forms: (await import('./locales/ko/forms.json')).default,
   }),
   ms: async () => ({
     common: (await import('./locales/ms/common.json')).default,
@@ -515,6 +533,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/ms/auth.json')).default,
     discounts: (await import('./locales/ms/discounts.json')).default,
     followers: (await import('./locales/ms/followers.json')).default,
+    forms: (await import('./locales/ms/forms.json')).default,
   }),
   el: async () => ({
     common: (await import('./locales/el/common.json')).default,
@@ -542,6 +561,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/el/auth.json')).default,
     discounts: (await import('./locales/el/discounts.json')).default,
     followers: (await import('./locales/el/followers.json')).default,
+    forms: (await import('./locales/el/forms.json')).default,
   }),
   he: async () => ({
     common: (await import('./locales/he/common.json')).default,
@@ -569,6 +589,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/he/auth.json')).default,
     discounts: (await import('./locales/he/discounts.json')).default,
     followers: (await import('./locales/he/followers.json')).default,
+    forms: (await import('./locales/he/forms.json')).default,
   }),
   it: async () => ({
     common: (await import('./locales/it/common.json')).default,
@@ -596,6 +617,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/it/auth.json')).default,
     discounts: (await import('./locales/it/discounts.json')).default,
     followers: (await import('./locales/it/followers.json')).default,
+    forms: (await import('./locales/it/forms.json')).default,
   }),
   pl: async () => ({
     common: (await import('./locales/pl/common.json')).default,
@@ -623,6 +645,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/pl/auth.json')).default,
     discounts: (await import('./locales/pl/discounts.json')).default,
     followers: (await import('./locales/pl/followers.json')).default,
+    forms: (await import('./locales/pl/forms.json')).default,
   }),
   ro: async () => ({
     common: (await import('./locales/ro/common.json')).default,
@@ -650,6 +673,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/ro/auth.json')).default,
     discounts: (await import('./locales/ro/discounts.json')).default,
     followers: (await import('./locales/ro/followers.json')).default,
+    forms: (await import('./locales/ro/forms.json')).default,
   }),
   ru: async () => ({
     common: (await import('./locales/ru/common.json')).default,
@@ -677,6 +701,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/ru/auth.json')).default,
     discounts: (await import('./locales/ru/discounts.json')).default,
     followers: (await import('./locales/ru/followers.json')).default,
+    forms: (await import('./locales/ru/forms.json')).default,
   }),
   sv: async () => ({
     common: (await import('./locales/sv/common.json')).default,
@@ -704,6 +729,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/sv/auth.json')).default,
     discounts: (await import('./locales/sv/discounts.json')).default,
     followers: (await import('./locales/sv/followers.json')).default,
+    forms: (await import('./locales/sv/forms.json')).default,
   }),
   th: async () => ({
     common: (await import('./locales/th/common.json')).default,
@@ -731,6 +757,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/th/auth.json')).default,
     discounts: (await import('./locales/th/discounts.json')).default,
     followers: (await import('./locales/th/followers.json')).default,
+    forms: (await import('./locales/th/forms.json')).default,
   }),
   tr: async () => ({
     common: (await import('./locales/tr/common.json')).default,
@@ -758,6 +785,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/tr/auth.json')).default,
     discounts: (await import('./locales/tr/discounts.json')).default,
     followers: (await import('./locales/tr/followers.json')).default,
+    forms: (await import('./locales/tr/forms.json')).default,
   }),
   uk: async () => ({
     common: (await import('./locales/uk/common.json')).default,
@@ -785,6 +813,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/uk/auth.json')).default,
     discounts: (await import('./locales/uk/discounts.json')).default,
     followers: (await import('./locales/uk/followers.json')).default,
+    forms: (await import('./locales/uk/forms.json')).default,
   }),
   vi: async () => ({
     common: (await import('./locales/vi/common.json')).default,
@@ -812,6 +841,7 @@ const localeLoaders: Record<string, () => Promise<Record<string, unknown>>> = {
     auth: (await import('./locales/vi/auth.json')).default,
     discounts: (await import('./locales/vi/discounts.json')).default,
     followers: (await import('./locales/vi/followers.json')).default,
+    forms: (await import('./locales/vi/forms.json')).default,
   }),
 }
 
@@ -877,6 +907,7 @@ i18n.use(initReactI18next).init({
       auth: en_auth, discounts: en_discounts, followers: en_followers,
       purchases: en_purchases,
       enquiry: en_enquiry,
+      forms: en_forms,
     },
   },
   lng: initialLang,

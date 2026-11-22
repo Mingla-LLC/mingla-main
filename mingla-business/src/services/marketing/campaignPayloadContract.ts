@@ -93,6 +93,17 @@ export function campaignPayloadIssues(payload: unknown): string[] {
     default:
       issues.push(`unsupported channel kind: ${kind}`);
   }
+  // #4541 R4.2: an embedded form, on any channel, names one form by its id.
+  if (Object.hasOwn(payload, "embedded_form")) {
+    const ef = payload.embedded_form;
+    if (
+      !isPlainObject(ef) ||
+      typeof ef.form_id !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ef.form_id)
+    ) {
+      issues.push("`embedded_form` must name one form by its id.");
+    }
+  }
   return issues;
 }
 

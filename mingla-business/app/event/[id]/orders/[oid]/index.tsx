@@ -165,6 +165,12 @@ const formatRelativeDay = (iso: string): string => {
 // the business-web boot chunk (__common ceiling, orch-1083).
 const loadGuestList = () =>
   import("../../../../../src/services/guestListService");
+// #4541 R1.9 — the order's answers load through the one lazy forms owner.
+const GuestAnswersCard = React.lazy(() =>
+  import("../../../../../src/components/forms/formsOwner").then((m) => ({
+    default: m.GuestAnswersCard,
+  })),
+);
 const FALLBACK_COPY =
   "Something went wrong. Nothing was charged. Try again. Guests already added won't be added twice.";
 const guestListMessage = (
@@ -787,6 +793,17 @@ export default function OrderDetailRoute(): React.ReactElement {
               {formatRelativeDay(order.cancelledAt)}
             </Text>
           </GlassCard>
+        ) : null}
+
+        {/* #4541 R1.9 — the buyer's one answer for this order */}
+        {typeof eventId === "string" ? (
+          <React.Suspense fallback={null}>
+            <GuestAnswersCard
+              brandId={order.brandId}
+              eventId={eventId}
+              subject={{ kind: "order", id: order.id }}
+            />
+          </React.Suspense>
         ) : null}
 
         {/* Primary actions */}

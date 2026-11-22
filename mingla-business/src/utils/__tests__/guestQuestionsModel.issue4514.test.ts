@@ -39,8 +39,9 @@ describe("attach sheet: When guests answer", () => {
     const rows = modeRows("event");
     expect(rows.map((r) => [r.label, r.line])).toEqual([
       ["On the page, optional", "Guests can answer if they want."],
-      ["On the page, required", "Guests must answer before they finish."],
-      ["After they purchase", "Guests are taken to the form right after."],
+      // #4541 R1.2 (changed on purpose): honest "required" and "after" lines.
+      ["On the page, required", "Guests answer before they finish. Anyone booking from an older app version is asked afterwards."],
+      ["After they purchase", "Guests are taken to the form right after they buy."],
     ]);
     expect(rows).toHaveLength(3);
   });

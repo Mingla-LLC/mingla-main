@@ -222,7 +222,12 @@ describe("#4514 W5 fix 1: the Details probe uses the buyer's checkout credential
     expect(answersForForm(form!, { formId: ANSWERS.formId, versionId: ANSWERS.versionId, answers: { q1: "Halal" } })).toEqual({ q1: "Halal" });
     // A buyer who has not answered gets no prefill.
     expect(parseCheckoutForm({ ...base, mode: "required_step" })?.prefill).toBeNull();
-    expect(parseCheckoutForm({ ...base, mode: "required_step", prefill: answered.prefill })?.prefill).toBeNull();
+    // #4541 R1.1 (changed on purpose): an answer at ANOTHER event comes with
+    // `answered:false` and still prefills (editable; it becomes a new answer
+    // for this order). It is never read-only here.
+    const elsewhere = parseCheckoutForm({ ...base, mode: "required_step", prefill: answered.prefill });
+    expect(elsewhere?.prefill).toEqual({ answers: { q1: "Vegan", q7: ["a", "b"] }, versionId: "v-old" });
+    expect(elsewhere?.answeredHere).toBe(false);
   });
 });
 

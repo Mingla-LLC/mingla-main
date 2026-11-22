@@ -8,12 +8,18 @@ type Props = {
   visible: boolean;
   buyerFirstName: string | null;
   onDone: () => void;
+  /** #4541 R2.8 — the order, for "One more thing from {brand}". */
+  orderId?: string | null;
 };
+
+// #4541 R2.8 — loaded on use (it reaches expo-router and AsyncStorage).
+const FormHandoffBlock = React.lazy(() => import("../forms/FormHandoffBlock"));
 
 export function NativeCheckoutSentSheet({
   visible,
   buyerFirstName,
   onDone,
+  orderId = null,
 }: Props): React.ReactElement {
   const { t } = useTranslation("purchases");
   const normalizedName = buyerFirstName?.trim() || null;
@@ -42,6 +48,17 @@ export function NativeCheckoutSentSheet({
             ? t("nativeCheckout.sentBody", { firstName: normalizedName })
             : t("nativeCheckout.sentBodyNoName")}
         </Text>
+        {visible && orderId !== null ? (
+          <React.Suspense fallback={null}>
+            <FormHandoffBlock
+              kind="order"
+              subjectId={orderId}
+              from="purchase"
+              onBeforeAnswer={onDone}
+              variant="row"
+            />
+          </React.Suspense>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           onPress={onDone}

@@ -3,10 +3,12 @@
  * and how a refusal reads.
  *
  * FAILS-ON-REVERT: dropping the Remind → "unanswered" pin in requestBody, or the
- * read of a non-2xx body's code, turns a case below red. Wave 4 review: putting
- * "push" back in REQUEST_CHANNELS, Ask-for-named-guests back on "unanswered",
- * or letting an unpriced or over-limit send through canSendRequest turns a
- * case red.
+ * read of a non-2xx body's code, turns a case below red. Wave 4 review:
+ * Ask-for-named-guests back on "unanswered", or letting an unpriced send
+ * through canSendRequest turns a case red. #4541 changed two rules on purpose:
+ * Push is offered (R3, behind the server's switch) and a text limit never
+ * blocks the send (R5.5: texts are off for that send); the delivery log names
+ * a guest not texted for that reason (R5.5).
  */
 
 const invoke = jest.fn();
@@ -44,7 +46,7 @@ const preview = (over: Partial<FormRequestPreview> = {}): FormRequestPreview => 
   throttledCount: 0,
   smsOptedOutCount: 0,
   unreachableCount: 0,
-  perChannelReachable: { sms: 1, email: 0 },
+  perChannelReachable: { push: 0, sms: 1, email: 0 },
   smsCount: 1,
   smsSegments: 1,
   estimatedCostMinor: 2,
@@ -53,6 +55,13 @@ const preview = (over: Partial<FormRequestPreview> = {}): FormRequestPreview => 
   textCap: 300,
   overTextCap: false,
   textsWaitUntil: null,
+  pushAvailable: false,
+  monthlyTextCap: 500,
+  textsLeftThisMonth: 500,
+  textsThisSendUses: 1,
+  textsTodayUsed: 0,
+  dailyTextCap: 300,
+  textsOff: null,
   ...over,
 });
 
@@ -67,7 +76,7 @@ describe("brandFormRequestService (#4514 wave 4)", () => {
       body: { operation: "form_preview", eventId: EVENT, formId: FORM, kind: "remind", audience: "unanswered", channels: ["email", "sms"] },
     });
     expect(p.reachableCount).toBe(2);
-    expect(p.perChannelReachable).toEqual({ sms: 1, email: 1 });
+    expect(p.perChannelReachable).toEqual({ push: 0, sms: 1, email: 1 });
     expect([p.smsSegments, p.textsToday, p.textCap, p.overTextCap]).toEqual([2, 5, 300, false]);
     expect(p.estimatedCostMinor).toBeNull();
   });
@@ -85,7 +94,7 @@ describe("brandFormRequestService (#4514 wave 4)", () => {
       operation: "form_send", eventId: EVENT, formId: FORM, kind: "ask", audience: "everyone", channels: ["email", "sms"],
       subjects: [{ kind: "rsvp", id: EVENT }], expectedCostMinor: null, currency: null, confirmUnpriced: true,
     });
-    expect(r).toEqual({ queued: 3, sent: 1, failed: 0, pending: 2, waitingForMorning: 2, throttled: 1, answered: 0, unreachable: 1 });
+    expect(r).toEqual({ queued: 3, sent: 1, failed: 0, pending: 2, waitingForMorning: 2, throttled: 1, answered: 0, unreachable: 1, textsOff: null });
   });
 
   it("a refusal reads the server's code from the reply body (never a guessed reason)", async () => {
@@ -113,15 +122,16 @@ describe("brandFormRequestService (#4514 wave 4)", () => {
     expect(rpc).toHaveBeenLastCalledWith("biz_brand_form_set_auto_remind", { p_attachment_id: FORM, p_on: true, p_channels: ["email", "sms"] });
   });
 
-  it("the sheet offers no push, Asks named guests as everyone (Ask again), and refuses unpriced or over-limit sends", () => {
-    expect(REQUEST_CHANNELS).toEqual(["sms", "email"]);
+  it("the sheet offers push, text and email, Asks named guests as everyone (Ask again), and refuses unpriced sends", () => {
+    expect(REQUEST_CHANNELS).toEqual(["push", "sms", "email"]);
     expect(initialAudience("ask", true)).toBe("everyone");
     expect(initialAudience("ask", false)).toBe("unanswered");
     expect(initialAudience("remind", true)).toBe("unanswered");
     expect(canSendRequest(preview(), false)).toBe(true);
     expect(canSendRequest(preview({ estimatedCostMinor: null, currency: null }), false)).toBe(false);
     expect(canSendRequest(preview({ estimatedCostMinor: null, currency: null }), true)).toBe(true);
-    expect(canSendRequest(preview({ overTextCap: true }), true)).toBe(false);
+    // #4541 R5.5: over a text limit texts are off for the send; it is never blocked.
+    expect(canSendRequest(preview({ overTextCap: true }), true)).toBe(true);
     expect(canSendRequest(preview({ reachableCount: 0 }), true)).toBe(false);
   });
 
@@ -148,7 +158,7 @@ describe("brandFormRequestService (#4514 wave 4)", () => {
     expect(FORM_REQUEST_LOG_COPY.counts(0, 0, 1, 1)).toBe("0 sent · 0 on the way · 1 failed · 1 can't be reached");
   });
 
-  it("the delivery log names a text held back by the daily limit and a reminder too late to send", () => {
+  it("the delivery log names a guest not texted because of the daily limit and a reminder too late to send", () => {
     const log = parseFormRequestLog({
       sends: [
         { id: "c1", kind: "auto", subjectKind: "rsvp", subjectId: EVENT, name: "Ike O.", channel: "sms", status: "skipped", reason: "text_cap", createdAt: "2028-03-01T10:00:00Z", settledAt: null },
@@ -158,8 +168,8 @@ describe("brandFormRequestService (#4514 wave 4)", () => {
       counts: { sent: 1, queued: 0, failed: 0, unreachable: 0, skipped: 2 },
       runs: [],
     });
-    expect(logLine(log.sends[0])).toContain("Ike O. · Automatic reminder · Text · Not sent (the day's text limit was reached)");
-    expect(logLine(log.sends[1])).toContain("Val W. · Automatic reminder · Email · Sent (the day's text limit was reached)");
+    expect(logLine(log.sends[0])).toContain("Ike O. · Automatic reminder · Text · Not sent · Not texted: daily limit");
+    expect(logLine(log.sends[1])).toContain("Val W. · Automatic reminder · Email · Sent · Not texted: daily limit");
     expect(logLine(log.sends[2])).toContain("Ada D. · Ask · Text · Not sent (their date had already started)");
   });
 

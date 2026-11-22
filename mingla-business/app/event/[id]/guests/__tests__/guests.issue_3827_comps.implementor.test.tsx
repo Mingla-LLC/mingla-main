@@ -136,6 +136,9 @@ jest.mock("../../../../../src/components/ui/Sheet", () => ({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     props.visible ? require("react").createElement("SheetProbe", null, props.children) : null,
 }));
+// #4541 harness registration only — no assertion changed. The detail screen now
+// lazy-loads "Answers to {form}" from the forms owner (R1.9); not under test here.
+jest.mock("../../../../../src/components/forms/formsOwner", () => ({ GuestAnswersCard: (): null => null }));
 jest.mock("../../../../../src/wrappers/SmartScrollView", () => ({ ScrollView: probe("ScrollView") }));
 
 import GuestsRoute from "../index";

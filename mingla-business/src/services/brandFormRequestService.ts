@@ -4,11 +4,21 @@
  * operations) checks the role (event manager and up, C5), throttles each person
  * per form for 24 hours, queues the requests and sends them by text or email
  * with each guest's own form link; a request never creates an invite (decision
- * 17). Push waits for the Explorer form screen, so it is never offered here.
+ * 17). #4541 R3: push (free) goes only to people whose app can open the
+ * form, and only while the server's push switch is on (`pushAvailable`).
+ * R5: texts share Blast's monthly allowance; over it (or today's 300) texts
+ * are off for that send, never a refused send (`textsOff`).
  * Loaded only by the lazy forms owner; no module-scope client.
  */
 
-export type FormRequestChannel = "sms" | "email";
+export type FormRequestChannel = "push" | "sms" | "email";
+/** #4541 R5.4: why texts are off for a send. */
+export type FormRequestTextsOffReason = "monthly_allowance" | "daily_cap";
+export interface FormRequestTextsOff {
+  reason: FormRequestTextsOffReason;
+  needed: number;
+  remaining: number;
+}
 export type FormRequestKind = "ask" | "remind";
 export type FormRequestAudience = "unanswered" | "everyone";
 
@@ -46,6 +56,17 @@ export interface FormRequestPreview {
   overTextCap: boolean;
   /** Texts wait until this time (9am on the page's own clock), or null. */
   textsWaitUntil: string | null;
+  /** #4541 R3.1: the server's push switch is on (else "Push: not available yet"). */
+  pushAvailable: boolean;
+  /** #4541 R5.5: the monthly text allowance shared with Blast (null: no limit). */
+  monthlyTextCap: number | null;
+  textsLeftThisMonth: number | null;
+  /** The texts this send will use (0 when texts are off). */
+  textsThisSendUses: number;
+  textsTodayUsed: number;
+  dailyTextCap: number;
+  /** Texts are off for this send (email and push still go), or null. */
+  textsOff: FormRequestTextsOff | null;
 }
 
 export interface FormRequestResult {
@@ -58,6 +79,8 @@ export interface FormRequestResult {
   throttled: number;
   answered: number;
   unreachable: number;
+  /** #4541 R5.4: texts were off for this send. */
+  textsOff: FormRequestTextsOff | null;
 }
 
 export interface FormRequestLogRow {
@@ -90,6 +113,7 @@ export type FormRequestErrorCode =
   | "preview_stale_cost"
   | "cost_unpriced"
   | "text_cap"
+  | "forms_paused"
   | "network_error"
   | "invalid_response"
   | "unknown";
@@ -113,6 +137,8 @@ const ERROR_COPY: Record<FormRequestErrorCode, string> = {
   preview_stale_cost: "The cost changed. Check the new estimate and send again.",
   cost_unpriced: "Some texts have no price yet. Tick the box to send them anyway, or untick Text.",
   text_cap: "That's over today's limit for form texts. Send by email, or text the rest tomorrow.",
+  // #4541 R1.8: the off switch stops sending too.
+  forms_paused: "Forms are paused right now. Try again later.",
   network_error: "Couldn't reach Mingla. Check your connection and try again.",
   invalid_response: "Something went wrong reading the reply. Try again.",
   unknown: "Couldn't send. Try again.",
@@ -121,6 +147,14 @@ const ERROR_COPY: Record<FormRequestErrorCode, string> = {
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+const numOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** `{reason, needed, remaining}` or null (an unknown reason is never guessed). */
+export function parseTextsOff(v: unknown): FormRequestTextsOff | null {
+  if (!isRecord(v)) return null;
+  const reason = v.reason === "monthly_allowance" || v.reason === "daily_cap" ? v.reason : null;
+  return reason === null ? null : { reason, needed: num(v.needed), remaining: num(v.remaining) };
+}
 
 const getSupabase = async () => (await import("./supabase")).supabase;
 
@@ -161,7 +195,7 @@ export function parseFormRequestPreview(data: Record<string, unknown>): FormRequ
     throttledCount: num(data.throttledCount),
     smsOptedOutCount: num(data.smsOptedOutCount),
     unreachableCount: num(data.unreachableCount),
-    perChannelReachable: { sms: num(per.sms), email: num(per.email) },
+    perChannelReachable: { push: num(per.push), sms: num(per.sms), email: num(per.email) },
     smsCount: num(data.smsCount),
     smsSegments: num(data.smsSegments),
     estimatedCostMinor: typeof data.estimatedCostMinor === "number" ? data.estimatedCostMinor : null,
@@ -170,6 +204,14 @@ export function parseFormRequestPreview(data: Record<string, unknown>): FormRequ
     textCap: num(data.textCap),
     overTextCap: data.overTextCap === true,
     textsWaitUntil: typeof data.textsWaitUntil === "string" ? data.textsWaitUntil : null,
+    pushAvailable: data.pushAvailable === true,
+    monthlyTextCap: numOrNull(data.monthlyTextCap),
+    textsLeftThisMonth: numOrNull(data.textsLeftThisMonth),
+    // An older server sends none of these: today's numbers stand in.
+    textsThisSendUses: typeof data.textsThisSendUses === "number" ? num(data.textsThisSendUses) : num(data.smsCount),
+    textsTodayUsed: typeof data.textsTodayUsed === "number" ? num(data.textsTodayUsed) : num(data.textsToday),
+    dailyTextCap: typeof data.dailyTextCap === "number" ? num(data.dailyTextCap) : num(data.textCap),
+    textsOff: parseTextsOff(data.textsOff),
   };
 }
 
@@ -212,6 +254,7 @@ export async function sendFormRequest(input: FormRequestSendInput): Promise<Form
     throttled: num(skipped.throttled),
     answered: num(skipped.answered),
     unreachable: num(skipped.unreachable),
+    textsOff: parseTextsOff(data.textsOff),
   };
 }
 
@@ -238,7 +281,7 @@ export async function setFormAutoRemind(input: {
   };
 }
 
-/** Stored channels, push dropped (it waits for the Explorer form screen). */
+/** The automatic reminder's stored channels: text and email only (it never pushes). */
 export function parseContactChannels(value: unknown): FormRequestChannel[] {
   return Array.isArray(value)
     ? value.filter((c): c is FormRequestChannel => c === "sms" || c === "email")

@@ -23,8 +23,7 @@ function deps(opts: {
   const logs: string[] = [];
   const db: BrandFormSubmitDb = {
     switchedOff: () => Promise.resolve(opts.off === true),
-    countAttempts: () => Promise.resolve({ ip10m: 0, ip24h: 0 }),
-    recordAttempt: () => Promise.resolve(),
+    attemptAdmit: () => Promise.resolve({ allowed: true }),
     userFromBearer: () => Promise.resolve(null),
     submitCore: () => Promise.reject(new Error("submit core must not run")),
   };

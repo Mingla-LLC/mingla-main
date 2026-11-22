@@ -1,10 +1,13 @@
 /**
  * #4514 wave 4 — the send sheet behind "Ask guests to answer", "Remind" and the
- * "Ask earlier guests?" prompt (§4.6, §4.7). Audience, channels (Text, Email
- * free; push waits for the Explorer form screen and is not offered), the
- * message, the reach line and the cost line (real text parts, the daily text
- * limit, quiet hours) come before a confirm step; then a toast. Texts with no
- * price need the host's explicit tick. Remind reaches only people who have not
+ * "Ask earlier guests?" prompt (§4.6, §4.7). Audience, channels (#4541 R3:
+ * Push, free, only to people whose app can open the form and only while the
+ * server's switch is on, else "Push: not available yet"; Text; Email, free),
+ * the message, the reach line and the cost line (real text parts, quiet
+ * hours) come before a confirm step; then a toast. #4541 R5.5: texts share
+ * Blast's monthly allowance; over it or today's 300, Text is off for that
+ * send with the reason shown and email and push still go (never blocked).
+ * Texts with no price need the host's explicit tick. Remind reaches only people who have not
  * answered; Ask for named guests reaches them even if they answered (Ask
  * again). Each guest gets their own form link; a request never creates an
  * invite or grants page access (decision 17). The server throttles each person
@@ -14,7 +17,7 @@
  * Loaded only through the lazy forms owner (never from an eager module).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { color, radius, space, type } from "../../constants/designSystem";
@@ -31,7 +34,14 @@ import { Chip } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Switch } from "../ui/Switch";
-import { canSendRequest, costLine, initialAudience, REQUEST_CHANNELS } from "../../utils/formRequestCost";
+import {
+  allowanceLines,
+  autoRemindChannels,
+  canSendRequest,
+  costLine,
+  initialAudience,
+  requestChannels,
+} from "../../utils/formRequestCost";
 import { FORM_REQUEST_COPY as COPY } from "./brandFormsCopy";
 import { errorSentence } from "./useFormsToast";
 
@@ -54,10 +64,10 @@ export interface FormRequestSheetProps {
   notify: (kind: "success" | "error", message: string) => void;
 }
 
-const CHANNELS: ReadonlyArray<{ key: FormRequestChannel; label: string }> = REQUEST_CHANNELS.map((key) => ({
-  key,
-  label: key === "sms" ? COPY.sms : COPY.email,
-}));
+const PAID_AND_EMAIL: ReadonlyArray<{ key: FormRequestChannel; label: string }> = [
+  { key: "sms", label: COPY.sms },
+  { key: "email", label: COPY.email },
+];
 
 export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
   visible,
@@ -93,17 +103,39 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
   );
   const preview = useFormRequestPreview(visible ? input : null);
 
+  // #4541 R3.1: Push follows the server's switch, learnt from the preview.
+  // The first time it is on, Push is ticked (it is free); off, it is never sent.
+  const [pushAvailable, setPushAvailable] = useState<boolean | null>(null);
+  const pushDecided = useRef(false);
+  const previewPush = preview.data?.pushAvailable;
+  useEffect(() => {
+    if (previewPush === undefined) return;
+    setPushAvailable(previewPush);
+    if (!previewPush) {
+      setChannels((prev) => (prev.includes("push") ? prev.filter((c) => c !== "push") : prev));
+      return;
+    }
+    if (!pushDecided.current) {
+      pushDecided.current = true;
+      setChannels((prev) => (prev.includes("push") ? prev : ["push", ...prev]));
+    }
+  }, [previewPush]);
+
   const toggleChannel = useCallback((key: FormRequestChannel): void => {
     setConfirming(false);
     setConfirmUnpriced(false);
+    if (key === "push") pushDecided.current = true;
     setChannels((prev) => (prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key]));
   }, []);
 
   const handleSend = useCallback((): void => {
     if (input === null || preview.data === undefined || send.isPending) return;
+    const sendChannels = requestChannels(input.channels, preview.data.pushAvailable);
+    if (sendChannels.length === 0) return;
     send.mutate(
       {
         ...input,
+        channels: sendChannels,
         expectedCostMinor: preview.data.estimatedCostMinor,
         currency: preview.data.currency,
         confirmUnpriced,
@@ -114,7 +146,7 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
           else if (r.waitingForMorning > 0) notify("success", COPY.waitingToast(r.waitingForMorning));
           else if (r.pending > 0) notify("success", COPY.queuedToast(r.queued, r.sent));
           else if (r.failed > 0) notify("success", COPY.partialToast(r.sent, r.failed));
-          else notify("success", COPY.sentToast(r.sent));
+          else notify("success", r.textsOff !== null ? COPY.sentNoTextsToast(r.sent) : COPY.sentToast(r.sent));
           onClose();
         },
         onError: (error) => {
@@ -131,7 +163,7 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
       const previous = remindOn;
       setRemindOn(on);
       setAuto.mutate(
-        { attachmentId: autoRemind.attachmentId, on, channels: channels.length > 0 ? channels : ["email"] },
+        { attachmentId: autoRemind.attachmentId, on, channels: autoRemindChannels(channels) },
         {
           onSuccess: (r) => {
             setRemindChannels(r.channels);
@@ -153,12 +185,15 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
   const canSend =
     input !== null &&
     p !== undefined &&
+    requestChannels(input.channels, p.pushAvailable).length > 0 &&
     canSendRequest(p, confirmUnpriced) &&
     !send.isPending &&
     !preview.isFetching;
   const remindCost =
     p === undefined ? null : channels.includes("sms") && p.smsCount > 0 ? COPY.autoRemindCost(costLine(p)) : COPY.autoRemindFree;
-  const storedChannels = remindChannels.map((c) => (c === "sms" ? COPY.sms : COPY.email)).join(", ");
+  const storedChannels = remindChannels.map((c) => (c === "sms" ? COPY.sms : c === "push" ? COPY.push : COPY.email)).join(", ");
+  const textPicked = channels.includes("sms");
+  const allowance = p === undefined ? null : allowanceLines(p, textPicked);
 
   let reachBlock: React.ReactNode;
   if (input === null) reachBlock = <Text style={styles.warn}>{COPY.pickChannel}</Text>;
@@ -175,10 +210,21 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
       <View style={styles.block} testID="form-request-reach">
         <Text style={styles.line}>{COPY.reachLine(p.reachableCount, p.smsOptedOutCount, p.unreachableCount)}</Text>
         {p.throttledCount > 0 ? <Text style={styles.muted}>{COPY.throttledLine(p.throttledCount)}</Text> : null}
+        {allowance !== null && textPicked ? (
+          <View style={styles.allowance} testID="form-request-allowance">
+            {allowance.monthly !== null ? <Text style={styles.strong}>{allowance.monthly}</Text> : null}
+            {allowance.shared !== null ? <Text style={styles.muted}>{allowance.shared}</Text> : null}
+            {allowance.uses !== null ? <Text style={styles.line}>{allowance.uses}</Text> : null}
+            {allowance.today !== null ? <Text style={styles.muted}>{allowance.today}</Text> : null}
+            {allowance.textsOff !== null ? (
+              <Text style={styles.warn} accessibilityRole="alert" testID="form-request-texts-off">
+                {allowance.textsOff}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
         <Text style={styles.line}>{costLine(p)}</Text>
         {p.smsCount > 0 && p.smsSegments > 1 ? <Text style={styles.muted}>{COPY.segmentsLine(p.smsSegments)}</Text> : null}
-        {p.smsCount > 0 ? <Text style={styles.muted}>{COPY.capLine(p.textsToday, p.textCap)}</Text> : null}
-        {p.overTextCap ? <Text style={styles.warn}>{COPY.overCap}</Text> : null}
         {p.textsWaitUntil !== null ? (
           <Text style={styles.muted}>
             {COPY.waitLine(new Date(p.textsWaitUntil).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }))}
@@ -259,7 +305,17 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
         <View style={styles.block}>
           <Text style={styles.cap}>{COPY.channelsLabel}</Text>
           <View style={styles.chips}>
-            {CHANNELS.map((c) => (
+            {pushAvailable === true ? (
+              <Chip
+                label={COPY.push}
+                selected={channels.includes("push")}
+                onPress={() => toggleChannel("push")}
+                testID="form-request-channel-push"
+              />
+            ) : pushAvailable === false ? (
+              <Chip label={COPY.pushUnavailable} disabled testID="form-request-channel-push-unavailable" />
+            ) : null}
+            {PAID_AND_EMAIL.map((c) => (
               <Chip
                 key={c.key}
                 label={c.label}
@@ -269,6 +325,7 @@ export const FormRequestSheet: React.FC<FormRequestSheetProps> = ({
               />
             ))}
           </View>
+          {pushAvailable === true ? <Text style={styles.muted}>{COPY.pushLine}</Text> : null}
           <Text style={styles.muted}>{COPY.channelsNote}</Text>
         </View>
 
@@ -323,6 +380,15 @@ const styles = StyleSheet.create({
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   line: { ...type.body, color: color.text1 },
   muted: { ...type.small, color: color.text3 },
+  strong: { ...type.row, color: color.text1 },
+  allowance: {
+    gap: 2,
+    padding: space[3],
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.line,
+    backgroundColor: color.fill.tile,
+  },
   warn: { ...type.small, color: color.warningText },
   message: { padding: space[3], borderRadius: radius.md, borderWidth: 1, borderColor: color.line, backgroundColor: color.fill.tile },
   switchRow: { flexDirection: "row", alignItems: "center", gap: space[3], marginTop: space[4] },

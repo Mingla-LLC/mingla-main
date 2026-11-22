@@ -49,7 +49,9 @@
         "brand_campaign_push": "Tin nhắn từ địa điểm bạn theo dõi",
         "brand_campaign_push_hint": "Ưu đãi và tin tức từ địa điểm và chủ nhà bạn theo dõi.",
         "brand_offering_invite": "Lời mời từ địa điểm bạn theo dõi",
-        "brand_offering_invite_hint": "Khi một địa điểm hoặc chủ nhà mời bạn tham gia."
+        "brand_offering_invite_hint": "Khi một địa điểm hoặc chủ nhà mời bạn tham gia.",
+        "brand_form_request": "Câu hỏi từ ban tổ chức",
+        "brand_form_request_hint": "Khi ban tổ chức nhờ bạn trả lời câu hỏi. Email luôn bật cho mục này vì chứa liên kết riêng của bạn. Tin nhắn theo cài đặt tin nhắn của bạn."
       }
     },
     "friends_going": "Bạn bè đi chơi",

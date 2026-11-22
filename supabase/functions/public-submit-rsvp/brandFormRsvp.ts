@@ -129,3 +129,66 @@ export function rsvpBrandFormRefusal(error: {
   }
   return null;
 }
+
+/** #4541 R1.3: the after-RSVP hand-off the success view opens, or null. */
+export interface RsvpBrandFormHandoff {
+  formId: string;
+  token: string;
+}
+
+export interface HandoffRpcClient {
+  rpc(
+    fn: string,
+    args: Record<string, unknown>,
+  ): PromiseLike<{ data: unknown; error: { message?: string | null } | null }>;
+}
+
+const TOKEN_RE = /^[0-9a-f]{64}$/;
+
+/**
+ * #4541 R1.3: after a committed, current RSVP (approved Going or Maybe) on a
+ * page whose form is asked "after they RSVP", a personal link for this RSVP,
+ * minted by brand_form_rsvp_handoff_link in its own call (no RSVP lock). Pending
+ * approval and waitlisted RSVPs get none: their card picks it up once approved.
+ * A failure never fails the RSVP: it is logged and the hand-off is null.
+ */
+export async function rsvpBrandFormHandoff(
+  admin: HandoffRpcClient,
+  args: {
+    rsvpId: string | null | undefined;
+    eventId: string;
+    status: string | null | undefined;
+    approvalStatus: string | null | undefined;
+  },
+  log: (line: string) => void = (line) => console.error(line),
+): Promise<RsvpBrandFormHandoff | null> {
+  if (
+    typeof args.rsvpId !== "string" ||
+    (args.status !== "going" && args.status !== "maybe") ||
+    args.approvalStatus !== "approved"
+  ) return null;
+  try {
+    const { data, error } = await admin.rpc("brand_form_rsvp_handoff_link", {
+      p_rsvp_id: args.rsvpId,
+      p_event_id: args.eventId,
+    });
+    if (error) {
+      log("[public-submit-rsvp] handoff_skipped");
+      return null;
+    }
+    const d = data && typeof data === "object" && !Array.isArray(data)
+      ? data as Record<string, unknown>
+      : {};
+    if (
+      d.outcome === "link" && typeof d.formId === "string" &&
+      UUID_RE.test(d.formId) && typeof d.token === "string" &&
+      TOKEN_RE.test(d.token)
+    ) {
+      return { formId: d.formId, token: d.token };
+    }
+    return null;
+  } catch {
+    log("[public-submit-rsvp] handoff_skipped");
+    return null;
+  }
+}

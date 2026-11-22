@@ -104,9 +104,9 @@ describe("states from a read", () => {
     expect(last).toEqual({ kind: "closed", formName: "Open mic", last: { definition: def, answers: { q1: "no" } } });
   });
 
-  it("a bad, revoked or wrong-form link is the invalid state; anything else can retry", () => {
+  it("a bad or wrong-form link is the invalid state; a revoked one was replaced (#4541 R8.2); anything else can retry", () => {
     expect(phaseFromReadError("link_invalid")).toEqual({ kind: "invalid" });
-    expect(phaseFromReadError("link_revoked")).toEqual({ kind: "invalid" });
+    expect(phaseFromReadError("link_revoked")).toEqual({ kind: "replaced" });
     expect(phaseFromReadError("form_not_found")).toEqual({ kind: "invalid" });
     expect(phaseFromReadError("Failed to fetch")).toEqual({ kind: "load_failed" });
     expect(phaseFromReadError(null)).toEqual({ kind: "load_failed" });
@@ -119,7 +119,7 @@ describe("saving", () => {
     expect(submitOutcome("form_closed")).toEqual({ next: "reload" });
     expect(submitOutcome("code_required")).toEqual({ next: "code" });
     expect(submitOutcome("forms_paused")).toEqual({ next: "paused" });
-    expect(submitOutcome("link_revoked")).toEqual({ next: "invalid" });
+    expect(submitOutcome("link_revoked")).toEqual({ next: "replaced" });
     expect(submitOutcome("response_stale")).toEqual({ next: "error", error: "stale" });
     expect(submitOutcome("form_changed")).toEqual({ next: "error", error: "changed" });
     expect(submitOutcome("network")).toEqual({ next: "error", error: "failed" });

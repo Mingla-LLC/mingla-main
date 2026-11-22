@@ -8,15 +8,15 @@
  * (Design v2 to v8 on #4514).
  */
 
-import type { BrandFormMode } from "../../services/brandFormsService";
-
 export const FORMS_COPY = {
   // Forms list
   listTitle: "Forms",
   createForm: "Create a form",
   emptyTitle: "No forms yet",
-  emptyBody:
-    "Build one form, then add it to any RSVP, event, experience or trip. Guests answer once; you see answers next to each guest.",
+  // #4541 R6.1: the shared tab action is the only "Create a form" button.
+  emptyBody: "No forms yet. Make one with Create a form, then add it to any page.",
+  createFormCompact: "New",
+  formsHeading: (n: number): string => `${n} ${n === 1 ? "form" : "forms"}`,
   notOnAnyPage: "Not on any page yet",
   publishToAdd: "Publish it to add it to a page",
   continueEditing: "Continue editing",
@@ -67,6 +67,9 @@ export const FORMS_COPY = {
   doorFullTitle: "Door staff can open full answers",
   doorFullLine: "Turn off for private questions. Door staff will then see only the answers you marked.",
   doorFullScope: "For the whole form · managers can always open answers",
+  // #4541 R8.3: invited scan-only staff are off unless the host turns this on.
+  doorInvitedTitle: "Invited door staff can too",
+  doorInvitedLine: "Off: people you invited only to scan see the marked answers only.",
   loadFailedTitle: "Couldn't load this form",
   savedToast: "Draft saved.",
   publishedToast: "Published. Guests now see this version.",
@@ -108,6 +111,17 @@ export const FORMS_COPY = {
   tabSummary: "Summary",
   tabResponses: (n: number): string => `Responses (${n})`,
   tabNotAnswered: (n: number): string => `Not answered (${n})`,
+  // #4541 R6.2: under All pages while the counts load or failed (never "(0)").
+  tabNotAnsweredPlain: "Not answered",
+  pageToAnswer: (title: string, n: number): string => `${title} · ${n} to answer`,
+  untitledPage: "Untitled page",
+  view: "View",
+  // #4541 R1.2: guests who were never asked (booked on an app that couldn't show the questions).
+  notAskedBanner: (m: number): string =>
+    `${m} ${m === 1 ? "guest hasn't" : "guests haven't"} been asked yet.`,
+  askThem: "Ask them",
+  // #4541 R8.3: who opened full answers at the door (event managers and up).
+  tabDoor: "Door",
   changeOrRemove: "Change or remove",
   exportCsv: "Export CSV",
   exporting: "Preparing…",
@@ -123,6 +137,28 @@ export const FORMS_COPY = {
   notAnsweredChip: "Not answered",
   addedByYou: "Added by you",
   viaLink: "via link",
+  /** #4541 R7.3 / design v10 I3 (default 1): the builder's warning and the retention line. */
+  sensitiveWarning: "Only ask what you need. Don't ask for ID numbers, medical records or card details.",
+  retentionPage: "Answers are erased 12 months after the event ends.",
+  retentionNoPage: "Answers are erased 12 months after they're sent.",
+  /** #4541 R4.7 / R4.8: Unknown Blast replies in Responses (replaces the old "Unverified" chip). */
+  ownerAll: "All",
+  ownerKnown: "Known",
+  ownerUnknown: "Unknown",
+  unknownName: "Unknown",
+  fromCampaignOn: (campaign: string, date: string): string => `From ${campaign} · ${date}`,
+  fromCampaign: (campaign: string): string => `From ${campaign}`,
+  aBlast: "a Blast",
+  showHidden: (n: number): string => `Show hidden (${n})`,
+  hideReply: "Hide reply",
+  showReply: "Show reply",
+  replyHidden: "Reply hidden",
+  replyShown: "Reply back in the list",
+  undo: "Undo",
+  hiddenChip: "Hidden",
+  noUnknownReplies: "No Unknown replies.",
+  /** #4541 R4.9: the Forms list card. */
+  blastReplies: (n: number): string => `${n} Blast ${n === 1 ? "reply" : "replies"}`,
   allAnsweredTitle: "Everyone has answered",
   allAnsweredBody: "Nobody going is waiting on this form.",
   notAnsweredNeedsPage: "Pick a page to see who hasn’t answered.",
@@ -132,25 +168,18 @@ export const FORMS_COPY = {
   moreAnswers: "Showing the latest answers.",
 } as const;
 
-export interface ModeCopy {
-  value: BrandFormMode;
-  label: string;
-  line: string;
-}
-
-/** The three timing choices, in the order they are shown. Exact copy. */
-export const GUEST_QUESTION_MODES: readonly ModeCopy[] = [
-  { value: "optional_on_page", label: "On the page, optional", line: "Guests can answer if they want." },
-  { value: "required_step", label: "On the page, required", line: "Guests must answer before they finish." },
-  { value: "after_purchase", label: "After they purchase", line: "Guests are taken to the form right after." },
-];
-
-/** The label for a mode; "After they RSVP" on RSVP pages. */
-export function modeLabel(mode: BrandFormMode, isRsvp: boolean): string {
-  if (mode === "after_purchase" && isRsvp) return "After they RSVP";
-  const found = GUEST_QUESTION_MODES.find((m) => m.value === mode);
-  return found?.label ?? "On the page, required";
-}
+/**
+ * #4541 R1.2: the timing choices and their lines have ONE home,
+ * utils/guestQuestionModes.ts (re-exported by utils/guestQuestionsModel.ts).
+ * Re-exported here so screens keep one import; never repeated.
+ */
+export {
+  GUEST_QUESTION_MODES,
+  modeLabel,
+  modeLine,
+  notAskedLine,
+  type ModeCopy,
+} from "../../utils/guestQuestionModes";
 
 export const ATTACH_COPY = {
   rowTitle: "Guest questions",
@@ -200,6 +229,21 @@ export function formCountsLine(c: { answered: number; toAnswer: number } | undef
     : FORMS_COPY.answeredCount(c.answered);
 }
 
+/**
+ * #4541 R6.2: the Not answered tab's label. Under All pages it adds up each
+ * page's "to answer" from the counts read; while that read loads or failed it
+ * has no number (never a wrong "(0)"). Pure; exported for tests.
+ */
+export function notAnsweredTabLabel(input: {
+  allPages: boolean;
+  pageNotAnswered: number;
+  pageCounts: ReadonlyArray<{ toAnswer: number }> | null;
+}): string {
+  if (!input.allPages) return FORMS_COPY.tabNotAnswered(input.pageNotAnswered);
+  if (input.pageCounts === null) return FORMS_COPY.tabNotAnsweredPlain;
+  return FORMS_COPY.tabNotAnswered(input.pageCounts.reduce((sum, p) => sum + p.toAnswer, 0));
+}
+
 /** #4514 wave 4 — Ask guests to answer, Remind, the earlier-guests prompt (§4.6, §4.7). */
 export const FORM_REQUEST_COPY = {
   askTitle: "Ask guests to answer",
@@ -218,6 +262,17 @@ export const FORM_REQUEST_COPY = {
   sms: "Text",
   channelsNote: "Texts go to guests with a phone on file; everyone else gets the email.",
   email: "Email (free)",
+  /** #4541 R3 / R7.3: the Push channel follows the server's switch. */
+  push: "Push (free)",
+  pushLine: "Push (free) · app users on the latest version",
+  pushUnavailable: "Push: not available yet",
+  /** #4541 R5.5: the shared text allowance (Blast's own words). */
+  monthlyLeft: (left: number, cap: number): string => `${left} of ${cap} texts left this month`,
+  sharedWithBlasts: "Shared with your Blasts.",
+  sendUses: (n: number): string => `This send uses ${n} ${n === 1 ? "text" : "texts"}`,
+  textsOffMonthly: "Not enough texts left this month, so this send goes by email and push only.",
+  textsOffDaily: "Today's text limit is reached, so this send goes by email and push only.",
+  sentNoTextsToast: (n: number): string => `Sent to ${n} ${n === 1 ? "guest" : "guests"} by email and push.`,
   messageLabel: "Message",
   message: (brand: string, event: string): string =>
     `${brand} has a few questions about ${event}. Answer here: [their own link]`,
@@ -238,7 +293,6 @@ export const FORM_REQUEST_COPY = {
   segmentsLine: (parts: number): string => `Each text is ${parts} parts (emoji and some letters make a text longer).`,
   unpricedConfirm: "Send these texts even though a price isn't available yet",
   capLine: (today: number, cap: number): string => `${today} of ${cap} form texts used in the last 24 hours.`,
-  overCap: "That's over the daily limit for form texts. Untick Text to send by email, or try tomorrow.",
   waitLine: (time: string): string => `Texts wait until ${time}: no texts before 9am or after 9pm where the event is.`,
   noCost: "No paid channel cost",
   askNow: "Ask them now",
@@ -248,7 +302,7 @@ export const FORM_REQUEST_COPY = {
   confirm: "Send",
   back: "Back",
   sending: "Sending…",
-  nobody: "Nobody here can be reached with these choices.",
+  nobody: "No one can be reached by the channels you picked.",
   sentToast: (n: number): string => `Sent to ${n} ${n === 1 ? "guest" : "guests"}.`,
   queuedToast: (queued: number, sent: number): string =>
     `Sending to ${queued} ${queued === 1 ? "guest" : "guests"}. ${sent} sent so far; the rest go out shortly.`,
@@ -258,6 +312,8 @@ export const FORM_REQUEST_COPY = {
     `Sent to ${sent}. ${failed} couldn't be reached; try them again later.`,
   noneSentToast: "Nothing was sent. Try again later.",
   sendFailed: "Couldn't send. Try again.",
+  // #4541 R1.8: the off switch also stops sending.
+  formsPaused: "Forms are paused right now. Try again later.",
   autoRemindTitle: "Remind people who haven't answered",
   autoRemindLine: (event: string, day: string | null): string =>
     `One reminder 2 days before each guest's date for ${event}${day !== null ? ` (next: ${day})` : ""}, by the channels ticked above.`,
@@ -293,15 +349,87 @@ export const FORM_REQUEST_LOG_COPY = {
     no_contact: "no phone or email on file",
     sms_opted_out: "opted out of texts",
     answered: "already answered",
+    /** #4541 R1.4: the server's name since the current-holder rule; `not_a_guest` stays for older rows. */
+    not_current: "no longer going",
     not_a_guest: "no longer going",
     form_closed: "the form closed",
     expired: "not delivered within a day",
     claim_expired: "not delivered after 3 tries",
     text_cap: "the day's text limit was reached",
     event_started: "their date had already started",
+    /** #4541 R3.4: the push went with its email. */
+    push_and_email: "push and email",
+    /** #4541 R3.2: push was the only way, and their app can't open forms yet. */
+    push_not_ready: "their app can't open forms yet",
+  } as Record<string, string>,
+  /** #4541 R5.5: a guest who was not texted because texts were off for that send. */
+  notTexted: {
+    no_texts_left: "Not texted: no texts left this month",
+    text_cap: "Not texted: daily limit",
   } as Record<string, string>,
   run: (date: string, outcome: "sending" | "sent" | "failed" | "held_form_closed"): string =>
     `Automatic reminder for ${date}: ${
       outcome === "sent" ? "sent" : outcome === "failed" ? "failed" : outcome === "held_form_closed" ? "held, the form was closed" : "sending"
     }`,
 } as const;
+
+/** #4541 R8.3: the host's door-read log ("Door" tab on Responses). */
+export const DOOR_READS_COPY = {
+  title: "Who opened answers at the door",
+  loading: "Loading…",
+  failed: "Couldn't load who opened answers.",
+  retry: "Try again",
+  empty: "No one has opened answers at the door yet.",
+  row: (staff: string, guest: string, time: string): string => `${staff} opened ${guest}'s answers · ${time}`,
+  someone: "Someone",
+  aGuest: "a guest",
+} as const;
+
+/** #4541 R1.9: the answers on guest detail and order detail. */
+export const GUEST_ANSWERS_CARD_COPY = {
+  title: (form: string): string => `Answers to ${form}`,
+  loading: "Loading answers…",
+  failed: "Couldn't load answers. Try again",
+  retry: "Try again",
+  notAnswered: "Not answered",
+  earlierVersion: "Answered an earlier version",
+} as const;
+
+/** #4541 R4.2 / R4.3: "+ Form" in the Blast composer (picker and block). */
+export const BLAST_FORM_COPY = {
+  pickerTitle: "Add a form",
+  pickerLine: "Only live forms of this brand can be sent.",
+  liveRow: (n: number): string => `Live · ${n} ${n === 1 ? "question" : "questions"}`,
+  closedRow: "Closed. Reopen it in Forms to send it again.",
+  draftRow: "Draft. Publish it in Forms before you can send it.",
+  empty: "No forms yet. Make one in Promote › Forms.",
+  loading: "Loading your forms…",
+  failed: "Couldn't load your forms.",
+  retry: "Try again",
+  cancel: "Cancel",
+  blockLabel: "FORM",
+  emailButton: (name: string): string => `Answer: ${name}`,
+  smsLine: "Text adds: Answer: [their own link]",
+  pushLine: "Opens the form in the Mingla app",
+  ownLink: "Each person gets their own link.",
+  hint: "Each person gets their own link. Replies from people we can't identify show as Unknown. Add a name question if you need to know who answered.",
+  remove: "Remove the form",
+  notLive: "This form isn't live. Publish or reopen it in Forms.",
+  scheduledNote: "If the form closes before the send time, this Blast isn't sent.",
+  aForm: "Your form",
+} as const;
+
+/**
+ * #4541 design v10 G "2b": closing a form that a scheduled Blast carries warns
+ * first, then says what closing does.
+ */
+export const scheduledBlastsUsingFormLine = (n: number): string =>
+  n === 1 ? "1 scheduled Blast uses this form." : `${n} scheduled Blasts use this form.`;
+export const closeConfirmDescription = (scheduledBlasts: number): string =>
+  scheduledBlasts > 0
+    ? `${scheduledBlastsUsingFormLine(scheduledBlasts)} ${FORMS_COPY.closeConfirmBody}`
+    : FORMS_COPY.closeConfirmBody;
+
+/** #4541 design v10 I3: the retention line (a form on a page, or not on any page). */
+export const retentionLine = (onPages: boolean): string =>
+  onPages ? FORMS_COPY.retentionPage : FORMS_COPY.retentionNoPage;

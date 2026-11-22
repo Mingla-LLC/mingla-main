@@ -84,7 +84,9 @@ Deno.test("#4514 scan: the door line rides on an admitted ticket, read for that 
 Deno.test("#4514 scan: already scanned repeats the line", async () => {
   const dup = { ...success, result: "duplicate" };
   const body = await (await harness({ scan: dup }).handler(post(scanBody))).json();
-  assertEquals(body, { ...dup, doorAnswers: SHOWN });
+  // #4541 review fix 1: a duplicate scan is not a receipt, so it never offers
+  // "See all answers" (the line itself still repeats).
+  assertEquals(body, { ...dup, doorAnswers: { ...SHOWN, fullAnswers: false } });
 });
 
 Deno.test("#4514 scan: nothing to show keeps the body byte-identical", async () => {
