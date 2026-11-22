@@ -8,6 +8,7 @@
  * Per Cycle 3 spec §3.4.
  */
 
+import type React from "react";
 import type { DraftEvent } from "../../store/draftEventStore";
 import type { Brand } from "../../types/brand";
 import type { ValidationError } from "../../utils/draftEventValidation";
@@ -27,13 +28,11 @@ export interface StepBodyProps {
   eventEndsAtIso?: string | null;
   draft: DraftEvent;
   /**
-   * #4548 — the event's server id for the Guest pack block on the Where step.
-   * Null while a new draft has not reached the server yet (the block says so).
-   * Undefined hides the block (surfaces that carry no event kind it supports).
+   * #4548 — the Guest pack block, rendered under the address on the Where step.
+   * The owner builds it (it loads with its own chunk), so this step carries no
+   * guest pack code of its own and the eager boot payload does not grow.
    */
-  guestPackEventId?: string | null;
-  /** #4548 — true in live edit: the pack's "Saved." line says when guests see it. */
-  guestPackLiveEdit?: boolean;
+  guestPackSlot?: React.ReactNode;
   /** Patches the draft via draftEventStore.updateDraft (create-flow) or local state setter (edit-published flow). */
   updateDraft: (
     patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,

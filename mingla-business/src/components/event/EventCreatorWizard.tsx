@@ -161,6 +161,13 @@ import {
   hasPendingGuestPack,
   releaseGuestPackSession,
 } from "../../utils/guestPackGate";
+// #4548 — the guest pack editor loads with its own chunk. Declared here, not in
+// a shared module: a module shared by several lazy screens is hoisted into the
+// eager boot chunk, and this one must stay out of it.
+const GuestPackEditorLazy = React.lazy(async () => ({
+  default: (await import("./GuestPackEditor")).GuestPackEditor,
+}));
+
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { CreatorStep5Tickets } from "./LazyCreatorStep5Tickets";
 // issue #3827 — Step 6 loads lazily (see lazySettingsSteps.tsx).
@@ -1303,7 +1310,14 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         return (
           <CreatorStep3Where
             {...baseProps}
-            guestPackEventId={guestPackEventIdForDraft(liveDraft.id)}
+            guestPackSlot={
+              <React.Suspense fallback={null}>
+                <GuestPackEditorLazy
+                  eventId={guestPackEventIdForDraft(liveDraft.id)}
+                  onShowToast={handleShowToast}
+                />
+              </React.Suspense>
+            }
           />
         );
       case 3:

@@ -128,8 +128,14 @@ import {
   flushGuestPack,
   hasPendingGuestPack,
   releaseGuestPackSession,
-  subscribeGuestPack,
 } from "../../utils/guestPackGate";
+// #4548 — the guest pack editor loads with its own chunk. Declared here, not in
+// a shared module: a module shared by several lazy screens is hoisted into the
+// eager boot chunk, and this one must stay out of it.
+const GuestPackEditorLazy = React.lazy(async () => ({
+  default: (await import("./GuestPackEditor")).GuestPackEditor,
+}));
+
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheetLazy";
@@ -903,12 +909,6 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   useEffect(
     () => () => releaseGuestPackSession(guestPackId),
     [guestPackId],
-  );
-  // A typed pack change counts as a change, so Save changes stays reachable.
-  const guestPackPending = React.useSyncExternalStore(
-    subscribeGuestPack,
-    () => hasPendingGuestPack(guestPackId),
-    () => false,
   );
   const handleSaveWithGuestPack = useCallback((): void => {
     if (!hasPendingGuestPack(guestPackId)) {
@@ -1877,8 +1877,15 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return (
             <CreatorStep3Where
               {...stepBodyProps}
-              guestPackEventId={liveEvent.serverEventId ?? null}
-              guestPackLiveEdit
+              guestPackSlot={
+                <React.Suspense fallback={null}>
+                  <GuestPackEditorLazy
+                    eventId={liveEvent.serverEventId ?? null}
+                    liveEdit
+                    onShowToast={showToast}
+                  />
+                </React.Suspense>
+              }
             />
           );
         case "cover":
@@ -2215,7 +2222,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
               // "no diff" was absent from the disabled predicate, so some loads
               // showed an ACTIVE button whose only outcome was the misleading
               // "No changes to save." toast.
-              (Object.keys(currentPatch).length === 0 && !guestPackPending) ||
+              Object.keys(currentPatch).length === 0 ||
               (disableLocalSaveReason !== undefined &&
                 !canSaveServerCoverMediaOnly)
             }

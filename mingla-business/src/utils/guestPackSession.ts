@@ -18,7 +18,6 @@ import {
   type SavedGuestPack,
 } from "../services/guestPackService";
 import {
-  notifyGuestPackChanged,
   setGuestPackDriver,
   type GuestPackSaveResult,
 } from "./guestPackGate";
@@ -70,8 +69,17 @@ const nextKey = (): string => {
   return `gp${keyCounter}`;
 };
 
+const listeners = new Set<() => void>();
+
+export function subscribeGuestPack(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 function emit(): void {
-  notifyGuestPackChanged();
+  for (const listener of Array.from(listeners)) listener();
 }
 
 function put(next: GuestPackSession): void {

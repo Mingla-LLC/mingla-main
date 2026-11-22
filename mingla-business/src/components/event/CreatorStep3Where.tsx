@@ -50,7 +50,6 @@ import type { LocationSelectionState } from "@mingla/location-input";
 // through its one lazy owner so it stays off the eager boot path (#3493).
 import { LazyAddressMapPreview } from "../location/LazyAddressMapPreview";
 
-import { LazyGuestPackEditor } from "./LazyGuestPackEditor";
 import { errorForKey, type StepBodyProps } from "./types";
 import { whereStepAddressCopy } from "./whereStepCopy";
 
@@ -61,9 +60,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   showErrors,
   scrollToBottom,
   brandLocation,
-  guestPackEventId,
-  guestPackLiveEdit,
-  onShowToast,
+  guestPackSlot,
 }) => {
   const intelCityHighlight = useTurnoutFocusTarget("city");
   const venueError = showErrors ? errorForKey(errors, "venueName") : undefined;
@@ -347,15 +344,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
         </View>
       ) : null}
       {/* #4548 — the guest pack: ticket holders only, under the address. */}
-      {guestPackEventId !== undefined ? (
-        <Suspense fallback={null}>
-          <LazyGuestPackEditor
-            eventId={guestPackEventId}
-            liveEdit={guestPackLiveEdit === true}
-            onShowToast={onShowToast}
-          />
-        </Suspense>
-      ) : null}
+      {guestPackSlot}
       <TurnoutForecastCard surface="where" />
     </View>
   );

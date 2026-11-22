@@ -5,7 +5,7 @@
  * a changed pack first, but the editor, its working copy and its service are
  * heavy and load only with the Where step's editor chunk (keeps them off the
  * eager boot payload). This module is the only thing those screens import: it
- * holds no state of its own, only the change signal, and it forwards to the
+ * holds no state of its own and it forwards to the
  * working copy once that module has loaded and registered itself. Until then
  * nothing can be pending, so every question answers "no pack changes".
  *
@@ -23,23 +23,10 @@ export interface GuestPackDriver {
 }
 
 let driver: GuestPackDriver | null = null;
-const listeners = new Set<() => void>();
 
 /** Called once by the working copy when it loads. */
 export function setGuestPackDriver(next: GuestPackDriver): void {
   driver = next;
-}
-
-export function subscribeGuestPack(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-/** Called by the working copy after every change. */
-export function notifyGuestPackChanged(): void {
-  for (const listener of Array.from(listeners)) listener();
 }
 
 /** A wizard draft reaches the server on its first autosave; until then its id is local ("d_…"). */

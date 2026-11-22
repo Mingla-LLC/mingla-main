@@ -25,7 +25,6 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { Input } from "../ui/Input";
-import { subscribeGuestPack } from "../../utils/guestPackGate";
 import {
   addGuestPackItem,
   askRemoveGuestPackItem,
@@ -43,6 +42,7 @@ import {
   setGuestPackItemUrl,
   setGuestPackNote,
   setGuestPackOpen,
+  subscribeGuestPack,
   type GuestPackEditorItem,
   type GuestPackSession,
 } from "../../utils/guestPackSession";
