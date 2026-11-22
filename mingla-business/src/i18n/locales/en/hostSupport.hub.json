@@ -33,9 +33,6 @@
     "dismiss": "Dismiss",
     "browse_videos": "Browse all help videos",
     "browse_failed": "We couldn't open the Help Centre. Try again.",
-    "loading_ari": "Opening Ari",
-    "loading_person": "Loading your conversation",
-    "loading_handover": "Getting the team ready",
     "handover_unavailable": "We couldn't reach the team just now. Try again."
   }
 }

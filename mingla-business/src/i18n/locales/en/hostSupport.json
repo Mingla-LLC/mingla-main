@@ -136,8 +136,6 @@
   },
   "person": {
     "past": "Past conversations",
-    "past_back": "Back to the conversation",
-    "new": "New conversation",
     "loading": "Loading your conversation",
     "dismiss": "Dismiss"
   }
