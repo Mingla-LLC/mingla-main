@@ -17,6 +17,10 @@
 --             kept, a malformed date refused.
 --   A-ORD     ordinary card add / update / close writes no message and no
 --             ticket row.
+--   A-LOOKUP  the people lookup (G11): a support_staff row without active
+--             team membership, an invited member, a revoked former admin and
+--             a subject-less session are refused; wildcard, length, id-count
+--             and result-shape bounds hold for Support staff.
 -- Everything is rolled back. Run from the repository root as supabase_admin.
 
 \set ON_ERROR_STOP on
@@ -350,6 +354,67 @@ begin
   perform pg_temp.chk('A-ORD', 'ordinary card updated and closed', (select title || '/' || status from public.ops_work_cards where id = v_ord), 'A4420 ordinary launch card v2/done');
   perform pg_temp.chk('A-ORD', 'no message anywhere mentions the ordinary card close',
     (select count(*)::text from public.messages where content like '%Posted the video%'), '0');
+end;
+$t$;
+
+-- ───────────────────────────── A-LOOKUP ─────────────────────────────
+-- QA pass 4 (G11 access change): angles the implementor's T-LOOKUP does not
+-- take. An enabled support_staff row alone (no active team membership), an
+-- INVITED team member with an enabled row, and a REVOKED former full admin
+-- are refused; a session with no subject is refused; for Support staff,
+-- wildcard characters match literally (no enumeration), a one-character
+-- search returns nothing, more than 1,000 ids is refused, search is capped at
+-- 8 people, and each person carries exactly the seven documented keys.
+insert into tx_people (who, id, email) values
+  ('cs',  '44210000-0000-4000-a000-000000000009', 'cs.a4420@test.local'),
+  ('inv', '44210000-0000-4000-a000-00000000000a', 'inv.a4420@test.local'),
+  ('exa', '44210000-0000-4000-a000-00000000000b', 'exa.a4420@test.local');
+insert into auth.users (id, email, email_confirmed_at) select id, email, now() from tx_people where who in ('cs', 'inv', 'exa');
+insert into public.admin_team_members (email, role, status) values ('inv.a4420@test.local', 'website', 'invited');
+insert into public.admin_users (email, role, status, accepted_at) values ('exa.a4420@test.local', 'admin', 'revoked', now());
+insert into public.support_staff (user_id, enabled, available) values
+  ('44210000-0000-4000-a000-000000000009', true, true), ('44210000-0000-4000-a000-00000000000a', true, true);
+insert into auth.users (id, email, email_confirmed_at)
+select ('44210000-0000-4000-b000-0000000000' || lpad(g::text, 2, '0'))::uuid, format('look%s.a4420@test.local', g), now() from generate_series(1, 10) g;
+insert into public.profiles (id, email, display_name)
+select ('44210000-0000-4000-b000-0000000000' || lpad(g::text, 2, '0'))::uuid, format('look%s.a4420@test.local', g), format('A4420Look %s', g) from generate_series(1, 10) g
+on conflict (id) do update set email = excluded.email, display_name = excluded.display_name;
+
+do $t$
+declare v text; v_who text; v_ids text := format('array[%L]::uuid[]', pg_temp.uid('cus'));
+begin
+  foreach v_who in array array['cs', 'inv', 'exa'] loop
+    v := pg_temp.as_(v_who, format('select public.admin_people_lookup(%s, null)::text', v_ids));
+    perform pg_temp.lk('A-LOOKUP', v_who || ': refused by ids', v, 'ERR:P0001:not_authorized%');
+    v := pg_temp.as_(v_who, $q$select public.admin_people_lookup(null, 'A4420Look')::text$q$);
+    perform pg_temp.lk('A-LOOKUP', v_who || ': refused by search', v, 'ERR:P0001:not_authorized%');
+  end loop;
+  -- An authenticated session with no subject.
+  begin
+    set local role authenticated;
+    perform set_config('request.jwt.claim.sub', '', true);
+    perform set_config('request.jwt.claims', '{"role":"authenticated"}', true);
+    v := public.admin_people_lookup(null, 'A4420Look')::text;
+    reset role;
+  exception when others then
+    reset role;
+    v := 'ERR:' || sqlstate || ':' || sqlerrm;
+  end;
+  perform pg_temp.lk('A-LOOKUP', 'a session with no subject is refused', v, 'ERR:P0001:not_authorized%');
+  -- Support staff (sue, not a full admin): no enumeration, bounds hold.
+  v := pg_temp.as_('sue', $q$select jsonb_array_length(public.admin_people_lookup(null, '%%'))::text$q$);
+  perform pg_temp.chk('A-LOOKUP', 'Support staff: %% matches literally, not everyone', v, '0');
+  v := pg_temp.as_('sue', $q$select jsonb_array_length(public.admin_people_lookup(null, '__'))::text$q$);
+  perform pg_temp.chk('A-LOOKUP', 'Support staff: __ matches literally, not everyone', v, '0');
+  v := pg_temp.as_('sue', $q$select public.admin_people_lookup(null, 'A')::text$q$);
+  perform pg_temp.chk('A-LOOKUP', 'Support staff: a one-character search returns nothing', v, '[]');
+  v := pg_temp.as_('sue', $q$select jsonb_array_length(public.admin_people_lookup(null, 'A4420Look'))::text$q$);
+  perform pg_temp.chk('A-LOOKUP', 'Support staff: search is capped at 8 people', v, '8');
+  v := pg_temp.as_('sue', $q$select public.admin_people_lookup(array(select gen_random_uuid() from generate_series(1, 1001)), null)::text$q$);
+  perform pg_temp.lk('A-LOOKUP', 'Support staff: more than 1,000 ids is refused', v, 'ERR:P0001:too_many_ids%');
+  v := pg_temp.as_('sue', $q$select string_agg(distinct k, ',' order by k) from jsonb_array_elements(public.admin_people_lookup(null, 'A4420Look')) e, jsonb_object_keys(e) k$q$);
+  perform pg_temp.chk('A-LOOKUP', 'Support staff: each person has exactly the seven documented keys', v,
+    'app_status,avatar_url,display_name,email,id,segment,username');
 end;
 $t$;
 
