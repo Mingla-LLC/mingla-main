@@ -408,7 +408,7 @@ BEGIN
   -- ── Re-emitted bodies read links, never ticket_add_ons.ticket_type_id ───
   FOREACH v_fn IN ARRAY ARRAY[
     'public.issue_3281_price_extras(uuid,jsonb,uuid[],boolean)',
-    -- #3281 S2 (20281121053281): issue_3281_public_ticket_extras delegates to
+    -- #3281 S2 (20281123123281): issue_3281_public_ticket_extras delegates to
     -- the one owner of the public item, which is the body that reads links.
     'public.issue_3281_public_add_on_items(uuid,uuid)',
     'public.issue_3281_attach_public_extras(json)',

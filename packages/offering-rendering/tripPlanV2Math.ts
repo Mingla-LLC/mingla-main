@@ -2,7 +2,7 @@
  * tripPlanV2Math — issue #4522 [trip payment plans v2].
  *
  * DISPLAY-ONLY mirror of `issue_4522_plan_v2_schedule` (migration
- * 20281120064522). The SQL function is the one owner of the money math at
+ * 20281123034522). The SQL function is the one owner of the money math at
  * checkout; this file lets the host editor preview and buyer surfaces explain a
  * plan before the server quote arrives. A parity test
  * (`__tests__/issue_4522_trip_plan_v2_parity.implementor.test.ts`) runs the

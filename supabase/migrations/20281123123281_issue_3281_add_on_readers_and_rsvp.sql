@@ -30,7 +30,7 @@
 --   * issue_3281_rsvp_door_add_ons (service role) is the door line scan-rsvp
 --     reads after admission.
 -- Re-emitted from the replayed database (md5 drift-guarded):
---   issue_3281_public_ticket_extras (20281120043281),
+--   issue_3281_public_ticket_extras (20281123013281),
 --   issue_3281_add_on_taken (20280313003281), pg_public_trip_by_slug,
 --   pg_public_experience_by_slug, pg_public_rsvp_by_slug (latest bodies,
 --   wrapped unchanged inside a CTE as 20280315003281 wrapped the event readers).

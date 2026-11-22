@@ -649,7 +649,8 @@ export function phase3dContractDigest(manifest) {
 // #4522 merge of main after #4420 polish pass: kept the #4420 migration and pg17 rows beside the #3281/#4522 rows and skips; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #3281 gap E RSVP add-on picks stay: registered 20281122023281_issue_3281_rsvp_add_on_picks_stay.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281122023281 on the filtered #1931 and #2117 replays; re-sealed.
 // #3281 S6 checkpoint 16 my RSVP add-ons: registered 20281122033281_issue_3281_my_rsvp_add_ons.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281122033281 on the filtered #1931 and #2117 replays; resealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "70b8b4512370160564d43cd9aab078db8a88ea6c41c4720df18cab5526cf3977";
+// #4522 checkpoint 22 renumbering: moved the branch's 14 migrations (20281120043281..20281122033281) to 20281123013281..20281123143281 above main's 20281121004541 and 20281121034420, same relative order; expectedFiles re-sorted in the #1857, #1931 and #2117 lanes and the filtered #1931/#2117 exact-filename skips renamed; re-sealed. MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "0731c267e3472618fcb80fe5417ff5ca3c384a65449130835142b7dc66716a40";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

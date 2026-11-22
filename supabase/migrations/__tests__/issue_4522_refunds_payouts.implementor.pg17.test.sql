@@ -1,7 +1,7 @@
 -- MINGLA-INVARIANT: I-4522-10 | issue #4522 | A non-refundable deposit frozen in v2 terms is kept only on a traveler's own cancel; an operator or host cancel refunds it, and collected flexible payments refund and pay out like planned ones.
 \set ON_ERROR_STOP on
 
--- Issue #4522 slice 8 (M4, 20281120094522): refunds and payouts for v2
+-- Issue #4522 slice 8 (M4, 20281123064522): refunds and payouts for v2
 -- orders — flexible and superseded rows, "Deposit is non-refundable" (D-9),
 -- and add-ons paid today or spread.
 

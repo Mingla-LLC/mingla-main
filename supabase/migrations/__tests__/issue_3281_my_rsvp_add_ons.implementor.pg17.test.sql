@@ -11,7 +11,7 @@
 -- T-CANCELLED  a cancelled event reads [].
 --
 -- FAILS-ON-REVERT: drop the `v.user_id = auth.uid()` predicate -> T-OTHER red;
--- drop the migration 20281122033281 -> every case red (function missing).
+-- drop the migration 20281123143281 -> every case red (function missing).
 \set ON_ERROR_STOP on
 
 CREATE OR REPLACE FUNCTION pg_temp.ok(p_ok boolean, p_label text)

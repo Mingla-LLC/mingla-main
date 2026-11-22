@@ -388,7 +388,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4522 merge of main after #4420 polish pass: kept the #4420 migration and pg17 rows beside the #3281/#4522 rows and skips; re-sealed.
 // #3281 gap E RSVP add-on picks stay: registered 20281122023281_issue_3281_rsvp_add_on_picks_stay.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281122023281 on the filtered #1931 and #2117 replays; re-sealed.
 // #3281 S6 checkpoint 16 my RSVP add-ons: registered 20281122033281_issue_3281_my_rsvp_add_ons.sql and its pg17 proof (with sidecar) in the replay inventories; exact-filename skips for 20281122033281 on the filtered #1931 and #2117 replays; resealed.
-export const BOOTSTRAP_SHA256 = "9ac732aa0967061a415d132e840afa20ea6b349d4e22460a23f75828b2e9f1aa";
+// #4522 checkpoint 22 renumbering: moved the branch's 14 migrations (20281120043281..20281122033281) to 20281123013281..20281123143281 above main's 20281121004541 and 20281121034420, same relative order; expectedFiles re-sorted in the #1857, #1931 and #2117 lanes and the filtered #1931/#2117 exact-filename skips renamed; re-sealed.
+export const BOOTSTRAP_SHA256 = "b8b588afc9d207855aad6a25a2aa4be06fb363b38ce1f3c50af2dd99c8b0b1c2";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

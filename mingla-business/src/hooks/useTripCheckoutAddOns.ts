@@ -3,7 +3,7 @@
  *
  * `/checkout-trip` reads the trip's own tables (usePublicTripById), which carry
  * no add-ons. The public trip reader (`pg_public_trip_by_slug`, the one owner
- * of the public add-on item since 20281121053281) does: each package with an
+ * of the public add-on item since 20281123123281) does: each package with an
  * add-on on sale has `extras`. When the buyer came from the trip page, that
  * page's cached payload (tripKeys.publicBySlug) seeds this query, so no second
  * read is made; otherwise the reader is called once. Nothing is read while the
