@@ -22,6 +22,8 @@
 --         reverses a succeeded refund; a late refund past the amount is
 --         acknowledged, recorded and stopped for ops with the exact extra;
 --         a refund Mingla already recorded is never adopted as a dashboard one.
+--   T4-4  a refund the provider reverses stops counting on its row, so an ops
+--         retry's refund is counted once.
 --
 -- FAILS-ON-REVERT: let issue_4522_begin_overpayment_refund reserve a new
 -- attempt while one is creating/pending, drop issue_4522_overpayment_attempts_guard,
@@ -30,7 +32,7 @@
 -- issue_3872_refund_share_trigger, drop issue_4522_record_short_collection's
 -- update, drop the begin's reconcile or busy step, let a refund without its id
 -- reverse a succeeded one, drop the over-amount adoption, or drop the known
--- refund check -> red.
+-- refund check, or keep a reversed refund counted on its row -> red.
 
 BEGIN;
 
@@ -321,6 +323,38 @@ BEGIN
          NULL, NULL, false);
   PERFORM pg_temp.check('T4-1 a known Mingla refund listed without metadata is explained, not adopted',
     NOT (v->>'handled')::boolean AND v->>'reason' = 'known_refund' AND pg_temp.n_attempts(op) = 0, v::text);
+END
+$t$;
+
+-- ── T4-4: a refund the provider reverses, then an ops retry: counted once ─
+DO $t$
+DECLARE
+  o9 uuid := '4522c300-0000-4000-8000-0000000000a9';
+  op uuid; v jsonb; v_flex uuid;
+BEGIN
+  op := pg_temp.overpaid(o9);
+  v_flex := (pg_temp.op(op)).installment_id;
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'succeeded', 're_t44_1');
+  PERFORM pg_temp.check('T4-4 the $100 refund is counted on the row', (SELECT refunded_amount_cents FROM public.order_installments WHERE id = v_flex) = 10000);
+  v := public.issue_4522_overpayment_refund_event('stripe', 're_t44_1', 'pi_flex_' || o9::text, 10000, 'failed');
+  PERFORM pg_temp.check('T4-4 the provider reverses it: the row no longer counts it, ops is told',
+    (SELECT refunded_amount_cents FROM public.order_installments WHERE id = v_flex) = 0
+    AND (pg_temp.op(op)).state = 'needs_ops' AND (v->'results'->0->>'alertOps')::boolean, v::text);
+  v := public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM pg_temp.check('T4-4 the retry first re-reads the reversed refund', v->>'action' = 'verify_prior', v::text);
+  v := public.issue_4522_begin_overpayment_refund(op, 1, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, (v->>'attemptNo')::int, 'succeeded', 're_t44_2');
+  PERFORM pg_temp.check('T4-4 after the ops retry the row counts $100 refunded once (the provider''s net), not $200',
+    (SELECT refunded_amount_cents FROM public.order_installments WHERE id = v_flex) = 10000
+    AND (pg_temp.op(op)).state = 'refunded'
+    AND (SELECT count(*) FROM public.order_installment_refund_applications WHERE installment_id = v_flex) = 1, v::text);
+  v := public.issue_4522_compute_refund_for_cancel_as(o9, now(), 'buyer');
+  PERFORM pg_temp.check('T4-4 a cancel quote after it counts the flexible charge''s $500 kept, at 50% = $250',
+    EXISTS (SELECT 1 FROM jsonb_array_elements(v->'per_payment_refund') e
+             WHERE e->>'installment_id' = v_flex::text AND (e->>'paid_cents')::bigint = 50000
+               AND (e->>'refund_cents')::bigint = 25000), v::text);
 END
 $t$;
 

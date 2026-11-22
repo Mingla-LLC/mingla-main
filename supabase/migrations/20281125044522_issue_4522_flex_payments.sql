@@ -1214,6 +1214,18 @@ BEGIN
   IF v_prev = 'succeeded' AND v_new = 'failed' THEN
     -- The provider reversed a refund it had completed: the money is back
     -- with the charge; automatic refunding stops and ops decides.
+    -- T4-4: the row no longer counts it as refunded (a later retry's refund
+    -- is then counted once, as the provider's ledger shows).
+    IF v_op.reason = 'flex_exceeds_balance' AND v_att.refund_id IS NOT NULL THEN
+      DELETE FROM public.order_installment_refund_applications
+       WHERE refund_id = v_att.refund_id AND installment_id = v_op.installment_id;
+      IF FOUND THEN
+        UPDATE public.order_installments
+           SET refunded_amount_cents = refunded_amount_cents - v_att.amount_minor,
+               status = CASE WHEN status = 'refunded' THEN 'collected' ELSE status END
+         WHERE id = v_op.installment_id;
+      END IF;
+    END IF;
     PERFORM public.issue_4522_overpayment_to_needs_ops(v_op.id, 'provider_reversed_refund', p_now);
     v_alert := true;
     v_alert_kind := 'provider_reversed_refund';
