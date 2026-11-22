@@ -32,6 +32,7 @@ import {
   useBrandFormCounts,
   useBrandFormDetail,
   useBrandFormResponses,
+  useScheduledBlastsUsingForm,
   useCloseBrandForm,
   useHideBrandFormResponse,
   useReopenBrandForm,
@@ -52,11 +53,13 @@ import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Tabs } from "../ui/Tabs";
 import {
+  closeConfirmDescription,
   FORM_REQUEST_COPY,
   FORM_REQUEST_LOG_COPY,
   FORMS_COPY,
   modeLabel,
   notAnsweredTabLabel,
+  retentionLine,
 } from "./brandFormsCopy";
 import { DoorReadLog } from "./DoorReadLog";
 import { FormRequestLog } from "./FormRequestLog";
@@ -139,6 +142,12 @@ export const BrandFormResponsesScreen: React.FC = () => {
   const role = useCurrentBrandRole(detail.data?.form.brandId ?? null);
   const close = useCloseBrandForm();
   const reopen = useReopenBrandForm();
+  // Design v10 G "2b": closing warns when a scheduled Blast carries this form.
+  const scheduledBlasts = useScheduledBlastsUsingForm(
+    detail.data?.form.brandId ?? null,
+    formId,
+    detail.data?.form.status === "live",
+  );
   const { show, toast } = useFormsToast();
   // Wave 4: Ask guests to answer / Remind all / the earlier-guests prompt (event manager+, C5).
   const [request, setRequest] = useState<{ mode: FormRequestSheetMode; earlierCount?: number } | null>(null);
@@ -557,6 +566,10 @@ export const BrandFormResponsesScreen: React.FC = () => {
           testID="brand-form-responses-tabs"
         />
         {tabBody}
+        {/* #4541 design v10 I3 (default 1): how long answers are kept, as in the builder. */}
+        <Text style={styles.retention} testID="brand-form-responses-retention">
+          {retentionLine(attachments.length > 0)}
+        </Text>
       </>
     );
   }
@@ -653,7 +666,7 @@ export const BrandFormResponsesScreen: React.FC = () => {
         onClose={() => setConfirmClose(false)}
         onConfirm={handleClose}
         title={FORMS_COPY.closeConfirmTitle}
-        description={FORMS_COPY.closeConfirmBody}
+        description={closeConfirmDescription(scheduledBlasts.data ?? 0)}
         confirmLabel={FORMS_COPY.closeForm}
         cancelLabel={FORMS_COPY.keepOpen}
         confirmLoading={close.isPending}
@@ -699,6 +712,7 @@ const styles = StyleSheet.create({
   rowName: { ...type.row, color: color.text1 },
   rowSub: { ...type.caption, color: color.text3 },
   hint: { ...type.small, color: color.text2 },
+  retention: { ...type.caption, color: color.text3 },
   sheetTitle: { ...type.title, color: color.text1 },
   answerBlock: { marginTop: space[4], gap: 2 },
   hideRow: { flexDirection: "row", marginTop: space[3] },

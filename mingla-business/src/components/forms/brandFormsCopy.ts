@@ -419,6 +419,17 @@ export const BLAST_FORM_COPY = {
   aForm: "Your form",
 } as const;
 
+/**
+ * #4541 design v10 G "2b": closing a form that a scheduled Blast carries warns
+ * first, then says what closing does.
+ */
+export const scheduledBlastsUsingFormLine = (n: number): string =>
+  n === 1 ? "1 scheduled Blast uses this form." : `${n} scheduled Blasts use this form.`;
+export const closeConfirmDescription = (scheduledBlasts: number): string =>
+  scheduledBlasts > 0
+    ? `${scheduledBlastsUsingFormLine(scheduledBlasts)} ${FORMS_COPY.closeConfirmBody}`
+    : FORMS_COPY.closeConfirmBody;
+
 /** #4541 design v10 I3: the retention line (a form on a page, or not on any page). */
 export const retentionLine = (onPages: boolean): string =>
   onPages ? FORMS_COPY.retentionPage : FORMS_COPY.retentionNoPage;

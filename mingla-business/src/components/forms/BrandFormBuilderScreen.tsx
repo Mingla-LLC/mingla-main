@@ -32,6 +32,7 @@ import {
   useArchiveBrandForm,
   useBrandFormDetail,
   useCloseBrandForm,
+  useScheduledBlastsUsingForm,
   usePublishBrandForm,
   useReopenBrandForm,
   useSaveBrandFormDraft,
@@ -62,7 +63,7 @@ import type { IntakeSchemaBuilderProps } from "../trip/IntakeSchemaBuilder";
 import { BRAND_FORM_FEATURES } from "./brandFormBuilderKit";
 import { BrandFormPreview } from "./BrandFormPreview";
 import { brandFormHeaderData } from "../../utils/brandFormHeader";
-import { FORMS_COPY, retentionLine } from "./brandFormsCopy";
+import { closeConfirmDescription, FORMS_COPY, retentionLine } from "./brandFormsCopy";
 import { FormsNotice } from "./FormsNotice";
 import { FormRequestSheet } from "./FormRequestSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
@@ -111,6 +112,12 @@ export const BrandFormBuilderScreen: React.FC = () => {
   const save = useSaveBrandFormDraft();
   const publish = usePublishBrandForm();
   const close = useCloseBrandForm();
+  // Design v10 G "2b": closing warns when a scheduled Blast carries this form.
+  const scheduledBlasts = useScheduledBlastsUsingForm(
+    detail.data?.form.brandId ?? null,
+    formId,
+    detail.data?.form.status === "live",
+  );
   const reopen = useReopenBrandForm();
   const archive = useArchiveBrandForm();
   const doorFull = useSetDoorFullAnswers();
@@ -522,7 +529,7 @@ export const BrandFormBuilderScreen: React.FC = () => {
         onClose={() => setConfirmClose(false)}
         onConfirm={handleClose}
         title={FORMS_COPY.closeConfirmTitle}
-        description={FORMS_COPY.closeConfirmBody}
+        description={closeConfirmDescription(scheduledBlasts.data ?? 0)}
         confirmLabel={FORMS_COPY.closeForm}
         cancelLabel={FORMS_COPY.keepOpen}
         confirmLoading={close.isPending}

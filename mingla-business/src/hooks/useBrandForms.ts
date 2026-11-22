@@ -53,6 +53,10 @@ import {
 } from "../services/brandFormsService";
 import type { BrandFormDefinition } from "../utils/brandFormDefinition";
 import { brandFormKeys } from "./brandFormKeys";
+import { marketingKeys } from "./marketing/marketingKeys";
+import { listCampaigns } from "../services/marketing/marketingCampaignService";
+import { countScheduledBlastsUsingForm } from "../utils/marketing/blastFormLink";
+import type { MarketingCampaignRow } from "../types/marketing";
 import { loadRosterAnswers, type RosterAnswerIndex } from "../utils/guestRosterAnswers";
 import {
   fetchFormRequestLog,
@@ -453,5 +457,27 @@ export function useFormRequestLog(
       if (input === null) throw new Error("request_required");
       return fetchFormRequestLog(input);
     },
+  });
+}
+
+/**
+ * #4541 design v10 G "2b": how many of the brand's scheduled Blasts carry this
+ * form (`channel_payload.embedded_form.form_id`). The campaigns list read the
+ * Blast list already uses (same key, shared cache), under the caller's own RLS
+ * (`marketing_campaigns_select`: owner or brand team). Off until `enabled`.
+ */
+export function useScheduledBlastsUsingForm(
+  brandId: string | null,
+  formId: string | null,
+  enabled: boolean,
+): UseQueryResult<number> {
+  const ready = useReady();
+  return useQuery<MarketingCampaignRow[], Error, number>({
+    queryKey:
+      brandId === null ? marketingKeys.campaigns.all : marketingKeys.campaigns.list(brandId, "scheduled"),
+    enabled: ready && enabled && brandId !== null && formId !== null,
+    staleTime: 30_000,
+    queryFn: () => listCampaigns({ brand_id: brandId as string, status: "scheduled" }),
+    select: (rows) => countScheduledBlastsUsingForm(rows, formId),
   });
 }

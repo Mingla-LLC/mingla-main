@@ -39,6 +39,9 @@ const shown: Array<{ kind: string; message: string; options?: { action?: { label
 const exportCalls: Array<Record<string, unknown>> = [];
 let rows: Row[] = [];
 let hiddenCount = 0;
+let mockOnPages = true;
+let mockScheduledBlasts = 0;
+const scheduledInputs: [string | null, string | null, boolean][] = [];
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), canGoBack: () => true, replace: jest.fn() }),
@@ -51,10 +54,12 @@ jest.mock("../../../hooks/useBrandForms", () => ({
       form: { id: "f1", brandId: "b1", name: "Open mic", status: "live", liveVersionId: "v1" },
       version: 1,
       published: null,
-      attachments: [
-        { id: "a1", eventId: "e1", eventName: "Detty", eventType: "event", mode: "optional_on_page", autoRemind: false, autoRemindChannels: [] },
-        { id: "a2", eventId: "e2", eventName: "Lagos", eventType: "event", mode: "optional_on_page", autoRemind: false, autoRemindChannels: [] },
-      ],
+      attachments: mockOnPages
+        ? [
+            { id: "a1", eventId: "e1", eventName: "Detty", eventType: "event", mode: "optional_on_page", autoRemind: false, autoRemindChannels: [] },
+            { id: "a2", eventId: "e2", eventName: "Lagos", eventType: "event", mode: "optional_on_page", autoRemind: false, autoRemindChannels: [] },
+          ]
+        : [],
     },
     isLoading: false,
     isError: false,
@@ -76,6 +81,10 @@ jest.mock("../../../hooks/useBrandForms", () => ({
   useCloseBrandForm: () => ({ isPending: false, mutate: jest.fn() }),
   useReopenBrandForm: () => ({ isPending: false, mutate: jest.fn() }),
   useHideBrandFormResponse: () => ({ isPending: false, mutate: hideMutate }),
+  useScheduledBlastsUsingForm: (brandId: string | null, formId: string | null, enabled: boolean) => {
+    scheduledInputs.push([brandId, formId, enabled]);
+    return { data: mockScheduledBlasts };
+  },
 }));
 jest.mock("../../../services/brandFormsExportService", () => ({
   exportFormAnswers: (input: Record<string, unknown>) => {
@@ -156,6 +165,7 @@ const { buildAnswersCsv } = jest.requireActual<typeof import("../../../services/
 const { responsesFilterKey } = jest.requireActual<typeof import("../../../hooks/useBrandForms")>("../../../hooks/useBrandForms");
 import { brandFormKeys } from "../../../hooks/brandFormKeys";
 import { FORMS_COPY } from "../brandFormsCopy";
+const { countScheduledBlastsUsingForm } = jest.requireActual<typeof import("../../../utils/marketing/blastFormLink")>("../../../utils/marketing/blastFormLink");
 
 const base = (over: Partial<Row>): Row => ({
   responseId: "r1", versionId: "v1", version: 1, earlierVersion: false, answers: {}, source: "page",
@@ -197,6 +207,9 @@ beforeEach(() => {
   exportCalls.length = 0;
   rows = [unknownRow, blastRow, base({})];
   hiddenCount = 0;
+  mockOnPages = true;
+  mockScheduledBlasts = 0;
+  scheduledInputs.length = 0;
 });
 
 describe("#4541 R4.7 Unknown and Blast replies in the list", () => {
@@ -276,5 +289,62 @@ describe("#4541 R4.7 export and R4.9 the list card", () => {
   test("'{n} Blast replies' wording", () => {
     expect(FORMS_COPY.blastReplies(3)).toBe("3 Blast replies");
     expect(FORMS_COPY.blastReplies(1)).toBe("1 Blast reply");
+  });
+});
+
+describe("#4541 design v10 I3 the retention line on Responses", () => {
+  test("a form on a page: erased 12 months after the event ends", () => {
+    const r = mount();
+    const line = r.root.findAll((n) => n.props.testID === "brand-form-responses-retention" && n.type === "Text")[0];
+    expect(texts(r.root)).toContain("Answers are erased 12 months after the event ends.");
+    expect(line).toBeDefined();
+    r.unmount();
+  });
+
+  test("a form on no page: erased 12 months after they're sent", () => {
+    mockOnPages = false;
+    const r = mount();
+    expect(texts(r.root)).toContain("Answers are erased 12 months after they're sent.");
+    expect(texts(r.root)).not.toContain("Answers are erased 12 months after the event ends.");
+    r.unmount();
+  });
+});
+
+describe("#4541 design v10 G 2b closing a form a scheduled Blast uses warns first", () => {
+  const dialog = (root: Node): Node | undefined =>
+    root.findAll((n) => n.type === "ConfirmDialog" && n.props.testID === "brand-form-close-dialog")[0];
+
+  test("one scheduled Blast: the close dialog leads with the warning", () => {
+    mockScheduledBlasts = 1;
+    const r = mount();
+    expect(scheduledInputs.at(-1)).toEqual(["b1", "f1", true]);
+    const d = dialog(r.root);
+    expect(d?.props.description).toBe(`1 scheduled Blast uses this form. ${FORMS_COPY.closeConfirmBody}`);
+    r.unmount();
+  });
+
+  test("two: plural; none: the plain close copy", () => {
+    mockScheduledBlasts = 2;
+    let r = mount();
+    expect(dialog(r.root)?.props.description).toBe(`2 scheduled Blasts use this form. ${FORMS_COPY.closeConfirmBody}`);
+    r.unmount();
+    mockScheduledBlasts = 0;
+    r = mount();
+    expect(dialog(r.root)?.props.description).toBe(FORMS_COPY.closeConfirmBody);
+    r.unmount();
+  });
+
+  test("only scheduled campaigns whose payload embeds this form count", () => {
+    const FORM = "45410000-0000-4000-8000-0000000000f1";
+    const OTHER = "45410000-0000-4000-8000-0000000000f2";
+    const rowsIn = [
+      { status: "scheduled", channel_payload: { kind: "email", embedded_form: { form_id: FORM } } },
+      { status: "scheduled", channel_payload: { kind: "sms", embedded_form: { form_id: FORM.toUpperCase() } } },
+      { status: "scheduled", channel_payload: { kind: "push", embedded_form: { form_id: OTHER } } },
+      { status: "scheduled", channel_payload: { kind: "email" } },
+      { status: "sent", channel_payload: { kind: "email", embedded_form: { form_id: FORM } } },
+    ];
+    expect(countScheduledBlastsUsingForm(rowsIn, FORM)).toBe(2);
+    expect(countScheduledBlastsUsingForm(rowsIn, null)).toBe(0);
   });
 });
