@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
+import { colors, fontWeights, spacing, typography } from '../../constants/designSystem';
 
 /**
  * Memoized Experience Types Section
@@ -152,6 +153,55 @@ const CATEGORY_DESCRIPTION_KEYS: Record<string, string> = {
  * Memoized Categories Section
  * Prevents unnecessary re-renders of category buttons
  */
+/**
+ * #4490 Explorer W6b — "Places on Mingla": one chip per venue type that has a
+ * bookable hosted venue in range (the server's list, `useHostedVenueTypes`).
+ * The caller renders this only when that list is non-empty, so a chip is never
+ * shown without supply. Saved in `categories` as `venue_type:<key>`.
+ */
+export const PlacesOnMinglaSection = memo(
+  function PlacesOnMinglaSection({
+    title,
+    types,
+    selectedCategories,
+    onCategoryToggle,
+  }: {
+    title: string;
+    types: ReadonlyArray<{ key: string; label: string; icon: string }>;
+    selectedCategories: string[];
+    onCategoryToggle: (id: string) => void;
+  }) {
+    return (
+    <View style={styles.section} accessibilityRole="none">
+      <Text style={styles.placesTitle} accessibilityRole="header">{title}</Text>
+      <View style={styles.categoriesContainer}>
+        {types.map((type) => {
+          const id = `venue_type:${type.key}`;
+          const isSelected = selectedCategories.includes(id);
+          return (
+            <TouchableOpacity
+              key={id}
+              onPress={() => onCategoryToggle(id)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: isSelected }}
+              accessibilityLabel={`${type.label}, ${title}`}
+              style={[styles.categoryButton, isSelected && styles.categoryButtonSelected]}
+            >
+              <Icon
+                name={isSelected ? type.icon.replace('-outline', '') : type.icon}
+                size={16}
+                color={isSelected ? colors.text.inverse : colors.text.tertiary}
+              />
+              <Text style={[styles.categoryText, isSelected && styles.categoryTextSelected]}>{type.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+    );
+  },
+);
+
 export const CategoriesSection = memo(
   ({
     filteredCategories,
@@ -372,6 +422,14 @@ const styles = StyleSheet.create({
   experienceTypeTextSelected: {
     color: "#ffffff",
     fontWeight: "600",
+  },
+  // #4490 Explorer W6b: "Places on Mingla" row title (the section's own text style).
+  placesTitle: {
+    ...typography.sm,
+    fontWeight: fontWeights.semibold,
+    color: colors.text.primary,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   categoriesContainer: {
     flexDirection: "row",

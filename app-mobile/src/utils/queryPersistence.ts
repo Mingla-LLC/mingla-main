@@ -11,6 +11,8 @@ const NEVER_PERSIST_ROOT_KEYS = new Set([
   "venueFeaturesForPlace",
   "publicVenueFeatures",
   "venueOfferAvailability",
+  // #4490 Explorer W6b — the deck's venue-type chips for a place.
+  "hostedVenueTypes",
 ]);
 
 const USER_ID_POSITIONS: Record<string, number[]> = {

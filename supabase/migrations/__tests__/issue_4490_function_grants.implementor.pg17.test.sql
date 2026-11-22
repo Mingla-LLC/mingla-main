@@ -14,6 +14,9 @@
 -- (service role only).
 -- TEST-MOD-APPROVED #4490 (06-W6a): the Discover venue helpers (20280809461490) are internal, and
 -- the four Discover v2 readers that migration patches are listed (internal, as #4073 made them).
+-- TEST-MOD-APPROVED #4490 (06-W6b): the deck venue-type reads (20280809462490) are internal, the lifted
+-- place rule is an invoker helper, and the two base servable RPCs it re-emits keep their classes
+-- (solo internal; the shared-deck intersection callable by signed-in and signed-out, as before).
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -42,6 +45,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('discover_v2_facets_exact(text[],double precision,double precision,double precision,text,text,jsonb,text)', 'internal'),
   ('discover_v2_items(text,text[],double precision,double precision,double precision,text,jsonb,integer,integer)', 'internal'),
   ('discover_v2_nearest_city(double precision,double precision)', 'internal'),
+  ('issue_1384_query_servable_places_by_signal(text,numeric,double precision,double precision,double precision,uuid[],integer,bigint,bigint,character,uuid)', 'internal'),
   ('issue_1387_assert_stay_row_integrity()', 'helper'),
   ('issue_1387_stay_inventory_snapshot(uuid)', 'signed_in'),
   ('issue_1388_assert_reservation_scope()', 'helper'),
@@ -196,8 +200,11 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_hold_damage_deposit(uuid,text,text)', 'signed_in'),
   ('issue_4490_hold_hire_internal(uuid,uuid,jsonb,text,uuid,bytea,text)', 'internal'),
   ('issue_4490_hold_offer_internal(uuid,uuid,jsonb,text,uuid,bytea,text,boolean,uuid,text)', 'internal'),
+  ('issue_4490_hosted_places_by_venue_type(text,double precision,double precision,integer,uuid[],integer)', 'internal'),
+  ('issue_4490_hosted_places_by_venue_type_intersection(text,jsonb,uuid[],integer)', 'internal'),
   ('issue_4490_hosted_servable_places_intersection(text,numeric,jsonb,uuid[])', 'internal'),
   ('issue_4490_hosted_servable_places(text,numeric,double precision,double precision,double precision,uuid[],bigint,bigint,character,uuid)', 'internal'),
+  ('issue_4490_hosted_venue_types_near(double precision,double precision,integer)', 'internal'),
   ('issue_4490_hour_booking_facts(uuid)', 'internal'),
   ('issue_4490_hour_default_mode()', 'helper'),
   ('issue_4490_hour_projection(uuid)', 'internal'),
@@ -287,6 +294,7 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_pause_offers_on_feature_off()', 'internal'),
   ('issue_4490_payment_components(uuid)', 'internal'),
   ('issue_4490_period_after(timestamp with time zone,text,text)', 'helper'),
+  ('issue_4490_place_is_servable(boolean,boolean,text[])', 'helper'),
   ('issue_4490_plan_venue(uuid)', 'signed_in'),
   ('issue_4490_policy_text(jsonb)', 'helper'),
   ('issue_4490_pool_day_usage(uuid,date)', 'internal'),
@@ -401,7 +409,8 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('pg_venue_hour_day(uuid,date,integer,uuid)', 'public'),
   ('pg_venue_offer_availability(uuid,date,date,integer,uuid)', 'public'),
   ('pg_venue_order_finalize_payment(uuid,text,integer,text,text,text,integer,text)', 'internal'),
-  ('preview_pending_venue_identity_correction(uuid)', 'signed_in')
+  ('preview_pending_venue_identity_correction(uuid)', 'signed_in'),
+  ('query_servable_places_by_signal_intersection(text,numeric,jsonb,uuid[],integer)', 'public')
 ;
 
 DO $t$

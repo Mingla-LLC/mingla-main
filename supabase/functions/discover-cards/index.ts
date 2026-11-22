@@ -57,6 +57,15 @@ import {
   settleHosted,
   venueDeckFlagOn,
 } from './hostedLead.ts';
+// #4490 Explorer W6b: venue-type chips (flag VENUE_DISCOVER).
+import {
+  VENUE_DISCOVER,
+  VENUE_TYPE_CHIPS,
+  deckRadiusMeters,
+  isVenueTypeChip,
+  looksLikeVenueTypeChip,
+  splitVenueTypeChips,
+} from './venueTypeChips.ts';
 
 // ─── ORCH-0588 Slice 1: cohort cache for signal-serving rollout ───────────────
 // Module-scoped 60s cache for the admin-config cohort pct. 60s = balance between
@@ -1408,7 +1417,7 @@ async function handleDeterministicV2(args: {
     ? agg.pending_gps_user_ids
     : [];
 
-  const hydrateSingleFromPlacePool = async (cardId: string): Promise<any | null> => {
+  const hydrateSingleFromPlacePool = async (cardId: string, pillLabel?: string | null): Promise<any | null> => {
     const { data, error } = await supabaseAdmin
       .from('place_pool')
       .select(`
@@ -1442,13 +1451,17 @@ async function handleDeterministicV2(args: {
       [{ ...data, place_id: data.id, signal_score: 0, signal_contributions: {} }],
       null,
     );
-    return transformServablePlaceToCard(
+    // #4490 Explorer W6b: a venue-type position shows its type and is a hosted venue.
+    const venuePosition = isVenueTypeChip(pillLabel) ? VENUE_TYPE_CHIPS[pillLabel] : null;
+    const card = transformServablePlaceToCard(
       pricedRow,
-      resolveCategories(agg.categories ?? [])[0] ?? 'Group pick',
+      venuePosition?.displayCategory ?? resolveCategories(agg.categories ?? [])[0] ?? 'Group pick',
       circle.lat,
       circle.lng,
       circle.travel_mode as TravelMode,
     );
+    if (venuePosition) card.deckLead = 'hosted_venue';
+    return card;
   };
 
   const hydrateCardFromRow = async (row: SessionDeckCardRow): Promise<any | null> => {
@@ -1456,7 +1469,7 @@ async function handleDeterministicV2(args: {
       return row.curated_payload;
     }
     if ((row.card_type === 'single' || !row.card_type) && row.card_id) {
-      return await hydrateSingleFromPlacePool(row.card_id);
+      return await hydrateSingleFromPlacePool(row.card_id, row.pill_label);
     }
     return null;
   };
@@ -1587,8 +1600,18 @@ async function handleDeterministicV2(args: {
       detail: 'Participant travel circles have no shared reachable places.',
     });
   }
+  // #4490 Explorer W6b: venue-type chips are split out before resolveCategories
+  // (which would drop them) so they get positions in the rotation. The switch
+  // is read only when such a chip is saved.
+  const collabVenueDiscoverOn = Array.isArray(agg.categories) && agg.categories.some(looksLikeVenueTypeChip)
+    ? await venueDeckFlagOn(supabaseAdmin, VENUE_DISCOVER)
+    : false;
+  const collabSplit = splitVenueTypeChips(Array.isArray(agg.categories) ? agg.categories : [], collabVenueDiscoverOn);
   const collabCategories = Array.isArray(agg.categories)
-    ? resolveCategories(agg.categories).filter((c) => !HIDDEN_CATEGORIES.has(c))
+    ? [
+      ...resolveCategories(collabSplit.rest).filter((c) => !HIDDEN_CATEGORIES.has(c)),
+      ...collabSplit.venueChips,
+    ]
     : [];
   const collabIntents = Array.isArray(agg.intents)
     ? agg.intents.filter((intent) => SESSION_INTENT_IDS.has(intent))
@@ -1666,9 +1689,12 @@ async function handleDeterministicV2(args: {
       detail,
     });
   };
-  const canonicalCategories = resolveCategories([params.pill]).filter(
-    (c) => !HIDDEN_CATEGORIES.has(c),
-  );
+  // #4490 Explorer W6b: a venue-type pill fetches that type's hosted venues
+  // instead of a signal; every step after the fetch is unchanged.
+  const venuePill = collabVenueDiscoverOn && isVenueTypeChip(params.pill) ? params.pill : null;
+  const canonicalCategories = venuePill
+    ? [venuePill]
+    : resolveCategories([params.pill]).filter((c) => !HIDDEN_CATEGORIES.has(c));
   type ChipTarget = {
     chip: string;
     displayCategory: string;
@@ -1676,7 +1702,7 @@ async function handleDeterministicV2(args: {
     filterMin: number;
   };
   const chipTargets: ChipTarget[] = [];
-  for (const chip of canonicalCategories) {
+  for (const chip of venuePill ? [] : canonicalCategories) {
     const mapping = CATEGORY_TO_SIGNAL[chip];
     if (!mapping) {
       console.warn(`[discover-cards/positional] chip="${chip}" missing CATEGORY_TO_SIGNAL mapping — skipping`);
@@ -1689,7 +1715,7 @@ async function handleDeterministicV2(args: {
       filterMin: mapping.filterMin,
     });
   }
-  if (chipTargets.length === 0) {
+  if (chipTargets.length === 0 && !venuePill) {
     return await fallbackToCuratedAfterSingleExhaustion(
       'No selected chips have signal mappings.',
       'no_matching_candidates',
@@ -1724,7 +1750,7 @@ async function handleDeterministicV2(args: {
       }
     }
   }
-  if (rpcTasks.length === 0) {
+  if (rpcTasks.length === 0 && !venuePill) {
     return await fallbackToCuratedAfterSingleExhaustion(
       'No selected chips have any signal in cohort.',
       'no_matching_candidates',
@@ -1807,6 +1833,17 @@ async function handleDeterministicV2(args: {
         .then((res: any) => ({ task, res })),
     ),
   );
+  // #4490 W6b: the venue-type pill's rows (inside every circle, same exclusions).
+  const venuePillResult = venuePill
+    ? await Promise.resolve(
+      supabaseAdmin.rpc('issue_4490_hosted_places_by_venue_type_intersection', {
+        p_venue_type: VENUE_TYPE_CHIPS[venuePill].venueType,
+        p_circles: agg.circles,
+        p_exclude_place_ids: excludePlaceIds,
+        p_limit: PER_CHIP_LIMIT,
+      }),
+    ).then((res: any) => res, (err: unknown) => ({ data: null, error: { message: (err as Error)?.message ?? 'venue type call threw' } }))
+    : null;
   const rpcResults = await baseCalls;
   const hostedSettled = hostedFirst
     ? await settleHosted(hostedCalls, baseCalls, args.hostedGraceMs ?? HOSTED_GRACE_MS)
@@ -1830,6 +1867,20 @@ async function handleDeterministicV2(args: {
 
   const perChipBuckets = new Map<string, Map<string, any>>();
   const failedTasks: string[] = [];
+  if (venuePill && venuePillResult) {
+    if (venuePillResult.error) {
+      failedTasks.push(`${venuePill}: ${venuePillResult.error.message}`);
+    } else {
+      await enrichRowsWithPlaceFields(supabaseAdmin, (venuePillResult.data as any[]) ?? []);
+      const bucket = new Map<string, any>();
+      for (const row of (venuePillResult.data as any[]) ?? []) {
+        if (!bucket.has(row.place_id)) {
+          bucket.set(row.place_id, { ...row, __displayCategory: VENUE_TYPE_CHIPS[venuePill].displayCategory, __venueTypeChip: venuePill });
+        }
+      }
+      perChipBuckets.set(venuePill, bucket);
+    }
+  }
   for (const { task, res } of rpcResults) {
     if (res.error) {
       failedTasks.push(`${task.chip}/${task.signalId}: ${res.error.message}`);
@@ -1850,7 +1901,7 @@ async function handleDeterministicV2(args: {
     }
   }
 
-  if (failedTasks.length === rpcTasks.length) {
+  if (failedTasks.length === rpcTasks.length + (venuePill ? 1 : 0)) {
     const truncated = failedTasks.slice(0, 3).join(' | ').slice(0, 200);
     console.error(`[discover-cards/positional] all intersection RPCs failed sample="${truncated}"`);
     return json({
@@ -2411,6 +2462,40 @@ export function discoveryFxErrorResponse(error: unknown): Response | null {
   );
 }
 
+// ── #4490 Explorer W6b: the deck's venue-type chips for a place ─────────────
+// `{ action: 'venue_types', location, travelMode, travelConstraintValue }` →
+// `{ types: [{ key, count }] }`: the chip types with a bookable hosted venue
+// whose place is inside the deck's own radius (deckRadiusMeters over
+// radiusKmForConstraint, the solo deck's one owner). Empty while VENUE_DISCOVER
+// is off; a failed read answers 500 with no types (the app hides the row).
+async function handleVenueTypes(body: any, dependencies: DiscoverCardsDependencies): Promise<Response> {
+  const json = (payload: unknown, status = 200) =>
+    new Response(JSON.stringify(payload), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  const lat = Number(body?.location?.lat);
+  const lng = Number(body?.location?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return json({ error: 'Location required', types: [] }, 400);
+  }
+  const travelMode = typeof body?.travelMode === 'string' ? body.travelMode : 'walking';
+  const travelConstraintValue = Number.isFinite(Number(body?.travelConstraintValue)) ? Number(body.travelConstraintValue) : 30;
+  const supabaseAdmin = dependencies.adminClient ?? createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  if (!(await venueDeckFlagOn(supabaseAdmin, VENUE_DISCOVER))) return json({ types: [] });
+  const radiusMeters = deckRadiusMeters(radiusKmForConstraint(travelConstraintValue, travelMode as TravelMode, 1.5));
+  const { data, error } = await supabaseAdmin.rpc('issue_4490_hosted_venue_types_near', {
+    p_lat: lat,
+    p_lng: lng,
+    p_radius_m: radiusMeters,
+  });
+  if (error) {
+    console.warn(`[discover-cards] venue_types read failed: ${String(error.message ?? '').slice(0, 200)}`);
+    return json({ error: 'venue_types_unavailable', types: [] }, 500);
+  }
+  const types = (Array.isArray(data) ? data : [])
+    .filter((row: any) => isVenueTypeChip(`venue_type:${row?.venue_type}`) && Number(row?.venue_count) > 0)
+    .map((row: any) => ({ key: String(row.venue_type), count: Number(row.venue_count) }));
+  return json({ types });
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
 export async function handleDiscoverCards(
   req: Request,
@@ -2430,6 +2515,13 @@ export async function handleDiscoverCards(
       return new Response(JSON.stringify({ status: 'warm' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // #4490 Explorer W6b: the venue types the deck may offer as chips here
+    // ("Places on Mingla"), with the deck's own radius. Empty while
+    // VENUE_DISCOVER is off.
+    if (body.action === 'venue_types') {
+      return await handleVenueTypes(body, dependencies);
     }
 
     // ORCH-0909: collab routing (single-shot positional cutover, no dual path).
@@ -2564,20 +2656,28 @@ export async function handleDiscoverCards(
       );
     }
 
+    // #4490 Explorer W6b: venue-type chips are split out BEFORE resolveCategories
+    // (which would drop them). The switch is read only when such a chip is sent,
+    // so every other request is exactly today's.
+    const supabaseAdmin = dependencies.adminClient ??
+      createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const venueDiscoverOn = Array.isArray(rawCategories) && rawCategories.some(looksLikeVenueTypeChip)
+      ? await venueDeckFlagOn(supabaseAdmin, VENUE_DISCOVER)
+      : false;
+    const { venueChips, rest: signalRawCategories } = splitVenueTypeChips(rawCategories as unknown[], venueDiscoverOn);
+
     // ── Resolve categories to canonical names, filter out hidden ──────────
-    const categories = resolveCategories(rawCategories)
+    const categories = resolveCategories(signalRawCategories as string[])
       .filter(c => !HIDDEN_CATEGORIES.has(c));
-    if (categories.length === 0) {
+    if (categories.length === 0 && venueChips.length === 0) {
       return new Response(
         JSON.stringify({ error: `No recognized categories in: ${rawCategories.join(', ')}`, cards: [] }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`[discover-cards] solo request: categories=[${categories}], batchSeed=${batchSeed}, limit=${limit}, mode=${travelMode}${dateWindows ? `, dateWindows=[${dateWindows}]` : ''}`);
+    console.log(`[discover-cards] solo request: categories=[${categories}]${venueChips.length > 0 ? `, venueTypes=[${venueChips}]` : ''}, batchSeed=${batchSeed}, limit=${limit}, mode=${travelMode}${dateWindows ? `, dateWindows=[${dateWindows}]` : ''}`);
 
-    const supabaseAdmin = dependencies.adminClient ??
-      createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const { displayCurrency, fxSnapshotId } =
       await resolveDiscoveryFxContext(
         {
@@ -2653,7 +2753,7 @@ export async function handleDiscoverCards(
     // when they exist; post-filter still enforces honest cap. Curated uses
     // generosity=1.0 (see generate-curated-experiences/index.ts).
     const maxDistKm = radiusKmForConstraint(travelConstraintValue, travelMode, 1.5);
-    const radiusMeters = Math.min(Math.max(Math.round(maxDistKm * 1000), 500), 100000);
+    const radiusMeters = deckRadiusMeters(maxDistKm);
 
     // ORCH-0634: scorePoolCards removed. The new signal-serving path uses
     // signal_score as matchScore directly — re-scoring with chip-match heuristics
@@ -2760,7 +2860,7 @@ export async function handleDiscoverCards(
       });
     }
 
-    if (chipTargets.length === 0) {
+    if (chipTargets.length === 0 && venueChips.length === 0) {
       const elapsed = Date.now() - t0;
       console.log(`[discover-cards] exit path=pool-empty reason=no_mapped_chips chips=[${categories.join(',')}] elapsed_ms=${elapsed}`);
       return buildEmptyResponse({
@@ -2802,7 +2902,8 @@ export async function handleDiscoverCards(
       }
     }
 
-    if (rpcTasks.length === 0) {
+    // #4490 W6b: a venue-type chip is not a signal and is not cohort-gated.
+    if (rpcTasks.length === 0 && venueChips.length === 0) {
       const elapsed = Date.now() - t0;
       console.log(`[discover-cards] exit path=pool-empty reason=no_signals_in_cohort chips=[${categories.join(',')}] elapsed_ms=${elapsed}`);
       return buildEmptyResponse({
@@ -2860,7 +2961,28 @@ export async function handleDiscoverCards(
         }).then((res: any) => ({ task, res })),
       ),
     );
+    // #4490 W6b: each venue-type chip fetches its hosted venues (same radius,
+    // exclusions and depth as a signal chip); every step after the fetch is
+    // unchanged. These rows carry no __signalId (no "why we picked").
+    const venueCalls = Promise.all(
+      venueChips.map((chip) =>
+        Promise.resolve(
+          supabaseAdmin.rpc('issue_4490_hosted_places_by_venue_type', {
+            p_venue_type: VENUE_TYPE_CHIPS[chip].venueType,
+            p_lat: location.lat,
+            p_lng: location.lng,
+            p_radius_m: radiusMeters,
+            p_exclude_place_ids: excludeCardIds,
+            p_limit: perChipRpcLimit,
+          }),
+        ).then(
+          (res: any) => ({ chip, res }),
+          (err: unknown) => ({ chip, res: { data: null, error: { message: (err as Error)?.message ?? 'venue type call threw' } } }),
+        )
+      ),
+    );
     const rpcResults = await baseCalls;
+    const venueResults = await venueCalls;
     const hostedResults = hostedFirst
       ? (await settleHosted(hostedCalls, baseCalls, dependencies.hostedGraceMs ?? HOSTED_GRACE_MS)) ?? null
       : [];
@@ -2881,10 +3003,25 @@ export async function handleDiscoverCards(
     await Promise.all([
       ...rpcResults.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])),
       ...usableHosted.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])),
+      ...venueResults.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])),
     ]);
 
     const perChipBuckets = new Map<string, Map<string, any>>(); // chip → place_id → row
     const failedTasks: string[] = [];
+    // #4490 W6b: venue-type rows, in the RPC's order, tagged as hosted venues.
+    for (const { chip, res } of venueResults) {
+      if (res.error) {
+        failedTasks.push(`${chip}: ${res.error.message}`);
+        continue;
+      }
+      const bucket = new Map<string, any>();
+      for (const row of (res.data as any[]) ?? []) {
+        if (!bucket.has(row.place_id)) {
+          bucket.set(row.place_id, { ...row, __displayCategory: VENUE_TYPE_CHIPS[chip].displayCategory, __venueTypeChip: chip });
+        }
+      }
+      perChipBuckets.set(chip, bucket);
+    }
     for (const { task, res } of rpcResults) {
       if (res.error) {
         failedTasks.push(`${task.chip}/${task.signalId}: ${res.error.message}`);
@@ -2923,7 +3060,7 @@ export async function handleDiscoverCards(
     }
 
     // Step 6: total-failure guard — every RPC errored → pipeline-error.
-    if (failedTasks.length === rpcTasks.length) {
+    if (failedTasks.length === rpcTasks.length + venueChips.length) {
       const elapsed = Date.now() - t0;
       const truncated = failedTasks.slice(0, 3).join(' | ').slice(0, 200);
       console.error(`[discover-cards] exit path=pipeline-error reason=all_rpcs_failed failed=${failedTasks.length} elapsed_ms=${elapsed} sample="${truncated}"`);
@@ -2952,15 +3089,22 @@ export async function handleDiscoverCards(
       // #4490 W5: hosted head (≤6, hosted order) then today's order unchanged.
       perChipSorted.set(chip, hostedFirst ? partitionHostedFirst(arr) : arr);
     }
+    // #4490 W6b: venue-type chips after the signal chips, in the RPC's own order
+    // (they are all hosted venues; no partition).
+    for (const chip of venueChips) {
+      const bucket = perChipBuckets.get(chip);
+      if (!bucket || bucket.size === 0) continue;
+      perChipSorted.set(chip, [...bucket.values()]);
+    }
 
     // Step 8: preserve enough candidates for server-side price filtering
     // before the response limit is applied.
     const roundRobinRows = roundRobinByChip({
       perChip: perChipSorted,
-      totalLimit: Math.max(limit, categories.length * perChipRpcLimit),
+      totalLimit: Math.max(limit, (categories.length + venueChips.length) * perChipRpcLimit),
     });
     // #4490 W5: with the switch on, a place dealt by two chips appears once.
-    const interleavedRows = hostedFirst ? dedupeByPlace(roundRobinRows) : roundRobinRows;
+    const interleavedRows = hostedFirst || venueChips.length > 0 ? dedupeByPlace(roundRobinRows) : roundRobinRows;
 
     // ORCH-1065: fetch deck-eligible brand experiences ONCE (best-effort). Hoisted
     // ABOVE the zero-row branch so "auto-surface every published experience" holds
@@ -3042,6 +3186,7 @@ export async function handleDiscoverCards(
     // honest haversine distance + per-mode travel-time. Track null-coord rows
     // for one aggregated warning per request.
     let _placesMissingCoords = 0;
+    const venueTypeCardIds = new Set<string>();
     const pricedRows = await attachDiscoveryPrices(
       supabaseAdmin,
       interleavedRows,
@@ -3077,7 +3222,8 @@ export async function handleDiscoverCards(
       );
       if (card.distanceKm === null) _placesMissingCoords++;
       // #4490 W5: additive field; current apps ignore it.
-      if (hostedFirst && row.__hostedLead === true) card.deckLead = 'hosted_venue';
+      if (hostedFirst && row.__hostedLead === true && !row.__venueTypeChip) card.deckLead = 'hosted_venue';
+      if (row.__venueTypeChip) venueTypeCardIds.add(card.id);
       return card;
     });
     if (_placesMissingCoords > 0) {
@@ -3118,6 +3264,13 @@ export async function handleDiscoverCards(
     const hoursFilteredCards = hostedFirst
       ? leadHostedWithinCategories(hoursFilteredBeforeLead)
       : hoursFilteredBeforeLead;
+    // #4490 W6b: venue-type cards are hosted venues (tagged after the W5 pass,
+    // whose cap applies to a category's lead over organic places only).
+    if (venueTypeCardIds.size > 0) {
+      for (const card of hoursFilteredCards) {
+        if (venueTypeCardIds.has(card?.id)) card.deckLead = 'hosted_venue';
+      }
+    }
 
     // Step 11: keep signal-score ranked order. ORCH-0902 CR-9: legacy collab
     // branch (place_id sort + zero matchScore for sessionId presence) was

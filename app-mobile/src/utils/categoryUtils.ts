@@ -256,7 +256,26 @@ export const getCategorySlug = (categoryKey: string): string => {
 /**
  * Get category icon name (used by the Icon component wrapper)
  */
+/** #4490 Explorer W6b: a saved deck venue-type chip (`venue_type:<key>`). */
+export const VENUE_TYPE_CATEGORY_RE =
+  /^venue_type:(restaurant|bar_lounge|club|cafe|play|coworking|event_space|creative_and_arts)$/;
+
+/** #4490 Explorer W6b: one existing icon per venue type ("Places on Mingla" chips). */
+export const VENUE_TYPE_ICONS: Readonly<Record<string, string>> = {
+  restaurant: 'utensils-crossed',
+  bar_lounge: 'wine-outline',
+  club: 'musical-notes-outline',
+  cafe: 'coffee',
+  play: 'game-controller-outline',
+  coworking: 'briefcase-outline',
+  event_space: 'people-outline',
+  creative_and_arts: 'color-palette-outline',
+};
+
 export const getCategoryIcon = (categoryKey: string): string => {
+  if (VENUE_TYPE_CATEGORY_RE.test(categoryKey)) {
+    return VENUE_TYPE_ICONS[categoryKey.slice('venue_type:'.length)] ?? 'location';
+  }
   if (!categoryKey) return 'compass-outline';
   const slug = getCategorySlug(categoryKey);
 
@@ -316,6 +335,14 @@ export const normalizeCategoryArray = (
       'brunch_lunch_casual': 'brunch',
       'groceries_flowers': 'flowers', 'work_business': 'icebreakers',
     };
+    // #4490 Explorer W6b: venue-type chips are kept as they are (never re-slugged).
+    if (VENUE_TYPE_CATEGORY_RE.test(cat)) {
+      if (!seen.has(cat)) {
+        seen.add(cat);
+        result.push(cat);
+      }
+      continue;
+    }
     if (oldToNew[cat]) {
       slug = oldToNew[cat];
     } else {

@@ -84,5 +84,6 @@
   "sheet.pick_date_hint": "Pick a date to continue",
   "sheet.set_travel_hint": "Set travel time to continue",
   "sheet.complete_hint": "Complete your preferences",
-  "sheet.save_error": "Preferences couldn't save — they'll reset next time."
+  "sheet.save_error": "Preferences couldn't save — they'll reset next time.",
+  "places_on_mingla_title": "Places on Mingla"
 }
