@@ -119,8 +119,12 @@ const SCAN_ROOTS = [
   { path: "mingla-business/app", minFiles: 100, minElements: 0 },
   // measured after #4523: 1377 files, 6 elements, 4 importing files
   { path: "app-mobile/src", minFiles: 500, minElements: 5 },
-  // measured: 214 files, 1 element, 1 importing file
-  { path: "packages", minFiles: 100, minElements: 1 },
+  // measured after #4523 checkpoints 17-18: 462 files, 0 elements. The form
+  // renderer's date question and the stay dates field were the only package
+  // pickers and both now use the Mingla calendar, so this root is lowered to
+  // the real count (0), like the route layer; it stays in the sweep so a picker
+  // added to a package is still covered, and `minFiles` proves it was walked.
+  { path: "packages", minFiles: 100, minElements: 0 },
 ];
 const SKIP_DIRS = new Set([
   "node_modules",
