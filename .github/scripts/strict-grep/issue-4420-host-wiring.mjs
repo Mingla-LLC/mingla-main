@@ -36,6 +36,12 @@ const BUSINESS = path.join(ROOT, "mingla-business");
 /** @typedef {{ file: string, why: string, from?: string, to?: string, has?: Array<string|RegExp>, lacks?: Array<string|RegExp> }} Rule */
 
 /** @type {Rule[]} */
+// Support switch's Ari mark (#4420 step 7, amended by 38f38e63c6): the untinted
+// HomeAriOrb or Icon name="ari"; the animated ari/AriOrb and a tinted orb are out.
+export const SUPPORT_ARI_MARK = /<HomeAriOrb\b(?![^>]*\btint\b)[^>]*>|<Icon name="ari"/;
+export const SUPPORT_TINTED_HOME_ORB = /<HomeAriOrb\b[^>]*\btint\b/;
+export const SUPPORT_OTHER_ARI_ORB = /from "(?![^"]*\/home\/HomeAriOrb")[^"]*AriOrb"/;
+
 export const RULES = [
   // ---- Ari history pane (was ari/__tests__/issue_4420_ari_history_pane) ----
   {
@@ -426,9 +432,9 @@ export const RULES = [
   // ---- Help & Support (#4420 step 7; behaviour in support/__tests__/issue_4420_help_support_entry, issue_4420_support_handover, support/__tests__/issue_4420_support_column) ----
   {
     file: "src/components/support/SupportColumn.tsx",
-    why: "the Support switch's Ari mark is the Ari orb (Icon name=\"ari\" draws HomeAriOrb), never a new drawing; the column reaches both sides only through the lazy boundaries",
-    has: [/<Icon name="ari"/, "LazySupportAriChat", "LazySupportPersonPane", "loadSupportScreens", "openHelpCentre(HELP_CENTRE_URL)"],
-    lacks: [/<Svg\b/, /from "[^"]*AriOrb"/, /from "[^"]*(?:AriChatScreen|SupportThread|SupportPersonPane|supportService|supportRequestModel|supportHandoverService)"/, /\bTextInput\b/, /React\.lazy\(/],
+    why: "the Support switch's Ari mark is the existing orb: HomeAriOrb (components/home/HomeAriOrb) with no tint, so it keeps Ari's orange as on the Ari tab and Home, or Icon name=\"ari\"; never the animated components/ari/AriOrb (reanimated and Ari's chat chunk on this screen) and never a hand-drawn mark; the column reaches both sides only through the lazy boundaries",
+    has: [SUPPORT_ARI_MARK, "LazySupportAriChat", "LazySupportPersonPane", "loadSupportScreens", "openHelpCentre(HELP_CENTRE_URL)"],
+    lacks: [/<Svg\b/, /from "react-native-svg"/, SUPPORT_TINTED_HOME_ORB, SUPPORT_OTHER_ARI_ORB, /from "[^"]*(?:AriChatScreen|SupportThread|SupportPersonPane|supportService|supportRequestModel|supportHandoverService)"/, /\bTextInput\b/, /React\.lazy\(/],
   },
   {
     file: "app/account/support.tsx",
@@ -530,7 +536,15 @@ export function checkRule(rule, read) {
 }
 
 if (process.argv.includes("--self-test")) {
-  const files = { "a.ts": "const x = 1;\nexport const pageWrapperStyle = { bg: color.canvas };\nfoo();", "b.ts": "accent here" };
+  const files = {
+    "a.ts": "const x = 1;\nexport const pageWrapperStyle = { bg: color.canvas };\nfoo();",
+    "b.ts": "accent here",
+    "s-home.tsx": 'import { HomeAriOrb } from "../home/HomeAriOrb";\n<HomeAriOrb size={18} still testID="o" />',
+    "s-icon.tsx": 'import { Icon } from "../ui/Icon";\n<Icon name="ari" size={18} />',
+    "s-tint.tsx": 'import { HomeAriOrb } from "../home/HomeAriOrb";\n<HomeAriOrb size={18} still tint={color.ink} />',
+    "s-anim.tsx": 'import { HomeAriOrb } from "../home/HomeAriOrb";\nimport { AriOrb } from "../ari/AriOrb";\n<HomeAriOrb size={18} still />',
+    "s-svg.tsx": 'import Svg, { Circle } from "react-native-svg";\n<Svg width={18}><Circle r={9} /></Svg>',
+  };
   const read = (f) => (f in files ? files[f] : null);
   const cases = [
     ["present string passes", { file: "a.ts", why: "w", has: ["const x = 1;"] }, 0],
@@ -540,6 +554,11 @@ if (process.argv.includes("--self-test")) {
     ["missing file fails", { file: "gone.ts", why: "w", has: ["x"] }, 1],
     ["slice scopes the check", { file: "a.ts", why: "w", from: "export const pageWrapperStyle", to: "};", has: ["color.canvas"], lacks: ["foo()"] }, 0],
     ["missing slice marker fails", { file: "a.ts", why: "w", from: "export const nope", to: "};", has: ["x"] }, 1],
+    ["support: untinted HomeAriOrb passes", { file: "s-home.tsx", why: "w", has: [SUPPORT_ARI_MARK], lacks: [/<Svg\b/, SUPPORT_TINTED_HOME_ORB, SUPPORT_OTHER_ARI_ORB] }, 0],
+    ["support: Icon name=ari passes", { file: "s-icon.tsx", why: "w", has: [SUPPORT_ARI_MARK], lacks: [/<Svg\b/, SUPPORT_TINTED_HOME_ORB, SUPPORT_OTHER_ARI_ORB] }, 0],
+    ["support: tinted HomeAriOrb fails", { file: "s-tint.tsx", why: "w", has: [SUPPORT_ARI_MARK], lacks: [/<Svg\b/, SUPPORT_TINTED_HOME_ORB, SUPPORT_OTHER_ARI_ORB] }, 1],
+    ["support: importing ari/AriOrb fails", { file: "s-anim.tsx", why: "w", has: [SUPPORT_ARI_MARK], lacks: [/<Svg\b/, SUPPORT_TINTED_HOME_ORB, SUPPORT_OTHER_ARI_ORB] }, 1],
+    ["support: a hand-drawn mark fails", { file: "s-svg.tsx", why: "w", has: [SUPPORT_ARI_MARK], lacks: [/<Svg\b/, SUPPORT_TINTED_HOME_ORB, SUPPORT_OTHER_ARI_ORB] }, 1],
   ];
   const failures = cases.filter(([, rule, want]) => (checkRule(rule, read).length > 0 ? 1 : 0) !== want).map(([name]) => name);
   const alertCases = [
