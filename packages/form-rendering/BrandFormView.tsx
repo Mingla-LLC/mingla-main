@@ -11,7 +11,8 @@
  *   drawn and its answer is dropped. A revealed question fades and slides in
  *   (opacity 0→1, translateY 8→0, 220 ms; fade only with reduced motion); a
  *   hidden one leaves without animation.
- * - Door questions carry "Shown to door staff" under the label; when the form
+ * - Door questions carry "Shown to door staff" under the label (drawn by the
+ *   question frame with the eye mark, #4541 R6.3); when the form
  *   lets door staff open full answers, one line sits at the top: "The host and
  *   their door staff can see your answers."
  */
@@ -27,7 +28,6 @@ import {
 } from "react-native";
 
 import {
-  ANSWERS_SEEN_LINE,
   type BrandHeaderData,
   type BrandAnswers,
   type BrandFormDefinitionShape,
@@ -37,6 +37,7 @@ import {
   rendererSchema,
   toRendererAnswers,
 } from "./brandFormRules";
+import { resolveFormCopy } from "./formCopy";
 import { IntakeFormRenderer } from "./QuestionRenderers";
 import type { FormBrandCoverProps, FormRenderingPrimitives, RenderFormFileUpload } from "./types";
 
@@ -67,12 +68,13 @@ export const BrandHeader: React.FC<BrandHeaderProps> = ({
   const height = compact ? 60 : 132;
   const ring = brand.accent ?? primitives.tokens.color.accent;
   const Cover = primitives.BrandCover;
+  const copy = resolveFormCopy(primitives.copy);
   return (
     <View
       style={[headerStyles.root, { height }]}
       testID={testID}
       accessibilityRole="header"
-      accessibilityLabel={brand.displayName.length > 0 ? `From ${brand.displayName}` : "From the host"}
+      accessibilityLabel={brand.displayName.length > 0 ? copy.fromBrand(brand.displayName) : copy.fromHost}
     >
       {Cover !== undefined ? (
         <Cover uri={brand.coverUrl} hue={brand.coverHue} accent={brand.accent} height={height} />
@@ -112,7 +114,7 @@ export const BrandHeader: React.FC<BrandHeaderProps> = ({
             style={[headerStyles.name, compact ? headerStyles.nameCompact : headerStyles.nameFull]}
             numberOfLines={1}
           >
-            {brand.displayName.length > 0 ? brand.displayName : "Your brand"}
+            {brand.displayName.length > 0 ? brand.displayName : copy.brandFallbackName}
           </Text>
           {compact && caption !== undefined ? (
             <Text style={headerStyles.caption} numberOfLines={1}>
@@ -214,7 +216,12 @@ export const BrandFormRenderer: React.FC<BrandFormRendererProps> = ({
   onMissingChange,
   testID = "brand-form-renderer",
 }) => {
-  const schema = useMemo(() => rendererSchema(definition, answers), [definition, answers]);
+  const copy = resolveFormCopy(primitives.copy);
+  const { shownToDoorStaff, untitledQuestion } = copy;
+  const schema = useMemo(
+    () => rendererSchema(definition, answers, { shownToDoorStaff, untitledQuestion }),
+    [definition, answers, shownToDoorStaff, untitledQuestion],
+  );
   const missingKey = missingRequiredIds(definition, answers).join(",");
   useEffect(() => {
     onMissingChange?.(missingKey.length > 0 ? missingKey.split(",") : []);
@@ -248,7 +255,7 @@ export const BrandFormRenderer: React.FC<BrandFormRendererProps> = ({
     <View testID={testID} accessibilityLiveRegion="polite">
       {doorFullAnswers ? (
         <Text style={[formStyles.seen, { color: color.text3 }]} testID={`${testID}-seen`}>
-          {ANSWERS_SEEN_LINE}
+          {copy.answersSeenLine}
         </Text>
       ) : null}
       <View style={{ gap: primitives.tokens.space[4] }}>

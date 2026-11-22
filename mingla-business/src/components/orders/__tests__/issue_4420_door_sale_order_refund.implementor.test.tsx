@@ -97,6 +97,9 @@ jest.mock("../../../hooks/useEventDoorSales", () => ({
 jest.mock("../../../utils/deferAfterDismiss", () => ({
   deferAfterDismiss: (fn: () => void) => fn(),
 }));
+// #4541 harness registration only — no assertion changed. The detail screen now
+// lazy-loads "Answers to {form}" from the forms owner (R1.9); not under test here.
+jest.mock("../../forms/formsOwner", () => ({ GuestAnswersCard: (): null => null }));
 jest.mock("../../ui/Button", () => ({ Button: probe("ButtonProbe") }));
 jest.mock("../../ui/EmptyState", () => ({ EmptyState: probe("EmptyStateProbe") }));
 jest.mock("../../ui/GlassCard", () => ({ GlassCard: probe("GlassCardProbe") }));

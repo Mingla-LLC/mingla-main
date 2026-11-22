@@ -31,6 +31,7 @@ import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 
+import { resolveFormCopy } from "./formCopy";
 import type {
   FormAnswerValue,
   FormFileAnswer,
@@ -65,7 +66,8 @@ const makeStyles = (t: FormRenderingTokens) => {
       fontWeight: "500",
     },
     requiredAsterisk: {
-      color: color.accent,
+      // #4541 R2.7: an injected mark colour (the Explorer app's white), else the accent.
+      color: color.requiredMark ?? color.accent,
       fontSize: type.body.fontSize,
       fontWeight: "700",
     },
@@ -99,6 +101,15 @@ const makeStyles = (t: FormRenderingTokens) => {
     helperTextWarning: { color: color.warning },
     helperTextDanger: { color: color.danger },
     helperBelowWrap: { marginTop: 2 },
+    // #4541 R6.3: `helper` lines under the label, before the field.
+    helperAboveWrap: { marginBottom: space[2], gap: 2 },
+    helperLine: {
+      fontSize: type.caption.fontSize,
+      lineHeight: type.caption.lineHeight,
+      color: color.text3,
+    },
+    doorLineRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+    doorLineIcon: { width: 12, height: 12, alignItems: "center", justifyContent: "center" },
     errorRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -258,6 +269,58 @@ export interface IntakeQuestionShellProps {
   helperBelow?: React.ReactNode;
 }
 
+/**
+ * #4541 R6.3: the question's `helper` (help text, then the door line), one
+ * line per `\n`. Help lines use the muted caption style. The line equal to
+ * `copy.shownToDoorStaff` is drawn as a row: the eye as its own element,
+ * hidden from screen readers, and the words beside it.
+ */
+export const IntakeQuestionHelper: React.FC<{
+  helper: string | undefined;
+  primitives: FormRenderingPrimitives;
+  testID?: string;
+}> = ({ helper, primitives, testID = "intake-question-helper" }) => {
+  if (helper === undefined) return null;
+  const lines = helper
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0) return null;
+  const styles = formStylesFor(primitives.tokens);
+  const copy = resolveFormCopy(primitives.copy);
+  const { Icon } = primitives;
+  return (
+    <View style={styles.helperAboveWrap} testID={testID}>
+      {lines.map((line, idx) =>
+        line === copy.shownToDoorStaff ? (
+          <View
+            key={`door-${idx}`}
+            style={styles.doorLineRow}
+            accessible
+            accessibilityLabel={copy.shownToDoorStaff}
+            testID={`${testID}-door`}
+          >
+            <View
+              style={styles.doorLineIcon}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              aria-hidden
+              testID={`${testID}-door-eye`}
+            >
+              <Icon name="eye" size={12} color={primitives.tokens.color.text3} strokeWidth={2} />
+            </View>
+            <Text style={styles.helperLine}>{line}</Text>
+          </View>
+        ) : (
+          <Text key={`help-${idx}`} style={styles.helperLine}>
+            {line}
+          </Text>
+        ),
+      )}
+    </View>
+  );
+};
+
 export const IntakeQuestionShell: React.FC<IntakeQuestionShellProps> = ({
   question,
   primitives,
@@ -266,20 +329,22 @@ export const IntakeQuestionShell: React.FC<IntakeQuestionShellProps> = ({
   helperBelow,
 }) => {
   const styles = formStylesFor(primitives.tokens);
+  const copy = resolveFormCopy(primitives.copy);
   const { Icon } = primitives;
   return (
     <View style={styles.shellWrap}>
       <View style={styles.labelRow}>
         <Text style={styles.label}>
-          {question.label.length > 0 ? question.label : "Untitled question"}
+          {question.label.length > 0 ? question.label : copy.untitledQuestion}
           {question.required ? (
             <Text style={styles.requiredAsterisk}> *</Text>
           ) : null}
         </Text>
         {!question.required ? (
-          <Text style={styles.optionalNote}>(optional)</Text>
+          <Text style={styles.optionalNote}>{copy.optional}</Text>
         ) : null}
       </View>
+      <IntakeQuestionHelper helper={question.helper} primitives={primitives} />
       {children}
       {helperBelow !== undefined && helperBelow !== null ? (
         <View style={styles.helperBelowWrap}>{helperBelow}</View>
@@ -357,7 +422,7 @@ export const IntakeQuestionShortText: React.FC<IntakeQuestionTextProps> = ({
       <TextInput
         value={value}
         onChangeText={(t) => onChange(t.slice(0, SHORT_TEXT_MAX))}
-        placeholder={question.placeholder ?? "Type your answer…"}
+        placeholder={question.placeholder ?? resolveFormCopy(primitives.copy).textPlaceholder}
         placeholderTextColor={primitives.tokens.color.text4}
         editable={!disabled}
         maxLength={SHORT_TEXT_MAX}
@@ -397,7 +462,7 @@ export const IntakeQuestionLongText: React.FC<IntakeQuestionTextProps> = ({
       <TextInput
         value={value}
         onChangeText={(t) => onChange(t.slice(0, LONG_TEXT_MAX))}
-        placeholder={question.placeholder ?? "Type your answer…"}
+        placeholder={question.placeholder ?? resolveFormCopy(primitives.copy).textPlaceholder}
         placeholderTextColor={primitives.tokens.color.text4}
         editable={!disabled}
         maxLength={LONG_TEXT_MAX}
@@ -571,6 +636,7 @@ export const IntakeQuestionDate: React.FC<IntakeQuestionTextProps> = ({
   const styles = formStylesFor(primitives.tokens);
   const { Icon, WebDateTimeInput } = primitives;
   const { color } = primitives.tokens;
+  const copy = resolveFormCopy(primitives.copy);
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [pendingDate, setPendingDate] = useState<Date | null>(null);
 
@@ -643,7 +709,7 @@ export const IntakeQuestionDate: React.FC<IntakeQuestionTextProps> = ({
           ]}
         >
           <Text style={[styles.dateInputText, display.length === 0 && styles.placeholderText]}>
-            {display.length > 0 ? display : "Tap to choose date"}
+            {display.length > 0 ? display : copy.datePlaceholder}
           </Text>
           <Icon name="calendar" size={18} color={color.text2} strokeWidth={2} />
         </Pressable>
@@ -664,19 +730,19 @@ export const IntakeQuestionDate: React.FC<IntakeQuestionTextProps> = ({
               onPress={handleCancelIos}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Cancel date selection"
+              accessibilityLabel={copy.dateCancel}
               style={({ pressed }) => [styles.iosPickerCancel, pressed && styles.choiceRowPressed]}
             >
-              <Text style={styles.iosPickerCancelLabel}>Cancel</Text>
+              <Text style={styles.iosPickerCancelLabel}>{copy.dateCancel}</Text>
             </Pressable>
             <Pressable
               onPress={handleSetIos}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Set date"
+              accessibilityLabel={copy.dateSet}
               style={({ pressed }) => [styles.iosPickerSet, pressed && styles.choiceRowPressed]}
             >
-              <Text style={styles.iosPickerSetLabel}>Set date</Text>
+              <Text style={styles.iosPickerSetLabel}>{copy.dateSet}</Text>
             </Pressable>
           </View>
         </View>
@@ -706,11 +772,12 @@ export const IntakeQuestionNumber: React.FC<IntakeQuestionTextProps> = ({
   disabled = false,
 }) => {
   const styles = formStylesFor(primitives.tokens);
+  const copy = resolveFormCopy(primitives.copy);
   const hint =
     question.min !== undefined || question.max !== undefined
-      ? `${question.min !== undefined ? `Min ${question.min}` : ""}${
+      ? `${question.min !== undefined ? copy.numberMin(String(question.min)) : ""}${
           question.min !== undefined && question.max !== undefined ? " · " : ""
-        }${question.max !== undefined ? `Max ${question.max}` : ""}`
+        }${question.max !== undefined ? copy.numberMax(String(question.max)) : ""}`
       : null;
   const handleChange = useCallback(
     (raw: string): void => {
@@ -729,7 +796,7 @@ export const IntakeQuestionNumber: React.FC<IntakeQuestionTextProps> = ({
       <TextInput
         value={value}
         onChangeText={handleChange}
-        placeholder={question.placeholder ?? "Enter a number"}
+        placeholder={question.placeholder ?? copy.numberPlaceholder}
         placeholderTextColor={primitives.tokens.color.text4}
         editable={!disabled}
         keyboardType={question.integer_only === true ? "number-pad" : "numeric"}

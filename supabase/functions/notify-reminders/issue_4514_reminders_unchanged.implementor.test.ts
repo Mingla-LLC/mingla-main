@@ -156,6 +156,10 @@ Deno.test("#4514 reminders: due reminders are queued in SQL, then the drain send
         if (fn === "pg_notify_reminders_enqueue") {
           return Promise.resolve({ data: 0, error: null });
         }
+        // #4541 R1.8: the drain reads the forms off switch once per run.
+        if (fn === "brand_forms_switched_off") {
+          return Promise.resolve({ data: false, error: null });
+        }
         if (fn === "brand_form_auto_reminders_due") {
           return Promise.resolve({
             data: { runs: 1, queued: 1, held: 0 },

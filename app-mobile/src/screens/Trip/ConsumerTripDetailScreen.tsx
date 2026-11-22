@@ -331,7 +331,7 @@ export default function ConsumerTripDetailScreen({
   const [checkoutTerminalOutcome, setCheckoutTerminalOutcome] =
     useState<NativeCheckoutOutcome | null>(null);
   const terminalSuccessCloseRef = useRef<(() => void) | null>(null);
-  const [sentTicket, setSentTicket] = useState<{ buyerFirstName: string | null } | null>(null);
+  const [sentTicket, setSentTicket] = useState<{ buyerFirstName: string | null; orderId?: string } | null>(null);
   // ORCH-1138 — the cart + native-checkout wiring the trip screen now owns
   // (ported from ExpandedBusinessEventSheet, scoped to the trip). The cart
   // fetches its own tickets/intake by eventId === tripId, exactly as EBES did.
@@ -384,7 +384,7 @@ export default function ConsumerTripDetailScreen({
             outcome.attachedToAccount,
           );
           if (landing.kind === "sent") {
-            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+            setSentTicket({ buyerFirstName: landing.buyerFirstName, orderId: outcome.orderId });
           } else {
             router.push(landing.href as never);
           }
@@ -988,7 +988,7 @@ export default function ConsumerTripDetailScreen({
             payload.buyer.name,
           );
           if (landing.kind === "sent") {
-            setSentTicket({ buyerFirstName: landing.buyerFirstName });
+            setSentTicket({ buyerFirstName: landing.buyerFirstName, orderId: result.orderId });
           } else {
             router.push(landing.href as never);
           }
@@ -1441,6 +1441,7 @@ export default function ConsumerTripDetailScreen({
 
       <NativeCheckoutSentSheet
         buyerFirstName={sentTicket?.buyerFirstName ?? null}
+        orderId={sentTicket?.orderId ?? null}
         onDone={() => setSentTicket(null)}
         visible={sentTicket !== null}
       />

@@ -154,6 +154,8 @@ export interface FoundationRsvpPreviewProps {
   questionsNode?: React.ReactNode;
   questionsRequired?: boolean;
   questionsReady?: boolean;
+  /** #4541 R1.3 — the "After they RSVP" hand-off block for the success popup (a node, or a function given the popup's close). */
+  formHandoff?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["formHandoff"];
   contentBottomInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
@@ -210,6 +212,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     questionsNode,
     questionsRequired,
     questionsReady,
+    formHandoff,
     contentBottomInset = 96,
     onScroll: onScrollProp,
     onScrollViewLayout,
@@ -318,6 +321,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
     questionsNode,
     questionsRequired,
     questionsReady,
+    formHandoff,
     onOpenBrand,
     onOpenMaps,
     onCopyAddress,

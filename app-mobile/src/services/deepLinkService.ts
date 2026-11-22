@@ -122,6 +122,33 @@ export const EXPLORER_SUPPORT_PUSH_TYPES: readonly string[] = [
   'explorer.support_product_update',
 ];
 
+/** #4541 R2.1 — the params the form route accepts, in a fixed order. */
+const FORM_ROUTE_PARAMS: readonly string[] = ['event', 'as', 'sid', 'campaign', 'from', 't'];
+const FORM_SUBJECT_KINDS: readonly string[] = ['rsvp', 'rsvp_guest', 'order'];
+const FORM_FROM: readonly string[] = ['link', 'pass', 'ticket', 'purchase', 'rsvp', 'push', 'blast'];
+
+/**
+ * #4541 R2.1 — `/form/<uuid>?…` keeping only valid known params (ids must be
+ * uuids, `as` a subject kind, `from` a known opener, `t` a 64-hex token).
+ * Kept inline (not imported) because this file loads import-free in the node
+ * and Deno routing suites.
+ */
+export function formRoutePath(formId: string, params: Record<string, string>): string {
+  const q = new URLSearchParams();
+  for (const key of FORM_ROUTE_PARAMS) {
+    const value = params[key];
+    if (typeof value !== 'string' || value.length === 0) continue;
+    const ok =
+      key === 'as' ? FORM_SUBJECT_KINDS.includes(value)
+      : key === 'from' ? FORM_FROM.includes(value)
+      : key === 't' ? /^[0-9a-f]{64}$/.test(value)
+      : PROGRAM_UUID.test(value);
+    if (ok) q.set(key, key === 'as' || key === 'from' || key === 't' ? value : value.toLowerCase());
+  }
+  const query = q.toString();
+  return `/form/${formId.toLowerCase()}${query ? `?${query}` : ''}`;
+}
+
 // ── Parser ───────────────────────────────────────────────────────────────────
 
 /**
@@ -245,6 +272,24 @@ export function parseDeepLink(url: string): Destination | null {
           !purchaseId ||
           !['order', 'rsvp', 'reservation', 'venue_order'].includes(purchaseKind)
         ) return null;
+        // #4541 R2.1 / R3.3 — a form request push names its form and event on
+        // the purchase link 1.3.x already opens; this build opens the form
+        // for that order or RSVP instead. Without a valid form id, as today.
+        if (
+          (purchaseKind === 'order' || purchaseKind === 'rsvp') &&
+          params.form && PROGRAM_UUID.test(params.form) &&
+          PROGRAM_UUID.test(purchaseId)
+        ) {
+          return {
+            kind: 'route',
+            path: formRoutePath(params.form, {
+              ...(params.event && PROGRAM_UUID.test(params.event) ? { event: params.event } : {}),
+              as: purchaseKind,
+              sid: purchaseId,
+              from: 'push',
+            }),
+          };
+        }
         return {
           kind: 'purchase',
           purchaseKind: purchaseKind as 'order' | 'rsvp' | 'reservation' | 'venue_order',
@@ -261,6 +306,14 @@ export function parseDeepLink(url: string): Destination | null {
       case 'earnings': {
         const route = programRoutePath(pathSegments);
         return route ? { kind: 'route', path: route } : null;
+      }
+
+      // #4541 R2.1 — `mingla://form/<formId>?event=&as=&sid=&campaign=&from=`:
+      // the form screen. Only the known params pass; anything else is dropped.
+      case 'form': {
+        const formId = pathSegments[1];
+        if (!formId || !PROGRAM_UUID.test(formId) || pathSegments.length !== 2) return null;
+        return { kind: 'route', path: formRoutePath(formId, params) };
       }
 
       // #4382 — `mingla://support/<ticketId>` (the explorer.support_* pushes)
@@ -418,6 +471,12 @@ export function typeFallbackDestination(
     return enquiryId
       ? { kind: 'enquiry', enquiryId, ...(conversationId ? { conversationId } : {}) }
       : { kind: 'page', page: 'connections' };
+  }
+
+  // #4541 R2.1 — a host's form request with no usable link opens Purchases,
+  // where the questions card is (never Home).
+  if (type === 'brand_form_request') {
+    return { kind: 'route', path: '/purchases' };
   }
 
   // #4382 — Mingla Support replied, changed the status, or told you it's

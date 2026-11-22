@@ -6,8 +6,14 @@
  * version"), and Not answered. Marketing managers and up read; Export needs
  * an event manager or above (contract correction C5) and is hidden below it.
  *
- * Ask / Remind and "Ask guests to answer" belong to a later wave; this screen
- * draws no control for them.
+ * #4541: under All pages the Not answered tab adds up the per-page counts
+ * (R6.2) and lists each page; a page with guests who were never asked shows
+ * "Ask them" (R1.2); event managers get a Door tab, the door-read log (R8.3).
+ * R4.7 / R4.8: Blast replies sit in the same list: an Unknown reply reads
+ * "Unknown" with "From {campaign} · {date}", a Blast recipient keeps their
+ * name with "From {campaign}". A filter row All · Known · Unknown, and "Show
+ * hidden (n)"; an Unknown reply can be hidden with Undo (6 s). Export works
+ * for one page or All pages (Blast replies included, hidden ones never).
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -23,13 +29,16 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { color, radius, space, type } from "../../constants/designSystem";
 import {
+  useBrandFormCounts,
   useBrandFormDetail,
   useBrandFormResponses,
+  useScheduledBlastsUsingForm,
   useCloseBrandForm,
+  useHideBrandFormResponse,
   useReopenBrandForm,
 } from "../../hooks/useBrandForms";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
-import type { BrandFormResponseRow } from "../../services/brandFormsService";
+import type { BrandFormOwnerFilter, BrandFormResponseRow } from "../../services/brandFormsService";
 import { exportFormAnswers } from "../../services/brandFormsExportService";
 import { answerText, subjectName, summarize, summaryDefinition } from "../../utils/brandFormResponses";
 import { canAttachGuestQuestions, type GuestQuestionsPageKind } from "../../utils/guestQuestionsModel";
@@ -43,20 +52,49 @@ import { Chip, Pill } from "../ui/Pill";
 import { Sheet } from "../ui/Sheet";
 import { SheetScrollLayout } from "../ui/SheetScrollLayout";
 import { Tabs } from "../ui/Tabs";
-import { FORM_REQUEST_COPY, FORM_REQUEST_LOG_COPY, FORMS_COPY, modeLabel } from "./brandFormsCopy";
+import {
+  closeConfirmDescription,
+  FORM_REQUEST_COPY,
+  FORM_REQUEST_LOG_COPY,
+  FORMS_COPY,
+  modeLabel,
+  notAnsweredTabLabel,
+  retentionLine,
+} from "./brandFormsCopy";
+import { DoorReadLog } from "./DoorReadLog";
 import { FormRequestLog } from "./FormRequestLog";
 import { FormRequestSheet, type FormRequestSheetMode } from "./FormRequestSheet";
 import { FormsNotice } from "./FormsNotice";
 import { GuestQuestionsSheet } from "./GuestQuestionsSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
 
-type RTab = "summary" | "responses" | "not_answered";
+type RTab = "summary" | "responses" | "not_answered" | "door";
+
 
 const formatWhen = (iso: string): string => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 };
+
+/**
+ * #4541 R4.7: the line under a reply's name. Unknown: "From {campaign} ·
+ * {date}"; a Blast recipient: "From {campaign}"; a guest: "Answered {date}".
+ * Pure; exported for tests.
+ */
+export function responseRowLine(row: BrandFormResponseRow): string {
+  const earlier = row.earlierVersion ? ` · ${FORMS_COPY.answeredEarlier}` : "";
+  const campaign = row.campaignName ?? FORMS_COPY.aBlast;
+  if (row.ownerKind === "unknown") return `${FORMS_COPY.fromCampaignOn(campaign, formatWhen(row.updatedAt))}${earlier}`;
+  if (row.ownerKind === "blast") return `${FORMS_COPY.fromCampaign(campaign)}${earlier}`;
+  return `Answered ${formatWhen(row.updatedAt)}${earlier}`;
+}
+
+const OWNER_FILTERS: ReadonlyArray<{ key: BrandFormOwnerFilter; label: string }> = [
+  { key: "all", label: FORMS_COPY.ownerAll },
+  { key: "known", label: FORMS_COPY.ownerKnown },
+  { key: "unknown", label: FORMS_COPY.ownerUnknown },
+];
 
 const SummaryCard: React.FC<{
   summary: ReturnType<typeof summarize>[number];
@@ -104,6 +142,12 @@ export const BrandFormResponsesScreen: React.FC = () => {
   const role = useCurrentBrandRole(detail.data?.form.brandId ?? null);
   const close = useCloseBrandForm();
   const reopen = useReopenBrandForm();
+  // Design v10 G "2b": closing warns when a scheduled Blast carries this form.
+  const scheduledBlasts = useScheduledBlastsUsingForm(
+    detail.data?.form.brandId ?? null,
+    formId,
+    detail.data?.form.status === "live",
+  );
   const { show, toast } = useFormsToast();
   // Wave 4: Ask guests to answer / Remind all / the earlier-guests prompt (event manager+, C5).
   const [request, setRequest] = useState<{ mode: FormRequestSheetMode; earlierCount?: number } | null>(null);
@@ -130,14 +174,30 @@ export const BrandFormResponsesScreen: React.FC = () => {
   const [confirmClose, setConfirmClose] = useState<boolean>(false);
   const [changeOpen, setChangeOpen] = useState<boolean>(false);
 
-  const responses = useBrandFormResponses({ formId, eventId, filter: "all" });
+  // #4541 R4.7 / R4.8: whose replies, and the hidden Unknown ones.
+  const [owner, setOwner] = useState<BrandFormOwnerFilter>("all");
+  const [showHidden, setShowHidden] = useState<boolean>(false);
+  const hide = useHideBrandFormResponse();
+  const responses = useBrandFormResponses({ formId, eventId, filter: "all", owner, showHidden });
+  // #4541 R6.2 / R1.2: the per-page counts (already the forms list's read).
+  const counts = useBrandFormCounts(detail.data?.form.brandId ?? null);
+  const pageCounts = useMemo(
+    () => (counts.data === undefined ? null : counts.data.pages.filter((p) => p.formId === formId)),
+    [counts.data, formId],
+  );
+  const notAskedHere =
+    eventId === null ? 0 : (pageCounts?.find((p) => p.eventId === eventId)?.notAsked ?? 0);
   const page = responses.data;
-  const canExport = role.rank >= MIN_RANK.EXPORT_FORM_RESPONSES && eventId !== null;
+  // #4541 R4.7: one page, or All pages (Blast replies included).
+  const canExport = role.rank >= MIN_RANK.EXPORT_FORM_RESPONSES;
   // C5 puts Export, Ask, Remind and attach at one rank (event manager and up); the edge re-checks.
   const canAsk = role.rank >= MIN_RANK.EXPORT_FORM_RESPONSES && eventId !== null && detail.data?.form.status === "live";
   const canRead = role.isLoading || role.rank >= MIN_RANK.READ_FORM_RESPONSES;
   // "Change or remove" is the attach sheet: event manager and up, for one page.
   const canChange = canAttachGuestQuestions(role.rank) && attachment !== null;
+  // #4541 R8.3: the door-read log, event manager and up, for one page.
+  const showDoor = canAttachGuestQuestions(role.rank) && eventId !== null;
+  const shownTab: RTab = tab === "door" && !showDoor ? "summary" : tab;
   const attachKind: GuestQuestionsPageKind =
     attachment?.eventType === "rsvp"
       ? "rsvp"
@@ -161,7 +221,7 @@ export const BrandFormResponsesScreen: React.FC = () => {
   // C5: event manager and up export this page's answers through the answers-only
   // feed (the roster export needs brand_admin and is not widened).
   const handleExport = useCallback((): void => {
-    if (formId === null || eventId === null || detail.data === undefined || exporting) return;
+    if (formId === null || detail.data === undefined || exporting) return;
     setExporting(true);
     exportFormAnswers({ formId, formName: detail.data.form.name, eventId })
       .then((method) => {
@@ -170,6 +230,27 @@ export const BrandFormResponsesScreen: React.FC = () => {
       .catch((error: unknown) => show("error", errorSentence(error, FORMS_COPY.exportFailed)))
       .finally(() => setExporting(false));
   }, [formId, eventId, detail.data, exporting, show]);
+
+  // #4541 R4.8: hide an Unknown reply (or bring it back), with Undo for 6 s.
+  const setHidden = useCallback(
+    (row: BrandFormResponseRow, hidden: boolean, undo: boolean): void => {
+      hide.mutate(
+        { responseId: row.responseId, hidden },
+        {
+          onSuccess: () => {
+            setDrawer(null);
+            if (undo) return;
+            show("success", hidden ? FORMS_COPY.replyHidden : FORMS_COPY.replyShown, {
+              autoDismissMs: 6000,
+              action: { label: FORMS_COPY.undo, onPress: () => setHidden(row, !hidden, true) },
+            });
+          },
+          onError: (error) => show("error", errorSentence(error, "Couldn't change that reply. Try again.")),
+        },
+      );
+    },
+    [hide, show],
+  );
 
   const handleClose = useCallback((): void => {
     if (formId === null) return;
@@ -244,7 +325,9 @@ export const BrandFormResponsesScreen: React.FC = () => {
           testID="brand-form-responses-error"
         />
       );
-    } else if (tab === "summary") {
+    } else if (shownTab === "door" && eventId !== null) {
+      tabBody = <DoorReadLog eventId={eventId} />;
+    } else if (shownTab === "summary") {
       tabBody =
         summaries.length === 0 ? (
           <EmptyState illustration="list" title={FORMS_COPY.noAnswersYet} description={FORMS_COPY.noAnswersBody} />
@@ -255,41 +338,106 @@ export const BrandFormResponsesScreen: React.FC = () => {
             ))}
           </View>
         );
-    } else if (tab === "responses") {
+    } else if (shownTab === "responses") {
+      const hiddenCount = page.hiddenCount;
+      const ownerRow = (
+        <View style={styles.chips} accessibilityRole="radiogroup" testID="brand-form-owner-filter">
+          {OWNER_FILTERS.map((f) => (
+            <Chip
+              key={f.key}
+              label={f.label}
+              selected={owner === f.key}
+              onPress={() => setOwner(f.key)}
+              testID={`brand-form-owner-${f.key}`}
+            />
+          ))}
+          {hiddenCount > 0 || showHidden ? (
+            <Chip
+              label={FORMS_COPY.showHidden(hiddenCount)}
+              selected={showHidden}
+              onPress={() => setShowHidden((v) => !v)}
+              testID="brand-form-show-hidden"
+            />
+          ) : null}
+        </View>
+      );
+      tabBody = (
+        <View style={styles.summaryGrid}>
+          {ownerRow}
+          {rows.length === 0 ? (
+            <EmptyState
+              illustration="list"
+              title={owner === "unknown" ? FORMS_COPY.noUnknownReplies : FORMS_COPY.noAnswersYet}
+              description={FORMS_COPY.noAnswersBody}
+            />
+          ) : (
+            <GlassCard variant="base" radius="lg" padding={space[2]}>
+              {rows.map((row) => (
+                <Pressable
+                  key={row.responseId}
+                  onPress={() => setDrawer(row)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${subjectName(row)}, ${responseRowLine(row)}`}
+                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                  testID={`brand-form-response-${row.responseId}`}
+                >
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowName}>{subjectName(row)}</Text>
+                    <Text style={styles.rowSub}>{responseRowLine(row)}</Text>
+                  </View>
+                  {row.viaLink ? <Chip label={FORMS_COPY.viaLink} /> : null}
+                  {!row.verified && row.ownerKind !== "unknown" ? <Chip label={FORMS_COPY.unknownName} /> : null}
+                  {row.hidden ? <Chip label={FORMS_COPY.hiddenChip} /> : null}
+                </Pressable>
+              ))}
+            </GlassCard>
+          )}
+        </View>
+      );
+    } else if (eventId === null) {
+      // #4541 R6.2: each page with its own "to answer" and View.
       tabBody =
-        rows.length === 0 ? (
-          <EmptyState illustration="list" title={FORMS_COPY.noAnswersYet} description={FORMS_COPY.noAnswersBody} />
+        pageCounts === null || attachments.length === 0 ? (
+          <Text style={styles.hint}>{FORMS_COPY.notAnsweredNeedsPage}</Text>
         ) : (
-          <GlassCard variant="base" radius="lg" padding={space[2]}>
-            {rows.map((row) => (
-              <Pressable
-                key={row.responseId}
-                onPress={() => setDrawer(row)}
-                accessibilityRole="button"
-                accessibilityLabel={`${subjectName(row)}, answered ${formatWhen(row.updatedAt)}${row.earlierVersion ? ", answered an earlier version" : ""}`}
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                testID={`brand-form-response-${row.responseId}`}
-              >
-                <View style={styles.rowText}>
-                  <Text style={styles.rowName}>{subjectName(row)}</Text>
-                  <Text style={styles.rowSub}>
-                    {`Answered ${formatWhen(row.updatedAt)}${row.earlierVersion ? ` · ${FORMS_COPY.answeredEarlier}` : ""}`}
-                  </Text>
+          <GlassCard variant="base" radius="lg" padding={space[2]} testID="brand-form-not-answered-pages">
+            {attachments.map((a) => {
+              const n = pageCounts.find((p) => p.eventId === a.eventId)?.toAnswer ?? 0;
+              const title = a.eventName ?? FORMS_COPY.untitledPage;
+              return (
+                <View key={a.id} style={styles.row} testID={`brand-form-not-answered-page-${a.eventId}`}>
+                  <View style={styles.rowText}>
+                    <Text style={styles.rowName}>{FORMS_COPY.pageToAnswer(title, n)}</Text>
+                  </View>
+                  <Button
+                    label={FORMS_COPY.view}
+                    variant="secondary"
+                    size="sm"
+                    onPress={() => setPickedEvent(a.eventId)}
+                    accessibilityLabel={`${FORMS_COPY.view} ${title}`}
+                    testID={`brand-form-not-answered-view-${a.eventId}`}
+                  />
                 </View>
-                {row.viaLink ? <Chip label={FORMS_COPY.viaLink} /> : null}
-                {!row.verified ? <Chip label="Unverified" /> : null}
-              </Pressable>
-            ))}
+              );
+            })}
           </GlassCard>
         );
-    } else if (eventId === null) {
-      tabBody = <Text style={styles.hint}>{FORMS_COPY.notAnsweredNeedsPage}</Text>;
     } else {
+      const notAskedBanner =
+        notAskedHere > 0 ? (
+          <FormsNotice
+            tone="info"
+            title={FORMS_COPY.notAskedBanner(notAskedHere)}
+            action={canAsk ? { label: FORMS_COPY.askThem, onPress: () => setRequest({ mode: "ask" }) } : undefined}
+            testID="brand-form-not-asked"
+          />
+        ) : null;
       tabBody =
         notAnswered.length === 0 ? (
           <EmptyState illustration="check" title={FORMS_COPY.allAnsweredTitle} description={FORMS_COPY.allAnsweredBody} />
         ) : (
           <View style={styles.summaryGrid}>
+            {notAskedBanner}
             <Text style={styles.hint}>{FORMS_COPY.notAnsweredHeadline(notAnswered.length)}</Text>
             {canAsk ? (
               <Button
@@ -403,13 +551,25 @@ export const BrandFormResponsesScreen: React.FC = () => {
           items={[
             { key: "summary", label: FORMS_COPY.tabSummary },
             { key: "responses", label: FORMS_COPY.tabResponses(page?.total ?? 0) },
-            { key: "not_answered", label: FORMS_COPY.tabNotAnswered(notAnswered.length) },
+            {
+              key: "not_answered",
+              label: notAnsweredTabLabel({
+                allPages: eventId === null,
+                pageNotAnswered: notAnswered.length,
+                pageCounts: counts.isError ? null : pageCounts,
+              }),
+            },
+            ...(showDoor ? [{ key: "door" as const, label: FORMS_COPY.tabDoor }] : []),
           ]}
-          value={tab}
+          value={shownTab}
           onChange={setTab}
           testID="brand-form-responses-tabs"
         />
         {tabBody}
+        {/* #4541 design v10 I3 (default 1): how long answers are kept, as in the builder. */}
+        <Text style={styles.retention} testID="brand-form-responses-retention">
+          {retentionLine(attachments.length > 0)}
+        </Text>
       </>
     );
   }
@@ -436,8 +596,21 @@ export const BrandFormResponsesScreen: React.FC = () => {
                 {subjectName(drawer)}
               </Text>
               <Text style={styles.rowSub}>
-                {`${FORMS_COPY.version(drawer.version)} · Answered ${formatWhen(drawer.updatedAt)}${drawer.earlierVersion ? ` · ${FORMS_COPY.answeredEarlier}` : ""}`}
+                {`${FORMS_COPY.version(drawer.version)} · ${responseRowLine(drawer)}`}
               </Text>
+              {drawer.ownerKind === "unknown" ? (
+                <View style={styles.hideRow}>
+                  <Button
+                    label={drawer.hidden ? FORMS_COPY.showReply : FORMS_COPY.hideReply}
+                    variant="secondary"
+                    size="sm"
+                    loading={hide.isPending}
+                    disabled={hide.isPending}
+                    onPress={() => setHidden(drawer, !drawer.hidden, false)}
+                    testID="brand-form-hide-reply"
+                  />
+                </View>
+              ) : null}
               {(drawerDefinition?.questions ?? [])
                 .slice()
                 .sort((a, b) => a.position - b.position)
@@ -493,7 +666,7 @@ export const BrandFormResponsesScreen: React.FC = () => {
         onClose={() => setConfirmClose(false)}
         onConfirm={handleClose}
         title={FORMS_COPY.closeConfirmTitle}
-        description={FORMS_COPY.closeConfirmBody}
+        description={closeConfirmDescription(scheduledBlasts.data ?? 0)}
         confirmLabel={FORMS_COPY.closeForm}
         cancelLabel={FORMS_COPY.keepOpen}
         confirmLoading={close.isPending}
@@ -539,7 +712,9 @@ const styles = StyleSheet.create({
   rowName: { ...type.row, color: color.text1 },
   rowSub: { ...type.caption, color: color.text3 },
   hint: { ...type.small, color: color.text2 },
+  retention: { ...type.caption, color: color.text3 },
   sheetTitle: { ...type.title, color: color.text1 },
   answerBlock: { marginTop: space[4], gap: 2 },
+  hideRow: { flexDirection: "row", marginTop: space[3] },
   answerText: { ...type.body, color: color.text1 },
 });

@@ -49,7 +49,9 @@
         "brand_campaign_push": "Berichten van plekken die je volgt",
         "brand_campaign_push_hint": "Aanbiedingen en nieuws van plekken en hosts die je volgt.",
         "brand_offering_invite": "Uitnodigingen van plekken die je volgt",
-        "brand_offering_invite_hint": "Als een plek of host je ergens voor uitnodigt."
+        "brand_offering_invite_hint": "Als een plek of host je ergens voor uitnodigt.",
+        "brand_form_request": "Vragen van organisatoren",
+        "brand_form_request_hint": "Als een organisator je vraagt zijn vragen te beantwoorden. E-mail blijft hiervoor aan, omdat die je eigen link bevat. Sms volgt je sms-instellingen."
       }
     },
     "friends_going": "Vrienden die uitgaan",

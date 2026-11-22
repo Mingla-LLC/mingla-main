@@ -377,8 +377,10 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the #1857, #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 template replay (#4508, which it builds on, is skipped there); re-sealed.
 // #4420 tickets on the Work board: listed migration 20281121034420 after 20281121023281 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4420 rework: registered the tester's tickets-on-Work-board pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-// #4548 guest pack: registered 20281122004548 and its three pg17 proofs (implementor happy, implementor adversarial, tester adversarial; with sidecars) in the #1857, #1931 and #2117 inventories after #4420's rows; skipped it by exact filename on the filtered #1931 template replay (#4508 and #4459, which it reads, are skipped there); re-sealed.
-export const BOOTSTRAP_SHA256 = "490f27fd4154f52bb0acef5128decc621ba0ae5eb8535ec727913b2aa3a62ecd";
+// #4541 forms fixes and Blast push: registered 20281122004541 and 20281122014541 in the #1857, #1931 and #2117 inventories and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped both by exact filename on the filtered #1931 and #2117 template replays; re-sealed.
+// #4541 merge of main after #4420 tickets on the Work board: kept main's 20281121034420 row and its pg17 suites before the two #4541 rows (filename order) and both #4541 filtered-replay skips; re-sealed.
+// #4548 guest pack: registered 20281122024548 and its three pg17 proofs (implementor happy, implementor adversarial, tester adversarial; with sidecars) in the #1857, #1931 and #2117 inventories after #4541's rows; skipped it by exact filename on the filtered #1931 template replay (#4508 and #4459, which it reads, are skipped there); re-sealed.
+export const BOOTSTRAP_SHA256 = "14a916741064d3158b9b09de2d5e0eb15d8d85c01d5f212a2ab8bc9ce078ca2e";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

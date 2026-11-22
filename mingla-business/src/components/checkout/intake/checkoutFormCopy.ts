@@ -28,6 +28,13 @@ export const CHECKOUT_FORM_COPY = {
   purchaseLinkFailed: "We couldn't open the questions. The host can send you a link.",
   // Review fix 2: the server still asks for answers but no form could be shown.
   noFormRefused: "We couldn't load this event's questions. Nothing was charged. Try again.",
+  // #4541 R1.1: this buyer already answered for this event (read-only here).
+  answeredHere: "You've answered these. You can change them from your ticket.",
+  // #4541 R1.3: the "After they RSVP" hand-off in the RSVP success popup.
+  rsvpHandoffStrip: (brand: string | null): string =>
+    `You're in. One more thing from ${brand !== null && brand.trim().length > 0 ? brand.trim() : "the host"}.`,
+  answerNow: "Answer now",
+  later: "Later",
 } as const;
 
 /** The checkout refusal codes the Questions step explains (anything else is the payment screen's). */

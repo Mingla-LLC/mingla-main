@@ -4,10 +4,13 @@
  * is testable on its own and each guard has a test that fails when removed.
  *
  * Words are exact from the approved design (Design v3, v4, v6 on #4514).
+ * #4541 R1.2: the mode lines say what "required" really means. Their ONE
+ * copy is ./guestQuestionModes (re-exported here and by brandFormsCopy).
  */
 
 import type { BrandFormMode, BrandFormStatus } from "../services/brandFormsService";
 import { MIN_RANK } from "./permissionGates";
+import { GUEST_QUESTION_MODES, modeLabel, modeLine, notAskedLine } from "./guestQuestionModes";
 
 /** What kind of page the questions are attached to. */
 export type GuestQuestionsPageKind = "event" | "experience" | "trip" | "rsvp";
@@ -41,22 +44,26 @@ export interface ModeRow {
   disabledReason: string | null;
 }
 
-const MODE_COPY: ReadonlyArray<{ value: BrandFormMode; label: string; line: string }> = [
-  { value: "optional_on_page", label: "On the page, optional", line: "Guests can answer if they want." },
-  { value: "required_step", label: "On the page, required", line: "Guests must answer before they finish." },
-  { value: "after_purchase", label: "After they purchase", line: "Guests are taken to the form right after." },
-];
+export {
+  AFTER_RSVP_LABEL,
+  AFTER_RSVP_LINE,
+  GUEST_QUESTION_MODES,
+  modeLabel,
+  modeLine,
+  notAskedLine,
+  type ModeCopy,
+} from "./guestQuestionModes";
 
 export const TRIP_MODE_NOTE = "Trips keep their own questions step for now.";
 
 /** The three radio rows, in order. "After they RSVP" on RSVP pages. */
 export function modeRows(kind: GuestQuestionsPageKind): ModeRow[] {
-  return MODE_COPY.map((m): ModeRow => {
+  return GUEST_QUESTION_MODES.map((m): ModeRow => {
     const tripRefuses = kind === "trip" && m.value !== "after_purchase";
     return {
       value: m.value,
-      label: m.value === "after_purchase" && kind === "rsvp" ? "After they RSVP" : m.label,
-      line: m.line,
+      label: modeLabel(m.value, kind === "rsvp"),
+      line: modeLine(m.value, kind === "rsvp"),
       disabled: tripRefuses,
       disabledReason: tripRefuses ? TRIP_MODE_NOTE : null,
     };
@@ -127,6 +134,11 @@ export type TileData =
       published: boolean;
       answered: number;
       notAnswered: number;
+      /**
+       * #4541 R1.2: current guests with no answer who were never sent the form
+       * (booked on an app that could not show the questions). 0 when unknown.
+       */
+      notAsked?: number;
     }
   | null;
 
@@ -136,7 +148,7 @@ export type TileState =
   | { kind: "none" }
   | { kind: "draft" }
   | { kind: "closed" }
-  | { kind: "attention"; toAnswer: number }
+  | { kind: "attention"; toAnswer: number; notAsked: number }
   | { kind: "live"; answered: number };
 
 export function tileState(input: { isError: boolean; data: TileData | undefined }): TileState {
@@ -149,7 +161,7 @@ export function tileState(input: { isError: boolean; data: TileData | undefined 
   if (!data.published || data.formStatus === "draft") return { kind: "draft" };
   // Optional forms never ask anyone, so they never show "to answer".
   if (data.mode !== "optional_on_page" && data.notAnswered > 0) {
-    return { kind: "attention", toAnswer: data.notAnswered };
+    return { kind: "attention", toAnswer: data.notAnswered, notAsked: data.notAsked ?? 0 };
   }
   return { kind: "live", answered: data.answered };
 }
@@ -168,7 +180,9 @@ export function tileLine(state: TileState): string {
     case "closed":
       return "Closed";
     case "attention":
-      return `${state.toAnswer} to answer`;
+      return state.notAsked > 0
+        ? `${state.toAnswer} to answer · ${notAskedLine(state.notAsked)}`
+        : `${state.toAnswer} to answer`;
     case "live":
       return `${state.answered} answered`;
     default: {

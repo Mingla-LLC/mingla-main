@@ -29,6 +29,7 @@ import {
   previewMarketingCampaignGroup,
 } from "./marketingBookSendService";
 import { bookPricingErrorCopy, partialSendLine } from "./campaignSendCopy";
+import { blastFormErrorCopy } from "../../utils/marketing/blastFormLink";
 
 export type CampaignChannel = "email" | "sms" | "push";
 
@@ -63,6 +64,9 @@ export function siblingErrorMessage(channel: CampaignChannel, error: unknown): s
     : error instanceof Error ? error.message : "FAILED";
   const label = channel === "push" ? "Push" : channel === "sms" ? "SMS" : "Email";
   if (code.includes("ZERO_RECIPIENTS")) return `${label}: no one in this audience can receive it.`;
+  // #4541 R4.3: the Blast's form is not live, or not this brand's.
+  const formCopy = blastFormErrorCopy(code);
+  if (formCopy !== null) return `${label}: ${formCopy}`;
   if (code.includes("MONTHLY_CAP")) return `${label}: this would go over your monthly limit.`;
   if (code.includes("ALL_RECIPIENTS_FAILED")) {
     return `${label}: the provider couldn't reach anyone. It is marked Failed in Campaigns.`;

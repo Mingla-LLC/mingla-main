@@ -32,10 +32,12 @@ import {
   useArchiveBrandForm,
   useBrandFormDetail,
   useCloseBrandForm,
+  useScheduledBlastsUsingForm,
   usePublishBrandForm,
   useReopenBrandForm,
   useSaveBrandFormDraft,
   useSetDoorFullAnswers,
+  useSetDoorInvited,
 } from "../../hooks/useBrandForms";
 import { useBrand } from "../../hooks/useBrands";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
@@ -61,7 +63,7 @@ import type { IntakeSchemaBuilderProps } from "../trip/IntakeSchemaBuilder";
 import { BRAND_FORM_FEATURES } from "./brandFormBuilderKit";
 import { BrandFormPreview } from "./BrandFormPreview";
 import { brandFormHeaderData } from "../../utils/brandFormHeader";
-import { FORMS_COPY } from "./brandFormsCopy";
+import { closeConfirmDescription, FORMS_COPY, retentionLine } from "./brandFormsCopy";
 import { FormsNotice } from "./FormsNotice";
 import { FormRequestSheet } from "./FormRequestSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
@@ -110,9 +112,16 @@ export const BrandFormBuilderScreen: React.FC = () => {
   const save = useSaveBrandFormDraft();
   const publish = usePublishBrandForm();
   const close = useCloseBrandForm();
+  // Design v10 G "2b": closing warns when a scheduled Blast carries this form.
+  const scheduledBlasts = useScheduledBlastsUsingForm(
+    detail.data?.form.brandId ?? null,
+    formId,
+    detail.data?.form.status === "live",
+  );
   const reopen = useReopenBrandForm();
   const archive = useArchiveBrandForm();
   const doorFull = useSetDoorFullAnswers();
+  const doorInvited = useSetDoorInvited();
   const { show, toast } = useFormsToast();
   // Wave 4 (C12): publishing on live pages with guests asks "Ask earlier guests?", one page at a time.
   const [earlierQueue, setEarlierQueue] = useState<Array<{ eventId: string; count: number }>>([]);
@@ -298,6 +307,18 @@ export const BrandFormBuilderScreen: React.FC = () => {
     [formId, doorFull, show],
   );
 
+  // #4541 R8.3: invited scan-only staff (off by default; needs the switch above on).
+  const handleDoorInvited = useCallback(
+    (on: boolean): void => {
+      if (formId === null) return;
+      doorInvited.mutate(
+        { formId, on },
+        { onError: (error) => show("error", errorSentence(error, "Couldn't change that setting. Try again.")) },
+      );
+    },
+    [formId, doorInvited, show],
+  );
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) router.back();
     else router.replace("/(tabs)/marketing/forms" as never);
@@ -385,6 +406,8 @@ export const BrandFormBuilderScreen: React.FC = () => {
           />
         ) : null}
         {closed ? <FormsNotice tone="info" title={FORMS_COPY.closedBanner} testID="brand-form-closed-banner" /> : null}
+        {/* #4541 R7.3 (default 1): always shown, no dismiss, plain words. */}
+        <FormsNotice tone="info" title={FORMS_COPY.sensitiveWarning} testID="brand-form-sensitive-warning" />
         <IntakeSchemaBuilder
           schema={schema}
           activeTicketTypeId={form.id}
@@ -411,6 +434,19 @@ export const BrandFormBuilderScreen: React.FC = () => {
               testID="brand-form-door-full-switch"
             />
           </View>
+          <View style={styles.switchRow} testID="brand-form-door-invited-row">
+            <View style={styles.switchText}>
+              <Text style={styles.switchTitle}>{FORMS_COPY.doorInvitedTitle}</Text>
+              <Text style={styles.switchLine}>{FORMS_COPY.doorInvitedLine}</Text>
+            </View>
+            <Switch
+              value={form.doorFullAnswers && form.doorFullAnswersInvited}
+              onValueChange={handleDoorInvited}
+              disabled={doorInvited.isPending || !form.doorFullAnswers}
+              accessibilityLabel={FORMS_COPY.doorInvitedTitle}
+              testID="brand-form-door-invited-switch"
+            />
+          </View>
         {form.status !== "live" ? (
           <Button
             label="Archive form"
@@ -421,6 +457,10 @@ export const BrandFormBuilderScreen: React.FC = () => {
             testID="brand-form-archive"
           />
         ) : null}
+        {/* #4541 R1.6 (default 1): how long answers are kept. */}
+        <Text style={styles.switchSub} testID="brand-form-retention">
+          {retentionLine((detail.data?.attachments.length ?? 0) > 0)}
+        </Text>
       </View>
     );
 
@@ -489,7 +529,7 @@ export const BrandFormBuilderScreen: React.FC = () => {
         onClose={() => setConfirmClose(false)}
         onConfirm={handleClose}
         title={FORMS_COPY.closeConfirmTitle}
-        description={FORMS_COPY.closeConfirmBody}
+        description={closeConfirmDescription(scheduledBlasts.data ?? 0)}
         confirmLabel={FORMS_COPY.closeForm}
         cancelLabel={FORMS_COPY.keepOpen}
         confirmLoading={close.isPending}

@@ -49,7 +49,9 @@
         "brand_campaign_push": "Messaggi dai luoghi che segui",
         "brand_campaign_push_hint": "Offerte e novità dai luoghi e dagli host che segui.",
         "brand_offering_invite": "Inviti dai luoghi che segui",
-        "brand_offering_invite_hint": "Quando un luogo o un host ti invita a qualcosa."
+        "brand_offering_invite_hint": "Quando un luogo o un host ti invita a qualcosa.",
+        "brand_form_request": "Domande dagli organizzatori",
+        "brand_form_request_hint": "Quando un organizzatore ti chiede di rispondere alle sue domande. L'email resta attiva per queste, perché contiene il tuo link personale. Gli SMS seguono le tue impostazioni SMS."
       }
     },
     "friends_going": "Amici che escono",

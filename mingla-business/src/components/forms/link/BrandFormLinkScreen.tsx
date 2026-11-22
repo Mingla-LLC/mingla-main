@@ -13,6 +13,15 @@
  * existing answer, a closed form's last answers, or recognition ended: a
  * one-time code; a first answer needs none) · closed · invalid link · paused ·
  * load failed and save failed (each with a retry; answers stay on screen).
+ *
+ * #4541: "This link has been replaced" (R8.2). A Blast form opened with no
+ * personal link (`?c={campaign}`, no `#t=`) is answered as Unknown (R4.4,
+ * R4.5): "{brand} won't see who you are, only your answers", a bot ticket
+ * from the read and a hidden honeypot field, "This form isn't taking more
+ * answers right now." at the daily limit. A personal Blast link that needs a
+ * code it cannot get offers "Answer without confirming". (The Unknown flow
+ * lives in this lazy screen, drawn with the same owner-loaded renderers, so it
+ * adds no module to either forms owner.)
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -28,12 +37,15 @@ import { Button } from "../../ui/Button";
 import {
   BrandFormLinkError,
   checkLinkCode,
+  readBlastForm,
   readLinkForm,
+  saveBlastAnswers,
   saveLinkAnswers,
   sendLinkCode,
 } from "../../../services/brandFormLinkService";
 import { LINK_COPY } from "./brandFormLinkCopy";
 import {
+  campaignFromSearch,
   type CodeStep,
   codeAfterSend,
   codeAfterVerify,
@@ -41,11 +53,20 @@ import {
   type LinkDraft,
   type LinkPhase,
   phaseAfterRead,
+  phaseFromBlastRead,
+  phaseFromBlastReadError,
   phaseFromReadError,
   savedPhase,
   submitOutcome,
   takeLinkToken,
+  unknownSubmitOutcome,
 } from "./brandFormLinkModel";
+
+/** #4541 R4.5: the `?c=` campaign of a Blast form link (web only). */
+function readCampaign(): string | null {
+  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  return campaignFromSearch(window.location?.search ?? "");
+}
 
 const owner = () => import("../../checkout/intake/formRenderingPrimitives");
 const BusinessBrandForm = React.lazy(() => owner().then((m) => ({ default: m.BusinessBrandForm })));
@@ -102,6 +123,9 @@ export default function BrandFormLinkScreen({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const token = useMemo(() => readToken(formId), [formId]);
+  const campaign = useMemo(() => readCampaign(), []);
+  // #4541 R8.5: the honeypot field a person never sees or fills.
+  const [website, setWebsite] = useState<string>("");
   const [phase, setPhase] = useState<LinkPhase>({ kind: "loading" });
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [header, setHeader] = useState<BrandHeaderData>(EMPTY_HEADER);
@@ -110,8 +134,32 @@ export default function BrandFormLinkScreen({
   // Typed answers waiting for a new one-time code (the grant ran out mid-edit).
   const draft = useRef<LinkDraft | null>(null);
 
+  // #4541 R4.4 / R4.5: a Blast form answered as Unknown.
+  const loadUnknown = useCallback(
+    async (campaignId: string): Promise<void> => {
+      if (formId === null) {
+        setPhase({ kind: "invalid" });
+        return;
+      }
+      setPhase({ kind: "loading" });
+      try {
+        const read = await readBlastForm({ formId, campaignId });
+        const toHeader = await loadHeaderFromServer();
+        setHeader(toHeader((read.brand as Record<string, unknown> | null | undefined) ?? null));
+        setPhase(phaseFromBlastRead(read, campaignId));
+      } catch (e) {
+        setPhase(phaseFromBlastReadError(e instanceof BrandFormLinkError ? e.code : null));
+      }
+    },
+    [formId],
+  );
+
   const load = useCallback(
     async (challenge: string | null): Promise<void> => {
+      if (formId !== null && token === null && campaign !== null) {
+        await loadUnknown(campaign);
+        return;
+      }
       if (formId === null || token === null) {
         setPhase({ kind: "invalid" });
         return;
@@ -128,7 +176,7 @@ export default function BrandFormLinkScreen({
         setPhase(phaseFromReadError(e instanceof BrandFormLinkError ? e.code : null));
       }
     },
-    [formId, token],
+    [formId, token, campaign, loadUnknown],
   );
 
   useEffect(() => {
@@ -136,8 +184,54 @@ export default function BrandFormLinkScreen({
   }, [load]);
 
   const onAnswers = useCallback((answers: BrandAnswers): void => {
-    setPhase((p) => (p.kind === "open" ? { ...p, answers, saveError: null, fieldErrors: {} } : p));
+    setPhase((p) =>
+      p.kind === "open" || p.kind === "unknown_open" ? { ...p, answers, saveError: null, fieldErrors: {} } : p,
+    );
   }, []);
+
+  const submitUnknown = useCallback(async (): Promise<void> => {
+    if (phase.kind !== "unknown_open" || phase.saving) return;
+    const current = phase;
+    setPhase({ ...current, saving: true, saveError: null });
+    let result: Awaited<ReturnType<typeof saveBlastAnswers>>;
+    try {
+      result = await saveBlastAnswers({
+        formId: current.form.formId,
+        versionId: current.form.versionId,
+        answers: current.answers,
+        campaignId: current.campaignId,
+        botTicket: current.botTicket,
+        website,
+      });
+    } catch {
+      result = { ok: false, error: "network" };
+    }
+    const outcome = unknownSubmitOutcome(result.ok ? null : result.error, result.ok ? undefined : result.errors);
+    switch (outcome.next) {
+      case "saved":
+        setPhase({ kind: "unknown_saved", formName: current.form.formName });
+        return;
+      case "limit":
+        setPhase({ kind: "unknown_limit" });
+        return;
+      case "paused":
+        setPhase({ kind: "paused" });
+        return;
+      case "closed":
+        setPhase({ kind: "closed", formName: current.form.formName, last: null });
+        return;
+      case "invalid":
+        setPhase({ kind: "invalid" });
+        return;
+      case "error":
+        setPhase({ ...current, saving: false, saveError: outcome.error, fieldErrors: outcome.fieldErrors ?? {} });
+        return;
+      default: {
+        const never: never = outcome;
+        void never;
+      }
+    }
+  }, [phase, website]);
   const onMissing = useCallback((ids: string[]): void => setMissing(ids.length > 0), []);
 
   const submit = useCallback(async (): Promise<void> => {
@@ -177,6 +271,9 @@ export default function BrandFormLinkScreen({
         return;
       case "invalid":
         setPhase({ kind: "invalid" });
+        return;
+      case "replaced":
+        setPhase({ kind: "replaced" });
         return;
       case "error":
         setPhase({ ...current, saving: false, saveError: outcome.error, fieldErrors: outcome.fieldErrors ?? {} });
@@ -332,6 +429,27 @@ export default function BrandFormLinkScreen({
         return renderCode(phase);
       case "open":
         return renderOpen(phase);
+      case "replaced":
+        return (
+          <Notice
+            title={LINK_COPY.replacedTitle}
+            body={LINK_COPY.replacedBody(header.displayName)}
+            testID="brand-form-link-replaced"
+          />
+        );
+      case "unknown_open":
+        return renderUnknown(phase);
+      case "unknown_saved":
+        return (
+          <View style={styles.stack} testID="brand-form-link-unknown-saved">
+            <Text style={styles.title}>{LINK_COPY.unknownSavedTitle}</Text>
+            <Text style={styles.text2}>{LINK_COPY.unknownSavedBody}</Text>
+          </View>
+        );
+      case "unknown_limit":
+        return (
+          <Notice title={LINK_COPY.unknownLimitTitle} body={LINK_COPY.unknownLimitBody} testID="brand-form-link-unknown-limit" />
+        );
       default: {
         const never: never = phase;
         return never;
@@ -370,7 +488,19 @@ export default function BrandFormLinkScreen({
       <View style={styles.stack} testID={`brand-form-link-code-${p.reason}`}>
         <Text style={styles.title}>{p.formName}</Text>
         <Text style={styles.subtitle}>{title}</Text>
-        {c.step === "ask" ? (
+        {p.unknownCampaignId !== undefined && p.unknownCampaignId !== null ? (
+          <>
+            <Text style={styles.text2}>{LINK_COPY.codeUnavailableBody}</Text>
+            <Button
+              label={LINK_COPY.answerWithoutConfirming}
+              variant="primary"
+              size="md"
+              fullWidth
+              onPress={() => void loadUnknown(p.unknownCampaignId as string)}
+              testID="brand-form-link-answer-unknown"
+            />
+          </>
+        ) : c.step === "ask" ? (
           <>
             <Text style={styles.text2}>{body}</Text>
             {error !== null ? <Text style={styles.error} accessibilityRole="alert">{error}</Text> : null}
@@ -430,6 +560,73 @@ export default function BrandFormLinkScreen({
             ) : null}
           </>
         )}
+      </View>
+    );
+  }
+
+  function renderUnknown(p: Extract<LinkPhase, { kind: "unknown_open" }>): React.ReactNode {
+    const saveError = p.saveError === null
+      ? null
+      : p.saveError === "failed"
+      ? LINK_COPY.saveFailed
+      : p.saveError === "rate_limited"
+      ? LINK_COPY.saveRateLimited
+      : p.saveError === "bot_check"
+      ? LINK_COPY.botCheckFailed
+      : p.saveError === "changed"
+      ? LINK_COPY.saveChanged
+      : LINK_COPY.saveInvalid;
+    const needsReload = p.saveError === "changed" || p.saveError === "bot_check";
+    return (
+      <View style={styles.stack} testID="brand-form-link-unknown">
+        <Text style={styles.title}>{p.form.formName}</Text>
+        <Text style={styles.banner} testID="brand-form-link-unknown-notice">{LINK_COPY.unknownNotice(header.displayName)}</Text>
+        {p.form.definition.intro !== undefined && p.form.definition.intro.length > 0 ? (
+          <Text style={styles.text2}>{p.form.definition.intro}</Text>
+        ) : null}
+        <React.Suspense fallback={<Text style={styles.muted}>{LINK_COPY.loading}</Text>}>
+          <BusinessBrandForm
+            definition={p.form.definition}
+            answers={p.answers}
+            onAnswersChange={onAnswers}
+            onMissingChange={onMissing}
+            doorFullAnswers={false}
+            validationErrors={p.fieldErrors}
+            disabled={p.saving}
+          />
+        </React.Suspense>
+        {/* #4541 R8.5: a honeypot. Hidden from people and screen readers; a bot that fills it gets nowhere. */}
+        <View style={styles.honeypot} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden>
+          <TextInput
+            value={website}
+            onChangeText={setWebsite}
+            accessibilityLabel={LINK_COPY.honeypotLabel}
+            autoComplete="off"
+            {...(Platform.OS === "web" ? { tabIndex: -1 as const } : {})}
+            testID="brand-form-link-website"
+          />
+        </View>
+        {saveError !== null ? (
+          <View style={styles.errorBox} accessibilityRole="alert" testID="brand-form-link-unknown-error">
+            <Text style={styles.error}>{saveError}</Text>
+            {p.saveError === "failed" || p.saveError === "rate_limited" ? (
+              <Button label={LINK_COPY.retry} variant="secondary" size="sm" onPress={() => void submitUnknown()} />
+            ) : needsReload ? (
+              <Button label={LINK_COPY.reload} variant="secondary" size="sm" onPress={() => void loadUnknown(p.campaignId)} />
+            ) : null}
+          </View>
+        ) : null}
+        {missing ? <Text style={styles.muted}>{LINK_COPY.needsAnswers}</Text> : null}
+        <Button
+          label={p.saving ? LINK_COPY.saving : LINK_COPY.send}
+          variant="primary"
+          size="lg"
+          fullWidth
+          loading={p.saving}
+          disabled={p.saving || missing || needsReload}
+          onPress={() => void submitUnknown()}
+          testID="brand-form-link-unknown-submit"
+        />
       </View>
     );
   }
@@ -566,5 +763,6 @@ const styles = StyleSheet.create({
     backgroundColor: color.fill.inset,
   },
   errorBox: { gap: space[2] },
+  honeypot: { position: "absolute", width: 1, height: 1, overflow: "hidden", opacity: 0, left: -10000 },
   error: { ...type.small, color: color.danger },
 });

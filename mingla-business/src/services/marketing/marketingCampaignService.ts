@@ -389,7 +389,8 @@ export async function listCampaigns(input: {
   let query = supabase
     .from("marketing_campaigns")
     .select(
-      "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, campaign_group_id, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
+      // #4541 R4.3: failure_reason says "Not sent: form closed" on the card.
+      "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, campaign_group_id, status, scheduled_for, sent_at, recipient_count, failure_reason, created_at, updated_at",
     )
     .eq("brand_id", input.brand_id)
     .order("created_at", { ascending: false })

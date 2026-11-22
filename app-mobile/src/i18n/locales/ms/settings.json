@@ -49,7 +49,9 @@
         "brand_campaign_push": "Mesej daripada tempat yang anda ikuti",
         "brand_campaign_push_hint": "Tawaran dan berita daripada tempat dan hos yang anda ikuti.",
         "brand_offering_invite": "Jemputan daripada tempat yang anda ikuti",
-        "brand_offering_invite_hint": "Apabila tempat atau hos menjemput anda ke sesuatu."
+        "brand_offering_invite_hint": "Apabila tempat atau hos menjemput anda ke sesuatu.",
+        "brand_form_request": "Soalan daripada penganjur",
+        "brand_form_request_hint": "Apabila penganjur meminta anda menjawab soalannya. E-mel sentiasa hidup untuk ini kerana ia membawa pautan peribadi anda. SMS mengikut tetapan SMS anda."
       }
     },
     "friends_going": "Kawan keluar",

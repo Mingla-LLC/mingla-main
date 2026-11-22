@@ -90,6 +90,11 @@ const row = (over: Partial<BrandFormResponseRow> = {}): BrandFormResponseRow => 
   updatedAt: "2026-11-19T10:00:00Z",
   subject: { kind: "rsvp", id: "x", name: "Amara N." },
   holder: null,
+  ownerKind: "guest",
+  ownerName: null,
+  campaignId: null,
+  campaignName: null,
+  hidden: false,
   ...over,
 });
 

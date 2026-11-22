@@ -202,5 +202,21 @@ module.exports = {
     // issue #4473 device pass — one dark Done bar, in-sheet country picker,
     // per-kind shared notes, channel hint, keyboard closed before results.
     "**/__tests__/issue_4473_device_fixes.implementor.render.test.tsx",
+    // issue #4541 — the Explorer form screen, questions card, hand-off, draft
+    // and sign-out, deep links and the form route, the app checkout's
+    // questions (marker, answers, refusals), the RSVP read through the edge.
+    "**/__tests__/BrandFormScreen.issue4541.test.tsx",
+    "**/__tests__/QuestionsCard.issue4541.test.tsx",
+    "**/__tests__/FormHandoff.issue4541.test.tsx",
+    "**/__tests__/authCleanup.formDrafts.issue4541.test.ts",
+    "**/__tests__/deepLink.form.issue4541.test.ts",
+    "**/__tests__/nativeCheckout.brandForm.issue4541.test.ts",
+    "**/__tests__/brandFormService.issue4541.test.ts",
+    // issue #4541 A3 — the RSVP success popup hands its close to the
+    // "After they RSVP" block: Answer now closes it, then opens the form.
+    "**/__tests__/rsvpFormHandoff.issue4541.test.tsx",
+    // issue #4541 R2.10 — a questions read that keeps failing never blocks
+    // a purchase (CHECKOUT_FORM_READ_FAILURE_BLOCKS_PAY).
+    "**/__tests__/CheckoutQuestionsReadFailure.issue4541.test.tsx",
   ],
 };

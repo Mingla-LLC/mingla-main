@@ -76,6 +76,7 @@ export const GuestQuestionsTile: React.FC<GuestQuestionsTileProps> = ({
             published: query.data.published,
             answered: query.data.answered,
             notAnswered: query.data.notAnswered,
+            notAsked: query.data.notAsked,
           };
   const state = tileState({ isError: query.isError, data });
   const canAttach = canAttachGuestQuestions(role.rank);

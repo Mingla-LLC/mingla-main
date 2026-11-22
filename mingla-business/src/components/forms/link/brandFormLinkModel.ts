@@ -8,6 +8,12 @@
  * closed (says closed; last answers read-only, only after the code) · invalid
  * link · paused (the emergency switch) · load failed (retry). A failed save keeps
  * the answers on screen with a retry. No useAuth anywhere on this page.
+ *
+ * #4541: replaced (an older personal link after a newer one was sent, R8.2) ·
+ * a Blast form opened with no personal link (`?c={campaign}`, R4.4/R4.5):
+ * unknown_open ("{brand} won't see who you are"), unknown_saved, unknown_limit
+ * (the form's daily limit of Unknown replies). A personal Blast link that needs
+ * a code it cannot get offers "Answer without confirming" (Unknown).
  */
 
 import type { BrandAnswers, BrandFormDefinitionShape, BrandHeaderData } from "@mingla/form-rendering";
@@ -27,6 +33,12 @@ export interface LinkRead {
     doorFullAnswers?: boolean;
   };
   brand?: Record<string, unknown> | null;
+  /** #4541 R4.4: a Blast link cannot get a one-time code (no contact is kept). */
+  codeAvailable?: boolean;
+  /** #4541 R4.4: the page may offer "Answer without confirming" (Unknown). */
+  unknownAllowed?: boolean;
+  /** #4541 R4.4: the Blast a personal Blast link came in. */
+  campaignId?: string | null;
   response?: {
     id: string;
     versionId: string;
@@ -114,6 +126,9 @@ export function parseLinkRead(data: unknown): LinkRead | null {
       doorFullAnswers: f.doorFullAnswers === true,
     },
     brand: isRec(data.brand) ? data.brand : null,
+    codeAvailable: data.codeAvailable !== false,
+    unknownAllowed: data.unknownAllowed === true,
+    campaignId: typeof data.campaignId === "string" ? data.campaignId : null,
     response,
   };
 }
@@ -162,13 +177,28 @@ export type LinkPhase =
   | { kind: "invalid" }
   | { kind: "paused" }
   | { kind: "load_failed" }
+  | { kind: "replaced" }
   | {
     kind: "code";
     reason: CodeReason;
     formName: string;
     identity: string | null;
     code: CodeStep;
+    /** #4541 R4.4: no code for a Blast link: answer as Unknown in this Blast instead. */
+    unknownCampaignId?: string | null;
   }
+  | {
+    kind: "unknown_open";
+    form: FormData;
+    campaignId: string;
+    botTicket: string | null;
+    answers: BrandAnswers;
+    saving: boolean;
+    saveError: UnknownSaveError | null;
+    fieldErrors: Record<string, string>;
+  }
+  | { kind: "unknown_saved"; formName: string }
+  | { kind: "unknown_limit" }
   | {
     kind: "open";
     form: FormData;
@@ -220,7 +250,16 @@ export function phaseFromRead(read: LinkRead): LinkPhase {
     const answered = read.answered === true;
     if (closed && !answered) return { kind: "closed", formName: read.form.name, last: null };
     const reason: CodeReason = closed ? "closed" : answered ? "answered" : "recognition_ended";
-    return { kind: "code", reason, formName: read.form.name, identity: read.identity ?? null, code: emptyCode() };
+    const unknownCampaignId =
+      read.codeAvailable === false && read.unknownAllowed === true && !closed ? read.campaignId ?? null : null;
+    return {
+      kind: "code",
+      reason,
+      formName: read.form.name,
+      identity: read.identity ?? null,
+      code: emptyCode(),
+      ...(unknownCampaignId !== null ? { unknownCampaignId } : {}),
+    };
   }
   const resp = read.response ?? null;
   if (closed) {
@@ -293,10 +332,112 @@ export function phaseAfterRead(read: LinkRead, draft: LinkDraft | null): { phase
 /** The page's state when the read failed (the exception message from PostgREST). */
 export function phaseFromReadError(message: string | null): LinkPhase {
   const code = (message ?? "").trim().split(/[\s:]/)[0] ?? "";
-  if (["link_invalid", "link_revoked", "link_wrong_form", "form_not_found", "not_signed_in"].includes(code)) {
+  // #4541 R8.2: a newer personal link switched this one off.
+  if (code === "link_revoked") return { kind: "replaced" };
+  if (code === "forms_paused") return { kind: "paused" };
+  if (["link_invalid", "link_wrong_form", "form_not_found", "not_signed_in"].includes(code)) {
     return { kind: "invalid" };
   }
   return { kind: "load_failed" };
+}
+
+// ---------------------------------------------------------------------------
+// #4541 R4.4 / R4.5 — a Blast form with no personal link: Unknown replies
+// ---------------------------------------------------------------------------
+
+export type UnknownSaveError = "failed" | "rate_limited" | "bot_check" | "changed" | "invalid";
+
+/** The `?c=` campaign of a Blast form link, or null (web only; never a token). */
+export function campaignFromSearch(search: string): string | null {
+  const m = /[?&]c=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:&|$)/i.exec(search);
+  return m === null ? null : (m[1] ?? "").toLowerCase();
+}
+
+/** The page after the `blast_form` read: the Unknown form, or closed (no last answers), or invalid. */
+export function phaseFromBlastRead(data: unknown, campaignId: string): LinkPhase {
+  if (!isRec(data) || !isRec(data.form)) return { kind: "load_failed" };
+  const f = data.form;
+  if (typeof f.id !== "string" || typeof f.name !== "string") return { kind: "load_failed" };
+  if (f.status === "closed") return { kind: "closed", formName: f.name, last: null };
+  const definition = parseDefinition(f.definition);
+  if (definition === null) return { kind: "invalid" };
+  return {
+    kind: "unknown_open",
+    form: {
+      formId: f.id,
+      formName: f.name,
+      versionId: typeof f.versionId === "string" ? f.versionId : null,
+      definition,
+      doorFullAnswers: false,
+      identity: null,
+    },
+    campaignId,
+    botTicket: typeof data.botTicket === "string" ? data.botTicket : null,
+    answers: {},
+    saving: false,
+    saveError: null,
+    fieldErrors: {},
+  };
+}
+
+/** A refused `blast_form` read, as a page state. */
+export function phaseFromBlastReadError(code: string | null): LinkPhase {
+  switch (code) {
+    case "form_closed":
+      return { kind: "closed", formName: "", last: null };
+    case "forms_paused":
+      return { kind: "paused" };
+    case "form_not_found":
+    case "form_not_on_event":
+    case "bad_request":
+      return { kind: "invalid" };
+    default:
+      return { kind: "load_failed" };
+  }
+}
+
+/** What an Unknown submit does to the page (§15). */
+export type UnknownSubmitOutcome =
+  | { next: "saved" }
+  | { next: "limit" }
+  | { next: "paused" }
+  | { next: "closed" }
+  | { next: "invalid" }
+  | { next: "error"; error: UnknownSaveError; fieldErrors?: Record<string, string> };
+
+export function unknownSubmitOutcome(
+  error: string | null,
+  questionErrors?: Array<{ questionId: string | null; code: string }>,
+): UnknownSubmitOutcome {
+  switch (error) {
+    case null:
+      return { next: "saved" };
+    case "open_reply_limit":
+      return { next: "limit" };
+    case "forms_paused":
+      return { next: "paused" };
+    case "form_closed":
+    case "form_not_live":
+      return { next: "closed" };
+    case "form_not_found":
+    case "form_not_on_event":
+      return { next: "invalid" };
+    case "bot_check_failed":
+      return { next: "error", error: "bot_check" };
+    case "rate_limited":
+      return { next: "error", error: "rate_limited" };
+    case "form_changed":
+      return { next: "error", error: "changed" };
+    case "form_answers_invalid": {
+      const fieldErrors: Record<string, string> = {};
+      for (const e of questionErrors ?? []) {
+        if (e.questionId !== null) fieldErrors[e.questionId] = FIELD_ERROR_COPY[e.code] ?? FIELD_ERROR_COPY.type;
+      }
+      return { next: "error", error: "invalid", fieldErrors };
+    }
+    default:
+      return { next: "error", error: "failed" };
+  }
 }
 
 /** What a failed submit does to the page. `reload` asks the screen to read again. */
@@ -306,6 +447,7 @@ export type SubmitOutcome =
   | { next: "code" }
   | { next: "paused" }
   | { next: "invalid" }
+  | { next: "replaced" }
   | { next: "error"; error: SaveError; fieldErrors?: Record<string, string> };
 
 export const FIELD_ERROR_COPY: Readonly<Record<string, string>> = {
@@ -330,8 +472,9 @@ export function submitOutcome(
       return { next: "code" };
     case "forms_paused":
       return { next: "paused" };
-    case "link_invalid":
     case "link_revoked":
+      return { next: "replaced" };
+    case "link_invalid":
     case "link_wrong_form":
     case "form_not_found":
       return { next: "invalid" };

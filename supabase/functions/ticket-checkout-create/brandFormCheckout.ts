@@ -240,3 +240,109 @@ export function checkoutFormPayload(
 ): Record<string, unknown> | null {
   return parsed.form === null ? null : { ...parsed.form };
 }
+
+// deno-lint-ignore no-explicit-any
+type CheckoutClient = any;
+
+/**
+ * Fail an unpaid checkout session so its held stock is released (the session
+ * holds are counted from status and expires_at; private ticket-link units are
+ * counted the same way). Used for an infinity hold that never joined the queue
+ * (#2947) and, #4541 R1.13, for every stash refusal below. Never touches a
+ * session that already has its order or any payment reference.
+ */
+export async function releaseUnpaidSession(
+  client: CheckoutClient,
+  checkoutSessionId: string,
+  reason: string,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await client
+    .from("ticket_checkout_sessions")
+    .update({
+      status: "failed",
+      failure_reason: reason,
+      expires_at: now,
+      updated_at: now,
+    })
+    .eq("id", checkoutSessionId)
+    .is("order_id", null)
+    // #4541 review fix 3: a session that already has a payment reference (a
+    // card payment intent or a Paystack reference, both kept in
+    // stripe_payment_intent_id; a hosted checkout session; or a claimed
+    // provider attempt) may still be paid. It is never released: the caller
+    // returns its refusal and the payment's own outcome settles the session.
+    .is("stripe_payment_intent_id", null)
+    .is("stripe_checkout_session_id", null)
+    .is("provider_attempt_id", null) ?? { error: null };
+  if (error) {
+    console.error("[ticket-checkout-create] session release failed", {
+      reason,
+    });
+  }
+}
+
+/**
+ * #4514 wave 5 / #4541 R1.13: stash the buyer's answers against this session
+ * BEFORE any quote bind, free finalization or provider I/O (the trigger
+ * brand_form_finalize_checkout_answers makes them the order's response in the
+ * same transaction that gives the session its order). Every refusal releases
+ * the session first, so a failed stash never keeps the tickets held until the
+ * checkout expires. Returns null to continue, or the response to return; the
+ * response bodies are unchanged.
+ */
+export async function stashBrandFormOrRelease(
+  client: CheckoutClient,
+  args: {
+    checkoutSessionId: string;
+    eventId: string;
+    parsed: CheckoutBrandForm;
+    buyerUserId: string | null;
+    ticketLinkHash: string | null;
+    checkOutcome: string | null;
+  },
+  respond: (body: Record<string, unknown>, status: number) => Promise<Response>,
+): Promise<Response | null> {
+  const stashed = await client.rpc("brand_form_checkout_stash", {
+    p_checkout_session_id: args.checkoutSessionId,
+    p_event_id: args.eventId,
+    p_capable: args.parsed.capable,
+    p_form: checkoutFormPayload(args.parsed),
+    p_buyer_user_id: args.buyerUserId,
+    p_ticket_link_hash: args.ticketLinkHash,
+  });
+  if (stashed.error) {
+    const refusal = brandFormRefusal(stashed.error);
+    if (refusal !== null) {
+      await releaseUnpaidSession(
+        client,
+        args.checkoutSessionId,
+        String(refusal.body.error ?? "brand_form_stash_failed"),
+      );
+      return await respond(refusal.body, refusal.status);
+    }
+    console.error("[ticket-checkout-create] brand form stash failed", {
+      error: stashed.error.message,
+    });
+    await releaseUnpaidSession(
+      client,
+      args.checkoutSessionId,
+      "brand_form_stash_failed",
+    );
+    return await respond({ error: "brand_form_stash_failed" }, 409);
+  }
+  // Wave 7 (P1-A / P3-E): the check kept answers the stash then could not
+  // (a grant or link that ended in between): 409, never a silent pass.
+  if (stashLostAnswers(args.checkOutcome, outcomeOf(stashed.data))) {
+    console.error("[ticket-checkout-create] brand form stash lost the form", {
+      outcome: outcomeOf(stashed.data),
+    });
+    await releaseUnpaidSession(
+      client,
+      args.checkoutSessionId,
+      "brand_form_stash_failed",
+    );
+    return await respond({ error: "brand_form_stash_failed" }, 409);
+  }
+  return null;
+}
