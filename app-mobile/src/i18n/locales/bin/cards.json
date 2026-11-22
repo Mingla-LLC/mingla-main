@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Ason nẹna {{time}}",
   "sheet.when_tomorrow": "Akhuẹ {{time}}",
   "sheet.when_scheduled": "Ẹmwẹ ruẹ · {{time}}",
+  "sheet.when_scheduled_day": "Ẹmwẹ ruẹ · {{day}} {{time}}",
   "sheet.weather": "Ẹghẹ",
   "sheet.crowd": "Ivbi",
   "sheet.drive": "Ọkọ",

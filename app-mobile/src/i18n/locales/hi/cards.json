@@ -187,6 +187,7 @@
   "sheet.when_tonight": "आज रात {{time}}",
   "sheet.when_tomorrow": "कल {{time}}",
   "sheet.when_scheduled": "आपका प्लान · {{time}}",
+  "sheet.when_scheduled_day": "आपका प्लान · {{day}} {{time}}",
   "sheet.weather": "मौसम",
   "sheet.crowd": "भीड़",
   "sheet.drive": "ड्राइव",

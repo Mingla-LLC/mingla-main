@@ -188,6 +188,7 @@
   "sheet.when_tonight": "Diseară {{time}}",
   "sheet.when_tomorrow": "Mâine {{time}}",
   "sheet.when_scheduled": "Planul tău · {{time}}",
+  "sheet.when_scheduled_day": "Planul tău · {{day}} {{time}}",
   "sheet.weather": "Vremea",
   "sheet.crowd": "Aglomerație",
   "sheet.drive": "Cu mașina",

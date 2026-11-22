@@ -191,6 +191,7 @@
   "sheet.when_tonight": "الليلة {{time}}",
   "sheet.when_tomorrow": "غدًا {{time}}",
   "sheet.when_scheduled": "خطتك · {{time}}",
+  "sheet.when_scheduled_day": "خطتك · {{day}} {{time}}",
   "sheet.weather": "الطقس",
   "sheet.crowd": "الزحام",
   "sheet.drive": "بالسيارة",

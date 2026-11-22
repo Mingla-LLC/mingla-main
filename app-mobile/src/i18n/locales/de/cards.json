@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Heute Abend {{time}}",
   "sheet.when_tomorrow": "Morgen {{time}}",
   "sheet.when_scheduled": "Dein Plan · {{time}}",
+  "sheet.when_scheduled_day": "Dein Plan · {{day}} {{time}}",
   "sheet.weather": "Wetter",
   "sheet.crowd": "Andrang",
   "sheet.drive": "Fahrt",

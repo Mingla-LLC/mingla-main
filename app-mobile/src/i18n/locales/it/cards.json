@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Stasera {{time}}",
   "sheet.when_tomorrow": "Domani {{time}}",
   "sheet.when_scheduled": "Il tuo piano · {{time}}",
+  "sheet.when_scheduled_day": "Il tuo piano · {{day}} {{time}}",
   "sheet.weather": "Meteo",
   "sheet.crowd": "Affluenza",
   "sheet.drive": "In auto",

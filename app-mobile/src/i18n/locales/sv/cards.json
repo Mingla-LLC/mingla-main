@@ -187,6 +187,7 @@
   "sheet.when_tonight": "I kväll {{time}}",
   "sheet.when_tomorrow": "I morgon {{time}}",
   "sheet.when_scheduled": "Din plan · {{time}}",
+  "sheet.when_scheduled_day": "Din plan · {{day}} {{time}}",
   "sheet.weather": "Väder",
   "sheet.crowd": "Trängsel",
   "sheet.drive": "Bil",

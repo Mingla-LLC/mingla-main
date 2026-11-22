@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Hoje à noite {{time}}",
   "sheet.when_tomorrow": "Amanhã {{time}}",
   "sheet.when_scheduled": "Seu plano · {{time}}",
+  "sheet.when_scheduled_day": "Seu plano · {{day}} {{time}}",
   "sheet.weather": "Clima",
   "sheet.crowd": "Movimento",
   "sheet.drive": "De carro",

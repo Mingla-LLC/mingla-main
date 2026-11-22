@@ -186,6 +186,7 @@
   "sheet.when_tonight": "今晚 {{time}}",
   "sheet.when_tomorrow": "明天 {{time}}",
   "sheet.when_scheduled": "你的计划 · {{time}}",
+  "sheet.when_scheduled_day": "你的计划 · {{day}} {{time}}",
   "sheet.weather": "天气",
   "sheet.crowd": "人流",
   "sheet.drive": "驾车",

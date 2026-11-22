@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Vanavond {{time}}",
   "sheet.when_tomorrow": "Morgen {{time}}",
   "sheet.when_scheduled": "Jouw plan · {{time}}",
+  "sheet.when_scheduled_day": "Jouw plan · {{day}} {{time}}",
   "sheet.weather": "Weer",
   "sheet.crowd": "Drukte",
   "sheet.drive": "Rijden",

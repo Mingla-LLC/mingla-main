@@ -186,6 +186,7 @@
   "sheet.when_tonight": "Tối nay {{time}}",
   "sheet.when_tomorrow": "Ngày mai {{time}}",
   "sheet.when_scheduled": "Kế hoạch của bạn · {{time}}",
+  "sheet.when_scheduled_day": "Kế hoạch của bạn · {{day}} {{time}}",
   "sheet.weather": "Thời tiết",
   "sheet.crowd": "Độ đông",
   "sheet.drive": "Lái xe",

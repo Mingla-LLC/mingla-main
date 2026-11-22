@@ -186,6 +186,7 @@
   "sheet.when_tonight": "Malam ini {{time}}",
   "sheet.when_tomorrow": "Besok {{time}}",
   "sheet.when_scheduled": "Rencanamu · {{time}}",
+  "sheet.when_scheduled_day": "Rencanamu · {{day}} {{time}}",
   "sheet.weather": "Cuaca",
   "sheet.crowd": "Keramaian",
   "sheet.drive": "Berkendara",

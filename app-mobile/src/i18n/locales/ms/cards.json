@@ -186,6 +186,7 @@
   "sheet.when_tonight": "Malam ini {{time}}",
   "sheet.when_tomorrow": "Esok {{time}}",
   "sheet.when_scheduled": "Rancangan anda · {{time}}",
+  "sheet.when_scheduled_day": "Rancangan anda · {{day}} {{time}}",
   "sheet.weather": "Cuaca",
   "sheet.crowd": "Kesesakan",
   "sheet.drive": "Memandu",

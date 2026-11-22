@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Bu akşam {{time}}",
   "sheet.when_tomorrow": "Yarın {{time}}",
   "sheet.when_scheduled": "Planın · {{time}}",
+  "sheet.when_scheduled_day": "Planın · {{day}} {{time}}",
   "sheet.weather": "Hava",
   "sheet.crowd": "Kalabalık",
   "sheet.drive": "Araçla",

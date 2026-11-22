@@ -189,6 +189,7 @@
   "sheet.when_tonight": "Сегодня вечером {{time}}",
   "sheet.when_tomorrow": "Завтра {{time}}",
   "sheet.when_scheduled": "Ваш план · {{time}}",
+  "sheet.when_scheduled_day": "Ваш план · {{day}} {{time}}",
   "sheet.weather": "Погода",
   "sheet.crowd": "Людей",
   "sheet.drive": "На машине",

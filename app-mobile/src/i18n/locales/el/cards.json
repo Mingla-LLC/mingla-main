@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Απόψε {{time}}",
   "sheet.when_tomorrow": "Αύριο {{time}}",
   "sheet.when_scheduled": "Το πλάνο σου · {{time}}",
+  "sheet.when_scheduled_day": "Το πλάνο σου · {{day}} {{time}}",
   "sheet.weather": "Καιρός",
   "sheet.crowd": "Κόσμος",
   "sheet.drive": "Με αυτοκίνητο",

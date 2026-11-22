@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Abalị a {{time}}",
   "sheet.when_tomorrow": "Echi {{time}}",
   "sheet.when_scheduled": "Atụmatụ gị · {{time}}",
+  "sheet.when_scheduled_day": "Atụmatụ gị · {{day}} {{time}}",
   "sheet.weather": "Ihu igwe",
   "sheet.crowd": "Ìgwè mmadụ",
   "sheet.drive": "Ịnya ụgbọ",

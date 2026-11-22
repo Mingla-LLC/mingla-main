@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Daren yau {{time}}",
   "sheet.when_tomorrow": "Gobe {{time}}",
   "sheet.when_scheduled": "Tsarinka · {{time}}",
+  "sheet.when_scheduled_day": "Tsarinka · {{day}} {{time}}",
   "sheet.weather": "Yanayi",
   "sheet.crowd": "Cunkoso",
   "sheet.drive": "Tuƙi",

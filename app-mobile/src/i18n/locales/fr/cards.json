@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Ce soir {{time}}",
   "sheet.when_tomorrow": "Demain {{time}}",
   "sheet.when_scheduled": "Votre sortie · {{time}}",
+  "sheet.when_scheduled_day": "Votre sortie · {{day}} {{time}}",
   "sheet.weather": "Météo",
   "sheet.crowd": "Affluence",
   "sheet.drive": "En voiture",

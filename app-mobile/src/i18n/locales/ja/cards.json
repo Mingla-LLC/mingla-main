@@ -186,6 +186,7 @@
   "sheet.when_tonight": "今夜 {{time}}",
   "sheet.when_tomorrow": "明日 {{time}}",
   "sheet.when_scheduled": "あなたのプラン · {{time}}",
+  "sheet.when_scheduled_day": "あなたのプラン · {{day}} {{time}}",
   "sheet.weather": "天気",
   "sheet.crowd": "混雑",
   "sheet.drive": "車",

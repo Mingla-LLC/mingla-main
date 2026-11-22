@@ -192,6 +192,11 @@ module.exports = {
     // key (it refetches as a category change does); a chip-only deck with
     // nothing open ends with hasMore:false (the empty state, not a loader).
     "**/__tests__/issue_4490_w6b_deck_refetch.implementor.test.ts",
+    // issue #4490 W7 — "When you'd go" on every venue surface: the pure model
+    // (chips, hide rules, Leave by, 7-day reach, On the day, checkout line,
+    // Hermes) and the rendered blocks (event page, pass, checkout line).
+    "**/__tests__/issue_4490_w7_when_you_go_model.implementor.test.ts",
+    "**/__tests__/issue_4490_w7_when_you_go.implementor.render.test.tsx",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.

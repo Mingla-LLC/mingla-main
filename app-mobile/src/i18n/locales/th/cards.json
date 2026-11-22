@@ -186,6 +186,7 @@
   "sheet.when_tonight": "คืนนี้ {{time}}",
   "sheet.when_tomorrow": "พรุ่งนี้ {{time}}",
   "sheet.when_scheduled": "แผนของคุณ · {{time}}",
+  "sheet.when_scheduled_day": "แผนของคุณ · {{day}} {{time}}",
   "sheet.weather": "อากาศ",
   "sheet.crowd": "ความคึกคัก",
   "sheet.drive": "ขับรถ",

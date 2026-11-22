@@ -186,6 +186,7 @@
   "sheet.when_tonight": "오늘 밤 {{time}}",
   "sheet.when_tomorrow": "내일 {{time}}",
   "sheet.when_scheduled": "내 플랜 · {{time}}",
+  "sheet.when_scheduled_day": "내 플랜 · {{day}} {{time}}",
   "sheet.weather": "날씨",
   "sheet.crowd": "붐빔",
   "sheet.drive": "운전",

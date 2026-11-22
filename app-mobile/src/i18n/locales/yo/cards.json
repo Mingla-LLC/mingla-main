@@ -187,6 +187,7 @@
   "sheet.when_tonight": "Lálẹ́ yìí {{time}}",
   "sheet.when_tomorrow": "Ọ̀la {{time}}",
   "sheet.when_scheduled": "Ètò rẹ · {{time}}",
+  "sheet.when_scheduled_day": "Ètò rẹ · {{day}} {{time}}",
   "sheet.weather": "Ojú ọjọ́",
   "sheet.crowd": "Èrò",
   "sheet.drive": "Wíwakọ̀",

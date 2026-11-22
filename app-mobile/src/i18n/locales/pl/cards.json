@@ -189,6 +189,7 @@
   "sheet.when_tonight": "Dziś wieczorem {{time}}",
   "sheet.when_tomorrow": "Jutro {{time}}",
   "sheet.when_scheduled": "Twój plan · {{time}}",
+  "sheet.when_scheduled_day": "Twój plan · {{day}} {{time}}",
   "sheet.weather": "Pogoda",
   "sheet.crowd": "Tłok",
   "sheet.drive": "Dojazd",
