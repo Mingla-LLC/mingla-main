@@ -21,6 +21,7 @@ import { formatClockMinute } from '../deckCard/useDeckFactLabels';
 import { useVenueForecast } from '../../hooks/useVenueForecast';
 import { useUserLocation } from '../../hooks/useUserLocation';
 import { useLocalePreferences } from '../../hooks/useLocalePreferences';
+import { spacing } from '../../constants/designSystem';
 import { useAppStore } from '../../store/appStore';
 import { estimateTravelMinutes, haversineKm } from '../../utils/mutateCuratedCard';
 
@@ -98,5 +99,5 @@ export function EventWhenYoudGo({ brandSlug, eventSlug, palette, now: nowProp }:
 }
 
 const styles = StyleSheet.create({
-  slot: { marginTop: 16 },
+  slot: { marginTop: spacing.lg },
 });

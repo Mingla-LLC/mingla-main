@@ -181,7 +181,9 @@ describe('#4490 W3 fix 1 — deck wiring', () => {
     const sheet = read('../../ExpandedCardModal.tsx');
     expect((sheet.match(/leaveSheetTo\(/g) ?? []).length).toBe(2);
     expect(sheet).toMatch(/leaveSheetTo\(deckCta\.path, \{\s*closeSheet: onClose,\s*onExternalRoute,/);
-    expect(sheet).toMatch(/onOpenPath=\{\(path\) =>\s*leaveSheetTo\(path, \{\s*closeSheet: onClose,\s*onExternalRoute,/);
+    // TEST-MOD-APPROVED #4490 (06-W7): onOpenPath now remembers a What's on row
+    // before leaving, so its body is a block; the same leaveSheetTo call follows.
+    expect(sheet).toMatch(/onOpenPath=\{\(path\) =>\s*\{[\s\S]*?leaveSheetTo\(path, \{\s*closeSheet: onClose,\s*onExternalRoute,/);
     expect(sheet).not.toMatch(/onClose\(\);\s*router\.push\(deckCta\.path/);
   });
 });

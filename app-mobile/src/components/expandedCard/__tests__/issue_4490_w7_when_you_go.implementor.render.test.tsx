@@ -1,3 +1,4 @@
+// @ts-nocheck
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * #4490 Explorer W7 — "When you'd go" on every venue surface, rendered.
@@ -25,14 +26,10 @@
  * (E-1); hitSlop removed (P-2); `hostedEventContextFor` returning a context for
  * a non-row (X-1); the pass mounting without the isLive guard (S-4).
  */
-// app-mobile's tsc has no jest or react-test-renderer types: declare what this
-// suite uses so it adds no type errors (the W5 and W6 suites do the same).
-/* eslint-disable @typescript-eslint/no-explicit-any */
-declare const jest: any;
-declare const describe: any;
-declare const test: any;
-declare const expect: any;
-declare const afterEach: any;
+// app-mobile's tsc has no jest or react-test-renderer types, and a local
+// `declare const jest` stops the jest.mock hoist: this suite is not type
+// checked (the same stance as the existing render suites, which add the same
+// errors); the model suite beside it declares its globals instead.
 import React from "react";
 import fs from "node:fs";
 import path from "node:path";
