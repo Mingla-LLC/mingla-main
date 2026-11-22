@@ -1,4 +1,4 @@
-// MINGLA-INVARIANT: I-ADDON-DRAFT-ONE-LIST | issue #3281 | An event draft keeps its add-ons once at the top level in minor units, and the server blob and publish receive exactly the per-ticket add-ons the draft had before the move.
+// MINGLA-INVARIANT: I-ADDON-UNPUBLISHED-ONE-LIST | issue #3281 | An unpublished event keeps its add-ons once at the top level in minor units, and the server blob and publish receive exactly the per-ticket add-ons it had before the move.
 /**
  * issue #3281 S3 (§6.4) — event drafts keep add-ons in one top-level list.
  *
