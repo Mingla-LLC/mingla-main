@@ -8,9 +8,18 @@
  * whose reader payload carries one add-on. Once a guest holds a spot, the
  * add-on shows under it, and tapping "+" puts it on that line.
  *
+ * Checkpoint 15, end to end: the checkout reads the experience by id from its
+ * tables, which carry no add-ons; getPublicExperienceById takes each ticket's
+ * `extras` from the public reader call it already makes for the stops. The
+ * last case runs that REAL service on a reader payload, mounts the screen on
+ * its result, picks the add-on, and sends the REAL quote: the request's line
+ * carries `addOns`.
+ *
  * FAILS-ON-REVERT: drop `buyerExtras: ticket.buyerExtras` from `ticketToStub`
  * (or the <CartTicketExtras> under the spot row) in
- * `app/checkout-experience/[experienceEventId]/index.tsx` -> red.
+ * `app/checkout-experience/[experienceEventId]/index.tsx` -> red; drop
+ * `buyerExtras: input.addOnsById?.[row.id]` (or the reader's addOnsById) in
+ * publicExperienceService -> the end-to-end case reds.
  */
 
 import React from "react";
@@ -98,12 +107,32 @@ jest.mock("expo-router", () => ({
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
+// A chainable stand-in for the anon reads getPublicExperienceById makes: each
+// table answers with its fixture rows, each RPC with its fixture payload.
+const tableRows: Record<string, unknown> = {};
+const rpcData: Record<string, unknown> = {};
+const chain = (table: string): unknown => {
+  const result = { data: tableRows[table] ?? null, error: null };
+  const self: Record<string, unknown> = {
+    then: (ok: (v: unknown) => unknown, bad?: (e: unknown) => unknown) =>
+      Promise.resolve(result).then(ok, bad),
+  };
+  for (const m of ["select", "eq", "in", "is", "order", "limit", "neq"]) self[m] = () => self;
+  self.maybeSingle = () => Promise.resolve(result);
+  self.single = () => Promise.resolve(result);
+  return self;
+};
 jest.mock("../../../../src/services/supabase", () => ({
-  supabase: { functions: { invoke: (...args: unknown[]) => invoke(...args) } },
+  supabase: {
+    functions: { invoke: (...args: unknown[]) => invoke(...args) },
+    from: (table: string) => chain(table),
+    rpc: (name: string) => Promise.resolve({ data: rpcData[name] ?? null, error: null }),
+  },
 }));
+const mockExperience: { current: unknown } = { current: null };
 jest.mock("../../../../src/hooks/usePublicExperience", () => ({
   usePublicExperienceById: () => ({
-    data: { experience: EXPERIENCE_FIXTURE, brand: { theme: null, name: "Mingla" } },
+    data: mockExperience.current ?? { experience: EXPERIENCE_FIXTURE, brand: { theme: null, name: "Mingla" } },
     isLoading: false,
     isFetching: false,
     isError: false,
@@ -185,6 +214,8 @@ import {
   type CartContextValue,
 } from "../../../../src/components/checkout/CartContext";
 import ExperienceCartScreen from "../index";
+import { getPublicExperienceById } from "../../../../src/services/publicExperienceService";
+import { quoteTicketCheckout } from "../../../../src/services/ticketQuoteService";
 
 let cart: CartContextValue | null = null;
 const Probe: React.FC = () => {
@@ -195,6 +226,8 @@ const Probe: React.FC = () => {
 describe("#3281 — the experience cart offers its add-ons", () => {
   afterEach(() => {
     mockFlags.extras = true;
+    mockExperience.current = null;
+    invoke.mockReset();
   });
 
   test("a held spot (free) shows its paid add-on, and + puts it on the line", async () => {
@@ -254,6 +287,79 @@ describe("#3281 — the experience cart offers its add-ons", () => {
     );
     await flushLazy();
     expect(tree.root.findAllByProps({ testID: `issue-3281-cart-extras-${TICKET_ID}` })).toHaveLength(0);
+    tree.unmount();
+  });
+
+  test("end to end: reader payload -> service -> picker -> cart line -> quote request", async () => {
+    tableRows.events = {
+      id: EXPERIENCE_EVENT_ID,
+      brand_id: "b-1",
+      title: "Sunset sail",
+      slug: "sunset-sail",
+      status: "published",
+      visibility: "public",
+      timezone: "UTC",
+      theme: null,
+      brands: { id: "b-1", slug: "minglanigeria", name: "Mingla" },
+    };
+    tableRows.ticket_types = [
+      { id: TICKET_ID, name: "Spot", price_cents: 0, currency: "USD", is_unlimited: true, is_free: true, display_order: 0 },
+    ];
+    tableRows.event_dates = [];
+    rpcData.pg_public_experience_by_slug = {
+      stops: [],
+      ticket: {
+        ticketTypeId: TICKET_ID,
+        name: "Spot",
+        extras: [{ id: TASTING_ID, name: "Wine tasting", priceCents: 1500, maxPerTicket: 1, isUnlimited: true }],
+      },
+    };
+    const payload = await getPublicExperienceById(EXPERIENCE_EVENT_ID);
+    expect(payload?.experience.ticket?.buyerExtras).toEqual([
+      { id: TASTING_ID, name: "Wine tasting", priceCents: 1500, maxPerTicket: 1, isUnlimited: true },
+    ]);
+    mockExperience.current = payload;
+
+    let tree!: Renderer;
+    await act(async () => {
+      tree = TestRenderer.create(
+        <CartProvider>
+          <Probe />
+          <ExperienceCartScreen />
+        </CartProvider>,
+      );
+    });
+    await act(async () =>
+      cart!.setLineQuantity({
+        ticketTypeId: TICKET_ID,
+        ticketName: "Spot",
+        unitPrice: 0,
+        currency: "USD",
+        isFree: true,
+        quantity: 1,
+      }),
+    );
+    await flushLazy();
+    const add = tree.root.findAllByProps({ accessibilityLabel: "Add one Wine tasting to Spot" });
+    expect(add.length).toBeGreaterThan(0);
+    await act(async () => (add[0].props.onPress as () => void)());
+    const line = cart!.lines.find((l) => l.ticketTypeId === TICKET_ID);
+    expect(line?.addOns).toEqual([{ addOnId: TASTING_ID, quantity: 1 }]);
+
+    invoke.mockReset();
+    invoke.mockResolvedValue({ data: { totalCents: 1500 }, error: null });
+    await quoteTicketCheckout({
+      eventId: EXPERIENCE_EVENT_ID,
+      buyer: cart!.buyer,
+      lines: cart!.lines,
+      surface: "web",
+    });
+    const quoteCall = invoke.mock.calls.find((c) => c[0] === "ticket-checkout-create");
+    const body = (quoteCall?.[1] as { body: { mode: string; lines: Array<Record<string, unknown>> } }).body;
+    expect(body.mode).toBe("quote");
+    expect(body.lines).toEqual([
+      expect.objectContaining({ ticketTypeId: TICKET_ID, quantity: 1, addOns: [{ addOnId: TASTING_ID, quantity: 1 }] }),
+    ]);
     tree.unmount();
   });
 });

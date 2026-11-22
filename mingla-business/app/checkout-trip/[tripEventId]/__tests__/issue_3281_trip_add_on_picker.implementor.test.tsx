@@ -9,9 +9,15 @@
  * the add-on shows under it, and tapping "+" puts it on that package's line.
  * A package with no add-ons shows no picker.
  *
+ * Checkpoint 15: the trip-by-id read the checkout uses carries no add-ons, so
+ * they come from the public trip reader (useTripCheckoutAddOns): seeded from
+ * the trip page's cached payload when there is one, otherwise read once.
+ *
  * FAILS-ON-REVERT: drop `buyerExtras: tier.buyerExtras` from `tierToTicketStub`
  * (or the <CartTicketExtras> under the package row, or the flag in
- * `showAddOnPicker`) in `app/checkout-trip/[tripEventId]/index.tsx` -> red.
+ * `showAddOnPicker`) in `app/checkout-trip/[tripEventId]/index.tsx` -> red;
+ * drop the reader overlay (`addOns?.[tier.ticketTypeId]`) or the trip page
+ * cache seed in useTripCheckoutAddOns -> the reader cases red.
  */
 
 import React from "react";
@@ -35,6 +41,17 @@ const PACKAGE_ID = "32810000-0000-4000-8000-000000000002";
 const PLAIN_PACKAGE_ID = "32810000-0000-4000-8000-000000000003";
 const TRANSFER_ID = "32810000-0000-4000-8000-000000000004";
 
+const BRAND_SLUG = "minglanigeria";
+const TRIP_SLUG = "lagos-long-weekend";
+const TRANSFER = {
+  id: TRANSFER_ID,
+  name: "Airport transfer",
+  priceCents: 2500,
+  priceAllInCents: 2600,
+  maxPerTicket: 2,
+  isUnlimited: true,
+};
+
 const router = {
   push: jest.fn(),
   replace: jest.fn(),
@@ -42,6 +59,7 @@ const router = {
   canGoBack: jest.fn(() => true),
 };
 const invoke = jest.fn();
+const rpc = jest.fn();
 
 const tier = (ticketTypeId: string, name: string, extras?: unknown) => ({
   id: `tier-${ticketTypeId}`,
@@ -60,27 +78,20 @@ const tier = (ticketTypeId: string, name: string, extras?: unknown) => ({
   ...(extras !== undefined ? { buyerExtras: extras } : {}),
 });
 
-const TRIP_FIXTURE = {
+const tripFixture = (withExtras: boolean) => ({
   id: TRIP_EVENT_ID,
   title: "Lagos long weekend",
-  slug: "lagos-long-weekend",
-  brandSlug: "minglanigeria",
+  slug: TRIP_SLUG,
+  brandSlug: BRAND_SLUG,
   currency: "USD",
   pricingTiers: [
-    tier(PACKAGE_ID, "Shared room", [
-      {
-        id: TRANSFER_ID,
-        name: "Airport transfer",
-        priceCents: 2500,
-        priceAllInCents: 2600,
-        maxPerTicket: 2,
-        isUnlimited: true,
-      },
-    ]),
+    tier(PACKAGE_ID, "Shared room", withExtras ? [TRANSFER] : undefined),
     tier(PLAIN_PACKAGE_ID, "Private room"),
   ],
   businessTrip: { startAt: "2027-03-01T00:00:00.000Z", endAt: "2027-03-04T23:59:59.000Z" },
-};
+});
+// The trip-by-id read: with extras (older fixture) or, as in production, without.
+const mockTrip = { withExtras: true };
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -110,11 +121,14 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 jest.mock("../../../../src/services/supabase", () => ({
-  supabase: { functions: { invoke: (...args: unknown[]) => invoke(...args) } },
+  supabase: {
+    functions: { invoke: (...args: unknown[]) => invoke(...args) },
+    rpc: (...args: unknown[]) => rpc(...args),
+  },
 }));
 jest.mock("../../../../src/hooks/usePublicTripById", () => ({
   usePublicTripById: () => ({
-    data: { trip: TRIP_FIXTURE },
+    data: { trip: tripFixture(mockTrip.withExtras) },
     isLoading: false,
     isFetching: false,
     isError: false,
@@ -202,6 +216,8 @@ const flushLazy = async (): Promise<void> => {
   }
 };
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { tripKeys } from "../../../../src/hooks/tripKeys";
 import {
   CartProvider,
   useCart,
@@ -226,14 +242,16 @@ const holdPackage = (ticketTypeId: string, ticketName: string) =>
     paymentPlanChoice: "full",
   });
 
-const mount = async (): Promise<Renderer> => {
+const mount = async (client: QueryClient = new QueryClient()): Promise<Renderer> => {
   let tree!: Renderer;
   await act(async () => {
     tree = TestRenderer.create(
-      <CartProvider>
-        <Probe />
-        <TripCartScreen />
-      </CartProvider>,
+      <QueryClientProvider client={client}>
+        <CartProvider>
+          <Probe />
+          <TripCartScreen />
+        </CartProvider>
+      </QueryClientProvider>,
     );
   });
   return tree;
@@ -243,6 +261,8 @@ describe("#3281 — the trip cart offers each package's add-ons", () => {
   afterEach(() => {
     cart = null;
     mockFlags.extras = true;
+    mockTrip.withExtras = true;
+    rpc.mockReset();
   });
 
   test("a held package shows its add-on, and + puts it on that package's line", async () => {
@@ -282,6 +302,68 @@ describe("#3281 — the trip cart offers each package's add-ons", () => {
     expect(
       tree.root.findAllByProps({ accessibilityLabel: "Add one Airport transfer to Shared room" }),
     ).toHaveLength(0);
+    tree.unmount();
+  });
+
+  test("the trip-by-id read has none: the public trip reader supplies them, and + puts the add-on on the line", async () => {
+    mockTrip.withExtras = false;
+    rpc.mockResolvedValue({
+      data: { tiers: [{ ticketTypeId: PACKAGE_ID, extras: [TRANSFER] }, { ticketTypeId: PLAIN_PACKAGE_ID }] },
+      error: null,
+    });
+    const tree = await mount();
+    await act(async () => holdPackage(PACKAGE_ID, "Shared room"));
+    await flushLazy();
+    expect(rpc).toHaveBeenCalledWith("pg_public_trip_by_slug", {
+      p_brand_slug: BRAND_SLUG,
+      p_event_slug: TRIP_SLUG,
+    });
+    const add = tree.root.findAllByProps({ accessibilityLabel: "Add one Airport transfer to Shared room" });
+    expect(add.length).toBeGreaterThan(0);
+    await act(async () => (add[0].props.onPress as () => void)());
+    expect(cart!.lines.find((l) => l.ticketTypeId === PACKAGE_ID)?.addOns).toEqual([
+      { addOnId: TRANSFER_ID, quantity: 1 },
+    ]);
+    tree.unmount();
+  });
+
+  test("coming from the trip page, its cached payload supplies them without a second read", async () => {
+    mockTrip.withExtras = false;
+    const client = new QueryClient();
+    client.setQueryData(tripKeys.publicBySlug(BRAND_SLUG, TRIP_SLUG), {
+      trip: { pricingTiers: [{ ticketTypeId: PACKAGE_ID, buyerExtras: [TRANSFER] }] },
+    });
+    const tree = await mount(client);
+    await act(async () => holdPackage(PACKAGE_ID, "Shared room"));
+    await flushLazy();
+    expect(rpc).not.toHaveBeenCalled();
+    expect(
+      tree.root.findAllByProps({ accessibilityLabel: "Add one Airport transfer to Shared room" }).length,
+    ).toBeGreaterThan(0);
+    tree.unmount();
+  });
+
+  test("a failed reader read shows no add-ons and still sells the package", async () => {
+    mockTrip.withExtras = false;
+    rpc.mockResolvedValue({ data: null, error: { message: "boom" } });
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    const tree = await mount(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
+    await act(async () => holdPackage(PACKAGE_ID, "Shared room"));
+    await flushLazy();
+    expect(tree.root.findAllByProps({ testID: `issue-3281-cart-extras-${PACKAGE_ID}` })).toHaveLength(0);
+    expect(cart!.lines.find((l) => l.ticketTypeId === PACKAGE_ID)?.quantity).toBe(1);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+    tree.unmount();
+  });
+
+  test("with the add-ons flag off the reader is never called", async () => {
+    mockFlags.extras = false;
+    mockTrip.withExtras = false;
+    const tree = await mount();
+    await act(async () => holdPackage(PACKAGE_ID, "Shared room"));
+    await flushLazy();
+    expect(rpc).not.toHaveBeenCalled();
     tree.unmount();
   });
 });

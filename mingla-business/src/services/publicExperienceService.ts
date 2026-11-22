@@ -337,6 +337,11 @@ interface MapInput {
    * Stamped onto the ticket + every occurrence date (no per-occurrence cap).
    */
   remainingById?: Map<string, number | null>;
+  /**
+   * #3281 — ticket_types.id → the reader's raw add-on list (`extras`), taken
+   * from the reader call the stops already make (the table rows have none).
+   */
+  addOnsById?: Record<string, unknown>;
 }
 
 /**
@@ -495,6 +500,7 @@ function mapExperience(input: MapInput): PublicExperience {
       saleName: rowPricing?.saleName ?? null,
       saleRemaining: rowPricing?.saleRemaining ?? null,
       ...ticketUnitFields(row),
+      buyerExtras: input.addOnsById?.[row.id],
     };
   };
 
@@ -597,18 +603,26 @@ async function loadPublicExperienceStops(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any[];
   error: unknown;
+  /** #3281 — each ticket's raw add-on list from the same reader payload. */
+  addOnsById?: Record<string, unknown>;
 }> {
   const { data, error } = await supabase.rpc("pg_public_experience_by_slug", {
     p_brand_slug: brandSlug,
     p_experience_slug: experienceSlug,
   });
   if (error !== null && error !== undefined) return { data: [], error };
-  const stops =
+  const payload =
     data !== null && typeof data === "object" && !Array.isArray(data)
-      ? (data as { stops?: unknown }).stops
+      ? (data as { stops?: unknown; ticket?: RpcExpTicket | null; options?: RpcExpTicket[] })
       : null;
-  if (!Array.isArray(stops)) return { data: [], error: null };
+  const addOnsById: Record<string, unknown> = {};
+  for (const t of [payload?.ticket, ...(Array.isArray(payload?.options) ? payload.options : [])]) {
+    if (t != null && t.extras !== undefined) addOnsById[t.ticketTypeId] = t.extras;
+  }
+  const stops = payload?.stops;
+  if (!Array.isArray(stops)) return { data: [], error: null, addOnsById };
   return {
+    addOnsById,
     data: (stops as RpcExpStop[]).map((s) => ({
       id: s.id,
       stop_order: s.stopOrder,
@@ -639,6 +653,8 @@ async function loadExperienceSidecars(
   pricingById: Map<string, PublicTierPricing>;
   /** ORCH-1138 Leg 3 (§4.3) — ticket_types.id → event-level remaining. */
   remainingById: Map<string, number | null>;
+  /** #3281 — ticket_types.id → the reader's raw add-on list. */
+  addOnsById?: Record<string, unknown>;
 }> {
   // ORCH-1147 — fold the per-tier all-in fetch into the existing parallel load.
   // fetchTierAllInCents never throws (RPC failure → empty map → base fallback
@@ -685,6 +701,7 @@ async function loadExperienceSidecars(
   }
   return {
     stops: stopsResp.data ?? [],
+    addOnsById: stopsResp.addOnsById,
     tickets: ticketsResp.data ?? [],
     dates: datesResp.data ?? [],
     pricingById,

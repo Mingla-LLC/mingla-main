@@ -27,6 +27,10 @@ import { radius as radiusTokens, space } from "../../../src/constants/designSyst
 import { checkoutStyles, color } from "../../../src/components/checkout/checkoutTheme";
 import { tripPublicPath } from "../../../src/constants/publicUrls";
 import { usePublicTripById } from "../../../src/hooks/usePublicTripById";
+import {
+  useTripCheckoutAddOns,
+  type TripAddOnsByTicketType,
+} from "../../../src/hooks/useTripCheckoutAddOns";
 import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema";
 import { formatCurrency } from "../../../src/utils/currency";
 import { formatTripCalendarRange } from "../../../src/utils/tripCalendarDates";
@@ -105,7 +109,10 @@ const showAddOnPicker = (buyerExtras: unknown): boolean =>
  * visibility/door/sale-window mechanics — so we map straight defaults
  * for the buyer-checkout-irrelevant fields.
  */
-const tierToTicketStub = (tier: TripPricingTier): TicketStub => ({
+const tierToTicketStub = (
+  tier: TripPricingTier,
+  addOns?: TripAddOnsByTicketType,
+): TicketStub => ({
   id: tier.ticketTypeId,
   name: tier.tierName,
   priceGbp: tier.priceCents > 0 ? tier.priceCents / 100 : null,
@@ -134,8 +141,9 @@ const tierToTicketStub = (tier: TripPricingTier): TicketStub => ({
   saleStartAt: null,
   saleEndAt: null,
   availableAt: "online" as TicketAvailableAt,
-  // #3281 — the package's add-ons ride the stub, as on the event cart.
-  buyerExtras: tier.buyerExtras,
+  // #3281 — the package's add-ons ride the stub, as on the event cart. The
+  // trip-by-id read has none, so they come from the public trip reader.
+  buyerExtras: tier.buyerExtras ?? addOns?.[tier.ticketTypeId],
 });
 
 // #3281 — a trip is one run: no per-date add-on scoping on its cart.
@@ -191,6 +199,12 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   const publicTripQuery = usePublicTripById(tripEventId);
   const trip = publicTripQuery.data?.trip ?? null;
   const brand = publicTripQuery.data?.brand ?? null;
+  // #3281 — each package's add-ons (read only while the add-ons flag is on).
+  const tripAddOns = useTripCheckoutAddOns(
+    trip?.brandSlug ?? null,
+    trip?.slug ?? null,
+    featureFlags.extras,
+  ).data;
 
   const {
     lines,
@@ -439,7 +453,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
     // selection, the seeding effect above owns the funnel entry; the single-tier
     // auto-skip must NOT also fire (it would add tier[0] over the real selection).
     if (seededLinesParam.length > 0) return;
-    const skipTickets = trip.pricingTiers.map(tierToTicketStub);
+    const skipTickets = trip.pricingTiers.map((t) => tierToTicketStub(t));
     const sole = skipTickets[0];
     const outcome = decideAutoSkip({
       alreadyNavigated: autoSkipNavigatedRef.current,
@@ -579,7 +593,7 @@ export default function CheckoutTripTicketsScreen(): React.ReactElement {
   }
 
   // Map pricing tiers → TicketStub for QuantityRow reuse.
-  const tickets = trip.pricingTiers.map(tierToTicketStub);
+  const tickets = trip.pricingTiers.map((t) => tierToTicketStub(t, tripAddOns));
   const isPast = isTripPast(trip.businessTrip.endAt);
   const allSoldOut =
     tickets.length > 0 &&

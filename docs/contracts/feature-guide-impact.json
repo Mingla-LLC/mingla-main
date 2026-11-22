@@ -1702,6 +1702,7 @@
         "packages/offering-rendering/OfferingAddOnsBlock.tsx",
         "packages/offering-rendering/offeringAddOnChips.ts",
         "mingla-business/src/components/addOns/PublicAddOnsBlock.tsx",
+        "mingla-business/src/hooks/useTripCheckoutAddOns.ts",
         "app-mobile/src/components/addOns/publicAddOnsSlot.tsx",
         "supabase/functions/public-submit-rsvp/rsvpAddOns.ts",
         "supabase/functions/scan-rsvp/doorAddOns.ts",
