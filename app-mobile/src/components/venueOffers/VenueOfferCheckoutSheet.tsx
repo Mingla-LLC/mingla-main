@@ -26,7 +26,7 @@ import * as WebBrowser from "expo-web-browser";
 import { initStripe } from "@stripe/stripe-react-native";
 import { isStripeGooglePayTestEnv, useStripePaymentSheet } from "@mingla/payments-native";
 import { waitForPaymentPageClosed, type AppStateLike } from "@mingla/payments-native/paymentPageReturn";
-import type { VenueFeaturePlanView } from "@mingla/brand-rendering/venueFeaturePage";
+import type { VenueFeaturePlanView, VenuePlanCharge } from "@mingla/brand-rendering/venueFeaturePage";
 import {
   entryDateLabel,
   holdUntilText,
@@ -50,6 +50,7 @@ import {
 import {
   initialVenueCheckoutState,
   isVenueCheckoutBusy,
+  resumedVenueCheckoutState,
   payLabel,
   requestSentLine,
   VENUE_CHECKOUT_COPY as COPY,
@@ -93,7 +94,9 @@ import {
   guestFingerprint,
   parseVenueReviewQuote,
   payNowMinor,
+  planDueFrom,
   planRefFrom,
+  planReviewRows,
   quoteBodyFor,
   resumeTitle,
   reviewRows,
@@ -101,6 +104,13 @@ import {
   type VenueReviewQuote,
 } from "./venueCheckoutModel";
 import { venueMoneyText } from "./venueMoneyText";
+import {
+  dropVenueCheckout,
+  holdVenueCheckout,
+  venueCheckoutHomeKey,
+  venueCheckoutRouteFor,
+  type VenueCheckoutSnapshot,
+} from "./venueCheckoutResume";
 
 /** Opened from a venue page pane. */
 export interface VenueCheckoutFromVenue {
@@ -146,6 +156,8 @@ type ParsedOffer =
 export interface VenueOfferCheckoutSheetProps {
   readonly open: VenueCheckoutOpen | null;
   readonly onClose: () => void;
+  /** #4490 06-W4 fix 1 (W4-N4): the checkout kept when the session ended, back after signing in again (same account). */
+  readonly resume?: VenueCheckoutSnapshot | null;
 }
 
 const appStateForPage = (): AppStateLike => AppState as unknown as AppStateLike;
@@ -167,13 +179,28 @@ const OFFER_KIND_FOR: Record<VenueCheckoutKind, string> = {
   plan: "membership",
 };
 
-export function VenueOfferCheckoutSheet({ open, onClose }: VenueOfferCheckoutSheetProps): React.ReactElement | null {
+export function VenueOfferCheckoutSheet({ open, onClose, resume }: VenueOfferCheckoutSheetProps): React.ReactElement | null {
   if (open === null) return null;
-  // A new session (cart key, keys, choices) per opening.
-  return <CheckoutSession key={open.from === "venue" ? `${open.kind}:${open.offerId}` : `pay:${open.booking.id}`} open={open} onClose={onClose} />;
+  // A new session (cart key, keys, choices) per opening; a resumed one carries its own.
+  return (
+    <CheckoutSession
+      key={open.from === "venue" ? `${open.kind}:${open.offerId}` : `pay:${open.booking.id}`}
+      open={open}
+      onClose={onClose}
+      resume={resume !== undefined && resume !== null && venueCheckoutHomeKey(resume.open) === venueCheckoutHomeKey(open) ? resume : null}
+    />
+  );
 }
 
-function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: () => void }): React.ReactElement {
+function CheckoutSession({
+  open,
+  onClose,
+  resume,
+}: {
+  open: VenueCheckoutOpen;
+  onClose: () => void;
+  resume: VenueCheckoutSnapshot | null;
+}): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -183,7 +210,9 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
   const { initPaymentSheet, presentPaymentSheet, isPaymentSheetSupported } = useStripePaymentSheet();
 
   const [state, dispatch] = useReducer(venueOfferCheckoutReducer, undefined, () =>
-    initialVenueCheckoutState(
+    resume !== null
+      ? resumedVenueCheckoutState(resume.state)
+      : initialVenueCheckoutState(
       open.kind,
       venueCheckoutCartKey(),
       open.from === "purchases"
@@ -237,7 +266,7 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
   const detail = parsed?.offer ?? null;
 
   // ── the choice (step 1) and the guest ─────────────────────────────────
-  const [report, setReport] = useState<ChooseReport>({ choice: null, problem: null });
+  const [report, setReport] = useState<ChooseReport>({ choice: resume?.choice ?? null, problem: null });
   const onReport = useCallback((r: ChooseReport) => setReport(r), []);
   useEffect(() => {
     if (report.choice !== null) send({ type: "choose", choice: choiceFingerprint(report.choice) });
@@ -257,11 +286,54 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
-  const [guest, setGuest] = useState<VenueGuestDetails>({ name: contact.name, email: contact.email, phone: contact.phone });
+  const [guest, setGuest] = useState<VenueGuestDetails>(
+    () => resume?.guest ?? { name: contact.name, email: contact.email, phone: contact.phone },
+  );
   const [guestTouched, setGuestTouched] = useState(false);
   const guestProblem = guestDetailsProblem(guest);
 
-  const [review, setReview] = useState<VenueReviewQuote | null>(null);
+  const [review, setReview] = useState<VenueReviewQuote | null>(resume?.review ?? null);
+  // #4490 06-W4 fix 1 (W4-N2): a plan's amount due, as the server charges it (join answer's paymentDue).
+  const [planDue, setPlanDue] = useState<VenuePlanCharge | null>(resume?.planDue ?? null);
+
+  // #4490 06-W4 fix 1 (W4-N4): the account this sheet was opened for; when its
+  // session ends the sheet keeps the checkout (in memory only) for it.
+  const lastUserId = useRef<string | null>(userId);
+  if (userId !== null) lastUserId.current = userId;
+  // A booking held before the session ended is re-read with the new session
+  // (owner path) before it can be paid: confirmed, still payable, or gone.
+  const [rereading, setRereading] = useState(resume !== null && resume.state.booking !== null);
+  useEffect(() => {
+    if (!rereading || userId === null) return;
+    const held = state.booking;
+    if (held === null) {
+      setRereading(false);
+      return;
+    }
+    const read =
+      state.kind === "plan"
+        ? venueOfferCheckoutService.membershipGet(held.id).then((raw) => {
+            const isRec = raw !== null && typeof raw === "object";
+            const status = isRec && typeof (raw as { status?: unknown }).status === "string" ? (raw as { status: string }).status : null;
+            if (!mounted.current) return;
+            setPlanDue(planDueFrom(raw));
+            send({ type: "resumed", booking: isRec ? planRefFrom({ subscriptionId: held.id, status, raw }) : null, now: Date.now() });
+          })
+        : venueOfferCheckoutService.get(held.id).then((raw) => {
+            send({ type: "resumed", booking: bookingRefFrom(raw), now: Date.now() });
+          });
+    void read
+      .catch((e) => {
+        // Not found with the new session: the hold is gone. Anything else: Pay decides (the server checks the hold).
+        if (e instanceof VenuePurchaseError && (e.code === "offer_booking_not_found" || e.code === "membership_not_found")) {
+          send({ type: "resumed", booking: null, now: Date.now() });
+        }
+      })
+      .finally(() => {
+        if (mounted.current) setRereading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rereading, userId]);
   const lastRaw = useRef<unknown>(null);
 
   const stepFailed = useCallback(
@@ -323,7 +395,8 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
       .membershipJoin({ planId: planChoice.planId, member: guestBody(guest), startOn: planChoice.startOn, cartKey: state.cartKey, idempotencyKey: key })
       .then((joined) => {
         const requested = plan.joinMode === "request" || joined.status === "requested";
-        send({ type: "join_ok", booking: planRefFrom(joined, plan.priceMinor), mode: requested ? "request" : "instant" });
+        setPlanDue(planDueFrom(joined.raw));
+        send({ type: "join_ok", booking: planRefFrom(joined), mode: requested ? "request" : "instant" });
       })
       .catch((e) => stepFailed("join", e));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -476,6 +549,37 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
     }
     onClose();
   }, [busy, onClose, open.kind, open.venueId, state.phase]);
+  // #4490 06-W4 fix 1 (W4-N4; spec 06 §13 item 5): "Sign in again" keeps this
+  // checkout in memory for the account whose session ended and goes to
+  // sign-in; signing in again as that account brings the guest back here.
+  const signInAgain = (): void => {
+    const accountId = lastUserId.current;
+    if (accountId !== null) {
+      holdVenueCheckout({
+        accountId,
+        route: venueCheckoutRouteFor(open),
+        homeKey: venueCheckoutHomeKey(open),
+        open,
+        state,
+        choice: report.choice,
+        review,
+        planDue,
+        guest,
+      });
+    }
+    onClose();
+    try {
+      const r = router as unknown as { canGoBack?: () => boolean; dismissAll?: () => void; replace?: (p: string) => void };
+      if (typeof r.canGoBack === "function" && r.canGoBack() && typeof r.dismissAll === "function") r.dismissAll();
+      else if (typeof r.replace === "function") r.replace("/");
+    } catch {
+      // The welcome screen is the app root: closing the sheet already reveals it.
+    }
+  };
+  const closeSignedOut = (): void => {
+    dropVenueCheckout();
+    onClose();
+  };
   const seeInPurchases = useCallback(() => {
     onClose();
     router.push("/purchases" as never);
@@ -512,7 +616,8 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
         : checkoutTitle(open.kind, venueName);
   const progress = venueCheckoutProgress(state);
   // Step 1 stays on screen while it is being priced or joined, for a plan
-  // (no Review step: plan → Join → pay), and for a hire request (Send request
+  // until it is joined (then Review shows the server's amount due before the
+  // payment page: 06-W4 fix 1, W4-N2), and for a hire request (Send request
   // holds straight from step 1).
   const hireRequest = open.kind === "private_hire" && (review === null || review.mode === "request");
   const onChooseStep =
@@ -520,7 +625,7 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
     (state.phase === "choosing" ||
       state.phase === "quoting" ||
       state.phase === "joining" ||
-      open.kind === "plan" ||
+      (open.kind === "plan" && state.booking === null) ||
       (hireRequest && (state.phase === "holding" || state.phase === "error" || state.phase === "review")) ||
       (state.phase === "error" && state.failedStep === "quote"));
 
@@ -572,10 +677,21 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
 
   const chooseBody = (): React.ReactElement => {
     if (open.from !== "venue") return <View />;
+    // #4490 06-W4 fix 1 (W4-N4): the picks kept across a sign-in seed step 1.
+    const kept = resume?.choice ?? null;
     const venue = { lat: open.lat, lng: open.lng, category: open.category };
     let picker: React.ReactElement | null = null;
     if (open.kind === "plan") {
-      picker = <PlanChoose plans={open.plans ?? []} initialPlanId={open.offerId} today={today} money={money} onReport={onReport} />;
+      picker = (
+        <PlanChoose
+          plans={open.plans ?? []}
+          initialPlanId={kept?.kind === "plan" ? kept.planId : open.offerId}
+          initialStartOn={kept?.kind === "plan" ? kept.startOn : null}
+          today={today}
+          money={money}
+          onReport={onReport}
+        />
+      );
     } else if (offerQuery.isLoading) {
       picker = <ActivityIndicator color={C.accent} style={styles.loading} testID="venue-checkout-offer-loading" />;
     } else if (detail === null) {
@@ -586,13 +702,13 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
         </View>
       );
     } else if (parsed?.kind === "group_package") {
-      picker = <GroupChoose offer={parsed.offer} today={today} money={money} venue={venue} onReport={onReport} />;
+      picker = <GroupChoose offer={parsed.offer} today={today} money={money} venue={venue} onReport={onReport} initial={kept?.kind === "group_package" ? kept : null} />;
     } else if (parsed?.kind === "private_hire") {
-      picker = <HireChoose offer={parsed.offer} today={today} money={money} onReport={onReport} />;
+      picker = <HireChoose offer={parsed.offer} today={today} money={money} onReport={onReport} initial={kept?.kind === "private_hire" ? kept : null} />;
     } else if (parsed?.kind === "entry_like" && open.kind === "by_the_hour") {
-      picker = <HourChoose offer={parsed.offer} today={today} venue={venue} onReport={onReport} />;
+      picker = <HourChoose offer={parsed.offer} today={today} venue={venue} onReport={onReport} initial={kept?.kind === "by_the_hour" ? kept : null} />;
     } else if (parsed?.kind === "entry_like" && open.kind === "entry") {
-      picker = <EntryChoose offer={parsed.offer} today={today} money={money} venue={venue} onReport={onReport} />;
+      picker = <EntryChoose offer={parsed.offer} today={today} money={money} venue={venue} onReport={onReport} initial={kept?.kind === "entry" ? kept : null} />;
     }
     return (
       <View>
@@ -613,7 +729,12 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
 
   const reviewBody = (): React.ReactElement => {
     const loading = state.phase === "quoting";
-    const rows = review !== null ? reviewRows(review, open.exponent) : [];
+    const rows =
+      review !== null
+        ? reviewRows(review, open.exponent)
+        : open.kind === "plan" && planDue !== null && plan !== null
+          ? planReviewRows(planDue, plan.name, open.currencyCode, open.exponent)
+          : [];
     const fromPurchases = open.from === "purchases" ? open : null;
     return (
       <View testID="venue-checkout-review">
@@ -672,7 +793,7 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
         {state.booking !== null && state.booking.holdUntil !== null && state.openedAt === "choose" ? (
           <Text style={styles.caption}>{holdUntilText(state.booking.holdUntil, open.timezone)}</Text>
         ) : null}
-        {state.openedAt === "choose" && open.kind !== "private_hire" ? (
+        {state.openedAt === "choose" && open.kind !== "private_hire" && open.kind !== "plan" ? (
           <>
             <Label>Your details</Label>
             <GuestFields guest={guest} onChange={setGuest} problem={guestTouched ? guestProblem : null} />
@@ -684,7 +805,17 @@ function CheckoutSession({ open, onClose }: { open: VenueCheckoutOpen; onClose: 
   };
 
   const footer = (): React.ReactElement => {
-    if (userId === null) return <PrimaryButton label="Close" onPress={onClose} testID="venue-checkout-close" />;
+    if (userId === null) {
+      return lastUserId.current === null ? (
+        <PrimaryButton label="Close" onPress={onClose} testID="venue-checkout-close" />
+      ) : (
+        <View style={styles.footerRow}>
+          <SecondaryButton label="Close" onPress={closeSignedOut} testID="venue-checkout-close" />
+          <PrimaryButton label="Sign in again" onPress={signInAgain} testID="venue-checkout-sign-in" />
+        </View>
+      );
+    }
+    if (rereading) return <PrimaryButton label="Waiting" onPress={() => undefined} busy testID="venue-checkout-busy" />;
     switch (state.phase) {
       case "booked":
       case "requested":

@@ -207,6 +207,9 @@ module.exports = {
     "**/__tests__/issue_4490_w4_checkout_service.implementor.test.ts",
     "**/__tests__/issue_4490_w4_checkout_sheet.implementor.render.test.tsx",
     "**/__tests__/issue_4490_w4_purchases_pay.implementor.test.ts",
+    // #4490 06-W4 fix 1: option rows priced by the server for the chosen day, the plan Review, sign in again mid-checkout.
+    "**/__tests__/issue_4490_w4_fix1.implementor.render.test.tsx",
+    "**/__tests__/issue_4490_w4_fix1.implementor.test.ts",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.

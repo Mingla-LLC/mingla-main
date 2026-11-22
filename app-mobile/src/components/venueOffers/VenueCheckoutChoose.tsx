@@ -13,10 +13,15 @@
  *   By the hour   day [hour_day] → start chips → length chips
  *   Plan          plan → start date
  *
- * Every option, place and "left" number is the server's. Prices next to an
- * option are the server's list prices, labelled per unit; the total is ONLY
- * the quote (Review). Each body reports its choice (or null) and the first
- * thing still missing, in words, to the sheet.
+ * Every option, place and "left" number is the server's. #4490 06-W4 fix 1
+ * (W4-N1): a price next to an option is the server's price for the chosen
+ * day and session (each option's own `availability` read: the quote's
+ * resolver `issue_4490_option_price_at`, busy-time rules applied), never the
+ * list price; before a day is chosen, or while those prices load, a row shows
+ * no amount. Hire rows are `hire_options` for the chosen session; extras are
+ * the offer's own fixed amounts (the quote charges exactly those). The total
+ * is ONLY the quote (Review). Each body reports its choice (or null) and the
+ * first thing still missing, in words, to the sheet.
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -30,6 +35,7 @@ import {
   entryOptionName,
   entryOptionRows,
   entrySelectionProblem,
+  optionUnavailableLine,
   entrySessionsFor,
   parseEntryDayRows,
   pickEntrySession,
@@ -38,7 +44,9 @@ import {
   venueClock,
   venueToday,
   type EntryCounts,
+  type EntryDayRow,
   type EntryOfferDetail,
+  type EntryOptionRow,
 } from "@mingla/brand-rendering/venueOffers/entryModel";
 import {
   answersPayload,
@@ -77,6 +85,9 @@ export const venueOfferCheckoutKeys = {
   all: ["venueOfferCheckout"] as const,
   offer: (offeringId: string) => [...venueOfferCheckoutKeys.all, "offer", offeringId] as const,
   days: (offeringId: string, from: string, to: string) => [...venueOfferCheckoutKeys.all, "days", offeringId, from, to] as const,
+  /** #4490 06-W4 fix 1: each price option's own days (its price per window). */
+  optionDays: (offeringId: string, from: string, to: string, optionIds: string) =>
+    [...venueOfferCheckoutKeys.all, "optionDays", offeringId, from, to, optionIds] as const,
   hirePlaces: (offeringId: string, windowId: string, guests: number) =>
     [...venueOfferCheckoutKeys.all, "hirePlaces", offeringId, windowId, guests] as const,
   hourDay: (offeringId: string, date: string) => [...venueOfferCheckoutKeys.all, "hourDay", offeringId, date] as const,
@@ -303,6 +314,46 @@ function useDays(offeringId: string, from: string): {
   return { raw: q.data ?? null, loading: q.isLoading, error: q.error, retry: () => void q.refetch() };
 }
 
+/**
+ * #4490 06-W4 fix 1 (W4-N1) — each price option's own days, as buyer web reads
+ * them (`useEntrySelection`): one `availability` read per option, whose rows
+ * carry that option's price for each window (busy-time rules applied by the
+ * server, the same resolver the quote charges with).
+ */
+function useOptionDays(
+  offeringId: string,
+  from: string,
+  optionIds: readonly string[],
+): { byOption: ReadonlyMap<string, readonly EntryDayRow[]>; loading: boolean; error: unknown; retry: () => void } {
+  const to = addDays(from, CHECKOUT_DAYS - 1);
+  const ids = optionIds.join(",");
+  const q = useQuery({
+    queryKey: venueOfferCheckoutKeys.optionDays(offeringId, from, to, ids),
+    queryFn: async (): Promise<[string, EntryDayRow[]][]> =>
+      Promise.all(
+        optionIds.map(async (id): Promise<[string, EntryDayRow[]]> => [
+          id,
+          parseEntryDayRows(await venueOfferCheckoutService.availability({ offeringId, from, to, priceOptionId: id })),
+        ]),
+      ),
+    enabled: optionIds.length > 0,
+    staleTime: 30_000,
+    retry: readRetry,
+  });
+  const byOption = useMemo(() => new Map<string, readonly EntryDayRow[]>(q.data ?? []), [q.data]);
+  return { byOption, loading: q.isLoading && optionIds.length > 0, error: q.error, retry: () => void q.refetch() };
+}
+
+/** The server's price of one option for one window; null while unknown (no amount is shown). */
+export function optionPriceAt(
+  byOption: ReadonlyMap<string, readonly EntryDayRow[]>,
+  optionId: string,
+  windowId: string | null,
+): number | null {
+  if (windowId === null) return null;
+  return byOption.get(optionId)?.find((r) => r.windowId === windowId)?.priceMinor ?? null;
+}
+
 const dayChipTitle = (date: string, today: string): string => (date === today ? "Today" : entryDateLabel(date).split(" ")[0]);
 const dayChipNote = (date: string): string => entryDateLabel(date).split(" ").slice(1).join(" ");
 
@@ -314,20 +365,25 @@ export function EntryChoose({
   money,
   venue,
   onReport,
+  initial = null,
 }: {
   offer: EntryOfferDetail;
   today: string;
   money: (minor: number) => string;
   venue: WhenLineVenue;
   onReport: (r: ChooseReport) => void;
+  /** #4490 06-W4 fix 1 (W4-N4): the picks kept across a sign-in. */
+  initial?: Extract<VenueCheckoutChoice, { kind: "entry" }> | null;
 }): React.ReactElement {
   const tz = offer.venue.timezone;
   const days = useDays(offer.id, today);
   const rows = useMemo(() => parseEntryDayRows(days.raw), [days.raw]);
   const tiles = useMemo(() => entryDayTiles(rows, today, CHECKOUT_DAYS), [rows, today]);
-  const [date, setDate] = useState<string | null>(null);
-  const [windowId, setWindowId] = useState<string | null>(null);
-  const [counts, setCounts] = useState<EntryCounts>({});
+  const [date, setDate] = useState<string | null>(initial?.day ?? null);
+  const [windowId, setWindowId] = useState<string | null>(initial?.windowId ?? null);
+  const [counts, setCounts] = useState<EntryCounts>(() =>
+    Object.fromEntries((initial?.lines ?? []).map((l) => [l.priceOptionId, l.guests])),
+  );
   useEffect(() => {
     if (date === null && tiles.length > 0) setDate(tiles.find((t) => t.soldOnline)?.date ?? null);
   }, [date, tiles]);
@@ -335,11 +391,16 @@ export function EntryChoose({
   const timed = offer.entryStyle === "timed_session";
   const sessions = useMemo(() => (timed ? entrySessionsFor(rows, date, tz) : []), [date, rows, timed, tz]);
   const session = timed ? pickEntrySession(sessions, windowId) : null;
-  const optionRows = useMemo(() => entryOptionRows(offer.options, date, new Map()), [date, offer.options]);
-  const lines = quoteLinesFor(optionRows, counts);
   const chosenWindow = timed ? session?.windowId ?? null : tile?.row?.windowId ?? null;
+  const optionIds = useMemo(() => offer.options.map((o) => o.id), [offer.options]);
+  const prices = useOptionDays(offer.id, today, optionIds);
+  const optionRows = useMemo(
+    () => entryOptionRows(offer.options, date, prices.byOption, chosenWindow),
+    [chosenWindow, date, offer.options, prices.byOption],
+  );
+  const lines = quoteLinesFor(optionRows, counts);
   const problem =
-    days.loading
+    days.loading || prices.loading
       ? "Checking what's left…"
       : timed && tile !== null && tile.soldOnline && session === null
         ? "Choose a time."
@@ -401,13 +462,16 @@ export function EntryChoose({
         <VenueCheckoutWhenLine lat={venue.lat} lng={venue.lng} category={venue.category} day={date} time={time} />
       ) : null}
       <Label>Tickets</Label>
+      <ReadState loading={false} error={prices.error} onRetry={prices.retry} testID="venue-checkout-option-prices" />
       {optionRows.map((row) => (
         <View key={row.option.id} style={[styles.item, !row.usable && styles.chipOff]} testID={`venue-checkout-option-${row.option.id}`}>
           <View style={styles.itemText}>
             <Text style={styles.itemName}>{entryOptionName(row.option)}</Text>
-            <Text style={styles.itemLine}>
-              {row.usable ? `${money(row.priceMinor)} each` : row.rule ?? "Not available that day"}
-            </Text>
+            {entryRowLine(row, date, money) !== null ? (
+              <Text style={styles.itemLine} testID={`venue-checkout-option-price-${row.option.id}`}>
+                {entryRowLine(row, date, money)}
+              </Text>
+            ) : null}
           </View>
           <Stepper
             value={counts[row.option.id] ?? 0}
@@ -426,6 +490,21 @@ export function EntryChoose({
   );
 }
 
+/**
+ * An entry option row's line: the server's price for the chosen day and
+ * session ("₦6,000 each"); the server's reason when it is not sold that day;
+ * nothing while the day's price is not known yet (never the list price).
+ */
+export function entryRowLine(
+  row: EntryOptionRow,
+  date: string | null,
+  money: (minor: number) => string,
+): string | null {
+  if (!row.usable) return date !== null ? optionUnavailableLine(row, date) : row.rule;
+  if (!row.dayPriced) return row.rule;
+  return [`${money(row.priceMinor)} each`, row.rule].filter(Boolean).join(" · ");
+}
+
 // ─── Group package ────────────────────────────────────────────────────────
 
 export function GroupChoose({
@@ -434,24 +513,36 @@ export function GroupChoose({
   money,
   venue,
   onReport,
+  initial = null,
 }: {
   offer: PackageOfferDetail;
   today: string;
   money: (minor: number) => string;
   venue: WhenLineVenue;
   onReport: (r: ChooseReport) => void;
+  /** #4490 06-W4 fix 1 (W4-N4): the picks kept across a sign-in. */
+  initial?: Extract<VenueCheckoutChoice, { kind: "group_package" }> | null;
 }): React.ReactElement {
   const tz = offer.venue.timezone;
   const days = useDays(offer.id, today);
   const rows = useMemo(() => parseEntryDayRows(days.raw), [days.raw]);
   const tiles = useMemo(() => packageDayTiles(rows, today, CHECKOUT_DAYS), [rows, today]);
-  const [optionId, setOptionId] = useState<string | null>(offer.options[0]?.id ?? null);
+  const [optionId, setOptionId] = useState<string | null>(initial?.priceOptionId ?? offer.options[0]?.id ?? null);
   const option = offer.options.find((o) => o.id === optionId) ?? null;
-  const [guests, setGuests] = useState<number>(offer.options[0]?.guestMin ?? 1);
-  const [date, setDate] = useState<string | null>(null);
-  const [windowId, setWindowId] = useState<string | null>(null);
-  const [extras, setExtras] = useState<readonly string[]>([]);
-  const [answers, setAnswers] = useState<Record<number, number>>({});
+  const [guests, setGuests] = useState<number>(initial?.guests ?? offer.options[0]?.guestMin ?? 1);
+  const [date, setDate] = useState<string | null>(initial?.day ?? null);
+  const [windowId, setWindowId] = useState<string | null>(initial?.windowId ?? null);
+  const [extras, setExtras] = useState<readonly string[]>(initial?.extraIds ?? []);
+  const [answers, setAnswers] = useState<Record<number, number>>(() => {
+    const kept: Record<number, number> = {};
+    offer.inclusions
+      .filter((i) => i.kind === "choice")
+      .forEach((c, i) => {
+        const j = initial !== null ? c.options.indexOf(initial.answers[c.label] ?? "") : -1;
+        if (j >= 0) kept[i] = j;
+      });
+    return kept;
+  });
   useEffect(() => {
     if (date === null && tiles.length > 0) setDate(tiles.find((t) => t.soldOnline)?.date ?? null);
   }, [date, tiles]);
@@ -462,7 +553,10 @@ export function GroupChoose({
   const starts = useMemo(() => startChipsFor(rows, date, guests, tz), [date, guests, rows, tz]);
   const start = starts.find((s) => s.windowId === windowId && s.usable) ?? starts.find((s) => s.usable) ?? null;
   const missing = missingAnswer(offer, answers);
-  const problem = days.loading
+  const optionIds = useMemo(() => offer.options.map((o) => o.id), [offer.options]);
+  const prices = useOptionDays(offer.id, today, optionIds);
+  const startWindow = start?.windowId ?? null;
+  const problem = days.loading || prices.loading
     ? "Checking what's left…"
     : option === null
       ? "Choose a package."
@@ -501,11 +595,12 @@ export function GroupChoose({
   return (
     <View testID="venue-checkout-choose-group">
       <Label>Package</Label>
+      <ReadState loading={false} error={prices.error} onRetry={prices.retry} testID="venue-checkout-option-prices" />
       {offer.options.map((o) => (
         <RadioRow
           key={o.id}
           title={o.name}
-          line={`${money(o.priceMinor)} ${o.unit === "booking" ? "for the group" : "a guest"} · ${o.guestMin} to ${o.guestMax} guests`}
+          line={packageRowLine(o, optionPriceAt(prices.byOption, o.id, startWindow), money)}
           selected={o.id === optionId}
           onPress={() => setOptionId(o.id)}
           testID={`venue-checkout-package-${o.id}`}
@@ -563,7 +658,7 @@ export function GroupChoose({
         <Toggle
           key={x.id}
           title={x.name}
-          line={`${money(x.priceMinor)}${x.per === "guest" ? " a guest" : ""}`}
+          line={extraRowLine(x, money)}
           on={extras.includes(x.id)}
           onPress={() => setExtras(extras.includes(x.id) ? extras.filter((id) => id !== x.id) : [...extras, x.id])}
           testID={`venue-checkout-extra-${x.id}`}
@@ -589,6 +684,34 @@ export function GroupChoose({
   );
 }
 
+/**
+ * A package row: the server's price for the chosen start ("₦10,000 a guest ·
+ * 10 to 20 guests"), or only the guest range while no start is chosen or its
+ * price is loading (never the list price).
+ */
+export function packageRowLine(
+  o: { unit?: "guest" | "booking"; guestMin: number; guestMax: number },
+  priceMinor: number | null,
+  money: (minor: number) => string,
+): string {
+  const range = `${o.guestMin} to ${o.guestMax} guests`;
+  return priceMinor === null ? range : `${money(priceMinor)} ${o.unit === "booking" ? "for the group" : "a guest"} · ${range}`;
+}
+
+/** An extra's line, in the buyer-web words (`ExtrasList`): its fixed amount per booking or per guest. */
+export const extraRowLine = (x: { priceMinor: number; per: string }, money: (minor: number) => string): string =>
+  `${money(x.priceMinor)} ${x.per === "guest" ? "a guest" : "a booking"}`;
+
+/** A hire place's line, in the buyer-web words (`HireForm`): its `hire_options` price for the chosen session, per its unit. */
+export function hirePlaceLine(
+  p: { unit?: string | null; priceMinor: number },
+  fits: string,
+  money: (minor: number) => string,
+): string {
+  const price = p.unit === "guest" ? `${money(p.priceMinor)} a guest` : p.unit === "hour" ? `${money(p.priceMinor)} an hour` : money(p.priceMinor);
+  return `${fits} · ${price}`;
+}
+
 // ─── Private hire ─────────────────────────────────────────────────────────
 
 export function HireChoose({
@@ -596,25 +719,30 @@ export function HireChoose({
   today,
   money,
   onReport,
+  initial = null,
 }: {
   offer: HireOfferDetail;
   today: string;
   money: (minor: number) => string;
   onReport: (r: ChooseReport) => void;
+  /** #4490 06-W4 fix 1 (W4-N4): the picks kept across a sign-in. */
+  initial?: Extract<VenueCheckoutChoice, { kind: "private_hire" }> | null;
 }): React.ReactElement {
   const tz = offer.venue.timezone;
   const days = useDays(offer.id, today);
   const rows = useMemo(() => parseHireDayRows(days.raw), [days.raw]);
   const tiles = useMemo(() => hireDayTiles(rows, today, CHECKOUT_DAYS), [rows, today]);
   const range = useMemo(() => hireGuestRange(offer), [offer]);
-  const [date, setDate] = useState<string | null>(null);
-  const [windowId, setWindowId] = useState<string | null>(null);
-  const [guests, setGuests] = useState<number>(range.min);
-  const [placeId, setPlaceId] = useState<string | null>(null);
-  const [layout, setLayout] = useState<VenueLayout | null>(null);
-  const [extras, setExtras] = useState<readonly string[]>([]);
-  const [occasion, setOccasion] = useState<string | null>(null);
-  const [note, setNote] = useState("");
+  const [date, setDate] = useState<string | null>(initial?.day ?? null);
+  const [windowId, setWindowId] = useState<string | null>(initial?.windowId ?? null);
+  const [guests, setGuests] = useState<number>(initial?.guests ?? range.min);
+  const [placeId, setPlaceId] = useState<string | null>(initial?.priceOptionId ?? null);
+  const [layout, setLayout] = useState<VenueLayout | null>((initial?.layout as VenueLayout | null | undefined) ?? null);
+  const [extras, setExtras] = useState<readonly string[]>(initial?.extraIds ?? []);
+  const [occasion, setOccasion] = useState<string | null>(
+    typeof initial?.answers.occasion === "string" ? initial.answers.occasion : null,
+  );
+  const [note, setNote] = useState(typeof initial?.answers.note === "string" ? initial.answers.note : "");
   useEffect(() => {
     if (date === null && tiles.length > 0) setDate(tiles.find((t) => t.state === "free")?.date ?? null);
   }, [date, tiles]);
@@ -635,9 +763,11 @@ export function HireChoose({
     [offer.layouts, row],
   );
   useEffect(() => {
+    // The spaces are still loading: keep a layout kept across a sign-in until they are known.
+    if (places.isLoading) return;
     if (layout !== null && layouts.includes(layout)) return;
     setLayout(layouts.length === 1 ? layouts[0] : null);
-  }, [layout, layouts]);
+  }, [layout, layouts, places.isLoading]);
   const answers = useMemo((): Record<string, string | boolean> => {
     const out: Record<string, string | boolean> = {};
     if (occasion !== null) out.occasion = occasion;
@@ -733,7 +863,7 @@ export function HireChoose({
               title={p.placeName}
               line={
                 p.status === "available"
-                  ? `${placeFitsLine(p)} · from ${money(p.priceMinor)}`
+                  ? hirePlaceLine(p, placeFitsLine(p), money)
                   : p.status === "held"
                     ? "On hold"
                     : "Taken"
@@ -769,7 +899,7 @@ export function HireChoose({
         <Toggle
           key={x.id}
           title={x.name}
-          line={`${money(x.priceMinor)}${x.per === "guest" ? " a guest" : ""}`}
+          line={extraRowLine(x, money)}
           on={extras.includes(x.id)}
           onPress={() => setExtras(extras.includes(x.id) ? extras.filter((id) => id !== x.id) : [...extras, x.id])}
           testID={`venue-checkout-extra-${x.id}`}
@@ -803,21 +933,24 @@ export function HourChoose({
   today,
   venue,
   onReport,
+  initial = null,
 }: {
   offer: EntryOfferDetail;
   today: string;
   venue: WhenLineVenue;
   onReport: (r: ChooseReport) => void;
+  /** #4490 06-W4 fix 1 (W4-N4): the picks kept across a sign-in. */
+  initial?: Extract<VenueCheckoutChoice, { kind: "by_the_hour" }> | null;
 }): React.ReactElement {
   const tz = offer.venue.timezone;
   const dates = useMemo(() => Array.from({ length: CHECKOUT_DAYS }, (_, i) => addDays(today, i)), [today]);
-  const [date, setDate] = useState<string>(today);
-  const [startsAt, setStartsAt] = useState<string | null>(null);
-  const [minutes, setMinutes] = useState<number | null>(null);
+  const [date, setDate] = useState<string>(initial?.day ?? today);
+  const [startsAt, setStartsAt] = useState<string | null>(initial?.startsAt ?? null);
+  const [minutes, setMinutes] = useState<number | null>(initial?.minutes ?? null);
   const priceOption = offer.options[0] ?? null;
   const guestMin = priceOption?.guestMin ?? 1;
   const guestMax = priceOption?.guestMax ?? guestMin;
-  const [guests, setGuests] = useState<number>(guestMin);
+  const [guests, setGuests] = useState<number>(initial?.guests ?? guestMin);
   const dayQuery = useQuery({
     queryKey: venueOfferCheckoutKeys.hourDay(offer.id, date),
     queryFn: () => venueOfferCheckoutService.hourDay({ offeringId: offer.id, date, guests: null }),
@@ -926,18 +1059,21 @@ export function HourChoose({
 export function PlanChoose({
   plans,
   initialPlanId,
+  initialStartOn = null,
   today,
   money,
   onReport,
 }: {
   plans: readonly VenueFeaturePlanView[];
   initialPlanId: string | null;
+  /** #4490 06-W4 fix 1 (W4-N4): the start day kept across a sign-in. */
+  initialStartOn?: string | null;
   today: string;
   money: (minor: number) => string;
   onReport: (r: ChooseReport) => void;
 }): React.ReactElement {
   const [planId, setPlanId] = useState<string | null>(initialPlanId ?? plans.find((p) => !p.full)?.id ?? null);
-  const [startOn, setStartOn] = useState<string>(today);
+  const [startOn, setStartOn] = useState<string>(initialStartOn ?? today);
   const plan = plans.find((p) => p.id === planId) ?? null;
   const dates = useMemo(() => Array.from({ length: CHECKOUT_DAYS }, (_, i) => addDays(today, i)), [today]);
   const problem = plan === null ? "Choose a plan." : plan.full ? "This plan is full right now." : null;

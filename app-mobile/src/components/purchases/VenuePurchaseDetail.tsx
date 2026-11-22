@@ -10,7 +10,7 @@
  * Loading, error with Retry, and every state of each kind render; a failed
  * live read keeps the booking on screen with its own Retry.
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import QRCode from "react-native-qrcode-svg";
@@ -53,6 +53,7 @@ import { DoorModeModal } from "./DoorModeModal";
 import { PURCHASE_SHEET_COLORS as C } from "./purchaseSheetTheme";
 import { VenueOnTheDay } from "./VenueOnTheDay";
 import { VenueOfferCheckoutSheet, type VenueCheckoutOpen } from "../venueOffers/VenueOfferCheckoutSheet";
+import { takeVenueCheckout, type VenueCheckoutSnapshot } from "../venueOffers/venueCheckoutResume";
 import { venueMoneyText } from "../venueOffers/venueMoneyText";
 import {
   isOpenWaitlistPlace,
@@ -219,6 +220,15 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
   // #4490 W4: "Pay to hold your date" / "Pay the rest" open the native
   // checkout sheet straight at Pay (the server's amounts only).
   const [checkout, setCheckout] = useState<VenueCheckoutOpen | null>(null);
+  // #4490 06-W4 fix 1 (W4-N4): back after signing in again as the same
+  // account: reopen the Pay sheet this booking had open when the session ended.
+  const [resume, setResume] = useState<VenueCheckoutSnapshot | null>(null);
+  useEffect(() => {
+    const kept = takeVenueCheckout(userId, `pay:${booking.groupId}`);
+    if (kept === null) return;
+    setResume(kept);
+    setCheckout(kept.open);
+  }, [booking.groupId, userId]);
   const checkoutKind = (["entry", "group_package", "private_hire", "by_the_hour"] as const).find((k) => k === booking.offerKind) ?? "entry";
   const openPay = (): void => {
     if (payAction === null) return;
@@ -401,7 +411,9 @@ function BookingBody({ item, userId, openDoor }: { item: PurchaseTimelineItem; u
       ) : null}
       <VenueOfferCheckoutSheet
         open={checkout}
+        resume={resume}
         onClose={() => {
+          setResume(null);
           setCheckout(null);
           void refresh();
         }}

@@ -8,6 +8,7 @@
  */
 import { parseEntryQuote, summaryLines, type EntryQuote, type SummaryLine } from "@mingla/brand-rendering/venueOffers/entryModel";
 import { parsePayPlan } from "@mingla/brand-rendering/venueOffers/packageModel";
+import { parsePlanCharge, type VenuePlanCharge } from "@mingla/brand-rendering/venueFeaturePage";
 
 import type {
   VenueCheckoutBookingRef,
@@ -215,13 +216,41 @@ export function bookingRefFrom(raw: unknown): VenueCheckoutBookingRef | null {
   };
 }
 
-/** A `membership_join` answer → a booking ref for the plan (the plan's own server price). */
-export function planRefFrom(
-  join: { subscriptionId: string; status: string | null; raw: unknown },
-  planPriceMinor: number,
-): VenueCheckoutBookingRef {
+/**
+ * #4490 06-W4 fix 1 (W4-N2): the plan's first payment as the server charges
+ * it (`paymentDue`: base, VAT, total), from a `membership_join` or
+ * `membership_get` answer. Null when nothing is due (a request not yet
+ * approved). Never the plan's list price.
+ */
+export function planDueFrom(raw: unknown): VenuePlanCharge | null {
+  return isObject(raw) ? parsePlanCharge(raw.paymentDue) : null;
+}
+
+/** The plan's Review rows: the shared summary of the server's charge ("1 × Hot desk", "VAT 7.5%", "Total"). */
+export function planReviewRows(due: VenuePlanCharge, planName: string, currencyCode: string, exponent: number): SummaryLine[] {
+  return summaryLines(
+    [{ name: planName, guests: 1, baseMinor: due.baseMinor, totalMinor: due.baseMinor }],
+    {
+      currencyCode,
+      exponent,
+      taxMinor: due.taxMinor,
+      feeMinor: due.feeMinor,
+      totalMinor: due.totalMinor,
+      vatMode: due.vatMode,
+      vatRatePct: due.vatRatePct,
+    },
+  );
+}
+
+/**
+ * A `membership_join` answer → a booking ref for the plan. #4490 06-W4 fix 1
+ * (W4-N2): the amount is the server's amount due (`paymentDue.amountMinor`,
+ * VAT included), never the plan's list price; 0 when nothing is due yet.
+ */
+export function planRefFrom(join: { subscriptionId: string; status: string | null; raw: unknown }): VenueCheckoutBookingRef {
   const raw = isObject(join.raw) ? join.raw : {};
-  const due = typeof raw.amountMinor === "number" ? raw.amountMinor : planPriceMinor;
+  const dueRaw = isObject(raw.paymentDue) ? raw.paymentDue : null;
+  const due = dueRaw !== null && typeof dueRaw.amountMinor === "number" && Number.isSafeInteger(dueRaw.amountMinor) ? dueRaw.amountMinor : 0;
   return {
     id: join.subscriptionId,
     version: 1,

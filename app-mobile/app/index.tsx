@@ -740,6 +740,22 @@ function AppContent() {
     })();
   }, [isAuthenticated, user?.id, user?.email]);
 
+  // #4490 06-W4 fix 1 (W4-N4; spec 06 §13 item 5): a session that ended in the
+  // middle of a venue checkout kept that checkout in memory. Signed in again
+  // as the SAME account: back to the same venue tab (or Purchases booking),
+  // where the sheet reopens on the same offer and step with the picks kept.
+  // Another account: it is dropped, unseen. Never stored on the device.
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+    void (async () => {
+      const { venueCheckoutRouteAfterSignIn } = await import(
+        "../src/components/venueOffers/venueCheckoutResume"
+      );
+      const back = venueCheckoutRouteAfterSignIn(user.id);
+      if (back !== null) router.push(back as never);
+    })();
+  }, [isAuthenticated, user?.id]);
+
   /**
    * #3524 — WHOSE ACCOUNT THE SHEET IS ABOUT TO USE.
    *

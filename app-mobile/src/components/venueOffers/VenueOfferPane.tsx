@@ -26,6 +26,8 @@ import { captureVenueTappedToBook } from "./venueBookAnalytics";
 import { venueMoneyText } from "./venueMoneyText";
 import { openVenueOfferCheckout } from "./venueOfferCheckoutSeam";
 import { VenueOfferCheckoutSheet, type VenueCheckoutOpen } from "./VenueOfferCheckoutSheet";
+import { takeVenueCheckoutForSignedIn, type VenueCheckoutSnapshot } from "./venueCheckoutResume";
+import type { VenueCheckoutKind } from "../../payments/venueOfferCheckoutFlow";
 import {
   offerPaneRows,
   paneAvailabilityWindow,
@@ -38,6 +40,15 @@ import {
   type VenuePaneRow,
 } from "./venuePaneModel";
 import { useVenueOfferAvailability } from "./useVenueOfferAvailability";
+
+/** The checkout each pane opens (the seam's tab rule, by pane). */
+const PANE_CHECKOUT_KIND: Record<VenuePaneKind, VenueCheckoutKind> = {
+  entry: "entry",
+  groups: "group_package",
+  hire: "private_hire",
+  by_the_hour: "by_the_hour",
+  plans: "plan",
+};
 
 const PANE_TAB: Record<VenuePaneKind, PublicVenueTab> = {
   entry: "entry",
@@ -85,6 +96,16 @@ export function VenueOfferPane({
   const crowdCategory = crowdCategoryFor(deckCategory, venueCategory);
   // #4490 W4: the native checkout sheet for the tapped offer (one per pane).
   const [checkout, setCheckout] = useState<VenueCheckoutOpen | null>(null);
+  // #4490 06-W4 fix 1 (W4-N4): signed in again as the same account after the
+  // session ended mid-checkout: reopen that checkout here, on the same offer
+  // and step with the picks kept (taken once, from memory only).
+  const [resume, setResume] = useState<VenueCheckoutSnapshot | null>(null);
+  useEffect(() => {
+    const kept = takeVenueCheckoutForSignedIn(`venue:${brandSlug}:${venueSlug}:${PANE_CHECKOUT_KIND[kind]}`);
+    if (kept === null) return;
+    setResume(kept);
+    setCheckout(kept.open);
+  }, [brandSlug, kind, venueSlug]);
   const currency = useMemo(
     () => ({ code: context.currencyCode, exponent: context.exponent }),
     [context.currencyCode, context.exponent],
@@ -179,7 +200,13 @@ export function VenueOfferPane({
   }
   return (
     <View style={styles.pane} testID={`venue-pane-${kind}`}>
-      <VenueOfferCheckoutSheet open={checkout} onClose={() => setCheckout(null)} />
+      <VenueOfferCheckoutSheet open={checkout}
+        resume={resume}
+        onClose={() => {
+          setResume(null);
+          setCheckout(null);
+        }}
+      />
       {status === "error" || status === "offline" ? (
         <View style={styles.stateRow} testID={`venue-pane-${kind}-${status}`}>
           <Text style={[styles.stateLine, { color: palette.secondaryText }]}>

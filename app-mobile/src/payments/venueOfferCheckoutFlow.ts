@@ -12,7 +12,7 @@
  *
  *   choosing ─ quote_start ─▶ quoting ─ quote_ok ─▶ review
  *   review ─ hold_start ─▶ holding ─ hold_ok ─▶ paying | booked (free) | requested (hire)
- *   choosing (plan) ─ join_start ─▶ joining ─ join_ok ─▶ paying | booked | requested
+ *   choosing (plan) ─ join_start ─▶ joining ─ join_ok ─▶ review (the server's amount due) | booked | requested
  *   paying ─ pay_ok ─▶ awaiting_payment ─ payment_closed ─▶ confirming
  *   confirming ─ confirm_done ─▶ booked | review (+ "Payment didn't go through")
  *                                | pending | choosing (+ "Your hold ran out")
@@ -144,7 +144,12 @@ export type VenueCheckoutAction =
     }
   | { type: "retry"; freshKey: string }
   | { type: "back_to_choose" }
-  | { type: "back_to_review" };
+  | { type: "back_to_review" }
+  /**
+   * #4490 06-W4 fix 1 (W4-N4): after signing in again, the held booking (or
+   * plan) re-read with the new session; null when it could not be found.
+   */
+  | { type: "resumed"; booking: VenueCheckoutBookingRef | null; now: number };
 
 /**
  * What a `confirm_return` round said. `confirmed` covers the server answering
@@ -226,6 +231,8 @@ export const VENUE_CHECKOUT_COPY = {
   seeInPurchases: "See in Purchases",
   paused: "Bookings are paused here right now. Try again later.",
   generic: "Something went wrong. Try again.",
+  /** The existing buyer-web line for a change under the guest's feet (`stale_write`). */
+  changed: "Something changed while we were saving. Try again.",
   offline: "You're offline. Check your connection and try again.",
   tryAgain: "Try again",
   empty: "Nothing to book here right now.",
@@ -290,6 +297,8 @@ export function venueCheckoutNoticeFor(
   if (code === "offer_amount_too_large") return { code: "cap", message: capLine(venueName) };
   if (code === "offer_hold_expired") return { code: "hold_expired", message: VENUE_CHECKOUT_COPY.holdExpired };
   if (code === "offline") return { code: "offline", message: VENUE_CHECKOUT_COPY.offline };
+  // #4490 06-W4 fix 1 (W4-N3): another device is paying this booking another way.
+  if (code === "offer_payment_mode_conflict") return { code: "generic", message: VENUE_CHECKOUT_COPY.changed };
   if (VENUE_SELECTION_CODES.has(code)) return { code: "selection", message: selectionCopy(code) };
   if (VENUE_GUEST_CODES.has(code)) return { code: "guest", message: selectionCopy(code) };
   return { code: "generic", message: VENUE_CHECKOUT_COPY.generic };
@@ -425,10 +434,19 @@ export function venueOfferCheckoutReducer(
         notice: null,
       };
     }
-    case "hold_ok":
     case "join_ok": {
-      const from = action.type === "hold_ok" ? "holding" : "joining";
-      if (state.phase !== from) return state;
+      if (state.phase !== "joining") return state;
+      const booking = action.booking;
+      if (action.mode === "request" || booking.state === "requested" || booking.state === "request_pending") {
+        return { ...state, phase: "requested", booking };
+      }
+      if (booking.state === "active" || booking.state === "confirmed") return { ...state, phase: "booked", booking };
+      // #4490 06-W4 fix 1 (W4-N2): the guest sees the server's amount due
+      // (VAT included) on Review before the payment page opens; Pay starts it.
+      return { ...state, phase: "review", booking };
+    }
+    case "hold_ok": {
+      if (state.phase !== "holding") return state;
       const booking = action.booking;
       // Rule 7: free (or confirmed at once): no payment page.
       if (booking.state === "confirmed" || booking.state === "active" || booking.totalMinor === 0) {
@@ -526,6 +544,25 @@ export function venueOfferCheckoutReducer(
       if (isVenueCheckoutBusy(state) || state.openedAt === "pay") return state;
       return { ...state, phase: "choosing", failedStep: null, notice: state.notice?.code === "hold_expired" ? state.notice : null };
     }
+    case "resumed": {
+      if (state.booking === null) return state;
+      const b = action.booking;
+      if (b === null) return lostHold(state);
+      const holdLive = b.holdUntil === null || Date.parse(b.holdUntil) > action.now;
+      if (state.openedAt === "pay") {
+        // From Purchases ("Pay to hold your date", "Pay the rest"): still owed → Pay again.
+        const owes = b.amountDueNowMinor > 0 &&
+          ["approved_payment_required", "instant_payment_pending", "confirmed", "partially_cancelled"].includes(b.state);
+        if (owes && holdLive) return { ...state, phase: "review", booking: b, failedStep: null };
+        if (b.state === "confirmed") return { ...state, phase: "booked", booking: b, notice: null };
+        return lostHold(state);
+      }
+      if (b.state === "confirmed" || b.state === "active") return { ...state, phase: "booked", booking: b, notice: null };
+      if (b.state === "request_pending" || b.state === "requested") return { ...state, phase: "requested", booking: b, notice: null };
+      const payable = ["instant_payment_pending", "approved_payment_required", "pending", "payment_due", "grace"].includes(b.state);
+      if (payable && holdLive) return { ...state, phase: "review", booking: b, failedStep: null };
+      return lostHold(state);
+    }
     case "back_to_review": {
       if (state.phase !== "error" || (state.quote === null && state.booking === null)) return state;
       return { ...state, phase: "review", failedStep: null };
@@ -534,6 +571,38 @@ export function venueOfferCheckoutReducer(
       const never: never = action;
       return never;
     }
+  }
+}
+
+/** The hold ran out while signed out: the choose step with the §6 line (picks are kept by the sheet), or from Purchases the line on Pay. */
+function lostHold(state: VenueCheckoutState): VenueCheckoutState {
+  if (state.openedAt === "choose") return expiredState(state);
+  return { ...state, phase: "error", failedStep: "pay", notice: { code: "hold_expired", message: VENUE_CHECKOUT_COPY.holdExpired } };
+}
+
+/**
+ * #4490 06-W4 fix 1 (W4-N4): the state a checkout resumes with after the
+ * guest signs in again (same account). A step that was in flight when the
+ * session ended goes back to where the guest can press it again with the
+ * same keys (the server replays a step it already did); a held booking stays
+ * in state and is re-read before Pay (`resumed`). Pure.
+ */
+export function resumedVenueCheckoutState(state: VenueCheckoutState): VenueCheckoutState {
+  const back = (phase: VenueCheckoutPhase): VenueCheckoutState => ({ ...state, phase, failedStep: null, provider: null, notice: null });
+  switch (state.phase) {
+    case "quoting":
+    case "joining":
+      return back("choosing");
+    case "holding":
+      return back(state.quote !== null ? "review" : "choosing");
+    case "paying":
+    case "awaiting_payment":
+    case "confirming":
+      return back(state.booking !== null ? "review" : state.quote !== null ? "review" : "choosing");
+    case "error":
+      return back(state.booking !== null || state.quote !== null ? "review" : "choosing");
+    default:
+      return state;
   }
 }
 
@@ -563,7 +632,7 @@ export function venueCheckoutProgress(state: VenueCheckoutState): 1 | 2 | 3 {
     case "holding":
     case "joining":
     case "error":
-      return state.quote === null && state.openedAt === "choose" ? 1 : 2;
+      return state.quote === null && state.booking === null && state.openedAt === "choose" ? 1 : 2;
     default:
       return 3;
   }

@@ -139,12 +139,16 @@ describe("T: transitions", () => {
     expect(zeroButPending.phase).toBe("booked");
   });
 
-  it("T-4 plan: choose → joining → paying (instant), requested (by request), booked (active)", () => {
+  // TEST-MOD-APPROVED #4490 (06-W4 fix 1, W4-N2): an instant join now lands on Review (the server's
+  // amount due, VAT included, shown before the payment page opens); Pay starts the payment from there.
+  it("T-4 plan: choose → joining → review (instant), requested (by request), booked (active)", () => {
     const chosen = reduce(initialVenueCheckoutState("plan", CART), { type: "choose", choice: "plan=p1|start=2026-11-23" });
     const joining = reduce(chosen, { type: "join_start", freshKey: "kj", guest: "g" });
     expect(joining.phase).toBe("joining");
     const sub = { ...BOOKING, id: "00000000-4490-4000-8000-00000000s001", state: "pending_payment" };
-    expect(reduce(joining, { type: "join_ok", booking: sub, mode: "instant" }).phase).toBe("paying");
+    const joined = reduce(joining, { type: "join_ok", booking: sub, mode: "instant" });
+    expect(joined.phase).toBe("review");
+    expect(reduce(joined, { type: "pay_start", freshKey: "kp" }).phase).toBe("paying");
     expect(reduce(joining, { type: "join_ok", booking: { ...sub, state: "requested" }, mode: "request" }).phase).toBe("requested");
     expect(reduce(joining, { type: "join_ok", booking: { ...sub, state: "active" }, mode: "instant" }).phase).toBe("booked");
   });

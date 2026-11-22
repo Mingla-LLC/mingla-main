@@ -141,7 +141,10 @@ describe("R: Review rows and the pay amount are the server's", () => {
       id: "g", version: 3, state: "instant_payment_pending", totalMinor: 5, amountDueNowMinor: 5, holdUntil: "t",
     });
     expect(bookingRefFrom({ status: "active" })).toBeNull();
-    expect(planRefFrom({ subscriptionId: "s", status: "pending_payment", raw: {} }, 2500000).totalMinor).toBe(2500000);
+    // TEST-MOD-APPROVED #4490 (06-W4 fix 1, W4-N2): the plan's amount is the server's amount due
+    // (paymentDue.amountMinor, VAT included), never the plan's list price.
+    expect(planRefFrom({ subscriptionId: "s", status: "pending", raw: { paymentDue: { amountMinor: 5375000 } } }).totalMinor).toBe(5375000);
+    expect(planRefFrom({ subscriptionId: "s", status: "requested", raw: {} }).totalMinor).toBe(0);
   });
 });
 
