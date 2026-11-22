@@ -73,6 +73,12 @@ export const CROWDED_ACCOUNT_RECORDS = 16;
 export const RUN_DEADLINE_MS = 120_000;
 /** #4549 P3-4: provider delete attempts per record (one success at most). */
 export const MAX_PROVIDER_DELETE_ATTEMPTS = 3;
+/**
+ * #4564: provider deletes a single run may attempt, across all accounts. A
+ * delete past this number is not made: it is logged as suppressed and its
+ * record stays eligible for a later run. Fails closed by construction.
+ */
+export const MAX_PROVIDER_DELETES_PER_RUN = 5;
 /** #4549 P2-2: a provider answer older than this no longer counts for the alert. */
 export const ALERT_ANSWER_MAX_AGE_MS = 26 * 60 * 60 * 1000;
 /** #4549 P2-1: while a condition persists, one reminder a day at most. */
@@ -234,7 +240,16 @@ export function classifyViewResponse(
 // read 2026-11-22: DELETE /apps/{app_id}/subscriptions/{subscription_id};
 // 202 accepted (asynchronous), 404 "Subscription not found", 429 rate limited
 // (Retry-After always), 400/403/503 errors. 404 means the record is already
-// gone, which is the outcome the delete wanted.
+// gone, which is the outcome the delete wanted. The same page: deletion is
+// asynchronous, messages stop at once, and "if the app is reopened or a token
+// is re-submitted" a new subscription may be created.
+// #4564, read 2026-11-22: the Host app's native SDK (OneSignal iOS 5.5.1 in
+// react-native-onesignal 5.4.5, 5.8.0 in 5.5.15) checks on every new session
+// (OSUserExecutor.executeFetchUserRequest, onNewSession) whether the device's
+// push subscription is still on the user and, if it is gone, clears the id
+// and creates a new push subscription. So a delete never leaves an old build
+// worse off, and the ladder below only deletes after the #4549 app reported
+// and took a repair request (repair_requests >= 1), which old builds never do.
 export type DeleteOutcome =
   | { kind: "deleted" }
   | { kind: "rate_limited"; retryAfterSeconds: number }
@@ -254,6 +269,48 @@ export function classifyDeleteResponse(
     };
   }
   return { kind: "failed", reason: `http_${status}` };
+}
+
+/**
+ * #4564: the delete-time guard. `outcome` is a View user answer fetched right
+ * before the delete (never the stored verdict). The record may be deleted only
+ * if the provider still lists it, every entry with that id is an iOS record,
+ * and every one of them carries an APNs error code (refused_token). Anything
+ * else (gone, subscribed, any other state, a conflicting duplicate) refuses.
+ */
+export type FreshReadVerdict =
+  | { ok: true; statusCode: number }
+  | {
+    ok: false;
+    reason: "not_listed" | "not_ios" | "not_refused_token";
+    statusCode: number | null;
+  };
+
+export function freshReadAllowsDelete(
+  outcome: { kind: "ok"; subscriptions: ProviderSubscription[] },
+  subscriptionId: string,
+): FreshReadVerdict {
+  const entries = outcome.subscriptions.filter((s) => s.id === subscriptionId);
+  if (entries.length === 0) {
+    return { ok: false, reason: "not_listed", statusCode: null };
+  }
+  for (const entry of entries) {
+    if (entry.platform !== "ios") {
+      return {
+        ok: false,
+        reason: "not_ios",
+        statusCode: entry.notification_types,
+      };
+    }
+    if (mapProviderState(entry.notification_types, null) !== "refused_token") {
+      return {
+        ok: false,
+        reason: "not_refused_token",
+        statusCode: entry.notification_types,
+      };
+    }
+  }
+  return { ok: true, statusCode: entries[0].notification_types as number };
 }
 
 // ---------------------------------------------------------------------------
