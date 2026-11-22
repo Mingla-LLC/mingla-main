@@ -85,6 +85,12 @@ export interface VenueReserveSheetProps {
    * the largest table or join it has, up to 100). Unknown = 12, as before.
    */
   partyMax?: number | null;
+  /**
+   * #4490 W3 fix 4 (W3-N32) — the sheet's heading: the SAME words as the
+   * button that opened it (the venue's table verb from `deriveVenuePage`:
+   * "Book a table" with minimum-spend tables, otherwise "Reserve a table").
+   */
+  title?: string;
   /** Optional public-venue analytics seam; no guest or slot PII is passed. */
   onAvailabilityResultViewed?: () => void;
   onSlotSelected?: () => void;
@@ -190,6 +196,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   onSlotSelected,
   onReservationFailed,
   partyMax = null,
+  title = "Reserve a table",
 }) => {
   const insets = useSafeAreaInsets();
   const maxParty = reservePartyCap(partyMax);
@@ -468,7 +475,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
       snapPoints={SHEET_SNAP_POINTS}
       backgroundStyle={styles.sheetBackground}
       handleStyle={styles.handleIndicator}
-      accessibilityLabel="Reserve a table"
+      accessibilityLabel={title}
       scrollMode="scroll"
       hidesBottomNav
       scrollProps={{
@@ -484,7 +491,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
     >
       <View style={styles.headerRow}>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          Reserve a table
+          {title}
         </Text>
         <Pressable
           style={styles.closeIcon}

@@ -797,6 +797,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
         <VenueReserveSheet
           visible={context.visible}
           onClose={context.onClose}
+          // W3 fix 4 (W3-N32): headed with the button's own words.
+          title={context.title}
           venueId={reservableVenueId}
           brandId={venue.brandId}
           venueName={venue.name}
@@ -960,6 +962,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
               menuWindows={venue.menuWindows}
               timezone={venue.timezone}
               countryCode={venue.countryCode}
+              // W3 fix 4 (W3-N36): ordering owns the Menu tab's bottom edge.
+              onBottomBarChange={context.onBottomBarChange}
             />
           </React.Suspense>
         ),

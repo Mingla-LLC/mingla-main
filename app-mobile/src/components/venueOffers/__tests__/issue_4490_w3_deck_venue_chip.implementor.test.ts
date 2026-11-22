@@ -95,13 +95,22 @@ describe('#4490 W3 deck offer chip', () => {
     expect(only(['memberships'], { memberships: 2500000 })).toMatchObject({ tab: 'plans', label: 'Plans from NGN 25,000 a month', offerKind: null });
   });
 
-  test('C-4 tables lead a restaurant and read "Book a table" (no amount)', () => {
+  // [TEST-MOD-APPROVED #4490] W3 fix 4 (W3-N32): a table chip says the venue's
+  // ONE table verb (its Tables button and sheet say the same): "Book a table"
+  // with minimum-spend tables, otherwise "Reserve a table" (deriveVenuePage).
+  test('C-4 tables lead a restaurant and read the venue\'s table verb (no amount)', () => {
     const chip = deckVenueOfferChip(facts({
       venueType: 'restaurant',
       features: ['group_packages', 'table_reservations'],
       tablesReservable: true,
     }), money);
-    expect(chip).toMatchObject({ tab: 'reservations', label: 'Book a table', leadKind: 'tables', tabLabel: 'Tables' });
+    expect(chip).toMatchObject({ tab: 'reservations', label: 'Reserve a table', leadKind: 'tables', tabLabel: 'Tables' });
+    const minSpend = deckVenueOfferChip(facts({
+      venueType: 'restaurant',
+      features: ['group_packages', 'table_reservations', 'min_spend_tables'],
+      tablesReservable: true,
+    }), money);
+    expect(minSpend).toMatchObject({ tab: 'reservations', label: 'Book a table', leadKind: 'tables' });
   });
 
   test('C-5 several features: the page lead wins (entry over groups and plans)', () => {
@@ -136,7 +145,8 @@ describe('#4490 W3 deck offer chip', () => {
     expect(deckVenueOfferChip(facts({ features: ['memberships'], plansLive: false, priceFrom: { entry: null, group_packages: null, private_hire: null, by_the_hour: null, memberships: null } }), money)).toBeNull();
     const tables = deckVenueOfferChip(facts({ venueType: 'club', features: ['table_reservations'], tablesReservable: true,
       priceFrom: { entry: null, group_packages: null, private_hire: null, by_the_hour: null, memberships: null } }), money);
-    expect(tables?.label).toBe('Book a table');
+    // [TEST-MOD-APPROVED #4490] W3 fix 4 (W3-N32): the venue's table verb.
+    expect(tables?.label).toBe('Reserve a table');
   });
 
   test('C-10 the default formatter is the shared venue money formatter', () => {
@@ -297,7 +307,8 @@ describe('#4490 W3 fix 1', () => {
     expect(deckVenueOfferChip(facts({ features: ['by_the_hour'], priceFrom: { ...none, by_the_hour: 500000 } }), money))
       .toMatchObject({ tabLabel: 'By the hour', tileValue: 'from NGN 5,000' });
     const tables = deckVenueOfferChip(facts({ venueType: 'club', features: ['table_reservations'], tablesReservable: true, priceFrom: none }), money);
-    expect(tables).toMatchObject({ tabLabel: 'Reservations', tileValue: 'Book a table' });
+    // [TEST-MOD-APPROVED #4490] W3 fix 4 (W3-N32): the venue's table verb.
+    expect(tables).toMatchObject({ tabLabel: 'Reservations', tileValue: 'Reserve a table' });
   });
   test('N-11 a shared deck shows "On tonight" only when every participant browses today', () => {
     expect(sessionBrowsesToday({ u1: { date_option: 'today' }, u2: { date_option: null } })).toBe(true);

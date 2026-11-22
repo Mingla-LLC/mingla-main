@@ -270,7 +270,10 @@ export function deckVenueOfferChip(
       break;
     }
     case "tables":
-      label = "Book a table";
+      // W3 fix 4 (W3-N32): the venue's one table verb (deriveVenuePage: "Book
+      // a table" with minimum-spend tables, otherwise "Reserve a table"), the
+      // same words as its Tables button and the sheet that button opens.
+      label = lead.ctaLabel;
       break;
     default: {
       const never: never = lead.kind;

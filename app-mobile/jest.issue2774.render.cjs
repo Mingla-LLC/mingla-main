@@ -159,6 +159,11 @@ module.exports = {
     // server failure, panes per tab, the tab strip and header at 375 pt.
     "**/__tests__/issue_4490_w3_fix3.implementor.test.ts",
     "**/__tests__/issue_4490_w3_fix3.implementor.render.test.tsx",
+    // issue #4490 W3 fix 4 — the second device pass: the Menu tab's order
+    // sheet (empty basket, Close, its own window, the bar), the table verb,
+    // ₦ typical spend, links over the shared deck, the 10 s pane budget.
+    "**/__tests__/issue_4490_w3_fix4.implementor.test.ts",
+    "**/__tests__/issue_4490_w3_fix4.implementor.render.test.tsx",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.

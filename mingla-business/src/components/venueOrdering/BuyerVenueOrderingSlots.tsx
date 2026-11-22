@@ -31,6 +31,8 @@ import {
   venueOrderingIsCounterPickup,
   venueOrderingMenuGroups,
   venueOrderingNotice,
+  venueOrderingOwnsBottomEdge,
+  venueOrderingSheetView,
 } from "@mingla/brand-rendering/venueOrdering";
 import { venueLocalClock } from "@mingla/brand-rendering/venueOpenState";
 import { VenueOrderingMenuList } from "@mingla/brand-rendering/venueOrdering/VenueOrderingMenuList";
@@ -577,14 +579,25 @@ export const BuyerVenueOrderStatusView: React.FC<{
 export const BuyerVenueOrderingBar: React.FC<
   BuyerVenueOrderingSlotProps & BuyerVenueOrderingBarPlacement
 > = ({ ordering, palette, isDesktop = false, bottomInset = 0, onBottomBarChange }) => {
-  const shown =
-    venueOrderingCanOrder(ordering.config) && ordering.cart.state.view === "browse";
-  const docked = shown && Platform.OS === "web";
+  const canOrder = venueOrderingCanOrder(ordering.config);
+  const shown = canOrder && ordering.cart.state.view === "browse";
+  // #4490 W3 fix 4 (W3-N36): ordering keeps the Menu tab's bottom edge while
+  // the review or the order status is open too, so the venue's lead bar
+  // ("Buy entry") never comes back over an open order.
+  const owned =
+    Platform.OS === "web" &&
+    venueOrderingOwnsBottomEdge({
+      canOrder,
+      sheetView: venueOrderingSheetView({
+        view: ordering.cart.state.view,
+        lineCount: ordering.cart.state.lines.length,
+      }),
+    });
   React.useEffect(() => {
     if (onBottomBarChange === undefined) return undefined;
-    onBottomBarChange(docked);
+    onBottomBarChange(owned);
     return () => onBottomBarChange(false);
-  }, [docked, onBottomBarChange]);
+  }, [owned, onBottomBarChange]);
   if (!shown) return null;
   const spotLabel =
     ordering.config.spotState === "ok" && !venueOrderingIsCounterPickup(ordering.config, ordering.pickup)

@@ -14,6 +14,7 @@ import type {
   VenueOrderCartLine,
   VenueOrderHandover,
   VenueOrderingConfig,
+  VenueOrderingView,
   VenueOrderLiveStatus,
   VenueOrderModifierGroup,
   VenueOrderTipChoice,
@@ -534,6 +535,35 @@ export function venueOrderingCanOrder(config: VenueOrderingConfig): boolean {
   if (config.state !== "on") return false;
   if (config.spotState === "ok") return true;
   return config.counterPickupEnabled && config.venueId !== null;
+}
+
+/**
+ * #4490 W3 fix 4 (W3-N36) — what the order sheet shows, or null when it must
+ * be shut. An empty basket NEVER opens the review (nothing to pay for, and its
+ * only buttons lead back to the menu); the live order shows once the guest has
+ * one (or while it is being confirmed). The app's sheet reads ONLY this for its
+ * `visible`, so the sheet can never be on screen while the state says browse.
+ */
+export function venueOrderingSheetView(input: {
+  view: VenueOrderingView;
+  lineCount: number;
+}): "review" | "status" | null {
+  if (input.view === "status") return "status";
+  if (input.view === "review" && input.lineCount > 0) return "review";
+  return null;
+}
+
+/**
+ * #4490 W3 fix 4 (W3-N36) — does ordering own the venue page's bottom edge on
+ * the Menu tab? Yes whenever the guest can order here, or an order sheet is
+ * up: the menu's action is the order bar, never the lead's ("Buy entry"), and
+ * no docked bar is drawn over an open order.
+ */
+export function venueOrderingOwnsBottomEdge(input: {
+  canOrder: boolean;
+  sheetView: "review" | "status" | null;
+}): boolean {
+  return input.canOrder || input.sheetView !== null;
 }
 
 /**

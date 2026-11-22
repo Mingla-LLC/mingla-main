@@ -2588,6 +2588,8 @@ export default function ExpandedCardModal({
             venueName={card.title}
             currency={venueReservable.currency}
             partyMax={venueFeatures?.features.tables?.partyMax ?? null}
+            // W3 fix 4 (W3-N32): the sheet says what its button said.
+            title={t(`cards:${deckCta.labelKey}`, { defaultValue: deckCta.fallbackLabel })}
             onReserved={() => {
               Alert.alert(
                 "You're booked",

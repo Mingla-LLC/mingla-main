@@ -43,6 +43,8 @@ import {
   venueOrderingIsCounterPickup,
   venueOrderingMenuGroups,
   venueOrderingNotice,
+  venueOrderingOwnsBottomEdge,
+  venueOrderingSheetView,
 } from "@mingla/brand-rendering/venueOrdering";
 import { venueLocalClock } from "@mingla/brand-rendering/venueOpenState";
 import { VenueOrderingMenuList } from "@mingla/brand-rendering/venueOrdering/VenueOrderingMenuList";
@@ -121,6 +123,12 @@ export const ConsumerVenueOrderingSurface: React.FC<{
   timezone: string | null;
   /** issue #3380 — the venue's country, for the guest's phone picker. */
   countryCode?: string | null;
+  /**
+   * #4490 W3 fix 4 (W3-N36) — the page's bottom-edge handshake: true while
+   * ordering owns the Menu tab's edge (the guest can order, or an order sheet
+   * is up), so the venue's lead bar ("Buy entry") is not drawn on the menu.
+   */
+  onBottomBarChange?: (owned: boolean) => void;
 }> = ({
   palette,
   surface,
@@ -133,6 +141,7 @@ export const ConsumerVenueOrderingSurface: React.FC<{
   menuWindows,
   timezone,
   countryCode = null,
+  onBottomBarChange,
 }) => {
   const ordering = useConsumerVenueOrdering({
     brandSlug,
@@ -159,6 +168,18 @@ export const ConsumerVenueOrderingSurface: React.FC<{
     scanned: ordering.scanned,
   });
   const canOrder = venueOrderingCanOrder(ordering.config);
+  const ownsBottomEdge = venueOrderingOwnsBottomEdge({
+    canOrder,
+    sheetView: venueOrderingSheetView({
+      view: ordering.cart.state.view,
+      lineCount: ordering.cart.state.lines.length,
+    }),
+  });
+  React.useEffect(() => {
+    if (onBottomBarChange === undefined) return undefined;
+    onBottomBarChange(ownsBottomEdge);
+    return () => onBottomBarChange(false);
+  }, [ownsBottomEdge, onBottomBarChange]);
   // #2735 — this lazy surface is a TOTAL menu renderer. Returning null here
   // cannot hand control back across the route's Suspense boundary: React would
   // remove the display-menu fallback and commit an empty body. An ordinary
@@ -356,8 +377,17 @@ export const ConsumerVenueOrderingSheet: React.FC<
     notesAllowedByItemId: Record<string, boolean | undefined>;
   }
 > = ({ ordering, palette, surface, notesAllowedByItemId, countryCode = null }) => {
-  const view = ordering.cart.state.view;
-  const visible = view === "review" || view === "status";
+  // #4490 W3 fix 4 (W3-N36): the sheet is up ONLY when the state says so: an
+  // empty basket never shows the review. It lives in its own native window
+  // (`wrapInRNModal`): mounted inline in the menu's scroll content, the shut
+  // sheet sat just under the menu, a swipe dragged it up while the state still
+  // said "browse" (so Close and ‹ Menu, which set "browse", did nothing), and
+  // the venue's docked bar was drawn over it.
+  const view = venueOrderingSheetView({
+    view: ordering.cart.state.view,
+    lineCount: ordering.cart.state.lines.length,
+  });
+  const visible = view !== null;
   return (
     <BaseBottomSheet
       visible={visible}
@@ -365,6 +395,7 @@ export const ConsumerVenueOrderingSheet: React.FC<
       snapPoints={["88%"]}
       theme="dark"
       scrollMode="scroll"
+      wrapInRNModal
       hidesBottomNav
       keyboardBehavior="interactive"
       backgroundStyle={{ backgroundColor: palette.page }}

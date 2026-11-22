@@ -1790,10 +1790,13 @@ export const PublicVenueScreen = ({
         (lead.tab === "reservations" || lead.tab === "rooms"
           ? canOpenReservationSheet
           : true));
+  // W3 fix 4 (W3-N36): no docked bar is drawn over an open sheet. The order
+  // sheet's case is the ordering slot owning the Menu tab's edge (below).
   const showReserveCta =
     leadActionable &&
     leadTab !== null &&
-    normalizedReservationUiState.activeTab !== leadTab;
+    normalizedReservationUiState.activeTab !== leadTab &&
+    !normalizedReservationUiState.reservationSheetOpen;
   // Today the category names the one verb. With features the lead names it, and
   // when there is no lead (nothing to sell, so no sheet will ever open) the
   // flow's own name: a venue's type never leaks into a button it does not have.

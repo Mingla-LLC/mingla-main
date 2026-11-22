@@ -49,6 +49,8 @@ export {
   venueOrderHandover,
   venueOrderHandoverChip,
   venueOrderingCanOrder,
+  venueOrderingOwnsBottomEdge,
+  venueOrderingSheetView,
   venueOrderingFulfilmentLine,
   venueOrderingIsCounterPickup,
   venueOrderingOffersPickup,
