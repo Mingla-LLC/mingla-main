@@ -320,22 +320,25 @@ describe("S-6 writes are unchanged and the retired desk code is gone", () => {
   });
 });
 
+// [TEST-MOD #4420] rework 3 (G3): the overlay / column switch moved from the
+// xl breakpoint to the measured grid width (S-13); these pin the two slots.
 describe("S-9 (rework 1, P3-c) the Create ticket panel is in view at 1024 px", () => {
   const page = read("pages/SupportDeskPage.jsx");
-  const slot = (page.match(/const SIDE_SLOT = "([^"]+)"/) || [])[1] || "";
-  const cls = slot.split(/\s+/);
-  it("below xl (no third column) the slot is a fixed panel on the right edge, full height, not stacked under the thread", () => {
+  const slotOf = (name) => ((page.match(new RegExp(`const ${name} = "([^"]+)"`)) || [])[1] || "").split(/\s+/);
+  it("as an overlay the slot is a fixed panel on the right edge, full height, not stacked under the thread", () => {
+    const cls = slotOf("SIDE_SLOT_OVERLAY");
     for (const c of ["fixed", "inset-y-0", "right-0", "w-full", "max-w-[420px]", "[&>aside]:h-full"]) assert.ok(cls.includes(c), c);
-    assert.ok(!cls.some((c) => /^lg:col-start/.test(c)), "no lg grid placement that drops it under the thread");
+    assert.ok(!cls.some((c) => /col-start/.test(c)), "no grid placement that drops it under the thread");
   });
-  it("at xl it is the third grid column again, as before", () => {
-    for (const c of ["xl:static", "xl:col-start-3", "xl:w-auto", "xl:max-w-none", "xl:p-0", "xl:shadow-none"]) assert.ok(cls.includes(c), c);
-    assert.match(page, /xl:grid-cols-\[minmax\(300px,380px\)_minmax\(0,1fr\)_minmax\(340px,420px\)\]/);
+  it("as a column it is the third grid column, with a thread that keeps its minimum", () => {
+    const cls = slotOf("SIDE_SLOT_COLUMN");
+    for (const c of ["static", "col-start-3", "min-w-0"]) assert.ok(cls.includes(c), c);
+    assert.match(page, /lg:grid-cols-\[minmax\(300px,380px\)_minmax\(480px,1fr\)_minmax\(340px,420px\)\]/);
   });
   it("both side panels use the slot; it is dismissible by backdrop, Escape and the panel's own Cancel", () => {
     assert.equal((page.match(/data-side-slot="" className=\{SIDE_SLOT\}/g) || []).length, 2);
     assert.match(page, /data-side-backdrop="" onClick=\{\(\) => setSide\(null\)\}/);
-    assert.match(page, /data-side-backdrop=""[\s\S]{0,200}xl:hidden/);
+    assert.match(page, /\{showSide && !sideDocked \? \(/, "the backdrop only for the overlay");
     assert.match(page, /e\.key === "Escape" && !e\.defaultPrevented\) setSide\(null\)/);
     assert.match(page, /<CreateTicketPanel[\s\S]{0,200}onClose=\{\(\) => setSide\(null\)\}/);
   });
@@ -380,10 +383,12 @@ describe("S-11 the third-column Create ticket panel fits a 1280 x 800 window", (
     assert.equal(sidePanelFitHeight(-200, 800), 788, "scrolled past: the whole window less the gap");
     assert.equal(sidePanelFitHeight(700, 800), SIDE_PANEL_MIN_HEIGHT, "never squeezed below the minimum");
   });
-  it("the panel measures itself at 1280 px and wider, and keeps the actions in view", () => {
+  it("the panel measures itself when docked as a column, and keeps the actions in view", () => {
     const panel = read("components/support/CreateTicketPanel.jsx");
-    assert.match(panel, /window\.matchMedia\?\.\("\(min-width: 1280px\)"\)/);
-    assert.match(panel, /sidePanelFitHeight\(el\.getBoundingClientRect\(\)\.top, window\.innerHeight\)/);
+    // [TEST-MOD #4420] rework 3 (G3): docked comes from the page's measured width, not a 1280 px media query.
+    assert.match(panel, /setFitHeight\(docked \? sidePanelFitHeight\(el\.getBoundingClientRect\(\)\.top, window\.innerHeight\) : null\)/);
+    assert.doesNotMatch(panel, /matchMedia/);
+    assert.match(read("pages/SupportDeskPage.jsx"), /<CreateTicketPanel\n\s+docked=\{sideDocked\}/);
     assert.match(panel, /style=\{fitHeight \? \{ height: fitHeight \} : undefined\}/);
     assert.match(panel, /min-h-0 flex-1 overflow-y-auto/, "the body scrolls inside the panel");
     assert.match(panel, /\n {12}stickyActions\n/);
@@ -450,5 +455,43 @@ describe("S-12 the inbox loads when the people lookup is refused", () => {
     assert.match(page, /setQueueError\(inboxLoadErrorText\(err\)\)/);
     assert.doesNotMatch(page, /setQueueError\(err\.message\)/);
     assert.match(page, /setLookupNotice\(inboxLookupNotice\(lookups\.missing\)\)/);
+  });
+});
+
+// G3 (rework 3, QA P2-1): at 1280 x 800 the third column crushed the thread to
+// about 150 px. The panel is a column only when list, thread and panel all get
+// their minimum; otherwise it overlays. FAILS-ON-REVERT: without
+// sidePanelPlacement the calls throw; with the old xl classes the source
+// assertions fail.
+describe("S-13 column or overlay from the width the inbox has", () => {
+  // The admin shell: a 248 px side menu (64 px collapsed) and 24 px gutters.
+  const content = (viewport, menu = 248) => viewport - menu - 2 * 24;
+  it("needs list + thread + panel minimums and two gaps", () => {
+    const need = inboxModel.INBOX_LIST_MIN_WIDTH + inboxModel.INBOX_THREAD_MIN_WIDTH + inboxModel.INBOX_SIDE_MIN_WIDTH + 2 * inboxModel.INBOX_COLUMN_GAP;
+    assert.equal(need, 1152);
+    assert.equal(inboxModel.sidePanelPlacement(need), "column");
+    assert.equal(inboxModel.sidePanelPlacement(need - 1), "overlay");
+  });
+  it("1280, 1366 and 1440 px with the side menu open: overlay; 1600 px: column", () => {
+    assert.equal(inboxModel.sidePanelPlacement(content(1280)), "overlay");
+    assert.equal(inboxModel.sidePanelPlacement(content(1366)), "overlay");
+    assert.equal(inboxModel.sidePanelPlacement(content(1440)), "overlay");
+    assert.equal(inboxModel.sidePanelPlacement(content(1600)), "column");
+  });
+  it("with the side menu collapsed there is room at every one of those widths", () => {
+    assert.equal(inboxModel.sidePanelPlacement(content(1280, 64)), "column");
+    assert.equal(inboxModel.sidePanelPlacement(content(1366, 64)), "column");
+    assert.equal(inboxModel.sidePanelPlacement(content(1440, 64)), "column");
+    assert.equal(inboxModel.sidePanelPlacement(content(1600, 64)), "column");
+  });
+  it("an unknown width overlays (never crushes the thread)", () => {
+    for (const w of [0, -1, NaN, undefined, null, "wide"]) assert.equal(inboxModel.sidePanelPlacement(w), "overlay");
+  });
+  it("the page measures its grid and uses no xl breakpoint for the panel", () => {
+    const page = read("pages/SupportDeskPage.jsx");
+    assert.match(page, /const sideDocked = showSide && sidePanelPlacement\(gridWidth\) === "column";/);
+    assert.match(page, /new ResizeObserver\(measure\)/);
+    assert.match(page, /<div ref=\{gridRef\}/);
+    assert.doesNotMatch(page, /xl:/);
   });
 });

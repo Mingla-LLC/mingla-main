@@ -398,3 +398,27 @@ export function inboxLoadErrorText(err) {
   if (/failed to fetch|network|timeout|timed out|load failed/.test(text)) return INBOX_LOAD_ERROR_WORDS.network;
   return INBOX_LOAD_ERROR_WORDS.other;
 }
+
+/**
+ * #4420 rework 3 (G3): the least widths the Support columns need. Below these
+ * the thread's reply box and its Next update / Status row overlap.
+ */
+export const INBOX_LIST_MIN_WIDTH = 300;
+export const INBOX_THREAD_MIN_WIDTH = 480;
+export const INBOX_SIDE_MIN_WIDTH = 340;
+/** The grid's gap between columns (Tailwind gap-4). */
+export const INBOX_COLUMN_GAP = 16;
+
+/**
+ * Where the Create ticket / ticket summary panel goes for the width the inbox
+ * grid has: "column" (a third column beside the thread) only when the list,
+ * the thread and the panel all get their minimum; otherwise "overlay" (it
+ * slides over the thread from the right). Derived from the measured width,
+ * not from one breakpoint, so a collapsed or expanded side menu is counted.
+ */
+export function sidePanelPlacement(availableWidth) {
+  const w = Number(availableWidth);
+  if (!Number.isFinite(w) || w <= 0) return "overlay";
+  const need = INBOX_LIST_MIN_WIDTH + INBOX_THREAD_MIN_WIDTH + INBOX_SIDE_MIN_WIDTH + 2 * INBOX_COLUMN_GAP;
+  return w >= need ? "column" : "overlay";
+}

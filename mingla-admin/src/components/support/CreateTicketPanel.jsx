@@ -18,9 +18,10 @@ import { ticketNumber } from "../../lib/ticketModel";
  * Props: ticket (the conversation), messages (its thread, for the pre-fill),
  * onClose, onMade({ number, id }) after a ticket is made, onLinked(cardId)
  * after "Link here" or an existing ticket was opened, onDirtyChange(dirty)
- * whenever the form gains or loses edits (the page asks before discarding them).
+ * whenever the form gains or loses edits (the page asks before discarding them),
+ * docked (true when it is the grid's third column, not the overlay).
  */
-export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked, onDirtyChange }) {
+export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked, onDirtyChange, docked = false }) {
   const config = useOpsConfig();
   const { addToast } = useToast();
   const [done, setDone] = useState(null);
@@ -28,21 +29,21 @@ export function CreateTicketPanel({ ticket, messages, onClose, onMade, onLinked,
   // The form starts with the owner suggestion once the config has answered (or failed):
   // a failed config still lets a person pick an owner from the people list.
   const settled = !config.loading || config.error != null;
-  // In the third column (1280 px and wider) the panel is as tall as the room
-  // left under its top, so the header and the Create / Cancel row stay in
-  // view and the form scrolls inside. Narrower, it is the full-height overlay.
+  // In the third column (#4420 rework 3: whenever the page docks it there) the
+  // panel is as tall as the room left under its top, so the header and the
+  // Create / Cancel row stay in view and the form scrolls inside. Otherwise it
+  // is the full-height overlay.
   const asideRef = useRef(null);
   const [fitHeight, setFitHeight] = useState(null);
   useLayoutEffect(() => {
     const el = asideRef.current;
     if (!el || typeof window === "undefined") return undefined;
-    const wide = window.matchMedia?.("(min-width: 1280px)");
-    const fit = () => setFitHeight(wide?.matches ? sidePanelFitHeight(el.getBoundingClientRect().top, window.innerHeight) : null);
+    const fit = () => setFitHeight(docked ? sidePanelFitHeight(el.getBoundingClientRect().top, window.innerHeight) : null);
     fit();
     window.addEventListener("resize", fit);
     window.addEventListener("scroll", fit, { passive: true });
     return () => { window.removeEventListener("resize", fit); window.removeEventListener("scroll", fit); };
-  }, []);
+  }, [docked]);
 
   async function copyLine(text) {
     try {
