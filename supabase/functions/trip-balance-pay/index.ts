@@ -138,6 +138,8 @@ const KNOWN_REFUSALS: Record<string, number> = {
   flex_client_key_reused: 409,
   flex_amount_invalid: 422,
   flex_amount_below_minimum: 422,
+  // T4-3: short of the whole balance, it would leave less than the provider can charge.
+  flex_amount_leaves_unpayable_remainder: 422,
   plan_not_flexible: 409,
   deposit_not_paid: 409,
   payment_plan_v2_unavailable: 409,
@@ -155,7 +157,8 @@ function refusalFrom(
     if (message.includes(code)) {
       return jsonResponse({
         error: code,
-        ...(code === "balance_changed" || code === "flex_amount_below_minimum"
+        ...(code === "balance_changed" || code === "flex_amount_below_minimum" ||
+            code === "flex_amount_leaves_unpayable_remainder"
           ? { detail: error.details ?? null }
           : {}),
       }, status);
@@ -178,6 +181,9 @@ function publicBalance(
     "totalMinor",
     "canPayAnyAmount",
     "minPaymentMinor",
+    "maxPartialMinor",
+    "providerMinimumMinor",
+    "waivedMinor",
     "paymentInFlight",
     "heldCreditMinor",
     "overpaymentRefundedMinor",
@@ -485,6 +491,15 @@ export async function handleTripBalancePay(
         422,
       );
     }
+    // T4-3: the same rule as issue_4522_begin_flex_payment (quoted as maxPartialMinor).
+    const maxPartial = current.maxPartialMinor === undefined ? remaining
+      : current.maxPartialMinor === null ? null : Number(current.maxPartialMinor);
+    if (flexible && amountMinor < remaining && (maxPartial === null || amountMinor > maxPartial)) {
+      return jsonResponse(
+        { error: "flex_amount_leaves_unpayable_remainder", detail: String(maxPartial ?? 0) },
+        422,
+      );
+    }
     if (!flexible && amountMinor !== nextAmount && amountMinor !== remaining) {
       return jsonResponse({ error: "plan_not_flexible" }, 409);
     }
@@ -553,6 +568,11 @@ export async function handleTripBalancePay(
   const refused = refusalFrom(beginError);
   if (refused !== null) return refused;
   const flex = (begun ?? {}) as Record<string, unknown>;
+  // T4-3: a whole balance below the provider's minimum is settled by waiver;
+  // nothing is charged.
+  if (flex.waived === true) {
+    return jsonResponse({ error: "balance_settled", waivedMinor: Number(flex.waivedMinor ?? 0) }, 409);
+  }
   const installmentId = String(flex.installmentId ?? "");
   if (installmentId.length === 0) {
     return jsonResponse({ error: "balance_payment_failed" }, 502);

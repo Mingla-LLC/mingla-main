@@ -85,6 +85,8 @@ test("#4522 Explorer maps every buyer-facing balance refusal to approved copy", 
       "balance_payment_in_flight",
       "flex_amount_invalid",
       "flex_amount_below_minimum",
+      "flex_amount_leaves_unpayable_remainder",
+      "balance_settled",
       "plan_not_flexible",
       "deposit_not_paid",
       "balance_not_found",
@@ -102,4 +104,14 @@ test("#4522 one query-key factory invalidates both balance and purchase truth", 
   assert.match(route, /purchaseKeys\.all/);
   assert.match(route, /error\.code === "balance_changed"/);
   assert.match(route, /setCustomError\(\s*"Your balance just changed/s);
+});
+
+test("#4522 T4-3 both balance screens: a forbidden amount names the two payable amounts", () => {
+  const buyerWeb = readFileSync(resolve(root, "../mingla-business/app/pay/balance/[token].tsx"), "utf8");
+  for (const [name, screen] of [["Explorer", route], ["buyer web", buyerWeb]] as const) {
+    assert.ok(screen.includes("flex_amount_leaves_unpayable_remainder"), `${name}: server refusal`);
+    assert.ok(screen.includes('"leaves_unpayable_remainder"'), `${name}: refused before any request`);
+    assert.ok(screen.includes("unpayableRemainderCopy("), `${name}: shared copy naming both amounts`);
+    assert.ok(screen.includes('"balance_settled"'), `${name}: a waived balance`);
+  }
 });

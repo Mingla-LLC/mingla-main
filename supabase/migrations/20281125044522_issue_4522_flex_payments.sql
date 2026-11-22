@@ -603,6 +603,8 @@ DECLARE
   v_ref bigint;
   v_fee bigint;
   v_new uuid;
+  v_folded boolean := false;
+  v_waived bigint;
 BEGIN
   SELECT order_id INTO v_order_id FROM public.order_installments WHERE id = p_installment_id;
   IF NOT FOUND OR public.issue_4522_lock_order_graph(v_order_id) IS NULL THEN
@@ -630,21 +632,41 @@ BEGIN
          planned_application_fee_cents = planned_application_fee_cents - v_fee,
          updated_at = p_now
    WHERE id = v_row.id;
-  -- orch-strict-grep-allow tr3-schedule-currency-pinned — the re-opened row is the rest of one row and takes that row's currency, which checkout pinned from the session.
-  INSERT INTO public.order_installments (order_id, ordinal, amount_cents, currency, due_at, status, provider,
-    collection_method, ticket_type_id, kind, addon_portion_minor, referral_share_minor,
-    planned_application_fee_cents, plan_bound_at)
-  VALUES (v_row.order_id,
-    (SELECT max(ordinal) + 1 FROM public.order_installments WHERE order_id = v_row.order_id),
-    v_short, v_row.currency, v_row.due_at, 'scheduled', v_row.provider, v_row.collection_method,
-    v_row.ticket_type_id, 'scheduled', v_addon, v_ref, v_fee, v_row.plan_bound_at)
-  RETURNING id INTO v_new;
+  -- T4-3: a short the provider could not charge on its own joins the next
+  -- open row (same package first) instead of becoming a row of its own.
+  IF v_short < COALESCE(public.issue_3355_provider_minimum_charge_minor(v_row.currency), 0) THEN
+    SELECT id INTO v_new FROM public.order_installments
+     WHERE order_id = v_row.order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
+       AND NOT public.issue_4522_row_in_flight(id)
+     ORDER BY (ticket_type_id IS NOT DISTINCT FROM v_row.ticket_type_id) DESC, due_at, id LIMIT 1;
+    IF v_new IS NOT NULL THEN
+      UPDATE public.order_installments
+         SET amount_cents = amount_cents + v_short, addon_portion_minor = addon_portion_minor + v_addon,
+             referral_share_minor = referral_share_minor + v_ref,
+             planned_application_fee_cents = planned_application_fee_cents + v_fee,
+             schedule_version = schedule_version + 1, pre_charge_notice_sent_at = NULL, updated_at = p_now
+       WHERE id = v_new;
+      v_folded := true;
+    END IF;
+  END IF;
+  IF NOT v_folded THEN
+    -- orch-strict-grep-allow tr3-schedule-currency-pinned — the re-opened row is the rest of one row and takes that row's currency, which checkout pinned from the session.
+    INSERT INTO public.order_installments (order_id, ordinal, amount_cents, currency, due_at, status, provider,
+      collection_method, ticket_type_id, kind, addon_portion_minor, referral_share_minor,
+      planned_application_fee_cents, plan_bound_at)
+    VALUES (v_row.order_id,
+      (SELECT max(ordinal) + 1 FROM public.order_installments WHERE order_id = v_row.order_id),
+      v_short, v_row.currency, v_row.due_at, 'scheduled', v_row.provider, v_row.collection_method,
+      v_row.ticket_type_id, 'scheduled', v_addon, v_ref, v_fee, v_row.plan_bound_at)
+    RETURNING id INTO v_new;
+  END IF;
+  v_waived := public.issue_4522_waive_unchargeable_remainder(v_row.order_id, 'short_collection');
   PERFORM public.issue_3645_audit_installment(p_installment_id, 'tr3.installment_short_collection',
     jsonb_build_object('order_id', v_row.order_id, 'row_amount_minor', v_row.amount_cents,
       'received_minor', p_received_minor, 'reopened_minor', v_short, 'reopened_installment_id', v_new,
-      'provider_ref', p_provider_ref));
+      'folded', v_folded, 'waived_minor', v_waived, 'provider_ref', p_provider_ref));
   RETURN jsonb_build_object('ok', true, 'shortMinor', v_short, 'reopenedInstallmentId', v_new,
-    'orderId', v_row.order_id);
+    'folded', v_folded, 'waivedMinor', v_waived, 'orderId', v_row.order_id);
 END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_record_short_collection(uuid, bigint, text, timestamptz) FROM PUBLIC, anon, authenticated;
@@ -1599,6 +1621,69 @@ REVOKE ALL ON FUNCTION public.issue_4522_row_in_flight(uuid) FROM PUBLIC, anon, 
 --    p_paid: [{ticket_type_id, net_minor, addon_minor}] leaving the balance.
 --    p_rolled_in_row: a superseded missed row whose amount joins later rows.
 -- ---------------------------------------------------------------------------
+-- T4-3 (I-4522-FLEX-NO-UNPAYABLE-REMAINDER): a v2 order whose whole open
+-- balance is above zero but below the provider's minimum charge
+-- (issue_3355_provider_minimum_charge_minor) can never be collected: the
+-- provider refuses it. It is written off here, once, as settled by waiver:
+-- never charged, never dunned, never paid out (its rows are superseded with
+-- failure_reason 'waived_below_provider_minimum', not collected), counted as
+-- settled so the order reaches paid in full, and audited per row with the
+-- amount. Strictly below the floor only, so at most floor − 1 minor units per
+-- order (49¢ USD, ₦99.99 NGN); never while a charge can still land. Returns
+-- the amount waived (0 when nothing was). The caller holds the order's locks.
+CREATE FUNCTION public.issue_4522_waive_unchargeable_remainder(p_order_id uuid, p_source text)
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_order public.orders;
+  v_floor bigint;
+  v_rem bigint;
+  v_charge bigint;
+  v_row record;
+BEGIN
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
+  IF NOT FOUND OR COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) <> 2 THEN
+    RETURN 0;
+  END IF;
+  v_floor := COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0);
+  SELECT COALESCE(sum(amount_cents), 0), COALESCE(sum(COALESCE(buyer_total_cents, amount_cents)), 0)
+    INTO v_rem, v_charge
+    FROM public.order_installments
+   WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed');
+  IF v_rem <= 0 OR v_rem >= v_floor OR v_charge >= v_floor
+     OR public.issue_4522_order_has_open_flex(p_order_id)
+     OR EXISTS (SELECT 1 FROM public.order_installments
+                 WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
+                   AND public.issue_4522_row_in_flight(id)) THEN
+    RETURN 0;
+  END IF;
+  FOR v_row IN SELECT id, amount_cents FROM public.order_installments
+                WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed')
+                ORDER BY due_at, id LOOP
+    PERFORM public.issue_3645_audit_installment(v_row.id, 'tr3.installment_waived_below_provider_minimum',
+      jsonb_build_object('order_id', p_order_id, 'amount_minor', v_row.amount_cents,
+        'order_remaining_minor', v_rem, 'provider_minimum_minor', v_floor, 'source', p_source));
+  END LOOP;
+  UPDATE public.order_installments
+     SET status = 'superseded', superseded_at = now(), failure_reason = 'waived_below_provider_minimum',
+         next_retry_at = NULL, updated_at = now()
+   WHERE order_id = p_order_id AND kind = 'scheduled' AND status IN ('scheduled', 'failed');
+  UPDATE public.order_installment_pay_links l
+     SET revoked_at = now(), revoked_reason = 'installment_superseded'
+    FROM public.order_installments oi
+   WHERE l.installment_id = oi.id AND oi.order_id = p_order_id AND l.revoked_at IS NULL
+     AND oi.failure_reason = 'waived_below_provider_minimum';
+  UPDATE public.order_balance_links SET revoked_at = now(), revoked_reason = 'paid_in_full'
+   WHERE order_id = p_order_id AND revoked_at IS NULL;
+  PERFORM public.issue_3645_clear_at_risk_if_settled(p_order_id);
+  RETURN v_rem;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_waive_unchargeable_remainder(uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+
 CREATE FUNCTION public.issue_4522_rebalance_order(
   p_order_id uuid,
   p_reason text,
@@ -1644,6 +1729,8 @@ DECLARE
   v_fee_run bigint := 0;
   v_ref_run bigint := 0;
   v_last_kept uuid;
+  v_floor bigint;
+  v_big uuid;
   v_kept_count integer := 0;
   v_kept_seen integer := 0;
   v_has_bt boolean;
@@ -1663,6 +1750,7 @@ BEGIN
          THEN COALESCE((v_order.payment_plan_terms->>'min_payment_minor')::bigint, c_unit)
          ELSE c_unit END,
     COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0));
+  v_floor := COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0);
 
   CREATE TEMP TABLE IF NOT EXISTS pg_temp.i4522_open (
     id uuid, ticket_type_id uuid, due_at timestamptz, amount bigint, addon bigint,
@@ -1711,6 +1799,19 @@ BEGIN
      OR (p_rolled_in_row IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pg_temp.i4522_open)) THEN
     RAISE EXCEPTION 'installment_rounding_invalid' USING ERRCODE = 'P0001';
   END IF;
+  -- T4-3: a package left owing less than the provider can charge joins the
+  -- package owing the most (its rows go; nothing is lost or created).
+  SELECT ticket_type_id INTO v_big FROM pg_temp.i4522_line WHERE trip + addon > 0
+   ORDER BY trip + addon DESC, ticket_type_id NULLS LAST LIMIT 1;
+  UPDATE pg_temp.i4522_line b
+     SET trip = b.trip + s.trip, addon = b.addon + s.addon
+    FROM (SELECT sum(trip) AS trip, sum(addon) AS addon FROM pg_temp.i4522_line
+           WHERE trip + addon > 0 AND trip + addon < v_floor AND ticket_type_id IS DISTINCT FROM v_big) s
+   WHERE s.trip IS NOT NULL AND b.ticket_type_id IS NOT DISTINCT FROM v_big;
+  IF FOUND THEN
+    UPDATE pg_temp.i4522_line SET trip = 0, addon = 0
+     WHERE trip + addon > 0 AND trip + addon < v_floor AND ticket_type_id IS DISTINCT FROM v_big;
+  END IF;
   SELECT COALESCE(sum(trip + addon), 0) INTO v_r2 FROM pg_temp.i4522_line;
   SELECT COALESCE(sum(amount), 0), sum(bt), sum(fee), COALESCE(sum(ref), 0), bool_and(bt IS NOT NULL)
     INTO v_old_sum, v_old_bt, v_old_fee, v_old_ref, v_has_bt FROM pg_temp.i4522_open;
@@ -1750,6 +1851,11 @@ BEGIN
         RAISE EXCEPTION 'installment_rounding_invalid' USING ERRCODE = 'P0001';
       END IF;
       v_keep := array_length(v_rows, 1);
+      -- T4-3: never split a package into rows the provider cannot charge.
+      WHILE v_keep > 1 AND (v_line.trip / v_keep) / c_unit * c_unit + (v_line.addon / v_keep) / c_unit * c_unit < v_floor LOOP
+        v_rows := v_rows[2:v_keep];
+        v_keep := v_keep - 1;
+      END LOOP;
       v_tbase := (v_line.trip / v_keep) / c_unit * c_unit;
       v_abase := (v_line.addon / v_keep) / c_unit * c_unit;
       FOR v_k IN 1..v_keep LOOP
@@ -1822,6 +1928,10 @@ BEGIN
 
   INSERT INTO public.order_balance_events (order_id, reason, trigger_installment_id, before, after, actor)
   VALUES (p_order_id, p_reason, p_trigger_installment_id, v_before, v_after, p_actor);
+  -- T4-3: a whole balance left below the provider's minimum is settled by waiver.
+  IF public.issue_4522_waive_unchargeable_remainder(p_order_id, p_reason) > 0 THEN
+    v_r2 := 0;
+  END IF;
 
   RETURN jsonb_build_object('remainingMinor', v_r2, 'rows', v_after);
 END
@@ -1848,6 +1958,8 @@ DECLARE
   v_flexible boolean;
   v_min bigint;
   v_next jsonb;
+  v_floor bigint;
+  v_waived bigint;
 BEGIN
   SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
   IF NOT FOUND THEN RETURN NULL; END IF;
@@ -1863,6 +1975,11 @@ BEGIN
       JOIN public.order_installments oi ON oi.id = op.installment_id
      WHERE op.order_id = p_order_id AND op.reason = 'flex_exceeds_balance'
        AND oi.status IN ('collected', 'refunded'));
+  -- T4-3: a remainder below the provider's minimum written off by waiver is settled.
+  SELECT COALESCE(sum(amount_cents), 0) INTO v_waived FROM public.order_installments
+   WHERE order_id = p_order_id AND status = 'superseded' AND failure_reason = 'waived_below_provider_minimum';
+  v_collected := v_collected + v_waived;
+  v_floor := COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0);
   v_flexible := COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) = 2
     AND COALESCE((v_order.payment_plan_terms->>'flex_enabled')::boolean, false)
     AND public.issue_4522_plan_v2_enabled()
@@ -1893,6 +2010,12 @@ BEGIN
     'addonPaymentMode', v_order.addon_payment_mode,
     'canPayAnyAmount', v_flexible,
     'minPaymentMinor', CASE WHEN v_flexible THEN v_min END,
+    -- T4-3: a payment short of the whole balance leaves at least the
+    -- provider's minimum owing. Allowed: minPaymentMinor .. maxPartialMinor,
+    -- or exactly remainingMinor; null = only the whole balance.
+    'maxPartialMinor', CASE WHEN v_flexible AND v_remaining - v_floor >= v_min THEN v_remaining - v_floor END,
+    'providerMinimumMinor', v_floor,
+    'waivedMinor', v_waived,
     'paymentInFlight', public.issue_4522_order_has_open_flex(p_order_id)
                        OR public.issue_4522_order_has_open_attempt(p_order_id)
                        OR public.issue_4522_collection_guard(p_order_id) IS NOT DISTINCT FROM 'flex_settlement_pending',
@@ -1999,6 +2122,8 @@ DECLARE
   v_next_due bigint;
   v_released jsonb := '[]'::jsonb;
   v_rem_left bigint;
+  v_floor bigint;
+  v_waived bigint;
 BEGIN
   IF p_method IS NULL OR p_method NOT IN ('auto_card', 'pay_link') THEN
     RAISE EXCEPTION 'invalid_attempt_method' USING ERRCODE = '22023';
@@ -2077,6 +2202,22 @@ BEGIN
     ELSE 0 END;
   IF p_amount_minor < v_min THEN
     RAISE EXCEPTION 'flex_amount_below_minimum' USING ERRCODE = '22023', DETAIL = v_min::text;
+  END IF;
+  -- T4-3 (I-4522-FLEX-NO-UNPAYABLE-REMAINDER): pay the whole balance, or
+  -- leave at least the provider's minimum owing (issue_4522_balance quotes
+  -- maxPartialMinor). A whole balance the provider cannot charge is settled
+  -- by waiver instead of a charge that would be refused.
+  v_floor := COALESCE(public.issue_3355_provider_minimum_charge_minor(v_order.currency), 0);
+  IF v_flexible AND p_amount_minor < v_remaining AND v_remaining - p_amount_minor < v_floor THEN
+    RAISE EXCEPTION 'flex_amount_leaves_unpayable_remainder' USING ERRCODE = '22023',
+      DETAIL = greatest(v_remaining - v_floor, 0)::text;
+  END IF;
+  IF p_amount_minor = v_remaining AND v_remaining < v_floor THEN
+    v_waived := public.issue_4522_waive_unchargeable_remainder(p_order_id, 'flex_payment');
+    IF v_waived > 0 THEN
+      RETURN jsonb_build_object('installmentId', NULL, 'waived', true, 'waivedMinor', v_waived,
+        'amountMinor', 0, 'currency', trim(v_currency), 'provider', v_provider, 'released', '[]'::jsonb);
+    END IF;
   END IF;
   IF v_provider = 'stripe' AND p_method <> 'auto_card' THEN
     RAISE EXCEPTION 'invalid_attempt_method' USING ERRCODE = '22023';
@@ -2530,6 +2671,16 @@ BEGIN
   IF v_guard IS NOT NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', v_guard);
   END IF;
+  -- T4-3: a v2 row the provider would refuse as too small is never sent: a
+  -- whole balance below the minimum is settled by waiver; otherwise the row
+  -- waits (no charge, no failure, no reminder) for the rest to be paid.
+  IF v_inst.kind = 'scheduled' AND COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) = 2
+     AND COALESCE(v_inst.buyer_total_cents, v_inst.amount_cents)
+         < COALESCE(public.issue_3355_provider_minimum_charge_minor(v_inst.currency), 0) THEN
+    RETURN jsonb_build_object('ok', false, 'reason',
+      CASE WHEN public.issue_4522_waive_unchargeable_remainder(v_order.id, 'charge_claim') > 0
+           THEN 'waived_below_provider_minimum' ELSE 'below_provider_minimum' END);
+  END IF;
 
   RETURN jsonb_build_object(
     'ok', true,
@@ -2595,6 +2746,14 @@ BEGIN
   END IF;
   IF v_inst.buyer_total_cents IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'amount_missing');
+  END IF;
+  -- T4-3: as claim_order_installment_for_charge — never send a charge the
+  -- provider refuses as too small.
+  IF v_inst.kind = 'scheduled' AND COALESCE((v_order.payment_plan_terms->>'v')::integer, 0) = 2
+     AND v_inst.buyer_total_cents < COALESCE(public.issue_3355_provider_minimum_charge_minor(v_inst.currency), 0) THEN
+    RETURN jsonb_build_object('ok', false, 'reason',
+      CASE WHEN public.issue_4522_waive_unchargeable_remainder(v_order.id, 'charge_claim') > 0
+           THEN 'waived_below_provider_minimum' ELSE 'below_provider_minimum' END);
   END IF;
   IF v_inst.in_flight_attempt_id IS NOT NULL THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'attempt_in_flight');

@@ -21,6 +21,7 @@ import {
   parseTripBalanceAmount,
   type TripBalanceChoice,
   tripBalanceOptions,
+  unpayableRemainderCopy,
   type TripBalanceView,
 } from "@mingla/offering-rendering/tripBalance";
 
@@ -80,6 +81,12 @@ const paymentErrorCopy = (
           balanceMoney(balance.minPaymentMinor, balance.currency)
         }.`
         : "Enter a valid amount.";
+    case "flex_amount_leaves_unpayable_remainder":
+      return balance
+        ? unpayableRemainderCopy(balance, (minor) => balanceMoney(minor, balance.currency))
+        : "Enter a valid amount.";
+    case "balance_settled":
+      return "Nothing more is owed on this trip. The last amount was too small to charge, so it has been cleared.";
     case "plan_not_flexible":
       return "This trip takes set payments. You can pay your next payment or the full balance.";
     case "deposit_not_paid":
@@ -247,6 +254,8 @@ export default function TripBalancePayPage(): React.ReactElement {
             ? `The smallest payment is ${
               balanceMoney(balance.minPaymentMinor ?? 0, balance.currency)
             }.`
+            : parsed.error === "leaves_unpayable_remainder"
+            ? unpayableRemainderCopy(balance, (minor) => balanceMoney(minor, balance.currency))
             : "Enter a valid amount.",
         );
         return;

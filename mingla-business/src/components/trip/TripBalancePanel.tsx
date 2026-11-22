@@ -65,8 +65,9 @@ export function TripBalancePanel({
         balance.openRows,
         amountMinor,
         balance.minPaymentMinor,
+        balance.providerMinimumMinor,
       ),
-    [amountMinor, balance.minPaymentMinor, balance.openRows],
+    [amountMinor, balance.minPaymentMinor, balance.openRows, balance.providerMinimumMinor],
   );
   const progress = balance.totalMinor > 0
     ? Math.min(100, Math.max(0, (balance.paidMinor / balance.totalMinor) * 100))

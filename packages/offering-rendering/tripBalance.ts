@@ -34,6 +34,15 @@ export interface TripBalance {
   totalMinor: number;
   canPayAnyAmount: boolean;
   minPaymentMinor: number | null;
+  /**
+   * issue #4522 (T4-3) — the largest payment short of the whole balance: a
+   * flexible payment is either minPaymentMinor .. maxPartialMinor or exactly
+   * remainingMinor, so it never leaves less than the provider can charge.
+   * null = only the whole balance. Older servers: remainingMinor.
+   */
+  maxPartialMinor: number | null;
+  /** issue #4522 (T4-3) — the smallest charge the provider accepts here (0 = none known). */
+  providerMinimumMinor: number;
   paymentInFlight: boolean;
   nextPayment: TripBalanceScheduleRow | null;
   openRows: TripBalanceScheduleRow[];
@@ -178,7 +187,19 @@ export function decodeTripBalance(value: unknown): TripBalance | null {
     entry === undefined || entry === null ? 0 : integer(entry) && entry >= 0 ? entry : undefined;
   const heldCreditMinor = optionalMoney(value.heldCreditMinor);
   const overpaymentRefundedMinor = optionalMoney(value.overpaymentRefundedMinor);
-  if (heldCreditMinor === undefined || overpaymentRefundedMinor === undefined) return null;
+  const providerMinimumMinor = optionalMoney(value.providerMinimumMinor);
+  if (
+    heldCreditMinor === undefined || overpaymentRefundedMinor === undefined ||
+    providerMinimumMinor === undefined
+  ) return null;
+  const maxPartialMinor = value.maxPartialMinor === undefined
+    ? (value.remainingMinor as number)
+    : value.maxPartialMinor === null
+    ? null
+    : integer(value.maxPartialMinor) && value.maxPartialMinor >= 0
+    ? value.maxPartialMinor
+    : undefined;
+  if (maxPartialMinor === undefined) return null;
   const planVersion = value.planVersion === undefined || value.planVersion === null
     ? 2
     : integer(value.planVersion) && value.planVersion > 0
@@ -199,6 +220,7 @@ export function decodeTripBalance(value: unknown): TripBalance | null {
       (minPaymentMinor === null || minPaymentMinor <= 0 ||
         minPaymentMinor > remainingMinor)) ||
     (value.canPayAnyAmount === false && minPaymentMinor !== null) ||
+    (maxPartialMinor !== null && maxPartialMinor > remainingMinor) ||
     (nextPayment !== null && nextPayment.amountMinor > remainingMinor)
   ) return null;
   return {
@@ -210,6 +232,8 @@ export function decodeTripBalance(value: unknown): TripBalance | null {
     totalMinor,
     canPayAnyAmount: value.canPayAnyAmount,
     minPaymentMinor,
+    maxPartialMinor,
+    providerMinimumMinor,
     paymentInFlight: value.paymentInFlight,
     nextPayment,
     openRows: openRows as TripBalanceScheduleRow[],
@@ -220,16 +244,36 @@ export function decodeTripBalance(value: unknown): TripBalance | null {
   };
 }
 
+/**
+ * issue #4522 (T4-3) — whether a payment is one the server accepts: the whole
+ * balance, or (a flexible plan) minPaymentMinor .. maxPartialMinor.
+ */
+export function tripBalanceAmountAllowed(
+  balance: Pick<TripBalance, "remainingMinor" | "minPaymentMinor" | "maxPartialMinor" | "canPayAnyAmount">,
+  amountMinor: number,
+): boolean {
+  if (amountMinor === balance.remainingMinor) return true;
+  if (!balance.canPayAnyAmount) return true;
+  return balance.maxPartialMinor !== null && amountMinor <= balance.maxPartialMinor &&
+    amountMinor >= (balance.minPaymentMinor ?? 0);
+}
+
 export function tripBalanceOptions(balance: TripBalance): TripBalanceOption[] {
   const options: TripBalanceOption[] = [];
-  if (balance.canPayAnyAmount && balance.minPaymentMinor !== null) {
+  if (
+    balance.canPayAnyAmount && balance.minPaymentMinor !== null &&
+    tripBalanceAmountAllowed(balance, balance.minPaymentMinor)
+  ) {
     options.push({
       key: "minimum",
       label: "Minimum",
       amountMinor: balance.minPaymentMinor,
     });
   }
-  if (balance.nextPayment !== null) {
+  if (
+    balance.nextPayment !== null &&
+    tripBalanceAmountAllowed(balance, balance.nextPayment.amountMinor)
+  ) {
     options.push({
       key: "next",
       label: "Next payment",
@@ -241,7 +285,7 @@ export function tripBalanceOptions(balance: TripBalance): TripBalanceOption[] {
     label: "Pay it all",
     amountMinor: balance.remainingMinor,
   });
-  if (balance.canPayAnyAmount) {
+  if (balance.canPayAnyAmount && balance.maxPartialMinor !== null) {
     options.push({ key: "other", label: "Other amount", amountMinor: null });
   }
   return options;
@@ -251,13 +295,19 @@ export type TripBalanceAmountResult =
   | { ok: true; amountMinor: number }
   | {
     ok: false;
-    error: "empty" | "invalid" | "below_minimum" | "over_balance";
+    error:
+      | "empty"
+      | "invalid"
+      | "below_minimum"
+      | "over_balance"
+      | "leaves_unpayable_remainder";
   };
 
 /** Parse a two-decimal buyer input without binary-float money arithmetic. */
 export function parseTripBalanceAmount(
   input: string,
-  balance: Pick<TripBalance, "remainingMinor" | "minPaymentMinor">,
+  balance: Pick<TripBalance, "remainingMinor" | "minPaymentMinor"> &
+    Partial<Pick<TripBalance, "maxPartialMinor">>,
 ): TripBalanceAmountResult {
   const normalized = input.trim().replaceAll(",", "");
   if (normalized.length === 0) return { ok: false, error: "empty" };
@@ -280,7 +330,32 @@ export function parseTripBalanceAmount(
   ) {
     return { ok: false, error: "below_minimum" };
   }
+  // T4-3: short of the whole balance it must leave what the provider can charge.
+  if (
+    balance.maxPartialMinor !== undefined && amountMinor < balance.remainingMinor &&
+    (balance.maxPartialMinor === null || amountMinor > balance.maxPartialMinor)
+  ) {
+    return { ok: false, error: "leaves_unpayable_remainder" };
+  }
   return { ok: true, amountMinor };
+}
+
+/**
+ * issue #4522 (T4-3) — the refusal copy for an amount that would leave less
+ * than the provider can charge: the two amounts the traveler can pay.
+ */
+export function unpayableRemainderCopy(
+  balance: Pick<TripBalance, "remainingMinor" | "maxPartialMinor" | "minPaymentMinor">,
+  money: (minor: number) => string,
+): string {
+  const whole = money(balance.remainingMinor);
+  return balance.maxPartialMinor !== null &&
+      balance.maxPartialMinor >= (balance.minPaymentMinor ?? 0) &&
+      balance.maxPartialMinor < balance.remainingMinor
+    ? `That would leave too little to pay later. Pay up to ${
+      money(balance.maxPartialMinor)
+    }, or the full ${whole}.`
+    : `That would leave too little to pay later. Pay the full ${whole}.`;
 }
 
 const floorToUnit = (value: number, unit: number): number =>
@@ -328,6 +403,7 @@ export function rebalanceTripPlan(
   openRows: readonly TripBalanceScheduleRow[],
   paymentMinor: number,
   minPaymentMinor: number | null,
+  providerMinimumMinor = 0,
 ): TripBalanceScheduleRow[] {
   const rows = [...openRows].sort((a, b) =>
     a.dueAt.localeCompare(b.dueAt) ||
@@ -386,7 +462,7 @@ export function rebalanceTripPlan(
     leftover -= 1;
   }
   const rebalanced: TripBalanceScheduleRow[] = [];
-  ordered.forEach(([, group], groupIndex) => {
+  const left = ordered.map(([, group], groupIndex) => {
     const lineBefore = lineTotals[groupIndex];
     const lineAddonBefore = group.reduce(
       (sum, row) => sum + (row.addonPortionMinor ?? 0),
@@ -394,12 +470,39 @@ export function rebalanceTripPlan(
     );
     const linePaid = Math.min(linePaidByIndex[groupIndex], lineBefore);
     const addonPaid = proportionalFloor(linePaid, lineAddonBefore, lineBefore);
-    const tripRemaining = lineBefore - lineAddonBefore - (linePaid - addonPaid);
-    const addonRemaining = lineAddonBefore - addonPaid;
+    return {
+      trip: lineBefore - lineAddonBefore - (linePaid - addonPaid),
+      addon: lineAddonBefore - addonPaid,
+    };
+  });
+  // T4-3 (as issue_4522_rebalance_order): a package left owing less than the
+  // provider can charge joins the package owing the most.
+  const floor = Math.max(0, providerMinimumMinor);
+  let big = -1;
+  left.forEach((l, i) => {
+    if (l.trip + l.addon > 0 && (big < 0 || l.trip + l.addon > left[big].trip + left[big].addon)) big = i;
+  });
+  left.forEach((l, i) => {
+    if (i !== big && big >= 0 && l.trip + l.addon > 0 && l.trip + l.addon < floor) {
+      left[big].trip += l.trip;
+      left[big].addon += l.addon;
+      l.trip = 0;
+      l.addon = 0;
+    }
+  });
+  ordered.forEach(([, group], groupIndex) => {
+    const tripRemaining = left[groupIndex].trip;
+    const addonRemaining = left[groupIndex].addon;
     if (tripRemaining + addonRemaining <= 0) return;
 
     let kept = group.filter((row) => keptDates.has(row.dueAt));
     if (kept.length === 0) kept = [group[group.length - 1]];
+    // T4-3: never split a package into rows the provider cannot charge.
+    while (
+      kept.length > 1 &&
+      floorToUnit(tripRemaining / kept.length, 100) +
+            floorToUnit(addonRemaining / kept.length, 100) < floor
+    ) kept = kept.slice(1);
     const tripBase = floorToUnit(tripRemaining / kept.length, 100);
     const addonBase = floorToUnit(addonRemaining / kept.length, 100);
     let tripRun = 0;

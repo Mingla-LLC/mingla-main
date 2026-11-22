@@ -26,6 +26,7 @@ function world(
   provider: "stripe" | "paystack",
   beginError?: string,
   switchEnabled = true,
+  over: { begin?: Record<string, unknown>; balance?: Record<string, unknown> } = {},
 ) {
   return fakeSupabase({
     rpc: (name) => {
@@ -41,7 +42,7 @@ function world(
         };
       }
       if (name === "issue_4522_begin_flex_payment") {
-        return beginError ? { data: null, error: { message: beginError } } : {
+        return beginError ? { data: null, error: { message: beginError } } : over.begin ? { data: over.begin, error: null } : {
           data: {
             installmentId: FLEX,
             amountMinor: 70000,
@@ -74,6 +75,7 @@ function world(
             openRows: [],
             history: [],
             terms: { v: 2 },
+            ...(over.balance ?? {}),
           },
           error: null,
         };
@@ -431,4 +433,53 @@ Deno.test("bad input never reaches the database", async () => {
   );
   assertEquals(res.status, 400);
   assertEquals(fake.rpcCalls.length, 0);
+});
+
+// ── T4-3: never leave a balance the provider cannot charge ─────────────────
+
+Deno.test("T4-3 an amount that would leave too little is refused by name; nothing reaches the provider", async () => {
+  const fake = world("stripe", "flex_amount_leaves_unpayable_remainder");
+  const calls: unknown[] = [];
+  const res = await handleTripBalancePay(
+    post({ action: "start", orderId: ORDER, amountMinor: 89_990, expectedRemainingMinor: 90000,
+      clientKey: "client-key-t43a", method: "saved_card" }, "buyer-jwt"),
+    deps(fake, calls),
+  );
+  assertEquals(res.status, 422);
+  assertEquals((await res.json()).error, "flex_amount_leaves_unpayable_remainder");
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("T4-3 a whole balance below the provider's minimum is settled by waiver: no charge, no payment sheet", async () => {
+  const fake = world("stripe", undefined, true, { begin: { installmentId: null, waived: true, waivedMinor: 30 } });
+  const calls: unknown[] = [];
+  const res = await handleTripBalancePay(
+    post({ action: "start", orderId: ORDER, amountMinor: 30, expectedRemainingMinor: 30,
+      clientKey: "client-key-t43b", method: "saved_card" }, "buyer-jwt"),
+    deps(fake, calls),
+  );
+  assertEquals(res.status, 409);
+  assertEquals(await res.json(), { error: "balance_settled", waivedMinor: 30 });
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("T4-3 the Paystack new-card handoff applies the same rule before issuing a link; the quote is public", async () => {
+  const fake = world("paystack", undefined, true, { balance: { maxPartialMinor: 80000, providerMinimumMinor: 10000 } });
+  const res = await handleTripBalancePay(
+    post({ action: "start", orderId: ORDER, amountMinor: 85000, expectedRemainingMinor: 90000,
+      clientKey: "client-key-t43c", method: "new_card" }, "buyer-jwt"),
+    { ...deps(fake, []), mintToken: () => "q".repeat(43) },
+  );
+  assertEquals(res.status, 422);
+  assertEquals(await res.json(), { error: "flex_amount_leaves_unpayable_remainder", detail: "80000" });
+  assertEquals(fake.rpcCalls.some((c) => c.name === "issue_4522_issue_balance_link"), false);
+  const ok = await handleTripBalancePay(
+    post({ action: "start", orderId: ORDER, amountMinor: 80000, expectedRemainingMinor: 90000,
+      clientKey: "client-key-t43d", method: "new_card" }, "buyer-jwt"),
+    { ...deps(fake, []), mintToken: () => "r".repeat(43) },
+  );
+  assertEquals((await ok.json()).kind, "open_page");
+  const view = await handleTripBalancePay(post({ action: "view", orderId: ORDER }, "buyer-jwt"), deps(fake, []));
+  const balance = (await view.json()).balance;
+  assertEquals([balance.maxPartialMinor, balance.providerMinimumMinor], [80000, 10000]);
 });
