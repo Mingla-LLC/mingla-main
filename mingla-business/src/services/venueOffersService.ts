@@ -24,6 +24,9 @@ import type {
   CheckInTicket,
   DateChangeRule,
   EntryStyle,
+  GateMethod,
+  GateSaleLine,
+  GateSaleResult,
   RefundRung,
   ScanOutcome,
   ScanResultCode,
@@ -1553,6 +1556,66 @@ export async function admitMemberCode(input: {
 
 export async function undoCheckIn(input: { venueId: string; logId: string }): Promise<ScanOutcome> {
   return mapScanOutcome(await checkIn<unknown>({ action: "undo", venueId: input.venueId, logId: input.logId }));
+}
+
+// [TRANSITIONAL] #4490 spec 08 §13: venue-check-in `sell` / `sell_guest_list`
+// for the gate sale sheet while the Till is off; exits when every venue is on the Till.
+export async function sellAtGate(input: {
+  venueId: string;
+  offeringId: string;
+  lines: GateSaleLine[];
+  method: GateMethod;
+  buyer?: { name?: string; email?: string; phone?: string };
+  idempotencyKey: string;
+}): Promise<GateSaleResult> {
+  const data = obj(
+    await checkIn<unknown>({
+      action: "sell",
+      venueId: input.venueId,
+      offeringId: input.offeringId,
+      lines: input.lines,
+      method: input.method,
+      buyer: input.buyer,
+      idempotencyKey: input.idempotencyKey,
+    }),
+  );
+  const booking = obj(data.booking);
+  return {
+    method: input.method,
+    passId: strOrNull(data.passId),
+    totalMinor: num(booking.totalMinor),
+    currencyCode: strOrNull(booking.currencyCode),
+    reference: strOrNull(booking.reference),
+    payUrl: strOrNull(data.payUrl),
+  };
+}
+
+export async function sellGuestListAtGate(input: {
+  venueId: string;
+  entryId: string;
+  count: number;
+  method: GateMethod;
+  buyer?: { name?: string; email?: string; phone?: string };
+  idempotencyKey: string;
+}): Promise<GateSaleResult> {
+  const data = obj(await checkIn<unknown>({
+    action: "sell_guest_list",
+    venueId: input.venueId,
+    entryId: input.entryId,
+    count: input.count,
+    method: input.method,
+    buyer: input.buyer,
+    idempotencyKey: input.idempotencyKey,
+  }));
+  const booking = obj(data.booking);
+  return {
+    method: input.method,
+    passId: strOrNull(data.passId),
+    totalMinor: num(booking.totalMinor),
+    currencyCode: strOrNull(booking.currencyCode),
+    reference: strOrNull(booking.reference),
+    payUrl: strOrNull(data.payUrl),
+  };
 }
 
 /** Rebuild the payload a refund ladder / date rule is saved with. */

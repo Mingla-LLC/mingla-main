@@ -43,6 +43,8 @@ import { dayHeadline } from "../today/todayModel";
 import { ScanCamera, scanCameraSupported } from "./ScanCamera";
 import { checkInResultView, doorErrorCopy, matchTypedCode, memberIdFromCode, type CheckInAction } from "./venueCheckInResult";
 import { VenueMemberCheckIn } from "./VenueMemberCheckIn";
+import { VenueGateSale } from "./VenueGateSale";
+import { doorSaleEntry, guestListDoorSale } from "./doorSaleEntry";
 import { VenueGroupCheckIn, needsGroupStep, passIdFromCode } from "./VenueGroupCheckIn";
 import { VenueBookingSheet } from "../bookings/VenueBookingSheet";
 import { money } from "../offers/offersModel";
@@ -110,11 +112,11 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const hourOn = featureSet?.by_the_hour?.enabled === true;
   const membersOn = featureSet?.memberships?.enabled === true;
   const guestListOn = featureSet?.guest_list?.enabled === true;
-  // #4490 spec 08 O1: selling at the door happens in the Till (the gate sale
-  // sheet is gone). Sell shows only where the Till runs: its release flag on
-  // and the venue's Sell in person feature on (no dead taps).
+  // #4490 spec 08 §13: door sales work with or without the Till. The one
+  // switch (venueOrderEntry, as for the order pad): Till off → the gate sale
+  // sheet as before O1; Till on → the Till's Entry tab.
   const tillReleased = useTillReleased();
-  const canSell = tillReleased && featureSet?.till?.enabled === true;
+  const doorSale = doorSaleEntry({ tillReleased, tillFeatureOn: featureSet?.till?.enabled === true });
   const openTill = useCallback(
     (prefill: { offerId?: string | null; priceOptionId?: string; count?: number; entryId?: string } = {}): void => {
       if (venueId === null) return;
@@ -141,6 +143,14 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const [lastQr, setLastQr] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  // [TRANSITIONAL] the gate sale sheet while the Till is off; exits when every venue is on the Till.
+  const [sale, setSale] = useState<{ open: boolean; offerId: string | null }>({ open: false, offerId: null });
+  const [guestListSale, setGuestListSale] = useState<{
+    entryId: string;
+    count: number;
+    priceOptionId: string;
+    guestName: string;
+  } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const busyRef = useRef(false);
 
@@ -150,6 +160,18 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
   const liveOffers: VenueOffer[] = useMemo(
     () => (offersQuery.data?.offers ?? []).filter((o) => o.status === "live" && o.kind === "entry"),
     [offersQuery.data?.offers],
+  );
+  const walkInLine =
+    pool !== null && pool.keptForWalkIns > 0
+      ? `${pool.walkInLeft.toLocaleString("en-GB")} of the ${pool.keptForWalkIns.toLocaleString("en-GB")} kept for walk-ins are left today.`
+      : null;
+  // Sell at the gate: the gate sale sheet (Till off) or the Till (Till on).
+  const sellAtDoor = useCallback(
+    (offerId: string | null = null): void => {
+      if (doorSale === "till") openTill({ offerId });
+      else setSale({ open: true, offerId });
+    },
+    [doorSale, openTill],
   );
 
   const rows: Row[] = useMemo(() => {
@@ -318,10 +340,10 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         setScanOpen(false);
         setOutcome(null);
         const walkIn = liveOffers.find((o) => o.entryStyle === "walk_in") ?? liveOffers[0] ?? null;
-        openTill({ offerId: walkIn?.id ?? null });
+        sellAtDoor(walkIn?.id ?? null);
       }
     },
-    [lastQr, liveOffers, openTill, outcome, runDoor, scanOpen],
+    [lastQr, liveOffers, outcome, runDoor, scanOpen, sellAtDoor],
   );
 
   const admitRow = useCallback(
@@ -349,29 +371,37 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
       setRowError(null);
       setOutcome(null);
       runDoor({ kind: "admit_guest_list", entryId: entry.id, count }, (next) => {
-        // Spec 07 §11 B3: the reduced price is sold in the Till's Entry tab,
-        // prefilled with the option and the count.
-        const result = next.result as string;
-        if ((result === "sell_in_till" || result === "sell") && next.priceOptionId !== null && next.priceOptionId !== undefined) {
+        // Spec 08 §13: the server answers by the same switch. Till on (spec 07
+        // §11 B3): the Till's Entry tab, prefilled with the option and count.
+        // Till off (spec 07 §I): the gate sale sheet at the list price.
+        const route = guestListDoorSale(next.result as string);
+        if (route !== null && next.priceOptionId !== null && next.priceOptionId !== undefined) {
           setOutcome(null);
-          if (!canSell) {
-            setRowError(doorErrorCopy("offers_not_enabled"));
+          if (route === "till") {
+            openTill({ offerId: next.offeringId ?? null, priceOptionId: next.priceOptionId, count: next.count ?? count, entryId: entry.id });
             return;
           }
-          openTill({ offerId: next.offeringId ?? null, priceOptionId: next.priceOptionId, count: next.count ?? count, entryId: entry.id });
+          setGuestListSale({
+            entryId: entry.id,
+            count: next.count ?? count,
+            priceOptionId: next.priceOptionId,
+            guestName: entry.guestName,
+          });
+          setSale({ open: true, offerId: next.offeringId ?? null });
           return;
         }
         if (next.result === "list_closed_for_price") {
           setOutcome(null);
           setRowError("List price has ended. Sell normal Entry instead.");
           const walkIn = liveOffers.find((offer) => offer.entryStyle === "walk_in") ?? liveOffers[0] ?? null;
-          if (canSell) openTill({ offerId: walkIn?.id ?? null });
+          setGuestListSale(null);
+          sellAtDoor(walkIn?.id ?? null);
           return;
         }
         setScanOpen(true);
       });
     },
-    [canSell, liveOffers, openTill, runDoor],
+    [liveOffers, openTill, runDoor, sellAtDoor],
   );
 
   // ---------------------------------------------------------------- states
@@ -617,7 +647,7 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
             )
           ) : null}
           <View style={styles.resultActions}>
-            {view.secondary !== null && !(view.secondary === "sell_walk_in" && (liveOffers.length === 0 || !canSell)) ? (
+            {view.secondary !== null && !(view.secondary === "sell_walk_in" && liveOffers.length === 0) ? (
               <Button label={actionLabel(view.secondary)} variant="secondary" size="md" onPress={() => onAction(view.secondary as CheckInAction)} disabled={door.isPending} testID={`venue-checkin-action-${view.secondary}`} />
             ) : null}
             <Button label={actionLabel(view.primary)} variant="primary" size="md" onPress={() => onAction(view.primary)} loading={door.isPending} testID={`venue-checkin-action-${view.primary}`} />
@@ -643,8 +673,8 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
             ? "Check the spelling, or scan their pass."
             : "Today's bookings appear here. Walk-ups can pay at the gate."}
         </Text>
-        {search.trim().length === 0 && liveOffers.length > 0 && canSell ? (
-          <Button label="Sell at the gate" variant="primary" size="md" onPress={() => openTill()} />
+        {search.trim().length === 0 && liveOffers.length > 0 ? (
+          <Button label="Sell at the gate" variant="primary" size="md" onPress={() => sellAtDoor()} />
         ) : null}
       </GlassCard>
     ) : (
@@ -791,21 +821,19 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
           {day !== undefined ? <Text style={styles.meta}>{dayHeadline(day)}</Text> : null}
         </View>
         <View style={styles.headActions}>
-          {canSell ? (
-            <Button
-              label="Sell at the gate"
-              variant="secondary"
-              size="sm"
-              leadingIcon="plus"
-              onPress={() => openTill()}
-              disabled={liveOffers.length === 0}
-              testID="venue-checkin-sell"
-            />
-          ) : null}
+          <Button
+            label="Sell at the gate"
+            variant="secondary"
+            size="sm"
+            leadingIcon="plus"
+            onPress={() => sellAtDoor()}
+            disabled={liveOffers.length === 0}
+            testID="venue-checkin-sell"
+          />
           <Button label="Scan a pass" variant="primary" size="sm" leadingIcon="scan" onPress={openScan} testID="venue-checkin-scan-open" />
         </View>
       </View>
-      {canSell && liveOffers.length === 0 && !offersQuery.isLoading ? (
+      {liveOffers.length === 0 && !offersQuery.isLoading ? (
         <Text style={styles.hint}>Sell at the gate opens once an Entry offer is live.</Text>
       ) : null}
 
@@ -874,6 +902,29 @@ export function VenueCheckInModule({ brandId, venueId }: VenueCheckInModuleProps
         </View>
       </Sheet>
       <VenueBookingSheet brandId={brandId} venueId={venueId} groupId={openBooking} onClose={() => setOpenBooking(null)} />
+      {/* [TRANSITIONAL] #4490 spec 08 §13: the gate sale sheet while the Till is off; exits when every venue is on the Till. */}
+      <VenueGateSale
+        visible={sale.open}
+        onClose={() => {
+          setSale({ open: false, offerId: null });
+          setGuestListSale(null);
+        }}
+        brandId={brandId}
+        venueId={venueId}
+        offers={liveOffers}
+        settings={offersQuery.data?.settings ?? null}
+        currency={currency}
+        walkInLine={guestListSale === null ? walkInLine : null}
+        initialOfferId={sale.offerId}
+        guestListSale={guestListSale}
+        onSold={(result, summary) => {
+          if (result.method !== "pay_link") {
+            setSale({ open: false, offerId: null });
+            setGuestListSale(null);
+          }
+          setToast(summary);
+        }}
+      />
       {toast !== null ? (
         <React.Suspense fallback={null}>
           <LazyToast visible kind="success" message={toast} onDismiss={() => setToast(null)} testID="venue-checkin-toast" />

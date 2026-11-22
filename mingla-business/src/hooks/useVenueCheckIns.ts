@@ -19,10 +19,15 @@ import {
   admitGuestList,
   fetchCheckInList,
   scanPass,
+  sellAtGate,
+  sellGuestListAtGate,
   undoCheckIn,
 } from "../services/venueOffersService";
 import type {
   CheckInList,
+  GateMethod,
+  GateSaleLine,
+  GateSaleResult,
   ScanOutcome,
 } from "../types/venueOffers";
 import { venueFeatureKeys } from "./venueFeatureKeys";
@@ -89,3 +94,52 @@ export function useDoorAction(
   });
 }
 
+// [TRANSITIONAL] #4490 spec 08 §13: the gate sale sheet's two sales (Till off);
+// exits when every venue is on the Till.
+export function useSellGuestListAtGate(
+  brandId: string | null,
+  venueId: string | null,
+): UseMutationResult<
+  GateSaleResult,
+  Error,
+  {
+    entryId: string;
+    count: number;
+    method: GateMethod;
+    buyer?: { name?: string; email?: string; phone?: string };
+    idempotencyKey: string;
+  }
+> {
+  const invalidate = useInvalidateDoor(brandId, venueId);
+  return useMutation({
+    mutationFn: (input) => {
+      if (venueId === null) throw new Error("venue_required");
+      return sellGuestListAtGate({ venueId, ...input });
+    },
+    onSettled: invalidate,
+  });
+}
+
+export function useSellAtGate(
+  brandId: string | null,
+  venueId: string | null,
+): UseMutationResult<
+  GateSaleResult,
+  Error,
+  {
+    offeringId: string;
+    lines: GateSaleLine[];
+    method: GateMethod;
+    buyer?: { name?: string; email?: string; phone?: string };
+    idempotencyKey: string;
+  }
+> {
+  const invalidate = useInvalidateDoor(brandId, venueId);
+  return useMutation({
+    mutationFn: (input) => {
+      if (venueId === null) throw new Error("venue_required");
+      return sellAtGate({ venueId, ...input });
+    },
+    onSettled: invalidate,
+  });
+}

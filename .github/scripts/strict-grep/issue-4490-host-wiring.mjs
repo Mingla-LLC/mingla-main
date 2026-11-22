@@ -152,15 +152,44 @@ const PINS = [
     why: "the door takes a six-box member code",
   },
   // venueGuestListI (spec 07-I)
-  // #4490 08-O1: the gate sale sheet is gone; the reduced price is sold in
-  // the Till's Entry tab, locked to the configured option and party count.
+  // #4490 spec 08 §13 (decided 22 Nov): door sales work with or without the
+  // Till. Till on: the reduced price is sold in the Till's Entry tab, locked to
+  // the configured option and party count. Till off: the gate sale sheet sells
+  // it, locked the same way, through the guest-list sale action.
   {
     id: "guest-list-door-sale",
     file: `${BIZ}/src/components/venue/features/checkin/VenueCheckInModule.tsx`,
     contains: [
       "openTill({ offerId: next.offeringId ?? null, priceOptionId: next.priceOptionId, count: next.count ?? count, entryId: entry.id })",
+      "const route = guestListDoorSale(next.result as string);",
+      "setSale({ open: true, offerId: next.offeringId ?? null });",
     ],
-    why: "the reduced-price door sale opens the Till with the configured option and party count",
+    why: "the reduced-price door sale opens the Till (Till on) or the gate sale sheet (Till off) with the configured option and party count",
+  },
+  {
+    id: "guest-list-gate-sale-locked",
+    file: `${BIZ}/src/components/venue/features/checkin/VenueGateSale.tsx`,
+    contains: [
+      "offer.options.filter((o) => o.id === guestListSale.priceOptionId)",
+      "{o.name} × {guestListSale.count}",
+      "count: guestListSale.count",
+    ],
+    why: "with the Till off the gate sale sheet's reduced-price sale is locked to the configured option and party count",
+  },
+  {
+    id: "guest-list-gate-sale-action",
+    file: `${BIZ}/src/services/venueOffersService.ts`,
+    contains: ['action: "sell_guest_list"'],
+    why: "with the Till off the door sale uses the guest-list sale action",
+  },
+  {
+    id: "door-sale-one-switch",
+    file: `${BIZ}/src/components/venue/features/checkin/doorSaleEntry.ts`,
+    contains: [
+      'import { venueOrderEntry } from "../../venueModules";',
+      '=== "pad"\n    ? "gate_sale"\n    : "till";',
+    ],
+    why: "the door chooses the gate sale or the Till by the same switch as the order pad (spec 08 §13)",
   },
   {
     id: "guest-list-till-locked",
