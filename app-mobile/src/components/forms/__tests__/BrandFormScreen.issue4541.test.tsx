@@ -301,10 +301,21 @@ describe("#4541 T-28 — whole-screen states", () => {
     expect(mockApi.fetchMyForm).not.toHaveBeenCalled();
   });
 
-  it("a link that needs a code in the app asks to sign in (Q7)", async () => {
+  it("a link that needs a code in the app asks to sign in (Q7); signed in, it reopens without the token", async () => {
     mockApi.fetchLinkForm.mockResolvedValue(read({ state: "code_required" }));
-    const root = await mount({ t: TOKEN });
+    const root = await mount({ t: TOKEN, event: EVENT });
     expect(has(root, "form-screen-signin")).toBe(true);
+    await press(root, "form-screen-signin-action-0");
+    expect(mockRouter.replace).toHaveBeenCalledWith(`/form/${FORM}`);
+  });
+
+  it("signed out, Sign in holds the route for after sign-in and goes to the welcome screen", async () => {
+    mockStore.user = null;
+    const root = await mount({ event: EVENT });
+    await press(root, "form-screen-signin-action-0");
+    expect(mockRouter.replace).toHaveBeenCalledWith("/");
+    const storage = require("@react-native-async-storage/async-storage");
+    expect(await storage.getItem("mingla_pending_form_route_v1")).toContain(`/form/${FORM}`);
   });
 
   it("closed with an answer shows the last answers", async () => {

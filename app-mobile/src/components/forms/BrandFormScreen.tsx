@@ -336,11 +336,17 @@ export function BrandFormScreen({ params, routePath }: BrandFormScreenProps): Re
   }, [params, data, submit, missing.length, answers, mode, signedIn, draftKey]);
 
   const goSignIn = useCallback(() => {
+    leavingRef.current = true;
+    // Already signed in (a link that needs its code, Q7): answer as yourself
+    // on the same form, without the link's token.
+    if (signedIn) {
+      router.replace(routePath as never);
+      return;
+    }
     void setPendingFormRoute(routePath).then(() => {
-      leavingRef.current = true;
       router.replace("/" as never);
     });
-  }, [routePath, router]);
+  }, [routePath, router, signedIn]);
 
   const reloadStale = useCallback(() => {
     Alert.alert(t("staleConfirmTitle"), t("staleConfirmBody"), [
@@ -413,11 +419,12 @@ export function BrandFormScreen({ params, routePath }: BrandFormScreenProps): Re
       <Text accessibilityRole="header" style={styles.messageTitle}>{title}</Text>
       {body !== null ? <Text style={styles.messageBody}>{body}</Text> : null}
       {extra}
-      {actions.map((a) => (
+      {actions.map((a, index) => (
         <Pressable
           key={a.label}
           accessibilityRole="button"
           onPress={a.onPress}
+          testID={`form-screen-${testState}-action-${index}`}
           style={({ pressed }) => [a.primary === false ? styles.secondary : styles.primary, pressed && styles.pressed]}
         >
           <Text style={a.primary === false ? styles.secondaryText : styles.primaryText}>{a.label}</Text>
