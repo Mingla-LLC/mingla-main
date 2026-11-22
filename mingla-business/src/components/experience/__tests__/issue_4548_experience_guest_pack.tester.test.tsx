@@ -7,6 +7,8 @@
 //   EXP-GP-2  a pending pack blocks Continue on Stops while its save fails (text kept,
 //             nothing else written), then saves through its own RPC and advances
 //   EXP-GP-3  the refund-terms publish sequence is unchanged apart from that one read
+//   EXP-GP-4  (Retest 2) a pack-only change, then Back and Close, asks before discarding;
+//             the same walk with nothing typed closes at once (no phantom dialog)
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -135,6 +137,11 @@ jest.mock("../../ui/GlassCard", () => ({
 }));
 jest.mock("../../event/CreatorStep2When", () => ({ CreatorStep2When: (): null => null }));
 jest.mock("../ExperienceCoverStep", () => ({ ExperienceCoverStep: (): null => null }));
+jest.mock("../../ui/ConfirmDialog", () => ({
+  ConfirmDialog: (props: Record<string, unknown>) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("react").createElement("ConfirmDialogProbe", props),
+}));
 jest.mock("../ExperienceStopsStep", () => ({ ExperienceStopsStep: (): null => null }));
 // #4548 tester: the REAL Guest pack editor and working copy mount on the Stops step.
 jest.mock("../../pricing/LazyWhoCoversCostsSection", () => ({
@@ -499,5 +506,51 @@ describe("#4548 experience Guest pack (tester)", () => {
       "issue_1719_publish_experience_with_poster",
     ]);
     await unmount(tree);
+  });
+});
+
+describe("#4548 experience Guest pack: leaving (tester, Retest 2)", () => {
+  beforeEach(() => {
+    releaseGuestPackSession("exp-new");
+    mockRpc.mockImplementation(async (name: string) => {
+      if (name === "biz_get_event_guest_pack") return { data: null, error: null };
+      return { data: { event: { id: "exp-new" } }, error: null };
+    });
+  });
+  const closeX = (tree: Renderer): TestInstance | undefined =>
+    host(tree, "Pressable").find((n) => n.props.accessibilityLabel === "Cancel experience creation");
+  const discardOpen = (tree: Renderer): boolean =>
+    host(tree, "ConfirmDialogProbe").some(
+      (n) => n.props.testID === "experience-wizard-discard-dialog" && n.props.visible !== false,
+    );
+
+  test("EXP-GP-4 pack-only change, Back, Close: asks; untouched: closes at once", async () => {
+    for (const typed of [false, true]) {
+      releaseGuestPackSession("exp-new");
+      const onCancel = jest.fn();
+      const tree = await mount(
+        <ExperienceCreatorWizard brandId="brand-3284" onComplete={jest.fn()} onCancel={onCancel} initialDraft={seed()} />,
+      );
+      await pressButton(tree, "Continue");
+      await settle();
+      await settle();
+      if (typed) {
+        await act(async () => {
+          setGuestPackNote("exp-new", "Meet at the gate");
+        });
+      }
+      await pressBack(tree);
+      await settle();
+      await press(closeX(tree));
+      await settle();
+      if (typed) {
+        expect(onCancel).not.toHaveBeenCalled();
+        expect(discardOpen(tree)).toBe(true);
+      } else {
+        expect(discardOpen(tree)).toBe(false);
+        expect(onCancel).toHaveBeenCalledTimes(1);
+      }
+      await unmount(tree);
+    }
   });
 });
