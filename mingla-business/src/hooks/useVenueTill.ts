@@ -20,6 +20,7 @@ import {
   payTill,
   refundTill,
   sendTill,
+  sendTillReceipt,
   voidTillLine,
   type TillCatalog,
   type TillChecks,
@@ -113,6 +114,15 @@ export function useTillActions(venueId: string | null) {
       mutationFn: async (i: Omit<Parameters<typeof payTill>[0], "venueId">) => {
         const result = await payTill({ venueId: venueId as string, ...i });
         put(result.sale);
+        return result;
+      },
+    }),
+    // A receipt send changes the payment's send count: refresh the check.
+    receipt: useMutation({
+      mutationFn: async (i: Omit<Parameters<typeof sendTillReceipt>[0], "venueId"> & { saleId: string | null }) => {
+        const { saleId, ...rest } = i;
+        const result = await sendTillReceipt({ venueId: venueId as string, ...rest });
+        if (saleId !== null) refreshSale(saleId);
         return result;
       },
     }),

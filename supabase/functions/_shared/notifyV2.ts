@@ -19,6 +19,7 @@ import {
 } from "./adapters/smsAdapter.ts";
 import { renderCategoryMessage } from "./notifyTemplates.ts";
 import { venueMembershipRenewalSms } from "./email/templates/venueMembershipEmails.ts";
+import { tillReceiptSms } from "./email/tillReceiptEmail.ts";
 import type { RenderedMessage } from "./notifyTemplates.ts";
 import {
   type PersistedOfferingPushV1,
@@ -130,6 +131,13 @@ export interface DispatchV2Input {
    * ledger: the link carries the member token.
    */
   venue_sms_pay_url?: string;
+  /**
+   * #4490 spec 08 O1 (T20) — the private Till receipt link, set solely by
+   * notify-dispatch after it validated a service-role caller's link for the
+   * same payment. Like email_cta it is never copied into the payload, the
+   * inbox row, push data or the delivery ledger: the link carries a token.
+   */
+  till_receipt_url?: string;
 }
 
 export interface EmailCtaInput {
@@ -168,6 +176,8 @@ const CONSUMER_PROVIDER_SAFE_KEYS: Readonly<Record<string, readonly string[]>> =
     buyer_event_updated: ["order_id", "event_id", "event_date_id"],
     buyer_venue_order_receipt: ["venue_order_id", "venue_id"],
     buyer_door_receipt: ["order_id", "event_id"],
+    // #4490 spec 08 O1 — Till receipts: opaque ids only (no token, no contact).
+    buyer_till_receipt: ["till_payment_id", "venue_id"],
     buyer_ticket_sent: ["ticket_id", "event_id"],
     rsvp_acknowledgement: ["rsvp_id", "event_id", "guest_id"],
     rsvp_pass: ["rsvp_id", "event_id", "guest_id"],
@@ -862,6 +872,10 @@ export async function dispatchV2(
             input.category_key,
             input.payload,
             input.venue_sms_pay_url,
+          ) ?? tillReceiptSms(
+            input.category_key,
+            input.payload,
+            input.till_receipt_url,
           ) ?? rendered.sms,
           countryCode: input.country_code,
         });
@@ -1838,6 +1852,10 @@ async function dispatchAnon(
           input.category_key,
           input.payload,
           input.venue_sms_pay_url,
+        ) ?? tillReceiptSms(
+          input.category_key,
+          input.payload,
+          input.till_receipt_url,
         ) ?? rendered.sms,
         countryCode: input.country_code,
       });

@@ -71,6 +71,11 @@ import {
   buildVenueVisitUrl,
   resolveVenueVisitOrigin,
 } from "../_shared/venueOfferVisitLink.ts";
+import {
+  buildTillReceiptUrl,
+  rederiveTillReceiptToken,
+} from "../_shared/venueTillReceiptToken.ts";
+import { TILL_RECEIPT_CATEGORY } from "../_shared/email/tillReceiptEmail.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -393,6 +398,9 @@ export async function resolveVenueAppLink(
     };
   } else if (isVenueWaitlistCategory(category)) {
     subject = { kind: "venue_waitlist", id: String(payload.waitlist_id ?? "") };
+  } else if (category === TILL_RECEIPT_CATEGORY) {
+    // #4490 spec 08 O1 (T20): a Till receipt's "Open in Mingla" (the sale).
+    subject = { kind: "venue_till_sale", id: String(payload.till_sale_id ?? "") };
   }
   if (subject === null || !/^[0-9a-f-]{36}$/i.test(subject.id)) return null;
   const claim = await venueClaimFor(
@@ -452,6 +460,64 @@ export async function resolveVenueMemberDispatch(
       reason: "member_link_failed",
     });
     return null;
+  }
+}
+
+/**
+ * #4490 spec 08 O1 (T20): a Till receipt, read when it is SENT. The receipt
+ * (snapshot plus refunds since) goes into the payload for the itemised email;
+ * the private link is re-derived from the payment id and checked against the
+ * stored hash. Null link when none can be built: the receipt still goes.
+ */
+export async function resolveTillReceiptDispatch(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  row: Record<string, unknown>,
+  env: (name: string) => string | undefined = (name) => Deno.env.get(name),
+  ring: VenueReservationManageKeyRing = readVenueReservationManageKeyRing(),
+): Promise<{ receipt: Record<string, unknown> | null; url: string | null }> {
+  const payload = (row.payload as Record<string, unknown> | null) ?? {};
+  const paymentId = String(payload.till_payment_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(paymentId)) return { receipt: null, url: null };
+  const { data, error } = await admin.rpc(
+    "issue_4490_till_receipt_link_facts",
+    { p_payment_id: paymentId },
+  );
+  // A failed read retries the row (the email must carry its lines).
+  if (error) throw new Error("till_receipt_lookup_failed");
+  const facts = (data as Record<string, unknown> | null) ?? {};
+  const receipt = facts.receipt && typeof facts.receipt === "object"
+    ? facts.receipt as Record<string, unknown>
+    : null;
+  try {
+    const token = await rederiveTillReceiptToken({
+      paymentId,
+      storedHashHex: typeof facts.tokenHashHex === "string"
+        ? facts.tokenHashHex
+        : null,
+      ring,
+    });
+    if (token === null) {
+      console.warn("[notify-outbox-drain] till_receipt_link_omitted", {
+        outbox_id: row.id ?? null,
+        reason: "token_not_derivable",
+      });
+      return { receipt, url: null };
+    }
+    return {
+      receipt,
+      url: buildTillReceiptUrl({
+        origin: resolveVenueVisitOrigin(env),
+        paymentId,
+        token,
+      }),
+    };
+  } catch {
+    console.warn("[notify-outbox-drain] till_receipt_link_omitted", {
+      outbox_id: row.id ?? null,
+      reason: "receipt_link_failed",
+    });
+    return { receipt, url: null };
   }
 }
 
@@ -724,6 +790,12 @@ export async function processGenericOutcome(
     if (isVenueMembershipCategory(String(row.category_key ?? ""))) {
       venueVisitUrl = await resolveVenueMemberDispatch(admin, row);
     }
+    let tillReceiptUrl: string | null = null;
+    if (row.category_key === TILL_RECEIPT_CATEGORY) {
+      const till = await resolveTillReceiptDispatch(admin, row);
+      if (till.receipt !== null) payload.receipt = till.receipt;
+      tillReceiptUrl = till.url;
+    }
     // #4490 Explorer W1: the app link leads the email and rides in the text.
     const venueApp = await resolveVenueAppLink(admin, row);
     if (venueApp !== null) payload.venue_app_link_display = venueApp.display;
@@ -751,6 +823,8 @@ export async function processGenericOutcome(
         // #4490 — in transit only; see resolveVenueBookingDispatch.
         ...(venueVisitUrl ? { venue_visit_url: venueVisitUrl } : {}),
         ...(venueApp ? { venue_app_url: venueApp.url } : {}),
+        // #4490 spec 08 O1 — in transit only; see resolveTillReceiptDispatch.
+        ...(tillReceiptUrl ? { till_receipt_url: tillReceiptUrl } : {}),
       }),
     });
     const envelope = await readBoundedSuccessEnvelope(res);

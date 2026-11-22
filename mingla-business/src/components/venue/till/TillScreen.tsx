@@ -39,7 +39,10 @@ import { Sheet } from "../../ui/Sheet";
 import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
 import { Skeleton } from "../../ui/Skeleton";
 import { Toast } from "../../ui/Toast";
+import { ConfirmDialog } from "../../ui/ConfirmDialog";
+import { useUnsavedChangesGuard } from "../../../hooks/useUnsavedChangesGuard";
 import { PaymentSheet } from "./PaymentSheet";
+import { ReceiptStep } from "./ReceiptStep";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
 import {
   addToDraft,
@@ -58,11 +61,13 @@ import {
 export interface TillScreenProps {
   venueId: string;
   prefill?: TillPrefill | null;
+  /** Open on the Open checks list (from Orders › Open checks). */
+  openChecksOnStart?: boolean;
 }
 
 type ToastState = { kind: "success" | "error"; message: string } | null;
 
-export function TillScreen({ venueId, prefill = null }: TillScreenProps): React.ReactElement {
+export function TillScreen({ venueId, prefill = null, openChecksOnStart = false }: TillScreenProps): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -73,7 +78,7 @@ export function TillScreen({ venueId, prefill = null }: TillScreenProps): React.
   const [saleId, setSaleId] = useState<string | null>(null);
   const saleQuery = useTillSale(venueId, saleId);
   const sale = saleId !== null ? saleQuery.data ?? null : null;
-  const [checksOpen, setChecksOpen] = useState(false);
+  const [checksOpen, setChecksOpen] = useState(openChecksOnStart);
   const checksQuery = useTillChecks(venueId, true);
   const actions = useTillActions(venueId);
 
@@ -87,8 +92,10 @@ export function TillScreen({ venueId, prefill = null }: TillScreenProps): React.
   const [basketSheet, setBasketSheet] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [refundFor, setRefundFor] = useState<string | null>(null);
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [busy, setBusy] = useState(false);
+  const [leaveAsk, setLeaveAsk] = useState(false);
 
   const currency = sale?.currency ?? catalog?.currency ?? "NGN";
   const money = useCallback((minor: number): string => formatCurrency(minor, currency, true), [currency]);
@@ -174,6 +181,20 @@ export function TillScreen({ venueId, prefill = null }: TillScreenProps): React.
     }
     setDraft((d) => addToDraft(d, { menuItemId: item.id, name: item.name, quantity: 1, modifierIds: [], modifierNames: [], notes: null, station: item.station }));
   };
+
+  // Leaving the Till: back to the workspace, or to the venue when the Till was
+  // opened straight from a link or a reload (nothing to go back to).
+  const leaveTill = useCallback((): void => {
+    if (router.canGoBack()) router.back();
+    else router.replace(`/venue/${venueId}` as never);
+  }, [router, venueId]);
+  // Items picked but not yet on the check live only on this device: leaving
+  // asks first (the check itself, its rounds and payments are saved).
+  const requestClose = useCallback((): void => {
+    if (draft.length > 0) setLeaveAsk(true);
+    else leaveTill();
+  }, [draft.length, leaveTill]);
+  useUnsavedChangesGuard({ dirty: draft.length > 0, onRequestLeave: requestClose });
 
   const newSale = (): void => {
     setPayOpen(false);
@@ -350,12 +371,21 @@ export function TillScreen({ venueId, prefill = null }: TillScreenProps): React.
     </View>
   );
 
-  const paidPayments = (sale?.payments ?? []).filter((p) => p.state === "paid" || p.state === "partially_refunded");
+  const paidPayments = (sale?.payments ?? []).filter(
+    (p) => p.state === "paid" || p.state === "partially_refunded" || p.state === "refunded",
+  );
+  const receiptPayment = paidPayments.find((p) => p.id === receiptFor) ?? null;
+  const sendReceipt = (input: {
+    paymentId: string;
+    phone: string | null;
+    phoneCountryIso: string | null;
+    email: string | null;
+  }): Promise<{ sendsLeft: number }> => actions.receipt.mutateAsync({ saleId, ...input });
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]} testID="till-screen">
       <View style={styles.header}>
-        <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={() => router.back()} testID="till-back" />
+        <Button label={TILL_COPY.close} variant="ghost" size="sm" onPress={requestClose} testID="till-back" />
         <Text style={styles.title} numberOfLines={1}>{catalog?.venueName ?? TILL_COPY.title}</Text>
         <Button
           label={`${TILL_COPY.checks} · ${checksQuery.data?.open.length ?? 0}`}
@@ -371,14 +401,22 @@ export function TillScreen({ venueId, prefill = null }: TillScreenProps): React.
       <View style={[styles.main, layout !== "phone" && styles.mainWide]}>
         <ScrollView style={styles.grow} contentContainerStyle={styles.catalogScroll}>
           {catalogBody}
-          {paidPayments.length > 0 && catalog?.canManageMoney === true ? (
+          {paidPayments.length > 0 ? (
             <View style={styles.paidList}>
               {paidPayments.map((p) => (
                 <ListRow
                   key={p.id}
                   title={`${p.method === "cash" ? TILL_COPY.cash : TILL_COPY.ownMachine} · ${money(p.amountMinor + p.tipMinor)}`}
                   subtitle={p.reference}
-                  trailing={<Button label={TILL_COPY.refund} variant="secondary" size="sm" onPress={() => setRefundFor(p.id)} />}
+                  trailing={
+                    <View style={styles.paidActions}>
+                      <Button label={TILL_COPY.sendReceipt} variant="secondary" size="sm" onPress={() => setReceiptFor(p.id)}
+                        testID={`till-receipt-open-${p.id}`} />
+                      {catalog?.canManageMoney === true && p.state !== "refunded" ? (
+                        <Button label={TILL_COPY.refund} variant="secondary" size="sm" onPress={() => setRefundFor(p.id)} />
+                      ) : null}
+                    </View>
+                  }
                 />
               ))}
             </View>
@@ -548,6 +586,44 @@ export function TillScreen({ venueId, prefill = null }: TillScreenProps): React.
         onRefreshSale={() => {
           if (saleId !== null) actions.refreshSale(saleId);
         }}
+        onSendReceipt={({ channel: _channel, ...input }) => sendReceipt(input)}
+      />
+
+      {/* Re-send a paid payment's receipt (any seller; three sends at most). */}
+      <Sheet visible={receiptPayment !== null} onClose={() => setReceiptFor(null)} snapPoint={0.7} testID="till-receipt-sheet">
+        <View style={styles.grow}>
+          <SheetHead
+            title={receiptPayment !== null ? `${TILL_COPY.sendReceipt} · ${receiptPayment.reference}` : TILL_COPY.sendReceipt}
+            onClose={() => setReceiptFor(null)}
+          />
+          <SheetScrollLayout keyboardAware contentStyle={styles.sheetScroll}>
+            {receiptPayment !== null ? (
+              <ReceiptStep
+                key={receiptPayment.id}
+                currency={currency}
+                sendsUsed={receiptPayment.receiptSends}
+                onSend={({ channel: _channel, ...input }) => sendReceipt({ paymentId: receiptPayment.id, ...input })}
+                testID="till-receipt-resend"
+              />
+            ) : null}
+          </SheetScrollLayout>
+        </View>
+      </Sheet>
+
+      <ConfirmDialog
+        visible={leaveAsk}
+        onClose={() => setLeaveAsk(false)}
+        onConfirm={() => {
+          setLeaveAsk(false);
+          setDraft([]);
+          leaveTill();
+        }}
+        title={TILL_COPY.leaveTitle}
+        description={TILL_COPY.leaveBody}
+        confirmLabel={TILL_COPY.leaveConfirm}
+        cancelLabel={TILL_COPY.leaveKeep}
+        destructive
+        testID="till-leave"
       />
 
       <Toast visible={toast !== null} kind={toast?.kind ?? "info"} message={toast?.message ?? ""} onDismiss={() => setToast(null)} testID="till-toast" />
@@ -894,6 +970,7 @@ const styles = StyleSheet.create({
   sheetScroll: { gap: space[3], paddingBottom: space[4], paddingHorizontal: space[1] },
   group: { gap: space[2] },
   paidList: { gap: space[1] },
+  paidActions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: space[2] },
   h2: { ...type.h2, color: color.text1, flexShrink: 1 },
   h3: { ...type.row, color: color.text1, flexShrink: 1 },
   label: { ...type.small, color: color.text2 },

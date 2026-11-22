@@ -74,6 +74,8 @@ export interface TillPayment {
   paidAt: string | null;
   reference: string;
   refundedMinor: number;
+  /** Receipts already sent for this payment (the server allows three). */
+  receiptSends: number;
 }
 
 export interface TillSale {
@@ -224,6 +226,7 @@ export function mapTillSale(v: unknown): TillSale {
         paidAt: strOrNull(pay.paidAt),
         reference: str(pay.reference),
         refundedMinor: num(pay.refundedMinor),
+        receiptSends: num(pay.receiptSends),
       };
     }),
   };
@@ -443,4 +446,23 @@ export async function refundTill(input: {
 }): Promise<TillSale> {
   const data = obj(await till<unknown>({ action: "refund", ...input }));
   return mapTillSale(data.sale);
+}
+
+/** Send a payment's receipt by text and/or email (at most three sends). */
+export async function sendTillReceipt(input: {
+  venueId: string;
+  paymentId: string;
+  phone: string | null;
+  phoneCountryIso: string | null;
+  email: string | null;
+}): Promise<{ sendsLeft: number; queued: { sms: boolean; email: boolean } }> {
+  const data = obj(await till<unknown>({
+    action: "receipt",
+    venueId: input.venueId,
+    paymentId: input.paymentId,
+    ...(input.phone !== null ? { phone: input.phone, phoneCountryIso: input.phoneCountryIso } : {}),
+    ...(input.email !== null ? { email: input.email } : {}),
+  }));
+  const queued = obj(data.queued);
+  return { sendsLeft: num(data.sendsLeft), queued: { sms: queued.sms === true, email: queued.email === true } };
 }

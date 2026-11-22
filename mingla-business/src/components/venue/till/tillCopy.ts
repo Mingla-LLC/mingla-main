@@ -73,6 +73,16 @@ export const TILL_COPY = {
   // Receipt
   receipt: "Receipt",
   noReceipt: "No receipt",
+  sendReceipt: "Send receipt",
+  receiptSent: "Receipt sent",
+  receiptPhone: "Guest's mobile number",
+  receiptEmail: "Guest's email",
+  receiptText: "Text",
+  receiptEmailButton: "Email",
+  receiptBoth: "Both",
+  receiptEmailInvalid: "Check the email address.",
+  receiptSendsLeft: (n: number): string => (n === 1 ? "You can send it 1 more time." : `You can send it ${n} more times.`),
+  receiptLimit: "This receipt was sent three times, the most we send.",
   // Void and refund
   void: "Void",
   voidItem: (name: string): string => `Void ${name}`,
@@ -96,6 +106,11 @@ export const TILL_COPY = {
   ],
   refunded: "Refunded",
   close: "Close",
+  // Leaving with items not yet on the check
+  leaveTitle: "Leave the Till?",
+  leaveBody: "The items you picked aren't on the check yet, so they'll be lost.",
+  leaveConfirm: "Leave",
+  leaveKeep: "Keep selling",
 } as const;
 
 /**
@@ -137,6 +152,16 @@ export function tillErrorCopy(code: string, item: string | null = null): string 
       return "Selling at the gate isn't switched on for your brand yet.";
     case "admit_count_invalid":
       return "That's more guests than are left on this pass.";
+    case "till_card_refunded_once":
+      return "This card payment was already refunded once. Pay the rest back in cash.";
+    case "till_receipt_limit":
+      return "This receipt was sent three times, the most we send.";
+    case "till_receipt_phone_invalid":
+      return "Check the mobile number, including the country.";
+    case "till_receipt_email_invalid":
+      return "Check the email address.";
+    case "till_receipt_not_paid":
+      return "A receipt goes out once the payment is taken.";
     case "network":
       return "No connection. Sales are paused until you're back online. Nothing is queued.";
     default:

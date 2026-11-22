@@ -20,10 +20,13 @@
 //   refund    { paymentId, amountMinor, tipMinor, reason, restock, clientRequestId }
 //   checks    {}                                            → { open, paid }
 //   sale      { saleId }                                    → sale
+//   receipt   { paymentId, phone?, phoneCountryIso?, email? } → { queued, sendsLeft }
+//   receipt_view { paymentId, token }   (ANONYMOUS)         → { receipt }
 //
 // verify_jwt = false (the gateway does not check it) with the bearer REQUIRED
-// and verified here, so the sent-receipt page (O1 receipts) can join this
-// function without a policy change. Each service-role RPC checks the member's
+// and verified here for every staff action. `receipt_view` is the one
+// anonymous action: the buyer web receipt page (/receipt/till/<id>#t=) reads
+// one payment's receipt with its private token, nothing else. Each service-role RPC checks the member's
 // rights at that venue (sell, money). Amounts are never taken from the body except cash
 // given, tip and refund amounts; the server prices everything else.
 
@@ -37,6 +40,12 @@ import {
 } from "../_shared/venueOrderPricing.ts";
 import { loadMenuSnapshot } from "../_shared/venueOrderCore.ts";
 import { fireVenueOrderPlacedForOrder } from "../_shared/venueOrderNotify.ts";
+import { resolveBuyerPhone } from "../_shared/buyerPhone.ts";
+import {
+  issueTillReceiptTokenHash,
+  TILL_RECEIPT_TOKEN_RE,
+  tillReceiptTokenHashHex,
+} from "../_shared/venueTillReceiptToken.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,199}$/;
@@ -70,6 +79,9 @@ export const TILL_SAFE_CODES = [
   "till_refund_over_paid",
   "till_refund_tip_last",
   "till_settings_invalid",
+  "till_receipt_not_paid",
+  "till_card_refunded_once",
+  "till_receipt_limit",
   "till_settings_changed",
   "offer_not_found",
   "offers_not_enabled",
@@ -97,7 +109,11 @@ export type VenueTillDeps = {
   client?: () => TillClient;
   env?: (name: string) => string | undefined;
   notifyPlaced?: (client: TillClient, orderId: string) => Promise<void>;
+  /** The receipt token hash for a payment's first receipt (tests inject). */
+  receiptTokenHash?: (paymentId: string) => Promise<string>;
 };
+
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 type RpcError = { message?: string; code?: string; details?: string | null };
 
@@ -200,6 +216,9 @@ function parseMenuLines(raw: unknown): RequestedLine[] | null {
 export function createVenueTillHandler(deps: VenueTillDeps = {}) {
   const env = deps.env ?? ((name: string) => Deno.env.get(name));
   const notifyPlaced = deps.notifyPlaced ?? fireVenueOrderPlacedForOrder;
+  const receiptTokenHash = deps.receiptTokenHash ??
+    (async (paymentId: string) =>
+      (await issueTillReceiptTokenHash({ paymentId })).hashHex);
 
   return async function handle(req: Request): Promise<Response> {
     if (req.method === "OPTIONS") {
@@ -224,6 +243,28 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       | null;
     if (!body) return json(400, { code: "invalid_request" });
     const action = str(body.action);
+
+    // The buyer's receipt page: anonymous, one payment, only with its token.
+    // A wrong token and an unknown payment answer the same 404.
+    if (action === "receipt_view") {
+      const paymentId = str(body.paymentId).toLowerCase();
+      const token = str(body.token);
+      if (!UUID.test(paymentId) || !TILL_RECEIPT_TOKEN_RE.test(token)) {
+        return json(404, { code: "receipt_not_found" });
+      }
+      const { data, error } = await client.rpc("issue_4490_till_receipt_view", {
+        p_payment_id: paymentId,
+        p_token_hash: `\\x${await tillReceiptTokenHashHex(token)}`,
+      });
+      if (error) {
+        if (error.message !== "receipt_not_found") {
+          console.error("[venue-till] receipt view failed", error.code);
+          return json(500, { code: "till_failed" });
+        }
+        return json(404, { code: "receipt_not_found" });
+      }
+      return ok({ receipt: data });
+    }
 
     const jwt = (req.headers.get("authorization") ?? "").replace(
       /^Bearer\s+/i,
@@ -732,7 +773,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
           return json(400, { code: "till_invalid_payload" });
         }
         const owns = await client.from("venue_till_payments")
-          .select("id, sale_id, venue_till_sales!inner(venue_id)")
+          .select("id, sale_id, method, venue_till_sales!inner(venue_id)")
           .eq("id", paymentId).maybeSingle();
         if (
           owns.error || !owns.data ||
@@ -741,15 +782,60 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
         ) {
           return json(404, { code: "till_payment_not_found" });
         }
-        const r = await rpc("issue_4490_till_refund", {
+        // A card payment (tap or scan, O2) is refunded on its carrier: one
+        // card refund per payment, fee reversed pro rata (spec 08 §3 O1
+        // Refunds). Cash and the venue's own machine are recorded only.
+        const method = (owns.data as Record<string, unknown>).method;
+        const r = method === "tap" || method === "scan"
+          ? await rpc("issue_4490_till_mint_carrier_refund", {
+            p_payment_id: paymentId,
+            p_amount_minor: amount,
+            p_tip_minor: tip,
+            p_actor: userId,
+            p_device_user: userId,
+            p_reason: reason,
+            p_client_request_id: requestId,
+          })
+          : await rpc("issue_4490_till_refund", {
+            p_payment_id: paymentId,
+            p_amount_minor: amount,
+            p_tip_minor: tip,
+            p_reason: reason,
+            p_restock: body.restock === true,
+            p_actor: userId,
+            p_device_user: userId,
+            p_client_request_id: requestId,
+          });
+        return r.error ? tillFailure(r.error) : ok(r.data);
+      }
+
+      case "receipt": {
+        const paymentId = str(body.paymentId).toLowerCase();
+        const emailRaw = str(body.email).trim().toLowerCase();
+        const phoneRaw = str(body.phone).trim();
+        if (!UUID.test(paymentId)) return json(400, { code: "till_invalid_payload" });
+        let phone: string | null = null;
+        if (phoneRaw) {
+          const resolved = resolveBuyerPhone(phoneRaw, body.phoneCountryIso ?? null);
+          if (resolved.e164 === null || resolved.legacyNanpGuess) {
+            return json(400, { code: "till_receipt_phone_invalid" });
+          }
+          phone = resolved.e164;
+        }
+        if (emailRaw && (emailRaw.length > 254 || !EMAIL.test(emailRaw))) {
+          return json(400, { code: "till_receipt_email_invalid" });
+        }
+        if (phone === null && !emailRaw) {
+          return json(400, { code: "till_invalid_payload" });
+        }
+        const hashHex = await receiptTokenHash(paymentId);
+        const r = await rpc("issue_4490_till_receipt_send", {
           p_payment_id: paymentId,
-          p_amount_minor: amount,
-          p_tip_minor: tip,
-          p_reason: reason,
-          p_restock: body.restock === true,
+          p_venue_id: venueId,
           p_actor: userId,
-          p_device_user: userId,
-          p_client_request_id: requestId,
+          p_phone_e164: phone,
+          p_email: emailRaw || null,
+          p_token_hash: `\\x${hashHex}`,
         });
         return r.error ? tillFailure(r.error) : ok(r.data);
       }

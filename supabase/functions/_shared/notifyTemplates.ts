@@ -29,6 +29,7 @@ import {
 
 import { formatMessageTime, type MessageTime } from "./messageTime.ts";
 import { type BuyerSmsNoun, renderBuyerSms } from "./sms/buyerSms.ts";
+import { renderTillReceiptEmailBody } from "./email/tillReceiptEmail.ts";
 import {
   isIssue4111EnquiryCategory,
   ISSUE_4111_SUBSCRIBE_SMS_CATEGORY,
@@ -834,6 +835,27 @@ export function renderCategoryMessage(
           link,
           noun: "receipt",
         }),
+      };
+    }
+
+    // #4490 spec 08 O1 — a Till receipt. The drain reads the receipt when the
+    // message is sent (payload.receipt) and builds the private link; the text
+    // with that link is tillReceiptSms (notifyV2). Without a link the text is
+    // S15 with the app claim (shown only while VENUE_APP_HANDOFF is on, T20).
+    case "buyer_till_receipt": {
+      const venue = str(payload.venue_name, brand || "the venue");
+      const link = str(payload.venue_app_link_display, "usemingla.com/download");
+      return {
+        push: {
+          title: `Receipt from ${venue}`,
+          body: "Your receipt is ready.",
+        },
+        email: {
+          subject: `Your ${venue} receipt`,
+          body: renderTillReceiptEmailBody(payload.receipt) ??
+            `Thanks for coming to ${venue}.`,
+        },
+        sms: renderBuyerSms("S15", { title: venue, link, noun: "receipt" }),
       };
     }
 

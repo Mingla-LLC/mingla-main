@@ -41,6 +41,9 @@ import {
   trustedVenueMemberPayUrl,
   trustedVenueVisitCta,
 } from "../_shared/venueOfferVisitLink.ts";
+// #4490 spec 08 O1 — the private Till receipt link (transit only).
+import { trustedTillReceiptUrl } from "../_shared/venueTillReceiptToken.ts";
+import { tillReceiptEmailCta } from "../_shared/email/tillReceiptEmail.ts";
 // #4111 — consent provenance for the automatic transactional consent row.
 import { transactionalConsentSourceForCategory } from "../_shared/issue4111EnquiryNotifications.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
@@ -671,6 +674,17 @@ serve(async (req) => {
           }, 500);
         }
       }
+      // #4490 spec 08 O1 (T20): the private Till receipt link (transit only).
+      const tillReceiptUrl = trustedTillReceiptUrl({
+        serviceCaller: isExactServiceBearer(
+          authHeader,
+          SUPABASE_SERVICE_ROLE_KEY,
+        ),
+        categoryKey: payload.category_key,
+        payload: (payload.payload ?? {}) as Record<string, unknown>,
+        receiptUrl: payload.till_receipt_url,
+        origin: resolveVenueVisitOrigin((name) => Deno.env.get(name)),
+      });
       const v2Input: DispatchV2Input = {
         user_id: payload.user_id ?? payload.userId ?? null,
         contact: payload.contact ?? null,
@@ -705,7 +719,9 @@ serve(async (req) => {
             origin: resolveVenueVisitOrigin((name) => Deno.env.get(name)),
             // #4490 Explorer W1: "Open in Mingla" leads when a claim link came.
             appUrl: payload.venue_app_url,
-          }),
+          }) ??
+          // #4490 spec 08 O1: "See your receipt".
+          tillReceiptEmailCta(tillReceiptUrl),
         // #4490 Explorer W2: the renewal text's web pay link (transit only).
         venue_sms_pay_url: trustedVenueMemberPayUrl({
           serviceCaller: isExactServiceBearer(
@@ -717,6 +733,7 @@ serve(async (req) => {
           visitUrl: payload.venue_visit_url,
           origin: resolveVenueVisitOrigin((name) => Deno.env.get(name)),
         }),
+        till_receipt_url: tillReceiptUrl,
       };
       if (!v2Input.idempotency_key) {
         return jsonResponse({

@@ -218,3 +218,39 @@ export function tillPrefillFrom(params: Record<string, string | string[] | undef
   };
 }
 
+
+// ---------------------------------------------------------------- receipts
+
+export type ReceiptChannel = "text" | "email" | "both";
+
+const RECEIPT_EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** Which receipt buttons can send: a valid mobile for Text, an email for Email. */
+export function receiptChannelsReady(input: {
+  phoneE164: string | null;
+  phoneEmpty: boolean;
+  email: string;
+}): Record<ReceiptChannel, boolean> {
+  const email = input.email.trim();
+  const emailOk = email.length > 0 && email.length <= 254 && RECEIPT_EMAIL.test(email);
+  const phoneOk = !input.phoneEmpty && input.phoneE164 !== null;
+  return { text: phoneOk, email: emailOk, both: phoneOk && emailOk };
+}
+
+/** Where the receipt phone picker starts: the check's currency country. */
+export function receiptPhoneStartCountry(currency: string): string | null {
+  switch (currency.toUpperCase()) {
+    case "NGN":
+      return "NG";
+    case "GBP":
+      return "GB";
+    case "USD":
+      return "US";
+    case "GHS":
+      return "GH";
+    case "KES":
+      return "KE";
+    default:
+      return null;
+  }
+}

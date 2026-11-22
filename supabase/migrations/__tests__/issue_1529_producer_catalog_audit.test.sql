@@ -202,6 +202,8 @@ $ratchet$;
 --       issue_4490_text_claim_link          → mingla_e164_country(v_phone) (#4490 W1 text)
 --       issue_4490_offer_sweep              → explicit NULL (#4490 W2 visit reminders;
 --                                             in-app, push, email; no SMS channel)
+--       issue_4490_till_receipt_send        → mingla_e164_country(phone) on the text row,
+--                                             explicit NULL on the email row (#4490 08-O1)
 --
 --     PUSH-ONLY — the #3872 notification producers write only in-app/push
 --     categories and deliberately do not carry an SMS country. They are still
@@ -274,7 +276,12 @@ DECLARE
     -- venue_visit_reminder rows (in-app, push, email; no SMS channel) with an
     -- explicit NULL country_code; issue_4490_explorer_w2_purchases
     -- implementor pg17 (R-2) asserts the NULL.
-    'issue_4490_offer_sweep'
+    'issue_4490_offer_sweep',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O1 receipts: "Send receipt" writes
+    -- one buyer_till_receipt row per channel: the text row with
+    -- mingla_e164_country(phone), the email row an explicit NULL;
+    -- issue_4490_ops_till_receipts.implementor.pg17 (RC-S2) asserts both.
+    'issue_4490_till_receipt_send'
   ];
   -- [TEST-MOD-APPROVED #2829] Sites and the current #3872 notification writers
   -- are in-app/push-only. Their owning suites prove delivery behavior; none of
@@ -437,7 +444,12 @@ DECLARE
     -- venue_visit_reminder rows (in-app, push, email; no SMS channel) with an
     -- explicit NULL country_code; issue_4490_explorer_w2_purchases
     -- implementor pg17 (R-2) asserts the NULL.
-    'issue_4490_offer_sweep'
+    'issue_4490_offer_sweep',
+    -- [TEST-MOD-APPROVED #4490] spec 08 O1 receipts: "Send receipt" writes
+    -- one buyer_till_receipt row per channel: the text row with
+    -- mingla_e164_country(phone), the email row an explicit NULL;
+    -- issue_4490_ops_till_receipts.implementor.pg17 (RC-S2) asserts both.
+    'issue_4490_till_receipt_send'
   ];
   v_missing text;
 BEGIN

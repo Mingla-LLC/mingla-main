@@ -149,6 +149,8 @@ const SERVED_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   "visit",
   // #4490 Explorer W1: the app payment return (/paid/visit, /paid/plan).
   "paid",
+  // #4490 spec 08 O1: a guest's Till receipt (/receipt/till/<id>, token-authorized).
+  "receipt",
   "website-return",
 ]);
 

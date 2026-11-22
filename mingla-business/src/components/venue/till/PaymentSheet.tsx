@@ -23,8 +23,9 @@ import { MoneyField } from "../../ui/MoneyField";
 import { Chip } from "../../ui/Pill";
 import { Sheet } from "../../ui/Sheet";
 import { SheetScrollLayout } from "../../ui/SheetScrollLayout";
+import { ReceiptStep } from "./ReceiptStep";
 import { TILL_COPY, tillErrorCopy } from "./tillCopy";
-import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices } from "./tillModel";
+import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices, type ReceiptChannel } from "./tillModel";
 
 type Step = "choose" | "cash" | "own" | "paid";
 
@@ -44,6 +45,14 @@ export interface PaymentSheetProps {
   }) => Promise<TillPaymentResult>;
   onNewSale: () => void;
   onRefreshSale: () => void;
+  /** pay-receipt: send this payment's receipt (text, email or both). */
+  onSendReceipt: (input: {
+    paymentId: string;
+    channel: ReceiptChannel;
+    phone: string | null;
+    phoneCountryIso: string | null;
+    email: string | null;
+  }) => Promise<{ sendsLeft: number }>;
 }
 
 export function PaymentSheet({
@@ -55,6 +64,7 @@ export function PaymentSheet({
   onPay,
   onNewSale,
   onRefreshSale,
+  onSendReceipt,
 }: PaymentSheetProps): React.ReactElement {
   const [step, setStep] = useState<Step>("choose");
   const [amountMinor, setAmountMinor] = useState<number | null>(null);
@@ -62,7 +72,12 @@ export function PaymentSheet({
   const [cashGiven, setCashGiven] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ method: "cash" | "own_machine"; amountMinor: number; changeMinor: number | null } | null>(null);
+  const [result, setResult] = useState<{
+    method: "cash" | "own_machine";
+    amountMinor: number;
+    changeMinor: number | null;
+    paymentId: string;
+  } | null>(null);
   // One id per payment attempt: a retry of the same tap reuses it.
   const requestId = useRef<string>(randomId());
 
@@ -102,7 +117,7 @@ export function PaymentSheet({
         clientRequestId: requestId.current,
         expectedVersion: sale.version,
       });
-      setResult({ method, amountMinor: payAmount, changeMinor: paid.changeMinor });
+      setResult({ method, amountMinor: payAmount, changeMinor: paid.changeMinor, paymentId: paid.paymentId });
       setStep("paid");
     } catch (err) {
       const code = err instanceof TillError ? err.code : "till_failed";
@@ -233,6 +248,15 @@ export function PaymentSheet({
             <Text style={styles.label}>{TILL_COPY.leftToPay}</Text>
             <Text style={styles.big}>{money(left)}</Text>
           </View>
+        ) : null}
+        {result !== null && result.paymentId.length > 0 ? (
+          <ReceiptStep
+            key={result.paymentId}
+            currency={currency}
+            sendsUsed={0}
+            onSend={(input) => onSendReceipt({ paymentId: result.paymentId, ...input })}
+            testID="till-pay-receipt"
+          />
         ) : null}
       </View>
     );

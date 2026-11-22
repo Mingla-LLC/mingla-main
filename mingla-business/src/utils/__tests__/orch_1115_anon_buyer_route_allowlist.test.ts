@@ -269,6 +269,8 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/visit/",
       // TEST-MOD-APPROVED #4490 (Explorer W1): the app payment return page (no booking data).
       "/paid/",
+      // TEST-MOD-APPROVED #4490 (spec 08 O1): a guest's Till receipt (receipt-token-authorized).
+      "/receipt/",
     ]);
   });
 

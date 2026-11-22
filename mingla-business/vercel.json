@@ -326,6 +326,12 @@
       ]
     },
     {
+      "source": "/receipt/:path*",
+      "headers": [
+        { "key": "X-Robots-Tag", "value": "noindex, nofollow" }
+      ]
+    },
+    {
       "source": "/refund/:path*",
       "headers": [
         { "key": "X-Robots-Tag", "value": "noindex, nofollow" }

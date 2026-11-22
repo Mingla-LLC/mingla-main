@@ -96,6 +96,9 @@ const EXPECTED_BUYER = [
   // #4490 Explorer W1 — /paid/{plan|visit}/{id}, the app's payment return page
   // a signed-out buyer lands on after paying. [TEST-MOD-APPROVED #4490]
   "/paid/",
+  // #4490 spec 08 O1 — /receipt/till/{paymentId}, a guest's Till receipt,
+  // opened with its own token. [TEST-MOD-APPROVED #4490]
+  "/receipt/",
 ].sort();
 const EXPECTED_CONNECT = [
   "/connect-onboarding",
@@ -159,7 +162,7 @@ function runSelfTest() {
     f++;
   }
   // F3 — prefix snapshot compare
-  const goodCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refund/","/o/","/booking/","/attendance/claim/","/m/","/pay/","/stay/pay/","/visit/","/paid/"];`;
+  const goodCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refund/","/o/","/booking/","/attendance/claim/","/m/","/pay/","/stay/pay/","/visit/","/paid/","/receipt/"];`;
   const badCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/"];`;
   const badMissingRefund = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/o/","/booking/","/attendance/claim/"];`;
   const badRefundsLookalike = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refunds/","/o/","/booking/","/attendance/claim/"];`;
