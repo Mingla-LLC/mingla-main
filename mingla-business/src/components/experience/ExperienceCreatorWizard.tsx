@@ -2239,6 +2239,7 @@ export const ExperienceCreatorWizard: React.FC<
             refundPolicy={refundPolicy}
             setRefundPolicy={setRefundPolicy}
             liveSoldCount={isLiveEdit ? (liveSoldCount ?? 0) : 0}
+            addOnsEventId={experienceId}
             brandDefaults={{
               passTax: brand.defaultPassTax ?? false,
               passMinglaFee: brand.defaultPassMinglaFee ?? false,

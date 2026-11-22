@@ -3079,6 +3079,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
               paymentPlansAvailable={paymentPlansAvailable}
               tripStartAt={step1Draft.startAt}
               timeZone={trip.timezone ?? null}
+              addOnsEventId={trip.id}
             />
           ) : null}
           {/* ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5

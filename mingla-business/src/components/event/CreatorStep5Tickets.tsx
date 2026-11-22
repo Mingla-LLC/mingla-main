@@ -74,6 +74,12 @@ import { isPerNightCapacity } from "../../utils/perNightCapacity";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 import { usesConfiguredVat } from "../../utils/pricingTaxContext";
 
+import { isFeatureEnabled } from "../../config/featureFlags";
+
+// issue #3281 S3 — the Add-ons card loads only when EXPO_PUBLIC_FF_EXTRAS_ENABLED
+// is on, so flag-off editors and the Host web boot carry none of it.
+const LazyAddOnsEntry = React.lazy(() => import("../addOns/AddOnsEntry"));
+
 // ---- Main component (Step 5 body) -----------------------------------
 
 export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
@@ -416,6 +422,15 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
         <Icon name="plus" size={16} color={color.text1} />
         <Text style={styles.addCtaLabel}>Add ticket type</Text>
       </Pressable>
+
+      {/* issue #3281 S3 — a published event's add-ons: one editor for every
+          ticket. Dark unless EXPO_PUBLIC_FF_EXTRAS_ENABLED is on; drafts keep
+          their per-ticket section in the ticket sheet until they publish. */}
+      {editMode !== undefined && isFeatureEnabled("extras") ? (
+        <React.Suspense fallback={null}>
+          <LazyAddOnsEntry eventId={coverMediaEventId} offering="event" currency={draft.currency ?? null} />
+        </React.Suspense>
+      ) : null}
 
       {draft.tickets.length > 0 ? (
         <GlassCard

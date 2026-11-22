@@ -678,8 +678,14 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     setValidDayIds(seed.validDayIds);
     setExtras(initial?.extras ?? []);
     loadedExtras.current = null;
+    // issue #3281 S3 — with the Add-ons editor on, a saved ticket of a
+    // published event never reads or sends add-ons here: the editor owns them.
     setExtrasRead(
-      initial !== null && extrasUnavailableFor(liveEdit, initial) ? "loading" : "none",
+      initial !== null &&
+        extrasUnavailableFor(liveEdit, initial) &&
+        !isFeatureEnabled("extras")
+        ? "loading"
+        : "none",
     );
     setDiscardOpen(false);
   }, [visible, initial, newTicketPreset]);
@@ -1361,7 +1367,17 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
 
           {/* #3281 — dark until buyers can buy extras; a tier that already has
               some keeps them editable. */}
-          {isFeatureEnabled("extras") || extras.length > 0 ? (
+          {isFeatureEnabled("extras") &&
+          initial !== null &&
+          extrasUnavailableFor(liveEdit, initial) ? (
+            <View testID="ticket-sheet-add-ons-line">
+              <Text style={styles.sectionHeader}>Add-ons</Text>
+              <Text style={styles.helperHint}>
+                This ticket's add-ons are set in Add-ons, under your tickets.
+                One add-on can come with several tickets there.
+              </Text>
+            </View>
+          ) : isFeatureEnabled("extras") || extras.length > 0 ? (
           <TicketExtrasSection
             extras={extras}
             onChange={setExtras}

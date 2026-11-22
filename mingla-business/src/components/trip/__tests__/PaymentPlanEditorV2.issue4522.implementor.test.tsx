@@ -242,7 +242,12 @@ describe("editor interaction and lazy ownership", () => {
       path.join(tripDir, "EditPublishedTripScreen.tsx"),
       "utf8",
     );
-    expect(pricing.match(/React\.lazy\(/g)).toHaveLength(1);
+    // [TEST-MOD-APPROVED #3281] The pricing step now owns two sibling lazy
+    // boundaries, one per feature: the v2 plan editor and the #3281 Add-ons
+    // card. Neither is nested inside the other; the plan editor still has one.
+    expect(pricing.match(/React\.lazy\(/g)).toHaveLength(2);
+    expect(pricing.match(/React\.lazy\(\(\) =>\s*import\("\.\/PaymentPlanEditorV2"\)/g)).toHaveLength(1);
+    expect(pricing.match(/React\.lazy\(\(\) => import\("\.\.\/addOns\/AddOnsEntry"\)\)/g)).toHaveLength(1);
     expect(pricing).toContain('featureFlags.tripPlanV2');
     expect(pricing).toContain("Switch to the new plan setup");
     expect(pricing).toContain("defaultsNewPlanToShared");

@@ -1676,6 +1676,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 allowPackageStructureChanges={false}
                 allowCapacityChange={false}
                 showSharePaymentPlanControl={false}
+                addOnsEventId={trip.id}
               />
               {plannerPreviewSchedule !== null ? (
                 <View style={styles.plannerPlanPreviewWrap}>

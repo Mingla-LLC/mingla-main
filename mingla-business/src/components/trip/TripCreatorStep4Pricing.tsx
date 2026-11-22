@@ -47,7 +47,7 @@ import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
 import { MAX_TRIP_PACKAGES } from "./tripPackagesValidation";
 import { PayoutCountryInlinePrompt } from "../brand/PayoutCountryInlinePrompt";
 import { pricesClearedNotice } from "../../utils/draftFollowsBrandCurrency";
-import { featureFlags } from "../../config/featureFlags";
+import { featureFlags, isFeatureEnabled } from "../../config/featureFlags";
 import {
   convertLegacyPlanToV2,
   DEFAULT_TRIP_PAYMENT_PLAN_V2,
@@ -55,6 +55,10 @@ import {
   TRIP_PLAN_V2_EDITOR_RUNTIME,
   type TripPaymentPlanV2,
 } from "./tripPlanV2EditorModel";
+
+// issue #3281 S3 — the Add-ons card loads only when EXPO_PUBLIC_FF_EXTRAS_ENABLED
+// is on, so flag-off editors and the Host web boot carry none of it.
+const LazyAddOnsEntry = React.lazy(() => import("../addOns/AddOnsEntry"));
 
 // #4522 — one lazy owner for the complete v2 editor feature. Its preview is a
 // static child inside that chunk; there is no nested lazy boundary.
@@ -148,6 +152,11 @@ export interface TripCreatorStep4PricingProps {
   allowCapacityChange?: boolean;
   /** The live command preserves, but cannot toggle, the stored shared-plan bit. */
   showSharePaymentPlanControl?: boolean;
+  /**
+   * issue #3281 S3 — the saved trip's id: shows the Add-ons card when
+   * EXPO_PUBLIC_FF_EXTRAS_ENABLED is on. Omitted: nothing changes.
+   */
+  addOnsEventId?: string | null;
 }
 
 export const TRIP_PAYMENT_PLAN_UNAVAILABLE_COPY =
@@ -615,6 +624,7 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
   allowPackageStructureChanges = true,
   allowCapacityChange = true,
   showSharePaymentPlanControl = true,
+  addOnsEventId = null,
 }) => {
   const brand = useCurrentBrand();
   const router = useRouter();
@@ -820,6 +830,13 @@ export const TripCreatorStep4Pricing: React.FC<TripCreatorStep4PricingProps> = (
           Package capacity and package count stay fixed after publishing.
         </Text>
       )}
+
+      {/* issue #3281 S3 — dark unless EXPO_PUBLIC_FF_EXTRAS_ENABLED is on. */}
+      {isFeatureEnabled("extras") ? (
+        <React.Suspense fallback={null}>
+          <LazyAddOnsEntry eventId={addOnsEventId} offering="trip" currency={draft.currency} />
+        </React.Suspense>
+      ) : null}
 
       <Text style={styles.footnote}>
         Currency comes from your brand setup and can&apos;t be changed here.
