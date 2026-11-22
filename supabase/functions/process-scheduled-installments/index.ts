@@ -50,6 +50,7 @@ import { handleInstallmentPaystackCharge } from "../_shared/installments/paystac
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import {
+  FLEX_IN_FLIGHT_CEILING_MS,
   type FlexStripe,
   loadFlexPaymentsToVerify,
   verifyOpenFlexPayments,
@@ -160,6 +161,7 @@ async function passAReconcile(
   result: SchedulerResult,
   limit: number,
   deps: SchedulerDeps,
+  planV2 = false,
 ): Promise<void> {
   const now = deps.now();
   const { data, error } = await supabase
@@ -225,6 +227,16 @@ async function passAReconcile(
           txn,
         );
         result.reconciled += 1;
+      } else if (
+        providerState === "abandoned" && planV2 &&
+        now.getTime() - createdAt < FLEX_IN_FLIGHT_CEILING_MS &&
+        await isFlexInstallment(supabase, installmentId)
+      ) {
+        // issue #4522 (T3-5) — "abandoned" is an unfinished Paystack checkout
+        // the traveler's old tab can still complete: a flexible payment's
+        // attempt stays in flight (like processing) until the provider
+        // reports it failed, or 24 hours pass (flexReclaim then releases it).
+        result.unknown += 1;
       } else if (providerState === "failed" || providerState === "abandoned") {
         if (
           state === "created" &&
@@ -283,6 +295,17 @@ async function passAReconcile(
       }
     }
   }
+}
+
+/** issue #4522 (T3-5) — is this instalment a flexible ("pay any amount") payment? */
+async function isFlexInstallment(
+  supabase: SupabaseClient,
+  installmentId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.from("order_installments").select("kind")
+    .eq("id", installmentId).maybeSingle();
+  if (error !== null) throw new Error(`installment_kind_lookup_failed:${error.message}`);
+  return (data as { kind?: string } | null)?.kind === "flex";
 }
 
 async function resetNoticeClaim(
@@ -546,7 +569,7 @@ export async function processScheduledInstallments(
     }));
   }
   try {
-    await passAReconcile(supabase, result, limit, deps);
+    await passAReconcile(supabase, result, limit, deps, planV2);
   } catch {
     result.errors.push({
       installment_id: "scheduler",

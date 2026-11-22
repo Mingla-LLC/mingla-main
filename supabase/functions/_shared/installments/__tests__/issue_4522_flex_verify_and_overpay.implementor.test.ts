@@ -7,7 +7,9 @@
  * N2: returnOverpayment — Stripe partial refund of the PaymentIntent and
  * Paystack partial refund of the transaction, with the attempt's key; a
  * timeout keeps the same key (never a second refund); a refusal is failed;
- * the third failure alerts ops.
+ * the third failure stops the lane and alerts ops (T3-2). The pending /
+ * verify paths are in issue_4522_overpayment_refund_once.implementor.test.ts.
+ * T3-5: Paystack "abandoned" is kept, released only past 24 hours.
  *
  * FAILS-ON-REVERT: release on time (call the release RPC without asking the
  * provider) or send a refund with a fresh key on a timeout -> red.
@@ -191,10 +193,13 @@ Deno.test("N3 Stripe unreachable: kept, not released", async () => {
   assertEquals(released(rpc), []);
 });
 
-Deno.test("N3 Paystack: success settles, failed/abandoned release, pending kept, never attempted releases", async () => {
-  const row = stripeRow({ provider: "paystack", stripePaymentIntentId: null, attemptReference: "mingla-inst-x-l1", attemptCount: 1 });
+Deno.test("N3 / T3-5 Paystack: success settles, failed/reversed release, abandoned/pending kept, never attempted releases", async () => {
+  const row = stripeRow({ provider: "paystack", stripePaymentIntentId: null, attemptReference: "mingla-inst-x-l1", attemptCount: 1,
+    attemptCreatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() });
   for (const [status, expectRelease, expectSettle] of [
-    ["success", [], true], ["failed", ["provider_failed"], false], ["abandoned", ["provider_failed"], false],
+    ["success", [], true], ["failed", ["provider_failed"], false], ["reversed", ["provider_failed"], false],
+    // T3-5: an unfinished checkout the old tab can still complete is not final.
+    ["abandoned", [], false],
     ["ongoing", [], false], ["pending", [], false],
   ] as const) {
     const rpc = rpcStub();
@@ -210,6 +215,22 @@ Deno.test("N3 Paystack: success settles, failed/abandoned release, pending kept,
   assertEquals(log, []);
 });
 
+Deno.test("T3-5 Paystack abandoned: released (provider_abandoned) only once the attempt is 24 hours old", async () => {
+  const base = stripeRow({ provider: "paystack", stripePaymentIntentId: null, attemptReference: "mingla-inst-x-l1", attemptCount: 1,
+    pastCeiling: true });
+  for (const [hours, expected] of [[23, []], [25, ["provider_abandoned"]]] as const) {
+    const rpc = rpcStub({ issue_4522_flag_stuck_flex: false });
+    const { d } = deps(rpc, "abandoned");
+    await verifyOpenFlexPayments(d, [{ ...base, attemptCreatedAt: new Date(Date.now() - hours * 3600e3).toISOString() }]);
+    assertEquals(released(rpc), [...expected], `${hours}h`);
+  }
+  // No creation time known: never released on "abandoned" alone.
+  const rpc = rpcStub({ issue_4522_flag_stuck_flex: false });
+  const { d } = deps(rpc, "abandoned");
+  await verifyOpenFlexPayments(d, [{ ...base, attemptCreatedAt: null }]);
+  assertEquals(released(rpc), []);
+});
+
 // ── N2: the overpayment refund lane ──────────────────────────────────────
 
 function lane(begun: Record<string, unknown>, finishAnswer: Record<string, unknown> = { ok: true }) {
@@ -223,16 +244,20 @@ function lane(begun: Record<string, unknown>, finishAnswer: Record<string, unkno
 }
 
 const begunStripe = {
-  ok: true, done: false, overpaymentId: "op-1", orderId: "order-1", installmentId: "flex-1", brandId: "brand-1",
-  provider: "stripe", providerRef: "pi_flex", refundMinor: 10000, currency: "USD", refundId: "rf-1",
-  attemptNo: 1, idempotencyKey: "mingla_overpay_refund:op-1:1",
+  ok: true, done: false, action: "create", overpaymentId: "op-1", orderId: "order-1", installmentId: "flex-1", brandId: "brand-1",
+  provider: "stripe", providerRef: "pi_flex", refundMinor: 10000, remainingMinor: 10000, amountMinor: 10000, currency: "USD",
+  refundId: "rf-1", attemptNo: 1, idempotencyKey: "mingla_overpay_refund:op-1:1",
+};
+const unusedReads = {
+  retrieve: () => Promise.reject(new Error("unused")),
+  list: () => Promise.reject(new Error("unused")),
 };
 
 Deno.test("N2 Stripe: a partial refund of the PaymentIntent with the attempt's key", async () => {
   const l = lane(begunStripe);
   const outcome = await returnOverpayment({
     supabase: l.rpc.client,
-    stripe: () => ({ refunds: { create: (params, o) => {
+    stripe: () => ({ refunds: { ...unusedReads, create: (params, o) => {
       l.refunds.push({ params, key: o.idempotencyKey });
       return Promise.resolve({ id: "re_1", status: "succeeded" });
     } } }),
@@ -242,8 +267,9 @@ Deno.test("N2 Stripe: a partial refund of the PaymentIntent with the attempt's k
   }, "op-1");
   assertEquals(outcome, "succeeded");
   assertEquals(l.refunds, [{ params: { payment_intent: "pi_flex", amount: 10000, reason: "requested_by_customer",
-    refund_application_fee: true, metadata: { mingla_overpayment_id: "op-1", mingla_order_id: "order-1",
-      mingla_refund_id: "rf-1", mingla_installment_id: "flex-1" } }, key: "mingla_overpay_refund:op-1:1" }]);
+    refund_application_fee: true, metadata: { mingla_overpayment_id: "op-1", mingla_overpayment_attempt: "1",
+      mingla_order_id: "order-1", mingla_refund_id: "rf-1", mingla_installment_id: "flex-1" } },
+    key: "mingla_overpay_refund:op-1:1" }]);
   assertEquals(l.rpc.calls.find((c) => c.fn === "issue_4522_finish_overpayment_refund")?.args,
     { p_overpayment_id: "op-1", p_attempt_no: 1, p_outcome: "succeeded", p_provider_refund_id: "re_1", p_error: null });
 });
@@ -258,7 +284,7 @@ Deno.test("N2 Stripe: a timeout stays pending under the same key; a 4xx refusal 
     const l = lane(begunStripe);
     const outcome = await returnOverpayment({
       supabase: l.rpc.client,
-      stripe: () => ({ refunds: { create: () => Promise.reject(err) } }),
+      stripe: () => ({ refunds: { ...unusedReads, create: () => Promise.reject(err) } }),
       stripeAccountForBrand: () => Promise.resolve("acct_1"),
       createPaystackRefund: () => Promise.reject(new Error("unused")),
       alertOps: () => Promise.resolve(),
@@ -271,7 +297,7 @@ Deno.test("N2 Stripe: a timeout stays pending under the same key; a 4xx refusal 
 
 Deno.test("N2 Paystack: a partial refund of the transaction; processed / pending / refused / retryable", async () => {
   const begunPs = { ...begunStripe, provider: "paystack", providerRef: "mingla-inst-flex-l1", currency: "NGN",
-    refundMinor: 10200, idempotencyKey: "mingla_overpay_refund:op-1:1" };
+    refundMinor: 10200, amountMinor: 10200, idempotencyKey: "mingla_overpay_refund:op-1:1" };
   for (const [answer, expected] of [
     [{ id: "rfd_1", status: "processed" }, "succeeded"],
     [{ id: "rfd_1", status: "pending" }, "pending"],
@@ -281,7 +307,7 @@ Deno.test("N2 Paystack: a partial refund of the transaction; processed / pending
     const seen: Record<string, unknown>[] = [];
     const outcome = await returnOverpayment({
       supabase: l.rpc.client,
-      stripe: () => ({ refunds: { create: () => Promise.reject(new Error("unused")) } }),
+      stripe: () => ({ refunds: { ...unusedReads, create: () => Promise.reject(new Error("unused")) } }),
       stripeAccountForBrand: () => Promise.resolve(null),
       // deno-lint-ignore no-explicit-any
       createPaystackRefund: ((p: Record<string, unknown>) => {
@@ -296,11 +322,12 @@ Deno.test("N2 Paystack: a partial refund of the transaction; processed / pending
   }
 });
 
-Deno.test("N2 the third failure alerts ops through the existing alert path", async () => {
-  const l = lane(begunStripe, { ok: true, state: "refund_failed", alertOps: true, attemptNo: 3 });
+Deno.test("N2 / T3-2 the third failure stops the lane and alerts ops once through the existing alert path", async () => {
+  const l = lane(begunStripe, { ok: true, state: "needs_ops", alertOps: true, alertKind: "refund_failed_repeatedly",
+    attemptNo: 3, remainingMinor: 10000 });
   const outcome = await returnOverpayment({
     supabase: l.rpc.client,
-    stripe: () => ({ refunds: { create: () => Promise.reject(Object.assign(new Error("declined"), { statusCode: 402 })) } }),
+    stripe: () => ({ refunds: { ...unusedReads, create: () => Promise.reject(Object.assign(new Error("declined"), { statusCode: 402 })) } }),
     stripeAccountForBrand: () => Promise.resolve("acct_1"),
     createPaystackRefund: () => Promise.reject(new Error("unused")),
     alertOps: (subject) => {
@@ -308,8 +335,8 @@ Deno.test("N2 the third failure alerts ops through the existing alert path", asy
       return Promise.resolve();
     },
   }, "op-1");
-  assertEquals(outcome, "failed");
-  assertEquals(l.alerts, ["Trip overpayment refund keeps failing"]);
+  assertEquals(outcome, "needs_ops");
+  assertEquals(l.alerts, ["Trip overpayment refund stopped after 3 refusals"]);
 });
 
 Deno.test("N2 a resolved overpayment calls no provider", async () => {
@@ -317,7 +344,7 @@ Deno.test("N2 a resolved overpayment calls no provider", async () => {
   let called = false;
   const outcome = await returnOverpayment({
     supabase: l.rpc.client,
-    stripe: () => ({ refunds: { create: () => {
+    stripe: () => ({ refunds: { ...unusedReads, create: () => {
       called = true;
       return Promise.resolve({});
     } } }),

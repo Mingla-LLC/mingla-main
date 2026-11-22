@@ -22,7 +22,14 @@
  *              release (no_provider_charge).
  *   Paystack — verify the latest attempt's transaction:
  *              success → settle through the Paystack charge handler;
- *              failed / abandoned / reversed → release (provider_failed);
+ *              failed / reversed → release (provider_failed);
+ *              abandoned → NOT final (T3-5): Paystack reports an open,
+ *                unfinished checkout as abandoned and the buyer's old tab can
+ *                still complete it (the rule #4402 set in
+ *                gigPaymentCapture.ts, ABANDONED_FINAL_MS). Kept in flight
+ *                like processing and flagged once past the ceiling; released
+ *                (provider_abandoned) only when the attempt itself is older
+ *                than FLEX_IN_FLIGHT_CEILING_MS, the same 24 hours;
  *              anything else → kept, flagged past the ceiling.
  *              No attempt at all → release (no_provider_charge).
  * The SQL side (issue_4522_release_flex_verified) refuses any other reason
@@ -42,6 +49,8 @@ export interface FlexToVerify {
   attemptReference: string | null;
   attemptCount: number;
   pastCeiling: boolean;
+  /** The latest attempt's creation time (ISO), when there is one. */
+  attemptCreatedAt?: string | null;
 }
 
 export type FlexVerifyOutcome =
@@ -104,6 +113,7 @@ export function flexPaymentsToVerify(value: unknown): FlexToVerify[] {
       attemptReference: typeof row.attemptReference === "string" ? row.attemptReference : null,
       attemptCount: Number.isSafeInteger(row.attemptCount) ? Number(row.attemptCount) : 0,
       pastCeiling: row.pastCeiling === true,
+      attemptCreatedAt: typeof row.attemptCreatedAt === "string" ? row.attemptCreatedAt : null,
     });
   }
   return out;
@@ -112,7 +122,7 @@ export function flexPaymentsToVerify(value: unknown): FlexToVerify[] {
 async function release(
   deps: FlexVerifyDeps,
   payment: FlexToVerify,
-  verified: "provider_canceled" | "provider_failed" | "no_provider_charge",
+  verified: "provider_canceled" | "provider_failed" | "provider_abandoned" | "no_provider_charge",
   providerRef: string | null,
 ): Promise<FlexVerifyOutcome> {
   const { data, error } = await deps.supabase.rpc("issue_4522_release_flex_verified", {
@@ -219,8 +229,16 @@ async function verifyPaystack(deps: FlexVerifyDeps, payment: FlexToVerify): Prom
     await deps.settlePaystack(payment.attemptReference, txn);
     return "settled";
   }
-  if (status === "failed" || status === "abandoned" || status === "reversed") {
+  if (status === "failed" || status === "reversed") {
     return await release(deps, payment, "provider_failed", payment.attemptReference);
+  }
+  if (status === "abandoned") {
+    const created = Date.parse(String(payment.attemptCreatedAt ?? ""));
+    if (Number.isFinite(created) && Date.now() - created >= FLEX_IN_FLIGHT_CEILING_MS) {
+      await keepOrFlag(deps, payment, "abandoned");
+      return await release(deps, payment, "provider_abandoned", payment.attemptReference);
+    }
+    return await keepOrFlag(deps, payment, "abandoned");
   }
   return await keepOrFlag(deps, payment, status || "unknown");
 }
