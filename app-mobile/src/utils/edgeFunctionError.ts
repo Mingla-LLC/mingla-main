@@ -282,6 +282,17 @@ export function phoneStepPresentation(
   return { sendChannel, error: refusalMessage(refused, messages), showSupport: false }
 }
 
+/**
+ * Whether entering this phone-step state should close the keyboard: only when
+ * it presents the support route (all refused, or number on another account),
+ * so Email support and the address are visible at once. States whose next
+ * action is typing (retryable error, invalid number, one channel refused with
+ * a send still available) keep the keyboard.
+ */
+export function shouldDismissKeyboardFor(presentation: PhoneStepPresentation): boolean {
+  return presentation.showSupport
+}
+
 export interface CodeStepPresentation {
   /** The refusal line on the code screen (also the screen-reader announcement). */
   message: string | null

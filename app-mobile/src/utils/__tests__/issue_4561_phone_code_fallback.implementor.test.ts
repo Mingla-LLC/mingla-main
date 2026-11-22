@@ -14,6 +14,7 @@ import {
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
   codeStepPresentation,
+  shouldDismissKeyboardFor,
   otpPickerChannels,
   phoneStepPresentation,
   phoneStepSendChannel,
@@ -254,4 +255,28 @@ Deno.test("#4561 P2-1: the announcement is the visible message for every refusal
   assert(!/announceError\(t\('onboarding:phone\.error_/.test(onboarding), "a fixed refusal string is announced");
   const en = JSON.parse(read("src/i18n/locales/en/onboarding.json"));
   assertEquals(en.phone.error_call_refused, "We can't call this number.");
+});
+
+// ─── Rework 3 (QA P3-2): the support route is visible as soon as it applies ───
+
+Deno.test("#4561 P3-2: the keyboard closes exactly for the states that present the support route", () => {
+  const p = (refused: ("sms" | "call")[], last: { message: string; phoneTaken: boolean } | null) =>
+    shouldDismissKeyboardFor(phoneStepPresentation(refused, last, ALL_MESSAGES));
+  // Support route: close the keyboard.
+  assertEquals(p(["sms", "call"], null), true, "all refused");
+  assertEquals(p(["sms", "call"], { message: "RETRY", phoneTaken: false }), true, "all refused after a retry error");
+  assertEquals(p([], { message: "taken", phoneTaken: true }), true, "number on another account (409)");
+  // Next action is typing or one more tap: keep the keyboard.
+  assertEquals(p([], null), false, "nothing failed");
+  assertEquals(p([], { message: "Couldn't send code. Try again.", phoneTaken: false }), false, "retryable");
+  assertEquals(p([], { message: "Check that number — something looks off.", phoneTaken: false }), false, "invalid number");
+  assertEquals(p(["sms"], null), false, "text refused, call available");
+  assertEquals(p(["call"], null), false, "call refused, text available");
+  // Both screens act on that decision.
+  const onboarding = read("src/components/OnboardingFlow.tsx");
+  assertStringIncludes(onboarding, "navState.subStep === 'phone' && shouldDismissKeyboardFor(phonePresentation)");
+  assertStringIncludes(onboarding, "if (phoneStepDismissesKeyboard) Keyboard.dismiss()");
+  const rsvp = read("src/components/rsvpGuest/RsvpGuestClaimScreen.tsx");
+  assertStringIncludes(rsvp, "codeSentTo === null && shouldDismissKeyboardFor(numberPresentation)");
+  assertStringIncludes(rsvp, "if (numberStepDismissesKeyboard) Keyboard.dismiss();");
 });

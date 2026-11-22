@@ -11,6 +11,7 @@ import {
   Linking,
   Platform,
   AccessibilityInfo,
+  Keyboard,
   ActivityIndicator,
   Switch,
   ScrollView,
@@ -42,6 +43,7 @@ import {
   phoneStepPresentation,
   phoneStepSendChannel,
   refusedForNumber,
+  shouldDismissKeyboardFor,
   SUPPORT_EMAIL,
   SUPPORT_MAILTO,
   withRefusedChannel,
@@ -1498,6 +1500,12 @@ const OnboardingFlow = ({
     ),
     [refusedChannels, phoneError, phoneErrorKind, refusalMessages],
   )
+  // #4561 P3-2: the moment the phone step presents the support route, close
+  // the keyboard so Email support and the address are not covered.
+  const phoneStepDismissesKeyboard = navState.subStep === 'phone' && shouldDismissKeyboardFor(phonePresentation)
+  useEffect(() => {
+    if (phoneStepDismissesKeyboard) Keyboard.dismiss()
+  }, [phoneStepDismissesKeyboard])
   // ...and for the code screen's refusal line, picker and all-refused state.
   const codePresentation = useMemo(
     () => codeStepPresentation(refusedChannels, pickerRefusal, refusalMessages),

@@ -13,7 +13,7 @@
  * with a way forward.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Linking, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Linking, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import QRCode from "react-native-qrcode-svg";
@@ -36,6 +36,7 @@ import { sendOtp, verifyOtp, type OtpChannel } from "../../services/otpService";
 import {
   phoneStepPresentation,
   refusedForNumber,
+  shouldDismissKeyboardFor,
   SUPPORT_EMAIL,
   SUPPORT_MAILTO,
   withRefusedChannel,
@@ -251,6 +252,12 @@ export function RsvpGuestClaimScreen({ code }: { code: string }): React.ReactEle
   );
   const sendChannel = numberPresentation.sendChannel;
   const allRefused = sendChannel === null;
+  // #4561 P3-2: Email support sits below the send button, past the room the
+  // keyboard offset keeps clear, so close the keyboard when it appears.
+  const numberStepDismissesKeyboard = codeSentTo === null && shouldDismissKeyboardFor(numberPresentation);
+  useEffect(() => {
+    if (numberStepDismissesKeyboard) Keyboard.dismiss();
+  }, [numberStepDismissesKeyboard]);
 
   const sendCode = useCallback(async (): Promise<void> => {
     if (busy !== null) return;
