@@ -52,7 +52,8 @@ CREATE FUNCTION public.issue_4522_plan_v2_schedule(
   p_time_zone text,
   p_booked_at timestamptz,
   p_addon_today_minor bigint,
-  p_addon_spread_minor bigint
+  p_addon_spread_minor bigint,
+  p_line_list_minor bigint DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql
 IMMUTABLE
@@ -85,6 +86,9 @@ DECLARE
   v_rows jsonb := '[]'::jsonb;
   v_sum bigint := 0;
   v_deposit bigint;
+  v_list bigint := p_line_list_minor;
+  v_t_list bigint;
+  v_degrade boolean := false;
 BEGIN
   IF v_p IS NULL OR v_p < 0 OR COALESCE(p_units, 0) < 1 OR v_at < 0 OR v_as < 0
      OR p_trip_start_at IS NULL OR p_booked_at IS NULL OR p_plan IS NULL THEN
@@ -128,6 +132,18 @@ BEGIN
        AND jsonb_array_length(p_plan->'custom_amounts_minor') > 0 THEN
       SELECT array_agg((x #>> '{}')::bigint * p_units ORDER BY o) INTO v_custom
         FROM jsonb_array_elements(p_plan->'custom_amounts_minor') WITH ORDINALITY a(x, o);
+      -- Custom amounts are set against the list price. Under a discount (net
+      -- below list) each scales by the trip part's ratio, in whole units, and
+      -- the last row takes the exact remainder.
+      IF v_list IS NOT NULL AND v_list > v_p THEN
+        v_t_list := v_list - CASE WHEN p_plan#>>'{deposit,mode}' = 'amount'
+          THEN least((p_plan#>>'{deposit,amount_minor}')::bigint * p_units, v_list)
+          ELSE floor(v_list::numeric * (p_plan#>>'{deposit,pct}')::numeric / 100)::bigint END;
+        IF v_t_list > 0 THEN
+          SELECT array_agg(floor(c::numeric * v_t / v_t_list / c_unit)::bigint * c_unit ORDER BY o) INTO v_custom
+            FROM unnest(v_custom) WITH ORDINALITY u(c, o);
+        END IF;
+      END IF;
       v_custom := v_custom || (v_t - (SELECT COALESCE(sum(c), 0) FROM unnest(v_custom) c));
       -- Fewer rows fit: the first (count - n + 1) custom rows fold into row 1.
       v_fold := 0;
@@ -150,8 +166,12 @@ BEGIN
     v_abase := (v_as / v_n) / c_unit * c_unit;
     FOR v_i IN 1..v_n LOOP
       v_addon := v_addon || CASE WHEN v_i < v_n THEN v_abase ELSE v_as - v_abase * (v_n - 1) END;
+      -- Custom rows that cannot hold (a row at or below zero, e.g. a deep
+      -- discount): the line degrades to full_only, so "Pay in full" and the
+      -- quote never fail because a plan preview cannot be built.
       IF v_trip[v_i] < 0 OR v_trip[v_i] + v_addon[v_i] <= 0 THEN
-        RAISE EXCEPTION 'installment_rounding_invalid' USING ERRCODE = 'P0001';
+        v_degrade := true;
+        EXIT;
       END IF;
       v_rows := v_rows || jsonb_build_array(jsonb_build_object(
         'due_at', to_char(((v_dates[v_i] + time '09:00') AT TIME ZONE v_tz) AT TIME ZONE 'UTC',
@@ -160,6 +180,12 @@ BEGIN
         'addon_portion_minor', v_addon[v_i]));
       v_sum := v_sum + v_trip[v_i] + v_addon[v_i];
     END LOOP;
+    IF v_degrade THEN
+      v_avail := 'full_only';
+      v_n := 0;
+      v_rows := '[]'::jsonb;
+      v_sum := 0;
+    END IF;
   END IF;
 
   v_deposit := v_p + v_at + v_as - v_sum;
@@ -177,10 +203,10 @@ BEGIN
     'final_due_at', to_char(v_final_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'));
 END;
 $fn$;
-REVOKE ALL ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint) TO service_role;
-COMMENT ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint) IS
-  'Issue #4522 §6.1: one cart line''s v2 schedule from the booking day to the final due date (09:00 in the trip time zone, rows at least 7 days apart, whole-unit split, last row absorbs). availability: plan | full_deposit | full_window | full_only | closed.';
+REVOKE ALL ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint,bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint,bigint) TO service_role;
+COMMENT ON FUNCTION public.issue_4522_plan_v2_schedule(bigint,integer,jsonb,timestamptz,text,timestamptz,bigint,bigint,bigint) IS
+  'Issue #4522 §6.1: one cart line''s v2 schedule from the booking day to the final due date (09:00 in the trip time zone, rows at least 7 days apart, whole-unit split, last row absorbs). Custom amounts are against the list price (p_line_list_minor) and scale under a discount; custom rows that cannot hold degrade the line to full_only. availability: plan | full_deposit | full_window | full_only | closed.';
 
 -- ---------------------------------------------------------------------------
 -- 2. Does this cart carry a v2 plan line the server can run?
@@ -299,7 +325,7 @@ BEGIN
     END IF;
 
     v_sched := public.issue_4522_plan_v2_schedule(
-      v_net, (v_line->>'quantity')::integer, v_plan, v_start, v_event.tz, p_booked_at, 0, v_spread);
+      v_net, (v_line->>'quantity')::integer, v_plan, v_start, v_event.tz, p_booked_at, 0, v_spread, v_list);
     v_offered := greatest(v_offered, (v_sched->>'count_offered')::integer);
     IF v_sched->>'availability' <> 'plan' THEN
       IF v_choice = 'installments' THEN

@@ -74,6 +74,12 @@ export interface TripPlanV2Input {
   bookedAt: Date;
   addonTodayMinor?: number;
   addonSpreadMinor?: number;
+  /**
+   * The line's list total (list unit price × units). Custom amounts are set
+   * against the list price; when the net line total is below it (a sale, a
+   * discount code) they scale by the trip part's ratio, in whole units.
+   */
+  lineListMinor?: number | null;
 }
 
 /** Raised with the same code the SQL function raises. */
@@ -224,7 +230,19 @@ export function computeTripPlanV2Schedule(
     let trip: number[] = [];
     const custom = plan.custom_amounts_minor;
     if (Array.isArray(custom) && custom.length > 0) {
-      const c = custom.map((amount) => amount * units);
+      let c = custom.map((amount) => amount * units);
+      const list = input.lineListMinor ?? null;
+      if (list !== null && list > p) {
+        const tList = list - (plan.deposit.mode === "amount"
+          ? Math.min(plan.deposit.amount_minor * units, list)
+          : Math.floor((list * plan.deposit.pct) / 100));
+        if (tList > 0) {
+          c = c.map((amount) =>
+            Math.floor(Number((BigInt(amount) * BigInt(t)) / BigInt(tList)) / UNIT) *
+            UNIT
+          );
+        }
+      }
       c.push(t - c.reduce((acc, amount) => acc + amount, 0));
       let fold = 0;
       for (let i = 0; i < count - n + 1; i += 1) fold += c[i];
@@ -241,10 +259,13 @@ export function computeTripPlanV2Schedule(
       }
     }
     const abase = floorDiv(floorDiv(addonSpread, n), UNIT) * UNIT;
+    let degrade = false;
     for (let i = 0; i < n; i += 1) {
       const addon = i < n - 1 ? abase : addonSpread - abase * (n - 1);
+      // Custom rows that cannot hold degrade the line to full_only (as SQL).
       if (trip[i] < 0 || trip[i] + addon <= 0) {
-        throw new TripPlanV2Error("installment_rounding_invalid");
+        degrade = true;
+        break;
       }
       rows.push({
         due_at: isoSeconds(nineAmLocal(dates[i], tz)),
@@ -252,6 +273,12 @@ export function computeTripPlanV2Schedule(
         addon_portion_minor: addon,
       });
       sum += trip[i] + addon;
+    }
+    if (degrade) {
+      availability = "full_only";
+      n = 0;
+      rows.length = 0;
+      sum = 0;
     }
   }
 

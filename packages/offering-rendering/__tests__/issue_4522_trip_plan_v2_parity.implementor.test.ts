@@ -22,7 +22,7 @@ import {
 } from "../tripPlanV2Math.ts";
 
 /** The digest pinned in the pg17 suite, part B. */
-const SQL_PARITY_DIGEST = "b6a5488764ce29f2949169700e504b32";
+const SQL_PARITY_DIGEST = "ce9b99cb5f97b4e91a342a43b505f2a5";
 
 const line = (i: number, s: TripPlanV2Schedule): string =>
   `${i}|${s.availability}|${s.deposit_minor}|${s.count_given}|${s.final_due_at}|` +

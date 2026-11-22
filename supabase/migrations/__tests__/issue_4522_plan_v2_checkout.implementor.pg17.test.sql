@@ -96,12 +96,13 @@ BEGIN
     RAISE EXCEPTION 'A-6 custom fold, got %', v_got;
   END IF;
 
-  -- Custom amounts that leave nothing for the last row are refused.
-  IF pg_temp.raised($q$SELECT public.issue_4522_plan_v2_schedule(1000000, 1,
+  -- Custom amounts that leave nothing for the last row degrade the line to
+  -- full_only (#4522 rework F3: a quote never fails on a plan preview).
+  v_got := pg_temp.line(0, public.issue_4522_plan_v2_schedule(1000000, 1,
        '{"v":2,"deposit":{"mode":"percent","pct":50},"count":3,"final_due_days_before_start":0,"custom_amounts_minor":[300000,300000]}',
-       '2027-03-12T08:00:00Z','UTC','2026-11-12T10:00:00Z',0,0)$q$)
-     IS DISTINCT FROM 'P0001:installment_rounding_invalid' THEN
-    RAISE EXCEPTION 'A-7 over-custom must raise installment_rounding_invalid';
+       '2027-03-12T08:00:00Z','UTC','2026-11-12T10:00:00Z',0,0));
+  IF v_got NOT LIKE '0|full_only|1000000|0|%' THEN
+    RAISE EXCEPTION 'A-7 over-custom must degrade to full_only, got %', v_got;
   END IF;
 END $$;
 
@@ -168,7 +169,7 @@ BEGIN
   v_digest := md5(array_to_string(v_out, E'\n'));
   SELECT count(*) INTO v_rows FROM unnest(v_out) l WHERE l LIKE '%|plan|%';
   RAISE NOTICE 'ISSUE-4522 parity digest % (% of 200 cases took a plan)', v_digest, v_rows;
-  IF v_digest IS DISTINCT FROM 'b6a5488764ce29f2949169700e504b32' THEN
+  IF v_digest IS DISTINCT FROM 'ce9b99cb5f97b4e91a342a43b505f2a5' THEN
     RAISE EXCEPTION 'B-1 parity digest moved: % (first lines: %)', v_digest, array_to_string(v_out[1:3], ' / ');
   END IF;
   IF v_rows < 40 THEN
