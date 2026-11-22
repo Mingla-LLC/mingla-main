@@ -170,9 +170,20 @@ describe("R-1b Product board addresses fall back to Support without the Work boa
     for (const hash of ["#/community?tab=product", "#/community?tab=product&signal=s1", "#/community-support?tab=product"]) {
       assert.equal(redirectFallback(hash), "support", hash);
     }
-    for (const hash of ["#/community?tab=ideas", "#/community", "#/community?tab=feature-guide", "#/roadmap", "#/work-board?type=tickets", "#/support", "", null]) {
+    for (const hash of ["#/community?tab=ideas", "#/community", "#/community?tab=feature-guide", "#/work-board?type=tickets", "#/support", "", null]) {
       assert.equal(redirectFallback(hash), null, String(hash));
     }
+  });
+  it("F6: the old Roadmap address falls back to Support, then to the standard refusal", () => {
+    for (const hash of ["#/roadmap", "#/roadmap?card=c1", "#/community?tab=roadmap"]) assert.equal(redirectFallback(hash), "support", hash);
+    // Announcements refused, Support open: Support (never a silent jump to Home).
+    const ann = resolveRoute("announcements", home(PERSONAS.supportStaff), ROUTE_IDS);
+    assert.equal(ann.denied, true);
+    assert.equal(applyRouteFallback(ann, "support", home(PERSONAS.supportStaff), ROUTE_IDS).pageId, "support");
+    // Neither open: the denied route is kept, so App shows the standard notice.
+    const none = applyRouteFallback(resolveRoute("announcements", home(PERSONAS.emailWriter), ROUTE_IDS), "support", home(PERSONAS.emailWriter), ROUTE_IDS);
+    assert.equal(none.denied, true);
+    assert.notEqual(none.pageId, "support");
   });
   it("Support staff without the Work board land on Support, not a refusal", () => {
     const route = applyRouteFallback(resolveRoute("work-board", home(PERSONAS.supportStaff), ROUTE_IDS), "support", home(PERSONAS.supportStaff), ROUTE_IDS);

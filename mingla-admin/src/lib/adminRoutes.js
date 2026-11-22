@@ -13,7 +13,7 @@
 //     tab shows; who may see a tab is that old page's access (lib/access.js).
 
 import { hashPageId, hashSearch } from "./crmUrl.js";
-import { COMMUNICATIONS_TAB_PAGES, consoleRedirectFallback, consoleRedirectHash, roadmapRedirectHash } from "./supportCommunityTabs.js";
+import { COMMUNICATIONS_TAB_PAGES, RETIRED_TAB_REDIRECTS, consoleRedirectFallback, consoleRedirectHash, roadmapRedirectHash } from "./supportCommunityTabs.js";
 
 /** The query value a hub uses to say which tab is open. */
 export const HUB_TAB_PARAM = "tab";
@@ -161,9 +161,12 @@ export function redirectHash(hash) {
  * #4420 — where an old address goes instead when the person may not open the
  * page redirectHash sends it to, or null (then the usual refusal applies).
  *   "#/community?tab=product" -> "support"
+ *   "#/roadmap?card=1"        -> "support" (when Announcements is refused)
  */
 export function redirectFallback(hash) {
   const page = hashPageId(hash);
+  // #4420 rework 4 (F6): the old Roadmap address opens Announcements, else Support.
+  if (page === "roadmap") return RETIRED_TAB_REDIRECTS.roadmap.fallback;
   if (page !== "community" && page !== "community-support") return null;
   return consoleRedirectFallback(hash);
 }

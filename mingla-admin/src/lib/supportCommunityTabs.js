@@ -67,7 +67,7 @@ export const RETIRED_TAB_REDIRECTS = Object.freeze({
   product: Object.freeze({ page: "work-board", set: Object.freeze({ type: "tickets" }), keep: false, fallback: "support" }),
   "enquiry-reports": Object.freeze({ page: "support", set: Object.freeze({ filter: "reported" }), keep: true }),
   "feature-guide": Object.freeze({ page: "feature-guide", set: Object.freeze({}), keep: true }),
-  roadmap: Object.freeze({ page: "announcements", set: Object.freeze({}), keep: false }),
+  roadmap: Object.freeze({ page: "announcements", set: Object.freeze({}), keep: false, fallback: "support" }),
 });
 
 /** Where an address with no usable tab lands: the Support inbox. */
@@ -144,8 +144,9 @@ export function consoleRedirectHash(hash) {
 
 /**
  * #4420 — the page an old address falls back to when the person may not open
- * the page it redirects to, or null. Only the Product board has one: its
- * tickets live on the Work board, and anyone else goes to Support.
+ * the page it redirects to, or null. The Product board (tickets live on the
+ * Work board) and the old Roadmap (Announcements) each fall back to Support;
+ * without Support either, the standard "not part of your access" notice shows.
  */
 export function consoleRedirectFallback(hash) {
   const tab = queryOf(hash).get("tab") || "";
