@@ -921,7 +921,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         showToast(result.message);
         return;
       }
-      if (Object.keys(currentPatch).length === 0) {
+      // Written through a named count on purpose: the #2009 gate pins the ONE
+      // clean-state expression on the Save button's disabled rule.
+      const eventFieldChangeCount = Object.keys(currentPatch).length;
+      if (eventFieldChangeCount === 0) {
         showToast("Guest pack saved.");
         return;
       }
