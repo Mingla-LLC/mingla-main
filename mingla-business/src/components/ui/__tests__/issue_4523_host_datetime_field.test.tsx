@@ -85,3 +85,25 @@ describe("issue #4523 Host date-and-time field (discount end, ticket sale, sched
     expect(exists(tree, "dt-calendar-next")).toBe(false);
   });
 });
+
+// #4522 boot room: every Host calendar field loads the body through the ONE
+// loader in HostCalendarPlaceholder, so the eager Host web payload carries a
+// single import of the calendar chunk (not one per field owner).
+describe("#4522 Host calendar fields share one body loader", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require("fs") as typeof import("fs");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const path = require("path") as typeof import("path");
+  const read = (file: string): string => fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+  const bodyImports = (src: string): number =>
+    // Runtime imports only (`typeof import(...)` is a type and emits nothing).
+    (src.match(/(?<!typeof )import\(\s*["']\.\/HostCalendarBody["']\s*\)/g) ?? []).length;
+
+  it("only HostCalendarPlaceholder imports HostCalendarBody, exactly once", () => {
+    expect(bodyImports(read("HostCalendarPlaceholder.tsx"))).toBe(1);
+    for (const owner of ["DateField.tsx", "HostCalendarFields.tsx", "HostDateRangeField.tsx"]) {
+      expect(bodyImports(read(owner))).toBe(0);
+      expect(read(owner)).toContain("= lazyHostField<");
+    }
+  });
+});

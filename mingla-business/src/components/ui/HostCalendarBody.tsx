@@ -2,7 +2,8 @@
  * HostCalendarBody — the lazily loaded half of every Host calendar field
  * (#4523). The whole calendar feature for Host (CalendarField, DateTimeField,
  * the surface and the Host config) is this one chunk, loaded by the single
- * React.lazy per field wrapper in `HostCalendarPlaceholder.lazyHostField`.
+ * React.lazy per field wrapper in `HostCalendarPlaceholder.lazyHostField`
+ * (one shared loader).
  */
 import { CalendarEmbed, CalendarField, DateRangeField, DateTimeField } from "@mingla/calendar/CalendarFieldEager";
 import type { StayRangeCalendarArgs } from "@mingla/brand-rendering/StayDateRangeRows";

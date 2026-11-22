@@ -25,7 +25,7 @@ import type { DateFieldProps } from "./hostCalendarFieldProps";
 export type { DateFieldProps } from "./hostCalendarFieldProps";
 
 export const DateField = lazyHostField<DateFieldProps>(
-  () => import("./HostCalendarBody").then((m) => ({ default: m.DateBody })),
+  (m) => m.DateBody,
   "Choose a date",
 );
 

@@ -11,6 +11,6 @@ export type { HostDateRangeFieldProps } from "./hostCalendarFieldProps";
 
 /** A range of days (trip dates, stay dates). Stays open until Done. */
 export const HostDateRangeField = lazyHostField<HostDateRangeFieldProps>(
-  () => import("./HostCalendarBody").then((m) => ({ default: m.DateRangeBody })),
+  (m) => m.DateRangeBody,
   "Choose start and end dates",
 );

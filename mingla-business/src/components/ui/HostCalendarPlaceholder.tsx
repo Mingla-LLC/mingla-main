@@ -9,20 +9,18 @@ import React, { Suspense, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { color, radius, type } from "../../constants/designSystem";
+import type { HostFieldBase } from "./hostCalendarFieldProps";
 
-export interface HostFieldBase {
-  label: string;
-  placeholder?: string;
-  disabled?: boolean;
-  hasError?: boolean;
-  testID?: string;
-}
+// The one import site of the calendar body chunk for every Host field: each
+// field names its body (`pick`), so the boot payload carries one loader.
+type HostCalendarBodyModule = typeof import("./HostCalendarBody");
+const loadHostCalendarBody = (): Promise<HostCalendarBodyModule> => import("./HostCalendarBody");
 
 export function lazyHostField<P extends HostFieldBase>(
-  load: () => Promise<{ default: React.ComponentType<P & { openOnMount?: boolean }> }>,
+  pick: (m: HostCalendarBodyModule) => React.ComponentType<P & { openOnMount?: boolean }>,
   defaultPlaceholder: string,
 ): React.FC<P> {
-  const Body = React.lazy(load);
+  const Body = React.lazy(() => loadHostCalendarBody().then((m) => ({ default: pick(m) })));
   // One component, no separate row module: this file sits in the Host web boot
   // payload (#3281 boot room), so the loading row is drawn inline.
   return (props) => {

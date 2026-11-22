@@ -112,10 +112,8 @@ const ABOUT_COLLAPSE_THRESHOLD = 160;
 
 // #4522 — one lazy owner for the public v2-plan disclosure. The feature stays
 // out of eager Host web and the chunk is requested only for a tier with a plan.
-const LazyTripPlanV2PublicSummary = React.lazy(() =>
-  import("./TripPlanV2PublicSummary").then((module) => ({
-    default: module.TripPlanV2PublicSummary,
-  })),
+const LazyTripPlanV2PublicSummary = React.lazy(
+  () => import("./TripPlanV2PublicSummary"),
 );
 
 if (

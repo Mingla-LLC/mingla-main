@@ -10,6 +10,6 @@ import type { HostDateTimeFieldProps } from "./hostCalendarFieldProps";
 export type { HostDateTimeFieldProps } from "./hostCalendarFieldProps";
 
 export const HostDateTimeField = lazyHostField<HostDateTimeFieldProps>(
-  () => import("./HostCalendarBody").then((m) => ({ default: m.DateTimeBody })),
+  (m) => m.DateTimeBody,
   "Choose date and time",
 );

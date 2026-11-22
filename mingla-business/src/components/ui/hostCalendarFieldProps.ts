@@ -2,11 +2,20 @@
  * #4523 — props of the three Host calendar fields, in one type-only leaf.
  *
  * The field owners (`DateField`, `HostCalendarFields`, `HostDateRangeField`)
- * lazily import `HostCalendarBody`, and the body needs these props. Declaring
- * them here keeps that a one-way edge (no require cycle) and costs no bundle
- * bytes: this module holds types only, so Metro emits nothing for it.
+ * load `HostCalendarBody` through `lazyHostField`, and the body needs these
+ * props. Declaring them (and `HostFieldBase`) here keeps every edge one-way
+ * (no require cycle) and costs no bundle bytes: this module holds types only,
+ * so Metro emits nothing for it.
  */
-import type { HostFieldBase } from "./HostCalendarPlaceholder";
+
+/** What every lazily loaded Host field shares (see `lazyHostField`). */
+export interface HostFieldBase {
+  label: string;
+  placeholder?: string;
+  disabled?: boolean;
+  hasError?: boolean;
+  testID?: string;
+}
 
 export interface DateFieldProps {
   /** Visible label rendered above the control. */
