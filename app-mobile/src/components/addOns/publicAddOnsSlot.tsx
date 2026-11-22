@@ -13,10 +13,16 @@ import {
 } from "@mingla/offering-rendering/OfferingAddOnsBlock";
 
 import { FEATURE_FLAG_ADD_ONS } from "../../config/featureFlags";
-import { supabase } from "../../services/supabase";
+import { SUPABASE_URL } from "../../config/supabaseProject";
 
+// The public object URL (storage/v1/object/public), built from the one project
+// URL owner, so this module imports no client (the detail screens' render
+// suites load it). Never /render/image.
 export const addOnPhotoUrl = (path: string): string =>
-  supabase.storage.from("event_covers").getPublicUrl(path).data.publicUrl;
+  `${SUPABASE_URL}/storage/v1/object/public/event_covers/${path
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
 
 const slot: OfferingAddOnsSlot = (id, addOns, currency, palette) => (
   <OfferingAddOnsBlock
