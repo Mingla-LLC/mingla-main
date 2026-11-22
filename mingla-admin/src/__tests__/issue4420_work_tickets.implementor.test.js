@@ -683,7 +683,10 @@ describe("T-12 the ticket form's people lists stay inside the field", () => {
     assert.match(form, /<PeopleField id="new-ticket-owner" label="Owner" single fitMenu /);
     assert.match(form, /<PeopleField id="new-ticket-watcher" label="Watcher" single fitMenu /);
     const field = read("components/people/PeopleField.jsx");
-    assert.match(field, /\$\{fitMenu \? "w-full max-w-full" : "w-\[max\(100%,17rem\)\]/);
+    // [TEST-MOD #4420] the width is chosen in menuWidth, so the 300px scroll
+    // classes stay together for #3980 W3 R9; the listbox still uses it.
+    assert.match(field, /const menuWidth = fitMenu \? "w-full max-w-full" : "w-\[max\(100%,17rem\)\]/);
+    assert.match(field, /role="listbox"[^>]*className=\{`[^`]*max-h-\[300px\] overflow-auto \$\{menuWidth\}/);
   });
 });
 
