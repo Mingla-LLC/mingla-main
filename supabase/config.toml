@@ -869,3 +869,8 @@ verify_jwt = true
 # handler compares that bearer in-code before touching the opaque cleanup queue.
 [functions.agent-attachment-cleanup]
 verify_jwt = false
+
+# #4490 spec 08 O1 — the Till. The bearer is required and verified in code for
+# every staff action; verify_jwt is off only for the sent-receipt page.
+[functions.venue-till]
+verify_jwt = false
