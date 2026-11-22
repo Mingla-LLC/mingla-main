@@ -172,6 +172,12 @@ module.exports = {
     // issue #4490 Explorer W5 — deck analytics for hosted venues (is_hosted_venue,
     // deck_lead, venue_id, position_in_deck; venue_checkout_finished).
     "**/__tests__/issue_4490_w5_deck_analytics.implementor.test.ts",
+    // issue #4490 W5 fix 2 (W5-D1) — the deck's expand / save / dismiss analytics
+    // run behind one guard (an analytics failure never stops the action), and
+    // the whole Explorer app reads no undeclared name (the missing import that
+    // broke every deck card on the device).
+    "**/__tests__/issue_4490_w5_deck_handlers.implementor.test.ts",
+    "**/__tests__/issue_4490_w5_no_undeclared_names.implementor.test.cjs",
     // issue #4490 Explorer W6a — Venues in Discover: the kind, the venue card
     // (model, route with ?tab=, mounted variant), Type of place chips, wiring.
     "**/__tests__/issue_4490_w6a_discover_venues.implementor.render.test.tsx",
