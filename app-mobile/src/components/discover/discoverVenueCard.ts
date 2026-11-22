@@ -68,3 +68,9 @@ export function discoverVenueAnalytics(card: DiscoverCardV2, now: Date): Record<
     on_tonight: model.eventChip === "On tonight",
   };
 }
+
+/** The venue page path with the lead offer's tab (`?tab=`), or the plain path for any other card. */
+export function withVenueLeadTab(card: DiscoverCardV2, path: string): string {
+  const tab = discoverVenueLeadTab(card);
+  return tab ? `${path}?tab=${encodeURIComponent(tab)}` : path;
+}

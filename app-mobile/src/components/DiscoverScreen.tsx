@@ -45,7 +45,7 @@ import type { ExpansionTarget } from "../types/expansion";
 import type { UserPreferences } from "../types/preferences";
 import { asRememberedDiscoverCity, deviceCityStillValid, discoverAnchorReady, discoverCityFromPreferences, discoverQueryAnchorKey, reconcileDiscoverCity, sameDiscoverAnchorCity, type DiscoverCitySource, type RememberedDiscoverCity } from "../utils/discoverEventsCache";
 import { dedupeDiscoverFeedCards } from "../utils/discoverFeedDedupe";
-import { discoverVenueAnalytics, discoverVenueCardModel } from "./discover/discoverVenueCard";
+import { discoverVenueAnalytics, discoverVenueCardModel, withVenueLeadTab } from "./discover/discoverVenueCard";
 import { venueTypeLabel } from "@mingla/brand-rendering/venueTypeLabels";
 import { captureVenueTappedToBook } from "./venueOffers/venueBookAnalytics";
 
@@ -464,7 +464,9 @@ function DiscoverScreen({ preferencesRefreshKey, accountPreferences, deepLinkPar
       setExpansionTarget({ kind: "nightOut", data: expanded });
       return;
     }
-    const path = canonicalDiscoverCardPath(card);
+    const plainPath = canonicalDiscoverCardPath(card);
+    // #4490 Explorer W6a: a venue card opens its page on the lead offer's tab.
+    const path = plainPath === null ? null : withVenueLeadTab(card, plainPath);
     if (!path) {
       toastManager.show(t("error.open", "Couldn't open that page. Pull down to refresh and try again."), "error");
       return;

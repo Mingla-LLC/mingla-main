@@ -1,5 +1,4 @@
 import type { DiscoverMinglaCard } from "../../types/discoverFeed";
-import { discoverVenueLeadTab } from "./discoverVenueCard";
 
 function routeSlug(card: DiscoverMinglaCard): string | null {
   const key = card.kind === "experience"
@@ -28,11 +27,8 @@ export function canonicalDiscoverCardPath(card: DiscoverMinglaCard): string | nu
   const offering = encodeURIComponent(slug);
   if (card.kind === "experience") return `/exp/${brand}/${offering}`;
   if (card.kind === "trip") return `/t/${brand}/${offering}`;
-  if (card.kind === "stay") return `/b/${brand}/v/${offering}`;
-  // #4490 Explorer W6a: a venue opens its page on the lead offer's tab.
-  if (card.kind === "venue") {
-    const tab = discoverVenueLeadTab(card);
-    return `/b/${brand}/v/${offering}${tab ? `?tab=${encodeURIComponent(tab)}` : ""}`;
-  }
+  // #4490 Explorer W6a: a venue card opens its venue page (the screen adds the
+  // lead offer's `?tab=` from discoverVenueLeadTab; this file stays dependency-free).
+  if (card.kind === "stay" || card.kind === "venue") return `/b/${brand}/v/${offering}`;
   return `/e/${brand}/${offering}`;
 }

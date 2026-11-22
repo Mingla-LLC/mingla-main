@@ -13,8 +13,8 @@
  *        discover, analytics properties, coach copy unchanged by Venues, the
  *        §6 empty / filtered / error copy.
  *
- * FAILS-ON-REVERT: `kinds[kind].total` without `?.` -> G-1; route without the
- * tab -> R-1; the venue variant removed from DiscoverCard -> C-1; the coach
+ * FAILS-ON-REVERT: `kinds[kind].total` without `?.` -> G-1; open without the
+ * lead tab -> R-1; the venue variant removed from DiscoverCard -> C-1; the coach
  * check back on DISCOVER_KIND_ORDER.length -> G-4.
  */
 import React from "react";
@@ -28,7 +28,7 @@ jest.mock("expo-linear-gradient", () => ({ LinearGradient: () => null }));
 jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 
 const { DISCOVER_KIND_ORDER, emptyDiscoverFilters } = require("../../../types/discoverFeed") as typeof import("../../../types/discoverFeed");
-const { discoverVenueCardModel, discoverVenueAnalytics, discoverVenueLeadTab } =
+const { discoverVenueCardModel, discoverVenueAnalytics, discoverVenueLeadTab, withVenueLeadTab } =
   require("../discoverVenueCard") as typeof import("../discoverVenueCard");
 const { canonicalDiscoverCardPath } = require("../discoverCardRoute") as typeof import("../discoverCardRoute");
 const { selectedDiscoverFilterLabels } = require("../discoverFilterState") as typeof import("../discoverFilterState");
@@ -135,11 +135,14 @@ describe("#4490 W6a Discover Venues", () => {
   });
 
   it("R-1 a venue opens its page on the lead tab; a stay is unchanged", () => {
-    expect(canonicalDiscoverCardPath(venueCard() as never)).toBe("/b/gameland/v/gamelandlagos?tab=entry");
+    expect(canonicalDiscoverCardPath(venueCard() as never)).toBe("/b/gameland/v/gamelandlagos");
+    expect(withVenueLeadTab(venueCard() as never, "/b/gameland/v/gamelandlagos")).toBe("/b/gameland/v/gamelandlagos?tab=entry");
+    expect(read("../../DiscoverScreen.tsx")).toContain("const path = plainPath === null ? null : withVenueLeadTab(card, plainPath);");
     expect(discoverVenueLeadTab(venueCard() as never)).toBe("entry");
     expect(canonicalDiscoverCardPath({ ...venueCard(), kind: "stay" } as never)).toBe("/b/gameland/v/gamelandlagos");
     const noLead = venueCard({ features: [], priceFrom: { entry: null, group_packages: null, private_hire: null, by_the_hour: null, memberships: null } });
-    expect(canonicalDiscoverCardPath(noLead as never)).toBe("/b/gameland/v/gamelandlagos");
+    expect(withVenueLeadTab(noLead as never, "/b/gameland/v/gamelandlagos")).toBe("/b/gameland/v/gamelandlagos");
+    expect(withVenueLeadTab({ ...venueCard(), kind: "stay" } as never, "/b/x/v/y")).toBe("/b/x/v/y");
   });
 
   it("C-1 the mounted venue card shows type, name, area, lead line and On tonight", () => {
