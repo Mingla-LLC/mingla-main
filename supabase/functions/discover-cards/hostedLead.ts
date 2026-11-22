@@ -14,8 +14,12 @@
 // MINGLA-INVARIANT: I-DECK-HOSTED-VENUES-LEAD-EACH-CATEGORY | issue #4490 | with VENUE_DECK_HOSTED_FIRST on, inside every solo deck category the hosted venues (at most 6, score DESC, review_count DESC NULLS LAST, place id ASC) come before that category's organic places, and organic places keep today's relative order; pinned by supabase/functions/discover-cards/__tests__/issue_4490_hosted_lead.test.ts.
 
 export const HOSTED_PER_CATEGORY_CAP = 6;
-/** A hosted answer that arrives later than this after the base calls is ignored. */
-export const HOSTED_GRACE_MS = 1500;
+/**
+ * A hosted answer that arrives later than this after the organic (base) calls
+ * have answered is ignored, so a slow hosted lookup never holds the deck for
+ * more than this (fix round 1, W5-N1: was 1500 ms).
+ */
+export const HOSTED_GRACE_MS = 150;
 export const VENUE_DECK_HOSTED_FIRST = 'VENUE_DECK_HOSTED_FIRST';
 
 type FlagClient = {
@@ -39,14 +43,15 @@ export async function venueDeckFlagOn(
   try {
     const { data, error } = await client.rpc('issue_4490_flag_on', { p_flag: flag });
     if (error) {
-      console.warn(`[discover-cards] venue flag read failed flag=${flag} (reading as off)`);
-      return false;
+      console.warn(`[discover-cards] venue flag read failed flag=${flag} (reading as off for 60 s)`);
+    } else {
+      value = data === true;
     }
-    value = data === true;
   } catch {
-    console.warn(`[discover-cards] venue flag read failed flag=${flag} (reading as off)`);
-    return false;
+    console.warn(`[discover-cards] venue flag read failed flag=${flag} (reading as off for 60 s)`);
   }
+  // A failed read is cached as "off" too (fix round 1, W5-N7): an edge deployed
+  // before its migration must not repeat the failing read on every request.
   FLAG_CACHE.set(flag, { value, expiresAt: now + FLAG_CACHE_TTL_MS });
   return value;
 }
@@ -168,10 +173,59 @@ export function collabCandidates<T extends { place_id?: string }>(
   return dedupeByPlace([...hostedInterleaved, ...organicInterleaved]);
 }
 
+type HostedTask = { chip: string; signalId: string; filterMin: number };
+
 /**
- * Waits for the hosted calls, but never longer than `graceMs` after the base
+ * Fix round 1 (W5-N2): one hosted call per request answers every (signal, mood
+ * floor) pair of that request. The pairs, deduped, in first-seen task order.
+ */
+export function hostedSignalPairs(tasks: HostedTask[]): Array<{ signal_id: string; filter_min: number }> {
+  const seen = new Set<string>();
+  const out: Array<{ signal_id: string; filter_min: number }> = [];
+  for (const task of tasks) {
+    const key = `${task.signalId}\u0000${task.filterMin}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ signal_id: task.signalId, filter_min: task.filterMin });
+  }
+  return out;
+}
+
+/**
+ * Splits the one hosted answer back into one result per task (rows whose
+ * signal_id and filter_min match the task), in the wrapper's order, with the
+ * two routing columns removed so a hosted row has the base row's shape. A
+ * non-array answer or a row without a string place id is dropped (W5-N3), so a
+ * malformed hosted answer can only ever fall back to today's deck.
+ */
+export function splitHostedRows<T extends HostedTask>(
+  tasks: T[],
+  data: unknown,
+): Array<{ task: T; res: { data: any[]; error: null } }> {
+  const rows = Array.isArray(data) ? data : [];
+  return tasks.map((task) => ({
+    task,
+    res: {
+      data: rows
+        .filter((row: any) =>
+          row !== null && typeof row === 'object' && typeof row.place_id === 'string' &&
+          row.signal_id === task.signalId && Number(row.filter_min) === Number(task.filterMin)
+        )
+        .map((row: any) => {
+          const { signal_id: _signal, filter_min: _floor, ...rest } = row;
+          return rest;
+        }),
+      error: null,
+    },
+  }));
+}
+
+/**
+ * Waits for the hosted call, but never longer than `graceMs` after the base
  * calls have finished. A late or failed hosted answer becomes `null` (logged by
- * the caller) and the organic deck is served as today.
+ * the caller as hosted=late) and the organic deck is served as today. A late
+ * answer that arrives afterwards is dropped: it is caught here (no unhandled
+ * rejection) and touches no shared state.
  */
 export async function settleHosted<T>(
   hosted: Promise<T>,

@@ -4,24 +4,65 @@
 --
 -- A hosted venue is a place whose verified venue (of a live, non-internal brand)
 -- passes issue_4490_venue_is_bookable (a live offer, plan or reservable tables).
--- These two wrappers return at most 6 hosted rows per signal call, in a fixed order
--- (signal score DESC, review_count DESC NULLS LAST, place id ASC). They WRAP the base
--- servable RPCs (no copy), so the mood floor, radius / circles, price filter,
--- exclusions and place-quality checks stay owned by the base bodies, and they pass
--- p_limit => NULL (LIMIT NULL = no limit) so no hosted venue is lost below a row cap.
--- The stored score is never changed. Neither base RPC is touched here.
+-- With the flag on, discover-cards makes ONE hosted call per request (solo) or per
+-- position (shared deck) for all of that request's signals, and gets at most 6
+-- hosted rows per (signal, mood floor), in a fixed order (signal score DESC,
+-- review_count DESC NULLS LAST, place id ASC). The stored score is never changed.
 --
--- 1. issue_4490_hosted_servable_places(<the solo RPC's arguments except p_limit>)
--- 2. issue_4490_hosted_servable_places_intersection(<the collab RPC's arguments except p_limit>)
--- 3. Flag VENUE_DECK_HOSTED_FIRST (false). Read by discover-cards (60 s cache).
+-- Fix round 1 (W5-N2): the wrappers used to run the whole base servable RPC with no
+-- row cap and then keep the bookable venues (322-330 ms at 100 km even where no
+-- venue exists, once per chip x signal). They now START from the small set of
+-- bookable venues whose place is inside the radius (or every circle) and score only
+-- those places, so an area with no hosted venue answers at once. The guardrails are
+-- the base RPCs' own rules, restated here for that small set: the place rule
+-- (issue_4490_place_is_servable, the same helper the solo base RPC calls after
+-- 20280809462490), the mood floor, the radius (solo haversine) or every circle
+-- (shared deck ST_DWithin), exclusions and the solo price filter (the same
+-- place_discovery_range_for_viewer clause). The W5 pg17 suite proves the rows equal
+-- "base RPC with no row cap, restricted to bookable venues, top 6" over a grid of
+-- arguments (E-1 / E-2), so the two cannot drift silently. Neither base RPC is
+-- touched here.
+--
+-- 1. issue_4490_place_is_servable(is_servable, is_active, photos): the place-quality
+--    part of the deck's servable rule (one SQL expression, IMMUTABLE, invoker, no SET:
+--    inlinable). 20280809462490 makes the solo base RPC call it.
+-- 2. issue_4490_hosted_servable_places(signals jsonb, lat, lng, radius m, exclude,
+--    price filter...) -> base row shape + venue_id, signal_id, filter_min.
+--    `signals` = [{"signal_id": text, "filter_min": number}, ...].
+-- 3. issue_4490_hosted_servable_places_intersection(signals jsonb, circles, exclude):
+--    the shared-deck shape.
+-- 4. Flag VENUE_DECK_HOSTED_FIRST (false). Read by discover-cards (60 s cache).
 --
 -- Both wrappers are service_role only (discover-cards calls them with the service key).
 
 BEGIN;
 
+CREATE OR REPLACE FUNCTION public.issue_4490_place_is_servable(
+  p_is_servable boolean,
+  p_is_active boolean,
+  p_photos text[]
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+AS $function$
+  SELECT p_is_servable = true
+    AND p_is_active = true
+    AND p_photos IS NOT NULL
+    AND pg_catalog.array_length(p_photos, 1) > 0
+    AND NOT (
+      pg_catalog.array_length(p_photos, 1) = 1
+      AND p_photos[1] = '__backfill_failed__'
+    )
+$function$;
+
+-- An earlier local draft of this file defined one-signal wrappers; drop them so only
+-- the request-wide shape exists (no overload is left behind).
+DROP FUNCTION IF EXISTS public.issue_4490_hosted_servable_places(text, numeric, double precision, double precision, double precision, uuid[], bigint, bigint, character, uuid);
+DROP FUNCTION IF EXISTS public.issue_4490_hosted_servable_places_intersection(text, numeric, jsonb, uuid[]);
+
 CREATE OR REPLACE FUNCTION public.issue_4490_hosted_servable_places(
-  p_signal_id text,
-  p_filter_min numeric,
+  p_signals jsonb,
   p_lat double precision,
   p_lng double precision,
   p_radius_m double precision,
@@ -36,31 +77,99 @@ RETURNS TABLE(place_id uuid, google_place_id text, name text, address text, lat 
   price_range_start_cents integer, price_range_end_cents integer, opening_hours jsonb, website text,
   photos jsonb, stored_photo_urls text[], types text[], primary_type text, generative_summary text,
   signal_score numeric, signal_contributions jsonb, ai_reasoning jsonb, ai_score_raw numeric,
-  venue_id uuid)
+  venue_id uuid, signal_id text, filter_min numeric)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
 AS $function$
-  SELECT s.place_id, s.google_place_id, s.name, s.address, s.lat, s.lng, s.rating, s.review_count,
-    s.price_level, s.price_range_start_cents, s.price_range_end_cents, s.opening_hours, s.website,
-    s.photos, s.stored_photo_urls, s.types, s.primary_type, s.generative_summary, s.signal_score,
-    s.signal_contributions, s.ai_reasoning, s.ai_score_raw, v.id
-  FROM public.issue_1384_query_servable_places_by_signal(
-    p_signal_id, p_filter_min, p_lat, p_lng, p_radius_m, p_exclude_place_ids,
-    NULL::integer,
-    p_price_filter_min_minor, p_price_filter_max_minor, p_price_filter_currency, p_fx_snapshot_id) s
-  JOIN public.venue_listings v ON v.place_pool_id = s.place_id AND v.claim_status = 'verified'
-  JOIN public.brands b ON b.id = v.brand_id AND b.deleted_at IS NULL
-  WHERE NOT public.admin_brand_is_internal(b.id)
-    AND public.issue_4490_venue_is_bookable(v.id)
-  ORDER BY s.signal_score DESC, s.review_count DESC NULLS LAST, s.place_id ASC
-  LIMIT 6;
+  WITH hosted AS MATERIALIZED (
+    -- Bookable verified venues of live, non-internal brands whose place passes the
+    -- place rule and is inside the radius (the radius first: it is the cheap cut).
+    SELECT v.id AS venue_id, pp.id AS place_id
+    FROM public.venue_listings v
+    JOIN public.brands b ON b.id = v.brand_id AND b.deleted_at IS NULL
+    JOIN public.place_pool pp ON pp.id = v.place_pool_id
+    WHERE v.claim_status = 'verified'
+      AND public.issue_4490_place_is_servable(pp.is_servable, pp.is_active, pp.stored_photo_urls)
+      AND (
+        6371000.0 * 2.0 * pg_catalog.asin(pg_catalog.sqrt(
+          pg_catalog.power(pg_catalog.sin(pg_catalog.radians(pp.lat - p_lat) / 2.0), 2) +
+          pg_catalog.cos(pg_catalog.radians(p_lat)) *
+          pg_catalog.cos(pg_catalog.radians(pp.lat)) *
+          pg_catalog.power(pg_catalog.sin(pg_catalog.radians(pp.lng - p_lng) / 2.0), 2)
+        ))
+      ) <= p_radius_m
+      AND NOT (pp.id = ANY(COALESCE(p_exclude_place_ids, '{}'::uuid[])))
+      AND NOT public.admin_brand_is_internal(b.id)
+      AND public.issue_4490_venue_is_bookable(v.id)
+  ), wanted AS (
+    SELECT DISTINCT s->>'signal_id' AS signal_id, (s->>'filter_min')::numeric AS filter_min
+    FROM pg_catalog.jsonb_array_elements(
+      CASE WHEN pg_catalog.jsonb_typeof(p_signals) = 'array' THEN p_signals ELSE '[]'::jsonb END) s
+    WHERE pg_catalog.jsonb_typeof(s) = 'object'
+      AND s->>'signal_id' IS NOT NULL
+      AND s->>'filter_min' IS NOT NULL
+  ), scored AS (
+    SELECT pp.id, pp.google_place_id, pp.name, pp.address, pp.lat, pp.lng, pp.rating, pp.review_count,
+      pp.price_level, pp.price_range_start_cents, pp.price_range_end_cents, pp.opening_hours, pp.website,
+      pp.photos, pp.stored_photo_urls, pp.types, pp.primary_type, pp.generative_summary,
+      ps.score, ps.contributions,
+      pp.ai_signal_scores -> w.signal_id AS ai_reasoning,
+      NULLIF(pp.ai_signal_scores -> w.signal_id ->> 'score_0_to_100', '')::numeric AS ai_score_raw,
+      h.venue_id, w.signal_id, w.filter_min,
+      pg_catalog.row_number() OVER (PARTITION BY w.signal_id, w.filter_min
+        ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST, pp.id ASC) AS rn
+    FROM hosted h
+    JOIN public.place_pool pp ON pp.id = h.place_id
+    CROSS JOIN wanted w
+    JOIN public.place_scores ps ON ps.place_id = pp.id AND ps.signal_id = w.signal_id
+    CROSS JOIN LATERAL public.place_discovery_range_for_viewer(
+      pp.id,
+      p_price_filter_currency,
+      p_fx_snapshot_id
+    ) filtered_price
+    WHERE ps.score >= w.filter_min
+      -- The solo base RPC's price clause, unchanged.
+      AND (
+        p_price_filter_currency IS NULL
+        OR (
+          filtered_price.price_range_status = 'active'
+          AND COALESCE(
+            filtered_price.display_currency_code,
+            filtered_price.source_currency_code
+          ) = p_price_filter_currency
+          AND (
+            COALESCE(
+              filtered_price.display_max_minor,
+              filtered_price.source_max_minor
+            ) IS NULL
+            OR COALESCE(
+                filtered_price.display_max_minor,
+                filtered_price.source_max_minor
+              ) >= COALESCE(p_price_filter_min_minor, 0)
+          )
+          AND (
+            p_price_filter_max_minor IS NULL
+            OR COALESCE(
+              filtered_price.display_min_minor,
+              filtered_price.source_min_minor
+            ) <= p_price_filter_max_minor
+          )
+        )
+      )
+  )
+  SELECT id, google_place_id, name, address, lat, lng, rating, review_count, price_level,
+    price_range_start_cents, price_range_end_cents, opening_hours, website, photos, stored_photo_urls,
+    types, primary_type, generative_summary, score, contributions, ai_reasoning, ai_score_raw,
+    venue_id, signal_id, filter_min
+  FROM scored
+  WHERE rn <= 6
+  ORDER BY signal_id, filter_min, rn;
 $function$;
 
 CREATE OR REPLACE FUNCTION public.issue_4490_hosted_servable_places_intersection(
-  p_signal_id text,
-  p_filter_min numeric,
+  p_signals jsonb,
   p_circles jsonb,
   p_exclude_place_ids uuid[] DEFAULT '{}'::uuid[]
 )
@@ -69,30 +178,80 @@ RETURNS TABLE(place_id uuid, google_place_id text, name text, address text, lat 
   price_range_start_cents integer, price_range_end_cents integer, opening_hours jsonb, website text,
   photos jsonb, stored_photo_urls text[], types text[], primary_type text, generative_summary text,
   signal_score numeric, signal_contributions jsonb, ai_reasoning jsonb, ai_score_raw numeric,
-  venue_id uuid)
+  venue_id uuid, signal_id text, filter_min numeric)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
-SET search_path = ''
+SET search_path = public, extensions, pg_temp
 AS $function$
-  SELECT s.place_id, s.google_place_id, s.name, s.address, s.lat, s.lng, s.rating, s.review_count,
-    s.price_level, s.price_range_start_cents, s.price_range_end_cents, s.opening_hours, s.website,
-    s.photos, s.stored_photo_urls, s.types, s.primary_type, s.generative_summary, s.signal_score,
-    s.signal_contributions, s.ai_reasoning, s.ai_score_raw, v.id
-  FROM public.query_servable_places_by_signal_intersection(
-    p_signal_id, p_filter_min, p_circles, COALESCE(p_exclude_place_ids, '{}'::uuid[]), NULL::integer) s
-  JOIN public.venue_listings v ON v.place_pool_id = s.place_id AND v.claim_status = 'verified'
-  JOIN public.brands b ON b.id = v.brand_id AND b.deleted_at IS NULL
-  WHERE NOT public.admin_brand_is_internal(b.id)
-    AND public.issue_4490_venue_is_bookable(v.id)
-  ORDER BY s.signal_score DESC, s.review_count DESC NULLS LAST, s.place_id ASC
-  LIMIT 6;
+  WITH circles AS (
+    -- The shared-deck base RPC's circles, unchanged.
+    SELECT
+      ST_SetSRID(ST_MakePoint((c->>'lng')::double precision, (c->>'lat')::double precision), 4326)::geography AS center,
+      (c->>'radius_m')::double precision AS rad_m
+    FROM jsonb_array_elements(p_circles) AS c
+    WHERE (c->>'lat') IS NOT NULL
+      AND (c->>'lng') IS NOT NULL
+      AND (c->>'radius_m') IS NOT NULL
+  ), hosted AS MATERIALIZED (
+    SELECT v.id AS venue_id, pp.id AS place_id
+    FROM public.venue_listings v
+    JOIN public.brands b ON b.id = v.brand_id AND b.deleted_at IS NULL
+    JOIN public.place_pool pp ON pp.id = v.place_pool_id
+    WHERE v.claim_status = 'verified'
+      AND public.issue_4490_place_is_servable(pp.is_servable, pp.is_active, pp.stored_photo_urls)
+      AND pp.lat IS NOT NULL
+      AND pp.lng IS NOT NULL
+      AND (
+        NOT EXISTS (SELECT 1 FROM circles)
+        OR NOT EXISTS (
+          SELECT 1
+          FROM circles c
+          WHERE NOT ST_DWithin(
+            c.center,
+            ST_SetSRID(ST_MakePoint(pp.lng, pp.lat), 4326)::geography,
+            c.rad_m
+          )
+        )
+      )
+      AND NOT (pp.id = ANY(COALESCE(p_exclude_place_ids, '{}'::uuid[])))
+      AND NOT public.admin_brand_is_internal(b.id)
+      AND public.issue_4490_venue_is_bookable(v.id)
+  ), wanted AS (
+    SELECT DISTINCT s->>'signal_id' AS signal_id, (s->>'filter_min')::numeric AS filter_min
+    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(p_signals) = 'array' THEN p_signals ELSE '[]'::jsonb END) s
+    WHERE jsonb_typeof(s) = 'object'
+      AND s->>'signal_id' IS NOT NULL
+      AND s->>'filter_min' IS NOT NULL
+  ), scored AS (
+    SELECT pp.id, pp.google_place_id, pp.name, pp.address, pp.lat, pp.lng, pp.rating, pp.review_count,
+      pp.price_level, pp.price_range_start_cents, pp.price_range_end_cents, pp.opening_hours, pp.website,
+      pp.photos, pp.stored_photo_urls, pp.types, pp.primary_type, pp.generative_summary,
+      ps.score, ps.contributions,
+      pp.ai_signal_scores -> w.signal_id AS ai_reasoning,
+      NULLIF((pp.ai_signal_scores -> w.signal_id ->> 'score_0_to_100'), '')::numeric AS ai_score_raw,
+      h.venue_id, w.signal_id, w.filter_min,
+      row_number() OVER (PARTITION BY w.signal_id, w.filter_min
+        ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST, pp.id ASC) AS rn
+    FROM hosted h
+    JOIN public.place_pool pp ON pp.id = h.place_id
+    CROSS JOIN wanted w
+    JOIN public.place_scores ps ON ps.place_id = pp.id AND ps.signal_id = w.signal_id
+    WHERE ps.score >= w.filter_min
+  )
+  SELECT id, google_place_id, name, address, lat, lng, rating, review_count, price_level,
+    price_range_start_cents, price_range_end_cents, opening_hours, website, photos, stored_photo_urls,
+    types, primary_type, generative_summary, score, contributions, ai_reasoning, ai_score_raw,
+    venue_id, signal_id, filter_min
+  FROM scored
+  WHERE rn <= 6
+  ORDER BY signal_id, filter_min, rn;
 $function$;
 
-REVOKE ALL ON FUNCTION public.issue_4490_hosted_servable_places(text, numeric, double precision, double precision, double precision, uuid[], bigint, bigint, character, uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_4490_hosted_servable_places(text, numeric, double precision, double precision, double precision, uuid[], bigint, bigint, character, uuid) TO service_role;
-REVOKE ALL ON FUNCTION public.issue_4490_hosted_servable_places_intersection(text, numeric, jsonb, uuid[]) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_4490_hosted_servable_places_intersection(text, numeric, jsonb, uuid[]) TO service_role;
+REVOKE ALL ON FUNCTION public.issue_4490_hosted_servable_places(jsonb, double precision, double precision, double precision, uuid[], bigint, bigint, character, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_hosted_servable_places(jsonb, double precision, double precision, double precision, uuid[], bigint, bigint, character, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.issue_4490_hosted_servable_places_intersection(jsonb, jsonb, uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4490_hosted_servable_places_intersection(jsonb, jsonb, uuid[]) TO service_role;
 
 INSERT INTO public.feature_flags (flag_key, is_enabled, description) VALUES
   ('VENUE_DECK_HOSTED_FIRST', false, '#4490 explorer W5: hosted bookable venues lead each deck category (discover-cards, server only)')

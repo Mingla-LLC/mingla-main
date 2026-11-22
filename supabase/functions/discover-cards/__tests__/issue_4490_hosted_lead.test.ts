@@ -6,14 +6,23 @@
 //
 // FAILS-ON-REVERT: removing the partition (index.ts Step 7), the tie-safe merge, the
 // safety pass, the hosted settle or the collab candidate order fails the named tests below.
+// Fix round 1: W5-S8 fails with the old 1500 ms grace (W5-N1); W5-S9 fails without the
+// array / place-id guard (W5-N3); W5-S2 / W5-U7 fail with one hosted call per chip x signal
+// (W5-N2); W5-U8 fails if a failed flag read is not cached (W5-N7).
+// TEST-MOD-APPROVED #4490 (06-W5 fix 1): the fake answers the request-wide hosted call
+// (p_signals) and W5-S2 checks one hosted call with the base call's arguments.
 //
 // Run: deno test --allow-read --allow-env --no-check supabase/functions/discover-cards/__tests__/issue_4490_hosted_lead.test.ts
 
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import { handleDiscoverCards } from '../index.ts';
 import {
+  HOSTED_GRACE_MS,
   collabCandidates,
   compareHostedRows,
+  hostedSignalPairs,
+  splitHostedRows,
+  venueDeckFlagOn,
   dedupeByPlace,
   leadHostedWithinCategories,
   mergeIntoBucket,
@@ -59,7 +68,7 @@ function row(id: string, score: number, opts: { reviews?: number | null; hours?:
 }
 const hosted = (r: ReturnType<typeof row>) => ({ ...r, venue_id: `v-${r.place_id}` });
 
-type HostedAnswer = Array<Record<string, unknown>> | 'error' | 'throw' | { delayMs: number; rows: Array<Record<string, unknown>> };
+type HostedAnswer = Array<Record<string, unknown>> | 'error' | 'throw' | 'object' | { delayMs: number; rows: Array<Record<string, unknown>> };
 
 /** A fake service-role client answering the deck's reads like PostgREST. */
 function fakeDb(opts: {
@@ -79,6 +88,7 @@ function fakeDb(opts: {
     if (a === undefined) return Promise.resolve({ data: [], error: null });
     if (a === 'error') return Promise.resolve({ data: null, error: { message: 'hosted boom' } });
     if (a === 'throw') return Promise.reject(new Error('hosted threw'));
+    if (a === 'object') return Promise.resolve({ data: { not: 'an array' }, error: null });
     if (Array.isArray(a)) return Promise.resolve({ data: a.map((r) => ({ ...r })), error: null });
     return new Promise((resolve) => setTimeout(() => resolve({ data: a.rows, error: null }), a.delayMs));
   };
@@ -101,12 +111,23 @@ function fakeDb(opts: {
         }
         case 'issue_4490_hosted_servable_places':
         case 'issue_4490_hosted_servable_places_intersection': {
-          const a = opts.hosted?.[String(args.p_signal_id)];
-          if (Array.isArray(a)) {
-            const ex = new Set((args.p_exclude_place_ids as string[]) ?? []);
-            return answer(a.filter((r) => !ex.has(String(r.place_id))));
+          // One call for every (signal, floor) pair of the request (fix round 1).
+          const pairs = (args.p_signals as Array<{ signal_id: string; filter_min: number }>) ?? [];
+          const ex = new Set((args.p_exclude_place_ids as string[]) ?? []);
+          const special = pairs.map((p) => opts.hosted?.[p.signal_id]).find((a) => a !== undefined && !Array.isArray(a));
+          if (special !== undefined) {
+            if (typeof special === 'object' && 'delayMs' in special) {
+              const rows = pairs.flatMap((p) => special.rows.map((r) => ({ ...r, signal_id: p.signal_id, filter_min: p.filter_min })));
+              return answer({ delayMs: special.delayMs, rows });
+            }
+            return answer(special);
           }
-          return answer(a);
+          return answer(pairs.flatMap((p) => {
+            const a = opts.hosted?.[p.signal_id];
+            return (Array.isArray(a) ? a : [])
+              .filter((r) => !ex.has(String(r.place_id)))
+              .map((r) => ({ ...r, signal_id: p.signal_id, filter_min: p.filter_min }));
+          }));
         }
         case 'pg_eligible_experiences_for_deck':
           return Promise.resolve({ data: opts.experiences ?? [], error: null });
@@ -221,11 +242,19 @@ Deno.test('W5-S2 flag on: hosted lead inside each category, organic keep today\'
   // Round robin is unchanged: one card per category per round (chip order is
   // resolveCategories' canonical order, as today).
   assertEquals(ids(body.cards).slice(0, 4), ['hp', 'h1', 'p1', 'h2']);
-  // Same arguments as the base call, minus p_limit.
+  // ONE hosted call for the request (fix round 1, W5-N2) with the base call's
+  // radius, exclusions and price filter, and every (signal, floor) pair.
+  const hostedCalls = db.calls.filter((c) => c.fn === 'issue_4490_hosted_servable_places');
+  assertEquals(hostedCalls.length, 1, 'one hosted call per request, not one per chip x signal');
   const base = db.calls.find((c) => c.fn === 'issue_1384_query_servable_places_by_signal')!.args;
-  const h = db.calls.find((c) => c.fn === 'issue_4490_hosted_servable_places')!.args;
-  const { p_limit: _ignored, ...baseNoLimit } = base;
-  assertEquals(h, baseNoLimit);
+  const { p_limit: _ignored, p_signal_id: _s, p_filter_min: _f, ...baseShared } = base;
+  const { p_signals, ...hostedShared } = hostedCalls[0].args;
+  assertEquals(hostedShared, baseShared);
+  const baseCalls = db.calls.filter((c) => c.fn === 'issue_1384_query_servable_places_by_signal');
+  assertEquals(
+    (p_signals as Array<{ signal_id: string; filter_min: number }>).map((p) => `${p.signal_id}:${p.filter_min}`).sort(),
+    [...new Set(baseCalls.map((c) => `${c.args.p_signal_id}:${c.args.p_filter_min}`))].sort(),
+  );
 });
 
 Deno.test('W5-S3 at most 6 hosted per category; the rest stay in the organic part', async () => {
@@ -278,7 +307,85 @@ Deno.test('W5-S7 deterministic: three identical requests give identical bytes', 
   assertEquals(outs[1], outs[2]);
 });
 
+Deno.test('W5-S8 the default grace: a slow hosted call adds at most ~150 ms, logs hosted=late, and leaves no trace', async () => {
+  const today = await solo(fakeDb({ flag: false, base: { drinks: DRINKS_BASE } }), ['drinks_and_music']);
+  const warnings: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (...a: unknown[]) => { warnings.push(a.map(String).join(' ')); };
+  let elapsed = 0;
+  let body: any;
+  try {
+    resetVenueDeckFlagCacheForTests();
+    const db = fakeDb({ flag: true, base: { drinks: DRINKS_BASE }, hosted: { drinks: { delayMs: 1200, rows: DRINKS_HOSTED } } });
+    const t = Date.now();
+    // No hostedGraceMs override: the shipped HOSTED_GRACE_MS applies.
+    const res = await handleDiscoverCards(soloRequest(['drinks_and_music']), { adminClient: db });
+    elapsed = Date.now() - t;
+    body = await res.json();
+  } finally {
+    console.warn = realWarn;
+  }
+  assertEquals(HOSTED_GRACE_MS, 150);
+  assert(elapsed < 450, `the organic deck waited ${elapsed} ms for a 1200 ms hosted answer (was 1500 ms)`);
+  assertEquals(ids(body.cards), ids(today.body.cards), 'a late hosted answer leaves today\'s order');
+  assert(warnings.some((w) => w.includes('hosted=late')), 'hosted=late is logged');
+  await new Promise((r) => setTimeout(r, 1300)); // the late answer lands and is dropped
+  const after = await solo(fakeDb({ flag: false, base: { drinks: DRINKS_BASE } }), ['drinks_and_music']);
+  assertEquals(after.text, today.text, 'a late hosted answer has no effect on a later page');
+});
+
+Deno.test('W5-S9 a malformed hosted answer (not an array, or a row without a place id) serves today\'s deck', async () => {
+  const today = await solo(fakeDb({ flag: false, base: { drinks: DRINKS_BASE } }), ['drinks_and_music']);
+  const notArray = await solo(fakeDb({ flag: true, base: { drinks: DRINKS_BASE }, hosted: { drinks: 'object' } }), ['drinks_and_music']);
+  assertEquals(notArray.status, 200);
+  assertEquals(ids(notArray.body.cards), ids(today.body.cards));
+  const nullId = await solo(fakeDb({ flag: true, base: { drinks: DRINKS_BASE }, hosted: { drinks: [{ ...hosted(row('x', 500)), place_id: null }] } }), ['drinks_and_music']);
+  assertEquals(nullId.status, 200);
+  assertEquals(ids(nullId.body.cards), ids(today.body.cards));
+  assertEquals(nullId.body.cards.some((c: any) => c.deckLead === 'hosted_venue'), false, 'no null-id lead');
+});
+
 // ── pure helpers ──────────────────────────────────────────────────────────────
+
+Deno.test('W5-U7 one request-wide hosted call: pairs deduped, rows split back per task in order', () => {
+  const tasks = [
+    { chip: 'a', signalId: 's1', filterMin: 120, displayCategory: 'A' },
+    { chip: 'b', signalId: 's1', filterMin: 120, displayCategory: 'B' },
+    { chip: 'b', signalId: 's2', filterMin: 80, displayCategory: 'B' },
+  ];
+  assertEquals(hostedSignalPairs(tasks), [{ signal_id: 's1', filter_min: 120 }, { signal_id: 's2', filter_min: 80 }]);
+  const data = [
+    { place_id: 'p2', signal_id: 's2', filter_min: '80', venue_id: 'v2' },
+    { place_id: 'p1', signal_id: 's1', filter_min: 120, venue_id: 'v1' },
+    { place_id: 'p3', signal_id: 's1', filter_min: 120, venue_id: 'v3' },
+    { place_id: null, signal_id: 's1', filter_min: 120 },
+    { place_id: 'p9', signal_id: 's1', filter_min: 121 },
+  ];
+  const split = splitHostedRows(tasks, data);
+  assertEquals(split.map((s) => s.res.data.map((r: any) => r.place_id)), [['p1', 'p3'], ['p1', 'p3'], ['p2']]);
+  assertEquals('signal_id' in split[0].res.data[0], false, 'routing columns removed: base row shape');
+  assertEquals(splitHostedRows(tasks, { x: 1 }).map((s) => s.res.data.length), [0, 0, 0]);
+  assertEquals(splitHostedRows(tasks, null).map((s) => s.res.data.length), [0, 0, 0]);
+});
+
+Deno.test('W5-U8 a failed switch read is cached as off (no repeated failing read)', async () => {
+  resetVenueDeckFlagCacheForTests();
+  let reads = 0;
+  const failing = { rpc: () => { reads++; return Promise.resolve({ data: null, error: { message: 'PGRST202' } }); } };
+  const realWarn = console.warn;
+  console.warn = () => {};
+  try {
+    assertEquals(await venueDeckFlagOn(failing, 'VENUE_DECK_HOSTED_FIRST', () => 1000), false);
+    assertEquals(await venueDeckFlagOn(failing, 'VENUE_DECK_HOSTED_FIRST', () => 2000), false);
+    assertEquals(reads, 1, 'second read within 60 s served from the cache');
+    assertEquals(await venueDeckFlagOn(failing, 'VENUE_DECK_HOSTED_FIRST', () => 70_000), false);
+    assertEquals(reads, 2, 'read again after 60 s');
+  } finally {
+    console.warn = realWarn;
+    resetVenueDeckFlagCacheForTests();
+  }
+});
+
 
 Deno.test('W5-U1 the hosted tag survives a tied-score merge (first row stays)', () => {
   const bucket = new Map<string, any>();
