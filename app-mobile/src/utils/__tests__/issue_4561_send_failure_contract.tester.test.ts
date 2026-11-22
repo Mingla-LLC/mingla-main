@@ -21,6 +21,7 @@
  */
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
+  codeStepPresentation,
   otpPickerChannels,
   phoneStepPresentation,
   phoneStepSendChannel,
@@ -152,4 +153,31 @@ Deno.test("#4561 retest adversarial: refusals belong to one exact number and are
   const copy = refusedForNumber(remembered, "+12015550142");
   copy.pop();
   assertEquals(remembered.channels, ["sms", "call"]);
+});
+
+Deno.test("#4561 retest 2 adversarial: the code screen never hides every channel silently and always names the refused one", () => {
+  const msgs = { smsRefused: "SMS_REFUSED", callRefused: "CALL_REFUSED", allRefused: "ALL_REFUSED" };
+  const sets: ("sms" | "call" | "whatsapp")[][] = [[], ["sms"], ["call"], ["whatsapp"], ["sms", "call"], ["call", "whatsapp"], ["sms", "sms"]];
+  const events: ("sms" | "call" | "whatsapp" | null)[] = [null, "sms", "call", "whatsapp"];
+  for (const refused of sets) {
+    for (const pickerRefusal of events) {
+      const c = codeStepPresentation(refused, pickerRefusal, msgs);
+      const row = `refused=${JSON.stringify(refused)} picker=${pickerRefusal}`;
+      // Nothing to offer is exactly the all-refused state, with its own message.
+      assertEquals(c.allRefused, c.pickerChannels.length === 0, row);
+      if (c.allRefused) assertEquals(c.message, "ALL_REFUSED", row);
+      // The picker never offers a refused or unoffered channel.
+      for (const ch of c.pickerChannels) assert(!refused.includes(ch) && ch !== "whatsapp", row);
+      // A channel just refused from the picker is always named, never silent, and never mislabelled.
+      if (!c.allRefused && pickerRefusal === "call" && refused.includes("call")) assertEquals(c.message, "CALL_REFUSED", row);
+      if (!c.allRefused && pickerRefusal === "sms" && refused.includes("sms")) assertEquals(c.message, "SMS_REFUSED", row);
+      // A stale marker (channel no longer refused for this number) shows nothing.
+      if (!c.allRefused && pickerRefusal !== null && !refused.includes(pickerRefusal)) assertEquals(c.message, null, row);
+      // The phone screen behind it agrees: a call-only refusal is named there too, with texting still on.
+      if (refused.length === 1 && refused[0] === "call") {
+        const p = phoneStepPresentation(refused, null, msgs);
+        assertEquals([p.sendChannel, p.error, p.showSupport], ["sms", "CALL_REFUSED", false], row);
+      }
+    }
+  }
 });
