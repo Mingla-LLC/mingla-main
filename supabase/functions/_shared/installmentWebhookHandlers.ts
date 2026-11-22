@@ -271,10 +271,22 @@ export async function handleInstallmentPaymentSucceeded(
         `installment_pi_succeeded on cancelled installment ${installmentId}: durable refund/recovery required`,
       );
     }
-    const accountingState = String(existingRow.payout_accounting_state ?? "");
-    const feesMissing = existingRow.application_fee_amount_cents == null;
+    // issue #4522 (T3-3) — a replay finishes a short-collection record a
+    // crash interrupted (idempotent once the row holds what was received).
+    if (planV2 && existingStatus === "collected" && existingRow.kind === "scheduled") {
+      const short = await recordShortCollection(supabase, installmentId, pi, piId);
+      if (short > 0) {
+        ({ data: existing, error: existingError } = await loadReplayRow());
+        if (existingError !== null || existing === null) {
+          throw new Error(`installment replay load failed: ${existingError?.message ?? "missing"}`);
+        }
+      }
+    }
+    const replayRow = existing as Record<string, unknown>;
+    const accountingState = String(replayRow.payout_accounting_state ?? "");
+    const feesMissing = replayRow.application_fee_amount_cents == null;
     if (accountingState !== "ready" || feesMissing) {
-      await recordProviderSaleOrThrow(Number(existingRow.amount_cents ?? 0));
+      await recordProviderSaleOrThrow(Number(replayRow.amount_cents ?? 0));
     }
     // issue #4522 — a replay finishes a settle a crash interrupted (idempotent);
     // a late or retried settlement that completes the balance sends the
@@ -287,6 +299,19 @@ export async function handleInstallmentPaymentSucceeded(
       `[installment-webhook] payment_intent.succeeded for ${installmentId} — replay accounting ok`,
     );
     return brandId;
+  }
+
+  // issue #4522 (T3-3 / T3-9, I-4522-COLLECTED-IS-WHAT-WAS-CHARGED) — a
+  // planned row that grew by a rollover while its charge was in flight is
+  // recorded for what the provider collected; the rest stays owed on a
+  // re-opened row. Paid never counts money that was not collected.
+  if (planV2 && (updated as Record<string, unknown>).kind === "scheduled") {
+    await recordShortCollection(supabase, installmentId, pi, piId);
+    const { data: reread } = await supabase.from("order_installments").select("amount_cents")
+      .eq("id", installmentId).maybeSingle();
+    if (reread !== null) {
+      (updated as Record<string, unknown>).amount_cents = (reread as Record<string, unknown>).amount_cents;
+    }
   }
 
   await writeAudit(supabase, {
@@ -392,6 +417,40 @@ export async function handleInstallmentPaymentSucceeded(
   }
 
   return brandId;
+}
+
+/**
+ * issue #4522 (T3-3) — record a planned Stripe charge for what it collected
+ * when that is less than its row now owes (issue_4522_record_short_collection).
+ * Returns the amount re-opened (0 when nothing was short). Throws so the
+ * webhook inbox retries on failure.
+ */
+async function recordShortCollection(
+  supabase: SupabaseClient,
+  installmentId: string,
+  pi: Record<string, unknown>,
+  piId: string,
+): Promise<number> {
+  const received = Number(pi["amount_received"] ?? pi["amount"]);
+  if (!Number.isSafeInteger(received) || received <= 0) return 0;
+  const { data, error } = await supabase.rpc("issue_4522_record_short_collection", {
+    p_installment_id: installmentId,
+    p_received_minor: received,
+    p_provider_ref: piId,
+  });
+  const result = (data ?? null) as { ok?: boolean; shortMinor?: number; reason?: string } | null;
+  if (error !== null || result?.ok !== true) {
+    throw new Error(
+      `issue_4522_record_short_collection failed: ${error?.message ?? result?.reason ?? "unknown"}`,
+    );
+  }
+  const short = Number(result.shortMinor ?? 0);
+  if (short > 0) {
+    console.warn(
+      `[installment-webhook] ${installmentId} collected ${received}, ${short} re-opened as a planned row`,
+    );
+  }
+  return short;
 }
 
 /**
