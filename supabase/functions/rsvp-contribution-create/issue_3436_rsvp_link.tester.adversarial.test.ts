@@ -9,6 +9,7 @@ import {
   PAYOUT_HOLD_UNREADABLE_STATUS,
   readBrandPayoutHoldStamp,
 } from "../_shared/payoutHoldStamp.ts";
+import { chargeBelowProviderMinimum } from "../_shared/money/providerMinimums.ts";
 
 // Run the actual serve callback. Only import boundaries are substituted; the
 // complete handler and production RSVP resolver execute unchanged. No credentials,
@@ -299,6 +300,7 @@ const boundary = {
   readBrandPayoutHoldStamp,
   PAYOUT_HOLD_UNREADABLE_ERROR,
   PAYOUT_HOLD_UNREADABLE_STATUS,
+  chargeBelowProviderMinimum,
 };
 const marker = Symbol.for("mingla.issue3436.handler.boundary");
 Reflect.set(globalThis, marker, boundary);
@@ -330,7 +332,8 @@ async function run(options: Partial<Harness> = {}, request: Row = {}) {
       body: JSON.stringify({
         eventId: EVENT,
         guestEmail: "guest@example.com",
-        amountCents: 500,
+        // Above every provider floor (#3645 audit item 7: ₦100 on Paystack).
+        amountCents: 50_000,
         callerIdempotencyKey: "same-key",
         surface: "web",
         ...request,

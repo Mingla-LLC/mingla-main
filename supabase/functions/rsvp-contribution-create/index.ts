@@ -64,6 +64,7 @@ import {
   PAYOUT_HOLD_UNREADABLE_STATUS,
   readBrandPayoutHoldStamp,
 } from "../_shared/payoutHoldStamp.ts";
+import { chargeBelowProviderMinimum } from "../_shared/money/providerMinimums.ts";
 import {
   cancelPaymentIntentIfClientAvailable,
   classifyStripeCheckoutSessionCreateFailure,
@@ -236,6 +237,37 @@ async function markRsvpProviderUnknown(
     p_contribution_id: contributionId,
     p_claimed_epoch: epoch,
   });
+}
+
+
+/**
+ * Issue #3645 (18 Nov payments audit, item 7) — a NEW gift below the
+ * provider's minimum charge is refused with the same code the host minimum
+ * uses (`amount_below_min`), with the provider floor as `minCents` (the host
+ * minimum already passed, so it is lower) and `reason: "provider_minimum"` to
+ * tell the two apart. The buyer is charged exactly the typed amount
+ * (organiser absorbs), so the typed amount IS what the provider sees.
+ *
+ * A retry of an EXISTING contribution row skips it: that row may already be
+ * at the provider (`provider_unknown`), and its recovery path (Paystack
+ * verify, Stripe's exact idempotency key) must stay reachable.
+ *
+ * Clients: the chip-in panel still words the refusal from the host minimum
+ * it holds (RsvpOfferingBody / rsvpEvents, being edited on the #4522 branch);
+ * reading `minCents` there is a tracked #3645 follow-up.
+ */
+function providerFloorRefusal(
+  amountCents: number,
+  currency: string,
+  existingContribution: unknown,
+): Response | null {
+  if (existingContribution) return null;
+  const floor = chargeBelowProviderMinimum(amountCents, currency);
+  if (floor === null) return null;
+  return jsonResponse(
+    { error: "amount_below_min", minCents: floor, reason: "provider_minimum" },
+    422,
+  );
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -521,6 +553,14 @@ serve(async (req: Request): Promise<Response> => {
     if (psCurrency !== "NGN") {
       return jsonResponse({ error: "paystack_currency_must_be_ngn" }, 409);
     }
+    // Issue #3645 (audit item 7): refuse a gift the provider cannot charge
+    // before any row is written or Paystack is called.
+    const psFloor = providerFloorRefusal(
+      amountCents,
+      psCurrency,
+      existingContribution,
+    );
+    if (psFloor) return psFloor;
     // #1178 [ng-split-removal] — a STAMPED brand needs no subaccount (settles to
     // Mingla main). An UNSTAMPED brand still requires one (byte-identical 409).
     if (!isCutover && !pricing.paystack_subaccount_code) {
@@ -759,6 +799,14 @@ serve(async (req: Request): Promise<Response> => {
   }
   const currency = pricing.pricing_currency.toUpperCase();
   const currencyLower = currency.toLowerCase();
+  // Issue #3645 (audit item 7): same refusal on the Stripe leg, before any
+  // row is written or a Checkout Session / PaymentIntent is created.
+  const stripeFloor = providerFloorRefusal(
+    amountCents,
+    currency,
+    existingContribution,
+  );
+  if (stripeFloor) return stripeFloor;
 
   const engineInput: ComputeAllInInput = {
     baseCents: amountCents,
