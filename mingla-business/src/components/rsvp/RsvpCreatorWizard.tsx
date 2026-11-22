@@ -130,6 +130,12 @@ import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import { CreatorStep1Basics } from "../event/CreatorStep1Basics";
 import { CreatorStep2When } from "../event/LazyCreatorStep2When";
 import { CreatorStep3Where } from "../event/CreatorStep3Where";
+import {
+  flushGuestPack,
+  guestPackEventIdForDraft,
+  hasPendingGuestPack,
+  releaseGuestPackSession,
+} from "../../utils/guestPackSession";
 import { CreatorStep4Cover } from "../event/CreatorStep4Cover";
 import { PublishErrorsSheet } from "../event/PublishErrorsSheet";
 // issue #3827 — Step 5 loads lazily (see ../event/lazySettingsSteps.tsx).
@@ -318,6 +324,12 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   const liveDraft =
     useDraftEventStore((s) => s.drafts.find((d) => d.id === initialDraft.id)) ??
     initialDraft;
+  // #4548 — the guest pack's working copy lives for as long as this wizard does.
+  const guestPackSessionId = guestPackEventIdForDraft(liveDraft.id);
+  useEffect(
+    () => () => releaseGuestPackSession(guestPackSessionId),
+    [guestPackSessionId],
+  );
   const updateDraft = useDraftEventStore((s) => s.updateDraft);
   const setLastStep = useDraftEventStore((s) => s.setLastStep);
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
@@ -914,11 +926,27 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       return;
     }
     // Advance.
-    setShowStepErrors(false);
-    setCurrentStep((prev) => prev === 4 && !inviteEnabled
-      ? 6
-      : Math.min(TOTAL_STEPS - 1, prev + 1));
-  }, [currentStep, liveDraft, inviteEnabled, inviteNavigation]);
+    const advance = (): void => {
+      setShowStepErrors(false);
+      setCurrentStep((prev) => prev === 4 && !inviteEnabled
+        ? 6
+        : Math.min(TOTAL_STEPS - 1, prev + 1));
+    };
+    // #4548 — a changed guest pack is saved first; if that fails the host stays
+    // on this step with the toast and nothing typed is lost.
+    const packId = guestPackEventIdForDraft(liveDraft.id);
+    if (hasPendingGuestPack(packId)) {
+      void flushGuestPack(packId).then((result) => {
+        if (!result.ok) {
+          handleShowToast(result.message);
+          return;
+        }
+        advance();
+      });
+      return;
+    }
+    advance();
+  }, [currentStep, liveDraft, inviteEnabled, inviteNavigation, handleShowToast]);
 
   // ---- Publish gate (no Stripe — RSVP is moneyless) ----
 
@@ -942,6 +970,14 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     !chipInStripeStatus.isError;
 
   const handlePublishTap = useCallback(async (): Promise<void> => {
+    // #4548 — publish saves a changed guest pack first; a failed save keeps the host here.
+    const packResult = await flushGuestPack(
+      guestPackEventIdForDraft(liveDraft.id),
+    );
+    if (!packResult.ok) {
+      handleShowToast(packResult.message);
+      return;
+    }
     const errs = validateRsvpPublish(liveDraft);
     if (errs.length > 0) {
       setPendingErrors(errs);
@@ -1233,7 +1269,12 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         // ORCH-1150 — lockSingleDate hides the recurring/multi_date tabs.
         return <CreatorStep2When {...baseProps} lockSingleDate />;
       case 2:
-        return <CreatorStep3Where {...baseProps} />;
+        return (
+          <CreatorStep3Where
+            {...baseProps}
+            guestPackEventId={guestPackEventIdForDraft(liveDraft.id)}
+          />
+        );
       case 3:
         return <CreatorStep4Cover {...baseProps} />;
       case 4:

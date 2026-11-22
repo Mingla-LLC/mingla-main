@@ -1700,7 +1700,11 @@
         "supabase/functions/_shared/payoutCountries.ts",
         "supabase/migrations/20280428003645_issue_3645_sell_publish_integrity.sql",
         "mingla-business/src/utils/paidPublishGuards.ts",
-        "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx"
+        "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx",
+        "mingla-business/src/components/event/GuestPackEditor.tsx",
+        "mingla-business/src/services/guestPackService.ts",
+        "mingla-business/src/utils/guestPackSession.ts",
+        "mingla-business/src/utils/guestPackValidation.ts"
       ]
     },
     {
@@ -1719,7 +1723,11 @@
         "supabase/migrations/20280625013281_issue_3281_validate_scan_date_fk.sql",
         "mingla-business/src/components/event/EditAfterPublishBanner.tsx",
         "mingla-business/src/components/event/LazyChangeSummaryModal.tsx",
-        "mingla-business/src/components/event/LazyEditPublishedScreen.tsx"
+        "mingla-business/src/components/event/LazyEditPublishedScreen.tsx",
+        "mingla-business/src/components/event/GuestPackEditor.tsx",
+        "mingla-business/src/services/guestPackService.ts",
+        "mingla-business/src/utils/guestPackSession.ts",
+        "mingla-business/src/utils/guestPackValidation.ts"
       ]
     },
     {
@@ -5645,7 +5653,11 @@
     {
       "capability_key": "events-edit-live",
       "paths": [
-        "mingla-business/src/components/event/EditPublishedScreen.tsx"
+        "mingla-business/src/components/event/EditPublishedScreen.tsx",
+        "mingla-business/src/components/event/GuestPackEditor.tsx",
+        "mingla-business/src/services/guestPackService.ts",
+        "mingla-business/src/utils/guestPackSession.ts",
+        "mingla-business/src/utils/guestPackValidation.ts"
       ]
     },
     {

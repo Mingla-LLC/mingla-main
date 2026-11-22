@@ -124,6 +124,12 @@ import { ChangeSummaryModal } from "./LazyChangeSummaryModal";
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
+import {
+  flushGuestPack,
+  hasPendingGuestPack,
+  releaseGuestPackSession,
+  subscribeGuestPack,
+} from "../../utils/guestPackSession";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheetLazy";
@@ -807,7 +813,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     (rsvpMode || isServerEditableOnlyPatch(currentPatch));
 
   // ---- Save flow ----
-  const handleSavePress = useCallback((): void => {
+  const proceedWithSave = useCallback((): void => {
     if (!rsvpMode && serverOrdersRead.status !== "ready") {
       showToast("Couldn't load ticket sales. Try again.");
       return;
@@ -890,6 +896,37 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     sectionErrors,
     showToast,
   ]);
+
+  // #4548 — "Save changes" saves a changed guest pack first (its own call, never
+  // inside the live-edit payload). A failed pack save keeps the host here.
+  const guestPackId = liveEvent.serverEventId ?? null;
+  useEffect(
+    () => () => releaseGuestPackSession(guestPackId),
+    [guestPackId],
+  );
+  // A typed pack change counts as a change, so Save changes stays reachable.
+  const guestPackPending = React.useSyncExternalStore(
+    subscribeGuestPack,
+    () => hasPendingGuestPack(guestPackId),
+    () => false,
+  );
+  const handleSavePress = useCallback((): void => {
+    if (!hasPendingGuestPack(guestPackId)) {
+      proceedWithSave();
+      return;
+    }
+    void flushGuestPack(guestPackId).then((result) => {
+      if (!result.ok) {
+        showToast(result.message);
+        return;
+      }
+      if (Object.keys(currentPatch).length === 0) {
+        showToast("Guest pack saved.");
+        return;
+      }
+      proceedWithSave();
+    });
+  }, [guestPackId, proceedWithSave, currentPatch, showToast]);
 
   const invalidateServerEventCaches = useCallback((): void => {
     queryClient.invalidateQueries({
@@ -1837,7 +1874,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         case "when":
           return <CreatorStep2When {...stepBodyProps} />;
         case "where":
-          return <CreatorStep3Where {...stepBodyProps} />;
+          return (
+            <CreatorStep3Where
+              {...stepBodyProps}
+              guestPackEventId={liveEvent.serverEventId ?? null}
+              guestPackLiveEdit
+            />
+          );
         case "cover":
           return <CreatorStep4Cover {...stepBodyProps} showThemeRow={false} />;
         case "visual":
@@ -2172,7 +2215,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
               // "no diff" was absent from the disabled predicate, so some loads
               // showed an ACTIVE button whose only outcome was the misleading
               // "No changes to save." toast.
-              Object.keys(currentPatch).length === 0 ||
+              (Object.keys(currentPatch).length === 0 && !guestPackPending) ||
               (disableLocalSaveReason !== undefined &&
                 !canSaveServerCoverMediaOnly)
             }

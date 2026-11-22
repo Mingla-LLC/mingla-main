@@ -26,6 +26,14 @@ export interface StepBodyProps {
   /** issue #2590 — the event's LAST occurrence END, ISO-8601 UTC. */
   eventEndsAtIso?: string | null;
   draft: DraftEvent;
+  /**
+   * #4548 — the event's server id for the Guest pack block on the Where step.
+   * Null while a new draft has not reached the server yet (the block says so).
+   * Undefined hides the block (surfaces that carry no event kind it supports).
+   */
+  guestPackEventId?: string | null;
+  /** #4548 — true in live edit: the pack's "Saved." line says when guests see it. */
+  guestPackLiveEdit?: boolean;
   /** Patches the draft via draftEventStore.updateDraft (create-flow) or local state setter (edit-published flow). */
   updateDraft: (
     patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,
