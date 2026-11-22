@@ -635,7 +635,8 @@ export function phase3dContractDigest(manifest) {
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the replay inventories; skipped it by exact filename on the filtered #1931 template replay (it reads event_rsvp_guests columns only the skipped 20281119014508 creates); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "732eedc73cd011e15ad10636f1ba634867f807f9ef11e4857ee13faa638df65a";
+// #4541 forms fixes and Blast push: registered 20281122004541 and 20281122014541 in the #1857, #1931 and #2117 inventories and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped both by exact filename on the filtered #1931 and #2117 template replays; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "f17e51663373b4c96fdb962dc6abb51f40971b157fe3a599ca1b13562ad96fab";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];

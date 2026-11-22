@@ -375,7 +375,8 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4514 CI fix: #1995's full mingla-business type-check (step 28) runs tsc with its own 6144 MB heap (node --max-old-space-size=6144 node_modules/typescript/bin/tsc), as #1403's delta script does: the runner strips NODE_OPTIONS and the graph outgrew 4 GB; re-sealed.
 // #4508 merge of main after #4514: kept the #4508 and #4514 migration and pg17 rows in filename order, plus both filtered-replay decisions; re-sealed.
 // #4541 RSVP brand forms: registered 20281121004541 and its pg17 proof (with sidecar) in the #1857, #1931 and #2117 inventories; skipped it by exact filename on the filtered #1931 template replay (#4508, which it builds on, is skipped there); re-sealed.
-export const BOOTSTRAP_SHA256 = "0ca935d4003fd816e236e3dc97dcfe99202fe44debbc99af5ad71c3ba3901476";
+// #4541 forms fixes and Blast push: registered 20281122004541 and 20281122014541 in the #1857, #1931 and #2117 inventories and their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; skipped both by exact filename on the filtered #1931 and #2117 template replays; re-sealed.
+export const BOOTSTRAP_SHA256 = "86998ba1acadc8c589c1795d68c5dd4b516b911067aef5c9cce7ea84a671fda9";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
