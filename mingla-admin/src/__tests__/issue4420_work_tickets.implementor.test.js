@@ -253,7 +253,8 @@ describe("T-3 the ticket form: the creator chooses the owner", () => {
     assert.doesNotMatch(src, /ticket_owner_fixed|ticket_owner_unset|ops_ticket_settings|default_owner|defaultOwner/);
     assert.doesNotMatch(src, /read-only|readOnly|owner is fixed|assigned to Seth|Seth owns|always owned|automatically assigned|Owner is locked/i);
     const form = code("components/ops/TicketForm.jsx");
-    assert.match(form, /<PeopleField id="new-ticket-owner" label="Owner" single value=\{owners\}/);
+    // [TEST-MOD #4420] rework 3 (G8): the field also asks for a fitted pick list.
+    assert.match(form, /<PeopleField id="new-ticket-owner" label="Owner" single fitMenu value=\{owners\}/);
     assert.doesNotMatch(form, /<PeopleField[^>]*(disabled|readOnly)/, "the owner field is a live picker");
     assert.match(form, /const \[owners, setOwners\] = useState\(me \? \[me\] : \[\]\)/, "the creator is the usual suggestion, like the card form");
   });
@@ -593,7 +594,7 @@ describe("T-3b the ticket form's default request meets the server's watcher rule
   });
   it("the form draws the card form's Watcher field and routes owner changes through the rule", () => {
     const src = code("components/ops/TicketForm.jsx");
-    assert.match(src, /label="Watcher" single min=\{0\} hint="One watcher, who is not the owner\. They confirm the card is done\."/);
+    assert.match(src, /label="Watcher" single fitMenu min=\{0\} hint="One watcher, who is not the owner\. They confirm the card is done\."/);
     assert.match(code("components/ops/WorkAddForm.jsx"), /hint="One watcher, who is not the owner\. They confirm the card is done\."/, "same words as the card form");
     assert.match(src, /onChange=\{changeOwners\}/);
     assert.match(src, /words=\{wordsFor\("watchers"\)\}/);
@@ -661,5 +662,27 @@ describe("T-10 a refused submit is said beside Make ticket", () => {
     assert.doesNotMatch(form.slice(form.indexOf("<form onSubmit"), typeAt), /duplicate|dupNotice|unplaced\.map/);
     assert.match(form, /onClick=\{\(\) => linkHere\(\{ id: dupNotice\.existingId, number: dupNotice\.number \}\)\}>Link here</);
     assert.match(form, /setSubmitFailed\(`\$\{TICKET_SUBMIT_FAILED_WORDS\}/);
+  });
+});
+
+// G9 (rework 3, QA P3-5): the ticket Title box had no accessible name.
+// FAILS-ON-REVERT: without the id / aria-labelledby pair this reds.
+describe("T-11 the Title box is named like the other fields", () => {
+  it("the textarea is labelled by the visible Title label", () => {
+    const form = read("components/ops/TicketForm.jsx");
+    assert.match(form, /<span id="new-ticket-title-label" className=\{LABEL\}>Title<\/span>\s*<textarea\s+id="new-ticket-title"\s+aria-labelledby="new-ticket-title-label"/);
+  });
+});
+
+// G8 (rework 3, QA P3-4): the Watcher pick list was wider than the Create
+// ticket panel and pushed it sideways. FAILS-ON-REVERT: without fitMenu the
+// list keeps its 17rem minimum and these red.
+describe("T-12 the ticket form's people lists stay inside the field", () => {
+  it("both ticket people fields ask for a fitted list, and the list then takes the field's width", () => {
+    const form = read("components/ops/TicketForm.jsx");
+    assert.match(form, /<PeopleField id="new-ticket-owner" label="Owner" single fitMenu /);
+    assert.match(form, /<PeopleField id="new-ticket-watcher" label="Watcher" single fitMenu /);
+    const field = read("components/people/PeopleField.jsx");
+    assert.match(field, /\$\{fitMenu \? "w-full max-w-full" : "w-\[max\(100%,17rem\)\]/);
   });
 });

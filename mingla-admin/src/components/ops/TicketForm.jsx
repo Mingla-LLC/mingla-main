@@ -176,8 +176,11 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
       </fieldset>
 
       <label className="flex min-w-0 flex-col gap-1">
-        <span className={LABEL}>Title</span>
+        <span id="new-ticket-title-label" className={LABEL}>Title</span>
         <textarea
+          id="new-ticket-title"
+          aria-labelledby="new-ticket-title-label"
+          aria-describedby={wordsFor("title") ? "ticket-title-error" : undefined}
           value={title}
           ref={titleGrow}
           rows={1}
@@ -235,12 +238,12 @@ export function TicketForm({ config, online, headingRef, onCreated, onCancel, on
 
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-1">
-          <PeopleField id="new-ticket-owner" label="Owner" single value={owners} team={team} me={directory.me || me}
+          <PeopleField id="new-ticket-owner" label="Owner" single fitMenu value={owners} team={team} me={directory.me || me}
             suggested={[directory.me || me].filter(Boolean)} exclude={watchers} min={1} onChange={changeOwners} />
           <FieldError id="ticket-owner-error" words={wordsFor("owner") || wordsFor("owners")} />
         </div>
         <div className="flex min-w-0 flex-col gap-1">
-          <PeopleField id="new-ticket-watcher" label="Watcher" single min={0} hint="One watcher, who is not the owner. They confirm the card is done."
+          <PeopleField id="new-ticket-watcher" label="Watcher" single fitMenu min={0} hint="One watcher, who is not the owner. They confirm the card is done."
             value={watchers} team={team} me={directory.me || me} suggested={[directory.me || me].filter(Boolean)} exclude={owners} onChange={(next) => setWatchers(next)} />
           <FieldError id="ticket-watcher-error" words={wordsFor("watchers")} />
         </div>
