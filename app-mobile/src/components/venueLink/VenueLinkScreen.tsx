@@ -10,11 +10,11 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Linking from "expo-linking";
-import * as WebBrowser from "expo-web-browser";
 
 import { colors, radius, spacing, typography } from "../../constants/designSystem";
 import { supabase } from "../../services/supabase";
 import { runClaimSweep } from "../../services/claimSweep";
+import { useOpenInMingla } from "../InAppBrowserProvider";
 import {
   decideVenueLink,
   tokenFromFragment,
@@ -68,6 +68,9 @@ export function VenueLinkScreen({
   webPath: string;
 }): React.ReactElement {
   const router = useRouter();
+  // I-4261: a web page opens in Mingla's own in-app browser (the provider's
+  // overlay stays above the Purchases screen this route moves to).
+  const { open: openInMingla } = useOpenInMingla();
   const url = Linking.useURL();
   const [state, setState] = useState<State>({ phase: "loading" });
 
@@ -86,7 +89,7 @@ export function VenueLinkScreen({
         return;
       }
       if (decision.kind === "web") {
-        await WebBrowser.openBrowserAsync(decision.url);
+        openInMingla(decision.url);
         router.replace("/purchases" as never);
         return;
       }
@@ -119,7 +122,7 @@ export function VenueLinkScreen({
     } catch {
       setState({ phase: "error" });
     }
-  }, [id, kind, router, url, webPath]);
+  }, [id, kind, openInMingla, router, url, webPath]);
 
   useEffect(() => {
     void run();

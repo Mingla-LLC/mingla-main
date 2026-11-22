@@ -91,6 +91,11 @@ export const ALLOWLIST = new Map([
     issue: "#2227",
     reason: "Payment provider authorization page for a table deposit.",
   }],
+  ["src/components/purchases/VenuePurchaseDetail.tsx", {
+    count: 1,
+    issue: "#4490",
+    reason: "Payment provider authorization page for a venue plan renewal (Renew); on close the plan is re-read with confirm_return.",
+  }],
   ["src/services/payoutService.ts", {
     count: 1,
     issue: "#4261",
