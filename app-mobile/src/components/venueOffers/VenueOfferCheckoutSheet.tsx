@@ -67,6 +67,7 @@ import { runVenuePayment, type VenuePaymentDeps } from "../../payments/venueOffe
 import { venueOfferCheckoutService } from "../../services/venueOfferCheckoutService";
 import { getVenueBooking, VenuePurchaseError } from "../../services/venuePurchaseService";
 import { useAppStore } from "../../store/appStore";
+import { returnToStart } from "../../hooks/useReturnToStartOnSignOut";
 import { PURCHASE_SHEET_BACKGROUND, PURCHASE_SHEET_COLORS as C, PURCHASE_SHEET_HANDLE } from "../purchases/purchaseSheetTheme";
 import { PURCHASE_SHEET_KEYBOARD_TOOLBAR } from "../purchases/SheetKeyboardDoneBar";
 import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
@@ -336,6 +337,56 @@ function CheckoutSession({
   }, [rereading, userId]);
   const lastRaw = useRef<unknown>(null);
 
+  // ── #4490 06-W4 fix 2 (W4-D1; spec 06 §13 item 5): a session that ends ──
+  // The checkout is kept (module memory, `venueCheckoutResume`) the MOMENT the
+  // session is known to be gone: a checkout call answered "session gone"
+  // (`signed_out`), or the app's account went away (signed out, or another
+  // account). Kept here and not on "Sign in again" alone: the forced sign-out
+  // that follows clears the cache and the venue route leaves (or used to sit
+  // on "Loading venue…"), which unmounts this sheet before it can react.
+  const keepNow = useRef<() => void>(() => undefined);
+  keepNow.current = () => {
+    const accountId = lastUserId.current;
+    if (accountId === null || state.phase === "booked" || state.phase === "requested") return;
+    holdVenueCheckout({
+      accountId,
+      route: venueCheckoutRouteFor(open),
+      homeKey: venueCheckoutHomeKey(open),
+      open,
+      state,
+      choice: report.choice,
+      review,
+      planDue,
+      guest,
+    });
+  };
+  const keptForLoss = useRef(false);
+  const sessionEnded = useCallback(() => {
+    if (keptForLoss.current) return;
+    keptForLoss.current = true;
+    keepNow.current();
+    send({ type: "session_lost" });
+  }, [send]);
+  // The store's own change, synchronously (before React re-renders the tree away).
+  useEffect(() => {
+    const store = useAppStore as unknown as {
+      subscribe?: (listener: (s: { user?: { id?: string } | null }) => void) => () => void;
+    };
+    if (typeof store.subscribe !== "function") return undefined;
+    return store.subscribe((s) => {
+      const now = s.user?.id ?? null;
+      if (lastUserId.current !== null && now !== lastUserId.current) sessionEnded();
+    });
+  }, [sessionEnded]);
+  // And on the render that sees it (a store without subscribe, or a missed change).
+  useEffect(() => {
+    if (userId === null && lastUserId.current !== null) sessionEnded();
+  }, [sessionEnded, userId]);
+  // A checkout call said the session is gone while the app still thinks it is signed in.
+  useEffect(() => {
+    if (state.phase === "signed_out") sessionEnded();
+  }, [sessionEnded, state.phase]);
+
   const stepFailed = useCallback(
     (step: VenueCheckoutStep, error: unknown) => {
       const code = error instanceof VenuePurchaseError ? error.code : "venue_request_failed";
@@ -541,40 +592,43 @@ function CheckoutSession({
 
   // ── actions ─────────────────────────────────────────────────────────────
   const busy = isVenueCheckoutBusy(state);
+  const signedOut = userId === null || state.phase === "signed_out";
   const close = useCallback(() => {
     if (busy) return;
+    // Closed instead of signing in again: the kept checkout goes too.
+    if (signedOut) dropVenueCheckout();
     if (heldOnce.current && !reported.current && state.phase !== "booked" && state.phase !== "requested") {
       reported.current = true;
       reportFinished(open.venueId, OFFER_KIND_FOR[open.kind], "cancelled");
     }
     onClose();
-  }, [busy, onClose, open.kind, open.venueId, state.phase]);
+  }, [busy, onClose, open.kind, open.venueId, signedOut, state.phase]);
   // #4490 06-W4 fix 1 (W4-N4; spec 06 §13 item 5): "Sign in again" keeps this
   // checkout in memory for the account whose session ended and goes to
   // sign-in; signing in again as that account brings the guest back here.
+  //
+  // #4490 06-W4 fix 2 (W4-D1): when the server said the session is gone but
+  // the app still holds it (revoked elsewhere, token not yet refreshed), the
+  // app signs that dead session out first (the app's own sign-out, the guest's
+  // tap; the app never signs out on its own), so the root shows sign-in.
   const signInAgain = (): void => {
     const accountId = lastUserId.current;
-    if (accountId !== null) {
-      holdVenueCheckout({
-        accountId,
-        route: venueCheckoutRouteFor(open),
-        homeKey: venueCheckoutHomeKey(open),
-        open,
-        state,
-        choice: report.choice,
-        review,
-        planDue,
-        guest,
-      });
+    // Kept already when the loss was seen (the state as it was then); else now.
+    if (!keptForLoss.current) {
+      keptForLoss.current = true;
+      keepNow.current();
     }
     onClose();
-    try {
-      const r = router as unknown as { canGoBack?: () => boolean; dismissAll?: () => void; replace?: (p: string) => void };
-      if (typeof r.canGoBack === "function" && r.canGoBack() && typeof r.dismissAll === "function") r.dismissAll();
-      else if (typeof r.replace === "function") r.replace("/");
-    } catch {
-      // The welcome screen is the app root: closing the sheet already reveals it.
+    if (accountId !== null && useAppStore.getState().user !== null) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { signOutWithPrivateCleanup } = require("../../utils/authCleanup") as typeof import("../../utils/authCleanup");
+        void signOutWithPrivateCleanup("venue-checkout-session-ended", accountId);
+      } catch {
+        // The welcome screen still follows the next auth check.
+      }
     }
+    returnToStart(router);
   };
   const closeSignedOut = (): void => {
     dropVenueCheckout();
@@ -630,7 +684,7 @@ function CheckoutSession({
       (state.phase === "error" && state.failedStep === "quote"));
 
   const body = (): React.ReactElement => {
-    if (userId === null) {
+    if (signedOut) {
       return (
         <Center title="Sign in again to book" line="Your session ended. Everything you picked is kept, and you'll come straight back here." testID="venue-checkout-signed-out" />
       );
@@ -805,7 +859,7 @@ function CheckoutSession({
   };
 
   const footer = (): React.ReactElement => {
-    if (userId === null) {
+    if (signedOut) {
       return lastUserId.current === null ? (
         <PrimaryButton label="Close" onPress={onClose} testID="venue-checkout-close" />
       ) : (

@@ -13,7 +13,16 @@
  *     reopens the sheet on the same offer and step with the picks kept;
  *   - another account: the snapshot is dropped, unseen.
  * Nothing here is ever written to disk (no AsyncStorage, no SecureStore): it
- * lives for this app session only. A held booking is re-read with the new
+ * lives for this app session only.
+ *
+ * #4490 06-W4 fix 2 (W4-D1): this module sits OUTSIDE the React tree on
+ * purpose. A forced sign-out clears the store, removes the cached queries and
+ * swaps the app root to the welcome screen; the venue route, its pane and the
+ * sheet unmount, and sign-in remounts the main app component keyed on the
+ * account. Only module memory survives that. Expiry: the app being killed
+ * (memory only), or KEPT_FOR_MS after it was kept, whichever comes first; a
+ * held booking's own hold is re-read on return (an expired hold restarts at
+ * the choose step with the picks kept). A held booking is re-read with the new
  * session before it can be paid (the sheet does that), never trusted from
  * memory.
  */
@@ -40,6 +49,15 @@ export interface VenueCheckoutSnapshot {
 }
 
 let held: VenueCheckoutSnapshot | null = null;
+let keptAt = 0;
+
+/** #4490 06-W4 fix 2 (W4-D1): a kept checkout is dropped 30 minutes after it was kept. */
+export const KEPT_FOR_MS = 30 * 60 * 1000;
+
+/** Drop the kept checkout when it is older than KEPT_FOR_MS. */
+function expireKept(now: number): void {
+  if (held !== null && now - keptAt > KEPT_FOR_MS) held = null;
+}
 
 const TAB_FOR_KIND: Record<VenueCheckoutKind, PublicVenueTab> = {
   entry: "entry",
@@ -64,8 +82,9 @@ export function venueCheckoutRouteFor(open: VenueCheckoutOpen): string {
 }
 
 /** Keep the checkout of a session that just ended (one at a time; the newest wins). */
-export function holdVenueCheckout(snapshot: VenueCheckoutSnapshot): void {
+export function holdVenueCheckout(snapshot: VenueCheckoutSnapshot, now: number = Date.now()): void {
   held = snapshot;
+  keptAt = now;
 }
 
 /** Forget it (the guest closed the sheet instead of signing in). */
@@ -77,7 +96,8 @@ export function dropVenueCheckout(): void {
  * Right after a sign-in: the route back when the SAME account signed in;
  * another account drops the snapshot and gets null.
  */
-export function venueCheckoutRouteAfterSignIn(accountId: string): string | null {
+export function venueCheckoutRouteAfterSignIn(accountId: string, now: number = Date.now()): string | null {
+  expireKept(now);
   if (held === null) return null;
   if (held.accountId !== accountId) {
     held = null;
@@ -87,7 +107,8 @@ export function venueCheckoutRouteAfterSignIn(accountId: string): string | null 
 }
 
 /** The mounted home takes its snapshot back, once, for the same account only. */
-export function takeVenueCheckout(accountId: string, homeKey: string): VenueCheckoutSnapshot | null {
+export function takeVenueCheckout(accountId: string, homeKey: string, now: number = Date.now()): VenueCheckoutSnapshot | null {
+  expireKept(now);
   if (held === null || held.accountId !== accountId || held.homeKey !== homeKey) return null;
   const snapshot = held;
   held = null;

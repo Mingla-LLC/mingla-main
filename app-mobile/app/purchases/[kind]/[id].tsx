@@ -77,6 +77,7 @@ import {
   TicketTransferError,
 } from "../../../src/services/purchasesService";
 import { useAppStore } from "../../../src/store/appStore";
+import { useReturnToStartOnSignOut } from "../../../src/hooks/useReturnToStartOnSignOut";
 import { TicketService } from "../../../src/services/ticketService";
 import { fetchRsvpPartyPasses } from "../../../src/services/rsvpDeckService";
 import { postHogService } from "../../../src/services/postHogService";
@@ -241,6 +242,9 @@ export default function PurchaseDetailRoute(): React.ReactElement {
   const { t } = useTranslation("purchases");
   const { open: openInMingla } = useOpenInMingla();
   const router = useRouter();
+  // #4490 06-W4 fix 2 (W4-D1): a Purchases detail is signed-in only; when its
+  // account signs out (forced) it goes back to the welcome screen.
+  useReturnToStartOnSignOut();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -744,6 +748,12 @@ export default function PurchaseDetailRoute(): React.ReactElement {
             >
               <Text style={styles.retryText}>{t("error.retry")}</Text>
             </Pressable>
+          </View>
+        ) : userId === null && isVenuePurchaseKind(kind) ? (
+          // #4490 06-W4 fix 2 (W4-D1): signed out, this is nobody's pass to
+          // judge; the route is leaving for the welcome screen.
+          <View style={styles.loading} testID="venue-purchase-signed-out">
+            <ActivityIndicator color="#eb7825" />
           </View>
         ) : item === null && isVenuePurchaseKind(kind) ? (
           // #4490 W2-N16: a venue id that is not yours (or not real) says so

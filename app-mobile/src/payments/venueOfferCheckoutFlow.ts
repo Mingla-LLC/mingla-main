@@ -17,6 +17,8 @@
  *   confirming ─ confirm_done ─▶ booked | review (+ "Payment didn't go through")
  *                                | pending | choosing (+ "Your hold ran out")
  *   any step ─ step_failed ─▶ error (plain words + Try again; the same key)
+ *   any step ─ step_failed (session gone) / session_lost ─▶ signed_out
+ *                                (Sign in again; the checkout is kept in memory)
  *
  * Money and security rules (spec 06 W4) this module owns:
  *  1. No price is computed here: `quote` and `booking` hold the server's own
@@ -51,7 +53,13 @@ export type VenueCheckoutPhase =
   | "booked"
   | "requested"
   | "pending"
-  | "error";
+  | "error"
+  /**
+   * #4490 06-W4 fix 2 (W4-D1; spec 06 §13 item 5): the session ended. The
+   * sheet shows Sign in again (never the generic line, never a Try again that
+   * cannot work) and keeps the checkout in memory for that account.
+   */
+  | "signed_out";
 
 export type VenuePayMode = "deposit" | "full";
 
@@ -149,7 +157,9 @@ export type VenueCheckoutAction =
    * #4490 06-W4 fix 1 (W4-N4): after signing in again, the held booking (or
    * plan) re-read with the new session; null when it could not be found.
    */
-  | { type: "resumed"; booking: VenueCheckoutBookingRef | null; now: number };
+  | { type: "resumed"; booking: VenueCheckoutBookingRef | null; now: number }
+  /** #4490 06-W4 fix 2 (W4-D1): the app's session ended (signed out, or another account) with the sheet open. */
+  | { type: "session_lost" };
 
 /**
  * What a `confirm_return` round said. `confirmed` covers the server answering
@@ -274,6 +284,24 @@ export const VENUE_SELECTION_CODES: ReadonlySet<string> = new Set([
   "offer_not_found",
   "plan_not_found",
 ]);
+
+/**
+ * #4490 06-W4 fix 2 (W4-D1): the answers that mean the session is gone, not
+ * that the step failed. `auth_invalid` is the edge's 401 when the bearer's
+ * session no longer exists (revoked, signed out on another device, refresh
+ * token expired); `auth_session_missing` is the app's own "no session" (the
+ * client dropped it, or the store says nobody is signed in); a booking or
+ * member token being required means the call went out without a user (the
+ * app never holds those tokens, spec 06 W4 rule 3).
+ */
+export const VENUE_SESSION_LOST_CODES: ReadonlySet<string> = new Set([
+  "auth_invalid",
+  "auth_session_missing",
+  "booking_token_required",
+  "membership_token_required",
+]);
+
+export const isVenueSessionLostCode = (code: string): boolean => VENUE_SESSION_LOST_CODES.has(code);
 
 export const VENUE_GUEST_CODES: ReadonlySet<string> = new Set([
   "offer_guest_invalid",
@@ -513,6 +541,10 @@ export function venueOfferCheckoutReducer(
         return state;
       }
       if (action.code === "offer_hold_expired" && state.openedAt === "choose") return expiredState(state);
+      // #4490 06-W4 fix 2 (W4-D1): a lost session is not a failed step.
+      if (isVenueSessionLostCode(action.code)) {
+        return { ...state, phase: "signed_out", failedStep: action.step, provider: null, notice: null };
+      }
       return {
         ...state,
         phase: "error",
@@ -563,6 +595,13 @@ export function venueOfferCheckoutReducer(
       if (payable && holdLive) return { ...state, phase: "review", booking: b, failedStep: null };
       return lostHold(state);
     }
+    case "session_lost": {
+      // Finished (booked, request sent) or already signed out: nothing to keep.
+      if (state.phase === "booked" || state.phase === "requested" || state.phase === "signed_out") return state;
+      const inFlight = (Object.keys(IN_FLIGHT_FOR) as VenueCheckoutStep[]).find((s) => IN_FLIGHT_FOR[s] === state.phase) ??
+        (state.phase === "awaiting_payment" || state.phase === "confirming" ? "pay" : state.failedStep);
+      return { ...state, phase: "signed_out", failedStep: inFlight ?? null, provider: null, notice: null };
+    }
     case "back_to_review": {
       if (state.phase !== "error" || (state.quote === null && state.booking === null)) return state;
       return { ...state, phase: "review", failedStep: null };
@@ -600,6 +639,7 @@ export function resumedVenueCheckoutState(state: VenueCheckoutState): VenueCheck
     case "confirming":
       return back(state.booking !== null ? "review" : state.quote !== null ? "review" : "choosing");
     case "error":
+    case "signed_out":
       return back(state.booking !== null || state.quote !== null ? "review" : "choosing");
     default:
       return state;
@@ -632,6 +672,7 @@ export function venueCheckoutProgress(state: VenueCheckoutState): 1 | 2 | 3 {
     case "holding":
     case "joining":
     case "error":
+    case "signed_out":
       return state.quote === null && state.booking === null && state.openedAt === "choose" ? 1 : 2;
     default:
       return 3;

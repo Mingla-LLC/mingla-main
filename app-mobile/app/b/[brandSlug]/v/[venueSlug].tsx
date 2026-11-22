@@ -114,6 +114,7 @@ import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueSe
 import { colors } from "../../../../src/constants/designSystem";
 import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 import { useCanonicalShareArrival } from "../../../../src/hooks/useCanonicalShareArrival";
+import { useReturnToStartOnSignOut } from "../../../../src/hooks/useReturnToStartOnSignOut";
 // DEEP specifier (the #1560 rule above): suites mock the offering barrel.
 import { resolveTheme } from "@mingla/offering-rendering/themeResolver";
 import {
@@ -239,6 +240,11 @@ const toVenueViewModel = (
 
 export default function ConsumerPublicVenueRoute(): React.ReactElement {
   const router = useRouter();
+  // #4490 06-W4 fix 2 (W4-D1): the account this page was opened with signed
+  // out (forced, mid-checkout): back to the welcome screen instead of sitting
+  // on "Loading venue…" with the cache cleared. A kept checkout comes back here
+  // after signing in again as the same account.
+  useReturnToStartOnSignOut();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
