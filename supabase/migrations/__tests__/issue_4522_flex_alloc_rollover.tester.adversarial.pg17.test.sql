@@ -58,6 +58,9 @@ END $$;
 
 -- ── F8: three packages owing 10,000 / 10,000 / 100; every amount from the
 --    minimum to the remaining 20,100 allocates exactly, never over a package.
+--    #3645: the minimum is the host's (100) or the provider floor (₦100 =
+--    10,000 on Paystack), whichever is larger, so every amount under the floor
+--    is refused by name and every amount from it upward allocates exactly.
 SELECT pg_temp.seed('45220f02-0000-4000-8000-0000000000c1',
   '[{"tt":"45220f02-0000-4000-8000-000000000030","due":"2027-02-10T08:00Z","amt":10000},
     {"tt":"45220f02-0000-4000-8000-000000000031","due":"2027-02-10T08:00Z","amt":10000},
@@ -70,10 +73,24 @@ DECLARE
   v jsonb;
   v_bad integer := 0;
   v_tested integer := 0;
+  v_refused integer := 0;
+  v_min bigint := (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000c1')->>'minPaymentMinor')::bigint;
   v_first text;
 BEGIN
+  PERFORM pg_temp.check('F8 the minimum is the provider floor', v_min = 10000, COALESCE(v_min::text, 'null'));
   FOR v_amount IN SELECT a FROM generate_series(100, 20100) a
-                   WHERE a % 97 = 0 OR a IN (100, 101, 199, 20098, 20099, 20100, 10050, 10051) LOOP
+                   WHERE a % 97 = 0 OR a % 41 = 0
+                      OR a IN (100, 101, 199, 9999, 10000, 10001, 10099, 10100, 10101, 20098, 20099, 20100, 10050, 10051) LOOP
+    IF v_amount < v_min THEN
+      IF pg_temp.raised(format($$SELECT public.issue_4522_begin_flex_payment(%L, %s, 20100, %L, 'pay_link')$$,
+           o, v_amount, 'alloc-' || v_amount)) = '22023:flex_amount_below_minimum' THEN
+        v_refused := v_refused + 1;
+      ELSE
+        v_bad := v_bad + 1;
+        v_first := COALESCE(v_first, v_amount::text || ' under the floor was not refused');
+      END IF;
+      CONTINUE;
+    END IF;
     BEGIN
       v := public.issue_4522_begin_flex_payment(o, v_amount, 20100, 'alloc-' || v_amount, 'pay_link');
       v_tested := v_tested + 1;
@@ -97,7 +114,8 @@ BEGIN
         v_first := COALESCE(v_first, v_amount::text || ' ' || SQLERRM);
     END;
   END LOOP;
-  PERFORM pg_temp.check('F8 every amount allocates exactly (' || v_tested || ' tested)', v_bad = 0 AND v_tested > 200,
+  PERFORM pg_temp.check('F8 every amount allocates exactly (' || v_tested || ' tested, ' || v_refused || ' under the floor refused)',
+    v_bad = 0 AND v_tested > 200 AND v_refused > 100,
     'first bad: ' || COALESCE(v_first, '-') || ' bad=' || v_bad);
   -- The tester's case: 20,099 of 20,100 across 10,000 / 10,000 / 100.
   v := public.issue_4522_begin_flex_payment(o, 20099, 20100, 'alloc-tester-20099', 'pay_link');

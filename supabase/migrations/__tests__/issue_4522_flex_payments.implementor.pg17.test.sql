@@ -322,7 +322,7 @@ BEGIN
   PERFORM public.issue_4522_rebalance_order('45220005-0000-4000-8000-0000000000b1', 'host_adjust', NULL, NULL,
     '[{"ticket_type_id":"45220005-0000-4000-8000-000000000030","net_minor":89985000,"addon_minor":0}]'::jsonb);
   IF pg_temp.rows('45220005-0000-4000-8000-0000000000b1') IS DISTINCT FROM
-     '2026-12-17:30000000:superseded:v1,2027-01-13:30000000:superseded:v1,2027-02-10:15000:scheduled:v2' THEN
+     '2026-12-17:30000000:superseded:v0,2027-01-13:30000000:superseded:v0,2027-02-10:15000:scheduled:v1' THEN
     RAISE EXCEPTION 'I-4 a re-spread must not split under the provider floor: %',
       pg_temp.rows('45220005-0000-4000-8000-0000000000b1');
   END IF;
