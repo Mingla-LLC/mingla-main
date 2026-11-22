@@ -33,6 +33,19 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import {
+  flushGuestPack,
+  hasPendingGuestPack,
+  releaseGuestPackSession,
+  useGuestPackPending,
+} from "../../utils/guestPackGate";
+// #4548 — the guest pack editor loads with its own chunk. Declared here, not in
+// a shared module: a module shared by several lazy screens is hoisted into the
+// eager boot chunk, and this one must stay out of it.
+const GuestPackEditorLazy = React.lazy(async () => ({
+  default: (await import("../event/GuestPackEditor")).GuestPackEditor,
+}));
+
 import { useExperienceVenueDefault } from "../../hooks/useExperienceVenueDefault";
 import {
   useExperienceDraftAdapter,
@@ -627,6 +640,11 @@ export const ExperienceCreatorWizard: React.FC<
   const [experienceId, setExperienceId] = useState<string | null>(
     existingExperienceId ?? null,
   );
+  // #4548 — the guest pack's working copy lives as long as this wizard does.
+  useEffect(
+    () => () => releaseGuestPackSession(experienceId),
+    [experienceId],
+  );
   const inviteFlag = useFeatureFlag("business_wizard_invite_selection_v1");
   // #1780 [bundle budget] — the saved selection arrives from the LAZY invite
   // module, not from a hook imported here. All four wizards are separate lazy
@@ -1129,10 +1147,13 @@ export const ExperienceCreatorWizard: React.FC<
       payloadBaselineRef.current = payloadKey;
     }
   }, [payloadKey]);
+  // #4548 — a typed guest pack change counts as an unsaved edit too.
+  const guestPackPending = useGuestPackPending(experienceId);
   const hasUnsavedEdits = shouldConfirmLeave({
     dirty:
-      payloadBaselineRef.current !== null &&
-      payloadKey !== payloadBaselineRef.current,
+      (payloadBaselineRef.current !== null &&
+        payloadKey !== payloadBaselineRef.current) ||
+      guestPackPending,
     busy: submitting,
   });
   hasUnsavedEditsRef.current = hasUnsavedEdits;
@@ -1201,7 +1222,21 @@ export const ExperienceCreatorWizard: React.FC<
     if (step === 1 && experienceId === null) {
       void ensureDraft();
     }
-    setStep((prev) => Math.min(finalStep, prev + 1) as StepIndex);
+    const advance = (): void =>
+      setStep((prev) => Math.min(finalStep, prev + 1) as StepIndex);
+    // #4548 — a changed guest pack is saved first; if that fails the host stays
+    // on this step with the toast and nothing typed is lost.
+    if (hasPendingGuestPack(experienceId)) {
+      void flushGuestPack(experienceId).then((result) => {
+        if (!result.ok) {
+          setToast(result.message);
+          return;
+        }
+        advance();
+      });
+      return;
+    }
+    advance();
   }, [canContinue, ensureDraft, experienceId, finalStep, inviteNavigation, step, whenAdapter]);
 
   // #4420 B7 — jump to a reachable step from the stepper. Same guards as
@@ -1595,6 +1630,12 @@ export const ExperienceCreatorWizard: React.FC<
   }, [currentIntelGateKey, handleSubmit, isLiveEdit]);
 
   const beginPublish = useCallback(async (): Promise<void> => {
+    // #4548 — publish saves a changed guest pack first; a failed save keeps the host here.
+    const packResult = await flushGuestPack(experienceId);
+    if (!packResult.ok) {
+      setToast(packResult.message);
+      return;
+    }
     // #3645 — paid and no currency: stop before terms, invites or any RPC.
     if (
       experiencePublishNeedsPayoutCountry({
@@ -1652,7 +1693,7 @@ export const ExperienceCreatorWizard: React.FC<
       setCheckingInvitePublish(false);
     }
   }, [brand?.defaultCurrency, maybeOpenIntelGate, persistedInvite, inviteEnabled, inviteRollbackReady,
-    inviteFlag.data, blockPaidPublishUntilAccepted, isFree, resolvedTotalMajor]);
+    inviteFlag.data, blockPaidPublishUntilAccepted, isFree, resolvedTotalMajor, experienceId]);
 
   useEffect(() => {
     resumePublishRef.current = (): void => {
@@ -1689,6 +1730,12 @@ export const ExperienceCreatorWizard: React.FC<
   const handleLiveSave = useCallback(async (): Promise<void> => {
     if (liveExperience === undefined) return;
     if (brand === null || user?.id === undefined) return;
+    // #4548 — Save changes saves a changed guest pack first (its own call).
+    const packResult = await flushGuestPack(experienceId);
+    if (!packResult.ok) {
+      setToast(packResult.message);
+      return;
+    }
     setLiveEditError(null);
 
     // Step-level completeness still required for a live experience (published
@@ -1869,6 +1916,7 @@ export const ExperienceCreatorWizard: React.FC<
     brand,
     buildPayload,
     capacity,
+    experienceId,
     guestPrivacy,
     handlePaidPublishGuard,
     intents,
@@ -2136,6 +2184,18 @@ export const ExperienceCreatorWizard: React.FC<
               recurrenceRule: whenAdapter.whenState.recurrenceRule,
             })}
           />
+        ) : null}
+
+        {/* #4548 — the guest pack, once the stops and their places are set. The
+            server row exists from the moment the host leaves Identity. */}
+        {step === 2 ? (
+          <React.Suspense fallback={null}>
+            <GuestPackEditorLazy
+              eventId={experienceId}
+              liveEdit={isLiveEdit}
+              onShowToast={setToast}
+            />
+          </React.Suspense>
         ) : null}
 
         {step === 3 ? (

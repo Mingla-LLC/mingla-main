@@ -124,6 +124,19 @@ import { ChangeSummaryModal } from "./LazyChangeSummaryModal";
 import { CreatorStep1Basics } from "./CreatorStep1Basics";
 import { CreatorStep2When } from "./LazyCreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
+import {
+  flushGuestPack,
+  hasPendingGuestPack,
+  useGuestPackPending,
+  releaseGuestPackSession,
+} from "../../utils/guestPackGate";
+// #4548 — the guest pack editor loads with its own chunk. Declared here, not in
+// a shared module: a module shared by several lazy screens is hoisted into the
+// eager boot chunk, and this one must stay out of it.
+const GuestPackEditorLazy = React.lazy(async () => ({
+  default: (await import("./GuestPackEditor")).GuestPackEditor,
+}));
+
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheetLazy";
@@ -875,6 +888,34 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     sectionErrors,
     showToast,
   ]);
+
+  // #4548 — "Save changes" saves a changed guest pack first (its own call, never
+  // inside the live-edit payload). A failed pack save keeps the host here.
+  const guestPackId = liveEvent.serverEventId ?? null;
+  useEffect(
+    () => () => releaseGuestPackSession(guestPackId),
+    [guestPackId],
+  );
+  const handleSaveWithGuestPack = useCallback((): void => {
+    if (!hasPendingGuestPack(guestPackId)) {
+      handleSavePress();
+      return;
+    }
+    void flushGuestPack(guestPackId).then((result) => {
+      if (!result.ok) {
+        showToast(result.message);
+        return;
+      }
+      // Written through a named count on purpose: the #2009 gate pins the ONE
+      // clean-state expression on the Save button's disabled rule.
+      const eventFieldChangeCount = Object.keys(currentPatch).length;
+      if (eventFieldChangeCount === 0) {
+        showToast("Guest pack saved.");
+        return;
+      }
+      handleSavePress();
+    });
+  }, [guestPackId, handleSavePress, currentPatch, showToast]);
 
   const invalidateServerEventCaches = useCallback((): void => {
     queryClient.invalidateQueries({
@@ -1768,8 +1809,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     () => JSON.stringify(editState) !== JSON.stringify(seededEditStateRef.current),
     [editState],
   );
+  // #4548 — a typed guest pack change counts too ("Save changes" stays off for a
+  // pack-only change, so leaving must ask rather than drop it).
+  const guestPackPending = useGuestPackPending(guestPackId);
   const hasUnsavedEdits = shouldConfirmLeave({
-    dirty: editedSinceSeed,
+    dirty: editedSinceSeed || guestPackPending,
     busy: submitting,
   });
   const handleBack = useCallback((): void => {
@@ -1822,7 +1866,20 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         case "when":
           return <CreatorStep2When {...stepBodyProps} />;
         case "where":
-          return <CreatorStep3Where {...stepBodyProps} />;
+          return (
+            <CreatorStep3Where
+              {...stepBodyProps}
+              guestPackSlot={
+                <React.Suspense fallback={null}>
+                  <GuestPackEditorLazy
+                    eventId={liveEvent.serverEventId ?? null}
+                    liveEdit
+                    onShowToast={showToast}
+                  />
+                </React.Suspense>
+              }
+            />
+          );
         case "cover":
           return <CreatorStep4Cover {...stepBodyProps} showThemeRow={false} />;
         case "visual":
@@ -2129,7 +2186,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           ) : null}
           <Button
             label="Save changes"
-            onPress={handleSavePress}
+            onPress={handleSaveWithGuestPack}
             variant="primary"
             size="lg"
             fullWidth

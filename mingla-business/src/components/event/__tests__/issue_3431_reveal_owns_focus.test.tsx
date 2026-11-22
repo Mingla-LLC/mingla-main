@@ -182,6 +182,15 @@ function loadWizard(kind: "event" | "rsvp"): React.ComponentType<any> {
     // #4420 — the wizards' invite publish gate (pure; real module).
     if (name.endsWith("/invites/wizardInvitePublishGate")) return jest.requireActual("../../invites/wizardInvitePublishGate");
     if (name.endsWith("/refundPolicyTerms")) return { OfferingRefundTermsError: class extends Error {} };
+    // [TEST-MOD #4548] the guest pack working copy (nothing pending in this suite).
+    if (name.endsWith("/guestPackGate")) return {
+      guestPackEventIdForDraft: (id: string) => (id.startsWith("d_") ? null : id),
+      hasPendingGuestPack: () => false,
+      flushGuestPack: async () => ({ ok: true, saved: false }),
+      releaseGuestPackSession: () => undefined,
+      subscribeGuestPack: () => () => undefined,
+      useGuestPackPending: () => false,
+    };
     if (name.endsWith("/recurrenceRule")) return { expandRecurrenceToDates: () => [] };
     if (name === "@mingla/brand-assets") return { MINGLA_BUSINESS_LOGO: 1 };
     if (name.endsWith("/createDeferredTurnoutIntelProvider")) {
