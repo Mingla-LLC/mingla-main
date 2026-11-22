@@ -176,3 +176,18 @@ describe("#4541 R1.8 forms paused", () => {
     expect(svc).toContain('forms_paused: "Forms are paused right now. Try again later."');
   });
 });
+
+describe("#4541 R7.3 / design v10 I3 the builder's warning and the retention line", () => {
+  test("the warning and the retention line read exactly; the builder shows both", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const copy = require("../brandFormsCopy") as typeof import("../brandFormsCopy");
+    expect(copy.FORMS_COPY.sensitiveWarning).toBe(
+      "Only ask what you need. Don't ask for ID numbers, medical records or card details.",
+    );
+    expect(copy.retentionLine(true)).toBe("Answers are erased 12 months after the event ends.");
+    expect(copy.retentionLine(false)).toBe("Answers are erased 12 months after they're sent.");
+    const builder = read("mingla-business/src/components/forms/BrandFormBuilderScreen.tsx");
+    expect(builder).toMatch(/<FormsNotice tone="info" title=\{FORMS_COPY\.sensitiveWarning\} testID="brand-form-sensitive-warning" \/>\s*<IntakeSchemaBuilder/);
+    expect(builder).toContain("retentionLine((detail.data?.attachments.length ?? 0) > 0)");
+  });
+});

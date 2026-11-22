@@ -62,7 +62,7 @@ import type { IntakeSchemaBuilderProps } from "../trip/IntakeSchemaBuilder";
 import { BRAND_FORM_FEATURES } from "./brandFormBuilderKit";
 import { BrandFormPreview } from "./BrandFormPreview";
 import { brandFormHeaderData } from "../../utils/brandFormHeader";
-import { FORMS_COPY } from "./brandFormsCopy";
+import { FORMS_COPY, retentionLine } from "./brandFormsCopy";
 import { FormsNotice } from "./FormsNotice";
 import { FormRequestSheet } from "./FormRequestSheet";
 import { errorSentence, useFormsToast } from "./useFormsToast";
@@ -399,6 +399,8 @@ export const BrandFormBuilderScreen: React.FC = () => {
           />
         ) : null}
         {closed ? <FormsNotice tone="info" title={FORMS_COPY.closedBanner} testID="brand-form-closed-banner" /> : null}
+        {/* #4541 R7.3 (default 1): always shown, no dismiss, plain words. */}
+        <FormsNotice tone="info" title={FORMS_COPY.sensitiveWarning} testID="brand-form-sensitive-warning" />
         <IntakeSchemaBuilder
           schema={schema}
           activeTicketTypeId={form.id}
@@ -448,6 +450,10 @@ export const BrandFormBuilderScreen: React.FC = () => {
             testID="brand-form-archive"
           />
         ) : null}
+        {/* #4541 R1.6 (default 1): how long answers are kept. */}
+        <Text style={styles.switchSub} testID="brand-form-retention">
+          {retentionLine((detail.data?.attachments.length ?? 0) > 0)}
+        </Text>
       </View>
     );
 

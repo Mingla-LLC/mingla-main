@@ -179,7 +179,7 @@ The Explorer app has its own `brandFormKeys` in `app-mobile/src/hooks/queryKeys.
 | `list(brandId)` | `['brand-forms', 'list', brandId]` |
 | `detail(formId)` | `['brand-forms', 'detail', formId]` |
 | `eventAttachment(eventId)` | `['brand-forms', 'event-attachment', eventId]` |
-| `responses(formId, eventId \| null, filter)` | `['brand-forms', 'responses', formId, eventId ?? 'all', filter]` |
+| `responses(formId, eventId \| null, filter)` | `['brand-forms', 'responses', formId, eventId ?? 'all', filter]` (#4541 R4.7/R4.8: `filter` folds the owner filter and the hidden toggle as `` `${filter}:${owner}:${showHidden ? 1 : 0}` `` through `responsesFilterKey`, owner `all`, `known` or `unknown`) |
 | `tile(eventId)` | `['brand-forms', 'tile', eventId]` |
 | `counts(brandId)` | `['brand-forms', 'counts', brandId]` (wave 3: answered and to-answer per form and per page) |
 | `publicRsvpFormKeys.forEvent(eventId)` (src/components/checkout/intake/publicRsvpFormKeys.ts) | `['brand-forms', 'public-rsvp', eventId]` (#4541: the questions on the public RSVP page, or its "After they RSVP" notice, read through brand-form-submit `page_form`; a leaf module so the eager public page does not import this factory; refetched when the RSVP is refused with a form code) |
@@ -189,7 +189,7 @@ The Explorer app has its own `brandFormKeys` in `app-mobile/src/hooks/queryKeys.
 | `checkoutFormKeys.forEvent(eventId, withTicketLink)` (src/components/checkout/intake/checkoutFormKeys.ts) | `['brand-forms', 'checkout', eventId, 'link' \| 'plain']` (wave 5: the page's form as the buyer checkout reads it through brand-form-submit `checkout_form`, with the buyer's checkout credential; `staleTime: 30s`; refetched when checkout-create refuses with a form code, and by the step's Try again) |
 | `doorReads(eventId)` | `['brand-forms', 'door-reads', eventId]` (#4541 R8.3: who opened full answers at the door on one page, Responses › Door, event manager and up; names and times only) |
 | `guestAnswers(eventId, subjectKind, subjectId)` | `['brand-forms', 'guest-answers', eventId, subjectKind, subjectId]` (#4541 R1.9: one guest's or order's answers on guest detail and order detail; `subjectKind` is `rsvp`, `rsvp_guest` or `order`) |
-| `blastPicker(brandId)` | `['brand-forms', 'blast-picker', brandId]` (#4541 R4.2: the live forms the Blast composer's "+ Form" lists; keyed by brand) |
+| `blastPicker(brandId)` | `['brand-forms', 'blast-picker', brandId]` (#4541 R4.2: the brand's forms the Blast composer's "+ Form" picker and block read (`useBlastFormPicker`, the list read); live ones can be picked, closed and draft ones say why not; keyed by brand) |
 | `idle(read)` | `['brand-forms', read, 'none']` (a read switched off because its id is missing; never fetched) |
 
 **Scoping:** the list is keyed by BRAND, so switching brand never serves another
@@ -197,7 +197,7 @@ brand's forms. No token or answer text enters a key; answers live only in
 React Query memory (never persisted).
 
 **Invalidation rule:** every successful form write (create, save draft,
-publish, close, reopen, archive, door switch, the #4541 invited-door-staff switch, attach, detach, and in wave 4 a form request send and the automatic reminder switch) invalidates
+publish, close, reopen, archive, door switch, the #4541 invited-door-staff switch, the #4541 R4.8 hide or unhide of an Unknown Blast reply, attach, detach, and in wave 4 a form request send and the automatic reminder switch) invalidates
 `brandFormKeys.all`, which refreshes the list, the builder, the page's
 attachment, the Responses page and the manage-page tile together.
 

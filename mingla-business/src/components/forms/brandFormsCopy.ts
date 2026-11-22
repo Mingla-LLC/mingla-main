@@ -137,6 +137,10 @@ export const FORMS_COPY = {
   notAnsweredChip: "Not answered",
   addedByYou: "Added by you",
   viaLink: "via link",
+  /** #4541 R7.3 / design v10 I3 (default 1): the builder's warning and the retention line. */
+  sensitiveWarning: "Only ask what you need. Don't ask for ID numbers, medical records or card details.",
+  retentionPage: "Answers are erased 12 months after the event ends.",
+  retentionNoPage: "Answers are erased 12 months after they're sent.",
   /** #4541 R4.7 / R4.8: Unknown Blast replies in Responses (replaces the old "Unverified" chip). */
   ownerAll: "All",
   ownerKnown: "Known",
@@ -414,3 +418,7 @@ export const BLAST_FORM_COPY = {
   scheduledNote: "If the form closes before the send time, this Blast isn't sent.",
   aForm: "Your form",
 } as const;
+
+/** #4541 design v10 I3: the retention line (a form on a page, or not on any page). */
+export const retentionLine = (onPages: boolean): string =>
+  onPages ? FORMS_COPY.retentionPage : FORMS_COPY.retentionNoPage;
