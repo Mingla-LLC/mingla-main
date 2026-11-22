@@ -382,6 +382,23 @@ describe("#3149 the checkout, under attack", () => {
     expect(went).toEqual([]);
   });
 
+  it("#3645: an order below the card minimum says so, and not that we are broken", async () => {
+    // What /api/order forwards for the provider floor: the machine code only.
+    createReply = {
+      ok: false,
+      status: 503,
+      body: { ok: false, error: "order_below_provider_minimum" },
+    };
+    await openDrawer();
+    await fillBuyer();
+    await submit();
+    expect(text()).toContain("below the smallest amount we can take by card");
+    expect(text()).not.toContain("We could not place this order");
+    expect(text()).toContain("Nothing has been charged");
+    expect(storedCart()).toBe(JSON.stringify({ [ITEM_A]: 1 }));
+    expect(went).toEqual([]);
+  });
+
   it("an empty basket has no drawer to check out from", async () => {
     await mount();
     expect(host.querySelector("form.checkout-fields")).toBeNull();
