@@ -61,6 +61,9 @@ export interface QuestionSummary {
 }
 
 export const subjectName = (row: BrandFormResponseRow): string => {
+  // #4541 R4.7: an Unknown Blast reply is "Unknown"; a Blast recipient keeps the name at send.
+  if (row.ownerKind === "unknown") return "Unknown";
+  if (row.ownerKind === "blast" && row.ownerName !== null && row.ownerName.trim().length > 0) return row.ownerName.trim();
   const name = row.subject.name?.trim() ?? "";
   if (name.length > 0) return name;
   return row.subject.kind === "user" ? "Mingla guest" : "Guest";

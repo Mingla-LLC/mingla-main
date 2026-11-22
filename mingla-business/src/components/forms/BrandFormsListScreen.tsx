@@ -73,7 +73,7 @@ export function pagesLine(item: BrandFormListItem): string {
 
 const FormCard: React.FC<{
   item: BrandFormListItem;
-  counts: { answered: number; toAnswer: number } | undefined;
+  counts: { answered: number; toAnswer: number; blastReplies?: { known: number; unknown: number } } | undefined;
   busy: boolean;
   onEdit: () => void;
   onResponses: () => void;
@@ -82,6 +82,8 @@ const FormCard: React.FC<{
   const { form } = item;
   const status = form.status;
   const answers = status === "draft" ? null : formCountsLine(counts);
+  // #4541 R4.9: replies from Blasts (no page), when there are any.
+  const blastTotal = counts?.blastReplies === undefined ? 0 : counts.blastReplies.known + counts.blastReplies.unknown;
   return (
     <GlassCard variant="base" radius="lg" padding={space[4]} testID={`brand-form-card-${form.id}`}>
       <View style={styles.cardHead}>
@@ -99,6 +101,11 @@ const FormCard: React.FC<{
       {answers !== null ? (
         <Text style={styles.cardSub} testID={`brand-form-counts-${form.id}`}>
           {answers}
+        </Text>
+      ) : null}
+      {blastTotal > 0 ? (
+        <Text style={styles.cardSub} testID={`brand-form-blast-replies-${form.id}`}>
+          {FORMS_COPY.blastReplies(blastTotal)}
         </Text>
       ) : null}
       {status === "draft" ? <Text style={styles.cardSub}>{FORMS_COPY.publishToAdd}</Text> : null}

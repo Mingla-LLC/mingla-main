@@ -27,6 +27,11 @@ const row = (over: Partial<BrandFormResponseRow>): BrandFormResponseRow => ({
   updatedAt: "2026-11-19T10:00:00Z",
   subject: { kind: "rsvp", id: "rsvp-1", name: "Amara" },
   holder: null,
+  ownerKind: "guest",
+  ownerName: null,
+  campaignId: null,
+  campaignName: null,
+  hidden: false,
   ...over,
 });
 
@@ -38,6 +43,7 @@ const page = (rows: BrandFormResponseRow[], notAnswered: BrandFormResponsesPage[
   counts: {},
   rows,
   notAnswered,
+  hiddenCount: 0,
 });
 
 describe("guest list answers chip", () => {

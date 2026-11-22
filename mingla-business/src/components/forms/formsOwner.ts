@@ -19,3 +19,6 @@ export { GuestAnswersChip, GuestAnswersPanel } from "./GuestAnswers";
 export { GuestFormRequestRow } from "./GuestFormRequestRow";
 /** #4541 R1.9: answers on guest detail and order detail. */
 export { GuestAnswersCard } from "./GuestAnswersCard";
+/** #4541 R4.2: the Blast composer's "+ Form" picker and block (one lazy hop from compose). */
+export { BlastFormPicker } from "./BlastFormPicker";
+export { BlastFormBlock } from "./BlastFormBlock";

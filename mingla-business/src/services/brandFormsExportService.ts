@@ -27,10 +27,15 @@ const csvCell = (value: string): string =>
 /** A spreadsheet reads a leading = + - @, tab or carriage return as a formula; keep it text. */
 const safeCell = (value: string): string => (/^[=+\-@\t\r]/.test(value) ? `'${value}` : value);
 
-/** One header column per question and version, one row per response. */
+/**
+ * One header column per question and version, one row per response. #4541
+ * R4.7: an Unknown Blast reply's name is "Unknown", a Blast recipient's is the
+ * name at send; the Campaign column names the Blast (empty for a page answer).
+ */
 export function buildAnswersCsv(feed: BrandFormExport, names: ReadonlyMap<string, string>): string {
   const header = [
     "Name",
+    "Campaign",
     "Answered",
     "Updated",
     "Form version",
@@ -40,7 +45,8 @@ export function buildAnswersCsv(feed: BrandFormExport, names: ReadonlyMap<string
   const lines = [header.map((c) => csvCell(safeCell(c))).join(",")];
   for (const row of feed.rows) {
     const cells = [
-      names.get(row.responseId) ?? "",
+      row.name ?? names.get(row.responseId) ?? "",
+      row.campaign ?? "",
       row.submittedAt,
       row.updatedAt,
       String(row.version),
@@ -67,7 +73,8 @@ export const answersCsvFilename = (formName: string, now: Date): string => {
 export async function exportFormAnswers(input: {
   formId: string;
   formName: string;
-  eventId: string;
+  /** null: All pages (Blast replies included). */
+  eventId: string | null;
 }): Promise<FormAnswersExportMethod> {
   const feed = await fetchBrandFormExport(input.formId, input.eventId);
   const names = new Map<string, string>();

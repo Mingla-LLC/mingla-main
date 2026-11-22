@@ -32,6 +32,7 @@ import {
   saveBrandFormDraft,
   setBrandFormDoorFullAnswers,
   setBrandFormDoorInvited,
+  setBrandFormResponseHidden,
   type AttachInput,
   type DoorReadRow,
   type GuestAnswersCardData,
@@ -41,6 +42,7 @@ import {
   type BrandFormCounts,
   type BrandFormDetail,
   type BrandFormListItem,
+  type BrandFormOwnerFilter,
   type BrandFormResponsesFilter,
   type BrandFormResponsesPage,
   type BrandFormRow,
@@ -87,6 +89,24 @@ export function useBrandFormsList(brandId: string | null): UseQueryResult<BrandF
   });
 }
 
+/**
+ * #4541 R4.2: the forms the Blast composer's "+ Form" picker lists (this
+ * brand's, archived left out; the picker says why a draft or closed form
+ * cannot be sent).
+ */
+export function useBlastFormPicker(brandId: string | null): UseQueryResult<BrandFormListItem[]> {
+  const ready = useReady();
+  return useQuery<BrandFormListItem[]>({
+    queryKey: brandId === null ? brandFormKeys.idle("blast-picker") : brandFormKeys.blastPicker(brandId),
+    enabled: ready && brandId !== null,
+    staleTime: 15_000,
+    queryFn: () => {
+      if (brandId === null) throw new Error("brand_required");
+      return fetchBrandForms(brandId);
+    },
+  });
+}
+
 /** Wave 3: answered and to-answer per form (list cards) and per page (tiles), one read. */
 export function useBrandFormCounts(brandId: string | null): UseQueryResult<BrandFormCounts> {
   const ready = useReady();
@@ -119,20 +139,44 @@ export function useBrandFormResponses(input: {
   formId: string | null;
   eventId: string | null;
   filter: BrandFormResponsesFilter;
+  /** #4541 R4.7: All, Known or Unknown (default All). */
+  owner?: BrandFormOwnerFilter;
+  /** #4541 R4.8: include hidden Unknown replies. */
+  showHidden?: boolean;
   enabled?: boolean;
 }): UseQueryResult<BrandFormResponsesPage> {
   const ready = useReady();
   const { formId, eventId, filter } = input;
+  const owner = input.owner ?? "all";
+  const showHidden = input.showHidden === true;
   return useQuery<BrandFormResponsesPage>({
     queryKey:
       formId === null
         ? brandFormKeys.idle("responses")
-        : brandFormKeys.responses(formId, eventId, filter),
+        : brandFormKeys.responses(formId, eventId, responsesFilterKey(filter, owner, showHidden)),
     enabled: ready && formId !== null && input.enabled !== false,
     staleTime: 10_000,
     queryFn: () => {
       if (formId === null) throw new Error("form_required");
-      return fetchBrandFormResponses({ formId, eventId, filter });
+      return fetchBrandFormResponses({ formId, eventId, filter, owner, showHidden });
+    },
+  });
+}
+
+/** #4541 §6.2: the owner filter and the hidden toggle fold into the responses key's filter string. */
+export const responsesFilterKey = (
+  filter: BrandFormResponsesFilter,
+  owner: BrandFormOwnerFilter,
+  showHidden: boolean,
+): string => `${filter}:${owner}:${showHidden ? 1 : 0}`;
+
+/** #4541 R4.8: hide an Unknown reply, or undo it. Every forms read refreshes (counts, lists, export). */
+export function useHideBrandFormResponse(): UseMutationResult<boolean, Error, { responseId: string; hidden: boolean }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { responseId: string; hidden: boolean }) => setBrandFormResponseHidden(v.responseId, v.hidden),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: brandFormKeys.all });
     },
   });
 }

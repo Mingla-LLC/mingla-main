@@ -216,6 +216,14 @@ export type MarketingBookPreviewState =
 // Campaign channel_payload — discriminated union (I-PROPOSED-BQ)
 // ---------------------------------------------------------------------------
 
+/**
+ * #4541 R4.2 — a Blast's "+ Form": one live form of this brand per campaign,
+ * on every channel kind. Each recipient gets their own link at send.
+ */
+export interface ChannelPayloadEmbeddedForm {
+  form_id: string;
+}
+
 export interface ChannelPayloadEmail {
   kind: "email";
   subject: string;
@@ -223,6 +231,8 @@ export interface ChannelPayloadEmail {
   body_text: string;
   /** Event UUIDs referenced via `{{event:<id>}}` tokens in body. */
   embedded_events?: string[];
+  /** #4541 R4.2: an "Answer: {form}" button with each person's own link. */
+  embedded_form?: ChannelPayloadEmbeddedForm;
 }
 
 /** SMS blast payload (live via Twilio US / Termii NG). */
@@ -239,6 +249,8 @@ export interface ChannelPayloadSms {
    * US/Twilio only — the NG/Termii send path ignores media (SMS-only).
    */
   media_urls?: string[];
+  /** #4541 R4.2: " Answer: {link}" with each person's own link. */
+  embedded_form?: ChannelPayloadEmbeddedForm;
 }
 
 /**
@@ -254,6 +266,8 @@ export interface ChannelPayloadPush {
   event_id?: string;
   /** #4273 — the notification's title (the email subject); absent keeps the brand name. */
   title?: string;
+  /** #4541 R4.2: opens the form in the Mingla app (app-ready recipients only). */
+  embedded_form?: ChannelPayloadEmbeddedForm;
 }
 
 export type CampaignChannelPayload =
@@ -297,6 +311,8 @@ export interface MarketingCampaignRow {
   scheduled_for: string | null;
   sent_at: string | null;
   recipient_count: number | null;
+  /** #4541 R4.3: why a campaign failed (`form_closed`: its form closed before a scheduled send). */
+  failure_reason?: string | null;
   created_at: string;
   updated_at: string;
 }

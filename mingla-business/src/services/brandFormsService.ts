@@ -22,6 +22,10 @@ import {
 export type BrandFormStatus = "draft" | "live" | "closed" | "archived";
 export type BrandFormMode = "optional_on_page" | "required_step" | "after_purchase";
 export type BrandFormResponsesFilter = "all" | "earlier_version";
+/** #4541 R4.7: whose replies to list. */
+export type BrandFormOwnerFilter = "all" | "known" | "unknown";
+/** #4541 R4.7: who a reply belongs to (an Unknown Blast reply has no owner). */
+export type BrandFormOwnerKind = "guest" | "blast" | "app_user" | "unknown";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -41,6 +45,7 @@ export type BrandFormsErrorCode =
   | "invalid_definition"
   | "mode_invalid"
   | "trip_uses_intake"
+  | "not_unknown"
   | "network_error"
   | "invalid_response"
   | "unknown";
@@ -149,6 +154,8 @@ export function mapBrandFormsError(error: unknown, fallbackMessage: string): Bra
     return new BrandFormsError("not_found", "We couldn't find that form. It may have been removed.", reason);
   }
   switch (reason) {
+    case "not_unknown":
+      return new BrandFormsError("not_unknown", "Only Unknown replies can be hidden.", reason);
     case "form_archived":
       return new BrandFormsError("form_archived", "This form is archived.", reason);
     case "form_not_live":
@@ -255,6 +262,14 @@ export interface BrandFormResponseRow {
   subject: { kind: string; id: string | null; name: string | null };
   /** Wave 3: a signed-in answer's RSVP and orders at this page (null without a page). */
   holder: { rsvpId: string | null; rsvpGuestId?: string | null; orderIds: string[] } | null;
+  /** #4541 R4.7: who it belongs to; "guest" from an older server. */
+  ownerKind: BrandFormOwnerKind;
+  /** "Unknown", or a Blast recipient's name at send; null for a guest. */
+  ownerName: string | null;
+  campaignId: string | null;
+  campaignName: string | null;
+  /** An Unknown reply the host hid (R4.8). */
+  hidden: boolean;
 }
 
 export interface BrandFormNotAnswered {
@@ -285,6 +300,8 @@ export interface BrandFormResponsesPage {
   rows: BrandFormResponseRow[];
   /** Empty when no page was named. */
   notAnswered: BrandFormNotAnswered[];
+  /** #4541 R4.8: hidden Unknown replies (All pages only; 0 otherwise). */
+  hiddenCount: number;
 }
 
 export interface BrandFormExportColumn {
@@ -297,6 +314,10 @@ export interface BrandFormExportColumn {
 
 export interface BrandFormExportRow {
   responseId: string;
+  /** #4541 R4.7: "Unknown" or a Blast recipient's name; null for a guest (named from Responses). */
+  name: string | null;
+  /** #4541 R4.7: the Blast it came from, or null. */
+  campaign: string | null;
   version: number;
   submittedAt: string;
   updatedAt: string;
@@ -634,13 +655,25 @@ const parseResponseRow = (value: unknown): BrandFormResponseRow => {
           : [],
       }
       : null,
+    ownerKind: parseOwnerKind(r.ownerKind),
+    ownerName: strOrNull(r.name),
+    campaignId: strOrNull(r.campaignId),
+    campaignName: strOrNull(r.campaignName),
+    hidden: bool(r.hidden, false),
   };
 };
+
+const parseOwnerKind = (v: unknown): BrandFormOwnerKind =>
+  v === "blast" || v === "app_user" || v === "unknown" ? v : "guest";
 
 export interface FetchResponsesInput {
   formId: string;
   eventId: string | null;
   filter: BrandFormResponsesFilter;
+  /** #4541 R4.7: All, Known or Unknown (default All). */
+  owner?: BrandFormOwnerFilter;
+  /** #4541 R4.8: include hidden Unknown replies (default no). */
+  showHidden?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -653,6 +686,8 @@ export async function fetchBrandFormResponses(input: FetchResponsesInput): Promi
     p_filter: input.filter,
     p_limit: input.limit ?? 50,
     p_offset: input.offset ?? 0,
+    p_owner: input.owner ?? "all",
+    p_show_hidden: input.showHidden === true,
   });
   if (error !== null) return failFrom(error, "Couldn't load the answers. Try again.");
   const root = rec(data, "responses");
@@ -688,11 +723,26 @@ export async function fetchBrandFormResponses(input: FetchResponsesInput): Promi
         addedByHost: bool(r.addedByHost, false),
       };
     }),
+    hiddenCount: count(root.hiddenCount),
   };
 }
 
-/** The answers feed (event manager and up). One column per question and version. */
-export async function fetchBrandFormExport(formId: string, eventId: string): Promise<BrandFormExport> {
+/** #4541 R4.8: hide an Unknown reply, or bring it back (marketing manager and up). */
+export async function setBrandFormResponseHidden(responseId: string, hidden: boolean): Promise<boolean> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc("biz_brand_form_response_hide", {
+    p_response_id: responseId,
+    p_hidden: hidden,
+  });
+  if (error !== null) return failFrom(error, hidden ? "Couldn't hide the reply. Try again." : "Couldn't bring the reply back. Try again.");
+  return bool(rec(data, "hide").hidden, hidden);
+}
+
+/**
+ * The answers feed (event manager and up). One column per question and version.
+ * #4541 R4.7: no page means All pages, Blast replies included; hidden replies never export.
+ */
+export async function fetchBrandFormExport(formId: string, eventId: string | null): Promise<BrandFormExport> {
   const supabase = await getSupabase();
   const { data, error } = await supabase.rpc("biz_brand_form_responses_export", {
     p_form_id: formId,
@@ -719,6 +769,8 @@ export async function fetchBrandFormExport(formId: string, eventId: string): Pro
       }
       return {
         responseId: str(r.responseId, "row.responseId"),
+        name: strOrNull(r.name),
+        campaign: strOrNull(r.campaign),
         version: num(r.version, "row.version"),
         submittedAt: str(r.submittedAt, "row.submittedAt"),
         updatedAt: str(r.updatedAt, "row.updatedAt"),
@@ -903,6 +955,8 @@ export interface BrandFormCount {
   answered: number;
   toAnswer: number;
   pages: number;
+  /** #4541 R4.9: replies from Blasts (no page); hidden Unknown replies left out. */
+  blastReplies: { known: number; unknown: number };
 }
 
 export interface BrandFormPageCount {
@@ -933,7 +987,14 @@ export async function fetchBrandFormCounts(brandId: string): Promise<BrandFormCo
   return {
     forms: arr(r.forms ?? [], "counts.forms").map((f) => {
       const x = rec(f, "counts.form");
-      return { formId: str(x.formId, "counts.formId"), answered: count(x.answered), toAnswer: count(x.toAnswer), pages: count(x.pages) };
+      const blast = isRecord(x.blastReplies) ? x.blastReplies : {};
+      return {
+        formId: str(x.formId, "counts.formId"),
+        answered: count(x.answered),
+        toAnswer: count(x.toAnswer),
+        pages: count(x.pages),
+        blastReplies: { known: count(blast.known), unknown: count(blast.unknown) },
+      };
     }),
     pages: arr(r.pages ?? [], "counts.pages").map((pg) => {
       const x = rec(pg, "counts.page");
