@@ -15,7 +15,7 @@
 --   A-INPUT  hostile input is bounded: 128 / 129 characters, empty, spaces,
 --            punctuation, non-ASCII, case and whitespace variants of enums,
 --            64 / 65 character build labels, a garbage or empty caller.
---   A-REPEAT 300 repeated reports of the same device leave one row and never
+--   A-REPEAT 20 repeated reports of the same device leave one row and never
 --            mint a repair; a queued repair is delivered once, then 'none'.
 --   A-CAND   the candidates limit is clamped for null, negative and huge
 --            values; deleting the account removes its device rows.
@@ -255,7 +255,7 @@ SELECT pg_temp.t_ok(
   'A-INPUT null flags are not coerced to false');
 
 -- ---------------------------------------------------------------------------
--- A-REPEAT: 300 reports of one device; a queued repair delivered once.
+-- A-REPEAT: 20 reports of one device; a queued repair delivered once.
 -- ---------------------------------------------------------------------------
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.t_as('authenticated', '45491111-0000-4000-8000-000000000002');
@@ -265,11 +265,11 @@ SELECT 'rep_' || g, public.report_host_push_device('b-owned-sub-0001', 'ios', 'b
   FROM generate_series(1, 20) g; -- #4549 rework P2-4: was 300; the report call now refuses more than 30 per account per 10 minutes
 RESET ROLE;
 SELECT pg_temp.t_ok((SELECT count(*) FROM t4549 WHERE k LIKE 'rep_%' AND v::jsonb ->> 'action' = 'reregister') = 1,
-  'A-REPEAT 300 reports: the queued repair is handed out exactly once');
+  'A-REPEAT 20 reports: the queued repair is handed out exactly once');
 SELECT pg_temp.t_ok((SELECT v FROM t4549 WHERE k = 'rep_1')::jsonb ->> 'action' = 'reregister',
   'A-REPEAT it is the first report that gets it');
 SELECT pg_temp.t_ok((SELECT count(*) FROM public.host_push_devices WHERE user_id = '45491111-0000-4000-8000-000000000002') = 1,
-  'A-REPEAT 300 reports of one device leave one row');
+  'A-REPEAT 20 reports of one device leave one row');
 SELECT pg_temp.t_ok((SELECT repair_state = 'none' AND repair_requests = 2 AND provider_state = 'refused_token'
      FROM public.host_push_devices WHERE user_id = '45491111-0000-4000-8000-000000000002'),
   'A-REPEAT counted once (1 -> 2); provider verdict untouched by the app');
