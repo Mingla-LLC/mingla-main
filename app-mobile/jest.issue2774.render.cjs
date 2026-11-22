@@ -188,6 +188,10 @@ module.exports = {
     // issue #4490 Explorer W6b — "Places on Mingla" deck chips: resolvePills,
     // saved categories, the hook's parse and keys, the mounted row, sheet wiring.
     "**/__tests__/issue_4490_w6b_places_on_mingla.implementor.render.test.tsx",
+    // issue #4490 W6b fix 3 — a venue-type chip change gives the solo deck a new
+    // key (it refetches as a category change does); a chip-only deck with
+    // nothing open ends with hasMore:false (the empty state, not a loader).
+    "**/__tests__/issue_4490_w6b_deck_refetch.implementor.test.ts",
     "**/__tests__/issue_4347_venue_explorer.implementor.render.test.tsx",
     // issue #4347 wave 3 retest extras — the gallery video's Sound control,
     // and the deck chip on the schedule check's 15-minute rule.
