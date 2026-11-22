@@ -98,7 +98,7 @@ function makeStore(db: LooseClient): ReconcileStore {
         "update_row",
       );
     },
-    async claimProviderDelete(id, nowIso) {
+    async claimProviderDelete(id, _nowIso) {
       // One claim at a time per record, and at most
       // MAX_PROVIDER_DELETE_ATTEMPTS claims ever (#4549 P3-4).
       const rows = must(
