@@ -37,6 +37,8 @@ import {
   hasPendingGuestPack,
   releaseGuestPackSession,
 } from "../guestPackGate";
+import { checkGuestPackLink } from "../guestPackValidation";
+import { runSignOutCleanups } from "../signOutCleanups";
 
 const fetchMock = fetchEventGuestPack as jest.Mock;
 const saveMock = saveEventGuestPack as jest.Mock;
@@ -225,6 +227,70 @@ describe("save-first rule (Continue, Publish, Save changes)", () => {
   test("a released session forgets typed changes", () => {
     setGuestPackNote(EVENT, "x");
     releaseGuestPackSession(EVENT);
+    expect(getGuestPackSession(EVENT)).toBeUndefined();
+    expect(hasPendingGuestPack(EVENT)).toBe(false);
+  });
+});
+
+// [TEST-MOD #4548] retest fixes: scheme case, server refusals, sign-out.
+describe("retest fixes", () => {
+  test("an upper-case scheme and host are lower-cased; the path is kept as typed", () => {
+    expect(checkGuestPackLink("HTTPS://Example.COM/Path/File.PDF?Q=A#Top")).toEqual({
+      ok: true,
+      url: "https://example.com/Path/File.PDF?Q=A#Top",
+      fixed: false,
+    });
+    expect(checkGuestPackLink("Example.COM/Menu")).toEqual({
+      ok: true,
+      url: "https://example.com/Menu",
+      fixed: true,
+    });
+  });
+
+  test("the payload sent to the server carries the lower-case scheme", async () => {
+    add("Map", "HTTPS://Maps.Example.com/Q");
+    saveMock.mockResolvedValue({
+      note: null,
+      items: [{ label: "Map", url: "https://maps.example.com/Q" }],
+      updatedAt: "2026-11-22T10:00:00Z",
+    });
+    expect(await saveGuestPack(EVENT)).toEqual({ ok: true, saved: true });
+    expect(saveMock).toHaveBeenCalledWith(EVENT, {
+      note: null,
+      items: [{ label: "Map", url: "https://maps.example.com/Q" }],
+    });
+  });
+
+  test("a server refusal of the links says what to fix, not 'check your connection'", async () => {
+    add("Map", "https://example.com/map");
+    saveMock.mockRejectedValue(
+      Object.assign(new Error("guest_pack_items_invalid"), { code: "items_invalid" }),
+    );
+    expect(await saveGuestPack(EVENT)).toEqual({
+      ok: false,
+      reason: "invalid",
+      message: "Fix the guest pack links before saving.",
+    });
+    saveMock.mockRejectedValue(
+      Object.assign(new Error("guest_pack_note_too_long"), { code: "note_too_long" }),
+    );
+    expect(await saveGuestPack(EVENT)).toEqual({
+      ok: false,
+      reason: "invalid",
+      message: "Shorten the note to 1,000 characters or fewer.",
+    });
+    saveMock.mockRejectedValue(new Error("Failed to fetch"));
+    expect(await saveGuestPack(EVENT)).toEqual({
+      ok: false,
+      reason: "failed",
+      message: "Couldn't save the guest pack. Check your connection and try again.",
+    });
+  });
+
+  test("sign-out drops every working copy", () => {
+    setGuestPackNote(EVENT, "typed but not saved");
+    expect(hasPendingGuestPack(EVENT)).toBe(true);
+    runSignOutCleanups();
     expect(getGuestPackSession(EVENT)).toBeUndefined();
     expect(hasPendingGuestPack(EVENT)).toBe(false);
   });

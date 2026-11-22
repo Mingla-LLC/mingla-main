@@ -27,8 +27,10 @@ import {
   checkGuestPackItem,
   checkGuestPackLink,
   checkGuestPackNote,
+  GUEST_PACK_COPY,
   GUEST_PACK_MAX_ITEMS,
 } from "./guestPackValidation";
+import { registerSignOutCleanup } from "./signOutCleanups";
 
 export interface GuestPackEditorItem {
   key: string;
@@ -341,6 +343,17 @@ async function doSave(eventId: string): Promise<GuestPackSaveResult> {
   } catch (error) {
     console.error("[guest-pack] save failed", error);
     patch(eventId, { saving: false });
+    // The server refused the content itself: say what to fix, not "check your
+    // connection" (the connection is fine and retrying cannot help).
+    // (GuestPackServiceError carries the code; read it structurally so a
+    // mocked service module cannot turn this into a TypeError.)
+    const code = error instanceof Error ? (error as { code?: unknown }).code : undefined;
+    if (code === "items_invalid") {
+      return { ok: false, reason: "invalid", message: GUEST_PACK_FIX_BEFORE_SAVING_COPY };
+    }
+    if (code === "note_too_long") {
+      return { ok: false, reason: "invalid", message: GUEST_PACK_COPY.noteTooLong };
+    }
     return { ok: false, reason: "failed", message: GUEST_PACK_SAVE_FAILED_COPY };
   }
 }
@@ -363,6 +376,11 @@ async function flushOne(eventId: string): Promise<GuestPackSaveResult> {
   }
   return saveGuestPack(eventId);
 }
+
+// Constitution #6: sign-out drops every working copy. This module loads lazily
+// with the editor chunk, so it registers with the sign-out choke point
+// (clearAllStores → runSignOutCleanups) instead of being imported there.
+registerSignOutCleanup(resetAllGuestPackSessions);
 
 // Registers this working copy with the always-loaded gate the screens call.
 setGuestPackDriver({

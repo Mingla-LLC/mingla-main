@@ -31,6 +31,19 @@ const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 const BARE_DOMAIN = /^[^\s/:@]+\.[^\s/:@]+(?:[/?#][^\s]*)?$/;
 const FULL_HTTPS = /^https:\/\/[^\s/]+\.[^\s]+$/i;
 
+/**
+ * The server accepts only a lower-case `https://` scheme. Scheme and host are
+ * case-insensitive on the web, so both are lower-cased here; the path, query
+ * and fragment are left exactly as typed (they can be case-sensitive).
+ */
+function lowerSchemeAndHost(url: string): string {
+  const rest = url.slice("https://".length);
+  const end = rest.search(/[/?#]/);
+  const host = end === -1 ? rest : rest.slice(0, end);
+  const tail = end === -1 ? "" : rest.slice(end);
+  return `https://${host.toLowerCase()}${tail}`;
+}
+
 export type LinkCheck =
   | { ok: true; url: string; fixed: boolean }
   | { ok: false; error: string };
@@ -54,11 +67,11 @@ export function checkGuestPackLink(raw: string): LinkCheck {
     if (text.length > GUEST_PACK_URL_MAX) {
       return { ok: false, error: GUEST_PACK_COPY.urlTooLong };
     }
-    return { ok: true, url: text, fixed: false };
+    return { ok: true, url: lowerSchemeAndHost(text), fixed: false };
   }
   if (SCHEME.test(text)) return { ok: false, error: GUEST_PACK_COPY.urlScheme };
   if (BARE_DOMAIN.test(text)) {
-    const url = `https://${text}`;
+    const url = lowerSchemeAndHost(`https://${text}`);
     if (url.length > GUEST_PACK_URL_MAX) {
       return { ok: false, error: GUEST_PACK_COPY.urlTooLong };
     }
