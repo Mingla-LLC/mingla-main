@@ -1090,6 +1090,20 @@ export function deriveVenuePage(
           },
       keepPriceRow: true,
     };
+  } else if (tabSet.has("plans") && view.memberships !== null) {
+    // #4490 spec 06 decision 13.2 (Seth, 19 Nov): Plans lead By the hour.
+    lead = {
+      kind: "memberships",
+      tab: "plans",
+      ctaLabel: "Join",
+      row: {
+        value: `Plans from ${money(view.memberships.fromMinor)} a month`,
+        detail: null,
+        actionLabel: "Join",
+        icon: "price",
+      },
+      keepPriceRow: false,
+    };
   } else if (tabSet.has("by_the_hour")) {
     lead = {
       kind: "by_the_hour",
@@ -1099,19 +1113,6 @@ export function deriveVenuePage(
         value: `From ${money(minFrom(hourOffers) as number)} an hour`,
         detail: null,
         actionLabel: "Book",
-        icon: "price",
-      },
-      keepPriceRow: false,
-    };
-  } else if (tabSet.has("plans") && view.memberships !== null) {
-    lead = {
-      kind: "memberships",
-      tab: "plans",
-      ctaLabel: "Join",
-      row: {
-        value: `Plans from ${money(view.memberships.fromMinor)} a month`,
-        detail: null,
-        actionLabel: "Join",
         icon: "price",
       },
       keepPriceRow: false,
