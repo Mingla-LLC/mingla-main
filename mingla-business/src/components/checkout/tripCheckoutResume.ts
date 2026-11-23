@@ -210,3 +210,21 @@ export function checkoutToSupersede(
   }
   return null;
 }
+
+/**
+ * issue #4522 E-3 — the confirmation of the checkout this cart was handed.
+ * The confirm screen starts only from a provider return (`?cs=`) and reads
+ * the checkout from the resume payload, or from `csi` / `bst` when that is
+ * gone; without them it rendered nothing.
+ */
+export function heldCheckoutConfirmPath(
+  tripEventId: string,
+  held: { checkoutSessionId: string; buyerStatusToken: string },
+): string {
+  const query = new URLSearchParams({
+    cs: "held",
+    csi: held.checkoutSessionId,
+    bst: held.buyerStatusToken,
+  });
+  return `/checkout-trip/${tripEventId}/confirm?${query.toString()}`;
+}

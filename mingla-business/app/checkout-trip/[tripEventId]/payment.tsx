@@ -91,6 +91,7 @@ import {
 } from "../../../src/components/checkout/checkoutPersistence";
 import {
   checkoutToSupersede,
+  heldCheckoutConfirmPath,
   restoreTripCheckout,
   tripResumeDecision,
   type ResumedTripCheckout,
@@ -527,6 +528,9 @@ function CheckoutTripPaymentScreenContent({
       if (Platform.OS === "web") {
         // ---------- WEB PATH ----------
         const surface: "web" = "web";
+        // issue #4522 E-3 — the checkout this cart was handed, when the cart
+        // changed since: the server closes it before opening the new one.
+        let supersedesCheckout: { checkoutSessionId: string; buyerStatusToken: string } | null = null;
         try {
           setProcessing(true);
           setPaymentError(null);
@@ -543,9 +547,7 @@ function CheckoutTripPaymentScreenContent({
           // create for a cart with a live provider attempt is never what the
           // guest wants. Re-following the URL we were already given is.
           const held = providerHandoffRef.current;
-          // issue #4522 E-3 — the checkout this cart was handed, when the cart
-          // changed since: the server closes it before opening the new one.
-          const supersedesCheckout = checkoutToSupersede(
+          supersedesCheckout = checkoutToSupersede(
             held,
             resumedCheckoutRef.current,
             cartFingerprint,
@@ -569,7 +571,7 @@ function CheckoutTripPaymentScreenContent({
               getTicketCheckoutStatus,
             );
             if (decision.kind === "confirm") {
-              router.replace(`/checkout-trip/${tripEventId}/confirm` as never);
+              router.replace(heldCheckoutConfirmPath(tripEventId, resumed) as never);
               return;
             }
             if (decision.kind === "follow") {
@@ -661,8 +663,11 @@ function CheckoutTripPaymentScreenContent({
           // issue #4522 E-3 — the checkout this cart was handed was paid
           // before the change: that booking stands, so show its confirmation
           // (the saved resume payload is that checkout) and open nothing new.
-          if ((error as { code?: unknown } | null)?.code === "checkout_already_paid") {
-            router.replace(`/checkout-trip/${tripEventId}/confirm` as never);
+          if (
+            (error as { code?: unknown } | null)?.code === "checkout_already_paid" &&
+            supersedesCheckout !== null
+          ) {
+            router.replace(heldCheckoutConfirmPath(tripEventId, supersedesCheckout) as never);
             return;
           }
           setProcessing(false);

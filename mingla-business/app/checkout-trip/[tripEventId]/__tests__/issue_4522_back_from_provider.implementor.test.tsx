@@ -103,6 +103,7 @@ import {
 // eslint-disable-next-line import/first
 import {
   checkoutToSupersede,
+  heldCheckoutConfirmPath,
   restoreTripCheckout,
   tripResumeDecision,
 } from "../../../../src/components/checkout/tripCheckoutResume";
@@ -448,10 +449,14 @@ describe("#4522 E-3 — Back, change the choice, Pay", () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require("path") as { join: (...p: string[]) => string };
     const screen = fs.readFileSync(path.join(__dirname, "..", "payment.tsx"), "utf8");
-    expect(screen).toContain("const supersedesCheckout = checkoutToSupersede(");
+    expect(screen).toContain("supersedesCheckout = checkoutToSupersede(");
     expect(screen).toContain("...(supersedesCheckout !== null ? { supersedesCheckout } : {}),");
     const paid = screen.indexOf('=== "checkout_already_paid"');
     expect(paid).toBeGreaterThan(0);
-    expect(screen.slice(paid, paid + 200)).toContain("router.replace(`/checkout-trip/${tripEventId}/confirm` as never);");
+    expect(screen.slice(paid, paid + 300)).toContain("router.replace(heldCheckoutConfirmPath(tripEventId, supersedesCheckout) as never);");
+    // The confirm screen starts only from `?cs=` and finds the checkout by
+    // csi / bst when the resume payload is gone (it rendered nothing before).
+    expect(heldCheckoutConfirmPath("trip-1", { checkoutSessionId: "s-mem", buyerStatusToken: "t-mem" }))
+      .toBe("/checkout-trip/trip-1/confirm?cs=held&csi=s-mem&bst=t-mem");
   });
 });
