@@ -807,8 +807,8 @@ BEGIN
    WHERE id = v_row;
   v := public.issue_4522_record_short_collection(v_row, 30000, 'pi_d1_row1');
   v_new := (v->>'reopenedInstallmentId')::uuid;
-  PERFORM pg_temp.check('T3-3 the row records the $300 collected and $150 is re-opened',
-    (v->>'shortMinor')::bigint = 15000
+  PERFORM pg_temp.check('T3-3 the row records the $300 collected and $150 is re-opened; ops are alerted',
+    (v->>'shortMinor')::bigint = 15000 AND (v->>'alertOps')::boolean AND NOT (v ? 'waivedMinor')
     AND (SELECT amount_cents FROM public.order_installments WHERE id = v_row) = 30000
     AND (SELECT amount_cents || ':' || status || ':' || kind FROM public.order_installments WHERE id = v_new) = '15000:scheduled:scheduled'
     AND (SELECT due_at FROM public.order_installments WHERE id = v_new) = (SELECT due_at FROM public.order_installments WHERE id = v_row), v::text);
@@ -826,6 +826,7 @@ BEGIN
     (v->>'paid_total_cents')::bigint = 60000 AND (v->>'refund_total_cents')::bigint = 30000, v::text);
   PERFORM pg_temp.check('T3-3 a replay re-opens nothing more',
     (public.issue_4522_record_short_collection(v_row, 30000, 'pi_d1_row1')->>'shortMinor')::bigint = 0
+    AND NOT COALESCE((public.issue_4522_record_short_collection(v_row, 30000, 'pi_d1_row1')->>'alertOps')::boolean, false)
     AND (SELECT count(*) FROM public.order_installments WHERE order_id = o) = 3);
 END
 $t$;

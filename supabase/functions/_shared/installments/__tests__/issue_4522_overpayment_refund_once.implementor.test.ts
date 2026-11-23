@@ -616,7 +616,9 @@ Deno.test("T3-3 the success webhook records a short Stripe charge for what it co
       if (name === "issue_4522_record_short_collection") {
         const short = rowAmount - Number(args.p_received_minor);
         rowAmount = Number(args.p_received_minor);
-        return { data: { ok: true, shortMinor: short }, error: null };
+        return { data: short > 0
+          ? { ok: true, shortMinor: short, alertOps: true, orderId: "order-3", currency: "USD", rowAmountMinor: 45000 }
+          : { ok: true, shortMinor: 0 }, error: null };
       }
       if (name === "record_order_installment_provider_sale") return { data: { ok: true }, error: null };
       if (name === "issue_3645_clear_at_risk_if_settled") return { data: null, error: null };
@@ -633,11 +635,21 @@ Deno.test("T3-3 the success webhook records a short Stripe charge for what it co
       return { data: null, error: null, count: 1 };
     },
   });
-  await handleInstallmentPaymentSucceeded(fake.client as never, {
-    id: "evt_1", type: "payment_intent.succeeded",
-    data: { object: { id: "pi_row", amount: 30000, amount_received: 30000, latest_charge: "ch_1", application_fee_amount: 0,
-      metadata: { mingla_installment_id: ID, mingla_brand_id: "b" } } },
-  } as never);
+  // The safety net is never silent: one ops alert (no recipients in tests, so
+  // the alert rail logs the subject instead of sending).
+  const warned: string[] = [];
+  const warn = console.warn;
+  console.warn = (...a: unknown[]) => { warned.push(a.map((x) => JSON.stringify(x)).join(" ")); };
+  try {
+    await handleInstallmentPaymentSucceeded(fake.client as never, {
+      id: "evt_1", type: "payment_intent.succeeded",
+      data: { object: { id: "pi_row", amount: 30000, amount_received: 30000, latest_charge: "ch_1", application_fee_amount: 0,
+        metadata: { mingla_installment_id: ID, mingla_brand_id: "b" } } },
+    } as never);
+  } finally {
+    console.warn = warn;
+  }
+  assertEquals(warned.filter((w) => w.includes("A trip payment landed for less than was owed")).length, 1);
   const short = fake.rpcCalls.find((c) => c.name === "issue_4522_record_short_collection");
   assertEquals(short?.args, { p_installment_id: ID, p_received_minor: 30000, p_provider_ref: "pi_row" });
   const audit = fake.tableOps.find((o) => o.kind === "insert" && JSON.stringify(o.values ?? {}).includes("tr3.installment_collected"));

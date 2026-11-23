@@ -340,6 +340,9 @@ export async function createInstallmentPI(
     `installment:${installment.order_id}:${installment.ordinal}:${installment.retry_count}` +
     installmentKeyVersionSuffix(installment.schedule_version);
 
+  // issue #4522 — asked before any Stripe call (a probe outage throws here,
+  // never after a PaymentIntent exists).
+  const markInFlight = await planV2SchemaAvailable(supabase);
   try {
     // orch-strict-grep-allow stripe-no-idempotency-key — idempotencyKey IS passed via the request-options second arg; SPEC §3.2.1 retry-aware format diverges from generateIdempotencyKey's epoch-ms shape because cron + webhook need deterministic per-(installment,attempt) keys to prevent double-charge.
     // Create unconfirmed, re-claim, then confirm — never confirm:true before reclaim
@@ -372,11 +375,22 @@ export async function createInstallmentPI(
 
     // Re-claim after unconfirmed create. If cancel won, cancel the PI (works
     // while unconfirmed) and skip — never confirm.
+    // issue #4522 (I-4522-CHARGE-IS-WHAT-IS-OWED) — with the #4522 schema the
+    // re-claim also marks the row in flight under the order lock, for exactly
+    // the amount and version this PaymentIntent was created with; a row that
+    // changed since is refused (balance_changed) and never confirmed.
     {
-      const { data: reclaim, error: reclaimError } = await supabase.rpc(
-        "claim_order_installment_for_charge",
-        { p_installment_id: installment.id },
-      );
+      const { data: reclaim, error: reclaimError } = markInFlight
+        ? await supabase.rpc("issue_4522_mark_stripe_charge_in_flight", {
+          p_installment_id: installment.id,
+          p_payment_intent_id: pi.id,
+          p_amount_cents: installment.amount_cents,
+          p_schedule_version: installment.schedule_version ?? 0,
+        })
+        : await supabase.rpc(
+          "claim_order_installment_for_charge",
+          { p_installment_id: installment.id },
+        );
       const reclaimRow = (reclaim ?? null) as
         | { ok?: boolean; reason?: string }
         | null;
@@ -385,6 +399,7 @@ export async function createInstallmentPI(
         reclaimRow === null ||
         reclaimRow.ok !== true
       ) {
+        const changed = reclaimRow?.reason === "balance_changed";
         try {
           // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
           await stripe.paymentIntents.cancel(pi.id, {}, {
@@ -398,11 +413,12 @@ export async function createInstallmentPI(
             cancelErr instanceof Error ? cancelErr.message : cancelErr,
           );
         }
+        const skipped = changed ? "balance_changed" : "cancelled_during_charge";
         return {
           ok: false,
-          error: "cancelled_during_charge",
+          error: skipped,
           outcome: "skipped",
-          reason: "cancelled_during_charge",
+          reason: skipped,
           chargeId: pi.id,
         };
       }

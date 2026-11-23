@@ -1,3 +1,4 @@
+-- MINGLA-INVARIANT: I-4522-CHARGE-IS-WHAT-IS-OWED | issue #4522 | A planned charge is confirmed only after its row is marked in flight under the order lock for exactly the amount it was created for; no rollover or re-spread changes a row in flight, so what lands is what the row owes.
 -- MINGLA-INVARIANT: I-4522-SAFEUPDATE | issue #4522 | Every #4522 money function runs in a hosted PostgREST session (pg-safeupdate preloaded) as the role that really calls it: the flexible-payment lifecycle, verified release, overpayment return, refund compute, cancel, add-on refund helpers, the RSVP add-on wrapper and the door scan never issue a DELETE or UPDATE without a WHERE clause.
 \set ON_ERROR_STOP on
 
@@ -261,6 +262,10 @@ BEGIN
   PERFORM public.t4522su_check('T3 ops by hand', v->>'state' = 'refunded', v::text);
   v := public.issue_3645_cancel_refund_installment(v_flex, 'The host cancelled this trip', 'su-cancel-1');
   PERFORM public.t4522su_check('T3 event-cancel refund prepare', (v->>'amount_cents')::bigint > 0, v::text);
+  v := public.issue_4522_mark_stripe_charge_in_flight(public.t4522su_row('4522a500-0000-4000-8000-0000000000a1', 2),
+         'pi_su_short', (SELECT amount_cents FROM public.order_installments WHERE id = public.t4522su_row('4522a500-0000-4000-8000-0000000000a1', 2)),
+         (SELECT schedule_version FROM public.order_installments WHERE id = public.t4522su_row('4522a500-0000-4000-8000-0000000000a1', 2)));
+  PERFORM public.t4522su_check('T3 marking a Stripe charge in flight runs', v ? 'ok', v::text);
   UPDATE public.order_installments SET status = 'collected', collected_at = now(), stripe_payment_intent_id = 'pi_su_short'
    WHERE id = public.t4522su_row('4522a500-0000-4000-8000-0000000000a1', 2) AND status IN ('scheduled', 'failed');
   v := public.issue_4522_record_short_collection(public.t4522su_row('4522a500-0000-4000-8000-0000000000a1', 2), 100, 'pi_su_short');
@@ -296,3 +301,193 @@ SELECT public.t4522su_check('SCAN the door scan runs under pg-safeupdate',
 RESET ROLE;
 
 ROLLBACK;
+
+-- F. I-4522-CHARGE-IS-WHAT-IS-OWED, two real sessions (dblink), both orders.
+--    A planned Stripe charge of row B races the rollover of missed row A.
+--    Each session is service_role under pg-safeupdate, as the edge runs.
+--    Committed fixtures in their own namespace (the database is suite-owned).
+--    Whatever order the two take the order lock in, B is charged exactly what
+--    it owes at that moment, A's missed amount is collected in full later,
+--    and the order collects exactly what it owes: nothing lost, nothing twice.
+\getenv i4522_pw PGPASSWORD
+CREATE EXTENSION IF NOT EXISTS dblink;
+SELECT n.nspname AS i4522_dblink_schema
+  FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = 'dblink' \gset
+SET search_path = public, :"i4522_dblink_schema";
+CREATE TEMP TABLE i4522_cc AS
+SELECT format('host=127.0.0.1 port=%s dbname=%I user=%I password=%s',
+  current_setting('port'), current_database(), current_user, :'i4522_pw') AS conn;
+INSERT INTO auth.users(id, email) VALUES ('4522cc00-0000-4000-8000-000000000001', 'race2-host@example.test');
+INSERT INTO public.creator_accounts(id, email) VALUES ('4522cc00-0000-4000-8000-000000000001', 'race2-host@example.test');
+INSERT INTO public.brands(id, account_id, name, slug, default_currency, payment_provider, payment_country)
+VALUES ('4522cc00-0000-4000-8000-000000000010', '4522cc00-0000-4000-8000-000000000001',
+        'Race2 brand', 'race2-brand-4522', 'USD', 'stripe', 'US');
+INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone, currency)
+VALUES ('4522cc00-0000-4000-8000-000000000020', '4522cc00-0000-4000-8000-000000000010',
+        '4522cc00-0000-4000-8000-000000000001', 'Race2 trip', 'race2-trip-4522', 'trip', 'scheduled',
+        'public', 'America/New_York', 'USD'),
+       -- F-2's order has its own trip: the main session still holds F-1's locks.
+       ('4522cc00-0000-4000-8000-000000000021', '4522cc00-0000-4000-8000-000000000010',
+        '4522cc00-0000-4000-8000-000000000001', 'Race2 trip B', 'race2-trip-b-4522', 'trip', 'scheduled',
+        'public', 'America/New_York', 'USD');
+INSERT INTO public.ticket_types(id, event_id, name, price_cents, currency, is_free, quantity_total, is_unlimited,
+  min_purchase_qty, available_online, available_in_person)
+VALUES ('4522cc00-0000-4000-8000-000000000030', '4522cc00-0000-4000-8000-000000000020', 'Room',
+        40000, 'USD', false, 20, false, 1, true, false),
+       ('4522cc00-0000-4000-8000-000000000031', '4522cc00-0000-4000-8000-000000000021', 'Room',
+        40000, 'USD', false, 20, false, 1, true, false);
+-- Deposit $100; A (missed: third failure written), B (due now), C (later): $100 each.
+INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents, currency,
+  payment_method, payment_status, source, installment_plan_root, payment_plan_terms)
+SELECT o, CASE WHEN o = '4522cc00-0000-4000-8000-0000000000a2' THEN '4522cc00-0000-4000-8000-000000000021'::uuid
+            ELSE '4522cc00-0000-4000-8000-000000000020'::uuid END,
+       'race2-buyer@example.test', 'Race2 Buyer', '+15554522002',
+       10000, 'USD', 'online_card', 'paid', 'online_checkout', true, '{"v":2,"auto_adjust":true,"flex_enabled":false}'
+  FROM unnest(ARRAY['4522cc00-0000-4000-8000-0000000000a1', '4522cc00-0000-4000-8000-0000000000a2']::uuid[]) o;
+INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
+  collection_method, ticket_type_id, retry_count, failed_at, failure_reason)
+SELECT o, g, 10000, 'USD', d, CASE g WHEN 1 THEN 'failed' ELSE 'scheduled' END, 'stripe', 'auto_card',
+       CASE WHEN o = '4522cc00-0000-4000-8000-0000000000a2' THEN '4522cc00-0000-4000-8000-000000000031'::uuid
+            ELSE '4522cc00-0000-4000-8000-000000000030'::uuid END, CASE g WHEN 1 THEN 3 ELSE 0 END,
+       CASE g WHEN 1 THEN now() END, CASE g WHEN 1 THEN 'card_declined' END
+  FROM unnest(ARRAY['4522cc00-0000-4000-8000-0000000000a1', '4522cc00-0000-4000-8000-0000000000a2']::uuid[]) o,
+       (VALUES (1, now() - interval '20 days'), (2, now() - interval '1 hour'), (3, now() + interval '40 days')) v(g, d);
+
+CREATE FUNCTION pg_temp.rows(p_order uuid) RETURNS text
+LANGUAGE sql AS $$
+  SELECT string_agg(ordinal || ':' || amount_cents || ':' || status || ':v' || schedule_version, ','
+                    ORDER BY ordinal)
+    FROM public.order_installments WHERE order_id = p_order AND ordinal <= 3
+$$;
+CREATE FUNCTION pg_temp.rid(p_order uuid, p_ordinal int) RETURNS uuid LANGUAGE sql AS $$
+  SELECT id FROM public.order_installments WHERE order_id = p_order AND ordinal = p_ordinal $$;
+-- The webhook for a charge that landed: collected, then the safety net.
+CREATE FUNCTION pg_temp.lands(p_id uuid, p_received bigint, p_pi text) RETURNS jsonb LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE public.order_installments SET status = 'collected', collected_at = now(), stripe_payment_intent_id = p_pi
+   WHERE id = p_id AND status IN ('scheduled', 'failed');
+  RETURN public.issue_4522_record_short_collection(p_id, p_received, p_pi);
+END $$;
+-- The next charge of a row: read amount and version, mark in flight, land for that amount.
+CREATE FUNCTION pg_temp.charge(p_id uuid, p_pi text) RETURNS bigint LANGUAGE plpgsql AS $$
+DECLARE v_amt bigint; v_ver integer; v jsonb;
+BEGIN
+  SELECT amount_cents, schedule_version INTO v_amt, v_ver FROM public.order_installments WHERE id = p_id;
+  v := public.issue_4522_mark_stripe_charge_in_flight(p_id, p_pi, v_amt, v_ver);
+  IF NOT COALESCE((v->>'marked')::boolean, false) THEN RAISE EXCEPTION 'F charge of % not marked: %', p_id, v; END IF;
+  v := pg_temp.lands(p_id, v_amt, p_pi);
+  IF (v->>'shortMinor')::bigint <> 0 THEN RAISE EXCEPTION 'F charge of % landed short: %', p_id, v; END IF;
+  RETURN v_amt;
+END $$;
+
+DO $race$
+DECLARE
+  v_conn text := (SELECT conn FROM i4522_cc);
+  o1 uuid := '4522cc00-0000-4000-8000-0000000000a1';
+  o2 uuid := '4522cc00-0000-4000-8000-0000000000a2';
+  v_roll text; v_mark text; v_b bigint; v_c bigint; v_bal jsonb; v_name text;
+BEGIN
+  -- One pair of sessions per order, each as the edge runs: service_role
+  -- under pg-safeupdate.
+  FOREACH v_name IN ARRAY ARRAY['i4522_roll', 'i4522_charge', 'i4522_roll2', 'i4522_charge2'] LOOP
+    PERFORM dblink_connect(v_name, v_conn);
+    PERFORM dblink_exec(v_name, $q$LOAD 'safeupdate'$q$);
+    PERFORM dblink_exec(v_name, 'SET ROLE service_role');
+  END LOOP;
+
+  -- F-1 rollover first. The charge fixed B at $100 (version 0) and created its
+  -- unconfirmed PaymentIntent; the rollover holds the order lock; the mark waits.
+  PERFORM dblink_send_query('i4522_roll', format(
+    $q$SELECT r::text, pg_sleep(1) IS NULL FROM (SELECT public.issue_4522_missed_rollover(%L) r) s$q$,
+    pg_temp.rid(o1, 1)));
+  PERFORM pg_sleep(0.2);
+  PERFORM dblink_send_query('i4522_charge', format(
+    $q$SELECT public.issue_4522_mark_stripe_charge_in_flight(%L, 'pi_f1_b', 10000, 0)::text$q$, pg_temp.rid(o1, 2)));
+  PERFORM pg_sleep(0.2);
+  IF dblink_is_busy('i4522_charge') <> 1 THEN RAISE EXCEPTION 'F-1 FAIL: the mark did not wait for the rollover'; END IF;
+  SELECT r INTO v_roll FROM dblink_get_result('i4522_roll') AS t(r text, slept boolean);
+  SELECT r INTO v_mark FROM dblink_get_result('i4522_charge') AS t(r text);
+  IF NOT (v_roll::jsonb->>'rolledOver')::boolean OR v_mark::jsonb->>'reason' IS DISTINCT FROM 'balance_changed'
+     OR (SELECT stripe_payment_intent_id FROM public.order_installments WHERE id = pg_temp.rid(o1, 2)) IS NOT NULL
+     OR pg_temp.rows(o1) IS DISTINCT FROM '1:10000:superseded:v0,2:15000:scheduled:v1,3:15000:scheduled:v1' THEN
+    RAISE EXCEPTION 'F-1 FAIL: a $100 charge must not be confirmed on a row that now owes $150: % / % / %',
+      v_roll, v_mark, pg_temp.rows(o1);
+  END IF;
+  -- The next run charges B for what it now owes, then C: exactly the total.
+  v_b := pg_temp.charge(pg_temp.rid(o1, 2), 'pi_f1_b2');
+  v_c := pg_temp.charge(pg_temp.rid(o1, 3), 'pi_f1_c');
+  v_bal := public.issue_4522_balance(o1);
+  IF v_b <> 15000 OR v_c <> 15000 OR (v_bal->>'remainingMinor')::bigint <> 0
+     OR (v_bal->>'paidMinor')::bigint <> 40000 OR (v_bal->>'totalMinor')::bigint <> 40000
+     OR EXISTS (SELECT 1 FROM public.order_overpayments WHERE order_id = o1) THEN
+    RAISE EXCEPTION 'F-1 FAIL: collected % + % of $300 owed: %', v_b, v_c, v_bal;
+  END IF;
+  RAISE NOTICE 'F-1 PASS: rollover first: the stale $100 charge is refused; B $150 + C $150 = $300 owed';
+
+  -- F-2 charge first. The mark holds the order lock; the rollover waits, then
+  -- leaves B (in flight) alone and puts A's $100 on C.
+  PERFORM dblink_send_query('i4522_charge2', format(
+    $q$SELECT r::text, pg_sleep(1) IS NULL FROM (SELECT public.issue_4522_mark_stripe_charge_in_flight(%L, 'pi_f2_b', 10000, 0) r) s$q$,
+    pg_temp.rid(o2, 2)));
+  PERFORM pg_sleep(0.2);
+  PERFORM dblink_send_query('i4522_roll2', format(
+    $q$SELECT public.issue_4522_missed_rollover(%L)::text$q$, pg_temp.rid(o2, 1)));
+  PERFORM pg_sleep(0.2);
+  IF dblink_is_busy('i4522_roll2') <> 1 THEN RAISE EXCEPTION 'F-2 FAIL: the rollover did not wait for the mark'; END IF;
+  SELECT r INTO v_mark FROM dblink_get_result('i4522_charge2') AS t(r text, slept boolean);
+  SELECT r INTO v_roll FROM dblink_get_result('i4522_roll2') AS t(r text);
+  IF NOT COALESCE((v_mark::jsonb->>'marked')::boolean, false) OR NOT (v_roll::jsonb->>'rolledOver')::boolean
+     OR pg_temp.rows(o2) IS DISTINCT FROM '1:10000:superseded:v0,2:10000:scheduled:v0,3:20000:scheduled:v1'
+     OR (SELECT at_risk FROM public.orders WHERE id = o2) IS TRUE THEN
+    RAISE EXCEPTION 'F-2 FAIL: the row in flight must keep its amount and the missed $100 go to C: % / % / %',
+      v_mark, v_roll, pg_temp.rows(o2);
+  END IF;
+  IF (pg_temp.lands(pg_temp.rid(o2, 2), 10000, 'pi_f2_b')->>'shortMinor')::bigint <> 0 THEN
+    RAISE EXCEPTION 'F-2 FAIL: B landed short';
+  END IF;
+  v_c := pg_temp.charge(pg_temp.rid(o2, 3), 'pi_f2_c');
+  v_bal := public.issue_4522_balance(o2);
+  IF v_c <> 20000 OR (v_bal->>'remainingMinor')::bigint <> 0
+     OR (v_bal->>'paidMinor')::bigint <> 40000 OR (v_bal->>'totalMinor')::bigint <> 40000
+     OR EXISTS (SELECT 1 FROM public.order_overpayments WHERE order_id = o2) THEN
+    RAISE EXCEPTION 'F-2 FAIL: collected $100 + % of $300 owed: %', v_c, v_bal;
+  END IF;
+  RAISE NOTICE 'F-2 PASS: charge first: B $100 lands exactly, C $200 = $300 owed';
+
+  FOREACH v_name IN ARRAY ARRAY['i4522_roll', 'i4522_charge', 'i4522_roll2', 'i4522_charge2'] LOOP
+    PERFORM dblink_disconnect(v_name);
+  END LOOP;
+END
+$race$;
+
+-- G. The mark itself: a changed amount or version is refused and writes
+--    nothing; it is closed to client roles.
+DO $g$
+DECLARE v jsonb; v_c uuid;
+BEGIN
+  INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents, currency,
+    payment_method, payment_status, source, installment_plan_root, payment_plan_terms)
+  VALUES ('4522cc00-0000-4000-8000-0000000000a3', '4522cc00-0000-4000-8000-000000000020', 'race2-buyer@example.test',
+    'Race2 Buyer', '+15554522002', 10000, 'USD', 'online_card', 'paid', 'online_checkout', true, '{"v":2}');
+  INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
+    collection_method, ticket_type_id)
+  VALUES ('4522cc00-0000-4000-8000-0000000000a3', 1, 10000, 'USD', now(), 'scheduled', 'stripe', 'auto_card',
+    '4522cc00-0000-4000-8000-000000000030') RETURNING id INTO v_c;
+  v := public.issue_4522_mark_stripe_charge_in_flight(v_c, 'pi_g_1', 9999, 0);
+  IF v->>'reason' IS DISTINCT FROM 'balance_changed' THEN RAISE EXCEPTION 'G-1 FAIL: %', v; END IF;
+  v := public.issue_4522_mark_stripe_charge_in_flight(v_c, 'pi_g_1', 10000, 1);
+  IF v->>'reason' IS DISTINCT FROM 'balance_changed'
+     OR (SELECT stripe_payment_intent_id FROM public.order_installments WHERE id = v_c) IS NOT NULL THEN
+    RAISE EXCEPTION 'G-2 FAIL: %', v;
+  END IF;
+  UPDATE public.orders SET cancelled_at = now() WHERE id = '4522cc00-0000-4000-8000-0000000000a3';
+  v := public.issue_4522_mark_stripe_charge_in_flight(v_c, 'pi_g_1', 10000, 0);
+  IF v->>'reason' IS DISTINCT FROM 'order_cancelled' THEN RAISE EXCEPTION 'G-3 FAIL: claim refusals pass through: %', v; END IF;
+  IF has_function_privilege('authenticated', 'public.issue_4522_mark_stripe_charge_in_flight(uuid, text, bigint, integer)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.issue_4522_mark_stripe_charge_in_flight(uuid, text, bigint, integer)', 'EXECUTE')
+     OR NOT has_function_privilege('service_role', 'public.issue_4522_mark_stripe_charge_in_flight(uuid, text, bigint, integer)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'G-4 FAIL: service role only';
+  END IF;
+  RAISE NOTICE 'G PASS: a changed row is never marked; claim refusals pass through; service role only';
+END
+$g$;

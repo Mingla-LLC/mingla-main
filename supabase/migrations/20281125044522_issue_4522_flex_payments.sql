@@ -575,13 +575,16 @@ $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_hold_collected_excess(uuid, bigint, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4522_hold_collected_excess(uuid, bigint, text) TO service_role;
 
--- T3-3 / T3-9 (I-4522-COLLECTED-IS-WHAT-WAS-CHARGED): a planned Stripe
--- row's charge that landed for LESS than the row now owes (the row grew by a
--- missed-payment rollover between the cron fixing the charge amount and the
--- charge being saved on the row). The row is recorded for exactly what the
--- provider collected; the rest is re-opened as its own planned row of the
--- same package, due when the row was due, so the cron charges it like any
--- due row. Paid, paid-in-full, payouts and cancel refunds then count only
+-- T3-3 / T3-9 (I-4522-COLLECTED-IS-WHAT-WAS-CHARGED): the safety net for a
+-- planned Stripe row's charge that landed for LESS than the row owes. It
+-- should never fire: a charge is confirmed only after
+-- issue_4522_mark_stripe_charge_in_flight fixed its amount under the order
+-- lock, and no re-spread changes a row in flight. If it ever does, the row is
+-- recorded for exactly what the provider collected; the rest is re-opened as
+-- its own planned row of the same package, due when the row was due, so the
+-- cron charges it like any due row (or, too small to charge alone, joins the
+-- next open row). Nothing is ever written off. alertOps tells the webhook to
+-- alert ops once. Paid, paid-in-full, payouts and cancel refunds count only
 -- money actually collected. The add-on portion, planned fee and referral
 -- share split in proportion (the re-opened row takes the rounded-down part).
 -- Idempotent: once recorded, the row's amount is what was received.
@@ -604,7 +607,6 @@ DECLARE
   v_fee bigint;
   v_new uuid;
   v_folded boolean := false;
-  v_waived bigint;
 BEGIN
   SELECT order_id INTO v_order_id FROM public.order_installments WHERE id = p_installment_id;
   IF NOT FOUND OR public.issue_4522_lock_order_graph(v_order_id) IS NULL THEN
@@ -660,13 +662,13 @@ BEGIN
       v_row.ticket_type_id, 'scheduled', v_addon, v_ref, v_fee, v_row.plan_bound_at)
     RETURNING id INTO v_new;
   END IF;
-  v_waived := public.issue_4522_waive_unchargeable_remainder(v_row.order_id, 'short_collection');
   PERFORM public.issue_3645_audit_installment(p_installment_id, 'tr3.installment_short_collection',
     jsonb_build_object('order_id', v_row.order_id, 'row_amount_minor', v_row.amount_cents,
       'received_minor', p_received_minor, 'reopened_minor', v_short, 'reopened_installment_id', v_new,
-      'folded', v_folded, 'waived_minor', v_waived, 'provider_ref', p_provider_ref));
+      'folded', v_folded, 'provider_ref', p_provider_ref));
   RETURN jsonb_build_object('ok', true, 'shortMinor', v_short, 'reopenedInstallmentId', v_new,
-    'folded', v_folded, 'waivedMinor', v_waived, 'orderId', v_row.order_id);
+    'folded', v_folded, 'orderId', v_row.order_id, 'currency', trim(v_row.currency),
+    'rowAmountMinor', v_row.amount_cents, 'receivedMinor', p_received_minor, 'alertOps', true);
 END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_record_short_collection(uuid, bigint, text, timestamptz) FROM PUBLIC, anon, authenticated;
@@ -2011,12 +2013,15 @@ BEGIN
     FROM public.order_installments oi
    WHERE oi.order_id = p_order_id AND oi.kind = 'scheduled' AND oi.status IN ('scheduled', 'failed')
      AND (p_rolled_in_row IS NULL OR oi.due_at > v_roll.due_at)
-     -- A flexible payment is applied around a row whose provider charge can
-     -- still land (it keeps its amount; the caller applied nothing to it), so
-     -- a settle is never held hostage by a charge that may never finish.
-     AND (p_reason <> 'flex_payment' OR NOT public.issue_4522_row_in_flight(oi.id));
-  -- Any other re-spread: a row whose provider charge can still land keeps
-  -- its amount, so the re-spread waits (PT409) and its caller retries.
+     -- A flexible payment, and a missed payment rolled in, are placed around
+     -- a row whose provider charge can still land: it keeps its amount (the
+     -- charge was fixed for exactly that amount when the row was marked in
+     -- flight), so what lands is what the row owes and the moved money goes
+     -- to rows not being charged (I-4522-CHARGE-IS-WHAT-IS-OWED).
+     AND (p_reason NOT IN ('flex_payment', 'missed_rollover') OR NOT public.issue_4522_row_in_flight(oi.id));
+  -- Any other re-spread (an add-on removed): a row whose provider charge can
+  -- still land keeps its amount, so the re-spread waits (PT409) and its
+  -- caller retries.
   IF EXISTS (SELECT 1 FROM pg_temp.i4522_open o WHERE public.issue_4522_row_in_flight(o.id)) THEN
     RAISE EXCEPTION 'balance_payment_in_flight' USING ERRCODE = 'PT409';
   END IF;
@@ -2940,6 +2945,60 @@ BEGIN
   );
 END;
 $function$;
+
+-- I-4522-CHARGE-IS-WHAT-IS-OWED: a planned Stripe charge is confirmed only
+-- after this marks its row in flight, under the order graph lock (event →
+-- order → open rows), for exactly the amount and schedule version the
+-- unconfirmed PaymentIntent was created with. The marker is the existing one
+-- (the PaymentIntent id on a scheduled row: issue_4522_stripe_charge_in_flight),
+-- so from here no rollover, re-spread or flexible payment changes the row
+-- until the charge settles. A row that changed since the amount was read is
+-- refused (balance_changed): the caller cancels the unconfirmed
+-- PaymentIntent and the next run charges the new amount under a new key.
+-- Every claim refusal is returned as is. Service role (createInstallmentPI).
+CREATE FUNCTION public.issue_4522_mark_stripe_charge_in_flight(
+  p_installment_id uuid,
+  p_payment_intent_id text,
+  p_amount_cents bigint,
+  p_schedule_version integer
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_order_id uuid;
+  v_claim jsonb;
+  v_row public.order_installments;
+BEGIN
+  IF p_payment_intent_id IS NULL OR p_payment_intent_id = '' THEN
+    RAISE EXCEPTION 'payment_intent_required' USING ERRCODE = '22023';
+  END IF;
+  SELECT order_id INTO v_order_id FROM public.order_installments WHERE id = p_installment_id;
+  IF NOT FOUND OR public.issue_4522_lock_order_graph(v_order_id) IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_found');
+  END IF;
+  v_claim := public.claim_order_installment_for_charge(p_installment_id);
+  IF NOT COALESCE((v_claim->>'ok')::boolean, false) THEN
+    RETURN v_claim;
+  END IF;
+  SELECT * INTO v_row FROM public.order_installments WHERE id = p_installment_id;
+  IF v_row.provider <> 'stripe' OR v_row.status <> 'scheduled' THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'installment_not_chargeable', 'status', v_row.status);
+  END IF;
+  IF v_row.amount_cents IS DISTINCT FROM p_amount_cents
+     OR v_row.schedule_version IS DISTINCT FROM p_schedule_version THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'balance_changed',
+      'amount_cents', v_row.amount_cents, 'schedule_version', v_row.schedule_version);
+  END IF;
+  UPDATE public.order_installments
+     SET stripe_payment_intent_id = p_payment_intent_id, updated_at = now()
+   WHERE id = p_installment_id;
+  RETURN v_claim || jsonb_build_object('marked', true, 'schedule_version', v_row.schedule_version);
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_mark_stripe_charge_in_flight(uuid, text, bigint, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_mark_stripe_charge_in_flight(uuid, text, bigint, integer) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_3645_begin_installment_attempt(p_installment_id uuid, p_method text, p_application_fee_cents bigint, p_atrisk_override boolean DEFAULT false, p_now timestamp with time zone DEFAULT now())
  RETURNS jsonb

@@ -480,13 +480,17 @@ BEGIN
     AND (SELECT amount_cents FROM public.order_installments WHERE order_id = '45220f02-0000-4000-8000-0000000000e2' AND ordinal = 2) = 30030
     AND NOT EXISTS (SELECT 1 FROM public.order_installments WHERE order_id = '45220f02-0000-4000-8000-0000000000e2'
                      AND status IN ('scheduled', 'failed') AND amount_cents < 50), v::text);
-  -- ... and with no later row, the 30¢ is the whole balance: settled by waiver at once.
+  -- ... and with no later row, the 30¢ stays owed on a re-opened row (never
+  -- written off) and ops are alerted: the safety net is never silent.
   v_row := (SELECT id FROM public.order_installments WHERE order_id = '45220f02-0000-4000-8000-0000000000e3' AND ordinal = 1);
   UPDATE public.order_installments SET status = 'collected', collected_at = now(), stripe_payment_intent_id = 'pi_43_e3' WHERE id = v_row;
   v := public.issue_4522_record_short_collection(v_row, 29970, 'pi_43_e3');
-  PERFORM pg_temp.check('T4-3 a 30¢ short on the last row is settled by waiver, never dunned',
-    (v->>'waivedMinor')::bigint = 30
-    AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000e3')->>'remainingMinor')::bigint = 0, v::text);
+  PERFORM pg_temp.check('T4-3 a 30¢ short on the last row stays owed and alerts ops, never written off',
+    (v->>'shortMinor')::bigint = 30 AND NOT (v->>'folded')::boolean AND (v->>'alertOps')::boolean
+    AND NOT (v ? 'waivedMinor')
+    AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000e3')->>'remainingMinor')::bigint = 30
+    AND (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000e3')->>'paidMinor')::bigint
+        = (public.issue_4522_balance('45220f02-0000-4000-8000-0000000000e3')->>'totalMinor')::bigint - 30, v::text);
   PERFORM pg_temp.check('T4-3 the waiver is closed to client roles',
     NOT has_function_privilege('authenticated', 'public.issue_4522_waive_unchargeable_remainder(uuid, text)', 'EXECUTE')
     AND NOT has_function_privilege('anon', 'public.issue_4522_waive_unchargeable_remainder(uuid, text)', 'EXECUTE')

@@ -438,7 +438,15 @@ async function recordShortCollection(
     p_received_minor: received,
     p_provider_ref: piId,
   });
-  const result = (data ?? null) as { ok?: boolean; shortMinor?: number; reason?: string } | null;
+  const result = (data ?? null) as {
+    ok?: boolean;
+    shortMinor?: number;
+    reason?: string;
+    alertOps?: boolean;
+    orderId?: string;
+    currency?: string;
+    rowAmountMinor?: number;
+  } | null;
   if (error !== null || result?.ok !== true) {
     throw new Error(
       `issue_4522_record_short_collection failed: ${error?.message ?? result?.reason ?? "unknown"}`,
@@ -449,6 +457,15 @@ async function recordShortCollection(
     console.warn(
       `[installment-webhook] ${installmentId} collected ${received}, ${short} re-opened as a planned row`,
     );
+    // The safety net fired (it never should): never silent. The shortfall
+    // stays owed on its re-opened row; nothing was written off.
+    if (result.alertOps === true) {
+      await installmentOpsAlert("A trip payment landed for less than was owed", [
+        "A planned trip payment was collected for less than its payment owed. The rest stays owed and is charged as a payment of its own; nothing was written off.",
+        `Order: ${result.orderId ?? "?"}; instalment: ${installmentId}; PaymentIntent: ${piId}`,
+        `Owed: ${String(result.rowAmountMinor ?? "?")}; collected: ${received}; still owed: ${short} (${result.currency ?? "?"}, minor units)`,
+      ]);
+    }
   }
   return short;
 }

@@ -80,6 +80,10 @@ class ChargeFakeDb {
     if (name === "resolve_effective_take_rate_bps") {
       return Promise.resolve(rateAnswer(this.takeBps));
     }
+    // issue #4522 — the plan v2 probe: this fake is main's database.
+    if (name === "issue_4522_plan_v2_enabled") {
+      return Promise.resolve({ data: null, error: { code: "PGRST202", message: "not found" } });
+    }
     throw new Error(`unexpected rpc ${name}`);
   }
   from(table: string) {
