@@ -141,9 +141,11 @@ test("4-step builder: the start gate records zero opens and creates nothing unti
     started = mockStartGateProps!.onStart("Lagos weekend");
     await Promise.resolve();
   });
+  // #4523 S-9 — the draft is also given the brand's (else the device's) zone.
   expect(mockCreateTripDraft).toHaveBeenCalledWith({
     brandId: "brand-a",
     initialTitle: "Lagos weekend",
+    timezone: expect.any(String),
   });
   expect(mockOpen).not.toHaveBeenCalled();
 
@@ -183,7 +185,7 @@ test("eight-step fallback (tripBuilderV2 off): local placeholder records zero op
   });
 
   expect(JSON.stringify(tree.toJSON())).toContain("Setting up your trip…");
-  expect(mockCreateTripDraft).toHaveBeenCalledWith({ brandId: "brand-a" });
+  expect(mockCreateTripDraft).toHaveBeenCalledWith({ brandId: "brand-a", timezone: expect.any(String) });
   expect(mockOpen).not.toHaveBeenCalled();
 
   await act(async () => {

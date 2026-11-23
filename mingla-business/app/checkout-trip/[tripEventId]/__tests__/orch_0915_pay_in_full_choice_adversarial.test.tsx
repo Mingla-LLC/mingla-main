@@ -110,7 +110,9 @@ describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
     );
 
     expect(moneyDataWindow).toContain("const rowsByOrder = new Map");
-    expect(moneyDataWindow).toContain("const installmentRows = [...rowsByOrder.values()].map(deriveInstallmentRow)");
+    // #4522 S-2 — an order without a plan-v2 balance keeps deriveInstallmentRow.
+    expect(moneyDataWindow).toContain("const installmentRows = [...rowsByOrder.values()].map((orderRows) => {");
+    expect(moneyDataWindow).toContain("? deriveInstallmentRow(orderRows)");
     expect(moneyDataWindow).toContain(".filter((order) => !rowsByOrder.has(order.id))");
     expect(moneyDataWindow).toContain('.filter((order) => order.paymentStatus === "paid")');
     expect(moneyDataWindow).toContain("isPaidInFull: true");
