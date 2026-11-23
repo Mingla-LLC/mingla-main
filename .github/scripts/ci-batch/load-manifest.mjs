@@ -385,9 +385,11 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4549 merge of main after #4541 forms fixes and Blast push: kept main's #4541 rows and skips and the #4549 migration and both #4549 pg17 suites (filename order); re-sealed.
 // #4549 tester retest: registered the tester report-bounds pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4549 merge of main after #4548 guest pack: kept main's #4548 rows and filtered-replay skip, re-added the #4549 migration and its three pg17 suites (with sidecars) in filename order; re-sealed.
+// #4573 form request safeupdate: listed migration 20281127004573 after 20281124004549 in the #1857, #1931 and #2117 lanes, registered its pg17 suite and sidecar in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays (it replaces functions from the skipped 20281122014541); re-sealed.
 // #4574 Sites backup budget: listed migration 20281128004574 after 20281124004549 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4574 tester adversarial: registered the tester budget-boundary pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "c5a6542727ae0978fa21afd4a4539a3d19c62123b98c8fddac010bf62638c42f";
+// #4574 merge of main after #4573 form request safeupdate: kept main's 20281127004573 rows, its pg17 suite and its filtered-replay skips before the #4574 migration and its two pg17 suites (filename order); re-sealed.
+export const BOOTSTRAP_SHA256 = "a3d16a242d76f96c3641f3cba3bf0db890780d96841c26772a83ed4f0ed266e5";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";
