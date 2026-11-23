@@ -13,7 +13,8 @@
 // person's rights at that venue BEFORE anything is read for printing:
 //   kitchen_ticket / test_ticket -> stations on + issue_4490_can_kitchen
 //   receipt                      -> the Till on + issue_4490_can_sell, paid payment
-//   day_close                    -> O5; refused with floor_pdf_kind_not_ready
+//   day_close                    -> the Till on + money rights (issue_4490_day_summary,
+//                                   O5 part B); { date } names the business day
 // Objects go to the PRIVATE venue-floor-pdfs bucket at <brand>/<venue>/<uuid>.pdf
 // (listed in venue_floor_pdfs first, so venue-offer-sweep deletes every one
 // after 24 hours) and are reached only by a 60-second signed URL. A kitchen
@@ -23,9 +24,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
 import {
+  buildDayClosePdf,
   buildKitchenTicketPdf,
   buildTillReceiptPdf,
   floorPaperFrom,
+  type DayClosePdfInput,
+  type DayClosePdfRow,
   type KitchenTicketPdfInput,
   type TicketPdfResult,
   type TillReceiptPdfInput,
@@ -62,6 +66,10 @@ const SAFE: Record<string, number> = {
   floor_pdf_not_found: 404,
   venue_not_found: 404,
   floor_pdf_not_ready: 409,
+  // O5 part B: the day close comes from issue_4490_day_summary.
+  day_out_of_range: 400,
+  pin_session_required: 401,
+  pin_session_invalid: 401,
 };
 
 function json(status: number, body: unknown): Response {
@@ -150,6 +158,131 @@ export function tillReceiptInput(source: Source): TillReceiptPdfInput {
   };
 }
 
+const DAY_METHOD_LABEL: Record<string, string> = {
+  cash: "Cash",
+  own_machine: "Card machine (yours)",
+  tap: "Tap to pay",
+  scan_card: "Scan to pay - card",
+  scan_transfer: "Scan to pay - bank transfer",
+  scan_other: "Scan to pay - other",
+  room: "Charge to room",
+  door_cash: "Cash at the door",
+  door_transfer: "Transfer at the door",
+  door_card: "Card at the door",
+  door_other: "Other at the door",
+};
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-11-21" -> "Sat 21 Nov 2026" (a calendar day, no time zone involved). */
+export function dayLabelFrom(isoDate: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!m) return isoDate;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/** A person on the close: never a device as a person, never an email. */
+export function dayPersonName(person: Source | null | undefined): string {
+  const kind = str(person?.kind);
+  const name = str(person?.name);
+  if (kind === "device") return "Till device";
+  if (kind === "system") return "Cleared by the Till";
+  if (kind === "mingla_support") return name ? `${name} (Mingla support)` : "Mingla support";
+  return name || "Team member";
+}
+
+function rowsOf(value: unknown): Source[] {
+  return Array.isArray(value) ? value as Source[] : [];
+}
+
+/** The day-close PDF from the summary the server computed (nothing added up here). */
+export function dayCloseInput(summary: Source): DayClosePdfInput {
+  const totals = (summary.totals ?? {}) as Source;
+  const takings = (totals.takings ?? {}) as Source;
+  const cash = (totals.cash ?? {}) as Source;
+  const card = (totals.card ?? {}) as Source;
+  const close = (summary.close ?? null) as Source | null;
+  const state = str(summary.state);
+  const currency = str(summary.currency) || str(totals.currency) || "NGN";
+  const method = (r: Source): DayClosePdfRow => ({
+    label: DAY_METHOD_LABEL[str(r.method)] ?? "Other",
+    amountMinor: num(r.amountMinor),
+    detail: num(r.count) > 0 ? `${num(r.count)}` : null,
+  });
+  const pair = (label: string, minor: number, detail?: string | null): DayClosePdfRow => ({ label, amountMinor: minor, detail: detail ?? null });
+  const lines: DayClosePdfRow[] = [
+    pair("Service charge (inside takings)", num(totals.serviceChargeMinor)),
+    pair("Refunds", num((totals.refunds as Source | undefined)?.amountMinor), `${num((totals.refunds as Source | undefined)?.count)}`),
+    pair("Voids before payment", num((totals.voids as Source | undefined)?.amountMinor), `${num((totals.voids as Source | undefined)?.count)}`),
+    pair("Deposits used (paid when booked)", num((totals.depositsUsed as Source | undefined)?.amountMinor)),
+    pair("Deposit refunded to guests", num((totals.depositRefunded as Source | undefined)?.amountMinor)),
+    pair("Ordered online at the venue (not in the drawer)", num((totals.orderedOnline as Source | undefined)?.amountMinor)),
+    pair("Sold at the door outside the Till", num((totals.door as Source | undefined)?.amountMinor)),
+    pair("Guest-paid card fees", num(takings.guestFeesMinor)),
+    pair("Mingla fees", num(card.minglaFeesMinor)),
+    pair("Card money to your bank", num(card.toBankMinor)),
+  ];
+  const drawer: DayClosePdfRow[] = [
+    pair("Float", num(cash.floatMinor)),
+    pair("Cash payments", num(cash.cashPaymentsMinor)),
+    pair("Cash tips", num(cash.cashTipsMinor)),
+  ];
+  if (num(cash.doorCashMinor) > 0) drawer.push(pair("Cash at the door", num(cash.doorCashMinor)));
+  drawer.push(pair("Cash refunds", -num(cash.cashRefundsMinor)), pair("Paid out", -num(cash.paidOutMinor)),
+    pair("Expected in the drawer", num(close?.cashExpectedMinor ?? cash.expectedMinor)));
+  const late = (summary.late ?? {}) as Source;
+  return {
+    paper: floorPaperFrom(summary.paper),
+    venueName: str(summary.venueName),
+    dayLabel: dayLabelFrom(str(summary.businessDate)),
+    currency,
+    statusLine: state === "closed" && close
+      ? `Closed ${str(close.closedAtLocal)} by ${dayPersonName(close.closedBy as Source)}`
+      : state === "reopened" ? "Reopened, not closed again yet" : "Not closed yet",
+    takingsMinor: num(takings.amountMinor),
+    paymentCount: num(takings.count),
+    tipsMinor: num(takings.tipMinor),
+    byMethod: rowsOf(totals.byMethod).map(method),
+    people: rowsOf(totals.people).filter((p) => num(p.salesCount) > 0 || num(p.refundCount) > 0 || num(p.voidCount) > 0)
+      .map((p) => ({
+        name: dayPersonName(p),
+        salesMinor: num(p.salesMinor),
+        tipsMinor: num(p.tipsTakenMinor),
+        cashTakenMinor: num(p.cashTakenMinor),
+        voidCount: num(p.voidCount),
+        refundMinor: num(p.refundMinor),
+      })),
+    tipsByServer: rowsOf(totals.tipsByServer).map((p) => pair(dayPersonName(p), num(p.tipsServedMinor))),
+    lines,
+    cash: drawer,
+    countedMinor: state === "closed" && close ? num(close.cashCountedMinor) : null,
+    differenceMinor: state === "closed" && close ? num(close.differenceMinor) : null,
+    late: rowsOf(late.payments).map((p) => pair(`${DAY_METHOD_LABEL[str(p.method)] ?? "Other"} ${str(p.paidAtLocal)}`,
+      num(p.amountMinor) + num(p.tipMinor), str(p.checkLabel) || null)),
+    printedAtLocal: str(summary.printedAtLocal),
+  };
+}
+
+/** "21/11/2026 23:48" in the venue's zone (en-GB digits; never formatToParts). */
+export function printedAtLocalFor(timezone: string, epochMs: number): string {
+  try {
+    const text = new Date(epochMs).toLocaleString("en-GB", {
+      timeZone: timezone || "UTC",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    return text.replace(",", "");
+  } catch {
+    return new Date(epochMs).toISOString().slice(0, 16).replace("T", " ");
+  }
+}
+
 export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
   const env = deps.env ?? ((name: string) => Deno.env.get(name));
   const uuid = deps.uuid ?? (() => crypto.randomUUID());
@@ -188,8 +321,8 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
     const kind = str(body.kind);
     const venueId = str(body.venueId).toLowerCase();
     if (!KINDS.has(kind) || !UUID.test(venueId)) return json(400, { code: "invalid_request" });
-    // The day-close PDF ships with the close (O5).
-    if (kind === "day_close") return json(422, { code: "floor_pdf_kind_not_ready" });
+    const dayDate = str(body.date);
+    if (kind === "day_close" && !/^\d{4}-\d{2}-\d{2}$/.test(dayDate)) return json(400, { code: "invalid_request" });
     const orderId = str(body.orderId).toLowerCase();
     const paymentId = str(body.paymentId).toLowerCase();
     const station = str(body.station);
@@ -204,21 +337,41 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
     // #4490 O5: a receipt is a Till action, so on a Till device login it needs
     // a live PIN session (staffSession in the body) and is made as that
     // member. Kitchen and test tickets are station work: the device itself.
+    // O5 part B: the day close is money: a PIN session on a Till device, money
+    // rights (checked by issue_4490_day_summary with the device recorded).
     let pdfActor = userId;
-    if (kind === "receipt") {
+    let pdfDevice: string | null = null;
+    if (kind === "receipt" || kind === "day_close") {
       const who = await resolveTillActor(client, { venueId, userId, jwt, staffSession: body.staffSession });
       if (!who.ok) return json(who.status, { code: who.code });
       pdfActor = who.actor.actorUserId;
+      pdfDevice = who.actor.isDevice ? who.actor.deviceUserId : null;
     }
 
-    const { data: sourceData, error: sourceError } = await client.rpc("issue_4490_floor_pdf_source", {
-      p_kind: kind,
-      p_venue_id: venueId,
-      p_order_id: kind === "kitchen_ticket" ? orderId : null,
-      p_station: kind === "receipt" ? null : station,
-      p_payment_id: kind === "receipt" ? paymentId : null,
-      p_actor: pdfActor,
-    });
+    let sourceData: unknown;
+    let sourceError: unknown;
+    if (kind === "day_close") {
+      const r = await client.rpc("issue_4490_day_summary", {
+        p_venue_id: venueId,
+        p_date: dayDate,
+        p_actor: pdfActor,
+        p_device_user: pdfDevice,
+      });
+      sourceData = r.data;
+      sourceError = r.error;
+    } else {
+      const r = await client.rpc("issue_4490_floor_pdf_source", {
+        p_kind: kind,
+        p_venue_id: venueId,
+        p_order_id: kind === "kitchen_ticket" ? orderId : null,
+        p_station: kind === "receipt" ? null : station,
+        p_payment_id: kind === "receipt" ? paymentId : null,
+        p_actor: pdfActor,
+      });
+      sourceData = r.data;
+      sourceError = r.error;
+    }
+
     if (sourceError) {
       const code = str((sourceError as RpcError).message);
       if (SAFE[code] !== undefined) return json(SAFE[code], { code });
@@ -226,6 +379,9 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
       return json(500, { code: "floor_pdf_failed" });
     }
     const source = (sourceData ?? {}) as Source;
+    if (kind === "day_close" && !source.printedAtLocal) {
+      source.printedAtLocal = printedAtLocalFor(str(source.timezone), now());
+    }
     const brandId = str(source.brandId).toLowerCase();
     if (!UUID.test(brandId)) {
       console.error("[venue-floor-pdf] source had no brand");
@@ -236,6 +392,8 @@ export function createVenueFloorPdfHandler(deps: VenueFloorPdfDeps = {}) {
     try {
       pdf = kind === "receipt"
         ? await buildTillReceiptPdf(tillReceiptInput(source))
+        : kind === "day_close"
+        ? await buildDayClosePdf(dayCloseInput(source))
         : await buildKitchenTicketPdf(kitchenTicketInput(source, kind === "test_ticket"));
     } catch (err) {
       console.error("[venue-floor-pdf] render failed", err instanceof Error ? err.message.slice(0, 120) : "unknown");

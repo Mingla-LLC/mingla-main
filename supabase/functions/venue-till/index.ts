@@ -28,6 +28,10 @@
 //   sale      { saleId }                                    → sale
 //   receipt   { paymentId, phone?, phoneCountryIso?, email? } → { queued, sendsLeft }
 //   receipt_view { paymentId, token }   (ANONYMOUS)         → { receipt }
+//   day_summary | day_close | day_reopen | day_carry_over | cash_movements |
+//   cash_movement | day_export | settings_get | settings_set  (O5 part B,
+//               dayClose.ts: money rights; reopen and export step up on a Till
+//               device; settings never in a PIN session)
 //
 // O2 (tap to pay, scan to pay; the amount is always what is left on the
 // check, priced by the server; the body may only carry the tip):
@@ -115,6 +119,7 @@ import {
   STAFF_PIN_RE,
   staffTokenHash,
 } from "../_shared/venueTillStaffSession.ts";
+import { DAY_CLOSE_ACTIONS, handleDayClose } from "./dayClose.ts";
 import {
   issueTillReceiptTokenHash,
   TILL_RECEIPT_TOKEN_RE,
@@ -651,6 +656,12 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
     const tillActor = who.actor;
     const actor = tillActor.actorUserId;
     const deviceUser = tillActor.deviceUserId;
+
+    // #4490 O5 part B: the daily close, the drawer and the Till settings
+    // (dayClose.ts). Same verified person and PIN session as every Till action.
+    if (DAY_CLOSE_ACTIONS.has(action)) {
+      return await handleDayClose(action, body, { client, venueId, actor: tillActor, json, ok });
+    }
 
     // Every sale-scoped action checks the sale belongs to this venue.
     const saleId = str(body.saleId);

@@ -290,13 +290,12 @@ Deno.test("S7 every object is listed for the 24-hour sweep BEFORE it is uploaded
   assert(w.calls.slice(0, record + 1).every((c) => c.name !== "issue_4490_station_mark_printed"));
 });
 
-Deno.test("S8 day_close is refused with its own code (O5); bad payloads are 400 with no read", async () => {
-  const d = world();
-  const res = await d.handle(req({ kind: "day_close", venueId: VENUE }));
-  assertEquals(res.status, 422);
-  assertEquals((await res.json()).code, "floor_pdf_kind_not_ready");
-  assertEquals(d.calls.length, 0);
+// TEST-MOD-APPROVED #4490 (08-O5 part B): the day close now prints (dayClose.issue4490.o5b test); a
+// day_close without a business date is a bad payload like the others.
+Deno.test("S8 bad payloads are 400 with no read", async () => {
   for (const body of [
+    { kind: "day_close", venueId: VENUE },
+    { kind: "day_close", venueId: VENUE, date: "21/11/2026" },
     { kind: "menu", venueId: VENUE },
     { kind: "kitchen_ticket", venueId: "nope", orderId: ORDER, station: "kitchen" },
     { kind: "kitchen_ticket", venueId: VENUE, orderId: ORDER, station: "grill" },

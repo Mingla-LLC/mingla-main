@@ -3,6 +3,8 @@
 -- texts lane, 20280809600490, has a venue_id column); pin owner 20280809602490.
 -- TEST-MOD-APPROVED #4490 (08-O5 part A): the #2099 pending-venue seal moved to 7523789e… (the PIN lanes,
 -- 20280809611490, have venue_id columns); pin owner 20280809612490.
+-- TEST-MOD-APPROVED #4490 (08-O5 part B): the #2099 pending-venue seal moved to ea9536d8… (the daily close
+-- lanes, 20280809613490, have venue_id columns); pin owner 20280809614490.
 -- MINGLA-INVARIANT: I-3872-LOCAL-NOT-PAID-BY-PLACE | issue #3872 | A Local cannot pick a place tied to their own history or paid relationship, and every approved month is funded by Mingla through the shared payee ledger with no brand owner.
 -- MINGLA-INVARIANT: I-3872-LOCAL-PUBLIC-DTO | issue #3872 | Public Local reads expose only the named profile and review allow-lists; applications, payout amounts, evidence and moderation notes remain private.
 -- MINGLA-INVARIANT: I-3872-LOCAL-PENDING-VENUE-FENCE | issue #3872 | A Local month is a reviewed place dependency and remains disallowed while a pending venue identity is corrected; the #2099 schema pin is advanced only over that fail-closed lane.
@@ -38,7 +40,7 @@ BEGIN
   IF NOT COALESCE(v_live IN (
     -- [TEST-MOD-APPROVED #4490] guest list repin (20280809444490): the guest list lanes (20280809414490) advance the reviewed pin.
     -- [TEST-MOD-APPROVED #4490] 08-O1 repin (20280809554490): the Till lanes (20280809464490) advance the reviewed pin.
-    '7523789ee37ffa086988e13498ab9422555f4d44280e5f3603de613597296785'
+    'ea9536d8e1ad3044e650a66e560015fc9e850458a5c0d1a52b4cd971f4220305'
   ),false) THEN RAISE EXCEPTION 'Local pending-venue dependency seal mismatch: %',v_live; END IF;
   SELECT pg_get_functiondef('public.preview_pending_venue_identity_correction(uuid)'::regprocedure) INTO v_def;
   IF position(left(v_live,32) in v_def)=0 OR position('91042e6f4a170c709d016d9a598d0fae' in v_def)>0 OR position('0b2f6691528759d391240f966a45b350' in v_def)>0 THEN RAISE EXCEPTION 'Local preview pin does not match live reviewed seal'; END IF;

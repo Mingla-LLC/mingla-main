@@ -254,6 +254,19 @@ const SESSION_ACTIONS: Array<[string, Row]> = [
     idempotencyKey: "extn-key-0001",
     expectedVersion: 3,
   }],
+  // TEST-MOD-APPROVED #4490 (08-O5 part B): the daily close, the drawer, export
+  // and the Till settings are Till actions too: refused on a device without a
+  // live PIN session before any other RPC (settings are then refused in the
+  // session as well; dayClose.issue4490.o5b proves that row).
+  ["day_summary", { date: "2026-11-21" }],
+  ["day_close", { date: "2026-11-21", countedMinor: 100, clientRequestId: REQ }],
+  ["day_reopen", { date: "2026-11-21", reason: "Miscounted" }],
+  ["day_carry_over", { saleId: SALE, date: "2026-11-21" }],
+  ["cash_movements", { date: "2026-11-21" }],
+  ["cash_movement", { kind: "float", amountMinor: 100, clientRequestId: REQ }],
+  ["day_export", { date: "2026-11-21" }],
+  ["settings_get", {}],
+  ["settings_set", { patch: { tipsEnabled: false }, expectedVersion: 1 }],
 ];
 
 const SAFE_RPCS = new Set([

@@ -993,3 +993,113 @@ export async function buildTillReceiptPdf(
     "till_receipt_size_exceeded",
   );
 }
+
+// ---------------------------------------------------------------------------
+// #4490 spec 08 O5 part B — the day close (Print on "Day closed").
+// ---------------------------------------------------------------------------
+
+export interface DayClosePdfRow {
+  label: string;
+  amountMinor: number;
+  /** Extra words after the label ("3 payments"); never money. */
+  detail?: string | null;
+}
+
+export interface DayClosePdfPerson {
+  name: string;
+  salesMinor: number;
+  tipsMinor: number;
+  cashTakenMinor: number;
+  voidCount: number;
+  refundMinor: number;
+}
+
+export interface DayClosePdfInput {
+  paper: FloorPaper;
+  venueName: string;
+  /** "Sat 21 Nov 2026" in the venue's own day. */
+  dayLabel: string;
+  currency: string;
+  /** "Closed 23:48 by Chioma", "Not closed yet". */
+  statusLine: string;
+  takingsMinor: number;
+  paymentCount: number;
+  tipsMinor: number;
+  byMethod: DayClosePdfRow[];
+  people: DayClosePdfPerson[];
+  tipsByServer: DayClosePdfRow[];
+  /** Service charge, refunds, voids, deposits, online orders, the door, card money. */
+  lines: DayClosePdfRow[];
+  /** The drawer: float, cash payments and tips, door, refunds, paid outs, expected. */
+  cash: DayClosePdfRow[];
+  countedMinor: number | null;
+  differenceMinor: number | null;
+  late: DayClosePdfRow[];
+  printedAtLocal: string;
+}
+
+/** "NGN 500.00 short", "NGN 1,200.00 over", "Balanced". */
+export function dayCloseDifferenceWords(differenceMinor: number, currency: string): string {
+  if (differenceMinor === 0) return "Balanced";
+  const amount = formatMoneyCode(Math.abs(differenceMinor), currency);
+  return differenceMinor < 0 ? `${amount} short` : `${amount} over`;
+}
+
+export async function buildDayClosePdf(input: DayClosePdfInput): Promise<TicketPdfResult> {
+  const money = (minor: number) => formatMoneyCode(minor, input.currency);
+  const row = (r: DayClosePdfRow, indent = 0): FloorRow => ({
+    left: r.detail ? `${floorText(r.label)} (${floorText(r.detail)})` : floorText(r.label),
+    right: money(r.amountMinor),
+    indent,
+  });
+  const rows: FloorRow[] = [
+    { left: "DAY CLOSE", size: 1.4, bold: true, center: true },
+    { left: floorText(input.venueName), center: true, bold: true },
+    { left: floorText(input.dayLabel), center: true },
+    { left: floorText(input.statusLine), center: true, size: 0.9 },
+    { rule: true, left: "" },
+    { left: `Takings (${Math.max(0, Math.round(input.paymentCount))} payments)`, right: money(input.takingsMinor), bold: true, size: 1.15 },
+    { left: "Tips", right: money(input.tipsMinor), bold: true },
+    { left: "By payment type", bold: true, gapBefore: 6 },
+    ...input.byMethod.map((r) => row(r, 8)),
+  ];
+  if (input.people.length > 0) {
+    rows.push({ left: "By person (sales)", bold: true, gapBefore: 6 });
+    for (const p of input.people) {
+      rows.push({ left: floorText(p.name), right: money(p.salesMinor), indent: 8 });
+      const extra = [
+        p.tipsMinor > 0 ? `tips ${money(p.tipsMinor)}` : "",
+        p.cashTakenMinor > 0 ? `cash ${money(p.cashTakenMinor)}` : "",
+        p.refundMinor > 0 ? `refunds ${money(p.refundMinor)}` : "",
+        p.voidCount > 0 ? `${p.voidCount} void${p.voidCount === 1 ? "" : "s"}` : "",
+      ].filter((s) => s.length > 0).join(", ");
+      if (extra.length > 0) rows.push({ left: extra, indent: 16, size: 0.85 });
+    }
+  }
+  if (input.tipsByServer.length > 0) {
+    rows.push({ left: "Tips by who served", bold: true, gapBefore: 6 });
+    rows.push(...input.tipsByServer.map((r) => row(r, 8)));
+  }
+  if (input.lines.length > 0) {
+    rows.push({ rule: true, left: "", gapBefore: 4 });
+    rows.push(...input.lines.map((r) => row(r)));
+  }
+  rows.push({ rule: true, left: "", gapBefore: 4 });
+  rows.push({ left: "Cash drawer", bold: true });
+  rows.push(...input.cash.map((r) => row(r, 8)));
+  if (input.countedMinor !== null) {
+    rows.push({ left: "Counted", right: money(input.countedMinor), bold: true });
+  }
+  if (input.differenceMinor !== null) {
+    rows.push({ left: "Difference", right: dayCloseDifferenceWords(input.differenceMinor, input.currency), bold: true, size: 1.15 });
+  }
+  if (input.late.length > 0) {
+    rows.push({ rule: true, left: "", gapBefore: 4 });
+    rows.push({ left: "Late payments since close", bold: true });
+    rows.push(...input.late.map((r) => row(r, 8)));
+  }
+  rows.push({ rule: true, left: "", gapBefore: 4 });
+  rows.push({ left: `Printed ${floorText(input.printedAtLocal)}`, size: 0.85, center: true });
+  const safeDay = floorText(input.dayLabel).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return await renderFloorDocument(rows, input.paper, `day-close-${safeDay || "day"}.pdf`, "day_close_size_exceeded");
+}

@@ -67,6 +67,10 @@
 -- re-emits the refund guard, finalize and the sale extras (same signatures).
 -- TEST-MOD-APPROVED #4490 (08-O5 part A): 20280809611490 adds the PIN functions, the floor audit
 -- helper, the device void and four trigger functions; all internal (service role only).
+-- TEST-MOD-APPROVED #4490 (08-O5 part B): 20280809613490 adds the daily close (summary, close, reopen,
+-- carry over, the drawer, export and their helpers) and its two guard trigger functions, all internal
+-- (service role only); it re-emits the floor audit helper and the Till business date (same signatures,
+-- still internal).
 --
 -- FAILS-ON-REVERT: without 20280809459490 G-2 fails (the ten internal functions keep the
 -- schema's default anon and authenticated EXECUTE).
@@ -580,6 +584,27 @@ INSERT INTO t4490g_expected (sig, cls) VALUES
   ('issue_4490_floor_audit_paid()', 'internal'),
   ('issue_4490_floor_audit_refund()', 'internal'),
   ('issue_4490_floor_audit_void()', 'internal'),
+  -- 08-O5 part B (20280809613490): the daily close, all internal (service role only).
+  ('issue_4490_day_close_guard()', 'internal'),
+  ('issue_4490_cash_movement_guard()', 'internal'),
+  ('issue_4490_close_person(uuid,uuid)', 'internal'),
+  ('issue_4490_close_method_key(text,text)', 'internal'),
+  ('issue_4490_close_method_order(text)', 'internal'),
+  ('issue_4490_day_payment_ids(uuid,date)', 'internal'),
+  ('issue_4490_day_refund_ids(uuid,date)', 'internal'),
+  ('issue_4490_day_float(uuid,date)', 'internal'),
+  ('issue_4490_day_totals(uuid,date)', 'internal'),
+  ('issue_4490_day_open_checks(uuid,date)', 'internal'),
+  ('issue_4490_day_gate(uuid,uuid,uuid)', 'internal'),
+  ('issue_4490_day_check_date(uuid,date)', 'internal'),
+  ('issue_4490_day_summary(uuid,date,uuid,uuid)', 'internal'),
+  ('issue_4490_day_close(uuid,date,bigint,uuid,uuid,uuid)', 'internal'),
+  ('issue_4490_day_reopen(uuid,date,text,uuid,uuid)', 'internal'),
+  ('issue_4490_till_carry_over(uuid,date,uuid,uuid)', 'internal'),
+  ('issue_4490_cash_movements_list(uuid,date,uuid,uuid)', 'internal'),
+  ('issue_4490_cash_movement(uuid,date,text,bigint,text,uuid,uuid,uuid)', 'internal'),
+  ('issue_4490_day_export(uuid,date,uuid,uuid)', 'internal'),
+  ('issue_4490_till_settings_read(uuid,uuid)', 'internal'),
   -- 08-O3 part A (20280809601490): stations and floor PDFs, all internal (service role only).
   ('issue_4490_stations_enabled(uuid)', 'internal'),
   ('issue_4490_floor_person_name(uuid,uuid)', 'internal'),
