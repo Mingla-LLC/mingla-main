@@ -541,12 +541,15 @@ export function CalendarSurface(props: CalendarSurfaceProps): React.ReactElement
         <Text accessibilityLiveRegion="polite" style={styles.readout} testID={`${testID}-readout`}>
           {readout}
         </Text>
-        <View style={styles.footerButtons}>
-          {glyph("clock", "")}
-          <Text style={styles.tzLine} testID={`${testID}-tz`}>
-            {tzLabel}
-          </Text>
-        </View>
+        {/* #4522 W-11 — a birth date has no time of day, so no zone is shown. */}
+        {props.mode === "dob" ? null : (
+          <View style={styles.footerButtons}>
+            {glyph("clock", "")}
+            <Text style={styles.tzLine} testID={`${testID}-tz`}>
+              {tzLabel}
+            </Text>
+          </View>
+        )}
         {showClear || showDone ? (
           <View style={styles.footerButtons}>
             {showClear ? button("clear", labels.clear, clear, { quiet: true }) : null}

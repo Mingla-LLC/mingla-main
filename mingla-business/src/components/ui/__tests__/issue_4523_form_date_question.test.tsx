@@ -215,6 +215,29 @@ describe("#4523 SC-12 — a date-of-birth question opens the birth-date calendar
     expect(isBirthDateQuestion({ ...DOB, type: "short_text" })).toBe(false);
   });
 
+  // #4522 W-11 — a birth date has no time of day, so its footer shows no zone.
+  // FAILS ON REVERT: the footer printed "New York time (UTC-5)" on a DOB.
+  it("the birth-date calendar's footer shows no time zone; another date question's still does", async () => {
+    const tree = await mountDob(jest.fn());
+    await press(tree, "intake-date");
+    expect(tree.root.findAll((n) => n.props.testID === "intake-date-calendar-tz")).toHaveLength(0);
+    await TestRenderer.act(async () => tree.unmount());
+    let other!: Tree;
+    await TestRenderer.act(async () => {
+      other = TestRenderer.create(
+        <IntakeQuestionDate question={QUESTION} primitives={businessFormPrimitives} value="" onChange={jest.fn()} />,
+      );
+    });
+    for (let i = 0; i < 3; i += 1) {
+      await TestRenderer.act(async () => {
+        await Promise.resolve();
+      });
+    }
+    await press(other, "intake-date");
+    expect(other.root.findAll((n) => n.props.testID === "intake-date-calendar-tz").length).toBeGreaterThan(0);
+    await TestRenderer.act(async () => other.unmount());
+  });
+
   it("year grid first, no future year, three taps to a day, focus moved in on web", async () => {
     Object.defineProperty(Platform, "OS", { configurable: true, get: () => "web" });
     const onChange = jest.fn();
