@@ -990,27 +990,23 @@ serve(async (req: Request): Promise<Response> => {
         const amountSubunits = entry.refund_cents === entry.paid_cents
           ? undefined
           : entry.refund_cents;
-        const persistOutcome = (made: { id: string; status: string }) =>
-          persistPaystackRefundOutcome(
-            () =>
-              supabase.rpc("record_paystack_refund_outcome", {
-                p_source_type: entry.installment_id === null
-                  ? "order"
-                  : "order_installment",
-                p_source_id: entry.installment_id ?? orderId,
-                p_local_refund_id: refundId,
-                p_transaction_reference: transaction,
-                p_merchant_note: merchantNote,
-                p_provider_refund_id: made.id,
-                p_amount_cents: entry.refund_cents,
-                p_status: paystackRefundOutcomeStatus(made.status),
-              }),
-            "cancel-trip-booking",
-          );
+        const recordOutcome = (made: { id: string; status: string }) =>
+          supabase.rpc("record_paystack_refund_outcome", {
+            p_source_type: entry.installment_id === null
+              ? "order"
+              : "order_installment",
+            p_source_id: entry.installment_id ?? orderId,
+            p_local_refund_id: refundId,
+            p_transaction_reference: transaction,
+            p_merchant_note: merchantNote,
+            p_provider_refund_id: made.id,
+            p_amount_cents: entry.refund_cents,
+            p_status: paystackRefundOutcomeStatus(made.status),
+          });
         // issue #4522 G-3 / G-4 — a refund of this cancel already made is
         // recorded, never sent again; one sent with no answer is only read
         // back (never re-sent: ops get it once if the provider has none).
-        let created: { id: string; status: string } | null = null;
+        let madeRefund: { id: string; status: string } | null = null;
         let attemptRow: Record<string, unknown> | null = null;
         if (resumable) {
           const { data: att } = await supabase.from("paystack_refund_attempts")
@@ -1027,7 +1023,7 @@ serve(async (req: Request): Promise<Response> => {
               attemptRow.status === "accepted" ||
               typeof attemptRow.provider_refund_id === "string")
           ) {
-            created = {
+            madeRefund = {
               id: String(attemptRow.provider_refund_id ?? ""),
               status: String(attemptRow.status),
             };
@@ -1042,11 +1038,14 @@ serve(async (req: Request): Promise<Response> => {
               unconfirmedPaystack.push(merchantNote);
               continue;
             }
-            created = found;
-            await persistOutcome(found);
+            madeRefund = found;
+            await persistPaystackRefundOutcome(
+              () => recordOutcome(found),
+              "cancel-trip-booking",
+            );
           }
         }
-        if (created === null) {
+        if (madeRefund === null) {
           if (attemptRow === null) {
             const { error: attemptError } = await supabase.rpc(
               "record_paystack_refund_outcome",
@@ -1083,12 +1082,13 @@ serve(async (req: Request): Promise<Response> => {
             }
           }
           try {
-            created = await createPaystackRefund({
+            const created = await createPaystackRefund({
               transaction,
               merchantNote,
               amountSubunits,
               currency: "NGN",
             });
+            madeRefund = created;
           } catch (sendErr) {
             // The provider refused it (no money moved): it may be sent later.
             if (
@@ -1103,9 +1103,13 @@ serve(async (req: Request): Promise<Response> => {
             }
             throw sendErr;
           }
-          await persistOutcome(created);
+          const made = madeRefund;
+          await persistPaystackRefundOutcome(
+            () => recordOutcome(made),
+            "cancel-trip-booking",
+          );
         }
-        if (resumable && paystackRefundOutcomeStatus(created.status) === "failed") {
+        if (resumable && paystackRefundOutcomeStatus(madeRefund.status) === "failed") {
           throw new Error("paystack_refund_refused_at_provider");
         }
         if (entry.installment_id !== null) {
@@ -1123,7 +1127,7 @@ serve(async (req: Request): Promise<Response> => {
             );
           }
         }
-        stripeRefundIds.push(created.id);
+        stripeRefundIds.push(madeRefund.id);
         refundLineRowsToInsert.push({
           refund_id: refundId,
           order_line_item_id: primaryLineItem.id,
