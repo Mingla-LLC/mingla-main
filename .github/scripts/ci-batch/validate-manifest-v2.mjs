@@ -649,11 +649,12 @@ export function phase3dContractDigest(manifest) {
 // #4574 Sites backup budget: listed migration 20281128004574 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4574 tester adversarial: registered the tester budget-boundary pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4574 merge of main after #4573 form request safeupdate: kept main's 20281127004573 rows, its pg17 suite and its filtered-replay skips before the #4574 migration and its two pg17 suites (filename order); re-sealed; MANIFEST.json phase3eContractSha256 matches.
-// #4572 events: listed migrations 20281129504572, 20281129604572 and 20281129704572 after 20281128004574 in the #1857, #1931 and #2117 lanes, skipped them by exact filename on the #1931 and #2117 filtered replays (md5 drift guards on production bodies), and registered their three pg17 suites and sidecars in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-// #4572 website items: listed migrations 20281129004572 and 20281129104572 after 20281128004574 in the #1857, #1931 and #2117 lanes and registered their two pg17 suites (with sidecars) in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4572 one PR: merged the events and website halves (both lanes' rows kept, filename order); re-sealed.
 // #4572 tester: registered issue_4572_one_pr.tester.adversarial.pg17 (and its sidecar) in the #1931 and #2117 inventories; re-sealed.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "bc7bf747caa227d3ff57815898e6da6440893b965b198632a7b93571c6db76f6";
+// #3969 step 2 profile access: listed migration 20281201003969 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #3969 step 2 ordering: renamed the migration to 20281201003969 (after the #4571 versions already applied in production), same lane position; re-sealed; MANIFEST.json phase3eContractSha256 matches.
+// #4572 rework after QA: merged main after #3969 step 2 (kept main's 20281201003969 rows after the #4572 migrations, filename order) and skipped 20281129004572 by exact filename on the #1931 and #2117 filtered replays; re-sealed.
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "a0e06737ce546d99699f87811417ad67205a85ee93abb00f38f4d2ce32c711d0";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
