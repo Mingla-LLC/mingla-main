@@ -98,7 +98,7 @@ COMMENT ON FUNCTION public.issue_4522_missed_rollover(uuid, timestamptz) IS
   'Issue #4522 (D-7): after the last retry of a v2 auto-adjust order, the missed row is superseded and its amount joins the later rows (missed_rollover). rolledOver=false means the caller flags the booking at risk as before.';
 
 -- ---------------------------------------------------------------------------
--- 2. Host money screen (server side): every v2 balance on a trip, for brand
+-- 2. Host money screen (server side): every plan balance on a trip, for brand
 --    members. Admin: one order's balance, for Mingla admins. Read-only.
 -- ---------------------------------------------------------------------------
 CREATE FUNCTION public.biz_trip_event_balances(p_event_id uuid)
@@ -115,17 +115,22 @@ BEGIN
   IF NOT FOUND OR NOT public.biz_is_brand_member_for_read_for_caller(v_brand) THEN
     RAISE EXCEPTION 'balance_not_found' USING ERRCODE = 'P0001';
   END IF;
+  -- E-5: every plan order, old and new. An older plan's order stores only the
+  -- deposit as its total, so its paid / total / left come from here too
+  -- (issue_4522_balance adds the rows); planVersion tells the screen which
+  -- layout the order keeps.
   RETURN COALESCE((
-    SELECT jsonb_agg(public.issue_4522_balance(o.id) ORDER BY o.created_at, o.id)
+    SELECT jsonb_agg(public.issue_4522_balance(o.id)
+             || jsonb_build_object('planVersion', COALESCE((o.payment_plan_terms->>'v')::integer, 1))
+             ORDER BY o.created_at, o.id)
       FROM public.orders o
-     WHERE o.event_id = p_event_id AND o.installment_plan_root
-       AND COALESCE((o.payment_plan_terms->>'v')::integer, 0) = 2), '[]'::jsonb);
+     WHERE o.event_id = p_event_id AND o.installment_plan_root), '[]'::jsonb);
 END
 $fn$;
 REVOKE ALL ON FUNCTION public.biz_trip_event_balances(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.biz_trip_event_balances(uuid) TO authenticated, service_role;
 COMMENT ON FUNCTION public.biz_trip_event_balances(uuid) IS
-  'Issue #4522: the host money screen''s v2 balances for one trip (terms, open, superseded-aware rows, flexible payments and balance history); brand members only.';
+  'Issue #4522: the host money screen''s balances for one trip, every plan order (planVersion 1 or 2; terms, open, superseded-aware rows, flexible payments and balance history); brand members only.';
 
 CREATE FUNCTION public.admin_trip_order_balance(p_order_id uuid)
 RETURNS jsonb

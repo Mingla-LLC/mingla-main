@@ -144,13 +144,44 @@ END $$;
 
 -- E. Host money screen and Admin reads.
 DO $$
-DECLARE v_list jsonb;
+DECLARE v_list jsonb; v_old jsonb;
 BEGIN
+  -- A pay-in-full order on the same trip has no plan balance.
+  INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents,
+    currency, payment_method, payment_status, source, installment_plan_root)
+  VALUES ('45220006-0000-4000-8000-0000000000a4', '45220006-0000-4000-8000-000000000020',
+    'roll-full@example.test', 'Roll Full', '+2348000000003', 120000000, 'NGN', 'online_card', 'paid',
+    'online_checkout', false);
   PERFORM set_config('request.jwt.claim.sub', '45220006-0000-4000-8000-000000000001', true);
   v_list := public.biz_trip_event_balances('45220006-0000-4000-8000-000000000020');
-  IF jsonb_array_length(v_list) <> 2 THEN
-    RAISE EXCEPTION 'E-1 the host sees the two v2 orders only, got %', jsonb_array_length(v_list);
+  -- E-5: every plan order (the two v2 orders and the older plan), never the
+  -- pay-in-full one.
+  IF jsonb_array_length(v_list) <> 3
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_list) b
+                 WHERE b->>'orderId' = '45220006-0000-4000-8000-0000000000a4') THEN
+    RAISE EXCEPTION 'E-1 the host sees every plan order and no pay-in-full order, got %', jsonb_array_length(v_list);
   END IF;
+  IF (SELECT string_agg(b->>'orderId' || '=' || (b->>'planVersion'), ',' ORDER BY b->>'orderId')
+        FROM jsonb_array_elements(v_list) b)
+     IS DISTINCT FROM '45220006-0000-4000-8000-0000000000a1=2,45220006-0000-4000-8000-0000000000a2=1,45220006-0000-4000-8000-0000000000a3=2' THEN
+    RAISE EXCEPTION 'E-1b each balance names its plan version: %', v_list;
+  END IF;
+  -- E-5: the older plan's order stored only its deposit as the total; the
+  -- reader gives the truth ($ deposit paid of deposit + every row), and the
+  -- Admin reader agrees.
+  SELECT b INTO v_old FROM jsonb_array_elements(v_list) b
+   WHERE b->>'orderId' = '45220006-0000-4000-8000-0000000000a2';
+  IF (v_old->>'paidMinor')::bigint <> 30000000 OR (v_old->>'totalMinor')::bigint <> 120000000
+     OR (v_old->>'remainingMinor')::bigint <> 90000000 THEN
+    RAISE EXCEPTION 'E-1c the older plan reads paid 30000000 of 120000000, 90000000 left: %', v_old;
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', '45220006-0000-4000-8000-000000000003', true);
+  IF (SELECT (b->>'paidMinor') || '/' || (b->>'totalMinor') || '/' || (b->>'remainingMinor')
+        FROM (SELECT public.admin_trip_order_balance('45220006-0000-4000-8000-0000000000a2') b) x)
+     IS DISTINCT FROM '30000000/120000000/90000000' THEN
+    RAISE EXCEPTION 'E-1d Admin reads the same figures for the older plan';
+  END IF;
+  PERFORM set_config('request.jwt.claim.sub', '45220006-0000-4000-8000-000000000001', true);
   IF pg_temp.raised($q$SELECT public.admin_trip_order_balance('45220006-0000-4000-8000-0000000000a1')$q$)
        NOT LIKE '%not_authorized%' THEN
     RAISE EXCEPTION 'E-2 a non-admin must be refused';

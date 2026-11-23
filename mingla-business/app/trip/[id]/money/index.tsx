@@ -292,6 +292,24 @@ function deriveV2InstallmentRow(
   };
 }
 
+/**
+ * issue #4522 E-5 — an older plan's order stores only its deposit as the order
+ * total, so summing its rows here showed "$0.00 / $200.00 · $200.00 left" for
+ * $200 paid of $800. Its paid / total / left come from the server balance
+ * (issue_4522_balance); its layout, schedule and actions stay as they were.
+ */
+function withServerPlanFigures(
+  row: TravelerMoneyRow,
+  balance: HostTripBalance,
+): TravelerMoneyRow {
+  return {
+    ...row,
+    orderTotalCents: balance.totalMinor,
+    paidToDateCents: balance.paidMinor,
+    outstandingCents: balance.remainingMinor,
+  };
+}
+
 export default function TripMoneyRoute(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string | string[] }>();
@@ -364,7 +382,9 @@ export default function TripMoneyRoute(): React.ReactElement {
       const balance = balancesByOrder.get(orderRows[0].orderId);
       const derived = balance === undefined
         ? deriveInstallmentRow(orderRows)
-        : deriveV2InstallmentRow(orderRows, balance);
+        : balance.planVersion === 2
+          ? deriveV2InstallmentRow(orderRows, balance)
+          : withServerPlanFigures(deriveInstallmentRow(orderRows), balance);
       // issue #4522 X-7 — a refunded or cancelled order shows that, not
       // "Collected · paid in full", and offers no charge, reminder or cancel.
       const closed = closedOrderState(statusByOrder.get(derived.orderId));

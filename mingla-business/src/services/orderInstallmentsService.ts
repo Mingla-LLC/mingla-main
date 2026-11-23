@@ -356,6 +356,11 @@ export interface HostTripBalance {
   providerMinimumMinor: number;
   terms: TripPlanTerms;
   balanceEvents: TripBalanceEvent[];
+  /**
+   * issue #4522 E-5 — 2 for a plan-v2 order; an older plan (1) keeps its own
+   * layout and actions and only takes paid / total / left from here.
+   */
+  planVersion: number;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -431,13 +436,15 @@ export function decodeHostTripBalance(
     providerMinimumMinor: base.providerMinimumMinor,
     terms: decodeTerms(value.terms),
     balanceEvents,
+    planVersion: base.planVersion,
   };
 }
 
 /**
- * issue #4522 S-2 — every plan-v2 order's balance on one trip (brand members
- * only; the RPC answers balance_not_found to anyone else). Older plans are
- * not returned and keep the ledger view exactly as before.
+ * issue #4522 S-2 / E-5 — every plan order's balance on one trip (brand
+ * members only; the RPC answers balance_not_found to anyone else). An older
+ * plan's balance (planVersion 1) carries only its true paid / total / left;
+ * the screen keeps that order's ledger view and actions as before.
  */
 export async function fetchTripEventBalances(
   eventId: string,

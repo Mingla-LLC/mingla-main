@@ -452,6 +452,84 @@ describe("#4522 S-2 host money screen, plan-v2 orders", () => {
   });
 });
 
+// issue #4522 E-5 — a real older-plan order stores only its deposit ($200) as
+// the order total. FAILS ON REVERT: "$0.00 / $200.00 · $200.00 left" (rows
+// summed against the deposit), or the older plan drawn with the v2 layout.
+describe("#4522 E-5 money screen, older-plan orders", () => {
+  const oldPlan = (overrides: Record<string, unknown>) =>
+    row({ orderTotalCents: 20000, amountCents: 20000, amountChargedCents: 20000, ...overrides });
+  const oldBalance = (overrides: Record<string, unknown>) => host(rawBalance({
+    terms: null,
+    planVersion: 1,
+    depositMinor: 20000,
+    canPayAnyAmount: false,
+    minPaymentMinor: null,
+    maxPartialMinor: null,
+    ...overrides,
+  }));
+  const openRow = (id: string, dueAt: string) => (
+    { installmentId: id, dueAt, amountMinor: 20000, addonPortionMinor: 0, planLineId: "t1", status: "scheduled" }
+  );
+
+  test("deposit only: $200.00 / $800.00 · $600.00 left, old layout and actions", () => {
+    installments = [
+      oldPlan({ id: "v1", dueAt: "2026-12-19T09:00:00Z" }),
+      oldPlan({ id: "v2", ordinal: 2, dueAt: "2027-01-15T09:00:00Z" }),
+      oldPlan({ id: "v3", ordinal: 3, dueAt: "2027-02-10T09:00:00Z" }),
+    ];
+    balances = [oldBalance({
+      paidMinor: 20000,
+      remainingMinor: 60000,
+      totalMinor: 80000,
+      nextPayment: { installmentId: "v1", dueAt: "2026-12-19T09:00:00Z", amountMinor: 20000, status: "scheduled" },
+      openRows: [
+        openRow("v1", "2026-12-19T09:00:00Z"),
+        openRow("v2", "2027-01-15T09:00:00Z"),
+        openRow("v3", "2027-02-10T09:00:00Z"),
+      ],
+    })];
+    const tree = render();
+    const out = text(tree);
+    expect(out).toContain("$200.00 / $800.00");
+    expect(out).toContain("$600.00 left");
+    expect(out).not.toContain("$0.00 / $200.00");
+    // The older plan keeps its own layout (schedule cell, no v2 terms line).
+    expect(out).toContain("InstallmentScheduleDisplay");
+    expect(out).not.toContain("trip-money-v2-ledger");
+    expect(out).not.toContain("any amount allowed");
+    expect(findToggleLabel(tree)).toBe("C24S Buyer, paid $200.00 of $800.00, Scheduled");
+    // ...and its actions: Charge now acts on the next open row.
+    press(tree, "Charge now for C24S Buyer");
+    const confirm = tree.root.findAll((n) => n.type === "ConfirmDialog" && n.props.testID === "trip-money-charge-dialog")[0];
+    TestRenderer.act(() => (confirm.props.onConfirm as () => void)());
+    expect(chargeMutate).toHaveBeenCalledWith({ installmentId: "v1", atRiskOverride: false });
+    TestRenderer.act(() => tree.unmount());
+  });
+
+  test("after one charge: $400.00 / $800.00 · $400.00 left (was $400 / $200 · $0.00 left)", () => {
+    installments = [
+      oldPlan({ id: "v1", status: "collected", dueAt: "2026-11-19T09:00:00Z", collectedAt: "2026-11-20T09:00:00Z" }),
+      oldPlan({ id: "v2", ordinal: 2, dueAt: "2027-01-15T09:00:00Z" }),
+      oldPlan({ id: "v3", ordinal: 3, dueAt: "2027-02-10T09:00:00Z" }),
+    ];
+    balances = [oldBalance({
+      paidMinor: 40000,
+      remainingMinor: 40000,
+      totalMinor: 80000,
+      nextPayment: { installmentId: "v2", dueAt: "2027-01-15T09:00:00Z", amountMinor: 20000, status: "scheduled" },
+      openRows: [openRow("v2", "2027-01-15T09:00:00Z"), openRow("v3", "2027-02-10T09:00:00Z")],
+      history: [{ installmentId: "v1", kind: "scheduled", status: "collected", amountMinor: 20000, collectedAt: "2026-11-20T09:00:00Z", refundedMinor: 0 }],
+    })];
+    const tree = render();
+    const out = text(tree);
+    expect(out).toContain("$400.00 / $800.00");
+    expect(out).toContain("$400.00 left");
+    expect(out).not.toContain("$0.00 left");
+    expect(out).toContain("InstallmentScheduleDisplay");
+    TestRenderer.act(() => tree.unmount());
+  });
+});
+
 // issue #4522 deploy window — against main's database the service reads rows
 // without `kind` (null) and returns no v2 balances (see
 // src/services/__tests__/issue_4522_deploy_window.implementor.test.ts). The
