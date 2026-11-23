@@ -879,12 +879,14 @@ AS $fn$
                   OR (state = 'refund_pending' AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes'))
                   OR (state = 'needs_ops' AND needs_ops_reason IN ('provider_refunded_more', 'provider_refund_unconfirmed')
                       AND (p_order_id IS NOT NULL OR updated_at <= p_now - interval '5 minutes')
-                      AND EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
-                                   WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending'))
-                      -- rework 7: a second-provider attempt without an id is only looked for, never re-sent
-                      AND (provider = 'paystack' OR NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                      AND ((EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
+                                     WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending'))
+                            -- rework 7: a second-provider attempt without an id is only looked for, never re-sent
+                            AND (provider = 'paystack' OR NOT EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts a
                                        WHERE a.overpayment_id = order_overpayments.id AND a.state IN ('creating', 'pending')
-                                         AND a.provider_refund_id IS NULL))))
+                                         AND a.provider_refund_id IS NULL)))
+                           -- T7-2: an extra refund still pending is re-read on the charge
+                           OR detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb)))
            ORDER BY created_at, id
            LIMIT greatest(COALESCE(p_limit, 100), 1)) op
 $fn$;
@@ -1132,7 +1134,19 @@ BEGIN
                     WHERE a.overpayment_id = v_op.id AND a.state IN ('creating', 'pending')));
   END IF;
   IF v_op.state = 'needs_ops' THEN
+    -- T7-2: an extra refund still pending is re-read on the charge (every 5
+    -- minutes), so ops can act once it ends even if its webhook is lost.
+    IF NOT COALESCE(p_reconciled, false) AND v_op.detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb THEN
+      UPDATE public.order_overpayments SET updated_at = p_now WHERE id = v_op.id;
+      RETURN v_base || jsonb_build_object('action', 'reconcile');
+    END IF;
     RETURN jsonb_build_object('ok', false, 'reason', 'needs_ops', 'needsOpsReason', v_op.needs_ops_reason);
+  END IF;
+  -- T7-4: a total that counts extra refunds is trusted only after the
+  -- provider was asked again (one may have been reversed, its webhook lost).
+  IF v_remaining <= 0 AND NOT COALESCE(p_reconciled, false) AND v_op.provider_ref IS NOT NULL
+     AND public.issue_4522_overpayment_back_minor(v_op.id) <> v_returned THEN
+    RETURN v_base || jsonb_build_object('action', 'reconcile');
   END IF;
   IF v_remaining <= 0 THEN
     UPDATE public.order_overpayments
@@ -1692,7 +1706,10 @@ BEGIN
     END LOOP;
   END IF;
   IF EXISTS (SELECT 1 FROM public.order_overpayment_refund_attempts
-              WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending')) THEN
+              WHERE overpayment_id = v_op.id AND state IN ('creating', 'pending'))
+     -- T7-2: an extra refund still pending at the provider may yet complete.
+     OR EXISTS (SELECT 1 FROM public.order_overpayments
+                 WHERE id = v_op.id AND detail->'over_refunded' @> '[{"status": "pending"}]'::jsonb) THEN
     RAISE EXCEPTION 'overpayment_refund_open_at_provider' USING ERRCODE = 'PT409';
   END IF;
   IF p_action = 'retry' THEN

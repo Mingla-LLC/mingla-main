@@ -581,6 +581,10 @@ Deno.test("T6-3 the refunded-more alert names the ops action; T6-2 its numbers n
     { ...base, overRefundedMinor: 500000, refundedMinor: 1000000, pendingMinor: 500000 }, null)!.paragraphs.join(" ");
   assert(more.includes("issue_4522_resolve_overpayment_by_ops(<overpayment>, 'retry', <your user id>)"), more);
   assert(more.includes("Do not use 'refunded_by_hand' for this case"), more);
+  // T7-2 / T7-4: retry is refused while ANY refund for it is pending, and re-reads the charge first.
+  assert(more.includes("refuses 'retry' while any of them is pending"), more);
+  assert(more.includes("the one it recorded and the extra ones"), more);
+  assert(more.includes("Mingla first re-reads the charge's refunds at the provider"), more);
   assert(more.includes("Of that, 500000 (NGN minor units) is still pending at the provider"), more);
   const notMore = overpaymentAlert("provider_refunded_more",
     { ...base, overRefundedMinor: 0, refundedMinor: 500000, pendingMinor: 0 }, null)!.paragraphs.join(" ");

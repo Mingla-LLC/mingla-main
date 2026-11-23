@@ -510,9 +510,19 @@ BEGIN
   END;
   PERFORM pg_temp.check('T6-1 ... ops retry is refused while it is pending', v_raised);
   v := public.issue_4522_finish_overpayment_refund(op, 1, 'succeeded', '9061');
-  PERFORM pg_temp.check('T6-1 ... it completes: stays with ops, no alert, no longer due',
+  PERFORM pg_temp.check('T6-1 ... it completes: stays with ops, no alert; T7-2 still due only for its pending extra refund',
     (pg_temp.op(op)).state = 'needs_ops' AND v->>'alertOps' = 'false'
-    AND jsonb_array_length(public.issue_4522_overpayments_due(r6, now(), 5)) = 0, v::text);
+    AND jsonb_array_length(public.issue_4522_overpayments_due(r6, now(), 5)) = 1, v::text);
+  v_raised := false;
+  BEGIN
+    PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN v_raised := true;
+  END;
+  PERFORM pg_temp.check('T7-2 ... ops retry is refused while the extra refund is pending', v_raised);
+  PERFORM public.issue_4522_overpayment_refund_event('paystack', '9062', 'mingla-inst-' || r6::text || '-l1', 500000,
+    'failed', op, 1, true);
+  PERFORM pg_temp.check('T6-1 ... the extra refund failed: no longer due',
+    jsonb_array_length(public.issue_4522_overpayments_due(r6, now(), 5)) = 0);
   v := public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
   v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('T6-1 ... ops retry is accepted and closes it without a new refund',
@@ -645,6 +655,64 @@ BEGIN
   v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
   PERFORM pg_temp.check('rework 7 the first provider is unchanged: verified (list after the key window), no hand-off',
     v->>'action' = 'verify' AND v->>'alertOps' = 'false' AND (pg_temp.op(op)).state = 'refund_pending', v::text);
+END
+$t$;
+
+-- ── T7-2 / T7-4: ops retry after a refund past the amount ──────────────
+--   T7-2 refused while an EXTRA refund is still pending (it is re-read on
+--        the charge meanwhile); T7-4 a total that counts an extra refund is
+--        trusted only after the provider was asked again.
+DO $t$
+DECLARE
+  op uuid; v jsonb; v_raised boolean := false;
+  x4 uuid := '4522c300-0000-4000-8000-0000000000c4';
+  x5 uuid := '4522c300-0000-4000-8000-0000000000c5';
+BEGIN
+  op := pg_temp.ng_overpayment(x4, 500000);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9141');
+  PERFORM public.issue_4522_overpayment_refund_event('paystack', '9142', 'mingla-inst-' || x4::text || '-l1', 500000,
+    'pending', op, 1, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'failed', '9141', 'refund.failed');
+  BEGIN
+    PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN v_raised := true;
+  END;
+  PERFORM pg_temp.check('T7-2 ops retry is refused (PT409) while an extra refund is still pending at the provider',
+    v_raised AND (pg_temp.op(op)).state = 'needs_ops');
+  UPDATE public.order_overpayments SET updated_at = now() - interval '10 minutes' WHERE id = op;
+  PERFORM pg_temp.check('T7-2 ... it stays due for a re-read of the charge',
+    public.issue_4522_overpayments_due(NULL, now(), 1000) @> jsonb_build_array(jsonb_build_object('overpaymentId', op)));
+  v := public.issue_4522_begin_overpayment_refund(op);
+  PERFORM pg_temp.check('T7-2 ... the lane re-reads the charge (reconcile), then waits 5 minutes',
+    v->>'action' = 'reconcile' AND pg_temp.n_attempts(op) = 1
+    AND NOT public.issue_4522_overpayments_due(NULL, now() + interval '1 minute', 1000) @> jsonb_build_array(jsonb_build_object('overpaymentId', op))
+    AND public.issue_4522_begin_overpayment_refund(op, NULL, true)->>'reason' = 'needs_ops', v::text);
+  PERFORM public.issue_4522_overpayment_refund_event('paystack', '9142', 'mingla-inst-' || x4::text || '-l1', 500000,
+    'succeeded', op, 1, true);
+  v := public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  v := public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM pg_temp.check('T7-2 ... once it completed, retry closes it with nothing new sent',
+    (pg_temp.op(op)).state = 'refunded'
+    AND (SELECT count(*) FROM public.order_overpayment_refund_attempts WHERE overpayment_id = op AND origin = 'mingla') = 1, v::text);
+
+  -- T7-4: the extra succeeded, the recorded failed, the provider then reversed the extra (webhook lost).
+  op := pg_temp.ng_overpayment(x5, 500000);
+  PERFORM public.issue_4522_begin_overpayment_refund(op, NULL, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'pending', '9151');
+  PERFORM public.issue_4522_overpayment_refund_event('paystack', '9152', 'mingla-inst-' || x5::text || '-l1', 500000,
+    'succeeded', op, 1, true);
+  PERFORM public.issue_4522_finish_overpayment_refund(op, 1, 'failed', '9151', 'refund.failed');
+  PERFORM public.issue_4522_resolve_overpayment_by_ops(op, 'retry', '4522c300-0000-4000-8000-000000000001');
+  v := public.issue_4522_begin_overpayment_refund(op);
+  PERFORM pg_temp.check('T7-4 a retry whose total counts an extra refund asks the provider first, never closes on the stored total',
+    v->>'action' = 'reconcile' AND (pg_temp.op(op)).state = 'held', v::text);
+  -- the provider's list shows the extra refund reversed
+  PERFORM public.issue_4522_overpayment_refund_event('paystack', '9152', 'mingla-inst-' || x5::text || '-l1', 500000,
+    'failed', op, 1, true);
+  v := public.issue_4522_begin_overpayment_refund(op, 1, true);
+  PERFORM pg_temp.check('T7-4 ... it was reversed: the 500,000 owed is sent once',
+    v->>'action' = 'create' AND (v->>'amountMinor')::bigint = 500000 AND public.issue_4522_overpayment_back_minor(op) = 0, v::text);
 END
 $t$;
 
