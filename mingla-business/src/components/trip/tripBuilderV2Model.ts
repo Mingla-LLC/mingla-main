@@ -85,6 +85,12 @@ export interface ChecklistInput {
   hasPricedPackage: boolean;
   planOk: boolean;
   bookingDeadline: string | null;
+  /**
+   * #4522 X-1 — the trip's zone. The deadline must fall before the departure
+   * day begins there (the stored start is a calendar date, #4420); the latest
+   * valid deadline is the end of the day before departure. Absent = UTC.
+   */
+  timeZone?: string | null;
   payoutsReady: boolean;
   invitesReady: boolean;
 }
@@ -99,7 +105,11 @@ export function dayIsFilled(day: ChecklistInput["days"][number]): boolean {
 }
 
 export function buildPublishChecklist(input: ChecklistInput): ChecklistItem[] {
-  const startMs = input.startAt === null ? NaN : Date.parse(input.startAt);
+  // #4522 X-1 — the same date rule as the picker (deadlineBounds /
+  // deadlineProblem): compare with the instant the departure day begins in the
+  // trip's zone, not the stored UTC-midnight calendar date.
+  const departureIso = tripDepartureStartIso(input.startAt, input.timeZone ?? "UTC");
+  const startMs = departureIso === null ? NaN : Date.parse(departureIso);
   const deadlineMs =
     input.bookingDeadline === null ? NaN : Date.parse(input.bookingDeadline);
   const deadlineOk =

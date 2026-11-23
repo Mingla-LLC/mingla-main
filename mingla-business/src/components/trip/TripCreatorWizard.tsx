@@ -2407,6 +2407,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
             ),
             planOk: packagesValidation.ok && !tripHasUnsupportedInstallments,
             bookingDeadline: step5Draft.bookingDeadline,
+            timeZone: trip.timezone ?? null,
             payoutsReady: !(tripNeedsStripe || tripNeedsBankForInstallments),
             invitesReady: invitePublishReady,
           })
@@ -2416,6 +2417,7 @@ const TripCreatorWizardSession: React.FC<TripCreatorWizardSessionProps> = ({
       daysDraft,
       step4Draft.packages,
       step5Draft.bookingDeadline,
+      trip.timezone,
       tripLocationValid,
       packagesValidation.ok,
       tripHasUnsupportedInstallments,
