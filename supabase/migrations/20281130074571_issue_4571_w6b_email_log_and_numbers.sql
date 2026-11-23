@@ -47,8 +47,8 @@
 --
 -- ROLLBACK (no down file): drop crm_outreach_numbers(date, date),
 -- crm_email_log_ingest(text, jsonb) and the table crm_email_log; restore
--- crm_4571_w6_json from 20281126064571 and team_agent_call from
--- 20281126034571 (the log_emails tool then answers unknown_tool; remove it
+-- crm_4571_w6_json from 20281130064571 and team_agent_call from
+-- 20281130034571 (the log_emails tool then answers unknown_tool; remove it
 -- from the connector's tool list in the same revert).
 
 BEGIN;
@@ -250,7 +250,7 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION public.crm_4571_suggest_replied(public.crm_records) FROM PUBLIC, anon, authenticated;
 
--- From 20281126064571 (crm_4571_w6_json). #4571 W6b: suggest_replied.
+-- From 20281130064571 (crm_4571_w6_json). #4571 W6b: suggest_replied.
 CREATE OR REPLACE FUNCTION public.crm_4571_w6_json(r public.crm_records) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = ''
 AS $function$
@@ -362,7 +362,7 @@ COMMENT ON FUNCTION public.crm_outreach_numbers(date, date) IS
 REVOKE ALL ON FUNCTION public.crm_outreach_numbers(date, date) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.crm_outreach_numbers(date, date) TO authenticated, service_role;
 
--- From 20281126034571 (team_agent_call). #4571 W6b: log_emails, and
+-- From 20281130034571 (team_agent_call). #4571 W6b: log_emails, and
 -- log_activity's answer carries suggest_stage.
 CREATE OR REPLACE FUNCTION public.team_agent_call(p_key_hash text, p_tool text, p_args jsonb, p_client text)
  RETURNS jsonb

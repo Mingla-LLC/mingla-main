@@ -1,6 +1,6 @@
 -- Issue #4571 W6b (email logged against cards, Replied suggested, the weekly
 -- numbers, log_activity's suggest_stage) -- implementor suite for
--- 20281126074571_issue_4571_w6b_email_log_and_numbers.sql on the fully
+-- 20281130074571_issue_4571_w6b_email_log_and_numbers.sql on the fully
 -- replayed PG17 schema. Everything is rolled back.
 --
 -- INVARIANT crm-mail-touch-once | gate crm_email_log_once | test this file

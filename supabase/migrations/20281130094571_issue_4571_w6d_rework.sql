@@ -27,7 +27,7 @@
 --      p_report_card_id is not passed, and owns the pg_cron entry: Dry run or
 --      On schedules issue_4571_crm_cadence_sweep, Off unschedules it. This
 --      migration unschedules it, so the sweep ships unscheduled (the spec's
---      cutover). RUNBOOK change to 20281126084571: step 1 is "it ships with no
+--      cutover). RUNBOOK change to 20281130084571: step 1 is "it ships with no
 --      cron entry"; step 2 (Dry run) creates it; Switch-off removes it.
 --   6. ops_link_search shows stage labels, not stage ids.
 --   7. crm_demo_inbox skips archived cards (a merged duplicate is not "Demo
@@ -46,16 +46,16 @@
 -- supabase/migrations/__tests__/issue_4571_w6d_rework.implementor.pg17.test.sql
 --
 -- ROLLBACK (no down file): re-run the CREATE OR REPLACE bodies of
--- crm_record_merge and crm_record_unmerge from 20281126064571,
--- crm_outreach_numbers from 20281126074571, crm_cadence_sweep_configure and
--- the cron DO block from 20281126084571, and ops_4571_activity_stage_at from
--- 20281126024571.
+-- crm_record_merge and crm_record_unmerge from 20281130064571,
+-- crm_outreach_numbers from 20281130074571, crm_cadence_sweep_configure and
+-- the cron DO block from 20281130084571, and ops_4571_activity_stage_at from
+-- 20281130024571.
 
 BEGIN;
 
 SET LOCAL lock_timeout = '10s';
 
--- From 20281126024571. #4571 rework: a backdated entry takes its stage from
+-- From 20281130024571. #4571 rework: a backdated entry takes its stage from
 -- the history at occurred_at.
 CREATE OR REPLACE FUNCTION public.ops_4571_activity_stage_at() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp
@@ -82,7 +82,7 @@ $$;
 COMMENT ON FUNCTION public.crm_email_log_ingest(text, jsonb) IS
   'Issue #4571 W6b. Log 1 to 50 emails against host and creator cards: outbound by To and Cc, inbound by From, matched to email identifiers (ok or bad, as cadence_sweep.py counts them) of live, not archived cards. Idempotent by (message id, card). Keeps the subject and the first 300 characters of the snippet. Mail that matches no card is not stored. Fed by the "Mail logging" agent run through the connector''s log_emails; Mingla stores no mail key. crm_ctx(): the Hosts and Creators area, agents included.';
 
--- From 20281126064571. #4571 rework: logged emails move with the merge.
+-- From 20281130064571. #4571 rework: logged emails move with the merge.
 CREATE OR REPLACE FUNCTION public.crm_record_merge(p_keep uuid, p_drop uuid, p_request_key text) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
@@ -259,7 +259,7 @@ BEGIN
 END;
 $function$;
 
--- From 20281126064571. #4571 rework: the demo rule, and logged emails move back.
+-- From 20281130064571. #4571 rework: the demo rule, and logged emails move back.
 CREATE OR REPLACE FUNCTION public.crm_record_unmerge(p_merge_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $function$
@@ -364,7 +364,7 @@ COMMENT ON FUNCTION public.crm_record_merge(uuid, uuid, text) IS
 COMMENT ON FUNCTION public.crm_record_unmerge(uuid) IS
   'Issue #4571 W6a (rework). Undo a merge within 7 days: every row crm_record_merge moved (logged emails included) goes back to the duplicate, removed duplicate Work links come back, and the duplicate is unarchived. Refused (demo_in_use, nothing written) when the kept host is in Demo booked, Onboarded or Live and the demos going back are its only booked ones (INVARIANT crm-demo-before-demo-booked). A stage the merge moved otherwise stays (stage_note says so). People only.';
 
--- From 20281126074571. #4571 rework: hand-logged email touches count.
+-- From 20281130074571. #4571 rework: hand-logged email touches count.
 CREATE OR REPLACE FUNCTION public.crm_outreach_numbers(p_from date, p_to date) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $function$
@@ -465,7 +465,7 @@ $function$;
 COMMENT ON FUNCTION public.crm_outreach_numbers(date, date) IS
   'Issue #4571 W6b (rework). The Team dashboard''s weekly numbers, per rep per Lagos day: calls (outbound phone touches) and their outcomes, connected (demo_booked, spoke_follow_up, call_back, not_interested), demos booked (outcome demo_booked), demos linked (W4, by who linked), emails sent (outbound crm_email_log by From, plus outbound email touches logged by hand by who logged them, unless the log has outbound mail to that card that Lagos day) and replies (inbound by mailbox), with connect_rate = connected / calls and demo_rate = demos booked / connected, null when the divisor is 0. Window 1 to 92 days. crm_ctx().';
 
--- From 20281126084571. #4571 rework: keeps the report card; owns the cron entry.
+-- From 20281130084571. #4571 rework: keeps the report card; owns the cron entry.
 CREATE OR REPLACE FUNCTION public.crm_cadence_sweep_configure(p_mode text, p_report_card_id uuid DEFAULT NULL,
                                                    p_team text[] DEFAULT NULL, p_since date DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
@@ -524,7 +524,7 @@ BEGIN
 END
 $cron$;
 
--- From 20281126024571 (ops_link_search, as replayed). #4571 rework: a host or
+-- From 20281130024571 (ops_link_search, as replayed). #4571 rework: a host or
 -- creator result, and a call's card, show the stage's label ("Replied"), not
 -- its id ("replied"), in Pick another host and every link picker.
 CREATE OR REPLACE FUNCTION public.ops_link_search(p_kind text, p_query text)
@@ -591,7 +591,7 @@ BEGIN
 END;
 $function$;
 
--- From 20281126044571 (crm_demo_inbox, as replayed). #4571 rework: an archived
+-- From 20281130044571 (crm_demo_inbox, as replayed). #4571 rework: an archived
 -- card (a merged duplicate keeps stage meeting, with its demo moved away) is
 -- not "Demo booked without a linked demo"; only live cards are listed. The
 -- Hosts banner (crm_demo_inbox_count) counts bookings, so it is unchanged.
@@ -635,7 +635,7 @@ BEGIN
 END;
 $$;
 
--- From 20281126064571 (crm_record_lite_json). #4571 rework: the duplicate
+-- From 20281130064571 (crm_record_lite_json). #4571 rework: the duplicate
 -- pickers say how many logged emails a merge would move (email_count), so the
 -- merge confirmation can name the number. crm_email_log has no client grant;
 -- every caller here is a SECURITY DEFINER function.

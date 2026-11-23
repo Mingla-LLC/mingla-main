@@ -147,6 +147,8 @@ jest.mock("../sections/DesignSection", () => {
   return {
     DesignCard: marker("design-card"),
     CoverCard: marker("cover-card"),
+    // #4575 — the Grid options card (renders on Grid only; these looks are not Grid).
+    DesignOptionsCard: marker("design-options-card"),
     FontsCard: marker("fonts-card"),
     ShapeRow: marker("shape-row"),
     ColoursCard: ({ onTokens }: { onTokens: (tokens: unknown) => void }) => (

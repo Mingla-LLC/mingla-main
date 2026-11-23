@@ -695,7 +695,7 @@ export function activityLine(entry, def, vocab) {
 /**
  * #4571 W2: the six call outcomes, in the SOP's order. Keys 1 to 6 pick them
  * in the log form. The server's twin is ops_4571_call_outcome_label
- * (20281126024571); the slugs are the stored values.
+ * (20281130024571); the slugs are the stored values.
  */
 export const CALL_OUTCOMES = Object.freeze([
   Object.freeze({ value: "demo_booked", label: "Demo booked", key: "1" }),
@@ -1087,7 +1087,7 @@ export function identKey(kind, value) {
   let t = asciiLower(o);
   if ([...t].length > 200) return null;
   if (kind === "email") return /^[^@ ]+@[^@ ]+[.][^@ ]+$/u.test(t) ? t : null;
-  // #4571 W3: the server's website branch (crm_ident_key, 20281126034571).
+  // #4571 W3: the server's website branch (crm_ident_key, 20281130034571).
   if (kind === "website") {
     if (!/^https?:\/\/[a-z0-9-]+([.][a-z0-9-]+)+(:[0-9]{1,5})?([/?#][^ ]*)?$/u.test(t)) return null;
     return t.replace(/^https?:\/\//, "").replace(/[?#].*$/, "").replace(/\/+$/, "");

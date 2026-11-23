@@ -238,9 +238,14 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //       arbiter: `UNIQUE (campaign_id, provider_ad_id, metric_date)` in
   //       20280802004238_issue_4238_builder_intelligence.sql.
   //
+  // #4574 Sites recovery watch, census +1 (117):
+  //   +1  `brand_site_recovery_watch_state (id)` — api-health-probe/index.ts
+  //       marks the 15-minute Sites recovery watch ready; arbiter: `id boolean
+  //       PRIMARY KEY` in 20281128004574_issue_4574_sites_backup_budget_and_alerts.sql.
+  //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 116);
+  assert.equal(sites.length, 117);
   assert.equal(
     sites.some((site) =>
       site.table === "brand_follow_email_pending" &&

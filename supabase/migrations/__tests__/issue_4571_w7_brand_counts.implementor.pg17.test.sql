@@ -1,5 +1,5 @@
 -- Issue #4571 W7 (a linked brand counts too, Seth's decision (d)) --
--- implementor suite for 20281126104571_issue_4571_w7_brand_counts.sql on the
+-- implementor suite for 20281130104571_issue_4571_w7_brand_counts.sql on the
 -- fully replayed PG17 schema. Everything is rolled back.
 --
 -- INVARIANT crm-demo-or-brand-before-onboarded | gate crm_4571_demo_stage_guard (crm_4571_stage_move_ok) | test this file
@@ -25,7 +25,7 @@
 --   UNMERGE  undoing a merge that leaves the kept Onboarded host with its
 --            brand is allowed; without the brand it is refused.
 --
--- FAILS-ON-REVERT: on the W6d schema (without 20281126104571) SELF, NONE's
+-- FAILS-ON-REVERT: on the W6d schema (without 20281130104571) SELF, NONE's
 -- wording, GATE, FORMS, UNLINK and UNMERGE fail: the brand never counts.
 --
 -- Run from the repository root as supabase_admin.

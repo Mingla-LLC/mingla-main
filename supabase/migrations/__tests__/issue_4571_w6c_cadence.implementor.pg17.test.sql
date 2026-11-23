@@ -1,5 +1,5 @@
 -- Issue #4571 W6c (the nightly cadence sweep on the server) -- implementor
--- suite for 20281126084571_issue_4571_w6c_cadence_sweep.sql on the fully
+-- suite for 20281130084571_issue_4571_w6c_cadence_sweep.sql on the fully
 -- replayed PG17 schema. The fixtures mirror ~/.mingla-agent/cadence_sweep.py's
 -- cases. Everything is rolled back.
 --

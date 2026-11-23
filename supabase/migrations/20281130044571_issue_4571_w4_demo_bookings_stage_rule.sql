@@ -56,7 +56,7 @@
 -- demo_rule_exempt_at can stay (inert). Restore crm_pipeline_def from
 -- 20270831003802; forms_move_stage from 20280712024452; crm_apply_brand_link
 -- from 20270820003802; crm_reconcile_live from 20270823003802;
--- crm_record_json, crm_record_get and team_agent_call from 20281126034571;
+-- crm_record_json, crm_record_get and team_agent_call from 20281130034571;
 -- admin_calendar_calls from 20280520004339. Revert growth-tools-book and the
 -- mingla-marketing schedule page together.
 
@@ -955,7 +955,7 @@ GRANT EXECUTE ON FUNCTION public.crm_demo_inbox_count() TO authenticated, servic
 -- ---------------------------------------------------------------------------
 -- 7. Reads.
 -- ---------------------------------------------------------------------------
--- From 20281126034571_issue_4571_w3_crm_card_watchers_contacts.sql:717. #4571 W4: next_demo and demo_gate on hosts.
+-- From 20281130034571_issue_4571_w3_crm_card_watchers_contacts.sql:717. #4571 W4: next_demo and demo_gate on hosts.
 CREATE OR REPLACE FUNCTION public.crm_record_json(r public.crm_records) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = ''
 AS $$
@@ -997,7 +997,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.crm_record_json(public.crm_records) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_record_json(public.crm_records) TO service_role;
 
--- From 20281126034571_issue_4571_w3_crm_card_watchers_contacts.sql:2096. #4571 W4: demos and schedule_token.
+-- From 20281130034571_issue_4571_w3_crm_card_watchers_contacts.sql:2096. #4571 W4: demos and schedule_token.
 CREATE OR REPLACE FUNCTION public.crm_record_get(p_id uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1101,7 +1101,7 @@ COMMENT ON FUNCTION public.admin_calendar_calls(timestamptz, timestamptz, boolea
 REVOKE ALL ON FUNCTION public.admin_calendar_calls(timestamptz, timestamptz, boolean) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_calendar_calls(timestamptz, timestamptz, boolean) TO authenticated, service_role;
 
--- From 20281126034571_issue_4571_w3_crm_card_watchers_contacts.sql:1152. #4571 W4: get_record carries the card's demos.
+-- From 20281130034571_issue_4571_w3_crm_card_watchers_contacts.sql:1152. #4571 W4: get_record carries the card's demos.
 CREATE OR REPLACE FUNCTION public.team_agent_call(p_key_hash text, p_tool text, p_args jsonb, p_client text)
  RETURNS jsonb
  LANGUAGE plpgsql

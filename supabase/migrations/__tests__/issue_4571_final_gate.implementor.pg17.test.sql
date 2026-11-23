@@ -1,5 +1,5 @@
 -- Issue #4571 final gate (the tester's P2-1, P2-2, P3-1, P3-2, P3-3) --
--- implementor suite for 20281126114571_issue_4571_final_gate_fixes.sql on the
+-- implementor suite for 20281130114571_issue_4571_final_gate_fixes.sql on the
 -- fully replayed PG17 schema. Everything is rolled back.
 --
 -- INVARIANT crm-demo-or-brand-before-onboarded | gate crm_4571_demo_stage_guard (crm_4571_stage_move_ok) | test this file
@@ -22,7 +22,7 @@
 --            booked; with a booked demo it can.
 --   UNLINK   P3-3: unlinking a brand at Onboarded writes one activity line.
 --
--- FAILS-ON-REVERT: on the W7 schema (without 20281126114571) LIVE, MERGE,
+-- FAILS-ON-REVERT: on the W7 schema (without 20281130114571) LIVE, MERGE,
 -- MLIVE, CONFLICT, EXISTS, DOWN and UNLINK fail.
 --
 -- Run from the repository root as supabase_admin.

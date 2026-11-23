@@ -1,5 +1,5 @@
 -- Issue #4571 rework (after the final test, FAIL at ffcb44bc6d) -- implementor
--- suite for 20281126094571_issue_4571_w6d_rework.sql on the fully replayed
+-- suite for 20281130094571_issue_4571_w6d_rework.sql on the fully replayed
 -- PG17 schema. Everything is rolled back.
 --
 -- INVARIANT crm-demo-before-demo-booked | gate crm_record_unmerge + crm_4571_demo_stage_guard | test this file

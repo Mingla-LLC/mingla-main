@@ -284,3 +284,47 @@ test("#3606 the contract lane runs both #3606 suites", () => {
   assert.match(contracts, /issue_3606_recovery_freshness\.implementor\.test\.mjs/);
   assert.match(contracts, /issue_3606_recovery_freshness\.tester\.adversarial\.test\.mjs/);
 });
+
+// ── #4574: the script budgets are tied to the SQL helpers that own them ──────
+import { readdirSync } from "node:fs";
+import { MAX_BACKUP_AGE_MS } from "../lib/sites-ops.mjs";
+
+const MIGRATIONS_DIR = join(REPO_ROOT, "supabase", "migrations");
+function newestSqlDefinition(name) {
+  const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort().reverse();
+  const re = new RegExp(`CREATE OR REPLACE FUNCTION public\\.${name}\\([\\s\\S]*?\\n\\$(?:function)?\\$;`);
+  for (const file of files) {
+    const body = readFileSync(join(MIGRATIONS_DIR, file), "utf8").match(re)?.[0];
+    if (body) return { file, body };
+  }
+  return { file: null, body: "" };
+}
+function helperHours(name) {
+  const { body } = newestSqlDefinition(name);
+  const m = body.match(/SELECT interval '(\d+) hours'/);
+  assert.ok(m, `${name} must return a literal interval in hours`);
+  return Number(m[1]);
+}
+
+test("#4574 the watchdog budget equals the gate's completion-stamped (manifest) budget in SQL", () => {
+  assert.equal(RECOVERY_BUDGET_HOURS, helperHours("brand_site_object_manifest_budget"));
+  const gate = newestSqlDefinition("brand_site_authorize_operation");
+  assert.match(gate.body, /object_manifest_verified_at > clock_timestamp\(\) - public\.brand_site_object_manifest_budget\(\)/);
+  assert.match(gate.body, /database_backup_verified_at > clock_timestamp\(\) - public\.brand_site_database_backup_budget\(\)/);
+  assert.doesNotMatch(gate.body, /(database_backup|object_manifest)_verified_at[^\n]*interval '/,
+    "the gate must not hold a literal backup budget again");
+});
+
+test("#4574 the write-time backup age stays under the first-publish budget and equals the writer's", () => {
+  const firstPublishHours = helperHours("brand_site_database_backup_budget");
+  assert.equal(firstPublishHours, 48, "Seth approved 48 h on #4574 (D2)");
+  assert.ok(MAX_BACKUP_AGE_MS < firstPublishHours * 60 * 60 * 1000);
+  const writer = newestSqlDefinition("brand_site_record_readiness_evidence");
+  const m = writer.body.match(/OR v_database_at <= v_accepted_at - interval '(\d+) hours'/);
+  assert.ok(m, "the evidence writer keeps a write-time freshness check");
+  assert.equal(MAX_BACKUP_AGE_MS, Number(m[1]) * 60 * 60 * 1000);
+  const callback = readFileSync(
+    join(REPO_ROOT, "supabase", "functions", "brand-site-cms-callback", "index.ts"), "utf8");
+  assert.ok(callback.includes(`database > now - ${MAX_BACKUP_AGE_MS / 3_600_000} * 60 * 60_000`),
+    "the CMS callback write-time check matches MAX_BACKUP_AGE_MS");
+});

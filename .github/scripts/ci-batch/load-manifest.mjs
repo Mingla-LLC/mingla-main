@@ -385,15 +385,20 @@ export const BOOTSTRAP_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 // #4549 merge of main after #4541 forms fixes and Blast push: kept main's #4541 rows and skips and the #4549 migration and both #4549 pg17 suites (filename order); re-sealed.
 // #4549 tester retest: registered the tester report-bounds pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
 // #4549 merge of main after #4548 guest pack: kept main's #4548 rows and filtered-replay skip, re-added the #4549 migration and its three pg17 suites (with sidecars) in filename order; re-sealed.
-// #4571 W1 people and goals: listed migration 20281126014571 after 20281124004549 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-// #4571 W2 links and call outcomes: listed migration 20281126024571 after 20281126014571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-// #4571 W3 host and creator card: listed migration 20281126034571 after 20281126024571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-// #4571 W4 demo bookings and the stage rule: listed migration 20281126044571 after 20281126034571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-// #4571 W5 Calendar week: listed migration 20281126054571 after 20281126044571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-// #4571 rework: listed migration 20281126094571 after 20281126084571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-// #4571 W7: listed migration 20281126104571 after 20281126094571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-// #4571 leftovers: also listed migration 20281126124571 and its pg17 suite and sidecar. #4571 final gate: listed migration 20281126114571 after 20281126104571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
-export const BOOTSTRAP_SHA256 = "c6dbd0cdc2c226190d11cda5f1fb04604d7ebf0ff7da924e186b669e1b71a63e";
+// #4571 W1 people and goals: listed migration 20281130014571 after 20281124004549 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4571 W2 links and call outcomes: listed migration 20281130024571 after 20281130014571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4571 W3 host and creator card: listed migration 20281130034571 after 20281130024571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4571 W4 demo bookings and the stage rule: listed migration 20281130044571 after 20281130034571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4571 W5 Calendar week: listed migration 20281130054571 after 20281130044571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4571 rework: listed migration 20281130094571 after 20281130084571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4571 W7: listed migration 20281130104571 after 20281130094571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4571 leftovers: also listed migration 20281130124571 and its pg17 suite and sidecar. #4571 final gate: listed migration 20281130114571 after 20281130104571 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4573 form request safeupdate: listed migration 20281127004573 after 20281124004549 in the #1857, #1931 and #2117 lanes, registered its pg17 suite and sidecar in the #1931 and #2117 inventories, and skipped it by exact filename on the filtered #1931 and #2117 template replays (it replaces functions from the skipped 20281122014541); re-sealed.
+// #4574 Sites backup budget: listed migration 20281128004574 after 20281124004549 in the #1857, #1931 and #2117 lanes and registered its pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4574 tester adversarial: registered the tester budget-boundary pg17 suite and sidecar in the #1931 and #2117 inventories; re-sealed.
+// #4574 merge of main after #4573 form request safeupdate: kept main's 20281127004573 rows, its pg17 suite and its filtered-replay skips before the #4574 migration and its two pg17 suites (filename order); re-sealed.
+// #4571 merge of main after #4573 and #4574: kept main's 20281127004573 and 20281128004574 rows and suites, renumbered the twelve #4571 migrations to 20281130014571 to 20281130124571 (same order) and listed them after 20281128004574 in the #1857, #1931 and #2117 lanes; re-sealed.
+export const BOOTSTRAP_SHA256 = "4c0b9457b3e53474691969e5dfe9ff0ab5dd16c87f2644a1f9c991c69fed635f";
 export const DESCRIPTOR_SUFFIX = ".ci-batch.json";
 export const PATCH_SUFFIX = ".ci-batch.patch.json";
 export const PATCH_DIRECTORY = ".github/ci-batch/patches";

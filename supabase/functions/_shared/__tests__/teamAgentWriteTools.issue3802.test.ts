@@ -784,9 +784,9 @@ Deno.test("#3802 W-6: the manifest and the gateway's list in this migration are 
     gateway[0],
   );
   assert(list);
-  // #4571 W6b: the latest gateway body (20281126074571) adds log_emails after
+  // #4571 W6b: the latest gateway body (20281130074571) adds log_emails after
   // record_reply; every other name and its order are the 3802 list's.
-  const w6bFile = Deno.readTextFileSync(new URL("../../../migrations/20281126074571_issue_4571_w6b_email_log_and_numbers.sql", import.meta.url));
+  const w6bFile = Deno.readTextFileSync(new URL("../../../migrations/20281130074571_issue_4571_w6b_email_log_and_numbers.sql", import.meta.url));
   const w6bGateway = w6bFile.slice(w6bFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call("), w6bFile.indexOf("\n$function$", w6bFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(")));
   assert(w6bGateway.length > 1000, "the W6b gateway body was found");
   const names3802 = [...list[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
@@ -812,9 +812,9 @@ Deno.test("#3802 W-6: the manifest and the gateway's list in this migration are 
     ),
     TEAM_AGENT_TOOLS.filter((t) => t.writes).map((t) => t.name),
   );
-  // #4571 W3: the gateway's latest body (20281126034571) adds watcher_emails to
+  // #4571 W3: the gateway's latest body (20281130034571) adds watcher_emails to
   // set_owners and calls_due to my_day; it keeps the same tool list.
-  const latestFile = Deno.readTextFileSync(new URL("../../../migrations/20281126034571_issue_4571_w3_crm_card_watchers_contacts.sql", import.meta.url));
+  const latestFile = Deno.readTextFileSync(new URL("../../../migrations/20281130034571_issue_4571_w3_crm_card_watchers_contacts.sql", import.meta.url));
   const latestGateway = latestFile.slice(latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call("), latestFile.indexOf("\n$function$", latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(")));
   assert(latestGateway.length > 1000, "the W3 gateway body was found");
   assertEquals([...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(latestGateway)?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),

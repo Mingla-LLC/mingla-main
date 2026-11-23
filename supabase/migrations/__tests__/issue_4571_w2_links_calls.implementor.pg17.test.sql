@@ -1,5 +1,5 @@
 -- Issue #4571 W2 (links on subtasks, two new link kinds, call outcomes) --
--- implementor suite for 20281126024571_issue_4571_w2_links_and_call_outcomes.sql
+-- implementor suite for 20281130024571_issue_4571_w2_links_and_call_outcomes.sql
 -- on the fully replayed PG17 schema. Everything is rolled back.
 --
 -- INVARIANT crm-call-outcome-phone-only | gate crm_activity_call_outcome_check, crm_record_log | test this file
@@ -25,7 +25,7 @@
 -- Run from the repository root as supabase_admin.
 
 \set ON_ERROR_STOP on
-\set w2_backfill `sed -n '/^UPDATE public.crm_activity a$/,/^ WHERE a.stage_at IS NULL;$/p' supabase/migrations/20281126024571_issue_4571_w2_links_and_call_outcomes.sql`
+\set w2_backfill `sed -n '/^UPDATE public.crm_activity a$/,/^ WHERE a.stage_at IS NULL;$/p' supabase/migrations/20281130024571_issue_4571_w2_links_and_call_outcomes.sql`
 begin;
 
 alter table auth.users add column if not exists email_confirmed_at timestamptz;

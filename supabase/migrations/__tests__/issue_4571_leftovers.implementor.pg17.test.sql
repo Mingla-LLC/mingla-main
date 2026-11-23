@@ -1,4 +1,4 @@
--- Issue #4571 last leftovers: implementor suite for 20281126124571_issue_4571_leftovers.sql
+-- Issue #4571 last leftovers: implementor suite for 20281130124571_issue_4571_leftovers.sql
 -- on the fully replayed PG17 schema. Everything is rolled back.
 --
 -- INVARIANT crm-archived-not-counted | gate crm_team_pulse + ops_brand_exact_rows (archived_at IS NULL) | test this file
@@ -9,7 +9,7 @@
 --   MATCH  ops_brand_match never offers to link a brand to an archived card
 --          through an exact email match; a card on the board still links.
 --
--- FAILS-ON-REVERT: on the schema without 20281126124571, PULSE and MATCH fail.
+-- FAILS-ON-REVERT: on the schema without 20281130124571, PULSE and MATCH fail.
 --
 -- Run from the repository root as supabase_admin.
 

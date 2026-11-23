@@ -1,5 +1,5 @@
 -- Issue #4571 W6a (Archived and Merge for duplicate cards) -- implementor suite
--- for 20281126064571_issue_4571_w6a_archive_merge.sql on the fully replayed
+-- for 20281130064571_issue_4571_w6a_archive_merge.sql on the fully replayed
 -- PG17 schema. Everything is rolled back.
 --
 -- INVARIANT crm-archived-not-on-board | gate crm_records_list + crm_calls_queue | test this file

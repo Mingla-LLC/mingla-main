@@ -32,8 +32,8 @@
 --
 -- ROLLBACK (no down file): re-run the bodies of crm_4571_stage_move_ok,
 -- crm_demo_gate, crm_apply_brand_link, crm_reconcile_live, crm_demo_unlink,
--- crm_record_unmerge and crm_demo_inbox from 20281126104571, and
--- crm_record_merge from 20281126094571.
+-- crm_record_unmerge and crm_demo_inbox from 20281130104571, and
+-- crm_record_merge from 20281130094571.
 
 BEGIN;
 
@@ -42,7 +42,7 @@ SET LOCAL lock_timeout = '10s';
 -- ---------------------------------------------------------------------------
 -- 1. The rule (P3-1, P3-2).
 -- ---------------------------------------------------------------------------
--- From 20281126104571. #4571 final: a brand counts only when it exists and is
+-- From 20281130104571. #4571 final: a brand counts only when it exists and is
 -- not deleted; a move down into Demo booked needs a demo that is on.
 CREATE OR REPLACE FUNCTION public.crm_4571_stage_move_ok(
   p_record_id uuid, p_pipeline text, p_from text, p_to text, p_exempt_at timestamptz, p_brand_id uuid) RETURNS boolean
@@ -71,7 +71,7 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 2. What the card shows (P3-1).
 -- ---------------------------------------------------------------------------
--- From 20281126104571. #4571 final: brand_linked and brand_ok read a brand
+-- From 20281130104571. #4571 final: brand_linked and brand_ok read a brand
 -- that exists and is not deleted.
 CREATE OR REPLACE FUNCTION public.crm_demo_gate(r public.crm_records) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = ''
@@ -104,7 +104,7 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 3. The brand link and Live (P2-1, P3-3).
 -- ---------------------------------------------------------------------------
--- From 20281126104571. #4571 final: an archived card is left alone, and
+-- From 20281130104571. #4571 final: an archived card is left alone, and
 -- unlinking the brand at Onboarded writes a line.
 CREATE OR REPLACE FUNCTION public.crm_apply_brand_link(p_id uuid) RETURNS text
 LANGUAGE plpgsql VOLATILE SET search_path = ''
@@ -164,7 +164,7 @@ BEGIN
 END;
 $$;
 
--- From 20281126104571. #4571 final (P2-1): archived (merged) cards are never
+-- From 20281130104571. #4571 final (P2-1): archived (merged) cards are never
 -- promoted, in the list and in the locked re-check.
 CREATE OR REPLACE FUNCTION public.crm_reconcile_live(p_record_id uuid DEFAULT NULL) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
@@ -246,7 +246,7 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 4. Unlink, merge, undo a merge and Demos cancelled (P2-2, P3-1).
 -- ---------------------------------------------------------------------------
--- From 20281126104571. #4571 final: the brand counts only when it exists.
+-- From 20281130104571. #4571 final: the brand counts only when it exists.
 CREATE OR REPLACE FUNCTION public.crm_demo_unlink(p_booking_id uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -288,7 +288,7 @@ BEGIN
 END;
 $$;
 
--- From 20281126094571. #4571 final (P2-2): the duplicate's brand moves to a
+-- From 20281130094571. #4571 final (P2-2): the duplicate's brand moves to a
 -- kept card with none, then the brand rule sets the stage; two different
 -- brands are refused (brand_conflict).
 CREATE OR REPLACE FUNCTION public.crm_record_merge(p_keep uuid, p_drop uuid, p_request_key text) RETURNS jsonb
@@ -509,7 +509,7 @@ BEGIN
 END;
 $function$;
 
--- From 20281126104571. #4571 final (P2-2, P3-1): the brand goes back to the
+-- From 20281130104571. #4571 final (P2-2, P3-1): the brand goes back to the
 -- duplicate and the kept card back to its stage from before the merge.
 CREATE OR REPLACE FUNCTION public.crm_record_unmerge(p_merge_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
@@ -654,7 +654,7 @@ BEGIN
 END;
 $function$;
 
--- From 20281126104571. #4571 final (P3-1): the brand counts only when it exists.
+-- From 20281130104571. #4571 final (P3-1): the brand counts only when it exists.
 CREATE OR REPLACE FUNCTION public.crm_demo_inbox() RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''
 AS $$

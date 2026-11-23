@@ -1703,9 +1703,9 @@ Deno.test("#3802 U-11: the tools here and the gateway's list are the same list, 
   );
   assert(list, "the gateway's tool list was found");
   assert(contentList, "the content gateway's tool list was found");
-  // #4571 W6b: the latest gateway body (20281126074571) is the 3802 list with
+  // #4571 W6b: the latest gateway body (20281130074571) is the 3802 list with
   // log_emails after record_reply, and its one new branch.
-  const w6bFile = Deno.readTextFileSync(new URL("../../../migrations/20281126074571_issue_4571_w6b_email_log_and_numbers.sql", import.meta.url));
+  const w6bFile = Deno.readTextFileSync(new URL("../../../migrations/20281130074571_issue_4571_w6b_email_log_and_numbers.sql", import.meta.url));
   const w6bGateway = w6bFile.slice(w6bFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call("), w6bFile.indexOf("\n$function$", w6bFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(")));
   assert(w6bGateway.length > 1000, "the W6b gateway body was found");
   const w6bList = /c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(w6bGateway);
@@ -1748,9 +1748,9 @@ Deno.test("#3802 U-11: the tools here and the gateway's list are the same list, 
     /CREATE FUNCTION public\.team_agent_content_call\([\s\S]*?\n\$\$;/
       .exec(CONTENT_MIGRATION);
   assert(contentGateway);
-  // #4571 W3: the gateway's latest body (20281126034571) adds watcher_emails to
+  // #4571 W3: the gateway's latest body (20281130034571) adds watcher_emails to
   // set_owners and calls_due to my_day; it keeps the same tool list.
-  const latestFile = Deno.readTextFileSync(new URL("../../../migrations/20281126034571_issue_4571_w3_crm_card_watchers_contacts.sql", import.meta.url));
+  const latestFile = Deno.readTextFileSync(new URL("../../../migrations/20281130034571_issue_4571_w3_crm_card_watchers_contacts.sql", import.meta.url));
   const latestGateway = latestFile.slice(latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call("), latestFile.indexOf("\n$function$", latestFile.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(")));
   assert(latestGateway.length > 1000, "the W3 gateway body was found");
   assertEquals([...(/c_tools constant text\[\] := ARRAY\[([^\]]+)\]/.exec(latestGateway)?.[1] || "").matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),

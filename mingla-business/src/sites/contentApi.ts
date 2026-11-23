@@ -22,6 +22,8 @@ import {
 import { brandSiteKeys } from "./brandSiteKeys";
 import { refusalDetailFrom, refusalSentence } from "./refusalCopy";
 import type { RichTextDoc } from "../../../packages/site-contracts/src/richText.ts";
+import type { DesignOptions } from "../../../packages/site-contracts/src/designs.ts";
+import { designOptionsPayload } from "./siteLook";
 import {
   PREVIEW_DEVICE_KEY,
   parsePreviewPreference,
@@ -900,6 +902,8 @@ export type SiteLookInput = {
   radius?: string;
   buttonShape?: string;
   motion?: string;
+  /** #4575 — Grid's options, only when the owner changed them. */
+  designOptions?: DesignOptions;
 };
 
 const groupArgs = (group?: ChangeGroup | null): Record<string, unknown> =>
@@ -955,6 +959,7 @@ export function setSiteLook(siteId: string, input: SiteLookInput, group?: Change
     ...(input.radius !== undefined ? { radius: input.radius } : {}),
     ...(input.buttonShape !== undefined ? { button_shape: input.buttonShape } : {}),
     ...(input.motion !== undefined ? { motion: input.motion } : {}),
+    ...(input.designOptions !== undefined ? { design_options: designOptionsPayload(input.designOptions) } : {}),
     ...groupArgs(group),
   });
 }

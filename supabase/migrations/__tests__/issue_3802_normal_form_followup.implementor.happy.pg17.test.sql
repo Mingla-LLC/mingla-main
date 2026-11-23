@@ -30,7 +30,7 @@
 \set ON_ERROR_STOP on
 \set t3802c_new_file `cat supabase/migrations/20271015003802_issue_3802_normal_form_followup.sql`
 -- #4571 W3 replaces crm_ident_key with the same body plus the website kind.
-\set t3802c_w3_file `cat supabase/migrations/20281126034571_issue_4571_w3_crm_card_watchers_contacts.sql`
+\set t3802c_w3_file `cat supabase/migrations/20281130034571_issue_4571_w3_crm_card_watchers_contacts.sql`
 \set t3802c_body `sed '/^BEGIN;$/d; /^COMMIT;$/d' supabase/migrations/20271015003802_issue_3802_normal_form_followup.sql`
 -- #4255 (D3, D4): a Founding partner is a full-admin seat and team_manage (owner,
 -- admin, partner) gates team changes, so the re-run self-check blocks below

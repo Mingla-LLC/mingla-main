@@ -39,7 +39,7 @@
 -- columns call_outcome, duration_seconds, stage_at (with their checks and
 -- crm_activity_counted) and the crm_record_identifiers columns status,
 -- bad_reason, bad_at, bad_by (with their checks). Restore ops_validate_card,
--- ops_subtasks_json and ops_cards_json from 20281126014571; ops_link_label
+-- ops_subtasks_json and ops_cards_json from 20281130014571; ops_link_label
 -- and ops_links_check from 20281121034420; ops_link_search and crm_record_log
 -- from 20271116003980; crm_activity_json from 20270820003802;
 -- crm_identifiers_json from 20270831003802.
@@ -390,7 +390,7 @@ GRANT EXECUTE ON FUNCTION public.ops_work_link_remove(uuid, text, uuid, boolean,
 -- ---------------------------------------------------------------------------
 -- 5. Subtasks start with their parent's links; tiles and rows carry labels.
 -- ---------------------------------------------------------------------------
--- From 20281126014571_issue_4571_w1_people_and_goals.sql:227. #4571 W2: a new subtask sent with no links takes its parent's, except support conversations.
+-- From 20281130014571_issue_4571_w1_people_and_goals.sql:227. #4571 W2: a new subtask sent with no links takes its parent's, except support conversations.
 CREATE OR REPLACE FUNCTION public.ops_validate_card(p_item jsonb, p_mode text, p_actor text, p_today date)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -718,7 +718,7 @@ BEGIN
 END;
 $function$;
 
--- From 20281126014571_issue_4571_w1_people_and_goals.sql:1323. #4571 W2: each subtask row carries its links.
+-- From 20281130014571_issue_4571_w1_people_and_goals.sql:1323. #4571 W2: each subtask row carries its links.
 CREATE OR REPLACE FUNCTION public.ops_subtasks_json(p_card_id uuid, p_today date)
  RETURNS jsonb
  LANGUAGE sql
@@ -747,7 +747,7 @@ AS $function$
     FROM public.ops_work_cards c WHERE c.parent_id = p_card_id AND c.archived_at IS NULL
 $function$;
 
--- From 20281126014571_issue_4571_w1_people_and_goals.sql:1349. #4571 W2: the board shape carries each link's stored label.
+-- From 20281130014571_issue_4571_w1_people_and_goals.sql:1349. #4571 W2: the board shape carries each link's stored label.
 CREATE OR REPLACE FUNCTION public.ops_cards_json(p_ids uuid[], p_today date, p_shape text DEFAULT 'full')
 RETURNS jsonb
 LANGUAGE plpgsql

@@ -64,7 +64,7 @@
 -- drop the crm_cadence_* functions, crm_4571_cadence, crm_4571_system_move,
 -- crm_4571_working_days_after and the two tables; delete ops_settings key
 -- cadence_sweep and restore ops_settings_key_check without it; restore
--- crm_4571_w6_json from 20281126074571.
+-- crm_4571_w6_json from 20281130074571.
 
 BEGIN;
 
@@ -171,7 +171,7 @@ COMMENT ON FUNCTION public.crm_cadence_state(uuid) IS
 REVOKE ALL ON FUNCTION public.crm_cadence_state(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.crm_cadence_state(uuid) TO authenticated, service_role;
 
--- From 20281126074571 (crm_4571_w6_json). #4571 W6c: the cadence round on a
+-- From 20281130074571 (crm_4571_w6_json). #4571 W6c: the cadence round on a
 -- host card the sweep works (Prospect or Contacted, not archived).
 CREATE OR REPLACE FUNCTION public.crm_4571_w6_json(r public.crm_records) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = ''

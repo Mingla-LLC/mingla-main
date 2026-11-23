@@ -47,8 +47,8 @@
 -- ROLLBACK (no down file): re-run the bodies of crm_4571_demo_move_ok,
 -- crm_demo_stage_allowed, crm_4571_demo_stage_guard, crm_demo_gate,
 -- crm_apply_brand_link, crm_reconcile_live and crm_demo_unlink from
--- 20281126044571, and crm_record_unmerge and crm_demo_inbox from
--- 20281126094571, and ops_plan_tools from 20271116003980; then drop
+-- 20281130044571, and crm_record_unmerge and crm_demo_inbox from
+-- 20281130094571, and ops_plan_tools from 20271116003980; then drop
 -- crm_4571_stage_move_ok and crm_4571_stage_refusal.
 
 BEGIN;
@@ -100,7 +100,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.crm_4571_stage_refusal(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_4571_stage_refusal(text) TO service_role;
 
--- From 20281126044571. #4571 W7: the same test, with the stored brand.
+-- From 20281130044571. #4571 W7: the same test, with the stored brand.
 CREATE OR REPLACE FUNCTION public.crm_4571_demo_move_ok(
   p_record_id uuid, p_pipeline text, p_from text, p_to text, p_exempt_at timestamptz) RETURNS boolean
 LANGUAGE sql STABLE SET search_path = ''
@@ -109,7 +109,7 @@ AS $$
            (SELECT c.brand_id FROM public.crm_records c WHERE c.id = p_record_id))
 $$;
 
--- From 20281126044571. #4571 W7: reads crm_4571_stage_move_ok with the card's brand.
+-- From 20281130044571. #4571 W7: reads crm_4571_stage_move_ok with the card's brand.
 CREATE OR REPLACE FUNCTION public.crm_demo_stage_allowed(p_record_id uuid, p_to text) RETURNS boolean
 LANGUAGE sql STABLE SET search_path = ''
 AS $$
@@ -117,7 +117,7 @@ AS $$
                      FROM public.crm_records c WHERE c.id = p_record_id), true)
 $$;
 
--- From 20281126044571. #4571 W7: the brand on the row being written counts for
+-- From 20281130044571. #4571 W7: the brand on the row being written counts for
 -- Onboarded and Live, an insert carrying a brand may start there, and the
 -- refusal names the stage.
 CREATE OR REPLACE FUNCTION public.crm_4571_demo_stage_guard() RETURNS trigger
@@ -155,7 +155,7 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 2. What the card shows.
 -- ---------------------------------------------------------------------------
--- From 20281126044571. #4571 W7: locked_stages and reasons per band stage;
+-- From 20281130044571. #4571 W7: locked_stages and reasons per band stage;
 -- a brand-linked Onboarded or Live host is not missing a demo.
 CREATE OR REPLACE FUNCTION public.crm_demo_gate(r public.crm_records) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = ''
@@ -320,7 +320,7 @@ $$;
 -- 4. Unlink, undo a merge, and Demos cancelled read the same rule.
 -- ---------------------------------------------------------------------------
 
--- From 20281126044571. #4571 W7: refused only when the card would break the rule.
+-- From 20281130044571. #4571 W7: refused only when the card would break the rule.
 CREATE OR REPLACE FUNCTION public.crm_demo_unlink(p_booking_id uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -361,7 +361,7 @@ BEGIN
 END;
 $$;
 
--- From 20281126094571. #4571 W7: the kept card is valid with a demo or, at
+-- From 20281130094571. #4571 W7: the kept card is valid with a demo or, at
 -- Onboarded or Live, its brand.
 CREATE OR REPLACE FUNCTION public.crm_record_unmerge(p_merge_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
@@ -465,7 +465,7 @@ BEGIN
 END;
 $function$;
 
--- From 20281126094571. #4571 W7: Demos cancelled leaves out brand-linked
+-- From 20281130094571. #4571 W7: Demos cancelled leaves out brand-linked
 -- Onboarded and Live hosts.
 CREATE OR REPLACE FUNCTION public.crm_demo_inbox() RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = ''

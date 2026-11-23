@@ -85,7 +85,7 @@ export interface TeamAgentTool {
 export const MAX_ITEMS = 50;
 /**
  * #4571 W2: the six call outcomes, in the SOP's order. The database's twin is
- * ops_4571_call_outcome_label (migration 20281126024571); Admin's is
+ * ops_4571_call_outcome_label (migration 20281130024571); Admin's is
  * CALL_OUTCOMES in mingla-admin/src/lib/crmModel.js.
  */
 export const CALL_OUTCOMES: readonly string[] = [

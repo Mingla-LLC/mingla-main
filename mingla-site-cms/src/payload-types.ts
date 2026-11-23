@@ -1885,6 +1885,13 @@ export interface SiteSetting {
    * Visitors who ask their device for reduced motion always get none.
    */
   motion?: ('design' | 'calm' | 'lively' | 'none') | null;
+  /**
+   * Grid only. Full-screen photo: each page opens on a full-screen photo with a black menu bar.
+   */
+  design_options?: {
+    cover?: 'full' | null;
+    photos?: ('colour' | 'mono') | null;
+  };
   hidden_offering_ids?:
     | {
         [k: string]: unknown;
@@ -3110,6 +3117,12 @@ export interface SiteSettingsSelect<T extends boolean = true> {
   radius?: T;
   button_shape?: T;
   motion?: T;
+  design_options?:
+    | T
+    | {
+        cover?: T;
+        photos?: T;
+      };
   hidden_offering_ids?: T;
   canonical_url?: T;
   seo_title?: T;

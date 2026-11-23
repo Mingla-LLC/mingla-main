@@ -1645,7 +1645,8 @@
         "mingla-business/src/utils/guestCsvExport.ts",
         "mingla-business/src/components/guests/AddCompGuestSheet.tsx",
         "mingla-business/src/components/guests/TicketLinkRequestsSheet.tsx",
-        "mingla-business/src/components/guests/TicketLinksSheet.tsx"
+        "mingla-business/src/components/guests/TicketLinksSheet.tsx",
+        "supabase/migrations/20281127004573_issue_4573_form_request_safeupdate.sql"
       ]
     },
     {
@@ -2939,6 +2940,8 @@
     {
       "capability_key": "staff-health",
       "paths": [
+        "supabase/functions/api-health-probe/sitesRecoveryWatch.ts",
+        "supabase/migrations/20281128004574_issue_4574_sites_backup_budget_and_alerts.sql",
         "supabase/migrations/20280406024275_issue_4275_cron_stagger_more.sql",
         "supabase/functions/api-health-probe/logic.ts",
         "supabase/functions/api-health-probe/index.ts",
@@ -5481,7 +5484,11 @@
         "supabase/migrations/20281119004453_issue_4453_website_team_requests.sql",
         "supabase/migrations/20281119014453_issue_4453_workspace_content_ranks.sql",
         "mingla-business/src/components/sites/website/workspace/AriRunHost.tsx",
-        "mingla-business/src/components/sites/website/workspace/ariRuntime.ts"
+        "mingla-business/src/components/sites/website/workspace/ariRuntime.ts",
+        "mingla-site-cms/src/lib/lookSavedReport.ts",
+        "mingla-site-cms/src/lib/siteLook.ts",
+        "mingla-site-cms/src/migrations/20261123_100000_issue_4575_design_options.ts",
+        "mingla-sites/public/designs/grid/options-1.css"
       ]
     },
     {

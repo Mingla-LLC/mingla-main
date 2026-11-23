@@ -1,5 +1,5 @@
 -- Issue #4571 W4 (demo bookings and the Demo booked stage rule) -- implementor
--- suite for 20281126044571_issue_4571_w4_demo_bookings_stage_rule.sql on the
+-- suite for 20281130044571_issue_4571_w4_demo_bookings_stage_rule.sql on the
 -- fully replayed PG17 schema. Everything is rolled back.
 --
 -- INVARIANT crm-demo-before-demo-booked | gate crm_4571_demo_stage_guard (crm_4571_demo_move_ok) | test this file

@@ -1,5 +1,5 @@
 -- Issue #4571 W5 (the Calendar's Week view) -- implementor suite for
--- 20281126054571_issue_4571_w5_calendar_week.sql on the fully replayed PG17
+-- 20281130054571_issue_4571_w5_calendar_week.sql on the fully replayed PG17
 -- schema. Everything is rolled back.
 --
 -- INVARIANT calendar-week-no-contact-details | gate ops_agent_call list_calendar projection | test this file

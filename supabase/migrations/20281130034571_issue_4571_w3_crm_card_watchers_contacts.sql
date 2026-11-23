@@ -47,9 +47,9 @@
 -- crm_record and restore team_mentions_source_kind_check from
 -- 20280626014398. Restore crm_ident_key from 20271015003802;
 -- crm_clean_identifiers, crm_record_json from 20270831003802;
--- crm_identifiers_json and crm_record_log from 20281126024571;
+-- crm_identifiers_json and crm_record_log from 20281130024571;
 -- crm_record_set_owners from 20271202003980; crm_record_move_stage from
--- 20271116003980; ops_link_label from 20281126024571 (and refresh stored
+-- 20271116003980; ops_link_label from 20281130024571 (and refresh stored
 -- booking labels); team_agent_call from 20271231204134. Files: archive
 -- every ops_work_files row with a record_id (say how many on #4571), delete
 -- them and their storage objects, drop ops_record_file_add,
@@ -407,7 +407,7 @@ ALTER TABLE public.crm_record_identifiers DROP CONSTRAINT crm_record_identifiers
   ADD CONSTRAINT crm_record_identifiers_kind_check CHECK (kind IN ('email','phone','handle','website'));  -- #4571 W3
 
 -- #4571 W3: each identifier with its follower count and when it went bad.
--- From 20281126024571_issue_4571_w2_links_and_call_outcomes.sql:1004.
+-- From 20281130024571_issue_4571_w2_links_and_call_outcomes.sql:1004.
 CREATE OR REPLACE FUNCTION public.crm_identifiers_json(p_record_id uuid) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path = ''
 AS $$
@@ -897,7 +897,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.crm_record_move_stage(uuid, text, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_record_move_stage(uuid, text, text, text) TO authenticated, service_role;
 
--- From 20281126024571_issue_4571_w2_links_and_call_outcomes.sql:1015. #4571 W3: tells the record's watchers.
+-- From 20281130024571_issue_4571_w2_links_and_call_outcomes.sql:1015. #4571 W3: tells the record's watchers.
 CREATE OR REPLACE FUNCTION public.crm_record_log(p_id uuid, p_entry jsonb, p_request_key text) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = ''
 AS $$
@@ -1102,7 +1102,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.crm_record_log(uuid, jsonb, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_record_log(uuid, jsonb, text) TO authenticated, service_role;
 
--- From 20281126024571_issue_4571_w2_links_and_call_outcomes.sql:152. #4571 W3: a booking label ends in its UTC instant
+-- From 20281130024571_issue_4571_w2_links_and_call_outcomes.sql:152. #4571 W3: a booking label ends in its UTC instant
 -- (YYYY-MM-DDTHH:MIZ), so each reader shows it in their own time zone (it was a bare UTC clock time).
 CREATE OR REPLACE FUNCTION public.ops_link_label(p_kind text, p_id uuid) RETURNS text
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp

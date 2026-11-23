@@ -40,7 +40,7 @@ describe("O-1 the six call outcomes", () => {
     const tools = read("supabase/functions/_shared/teamAgentTools.ts");
     const list = /export const CALL_OUTCOMES: readonly string\[\] = \[([^\]]*)\]/.exec(tools)?.[1] || "";
     assert.deepEqual([...list.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]), slugs);
-    const sql = read("supabase/migrations/20281126024571_issue_4571_w2_links_and_call_outcomes.sql");
+    const sql = read("supabase/migrations/20281130024571_issue_4571_w2_links_and_call_outcomes.sql");
     for (const o of CALL_OUTCOMES) assert.ok(sql.includes(`WHEN '${o.value}'`) && sql.includes(`THEN '${o.label}'`), o.value);
   });
   it("label stored values and nothing else", () => {

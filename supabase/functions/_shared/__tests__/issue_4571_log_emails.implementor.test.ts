@@ -8,7 +8,7 @@ import { assert, assertEquals, assertMatch } from "https://deno.land/std@0.224.0
 import { checkArguments, findTool, SCREEN_FUNCTION_PARITY, TEAM_AGENT_TOOLS } from "../teamAgentTools.ts";
 
 const W6B = Deno.readTextFileSync(
-  new URL("../../../migrations/20281126074571_issue_4571_w6b_email_log_and_numbers.sql", import.meta.url),
+  new URL("../../../migrations/20281130074571_issue_4571_w6b_email_log_and_numbers.sql", import.meta.url),
 );
 const gatewayStart = W6B.indexOf("CREATE OR REPLACE FUNCTION public.team_agent_call(");
 const GATEWAY = W6B.slice(gatewayStart, W6B.indexOf("\n$function$", gatewayStart));

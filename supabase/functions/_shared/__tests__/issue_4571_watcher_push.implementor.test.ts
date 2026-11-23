@@ -1,6 +1,6 @@
 // #4571 W3 — a host or creator card's watcher hears about a stage move. The
 // server queues business.team_mention with source_kind crm_record and the
-// record's name (crm_notify_watchers, 20281126034571); the push title names
+// record's name (crm_notify_watchers, 20281130034571); the push title names
 // who moved which card, never "mentioned you".
 //
 // FAILS-ON-REVERT: removing the crm_record branch from renderTeamMessage in

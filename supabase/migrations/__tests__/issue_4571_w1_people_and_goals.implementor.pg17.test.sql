@@ -1,5 +1,5 @@
 -- Issue #4571 W1 (people and goals) -- implementor suite for
--- 20281126014571_issue_4571_w1_people_and_goals.sql on the fully replayed
+-- 20281130014571_issue_4571_w1_people_and_goals.sql on the fully replayed
 -- PG17 schema. Everything is rolled back.
 --
 -- INVARIANT ops-card-owners-and-watchers (replaces ops-card-one-owner-one-watcher, #4398) | gate ops_4571_card_people_check | test this file

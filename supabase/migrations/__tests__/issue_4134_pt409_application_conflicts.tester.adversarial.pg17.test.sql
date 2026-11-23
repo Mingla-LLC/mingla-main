@@ -402,7 +402,7 @@ $fn$;
 -- restored the same way. It also DROPS issue_3720_update_internal_thread and
 -- issue_3988_reassign_internal_thread with the staff-thread table; they are
 -- re-created here from section B for the replay and dropped again after T4.
--- #4571 W3 (20281126034571) re-defines team_agent_call (set_owners takes
+-- #4571 W3 (20281130034571) re-defines team_agent_call (set_owners takes
 -- watcher_emails; my_day carries calls_due), so it is put back from section B
 -- (read from the migration file itself, not copied) and restored the same way.
 -------------------------------------------------------------------------------

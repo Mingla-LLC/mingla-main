@@ -307,7 +307,7 @@ Deno.test("#3980 every ops_ function the admin screens call has an agent tool or
 Deno.test("#3980 plan steps may name exactly the connector's tools, or person", () => {
   // #4571 W7: the latest definition (log_emails added).
   const migration = read(
-    "supabase/migrations/20281126104571_issue_4571_w7_brand_counts.sql",
+    "supabase/migrations/20281130104571_issue_4571_w7_brand_counts.sql",
   );
   const block = migration.slice(
     migration.indexOf("CREATE OR REPLACE FUNCTION public.ops_plan_tools()"),

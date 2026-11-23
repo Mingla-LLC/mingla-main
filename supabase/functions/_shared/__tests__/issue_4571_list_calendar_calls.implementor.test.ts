@@ -9,7 +9,7 @@ import { findWorkTool, WORK_SCREEN_FUNCTION_PARITY } from "../teamAgentWorkTools
 const KEY = "mgla_c_" + "w".repeat(43);
 const ROOT = new URL("../../../../", import.meta.url);
 const read = (path: string) => Deno.readTextFileSync(new URL(path, ROOT));
-const MIGRATION = "supabase/migrations/20281126054571_issue_4571_w5_calendar_week.sql";
+const MIGRATION = "supabase/migrations/20281130054571_issue_4571_w5_calendar_week.sql";
 
 const tool = () => {
   const t = findWorkTool("list_calendar");

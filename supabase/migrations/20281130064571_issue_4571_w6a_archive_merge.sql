@@ -56,8 +56,8 @@
 -- uuid, text), crm_duplicate_pairs(text), crm_records_archived_list(text),
 -- crm_record_unarchive(uuid), crm_record_archive(uuid, text) and the table
 -- crm_record_merges; restore crm_records_list (20271116003980), crm_calls_queue
--- and crm_record_lite_json from 20281126034571, crm_4571_demo_candidates from
--- 20281126044571 and crm_record_json from 20281126044571; then drop the four
+-- and crm_record_lite_json from 20281130034571, crm_4571_demo_candidates from
+-- 20281130044571 and crm_record_json from 20281130044571; then drop the four
 -- columns.
 
 BEGIN;
@@ -120,7 +120,7 @@ AS $function$
 $function$;
 REVOKE ALL ON FUNCTION public.crm_4571_w6_json(public.crm_records) FROM PUBLIC, anon, authenticated;
 
--- From 20281126044571 (crm_record_json). #4571 W6: || crm_4571_w6_json(r).
+-- From 20281130044571 (crm_record_json). #4571 W6: || crm_4571_w6_json(r).
 CREATE OR REPLACE FUNCTION public.crm_record_json(r crm_records)
  RETURNS jsonb
  LANGUAGE sql
@@ -164,7 +164,7 @@ AS $function$
   || public.crm_4571_w6_json(r)  -- #4571 W6
 $function$;
 
--- From 20281126034571 (crm_record_lite_json). #4571 W6a: the duplicate checks
+-- From 20281130034571 (crm_record_lite_json). #4571 W6a: the duplicate checks
 -- say when the match is archived (and where a merged card went).
 CREATE OR REPLACE FUNCTION public.crm_record_lite_json(r crm_records)
  RETURNS jsonb
@@ -236,7 +236,7 @@ COMMENT ON FUNCTION public.crm_records_archived_list(text) IS
 REVOKE ALL ON FUNCTION public.crm_records_archived_list(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.crm_records_archived_list(text) TO authenticated, service_role;
 
--- From 20281126034571 (crm_calls_queue). #4571 W6a: archived cards are out.
+-- From 20281130034571 (crm_calls_queue). #4571 W6a: archived cards are out.
 -- INVARIANT crm-archived-not-on-board: keep the archived_at IS NULL line.
 CREATE OR REPLACE FUNCTION public.crm_calls_queue(p_today date DEFAULT NULL::date)
  RETURNS jsonb
@@ -274,7 +274,7 @@ BEGIN
 END;
 $function$;
 
--- From 20281126044571 (crm_4571_demo_candidates). #4571 W6a: an archived card
+-- From 20281130044571 (crm_4571_demo_candidates). #4571 W6a: an archived card
 -- is never suggested for a demo.
 CREATE OR REPLACE FUNCTION public.crm_4571_demo_candidates(p_booking_id uuid, p_viewer text)
  RETURNS jsonb
