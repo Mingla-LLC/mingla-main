@@ -146,8 +146,23 @@ export const LINK_KINDS = [
 // form keeps LINK_KINDS as it was.
 export const DETAIL_LINK_KINDS = [
   ...LINK_KINDS,
+  // #4571 W2: a call (a phone touch, searched by the record's name) and a host demo booking.
+  { value: "call", label: "Call" },
+  { value: "booking", label: "Demo booking" },
   { value: "support_conversation", label: "Support conversation" },
 ];
+
+/** #4571 W2: the open subtasks that carry the same link (the ones "Also remove" would change). */
+export function subtasksWithLink(subtasks, link) {
+  return (Array.isArray(subtasks) ? subtasks : []).filter((s) => s && s.status !== "done"
+    && (s.links || []).some((x) => x.kind === link?.kind && x.id === link?.id));
+}
+
+/** #4571 W2: at most two link chips on a tile or a subtask row, then "+N". */
+export function linkChips(links, max = 2) {
+  const list = (Array.isArray(links) ? links : []).filter((l) => l && l.kind && l.id && l.label);
+  return { shown: list.slice(0, max), more: Math.max(0, list.length - max) };
+}
 
 /** The eleven rules every agent follows, as people read them. */
 export const AGENT_RULES = [

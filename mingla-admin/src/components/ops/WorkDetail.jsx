@@ -40,6 +40,7 @@ import {
   personReasonLabel,
   isTagged,
   DETAIL_LINK_KINDS,
+  subtasksWithLink,
   addDays,
   agentName,
   agentPromptFor,
@@ -79,6 +80,13 @@ import { linkSide, sideHref } from "../../lib/panelStack";
 import { isTicketCard, ticketNumber } from "../../lib/ticketModel";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
+// #4571 W2: these labels already say what they are ("Call · …", "Demo · …").
+const SELF_NAMED_KINDS = new Set(["call", "booking"]);
+function unlinkWords(link, answer) {
+  const n = Array.isArray(answer?.subtasks_changed) ? answer.subtasks_changed.length : 0;
+  if (!n) return `${link.label} unlinked`;
+  return `${link.label} unlinked here and from ${n === 1 ? "Card" : "Cards"} ${answer.subtasks_changed.join(", ")}`;
+}
 const INPUT = `min-h-11 w-full rounded-lg border border-[var(--gray-300)] bg-[var(--color-background-primary)] px-3 text-[13px] text-[var(--color-text-primary)] disabled:opacity-60 ${FOCUS}`;
 const LABEL = "text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]";
 const CHIP = `inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg px-2 text-[12.5px] hover:bg-[var(--gray-100)] disabled:opacity-60 ${FOCUS}`;
@@ -163,6 +171,9 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [closeTo, setCloseTo] = useState(null);
   const [closeChildren, setCloseChildren] = useState(false);
   const [linking, setLinking] = useState(false);
+  // #4571 W2: the link being removed, and whether its subtasks lose it too (off by default).
+  const [unlinking, setUnlinking] = useState(null);
+  const [alsoSubs, setAlsoSubs] = useState(false);
   // #4255: what is typed is kept per card (lib/panelDrafts.js) until it is
   // saved, so it survives a linked item or the thread opening beside it.
   const [title, setTitle, titleDraft] = usePanelDraft(`work:${cardId}:title`, card?.title || "");
@@ -171,7 +182,7 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
   const [description, setDescription, descriptionDraft] = usePanelDraft(`work:${cardId}:description`, savedDescription);
   const [blockReason, setBlockReason] = useState("");
   const [backReason, setBackReason] = useState("");  // #4398: Send back
-  // #4398: a closed card without one owner and one watcher reopens with the people picked here.
+  // #4398, #4571: a closed card that lacks an owner or a watcher reopens with the people picked here.
   const [reopenNeed, setReopenNeed] = useState("");
   const [reopenOwner, setReopenOwner] = useState([]);
   const [reopenWatcher, setReopenWatcher] = useState([]);
@@ -733,15 +744,37 @@ export function WorkDetail({ cardId, config, online, onChanged, headingRef, onBa
                   <li key={`${l.kind}:${l.id}`} className="inline-flex max-w-full items-center gap-1 rounded-full bg-[var(--gray-100)] py-0.5 pl-2.5 pr-0.5 text-[12.5px]">
                     {l.exists && linkSide(l) ? (
                       <SideLink side={linkSide(l)} aria-label={`Open ${l.label}`} className={`inline-flex min-h-7 min-w-0 items-center break-words rounded-full font-medium text-[var(--color-text-primary)] hover:underline ${FOCUS}`}>
-                        <span><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}</span>
+                        <span>{!SELF_NAMED_KINDS.has(l.kind) && <span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>}{l.label}</span>
                       </SideLink>
                     ) : (
-                      <span className="min-w-0 break-words"><span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>{l.label}{l.exists ? "" : " (removed)"}</span>
+                      <span className="min-w-0 break-words">{!SELF_NAMED_KINDS.has(l.kind) && <span className="text-[var(--color-text-tertiary)]">{l.kind.replace("_", " ")}: </span>}{l.label}{l.exists ? "" : " (removed)"}</span>
                     )}
-                    <button type="button" aria-label={`Unlink ${l.label}`} disabled={!canEdit} onClick={() => update({ links: card.links.filter((x) => !(x.kind === l.kind && x.id === l.id)).map((x) => ({ kind: x.kind, id: x.id })) }, `${l.label} unlinked`)} className={`inline-grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
+                    <button type="button" aria-label={`Unlink ${l.label}`} disabled={!canEdit || !!busy} onClick={() => {
+                      // #4571 W2: removing never cascades by itself; with subtasks holding it, ask.
+                      if (subtasksWithLink(subtasks, l).length) { setUnlinking(l); setAlsoSubs(false); return; }
+                      run("save", () => ops.removeLink(card.id, l, false, card.revision), `${l.label} unlinked`);
+                    }} className={`inline-grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--gray-200)] disabled:opacity-50 ${FOCUS}`}><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
                   </li>
                 ))}
               </ul>
+            )}
+            {unlinking && (
+              <div role="group" aria-label={`Unlink ${unlinking.label}`} data-unlink-ask="" className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--gray-200)] p-3 text-[13px]">
+                <span className="font-semibold text-[var(--color-text-primary)]">Unlink {unlinking.label}?</span>
+                <label className="inline-flex min-h-11 items-center gap-2 text-[var(--color-text-secondary)]">
+                  <input type="checkbox" checked={alsoSubs} onChange={(e) => setAlsoSubs(e.target.checked)} className="h-4 w-4" />
+                  <span>Also remove from {subtasksWithLink(subtasks, unlinking).length} {subtasksWithLink(subtasks, unlinking).length === 1 ? "subtask" : "subtasks"}</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" loading={busy === "save"} onClick={async () => {
+                    const l = unlinking;
+                    const answer = await run("save", () => ops.removeLink(card.id, l, alsoSubs, card.revision),
+                      (a) => unlinkWords(l, a));
+                    if (answer) setUnlinking(null);
+                  }}>Unlink</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setUnlinking(null)}>Keep it</Button>
+                </div>
+              </div>
             )}
             {linking && (
               <RecordPicker

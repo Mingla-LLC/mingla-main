@@ -511,7 +511,8 @@ export function RecordDrawer({
         );
         addToast({ variant: "success", title: "Added to the log" });
       }
-      return { ok: true };
+      // #4571 W2: the answer goes back to the form (a call's suggested next step).
+      return { ok: true, result: res };
     } catch (err) {
       if (err?.token === "not_found") markMissing();
       return { ok: false, message: errorWords(err), retryable: err?.token === "network" || err?.token === "unknown" };
@@ -1096,7 +1097,7 @@ export function RecordDrawer({
         <RecentTouchNotice key={`signals-${record.id}`} record={record} online={online} />
 
         <div className="border-t border-[var(--gray-200)] pt-4">
-          <LogForm key={record.id} record={record} config={config} disabled={locked} onSubmit={submitLog} />
+          <LogForm key={record.id} record={record} config={config} def={def} disabled={locked} onSubmit={submitLog} />
         </div>
 
         <ActivityLog

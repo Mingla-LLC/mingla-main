@@ -7,8 +7,8 @@
 // Rules this file holds (Seth's decisions, 2026-11-21):
 //   * the person making a ticket CHOOSES its owner, like any card; there is no
 //     automatic owner and no owner lock;
-//   * a ticket has exactly one watcher who is not the owner, like any card
-//     (#4398). The form has the card form's Watcher field; the creator is
+//   * a ticket has one or more watchers who are not owners, like any card
+//     (#4571; #4398 had exactly one). The form has the card form's Watcher field; the creator is
 //     filled in as watcher only when they are not the owner, and the form is
 //     not sent without a valid watcher;
 //   * a ticket without a due date is due in 7 days: the form shows that date

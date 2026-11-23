@@ -118,6 +118,10 @@ export const searchConversations = (query) => call(() => supabase.rpc("issue_442
 export const ensureTicketSignal = (cardId) => call(() => supabase.rpc("issue_4420_ticket_signal_ensure", { p_card_id: cardId }));
 export const mirrorTicketGithub = (cardId) => call(() => supabase.rpc("issue_4420_ticket_github_mirror", { p_card_id: cardId }));
 export const searchLinks = (kind, query) => call(() => supabase.rpc("ops_link_search", { p_kind: kind, p_query: query }));
+// #4571 W2: one link off a card; with fromSubtasks, also off its open subtasks, in one step.
+export const removeLink = (cardId, link, fromSubtasks, revision) => call(() => supabase.rpc("ops_work_link_remove", {
+  p_card_id: cardId, p_kind: link.kind, p_target_id: link.id, p_from_subtasks: !!fromSubtasks, p_expected_revision: revision,
+}));
 export const fetchRecordSignals = (recordId) => call(() => supabase.rpc("ops_record_signals", { p_record_id: recordId }));
 export const allowOneMore = (recordId, reason) => call(() => supabase.rpc("ops_contact_override", { p_record_id: recordId, p_reason: reason }));
 export const listLog = (query = {}) => call(() => supabase.rpc("ops_log_list", { p_query: query }));

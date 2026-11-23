@@ -47,6 +47,7 @@ import {
 import { draftItemTitle } from "../../lib/workViews";
 import { isTicketCard } from "../../lib/ticketModel";
 import { TicketChip } from "./TicketChip";
+import { LinkChips } from "./CardSubtasks";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] focus-visible:ring-offset-2";
 const WORDS = "break-normal [overflow-wrap:anywhere] hyphens-none";
@@ -90,6 +91,8 @@ export function BoardCardFace({ card, today, columns = [], onMove = null, showPi
     <span className="flex min-w-0 flex-col gap-1.5">
       {card.parent && <span className={`text-[11px] text-[var(--color-text-tertiary)] ${WORDS}`}>↳ #{card.parent.number} {card.parent.title}</span>}
       <span className={`line-clamp-2 text-[13px] font-semibold leading-snug text-[var(--color-text-primary)] ${WORDS}`}>{card.title}</span>
+      {/* #4571 W2: what the card is about, at most two links then +N (the tile opens the card). */}
+      <LinkChips links={card.links} />
       <DuePill card={card} today={today} />
       {(isTagged(card) || card.goal || left !== null || card.auto || isTicketCard(card)) && (
         <span className="flex min-w-0 flex-wrap items-center gap-1">

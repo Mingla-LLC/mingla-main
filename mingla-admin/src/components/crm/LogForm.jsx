@@ -2,7 +2,7 @@ import { useId, useRef, useState } from "react";
 import { Button } from "../ui/Button";
 import { CONTROL_CLASS, Field, LABEL_CLASS, Segmented, Select, TEXTAREA_CLASS } from "./fields";
 import { newRequestKey } from "../../services/crmService";
-import { logRuleWarning } from "../../lib/crmModel";
+import { CALL_OUTCOMES, callOutcomeForKey, callSuggestionWords, isOutboundCall, logRuleWarning, parseCallLength, usablePhones } from "../../lib/crmModel";
 import { usePanelDraft } from "../../hooks/usePanelDraft";
 import { DraftKeptNote } from "../ui/PanelStack";
 
@@ -19,8 +19,13 @@ const DIRECTIONS = [
  * Add a note or a touch to a card's log. A touch keeps the channel, the
  * direction, an optional message link and (for a reply) what kind of reply it
  * was as separate values, so they can be counted later.
+ *
+ * #4571 W2: a call the rep made (phone, I reached out) also takes its outcome
+ * (keys 1 to 6), its length, the PressOne link, the number that was wrong
+ * (for Wrong number) and, optionally, the Work card it belongs to. Each is
+ * its own field; nothing is written into the note.
  */
-export function LogForm({ record, config, disabled = false, onSubmit }) {
+export function LogForm({ record, config, def = null, disabled = false, onSubmit }) {
   const [kind, setKind] = useState("note");
   // #4255: the note being written is kept per card while panels change beside it.
   const [body, setBody, bodyDraft] = usePanelDraft(record?.id ? `record:${record.id}:log` : "", "");
@@ -28,6 +33,11 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
   const [direction, setDirection] = useState("outbound");
   const [messageRef, setMessageRef] = useState("");
   const [replyClass, setReplyClass] = useState("");
+  const [outcome, setOutcome] = useState("");
+  const [length, setLength] = useState("");
+  const [badPhone, setBadPhone] = useState("");
+  const [workCard, setWorkCard] = useState("");
+  const [suggestion, setSuggestion] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const bodyRef = useRef(null);
@@ -62,6 +72,30 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
       if (text) entry.body = text;
       if (messageRef.trim()) entry.message_ref = messageRef.trim();
       if (direction === "inbound" && replyClass) entry.reply_class = replyClass;
+      if (isOutboundCall(entry)) {
+        const parsed = parseCallLength(length);
+        if (parsed.error) {
+          setError(parsed.error);
+          return;
+        }
+        if (parsed.seconds !== null) entry.duration_seconds = parsed.seconds;
+        if (outcome) entry.outcome = outcome;
+        if (outcome === "wrong_number") {
+          if (!badPhone) {
+            setError("Pick the number that was wrong, so nobody calls it again.");
+            return;
+          }
+          entry.identifier_id = badPhone;
+        }
+        const card = workCard.trim().replace(/^#/, "");
+        if (card) {
+          if (!/^\d{1,9}$/.test(card)) {
+            setError("Write the Work card's number, like 4571.");
+            return;
+          }
+          entry.work_card = Number(card);
+        }
+      }
     }
     setError("");
     setBusy(true);
@@ -71,6 +105,11 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
       setBody("");
       setMessageRef("");
       setReplyClass("");
+      setOutcome("");
+      setLength("");
+      setBadPhone("");
+      setWorkCard("");
+      setSuggestion(callSuggestionWords(result.result, def));
       freshKey();
     } else if (result?.message) {
       // What was typed stays in the form.
@@ -83,6 +122,21 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
     setter(e.target.value);
     freshKey();
     if (error) setError("");
+    if (suggestion) setSuggestion("");
+  };
+  const isCall = kind === "touch" && channel === "phone" && direction === "outbound";
+  const phones = usablePhones(record);
+  const pickOutcome = (value) => {
+    setOutcome((cur) => (cur === value ? "" : value));
+    freshKey();
+    if (error) setError("");
+  };
+  // Keys 1 to 6 pick an outcome while the outcome buttons have focus.
+  const outcomeKeys = (e) => {
+    const value = callOutcomeForKey(e.key);
+    if (!value || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    pickOutcome(value);
   };
 
   return (
@@ -148,7 +202,7 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
       </div>
       {kind === "touch" && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Message link or id (optional)" htmlFor={`${id}-ref`}>
+          <Field label={isCall ? "PressOne link (optional)" : "Message link or id (optional)"} htmlFor={`${id}-ref`}>
             <input
               id={`${id}-ref`}
               type="text"
@@ -172,6 +226,59 @@ export function LogForm({ record, config, disabled = false, onSubmit }) {
             </Field>
           )}
         </div>
+      )}
+      {isCall && (
+        <div className="flex flex-col gap-3" data-call-fields="">
+          <div>
+            <span id={`${id}-outcome-label`} className={LABEL_CLASS}>Call outcome (keys 1 to 6)</span>
+            <div role="group" aria-labelledby={`${id}-outcome-label`} onKeyDown={outcomeKeys} className="flex flex-wrap gap-1.5">
+              {CALL_OUTCOMES.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  aria-pressed={outcome === o.value}
+                  aria-keyshortcuts={o.key}
+                  disabled={disabled || busy}
+                  onClick={() => pickOutcome(o.value)}
+                  className={`min-h-11 rounded-lg border px-3 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-700)] disabled:opacity-60 ${outcome === o.value ? "border-[var(--color-brand-800)] bg-[var(--color-brand-800)] text-white" : "border-[var(--gray-300)] bg-[var(--color-background-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--gray-100)]"}`}
+                >
+                  <span className="mr-1 tabular-nums opacity-70">{o.key}</span>{o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Length (optional, like 4:05)" htmlFor={`${id}-length`}>
+              <input id={`${id}-length`} type="text" inputMode="numeric" value={length} maxLength={8}
+                disabled={disabled || busy} onChange={change(setLength)} className={CONTROL_CLASS} />
+            </Field>
+            <Field label="Work card number (optional)" htmlFor={`${id}-card`}>
+              <input id={`${id}-card`} type="text" inputMode="numeric" value={workCard} maxLength={10}
+                disabled={disabled || busy} onChange={change(setWorkCard)} className={CONTROL_CLASS} />
+            </Field>
+          </div>
+          {outcome === "wrong_number" && (
+            phones.length ? (
+              <Field label="Which number was wrong" htmlFor={`${id}-bad`}>
+                <Select
+                  id={`${id}-bad`}
+                  value={badPhone}
+                  disabled={disabled || busy}
+                  placeholder="Pick the number"
+                  options={phones.map((p) => ({ value: p.id, label: p.value }))}
+                  onChange={change(setBadPhone)}
+                />
+              </Field>
+            ) : (
+              <p role="status" className="text-xs text-[var(--color-text-secondary)]">This card has no usable phone number to mark. Add the number first.</p>
+            )
+          )}
+        </div>
+      )}
+      {suggestion && (
+        <p role="status" data-call-suggestion="" className="rounded-lg bg-[var(--color-info-50)] p-2.5 text-xs text-[var(--color-info-700)]">
+          {suggestion}
+        </p>
       )}
       {logRuleWarning(record, { kind, direction }) && (
         <p role="status" className="rounded-lg bg-[var(--color-warning-50)] p-2.5 text-xs text-[var(--color-warning-700)]">

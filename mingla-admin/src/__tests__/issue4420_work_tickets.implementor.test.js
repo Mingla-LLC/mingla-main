@@ -373,7 +373,8 @@ describe("T-6 ordinary cards behave as before", () => {
   });
   it("the add form's linked-record kinds are the original six; only a card's detail also offers Support conversation", () => {
     assert.deepEqual(LINK_KINDS.map((k) => k.value), ["host", "creator", "brand", "event", "content", "expected"]);
-    assert.deepEqual(DETAIL_LINK_KINDS.map((k) => k.value), [...LINK_KINDS.map((k) => k.value), "support_conversation"]);
+    // #4571 W2: a card's detail also links a call and a demo booking.
+    assert.deepEqual(DETAIL_LINK_KINDS.map((k) => k.value), [...LINK_KINDS.map((k) => k.value), "call", "booking", "support_conversation"]);
     assert.match(code("components/ops/WorkDetail.jsx"), /<RecordPicker\s+kinds=\{DETAIL_LINK_KINDS\}/);
     assert.match(code("components/ops/RecordPicker.jsx"), /ops\.searchConversations\(query\)/);
   });

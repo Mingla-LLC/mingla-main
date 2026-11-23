@@ -610,14 +610,81 @@ export function activityLine(entry, def, vocab) {
   if (entry?.kind === "touch") {
     const channel = channels.find((c) => c.id === entry.channel)?.label || "Message";
     const way = entry.direction === "inbound" ? "they replied" : "reached out";
+    // #4571 W2: a call shows its outcome and length (stored in their own fields).
+    const outcome = callOutcomeLabel(entry.outcome);
+    const length = callLengthLabel(entry.duration_seconds);
     return {
-      headline: `${channel} · ${way}`,
+      headline: [`${channel} · ${way}`, outcome, length].filter(Boolean).join(" · "),
       body: entry.body || "",
       badge: replies.find((c) => c.id === entry.reply_class)?.label || "",
       ref: entry.message_ref || "",
     };
   }
   return { headline: entry?.body || "", body: "", badge: "" };
+}
+
+/**
+ * #4571 W2: the six call outcomes, in the SOP's order. Keys 1 to 6 pick them
+ * in the log form. The server's twin is ops_4571_call_outcome_label
+ * (20281126024571); the slugs are the stored values.
+ */
+export const CALL_OUTCOMES = Object.freeze([
+  Object.freeze({ value: "demo_booked", label: "Demo booked", key: "1" }),
+  Object.freeze({ value: "spoke_follow_up", label: "Spoke – follow up", key: "2" }),
+  Object.freeze({ value: "call_back", label: "Call back", key: "3" }),
+  Object.freeze({ value: "no_answer", label: "No answer", key: "4" }),
+  Object.freeze({ value: "not_interested", label: "Not interested", key: "5" }),
+  Object.freeze({ value: "wrong_number", label: "Wrong number", key: "6" }),
+]);
+
+/** The words for a stored call outcome, or "" when there is none. */
+export function callOutcomeLabel(value) {
+  return CALL_OUTCOMES.find((o) => o.value === value)?.label || "";
+}
+
+/** The outcome a key press picks ("1" to "6"), or null. */
+export function callOutcomeForKey(key) {
+  return CALL_OUTCOMES.find((o) => o.key === String(key))?.value || null;
+}
+
+/** True when this touch is a call the rep made (it may carry an outcome). */
+export function isOutboundCall(entry) {
+  return entry?.kind === "touch" && entry?.channel === "phone" && entry?.direction === "outbound";
+}
+
+/**
+ * A call's length as typed: "4:05", "245" (seconds) or "" (none). Returns
+ * { seconds } (null when empty) or { error } in words. 0 to 4 hours.
+ */
+export function parseCallLength(text) {
+  const raw = String(text ?? "").trim();
+  if (!raw) return { seconds: null };
+  let seconds = null;
+  const mmss = /^(\d{1,3}):([0-5]\d)$/.exec(raw);
+  if (mmss) seconds = Number(mmss[1]) * 60 + Number(mmss[2]);
+  else if (/^\d{1,5}$/.test(raw)) seconds = Number(raw);
+  if (seconds === null || seconds > 14400) return { error: "Write the length as minutes:seconds, like 4:05, up to 4 hours." };
+  return { seconds };
+}
+
+/** "4:05" for 245 seconds; "" when there is no length. */
+export function callLengthLabel(seconds) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "";
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/** A record's phone numbers that are still usable (not marked bad). */
+export function usablePhones(record) {
+  return (Array.isArray(record?.identifiers) ? record.identifiers : [])
+    .filter((i) => i && i.kind === "phone" && i.status !== "bad" && i.id);
+}
+
+/** The suggestion a logged call came back with, in words, or "". Never applied. */
+export function callSuggestionWords(result, def) {
+  const s = result?.suggest_stage;
+  if (!s || typeof s !== "object") return "";
+  if (s.stage) return `${s.note || ""} Suggested: ${stageLabel(def, s.stage)}.`.trim();
+  return s.note || "";
 }
 
 /**

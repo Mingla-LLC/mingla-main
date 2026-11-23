@@ -110,8 +110,12 @@ const LINKS: ArgSchema = {
           "content",
           "expected",
           "card",
+          // #4571 W2: a call (a phone touch id from log_activity) and a host demo booking.
+          "call",
+          "booking",
         ],
-        hint: "Use host, creator, brand, event, content, expected or card",
+        hint:
+          "Use host, creator, brand, event, content, expected, card, call or booking",
       },
       id: ID,
     },
@@ -389,7 +393,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "add_work",
     title: "Add work cards",
     description:
-      "Add 1 to 50 cards straight to the Work board. Each card is checked by the server: title, instructions, done-means line, one or more current teammates as owners and one or more others as watchers (nobody in both; a card under a parent takes the parent's when you send none), a due date (or a linked event), real links. A refused card comes back with the fixes. The same request_key repeats safely. A card that repeats an open card is refused with that card; update it instead. Owners and watchers are told. github: issue or pull request links like #3980. " +
+      "Add 1 to 50 cards straight to the Work board. Each card is checked by the server: title, instructions, done-means line, one or more current teammates as owners and one or more others as watchers (nobody in both; a card under a parent takes the parent's when you send none), a due date (or a linked event), real links. A refused card comes back with the fixes. The same request_key repeats safely. A card that repeats an open card is refused with that card; update it instead. Owners and watchers are told. github: issue or pull request links like #3980. A card under a parent starts with the parent's links when you send none (links: [] means none); a subtask is a card, so change its links with update_work and the subtask's id. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       cards: {
@@ -429,7 +433,7 @@ export const TEAM_AGENT_WORK_TOOLS: readonly TeamAgentTool[] = [
     name: "update_work",
     title: "Update a card",
     description:
-      "Change a card your person owns, mark one plan step with step, or add a note (notes need a request_key and work on cards your person owns or watches). Every change is checked like an add. After each step, read the record back and mark the step done only if the change is really there. To hand a step to a person, set status person with the reason send, spend, publish or other, and stop: the card stays in To do with that Send, Spend or Publish tag, and only your person does that step and closes it. A status change keeps the tag. To take the tag off (person_reason null), say why in reason; your person and the watchers are told. github: issue or pull request links like #3980. " +
+      "Change a card your person owns, mark one plan step with step, or add a note (notes need a request_key and work on cards your person owns or watches). Every change is checked like an add. After each step, read the record back and mark the step done only if the change is really there. To hand a step to a person, set status person with the reason send, spend, publish or other, and stop: the card stays in To do with that Send, Spend or Publish tag, and only your person does that step and closes it. A status change keeps the tag. To take the tag off (person_reason null), say why in reason; your person and the watchers are told. github: issue or pull request links like #3980. A card under a parent starts with the parent's links when you send none (links: [] means none); a subtask is a card, so change its links with update_work and the subtask's id. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       id: ID,
