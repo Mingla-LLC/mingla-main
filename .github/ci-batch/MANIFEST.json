@@ -17962,6 +17962,7 @@
         "supabase/migrations/20281124004549_issue_4549_host_push_device_health.sql",
         "supabase/migrations/20281127004573_issue_4573_form_request_safeupdate.sql",
         "supabase/migrations/20281128004574_issue_4574_sites_backup_budget_and_alerts.sql",
+        "supabase/migrations/20281129003969_issue_3969_profile_access_step2.sql",
         "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql",
         "supabase/migrations/__tests__/issue_1902_public_event_lifecycle.pg17.test.sql",
@@ -19865,6 +19866,7 @@
         "supabase/migrations/20281124004549_issue_4549_host_push_device_health.sql",
         "supabase/migrations/20281127004573_issue_4573_form_request_safeupdate.sql",
         "supabase/migrations/20281128004574_issue_4574_sites_backup_budget_and_alerts.sql",
+        "supabase/migrations/20281129003969_issue_3969_profile_access_step2.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -20877,6 +20879,8 @@
         "supabase/migrations/__tests__/issue_3969_profile_access.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3969_profile_access.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3969_profile_access.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_3969_profile_access_step2.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3969_profile_access_step2.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3980_agent_guardrails.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3980_agent_guardrails.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3980_calendar_gate.tester.adversarial.pg17.test.sql",
@@ -25541,6 +25545,7 @@
         "supabase/migrations/20281124004549_issue_4549_host_push_device_health.sql",
         "supabase/migrations/20281127004573_issue_4573_form_request_safeupdate.sql",
         "supabase/migrations/20281128004574_issue_4574_sites_backup_budget_and_alerts.sql",
+        "supabase/migrations/20281129003969_issue_3969_profile_access_step2.sql",
         "supabase/migrations/__tests__/biz_trip_tickets_sold.test.ts",
         "supabase/migrations/__tests__/draft_autosave_keeps_applied_cover.test.sql",
         "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts",
@@ -26553,6 +26558,8 @@
         "supabase/migrations/__tests__/issue_3969_profile_access.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3969_profile_access.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3969_profile_access.tester.adversarial.pg17.test.sql.ci-suite.json",
+        "supabase/migrations/__tests__/issue_3969_profile_access_step2.implementor.pg17.test.sql",
+        "supabase/migrations/__tests__/issue_3969_profile_access_step2.implementor.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3980_agent_guardrails.tester.adversarial.pg17.test.sql",
         "supabase/migrations/__tests__/issue_3980_agent_guardrails.tester.adversarial.pg17.test.sql.ci-suite.json",
         "supabase/migrations/__tests__/issue_3980_calendar_gate.tester.adversarial.pg17.test.sql",
@@ -54630,5 +54637,5 @@
   },
   "phase3cContractSha256": "4be7a18c0ebd8e44046925ed57fd60ef257f75a1ce375f6d883e6b4243bc8849",
   "phase3dContractSha256": "96c929094dbff13ee3549f562a10567c8c9ee11f5fb191a11c9cbc9e081135cc",
-  "phase3eContractSha256": "c2585d0236b89b1d2f0be0be209ab5b3697f38c737f18d939be15c71e46bd077"
+  "phase3eContractSha256": "0a62792fa60a4ea7927fb39b0f223b0c9944769f64c707d4fddade9205aa1620"
 }
