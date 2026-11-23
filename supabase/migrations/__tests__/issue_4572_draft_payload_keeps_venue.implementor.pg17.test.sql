@@ -1,4 +1,4 @@
--- MINGLA-INVARIANT: I-4572-DRAFT-KEEPS-VENUE-AND-ADDRESS | issue #4572 | A draft built from an event (duplicate or unpublish, both through business_event_draft_payload_from_graph) copies the stored location's venueName and address as two fields; only a source with neither half falls back to {venueName: location_text, address: null}. The joined "Venue · Address" label is never written into venueName.
+-- MINGLA-INVARIANT: I-4572-DRAFT-KEEPS-VENUE-AND-ADDRESS | issue #4572 | An unpublished copy built from an event (duplicate or unpublish, both through business_event_draft_payload_from_graph) copies the stored location's venueName and address as two fields; only a source with neither half falls back to {venueName: location_text, address: null}. The joined "Venue · Address" label is never written into venueName.
 --
 -- #4572 item 5 (20281129504572_issue_4572_draft_payload_keeps_venue.sql), PostgreSQL 17 proof
 -- after the full replay.
