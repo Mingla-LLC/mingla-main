@@ -46,6 +46,9 @@ module.exports = {
     // #4490 spec 08 O3 fix 3 (O3-S1): the iPhone Till presents one native modal per
     // presenter (Pay from inside the basket's sheet). Native Sheet + iOS platform.
     "**/__tests__/tillSheets.issue4490.o3fix3.render.test.tsx",
+    // #4490 spec 08 O3 fix 4 (O3-S2): with no globalThis.crypto (Hermes) every Till
+    // payment and refund sends a clientRequestId venue-till accepts (a UUID).
+    "**/__tests__/tillRequestIds.issue4490.o3fix4.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native|react-native-keyboard-controller)",

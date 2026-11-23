@@ -41,7 +41,7 @@ import { useTapToPayRelease } from "../../../hooks/useTapToPayRelease";
 import { currentTapToPayDevice } from "../../../services/terminal/tapToPayDevice";
 import { setTapToPayScope } from "../../../services/terminal/tapToPaySession";
 import { tillTapOffer } from "./tillTapAvailability";
-import { latePayments, paidLabel } from "./tillPayModel";
+import { latePayments, newTillRequestId, paidLabel } from "./tillPayModel";
 import type { VenueOffer } from "../../../types/venueOffers";
 import { formatCurrency } from "../../../utils/currency";
 import { randomId } from "../../../utils/randomId";
@@ -774,7 +774,7 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
           void run(async () => {
             if (lineRefund === null || lineRefund.lineId === null) return;
             try {
-              await actions.refundLine.mutateAsync({ lineId: lineRefund.lineId, reason, clientRequestId: randomId() });
+              await actions.refundLine.mutateAsync({ lineId: lineRefund.lineId, reason, clientRequestId: newTillRequestId() });
               setLineRefund(null);
               setToast({ kind: "success", message: TILL_COPY.refunded });
             } catch (err) {
@@ -805,7 +805,7 @@ export function TillScreen({ venueId, prefill = null, openChecksOnStart = false 
               tipMinor: amountMinor > left ? amountMinor - left : 0,
               reason,
               restock: false,
-              clientRequestId: randomId(),
+              clientRequestId: newTillRequestId(),
             });
             setRefundFor(null);
             setToast({ kind: "success", message: TILL_COPY.refunded });

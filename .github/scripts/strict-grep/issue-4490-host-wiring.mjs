@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, venue-only Home listing every venue type, the station rail routing) keeps its load-bearing lines.
+// MINGLA-INVARIANT: I-4490-HOST-WIRING-PINS | issue #4490 | the Host and buyer web wiring that a model test cannot see (paid hire extras, the #4514 form seams, member codes at the door, the guest-list door sale and signed-out promoter page, the table deposit choices, the up-front experience save, the dark web preboot, the reserve sheet, the manage page time, the Calendar week, the Stay workspace layout, the Till's refusal words, pay-sheet resume and kitchen banners, the iPhone Till's one modal per presenter, venue-only Home listing every venue type, the station rail routing, the Till's client request ids made as UUIDs that venue-till accepts) keeps its load-bearing lines.
 /**
  * #4490 W3 fix 1 — the structural pins of eight #4490 mingla-business jest
  * suites, moved here as the additive strict-grep gate that
@@ -400,6 +400,58 @@ const PINS = [
     matches: [/=== "stations"[\s\S]{0,80}push\(stationHref\(venueId\)/],
     absentMatches: [/StationScreen/],
     why: "the Stay shell opens the station route from the rail and ?module=stations, with a static launcher (O3 A2)",
+  },
+  // tillRequestIds (08-O3 fix 4, O3-S2): venue-till refuses a clientRequestId that
+  // is not a UUID, and randomId() is not one on Hermes, so every Till payment and
+  // refund id is made with randomUuid() (newTillRequestId), never randomId().
+  {
+    id: "till-request-id-maker",
+    file: `${BIZ}/src/components/venue/till/tillPayModel.ts`,
+    contains: ['import { randomUuid } from "../../../utils/randomId";', "export const newTillRequestId = (): string => randomUuid();"],
+    absentMatches: [/newTillRequestId = \(\): string => randomId\(/],
+    why: "the Till's one request-id maker returns a UUID on every engine (O3-S2)",
+  },
+  {
+    id: "till-pay-sheet-request-id",
+    file: `${BIZ}/src/components/venue/till/PaymentSheet.tsx`,
+    contains: ["const requestId = useRef<string>(newTillRequestId());"],
+    absent: ['from "../../../utils/randomId"'],
+    absentMatches: [/requestId\.current = randomId\(/],
+    why: "pay_cash, pay_own_machine, pay_code_create and pay_tap_start send a UUID clientRequestId (O3-S2)",
+  },
+  {
+    id: "till-screen-refund-request-ids",
+    file: `${BIZ}/src/components/venue/till/TillScreen.tsx`,
+    contains: ["reason, clientRequestId: newTillRequestId() });", "clientRequestId: newTillRequestId(),"],
+    absentMatches: [/clientRequestId: randomId\(/],
+    why: "both refund forms send a UUID clientRequestId (O3-S2)",
+  },
+  {
+    id: "till-tap-request-ids",
+    file: `${BIZ}/src/components/venue/till/TillTapPanel.tsx`,
+    contains: ["clientRequestId: randomUuid(),"],
+    absentMatches: [/clientRequestId: randomId\(/],
+    why: "door-tap-intent's till scope gets a UUID clientRequestId (its isUuid rule)",
+  },
+  {
+    id: "door-tap-flow-request-id",
+    file: `${BIZ}/src/services/terminal/tapToPayFlow.ts`,
+    contains: ["this.clientRequestId = randomUuid();"],
+    absentMatches: [/clientRequestId = randomId\(/],
+    why: "a fresh tap attempt's clientRequestId is a UUID (door_tap_intents.client_request_id is uuid)",
+  },
+  {
+    id: "venue-till-request-id-rule",
+    file: "supabase/functions/venue-till/index.ts",
+    contains: ["const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;"],
+    matches: [/(!UUID\.test\(requestId\)[\s\S]*){4}/],
+    why: "venue-till keeps refusing a non-UUID clientRequestId (the rule is right; the client was wrong)",
+  },
+  {
+    id: "till-request-id-proof-mirrors-server",
+    file: `${BIZ}/src/components/venue/till/__tests__/tillRequestIds.issue4490.o3fix4.render.test.tsx`,
+    contains: ["const SERVER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;"],
+    why: "the no-crypto render proof checks the exact pattern venue-till enforces",
   },
 ];
 

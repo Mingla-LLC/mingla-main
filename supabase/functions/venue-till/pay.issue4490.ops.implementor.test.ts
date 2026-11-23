@@ -11,6 +11,9 @@
 // for the O2F1 tests below (O2-T2 global unknown-code budget, O2-T1 cancel
 // with the Till off, O2-T4 adding to a check a stale payment held, O2-T3 the
 // text window refusal).
+//
+// TEST-MOD-APPROVED #4490 (08-O3 fix 4): one test appended at the end (O3F4-E1):
+// the server rule the Hermes bug ran into stays as it is. Nothing above changed.
 import {
   assert,
   assertEquals,
@@ -824,4 +827,88 @@ Deno.test("O2F2-E5 a spent unknown-code budget never refuses a real code: view, 
   } finally {
     console.error = realError;
   }
+});
+
+// #4490 spec 08 O3 fix 4 (O3-S2): the Host app on Hermes sent randomId()'s
+// `<base36>-<base36>-<base36>` as clientRequestId and every payment answered 400.
+// The fix is on the client (randomUuid); the server rule is right and stays: a
+// non-UUID request id is refused before anything is written, a UUID passes.
+Deno.test("O3F4-E1 a clientRequestId that is not a UUID (Hermes randomId shape) is refused 400 till_invalid_payload by every pay and refund action; a UUID passes", async () => {
+  const HERMES_SHAPE = "mwt3jn6n-xv5136tt-kc3fi7i0";
+  const LINE = "00000000-4490-4000-8000-0000000002d1";
+  const bodies: Row[] = [
+    {
+      action: "pay_cash",
+      saleId: SALE,
+      amountMinor: 440000,
+      tipMinor: 0,
+      cashGivenMinor: 500000,
+      expectedVersion: 3,
+    },
+    {
+      action: "pay_own_machine",
+      saleId: SALE,
+      amountMinor: 440000,
+      tipMinor: 0,
+      expectedVersion: 3,
+    },
+    {
+      action: "pay_code_create",
+      saleId: SALE,
+      tipMinor: 0,
+      expectedVersion: 3,
+    },
+    {
+      action: "pay_tap_start",
+      saleId: SALE,
+      tipMinor: 0,
+      expectedVersion: 3,
+      platform: "ios",
+    },
+    {
+      action: "refund",
+      paymentId: PAYMENT,
+      amountMinor: 1000,
+      tipMinor: 0,
+      reason: "Wrong item",
+      restock: false,
+    },
+    { action: "refund", lineId: LINE, reason: "Changed plans" },
+  ];
+  for (const body of bodies) {
+    const w = world();
+    const res = await w.handler(
+      post({ ...body, venueId: VENUE, clientRequestId: HERMES_SHAPE }),
+    );
+    assertEquals([body.action, res.status, (await res.json()).code], [
+      body.action,
+      400,
+      "till_invalid_payload",
+    ]);
+    assertFalse(
+      w.calls.some((c) => "p_client_request_id" in c.params),
+      `${body.action} reached a write`,
+    );
+  }
+  // The same cash payment with a UUID gets past the rule and is written with that id.
+  const w = world({
+    rpcOverride: (name) =>
+      name === "issue_4490_till_take_payment"
+        ? Promise.resolve({
+          data: {
+            sale: { lines: [] },
+            paymentId: PAYMENT,
+            changeMinor: 60000,
+            replayed: false,
+          },
+          error: null,
+        })
+        : undefined,
+  });
+  const res = await w.handler(
+    post({ ...bodies[0], venueId: VENUE, clientRequestId: REQ }),
+  );
+  assertEquals(res.status, 200);
+  const take = w.calls.find((c) => c.name === "issue_4490_till_take_payment")!;
+  assertEquals(take.params.p_client_request_id, REQ);
 });

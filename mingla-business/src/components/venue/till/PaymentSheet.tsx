@@ -23,7 +23,6 @@ import type {
 } from "../../../services/venueTillService";
 import { TillError } from "../../../services/venueTillService";
 import { formatCurrency } from "../../../utils/currency";
-import { randomId } from "../../../utils/randomId";
 import { Banner } from "../../ui/Banner";
 import { Button } from "../../ui/Button";
 import { ListRow } from "../../ui/ListRow";
@@ -36,7 +35,7 @@ import { ReceiptStep } from "./ReceiptStep";
 import { TillScanPanel } from "./TillScanPanel";
 import { TillTapPanel } from "./TillTapPanel";
 import type { TillTapOffer } from "./tillTapAvailability";
-import { paidLabel, resumeLivePayment, scanPanelState } from "./tillPayModel";
+import { newTillRequestId, paidLabel, resumeLivePayment, scanPanelState } from "./tillPayModel";
 import { TILL_COPY, tillAmountError, tillErrorCopy } from "./tillCopy";
 import { cashPresets, changeDue, foodAndDrinkMinor, tipChoices, type ReceiptChannel } from "./tillModel";
 import { openFloorPdf } from "../../../utils/floorPdf";
@@ -124,7 +123,7 @@ export function PaymentSheet({
   const [resumeTry, setResumeTry] = useState(0);
   const resumeDone = useRef(false);
   // One id per payment attempt: a retry of the same tap reuses it.
-  const requestId = useRef<string>(randomId());
+  const requestId = useRef<string>(newTillRequestId());
 
   const currency = sale?.currency ?? "NGN";
   const due = sale?.remainingMinor ?? 0;
@@ -142,7 +141,7 @@ export function PaymentSheet({
     setTapBusy(false);
     setTapResumed(false);
     resumeDone.current = false;
-    requestId.current = randomId();
+    requestId.current = newTillRequestId();
   }, [visible]);
 
   // O2-B1: a check that already has a live card payment opens on that payment's
@@ -239,7 +238,7 @@ export function PaymentSheet({
       if (code === "till_check_changed" || code === "till_amount_over_due" || code === "till_nothing_to_pay") {
         // Nothing moved: refresh the check and start a fresh attempt. The typed
         // amount stays as typed; the field says if it is now more than is left.
-        requestId.current = randomId();
+        requestId.current = newTillRequestId();
         onRefreshSale();
         setStep("choose");
       }
@@ -272,7 +271,7 @@ export function PaymentSheet({
     } catch (err) {
       const code = err instanceof TillError ? err.code : "till_failed";
       if (code === "till_check_changed" || code === "till_nothing_to_pay") {
-        requestId.current = randomId();
+        requestId.current = newTillRequestId();
         onRefreshSale();
       }
       setError(tillErrorCopy(code));
@@ -290,7 +289,7 @@ export function PaymentSheet({
 
   // A new attempt (a fresh code, or another way) never reuses the old request.
   const backToChoose = (): void => {
-    requestId.current = randomId();
+    requestId.current = newTillRequestId();
     setCard(null);
     setStep("choose");
     onRefreshSale();

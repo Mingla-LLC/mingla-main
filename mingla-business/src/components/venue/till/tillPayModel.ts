@@ -4,7 +4,17 @@
  * No React, no network: every rule here is tested on its own.
  */
 import type { TillPayment, TillSale } from "../../../services/venueTillService";
+import { randomUuid } from "../../../utils/randomId";
 import { TILL_COPY } from "./tillCopy";
+
+/**
+ * 08-O3 fix 4 (O3-S2): the one id every Till payment and refund carries
+ * (`clientRequestId`). venue-till refuses anything that is not a UUID (its
+ * `UUID` pattern; the column is PostgreSQL uuid), so this is `randomUuid()`,
+ * never `randomId()`, which on Hermes is not a UUID. It only has to be unique
+ * per attempt (a retry reuses it); it is not a secret.
+ */
+export const newTillRequestId = (): string => randomUuid();
 
 const TILL_PAY_URL = /^https?:\/\/[^/\s#?]+\/pay\/till\/[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/;
 export const TILL_CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/;
