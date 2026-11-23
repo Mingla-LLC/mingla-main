@@ -29,6 +29,7 @@ import { presignedGet, readObject, writeObject } from "../lib/objectStore";
 import {
   applyStudioMediaSelection,
   applyStudioSettingsSelection,
+  assertStudioSettingsPhoto,
   studioSettingsTargets,
   studioMediaTargets,
 } from "../lib/studioMediaSelection";
@@ -140,6 +141,8 @@ export const SAFE_FAILURE_COPY: Readonly<Record<string, { message: string; retry
    */
   MEDIA_REJECTED: { message: "That file could not be accepted. Images must be JPEG, PNG or WebP under 20 MB; video must be MP4 (H.264, fast start) up to 50 MB.", retryable: false },
   MEDIA_PROCESSING: { message: "That file is still being checked. Try again in a moment.", retryable: true },
+  // #4572 QA P2-3 — the logo and social image must be photos.
+  MEDIA_NOT_A_PHOTO: { message: "The logo and social image must be a photo (JPEG, PNG or WebP). Choose a photo instead.", retryable: false },
   // #2829 W11 (A11) — say where removed media is still used.
   MEDIA_IN_USE_DRAFT: { message: "This is still used in your draft website. Take it off the page or entry that uses it, then remove it.", retryable: false },
   MEDIA_IN_USE_LIVE: { message: "Your live website (or a version you can restore) still shows this. Publish a version without it, then remove it.", retryable: false },
@@ -193,6 +196,7 @@ function safeFailure(error: unknown, returnUrl?: string) {
       "SESSION_EXPIRED",
       "MEDIA_REJECTED",
       "MEDIA_PROCESSING",
+      "MEDIA_NOT_A_PHOTO",
       "PUBLISH_FAILED_LAST_GOOD_PRESERVED",
       "IDEMPOTENCY_CONFLICT",
       // #2829 — a named refusal, never a truncated site.
@@ -1161,6 +1165,7 @@ async function studioSettingsAttach(
     }),
   ]);
   if (media.state !== "READY") throw new Error("MEDIA_PROCESSING");
+  assertStudioSettingsPhoto(media);
   const data = applyStudioSettingsSelection(settings, String(media.id), {
     expectedRevision: String(body.expected_revision || ""),
     field: body.field,

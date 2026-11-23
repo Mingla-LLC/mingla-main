@@ -112,7 +112,8 @@ describe("#4572 item 16 tester — the picker widening is exactly three readable
     expect(logo.filterOptions!({ req: noTenant })).toBe(false);
     expect(logo.filterOptions!({ req: anon })).toBe(false);
     // the filter scopes to the caller's own tenant, never one named in input
-    expect(logo.filterOptions!({ req: member })).toEqual({ tenant: { equals: TENANT }, state: { equals: "READY" } });
+    // #4572 QA P2-3: the logo picker also offers photos only.
+    expect(logo.filterOptions!({ req: member })).toEqual({ tenant: { equals: TENANT }, state: { equals: "READY" }, detected_mime: { like: "image/" } });
   });
 
   it("A-5 only Mingla's system writes the three picker fields", () => {

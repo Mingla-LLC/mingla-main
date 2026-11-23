@@ -6,7 +6,9 @@
  * block attach the server refuses.
  */
 import { describe, expect, it, vi } from "vitest";
-import { applyStudioSettingsSelection, studioSettingsTargets } from "./studioMediaSelection";
+import { applyStudioSettingsSelection, assertStudioSettingsPhoto, studioSettingsMediaFilter, studioSettingsTargets } from "./studioMediaSelection";
+import { SiteSettings } from "../collections/SiteSettings";
+import { readFileSync } from "node:fs";
 import { attachStudioMedia } from "./studioMediaClient";
 
 const mediaA = "00000000-0000-4000-8000-000000000010";
@@ -43,5 +45,44 @@ describe("#4572 item 16 — logo and social image targets", () => {
     expect(result.return_url).toBe("/admin/collections/site-settings/42");
     const body = JSON.parse(String(request.mock.calls[0]![1]!.body));
     expect(body).toEqual({ scope: "site_settings", page_id: "42", expected_revision: settings.updatedAt, field: "logo" });
+  });
+});
+
+/*
+ * #4572 QA P2-3 — a video (or any non-image) is never the site logo or social
+ * image. FAILS-ON-REVERT: without assertStudioSettingsPhoto in the attach
+ * endpoint, or without the image filter on the two relationship fields, these
+ * go red.
+ */
+describe("#4572 QA P2-3 — logo and social image are photos only", () => {
+  it("refuses a video, a missing type and other files; accepts images", () => {
+    for (const mime of ["video/mp4", "application/pdf", "", undefined, 12]) {
+      expect(() => assertStudioSettingsPhoto({ detected_mime: mime }), String(mime)).toThrow("MEDIA_NOT_A_PHOTO");
+    }
+    for (const mime of ["image/jpeg", "image/png", "image/webp", "IMAGE/PNG"]) {
+      expect(() => assertStudioSettingsPhoto({ detected_mime: mime }), mime).not.toThrow();
+    }
+  });
+
+  it("both pickers offer only the tenant's READY photos", () => {
+    const fields = SiteSettings.fields as Array<{ name?: string; filterOptions?: (args: { req: unknown }) => unknown }>;
+    for (const name of ["logo", "social_image"]) {
+      const field = fields.find((candidate) => candidate.name === name);
+      expect(field?.filterOptions?.({ req: { user: { tenantId: "t-1" } } }), name).toEqual({
+        tenant: { equals: "t-1" },
+        state: { equals: "READY" },
+        detected_mime: { like: "image/" },
+      });
+      expect(field?.filterOptions?.({ req: { user: null } }), name).toBe(false);
+    }
+    expect(studioSettingsMediaFilter(undefined)).toBe(false);
+  });
+
+  it("the settings attach checks the photo rule before writing", () => {
+    const source = readFileSync(new URL("../endpoints/sitesEndpoints.ts", import.meta.url), "utf8");
+    const attach = source.slice(source.indexOf("async function studioSettingsAttach("));
+    const check = attach.indexOf("assertStudioSettingsPhoto(media);");
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(attach.indexOf("req.payload.update("));
   });
 });

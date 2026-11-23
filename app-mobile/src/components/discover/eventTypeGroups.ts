@@ -50,3 +50,25 @@ export function visibleEventTypeOptions(
     (option, index) => index < EVENT_TYPE_GROUP_PREVIEW || selected.includes(option.id),
   );
 }
+
+/**
+ * #4572 QA P2-2 — a filter chip's words. When the app has no translation for
+ * an option the server sends (a newer event type than this build knows), i18n
+ * hands back the key itself; show the slug in plain words ("book-club" →
+ * "Book club") instead of a raw `taxonomy.party.*` key.
+ * INVARIANT discover-chip-never-shows-raw-key: a Discover filter chip never renders an untranslated i18n key
+ */
+export function humanizeOptionId(id: string): string {
+  const words = id.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : id;
+}
+
+export function discoverOptionLabel(
+  t: (key: string) => string,
+  key: string | null,
+  id: string,
+): string {
+  if (!key) return id;
+  const text = t(key);
+  return typeof text === "string" && text.trim() && text !== key ? text : humanizeOptionId(id);
+}

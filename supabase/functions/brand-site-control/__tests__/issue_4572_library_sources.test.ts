@@ -37,3 +37,27 @@ Deno.test("#4572 off-storage, dot-dot and foreign pictures are left out; at most
   assertEquals(many.length, 13);
   assert(many.filter((source) => source.kind === "event_flyer").length === 11);
 });
+
+// QA P1-5: Studio refuses the whole list when a label holds "<" or ">", so
+// Core strips them. FAILS-ON-REVERT: without libraryText the labels keep them.
+Deno.test("#4572 '<' and '>' in a brand name or event title never reach a label", () => {
+  for (const [name, title] of [["Gallery", "Art <> Tech night"], ["Love > Hate", "Opening"], ["A<b", "<<>>"]]) {
+    const sources = brandLibrarySources(
+      { name, profile_photo_url: `${S}/brand_avatars/l.png`, cover_media_type: "image", cover_media_url: `${S}/brand_covers/c.jpg` },
+      [{ kind: "event", status: "scheduled", title, start_at: "2026-12-01T10:00:00Z", cover: { path: "event_covers/e/1.jpg", type: "image" } }],
+    );
+    assertEquals(sources.length, 3);
+    for (const source of sources) {
+      assert(!/[<>]/.test(source.label), source.label);
+      assert(source.label.length <= 160 && !/\s{2}/.test(source.label), source.label);
+    }
+  }
+  const [logo, flyer] = brandLibrarySources(
+    { name: "Love > Hate", profile_photo_url: `${S}/brand_avatars/l.png` },
+    [{ kind: "event", status: "scheduled", title: "Art <> Tech night", cover: { path: "event_covers/e/1.jpg", type: "image" } }],
+  );
+  assertEquals(logo.label, "Logo - Love Hate");
+  assertEquals(flyer.label, "Flyer - Art Tech night");
+  const onlyBrackets = brandLibrarySources({ name: "<>" }, [{ kind: "event", status: "scheduled", title: "<<>>", cover: { path: "event_covers/e/1.jpg", type: "image" } }]);
+  assertEquals(onlyBrackets.map((source) => source.label), ["Flyer - Event"]);
+});

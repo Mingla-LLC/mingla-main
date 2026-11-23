@@ -9,7 +9,7 @@
 // → EG-3 fails.
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import { PARTY_TYPES } from "../../../constants/eventTaxonomy.ts";
-import { groupEventTypeOptions, visibleEventTypeOptions } from "../eventTypeGroups.ts";
+import { discoverOptionLabel, groupEventTypeOptions, humanizeOptionId, visibleEventTypeOptions } from "../eventTypeGroups.ts";
 
 // The server sends options in its own array order (the 15 old slugs first).
 const serverOrder = ["birthday-party", "rooftop-party", "club-night", "corporate-event", "networking-event",
@@ -51,4 +51,27 @@ Deno.test("EG-5 the canonical list has 26 types in two groups of 13", () => {
   assertEquals(PARTY_TYPES.length, 26);
   assertEquals(PARTY_TYPES.filter((p) => p.group === "party").length, 13);
   assertEquals(new Set(PARTY_TYPES.map((p) => p.slug)).size, 26);
+});
+
+// QA P2-2 — an event type this build has no words for reads in plain words,
+// never as a raw `taxonomy.party.*` key. FAILS-ON-REVERT: FilterDropdown back
+// on `t(key)` → EG-6 source check fails; without the fallback → EG-5 fails.
+Deno.test("EG-5 an unknown event type reads as plain words, a known one keeps its translation", () => {
+  const known: Record<string, string> = { "taxonomy.party.club-night": "Club night" };
+  const t = (key: string): string => known[key] ?? key; // i18next returns the key when missing
+  assertEquals(discoverOptionLabel(t, "taxonomy.party.club-night", "club-night"), "Club night");
+  assertEquals(discoverOptionLabel(t, "taxonomy.party.exhibition", "exhibition"), "Exhibition");
+  assertEquals(discoverOptionLabel(t, "taxonomy.party.book-club", "book-club"), "Book club");
+  assertEquals(discoverOptionLabel(() => "", "taxonomy.party.kids_family", "kids_family"), "Kids family");
+  assertEquals(discoverOptionLabel(t, null, "lagos"), "lagos");
+  assertEquals(humanizeOptionId("--"), "--");
+  for (const id of ["exhibition", "art-show", "x_y"]) {
+    assert(!discoverOptionLabel(t, `taxonomy.party.${id}`, id).includes("taxonomy."), id);
+  }
+});
+
+Deno.test("EG-6 the filter chips use the fallback label", async () => {
+  const source = await Deno.readTextFile(new URL("../FilterDropdown.tsx", import.meta.url));
+  assert(source.includes("discoverOptionLabel(t, key, option.id)"));
+  assert(!source.includes("(key ? t(key) : option.id)"));
 });

@@ -8,12 +8,11 @@
  * that Studio refuses breaks Build for that brand.
  *   C-1 ordinary brands and every hostile URL shape Core must drop round-trip.
  *   C-2 Core never emits more than Studio accepts (13), nor a label over 160.
- *   C-3 KNOWN DEFECT (QA FAIL on #4572): an event title or brand name with
- *       "<" or ">" ("Art <> Tech", "Love > Hate") makes Core emit a label
- *       Studio refuses, so compose returns VALIDATION_FAILED and Build fails.
- *       Written as it.fails so CI stays green while it is open: once Core
- *       (or Studio) strips/accepts those characters this turns RED, and the
- *       fix must flip it to it().
+ *   C-3 (was a KNOWN DEFECT, QA FAIL P1-5 on #4572): an event title or brand
+ *       name with "<" or ">" ("Art <> Tech", "Love > Hate") made Core emit a
+ *       label Studio refuses, so compose returned VALIDATION_FAILED and Build
+ *       failed. Core now strips those characters (sitePlan.ts libraryText);
+ *       flipped from it.fails to it.
  */
 import { describe, expect, it } from "vitest";
 import { brandLibrarySources } from "../../../supabase/functions/brand-site-control/sitePlan.ts";
@@ -68,7 +67,7 @@ describe("#4572 item 3 tester — what Core sends, Studio accepts", () => {
     expect(parseLibrarySources([...sources, sources[0]])).toBeNull();
   });
 
-  it.fails("C-3 KNOWN DEFECT: a '<' or '>' in an event title or brand name refuses the whole compose envelope", () => {
+  it("C-3 a '<' or '>' in an event title or brand name no longer refuses the whole compose envelope (fixed in Core's libraryText)", () => {
     for (const [name, title] of [["Gallery", "Art <> Tech night"], ["Love > Hate", "Opening"], ["A<b", "Talk"]]) {
       const sources = brandLibrarySources(
         { name, profile_photo_url: `${S}/brand_avatars/l.png`, cover_media_type: "image", cover_media_url: `${S}/brand_covers/c.jpg` },

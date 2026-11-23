@@ -140,8 +140,19 @@ function picture(url: unknown): Pick<LibrarySource, "path" | "stream_poster"> | 
   return still ? { stream_poster: still } : null;
 }
 
+/**
+ * A library label's text. Studio refuses the WHOLE library list when any label
+ * holds "<" or ">" (parseLibrarySources), so a title like "Art <> Tech" would
+ * fail the Build; Core owns the labels, so it strips those two characters here.
+ * INVARIANT sites-library-labels-have-no-angle-brackets: every label brandLibrarySources emits is accepted by Studio's parseLibrarySources
+ */
+function libraryText(value: unknown, fallback: string): string {
+  const text = typeof value === "string" ? value.replace(/[<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100).trim() : "";
+  return text || fallback;
+}
+
 export function brandLibrarySources(brand: JsonObject, offerings: readonly unknown[]): LibrarySource[] {
-  const name = typeof brand.name === "string" && brand.name.trim() ? brand.name.trim().slice(0, 100) : "Your brand";
+  const name = libraryText(brand.name, "Your brand");
   const out: LibrarySource[] = [];
   const logo = storagePath(brand.profile_photo_url);
   if (logo) out.push({ kind: "brand_logo", label: `Logo - ${name}`, path: logo });
@@ -159,7 +170,7 @@ export function brandLibrarySources(brand: JsonObject, offerings: readonly unkno
       ? coverRow.path
       : null;
     const still = row.cover_stream_poster as LibrarySource["stream_poster"] | undefined;
-    const label = `Flyer - ${String(row.title).slice(0, 100)}`;
+    const label = `Flyer - ${libraryText(row.title, "Event")}`;
     if (path) out.push({ kind: "event_flyer", label, path });
     else if (still && typeof still.host === "string" && typeof still.video_id === "string" && typeof still.file === "string") {
       const checked = streamStill(`https://${still.host}/${still.video_id}/${still.file}`);

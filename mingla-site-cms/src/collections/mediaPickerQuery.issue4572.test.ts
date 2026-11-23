@@ -81,9 +81,10 @@ describe("#4572 item 16 — Studio media pickers can run their own query", () =>
     expect(failures).toEqual([]);
   });
 
-  it("the picker still lists only this site's READY media", () => {
+  it("the logo picker still lists only this site's READY photos", () => {
     const logo = all.find((picker) => picker.where === "site-settings.logo")!;
-    expect(logo.filter({ req: studioRequest() })).toEqual({ tenant: { equals: tenantId }, state: { equals: "READY" } });
+    // #4572 QA P2-3: photos only (detected_mime image/*), never a video.
+    expect(logo.filter({ req: studioRequest() })).toEqual({ tenant: { equals: tenantId }, state: { equals: "READY" }, detected_mime: { like: "image/" } });
     // No member, no list: the picker shows nothing rather than every tenant's media.
     expect(logo.filter({ req: { user: null, context: {} } })).toBe(false);
   });

@@ -6,7 +6,7 @@ import type { DiscoverFacetGroup, DiscoverFiltersV2, DiscoverPriceBands } from "
 import { formatPriceBandLabel } from "../../utils/discoverPriceBandLabel";
 import { setDiscoverGuests, updateDiscoverFilter } from "./discoverFilterState";
 import { PARTY_TYPES } from "../../constants/eventTaxonomy";
-import { groupEventTypeOptions, visibleEventTypeOptions, type EventTypeGroupId } from "./eventTypeGroups";
+import { discoverOptionLabel, groupEventTypeOptions, visibleEventTypeOptions, type EventTypeGroupId } from "./eventTypeGroups";
 
 interface Props {
   visible: boolean;
@@ -50,7 +50,7 @@ export function FilterDropdown({ visible, groups, filters, resultCount, priceBan
     const selected = value === option.id || (Array.isArray(value) && value.includes(option.id));
     const disabled = option.count === 0 && !selected;
     const key = optionKey(group, option.id);
-    let label = option.label ?? (key ? t(key) : option.id);
+    let label = option.label ?? discoverOptionLabel(t, key, option.id);
     if (group.id === "price" && option.id.startsWith("band_") && priceBands) {
       label = formatPriceBandLabel(Number(option.id.slice(-1)) - 1, priceBands, (key, values) => t(key, values));
     }

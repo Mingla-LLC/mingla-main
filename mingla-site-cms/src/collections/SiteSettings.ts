@@ -25,6 +25,7 @@ import {
   singletonPerTenant,
 } from "../lib/tenantIntegrity";
 import { collectMediaIds } from "../lib/mediaFields";
+import { studioSettingsMediaFilter } from "../lib/studioMediaSelection";
 import { reportLookSavedHook } from "../lib/lookSavedReport";
 
 
@@ -120,10 +121,7 @@ export const SiteSettings: CollectionConfig = {
       name: "logo",
       type: "relationship",
       relationTo: "media",
-      filterOptions: ({ req }) => {
-        const tenantId = (req.user as { tenantId?: string })?.tenantId;
-        return tenantId ? { tenant: { equals: tenantId }, state: { equals: "READY" } } : false;
-      },
+      filterOptions: ({ req }) => studioSettingsMediaFilter((req.user as { tenantId?: string })?.tenantId),
     },
     /*
      * #2829 AD-2 — the site's look: its design, and the owner's exact choices
@@ -270,10 +268,7 @@ export const SiteSettings: CollectionConfig = {
       name: "social_image",
       type: "relationship",
       relationTo: "media",
-      filterOptions: ({ req }) => {
-        const tenantId = (req.user as { tenantId?: string })?.tenantId;
-        return tenantId ? { tenant: { equals: tenantId }, state: { equals: "READY" } } : false;
-      },
+      filterOptions: ({ req }) => studioSettingsMediaFilter((req.user as { tenantId?: string })?.tenantId),
     },
     /*
      * #2829 AD-5 — where each collection's detail pages live, the site's

@@ -1,3 +1,4 @@
+import type { Where } from "payload";
 import { safeText } from "./validation";
 
 type Relationship = string | number | { id?: unknown } | null | undefined;
@@ -69,6 +70,24 @@ export function studioSettingsTargets(settings: SettingsLike | null | undefined)
     currentAlt: "",
     decorativeOnly: true,
   }));
+}
+
+/*
+ * #4572 QA P2-3 — the site logo and social image are photos. Studio's picker
+ * offers only image media, and the attach endpoint refuses anything else (the
+ * same rule as Ari's setSiteLogo: detected_mime image/*).
+ */
+export function studioSettingsMediaFilter(tenantId: string | undefined): false | Where {
+  return tenantId
+    ? { tenant: { equals: tenantId }, state: { equals: "READY" }, detected_mime: { like: "image/" } }
+    : false;
+}
+
+/** Refuses a non-photo for the logo or social image (MEDIA_NOT_A_PHOTO). */
+export function assertStudioSettingsPhoto(media: { detected_mime?: unknown }): void {
+  if (typeof media.detected_mime !== "string" || !media.detected_mime.toLowerCase().startsWith("image/")) {
+    throw new Error("MEDIA_NOT_A_PHOTO");
+  }
 }
 
 /** The site-settings change for a chosen photo; a stale revision or another field is refused. */
