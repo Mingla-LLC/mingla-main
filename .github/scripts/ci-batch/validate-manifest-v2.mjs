@@ -670,7 +670,7 @@ export function phase3dContractDigest(manifest) {
 // #4522 merge of main after #4549 Host push repair and #3645 provider minimums: kept main's 20281124004549 row and its three pg17 suites (with sidecars) beside the #3281/#4522 rows and skips (filename order); #3645 adds no MANIFEST rows (its Deno suites register by sidecar); re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 renumbering after #4549: moved the branch's 14 migrations (20281123013281..20281123143281) to 20281125013281..20281125143281 above main's 20281124004549, same relative order and slugs; expectedFiles re-sorted in the #1857, #1931 and #2117 lanes (main's rows first) and the filtered #1931/#2117 exact-filename skips renamed; re-sealed; MANIFEST.json phase3eContractSha256 matches.
 // #4522 merge of main after #4573 form request safeupdate and #4574 Sites backup budget: kept main's 20281127004573 and 20281128004574 rows, their pg17 suites and filtered-replay skips beside the #3281/#4522 rows and skips; moved the branch's 14 migrations (20281125013281..20281125143281) to 20281129013281..20281129143281 above main's 20281128004574, same relative order and slugs; expectedFiles re-sorted; re-sealed; MANIFEST.json phase3eContractSha256 matches.
-const LOCKED_PHASE3E_CONTRACT_SHA256 = "f9b55101ae6f82e67a83ec4c9cf86e5b75421e47dc8d4f1a9bbe381ce1f8e39d";
+const LOCKED_PHASE3E_CONTRACT_SHA256 = "89cd933bbc36361b6f56b558aaea572dfce6e8a593962f93631bf51fa8221222";
 export function phase3eContractRows(manifest) {
   const capabilities = manifest.commandCapabilities?.commands || [];
   const origins = manifest.legacyOrigins || [];
