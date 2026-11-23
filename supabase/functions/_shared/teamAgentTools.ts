@@ -545,7 +545,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "get_record",
     title: "Open a record",
     description:
-      "One host or creator with its identifiers, its contact rule, its links (Mingla brand, place) and its most recent log entries: notes, touches and stage moves, newest first. Shows 20 entries unless activity_limit asks for more (200 at most). Use an id returned by find_records. " +
+      "One host or creator with its identifiers, its contact rule, its links (Mingla brand, place), a host's linked demos (call time, status, how it was linked) and its most recent log entries: notes, touches and stage moves, newest first. Shows 20 entries unless activity_limit asks for more (200 at most). Use an id returned by find_records. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       id: {
@@ -791,7 +791,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "move_stage",
     title: "Move cards",
     description:
-      "Move 1 to 50 cards to another stage. Always send expected_from, the stage you saw the card in: if the card has moved since, nothing is moved and the answer says where it is now, so read it again. Lost and Passed need a one-line reason. Live sets itself when a host has a public listing; nobody chooses it. A creator reaches Booked or Posted only with a signed agreement. A card that is already there answers already_there. Each item has its own answer. " +
+      "Move 1 to 50 cards to another stage. Always send expected_from, the stage you saw the card in: if the card has moved since, nothing is moved and the answer says where it is now, so read it again. Lost and Passed need a one-line reason. Live sets itself when a host has a public listing; nobody chooses it. A creator reaches Booked or Posted only with a signed agreement. A host reaches Demo booked (meeting), Onboarded or Live only with a booked demo linked to its card (a Google Meet booked through its scheduler link); otherwise the item answers demo_required. A card that is already there answers already_there. Each item has its own answer. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       moves: {

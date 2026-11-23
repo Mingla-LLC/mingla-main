@@ -83,7 +83,12 @@ import {
   parseTimeZone,
   SOCIAL_LABELS,
 } from "./bookingContext.ts";
-import { buildBookingLead, recordBookingLead } from "./bookingLead.ts";
+import {
+  buildBookingLead,
+  linkDemoFromToken,
+  parseScheduleToken,
+  recordBookingLead,
+} from "./bookingLead.ts";
 // #4238 W3-3: a Host booking with the page's ad context is a host lead.
 import { recordBookingConversions, resolveFormLink } from "./bookingAdLead.ts";
 import { parseHostAdContext } from "../_shared/hostFunnelConversion.ts";
@@ -446,6 +451,8 @@ async function handleBook(
     body.audience === "" || body.audience === "host";
   const venue = hostOnly ? sanitizeLine(body.venue, 120) : "";
   const reportUrl = hostOnly ? sanitizeLine(body.report_url, 500) : "";
+  // #4571 W4: the host card's scheduler token (`for`), when the page sent a UUID.
+  const scheduleToken = hostOnly ? parseScheduleToken(body.for) : null;
   // Optional, and never trusted from the client: the page's own 40-char cap is
   // re-applied server-side. An absent `source` renders the shared-link origin.
   const source = sanitizeLine(body.source, 40);
@@ -556,6 +563,11 @@ async function handleBook(
     formSubmissionId: formLink?.id ?? null,
   });
   const leadWrite = await recordBookingLead(leadRow, leadConfig);
+  // #4571 W4: a booking from a host card's own link links itself to that card.
+  // Awaited, never fails the booking; the booker is never told either way.
+  if (scheduleToken && leadWrite === "written") {
+    await linkDemoFromToken(leadRow.booking_key, scheduleToken, leadConfig);
+  }
 
   // #4452 §4.6 (was #4238 W3-3 host-only): every audience's booking is a
   // labelled Lead (unless the form already fired it) and a call_booked goal.
