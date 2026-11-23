@@ -30,6 +30,8 @@ export const MIN_BUDGET = 500;
 export const MAX_MS = 40_000;
 export const FOLLOW_BATCH = 50;
 export const FOLLOW_MAX_BATCHES = 4;
+/** #4580: release records per ingest call (the cursor moves after each). */
+export const RECORD_CHUNK = 10;
 
 type Json = Record<string, unknown>;
 
@@ -130,8 +132,29 @@ const later = (a: string | null, b: string | null | undefined): string | null =>
   return Date.parse(b) > Date.parse(a) ? b : a;
 };
 
+/** #4580: what the release-record step did; poisoned lists the PRs skipped. */
+export type ReleaseRecordsResult = { ingested: number; invalid: number; completed: number[]; poisoned: number[] };
+
+/** #4580: oldest first (ties by comment link), so the cursor only moves forward. */
+function byCommentedAt(a: Json, b: Json): number {
+  const ta = Date.parse(String(a.commented_at ?? ""));
+  const tb = Date.parse(String(b.commented_at ?? ""));
+  const na = Number.isNaN(ta) ? Number.NEGATIVE_INFINITY : ta;
+  const nb = Number.isNaN(tb) ? Number.NEGATIVE_INFINITY : tb;
+  if (na !== nb) return na < nb ? -1 : 1;
+  const ua = String(a.comment_url ?? "");
+  const ub = String(b.comment_url ?? "");
+  return ua < ub ? -1 : ua > ub ? 1 : 0;
+}
+
+/** #4580: the SQLSTATE of a PostgREST error (57014 is a statement timeout). */
+function errorCode(error: unknown): string {
+  if (error && typeof error === "object" && "code" in error) return String((error as { code?: unknown }).code ?? "");
+  return "";
+}
+
 export type BridgeResult = {
-  release_records: Json;
+  release_records: ReleaseRecordsResult;
   main_commits: Json;
   feature_guide_coverage: Json | null;
   statuses_posted: number;
@@ -153,7 +176,7 @@ export async function runReleaseBridges(
   const minBudget = opts.minBudget ?? MIN_BUDGET;
   const log = opts.log ?? (() => {});
   const result: BridgeResult = {
-    release_records: { ingested: 0, invalid: 0, completed: [] },
+    release_records: { ingested: 0, invalid: 0, completed: [], poisoned: [] },
     main_commits: { inserted: 0 },
     feature_guide_coverage: null,
     statuses_posted: 0,
@@ -179,26 +202,75 @@ export async function runReleaseBridges(
   };
 
   // 1. Release records read back from the bot's comments.
+  // #4580: in chunks of RECORD_CHUNK, oldest first, with the cursor moved
+  // after each chunk. A chunk that fails is retried one record at a time; a
+  // record that fails on its own is recorded (ops_release_record_poisoned),
+  // listed in the run result and skipped, so it can never freeze the records
+  // after it. Nothing is skipped without that record: if it cannot be
+  // written, the run stops before the cursor passes the record.
   try {
     if (mayCall("release_records")) {
       const cursor = await admin.rpc("ops_bridge_cursor", { p_name: "issue_comments" });
       if (cursor.error || typeof cursor.data !== "string") throw new Error("CURSOR_READ_FAILED");
       const since = new Date(Date.parse(cursor.data) - 10 * 60_000).toISOString();
       const comments = (await github.issueCommentsSince(since, 3)) as GitHubComment[];
-      const rows = recordRows(comments);
+      const rows = recordRows(comments).sort(byCommentedAt);
       let newest: string | null = null;
       for (const c of comments) newest = later(newest, c.updated_at);
-      for (let i = 0; i < rows.length; i += 100) {
-        const r = await admin.rpc("ops_release_records_ingest", { p_records: rows.slice(i, i + 100) });
-        if (r.error) throw new Error("RECORD_INGEST_FAILED");
-        const d = (r.data ?? {}) as Json;
-        const acc = result.release_records as { ingested: number; invalid: number; completed: number[] };
+      const acc = result.release_records;
+      const add = (data: unknown): void => {
+        const d = (data ?? {}) as Json;
         acc.ingested += Number(d.ingested ?? 0);
         acc.invalid += Number(d.invalid ?? 0);
         acc.completed.push(...((d.completed as number[] | undefined) ?? []));
+      };
+      let handledAll = true;
+      let lastChunk: string | null = null;
+      for (let i = 0; i < rows.length; i += RECORD_CHUNK) {
+        if (!mayCall("release_records")) {
+          handledAll = false;
+          break;
+        }
+        const chunk = rows.slice(i, i + RECORD_CHUNK);
+        const r = await admin.rpc("ops_release_records_ingest", { p_records: chunk });
+        if (!r.error) {
+          add(r.data);
+        } else {
+          for (const row of chunk) {
+            const one = await admin.rpc("ops_release_records_ingest", { p_records: [row] });
+            if (!one.error) {
+              add(one.data);
+              continue;
+            }
+            const pr = Number((row.data as Json | undefined)?.pr);
+            const code = errorCode(one.error) === "57014" ? "INGEST_TIMEOUT" : "INGEST_FAILED";
+            const poisoned = await admin.rpc("ops_release_record_poisoned", {
+              p_pr: pr,
+              p_comment_url: typeof row.comment_url === "string" ? row.comment_url : null,
+              p_code: code,
+            });
+            if (poisoned.error) throw new Error("RECORD_POISON_FAILED");
+            log({ fn: "ops-bridges", event: "release_record_poisoned", pr, code });
+            acc.poisoned.push(pr);
+            result.failed += 1;
+          }
+        }
+        let chunkNewest: string | null = null;
+        for (const row of chunk) chunkNewest = later(chunkNewest, row.commented_at as string | null | undefined);
+        if (i + RECORD_CHUNK >= rows.length) {
+          // The last chunk's point is written once, with the final move below.
+          lastChunk = chunkNewest;
+        } else if (chunkNewest) {
+          const set = await admin.rpc("ops_bridge_cursor_set", { p_name: "issue_comments", p_at: chunkNewest });
+          if (set.error) throw new Error("CURSOR_WRITE_FAILED");
+        }
       }
-      if (newest) {
-        const set = await admin.rpc("ops_bridge_cursor_set", { p_name: "issue_comments", p_at: newest });
+      // Comments with no bot record still move the cursor on, but only when
+      // every chunk was handled; a run stopped on its budget stays at the
+      // last chunk it finished.
+      const finalAt = handledAll ? later(newest, lastChunk) : null;
+      if (finalAt) {
+        const set = await admin.rpc("ops_bridge_cursor_set", { p_name: "issue_comments", p_at: finalAt });
         if (set.error) throw new Error("CURSOR_WRITE_FAILED");
       }
     }
