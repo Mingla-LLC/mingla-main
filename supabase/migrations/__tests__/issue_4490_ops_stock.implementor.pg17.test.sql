@@ -83,6 +83,12 @@ GRANT EXECUTE ON FUNCTION public.t5c_ok(boolean,text), public.t5c_expect(text,te
   public.t5c_detail(text), public.t5c_as(uuid), public.t5c_service(), public.t5c_reset() TO PUBLIC;
 CREATE TEMP TABLE t5c_ids (k text PRIMARY KEY, v uuid) ON COMMIT DROP;
 GRANT ALL ON t5c_ids TO PUBLIC;
+-- A write's answer, kept for the NEXT statement: a STABLE read in the same
+-- statement as the write would see the statement's snapshot, not the write.
+CREATE TEMP TABLE t5c_r (k text PRIMARY KEY, v jsonb) ON COMMIT DROP;
+GRANT ALL ON t5c_r TO PUBLIC;
+CREATE FUNCTION public.t5c_rv(p_k text) RETURNS jsonb LANGUAGE sql AS $f$ SELECT v FROM t5c_r WHERE k = p_k $f$;
+GRANT EXECUTE ON FUNCTION public.t5c_rv(text) TO PUBLIC;
 CREATE FUNCTION public.t5c_id(p_k text) RETURNS uuid LANGUAGE sql AS $f$ SELECT v FROM t5c_ids WHERE k = p_k $f$;
 GRANT EXECUTE ON FUNCTION public.t5c_id(text) TO PUBLIC;
 CREATE FUNCTION public.t5c_v(p_sale uuid) RETURNS integer LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $f$
@@ -439,10 +445,12 @@ SELECT public.t5c_reset();
 SELECT public.t5c_service();
 SELECT public.t5c_guest('g1', jsonb_build_array(jsonb_build_array(public.t5c_id('soup'), 1)));
 SELECT public.t5c_ok(t5c_stock(public.t5c_id('soup')) = 1, 'K-7a a guest checkout that has not paid takes no stock');
-SELECT public.t5c_ok((SELECT (r->>'status') = 'finalized' AND NOT (r ? 'soldOutAfterPayment') FROM public.t5c_pay(public.t5c_id('guest_g1')) r)
+INSERT INTO t5c_r VALUES ('g1_pay', public.t5c_pay(public.t5c_id('guest_g1')));
+SELECT public.t5c_ok(public.t5c_rv('g1_pay')->>'status' = 'finalized' AND NOT (public.t5c_rv('g1_pay') ? 'soldOutAfterPayment')
   AND t5c_stock(public.t5c_id('soup')) = 0,
   'K-7b paid: Soup taken (0 left), nothing flagged');
-SELECT public.t5c_ok((SELECT r->>'status' FROM public.t5c_pay(public.t5c_id('guest_g1')) r) = 'replayed'
+INSERT INTO t5c_r VALUES ('g1_replay', public.t5c_pay(public.t5c_id('guest_g1')));
+SELECT public.t5c_ok(public.t5c_rv('g1_replay')->>'status' = 'replayed'
   AND t5c_stock(public.t5c_id('soup')) = 0, 'K-7c a webhook replay takes nothing twice');
 -- Soup is sold out; a guest who started checkout while it was on pays now.
 SELECT public.t5c_set(public.t5c_id('croaker'), 5, '44900615-0000-4000-8000-000000000001');
@@ -526,10 +534,10 @@ SELECT public.t5c_ok(EXISTS (SELECT 1 FROM public.audit_log a WHERE a.action = '
     AND a.target_id = public.t5c_id('guest_g2')::text AND a.after->>'resolution' = 'swap'),
   'K-8n the resolution is audited');
 -- Refund: the 6 Croaker line (5 were taken and never made, so they come back).
-SELECT public.t5c_ok((SELECT (r->>'refundMinor')::bigint = 6 * 1850000 + 6 * 185000
-  FROM public.issue_4490_order_sold_out_resolve(public.t5c_id('guest_g3'),
+INSERT INTO t5c_r VALUES ('g3_refund', public.issue_4490_order_sold_out_resolve(public.t5c_id('guest_g3'),
     ARRAY[public.t5c_line(public.t5c_id('guest_g3'), public.t5c_id('croaker'))], 'refund', NULL,
-    '44900615-0000-4000-8000-000000000007', NULL, 'k5c-refund-ok') r)
+    '44900615-0000-4000-8000-000000000007', NULL, 'k5c-refund-ok'));
+SELECT public.t5c_ok((public.t5c_rv('g3_refund')->>'refundMinor')::bigint = 6 * 1850000 + 6 * 185000
   AND t5c_stock(public.t5c_id('croaker')) = 5 + 5,
   'K-8o the event manager refunds the 6 Croaker: 122,100.00 (lines + service charge share); the 5 never made come back');
 SELECT public.t5c_ok((SELECT sold_out_refund_minor = 12210000 AND sold_out_resolution = 'refund' AND prep_state = 'voided'
@@ -578,8 +586,8 @@ SELECT public.t5c_service();
 SELECT public.t5c_set(public.t5c_id('rice'), NULL, '44900615-0000-4000-8000-000000000001');
 SELECT public.t5c_expect($$SELECT public.issue_4490_station_sold_out('44900615-0000-4000-b000-000000000016', true, '44900615-0000-4000-8000-000000000002')$$,
   '42501', 'not_authorized', 'K-10a a seller cannot mark sold out from the board');
-SELECT public.t5c_ok((SELECT (r->>'stockLeft')::int = 0 AND r->>'markedBy' = 'Ifeanyi Kitchen'
-  FROM public.issue_4490_station_sold_out(public.t5c_id('rice'), true, '44900615-0000-4000-8000-000000000004') r)
+INSERT INTO t5c_r VALUES ('rice_mark', public.issue_4490_station_sold_out(public.t5c_id('rice'), true, '44900615-0000-4000-8000-000000000004'));
+SELECT public.t5c_ok((public.t5c_rv('rice_mark')->>'stockLeft')::int = 0 AND public.t5c_rv('rice_mark')->>'markedBy' = 'Ifeanyi Kitchen'
   AND (SELECT is_available FROM public.menu_items WHERE id = public.t5c_id('rice'))
   AND NOT EXISTS (SELECT 1 FROM public.public_menus_view WHERE id = public.t5c_id('rice')),
   'K-10b the kitchen marks untracked Rice sold out: 0 left, still switched on, off the guest menu');
@@ -591,7 +599,8 @@ SELECT public.t5c_ok((SELECT (x->>'canUndo')::boolean AND x->>'station' = 'kitch
   AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(public.issue_4490_station_stock('44900615-0000-4000-9000-0000000000a1', 'kitchen', '44900615-0000-4000-8000-000000000004')) x
     WHERE (x->>'menuItemId')::uuid = public.t5c_id('chapman')),
   'K-10d the kitchen''s list has Rice (Back on offered) and not the bar''s Chapman');
-SELECT public.t5c_ok((SELECT (r->>'tracked')::boolean = false FROM public.issue_4490_station_sold_out(public.t5c_id('rice'), false, '44900615-0000-4000-8000-000000000004') r)
+INSERT INTO t5c_r VALUES ('rice_back', public.issue_4490_station_sold_out(public.t5c_id('rice'), false, '44900615-0000-4000-8000-000000000004'));
+SELECT public.t5c_ok((public.t5c_rv('rice_back')->>'tracked')::boolean = false
   AND t5c_stock(public.t5c_id('rice')) IS NULL
   AND EXISTS (SELECT 1 FROM public.public_menus_view WHERE id = public.t5c_id('rice')),
   'K-10e Back on restores the earlier state (untracked) and the guest menu');
@@ -614,9 +623,11 @@ SELECT public.t5c_reset();
 UPDATE public.venue_orders SET metadata = metadata || jsonb_build_object('sold_out_at', now() - interval '11 minutes')
 WHERE id = public.t5c_id('guest_g4');
 SELECT public.t5c_service();
-SELECT public.t5c_ok((SELECT count(*) FROM public.issue_4490_sold_out_escalation_scan(now(), 50) s WHERE s.order_id = public.t5c_id('guest_g4')) = 1
-  AND (SELECT count(*) FROM public.issue_4490_sold_out_escalation_scan(now(), 50) s WHERE s.order_id = public.t5c_id('guest_g4')) = 0
-  AND (SELECT count(*) FROM public.issue_4490_sold_out_escalation_scan(now(), 50) s WHERE s.order_id = public.t5c_id('guest_g2')) = 0,
+INSERT INTO t5c_r SELECT 'scan1', COALESCE(jsonb_agg(s.order_id), '[]'::jsonb) FROM public.issue_4490_sold_out_escalation_scan(now(), 50) s;
+INSERT INTO t5c_r SELECT 'scan2', COALESCE(jsonb_agg(s.order_id), '[]'::jsonb) FROM public.issue_4490_sold_out_escalation_scan(now(), 50) s;
+SELECT public.t5c_ok(public.t5c_rv('scan1') @> to_jsonb(ARRAY[public.t5c_id('guest_g4')])
+  AND NOT (public.t5c_rv('scan1') @> to_jsonb(ARRAY[public.t5c_id('guest_g2')]))
+  AND NOT (public.t5c_rv('scan2') @> to_jsonb(ARRAY[public.t5c_id('guest_g4')])),
   'K-11a an unresolved order 11 minutes old reaches rung 1 once; a resolved one never');
 SELECT public.t5c_reset();
 
