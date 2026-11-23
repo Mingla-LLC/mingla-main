@@ -22,6 +22,9 @@
  * finalize's locks (revocation outbox + one audit row). The caller proves it
  * holds the old session by its buyer status token; a token that does not match
  * changes nothing.
+ *
+ * Deploy window: on a database without the #4522 schema (the shared probe)
+ * nothing is closed and the create goes on exactly as main.
  */
 // @ts-ignore — Deno ESM import; types resolved at runtime
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -36,9 +39,13 @@ export type SupersedeOutcome =
   | { kind: "paid"; checkoutSessionId: string }
   | { kind: "closed" }
   | { kind: "not_found" }
-  | { kind: "unavailable"; reason: string };
+  | { kind: "unavailable"; reason: string }
+  /** The #4522 schema is not applied yet: main's behaviour, nothing closed. */
+  | { kind: "not_applied" };
 
 export interface SupersedeDeps {
+  /** The shared #4522 schema probe (planV2Schema). */
+  planV2Ready: () => Promise<boolean>;
   sha256Hex: (value: string) => Promise<string>;
   /** Stripe Checkout Session expire on the connected account. */
   expireStripeCheckout: (input: {
@@ -83,6 +90,7 @@ export async function supersedeHeldCheckout(
   request: SupersedeRequest,
   deps: SupersedeDeps,
 ): Promise<SupersedeOutcome> {
+  if (!(await deps.planV2Ready())) return { kind: "not_applied" };
   const tokenHash = await deps.sha256Hex(request.buyerStatusToken);
   const { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")

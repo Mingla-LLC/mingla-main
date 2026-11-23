@@ -244,7 +244,9 @@ const deps = (steps: string[], o: {
   expire?: () => Promise<void>;
   retrieve?: { status: string | null; paymentStatus: string | null };
   paystack?: { kind: string; reason?: string };
+  ready?: boolean;
 }) => ({
+  planV2Ready: () => Promise.resolve(o.ready ?? true),
   sha256Hex: (v: string) => Promise.resolve(`h:${v}`),
   expireStripeCheckout: (input: { checkoutSessionId: string; idempotencyKey: string; stripeAccountId: string }) => {
     steps.push(`expire:${input.checkoutSessionId}:${input.idempotencyKey}:${input.stripeAccountId}`);
@@ -327,6 +329,14 @@ Deno.test("E-3: someone else's token, or a session already paid, closes nothing 
   assertEquals(paid.steps, []);
   assertEquals(parseSupersedeRequest({ checkoutSessionId: "nope", buyerStatusToken: TOKEN }), null);
   assertEquals(parseSupersedeRequest(undefined), null);
+});
+
+Deno.test("E-3 deploy window: on main's database nothing is closed (main's behaviour)", async () => {
+  const w = supersedeWorld({ provider: "stripe" });
+  assertEquals(await supersedeHeldCheckout(w.fake.client as never, EVENT,
+    { checkoutSessionId: OLD, buyerStatusToken: TOKEN }, deps(w.steps, { ready: false })), { kind: "not_applied" });
+  assertEquals(w.steps, []);
+  assertEquals(w.fake.tableOps.length, 0);
 });
 
 Deno.test("E-3: the create path closes the held checkout before any session or provider call, never on a replay", () => {

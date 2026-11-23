@@ -91,6 +91,7 @@ import {
   parseSupersedeRequest,
   supersedeHeldCheckout,
 } from "./supersedeCheckout.ts";
+import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 // Issue #3872 — explicit order totals written from the breakdown whose total is
 // the provider amount, on every path (hosted, native, Paystack, free).
 import {
@@ -2316,6 +2317,7 @@ export const createTicketCheckoutCreateHandler = (
         eventId,
         supersedeRequest,
         {
+          planV2Ready: () => planV2SchemaAvailable(supabase),
           sha256Hex,
           expireStripeCheckout: async (input) => {
             // @ts-ignore — Stripe SDK namespace runtime-provided in Deno.
