@@ -96,8 +96,13 @@ $fixture$;
 
 -- Relationship rows only (their own triggers and FKs are not under test here).
 SET LOCAL session_replication_role = replica;
-INSERT INTO public.pairings(user_a_id, user_b_id)
-  SELECT o.id, p.id FROM t3969s2_ids o, t3969s2_ids p WHERE o.tag = 'owner' AND p.tag = 'partner';
+WITH rq AS (
+  INSERT INTO public.pair_requests(sender_id, receiver_id, status, visibility)
+    SELECT o.id, p.id, 'accepted', 'visible' FROM t3969s2_ids o, t3969s2_ids p WHERE o.tag = 'owner' AND p.tag = 'partner'
+  RETURNING id, sender_id, receiver_id
+)
+INSERT INTO public.pairings(user_a_id, user_b_id, pair_request_id)
+  SELECT LEAST(sender_id, receiver_id), GREATEST(sender_id, receiver_id), id FROM rq;
 INSERT INTO public.pair_requests(sender_id, receiver_id, status, visibility)
   SELECT o.id, a.id, 'pending', 'visible' FROM t3969s2_ids o, t3969s2_ids a WHERE o.tag = 'owner' AND a.tag = 'asked';
 SET LOCAL session_replication_role = origin;
@@ -200,9 +205,10 @@ END
 $s02$;
 RESET ROLE;
 
--- Two rows carrying one email (a legacy row the server wrote): the row whose
--- sign-in email it is wins, whatever the physical order.
-UPDATE public.profiles SET email = (SELECT email FROM t3969s2_ids WHERE tag = 'friend'),
+-- Two rows carrying one email in different case (the unique constraint is
+-- case-sensitive, lookups are not): the row whose sign-in email it is wins,
+-- even when the other row is older.
+UPDATE public.profiles SET email = upper((SELECT email FROM t3969s2_ids WHERE tag = 'friend')),
                            created_at = '2000-01-01'
  WHERE id = (SELECT id FROM t3969s2_ids WHERE tag = 'stranger');
 SET LOCAL ROLE authenticated;
@@ -237,7 +243,7 @@ BEGIN
   FOREACH v_stmt IN ARRAY ARRAY[
     'UPDATE public.profiles SET is_beta_tester = true WHERE id = $1',
     'UPDATE public.profiles SET is_seed = true WHERE id = $1',
-    'UPDATE public.profiles SET account_type = ''partner'' WHERE id = $1',
+    'UPDATE public.profiles SET account_type = ''business'' WHERE id = $1',
     'UPDATE public.profiles SET email_verified = true WHERE id = $1',
     'UPDATE public.profiles SET referral_code = ''MGL-T3969S2CODE'' WHERE id = $1',
     'UPDATE public.profiles SET active = false WHERE id = $1',
@@ -332,7 +338,7 @@ DECLARE
 BEGIN
   SELECT * INTO v_me FROM t3969s2_ids WHERE tag = 'newcomer';
   FOREACH v_stmt IN ARRAY ARRAY[
-    'INSERT INTO public.profiles(id, email, account_type) VALUES ($1, $2, ''partner'')',
+    'INSERT INTO public.profiles(id, email, account_type) VALUES ($1, $2, ''business'')',
     'INSERT INTO public.profiles(id, email, is_seed) VALUES ($1, $2, true)',
     'INSERT INTO public.profiles(id, email, email_verified) VALUES ($1, $2, true)',
     'INSERT INTO public.profiles(id, email, referral_code) VALUES ($1, $2, ''MGL-T3969S2PICK'')',
@@ -367,7 +373,7 @@ $s04_check$;
 SELECT pg_temp.t3969s2_as('authenticated', (SELECT id FROM t3969s2_ids WHERE tag = 'admin'));
 SET LOCAL ROLE authenticated;
 UPDATE public.profiles
-   SET is_beta_tester = true, account_type = 'partner', email = 't3969s2-admin-set@example.test'
+   SET is_beta_tester = true, account_type = 'business', email = 't3969s2-admin-set@example.test'
  WHERE id = (SELECT id FROM t3969s2_ids WHERE tag = 'stranger');
 RESET ROLE;
 
@@ -394,7 +400,7 @@ DECLARE
   r public.profiles%ROWTYPE;
 BEGIN
   SELECT * INTO r FROM public.profiles WHERE id = (SELECT id FROM t3969s2_ids WHERE tag = 'stranger');
-  IF r.account_type IS DISTINCT FROM 'partner' OR r.email IS DISTINCT FROM 't3969s2-admin-set@example.test' THEN
+  IF r.account_type IS DISTINCT FROM 'business' OR r.email IS DISTINCT FROM 't3969s2-admin-set@example.test' THEN
     RAISE EXCEPTION 'S-05: admin update did not land (%)', row_to_json(r);
   END IF;
   IF NOT r.is_seed OR r.active OR r.explorer_deleted_at IS NULL OR NOT r.email_verified THEN
