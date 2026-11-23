@@ -441,7 +441,7 @@ REVOKE ALL ON FUNCTION public.issue_4522_overpayment_policy(uuid) FROM PUBLIC, a
 -- refund ops closed with 'retry' is still watched (detail.retry_watch_from,
 -- until the lane closes the watch after issue_4522_overpayment_pending_ceiling()):
 -- the original refund may yet complete at the provider with its webhook lost.
-CREATE FUNCTION public.issue_4522_row_payout_blocked(p_installment_id uuid)
+CREATE FUNCTION public.issue_4522_row_overpayment_blocked(p_installment_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -457,6 +457,46 @@ AS $fn$
                   WHERE oi.id = p_installment_id AND oi.kind = 'flex' AND oi.status = 'collected'
                     AND NOT EXISTS (SELECT 1 FROM public.order_balance_events e
                                      WHERE e.trigger_installment_id = oi.id AND e.reason = 'flex_payment'))
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_row_overpayment_blocked(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+-- Pass 6 (S9-1): a provider refund of the row's charge that our books have
+-- not applied to the row yet (a card refund attempt holding a provider
+-- refund, or a second-provider refund the provider accepted or answered
+-- and did not fail, with no order_installment_refund_applications row for
+-- that refund and row). A cancel's attempt not yet sent holds nothing.
+CREATE FUNCTION public.issue_4522_row_refund_unrecorded(p_installment_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT EXISTS (SELECT 1 FROM public.order_installments oi
+                   JOIN public.ticket_refund_attempts a
+                     ON a.order_id = oi.order_id AND a.payment_intent_id = oi.stripe_payment_intent_id
+                  WHERE oi.id = p_installment_id AND a.buyer_refund_id IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM public.order_installment_refund_applications x
+                                     WHERE x.refund_id = a.refund_id AND x.installment_id = oi.id))
+      OR EXISTS (SELECT 1 FROM public.paystack_refund_attempts pa
+                  WHERE pa.source_type = 'order_installment' AND pa.source_id = p_installment_id
+                    AND pa.local_refund_id IS NOT NULL AND pa.status <> 'failed'
+                    AND (pa.status IN ('accepted', 'processed') OR pa.provider_refund_id IS NOT NULL)
+                    AND NOT EXISTS (SELECT 1 FROM public.order_installment_refund_applications x
+                                     WHERE x.refund_id = pa.local_refund_id AND x.installment_id = p_installment_id))
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_row_refund_unrecorded(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+-- What keeps a collected row out of payouts: either of the two above.
+CREATE FUNCTION public.issue_4522_row_payout_blocked(p_installment_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT public.issue_4522_row_overpayment_blocked(p_installment_id)
+      OR public.issue_4522_row_refund_unrecorded(p_installment_id)
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_row_payout_blocked(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
@@ -484,9 +524,10 @@ BEGIN
           OR (NOT v_blocked AND payout_accounting_state = 'pending' AND status = 'collected'
               AND application_fee_amount_cents IS NOT NULL));
   SELECT payout_accounting_state INTO v_state FROM public.order_installments WHERE id = p_installment_id;
-  IF v_blocked AND v_state = 'attached' THEN
+  IF v_state = 'attached' AND public.issue_4522_row_overpayment_blocked(p_installment_id) THEN
     -- Attached to a payout before the overpayment was known: still returned
-    -- to the traveler; ops is told (the edge alerts on this audit).
+    -- to the traveler; ops is told (the edge alerts on this audit). A refund
+    -- after payout is recorded as the host's payout debt by #3645 instead.
     PERFORM public.issue_3645_audit_installment(p_installment_id, 'tr3.installment_overpayment_after_payout_attached',
       jsonb_build_object('installment_id', p_installment_id));
   END IF;
@@ -1889,6 +1930,43 @@ END
 $fn$;
 REVOKE ALL ON FUNCTION public.issue_4522_claim_paid_in_full_notice(uuid, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_4522_claim_paid_in_full_notice(uuid, text) TO service_role;
+
+-- Pass 6 (S9-2): a paid-in-full email whose claim could not be answered (the
+-- claim errored once) is never lost: the instalment run lists the paid plan
+-- orders with no claim whose last payment landed after this migration and at
+-- least 15 minutes ago, and claims and sends each (still once: the claim
+-- above). The cutover keeps every order completed before the claim existed
+-- (which had its email from the pre-#4522 path) out of the list.
+DO $cutover$
+BEGIN
+  EXECUTE format($f$CREATE FUNCTION public.issue_4522_paid_in_full_notice_cutover()
+    RETURNS timestamptz LANGUAGE sql IMMUTABLE SET search_path = public, pg_temp
+    AS $b$ SELECT %L::timestamptz $b$$f$, now());
+END
+$cutover$;
+REVOKE ALL ON FUNCTION public.issue_4522_paid_in_full_notice_cutover() FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION public.issue_4522_unsent_paid_in_full(p_limit integer DEFAULT 50, p_now timestamptz DEFAULT now())
+RETURNS SETOF uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT o.id
+    FROM public.orders o
+   WHERE o.installment_plan_root AND o.cancelled_at IS NULL AND o.payment_status = 'paid'
+     AND NOT EXISTS (SELECT 1 FROM public.order_paid_in_full_notices n WHERE n.order_id = o.id)
+     AND NOT EXISTS (SELECT 1 FROM public.order_installments oi
+                      WHERE oi.order_id = o.id AND oi.status IN ('scheduled', 'failed'))
+     AND (SELECT max(oi.collected_at) FROM public.order_installments oi
+           WHERE oi.order_id = o.id AND oi.status = 'collected')
+         BETWEEN public.issue_4522_paid_in_full_notice_cutover() AND p_now - interval '15 minutes'
+   ORDER BY o.id
+   LIMIT least(greatest(COALESCE(p_limit, 50), 1), 200)
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_unsent_paid_in_full(integer, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_4522_unsent_paid_in_full(integer, timestamptz) TO service_role;
 
 -- A planned row whose provider charge can still land: a Paystack attempt
 -- in flight, or a Stripe PaymentIntent of its current attempt.

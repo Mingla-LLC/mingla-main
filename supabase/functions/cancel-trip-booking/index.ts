@@ -75,6 +75,11 @@ import {
 import { planV2SchemaAvailable } from "../_shared/installments/planV2Schema.ts";
 import { returnOrderOverpaymentsBestEffort } from "../_shared/installments/overpaymentLane.ts";
 import { overpaymentReturnCents } from "./refundEntries.ts";
+import { installmentOpsAlert } from "../_shared/installments/installmentOpsAlert.ts";
+import {
+  alertUnrecordedTripRefund,
+  providerRefundsMade,
+} from "../_shared/installments/unrecordedRefunds.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -662,6 +667,14 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  // issue #4522 pass 6 (S9-1) — after a failure: how many provider refunds of
+  // this cancel were already made; when any, the one ops alert names them.
+  const unrecordedRefundsAlert = async (detail: string): Promise<number> => {
+    const made = await providerRefundsMade(supabase, refundId).catch(() => []);
+    await alertUnrecordedTripRefund(installmentOpsAlert, { orderId, refundId, currency, detail, made });
+    return made.length;
+  };
+
   // Step 3: per-PI refund loop. One stripe.refunds.create per source PI.
   // Zero-refund tiers (refund_cents=0 for all rows) skip Stripe entirely.
   const stripe = paymentProvider === "stripe" ? stripeTicketRefund() : null;
@@ -918,7 +931,11 @@ serve(async (req: Request): Promise<Response> => {
       stripeFailureDetail,
       succeededBeforeFailure: stripeRefundIds.length,
     });
-    if (!paystackFailureRetryable) {
+    // issue #4522 pass 6 (S9-1) — money the provider already returned keeps
+    // its refund pending (never "failed"), so it is still finished and
+    // recorded; ops are told once.
+    const made = await unrecordedRefundsAlert(stripeFailureDetail);
+    if (!paystackFailureRetryable && made === 0) {
       await supabase.rpc("biz_cancel_trip_booking_rollback", {
         p_refund_id: refundId,
         p_failure_reason: stripeFailureDetail,
@@ -955,10 +972,12 @@ serve(async (req: Request): Promise<Response> => {
         "[cancel-trip-booking] refund_line_items insert failed",
         insertError,
       );
-      await supabase.rpc("biz_cancel_trip_booking_rollback", {
-        p_refund_id: refundId,
-        p_failure_reason: `ledger_insert_failed: ${insertError.message}`,
-      });
+      if (await unrecordedRefundsAlert(`ledger_insert_failed: ${insertError.message}`) === 0) {
+        await supabase.rpc("biz_cancel_trip_booking_rollback", {
+          p_refund_id: refundId,
+          p_failure_reason: `ledger_insert_failed: ${insertError.message}`,
+        });
+      }
       return jsonResponse(
         {
           error: "ledger_insert_failed_after_stripe_success",
@@ -1000,6 +1019,7 @@ serve(async (req: Request): Promise<Response> => {
       "[cancel-trip-booking] commit RPC failed after Stripe + ledger success",
       commitErr,
     );
+    await unrecordedRefundsAlert(`commit_failed: ${commitErr?.message ?? "not_ok"}`);
     return jsonResponse(
       {
         error: "commit_failed_after_stripe_success",

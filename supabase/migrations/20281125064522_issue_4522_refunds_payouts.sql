@@ -30,6 +30,18 @@
 --   issue_3872_refund_share_trigger (20271221003872) — an overpayment refund
 --     reverses no referral share (none was earned on money the plan did not
 --     owe) and adds nothing to the reversal basis of later refunds (T3-4).
+--   issue_2097_finalize_refund_attempt (20280305003281) and
+--   biz_cancel_trip_booking_commit (20260612000000) — pass 6 (S9-1): a plan
+--     order's charges are separate money: the order row holds the deposit
+--     charge, each instalment or flexible payment its own. A refund is
+--     recorded where its charge lives, in the same transaction that settles
+--     it: an instalment charge's part on that row (issue_3645_mark_installment_refunded,
+--     the one owner), the deposit charge's part on the order
+--     (issue_4522_order_charge_refunded_cents). Before this a trip cancel that
+--     refunded collected instalments asked the order to hold more than its
+--     own charge and was refused (orders_refunded_amount_not_exceed_total)
+--     after the provider had refunded; a second-provider cancel never
+--     settled at all (refunds_application_fee_amount_truth_check).
 
 BEGIN;
 SET LOCAL lock_timeout = '10s';
@@ -42,7 +54,9 @@ BEGIN
     ('public.biz_cancel_trip_booking_begin(uuid,text,uuid,text,timestamptz)','3bb652b695930105fa5d1cb1c0ce32ea'),
     ('public.record_order_installment_provider_sale(uuid,integer,integer,timestamptz)','4fd2f012df53833c54d02eb9ff20309f'),
     ('public.issue_3645_cancel_refund_installment(uuid,text,text)','ba50142f4b8b940893a4c870c54d62da'),
-    ('public.issue_3872_refund_share_trigger()','416d98679e62a948931f9c675d2c45df')
+    ('public.issue_3872_refund_share_trigger()','416d98679e62a948931f9c675d2c45df'),
+    ('public.issue_2097_finalize_refund_attempt(uuid,uuid,bigint,text,text,text,text,text)','38eca7ecb7dc35ec12052a6a6e41f3c1'),
+    ('public.biz_cancel_trip_booking_commit(uuid,text[],integer,timestamptz)','1c72d9102f9b3af8ca61ce8bb544510d')
   ) v(sig,expected_md5) LOOP
     SELECT md5(pg_get_functiondef(r.sig::regprocedure)) INTO v_actual;
     IF v_actual IS DISTINCT FROM r.expected_md5 THEN
@@ -729,5 +743,232 @@ BEGIN
   RETURN NEW;
 END;
 $fn$;
+
+-- ---------------------------------------------------------------------------
+-- 6. Pass 6 (S9-1): a refund is recorded where its charge lives.
+--    The order row is the deposit charge (total_cents / buyer_total_cents are
+--    the deposit on a plan order); each collected instalment and flexible
+--    payment is its own charge with its own refunded_amount_cents, payout
+--    state and order_installment_refund_applications. The order's figure is
+--    every settled refund of the order minus the parts applied to its
+--    instalment rows; a refund of one instalment (refunds.order_installment_id,
+--    which every overpayment return also carries) is never the order's. On an
+--    order with no instalment rows this is exactly the plain sum it replaces,
+--    so orders_refunded_amount_not_exceed_total keeps guarding every order.
+-- ---------------------------------------------------------------------------
+CREATE FUNCTION public.issue_4522_order_charge_refunded_cents(p_order_id uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+  SELECT COALESCE(sum(r.amount_cents - LEAST(r.amount_cents, COALESCE((
+           SELECT sum(x.amount_cents) FROM public.order_installment_refund_applications x
+            WHERE x.refund_id = r.id), 0))), 0)::integer
+    FROM public.refunds r
+   WHERE r.order_id = p_order_id AND r.status = 'succeeded' AND r.order_installment_id IS NULL
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_order_charge_refunded_cents(uuid) FROM PUBLIC, anon, authenticated, service_role;
+COMMENT ON FUNCTION public.issue_4522_order_charge_refunded_cents(uuid) IS
+  'Issue #4522 (S9-1): what has been refunded of the order''s own charge (the deposit on a plan order): settled refunds of the order minus their parts applied to instalment rows; instalment refunds (order_installment_id) excluded. The one owner of orders.refunded_amount_cents for the refund finalize and the trip-cancel commit.';
+
+-- Body as 20280305003281 except: instalment parts recorded on their rows
+-- first, and the order total from issue_4522_order_charge_refunded_cents.
+CREATE OR REPLACE FUNCTION public.issue_2097_finalize_refund_attempt(
+  p_attempt_id uuid,p_lease_owner uuid,p_lease_epoch bigint,p_status text,
+  p_fee_refund_id text,p_fee_refund_amount_text text,p_after_amount_refunded_text text,
+  p_stripe_event_id text DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public','pg_temp'
+AS $function$
+DECLARE v public.ticket_refund_attempts%ROWTYPE; v_refund public.refunds%ROWTYPE;
+  v_total integer; v_order_status text; v_amount integer;
+  v_attempt_count integer; v_expected_count integer; v_nonterminal_count integer;
+  v_positive_total bigint; v_aggregate_status text;
+BEGIN
+  SELECT * INTO v FROM public.ticket_refund_attempts WHERE id=p_attempt_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'attempt_not_found'; END IF;
+  IF v.status IN ('succeeded_positive','not_applicable','fee_evidence_unavailable','evidence_conflict') THEN
+    RETURN jsonb_build_object('status',v.status,'application_fee_refunded_cents',v.fee_refund_amount_text,'idempotent_replay',true);
+  END IF;
+  IF v.lease_owner IS DISTINCT FROM p_lease_owner OR v.lease_epoch<>p_lease_epoch OR v.lease_expires_at<=now() THEN
+    RAISE EXCEPTION 'stale_refund_lease';
+  END IF;
+  IF p_status NOT IN ('succeeded_positive','not_applicable','fee_evidence_unavailable','evidence_conflict') THEN RAISE EXCEPTION 'invalid_fee_status'; END IF;
+  IF p_status='succeeded_positive' THEN
+    IF p_fee_refund_id IS NULL OR p_fee_refund_amount_text !~ '^[1-9][0-9]{0,15}$'
+      OR p_after_amount_refunded_text !~ '^[1-9][0-9]{0,15}$'
+      OR p_after_amount_refunded_text::numeric-v.baseline_amount_refunded_text::numeric<>p_fee_refund_amount_text::numeric
+      OR p_after_amount_refunded_text::numeric>v.application_fee_amount_text::numeric THEN
+      RAISE EXCEPTION 'fee_evidence_conflict';
+    END IF;
+    v_amount:=p_fee_refund_amount_text::integer;
+  ELSIF p_status='not_applicable' THEN
+    IF v.application_fee_id IS NOT NULL OR v.application_fee_amount_text<>'0'
+       OR p_fee_refund_id IS NOT NULL OR p_fee_refund_amount_text<>'0'
+       OR p_after_amount_refunded_text<>'0' OR v.buyer_refund_id IS NULL THEN
+      RAISE EXCEPTION 'no_fee_evidence_conflict';
+    END IF;
+    v_amount:=0;
+  ELSIF p_status='evidence_conflict' AND p_fee_refund_amount_text IS NOT NULL THEN
+    IF p_fee_refund_id IS NULL OR p_fee_refund_amount_text !~ '^(0|[1-9][0-9]{0,15})$' THEN
+      RAISE EXCEPTION 'invalid_conflict_evidence';
+    END IF;
+  ELSIF p_fee_refund_amount_text IS NOT NULL THEN RAISE EXCEPTION 'unknown_fee_amount_must_be_null'; END IF;
+  SELECT * INTO v_refund FROM public.refunds WHERE id=v.refund_id FOR UPDATE;
+  INSERT INTO public.ticket_refund_fee_evidence(attempt_id,stripe_event_id,application_fee_id,
+    fee_refund_id,amount_text,currency,connected_account_id,charge_id,provider_mode,evidence_kind)
+  VALUES(v.id,p_stripe_event_id,v.application_fee_id,p_fee_refund_id,p_fee_refund_amount_text,
+    v.currency,v.connected_account_id,v.charge_id,v.provider_mode,
+    CASE WHEN p_status='succeeded_positive' THEN 'fee_refund' WHEN p_status='not_applicable' THEN 'no_fee'
+      WHEN p_status='fee_evidence_unavailable' THEN 'visibility_exhausted' ELSE 'conflict' END);
+  UPDATE public.ticket_refund_attempts SET status=p_status,fee_refund_id=p_fee_refund_id,
+    fee_refund_amount_text=CASE WHEN p_status IN ('succeeded_positive','not_applicable') THEN p_fee_refund_amount_text END,
+    observed_fee_refund_amount_text=p_fee_refund_amount_text,last_observed_at=now(),next_observation_at=NULL,
+    updated_at=now() WHERE id=v.id;
+  SELECT COUNT(*),MAX(expected_attempt_count),
+    COUNT(*) FILTER (WHERE status NOT IN ('succeeded_positive','not_applicable')),
+    COALESCE(SUM(fee_refund_amount_text::bigint) FILTER (WHERE status='succeeded_positive'),0)
+    INTO v_attempt_count,v_expected_count,v_nonterminal_count,v_positive_total
+  FROM public.ticket_refund_attempts WHERE refund_id=v.refund_id;
+  v_aggregate_status:=CASE
+    WHEN EXISTS(SELECT 1 FROM public.ticket_refund_attempts a WHERE a.refund_id=v.refund_id AND a.status='evidence_conflict') THEN 'evidence_conflict'
+    WHEN EXISTS(SELECT 1 FROM public.ticket_refund_attempts a WHERE a.refund_id=v.refund_id AND a.status='fee_evidence_unavailable') THEN 'fee_evidence_unavailable'
+    WHEN v_attempt_count=v_expected_count AND v_nonterminal_count=0 AND v_positive_total>0 THEN 'succeeded_positive'
+    WHEN v_attempt_count=v_expected_count AND v_nonterminal_count=0 THEN 'not_applicable'
+    ELSE 'pending_visibility' END;
+  UPDATE public.refunds SET application_fee_refund_status=v_aggregate_status,
+    application_fee_refunded_cents=CASE WHEN v_aggregate_status='succeeded_positive' THEN v_positive_total::integer
+      WHEN v_aggregate_status='not_applicable' THEN 0 ELSE NULL END,
+    status=CASE WHEN v_aggregate_status IN ('succeeded_positive','not_applicable') THEN 'succeeded' ELSE status END,
+    processed_at=CASE WHEN v_aggregate_status IN ('succeeded_positive','not_applicable')
+      THEN COALESCE(processed_at,now()) ELSE processed_at END
+  WHERE id=v.refund_id;
+  IF v_aggregate_status IN ('succeeded_positive','not_applicable') THEN
+  -- issue #3281 — two refunds settling together must see each other's result.
+  -- NO KEY UPDATE stays compatible with the key-share lock a new refund row holds.
+  -- It comes before the ticket update: that update's counter trigger locks the
+  -- ticket type, which a dashboard refund takes only after the order.
+  -- issue #4522 pass 6 (S9-1) — each refunded instalment or flexible-payment
+  -- charge of this refund is recorded on its own row, in this transaction,
+  -- by the one owner (a replay is a no-op; the edge's own call replays too).
+  -- Before the order lock: the instalment graph locks the event, then the order.
+  PERFORM public.issue_3645_mark_installment_refunded(oi.id, v.refund_id, a.buyer_refund_amount_text::bigint)
+     FROM public.ticket_refund_attempts a
+     JOIN public.order_installments oi
+       ON oi.order_id = a.order_id AND oi.stripe_payment_intent_id = a.payment_intent_id
+    WHERE a.refund_id = v.refund_id AND a.buyer_refund_id IS NOT NULL
+      AND a.buyer_refund_amount_text ~ '^[1-9][0-9]{0,15}$'
+    ORDER BY oi.ordinal, oi.id;
+  PERFORM 1 FROM public.orders WHERE id = v.order_id FOR NO KEY UPDATE;
+    UPDATE public.tickets t SET status='refunded' FROM public.ticket_refund_quarantine x
+      JOIN public.ticket_refund_attempts a ON a.id=x.attempt_id
+      WHERE a.refund_id=v.refund_id AND x.ticket_id=t.id AND t.status='refund_pending';
+    -- issue #4522 pass 6 (S9-1) — the order holds what was refunded of its own
+    -- (deposit) charge; instalment charges are counted on their rows.
+    v_total := public.issue_4522_order_charge_refunded_cents(v.order_id);
+    v_order_status:=public.issue_3281_settled_payment_status(v.order_id);
+    UPDATE public.orders SET payment_status=v_order_status,refunded_amount_cents=v_total,updated_at=now() WHERE id=v.order_id;
+    IF p_status='succeeded_positive' THEN
+      UPDATE public.mingla_revenue_log SET refunded_amount_cents=LEAST(amount_cents,
+        p_after_amount_refunded_text::integer),refunded=(p_after_amount_refunded_text::integer>=amount_cents),updated_at=now()
+        WHERE stripe_application_fee_id=v.application_fee_id;
+    END IF;
+  END IF;
+  RETURN jsonb_build_object('status',p_status,'aggregate_status',v_aggregate_status,
+    'application_fee_refunded_cents',CASE WHEN v_aggregate_status='succeeded_positive' THEN v_positive_total::integer
+      WHEN v_aggregate_status='not_applicable' THEN 0 END,
+    'new_payment_status',v_order_status,'idempotent_replay',false);
+END;$function$;
+
+-- Body as 20260612000000 except: the zero fee is recorded with its status
+-- (the second provider keeps no fee on a refund; the bare zero broke
+-- refunds_application_fee_amount_truth_check, so no second-provider trip
+-- cancel ever settled), and the order's deposit-charge refund and payment
+-- status settle with the refund, as every other refund commit does.
+CREATE OR REPLACE FUNCTION public.biz_cancel_trip_booking_commit(
+  p_refund_id uuid,
+  p_stripe_refund_ids text[],
+  p_application_fee_refunded_cents int,
+  p_processed_at timestamptz DEFAULT now()
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_order_id uuid;
+BEGIN
+  UPDATE public.refunds
+    SET status = 'succeeded',
+        stripe_refund_id = p_stripe_refund_ids[1],  -- primary refund id; full list in metadata
+        application_fee_refunded_cents = p_application_fee_refunded_cents,
+        application_fee_refund_status = CASE WHEN p_application_fee_refunded_cents = 0
+          THEN 'not_applicable' ELSE application_fee_refund_status END,
+        processed_at = p_processed_at
+   WHERE id = p_refund_id AND status = 'pending'
+  RETURNING order_id INTO v_order_id;
+  IF v_order_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'refund_not_pending_or_not_found');
+  END IF;
+  PERFORM 1 FROM public.orders WHERE id = v_order_id FOR NO KEY UPDATE;
+  UPDATE public.orders
+     SET refunded_amount_cents = public.issue_4522_order_charge_refunded_cents(v_order_id),
+         -- a cancel that keeps part of the order's own charge (a deposit
+         -- the traveler cannot get back) leaves it partly refunded, so what
+         -- was kept is still the host's to be paid.
+         payment_status = CASE
+           WHEN public.issue_4522_order_charge_refunded_cents(v_order_id)
+                >= COALESCE(buyer_total_cents, total_cents)
+           THEN public.issue_3281_settled_payment_status(v_order_id)
+           ELSE 'partial_refund' END,
+         updated_at = now()
+   WHERE id = v_order_id;
+  RETURN jsonb_build_object('ok', true, 'refund_id', p_refund_id);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.biz_cancel_trip_booking_commit(uuid, text[], int, timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_cancel_trip_booking_commit(uuid, text[], int, timestamptz) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 7. Pass 6 (S9-1): an instalment whose charge the provider has refunded is
+--    never paid out before our books show it. issue_4522_row_payout_blocked
+--    (20281125044522) holds the row while a provider refund of its charge has
+--    no application on it; these keep its payout state in step.
+-- ---------------------------------------------------------------------------
+CREATE FUNCTION public.issue_4522_refund_payout_hold_trigger()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF TG_TABLE_NAME = 'ticket_refund_attempts' THEN
+    PERFORM public.issue_4522_sync_row_payout_hold(oi.id)
+       FROM public.order_installments oi
+      WHERE oi.order_id = NEW.order_id AND oi.stripe_payment_intent_id = NEW.payment_intent_id;
+  ELSIF TG_TABLE_NAME = 'paystack_refund_attempts' THEN
+    PERFORM public.issue_4522_sync_row_payout_hold(NEW.source_id);
+  ELSE
+    PERFORM public.issue_4522_sync_row_payout_hold(NEW.installment_id);
+  END IF;
+  RETURN NULL;
+END
+$fn$;
+REVOKE ALL ON FUNCTION public.issue_4522_refund_payout_hold_trigger() FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE TRIGGER issue_4522_refund_payout_hold
+  AFTER INSERT OR UPDATE OF buyer_refund_id ON public.ticket_refund_attempts
+  FOR EACH ROW WHEN (NEW.buyer_refund_id IS NOT NULL AND NEW.payment_intent_id IS NOT NULL)
+  EXECUTE FUNCTION public.issue_4522_refund_payout_hold_trigger();
+CREATE TRIGGER issue_4522_refund_payout_hold
+  AFTER INSERT OR UPDATE OF status ON public.paystack_refund_attempts
+  FOR EACH ROW WHEN (NEW.source_type = 'order_installment')
+  EXECUTE FUNCTION public.issue_4522_refund_payout_hold_trigger();
+CREATE TRIGGER issue_4522_refund_payout_hold
+  AFTER INSERT ON public.order_installment_refund_applications
+  FOR EACH ROW EXECUTE FUNCTION public.issue_4522_refund_payout_hold_trigger();
 
 COMMIT;

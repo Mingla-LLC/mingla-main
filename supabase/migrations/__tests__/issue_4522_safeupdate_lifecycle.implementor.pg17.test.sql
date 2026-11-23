@@ -169,6 +169,17 @@ BEGIN
   PERFORM public.t4522su_check('S-CANCEL begin', v IS NOT NULL, COALESCE(v::text, 'null'));
   PERFORM public.t4522su_check('S-NOTICE paid-in-full claim runs',
     public.t4522su_raised(format('SELECT public.issue_4522_claim_paid_in_full_notice(%L, %L)::text', s, 'su')) LIKE 'ok:%');
+  -- Pass 6 (S9-1 / S9-2): the trip-cancel commit (order figure, payment
+  -- status) and the paid-in-full retry list never trip pg-safeupdate (this
+  -- order's instalment parts are not marked here, so the commit may refuse
+  -- on the order's own check; only a 21000 is a failure).
+  PERFORM public.t4522su_check('S9 trip-cancel commit runs',
+    public.t4522su_raised(format('SELECT public.biz_cancel_trip_booking_commit(%L, ARRAY[%L], 0, now())::text',
+      COALESCE(v->>'refund_id', gen_random_uuid()::text), 'su_rf')) NOT LIKE '%21000%',
+    public.t4522su_raised(format('SELECT public.biz_cancel_trip_booking_commit(%L, ARRAY[%L], 0, now())::text',
+      COALESCE(v->>'refund_id', gen_random_uuid()::text), 'su_rf')));
+  PERFORM public.t4522su_check('S9 paid-in-full retry list runs',
+    public.t4522su_raised('SELECT count(*)::text FROM public.issue_4522_unsent_paid_in_full(10)') LIKE 'ok:%');
 
   -- S-ADDONS: the add-on refund helpers (switches off) on the same order.
   FOREACH v_txt IN ARRAY ARRAY[

@@ -344,4 +344,214 @@ BEGIN
   END LOOP;
 END $$;
 
+-- G. Pass 6 (S9-1): a refund is recorded where its charge lives.
+--    The orders below have the shape a REAL plan order has (verified on
+--    real-path orders in the s9 rig: buyer web -> ticket-checkout-create ->
+--    provider mock -> webhook -> finalize -> cron): orders.total_cents and
+--    buyer_total_cents hold the DEPOSIT only; each collected instalment is its
+--    own row with its own charge (Stripe rows: buyer_total_cents NULL, own
+--    PaymentIntent; second-provider rows: own transaction reference).
+INSERT INTO public.brands(id, account_id, name, slug, default_currency, payment_provider, payment_country)
+VALUES ('45220008-0000-4000-8000-000000000011', '45220008-0000-4000-8000-000000000001',
+        'Card refund brand', 'card-refund-brand-4522', 'USD', 'stripe', 'US');
+INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone,
+  currency, refund_policy)
+VALUES ('45220008-0000-4000-8000-000000000022', '45220008-0000-4000-8000-000000000011',
+        '45220008-0000-4000-8000-000000000001', 'Card trip', 'card-trip-4522', 'trip', 'scheduled',
+        'public', 'America/New_York', 'USD', '{"kind":"standard","tiers":[{"days_before_start":0,"refund_pct":100}]}');
+INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+VALUES ('45220008-0000-4000-8000-000000000022', now() + interval '120 days', now() + interval '127 days',
+        'America/New_York', true);
+INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents, buyer_total_cents,
+  list_subtotal_cents, net_subtotal_cents, buyer_fees_cents, tax_cents, pricing_source,
+  currency, payment_method, payment_status, source, installment_plan_root, payment_plan_terms, stripe_payment_intent_id)
+VALUES ('45220008-0000-4000-8000-0000000000c1', '45220008-0000-4000-8000-000000000022', 'card-plan@example.test',
+  'Card Plan', '+12025550111', 30000, 30000, 30000, 30000, 0, 0, 'provider_reconciled',
+  'USD', 'online_card', 'paid', 'online_checkout', true,
+  '{"v":2,"deposit_minor":30000,"deposit_non_refundable":true,"flex_enabled":true,"auto_adjust":true}', 'pi_g_deposit');
+INSERT INTO public.order_installments(order_id, ordinal, amount_cents, currency, due_at, status, provider,
+  collection_method, plan_bound_at, collected_at, stripe_payment_intent_id, application_fee_amount_cents, payout_accounting_state)
+SELECT '45220008-0000-4000-8000-0000000000c1', g, 30000, 'USD', now() - interval '1 day',
+       CASE WHEN g < 3 THEN 'collected' ELSE 'scheduled' END, 'stripe', 'auto_card', now() - interval '2 days',
+       CASE WHEN g < 3 THEN now() - interval '1 day' END, CASE WHEN g < 3 THEN 'pi_g_row' || g END,
+       CASE WHEN g < 3 THEN 1350 END, CASE WHEN g < 3 THEN 'ready' ELSE 'pending' END
+  FROM generate_series(1, 3) g;
+
+-- G1. A host cancel of deposit + two collected instalments refunds 90,000 at
+--     the provider (three charges); the last charge's finalize settles it.
+--     FAILS ON REVERT: main's finalize asks the order to hold 90,000 and
+--     orders_refunded_amount_not_exceed_total refuses (the s8 finding).
+DO $$
+DECLARE v_b jsonb; v_refund uuid; v_owner uuid := gen_random_uuid(); v_err text;
+BEGIN
+  v_b := public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000000c1', 'operator',
+    '45220008-0000-4000-8000-000000000001', 'Host cancelled the trip');
+  v_refund := (v_b->>'refund_id')::uuid;
+  IF (v_b->>'refund_total_cents')::bigint <> 90000 THEN
+    RAISE EXCEPTION 'G1-0 the cancel refunds deposit and both instalments: %', v_b;
+  END IF;
+  -- the provider refunded all three charges; two attempts already settled
+  INSERT INTO public.ticket_refund_attempts(refund_id, order_id, request_fingerprint, expected_attempt_count,
+    provider, provider_mode, currency, connected_account_id, charge_id, payment_intent_id, application_fee_amount_text,
+    requested_refund_amount_text,
+    buyer_refund_id, buyer_refund_amount_text, fee_refund_amount_text, status, lease_owner, lease_epoch, lease_expires_at)
+  SELECT v_refund, '45220008-0000-4000-8000-0000000000c1', 'g1:' || x.pi, 3, 'stripe', 'test', 'usd', 'acct_g1',
+         'ch_' || x.pi, x.pi, '0',
+         '30000', 're_' || x.pi, '30000', CASE WHEN x.last THEN NULL ELSE '0' END,
+         CASE WHEN x.last THEN 'pending_visibility' ELSE 'not_applicable' END, v_owner, 1, now() + interval '2 minutes'
+    FROM (VALUES ('pi_g_row1', false), ('pi_g_row2', false), ('pi_g_deposit', true)) x(pi, last);
+  -- before it is recorded, each refunded instalment is held from payouts
+  IF (SELECT count(*) FROM public.order_installments WHERE order_id = '45220008-0000-4000-8000-0000000000c1'
+        AND status = 'collected' AND payout_accounting_state = 'pending') <> 2 THEN
+    RAISE EXCEPTION 'G1-1 a provider refund not yet on its row holds the row from payouts';
+  END IF;
+  v_err := pg_temp.raised(format($f$SELECT public.issue_2097_finalize_refund_attempt(
+    (SELECT id FROM public.ticket_refund_attempts WHERE refund_id = %L AND payment_intent_id = 'pi_g_deposit'),
+    %L, 1, 'not_applicable', NULL, '0', '0', NULL)$f$, v_refund, v_owner));
+  IF v_err IS NOT NULL THEN
+    RAISE EXCEPTION 'G1-2 the finalize records the cancel (was: %)', v_err;
+  END IF;
+  IF (SELECT status FROM public.refunds WHERE id = v_refund) <> 'succeeded'
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000000c1') <> 30000 THEN
+    RAISE EXCEPTION 'G1-3 the order holds only its own (deposit) charge refunded';
+  END IF;
+  IF (SELECT count(*) FROM public.order_installments WHERE order_id = '45220008-0000-4000-8000-0000000000c1'
+        AND status = 'refunded' AND refunded_amount_cents = 30000) <> 2
+     OR (SELECT count(*) FROM public.order_installment_refund_applications WHERE refund_id = v_refund) <> 2 THEN
+    RAISE EXCEPTION 'G1-4 each instalment refund is recorded on its own row';
+  END IF;
+  -- deposit + rows = what the provider returned
+  IF (SELECT refunded_amount_cents FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000000c1')
+     + (SELECT sum(refunded_amount_cents) FROM public.order_installments
+         WHERE order_id = '45220008-0000-4000-8000-0000000000c1') <> 90000 THEN
+    RAISE EXCEPTION 'G1-5 our books match the provider (90,000)';
+  END IF;
+  -- the edge's own mark afterwards is a replay, never a second count
+  IF NOT (public.issue_3645_mark_installment_refunded(
+        (SELECT id FROM public.order_installments WHERE order_id = '45220008-0000-4000-8000-0000000000c1' AND ordinal = 1),
+        v_refund, 30000)->>'replayed')::boolean THEN
+    RAISE EXCEPTION 'G1-6 the edge mark after the finalize replays';
+  END IF;
+  -- a non-plan order keeps exactly the plain sum
+  IF public.issue_4522_order_charge_refunded_cents('45220008-0000-4000-8000-0000000000a5')
+     <> (SELECT COALESCE(sum(amount_cents), 0) FROM public.refunds
+          WHERE order_id = '45220008-0000-4000-8000-0000000000a5' AND status = 'succeeded') THEN
+    RAISE EXCEPTION 'G1-7 an order with no instalments counts every settled refund';
+  END IF;
+END $$;
+
+-- G2. A second-provider cancel settles. FAILS ON REVERT: main's commit wrote
+--     the zero fee with status unknown_legacy and
+--     refunds_application_fee_amount_truth_check refused, so no naira trip
+--     cancel ever settled. A traveler's cancel that keeps the non-refundable
+--     deposit leaves the order partly refunded (the kept deposit stays payable).
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000c2',
+  '{"v":2,"deposit_minor":30000000,"deposit_non_refundable":true,"flex_enabled":true,"auto_adjust":true}', NULL);
+UPDATE public.order_installments SET status = 'collected', collected_at = now() - interval '1 day',
+       stripe_payment_intent_id = 'mingla-inst-g2-a1', provider_transaction_id = '4522900001',
+       application_fee_amount_cents = 1350000, payout_accounting_state = 'ready'
+ WHERE order_id = '45220008-0000-4000-8000-0000000000c2' AND ordinal = 1;
+INSERT INTO public.order_line_items(order_id, ticket_type_id, unit_price_cents, total_cents, quantity, payment_plan_choice)
+VALUES ('45220008-0000-4000-8000-0000000000c2', '45220008-0000-4000-8000-000000000030', 120000000, 120000000, 1, 'installments');
+DO $$
+DECLARE v_b jsonb; v_refund uuid; v_row uuid; v_c jsonb; v_err text;
+BEGIN
+  SELECT id INTO v_row FROM public.order_installments WHERE order_id = '45220008-0000-4000-8000-0000000000c2' AND ordinal = 1;
+  v_b := public.biz_cancel_trip_booking_begin('45220008-0000-4000-8000-0000000000c2', 'buyer', NULL, NULL);
+  v_refund := (v_b->>'refund_id')::uuid;
+  IF (v_b->>'refund_total_cents')::bigint <> 30600000 THEN
+    RAISE EXCEPTION 'G2-0 the traveler gets the instalment back and keeps no deposit refund: %', v_b;
+  END IF;
+  -- the edge's order after the provider: outcome, row mark, line, commit
+  UPDATE public.paystack_refund_attempts SET status = 'processed', provider_refund_id = 'ps_rf_g2'
+   WHERE local_refund_id = v_refund;
+  PERFORM public.issue_3645_mark_installment_refunded(v_row, v_refund, 30600000);
+  INSERT INTO public.refund_line_items(refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents, installment_id)
+  SELECT v_refund, id, ticket_type_id, 1, 30600000, v_row FROM public.order_line_items
+   WHERE order_id = '45220008-0000-4000-8000-0000000000c2';
+  v_err := pg_temp.raised(format($f$SELECT public.biz_cancel_trip_booking_commit(%L, ARRAY['ps_rf_g2'], 0, now())$f$, v_refund));
+  IF v_err IS NOT NULL THEN
+    RAISE EXCEPTION 'G2-1 the second-provider cancel commits (was: %)', v_err;
+  END IF;
+  IF (SELECT status || '/' || application_fee_refund_status FROM public.refunds WHERE id = v_refund)
+       <> 'succeeded/not_applicable'
+     OR (SELECT refunded_amount_cents FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000000c2') <> 0
+     OR (SELECT payment_status FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000000c2') <> 'partial_refund' THEN
+    RAISE EXCEPTION 'G2-2 settled with no deposit refund on the order, still partly refunded: %',
+      (SELECT row_to_json(o)::text FROM (SELECT payment_status, refunded_amount_cents FROM public.orders
+        WHERE id = '45220008-0000-4000-8000-0000000000c2') o);
+  END IF;
+END $$;
+
+-- G3. A second-provider refund of an instalment charge holds that row from
+--     payouts until the row records it, then releases it (a partial refund
+--     keeps the row collected).
+DO $$
+DECLARE v_row uuid; v_refund uuid;
+BEGIN
+  SELECT id INTO v_row FROM public.order_installments WHERE order_id = '45220008-0000-4000-8000-0000000000a2' AND ordinal = 2;
+  UPDATE public.order_installments SET status = 'collected', collected_at = now(), stripe_payment_intent_id = 'mingla-inst-g3-a1',
+         provider_transaction_id = '4522900002', application_fee_amount_cents = 1350000, payout_accounting_state = 'ready'
+   WHERE id = v_row;
+  INSERT INTO public.refunds(order_id, amount_cents, currency, status, reason)
+  VALUES ('45220008-0000-4000-8000-0000000000a2', 1000000, 'NGN', 'pending', 'g3 partial') RETURNING id INTO v_refund;
+  INSERT INTO public.paystack_refund_attempts(source_type, source_id, local_refund_id, transaction_reference,
+    merchant_note, amount_cents, currency, status, idempotency_key, provider_refund_id)
+  VALUES ('order_installment', v_row, v_refund, 'mingla-inst-g3-a1', 'mingla_trip_refund:' || v_refund || ':' || v_row, 1000000,
+    'ngn', 'processed', 'g3-' || v_refund, 'ps_rf_g3');
+  IF (SELECT payout_accounting_state FROM public.order_installments WHERE id = v_row) <> 'pending' THEN
+    RAISE EXCEPTION 'G3-1 refunded at the provider, not yet on the row: held';
+  END IF;
+  PERFORM public.issue_3645_mark_installment_refunded(v_row, v_refund, 1000000);
+  IF (SELECT status || '/' || payout_accounting_state FROM public.order_installments WHERE id = v_row) <> 'collected/ready' THEN
+    RAISE EXCEPTION 'G3-2 recorded on the row: payable again for what is left';
+  END IF;
+END $$;
+
+-- H. Pass 6 (S9-2): a paid plan order whose paid-in-full claim was never
+--    answered is listed for the next instalment run, until it is claimed;
+--    an order with money still owed, a cancelled order and one whose last
+--    payment is under 15 minutes old are not. FAILS ON REVERT: no list.
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000d1',
+  '{"v":2,"deposit_minor":30000000,"deposit_non_refundable":false,"flex_enabled":true,"auto_adjust":true}', NULL);
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000d2',
+  '{"v":2,"deposit_minor":30000000,"deposit_non_refundable":false,"flex_enabled":true,"auto_adjust":true}', NULL);
+UPDATE public.order_installments SET status = 'collected', collected_at = now(),
+       stripe_payment_intent_id = 'mingla-inst-h-' || id, provider_transaction_id = '45229' || ordinal
+ WHERE order_id IN ('45220008-0000-4000-8000-0000000000d1', '45220008-0000-4000-8000-0000000000d2')
+   AND (order_id = '45220008-0000-4000-8000-0000000000d1' OR ordinal < 3);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.issue_4522_unsent_paid_in_full(50, now() + interval '1 hour') x
+                  WHERE x = '45220008-0000-4000-8000-0000000000d1') THEN
+    RAISE EXCEPTION 'H-1 a paid order with no claim is listed for the next run';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.issue_4522_unsent_paid_in_full(50, now() + interval '1 hour') x
+              WHERE x = '45220008-0000-4000-8000-0000000000d2') THEN
+    RAISE EXCEPTION 'H-2 an order still owing a payment is not listed';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.issue_4522_unsent_paid_in_full(50, now()) x
+              WHERE x = '45220008-0000-4000-8000-0000000000d1') THEN
+    RAISE EXCEPTION 'H-3 a payment under 15 minutes old is left to its own path';
+  END IF;
+  IF NOT public.issue_4522_claim_paid_in_full_notice('45220008-0000-4000-8000-0000000000d1', 'instalment_run_retry') THEN
+    RAISE EXCEPTION 'H-4a the run claims it';
+  END IF;
+  IF EXISTS (SELECT 1 FROM public.issue_4522_unsent_paid_in_full(50, now() + interval '1 hour') x
+                 WHERE x = '45220008-0000-4000-8000-0000000000d1') THEN
+    RAISE EXCEPTION 'H-4 once claimed (by the run), it is never listed again';
+  END IF;
+  UPDATE public.order_installments SET status = 'collected', collected_at = now(),
+         stripe_payment_intent_id = 'mingla-inst-h-' || id, provider_transaction_id = '452293'
+   WHERE order_id = '45220008-0000-4000-8000-0000000000d2' AND ordinal = 3;
+  UPDATE public.orders SET cancelled_at = now() WHERE id = '45220008-0000-4000-8000-0000000000d2';
+  IF EXISTS (SELECT 1 FROM public.issue_4522_unsent_paid_in_full(50, now() + interval '1 hour') x
+              WHERE x = '45220008-0000-4000-8000-0000000000d2') THEN
+    RAISE EXCEPTION 'H-5 a cancelled order is never told it is paid in full';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.issue_4522_unsent_paid_in_full(integer,timestamptz)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'H-6 service role only';
+  END IF;
+END $$;
+
 ROLLBACK;

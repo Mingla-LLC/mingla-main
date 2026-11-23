@@ -68,7 +68,9 @@ import {
   handleInstallmentPaymentFailed,
   handleInstallmentPaymentSucceeded,
 } from "../_shared/installmentWebhookHandlers.ts";
-import { stripeTicketCheckout } from "../_shared/stripe.ts";
+import { stripeTicketCheckout, stripeTicketRefund } from "../_shared/stripe.ts";
+import { finishUnrecordedPlanRefunds } from "../_shared/installments/unrecordedRefunds.ts";
+import { sendUnsentPaidInFullNotices } from "../_shared/installments/paidInFullNotice.ts";
 
 const DEFAULT_BATCH_LIMIT = 500 as const;
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
@@ -90,6 +92,10 @@ type SchedulerResult = {
   flex_verified?: { settled: number; released: number; in_flight: number; flagged: number; error: number };
   /** issue #4522 (N2) — overpayments returned to travelers (by outcome). */
   overpayments?: Record<string, number>;
+  /** issue #4522 pass 6 (S9-1) — card refunds made but not yet recorded, finished by read-back. */
+  unrecorded_refunds?: { finished: number; waiting: number; error: number };
+  /** issue #4522 pass 6 (S9-2) — paid-in-full emails sent by this run after an unanswered claim. */
+  paid_in_full_retried?: number;
   /** issue #4522 (N10) — the v2 steps this run skipped because the schema probe failed. */
   v2_steps_skipped?: string[];
   errors: Array<{ installment_id: string; reason: string }>;
@@ -111,6 +117,8 @@ export interface SchedulerDeps {
   failStripe: (supabase: SupabaseClient, paymentIntent: Record<string, unknown>) => Promise<void>;
   /** issue #4522 (N2) — the overpayment refund lane. */
   overpaymentDeps: (supabase: SupabaseClient) => OverpaymentRefundDeps;
+  /** issue #4522 pass 6 (S9-1) — the Stripe surface that reads refunds back (never creates one). */
+  refundStripe: () => unknown;
   alertOps: (subject: string, paragraphs: string[]) => Promise<void>;
 }
 
@@ -544,6 +552,7 @@ export async function processScheduledInstallments(
       });
     },
     overpaymentDeps: defaultOverpaymentDeps,
+    refundStripe: () => stripeTicketRefund(),
     alertOps: installmentOpsAlert,
     ...(input.deps ?? {}),
   };
@@ -647,6 +656,30 @@ export async function processScheduledInstallments(
       result.errors.push({
         installment_id: "scheduler",
         reason: "overpayment_sweep_failed",
+      });
+    }
+    try {
+      result.unrecorded_refunds = await finishUnrecordedPlanRefunds(
+        supabase,
+        deps.refundStripe,
+        limit,
+        deps.now(),
+      );
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "unrecorded_refund_sweep_failed",
+      });
+    }
+    try {
+      result.paid_in_full_retried = await sendUnsentPaidInFullNotices(
+        supabase,
+        (orderId) => deps.dispatchBuyerEmail("installment_plan_paid_in_full", { orderId }),
+      );
+    } catch {
+      result.errors.push({
+        installment_id: "scheduler",
+        reason: "paid_in_full_retry_failed",
       });
     }
   }

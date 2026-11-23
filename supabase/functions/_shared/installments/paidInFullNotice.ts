@@ -39,3 +39,30 @@ export async function claimPaidInFullNotice(
   }
   return data === true;
 }
+
+/**
+ * issue #4522 pass 6 (S9-2) — a paid-in-full email whose claim could not be
+ * answered once is sent by the next instalment run: the run lists paid plan
+ * orders with no claim (issue_4522_unsent_paid_in_full) and claims each here,
+ * so it still goes out exactly once. Before the #4522 schema: nothing to do.
+ */
+export async function sendUnsentPaidInFullNotices(
+  supabase: RpcClient,
+  send: (orderId: string) => Promise<unknown>,
+  limit = 50,
+): Promise<number> {
+  if (!(await planV2SchemaAvailable(supabase))) return 0;
+  const { data, error } = await supabase.rpc("issue_4522_unsent_paid_in_full", { p_limit: limit });
+  if (error !== null) throw new Error(`unsent_paid_in_full_failed:${error.message ?? error.code ?? "unknown"}`);
+  let sent = 0;
+  for (const row of (Array.isArray(data) ? data : []) as unknown[]) {
+    const orderId = typeof row === "string"
+      ? row
+      : String((row as Record<string, unknown>)?.issue_4522_unsent_paid_in_full ?? "");
+    if (orderId !== "" && await claimPaidInFullNotice(supabase, orderId, "instalment_run_retry")) {
+      await send(orderId);
+      sent += 1;
+    }
+  }
+  return sent;
+}

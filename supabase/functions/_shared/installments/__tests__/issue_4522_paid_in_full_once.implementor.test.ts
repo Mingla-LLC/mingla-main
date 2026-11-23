@@ -10,6 +10,7 @@
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { afterFlexSettle } from "../../installmentWebhookHandlers.ts";
 import { resetPlanV2SchemaProbeForTests } from "../planV2Schema.ts";
+import { claimPaidInFullNotice, sendUnsentPaidInFullNotices } from "../paidInFullNotice.ts";
 
 function fake(claims: boolean[]) {
   const calls: string[] = [];
@@ -59,5 +60,47 @@ Deno.test("N7 not paid in full: no claim, no email; N2 held money goes to the la
   assertEquals(sent, []);
   assertEquals(f.calls.includes("issue_4522_claim_paid_in_full_notice"), false);
   assertEquals(f.calls.includes("issue_4522_overpayments_due"), true);
+  resetPlanV2SchemaProbeForTests();
+});
+
+// Pass 6 (S9-2) — a claim that errors once sends nothing then (never twice),
+// and the next instalment run sends it: the order is listed as paid with no
+// claim, claimed there, sent once; a later run lists nothing more.
+// FAILS-ON-REVERT: without sendUnsentPaidInFullNotices the email is never sent.
+Deno.test("S9-2 an unanswered claim is retried by the next run, still exactly once", async () => {
+  resetPlanV2SchemaProbeForTests();
+  const claimed = new Set<string>();
+  let claimErrors = 1;
+  const client = {
+    rpc(fn: string, args?: Record<string, unknown>) {
+      if (fn === "issue_4522_plan_v2_enabled") return Promise.resolve({ data: true, error: null });
+      if (fn === "issue_4522_claim_paid_in_full_notice") {
+        if (claimErrors > 0) {
+          claimErrors -= 1;
+          return Promise.resolve({ data: null, error: { message: "connection reset" } });
+        }
+        const id = String(args?.p_order_id);
+        const first = !claimed.has(id);
+        claimed.add(id);
+        return Promise.resolve({ data: first, error: null });
+      }
+      if (fn === "issue_4522_unsent_paid_in_full") {
+        return Promise.resolve({ data: claimed.has("o-9") ? [] : ["o-9"], error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+  const sent: string[] = [];
+  const send = (orderId: string) => {
+    sent.push(orderId);
+    return Promise.resolve();
+  };
+  // the normal path: its claim errors, so nothing goes out now
+  assertEquals(await claimPaidInFullNotice(client, "o-9", "stripe_webhook"), false);
+  assertEquals(sent, []);
+  // the next run sends it, the run after sends nothing more
+  assertEquals(await sendUnsentPaidInFullNotices(client, send), 1);
+  assertEquals(await sendUnsentPaidInFullNotices(client, send), 0);
+  assertEquals(sent, ["o-9"]);
   resetPlanV2SchemaProbeForTests();
 });
