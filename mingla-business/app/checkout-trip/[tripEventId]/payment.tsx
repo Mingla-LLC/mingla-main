@@ -306,6 +306,9 @@ function CheckoutTripPaymentScreenContent({
           0,
         )
       : undefined;
+  // issue #4522 X-11 — the whole booking on the plan (today + every row).
+  const planTotalCents: number | undefined =
+    quote?.planTotalBuyerCents ?? v2PlanQuotedTotalCents;
   const v2FlexEnabled = v2PlanLines.some(
     ({ plan }) => plan.flex?.enabled === true,
   );
@@ -347,6 +350,9 @@ function CheckoutTripPaymentScreenContent({
   );
 
   const [processing, setProcessing] = useState<boolean>(false);
+  // issue #4522 X-11 — the sticky bar's real height (its plan banner wraps),
+  // so the last schedule rows can always scroll clear of it.
+  const [bottomBarHeight, setBottomBarHeight] = useState<number>(0);
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(
     null,
   );
@@ -928,7 +934,12 @@ function CheckoutTripPaymentScreenContent({
           // ScrollView's bottom padding so the PAYMENT redirect card
           // at the bottom of scroll content isn't occluded behind the
           // taller bottom bar.
-          { paddingBottom: insets.bottom + (isPlanActive ? 260 : 140) },
+          {
+            paddingBottom: Math.max(
+              insets.bottom + (isPlanActive ? 260 : 140),
+              bottomBarHeight + space[6],
+            ),
+          },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -1010,7 +1021,14 @@ function CheckoutTripPaymentScreenContent({
             </View>
           ))}
           <View style={styles.summaryDivider} />
-          {quote !== null ? <TicketQuoteSummary quote={quote} compact /> : null}
+          {quote !== null ? (
+            <TicketQuoteSummary
+              quote={quote}
+              compact
+              // issue #4522 X-11 — on a plan the quote's total is today's charge.
+              totalLabel={isUsingInstallments ? "Total due today" : "Total"}
+            />
+          ) : null}
         </GlassCard>
 
         {/* #3859 — web edits each eligible package independently. Native keeps
@@ -1028,6 +1046,13 @@ function CheckoutTripPaymentScreenContent({
                 : (quote?.planTotalBuyerCents ?? v2PlanQuotedTotalCents)
             }
             lockedChargeSchedule={quote?.installmentChargeSchedule}
+            // issue #4522 X-12 — the plan option names what is due today if
+            // chosen: add-ons paid today join the deposit.
+            todayAddOnCents={
+              hasSelectedAddOns && addonPaymentMode === "today"
+                ? (quotedAddOnTotalCents ?? 0)
+                : 0
+            }
             addOnPlan={
               paymentPlanChoice === "installments" && hasSelectedAddOns
                 ? {
@@ -1121,6 +1146,10 @@ function CheckoutTripPaymentScreenContent({
           styles.bottomBar,
           { paddingBottom: insets.bottom + space[4] },
         ]}
+        onLayout={(event) => {
+          const next = Math.ceil(event.nativeEvent.layout.height);
+          setBottomBarHeight((prev) => (prev === next ? prev : next));
+        }}
       >
         {/* ORCH-0882 — pre-Stripe disclosure banner. Renders directly
             above the Pay button when cart has plan-active lines. Stripe's
@@ -1178,10 +1207,21 @@ function CheckoutTripPaymentScreenContent({
             </Text>
           </View>
         ) : null}
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>{displayAllIn}</Text>
-        </View>
+        {/* issue #4522 X-11 (spec §10.2) — on a plan, "Total" is the whole
+            booking and today's charge is its own "Total due today" line. */}
+        {!(isUsingInstallments && quoteStatus === "ready") ? (
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalValue}>{displayAllIn}</Text>
+          </View>
+        ) : planTotalCents !== undefined && quote !== null ? (
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalValue}>
+              {formatQuoteMoney(planTotalCents, quote.currency)}
+            </Text>
+          </View>
+        ) : null}
         {/* ORCH-1130 Fix #1 — due-today (deposit) line in the sticky bar under
             pay-over-time; mirrors the order-summary box + buyer step. */}
         {isUsingInstallments && quoteStatus === "ready" ? (

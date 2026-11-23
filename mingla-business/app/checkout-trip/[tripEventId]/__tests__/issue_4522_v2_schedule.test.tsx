@@ -318,6 +318,46 @@ describe("#4522 v2 checkout choice", () => {
     unmount(tree);
   });
 
+  // issue #4522 X-12 — before the plan is chosen its option names what will be
+  // due today if chosen: the deposit plus add-ons paid today.
+  test("the unselected plan option includes add-ons paid today; spread does not", () => {
+    const plan = decodeTicketQuotePlanV2(RAW_PLAN);
+    const label = (todayAddOnCents: number | undefined): string => {
+      const tree = mount(
+        <TripPlanV2CheckoutChoice
+          plan={plan}
+          value="full"
+          onChange={jest.fn()}
+          currency="USD"
+          dueTodayCents={104500}
+          fullPriceCents={104500}
+          todayAddOnCents={todayAddOnCents}
+          flexEnabled
+          daysUntilDeparture={90}
+          timeZone="America/New_York"
+        />,
+      );
+      const text = JSON.stringify(tree.toJSON());
+      unmount(tree);
+      return text;
+    };
+    expect(label(4500)).toContain("Pay $245.00 today, then 2 payments");
+    expect(label(0)).toContain("Pay $200.00 today, then 2 payments");
+    expect(label(undefined)).toContain("Pay $200.00 today, then 2 payments");
+  });
+
+  // issue #4522 X-11 (spec §10.2) — on a plan the summary's total is today's
+  // charge, the sticky bar's Total is the whole booking, and the scroll content
+  // clears the sticky bar at its real height.
+  test("on a plan, Total is the whole booking and today's charge is Total due today", () => {
+    expect(paymentRoute).toContain('totalLabel={isUsingInstallments ? "Total due today" : "Total"}');
+    expect(paymentRoute).toMatch(/quote\?\.planTotalBuyerCents \?\? v2PlanQuotedTotalCents;/);
+    expect(paymentRoute).toMatch(/formatQuoteMoney\(planTotalCents, quote\.currency\)/);
+    expect(paymentRoute).toMatch(/!\(isUsingInstallments && quoteStatus === "ready"\) \? \(\s*<View style=\{styles\.totalRow\}>\s*<Text style=\{styles\.totalLabel\}>Total<\/Text>\s*<Text style=\{styles\.totalValue\}>\{displayAllIn\}<\/Text>/);
+    expect(paymentRoute).toMatch(/bottomBarHeight \+ space\[6\]/);
+    expect(paymentRoute).toMatch(/onLayout=\{\(event\) => \{\s*const next = Math\.ceil\(event\.nativeEvent\.layout\.height\);/);
+  });
+
   test("add-ons default to pay today and the segmented choice emits spread once", () => {
     const onChange = jest.fn();
     const tree = mount(

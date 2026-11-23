@@ -32,6 +32,11 @@ export interface TripPlanV2CheckoutChoiceProps {
   dueTodayCents: number | undefined;
   fullPriceCents: number | undefined;
   lockedChargeSchedule?: InstallmentChargeSchedule;
+  /**
+   * issue #4522 X-12 — add-ons the buyer pays today with the deposit. While the
+   * plan is not chosen the plan option still names what would be due today.
+   */
+  todayAddOnCents?: number;
   addOnPlan?: AddOnPlanChoiceProps;
   flexEnabled: boolean;
   daysUntilDeparture: number;
@@ -88,6 +93,7 @@ export const TripPlanV2CheckoutChoice: React.FC<
   dueTodayCents,
   fullPriceCents,
   lockedChargeSchedule,
+  todayAddOnCents = 0,
   addOnPlan,
   flexEnabled,
   daysUntilDeparture,
@@ -141,7 +147,7 @@ export const TripPlanV2CheckoutChoice: React.FC<
   const depositCents =
     value === "installments" && dueTodayCents !== undefined
       ? dueTodayCents
-      : schedule.depositCents;
+      : schedule.depositCents + Math.max(0, todayAddOnCents);
   const depositLabel = formatCurrency(depositCents, currency, true);
   const fullLabel =
     fullPriceCents === undefined
