@@ -1,4 +1,5 @@
 -- MINGLA-INVARIANT: I-4522-10 | issue #4522 | A non-refundable deposit frozen in v2 terms is kept only on a traveler's own cancel; an operator or host cancel refunds it, and collected flexible payments refund and pay out like planned ones.
+-- MINGLA-INVARIANT: I-4522-HOST-NEVER-PAID-REFUNDS | issue #4522 | A host is never paid money that went back to a traveler: no payout sends more than its sales are worth after their refunds, and a refund after payout becomes the host's payout debt.
 \set ON_ERROR_STOP on
 
 -- Issue #4522 slice 8 (M4, 20281129064522): refunds and payouts for v2
@@ -551,6 +552,294 @@ BEGIN
   END IF;
   IF has_function_privilege('authenticated', 'public.issue_4522_unsent_paid_in_full(integer,timestamptz)', 'EXECUTE') THEN
     RAISE EXCEPTION 'H-6 service role only';
+  END IF;
+END $$;
+
+-- I. Section 8 (gaps 1 and 2): a host is never paid money that went back to
+--    a traveler. Orders have the shape real full-pay and plan orders have on
+--    the s9/s10 rigs (buyer web request sequence -> provider mock -> webhook
+--    -> finalize): total_cents = buyer_total_cents = the charge (the deposit
+--    on a plan order), stripe_application_fee_amount_cents = 4.5% of it.
+--    Attached by the REAL payout sweep, refunds recorded by the REAL commit /
+--    finalize functions, paid through the REAL claim / authorize / record.
+--    Deferred triggers fire at commit in production; this suite rolls back,
+--    so SET CONSTRAINTS ALL IMMEDIATE stands in for each commit.
+INSERT INTO public.brands(id, account_id, name, slug, default_currency, payment_provider, payment_country,
+  payout_hold_cutover_at)
+VALUES ('45220008-0000-4000-8000-000000000012', '45220008-0000-4000-8000-000000000001',
+        'Payout card brand', 'payout-card-brand-4522', 'USD', 'stripe', 'US', now() - interval '30 days'),
+       ('45220008-0000-4000-8000-000000000013', '45220008-0000-4000-8000-000000000001',
+        'Payout naira brand', 'payout-naira-brand-4522', 'NGN', 'paystack', 'NG', now() - interval '30 days');
+INSERT INTO public.stripe_connect_accounts(brand_id, stripe_account_id, charges_enabled, payouts_enabled, country, default_currency)
+VALUES ('45220008-0000-4000-8000-000000000012', 'acct_i4522', true, true, 'US', 'usd');
+INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone,
+  currency, refund_policy)
+VALUES ('45220008-0000-4000-8000-000000000024', '45220008-0000-4000-8000-000000000012',
+        '45220008-0000-4000-8000-000000000001', 'Payout card trip', 'payout-card-trip-4522', 'trip', 'scheduled',
+        'public', 'America/New_York', 'USD', '{"kind":"standard","tiers":[{"days_before_start":0,"refund_pct":100}]}'),
+       ('45220008-0000-4000-8000-000000000025', '45220008-0000-4000-8000-000000000013',
+        '45220008-0000-4000-8000-000000000001', 'Payout naira trip', 'payout-naira-trip-4522', 'trip', 'scheduled',
+        'public', 'Africa/Lagos', 'NGN', '{"kind":"standard","tiers":[{"days_before_start":0,"refund_pct":100}]}'),
+       ('45220008-0000-4000-8000-000000000026', '45220008-0000-4000-8000-000000000012',
+        '45220008-0000-4000-8000-000000000001', 'Payout plan trip', 'payout-plan-trip-4522', 'trip', 'scheduled',
+        'public', 'America/New_York', 'USD', '{"kind":"standard","tiers":[{"days_before_start":0,"refund_pct":100}]}');
+INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+VALUES ('45220008-0000-4000-8000-000000000024', now() + interval '120 days', now() + interval '124 days', 'America/New_York', true),
+       ('45220008-0000-4000-8000-000000000025', now() + interval '120 days', now() + interval '124 days', 'Africa/Lagos', true),
+       ('45220008-0000-4000-8000-000000000026', now() + interval '120 days', now() + interval '124 days', 'America/New_York', true);
+
+CREATE FUNCTION pg_temp.sale(p_order uuid, p_event uuid, p_cur text, p_total integer, p_ref text, p_plan boolean)
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO public.orders(id, event_id, buyer_email, buyer_name, buyer_phone_e164, total_cents, buyer_total_cents,
+    list_subtotal_cents, net_subtotal_cents, buyer_fees_cents, tax_cents, pricing_source, currency, payment_method,
+    payment_status, source, installment_plan_root, stripe_payment_intent_id, stripe_application_fee_amount_cents,
+    stripe_application_fee_id, created_at)
+  VALUES (p_order, p_event, 'payout-' || p_ref || '@example.test', 'Payout Buyer', '+12025550199', p_total, p_total,
+    p_total, p_total, 0, 0, 'provider_reconciled', p_cur, 'online_card', 'paid', 'online_checkout', p_plan,
+    p_ref, (p_total * 45) / 1000, 'fee_' || p_ref, now() - interval '2 days');
+  INSERT INTO public.payout_source_fee_snapshots(source_type, source_id, provider_fee_cents)
+  VALUES ('order', p_order, (p_total * 29) / 1000 + 30);
+END $$;
+
+CREATE FUNCTION pg_temp.rel(p_order uuid) RETURNS public.brand_payout_releases LANGUAGE sql AS $$
+  SELECT r.* FROM public.payout_release_items i JOIN public.brand_payout_releases r ON r.id = i.release_id
+   WHERE i.source_type = 'order' AND i.source_id = p_order;
+$$;
+
+-- A card refund recorded as the refund edge records it: a pending refund row,
+-- the provider attempt, then the 2097 finalize with the fee evidence.
+CREATE FUNCTION pg_temp.card_refund(p_order uuid, p_amount integer, p_fee_back integer, p_finish boolean DEFAULT true)
+RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE v_refund uuid; v_attempt uuid; v_owner uuid := gen_random_uuid(); v_fee integer; v_ref text;
+BEGIN
+  SELECT stripe_application_fee_amount_cents, stripe_payment_intent_id INTO v_fee, v_ref
+    FROM public.orders WHERE id = p_order;
+  INSERT INTO public.refunds(order_id, amount_cents, currency, status, reason)
+  SELECT p_order, p_amount, currency, 'pending', 'i4522 host refund' FROM public.orders WHERE id = p_order
+  RETURNING id INTO v_refund;
+  IF NOT p_finish THEN RETURN v_refund; END IF;
+  INSERT INTO public.ticket_refund_attempts(refund_id, order_id, request_fingerprint, expected_attempt_count,
+    provider, provider_mode, currency, connected_account_id, charge_id, payment_intent_id, application_fee_id,
+    application_fee_amount_text, baseline_amount_refunded_text, requested_refund_amount_text,
+    buyer_refund_id, buyer_refund_amount_text, status, lease_owner, lease_epoch, lease_expires_at)
+  VALUES (v_refund, p_order, 'i:' || v_refund, 1, 'stripe', 'test', 'usd', 'acct_i4522', 'ch_' || v_ref, v_ref,
+    'fee_' || v_ref, v_fee::text,
+    coalesce((SELECT sum(application_fee_refunded_cents) FROM public.refunds WHERE order_id = p_order AND status = 'succeeded'), 0)::text,
+    p_amount::text, 're_' || v_refund, p_amount::text, 'pending_visibility', v_owner, 1, now() + interval '2 minutes')
+  RETURNING id INTO v_attempt;
+  PERFORM public.issue_2097_finalize_refund_attempt(v_attempt, v_owner, 1, 'succeeded_positive', 'fr_' || v_refund,
+    p_fee_back::text,
+    (coalesce((SELECT sum(application_fee_refunded_cents) FROM public.refunds WHERE order_id = p_order AND status = 'succeeded'), 0)
+      + p_fee_back)::text, NULL);
+  RETURN v_refund;
+END $$;
+
+-- Three $500 card sales; the real sweep attaches them to one payout.
+SELECT pg_temp.sale('45220008-0000-4000-8000-0000000000e1', '45220008-0000-4000-8000-000000000024', 'USD', 50000, 'pi_i1', false);
+SELECT pg_temp.sale('45220008-0000-4000-8000-0000000000e2', '45220008-0000-4000-8000-000000000024', 'USD', 50000, 'pi_i2', false);
+SELECT pg_temp.sale('45220008-0000-4000-8000-0000000000e3', '45220008-0000-4000-8000-000000000024', 'USD', 50000, 'pi_i3', false);
+SELECT public.run_payout_release_dark_sweep(now());
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+
+-- I1. Attached and pending: a full refund comes off the payout as soon as it
+--     is asked for (held while pending), and stays off once recorded.
+--     FAILS ON REVERT: the release kept 143,250 (all three sales' net).
+DO $$
+DECLARE v_r public.brand_payout_releases; v_refund uuid;
+BEGIN
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000e1');
+  IF v_r.status <> 'pending' OR v_r.net_release_cents <> 143250 THEN
+    RAISE EXCEPTION 'I1-0 three sales attached at 47,750 each: % %', v_r.status, v_r.net_release_cents;
+  END IF;
+  v_refund := pg_temp.card_refund('45220008-0000-4000-8000-0000000000e1', 50000, 2250, false);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF (pg_temp.rel('45220008-0000-4000-8000-0000000000e1')).net_release_cents <> 95500 THEN
+    RAISE EXCEPTION 'I1-1 a sale with a refund pending is held from its payout: %',
+      (pg_temp.rel('45220008-0000-4000-8000-0000000000e1')).net_release_cents;
+  END IF;
+  UPDATE public.refunds SET status = 'cancelled' WHERE id = v_refund;
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF (pg_temp.rel('45220008-0000-4000-8000-0000000000e1')).net_release_cents <> 143250 THEN
+    RAISE EXCEPTION 'I1-2 a refund that never happened holds nothing';
+  END IF;
+  PERFORM pg_temp.card_refund('45220008-0000-4000-8000-0000000000e1', 50000, 2250);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000e1');
+  IF (SELECT refunded_amount_cents FROM public.orders WHERE id = '45220008-0000-4000-8000-0000000000e1') <> 50000
+     OR v_r.net_release_cents <> 95500 OR v_r.refunded_cents <> 50000 THEN
+    RAISE EXCEPTION 'I1-3 a recorded full refund leaves the other two sales due (95,500): net % refunded %',
+      v_r.net_release_cents, v_r.refunded_cents;
+  END IF;
+END $$;
+
+-- I2. The execution guard: a release left owing too much (as main leaves one
+--     whose sale was refunded after it was attached) is never sent at that
+--     amount; it is put back owing what its sales are worth, ops are told
+--     once, and the next claim sends the right amount.
+--     FAILS ON REVERT: authorize answered true for 143,250.
+DO $$
+DECLARE v_r public.brand_payout_releases; v_claim record; v_ok boolean;
+BEGIN
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000e1');
+  UPDATE public.brand_payout_releases SET net_release_cents = 143250, refunded_cents = 0 WHERE id = v_r.id;
+  SELECT * INTO v_claim FROM public.claim_stripe_payout_releases(100, now()) c WHERE c.release_id = v_r.id;
+  IF v_claim.net_release_cents <> 143250 THEN
+    RAISE EXCEPTION 'I2-0 the stale release is claimed: %', v_claim;
+  END IF;
+  v_ok := public.authorize_stripe_payout_execution(v_r.id, v_claim.claim_id, 143250, now());
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000e1');
+  IF v_ok OR v_r.status <> 'pending' OR v_r.net_release_cents <> 95500
+     OR v_r.error_message <> 'payout_refund_unreconciled' THEN
+    RAISE EXCEPTION 'I2-1 never sent above what the sales are worth: ok % status % net %', v_ok, v_r.status, v_r.net_release_cents;
+  END IF;
+  IF (SELECT count(*) FROM public.payout_release_alert_outbox
+       WHERE release_id = v_r.id AND error_message LIKE 'payout_refund_unreconciled:%') <> 1 THEN
+    RAISE EXCEPTION 'I2-2 ops are told once';
+  END IF;
+  SELECT * INTO v_claim FROM public.claim_stripe_payout_releases(100, now()) c WHERE c.release_id = v_r.id;
+  IF NOT public.authorize_stripe_payout_execution(v_r.id, v_claim.claim_id, 95500, now()) THEN
+    RAISE EXCEPTION 'I2-3 the right amount is sent';
+  END IF;
+  PERFORM public.record_stripe_payout_execution(v_r.id, v_claim.claim_id, 'accepted', 'po_i4522', 95500, NULL, now());
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000e1');
+  IF v_r.status <> 'released' OR v_r.organiser_cash_delivered_cents <> 95500
+     OR EXISTS (SELECT 1 FROM public.organiser_payout_debts WHERE origin_release_id = v_r.id) THEN
+    RAISE EXCEPTION 'I2-4 paid 95,500 and owes nothing back';
+  END IF;
+END $$;
+
+-- I3. Already paid: a partial refund (10,000, fee 450 back) becomes the
+--     host's #3645 payout debt (9,550), ops are told once, and the next
+--     payout nets it off: cumulative transfers = collected - refunded - fees.
+--     FAILS ON REVERT: no debt; the next payout paid the full 47,750.
+DO $$
+DECLARE v_r public.brand_payout_releases; v_next public.brand_payout_releases;
+BEGIN
+  PERFORM pg_temp.card_refund('45220008-0000-4000-8000-0000000000e2', 10000, 450);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000e2');
+  IF (SELECT principal_cents::text || '/' || status FROM public.organiser_payout_debts
+       WHERE origin_release_id = v_r.id AND kind = 'post_release_refund') IS DISTINCT FROM '9550/open' THEN
+    RAISE EXCEPTION 'I3-1 the refund after payout is the host''s debt: %',
+      (SELECT row_to_json(d)::text FROM public.organiser_payout_debts d WHERE origin_release_id = v_r.id);
+  END IF;
+  IF (SELECT count(*) FROM public.payout_release_alert_outbox
+       WHERE release_id = v_r.id AND error_message LIKE 'payout_refund_debt_opened:%') <> 1 THEN
+    RAISE EXCEPTION 'I3-2 ops are told once about the debt';
+  END IF;
+  -- recorded again (a replayed commit): no second count
+  PERFORM public.issue_4522_sync_order_payouts('45220008-0000-4000-8000-0000000000e2');
+  IF (SELECT sum(principal_cents) FROM public.organiser_payout_debts WHERE origin_release_id = v_r.id) <> 9550 THEN
+    RAISE EXCEPTION 'I3-3 a replay never grows the debt';
+  END IF;
+  PERFORM pg_temp.sale('45220008-0000-4000-8000-0000000000e4', '45220008-0000-4000-8000-000000000024', 'USD', 50000, 'pi_i4', false);
+  PERFORM public.run_payout_release_dark_sweep(now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_next := pg_temp.rel('45220008-0000-4000-8000-0000000000e4');
+  IF v_next.id = v_r.id OR v_next.net_release_cents <> 47750 - 9550 THEN
+    RAISE EXCEPTION 'I3-4 the next payout nets the debt off: %', v_next.net_release_cents;
+  END IF;
+  -- 4 sales of 50,000; refunded 60,000; Mingla keeps 4 x 2,250 - 2,250 - 450
+  IF v_r.organiser_cash_delivered_cents + v_next.net_release_cents <> 200000 - 60000 - (9000 - 2700) THEN
+    RAISE EXCEPTION 'I3-5 the host is paid exactly collected - refunded - fees';
+  END IF;
+END $$;
+
+-- I4. Gap 2: a plan deposit whose provider refund is made but not recorded
+--     (the recording failed) is held from its payout; recorded, it stays off.
+--     FAILS ON REVERT: the deposit stayed due in full (28,650).
+DO $$
+DECLARE v_refund uuid; v_r public.brand_payout_releases;
+BEGIN
+  PERFORM pg_temp.sale('45220008-0000-4000-8000-0000000000e5', '45220008-0000-4000-8000-000000000026', 'USD', 30000, 'pi_i5', true);
+  PERFORM public.run_payout_release_dark_sweep(now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000e5');
+  IF v_r.net_release_cents <> 28650 THEN
+    RAISE EXCEPTION 'I4-0 the $300 deposit attached at 28,650: %', v_r.net_release_cents;
+  END IF;
+  v_refund := pg_temp.card_refund('45220008-0000-4000-8000-0000000000e5', 30000, 0, false);
+  INSERT INTO public.ticket_refund_attempts(refund_id, order_id, request_fingerprint, expected_attempt_count,
+    provider, provider_mode, currency, charge_id, payment_intent_id, requested_refund_amount_text,
+    buyer_refund_id, buyer_refund_amount_text, status)
+  VALUES (v_refund, '45220008-0000-4000-8000-0000000000e5', 'i4:' || v_refund, 1, 'stripe', 'test', 'usd',
+    'ch_pi_i5', 'pi_i5', '30000', 're_i5', '30000', 'pending_visibility');
+  UPDATE public.refunds SET status = 'failed' WHERE id = v_refund;
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  IF (pg_temp.rel('45220008-0000-4000-8000-0000000000e5')).net_release_cents <> 0 THEN
+    RAISE EXCEPTION 'I4-1 a refund the provider made and our books did not record holds the deposit: %',
+      (pg_temp.rel('45220008-0000-4000-8000-0000000000e5')).net_release_cents;
+  END IF;
+END $$;
+
+-- I5. Second provider, attached and waiting for a bank: a full refund takes
+--     the item off (the s9 finding: 286,500 stayed due); the host then adds
+--     a bank and nothing is claimed. Then a refund that lands while a
+--     transfer is planned: authorize refuses the plan and ops are told.
+--     FAILS ON REVERT: net stayed 28,650,000; authorize answered true.
+--     (The second provider keeps no fee on a refund: its refund row carries
+--     the zero fee as not_applicable, as the trip-cancel commit records it.)
+DO $$
+DECLARE v_refund uuid; v_r public.brand_payout_releases; v_claim record; v_ok boolean;
+BEGIN
+  PERFORM pg_temp.sale('45220008-0000-4000-8000-0000000000f1', '45220008-0000-4000-8000-000000000025', 'NGN', 30000000, 'mingla_i_f1', false);
+  PERFORM pg_temp.sale('45220008-0000-4000-8000-0000000000f2', '45220008-0000-4000-8000-000000000025', 'NGN', 30000000, 'mingla_i_f2', false);
+  PERFORM public.run_payout_release_dark_sweep(now());
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000f1');
+  IF v_r.provider <> 'paystack' OR v_r.net_release_cents <> 2 * 28650000 THEN
+    RAISE EXCEPTION 'I5-0 two naira sales attached at 28,650,000: %', v_r.net_release_cents;
+  END IF;
+  INSERT INTO public.refunds(order_id, amount_cents, currency, status, reason,
+    application_fee_refund_status, application_fee_refunded_cents)
+  VALUES ('45220008-0000-4000-8000-0000000000f1', 30000000, 'NGN', 'pending', 'i5 host refund',
+    'not_applicable', 0) RETURNING id INTO v_refund;
+  PERFORM public.record_paystack_refund_outcome('order', '45220008-0000-4000-8000-0000000000f1', v_refund,
+    'mingla_i_f1', 'mingla_refund:' || v_refund, 'ps_rf_i5', 30000000, 'processed', NULL, now());
+  PERFORM public.admin_refund_order_commit(v_refund, 'ps_rf_i5', 0, 'succeeded', NULL);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000f1');
+  IF v_r.net_release_cents <> 28650000 THEN
+    RAISE EXCEPTION 'I5-1 the refunded naira sale is off its payout: %', v_r.net_release_cents;
+  END IF;
+  -- the host adds a bank; the payout is claimed for the one sale left
+  INSERT INTO public.brand_paystack_recipients(brand_id, recipient_code, bank_code, account_fingerprint,
+    account_number_masked, account_name, is_active)
+  VALUES ('45220008-0000-4000-8000-000000000013', 'RCP_i4522', '058', 'hmac-sha256:' || repeat('a4', 32), '••••1234', 'Payout Host', true);
+  SELECT * INTO v_claim FROM public.claim_paystack_payout_releases(100, now()) c WHERE c.release_id = v_r.id;
+  IF v_claim.net_release_cents <> 28650000 THEN
+    RAISE EXCEPTION 'I5-2 claimed for what is left: %', v_claim;
+  END IF;
+  PERFORM public.record_paystack_leg_plan(v_r.id, v_claim.claim_id,
+    '[{"chunk_index":0,"principal_cents":28640000,"estimated_fee_cents":5000,"stamp_duty_cents":5000,"fee_schedule_version":"i4522"}]'::jsonb, now());
+  -- the second sale is refunded while its transfer is planned
+  INSERT INTO public.refunds(order_id, amount_cents, currency, status, reason,
+    application_fee_refund_status, application_fee_refunded_cents)
+  VALUES ('45220008-0000-4000-8000-0000000000f2', 30000000, 'NGN', 'pending', 'i5 second refund',
+    'not_applicable', 0) RETURNING id INTO v_refund;
+  PERFORM public.record_paystack_refund_outcome('order', '45220008-0000-4000-8000-0000000000f2', v_refund,
+    'mingla_i_f2', 'mingla_refund:' || v_refund, 'ps_rf_i5b', 30000000, 'processed', NULL, now());
+  PERFORM public.admin_refund_order_commit(v_refund, 'ps_rf_i5b', 0, 'succeeded', NULL);
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
+  v_ok := public.authorize_paystack_payout_execution(v_r.id, v_claim.claim_id, now());
+  v_r := pg_temp.rel('45220008-0000-4000-8000-0000000000f1');
+  IF v_ok OR v_r.status <> 'pending' OR v_r.net_release_cents <> 0
+     OR NOT EXISTS (SELECT 1 FROM public.payout_release_alert_outbox
+                     WHERE release_id = v_r.id AND alert_kind = 'paystack_plan_exceeds_due') THEN
+    RAISE EXCEPTION 'I5-3 never sends money refunded while the transfer was planned: ok % status % net %',
+      v_ok, v_r.status, v_r.net_release_cents;
   END IF;
 END $$;
 

@@ -96,6 +96,14 @@ INSERT INTO public.brand_payout_releases (
   9
 );
 
+-- issue #4522: each release holds the sale it pays for (authorize never sends
+-- more than a release's sales are worth).
+INSERT INTO public.payout_release_items (
+  release_id, source_type, source_id, gross_cents, mingla_fee_cents, net_cents, source_finalized_at
+) VALUES
+  ('11720000-0000-0000-0000-000000000109', 'order', gen_random_uuid(), 10000, 1000, 9000, '2027-01-03 20:00:00+00'),
+  ('11720000-0000-0000-0000-000000000110', 'order', gen_random_uuid(), 10000, 1000, 9000, '2027-01-03 20:00:00+00');
+
 SET LOCAL session_replication_role = origin;
 
 CREATE TEMP TABLE issue_1172_rework_claims AS
