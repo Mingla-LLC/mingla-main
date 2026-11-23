@@ -102,7 +102,9 @@
         "app-mobile/src/services/peopleJourneyService.ts",
         "app-mobile/src/services/postHogService.ts",
         "app-mobile/src/services/screenTracking.ts",
-        "app-mobile/src/services/signupSourceHints.ts"
+        "app-mobile/src/services/signupSourceHints.ts",
+        "app-mobile/src/contexts/CoachMarkContext.tsx",
+        "app-mobile/src/services/mixpanelService.ts"
       ]
     },
     {

@@ -115,43 +115,18 @@ function runAdversarial() {
       'AT-01a hasTarget must NOT regress to the bare `target && target.width > 0 ...` rect gate'
     );
 
-    // (b) [TEST-MOD-APPROVED ORCH-1029] the plausibility predicate must REJECT a TRUE
-    //     whole-screen rect, distinguishing it from the LEGITIMATE full-width deck card.
-    //
-    //     ORIGINAL AT-01b (this commit's predecessor) required `t.width <= screenWidth*0.9x`
-    //     AND `t.height <= screenHeight*0.8x` — an upper-bound-on-BOTH clamp. That clamp is
-    //     the EXACT P1 the QA verdict proved: the deck card is full-WIDTH by design
-    //     (`cardContainer` is `width: SCREEN_WIDTH`), so a `width <= screenWidth*0.96` arm can
-    //     NEVER be satisfied → step 1 holds forever → the tour freezes. The original AT-01b
-    //     is mathematically unsatisfiable alongside a working fix, so it is corrected here
-    //     (the REWORK direction, dispatched by the orchestrator).
-    //
-    //     The recalibrated predicate rejects a rect ONLY when it covers essentially the
-    //     whole screen: near-100% WIDTH (`>=` a width ratio) AND near-100% HEIGHT (`>=` a
-    //     height ratio) AND a top-origin near 0. A full-width-but-shorter deck card (height
-    //     well under the height ratio) is therefore ACCEPTED; the Android {0,2,448,879}
-    //     whole-screen rect (≈98% w, ≈98% h, y≈0) is REJECTED. The adversarial guard is now:
-    //     the whole-screen detector must gate on BOTH a width ratio AND a height ratio (a
-    //     width-only or height-only gate would mis-classify), and the final result must be
-    //     the NEGATION of the whole-screen test (so the gate rejects, not accepts, fullscreen).
+    // (b) [TEST-MOD-APPROVED #4562] AT-01b is REMOVED. It required the plausibility predicate
+    //     to reject a "whole-screen" rect (width/height ratios + top origin). A device run on
+    //     Android 14 with a tall cutout showed that rule rejecting the REAL deck card (360x699
+    //     on a 728 dp window) on every launch, so step 1 never showed. The rule is gone; what
+    //     stays guarded is that it does not creep back, and that a sizeless rect is refused.
     assert.ok(
-      /t\.width\s*>=\s*screenWidth\s*\*\s*FULLSCREEN_WIDTH_RATIO/.test(squishedOverlay),
-      'AT-01b whole-screen detector must gate on a width ratio (t.width >= screenWidth * FULLSCREEN_WIDTH_RATIO)'
+      !/FULLSCREEN_/.test(squishedOverlay) && !/isWholeScreen/.test(squishedOverlay),
+      'AT-01b (replaced) the whole-screen rejection must stay deleted (#4562)'
     );
     assert.ok(
-      /t\.height\s*>=\s*screenHeight\s*\*\s*FULLSCREEN_HEIGHT_RATIO/.test(squishedOverlay),
-      'AT-01b whole-screen detector must gate on a height ratio (t.height >= screenHeight * FULLSCREEN_HEIGHT_RATIO)'
-    );
-    // The detector must AND the width + height + top conditions (a single-axis gate would
-    // wrongly reject the full-width deck card), and the predicate must RETURN ITS NEGATION
-    // (reject the whole-screen rect, accept everything else).
-    assert.ok(
-      /const isWholeScreen\s*=\s*coversFullWidth\s*&&\s*coversFullHeight\s*&&\s*startsAtTop/.test(squishedOverlay),
-      'AT-01b whole-screen = coversFullWidth && coversFullHeight && startsAtTop (all three, ANDed)'
-    );
-    assert.ok(
-      /return\s*!isWholeScreen/.test(squishedOverlay),
-      'AT-01b the predicate must return the NEGATION of the whole-screen test (reject fullscreen, accept the deck)'
+      /t\.width\s*<=\s*0\s*\|\|\s*t\.height\s*<=\s*0/.test(squishedOverlay),
+      'AT-01b (replaced) a rect with no size must still be refused by isPlausibleCutout'
     );
 
     // (c) step 1 must HOLD (render nothing) when there is no plausible target — the
