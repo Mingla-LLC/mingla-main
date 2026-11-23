@@ -66,7 +66,7 @@ import {
 } from "../../../src/services/ticketCheckoutService";
 import type { TicketCheckoutProviderHandoff } from "../../../src/services/ticketCheckoutService";
 import type { TicketQuote } from "@mingla/offering-rendering/discountQuote";
-import { withCurrencyGlyph } from "@mingla/offering-rendering/currencyGlyph";
+import { formatQuoteMoney } from "../../../src/components/checkout/quoteMoney";
 import { mixpanelService } from "../../../src/services/mixpanelService";
 // ORCH-1192 — native `checkout_started` (mirrors web web_checkout_started),
 // fired before purchase_completed. No-op on web / when key absent / opted out.
@@ -118,20 +118,6 @@ import {
   tripIntakeState,
   type TripIntakeState,
 } from "./tripCheckoutStepOrder";
-
-const formatQuoteMoney = (minor: number, currency: string): string => {
-  try {
-    return withCurrencyGlyph(
-      new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency || "USD",
-      }).format(minor / 100),
-      currency,
-    );
-  } catch {
-    return `${currency} ${(minor / 100).toFixed(2)}`.trim();
-  }
-};
 
 const NativeCheckoutPaymentBoundary = React.lazy(
   () => import("../../../src/payments/NativeCheckoutPaymentBoundary"),

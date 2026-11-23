@@ -118,7 +118,29 @@ const makeError = (
   return err;
 };
 
-const userMessageFor = (code: string): string => {
+/**
+ * issue #4522 G-10 — what a HOST is told where a traveler is told to "contact
+ * the organizer": the host is the organizer. Only the lines that name the
+ * organizer differ; every other line is the same for both.
+ */
+const hostMessageFor = (code: string): string | null => {
+  switch (code) {
+    case "no_trip_start_date":
+      return "This trip has no scheduled start date. Add one in the trip editor, then try again.";
+    case "missing_connected_account":
+      return "This brand isn't set up for refunds yet. Finish payout setup, then try again.";
+    case "stripe_refund_failed":
+      return "Couldn't process the refund. Try again, or contact Mingla support.";
+    default:
+      return null;
+  }
+};
+
+const userMessageFor = (code: string, host = false): string => {
+  if (host) {
+    const hostLine = hostMessageFor(code);
+    if (hostLine !== null) return hostLine;
+  }
   switch (code) {
     case "order_not_found":
       return "Reservation not found.";
@@ -189,7 +211,9 @@ async function invokeCancelTripBooking(
     }
     const code = (payload?.error ?? "internal_error") as CancelTripBookingErrorCode;
     const detail = payload?.detail ?? (response.error as Error).message ?? "Cancel failed";
-    throw makeError(code, userMessageFor(code), detail, httpStatus, {
+    // A traveler's call carries the cancel-link token; a host's call is signed in.
+    const hostCall = body.token === undefined;
+    throw makeError(code, userMessageFor(code, hostCall), detail, httpStatus, {
       currentRefundTotalCents: payload?.currentRefundTotalCents,
       partialSucceededRefunds: payload?.partialSucceededRefunds,
     });
