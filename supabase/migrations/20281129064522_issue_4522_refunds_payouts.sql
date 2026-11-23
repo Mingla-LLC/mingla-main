@@ -1128,7 +1128,7 @@ REVOKE ALL ON FUNCTION public.issue_4522_alert_payout_refund(uuid, text, text, t
 --     paid (the paying claim's snapshot, #3645 2e-1; without one, the items
 --     as attached) minus what they are worth now after recorded refunds
 --     (a refund still pending is not owed back until it settles).
-CREATE FUNCTION public.issue_4522_release_refund_liability(p_release_id uuid)
+CREATE FUNCTION public.issue_4522_release_refund_liability(p_release_id uuid, p_with_holds boolean DEFAULT false)
 RETURNS bigint
 LANGUAGE plpgsql
 STABLE
@@ -1149,7 +1149,9 @@ BEGIN
       FROM public.payout_release_items i WHERE i.release_id = p_release_id;
   END IF;
   SELECT t.items_net_cents INTO v_now FROM public.issue_3645_release_projected_totals(p_release_id) t;
-  SELECT coalesce(sum(n.settled_net_cents - n.net_cents), 0) INTO v_unheld
+  -- p_with_holds: a refund the provider has made (or is making) counts as
+  -- refunded even before our books record it (the cap below uses this).
+  SELECT CASE WHEN p_with_holds THEN 0 ELSE coalesce(sum(n.settled_net_cents - n.net_cents), 0) END INTO v_unheld
     FROM public.payout_release_items i
    CROSS JOIN LATERAL public.issue_4522_payout_item_now(
      i.source_type, i.source_id, i.gross_cents, i.refunded_cents,
@@ -1158,7 +1160,7 @@ BEGIN
   RETURN greatest(0, v_paid - (coalesce(v_now, 0) + v_unheld));
 END
 $fn$;
-REVOKE ALL ON FUNCTION public.issue_4522_release_refund_liability(uuid)
+REVOKE ALL ON FUNCTION public.issue_4522_release_refund_liability(uuid, boolean)
   FROM PUBLIC, anon, authenticated, service_role;
 
 -- 8d. The one owner. Returns what it did: projected | debt | busy | <status>.
@@ -1383,11 +1385,20 @@ AS $fn$
 DECLARE
   v_cap bigint;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.brand_payout_releases r
-                  WHERE r.id = NEW.origin_release_id AND r.surface IN ('order', 'order_installment')) THEN
+  -- Only where the payout's own sales were refunded (a refund row or a
+  -- provider refund attempt for them); a debt opened on other grounds is
+  -- left as it is.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.payout_release_items i
+      LEFT JOIN public.order_installments oi ON i.source_type = 'order_installment' AND oi.id = i.source_id
+     WHERE i.release_id = NEW.origin_release_id AND i.source_type IN ('order', 'order_installment')
+       AND (EXISTS (SELECT 1 FROM public.refunds r
+                     WHERE r.order_id = CASE WHEN i.source_type = 'order' THEN i.source_id ELSE oi.order_id END)
+            OR EXISTS (SELECT 1 FROM public.paystack_refund_attempts pa
+                        WHERE pa.source_type = i.source_type AND pa.source_id = i.source_id))) THEN
     RETURN NEW;
   END IF;
-  v_cap := greatest(public.issue_4522_release_refund_liability(NEW.origin_release_id), NEW.recovered_cents);
+  v_cap := greatest(public.issue_4522_release_refund_liability(NEW.origin_release_id, true), NEW.recovered_cents);
   IF NEW.principal_cents > v_cap THEN
     NEW.principal_cents := v_cap::integer;
     IF NEW.principal_cents <= NEW.recovered_cents THEN

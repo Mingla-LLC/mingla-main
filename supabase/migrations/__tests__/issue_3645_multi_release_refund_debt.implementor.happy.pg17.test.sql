@@ -1,8 +1,10 @@
 -- Issue #3645 PR3 — refund liability spills across multiple released payouts (PG17).
 -- Origin release delivered 4000; a sibling released row for the same event delivered
--- another 4000. A 6000 refund against the origin source must open a 6000 debt (not
--- clamp to 4000), and apply_open_payout_debts recovers the remainder from a later
--- pending release. A second origin cannot reuse the same 8000 pool.
+-- another 4000. A 6000 refund against the origin source opens a debt of what the host
+-- was paid for that sale, 4000 (issue #4522 G-2: a refund debt never exceeds what the
+-- host was paid for the charge refunded; the PR3 spill onto other payouts let a trip
+-- cancel charge a host 600,000 for a 286,500 payout). apply_open_payout_debts recovers
+-- it from a later pending release. A second origin cannot reuse the same 8000 pool.
 
 BEGIN;
 
@@ -89,17 +91,17 @@ BEGIN
   SELECT principal_cents, recovered_cents, status
     INTO v_principal, v_recovered, v_status
   FROM public.organiser_payout_debts WHERE id = v_debt_id;
-  IF v_principal <> 6000 THEN
-    RAISE EXCEPTION 'pr3_debt_principal_expected_6000_got_%', v_principal;
+  IF v_principal <> 4000 THEN
+    RAISE EXCEPTION 'pr3_debt_principal_expected_4000_got_%', v_principal;
   END IF;
   IF v_status <> 'open' THEN
     RAISE EXCEPTION 'pr3_debt_status_expected_open_got_%', v_status;
   END IF;
 
-  -- Room left for a second origin is 2000, not another full 8000.
+  -- Room left for a second origin is 4000, not another full 8000.
   v_room := public.organiser_refund_debt_room_cents(v_brand, 'ngn', v_event, v_rel_b);
-  IF v_room <> 2000 THEN
-    RAISE EXCEPTION 'pr3_room_for_second_origin_expected_2000_got_%', v_room;
+  IF v_room <> 4000 THEN
+    RAISE EXCEPTION 'pr3_room_for_second_origin_expected_4000_got_%', v_room;
   END IF;
 
   v_out := public.record_paystack_refund_outcome(
@@ -112,8 +114,8 @@ BEGIN
   END IF;
   v_debt_b := (v_out->>'debt_id')::uuid;
   SELECT principal_cents INTO v_principal FROM public.organiser_payout_debts WHERE id = v_debt_b;
-  IF v_principal <> 2000 THEN
-    RAISE EXCEPTION 'pr3_second_origin_clamped_to_room_expected_2000_got_%', v_principal;
+  IF v_principal <> 4000 THEN
+    RAISE EXCEPTION 'pr3_second_origin_expected_4000_got_%', v_principal;
   END IF;
 
   SELECT coalesce(sum(principal_cents), 0)::integer INTO v_sum
