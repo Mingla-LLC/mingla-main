@@ -1,6 +1,5 @@
+// MINGLA-INVARIANT: I-4573-FORM-REQUEST-CODE-HAS-COPY | issue #4573 | every code guest-roster-actions can return for a form request has its own host-facing sentence; none falls through to "Couldn't send. Try again." (SC-6).
 /**
- * MINGLA-INVARIANT: I-4573-FORM-REQUEST-CODE-HAS-COPY | issue #4573 | every code guest-roster-actions can return for a form request has its own host-facing sentence; none falls through to "Couldn't send. Try again." (SC-6).
- *
  * #4573 SC-6: the Host app has a sentence for every server code, read from
  * the edge function source so a new server code without copy turns this red.
  * Spec §5: a refusal that means the preview changed makes the sheet read the
