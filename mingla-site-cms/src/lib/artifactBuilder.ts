@@ -347,6 +347,8 @@ export async function buildPublicationArtifact(
   const settings = settingsResult.docs[0] as AnyDoc | undefined;
   // #2829 W3 — the site's design (atelier when none is chosen).
   const design: DesignDefinition = designFor(settings?.design) ?? ATELIER;
+  // #4575 — resolved up here: the hero strip below depends on the full-screen cover.
+  const designOptions = resolveDesignOptions(design, designOptionsOf(settings));
   const home = pagesResult.docs.find((page: AnyDoc) => isHomePage(page));
   if (!settings || !home || home.enabled !== true)
     throw new Error("VALIDATION_FAILED");
@@ -657,6 +659,9 @@ export async function buildPublicationArtifact(
       const variant = variantAfterDesignSwitch(design, raw.blockType, typeof raw.variant === "string" ? raw.variant : null);
       // #4453 milestone 5 (tester P2-1) — a hero layout that does not draw the
       // booking bar or the rating never publishes them (Studio hides them too).
+      // #4575 — with the full-screen cover a grid-index hero draws as the full-picture hero, which draws all of these.
+      const drawsFull = raw.blockType === "hero" && variant === "grid-index" && designOptions?.cover === "full";
+      if (drawsFull) return { ...shaped, variant };
       if (raw.blockType === "hero" && !HERO_LAYOUTS_WITH_BOOKING.includes(variant)) {
         const { booking_bar: _bar, booking_target_id: _target, show_rating: _rating, fact_badges: _facts, ...rest } = shaped as Record<string, unknown>;
         return { ...rest, variant };
@@ -1549,7 +1554,6 @@ export async function buildPublicationArtifact(
   if (display) artifact.site_display = display;
   artifact.design = { key: design.key, version: design.version };
   // #4575 — the design's options, only when one changes the drawing (absent otherwise, so the artifact is unchanged).
-  const designOptions = resolveDesignOptions(design, designOptionsOf(settings));
   if (designOptions) artifact.design.options = designOptions;
   // #4453 §3.3 — the shared header and footer layouts, only when the site's
   // design offers them (a switched design never fails a republish).
