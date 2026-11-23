@@ -190,7 +190,7 @@ describe("issue #4522 deploy window — Host money reads on main's database", ()
  */
 describe("issue #4522 deploy window — share_payment_plan is sent only when it can matter", () => {
   /* eslint-disable @typescript-eslint/no-require-imports */
-  const { shouldSendSharePaymentPlan } = require("../../components/trip/tripPlanV2EditorModel") as typeof import("../../components/trip/tripPlanV2EditorModel");
+  const { shouldSendSharePaymentPlan } = require("../../components/trip/tripBuilderV2Model") as typeof import("../../components/trip/tripBuilderV2Model");
   const fs = require("node:fs") as typeof import("node:fs");
   const path = require("node:path") as typeof import("node:path");
   /* eslint-enable @typescript-eslint/no-require-imports */

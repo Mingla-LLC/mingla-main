@@ -128,8 +128,6 @@ import {
   type Step4Draft,
   type Step4Package,
 } from "./TripCreatorStep4Pricing";
-// issue #4522 deploy window — share_payment_plan only when it can matter.
-import { shouldSendSharePaymentPlan } from "./tripPlanV2EditorModel";
 // META-ORCH-1174 Leg B2 — pure (RN-free) publish-gate package validator.
 import { validateTripPackages } from "./tripPackagesValidation";
 // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] — NEW Step 5 component.
@@ -223,6 +221,8 @@ import {
   builderStepForLegacyStep,
   buildPublishChecklist,
   builderStepComplete,
+  // issue #4522 deploy window — share_payment_plan only when it can matter.
+  shouldSendSharePaymentPlan,
   dirtySaveGroups,
   firstOpenItem,
   isBuilderStep,

@@ -182,6 +182,28 @@ export function publishUnlockLine(items: ReadonlyArray<ChecklistItem>): string |
 }
 
 /**
+ * issue #4522 deploy window — whether a pricing save carries
+ * `settings.share_payment_plan`. Before the #4522 migrations are applied the
+ * server refuses that key (trip_settings_patch_invalid) on EVERY package
+ * save, so it is sent only when it can matter: the host turned sharing on,
+ * the saved trip has it on, or a package carries a v2 plan (which only exists
+ * once the schema does). Otherwise the save is byte-for-byte main's.
+ */
+export function shouldSendSharePaymentPlan(input: {
+  draftShare: boolean | undefined;
+  savedShare: boolean | undefined;
+  plans: ReadonlyArray<unknown>;
+}): boolean {
+  const isV2 = (plan: unknown): boolean =>
+    typeof plan === "object" && plan !== null && (plan as { v?: unknown }).v === 2;
+  return (
+    input.draftShare === true ||
+    input.savedShare === true ||
+    input.plans.some(isV2)
+  );
+}
+
+/**
  * #4522 S-18 — whether the step rail ticks a step: every checklist item the
  * step owns is met. "Travelers & publish" owns the publish itself, so it ticks
  * only when the whole checklist is met (on a fresh draft its own items, bank

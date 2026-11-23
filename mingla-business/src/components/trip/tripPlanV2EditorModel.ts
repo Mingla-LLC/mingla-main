@@ -50,26 +50,6 @@ export function isTripPaymentPlanV2(
   return value !== null && "v" in value && value.v === 2;
 }
 
-/**
- * issue #4522 deploy window — whether a pricing save carries
- * `settings.share_payment_plan`. Before the #4522 migrations are applied the
- * server refuses that key (trip_settings_patch_invalid) on EVERY package
- * save, so it is sent only when it can matter: the host turned sharing on,
- * the saved trip has it on, or a package carries a v2 plan (which only exists
- * once the schema does). Otherwise the save is byte-for-byte main's.
- */
-export function shouldSendSharePaymentPlan(input: {
-  draftShare: boolean | undefined;
-  savedShare: boolean | undefined;
-  plans: ReadonlyArray<TripInstallmentSchedule | TripPaymentPlanV2 | null>;
-}): boolean {
-  return (
-    input.draftShare === true ||
-    input.savedShare === true ||
-    input.plans.some((plan) => isTripPaymentPlanV2(plan))
-  );
-}
-
 export function depositMinorForPlan(
   plan: TripPaymentPlanV2,
   totalAmountMinor: number,

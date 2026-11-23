@@ -385,17 +385,24 @@ describe("the builder, flag on, real wizard source", () => {
     expect(tree.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Publish trip").length).toBeGreaterThan(0);
   });
 
-  test("Publish with items open is not greyed out: it says what is left and jumps to it", async () => {
+  // #4522 S-18 (spec §9.5) — with items open the final Publish is disabled and
+  // the line under it says what is left; the top-bar Publish stays tappable,
+  // says what is left and jumps to it.
+  test("Publish with items open is disabled with its reason; the top-bar Publish jumps to what is left", async () => {
     const tree = await mountWizard(trip());
     await press(cta(tree, "Continue"));
     await press(cta(tree, "Continue"));
     await press(cta(tree, "Continue"));
     const publish = tree.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Publish trip")[0];
-    expect(publish.props.disabled).toBe(false);
+    expect(publish.props.disabled).toBe(true);
+    const hint = tree.root.findAll((n) => n.props.testID === "trip-wizard-publish-unlock")[0];
+    expect(hint).toBeDefined();
     const checklist = tree.root.findAll((n) => n.type === "Checklist")[0];
     const open = (checklist.props.items as { done: boolean; key: string }[]).filter((i) => !i.done).map((i) => i.key);
     expect(open).toEqual(expect.arrayContaining(["description", "cover"]));
-    await press(publish);
+    const topPublish = tree.root.findAll((n) => n.type === "ButtonProbe" && n.props.label === "Publish")[0];
+    expect(topPublish.props.disabled).toBe(false);
+    await press(topPublish);
     const toast = tree.root.findAll((n) => n.type === "ToastProbe")[0];
     expect(String(toast.props.message)).toMatch(/^Publish unlocks when /);
     // First open item is on step 1, so the wizard went back to the Trip body.
