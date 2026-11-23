@@ -935,11 +935,13 @@ serve(async (req: Request): Promise<Response> => {
     // its refund pending (never "failed"), so it is still finished and
     // recorded; ops are told once.
     const made = await unrecordedRefundsAlert(stripeFailureDetail);
-    if (!paystackFailureRetryable && made === 0) {
-      await supabase.rpc("biz_cancel_trip_booking_rollback", {
-        p_refund_id: refundId,
-        p_failure_reason: stripeFailureDetail,
-      });
+    if (!paystackFailureRetryable) {
+      if (made === 0) {
+        await supabase.rpc("biz_cancel_trip_booking_rollback", {
+          p_refund_id: refundId,
+          p_failure_reason: stripeFailureDetail,
+        });
+      }
     }
     return jsonResponse(
       {

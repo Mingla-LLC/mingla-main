@@ -134,7 +134,7 @@ Deno.test("S9-1: a failed cancel keeps a refund the provider made pending and al
   const loopFail = source.slice(source.indexOf("if (stripeFailureDetail !== null) {"));
   const arm = loopFail.slice(0, loopFail.indexOf("return jsonResponse("));
   assertStringIncludes(arm, "const made = await unrecordedRefundsAlert(stripeFailureDetail);");
-  assertStringIncludes(arm, "if (!paystackFailureRetryable && made === 0) {");
+  assertStringIncludes(arm, "if (!paystackFailureRetryable) {\n      if (made === 0) {");
   assertStringIncludes(source, "if (await unrecordedRefundsAlert(`ledger_insert_failed: ${insertError.message}`) === 0) {");
   assertStringIncludes(source, "await unrecordedRefundsAlert(`commit_failed: ${commitErr?.message ?? \"not_ok\"}`);");
 });
