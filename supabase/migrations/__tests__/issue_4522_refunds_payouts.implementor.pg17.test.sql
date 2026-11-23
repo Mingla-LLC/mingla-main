@@ -237,4 +237,49 @@ BEGIN
   END IF;
 END $$;
 
+-- F. issue #4522 E-6 — a cancel whose refund comes to nothing cancels with no
+--    refund row (refunds.amount_cents must be positive): a traveler cancelling
+--    a v2 order with only the non-refundable deposit paid, and a host
+--    cancelling an old-plan order on a trip with no cancellation policy.
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000a6',
+  '{"v":2,"deposit_minor":30000000,"deposit_non_refundable":true,"flex_enabled":false,"auto_adjust":true}', NULL);
+INSERT INTO public.events(id, brand_id, created_by, title, slug, event_type, status, visibility, timezone,
+  currency, refund_policy)
+VALUES ('45220008-0000-4000-8000-000000000021', '45220008-0000-4000-8000-000000000010',
+        '45220008-0000-4000-8000-000000000001', 'No policy trip', 'no-policy-trip-4522', 'trip', 'scheduled',
+        'public', 'Africa/Lagos', 'NGN', NULL);
+INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
+VALUES ('45220008-0000-4000-8000-000000000021', now() + interval '120 days', now() + interval '127 days',
+        'Africa/Lagos', true);
+SELECT pg_temp.seed_order('45220008-0000-4000-8000-0000000000a7', NULL, NULL);
+UPDATE public.orders SET event_id = '45220008-0000-4000-8000-000000000021'
+ WHERE id = '45220008-0000-4000-8000-0000000000a7';
+DO $$
+DECLARE v_b jsonb; r record;
+BEGIN
+  FOR r IN SELECT * FROM (VALUES
+    ('45220008-0000-4000-8000-0000000000a6'::uuid, 'buyer'),
+    ('45220008-0000-4000-8000-0000000000a7'::uuid, 'operator')
+  ) v(order_id, actor) LOOP
+    v_b := public.biz_cancel_trip_booking_begin(r.order_id, r.actor,
+      '45220008-0000-4000-8000-000000000001', 'Cancelled with nothing to refund');
+    IF NOT COALESCE((v_b->>'ok')::boolean, false) OR (v_b->>'refund_total_cents')::bigint <> 0
+       OR v_b->>'refund_id' IS NOT NULL THEN
+      RAISE EXCEPTION 'F-1 a $0 cancel (%) succeeds with no refund id: %', r.actor, v_b;
+    END IF;
+    IF EXISTS (SELECT 1 FROM public.refunds WHERE order_id = r.order_id)
+       OR EXISTS (SELECT 1 FROM public.paystack_refund_attempts WHERE source_id = r.order_id) THEN
+      RAISE EXCEPTION 'F-2 a $0 cancel (%) writes no refund and no provider attempt', r.actor;
+    END IF;
+    IF (SELECT cancelled_at FROM public.orders WHERE id = r.order_id) IS NULL
+       OR EXISTS (SELECT 1 FROM public.order_installments WHERE order_id = r.order_id AND status <> 'cancelled') THEN
+      RAISE EXCEPTION 'F-3 a $0 cancel (%) still cancels the booking and its open rows', r.actor;
+    END IF;
+    -- a second press is the ordinary already-cancelled answer, never a refund
+    IF public.biz_cancel_trip_booking_begin(r.order_id, r.actor, NULL, NULL)->>'reason' <> 'already_cancelled' THEN
+      RAISE EXCEPTION 'F-4 a repeated $0 cancel (%) is already_cancelled', r.actor;
+    END IF;
+  END LOOP;
+END $$;
+
 ROLLBACK;

@@ -53,3 +53,18 @@ Deno.test("before the #4522 migrations: exactly the pre-#4522 call", async () =>
     args: { p_order_id: "o1", p_cancel_at: "t" },
   }]);
 });
+
+Deno.test("E-6: a cancel with nothing to refund skips every provider, ledger and commit step", () => {
+  assertStringIncludes(
+    source,
+    "const noRefund = refundId.length === 0 && computedRefundTotalCents === 0;",
+  );
+  // the Stripe account is not needed when nothing is sent
+  assertStringIncludes(source, 'if (paymentProvider === "stripe" && !connectedAccountId && !noRefund) {');
+  // no refund row to commit or finalise
+  assertStringIncludes(source, 'await (paymentProvider === "paystack" && !noRefund\n      ? supabase.rpc("biz_cancel_trip_booking_commit"');
+  assertStringIncludes(source, 'if (paymentProvider === "paystack" && !noRefund && !commitErr) {');
+  // the cancellation notice is keyed by the order, never by an empty refund id
+  assertStringIncludes(source, "const cancelNoticeKey = noRefund ? `order:${orderId}` : refundId;");
+  assertStringIncludes(source, "idempotency_key: `tr4_cancel:${cancelNoticeKey}:cancelled`,");
+});

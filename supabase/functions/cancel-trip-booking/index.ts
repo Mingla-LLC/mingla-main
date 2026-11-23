@@ -604,6 +604,11 @@ serve(async (req: Request): Promise<Response> => {
 
   const refundId = begin.refund_id ?? "";
   const computedRefundTotalCents = Number(begin.refund_total_cents ?? 0);
+  // issue #4522 (E-6) — a cancel whose refund comes to nothing has no refund
+  // row (begin returns refund_id NULL): no provider, ledger or commit step
+  // runs, and the notices are keyed by the order instead.
+  const noRefund = refundId.length === 0 && computedRefundTotalCents === 0;
+  const cancelNoticeKey = noRefund ? `order:${orderId}` : refundId;
   const currency = (begin.currency ?? "GBP").toLowerCase();
   const tierPct = Number(begin.tier_pct ?? 0);
   const perPaymentRefund = paymentRefundEntries(begin.per_payment_refund);
@@ -635,7 +640,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // Step 2: connected-account lookup for Stripe refund calls.
-  if (paymentProvider === "stripe" && !connectedAccountId) {
+  if (paymentProvider === "stripe" && !connectedAccountId && !noRefund) {
     await supabase.rpc("biz_cancel_trip_booking_rollback", {
       p_refund_id: refundId,
       p_failure_reason: "missing_connected_account",
@@ -963,7 +968,7 @@ serve(async (req: Request): Promise<Response> => {
   // id = first one; multi-PI refunds carry full list in audit metadata.
   // Legacy #1175 ordering sentinel: const { data: commitData, error: commitErr } = await supabase.rpc(
   const { data: commitData, error: commitErr } =
-    await (paymentProvider === "paystack"
+    await (paymentProvider === "paystack" && !noRefund
       ? supabase.rpc("biz_cancel_trip_booking_commit", {
         p_refund_id: refundId,
         p_stripe_refund_ids: stripeRefundIds.length > 0
@@ -973,7 +978,7 @@ serve(async (req: Request): Promise<Response> => {
         p_processed_at: new Date().toISOString(),
       })
       : Promise.resolve({ data: { ok: true }, error: null }));
-  if (paymentProvider === "paystack" && !commitErr) {
+  if (paymentProvider === "paystack" && !noRefund && !commitErr) {
     await supabase.rpc("issue_2097_finalize_not_applicable", {
       p_refund_id: refundId,
       p_provider: "paystack",
@@ -1039,7 +1044,7 @@ serve(async (req: Request): Promise<Response> => {
       channel: "email",
       recipient: buyerEmail,
       status: "pending",
-      idempotency_key: `tr4_cancel:${refundId}:cancelled`,
+      idempotency_key: `tr4_cancel:${cancelNoticeKey}:cancelled`,
       attempt_count: 0,
       payload: {
         template_key: "buyer_order_cancelled",

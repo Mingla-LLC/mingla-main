@@ -367,14 +367,20 @@ BEGIN
     RETURN v_compute;
   END IF;
 
-  INSERT INTO public.refunds(
-    order_id,amount_cents,currency,status,reason,
-    application_fee_refunded_cents
-  ) VALUES(
-    p_order_id,(v_compute->>'refund_total_cents')::bigint,
-    v_compute->>'currency','pending',
-    left(coalesce(p_reason,'tr4_cancel'),200),NULL
-  ) RETURNING id INTO v_refund_id;
+  -- issue #4522 (E-6) — a cancel whose refund comes to nothing (no policy
+  -- tier applies, a non-refundable deposit) cancels with no refund row:
+  -- refunds.amount_cents must be positive, and there is nothing to send.
+  -- refund_id is then NULL and the edge skips every provider step.
+  IF (v_compute->>'refund_total_cents')::bigint > 0 THEN
+    INSERT INTO public.refunds(
+      order_id,amount_cents,currency,status,reason,
+      application_fee_refunded_cents
+    ) VALUES(
+      p_order_id,(v_compute->>'refund_total_cents')::bigint,
+      v_compute->>'currency','pending',
+      left(coalesce(p_reason,'tr4_cancel'),200),NULL
+    ) RETURNING id INTO v_refund_id;
+  END IF;
 
   IF v_provider='paystack' THEN
     FOR v_payment IN
