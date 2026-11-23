@@ -117,13 +117,48 @@ export const MOVE_BLOCK_COPY = {
  * Returns null (go ahead), or { token, message, needsReason }.
  */
 /**
- * #4571 rework: Demo booked, Onboarded and Live need a linked booked demo
- * (W4). True when the server's demo_gate says the card is locked and the move
- * goes into that band, so no screen offers a move the server always refuses.
+ * #4571 rework: Demo booked needs a linked booked demo; Onboarded and Live need
+ * a linked demo or a linked Mingla brand (W4, W7). True when the server's
+ * demo_gate lists the target in locked_stages, so no screen offers a move the
+ * server always refuses. A gate without locked_stages (before W7) locks the
+ * whole band.
  */
 export const DEMO_BAND = ["meeting", "onboarded", "live"];
 export function demoLocked(def, record, toStageId) {
-  return def?.id === "hosts" && DEMO_BAND.includes(toStageId) && !!record?.demo_gate?.locked;
+  if (def?.id !== "hosts" || !DEMO_BAND.includes(toStageId)) return false;
+  const gate = record?.demo_gate;
+  if (Array.isArray(gate?.locked_stages)) return gate.locked_stages.includes(toStageId);
+  return !!gate?.locked;
+}
+
+/** The short words beside a locked stage (W7: a brand opens Onboarded and Live). */
+export function demoLockWords(toStageId) {
+  return toStageId === "meeting" ? "locked, needs a linked demo" : "locked, needs a linked demo or brand";
+}
+
+/**
+ * The Needs linking note on a card past the gate with nothing that lets it
+ * stand there (demo_gate.needs_linking). Demo booked needs a demo; Onboarded
+ * and Live need a demo or the brand.
+ */
+export function needsLinkingWords(record) {
+  const stage = record?.stage;
+  if (stage === "onboarded" || stage === "live") {
+    const label = stage === "live" ? "Live" : "Onboarded";
+    return `This card is in ${label} with no booked demo or Mingla brand linked. Link its booking on Demos to link, link the brand, or book a demo with the link below.`;
+  }
+  return "This card is in Demo booked with no booked demo linked. Link its booking on Demos to link, or book one with the link below.";
+}
+
+/** The server's sentence for a locked band stage, from demo_gate. */
+export function demoLockReason(record, toStageId) {
+  const gate = record?.demo_gate || {};
+  const own = gate.reasons && typeof gate.reasons === "object" ? gate.reasons[toStageId] : null;
+  if (typeof own === "string" && own) return own;
+  if (gate.reason) return gate.reason;
+  return toStageId === "meeting"
+    ? "Demo booked needs a Google Meet booked through the scheduler and linked to this card."
+    : "This stage needs a demo booked through the scheduler and linked to this card, or the host's Mingla brand linked.";
 }
 
 export function moveBlocker(def, record, toStageId) {
@@ -132,7 +167,7 @@ export function moveBlocker(def, record, toStageId) {
   if (demoLocked(def, record, toStageId)) {
     return {
       token: "demo_required",
-      message: record.demo_gate.reason || "Demo booked needs a Google Meet booked through the scheduler and linked to this card.",
+      message: demoLockReason(record, toStageId),
     };
   }
   if (to.auto) return { token: "stage_sets_itself", message: MOVE_BLOCK_COPY.stage_sets_itself };

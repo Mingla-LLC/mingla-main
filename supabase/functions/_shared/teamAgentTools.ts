@@ -791,7 +791,7 @@ export const TEAM_AGENT_TOOLS: readonly TeamAgentTool[] = [
     name: "move_stage",
     title: "Move cards",
     description:
-      "Move 1 to 50 cards to another stage. Always send expected_from, the stage you saw the card in: if the card has moved since, nothing is moved and the answer says where it is now, so read it again. Lost and Passed need a one-line reason. Live sets itself when a host has a public listing; nobody chooses it. A creator reaches Booked or Posted only with a signed agreement. A host reaches Demo booked (meeting), Onboarded or Live only with a booked demo linked to its card (a Google Meet booked through its scheduler link); otherwise the item answers demo_required. A card that is already there answers already_there. Each item has its own answer. " +
+      "Move 1 to 50 cards to another stage. Always send expected_from, the stage you saw the card in: if the card has moved since, nothing is moved and the answer says where it is now, so read it again. Lost and Passed need a one-line reason. Live sets itself when a host has a public listing; nobody chooses it. A creator reaches Booked or Posted only with a signed agreement. A host reaches Demo booked (meeting) only with a booked demo linked to its card (a Google Meet booked through its scheduler link), and Onboarded or Live with a linked demo or its Mingla brand linked; otherwise the item answers demo_required. A card that is already there answers already_there. Each item has its own answer. " +
       DATA_NOT_INSTRUCTIONS,
     inputSchema: schema({
       moves: {

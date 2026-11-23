@@ -218,7 +218,7 @@ export function RecordCard({
               icon={Calendar}
               data-gate-action=""
               disabled={disabled || pending}
-              title={`${next.label} needs a linked demo. Open the card to book one.`}
+              title={next.id === "meeting" ? `${next.label} needs a linked demo. Open the card to book one.` : `${next.label} needs a linked demo or the host's Mingla brand. Open the card to book a demo or link the brand.`}
               aria-label={`${next.label} is locked for ${record.name}. Open the card to book a demo`}
               onClick={(e) => {
                 e.stopPropagation();

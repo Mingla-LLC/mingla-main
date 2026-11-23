@@ -36,6 +36,8 @@ import {
   callOutcomeLabel,
   clockTime,
   demoLocked,
+  demoLockWords,
+  needsLinkingWords,
   dueChoices,
   channelsUsed,
   contactRuleView,
@@ -231,7 +233,7 @@ function DemosSection({ record, demos, scheduleToken, disabled, onChanged }) {
       )}
       {gate?.needs_linking && !gate?.demo_cancelled && (
         <p role="note" data-demo-needs-linking="" className="rounded-lg bg-[var(--a-sched-bg)] px-3 py-2 text-[12.5px] text-[var(--a-sched-ink)]">
-          <b>Needs linking.</b> This card was in Demo booked before demos were linked. Link its booking on Demos to link, or book one with the link below.
+          <b>Needs linking.</b> {needsLinkingWords(record)}
         </p>
       )}
       {gate?.locked && (
@@ -1069,7 +1071,7 @@ export function RecordPanel({
             {(closeIt) => stageOptions.map((o) => (
               <button key={o.value} type="button" disabled={o.disabled || o.value === record.stage} aria-pressed={o.value === record.stage}
                 onClick={() => { closeIt(); onRequestMove(record, o.value); }}
-                className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)] disabled:opacity-50">{o.label}{o.locked ? " · locked, needs a linked demo" : ""}</button>
+                className="min-h-9 rounded-md px-2 text-left text-[13px] hover:bg-[var(--gray-50)] disabled:opacity-50">{o.label}{o.locked ? ` · ${demoLockWords(o.value)}` : ""}</button>
             ))}
           </PropChip>
           {next && !nextLocked && (
