@@ -21,6 +21,8 @@ const PAYMENT = "00000000-4490-4000-8000-0000000002e1";
 const CARRIER = "00000000-4490-4000-8000-0000000002e9";
 const REQ = "00000000-4490-4000-8000-0000000002e2";
 const CODE = "QXR7KM2P";
+// The Stripe brand in these fixtures settles in pounds.
+const STRIPE_CURRENCY = "GBP";
 
 type Row = Record<string, unknown>;
 type Call = { name: string; params: Record<string, unknown> };
@@ -143,7 +145,7 @@ function world(opts: {
                   pass_mingla_fee: true,
                   pass_service_fee: false,
                   pricing_region: "GB",
-                  pricing_currency: "GBP",
+                  pricing_currency: STRIPE_CURRENCY,
                   effective_take_rate_bps: 150,
                   take_rate_source: "platform_default",
                   stripe_account_id: "acct_1",

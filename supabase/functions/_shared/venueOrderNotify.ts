@@ -364,7 +364,7 @@ export async function fireTillLatePayment(
       relatedId: paymentId,
       relatedType: "venue_till_payment",
       idempotencyKey: `venue_till_paid_late:${paymentId}`,
-      deepLink: `mingla-business://venue/${venueId}/till?checks=1`,
+      deepLink: `mingla-business://venue/${venueId}/till`,
     });
   } catch (err) {
     console.warn(

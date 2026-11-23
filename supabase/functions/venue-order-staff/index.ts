@@ -916,6 +916,9 @@ async function billToPhone(
   }
 
   if (routing.provider === "paystack") {
+    // #4490 spec 08 O2: the return origin comes from env (loopback on the
+    // local stack), never the hard-coded production origin (ruling 8).
+    const callbackOrigin = resolveVenueVisitOrigin((name) => Deno.env.get(name));
     const reference = venueOrderPaystackReference(input.orderId);
     await supabase.from("venue_orders").update({
       paystack_reference: reference,
@@ -927,9 +930,7 @@ async function billToPhone(
         amountSubunits: money.totalCents,
         currency: "NGN",
         reference,
-        // #4490 spec 08 O2: the return origin comes from env (loopback on the
-        // local stack), never the hard-coded production origin (ruling 8).
-        callbackUrl: `${resolveVenueVisitOrigin((name) => Deno.env.get(name))}/o/venue/${
+        callbackUrl: `${callbackOrigin}/o/venue/${
           encodeURIComponent(input.orderId)
         }?bst=${encodeURIComponent(buyerStatusToken)}`,
         channels: paystackChannelsForCountry("NG"),

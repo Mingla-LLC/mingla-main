@@ -589,7 +589,7 @@ export async function sweepTillUnfinished(
           paid ? "till_tap_paid_unseen" : "till_tap_not_completed"
         }:${row.id}`,
         deepLink: venueId
-          ? `mingla-business://venue/${venueId}/till?checks=1`
+          ? `mingla-business://venue/${venueId}/till`
           : "mingla-business://home",
       });
       tally.notified += 1;

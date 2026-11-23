@@ -81,6 +81,7 @@ import { venueOrderEmailUndeliverable } from "../_shared/venueOrderPricing.ts";
 import { venueOrderSplitFields } from "../venue-order-create/ngPaystackSplit.ts";
 import { sha256Hex } from "../_shared/ticketCheckout.ts";
 import { tapToPayReleased } from "../_shared/doorPayServer.ts";
+import { readBrandPayoutHoldStamp } from "../_shared/payoutHoldStamp.ts";
 import {
   issueTillReceiptTokenHash,
   TILL_RECEIPT_TOKEN_RE,
@@ -1376,8 +1377,14 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
       if (stamp.error || !Array.isArray(stamp.data) || stamp.data.length !== 1) {
         return json(409, { code: "till_payment_in_progress" });
       }
-      const { data: brandRow } = await client.from("brands")
-        .select("payout_hold_cutover_at").eq("id", String(p.brandId)).maybeSingle();
+      // #3645: a failed stamp read refuses (retryable); reading it as
+      // "unstamped" would split a stamped brand's money at charge time.
+      const holdStamp = await readBrandPayoutHoldStamp(client, String(p.brandId), "venue-till");
+      if (!holdStamp.ok) {
+        await client.from("venue_orders").update({ paystack_reference: null })
+          .eq("id", carrierId).eq("paystack_reference", reference).eq("payment_status", "pending");
+        return json(503, { code: "till_failed" });
+      }
       const { data: pricing } = await client.rpc("resolve_brand_pricing_inputs", {
         p_brand_id: String(p.brandId),
         p_venue_id: null,
@@ -1399,7 +1406,7 @@ export function createVenueTillHandler(deps: VenueTillDeps = {}) {
             mingla_brand_id: String(p.brandId),
           },
           ...venueOrderSplitFields(
-            Boolean(brandRow?.payout_hold_cutover_at),
+            holdStamp.isCutover,
             subaccount,
             Number(p.applicationFeeCents),
           ),
